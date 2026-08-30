@@ -54,7 +54,10 @@ export default function ReadyStockBoard() {
   const [location, setLocation] = useState('');
   const [notes, setNotes] = useState('');
 
-  const activeRefs = useMemo(() => references.filter((r) => r.status === 'Ativo'), [references]);
+  const activeRefs = useMemo(
+    () => references.filter((r) => r.status === 'Ativo' && !(r as typeof r & { retired_at?: string | null }).retired_at),
+    [references],
+  );
   const selectedRef = useMemo(() => activeRefs.find((r) => r.id === selRef), [activeRefs, selRef]);
   const availableSizes = useMemo(() => parseSizes(selectedRef?.sizes || null), [selectedRef]);
   const availableColors = useMemo(() => {

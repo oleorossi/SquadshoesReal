@@ -234,6 +234,10 @@ function getWeekOptions() {
   const navigate = useNavigate();
   const { data: orders = [], isLoading, isError, refetch, isFetching } = useOrders();
   const { data: references = [] } = useTechnicalSheets();
+  const selectableReferences = useMemo(
+    () => references.filter((reference: any) => !reference.retired_at),
+    [references],
+  );
   const { data: products = [] } = useProducts();
   
   // Only fetch stages for currently loaded orders (much faster than fetching ALL stages)
@@ -1926,7 +1930,7 @@ function getWeekOptions() {
                       <CommandList>
                         <CommandEmpty>Nenhuma referência encontrada.</CommandEmpty>
                         <CommandGroup>
-                          {references.map((r) => (
+                          {selectableReferences.map((r) => (
                             <CommandItem
                               key={r.id}
                               value={`${r.code} ${r.name}`}

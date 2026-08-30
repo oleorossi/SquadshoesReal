@@ -223,7 +223,7 @@ export async function checkSectorCapacity(
   today.setHours(0, 0, 0, 0);
   const { data: activeOrders } = await supabase
     .from('sale_orders')
-    .select('id, delivery_deadline, status, sale_order_items(reference_id, quantity)')
+    .select('id, delivery_deadline, status, sale_order_items(reference_id, quantity, production_excluded_at)')
     .in('status', ['Pendente', 'Aprovado', 'Em Produção', 'Confirmado'])
     .gte('delivery_deadline', today.toISOString().slice(0, 10));
 
@@ -271,6 +271,7 @@ export async function checkSectorCapacity(
     if (!odl) continue;
     const orderBilling = new Date(odl + 'T00:00:00');
     for (const item of (ord as any).sale_order_items || []) {
+      if (item.production_excluded_at) continue;
       const sheet = sheetMap.get(item.reference_id);
       if (!sheet) continue;
       const qty = Number(item.quantity || 0);

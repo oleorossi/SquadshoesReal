@@ -38,4 +38,15 @@ describe('onda pronta entrega', () => {
     expect(panel).toContain('groupItemsByLot');
     expect(panel).toContain('encodeGradeNotes');
   });
+
+  it('nao oferece ficha aposentada em nenhum lancamento de pronta entrega', () => {
+    const board = read('src/components/inventory/ReadyStockBoard.tsx');
+    const legacyPanel = read('src/components/inventory/ReadyStockPanel.tsx');
+
+    for (const source of [board, legacyPanel]) {
+      expect(source).toContain("r.status === 'Ativo'");
+      expect(source).toContain('retired_at?: string | null');
+      expect(source).toContain('.retired_at');
+    }
+  });
 });

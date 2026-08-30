@@ -19,6 +19,7 @@ import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { SALE_ORDER_STATUS } from '@/lib/saleOrderStateMachine';
+import { filterOperationalOperatorOrders } from '@/lib/operatorPrintEligibility';
 
 interface OrderRow {
   id: string;
@@ -36,7 +37,11 @@ interface OrderRow {
    *  de material. Trazidos via join sale_order_items pra que as fichas de
    *  operador mostrem cada tira com sua cor e calculem o consumo com os
    *  materiais DA VARIANTE escolhida no PV. */
-  sale_order_items?: { strap_colors: Array<{ id?: string; label?: string; color?: string; group_id?: string; group_name?: string }> | null; material_variant_id?: string | null } | null;
+  sale_order_items?: {
+    strap_colors: Array<{ id?: string; label?: string; color?: string; group_id?: string; group_name?: string }> | null;
+    material_variant_id?: string | null;
+    production_excluded_at: string | null;
+  } | null;
 }
 
 // Status REAIS de `orders` (OPs) no backend, conforme auditoria 2026-05:
@@ -118,7 +123,7 @@ export default function PrintWorkSheets() {
         .from('orders')
         // sale_orders!sale_order_id desambigua: orders tem 2 FKs pra sale_orders
         // (sale_order_id e cross_dock_sale_order_id). PostgREST não escolhe sozinho.
-        .select('id, order_number, reference_id, color, quantity, grade, status, sale_order_id, sale_order_item_id, sale_orders!sale_order_id(order_number, client_name, delivery_deadline, status), technical_sheets:reference_id(name, code), sale_order_items!sale_order_item_id(strap_colors, material_variant_id)')
+        .select('id, order_number, reference_id, color, quantity, grade, status, sale_order_id, sale_order_item_id, sale_orders!sale_order_id(order_number, client_name, delivery_deadline, status), technical_sheets:reference_id(name, code), sale_order_items!sale_order_item_id(strap_colors, material_variant_id, production_excluded_at)')
         .order('order_number', { ascending: false })
         .limit(500);
       if (statusFilter === 'em_fluxo') {
@@ -131,7 +136,7 @@ export default function PrintWorkSheets() {
       // Esconde OPs cujo PV não está em produção (Cancelado/Rascunho/Pendente/
       // Aprovado) — é ficha de PRODUÇÃO, então só PV que entrou em produção.
       // Mantém OP sem PV (manual) e PV em produção/faturado/expedido/finalizado.
-      return ((data || []) as unknown as OrderRow[])
+      return filterOperationalOperatorOrders((data || []) as unknown as OrderRow[])
         .filter(r => !HIDDEN_PV_STATUSES.has((r.sale_orders?.status ?? '').trim()));
     },
   });
@@ -506,8 +511,8 @@ export default function PrintWorkSheets() {
               <EmptyState
                 size="sm"
                 icon={FileText}
-                title="Nenhuma OP encontrada"
-                description="Ajuste os filtros de status ou PV para encontrar OPs."
+                title="Nenhuma OP produtiva encontrada"
+                description="OPs canceladas e itens retirados da produção continuam no histórico, mas não aparecem para impressão. Ajuste os filtros para procurar outras OPs."
               />
             )
           ) : (

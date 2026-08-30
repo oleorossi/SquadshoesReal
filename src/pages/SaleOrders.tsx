@@ -2876,6 +2876,15 @@ export default function SaleOrders() {
                                     <div className="min-w-0">
                                       <div className="flex flex-wrap items-center gap-2">
                                         <p className="text-sm font-semibold">{item.color || '—'}</p>
+                                        {item.production_excluded_at && (
+                                          <Badge
+                                            variant="outline"
+                                            className="gap-1 border-warning/40 bg-warning/10 text-warning-foreground"
+                                          >
+                                            <AlertTriangle className="h-3 w-3" weight="fill" />
+                                            Retirado da produção
+                                          </Badge>
+                                        )}
                                         {(item.productionOrders || []).map((op: any) => (
                                           <MaterialReservationErrorBadge
                                             key={op.id}
@@ -2884,6 +2893,17 @@ export default function SaleOrders() {
                                           />
                                         ))}
                                       </div>
+                                      {item.production_excluded_at && (
+                                        <div
+                                          role="status"
+                                          className="mt-2 border border-warning/40 bg-warning/10 px-2.5 py-2 text-xs text-warning-foreground"
+                                        >
+                                          <p className="font-semibold">Este item não faz mais parte da carga de produção.</p>
+                                          <p className="mt-0.5 break-words">
+                                            {item.production_exclusion_reason || 'Exclusão administrativa registrada sem motivo informado.'}
+                                          </p>
+                                        </div>
+                                      )}
                                       {(item.strap_colors as any[])?.length > 0 && (
                                         <div className="flex flex-wrap gap-2 mt-2 p-2 rounded bg-muted/30 border border-border/40">
                                           <p className="text-xs font-bold text-muted-foreground uppercase w-full">Cores das Tiras:</p>

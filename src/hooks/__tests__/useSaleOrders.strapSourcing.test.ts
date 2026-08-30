@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildExtraItemColumns,
+  filterProductionSaleOrderItems,
+  withoutProductionExclusionMetadata,
   listarTirasSemCor,
   type SaleOrderItemFormData,
 } from '@/hooks/useSaleOrders';
@@ -46,5 +48,47 @@ describe('buildExtraItemColumns · origem canônica de tiras', () => {
         color_id: '33333333-3333-4333-8333-333333333333',
       }],
     }])).toEqual([]);
+  });
+});
+
+describe('payload comum de item', () => {
+  it('remove os metadados internos de retirada produtiva', () => {
+    const payload = withoutProductionExclusionMetadata({
+      id: 'item-1',
+      reference_id: 'ref-1',
+      color: 'PRETO',
+      grade: { '37': 10 },
+      unit_price: 100,
+      quantity: 10,
+      production_excluded_at: '2026-08-30T12:00:00Z',
+      production_exclusion_reason: 'Ficha aposentada pelo administrador',
+      production_exclusion_request_id: '11111111-1111-4111-8111-111111111111',
+    });
+
+    expect(payload).toMatchObject({ id: 'item-1', reference_id: 'ref-1' });
+    expect(payload).not.toHaveProperty('production_excluded_at');
+    expect(payload).not.toHaveProperty('production_exclusion_reason');
+    expect(payload).not.toHaveProperty('production_exclusion_request_id');
+  });
+
+  it('mantém a linha comercial, mas a exclui do conjunto produtivo', () => {
+    const active = {
+      reference_id: 'ref-ativa',
+      color: 'PRETO',
+      grade: { '37': 10 },
+      unit_price: 100,
+      quantity: 10,
+    } satisfies SaleOrderItemFormData;
+    const retired = {
+      ...active,
+      reference_id: 'ref-aposentada',
+      production_excluded_at: '2026-08-30T12:00:00Z',
+      production_exclusion_reason: 'Ficha aposentada pelo administrador',
+      production_exclusion_request_id: '11111111-1111-4111-8111-111111111111',
+    } satisfies SaleOrderItemFormData;
+
+    const persistedItems = [active, retired];
+    expect(filterProductionSaleOrderItems(persistedItems)).toEqual([active]);
+    expect(persistedItems).toEqual([active, retired]);
   });
 });

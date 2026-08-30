@@ -22,6 +22,8 @@ import { PvServiceOrdersCard } from '@/components/sale-orders/PvServiceOrdersCar
 import { GenerateServiceOrdersWizard } from '@/components/contractors/GenerateServiceOrdersWizard';
 import {
   buildExtraItemColumns,
+  filterProductionSaleOrderItems,
+  withoutProductionExclusionMetadata,
   useCreateSaleOrder,
   useUpdateSaleOrder,
   SaleOrderFormData,
@@ -119,7 +121,7 @@ export function buildItemsPurchaseSignature(
 ): string {
   return JSON.stringify({
     packaging_mode: packagingMode || null,
-    items: items.filter((item) => item.reference_id).map((item) => ({
+    items: filterProductionSaleOrderItems(items).filter((item) => item.reference_id).map((item) => ({
       r: item.reference_id,
       q: item.quantity,
       c: (item.color || '').trim().toUpperCase(),
@@ -290,16 +292,23 @@ export function buildCopySeedPayload(args: {
       order_type: f.order_type,
       status: 'Rascunho',
     },
-    items: seedItems.map(({ id: _itemId, strap_sourcing_revision: _sourceRevision, ...rest }) => ({
-      ...rest,
-      material_variant_id:
-        rest.material_variant_id && activeVariantIds.has(rest.material_variant_id)
-          ? rest.material_variant_id
-          : null,
-      selected_terceirizacao_ids: [],
-      terceirizacao_quantities: {},
-      outsourced_sectors: {},
-    })),
+    items: seedItems.map((item) => {
+      const {
+        id: _itemId,
+        strap_sourcing_revision: _sourceRevision,
+        ...rest
+      } = withoutProductionExclusionMetadata(item);
+      return {
+        ...rest,
+        material_variant_id:
+          rest.material_variant_id && activeVariantIds.has(rest.material_variant_id)
+            ? rest.material_variant_id
+            : null,
+        selected_terceirizacao_ids: [],
+        terceirizacao_quantities: {},
+        outsourced_sectors: {},
+      };
+    }),
   };
 }
 
@@ -326,6 +335,9 @@ export function mapLoadedSaleOrderItem(
   const normalizedReferenceId = canonicalReferenceIdMap.get(i.reference_id) || i.reference_id;
   return {
     id: i.id,
+    production_excluded_at: (i as any).production_excluded_at ?? null,
+    production_exclusion_reason: (i as any).production_exclusion_reason ?? null,
+    production_exclusion_request_id: (i as any).production_exclusion_request_id ?? null,
     reference_id: normalizedReferenceId,
     color: i.color || '',
     grade,
@@ -407,12 +419,12 @@ export default function SaleOrderForm() {
   const isAdmin = useIsAdmin();
 
   const canonicalReferenceIdMap = useMemo(
-    () => getCanonicalReferenceIdMap(references as Array<{ id: string; code?: string | null; name?: string | null; updated_at?: string | null }>),
+    () => getCanonicalReferenceIdMap(references as Array<{ id: string; code?: string | null; name?: string | null; updated_at?: string | null; retired_at?: string | null }>),
     [references]
   );
 
   const canonicalReferences = useMemo(
-    () => getCanonicalSaleOrderReferences(references as Array<{ id: string; code?: string | null; name?: string | null; updated_at?: string | null }>),
+    () => getCanonicalSaleOrderReferences(references as Array<{ id: string; code?: string | null; name?: string | null; updated_at?: string | null; retired_at?: string | null }>),
     [references]
   );
 
@@ -842,8 +854,9 @@ export default function SaleOrderForm() {
   // Recalculate live min_billing_date with debounce whenever items change
   // (or on edit mode load). Drives the red badge in SaleOrderFormPanel.
   useEffect(() => {
-    const validItems = items.filter(i => i.reference_id && i.quantity > 0);
-    if (validItems.length === 0) {
+    const productionItems = filterProductionSaleOrderItems(items)
+      .filter(i => i.reference_id && i.quantity > 0);
+    if (productionItems.length === 0) {
       setLiveMinBillingISO(null);
       return;
     }
@@ -855,7 +868,7 @@ export default function SaleOrderForm() {
           const iso = await fetchMinBillingDate(id);
           if (!cancelled) setLiveMinBillingISO(iso);
         } else {
-          const capInputs = validItems.map((it) => {
+          const capInputs = productionItems.map((it) => {
             const ref = canonicalReferences.find((r: any) => r.id === it.reference_id);
             const refLabel = ref ? `${(ref as any).code || ''} - ${(ref as any).name || ''}`.trim() : it.reference_id.substring(0, 8);
             return { reference_id: it.reference_id, reference_label: refLabel, quantity: it.quantity };
@@ -1241,6 +1254,7 @@ export default function SaleOrderForm() {
     const editorSnapshot = draftStateRef.current;
     const f = editorSnapshot.form;
     const validItems = editorSnapshot.items.filter(i => i.reference_id).map(normalizeItemReference);
+    const productionItems = filterProductionSaleOrderItems(validItems);
     const total = validItems.reduce((s, i) => s + i.unit_price * i.quantity, 0);
     const rep = representatives.find(r => r.id === f.representative);
     const commission_value = rep ? total * (rep.commission_pct ?? 0) / 100 : 0;
@@ -1295,7 +1309,7 @@ export default function SaleOrderForm() {
       toast.dismiss(PV_ITEM_DELETE_TOAST_ID);
       void checkMarginAfterSave(pvId);
       if (!pvId) { navigate('/sales'); return; }
-      if (validItems.some((item) => Array.isArray(item.strap_colors) && item.strap_colors.length > 0)) {
+      if (productionItems.some((item) => Array.isArray(item.strap_colors) && item.strap_colors.length > 0)) {
         toast.info('Demanda de tiras enviada ao processamento canônico. Acompanhe em Central de Tiras → Operação → Demandas.');
       }
       if (isOverride) {
@@ -1434,21 +1448,22 @@ export default function SaleOrderForm() {
   const doSubmit = async (statusOverride?: string) => {
     const f = formLatestRef.current;
     const validItems = items.filter(i => i.reference_id).map(normalizeItemReference);
+    const productionItems = filterProductionSaleOrderItems(validItems);
     if (validItems.length === 0) {
       toast.error('Adicione pelo menos um item ao pedido.');
       return;
     }
-    if (validItems.some(i => !i.color?.trim())) {
+    if (productionItems.some(i => !i.color?.trim())) {
       toast.error('Selecione uma cor para todos os itens.');
       return;
     }
     // Paridade com handleSubmit: dialogs de confirmação chamam doSubmit direto,
     // então o guard de tira sem cor também precisa valer aqui.
     {
-      const tiraSemCor = findTiraSemCor(validItems);
+      const tiraSemCor = findTiraSemCor(productionItems);
       if (tiraSemCor) { toast.error(tiraSemCor, { duration: 8000 }); return; }
     }
-    if (validItems.some(i => i.quantity <= 0)) {
+    if (productionItems.some(i => i.quantity <= 0)) {
       toast.error('A quantidade dos itens deve ser maior que zero.');
       return;
     }
@@ -1493,7 +1508,7 @@ export default function SaleOrderForm() {
     dispatchMutation(pendingOverride, ops.map((op) => op.id));
   };
 
-  const validateAuthoritativeSources = async (validItems: SaleOrderItemFormData[]): Promise<boolean> => {
+  const validateAuthoritativeSources = async (productionItems: SaleOrderItemFormData[]): Promise<boolean> => {
     const clientId = String(formLatestRef.current.client_id || selectedClientId || '');
     setCheckingReadiness(true);
     try {
@@ -1512,7 +1527,8 @@ export default function SaleOrderForm() {
         }
       }
 
-      const referenceIds = [...new Set(validItems.map((item) => item.reference_id))];
+      const referenceIds = [...new Set(productionItems.map((item) => item.reference_id))];
+      if (referenceIds.length === 0) return true;
       const { data: sheets, error } = await supabase
         .from('technical_sheets')
         .select('id, status_ficha')
@@ -1524,7 +1540,7 @@ export default function SaleOrderForm() {
         toast.error('Uma ficha técnica do pedido não pôde ser localizada. Recarregue a tela antes de salvar.');
         return false;
       }
-      const unpublishedChangedItem = validItems.find((item) => {
+      const unpublishedChangedItem = productionItems.find((item) => {
         const originalReference = item.id ? originalItemReferenceByIdRef.current.get(item.id) : null;
         const isNewSelection = !item.id || originalReference !== item.reference_id;
         const status = String(sheetById.get(item.reference_id)?.status_ficha || '').toLowerCase();
@@ -1557,9 +1573,10 @@ export default function SaleOrderForm() {
     }
     const f = formLatestRef.current;
     const validItems = items.filter(i => i.reference_id).map(normalizeItemReference);
+    const productionItems = filterProductionSaleOrderItems(validItems);
     if (validItems.length === 0) { toast.error('Adicione pelo menos um item ao pedido.'); return; }
-    if (validItems.some(i => !i.color?.trim())) { toast.error('Selecione uma cor para todos os itens.'); return; }
-    const missingStrapSnapshots = listMissingTechnicalStrapSnapshots(validItems, canonicalReferences as any[]);
+    if (productionItems.some(i => !i.color?.trim())) { toast.error('Selecione uma cor para todos os itens.'); return; }
+    const missingStrapSnapshots = listMissingTechnicalStrapSnapshots(productionItems, canonicalReferences as any[]);
     if (missingStrapSnapshots.length > 0) {
       toast.error(
         `Demanda de tira não resolvida em ${missingStrapSnapshots[0].label}: a ficha exige tiras, mas o item está sem linhas técnicas. ` +
@@ -1570,7 +1587,7 @@ export default function SaleOrderForm() {
     }
     // GUARD: bloqueia salvar com TIRA de cor vazia (débito pulado em silêncio).
     {
-      const tiraSemCor = findTiraSemCor(validItems);
+      const tiraSemCor = findTiraSemCor(productionItems);
       if (tiraSemCor) { toast.error(tiraSemCor, { duration: 8000 }); return; }
     }
     // GUARD: bloqueia salvar com cor não cadastrada no material (cabedal/forração/
@@ -1578,7 +1595,9 @@ export default function SaleOrderForm() {
     {
       const pendentes = Object.entries(colorIssues).filter(([k]) => {
         const i = Number(k);
-        return i < items.length && !!items[i]?.reference_id;
+        return i < items.length
+          && !!items[i]?.reference_id
+          && !items[i]?.production_excluded_at;
       });
       if (pendentes.length > 0) {
         const [, first] = pendentes[0];
@@ -1601,7 +1620,7 @@ export default function SaleOrderForm() {
 
     // Política, tabela e fonte técnica são pré-condições, não avisos
     // contornáveis. Se qualquer leitura falhar, nenhum writer é chamado.
-    if (!await validateAuthoritativeSources(validItems)) return;
+    if (!await validateAuthoritativeSources(productionItems)) return;
 
     // 0) Em pedidos NOVOS com cliente cadastrado, valida limite de crédito.
     //    Permite seguir mediante confirmação, mas avisa explicitamente.
@@ -1660,7 +1679,7 @@ export default function SaleOrderForm() {
     //    Se a data estiver vazia OU for anterior ao mínimo calculado, abre o diálogo.
     //    opts.skipMinBillingCheck=true vem de handleMinBillingConfirm/handleMinBillingManual
     //    pra evitar reabrir o dialog após o usuário já ter confirmado.
-    const doMinBillingCheck = !isEdit && validItems.length > 0 && !opts.skipMinBillingCheck;
+    const doMinBillingCheck = !isEdit && productionItems.length > 0 && !opts.skipMinBillingCheck;
     if (doMinBillingCheck) {
       setComputingMinBilling(true);
       try {
@@ -1681,7 +1700,7 @@ export default function SaleOrderForm() {
             };
           }
         } else {
-          const capInputs = validItems.map((it) => {
+          const capInputs = productionItems.map((it) => {
             const ref = canonicalReferences.find((r: any) => r.id === it.reference_id);
             const refLabel = ref ? `${(ref as any).code || ''} - ${(ref as any).name || ''}`.trim() : it.reference_id.substring(0, 8);
             return { reference_id: it.reference_id, reference_label: refLabel, quantity: it.quantity };
@@ -1719,7 +1738,15 @@ export default function SaleOrderForm() {
         doSubmit();
         return;
       }
-      await runCapacityCheck(validItems);
+      await runCapacityCheck(productionItems);
+      return;
+    }
+
+    // Um PV pode ficar apenas com linhas comerciais preservadas depois que o
+    // admin retira a ficha. Elas precisam continuar no payload do UPDATE, mas
+    // não existe estoque, solado ou capacidade a verificar para essas linhas.
+    if (productionItems.length === 0) {
+      doSubmit();
       return;
     }
 
@@ -1728,7 +1755,7 @@ export default function SaleOrderForm() {
     // Run all stock checks concurrently. `allSettled` nunca rejeita — quem diz se
     // a consulta de cada item respondeu é o status do resultado, checado abaixo.
     const stockResults = await Promise.allSettled(
-      validItems.map(async (item) => {
+      productionItems.map(async (item) => {
         const ref = canonicalReferences.find((r: any) => r.id === item.reference_id);
         const refLabel = ref ? `${(ref as any).code || ''} - ${(ref as any).name || ''}`.trim() : item.reference_id.substring(0, 8);
         // Passa strap_colors + grade pra que a checagem detecte shortage
@@ -1762,7 +1789,7 @@ export default function SaleOrderForm() {
         // `mat.sufficient` perderia faltas agregadas (ex.: 3 × 17 kg > 29 kg,
         // embora cada uma das três respostas isoladas diga "suficiente").
         const rawAvailability: RawMaterialAvailability[] = [];
-        const validItemsList = validItems;
+        const validItemsList = productionItems;
         let resultIdx = 0;
         for (const result of stockResults) {
           const sourceItem = validItemsList[resultIdx];
@@ -1789,7 +1816,7 @@ export default function SaleOrderForm() {
         // é de tira — identificado pelos group_ids das strap_colors dos itens (autoritativo) +
         // regex de nome de grupo como reforço.
         const strapGroupIds = new Set<string>();
-        for (const it of validItems) {
+        for (const it of productionItems) {
           const straps = Array.isArray((it as any).strap_colors) ? (it as any).strap_colors : [];
           for (const s of straps) if (s?.group_id) strapGroupIds.add(String(s.group_id));
         }
@@ -1838,7 +1865,7 @@ export default function SaleOrderForm() {
 
         // Material OK — check sole availability and offer to generate POs
         const soleCheck = await checkSoleAvailability(
-          validItems.map((it) => {
+          productionItems.map((it) => {
             const ref = canonicalReferences.find((r: any) => r.id === it.reference_id);
             const refLabel = ref ? `${(ref as any).code || ''} - ${(ref as any).name || ''}`.trim() : it.reference_id.substring(0, 8);
             return {
@@ -1859,7 +1886,7 @@ export default function SaleOrderForm() {
           return;
         }
         // Check de capacidade setorial
-        await runCapacityCheck(validItems);
+        await runCapacityCheck(productionItems);
       } catch (err: any) {
         // (c) a checagem de material/solado morreu no meio (RPC, rede, enriquecimento).
         // Antes caía direto no doSubmit(): o PV era salvo sem ninguém saber que a
@@ -1869,7 +1896,7 @@ export default function SaleOrderForm() {
           what: 'a disponibilidade de materiais e de solado deste pedido',
           consequence: 'O pedido pode ser salvo sem a prévia de compra. O servidor ainda recalcula as faltas após o commit e registra qualquer bloqueio como atenção operacional.',
           detail: err?.message,
-          resume: () => { void runCapacityCheck(validItems); },
+          resume: () => { void runCapacityCheck(productionItems); },
         });
       }
     };
@@ -1881,7 +1908,7 @@ export default function SaleOrderForm() {
     const unverifiedItems: string[] = [];
     stockResults.forEach((result, idx) => {
       if (result.status === 'fulfilled' && result.value.availability) return;
-      const item = validItems[idx];
+      const item = productionItems[idx];
       const ref = canonicalReferences.find((r: any) => r.id === item?.reference_id);
       const refLabel = result.status === 'fulfilled'
         ? result.value.refLabel
@@ -1993,14 +2020,19 @@ export default function SaleOrderForm() {
     applyMinBillingManual(newISO, reason);
   };
 
-  const runCapacityCheck = async (validItems: SaleOrderItemFormData[]) => {
+  const runCapacityCheck = async (candidateItems: SaleOrderItemFormData[]) => {
+    const productionItems = filterProductionSaleOrderItems(candidateItems);
+    if (productionItems.length === 0) {
+      doSubmit();
+      return;
+    }
     const deadline = formLatestRef.current.delivery_deadline;
     if (!deadline) {
       doSubmit();
       return;
     }
     try {
-      const capInputs = validItems.map((it) => {
+      const capInputs = productionItems.map((it) => {
         const ref = canonicalReferences.find((r: any) => r.id === it.reference_id);
         const refLabel = ref ? `${(ref as any).code || ''} - ${(ref as any).name || ''}`.trim() : it.reference_id.substring(0, 8);
         return { reference_id: it.reference_id, reference_label: refLabel, quantity: it.quantity };
@@ -2062,8 +2094,10 @@ export default function SaleOrderForm() {
       setForm(f => ({ ...f, delivery_deadline: soleResult.minBillingDateISO! }));
     }
     setTimeout(() => {
-      const validItems = items.filter(i => i.reference_id).map(normalizeItemReference);
-      runCapacityCheck(validItems);
+      const productionItems = filterProductionSaleOrderItems(
+        items.filter(i => i.reference_id).map(normalizeItemReference),
+      );
+      runCapacityCheck(productionItems);
     }, 100);
   };
 
@@ -2096,8 +2130,10 @@ export default function SaleOrderForm() {
     }
     setTimeout(() => {
       if (action === 'draft') { doSubmit('Rascunho'); return; }
-      const validItems = items.filter(i => i.reference_id).map(normalizeItemReference);
-      runCapacityCheck(validItems);
+      const productionItems = filterProductionSaleOrderItems(
+        items.filter(i => i.reference_id).map(normalizeItemReference),
+      );
+      runCapacityCheck(productionItems);
     }, 100);
   };
 

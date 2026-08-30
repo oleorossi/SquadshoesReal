@@ -98,6 +98,11 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
   const saved = useMemo(() => loadSaved(), []);
   const { data: costPolicy } = useCostPolicies();
   const { data: sheets = [], isLoading: loadingSheets } = useTechnicalSheets();
+  const selectableSheets = useMemo(
+    () => (sheets as Array<(typeof sheets)[number] & { retired_at?: string | null }>)
+      .filter(sheet => !sheet.retired_at),
+    [sheets],
+  );
   const { data: laborCosts = [] } = useLaborCosts();
   const { data: factoringConfigs = [] } = useFactoringConfigs();
   const { data: simulations = [] } = usePricingSimulations(null);
@@ -392,7 +397,7 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
               <SelectValue placeholder={loadingSheets ? 'Carregando fichas...' : 'Selecione uma ficha técnica...'} />
             </SelectTrigger>
             <SelectContent className="max-h-[60vh]">
-              {sheets.map((s) => (
+              {selectableSheets.map((s) => (
                 <SelectItem key={s.id} value={s.id} className="text-xs">
                   {s.code ? `${s.code} — ${s.name}` : s.name}
                 </SelectItem>

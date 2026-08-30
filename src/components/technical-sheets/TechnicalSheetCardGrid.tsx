@@ -1,6 +1,5 @@
-import { Footprints, ImageSquare as ImagePlus, Package, Stack as Layers } from '@phosphor-icons/react';
+import { Footprints, ImageSquare as ImagePlus, Package, Stack as Layers, Trash } from '@phosphor-icons/react';
 
-import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { SignedImage } from '@/components/ui/signed-image';
@@ -28,7 +27,7 @@ interface Props {
   canDelete: boolean;
   onOpenSheet: (id: string) => void;
   onEditImage: (sheet: TechnicalSheetGridItem) => void;
-  onDeleteSheet: (id: string) => void;
+  onDeleteSheet: (sheet: TechnicalSheetGridItem) => void;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -36,6 +35,7 @@ const STATUS_LABELS: Record<string, string> = {
   em_revisao: 'Em revisão',
   validada: 'Validada',
   publicada: 'Publicada',
+  arquivada: 'Arquivada',
 };
 
 const STATUS_STYLES: Record<string, string> = {
@@ -43,6 +43,7 @@ const STATUS_STYLES: Record<string, string> = {
   validada: 'border-primary/20 bg-primary/10 text-primary',
   em_revisao: 'border-warning/30 bg-warning/10 text-warning',
   rascunho: 'border-border bg-muted text-muted-foreground',
+  arquivada: 'border-border bg-muted text-muted-foreground',
 };
 
 function getImage(sheet: TechnicalSheetGridItem): string | null {
@@ -168,13 +169,17 @@ export function TechnicalSheetCardGrid({
                   <ImagePlus className="h-3.5 w-3.5" />
                 </Button>
                 {canDelete && (
-                  <DeleteConfirmButton
-                    onConfirm={() => onDeleteSheet(sheet.id)}
-                    title={`Excluir ficha ${sheet.name}?`}
-                    description="A ficha e os materiais vinculados a ela serão removidos juntos. Ficha usada em OP ou pedido é recusada. Esta ação não pode ser desfeita."
-                    size="h-11 w-11 sm:h-8 sm:w-8"
-                    iconSize="h-3.5 w-3.5"
-                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-11 w-11 text-destructive hover:text-destructive sm:h-8 sm:w-8"
+                    aria-label={`Excluir ficha ${sheet.name}`}
+                    title={`Excluir ficha ${sheet.name}`}
+                    onClick={() => onDeleteSheet(sheet)}
+                  >
+                    <Trash className="h-3.5 w-3.5" />
+                  </Button>
                 )}
               </div>
             </div>

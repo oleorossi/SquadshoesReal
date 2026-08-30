@@ -37,7 +37,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import {
-  useTechnicalSheets, useAddSheet, useUpdateSheet, useDeleteSheet,
+  useTechnicalSheets, useAddSheet, useUpdateSheet,
   useSheetMaterials, useAddSheetMaterial, useUpdateSheetMaterial, useDeleteSheetMaterial, useBulkAddSheetMaterials,
   SheetFormData, SheetMaterialFormData, emptySheetForm, useOverheadHistory, useCloneSheet,
 } from '@/hooks/useTechnicalSheets';
@@ -53,7 +53,8 @@ import { TechnicalReferencePanel } from '@/components/technical-sheets/Technical
 import { NonFiniteDevWatcher } from '@/components/technical-sheets/NonFiniteDevWatcher';
 import { SheetsAuditButton } from '@/components/technical-sheets/SheetsAuditPanel';
 import { CatalogModelsPanel } from '@/components/technical-sheets/CatalogModelsPanel';
-import { TechnicalSheetCardGrid } from '@/components/technical-sheets/TechnicalSheetCardGrid';
+import { TechnicalSheetCardGrid, type TechnicalSheetGridItem } from '@/components/technical-sheets/TechnicalSheetCardGrid';
+import { TechnicalSheetRetirementDialog } from '@/components/technical-sheets/TechnicalSheetRetirementDialog';
 import { QuickSheetSelector } from '@/components/technical-sheets/QuickSheetSelector';
 import { AviamentoRangeTab } from '@/components/technical-sheets/AviamentoRangeTab';
 import { TechnicalSheetReadinessRail } from '@/components/technical-sheets/TechnicalSheetReadinessRail';
@@ -202,7 +203,6 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
   // badge na lista de fichas indicando que tem opções de material extra.
   const { data: materialVariantsBySheet } = useAllActiveReferenceMaterialVariants();
   const addSheet = useAddSheet();
-  const deleteSheet = useDeleteSheet();
   const updateSheet = useUpdateSheet();
   const perm = useCan('/fichas-tecnicas');
 
@@ -238,6 +238,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
   const [imageDialogSheet, setImageDialogSheet] = useState<any>(null);
+  const [deleteSheetTarget, setDeleteSheetTarget] = useState<TechnicalSheetGridItem | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [soleFilter, setSoleFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
@@ -254,10 +255,18 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
    const [bulkSoleSelected, setBulkSoleSelected] = useState<string>('');
     const [bulkSoleOverwrite, setBulkSoleOverwrite] = useState(false);
 
+  // Fichas aposentadas continuam no cache global para resolver pedidos e
+  // históricos, mas não podem voltar a aparecer no catálogo nem em ações que
+  // criam/copiam configuração operacional.
+  const activeSheets = useMemo(
+    () => (sheets as any[]).filter((sheet: any) => !sheet.retired_at),
+    [sheets],
+  );
+
   // Distinct sole list from sheets (sorted, with count of reference sheets per sole)
   const soleOptions = useMemo(() => {
     const map = new Map<string, { total: number; refs: number }>();
-    (sheets as any[]).forEach((s: any) => {
+    activeSheets.forEach((s: any) => {
       if (!s.sole_material) return;
       const cur = map.get(s.sole_material) || { total: 0, refs: 0 };
       cur.total += 1;
@@ -267,10 +276,10 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
     return Array.from(map.entries())
       .map(([name, info]) => ({ name, ...info }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [sheets]);
+  }, [activeSheets]);
 
   const filteredSheets = useMemo(() => {
-    let result = sheets;
+    let result = activeSheets;
     if (categoryFilter === 'Infantil') result = result.filter((s: any) => s.shoe_category === 'Infantil');
     else if (categoryFilter === 'Feminino') result = result.filter((s: any) => s.shoe_category !== 'Infantil');
     if (soleFilter !== 'all') {
@@ -282,12 +291,12 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
       );
     }
     return result;
-  }, [sheets, categoryFilter, soleFilter, searchTerm]);
+  }, [activeSheets, categoryFilter, soleFilter, searchTerm]);
 
   // Fichas candidatas do dialog de cópia (busca própria do dialog)
   const cloneFilteredSheets = useMemo(
-    () => (sheets as any[]).filter((s: any) => searchMatchesAllTerms(cloneSearchTerm, s.name, s.code)),
-    [sheets, cloneSearchTerm],
+    () => activeSheets.filter((s: any) => searchMatchesAllTerms(cloneSearchTerm, s.name, s.code)),
+    [activeSheets, cloneSearchTerm],
   );
 
   const handleCatalogViewChange = (view: CatalogView) => {
@@ -326,7 +335,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
     let failed = 0;
     try {
       const sheetsArr = filteredSheets as any[];
-      const referenceCandidates = (sheets as any[])
+      const referenceCandidates = activeSheets
         .filter((s: any) =>
           s.sole_material === soleName &&
           (s.sole_consumption > 0 || s.sole_process || s.sole_group_id)
@@ -437,7 +446,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
 
          {!expandedId && (
            <QuickSheetSelector
-             sheets={sheets} 
+             sheets={activeSheets}
              onSelect={(id) => setExpandedId(id)} 
            />
          )}
@@ -517,7 +526,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
               onChange={setSearchTerm}
               placeholder="Buscar por nome, código, coleção, cor…"
               resultCount={filteredSheets.length}
-              totalCount={sheets.length}
+              totalCount={activeSheets.length}
             />
             <div className="flex items-center gap-2 overflow-x-auto pb-1 lg:ml-auto lg:flex-wrap lg:overflow-visible lg:pb-0">
               {[
@@ -586,14 +595,14 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
               <EmptyState
                 icon={FileText}
                 title={
-                  sheets.length === 0
+                  activeSheets.length === 0
                     ? 'Nenhuma ficha técnica cadastrada'
                     : searchTerm.trim()
                       ? `Nenhum resultado para "${searchTerm}"`
                       : 'Nenhuma ficha encontrada'
                 }
-                description={sheets.length === 0 ? undefined : 'Ajuste a busca ou os filtros de categoria.'}
-                action={sheets.length > 0 ? <Button variant="link" onClick={() => { setCategoryFilter('all'); setSoleFilter('all'); setSearchTerm(''); }}>Limpar filtros</Button> : undefined}
+                description={activeSheets.length === 0 ? undefined : 'Ajuste a busca ou os filtros de categoria.'}
+                action={activeSheets.length > 0 ? <Button variant="link" onClick={() => { setCategoryFilter('all'); setSoleFilter('all'); setSearchTerm(''); }}>Limpar filtros</Button> : undefined}
               />
             </CardContent>
           </Card>
@@ -710,10 +719,10 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
             <TechnicalSheetCardGrid
               sheets={filteredSheets}
               materialVariantsBySheet={materialVariantsBySheet}
-              canDelete={perm.canDelete}
+              canDelete={perm.isAdmin}
               onOpenSheet={setExpandedId}
               onEditImage={setImageDialogSheet}
-              onDeleteSheet={(id) => deleteSheet.mutate(id)}
+              onDeleteSheet={setDeleteSheetTarget}
             />
           ) : (
             <div className="overflow-hidden border-2 border-foreground bg-card">
@@ -778,7 +787,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
                 value={cloneSearchTerm}
                 onChange={setCloneSearchTerm}
                 resultCount={cloneFilteredSheets.length}
-                totalCount={sheets.length}
+                totalCount={activeSheets.length}
               />
               <div className="max-h-56 overflow-y-auto rounded-md border border-border divide-y divide-border/50">
                 {cloneFilteredSheets.length === 0 && cloneSearchTerm.trim() && (
@@ -859,6 +868,12 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
           )}
         </DialogContent>
       </Dialog>
+
+      <TechnicalSheetRetirementDialog
+        open={!!deleteSheetTarget}
+        sheet={deleteSheetTarget}
+        onOpenChange={(open) => { if (!open) setDeleteSheetTarget(null); }}
+      />
     </>
   );
 }
@@ -1338,6 +1353,10 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
  
   const { data: componentSheets = [] } = useComponentSheets();
   const { data: allSheets = [] } = useTechnicalSheets();
+  const activeAllSheets = useMemo(
+    () => (allSheets as any[]).filter((candidate: any) => !candidate.retired_at),
+    [allSheets],
+  );
   const { data: groups = [] } = useQuery({
     queryKey: ['product_groups_for_straps'],
     queryFn: async () => {
@@ -1605,7 +1624,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       : materialField === 'lining_material' ? 'lining_consumption' : 'insole_consumption';
 
     const isInfantil = form.shoe_category === 'Infantil';
-    const candidates = allSheets
+    const candidates = activeAllSheets
       .filter((s: any) =>
         s.id !== sheet.id &&
         s[materialField] === groupName &&
@@ -1634,7 +1653,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
   /** Auto-fill sole specs from last sheet that used the same sole_material, filtered by adult/infantil */
   const autoFillSole = async (soleName: string) => {
     const isInfantil = form.shoe_category === 'Infantil';
-    const candidates = allSheets
+    const candidates = activeAllSheets
       .filter((s: any) =>
         s.id !== sheet.id &&
         s.sole_material === soleName &&
@@ -5686,7 +5705,7 @@ function SheetBOM({ sheetId, safetyPct, onSafetyChange, shoeCategory }: {
   const usedProductIds = new Set(materials.map(m => m.product_id));
   const usedGroupIds = new Set(materials.map((m: any) => m.group_id).filter(Boolean));
   const availableProducts = products.filter(p => p.active);
-  const otherSheets = sheets.filter((s: any) => s.id !== sheetId);
+  const otherSheets = sheets.filter((s: any) => s.id !== sheetId && !s.retired_at);
 
   const groupedMaterials = useMemo(() => {
     const groups: Record<string, typeof materials> = {};

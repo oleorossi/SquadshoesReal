@@ -1,4 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
+import { filterOperationalOperatorItems } from '@/lib/operatorPrintEligibility';
+import { isCancelledOrDraftOrder } from '@/lib/orderStatus';
 
 /**
  * Fichas de operador a partir do pedido (PV) ou de OPs selecionadas — pros setores
@@ -201,15 +203,29 @@ export async function printOperatorFichas(saleOrderId: string, orderNumberHint?:
     .from('sale_orders').select('order_number, client_name').eq('id', saleOrderId).single();
   if (soErr) throw new Error(`Falha ao carregar o pedido: ${soErr.message}`);
 
-  const { data: items, error: itErr } = await supabase
-    .from('sale_order_items').select('color, grade, quantity, reference_id').eq('sale_order_id', saleOrderId);
+  const { data: items, error: itErr } = await (supabase as any)
+    .from('sale_order_items')
+    .select('color, grade, quantity, reference_id, production_excluded_at')
+    .eq('sale_order_id', saleOrderId);
   if (itErr) throw new Error(`Falha ao carregar itens: ${itErr.message}`);
 
-  const sheets = await fetchSectorsByRef((items || []).map((i: any) => i.reference_id));
+  const operationalItems = filterOperationalOperatorItems((items || []) as Array<{
+    color: string | null;
+    grade: Record<string, number> | null;
+    quantity: number;
+    reference_id: string | null;
+    production_excluded_at: string | null;
+  }>);
+  if (operationalItems.length === 0) {
+    alert('Este pedido não tem itens ativos na produção para gerar fichas de operador.');
+    return;
+  }
+
+  const sheets = await fetchSectorsByRef(operationalItems.map(i => i.reference_id));
   const pv = so?.order_number || orderNumberHint || '';
   const client = (so?.client_name || '').trim();
 
-  const inputs: FichaInput[] = (items || []).map((it: any) => {
+  const inputs: FichaInput[] = operationalItems.map((it: any) => {
     const sheet = sheetsByRef(sheets, it.reference_id);
     return {
       pv, client,
@@ -229,20 +245,38 @@ export async function printOperatorFichasFromRows(rows: Array<{
   reference_id: string | null; reference_name?: string; reference_code?: string;
   color?: string; total_pairs?: number | null; grid?: Record<string, number>;
   sale_order_number?: string; client_name?: string; sale_order_item_id?: string | null;
+  status?: string;
 }>): Promise<void> {
-  const valid = rows.filter(r => r.reference_id);
+  const valid = rows.filter(r => r.reference_id && !isCancelledOrDraftOrder(r.status));
   if (valid.length === 0) { alert('Selecione ao menos uma OP.'); return; }
-
-  const sheets = await fetchSectorsByRef(valid.map(r => r.reference_id));
 
   const itemIds = [...new Set(valid.map(r => r.sale_order_item_id).filter(Boolean))] as string[];
   const baseByItem = new Map<string, Record<string, number>>();
+  const activeItemIds = new Set<string>();
   if (itemIds.length > 0) {
-    const { data } = await supabase.from('sale_order_items').select('id, grade').in('id', itemIds);
-    (data || []).forEach((it: any) => baseByItem.set(it.id, (it.grade || {}) as Record<string, number>));
+    const { data, error } = await (supabase as any)
+      .from('sale_order_items')
+      .select('id, grade, production_excluded_at')
+      .in('id', itemIds);
+    if (error) throw new Error(`Falha ao validar os itens produtivos: ${error.message}`);
+    (data || []).forEach((it: any) => {
+      if (it.production_excluded_at != null) return;
+      activeItemIds.add(it.id);
+      baseByItem.set(it.id, (it.grade || {}) as Record<string, number>);
+    });
   }
 
-  const inputs: FichaInput[] = valid.map(r => {
+  // Revalida no clique: se o admin retirou o item enquanto a tela estava
+  // aberta, a seleção antiga não pode materializar uma nova ficha fabril.
+  const operationalRows = valid.filter(r => !r.sale_order_item_id || activeItemIds.has(r.sale_order_item_id));
+  if (operationalRows.length === 0) {
+    alert('As OPs selecionadas foram canceladas ou retiradas da produção. Nenhuma ficha foi gerada.');
+    return;
+  }
+
+  const sheets = await fetchSectorsByRef(operationalRows.map(r => r.reference_id));
+
+  const inputs: FichaInput[] = operationalRows.map(r => {
     const sheet = sheetsByRef(sheets, r.reference_id);
     const base = (r.sale_order_item_id && baseByItem.get(r.sale_order_item_id)) || deriveBaseFromScaled(r.grid || {});
     return {
@@ -251,8 +285,8 @@ export async function printOperatorFichasFromRows(rows: Array<{
       color: r.color || '', grade: base, quantity: Number(r.total_pairs) || 0, sectors: sheet.sectors,
     };
   });
-  const pvs = [...new Set(valid.map(r => r.sale_order_number).filter(Boolean))];
-  renderAndOpen(inputs, pvs.length === 1 ? pvs[0]! : `${valid.length} OPs`);
+  const pvs = [...new Set(operationalRows.map(r => r.sale_order_number).filter(Boolean))];
+  renderAndOpen(inputs, pvs.length === 1 ? pvs[0]! : `${operationalRows.length} OPs`);
 }
 
 type SheetInfo = { code: string; name: string; sectors: string[] };

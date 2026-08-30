@@ -7,7 +7,16 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { SaleOrderFormData, SaleOrderItemFormData, PACKAGING_MODE_LABELS, PACKAGING_MODE_CANONICAL, type PackagingMode, ORDER_TYPES } from '@/hooks/useSaleOrders';
+import {
+  SaleOrderFormData,
+  SaleOrderItemFormData,
+  PACKAGING_MODE_LABELS,
+  PACKAGING_MODE_CANONICAL,
+  type PackagingMode,
+  ORDER_TYPES,
+  filterProductionSaleOrderItems,
+  isProductionExcludedSaleOrderItem,
+} from '@/hooks/useSaleOrders';
 import { volumesForPairs, pairsPerVolumeForMode, isPairAsVolumeMode, collectiveTypeForMode } from '@/lib/packagingPairsPerBox';
 import { packSaleOrderItem, packSaleOrderItemBySize, singleSizeMisfits } from '@/lib/boxPacking';
 import { useAccessControl } from '@/hooks/useAccessControl';
@@ -175,7 +184,7 @@ export function removeItemsAtIndices(
   const remaining: SaleOrderItemFormData[] = [];
   const removed: RemovedItemSnapshot[] = [];
   items.forEach((item, i) => {
-    if (alvo.has(i)) removed.push({ item, index: i });
+    if (alvo.has(i) && !isProductionExcludedSaleOrderItem(item)) removed.push({ item, index: i });
     else remaining.push(item);
   });
   return { remaining, removed };
@@ -649,6 +658,12 @@ export default function SaleOrderFormPanel({
   // lote) porque `removeItem` PRECISA reindexá-la — ver o comentário lá.
   const [selectedItemIndices, setSelectedItemIndices] = useState<Set<number>>(new Set());
 
+  // Fonte mais recente para callbacks estáveis. Além da performance do memo,
+  // centraliza a trave dos itens retirados: nenhuma ação local ou em lote
+  // pode alterar/apagar uma linha preservada pelo comando administrativo.
+  const itemsRef = useRef(items);
+  useEffect(() => { itemsRef.current = items; }, [items]);
+
   // ⚠ PERF: identidade ESTÁVEL é obrigatória nas funções passadas ao
   // SaleOrderItemForm — ele é `memo()` e uma arrow nova a cada render fura o memo,
   // re-renderizando TODOS os itens do PV a cada tecla digitada numa célula de grade.
@@ -660,6 +675,10 @@ export default function SaleOrderFormPanel({
   // que levaria a referência errada pro pedido novo.
   const removeItem = useCallback(
     (idx: number) => {
+      if (isProductionExcludedSaleOrderItem(itemsRef.current[idx])) {
+        toast.info('Item retirado da produção é preservado no histórico e não pode ser removido.');
+        return;
+      }
       setItems(prev => prev.filter((_, i) => i !== idx));
       setSelectedItemIndices(prev => (prev.size === 0 ? prev : remapSelectionAfterRemoval(prev, idx)));
       // Tirar item é alteração de verdade. O `onUserEdit` normalmente vem de evento
@@ -672,14 +691,9 @@ export default function SaleOrderFormPanel({
     [setItems, onUserEdit],
   );
 
-  // `items` mais recente sem entrar na lista de dependências — é o que permite
-  // copyGradeFromPrevious (logo abaixo de updateItem) ter identidade estável
-  // apesar de precisar ler o item anterior.
-  const itemsRef = useRef(items);
-  useEffect(() => { itemsRef.current = items; }, [items]);
-
    const updateItem = useCallback((idx: number, field: string, value: any) => {
      setItems(prev => {
+       if (isProductionExcludedSaleOrderItem(prev[idx])) return prev;
        const next = prev.map((item, i) => i === idx ? { ...item, [field]: value } : item);
 
        // Real-time duplicate warning
@@ -720,6 +734,7 @@ export default function SaleOrderFormPanel({
    const [bulkFichasInput, setBulkFichasInput] = useState<string>('');
    const [bulkGradeInput, setBulkGradeInput] = useState<Record<string, string>>({});
    const toggleItemSelection = useCallback((idx: number) => {
+     if (isProductionExcludedSaleOrderItem(itemsRef.current[idx])) return;
      setSelectedItemIndices(prev => {
        const next = new Set(prev);
        if (next.has(idx)) next.delete(idx); else next.add(idx);
@@ -728,7 +743,9 @@ export default function SaleOrderFormPanel({
    }, []);
    const clearItemSelection = useCallback(() => setSelectedItemIndices(new Set()), []);
    const selectAllItems = useCallback(() => {
-     setSelectedItemIndices(new Set(items.map((_, i) => i)));
+     setSelectedItemIndices(new Set(
+       items.flatMap((item, i) => isProductionExcludedSaleOrderItem(item) ? [] : [i]),
+     ));
    }, [items]);
 
    /**
@@ -740,7 +757,9 @@ export default function SaleOrderFormPanel({
     * hover, então botão apagado sem explicação vira beco sem saída.
     */
    const deleteSelectedItems = useCallback(() => {
-     const indices = Array.from(selectedItemIndices).sort((a, b) => a - b);
+     const indices = Array.from(selectedItemIndices)
+       .filter((idx) => !isProductionExcludedSaleOrderItem(items[idx]))
+       .sort((a, b) => a - b);
      if (indices.length === 0) return;
      if (indices.length >= items.length) {
        toast.error('O pedido precisa de pelo menos um item — desmarque um deles para excluir os demais.');
@@ -750,9 +769,11 @@ export default function SaleOrderFormPanel({
      onDeleteSelectedItems?.(indices);
      // Zera em vez de reindexar: os índices selecionados acabaram de sair da lista.
      setSelectedItemIndices(new Set());
-   }, [selectedItemIndices, items.length, onDeleteSelectedItems, onUserEdit]);
+   }, [selectedItemIndices, items, onDeleteSelectedItems, onUserEdit]);
    const applyGradeFromFirstSelected = useCallback(() => {
-     const sorted = Array.from(selectedItemIndices).sort((a, b) => a - b);
+     const sorted = Array.from(selectedItemIndices)
+       .filter((idx) => !isProductionExcludedSaleOrderItem(items[idx]))
+       .sort((a, b) => a - b);
      if (sorted.length < 2) {
        toast.error('Selecione pelo menos 2 itens — o 1º é a fonte da grade, os demais recebem.');
        return;
@@ -765,7 +786,7 @@ export default function SaleOrderFormPanel({
        return;
      }
      setItems(prev => prev.map((item, i) => {
-       if (!others.includes(i)) return item;
+       if (!others.includes(i) || isProductionExcludedSaleOrderItem(item)) return item;
        return {
          ...item,
          grade: { ...sourceGrade },
@@ -780,9 +801,10 @@ export default function SaleOrderFormPanel({
        toast.error('Digite um preço válido (ex: 89,90).');
        return;
      }
-     const ids = Array.from(selectedItemIndices);
+     const ids = Array.from(selectedItemIndices)
+       .filter((idx) => !isProductionExcludedSaleOrderItem(itemsRef.current[idx]));
      if (ids.length === 0) return;
-     setItems(prev => prev.map((item, i) => ids.includes(i) ? { ...item, unit_price: price } : item));
+     setItems(prev => prev.map((item, i) => ids.includes(i) && !isProductionExcludedSaleOrderItem(item) ? { ...item, unit_price: price } : item));
      toast.success(`Preço R$ ${price.toFixed(2)} aplicado em ${ids.length} ${ids.length === 1 ? 'item' : 'itens'}`);
      setBulkPriceInput('');
    }, [bulkPriceInput, selectedItemIndices, setItems]);
@@ -792,9 +814,10 @@ export default function SaleOrderFormPanel({
        toast.error('Digite um número de fichas válido (mínimo 1).');
        return;
      }
-     const ids = Array.from(selectedItemIndices);
+     const ids = Array.from(selectedItemIndices)
+       .filter((idx) => !isProductionExcludedSaleOrderItem(itemsRef.current[idx]));
      if (ids.length === 0) return;
-     setItems(prev => prev.map((item, i) => ids.includes(i) ? { ...item, fichas: n } : item));
+     setItems(prev => prev.map((item, i) => ids.includes(i) && !isProductionExcludedSaleOrderItem(item) ? { ...item, fichas: n } : item));
      toast.success(`${n} ${n === 1 ? 'ficha' : 'fichas'} aplicado em ${ids.length} ${ids.length === 1 ? 'item' : 'itens'}`);
      setBulkFichasInput('');
    }, [bulkFichasInput, selectedItemIndices, setItems]);
@@ -822,7 +845,8 @@ export default function SaleOrderFormPanel({
    }, [selectedItemIndices, items]);
 
    const applyGradeTableToSelected = useCallback(() => {
-     const ids = Array.from(selectedItemIndices);
+     const ids = Array.from(selectedItemIndices)
+       .filter((idx) => !isProductionExcludedSaleOrderItem(itemsRef.current[idx]));
      if (ids.length === 0) return;
      // Filtra zeros e converte string→number
      const cleanGrade: Record<string, number> = {};
@@ -835,7 +859,7 @@ export default function SaleOrderFormPanel({
        return;
      }
      const totalPairs = Object.values(cleanGrade).reduce((s, v) => s + v, 0);
-     setItems(prev => prev.map((item, i) => ids.includes(i) ? { ...item, grade: { ...cleanGrade } } : item));
+     setItems(prev => prev.map((item, i) => ids.includes(i) && !isProductionExcludedSaleOrderItem(item) ? { ...item, grade: { ...cleanGrade } } : item));
      toast.success(`Grade aplicada em ${ids.length} ${ids.length === 1 ? 'item' : 'itens'} (${totalPairs} pares por ficha)`);
      setBulkGradeInput({});
    }, [bulkGradeInput, selectedItemIndices, setItems]);
@@ -990,6 +1014,11 @@ export default function SaleOrderFormPanel({
    const duplicateKey = (item: SaleOrderItemFormData) =>
      `${item.reference_id}-${item.color || ''}-${(item as any).material_variant_id || ''}-${item.fichas ?? 1}`;
 
+   const editableItemCount = useMemo(
+     () => items.filter((item) => !isProductionExcludedSaleOrderItem(item)).length,
+     [items],
+   );
+
    const handlePreSubmit = (e: React.FormEvent) => {
      e.preventDefault();
      // Dialogs portais (Novo Material, tira, etc.) montam um <form> FORA do DOM
@@ -1010,7 +1039,7 @@ export default function SaleOrderFormPanel({
      const dups: string[] = [];
 
      items.forEach(item => {
-       if (!item.reference_id) return;
+       if (!item.reference_id || isProductionExcludedSaleOrderItem(item)) return;
        const key = duplicateKey(item);
        if (seen.has(key)) {
          const ref = references.find(r => r.id === item.reference_id);
@@ -1957,9 +1986,10 @@ export default function SaleOrderFormPanel({
               <label className="flex items-center gap-1.5 cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">
                 <input
                   type="checkbox"
-                  checked={selectedItemIndices.size === items.length && items.length > 0}
+                  checked={editableItemCount > 0 && selectedItemIndices.size === editableItemCount}
+                  disabled={editableItemCount === 0}
                   ref={(el) => {
-                    if (el) el.indeterminate = selectedItemIndices.size > 0 && selectedItemIndices.size < items.length;
+                    if (el) el.indeterminate = selectedItemIndices.size > 0 && selectedItemIndices.size < editableItemCount;
                   }}
                   onChange={(e) => {
                     if (e.target.checked) selectAllItems();
@@ -1968,9 +1998,9 @@ export default function SaleOrderFormPanel({
                   className="h-4 w-4 rounded border-input cursor-pointer"
                   aria-label="Selecionar todos os itens"
                 />
-                {selectedItemIndices.size === items.length && items.length > 0
+                {editableItemCount > 0 && selectedItemIndices.size === editableItemCount
                   ? 'Desmarcar todos'
-                  : `Selecionar todos${selectedItemIndices.size > 0 ? ` (${selectedItemIndices.size}/${items.length})` : ''}`}
+                  : `Selecionar todos${selectedItemIndices.size > 0 ? ` (${selectedItemIndices.size}/${editableItemCount})` : ''}`}
               </label>
             )}
             <Badge variant="outline" className="font-mono">{items.length} Referência(s)</Badge>
@@ -2026,7 +2056,7 @@ export default function SaleOrderFormPanel({
                 onColorIssueChange={onColorIssueChange}
                 onSheetMaterialSelectableChange={handleSheetMaterialSelectable}
                 references={references}
-                canRemove={items.length > 1}
+                canRemove={items.length > 1 && !isProductionExcludedSaleOrderItem(item)}
                 isAdmin={isAdmin}
                 priceLookup={clientPricing?.lookup}
                 maxDiscountPct={clientPricing?.maxDiscountPct ?? 0}
@@ -2035,8 +2065,8 @@ export default function SaleOrderFormPanel({
                 onRemove={removeItem}
                 onCopyGradeFromPrevious={copyGradeFromPrevious}
                 onSaveStateAndNavigate={onSaveStateAndNavigate}
-                isSelected={selectedItemIndices.has(idx)}
-                onToggleSelect={toggleItemSelection}
+                isSelected={!isProductionExcludedSaleOrderItem(item) && selectedItemIndices.has(idx)}
+                onToggleSelect={isProductionExcludedSaleOrderItem(item) ? undefined : toggleItemSelection}
               />
             </div>
             </Fragment>
@@ -2128,7 +2158,11 @@ export default function SaleOrderFormPanel({
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => onCopyToNewOrder(Array.from(selectedItemIndices).sort((a, b) => a - b))}
+                onClick={() => onCopyToNewOrder(
+                  Array.from(selectedItemIndices)
+                    .filter((idx) => !isProductionExcludedSaleOrderItem(items[idx]))
+                    .sort((a, b) => a - b),
+                )}
                 className="h-8 text-xs gap-1"
                 title="Cria um novo PV em Rascunho com os itens selecionados, usando os dados do cliente deste pedido"
               >
@@ -2143,7 +2177,7 @@ export default function SaleOrderFormPanel({
               size="sm"
               onClick={selectAllItems}
               className="h-8 text-xs"
-              disabled={selectedItemIndices.size === items.length}
+              disabled={selectedItemIndices.size === editableItemCount}
             >
               Selecionar todos
             </Button>
@@ -2249,6 +2283,7 @@ export default function SaleOrderFormPanel({
         // Quem decide o que APARECE continua sendo `submitAttempted`, logo abaixo,
         // então o form vazio segue limpo. (auditoria PV 07/08/2026)
         const validItems = items.filter(i => i.reference_id);
+        const productionItems = filterProductionSaleOrderItems(validItems);
         const validItemsCount = validItems.length;
         const factoringInvalid = form.is_factoring && !form.factoring_config_id;
 
@@ -2258,22 +2293,23 @@ export default function SaleOrderFormPanel({
         // Factoring passa a ser ERRO listado, não só um booleano solto: antes ele
         // desabilitava o Salvar sem nunca aparecer na lista de pendências.
         if (factoringInvalid) issues.push({ type: 'error', msg: 'Selecione qual factoring está antecipando o pedido' });
-        validItems.forEach((item, i) => {
-          if (!item.color?.trim()) issues.push({ type: 'error', msg: `Item ${i + 1}: cor faltando` });
-          if (item.quantity <= 0) issues.push({ type: 'warning', msg: `Item ${i + 1}: qtd zerada` });
+        productionItems.forEach((item) => {
+          const itemNumber = items.indexOf(item) + 1;
+          if (!item.color?.trim()) issues.push({ type: 'error', msg: `Item ${itemNumber}: cor faltando` });
+          if (item.quantity <= 0) issues.push({ type: 'warning', msg: `Item ${itemNumber}: qtd zerada` });
           // Preço zero é ERROR (não warning) — bloqueia submit. Reportado
           // em 20/05/2026: PV-00122 saiu com CF 07 PRETO em R$ 0,00 e
           // 'sumiu' R$ 442,80 do total geral. Regra dura no front + trigger
           // no DB (tg_block_zero_unit_price) cobrem o fluxo.
-          if (item.unit_price <= 0) issues.push({ type: 'error', msg: `Item ${i + 1}: preço unitário não pode ser zero` });
+          if (item.unit_price <= 0) issues.push({ type: 'error', msg: `Item ${itemNumber}: preço unitário não pode ser zero` });
           const refVariants = item.reference_id ? allVariantsByRef.get(item.reference_id) : undefined;
           const materialIssue = getMaterialVariantReadinessIssue({
-            itemNumber: i + 1,
+            itemNumber,
             itemId: item.id,
             activeVariantCount: refVariants?.length ?? 0,
             materialVariantId: item.material_variant_id,
-            // O índice aqui é o de `validItems`; o report vem do índice de
-            // `items`. Casa pelo id/posição real do item na lista renderizada.
+            // O report usa o índice da lista renderizada, não o índice já
+            // filtrado de `productionItems`.
             sheetMaterialSelectable: sheetMaterialSelectableByIndex[items.indexOf(item)] === true,
           });
           if (materialIssue) {
@@ -2504,7 +2540,11 @@ export default function SaleOrderFormPanel({
              // A chave TEM que ser a mesma da detecção, senão o diálogo acusa uma
              // duplicata que o merge não junta (ou junta o que não devia).
              const mergedMap = new Map<string, SaleOrderItemFormData>();
-             items.forEach(item => {
+             items.forEach((item, itemIndex) => {
+               if (isProductionExcludedSaleOrderItem(item)) {
+                 mergedMap.set(`__production_excluded__${item.id || itemIndex}`, item);
+                 return;
+               }
                const key = duplicateKey(item);
                if (!item.reference_id) {
                  mergedMap.set(`__nokey__${mergedMap.size}`, item);

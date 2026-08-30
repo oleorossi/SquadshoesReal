@@ -257,25 +257,33 @@ export async function listPendingSaleOrdersForWeek(weekStart: string): Promise<
     (assignedData ?? []).map((r: any) => r.sale_order_id).filter(Boolean)
   );
 
-  const { data, error } = await supabase
-    .from('sale_orders')
-    .select('id, order_number, client_cnpj, delivery_deadline, clients(razao_social), sale_order_items(quantity), orders!sale_order_id(order_number)')
+  const { data, error } = await (supabase
+    .from('sale_orders') as any)
+    .select('id, order_number, client_cnpj, delivery_deadline, clients(razao_social), sale_order_items(quantity, production_excluded_at), orders!sale_order_id(order_number)')
     .in('status', ['Aprovado', 'Em Produção'])
     .lte('delivery_deadline', weekEnd);
 
   if (error) throw error;
   return (data ?? [])
     .filter((so: any) => !assignedIds.has(so.id))
-    .map((so: any) => ({
-      id: so.id,
-      code: so.order_number ?? null,
-      client_name: so.clients?.razao_social ?? null,
-      cnpj: so.client_cnpj ?? null,
-      delivery_deadline: so.delivery_deadline ?? null,
-      total_pairs: (so.sale_order_items ?? []).reduce(
-        (s: number, i: any) => s + Number(i.quantity || 0), 0),
-      op_numbers: (so.orders ?? []).map((op: any) => op.order_number).filter(Boolean),
-    }));
+    .map((so: any) => {
+      const productionItems = (so.sale_order_items ?? []).filter(
+        (item: any) => !item.production_excluded_at,
+      );
+      return {
+        id: so.id,
+        code: so.order_number ?? null,
+        client_name: so.clients?.razao_social ?? null,
+        cnpj: so.client_cnpj ?? null,
+        delivery_deadline: so.delivery_deadline ?? null,
+        total_pairs: productionItems.reduce(
+          (sum: number, item: any) => sum + Number(item.quantity || 0), 0),
+        op_numbers: (so.orders ?? []).map((op: any) => op.order_number).filter(Boolean),
+      };
+    })
+    // Um PV cujo único item foi retirado da produção continua preservado no
+    // histórico/comercial, mas não pode voltar para uma onda vazia.
+    .filter((so: { total_pairs: number }) => so.total_pairs > 0);
 }
 
 export type WaveSaleOrder = {

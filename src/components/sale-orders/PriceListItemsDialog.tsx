@@ -39,10 +39,10 @@ export function PriceListItemsDialog({ open, onClose, priceList }: PriceListItem
     queryFn: async () => {
       const { data, error } = await supabase
         .from('technical_sheets')
-        .select('id, name, code')
+        .select('id, name, code, retired_at' as never)
         .order('name', { ascending: true });
       if (error) throw error;
-      return (data ?? []) as { id: string; name: string; code: string | null }[];
+      return (data ?? []) as unknown as { id: string; name: string; code: string | null; retired_at: string | null }[];
     },
     staleTime: 5 * 60 * 1000,
   });
@@ -62,6 +62,7 @@ export function PriceListItemsDialog({ open, onClose, priceList }: PriceListItem
   });
 
   const refMap = useMemo(() => new Map(refs.map(r => [r.id, r])), [refs]);
+  const selectableRefs = useMemo(() => refs.filter(ref => !ref.retired_at), [refs]);
 
   const addItem = useMutation({
     mutationFn: async () => {
@@ -125,7 +126,7 @@ export function PriceListItemsDialog({ open, onClose, priceList }: PriceListItem
             <Select value={refId} onValueChange={setRefId}>
               <SelectTrigger className="h-9"><SelectValue placeholder="Selecione..." /></SelectTrigger>
               <SelectContent>
-                {refs.map(r => <SelectItem key={r.id} value={r.id}>{r.name}{r.code ? ` (${r.code})` : ''}</SelectItem>)}
+                {selectableRefs.map(r => <SelectItem key={r.id} value={r.id}>{r.name}{r.code ? ` (${r.code})` : ''}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>

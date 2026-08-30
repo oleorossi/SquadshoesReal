@@ -77,6 +77,42 @@ export function buildExtraItemColumns(item: SaleOrderItemFormData): Record<strin
   };
 }
 
+/** Metadados internos da retirada produtiva nunca pertencem ao payload comum
+ * de create/update. O writer administrativo é o único autorizado a gravá-los. */
+export function withoutProductionExclusionMetadata(
+  item: SaleOrderItemFormData,
+): Omit<SaleOrderItemFormData,
+  'production_excluded_at' | 'production_exclusion_reason' | 'production_exclusion_request_id'> {
+  const {
+    production_excluded_at: _productionExcludedAt,
+    production_exclusion_reason: _productionExclusionReason,
+    production_exclusion_request_id: _productionExclusionRequestId,
+    production_excluded_by: _productionExcludedBy,
+    ...writable
+  } = item as SaleOrderItemFormData & { production_excluded_by?: string | null };
+  return writable;
+}
+
+export function isProductionExcludedSaleOrderItem(
+  item: Pick<SaleOrderItemFormData, 'production_excluded_at'> | null | undefined,
+): boolean {
+  return !!item?.production_excluded_at;
+}
+
+/**
+ * Mantém a linha comercial no PV, mas a remove de qualquer validação ou
+ * cálculo que possa recriar demanda fabril. Centralizar este filtro evita que
+ * um guard local (tiras, estoque, capacidade) volte a bloquear um pedido por
+ * causa de uma linha que o servidor já retirou da produção.
+ */
+export function filterProductionSaleOrderItems<
+  T extends object,
+>(items: readonly T[]): T[] {
+  return items.filter((item) => !isProductionExcludedSaleOrderItem(
+    item as T & { production_excluded_at?: string | null },
+  ));
+}
+
 /**
  * stage_order canônico pro setor; nomes legados ('Mesa', 'Expedicao') resolvem
  * pelo alias do mapa canônico. Desconhecido → fallback posicional (idx + 1).
@@ -479,6 +515,11 @@ export type SaleOrderItemFormData = {
    *  para o item (OP, OS, alocação de lote) tem o vínculo destruído a cada
    *  salvamento. Ver migration 20260919120000. */
   id?: string;
+  /** Estado somente-leitura de uma linha preservada no histórico comercial,
+   * mas retirada definitivamente da produção pelo comando administrativo. */
+  production_excluded_at?: string | null;
+  production_exclusion_reason?: string | null;
+  production_exclusion_request_id?: string | null;
   reference_id: string;
   color: string;
   grade: Record<string, number>;
@@ -585,12 +626,13 @@ export function useSaleOrderAllItems() {
       // consumidores usa grade. Lista abaixo = união exata do que eles leem:
       //   SaleOrders.tsx  -> id, sale_order_id, reference_id, color, quantity
       //   ComissoesTab    -> sale_order_id, quantity, unit_price
-      //   OutsourcingPlanningTab -> sale_order_id, reference_id, quantity
+      //   OutsourcingPlanningTab -> sale_order_id, reference_id, quantity,
+      //                              production_excluded_at (filtro operacional)
       // Se um consumidor novo precisar de `grade`, crie uma queryKey própria em vez
       // de alargar esta — ela é baixada em toda visita ao /sales.
       const { data, error } = await supabase
         .from('sale_order_items')
-        .select('id, sale_order_id, reference_id, color, quantity, unit_price');
+        .select('id, sale_order_id, reference_id, color, quantity, unit_price, production_excluded_at');
       if (error) throw error;
       return data;
     },
@@ -651,7 +693,7 @@ export function useCreateSaleOrder() {
       // vão DENTRO do payload — `create_sale_order_atomic` agora as grava na mesma
       // transação. Antes eram até 24 UPDATEs seriais depois da RPC.
       const itemPayload = items.map((item) => ({
-        ...item,
+        ...withoutProductionExclusionMetadata(item),
         grade: item.grade,
         ...buildExtraItemColumns(item),
       })) as any;
@@ -785,11 +827,16 @@ export function useUpdateSaleOrderStatus(options?: {
       if (saleOrderCommand === 'confirm' || saleOrderCommand === 'promote') {
         const { data: itemsGuard, error: itemsGuardErr } = await supabase
           .from('sale_order_items')
-          .select('color, strap_colors, technical_sheets(name, code)')
+          .select('color, strap_colors, production_excluded_at, technical_sheets(name, code)' as never)
           .eq('sale_order_id', id);
         if (itemsGuardErr) throw new Error(`Falha ao validar tiras do pedido: ${itemsGuardErr.message}`);
         const tirasSemCor = listarTirasSemCor(
-          (itemsGuard || []).map((it: any) => ({
+          filterProductionSaleOrderItems((itemsGuard || []) as unknown as Array<{
+            color: string | null;
+            strap_colors: StrapColorValidationLine[] | null;
+            production_excluded_at?: string | null;
+            technical_sheets?: { name?: string | null; code?: string | null } | null;
+          }>).map((it) => ({
             strap_colors: it.strap_colors,
             color: it.color,
             reference_label: it.technical_sheets?.code || it.technical_sheets?.name || null,

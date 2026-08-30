@@ -11,7 +11,10 @@ import { ReferenceLink } from '@/components/ui/reference-link';
 import { cn } from '@/lib/utils';
 import { resolvePrice, type PriceLookup } from '@/lib/mobile/clientContext';
 import { resolveSaleOrderItemPrice, type SaleOrderPriceResolution } from '@/lib/saleOrderPricing';
-import { SaleOrderItemFormData } from '@/hooks/useSaleOrders';
+import {
+  SaleOrderItemFormData,
+  isProductionExcludedSaleOrderItem,
+} from '@/hooks/useSaleOrders';
 import { useAccessControl } from '@/hooks/useAccessControl';
 // StockAvailabilityBadge removido do form — checagem só no save
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -80,6 +83,7 @@ interface ReferenceOption {
   packaging_box_dimensions?: string | null;
   status_ficha?: string | null;
   status?: string | null;
+  retired_at?: string | null;
   has_straps?: boolean | null;
   strap_colors?: any[] | null;
   updated_at?: string | null;
@@ -156,6 +160,7 @@ const SHEET_MATERIAL_OPTION = '__ficha__';
 function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, onUpdate, onRemove, onCopyGradeFromPrevious, onSaveStateAndNavigate, isSelected, onToggleSelect, priceLookup, maxDiscountPct = 0, variantsByRef = EMPTY_VARIANTS_BY_REF, onColorIssueChange, onSheetMaterialSelectableChange, saleOrderId, saleOrderStatus, billingWeek, requiredAt }: Props) {
   const qc = useQueryClient();
   const { canSeeFinancialValues } = useAccessControl();
+  const productionExcluded = isProductionExcludedSaleOrderItem(item);
   const { data: strapCatalog, isLoading: strapCatalogLoading } = useArtisanalStrapCatalog(false);
   const fichas = item.fichas || 1;
   const setFichas = (v: number) => onUpdate(index, 'fichas', v);
@@ -1380,7 +1385,10 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   const priceIsManual = item.unit_price > 0 && !priceMatchesAuto && manualPriceEdited.current;
 
   return (
-    <div className={`rounded-lg border shadow-sm overflow-hidden mb-4 transition-all hover:border-primary/30 ${isSelected ? 'bg-primary/5 border-primary/40' : 'bg-card'}`}>
+    <div
+      className={`rounded-lg border shadow-sm overflow-hidden mb-4 transition-all hover:border-primary/30 ${isSelected ? 'bg-primary/5 border-primary/40' : 'bg-card'}`}
+      aria-disabled={productionExcluded || undefined}
+    >
       {/* Item header bar */}
       <div className="flex items-center justify-between bg-muted/20 px-4 py-2 border-b">
         <div className="flex items-center gap-3">
@@ -1433,6 +1441,12 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                 <ReferenceLink referenceId={selectedRef?.id} newTab title="Abrir ficha técnica (nova aba)">
                   <span className="font-mono font-bold text-sm">{selectedRef?.code || '—'}</span>
                 </ReferenceLink>
+                {productionExcluded && (
+                  <Badge variant="outline" className="h-5 gap-1 border-warning/40 bg-warning/10 text-warning-foreground">
+                    <Warning className="h-3 w-3" weight="fill" />
+                    Retirado da produção
+                  </Badge>
+                )}
                 {/* Badge NCM da ficha — fica amber quando inválido (faltando ou
                     fora do formato 8 dígitos). NF-e exige NCM válido pra emissão;
                     mostrando aqui o usuário enxerga problema antes mesmo de
@@ -1512,7 +1526,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
               <p className="font-mono font-bold text-sm text-primary leading-tight">{formatCurrency(itemTotal)}</p>
             </div>
           )}
-          {canRemove && (
+          {canRemove && !productionExcluded && (
             <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => onRemove(index)} aria-label="Remover item" title="Remover item">
               <Trash2 className="h-4 w-4" />
             </Button>
@@ -1520,7 +1534,27 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
         </div>
       </div>
 
-      <div className="p-4 space-y-4">
+      {productionExcluded && (
+        <div role="status" className="border-b border-warning/40 bg-warning/10 px-4 py-3 text-warning-foreground">
+          <div className="flex items-start gap-2">
+            <Lock className="mt-0.5 h-4 w-4 shrink-0" weight="fill" />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold">Item preservado e bloqueado para edição</p>
+              <p className="mt-0.5 text-xs leading-relaxed">
+                Esta linha foi retirada da carga de produção e permanece no Pedido de Venda apenas para manter o histórico comercial.
+              </p>
+              <p className="mt-1 break-words text-xs font-medium">
+                Motivo: {item.production_exclusion_reason || 'Exclusão administrativa registrada sem motivo informado.'}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <fieldset
+        disabled={productionExcluded}
+        className="m-0 min-w-0 border-0 p-4 space-y-4 disabled:cursor-not-allowed disabled:opacity-70"
+      >
         {/* Main Selection Row
             Layout varies by whether this reference has material groups:
             • No groups:  Ref(4) | Cor(3) | Preço(2) | Fichas(1) | Grade(2) = 12
@@ -2515,7 +2549,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
             onChange={(next) => onUpdate(index, 'outsourced_sectors', next)}
           />
         )}
-      </div>
+      </fieldset>
 
       {strapResolutionOpen && item.reference_id && (
         <StrapCatalogResolutionDrawer
@@ -2725,10 +2759,11 @@ export function ReferenceSearch({
   onCreate: () => void;
 }) {
   const [search, setSearch] = useState('');
+  const selectableReferences = references.filter(ref => !ref.retired_at || ref.id === selectedId);
   // Match com espaços/acentos/case ignorados — "SP 10"/"sp10"/"Sp-10"
   // devem todos casar com a referência cadastrada como "SP10". Material e SKU
   // também entram no índice: o vendedor pode lembrar "Santorine" sem lembrar a ref.
-  const filtered = references
+  const filtered = selectableReferences
     .filter(r => {
       const variants = variantsByRef?.get(r.id) ?? [];
       return searchMatchesAllTerms(
@@ -2753,7 +2788,7 @@ export function ReferenceSearch({
         onChange={setSearch}
         placeholder="Código, nome, material ou SKU..."
         resultCount={filtered.length}
-        totalCount={references.length}
+        totalCount={selectableReferences.length}
         inputClassName="text-sm"
         autoFocus
       />

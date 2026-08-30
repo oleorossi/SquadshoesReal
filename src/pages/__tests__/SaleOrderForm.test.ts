@@ -33,6 +33,21 @@ describe('contenções do estado do editor de PV', () => {
       .not.toBe(base);
   });
 
+  it('não recoloca item retirado da produção na assinatura de compra', () => {
+    const base = buildItemsPurchaseSignature([item], 'colmeia');
+    const retired = {
+      ...item,
+      reference_id: 'ref-aposentada',
+      color: '',
+      quantity: 0,
+      production_excluded_at: '2026-08-30T12:00:00Z',
+      production_exclusion_reason: 'Ficha aposentada pelo administrador',
+      production_exclusion_request_id: '11111111-1111-4111-8111-111111111111',
+    } as SaleOrderItemFormData;
+
+    expect(buildItemsPurchaseSignature([item, retired], 'colmeia')).toBe(base);
+  });
+
   it('detecta alterações por revisão completa do estado, inclusive seletores fora do DOM', () => {
     const base = buildSaleOrderEditorRevision({
       form,
@@ -120,6 +135,9 @@ describe('mapLoadedSaleOrderItem', () => {
         quantity: 10,
         strap_colors: [],
         strap_sourcing_revision: 7,
+        production_excluded_at: '2026-08-30T12:00:00Z',
+        production_exclusion_reason: 'Ficha aposentada pelo administrador',
+        production_exclusion_request_id: '11111111-1111-4111-8111-111111111111',
       },
       {
         id: 'sale-order-item-2',
@@ -143,6 +161,11 @@ describe('mapLoadedSaleOrderItem', () => {
     // canonicaliza o reference_id legado
     expect(mappedItems[0].reference_id).toBe('canonical-reference');
     expect(mappedItems[0].strap_sourcing_revision).toBe(7);
+    expect(mappedItems[0]).toMatchObject({
+      production_excluded_at: '2026-08-30T12:00:00Z',
+      production_exclusion_reason: 'Ficha aposentada pelo administrador',
+      production_exclusion_request_id: '11111111-1111-4111-8111-111111111111',
+    });
   });
 });
 
@@ -206,6 +229,9 @@ describe('buildCopySeedPayload', () => {
       selected_terceirizacao_ids: ['terc-1'],
       terceirizacao_quantities: { 'terc-1': 5 },
       outsourced_sectors: { costura: 'contractor-1' },
+      production_excluded_at: '2026-08-30T12:00:00Z',
+      production_exclusion_reason: 'Ficha aposentada pelo administrador',
+      production_exclusion_request_id: '11111111-1111-4111-8111-111111111111',
     },
     {
       id: 'item-db-2',
@@ -226,6 +252,12 @@ describe('buildCopySeedPayload', () => {
     sourceOrderNumber: 'PV-2026-00123',
     activeVariantIds: new Set(['variant-ativa']),
     companyIsActive: true,
+  });
+
+  it('não leva metadados internos da retirada produtiva para o novo writer', () => {
+    expect(seed.items[0]).not.toHaveProperty('production_excluded_at');
+    expect(seed.items[0]).not.toHaveProperty('production_exclusion_reason');
+    expect(seed.items[0]).not.toHaveProperty('production_exclusion_request_id');
   });
 
   it('NÃO leva o id do item — o novo PV cria linhas novas, nunca atualiza as do pedido origem', () => {

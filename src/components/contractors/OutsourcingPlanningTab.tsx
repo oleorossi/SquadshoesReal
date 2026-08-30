@@ -124,6 +124,22 @@ interface WeekSectorCell {
   excess: number;           // max(0, demand - capacityWeek)
   pvIds: string[];
   pvNumbers: string[];
+  saleOrderItemIds: string[];
+}
+
+export function filterOperationalOutsourcingItems<
+  T extends { production_excluded_at?: string | null },
+>(items: readonly T[]): T[] {
+  return items.filter((item) => !item.production_excluded_at);
+}
+
+export function buildOutsourcingServiceOrderProvenance(
+  cell: Pick<WeekSectorCell, 'pvIds' | 'saleOrderItemIds'>,
+) {
+  return {
+    linked_sale_order_ids: cell.pvIds,
+    selected_sale_order_item_ids: cell.saleOrderItemIds,
+  };
 }
 
 export function OutsourcingPlanningTab() {
@@ -159,7 +175,7 @@ export function OutsourcingPlanningTab() {
 
   const itemsByPv = useMemo(() => {
     const m = new Map<string, any[]>();
-    (allItems as any[]).forEach((it) => {
+    filterOperationalOutsourcingItems(allItems as any[]).forEach((it) => {
       if (!it.sale_order_id) return;
       if (!m.has(it.sale_order_id)) m.set(it.sale_order_id, []);
       m.get(it.sale_order_id)!.push(it);
@@ -228,6 +244,7 @@ export function OutsourcingPlanningTab() {
         let pairsWithoutCap = 0;
         const pvIds = new Set<string>();
         const pvNumbers = new Set<string>();
+        const saleOrderItemIds = new Set<string>();
 
         for (const pv of pvsInWeek) {
           for (const item of itemsByPv.get(pv.id) || []) {
@@ -241,6 +258,7 @@ export function OutsourcingPlanningTab() {
             else pairsWithoutCap += qty;
             pvIds.add(pv.id);
             pvNumbers.add(pv.order_number || pv.id.slice(0, 8));
+            if (item.id) saleOrderItemIds.add(item.id);
           }
         }
 
@@ -265,6 +283,7 @@ export function OutsourcingPlanningTab() {
           excess,
           pvIds: Array.from(pvIds),
           pvNumbers: Array.from(pvNumbers).sort(),
+          saleOrderItemIds: Array.from(saleOrderItemIds).sort(),
         });
       }
     }
@@ -303,7 +322,7 @@ export function OutsourcingPlanningTab() {
         status: 'Pendente',
         target_sector: assignTarget.sectorKey,
         bottleneck_week: assignTarget.weekIso,
-        linked_sale_order_ids: assignTarget.pvIds,
+        ...buildOutsourcingServiceOrderProvenance(assignTarget),
         dispatch_tracked: true,
         notes: 'Gerada pela aba Planejamento (demanda > capacidade interna). Preço pela tabela vigente.',
       } as any);

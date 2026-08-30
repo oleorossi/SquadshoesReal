@@ -60,7 +60,8 @@ describe('owner único da compra automática do PV', () => {
   it('preserva a ordem create → diálogo → approve → worker', () => {
     // O diálogo termina no save do PV, nunca em uma mutação de compra.
     expect(SALE_ORDER_FORM).toContain("if (action === 'draft') { doSubmit('Rascunho'); return; }");
-    expect(SALE_ORDER_FORM).toContain('runCapacityCheck(validItems);');
+    expect(SALE_ORDER_FORM).toContain('filterProductionSaleOrderItems(validItems)');
+    expect(SALE_ORDER_FORM).toContain('runCapacityCheck(productionItems);');
 
     // Create é draft-only e publica seu fato na mesma transação.
     expect(SALE_ORDER_HOOK).toContain('createSaleOrderCommand');

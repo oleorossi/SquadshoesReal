@@ -83,15 +83,16 @@ const FORM: SaleOrderFormData = {
 };
 
 function PanelHarness({
-  onCopy, onDelete, onUserEdit, onSubmit,
+  onCopy, onDelete, onUserEdit, onSubmit, initialItems = ITEMS,
 }: {
   onCopy?: (indices: number[]) => void;
   onDelete?: (indices: number[]) => void;
   onUserEdit?: () => void;
   onSubmit?: (e: FormEvent) => void;
+  initialItems?: SaleOrderItemFormData[];
 }) {
   // Estado real: é ele que faz o remover-item reindexar a seleção de verdade.
-  const [items, setItems] = useState<SaleOrderItemFormData[]>(ITEMS);
+  const [items, setItems] = useState<SaleOrderItemFormData[]>(initialItems);
   return (
     <MemoryRouter>
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
@@ -244,6 +245,19 @@ describe('exclusão em lote — helpers de remoção e desfazer', () => {
     expect(removed).toHaveLength(1);
   });
 
+  it('nunca remove item retirado da produção, mesmo quando o índice é solicitado', () => {
+    const items = lista('A', 'B', 'C');
+    items[1] = {
+      ...items[1],
+      production_excluded_at: '2026-08-30T12:00:00Z',
+      production_exclusion_reason: 'Ficha aposentada pelo administrador',
+      production_exclusion_request_id: '11111111-1111-4111-8111-111111111111',
+    };
+    const { remaining, removed } = removeItemsAtIndices(items, [1, 2]);
+    expect(refs(remaining)).toEqual(['A', 'B']);
+    expect(removed.map((entry) => entry.item.reference_id)).toEqual(['C']);
+  });
+
   it('Desfazer devolve cada item na posição original', () => {
     const original = lista('A', 'B', 'C', 'D');
     const { remaining, removed } = removeItemsAtIndices(original, [1, 3]);
@@ -274,6 +288,32 @@ describe('save do PV não intercepta o cadastro de cor', () => {
     expect(onSubmit).not.toHaveBeenCalled();
 
     fireEvent.submit(pvForm!);
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('item retirado não volta a bloquear o editor', () => {
+  it('permite salvar o cabeçalho mesmo se a linha histórica tiver dados produtivos incompletos', async () => {
+    const onSubmit = vi.fn((event: FormEvent) => event.preventDefault());
+    const user = userEvent.setup();
+    render(
+      <PanelHarness
+        onSubmit={onSubmit}
+        initialItems={[{
+          ...ITEMS[0],
+          color: '',
+          quantity: 0,
+          unit_price: 0,
+          production_excluded_at: '2026-08-30T12:00:00Z',
+          production_exclusion_reason: 'Ficha aposentada pelo administrador',
+          production_exclusion_request_id: '11111111-1111-4111-8111-111111111111',
+        }]}
+      />,
+    );
+
+    const submit = screen.getByRole('button', { name: 'Criar Pedido' });
+    expect(submit).toBeEnabled();
+    await user.click(submit);
     expect(onSubmit).toHaveBeenCalledTimes(1);
   });
 });
