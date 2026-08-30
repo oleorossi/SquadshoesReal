@@ -9,6 +9,7 @@ import {
   leftoverRequiresPin,
   listLeftoverCabedalLabels,
   leftoverCabedalDisplayName,
+  leftoverLabelsFromSheet,
   validateCabedalLeftovers,
 } from '@/lib/cabedalLeftover';
 
@@ -103,5 +104,22 @@ describe('cabedalLeftover — rótulos da ficha', () => {
       material: 'NAPA CONHAQUE 1.2',
       product_name: 'NAPA CONHAQUE 1.2',
     })).toBe('Sobra · NAPA CONHAQUE 1.2');
+  });
+
+  it('não duplica o prefixo Sobra se o rótulo já tem', () => {
+    expect(leftoverCabedalDisplayName({
+      material: 'NAPA CONHAQUE 1.2',
+      label: 'Sobra · NAPA CONHAQUE 1.2',
+    })).toBe('Sobra · NAPA CONHAQUE 1.2');
+  });
+
+  it('lê a ficha técnica sem any — extras + material 1', () => {
+    expect(leftoverLabelsFromSheet({
+      upper_material: 'NAPA CONHAQUE 1.0',
+      upper_material_product_id: 'p-napa-10',
+      components_accessories: [
+        { material: 'NAPA CONHAQUE 1.2', mandatory: true, leftover: true },
+      ],
+    })).toEqual(['NAPA CONHAQUE 1.2']);
   });
 });

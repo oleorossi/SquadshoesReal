@@ -134,7 +134,19 @@ export function validateCabedalLeftovers(
 
 export function leftoverCabedalDisplayName(extra: CabedalLeftoverExtra | null | undefined): string {
   const name = String(extra?.product_name || extra?.label || extra?.material || '').trim();
-  return name ? `Sobra · ${name}` : 'Sobra';
+  if (!name) return 'Sobra';
+  if (/^sobra\s*[·•\-–]\s*/i.test(name)) return name;
+  return `Sobra · ${name}`;
+}
+
+export type CabedalLeftoverSheet = CabedalLeftoverPrincipal & {
+  components_accessories?: CabedalLeftoverExtra[] | null;
+};
+
+export function leftoverLabelsFromSheet(
+  sheet: CabedalLeftoverSheet | null | undefined,
+): string[] {
+  return listLeftoverCabedalLabels(sheet?.components_accessories, sheet);
 }
 
 export function listLeftoverCabedalLabels(
@@ -146,7 +158,9 @@ export function listLeftoverCabedalLabels(
   const seen = new Set<string>();
   for (const extra of list) {
     if (!isLeftoverCabedalExtra(extra, principal)) continue;
-    const label = String(extra.product_name || extra.label || extra.material || '').trim();
+    const label = String(extra.product_name || extra.material || extra.label || '').trim()
+      .replace(/^sobra\s*[·•\-–]\s*/i, '')
+      .trim();
     if (!label) continue;
     const key = normalizeCabedalMaterialName(label);
     if (seen.has(key)) continue;

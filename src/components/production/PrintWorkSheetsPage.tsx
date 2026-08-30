@@ -37,7 +37,7 @@ import { useKnifeFacasDefault } from '@/hooks/useKnifeFacasDefault';
 import { pmgLabelForSize } from '@/lib/aviamentoSizeRanges';
 import { useAviamentoPmgDefault } from '@/hooks/useAviamentoPmgDefault';
 import { getUpperWorkEligibility, requiresUpperCut } from '@/lib/upperCutEligibility';
-import { listLeftoverCabedalLabels } from '@/lib/cabedalLeftover';
+import { leftoverLabelsFromSheet } from '@/lib/cabedalLeftover';
 
 /**
  * CSS do modo CARTÃO (aprovado pelo dono 31/07/2026 — "Opção B, 3 colunas").
@@ -2284,10 +2284,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           requiresLiningCut,
           requiresUpperCut: needsUpperCut,
           requiresUpperSewing,
-          leftoverNapas: listLeftoverCabedalLabels(
-            (sheetById.get(sheetId) as any)?.components_accessories,
-            sheetById.get(sheetId) as any,
-          ),
+          leftoverNapas: leftoverLabelsFromSheet(sheetById.get(sheetId)),
           aviamentoSteps: aviamentoStepsByRef.get(sheetId) || [],
           lotInfo: lotTotal > 1 ? { number: lotNum, total: lotTotal } : undefined,
         });
@@ -2301,10 +2298,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       cg.requiresUpperCut = cg.requiresUpperCut === true || needsUpperCut;
       cg.requiresUpperSewing = cg.requiresUpperSewing === true || requiresUpperSewing;
       {
-        const leftoverNames = listLeftoverCabedalLabels(
-          (sheetById.get(sheetId) as any)?.components_accessories,
-          sheetById.get(sheetId) as any,
-        );
+        const leftoverNames = leftoverLabelsFromSheet(sheetById.get(sheetId));
         if (leftoverNames.length) {
           const existing = new Set(cg.leftoverNapas || []);
           leftoverNames.forEach((name) => existing.add(name));
