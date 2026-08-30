@@ -383,6 +383,36 @@ export function compactThumbPx(count: number): number {
  * Pura e exportada de propósito — é a regra que decide o layout, e decisão de
  * layout que só existe dentro do JSX não tem como ser travada por teste.
  */
+/**
+ * Grade de origem da tabela desta cor: por FACA no Corte Cabedal (quando a ref
+ * tem `knife_size_ranges`), por segmento no Aviamento, por numeração no resto.
+ */
+export function gradeSourceGrid(
+  cg: Pick<SilkColorGroup, 'knifeGrid' | 'aviamentoGrid' | 'combinedGrid'>,
+  sector: GroupedSector,
+): Record<string, number> {
+  if (sector === 'Corte Cabedal' && cg.knifeGrid && Object.keys(cg.knifeGrid).length > 0) return cg.knifeGrid;
+  if (sector === 'Aviamento' && cg.aviamentoGrid && Object.keys(cg.aviamentoGrid).length > 0) return cg.aviamentoGrid;
+  return cg.combinedGrid;
+}
+
+/**
+ * Colunas que a grade desta cor REALMENTE renderiza.
+ *
+ * Fonte única de propósito: o `minScale` que a ficha passa ao `PaginatedSheet`
+ * tem de sair da MESMA lista que a tabela desenha. Enquanto eram duas contas, o
+ * piso vinha de `Object.keys(cg.combinedGrid)` — sem filtrar numeração zerada e
+ * ignorando que Corte Cabedal e Aviamento desenham por FACA/segmento, não por
+ * numeração. Ver `worksheet/adaptiveFont.floorSafeScale`.
+ */
+export function gradeSizesOf(
+  cg: Pick<SilkColorGroup, 'knifeGrid' | 'aviamentoGrid' | 'combinedGrid'>,
+  sector: GroupedSector,
+): string[] {
+  const src = gradeSourceGrid(cg, sector);
+  return sortSizes(Object.keys(src).filter(s => (src[s] ?? 0) > 0));
+}
+
 export function thumbsFitBesideGrade(
   thumbCount: number,
   thumbPx: number,
@@ -450,12 +480,8 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
       && cg.aviamentoGrid
       && Object.keys(cg.aviamentoGrid).length > 0;
     const usingBuckets = usingKnife || usingAviamentoPmg;
-    const sourceGrid: Record<string, number> = usingKnife
-      ? cg.knifeGrid!
-      : usingAviamentoPmg
-        ? cg.aviamentoGrid!
-        : cg.combinedGrid;
-    const activeSizes = sortSizes(Object.keys(sourceGrid).filter(s => (sourceGrid[s] ?? 0) > 0));
+    const sourceGrid: Record<string, number> = gradeSourceGrid(cg, sector);
+    const activeSizes = gradeSizesOf(cg, sector);
     // F-M3 (2026-06-17): na grade por faixa (faca/P-M-G), a soma das colunas
     // exibidas tem que fechar com o total de pares do grupo — senão alguma
     // numeração não foi mapeada e o operador produziria a menos/a mais. Aviso
@@ -1710,6 +1736,6 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
   // `theme.compact` rebaixa um bucket — precisa entrar na conta, senão o piso
   // sai otimista justo no layout mais denso (Corte Forração / Silk).
   const minScale = groups.reduce((mx, g) => g.colorGroups.reduce((m2, cg) => Math.max(m2,
-    floorSafeScale(gradeTableFont(Object.keys(cg.combinedGrid || {}), theme.compact))), mx), 0);
+    floorSafeScale(gradeTableFont(gradeSizesOf(cg, sector), theme.compact))), mx), 0);
   return <PaginatedSheet sectorLabel={sectorLabel || sector} blocks={blocks} minScale={minScale} />;
 };

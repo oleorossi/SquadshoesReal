@@ -58,6 +58,21 @@ interface Props {
   sectorLabel?: string;
 }
 
+/**
+ * Numerações que a grade de uma banda REALMENTE renderiza.
+ *
+ * Fonte única de propósito: o `minScale` que a ficha passa ao `PaginatedSheet`
+ * tem de sair da MESMA lista que a tabela desenha (ver a nota gêmea na ficha de
+ * palmilha). Enquanto eram duas contas, o piso vinha de `Object.keys(grade)` e
+ * divergia do que o operador lê no papel.
+ */
+export function solagemBandSizes(
+  allSizes: ReadonlyArray<string>,
+  band: Pick<SoleColorBand, 'grade' | 'baseGrade'>,
+): string[] {
+  return allSizes.filter(s => (band.grade[s] ?? 0) > 0 || (band.baseGrade?.[s] ?? 0) > 0);
+}
+
 const isPretoColor = (c: string) => /preto|black|pb/i.test((c || '').trim());
 
 const SectionDivider = ({ label, total }: { label: string; total: number }) => (
@@ -102,9 +117,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 1
     // Fix 22/05/2026: tabela mostra só o range desta band (não todos os
     // tamanhos universais). Union de grade + baseGrade — qualquer tamanho
     // com valor > 0 em pelo menos um deles entra.
-    const bandSizes = allSizes.filter(s =>
-      (band.grade[s] ?? 0) > 0 || (band.baseGrade?.[s] ?? 0) > 0
-    );
+    const bandSizes = solagemBandSizes(allSizes, band);
     // Fontes adaptativas pela qtd de colunas (2026-06-12) — grades densas
     // e chaves conjugadas ("33/34") cortavam com fonte fixa.
     const ft = gradeTableFont(bandSizes);
@@ -398,6 +411,6 @@ export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 1
   // Sem isto o AUTO_FIT_FLOOR global (0.80) encolhia por cima de fontes que já
   // estavam no piso. Decisão do dono 31/07/2026: legibilidade vence densidade.
   const minScale = bands.reduce((mx, b) => Math.max(mx,
-    floorSafeScale(gradeTableFont(Object.keys(b.grade || {})))), 0);
+    floorSafeScale(gradeTableFont(solagemBandSizes(allSizes, b)))), 0);
   return <PaginatedSheet sectorLabel={sectorLabel || sector} blocks={blocks} minScale={minScale} />;
 };

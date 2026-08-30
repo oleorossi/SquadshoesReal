@@ -94,6 +94,19 @@ const SECTOR_ICONS: Record<string, React.ComponentType<{ className?: string; wei
   Expedição: Truck,
 };
 
+/**
+ * Numerações que a grade de um item REALMENTE renderiza (zeradas fora).
+ *
+ * Fonte única de propósito: o `minScale` que a ficha passa ao `PaginatedSheet`
+ * tem de sair da MESMA lista que a tabela desenha. Enquanto eram duas contas, o
+ * piso vinha de `Object.keys(grid)` sem filtrar zeros — numeração cadastrada em
+ * zero contava como coluna e rebaixava o bucket de fonte, apertando o piso sem
+ * que nada aparecesse no papel.
+ */
+export function operatorGradeSizes(grid: Record<string, unknown>): string[] {
+  return Object.keys(grid || {}).filter(s => Number(grid[s]) > 0);
+}
+
 const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientNames = [], sizeBand }: Props) => {
   const Icon = SECTOR_ICONS[sector] || Hammer;
   // Modelo de informacao da ficha (rodada 1, 20/08/2026). Este componente
@@ -174,7 +187,7 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
     /** Curva de 1 corrugado (linha "Por Ficha") — NULL quando inexata. */
     const baseCurve = fichaRes.baseCurve;
     const baseGrade: Record<string, number> = {};
-    const activeSizes = Object.keys(grid).filter(s => Number(grid[s]) > 0);
+    const activeSizes = operatorGradeSizes(grid);
     for (const s of activeSizes) baseGrade[s] = Number(grid[s]) || 0;
     // F-C1 (2026-06-17): quando a soma da grade já bate com o total de pares
     // (gradeSum === totalPairs), o multiplier é 1 e o escalonamento é, na
@@ -739,7 +752,9 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
   // Sem isto o AUTO_FIT_FLOOR global (0.80) encolhia por cima de fontes que já
   // estavam no piso. Decisão do dono 31/07/2026: legibilidade vence densidade.
   const minScale = items.reduce((mx, it) => {
-    const sizes = Object.keys(it.order.grid || {});
+    // Espelha o chunk de 12 colunas do render (colsPerRow), sobre a MESMA
+    // lista de numerações que a tabela desenha.
+    const sizes = operatorGradeSizes(it.order.grid || {});
     const cols = sizes.length <= 12 ? sizes.length : 12;
     return Math.max(mx, floorSafeScale(gradeTableFont(sizes.slice(0, cols))));
   }, 0);
