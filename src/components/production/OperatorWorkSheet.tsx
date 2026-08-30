@@ -5,7 +5,8 @@ import { thumbUrl } from '@/lib/imageThumb';
 import { ProductionOrder } from '@/types/inventory';
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
 import { adaptiveFontSize } from '@/lib/adaptiveFontSize';
-import { gradeTableFont, floorSafeScale } from './worksheet/adaptiveFont';
+import { gradeTableFont, floorSafeScale, A4_CONTENT_WIDTH_PX } from './worksheet/adaptiveFont';
+import { fitBesideGrade, SIDE_BY_SIDE_GAP_PX } from './worksheet/sideBySide';
 import { resolveFicha } from './worksheet/fichaSize';
 import { TallyBox } from './worksheet/TallyBox';
 import { TALLY_SIZE } from './worksheet/density';
@@ -106,6 +107,27 @@ const SECTOR_ICONS: Record<string, React.ComponentType<{ className?: string; wei
 export function operatorGradeSizes(grid: Record<string, unknown>): string[] {
   return Object.keys(grid || {}).filter(s => Number(grid[s]) > 0);
 }
+
+/**
+ * Lado da foto do produto na ficha de operador (Montagem / Acabamento).
+ *
+ * Era 192px (~51mm no papel). A auditoria por setor mediu estes dois maços como
+ * os PIORES do sistema em aproveitamento de largura — 70% e 74%, com 1.100 a
+ * 1.300px saindo em bandas mal preenchidas. O vazio NÃO estava ao lado da foto
+ * (a `density.ts` registrou "a largura é usada" e por isso ninguém mexeu aqui):
+ * os chips ocupam ~80px de uma faixa de 192, e o branco fica ABAIXO deles, à
+ * direita da imagem.
+ *
+ * 128px (~34mm) é a medida que abre largura suficiente para a grade subir para
+ * esse vazio na maioria dos grupos — e com ela o maço cai UMA FOLHA nos DOIS
+ * setores (medido em OP complexa, 30/08/2026: Montagem 5→4, Acabamento 5→4).
+ *
+ * ⚠ É um piso de PRODUTO, não de layout: a foto continua sendo a imagem pela
+ * qual o operador confere o modelo na bancada, não um selo de identificação.
+ * Reduzi-la mais (64px foi medido: mesma economia de folha, largura um pouco
+ * melhor) foi recusado por isso. Não encolha sem decisão do dono.
+ */
+export const OPERATOR_PHOTO_PX = 128;
 
 const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientNames = [], sizeBand }: Props) => {
   const Icon = SECTOR_ICONS[sector] || Hammer;
@@ -327,167 +349,10 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
     ) : null;
 
     // ── Product info row — editorial card with hero REF ──
-    const productInfoBlock = (
-      <div className="flex gap-3 mb-1.5 border-b border-black pb-2">
-        {/* Image — hairline framed */}
-        <div className="w-48 h-48 bg-white overflow-hidden shrink-0 relative" style={{ border: '1.5px solid #000' }}>
-          {!order.variant?.variant_image_url && (
-            <span
-              className="absolute top-0 left-0 bg-white text-black text-[8px] font-mono font-bold px-1 py-0.5 uppercase tracking-[0.18em] leading-none z-10"
-              style={{ borderRight: '1.5px solid #000', borderBottom: '1.5px solid #000' }}
-            >
-              Ref.
-            </span>
-          )}
-          <img src={thumbUrl(displayImage, 192) || displayImage} alt="Referência" width={192} height={192} className="w-full h-full object-contain mix-blend-multiply" loading="eager" decoding="sync" />
-        </div>
-
-        {/* Product details — Anton hero for ref */}
-        <div className="flex-1 flex flex-col gap-2 min-w-0">
-          {/* Hero: REFERÊNCIA = nome do modelo (definido pelo usuário em 2026-05).
-              Sai no modelo 'lote' — ali a referência já é o título do
-              sub-header do grupo, e repetir era a duplicação que a rodada 1
-              (20/08/2026) mandou cortar. */}
-          {!isLote && (
-          <div className="flex items-baseline justify-between gap-3 border-b border-black pb-1">
-            <div className="min-w-0 flex-1">
-              <span className="section-label block" style={{ color: '#000' }}>Referência</span>
-              <p
-                className="text-black uppercase leading-none mt-0.5 truncate"
-                style={{
-                  fontFamily: "'Anton', Impact, sans-serif",
-                  fontSize: adaptiveFontSize(refName, { maxWidthPx: 300, baseFontPx: 25, minFontPx: 12, charWidthRatio: 0.45 }),
-                  letterSpacing: '-0.025em',
-                }}
-                title={refName}
-              >
-                {refName}
-              </p>
-            </div>
-          </div>
-          )}
-
-          {/* Details grid */}
-          {/* Combo de produção em CHIPS alinhados (melhoria estética 2026-06-30,
-              opção A): substitui a grade 2-col de rótulo/valor — confere
-              solado/palmilha/cor num olhar, P&B, sem swatch invisível. */}
-          <div className="flex flex-wrap gap-2 content-start">
-            {/* Cor Tiras / Cabedal (mantém o swatch pequeno que já existia) */}
-            <div style={{ border: '1.5px solid #000', padding: '2px 9px' }}>
-              <span className="section-label block" style={{ color: '#000' }}>{hasStraps ? 'Cor Tiras' : 'Cor Cabedal'}</span>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <div className="w-3 h-3 shrink-0" style={{ backgroundColor: resolvedColorHex, border: '1px solid #000' }} />
-                <span
-                  className="uppercase leading-none"
-                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '16px', letterSpacing: '-0.01em', color: '#C00000' }}
-                >
-                  {resolvedColorName}
-                </span>
-              </div>
-            </div>
-
-            {(isMontagem || isSolagem || isColagem) ? (
-              <>
-                {/* Solado */}
-                <div style={{ border: '1.5px solid #000', padding: '2px 9px' }}>
-                  <span className="section-label block" style={{ color: '#000' }}>Solado</span>
-                  <span
-                    className="uppercase leading-none block mt-0.5"
-                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '16px', letterSpacing: '-0.01em', color: '#C00000' }}
-                  >
-                    {resolvedSoleColor}
-                  </span>
-                </div>
-                {/* Palmilha */}
-                <div style={{ border: '1.5px solid #000', padding: '2px 9px' }}>
-                  <span className="section-label block" style={{ color: '#000' }}>Palmilha</span>
-                  <span
-                    className="uppercase leading-none block mt-0.5"
-                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '16px', letterSpacing: '-0.01em', color: '#C00000' }}
-                  >
-                    {resolvedInsoleColor}
-                  </span>
-                  {insoleReadyMade && (
-                    <p className="text-[9px] font-mono text-black tracking-widest uppercase mt-0.5">Pronta na cor</p>
-                  )}
-                </div>
-              </>
-            ) : (
-              /* Ordem — setores sem solado/palmilha */
-              <div style={{ border: '1.5px solid #000', padding: '2px 9px' }}>
-                <span className="section-label block" style={{ color: '#000' }}>Ordem</span>
-                <p className="text-xs font-mono font-bold text-black leading-tight mt-0.5">{order.op_number || '—'}</p>
-              </div>
-            )}
-          </div>
-
-          {/* Silk / Estampa — bloco próprio (imagem + nome) */}
-          {silk && !isSilk && !isAcabamento && (
-            <div className="mt-1.5">
-              <span className="section-label block" style={{ color: '#000' }}>Silk / Estampa</span>
-              <div className="flex items-center gap-2 mt-0.5">
-                {silk.silk_url && (
-                  <SignedImage src={silk.silk_url} alt="Silk" loading="eager" className="h-7 w-7 object-contain bg-white" style={{ border: '1px solid #000' }} />
-                )}
-                <span className="text-sm font-bold text-black uppercase tracking-tight">{silk.silk_name}</span>
-              </div>
-            </div>
-          )}
-
-          {/* Obs. de Corte */}
-          {(isCortePalmilha || isCorteForração) && order.master.technical_notes && (
-            <div className="mt-1.5">
-              <span className="section-label block" style={{ color: '#000' }}>Obs. de Corte</span>
-              <p className="text-xs text-black font-semibold leading-tight mt-0.5">{order.master.technical_notes}</p>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-
-    // ── Sequência de Tiras (quando o modelo tem tiras e o PV especificou
-    // cores na ordem da ficha técnica). ──
-    const strapsBlock = hasStraps && strapColors && strapColors.length > 0 ? (
-        <div className="mb-1.5">
-          <div className="flex items-baseline justify-between mb-1 keep-with-next">
-            <span className="section-label" style={{ color: '#000' }}>
-              02 / Sequência de Tiras
-            </span>
-            <span className="font-mono text-[10px] text-black tracking-widest uppercase">
-              {strapColors.length} tira{strapColors.length > 1 ? 's' : ''} · ordem da ficha técnica
-            </span>
-          </div>
-          <table className="w-full text-[10px]" style={{ borderCollapse: 'collapse', border: '1px solid #000' }}>
-            <thead>
-              <tr style={{ borderBottom: '1.5px solid #000' }}>
-                <th className="section-label px-2 py-1 text-left" style={{ color: '#000', width: 36 }}>#</th>
-                <th className="section-label px-2 py-1 text-left" style={{ color: '#000' }}>Tira</th>
-                <th className="section-label px-2 py-1 text-left" style={{ color: '#000' }}>Cor</th>
-                <th className="section-label px-2 py-1 text-left" style={{ color: '#000' }}>Material</th>
-                <th className="section-label px-2 py-1 text-center" style={{ color: '#000', width: 32 }}>OK</th>
-              </tr>
-            </thead>
-            <tbody>
-              {strapColors.map((s, i) => (
-                <tr key={s.id || i} style={{ borderBottom: '1px solid #000' }} className="bg-white">
-                  <td className="px-2 py-1 font-mono font-bold text-black">{i + 1}</td>
-                  <td className="px-2 py-1 font-bold text-black uppercase">{s.label || `TIRA ${i + 1}`}</td>
-                  <td className="px-2 py-1 uppercase" style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '13px', letterSpacing: '-0.01em', color: '#C00000' }}>
-                    {s.color || '—'}
-                  </td>
-                  <td className="px-2 py-1 text-black">{s.group_name || '—'}</td>
-                  <td className="px-2 py-1 text-center">
-                    <span className="inline-block w-4 h-4" style={{ border: '1.5px solid #000' }} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-    ) : null;
-
-    // ── Grade de Produção — FULL WIDTH, hairline editorial ──
-    const gradeBlock = (
+    /** JSX da grade. É função porque a tabela aparece em DOIS lugares: no
+     *  bloco próprio de sempre, ou dentro da coluna de dados quando ela cabe
+     *  ao lado da foto (ver `gradeAoLadoDaFoto`). */
+    const renderGradeTable = () => (
       <div className="mb-1.5">
         <div className="flex items-baseline justify-between mb-1 keep-with-next">
           <span className="section-label" style={{ color: '#000' }}>
@@ -606,6 +471,200 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
         </div>
       </div>
     );
+
+    // ── Grade AO LADO da foto (30/08/2026) ──
+    // A foto de 128px deixa livre a faixa à direita dela, abaixo dos chips —
+    // ~110px de altura que hoje saem em branco. A grade sobe para lá e deixa de
+    // ocupar bloco próprio: medido em OP complexa, o maço cai uma folha nos dois
+    // setores (Montagem 5→4, Acabamento 5→4).
+    //
+    // A guarda é a regra compartilhada `fitBesideGrade`: só sobe se o que sobrar
+    // para a tabela continuar acima da largura mínima dela — o corte do
+    // `table-layout: fixed` é silencioso, o operador leria "18" onde está "180".
+    // Grade partida em mais de um bloco de 12 colunas também não sobe: os dois
+    // pedaços lado a lado espremeriam a coluna de dados.
+    const gradeFit = fitBesideGrade({
+      asideWidthPx: OPERATOR_PHOTO_PX,
+      sizeKeys: activeSizes.slice(0, colsPerRow),
+      font: gradeTableFont(activeSizes.slice(0, colsPerRow)),
+      maxCellDigits: activeSizes.reduce((m, sz) => Math.max(m, String(scaledGrade[sz] ?? 0).length), 1),
+      availableWidthPx: A4_CONTENT_WIDTH_PX,
+    });
+    const gradeAoLadoDaFoto = gradeFit.fits && sizeChunks.length === 1;
+
+
+    // Com a grade ao lado, a linha declara a largura que exige: o auto-fit não
+    // pode crescer a ponto de espremer a tabela abaixo do mínimo dela.
+    const productInfoBlock = (
+      <div
+        className="flex gap-3 mb-1.5 border-b border-black pb-2"
+        data-rigid-width={gradeAoLadoDaFoto ? Math.ceil(gradeFit.rigidWidthPx) : undefined}
+      >
+        {/* Image — hairline framed */}
+        <div
+          className="bg-white overflow-hidden shrink-0 relative"
+          style={{ border: '1.5px solid #000', width: OPERATOR_PHOTO_PX, height: OPERATOR_PHOTO_PX }}
+        >
+          {!order.variant?.variant_image_url && (
+            <span
+              className="absolute top-0 left-0 bg-white text-black text-[8px] font-mono font-bold px-1 py-0.5 uppercase tracking-[0.18em] leading-none z-10"
+              style={{ borderRight: '1.5px solid #000', borderBottom: '1.5px solid #000' }}
+            >
+              Ref.
+            </span>
+          )}
+          <img src={thumbUrl(displayImage, OPERATOR_PHOTO_PX) || displayImage} alt="Referência" width={OPERATOR_PHOTO_PX} height={OPERATOR_PHOTO_PX} className="w-full h-full object-contain mix-blend-multiply" loading="eager" decoding="sync" />
+        </div>
+
+        {/* Product details — Anton hero for ref */}
+        <div className="flex-1 flex flex-col gap-2 min-w-0">
+          {/* Hero: REFERÊNCIA = nome do modelo (definido pelo usuário em 2026-05).
+              Sai no modelo 'lote' — ali a referência já é o título do
+              sub-header do grupo, e repetir era a duplicação que a rodada 1
+              (20/08/2026) mandou cortar. */}
+          {!isLote && (
+          <div className="flex items-baseline justify-between gap-3 border-b border-black pb-1">
+            <div className="min-w-0 flex-1">
+              <span className="section-label block" style={{ color: '#000' }}>Referência</span>
+              <p
+                className="text-black uppercase leading-none mt-0.5 truncate"
+                style={{
+                  fontFamily: "'Anton', Impact, sans-serif",
+                  fontSize: adaptiveFontSize(refName, { maxWidthPx: 300, baseFontPx: 25, minFontPx: 12, charWidthRatio: 0.45 }),
+                  letterSpacing: '-0.025em',
+                }}
+                title={refName}
+              >
+                {refName}
+              </p>
+            </div>
+          </div>
+          )}
+
+          {/* Details grid */}
+          {/* Combo de produção em CHIPS alinhados (melhoria estética 2026-06-30,
+              opção A): substitui a grade 2-col de rótulo/valor — confere
+              solado/palmilha/cor num olhar, P&B, sem swatch invisível. */}
+          <div className="flex flex-wrap gap-2 content-start">
+            {/* Cor Tiras / Cabedal (mantém o swatch pequeno que já existia) */}
+            <div style={{ border: '1.5px solid #000', padding: '2px 9px' }}>
+              <span className="section-label block" style={{ color: '#000' }}>{hasStraps ? 'Cor Tiras' : 'Cor Cabedal'}</span>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <div className="w-3 h-3 shrink-0" style={{ backgroundColor: resolvedColorHex, border: '1px solid #000' }} />
+                <span
+                  className="uppercase leading-none"
+                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '16px', letterSpacing: '-0.01em', color: '#C00000' }}
+                >
+                  {resolvedColorName}
+                </span>
+              </div>
+            </div>
+
+            {(isMontagem || isSolagem || isColagem) ? (
+              <>
+                {/* Solado */}
+                <div style={{ border: '1.5px solid #000', padding: '2px 9px' }}>
+                  <span className="section-label block" style={{ color: '#000' }}>Solado</span>
+                  <span
+                    className="uppercase leading-none block mt-0.5"
+                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '16px', letterSpacing: '-0.01em', color: '#C00000' }}
+                  >
+                    {resolvedSoleColor}
+                  </span>
+                </div>
+                {/* Palmilha */}
+                <div style={{ border: '1.5px solid #000', padding: '2px 9px' }}>
+                  <span className="section-label block" style={{ color: '#000' }}>Palmilha</span>
+                  <span
+                    className="uppercase leading-none block mt-0.5"
+                    style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '16px', letterSpacing: '-0.01em', color: '#C00000' }}
+                  >
+                    {resolvedInsoleColor}
+                  </span>
+                  {insoleReadyMade && (
+                    <p className="text-[9px] font-mono text-black tracking-widest uppercase mt-0.5">Pronta na cor</p>
+                  )}
+                </div>
+              </>
+            ) : (
+              /* Ordem — setores sem solado/palmilha */
+              <div style={{ border: '1.5px solid #000', padding: '2px 9px' }}>
+                <span className="section-label block" style={{ color: '#000' }}>Ordem</span>
+                <p className="text-xs font-mono font-bold text-black leading-tight mt-0.5">{order.op_number || '—'}</p>
+              </div>
+            )}
+          </div>
+
+          {/* Silk / Estampa — bloco próprio (imagem + nome) */}
+          {silk && !isSilk && !isAcabamento && (
+            <div className="mt-1.5">
+              <span className="section-label block" style={{ color: '#000' }}>Silk / Estampa</span>
+              <div className="flex items-center gap-2 mt-0.5">
+                {silk.silk_url && (
+                  <SignedImage src={silk.silk_url} alt="Silk" loading="eager" className="h-7 w-7 object-contain bg-white" style={{ border: '1px solid #000' }} />
+                )}
+                <span className="text-sm font-bold text-black uppercase tracking-tight">{silk.silk_name}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Grade na coluna de dados — ocupa o vazio à direita da foto. */}
+          {gradeAoLadoDaFoto && <div className="mt-1.5">{renderGradeTable()}</div>}
+
+          {/* Obs. de Corte */}
+          {(isCortePalmilha || isCorteForração) && order.master.technical_notes && (
+            <div className="mt-1.5">
+              <span className="section-label block" style={{ color: '#000' }}>Obs. de Corte</span>
+              <p className="text-xs text-black font-semibold leading-tight mt-0.5">{order.master.technical_notes}</p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+
+    // ── Sequência de Tiras (quando o modelo tem tiras e o PV especificou
+    // cores na ordem da ficha técnica). ──
+    const strapsBlock = hasStraps && strapColors && strapColors.length > 0 ? (
+        <div className="mb-1.5">
+          <div className="flex items-baseline justify-between mb-1 keep-with-next">
+            <span className="section-label" style={{ color: '#000' }}>
+              02 / Sequência de Tiras
+            </span>
+            <span className="font-mono text-[10px] text-black tracking-widest uppercase">
+              {strapColors.length} tira{strapColors.length > 1 ? 's' : ''} · ordem da ficha técnica
+            </span>
+          </div>
+          <table className="w-full text-[10px]" style={{ borderCollapse: 'collapse', border: '1px solid #000' }}>
+            <thead>
+              <tr style={{ borderBottom: '1.5px solid #000' }}>
+                <th className="section-label px-2 py-1 text-left" style={{ color: '#000', width: 36 }}>#</th>
+                <th className="section-label px-2 py-1 text-left" style={{ color: '#000' }}>Tira</th>
+                <th className="section-label px-2 py-1 text-left" style={{ color: '#000' }}>Cor</th>
+                <th className="section-label px-2 py-1 text-left" style={{ color: '#000' }}>Material</th>
+                <th className="section-label px-2 py-1 text-center" style={{ color: '#000', width: 32 }}>OK</th>
+              </tr>
+            </thead>
+            <tbody>
+              {strapColors.map((s, i) => (
+                <tr key={s.id || i} style={{ borderBottom: '1px solid #000' }} className="bg-white">
+                  <td className="px-2 py-1 font-mono font-bold text-black">{i + 1}</td>
+                  <td className="px-2 py-1 font-bold text-black uppercase">{s.label || `TIRA ${i + 1}`}</td>
+                  <td className="px-2 py-1 uppercase" style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '13px', letterSpacing: '-0.01em', color: '#C00000' }}>
+                    {s.color || '—'}
+                  </td>
+                  <td className="px-2 py-1 text-black">{s.group_name || '—'}</td>
+                  <td className="px-2 py-1 text-center">
+                    <span className="inline-block w-4 h-4" style={{ border: '1.5px solid #000' }} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+    ) : null;
+
+    // ── Grade de Produção — FULL WIDTH, hairline editorial ──
+    const gradeBlock = renderGradeTable();
 
     // ── Lista de OPs agrupadas (grupos com múltiplas OPs) ──
     const groupedOpsBlock = opNumbers && opNumbers.length > 1 ? (
@@ -733,7 +792,8 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
       ...(silkBlock ? [silkBlock] : []),
       productInfoBlock,
       ...(strapsBlock ? [strapsBlock] : []),
-      gradeBlock,
+      // Quando a grade subiu para a coluna de dados, não sai também aqui.
+      ...(gradeAoLadoDaFoto ? [] : [gradeBlock]),
       ...(groupedOpsBlock ? [groupedOpsBlock] : []),
       operacaoBlock,
       // Rodapé de conclusão do GRUPO — keepWithPrev: nunca abre página sozinho.
