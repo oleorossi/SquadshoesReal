@@ -992,6 +992,11 @@ export default function SaleOrderFormPanel({
 
    const handlePreSubmit = (e: React.FormEvent) => {
      e.preventDefault();
+     // Dialogs portais (Novo Material, tira, etc.) montam um <form> FORA do DOM
+     // do PV mas DENTRO da árvore React. O submit deles borbulha até aqui e
+     // disparava o gauntlet de save — "Selecione uma cor para todos os itens"
+     // enquanto o operador estava cadastrando justamente essa cor.
+     if (e.target !== e.currentTarget) return;
      setSubmitAttempted(true);
 
      // If user already confirmed duplicates, skip the duplicate check and submit directly.

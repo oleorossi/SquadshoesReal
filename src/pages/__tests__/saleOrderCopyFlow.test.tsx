@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest';
-import { useState } from 'react';
-import { render, screen } from '@testing-library/react';
+import { useState, type FormEvent } from 'react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
@@ -83,11 +83,12 @@ const FORM: SaleOrderFormData = {
 };
 
 function PanelHarness({
-  onCopy, onDelete, onUserEdit,
+  onCopy, onDelete, onUserEdit, onSubmit,
 }: {
   onCopy?: (indices: number[]) => void;
   onDelete?: (indices: number[]) => void;
   onUserEdit?: () => void;
+  onSubmit?: (e: FormEvent) => void;
 }) {
   // Estado real: é ele que faz o remover-item reindexar a seleção de verdade.
   const [items, setItems] = useState<SaleOrderItemFormData[]>(ITEMS);
@@ -105,7 +106,7 @@ function PanelHarness({
           isAdmin
           selectedClientId="cli-1"
           onClientSelect={() => {}}
-          onSubmit={(e) => e.preventDefault()}
+          onSubmit={onSubmit ?? ((e) => e.preventDefault())}
           onCancel={() => {}}
           onUserEdit={onUserEdit}
           isPending={false}
@@ -255,6 +256,25 @@ describe('exclusão em lote — helpers de remoção e desfazer', () => {
     const encolhida = lista('A');
     const restaurada = restoreItemsAt(encolhida, removed);
     expect(refs(restaurada)).toEqual(['A', 'D']);
+  });
+});
+
+describe('save do PV não intercepta o cadastro de cor', () => {
+  it('submit de um form aninhado (Novo Material) não dispara o save do pedido', () => {
+    const onSubmit = vi.fn();
+    render(<PanelHarness onSubmit={onSubmit} />);
+    const pvForm = document.querySelector('form');
+    expect(pvForm).toBeTruthy();
+
+    const nested = document.createElement('form');
+    nested.setAttribute('aria-label', 'novo-material');
+    pvForm!.appendChild(nested);
+
+    fireEvent.submit(nested);
+    expect(onSubmit).not.toHaveBeenCalled();
+
+    fireEvent.submit(pvForm!);
+    expect(onSubmit).toHaveBeenCalledTimes(1);
   });
 });
 

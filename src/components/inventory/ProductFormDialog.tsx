@@ -154,6 +154,31 @@ function getBaseName(name: string): string {
   return name.trim().toUpperCase();
 }
 
+/** SKU estável pra variante de cor (fluxo "cadastrar cor" no PV). Espelha o
+ *  token de QuickFamilyDialog: GRUPO-COR, com sufixo se já existir. */
+function suggestSkuForColor(
+  groupName: string,
+  color: string,
+  existing: Array<{ sku?: string | null }>,
+): string {
+  const token = (value: string, fallback: string) => {
+    const clean = (value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .toUpperCase();
+    return (clean || fallback).slice(0, 12);
+  };
+  const base = `${token(groupName, 'MAT')}-${token(color, 'COR')}`;
+  const used = new Set(
+    existing.map((p) => (p.sku || '').trim().toUpperCase()).filter(Boolean),
+  );
+  if (!used.has(base)) return base;
+  let suffix = 2;
+  while (used.has(`${base}-${suffix}`)) suffix += 1;
+  return `${base}-${suffix}`;
+}
+
 export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultiple, product, onEditProduct, defaultGroupId, defaultColor }: ProductFormDialogProps) {
   const navigate = useNavigate();
   const [form, setForm] = useState<ProductFormData>(emptyForm);
@@ -516,12 +541,43 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
       // Fluxo "cadastrar cor" (PV): semeia a cor digitada e o nome `GRUPO: Cor`.
       const seededColor = (defaultColor || '').trim();
       const seededName = seededColor ? `${defaultGroup?.name ? defaultGroup.name + ': ' : ''}${seededColor}` : '';
+      const sibling = defaultGroupId
+        ? allProducts.find(p =>
+            p.group_id === defaultGroupId
+            && p.active
+            && (p.color || '').trim() !== ''
+            && (p.color || '').trim().toLowerCase() !== seededColor.toLowerCase())
+        : undefined;
+      const seededSku = seededColor
+        ? suggestSkuForColor(defaultGroup?.name || seededName, seededColor, allProducts)
+        : '';
       setForm({
         ...emptyForm,
         group_id: defaultGroupId || null,
-        category: defaultGroup ? sectorOfGroup(defaultGroup) : '',
+        category: defaultGroup ? sectorOfGroup(defaultGroup) : (sibling?.category || ''),
         color: seededColor,
         name: seededName,
+        sku: seededSku,
+        ...(sibling ? {
+          technical_name: sibling.technical_name || '',
+          unit: sibling.unit || 'un',
+          purchase_unit: normalizeUnit(sibling.purchase_unit || sibling.unit),
+          purchase_order_unit: normalizeUnit(sibling.purchase_unit || sibling.unit),
+          production_unit: sibling.unit || 'un',
+          conversion_rate: sibling.conversion_rate ?? (
+            normalizeUnit(sibling.purchase_unit || sibling.unit) !== normalizeUnit(sibling.unit) ? 0 : 1
+          ),
+          location: sibling.location || '',
+          min_stock: sibling.min_stock ?? 0,
+          max_stock: sibling.max_stock ?? 0,
+          dimensions_length: sibling.dimensions_length || 0,
+          dimensions_width: sibling.dimensions_width || 0,
+          dimensions_thickness: sibling.dimensions_thickness || 0,
+          dimensions_unit: sibling.dimensions_unit || (sibling.dimensions_width ? '' : 'mm'),
+          calculation_method: normalizeCalculationMethod(sibling.calculation_method),
+          supplier_id: sibling.supplier_id || null,
+          consumption_unit: (sibling as any).consumption_unit || sibling.unit || null,
+        } : {}),
       });
       setSoladoColor('');
       setSoladoGrade({});
@@ -529,22 +585,32 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
       setShoeCategory('adulto');
       setSizeFrom(null);
       setSizeTo(null);
-      setAutoFilled(false);
+      setAutoFilled(!!sibling);
       setMultiColorMode(false);
       setMultiColors([]);
       setColorInput('');
       setErrors({});
       setAttempted(false);
-      setPlateLength(0);
-      setPlateWidth(0);
-      setPlateThickness(0);
-      setPlateUnit('mm');
+      if (sibling) {
+        setPlateLength(sibling.dimensions_length || 0);
+        setPlateWidth(sibling.dimensions_width || 0);
+        setPlateThickness(sibling.dimensions_thickness || 0);
+        setPlateUnit(sibling.dimensions_unit || (sibling.dimensions_width ? '' : 'mm'));
+      } else {
+        setPlateLength(0);
+        setPlateWidth(0);
+        setPlateThickness(0);
+        setPlateUnit('mm');
+      }
       setCreateComponentSheet(false);
       setDuplicateMatch(null);
       setDuplicateConfirmed(false);
       setGroupConflict(null);
       setYieldPerSize({});
     }
+    // allProducts/defaultColor/defaultGroupId entram no seed mas ficam fora das
+    // deps: o dialog do PV desmonta ao fechar. Relê-los com o form aberto
+    // apagaria estoque/custo que o operador já digitou.
   }, [product, open, groups]);
 
   const tryAutoFill = useCallback((name: string) => {
@@ -687,6 +753,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     setAttempted(true);
     const errs = validate();
     setErrors(errs);
@@ -1129,7 +1196,12 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                 Fornecedor span 2 também. Removidos: "Item Padrão de Solado", "Cor"
                 e "Rendimento Técnico" — viram parte de outros fluxos. */}
             <div className="space-y-3 mt-4">
-            <FormSection title="Identidade" defaultOpen forceOpen={attempted && (errors.name || errors.sku || errors.color)}>
+            <FormSection
+              title="Identidade"
+              defaultOpen={!defaultColor}
+              forceOpen={attempted && (errors.name || errors.sku || errors.color)}
+              summary={[form.name, form.color, form.sku].filter(Boolean).join(' · ')}
+            >
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
              <div className="sm:col-span-2">
               <Label htmlFor="name" className={attempted && errors.name ? 'text-destructive' : ''}>Nome *</Label>
