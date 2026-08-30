@@ -1,1 +1,1 @@
-import { ThemeProvider } from "@/components/theme-provider";
+PLACEHOLDER_WILL_FAIL_IF_THIS_STAYS
