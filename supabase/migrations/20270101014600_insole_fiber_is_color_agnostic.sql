@@ -15,25 +15,62 @@
 
 BEGIN;
 
--- 1. Marca a estrutura (fibra/placa/EVA/celulose) como agnóstica a cor.
---    Não toca forro, revestimento, napa nem palmilha pronta.
+-- 1. Marca somente a estrutura da PALMILHA (fibra/placa/EVA/celulose) como
+--    agnóstica a cor. O setor é parte obrigatória do predicado: materiais de
+--    cabedal podem conter "EVA" no nome e ainda assim variar por cor.
+--    Não toca forro, revestimento, napa, palmilha pronta nem outro setor.
 UPDATE public.product_groups pg
    SET is_color_agnostic = true,
        is_bom_color_source = false
  WHERE NOT COALESCE(pg.is_color_agnostic, false)
    AND COALESCE(pg.is_family, false) = false
-   AND COALESCE(pg.sector, '') IS DISTINCT FROM 'Forração da Palmilha'
+   AND COALESCE(pg.sector, '') = 'Palmilha'
    AND translate(lower(btrim(pg.name)),
          'áàâãäéèêëíìîïóòôõöúùûüç',
          'aaaaaeeeeiiiiooooouuuuc')
        !~ '(forr|revest|forro|lining|napa|pronta|pronto)'
-   AND (
-        COALESCE(pg.sector, '') = 'Palmilha'
-     OR translate(lower(btrim(pg.name)),
+   AND translate(lower(btrim(pg.name)),
+         'áàâãäéèêëíìîïóòôõöúùûüç',
+         'aaaaaeeeeiiiiooooouuuuc')
+       ~ '(fibra|placa|\yeva\y|celulose|papelao|strobel|^palmilha$)';
+
+-- Fail-closed: material estrutural fora da Palmilha com várias cores ativas
+-- continua gerido por cor. Assim um cabedal composto cujo nome contém "EVA"
+-- não pode ser desclassificado silenciosamente por uma ampliação futura.
+DO $assert_colored_non_insole_materials$
+DECLARE
+  v_group_name text;
+BEGIN
+  SELECT pg.name
+    INTO v_group_name
+    FROM public.product_groups pg
+   WHERE COALESCE(pg.sector, '') <> 'Palmilha'
+     AND COALESCE(pg.is_family, false) = false
+     AND translate(lower(btrim(pg.name)),
            'áàâãäéèêëíìîïóòôõöúùûüç',
            'aaaaaeeeeiiiiooooouuuuc')
-        ~ '(fibra|placa|\yeva\y|celulose|papelao|strobel|^palmilha$)'
-   );
+         ~ '(fibra|placa|\yeva\y|celulose|papelao|strobel|^palmilha$)'
+     AND (
+       COALESCE(pg.is_color_agnostic, false)
+       OR NOT COALESCE(pg.is_bom_color_source, true)
+     )
+     AND EXISTS (
+       SELECT 1
+         FROM public.products p
+        WHERE p.group_id = pg.id
+          AND p.active = true
+        GROUP BY p.group_id
+       HAVING count(DISTINCT NULLIF(btrim(p.color), '')) > 1
+     )
+   LIMIT 1;
+
+  IF v_group_name IS NOT NULL THEN
+    RAISE EXCEPTION
+      'Material colorido fora da Palmilha perdeu identidade por cor: %',
+      v_group_name;
+  END IF;
+END;
+$assert_colored_non_insole_materials$;
 
 COMMENT ON COLUMN public.product_groups.is_color_agnostic IS
   'Material-base sem cor (EVA, cola, fibra/placa da palmilha): consumo e débito resolvem pelo grupo, nunca color_mismatch. A cor da palmilha entra no forro que a reveste.';
