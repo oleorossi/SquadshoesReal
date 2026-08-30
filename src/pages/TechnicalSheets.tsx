@@ -11,6 +11,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { buildBulkSolePatch, evaluateTechnicalSheetReadiness } from '@/lib/technicalSheetReadiness';
 import type { TechnicalSheetAuditSignals } from '@/lib/technicalSheetReadiness';
+import { buildTechnicalSheetPatch, cloneTechnicalSheetSnapshot } from '@/lib/technicalSheetPatch';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useSearchParams, Link } from 'react-router-dom';
 import { SignedImage } from '@/components/ui/signed-image';
@@ -1391,6 +1392,10 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
     f.strap_colors = ensureTechnicalStrapLineIds(f.strap_colors);
     return f;
   });
+  // Baseline isolado do formulário para que o save geral mande somente as
+  // colunas realmente alteradas. Não comparar direto com `sheet`: o form
+  // hidrata defaults e normaliza identidades legadas de tiras ao abrir.
+  const persistedFormRef = React.useRef<SheetFormData>(cloneTechnicalSheetSnapshot(form));
   const activeStrapIdentityGroups = useMemo(() => {
     const selectedIds = new Set((form.strap_colors || [])
       .map((line) => line.identity_group_id)
@@ -1481,6 +1486,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       }
     }
     f.strap_colors = ensureTechnicalStrapLineIds(f.strap_colors);
+    persistedFormRef.current = cloneTechnicalSheetSnapshot(f);
     setForm(f);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sheet.id, sheet.updated_at]);
@@ -1861,8 +1867,26 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
         }
       }
       payload.strap_colors = normalizedStraps;
-      await updateSheet.mutateAsync({ id: sheet.id, data: payload });
-      await queryClient.invalidateQueries({ queryKey: ['sheet_variant_cascade', sheet.id] });
+      const patch = buildTechnicalSheetPatch(
+        persistedFormRef.current as unknown as Record<string, unknown>,
+        payload as Record<string, unknown>,
+        ['production_sectors', 'aviamento_steps'],
+      ) as Partial<SheetFormData>;
+
+      // O usuário pode editar e voltar ao valor original. Nesse caso a UI
+      // estava dirty, mas não existe alteração persistível — não há motivo
+      // para emitir UPDATE nem acionar os gatilhos da ficha.
+      if (Object.keys(patch).length === 0) {
+        setDirty(false);
+        onSaveSuccess();
+        return;
+      }
+
+      await updateSheet.mutateAsync({ id: sheet.id, data: patch });
+      // A ficha já foi persistida; a aba de variantes pode revalidar em
+      // segundo plano sem manter a ação "Salvar" presa a outra ida à rede.
+      void queryClient.invalidateQueries({ queryKey: ['sheet_variant_cascade', sheet.id] });
+      persistedFormRef.current = cloneTechnicalSheetSnapshot(payload as SheetFormData);
       setDirty(false);
       onSaveSuccess();
     } catch (err) {
@@ -4062,7 +4086,9 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
             assemblyCapacityPerDay={Number((sheet as any).assembly_capacity_per_day ?? 0)}
             expeditionCapacityPerDay={Number((sheet as any).expedition_capacity_per_day ?? 0)}
             finishingCapacityPerDay={Number((sheet as any).finishing_capacity_per_day ?? 0)}
-            onUpdateSheet={(data) => updateSheet.mutate({ id: sheet.id, data: data as any })}
+            onUpdateSheet={async (data) => {
+              await updateSheet.mutateAsync({ id: sheet.id, data: data as Partial<SheetFormData> });
+            }}
             activeSectors={Array.isArray((sheet as any).production_sectors) ? ((sheet as any).production_sectors as string[]) : undefined}
             sheetSizes={sheet.sizes || ''}
             // Lê do FORM (não do sheet) e propaga toda edição pro form via

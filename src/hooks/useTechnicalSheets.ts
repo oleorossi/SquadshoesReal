@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient, UseQueryResult, QueryClient } fr
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { ensureTechnicalStrapLineIds } from '@/lib/technicalStrapLines';
+import { replaceTechnicalSheetCacheRow } from '@/lib/technicalSheetPatch';
 
 /**
  * Alterar uma ficha invalida o plano/snapshot por trigger do banco, mas NUNCA
@@ -338,6 +339,13 @@ import { sanitizeUuidFields } from '@/lib/utils';
  * lugar, e bloquear aqui impediria salvar as fichas legadas sem nome.
  */
 type SheetNameRow = { id: string; name: string | null; code: string | null };
+type TechnicalSheetCacheRow = {
+  id: string;
+  name?: string | null;
+  code?: string | null;
+  shoe_category?: string | null;
+  [key: string]: unknown;
+};
 
 export async function findSheetNameCollision(
   name: string,
@@ -429,14 +437,15 @@ export function useUpdateSheet() {
         }
       }
       const payload = sanitizeUuidFields(data as any);
-      // .select('id') retorna as linhas afetadas. Se RLS bloquear silently
-      // (admin do client sem role admin no DB), data fica []. Antes esse caso
-      // passava por "sucesso" e o user via toast verde sem nada ter sido salvo.
+      // .select('*') retorna a linha final para atualizar só esse item no cache.
+      // Se RLS bloquear silently (admin do client sem role admin no DB), data
+      // fica []. Antes esse caso passava por "sucesso" e o user via toast verde
+      // sem nada ter sido salvo.
       const { data: updated, error } = await (supabase as any)
         .from('technical_sheets')
         .update(payload)
         .eq('id', id)
-        .select('id');
+        .select('*');
       if (error) {
         console.error('[useUpdateSheet] erro Supabase:', { id, payload, error });
         throw error;
@@ -447,10 +456,29 @@ export function useUpdateSheet() {
           'Atualização não persistiu. Verifique permissões (admin/gerente) ou se a ficha foi excluída em outra aba.'
         );
       }
-      return id;
+      return updated[0];
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['technical_sheets'] });
+    onSuccess: (updatedSheet) => {
+      // O UPDATE já devolve a linha final (incluindo updated_at e efeitos de
+      // triggers). Substituí-la no cache evita baixar novamente todas as fichas
+      // e seus JSONBs pesados após cada pequena correção.
+      qc.setQueryData<TechnicalSheetCacheRow[]>(['technical_sheets'], (cached) => (
+        replaceTechnicalSheetCacheRow(cached, updatedSheet)
+      ));
+      // A lista leve tem chave própria e antes era invalidada por prefixo. Ela
+      // também precisa refletir renome/código/categoria sem um refetch global.
+      qc.setQueryData<TechnicalSheetCacheRow[]>(['technical_sheets', 'lite'], (cached) => {
+        if (!cached) return cached;
+        return cached.map((row) => row.id === updatedSheet.id
+          ? {
+              ...row,
+              name: updatedSheet.name,
+              code: updatedSheet.code,
+              shoe_category: updatedSheet.shoe_category,
+            }
+          : row);
+      });
+      qc.invalidateQueries({ queryKey: ['technical_sheets', 'cabedal-par-pe-audit'] });
       invalidateSheetImpact(qc);
       toast.success('Ficha atualizada; OPs existentes foram preservadas e o impacto ficou sinalizado.');
     },
