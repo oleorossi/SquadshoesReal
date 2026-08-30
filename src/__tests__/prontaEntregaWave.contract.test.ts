@@ -37,5 +37,7 @@ describe('onda pronta entrega', () => {
     expect(panel).toContain('useSetReadyStockGrade');
     expect(panel).toContain('groupItemsByLot');
     expect(panel).toContain('encodeGradeNotes');
+    const app = read('src/App.tsx');
+    expect(app).toContain('publicVitrineRoute');
   });
 });
