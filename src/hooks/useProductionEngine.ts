@@ -26,6 +26,8 @@ export interface SectorSetting {
   check_prev_sector_limit: boolean;
   check_material_reserved: boolean;
   ficha_capacity_column: string | null;
+  /** Dias úteis de antecipação. Ausente até a migration 14100. */
+  start_offset_days?: number;
   updated_at: string;
 }
 
