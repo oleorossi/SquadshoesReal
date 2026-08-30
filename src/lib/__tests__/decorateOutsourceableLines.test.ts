@@ -66,4 +66,19 @@ describe('decorateOutsourceableLines', () => {
     expect(decorated[0].queue_pull).toBe('ambos');
     expect(decorated[1].queue_pull).toBe('prazo_falta');
   });
+
+  it('falta de forração não pinta prazo_falta na Costura quando o cabedal cobre', () => {
+    const kitRowsByOrder = new Map<string, ConsumptionRow[]>([
+      ['op', [
+        row({ componentType: 'Cabedal', groupName: 'NAPA', totalQuantity: 12, available: 12 }),
+        row({ componentType: 'Forração', groupName: 'FORRO', totalQuantity: 20, available: 0 }),
+      ]],
+    ]);
+
+    const decorated = decorateOutsourceableLines([
+      line({ order_id: 'op', sector: 'costura', required_return_date: '2026-09-02' }),
+    ], kitRowsByOrder);
+
+    expect(decorated[0].queue_pull).toBe('ambos');
+  });
 });

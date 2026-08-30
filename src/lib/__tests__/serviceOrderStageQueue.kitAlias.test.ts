@@ -26,4 +26,19 @@ describe('serviceOrderStageQueue kit alias', () => {
     expect(kit.map((item) => item.groupName)).toEqual(['FIVELA 20MM']);
     expect(assessStageKitStock(kit, 'mesa').status).toBe('ready');
   });
+
+  it('Outros genérico também entra no Aviamento como BOM; forração continua fora da Costura', () => {
+    const aviamento = filterRowsToStageKit([
+      row({ componentType: 'Outros', groupName: 'REBITE 6MM' }),
+      row({ componentType: 'Cabedal', groupName: 'NAPA' }),
+    ], 'mesa');
+    expect(aviamento.map((item) => item.groupName)).toEqual(['REBITE 6MM']);
+
+    const costura = filterRowsToStageKit([
+      row({ componentType: 'Cabedal', groupName: 'NAPA' }),
+      row({ componentType: 'Forração', groupName: 'FORRO' }),
+      row({ componentType: 'Outros', groupName: 'FIVELA 20MM' }),
+    ], 'costura');
+    expect(costura.map((item) => item.groupName)).toEqual(['NAPA', 'FIVELA 20MM']);
+  });
 });

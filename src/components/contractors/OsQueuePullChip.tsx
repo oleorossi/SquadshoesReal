@@ -11,7 +11,7 @@ export function OsQueuePullChip({ pull }: { pull: QueuePullFilter }) {
     <Badge
       variant="outline"
       title={meta.hint}
-      className={cn('h-5 text-[9px] uppercase tracking-wider', meta.className)}
+      className={cn('h-5 shrink-0 text-[9px] uppercase tracking-wider', meta.className)}
     >
       {meta.label}
     </Badge>

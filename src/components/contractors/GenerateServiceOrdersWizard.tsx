@@ -13,6 +13,7 @@ import { NumberInput } from '@/components/ui/number-input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { SearchableSelect, type SearchableOption } from '@/components/ui/searchable-select';
 import { EmptyState } from '@/components/ui/empty-state';
+import { OsQueuePullChip } from '@/components/contractors/OsQueuePullChip';
 import { toast } from 'sonner';
 import { formatCurrency, cn } from '@/lib/utils';
 import {
@@ -515,9 +516,16 @@ export function GenerateServiceOrdersWizard({
                         onCheckedChange={() => toggleOp(line)}
                       />
                       <div id={`${lineId}-label`} className="min-w-0 flex-1">
-                        <div className="truncate text-xs text-foreground">
-                          <span className="font-mono">{line.op_number}</span>
-                          <span className="text-muted-foreground"> · {line.ref_code || '—'}{line.color ? ` · ${line.color}` : ''}</span>
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <span className="shrink-0 font-mono text-xs text-foreground">{line.op_number}</span>
+                          {line.queue_pull ? (
+                            <span className="shrink-0">
+                              <OsQueuePullChip pull={line.queue_pull} />
+                            </span>
+                          ) : null}
+                          <span className="min-w-0 truncate text-xs text-muted-foreground">
+                            · {line.ref_code || '—'}{line.color ? ` · ${line.color}` : ''}
+                          </span>
                         </div>
                         {line.already_has_os ? (
                           <div className="text-[10px] text-amber-700 dark:text-amber-400">OS já gerada para esta OP e serviço</div>
