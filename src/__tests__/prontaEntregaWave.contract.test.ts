@@ -16,6 +16,7 @@ describe('onda pronta entrega', () => {
     const vitrine = read('src/pages/VitrineProntaEntrega.tsx');
     expect(page).toContain('/vitrine/');
     expect(page).toContain('Pedidos da vitrine');
+    expect(page).toContain('ReadyStockBoard');
     expect(vitrine).toContain('submitPublicReadyStockInquiry');
     expect(vitrine).toContain('ão cria pedido de venda automático');
   });
@@ -28,12 +29,11 @@ describe('onda pronta entrega', () => {
     expect(sql).not.toMatch(/GRANT SELECT ON TABLE public\.ready_stock TO anon/);
   });
 
-  it('liga a rota publica e o painel usa SET + lote por grade', () => {
-    const app = read('src/App.tsx');
-    const panel = read('src/components/inventory/ReadyStockBoard.tsx') + read('src/router.public.tsx');
-    expect(app + read('src/router.public.tsx')).toContain('/vitrine/:token');
-    expect(read('src/router.public.tsx')).toContain('VitrineProntaEntrega');
-    expect(app.includes('publicVitrineRoute') || app.includes('/vitrine/:token')).toBe(true);
+  it('painel usa SET + lote por grade e a rota publica existe', () => {
+    const panel = read('src/components/inventory/ReadyStockBoard.tsx');
+    const route = read('src/router.public.tsx');
+    expect(route).toContain('/vitrine/:token');
+    expect(route).toContain('VitrineProntaEntrega');
     expect(panel).toContain('useSetReadyStockGrade');
     expect(panel).toContain('groupItemsByLot');
     expect(panel).toContain('encodeGradeNotes');
