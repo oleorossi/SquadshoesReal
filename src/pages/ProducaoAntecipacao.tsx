@@ -258,12 +258,14 @@ export default function ProducaoAntecipacao() {
     enabled: refIds.length > 0,
     staleTime: 60_000,
     queryFn: async () => {
-      const map = new Map<string, any>();
+      const map = new Map<string, Record<string, unknown>>();
       const { data } = await supabase
         .from('technical_sheets')
         .select('id, name, code, image_url, shoe_category, production_sectors, corte_palmilha_capacity_per_day, cutting_capacity_per_day, sewing_capacity_per_day, assembly_capacity_per_day, finishing_capacity_per_day, mesa_daily_capacity, costura_capacity_per_day, costura_cabedal_capacity_per_day, costura_palmilha_capacity_per_day, silk_capacity_per_day, gluing_capacity_per_day, soling_capacity_per_day, expedition_capacity_per_day, lead_time_corte_dias, lead_time_costura_dias, lead_time_montagem_dias, lead_time_acabamento_dias, lead_time_expedicao_dias, requires_cutting, requires_sewing')
         .in('id', refIds);
-      (data || []).forEach((s: any) => map.set(s.id, s));
+      for (const s of data ?? []) {
+        map.set(s.id, s as unknown as Record<string, unknown>);
+      }
       return map;
     },
   });

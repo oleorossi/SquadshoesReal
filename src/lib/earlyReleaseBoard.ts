@@ -121,11 +121,15 @@ function laneFromSchedule(
   return { start, end, pairs };
 }
 
+function asString(v: unknown): string | null {
+  return typeof v === 'string' && v.trim() ? v : null;
+}
+
 function laneFromWindows(
-  sheet: any,
+  sheet: Record<string, unknown> | undefined,
   qty: number,
   deadlineISO: string,
-  categoryDefaults: any,
+  categoryDefaults: unknown,
   offsets: SectorOffsets,
   key: EarlyLaneKey,
 ): { start: string | null; end: string | null; pairs: number } {
@@ -157,8 +161,8 @@ function daysAheadOf(early: string | null, cortes: string | null): number {
 export function buildEarlyReleaseBoard(input: {
   ops: EarlyReleaseOp[];
   schedule: EarlyReleaseScheduleRow[];
-  sheetMap: Map<string, any>;
-  categoryDefaultsMap?: Map<string, any> | null;
+  sheetMap: Map<string, Record<string, unknown>>;
+  categoryDefaultsMap?: Map<string, unknown> | null;
   offsets?: SectorOffsets;
 }): EarlyReleaseBoard {
   const { ops, schedule, sheetMap, categoryDefaultsMap, offsets = {} } = input;
@@ -205,8 +209,8 @@ export function buildEarlyReleaseBoard(input: {
 
     rows.push({
       reference_id,
-      reference_name: group.find((o) => o.reference_name)?.reference_name || sheet?.name || sheet?.code || 'Referência',
-      photo_url: group.find((o) => o.photo_url)?.photo_url || sheet?.image_url || null,
+      reference_name: group.find((o) => o.reference_name)?.reference_name || asString(sheet?.name) || asString(sheet?.code) || 'Referência',
+      photo_url: group.find((o) => o.photo_url)?.photo_url || asString(sheet?.image_url),
       colors,
       pairs,
       opCount: group.length,
