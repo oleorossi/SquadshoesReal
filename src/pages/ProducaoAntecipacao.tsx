@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Clock, Hand, Pen, Scissors, Sliders as SlidersIcon, ArrowsCounterClockwise as RefreshCw } from '@phosphor-icons/react';
+import {
+  Clock, Hand, Pen, Scissors, Sliders as SlidersIcon,
+  ArrowsCounterClockwise as RefreshCw, FileXls, ListChecks, Stack as Layers,
+} from '@phosphor-icons/react';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,101 +12,62 @@ import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
-import { SignedImage } from '@/components/ui/signed-image';
 import { SearchInput } from '@/components/ui/search-input';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { todayISO, safeFormatBR } from '@/lib/date';
 import { fetchAllPages } from '@/lib/supabasePaginate';
 import { supabase } from '@/integrations/supabase/client';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   useSectorSettings, useUpdateSectorSetting, useRecomputeSchedule,
   useEnsureFreshSchedule, useProductionQueueDetail,
 } from '@/hooks/useProductionEngine';
 import { useCan } from '@/hooks/useAccessControl';
 import { useRealtimeOrderStages } from '@/hooks/useOrderStages';
+import { useUrlTabState } from '@/hooks/useUrlTabState';
 import {
   fetchCategoryDefaultsMap, offsetsFromSettings, loadHolidayCache, setHolidayCache,
 } from '@/lib/sectorCapacity';
 import { useHolidays } from '@/hooks/useTimesheet';
+import { fetchCanonicalConsumptionReport } from '@/lib/canonicalConsumptionReport';
+import { formatUnitLabel } from '@/lib/unitLabels';
+import { toast } from 'sonner';
 import {
-  buildEarlyReleaseBoard, horizonPct,
-  type EarlyLaneKey, type EarlyReleaseOp, type EarlyReleaseScheduleRow, type EarlyReleaseRow,
+  buildEarlyReleaseBoard,
+  type EarlyReleaseOp, type EarlyReleaseScheduleRow, type EarlyReleaseRow,
 } from '@/lib/earlyReleaseBoard';
-
-const LANE_TONE: Record<EarlyLaneKey, { bar: string; label: string }> = {
-  aviamento: { bar: 'bg-[hsl(var(--stage-assy-fg))]', label: 'text-[hsl(var(--stage-assy-fg))]' },
-  cabedal: { bar: 'bg-[hsl(var(--stage-sew-fg))]', label: 'text-[hsl(var(--stage-sew-fg))]' },
-  cortes: { bar: 'bg-[hsl(var(--stage-cut-fg))]', label: 'text-[hsl(var(--stage-cut-fg))]' },
-};
+import {
+  buildAviamentoSummaryRows, buildAntecipacaoMaterialRows, nestAntecipacaoMaterials,
+  downloadAntecipacaoXlsx, type EarlyMaterialFact,
+} from '@/lib/earlyReleaseExport';
 
 const fmtPairs = (n: number) => n.toLocaleString('pt-BR');
 const fmtDay = (iso: string | null) => safeFormatBR(iso, '—', 'dd/MM');
+const laneText = (row: EarlyReleaseRow, key: EarlyReleaseRow['lanes'][number]['key']) => {
+  const lane = row.lanes.find((l) => l.key === key);
+  if (!lane?.start) return '—';
+  return `${fmtDay(lane.start)} → ${fmtDay(lane.end)}`;
+};
 
-function LaneBar({
-  start, end, horizonStart, horizonEnd, tone, label, today,
-}: {
-  start: string | null; end: string | null;
-  horizonStart: string | null; horizonEnd: string | null;
-  tone: string; label: string; today: string;
-}) {
-  if (!start || !end || !horizonStart || !horizonEnd) {
-    return (
-      <div className="h-7 rounded-md bg-muted/40 flex items-center px-2">
-        <span className="text-[10px] uppercase tracking-wide text-muted-foreground">sem janela</span>
-      </div>
-    );
+function OrderChips({ pvs, clients }: { pvs: string[]; clients: string[] }) {
+  if (pvs.length === 0 && clients.length === 0) {
+    return <span className="text-muted-foreground">—</span>;
   }
-  const left = horizonPct(start, horizonStart, horizonEnd);
-  const right = horizonPct(end, horizonStart, horizonEnd);
-  const width = Math.max(3, right - left);
-  const todayLeft = horizonPct(today, horizonStart, horizonEnd);
   return (
-    <div className="relative h-7 rounded-md bg-muted/30 overflow-hidden">
-      <div
-        className={cn('absolute top-0.5 bottom-0.5 rounded-sm min-w-[10px]', tone)}
-        style={{ left: `${left}%`, width: `${width}%` }}
-        title={`${label} ${fmtDay(start)} → ${fmtDay(end)}`}
-      />
-      {todayLeft >= 0 && todayLeft <= 100 && (
-        <div
-          className="absolute top-0 bottom-0 w-px bg-foreground/80"
-          style={{ left: `${todayLeft}%` }}
-          title="Hoje"
-        />
-      )}
-    </div>
-  );
-}
-
-function HorizonAxis({
-  start, end, today,
-}: {
-  start: string | null; end: string | null; today: string;
-}) {
-  if (!start || !end) return null;
-  const todayLeft = horizonPct(today, start, end);
-  const showToday = todayLeft > 2 && todayLeft < 98;
-  return (
-    <div className="relative h-7 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-      <span className="absolute left-0 top-0">{fmtDay(start)}</span>
-      {showToday && (
-        <span
-          className="absolute top-0 -translate-x-1/2 text-foreground"
-          style={{ left: `${todayLeft}%` }}
-        >
-          hoje
-        </span>
-      )}
-      <span className="absolute right-0 top-0">{fmtDay(end)}</span>
-      {showToday && (
-        <div
-          className="absolute top-5 bottom-0 w-px bg-foreground/70"
-          style={{ left: `${todayLeft}%` }}
-          aria-hidden
-        />
-      )}
+    <div className="flex flex-wrap gap-1">
+      {pvs.map((n) => (
+        <Badge key={`pv-${n}`} variant="mono" className="normal-case tracking-normal text-[11px]">
+          {n}
+        </Badge>
+      ))}
+      {clients.map((n) => (
+        <Badge key={`cl-${n}`} variant="info" className="normal-case tracking-normal font-mono text-[11px]">
+          Cliente {n}
+        </Badge>
+      ))}
     </div>
   );
 }
@@ -144,85 +108,34 @@ function OffsetField({
   );
 }
 
-function ReferenceCard({
-  row, horizonStart, horizonEnd, today,
-}: {
-  row: EarlyReleaseRow; horizonStart: string | null; horizonEnd: string | null; today: string;
-}) {
-  const opsPreview = row.opNumbers.slice(0, 6).join(' · ');
-  const extraOps = row.opNumbers.length - 6;
-  return (
-    <Card>
-      <CardContent className="p-4 space-y-3">
-        <div className="flex items-start gap-3">
-          {row.photo_url ? (
-            <SignedImage src={row.photo_url} alt={row.reference_name} className="h-14 w-14 rounded-md object-cover shrink-0 bg-muted" />
-          ) : (
-            <div className="h-14 w-14 rounded-md bg-muted shrink-0" />
-          )}
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-baseline gap-2">
-              <h3 className="font-semibold text-base truncate">{row.reference_name}</h3>
-              {row.daysAhead > 0 && (
-                <Badge variant="outline" className="font-mono text-[11px]">
-                  {row.daysAhead} dia{row.daysAhead === 1 ? '' : 's'} na frente
-                </Badge>
-              )}
-              {row.source === 'cascata' && (
-                <Badge variant="secondary" className="text-[10px] uppercase tracking-wide">estimativa</Badge>
-              )}
-            </div>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              <span className="font-mono">{fmtPairs(row.pairs)}</span> pares · {row.opCount} OP{row.opCount === 1 ? '' : 's'}
-              {row.pvCount > 0 ? ` · ${row.pvCount} PV${row.pvCount === 1 ? '' : 's'}` : ''}
-              {row.colors.length > 0 ? ` · ${row.colors.join(', ')}` : ''}
-            </p>
-            {opsPreview && (
-              <p className="text-[11px] font-mono text-muted-foreground mt-0.5 truncate" title={row.opNumbers.join(' · ')}>
-                {opsPreview}{extraOps > 0 ? ` +${extraOps}` : ''}
-              </p>
-            )}
-          </div>
-        </div>
-
-        <div className="space-y-1.5 sm:space-y-0 sm:grid sm:grid-cols-[7.5rem_6.5rem_1fr_4.5rem] sm:gap-x-2 sm:gap-y-1.5 sm:items-center">
-          {row.lanes.map((lane) => (
-            <div key={lane.key} className="space-y-0.5 sm:contents">
-              <div className="flex items-baseline justify-between gap-2 sm:contents">
-                <span className={cn('text-[10px] font-bold uppercase tracking-wider truncate', LANE_TONE[lane.key].label)}>
-                  {lane.label}
-                </span>
-                <span className="text-[11px] font-mono tabular-nums text-muted-foreground whitespace-nowrap">
-                  {lane.start ? `${fmtDay(lane.start)} → ${fmtDay(lane.end)}` : '—'}
-                </span>
-              </div>
-              <LaneBar
-                start={lane.start}
-                end={lane.end}
-                horizonStart={horizonStart}
-                horizonEnd={horizonEnd}
-                tone={LANE_TONE[lane.key].bar}
-                label={lane.label}
-                today={today}
-              />
-              <span className="hidden sm:block text-[11px] font-mono tabular-nums text-right text-muted-foreground">
-                {lane.pairs > 0 ? `${fmtPairs(lane.pairs)} p` : ''}
-              </span>
-            </div>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
-  );
+async function loadMaterialFacts(orderIds: string[]): Promise<EarlyMaterialFact[]> {
+  if (orderIds.length === 0) return [];
+  const report = await fetchCanonicalConsumptionReport({ orderIds });
+  return report.lines
+    .filter((line) => line.line_kind !== 'packaging' && line.required > 0)
+    .map((line) => ({
+      order_id: line.scope_key,
+      componentType: line.component,
+      groupName: line.product_group_name || line.product_name,
+      materialName: line.product_name,
+      materialColor: line.product_color || line.color || '',
+      quantity: line.required,
+      unit: line.product_unit,
+    }));
 }
 
 /**
  * Antecipação — Aviamento e Costura Cabedal contra o início da produção (cortes).
- * Uma linha por referência: pares somados, não por PV.
+ * Agrupamento do Aviamento: referência + cor. PV e pedido do cliente em destaque.
  */
 export default function ProducaoAntecipacao() {
   useEnsureFreshSchedule();
   useRealtimeOrderStages();
+  const qc = useQueryClient();
+  const { value: aba, setValue: setAba } = useUrlTabState({
+    values: ['resumo', 'materiais'] as const,
+    defaultValue: 'resumo',
+  });
   const canEditOffset = useCan('/producao/setores').canEdit;
   const { data: settings = [] } = useSectorSettings();
   const update = useUpdateSectorSetting();
@@ -230,7 +143,7 @@ export default function ProducaoAntecipacao() {
   const { data: queue = [], isLoading: loadingQueue } = useProductionQueueDetail();
   const { data: holidays = [] } = useHolidays();
   const [q, setQ] = useState('');
-  const today = todayISO();
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => { setHolidayCache(holidays); }, [holidays]);
 
@@ -238,19 +151,45 @@ export default function ProducaoAntecipacao() {
   const aviamentoOffset = settings.find((s) => s.sector === 'Aviamento')?.start_offset_days ?? offsets.mesa ?? 0;
   const cabedalOffset = settings.find((s) => s.sector === 'Costura Cabedal')?.start_offset_days ?? offsets.costura_cabedal ?? 0;
 
-  const ops: EarlyReleaseOp[] = useMemo(() => queue.map((row) => ({
-    order_id: row.order_id,
-    order_number: row.order_number,
-    reference_id: row.reference_id || '',
-    reference_name: row.reference_name,
-    photo_url: row.reference_photo_url,
-    color: row.color,
-    quantity: Number(row.remaining_pairs_net || row.quantity || 0),
-    planned_delivery: row.due_date,
-    sale_order_id: row.sale_order_id,
-    sale_order_number: row.sale_order_number,
-  })), [queue]);
+  const soIds = useMemo(
+    () => [...new Set(queue.map((row) => row.sale_order_id).filter((id): id is string => !!id))],
+    [queue],
+  );
 
+  const { data: soMeta } = useQuery({
+    queryKey: ['antecipacao-sale-orders', soIds],
+    enabled: soIds.length > 0,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const map = new Map<string, { order_number: string | null; client_order_number: string | null }>();
+      const { data, error } = await supabase
+        .from('sale_orders')
+        .select('id, order_number, client_order_number')
+        .in('id', soIds);
+      if (error) throw error;
+      for (const row of data ?? []) map.set(row.id, row);
+      return map;
+    },
+  });
+
+  const ops: EarlyReleaseOp[] = useMemo(() => queue.map((row) => {
+    const so = row.sale_order_id ? soMeta?.get(row.sale_order_id) : undefined;
+    return {
+      order_id: row.order_id,
+      order_number: row.order_number,
+      reference_id: row.reference_id || '',
+      reference_name: row.reference_name,
+      photo_url: row.reference_photo_url,
+      color: row.color,
+      quantity: Number(row.remaining_pairs_net || row.quantity || 0),
+      planned_delivery: row.due_date,
+      sale_order_id: row.sale_order_id,
+      sale_order_number: row.sale_order_number || so?.order_number || null,
+      client_order_number: so?.client_order_number || null,
+    };
+  }), [queue, soMeta]);
+
+  const opIds = useMemo(() => ops.map((o) => o.order_id).filter(Boolean), [ops]);
   const refIds = useMemo(() => [...new Set(ops.map((o) => o.reference_id).filter(Boolean))], [ops]);
 
   const { data: sheetMap } = useQuery({
@@ -295,6 +234,13 @@ export default function ProducaoAntecipacao() {
     },
   });
 
+  const { data: materialFacts = [], isLoading: loadingMats } = useQuery({
+    queryKey: ['antecipacao-consumo', opIds],
+    enabled: aba === 'materiais' && opIds.length > 0,
+    staleTime: 60_000,
+    queryFn: () => loadMaterialFacts(opIds),
+  });
+
   const board = useMemo(() => buildEarlyReleaseBoard({
     ops,
     schedule,
@@ -307,18 +253,71 @@ export default function ProducaoAntecipacao() {
     const term = q.trim();
     if (!term) return board.rows;
     return board.rows.filter((row) =>
-      searchMatchesAllTerms(term, row.reference_name, row.colors.join(' '), row.opNumbers.join(' ')),
+      searchMatchesAllTerms(
+        term,
+        row.reference_name,
+        row.color,
+        row.opNumbers.join(' '),
+        row.pvNumbers.join(' '),
+        row.clientOrderNumbers.join(' '),
+      ),
     );
   }, [board.rows, q]);
 
+  const materialRows = useMemo(
+    () => buildAntecipacaoMaterialRows(ops, materialFacts),
+    [ops, materialFacts],
+  );
+
+  const filteredMaterials = useMemo(() => {
+    const term = q.trim();
+    const allowed = new Set(filtered.map((r) => `${r.reference_name}::${r.color}`));
+    const scoped = materialRows.filter((r) => allowed.has(`${r.reference_name}::${r.color}`));
+    if (!term) return scoped;
+    return scoped.filter((r) =>
+      searchMatchesAllTerms(
+        term,
+        r.reference_name, r.color, r.componentType, r.sale_order_number,
+        r.client_order_number, r.materialName, r.materialColor, r.opNumbers,
+      ),
+    );
+  }, [materialRows, filtered, q]);
+
+  const nested = useMemo(() => nestAntecipacaoMaterials(filteredMaterials), [filteredMaterials]);
   const loading = loadingQueue || loadingSchedule;
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      let facts = materialFacts;
+      if (opIds.length > 0) {
+        facts = await qc.fetchQuery({
+          queryKey: ['antecipacao-consumo', opIds],
+          queryFn: () => loadMaterialFacts(opIds),
+          staleTime: 60_000,
+        });
+      }
+      await downloadAntecipacaoXlsx({
+        summary: buildAviamentoSummaryRows(filtered),
+        materials: buildAntecipacaoMaterialRows(ops, facts).filter((r) =>
+          filtered.some((g) => g.reference_name === r.reference_name && (g.color || '—') === r.color),
+        ),
+      });
+      toast.success('Arquivo gerado.');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Falha ao gerar o arquivo';
+      toast.error(message);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <div className="space-y-5 page-enter">
       <EditorialPageHeader
         sectionLabel="PRODUÇÃO · ANTECIPAÇÃO"
         title="Antecipação"
-        description="Aviamento e Costura Cabedal começam antes do pedido entrar em produção. Cada linha é uma referência — pares somados, não por pedido."
+        description="Aviamento e Costura Cabedal começam antes dos cortes. Agrupamento do Aviamento: referência + cor. Pedido do sistema e pedido do cliente em destaque."
         actions={
           <div className="flex items-center gap-2">
             <Button variant="outline" className="h-9 gap-2" asChild>
@@ -326,6 +325,15 @@ export default function ProducaoAntecipacao() {
                 <SlidersIcon className="h-4 w-4" />
                 Setores
               </Link>
+            </Button>
+            <Button
+              variant="outline"
+              className="h-9 gap-2"
+              onClick={handleExport}
+              disabled={exporting || loading || filtered.length === 0}
+            >
+              <FileXls className={cn('h-4 w-4', exporting && 'animate-pulse')} />
+              Exportar
             </Button>
             <Button
               variant="outline"
@@ -365,55 +373,148 @@ export default function ProducaoAntecipacao() {
         />
       </div>
 
-      <div className="flex flex-wrap items-center gap-3 text-[11px] uppercase tracking-wider text-muted-foreground">
-        <span className="flex items-center gap-1.5"><span className="h-2 w-4 rounded-sm bg-[hsl(var(--stage-assy-fg))]" /> Aviamento</span>
-        <span className="flex items-center gap-1.5"><span className="h-2 w-4 rounded-sm bg-[hsl(var(--stage-sew-fg))]" /> Costura Cabedal</span>
-        <span className="flex items-center gap-1.5"><span className="h-2 w-4 rounded-sm bg-[hsl(var(--stage-cut-fg))]" /> Cortes (produção)</span>
-        <span className="flex items-center gap-1.5"><span className="h-3 w-px bg-foreground" /> Hoje</span>
-      </div>
-
       <SearchInput
         value={q}
         onChange={setQ}
-        placeholder="Buscar referência, cor ou OP"
-        resultCount={filtered.length}
-        totalCount={board.rows.length}
+        placeholder="Buscar referência, cor, PV, pedido cliente ou OP"
+        resultCount={aba === 'resumo' ? filtered.length : nested.length}
+        totalCount={aba === 'resumo' ? board.rows.length : nestAntecipacaoMaterials(materialRows).length}
         className="max-w-md"
       />
 
-      {loading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-36 w-full" />)}
-        </div>
-      ) : filtered.length === 0 ? (
-        <EmptyState
-          icon={Clock}
-          title={q.trim() ? 'Nada combina com a busca' : 'Nenhuma OP na fila'}
-          description={q.trim()
-            ? 'Tente outro nome, cor ou número de OP.'
-            : 'Quando houver pedido na fila, Aviamento e Costura Cabedal aparecem aqui — na frente dos cortes.'}
-        />
-      ) : (
-        <div className="space-y-3">
-          <div className="hidden sm:block sticky top-0 z-10 bg-background/95 backdrop-blur-sm px-4 pt-1 pb-1 border-b border-border">
-            <div className="grid grid-cols-[7.5rem_6.5rem_1fr_4.5rem] gap-x-2 items-end">
-              <span />
-              <span />
-              <HorizonAxis start={board.horizonStart} end={board.horizonEnd} today={today} />
-              <span />
+      <Tabs value={aba} onValueChange={setAba}>
+        <TabsList>
+          <TabsTrigger value="resumo" className="gap-1.5">
+            <ListChecks className="h-3.5 w-3.5" />
+            Aviamento ({filtered.length})
+          </TabsTrigger>
+          <TabsTrigger value="materiais" className="gap-1.5">
+            <Layers className="h-3.5 w-3.5" />
+            Materiais
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="resumo" className="mt-4 space-y-3">
+          {loading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
             </div>
-          </div>
-          {filtered.map((row) => (
-            <ReferenceCard
-              key={row.reference_id}
-              row={row}
-              horizonStart={board.horizonStart}
-              horizonEnd={board.horizonEnd}
-              today={today}
+          ) : filtered.length === 0 ? (
+            <EmptyState
+              icon={Clock}
+              title={q.trim() ? 'Nada combina com a busca' : 'Nenhuma OP na fila'}
+              description={q.trim()
+                ? 'Tente referência, cor, PV, pedido do cliente ou OP.'
+                : 'Quando houver pedido na fila, o Aviamento aparece aqui por referência e cor.'}
             />
-          ))}
-        </div>
-      )}
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Referência</TableHead>
+                  <TableHead>Cor</TableHead>
+                  <TableHead className="text-right">Pares</TableHead>
+                  <TableHead>Pedido sistema</TableHead>
+                  <TableHead>Pedido cliente</TableHead>
+                  <TableHead>OPs</TableHead>
+                  <TableHead>Aviamento</TableHead>
+                  <TableHead>Costura Cabedal</TableHead>
+                  <TableHead>Cortes</TableHead>
+                  <TableHead className="text-right">Na frente</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filtered.map((row) => (
+                  <TableRow key={row.key}>
+                    <TableCell className="font-semibold whitespace-nowrap">{row.reference_name}</TableCell>
+                    <TableCell className="uppercase">{row.color || '—'}</TableCell>
+                    <TableCell className="text-right font-mono tabular-nums">{fmtPairs(row.pairs)}</TableCell>
+                    <TableCell>
+                      <OrderChips pvs={row.pvNumbers} clients={[]} />
+                    </TableCell>
+                    <TableCell>
+                      <OrderChips pvs={[]} clients={row.clientOrderNumbers} />
+                    </TableCell>
+                    <TableCell className="font-mono text-[11px] text-muted-foreground max-w-[14rem] truncate" title={row.opNumbers.join(' · ')}>
+                      {row.opNumbers.join(' · ') || '—'}
+                    </TableCell>
+                    <TableCell className="font-mono text-[11px] whitespace-nowrap">{laneText(row, 'aviamento')}</TableCell>
+                    <TableCell className="font-mono text-[11px] whitespace-nowrap">{laneText(row, 'cabedal')}</TableCell>
+                    <TableCell className="font-mono text-[11px] whitespace-nowrap">{laneText(row, 'cortes')}</TableCell>
+                    <TableCell className="text-right font-mono tabular-nums">
+                      {row.daysAhead > 0 ? `${row.daysAhead}d` : '—'}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </TabsContent>
+
+        <TabsContent value="materiais" className="mt-4 space-y-3">
+          {loading || loadingMats ? (
+            <div className="space-y-2">
+              {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 w-full" />)}
+            </div>
+          ) : nested.length === 0 ? (
+            <EmptyState
+              icon={Layers}
+              title={q.trim() ? 'Nada combina com a busca' : 'Sem material da antecipação'}
+              description={q.trim()
+                ? 'Tente outro nome, PV ou tipo de material.'
+                : 'Cabedal, BOM, componente direto e tiras das OPs da fila aparecem aqui — agrupados por referência + cor, depois tipo, depois o mesmo pedido.'}
+            />
+          ) : (
+            nested.map((group) => (
+              <Card key={`${group.reference_name}::${group.color}`}>
+                <CardContent className="p-4 space-y-3">
+                  <div className="flex flex-wrap items-baseline gap-2">
+                    <h3 className="font-semibold text-base">{group.reference_name}</h3>
+                    <span className="text-xs uppercase tracking-wider text-muted-foreground">{group.color}</span>
+                  </div>
+                  {group.types.map((type) => (
+                    <div key={type.componentType} className="space-y-2">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{type.componentType}</p>
+                      {type.orders.map((order) => (
+                        <div key={`${order.sale_order_number}::${order.client_order_number}`} className="rounded-md border border-border p-3 space-y-2">
+                          <OrderChips
+                            pvs={order.sale_order_number ? [order.sale_order_number] : []}
+                            clients={order.client_order_number ? [order.client_order_number] : []}
+                          />
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Material</TableHead>
+                                <TableHead>Cor</TableHead>
+                                <TableHead className="text-right">Qtd</TableHead>
+                                <TableHead>Un</TableHead>
+                                <TableHead>OPs</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {order.lines.map((line, i) => (
+                                <TableRow key={`${line.materialName}-${line.materialColor}-${i}`}>
+                                  <TableCell>{line.materialName}</TableCell>
+                                  <TableCell className="uppercase text-muted-foreground">{line.materialColor || '—'}</TableCell>
+                                  <TableCell className="text-right font-mono tabular-nums">
+                                    {line.quantity.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}
+                                  </TableCell>
+                                  <TableCell className="text-muted-foreground">{formatUnitLabel(line.unit)}</TableCell>
+                                  <TableCell className="font-mono text-[11px] text-muted-foreground">{line.opNumbers || '—'}</TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

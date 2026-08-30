@@ -30,6 +30,7 @@ export interface EarlyReleaseOp {
   planned_delivery: string | null;
   sale_order_id: string | null;
   sale_order_number: string | null;
+  client_order_number: string | null;
 }
 
 export interface EarlyReleaseScheduleRow {
@@ -40,14 +41,18 @@ export interface EarlyReleaseScheduleRow {
 }
 
 export interface EarlyReleaseRow {
+  /** Chave do agrupamento Aviamento: referência + cor. */
+  key: string;
   reference_id: string;
   reference_name: string;
   photo_url: string | null;
-  colors: string[];
+  color: string;
   pairs: number;
   opCount: number;
   pvCount: number;
   opNumbers: string[];
+  pvNumbers: string[];
+  clientOrderNumbers: string[];
   lanes: EarlyLane[];
   /** Dias úteis que o setor mais antecipado sai na frente dos cortes. */
   daysAhead: number;
@@ -97,6 +102,23 @@ function maxIso(a: string | null, b: string | null): string | null {
   if (!a) return b;
   if (!b) return a;
   return a >= b ? a : b;
+}
+
+export function uniqueLabels(values: Array<string | null | undefined>): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const v of values) {
+    const s = (v || '').trim();
+    if (!s || seen.has(s)) continue;
+    seen.add(s);
+    out.push(s);
+  }
+  return out;
+}
+
+/** Agrupamento do Aviamento: mesma referência + mesma cor. */
+export function aviamentoGroupKey(referenceId: string, color: string | null | undefined): string {
+  return `${referenceId}::${(color || '').trim().toUpperCase().normalize('NFC')}`;
 }
 
 function laneFromSchedule(
@@ -166,17 +188,19 @@ export function buildEarlyReleaseBoard(input: {
   offsets?: SectorOffsets;
 }): EarlyReleaseBoard {
   const { ops, schedule, sheetMap, categoryDefaultsMap, offsets = {} } = input;
-  const byRef = new Map<string, EarlyReleaseOp[]>();
+  const byGroup = new Map<string, EarlyReleaseOp[]>();
   for (const op of ops) {
     if (!op.reference_id || op.quantity <= 0) continue;
-    const list = byRef.get(op.reference_id) ?? [];
+    const key = aviamentoGroupKey(op.reference_id, op.color);
+    const list = byGroup.get(key) ?? [];
     list.push(op);
-    byRef.set(op.reference_id, list);
+    byGroup.set(key, list);
   }
 
   const rows: EarlyReleaseRow[] = [];
-  for (const [reference_id, group] of byRef) {
+  for (const [key, group] of byGroup) {
     const pairs = group.reduce((s, o) => s + o.quantity, 0);
+    const reference_id = group[0].reference_id;
     const sheet = sheetMap.get(reference_id);
     const earliestDue = group
       .map((o) => o.planned_delivery)
@@ -202,27 +226,31 @@ export function buildEarlyReleaseBoard(input: {
     const cortes = lanes.find((l) => l.key === 'cortes');
     const earliestEarly = minIso(aviamento?.start ?? null, cabedal?.start ?? null);
     const daysAhead = daysAheadOf(earliestEarly, cortes?.start ?? null);
-
-    const colors = [...new Set(group.map((o) => (o.color || '').trim()).filter(Boolean))];
-    const pvs = new Set(group.map((o) => o.sale_order_id).filter(Boolean));
-    const opNumbers = group.map((o) => o.order_number).filter((n): n is string => !!n);
+    const color = (group.find((o) => (o.color || '').trim())?.color || '').trim();
 
     rows.push({
+      key,
       reference_id,
       reference_name: group.find((o) => o.reference_name)?.reference_name || asString(sheet?.name) || asString(sheet?.code) || 'Referência',
       photo_url: group.find((o) => o.photo_url)?.photo_url || asString(sheet?.image_url),
-      colors,
+      color,
       pairs,
       opCount: group.length,
-      pvCount: pvs.size,
-      opNumbers,
+      pvCount: new Set(group.map((o) => o.sale_order_id).filter(Boolean)).size,
+      opNumbers: uniqueLabels(group.map((o) => o.order_number)),
+      pvNumbers: uniqueLabels(group.map((o) => o.sale_order_number)),
+      clientOrderNumbers: uniqueLabels(group.map((o) => o.client_order_number)),
       lanes,
       daysAhead,
       source: usedAgenda && usedCascata ? 'misto' : usedAgenda ? 'agenda' : 'cascata',
     });
   }
 
-  rows.sort((a, b) => b.daysAhead - a.daysAhead || b.pairs - a.pairs || a.reference_name.localeCompare(b.reference_name, 'pt-BR'));
+  rows.sort((a, b) =>
+    a.reference_name.localeCompare(b.reference_name, 'pt-BR')
+    || a.color.localeCompare(b.color, 'pt-BR')
+    || b.daysAhead - a.daysAhead,
+  );
 
   let horizonStart: string | null = null;
   let horizonEnd: string | null = null;
@@ -234,8 +262,9 @@ export function buildEarlyReleaseBoard(input: {
   }
 
   const withAhead = rows.filter((r) => r.daysAhead > 0);
+  const refIds = new Set(rows.map((r) => r.reference_id));
   const totals = {
-    references: rows.length,
+    references: refIds.size,
     pairs: rows.reduce((s, r) => s + r.pairs, 0),
     ops: rows.reduce((s, r) => s + r.opCount, 0),
     avgDaysAhead: withAhead.length
