@@ -611,8 +611,13 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
       return;
     }
 
-    setSaving(true);
     const finalUnit = consumptionUnit === '__none__' ? null : consumptionUnit;
+    if (sharedSpecs && !finalUnit) {
+      toast.error('Linhas com variantes precisam de uma unidade de consumo do grupo. Se as unidades forem individuais, escolha “Coleção de itens”.');
+      return;
+    }
+
+    setSaving(true);
     
     try {
       await updateGroup.mutateAsync({
@@ -651,40 +656,12 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
         );
       }
 
-      // Propaga a unidade de consumo e outras specs para todos os itens do grupo
-      const prevUnit = group.consumption_unit ?? null;
-      const unitChanged = finalUnit !== prevUnit;
-
-      if (products.length > 0) {
-        const updateData: any = {};
-        // sharedSpecs força a propagação da unidade de CONSUMO a todos os itens (mesmo sem
-        // troca). NÃO sobrescrevemos products.unit (estoque): em material de área a unidade
-        // de consumo é dm² mas a de estoque é m/placa — sobrescrever corromperia o estoque.
-        if (unitChanged || sharedSpecs) updateData.consumption_unit = finalUnit;
-
-        // Preço, localização e múltiplo de compra saíram daqui em 02/08/2026:
-        // eram uma SEGUNDA porta gravando `products`, sem selo de divergência e
-        // sem prévia, então achatavam valor próprio em silêncio. Porta única
-        // agora é a aba "Aplicar a todas as cores" do MasterVariantDialog
-        // (spec `estoque-cores-e-editores.md` R3.1).
-
-        if (Object.keys(updateData).length > 0) {
-          const { error } = await supabase
-            .from('products')
-            .update(updateData)
-            .eq('group_id', group.id);
-
-          if (error) {
-            toast.error(`Erro ao atualizar itens do grupo: ${error.message}`);
-          } else {
-            queryClient.invalidateQueries({ queryKey: ['products'] });
-            queryClient.invalidateQueries({ queryKey: ['paginated_products'] });
-            if (unitChanged) {
-              toast.success(`Unidade de consumo aplicada em ${products.length} ${products.length === 1 ? 'item' : 'itens'}.`);
-            }
-          }
-        }
-      }
+      // A unidade salva aqui pertence ao GRUPO. As unidades individuais das
+      // variantes vivem em products e têm porta única no editor de variantes.
+      // Não faça um segundo UPDATE em products: além de apagar configurações
+      // próprias quando o grupo volta para "Definida por item", o gatilho
+      // legado unit↔consumption_unit transformava NULL em products.unit=NULL e
+      // abortava o save pelo NOT NULL do estoque.
 
       onOpenChange(false);
     } catch (err: any) {
@@ -913,7 +890,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                             <Select value={consumptionUnit} onValueChange={setConsumptionUnit}>
                               <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Definida por item" /></SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="__none__">Definida por item</SelectItem>
+                                <SelectItem value="__none__" disabled={sharedSpecs}>Definida por item</SelectItem>
                                 {Object.entries(CONSUMPTION_UNITS_BY_GROUP).map(([groupName, units]) => (
                                   <React.Fragment key={groupName}>
                                     <div className="bg-muted/50 px-2 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{groupName}</div>
@@ -923,7 +900,9 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                               </SelectContent>
                             </Select>
                             <p className="mt-1 text-[10px] text-muted-foreground">
-                              {sharedSpecs ? `Será aplicada às ${products.length} variantes ao salvar; a unidade de estoque é preservada.` : 'Deixe por item quando composição ou unidade mudarem dentro do grupo.'}
+                              {consumptionUnit === '__none__'
+                                ? 'A unidade de cada item será preservada.'
+                                : 'Define o padrão técnico do grupo; as unidades das variantes são preservadas e editadas em “Variantes de cor”.'}
                             </p>
                           </div>
                         </div>

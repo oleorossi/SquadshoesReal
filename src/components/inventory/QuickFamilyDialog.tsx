@@ -248,6 +248,10 @@ export function QuickFamilyDialog({ open, onOpenChange, defaultGroupId }: Props)
             sector,
             is_family: false,
             shared_specs: true,
+            // Linha com variantes nasce com uma unidade técnica explícita.
+            // Sem isso o editor recebia shared_specs=true + unidade NULL e o
+            // save posterior tentava apagar a unidade-base dos produtos.
+            consumption_unit: unit,
             ...(AREA_SECTORS.has(sector)
               ? { dimensions_width: dimensionsWidthMm, dimensions_unit: 'mm' }
               : {}),

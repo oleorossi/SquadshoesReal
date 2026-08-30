@@ -113,7 +113,14 @@ export function useUpdateGroup() {
       const { error } = await supabase.from('product_groups').update(stripSearchNorm(data) as any).eq('id', id);
       if (error) throw error;
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['product_groups'] }); toast.success('Grupo atualizado!'); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['product_groups'] });
+      // useProducts incorpora metadados do grupo (nome, unidade técnica e
+      // múltiplo de compra). Sem invalidar este prefixo, fichas e BOMs podem
+      // continuar lendo o valor anterior até o staleTime expirar.
+      qc.invalidateQueries({ queryKey: ['products'] });
+      toast.success('Grupo atualizado!');
+    },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
   });
 }
