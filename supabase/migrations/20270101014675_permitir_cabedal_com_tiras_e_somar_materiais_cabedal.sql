@@ -1,5 +1,5 @@
 -- Cabedal e tiras passam a ser dimensoes independentes da ficha tecnica.
--- O sufixo 14650 preserva a ordem depois da migration 14600 ja publicada.
+-- O sufixo 14675 preserva a ordem depois das migrations 14600 e 14650 ja publicadas.
 --
 -- Corrige dois defeitos do motor canonico de consumo:
 --   1. `components_accessories` obrigatorios usavam somente a media escalar,
@@ -146,7 +146,7 @@ DECLARE
       IF v_consumption <= 0 THEN CONTINUE; END IF;
       v_required := v_consumption * v_total_qty;$old$;
   v_new_grade constant text :=
-    $new$      -- components_accessories_grade_additive_20270101014650
+    $new$      -- components_accessories_grade_additive_20270101014675
       v_required := public.calculate_component_accessory_required_by_grade(
         v_item, p_grade
       );
@@ -196,7 +196,7 @@ BEGIN
   v_definition := pg_get_functiondef(v_function);
 
   IF position(
-       'components_accessories_grade_additive_20270101014650'
+       'components_accessories_grade_additive_20270101014675'
        IN v_definition
      ) = 0 THEN
     v_occurrences := (
@@ -234,7 +234,7 @@ BEGIN
 
   v_definition := pg_get_functiondef(v_function);
   IF position(
-       'components_accessories_grade_additive_20270101014650'
+       'components_accessories_grade_additive_20270101014675'
        IN v_definition
      ) = 0
      OR position(
@@ -276,14 +276,14 @@ DECLARE
       THEN '[]'::jsonb
     WHEN jsonb_typeof(v_sheet.strap_colors) = 'array'$old$;
   v_new_sheet constant text :=
-    $new$    -- upper_and_straps_coexist_20270101014650
+    $new$    -- upper_and_straps_coexist_20270101014675
     WHEN jsonb_typeof(v_sheet.strap_colors) = 'array'$new$;
   v_old_enqueue constant text :=
     $old$                  WHEN nullif(btrim(coalesce(ts.upper_material, '')), '')
                          IS NOT NULL THEN '[]'::jsonb
                   WHEN jsonb_typeof(ts.strap_colors) = 'array'$old$;
   v_new_enqueue constant text :=
-    $new$                  -- upper_and_straps_coexist_20270101014650
+    $new$                  -- upper_and_straps_coexist_20270101014675
                   WHEN jsonb_typeof(ts.strap_colors) = 'array'$new$;
 BEGIN
   FOR v_target IN
@@ -298,7 +298,7 @@ BEGIN
     END IF;
 
     v_definition := pg_get_functiondef(to_regprocedure(v_target.signature));
-    IF position('upper_and_straps_coexist_20270101014650' IN v_definition) = 0 THEN
+    IF position('upper_and_straps_coexist_20270101014675' IN v_definition) = 0 THEN
       v_occurrences := (
         length(v_definition)
         - length(replace(v_definition, v_target.old_anchor, ''))
@@ -315,7 +315,7 @@ BEGIN
     END IF;
 
     v_definition := pg_get_functiondef(to_regprocedure(v_target.signature));
-    IF position('upper_and_straps_coexist_20270101014650' IN v_definition) = 0
+    IF position('upper_and_straps_coexist_20270101014675' IN v_definition) = 0
        OR position(v_target.old_anchor IN v_definition) > 0 THEN
       RAISE EXCEPTION
         'Regressao: % ainda exclui tiras quando ha cabedal',
@@ -362,7 +362,7 @@ DECLARE
   v_new constant text :=
     $new$  ELSIF NEW.construction_type = 'tiras' THEN
     NEW.requires_cutting := true;
-    -- upper_and_straps_routing_20270101014650: somente-tiras continua false;
+    -- upper_and_straps_routing_20270101014675: somente-tiras continua false;
     -- qualquer identidade/consumo de cabedal ativa o seu proprio corte.
     NEW.requires_cutting_cabedal := (
       NULLIF(btrim(COALESCE(NEW.upper_material, '')), '') IS NOT NULL
@@ -409,7 +409,7 @@ BEGIN
   END IF;
 
   v_definition := pg_get_functiondef(v_function);
-  IF position('upper_and_straps_routing_20270101014650' IN v_definition) = 0 THEN
+  IF position('upper_and_straps_routing_20270101014675' IN v_definition) = 0 THEN
     v_occurrences := (
       length(v_definition) - length(replace(v_definition, v_old, ''))
     ) / length(v_old);
@@ -423,7 +423,7 @@ BEGIN
   END IF;
 
   v_definition := pg_get_functiondef(v_function);
-  IF position('upper_and_straps_routing_20270101014650' IN v_definition) = 0
+  IF position('upper_and_straps_routing_20270101014675' IN v_definition) = 0
      OR position('NEW.has_straps :=' IN v_definition) > 0 THEN
     RAISE EXCEPTION
       'Regressao: roteiro nao preserva cabedal+tiras ou voltou a controlar has_straps';
@@ -631,19 +631,19 @@ BEGIN
   case_name := 'cabedal_e_tiras_coexistem_no_pv';
   ok := pg_get_functiondef(
           'public.prepare_sale_order_item_internal_straps(jsonb)'::regprocedure
-        ) ILIKE '%upper_and_straps_coexist_20270101014650%'
+        ) ILIKE '%upper_and_straps_coexist_20270101014675%'
     AND pg_get_functiondef(
           'public.tg_validate_sale_order_item_strap_color_alignment()'::regprocedure
-        ) ILIKE '%upper_and_straps_coexist_20270101014650%'
+        ) ILIKE '%upper_and_straps_coexist_20270101014675%'
     AND pg_get_functiondef(
           'public.enqueue_sale_order_strap_demands(uuid,text,uuid)'::regprocedure
-        ) ILIKE '%upper_and_straps_coexist_20270101014650%';
+        ) ILIKE '%upper_and_straps_coexist_20270101014675%';
   message := 'prepare, guard e enqueue devem processar strap_colors mesmo com cabedal'; RETURN NEXT;
 
   case_name := 'routing_tiras_preserva_cabedal_real';
   ok := pg_get_functiondef(
           'public.sync_construction_routing()'::regprocedure
-        ) ILIKE '%upper_and_straps_routing_20270101014650%'
+        ) ILIKE '%upper_and_straps_routing_20270101014675%'
     AND pg_get_functiondef(
           'public.sync_construction_routing()'::regprocedure
         ) ILIKE '%upper_consumption_per_size%'
@@ -849,7 +849,7 @@ BEGIN
   IF v_owner IS DISTINCT FROM 'postgres'
      OR v_definition ILIKE '%SECURITY DEFINER%'
      OR v_definition NOT ILIKE '%SET search_path TO ''public''%'
-     OR v_definition NOT ILIKE '%upper_and_straps_routing_20270101014650%' THEN
+     OR v_definition NOT ILIKE '%upper_and_straps_routing_20270101014675%' THEN
     RAISE EXCEPTION
       'Regressao de owner/seguranca/semantica em sync_construction_routing';
   END IF;
