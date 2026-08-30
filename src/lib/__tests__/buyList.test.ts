@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { buildBuyList, isBuyListRow, isDirectNapaRow } from '../buyList';
+import {
+  baseApplicationKind,
+  baseMaterialName,
+  buildBuyList,
+  isBuyListRow,
+  isDirectNapaRow,
+  rowBelongsToBaseFamily,
+} from '../buyList';
 import { computeBaseMaterialTotal } from '../baseMaterialTotal';
 import type { ConsumptionRow } from '../consumptionRows';
 
@@ -27,6 +34,9 @@ describe('buildBuyList', () => {
     const soft = bl.families.find((f) => f.napa === 'NAPA SOFT')!;
     // PRETO soma as duas aplicações (1 + 2 = 3) e ainda fica atrás de OFF WHITE (4).
     expect(soft.colors.map((c) => [c.color, c.qty])).toEqual([['OFF WHITE', 4], ['PRETO', 3]]);
+    expect(soft.colors.find((c) => c.color === 'PRETO')).toEqual({
+      color: 'PRETO', qty: 3, cabedal: 0, forracao: 3, tira: 0, pending: 0,
+    });
     expect(soft.total).toBe(7);
     expect(bl.grandTotal).toBeCloseTo(27.27, 2);
   });
@@ -43,6 +53,9 @@ describe('buildBuyList', () => {
     expect(bl.families[0].napa).toBe('NAPA SOFT');
     // 169,20 / 60 = 2,82 — e não 169,20.
     expect(bl.families[0].total).toBeCloseTo(2.82, 2);
+    expect(bl.families[0].colors[0].tira).toBeCloseTo(2.82, 2);
+    expect(bl.families[0].colors[0].cabedal).toBe(0);
+    expect(bl.families[0].colors[0].forracao).toBe(0);
   });
 
   it('tira sem rendimento sai em pendingStraps, fora do total, e marca a cor', () => {
@@ -148,5 +161,58 @@ describe('paridade buildBuyList × computeBaseMaterialTotal', () => {
   it('contam a mesma pendência (tira sem rendimento fica fora dos dois)', () => {
     expect(buildBuyList(MIXED).pendingStraps).toHaveLength(1);
     expect(computeBaseMaterialTotal(MIXED)!.skipped).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('material base → cor → aplicação', () => {
+  const napa = row({
+    componentType: 'Forração Palmilha',
+    groupName: 'NAPA SOFT',
+    materialName: 'Forração Palmilha',
+    color: 'NEW WHISKY',
+    totalQuantity: 20.21,
+  });
+  const cabedal = row({
+    componentType: 'Cabedal',
+    groupName: 'NAPA SOFT',
+    materialName: 'Cabedal',
+    color: 'OFF WHITE',
+    totalQuantity: 59.05,
+  });
+  const tira = row({
+    componentType: 'Tiras',
+    groupName: 'TIRA OVERLOCK 5 mm · NAPA SOFT · NEW WHISKY',
+    materialName: 'Produção interna',
+    color: 'NEW WHISKY',
+    totalQuantity: 1402.8,
+    artisanal: { baseName: 'NAPA SOFT', baseQty: 20.04, yieldPerMeter: 70 },
+  });
+
+  it('classifica tira interna como napa da receita, não como grupo da tira', () => {
+    expect(baseMaterialName(tira)).toBe('NAPA SOFT');
+    expect(baseApplicationKind(tira)).toBe('tira');
+    expect(baseApplicationKind(napa)).toBe('forracao');
+    expect(baseApplicationKind(cabedal)).toBe('cabedal');
+    expect(rowBelongsToBaseFamily(tira, 'NAPA SOFT')).toBe(true);
+    expect(rowBelongsToBaseFamily(tira, 'GLOW METALIC')).toBe(false);
+  });
+
+  it('quebra cada cor em cabedal + forração + tira, somando o metro de napa', () => {
+    const bl = buildBuyList([napa, cabedal, tira]);
+    const soft = bl.families.find((f) => f.napa === 'NAPA SOFT')!;
+    const whisky = soft.colors.find((c) => c.color === 'NEW WHISKY')!;
+    const white = soft.colors.find((c) => c.color === 'OFF WHITE')!;
+
+    expect(whisky.cabedal).toBe(0);
+    expect(whisky.forracao).toBeCloseTo(20.21, 2);
+    expect(whisky.tira).toBeCloseTo(20.04, 2);
+    expect(whisky.qty).toBeCloseTo(40.25, 2);
+
+    expect(white.cabedal).toBeCloseTo(59.05, 2);
+    expect(white.forracao).toBe(0);
+    expect(white.tira).toBe(0);
+    expect(white.qty).toBeCloseTo(59.05, 2);
+
+    expect(soft.total).toBeCloseTo(99.3, 2);
   });
 });

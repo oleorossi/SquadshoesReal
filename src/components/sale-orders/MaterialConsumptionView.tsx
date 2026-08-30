@@ -12,13 +12,13 @@ import {
   CheckCircle,
 } from '@phosphor-icons/react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { computeBaseMaterialTotal, BASE_MATERIAL_COMPONENTS, BASE_GROUP_PATTERN } from '@/lib/baseMaterialTotal';
+import { computeBaseMaterialTotal } from '@/lib/baseMaterialTotal';
 import { buildColAvailability, sizeSortKey } from '@/lib/soleMatrixHtml';
 import type { ArtisanalStrapCutRow } from '@/lib/strapRollCut';
 import ArtisanalStrapRollCutBlock from '@/components/sale-orders/ArtisanalStrapRollCutBlock';
 import ConsumptionDecisionRail, { type ConsumptionFilter } from '@/components/sale-orders/ConsumptionDecisionRail';
 import { type ConsumptionRow, COMPONENT_ORDER } from '@/lib/consumptionRows';
-import { isBuyListRow } from '@/lib/buyList';
+import { buildBuyList, isBuyListRow, baseMaterialName, rowBelongsToBaseFamily, type BuyListColor } from '@/lib/buyList';
 import { formatQty, formatUnit, pluralizeItens } from '@/lib/consumptionFormat';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { buildMaterialConsumptionReportHtml, materialConsumptionReportFilename } from '@/lib/materialConsumptionReport';
@@ -105,22 +105,16 @@ type Props = {
 // Separador interno da chave de seção composta cor|família (agrupamento por Cor).
 const SECTION_SEP = String.fromCharCode(31);
 
-// Família de napa de uma linha, pra segmentar por cor × família.
-const rowFamily = (r: ConsumptionRow): string | null => {
-  if (r.componentType === 'Tiras') return (r.materialFamily || '').trim() || null;
-  if (BASE_MATERIAL_COMPONENTS.has(r.componentType)) {
-    const g = (r.groupName || '').trim();
-    return g && BASE_GROUP_PATTERN.test(g) ? g : null;
-  }
-  return null;
-};
+// Família de napa de uma linha: tira artesanal cai na napa da receita.
+const rowFamily = (r: ConsumptionRow): string | null => baseMaterialName(r);
 
 type SortKey = 'componentType' | 'groupName' | 'materialName' | 'color' | 'totalQuantity' | 'productUnit';
-type GroupBy = 'componentType' | 'groupName' | 'color' | 'status';
+type GroupBy = 'componentType' | 'base' | 'groupName' | 'color' | 'status';
 
 const GROUP_BY_LABEL: Record<GroupBy, string> = {
   componentType: 'Componente',
-  groupName: 'Material',
+  base: 'Material base',
+  groupName: 'Grupo',
   color: 'Cor',
   status: 'Status',
 };
@@ -318,6 +312,14 @@ export default function MaterialConsumptionView({
   const [filter, setFilter] = useState<ConsumptionFilter>('all');
   const [napaOnly, setNapaOnly] = useState(false);
   const [search, setSearch] = useState('');
+  const [baseFamily, setBaseFamily] = useState<string | null>(null);
+
+  const buyList = useMemo(() => buildBuyList(rows), [rows]);
+
+  const selectBaseFamily = useCallback((name: string | null) => {
+    setBaseFamily((current) => (name == null || current === name ? null : name));
+    if (name) setGroupBy('base');
+  }, []);
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -356,10 +358,18 @@ export default function MaterialConsumptionView({
 
   const visibleRows = useMemo(() => {
     return rows.filter((r) => {
-      if (!searchMatchesAllTerms(search, r.groupName, r.materialName, r.color, r.componentType)) {
+      if (!searchMatchesAllTerms(
+        search,
+        r.groupName,
+        r.materialName,
+        r.color,
+        r.componentType,
+        baseMaterialName(r) || '',
+      )) {
         return false;
       }
-      if (napaOnly && !isBuyListRow(r)) return false;
+      if (baseFamily && !rowBelongsToBaseFamily(r, baseFamily)) return false;
+      if (napaOnly && !isBuyListRow(r) && !(baseFamily && rowBelongsToBaseFamily(r, baseFamily))) return false;
       switch (filter) {
         case 'short': return isShortRow(r);
         case 'pending': return isPendingRow(r);
@@ -367,7 +377,7 @@ export default function MaterialConsumptionView({
         default: return true;
       }
     });
-  }, [rows, search, filter, napaOnly, isShortRow]);
+  }, [rows, search, filter, napaOnly, baseFamily, isShortRow]);
 
   // Solado é o mapa prioritário da tela e não participa dos filtros da tabela
   // de materiais gerais. Antes, clicar em "Napa", buscar outro material ou
@@ -410,6 +420,42 @@ export default function MaterialConsumptionView({
   const grouped = useMemo(() => {
     const out = new Map<string, ConsumptionRow[]>();
 
+    const emitFamilyColors = (famRows: Map<string, ConsumptionRow[]>, familyFirst: boolean) => {
+      const familyOrder = buyList.families.map((f) => f.napa);
+      const extra = Array.from(famRows.keys()).filter((name) => !familyOrder.includes(name))
+        .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+      for (const fam of [...familyOrder.filter((name) => famRows.has(name)), ...extra]) {
+        const byColor = new Map<string, ConsumptionRow[]>();
+        for (const row of famRows.get(fam)!) {
+          const color = (row.color || '').trim() || 'Sem cor';
+          if (!byColor.has(color)) byColor.set(color, []);
+          byColor.get(color)!.push(row);
+        }
+        const colors = Array.from(byColor.keys()).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+        for (const color of colors) {
+          const key = familyFirst ? `${fam}${SECTION_SEP}${color}` : `${color}${SECTION_SEP}${fam}`;
+          out.set(key, byColor.get(color)!);
+        }
+      }
+    };
+
+    if (groupBy === 'base') {
+      const families = new Map<string, ConsumptionRow[]>();
+      const other: ConsumptionRow[] = [];
+      for (const row of sortedRows) {
+        const fam = baseMaterialName(row);
+        if (fam) {
+          if (!families.has(fam)) families.set(fam, []);
+          families.get(fam)!.push(row);
+        } else {
+          other.push(row);
+        }
+      }
+      emitFamilyColors(families, true);
+      if (other.length) out.set('Outros materiais', other);
+      return out;
+    }
+
     if (groupBy === 'componentType') {
       for (const row of sortedRows) {
         if (!out.has(row.componentType)) out.set(row.componentType, []);
@@ -451,9 +497,7 @@ export default function MaterialConsumptionView({
         else neutral.push(r);
       }
       if (fams.size === 0) { out.set(label, secRows); return; }
-      for (const f of Array.from(fams.keys()).sort((a, b) => a.localeCompare(b, 'pt-BR'))) {
-        out.set(`${label}${SECTION_SEP}${f}`, fams.get(f)!);
-      }
+      emitFamilyColors(fams, false);
       if (neutral.length) out.set(label, neutral);
     };
     if (empties.length) emitSection(emptyLabel, empties);
@@ -461,7 +505,7 @@ export default function MaterialConsumptionView({
       emitSection(k, byVal.get(k)!);
     }
     return out;
-  }, [sortedRows, groupBy, isShortRow]);
+  }, [sortedRows, groupBy, isShortRow, buyList]);
 
   const totalsByUnit = useMemo(() => unitTotals(visibleRows), [visibleRows]);
 
@@ -655,11 +699,46 @@ export default function MaterialConsumptionView({
     );
   };
 
+  const renderApplicationBand = (split: BuyListColor, key: string) => (
+    <TableRow key={`app-${key}`} className="border-0 hover:bg-transparent">
+      <TableCell colSpan={7} className="p-0">
+        <div
+          className="flex flex-wrap items-baseline gap-x-5 gap-y-1 border-b border-border bg-muted/30 px-3 py-2"
+          aria-label={`Consumo por aplicação em ${split.color}`}
+        >
+          {([
+            { label: 'Cabedal', qty: split.cabedal },
+            { label: 'Forração', qty: split.forracao },
+            { label: 'Tira', qty: split.tira, note: split.tira > 0 ? 'prod. interna' : undefined },
+          ] as const).map((part) => (
+            <span key={part.label} className="inline-flex items-baseline gap-1.5">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{part.label}</span>
+              <span className="font-mono text-sm font-bold tabular-nums">
+                {part.qty > 0 ? `${formatQty(part.qty, 'm')} m` : '—'}
+              </span>
+              {'note' in part && part.note ? (
+                <span className="text-[10px] text-muted-foreground">{part.note}</span>
+              ) : null}
+            </span>
+          ))}
+          <span className="ml-auto font-mono text-sm font-bold tabular-nums">
+            {formatQty(split.qty, 'm')} m
+          </span>
+        </div>
+      </TableCell>
+    </TableRow>
+  );
+
   const filterLabel: Record<ConsumptionFilter, string> = {
     all: '', short: 'em falta', pending: 'com cadastro incompleto', ok: 'cobertas pelo estoque',
   };
-  const filterActive = filter !== 'all' || napaOnly || !!search;
-  const clearFilters = () => { setFilter('all'); setNapaOnly(false); setSearch(''); };
+  const filterActive = filter !== 'all' || napaOnly || !!search || !!baseFamily;
+  const clearFilters = () => {
+    setFilter('all');
+    setNapaOnly(false);
+    setSearch('');
+    setBaseFamily(null);
+  };
   const visibleShortItems = countShort(visibleRows);
 
   return (
@@ -751,7 +830,7 @@ export default function MaterialConsumptionView({
           <div className="flex items-center gap-1.5">
             <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Agrupar</span>
             <Select value={groupBy} onValueChange={(v) => setGroupBy(v as GroupBy)}>
-              <SelectTrigger className="h-8 w-[9.5rem] text-xs">
+              <SelectTrigger className="h-8 w-[11rem] text-xs">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -761,6 +840,27 @@ export default function MaterialConsumptionView({
               </SelectContent>
             </Select>
           </div>
+          {buyList.families.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filtrar por material base">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Base</span>
+              {buyList.families.map((family) => (
+                <button
+                  key={family.napa}
+                  type="button"
+                  aria-pressed={baseFamily === family.napa}
+                  onClick={() => selectBaseFamily(family.napa)}
+                  className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold transition-colors ${
+                    baseFamily === family.napa
+                      ? 'bg-primary text-primary-foreground'
+                      : 'border border-border bg-muted/40 text-muted-foreground hover:bg-muted'
+                  }`}
+                >
+                  {family.napa}
+                  <span className="font-mono tabular-nums opacity-70">{formatQty(family.total, 'm')} m</span>
+                </button>
+              ))}
+            </div>
+          )}
           <SearchInput
             value={search}
             onChange={setSearch}
@@ -789,6 +889,7 @@ export default function MaterialConsumptionView({
               mostrando {visibleRows.length} de {rows.length}
               {filter !== 'all' ? ` · ${filterLabel[filter]}` : ''}
               {napaOnly ? ' · de napa' : ''}
+              {baseFamily ? ` · ${baseFamily}` : ''}
               {filter === 'short' && visibleShortItems !== visibleRows.length
                 ? ` · ${visibleShortItems} ${visibleShortItems === 1 ? 'item' : 'itens'}`
                 : ''}
@@ -799,7 +900,7 @@ export default function MaterialConsumptionView({
 
         {visibleRows.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">
-            Nenhuma linha {filter !== 'all' ? filterLabel[filter] : ''}{napaOnly ? ' de napa' : ''} {search ? `para “${search}”` : ''}.
+            Nenhuma linha {filter !== 'all' ? filterLabel[filter] : ''}{napaOnly ? ' de napa' : ''}{baseFamily ? ` de ${baseFamily}` : ''} {search ? `para “${search}”` : ''}.
           </p>
         ) : visibleMaterialRows.length > 0 ? (
           <div className="overflow-hidden overflow-x-auto rounded-lg border">
@@ -850,6 +951,11 @@ export default function MaterialConsumptionView({
                       .map(itemKey),
                   ).size;
                   const [secLabel, secFamily] = String(sectionKey).split(SECTION_SEP);
+                  const applicationSplit = (() => {
+                    const fromSection = buildBuyList(sectionRows);
+                    if (fromSection.families.length !== 1 || fromSection.families[0].colors.length !== 1) return null;
+                    return fromSection.families[0].colors[0];
+                  })();
                   out.push(
                     <TableRow key={`sec-${sectionKey}`} className="border-0 hover:bg-transparent">
                       <TableCell colSpan={7} className="border-y border-border bg-muted/60 py-1.5">
@@ -869,6 +975,9 @@ export default function MaterialConsumptionView({
                       </TableCell>
                     </TableRow>,
                   );
+                  if (applicationSplit && String(sectionKey).includes(SECTION_SEP)) {
+                    out.push(renderApplicationBand(applicationSplit, sectionKey));
+                  }
 
                   // Dentro da seção: materiais por balde de estoque, com faixa
                   // quando o mesmo produto aparece em mais de uma aplicação.
@@ -905,6 +1014,8 @@ export default function MaterialConsumptionView({
         onFilterChange={setFilter}
         napaOnly={napaOnly}
         onNapaOnlyChange={setNapaOnly}
+        selectedBaseFamily={baseFamily}
+        onSelectBaseFamily={selectBaseFamily}
         onGerarOC={onGerarOC}
         onRecalcular={onRecalcular}
         onPrintPdf={handlePrintPdf}

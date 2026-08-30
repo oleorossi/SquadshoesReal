@@ -129,8 +129,15 @@ describe('materialConsumptionReport', () => {
     expect(html).toContain('prod. interna');
     expect(html).toContain('20,04 m NAPA SOFT');
     expect(html).not.toContain('class="num shortage">1.402,80');
-    expect(html).toMatch(/<div class="totals-strip">[\s\S]*?40,25[\s\S]*?<\/div>/);
-    expect(html).not.toMatch(/<div class="totals-strip">[\s\S]*?1\.402,80[\s\S]*?<\/div>/);
+    const totalsStrip = html.match(/<div class="totals-strip">[\s\S]*?<\/div>/)?.[0] || '';
+    expect(totalsStrip).toContain('40,25');
+    expect(totalsStrip).not.toContain('1.402,80');
     expect(html).toContain('metro de napa');
+    expect(html).toContain('>Cabedal<');
+    expect(html).toContain('>Forração<');
+    expect(html).toContain('>Tira<');
+    expect(html).toContain('20,21 m');
+    expect(html).toContain('20,04 m');
+    expect(html).toContain('40,25 m');
   });
 });

@@ -69,6 +69,9 @@ const renderBaseNeed = (rows: ConsumptionRow[]): string => {
     <tr>
       <td>${index === 0 ? `<strong>${escapeHtml(family.napa)}</strong>` : ''}</td>
       <td>${escapeHtml(color.color || '—')}</td>
+      <td class="num">${color.cabedal > 0 ? `${formatQty(color.cabedal, 'm')} m` : '—'}</td>
+      <td class="num">${color.forracao > 0 ? `${formatQty(color.forracao, 'm')} m` : '—'}</td>
+      <td class="num">${color.tira > 0 ? `${formatQty(color.tira, 'm')} m` : '—'}</td>
       <td class="num strong">${formatQty(color.qty, 'm')} m</td>
       <td class="status-cell">${color.pending > 0 ? `<span class="flag warning">${color.pending} cadastro${color.pending === 1 ? '' : 's'}</span>` : '<span class="muted">—</span>'}</td>
     </tr>
@@ -78,7 +81,10 @@ const renderBaseNeed = (rows: ConsumptionRow[]): string => {
     <tr class="pending-row">
       <td><strong>${escapeHtml(pending.napa)}</strong></td>
       <td>${escapeHtml(pending.color || '—')} · ${escapeHtml(pending.tira)}</td>
-      <td class="num strong">${formatQty(pending.tiraM, 'm')} m de tira</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num">${formatQty(pending.tiraM, 'm')} m de tira</td>
+      <td class="num">—</td>
       <td class="status-cell"><span class="flag warning">rendimento pendente</span></td>
     </tr>
   `);
@@ -88,10 +94,10 @@ const renderBaseNeed = (rows: ConsumptionRow[]): string => {
       <div class="section-heading">
         <span class="section-number">01</span>
         <div><p class="section-kicker">Separação prioritária</p><h2>Necessidade de napa</h2></div>
-        <p class="section-note">Consumo bruto; a compra líquida é indicada pelas faltas de estoque.</p>
+        <p class="section-note">Cabedal, forração e tira da mesma cor somam o metro de napa — tira artesanal já convertida.</p>
       </div>
       <table class="report-table">
-        <thead><tr><th>Família</th><th>Cor / aplicação</th><th class="num">Necessidade</th><th>Situação</th></tr></thead>
+        <thead><tr><th>Família</th><th>Cor</th><th class="num">Cabedal</th><th class="num">Forração</th><th class="num">Tira</th><th class="num">Total</th><th>Situação</th></tr></thead>
         <tbody>${familyRows.join('')}${pendingRows.join('')}</tbody>
       </table>
     </section>`;

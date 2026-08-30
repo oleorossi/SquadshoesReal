@@ -149,7 +149,7 @@ describe('MaterialConsumptionView — tela buy-first', () => {
     expect(screen.getByText('5 itens')).toBeInTheDocument();
     expect(screen.getAllByText('198').length).toBeGreaterThan(0);
 
-    await user.click(screen.getByRole('button', { name: /^Napa/i }));
+    await user.click(screen.getByRole('button', { name: /^Napa \d/i }));
     expect(screen.getByRole('button', { name: /mostrando 2 de 5 · de napa/i })).toBeInTheDocument();
     expect(screen.getByText('2 itens de 5')).toBeInTheDocument();
     // O recorte vale para a tabela/totais. O mapa prioritário de solados não
@@ -165,11 +165,11 @@ describe('MaterialConsumptionView — tela buy-first', () => {
     const user = userEvent.setup();
     renderView();
     await user.click(screen.getByRole('button', { name: /^Em falta/i }));
-    await user.click(screen.getByRole('button', { name: /^Napa/i }));
+    await user.click(screen.getByRole('button', { name: /^Napa \d/i }));
     // Das 2 napas, só OFF WHITE está em falta (PRETO tem 5,01 p/ 1,00).
     expect(screen.getByRole('button', { name: /mostrando 1 de 5 · em falta · de napa/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Em falta/i })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: /^Napa/i })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: /^Napa \d/i })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('estoque compartilhado não pinta de verde uma linha de item em falta', async () => {
@@ -267,7 +267,7 @@ describe('MaterialConsumptionView — tela buy-first', () => {
       ],
     });
 
-    expect(screen.getByText('prod. interna')).toBeInTheDocument();
+    expect(screen.getAllByText('prod. interna').length).toBeGreaterThan(0);
     expect(screen.getByText('1.402,80')).toBeInTheDocument();
     const faltaCard = screen.getByRole('button', { name: 'Ver itens em falta' });
     expect(within(faltaCard).getByText('1')).toBeInTheDocument();
@@ -278,5 +278,61 @@ describe('MaterialConsumptionView — tela buy-first', () => {
     renderView({ embedded: true });
     expect(screen.queryByRole('heading', { name: /Consumo de Materiais — PV-00151/i })).not.toBeInTheDocument();
     expect(screen.getByText('Necessidade de material base')).toBeInTheDocument();
+  });
+
+  it('filtra por material base e agrupa a cor em cabedal, forração e tira', async () => {
+    const user = userEvent.setup();
+    renderView({
+      rows: [
+        row({
+          componentType: 'Cabedal',
+          groupName: 'NAPA SOFT',
+          materialName: 'Cabedal',
+          color: 'NEW WHISKY',
+          totalQuantity: 10,
+          available: 0,
+          productIds: ['napa-new-whisky'],
+        }),
+        row({
+          componentType: 'Forração Palmilha',
+          groupName: 'NAPA SOFT',
+          materialName: 'Forração Palmilha',
+          color: 'NEW WHISKY',
+          totalQuantity: 20.21,
+          available: 0,
+          productIds: ['napa-new-whisky'],
+        }),
+        row({
+          componentType: 'Tiras',
+          groupName: 'TIRA OVERLOCK 5 mm · NAPA SOFT · NEW WHISKY',
+          materialName: 'Produção interna',
+          color: 'NEW WHISKY',
+          totalQuantity: 1402.8,
+          available: 0,
+          productIds: ['tira-overlock-new-whisky'],
+          baseProductId: 'napa-new-whisky',
+          artisanal: { baseName: 'NAPA SOFT', baseQty: 20.04, yieldPerMeter: 70 },
+        }),
+        row({
+          componentType: 'Palmilha',
+          groupName: 'PALMILHA',
+          materialName: 'EVA 3MM',
+          color: 'PRETO',
+          totalQuantity: 5.08,
+          available: 0,
+        }),
+      ],
+    });
+
+    await user.click(within(screen.getByRole('group', { name: 'Filtrar por material base' })).getByRole('button', { name: /NAPA SOFT/i }));
+    const breakdown = screen.getByLabelText(/Consumo por aplicação em NEW WHISKY/i);
+    expect(within(breakdown).getByText('Cabedal')).toBeInTheDocument();
+    expect(within(breakdown).getByText('Forração')).toBeInTheDocument();
+    expect(within(breakdown).getByText('Tira')).toBeInTheDocument();
+    expect(within(breakdown).getByText('10,00 m')).toBeInTheDocument();
+    expect(within(breakdown).getByText('20,21 m')).toBeInTheDocument();
+    expect(within(breakdown).getByText('20,04 m')).toBeInTheDocument();
+    expect(within(breakdown).getByText('prod. interna')).toBeInTheDocument();
+    expect(screen.queryByText('EVA 3MM')).not.toBeInTheDocument();
   });
 });

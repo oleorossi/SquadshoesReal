@@ -51,6 +51,9 @@ type Props = {
   /** Recorte de material base; combina com o status (não é exclusivo). */
   napaOnly: boolean;
   onNapaOnlyChange: (v: boolean) => void;
+  /** Família de napa selecionada no filtro de material base. */
+  selectedBaseFamily?: string | null;
+  onSelectBaseFamily?: (name: string | null) => void;
   /** Ação primária: abre a geração de OC do(s) PV(s). Omitida ⇒ botão não aparece. */
   onGerarOC?: () => void;
   onRecalcular?: () => void;
@@ -71,6 +74,8 @@ export default function ConsumptionDecisionRail({
   onFilterChange,
   napaOnly,
   onNapaOnlyChange,
+  selectedBaseFamily = null,
+  onSelectBaseFamily,
   onGerarOC,
   onRecalcular,
   onPrintPdf,
@@ -97,9 +102,23 @@ export default function ConsumptionDecisionRail({
               <span className="ml-0.5 text-base font-semibold">m</span>
             </p>
             {baseTotal.parts.length > 0 && (
-              <p className="mt-1.5 font-mono text-[11px] leading-snug text-muted-foreground">
-                {baseTotal.parts.map((p) => `${formatQty(p.qty, 'm')} ${p.name}`).join(' + ')}
-              </p>
+              <div className="mt-1.5 flex flex-wrap gap-1">
+                {baseTotal.parts.map((part) => (
+                  <button
+                    key={part.name}
+                    type="button"
+                    aria-pressed={selectedBaseFamily === part.name}
+                    onClick={() => onSelectBaseFamily?.(selectedBaseFamily === part.name ? null : part.name)}
+                    className={`rounded-md px-1.5 py-0.5 font-mono text-[11px] leading-snug transition-colors ${
+                      selectedBaseFamily === part.name
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                    }`}
+                  >
+                    {formatQty(part.qty, 'm')} {part.name}
+                  </button>
+                ))}
+              </div>
             )}
             <p className="mt-1 text-[11px] text-muted-foreground">
               consumo bruto · tiras convertidas + napa cortada direto
