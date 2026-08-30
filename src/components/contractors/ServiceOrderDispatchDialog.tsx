@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import type { Json } from '@/integrations/supabase/types';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -155,9 +156,9 @@ export default function ServiceOrderDispatchDialog({ open, onOpenChange, service
       });
       if (error) throw error;
       if (!kitLocked && materials.length > 0) {
-        const { error: matErr } = await (supabase as any)
+        const { error: matErr } = await supabase
           .from('service_orders')
-          .update({ materials_sent: materials })
+          .update({ materials_sent: materials as unknown as Json })
           .eq('id', soId);
         if (matErr) throw matErr;
       }
