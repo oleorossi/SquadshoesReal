@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import ReadyStockPanel from '@/components/inventory/ReadyStockPanel';
+import ReadyStockBoard from '@/components/inventory/ReadyStockBoard';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -71,7 +71,7 @@ export default function ProntaEntregaPage() {
       </div>
 
       {tab === 'estoque' ? (
-        <ReadyStockPanel />
+        <ReadyStockBoard />
       ) : (
         <div className="space-y-3">
           {(inquiries.data || []).length === 0 ? (

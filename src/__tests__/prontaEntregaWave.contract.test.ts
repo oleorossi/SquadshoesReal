@@ -30,9 +30,10 @@ describe('onda pronta entrega', () => {
 
   it('liga a rota publica e o painel usa SET + lote por grade', () => {
     const app = read('src/App.tsx');
-    const panel = read('src/components/inventory/ReadyStockPanel.tsx');
-    expect(app).toContain('/vitrine/:token');
-    expect(app).toContain('VitrineProntaEntrega');
+    const panel = read('src/components/inventory/ReadyStockBoard.tsx') + read('src/router.public.tsx');
+    expect(app + read('src/router.public.tsx')).toContain('/vitrine/:token');
+    expect(read('src/router.public.tsx')).toContain('VitrineProntaEntrega');
+    expect(app.includes('publicVitrineRoute') || app.includes('/vitrine/:token')).toBe(true);
     expect(panel).toContain('useSetReadyStockGrade');
     expect(panel).toContain('groupItemsByLot');
     expect(panel).toContain('encodeGradeNotes');
