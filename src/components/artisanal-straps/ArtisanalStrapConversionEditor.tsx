@@ -169,6 +169,59 @@ function latestWidthProfile(
     .sort((left, right) => Number(right.version) - Number(left.version))[0];
 }
 
+function targetRecipeForEditor(
+  catalog: ArtisanalStrapCatalog,
+  recipeId?: string | null,
+  suggestedRecipeId?: string | null,
+  measureId?: string | null,
+  baseGroupId?: string | null,
+) {
+  const explicitRecipe = catalog.recipes.find((item) => (
+    item.id === (suggestedRecipeId || recipeId)
+  ));
+  if (explicitRecipe) return explicitRecipe;
+  if (!measureId || !baseGroupId) return undefined;
+  return catalog.recipes
+    .filter((item) => (
+      item.measure_id === measureId
+      && item.base_group_id === baseGroupId
+      && item.status !== 'superseded'
+      && item.status !== 'archived'
+    ))
+    .sort((left, right) => Number(right.version) - Number(left.version))[0];
+}
+
+function catalogReadyForEditorSession(
+  catalog: ArtisanalStrapCatalog,
+  recipeId?: string | null,
+  suggestedRecipeId?: string | null,
+  measureId?: string | null,
+  baseGroupId?: string | null,
+  legacyRecipeId?: string | null,
+) {
+  if (legacyRecipeId) {
+    return catalog.legacy_recipes.some((item) => item.id === legacyRecipeId);
+  }
+  const explicitRecipeId = suggestedRecipeId || recipeId;
+  const explicitRecipe = explicitRecipeId
+    ? catalog.recipes.find((item) => item.id === explicitRecipeId)
+    : undefined;
+  if (explicitRecipeId && !explicitRecipe) return false;
+  const resolvedMeasureId = explicitRecipe?.measure_id || measureId;
+  const resolvedBaseGroupId = explicitRecipe?.base_group_id || baseGroupId;
+  const resolvedMeasure = resolvedMeasureId
+    ? catalog.measures.find((item) => item.id === resolvedMeasureId)
+    : undefined;
+  if (resolvedMeasureId && !resolvedMeasure) return false;
+  if (resolvedBaseGroupId && !catalog.groups.some((item) => item.id === resolvedBaseGroupId)) {
+    return false;
+  }
+  if (resolvedMeasure && !catalog.types.some((item) => item.id === resolvedMeasure.strap_type_id)) {
+    return false;
+  }
+  return true;
+}
+
 function mutationErrorMessage(error: unknown) {
   if (error instanceof Error) return error.message;
   if (error && typeof error === 'object' && 'message' in error) {
@@ -195,6 +248,7 @@ export function ArtisanalStrapConversionEditor({
   const [validationError, setValidationError] = useState<string | null>(null);
   const [createRecipeVersion, setCreateRecipeVersion] = useState(false);
   const nextMaterialRowId = useRef(1);
+  const initializedSessionKey = useRef<string | null>(null);
   const saveWidthProfile = useSaveBaseMaterialWidthProfile();
   const approveWidthProfile = useApproveBaseMaterialWidthProfile();
   const saveConversion = useSaveArtisanalStrapConversion();
@@ -204,8 +258,34 @@ export function ArtisanalStrapConversionEditor({
   const baseCandidatesQuery = useStrapBaseGroupCandidates(open && !legacyRecipeId);
   const { data: contractors = [] } = useContractors();
 
+  const editorSessionKey = [
+    mode,
+    recipeId || '',
+    measureId || '',
+    baseGroupId || '',
+    suggestedRecipeId || '',
+    suggestedYieldMPerM == null ? '' : String(suggestedYieldMPerM),
+    legacyRecipeId || '',
+  ].join('|');
+  const editorCatalogReady = catalogReadyForEditorSession(
+    catalog,
+    recipeId,
+    suggestedRecipeId,
+    measureId,
+    baseGroupId,
+    legacyRecipeId,
+  );
+  const editorSessionReady = editorCatalogReady
+    && initializedSessionKey.current === editorSessionKey;
+
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      initializedSessionKey.current = null;
+      return;
+    }
+    if (initializedSessionKey.current === editorSessionKey) return;
+    if (!editorCatalogReady) return;
+    initializedSessionKey.current = editorSessionKey;
     const legacyRecipe = catalog.legacy_recipes.find((item) => item.id === legacyRecipeId);
     if (legacyRecipe) {
       const legacyProductIdentity = normalizedIdentity(legacyRecipe.artisanal_product_name);
@@ -252,18 +332,12 @@ export function ArtisanalStrapConversionEditor({
       setValidationError(null);
       return;
     }
-    const directRecipe = catalog.recipes.find((item) => (
-      item.id === (suggestedRecipeId || recipeId)
-    ));
+    const directRecipe = catalog.recipes.find((item) => item.id === (suggestedRecipeId || recipeId));
     const selectedMeasureId = directRecipe?.measure_id || measureId || '';
     const selectedBaseGroupId = directRecipe?.base_group_id || baseGroupId || '';
-    const fallbackRecipe = !directRecipe && selectedMeasureId && selectedBaseGroupId
-      ? catalog.recipes
-        .filter((item) => (
-          item.measure_id === selectedMeasureId && item.base_group_id === selectedBaseGroupId
-        ))
-        .sort((left, right) => Number(right.version) - Number(left.version))[0]
-      : undefined;
+    const fallbackRecipe = directRecipe
+      ? undefined
+      : targetRecipeForEditor(catalog, null, null, selectedMeasureId, selectedBaseGroupId);
     const selectedRecipe = directRecipe || fallbackRecipe;
     const selectedMeasure = catalog.measures.find((item) => item.id === selectedMeasureId);
     const selectedType = catalog.types.find((item) => item.id === selectedMeasure?.strap_type_id);
@@ -281,7 +355,9 @@ export function ArtisanalStrapConversionEditor({
       finishedWidthMm: numberOrZero(selectedMeasure?.finished_width_mm),
       reason: hasYieldSuggestion
         ? `Nova versão baseada no rendimento realizado de ${numberOrZero(suggestedYieldMPerM).toLocaleString('pt-BR')} m/m`
-        : mode === 'create' ? 'Cadastro inicial da conversão' : '',
+        : mode === 'create'
+          ? selectedRecipe ? 'Nova versão da conversão' : 'Cadastro inicial da conversão'
+          : '',
       materials: [materialForm({
         baseGroupId: selectedBaseGroupId,
         recipeId: selectedRecipe?.id || '',
@@ -298,13 +374,17 @@ export function ArtisanalStrapConversionEditor({
     nextMaterialRowId.current = 1;
     setCreateRecipeVersion(hasYieldSuggestion && Boolean(selectedRecipe));
     setValidationError(null);
-  }, [open, recipeId, measureId, baseGroupId, suggestedRecipeId, suggestedYieldMPerM, legacyRecipeId, mode, catalog]);
+  }, [open, editorSessionKey, editorCatalogReady, recipeId, measureId, baseGroupId, suggestedRecipeId, suggestedYieldMPerM, legacyRecipeId, mode, catalog]);
 
   const legacyRecipe = catalog.legacy_recipes.find((item) => item.id === legacyRecipeId);
+  const hasRecipeContext = Boolean(
+    recipeId
+    || suggestedRecipeId
+    || form.materials.some((material) => material.recipeId),
+  );
   const isMultiMaterialCreate = mode === 'create'
     && !legacyRecipe
-    && !recipeId
-    && !suggestedRecipeId;
+    && !hasRecipeContext;
   const selectedType = catalog.types.find((item) => item.id === form.typeId);
   const selectedMeasure = catalog.measures.find((item) => item.id === form.measureId);
   const canWrite = capabilities.manage_strap_catalog;
@@ -315,7 +395,21 @@ export function ArtisanalStrapConversionEditor({
     && capabilities.approve_strap_recipe
     && capabilities.resolve_strap_migration
     && canSeeFinancial;
-  const readOnly = !canWrite || (Boolean(legacyRecipe) && !canReuseLegacy);
+  const isReviewMode = mode === 'review';
+  const creationBlockedByFinancial = !legacyRecipe
+    && !canSeeFinancial
+    && (!hasRecipeContext || createRecipeVersion);
+  const readOnly = !canWrite
+    || isReviewMode
+    || (Boolean(legacyRecipe) && !canReuseLegacy)
+    || creationBlockedByFinancial;
+  const isSaving = saveWidthProfile.isPending
+    || approveWidthProfile.isPending
+    || saveConversion.isPending
+    || confirmConversion.isPending
+    || saveMaterialConversions.isPending
+    || reuseLegacyRecipe.isPending;
+  const interactionLocked = readOnly || isSaving || !editorSessionReady;
   const materialOptions = [...(baseCandidatesQuery.data || [])];
   form.materials.forEach((material) => {
     const selectedBase = catalog.groups.find((item) => item.id === material.baseGroupId);
@@ -357,7 +451,12 @@ export function ArtisanalStrapConversionEditor({
     const recipeIsMutable = !currentRecipe
       || currentRecipe.status === 'draft'
       || currentRecipe.status === 'pending_approval';
-    const canEditRecipeFields = !readOnly && (recipeIsMutable || createRecipeVersion);
+    const widthApprovalBlocked = Boolean(material.baseGroupId)
+      && !widthProfile
+      && !canApproveWidthInline;
+    const canEditRecipeFields = !interactionLocked
+      && !widthApprovalBlocked
+      && (recipeIsMutable || createRecipeVersion);
     const canEnterLegacyWidth = Boolean(legacyRecipe)
       && !widthProfile
       && !selectedBaseCandidate?.usable_width_mm
@@ -374,6 +473,7 @@ export function ArtisanalStrapConversionEditor({
       theoreticalYield,
       lateralRemainder,
       recipeIsMutable,
+      widthApprovalBlocked,
       canEditRecipeFields,
       canEnterLegacyWidth,
     };
@@ -384,14 +484,35 @@ export function ArtisanalStrapConversionEditor({
     || Boolean(form.typeName.trim() && form.measureName.trim() && form.finishedWidthMm > 0);
   const identityLocked = materialContexts.some((context) => Boolean(context.currentRecipe))
     || (isMultiMaterialCreate && hasDefinedIdentity && (form.materials.length > 1 || Boolean(measureId)));
-  const isSaving = saveWidthProfile.isPending
-    || approveWidthProfile.isPending
-    || saveConversion.isPending
-    || confirmConversion.isPending
-    || saveMaterialConversions.isPending
-    || reuseLegacyRecipe.isPending;
+  const selectableMaterialCount = materialOptions.filter((item) => {
+    const hasUsableWidth = numberOrZero(item.usable_width_mm) > 0;
+    const hasApprovedProfile = item.has_approved_width_profile
+      || Boolean(latestWidthProfile(catalog, item.id, ['approved']));
+    return hasUsableWidth
+      && (hasApprovedProfile || canApproveWidthInline)
+      && !selectedBaseGroupIds.has(item.id)
+      && !configuredBaseGroupIds.has(item.id);
+  }).length;
+  const addMaterialDisabledReason = !hasDefinedIdentity
+    ? 'Defina o tipo e a medida antes de adicionar materiais.'
+    : form.materials.some((material) => !material.baseGroupId)
+      ? 'Selecione o material da linha atual antes de adicionar outra.'
+      : form.materials.length >= 25
+        ? 'O limite de 25 materiais por cadastro foi atingido.'
+        : selectableMaterialCount === 0
+          ? 'Não há outro material elegível disponível para esta medida.'
+          : null;
+  const selectedWidthApprovalBlocked = materialContexts.some((context) => context.widthApprovalBlocked);
+  const approvedVersionNeedsFinancialAccess = !canSeeFinancial
+    && Boolean(primaryContext?.currentRecipe)
+    && primaryContext?.currentRecipe?.status !== 'draft'
+    && primaryContext?.currentRecipe?.status !== 'pending_approval';
+  const immutableRecipeNeedsNewVersion = materialContexts.some((context) => (
+    Boolean(context.currentRecipe) && !context.recipeIsMutable && !createRecipeVersion
+  ));
 
   const setField = <K extends keyof ConversionForm>(key: K, value: ConversionForm[K]) => {
+    if (interactionLocked) return;
     setForm((current) => ({ ...current, [key]: value }));
     setValidationError(null);
   };
@@ -401,6 +522,7 @@ export function ArtisanalStrapConversionEditor({
     key: K,
     value: MaterialConversionForm[K],
   ) => {
+    if (interactionLocked) return;
     setForm((current) => ({
       ...current,
       materials: current.materials.map((material) => (
@@ -411,6 +533,7 @@ export function ArtisanalStrapConversionEditor({
   };
 
   const addMaterial = () => {
+    if (interactionLocked || addMaterialDisabledReason) return;
     setForm((current) => {
       const template = current.materials[current.materials.length - 1] || EMPTY_MATERIAL_FORM;
       nextMaterialRowId.current += 1;
@@ -431,6 +554,7 @@ export function ArtisanalStrapConversionEditor({
   };
 
   const removeMaterial = (rowId: string) => {
+    if (interactionLocked) return;
     setForm((current) => ({
       ...current,
       materials: current.materials.filter((material) => material.rowId !== rowId),
@@ -501,6 +625,7 @@ export function ArtisanalStrapConversionEditor({
   };
 
   const handleSave = async () => {
+    if (interactionLocked) return;
     const error = validate();
     if (error) {
       setValidationError(error);
@@ -600,8 +725,18 @@ export function ArtisanalStrapConversionEditor({
   };
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full p-0 sm:max-w-3xl">
+    <Sheet
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen && isSaving) return;
+        onOpenChange(nextOpen);
+      }}
+    >
+      <SheetContent
+        side="right"
+        className="w-full p-0 sm:max-w-3xl"
+        aria-busy={isSaving}
+      >
         <div className="flex min-h-full flex-col">
           <SheetHeader className="border-b border-border px-4 pb-4 pt-5 pr-12 sm:px-6">
             <div className="flex flex-wrap items-center gap-2">
@@ -614,6 +749,8 @@ export function ArtisanalStrapConversionEditor({
             <SheetTitle>
               {legacyRecipe
                 ? 'Reaproveitar receita anterior'
+                : isReviewMode
+                  ? 'Consultar conversão em revisão'
                 : mode === 'create'
                   ? isMultiMaterialCreate ? 'Cadastrar tipo e materiais' : 'Cadastrar tipo e material'
                   : 'Editar conversão'}
@@ -631,6 +768,46 @@ export function ArtisanalStrapConversionEditor({
                 <LockKey className="h-4 w-4" />
                 <AlertTitle>Consulta somente</AlertTitle>
                 <AlertDescription>Sua permissão não permite alterar conversões.</AlertDescription>
+              </Alert>
+            )}
+
+            {isReviewMode && canWrite && (
+              <Alert>
+                <LockKey className="h-4 w-4" />
+                <AlertTitle>Revisão em modo de consulta</AlertTitle>
+                <AlertDescription>
+                  Esta tela preserva o estado da receita. Use as ações Enviar ou Aprovar na lista de receitas para alterar a etapa da revisão.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {creationBlockedByFinancial && canWrite && !isReviewMode && (
+              <Alert variant="destructive">
+                <LockKey className="h-4 w-4" />
+                <AlertTitle>Acesso financeiro necessário</AlertTitle>
+                <AlertDescription>
+                  Cadastrar uma conversão ou criar uma nova versão exige acesso ao custo de transformação. Solicite essa permissão antes de continuar.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {approvedVersionNeedsFinancialAccess && !createRecipeVersion && canWrite && !isReviewMode && (
+              <Alert>
+                <LockKey className="h-4 w-4" />
+                <AlertTitle>Nova versão indisponível</AlertTitle>
+                <AlertDescription id="strap-conversion-version-financial-help">
+                  A receita aprovada pode ser consultada, mas criar sua próxima versão exige acesso financeiro.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {selectedWidthApprovalBlocked && canWrite && !isReviewMode && (
+              <Alert variant="destructive">
+                <Ruler className="h-4 w-4" />
+                <AlertTitle>Perfil físico requer aprovação</AlertTitle>
+                <AlertDescription>
+                  O material selecionado ainda não possui largura física aprovada. Um usuário com permissão para aprovar receitas precisa concluir esse perfil antes do cadastro.
+                </AlertDescription>
               </Alert>
             )}
 
@@ -701,7 +878,7 @@ export function ArtisanalStrapConversionEditor({
                     nextMaterialRowId.current = 1;
                     setValidationError(null);
                   }}
-                  disabled={readOnly || identityLocked}
+                  disabled={interactionLocked || identityLocked}
                 >
                   <SelectTrigger id="strap-conversion-measure"><SelectValue placeholder="Selecione o tipo" /></SelectTrigger>
                   <SelectContent>
@@ -731,7 +908,7 @@ export function ArtisanalStrapConversionEditor({
                         value={form.typeName}
                         onChange={(event) => setField('typeName', event.target.value)}
                         placeholder="Ex.: TIRA CHATA"
-                        disabled={readOnly || identityLocked}
+                        disabled={interactionLocked || identityLocked}
                       />
                     </div>
                     <div className="space-y-1.5">
@@ -748,7 +925,7 @@ export function ArtisanalStrapConversionEditor({
                           setValidationError(null);
                         }}
                         unit="mm"
-                        disabled={readOnly || identityLocked}
+                        disabled={interactionLocked || identityLocked}
                       />
                     </div>
                   </div>
@@ -810,6 +987,7 @@ export function ArtisanalStrapConversionEditor({
                               variant="ghost"
                               size="icon"
                               onClick={() => removeMaterial(material.rowId)}
+                              disabled={interactionLocked}
                               aria-label={`Remover ${materialLabel}`}
                             >
                               <Trash className="h-4 w-4" />
@@ -841,7 +1019,7 @@ export function ArtisanalStrapConversionEditor({
                             }));
                             setValidationError(null);
                           }}
-                          disabled={readOnly || Boolean(context.currentRecipe)}
+                          disabled={interactionLocked || Boolean(context.currentRecipe)}
                         >
                           <SelectTrigger id={materialSelectId}>
                             <SelectValue placeholder={baseCandidatesQuery.isLoading ? 'Buscando materiais no estoque…' : 'Selecione o material'} />
@@ -853,11 +1031,14 @@ export function ArtisanalStrapConversionEditor({
                               ));
                               const alreadyConfigured = isMultiMaterialCreate && configuredBaseGroupIds.has(item.id);
                               const widthMissing = !numberOrZero(item.usable_width_mm);
+                              const hasApprovedProfile = item.has_approved_width_profile
+                                || Boolean(latestWidthProfile(catalog, item.id, ['approved']));
+                              const approvalRequired = !hasApprovedProfile && !canApproveWidthInline;
                               return (
                                 <SelectItem
                                   key={item.id}
                                   value={item.id}
-                                  disabled={widthMissing || selectedInAnotherRow || alreadyConfigured}
+                                  disabled={widthMissing || approvalRequired || selectedInAnotherRow || alreadyConfigured}
                                 >
                                   {item.name}
                                   {alreadyConfigured
@@ -866,6 +1047,8 @@ export function ArtisanalStrapConversionEditor({
                                       ? ' · já selecionado'
                                       : widthMissing
                                         ? ' · dimensões pendentes'
+                                        : approvalRequired
+                                          ? ' · exige aprovação do perfil físico'
                                         : ` · ${numberOrZero(item.usable_width_mm).toLocaleString('pt-BR')} mm`}
                                 </SelectItem>
                               );
@@ -901,8 +1084,15 @@ export function ArtisanalStrapConversionEditor({
                             <p className="text-sm font-semibold">Versão aprovada preservada</p>
                             <p className="text-xs text-muted-foreground">Pedidos anteriores continuam usando o snapshot já registrado.</p>
                           </div>
-                          {canWrite && !createRecipeVersion && (
-                            <Button type="button" variant="outline" size="sm" onClick={() => setCreateRecipeVersion(true)}>
+                          {canWrite && !createRecipeVersion && !isReviewMode && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setCreateRecipeVersion(true)}
+                              disabled={interactionLocked || !canSeeFinancial}
+                              aria-describedby={!canSeeFinancial ? 'strap-conversion-version-financial-help' : undefined}
+                            >
                               Criar nova versão
                             </Button>
                           )}
@@ -932,7 +1122,7 @@ export function ArtisanalStrapConversionEditor({
                             value={context.usefulWidthMm}
                             onChange={(value) => setMaterialField(material.rowId, 'usefulWidthMm', value)}
                             unit="mm"
-                            disabled={!context.canEnterLegacyWidth}
+                            disabled={isSaving || !context.canEnterLegacyWidth}
                           />
                           {!context.widthProfile && context.editableWidthProfile && (
                             <p className="text-xs text-muted-foreground">
@@ -947,7 +1137,7 @@ export function ArtisanalStrapConversionEditor({
                             value={material.cutBandWidthMm}
                             onChange={(value) => setMaterialField(material.rowId, 'cutBandWidthMm', value)}
                             unit="mm"
-                            disabled={!context.canEditRecipeFields}
+                            disabled={isSaving || !context.canEditRecipeFields}
                           />
                         </div>
                         <div className="space-y-1.5">
@@ -957,7 +1147,7 @@ export function ArtisanalStrapConversionEditor({
                             value={material.confirmedYield}
                             onChange={(value) => setMaterialField(material.rowId, 'confirmedYield', value)}
                             unit="m/m"
-                            disabled={!context.canEditRecipeFields}
+                            disabled={isSaving || !context.canEditRecipeFields}
                           />
                         </div>
                       </div>
@@ -998,7 +1188,7 @@ export function ArtisanalStrapConversionEditor({
                                 'executorType',
                                 value as 'factory' | 'contractor',
                               )}
-                              disabled={!context.canEditRecipeFields}
+                              disabled={isSaving || !context.canEditRecipeFields}
                             >
                               <SelectTrigger id={executorId}><SelectValue /></SelectTrigger>
                               <SelectContent>
@@ -1013,7 +1203,7 @@ export function ArtisanalStrapConversionEditor({
                               <Select
                                 value={material.contractorId}
                                 onValueChange={(value) => setMaterialField(material.rowId, 'contractorId', value)}
-                                disabled={!context.canEditRecipeFields}
+                                disabled={isSaving || !context.canEditRecipeFields}
                               >
                                 <SelectTrigger id={contractorId}><SelectValue placeholder="Selecione" /></SelectTrigger>
                                 <SelectContent>
@@ -1032,7 +1222,7 @@ export function ArtisanalStrapConversionEditor({
                                 value={material.transformationCost}
                                 onChange={(value) => setMaterialField(material.rowId, 'transformationCost', value)}
                                 unit="R$/m"
-                                disabled={!context.canEditRecipeFields}
+                                disabled={isSaving || !context.canEditRecipeFields}
                               />
                             </div>
                           )}
@@ -1048,27 +1238,36 @@ export function ArtisanalStrapConversionEditor({
               )}
 
               {isMultiMaterialCreate && !readOnly && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full gap-2 border-dashed"
-                  onClick={addMaterial}
-                  disabled={form.materials.length >= 25 || !hasDefinedIdentity}
-                  title={!hasDefinedIdentity ? 'Defina o tipo e a medida antes de adicionar materiais.' : undefined}
-                >
-                  <Plus className="h-4 w-4" /> Adicionar outro material
-                </Button>
+                <div className="space-y-1.5">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full gap-2 border-dashed"
+                    onClick={addMaterial}
+                    disabled={interactionLocked || Boolean(addMaterialDisabledReason)}
+                    aria-describedby={addMaterialDisabledReason ? 'strap-conversion-add-material-help' : undefined}
+                  >
+                    <Plus className="h-4 w-4" /> Adicionar outro material
+                  </Button>
+                  {addMaterialDisabledReason && (
+                    <p id="strap-conversion-add-material-help" className="text-xs text-muted-foreground">
+                      {addMaterialDisabledReason}
+                    </p>
+                  )}
+                </div>
               )}
             </section>
 
-            {!readOnly && (mode !== 'create' || Boolean(legacyRecipe)) && (
-              <section className="space-y-1.5" aria-labelledby="strap-conversion-audit">
-                <Label id="strap-conversion-audit">Motivo da alteração *</Label>
+            {!readOnly && (mode !== 'create' || Boolean(legacyRecipe) || hasRecipeContext) && (
+              <section className="space-y-1.5">
+                <Label htmlFor="strap-conversion-audit-reason">Motivo da alteração *</Label>
                 <Textarea
+                  id="strap-conversion-audit-reason"
                   value={form.reason}
                   onChange={(event) => setField('reason', event.target.value)}
                   placeholder="Explique o cadastro ou ajuste para a auditoria."
                   rows={2}
+                  disabled={interactionLocked}
                 />
               </section>
             )}
@@ -1083,9 +1282,13 @@ export function ArtisanalStrapConversionEditor({
           </div>
 
           <SheetFooter className="sticky bottom-0 border-t border-border bg-background px-4 py-4 sm:px-6">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>Fechar</Button>
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>Fechar</Button>
             {!readOnly && (
-              <Button onClick={() => handleSave()} disabled={isSaving} className="gap-2">
+              <Button
+                onClick={() => handleSave()}
+                disabled={interactionLocked || selectedWidthApprovalBlocked || immutableRecipeNeedsNewVersion}
+                className="gap-2"
+              >
                 <FloppyDisk className="h-4 w-4" />
                 {isSaving
                   ? 'Salvando…'

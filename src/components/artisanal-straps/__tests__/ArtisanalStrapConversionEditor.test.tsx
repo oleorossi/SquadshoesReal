@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
@@ -21,17 +21,26 @@ const mutations = vi.hoisted(() => ({
   saveWidth: vi.fn(),
 }));
 
+const mutationState = vi.hoisted(() => ({
+  approveWidth: false,
+  confirmConversion: false,
+  reuseLegacy: false,
+  saveConversion: false,
+  saveMaterialConversions: false,
+  saveWidth: false,
+}));
+
 vi.mock('@/hooks/useArtisanalStraps', () => ({
   useSaveArtisanalStrapConversion: () => ({
-    isPending: false,
+    isPending: mutationState.saveConversion,
     mutateAsync: mutations.saveConversion,
   }),
   useConfirmArtisanalStrapMaterialConversion: () => ({
-    isPending: false,
+    isPending: mutationState.confirmConversion,
     mutateAsync: mutations.confirmConversion,
   }),
   useSaveArtisanalStrapMaterialConversions: () => ({
-    isPending: false,
+    isPending: mutationState.saveMaterialConversions,
     mutateAsync: mutations.saveMaterialConversions,
   }),
   useStrapBaseGroupCandidates: (enabled: boolean) => ({
@@ -55,15 +64,15 @@ vi.mock('@/hooks/useArtisanalStraps', () => ({
     isError: false,
   }),
   useReuseLegacyArtisanalStrapRecipe: () => ({
-    isPending: false,
+    isPending: mutationState.reuseLegacy,
     mutateAsync: mutations.reuseLegacy,
   }),
   useSaveBaseMaterialWidthProfile: () => ({
-    isPending: false,
+    isPending: mutationState.saveWidth,
     mutateAsync: mutations.saveWidth,
   }),
   useApproveBaseMaterialWidthProfile: () => ({
-    isPending: false,
+    isPending: mutationState.approveWidth,
     mutateAsync: mutations.approveWidth,
   }),
 }));
@@ -84,6 +93,11 @@ const capabilities: ArtisanalStrapCapabilities = {
 const draftOnlyCapabilities: ArtisanalStrapCapabilities = {
   ...capabilities,
   approve_strap_recipe: false,
+};
+
+const noFinancialCapabilities: ArtisanalStrapCapabilities = {
+  ...capabilities,
+  can_see_financial_values: false,
 };
 
 const emptyCatalog: ArtisanalStrapCatalog = {
@@ -167,6 +181,44 @@ const catalogWithConfiguredMaterial: ArtisanalStrapCatalog = {
   }],
 };
 
+const catalogWithDraftRecipe: ArtisanalStrapCatalog = {
+  ...catalogWithApprovedWidth,
+  recipes: [{
+    id: 'recipe-draft',
+    measure_id: 'measure-1',
+    base_group_id: 'base-1',
+    base_width_profile_id: 'width-profile-approved',
+    version: 2,
+    usable_base_width_mm_snapshot: 1370,
+    cut_band_width_mm: 18,
+    theoretical_yield_m_per_m: 76,
+    confirmed_yield_m_per_m: 68,
+    executor_type: 'factory',
+    default_contractor_id: null,
+    transformation_cost_per_m: 0.45,
+    status: 'draft',
+  }],
+};
+
+const catalogWithPendingRecipe: ArtisanalStrapCatalog = {
+  ...catalogWithDraftRecipe,
+  recipes: catalogWithDraftRecipe.recipes.map((recipe) => ({
+    ...recipe,
+    id: 'recipe-pending',
+    status: 'pending_approval',
+  })),
+};
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 const catalogWithLegacyRecipe: ArtisanalStrapCatalog = {
   ...catalogWithoutWidth,
   legacy_recipes: [{
@@ -191,6 +243,9 @@ const catalogWithLegacyRecipe: ArtisanalStrapCatalog = {
 
 describe('ArtisanalStrapConversionEditor', () => {
   beforeEach(() => {
+    Object.keys(mutationState).forEach((key) => {
+      mutationState[key as keyof typeof mutationState] = false;
+    });
     mutations.approveWidth.mockReset().mockResolvedValue({});
     mutations.confirmConversion.mockReset().mockResolvedValue({ recipe_id: 'recipe-confirmed', status: 'approved' });
     mutations.reuseLegacy.mockReset().mockResolvedValue({ recipe_id: 'recipe-reused' });
@@ -470,6 +525,330 @@ describe('ArtisanalStrapConversionEditor', () => {
     ));
     expect(mutations.confirmConversion).not.toHaveBeenCalled();
     expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('aguarda o catálogo carregar antes de inicializar a sessão contextual', () => {
+    const props = {
+      open: true,
+      onOpenChange: vi.fn(),
+      capabilities,
+      mode: 'create' as const,
+      origin: 'hub' as const,
+      measureId: 'measure-1',
+      baseGroupId: 'base-1',
+    };
+    const { rerender } = render(
+      <ArtisanalStrapConversionEditor {...props} catalog={emptyCatalog} />,
+    );
+
+    expect(screen.getByLabelText(/Largura da banda/i)).toHaveValue('');
+
+    rerender(
+      <ArtisanalStrapConversionEditor {...props} catalog={catalogWithConfiguredMaterial} />,
+    );
+
+    expect(screen.getByRole('heading', { name: 'Cadastrar tipo e material' })).toBeInTheDocument();
+    expect(screen.getByLabelText(/Largura da banda/i)).toHaveValue('18');
+    expect(screen.getByLabelText(/Rendimento real confirmado/i)).toHaveValue('68');
+    expect(screen.getByRole('button', { name: 'Criar nova versão' })).toBeInTheDocument();
+  });
+
+  it('bloqueia um contexto ainda não inicializado para não sobrescrever edição transitória', () => {
+    const props = {
+      open: true,
+      onOpenChange: vi.fn(),
+      capabilities,
+      mode: 'create' as const,
+      origin: 'hub' as const,
+      measureId: 'measure-1',
+    };
+    const { rerender } = render(
+      <ArtisanalStrapConversionEditor {...props} catalog={emptyCatalog} />,
+    );
+
+    expect(screen.getByLabelText(/Material possível/i)).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Confirmar rendimento e salvar/i })).toBeDisabled();
+
+    rerender(
+      <ArtisanalStrapConversionEditor {...props} catalog={catalogWithApprovedWidth} />,
+    );
+
+    expect(screen.getByLabelText(/Material possível/i)).toBeEnabled();
+
+    rerender(
+      <ArtisanalStrapConversionEditor
+        {...props}
+        recipeId="recipe-ainda-carregando"
+        catalog={catalogWithApprovedWidth}
+      />,
+    );
+
+    expect(screen.getByLabelText(/Material possível/i)).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Confirmar rendimento e salvar/i })).toBeDisabled();
+  });
+
+  it('preserva todas as linhas não salvas quando o catálogo é atualizado', async () => {
+    const user = userEvent.setup();
+    const props = {
+      open: true,
+      onOpenChange: vi.fn(),
+      capabilities,
+      mode: 'create' as const,
+      origin: 'hub' as const,
+      measureId: 'measure-1',
+    };
+    const { rerender } = render(
+      <ArtisanalStrapConversionEditor {...props} catalog={catalogWithApprovedWidth} />,
+    );
+
+    await user.click(screen.getByLabelText(/Material possível/i));
+    await user.click(screen.getByRole('option', { name: /NAPA SOFT/i }));
+    await user.type(screen.getByLabelText(/Largura da banda/i), '18');
+    await user.type(screen.getByLabelText(/Rendimento real confirmado/i), '68');
+    await user.click(screen.getByRole('button', { name: 'Adicionar outro material' }));
+    await user.click(screen.getAllByLabelText(/Material possível/i)[1]);
+    await user.click(screen.getByRole('option', { name: /NAPA SUDANI/i }));
+    await user.type(screen.getAllByLabelText(/Largura da banda/i)[1], '20');
+    await user.type(screen.getAllByLabelText(/Rendimento real confirmado/i)[1], '55');
+
+    rerender(
+      <ArtisanalStrapConversionEditor
+        {...props}
+        catalog={{
+          ...catalogWithApprovedWidth,
+          width_profiles: [...catalogWithApprovedWidth.width_profiles],
+        }}
+      />,
+    );
+
+    expect(screen.getAllByLabelText(/Material possível/i)).toHaveLength(2);
+    expect(screen.getAllByLabelText(/Largura da banda/i)[0]).toHaveValue('18');
+    expect(screen.getAllByLabelText(/Largura da banda/i)[1]).toHaveValue('20');
+    expect(screen.getAllByLabelText(/Rendimento real confirmado/i)[0]).toHaveValue('68');
+    expect(screen.getAllByLabelText(/Rendimento real confirmado/i)[1]).toHaveValue('55');
+  });
+
+  it('bloqueia toda interação durante o lote e preserva os dados quando a requisição falha', async () => {
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+    const request = deferred<{
+      type_id: string;
+      measure_id: string;
+      conversions: Array<{ base_group_id: string; recipe_id: string }>;
+    }>();
+    mutations.saveMaterialConversions.mockReturnValueOnce(request.promise);
+    const editor = () => (
+      <ArtisanalStrapConversionEditor
+        open
+        onOpenChange={onOpenChange}
+        catalog={catalogWithApprovedWidth}
+        capabilities={capabilities}
+        mode="create"
+        origin="hub"
+        measureId="measure-1"
+        baseGroupId="base-1"
+      />
+    );
+    const { rerender } = render(editor());
+
+    await user.type(screen.getByLabelText(/Largura da banda/i), '18');
+    await user.type(screen.getByLabelText(/Rendimento real confirmado/i), '68');
+    await user.click(screen.getByRole('button', { name: /Confirmar rendimento e salvar/i }));
+    await waitFor(() => expect(mutations.saveMaterialConversions).toHaveBeenCalledTimes(1));
+
+    mutationState.saveMaterialConversions = true;
+    rerender(editor());
+
+    expect(screen.getByRole('dialog')).toHaveAttribute('aria-busy', 'true');
+    expect(screen.getByRole('button', { name: 'Fechar' })).toBeDisabled();
+    expect(screen.getByLabelText(/Material possível/i)).toBeDisabled();
+    expect(screen.getByLabelText(/Largura da banda/i)).toBeDisabled();
+    expect(screen.getByLabelText(/Rendimento real confirmado/i)).toBeDisabled();
+    await user.keyboard('{Escape}');
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+
+    mutationState.saveMaterialConversions = false;
+    await act(async () => {
+      request.reject(new Error('Falha transacional simulada'));
+      await request.promise.catch(() => undefined);
+    });
+
+    expect(await screen.findByText('Falha transacional simulada')).toBeInTheDocument();
+    expect(screen.getByLabelText(/Largura da banda/i)).toHaveValue('18');
+    expect(screen.getByLabelText(/Largura da banda/i)).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Fechar' })).toBeEnabled();
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+  });
+
+  it('explica por que outra linha não pode ser adicionada e não cria linhas vazias em sequência', async () => {
+    const user = userEvent.setup();
+    render(
+      <ArtisanalStrapConversionEditor
+        open
+        onOpenChange={vi.fn()}
+        catalog={catalogWithApprovedWidth}
+        capabilities={capabilities}
+        mode="create"
+        origin="hub"
+        measureId="measure-1"
+      />,
+    );
+
+    const addButton = screen.getByRole('button', { name: 'Adicionar outro material' });
+    expect(addButton).toBeDisabled();
+    expect(screen.getByText(/Selecione o material da linha atual/i)).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText(/Material possível/i));
+    await user.click(screen.getByRole('option', { name: /NAPA SOFT/i }));
+    expect(addButton).toBeEnabled();
+    await user.click(addButton);
+
+    expect(addButton).toBeDisabled();
+    expect(screen.getByText(/Selecione o material da linha atual/i)).toBeInTheDocument();
+    await user.click(screen.getAllByLabelText(/Material possível/i)[1]);
+    await user.click(screen.getByRole('option', { name: /NAPA SUDANI/i }));
+    expect(addButton).toBeDisabled();
+    expect(screen.getByText(/Não há outro material elegível/i)).toBeInTheDocument();
+  });
+
+  it('bloqueia um cadastro novo antes do preenchimento quando falta acesso financeiro', () => {
+    render(
+      <ArtisanalStrapConversionEditor
+        open
+        onOpenChange={vi.fn()}
+        catalog={{ ...catalogWithApprovedWidth, capabilities: noFinancialCapabilities }}
+        capabilities={noFinancialCapabilities}
+        mode="create"
+        origin="hub"
+        measureId="measure-1"
+      />,
+    );
+
+    expect(screen.getByText('Acesso financeiro necessário')).toBeInTheDocument();
+    expect(screen.getByLabelText(/Material possível/i)).toBeDisabled();
+    expect(screen.queryByRole('button', { name: /Salvar|Confirmar rendimento/i })).not.toBeInTheDocument();
+  });
+
+  it('permite editar um rascunho sem revelar ou sobrescrever o custo oculto', async () => {
+    const user = userEvent.setup();
+    render(
+      <ArtisanalStrapConversionEditor
+        open
+        onOpenChange={vi.fn()}
+        catalog={{ ...catalogWithDraftRecipe, capabilities: noFinancialCapabilities }}
+        capabilities={noFinancialCapabilities}
+        mode="edit"
+        origin="hub"
+        recipeId="recipe-draft"
+      />,
+    );
+
+    expect(screen.queryByLabelText(/Custo de transformação/i)).not.toBeInTheDocument();
+    await user.clear(screen.getByLabelText(/Rendimento real confirmado/i));
+    await user.type(screen.getByLabelText(/Rendimento real confirmado/i), '67');
+    await user.type(screen.getByLabelText(/Motivo da alteração/i), 'Ajuste do rendimento medido');
+    await user.click(screen.getByRole('button', { name: 'Salvar conversão' }));
+
+    await waitFor(() => expect(mutations.saveConversion).toHaveBeenCalledTimes(1));
+    const recipePayload = mutations.saveConversion.mock.calls[0][0].payload.recipe;
+    expect(recipePayload.id).toBe('recipe-draft');
+    expect(recipePayload.confirmed_yield_m_per_m).toBe(67);
+    expect(recipePayload).not.toHaveProperty('transformation_cost_per_m');
+  });
+
+  it('antecipa a necessidade de aprovar o perfil físico', async () => {
+    render(
+      <ArtisanalStrapConversionEditor
+        open
+        onOpenChange={vi.fn()}
+        catalog={{ ...catalogWithoutWidth, capabilities: draftOnlyCapabilities }}
+        capabilities={draftOnlyCapabilities}
+        mode="create"
+        origin="hub"
+        measureId="measure-1"
+        baseGroupId="base-1"
+      />,
+    );
+
+    expect(screen.getByText('Perfil físico requer aprovação')).toBeInTheDocument();
+    expect(screen.getByLabelText(/Largura da banda/i)).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Salvar conversão' })).toBeDisabled();
+  });
+
+  it('usa o fluxo singular de nova versão quando medida e material já possuem receita', async () => {
+    const user = userEvent.setup();
+    render(
+      <ArtisanalStrapConversionEditor
+        open
+        onOpenChange={vi.fn()}
+        catalog={catalogWithConfiguredMaterial}
+        capabilities={capabilities}
+        mode="create"
+        origin="hub"
+        measureId="measure-1"
+        baseGroupId="base-1"
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: 'Cadastrar tipo e material' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Adicionar outro material' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Confirmar rendimento e salvar/i })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Criar nova versão' }));
+    expect(screen.getByText('Nova versão em rascunho')).toBeInTheDocument();
+    expect(screen.getByLabelText(/Motivo da alteração/i)).toHaveValue('Nova versão da conversão');
+    await user.clear(screen.getByLabelText(/Rendimento real confirmado/i));
+    await user.type(screen.getByLabelText(/Rendimento real confirmado/i), '67');
+    await user.click(screen.getByRole('button', { name: /Confirmar rendimento e salvar/i }));
+
+    await waitFor(() => expect(mutations.confirmConversion).toHaveBeenCalledTimes(1));
+    expect(mutations.saveMaterialConversions).not.toHaveBeenCalled();
+    expect(mutations.confirmConversion.mock.calls[0][0].payload.recipe.id).toBeUndefined();
+  });
+
+  it('mantém a sugestão de rendimento no fluxo explícito de nova versão', async () => {
+    const user = userEvent.setup();
+    render(
+      <ArtisanalStrapConversionEditor
+        open
+        onOpenChange={vi.fn()}
+        catalog={catalogWithConfiguredMaterial}
+        capabilities={capabilities}
+        mode="edit"
+        origin="hub"
+        recipeId="recipe-approved"
+        suggestedRecipeId="recipe-approved"
+        suggestedYieldMPerM={65}
+      />,
+    );
+
+    expect(screen.getByText('Nova versão em rascunho')).toBeInTheDocument();
+    expect(screen.getByLabelText(/Rendimento real confirmado/i)).toHaveValue('65');
+    expect(screen.getByLabelText(/Motivo da alteração/i))
+      .toHaveValue('Nova versão baseada no rendimento realizado de 65 m/m');
+    await user.click(screen.getByRole('button', { name: 'Salvar conversão' }));
+
+    await waitFor(() => expect(mutations.saveConversion).toHaveBeenCalledTimes(1));
+    expect(mutations.saveConversion.mock.calls[0][0].payload.recipe.id).toBeUndefined();
+  });
+
+  it('trata review como consulta e não rebaixa uma receita pendente para rascunho', () => {
+    render(
+      <ArtisanalStrapConversionEditor
+        open
+        onOpenChange={vi.fn()}
+        catalog={catalogWithPendingRecipe}
+        capabilities={capabilities}
+        mode="review"
+        origin="hub"
+        recipeId="recipe-pending"
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: 'Consultar conversão em revisão' })).toBeInTheDocument();
+    expect(screen.getByText('Revisão em modo de consulta')).toBeInTheDocument();
+    expect(screen.getByLabelText(/Largura da banda/i)).toBeDisabled();
+    expect(screen.queryByRole('button', { name: /Salvar conversão/i })).not.toBeInTheDocument();
+    expect(mutations.saveConversion).not.toHaveBeenCalled();
   });
 
   it('reaproveita uma receita anterior com dados herdados e exige a largura útil faltante', async () => {

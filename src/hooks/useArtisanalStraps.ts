@@ -347,10 +347,10 @@ export interface SaveArtisanalStrapConversionResult {
   recipe_id: string;
 }
 
-export type SaveArtisanalStrapMaterialConversionInput = Pick<
-  SaveArtisanalStrapConversionPayload,
-  'base_group_id' | 'recipe'
->;
+export interface SaveArtisanalStrapMaterialConversionInput {
+  base_group_id: SaveArtisanalStrapConversionPayload['base_group_id'];
+  recipe: Omit<SaveArtisanalStrapConversionPayload['recipe'], 'id'>;
+}
 
 export interface SaveArtisanalStrapMaterialConversionsPayload {
   type: SaveArtisanalStrapConversionPayload['type'];
