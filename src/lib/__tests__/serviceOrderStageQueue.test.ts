@@ -22,17 +22,27 @@ function row(partial: Partial<ConsumptionRow> & Pick<ConsumptionRow, 'componentT
 }
 
 describe('serviceOrderStageQueue', () => {
-  it('o kit da Costura de cabedal ignora solado e palmilha', () => {
+  it('o kit da Costura de cabedal ignora forração, solado e palmilha', () => {
     expect(stageKitComponents('costura')).toEqual([
-      'Cabedal', 'Forração', 'BOM', 'Componente Direto',
+      'Cabedal', 'BOM', 'Componente Direto',
     ]);
     const kit = filterRowsToStageKit([
       row({ componentType: 'Cabedal', groupName: 'NAPA' }),
+      row({ componentType: 'Forração', groupName: 'FORRO' }),
       row({ componentType: 'Solado', groupName: 'TR' }),
       row({ componentType: 'Palmilha', groupName: 'EVA' }),
       row({ componentType: 'BOM', groupName: 'LINHA' }),
     ], 'costura');
     expect(kit.map((item) => item.componentType)).toEqual(['Cabedal', 'BOM']);
+  });
+
+  it('falta de forração não deixa a Costura de cabedal short', () => {
+    const assessment = assessStageKitStock([
+      row({ componentType: 'Cabedal', groupName: 'NAPA', totalQuantity: 12, available: 12 }),
+      row({ componentType: 'BOM', groupName: 'LINHA', totalQuantity: 2, available: 9 }),
+      row({ componentType: 'Forração', groupName: 'FORRO', totalQuantity: 20, available: 0 }),
+    ], 'costura');
+    expect(assessment.status).toBe('ready');
   });
 
   it('o kit do Aviamento é só BOM + componente direto', () => {

@@ -122,7 +122,7 @@ export const SERVICE_ORDER_ACTIVITY_DEFAULTS: Record<
   },
   costura: {
     return_before_sector: 'Silk',
-    material_components: ['Cabedal', 'Forração', 'BOM', 'Componente Direto'],
+    material_components: ['Cabedal', 'BOM', 'Componente Direto'],
   },
   corte_palmilha: {
     return_before_sector: 'Costura Palmilha',

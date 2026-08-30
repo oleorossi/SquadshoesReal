@@ -17,8 +17,8 @@ import {
  * 1. Prazo de faturamento/retorno mais próximo.
  * 2. Material em estoque — só o kit da ETAPA (não a ficha inteira).
  *    Aviamento = BOM + Componente Direto.
- *    Costura de cabedal = Cabedal + Forração + BOM + Componente Direto.
- *    Solado, palmilha, embalagem e tira artesanal não entram na prioridade.
+ *    Costura de cabedal = Cabedal + BOM + Componente Direto.
+ *    Forração, solado, palmilha, embalagem e tira artesanal não entram.
  *
  * Sem linhas de consumo anotadas, a fila usa só o prazo (não inventa falta).
  */
@@ -79,7 +79,7 @@ export function isStageKitComponent(
   return stageKitComponents(sector).includes(componentType as ServiceOrderMaterialComponent);
 }
 
-/** Corta a ficha no kit da atividade. Solado nunca entra em Aviamento/Costura. */
+/** Corta a ficha no kit da atividade. Solado e forração nunca entram em Costura de cabedal. */
 export function filterRowsToStageKit(
   rows: readonly ConsumptionRow[],
   sector: string | null | undefined,
