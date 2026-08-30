@@ -150,6 +150,9 @@ export interface SilkColorGroup {
    *  (requiresUpperCut) E a ficha técnica NÃO é corte a fio
    *  (upper_corte_a_fio=false). Filtra a ficha 'Costura Cabedal'. */
   requiresUpperSewing?: boolean;
+  /** Sobra de napa de outra espessura (Material extra do cabedal). Exibida
+   *  em Corte/Costura Cabedal — soma ao Material 1, não o substitui. */
+  leftoverNapas?: string[];
   /** Etapas de Aviamento que se aplicam a essa ficha (subset de
    *  ["Frente","Traseira","Costura de tiras"]). Renderizado como
    *  checklist por etapa × numeração no setor Aviamento. */
@@ -1540,6 +1543,14 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                     >
                       {cg.totalPairs * 2}
                       <span className="text-[10px] font-mono tracking-widest uppercase"> peças (2 peças/par)</span>
+                    </span>
+                  </div>
+                )}
+                {(sector === 'Costura Cabedal' || sector === 'Corte Cabedal') && (cg.leftoverNapas?.length ?? 0) > 0 && (
+                  <div className="keep-together keep-with-next px-2 py-0.5 mb-1" style={{ border: '1.5px solid #000' }}>
+                    <span className="section-label block" style={{ color: '#000' }}>Sobra de napa</span>
+                    <span className="text-[11px] font-bold uppercase tracking-wide text-black">
+                      {cg.leftoverNapas!.join(' · ')}
                     </span>
                   </div>
                 )}

@@ -23,6 +23,7 @@ import {
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
 import { resolveCanonicalPackaging, type PackagingBoxType } from '@/lib/packagingConsumption';
 import { resolvePinnedSoleProductIdByColor, type SoleColorRule } from '@/lib/soleColorResolution';
+import { isLeftoverCabedalExtra, leftoverCabedalDisplayName } from '@/lib/cabedalLeftover';
 import {
   type ArtisanalStrapCutRow,
 } from '@/lib/strapRollCut';
@@ -88,7 +89,9 @@ type UpperMaterialAccessory = {
   consumption?: number | string | null;
   consumption_per_size?: Record<string, number> | null;
   mandatory?: boolean | null;
+  leftover?: boolean | null;
   product_id?: string | null;
+  product_name?: string | null;
   label?: string | null;
 };
 
@@ -929,8 +932,12 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       const mandSheet = getConversionSheetForProduct(mandProduct?.id, mandMat.material, { color: orderColor, mode: 'linear', preferYield: true });
       const mandOverride = (mandMat.consumption_per_size && Object.keys(mandMat.consumption_per_size).length > 0) ? mandMat.consumption_per_size : null;
       const { total: mandTotal } = calculateConsumptionWithUnit(item, mandConsumption, mandSheet, 'metro', mandOverride);
+      const leftoverExtra = isLeftoverCabedalExtra(mandMat, sheet);
       addConsumptionRow(consumptionMap, {
-        componentType: 'Cabedal', groupName: mandMat.material, materialName: mandProduct?.name || mandMat.label || 'Material Fixo',
+        componentType: 'Cabedal', groupName: mandMat.material,
+        materialName: leftoverExtra
+          ? leftoverCabedalDisplayName({ ...mandMat, product_name: mandProduct?.name || mandMat.product_name })
+          : (mandProduct?.name || mandMat.label || 'Material Fixo'),
         productUnit: 'metro', color: orderColor, totalQuantity: mandTotal,
         productIds: mandProduct?.id ? [mandProduct.id] : undefined,
       });

@@ -248,6 +248,45 @@ describe('orderConsumption — motor canônico', () => {
     expect(cabedais.reduce((sum, row) => sum + row.totalQuantity, 0)).toBeCloseTo(1.92, 6);
   });
 
+  it('consome sobra de napa de outra espessura como linha própria (CONHAQUE 1.2 + 1.0)', () => {
+    const ctx = buildContext();
+    ctx.productGroups.push({
+      id: 'g-napa-12', name: 'NAPA CONHAQUE 1.2',
+      dimensions_length: null, dimensions_width: 1000, dimensions_unit: 'mm',
+    } as any);
+    ctx.allProducts.push({
+      id: 'p-napa-12', name: 'NAPA CONHAQUE 1.2 PRETO', color: 'PRETO',
+      group_id: 'g-napa-12', quantity: 0, reserved_stock: 0, stock_grade: null,
+      sole_classification: null,
+    } as any);
+    ctx.componentSheets.push({
+      product_id: 'p-napa-12', group_id: 'g-napa-12',
+      dimensions_width: 1000, dimensions_unit: 'mm',
+    } as any);
+    const item = buildItem({
+      technical_sheets: buildSheet({
+        upper_material: 'NAPA CONHAQUE 1.0',
+        upper_material_product_id: 'p-napa-preto',
+        components_accessories: [{
+          material: 'NAPA CONHAQUE 1.2',
+          product_id: 'p-napa-12',
+          leftover: true,
+          mandatory: true,
+          consumption: 2,
+        }],
+      }),
+    });
+
+    const cabedais = computeConsumptionForItems([item], ctx)
+      .filter((row) => row.componentType === 'Cabedal');
+
+    expect(cabedais).toHaveLength(2);
+    const sobra = cabedais.find((row) => (row.productIds || []).includes('p-napa-12'));
+    expect(sobra?.materialName).toMatch(/^Sobra · /);
+    expect(cabedais.map((row) => row.productIds?.[0]).sort())
+      .toEqual(['p-napa-12', 'p-napa-preto']);
+  });
+
   it('palmilha (placa+forração) vem da spec do SOLADO por número quando preenchida — não do escalar da ficha', () => {
     const ctx = buildContext();
     // Solado resolvido por P3 (primary_sole_id da ficha) → produto p-solado.

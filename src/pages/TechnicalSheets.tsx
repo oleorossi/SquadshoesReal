@@ -78,6 +78,11 @@ import { ReferenceTerceirizacoesPanel } from '@/components/technical-sheets/Refe
 import { cn, getSoleModelName, parseSafeNumber, formatCurrency as globalFormatCurrency, safeToFixed } from '@/lib/utils';
 import { needsWidthForConversion, effectiveConversionFactor } from '@/lib/purchaseConversion';
 import { bomMaterialCostPerPair } from '@/lib/materialConsumption';
+import {
+  isLeftoverCabedalExtra,
+  leftoverRequiresPin,
+  validateCabedalLeftovers,
+} from '@/lib/cabedalLeftover';
 import { getShoeSizeMappings } from '@/utils/shoeUtils';
 import {
   applyCanonicalTechnicalStrapMeasure,
@@ -1920,6 +1925,15 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
         payload.upper_material_group_id = upperMaterialGroup.id;
         payload.upper_material = upperMaterialGroup.name;
       }
+      const leftoverIssues = validateCabedalLeftovers(
+        payload.components_accessories || [],
+        payload,
+      );
+      if (leftoverIssues.length > 0) {
+        toast.error(leftoverIssues[0].message, { duration: 8000 });
+        setAbaAtiva('engineering');
+        return;
+      }
       const normalizedStraps = ensureTechnicalStrapLineIds(payload.strap_colors);
       if (form.has_straps) {
         if (!strapCatalog || strapCatalogQuery.isError) {
@@ -3055,7 +3069,8 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                     {/* Componentes Extras do Cabedal — cada um soma ao consumo principal
                         (mandatory=true → débito independente, não substitui o cabedal).
                         Ex: Napa principal (dm²) + Elástico Traseiro 6mm (m) +
-                        Elástico Frente 8mm (m) + Tira reforço (m).
+                        Elástico Frente 8mm (m) + Tira reforço (m) + Sobra de napa
+                        de outra espessura (NAPA CONHAQUE 1.2 além da 1.0).
                         Cada componente tem label livre pra distinguir na ficha. */}
                     <div className="mt-3 pt-3 border-t border-dashed border-amber-300 dark:border-amber-800">
                       <div className="flex items-center justify-between mb-3">
@@ -3065,7 +3080,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                             Materiais do Cabedal
                           </span>
                           <span className="text-xs text-muted-foreground">
-                            · o cabedal pode ter vários materiais; cada um tem seu consumo e debita estoque
+                            · vários materiais, inclusive sobra de napa de outra espessura; cada um debita estoque
                           </span>
                         </div>
                         <Button
@@ -3074,7 +3089,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                           className="h-8 gap-1.5 text-xs"
                           onClick={() => {
                             const arr = [...(form.components_accessories || [])];
-                            arr.push({ material: '', mandatory: true, label: '', consumption: 0, consumption_per_size: {} });
+                            arr.push({ material: '', mandatory: true, leftover: false, label: '', consumption: 0, consumption_per_size: {} });
                             updateField('components_accessories', arr);
                           }}
                         >
@@ -3089,21 +3104,26 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                             <div className="flex items-start gap-2 rounded-md border border-dashed border-border bg-muted/20 px-3 py-2.5">
                               <Layers className="h-4 w-4 shrink-0 text-muted-foreground/60 mt-0.5" />
                               <p className="text-xs text-muted-foreground">
-                                Só o <strong>Material 1</strong>. Adicione Material 2, 3… quando o cabedal tiver mais de um
-                                material — cada um com seu próprio consumo e débito de estoque.
+                                Só o <strong>Material 1</strong>. Adicione Material 2 quando o cabedal tiver elástico, reforço
+                                ou <strong>sobra de napa de outra espessura</strong> (ex.: CONHAQUE 1.2 além da 1.0).
                               </p>
                             </div>
                           );
                         }
                         return mandatoryItems.map(({ extra, rawIdx }, displayIdx) => {
                           const unit = getUnitForGroupName(extra.material || '', extra.material_unit);
+                          const leftover = isLeftoverCabedalExtra(extra, form);
+                          const needsPin = leftover && leftoverRequiresPin(extra, form);
+                          const leftoverIssue = leftover
+                            ? validateCabedalLeftovers([extra], form)[0]
+                            : null;
                           return (
                             <div key={rawIdx} className="space-y-2 border-l-2 border-amber-400/60 pl-3 mb-4">
                               {/* Material (grupo) + remover. Campo de nome livre removido —
                                   o material selecionado já identifica (Material 1, 2, 3…). */}
                               <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-end">
                                 <GroupMaterialSelect
-                                label={`Material ${displayIdx + 2}`}
+                                label={`Material ${displayIdx + 2}${leftover ? ' · Sobra' : ''}`}
                                 value={extra.material || ''}
                                 onChange={v => {
                                   const arr = [...(form.components_accessories || [])];
@@ -3120,11 +3140,15 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                                   // Trocar o grupo invalida o item fixado de outro grupo.
                                   const prevGrpName = (arr[rawIdx]?.material || '').trim();
                                   const clearPin = prevGrpName !== v.trim();
-                                  arr[rawIdx] = {
+                                  const nextExtra = {
                                     ...arr[rawIdx], material: v, mandatory: true, label: v,
+                                    leftover: false,
                                     ...(material_unit ? { material_unit } : {}),
                                     ...(clearPin ? { product_id: null, product_name: null } : {}),
                                   };
+                                  nextExtra.leftover = isLeftoverCabedalExtra(nextExtra, form);
+                                  if (nextExtra.leftover) nextExtra.label = `Sobra · ${v}`;
+                                  arr[rawIdx] = nextExtra;
                                   updateField('components_accessories', arr);
                                 }}
                                 />
@@ -3137,17 +3161,25 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                                 </Button>
                               </div>
 
+                              {leftover && (
+                                <p className="text-xs text-amber-700 dark:text-amber-400">
+                                  Sobra de outra espessura — soma ao Material 1 e debita o SKU próprio. Não substitui a napa principal.
+                                </p>
+                              )}
+
                               {renderWidthWarn(extra.material)}
 
-                              {/* Linha 2b: Item específico (opcional). Fixa o produto exato
-                                  pro débito; em branco = resolve pela cor do PV (padrão). */}
+                              {/* Linha 2b: Item específico. Sobra do mesmo grupo exige pin;
+                                  em branco = resolve pela cor do PV (padrão). */}
                               {extra.material && (() => {
                                 const grp = (groups || []).find((x: any) => (x.name || '').trim() === (extra.material || '').trim());
                                 const itemsOfGroup = grp ? (products || []).filter((p: any) => p.group_id === grp.id && p.active) : [];
                                 return (
                                   <div>
                                     <Label className="text-xs text-muted-foreground">
-                                      Item específico <span className="text-muted-foreground/60">(opcional — débito exato)</span>
+                                      Item específico {needsPin
+                                        ? <span className="text-destructive">(obrigatório na sobra do mesmo grupo)</span>
+                                        : <span className="text-muted-foreground/60">(opcional — débito exato)</span>}
                                     </Label>
                                     <Select
                                       value={extra.product_id || '__none__'}
@@ -3163,10 +3195,12 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                                       }}
                                     >
                                       <SelectTrigger className="h-8 text-xs mt-1">
-                                        <SelectValue placeholder="Resolver pela cor (padrão)" />
+                                        <SelectValue placeholder={needsPin ? 'Escolher o SKU da sobra' : 'Resolver pela cor (padrão)'} />
                                       </SelectTrigger>
                                       <SelectContent>
-                                        <SelectItem value="__none__" className="text-xs">Resolver pela cor (padrão)</SelectItem>
+                                        {!needsPin && (
+                                          <SelectItem value="__none__" className="text-xs">Resolver pela cor (padrão)</SelectItem>
+                                        )}
                                         {itemsOfGroup.map((p: any) => (
                                           <SelectItem key={p.id} value={p.id} className="text-xs">
                                             {p.name}{p.color ? ` (${p.color})` : ''} [{p.unit || 'un'}]
@@ -3178,6 +3212,9 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                                       <p className="text-xs text-success mt-1">
                                         Débito fixo neste item (ignora a cor do PV).
                                       </p>
+                                    )}
+                                    {leftoverIssue && (
+                                      <p className="text-xs text-destructive mt-1">{leftoverIssue.message}</p>
                                     )}
                                   </div>
                                 );
