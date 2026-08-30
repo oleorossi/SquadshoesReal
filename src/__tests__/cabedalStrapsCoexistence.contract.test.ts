@@ -53,5 +53,12 @@ describe('Cabedal e tiras coexistem na ficha e no PV', () => {
     expect(printWorkSheetsPage).toContain("buildColorGroupedSheets('sole', true)");
     expect(printWorkSheetsPage).toContain('upperEligibility.partitionKey');
     expect(printWorkSheetsPage).toContain("sectorName === 'Costura Cabedal' ? upperGroups : smGroups");
+    expect(printWorkSheetsPage).toContain('const upperGroups = upperSectorGroups || [];');
+    expect(printWorkSheetsPage).toMatch(
+      /activeSectors\.has\('Corte Cabedal'\) && upperGroups\.some/,
+    );
+    expect(printWorkSheetsPage).toMatch(
+      /activeSectors\.has\('Costura Cabedal'\) && upperGroups\.some/,
+    );
   });
 });

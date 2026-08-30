@@ -3004,7 +3004,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     // filtro requiresUpperCut (modelos 100% tiras → mergeColorsAcrossSoles
     // devolve null e nada renderiza; contar 1 habilitava print em branco).
     const smGroups = silkMontageGroups || [];
-    if (activeSectors.has('Corte Cabedal') && smGroups.some(g =>
+    const upperGroups = upperSectorGroups || [];
+    if (activeSectors.has('Corte Cabedal') && upperGroups.some(g =>
       g.colorGroups.some(cg => cg.requiresUpperCut === true))) total += 1;
     // Fluxo contínuo por setor (2026-06-12): Corte Forração, Costura*, Silk,
     // Aviamento, Montagem e Acabamento agora imprimem UM maço por setor
@@ -3022,7 +3023,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     // `sheetCount === 0` desabilitava os dois botões de imprimir (2921/2924).
     if (activeSectors.has('Costura Palmilha') && smGroups.some(g =>
       g.colorGroups.some(cg => opsInRoteiro(cg.opNumbers, 'Costura')))) total += 1;
-    if (activeSectors.has('Costura Cabedal') && smGroups.some(g =>
+    if (activeSectors.has('Costura Cabedal') && upperGroups.some(g =>
       g.colorGroups.some(cg => cg.requiresUpperSewing === true && opsInRoteiro(cg.opNumbers, 'Costura Cabedal')))) total += 1;
     if (activeSectors.has('Aviamento') && (aviamentoGroups || []).some(g =>
       g.colorGroups.some(cg => opsInRoteiro(cg.opNumbers, 'Aviamento')))) total += 1;
@@ -3039,9 +3040,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     return total;
     // opsInRoteiro/orderInRoteiro são closures recriadas a cada render — fora
     // das deps de propósito (mesmo padrão dos memos vizinhos); os dados que
-    // elas leem chegam via silkMontageGroups/groupedWorksheets.
+    // elas leem chegam via silkMontageGroups/upperSectorGroups/groupedWorksheets.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSectors, palmilhaGroups, solagemData, silkMontageGroups, aviamentoGroups, groupedWorksheets, acabamentoOrders.length, expedicaoGroups, reportGroups]);
+  }, [activeSectors, palmilhaGroups, solagemData, silkMontageGroups, upperSectorGroups, aviamentoGroups, groupedWorksheets, acabamentoOrders.length, expedicaoGroups, reportGroups]);
 
   const today = new Date().toLocaleDateString('pt-BR');
   const printPairCount = printOrders.reduce((total, order) => total + (Number(order.total_pairs) || 0), 0);
