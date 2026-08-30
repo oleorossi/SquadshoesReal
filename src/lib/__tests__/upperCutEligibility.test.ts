@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { requiresUpperCut } from '@/lib/upperCutEligibility';
+import { getUpperWorkEligibility, requiresUpperCut } from '@/lib/upperCutEligibility';
 
 describe('requiresUpperCut', () => {
   it('mantém Corte Cabedal quando cabedal e tiras coexistem', () => {
@@ -54,5 +54,32 @@ describe('requiresUpperCut', () => {
         consumption: 2,
       }],
     })).toBe(false);
+  });
+
+  it('particiona grupos de impressão quando cabedal e somente tiras colidem', () => {
+    const cabedalComTiras = getUpperWorkEligibility({
+      upper_material: 'NAPA SOFT',
+      upper_consumption: 2.74,
+    });
+    const somenteTiras = getUpperWorkEligibility({
+      upper_material: '',
+      upper_consumption: 0,
+    });
+    const cabedalCorteAFio = getUpperWorkEligibility({
+      upper_material: 'NAPA SOFT',
+      upper_consumption: 2.74,
+      upper_corte_a_fio: true,
+    });
+
+    expect(cabedalComTiras.partitionKey).not.toBe(somenteTiras.partitionKey);
+    expect(cabedalComTiras.partitionKey).not.toBe(cabedalCorteAFio.partitionKey);
+    expect(cabedalComTiras).toMatchObject({
+      requiresUpperCut: true,
+      requiresUpperSewing: true,
+    });
+    expect(somenteTiras).toMatchObject({
+      requiresUpperCut: false,
+      requiresUpperSewing: false,
+    });
   });
 });

@@ -8,6 +8,7 @@ const read = (path: string) => readFileSync(resolve(ROOT, path), 'utf8');
 const technicalSheets = read('src/pages/TechnicalSheets.tsx');
 const constructionPanel = read('src/components/technical-sheets/ConstructionConfigPanel.tsx');
 const saleOrderItemForm = read('src/components/sale-orders/SaleOrderItemForm.tsx');
+const printWorkSheetsPage = read('src/components/production/PrintWorkSheetsPage.tsx');
 
 describe('Cabedal e tiras coexistem na ficha e no PV', () => {
   it('o editor não limpa nem desabilita uma capacidade ao configurar a outra', () => {
@@ -46,5 +47,11 @@ describe('Cabedal e tiras coexistem na ficha e no PV', () => {
   it('trocar o cartão de construção do Cabedal preserva tiras já habilitadas', () => {
     expect(constructionPanel).not.toContain("onChange('has_straps', false)");
     expect(constructionPanel).toContain('Cabedal + Tiras');
+  });
+
+  it('não funde pares somente de tiras no Corte ou na Costura Cabedal', () => {
+    expect(printWorkSheetsPage).toContain("buildColorGroupedSheets('sole', true)");
+    expect(printWorkSheetsPage).toContain('upperEligibility.partitionKey');
+    expect(printWorkSheetsPage).toContain("sectorName === 'Costura Cabedal' ? upperGroups : smGroups");
   });
 });

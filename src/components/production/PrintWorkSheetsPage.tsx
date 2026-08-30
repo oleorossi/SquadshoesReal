@@ -36,7 +36,7 @@ import { facaLabelForSize, expandFacasByBoundaries } from '@/lib/knifeFacas';
 import { useKnifeFacasDefault } from '@/hooks/useKnifeFacasDefault';
 import { pmgLabelForSize } from '@/lib/aviamentoSizeRanges';
 import { useAviamentoPmgDefault } from '@/hooks/useAviamentoPmgDefault';
-import { requiresUpperCut } from '@/lib/upperCutEligibility';
+import { getUpperWorkEligibility, requiresUpperCut } from '@/lib/upperCutEligibility';
 
 /**
  * CSS do modo CARTÃO (aprovado pelo dono 31/07/2026 — "Opção B, 3 colunas").
@@ -2069,7 +2069,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   // agrupamentos: por SOLADO (Corte Forração / Corte Cabedal / Costura* /
   // Silk) e por REFERÊNCIA (Aviamento — o setor monta o cabedal; o solado é
   // irrelevante pra eles, então 1 ficha por modelo com seções por cor).
-  const buildColorGroupedSheets = (groupBy: 'sole' | 'reference'): SoleSilkGroup[] => {
+  const buildColorGroupedSheets = (
+    groupBy: 'sole' | 'reference',
+    partitionUpperEligibility = false,
+  ): SoleSilkGroup[] => {
     // Map: groupKey → { displayName, colorMap }.
     //  - groupBy='sole': groupKey é a IDENTIDADE do solado (sole_product_id
     //    quando há mapping real; sheetId quando cai no fallback de
@@ -2101,6 +2104,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
 
     for (const order of expandedOrders) {
       const sheetId = order.reference_id;
+      const upperEligibility = getUpperWorkEligibility(sheetById.get(sheetId));
+      const needsUpperCut = upperEligibility.requiresUpperCut;
+      const requiresUpperSewing = upperEligibility.requiresUpperSewing;
       const cabedelColorLower = (order.color || '').toLowerCase();
       const colorName = order.variant?.color_name || order.color || '';
       const colorHex = order.variant?.color_hex;
@@ -2112,9 +2118,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       const lotTotal = order._total_lots ?? 0;
       const lotSuffix = lotTotal > 1 ? `::lot${lotNum}` : '';
       // Chave do colorMap = cor cabedal + assinatura de tiras + lote.
-      const colorKey = strapSig
+      const baseColorKey = strapSig
         ? `${colorName}::${strapSig}${lotSuffix}`
         : `${colorName}${lotSuffix}`;
+      const colorKey = partitionUpperEligibility
+        ? `${baseColorKey}::${upperEligibility.partitionKey}`
+        : baseColorKey;
 
       // A1: solado pela resolução canônica (P0→P3 do resolve_sole_color).
       const resolvedSole = resolveSoleForOrder(sheetId, order.color);
@@ -2168,9 +2177,6 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       //    corte a fio (upper_corte_a_fio=false → cabedal passa por costura)
       const requiresLiningCut = (liningFlagLookup.get(sheetId) === true)
         && !isEffectiveReadyMade(sheetId, order.color);
-      const needsUpperCut = requiresUpperCut(sheetById.get(sheetId));
-      const requiresUpperSewing = needsUpperCut
-        && sheetById.get(sheetId)?.upper_corte_a_fio !== true;
 
       // Variantes/foto da cor exata desta OP — hoisted (2026-07-22) pra
       // alimentar refImages tanto na criação do grupo quanto na agregação das
@@ -2470,6 +2476,16 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   // nas deps, o memo não recomputava quando o padrão de facas carregava async →
   // Corte Cabedal ficava número-a-número. (PV-00142, 2026-06-17.)
   }, [expandedOrders, activeSectors, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, soleMaterialByRef, sheetMaterialsByRef, resolveSoleForOrder, sheetById, clientsInfo, economicGroupsInfo, soleGroupPackaging, SOLE_COLOR_GROUPED_SECTORS, knifeDefaultBoundaries, knifeOptOutByRef, knifeRangesByRef, aviamentoDefaultBoundaries, aviamentoOptOutByRef, aviamentoRangesByRef]);
+
+  // Corte/Costura Cabedal precisam preservar a elegibilidade POR OP. Sem a
+  // partição, referências distintas com o mesmo solado/cor/tiras/lote seriam
+  // fundidas antes do filtro e a elegibilidade agregada por OR carregaria os
+  // pares de um modelo somente de tiras para esses setores.
+  const upperSectorGroups = useMemo<SoleSilkGroup[] | null>(() => {
+    if (!activeSectors.has('Corte Cabedal') && !activeSectors.has('Costura Cabedal')) return null;
+    return buildColorGroupedSheets('sole', true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expandedOrders, activeSectors, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, soleMaterialByRef, sheetMaterialsByRef, resolveSoleForOrder, sheetById, clientsInfo, economicGroupsInfo, soleGroupPackaging, knifeDefaultBoundaries, knifeOptOutByRef, knifeRangesByRef, aviamentoDefaultBoundaries, aviamentoOptOutByRef, aviamentoRangesByRef]);
 
   // ── Aviamento: por REFERÊNCIA (modelo), seções por cor ────────────────────
   // Pedido do dono (2026-06-12): o Aviamento só monta o cabedal — o solado é
@@ -3279,8 +3295,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             Costura Cabedal, Aviamento por referência, Silk por solado) ── */}
         {(() => {
           const smGroups = silkMontageGroups || [];
+          const upperGroups = upperSectorGroups || [];
           const aviGroups = aviamentoGroups || [];
-          if (smGroups.length === 0 && aviGroups.length === 0) return null;
+          if (smGroups.length === 0 && upperGroups.length === 0 && aviGroups.length === 0) return null;
 
           // Filtro por setor: cada setor precisa de critérios específicos.
           // Corte Forração: só cores cuja palmilha precisa de forração.
@@ -3348,7 +3365,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           const CUTTING_AGGREGATE_BY_COLOR: ReadonlyArray<GroupedSector> = ['Corte Cabedal'];
           const mergeColorsAcrossSoles = (sector: GroupedSector): SoleSilkGroup | null => {
             const colorMap = new Map<string, SilkColorGroup>();
-            for (const soleGroup of smGroups) {
+            const sourceGroups = sector === 'Corte Cabedal' || sector === 'Costura Cabedal'
+              ? upperGroups
+              : smGroups;
+            for (const soleGroup of sourceGroups) {
               const filtered = filterGroupForSector(soleGroup, sector);
               if (!filtered) continue;
               for (const cg of filtered.colorGroups) {
@@ -3593,7 +3613,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
                 .filter((g): g is SoleSilkGroup => g !== null);
             } else {
               // Costura* / Silk: grupos por solado.
-              groupsForSector = smGroups
+              const sourceGroups = sectorName === 'Costura Cabedal' ? upperGroups : smGroups;
+              groupsForSector = sourceGroups
                 .map(group => filterGroupForSector(group, sectorName))
                 .filter((g): g is SoleSilkGroup => g !== null);
             }

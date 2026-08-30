@@ -5,6 +5,13 @@ export interface UpperCutSheetLike {
   upper_consumption?: unknown;
   upper_consumption_per_size?: unknown;
   components_accessories?: unknown;
+  upper_corte_a_fio?: unknown;
+}
+
+export interface UpperWorkEligibility {
+  requiresUpperCut: boolean;
+  requiresUpperSewing: boolean;
+  partitionKey: string;
 }
 
 const hasText = (value: unknown): boolean => String(value || '').trim().length > 0;
@@ -50,4 +57,21 @@ export function requiresUpperCut(sheet: UpperCutSheetLike | null | undefined): b
     || hasPositiveConsumption(sheet.upper_consumption)
     || hasPositivePerSize(sheet.upper_consumption_per_size)
     || hasUpperAccessorySignal(sheet.components_accessories);
+}
+
+/**
+ * Mantém a elegibilidade por OP explícita durante agrupamentos de impressão.
+ * A chave impede que uma referência somente de tiras seja fundida com outra
+ * que também tem cabedal antes de os setores serem filtrados.
+ */
+export function getUpperWorkEligibility(
+  sheet: UpperCutSheetLike | null | undefined,
+): UpperWorkEligibility {
+  const upperCut = requiresUpperCut(sheet);
+  const upperSewing = upperCut && sheet?.upper_corte_a_fio !== true;
+  return {
+    requiresUpperCut: upperCut,
+    requiresUpperSewing: upperSewing,
+    partitionKey: `upper-cut:${upperCut ? '1' : '0'}:upper-sewing:${upperSewing ? '1' : '0'}`,
+  };
 }
