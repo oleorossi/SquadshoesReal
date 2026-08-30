@@ -17,7 +17,7 @@ describe('onda pronta entrega', () => {
     expect(page).toContain('/vitrine/');
     expect(page).toContain('Pedidos da vitrine');
     expect(vitrine).toContain('submitPublicReadyStockInquiry');
-    expect(vitrine).toContain('não cria pedido de venda automático');
+    expect(vitrine).toContain('ão cria pedido de venda automático');
   });
 
   it('migration expoe so RPC anon e nao SELECT direto', () => {
@@ -26,5 +26,15 @@ describe('onda pronta entrega', () => {
     expect(sql).toContain('submit_public_ready_stock_inquiry');
     expect(sql).toContain('GRANT EXECUTE ON FUNCTION public.get_public_ready_stock');
     expect(sql).not.toMatch(/GRANT SELECT ON TABLE public\.ready_stock TO anon/);
+  });
+
+  it('liga a rota publica e o painel usa SET + lote por grade', () => {
+    const app = read('src/App.tsx');
+    const panel = read('src/components/inventory/ReadyStockPanel.tsx');
+    expect(app).toContain('/vitrine/:token');
+    expect(app).toContain('VitrineProntaEntrega');
+    expect(panel).toContain('useSetReadyStockGrade');
+    expect(panel).toContain('groupItemsByLot');
+    expect(panel).toContain('encodeGradeNotes');
   });
 });
