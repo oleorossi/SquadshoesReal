@@ -22,6 +22,9 @@ describe('Ficha Técnica — preço-base comercial da referência', () => {
     expect(quickCreate).toContain('sale_price: 0');
     expect(quickCreate).toContain('id="qc-sale-price"');
     expect(quickCreate).toContain('sale_price: v');
+    expect(quickCreate).toContain('Se nenhuma das três fontes tiver preço');
+    expect(quickCreate).toContain('o valor positivo informado no item será aceito');
+    expect(quickCreate).not.toContain('o pedido será bloqueado');
   });
 
   it('mantém o editor principal visível na aba Precificação mesmo sem BOM', () => {
@@ -35,10 +38,13 @@ describe('Ficha Técnica — preço-base comercial da referência', () => {
 
   it('explica a precedência comercial sem transformar o preço da ficha em requisito universal', () => {
     expect(pricing).toContain(
-      'Prioridade no pedido: tabela do cliente → variante de material → preço-base da referência.',
+      'Prioridade automática: tabela do cliente → variante de material → preço-base da referência.',
     );
     expect(pricing).toContain(
-      'pedidos sem tabela do cliente ou preço próprio da variante serão bloqueados',
+      'se também não houver tabela efetiva nem preço próprio da variante',
     );
+    expect(pricing).toContain('sem validação de piso comercial');
+    expect(pricing).toContain('Na ausência das três fontes');
+    expect(pricing).not.toContain('serão bloqueados no lançamento');
   });
 });

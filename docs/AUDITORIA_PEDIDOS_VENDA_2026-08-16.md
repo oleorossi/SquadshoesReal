@@ -47,18 +47,26 @@ O efeito da variação só executava quando o preço ainda era zero. Assim,
 `reference_material_variants.unit_price_override` era ignorado na situação mais
 comum.
 
-Correção: uma função única resolve a prioridade:
+Correção: uma função única resolve a cadeia automática:
 
 1. tabela do cliente por referência + cor + faixa de quantidade;
 2. tabela do cliente por referência + faixa de quantidade;
 3. preço próprio da variação de material;
-4. preço-base da ficha técnica;
-5. pendência de preço.
+4. preço-base da ficha técnica.
+
+Fora dessa cadeia, o preço positivo informado manualmente no próprio item é
+preservado como fallback explícito. Só existe pendência de preço quando o item
+permanece sem valor positivo.
 
 O preço automático acompanha cor e faixa de quantidade enquanto continuar sendo
 automático. Depois de uma edição manual, o motor não sobrescreve o usuário.
 Trocar a referência sempre elimina o preço da referência anterior e resolve de
 novo a cadeia comercial.
+
+Na prontidão, a ausência isolada de tabela/variante/preço-base não bloqueia um
+item que já possua preço positivo. Sem base canônica não há piso para comparar;
+o valor explícito é aceito com aviso auditável. Preço zero/inválido continua
+bloqueando, assim como preço abaixo do piso quando uma base efetiva existir.
 
 ### 3. Item novo podia nascer sem identidade de material
 

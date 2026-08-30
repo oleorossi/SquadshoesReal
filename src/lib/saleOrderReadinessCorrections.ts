@@ -12,7 +12,6 @@ export interface ReadinessTechnicalSheet {
   id: string;
   code: string | null;
   name: string | null;
-  sale_price: number | null;
 }
 
 export interface ReadinessMaterialProduct {
@@ -45,15 +44,6 @@ export interface ReadinessItemGroup {
   issues: ReadinessIssueLine[];
 }
 
-export interface ReadinessPriceCorrection {
-  referenceId: string;
-  sheet: ReadinessTechnicalSheet;
-  affectedItemIds: string[];
-  currentPrice: number;
-  suggestedPrice: number;
-  itemPriceMissing: boolean;
-}
-
 export interface ReadinessColorCorrection {
   key: string;
   group: ReadinessProductGroup;
@@ -66,7 +56,6 @@ export interface ReadinessColorCorrection {
 export interface SaleOrderReadinessCorrectionModel {
   itemGroups: ReadinessItemGroup[];
   generalIssues: ReadinessIssueLine[];
-  priceCorrections: ReadinessPriceCorrection[];
   colorCorrections: ReadinessColorCorrection[];
   agnosticColorIssues: ReadinessIssueLine[];
   unsupportedIssues: ReadinessIssueLine[];
@@ -79,11 +68,6 @@ const asText = (value: unknown): string | null => {
   return trimmed || null;
 };
 
-const asNumber = (value: unknown): number => {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-};
-
 const normalizeColor = (value: string) => value
   .normalize('NFD')
   .replace(/[\u0300-\u036f]/g, '')
@@ -91,7 +75,7 @@ const normalizeColor = (value: string) => value
   .toUpperCase();
 
 export const readinessIssueTitle = (issue: SaleOrderCommandIssue): string => {
-  if (issue.code === 'item_price_missing') return 'Preço-base comercial ausente';
+  if (issue.code === 'item_price_missing') return 'Preço do item ausente';
   if (issue.code === 'material_color_not_registered') return 'Cor de material não cadastrada';
   return 'Pendência obrigatória do pedido';
 };
@@ -143,54 +127,17 @@ export function buildSaleOrderReadinessCorrectionModel(input: {
     }
   }
 
-  const priceByReference = new Map<string, ReadinessPriceCorrection>();
   const colorByGroupAndColor = new Map<string, ReadinessColorCorrection>();
   const agnosticColorIssues: ReadinessIssueLine[] = [];
   const unsupportedIssues: ReadinessIssueLine[] = [];
 
   for (const line of lines) {
-    const { issue, item, sheet } = line;
+    const { issue, item } = line;
     if (issue.code === 'item_price_missing') {
-      const referenceId = issue.reference_id || item?.reference_id || null;
-      if (!referenceId || !sheet) {
-        unsupportedIssues.push(line);
-        continue;
-      }
-
-      const existing = priceByReference.get(referenceId);
-      const itemId = item?.id || issue.item_id || null;
-      if (existing) {
-        if (itemId && !existing.affectedItemIds.includes(itemId)) {
-          existing.affectedItemIds.push(itemId);
-        }
-        existing.itemPriceMissing ||= asNumber(issue.details?.unit_price ?? item?.unit_price) <= 0;
-        continue;
-      }
-
-      const affectedLines = lines.filter((candidate) => (
-        candidate.issue.code === 'item_price_missing'
-        && (candidate.issue.reference_id || candidate.item?.reference_id) === referenceId
-      ));
-      const positiveItemPrices = [...new Set(
-        affectedLines
-          .map((candidate) => asNumber(candidate.issue.details?.unit_price ?? candidate.item?.unit_price))
-          .filter((price) => price > 0),
-      )];
-      const currentPrice = asNumber(sheet.sale_price);
-      priceByReference.set(referenceId, {
-        referenceId,
-        sheet,
-        affectedItemIds: affectedLines
-          .map((candidate) => candidate.item?.id || candidate.issue.item_id || '')
-          .filter(Boolean),
-        currentPrice,
-        suggestedPrice: currentPrice > 0
-          ? currentPrice
-          : positiveItemPrices.length === 1 ? positiveItemPrices[0] : 0,
-        itemPriceMissing: affectedLines.some((candidate) => (
-          asNumber(candidate.issue.details?.unit_price ?? candidate.item?.unit_price) <= 0
-        )),
-      });
+      // Desde a migration 143, este blocker significa exclusivamente que o
+      // preço do próprio item está zerado/inválido. Alterar o preço-base global
+      // da ficha não corrige o item e poderia afetar outros clientes/PVs.
+      unsupportedIssues.push(line);
       continue;
     }
 
@@ -234,7 +181,6 @@ export function buildSaleOrderReadinessCorrectionModel(input: {
   return {
     itemGroups: [...grouped.values()],
     generalIssues,
-    priceCorrections: [...priceByReference.values()],
     colorCorrections: [...colorByGroupAndColor.values()],
     agnosticColorIssues,
     unsupportedIssues,

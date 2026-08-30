@@ -1102,7 +1102,7 @@ function QuickCreateForm({ onCreated, onCancel }: { onCreated: (id: string) => v
             placeholder="0,00"
           />
           <p className={cn('mt-1 text-xs', form.sale_price > 0 ? 'text-muted-foreground' : 'text-warning')}>
-            Tabela do cliente ou preço próprio da variante prevalecem. Sem nenhuma base positiva, o pedido será bloqueado.
+            Tabela do cliente ou preço próprio da variante prevalecem. Se nenhuma das três fontes tiver preço, o valor positivo informado no item será aceito sem validação de piso comercial.
           </p>
         </div>
 
@@ -4149,11 +4149,11 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                 <span>
                   {Number(form.sale_price) > 0
                     ? 'Preço-base informado; tabela do cliente ou variante continuam tendo prioridade.'
-                    : 'Sem preço-base: pedidos sem tabela do cliente ou preço próprio da variante serão bloqueados no lançamento.'}
+                    : 'Sem preço-base nesta ficha: se também não houver tabela efetiva nem preço próprio da variante, o valor positivo informado no item será aceito sem validação de piso comercial.'}
                 </span>
               </div>
               <p className="text-xs text-muted-foreground">
-                Prioridade no pedido: tabela do cliente → variante de material → preço-base da referência.
+                Prioridade automática: tabela do cliente → variante de material → preço-base da referência. Na ausência das três fontes, vale o preço positivo informado no item.
               </p>
             </CardContent>
           </Card>

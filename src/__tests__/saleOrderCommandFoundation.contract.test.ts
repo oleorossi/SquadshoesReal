@@ -8,6 +8,7 @@ const readMigration = (name: string) =>
 
 const DELTA = readMigration('20270101010100_fix_sale_order_pending_debit_delta.sql');
 const FOUNDATION = readMigration('20270101010200_sale_order_command_foundation.sql');
+const PRICE_WITHOUT_BASE = readMigration('20270101014300_aceitar_preco_item_sem_preco_base.sql');
 
 describe('sale order command — fundação e readiness', () => {
   it('publica falta de baixa com o sinal canônico', () => {
@@ -147,12 +148,23 @@ describe('sale order command — fundação e readiness', () => {
     expect(FOUNDATION).toContain("'price_list_missing_using_fallback'");
     expect(FOUNDATION).not.toContain("'commercial_policy_required'");
 
-    // Contrato de fronteira: base 100 e teto 10% aceita exatamente 90,
-    // bloqueia abaixo da tolerância centesimal e ausência de base é fail-closed.
+    // Contrato de fronteira: base 100 e teto 10% aceita exatamente 90 e
+    // bloqueia abaixo da tolerância centesimal. A migration 143 muda somente o
+    // caso sem base: valor positivo explícito no item passa com warning.
     const minimumPrice = 100 * (1 - 10 / 100);
     expect(90).toBeGreaterThanOrEqual(minimumPrice - 0.01);
     expect(89.98).toBeLessThan(minimumPrice - 0.01);
-    expect(0).toBeLessThanOrEqual(0);
+    expect(PRICE_WITHOUT_BASE).toContain("'item_price_without_base'");
+    expect(PRICE_WITHOUT_BASE).toContain('v_old_missing_base_condition');
+    expect(PRICE_WITHOUT_BASE).toContain('v_occurrences <> 3');
+    expect(PRICE_WITHOUT_BASE).toContain('v_positive_item_without_base_accepted');
+    expect(PRICE_WITHOUT_BASE).toContain("THEN 'item_price_missing'");
+    expect(PRICE_WITHOUT_BASE).toContain("'item_price_below_floor'");
+    expect(PRICE_WITHOUT_BASE).toContain(
+      "i.unit_price::text IN ('NaN', 'Infinity', '-Infinity')",
+    );
+    expect(PRICE_WITHOUT_BASE).toContain('COALESCE(i.unit_price, 0) <= 0');
+    expect(PRICE_WITHOUT_BASE).toContain("has_function_privilege('anon', v_preflight, 'EXECUTE')");
   });
 
   it('preflight deriva teardown e consentimento de OP sem confiar no browser', () => {

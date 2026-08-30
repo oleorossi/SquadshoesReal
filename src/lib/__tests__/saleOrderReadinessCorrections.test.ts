@@ -12,7 +12,7 @@ const items = [
   { id: 'item-3', reference_id: referenceId, color: 'ROSADO', quantity: 1728, unit_price: 19.9 },
 ];
 
-const sheets = [{ id: referenceId, code: 'NL02', name: 'NL01', sale_price: 0 }];
+const sheets = [{ id: referenceId, code: 'NL02', name: 'NL01' }];
 const products = [{ id: productId, name: 'PLACA 1.0 EVA 3.0', group_id: groupId, unit: 'dm²' }];
 
 const issue = (
@@ -23,7 +23,7 @@ const issue = (
 ): SaleOrderCommandIssue => ({
   code,
   message: code === 'item_price_missing'
-    ? 'Item sem preço-base comercial efetivo positivo.'
+    ? 'Item sem preço de venda positivo.'
     : 'Cor do componente não está cadastrada no grupo.',
   item_id: itemId,
   reference_id: referenceId,
@@ -32,9 +32,15 @@ const issue = (
 });
 
 describe('saleOrderReadinessCorrections', () => {
-  it('identifica cada item e consolida a correção repetida de preço por referência', () => {
-    const issues = items.flatMap((item) => [
-      issue('item_price_missing', item.id, { unit_price: item.unit_price, effective_price: 0 }, false),
+  it('identifica cada item e reserva preço ausente para a edição do próprio PV', () => {
+    const affectedItems = [{ ...items[0], unit_price: 0 }, items[1], items[2]];
+    const issues = affectedItems.flatMap((item, index) => [
+      ...(index === 0 ? [issue(
+        'item_price_missing',
+        item.id,
+        { unit_price: item.unit_price, effective_price: 0 },
+        false,
+      )] : []),
       issue('material_color_not_registered', item.id, {
         component: 'Palmilha',
         product_id: productId,
@@ -45,7 +51,7 @@ describe('saleOrderReadinessCorrections', () => {
 
     const model = buildSaleOrderReadinessCorrectionModel({
       issues,
-      items,
+      items: affectedItems,
       sheets,
       products,
       groups: [{ id: groupId, name: 'PALMILHA', is_color_agnostic: true }],
@@ -59,15 +65,12 @@ describe('saleOrderReadinessCorrections', () => {
       problems: group.issues.length,
     }))).toEqual([
       { ref: 'NL02', color: 'NEW WHISKY', quantity: 1728, problems: 2 },
-      { ref: 'NL02', color: 'OFF WHITE', quantity: 1728, problems: 2 },
-      { ref: 'NL02', color: 'ROSADO', quantity: 1728, problems: 2 },
+      { ref: 'NL02', color: 'OFF WHITE', quantity: 1728, problems: 1 },
+      { ref: 'NL02', color: 'ROSADO', quantity: 1728, problems: 1 },
     ]);
-    expect(model.priceCorrections).toEqual([
+    expect(model.unsupportedIssues).toEqual([
       expect.objectContaining({
-        referenceId,
-        suggestedPrice: 19.9,
-        affectedItemIds: ['item-1', 'item-2', 'item-3'],
-        itemPriceMissing: false,
+        issue: expect.objectContaining({ code: 'item_price_missing', item_id: 'item-1' }),
       }),
     ]);
     expect(model.colorCorrections).toEqual([]);
@@ -105,13 +108,13 @@ describe('saleOrderReadinessCorrections', () => {
     expect(model.canOverrideAll).toBe(true);
   });
 
-  it('não sugere preço arbitrário quando os itens divergem e sinaliza item zerado', () => {
-    const divergentItems = [
+  it('não inventa preço-base para corrigir valores inválidos do próprio item', () => {
+    const invalidItems = [
       { ...items[0], unit_price: 0 },
-      { ...items[1], unit_price: 21 },
-      { ...items[2], unit_price: 22 },
+      { ...items[1], unit_price: -1 },
+      { ...items[2], unit_price: Number.NaN },
     ];
-    const issues = divergentItems.map((item) => issue(
+    const issues = invalidItems.map((item) => issue(
       'item_price_missing',
       item.id,
       { unit_price: item.unit_price, effective_price: 0 },
@@ -120,16 +123,19 @@ describe('saleOrderReadinessCorrections', () => {
 
     const model = buildSaleOrderReadinessCorrectionModel({
       issues,
-      items: divergentItems,
+      items: invalidItems,
       sheets,
       products: [],
       groups: [],
     });
 
-    expect(model.priceCorrections[0]).toEqual(expect.objectContaining({
-      suggestedPrice: 0,
-      itemPriceMissing: true,
-    }));
+    expect(model.unsupportedIssues.map((line) => line.issue.item_id)).toEqual([
+      'item-1',
+      'item-2',
+      'item-3',
+    ]);
+    expect(model.colorCorrections).toEqual([]);
+    expect(model.canOverrideAll).toBe(false);
   });
 
   it('separa pendência geral do PV em vez de inventar um item vazio', () => {

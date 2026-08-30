@@ -10,7 +10,6 @@ import {
   ArrowSquareOut as ExternalLink,
   CheckCircle,
   CircleNotch as Loader2,
-  CurrencyDollar,
   Package,
   Palette,
   Warning,
@@ -18,7 +17,6 @@ import {
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
-import { useUpdateSheet } from '@/hooks/useTechnicalSheets';
 import { useCreateSaleOrderReadinessOverride } from '@/hooks/useSaleOrderCommand';
 import { useAddProduct, ProductSchema } from '@/hooks/useProducts';
 import { useAddComponentSheet } from '@/hooks/useComponentSheets';
@@ -31,7 +29,6 @@ import {
   type ReadinessSaleOrderItem,
   type ReadinessTechnicalSheet,
 } from '@/lib/saleOrderReadinessCorrections';
-import { formatCurrency } from '@/lib/utils';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -44,7 +41,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { NumberInput } from '@/components/ui/number-input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
@@ -118,7 +114,7 @@ async function loadReadinessContext(
     referenceIds.length > 0
       ? supabase
         .from('technical_sheets')
-        .select('id, code, name, sale_price')
+        .select('id, code, name')
         .in('id', referenceIds)
       : Promise.resolve({ data: [], error: null }),
     productIds.length > 0
@@ -152,12 +148,7 @@ async function loadReadinessContext(
 
 function issueDescription(issue: SaleOrderCommandPreflight['blockers'][number]): string {
   if (issue.code === 'item_price_missing') {
-    const itemPrice = Number(issue.details?.unit_price) || 0;
-    const effectivePrice = Number(issue.details?.effective_price) || 0;
-    if (itemPrice <= 0) return 'O preço deste item no PV está zerado.';
-    if (effectivePrice <= 0) {
-      return `O item está em ${formatCurrency(itemPrice)}, mas a referência não possui preço-base canônico.`;
-    }
+    return 'O preço deste item no PV está zerado ou inválido.';
   }
   if (issue.code === 'material_color_not_registered') {
     const component = detailText(issue.details?.component) || 'Material';
@@ -177,11 +168,9 @@ export default function SaleOrderReadinessCorrectionDialog({
   onRetry,
 }: Props) {
   const queryClient = useQueryClient();
-  const updateSheet = useUpdateSheet();
   const createOverride = useCreateSaleOrderReadinessOverride();
   const addProduct = useAddProduct();
   const addComponentSheet = useAddComponentSheet();
-  const [priceValues, setPriceValues] = useState<Record<string, number>>({});
   const [overrideReason, setOverrideReason] = useState('');
   const [colorTargetKey, setColorTargetKey] = useState<string | null>(null);
   const [registeredColorKeys, setRegisteredColorKeys] = useState<Set<string>>(new Set());
@@ -209,19 +198,10 @@ export default function SaleOrderReadinessCorrectionDialog({
     groups: context.groups,
   }), [context, target?.preflight.blockers]);
 
-  const priceFingerprint = model.priceCorrections
-    .map((correction) => `${correction.referenceId}:${correction.suggestedPrice}`)
-    .join('|');
-
   useEffect(() => {
-    const initial: Record<string, number> = {};
-    for (const correction of model.priceCorrections) {
-      initial[correction.referenceId] = correction.suggestedPrice;
-    }
-    setPriceValues(initial);
     setOverrideReason('');
     setRegisteredColorKeys(new Set());
-  }, [target?.id, blockerSignature, priceFingerprint, model.priceCorrections]);
+  }, [target?.id, blockerSignature]);
 
   const colorTarget = model.colorCorrections.find((correction) => (
     correction.key === colorTargetKey
@@ -229,37 +209,23 @@ export default function SaleOrderReadinessCorrectionDialog({
 
   const busy = statusChangePending
     || savingCorrections
-    || updateSheet.isPending
     || createOverride.isPending
     || addProduct.isPending
     || addComponentSheet.isPending;
-  const allPriceValuesValid = model.priceCorrections.every((correction) => (
-    Number(priceValues[correction.referenceId]) > 0
-  ));
-  const hasItemPriceMissing = model.priceCorrections.some((correction) => correction.itemPriceMissing);
   const allMaterialColorsRegistered = model.colorCorrections.every((correction) => (
     registeredColorKeys.has(correction.key)
   ));
-  const canSaveAndRetry = allPriceValuesValid
-    && !hasItemPriceMissing
-    && model.unsupportedIssues.length === 0
+  const canSaveAndRetry = model.unsupportedIssues.length === 0
     && allMaterialColorsRegistered;
-  const actionableCount = model.priceCorrections.length + model.colorCorrections.length;
+  const actionableCount = model.colorCorrections.length;
   const issueCount = target?.preflight.blockers.length || 0;
+  const requiresFullOrderEdit = !contextQuery.isLoading
+    && model.unsupportedIssues.length > 0;
 
   const handleSaveAndRetry = async () => {
     if (!target || !isAdmin || !canSaveAndRetry) return;
     setSavingCorrections(true);
     try {
-      for (const correction of model.priceCorrections) {
-        const salePrice = Number(priceValues[correction.referenceId]);
-        if (salePrice !== correction.currentPrice) {
-          await updateSheet.mutateAsync({
-            id: correction.sheet.id,
-            data: { sale_price: salePrice },
-          });
-        }
-      }
       await onRetry();
     } catch {
       // Hooks e command exibem o erro específico; o diálogo permanece aberto.
@@ -331,7 +297,9 @@ export default function SaleOrderReadinessCorrectionDialog({
             </div>
             <DialogTitle className="font-display text-xl sm:text-2xl">Corrigir prontidão do pedido</DialogTitle>
             <DialogDescription>
-              Veja a referência, a cor e a quantidade de cada item com problema. Corrija à direita e valide novamente sem sair desta tela.
+              {requiresFullOrderEdit
+                ? 'Veja a referência, a cor e a quantidade de cada item com problema. As pendências sem editor rápido devem ser corrigidas em “Abrir pedido completo”.'
+                : 'Veja a referência, a cor e a quantidade de cada item com problema. Corrija à direita e valide novamente sem sair desta tela.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -458,56 +426,10 @@ export default function SaleOrderReadinessCorrectionDialog({
                       <Warning className="h-4 w-4" />
                       <AlertTitle>Correção administrativa</AlertTitle>
                       <AlertDescription>
-                        Os itens estão identificados, mas preço-base e cadastro de material exigem um administrador.
+                        Cadastros rápidos de material exigem um administrador. Preço ausente deve ser preenchido no pedido completo.
                       </AlertDescription>
                     </Alert>
                   )}
-
-                  {model.priceCorrections.map((correction) => (
-                    <div key={correction.referenceId} className="rounded-lg border border-primary/25 bg-card p-4 shadow-sm">
-                      <div className="mb-3 flex items-start gap-3">
-                        <div className="rounded-md bg-primary/10 p-2 text-primary">
-                          <CurrencyDollar className="h-4 w-4" weight="bold" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold">Preço-base · {correction.sheet.code || correction.sheet.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            Uma correção resolve {correction.affectedItemIds.length} {correction.affectedItemIds.length === 1 ? 'item' : 'itens'} desta referência.
-                          </p>
-                        </div>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor={`readiness-price-${correction.referenceId}`}>Preço-base comercial</Label>
-                        <NumberInput
-                          id={`readiness-price-${correction.referenceId}`}
-                          value={priceValues[correction.referenceId] || 0}
-                          onChange={(value) => setPriceValues((current) => ({
-                            ...current,
-                            [correction.referenceId]: value,
-                          }))}
-                          min={0.01}
-                          decimals={2}
-                          step="0.01"
-                          unit="R$"
-                          disabled={!isAdmin || busy || correction.itemPriceMissing}
-                        />
-                        <p className="text-xs leading-relaxed text-muted-foreground">
-                          {correction.itemPriceMissing
-                            ? 'A correção rápida do preço-base ficará disponível depois que o preço do item for preenchido no pedido.'
-                            : 'Salvo na ficha técnica como fallback comercial da referência. O valor sugerido veio do preço já informado nos itens deste PV.'}
-                        </p>
-                      </div>
-                      {correction.itemPriceMissing && (
-                        <Alert variant="destructive" className="mt-3">
-                          <Warning className="h-4 w-4" />
-                          <AlertTitle>Há item com preço zerado no PV</AlertTitle>
-                          <AlertDescription>
-                            Use “Abrir pedido completo” para preencher o preço do próprio item. Por segurança, esse valor só é alterado no formulário completo do pedido.
-                          </AlertDescription>
-                        </Alert>
-                      )}
-                    </div>
-                  ))}
 
                   {model.colorCorrections.map((correction) => {
                     const registered = registeredColorKeys.has(correction.key);
@@ -553,7 +475,12 @@ export default function SaleOrderReadinessCorrectionDialog({
                   {model.unsupportedIssues.length > 0 && (
                     <Alert>
                       <Wrench className="h-4 w-4" />
-                      <AlertTitle>{model.unsupportedIssues.length} pendência(s) exigem edição completa</AlertTitle>
+                      <AlertTitle>
+                        {model.unsupportedIssues.length}{' '}
+                        {model.unsupportedIssues.length === 1
+                          ? 'pendência exige edição completa'
+                          : 'pendências exigem edição completa'}
+                      </AlertTitle>
                       <AlertDescription>
                         Os itens estão identificados à esquerda. Abra o pedido para corrigir os campos ainda sem editor rápido.
                       </AlertDescription>
@@ -610,7 +537,7 @@ export default function SaleOrderReadinessCorrectionDialog({
                   onClick={handleSaveAndRetry}
                 >
                   {(savingCorrections || statusChangePending) && <Loader2 className="h-4 w-4 animate-spin" />}
-                  {model.priceCorrections.length > 0 ? 'Salvar correções e tentar novamente' : 'Validar e tentar novamente'}
+                  Validar e tentar novamente
                 </Button>
               )}
             </div>
