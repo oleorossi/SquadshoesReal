@@ -71,12 +71,25 @@ export function stageKitComponents(
   return [...serviceOrderActivityDefaults(sector).material_components];
 }
 
+export function normalizeKitComponentType(componentType: string | null | undefined): string {
+  const raw = (componentType || '').trim();
+  if (!raw) return raw;
+  if (raw === 'BOM' || raw === 'Componente Direto' || raw === 'Item padrão (solado)') return raw;
+  const normalized = raw.toLowerCase();
+  if (normalized === 'outros' || normalized.includes('fivela') || normalized.includes('ilhos') || normalized.includes('ilhós') || normalized.includes('aviamento')) {
+    return 'BOM';
+  }
+  if (normalized.includes('componente direto')) return 'Componente Direto';
+  return raw;
+}
+
 export function isStageKitComponent(
   sector: string | null | undefined,
   componentType: string | null | undefined,
 ): boolean {
   if (!componentType) return false;
-  return stageKitComponents(sector).includes(componentType as ServiceOrderMaterialComponent);
+  const normalized = normalizeKitComponentType(componentType);
+  return stageKitComponents(sector).includes(normalized as ServiceOrderMaterialComponent);
 }
 
 /** Corta a ficha no kit da atividade. Solado e forração nunca entram em Costura de cabedal. */
@@ -85,7 +98,7 @@ export function filterRowsToStageKit(
   sector: string | null | undefined,
 ): ConsumptionRow[] {
   const allowed = new Set<string>(stageKitComponents(sector));
-  return rows.filter((row) => allowed.has(row.componentType));
+  return rows.filter((row) => allowed.has(normalizeKitComponentType(row.componentType)));
 }
 
 export interface StageKitAssessment {
