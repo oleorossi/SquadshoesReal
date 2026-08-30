@@ -93,7 +93,7 @@ function skuSlug(groupName: string): string {
 }
 
 async function loadProductGroupLayers(groupId: string): Promise<MaterialVariantGroupLayer[]> {
-  const { data, error } = await (supabase as any)
+  const { data, error } = await supabase
     .from('product_group_layers')
     .select('id,component_group_id,component_label,role,display_order,is_color_source')
     .eq('composite_group_id', groupId)
