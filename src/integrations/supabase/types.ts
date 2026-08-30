@@ -24038,6 +24038,7 @@ export type Database = {
           pays_by_difficulty: boolean
           pays_by_pair: boolean
           sector: string
+          start_offset_days: number
           team_notes: string | null
           team_size: number | null
           updated_at: string
@@ -24055,6 +24056,7 @@ export type Database = {
           pays_by_difficulty?: boolean
           pays_by_pair?: boolean
           sector: string
+          start_offset_days?: number
           team_notes?: string | null
           team_size?: number | null
           updated_at?: string
@@ -24072,6 +24074,7 @@ export type Database = {
           pays_by_difficulty?: boolean
           pays_by_pair?: boolean
           sector?: string
+          start_offset_days?: number
           team_notes?: string | null
           team_size?: number | null
           updated_at?: string

@@ -1,6 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import { computeSectorLeadTimeDays, getEffectiveCapacityPerDay } from './leadTime';
-import { sheetHasSector, SECTOR_LABELS, DISPLAY_SECTORS, type SectorKey } from './sectors';
+import { sheetHasSector, SECTOR_LABELS, DISPLAY_SECTORS, normalizeSector, type SectorKey } from './sectors';
 
 // Re-exporta a taxonomia da fonte única (./sectors) pra não quebrar imports
 // existentes `from '@/lib/sectorCapacity'`.
@@ -385,11 +385,36 @@ export type ParallelWindows = Record<
   ParallelWindow
 >;
 
+export type SectorOffsets = Partial<Record<SectorKey, number>>;
+
+/** Offset de antecipação a partir das linhas vivas de sector_settings. */
+export function offsetsFromSettings(
+  settings: ReadonlyArray<{ sector: string; start_offset_days?: number | null }>,
+): SectorOffsets {
+  const out: SectorOffsets = {};
+  for (const row of settings) {
+    const days = Math.max(0, Math.floor(Number(row.start_offset_days) || 0));
+    if (days <= 0) continue;
+    const key = normalizeSector(row.sector) as SectorKey;
+    out[key] = days;
+  }
+  return out;
+}
+
+function offsetDays(offsets: SectorOffsets | undefined, key: SectorKey): number {
+  return Math.max(0, Math.floor(Number(offsets?.[key]) || 0));
+}
+
+function shiftBusinessDays(date: Date, days: number): Date {
+  return days > 0 ? addBusinessDays(date, -days) : date;
+}
+
 export function computeParallelWindows(
   sheet: any,
   qty: number,
   deadline: Date,
   categoryDefaults: any = null,
+  offsets: SectorOffsets = {},
 ): ParallelWindows {
   const ltAcab     = computeSectorLeadTimeDays('acabamento',     qty, sheet, categoryDefaults);
   const ltSolagem  = computeSectorLeadTimeDays('solagem',        qty, sheet, categoryDefaults);
@@ -434,17 +459,27 @@ export function computeParallelWindows(
   // Prep em DOIS blocos paralelos (fluxo descrito pelo dono 2026-10-01):
   //   bloco 2 — Costura Palmilha ‖ Costura Cabedal ‖ Aviamento
   //   bloco 1 — Corte Palmilha ‖ Corte Forração   (antes do bloco 2)
-  // Cada bloco termina junto; o bloco 1 termina quando o 2 começa. Antes os 4
-  // começavam juntos (Costura era prep ao lado dos cortes) — o que adiantava
-  // a costura pra antes do corte existir.
+  // Cada bloco termina junto; o bloco 1 termina quando o 2 começa.
+  // Early-release (start_offset_days > 0, dono 2026-08-30): Aviamento e
+  // Costura Cabedal saem ANTES do PV entrar em produção — a janela inteira
+  // recua N dias úteis e NÃO puxa a data dos cortes. Costura Palmilha
+  // permanece âncora do bloco 2.
   const costPalmEnd   = silkStart;
   const costPalmStart = addBusinessDays(costPalmEnd, -ltCostPalm);
-  const costCabEnd    = silkStart;
-  const costCabStart  = addBusinessDays(costCabEnd,  -ltCostCab);
-  const mesaEnd       = silkStart;
-  const mesaStart     = addBusinessDays(mesaEnd,     -ltMesa);
-  // Início do bloco 2 = o mais cedo entre os três (quem tem o maior lead manda)
-  const bloco2Start = new Date(Math.min(costPalmStart.getTime(), costCabStart.getTime(), mesaStart.getTime()));
+  const costCabEndNat    = silkStart;
+  const costCabStartNat  = addBusinessDays(costCabEndNat,  -ltCostCab);
+  const mesaEndNat       = silkStart;
+  const mesaStartNat     = addBusinessDays(mesaEndNat,     -ltMesa);
+  const offCab  = offsetDays(offsets, 'costura_cabedal');
+  const offMesa = offsetDays(offsets, 'mesa');
+  const costCabStart = shiftBusinessDays(costCabStartNat, offCab);
+  const costCabEnd   = shiftBusinessDays(costCabEndNat,   offCab);
+  const mesaStart    = shiftBusinessDays(mesaStartNat,    offMesa);
+  const mesaEnd      = shiftBusinessDays(mesaEndNat,      offMesa);
+  const bloco2Anchors = [costPalmStart.getTime()];
+  if (offCab === 0) bloco2Anchors.push(costCabStartNat.getTime());
+  if (offMesa === 0) bloco2Anchors.push(mesaStartNat.getTime());
+  const bloco2Start = new Date(Math.min(...bloco2Anchors));
   const palmEnd    = bloco2Start;
   const palmStart  = addBusinessDays(palmEnd,    -ltPalmilha);
   const forrEnd    = bloco2Start;
@@ -516,10 +551,11 @@ export function computeForwardSchedule(
   startDate: Date,
   setupDaysBySector: Partial<Record<SectorKey, number>> = {},
   categoryDefaults: any = null,
+  offsets: SectorOffsets = {},
 ): ForwardSchedule {
   const setup = (k: SectorKey) => Math.max(0, Number(setupDaysBySector[k] || 0));
   // required espelha computeParallelWindows (mesma lógica de hasSector + caps).
-  const w = computeParallelWindows(sheet, qty, startDate, categoryDefaults); // só pra reaproveitar `required`/`cap`
+  const w = computeParallelWindows(sheet, qty, startDate, categoryDefaults, offsets); // só pra reaproveitar `required`/`cap`
   const required = (k: SectorKey): boolean => {
     if (k === 'expedicao') return sheetHasSector(sheet, 'Expedição');
     const pw = (w as any)[k];
@@ -543,12 +579,16 @@ export function computeForwardSchedule(
     if (required(k) && end.getTime() > cortesEnd.getTime()) cortesEnd = end;
   }
 
-  // Bloco 2 — costuras ‖ aviamento, paralelos, a partir do fim dos cortes.
+  // Bloco 2 — costuras ‖ aviamento. Offset > 0 (early-release) arranca
+  // ANTES da data de início da produção (startDate), sem esperar os cortes.
+  // Costura Palmilha (offset 0) continua no fim dos cortes.
   let convergence = new Date(cortesEnd);
   for (const k of FORWARD_COSTURA_AVIAMENTO) {
     const ld = lead(k);
-    const end = addBusinessDays(cortesEnd, ld);
-    pushStep(k, cortesEnd, end, ld);
+    const early = offsetDays(offsets, k);
+    const start = early > 0 ? addBusinessDays(startDate, -early) : cortesEnd;
+    const end = addBusinessDays(start, ld);
+    pushStep(k, start, end, ld);
     if (required(k) && end.getTime() > convergence.getTime()) convergence = end;
   }
 
@@ -662,6 +702,7 @@ export function computeSectorDailyLoad(
   ops: DailyOpInput[],
   sheetMap: Map<string, any>,
   categoryDefaultsMap?: Map<string, any> | null,
+  offsets: SectorOffsets = {},
 ): SectorDayLoad[] {
   const day = new Date(dateISO + 'T00:00:00');
 
@@ -670,6 +711,16 @@ export function computeSectorDailyLoad(
   for (const { key } of DISPLAY_SECTORS) acc.set(key, { pairs: 0, capWeighted: 0, qty: 0, contribs: [] });
 
   if (!isNaN(day.getTime())) {
+    const refQty = new Map<string, number>();
+    const refDeadline = new Map<string, string>();
+    for (const op of ops) {
+      const q = Number(op.quantity || 0);
+      if (q <= 0 || !op.planned_delivery || !op.reference_id) continue;
+      refQty.set(op.reference_id, (refQty.get(op.reference_id) ?? 0) + q);
+      const cur = refDeadline.get(op.reference_id);
+      if (!cur || op.planned_delivery < cur) refDeadline.set(op.reference_id, op.planned_delivery);
+    }
+
     for (const op of ops) {
       const sheet = sheetMap.get(op.reference_id);
       if (!sheet) continue;
@@ -677,10 +728,17 @@ export function computeSectorDailyLoad(
       if (qty <= 0 || !op.planned_delivery) continue;
       const deadline = new Date(op.planned_delivery + 'T00:00:00');
       if (isNaN(deadline.getTime())) continue;
-
-      const windows = computeParallelWindows(sheet, qty, deadline, categoryDefaultsFor(sheet, categoryDefaultsMap));
+      const defaults = categoryDefaultsFor(sheet, categoryDefaultsMap);
+      const windowsStd = computeParallelWindows(sheet, qty, deadline, defaults, offsets);
+      const aggQty = refQty.get(op.reference_id) ?? qty;
+      const aggIso = refDeadline.get(op.reference_id) ?? op.planned_delivery;
+      const aggDeadline = new Date(aggIso + 'T00:00:00');
+      const windowsAgg = (aggQty !== qty || aggIso !== op.planned_delivery)
+        ? computeParallelWindows(sheet, aggQty, aggDeadline, defaults, offsets)
+        : windowsStd;
       for (const { key } of DISPLAY_SECTORS) {
-        const w = windows[key as keyof ParallelWindows];
+        const early = offsetDays(offsets, key) > 0;
+        const w = (early ? windowsAgg : windowsStd)[key as keyof ParallelWindows];
         if (!w || !w.required) continue;
         if (!dayInWindow(day, w.start, w.end)) continue;
         const wd = businessDaysBetween(w.start, w.end);

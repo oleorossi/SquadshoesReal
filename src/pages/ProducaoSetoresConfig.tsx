@@ -172,6 +172,29 @@ export default function ProducaoSetoresConfig() {
                     <span className="text-xs text-muted-foreground">pares/dia</span>
                   </div>
 
+                  <div className="flex items-center gap-1.5">
+                    <Input
+                      type="number"
+                      min={0}
+                      max={60}
+                      defaultValue={s.start_offset_days ?? 0}
+                      key={`${s.sector}-offset-${s.start_offset_days ?? 0}`}
+                      onBlur={e => {
+                        const value = Math.max(0, Math.min(60, Math.round(Number(e.target.value) || 0)));
+                        if (value !== (s.start_offset_days ?? 0)) {
+                          update.mutate({ sector: s.sector, start_offset_days: value });
+                        }
+                      }}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                      }}
+                      disabled={!canEdit}
+                      className="h-8 w-16 font-mono text-right"
+                      aria-label={`Dias de antecipação de ${s.sector}`}
+                    />
+                    <span className="text-xs text-muted-foreground">dias antes</span>
+                  </div>
+
                   <div className="flex items-center gap-4 ml-auto">
                     {/* Regras de transição (R6.3) — avisam + pedem confirmação, nunca travam */}
                     <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
@@ -225,7 +248,9 @@ export default function ProducaoSetoresConfig() {
       <p className="text-xs text-muted-foreground">
         Setores marcados com ‖ rodam em paralelo (preparação). A ordem daqui define o fluxo
         de toda OP cuja ficha técnica não tem a parte de setores preenchida — quando tem,
-        vale a ficha (badge "ficha" no Planejamento e no Kanban).
+        vale a ficha (badge "ficha" no Planejamento e no Kanban). “Dias antes” antecipa o
+        setor no planejamento (Aviamento e Costura Cabedal saem antes do PV entrar em
+        produção); 0 = espera o bloco anterior. O chão (apontamento) não muda.
       </p>
     </div>
   );
