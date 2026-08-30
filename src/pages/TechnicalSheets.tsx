@@ -267,14 +267,16 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
   // históricos, mas não podem voltar a aparecer no catálogo nem em ações que
   // criam/copiam configuração operacional.
   const activeSheets = useMemo(
-    () => (sheets as any[]).filter((sheet: any) => !sheet.retired_at),
+    () => sheets.filter((sheet) => !(
+      sheet as typeof sheet & { retired_at?: string | null }
+    ).retired_at),
     [sheets],
   );
 
   // Distinct sole list from sheets (sorted, with count of reference sheets per sole)
   const soleOptions = useMemo(() => {
     const map = new Map<string, { total: number; refs: number }>();
-    activeSheets.forEach((s: any) => {
+    activeSheets.forEach((s) => {
       if (!s.sole_material) return;
       const cur = map.get(s.sole_material) || { total: 0, refs: 0 };
       cur.total += 1;
@@ -288,13 +290,13 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
 
   const filteredSheets = useMemo(() => {
     let result = activeSheets;
-    if (categoryFilter === 'Infantil') result = result.filter((s: any) => s.shoe_category === 'Infantil');
-    else if (categoryFilter === 'Feminino') result = result.filter((s: any) => s.shoe_category !== 'Infantil');
+    if (categoryFilter === 'Infantil') result = result.filter((s) => s.shoe_category === 'Infantil');
+    else if (categoryFilter === 'Feminino') result = result.filter((s) => s.shoe_category !== 'Infantil');
     if (soleFilter !== 'all') {
-      result = result.filter((s: any) => s.sole_material === soleFilter);
+      result = result.filter((s) => s.sole_material === soleFilter);
     }
     if (searchTerm.trim()) {
-      result = result.filter((s: any) =>
+      result = result.filter((s) =>
         searchMatchesAllTerms(searchTerm, s.name, s.code, s.collection, s.shoe_category, s.colors, s.description, s.status)
       );
     }
@@ -303,7 +305,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
 
   // Fichas candidatas do dialog de cópia (busca própria do dialog)
   const cloneFilteredSheets = useMemo(
-    () => activeSheets.filter((s: any) => searchMatchesAllTerms(cloneSearchTerm, s.name, s.code)),
+    () => activeSheets.filter((s) => searchMatchesAllTerms(cloneSearchTerm, s.name, s.code)),
     [activeSheets, cloneSearchTerm],
   );
 
@@ -1400,7 +1402,9 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
   const { data: componentSheets = [] } = useComponentSheets();
   const { data: allSheets = [] } = useTechnicalSheets();
   const activeAllSheets = useMemo(
-    () => (allSheets as any[]).filter((candidate: any) => !candidate.retired_at),
+    () => allSheets.filter((candidate) => !(
+      candidate as typeof candidate & { retired_at?: string | null }
+    ).retired_at),
     [allSheets],
   );
   const { data: groups = [] } = useQuery({
@@ -5752,7 +5756,9 @@ function SheetBOM({ sheetId, safetyPct, onSafetyChange, shoeCategory }: {
   const usedProductIds = new Set(materials.map(m => m.product_id));
   const usedGroupIds = new Set(materials.map((m: any) => m.group_id).filter(Boolean));
   const availableProducts = products.filter(p => p.active);
-  const otherSheets = sheets.filter((s: any) => s.id !== sheetId && !s.retired_at);
+  const otherSheets = sheets.filter((s) => s.id !== sheetId && !(
+    s as typeof s & { retired_at?: string | null }
+  ).retired_at);
 
   const groupedMaterials = useMemo(() => {
     const groups: Record<string, typeof materials> = {};

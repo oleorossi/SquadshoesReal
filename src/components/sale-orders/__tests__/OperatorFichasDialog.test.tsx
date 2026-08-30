@@ -5,7 +5,7 @@ import OperatorFichasDialog from '../OperatorFichasDialog';
 
 const mocks = vi.hoisted(() => ({
   query: {
-    data: [] as any[],
+    data: [] as unknown[],
     isLoading: false,
     isError: false,
     error: null as Error | null,

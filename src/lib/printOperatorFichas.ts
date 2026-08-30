@@ -41,6 +41,20 @@ interface FichaInput {
   sectors: string[];             // production_sectors da ficha técnica
 }
 
+interface OperatorSaleOrderItem {
+  color: string | null;
+  grade: Record<string, number> | null;
+  quantity: number | null;
+  reference_id: string | null;
+  production_excluded_at: string | null;
+}
+
+interface OperatorBaseSaleOrderItem {
+  id: string;
+  grade: Record<string, number> | null;
+  production_excluded_at: string | null;
+}
+
 export interface FichaPlan {
   /** Grade base (1 ficha = 1 fornada). */
   base: Record<string, number>;
@@ -203,19 +217,14 @@ export async function printOperatorFichas(saleOrderId: string, orderNumberHint?:
     .from('sale_orders').select('order_number, client_name').eq('id', saleOrderId).single();
   if (soErr) throw new Error(`Falha ao carregar o pedido: ${soErr.message}`);
 
-  const { data: items, error: itErr } = await (supabase as any)
+  const { data: rawItems, error: itErr } = await supabase
     .from('sale_order_items')
     .select('color, grade, quantity, reference_id, production_excluded_at')
     .eq('sale_order_id', saleOrderId);
   if (itErr) throw new Error(`Falha ao carregar itens: ${itErr.message}`);
 
-  const operationalItems = filterOperationalOperatorItems((items || []) as Array<{
-    color: string | null;
-    grade: Record<string, number> | null;
-    quantity: number;
-    reference_id: string | null;
-    production_excluded_at: string | null;
-  }>);
+  const items = (rawItems || []) as unknown as OperatorSaleOrderItem[];
+  const operationalItems = filterOperationalOperatorItems(items);
   if (operationalItems.length === 0) {
     alert('Este pedido não tem itens ativos na produção para gerar fichas de operador.');
     return;
@@ -225,7 +234,7 @@ export async function printOperatorFichas(saleOrderId: string, orderNumberHint?:
   const pv = so?.order_number || orderNumberHint || '';
   const client = (so?.client_name || '').trim();
 
-  const inputs: FichaInput[] = operationalItems.map((it: any) => {
+  const inputs: FichaInput[] = operationalItems.map((it) => {
     const sheet = sheetsByRef(sheets, it.reference_id);
     return {
       pv, client,
@@ -254,12 +263,13 @@ export async function printOperatorFichasFromRows(rows: Array<{
   const baseByItem = new Map<string, Record<string, number>>();
   const activeItemIds = new Set<string>();
   if (itemIds.length > 0) {
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabase
       .from('sale_order_items')
       .select('id, grade, production_excluded_at')
       .in('id', itemIds);
     if (error) throw new Error(`Falha ao validar os itens produtivos: ${error.message}`);
-    (data || []).forEach((it: any) => {
+    const itemRows = (data || []) as unknown as OperatorBaseSaleOrderItem[];
+    itemRows.forEach((it) => {
       if (it.production_excluded_at != null) return;
       activeItemIds.add(it.id);
       baseByItem.set(it.id, (it.grade || {}) as Record<string, number>);

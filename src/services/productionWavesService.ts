@@ -245,6 +245,25 @@ export async function listPendingSaleOrdersForWeek(weekStart: string): Promise<
     total_pairs: number; delivery_deadline: string | null; op_numbers: string[];
   }>
 > {
+  interface PendingSaleOrderItemRow {
+    quantity: number | null;
+    production_excluded_at: string | null;
+  }
+
+  interface PendingSaleOrderRow {
+    id: string;
+    order_number: string | null;
+    client_cnpj: string | null;
+    delivery_deadline: string | null;
+    clients: { razao_social: string | null } | null;
+    sale_order_items: PendingSaleOrderItemRow[] | null;
+    orders: Array<{ order_number: string | null }> | null;
+  }
+
+  interface PendingAssignedSourceRow {
+    sale_order_id: string | null;
+  }
+
   const weekEnd = new Date(new Date(weekStart).getTime() + 6 * 86400000)
     .toISOString().slice(0, 10);
 
@@ -253,22 +272,26 @@ export async function listPendingSaleOrdersForWeek(weekStart: string): Promise<
     .select('sale_order_id, production_wave_items!inner(wave_id, production_waves!inner(id, status))')
     .in('production_wave_items.production_waves.status', ['planning', 'running']);
 
-  const assignedIds = new Set<string>(
-    (assignedData ?? []).map((r: any) => r.sale_order_id).filter(Boolean)
+  const assignedRows = (assignedData ?? []) as unknown as PendingAssignedSourceRow[];
+  const assignedIds = new Set(
+    assignedRows
+      .map((row) => row.sale_order_id)
+      .filter((saleOrderId): saleOrderId is string => Boolean(saleOrderId)),
   );
 
-  const { data, error } = await (supabase
-    .from('sale_orders') as any)
+  const { data: rawData, error } = await supabase
+    .from('sale_orders')
     .select('id, order_number, client_cnpj, delivery_deadline, clients(razao_social), sale_order_items(quantity, production_excluded_at), orders!sale_order_id(order_number)')
     .in('status', ['Aprovado', 'Em Produção'])
     .lte('delivery_deadline', weekEnd);
 
   if (error) throw error;
-  return (data ?? [])
-    .filter((so: any) => !assignedIds.has(so.id))
-    .map((so: any) => {
+  const data = (rawData ?? []) as unknown as PendingSaleOrderRow[];
+  return data
+    .filter((so) => !assignedIds.has(so.id))
+    .map((so) => {
       const productionItems = (so.sale_order_items ?? []).filter(
-        (item: any) => !item.production_excluded_at,
+        (item) => !item.production_excluded_at,
       );
       return {
         id: so.id,
@@ -277,8 +300,10 @@ export async function listPendingSaleOrdersForWeek(weekStart: string): Promise<
         cnpj: so.client_cnpj ?? null,
         delivery_deadline: so.delivery_deadline ?? null,
         total_pairs: productionItems.reduce(
-          (sum: number, item: any) => sum + Number(item.quantity || 0), 0),
-        op_numbers: (so.orders ?? []).map((op: any) => op.order_number).filter(Boolean),
+          (sum, item) => sum + Number(item.quantity || 0), 0),
+        op_numbers: (so.orders ?? [])
+          .map((op) => op.order_number)
+          .filter((orderNumber): orderNumber is string => Boolean(orderNumber)),
       };
     })
     // Um PV cujo único item foi retirado da produção continua preservado no

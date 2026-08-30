@@ -1,7 +1,11 @@
 import { useQuery, useMutation, useQueryClient, UseQueryResult, QueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import type { Json, Tables, TablesInsert, TablesUpdate } from '@/integrations/supabase/types';
 import { toast } from 'sonner';
-import { ensureTechnicalStrapLineIds } from '@/lib/technicalStrapLines';
+import {
+  ensureTechnicalStrapLineIds,
+  type TechnicalStrapLineLike,
+} from '@/lib/technicalStrapLines';
 import { replaceTechnicalSheetCacheRow } from '@/lib/technicalSheetPatch';
 import { invalidateProductionCaches } from '@/hooks/useProductionTransitions';
 
@@ -397,6 +401,36 @@ type TechnicalSheetCloneCompletionState = {
   clone_cleanup_request_id?: string | null;
 };
 
+type TechnicalSheetCloneMetadata = {
+  retired_at?: string | null;
+  retired_by?: string | null;
+  retirement_reason?: string | null;
+  retirement_request_id?: string | null;
+  created_by?: string | null;
+  clone_source_id?: string | null;
+  clone_cleanup_request_id?: string | null;
+  clone_cleanup_started_at?: string | null;
+  clone_completed_request_id?: string | null;
+  clone_completed_at?: string | null;
+};
+
+type TechnicalSheetCloneSource = Tables<'technical_sheets'> & TechnicalSheetCloneMetadata;
+type TechnicalSheetCloneInsert = TablesInsert<'technical_sheets'> & TechnicalSheetCloneMetadata;
+
+export function prepareTechnicalStrapLinesForClone(value: Json | null | undefined) {
+  if (!Array.isArray(value)) return [];
+  if (value.some(line => !line || typeof line !== 'object' || Array.isArray(line))) {
+    throw new Error('A ficha de origem contém uma linha de tira inválida.');
+  }
+
+  // Fichas legadas podem ter IDs ordinais numéricos. Não descarte essas linhas:
+  // ensureTechnicalStrapLineIds substitui a identidade antiga por UUIDs novos.
+  return ensureTechnicalStrapLineIds(
+    value as unknown as TechnicalStrapLineLike[],
+    true,
+  );
+}
+
 export function isTechnicalSheetCloneCompletionConfirmed(
   state: TechnicalSheetCloneCompletionState | null | undefined,
   requestId: string,
@@ -791,20 +825,21 @@ export function useCloneSheet() {
         clone_completed_request_id: _cloneCompletedRequestId,
         clone_completed_at: _cloneCompletedAt,
         ...fields
-      } = source as any;
+      } = source as TechnicalSheetCloneSource;
+      const clonePayload: TechnicalSheetCloneInsert = {
+        ...fields,
+        name: newName,
+        status_ficha: 'rascunho',
+        clone_source_id: sourceId,
+        clone_cleanup_request_id: cleanupRequestId,
+      };
       const { data: newSheet, error: insertErr } = await supabase
         .from('technical_sheets')
-        .insert({
-          ...fields,
-          name: newName,
-          status_ficha: 'rascunho',
-          clone_source_id: sourceId,
-          clone_cleanup_request_id: cleanupRequestId,
-        } as any)
+        .insert(clonePayload)
         .select('id')
         .single();
       if (insertErr || !newSheet) throw new Error(insertErr?.message || 'Erro ao criar ficha');
-      const newId = (newSheet as any).id as string;
+      const newId = newSheet.id;
 
       // O DELETE direto continua revogado. A compensacao so aceita o proprio
       // criador, token exato, clone rascunho com menos de 15 minutos e nenhuma
@@ -835,14 +870,18 @@ export function useCloneSheet() {
         // Trigger sync_construction_routing roda no INSERT e sobrescreve
         // has_straps/strap_colors baseado em construction_type. Reaplica a
         // configuracao com novas identidades tecnicas e confere o retorno.
-        if (fields.has_straps || (fields.strap_colors && fields.strap_colors.length > 0)) {
-          const clonedStrapColors = ensureTechnicalStrapLineIds(fields.strap_colors, true);
+        const sourceStrapColors = Array.isArray(fields.strap_colors)
+          ? fields.strap_colors
+          : [];
+        if (fields.has_straps || sourceStrapColors.length > 0) {
+          const clonedStrapColors = prepareTechnicalStrapLinesForClone(sourceStrapColors);
+          const strapUpdate: TablesUpdate<'technical_sheets'> = {
+            has_straps: fields.has_straps,
+            strap_colors: clonedStrapColors as unknown as Json,
+          };
           const { error: strapUpdateError } = await supabase
             .from('technical_sheets')
-            .update({
-              has_straps: fields.has_straps,
-              strap_colors: clonedStrapColors,
-            } as any)
+            .update(strapUpdate)
             .eq('id', newId);
           if (strapUpdateError) throw new Error(`Falha ao copiar tiras: ${strapUpdateError.message}`);
         }
@@ -853,30 +892,39 @@ export function useCloneSheet() {
           .eq('sheet_id', sourceId);
         if (matReadErr) throw new Error(`Falha ao ler materiais da ficha origem: ${matReadErr.message}`);
         if (materials && materials.length > 0) {
-          const rows = materials.map(({ id: _i, created_at: _c, ...m }: any) => ({ ...m, sheet_id: newId }));
-          const { error: matInsErr } = await supabase.from('sheet_materials').insert(rows as any);
+          const rows: TablesInsert<'sheet_materials'>[] = materials.map(({ id: _i, created_at: _c, ...material }) => ({
+            ...material,
+            sheet_id: newId,
+          }));
+          const { error: matInsErr } = await supabase.from('sheet_materials').insert(rows);
           if (matInsErr) throw new Error(`Falha ao copiar materiais: ${matInsErr.message}`);
         }
 
-        const { data: soleMaps, error: soleReadErr } = await (supabase as any)
+        const { data: soleMaps, error: soleReadErr } = await supabase
           .from('technical_sheet_sole_colors')
           .select('*')
           .eq('sheet_id', sourceId);
         if (soleReadErr) throw new Error(`Falha ao ler mapeamento de cores de solado: ${soleReadErr.message}`);
         if (soleMaps && soleMaps.length > 0) {
-          const rows = soleMaps.map(({ id: _i, created_at: _c, ...s }: any) => ({ ...s, sheet_id: newId }));
-          const { error: soleInsErr } = await (supabase as any).from('technical_sheet_sole_colors').insert(rows);
+          const rows: TablesInsert<'technical_sheet_sole_colors'>[] = soleMaps.map(({ id: _i, created_at: _c, ...soleMap }) => ({
+            ...soleMap,
+            sheet_id: newId,
+          }));
+          const { error: soleInsErr } = await supabase.from('technical_sheet_sole_colors').insert(rows);
           if (soleInsErr) throw new Error(`Falha ao copiar cores de solado: ${soleInsErr.message}`);
         }
 
-        const { data: insoleMaps, error: insoleReadErr } = await (supabase as any)
+        const { data: insoleMaps, error: insoleReadErr } = await supabase
           .from('technical_sheet_insole_colors')
           .select('*')
           .eq('sheet_id', sourceId);
         if (insoleReadErr) throw new Error(`Falha ao ler mapeamento de cores de palmilha: ${insoleReadErr.message}`);
         if (insoleMaps && insoleMaps.length > 0) {
-          const rows = insoleMaps.map(({ id: _i, created_at: _c, ...ins }: any) => ({ ...ins, sheet_id: newId }));
-          const { error: insoleInsErr } = await (supabase as any).from('technical_sheet_insole_colors').insert(rows);
+          const rows: TablesInsert<'technical_sheet_insole_colors'>[] = insoleMaps.map(({ id: _i, created_at: _c, ...insoleMap }) => ({
+            ...insoleMap,
+            sheet_id: newId,
+          }));
+          const { error: insoleInsErr } = await supabase.from('technical_sheet_insole_colors').insert(rows);
           if (insoleInsErr) throw new Error(`Falha ao copiar cores de palmilha: ${insoleInsErr.message}`);
         }
 

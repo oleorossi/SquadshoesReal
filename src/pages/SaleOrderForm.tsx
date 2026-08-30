@@ -60,7 +60,10 @@ import { computeMinBillingForNewOrder, fetchMinBillingDate, isBeforeMinDate, toI
 import { MinBillingDateSuggestionDialog } from '@/components/sale-orders/MinBillingDateSuggestionDialog';
 import { OverrideOutsourceCosturaDialog } from '@/components/sale-orders/OverrideOutsourceCosturaDialog';
 import { monthWeekToISODate, isoToMonthWeek } from '@/lib/billingWeek';
-import { listMissingTechnicalStrapSnapshots } from '@/lib/strapSnapshotGuard';
+import {
+  listMissingTechnicalStrapSnapshots,
+  type StrapSnapshotReferenceLike,
+} from '@/lib/strapSnapshotGuard';
 import {
   isCommittedStrapSourcingError,
   sameStrapSourcingSelection,
@@ -335,9 +338,9 @@ export function mapLoadedSaleOrderItem(
   const normalizedReferenceId = canonicalReferenceIdMap.get(i.reference_id) || i.reference_id;
   return {
     id: i.id,
-    production_excluded_at: (i as any).production_excluded_at ?? null,
-    production_exclusion_reason: (i as any).production_exclusion_reason ?? null,
-    production_exclusion_request_id: (i as any).production_exclusion_request_id ?? null,
+    production_excluded_at: i.production_excluded_at ?? null,
+    production_exclusion_reason: i.production_exclusion_reason ?? null,
+    production_exclusion_request_id: i.production_exclusion_request_id ?? null,
     reference_id: normalizedReferenceId,
     color: i.color || '',
     grade,
@@ -1576,7 +1579,10 @@ export default function SaleOrderForm() {
     const productionItems = filterProductionSaleOrderItems(validItems);
     if (validItems.length === 0) { toast.error('Adicione pelo menos um item ao pedido.'); return; }
     if (productionItems.some(i => !i.color?.trim())) { toast.error('Selecione uma cor para todos os itens.'); return; }
-    const missingStrapSnapshots = listMissingTechnicalStrapSnapshots(productionItems, canonicalReferences as any[]);
+    const missingStrapSnapshots = listMissingTechnicalStrapSnapshots(
+      productionItems,
+      canonicalReferences as StrapSnapshotReferenceLike[],
+    );
     if (missingStrapSnapshots.length > 0) {
       toast.error(
         `Demanda de tira não resolvida em ${missingStrapSnapshots[0].label}: a ficha exige tiras, mas o item está sem linhas técnicas. ` +

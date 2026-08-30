@@ -67,6 +67,14 @@ interface PlanningSheet {
   cutting_capacity_per_day: number | null;
 }
 
+interface PlanningSaleOrderItem {
+  id: string;
+  sale_order_id: string | null;
+  reference_id: string | null;
+  quantity: number | null;
+  production_excluded_at?: string | null;
+}
+
 const PLANNING_SECTORS: {
   key: string;
   label: string;
@@ -174,8 +182,9 @@ export function OutsourcingPlanningTab() {
   }, [sheets]);
 
   const itemsByPv = useMemo(() => {
-    const m = new Map<string, any[]>();
-    filterOperationalOutsourcingItems(allItems as any[]).forEach((it) => {
+    const m = new Map<string, PlanningSaleOrderItem[]>();
+    const planningItems = allItems as unknown as PlanningSaleOrderItem[];
+    filterOperationalOutsourcingItems(planningItems).forEach((it) => {
       if (!it.sale_order_id) return;
       if (!m.has(it.sale_order_id)) m.set(it.sale_order_id, []);
       m.get(it.sale_order_id)!.push(it);

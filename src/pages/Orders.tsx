@@ -235,7 +235,9 @@ function getWeekOptions() {
   const { data: orders = [], isLoading, isError, refetch, isFetching } = useOrders();
   const { data: references = [] } = useTechnicalSheets();
   const selectableReferences = useMemo(
-    () => references.filter((reference: any) => !reference.retired_at),
+    () => references.filter((reference) => !(
+      reference as typeof reference & { retired_at?: string | null }
+    ).retired_at),
     [references],
   );
   const { data: products = [] } = useProducts();
