@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 const ROOT = resolve(__dirname, '../..');
 const migration = readFileSync(resolve(
   ROOT,
-  'supabase/migrations/20270101014600_permitir_cabedal_com_tiras_e_somar_materiais_cabedal.sql',
+  'supabase/migrations/20270101014650_permitir_cabedal_com_tiras_e_somar_materiais_cabedal.sql',
 ), 'utf8');
 
 describe('SQL — cabedal e tiras independentes', () => {
@@ -30,7 +30,7 @@ describe('SQL — cabedal e tiras independentes', () => {
     ]) {
       expect(migration).toContain(signature);
     }
-    expect(migration).toContain('upper_and_straps_coexist_20270101014600');
+    expect(migration).toContain('upper_and_straps_coexist_20270101014650');
     expect(migration).toContain('esperava 1 MUTEX');
     expect(migration).toMatch(
       /REVOKE ALL ON FUNCTION\s+public\.prepare_sale_order_item_internal_straps\(jsonb\)[\s\S]*?FROM PUBLIC, anon, authenticated, service_role/,
@@ -42,7 +42,7 @@ describe('SQL — cabedal e tiras independentes', () => {
 
   it('deriva Corte Cabedal por sinais reais e preserva o modo somente-tiras', () => {
     expect(migration).toContain("ELSIF NEW.construction_type = 'tiras' THEN");
-    expect(migration).toContain('upper_and_straps_routing_20270101014600');
+    expect(migration).toContain('upper_and_straps_routing_20270101014650');
     expect(migration).toContain('NEW.requires_cutting_cabedal := (');
     expect(migration).toContain('NEW.upper_consumption_per_size');
     expect(migration).toContain('NEW.components_accessories');
