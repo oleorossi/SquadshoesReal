@@ -10,7 +10,7 @@
  
 import React, { useState, useMemo, useEffect } from 'react';
 import { buildBulkSolePatch, evaluateTechnicalSheetReadiness } from '@/lib/technicalSheetReadiness';
-import type { TechnicalSheetAuditSignals } from '@/lib/technicalSheetReadiness';
+import type { TechnicalSheetAuditSignals, TechnicalSheetReadinessInput } from '@/lib/technicalSheetReadiness';
 import { buildTechnicalSheetPatch, cloneTechnicalSheetSnapshot } from '@/lib/technicalSheetPatch';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useSearchParams, Link } from 'react-router-dom';
@@ -1227,7 +1227,7 @@ function SheetCompleteness({
   audit,
   auditLoaded,
 }: {
-  sheet: any;
+  sheet: TechnicalSheetReadinessInput;
   audit?: TechnicalSheetAuditSignals | null;
   auditLoaded: boolean;
 }) {
