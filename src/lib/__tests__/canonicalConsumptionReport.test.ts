@@ -121,6 +121,34 @@ describe('canonicalConsumptionReport', () => {
     ]));
   });
 
+  it('mantém cor sem SKU como pendência sem atribuir o produto fallback', () => {
+    const blocked = {
+      ...materialLine(),
+      component: 'Cabedal',
+      product_id: null,
+      product_name: 'Cabedal sem SKU para LIMONCELLO',
+      product_unit: 'm',
+      color: 'LIMONCELLO',
+      required: 0,
+      available: 0,
+      stock_ok: false,
+      matched_by: 'color_mismatch',
+      conversion_warning: 'material_color_not_registered:Cabedal:LIMONCELLO',
+    };
+
+    const parsed = validateCanonicalConsumptionReport(response([blocked]));
+    const [row] = adaptCanonicalConsumptionLines(parsed.lines);
+
+    expect(row).toMatchObject({
+      componentType: 'Cabedal',
+      materialName: 'Cabedal sem SKU para LIMONCELLO',
+      color: 'LIMONCELLO',
+      totalQuantity: 0,
+      productIds: [],
+      warning: 'Cabedal · LIMONCELLO: não existe SKU dessa cor no grupo físico.',
+    });
+  });
+
   it.each([
     ['quantidade negativa', { ...materialLine(), required: -1 }],
     ['material positivo sem UUID', { ...materialLine(), product_id: null }],

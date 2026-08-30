@@ -44,7 +44,16 @@ export interface WaveMaterialNeed {
   base_stock_qty: number | null;
   base_shortage: number | null;
   os_send_date: string | null;    // YYYY-MM-DD
+  /** Pendência cadastral emitida pelo motor canônico. Cor ausente é bloqueante
+   *  e não pode ser tratada como shortage zero/em estoque. */
+  conversion_warning: string | null;
   purchase_deadline: string | null; // derived from wave timeline, not from DB function
+}
+
+export function isBlockingWaveMaterialWarning(
+  warning: string | null | undefined,
+): boolean {
+  return (warning || '').startsWith('material_color_not_registered:');
 }
 
 export interface ArtisanalOsNeed {
@@ -95,6 +104,7 @@ export async function getWaveMaterialNeeds(saleOrderIds: string[]): Promise<Wave
     base_needed_qty: r.base_needed_qty != null ? Number(r.base_needed_qty) : null,
     base_stock_qty: r.base_stock_qty != null ? Number(r.base_stock_qty) : null,
     base_shortage: r.base_shortage != null ? Number(r.base_shortage) : null,
+    conversion_warning: r.conversion_warning ?? null,
   })) as WaveMaterialNeed[];
 }
 
@@ -117,6 +127,13 @@ export async function createWaveWithMaterialOrders(params: {
 
   // ALWAYS collect material needs to populate artisanal OS info (regardless of generatePOs)
   const needs = await getWaveMaterialNeeds(saleOrderIds);
+  const blockers = needs.filter((need) =>
+    isBlockingWaveMaterialWarning(need.conversion_warning));
+  if (blockers.length > 0) {
+    throw new Error(
+      'A onda não pode ser criada: há cor de material sem SKU cadastrado. Corrija o cadastro indicado na revisão de materiais.',
+    );
+  }
   const shortages = needs.filter(n => n.shortage > 0 && !n.is_artisanal);
   const artisanalMaterials = needs.filter(n => n.is_artisanal);
 

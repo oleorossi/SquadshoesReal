@@ -39,7 +39,7 @@ describe('materialConsumptionReport', () => {
     });
 
     expect(html).toContain('Necessidade de material base');
-    expect(html).toContain('Materiais por setor');
+    expect(html).toContain('Materiais por aplicação');
     expect(html).toContain('CAIXA COLMEIA 11');
     expect(html).toContain('72');
     expect(html).toContain('SOLADO 01');
@@ -93,6 +93,91 @@ describe('materialConsumptionReport', () => {
   it('cria nome de arquivo estável e seguro', () => {
     expect(materialConsumptionReportFilename('Consumo de Materiais — PV-00157'))
       .toBe('consumo-de-materiais-pv-00157');
+  });
+
+  it('exibe um SKU compartilhado uma vez, com todas as aplicações e uma única disponibilidade', () => {
+    const html = buildMaterialConsumptionReportHtml({
+      title: 'Consumo total — PV-00168',
+      artisanalStrapRows: [],
+      rows: [
+        row({
+          componentType: 'Forração',
+          groupName: 'NAPA SOFT',
+          materialName: 'NAPA SOFT',
+          color: 'OFF WHITE',
+          productUnit: 'm',
+          totalQuantity: 41.57,
+          available: 50,
+          productIds: ['napa-soft-off-white'],
+        }),
+        row({
+          componentType: 'Cabedal',
+          groupName: 'NAPA SOFT',
+          materialName: 'NAPA SOFT',
+          color: 'OFF WHITE',
+          productUnit: 'm',
+          totalQuantity: 17.47,
+          available: 50,
+          productIds: ['napa-soft-off-white'],
+        }),
+        row({
+          componentType: 'Palmilha',
+          groupName: 'PLACA EVA',
+          materialName: 'Palmilha',
+          color: 'BRANCO',
+          productUnit: 'placa',
+          totalQuantity: 4,
+          available: 10,
+          productIds: ['placa-eva-branco'],
+        }),
+      ],
+    });
+
+    expect(html.match(/<span>Aplicações compartilhadas<\/span>/g)).toHaveLength(1);
+    expect(html).toContain('<td>Cabedal + Forração</td>');
+    expect(html).toContain('<td class="num strong">59,04</td>');
+    expect(html.match(/<td class="num">50,00<\/td>/g)).toHaveLength(1);
+    expect(html.match(/<td class="num shortage">9,04<\/td>/g)).toHaveLength(1);
+    expect(html.indexOf('<span>Aplicações compartilhadas</span>'))
+      .toBeLessThan(html.indexOf('<span>Palmilha</span>'));
+  });
+
+  it('mantém o SKU composto do cabedal separado da napa pura da forração', () => {
+    const html = buildMaterialConsumptionReportHtml({
+      title: 'Consumo total — PV-00168',
+      artisanalStrapRows: [],
+      rows: [
+        row({
+          componentType: 'Cabedal',
+          groupName: 'NAPA SOFT + MASSA BOX',
+          materialName: 'NAPA SOFT + MASSA BOX',
+          color: 'OFF WHITE',
+          productUnit: 'm',
+          totalQuantity: 17.47,
+          available: 20,
+          productIds: ['cabedal-composto-off-white'],
+        }),
+        row({
+          componentType: 'Forração',
+          groupName: 'NAPA SOFT',
+          materialName: 'NAPA SOFT',
+          color: 'OFF WHITE',
+          productUnit: 'm',
+          totalQuantity: 41.57,
+          available: 50,
+          productIds: ['napa-soft-off-white'],
+        }),
+      ],
+    });
+
+    expect(html).not.toContain('Aplicações compartilhadas');
+    expect(html).toContain('<div class="component-heading"><span>Cabedal</span>');
+    expect(html).toContain('<div class="component-heading"><span>Forração</span>');
+    expect(html).toContain('<td><strong>NAPA SOFT + MASSA BOX</strong>');
+    expect(html).toContain('<td><strong>NAPA SOFT</strong>');
+    expect(html).toContain('<td class="num strong">17,47</td>');
+    expect(html).toContain('<td class="num strong">41,57</td>');
+    expect(html).not.toContain('<td class="num strong">59,04</td>');
   });
 
   it('não publica metro de tira artesanal como falta de compra nem no total em m', () => {

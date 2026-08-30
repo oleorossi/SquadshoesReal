@@ -45,6 +45,10 @@ const componentIndex = (componentType: string): number => {
   return index >= 0 ? index : COMPONENT_ORDER.length;
 };
 
+const itemComponentTypes = (rows: ConsumptionRow[]): string[] => Array.from(new Set(
+  rows.map((row) => row.componentType).filter(Boolean),
+)).sort((a, b) => componentIndex(a) - componentIndex(b) || a.localeCompare(b, 'pt-BR'));
+
 const reportFilenamePart = (value: string): string => value
   .normalize('NFD')
   .replace(/[\u0300-\u036f]/g, '')
@@ -170,10 +174,12 @@ const reportRowAvailable = (row: ConsumptionRow): number => {
 
 const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): string => {
   const sectionMap = new Map<string, string[]>();
-  const append = (componentType: string, html: string) => {
+  const sectionOrder = new Map<string, number>();
+  const append = (componentType: string, html: string, order: number) => {
     const current = sectionMap.get(componentType) || [];
     current.push(html);
     sectionMap.set(componentType, current);
+    sectionOrder.set(componentType, Math.min(sectionOrder.get(componentType) ?? order, order));
   };
   const colCount = totalMode ? 5 : 7;
 
@@ -183,6 +189,14 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
       || a.color.localeCompare(b.color, 'pt-BR'));
 
   for (const item of nonSole) {
+    const componentTypes = itemComponentTypes(item.rows);
+    const sharedApplications = componentTypes.length > 1;
+    const applications = sharedApplications
+      ? componentTypes
+      : Array.from(new Set(item.rows.map((row) => row.materialName).filter(Boolean)));
+    const section = sharedApplications
+      ? 'Aplicações compartilhadas'
+      : componentTypes[0] || item.componentType;
     const converted = item.rows.length > 0 && item.rows.every(isConvertedInternalStrap);
     const short = totalMode || converted ? 0 : itemShortfall(item);
     const previewQuantity = item.rows.reduce(
@@ -192,7 +206,6 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
     const needHtml = previewQuantity > 0 && !(item.total > 0)
       ? `≈ ${formatQty(previewQuantity, item.productUnit)}<small class="qty-preview">prévia da ficha</small>`
       : formatQty(item.total, item.productUnit);
-    const applications = Array.from(new Set(item.rows.map((row) => row.materialName).filter(Boolean)));
     const warnings = Array.from(new Set(item.rows.flatMap((row) => row.warning ? [row.warning] : [])));
     const napaNote = converted
       ? item.rows
@@ -212,14 +225,14 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
     const convertedNote = converted
       ? `<div class="qty-preview">prod. interna${napaNote ? ` · ${escapeHtml(napaNote)}` : ''}</div>`
       : '';
-    append(item.componentType, `<tr class="material-row${short > 0 ? ' is-short' : ''}${!item.known ? ' is-pending' : ''}">
+    append(section, `<tr class="material-row${short > 0 ? ' is-short' : ''}${!item.known ? ' is-pending' : ''}">
       <td><strong>${escapeHtml(item.groupName)}</strong>${warnings.length ? `<div class="row-warning">▲ ${escapeHtml(warnings.join(' · '))}</div>` : ''}${totalMode ? convertedNote : ''}</td>
       <td>${escapeHtml(applications.join(' + ') || item.groupName)}</td>
       <td>${escapeHtml(item.color || '—')}</td>
       <td class="num strong">${needHtml}</td>
       ${coverageCells}
       <td class="unit">${escapeHtml(formatUnit(item.productUnit))}</td>
-    </tr>`);
+    </tr>`, componentIndex(componentTypes[0] || item.componentType));
   }
 
   const soles = rows.filter((row) => row.componentType === 'Solado')
@@ -240,7 +253,7 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
       ${coverageCells}
       <td class="unit">${escapeHtml(formatUnit(row.productUnit))}</td>
     </tr>
-    <tr class="grade-row"><td colspan="${colCount}">${renderSoleGrade(row, totalMode)}</td></tr>`);
+    <tr class="grade-row"><td colspan="${colCount}">${renderSoleGrade(row, totalMode)}</td></tr>`, componentIndex('Solado'));
   }
 
   const head = totalMode
@@ -248,7 +261,7 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
     : '<tr><th>Grupo</th><th>Aplicação</th><th>Cor</th><th class="num">Necessidade</th><th class="num">Estoque</th><th class="num">Falta</th><th>Un.</th></tr>';
 
   return Array.from(sectionMap.entries())
-    .sort(([a], [b]) => componentIndex(a) - componentIndex(b))
+    .sort(([a], [b]) => (sectionOrder.get(a) ?? componentIndex(a)) - (sectionOrder.get(b) ?? componentIndex(b)))
     .map(([componentType, materialRows]) => `
       <div class="component-block">
         <div class="component-heading"><span>${escapeHtml(componentType)}</span><span>${materialRows.filter((row) => row.includes('class="material-row')).length} linha(s)</span></div>
@@ -435,7 +448,7 @@ export function buildMaterialConsumptionReportHtml({
   <section class="report-section">
     <div class="section-heading">
       <span class="section-number">02</span>
-      <div><p class="section-kicker">Conferência completa</p><h2>Materiais por setor</h2></div>
+      <div><p class="section-kicker">Conferência completa</p><h2>Materiais por aplicação</h2></div>
       <p class="section-note">${totalMode
         ? 'Somente a necessidade do pedido. Tira interna aparece com o equivalente em napa.'
         : 'A falta de solado é calculada por numeração; os demais itens usam o balde grupo + cor + unidade.'}</p>
@@ -449,4 +462,3 @@ export function buildMaterialConsumptionReportHtml({
 </body>
 </html>`;
 }
-

@@ -30,6 +30,15 @@ export interface MaterialVariantColorGroup {
   name: string;
 }
 
+/** Produto pinado só participa da precedência enquanto continua ativo. */
+export function findActiveMaterialVariantProduct(
+  products: MaterialVariantColorProduct[],
+  productId?: string | null,
+): MaterialVariantColorProduct | null {
+  return products.find((product) =>
+    product.id === productId && product.active === true) || null;
+}
+
 /**
  * Resolve o único componente que governa a cor comercial da variante.
  *
@@ -52,7 +61,7 @@ export function resolveMaterialVariantColorGroup({
   if (!variant) return null;
 
   const groupFromProduct = (productId?: string | null) =>
-    products.find((product) => product.id === productId)?.group_id || null;
+    findActiveMaterialVariantProduct(products, productId)?.group_id || null;
 
   const groupId = groupFromProduct(variant.upper_material_product_id)
     || variant.upper_material_group_id
@@ -202,6 +211,110 @@ export interface VariantCascadePins {
   insole_material_group_id?: string | null;
 }
 
+/** Camada estrutural de um grupo composto de produto.
+ *
+ * A compatibilidade do Cabedal não usa setor nem nome do grupo. Esses campos
+ * descrevem onde o cadastro aparece na UI, não a composição física. A fonte de
+ * verdade é `product_group_layers`: a camada que fornece cor pode mudar; as
+ * demais precisam continuar sendo o mesmo componente. */
+export interface MaterialVariantGroupLayer {
+  component_group_id?: string | null;
+  component_label?: string | null;
+  role?: string | null;
+  is_color_source?: boolean | null;
+}
+
+export interface UpperMaterialStructureCompatibility {
+  /** Qualquer linha em `product_group_layers` torna o grupo-base composto. */
+  baseIsComposite: boolean;
+  /** Override estrutural também precisa apontar para um grupo composto. */
+  overrideIsComposite: boolean;
+  /** `false` só quando há override explícito e sua parte fixa diverge. */
+  compatible: boolean;
+  baseSignature: string[];
+  overrideSignature: string[];
+}
+
+/** Resolve o grupo efetivo de um slot com a mesma precedência dos motores:
+ * produto pinado vence o grupo selecionado. */
+export function resolvePinnedMaterialGroupId({
+  productId,
+  groupId,
+  products,
+}: {
+  productId?: string | null;
+  groupId?: string | null;
+  products: MaterialVariantColorProduct[];
+}): string | null {
+  return findActiveMaterialVariantProduct(products, productId)?.group_id
+    || groupId
+    || null;
+}
+
+function normalizeLayerIdentity(value?: string | null): string {
+  return (value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLocaleLowerCase('pt-BR');
+}
+
+/**
+ * Assinatura multiconjunto das camadas que NÃO fornecem a cor.
+ *
+ * `component_group_id` é a identidade forte. Só quando o cadastro legado não
+ * tem esse UUID usamos `component_label` normalizado + `role`; nunca setor ou
+ * nome do grupo composto. A ordenação torna a comparação independente da ordem
+ * visual das camadas, preservando duplicidades reais.
+ */
+export function nonColorSourceLayerSignature(
+  layers: MaterialVariantGroupLayer[],
+): string[] {
+  return layers
+    .filter((layer) => layer.is_color_source !== true)
+    .map((layer) => {
+      const componentGroupId = layer.component_group_id?.trim().toLocaleLowerCase('pt-BR');
+      if (componentGroupId) return `group:${componentGroupId}`;
+      return `fallback:${normalizeLayerIdentity(layer.component_label)}|${normalizeLayerIdentity(layer.role)}`;
+    })
+    .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+}
+
+/**
+ * Decide se uma exceção explícita de Cabedal preserva a estrutura fixa da
+ * ficha. Ficha simples continua livre. Cabedal composto sem override também é
+ * válido (ele apenas mantém o grupo da ficha), mas NÃO pode usar a cascata
+ * genérica `variant_drives_upper`; essa trava é aplicada pela UI chamadora.
+ */
+export function evaluateUpperMaterialStructureCompatibility({
+  baseLayers,
+  overrideLayers,
+  hasExplicitOverride,
+}: {
+  baseLayers: MaterialVariantGroupLayer[];
+  overrideLayers: MaterialVariantGroupLayer[];
+  hasExplicitOverride: boolean;
+}): UpperMaterialStructureCompatibility {
+  const baseSignature = nonColorSourceLayerSignature(baseLayers);
+  const overrideSignature = nonColorSourceLayerSignature(overrideLayers);
+  const baseIsComposite = baseLayers.length > 0;
+  const overrideIsComposite = overrideLayers.length > 0;
+  const compatible = !baseIsComposite
+    || !hasExplicitOverride
+    || (overrideIsComposite
+      && baseSignature.length === overrideSignature.length
+      && baseSignature.every((entry, index) => entry === overrideSignature[index]));
+
+  return {
+    baseIsComposite,
+    overrideIsComposite,
+    compatible,
+    baseSignature,
+    overrideSignature,
+  };
+}
+
 const MATERIAL_SLOTS: ReadonlyArray<VariantCascadeSlot & { material: keyof VariantCascadeSheet }> = [
   { key: 'upper', label: 'Cabedal', sheetMaterial: '', drivesField: 'variant_drives_upper', material: 'upper_material' },
   { key: 'lining', label: 'Forração', sheetMaterial: '', drivesField: 'variant_drives_lining', material: 'lining_material' },
@@ -257,25 +370,29 @@ export function seedVariantCascade(
   return { ...stored, [slots[0].key]: true };
 }
 
-export function hasVariantComponentPin(variant: VariantCascadePins | null | undefined): boolean {
+export function hasVariantComponentPin(
+  variant: VariantCascadePins | null | undefined,
+  products: MaterialVariantColorProduct[],
+): boolean {
   if (!variant) return false;
-  return !!(variant.upper_material_product_id
+  return !!(findActiveMaterialVariantProduct(products, variant.upper_material_product_id)
     || variant.upper_material_group_id
-    || variant.lining_material_product_id
+    || findActiveMaterialVariantProduct(products, variant.lining_material_product_id)
     || variant.lining_material_group_id
-    || variant.insole_material_product_id
+    || findActiveMaterialVariantProduct(products, variant.insole_material_product_id)
     || variant.insole_material_group_id);
 }
 
 export function variantDrivesNoComponent({
-  variant, sheet, sole, cascade,
+  variant, sheet, sole, cascade, products,
 }: {
   variant: VariantCascadePins | null | undefined;
   sheet: VariantCascadeSheet | null | undefined;
   sole?: VariantCascadeSoleContext | null;
   cascade: VariantCascadeSelection;
+  products: MaterialVariantColorProduct[];
 }): boolean {
-  if (hasVariantComponentPin(variant)) return false;
+  if (hasVariantComponentPin(variant, products)) return false;
   return !listVariantCascadeSlots(sheet, sole).some((slot) => cascade[slot.key]);
 }
 
@@ -286,7 +403,7 @@ export interface StrapBaseReadout {
 }
 
 export function resolveStrapBaseReadout({
-  variant, sheet, cascade,
+  variant, sheet, cascade, products,
 }: {
   variant: VariantCascadePins & { main_material_group_id?: string | null } | null | undefined;
   sheet: (VariantCascadeSheet & {
@@ -296,29 +413,46 @@ export function resolveStrapBaseReadout({
     lining_material_group_id?: string | null;
   }) | null | undefined;
   cascade: VariantCascadeSelection;
+  products: MaterialVariantColorProduct[];
 }): StrapBaseReadout | null {
   const pick = (groupId: string | null | undefined, origin: StrapBaseReadout['origin']) =>
     groupId ? { groupId, origin } : null;
 
+  const variantUpperGroupId = resolvePinnedMaterialGroupId({
+    productId: variant?.upper_material_product_id,
+    groupId: variant?.upper_material_group_id,
+    products,
+  });
+  const variantLiningGroupId = resolvePinnedMaterialGroupId({
+    productId: variant?.lining_material_product_id,
+    groupId: variant?.lining_material_group_id,
+    products,
+  });
+  const sheetUpperPin = findActiveMaterialVariantProduct(
+    products,
+    sheet?.upper_material_product_id,
+  );
+  const sheetUpperGroupId = sheetUpperPin?.group_id || sheet?.upper_material_group_id;
+
   const strapsFollowLining = sheet?.has_straps === true
     && !sheet.upper_material?.trim()
     && !sheet.upper_material_group_id
-    && !sheet.upper_material_product_id;
+    && !sheetUpperPin;
 
   const resolved = strapsFollowLining
-    ? pick(variant?.lining_material_group_id, 'variant_lining')
+    ? pick(variantLiningGroupId, 'variant_lining')
       || (cascade.lining ? pick(variant?.main_material_group_id, 'variant_main') : null)
       || pick(sheet?.lining_material_group_id, 'sheet')
       || pick(sheet?.strap_base_group_id, 'sheet')
-    : pick(variant?.upper_material_group_id, 'variant_upper')
-      || pick(variant?.lining_material_group_id, 'variant_lining')
+    : pick(variantUpperGroupId, 'variant_upper')
+      || pick(variantLiningGroupId, 'variant_lining')
       || pick(variant?.main_material_group_id, 'variant_main')
-      || pick(sheet?.upper_material_group_id, 'sheet')
+      || pick(sheetUpperGroupId, 'sheet')
       || pick(sheet?.strap_base_group_id, 'sheet')
       || pick(sheet?.lining_material_group_id, 'sheet');
   if (!resolved) return null;
 
-  const liningGroupId = variant?.lining_material_group_id
+  const liningGroupId = variantLiningGroupId
     || (cascade.lining ? variant?.main_material_group_id : null)
     || sheet?.lining_material_group_id
     || null;

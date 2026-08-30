@@ -1196,9 +1196,13 @@ export default function SaleOrderForm() {
    */
   const isCostPartial = (c: OrderCostResult): boolean => {
     const noLabor = !c.labor_cost || c.labor_cost <= 0; // MOD ausente (sem cronoanálise)
-    const scan = (r?: OrderCostResult) => (r?.breakdown?.materials || []).some(m => !!m.conversion_warning);
-    const widthMissing = scan(c) || (c.items || []).some(scan); // largura de ficha faltando
-    return noLabor || widthMissing;
+    const scan = (r?: OrderCostResult) => (r?.breakdown?.materials || []).some(m =>
+      !!m.conversion_warning || m.resolution_warning === 'color_mismatch');
+    const hasBlockingWarning = (r?: OrderCostResult) => (r?.warnings || []).some(w =>
+      w.startsWith('material_color_not_registered:'));
+    const details = [c, ...(c.items || [])];
+    const materialIncomplete = details.some(scan) || details.some(hasBlockingWarning);
+    return noLabor || materialIncomplete;
   };
 
   const checkMarginAfterSave = async (orderId?: string) => {

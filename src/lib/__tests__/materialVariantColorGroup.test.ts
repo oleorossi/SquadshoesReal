@@ -63,6 +63,21 @@ describe('resolveMaterialVariantColorGroup', () => {
       groups,
     })?.id).toBe('main-group');
   });
+
+  it('ignora pin inativo e continua pela precedência de grupo', () => {
+    expect(resolveMaterialVariantColorGroup({
+      variant: {
+        upper_material_product_id: 'upper-inactive',
+        upper_material_group_id: 'upper-group',
+      },
+      sheet: { variant_drives_upper: false, variant_drives_lining: false },
+      products: [
+        ...products,
+        { id: 'upper-inactive', group_id: 'upper-pin-group', color: 'Preto', active: false },
+      ],
+      groups,
+    })?.id).toBe('upper-group');
+  });
 });
 
 describe('activeProductColorsForGroup', () => {

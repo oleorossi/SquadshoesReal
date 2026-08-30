@@ -13,10 +13,10 @@ const PV = readFileSync(resolve(ROOT, 'src/components/sale-orders/SaleOrderItemF
  */
 describe('A trava da ficha só é gravada quando a tela mostrou a decisão', () => {
   it('cascadeDirty exige o mesmo gate que renderiza o bloco', () => {
-    // O bloco de checkboxes vive sob `formData.main_material_group_id`; sem o
-    // mesmo gate na gravação, variante salva só com exceção por componente
-    // escrevia variant_drives_* que o usuário nunca viu.
-    expect(TAB).toContain('const cascadeEditable = !!formData.main_material_group_id;');
+    // O bloco de checkboxes vive sob `formData.main_material_group_id`; Cabedal
+    // composto é a exceção explícita porque precisa persistir `upper=false`
+    // mesmo quando a variante usa somente override por componente.
+    expect(TAB).toContain('const cascadeEditable = !!formData.main_material_group_id || upperBaseIsComposite;');
     expect(TAB).toMatch(/const cascadeDirty = cascadeEditable && !!sheetMaterials/);
   });
 
@@ -43,7 +43,7 @@ describe('O aviso do PV não acusa no-op falso', () => {
   it('variante que troca só a palmilha deixa de cair no aviso', () => {
     // resolveMaterialVariantColorGroup só olha cabedal/forração, então
     // mainGroupForNewColor sozinho não prova no-op.
-    expect(PV).toContain('!hasVariantComponentPin(selectedMaterialVariant)');
+    expect(PV).toContain('!hasVariantComponentPin(selectedMaterialVariant, allProducts)');
   });
 });
 
@@ -60,6 +60,7 @@ describe('resolveStrapBaseReadout espelha resolve_strap_base_group_id', () => {
       variant: { lining_material_group_id: 'g-glow' },
       sheet,
       cascade: EMPTY_VARIANT_CASCADE,
+      products: [],
     })).toMatchObject({ groupId: 'g-glow', origin: 'variant_lining', divergesFromLining: false });
   });
 
@@ -68,6 +69,7 @@ describe('resolveStrapBaseReadout espelha resolve_strap_base_group_id', () => {
       variant: { main_material_group_id: 'g-glow' },
       sheet,
       cascade: { ...EMPTY_VARIANT_CASCADE, lining: true },
+      products: [],
     })).toMatchObject({ groupId: 'g-glow', origin: 'variant_main', divergesFromLining: false });
   });
 
@@ -76,6 +78,7 @@ describe('resolveStrapBaseReadout espelha resolve_strap_base_group_id', () => {
       variant: { main_material_group_id: 'g-glow' },
       sheet,
       cascade: EMPTY_VARIANT_CASCADE,
+      products: [],
     })).toMatchObject({ groupId: 'g-soft', origin: 'sheet', divergesFromLining: false });
   });
 
@@ -84,6 +87,7 @@ describe('resolveStrapBaseReadout espelha resolve_strap_base_group_id', () => {
       variant: {},
       sheet: { ...sheet, strap_base_group_id: 'g-base' },
       cascade: EMPTY_VARIANT_CASCADE,
+      products: [],
     })).toMatchObject({ groupId: 'g-soft', origin: 'sheet', divergesFromLining: false });
   });
 
@@ -92,6 +96,7 @@ describe('resolveStrapBaseReadout espelha resolve_strap_base_group_id', () => {
       variant: { upper_material_group_id: 'g-glow' },
       sheet,
       cascade: EMPTY_VARIANT_CASCADE,
+      products: [],
     })).toMatchObject({ groupId: 'g-soft', origin: 'sheet', divergesFromLining: false });
   });
 
@@ -100,6 +105,7 @@ describe('resolveStrapBaseReadout espelha resolve_strap_base_group_id', () => {
       variant: {},
       sheet: { upper_material: '', lining_material: '' },
       cascade: EMPTY_VARIANT_CASCADE,
+      products: [],
     })).toBeNull();
   });
 });

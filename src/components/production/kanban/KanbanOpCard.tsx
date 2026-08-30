@@ -219,13 +219,16 @@ export function KanbanOpCard({
               )}
               {/* Sem matéria-prima pra arrancar: quem move a OP pro Corte tem
                   que ver ANTES de mover, não descobrir no chão de fábrica. */}
-              {materialGateDate && (
+              {(materialGateDate || materialGateReason) && (
                 <Badge
                   variant="outline"
-                  className="text-[9px] bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/40 gap-0.5 shrink-0"
+                  className={materialGateDate
+                    ? 'text-[9px] bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/40 gap-0.5 shrink-0'
+                    : 'text-[9px] bg-destructive/10 text-destructive border-destructive/30 gap-0.5 shrink-0'}
                   title={materialGateReason || `Material disponível a partir de ${fmtDate(materialGateDate)}`}
                 >
-                  <Package className="h-2.5 w-2.5" /> {fmtDate(materialGateDate)}
+                  <Package className="h-2.5 w-2.5" />
+                  {materialGateDate ? fmtDate(materialGateDate) : 'Material pendente'}
                 </Badge>
               )}
             </span>

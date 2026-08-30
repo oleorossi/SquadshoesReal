@@ -1,10 +1,8 @@
 name: Deploy Supabase Edge Functions
 
-# Publica as Edge Functions somente depois do CI de main. A execução automática
-# republica o conjunto completo: assim um deploy Edge que falhou em um commit
-# anterior não é mascarado quando o commit corretivo mexe só no frontend.
-# Antes da publicação, o job aguarda TODAS as migrations pós-cutover do mesmo
-# commit e recusa um SHA que já deixou de ser a ponta de main.
+# Publica as Edge Functions somente depois do CI do mesmo SHA. A execução
+# automática republica o conjunto completo e o gate interno aguarda migrations
+# mais o contrato pós-deploy antes de publicar.
 #
 # Setup (uma vez):
 # 1. Secrets já configurados (mesmos do supabase-migrate.yml):

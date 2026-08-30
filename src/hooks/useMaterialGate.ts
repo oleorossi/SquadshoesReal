@@ -79,7 +79,7 @@ export function useOrderMaterialGate(orderId: string | null | undefined, enabled
 }
 
 export interface OrderGateRow {
-  ready_date: string;
+  ready_date: string | null;
   reason: string | null;
 }
 
@@ -104,7 +104,7 @@ export function useOrdersMaterialGate(orderIds: string[]) {
         .from('orders')
         .select('id, material_ready_date, material_gate_reason')
         .in('id', ids)
-        .not('material_ready_date', 'is', null);
+        .or('material_ready_date.not.is.null,material_gate_reason.not.is.null');
       if (error) throw error;
       for (const row of (data ?? []) as any[]) {
         map.set(row.id, { ready_date: row.material_ready_date, reason: row.material_gate_reason });

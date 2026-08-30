@@ -4,7 +4,9 @@ name: Vercel Production Deploy
 # Mudança em 2026-05-16: era `on: push: main`, rodava em paralelo com CI →
 # Vercel deployava antes do tsc terminar. Erros tipo "Cannot find name 'Box'"
 # (TS2304) caíam em prod porque vite build tolera TS errors silenciosamente.
-# Agora a chain é: push → CI → (só se passou) → Vercel Deploy.
+# Agora a chain é: push → CI → migrations + pós-deploy → Vercel Deploy. O
+# deploy nasce do mesmo CI para preservar o SHA original e aguarda o marcador
+# pós-deploy antes de publicar.
 #
 # Setup necessário (uma vez só):
 # 1. https://vercel.com/account/tokens → Create Token → copia
@@ -17,8 +19,7 @@ name: Vercel Production Deploy
 
 on:
   # Espera CI completar em push pra main. Se CI falhou, deploy é skipado
-  # automaticamente (via `if:` no job abaixo). Branch filter garante que PRs
-  # (que também rodam CI) NÃO disparem deploy prod.
+  # automaticamente. O gate interno aguarda banco e pós-deploy do mesmo SHA.
   workflow_run:
     workflows: ["CI"]
     types: [completed]
@@ -40,8 +41,8 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    # Pula deploy se CI falhou. Manual dispatch ignora esse check (admin
-    # decide quando forçar). workflow_run.conclusion pode ser:
+    # Pula deploy se CI falhou. O workflow_dispatch DESTE arquivo segue sendo a
+    # exceção explícita do admin. workflow_run.conclusion pode ser:
     # success/failure/cancelled/skipped/timed_out — só deploya em success.
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     timeout-minutes: 45

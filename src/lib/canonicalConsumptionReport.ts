@@ -221,10 +221,20 @@ export async function fetchCanonicalConsumptionReport(params: {
   return validateCanonicalConsumptionReport(data);
 }
 
+const formatCanonicalWarning = (value: string): string => {
+  const prefix = 'material_color_not_registered:';
+  if (!value.startsWith(prefix)) return value;
+  const [component = 'Material', color = 'cor solicitada'] = value
+    .slice(prefix.length)
+    .split(':');
+  return `${component} · ${color}: não existe SKU dessa cor no grupo físico.`;
+};
+
 const warningText = (line: CanonicalConsumptionLine): string | undefined => {
   const values = [line.warning, line.conversion_warning, line.consumption_warning]
     .map((value) => value?.trim())
-    .filter((value): value is string => !!value);
+    .filter((value): value is string => !!value)
+    .map(formatCanonicalWarning);
   return values.length > 0 ? [...new Set(values)].join(' · ') : undefined;
 };
 

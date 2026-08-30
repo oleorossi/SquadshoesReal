@@ -20,7 +20,7 @@ const waitScript = readFileSync(
 );
 
 describe('ordem de deploy das Edge Functions', () => {
-  it('só publica o conjunto canônico após CI verde, banco completo e SHA atual', () => {
+  it('só publica o conjunto canônico após banco validado e SHA atual', () => {
     const waitStep = edgeWorkflow.indexOf('Wait for database migrations from this commit');
     const freshnessStep = edgeWorkflow.indexOf('Refuse a stale main commit');
     const deployStep = edgeWorkflow.indexOf('Deploy each function');
@@ -46,7 +46,10 @@ describe('ordem de deploy das Edge Functions', () => {
     expect(waitScript).toContain('comm -23');
     expect(waitScript).toContain('required_versions.txt');
     expect(waitScript).toContain('missing_versions.txt');
-    expect(waitScript).toContain('Banco não contém todas as migrations exigidas até ${required_version}; deploy bloqueado.');
+    expect(waitScript).toContain('20270101014800_sp124_composite_upper_guards');
+    expect(waitScript).toContain('deployment_postdeploy_checks');
+    expect(waitScript).toContain('Contrato pós-deploy SP124 ainda pendente');
+    expect(waitScript).toContain('Banco não contém todas as migrations e contratos pós-deploy exigidos');
   });
 
   it('só aplica migrations após CI verde e só publica o frontend após o banco', () => {
@@ -54,6 +57,18 @@ describe('ordem de deploy das Edge Functions', () => {
     expect(migrationWorkflow).toContain('workflows: ["CI"]');
     expect(migrationWorkflow).toContain("github.event.workflow_run.conclusion == 'success'");
     expect(migrationWorkflow).toContain('github.event.workflow_run.head_sha || github.sha');
+    expect(migrationWorkflow).toContain('Verify SP124 post-deploy contract');
+    expect(migrationWorkflow).toContain('sp124_composite_upper_guards_postdeploy.sql');
+    expect(migrationWorkflow).toContain('deployment_postdeploy_checks');
+    expect(migrationWorkflow).toContain('sp124-postdeploy-with-marker.sql');
+    expect(migrationWorkflow).toContain('Contrato pós-deploy SP124 falhou; release bloqueado.');
+
+    const applyStep = migrationWorkflow.indexOf('Apply pending migrations');
+    const verifyStep = migrationWorkflow.indexOf('Verify SP124 post-deploy contract');
+    const finalStep = migrationWorkflow.indexOf('Final status');
+    expect(applyStep).toBeGreaterThan(-1);
+    expect(verifyStep).toBeGreaterThan(applyStep);
+    expect(finalStep).toBeGreaterThan(verifyStep);
 
     const waitStep = vercelWorkflow.indexOf('Wait for database migrations from this commit');
     const deployStep = vercelWorkflow.indexOf('Deploy to production');
@@ -66,5 +81,6 @@ describe('ordem de deploy das Edge Functions', () => {
     expect(vercelWorkflow).toContain('cancel-in-progress: false');
     expect(vercelWorkflow).toContain('Refuse a stale main commit');
     expect(vercelWorkflow).toContain('main:refs/remotes/origin/main');
+    expect(vercelWorkflow).toContain('workflows: ["CI"]');
   });
 });

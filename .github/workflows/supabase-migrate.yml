@@ -195,6 +195,64 @@ jobs:
             --yes
           echo "✅ Concluído"
 
+      - name: Verify SP124 post-deploy contract
+        if: github.event_name == 'workflow_run' || github.event.inputs.dry_run == 'false'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_ID:   ${{ secrets.SUPABASE_PROJECT_ID }}
+          SQL_PATH: supabase/tests/sp124_composite_upper_guards_postdeploy.sql
+        run: |
+          test -f "$SQL_PATH" || { echo "Contrato pós-deploy ausente: $SQL_PATH" >&2; exit 1; }
+          marker_query="SELECT EXISTS (SELECT 1 FROM public.deployment_postdeploy_checks WHERE check_key = '20270101014800_sp124_composite_upper_guards') AS verified"
+          jq -nc --arg query "$marker_query" '{query: $query}' > /tmp/sp124-marker-query.json
+          marker_code=$(curl -sS -o /tmp/sp124-marker-response.json -w '%{http_code}' -X POST \
+            "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_ID}/database/query" \
+            -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data @/tmp/sp124-marker-query.json)
+          if [ "$marker_code" -lt 200 ] || [ "$marker_code" -ge 300 ]; then
+            echo "Falha ao consultar marcador pós-deploy: HTTP $marker_code" >&2
+            head -c 20000 /tmp/sp124-marker-response.json
+            exit 1
+          fi
+          if [ "$(jq -r 'if type == "array" then (.[0].verified // false) else false end' /tmp/sp124-marker-response.json)" = "true" ]; then
+            echo "✓ Contrato pós-deploy SP124 já foi aprovado; marcador durável encontrado."
+            exit 0
+          fi
+
+          {
+            cat "$SQL_PATH"
+            cat <<'SQL'
+          INSERT INTO public.deployment_postdeploy_checks (
+            check_key,
+            migration_version,
+            details
+          ) VALUES (
+            '20270101014800_sp124_composite_upper_guards',
+            '20270101014800',
+            jsonb_build_object('verified_by', 'github-actions')
+          )
+          ON CONFLICT (check_key) DO UPDATE SET
+            migration_version = EXCLUDED.migration_version,
+            verified_at = pg_catalog.now(),
+            details = EXCLUDED.details;
+          SQL
+          } > /tmp/sp124-postdeploy-with-marker.sql
+          jq -Rs '{query: .}' < /tmp/sp124-postdeploy-with-marker.sql > /tmp/sp124-postdeploy.json
+          code=$(curl -sS -o /tmp/sp124-postdeploy-response.json -w '%{http_code}' -X POST \
+            "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_ID}/database/query" \
+            -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data @/tmp/sp124-postdeploy.json)
+          echo "Pós-deploy SP124: HTTP $code"
+          head -c 20000 /tmp/sp124-postdeploy-response.json
+          echo
+          if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+            echo "Contrato pós-deploy SP124 falhou; release bloqueado." >&2
+            exit 1
+          fi
+          echo "✓ Contrato pós-deploy SP124 aprovado"
+
       - name: Final status
         if: always()
         env:

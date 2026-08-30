@@ -59,6 +59,7 @@ import {
 } from '@/lib/strapIdentity';
 import {
   activeProductColorsForGroup,
+  findActiveMaterialVariantProduct,
   hasVariantComponentPin,
   resolveMaterialVariantColorGroup,
   resolveSheetCommercialColorGroup,
@@ -501,10 +502,9 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   const { data: allProducts = [] } = useQuery({
     queryKey: ['products_for_colors'],
     queryFn: async () => {
-      // Inclui inativos de propósito: os ponteiros *_material_product_id das
-      // variantes resolvem grupo via find por id — se o produto apontado for
-      // desativado, o filtro active aqui mataria TODAS as cores do grupo em
-      // silêncio. A enumeração de CORES filtra p.active === false caso a caso.
+      // Inclui inativos para distinguir pin legado desativado de produto ainda
+      // válido. Os resolvers ignoram o primeiro e continuam pelo grupo/ficha;
+      // a enumeração de cores aceita somente produtos ativos.
       const { data } = await supabase.from('products').select('id, name, color, group_id, category, active');
       return data || [];
     },
@@ -598,7 +598,9 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       drivenByMain: boolean,
       sheetName: string | null | undefined,
     ): ColorTarget | null => {
-      if (pinProductId) return null; // pin legado: produto fixo, sem resolução por cor
+      if (findActiveMaterialVariantProduct(allProducts, pinProductId)) {
+        return null; // pin ativo: produto fixo, sem resolução por cor
+      }
       if (variantGroupId) return { groupId: variantGroupId };
       if (drivenByMain && sel?.main_material_group_id) return { groupId: sel.main_material_group_id };
       const nm = (sheetName || '').trim();
@@ -634,7 +636,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   // em que linhas `reference_base` herdam a Forração.
   const modelHasCabedal = !!String(sheetSpecs?.upper_material || '').trim()
     || !!sheetSpecs?.upper_material_group_id
-    || !!sheetSpecs?.upper_material_product_id;
+    || !!findActiveMaterialVariantProduct(allProducts, sheetSpecs?.upper_material_product_id);
   const referenceBaseMaterialDirect = modelHasCabedal ? 'o Cabedal' : 'a Forração';
   const referenceBaseMaterialWithArticle = modelHasCabedal ? 'do Cabedal' : 'da Forração';
   const hasStrapsEffective = useMemo(() => {
@@ -880,7 +882,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     if (!item.material_variant_id) return '';
     const v = activeMaterialVariants.find(x => x.id === item.material_variant_id);
     if (!v?.upper_material_product_id) return '';
-    const prod = allProducts.find((p) => p.id === v.upper_material_product_id);
+    const prod = findActiveMaterialVariantProduct(allProducts, v.upper_material_product_id);
     return (prod?.color || '').trim().toUpperCase();
   }, [item.material_variant_id, activeMaterialVariants, allProducts]);
 
@@ -1652,7 +1654,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                   de palmilha — é o mesmo helper que o guard de save usa. */}
               {selectedMaterialVariant
                 && !mainGroupForNewColor
-                && !hasVariantComponentPin(selectedMaterialVariant) && (
+                && !hasVariantComponentPin(selectedMaterialVariant, allProducts) && (
                 <p className="mt-1 text-[11px] leading-snug text-amber-600 dark:text-amber-400">
                   Esta variante não substitui componente nenhum desta ficha: não há cores dela
                   para escolher e o corte/débito continua saindo do material da ficha.{' '}
@@ -1725,7 +1727,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                 colors={availableColors}
                 value={item.color}
                 onSelect={(v) => onUpdate(index, 'color', v)}
-                emptyHint={selectedMaterialVariant && !mainGroupForNewColor && !hasVariantComponentPin(selectedMaterialVariant)
+                emptyHint={selectedMaterialVariant && !mainGroupForNewColor && !hasVariantComponentPin(selectedMaterialVariant, allProducts)
                   ? `A variante ${selectedMaterialVariant.material_name} não substitui componente nenhum desta ficha, então não há cores dela para listar.`
                   : selectedMaterialVariant && !mainGroupForNewColor
                   ? `A variante ${selectedMaterialVariant.material_name} troca só a placa/EVA da palmilha, que não tem cor comercial — a cor aqui continua vindo do material da ficha.`

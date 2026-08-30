@@ -5,7 +5,11 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { CircleNotch as Loader2, TrendUp as TrendingUp, TrendDown as TrendingDown, Minus, Warning as AlertTriangle } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
-import { calculateOrderCost, type OrderCostResult } from '@/services/costingService';
+import {
+  calculateOrderCost,
+  getMissingMaterialColorLabels,
+  type OrderCostResult,
+} from '@/services/costingService';
 import { cn } from '@/lib/utils';
 import { ReferenceLink } from '@/components/ui/reference-link';
 
@@ -105,6 +109,15 @@ export default function MarginDialog({ open, onOpenChange, saleOrderId, orderNum
                     .map((w) => w.slice('strap_color_not_registered:'.length));
                   if (strapColors.length > 0) {
                     errs.push(`${tag}: tira sem produto cadastrado na cor ${strapColors.join(', ')} — custo da tira não somado`);
+                  }
+                  const missingMaterialColors = getMissingMaterialColorLabels(sqlWarnings);
+                  if (missingMaterialColors.length > 0) {
+                    // Não deixa um custo parcial alimentar KPIs de margem como se
+                    // fosse completo. O catch abaixo marca o item como erro e o
+                    // exclui dos totais calculados.
+                    throw new Error(
+                      `material sem SKU na cor ${missingMaterialColors.join(', ')} — custo não calculado`,
+                    );
                   }
                   if (conversionIssues.length > 0) {
                     errs.push(`${tag}: unidade incompatível em ${conversionIssues.join(', ')}`);
