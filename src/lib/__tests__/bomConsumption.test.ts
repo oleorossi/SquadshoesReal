@@ -232,6 +232,116 @@ describe('calculateBomForOrders — tiras sem fichas hardcoded (achado b)', () =
   });
 });
 
+describe('calculateBomForOrders — cabedal e tiras aditivos', () => {
+  const addUpperCatalog = (tables: Record<string, unknown[]>, secondProduct = false) => {
+    tables.product_groups = [...(tables.product_groups as any[]), {
+      id: 'g-napa', name: 'NAPA SOFT + MASSABOX',
+      dimensions_length: null, dimensions_width: null, dimensions_unit: 'mm',
+    }];
+    tables.products = [...(tables.products as any[]),
+      { id: 'p-napa-a', name: 'NAPA SOFT + MASSABOX PRETO', color: 'PRETO', group_id: 'g-napa', unit: 'm', quantity: 100 },
+      ...(secondProduct
+        ? [{ id: 'p-napa-b', name: 'NAPA SOFT + MASSABOX PRETO B', color: 'PRETO', group_id: 'g-napa', unit: 'm', quantity: 50 }]
+        : []),
+    ];
+    tables.component_sheets = [...(tables.component_sheets as any[]),
+      {
+        product_id: 'p-napa-a', dimensions_width: 1370, dimensions_length: 0, dimensions_unit: 'mm',
+        yield_per_size: null, yield_per_sole: null,
+        products: { group_id: 'g-napa', name: 'NAPA SOFT + MASSABOX PRETO', color: 'PRETO', unit: 'm' },
+      },
+      ...(secondProduct
+        ? [{
+          product_id: 'p-napa-b', dimensions_width: 1370, dimensions_length: 0, dimensions_unit: 'mm',
+          yield_per_size: null, yield_per_sole: null,
+          products: { group_id: 'g-napa', name: 'NAPA SOFT + MASSABOX PRETO B', color: 'PRETO', unit: 'm' },
+        }]
+        : []),
+    ];
+  };
+
+  it('mantém cabedal e tiras no mesmo modelo e unifica dois consumos do mesmo SKU', async () => {
+    const tables = buildBomTables({ grade: GRADE_REAL });
+    addUpperCatalog(tables);
+    Object.assign(tables.technical_sheets[0] as any, {
+      has_straps: true,
+      upper_material: 'NAPA SOFT + MASSABOX',
+      upper_material_product_id: 'p-napa-a',
+      upper_consumption: 2.74,
+      components_accessories: [{
+        material: 'NAPA SOFT + MASSABOX',
+        product_id: 'p-napa-a',
+        consumption: 2.28,
+        mandatory: true,
+      }],
+    });
+    mockDb.tables = tables;
+
+    const rows = await calculateBomForOrders(['op1']);
+    const cabedais = rows.filter((row) => row.componentType === 'Cabedal');
+    const tiras = rows.filter((row) => row.componentType === 'Tiras');
+
+    expect(cabedais).toHaveLength(1);
+    expect(cabedais[0].productIds).toEqual(['p-napa-a']);
+    expect(cabedais[0].totalQuantity).toBeCloseTo(((2.74 + 2.28) * 720) / 137, 6);
+    expect(tiras).toHaveLength(1);
+    expect(tiras[0].totalQuantity).toBeCloseTo(72, 6);
+  });
+
+  it('consome Material 1 + Material 2 pela grade quando os escalares são zero', async () => {
+    const tables = buildBomTables({ grade: GRADE_REAL });
+    addUpperCatalog(tables);
+    Object.assign(tables.technical_sheets[0] as any, {
+      upper_material: 'NAPA SOFT + MASSABOX',
+      upper_material_product_id: 'p-napa-a',
+      upper_consumption: 0,
+      upper_consumption_per_size: { '35': 3, '36': 3, '37': 3, '38': 3 },
+      components_accessories: [{
+        material: 'NAPA SOFT + MASSABOX',
+        product_id: 'p-napa-a',
+        consumption: 0,
+        consumption_per_size: { '35': 2, '36': 2, '37': 2, '38': 2 },
+        mandatory: true,
+      }],
+    });
+    mockDb.tables = tables;
+
+    const cabedais = (await calculateBomForOrders(['op1']))
+      .filter((row) => row.componentType === 'Cabedal');
+
+    expect(cabedais).toHaveLength(1);
+    expect(cabedais[0].productIds).toEqual(['p-napa-a']);
+    // 5 dm²/par × 720 pares ÷ 137 dm²/m.
+    expect(cabedais[0].totalQuantity).toBeCloseTo((5 * 720) / 137, 6);
+  });
+
+  it('não unifica produtos físicos diferentes mesmo no mesmo grupo/cor', async () => {
+    const tables = buildBomTables({ grade: GRADE_REAL });
+    addUpperCatalog(tables, true);
+    Object.assign(tables.technical_sheets[0] as any, {
+      has_straps: true,
+      upper_material: 'NAPA SOFT + MASSABOX',
+      upper_material_product_id: 'p-napa-a',
+      upper_consumption: 2.74,
+      components_accessories: [{
+        material: 'NAPA SOFT + MASSABOX',
+        product_id: 'p-napa-b',
+        consumption: 2.28,
+        mandatory: true,
+      }],
+    });
+    mockDb.tables = tables;
+
+    const cabedais = (await calculateBomForOrders(['op1']))
+      .filter((row) => row.componentType === 'Cabedal');
+
+    expect(cabedais).toHaveLength(2);
+    expect(cabedais.map((row) => row.productIds?.[0]).sort()).toEqual(['p-napa-a', 'p-napa-b']);
+    expect(cabedais.reduce((sum, row) => sum + row.totalQuantity, 0))
+      .toBeCloseTo(((2.74 + 2.28) * 720) / 137, 6);
+  });
+});
+
 // ─── Netting canônico de tiras na Lista de Separação ───────────────────────
 
 describe('calculateBomForOrders — usa a falta líquida persistida de tiras', () => {

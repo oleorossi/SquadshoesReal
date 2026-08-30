@@ -35,6 +35,7 @@ import { RefChip } from '@/components/ui/ref-chip';
 import { normalizeForSearch, searchMatchesAllTerms } from '@/lib/searchUtils';
 import { normalizeSector } from '@/lib/sectors';
 import { safeUrlAttr } from '@/lib/htmlUtils';
+import { requiresUpperCut } from '@/lib/upperCutEligibility';
 
 // Stage da OP correspondente a este setor. O stage_name no banco é
 // 'Corte Palmilha' desde o rename de 2026-05-06 — o match literal por 'Corte'
@@ -753,6 +754,7 @@ if (totalPairsAll !== palmTotal) {
                           if (prodRef?.has_straps) isStrap = true;
                         }
                       }
+                      const hasUpperCut = requiresUpperCut(ref);
 
                       const buildGradeHtml = () => {
                         if (!grade || activeSizes.length === 0) return '';
@@ -819,7 +821,7 @@ if (totalPairsAll !== palmTotal) {
                         <h2 style="font-size:12px;margin-bottom:6px;border-bottom:1px solid #ccc;padding-bottom:3px;">📋 Grade</h2>
                         ${buildGradeHtml()}`;
 
-                      if (isStrap) {
+                      if (isStrap && !hasUpperCut) {
                         const allMats = buildMatsHtml([
                           { label: '👞 Cabedal (Tira)', category: 'Cabedal' },
                           { label: '🦶 Palmilha', category: 'Palmilha' },
@@ -1302,6 +1304,7 @@ if (totalPairsAll !== palmTotal) {
                   const { data: prodRef } = await supabase.from('product_references').select('has_straps').eq('technical_sheet_id', ref.id).maybeSingle();
                   if (prodRef?.has_straps) isStrap = true;
                 }
+                const hasUpperCut = requiresUpperCut(ref);
 
                 const buildGradeHtml = () => {
                   if (!grade || activeSizes.length === 0) return '';
@@ -1353,7 +1356,7 @@ if (totalPairsAll !== palmTotal) {
 
                 if (idx > 0) fullHtml += '<div style="page-break-before:always;"></div>';
 
-                if (isStrap) {
+                if (isStrap && !hasUpperCut) {
                   fullHtml += buildHeader('') + buildMatsHtml([
                     { label: '👞 Cabedal (Tira)', category: 'Cabedal' },
                     { label: '🦶 Palmilha', category: 'Palmilha' },

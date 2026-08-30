@@ -28,7 +28,7 @@ export interface OperatorWorkSheetItem {
   soleColor?: string | null;
   insoleColor?: string | null;
   insoleReadyMade?: boolean;
-  /** Model 3 (tiras): no cabedal cut; passes through Mesa sector */
+  /** A referência tem tiras; pode também ter cabedal e Corte Cabedal. */
   hasStraps?: boolean;
   /** Sequência de tiras na ORDEM da ficha técnica (TIRA 1, TIRA 2, ...).
    *  Renderizada como tabela quando hasStraps=true e o array tem ao menos
@@ -546,9 +546,9 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
               opção A): substitui a grade 2-col de rótulo/valor — confere
               solado/palmilha/cor num olhar, P&B, sem swatch invisível. */}
           <div className="flex flex-wrap gap-2 content-start">
-            {/* Cor Tiras / Cabedal (mantém o swatch pequeno que já existia) */}
+            {/* Cor principal do modelo; cores individuais das tiras ficam na tabela. */}
             <div style={{ border: '1.5px solid #000', padding: '2px 9px' }}>
-              <span className="section-label block" style={{ color: '#000' }}>{hasStraps ? 'Cor Tiras' : 'Cor Cabedal'}</span>
+              <span className="section-label block" style={{ color: '#000' }}>Cor do Modelo</span>
               <div className="flex items-center gap-1.5 mt-0.5">
                 <div className="w-3 h-3 shrink-0" style={{ backgroundColor: resolvedColorHex, border: '1px solid #000' }} />
                 <span

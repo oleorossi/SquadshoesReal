@@ -2,6 +2,7 @@ import { printHtml } from './printOrder';
 import { getOrderTotalPairs, getGradeTotal } from './cuttingCounts';
 import { escapeHtml } from './htmlUtils';
 import { scaleGradeWithLargestRemainder } from './scaleGrade';
+import { requiresUpperCut } from './upperCutEligibility';
 
 const SIZES = ['17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','37','38','39','40','41','42','43','44','45'];
 
@@ -34,10 +35,13 @@ type ReferenceData = {
   image_url?: string;
   images?: any[];
   has_straps?: boolean | null;
-  /**
-   * When false, the cabedal does NOT need to be cut (e.g. tiras models).
-   * Defaults to true when undefined, preserving the previous behavior.
-   */
+  upper_material?: string | null;
+  upper_material_group_id?: string | null;
+  upper_material_product_id?: string | null;
+  upper_consumption?: number | null;
+  upper_consumption_per_size?: Record<string, number> | null;
+  components_accessories?: unknown[] | null;
+  /** Flag legado de roteiro; a existência de consumo de cabedal prevalece. */
   requires_cutting_cabedal?: boolean | null;
 };
 
@@ -202,7 +206,7 @@ function groupOrdersByColor(orders: OrderData[], saleOrders?: SaleOrderData[]): 
 
 /**
  * Relatório agrupado para setor de Corte — divisão em 3 fichas com quebra de página:
- *   1. CABEDAL — apenas para modelos SEM tiras habilitadas (por cor)
+ *   1. CABEDAL — referências com consumo de cabedal (por cor), inclusive mistas
  *   2. FORRAÇÃO — sempre presente, agrupada por cor (cores não podem ser somadas)
  *   3. PALMILHA — sempre presente, soma total independente da cor
  *
@@ -222,8 +226,8 @@ function groupOrdersByColor(orders: OrderData[], saleOrders?: SaleOrderData[]): 
  ) {
   if (selectedOrders.length === 0) return;
 
-  // OPs cujo cabedal ainda precisa ser cortado (modelos SEM tiras).
-  // Modelos COM tiras vêm com cabedal pré-montado, então NÃO entram na ficha de Cabedal.
+  // OPs cujo cabedal precisa ser cortado. `has_straps` não exclui mais este
+  // fluxo: referências mistas aparecem em Cabedal e continuam com suas tiras.
   // Forração e Palmilha continuam sendo cortadas para todas as OPs.
    const silkRegistrations = extra?.silkRegistrations || [];
    const soleMappings = extra?.soleMappings || [];
@@ -251,13 +255,14 @@ function groupOrdersByColor(orders: OrderData[], saleOrders?: SaleOrderData[]): 
      return silk ? { silk_name: silk.silk_name, silk_url: silk.silk_url } : undefined;
    };
  
-   const nonStrapOrders: OrderData[] = [];
+   const upperCutOrders: OrderData[] = [];
    for (const order of selectedOrders) {
     const ref = references.find(r => r.id === order.reference_id);
     if (!ref) continue;
-    const cabedalCut = ref.requires_cutting_cabedal ?? !ref.has_straps;
+    const cabedalCut = requiresUpperCut(ref)
+      || (ref.requires_cutting_cabedal === true && ref.has_straps !== true);
     if (cabedalCut) {
-      nonStrapOrders.push(order);
+      upperCutOrders.push(order);
     }
   }
 
@@ -275,10 +280,10 @@ function groupOrdersByColor(orders: OrderData[], saleOrders?: SaleOrderData[]): 
 
   const sections: string[] = [];
 
-  // ===== SEÇÃO 1: CABEDAL — apenas para modelos SEM tiras =====
-  if (nonStrapOrders.length > 0) {
-    const cabedal = groupOrdersByColor(nonStrapOrders, saleOrders);
-    let cabedalHtml = buildSheetHeader('Cabedal', '👟', nonStrapOrders.length, cabedal.grandTotal, 'Modelos sem tira');
+  // ===== SEÇÃO 1: CABEDAL — por consumo configurado, com ou sem tiras =====
+  if (upperCutOrders.length > 0) {
+    const cabedal = groupOrdersByColor(upperCutOrders, saleOrders);
+    let cabedalHtml = buildSheetHeader('Cabedal', '👟', upperCutOrders.length, cabedal.grandTotal, 'Com consumo de cabedal');
     cabedalHtml += buildColorGradeTable('Cabedal — por Cor', '👟', cabedal.items, cabedal.activeSizes, cabedal.grandTotal);
 
     // Apêndice: grade individual por solado/referência/cor (auditoria)
@@ -286,7 +291,7 @@ function groupOrdersByColor(orders: OrderData[], saleOrders?: SaleOrderData[]): 
     cabedalHtml += '<h2 style="font-size:13px;margin:0 0 4px;">📐 Detalhamento por Solado / Referência / Cor</h2>';
 
     const bySole = new Map<string, Map<string, { ref: ReferenceData; orders: OrderData[] }>>();
-    for (const order of nonStrapOrders) {
+    for (const order of upperCutOrders) {
       const ref = references.find(r => r.id === order.reference_id);
       if (!ref) continue;
       const soleType = deriveSoleType(order.color);

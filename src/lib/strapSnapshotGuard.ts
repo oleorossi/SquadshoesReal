@@ -27,9 +27,11 @@ export function listMissingTechnicalStrapSnapshots(
     if (!reference) return [];
     const definitions = Array.isArray(reference.strap_colors) ? reference.strap_colors : [];
     const requiresStraps = reference.has_straps === true || definitions.length > 0;
-    const hasCabedal = Boolean(String(reference.upper_material || '').trim());
     const snapshot = Array.isArray(item.strap_colors) ? item.strap_colors : [];
-    if (!requiresStraps || hasCabedal || snapshot.length > 0) return [];
+    // Cabedal e tiras podem coexistir. A presença de cabedal não transforma
+    // mais uma configuração real de tiras em dado órfão nem libera o PV sem o
+    // snapshot técnico necessário pra reservar/produzir essas tiras.
+    if (!requiresStraps || snapshot.length > 0) return [];
     return [{
       index,
       referenceId: reference.id,
@@ -39,4 +41,3 @@ export function listMissingTechnicalStrapSnapshots(
     }];
   });
 }
-

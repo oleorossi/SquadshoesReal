@@ -350,7 +350,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
           s.sole_material === soleName &&
           (s.sole_consumption > 0 || s.sole_process || s.sole_group_id)
         )
-        .sort((a: any, b: any) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+        .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
 
       if (referenceCandidates.length === 0) {
         toast.error(`Nenhuma ficha de referência encontrada para o solado "${soleName}"`);
@@ -2597,13 +2597,6 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                     <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Cabedal</span>
                   </div>
                   {(() => {
-                    if (form.has_straps) {
-                      return (
-                        <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                          Modelo de tiras
-                        </span>
-                      );
-                    }
                     const ups = (form as any).upper_consumption_per_size || {};
                     const vals = Object.values(ups).map(Number).filter((v: number) => v > 0);
                     const avg = vals.length ? vals.reduce((a: number, b: number) => a + b, 0) / vals.length : (Number(form.upper_consumption) || 0);
@@ -2802,17 +2795,15 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                         <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/80">
                           Por numeração
                         </span>
-                        {/* Quando o modelo tem TIRAS, o consumo é número-a-número
-                            (cada tira tem seu cm/par). A "média" é enganosa nesse
-                            caso — ocultamos pra evitar leitura errada. */}
-                        {!form.has_straps && (
-                          <span className="text-xs text-muted-foreground">
-                            Média <strong className="tabular-nums text-foreground">{avg.toFixed(4)}</strong> {unit}/par
-                            {showPerFoot && avg > 0 && (
-                              <span className="ml-1.5 text-muted-foreground/70 tabular-nums">= {(avg / 2).toFixed(4)} {unit}/pé</span>
-                            )}
-                          </span>
-                        )}
+                        {/* Esta grade pertence ao material exibido no bloco atual.
+                            Tiras habilitadas têm grades próprias na aba de Aviamento
+                            e não escondem mais a média do Cabedal. */}
+                        <span className="text-xs text-muted-foreground">
+                          Média <strong className="tabular-nums text-foreground">{avg.toFixed(4)}</strong> {unit}/par
+                          {showPerFoot && avg > 0 && (
+                            <span className="ml-1.5 text-muted-foreground/70 tabular-nums">= {(avg / 2).toFixed(4)} {unit}/pé</span>
+                          )}
+                        </span>
                       </div>
                       <div className="flex flex-wrap gap-1.5">
                         {cabedalSizes.map(size => {
@@ -2887,15 +2878,6 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                           onChange={v => {
                             applyUpperMaterialGroup(v);
                             autoFillConsumption(v, 'upper_material');
-                            // MUTEX Cabedal × Tiras: selecionar cabedal significa que o modelo
-                            // NÃO é de tiras. Auto-desliga has_straps + limpa strap_colors pra
-                            // não ficar dado órfão. Reverso (ligar has_straps limpar cabedal)
-                            // tá em outro handler abaixo.
-                            if (v && form.has_straps) {
-                              updateField('has_straps', false);
-                              updateField('strap_colors' as any, []);
-                              toast.info('Modelo trocado pra Cabedal — Tiras desativadas');
-                            }
                           }}
                           // Callback estrutural opcional do seletor hierárquico. O
                           // onChange acima mantém compatibilidade pelo nome; este
@@ -3623,13 +3605,6 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                       { label: 'TIRA 3', color: '' },
                     ]));
                   }
-                  // MUTEX Tiras × Cabedal: ativar tiras significa que o modelo
-                  // NÃO tem cabedal. Limpa nome, UUID, pin e consumo juntos pra
-                  // não deixar identidade/custo fantasma (tira + cabedal somariam).
-                  if (v && (form.upper_material || storedUpperMaterialGroupId)) {
-                    clearUpperMaterial();
-                    toast.info('Modelo trocado pra Tiras — Cabedal desativado');
-                  }
                   // BUG ANTIGO: ao desmarcar 'Habilitar tiras', strap_colors
                   // ficava órfão no JSON. Resultado: PV não sabia se tinha
                   // tiras (has_straps=false mas strap_colors preenchido) e
@@ -3644,8 +3619,10 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
             </div>
             {form.has_straps && (
               <p className="text-xs text-muted-foreground">
-                {hasReferenceBaseStrapLine
-                  ? <>As tiras que seguem a referência usam o material definido em <strong className="text-foreground">Forração</strong>; tiras compradas prontas mantêm o próprio grupo.</>
+                {hasReferenceBaseStrapLine && strapsFollowLining
+                  ? <>Como esta ficha não tem Cabedal, as tiras que seguem a referência usam o material definido em <strong className="text-foreground">Forração</strong>; tiras compradas prontas mantêm o próprio grupo.</>
+                  : hasReferenceBaseStrapLine
+                  ? <>As tiras que seguem a referência usam o material definido em <strong className="text-foreground">Cabedal</strong> e são consumidas junto dele; tiras compradas prontas mantêm o próprio grupo.</>
                   : <>Estas tiras são compradas prontas e usam o próprio grupo configurado na aba <strong className="text-foreground">Range Aviamento</strong>.</>}
               </p>
             )}
@@ -4455,8 +4432,8 @@ function PhotosByColorTab({ sheetId, form, groups, products }: {
    // ⚠ 'Corte Cabedal' NÃO é selecionável: o trigger
    // tg_normalize_production_sectors descarta ele do array (fora da lista
    // canônica), então o chip era salvo e sumia em silêncio. A impressão
-   // decide esse setor sozinha por has_straps (modelo sem tiras = corta
-   // cabedal) — não depende do roteiro.
+   // decide essa sub-etapa pelos sinais reais de identidade/consumo do
+   // Cabedal; tiras habilitadas são um fluxo independente.
    // ⚠ A ordem aqui espelha `canonical_stage_order()` no banco. Setor que
    // você adicionar aqui TEM que entrar na lista canônica do trigger também,
    // senão o usuário marca, salva, e o valor desaparece sem erro.
@@ -5748,8 +5725,8 @@ function SheetBOM({ sheetId, safetyPct, onSafetyChange, shoeCategory }: {
   const [showCopyDialog, setShowCopyDialog] = useState(false);
 
   const componentSheetMap = useMemo(() => {
-    const map: Record<string, any> = {};
-    componentSheets.forEach((cs: any) => { map[cs.product_id] = cs; });
+    const map: Record<string, (typeof componentSheets)[number]> = {};
+    componentSheets.forEach((cs) => { map[cs.product_id] = cs; });
     return map;
   }, [componentSheets]);
 

@@ -36,6 +36,7 @@ import { facaLabelForSize, expandFacasByBoundaries } from '@/lib/knifeFacas';
 import { useKnifeFacasDefault } from '@/hooks/useKnifeFacasDefault';
 import { pmgLabelForSize } from '@/lib/aviamentoSizeRanges';
 import { useAviamentoPmgDefault } from '@/hooks/useAviamentoPmgDefault';
+import { requiresUpperCut } from '@/lib/upperCutEligibility';
 
 /**
  * CSS do modo CARTÃO (aprovado pelo dono 31/07/2026 — "Opção B, 3 colunas").
@@ -1251,7 +1252,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       // upper_corte_a_fio: filtro da ficha 'Costura Cabedal' (2026-06-12).
       const { data, error } = await supabase
         .from('technical_sheets')
-        .select('id, insole_has_lining, insole_ready_made, has_straps, sole_material, sole_color, sole_group_id, primary_sole_id, production_sectors, aviamento_steps, upper_material, lining_material, insole_material, upper_corte_a_fio, knife_size_ranges, aviamento_size_ranges, shoe_category')
+        .select('id, insole_has_lining, insole_ready_made, has_straps, sole_material, sole_color, sole_group_id, primary_sole_id, production_sectors, aviamento_steps, upper_material, upper_material_group_id, upper_material_product_id, upper_consumption, upper_consumption_per_size, components_accessories, lining_material, insole_material, upper_corte_a_fio, knife_size_ranges, aviamento_size_ranges, shoe_category')
         .in('id', referenceIds);
       if (error) throw error;
       return data || [];
@@ -2161,13 +2162,14 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       // Agregadas por OR logo abaixo.
       //  - Corte Forração: cores cuja palmilha PRECISA ser forrada
       //    (insole_has_lining=true E não pronta na cor efetiva — B2)
-      //  - Corte Cabedal: modelos SEM tiras (que têm cabedal a cortar)
+      //  - Corte Cabedal: referências com consumo de cabedal, mesmo que também
+      //    tenham tiras habilitadas.
       //  - Costura Cabedal (2026-06-12): cabedal a cortar E ficha NÃO é
       //    corte a fio (upper_corte_a_fio=false → cabedal passa por costura)
       const requiresLiningCut = (liningFlagLookup.get(sheetId) === true)
         && !isEffectiveReadyMade(sheetId, order.color);
-      const requiresUpperCut = hasStrapsLookup.get(sheetId) !== true;
-      const requiresUpperSewing = requiresUpperCut
+      const needsUpperCut = requiresUpperCut(sheetById.get(sheetId));
+      const requiresUpperSewing = needsUpperCut
         && sheetById.get(sheetId)?.upper_corte_a_fio !== true;
 
       // Variantes/foto da cor exata desta OP — hoisted (2026-07-22) pra
@@ -2252,8 +2254,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
 
         colorMap.set(colorKey, {
           color: colorName,
-          // Modelo com tiras não tem cabedal — no Corte Forração esconde a
-          // referência ao cabedal (pedido user 09/06/2026).
+          // Flag exclusiva das tiras; não informa mais se existe cabedal.
           hasStraps: hasStrapsLookup.get(sheetId) === true,
           colorHex,
           combinedGrid: {},
@@ -2274,7 +2275,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           components: strapsAsComponents.length > 0 ? strapsAsComponents : undefined,
           refs: [],
           requiresLiningCut,
-          requiresUpperCut,
+          requiresUpperCut: needsUpperCut,
           requiresUpperSewing,
           aviamentoSteps: aviamentoStepsByRef.get(sheetId) || [],
           lotInfo: lotTotal > 1 ? { number: lotNum, total: lotTotal } : undefined,
@@ -2286,7 +2287,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       // o corte, a ficha do setor imprime (semântica igual ao opsInRoteiro
       // de grupos mistos — não some com quantidades).
       cg.requiresLiningCut = cg.requiresLiningCut === true || requiresLiningCut;
-      cg.requiresUpperCut = cg.requiresUpperCut === true || requiresUpperCut;
+      cg.requiresUpperCut = cg.requiresUpperCut === true || needsUpperCut;
       cg.requiresUpperSewing = cg.requiresUpperSewing === true || requiresUpperSewing;
       // OR do alerta de fachetado entre as OPs (2026-06-12): no agrupamento
       // por REFERÊNCIA (Aviamento), solados DISTINTOS caem na mesma cor — se
@@ -3283,7 +3284,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
 
           // Filtro por setor: cada setor precisa de critérios específicos.
           // Corte Forração: só cores cuja palmilha precisa de forração.
-          // Corte Cabedal: só modelos SEM tiras (que têm cabedal a cortar).
+          // Corte Cabedal: só referências com consumo de cabedal; tiras podem
+          // coexistir e seguem seu próprio fluxo.
           // Outros setores: renderizam tudo.
           // Pedido em 15/05/2026: cada setor mostrar SÓ as quantidades que
           // se aplicam a ele — antes ambos exibiam todas as cores, inflando
@@ -3610,7 +3612,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
                   const m = new Map<string, Set<string>>();
                   for (const order of expandedOrders) {
                     const sheetId = (order as any).reference_id;
-                    if (!sheetId || hasStrapsLookup.get(sheetId) === true) continue;
+                    if (!sheetId || !requiresUpperCut(sheetById.get(sheetId))) continue;
                     let ranges = knifeRangesByRef.get(sheetId);
                     if ((!ranges || ranges.length === 0)
                         && !knifeOptOutByRef.has(sheetId)

@@ -151,6 +151,103 @@ describe('orderConsumption — motor canônico', () => {
     expect(cola.totalQuantity).toBeCloseTo(0.24, 6);
   });
 
+  it('consome cabedal e tiras juntos quando has_straps está habilitado', () => {
+    const item = buildItem({
+      strap_colors: [{
+        id: 'tira-1',
+        label: 'TIRA 1',
+        group_id: 'g-tira',
+        group_name: 'TIRA CHATA 8MM',
+        color: 'PRETO',
+        consumption: 10,
+        consumption_per_size: { '34': 10, '35': 10, '36': 10, '37': 10, '38': 10, '39': 10 },
+      }],
+      technical_sheets: buildSheet({ has_straps: true }),
+    });
+
+    const rows = computeConsumptionForItems([item], buildContext());
+    const cabedal = rows.find((row) => row.componentType === 'Cabedal');
+    const tira = rows.find((row) => row.componentType === 'Tiras');
+
+    expect(cabedal?.groupName).toBe('NAPA SOFT');
+    expect(cabedal?.totalQuantity).toBeCloseTo(1.44, 6);
+    expect(tira?.groupName).toBe('TIRA CHATA 8MM');
+    expect(tira?.totalQuantity).toBeCloseTo(2.4, 6);
+  });
+
+  it('unifica Material 1 + Material 2 quando ambos resolvem para o mesmo SKU', () => {
+    const item = buildItem({
+      technical_sheets: buildSheet({
+        components_accessories: [{
+          material: 'NAPA SOFT',
+          consumption: 2,
+          mandatory: true,
+        }],
+      }),
+    });
+
+    const cabedais = computeConsumptionForItems([item], buildContext())
+      .filter((row) => row.componentType === 'Cabedal');
+
+    expect(cabedais).toHaveLength(1);
+    expect(cabedais[0].productIds).toEqual(['p-napa-preto']);
+    // (6 + 2) dm²/par × 24 pares ÷ 100 dm²/m.
+    expect(cabedais[0].totalQuantity).toBeCloseTo(1.92, 6);
+  });
+
+  it('consome Material 1 + Material 2 pela grade quando os escalares são zero', () => {
+    const perSizeMain = { '34': 5, '35': 5, '36': 5, '37': 5, '38': 5, '39': 5 };
+    const perSizeAdditional = { '34': 2, '35': 2, '36': 2, '37': 2, '38': 2, '39': 2 };
+    const item = buildItem({
+      technical_sheets: buildSheet({
+        upper_consumption: 0,
+        upper_consumption_per_size: perSizeMain,
+        components_accessories: [{
+          material: 'NAPA SOFT',
+          consumption: 0,
+          consumption_per_size: perSizeAdditional,
+          mandatory: true,
+        }],
+      }),
+    });
+
+    const cabedais = computeConsumptionForItems([item], buildContext())
+      .filter((row) => row.componentType === 'Cabedal');
+
+    expect(cabedais).toHaveLength(1);
+    expect(cabedais[0].productIds).toEqual(['p-napa-preto']);
+    // (5 + 2) dm²/par × 24 pares ÷ 100 dm²/m.
+    expect(cabedais[0].totalQuantity).toBeCloseTo(1.68, 6);
+  });
+
+  it('não unifica dois SKUs pinados diferentes do mesmo grupo/cor', () => {
+    const ctx = buildContext();
+    ctx.allProducts.push({
+      id: 'p-napa-preto-b', name: 'NAPA SOFT PRETO B', color: 'PRETO',
+      group_id: 'g-napa', quantity: 0, reserved_stock: 0, stock_grade: null,
+      sole_classification: null,
+    } as any);
+    const item = buildItem({
+      technical_sheets: buildSheet({
+        upper_material_product_id: 'p-napa-preto',
+        components_accessories: [{
+          material: 'NAPA SOFT',
+          product_id: 'p-napa-preto-b',
+          consumption: 2,
+          mandatory: true,
+        }],
+      }),
+    });
+
+    const cabedais = computeConsumptionForItems([item], ctx)
+      .filter((row) => row.componentType === 'Cabedal');
+
+    expect(cabedais).toHaveLength(2);
+    expect(cabedais.map((row) => row.productIds?.[0]).sort())
+      .toEqual(['p-napa-preto', 'p-napa-preto-b']);
+    expect(cabedais.reduce((sum, row) => sum + row.totalQuantity, 0)).toBeCloseTo(1.92, 6);
+  });
+
   it('palmilha (placa+forração) vem da spec do SOLADO por número quando preenchida — não do escalar da ficha', () => {
     const ctx = buildContext();
     // Solado resolvido por P3 (primary_sole_id da ficha) → produto p-solado.

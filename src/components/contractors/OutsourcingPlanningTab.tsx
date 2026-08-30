@@ -30,6 +30,7 @@ import { useSaleOrders, useSaleOrderAllItems } from '@/hooks/useSaleOrders';
 import { useContractors, useServiceOrders, useCreateServiceOrder } from '@/hooks/useContractors';
 import { generateServiceOrderNumber } from '@/lib/serviceOrderStock';
 import { sheetHasSector } from '@/lib/sectors';
+import { requiresUpperCut } from '@/lib/upperCutEligibility';
 
 /**
  * Aba "Planejamento" de /terceirizados — projeção semanal (8 semanas) de
@@ -41,8 +42,8 @@ import { sheetHasSector } from '@/lib/sectors';
  *   • Costura      → production_sectors contém 'Costura' (via sheetHasSector,
  *                    mesma taxonomia de src/lib/sectors usada pelo motor de
  *                    capacidade sectorCapacity.ts — não divergir).
- *   • Corte Cabedal→ has_straps === false (regra canônica: ficha SEM tiras
- *                    corta cabedal; com tiras o corte é o fluxo de tiras).
+ *   • Corte Cabedal→ presença de material/consumo de cabedal. Tiras são um
+ *                    fluxo adicional e podem coexistir na mesma referência.
  *
  * Capacidade interna semanal — APROXIMAÇÃO documentada:
  * a capacidade/dia é cadastrada POR FICHA TÉCNICA (costura_capacity_per_day /
@@ -62,7 +63,12 @@ interface PlanningSheet {
   name: string | null;
   code: string | null;
   production_sectors: unknown;
-  has_straps: boolean | null;
+  upper_material: string | null;
+  upper_material_group_id: string | null;
+  upper_material_product_id: string | null;
+  upper_consumption: number | null;
+  upper_consumption_per_size: Record<string, number> | null;
+  components_accessories: unknown;
   costura_capacity_per_day: number | null;
   cutting_capacity_per_day: number | null;
 }
@@ -86,8 +92,7 @@ const PLANNING_SECTORS: {
     key: 'corte_cabedal',
     label: 'Corte Cabedal',
     icon: Scissors,
-    // Regra canônica: cabedal é cortado quando a ficha NÃO é de tiras.
-    appliesTo: (s) => s.has_straps === false,
+    appliesTo: (s) => requiresUpperCut(s),
     capPerDay: (s) => Number(s.cutting_capacity_per_day || 0),
   },
   {
@@ -163,7 +168,7 @@ export function OutsourcingPlanningTab() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('technical_sheets')
-        .select('id, name, code, production_sectors, has_straps, costura_capacity_per_day, cutting_capacity_per_day');
+        .select('id, name, code, production_sectors, upper_material, upper_material_group_id, upper_material_product_id, upper_consumption, upper_consumption_per_size, components_accessories, costura_capacity_per_day, cutting_capacity_per_day');
       if (error) throw error;
       return (data || []) as PlanningSheet[];
     },

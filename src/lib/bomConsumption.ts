@@ -63,6 +63,9 @@ export type ConsumptionRow = {
   strapConfirmedYieldMPerM?: number | null;
   /** Identidade do estoque de embalagem; não é products.id. */
   boxTypeId?: string | null;
+  /** Produtos físicos exatos que originaram a linha. Quando há um único ID,
+   *  ele é a identidade de agregação da Lista de Separação. */
+  productIds?: string[];
 };
 
 type CanonicalStrapNetDemandRow = {
@@ -77,6 +80,16 @@ type CanonicalStrapNetDemandRow = {
   replenishment_required_m?: number | null;
   base_required_m?: number | null;
   status?: string | null;
+};
+
+type UpperMaterialAccessory = {
+  id?: unknown;
+  material?: string | null;
+  consumption?: number | string | null;
+  consumption_per_size?: Record<string, number> | null;
+  mandatory?: boolean | null;
+  product_id?: string | null;
+  label?: string | null;
 };
 
 /**
@@ -146,15 +159,19 @@ const addConsumptionRow = (map: Map<string, ConsumptionRow>, row: ConsumptionRow
   const productUnit = row.productUnit?.trim() || 'un';
   const color = row.color?.trim() || '—';
   const materialName = row.materialName?.trim() || groupName;
-  // Nome do material na chave — paridade com orderConsumption.ts: produtos
-  // distintos do mesmo grupo/cor/unidade (ex.: "Binóculo 10mm" × "Binóculo 10mm
-  // Strass" em COMPONENTES DIVERSOS/OURO LIGHT) são linhas separadas, senão a
-  // Lista de Separação some com um deles.
+  // Produto físico exato vence o rótulo na identidade. Isso permite somar
+  // Material 1 + Material 2 quando ambos resolvem pro mesmo SKU, sem colapsar
+  // dois SKUs distintos do mesmo grupo/cor. Sem ID exato, o nome continua na
+  // chave (protege Binóculo 10mm × Binóculo 10mm Strass, por exemplo).
+  const exactProductIds = Array.from(new Set((row.productIds || []).filter(Boolean))).sort();
+  const materialIdentity = exactProductIds.length === 1
+    ? `product:${exactProductIds[0]}`
+    : `${groupName}||${materialName}`;
   const strapIdentity = row.componentType === 'Tiras' && row.strapVariantId
     ? `||${row.strapVariantId}||${row.recipeId || ''}||${row.baseProductId || ''}`
     : '';
   const boxIdentity = row.boxTypeId ? `||box:${row.boxTypeId}` : '';
-  const key = `${row.componentType}||${groupName}||${materialName}||${color}||${productUnit}${strapIdentity}${boxIdentity}`;
+  const key = `${row.componentType}||${materialIdentity}||${color}||${productUnit}${strapIdentity}${boxIdentity}`;
   const existing = map.get(key);
 
   if (existing) {
@@ -176,6 +193,12 @@ const addConsumptionRow = (map: Map<string, ConsumptionRow>, row: ConsumptionRow
       existing.strapConfirmedYieldMPerM = row.strapConfirmedYieldMPerM;
     }
     if (!existing.boxTypeId && row.boxTypeId) existing.boxTypeId = row.boxTypeId;
+    if (exactProductIds.length > 0) {
+      existing.productIds = Array.from(new Set([
+        ...(existing.productIds || []),
+        ...exactProductIds,
+      ])).sort();
+    }
     // Equivalência em placas soma junto (é linear na mesma proporção do dm²).
     if (row.plateEquivalent) existing.plateEquivalent = (existing.plateEquivalent || 0) + row.plateEquivalent;
     return;
@@ -199,6 +222,7 @@ const addConsumptionRow = (map: Map<string, ConsumptionRow>, row: ConsumptionRow
     strapBaseName: row.strapBaseName,
     strapConfirmedYieldMPerM: row.strapConfirmedYieldMPerM,
     boxTypeId: row.boxTypeId,
+    productIds: exactProductIds.length > 0 ? exactProductIds : undefined,
   });
 };
 
@@ -731,11 +755,19 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     return (allProducts || []).filter((p: any) => p.group_id === group.id).length;
   };
 
+  const hasPositivePerSizeConsumption = (value: unknown): boolean =>
+    !!value
+    && typeof value === 'object'
+    && Object.values(value as Record<string, unknown>).some((entry) => Number(entry) > 0);
+
   const resolveOption = (
     mainGroup: string, mainConsumption: number,
-    alternatives: any[], color: string
+    alternatives: UpperMaterialAccessory[], color: string,
+    mainConsumptionPerSize?: unknown,
   ): { group: string; consumption: number } | null => {
-    if (mainGroup && mainConsumption > 0) {
+    const mainHasConsumption = mainConsumption > 0
+      || hasPositivePerSizeConsumption(mainConsumptionPerSize);
+    if (mainGroup && mainHasConsumption) {
       if (!color || color === '—' || groupHasColor(mainGroup, color)) {
         return { group: mainGroup, consumption: mainConsumption };
       }
@@ -743,13 +775,18 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     for (const alt of alternatives) {
       const altGroup = alt.material?.trim();
       const altConsumption = Number(alt.consumption) || 0;
-      if (altGroup && altConsumption > 0 && groupHasColor(altGroup, color)) {
+      const altHasConsumption = altConsumption > 0
+        || hasPositivePerSizeConsumption(alt.consumption_per_size);
+      if (altGroup && altHasConsumption && groupHasColor(altGroup, color)) {
         return { group: altGroup, consumption: altConsumption };
       }
     }
     const candidates = [
-      ...(mainGroup && mainConsumption > 0 ? [{ group: mainGroup, consumption: mainConsumption }] : []),
-      ...alternatives.filter((a: any) => a.material?.trim() && (Number(a.consumption) || 0) > 0).map((a: any) => ({ group: a.material.trim(), consumption: Number(a.consumption) })),
+      ...(mainGroup && mainHasConsumption ? [{ group: mainGroup, consumption: mainConsumption }] : []),
+      ...alternatives
+        .filter((a) => a.material?.trim()
+          && ((Number(a.consumption) || 0) > 0 || hasPositivePerSizeConsumption(a.consumption_per_size)))
+        .map((a) => ({ group: a.material!.trim(), consumption: Number(a.consumption) || 0 })),
     ];
     if (candidates.length === 0) return null;
     candidates.sort((a, b) => countGroupProducts(b.group) - countGroupProducts(a.group));
@@ -838,13 +875,19 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
 
     // Cabedal
     const allCabedalAccessories = Array.isArray(sheet?.components_accessories)
-      ? (sheet.components_accessories as any[]).filter((e: any) => e.material && !e.id)
+      ? (sheet.components_accessories as UpperMaterialAccessory[]).filter((e) => e.material && !e.id)
       : [];
-    const upperAlts = allCabedalAccessories.filter((e: any) => !e.mandatory);
-    const mandatoryCabedalMaterials = allCabedalAccessories.filter((e: any) => e.mandatory === true);
+    const upperAlts = allCabedalAccessories.filter((e) => !e.mandatory);
+    const mandatoryCabedalMaterials = allCabedalAccessories.filter((e) => e.mandatory === true);
     const upperMatch = upperVariantGroup
       ? { group: upperVariantGroup, consumption: Number(sheet?.upper_consumption) || 0 }
-      : resolveOption(sheet?.upper_material || '', Number(sheet?.upper_consumption) || 0, upperAlts, orderColor);
+      : resolveOption(
+          sheet?.upper_material || '',
+          Number(sheet?.upper_consumption) || 0,
+          upperAlts,
+          orderColor,
+          sheet?.upper_consumption_per_size,
+        );
     if (upperMatch) {
       const isPrincipal = !!upperVariantGroup || upperMatch.group === (sheet?.upper_material || '');
       // Pin de SKU (variante > ficha): a cs do produto pinado dirige a conversão
@@ -856,7 +899,10 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
               && (allProducts || []).some((p: any) => p.id === (sheet as any).upper_material_product_id)
             ? (sheet as any).upper_material_product_id
             : null);
-      const upperSheet = getConversionSheetForProduct(upperPinId, upperMatch.group, { color: orderColor, mode: 'linear', preferYield: true });
+      const upperProduct = upperPinId
+        ? (allProducts || []).find((p) => p.id === upperPinId) || null
+        : resolveMaterialProductCanonical(upperMatch.group, orderColor, allProducts || [], productGroups || []);
+      const upperSheet = getConversionSheetForProduct(upperProduct?.id, upperMatch.group, { color: orderColor, mode: 'linear', preferYield: true });
       const altRecord = isPrincipal ? null : upperAlts.find((a: any) => a.material === upperMatch.group);
       const overridePerSize = isPrincipal
         ? (sheet?.upper_consumption_per_size && Object.keys(sheet.upper_consumption_per_size).length > 0 ? sheet.upper_consumption_per_size : null)
@@ -865,21 +911,28 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       // SQL — F2-02); o multiplicador por tamanho saiu (era só do TS).
       const { total: upperTotal } = calculateConsumptionWithUnit(item, upperMatch.consumption, upperSheet, 'metro', overridePerSize);
       addConsumptionRow(consumptionMap, {
-        componentType: 'Cabedal', groupName: upperMatch.group, materialName: 'Cabedal',
+        componentType: 'Cabedal', groupName: upperMatch.group, materialName: upperProduct?.name || 'Cabedal',
         productUnit: 'metro', color: orderColor, totalQuantity: upperTotal,
+        productIds: upperProduct?.id ? [upperProduct.id] : undefined,
       });
     }
 
     for (const mandMat of mandatoryCabedalMaterials) {
       const mandConsumption = Number(mandMat.consumption) || 0;
-      if (!mandMat.material || mandConsumption <= 0) continue;
-      // Item fixado (product_id): converte pela cs do produto pinado (F2-04).
-      const mandSheet = getConversionSheetForProduct(mandMat.product_id, mandMat.material, { color: orderColor, mode: 'linear', preferYield: true });
+      const mandHasPerSizeConsumption = hasPositivePerSizeConsumption(mandMat.consumption_per_size);
+      if (!mandMat.material || (mandConsumption <= 0 && !mandHasPerSizeConsumption)) continue;
+      // Item fixado (product_id) vence; sem pino resolve grupo+cor. A identidade
+      // física dirige tanto a conversão quanto a agregação operacional.
+      const mandProduct = mandMat.product_id
+        ? (allProducts || []).find((p) => p.id === mandMat.product_id) || null
+        : resolveMaterialProductCanonical(mandMat.material, orderColor, allProducts || [], productGroups || []);
+      const mandSheet = getConversionSheetForProduct(mandProduct?.id, mandMat.material, { color: orderColor, mode: 'linear', preferYield: true });
       const mandOverride = (mandMat.consumption_per_size && Object.keys(mandMat.consumption_per_size).length > 0) ? mandMat.consumption_per_size : null;
       const { total: mandTotal } = calculateConsumptionWithUnit(item, mandConsumption, mandSheet, 'metro', mandOverride);
       addConsumptionRow(consumptionMap, {
-        componentType: 'Cabedal', groupName: mandMat.material, materialName: 'Material Fixo',
+        componentType: 'Cabedal', groupName: mandMat.material, materialName: mandProduct?.name || mandMat.label || 'Material Fixo',
         productUnit: 'metro', color: orderColor, totalQuantity: mandTotal,
+        productIds: mandProduct?.id ? [mandProduct.id] : undefined,
       });
     }
 

@@ -562,19 +562,21 @@ const addConsumptionRow = (map: Map<string, MaterialConsumptionRow>, row: Materi
   const productUnit = row.productUnit?.trim() || 'un';
   const color = row.color?.trim() || '—';
   const materialName = row.materialName?.trim() || groupName;
-  // O nome do material entra na chave: dois PRODUTOS diferentes do mesmo grupo,
-  // cor e unidade são materiais distintos, não a mesma linha (PV-00147: "Binóculo
-  // 10mm" e "Binóculo 10mm Strass", ambos COMPONENTES DIVERSOS/OURO LIGHT/un,
-  // colapsavam numa linha só — somava 4+4 un/par e rotulava com o primeiro nome,
-  // escondendo o segundo binóculo do modal e da ficha de operador). O mesmo
-  // produto vindo de items/refs diferentes continua somando (nome idêntico).
+  // Produto físico exato vence o rótulo na identidade. Material 1 + Material 2
+  // do cabedal somam quando resolvem pro mesmo SKU, enquanto dois SKUs distintos
+  // do mesmo grupo/cor continuam separados. Sem product_id, o nome preserva a
+  // trava do PV-00147 (Binóculo 10mm × Binóculo 10mm Strass).
   // A família entra na chave: mesma TIRA+cor cortada de napas diferentes
   // (NAPA SOFT × NAPA MADRID, conforme a ficha de cada referência) são linhas
   // distintas — sem isso colapsariam e a napa da minoria sumiria. Vazio nas
   // linhas de napa direta (a groupName já é a família) → chave inalterada.
   const materialFamily = (row.materialFamily || '').trim();
   const boxIdentity = [...new Set((row.boxTypeIds || []).filter(Boolean))].sort().join(',');
-  const key = `${row.componentType}||${groupName}||${materialName}||${color}||${productUnit}||${materialFamily}||box:${boxIdentity}`;
+  const exactProductIds = [...new Set((row.productIds || []).filter(Boolean))].sort();
+  const materialIdentity = exactProductIds.length === 1
+    ? `product:${exactProductIds[0]}`
+    : `${groupName}||${materialName}`;
+  const key = `${row.componentType}||${materialIdentity}||${color}||${productUnit}||${materialFamily}||box:${boxIdentity}`;
   const existing = map.get(key);
 
   if (existing) {
@@ -1205,12 +1207,20 @@ export function computeConsumptionForItems(
     return (allProducts || []).filter((p: any) => p.group_id === group.id).length;
   };
 
+  const hasPositivePerSizeConsumption = (value: unknown): boolean =>
+    !!value
+    && typeof value === 'object'
+    && Object.values(value as Record<string, unknown>).some((entry) => Number(entry) > 0);
+
   const resolveOption = (
     mainGroup: string, mainConsumption: number,
     alternatives: any[], orderColor: string,
+    mainConsumptionPerSize?: unknown,
   ): { group: string; consumption: number } | null => {
+    const mainHasConsumption = mainConsumption > 0
+      || hasPositivePerSizeConsumption(mainConsumptionPerSize);
     // Try main first
-    if (mainGroup && mainConsumption > 0) {
+    if (mainGroup && mainHasConsumption) {
       if (!orderColor || orderColor === '—' || groupHasColor(mainGroup, orderColor)) {
         return { group: mainGroup, consumption: mainConsumption };
       }
@@ -1219,14 +1229,19 @@ export function computeConsumptionForItems(
     for (const alt of alternatives) {
       const altGroup = alt.material?.trim();
       const altConsumption = Number(alt.consumption) || 0;
-      if (altGroup && altConsumption > 0 && groupHasColor(altGroup, orderColor)) {
+      const altHasConsumption = altConsumption > 0
+        || hasPositivePerSizeConsumption(alt.consumption_per_size);
+      if (altGroup && altHasConsumption && groupHasColor(altGroup, orderColor)) {
         return { group: altGroup, consumption: altConsumption };
       }
     }
     // Fallback: grupo com mais variantes (mais provável de carregar a cor)
     const candidates = [
-      ...(mainGroup && mainConsumption > 0 ? [{ group: mainGroup, consumption: mainConsumption }] : []),
-      ...alternatives.filter((a: any) => a.material?.trim() && (Number(a.consumption) || 0) > 0).map((a: any) => ({ group: a.material.trim(), consumption: Number(a.consumption) })),
+      ...(mainGroup && mainHasConsumption ? [{ group: mainGroup, consumption: mainConsumption }] : []),
+      ...alternatives
+        .filter((a: any) => a.material?.trim()
+          && ((Number(a.consumption) || 0) > 0 || hasPositivePerSizeConsumption(a.consumption_per_size)))
+        .map((a: any) => ({ group: a.material.trim(), consumption: Number(a.consumption) || 0 })),
     ];
     if (candidates.length === 0) return null;
     candidates.sort((a, b) => countGroupProducts(b.group) - countGroupProducts(a.group));
@@ -1383,7 +1398,7 @@ export function computeConsumptionForItems(
         }
       : resolveOption(
           sheet?.upper_material || '', Number(sheet?.upper_consumption) || 0,
-          upperAlts, orderColor,
+          upperAlts, orderColor, sheet?.upper_consumption_per_size,
         );
     if (upperMatch) {
       const isPrincipal = upperVariantDriven || upperMatch.group === (sheet?.upper_material || '');
@@ -1398,7 +1413,9 @@ export function computeConsumptionForItems(
         || (isPrincipal && (sheet as any)?.upper_material_product_id
           ? (allProducts || []).find((p: any) => p.id === (sheet as any).upper_material_product_id)
           : null);
-      const upperSheet = getConversionSheetForProduct(upperPin?.id, upperMatch.group, { color: orderColor, mode: 'linear', preferYield: true });
+      const upperProduct = upperPin
+        || resolveMaterialProductCanonical(upperMatch.group, orderColor, allProducts || [], productGroups || []);
+      const upperSheet = getConversionSheetForProduct(upperProduct?.id, upperMatch.group, { color: orderColor, mode: 'linear', preferYield: true });
       const altRecord = isPrincipal ? null : upperAlts.find((a: any) => a.material === upperMatch.group);
       // Override LEGADO da variante substitui o escalar E suprime o per-size da
       // ficha (é um consumo explícito). Sem override, o per-size da ficha segue
@@ -1422,22 +1439,26 @@ export function computeConsumptionForItems(
         color: orderColor,
         totalQuantity: upperTotal,
         widthMissing: isLinearWidthMissing(upperSheet, 'm'),
+        productIds: upperProduct?.id ? [upperProduct.id] : undefined,
       });
     }
 
     // Materiais mandatórios do cabedal — sempre consumidos, independente da cor
     for (const mandMat of mandatoryCabedalMaterials) {
       const mandConsumption = Number(mandMat.consumption) || 0;
-      if (!mandMat.material || mandConsumption <= 0) continue;
+      const mandHasPerSizeConsumption = hasPositivePerSizeConsumption(mandMat.consumption_per_size);
+      if (!mandMat.material || (mandConsumption <= 0 && !mandHasPerSizeConsumption)) continue;
       // Item fixado (product_id) → exibe o nome do produto exato (o débito SQL
       // debita esse item; ver debit_stock_for_order). Sem pino, mantém o rótulo.
       const pinnedProd = mandMat.product_id
         ? (allProducts || []).find((p: any) => p.id === mandMat.product_id)
         : null;
+      const mandProduct = pinnedProd
+        || resolveMaterialProductCanonical(mandMat.material, orderColor, allProducts || [], productGroups || []);
       // Conversão dm²→m pela cs do produto PINADO quando houver (ordem do SQL:
       // get_material_conversion_info do pin — F2-04; caso vivo: NAPA ONÇA com
       // waste próprio ≠ da cs casada por cor do grupo).
-      const mandSheet = getConversionSheetForProduct(pinnedProd?.id, mandMat.material, { color: orderColor, mode: 'linear', preferYield: true });
+      const mandSheet = getConversionSheetForProduct(mandProduct?.id, mandMat.material, { color: orderColor, mode: 'linear', preferYield: true });
       const mandOverride = (mandMat.consumption_per_size && Object.keys(mandMat.consumption_per_size).length > 0)
         ? mandMat.consumption_per_size
         : null;
@@ -1450,6 +1471,7 @@ export function computeConsumptionForItems(
         color: orderColor,
         totalQuantity: mandTotal,
         widthMissing: isLinearWidthMissing(mandSheet, 'm'),
+        productIds: mandProduct?.id ? [mandProduct.id] : undefined,
       });
     }
 

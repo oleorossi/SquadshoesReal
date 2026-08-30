@@ -307,7 +307,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
         // variant_drives_*: quais componentes seguem o MATERIAL PRINCIPAL da
         // variante (mig 20261027120000). Sem eles a tela não consegue espelhar a
         // cascata do motor e ofereceria as cores do grupo errado.
-        .select('upper_material, upper_material_group_id, lining_material, insole_material, lining_accessories, components_accessories, sole_group_id, sole_material, has_straps, variant_drives_upper, variant_drives_lining')
+        .select('upper_material, upper_material_group_id, upper_material_product_id, lining_material, insole_material, lining_accessories, components_accessories, sole_group_id, sole_material, has_straps, variant_drives_upper, variant_drives_lining')
         .eq('id', item.reference_id!)
         .single();
       if (error) throw error;
@@ -628,12 +628,21 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     return out;
   }, [item.color, item.material_variant_id, activeMaterialVariants, sheetSpecs, productGroups, allProducts]);
 
-  // MUTEX tiras × cabedal (TechnicalSheets: habilitar tiras limpa o cabedal): um
-  // modelo é OU de tiras OU de cabedal, nunca os dois. Ficha COM cabedal NÃO é
-  // modelo de tiras — strap_colors presente aí é órfão (ex.: DS21, cabedal "TIRA",
-  // has_straps=false) e é ignorado no PV. Modelos de tira reais têm cabedal vazio,
-  // então não são afetados.
-  const modelHasCabedal = !!String(sheetSpecs?.upper_material || '').trim();
+  // O Cabedal define a origem principal de cor/material quando existe. Ele não
+  // desabilita as tiras: referências mistas precisam preservar os dois consumos.
+  // A ausência real de Cabedal continua sendo usada apenas para a regra especial
+  // em que linhas `reference_base` herdam a Forração.
+  const modelHasCabedal = !!String(sheetSpecs?.upper_material || '').trim()
+    || !!sheetSpecs?.upper_material_group_id
+    || !!sheetSpecs?.upper_material_product_id;
+  const referenceBaseMaterialDirect = modelHasCabedal ? 'o Cabedal' : 'a Forração';
+  const referenceBaseMaterialWithArticle = modelHasCabedal ? 'do Cabedal' : 'da Forração';
+  const hasStrapsEffective = useMemo(() => {
+    const itemStraps = Array.isArray(item.strap_colors) ? item.strap_colors : [];
+    return itemStraps.length > 0
+      || !!selectedRef?.has_straps
+      || referenceStrapDefinitions.length > 0;
+  }, [item.strap_colors, referenceStrapDefinitions, selectedRef?.has_straps]);
 
   // Snapshot de atendimento por UUID da linha técnica. Nas tiras artesanais a
   // origem interna é derivada da intenção do PV; em grupo acabado permanece fixa
@@ -659,7 +668,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       billingWeek,
       requiredAt,
     },
-    !modelHasCabedal,
+    hasStrapsEffective,
   );
   const strapLineByKey = useMemo(
     () => new Map(strapLines.map((l) => [l.key, l])),
@@ -675,7 +684,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       materialVariantId: item.material_variant_id,
       color: item.color,
     },
-    !modelHasCabedal,
+    hasStrapsEffective,
   );
   const canonicalStrapColorByKey = useMemo(() => {
     const candidates = new Map<string, Set<string>>();
@@ -706,15 +715,6 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     normalizeStrapColorKey(item.color),
   );
   const strapStructuralContext = useMemo(() => {
-    if (modelHasCabedal) {
-      return {
-        hasIssue: false,
-        issueCount: 0,
-        suggestedBaseGroupId: null as string | null,
-        requiresReferenceBase: false,
-        hasPurchasedReady: false,
-      };
-    }
     // A ficha publicada é a autoridade estrutural. O snapshot do item conserva
     // somente escolhas comerciais (como cor) e pode ser legado/incompleto.
     const straps = referenceStrapDefinitions;
@@ -760,7 +760,6 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       hasPurchasedReady,
     };
   }, [
-    modelHasCabedal,
     referenceStrapDefinitions,
     strapCatalog?.measures,
     strapCatalogLoading,
@@ -885,15 +884,6 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     return (prod?.color || '').trim().toUpperCase();
   }, [item.material_variant_id, activeMaterialVariants, allProducts]);
 
-  // "Tem tiras habilitadas": modelo com tiras na ficha OU tiras já no item.
-  // A cor principal identifica o cabedal; as linhas artesanais reference_base
-  // seguem essa cor, enquanto grupos acabados continuam independentes.
-  const hasStrapsEffective = useMemo(() => {
-    if (modelHasCabedal) return false; // cabedal presente → não é modelo de tiras (MUTEX)
-    const itemStraps = Array.isArray(item.strap_colors) ? (item.strap_colors as any[]) : [];
-    const refStrapDefs = referenceStrapDefinitions;
-    return itemStraps.length > 0 || !!selectedRef?.has_straps || refStrapDefs.length > 0;
-  }, [item.strap_colors, modelHasCabedal, referenceStrapDefinitions, selectedRef?.has_straps]);
   const strapSnapshotMissing = hasStrapsEffective
     && (!Array.isArray(item.strap_colors) || item.strap_colors.length === 0);
   const hasReferenceBaseStraps = strapPresentationDefinitions.some(
@@ -924,7 +914,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
         message: strapSnapshotMissing
           ? 'Esta referência exige tiras, mas o item não possui snapshot das linhas técnicas. Abra a ficha técnica, cadastre as tiras e volte ao pedido; nenhuma cor ou variante será inferida.'
           : strapCanonicalMainMissing
-            ? 'A cor do cabedal não corresponde a uma cor canônica ou alias aprovado. Corrija essa identidade no estoque antes de salvar.'
+            ? `A cor ${referenceBaseMaterialWithArticle} não corresponde a uma cor canônica ou alias aprovado. Corrija essa identidade no estoque antes de salvar.`
             : undefined,
       }
       : null);
@@ -938,18 +928,6 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   // Remover o item tem que limpar o report, senão o índice liberado por ele
   // ficaria valendo pro item que assumir a posição.
   useEffect(() => () => onSheetMaterialSelectableChange?.(index, false), []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Limpa strap_colors órfão quando o modelo é de CABEDAL (MUTEX tiras×cabedal).
-  // Cobre a corrida do sheetSpecs (query async separada do selectedRef) e PVs já
-  // salvos com tira órfã: com item.strap_colors vazio, a seção "Cores das Tiras"
-  // não renderiza (gate por strap_colors.length), o guard de save não bloqueia e
-  // o item não grava tira fantasma no débito.
-  useEffect(() => {
-    if (modelHasCabedal && Array.isArray(item.strap_colors) && item.strap_colors.length > 0) {
-      const { index: idx, onUpdate: update } = latestRef.current;
-      update(idx, 'strap_colors', []);
-    }
-  }, [modelHasCabedal, item.strap_colors]);
 
   const automaticPriceResolution = useMemo(() => resolveSaleOrderItemPrice({
     lookup: priceLookup,
@@ -993,7 +971,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     // FIX: derivar — se a ficha tem strap_colors.length>0, considera que
     // tem tiras (independente do flag has_straps).
     const refStrapDefs = Array.isArray(selectedRef?.strap_colors) ? selectedRef!.strap_colors : [];
-    const refHasStrapsEffective = (!!selectedRef?.has_straps || refStrapDefs.length > 0) && !modelHasCabedal;
+    const refHasStrapsEffective = !!selectedRef?.has_straps || refStrapDefs.length > 0;
     if (preserveCommittedStrapSnapshot
         && item.id
         && preservedCommittedStrapItemId.current !== item.id) {
@@ -1114,7 +1092,6 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     item.id,
     item.reference_id,
     item.strap_colors,
-    modelHasCabedal,
     preserveCommittedStrapSnapshot,
     referenceStrapDefinitions,
     selectedRef,
@@ -2124,8 +2101,8 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                   {hasOnlyFinishedGroups
                     ? 'Produtos acabados mantêm cor própria e saem diretamente do estoque.'
                     : hasMixedStrapIdentities
-                      ? 'Tiras internas seguem o cabedal; produtos acabados mantêm cor própria.'
-                      : 'As tiras por base da referência seguem a cor do cabedal.'}
+                      ? `Tiras internas usam ${referenceBaseMaterialDirect}; produtos acabados mantêm cor própria.`
+                      : `As tiras por base da referência seguem a cor ${referenceBaseMaterialWithArticle}.`}
                 </span>
               </div>
 
@@ -2185,7 +2162,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                 </div>
               )}
 
-              {/* O save materializa a tira interna pela napa-base do cabedal e
+              {/* O save materializa a tira interna pela napa-base efetiva da referência e
                   aborta o PV INTEIRO quando falta perfil de largura, SKU oficial
                   da cor ou rendimento aprovado. Antes disso só se descobria pelo
                   texto cru do RAISE, que não nomeia item nem napa. */}
@@ -2331,13 +2308,13 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                         </Select>
                       ) : (
                         <div className="flex h-9 items-center justify-between gap-2 rounded-md border border-border/60 bg-muted/30 px-3 text-sm">
-                          <span className="truncate font-medium">{strap.color || item.color || 'Aguardando cor do cabedal'}</span>
-                          <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">cor do cabedal</span>
+                          <span className="truncate font-medium">{strap.color || item.color || `Aguardando cor ${referenceBaseMaterialWithArticle}`}</span>
+                          <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">cor {referenceBaseMaterialWithArticle}</span>
                         </div>
                       )}
                       {!usesFinishedGroup && !!strapCatalog && !strapCatalogLoading && !!item.color && !canonicalMainStrapColor && (
                         <p className="text-xs leading-tight text-destructive">
-                          A cor do cabedal não corresponde a uma cor canônica ou alias aprovado. Corrija essa identidade no estoque antes de salvar.
+                          A cor {referenceBaseMaterialWithArticle} não corresponde a uma cor canônica ou alias aprovado. Corrija essa identidade no estoque antes de salvar.
                         </p>
                       )}
                       {!strapLinesLoading && (!identityGroupResolved || !measureResolved) && (
@@ -2479,7 +2456,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                             ) : (
                               <p className="text-[10px] leading-snug text-muted-foreground">
                                 {!usesFinishedGroup
-                                  ? 'A cor e a napa do cabedal serão vinculadas automaticamente.'
+                                  ? `A cor e a napa ${referenceBaseMaterialWithArticle} serão vinculadas automaticamente.`
                                   : buyReadyGap
                                     // Sem isto a tela dizia "aguardando" para um
                                     // estado que só sai com cadastro manual.

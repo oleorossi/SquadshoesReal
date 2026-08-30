@@ -236,10 +236,13 @@ export async function printOperatorFichas(saleOrderId: string, orderNumberHint?:
 
   const inputs: FichaInput[] = operationalItems.map((it) => {
     const sheet = sheetsByRef(sheets, it.reference_id);
+    const grade = it.grade && typeof it.grade === 'object' && !Array.isArray(it.grade)
+      ? it.grade as unknown as Record<string, number>
+      : {};
     return {
       pv, client,
       refCode: sheet.code, refName: sheet.name, color: it.color || '',
-      grade: it.grade || {}, quantity: Number(it.quantity) || 0, sectors: sheet.sectors,
+      grade, quantity: Number(it.quantity) || 0, sectors: sheet.sectors,
     };
   });
   renderAndOpen(inputs, pv);

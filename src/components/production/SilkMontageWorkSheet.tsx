@@ -132,9 +132,8 @@ export interface SilkColorGroup {
    *  Forração (theme.showCompactImages). Ausente ⇒ cai nos campos escalares
    *  acima (1 foto representativa). */
   refImages?: RefImageEntry[];
-  /** TRUE quando o modelo tem tiras (has_straps). Usado no Corte Forração pra
-   *  esconder QUALQUER referência ao cabedal — modelo de tira não tem cabedal,
-   *  o cortador só corta a forração na cor da palmilha. */
+  /** TRUE quando o modelo tem tiras (has_straps). É independente do cabedal:
+   *  uma referência pode ter ambos os fluxos habilitados. */
   hasStraps?: boolean;
   /** Componentes auxiliares (capa, tira, presilha, etc) — pra setor Aviamento/Mesa. */
   components?: Array<{ name: string; material?: string; qty?: string; color?: string; cm?: number; cmBands?: Array<{ band: string; cm: number }>; cmBySize?: Record<string, number> }>;
@@ -144,9 +143,8 @@ export interface SilkColorGroup {
    *  E não é palmilha pronta). Usado pra filtrar Corte Forração — cores sem
    *  forração não devem aparecer nessa ficha. */
   requiresLiningCut?: boolean;
-  /** TRUE quando o modelo NÃO tem tiras (has_straps=false), ou seja, tem
-   *  cabedal completo a cortar. Usado pra filtrar Corte Cabedal — modelos
-   *  com tiras não passam por esse setor. */
+  /** TRUE quando há material/consumo de cabedal a cortar. Não depende de
+   *  has_straps; referências mistas passam por Corte Cabedal e por Tiras. */
   requiresUpperCut?: boolean;
   /** TRUE quando o cabedal passa por COSTURA: tem cabedal a cortar
    *  (requiresUpperCut) E a ficha técnica NÃO é corte a fio
@@ -260,7 +258,8 @@ const SECTOR_THEME: Record<GroupedSector, {
   // nome da cor + grade por ficha + total por numeração + alerta fachetado
   // (audit E2 10/06/2026: o alerta é EXECUTADO por este setor).
   'Corte Forração':   { icon: Cloud,      compact: true,  showFrenteTraseiro: false, showSilkImage: false, showProductImage: false, showAlerts: true,  showPiecesToSew: false, showCompactImages: true },
-  // Corte Cabedal — só em modelos has_straps=false. Sem silk; foto do produto
+  // Corte Cabedal — referências com consumo de cabedal, tenham tiras ou não.
+  // Sem silk; foto do produto
   // pra identificação do cabedal por cor.
   'Corte Cabedal':    { icon: Scissors,   compact: false, showFrenteTraseiro: false, showSilkImage: false, showProductImage: true,  showAlerts: true,  showPiecesToSew: false },
   // Costura Palmilha (2026-06-12, ex-'Costura'): mesmíssimo layout compacto

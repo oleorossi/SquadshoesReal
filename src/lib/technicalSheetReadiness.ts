@@ -39,8 +39,12 @@ export interface TechnicalSheetReadinessInput {
   has_straps?: unknown;
   strap_colors?: unknown;
   upper_material?: unknown;
+  upper_material_group_id?: unknown;
+  upper_material_product_id?: unknown;
   upper_consumption?: unknown;
   upper_consumption_per_size?: unknown;
+  components_accessories?: unknown;
+  requires_cutting_cabedal?: unknown;
   insole_ready_made?: unknown;
   insole_material?: unknown;
   sole_drives_consumption?: unknown;
@@ -93,15 +97,41 @@ export function evaluateTechnicalSheetReadiness(
   if (!hasPositiveScalar(sheet.sole_consumption)) engineeringIssues.push('consumo do solado');
 
   let strapIssues = false;
-  if (sheet.has_straps) {
-    const straps = Array.isArray(sheet.strap_colors) ? sheet.strap_colors : [];
+  const straps = Array.isArray(sheet.strap_colors) ? sheet.strap_colors : [];
+  const requiresStraps = sheet.has_straps === true || straps.length > 0;
+  if (requiresStraps) {
     if (straps.length === 0 || straps.some((line: unknown) => !hasConfiguredStrap(line))) {
       engineeringIssues.push('tiras com identidade e consumo');
       strapIssues = true;
     }
-  } else {
-    if (!String(sheet.upper_material || '').trim()) engineeringIssues.push('material do cabedal');
-    if (!hasConsumption(sheet.upper_consumption, sheet.upper_consumption_per_size)) {
+  }
+
+  // Cabedal e tiras são requisitos independentes. Modelo somente de tiras não
+  // precisa inventar cabedal; porém, assim que qualquer metade do cabedal foi
+  // configurada, validamos identidade E consumo mesmo com has_straps=true.
+  const hasUpperIdentity = String(sheet.upper_material || '').trim().length > 0
+    || Boolean(sheet.upper_material_group_id)
+    || Boolean(sheet.upper_material_product_id);
+  const hasUpperConsumption = hasConsumption(sheet.upper_consumption, sheet.upper_consumption_per_size);
+  const upperAccessories = Array.isArray(sheet.components_accessories)
+    ? sheet.components_accessories.filter((entry) => {
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
+        const accessory = entry as Record<string, unknown>;
+        return !accessory.id && (
+          Boolean(String(accessory.material || '').trim())
+          || Boolean(accessory.product_id)
+          || hasConsumption(accessory.consumption, accessory.consumption_per_size)
+        );
+      })
+    : [];
+  const requiresUpper = !requiresStraps
+    || sheet.requires_cutting_cabedal === true
+    || hasUpperIdentity
+    || hasUpperConsumption
+    || upperAccessories.length > 0;
+  if (requiresUpper) {
+    if (!hasUpperIdentity) engineeringIssues.push('material do cabedal');
+    if (!hasUpperConsumption) {
       engineeringIssues.push('consumo do cabedal');
     }
   }
