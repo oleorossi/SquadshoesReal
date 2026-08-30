@@ -231,6 +231,7 @@ const warningText = (line: CanonicalConsumptionLine): string | undefined => {
 const componentType = (line: CanonicalConsumptionLine): string => {
   const raw = line.component.trim();
   const normalized = raw.toLowerCase();
+  if (raw === 'BOM' || raw === 'Componente Direto' || raw === 'Item padrão (solado)') return raw;
   if (normalized.includes('forração palmilha') || normalized.includes('forracao palmilha')) {
     return 'Forração Palmilha';
   }

@@ -18,4 +18,15 @@ describe('Assistente OS — kit da etapa nas linhas', () => {
     expect(hook).not.toContain('DEFAULT_OP_STAGES');
     expect(wizard).not.toContain('DEFAULT_OP_STAGES');
   });
+
+  it('pinta o OsQueuePullChip ao lado do número da OP', () => {
+    expect(wizard).toContain("import { OsQueuePullChip } from '@/components/contractors/OsQueuePullChip'");
+    expect(wizard).toContain('{line.op_number}');
+    expect(wizard).toContain('<OsQueuePullChip pull={line.queue_pull} />');
+    const opNumberAt = wizard.indexOf('{line.op_number}');
+    const chipAt = wizard.indexOf('<OsQueuePullChip pull={line.queue_pull} />');
+    expect(opNumberAt).toBeGreaterThan(-1);
+    expect(chipAt).toBeGreaterThan(opNumberAt);
+    expect(chipAt - opNumberAt).toBeLessThan(400);
+  });
 });

@@ -93,6 +93,34 @@ describe('canonicalConsumptionReport', () => {
     expect(row.totalQuantity).toBe(10);
   });
 
+  it('preserva BOM e Componente Direto da RPC — fivela não vira Outros', () => {
+    const bom = {
+      ...materialLine(),
+      component: 'BOM',
+      product_name: 'FIVELA 20MM',
+      product_category: 'BOM',
+      product_group_name: 'FIVELA 20MM',
+      product_unit: 'un',
+      required: 8,
+    };
+    const direto = {
+      ...materialLine(IDS.scope2, 4),
+      component: 'Componente Direto',
+      product_name: 'ILHOS 8MM',
+      product_category: 'Componente Direto',
+      product_group_name: 'ILHOS 8MM',
+      product_unit: 'un',
+    };
+
+    const parsed = validateCanonicalConsumptionReport(response([bom, direto]));
+    const rows = adaptCanonicalConsumptionLines(parsed.lines);
+
+    expect(rows).toEqual(expect.arrayContaining([
+      expect.objectContaining({ componentType: 'BOM', groupName: 'FIVELA 20MM', totalQuantity: 8 }),
+      expect.objectContaining({ componentType: 'Componente Direto', groupName: 'ILHOS 8MM', totalQuantity: 4 }),
+    ]));
+  });
+
   it.each([
     ['quantidade negativa', { ...materialLine(), required: -1 }],
     ['material positivo sem UUID', { ...materialLine(), product_id: null }],
