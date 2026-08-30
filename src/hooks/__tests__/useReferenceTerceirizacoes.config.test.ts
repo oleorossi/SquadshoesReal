@@ -23,7 +23,7 @@ describe('configuração de terceirização da ficha', () => {
   it('mantém os defaults operacionais acordados por atividade', () => {
     expect(SERVICE_ORDER_ACTIVITY_DEFAULTS.costura).toEqual({
       return_before_sector: 'Silk',
-      material_components: ['Cabedal', 'Forração', 'BOM', 'Componente Direto'],
+      material_components: ['Cabedal', 'BOM', 'Componente Direto'],
     });
     expect(SERVICE_ORDER_ACTIVITY_DEFAULTS.mesa).toEqual({
       return_before_sector: 'Silk',

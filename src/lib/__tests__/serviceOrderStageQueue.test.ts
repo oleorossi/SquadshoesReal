@@ -16,7 +16,7 @@ function row(partial: Partial<ConsumptionRow> & Pick<ConsumptionRow, 'componentT
     productUnit: 'm',
     totalQuantity: 10,
     available: 10,
-    productIds: ['p1'],
+    productIds: [`p-${partial.groupName}`],
     ...partial,
   } as ConsumptionRow;
 }
