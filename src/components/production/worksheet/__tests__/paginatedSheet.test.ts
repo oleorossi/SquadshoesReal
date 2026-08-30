@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   packBlocks, PAGE_CAPACITY_PX, BLOCK_GAP_PX, PRINT_INFLATE,
-  chooseAutoFitScale, growCeilingFor, PAGE_CONTENT_WIDTH_PX,
+  chooseAutoFitScale, growCeilingFor, rigidWidthOnPage, PAGE_CONTENT_WIDTH_PX,
 } from '../PaginatedSheet';
 import { A4_CONTENT_WIDTH_PX } from '../adaptiveFont';
 
@@ -263,5 +263,38 @@ describe('growCeilingFor — teto do crescimento vindo da largura', () => {
     // Duas constantes para a mesma coluna de 194mm; divergirem faria a decisão
     // "cabe ao lado da grade" e o teto do auto-fit medirem réguas diferentes.
     expect(Math.floor(PAGE_CONTENT_WIDTH_PX)).toBe(A4_CONTENT_WIDTH_PX);
+  });
+});
+
+/**
+ * O bloco declara a largura que exige na régua DELE; o teto do crescimento é
+ * comparado contra a página. Quando a linha vive dentro de um card com padding
+ * (Solagem, Palmilha), o recuo até a borda do bloco tem que entrar na conta.
+ */
+describe('rigidWidthOnPage — largura declarada na régua da página', () => {
+  it('linha solta na coluna da A4: declarada = exigida', () => {
+    expect(rigidWidthOnPage(705, 733, 733)).toBe(705);
+  });
+
+  it('linha dentro de card com padding e borda: soma o recuo', () => {
+    // card: borda 1,5px de cada lado + px-3 (8px de cada lado na print-area)
+    expect(rigidWidthOnPage(705, 733, 714)).toBe(724);
+  });
+
+  it('o recuo aperta o teto do crescimento — era ele que autorizava demais', () => {
+    const solta = growCeilingFor([rigidWidthOnPage(705, 733, 733)]);
+    const noCard = growCeilingFor([rigidWidthOnPage(705, 733, 714)]);
+    expect(noCard).toBeLessThan(solta);
+    expect(noCard).toBeGreaterThan(1);
+  });
+
+  it('declaração ausente ou inválida não vira teto', () => {
+    expect(rigidWidthOnPage(NaN, 733, 714)).toBe(0);
+    expect(rigidWidthOnPage(0, 733, 714)).toBe(0);
+    expect(rigidWidthOnPage(-5, 733, 714)).toBe(0);
+  });
+
+  it('nó mais LARGO que o bloco não desconta nada (recuo nunca é negativo)', () => {
+    expect(rigidWidthOnPage(705, 700, 733)).toBe(705);
   });
 });

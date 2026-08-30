@@ -2,6 +2,7 @@ import React from 'react';
 import { PaintBrush as Paintbrush, Hammer, Pen, Paperclip, Sparkle as Sparkles, Cloud, Scissors, Warning as AlertTriangle } from '@phosphor-icons/react';
 import { adaptiveLabelFontSize } from '@/lib/adaptiveFontSize';
 import { gradeTableFont, floorSafeScale, gradeMinWidthPx, A4_CONTENT_WIDTH_PX, type AdaptiveTableFont } from './worksheet/adaptiveFont';
+import { fitBesideGrade, thumbRowWidthPx, SIDE_BY_SIDE_GAP_PX } from './worksheet/sideBySide';
 import { TallyBox } from './worksheet/TallyBox';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { HeaderIdentification } from './worksheet/HeaderIdentification';
@@ -358,9 +359,11 @@ export function collectCompactThumbs(
  *  conferência visual do modelo, quem manda no corte é o código e a grade.
  *  Abaixo disso a sandália vira borrão, e a regra da casa é remover conteúdo
  *  antes de encolher além do legível (CLAUDE.md, "Tamanho de fonte em print"). */
-/** Respiro entre miniaturas da faixa compacta (`gap-2` = 8px). Em px porque
- *  a decisão de layout abaixo precisa CONTAR a largura, não só aplicá-la. */
-export const COMPACT_THUMB_GAP_PX = 8;
+/** Respiro entre miniaturas da faixa compacta. Alias do respiro da regra
+ *  compartilhada (`worksheet/sideBySide`) — os dois têm que ser o MESMO número,
+ *  senão a largura declarada em `data-rigid-width` mede uma régua e o layout
+ *  usa outra. */
+export const COMPACT_THUMB_GAP_PX = SIDE_BY_SIDE_GAP_PX;
 
 export function compactThumbPx(count: number): number {
   if (count <= 1) return 92;
@@ -388,10 +391,10 @@ export function thumbsFitBesideGrade(
   maxCellDigits = 4,
   availableWidthPx: number = A4_CONTENT_WIDTH_PX,
 ): boolean {
-  if (thumbCount <= 0) return false;
-  const thumbsWidth = thumbCount * thumbPx + (thumbCount - 1) * COMPACT_THUMB_GAP_PX;
-  const leftForGrade = availableWidthPx - thumbsWidth - COMPACT_THUMB_GAP_PX;
-  return leftForGrade >= gradeMinWidthPx(sizeKeys, font, maxCellDigits);
+  return fitBesideGrade({
+    asideWidthPx: thumbRowWidthPx(thumbCount, thumbPx),
+    sizeKeys, font, maxCellDigits, availableWidthPx,
+  }).fits;
 }
 
 export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBand, sectorLabel, knives, facaRanges }: Props) => {
