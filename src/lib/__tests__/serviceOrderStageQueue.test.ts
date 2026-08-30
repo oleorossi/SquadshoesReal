@@ -105,10 +105,21 @@ describe('serviceOrderStageQueue', () => {
     expect(ranked[1].pull).toBe('prazo_falta');
   });
 
+  it('sem consumo anotado não inventa falta — chip é só prazo', () => {
+    const ranked = rankServiceOrderCandidates([
+      { id: 'late', sector: 'mesa', billingDate: '2026-11-01', source: 1 },
+      { id: 'soon', sector: 'costura', billingDate: '2026-09-01', source: 2 },
+    ]);
+    expect(ranked.map((item) => item.id)).toEqual(['soon', 'late']);
+    expect(ranked.every((item) => item.pull === 'prazo')).toBe(true);
+    expect(ranked.every((item) => item.kitProvided === false)).toBe(true);
+  });
+
   it('chip e relatório contam o filtro que puxou', () => {
     expect(queuePullFilter('2026-09-01', 'ready')).toBe('ambos');
     expect(queuePullFilter('2026-09-01', 'short')).toBe('prazo_falta');
     expect(queuePullFilter(null, 'unknown')).toBe('cadastro');
+    expect(queuePullFilter('2026-09-01', 'empty', false)).toBe('prazo');
 
     const report = summarizeStageQueue(rankServiceOrderCandidates([
       { id: '1', sector: 'costura', billingDate: '2026-09-01', kitStatus: 'ready', source: 1 },
