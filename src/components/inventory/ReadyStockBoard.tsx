@@ -186,7 +186,7 @@ export default function ReadyStockBoard() {
                     })}
                     <TableCell className="text-center text-xs font-mono font-bold">{g.totalQty}</TableCell>
                     <TableCell>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => {
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" aria-label="Remover linha da pronta entrega" onClick={() => {
                         if (confirm('Remover esta linha (referência, cor e grade)?')) {
                           void batchDeleteStock.mutateAsync(g.items.map((i) => ({ id: i.id, expectedQuantity: i.quantity })));
                         }
