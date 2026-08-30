@@ -5,6 +5,15 @@ import {
   type CanonicalConsumptionReport,
 } from '@/lib/canonicalConsumptionReport';
 import type { ConsumptionRow } from '@/lib/consumptionRows';
+import { normalizeKitComponentType } from '@/lib/serviceOrderStageQueue';
+import type { MaterialConsumptionRow } from '@/lib/orderConsumption';
+
+function withKitComponentType<T extends { componentType: string }>(rows: T[]): T[] {
+  return rows.map((row) => ({
+    ...row,
+    componentType: normalizeKitComponentType(row.componentType),
+  }));
+}
 
 /**
  * Materializa o consumo canônico particionado por `scope_key`.
@@ -29,7 +38,7 @@ export async function materializeCanonicalConsumptionByScope(
         report,
         new Set([scope]),
       );
-      return [scope, rows] as const;
+      return [scope, withKitComponentType(rows)] as const;
     } catch {
       return null;
     }
@@ -42,11 +51,11 @@ export async function materializeCanonicalConsumptionByScope(
 export function scopedCanonicalRows(
   report: CanonicalConsumptionReport,
   scopeKey: string,
-) {
-  return adaptCanonicalConsumptionLines(
+): MaterialConsumptionRow[] {
+  return withKitComponentType(adaptCanonicalConsumptionLines(
     report.lines,
     new Set([scopeKey]),
-  );
+  ));
 }
 
 export function scopedCanonicalPreviews(
