@@ -58,6 +58,29 @@ describe('buildBuyList', () => {
     expect(bl.families[0].colors[0].forracao).toBe(0);
   });
 
+  it('soma cabedal direto e tira interna da mesma napa e cor sem perder a aplicação', () => {
+    const bl = buildBuyList([
+      row({
+        componentType: 'Cabedal', groupName: 'NAPA SOFT', materialName: 'Cabedal',
+        color: 'PRETO', totalQuantity: 12.5,
+      }),
+      row({
+        componentType: 'Tiras', groupName: 'TIRA OVERLOCK 5MM', materialName: 'Produção interna',
+        color: 'PRETO', totalQuantity: 300,
+        artisanal: { baseName: 'NAPA SOFT', baseQty: 5, yieldPerMeter: 60 },
+      }),
+    ]);
+
+    const soft = bl.families.find((family) => family.napa === 'NAPA SOFT')!;
+    const preto = soft.colors.find((color) => color.color === 'PRETO')!;
+    expect(preto.cabedal).toBeCloseTo(12.5, 10);
+    expect(preto.tira).toBeCloseTo(5, 10);
+    expect(preto.forracao).toBe(0);
+    expect(preto.qty).toBeCloseTo(17.5, 10);
+    expect(soft.total).toBeCloseTo(17.5, 10);
+    expect(bl.grandTotal).toBeCloseTo(17.5, 10);
+  });
+
   it('tira sem rendimento sai em pendingStraps, fora do total, e marca a cor', () => {
     const bl = buildBuyList([
       row({ color: 'ROSADO', totalQuantity: 5 }),

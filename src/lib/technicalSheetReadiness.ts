@@ -1,3 +1,5 @@
+import { requiresUpperCut } from '@/lib/upperCutEligibility';
+
 export type TechnicalSheetReadinessStageKey =
   | 'identity'
   | 'engineering'
@@ -78,6 +80,7 @@ const hasConfiguredStrap = (line: unknown): boolean => {
 };
 
 const RELEASE_STATUSES = new Set(['validada', 'publicada']);
+const UPPER_PRODUCTION_SECTORS = new Set(['corte cabedal', 'costura cabedal']);
 
 export function evaluateTechnicalSheetReadiness(
   sheet: TechnicalSheetReadinessInput,
@@ -107,28 +110,20 @@ export function evaluateTechnicalSheetReadiness(
   }
 
   // Cabedal e tiras são requisitos independentes. Modelo somente de tiras não
-  // precisa inventar cabedal; porém, assim que qualquer metade do cabedal foi
-  // configurada, validamos identidade E consumo mesmo com has_straps=true.
+  // precisa inventar cabedal; porém, assim que a rota viva ou qualquer sinal
+  // estrutural exige cabedal, validamos identidade E consumo. O flag legado
+  // `requires_cutting_cabedal` pode estar stale e não participa desta decisão.
   const hasUpperIdentity = String(sheet.upper_material || '').trim().length > 0
     || Boolean(sheet.upper_material_group_id)
     || Boolean(sheet.upper_material_product_id);
   const hasUpperConsumption = hasConsumption(sheet.upper_consumption, sheet.upper_consumption_per_size);
-  const upperAccessories = Array.isArray(sheet.components_accessories)
-    ? sheet.components_accessories.filter((entry) => {
-        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
-        const accessory = entry as Record<string, unknown>;
-        return !accessory.id && (
-          Boolean(String(accessory.material || '').trim())
-          || Boolean(accessory.product_id)
-          || hasConsumption(accessory.consumption, accessory.consumption_per_size)
-        );
-      })
-    : [];
+  const hasUpperProductionRoute = Array.isArray(sheet.production_sectors)
+    && sheet.production_sectors.some((sector) => (
+      UPPER_PRODUCTION_SECTORS.has(String(sector || '').trim().toLowerCase())
+    ));
   const requiresUpper = !requiresStraps
-    || sheet.requires_cutting_cabedal === true
-    || hasUpperIdentity
-    || hasUpperConsumption
-    || upperAccessories.length > 0;
+    || hasUpperProductionRoute
+    || requiresUpperCut(sheet);
   if (requiresUpper) {
     if (!hasUpperIdentity) engineeringIssues.push('material do cabedal');
     if (!hasUpperConsumption) {

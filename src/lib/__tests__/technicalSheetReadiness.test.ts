@@ -49,6 +49,24 @@ describe('evaluateTechnicalSheetReadiness', () => {
     expect(stages.find((stage) => stage.key === 'engineering')?.issues).not.toContain('tiras com identidade e consumo');
   });
 
+  it('ignora flags legadas de cabedal quando a rota viva é somente de tiras', () => {
+    const stages = evaluateTechnicalSheetReadiness({
+      ...completeSheet,
+      has_straps: true,
+      strap_colors: [{ group_id: 'group-tira', consumption: 18 }],
+      upper_material: '',
+      upper_consumption: 0,
+      upper_consumption_per_size: { 34: 0, 35: '0' },
+      requires_cutting_cabedal: true,
+      construction_type: 'corte_costura',
+      production_sectors: ['Corte Fibra', 'Montagem'],
+    }, readyAudit);
+
+    const issues = stages.find((stage) => stage.key === 'engineering')?.issues;
+    expect(issues).not.toContain('material do cabedal');
+    expect(issues).not.toContain('consumo do cabedal');
+  });
+
   it('valida cabedal e tiras juntos quando ambos estão configurados', () => {
     const stages = evaluateTechnicalSheetReadiness({
       ...completeSheet,
@@ -80,15 +98,25 @@ describe('evaluateTechnicalSheetReadiness', () => {
       .toContain('material do cabedal');
   });
 
-  it('não deixa tiras mascararem uma rota ou adicional que exige Corte Cabedal', () => {
-    const byRoute = evaluateTechnicalSheetReadiness({
-      ...completeSheet,
-      has_straps: true,
-      strap_colors: [{ group_id: 'group-tira', consumption: 18 }],
-      requires_cutting_cabedal: true,
-      upper_material: '',
-      upper_consumption: 0,
-    }, readyAudit);
+  it.each(['Corte Cabedal', 'Costura Cabedal', ' costura cabedal '])(
+    'não deixa tiras mascararem a rota viva de %s',
+    (upperSector) => {
+      const stages = evaluateTechnicalSheetReadiness({
+        ...completeSheet,
+        has_straps: true,
+        strap_colors: [{ group_id: 'group-tira', consumption: 18 }],
+        upper_material: '',
+        upper_consumption: 0,
+        production_sectors: ['Corte Fibra', upperSector, 'Montagem'],
+      }, readyAudit);
+
+      const issues = stages.find((stage) => stage.key === 'engineering')?.issues;
+      expect(issues).toContain('material do cabedal');
+      expect(issues).toContain('consumo do cabedal');
+    },
+  );
+
+  it('não deixa tiras mascararem um adicional estrutural de cabedal', () => {
     const byAccessory = evaluateTechnicalSheetReadiness({
       ...completeSheet,
       has_straps: true,
@@ -98,11 +126,9 @@ describe('evaluateTechnicalSheetReadiness', () => {
       components_accessories: [{ material: 'NAPA SOFT', consumption: 2, mandatory: true }],
     }, readyAudit);
 
-    for (const stages of [byRoute, byAccessory]) {
-      const issues = stages.find((stage) => stage.key === 'engineering')?.issues;
-      expect(issues).toContain('material do cabedal');
-      expect(issues).toContain('consumo do cabedal');
-    }
+    const issues = byAccessory.find((stage) => stage.key === 'engineering')?.issues;
+    expect(issues).toContain('material do cabedal');
+    expect(issues).toContain('consumo do cabedal');
   });
 
   it('não cobra placa nem consumo de área quando a palmilha é pronta', () => {
