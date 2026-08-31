@@ -17,6 +17,7 @@ import { VersionChecker, manualVersionCheck } from "@/components/VersionChecker"
 import PageSkeleton, { DashboardSkeleton } from "@/components/layout/PageSkeleton";
 import { clearStalePwaArtifacts } from "@/utils/pwa-utils";
 import { publicVitrineRoute } from "./router.public";
+import { installQueryPersistence } from "@/lib/queryPersistence";
 
 // Eager-loaded (auth flow)
 import Auth from "./pages/Auth";
@@ -181,6 +182,8 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+installQueryPersistence(queryClient);
 
  const PageLoader = () => {
   const [showRetry, setShowRetry] = useState(false);

@@ -9,12 +9,17 @@ export const apiService = {
     fifteenDaysAgo.setDate(fifteenDaysAgo.getDate() - 15);
     const fifteenDaysAgoStr = fifteenDaysAgo.toISOString();
 
-    // Batch 1: lightweight counts & summaries (fast)
+    // ⚠ PERF (2026-08-30): era 2 ondas seriais de 4 queries (2 RTTs Brasil →
+    // us-west-2). Todas as 8 são independentes — uma ida só.
     const [
       { data: overduePayables },
       { data: upcomingPayables },
       { data: overdueReceivables },
       { data: pendingPOs },
+      { data: lowStockProducts },
+      { data: pendingAdvances },
+      { data: staleOrders },
+      { data: overdueSales },
     ] = await Promise.all([
       supabase
         .from('accounts_payable')
@@ -43,16 +48,6 @@ export const apiService = {
         .select('id, auto_generated')
         .eq('status', 'pending')
         .limit(50),
-    ]);
-
-    // Batch 2: heavier queries (deferred)
-    const [
-      { data: lowStockProducts },
-      { data: pendingAdvances },
-      { data: staleOrders },
-      { data: overdueSales },
-    ] = await Promise.all([
-      // Only fetch products actually below min_stock using a filter
       supabase
         .from('products')
         .select('id, name, color, quantity, min_stock, unit')
