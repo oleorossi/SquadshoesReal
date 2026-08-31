@@ -134,6 +134,27 @@ export class SaleOrderCommandExecutionError extends Error {
   }
 }
 
+/**
+ * O conflito pode ser detectado no preflight do navegador ou novamente pelo
+ * writer, se outra transação vencer a corrida entre as duas chamadas.
+ */
+export function isStaleSaleOrderVersionError(error: unknown): boolean {
+  if (error instanceof SaleOrderReadinessBlockedError) {
+    return error.preflight.blockers.some(
+      (blocker) => blocker.code === 'stale_order_version',
+    );
+  }
+  if (
+    error instanceof SaleOrderCommandExecutionError
+    && 'readiness' in error.receipt
+  ) {
+    return error.receipt.readiness.blockers.some(
+      (blocker) => blocker.code === 'stale_order_version',
+    );
+  }
+  return false;
+}
+
 const asRecord = (value: unknown): Record<string, unknown> => (
   value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>

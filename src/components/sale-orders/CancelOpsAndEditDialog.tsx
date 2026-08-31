@@ -8,6 +8,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { Button } from '@/components/ui/button';
 import { Warning as AlertTriangle } from '@phosphor-icons/react';
 
 export interface BlockingOp {
@@ -22,9 +23,12 @@ interface Props {
   ops: BlockingOp[];
   isPreflighting?: boolean;
   preflightError?: string | null;
+  hasVersionConflict?: boolean;
   isCancelling: boolean;
   /** Confirma cancelamento + save no writer transacional do PV. */
   onConfirm: () => void;
+  /** Descarta o snapshot obsoleto e carrega novamente o agregado canônico. */
+  onReload?: () => void;
 }
 
 /**
@@ -39,8 +43,10 @@ export function CancelOpsAndEditDialog({
   ops,
   isPreflighting = false,
   preflightError,
+  hasVersionConflict = false,
   isCancelling,
   onConfirm,
+  onReload,
 }: Props) {
   const isBusy = isPreflighting || isCancelling;
   return (
@@ -94,9 +100,10 @@ export function CancelOpsAndEditDialog({
                     Não foi possível confirmar a edição
                   </div>
                   <p className="text-xs text-foreground/80">
-                    {preflightError} Uma recusa do servidor reverte a transação
-                    inteira. Se houve falha de conexão, recarregue o PV antes de
-                    tentar novamente para confirmar o estado gravado.
+                    {preflightError}{' '}
+                    {hasVersionConflict
+                      ? 'Nenhuma OP foi cancelada. Recarregue o PV para revisar a versão atual; alterações locais ainda não salvas serão descartadas.'
+                      : 'Uma recusa do servidor reverte a transação inteira. Se houve falha de conexão, recarregue o PV antes de tentar novamente para confirmar o estado gravado.'}
                   </p>
                 </div>
               )}
@@ -105,6 +112,16 @@ export function CancelOpsAndEditDialog({
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={isBusy}>Cancelar</AlertDialogCancel>
+          {hasVersionConflict && onReload && (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isBusy}
+              onClick={onReload}
+            >
+              Recarregar e revisar
+            </Button>
+          )}
           <AlertDialogAction
             onClick={(event) => {
               // A Action do Radix fecha o dialog por padrão. Aqui ele só pode
@@ -112,7 +129,7 @@ export function CancelOpsAndEditDialog({
               event.preventDefault();
               onConfirm();
             }}
-            disabled={isBusy}
+            disabled={isBusy || hasVersionConflict}
             className="bg-amber-600 hover:bg-amber-700 text-white"
           >
             {isPreflighting

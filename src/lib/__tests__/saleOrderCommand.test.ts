@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  isStaleSaleOrderVersionError,
   normalizeCreateSaleOrderCommandReceipt,
   normalizeSaleOrderCommandPreflight,
   normalizeSaleOrderCommandReceipt,
   normalizeSaleOrderReadiness,
+  SaleOrderCommandExecutionError,
+  SaleOrderReadinessBlockedError,
 } from '@/lib/saleOrderCommand';
 
 describe('saleOrderCommand', () => {
@@ -141,5 +144,33 @@ describe('saleOrderCommand', () => {
 
     expect(command.ok).toBe(false);
     expect(create.ok).toBe(false);
+  });
+
+  it('reconhece stale tanto no preflight quanto no receipt do writer', () => {
+    const blocker = {
+      code: 'stale_order_version',
+      message: 'Versão esperada 46 difere da versão atual 50',
+    };
+    const preflight = normalizeSaleOrderCommandPreflight(
+      { ready: false, blockers: [blocker], order_version: 50 },
+      { saleOrderId: 'pv-1', command: 'update' },
+    );
+    const receipt = normalizeSaleOrderCommandReceipt({
+      ok: false,
+      receipt_id: 'receipt-stale',
+      sale_order_id: 'pv-1',
+      command: 'update',
+      order_version_before: 50,
+      order_version_after: 50,
+      result: {},
+      readiness: { ready: false, blockers: [blocker], order_version: 50 },
+      error: { code: 'readiness_blocked', message: blocker.message },
+    });
+
+    expect(isStaleSaleOrderVersionError(new SaleOrderReadinessBlockedError(preflight)))
+      .toBe(true);
+    expect(isStaleSaleOrderVersionError(new SaleOrderCommandExecutionError(receipt)))
+      .toBe(true);
+    expect(isStaleSaleOrderVersionError(new Error('falha de rede'))).toBe(false);
   });
 });

@@ -45,6 +45,7 @@ import { useCheckStockAvailability } from '@/hooks/useOrders';
 import { getCanonicalReferenceIdMap, getCanonicalSaleOrderReferences } from '@/lib/saleOrderReferences';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
 import { toast } from 'sonner';
 import { checkSoleAvailability, SoleAvailabilityResult } from '@/lib/soleAvailability';
 import { SolePurchaseConfirmDialog } from '@/components/sale-orders/SolePurchaseConfirmDialog';
@@ -73,7 +74,10 @@ import {
   clientCommercialBlockMessage,
   fetchClientSalesContext,
 } from '@/lib/mobile/clientContext';
-import { SaleOrderCommandExecutionError } from '@/lib/saleOrderCommand';
+import {
+  isStaleSaleOrderVersionError,
+  SaleOrderCommandExecutionError,
+} from '@/lib/saleOrderCommand';
 
 const emptyForm: SaleOrderFormData = {
   client_id: null,
@@ -98,6 +102,24 @@ const emptyItem: SaleOrderItemFormData = {
   terceirizacao_quantities: {},
   outsourced_sectors: {},
 };
+
+type SaleOrderSnapshotHeader = Database['public']['Tables']['sale_orders']['Row'] & {
+  order_version?: number | null;
+};
+type SaleOrderSnapshotItem = Database['public']['Tables']['sale_order_items']['Row'];
+interface SaleOrderEditorSnapshot {
+  order: SaleOrderSnapshotHeader | null;
+  items: SaleOrderSnapshotItem[];
+}
+interface SaleOrderEditorSnapshotRpcClient {
+  rpc: (
+    functionName: 'get_sale_order_editor_snapshot',
+    args: { p_sale_order_id: string },
+  ) => PromiseLike<{
+    data: SaleOrderEditorSnapshot | null;
+    error: { message: string } | null;
+  }>;
+}
 
 const SALE_ORDER_DRAFT_KEY_PREFIX = 'sale_order_draft';
 
@@ -409,7 +431,9 @@ export default function SaleOrderForm() {
   const [cancelOpsPreflight, setCancelOpsPreflight] = useState<{
     isRunning: boolean;
     error: string | null;
-  }>({ isRunning: false, error: null });
+    hasVersionConflict: boolean;
+  }>({ isRunning: false, error: null, hasVersionConflict: false });
+  const [versionConflictError, setVersionConflictError] = useState<string | null>(null);
   // Estado React desabilita o botão no render seguinte; o ref fecha também a
   // janela de dois cliques no mesmo frame antes de qualquer OP ser cancelada.
   const cancelOpsPreflightRunningRef = useRef(false);
@@ -921,15 +945,16 @@ export default function SaleOrderForm() {
     (async () => {
       setLoading(true);
       setLoadError(null);
-      const [headerResult, itemsResult] = await Promise.all([
-        supabase.from('sale_orders').select('*').eq('id', id).single(),
-        supabase.from('sale_order_items').select('*').eq('sale_order_id', id),
-      ]);
+      const snapshotClient = supabase as unknown as SaleOrderEditorSnapshotRpcClient;
+      const { data: snapshotData, error: snapshotError } = await snapshotClient.rpc(
+        'get_sale_order_editor_snapshot',
+        { p_sale_order_id: id },
+      );
       if (cancelled) return;
-      if (headerResult.error) throw new Error(`Cabeçalho: ${headerResult.error.message}`);
-      if (itemsResult.error) throw new Error(`Itens: ${itemsResult.error.message}`);
-      const order = headerResult.data;
+      if (snapshotError) throw new Error(`Pedido: ${snapshotError.message}`);
+      const order = snapshotData?.order;
       if (!order) throw new Error('Pedido não encontrado.');
+      const persistedItems = Array.isArray(snapshotData?.items) ? snapshotData.items : [];
       const rep = representatives.find(r => r.name === order.representative);
       const nextForm: SaleOrderFormData = {
         client_id: (order as any).client_id || null,
@@ -968,8 +993,8 @@ export default function SaleOrderForm() {
       const nextPackagingQuantity = Number(order.packaging_quantity) || 0;
       const nextClientId = String(order.client_id || '');
       let nextItems: SaleOrderItemFormData[] = [{ ...emptyItem }];
-      if (itemsResult.data && itemsResult.data.length > 0) {
-        const mapped = itemsResult.data.map(i => mapLoadedSaleOrderItem(i, canonicalReferenceIdMap));
+      if (persistedItems.length > 0) {
+        const mapped = persistedItems.map(i => mapLoadedSaleOrderItem(i, canonicalReferenceIdMap));
         // Sort items so that the same reference (and color) always appears together in editing
         const refLabel = (refId: string) => {
           const ref = (references as any[]).find(r => r.id === refId);
@@ -1370,7 +1395,11 @@ export default function SaleOrderForm() {
           if (persistedVersion > 0) loadedOrderVersionRef.current = persistedVersion;
           if (cancelOpIds.length > 0) {
             cancelOpsPreflightRunningRef.current = false;
-            setCancelOpsPreflight({ isRunning: false, error: null });
+            setCancelOpsPreflight({
+              isRunning: false,
+              error: null,
+              hasVersionConflict: false,
+            });
             setCancelOpsDialog({ open: false, ops: [] });
             toast.success(
               `${cancelOpIds.length} OP${cancelOpIds.length === 1 ? '' : 's'} cancelada${cancelOpIds.length === 1 ? '' : 's'} e edição salva atomicamente.`,
@@ -1386,14 +1415,21 @@ export default function SaleOrderForm() {
           if (error instanceof SaleOrderCommandExecutionError) {
             updateCommandIntentRef.current = null;
           }
+          const message = error instanceof Error
+            ? error.message
+            : error && typeof error === 'object' && 'message' in error
+              ? String((error as { message?: unknown }).message || 'O servidor recusou a edição atômica.')
+              : 'O servidor recusou a edição atômica.';
+          const hasVersionConflict = isStaleSaleOrderVersionError(error);
           if (cancelOpIds.length > 0) {
-            const message = error instanceof Error
-              ? error.message
-              : error && typeof error === 'object' && 'message' in error
-                ? String((error as { message?: unknown }).message || 'O servidor recusou a edição atômica.')
-                : 'O servidor recusou a edição atômica.';
             cancelOpsPreflightRunningRef.current = false;
-            setCancelOpsPreflight({ isRunning: false, error: message });
+            setCancelOpsPreflight({
+              isRunning: false,
+              error: message,
+              hasVersionConflict,
+            });
+          } else if (hasVersionConflict) {
+            setVersionConflictError(message);
           }
           if (!isCommittedStrapSourcingError(error)) return;
           if (!isAdmin) {
@@ -1493,7 +1529,11 @@ export default function SaleOrderForm() {
         .eq('sale_order_id', id)
         .in('status', ['Em Produção', 'Concluída', 'Finalizado']);
       if (blocking && blocking.length > 0) {
-        setCancelOpsPreflight({ isRunning: false, error: null });
+        setCancelOpsPreflight({
+          isRunning: false,
+          error: null,
+          hasVersionConflict: false,
+        });
         setCancelOpsDialog({
           open: true,
           ops: blocking as BlockingOp[],
@@ -1511,7 +1551,11 @@ export default function SaleOrderForm() {
     const ops = cancelOpsDialog.ops;
     const pendingOverride = cancelOpsDialog.pendingStatusOverride;
     cancelOpsPreflightRunningRef.current = true;
-    setCancelOpsPreflight({ isRunning: true, error: null });
+    setCancelOpsPreflight({
+      isRunning: true,
+      error: null,
+      hasVersionConflict: false,
+    });
     dispatchMutation(pendingOverride, ops.map((op) => op.id));
   };
 
@@ -2537,20 +2581,59 @@ export default function SaleOrderForm() {
         }}
       />
 
+      <AlertDialog
+        open={versionConflictError !== null}
+        onOpenChange={(open) => { if (!open) setVersionConflictError(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-600" />
+              Este PV mudou enquanto estava aberto
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>{versionConflictError}</p>
+                <p>
+                  Nenhuma alteração deste envio foi aplicada. Você pode continuar
+                  nesta tela para consultar ou copiar seus dados, mas precisa
+                  recarregar o PV antes de salvar novamente.
+                </p>
+                <p className="font-medium text-foreground">
+                  Ao recarregar, alterações locais ainda não salvas serão descartadas.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Continuar revisando</AlertDialogCancel>
+            <AlertDialogAction onClick={() => window.location.reload()}>
+              Recarregar e revisar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <CancelOpsAndEditDialog
         open={cancelOpsDialog.open}
         onOpenChange={(v) => {
           if (!v && !updateOrder.isPending && !cancelOpsPreflight.isRunning) {
             cancelOpsPreflightRunningRef.current = false;
             setCancelOpsDialog({ open: false, ops: [] });
-            setCancelOpsPreflight({ isRunning: false, error: null });
+            setCancelOpsPreflight({
+              isRunning: false,
+              error: null,
+              hasVersionConflict: false,
+            });
           }
         }}
         ops={cancelOpsDialog.ops}
         isPreflighting={cancelOpsPreflight.isRunning}
         preflightError={cancelOpsPreflight.error}
+        hasVersionConflict={cancelOpsPreflight.hasVersionConflict}
         isCancelling={updateOrder.isPending && cancelOpsDialog.open}
         onConfirm={handleConfirmCancelOps}
+        onReload={() => window.location.reload()}
       />
 
       {/* Atalho de finalização: oferece gerar OS de terceirização deste pedido */}

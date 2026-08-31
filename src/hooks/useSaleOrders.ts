@@ -13,6 +13,7 @@ import { sanitizeSaleOrderHeaderDates } from '@/lib/billingWeek';
 import {
   createSaleOrderCommand,
   executeSaleOrderCommand,
+  isStaleSaleOrderVersionError,
   preflightSaleOrderCommand,
   SaleOrderReadinessBlockedError,
   type SaleOrderCommandAction,
@@ -1136,7 +1137,15 @@ export function useUpdateSaleOrder() {
       qc.invalidateQueries({ queryKey: ['pv_terceirizacao_lines'] });
       toast.success('Pedido atualizado e OPs sincronizadas!');
     },
-    onError: (err: Error) => toast.error(`Erro: ${err.message}`),
+    onError: (err: Error, vars) => {
+      // O formulário mantém estes erros em um diálogo com recuperação segura.
+      // Evita duplicar a mesma falha em toast.
+      if (
+        (vars.cancel_op_ids?.length ?? 0) > 0
+        || isStaleSaleOrderVersionError(err)
+      ) return;
+      toast.error(`Erro: ${err.message}`);
+    },
   });
 }
 
