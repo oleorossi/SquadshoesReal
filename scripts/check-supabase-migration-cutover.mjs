@@ -16,12 +16,13 @@ export const LOCAL_LEGACY_BASELINE = Object.freeze({
 });
 
 // Histórico vivo de produção, incluindo os três reparos do worker de Tiras
-// aplicados em 24/08/2026 e o reparo de prontidão de palmilha aplicado em
-// 28/08/2026 (20260828111941). Marcadores temporários podem ter qualquer nome
-// descritivo: o contrato do Supabase compara os timestamps.
+// aplicados em 24/08/2026, o reparo de prontidão de palmilha de 28/08/2026
+// (20260828111941) e as três aplicações temporárias usadas para validar a
+// criação rápida de variação de cor em 30/08/2026. Marcadores temporários podem
+// ter qualquer nome descritivo: o contrato do Supabase compara os timestamps.
 export const REMOTE_LEGACY_BASELINE = Object.freeze({
-  count: 2291,
-  sha256: 'b97f401f3bdb0e52b2efad8b69c3af3e404bcd89ef709036375732465df78b84',
+  count: 2294,
+  sha256: '52d44017b491f42979e636fb35985bc3993063f60299919bf0b105325811212d',
 });
 
 const MIGRATION_FILE = /^(\d{14})_(.+)\.sql$/;
