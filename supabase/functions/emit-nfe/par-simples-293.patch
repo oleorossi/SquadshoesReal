@@ -1,0 +1,120 @@
+--- a/supabase/functions/emit-nfe/index.ts
++++ b/supabase/functions/emit-nfe/index.ts
+@@ -12,6 +12,13 @@ import {
+   resolveHeaderNfeCfop,
+   resolveNfeCfop,
+   type NfeCfopKind,
+ } from "../_shared/nfeCfop.ts";
++import {
++  NFE_ESPECIE_VOLUMES,
++  NFE_UNIDADE_PAR,
++  avisoSimplesNacionalText,
++  resolveNfeItemUnidade,
++  stripAvisoSimples,
++} from "../_shared/nfeDanfe293.ts";
+ 
+ const corsHeaders = {
+   "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") || "https://squadshoes-real.vercel.app",
+@@ -322,7 +329,7 @@ function buildVolumeCountFields(
+   if (qty === undefined) return {};
+   const arrItem = {
+     quantidade: qty,
+-    especie: "Volumes",
++    especie: NFE_ESPECIE_VOLUMES,
+     marca: "",
+     ...(pesoBrutoStr ? { peso_bruto: pesoBrutoStr } : {}),
+     ...(pesoLiquidoStr ? { peso_liquido: pesoLiquidoStr } : {}),
+@@ -859,11 +866,16 @@ Deno.serve(async (req) => {
+       // Unidade comercial na NF. Pedido do dono em 01/06/2026, validando contra
+       // a NF #248 revisada pela contabilidade (o DANFE de referência sai com
+       // "UN", não "PAR"): forçar "UN". Vale também p/ NF avulsa de standalone
+       // (antes puxava products.unit que podia vir "kg"/etc).
+-      const unidade = "UN";
++      // Padrão vivo = DANFE #293 (painel ClickNotas, 22/08/2026, PV-001621): PAR.
++      const unidade = resolveNfeItemUnidade({
++        isStandalone,
++        hasMaterialVariant,
++        hasTechnicalSheet: !!ts,
++        productUnit: prod?.unit,
++      });
+ 
+       // Marca deste item: silk do solado (cascata) ou 'Squad Shoes'.
+       const itemBrand = await resolveItemBrand(it.reference_id, itemColor);
+@@ -969,7 +981,7 @@ Deno.serve(async (req) => {
+                 const productPayload: Record<string, unknown> = {
+                   nome: technicalName,
+                   valor_venda: price.toFixed(2),
+-                  unidade: "UN",
++                  unidade,
+                   ncm,
+                   tipo: "P",
+                   marca: itemBrand,
+@@ -1056,6 +1068,21 @@ Deno.serve(async (req) => {
+         }
+       }
+ 
++      // Produto já existente no GC pode ter nascido com UN (cadastro até 23/08).
++      if (gcProductId && !isDryRun && unidade === NFE_UNIDADE_PAR) {
++        const upd = await gcFetch(`/produtos/${gcProductId}`, {
++          method: "PUT",
++          body: JSON.stringify({ unidade: NFE_UNIDADE_PAR }),
++        });
++        if (!upd.ok || upd.json?.status === "error") {
++          console.warn(
++            `[emit-nfe] PUT unidade PAR falhou produto ${gcProductId}:`,
++            upd.json?.data?.mensagem || upd.json?.message || upd.status,
++          );
++        }
++      }
++
+       const qty = Number(it.quantity) || 0;
+       produtosGC.push({
+         produto_id: gcProductId,
+@@ -1307,16 +1334,16 @@ Deno.serve(async (req) => {
+     const ocPart = order.client_order_number
+       ? `OC do Cliente: ${String(order.client_order_number).trim()}`
+       : null;
+-    const livrePart = order.informacoes_complementares_nf
+-      ? String(order.informacoes_complementares_nf).trim()
+-      : null;
++    const livrePart = stripAvisoSimples(
++      order.informacoes_complementares_nf
++        ? String(order.informacoes_complementares_nf).trim()
++        : null,
++    );
+     // Simples Nacional (companies.regime_tributario = '1'): o aviso da
+-    // LC 123/2006 é OBRIGATÓRIO no campo de informações complementares.
+-    // O ClickNotas injeta esse texto quando NÃO mandamos o campo — mas quando
+-    // mandamos, ele SUBSTITUI: a NF #278 saiu só com "OC do Cliente: 300102" e
+-    // perdeu o aviso legal (auditoria 31/07/2026). E o comportamento sem o
+-    // campo não é determinístico (#256 veio com o texto, #255 veio vazio).
+-    // Então prefixamos nós mesmos, com o texto exato que o painel usa.
++    // LC 123/2006 é OBRIGATÓRIO. Mandar o campo SUBSTITUI o texto do painel
++    // (#278 perdeu o aviso). Mandar E deixar o mesmo texto no campo livre
++    // duplica — a NF #293 do painel saiu com o bloco duas vezes. Prefixamos
++    // UMA vez e limpamos qualquer cópia que venha do PV.
+     const avisoSimplesNacional = String(fiscal.regime_tributario ?? "") === "1"
+-      ? "I - DOCUMENTO EMITIDO POR ME OU EPP OPTANTE PELO SIMPLES NACIONAL.\r\n"
+-        + "II - NAO GERA DIREITO A CREDITO FISCAL DE IPI."
++      ? avisoSimplesNacionalText()
+       : null;
+     // ⚠ O trecho "Pedido de Venda: <numero>" precisa continuar íntegro: o
+@@ -1450,7 +1477,7 @@ Deno.serve(async (req) => {
+     // marca comercial aqui era semanticamente errado (a marca do produto já
+     // vai em <prod><xMarca> por item = silk do solado).
+     const volumesObj: Record<string, string | number> = {
+-      especie: "Volumes",
++      especie: NFE_ESPECIE_VOLUMES,
+       marca: "",
+     };
+@@ -1534,7 +1561,7 @@ Deno.serve(async (req) => {
+       ...(pesoBrutoStr ? { peso_bruto: pesoBrutoStr } : {}),
+       ...(pesoLiquidoStr ? { peso_liquido: pesoLiquidoStr } : {}),
+-      especie_volumes: "Volumes",
++      especie_volumes: NFE_ESPECIE_VOLUMES,
+       // Quantidade de volumes: montada por buildVolumeCountFields, controlada pelo
+@@ -1659,7 +1686,7 @@ Deno.serve(async (req) => {
+             volumes_estimado_cego: !!volumesWarning,
+-            especie: 'VOLUME',
++            especie: NFE_ESPECIE_VOLUMES,
+             marca: '',
