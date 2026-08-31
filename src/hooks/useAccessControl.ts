@@ -586,7 +586,7 @@ export function isActionAllowed(path: string, action: PermissionAction, input: R
  * ⚠ Passe o path do ITEM DE MENU (o que a matriz grava), não uma rota-redirect.
  */
 export function useCan(path: string) {
-  const { can, loading, isAdmin, permsLoading } = useAccessControl();
+  const { can, loading, isAdmin, roles, permsLoading } = useAccessControl();
   // NÃO memoizar: `can` fecha sobre perms/roles que chegam async — memoizar por
   // deps incompletas congelava gates desatualizados (fail-open) e não recalculava
   // quando os grants chegavam. Recalcular a cada render é barato e sempre reflete
@@ -597,6 +597,7 @@ export function useCan(path: string) {
   return {
     loading: loading || permsLoading,
     isAdmin,
+    roles,
     canView: can(path, 'view'),
     canCreate: actionsReady && can(path, 'create'),
     canEdit: actionsReady && can(path, 'edit'),

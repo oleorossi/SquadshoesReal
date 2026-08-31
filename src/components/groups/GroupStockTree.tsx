@@ -25,6 +25,7 @@ interface Props {
   products: ProductLite[];
   rollups: Map<string, GroupStockRollup>;
   perm: { canCreate: boolean; canEdit: boolean; canDelete: boolean };
+  canManageItems: boolean;
   selectedLeafIds: Set<string>;
   onToggleLeaf: (id: string) => void;
   onEdit: (g: ProductGroup) => void;
@@ -174,7 +175,7 @@ function DetailPanel({ group, items, onEditItem, onAddItem, canCreate }: {
 }
 
 export default function GroupStockTree(props: Props) {
-  const { groups, products, rollups, perm, selectedLeafIds, onToggleLeaf, onEdit, onManageItems, onDelete, onNewFamily, onNewSubgroup, onEditItem, onAddItem, filter, onClearFilter } = props;
+  const { groups, products, rollups, perm, canManageItems, selectedLeafIds, onToggleLeaf, onEdit, onManageItems, onDelete, onNewFamily, onNewSubgroup, onEditItem, onAddItem, filter, onClearFilter } = props;
 
   const { byGroup, bySector } = useMemo(() => buildGroupMetrics(groups, rollups), [groups, rollups]);
   const sectorTree = useMemo(() => buildSectorTree(groups), [groups]);
@@ -247,7 +248,7 @@ export default function GroupStockTree(props: Props) {
           <div className="hidden text-right font-mono text-xs font-semibold tabular-nums md:block">{formatMoney(m.value)}</div>
           <div className="hidden md:block"><ReservedBar m={m} /></div>
           <div className="col-start-2 row-start-2 mt-1 flex justify-start gap-0.5 md:col-auto md:row-auto md:mt-0 md:justify-end" onClick={e => e.stopPropagation()}>
-            {perm.canEdit && <Button variant="ghost" size="icon" className="h-7 w-7" title="Gerir materiais" onClick={() => onManageItems(g)}><Package className="h-3.5 w-3.5" /></Button>}
+            {canManageItems && <Button variant="ghost" size="icon" className="h-7 w-7" title="Gerir materiais" onClick={() => onManageItems(g)}><Package className="h-3.5 w-3.5" /></Button>}
             {perm.canEdit && <Button variant="ghost" size="icon" className="h-7 w-7" title="Editar grupo" onClick={() => onEdit(g)}><Pencil className="h-3.5 w-3.5" /></Button>}
             {perm.canDelete && <DeleteConfirmButton onConfirm={() => onDelete(g)} title="Excluir grupo?" size="h-7 w-7" iconSize="h-3.5 w-3.5" />}
           </div>
