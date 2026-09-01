@@ -2282,12 +2282,11 @@ export default function SaleOrders() {
                         <Select value={order.status} disabled={!canEditPv || updateStatus.isPending} onValueChange={async (v) => {
                           try {
                             await updateStatus.mutateAsync({ id: order.id, status: v });
-                          } catch (err: any) {
-                            // Readiness já abriu a janela estruturada com os itens;
-                            // repetir a mesma falha em toast só encobre o conteúdo.
-                            if (!(err instanceof SaleOrderReadinessBlockedError)) {
-                              toast.error(`Erro ao atualizar status: ${err.message}`);
-                            }
+                          } catch {
+                            // A mutation é a dona única do feedback: readiness abre
+                            // a janela estruturada e os demais erros geram um toast.
+                            // mutateAsync ainda rejeita depois do onError; engolir
+                            // aqui evita duas mensagens para a mesma falha.
                           }
                         }}>
                           <SelectTrigger aria-label={`Status do pedido ${order.order_number}: ${order.status}. Alterar`} className="h-7 w-[130px] text-xs border-0 bg-transparent p-0 shadow-none hover:ring-1 hover:ring-border [&>svg]:hidden disabled:opacity-60">
