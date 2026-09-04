@@ -136,7 +136,19 @@ export interface SilkColorGroup {
    *  uma referência pode ter ambos os fluxos habilitados. */
   hasStraps?: boolean;
   /** Componentes auxiliares (capa, tira, presilha, etc) — pra setor Aviamento/Mesa. */
-  components?: Array<{ name: string; material?: string; qty?: string; color?: string; cm?: number; cmBands?: Array<{ band: string; cm: number }>; cmBySize?: Record<string, number> }>;
+  components?: Array<{
+    /** Posição da linha no array técnico; UUID identifica, mas não ordena. */
+    position?: number;
+    technicalStrapLineId?: string;
+    name: string;
+    material?: string;
+    qty?: string;
+    /** Cor efetiva congelada por linha no item do PV. */
+    color?: string;
+    cm?: number;
+    cmBands?: Array<{ band: string; cm: number }>;
+    cmBySize?: Record<string, number>;
+  }>;
   /** Lista de alertas específicos pra essa cor/setor (ex: "Modelo fachetado"). */
   alerts?: SectorAlert[];
   /** TRUE quando a palmilha desta cor PRECISA ser forrada (insole_has_lining
@@ -621,30 +633,52 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
               operário do Aviamento trabalha peça a peça. Display-only: o storage
               em strap_colors continua POR PAR e os motores não mudam.) */}
           {sector === 'Aviamento' && (() => {
-            const hasData = (c: { cmBySize?: Record<string, number>; cmBands?: Array<{ band: string; cm: number }>; cm?: number }) =>
-              (!!c.cmBySize && Object.keys(c.cmBySize).length > 0) || (!!c.cmBands && c.cmBands.length > 0) || (c.cm != null && c.cm > 0);
-            const straps = (cg.components || []).filter(c => /^TIRA(\s|$)/i.test(c.name || '') && hasData(c));
+            // Toda posição aparece, mesmo sem medida cadastrada: omitir uma
+            // linha faria TIRA 3 parecer TIRA 2. A medida ausente fica "—".
+            const straps = (cg.components || []).filter(c =>
+              Boolean(c.technicalStrapLineId) || /^TIRA(\s|$)/i.test(c.name || ''),
+            );
             if (straps.length === 0) return null;
-            return straps.map((c, i) => (
-              <tr key={`strap-row-${i}`} style={{ borderBottom: '1px solid #000', borderTop: i === 0 ? '1.5px solid #000' : undefined }}>
-                <td className="py-1 font-mono font-bold uppercase tracking-wider" style={{ borderRight: '1px solid #000', padding: '4px 6px', fontSize: '9px', color: '#C00000' }}>
-                  {c.name}
-                </td>
-                {activeSizes.map(s => {
-                  // Preenche a coluna pela numeração crua (grade individual); cai pra
-                  // faixa P/M/G; por último a média (curva constante / só média cadastrada).
-                  // O valor armazenado é POR PAR → exibe POR PÉ (÷2, 1 casa decimal).
-                  const vPar = c.cmBySize?.[s] ?? c.cmBands?.find(b => b.band === s)?.cm ?? c.cm ?? null;
-                  const v = vPar != null ? Math.round((vPar / 2) * 10) / 10 : null;
-                  return (
-                    <td key={s} className="font-mono font-bold" style={{ fontSize: `${ft.cellPx}px`, borderRight: '1px solid #000', padding: `${ft.padY}px 1px`, color: '#C00000', lineHeight: 1.2 }}>
-                      {v != null ? `${v}cm` : '—'}
-                    </td>
-                  );
-                })}
-                <td className="py-1" />
-              </tr>
-            ));
+            return straps.map((c, i) => {
+              const position = c.position || i + 1;
+              const positionLabel = `TIRA ${position}`;
+              const technicalLabel = String(c.name || '').trim();
+              const showTechnicalLabel = !!technicalLabel
+                && technicalLabel.toLocaleUpperCase('pt-BR') !== positionLabel;
+              return (
+                <tr
+                  key={c.technicalStrapLineId || `strap-row-${position}-${i}`}
+                  data-strap-position={position}
+                  data-technical-strap-line-id={c.technicalStrapLineId}
+                  style={{ borderBottom: '1px solid #000', borderTop: i === 0 ? '1.5px solid #000' : undefined }}
+                >
+                  <td className="py-1 font-mono font-bold uppercase" style={{ borderRight: '1px solid #000', padding: '4px 6px', color: '#000', lineHeight: 1.05 }}>
+                    <span className="block tracking-wider" style={{ fontSize: '9px' }}>{positionLabel}</span>
+                    {showTechnicalLabel && (
+                      <span className="block mt-0.5" style={{ fontSize: '9px', fontWeight: 600 }}>{technicalLabel}</span>
+                    )}
+                    <span
+                      className="block mt-0.5"
+                      style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '12px', letterSpacing: '-0.01em', color: '#C00000' }}
+                    >
+                      {c.color || '—'}
+                    </span>
+                  </td>
+                  {activeSizes.map(s => {
+                    // Preenche a coluna pela numeração crua; cai pra faixa P/M/G;
+                    // por último, média. Storage por par → exibição por pé (÷2).
+                    const vPar = c.cmBySize?.[s] ?? c.cmBands?.find(b => b.band === s)?.cm ?? c.cm ?? null;
+                    const v = vPar != null ? Math.round((vPar / 2) * 10) / 10 : null;
+                    return (
+                      <td key={s} className="font-mono font-bold" style={{ fontSize: `${ft.cellPx}px`, borderRight: '1px solid #000', padding: `${ft.padY}px 1px`, color: '#C00000', lineHeight: 1.2 }}>
+                        {v != null ? `${v}cm` : '—'}
+                      </td>
+                    );
+                  })}
+                  <td className="py-1" />
+                </tr>
+              );
+            });
           })()}
 
           {/* Etapas de Aviamento — campos fillable por etapa × numeração.
@@ -680,9 +714,11 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
           ⚠ grade por {usingAviamentoPmg ? 'faixa P/M/G' : 'faca'} não fecha com o total ({displayedSum} ≠ {cg.totalPairs} pares) — conferir mapeamento de numerações
         </p>
       )}
-      {sector === 'Aviamento' && (cg.components || []).some(c => /^TIRA(\s|$)/i.test(c.name || '') && ((c.cmBySize && Object.keys(c.cmBySize).length > 0) || (c.cmBands?.length ?? 0) > 0 || (c.cm != null && c.cm > 0))) && (
+      {sector === 'Aviamento' && (cg.components || []).some(c =>
+        Boolean(c.technicalStrapLineId) || /^TIRA(\s|$)/i.test(c.name || ''),
+      ) && (
         <p className="leading-tight mt-0.5" style={{ fontSize: '9px', fontWeight: 700, color: '#C00000' }}>
-          Linhas TIRA = medida em cm "do pé" por numeração (ou faixa P/M/G, quando cadastrada).
+          Linhas TIRA = sequência da ficha técnica · cor escolhida no PV · medida em cm "do pé" por numeração (ou faixa P/M/G).
         </p>
       )}
       </>

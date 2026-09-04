@@ -86,10 +86,13 @@ import {
 import { getShoeSizeMappings } from '@/utils/shoeUtils';
 import {
   applyCanonicalTechnicalStrapMeasure,
+  applyTechnicalStrapColorMode,
   applyTechnicalStrapIdentity,
   ensureTechnicalStrapLineIds,
   hasCanonicalTechnicalStrapIdentity,
   newTechnicalStrapLineId,
+  strapColorMode,
+  type StrapColorMode,
 } from '@/lib/technicalStrapLines';
 import { strapIdentityBasis } from '@/lib/strapIdentity';
 import { referenceStrapBaseGroups } from '@/lib/referenceStrapBaseGroups';
@@ -3772,8 +3775,8 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                   Defina quantas tiras este modelo possui, a <strong>família, medida e base de identidade</strong> de cada uma
                   e o consumo por numeração <strong>por pé</strong> (em cm).
                   O sistema multiplica por <strong>2</strong> (par = 2 pés) ao calcular o consumo.
-                  As <strong>cores</strong> de cada tira são escolhidas no lançamento do Pedido
-                  de Venda; a identidade técnica fica fixa aqui por UUID.
+                  A <strong>política de cor</strong> define se cada tira segue a cor principal ou recebe
+                  uma seleção própria no Pedido de Venda; a identidade técnica fica fixa aqui por UUID.
                 </p>
 
                 {/* Handling time — only for strap models */}
@@ -3939,6 +3942,34 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                         )}
                       </div>
                       <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Política de cor</Label>
+                        <Select
+                          value={strapColorMode(strap)}
+                          disabled={strapIdentityBasis(strap) === 'finished_product_group'}
+                          onValueChange={(value) => {
+                            const updated = [...(form.strap_colors || [])];
+                            updated[idx] = applyTechnicalStrapColorMode(
+                              updated[idx],
+                              value as StrapColorMode,
+                            );
+                            updateField('strap_colors', updated);
+                          }}
+                        >
+                          <SelectTrigger aria-label={`Política de cor de ${strap.label || `Tira ${idx + 1}`}`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="follow_main">Segue a cor principal</SelectItem>
+                            <SelectItem value="select_on_order">Selecionar no pedido</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {strapIdentityBasis(strap) === 'finished_product_group' && (
+                          <p className="text-xs text-muted-foreground">
+                            Tiras compradas prontas sempre exigem seleção de cor no pedido.
+                          </p>
+                        )}
+                      </div>
+                      <div className="space-y-1.5">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <Label className="text-xs font-semibold">
                             Família e medida canônicas <span className="text-destructive">*</span>
@@ -4067,7 +4098,11 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                           </Button>
                         </div>
                       </div>
-                      <span className="text-xs text-muted-foreground">Cor definida no pedido</span>
+                      <span className="text-xs text-muted-foreground">
+                        {strapColorMode(strap) === 'follow_main'
+                          ? 'A tira seguirá a cor principal no Pedido de Venda.'
+                          : 'A cor desta tira será selecionada no Pedido de Venda.'}
+                      </span>
                     </div>
                   );
                 })}
@@ -4099,6 +4134,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                         identity_group_id: strapIdentityBasis(last) === 'finished_product_group'
                           ? last?.identity_group_id || null
                           : null,
+                        color_mode: strapColorMode(last),
                         consumption: last?.consumption,
                         consumption_per_size: { ...(last?.consumption_per_size || {}) },
                       },

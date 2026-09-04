@@ -1,0 +1,1443 @@
+-- =============================================================================
+-- E2E transacional — cores independentes por linha de tira no PV
+--
+-- Pré-requisito: migration 20270101015400_cores_independentes_por_tira_no_pv.
+-- O cenário usa somente catálogo vivo elegível, cria um PV pelo command
+-- boundary canônico, processa a fila operacional e descarta todos os efeitos
+-- no ROLLBACK final.
+-- =============================================================================
+
+BEGIN;
+
+SET LOCAL statement_timeout = '90s';
+SET LOCAL lock_timeout = '15s';
+
+-- Prova negativa da fronteira SECURITY DEFINER com o papel SQL real usado pelo
+-- browser. Um JWT autenticado sem profile aprovado nao pode sequer iniciar o
+-- preview, independentemente do payload.
+SELECT set_config('request.jwt.claim.role', 'authenticated', true);
+SELECT set_config('request.jwt.claim.sub', gen_random_uuid()::text, true);
+SELECT set_config(
+  'request.jwt.claims',
+  jsonb_build_object(
+    'role', 'authenticated',
+    'sub', current_setting('request.jwt.claim.sub', true)
+  )::text,
+  true
+);
+SET LOCAL ROLE authenticated;
+DO $preview_unapproved$
+DECLARE
+  v_rejected boolean := false;
+BEGIN
+  BEGIN
+    PERFORM 1
+      FROM public.preview_sale_order_strap_demand_draft('{}'::jsonb);
+  EXCEPTION WHEN SQLSTATE '42501' THEN
+    v_rejected := true;
+  END;
+  ASSERT v_rejected,
+    'Preview SECURITY DEFINER aceitou authenticated sem profile aprovado';
+END
+$preview_unapproved$;
+RESET ROLE;
+
+-- As funções de autorização são STABLE. Defina os claims antes do DO para que
+-- auth.uid()/auth.role() sejam resolvidos corretamente desde a primeira chamada.
+SELECT set_config('request.jwt.claim.role', 'service_role', true);
+SELECT set_config(
+  'request.jwt.claim.sub',
+  (
+    SELECT ur.user_id::text
+      FROM public.user_roles ur
+      JOIN public.profiles p
+        ON p.id = ur.user_id
+       AND p.approved = true
+     WHERE ur.role::text = 'admin'
+     ORDER BY ur.user_id
+     LIMIT 1
+  ),
+  true
+);
+SELECT set_config(
+  'request.jwt.claims',
+  jsonb_build_object(
+    'role', 'service_role',
+    'sub', current_setting('request.jwt.claim.sub', true)
+  )::text,
+  true
+);
+
+DO $test$
+DECLARE
+  v_actor_id uuid := auth.uid();
+  v_sheet_id uuid;
+  v_sheet_lines jsonb;
+  v_base_group_id uuid;
+  v_measure_id uuid;
+  v_recipe_id uuid;
+  v_factory_calendar_id uuid;
+  v_factory_capacity_id uuid;
+  v_capacity_version integer;
+  v_client_id uuid;
+  v_client_name text;
+  v_client_cnpj text;
+  v_size text;
+  v_color_ids uuid[];
+  v_color_names text[];
+  v_noncanonical_main_color text :=
+    'E2E-COR-PRINCIPAL-NAO-CANONICA-' || gen_random_uuid()::text;
+  v_persisted_main_color text;
+  v_client_lines jsonb;
+  v_missing_lines jsonb;
+  v_item jsonb;
+  v_missing_item jsonb;
+  v_prepared jsonb;
+  v_prepared_item jsonb;
+  v_expected_m_by_line jsonb;
+  v_preview_by_line jsonb;
+  v_create_response jsonb;
+  v_job_result jsonb;
+  v_promotion_result jsonb;
+  v_receipt_result jsonb;
+  v_noncanonical_sale_order_id uuid;
+  v_noncanonical_sale_order_item_id uuid;
+  v_sale_order_id uuid;
+  v_sale_order_item_id uuid;
+  v_order_id uuid;
+  v_job_id uuid;
+  v_correlation_id uuid := gen_random_uuid();
+  v_noncanonical_request_id uuid := gen_random_uuid();
+  v_client_request_id uuid := gen_random_uuid();
+  v_worker_id text := 'e2e-independent-straps-' || gen_random_uuid()::text;
+  v_missing_rejected boolean := false;
+  v_missing_error text;
+  v_sheet_context text;
+  v_missing_label text;
+  v_operational_audit_before bigint;
+  v_operational_audit_after bigint;
+  v_product_audit_before bigint;
+  v_product_audit_after bigint;
+  v_variant_count_before bigint;
+  v_variant_count_after bigint;
+  v_line_count integer;
+  v_color_count integer;
+  v_variant_count integer;
+  v_base_product_count integer;
+  v_technical_line_count integer;
+  v_block_count integer;
+  v_source_count integer;
+  v_job_status text;
+  v_product_id uuid;
+  v_receipt_count integer;
+  v_reservation_count integer;
+  v_movement_count integer;
+  v_batch_item record;
+  v_reservation record;
+BEGIN
+  ASSERT v_actor_id IS NOT NULL,
+    'Pré-condição: nenhum usuário Admin aprovado disponível';
+
+  -- Mesma hierarquia dos command writers: coarse advisory antes de tocar a
+  -- ficha. Isso evita ciclo teste(ficha→coarse) × writer(coarse→ficha).
+  PERFORM pg_advisory_xact_lock(
+    hashtextextended('strap-pv-auto-intent', 0)
+  );
+
+  -- A ficha é descoberta pelo contrato, não pelo nome. Exigimos exatamente
+  -- cinco linhas operacionais porque o writer congela o conjunto completo da
+  -- ficha; todas devem compartilhar medida e napa-base, ter consumo positivo,
+  -- receita aprovada e ao menos três cores oficiais utilizáveis.
+  WITH line_stats AS (
+    SELECT
+      ts.id,
+      ts.strap_colors,
+      public.resolve_strap_base_group_id(ts.id, NULL) AS base_group_id,
+      count(*)::integer AS total_count,
+      count(*) FILTER (
+        WHERE coalesce(
+          nullif(line.value ->> 'identity_basis', ''),
+          'reference_base'
+        ) = 'reference_base'
+      )::integer AS reference_count,
+      count(DISTINCT nullif(line.value ->> 'measure_id', ''))::integer
+        AS measure_count,
+      min(line.value ->> 'measure_id') AS measure_text,
+      bool_and(
+        coalesce(
+          nullif(line.value ->> 'identity_basis', ''),
+          'reference_base'
+        ) = 'reference_base'
+      ) AS all_reference,
+      bool_and(
+        coalesce(line.value ->> 'technical_strap_line_id', '')
+          ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+      ) AS line_ids_valid,
+      bool_and(
+        coalesce(line.value ->> 'measure_id', '')
+          ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+      ) AS measure_ids_valid,
+      bool_and(
+        CASE
+          WHEN coalesce(line.value ->> 'consumption', '')
+                 ~ '^[0-9]+([.][0-9]+)?$'
+            THEN (line.value ->> 'consumption')::numeric > 0
+          ELSE false
+        END
+      ) AS consumption_valid
+    FROM public.technical_sheets ts
+    CROSS JOIN LATERAL jsonb_array_elements(
+      CASE
+        WHEN jsonb_typeof(ts.strap_colors) = 'array' THEN ts.strap_colors
+        ELSE '[]'::jsonb
+      END
+    ) WITH ORDINALITY line(value, ordinality)
+    WHERE nullif(btrim(coalesce(ts.upper_material, '')), '') IS NULL
+    GROUP BY ts.id, ts.strap_colors
+  )
+  SELECT
+    candidate.id,
+    candidate.strap_colors,
+    candidate.base_group_id,
+    candidate.measure_text::uuid
+    INTO v_sheet_id, v_sheet_lines, v_base_group_id, v_measure_id
+    FROM line_stats candidate
+   WHERE candidate.total_count = 5
+     AND candidate.reference_count = 5
+     AND candidate.all_reference
+     AND candidate.line_ids_valid
+     AND candidate.measure_ids_valid
+     AND candidate.measure_count = 1
+     AND candidate.consumption_valid
+     AND candidate.base_group_id IS NOT NULL
+     AND EXISTS (
+       SELECT 1
+         FROM public.artisanal_strap_recipes recipe
+        WHERE recipe.measure_id = candidate.measure_text::uuid
+          AND recipe.base_group_id = candidate.base_group_id
+          AND recipe.status = 'approved'
+          AND recipe.valid_from <= now()
+          AND (recipe.valid_to IS NULL OR recipe.valid_to > now())
+     )
+     AND (
+       SELECT count(*)
+         FROM public.base_material_color_official_products official
+         JOIN public.canonical_colors color
+           ON color.id = official.color_id
+          AND color.active
+         JOIN public.products product
+           ON product.id = official.official_product_id
+          AND product.active
+          AND product.unit = 'm'
+        WHERE official.base_group_id = candidate.base_group_id
+          AND official.status = 'active'
+          AND public.resolve_strap_canonical_color_id(product.color)
+                = official.color_id
+     ) >= 3
+   ORDER BY candidate.id
+   LIMIT 1;
+
+  ASSERT v_sheet_id IS NOT NULL,
+    'Pré-condição: nenhuma ficha com 5 tiras canônicas, mesma medida/base e 3 cores oficiais';
+
+  SELECT coalesce(nullif(sheet.code, ''), nullif(sheet.name, ''), sheet.id::text)
+    INTO v_sheet_context
+    FROM public.technical_sheets sheet
+   WHERE sheet.id = v_sheet_id;
+
+  SELECT
+    (array_agg(official.color_id ORDER BY usage.current_demands, color.name, official.color_id))[1:3],
+    (array_agg(color.name ORDER BY usage.current_demands, color.name, official.color_id))[1:3]
+    INTO v_color_ids, v_color_names
+    FROM public.base_material_color_official_products official
+    JOIN public.canonical_colors color
+      ON color.id = official.color_id
+     AND color.active
+    JOIN public.products product
+      ON product.id = official.official_product_id
+     AND product.active
+     AND product.unit = 'm'
+    LEFT JOIN LATERAL (
+      SELECT count(demand.id)::integer AS current_demands
+        FROM public.artisanal_strap_variants variant
+        LEFT JOIN public.sale_order_strap_demands demand
+          ON demand.strap_variant_id = variant.id
+         AND demand.is_current
+       WHERE variant.measure_id = v_measure_id
+         AND variant.base_group_id = v_base_group_id
+         AND variant.color_id = official.color_id
+    ) usage ON true
+   WHERE official.base_group_id = v_base_group_id
+     AND official.status = 'active'
+     AND public.resolve_strap_canonical_color_id(product.color)
+           = official.color_id;
+
+  ASSERT cardinality(v_color_ids) = 3
+     AND cardinality(v_color_names) = 3,
+    'Pré-condição: catálogo elegível deixou de possuir 3 cores oficiais';
+  ASSERT public.resolve_strap_canonical_color_id(v_noncanonical_main_color) IS NULL,
+    'Pré-condição: descrição escolhida para a cor principal tornou-se canônica';
+
+  -- O catálogo vivo ainda não possui capacidade operacional cadastrada para a
+  -- receita desta ficha. Para exercitar reserva, produção e baixa sem depender
+  -- desse gap de cadastro, esta transação converte somente a receita escolhida
+  -- em execução fabril e cria calendário/capacidade efêmeros. Tudo é revertido.
+  SELECT recipe.id
+    INTO v_recipe_id
+    FROM public.artisanal_strap_recipes recipe
+   WHERE recipe.measure_id = v_measure_id
+     AND recipe.base_group_id = v_base_group_id
+     AND recipe.status = 'approved'
+     AND recipe.valid_from <= now()
+     AND (recipe.valid_to IS NULL OR recipe.valid_to > now())
+   FOR UPDATE;
+  ASSERT v_recipe_id IS NOT NULL,
+    'Pré-condição: receita aprovada desapareceu após a seleção da ficha';
+
+  UPDATE public.artisanal_strap_recipes recipe
+     SET executor_type = 'factory',
+         default_contractor_id = NULL,
+         updated_at = now()
+   WHERE recipe.id = v_recipe_id;
+
+  SELECT calendar.id
+    INTO v_factory_calendar_id
+    FROM public.strap_operational_calendars calendar
+   WHERE calendar.calendar_type = 'factory'
+     AND calendar.contractor_id IS NULL
+     AND calendar.status = 'active'
+   ORDER BY calendar.id
+   LIMIT 1
+   FOR UPDATE;
+  IF v_factory_calendar_id IS NULL THEN
+    INSERT INTO public.strap_operational_calendars(
+      name,
+      calendar_type,
+      contractor_id,
+      uses_factory_calendar,
+      open_iso_weekdays,
+      timezone,
+      status
+    ) VALUES (
+      'E2E fábrica — rollback automático',
+      'factory',
+      NULL,
+      true,
+      ARRAY[1,2,3,4,5]::smallint[],
+      'America/Sao_Paulo',
+      'active'
+    ) RETURNING id INTO v_factory_calendar_id;
+  END IF;
+  UPDATE public.strap_operational_calendars calendar
+     SET open_iso_weekdays = ARRAY[1,2,3,4,5,6,7]::smallint[],
+         updated_at = now()
+   WHERE calendar.id = v_factory_calendar_id;
+  DELETE FROM public.strap_operational_calendar_exceptions calendar_exception
+   WHERE calendar_exception.calendar_id = v_factory_calendar_id
+     AND calendar_exception.work_date BETWEEN current_date AND current_date + 60;
+
+  SELECT capacity.id
+    INTO v_factory_capacity_id
+    FROM public.strap_executor_capacities capacity
+   WHERE capacity.executor_type = 'factory'
+     AND capacity.contractor_id IS NULL
+     AND capacity.status = 'active'
+     AND capacity.valid_from <= current_date + 60
+     AND (capacity.valid_to IS NULL OR capacity.valid_to >= current_date + 60)
+   ORDER BY capacity.version DESC
+   LIMIT 1
+   FOR UPDATE;
+  IF v_factory_capacity_id IS NULL THEN
+    -- Reaproveita uma vigência aberta, quando houver, para não colidir com o
+    -- índice parcial; no banco atual o ramo normal é o INSERT logo abaixo.
+    SELECT capacity.id
+      INTO v_factory_capacity_id
+      FROM public.strap_executor_capacities capacity
+     WHERE capacity.executor_type = 'factory'
+       AND capacity.contractor_id IS NULL
+       AND capacity.status = 'active'
+       AND capacity.valid_to IS NULL
+     ORDER BY capacity.version DESC
+     LIMIT 1
+     FOR UPDATE;
+  END IF;
+  IF v_factory_capacity_id IS NULL THEN
+    SELECT coalesce(max(capacity.version), 0) + 1
+      INTO v_capacity_version
+      FROM public.strap_executor_capacities capacity
+     WHERE capacity.executor_type = 'factory'
+       AND capacity.contractor_id IS NULL;
+    INSERT INTO public.strap_executor_capacities(
+      executor_type,
+      contractor_id,
+      capacity_m_per_open_day,
+      calendar_id,
+      version,
+      valid_from,
+      valid_to,
+      status,
+      created_by
+    ) VALUES (
+      'factory',
+      NULL,
+      1000000,
+      v_factory_calendar_id,
+      v_capacity_version,
+      current_date,
+      NULL,
+      'active',
+      v_actor_id
+    ) RETURNING id INTO v_factory_capacity_id;
+  ELSE
+    UPDATE public.strap_executor_capacities capacity
+       SET calendar_id = v_factory_calendar_id,
+           valid_from = least(capacity.valid_from, current_date),
+           capacity_m_per_open_day = greatest(
+             capacity.capacity_m_per_open_day,
+             1000000
+           ),
+           updated_at = now()
+     WHERE capacity.id = v_factory_capacity_id;
+  END IF;
+
+  SELECT client.id, client.razao_social, client.cnpj
+    INTO v_client_id, v_client_name, v_client_cnpj
+    FROM public.clients client
+    CROSS JOIN LATERAL public.get_client_commercial_defaults(client.id) defaults
+   WHERE client.active
+     AND NOT coalesce(defaults.block_new_orders, false)
+     AND coalesce(defaults.credit_limit, 0) <= 0
+   ORDER BY client.id
+   LIMIT 1;
+  ASSERT v_client_id IS NOT NULL,
+    'Pré-condição: nenhum cliente ativo e sem bloqueio/limite para promoção transacional';
+
+  -- Ativa a peculiaridade na ficha somente dentro desta transação.
+  UPDATE public.technical_sheets sheet
+     SET sale_price = 1,
+         strap_colors = (
+       SELECT jsonb_agg(
+         (line.value - 'color_mode')
+           || jsonb_build_object('color_mode', 'select_on_order')
+         ORDER BY line.ordinality
+       )
+         FROM jsonb_array_elements(v_sheet_lines)
+           WITH ORDINALITY line(value, ordinality)
+     )
+   WHERE sheet.id = v_sheet_id
+   RETURNING sheet.strap_colors INTO v_sheet_lines;
+
+  ASSERT jsonb_array_length(v_sheet_lines) = 5
+     AND NOT EXISTS (
+       SELECT 1
+         FROM jsonb_array_elements(v_sheet_lines) line(value)
+        WHERE line.value ->> 'color_mode' IS DISTINCT FROM 'select_on_order'
+     ), 'Ficha de teste não persistiu select_on_order nas cinco linhas';
+
+  SELECT size.key
+    INTO v_size
+    FROM jsonb_object_keys(
+      coalesce(v_sheet_lines -> 0 -> 'consumption_per_size', '{}'::jsonb)
+    ) size(key)
+   WHERE NOT EXISTS (
+     SELECT 1
+       FROM jsonb_array_elements(v_sheet_lines) line(value)
+      WHERE coalesce(
+        nullif(line.value -> 'consumption_per_size' ->> size.key, '')::numeric,
+        0
+      ) <= 0
+   )
+   ORDER BY CASE WHEN size.key ~ '^\d+$' THEN size.key::integer END NULLS LAST,
+            size.key
+   LIMIT 1;
+  ASSERT v_size IS NOT NULL,
+    'Pré-condição: as cinco tiras não compartilham numeração com consumo positivo';
+
+  -- Oracle independente do motor: o cenário possui exatamente 1 par no tamanho
+  -- escolhido, então o consumo técnico em centímetros vira metros uma única vez
+  -- por `cm / 100`. Não reutilize preview, demanda ou helper do motor aqui.
+  SELECT coalesce(
+           jsonb_object_agg(
+             line.value ->> 'technical_strap_line_id',
+             to_jsonb(
+               (line.value -> 'consumption_per_size' ->> v_size)::numeric / 100
+             )
+           ),
+           '{}'::jsonb
+         )
+    INTO v_expected_m_by_line
+    FROM jsonb_array_elements(v_sheet_lines) line(value);
+  ASSERT (
+       SELECT count(*) FROM jsonb_each(v_expected_m_by_line)
+     ) = 5
+     AND NOT EXISTS (
+       SELECT 1
+         FROM jsonb_each(v_expected_m_by_line) expected(line_id, required_m)
+        WHERE (expected.required_m #>> '{}')::numeric <= 0
+     ), 'Oracle independente não calculou cinco consumos positivos em metros';
+
+  -- O cliente adultera color_mode para follow_main e envia as linhas na ordem
+  -- 3/1/5/4/2. O writer deve reidratar política e ordem da ficha, mantendo a
+  -- cor individual (1/2/3/1/2) vinculada ao UUID técnico.
+  SELECT jsonb_agg(
+    (line.value - 'color_mode' - 'color_id' - 'color')
+      || jsonb_build_object(
+        'color_mode', 'follow_main',
+        'color_id', v_color_ids[((line.ordinality - 1) % 3 + 1)::integer],
+        'color', v_color_names[((line.ordinality - 1) % 3 + 1)::integer]
+      )
+    ORDER BY CASE line.ordinality
+      WHEN 3 THEN 1
+      WHEN 1 THEN 2
+      WHEN 5 THEN 3
+      WHEN 4 THEN 4
+      ELSE 5
+    END
+  )
+    INTO v_client_lines
+    FROM jsonb_array_elements(v_sheet_lines)
+      WITH ORDINALITY line(value, ordinality);
+
+  ASSERT v_client_lines -> 0 ->> 'technical_strap_line_id'
+       IS DISTINCT FROM v_sheet_lines -> 0 ->> 'technical_strap_line_id',
+    'Pré-condição: payload do cliente não ficou embaralhado';
+
+  v_item := jsonb_build_object(
+    'reference_id', v_sheet_id,
+    -- As cinco linhas sao select_on_order: a cor principal nao participa da
+    -- resolucao das tiras e, portanto, pode ser uma descricao nao canonica.
+    'color', v_noncanonical_main_color,
+    'quantity', 1,
+    'unit_price', 1,
+    'grade', jsonb_build_object(v_size, 1),
+    'fichas', 1,
+    'observation', 'E2E transacional: cores independentes por tira',
+    'strap_colors', v_client_lines,
+    'strap_sourcing', '{}'::jsonb,
+    'main_production_start', (current_date + 60)::text,
+    'schedule_revision', 0
+  );
+
+  -- A quarta linha sem cor força falha depois de três materializações. O bloco
+  -- EXCEPTION é uma subtransação: se a atomicidade estiver correta, nem as
+  -- variantes nem as auditorias das três primeiras chamadas sobrevivem.
+  SELECT jsonb_agg(
+    CASE
+      WHEN line.value ->> 'technical_strap_line_id'
+             = v_sheet_lines -> 3 ->> 'technical_strap_line_id'
+        THEN line.value - 'color_id' - 'color'
+      ELSE line.value
+    END
+    ORDER BY line.ordinality
+  )
+    INTO v_missing_lines
+    FROM jsonb_array_elements(v_client_lines)
+      WITH ORDINALITY line(value, ordinality);
+  v_missing_item := jsonb_set(v_item, '{strap_colors}', v_missing_lines, false);
+  v_missing_label := coalesce(
+    nullif(v_sheet_lines -> 3 ->> 'label', ''),
+    'TIRA'
+  );
+
+  SELECT count(*)
+    INTO v_operational_audit_before
+    FROM public.artisanal_strap_operational_audit_log audit
+   WHERE audit.entity_type = 'technical_sheet'
+     AND audit.entity_id = v_sheet_id;
+  SELECT count(*)
+    INTO v_product_audit_before
+    FROM public.audit_logs audit
+   WHERE audit.action = 'strap_pv_intent_product_insert'
+     AND audit.new_data ->> 'reference_id' = v_sheet_id::text;
+  SELECT count(*)
+    INTO v_variant_count_before
+    FROM public.artisanal_strap_variants variant
+   WHERE variant.measure_id = v_measure_id
+     AND variant.base_group_id = v_base_group_id
+     AND variant.color_id = ANY(v_color_ids);
+
+  BEGIN
+    PERFORM public.prepare_sale_order_item_internal_straps(v_missing_item);
+  EXCEPTION WHEN OTHERS THEN
+    v_missing_error := SQLERRM;
+    IF position('selecione a cor' IN lower(v_missing_error)) > 0
+       AND position(lower(v_sheet_context) IN lower(v_missing_error)) > 0
+       AND position(lower(v_missing_label) IN lower(v_missing_error)) > 0 THEN
+      v_missing_rejected := true;
+    ELSE
+      RAISE;
+    END IF;
+  END;
+  ASSERT v_missing_rejected,
+    'Writer aceitou linha select_on_order sem color_id';
+
+  SELECT count(*)
+    INTO v_operational_audit_after
+    FROM public.artisanal_strap_operational_audit_log audit
+   WHERE audit.entity_type = 'technical_sheet'
+     AND audit.entity_id = v_sheet_id;
+  SELECT count(*)
+    INTO v_product_audit_after
+    FROM public.audit_logs audit
+   WHERE audit.action = 'strap_pv_intent_product_insert'
+     AND audit.new_data ->> 'reference_id' = v_sheet_id::text;
+  SELECT count(*)
+    INTO v_variant_count_after
+    FROM public.artisanal_strap_variants variant
+   WHERE variant.measure_id = v_measure_id
+     AND variant.base_group_id = v_base_group_id
+     AND variant.color_id = ANY(v_color_ids);
+
+  ASSERT v_operational_audit_after = v_operational_audit_before
+     AND v_product_audit_after = v_product_audit_before
+     AND v_variant_count_after = v_variant_count_before,
+    'Rejeição por cor ausente deixou catálogo/auditoria parcial';
+
+  v_prepared := public.prepare_sale_order_item_internal_straps(v_item);
+  v_prepared_item := v_prepared -> 'item';
+
+  ASSERT jsonb_array_length(v_prepared -> 'ensured') = 5,
+    'Writer não materializou exatamente as cinco linhas';
+  ASSERT jsonb_array_length(v_prepared_item -> 'strap_colors') = 5,
+    'Writer alterou o conjunto lógico de linhas';
+  ASSERT NOT EXISTS (
+    SELECT 1
+      FROM jsonb_array_elements(v_prepared_item -> 'strap_colors')
+        WITH ORDINALITY line(value, ordinality)
+     WHERE line.value ->> 'color_mode' IS DISTINCT FROM 'select_on_order'
+        OR line.value ->> 'technical_strap_line_id' IS DISTINCT FROM
+             v_sheet_lines -> (line.ordinality - 1)::integer
+               ->> 'technical_strap_line_id'
+        OR (line.value ->> 'color_id')::uuid IS DISTINCT FROM
+             v_color_ids[((line.ordinality - 1) % 3 + 1)::integer]
+  ), 'Writer não reidratou política/ordem da ficha ou trocou cores por UUID';
+  ASSERT (
+    SELECT count(DISTINCT line.value ->> 'color_id')
+      FROM jsonb_array_elements(v_prepared_item -> 'strap_colors') line(value)
+  ) = 3, 'Writer não preservou três cores distintas';
+  ASSERT NOT EXISTS (
+    SELECT 1
+      FROM jsonb_array_elements(v_prepared_item -> 'strap_colors') line(value)
+     WHERE v_prepared_item -> 'strap_sourcing'
+             -> (line.value ->> 'technical_strap_line_id') ->> 'source_mode'
+             IS DISTINCT FROM 'internal'
+        OR v_prepared_item -> 'strap_sourcing'
+             -> (line.value ->> 'technical_strap_line_id') ->> 'color_id'
+             IS DISTINCT FROM line.value ->> 'color_id'
+  ), 'Snapshot de sourcing não acompanha a cor de cada UUID';
+
+  SELECT
+    count(*)::integer,
+    count(DISTINCT preview.resolved ->> 'color_id')::integer,
+    count(DISTINCT preview.strap_variant_id)::integer,
+    count(DISTINCT preview.base_product_id)::integer,
+    coalesce(sum(jsonb_array_length(
+      coalesce(preview.blocking_reasons, '[]'::jsonb)
+    )), 0)::integer,
+    count(DISTINCT preview.source_mode)::integer
+    INTO
+      v_line_count,
+      v_color_count,
+      v_variant_count,
+      v_base_product_count,
+      v_block_count,
+      v_source_count
+    FROM public.preview_sale_order_strap_demand_draft(
+      v_prepared_item || jsonb_build_object(
+        'main_production_start', (current_date + 60)::text,
+        'schedule_revision', 0
+      )
+    ) preview;
+
+  ASSERT v_line_count = 5
+     AND v_color_count = 3
+     AND v_variant_count = 3
+     AND v_base_product_count = 3
+     AND v_block_count = 0
+     AND v_source_count = 1,
+    format(
+      'Preview divergente: linhas=%s cores=%s variantes=%s bases=%s bloqueios=%s origens=%s',
+      v_line_count,
+      v_color_count,
+      v_variant_count,
+      v_base_product_count,
+      v_block_count,
+      v_source_count
+    );
+
+  SELECT coalesce(
+           jsonb_object_agg(
+             preview.technical_strap_line_id::text,
+             jsonb_build_object(
+               'color_id', preview.resolved ->> 'color_id',
+               'gross_required_m', preview.gross_required_m
+             )
+           ),
+           '{}'::jsonb
+         )
+    INTO v_preview_by_line
+    FROM public.preview_sale_order_strap_demand_draft(
+      v_prepared_item || jsonb_build_object(
+        'main_production_start', (current_date + 60)::text,
+        'schedule_revision', 0
+      )
+    ) preview;
+
+  ASSERT NOT EXISTS (
+    SELECT 1
+      FROM jsonb_each(v_expected_m_by_line) expected(line_id, required_m)
+     WHERE NOT (v_preview_by_line ? expected.line_id)
+        OR abs(
+             (v_preview_by_line -> expected.line_id ->> 'gross_required_m')::numeric
+               - (expected.required_m #>> '{}')::numeric
+           ) > 0.000001
+  ), 'Preview não coincide com o oracle independente de cm→m por UUID';
+
+  -- Variantes podem existir no catálogo, mas o lote físico desta prova precisa
+  -- nascer sem contribuições anteriores; assim receipt/reservas/movimentos são
+  -- integralmente atribuíveis aos cinco UUIDs criados nesta transação.
+  ASSERT NOT EXISTS (
+    SELECT 1
+      FROM public.strap_production_batch_items batch_item
+     WHERE batch_item.strap_variant_id IN (
+       SELECT DISTINCT nullif(source.value ->> 'strap_variant_id', '')::uuid
+         FROM jsonb_each(v_prepared_item -> 'strap_sourcing') source(key, value)
+     )
+       AND batch_item.status IN (
+         'planned', 'released', 'in_progress', 'partial', 'suspended'
+       )
+  ), 'Pré-condição: variante escolhida já possui lote físico aberto';
+
+  -- Isola o caminho físico do estoque corrente: tira acabada começa em zero e
+  -- cada produto-base oficial recebe saldo amplo. Antes de tocar produto, segue
+  -- a hierarquia completa do motor físico: base → variante → estoque → row lock.
+  FOR v_product_id IN
+    SELECT DISTINCT nullif(source.value ->> 'base_product_id', '')::uuid
+      FROM jsonb_each(v_prepared_item -> 'strap_sourcing') source(key, value)
+     WHERE nullif(source.value ->> 'base_product_id', '') IS NOT NULL
+     ORDER BY 1
+  LOOP
+    PERFORM pg_advisory_xact_lock(
+      hashtextextended('strap-base-netting:' || v_product_id::text, 0)
+    );
+  END LOOP;
+
+  FOR v_product_id IN
+    SELECT DISTINCT nullif(source.value ->> 'strap_variant_id', '')::uuid
+      FROM jsonb_each(v_prepared_item -> 'strap_sourcing') source(key, value)
+     WHERE nullif(source.value ->> 'strap_variant_id', '') IS NOT NULL
+     ORDER BY 1
+  LOOP
+    PERFORM pg_advisory_xact_lock(
+      hashtextextended('strap-variant:' || v_product_id::text, 0)
+    );
+  END LOOP;
+
+  FOR v_product_id IN
+    SELECT DISTINCT product_id
+      FROM (
+        SELECT nullif(source.value ->> 'base_product_id', '')::uuid AS product_id
+          FROM jsonb_each(v_prepared_item -> 'strap_sourcing') source(key, value)
+        UNION
+        SELECT variant.finished_product_id AS product_id
+          FROM jsonb_each(v_prepared_item -> 'strap_sourcing') source(key, value)
+          JOIN public.artisanal_strap_variants variant
+            ON variant.id = nullif(source.value ->> 'strap_variant_id', '')::uuid
+      ) products
+     WHERE product_id IS NOT NULL
+     ORDER BY product_id
+  LOOP
+    PERFORM pg_advisory_xact_lock(
+      hashtextextended('strap-stock:' || v_product_id::text, 0)
+    );
+  END LOOP;
+
+  PERFORM product.id
+    FROM public.products product
+   WHERE product.id IN (
+     SELECT DISTINCT nullif(source.value ->> 'base_product_id', '')::uuid
+       FROM jsonb_each(v_prepared_item -> 'strap_sourcing') source(key, value)
+     UNION
+     SELECT DISTINCT variant.finished_product_id
+       FROM jsonb_each(v_prepared_item -> 'strap_sourcing') source(key, value)
+       JOIN public.artisanal_strap_variants variant
+         ON variant.id = nullif(source.value ->> 'strap_variant_id', '')::uuid
+   )
+   ORDER BY product.id
+   FOR UPDATE;
+
+  UPDATE public.products product
+     SET quantity = 100000,
+         current_stock = 100000,
+         updated_at = now()
+   WHERE product.id IN (
+     SELECT DISTINCT nullif(source.value ->> 'base_product_id', '')::uuid
+       FROM jsonb_each(v_prepared_item -> 'strap_sourcing') source(key, value)
+   );
+  UPDATE public.products product
+     SET quantity = 0,
+         current_stock = 0,
+         updated_at = now()
+   WHERE product.id IN (
+     SELECT DISTINCT variant.finished_product_id
+       FROM jsonb_each(v_prepared_item -> 'strap_sourcing') source(key, value)
+       JOIN public.artisanal_strap_variants variant
+         ON variant.id = nullif(source.value ->> 'strap_variant_id', '')::uuid
+   );
+
+  -- Primeiro PV: prova isolada do P1. As cinco linhas são select_on_order, então
+  -- uma cor principal não canônica precisa atravessar o create sem interferir
+  -- no vínculo cor↔UUID. Este PV não é promovido: a prova física usa um segundo
+  -- PV com cor principal comercial, sem depender do preflight de outros insumos.
+  v_create_response := public.create_sale_order_command(
+    jsonb_build_object(
+      'client_id', v_client_id,
+      'client_name', v_client_name,
+      'client_cnpj', coalesce(v_client_cnpj, ''),
+      'client_contact', '',
+      'representative', '',
+      'payment_condition', 'A VISTA',
+      'delivery_deadline', (current_date + 60)::text,
+      'billing_week', (current_date + 60)::text,
+      'status', 'Rascunho',
+      'total', 1,
+      'notes', 'E2E-STRAP-COLORS-NONCANONICAL — rollback automático'
+    ),
+    jsonb_build_array(v_prepared_item),
+    'e2e-independent-straps-noncanonical:' || v_noncanonical_request_id::text,
+    v_noncanonical_request_id
+  );
+
+  ASSERT coalesce((v_create_response ->> 'ok')::boolean, false),
+    'create_sale_order_command recusou o cenário: '
+      || coalesce(v_create_response -> 'error', '{}'::jsonb)::text;
+  v_noncanonical_sale_order_id := nullif(
+    v_create_response ->> 'sale_order_id',
+    ''
+  )::uuid;
+  v_noncanonical_sale_order_item_id := nullif(
+    v_create_response #>> '{result,item_ids,0}',
+    ''
+  )::uuid;
+  ASSERT v_noncanonical_sale_order_id IS NOT NULL
+     AND v_noncanonical_sale_order_item_id IS NOT NULL,
+    'Command create não devolveu PV/item';
+
+  SELECT item.color
+    INTO v_persisted_main_color
+    FROM public.sale_order_items item
+   WHERE item.id = v_noncanonical_sale_order_item_id;
+  ASSERT public.normalize_strap_catalog_text(v_persisted_main_color)
+           = public.normalize_strap_catalog_text(v_noncanonical_main_color)
+     AND public.resolve_strap_canonical_color_id(v_persisted_main_color) IS NULL,
+    format(
+      'Command create rejeitou/trocou semanticamente a cor principal não canônica: esperado=%s atual=%s',
+      v_noncanonical_main_color,
+      coalesce(v_persisted_main_color, '<NULL>')
+    );
+
+  SELECT count(*)::integer
+    INTO v_line_count
+    FROM public.sale_order_items item
+    CROSS JOIN LATERAL jsonb_array_elements(item.strap_colors) line(value)
+   WHERE item.id = v_noncanonical_sale_order_item_id
+     AND line.value ->> 'color_mode' = 'select_on_order';
+  ASSERT v_line_count = 5,
+    'Command create não persistiu color_mode autoritativo nas cinco linhas';
+  ASSERT NOT EXISTS (
+    SELECT 1
+      FROM public.sale_order_items item
+      CROSS JOIN LATERAL jsonb_array_elements(item.strap_colors)
+        WITH ORDINALITY line(value, ordinality)
+     WHERE item.id = v_noncanonical_sale_order_item_id
+       AND line.value ->> 'technical_strap_line_id' IS DISTINCT FROM
+             v_sheet_lines -> (line.ordinality - 1)::integer
+               ->> 'technical_strap_line_id'
+  ), 'Command create não persistiu as tiras na ordem técnica da ficha';
+
+  -- Segundo PV: mesma seleção de cinco UUIDs/3 cores, agora com cor principal
+  -- comercial válida para exercitar promoção, reserva, receipt e picking.
+  v_create_response := public.create_sale_order_command(
+    jsonb_build_object(
+      'client_id', v_client_id,
+      'client_name', v_client_name,
+      'client_cnpj', coalesce(v_client_cnpj, ''),
+      'client_contact', '',
+      'representative', '',
+      'payment_condition', 'A VISTA',
+      'delivery_deadline', (current_date + 60)::text,
+      'billing_week', (current_date + 60)::text,
+      'status', 'Rascunho',
+      'total', 1,
+      'notes', 'E2E-STRAP-COLORS-PHYSICAL — rollback automático'
+    ),
+    jsonb_build_array(
+      v_prepared_item || jsonb_build_object(
+        'color', v_color_names[1],
+        'observation', 'E2E físico: cinco tiras, três cores'
+      )
+    ),
+    'e2e-independent-straps-physical:' || v_client_request_id::text,
+    v_client_request_id
+  );
+  ASSERT coalesce((v_create_response ->> 'ok')::boolean, false),
+    'create_sale_order_command recusou o cenário físico canônico: '
+      || coalesce(v_create_response -> 'error', '{}'::jsonb)::text;
+  v_sale_order_id := nullif(v_create_response ->> 'sale_order_id', '')::uuid;
+  v_sale_order_item_id := nullif(
+    v_create_response #>> '{result,item_ids,0}',
+    ''
+  )::uuid;
+  ASSERT v_sale_order_id IS NOT NULL AND v_sale_order_item_id IS NOT NULL,
+    'Command create físico não devolveu PV/item';
+  ASSERT NOT EXISTS (
+    SELECT 1
+      FROM public.sale_order_items item
+      CROSS JOIN LATERAL jsonb_array_elements(item.strap_colors)
+        WITH ORDINALITY line(value, ordinality)
+     WHERE item.id = v_sale_order_item_id
+       AND (
+         line.value ->> 'color_mode' IS DISTINCT FROM 'select_on_order'
+         OR line.value ->> 'technical_strap_line_id' IS DISTINCT FROM
+              v_sheet_lines -> (line.ordinality - 1)::integer
+                ->> 'technical_strap_line_id'
+         OR (line.value ->> 'color_id')::uuid IS DISTINCT FROM
+              v_color_ids[((line.ordinality - 1) % 3 + 1)::integer]
+       )
+  ), 'Command create físico alterou política/ordem/cor vinculada aos UUIDs';
+
+  v_job_id := public.enqueue_sale_order_strap_demands(
+    v_sale_order_id,
+    'confirmed',
+    v_correlation_id
+  );
+  ASSERT v_job_id IS NOT NULL,
+    'Enqueue não criou job para as cinco tiras';
+
+  UPDATE public.strap_demand_jobs job
+     SET status = 'processing',
+         attempts = job.attempts + 1,
+         locked_at = now(),
+         locked_by = v_worker_id,
+         last_error = NULL
+   WHERE job.id = v_job_id
+     AND job.status IN ('queued', 'retry');
+  ASSERT FOUND, 'Job não estava disponível para processamento';
+
+  v_job_result := public.process_strap_demand_job(v_job_id, v_worker_id);
+  SELECT job.status
+    INTO v_job_status
+    FROM public.strap_demand_jobs job
+   WHERE job.id = v_job_id;
+  ASSERT v_job_status = 'completed'
+     AND NOT coalesce(v_job_result ? 'error', false)
+     AND coalesce((v_job_result ->> 'processed')::integer, 0) = 5
+     AND coalesce((v_job_result ->> 'blocked')::integer, 0) = 0,
+    'Worker não concluiu as cinco demandas: ' || coalesce(v_job_result, '{}'::jsonb)::text;
+
+  SELECT
+    count(*)::integer,
+    count(DISTINCT demand.technical_strap_line_id)::integer,
+    count(DISTINCT variant.color_id)::integer,
+    count(DISTINCT demand.strap_variant_id)::integer,
+    count(DISTINCT demand.base_product_id)::integer
+    INTO
+      v_line_count,
+      v_technical_line_count,
+      v_color_count,
+      v_variant_count,
+      v_base_product_count
+    FROM public.sale_order_strap_demands demand
+    JOIN public.artisanal_strap_variants variant
+      ON variant.id = demand.strap_variant_id
+   WHERE demand.sale_order_id = v_sale_order_id
+     AND demand.sale_order_item_id = v_sale_order_item_id
+     AND demand.is_current;
+
+  ASSERT v_line_count = 5
+     AND v_technical_line_count = 5
+     AND v_color_count = 3
+     AND v_variant_count = 3
+     AND v_base_product_count = 3,
+    format(
+      'Demandas divergentes: linhas=%s UUIDs=%s cores=%s variantes=%s bases=%s',
+      v_line_count,
+      v_technical_line_count,
+      v_color_count,
+      v_variant_count,
+      v_base_product_count
+    );
+
+  ASSERT NOT EXISTS (
+    SELECT 1
+      FROM public.sale_order_strap_demands demand
+      JOIN public.artisanal_strap_variants variant
+        ON variant.id = demand.strap_variant_id
+     WHERE demand.sale_order_id = v_sale_order_id
+       AND demand.sale_order_item_id = v_sale_order_item_id
+       AND demand.is_current
+       AND (
+         variant.color_id IS DISTINCT FROM nullif(
+           v_prepared_item -> 'strap_sourcing'
+             -> demand.technical_strap_line_id::text ->> 'color_id',
+           ''
+         )::uuid
+         OR variant.color_id IS DISTINCT FROM nullif(
+           v_preview_by_line -> demand.technical_strap_line_id::text
+             ->> 'color_id',
+           ''
+         )::uuid
+         OR demand.base_product_id IS DISTINCT FROM nullif(
+           v_prepared_item -> 'strap_sourcing'
+             -> demand.technical_strap_line_id::text ->> 'base_product_id',
+           ''
+         )::uuid
+         OR demand.gross_required_m IS DISTINCT FROM nullif(
+           v_preview_by_line -> demand.technical_strap_line_id::text
+             ->> 'gross_required_m',
+           ''
+         )::numeric
+         OR NOT (v_expected_m_by_line ? demand.technical_strap_line_id::text)
+         OR abs(
+              demand.gross_required_m
+                - (
+                    v_expected_m_by_line
+                      -> demand.technical_strap_line_id::text #>> '{}'
+                  )::numeric
+            ) > 0.000001
+         OR coalesce(
+           nullif(demand.calculation_explanation ->> 'loss_factor', '')::numeric,
+           0
+         ) <> 0
+      )
+  ), 'Worker permutou cor/base/consumo entre UUIDs ou aplicou perda';
+
+  -- Com tira acabada zerada e base abundante, cada demanda deve promover uma
+  -- contribuição fabril e uma reserva da napa oficial da sua própria cor.
+  ASSERT NOT EXISTS (
+    SELECT 1
+      FROM public.sale_order_strap_demands demand
+     WHERE demand.sale_order_id = v_sale_order_id
+       AND demand.sale_order_item_id = v_sale_order_item_id
+       AND demand.is_current
+       AND (
+         demand.source_mode IS DISTINCT FROM 'internal'
+         OR demand.status = 'suspended'
+         OR demand.base_product_id IS NULL
+         OR demand.base_required_m <= 0
+         OR abs(
+           demand.base_required_m
+             - demand.gross_required_m / demand.confirmed_yield_snapshot
+         ) > 0.000001
+         OR demand.base_reserved_m + 0.000001 < demand.base_required_m
+         OR coalesce(demand.base_shortage_m, 0) <> 0
+       )
+  ), 'Demanda interna não chegou à reserva integral da napa oficial sem perda';
+
+  SELECT count(DISTINCT contribution.batch_item_id)::integer
+    INTO v_reservation_count
+    FROM public.strap_production_batch_contributions contribution
+    JOIN public.sale_order_strap_demands demand
+      ON demand.id = contribution.sale_order_strap_demand_id
+   WHERE demand.sale_order_id = v_sale_order_id
+     AND demand.sale_order_item_id = v_sale_order_item_id
+     AND demand.is_current
+     AND contribution.status IN ('planned', 'in_progress', 'partial');
+  ASSERT v_reservation_count = 3,
+    format('Produção não consolidou as cinco linhas nos três SKUs-cor: itens=%s', v_reservation_count);
+  SELECT count(*)::integer
+    INTO v_line_count
+    FROM public.strap_production_batch_contributions contribution
+    JOIN public.sale_order_strap_demands demand
+      ON demand.id = contribution.sale_order_strap_demand_id
+   WHERE demand.sale_order_id = v_sale_order_id
+     AND demand.sale_order_item_id = v_sale_order_item_id
+     AND demand.is_current
+     AND contribution.status IN ('planned', 'in_progress', 'partial');
+  ASSERT v_line_count = 5,
+    format('Produção deveria criar cinco contribuições UUID-only, criou %s', v_line_count);
+  ASSERT NOT EXISTS (
+    SELECT 1
+      FROM public.sale_order_strap_demands demand
+      LEFT JOIN public.strap_production_batch_contributions contribution
+        ON contribution.sale_order_strap_demand_id = demand.id
+       AND contribution.status IN ('planned', 'in_progress', 'partial')
+      LEFT JOIN public.strap_production_batch_items batch_item
+        ON batch_item.id = contribution.batch_item_id
+     WHERE demand.sale_order_id = v_sale_order_id
+       AND demand.sale_order_item_id = v_sale_order_item_id
+       AND demand.is_current
+       AND (
+         contribution.id IS NULL
+         OR contribution.planned_m IS DISTINCT FROM demand.gross_required_m
+         OR batch_item.strap_variant_id IS DISTINCT FROM demand.strap_variant_id
+         OR batch_item.base_product_id IS DISTINCT FROM demand.base_product_id
+         OR batch_item.finished_product_id IS DISTINCT FROM demand.finished_product_id
+       )
+  ), 'Contribuição fabril perdeu o vínculo UUID→variante/base/acabado';
+
+  ASSERT NOT EXISTS (
+    SELECT 1
+      FROM public.sale_order_strap_demands demand
+      JOIN public.strap_production_batch_contributions contribution
+        ON contribution.sale_order_strap_demand_id = demand.id
+      JOIN public.strap_production_batch_items batch_item
+        ON batch_item.id = contribution.batch_item_id
+      JOIN public.strap_production_batches batch
+        ON batch.id = batch_item.batch_id
+     WHERE demand.sale_order_id = v_sale_order_id
+       AND demand.sale_order_item_id = v_sale_order_item_id
+       AND demand.is_current
+       AND (
+         batch.executor_type IS DISTINCT FROM 'factory'
+         OR batch.contractor_id IS NOT NULL
+         OR batch.capacity_profile_id IS DISTINCT FROM v_factory_capacity_id
+         OR abs(batch_item.scheduled_m - batch_item.planned_finished_m) > 0.000001
+         OR coalesce(batch_item.unscheduled_m, 0) <> 0
+       )
+  ), 'Capacidade efêmera não programou integralmente os três itens-cor';
+
+  ASSERT NOT EXISTS (
+    SELECT 1
+      FROM public.sale_order_strap_demands demand
+      LEFT JOIN public.material_reservations reservation
+        ON reservation.sale_order_strap_demand_id = demand.id
+       AND reservation.source = 'strap_engine_base'
+       AND reservation.status IN ('reserved', 'partially_consumed')
+     WHERE demand.sale_order_id = v_sale_order_id
+       AND demand.sale_order_item_id = v_sale_order_item_id
+       AND demand.is_current
+       AND (
+         reservation.id IS NULL
+         OR reservation.product_id IS DISTINCT FROM demand.base_product_id
+         OR reservation.base_product_id IS DISTINCT FROM demand.base_product_id
+         OR reservation.strap_variant_id IS DISTINCT FROM demand.strap_variant_id
+         OR reservation.strap_batch_item_id IS NULL
+         OR abs(
+           reservation.quantity_reserved
+             - demand.gross_required_m / demand.confirmed_yield_snapshot
+         ) > 0.000001
+       )
+  ), 'Reserva da napa não ficou vinculada à demanda/produto-cor exatos';
+  SELECT count(*)::integer
+    INTO v_reservation_count
+    FROM public.material_reservations reservation
+    JOIN public.sale_order_strap_demands demand
+      ON demand.id = reservation.sale_order_strap_demand_id
+   WHERE demand.sale_order_id = v_sale_order_id
+     AND demand.sale_order_item_id = v_sale_order_item_id
+     AND demand.is_current
+     AND reservation.source = 'strap_engine_base'
+     AND reservation.status IN ('reserved', 'partially_consumed');
+  ASSERT v_reservation_count = 5,
+    format('Motor deveria criar cinco reservas-base UUID-only, criou %s', v_reservation_count);
+
+  -- Recebe integralmente os três itens-cor, todos nascidos exclusivamente das
+  -- cinco contribuições desta transação (pré-condição verificada acima).
+  FOR v_batch_item IN
+    SELECT DISTINCT
+      batch_item.id,
+      batch_item.planned_finished_m,
+      batch_item.planned_base_m,
+      batch_item.confirmed_yield_snapshot
+      FROM public.strap_production_batch_items batch_item
+     WHERE EXISTS (
+       SELECT 1
+         FROM public.strap_production_batch_contributions contribution
+         JOIN public.sale_order_strap_demands demand
+           ON demand.id = contribution.sale_order_strap_demand_id
+        WHERE contribution.batch_item_id = batch_item.id
+          AND demand.sale_order_id = v_sale_order_id
+          AND demand.sale_order_item_id = v_sale_order_item_id
+          AND demand.is_current
+     )
+     ORDER BY batch_item.id
+  LOOP
+    v_receipt_result := public.register_strap_production_receipt(
+      v_batch_item.id,
+      NULL,
+      v_batch_item.planned_finished_m,
+      v_batch_item.planned_finished_m,
+      0,
+      v_batch_item.planned_base_m,
+      'e2e-independent-straps-receipt:' || v_batch_item.id::text
+        || ':' || v_client_request_id::text,
+      0,
+      'E2E-' || left(v_client_request_id::text, 8),
+      now(),
+      'Rollback automático — produção por cor',
+      v_correlation_id,
+      NULL
+    );
+    ASSERT nullif(v_receipt_result ->> 'receipt_id', '')::uuid IS NOT NULL
+       AND abs(
+         coalesce((v_receipt_result ->> 'base_posted_m')::numeric, -1)
+           - v_batch_item.planned_base_m
+       ) <= 0.000001,
+      'Recebimento fabril não debitou integralmente a napa do item-cor: '
+        || coalesce(v_receipt_result, '{}'::jsonb)::text;
+  END LOOP;
+
+  SELECT count(*)::integer
+    INTO v_receipt_count
+    FROM public.strap_production_receipts receipt
+   WHERE receipt.correlation_id = v_correlation_id;
+  ASSERT v_receipt_count = 3,
+    format('Recebimento deveria gerar três fatos físicos por SKU-cor, gerou %s', v_receipt_count);
+  ASSERT NOT EXISTS (
+    SELECT 1
+      FROM public.strap_production_receipts receipt
+      JOIN public.strap_production_batch_items batch_item
+        ON batch_item.id = receipt.batch_item_id
+      JOIN public.artisanal_strap_variants variant
+        ON variant.id = receipt.strap_variant_id
+     WHERE receipt.correlation_id = v_correlation_id
+       AND (
+         receipt.base_product_id IS DISTINCT FROM batch_item.base_product_id
+         OR receipt.finished_product_id IS DISTINCT FROM batch_item.finished_product_id
+         OR receipt.strap_variant_id IS DISTINCT FROM batch_item.strap_variant_id
+         OR receipt.base_lost_m <> 0
+         OR receipt.rejected_m <> 0
+         OR abs(
+           receipt.base_consumed_m
+             - receipt.approved_m / batch_item.confirmed_yield_snapshot
+         ) > 0.000001
+         OR NOT EXISTS (
+           SELECT 1
+             FROM public.base_material_color_official_products official
+            WHERE official.base_group_id = v_base_group_id
+              AND official.color_id = variant.color_id
+              AND official.official_product_id = receipt.base_product_id
+              AND official.status = 'active'
+         )
+       )
+  ), 'Recebimento aplicou perda ou rompeu produto-base oficial↔cor↔variante';
+
+  SELECT count(*)::integer
+    INTO v_movement_count
+    FROM public.stock_movements movement
+    JOIN public.strap_production_receipts receipt
+      ON receipt.id = movement.strap_production_receipt_id
+   WHERE receipt.correlation_id = v_correlation_id;
+  ASSERT v_movement_count = 6,
+    format('Três receipts deveriam gerar exatamente seis movimentos físicos, geraram %s', v_movement_count);
+
+  ASSERT NOT EXISTS (
+    SELECT 1
+      FROM public.strap_production_receipts receipt
+     WHERE receipt.correlation_id = v_correlation_id
+       AND (
+         (SELECT count(*)
+            FROM public.stock_movements movement
+           WHERE movement.strap_production_receipt_id = receipt.id) <> 2
+         OR (SELECT count(*)
+               FROM public.stock_movements movement
+              WHERE movement.strap_production_receipt_id = receipt.id
+                AND movement.movement_type = 'out') <> 1
+         OR (SELECT count(*)
+               FROM public.stock_movements movement
+              WHERE movement.strap_production_receipt_id = receipt.id
+                AND movement.movement_type = 'in') <> 1
+         OR
+         NOT EXISTS (
+           SELECT 1
+             FROM public.stock_movements movement
+            WHERE movement.strap_production_receipt_id = receipt.id
+              AND movement.movement_type = 'out'
+              AND movement.product_id = receipt.base_product_id
+              AND movement.base_product_id = receipt.base_product_id
+              AND movement.strap_variant_id = receipt.strap_variant_id
+              AND movement.strap_batch_item_id = receipt.batch_item_id
+              AND movement.strap_recipe_id = receipt.recipe_id
+              AND movement.origin_type = 'internal_factory'
+              AND movement.correlation_id = receipt.correlation_id
+              AND abs(movement.quantity - receipt.base_consumed_m) <= 0.000001
+         )
+         OR NOT EXISTS (
+           SELECT 1
+             FROM public.stock_movements movement
+            WHERE movement.strap_production_receipt_id = receipt.id
+              AND movement.movement_type = 'in'
+              AND movement.product_id = receipt.finished_product_id
+              AND movement.finished_product_id = receipt.finished_product_id
+              AND movement.strap_variant_id = receipt.strap_variant_id
+              AND movement.strap_batch_item_id = receipt.batch_item_id
+              AND movement.strap_recipe_id = receipt.recipe_id
+              AND movement.origin_type = 'internal_factory'
+              AND movement.correlation_id = receipt.correlation_id
+              AND abs(movement.quantity - receipt.approved_m) <= 0.000001
+         )
+         OR EXISTS (
+           SELECT 1
+             FROM public.strap_pending_reconciliations pending
+            WHERE pending.production_receipt_id = receipt.id
+         )
+       )
+  ), 'Entrada/baixa física do recebimento não fechou exatamente por produto-cor';
+
+  ASSERT NOT EXISTS (
+    SELECT 1
+      FROM public.sale_order_strap_demands demand
+      LEFT JOIN public.strap_production_batch_contributions contribution
+        ON contribution.sale_order_strap_demand_id = demand.id
+     WHERE demand.sale_order_id = v_sale_order_id
+       AND demand.sale_order_item_id = v_sale_order_item_id
+       AND demand.is_current
+       AND (
+         contribution.status IS DISTINCT FROM 'fulfilled'
+         OR contribution.delivered_m IS DISTINCT FROM contribution.planned_m
+       )
+  ), 'Recebimento não realizou integralmente as cinco contribuições do PV';
+
+  ASSERT NOT EXISTS (
+    SELECT 1
+      FROM public.sale_order_strap_demands demand
+     WHERE demand.sale_order_id = v_sale_order_id
+       AND demand.sale_order_item_id = v_sale_order_item_id
+       AND demand.is_current
+       AND NOT EXISTS (
+         SELECT 1
+           FROM public.material_reservations reservation
+          WHERE reservation.sale_order_strap_demand_id = demand.id
+            AND reservation.source = 'strap_engine_base'
+            AND reservation.product_id = demand.base_product_id
+            AND reservation.strap_variant_id = demand.strap_variant_id
+            AND reservation.status = 'consumed'
+            AND abs(
+              reservation.quantity_consumed
+                - demand.gross_required_m / demand.confirmed_yield_snapshot
+            ) <= 0.000001
+       )
+  ), 'Baixa da napa não consumiu as cinco reservas no produto-cor correto';
+  SELECT count(*)::integer
+    INTO v_reservation_count
+    FROM public.material_reservations reservation
+    JOIN public.sale_order_strap_demands demand
+      ON demand.id = reservation.sale_order_strap_demand_id
+   WHERE demand.sale_order_id = v_sale_order_id
+     AND demand.sale_order_item_id = v_sale_order_item_id
+     AND demand.is_current
+     AND reservation.source = 'strap_engine_base'
+     AND reservation.status = 'consumed'
+     AND reservation.product_id = demand.base_product_id
+     AND reservation.strap_variant_id = demand.strap_variant_id
+     AND abs(
+       reservation.quantity_consumed
+         - demand.gross_required_m / demand.confirmed_yield_snapshot
+     ) <= 0.000001;
+  ASSERT v_reservation_count = 5,
+    format('Receipt deveria consumir exatamente cinco reservas-base, consumiu %s', v_reservation_count);
+
+  SELECT count(*)::integer
+    INTO v_reservation_count
+    FROM public.material_reservations reservation
+    JOIN public.sale_order_strap_demands demand
+      ON demand.id = reservation.sale_order_strap_demand_id
+   WHERE demand.sale_order_id = v_sale_order_id
+     AND demand.sale_order_item_id = v_sale_order_item_id
+     AND demand.is_current
+     AND reservation.source = 'strap_engine_finished'
+     AND reservation.status = 'reserved'
+     AND reservation.product_id = demand.finished_product_id
+     AND reservation.strap_variant_id = demand.strap_variant_id
+     AND abs(reservation.quantity_reserved - demand.gross_required_m) <= 0.000001;
+  ASSERT v_reservation_count = 5,
+    format('Produção não converteu as cinco linhas em reservas acabadas exatas: %s', v_reservation_count);
+
+  -- A promoção também usa o command boundary. Se materiais não-tira da ficha
+  -- forem válidos para a cor principal, cria a OP e vincula as cinco reservas.
+  v_promotion_result := public.promote_sale_order_to_production(
+    v_sale_order_id,
+    'Aprovado'
+  );
+  ASSERT jsonb_typeof(coalesce(v_promotion_result -> 'itens_falha', '[]'::jsonb)) = 'array'
+     AND jsonb_array_length(coalesce(v_promotion_result -> 'itens_falha', '[]'::jsonb)) = 0,
+    'Promoção recusou o PV de cores independentes: '
+      || coalesce(v_promotion_result, '{}'::jsonb)::text;
+
+  SELECT (array_agg(production_order.id ORDER BY production_order.id))[1],
+         count(*)::integer
+    INTO v_order_id, v_line_count
+    FROM public.orders production_order
+   WHERE production_order.sale_order_item_id = v_sale_order_item_id
+     AND production_order.deleted_at IS NULL;
+  ASSERT v_order_id IS NOT NULL AND v_line_count = 1,
+    format('Promoção deveria criar uma única OP para o item, encontrou %s', v_line_count);
+  ASSERT NOT EXISTS (
+    SELECT 1
+      FROM public.material_reservations reservation
+      JOIN public.sale_order_strap_demands demand
+        ON demand.id = reservation.sale_order_strap_demand_id
+     WHERE demand.sale_order_id = v_sale_order_id
+       AND demand.sale_order_item_id = v_sale_order_item_id
+       AND demand.is_current
+       AND reservation.source = 'strap_engine_finished'
+       AND reservation.status = 'reserved'
+       AND reservation.order_id IS DISTINCT FROM v_order_id
+  ), 'Promoção não vinculou as reservas acabadas à OP exata';
+
+  -- Picking individual evita que componentes alheios à feature influenciem a
+  -- prova. Cada baixa nasce da reserva UUID-only e o trigger enriquece o fato.
+  FOR v_reservation IN
+    SELECT reservation.id
+      FROM public.material_reservations reservation
+      JOIN public.sale_order_strap_demands demand
+        ON demand.id = reservation.sale_order_strap_demand_id
+     WHERE demand.sale_order_id = v_sale_order_id
+       AND demand.sale_order_item_id = v_sale_order_item_id
+       AND demand.is_current
+       AND reservation.source = 'strap_engine_finished'
+       AND reservation.status = 'reserved'
+     ORDER BY reservation.id
+  LOOP
+    PERFORM public.confirm_picking_reservation(
+      v_reservation.id,
+      'E2E cores independentes'
+    );
+  END LOOP;
+
+  SELECT count(*)::integer
+    INTO v_movement_count
+    FROM public.stock_movements movement
+    JOIN public.sale_order_strap_demands demand
+      ON demand.id = movement.sale_order_strap_demand_id
+   WHERE demand.sale_order_id = v_sale_order_id
+     AND demand.sale_order_item_id = v_sale_order_item_id
+     AND demand.is_current
+     AND movement.movement_type = 'out'
+     AND movement.order_id = v_order_id
+     AND movement.material_reservation_id IS NOT NULL
+     AND movement.product_id = demand.finished_product_id
+     AND movement.finished_product_id = demand.finished_product_id
+     AND movement.strap_variant_id = demand.strap_variant_id
+     AND abs(movement.quantity - demand.gross_required_m) <= 0.000001;
+  ASSERT v_movement_count = 5,
+    format('Picking não gerou cinco baixas acabadas UUID-only, gerou %s', v_movement_count);
+
+  ASSERT NOT EXISTS (
+    SELECT 1
+      FROM public.sale_order_strap_demands demand
+      LEFT JOIN public.material_reservations reservation
+        ON reservation.sale_order_strap_demand_id = demand.id
+       AND reservation.source = 'strap_engine_finished'
+     WHERE demand.sale_order_id = v_sale_order_id
+       AND demand.sale_order_item_id = v_sale_order_item_id
+       AND demand.is_current
+       AND (
+         demand.status IS DISTINCT FROM 'fulfilled'
+         OR demand.fulfilled_m IS DISTINCT FROM demand.gross_required_m
+         OR reservation.status IS DISTINCT FROM 'consumed'
+         OR reservation.quantity_consumed IS DISTINCT FROM demand.gross_required_m
+       )
+  ), 'Consumo final não fechou demanda/reserva por UUID e produto-cor';
+END
+$test$;
+
+SELECT jsonb_build_object(
+  'ok', true,
+  'scenario', 'independent_strap_colors_e2e',
+  'proof', 'auth+writer+oracle+preview+create+worker+receipt+promotion+picking',
+  'rollback', true
+) AS independent_strap_colors_e2e;
+
+ROLLBACK;

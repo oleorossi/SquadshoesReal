@@ -159,7 +159,7 @@ describe('STRASS comprada pronta — correção de contexto sem napa-base', () =
     expect(itemForm).toContain('strapColors: strapPresentationDefinitions');
     expect(itemForm).toContain('const straps = strapPresentationDefinitions');
     expect(itemForm).toContain('const preserveCommittedStrapSnapshot = !!item.id');
-    expect(itemForm).toContain("saleOrderStatus === 'Aprovado' || saleOrderStatus === 'Em Produção'");
+    expect(itemForm).toContain('isCommittedSaleOrderStrapSnapshotStatus(saleOrderStatus)');
     expect(formPanel).toContain('saleOrderStatus={form.status}');
     expect(itemForm).toContain('const persistedLegacySnapshot = preserveCommittedStrapSnapshot');
     expect(itemForm).toContain("strap.color || 'Cor histórica não informada'");

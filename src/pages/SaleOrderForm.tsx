@@ -78,6 +78,7 @@ import {
   isStaleSaleOrderVersionError,
   SaleOrderCommandExecutionError,
 } from '@/lib/saleOrderCommand';
+import { strapColorMode } from '@/lib/technicalStrapLines';
 
 const emptyForm: SaleOrderFormData = {
   client_id: null,
@@ -329,6 +330,10 @@ export function buildCopySeedPayload(args: {
           rest.material_variant_id && activeVariantIds.has(rest.material_variant_id)
             ? rest.material_variant_id
             : null,
+        // As cores/posições são definição física e viajam no novo item, mas a
+        // origem contém receita, variante e agenda do PV anterior. O novo writer
+        // deve resolvê-la novamente no contexto da nova data/variante.
+        strap_sourcing: {},
         selected_terceirizacao_ids: [],
         terceirizacao_quantities: {},
         outsourced_sectors: {},
@@ -476,10 +481,11 @@ export default function SaleOrderForm() {
         : [];
       const semCor = straps.filter((s) => {
         if (!s) return false;
-        const referenceBase = (s.identity_basis || 'reference_base') === 'reference_base';
-        // Para reference_base, a cor principal do item e a intenção: o writer
-        // atômico resolve o UUID e materializa a variante antes do INSERT/UPDATE.
-        if (referenceBase && String(its[i].color || '').trim()) return false;
+        // Somente reference_base + follow_main deriva a identidade da cor
+        // principal. Uma tira interna select_on_order precisa carregar texto e
+        // UUID canônicos da posição, assim como uma tira comprada pronta.
+        if (strapColorMode(s) === 'follow_main'
+            && String(its[i].color || '').trim()) return false;
         return !String(s.color || '').trim() || !String(s.color_id || '').trim();
       });
       if (semCor.length === 0) continue;

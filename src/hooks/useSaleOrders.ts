@@ -23,6 +23,10 @@ import {
   executePurchaseOrderCommand,
   purchaseOrderLogicalKey,
 } from '@/services/purchaseOrderCommandService';
+import {
+  strapColorMode,
+  type StrapColorMode,
+} from '@/lib/technicalStrapLines';
 
 // Rota default viva de uma OP. Usa Corte Fibra (Corte Palmilha é só alias
 // histórico) e mantém as duas costuras independentes. A numeração vem de
@@ -125,15 +129,16 @@ export const opStageOrder = (name: string, idx: number): number => {
 
 /**
  * Achado D (auditoria 2026-07-01): produto acabado sem COR CANÔNICA em
- * `strap_colors` gera consumo fantasma. `reference_base` é a exceção derivada:
- * sua cor vem de `item.color` no writer atômico; `finished_product_group`
- * continua exigindo texto + UUID próprios antes de criar OP.
+ * `strap_colors` gera consumo fantasma. Só `reference_base + follow_main` é a
+ * exceção derivada: sua cor vem de `item.color` no writer atômico. Toda linha
+ * `select_on_order` exige texto + UUID próprios antes de criar OP.
  *
  * Retorna mensagens "Tira X (item REF/cor)" — vazio quando está tudo ok.
  */
 type StrapColorValidationLine = {
   technical_strap_line_id?: string | null;
-  identity_basis?: string | null;
+  identity_basis?: 'reference_base' | 'finished_product_group' | null;
+  color_mode?: StrapColorMode | null;
   color?: string | null;
   color_id?: string | null;
   label?: string | null;
@@ -149,10 +154,11 @@ export function listarTirasSemCor(
     for (let i = 0; i < straps.length; i++) {
       const strap = straps[i];
       if (!strap || typeof strap !== 'object') continue;
-      const referenceBase = (strap.identity_basis || 'reference_base') === 'reference_base';
-      // A linha artesanal recebe a cor principal no writer atômico. A cor
-      // própria continua obrigatória somente para produto acabado/STRASS.
-      if (referenceBase && String(item.color || '').trim()) continue;
+      const followsMain = strapColorMode(strap) === 'follow_main';
+      // Somente a linha artesanal configurada para seguir o item recebe a cor
+      // principal no writer atômico. Tira interna `select_on_order` também
+      // precisa carregar a identidade canônica escolhida nesta posição.
+      if (followsMain && String(item.color || '').trim()) continue;
       const cor = String(strap.color ?? '').trim();
       const colorId = String(strap.color_id ?? '').trim();
       if (cor && colorId) continue;
@@ -535,6 +541,7 @@ export type SaleOrderItemFormData = {
     strap_type_id?: string | null;
     measure_id?: string | null;
     identity_basis?: 'reference_base' | 'finished_product_group' | null;
+    color_mode?: StrapColorMode | null;
     identity_group_id?: string | null;
     color_id?: string | null;
     group_id?: string | null;

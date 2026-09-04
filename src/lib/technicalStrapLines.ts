@@ -5,12 +5,15 @@ import {
   type StrapIdentityLike,
 } from '@/lib/strapIdentity';
 
+export type StrapColorMode = 'follow_main' | 'select_on_order';
+
 /** Identidade imutável de uma linha de tira da ficha técnica. */
 export interface TechnicalStrapLineLike extends StrapIdentityLike {
   id?: string | null;
   technical_strap_line_id?: string | null;
   strap_type_id?: string | null;
   measure_id?: string | null;
+  color_mode?: StrapColorMode | null;
 }
 
 export interface TechnicalStrapMeasureLike {
@@ -24,7 +27,10 @@ export interface TechnicalStrapTypeLike {
   active?: boolean | null;
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+// O tipo `uuid` do Postgres aceita a forma textual canônica sem restringir
+// versão/variant bits. A identidade técnica deve seguir o banco para não
+// regenerar, por exemplo, um UUID v7 válido como se fosse uma linha legada.
+const UUID_RE = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 
 export function isUuid(value: unknown): value is string {
   return typeof value === 'string' && UUID_RE.test(value);
@@ -32,6 +38,31 @@ export function isUuid(value: unknown): value is string {
 
 export function newTechnicalStrapLineId(): string {
   return crypto.randomUUID();
+}
+
+/**
+ * Ausência no JSON legado preserva o comportamento histórico: tira interna
+ * segue a cor principal; tira comprada pronta sempre exige seleção no pedido.
+ */
+export function strapColorMode(
+  line: TechnicalStrapLineLike | null | undefined,
+): StrapColorMode {
+  if (strapIdentityBasis(line) === 'finished_product_group') return 'select_on_order';
+  return line?.color_mode === 'select_on_order' ? 'select_on_order' : 'follow_main';
+}
+
+export function applyTechnicalStrapColorMode<T extends TechnicalStrapLineLike>(
+  line: T,
+  colorMode: StrapColorMode,
+): T & { color_mode: StrapColorMode } {
+  return {
+    ...line,
+    color_mode: strapIdentityBasis(line) === 'finished_product_group'
+      ? 'select_on_order'
+      : colorMode === 'select_on_order'
+        ? 'select_on_order'
+        : 'follow_main',
+  };
 }
 
 /**
@@ -48,6 +79,7 @@ export function ensureTechnicalStrapLineIds<T extends object & TechnicalStrapLin
   technical_strap_line_id: string;
   identity_basis: StrapIdentityBasis;
   identity_group_id: string | null;
+  color_mode: StrapColorMode;
 }> {
   return (lines || []).map((line) => {
     const existing = !forceNew
@@ -58,11 +90,12 @@ export function ensureTechnicalStrapLineIds<T extends object & TechnicalStrapLin
           : null)
       : null;
     const technicalStrapLineId = existing || newTechnicalStrapLineId();
-    return normalizeStrapIdentity({
+    const normalized = normalizeStrapIdentity({
       ...line,
       id: technicalStrapLineId,
       technical_strap_line_id: technicalStrapLineId,
     });
+    return applyTechnicalStrapColorMode(normalized, strapColorMode(normalized));
   });
 }
 
@@ -92,12 +125,17 @@ export function applyTechnicalStrapIdentity<T extends TechnicalStrapLineLike>(
   line: T,
   identityBasis: StrapIdentityBasis,
   identityGroupId?: string | null,
-): T & { identity_basis: StrapIdentityBasis; identity_group_id: string | null } {
-  return {
+): T & {
+  identity_basis: StrapIdentityBasis;
+  identity_group_id: string | null;
+  color_mode: StrapColorMode;
+} {
+  const identified = {
     ...line,
     identity_basis: identityBasis,
     identity_group_id: identityBasis === 'finished_product_group' ? identityGroupId || null : null,
   };
+  return applyTechnicalStrapColorMode(identified, strapColorMode(identified));
 }
 
 export function hasCanonicalTechnicalStrapIdentity(

@@ -245,11 +245,11 @@ describe('S-039 — resolução canônica das tiras', () => {
     expect(hooks).toContain("queryClient.invalidateQueries({ queryKey: ['artisanal-strap-catalog'] })");
   });
 
-  it('faz reference_base seguir o cabedal e mantém finished_product_group independente', () => {
+  it('faz reference_base follow_main seguir o cabedal e mantém as demais cores independentes', () => {
     expect(itemForm).toContain('const canonicalStrapColorByKey = useMemo(() => {');
     expect(itemForm).toContain("alias.status === 'approved'");
     expect(itemForm).toContain('if (ids.size !== 1) return');
-    expect(itemForm).toContain("if (strapIdentityBasis(presentation) !== 'reference_base') return strap");
+    expect(itemForm).toContain("|| strapColorMode(presentation) !== 'follow_main') return strap");
     expect(itemForm).toContain('const targetColor = canonicalMainStrapColor?.name || item.color.trim()');
     expect(itemForm).toContain('return { ...strap, color: targetColor, color_id: targetColorId }');
     expect(itemForm).toContain("if (strapIdentityBasis(strap) === 'reference_base') return strap");

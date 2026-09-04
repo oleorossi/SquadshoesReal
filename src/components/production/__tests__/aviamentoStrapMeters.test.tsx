@@ -48,6 +48,56 @@ const aviamentoGroup: SoleSilkGroup = {
 };
 
 describe('SilkMontageWorkSheet · Aviamento · Consumo de Tiras (metros)', () => {
+  it('mostra a sequência técnica e a cor efetiva de cada tira, inclusive sem medida', () => {
+    const withSequence: SoleSilkGroup = {
+      ...aviamentoGroup,
+      colorGroups: [{
+        ...aviamentoGroup.colorGroups[0],
+        components: [
+          {
+            position: 1,
+            technicalStrapLineId: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+            name: 'TIRA 1',
+            color: 'AZUL',
+            cm: 40,
+          },
+          {
+            position: 2,
+            technicalStrapLineId: '11111111-1111-4111-8111-111111111111',
+            name: 'ALÇA FRONTAL',
+            color: 'BRANCO',
+            cm: 42,
+          },
+          {
+            position: 3,
+            technicalStrapLineId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+            name: 'TIRA 3',
+            color: 'VERMELHO',
+          },
+        ],
+      }],
+    };
+
+    const { container, rerender } = render(
+      <SilkMontageWorkSheet groups={[withSequence]} sector="Aviamento" />,
+    );
+    const rows = Array.from(container.querySelectorAll<HTMLElement>('[data-strap-position]'));
+
+    expect(rows.map((row) => row.dataset.strapPosition)).toEqual(['1', '2', '3']);
+    expect(rows[0]).toHaveTextContent('TIRA 1');
+    expect(rows[0]).toHaveTextContent('AZUL');
+    expect(rows[1]).toHaveTextContent('TIRA 2');
+    expect(rows[1]).toHaveTextContent('ALÇA FRONTAL');
+    expect(rows[1]).toHaveTextContent('BRANCO');
+    expect(rows[2]).toHaveTextContent('TIRA 3');
+    expect(rows[2]).toHaveTextContent('VERMELHO');
+    expect(rows[2]).toHaveTextContent('—');
+    expect(screen.getByText(/cor escolhida no PV/i)).toBeInTheDocument();
+
+    rerender(<SilkMontageWorkSheet groups={[withSequence]} sector="Montagem" />);
+    expect(container.querySelector('[data-strap-position]')).toBeNull();
+  });
+
   it('renderiza o bloco de metros de tira e o Total Geral quando há tiras', () => {
     render(<SilkMontageWorkSheet groups={[aviamentoGroup]} sector="Aviamento" />);
 

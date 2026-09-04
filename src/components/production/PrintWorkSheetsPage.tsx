@@ -38,6 +38,29 @@ import { pmgLabelForSize } from '@/lib/aviamentoSizeRanges';
 import { useAviamentoPmgDefault } from '@/hooks/useAviamentoPmgDefault';
 import { getUpperWorkEligibility, requiresUpperCut } from '@/lib/upperCutEligibility';
 import { leftoverLabelsFromSheet } from '@/lib/cabedalLeftover';
+import {
+  effectiveOperatorStrapColor,
+  operatorStrapGroupingSignature,
+  operatorStrapSequence,
+  type OperatorStrapLineLike,
+} from '@/lib/operatorStrapSequence';
+
+interface PrintableOperatorStrapLine extends OperatorStrapLineLike {
+  group_name?: string | null;
+}
+
+interface PrintableOrderStrapSnapshot {
+  strap_colors?: unknown;
+  color?: string | null;
+}
+
+function printableOperatorStraps(
+  order: PrintableOrderStrapSnapshot,
+): PrintableOperatorStrapLine[] {
+  return Array.isArray(order.strap_colors)
+    ? order.strap_colors as PrintableOperatorStrapLine[]
+    : [];
+}
 
 /**
  * CSS do modo CARTÃO (aprovado pelo dono 31/07/2026 — "Opção B, 3 colunas").
@@ -2089,19 +2112,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     // — antes a chave ignorava tiras e cospia 1 ficha só com as tiras da 1ª
     // OP, virando fantasma as tiras das demais (bug reportado 2026-05-18).
     // Modelos sem tiras: retorna '' (não muda nada — comportamento atual).
-    const computeStrapSignature = (order: any): string => {
-      const raw = Array.isArray(order?.strap_colors) ? order.strap_colors : [];
-      if (raw.length === 0) return '';
-      return [...raw]
-        .sort((a: any, b: any) => {
-          const ka = parseInt(a?.id, 10);
-          const kb = parseInt(b?.id, 10);
-          if (isFinite(ka) && isFinite(kb)) return ka - kb;
-          return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
-        })
-        .map((s: any) => `${(s?.label || 'TIRA').toUpperCase()}=${(s?.color || '').toUpperCase().trim()}`)
-        .join('|');
-    };
+    const computeStrapSignature = (order: PrintableOrderStrapSnapshot): string =>
+      operatorStrapGroupingSignature(printableOperatorStraps(order), order.color);
 
     for (const order of expandedOrders) {
       const sheetId = order.reference_id;
@@ -2201,16 +2213,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
         }
         // Sequência de tiras na ordem da ficha técnica (TIRA 1, TIRA 2, ...).
         // Renderizada no Aviamento pra o operador montar na ordem certa.
-        // Stable sort por id (string) pra garantir consistência.
-        const strapColorsRaw = Array.isArray((order as any).strap_colors)
-          ? ((order as any).strap_colors as Array<any>)
-          : [];
-        const strapsOrdered = [...strapColorsRaw].sort((a: any, b: any) => {
-          const ka = parseInt(a?.id, 10);
-          const kb = parseInt(b?.id, 10);
-          if (isFinite(ka) && isFinite(kb)) return ka - kb;
-          return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
-        });
+        // A posição no array é a posição técnica. UUID identifica a linha, mas
+        // não carrega ordem; snapshots antigos inteiramente numéricos seguem
+        // ordenados pelo helper de compatibilidade.
+        const strapColorsRaw = printableOperatorStraps(order);
+        const strapsOrdered = operatorStrapSequence(strapColorsRaw);
         // Resolução de faixa P/M/G do Aviamento (mesma do grid: override por ref →
         // padrão global → sem faixa). Usada pra quebrar a MEDIDA da tira por faixa,
         // porque cada numeração tem um comprimento (consumption_per_size).
@@ -2222,12 +2229,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           if (useDefaultAviStrap) return pmgLabelForSize(size, aviamentoDefaultBoundaries!);
           return null;
         };
-        const strapsAsComponents = strapsOrdered.map((s: any) => {
+        const strapsAsComponents = strapsOrdered.map((s, strapIndex) => {
           // Medida da tira em CM por PAR (strap_colors[].consumption[_per_size] já é
           // cm/par — ver GradingCadTab "comprimento base (cm)"). Quebra por faixa
           // P/M/G (cada tamanho tem um comprimento); usa o MAIOR cm da faixa.
           const cps = (s?.consumption_per_size && typeof s.consumption_per_size === 'object')
-            ? (s.consumption_per_size as Record<string, any>) : {};
+            ? s.consumption_per_size : {};
           const bandCm: Record<string, number> = {};
           const bandOrder: string[] = [];
           for (const size of Object.keys(cps).sort((a, b) => Number(a) - Number(b))) {
@@ -2249,10 +2256,14 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             if (v > 0) cmBySize[size] = Math.round(v * 10) / 10;
           }
           return {
-            name: s?.label || 'TIRA',
+            position: strapIndex + 1,
+            technicalStrapLineId: s?.technical_strap_line_id || s?.id || undefined,
+            name: s?.label || `TIRA ${strapIndex + 1}`,
             material: s?.group_name || '',
             qty: undefined,
-            color: s?.color || '—',
+            // O snapshot por linha é autoritativo. Pedidos antigos, nos quais
+            // a tira ainda não repetia a cor no JSON, seguem a cor principal.
+            color: effectiveOperatorStrapColor(s, colorName),
             cm: Number(s?.consumption) > 0 ? Math.round(Number(s.consumption) * 10) / 10 : undefined,
             cmBands: cmBands.length >= 2 ? cmBands : undefined,
             cmBySize: Object.keys(cmBySize).length > 0 ? cmBySize : undefined,
@@ -2928,17 +2939,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       // Materiais técnicos da ficha.
       const mats = sheetMaterialsByRef.get(order.reference_id) || { upper: null, lining: null, insole: null };
 
-      // Tiras configuradas no item de venda (ordenadas por id numérico).
+      // Tiras configuradas no item de venda, na posição técnica do snapshot.
       const strapColorsRaw = Array.isArray((order as any).strap_colors)
         ? ((order as any).strap_colors as Array<any>)
         : [];
-      const straps = [...strapColorsRaw]
-        .sort((a: any, b: any) => {
-          const ka = parseInt(a?.id, 10);
-          const kb = parseInt(b?.id, 10);
-          if (isFinite(ka) && isFinite(kb)) return ka - kb;
-          return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
-        })
+      const straps = operatorStrapSequence(strapColorsRaw)
         .map((s: any) => ({
           label: s?.label || undefined,
           color: s?.color || undefined,
@@ -3868,12 +3873,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             const strapsRaw = Array.isArray((representative as any).strap_colors)
               ? ((representative as any).strap_colors as Array<any>)
               : [];
-            const strapColorsOrdered = [...strapsRaw].sort((a: any, b: any) => {
-              const ka = parseInt(a?.id, 10);
-              const kb = parseInt(b?.id, 10);
-              if (isFinite(ka) && isFinite(kb)) return ka - kb;
-              return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
-            });
+            const strapColorsOrdered = operatorStrapSequence(strapsRaw);
             return {
               order: syntheticOrder,
               silk,
@@ -3998,12 +3998,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             const strapsRaw = Array.isArray((order as any).strap_colors)
               ? ((order as any).strap_colors as Array<any>)
               : [];
-            const strapColorsOrdered = [...strapsRaw].sort((a: any, b: any) => {
-              const ka = parseInt(a?.id, 10);
-              const kb = parseInt(b?.id, 10);
-              if (isFinite(ka) && isFinite(kb)) return ka - kb;
-              return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
-            });
+            const strapColorsOrdered = operatorStrapSequence(strapsRaw);
             const acabPairsPerBox = resolveAcabPairsPerBox(order);
             return {
               order: syntheticOrder,

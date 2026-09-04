@@ -31,6 +31,7 @@ describe('isTechnicalSheetCloneCompletionConfirmed', () => {
       id: 1,
       label: 'TIRA LEGADA',
       quantity: 2,
+      color_mode: 'select_on_order',
     }]);
 
     expect(line).toMatchObject({
@@ -38,6 +39,7 @@ describe('isTechnicalSheetCloneCompletionConfirmed', () => {
       quantity: 2,
       identity_basis: 'reference_base',
       identity_group_id: null,
+      color_mode: 'select_on_order',
     });
     expect(line.id).toMatch(/^[0-9a-f-]{36}$/i);
     expect(line.technical_strap_line_id).toBe(line.id);

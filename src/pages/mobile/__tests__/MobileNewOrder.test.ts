@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  clearIncompatibleMobileStrapSelections,
   buildMobileSaleOrderItemsPayload,
+  mobileIndependentStrapColorIssues,
+  mobileIndependentStrapReviewLines,
   MOBILE_TECHNICAL_SHEET_SELECT,
   mobileReferenceSizes,
   mobileFinishedStrapIdentityIssues,
@@ -8,11 +11,17 @@ import {
   mobileConfirmationCommercialIssue,
   mobileMaterialSelectionIssues,
   mobileOwnerSessionChanged,
+  mobileSelectableStrapCatalogIssues,
+  mobileSelectableStrapValidationIssues,
+  normalizeMobileDraftStrapSnapshots,
   repriceMobileDraftItems,
   referencesWithMissingStrapSnapshot,
+  resetMobileStrapsForMaterialChange,
+  updateMobileDraftItem,
 } from '../MobileNewOrder';
 import type { PriceLookup } from '@/lib/mobile/clientContext';
 import type { MobileSaleOrderData } from '@/lib/mobile/offlineQueue';
+import type { ArtisanalStrapCatalog } from '@/hooks/useArtisanalStraps';
 
 describe('referencesWithMissingStrapSnapshot', () => {
   const reference = {
@@ -161,8 +170,9 @@ describe('identidade comercial material no PV mobile', () => {
     expect(payload[0]).not.toHaveProperty('material_variant_sku');
   });
 
-  it('alinha reference_base ao cabedal e preserva a cor própria do produto acabado', () => {
+  it('alinha somente reference_base follow_main e preserva cores selecionadas por posição', () => {
     const lineBase = '11111111-1111-4111-8111-111111111111';
+    const lineIndependent = '88888888-8888-4888-8888-888888888888';
     const lineReady = '22222222-2222-4222-8222-222222222222';
     const draft = {
       reference_id: 'ref-1',
@@ -176,6 +186,14 @@ describe('identidade comercial material no PV mobile', () => {
         color: 'PRETO',
         color_id: '33333333-3333-4333-8333-333333333333',
       }, {
+        technical_strap_line_id: lineIndependent,
+        identity_basis: 'reference_base',
+        color_mode: 'select_on_order',
+        strap_type_id: '55555555-5555-4555-8555-555555555555',
+        measure_id: '66666666-6666-4666-8666-666666666666',
+        color: 'DOURADO',
+        color_id: '99999999-9999-4999-8999-999999999999',
+      }, {
         technical_strap_line_id: lineReady,
         identity_basis: 'finished_product_group',
         identity_group_id: '44444444-4444-4444-8444-444444444444',
@@ -184,19 +202,397 @@ describe('identidade comercial material no PV mobile', () => {
         color: 'STRASS PRATA',
         color_id: '77777777-7777-4777-8777-777777777777',
       }],
-      strap_sourcing: {},
+      strap_sourcing: {
+        [lineBase]: { source_mode: 'internal' as const },
+        [lineIndependent]: { source_mode: 'internal' as const },
+        [lineReady]: { source_mode: 'buy_ready' as const },
+      },
     };
     const payload = buildMobileSaleOrderItemsPayload([draft]);
 
     expect(payload[0].strap_colors?.[0]).toMatchObject({
+      color_mode: 'follow_main',
       color: 'OFF WHITE',
       color_id: null,
     });
     expect(payload[0].strap_colors?.[1]).toMatchObject({
+      color_mode: 'select_on_order',
+      color: 'DOURADO',
+      color_id: '99999999-9999-4999-8999-999999999999',
+    });
+    expect(payload[0].strap_colors?.[2]).toMatchObject({
+      color_mode: 'select_on_order',
       color: 'STRASS PRATA',
       color_id: '77777777-7777-4777-8777-777777777777',
     });
+    expect(payload[0].strap_sourcing).not.toHaveProperty(lineBase);
+    expect(payload[0].strap_sourcing).toHaveProperty(lineIndependent);
+    expect(payload[0].strap_sourcing).toHaveProperty(lineReady);
     expect(mobileFinishedStrapIdentityIssues([draft])).toEqual([]);
+  });
+
+  it('normaliza cache offline legado sem perder color_mode nem color_id independente', () => {
+    const restored = normalizeMobileDraftStrapSnapshots([{
+      reference_id: 'ref-1',
+      reference_name: 'BT01',
+      color: 'OFF WHITE',
+      grade: { '37': 10 },
+      unit_price: 137.5,
+      strap_colors: [{
+        technical_strap_line_id: '11111111-1111-4111-8111-111111111111',
+        identity_basis: 'reference_base',
+        color: 'PRETO',
+        color_id: '33333333-3333-4333-8333-333333333333',
+      }, {
+        technical_strap_line_id: '88888888-8888-4888-8888-888888888888',
+        identity_basis: 'reference_base',
+        color_mode: 'select_on_order',
+        color: 'DOURADO',
+        color_id: '99999999-9999-4999-8999-999999999999',
+      }],
+    }])[0];
+
+    expect(restored.strap_colors?.[0]).toMatchObject({
+      color_mode: 'follow_main',
+      color: 'OFF WHITE',
+      color_id: null,
+    });
+    expect(restored.strap_colors?.[1]).toMatchObject({
+      color_mode: 'select_on_order',
+      color: 'DOURADO',
+      color_id: '99999999-9999-4999-8999-999999999999',
+    });
+  });
+
+  it('ao trocar material preserva as cores independentes e limpa todo sourcing para recálculo', () => {
+    const lineFollow = '11111111-1111-4111-8111-111111111111';
+    const lineIndependent = '88888888-8888-4888-8888-888888888888';
+    const reset = resetMobileStrapsForMaterialChange({
+      reference_id: 'ref-1',
+      reference_name: 'BT01',
+      color: 'PRETO',
+      grade: { '37': 10 },
+      unit_price: 137.5,
+      strap_colors: [{
+        technical_strap_line_id: lineFollow,
+        identity_basis: 'reference_base',
+        color_mode: 'follow_main',
+        color: 'PRETO',
+        color_id: '33333333-3333-4333-8333-333333333333',
+      }, {
+        technical_strap_line_id: lineIndependent,
+        identity_basis: 'reference_base',
+        color_mode: 'select_on_order',
+        color: 'DOURADO',
+        color_id: '99999999-9999-4999-8999-999999999999',
+      }],
+      strap_sourcing: {
+        [lineFollow]: { source_mode: 'internal' },
+        [lineIndependent]: { source_mode: 'internal' },
+      },
+    });
+
+    expect(reset.strap_colors?.[0]).toMatchObject({ color: '', color_id: null });
+    expect(reset.strap_colors?.[1]).toMatchObject({
+      color_mode: 'select_on_order',
+      color: 'DOURADO',
+      color_id: '99999999-9999-4999-8999-999999999999',
+    });
+    expect(reset.strap_sourcing).toEqual({});
+  });
+
+  it('exige cor canônica em reference_base select_on_order', () => {
+    const baseItem = {
+      reference_id: 'ref-1',
+      reference_name: 'I91',
+      color: 'OFF WHITE',
+      grade: { '37': 10 },
+      unit_price: 137.5,
+    };
+    const selectable = {
+      technical_strap_line_id: '88888888-8888-4888-8888-888888888888',
+      identity_basis: 'reference_base',
+      color_mode: 'select_on_order',
+      strap_type_id: '55555555-5555-4555-8555-555555555555',
+      measure_id: '66666666-6666-4666-8666-666666666666',
+      label: 'Tira 2',
+      color: '',
+      color_id: null,
+    };
+
+    expect(mobileIndependentStrapColorIssues([{
+      ...baseItem,
+      strap_colors: [selectable],
+    }])[0]).toContain('I91: Tira 2');
+    expect(mobileIndependentStrapColorIssues([{
+      ...baseItem,
+      strap_colors: [{
+        ...selectable,
+        color: 'DOURADO',
+        color_id: '99999999-9999-4999-8999-999999999999',
+      }],
+    }])).toEqual([]);
+    expect(mobileIndependentStrapColorIssues([{
+      ...baseItem,
+      strap_colors: [{ ...selectable, color_mode: undefined }],
+    }])).toEqual([]);
+  });
+
+  it('limpa cor e sourcing incompatíveis com o novo grupo-base', () => {
+    const lineId = '88888888-8888-4888-8888-888888888888';
+    const blackId = '33333333-3333-4333-8333-333333333333';
+    const goldId = '99999999-9999-4999-8999-999999999999';
+    const catalog = {
+      colors: [
+        { id: blackId, name: 'PRETO', active: true },
+        { id: goldId, name: 'DOURADO', active: true },
+      ],
+      aliases: [],
+      official_products: [{
+        base_group_id: 'group-new',
+        color_id: blackId,
+        official_product_id: 'product-black',
+        status: 'active',
+      }],
+      products: [{
+        id: 'product-black',
+        name: 'NAPA PRETO',
+        group_id: 'group-new',
+        color: 'PRETO',
+        active: true,
+      }],
+      variants: [],
+    } as unknown as ArtisanalStrapCatalog;
+    const item = {
+      reference_id: 'ref-1',
+      reference_name: 'I91',
+      color: 'OFF WHITE',
+      grade: { '37': 10 },
+      unit_price: 137.5,
+      strap_colors: [{
+        technical_strap_line_id: lineId,
+        identity_basis: 'reference_base',
+        color_mode: 'select_on_order',
+        color: 'DOURADO',
+        color_id: goldId,
+      }],
+      strap_sourcing: {
+        [lineId]: {
+          source_mode: 'internal' as const,
+          color_id: goldId,
+          strap_variant_id: '77777777-7777-4777-8777-777777777777',
+        },
+      },
+    };
+
+    const result = clearIncompatibleMobileStrapSelections(item, catalog, [{
+      technicalStrapLineId: lineId,
+      baseGroupId: 'group-new',
+    }]);
+
+    expect(result.clearedLineIds).toEqual([lineId]);
+    expect(result.item.strap_colors?.[0]).toMatchObject({ color: '', color_id: null });
+    expect(result.item.strap_sourcing).not.toHaveProperty(lineId);
+  });
+
+  it('valida medida/tipo e membership da cor no grupo-base efetivo', () => {
+    const lineId = '88888888-8888-4888-8888-888888888888';
+    const typeId = '55555555-5555-4555-8555-555555555555';
+    const measureId = '66666666-6666-4666-8666-666666666666';
+    const groupId = '44444444-4444-4444-8444-444444444444';
+    const blackId = '33333333-3333-4333-8333-333333333333';
+    const goldId = '99999999-9999-4999-8999-999999999999';
+    const catalog = {
+      types: [{ id: typeId, name: 'Tira chata', active: true }],
+      measures: [{ id: measureId, strap_type_id: typeId, display_name: '8 mm', finished_width_mm: 8, active: true }],
+      colors: [
+        { id: blackId, name: 'PRETO', active: true },
+        { id: goldId, name: 'DOURADO', active: true },
+      ],
+      aliases: [],
+      width_profiles: [],
+      official_products: [{
+        base_group_id: groupId,
+        color_id: blackId,
+        official_product_id: 'product-black',
+        status: 'active',
+      }],
+      variants: [],
+      recipes: [],
+      legacy_recipes: [],
+      products: [{
+        id: 'product-black',
+        name: 'NAPA PRETO',
+        group_id: groupId,
+        color: 'PRETO',
+        active: true,
+      }],
+      groups: [],
+      capabilities: {
+        manage_strap_catalog: false,
+        administer_strap_operations: false,
+        approve_strap_recipe: false,
+        execute_strap_batch: false,
+        resolve_strap_migration: false,
+      },
+    } satisfies ArtisanalStrapCatalog;
+    const item = {
+      reference_id: 'ref-1',
+      reference_name: 'I91',
+      color: 'OFF WHITE',
+      grade: { '37': 10 },
+      unit_price: 137.5,
+      strap_colors: [{
+        technical_strap_line_id: lineId,
+        identity_basis: 'reference_base',
+        color_mode: 'select_on_order',
+        strap_type_id: typeId,
+        measure_id: measureId,
+        label: 'Tira 2',
+        color: 'PRETO',
+        color_id: blackId,
+      }],
+    };
+    const resolved = [{ technicalStrapLineId: lineId, baseGroupId: groupId }];
+
+    expect(mobileSelectableStrapCatalogIssues(item, catalog, resolved)).toEqual([]);
+    expect(mobileSelectableStrapCatalogIssues({
+      ...item,
+      strap_colors: [{ ...item.strap_colors[0], color: 'DOURADO', color_id: goldId }],
+    }, catalog, resolved)[0]).toContain('não pertence ao grupo-base efetivo');
+    expect(mobileSelectableStrapCatalogIssues({
+      ...item,
+      strap_colors: [{ ...item.strap_colors[0], measure_id: blackId }],
+    }, catalog, resolved)[0]).toContain('família/medida ativa e compatível');
+    expect(mobileSelectableStrapCatalogIssues(item, catalog, [
+      { technicalStrapLineId: lineId, baseGroupId: null },
+    ])[0]).toContain('grupo-base efetivo');
+  });
+
+  it('permite enfileirar offline um snapshot completo sem depender do catálogo/preview em memória', () => {
+    const item = {
+      reference_id: 'ref-1',
+      reference_name: 'I91',
+      color: 'COR COMERCIAL FORA DO CATÁLOGO DE TIRAS',
+      grade: { '37': 10 },
+      unit_price: 137.5,
+      strap_colors: [{
+        technical_strap_line_id: '88888888-8888-4888-8888-888888888888',
+        identity_basis: 'reference_base',
+        color_mode: 'select_on_order',
+        strap_type_id: '55555555-5555-4555-8555-555555555555',
+        measure_id: '66666666-6666-4666-8666-666666666666',
+        label: 'Tira 1',
+        color: 'DOURADO',
+        color_id: '99999999-9999-4999-8999-999999999999',
+      }, {
+        technical_strap_line_id: '22222222-2222-4222-8222-222222222222',
+        identity_basis: 'finished_product_group',
+        identity_group_id: '44444444-4444-4444-8444-444444444444',
+        color_mode: 'select_on_order',
+        strap_type_id: '55555555-5555-4555-8555-555555555555',
+        measure_id: '66666666-6666-4666-8666-666666666666',
+        label: 'Tira 2',
+        color: 'STRASS PRATA',
+        color_id: '77777777-7777-4777-8777-777777777777',
+      }],
+    };
+
+    expect(mobileSelectableStrapValidationIssues({
+      item,
+      online: false,
+      catalog: undefined,
+      catalogLoading: true,
+      catalogError: 'network unavailable',
+      resolvedLines: [],
+      resolvedLinesLoading: true,
+      resolvedLinesFailed: true,
+    })).toEqual([]);
+    expect(mobileSelectableStrapValidationIssues({
+      item,
+      online: true,
+      catalog: undefined,
+      catalogLoading: false,
+      catalogError: 'network unavailable',
+      resolvedLines: [],
+      resolvedLinesLoading: false,
+      resolvedLinesFailed: true,
+    })[0]).toContain('não foi possível carregar o catálogo');
+  });
+
+  it('mantém a validação estrutural obrigatória no modo offline', () => {
+    const item = {
+      reference_id: 'ref-1',
+      reference_name: 'I91',
+      color: 'OFF WHITE',
+      grade: { '37': 10 },
+      unit_price: 137.5,
+      strap_colors: [{
+        technical_strap_line_id: '88888888-8888-4888-8888-888888888888',
+        identity_basis: 'reference_base',
+        color_mode: 'select_on_order',
+        strap_type_id: '55555555-5555-4555-8555-555555555555',
+        measure_id: null,
+        label: 'Tira 1',
+        color: 'DOURADO',
+        color_id: '99999999-9999-4999-8999-999999999999',
+      }],
+    };
+
+    expect(mobileSelectableStrapValidationIssues({
+      item,
+      online: false,
+      catalog: undefined,
+      catalogLoading: false,
+      catalogError: null,
+      resolvedLines: [],
+      resolvedLinesLoading: false,
+      resolvedLinesFailed: false,
+    })[0]).toContain('identidade estrutural completa');
+  });
+
+  it('resume as cores independentes na sequência TIRA N da revisão', () => {
+    const lines = mobileIndependentStrapReviewLines({
+      reference_id: 'ref-1',
+      reference_name: 'I91',
+      color: 'OFF WHITE',
+      grade: { '37': 10 },
+      unit_price: 137.5,
+      strap_colors: [{
+        identity_basis: 'reference_base',
+        color_mode: 'follow_main',
+        color: 'OFF WHITE',
+      }, {
+        technical_strap_line_id: '88888888-8888-4888-8888-888888888888',
+        identity_basis: 'reference_base',
+        color_mode: 'select_on_order',
+        color: 'DOURADO',
+      }, {
+        technical_strap_line_id: '99999999-9999-4999-8999-999999999999',
+        identity_basis: 'finished_product_group',
+        color: 'PRETO',
+      }],
+    });
+
+    expect(lines.map((line) => [line.position, line.color])).toEqual([
+      ['TIRA 2', 'DOURADO'],
+      ['TIRA 3', 'PRETO'],
+    ]);
+  });
+
+  it('descarta callback assíncrono velho sem sobrescrever outro item', () => {
+    const first = {
+      reference_id: 'ref-1', reference_name: 'I91', color: 'PRETO', grade: {}, unit_price: 100,
+    };
+    const second = {
+      reference_id: 'ref-2', reference_name: 'I90', color: 'BRANCO', grade: {}, unit_price: 120,
+    };
+    const current = [first, second];
+    const updated = updateMobileDraftItem(current, first, 0, (item) => ({ ...item, unit_price: 130 }));
+
+    expect(updated[0].unit_price).toBe(130);
+    expect(updated[1]).toBe(second);
+    expect(updateMobileDraftItem(updated, first, 0, () => ({ ...first, unit_price: 90 }))).toBe(updated);
   });
 
   it('não exige source client-side, mas bloqueia cor/estrutura incompleta do produto acabado', () => {

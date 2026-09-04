@@ -5,8 +5,15 @@
 > STRASS, com identidade independente da napa da referência.
 
 > **Override prospectivo confirmado pelo usuário em 18/08/2026 — origem no PV.**
-> A partir desta decisão, uma linha `reference_base` não nasce sem origem e não oferece
-> escolha manual: ela herda a cor principal do item e o material estrutural do cabedal
+> **Atualização:** a origem continua automática (`reference_base → internal`), mas a
+> política de cor passou a ser configurável por posição. Linhas legadas seguem a cor
+> principal; linhas `select_on_order` recebem cor canônica própria no PV. O contrato
+> vigente está em `specs/cores-independentes-por-tira-no-pv.md` e substitui somente as
+> afirmações deste documento que acoplavam cor principal à identidade `reference_base`.
+>
+> A partir desta decisão, uma linha `reference_base` não nasce sem origem: ela usa o
+> material estrutural do cabedal e sua política de cor define se herda a cor principal
+> ou exige seleção própria no pedido.
 > resolvido pela ficha/variante, e nasce `internal`. Ao cadastrar ou alterar essa intenção
 > no PV, o escritor server-side deve criar ou reutilizar atomicamente somente a identidade
 > exata exigida e persistir o snapshot. Uma linha `finished_product_group` — inclusive

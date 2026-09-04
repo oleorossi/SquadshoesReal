@@ -19,6 +19,39 @@ export const SALE_ORDER_STATUS = {
 
 export type SaleOrderStatus = (typeof SALE_ORDER_STATUS)[keyof typeof SALE_ORDER_STATUS];
 
+function normalizeSaleOrderStatusAlias(status: unknown): string {
+  return String(status ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+const COMMITTED_STRAP_SNAPSHOT_STATUSES = new Set([
+  SALE_ORDER_STATUS.APROVADO,
+  SALE_ORDER_STATUS.EM_PRODUCAO,
+  SALE_ORDER_STATUS.FATURADO,
+  SALE_ORDER_STATUS.EXPEDIDO,
+  SALE_ORDER_STATUS.CONCLUIDO,
+  SALE_ORDER_STATUS.FINALIZADO_SEM_NF,
+  SALE_ORDER_STATUS.CANCELADO,
+  // Grafias legadas ainda reconhecidas pelas migrations/consultas históricas.
+  'Finalizado sem NF',
+  'Finalizado',
+  'FINALIZADO',
+  'Cancelada',
+].map(normalizeSaleOrderStatusAlias));
+
+/**
+ * Depois da aprovação, as tiras já podem ter demanda, reserva, consumo ou
+ * débito. Abrir o editor nesses estados é leitura do snapshot persistido; só
+ * Rascunho/Pendente continuam prospectivos e acompanham a ficha atual.
+ */
+export function isCommittedSaleOrderStrapSnapshotStatus(status: unknown): boolean {
+  return COMMITTED_STRAP_SNAPSHOT_STATUSES.has(normalizeSaleOrderStatusAlias(status));
+}
+
 /**
  * Maps each status to the set of statuses it may transition into.
  * Terminal statuses (Concluído, Cancelado) have an empty array.

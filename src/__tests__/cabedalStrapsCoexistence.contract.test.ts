@@ -40,8 +40,9 @@ describe('Cabedal e tiras coexistem na ficha e no PV', () => {
     expect(saleOrderItemForm).not.toContain('&& !modelHasCabedal');
     expect(saleOrderItemForm).not.toMatch(/modelHasCabedal[\s\S]{0,200}update\(idx, 'strap_colors', \[\]\)/);
 
-    const enabledCalls = saleOrderItemForm.match(/\n\s+hasStrapsEffective,\n\s+\);/g) || [];
-    expect(enabledCalls.length).toBeGreaterThanOrEqual(2);
+    expect(saleOrderItemForm).toContain('const strapSnapshotMissing = hasStrapsEffective');
+    expect(saleOrderItemForm).toContain('const independentReferenceBaseColorIssues =');
+    expect(saleOrderItemForm).toContain('hasStrapsEffective && hasFollowMainReferenceBaseStraps');
   });
 
   it('trocar o cartão de construção do Cabedal preserva tiras já habilitadas', () => {
