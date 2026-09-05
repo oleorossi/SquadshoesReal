@@ -131,3 +131,9 @@ BEGIN
   ) = 1, 'Setup pre157 nao criou snapshot parcial';
 END;
 $setup_purchase_order_conversion_boundary_legacy$;
+
+-- O constraint trigger abaixo e o unico INITIALLY DEFERRED da tabela de itens.
+-- Drenar seus eventos permite que a migration altere a tabela na mesma
+-- transacao; em seguida restauramos o modo original para o restante do E2E.
+SET CONSTRAINTS public.trg_assert_strap_purchase_order_item_origin IMMEDIATE;
+SET CONSTRAINTS public.trg_assert_strap_purchase_order_item_origin DEFERRED;

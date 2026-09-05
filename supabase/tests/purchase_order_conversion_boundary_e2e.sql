@@ -913,6 +913,10 @@ BEGIN
 END;
 $test_purchase_order_conversion_boundary$;
 
+-- Nao deixar violacao de constraint inicialmente adiada ser escondida pelo
+-- ROLLBACK do fixture.
+SET CONSTRAINTS ALL IMMEDIATE;
+
 SELECT pg_catalog.jsonb_build_object(
   'ok', true,
   'proof',
