@@ -95,7 +95,7 @@ export default function GroupCompositionTab({ groupId, groupName, groups, colors
       if (error) throw error;
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['product_group_layers', groupId] });
+      await queryClient.invalidateQueries({ queryKey: ['product_group_layers'] });
       toast.success('Composição da dublagem salva!');
     },
     onError: (error: Error) => toast.error(`Não foi possível salvar: ${error.message}`),
