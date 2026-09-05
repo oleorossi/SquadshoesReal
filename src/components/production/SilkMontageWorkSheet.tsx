@@ -644,6 +644,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
               const position = c.position || i + 1;
               const positionLabel = `TIRA ${position}`;
               const technicalLabel = String(c.name || '').trim();
+              const material = String(c.material || '').trim();
               const showTechnicalLabel = !!technicalLabel
                 && technicalLabel.toLocaleUpperCase('pt-BR') !== positionLabel;
               return (
@@ -659,11 +660,21 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                       <span className="block mt-0.5" style={{ fontSize: '9px', fontWeight: 600 }}>{technicalLabel}</span>
                     )}
                     <span
+                      data-strap-color
                       className="block mt-0.5"
-                      style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '12px', letterSpacing: '-0.01em', color: '#C00000' }}
+                      style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '18px', letterSpacing: '-0.01em', color: '#C00000' }}
                     >
                       {c.color || '—'}
                     </span>
+                    {material && (
+                      <span
+                        data-strap-material
+                        className="block mt-0.5"
+                        style={{ fontFamily: "'Fira Sans', sans-serif", fontSize: '10px', fontWeight: 600, lineHeight: 1.15, whiteSpace: 'normal', overflowWrap: 'anywhere' }}
+                      >
+                        {material}
+                      </span>
+                    )}
                   </td>
                   {activeSizes.map(s => {
                     // Preenche a coluna pela numeração crua; cai pra faixa P/M/G;
@@ -719,7 +730,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
         Boolean(c.technicalStrapLineId) || /^TIRA(\s|$)/i.test(c.name || ''),
       ) && (
         <p className="leading-tight mt-0.5" style={{ fontSize: '9px', fontWeight: 700, color: '#C00000' }}>
-          Linhas TIRA = sequência da ficha técnica · cor escolhida no PV · medida em cm "do pé" por numeração (ou faixa P/M/G).
+          Linhas TIRA = sequência da ficha técnica · cor e material do PV · medida em cm "do pé" por numeração (ou faixa P/M/G).
         </p>
       )}
       </>
