@@ -2022,6 +2022,9 @@ BEGIN
       FROM public.financial_settlement_account_heads head
      WHERE head.payable_id = p_account_id;
     IF NOT FOUND THEN
+      -- SELECT INTO sem linha zera inclusive a sentinela inicializada. Restaure-a
+      -- antes do fallback legado para distinguir leitura viva de head capturado.
+      v_captured := false;
       SELECT COALESCE(payable.amount_paid, 0), payable.payment_date,
              payable.payment_method, payable.status, payable.category
         INTO v_opening_amount, v_opening_date, v_opening_method,
@@ -2044,6 +2047,7 @@ BEGIN
       FROM public.financial_settlement_account_heads head
      WHERE head.receivable_id = p_account_id;
     IF NOT FOUND THEN
+      v_captured := false;
       SELECT COALESCE(receivable.amount_received, 0), receivable.payment_date,
              receivable.payment_method, receivable.status, receivable.category
         INTO v_opening_amount, v_opening_date, v_opening_method,

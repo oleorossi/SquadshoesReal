@@ -813,8 +813,7 @@ BEGIN
          OR pg_catalog.jsonb_typeof(v_entry -> 'reason') IS DISTINCT FROM 'string'
          OR (v_entry ->> 'reversed_on') !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
        ))
-       OR (SELECT pg_catalog.count(*) FROM pg_catalog.jsonb_object_keys(v_entry))
-          <> CASE p_command WHEN 'match' THEN 4 ELSE 4 END THEN
+       OR (SELECT pg_catalog.count(*) FROM pg_catalog.jsonb_object_keys(v_entry)) <> 4 THEN
       RAISE EXCEPTION 'Entrada % de % possui estrutura invalida', v_position, p_command
         USING ERRCODE = '22023';
     END IF;

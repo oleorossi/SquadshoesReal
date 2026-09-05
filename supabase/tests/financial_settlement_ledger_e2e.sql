@@ -130,10 +130,14 @@ BEGIN
   v_history := public.get_financial_settlement_history(
     'payable', v_legacy_payable_id
   );
-  ASSERT (v_history #>> '{head,captured}')::boolean IS FALSE;
-  ASSERT (v_history #>> '{head,opening_amount}')::numeric = 100;
-  ASSERT v_history #>> '{head,opening_payment_date}' IS NULL;
-  ASSERT NULLIF(v_history #>> '{head,opening_history_warning}', '') IS NOT NULL;
+  ASSERT (v_history #>> '{head,captured}')::boolean IS FALSE,
+    pg_catalog.format('Historico legado foi marcado como capturado: %s', v_history);
+  ASSERT (v_history #>> '{head,opening_amount}')::numeric = 100,
+    pg_catalog.format('Historico legado perdeu opening_amount=100: %s', v_history);
+  ASSERT v_history #>> '{head,opening_payment_date}' IS NULL,
+    pg_catalog.format('Historico legado inventou data de abertura: %s', v_history);
+  ASSERT NULLIF(v_history #>> '{head,opening_history_warning}', '') IS NOT NULL,
+    pg_catalog.format('Historico legado omitiu aviso de abertura: %s', v_history);
   ASSERT EXISTS (
     SELECT 1 FROM public.financial_settlement_cmv_pending pending
      WHERE pending.settlement_event_id = v_legacy_missing_cmv_receivable_id

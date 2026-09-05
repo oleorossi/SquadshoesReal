@@ -267,6 +267,24 @@ BEGIN
     END;
     ASSERT v_rejected, 'expected_revision ambiguo atravessou o CAS';
   END LOOP;
+  v_rejected := false;
+  BEGIN
+    PERFORM public.execute_bank_reconciliation_command(
+      pg_catalog.gen_random_uuid(), 'match',
+      pg_catalog.jsonb_build_object(
+        'reconciliation_id', v_reconciliation_id,
+        'entries', pg_catalog.jsonb_build_array(
+          pg_catalog.jsonb_build_object(
+            'item_id', v_debit_item_id, 'expected_revision', 0,
+            'kind', 'payable', 'account_id', v_payable_id,
+            'unexpected', true
+          )
+        )
+      )
+    );
+  EXCEPTION WHEN SQLSTATE '22023' THEN v_rejected := true;
+  END;
+  ASSERT v_rejected, 'Entrada match aceitou chave extra';
 
   -- Retry igual reproduz recibo; command divergente e sobreposicao nao deixam linhas.
   v_replay := public.execute_bank_reconciliation_command(
