@@ -7,8 +7,8 @@ peça do cabedal, não a uma face do material. As peças de 2,74 e 2,28 dm²
 continuam somadas. R$ 45,54/m é o custo completo do dublado, incluindo as duas
 faces, dublagem simples e frete; nenhum desses itens deve ser cobrado novamente.
 A hipótese de retirar os 2,28 dm² como segunda face foi descartada, sem alteração
-dos consumos cadastrados. O dono ainda aponta valores incorretos; a divergência
-exata de valor/tela está em investigação, sem aprovação dos totais por ele.
+dos consumos cadastrados. A divergência relatada era de interpretação: o total
+correto é a soma das duas peças, com o preço do dublado aplicado uma única vez.
 
 Verificação local do ajuste: 182 testes relacionados passaram, typecheck real
 (`tsconfig.app.json`), build e lint das linhas alteradas passaram. A suíte
@@ -44,7 +44,7 @@ deve seguir a origem do cabedal da variante. As áreas são mantidas e somadas;
 nenhum material é removido da geometria. Materiais de outros grupos e produtos
 escolhidos explicitamente conservam sua identidade.
 
-Para a grade de 480 pares, o sistema atualmente calcula o dublado como:
+Para a grade de 480 pares, o cálculo confirmado do dublado é:
 
 `(2,74 + 2,28) × 480 ÷ 137 = 17,5883211679 m`
 
