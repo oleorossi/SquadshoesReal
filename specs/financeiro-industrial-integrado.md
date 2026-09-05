@@ -68,7 +68,7 @@ A spec financeira diz que a obrigação nasce da NF; o contexto de Compras descr
 
 Nenhum item da matriz está concluído só porque existe um teste ou arquivo. Registrar aqui os comandos, resultados e cenários efetivamente cobertos a cada entrega, mantendo o restante aberto.
 
-### Primeira etapa — código local, ainda sem publicação (05/09/2026)
+### Primeira etapa — registro de implementação e verificação (05/09/2026)
 
 - Central NF: totais por mês de emissão, centavos inteiros, separação de documento e caixa, exclusão de homologação identificada e aviso de ambiente legado. Consulta paginada com erro explícito se houver falha ou limite de segurança, usando os prefixos de invalidação existentes.
 - Foram removidos os três valores fixos e a estimativa genérica de imposto de 12%. Nenhum imposto real foi apurado/reclassificado.
@@ -86,6 +86,9 @@ Nenhum item da matriz está concluído só porque existe um teste ou arquivo. Re
 - Terceiro dry-run, `33970283935`, identificou eventos de constraint diferida entre setup e DDL. O setup agora valida essa constraint e restaura seu modo original, e o E2E força todas as constraints antes do ROLLBACK. Não houve COMMIT, desativação de trigger ou elevação de privilégios.
 - **157 aprovada em ensaio transacional:** [run 33970413286](https://github.com/oleorossi/SquadshoesReal/actions/runs/33970413286), commit `dfddbbb`, HTTP 201, `ok=true`. Validou criação/append, snapshot físico, mudança posterior de cadastro, recebimento parcial, repetição sem duplicar estoque, custo médio, fallback legado, bloqueio de alteração de quantidade legada, estados recebíveis, valores finitos, mudança da unidade-base, tupla parcial, trava financeira após AP, deduplicação e alteração operacional. Sete testes estruturais específicos passaram; não substituem o E2E. Consulta pós-rollback confirmou ausência de coluna/helper/registro157 e zero resíduos das fixtures.
 - 158 adiciona proteção de baixas parciais nos três caminhos SQL de cancelamento/reversão, complementando TS/Edge. Não muda a política de AP, factoring ou CMV e não executa backfill. E2E inteiramente sintético: três PVs, duas NF-e e 18 AR, nenhum provedor fiscal; somente três contas sem caixa devem ser canceladas. Validação registrada no workflow ainda pendente.
+- **158 aprovada em ensaio transacional:** [run 33970522414](https://github.com/oleorossi/SquadshoesReal/actions/runs/33970522414), commit `68c5ceb`, HTTP 201, `preserve_partial_receipts_on_cancel_e2e: PASS`. Pós-rollback: helper ausente e zero PVs, NF-e ou AR das fixtures. Não houve pagamento, cancelamento fiscal real, backfill ou resync histórico.
+- Verificação local final da etapa: **446 arquivos e 4.093 testes aprovados; oito casos opcionais de banco pulados em cinco arquivos**. Typecheck canônico aprovado, espelho TS/Edge idêntico e lint sem novos erros comparado à baseline `ab61f7c`. Build aprovado; 91 ocorrências antigas de tokens, nenhuma nova. Os ensaios SQL de 157/158 acima são as provas comportamentais do banco, não os testes pulados.
+- Entrega desta onda: indicadores reais da central NF, tratamento de falhas, consultas completas de AP/AR, preservação de baixas em TS/Edge/SQL, snapshot físico e guards de recebimento/edição da OC. O leitor OFX é apenas fundação e ainda não opera baixas bancárias. A reforma integral permanece aberta; importação atômica NF×OC×estoque/AP, liquidações por evento, conciliação persistente e demais itens da matriz **não estão concluídos**. Publicação da onda deve seguir CI → migrations → Edge/Vercel do mesmo SHA, sem bypass do CI.
 
 ### Achados pendentes da auditoria de banco/integração
 
