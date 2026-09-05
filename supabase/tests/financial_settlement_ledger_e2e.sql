@@ -142,6 +142,14 @@ BEGIN
        AND pending.effective_on = v_today - 15
        AND pending.received_amount = 20
   ), 'AR legada sem head/CMV nao ficou visivel como pendencia historica';
+  v_rejected := false;
+  BEGIN
+    UPDATE public.accounts_receivable SET sale_order_id = NULL
+     WHERE id = v_legacy_missing_cmv_receivable_id;
+  EXCEPTION WHEN SQLSTATE '55000' THEN v_rejected := true;
+  END;
+  ASSERT v_rejected,
+    'AR legada recebida perdeu PV e apagou pending antes de criar head';
 
   -- Sem head, cash legado nao pode ser apagado/reescrito nem por writer direto.
   v_rejected := false;

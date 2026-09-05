@@ -636,7 +636,11 @@ BEGIN
   IF v_kind = 'receivable' THEN
     IF (v_new_row ->> 'sale_order_id')
          IS DISTINCT FROM (v_old_row ->> 'sale_order_id')
-       AND (v_projection.has_head OR v_has_events) THEN
+       AND (
+         v_projection.has_head
+         OR v_has_events
+         OR COALESCE((v_old_row ->> 'amount_received')::numeric, 0) > 0
+       ) THEN
       RAISE EXCEPTION
         'Vinculo do recebivel com PV e imutavel apos iniciar o historico de liquidacao'
         USING ERRCODE = '55000';
@@ -1982,6 +1986,7 @@ DECLARE
   v_head jsonb;
   v_events jsonb;
   v_projection record;
+  v_projection_json jsonb := NULL;
   v_opening_amount numeric;
   v_opening_date date;
   v_opening_method text;
@@ -2104,18 +2109,19 @@ BEGIN
   IF v_captured THEN
     SELECT * INTO v_projection
       FROM private.financial_account_projection_159(p_kind, p_account_id);
+    v_projection_json := pg_catalog.jsonb_build_object(
+      'settled_amount', v_projection.settled_amount,
+      'status', v_projection.projected_status,
+      'payment_date', v_projection.projected_payment_date,
+      'payment_method', v_projection.projected_payment_method
+    );
   END IF;
   RETURN pg_catalog.jsonb_build_object(
     'kind', p_kind,
     'account_id', p_account_id,
     'head', v_head,
     'events', v_events,
-    'projection', CASE WHEN v_captured THEN pg_catalog.jsonb_build_object(
-      'settled_amount', v_projection.settled_amount,
-      'status', v_projection.projected_status,
-      'payment_date', v_projection.projected_payment_date,
-      'payment_method', v_projection.projected_payment_method
-    ) ELSE NULL END
+    'projection', v_projection_json
   );
 END;
 $function$;
@@ -2233,7 +2239,9 @@ DECLARE
   v_before jsonb;
   v_after jsonb;
   v_effective_method text;
+  v_legacy_effective_method text;
   v_hash text;
+  v_legacy_hash text;
   v_key text;
   v_command_id uuid := COALESCE(p_correlation_id, pg_catalog.gen_random_uuid());
   v_settled numeric := 0;
@@ -2251,8 +2259,10 @@ BEGIN
   IF NOT FOUND THEN
     RAISE EXCEPTION 'Ciclo nao encontrado' USING ERRCODE = 'P0002';
   END IF;
-  IF p_payment_date IS NULL THEN
-    RAISE EXCEPTION 'Data de pagamento obrigatoria' USING ERRCODE = '22023';
+  IF p_payment_date IS NULL
+     OR p_payment_date::text !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' THEN
+    RAISE EXCEPTION 'Data de pagamento exige formato ISO YYYY-MM-DD'
+      USING ERRCODE = '22023';
   END IF;
   IF p_payment_date > (
     pg_catalog.clock_timestamp() AT TIME ZONE 'America/Sao_Paulo'
@@ -2270,6 +2280,9 @@ BEGIN
         USING ERRCODE = 'P0002';
     END IF;
   END IF;
+  v_legacy_effective_method := COALESCE(
+    p_payment_method, v_payable.payment_method
+  );
   v_effective_method := COALESCE(
     private.normalize_financial_settlement_method_159(p_payment_method),
     private.normalize_financial_settlement_method_159(v_payable.payment_method),
@@ -2282,9 +2295,18 @@ BEGIN
     'payment_date', p_payment_date,
     'payment_method', v_effective_method
   ));
+  -- Ciclos pagos antes da 159 persistiram o hash com o texto literal (inclusive
+  -- NULL). Aceitar esse hash apenas no replay preserva idempotencia historica;
+  -- nenhum novo evento ou snapshot volta a gravar metodo nao canonico.
+  v_legacy_hash := public.strap_payload_hash(pg_catalog.jsonb_build_object(
+    'cycle_id', v_cycle.id,
+    'accounts_payable_id', v_cycle.accounts_payable_id,
+    'payment_date', p_payment_date,
+    'payment_method', v_legacy_effective_method
+  ));
   IF v_cycle.status = 'paid' THEN
     IF v_cycle.payment_idempotency_key = v_key
-       AND v_cycle.payment_payload_hash = v_hash THEN
+       AND v_cycle.payment_payload_hash IN (v_hash, v_legacy_hash) THEN
       RETURN pg_catalog.jsonb_build_object(
         'cycle_id', v_cycle.id,
         'replayed', true,
@@ -2293,6 +2315,12 @@ BEGIN
     END IF;
     RAISE EXCEPTION 'Replay de pagamento divergente para ciclo ja pago'
       USING ERRCODE = '23505';
+  END IF;
+  IF p_payment_method IS NOT NULL
+     AND private.normalize_financial_settlement_method_159(p_payment_method)
+       IS NULL THEN
+    RAISE EXCEPTION 'Metodo de pagamento explicito invalido'
+      USING ERRCODE = '22023';
   END IF;
   IF v_cycle.status <> 'closed' THEN
     RAISE EXCEPTION 'Ciclo precisa estar fechado' USING ERRCODE = '55000';
