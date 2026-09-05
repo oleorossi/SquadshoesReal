@@ -1,7 +1,9 @@
 -- =============================================================================
 -- E2E transacional — snapshot de conversao e fronteira financeira da OC
 --
--- Pre-requisito: migration 20270101015700_congelar_conversao_e_estado_oc.
+-- Pre-requisitos, na mesma transacao: primeiro
+-- setup_purchase_order_conversion_boundary_legacy.sql, depois a migration
+-- 20270101015700_congelar_conversao_e_estado_oc.
 -- Todas as fixtures e efeitos sao descartados pelo ROLLBACK final.
 -- =============================================================================
 
@@ -60,6 +62,9 @@ DECLARE
   v_legacy_ap_item_id uuid;
   v_guard_po_id uuid;
   v_guard_item_id uuid;
+  v_partial_product_id uuid;
+  v_partial_po_id uuid;
+  v_partial_item_id uuid;
   v_deduplicate_sale_order_id uuid := pg_catalog.gen_random_uuid();
   v_result jsonb;
   v_payload jsonb;
@@ -76,6 +81,44 @@ DECLARE
 BEGIN
   ASSERT v_actor_id IS NOT NULL,
     'Pre-condicao: nenhum usuario Admin aprovado disponivel';
+  ASSERT pg_catalog.to_regclass(
+    'pg_temp.e2e_po157_legacy_fixture'
+  ) IS NOT NULL, 'Setup pre157 das linhas legadas nao foi executado';
+
+  SELECT fixture.product_id, fixture.purchase_order_id,
+         fixture.purchase_order_item_id
+    INTO v_legacy_product_id, v_legacy_po_id, v_legacy_item_id
+    FROM pg_temp.e2e_po157_legacy_fixture fixture
+   WHERE fixture.fixture_kind = 'all_null';
+  SELECT fixture.product_id, fixture.purchase_order_id,
+         fixture.purchase_order_item_id
+    INTO v_partial_product_id, v_partial_po_id, v_partial_item_id
+    FROM pg_temp.e2e_po157_legacy_fixture fixture
+   WHERE fixture.fixture_kind = 'partial';
+  ASSERT v_legacy_item_id IS NOT NULL AND v_partial_item_id IS NOT NULL,
+    'Setup pre157 nao forneceu as duas fixtures legadas';
+  ASSERT EXISTS (
+    SELECT 1
+      FROM public.purchase_order_items item
+     WHERE item.id = v_legacy_item_id
+       AND item.generic_conversion_snapshot_version IS NULL
+       AND pg_catalog.num_nonnulls(
+         item.stock_unit_snapshot,
+         item.purchase_unit_snapshot,
+         item.conversion_rate_snapshot
+       ) = 0
+  ), 'Migration preencheu indevidamente a fixture legada';
+  ASSERT EXISTS (
+    SELECT 1
+      FROM public.purchase_order_items item
+     WHERE item.id = v_partial_item_id
+       AND item.generic_conversion_snapshot_version IS NULL
+       AND pg_catalog.num_nonnulls(
+         item.stock_unit_snapshot,
+         item.purchase_unit_snapshot,
+         item.conversion_rate_snapshot
+       ) = 1
+  ), 'Migration alterou indevidamente a fixture parcial';
 
   INSERT INTO public.suppliers (name, active)
   VALUES ('E2E OC snapshot fornecedor ' || v_suffix, true)
@@ -108,18 +151,6 @@ BEGIN
     10, 10, 'un', 2,
     'E2E', true, '', v_supplier_id, 'cx', 'cx', 12
   ) RETURNING id INTO v_rate_product_id;
-
-  INSERT INTO public.products (
-    name, sku, category, quantity, current_stock, unit, unit_price,
-    location, active, color, supplier_id, purchase_unit,
-    purchase_order_unit, conversion_rate, dimensions_width, dimensions_unit
-  ) VALUES (
-    'E2E OC LEGACY ' || v_suffix,
-    'E2E-OC-LEGACY-' || v_suffix,
-    'Materia-Prima',
-    0, 0, 'dm²', 0,
-    'E2E', true, '', v_supplier_id, 'm', 'm', 100, 1000, 'mm'
-  ) RETURNING id INTO v_legacy_product_id;
 
   INSERT INTO public.products (
     name, sku, category, quantity, current_stock, unit, unit_price,
@@ -378,47 +409,8 @@ BEGIN
            WHERE movement.correlation_id = v_request_id) = 1,
     'Replay duplicou movimento de estoque';
 
-  -- Linha historica: versao e tupla integralmente NULL usam apenas a tupla
-  -- viva e tornam a origem observavel. O bypass de trigger existe somente para
-  -- construir a fixture que simula uma linha anterior a 15700.
-  v_result := public.execute_purchase_order_command(
-    'create',
-    pg_catalog.jsonb_build_object(
-      'header', pg_catalog.jsonb_build_object(
-        'supplier_id', v_supplier_id,
-        'supplier_name', 'E2E OC snapshot fornecedor ' || v_suffix,
-        'status', 'approved',
-        'source_type', 'manual',
-        'idempotency_key', 'e2e-oc-legacy-' || v_suffix
-      ),
-      'items', pg_catalog.jsonb_build_array(
-        pg_catalog.jsonb_build_object(
-          'product_id', v_legacy_product_id,
-          'quantity', 1,
-          'unit', 'm',
-          'unit_price', 240
-        )
-      )
-    ),
-    pg_catalog.gen_random_uuid(), NULL, NULL
-  );
-  v_legacy_po_id := (v_result ->> 'purchase_order_id')::uuid;
-  SELECT item.id INTO v_legacy_item_id
-    FROM public.purchase_order_items item
-   WHERE item.purchase_order_id = v_legacy_po_id;
-  BEGIN
-    PERFORM pg_catalog.set_config('session_replication_role', 'replica', true);
-    UPDATE public.purchase_order_items item
-       SET generic_conversion_snapshot_version = NULL,
-           stock_unit_snapshot = NULL,
-           purchase_unit_snapshot = NULL,
-           conversion_rate_snapshot = NULL
-     WHERE item.id = v_legacy_item_id;
-    PERFORM pg_catalog.set_config('session_replication_role', 'origin', true);
-  EXCEPTION WHEN OTHERS THEN
-    PERFORM pg_catalog.set_config('session_replication_role', 'origin', true);
-    RAISE;
-  END;
+  -- Linha realmente historica, criada pelo setup antes da migration: versao e
+  -- tupla integralmente NULL usam apenas a tupla viva e declaram a origem.
   v_request_id := pg_catalog.gen_random_uuid();
   v_rejected := false;
   BEGIN
@@ -634,32 +626,23 @@ BEGIN
   UPDATE public.products product
      SET unit = 'un', purchase_unit = 'un', purchase_order_unit = 'un'
    WHERE product.id = v_guard_product_id;
-  BEGIN
-    PERFORM pg_catalog.set_config('session_replication_role', 'replica', true);
-    UPDATE public.purchase_order_items item
-       SET generic_conversion_snapshot_version = NULL,
-           stock_unit_snapshot = 'un',
-           purchase_unit_snapshot = NULL,
-           conversion_rate_snapshot = NULL
-     WHERE item.id = v_guard_item_id;
-    PERFORM pg_catalog.set_config('session_replication_role', 'origin', true);
-  EXCEPTION WHEN OTHERS THEN
-    PERFORM pg_catalog.set_config('session_replication_role', 'origin', true);
-    RAISE;
-  END;
+
+  -- A segunda fixture tambem nasceu antes da migration, com exatamente um
+  -- campo da tupla. O recebimento deve falhar fechado, sem precisar desativar
+  -- triggers ou elevar privilegios no teste.
   v_request_id := pg_catalog.gen_random_uuid();
   v_rejected := false;
   BEGIN
     PERFORM public.execute_purchase_order_command(
       'receive', pg_catalog.jsonb_build_object('receive_all', true),
-      v_request_id, v_guard_po_id, NULL
+      v_request_id, v_partial_po_id, NULL
     );
   EXCEPTION WHEN SQLSTATE '22023' THEN
     v_rejected := true;
   END;
   ASSERT v_rejected, 'Tupla historica parcial foi misturada ao cadastro vivo';
   ASSERT (SELECT product.quantity FROM public.products product
-           WHERE product.id = v_guard_product_id) = 0,
+           WHERE product.id = v_partial_product_id) = 0,
     'Tupla parcial alterou estoque';
 
   -- AP existente congela credor/valor, mas nao impede dados operacionais nem o
@@ -912,7 +895,8 @@ BEGIN
     FROM public.stock_movements movement
    WHERE movement.product_id IN (
      v_area_product_id, v_rate_product_id, v_legacy_product_id,
-     v_state_product_id, v_ap_product_id, v_guard_product_id
+     v_state_product_id, v_ap_product_id, v_guard_product_id,
+     v_partial_product_id
    )
      AND movement.movement_reason = 'compra';
   ASSERT v_movement_count = 6,
@@ -922,7 +906,7 @@ BEGIN
     FROM public.purchase_order_command_receipts receipt
    WHERE receipt.purchase_order_id IN (
      v_po_id, v_legacy_po_id, v_state_po_id, v_ap_po_id,
-     v_legacy_ap_po_id, v_guard_po_id
+     v_legacy_ap_po_id, v_guard_po_id, v_partial_po_id
    );
   ASSERT v_receipt_count >= 12,
     'Receipts dos comandos bem-sucedidos nao foram preservados';
