@@ -2,6 +2,12 @@
 
 Auditoria de 05/09/2026, após a publicação de `53971ae`.
 
+**Revisão de engenharia reaberta pelo dono:** R$ 45,54/m é o custo completo
+do dublado, incluindo as duas faces, dublagem simples e frete. Os testes
+abaixo demonstram o comportamento do sistema, mas não confirmam que as áreas
+de 2,74 e 2,28 dm² sejam peças independentes. Essa interpretação está pendente
+de confirmação; os totais calculados com sua soma não são valores aprovados.
+
 Verificação local do ajuste: 182 testes relacionados passaram, typecheck real
 (`tsconfig.app.json`), build e lint das linhas alteradas passaram. A suíte
 geral também foi executada; os testes SQL acima validam separadamente o banco,
@@ -36,7 +42,7 @@ deve seguir a origem do cabedal da variante. As áreas são mantidas e somadas;
 nenhum material é removido da geometria. Materiais de outros grupos e produtos
 escolhidos explicitamente conservam sua identidade.
 
-Para a grade de 480 pares, o resultado esperado do dublado é:
+Para a grade de 480 pares, o sistema atualmente calcula o dublado como:
 
 `(2,74 + 2,28) × 480 ÷ 137 = 17,5883211679 m`
 
