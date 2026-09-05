@@ -3,7 +3,10 @@
 ## Deployment Architecture
 
 - **Deploy:** Vercel via GitHub Action após o CI verde; a integração Git nativa
-  não publica produção diretamente.
+  não publica produção diretamente. `vercel.json` bloqueia somente a branch
+  `main` em `git.deploymentEnabled`; previews das demais branches permanecem
+  habilitados. Não remover essa trava: em 05/09/2026 a integração nativa publicou
+  `ba751cd` cerca de cinco minutos antes do CI, ignorando o gate de migrations.
 - **Production URL:** https://squadshoes-real.vercel.app
 - **Branch de deploy:** `main`
 - **Branch de trabalho:** `Codex/zen-knuth-4c26c5` (ou qualquer `Codex/*`).

@@ -1,4 +1,9 @@
 {
+  "git": {
+    "deploymentEnabled": {
+      "main": false
+    }
+  },
   "rewrites": [
     {
       "source": "/((?!api/|assets/|icons/|favicon|print\\.css|placeholder\\.svg|sw\\.js|squad-vendas-sw\\.js|registerSW\\.js|workbox-|manifest|version\\.json|robots|sitemap).*)",
