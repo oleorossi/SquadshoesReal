@@ -41,15 +41,16 @@ describe('cores independentes por linha de tira', () => {
     expect(mobile).toContain('{strap.position}</span>: {strap.color}');
   });
 
-  it('valida catálogo/grupo-base online e preserva somente snapshots estruturais offline', () => {
-    expect(mobile).toContain('isLoading: strapCatalogLoading');
-    expect(mobile).toContain('isError: strapCatalogFailed');
-    expect(mobile).toContain('return mobileSelectableStrapCatalogIssues(item, catalog, resolvedLines)');
-    expect(mobile).toContain('canonicalMeasure.strap_type_id !== canonicalType.id');
-    expect(mobile).toContain('if (!online)');
-    expect(mobile).toContain('...mobileIndependentStrapColorIssues([item])');
-    expect(mobile).toContain('...mobileFinishedStrapIdentityIssues([item])');
-    expect(mobile).toContain('online && hasSelectableStraps && strapCatalogLoading');
+  it('valida grupo/cor pelo manifesto owner-scoped e bloqueia cold-start offline sem cache', () => {
+    expect(mobile).toContain('loadMobileStrapOfflineManifest(ownerId)');
+    expect(mobile).toContain('fetchMobileStrapOfflineManifest()');
+    expect(mobile).toContain('saveMobileStrapOfflineManifest(ownerId, fresh)');
+    expect(mobile).toContain('findMobileStrapManifestReference(');
+    expect(mobile).toContain('manifestLine.allowed_colors.some');
+    expect(mobile).toContain('}, online);');
+    expect(mobile).toContain('Catálogo offline de tiras indisponível');
+    expect(mobile).toContain('!ownerScopedStrapManifest');
+    expect(mobile).not.toContain('useArtisanalStrapCatalog');
     expect(mobile).toContain('selectableStrapValidationIssues.length > 0');
   });
 

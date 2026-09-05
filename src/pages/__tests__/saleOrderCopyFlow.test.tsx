@@ -229,6 +229,53 @@ function PanelHarness({
   );
 }
 
+describe('badge visual de duplicidade produtiva', () => {
+  const lineA = '0198f35c-7f4d-7000-8000-000000000001';
+  const lineB = '0198f35c-7f4d-7000-8000-000000000002';
+  const red = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const blue = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  const strap = (lineId: string, colorId: string) => ({
+    id: lineId,
+    technical_strap_line_id: lineId,
+    label: lineId === lineA ? 'TIRA 1' : 'TIRA 2',
+    color: colorId === red ? 'VERMELHO' : 'AZUL',
+    color_id: colorId,
+    identity_basis: 'reference_base' as const,
+    color_mode: 'select_on_order' as const,
+  });
+  const configuredItem = (
+    id: string,
+    colors: [string, string],
+  ): SaleOrderItemFormData => ({
+    ...ITEMS[0],
+    id,
+    strap_colors: [strap(lineA, colors[0]), strap(lineB, colors[1])],
+  });
+
+  it('não sinaliza mesma referência/cor principal quando as tiras são diferentes', () => {
+    render(<PanelHarness initialItems={[
+      configuredItem('x-1', [red, blue]),
+      configuredItem('y-1', [blue, red]),
+    ]} />);
+
+    expect(screen.queryByText('Duplicado · mesma configuração')).toBeNull();
+  });
+
+  it('sinaliza somente a repetição real não adjacente em X, Y, X', () => {
+    render(<PanelHarness initialItems={[
+      configuredItem('x-1', [red, blue]),
+      configuredItem('y-1', [blue, red]),
+      configuredItem('x-2', [red, blue]),
+    ]} />);
+
+    expect(screen.getAllByText('Duplicado · mesma configuração')).toHaveLength(1);
+    expect(screen.getByTestId('item-2').parentElement?.textContent)
+      .toContain('Duplicado · mesma configuração');
+    expect(screen.getByTestId('item-0').parentElement?.textContent)
+      .not.toContain('Duplicado · mesma configuração');
+  });
+});
+
 describe('cópia parcial — do clique aos índices', () => {
   it('entrega ao pai exatamente os itens marcados', async () => {
     const onCopy = vi.fn();

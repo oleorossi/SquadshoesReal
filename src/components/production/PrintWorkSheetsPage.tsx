@@ -23,6 +23,7 @@ import { useSectorGroupingConfig } from '@/hooks/useSectorGroupingConfig';
 import {
   useBulkOrderConsumption,
   bulkConsumptionKey,
+  filterConsumptionForSector,
   type ConsumptionRow,
 } from '@/hooks/useBulkOrderConsumption';
 import { calcGroupPlateAreaDm2 } from '@/lib/orderConsumption';
@@ -44,6 +45,14 @@ import {
   operatorStrapSequence,
   type OperatorStrapLineLike,
 } from '@/lib/operatorStrapSequence';
+import {
+  addAllocatedPairs,
+  aggregateConsumptionByAllocatedPairs,
+  cloneAllocatedPairs,
+  lotPartitionKey,
+  mergeAllocatedPairs,
+  type AllocatedPairsByOp,
+} from '@/lib/lotConsumptionAllocation';
 
 interface PrintableOperatorStrapLine extends OperatorStrapLineLike {
   group_name?: string | null;
@@ -52,6 +61,25 @@ interface PrintableOperatorStrapLine extends OperatorStrapLineLike {
 interface PrintableOrderStrapSnapshot {
   strap_colors?: unknown;
   color?: string | null;
+}
+
+interface AllocatedPairsCarrier {
+  allocatedPairsByOp?: AllocatedPairsByOp;
+}
+
+function allocatedPairsOf(value: unknown): ReadonlyMap<string, number> | undefined {
+  return (value as AllocatedPairsCarrier | null | undefined)?.allocatedPairsByOp;
+}
+
+function ensureAllocatedPairs(value: object): AllocatedPairsByOp {
+  const carrier = value as AllocatedPairsCarrier;
+  carrier.allocatedPairsByOp = carrier.allocatedPairsByOp ?? new Map();
+  return carrier.allocatedPairsByOp;
+}
+
+function copyAllocatedPairs<T extends object>(target: T, source: unknown): T {
+  (target as AllocatedPairsCarrier).allocatedPairsByOp = cloneAllocatedPairs(allocatedPairsOf(source));
+  return target;
 }
 
 function printableOperatorStraps(
@@ -714,6 +742,7 @@ function groupOrdersByRefColor(orders: any[]): Array<{
     }
     const orderTotal = Number(order.total_pairs ?? 0);
     g.totalPairs += orderTotal;
+    addAllocatedPairs(ensureAllocatedPairs(g), order.op_number, orderTotal);
     if (order.due_date && order.due_date > g.latestDueDate) g.latestDueDate = order.due_date;
     // order.grid ora chega como CURVA-BASE (soma 12), ora como GRADE TOTAL
     // (soma 120/360/444 — bug do 7º passe). resolveFicha deriva o CORRUGADO
@@ -1015,7 +1044,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     })).filter(i => i.reference_id && i.quantity > 0),
     [orders],
   );
-  const { data: consumptionByKey } = useBulkOrderConsumption(consumptionInputs);
+  const {
+    data: consumptionByKey,
+    isLoading: consumptionLoading,
+    isError: consumptionFailed,
+  } = useBulkOrderConsumption(consumptionInputs);
 
   // Índice op_number → order pra lookup ao agregar consumo por grupo.
   const ordersByOpNumber = useMemo(() => {
@@ -1032,23 +1065,36 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
    * pra anexar `consumption` a cada SilkColorGroup / PalmilhaGroup /
    * SoleColorBand antes do render.
    *
-   * `groupPairs`: pares REAIS do grupo. OPs splitadas em lote mantêm o
-   * op_number da OP-mãe, então o lookup resolve o consumo da OP INTEIRA —
-   * cada ficha de lote mostrava o consumo cheio (lote 1 e lote 2 de 360
-   * pares imprimiam ambos o consumo de 720 → operador separava material
-   * 2×). Quando groupPairs < soma cheia das OPs, rateia proporcionalmente.
+   * `allocatedPairsByOp`: pares REAIS de cada OP representados pelo grupo.
+   * OPs splitadas em lote mantêm o op_number da OP-mãe, então o lookup resolve
+   * o consumo da OP INTEIRA. O rateio precisa acontecer POR OP antes de somar:
+   * um lote pode conter 50% da OP-A e 75% da OP-B, proporções que uma razão
+   * global aplicada ao grupo não consegue representar corretamente.
    */
   const consumptionForOpNumbers = useMemo(
-    () => (opNumbers: string[] | undefined, groupPairs?: number): ConsumptionRow[] => {
+    () => (
+      opNumbers: string[] | undefined,
+      allocatedPairsByOp?: ReadonlyMap<string, number>,
+    ): ConsumptionRow[] => {
       if (!consumptionByKey || !opNumbers || opNumbers.length === 0) return [];
-      const byProduct = new Map<string, ConsumptionRow>();
-      let fullPairs = 0;
+      const slices: Array<{
+        rows: readonly ConsumptionRow[];
+        fullPairs: number;
+        allocatedPairs: number;
+      }> = [];
+      const seenOps = new Set<string>();
       for (const op of opNumbers) {
-        const o = ordersByOpNumber.get(String(op));
+        const opKey = String(op);
+        if (seenOps.has(opKey)) continue;
+        seenOps.add(opKey);
+        const o = ordersByOpNumber.get(opKey);
         if (!o?.reference_id) continue;
         const qty = Number(o.total_pairs ?? o.quantity ?? 0);
         if (qty <= 0) continue;
-        fullPairs += qty;
+        const allocatedPairs = allocatedPairsByOp
+          ? Number(allocatedPairsByOp.get(opKey) ?? 0)
+          : qty;
+        if (!(allocatedPairs > 0)) continue;
         // Mesmos campos do consumptionInputs (grade + tiras na chave) — senão
         // o lookup erra quando 2 OPs têm mesma ref+cor+qtd mas grades/tiras
         // diferentes.
@@ -1061,27 +1107,18 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           (o.material_variant_id ?? null) as string | null,
           o.id,
         );
-        const rows = consumptionByKey.get(key) ?? [];
-        for (const r of rows) {
-          const existing = byProduct.get(r.product_id);
-          if (!existing) {
-            byProduct.set(r.product_id, { ...r });
-          } else {
-            existing.required += r.required;
-            existing.available = Math.max(existing.available, r.available);
-            existing.stock_ok = existing.available >= existing.required;
-          }
-        }
+        slices.push({ rows: consumptionByKey.get(key) ?? [], fullPairs: qty, allocatedPairs });
       }
-      const rows = Array.from(byProduct.values());
-      if (groupPairs && groupPairs > 0 && fullPairs > 0 && groupPairs < fullPairs) {
-        const ratio = groupPairs / fullPairs;
-        for (const r of rows) {
-          r.required = r.required * ratio;
-          r.stock_ok = r.available >= r.required;
-        }
-      }
-      return rows;
+      return aggregateConsumptionByAllocatedPairs(slices, (r) => [
+        r.product_id,
+        r.component || '',
+        r.color || '',
+        r.unit || '',
+        r.materialFamily || '',
+        r.consumption_sector || '',
+        r.consumption_sector_source || '',
+        r.material_source || '',
+      ].join('::'));
     },
     [consumptionByKey, ordersByOpNumber],
   );
@@ -1813,6 +1850,30 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orders, sizeFilter, soleFilter, resolveSoleForOrder]);
 
+  const ambiguousConsumptionMaterials = useMemo(() => {
+    if (!consumptionByKey) return [];
+    const labels = new Set<string>();
+    for (const order of printOrders) {
+      const quantity = Number(order.total_pairs ?? order.quantity ?? 0);
+      if (!order.reference_id || quantity <= 0) continue;
+      const key = bulkConsumptionKey(
+        order.reference_id,
+        order.color,
+        quantity,
+        (order.grid ?? null) as Record<string, number> | null,
+        Array.isArray(order.strap_colors) ? order.strap_colors : null,
+        (order.material_variant_id ?? null) as string | null,
+        order.id,
+      );
+      for (const row of consumptionByKey.get(key) ?? []) {
+        if (row.consumption_sector_source !== 'ambiguous') continue;
+        const color = String(row.color || '').trim();
+        labels.add(`${row.product_name}${color && color !== '—' ? ` · ${color}` : ''}`);
+      }
+    }
+    return Array.from(labels).sort((left, right) => left.localeCompare(right, 'pt-BR'));
+  }, [consumptionByKey, printOrders]);
+
   const expandedOrders = useMemo(
     () => expandOrdersByLots(printOrders as any[], lotsMap),
     [printOrders, lotsMap],
@@ -2020,6 +2081,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       const baseGrid = (order.grid || {}) as Record<string, number>;
       const baseSum = Object.values(baseGrid).reduce((s, v) => s + (Number(v) || 0), 0);
       const orderTotal = Number(order.total_pairs ?? 0);
+      addAllocatedPairs(ensureAllocatedPairs(group), order.op_number, orderTotal);
       const multiplier = baseSum > 0 ? orderTotal / baseSum : 0;
       const ficha = resolveFicha(orderTotal, baseGrid);
       group.baseGrade = foldFichaIntoGroup(group, ficha, ficha.baseCurve, group.baseGrade);
@@ -2369,6 +2431,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       const baseGrid = (order.grid || {}) as Record<string, number>;
       const baseSum = Object.values(baseGrid).reduce((s, v) => s + (Number(v) || 0), 0);
       const orderTotal = Number(order.total_pairs ?? 0);
+      addAllocatedPairs(ensureAllocatedPairs(cg), order.op_number, orderTotal);
       const multiplier = baseSum > 0 ? orderTotal / baseSum : 0;
       const ficha = resolveFicha(orderTotal, baseGrid);
       // Fichas (corrugados) por REFERÊNCIA — mesma conta do rodapé da grade.
@@ -2448,6 +2511,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           if (scaled > 0) lb.combinedGrid[size] = (lb.combinedGrid[size] ?? 0) + scaled;
         }
         lb.totalPairs = Object.values(lb.combinedGrid).reduce((s, v) => s + v, 0);
+        addAllocatedPairs(ensureAllocatedPairs(lb), order.op_number, orderTotal);
         // Mesma folding de ficha/corrugado do grupo (baseGradeSum/fichas/mixed).
         lb.baseGrid = foldFichaIntoGroup(lb, ficha, ficha.baseCurve, lb.baseGrid);
         if (order.op_number) lb.opNumbers.push(order.op_number);
@@ -2640,6 +2704,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
         const baseGrid = (order.grid || {}) as Record<string, number>;
         const baseSum = Object.values(baseGrid).reduce((s: number, v) => s + (Number(v) || 0), 0);
         const orderTotal = Number(order.total_pairs ?? 0);
+        addAllocatedPairs(ensureAllocatedPairs(band), order.op_number, orderTotal);
         const multiplier = baseSum > 0 ? orderTotal / baseSum : 0;
         const ficha = resolveFicha(orderTotal, baseGrid);
         band.baseGrade = foldFichaIntoGroup(
@@ -3061,7 +3126,21 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
 
   const today = new Date().toLocaleDateString('pt-BR');
   const printPairCount = printOrders.reduce((total, order) => total + (Number(order.total_pairs) || 0), 0);
-  const printBlocked = activeSectors.size === 0 || sheetCount === 0 || initialQueriesLoading || failedQueries > 0;
+  const failedPrintQueryCount = failedQueries + (consumptionFailed ? 1 : 0);
+  const hasAmbiguousConsumptionRouting = ambiguousConsumptionMaterials.length > 0;
+  const printBlocked = activeSectors.size === 0
+    || sheetCount === 0
+    || initialQueriesLoading
+    || consumptionLoading
+    || failedPrintQueryCount > 0
+    || hasAmbiguousConsumptionRouting;
+  const printBlockedTitle = consumptionLoading
+    ? 'O consumo dos materiais ainda está sendo calculado'
+    : failedPrintQueryCount > 0
+      ? 'Consultas de dados falharam — recarregue a página antes de imprimir'
+      : hasAmbiguousConsumptionRouting
+        ? 'Há materiais com mais de um setor configurado — corrija a ficha técnica antes de imprimir'
+        : undefined;
 
   return (
     /* print:p-0 print:space-y-0 — sem isso o p-6 (24px) + a margem do
@@ -3148,9 +3227,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
               onClick={() => { void printInBrowser(); }}
               className="gap-2"
               disabled={printBlocked || preparingNativePrint}
-              title={failedQueries > 0 ? 'Consultas de dados falharam — recarregue a página antes de imprimir' : 'Abre o diálogo do navegador. Você pode imprimir ou escolher “Salvar como PDF”.'}
+              title={printBlockedTitle || 'Abre o diálogo do navegador. Você pode imprimir ou escolher “Salvar como PDF”.'}
             >
-              {preparingNativePrint ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+              {preparingNativePrint || initialQueriesLoading || consumptionLoading
+                ? <Loader2 className="h-4 w-4 animate-spin" />
+                : <Printer className="h-4 w-4" />}
               Imprimir
             </Button>
 
@@ -3158,18 +3239,37 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
               onClick={() => { printTabRef.current = openPrintTab(); void printWith(); }}
               className="gap-2"
               disabled={printBlocked || preparingNativePrint}
-              title={failedQueries > 0 ? 'Consultas de dados falharam — recarregue a página antes de imprimir' : 'Gera um PDF padronizado no servidor, indicado para celular e quando a geometria precisa ser idêntica entre impressoras.'}
+              title={printBlockedTitle || 'Gera um PDF padronizado no servidor, indicado para celular e quando a geometria precisa ser idêntica entre impressoras.'}
             >
-              {initialQueriesLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+              {initialQueriesLoading || consumptionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
               PDF padronizado
             </Button>
           </div>
         </div>
 
-        {failedQueries > 0 && (
+        {failedPrintQueryCount > 0 && (
           <div className="flex items-start gap-2 border-y border-destructive/30 bg-destructive/10 px-4 py-2.5 text-xs text-destructive" role="alert">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" weight="fill" />
-            <span><strong>{failedQueries} consulta{failedQueries > 1 ? 's falharam' : ' falhou'}.</strong> Cliente, solado ou consumo podem sair incompletos. Recarregue a página antes de emitir.</span>
+            <span><strong>{failedPrintQueryCount} consulta{failedPrintQueryCount > 1 ? 's falharam' : ' falhou'}.</strong> Cliente, solado ou consumo podem sair incompletos. Recarregue a página antes de emitir.</span>
+          </div>
+        )}
+
+        {consumptionLoading && (
+          <div className="flex items-center gap-2 border-y border-border bg-muted/30 px-4 py-2.5 text-xs text-muted-foreground" role="status">
+            <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+            Calculando os materiais de cada setor. A emissão será liberada quando a conferência terminar.
+          </div>
+        )}
+
+        {hasAmbiguousConsumptionRouting && (
+          <div className="flex items-start gap-2 border-y border-destructive/30 bg-destructive/10 px-4 py-2.5 text-xs text-destructive" role="alert">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" weight="fill" />
+            <span>
+              <strong>Destino de material conflitante.</strong> Estes materiais aparecem em mais de um setor da mesma ficha: {' '}
+              {ambiguousConsumptionMaterials.slice(0, 4).join(' · ')}
+              {ambiguousConsumptionMaterials.length > 4 ? ` · +${ambiguousConsumptionMaterials.length - 4}` : ''}.
+              {' '}Corrija o setor na ficha técnica antes de emitir.
+            </span>
           </div>
         )}
 
@@ -3289,11 +3389,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
                 groups={palmilhaGroups.map(g => ({
                   ...g,
                   clientNames: clientNamesForPvs(g.pvNumbers),
+                  consumption: filterConsumptionForSector(consumptionForOpNumbers(g.opNumbers, allocatedPairsOf(g)), 'Corte Fibra'),
                   // Operação do setor: placas a cortar deste solado. Filtra o
                   // consumo em unidade `placa` (component Palmilha em placa);
                   // palmilha pronta-na-cor sai como `par` e não entra aqui.
-                  plateOps: consumptionForOpNumbers(g.opNumbers, g.totalPairs)
-                    .filter(r => (r.unit || '').toLowerCase() === 'placa' && (r.required || 0) > 0)
+                  plateOps: filterConsumptionForSector(consumptionForOpNumbers(g.opNumbers, allocatedPairsOf(g)), 'Corte Fibra')
+                    .filter(r => r.component === 'Palmilha' && (r.unit || '').toLowerCase() === 'placa' && (r.required || 0) > 0)
                     .map(r => ({
                       name: r.product_name,
                       qty: r.required,
@@ -3388,18 +3489,21 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
               const filtered = filterGroupForSector(soleGroup, sector);
               if (!filtered) continue;
               for (const cg of filtered.colorGroups) {
-                const existing = colorMap.get(cg.color);
+                const mergeKey = `${cg.color}::${lotPartitionKey(cg.lotInfo)}`;
+                const existing = colorMap.get(mergeKey);
                 if (!existing) {
-                  colorMap.set(cg.color, {
+                  const cloned = copyAllocatedPairs({
                     ...cg,
                     refs: [],  // remove refs (pedido user 22/05/2026)
                     combinedGrid: { ...cg.combinedGrid },
                     knifeGrid: cg.knifeGrid ? { ...cg.knifeGrid } : undefined,
                     opNumbers: [...cg.opNumbers],
                     pvNumbers: cg.pvNumbers ? [...cg.pvNumbers] : [],
-                  });
+                  }, cg);
+                  colorMap.set(mergeKey, cloned);
                 } else {
                   existing.totalPairs += cg.totalPairs;
+                  mergeAllocatedPairs(ensureAllocatedPairs(existing), allocatedPairsOf(cg));
                   for (const [size, qty] of Object.entries(cg.combinedGrid)) {
                     existing.combinedGrid[size] = (existing.combinedGrid[size] || 0) + qty;
                   }
@@ -3484,7 +3588,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
                   // Mostrar as refs todas da cor erra por excesso e é visível;
                   // mostrar uma foto anônima erra por omissão e engana o cortador.
                   const matRefImages = scoped.length > 0 ? scoped : allRefImages;
-                  expanded.push({
+                  const materialGroup = copyAllocatedPairs({
                     ...cg,
                     liningMaterial: lb.material || undefined,
                     refImages: matRefImages,
@@ -3500,21 +3604,30 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
                     totalPairs: lb.totalPairs,
                     opNumbers: [...lb.opNumbers],
                     pvNumbers: [...lb.pvNumbers],
-                  });
+                  }, lb);
+                  expanded.push(materialGroup);
                 }
               } else {
                 const only = bd && bd.size === 1 ? Array.from(bd.values())[0] : null;
-                expanded.push(only ? { ...cg, liningMaterial: only.material || undefined } : cg);
+                if (only) {
+                  expanded.push(copyAllocatedPairs({
+                    ...cg,
+                    liningMaterial: only.material || undefined,
+                  }, only));
+                } else {
+                  expanded.push(cg);
+                }
               }
             }
             const byColor = new Map<string, SilkColorGroup>();
             for (const cg of expanded) {
               const colorKey = (cg.color || '').trim().toUpperCase() || '∅';
               const matKey = (cg.liningMaterial || '').trim().toUpperCase();
-              const groupKey = matKey ? `${colorKey}::${matKey}` : colorKey;
+              const materialKey = matKey ? `${colorKey}::${matKey}` : colorKey;
+              const groupKey = `${materialKey}::${lotPartitionKey(cg.lotInfo)}`;
               const existing = byColor.get(groupKey);
               if (!existing) {
-                byColor.set(groupKey, {
+                const cloned = copyAllocatedPairs({
                   ...cg,
                   combinedGrid: { ...cg.combinedGrid },
                   knifeGrid: cg.knifeGrid ? { ...cg.knifeGrid } : undefined,
@@ -3533,9 +3646,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
                   // pares no dedup abaixo); copiar os objetos evita corromper o
                   // array de origem (compartilhado com outros setores/renders).
                   refImages: (cg.refImages || []).map((ri: any) => ({ ...ri })),
-                });
+                }, cg);
+                byColor.set(groupKey, cloned);
               } else {
                 existing.totalPairs += cg.totalPairs;
+                mergeAllocatedPairs(ensureAllocatedPairs(existing), allocatedPairsOf(cg));
                 for (const [size, qty] of Object.entries(cg.combinedGrid)) {
                   existing.combinedGrid[size] = (existing.combinedGrid[size] || 0) + qty;
                 }
@@ -3741,20 +3856,14 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             // tiras de todas as fichas somadas). A fonte é a MESMA do modal do
             // PV/débito (strap_colors → metros = cm/par ÷ 100), então bate por
             // construção com o que a fábrica separa/consome.
-            const attachConsumo = sectorName === 'Corte Forração'
-              || sectorName === 'Corte Cabedal'
-              || sectorName === 'Aviamento';
             const enriched = groupsForSector.map(g => ({
               ...withClientNames(g),
               sizeBand: bandForOps(g.colorGroups.flatMap(cg => cg.opNumbers || [])),
-              ...(attachConsumo
-                ? {
-                    colorGroups: g.colorGroups.map(cg => ({
-                      ...cg,
-                      consumption: consumptionForOpNumbers(cg.opNumbers, cg.totalPairs),
-                    })),
-                  }
-                : {}),
+              colorGroups: g.colorGroups.map(cg => ({
+                ...cg,
+                consumption: filterConsumptionForSector(
+                  consumptionForOpNumbers(cg.opNumbers, allocatedPairsOf(cg)), sectorName),
+              })),
             }));
             return [
               <div key={`${sectorName}-maco`} className="page-break">
@@ -3809,7 +3918,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           return <div className="page-break">
               <SolagemWorkSheet
                 sector="Colagem"
-                bands={data.bands}
+                bands={data.bands.map(band => ({ ...band,
+                  consumption: filterConsumptionForSector(consumptionForOpNumbers(band.opNumbers, allocatedPairsOf(band)), 'Colagem'),
+                }))}
                 allSizes={data.allSizes}
                 grandTotal={data.grandTotal}
                 sizeBand={bandForOps(data.bands.flatMap(b => b.opNumbers || []))}
@@ -3883,6 +3994,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
               hasStraps,
               strapColors: strapColorsOrdered,
               opNumbers: group.opNumbers,
+              consumption: filterConsumptionForSector(consumptionForOpNumbers(group.opNumbers, allocatedPairsOf(group)), sectorName),
               sizeBand: bandForOps(group.opNumbers),
               clientName: clientNamesForPvs(group.pvNumbers).join(' · ') || undefined,
               mixedGrades: group.mixedGrades,
@@ -3925,7 +4037,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           if (!data || data.bands.length === 0) return null;
           return <div className="page-break">
               <SolagemWorkSheet
-                bands={data.bands}
+                bands={data.bands.map(band => ({ ...band,
+                  consumption: filterConsumptionForSector(consumptionForOpNumbers(band.opNumbers, allocatedPairsOf(band)), 'Solagem'),
+                }))}
                 allSizes={data.allSizes}
                 grandTotal={data.grandTotal}
                 sizeBand={bandForOps(data.bands.flatMap(b => b.opNumbers || []))}
@@ -4000,6 +4114,13 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
               : [];
             const strapColorsOrdered = operatorStrapSequence(strapsRaw);
             const acabPairsPerBox = resolveAcabPairsPerBox(order);
+            const opNumbers = [order.op_number].filter(Boolean);
+            const allocatedPairsByOp = new Map<string, number>();
+            addAllocatedPairs(
+              allocatedPairsByOp,
+              order.op_number,
+              Number(order.total_pairs ?? order.quantity ?? 0),
+            );
             return {
               order: syntheticOrder,
               silk,
@@ -4011,7 +4132,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
               // Só anexa quando o grupo do solado resolveu (senão omite e o
               // componente cai no fallback item.pairsPerBox ?? order.pairs_per_box ?? 12).
               ...(acabPairsPerBox != null ? { pairsPerBox: acabPairsPerBox } : {}),
-              opNumbers: [order.op_number].filter(Boolean),
+              consumption: filterConsumptionForSector(consumptionForOpNumbers(
+                opNumbers, allocatedPairsByOp), 'Acabamento'),
+              opNumbers,
               clientName: clientNamesForPvs([(order as any).sale_order_number]).join(' · ') || undefined,
               lotInfo:
                 (order as any)._total_lots && (order as any)._total_lots > 1

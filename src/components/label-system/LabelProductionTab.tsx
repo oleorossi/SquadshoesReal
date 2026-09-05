@@ -52,6 +52,7 @@ import { resolveLabelBoxCapacity, type SolePackagingCapacity } from '@/lib/label
 import { DEFAULT_MANUFACTURER_NAME, DEFAULT_MANUFACTURER_CNPJ } from '@/lib/companySender';
 import { cn } from '@/lib/utils';
 import { isCancelledOrDraftOrder } from '@/lib/orderStatus';
+import { labelStrapSequence } from '@/lib/labelStrapSequence';
 import { packSaleOrderItem, packSaleOrderItemBySize } from '@/lib/boxPacking';
 import { toast } from 'sonner';
 import { useCompanies } from '@/hooks/useNfe';
@@ -808,20 +809,7 @@ export function LabelProductionTab() {
       for (const item of data || []) {
         const straps = item.strap_colors as any[];
         if (Array.isArray(straps) && straps.length > 0) {
-          // Ordena por id numérico antes de montar a label, garantindo
-          // sequência TIRA 1 → TIRA 2 → TIRA 3 mesmo se o usuário tiver
-          // reordenado/deletado tiras na ficha técnica (id pode ficar
-          // fora de ordem natural no array).
-          const ordered = [...straps].sort((a: any, b: any) => {
-            const ka = parseInt(a?.id, 10);
-            const kb = parseInt(b?.id, 10);
-            if (isFinite(ka) && isFinite(kb)) return ka - kb;
-            return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
-          });
-          const sig = ordered
-            .filter((s: any) => s.label && s.color)
-            .map((s: any) => `${s.label}:${s.color}`)
-            .join('|');
+          const sig = labelStrapSequence(straps, item.color);
           if (sig) {
             map.set(item.id, sig);
             if (item.sale_order_id && item.reference_id) {

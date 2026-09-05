@@ -16,6 +16,7 @@ import { SectorAlerts, type SectorAlert } from './worksheet/SectorAlerts';
 import { SignedImage } from '@/components/ui/signed-image';
 import { formatOpNumber } from './worksheet/stageOrder';
 import type { ConsumptionRow } from '@/hooks/useBulkOrderConsumption';
+import { SectorMaterials } from './worksheet/SectorMaterials';
 
 /** Quantidade pt-BR: inteiro sem casas, fracionário com 1-2 casas. */
 const fmtConsumoQty = (n: number) =>
@@ -1462,6 +1463,8 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                 )}
                 {renderCompactAlerts(cg)}
                 {renderConsumoCorte(cg)}
+                <SectorMaterials rows={cg.consumption} sector={sector}
+                  excludeComponents={CONSUMO_COMPONENTS_BY_SECTOR[sector] || []} />
                 <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={cg.totalPairs} title={tallyTitle} size={TALLY_SIZE} />
               </div>
             );
@@ -1702,6 +1705,8 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
 
                 {/* Consumo de Tiras · Metros (Aviamento — metros por ficha + total) */}
                 {renderConsumoTiras(cg)}
+                <SectorMaterials rows={cg.consumption} sector={sector}
+                  excludeComponents={sector === 'Aviamento' ? ['Tiras'] : CONSUMO_COMPONENTS_BY_SECTOR[sector] || []} />
 
                 {/* Tally Box */}
                 <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={cg.totalPairs} title={tallyTitle} size={TALLY_SIZE} />

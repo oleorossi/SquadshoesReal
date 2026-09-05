@@ -66,6 +66,10 @@ export type MaterialConsumptionRow = {
   productUnit: string;
   color: string;
   totalQuantity: number;
+  /** Destino configurado/congelado no servidor; não é prova de baixa efetiva. */
+  consumptionSector?: string | null;
+  consumptionSectorSource?: string | null;
+  consumptionMaterialSource?: string | null;
   widthMissing?: boolean;
   /** Aviso não-bloqueante exibido pelo modal (ex.: solado fachetado sem specs
    *  de fachete). A linha entra mesmo com `totalQuantity` 0 só pra alertar que

@@ -30,6 +30,7 @@ export interface StrapStockLine {
   mainProductionStart: string | null;
   scheduleRevision: number | null;
   blockingReasons: string[];
+  snapshotWarning?: string | null;
   blockReason: string | null;
 }
 
@@ -187,6 +188,7 @@ export function useStrapStockLines(input: StrapStockLinesInput, enabled = true) 
           mainProductionStart: strOrNull(resolved.main_production_start),
           scheduleRevision: numOrNull(resolved.schedule_revision),
           blockingReasons,
+          snapshotWarning: strOrNull(resolved.snapshot_warning),
           blockReason: blockingReasons[0] || null,
         };
       });

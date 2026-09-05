@@ -235,7 +235,7 @@ function SoleCoveragePanel({ rows, grossNeed = false }: { rows: ConsumptionRow[]
           const hasShortage = known && shortage > 0;
           return (
             <article
-              key={`${row.groupName}-${row.color}-${row.boxTypeIds?.join(',') || row.productIds?.join(',') || index}`}
+              key={`${row.groupName}-${row.color}-${row.consumptionSector || ''}-${row.boxTypeIds?.join(',') || row.productIds?.join(',') || index}`}
               className="px-4 py-3"
             >
               <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
@@ -611,6 +611,9 @@ export default function MaterialConsumptionView({
             )}
             {row.groupName}
           </div>
+          {row.consumptionSector && (
+            <p className="mt-1 text-xs text-muted-foreground">Setor: {row.consumptionSector}</p>
+          )}
         </TableCell>
         <TableCell>{row.materialName}</TableCell>
         <TableCell>{row.color}</TableCell>

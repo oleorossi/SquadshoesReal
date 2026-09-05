@@ -12,8 +12,11 @@ import { PaginatedSheet, type SheetBlock } from './worksheet/PaginatedSheet';
 import { formatOpNumber } from './worksheet/stageOrder';
 import { fichaModelFor } from './worksheet/fichaModel';
 import { TraceStrip } from './worksheet/TraceStrip';
+import { SectorMaterials } from './worksheet/SectorMaterials';
+import type { ConsumptionRow } from '@/hooks/useBulkOrderConsumption';
 
 export interface SoleColorBand {
+  consumption?: ConsumptionRow[];
   soleColor: string;
   grade: Record<string, number>;
   totalPairs: number;
@@ -301,8 +304,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 1
           </tbody>
         </table>
 
-        {/* "Consumo Previsto" removido em 2026-06-12 — métrica de
-            planejamento, não pertence à ficha de operador. */}
+        <SectorMaterials rows={band.consumption} sector={sector} />
 
         <div className="px-2 py-1.5 border-t border-black">
           <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={band.totalPairs} title={tallyTitle} size={TALLY_SIZE} />

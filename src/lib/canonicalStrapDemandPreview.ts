@@ -26,6 +26,7 @@ export interface CanonicalStrapDemandPreview {
   usableBaseWidthMm: number | null;
   theoreticalYieldMPerM: number | null;
   blockingReasons: string[];
+  snapshotWarning?: string | null;
 }
 
 const stringOrNull = (value: unknown): string | null =>
@@ -78,6 +79,7 @@ export function parseCanonicalStrapDemandPreview(
     usableBaseWidthMm: numberOrNull(resolved.usable_base_width_mm_snapshot),
     theoreticalYieldMPerM: numberOrNull(resolved.theoretical_yield_m_per_m),
     blockingReasons: parseCanonicalBlockingReasons(value.blocking_reasons),
+    ...(resolved.snapshot_warning ? { snapshotWarning: stringOrNull(resolved.snapshot_warning) } : {}),
   };
 }
 
@@ -148,6 +150,8 @@ export function replaceWithCanonicalStrapRows(
     const stableIdentity = preview.strapVariantId || preview.technicalStrapLineId;
     const key = [stableIdentity, preview.sourceMode || 'unresolved', preview.recipeId || 'no-recipe'].join('::');
     const existing = grouped.get(key);
+    const presentationWarnings = [...preview.blockingReasons,
+      ...(preview.snapshotWarning ? [preview.snapshotWarning] : [])];
     const gross = Math.max(0, finiteOrZero(preview.grossRequiredM));
     const baseRequired = Math.max(0, finiteOrZero(preview.baseRequiredM));
     const yieldPerMeter = Math.max(0, finiteOrZero(preview.confirmedYieldMPerM));
@@ -162,12 +166,12 @@ export function replaceWithCanonicalStrapRows(
       existing.technicalStrapLineIds.push(preview.technicalStrapLineId);
       if (existing.artisanal && preview.sourceMode === 'internal') {
         existing.artisanal.baseQty += baseRequired;
-        if (preview.blockingReasons.length > 0) existing.artisanal.pending = true;
+        if (presentationWarnings.length > 0) existing.artisanal.pending = true;
       }
-      if (preview.blockingReasons.length > 0) {
+      if (presentationWarnings.length > 0) {
         existing.warning = Array.from(new Set([
           ...(existing.warning ? existing.warning.split(' · ') : []),
-          ...preview.blockingReasons,
+          ...presentationWarnings,
         ])).join(' · ');
       }
       continue;
@@ -183,6 +187,7 @@ export function replaceWithCanonicalStrapRows(
       || !preview.baseProductName
       || !(yieldPerMeter > 0)
       || preview.blockingReasons.length > 0
+      || !!preview.snapshotWarning
     );
 
     grouped.set(key, {
@@ -195,8 +200,8 @@ export function replaceWithCanonicalStrapRows(
       productIds: preview.finishedProductId ? [preview.finishedProductId] : [],
       materialFamily: internal ? preview.baseProductName : null,
       available: netStock(product),
-      warning: preview.blockingReasons.length > 0
-        ? preview.blockingReasons.join(' · ')
+      warning: presentationWarnings.length > 0
+        ? presentationWarnings.join(' · ')
         : undefined,
       artisanal: internal
         ? {
@@ -268,6 +273,7 @@ export function canonicalStrapCutRows(
           ...existing.canonical.blockingReasons,
           ...preview.blockingReasons,
         ]));
+        if (preview.snapshotWarning) existing.canonical.snapshotWarning = preview.snapshotWarning;
         return;
       }
 
@@ -286,6 +292,7 @@ export function canonicalStrapCutRows(
           usableBaseWidthMm: usableWidth,
           theoreticalYieldMPerM: theoreticalYield,
           blockingReasons: [...preview.blockingReasons],
+          ...(preview.snapshotWarning ? { snapshotWarning: preview.snapshotWarning } : {}),
         },
       });
     });

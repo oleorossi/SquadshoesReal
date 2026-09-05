@@ -276,6 +276,26 @@ export function shouldWarnSaleOrderItemDuplicate(
   ));
 }
 
+/**
+ * Marca somente a segunda ocorrência (e seguintes) na ordem visual. A lista
+ * pode conter X, Y, X: por isso não basta comparar com o item adjacente.
+ */
+export function saleOrderDuplicateVisualIndices(
+  items: SaleOrderItemFormData[],
+  visualOrder: number[],
+): Set<number> {
+  const seen = new Set<string>();
+  const duplicates = new Set<number>();
+  visualOrder.forEach((itemIndex) => {
+    const item = items[itemIndex];
+    if (!item?.reference_id || !item.color || isProductionExcludedSaleOrderItem(item)) return;
+    const key = saleOrderItemDuplicateKey(item);
+    if (seen.has(key)) duplicates.add(itemIndex);
+    else seen.add(key);
+  });
+  return duplicates;
+}
+
 const formatCurrency = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
@@ -1056,6 +1076,10 @@ export default function SaleOrderFormPanel({
     });
     return indices;
   }, [items]);
+  const duplicateItemIndices = useMemo(
+    () => saleOrderDuplicateVisualIndices(items, sortedIndices),
+    [items, sortedIndices],
+  );
 
    /**
     * Identidade produtiva de um item para fins de duplicata.
@@ -2077,7 +2101,7 @@ export default function SaleOrderFormPanel({
           const item = items[idx];
           const prevItem = sortPos > 0 ? items[sortedIndices[sortPos - 1]] : null;
           const isSameRef = prevItem?.reference_id === item.reference_id && !!item.reference_id;
-          const isSameRefAndColor = isSameRef && prevItem?.color === item.color;
+          const isProductiveDuplicate = duplicateItemIndices.has(idx);
           // Cabeçalho de grupo: aparece no 1º item de cada referência, agrupando
           // visualmente as cores da mesma ref. Pedido user 11/06/2026.
           const isNewRefGroup = !!item.reference_id && !isSameRef;
@@ -2100,15 +2124,15 @@ export default function SaleOrderFormPanel({
             )}
             <div
               className={
-                isSameRefAndColor && item.color
+                isProductiveDuplicate
                   ? 'ml-6 border-l-4 border-destructive/50 pl-3 bg-destructive/5 rounded-r-md relative'
                   : isSameRef
                     ? 'ml-3 border-l-2 border-primary/30 pl-2 bg-primary/5 rounded-r-md'
                     : ''
               }>
-              {isSameRefAndColor && item.color && (
+              {isProductiveDuplicate && (
                 <div className="absolute -top-2 left-3 px-2 py-0.5 rounded-full bg-destructive text-destructive-foreground text-xs font-bold uppercase tracking-wider shadow-sm z-10">
-                  Duplicado · mesma ref+cor
+                  Duplicado · mesma configuração
                 </div>
               )}
               <SaleOrderItemForm

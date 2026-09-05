@@ -28,10 +28,12 @@ describe('isCommittedSaleOrderStrapSnapshotStatus', () => {
       'Finalizado',
       'FINALIZADO',
       'Cancelada',
+      'Entregue',
+      'Estado futuro não mapeado',
     ]) {
       expect(isCommittedSaleOrderStrapSnapshotStatus(status), status).toBe(true);
     }
-    for (const status of ['Rascunho', 'Pendente', '', null, undefined]) {
+    for (const status of ['Rascunho', 'Pendente', 'draft', 'pending', '', null, undefined]) {
       expect(isCommittedSaleOrderStrapSnapshotStatus(status), String(status)).toBe(false);
     }
   });

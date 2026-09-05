@@ -28,19 +28,11 @@ function normalizeSaleOrderStatusAlias(status: unknown): string {
     .replace(/\s+/g, ' ');
 }
 
-const COMMITTED_STRAP_SNAPSHOT_STATUSES = new Set([
-  SALE_ORDER_STATUS.APROVADO,
-  SALE_ORDER_STATUS.EM_PRODUCAO,
-  SALE_ORDER_STATUS.FATURADO,
-  SALE_ORDER_STATUS.EXPEDIDO,
-  SALE_ORDER_STATUS.CONCLUIDO,
-  SALE_ORDER_STATUS.FINALIZADO_SEM_NF,
-  SALE_ORDER_STATUS.CANCELADO,
-  // Grafias legadas ainda reconhecidas pelas migrations/consultas históricas.
-  'Finalizado sem NF',
-  'Finalizado',
-  'FINALIZADO',
-  'Cancelada',
+const EDITABLE_STRAP_SNAPSHOT_STATUSES = new Set([
+  SALE_ORDER_STATUS.RASCUNHO,
+  SALE_ORDER_STATUS.PENDENTE,
+  'draft',
+  'pending',
 ].map(normalizeSaleOrderStatusAlias));
 
 /**
@@ -49,7 +41,10 @@ const COMMITTED_STRAP_SNAPSHOT_STATUSES = new Set([
  * Rascunho/Pendente continuam prospectivos e acompanham a ficha atual.
  */
 export function isCommittedSaleOrderStrapSnapshotStatus(status: unknown): boolean {
-  return COMMITTED_STRAP_SNAPSHOT_STATUSES.has(normalizeSaleOrderStatusAlias(status));
+  const normalized = normalizeSaleOrderStatusAlias(status);
+  // Estado desconhecido de item persistido não concede permissão para reescrever
+  // história. Ausência de status continua compatível com um formulário novo.
+  return !!normalized && !EDITABLE_STRAP_SNAPSHOT_STATUSES.has(normalized);
 }
 
 /**

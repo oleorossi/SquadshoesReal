@@ -35,7 +35,9 @@ describe('Cabedal e tiras coexistem na ficha e no PV', () => {
   it('o formulário do PV materializa e valida tiras mesmo quando há Cabedal', () => {
     expect(saleOrderItemForm).toContain('const hasStrapsEffective = useMemo');
     expect(saleOrderItemForm).toContain('|| !!selectedRef?.has_straps');
-    expect(saleOrderItemForm).toContain('refHasStrapsEffective = !!selectedRef?.has_straps || refStrapDefs.length > 0');
+    expect(saleOrderItemForm).toContain('|| referenceStrapDefinitions.length > 0');
+    expect(saleOrderItemForm).toContain('reconcileEditableStrapSnapshots({');
+    expect(saleOrderItemForm).toContain('preserveCommittedStrapSnapshot || selectedRef?.strap_colors === undefined');
     expect(saleOrderItemForm).not.toContain('if (modelHasCabedal) return false');
     expect(saleOrderItemForm).not.toContain('&& !modelHasCabedal');
     expect(saleOrderItemForm).not.toMatch(/modelHasCabedal[\s\S]{0,200}update\(idx, 'strap_colors', \[\]\)/);

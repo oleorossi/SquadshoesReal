@@ -62,6 +62,8 @@ const lineBaseSchema = z.object({
   available: finiteNonNegative.optional().default(0),
   stock_ok: z.boolean().optional().default(false),
   source: z.string().optional().nullable(),
+  consumption_sector: z.string().optional().nullable(),
+  consumption_sector_source: z.string().optional().nullable(),
   debit_mode: z.enum(['hard', 'soft']).optional().default('soft'),
   color: z.string().optional().nullable(),
   product_color: z.string().optional().nullable(),
@@ -231,7 +233,10 @@ const formatCanonicalWarning = (value: string): string => {
 };
 
 const warningText = (line: CanonicalConsumptionLine): string | undefined => {
-  const values = [line.warning, line.conversion_warning, line.consumption_warning]
+  const sectorWarning = line.consumption_sector_source === 'ambiguous'
+    ? 'Setor de consumo conflitante: revise os setores cadastrados para este material antes de imprimir as fichas.'
+    : undefined;
+  const values = [line.warning, line.conversion_warning, line.consumption_warning, sectorWarning]
     .map((value) => value?.trim())
     .filter((value): value is string => !!value)
     .map(formatCanonicalWarning);
@@ -295,6 +300,7 @@ export function adaptCanonicalConsumptionLines(
     const materialName = line.product_name.trim();
     const color = (line.color || line.product_color || '—').trim() || '—';
     const unit = line.product_unit.trim();
+    const consumptionSector = line.consumption_sector?.trim() || null;
     const warning = warningText(line);
     const productId = !packaging ? line.product_id : null;
     const boxTypeId = packaging ? line.box_type_id : null;
@@ -306,6 +312,9 @@ export function adaptCanonicalConsumptionLines(
       materialName,
       color,
       unit,
+      consumptionSector || '',
+      line.consumption_sector_source || '',
+      line.source || '',
     ].join('::');
     const existing = grouped.get(key);
     const grade = component === 'Solado' ? line.effective_grade : null;
@@ -337,6 +346,9 @@ export function adaptCanonicalConsumptionLines(
       productUnit: unit,
       color,
       totalQuantity: line.required,
+      consumptionSector,
+      consumptionSectorSource: line.consumption_sector_source || null,
+      consumptionMaterialSource: line.source || null,
       widthMissing: !!line.conversion_warning
         && /largura|dimens(?:ão|ao)/i.test(line.conversion_warning),
       warning,

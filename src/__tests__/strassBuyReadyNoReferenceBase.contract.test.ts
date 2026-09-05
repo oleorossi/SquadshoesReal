@@ -7,6 +7,7 @@ const read = (path: string) => readFileSync(resolve(ROOT, path), 'utf8');
 
 const drawer = read('src/components/sale-orders/StrapCatalogResolutionDrawer.tsx');
 const itemForm = read('src/components/sale-orders/SaleOrderItemForm.tsx');
+const strapReconciler = read('src/lib/reconcileStrapSnapshots.ts');
 const formPanel = read('src/components/sale-orders/SaleOrderFormPanel.tsx');
 const hooks = read('src/hooks/useArtisanalStraps.ts');
 const migration = read(
@@ -138,26 +139,24 @@ describe('STRASS comprada pronta — correção de contexto sem napa-base', () =
     expect(migration).toContain('ENABLE TRIGGER trg_mark_so_costs_dirty_from_sheet');
   });
 
-  it('sincroniza item novo por UUID e usa o ordinal só para cor legada', () => {
+  it('sincroniza item editável exclusivamente pelo UUID técnico', () => {
     expect(itemForm).toContain('const straps = referenceStrapDefinitions');
     expect(itemForm).toContain('lines={referenceStrapDefinitions}');
-    expect(itemForm).toContain('const currentByLineId = new Map(');
-    expect(itemForm).toContain('strapColors.map((resolved, ordinal) => ({');
-    expect(itemForm).toContain('const currentById = lineId ? currentByLineId.get(lineId) : null');
-    expect(itemForm).toContain('const ordinalLegacy = currentStraps[ordinal]');
-    expect(itemForm).toContain(
-      '|| (!technicalStrapLineId(ordinalLegacy) ? ordinalLegacy : null)',
-    );
-    expect(itemForm).toMatch(
-      /\.\.\.resolved,[\s\S]*color:\s*current\?\.color\s*\|\|\s*''[\s\S]*color_id:\s*isUuid\(current\?\.color_id\)\s*\?\s*current\.color_id\s*:\s*null/,
-    );
-    expect(itemForm).toContain("onUpdate(index, 'strap_colors', resolvedWithItemColors)");
+    expect(itemForm).toContain('const reconciled = reconcileEditableStrapSnapshots({');
+    expect(strapReconciler).toContain('const snapshotById = new Map');
+    expect(strapReconciler).toContain('const match = lineId ? snapshotById.get(lineId) : undefined');
+    expect(strapReconciler).toContain("changes.push({ kind: 'legacy_unmatched'");
+    expect(strapReconciler).not.toContain('ordinalLegacy');
+    expect(itemForm).toContain("onUpdate(index, 'strap_colors', reconciled.lines)");
   });
 
-  it('mantém snapshot persistido imutável e usa a ficha atual somente na apresentação', () => {
-    expect(itemForm).toContain('const strapPresentationDefinitions = useMemo(() => {');
+  it('mantém snapshot persistido integral no preview histórico', () => {
+    expect(itemForm).toContain('const strapPresentationDefinitions = useMemo(() => strapPresentationLines(');
     expect(itemForm).toContain('strapColors: strapPresentationDefinitions');
     expect(itemForm).toContain('const straps = strapPresentationDefinitions');
+    expect(strapReconciler).toContain(
+      'if (preserveCommittedSnapshot || technicalLines == null) return snapshots;',
+    );
     expect(itemForm).toContain('const preserveCommittedStrapSnapshot = !!item.id');
     expect(itemForm).toContain('isCommittedSaleOrderStrapSnapshotStatus(saleOrderStatus)');
     expect(formPanel).toContain('saleOrderStatus={form.status}');
@@ -185,7 +184,7 @@ describe('STRASS comprada pronta — correção de contexto sem napa-base', () =
     const resolvedCallbackEnd = itemForm.indexOf('          }}\n        />', resolvedCallbackStart);
     const resolvedCallback = itemForm.slice(resolvedCallbackStart, resolvedCallbackEnd);
     expect(resolvedCallback).toMatch(
-      /if \(preserveCommittedStrapSnapshot\) \{[\s\S]*?return;[\s\S]*?const currentStraps/,
+      /if \(preserveCommittedStrapSnapshot\) \{[\s\S]*?return;[\s\S]*?reconcileEditableStrapSnapshots/,
     );
     // A invalidação pertence ao hook da mutation; duplicá-la aqui gerava seis
     // refetches extras depois da mesma correção.

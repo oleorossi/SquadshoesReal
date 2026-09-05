@@ -29,6 +29,7 @@ SET LOCAL ROLE authenticated;
 DO $preview_unapproved$
 DECLARE
   v_rejected boolean := false;
+  v_manifest_rejected boolean := false;
 BEGIN
   BEGIN
     PERFORM 1
@@ -38,6 +39,13 @@ BEGIN
   END;
   ASSERT v_rejected,
     'Preview SECURITY DEFINER aceitou authenticated sem profile aprovado';
+  BEGIN
+    PERFORM public.get_mobile_strap_offline_manifest(NULL);
+  EXCEPTION WHEN SQLSTATE '42501' THEN
+    v_manifest_rejected := true;
+  END;
+  ASSERT v_manifest_rejected,
+    'Manifesto SECURITY DEFINER aceitou authenticated sem profile aprovado';
 END
 $preview_unapproved$;
 RESET ROLE;
@@ -100,6 +108,19 @@ DECLARE
   v_job_result jsonb;
   v_promotion_result jsonb;
   v_receipt_result jsonb;
+  v_historical_preview jsonb;
+  v_manifest jsonb;
+  v_manifest_again jsonb;
+  v_manifest_entry jsonb;
+  v_empty_manifest jsonb;
+  v_partial_item_preview jsonb;
+  v_partial_order_preview jsonb;
+  v_partial_report jsonb;
+  v_sector_report jsonb;
+  v_sector_current_lines jsonb;
+  v_empty_sheet_id uuid;
+  v_sector_product_id uuid;
+  v_sector_reservation_id uuid;
   v_noncanonical_sale_order_id uuid;
   v_noncanonical_sale_order_item_id uuid;
   v_sale_order_id uuid;
@@ -111,6 +132,10 @@ DECLARE
   v_client_request_id uuid := gen_random_uuid();
   v_worker_id text := 'e2e-independent-straps-' || gen_random_uuid()::text;
   v_missing_rejected boolean := false;
+  v_historical_passed boolean := false;
+  v_manifest_limit_rejected boolean := false;
+  v_partial_scope_passed boolean := false;
+  v_sector_runtime_passed boolean := false;
   v_missing_error text;
   v_sheet_context text;
   v_missing_label text;
@@ -193,6 +218,9 @@ BEGIN
       END
     ) WITH ORDINALITY line(value, ordinality)
     WHERE nullif(btrim(coalesce(ts.upper_material, '')), '') IS NULL
+      AND public.normalize_strap_catalog_text(ts.status_ficha)
+            IN ('publicada', 'validada')
+      AND ts.retired_at IS NULL
     GROUP BY ts.id, ts.strap_colors
   )
   SELECT
@@ -434,6 +462,159 @@ BEGIN
         WHERE line.value ->> 'color_mode' IS DISTINCT FROM 'select_on_order'
      ), 'Ficha de teste não persistiu select_on_order nas cinco linhas';
 
+  -- O manifesto offline e autoritativo para estrutura/ordem e limita as cores
+  -- ao mesmo catálogo físico que o writer aceitará no sync.
+  v_manifest := public.get_mobile_strap_offline_manifest(
+    ARRAY[v_sheet_id]::uuid[]
+  );
+  v_manifest_again := public.get_mobile_strap_offline_manifest(
+    ARRAY[v_sheet_id]::uuid[]
+  );
+  ASSERT (v_manifest ->> 'version')::integer = 1
+     AND v_manifest ->> 'manifest_hash'
+           = v_manifest_again ->> 'manifest_hash'
+     AND v_manifest -> 'references'
+           = v_manifest_again -> 'references',
+    'Manifesto não é determinístico ou mudou a versão do contrato';
+  ASSERT NOT (
+    v_manifest::text ~
+      '"(unit_price|purchase_price|quantity|current_stock|reserved_stock|source_mode)"[[:space:]]*:'
+  ), 'Manifesto offline vazou preço, saldo ou origem financeira';
+  ASSERT (
+    SELECT count(*)
+      FROM jsonb_array_elements(v_manifest -> 'references') context(value)
+  ) = 1 + (
+    SELECT count(*)
+      FROM public.reference_material_variants variant
+     WHERE variant.reference_id = v_sheet_id
+       AND coalesce(variant.active, true)
+  ), 'Manifesto omitiu o contexto base ou uma variante ativa';
+  ASSERT NOT EXISTS (
+    SELECT 1
+      FROM jsonb_array_elements(v_manifest -> 'references') context(value)
+     WHERE context.value ->> 'reference_id' IS DISTINCT FROM v_sheet_id::text
+  ), 'Filtro do manifesto vazou outra referência';
+
+  SELECT context.value
+    INTO v_manifest_entry
+    FROM jsonb_array_elements(v_manifest -> 'references') context(value)
+   WHERE context.value ->> 'reference_id' = v_sheet_id::text
+     AND context.value ->> 'material_variant_id' IS NULL;
+  ASSERT v_manifest_entry IS NOT NULL
+     AND jsonb_array_length(v_manifest_entry -> 'lines') = 5,
+    'Manifesto não devolveu as cinco tiras do contexto base';
+  ASSERT NOT EXISTS (
+    SELECT 1
+      FROM jsonb_array_elements(v_manifest_entry -> 'lines')
+             WITH ORDINALITY manifest_line(value, ordinality)
+      JOIN LATERAL (
+        SELECT v_sheet_lines -> (manifest_line.ordinality - 1)::integer AS value
+      ) sheet_line ON true
+     WHERE (manifest_line.value ->> 'position')::integer
+             IS DISTINCT FROM manifest_line.ordinality::integer
+        OR manifest_line.value ->> 'technical_strap_line_id'
+             IS DISTINCT FROM sheet_line.value ->> 'technical_strap_line_id'
+        OR manifest_line.value ->> 'measure_id'
+             IS DISTINCT FROM sheet_line.value ->> 'measure_id'
+        OR manifest_line.value ->> 'strap_type_id'
+             IS DISTINCT FROM sheet_line.value ->> 'strap_type_id'
+        OR manifest_line.value ->> 'color_mode'
+             IS DISTINCT FROM 'select_on_order'
+        OR manifest_line.value ->> 'consumption'
+             IS DISTINCT FROM sheet_line.value ->> 'consumption'
+        OR manifest_line.value -> 'consumption_per_size'
+             IS DISTINCT FROM sheet_line.value -> 'consumption_per_size'
+        OR manifest_line.value ->> 'base_group_id'
+             IS DISTINCT FROM v_base_group_id::text
+        OR (
+          SELECT count(*)
+            FROM jsonb_array_elements(
+              manifest_line.value -> 'allowed_colors'
+            ) allowed(value)
+        ) IS DISTINCT FROM (
+          SELECT count(DISTINCT allowed.value ->> 'id')
+            FROM jsonb_array_elements(
+              manifest_line.value -> 'allowed_colors'
+            ) allowed(value)
+        )
+        OR EXISTS (
+          SELECT 1
+            FROM unnest(v_color_ids) expected_color(id)
+           WHERE NOT EXISTS (
+             SELECT 1
+               FROM jsonb_array_elements(
+                 manifest_line.value -> 'allowed_colors'
+               ) allowed(value)
+              WHERE allowed.value ->> 'id' = expected_color.id::text
+           )
+        )
+        OR EXISTS (
+          SELECT 1
+            FROM jsonb_array_elements(
+              manifest_line.value -> 'allowed_colors'
+            ) allowed(value)
+           WHERE NOT EXISTS (
+             SELECT 1
+               FROM public.canonical_colors color
+              WHERE color.id = (allowed.value ->> 'id')::uuid
+                AND color.active
+                AND color.name = allowed.value ->> 'name'
+           )
+        )
+  ), 'Manifesto alterou ordem/estrutura ou ofereceu cor não canônica';
+
+  SELECT sheet.id
+    INTO v_empty_sheet_id
+    FROM public.technical_sheets sheet
+   WHERE public.normalize_strap_catalog_text(sheet.status_ficha)
+           IN ('publicada', 'validada')
+     AND sheet.retired_at IS NULL
+     AND jsonb_array_length(CASE
+       WHEN jsonb_typeof(sheet.strap_colors) = 'array'
+         THEN sheet.strap_colors
+       ELSE '[]'::jsonb
+     END) = 0
+     AND EXISTS (
+       SELECT 1
+         FROM public.reference_material_variants variant
+        WHERE variant.reference_id = sheet.id
+          AND coalesce(variant.active, true)
+     )
+   ORDER BY sheet.id
+   LIMIT 1;
+  ASSERT v_empty_sheet_id IS NOT NULL,
+    'Fixture sem referência publicada, vazia e com variante ativa';
+  v_empty_manifest := public.get_mobile_strap_offline_manifest(
+    ARRAY[v_empty_sheet_id]::uuid[]
+  );
+  ASSERT (
+    SELECT count(*)
+      FROM jsonb_array_elements(v_empty_manifest -> 'references') context(value)
+  ) = 1 + (
+    SELECT count(*)
+      FROM public.reference_material_variants variant
+     WHERE variant.reference_id = v_empty_sheet_id
+       AND coalesce(variant.active, true)
+  )
+  AND NOT EXISTS (
+    SELECT 1
+      FROM jsonb_array_elements(v_empty_manifest -> 'references') context(value)
+     WHERE context.value ->> 'reference_id'
+             IS DISTINCT FROM v_empty_sheet_id::text
+        OR jsonb_array_length(context.value -> 'lines') <> 0
+  ), 'Manifesto omitiu tombstone lines=[] do contexto base/variantes';
+
+  BEGIN
+    PERFORM public.get_mobile_strap_offline_manifest((
+      SELECT array_agg(gen_random_uuid())
+        FROM generate_series(1, 201)
+    ));
+  EXCEPTION WHEN SQLSTATE '54000' THEN
+    v_manifest_limit_rejected := true;
+  END;
+  ASSERT v_manifest_limit_rejected,
+    'Manifesto aceitou mais de 200 referências';
+
   SELECT size.key
     INTO v_size
     FROM jsonb_object_keys(
@@ -475,6 +656,63 @@ BEGIN
          FROM jsonb_each(v_expected_m_by_line) expected(line_id, required_m)
         WHERE (expected.required_m #>> '{}')::numeric <= 0
      ), 'Oracle independente não calculou cinco consumos positivos em metros';
+
+  -- Componente sintético de 4 unidades/par para provar o roteamento
+  -- Aviamento (setor 4) -> Solagem (setor 8) sem misturar a alteração da
+  -- ficha vigente com o snapshot do pedido. Escolha um SKU que o motor ainda
+  -- não emite e sem regra global por cor, evitando substituição do fixture.
+  SELECT product.id
+    INTO v_sector_product_id
+    FROM public.products product
+   WHERE product.active
+     AND pg_catalog.lower(COALESCE(product.category, '')) NOT IN (
+       'acessório', 'embalagem', 'cola / químico', 'ferramentas',
+       'solado', 'componente', 'componentes'
+     )
+     AND NOT EXISTS (
+       SELECT 1
+         FROM public.artisanal_strap_variants variant
+        WHERE variant.finished_product_id = product.id
+     )
+     AND NOT EXISTS (
+       SELECT 1
+         FROM public.base_material_color_official_products official
+        WHERE official.official_product_id = product.id
+     )
+     AND NOT EXISTS (
+       SELECT 1
+         FROM public.component_color_defaults color_default
+        WHERE color_default.active
+          AND color_default.group_id = product.group_id
+     )
+     AND NOT EXISTS (
+       SELECT 1
+         FROM pg_catalog.jsonb_array_elements(
+                public.calculate_order_consumption_by_grade(
+                  v_sheet_id,
+                  pg_catalog.jsonb_build_object(v_size, 1),
+                  v_color_names[1],
+                  NULL
+                )
+              ) existing(value)
+        WHERE existing.value ->> 'product_id' = product.id::text
+     )
+   ORDER BY product.id
+   LIMIT 1;
+  ASSERT v_sector_product_id IS NOT NULL,
+    'Fixture sem SKU independente para o teste de setor configurado';
+
+  UPDATE public.technical_sheets sheet
+     SET component_colors_enabled = false,
+         direct_components = pg_catalog.jsonb_build_array(
+           pg_catalog.jsonb_build_object(
+             'product_id', v_sector_product_id,
+             'quantity', 4,
+             'consumption_sector', 'Aviamento'
+           )
+         )
+   WHERE sheet.id = v_sheet_id;
+  ASSERT FOUND, 'Fixture não conseguiu configurar componente no setor 4';
 
   -- O cliente adultera color_mode para follow_main e envia as linhas na ordem
   -- 3/1/5/4/2. O writer deve reidratar política e ordem da ficha, mantendo a
@@ -906,6 +1144,122 @@ BEGIN
        )
   ), 'Command create físico alterou política/ordem/cor vinculada aos UUIDs';
 
+  -- Antes da primeira demanda, um PV terminal continua usando consumo/UUIDs
+  -- do item salvo mesmo se a ficha vigente perder todas as linhas. Versao e
+  -- rendimento da receita ainda nao sao fato historico: a RPC os deixa NULL,
+  -- sinaliza a projecao e o enqueue operacional privado os resolvera depois.
+  BEGIN
+    ASSERT NOT EXISTS (
+      SELECT 1
+        FROM public.sale_order_strap_demands demand
+       WHERE demand.sale_order_item_id = v_sale_order_item_id
+         AND demand.is_current
+    ), 'Pré-condição histórica exige item ainda sem demanda';
+
+    UPDATE public.sale_orders
+       SET status = 'Faturado'
+     WHERE id = v_sale_order_id;
+    UPDATE public.technical_sheets
+       SET strap_colors = '[]'::jsonb
+     WHERE id = v_sheet_id;
+    ASSERT (
+      SELECT jsonb_array_length(coalesce(sheet.strap_colors, '[]'::jsonb)) = 0
+        FROM public.technical_sheets sheet
+       WHERE sheet.id = v_sheet_id
+    ), 'Fixture não conseguiu remover temporariamente as linhas da ficha';
+
+    SELECT coalesce(jsonb_object_agg(
+             preview.technical_strap_line_id::text,
+             to_jsonb(preview)
+           ), '{}'::jsonb)
+      INTO v_historical_preview
+      FROM public.preview_sale_order_strap_demand_draft(
+        jsonb_build_object(
+          'sale_order_id', v_sale_order_id,
+          'sale_order_item_id', v_sale_order_item_id,
+          'reference_id', gen_random_uuid(),
+          'material_variant_id', gen_random_uuid(),
+          'color', 'COR-FORJADA-PELO-CLIENTE',
+          'quantity', 999999,
+          'grade', jsonb_build_object('99', 999999),
+          'strap_colors', jsonb_build_array(jsonb_build_object(
+            'technical_strap_line_id', gen_random_uuid(),
+            'consumption', 999999
+          )),
+          'strap_sourcing', '{}'::jsonb,
+          'main_production_start', '1900-01-01',
+          'required_at', '1900-01-01'
+        )
+      ) preview;
+
+    ASSERT (SELECT count(*) FROM jsonb_each(v_historical_preview)) = 5,
+      'Preview histórico perdeu linhas após a ficha vigente ser removida';
+    ASSERT NOT EXISTS (
+      SELECT 1
+        FROM jsonb_each(v_expected_m_by_line) expected(line_id, required_m)
+       WHERE NOT (v_historical_preview ? expected.line_id)
+          OR abs(
+               (v_historical_preview -> expected.line_id
+                 ->> 'gross_required_m')::numeric
+                 - (expected.required_m #>> '{}')::numeric
+             ) > 0.000001
+          OR (v_historical_preview -> expected.line_id
+                ->> 'strap_variant_id') IS DISTINCT FROM
+             (v_prepared_item -> 'strap_sourcing' -> expected.line_id
+                ->> 'strap_variant_id')
+          OR (v_historical_preview -> expected.line_id
+                ->> 'recipe_id') IS DISTINCT FROM
+             (v_prepared_item -> 'strap_sourcing' -> expected.line_id
+                ->> 'recipe_id')
+          OR (v_historical_preview -> expected.line_id
+                ->> 'base_product_id') IS DISTINCT FROM
+             (v_prepared_item -> 'strap_sourcing' -> expected.line_id
+                ->> 'base_product_id')
+          OR (v_historical_preview -> expected.line_id
+                #>> '{resolved,identity_snapshot_source}')
+               IS DISTINCT FROM 'sale_order_item_pre_demand'
+          OR coalesce((v_historical_preview -> expected.line_id
+                #>> '{resolved,physical_snapshot_complete}')::boolean, true)
+          OR nullif(v_historical_preview -> expected.line_id
+                #>> '{resolved,snapshot_warning}', '') IS NULL
+          OR (v_historical_preview -> expected.line_id
+                #>> '{resolved,confirmed_yield_m_per_m}') IS NOT NULL
+          OR (v_historical_preview -> expected.line_id
+                #>> '{resolved,base_required_m}') IS NOT NULL
+          OR (v_historical_preview -> expected.line_id
+                #>> '{resolved,catalog,recipe_version}') IS NOT NULL
+          OR (v_historical_preview -> expected.line_id
+                #>> '{resolved,measure_id}') IS DISTINCT FROM (
+               SELECT line.value ->> 'measure_id'
+                 FROM jsonb_array_elements(
+                   v_prepared_item -> 'strap_colors'
+                 ) line(value)
+                WHERE line.value ->> 'technical_strap_line_id'
+                      = expected.line_id
+             )
+          OR EXISTS (
+               SELECT 1
+                 FROM jsonb_array_elements(coalesce(
+                   v_historical_preview -> expected.line_id
+                     -> 'blocking_reasons',
+                   '[]'::jsonb
+                 )) reason(value)
+                WHERE reason.value ->> 'code' IN (
+                  'committed_identity_snapshot_missing',
+                  'committed_technical_snapshot_invalid'
+                )
+             )
+    ), 'Preview pré-demanda adotou payload/ficha atual ou inventou yield histórico';
+
+    v_historical_passed := true;
+    RAISE EXCEPTION USING
+      ERRCODE = 'PZ155',
+      MESSAGE = 'rollback do cenário histórico pré-demanda';
+  EXCEPTION WHEN SQLSTATE 'PZ155' THEN NULL;
+  END;
+  ASSERT v_historical_passed,
+    'Cenário histórico pré-demanda não concluiu';
+
   v_job_id := public.enqueue_sale_order_strap_demands(
     v_sale_order_id,
     'confirmed',
@@ -1176,6 +1530,23 @@ BEGIN
        ) <= 0.000001,
       'Recebimento fabril não debitou integralmente a napa do item-cor: '
         || coalesce(v_receipt_result, '{}'::jsonb)::text;
+
+    -- Replay com a mesma chave deve reutilizar o fato físico, sem nova baixa.
+    DECLARE
+      v_replay jsonb;
+    BEGIN
+      v_replay := public.register_strap_production_receipt(
+        v_batch_item.id, NULL,
+        v_batch_item.planned_finished_m, v_batch_item.planned_finished_m, 0,
+        v_batch_item.planned_base_m,
+        'e2e-independent-straps-receipt:' || v_batch_item.id::text
+          || ':' || v_client_request_id::text,
+        0, 'E2E-' || left(v_client_request_id::text, 8), now(),
+        'Rollback automático — produção por cor', v_correlation_id, NULL
+      );
+      ASSERT v_replay ->> 'receipt_id' = v_receipt_result ->> 'receipt_id',
+        'Replay do recebimento criou outro fato físico';
+    END;
   END LOOP;
 
   SELECT count(*)::integer
@@ -1376,6 +1747,377 @@ BEGIN
        AND reservation.order_id IS DISTINCT FROM v_order_id
   ), 'Promoção não vinculou as reservas acabadas à OP exata';
 
+  -- O snapshot congelado no setor 4 deve vencer uma edição posterior da
+  -- ficha para o setor 8. A reserva nova herda o snapshot e o relatório da OP
+  -- preserva tanto o setor quanto `required=4`; dois contextos para o mesmo
+  -- SKU ficam explicitamente ambíguos, sem atribuir toda a soma a um setor.
+  BEGIN
+    ASSERT EXISTS (
+      SELECT 1
+        FROM public.technical_sheet_snapshots snapshot
+        CROSS JOIN LATERAL pg_catalog.jsonb_array_elements(
+          snapshot.consumption_snapshot
+        ) line(value)
+       WHERE snapshot.sale_order_id = v_sale_order_id
+         AND snapshot.sale_order_item_id = v_sale_order_item_id
+         AND line.value ->> 'product_id' = v_sector_product_id::text
+         AND (line.value ->> 'required')::numeric = 4
+         AND line.value ->> 'source' = 'direct_components'
+         AND line.value ->> 'consumption_sector' = 'Aviamento'
+         AND line.value ->> 'consumption_sector_source' = 'explicit'
+    ), 'Snapshot não congelou required=4 no setor Aviamento';
+
+    UPDATE public.technical_sheets sheet
+       SET direct_components = pg_catalog.jsonb_set(
+             sheet.direct_components,
+             '{0,consumption_sector}',
+             pg_catalog.to_jsonb('Solagem'::text),
+             false
+           )
+     WHERE sheet.id = v_sheet_id;
+    ASSERT FOUND, 'Fixture não conseguiu mover a ficha do setor 4 para o 8';
+
+    v_sector_current_lines := public.calculate_order_consumption_by_grade(
+      v_sheet_id,
+      pg_catalog.jsonb_build_object(v_size, 1),
+      v_color_names[1],
+      NULL
+    );
+    ASSERT (
+      SELECT pg_catalog.count(*) = 1
+         AND pg_catalog.min((line.value ->> 'required')::numeric) = 4
+         AND pg_catalog.min(line.value ->> 'consumption_sector') = 'Solagem'
+         AND pg_catalog.min(line.value ->> 'consumption_sector_source')
+               = 'explicit'
+        FROM pg_catalog.jsonb_array_elements(v_sector_current_lines) line(value)
+       WHERE line.value ->> 'product_id' = v_sector_product_id::text
+    ), 'Motor vigente não refletiu setor Solagem mantendo required=4';
+
+    INSERT INTO public.material_reservations (
+      order_id, product_id, quantity_reserved, quantity_consumed, status,
+      reservation_type, source, metadata, notes
+    ) VALUES (
+      v_order_id, v_sector_product_id, 4, 0, 'reserved',
+      'soft', 'onhand',
+      pg_catalog.jsonb_build_object(
+        'kind', 'component',
+        'component', 'Componente Direto',
+        'source', 'direct_components'
+      ),
+      'E2E setor congelado — rollback obrigatório'
+    ) RETURNING id INTO v_sector_reservation_id;
+    ASSERT (
+      SELECT reservation.metadata ->> 'consumption_sector' = 'Aviamento'
+         AND reservation.metadata ->> 'consumption_sector_source' = 'explicit'
+        FROM public.material_reservations reservation
+       WHERE reservation.id = v_sector_reservation_id
+    ), 'Reserva adotou setor 8 atual em vez do snapshot do setor 4';
+
+    v_sector_report := public.calculate_consumption_report_batch(
+      ARRAY[]::uuid[], ARRAY[v_order_id]::uuid[]
+    );
+    ASSERT (
+      SELECT pg_catalog.count(*) = 1
+         AND pg_catalog.min((line.value ->> 'required')::numeric) = 4
+         AND pg_catalog.min(line.value ->> 'consumption_sector') = 'Aviamento'
+         AND pg_catalog.min(line.value ->> 'consumption_sector_source')
+               = 'reservation'
+         AND pg_catalog.min(line.value ->> 'consumption_sector_origin')
+               = 'explicit'
+        FROM pg_catalog.jsonb_array_elements(v_sector_report -> 'lines') line(value)
+       WHERE line.value ->> 'line_kind' = 'material'
+         AND line.value ->> 'product_id' = v_sector_product_id::text
+    ), 'Relatório não preservou setor/required congelados pela reserva';
+
+    INSERT INTO public.material_reservations (
+      order_id, product_id, quantity_reserved, quantity_consumed, status,
+      reservation_type, source, metadata, notes
+    ) VALUES (
+      v_order_id, v_sector_product_id, 1, 0, 'reserved',
+      'soft', 'onhand',
+      pg_catalog.jsonb_build_object(
+        'kind', 'component',
+        'component', 'Componente Direto',
+        'source', 'direct_components',
+        'consumption_sector', 'Solagem',
+        'consumption_sector_source', 'explicit'
+      ),
+      'E2E conflito de setor — rollback obrigatório'
+    );
+
+    v_sector_report := public.calculate_consumption_report_batch(
+      ARRAY[]::uuid[], ARRAY[v_order_id]::uuid[]
+    );
+    ASSERT (
+      SELECT pg_catalog.count(*) = 1
+         AND pg_catalog.min((line.value ->> 'required')::numeric) = 4
+         AND pg_catalog.min(line.value ->> 'consumption_sector') IS NULL
+         AND pg_catalog.min(line.value ->> 'consumption_sector_source')
+               = 'ambiguous'
+        FROM pg_catalog.jsonb_array_elements(v_sector_report -> 'lines') line(value)
+       WHERE line.value ->> 'line_kind' = 'material'
+         AND line.value ->> 'product_id' = v_sector_product_id::text
+    ), 'Dois setores do mesmo SKU foram colapsados em um destino arbitrário';
+
+    v_sector_runtime_passed := true;
+    RAISE EXCEPTION USING
+      ERRCODE = 'PZ155',
+      MESSAGE = 'rollback do cenário runtime de setor';
+  EXCEPTION WHEN SQLSTATE 'PZ155' THEN NULL;
+  END;
+  ASSERT v_sector_runtime_passed,
+    'Cenário snapshot/reserva/relatório de setor não concluiu';
+
+  -- Uma OP pode representar apenas parte do item do PV. O preview e o
+  -- relatório precisam usar a quantidade/grade da OP, sem multiplicar pelo
+  -- total do item. A alteração do item fica isolada e não sincroniza a OP:
+  -- assim o fixture prova 2 pares no item contra 1 par na OP existente.
+  BEGIN
+    PERFORM pg_catalog.set_config('app.suppress_item_op_sync', '1', true);
+    UPDATE public.sale_order_items item
+       SET quantity = 2,
+           grade = pg_catalog.jsonb_build_object(v_size, 2)
+     WHERE item.id = v_sale_order_item_id;
+    ASSERT FOUND, 'Fixture parcial não encontrou o item do PV';
+    ASSERT (
+      SELECT production_order.quantity = 1
+         AND public.resolve_effective_op_grade(
+               production_order.grade,
+               production_order.quantity
+             ) = pg_catalog.jsonb_build_object(v_size, 1)
+        FROM public.orders production_order
+       WHERE production_order.id = v_order_id
+    ), 'Fixture parcial sincronizou indevidamente a OP com o item';
+
+    SELECT COALESCE(pg_catalog.jsonb_object_agg(
+             preview.technical_strap_line_id::text,
+             pg_catalog.to_jsonb(preview)
+           ), '{}'::jsonb)
+      INTO v_partial_item_preview
+      FROM public.preview_sale_order_strap_demand_draft(
+        pg_catalog.jsonb_build_object(
+          'sale_order_id', v_sale_order_id,
+          'sale_order_item_id', v_sale_order_item_id,
+          'scope_type', 'sale_order_item',
+          'scope_key', v_sale_order_item_id
+        )
+      ) preview;
+
+    SELECT COALESCE(pg_catalog.jsonb_object_agg(
+             preview.technical_strap_line_id::text,
+             pg_catalog.to_jsonb(preview)
+           ), '{}'::jsonb)
+      INTO v_partial_order_preview
+      FROM public.preview_sale_order_strap_demand_draft(
+        pg_catalog.jsonb_build_object(
+          'sale_order_id', v_sale_order_id,
+          'sale_order_item_id', v_sale_order_item_id,
+          'scope_type', 'production_order',
+          'scope_key', v_order_id
+        )
+      ) preview;
+
+    ASSERT (SELECT pg_catalog.count(*)
+              FROM pg_catalog.jsonb_each(v_partial_item_preview)) = 5
+       AND (SELECT pg_catalog.count(*)
+              FROM pg_catalog.jsonb_each(v_partial_order_preview)) = 5,
+      'Preview parcial não preservou as cinco linhas por UUID';
+    ASSERT NOT EXISTS (
+      SELECT 1
+        FROM pg_catalog.jsonb_each(v_expected_m_by_line)
+               expected(line_id, required_m)
+       WHERE abs(
+               (v_partial_item_preview -> expected.line_id
+                 ->> 'gross_required_m')::numeric
+                 - 2 * (expected.required_m #>> '{}')::numeric
+             ) > 0.000001
+          OR abs(
+               (v_partial_order_preview -> expected.line_id
+                 ->> 'gross_required_m')::numeric
+                 - (expected.required_m #>> '{}')::numeric
+             ) > 0.000001
+    ), 'Preview confundiu total do item com quantidade da OP parcial';
+
+    v_partial_report := public.calculate_consumption_report_batch(
+      ARRAY[]::uuid[],
+      ARRAY[v_order_id]::uuid[]
+    );
+    ASSERT pg_catalog.jsonb_array_length(
+             COALESCE(v_partial_report -> 'strap_previews', '[]'::jsonb)
+           ) = 5,
+      'Relatório da OP parcial não devolveu cinco previews de tira';
+    ASSERT NOT EXISTS (
+      SELECT 1
+        FROM pg_catalog.jsonb_array_elements(
+               v_partial_report -> 'strap_previews'
+             ) report_line(value)
+        LEFT JOIN LATERAL (
+          SELECT expected.value AS required_m
+            FROM pg_catalog.jsonb_each(v_expected_m_by_line) expected
+           WHERE expected.key = report_line.value
+                                  ->> 'technical_strap_line_id'
+        ) expected ON true
+       WHERE report_line.value ->> 'scope_type'
+               IS DISTINCT FROM 'production_order'
+          OR report_line.value ->> 'scope_key'
+               IS DISTINCT FROM v_order_id::text
+          OR expected.required_m IS NULL
+          OR abs(
+               (report_line.value ->> 'gross_required_m')::numeric
+                 - (expected.required_m #>> '{}')::numeric
+             ) > 0.000001
+    ), 'Relatório misturou escopo/quantidade do item com a OP parcial';
+
+    v_partial_scope_passed := true;
+    RAISE EXCEPTION USING
+      ERRCODE = 'PZ155',
+      MESSAGE = 'rollback do cenário de OP parcial';
+  EXCEPTION WHEN SQLSTATE 'PZ155' THEN NULL;
+  END;
+  ASSERT v_partial_scope_passed,
+    'Cenário de preview/relatório por OP parcial não concluiu';
+
+-- Finalização parcial e cancelamento da OP efêmera antes do picking.
+-- NÃO executar isolado nem remover o ROLLBACK final do cenário principal.
+-- Cada cenário usa subtransação revertida: o picking original continua intacto.
+
+DECLARE
+  v_order_id uuid;
+  v_order_count integer;
+  v_product_id uuid;
+  v_product_before jsonb;
+  v_reservation_id uuid;
+  v_finished_before jsonb;
+  v_finished_after jsonb;
+  v_movements_before integer;
+  v_finalized_passed boolean := false;
+  v_cancelled_passed boolean := false;
+BEGIN
+  SELECT (array_agg(o.id ORDER BY o.id))[1], count(*)
+    INTO v_order_id, v_order_count
+    FROM public.orders o
+    JOIN public.sale_orders so ON so.id = o.sale_order_id
+   WHERE so.notes = 'E2E-STRAP-COLORS-PHYSICAL — rollback automático'
+     AND o.created_at >= transaction_timestamp()
+     AND so.created_at >= transaction_timestamp()
+     AND o.deleted_at IS NULL;
+  ASSERT v_order_count = 1,
+    'Executar somente dentro do fixture E2E de tiras, após promoção e antes do picking';
+  ASSERT EXISTS (SELECT 1 FROM public.material_reservations
+    WHERE order_id = v_order_id AND source = 'strap_engine_finished' AND status = 'reserved'),
+    'O fixture precisa manter reservas de tira ainda abertas';
+
+  -- Material de contagem fora das reservas do fixture. Seu saldo só existe
+  -- dentro das subtransações abaixo e é restaurado integralmente depois delas.
+  SELECT p.id, to_jsonb(p) INTO v_product_id, v_product_before
+    FROM public.products p
+   WHERE p.active AND p.unit = 'un'
+     AND NOT EXISTS (SELECT 1 FROM public.artisanal_strap_variants sv
+       WHERE sv.finished_product_id = p.id)
+     AND NOT EXISTS (SELECT 1 FROM public.material_reservations mr
+       WHERE mr.order_id = v_order_id AND mr.product_id = p.id)
+   ORDER BY p.id LIMIT 1 FOR UPDATE;
+  ASSERT v_product_id IS NOT NULL, 'Fixture sem componente de contagem elegível';
+
+  BEGIN
+    UPDATE public.products SET quantity = 3, current_stock = 3 WHERE id = v_product_id;
+    INSERT INTO public.material_reservations (
+      order_id, product_id, quantity_reserved, quantity_consumed, status,
+      reservation_type, source, metadata, notes
+    ) VALUES (
+      v_order_id, v_product_id, 10, 0, 'reserved', 'soft', 'onhand',
+      jsonb_build_object('kind', 'component', 'component', 'Componente Direto',
+        'source', 'direct_components', 'consumption_sector', 'Aviamento',
+        'consumption_sector_source', 'snapshot'),
+      'E2E parcial/finalização — rollback obrigatório'
+    ) RETURNING id INTO v_reservation_id;
+
+    -- Exercita o gatilho de status real, não apenas a função de liquidação.
+    UPDATE public.orders SET status = 'Finalizado' WHERE id = v_order_id;
+    ASSERT (SELECT status = 'Finalizado' FROM public.orders WHERE id = v_order_id),
+      'Falta parcial impediu finalizar a OP';
+    ASSERT (SELECT quantity = 0 FROM public.products WHERE id = v_product_id),
+      'A baixa parcial não consumiu exatamente o saldo 3';
+    ASSERT (SELECT status = 'consumed' AND quantity_reserved = 3 AND quantity_consumed = 3
+      FROM public.material_reservations WHERE id = v_reservation_id),
+      'A reserva consumida não representa exatamente as 3 unidades baixadas';
+    ASSERT (SELECT count(*) = 1 AND sum(quantity) = 3 FROM public.stock_movements
+      WHERE order_id = v_order_id AND material_reservation_id = v_reservation_id
+        AND product_id = v_product_id AND movement_type = 'out'),
+      'Finalização duplicou ou perdeu a baixa física parcial';
+    ASSERT (SELECT count(*) = 1 AND sum(quantity_reserved - quantity_consumed) = 7
+      FROM public.material_reservations WHERE order_id = v_order_id
+        AND product_id = v_product_id AND status = 'pending_reconciliation'
+        AND metadata ->> 'partial_of' = v_reservation_id::text
+        AND metadata ->> 'consumption_sector' = 'Aviamento'
+        AND metadata ->> 'requires_manual_reconciliation' = 'true'),
+      'As 7 unidades faltantes desapareceram ou perderam o setor congelado';
+    ASSERT NOT EXISTS (SELECT 1 FROM public.material_reservations
+      WHERE order_id = v_order_id AND product_id = v_product_id AND status = 'cancelled'),
+      'Finalização cancelou indevidamente a falta de material';
+
+    PERFORM public.settle_open_reservations_for_order(v_order_id, 'e2e_replay');
+    UPDATE public.orders SET status = 'Finalizado' WHERE id = v_order_id;
+    ASSERT (SELECT count(*) = 1 AND sum(quantity) = 3 FROM public.stock_movements
+      WHERE material_reservation_id = v_reservation_id AND movement_type = 'out'),
+      'Repetição da finalização gerou segundo débito';
+    ASSERT (SELECT count(*) = 1 AND sum(quantity_reserved - quantity_consumed) = 7
+      FROM public.material_reservations WHERE order_id = v_order_id
+        AND product_id = v_product_id AND status = 'pending_reconciliation'
+        AND metadata ->> 'partial_of' = v_reservation_id::text),
+      'Repetição apagou ou duplicou a pendência';
+    v_finalized_passed := true;
+    RAISE EXCEPTION USING ERRCODE = 'PZ001', MESSAGE = 'rollback do cenário finalização';
+  EXCEPTION WHEN SQLSTATE 'PZ001' THEN NULL;
+  END;
+  ASSERT v_finalized_passed, 'Cenário finalização não concluiu';
+  ASSERT (SELECT to_jsonb(p) = v_product_before FROM public.products p WHERE id = v_product_id),
+    'O saldo do produto não foi restaurado pela subtransação';
+
+  BEGIN
+    UPDATE public.products SET quantity = 3, current_stock = 3 WHERE id = v_product_id;
+    INSERT INTO public.material_reservations (
+      order_id, product_id, quantity_reserved, quantity_consumed, status,
+      reservation_type, source, metadata, notes
+    ) VALUES (
+      v_order_id, v_product_id, 10, 0, 'reserved', 'soft', 'onhand',
+      jsonb_build_object('kind', 'component', 'component', 'Componente Direto',
+        'source', 'direct_components', 'consumption_sector', 'Aviamento',
+        'consumption_sector_source', 'snapshot'),
+      'E2E cancelamento — rollback obrigatório'
+    ) RETURNING id INTO v_reservation_id;
+    SELECT count(*) INTO v_movements_before FROM public.stock_movements WHERE order_id = v_order_id;
+    SELECT jsonb_object_agg(p.id, p.quantity) INTO v_finished_before
+      FROM public.products p WHERE p.id IN (
+        SELECT product_id FROM public.material_reservations
+        WHERE order_id = v_order_id AND source = 'strap_engine_finished');
+
+    UPDATE public.orders SET status = 'Cancelado' WHERE id = v_order_id;
+    ASSERT (SELECT status = 'cancelled' AND quantity_consumed = 0
+      FROM public.material_reservations WHERE id = v_reservation_id),
+      'Cancelamento não liberou a reserva sem execução';
+    ASSERT (SELECT quantity = 3 FROM public.products WHERE id = v_product_id),
+      'Cancelamento debitou ou fabricou saldo do componente';
+    ASSERT (SELECT count(*) = v_movements_before FROM public.stock_movements WHERE order_id = v_order_id),
+      'Cancelamento de reserva sem execução gerou movimento físico';
+    ASSERT NOT EXISTS (SELECT 1 FROM public.material_reservations
+      WHERE order_id = v_order_id AND source = 'strap_engine_finished' AND status = 'reserved'),
+      'Cancelamento deixou reservas acabadas abertas';
+    SELECT jsonb_object_agg(p.id, p.quantity) INTO v_finished_after
+      FROM public.products p WHERE p.id IN (
+        SELECT product_id FROM public.material_reservations
+        WHERE order_id = v_order_id AND source = 'strap_engine_finished');
+    ASSERT v_finished_before = v_finished_after,
+      'Liberar reserva de tira alterou indevidamente o saldo físico';
+    v_cancelled_passed := true;
+    RAISE EXCEPTION USING ERRCODE = 'PZ002', MESSAGE = 'rollback do cenário cancelamento';
+  EXCEPTION WHEN SQLSTATE 'PZ002' THEN NULL;
+  END;
+  ASSERT v_cancelled_passed, 'Cenário cancelamento não concluiu';
+  ASSERT (SELECT to_jsonb(p) = v_product_before FROM public.products p WHERE id = v_product_id),
+    'Cancelamento de teste deixou alteração no produto';
+END;
+
   -- Picking individual evita que componentes alheios à feature influenciem a
   -- prova. Cada baixa nasce da reserva UUID-only e o trigger enriquece o fato.
   FOR v_reservation IN
@@ -1394,6 +2136,21 @@ BEGIN
       v_reservation.id,
       'E2E cores independentes'
     );
+    DECLARE
+      v_replay_rejected boolean := false;
+    BEGIN
+      BEGIN
+        PERFORM public.confirm_picking_reservation(
+          v_reservation.id, 'E2E cores independentes'
+        );
+      EXCEPTION WHEN SQLSTATE 'P0001' THEN
+        IF SQLERRM NOT LIKE 'Reserva já consumida ou cancelada%' THEN
+          RAISE;
+        END IF;
+        v_replay_rejected := true;
+      END;
+      ASSERT v_replay_rejected, 'Picking aceitou novamente uma reserva já consumida';
+    END;
   END LOOP;
 
   SELECT count(*)::integer
@@ -1436,7 +2193,7 @@ $test$;
 SELECT jsonb_build_object(
   'ok', true,
   'scenario', 'independent_strap_colors_e2e',
-  'proof', 'auth+writer+oracle+preview+create+worker+receipt+promotion+picking',
+  'proof', 'auth+writer+oracle+preview+create+worker+receipt+receipt_replay+promotion+sector_snapshot_reservation_ambiguity+partial_scope_report+partial_finalization+cancel+picking+picking_replay',
   'rollback', true
 ) AS independent_strap_colors_e2e;
 

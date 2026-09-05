@@ -97,6 +97,7 @@ import {
 } from '@/lib/technicalStrapLines';
 import { strapIdentityBasis } from '@/lib/strapIdentity';
 import { referenceStrapBaseGroups } from '@/lib/referenceStrapBaseGroups';
+import { CONSUMPTION_SECTORS, normalizeDirectComponentSectors } from '@/lib/consumptionSector';
 
 import { useShoeCategories } from '@/hooks/useShoeCategories';
 import { SHOE_CATEGORIES } from '@/lib/shoeCategories';
@@ -188,12 +189,6 @@ function parseSizesFromRange(sizesStr?: string, shoeCategory?: string): number[]
 const emptyMaterialForm: SheetMaterialFormData = {
   product_id: '', group_id: null, quantity_per_unit: 0, consumption_per_size: {}, color: '', width: '', weight: '', supplier: '', notes: '', sizes: '', consumption_sector: '',
 };
-
-const CONSUMPTION_SECTORS = [
-  'Corte Fibra', 'Corte Forração', 'Corte Cabedal', 'Costura Palmilha',
-  'Costura Cabedal', 'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem',
-  'Acabamento',
-] as const;
 
 /** Sugestão inicial; a ficha sempre exige confirmação explícita do usuário. */
 function suggestedConsumptionSector(category?: string | null): string {
@@ -1894,6 +1889,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       // Cinto-e-suspensório: garante que production_sectors/aviamento_steps
       // jamais saem pelo save geral (escrita exclusiva do ProductionSectorsTab).
       const { production_sectors: _ps, aviamento_steps: _as, ...payload } = form as any;
+      payload.direct_components = normalizeDirectComponentSectors(payload.direct_components);
       const hasUpperMaterial = String(payload.upper_material || '').trim().length > 0;
       if (hasUpperMaterial && !upperMaterialGroup) {
         toast.error(
@@ -3783,7 +3779,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                 {(form.strap_colors || []).length > 1 && (
                   <div className="flex flex-col gap-2 rounded-lg border bg-muted/20 p-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="space-y-1">
-                      <p className="text-sm font-medium">Mesmo tipo em várias tiras</p>
+                      <p className="text-sm font-medium">Mesma estrutura em várias tiras</p>
                       <p id="replicate-strap-type-help" className="text-xs text-muted-foreground">
                         Copia família, medida, base e política de cor da primeira tira para as demais.
                         Os nomes e consumos de cada tira são mantidos.
@@ -3803,11 +3799,11 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                       title="Configure a família, medida e base da primeira tira para aplicar às demais"
                       onClick={() => {
                         updateField('strap_colors', replicateFirstTechnicalStrapType(form.strap_colors));
-                        toast.success('Tipo da primeira tira aplicado às demais. Salve a ficha para confirmar.');
+                        toast.success('Família, medida, base e política de cor aplicadas às demais. Salve a ficha para confirmar.');
                       }}
                     >
                       <Copy className="h-3.5 w-3.5" aria-hidden="true" />
-                      Aplicar tipo da 1ª tira às demais
+                      Replicar estrutura da 1ª tira
                     </Button>
                   </div>
                 )}

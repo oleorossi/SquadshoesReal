@@ -38,6 +38,24 @@ const preview = (overrides: Record<string, unknown> = {}) => parseCanonicalStrap
 });
 
 describe('preview canônica de tiras', () => {
+  it('explica transformação ainda não congelada sem inventar base nem bloquear o worker', () => {
+    const warning = 'A transformação física será congelada na primeira demanda.';
+    const pending = preview({ resolved: {
+      strap_product_name: 'TIRA TESTE', strap_color_name: 'PRETO',
+      base_product_name: 'NAPA TESTE', confirmed_yield_m_per_m: null,
+      base_required_m: null, snapshot_warning: warning,
+    } });
+    expect(pending.blockingReasons).toEqual([]);
+    expect(pending.snapshotWarning).toBe(warning);
+    const [row] = replaceWithCanonicalStrapRows([], ctx, [pending]) as CanonicalStrapConsumptionRow[];
+    expect(row.totalQuantity).toBe(640);
+    expect(row.warning).toBe(warning);
+    expect(row.artisanal).toMatchObject({ pending: true, baseQty: 0 });
+    const [cut] = canonicalStrapCutRows([pending]);
+    expect(cut.metros_necessarios).toBe(640);
+    expect(cut.canonical).toMatchObject({ baseRequiredM: 0, snapshotWarning: warning, blockingReasons: [] });
+  });
+
   it('mantém uma pendência neutra quando a preview não provou a identidade exata', () => {
     const rows = replaceWithCanonicalStrapRows([
       {

@@ -71,6 +71,11 @@ import { ItemSectorOutsourcingSection } from '@/components/sale-orders/ItemSecto
 import { SignedImage } from '@/components/ui/signed-image';
 import { resolveReferenceThumbnailUrl } from '@/lib/referenceImage';
 import { isCommittedSaleOrderStrapSnapshotStatus } from '@/lib/saleOrderStateMachine';
+import {
+  reconcileEditableStrapSnapshots,
+  strapPresentationLines,
+  type ReconcileStrapLineLike,
+} from '@/lib/reconcileStrapSnapshots';
 
 interface ReferenceOption {
   id: string;
@@ -220,14 +225,6 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   };
   const prevRefId = useRef(item.reference_id);
   const isFirstRender = useRef(true);
-  // Tracks the last reference_id for which strap structure was synced. Prevents
-  // re-running the sync whenever the query cache refreshes strap_colors for the
-  // same reference (which would restore straps the user intentionally removed).
-  const strapSyncedForRef = useRef<string>('');
-  // Um item comprometido/terminal pode ter demanda, reserva, consumo ou débito
-  // congelados por identidade legada. A primeira hidratação nunca reescreve esse
-  // snapshot; Rascunho/Pendente continuam corrigíveis pelo fluxo normal.
-  const preservedCommittedStrapItemId = useRef<string | null>(null);
   const previousStrapMaterialVariantRef = useRef({
     initialized: false,
     value: null as string | null,
@@ -253,53 +250,15 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   );
   const preserveCommittedStrapSnapshot = !!item.id
     && isCommittedSaleOrderStrapSnapshotStatus(saleOrderStatus);
-  const strapPresentationDefinitions = useMemo(() => {
-    const snapshots = Array.isArray(item.strap_colors)
+  const strapPresentationDefinitions = useMemo(() => strapPresentationLines(
+    Array.isArray(item.strap_colors)
       ? item.strap_colors as SaleOrderStrapPresentationLine[]
-      : [];
-    if (referenceStrapDefinitions.length === 0) return snapshots;
-
-    // Somente apresentação/preview: a ficha publicada fornece identidade e
-    // medida; cor e demais escolhas históricas continuam vindo do item. UUID
-    // canônico nunca casa por ordinal com outro UUID — o fallback ordinal vale
-    // exclusivamente para snapshots legados sem identidade estável.
-    return snapshots.map((snapshot, ordinal) => {
-      const snapshotLineId = technicalStrapLineId(snapshot);
-      const exactReference = snapshotLineId
-        ? referenceStrapDefinitions.find(
-          (reference) => technicalStrapLineId(reference) === snapshotLineId,
-        )
-        : null;
-      const ordinalReference = referenceStrapDefinitions[ordinal];
-      const reference = exactReference
-        || (!snapshotLineId ? ordinalReference : null);
-      if (!reference) return snapshot;
-
-      const referenceLineId = technicalStrapLineId(reference);
-      return {
-        ...snapshot,
-        id: referenceLineId || snapshot.id,
-        technical_strap_line_id: referenceLineId || snapshot.technical_strap_line_id,
-        label: reference.label || snapshot.label,
-        strap_type_id: reference.strap_type_id || null,
-        measure_id: reference.measure_id || null,
-        identity_basis: strapIdentityBasis(reference),
-        color_mode: preserveCommittedStrapSnapshot
-          ? strapColorMode(snapshot)
-          : strapColorMode(reference),
-        identity_group_id: reference.identity_group_id || null,
-        internal_production_enabled: reference.internal_production_enabled ?? null,
-        group_id: reference.group_id || null,
-        group_name: reference.group_name || null,
-        consumption: (reference as SaleOrderItemStrap).consumption ?? snapshot.consumption,
-        consumption_per_size: (reference as SaleOrderItemStrap).consumption_per_size
-          ?? snapshot.consumption_per_size,
-        // Escolhas do PV nunca vêm da ficha.
-        color: snapshot.color,
-        color_id: snapshot.color_id || null,
-      } as SaleOrderStrapPresentationLine;
-    });
-  }, [item.strap_colors, preserveCommittedStrapSnapshot, referenceStrapDefinitions]);
+      : [],
+    selectedRef?.strap_colors === undefined
+      ? undefined
+      : referenceStrapDefinitions as SaleOrderStrapPresentationLine[],
+    preserveCommittedStrapSnapshot,
+  ), [item.strap_colors, preserveCommittedStrapSnapshot, referenceStrapDefinitions, selectedRef?.strap_colors]);
 
   const gradeTotal = Object.values(grade).reduce((s, v) => s + (v || 0), 0);
   const totalPairs = gradeTotal * fichas;
@@ -672,8 +631,8 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       referenceId: item.reference_id,
       materialVariantId: item.material_variant_id,
       itemColor: item.color,
-      // A projeção pode usar a estrutura atual da ficha para explicar o
-      // cadastro, sem reescrever o snapshot persistido do item.
+      // Histórico usa o snapshot integral salvo; somente itens editáveis usam
+      // a estrutura atual reconciliada da ficha.
       strapColors: strapPresentationDefinitions,
       strapSourcing: strapSourcingMap,
       quantity: item.quantity,
@@ -995,13 +954,10 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   const manualPriceEdited = useRef(false);
 
   useEffect(() => {
-    const currentStraps = Array.isArray(item.strap_colors) ? (item.strap_colors as any[]) : [];
+    const currentStraps: ReconcileStrapLineLike[] = Array.isArray(item.strap_colors)
+      ? item.strap_colors
+      : [];
     const { index: idx, onUpdate: update } = latestRef.current;
-
-    // Strap sync: only run once per reference change. If the same reference's
-    // strap_colors refresh in the query cache, skip — otherwise a cache update
-    // would silently restore straps the user deliberately removed.
-    const refIdForStraps = selectedRef?.id ?? item.reference_id ?? '';
     // BUG ANTIGO 2026-05-12: exigíamos selectedRef.has_straps=true. Mas
     // várias fichas técnicas existem com strap_colors configuradas (TIRA 1,
     // 2…) e has_straps=false (estado inconsistente vindo do save da ficha).
@@ -1009,132 +965,28 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     // ficava invisível mesmo após cor principal escolhida (SP117/SP119).
     // FIX: derivar — se a ficha tem strap_colors.length>0, considera que
     // tem tiras (independente do flag has_straps).
-    const refStrapDefs = Array.isArray(selectedRef?.strap_colors) ? selectedRef!.strap_colors : [];
-    const refHasStrapsEffective = !!selectedRef?.has_straps || refStrapDefs.length > 0;
-    if (preserveCommittedStrapSnapshot
-        && item.id
-        && preservedCommittedStrapItemId.current !== item.id) {
-      preservedCommittedStrapItemId.current = item.id;
-      strapSyncedForRef.current = refIdForStraps;
-      return;
-    }
-    if (strapSyncedForRef.current !== refIdForStraps) {
-      strapSyncedForRef.current = refIdForStraps;
+    const refStrapDefs: ReconcileStrapLineLike[] = Array.isArray(selectedRef?.strap_colors)
+      ? selectedRef.strap_colors
+      : [];
+    // Ausência do campo significa catálogo ainda incompleto. Já []/null numa
+    // ficha carregada é uma remoção legítima de todas as tiras do rascunho.
+    if (preserveCommittedStrapSnapshot || selectedRef?.strap_colors === undefined) return;
 
-      if (refHasStrapsEffective && refStrapDefs.length > 0 && currentStraps.length === 0) {
-        const straps = refStrapDefs.map((s: any) => {
-          const lineId = technicalStrapLineId(s);
-          return {
-            id: lineId || s.id || null,
-            technical_strap_line_id: lineId,
-            label: s.label || 'TIRA',
-            color: '',
-            strap_type_id: s.strap_type_id || null,
-            measure_id: s.measure_id || null,
-            identity_basis: s.identity_basis || 'reference_base',
-            color_mode: strapColorMode(s),
-            identity_group_id: s.identity_group_id || null,
-            internal_production_enabled: s.internal_production_enabled ?? null,
-            group_id: s.group_id || '',
-            group_name: s.group_name || '',
-            consumption: s.consumption || 0,
-            consumption_per_size: s.consumption_per_size || {},
-          };
-        });
-        update(idx, 'strap_colors', straps);
-      } else if (refHasStrapsEffective && refStrapDefs.length > 0 && currentStraps.length > 0) {
-        // Sync structure with current reference definition (straps added/removed in sheet)
-        // but preserve colors the user already selected. Snapshots legados sem
-        // UUID casam somente por ordinal; não geramos UUID local que a ficha não
-        // possua, pois ele seria persistido sem uma identidade server-side.
-        const refStrapIds = new Set(
-          refStrapDefs.map((strap) => technicalStrapLineId(strap)).filter(Boolean),
-        );
-        const updatedStraps = refStrapDefs.map((refStrap: any, ordinal: number) => {
-          const lineId = technicalStrapLineId(refStrap);
-          const existingByLineId = lineId
-            ? currentStraps.find((strap) => technicalStrapLineId(strap) === lineId)
-            : null;
-          const ordinalLegacy = currentStraps[ordinal];
-          const existing = existingByLineId
-            || (!technicalStrapLineId(ordinalLegacy) ? ordinalLegacy : null);
-          return {
-            id: lineId || refStrap.id || null,
-            technical_strap_line_id: lineId,
-            label: refStrap.label || 'TIRA',
-            color: existing?.color || '',
-            color_id: isUuid(existing?.color_id) ? existing.color_id : null,
-            strap_type_id: refStrap.strap_type_id || null,
-            measure_id: refStrap.measure_id || null,
-            identity_basis: refStrap.identity_basis || 'reference_base',
-            color_mode: strapColorMode(refStrap),
-            identity_group_id: refStrap.identity_group_id || null,
-            internal_production_enabled: refStrap.internal_production_enabled ?? null,
-            group_id: refStrap.group_id || '',
-            group_name: refStrap.group_name || '',
-            consumption: refStrap.consumption || 0,
-            consumption_per_size: refStrap.consumption_per_size || {},
-          };
-        });
-        // Re-propaga também quando o MATERIAL da tira mudou na ficha (mesma id,
-        // mas trocou group/consumo/label) — antes só repropagava mudança de
-        // ESTRUTURA (qtd/ids), então editar o material da tira na ficha (ex.:
-        // 11mm→8mm) nunca chegava nos PVs já criados. A cor é sempre preservada
-        // (o PV só escolhe cor; o material vem da ficha).
-        const materialChanged = updatedStraps.some((u: any, ordinal: number) => {
-          const lineId = technicalStrapLineId(u);
-          const existingByLineId = lineId
-            ? currentStraps.find((strap) => technicalStrapLineId(strap) === lineId)
-            : null;
-          const ordinalLegacy = currentStraps[ordinal];
-          const c = existingByLineId
-            || (!technicalStrapLineId(ordinalLegacy) ? ordinalLegacy : null);
-          if (!c) return true;
-          return (c.group_id || '') !== (u.group_id || '')
-            || (c.group_name || '') !== (u.group_name || '')
-            || (c.identity_basis || 'reference_base') !== (u.identity_basis || 'reference_base')
-            || strapColorMode(c) !== strapColorMode(u)
-            || (c.identity_group_id || '') !== (u.identity_group_id || '')
-            || (c.internal_production_enabled ?? null) !== (u.internal_production_enabled ?? null)
-            || (c.label || '') !== (u.label || '')
-            || Number(c.consumption || 0) !== Number(u.consumption || 0)
-            || JSON.stringify(c.consumption_per_size || {}) !== JSON.stringify(u.consumption_per_size || {});
-        });
-        if (updatedStraps.length !== currentStraps.length
-            || !currentStraps.every((s) => {
-              const lineId = technicalStrapLineId(s);
-              return !lineId || refStrapIds.has(lineId);
-            })
-            || materialChanged) {
-          update(idx, 'strap_colors', updatedStraps);
-          let nextSourcing = latestStrapSourcingMapRef.current;
-          let sourcingChanged = false;
-          currentStraps.forEach((current, ordinal) => {
-            const lineId = technicalStrapLineId(current);
-            const updatedByLineId = lineId
-              ? updatedStraps.find((strap) => technicalStrapLineId(strap) === lineId)
-              : null;
-            const updated = updatedByLineId || (!lineId ? updatedStraps[ordinal] : null);
-            const identityChanged = !updated
-              || current.strap_type_id !== updated.strap_type_id
-              || current.measure_id !== updated.measure_id
-              || strapIdentityBasis(current) !== strapIdentityBasis(updated)
-              || strapColorMode(current) !== strapColorMode(updated)
-              || current.identity_group_id !== updated.identity_group_id
-              || current.internal_production_enabled !== updated.internal_production_enabled
-              || current.group_id !== updated.group_id;
-            if (!identityChanged || !getStrapSourcingSelection(nextSourcing, lineId)) return;
-            nextSourcing = setStrapSourcing(nextSourcing, lineId, null);
-            sourcingChanged = true;
-          });
-          if (sourcingChanged) update(idx, 'strap_sourcing', nextSourcing);
-        }
-      }
-    }
+    // A ficha publicada é estruturalmente autoritativa para itens editáveis.
+    // O reconciliador casa exclusivamente o UUID da posição, preserva somente
+    // escolhas de cor ainda válidas e invalida origem/receita quando qualquer
+    // entrada produtiva (inclusive família ou medida) mudou.
+    const reconciled = reconcileEditableStrapSnapshots({
+      snapshotLines: currentStraps,
+      technicalLines: refStrapDefs,
+      sourcing: latestStrapSourcingMapRef.current,
+    });
+    if (reconciled.linesChanged) update(idx, 'strap_colors', reconciled.lines);
+    if (reconciled.sourcingChanged) update(idx, 'strap_sourcing', reconciled.sourcing);
   }, [
-    item.id,
     item.reference_id,
     item.strap_colors,
+    item.strap_sourcing,
     preserveCommittedStrapSnapshot,
     referenceStrapDefinitions,
     selectedRef,
@@ -1194,9 +1046,6 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       update(idx, 'selected_terceirizacao_ids', []);
       update(idx, 'terceirizacao_quantities', {});
       update(idx, 'outsourced_sectors', {});
-      // A limpeza acima vence o update do efeito de sincronização neste render;
-      // libere a próxima passagem para materializar a estrutura da nova ficha.
-      strapSyncedForRef.current = '';
     }
     prevRefId.current = item.reference_id;
   }, [item.reference_id]);
@@ -2570,7 +2419,11 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                             ) : strapLinesLoading && !line ? (
                               <p className="text-[10px] leading-tight text-muted-foreground">Resolvendo material e consumo…</p>
                             ) : effective === 'internal' ? (
-                              blocked ? (
+                              line?.snapshotWarning ? (
+                                <p className="text-[10px] leading-snug text-muted-foreground">
+                                  {line.snapshotWarning}
+                                </p>
+                              ) : blocked ? (
                                 <p className="text-[10px] leading-snug text-amber-700 dark:text-amber-400">
                                   {line?.blockReason}
                                 </p>
@@ -2684,41 +2537,14 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
             if (preserveCommittedStrapSnapshot) {
               return;
             }
-            const currentStraps = (item.strap_colors as Array<Record<string, unknown>>) || [];
-            const currentByLineId = new Map(
-              currentStraps
-                .map((strap) => [technicalStrapLineId(strap), strap] as const)
-                .filter((entry): entry is readonly [string, Record<string, unknown>] => !!entry[0]),
-            );
-            let nextSourcing = strapSourcingMap;
-            const resolvedWithItemColors = strapColors.map((resolved, ordinal) => ({
-              ...resolved,
-              // Base/medida pertencem a ficha; a cor pertence ao item do PV.
-              // Copiar a cor da ficha faria OFF WHITE vencer um pedido COGUMELO.
-              ...(() => {
-                const lineId = technicalStrapLineId(resolved);
-                const currentById = lineId ? currentByLineId.get(lineId) : null;
-                const ordinalLegacy = currentStraps[ordinal];
-                const current = currentById
-                  || (!technicalStrapLineId(ordinalLegacy) ? ordinalLegacy : null);
-                const structureChanged = !!current && (
-                  current.strap_type_id !== resolved.strap_type_id
-                  || current.measure_id !== resolved.measure_id
-                  || strapIdentityBasis(current) !== strapIdentityBasis(resolved)
-                  || current.identity_group_id !== resolved.identity_group_id
-                );
-                if (structureChanged && lineId) {
-                  nextSourcing = setStrapSourcing(nextSourcing, lineId, null);
-                }
-                return {
-                  color: current?.color || '',
-                  color_id: isUuid(current?.color_id) ? current.color_id : null,
-                };
-              })(),
-            }));
-            onUpdate(index, 'strap_colors', resolvedWithItemColors);
-            if (JSON.stringify(strapSourcingMap) !== JSON.stringify(nextSourcing)) {
-              onUpdate(index, 'strap_sourcing', nextSourcing);
+            const reconciled = reconcileEditableStrapSnapshots({
+              snapshotLines: (item.strap_colors || []) as ReconcileStrapLineLike[],
+              technicalLines: strapColors as ReconcileStrapLineLike[],
+              sourcing: strapSourcingMap,
+            });
+            onUpdate(index, 'strap_colors', reconciled.lines);
+            if (reconciled.sourcingChanged) {
+              onUpdate(index, 'strap_sourcing', reconciled.sourcing);
             }
           }}
         />

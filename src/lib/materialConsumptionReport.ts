@@ -194,6 +194,9 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
     const applications = sharedApplications
       ? componentTypes
       : Array.from(new Set(item.rows.map((row) => row.materialName).filter(Boolean)));
+    const sectorApplications = item.rows
+      .filter((row) => !!row.consumptionSector)
+      .map((row) => `${row.consumptionSector}: ${formatQty(row.totalQuantity, row.productUnit)} ${formatUnit(row.productUnit)}`);
     const section = sharedApplications
       ? 'Aplicações compartilhadas'
       : componentTypes[0] || item.componentType;
@@ -227,7 +230,7 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
       : '';
     append(section, `<tr class="material-row${short > 0 ? ' is-short' : ''}${!item.known ? ' is-pending' : ''}">
       <td><strong>${escapeHtml(item.groupName)}</strong>${warnings.length ? `<div class="row-warning">▲ ${escapeHtml(warnings.join(' · '))}</div>` : ''}${totalMode ? convertedNote : ''}</td>
-      <td>${escapeHtml(applications.join(' + ') || item.groupName)}</td>
+      <td>${escapeHtml(applications.join(' + ') || item.groupName)}${sectorApplications.length ? `<small>${escapeHtml(sectorApplications.join(' · '))}</small>` : ''}</td>
       <td>${escapeHtml(item.color || '—')}</td>
       <td class="num strong">${needHtml}</td>
       ${coverageCells}
@@ -285,13 +288,13 @@ const renderArtisanalStraps = (rows: ArtisanalStrapCutRow[]): string => {
       <thead><tr><th>Tira</th><th>Cor / base</th><th class="num">Tira necessária</th><th class="num">Napa a separar</th><th>Situação</th></tr></thead>
       <tbody>${rows.map((row) => {
         const snapshot = row.canonical;
-        const blocked = !snapshot || snapshot.baseRequiredM <= 0 || snapshot.confirmedYieldMPerM <= 0 || snapshot.blockingReasons.length > 0;
+        const blocked = !snapshot || snapshot.baseRequiredM <= 0 || snapshot.confirmedYieldMPerM <= 0 || snapshot.blockingReasons.length > 0 || !!snapshot.snapshotWarning;
         return `<tr class="${blocked ? 'is-pending' : ''}">
           <td><strong>${escapeHtml(row.groupName)}</strong></td>
           <td>${escapeHtml(row.color || '—')}${row.baseName ? ` · ${escapeHtml(row.baseName)}` : ''}</td>
           <td class="num strong">${formatQty(row.metros_necessarios, 'm')} m</td>
           <td class="num strong">${!blocked && snapshot ? `${formatQty(snapshot.baseRequiredM, 'm')} m` : '—'}</td>
-          <td>${blocked ? `<span class="flag warning">${escapeHtml(snapshot?.blockingReasons.join(' · ') || 'snapshot incompleto')}</span>` : `<span class="flag ok">receita conferida</span>`}</td>
+          <td>${blocked ? `<span class="flag warning">${escapeHtml(snapshot?.snapshotWarning || snapshot?.blockingReasons.join(' · ') || 'snapshot incompleto')}</span>` : `<span class="flag ok">receita conferida</span>`}</td>
         </tr>`;
       }).join('')}</tbody>
     </table>
