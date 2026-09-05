@@ -91,6 +91,7 @@ import {
   ensureTechnicalStrapLineIds,
   hasCanonicalTechnicalStrapIdentity,
   newTechnicalStrapLineId,
+  replicateFirstTechnicalStrapType,
   strapColorMode,
   type StrapColorMode,
 } from '@/lib/technicalStrapLines';
@@ -3778,6 +3779,38 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                   A <strong>política de cor</strong> define se cada tira segue a cor principal ou recebe
                   uma seleção própria no Pedido de Venda; a identidade técnica fica fixa aqui por UUID.
                 </p>
+
+                {(form.strap_colors || []).length > 1 && (
+                  <div className="flex flex-col gap-2 rounded-lg border bg-muted/20 p-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium">Mesmo tipo em várias tiras</p>
+                      <p id="replicate-strap-type-help" className="text-xs text-muted-foreground">
+                        Copia família, medida, base e política de cor da primeira tira para as demais.
+                        Os nomes e consumos de cada tira são mantidos.
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0 gap-1.5"
+                      aria-describedby="replicate-strap-type-help"
+                      disabled={strapCatalogQuery.isLoading || strapCatalogQuery.isError || !hasCanonicalTechnicalStrapIdentity(
+                        form.strap_colors[0],
+                        strapCatalog?.measures || [],
+                        strapCatalog?.types || [],
+                      )}
+                      title="Configure a família, medida e base da primeira tira para aplicar às demais"
+                      onClick={() => {
+                        updateField('strap_colors', replicateFirstTechnicalStrapType(form.strap_colors));
+                        toast.success('Tipo da primeira tira aplicado às demais. Salve a ficha para confirmar.');
+                      }}
+                    >
+                      <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+                      Aplicar tipo da 1ª tira às demais
+                    </Button>
+                  </div>
+                )}
 
                 {/* Handling time — only for strap models */}
                 {(form.strap_colors || []).map((strap: any, idx: number) => {

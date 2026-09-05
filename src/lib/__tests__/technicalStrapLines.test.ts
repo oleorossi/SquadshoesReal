@@ -6,6 +6,7 @@ import {
   ensureTechnicalStrapLineIds,
   hasCanonicalTechnicalStrapIdentity,
   isUuid,
+  replicateFirstTechnicalStrapType,
   strapColorMode,
   technicalStrapLineId,
 } from '@/lib/technicalStrapLines';
@@ -134,5 +135,108 @@ describe('technicalStrapLines', () => {
     );
     expect(hasCanonicalTechnicalStrapIdentity(withGroup, [measure], [type])).toBe(true);
     expect(withGroup.color_mode).toBe('select_on_order');
+  });
+
+  it('replica o tipo sem perder a identidade, cor ou consumo próprios de cada tira', () => {
+    const lines = [0, 1, 2].map((index) => {
+      const id = crypto.randomUUID();
+      return {
+        id,
+        technical_strap_line_id: id,
+        label: index === 2 ? 'TRASEIRA' : `TIRA ${index + 1}`,
+        strap_type_id: crypto.randomUUID(),
+        measure_id: crypto.randomUUID(),
+        identity_basis: 'reference_base' as const,
+        identity_group_id: null,
+        color_mode: index === 0 ? 'select_on_order' as const : 'follow_main' as const,
+        color: ['PRETO', 'OFF WHITE', 'WHISKY'][index],
+        color_id: crypto.randomUUID(),
+        consumption: 30 + index * 10,
+        consumption_per_size: { '33/34': 28 + index * 10, '35/36': 32 + index * 10 },
+        group_id: `grupo-legado-${index}`,
+        group_name: `Rótulo legado ${index}`,
+      };
+    });
+    const before = structuredClone(lines);
+    lines.forEach((line) => {
+      Object.freeze(line.consumption_per_size);
+      Object.freeze(line);
+    });
+    Object.freeze(lines);
+
+    const replicated = replicateFirstTechnicalStrapType(lines);
+
+    expect(replicated[0]).toBe(lines[0]);
+    expect(lines).toEqual(before);
+    expect(new Set(replicated.map(line => line.technical_strap_line_id)).size).toBe(3);
+    replicated.slice(1).forEach((line, index) => {
+      expect(line).toEqual({
+        ...before[index + 1],
+        strap_type_id: before[0].strap_type_id,
+        measure_id: before[0].measure_id,
+        color_mode: 'select_on_order',
+      });
+    });
+  });
+
+  it('replica grupo comprado pronto com seleção de cor no pedido', () => {
+    const groupId = crypto.randomUUID();
+    const lines = [
+      {
+        identity_basis: 'finished_product_group' as const,
+        identity_group_id: groupId,
+        color_mode: 'follow_main' as const,
+        strap_type_id: crypto.randomUUID(),
+        measure_id: crypto.randomUUID(),
+      },
+      {
+        identity_basis: 'reference_base' as const,
+        identity_group_id: null,
+        color_mode: 'follow_main' as const,
+      },
+    ];
+
+    const [first, copied] = replicateFirstTechnicalStrapType(lines);
+
+    expect(first).toBe(lines[0]);
+    expect(copied).toMatchObject({
+      identity_basis: 'finished_product_group',
+      identity_group_id: groupId,
+      color_mode: 'select_on_order',
+    });
+  });
+
+  it('ao voltar à napa da referência remove o grupo acabado e herda a política legada', () => {
+    const lines = [
+      {
+        strap_type_id: crypto.randomUUID(),
+        measure_id: crypto.randomUUID(),
+        // Identidade/política ausentes no JSON legado seguem a referência.
+        identity_group_id: crypto.randomUUID(),
+      },
+      {
+        identity_basis: 'finished_product_group' as const,
+        identity_group_id: crypto.randomUUID(),
+        color_mode: 'select_on_order' as const,
+      },
+    ];
+
+    const [first, copied] = replicateFirstTechnicalStrapType(lines);
+
+    expect(first).toBe(lines[0]);
+    expect(copied).toMatchObject({
+      identity_basis: 'reference_base',
+      identity_group_id: null,
+      color_mode: 'follow_main',
+    });
+  });
+
+  it('mantém fichas sem tiras ou com apenas uma tira intactas', () => {
+    expect(replicateFirstTechnicalStrapType([])).toEqual([]);
+    const onlyLine = [{ id: crypto.randomUUID(), measure_id: null }];
+    const before = structuredClone(onlyLine);
+
+    expect(replicateFirstTechnicalStrapType(onlyLine)).toEqual(before);
+    expect(onlyLine).toEqual(before);
   });
 });

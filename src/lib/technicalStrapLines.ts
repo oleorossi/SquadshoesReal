@@ -138,6 +138,22 @@ export function applyTechnicalStrapIdentity<T extends TechnicalStrapLineLike>(
   return applyTechnicalStrapColorMode(identified, strapColorMode(identified));
 }
 
+/** Copia o tipo da primeira tira sem alterar identidade, rótulo ou consumo de cada linha. */
+export function replicateFirstTechnicalStrapType<T extends TechnicalStrapLineLike>(lines: T[]): T[] {
+  const first = lines[0];
+  if (!first || lines.length < 2) return lines;
+
+  return lines.map((line, index) => {
+    if (index === 0) return line;
+    const identified = applyTechnicalStrapIdentity({
+      ...line,
+      strap_type_id: first.strap_type_id,
+      measure_id: first.measure_id,
+    }, strapIdentityBasis(first), first.identity_group_id);
+    return applyTechnicalStrapColorMode(identified, strapColorMode(first));
+  });
+}
+
 export function hasCanonicalTechnicalStrapIdentity(
   line: TechnicalStrapLineLike,
   measures: TechnicalStrapMeasureLike[],
