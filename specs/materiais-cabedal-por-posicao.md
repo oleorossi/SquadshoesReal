@@ -1,7 +1,7 @@
 # Materiais de cabedal por posição
 
-Estado: **seleção de material por posição linear implementada; validação final e
-publicação pendentes**. Peças de cabedal medidas por área continuam fora desta
+Estado: **seleção de material por posição linear implementada e verificada;
+publicação em andamento**. Peças de cabedal medidas por área continuam fora desta
 implementação, aguardando a definição de engenharia descrita abaixo.
 
 ## Objetivo integral
@@ -151,22 +151,35 @@ consumo, largura, rendimento ou preço para preencher dados ausentes.
   o modo material legado e permitindo cor principal não canônica quando todas
   as posições têm cores independentes. Promoção de rascunho com política técnica
   alterada foi recusada mesmo mantendo exatamente o mesmo SKU/cor/receita.
-- Esse ensaio não replica todo o conjunto de FKs, RLS e gatilhos operacionais de
-  produção. Portanto não comprova sozinho concorrência, reserva, fabricação e
-  baixa física ponta a ponta. Testes de integração ignorados por falta de
-  ambiente não contam como aprovados.
-- A tentativa de conferir o editor num navegador real foi inconclusiva: Chrome
-  sem resposta e navegador interno indisponível. O componente real foi testado
-  em DOM, mas não há aprovação visual nem screenshot final válido.
+- Complemento operacional executado com funções reais e seis gatilhos centrais
+  de estoque/reserva: worker, reconciliação, início do lote, recebimento, vínculo
+  da reserva acabada à OP e settlement canônico passaram. A gerou 40 m de tira
+  com 0,4 m de matéria-prima; B gerou 20 m com 0,333333333 m. As três posições
+  consumiram 10/20/30 m; o saldo acabado terminou em zero e as demandas foram
+  atendidas, sem debitar a matéria-prima de novo. Replay de recebimento e de
+  settlement não duplicou movimentos. Teste preservado separadamente em
+  `supabase/tests/strap_material_positions_physical_e2e.sql`.
+- O ambiente descartável não replica todo o conjunto de FKs, RLS e gatilhos de
+  produção. A aquisição do job foi preparada manualmente, não pela infraestrutura
+  de cron. Não é prova de concorrência real, de todas as transições automáticas
+  da OP nem da UI autenticada ponta a ponta. Testes ignorados continuam ignorados.
+- A primeira tentativa visual foi inconclusiva (Chrome sem resposta e navegador
+  interno indisponível), mas a alternativa `agent-browser` headless funcionou.
+  O componente real, com CSS/fontes reais e dados sintéticos, passou pelos três
+  modos com cliques: material fixo composto, dois materiais permitidos e seguir
+  referência. UUIDs, medida e consumos intactos; sem erros, alertas ou overflow.
+  Essa conferência cobre o editor isolado, não todo o fluxo autenticado do PV.
 - Revisão independente das funções instaladas e consumidores TS: o resolvedor
   antigo de base global está órfão e o débito legado é no-op. O caminho canônico
   mantém UUID da posição, produto-base, receita e rendimento até a reserva,
   lote, recebimento e baixa. Nenhum P1/P2 confirmado nessa revisão; ela é leitura
   de código, não um ensaio completo de baixa em produção.
-- **Pendentes:** publicação pelo CI e verificação da versão instalada, conferência
-  visual e ensaio operacional completo de reserva/fabricação/baixa em ambiente
-  descartável. Continua pendente também a decisão sobre peças por área; não
-  inventar consumos para encerrá-la.
+- CI do PR 195 aprovado integralmente no commit `33bcc1e`, com o timeout padrão,
+  antes da integração fast-forward em main. O workflow de produção deve usar a
+  revisão final, incluindo este registro e o teste operacional adicional.
+- **Pendente nesta entrega linear:** concluir a publicação pelo CI e verificar a
+  versão instalada. Peças medidas por área constituem uma extensão separada,
+  ainda dependente de definição; não inventar consumos nem reinterpretar cm/pé.
 
 ### Publicação e contingência
 
@@ -174,6 +187,11 @@ consumo, largura, rendimento ou preço para preencher dados ausentes.
   Não publicar diretamente pela integração Git nativa de main nem aplicar SQL
   fora do histórico de migrations. Main deve conter só o trabalho desta branch;
   as alterações financeiras isoladas não fazem parte desta entrega.
+- Atenção à próxima entrega financeira: se 159/160 continuarem inéditas quando
+  161 já estiver no banco, revisar seus carimbos antes do primeiro deploy. O
+  workflow usa `db push` sem `--include-all`, portanto não insere automaticamente
+  migrations anteriores à última versão remota. Não renumerar migrations já
+  aplicadas nem alterar aquela branch como parte desta entrega.
 - Se o CI ou a aplicação da migration falharem, não liberar o frontend. Após a
   publicação, verificar versão 2 do manifesto, políticas/ACL e SHA do deploy.
 - Navegadores mobile que mantenham o bundle antigo precisam atualizar para usar
