@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ComponentProps } from 'react';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -6,14 +6,26 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import SaleOrderItemForm from '../SaleOrderItemForm';
 import type { SaleOrderItemFormData } from '@/hooks/useSaleOrders';
+import type SaleOrderStrapColorCreateDialog from '../SaleOrderStrapColorCreateDialog';
+
+type ColorDialogProps = ComponentProps<typeof SaleOrderStrapColorCreateDialog>;
 
 HTMLElement.prototype.hasPointerCapture ??= () => false;
 HTMLElement.prototype.setPointerCapture ??= () => {};
 HTMLElement.prototype.releasePointerCapture ??= () => {};
 HTMLElement.prototype.scrollIntoView ??= () => {};
 
-const state = vi.hoisted(() => ({ catalog: {} as Record<string, unknown>, loading: false }));
-vi.mock('@/hooks/useAccessControl', () => ({ useAccessControl: () => ({ canSeeFinancialValues: false }) }));
+const state = vi.hoisted(() => ({
+  catalog: {} as Record<string, unknown>, loading: false, canCreate: false,
+  colorDialog: null as ColorDialogProps | null,
+}));
+vi.mock('@/hooks/useAccessControl', () => ({ useAccessControl: () => ({
+  canSeeFinancialValues: state.canCreate, can: () => state.canCreate,
+  roles: state.canCreate ? ['admin'] : [], loading: false, permsLoading: false,
+}) }));
+vi.mock('@/components/sale-orders/SaleOrderStrapColorCreateDialog', () => ({
+  default: (props: ColorDialogProps) => { state.colorDialog = props; return <div role="dialog">Cadastro contextual de cor</div>; },
+}));
 vi.mock('@/hooks/useArtisanalStraps', () => ({
   useArtisanalStrapCatalog: () => ({ data: state.loading ? undefined : state.catalog, isLoading: state.loading }),
   useArtisanalStrapCatalogDiagnostics: () => ({ data: undefined }),
@@ -41,8 +53,8 @@ const MEASURE = '55555555-5555-4555-8555-555555555555';
 const BLACK = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const GOLD = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const PRODUCTS = [
-  { id: 'p-soft-black', group_id: SOFT, name: 'NAPA SOFT PRETO', color: 'PRETO', active: true },
-  { id: 'p-soft-gold', group_id: SOFT, name: 'NAPA SOFT OURO', color: 'OURO', active: true },
+  { id: 'p-soft-black', group_id: SOFT, name: 'NAPA SOFT PRETO', color: 'PRETO', active: true, unit: 'm' },
+  { id: 'p-soft-gold', group_id: SOFT, name: 'NAPA SOFT OURO', color: 'OURO', active: true, unit: 'm' },
   { id: 'p-composite-black', group_id: COMPOSITE, name: 'NAPA SOFT + MASSABOX PRETO', color: 'PRETO', active: true },
 ];
 const GROUPS = [
@@ -77,10 +89,12 @@ function mount(initial: SaleOrderItemFormData, status = 'Rascunho', lines = tech
   qc.setQueryData(['products_for_colors'], PRODUCTS);
   qc.setQueryData(['product_groups_colors'], GROUPS);
   let latest = initial;
+  let replaceItem: (next: SaleOrderItemFormData) => void;
   const updates = vi.fn();
   const referenceData = references.map(reference => ({ ...reference, strap_colors: lines }));
   function Harness() {
     const [item, setItem] = useState(initial);
+    replaceItem = setItem;
     latest = item;
     return <SaleOrderItemForm
       item={item} index={0} references={referenceData} canRemove={false} isAdmin={false}
@@ -92,11 +106,13 @@ function mount(initial: SaleOrderItemFormData, status = 'Rascunho', lines = tech
     />;
   }
   const view = render(<QueryClientProvider client={qc}><MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><Harness /></MemoryRouter></QueryClientProvider>);
-  return { ...view, current: () => latest, updates, qc };
+  return { ...view, current: () => latest, replace: (next: SaleOrderItemFormData) => replaceItem(next), updates, qc };
 }
 
 beforeEach(() => {
   state.loading = false;
+  state.canCreate = false;
+  state.colorDialog = null;
   state.catalog = {
     types: [{ id: TYPE, active: true, name: 'Tira' }],
     measures: [{ id: MEASURE, strap_type_id: TYPE, active: true }],
@@ -113,6 +129,77 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); });
 
 describe('SaleOrderItemForm — material por posição', () => {
+  it('busca e seleciona cor de produto cadastrado sem exigir vínculo oficial anterior', async () => {
+    state.catalog.official_products = [];
+    const user = userEvent.setup();
+    const view = mount(initialItem());
+    await user.click(screen.getByRole('combobox', { name: 'Cor de TIRA 1' }));
+    await user.type(screen.getByRole('textbox', { name: 'Buscar cor…' }), 'ouro');
+    expect(screen.queryByRole('option', { name: 'PRETO' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('option', { name: 'OURO' }));
+    expect(view.current().strap_colors[0]).toMatchObject({
+      id: LINE_A, color_id: GOLD, color: 'OURO', strap_type_id: TYPE, measure_id: MEASURE,
+      consumption: 42, consumption_per_size: { '34': 42 },
+    });
+    expect(view.current().strap_colors[1].color_id).toBe(BLACK);
+    expect(view.current().strap_sourcing).not.toHaveProperty(LINE_A);
+    expect(view.current().strap_sourcing).toHaveProperty(LINE_B);
+  });
+
+  it('abre cadastro com tipo e material da ficha e aplica retorno somente na posição correta', async () => {
+    state.canCreate = true;
+    const user = userEvent.setup();
+    const view = mount(initialItem());
+    await user.click(screen.getByRole('button', { name: 'Cadastrar cor de TIRA 1' }));
+    expect(state.colorDialog.context).toMatchObject({
+      technicalStrapLineId: LINE_A, typeId: TYPE, measureId: MEASURE, baseGroupId: SOFT,
+    });
+    await act(async () => state.colorDialog.onCreated({
+      ...state.colorDialog.context, productId: 'p-soft-gold', colorId: GOLD, colorName: 'OURO',
+    }));
+    expect(view.current().strap_colors[0]).toMatchObject({
+      color_id: GOLD, strap_type_id: TYPE, measure_id: MEASURE, consumption: 42,
+    });
+    expect(view.current().strap_colors[1].color_id).toBe(BLACK);
+    expect(view.current().strap_sourcing).not.toHaveProperty(LINE_A);
+    expect(view.current().strap_sourcing).toHaveProperty(LINE_B);
+  });
+
+  it('não aplica retorno tardio do cadastro quando o material da posição mudou', async () => {
+    state.canCreate = true;
+    const user = userEvent.setup();
+    const view = mount(initialItem());
+    await user.click(screen.getByRole('button', { name: 'Cadastrar cor de TIRA 1' }));
+    const pending = state.colorDialog;
+    await user.click(screen.getByRole('combobox', { name: 'Material de TIRA 1' }));
+    await user.click(screen.getByRole('option', { name: 'NAPA SOFT + MASSABOX' }));
+    expect(() => pending.onCreated({
+      ...pending.context, productId: 'p-soft-gold', colorId: GOLD, colorName: 'OURO',
+    })).toThrow('contexto do item mudou');
+    expect(view.current().strap_colors[0]).toMatchObject({ base_group_id: COMPOSITE, color_id: BLACK });
+  });
+
+  it('mantém a seleção e bloqueia apenas o cadastro sem autorização de estoque', () => {
+    mount(initialItem());
+    expect(screen.getByRole('button', { name: 'Cadastrar cor de TIRA 1' })).toBeDisabled();
+    expect(screen.getByRole('combobox', { name: 'Cor de TIRA 1' })).toBeEnabled();
+  });
+
+  it('não aplica cadastro a outro item novo da mesma referência nem após desmontagem', async () => {
+    state.canCreate = true;
+    const user = userEvent.setup();
+    const initial = { ...initialItem(), id: undefined };
+    const view = mount(initial);
+    await user.click(screen.getByRole('button', { name: 'Cadastrar cor de TIRA 1' }));
+    const pending = state.colorDialog;
+    const created = { ...pending.context, productId: 'p-soft-gold', colorId: GOLD, colorName: 'OURO' };
+    await act(async () => view.replace({ ...initial, grade: { '34': 20 } }));
+    expect(() => pending.onCreated(created)).toThrow('contexto do item mudou');
+    expect(view.current().strap_colors[0].color_id).toBe(BLACK);
+    view.unmount();
+    expect(() => pending.onCreated(created)).toThrow('contexto do item mudou');
+  });
+
   it('escolhe somente grupo permitido por UUID e preserva cor compatível e demais posições', async () => {
     const user = userEvent.setup();
     const view = mount(initialItem());

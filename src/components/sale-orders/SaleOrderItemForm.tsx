@@ -54,6 +54,10 @@ import {
   type StrapColorMode,
 } from '@/lib/technicalStrapLines';
 import { strapColorsForIdentity } from '@/lib/officialStrapColors';
+import { canUseQuickGroupVariantForRoles } from '@/lib/quickGroupVariant';
+import SaleOrderStrapColorCreateDialog, {
+  type SaleOrderStrapColorCreateContext,
+} from '@/components/sale-orders/SaleOrderStrapColorCreateDialog';
 import { resolveStrapMaterialBaseGroupId, strapMaterialMode } from '@/lib/strapMaterialPolicy';
 import {
   isPurchasedReadyStrap,
@@ -177,7 +181,12 @@ function materialBaseForStrap(strap: ReconcileStrapLineLike, inheritedBase?: str
 
 function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, onUpdate, onRemove, onCopyGradeFromPrevious, onSaveStateAndNavigate, isSelected, onToggleSelect, priceLookup, maxDiscountPct = 0, variantsByRef = EMPTY_VARIANTS_BY_REF, onColorIssueChange, onSheetMaterialSelectableChange, saleOrderId, saleOrderStatus, billingWeek, requiredAt }: Props) {
   const qc = useQueryClient();
-  const { canSeeFinancialValues } = useAccessControl();
+  const access = useAccessControl();
+  const { canSeeFinancialValues } = access;
+  const canCreateStrapColor = !!canSeeFinancialValues
+    && !access.loading && (access.isAdmin || !access.permsLoading)
+    && !!access.can?.('/estoque', 'create')
+    && canUseQuickGroupVariantForRoles(access.roles || []);
   const productionExcluded = isProductionExcludedSaleOrderItem(item);
   const { data: strapCatalog, isLoading: strapCatalogLoading } = useArtisanalStrapCatalog(false);
   const fichas = item.fichas || 1;
@@ -189,6 +198,18 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   // que trava o salvamento. Não relaxa a regra do servidor (o PV segue exigindo
   // variante ativa); só evita que o operador tenha de caçar a pendência no hub.
   const [buyReadyGapTarget, setBuyReadyGapTarget] = useState<BuyReadyStrapGap | null>(null);
+  const [strapColorCreateTarget, setStrapColorCreateTarget] = useState<{
+    context: SaleOrderStrapColorCreateContext;
+    referenceId: string;
+    materialVariantId: string | null;
+    itemId: string | null;
+    itemSnapshot: SaleOrderItemFormData;
+  } | null>(null);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   // Cadastro da COR PRINCIPAL (forração/cabedal) via a MESMA tela do Estoque
   // (ProductFormDialog), aberta como modal aqui no PV. Só o caminho da cor
@@ -654,6 +675,14 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     () => new Map(strapLines.map((l) => [l.key, l])),
     [strapLines],
   );
+  // O cadastro é assíncrono. Um retorno não pode colorir outra posição/item
+  // caso o pedido ou a ficha tenham mudado enquanto o modal estava aberto.
+  const latestStrapColorContextRef = useRef({
+    item, strapPresentationDefinitions, strapLineByKey, preserveCommittedStrapSnapshot,
+  });
+  latestStrapColorContextRef.current = {
+    item, strapPresentationDefinitions, strapLineByKey, preserveCommittedStrapSnapshot,
+  };
   // A linha `reference_base` sem `strap_sourcing` (todo item novo) nunca chega a
   // `blocked` no bloco de Origem abaixo — `effective` é null —, então o cadastro
   // faltando da napa-base só aparecia como texto cru do Postgres DEPOIS de o PV
@@ -2247,6 +2276,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                   const canonicalMeasure = isUuid(strap.measure_id)
                     ? strapCatalog?.measures.find((entry) => entry.id === strap.measure_id && entry.active !== false)
                     : null;
+                  const canonicalType = strapCatalog?.types.find((entry) => entry.id === strap.strap_type_id);
                   const measureResolved = isUuid(strap.strap_type_id)
                     && !!canonicalMeasure
                     && canonicalMeasure.strap_type_id === strap.strap_type_id;
@@ -2269,8 +2299,11 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                     <div key={strap.id || sIdx} className="space-y-1">
                       <div className="flex items-center justify-between gap-1">
                         <span className="text-xs font-bold text-muted-foreground uppercase truncate">{strap.label || `Tira ${sIdx + 1}`}</span>
-                        {strap.group_name && <span className="text-xs text-muted-foreground opacity-70 truncate max-w-[80px]">({strap.group_name})</span>}
                       </div>
+                      <p className="text-xs text-muted-foreground break-words">
+                        Tipo da ficha: {canonicalType?.name || strap.group_name || 'Não identificado'}
+                        {canonicalMeasure?.display_name ? ` · ${canonicalMeasure.display_name}` : ''}
+                      </p>
                       {!usesFinishedGroup && (materialMode === 'select_on_order' && !preserveCommittedStrapSnapshot ? (
                         <Select
                           value={baseGroupId || ''}
@@ -2351,7 +2384,10 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                                 : 'Selecione a cor canônica'}
                             />
                           </SelectTrigger>
-                          <SelectContent>
+                          <SelectContent searchable searchPlaceholder="Buscar cor…" searchLabel="Cores do material"
+                            searchEmptyText={independentReferenceBase && canCreateStrapColor
+                              ? 'Cor não encontrada. Use Cadastrar cor abaixo do seletor.'
+                              : 'Nenhuma cor cadastrada corresponde à busca.'}>
                             {displayedColors.map((entry) => (
                               <SelectItem key={entry.id} value={entry.id} disabled={!identityColors.some((color) => color.id === entry.id)}>{entry.name}{entry.id === strap.color_id && !colorIsAvailable ? ' · vínculo inválido' : ''}</SelectItem>
                             ))}
@@ -2361,6 +2397,43 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                         <div className="flex h-9 items-center justify-between gap-2 rounded-md border border-border/60 bg-muted/30 px-3 text-sm">
                           <span className="truncate font-medium">{strap.color || item.color || `Aguardando cor ${referenceBaseMaterialWithArticle}`}</span>
                           <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">cor {referenceBaseMaterialWithArticle}</span>
+                        </div>
+                      )}
+                      {independentReferenceBase && !readOnlyHistoricalColor && identityGroupResolved && measureResolved && (
+                        <div className="space-y-1">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-8 gap-1.5 text-xs"
+                            disabled={!canCreateStrapColor || strapCatalogLoading}
+                            aria-label={`Cadastrar cor de ${strap.label || `Tira ${sIdx + 1}`}`}
+                            onClick={() => setStrapColorCreateTarget({
+                              referenceId: item.reference_id,
+                              materialVariantId: item.material_variant_id || null,
+                              itemId: item.id || null,
+                              itemSnapshot: item,
+                              context: {
+                                referenceId: item.reference_id,
+                                materialVariantId: item.material_variant_id || null,
+                                technicalStrapLineId: lineId,
+                                label: strap.label || `Tira ${sIdx + 1}`,
+                                typeId: strap.strap_type_id,
+                                typeName: canonicalType?.name || strap.group_name || 'Tipo da ficha',
+                                measureId: strap.measure_id,
+                                measureName: canonicalMeasure?.display_name || 'Medida da ficha',
+                                baseGroupId,
+                                baseGroupName: materialName || 'Material da ficha',
+                              },
+                            })}
+                          >
+                            <Plus className="h-3.5 w-3.5" /> Cadastrar cor
+                          </Button>
+                          {!canCreateStrapColor && (
+                            <p className="text-xs text-muted-foreground">
+                              Para cadastrar uma nova cor, é necessário acesso ao cadastro de estoque e à confirmação do custo.
+                            </p>
+                          )}
                         </div>
                       )}
                       {!usesFinishedGroup && colorMode === 'follow_main' && !!strapCatalog && !strapCatalogLoading && !!item.color && !canonicalMainStrapColor && (
@@ -2386,7 +2459,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                         <p className="text-xs leading-tight text-destructive">
                           {usesFinishedGroup
                             ? 'Este grupo acabado não possui produto ativo com cor canônica.'
-                            : 'Esta napa-base não possui cor com produção, saldo acabado ou compra pronta disponíveis.'}
+                            : 'Este material ainda não possui cores cadastradas utilizáveis. Cadastre uma cor para continuar.'}
                         </p>
                       )}
                       {selectsOnOrder
@@ -2396,7 +2469,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                         <p className="text-xs leading-tight text-destructive">
                           {usesFinishedGroup
                             ? 'A cor atual não possui produto ativo no grupo acabado.'
-                            : 'A cor atual não possui napa oficial ativa nesta base. Escolha uma opção válida.'}
+                            : 'A cor atual não possui produto ativo ou fonte válida neste material. Escolha uma opção válida.'}
                         </p>
                       )}
                       {independentReferenceBase && !readOnlyHistoricalColor && !strap.color_id && !strap.color && (
@@ -2597,6 +2670,56 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
           />
         )}
       </fieldset>
+
+      {strapColorCreateTarget && (
+        <SaleOrderStrapColorCreateDialog
+          open
+          context={strapColorCreateTarget.context}
+          onOpenChange={(open) => { if (!open) setStrapColorCreateTarget(null); }}
+          onCreated={(created) => {
+            const current = latestStrapColorContextRef.current;
+            const target = strapColorCreateTarget;
+            const line = current.strapPresentationDefinitions.find(entry =>
+              technicalStrapLineId(entry) === created.technicalStrapLineId);
+            const currentBase = line ? materialBaseForStrap(
+              line,
+              current.strapLineByKey.get(created.technicalStrapLineId)?.baseGroupId,
+            ) : null;
+            if (!mountedRef.current
+                || current.item !== target.itemSnapshot
+                || created.technicalStrapLineId !== target.context.technicalStrapLineId
+                || created.typeId !== target.context.typeId
+                || created.measureId !== target.context.measureId
+                || created.baseGroupId !== target.context.baseGroupId
+                || current.preserveCommittedStrapSnapshot
+                || isProductionExcludedSaleOrderItem(current.item)
+                || current.item.reference_id !== target.referenceId
+                || (current.item.material_variant_id || null) !== target.materialVariantId
+                || (current.item.id || null) !== target.itemId
+                || !line || strapIdentityBasis(line) !== 'reference_base'
+                || strapColorMode(line) !== 'select_on_order'
+                || line.strap_type_id !== created.typeId
+                || line.measure_id !== created.measureId
+                || currentBase !== created.baseGroupId) {
+              throw new Error('A cor foi cadastrada, mas o contexto do item mudou. Feche o cadastro e selecione a cor na posição desejada.');
+            }
+            const snapshots = current.item.strap_colors || [];
+            if (!snapshots.some(entry => technicalStrapLineId(entry) === created.technicalStrapLineId)) {
+              throw new Error('A posição foi removida do item. A cor continua disponível no material cadastrado.');
+            }
+            const { index: currentIndex, onUpdate: update } = latestRef.current;
+            update(currentIndex, 'strap_colors', snapshots.map(entry =>
+              technicalStrapLineId(entry) === created.technicalStrapLineId
+                ? { ...entry, color_id: created.colorId, color: created.colorName }
+                : entry));
+            update(currentIndex, 'strap_sourcing', setStrapSourcing(
+              current.item.strap_sourcing || EMPTY_STRAP_SOURCING_MAP,
+              created.technicalStrapLineId,
+              null,
+            ));
+          }}
+        />
+      )}
 
       {strapResolutionOpen && item.reference_id && (
         <StrapCatalogResolutionDrawer

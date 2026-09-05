@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyCreatedMobileStrapColor,
   buildMobileSaleOrderItemsPayload,
   clearIncompatibleMobileStrapSelections,
   mobileIndependentStrapReviewLines,
@@ -8,6 +9,7 @@ import {
   reconcileMobileDraftItemWithManifest,
   resetMobileStrapsForMaterialChange,
   selectMobileStrapMaterial,
+  selectMobileStrapColor,
 } from '../MobileNewOrder';
 import type { MobileStrapManifestReference, MobileStrapOfflineManifest } from '@/lib/mobile/strapOfflineManifest';
 
@@ -73,6 +75,79 @@ const manifest = (reference = entry): MobileStrapOfflineManifest => ({
 });
 
 describe('material por posição no pedido mobile', () => {
+  it('seleciona uma cor registrada mesmo sem variante/receita e invalida somente a origem da posição', () => {
+    const original = draft();
+    const available = {
+      ...entry,
+      lines: entry.lines.map((line) => ({
+        ...line,
+        material_options: line.material_options.map((option) => ({
+          ...option,
+          allowed_colors: [...option.allowed_colors, { id: COLOR_B, name: 'DOURADO' }],
+        })),
+      })),
+    };
+    const selected = selectMobileStrapColor(original, LINE_A, COLOR_B, available);
+    expect(selected.strap_colors[0]).toMatchObject({
+      technical_strap_line_id: LINE_A, color_id: COLOR_B, color: 'DOURADO',
+      strap_type_id: shared.strap_type_id, measure_id: shared.measure_id,
+      consumption: 28, consumption_per_size: { '25': 0, '26': 30 },
+    });
+    expect(selected.strap_colors[1]).toBe(original.strap_colors[1]);
+    expect(selected.strap_sourcing).not.toHaveProperty(LINE_A);
+    expect(selected.strap_sourcing[LINE_B]).toEqual(original.strap_sourcing[LINE_B]);
+  });
+
+  it('aplica cor recém-cadastrada somente após o catálogo fresco confirmar a identidade completa', () => {
+    const original = draft();
+    const created = {
+      technicalStrapLineId: LINE_A,
+      typeId: shared.strap_type_id,
+      measureId: shared.measure_id,
+      baseGroupId: GROUP_A,
+      productId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+      colorId: COLOR_B,
+      colorName: 'DOURADO',
+    };
+    expect(applyCreatedMobileStrapColor(original, created, manifest())).toBe(original);
+    const fresh = manifest({
+      ...entry,
+      lines: entry.lines.map((line) => ({
+        ...line,
+        material_options: line.material_options.map((option) => ({
+          ...option,
+          allowed_colors: [...option.allowed_colors, { id: COLOR_B, name: 'DOURADO' }],
+        })),
+      })),
+    });
+    const selected = applyCreatedMobileStrapColor(original, created, fresh);
+    expect(selected.strap_colors[0]).toMatchObject({ color_id: COLOR_B, color: 'DOURADO', base_group_id: GROUP_A });
+    expect(selected.strap_sourcing).not.toHaveProperty(LINE_A);
+    expect(selected.strap_colors[0]).not.toHaveProperty('productId');
+    for (const mismatch of [
+      { technicalStrapLineId: 'missing' }, { typeId: LINE_B }, { measureId: LINE_B }, { baseGroupId: GROUP_B },
+    ]) {
+      expect(applyCreatedMobileStrapColor(original, { ...created, ...mismatch }, fresh)).toBe(original);
+    }
+    const changedTechnical = manifest({ ...entry, lines: fresh.references[0].lines.map((line) => ({ ...line, measure_id: LINE_B })) });
+    expect(applyCreatedMobileStrapColor(original, created, changedTechnical)).toBe(original);
+  });
+
+  it('cadastro em posição que segue a cor principal não permite trocar a cor comercial do item', () => {
+    const original = draft();
+    original.strap_colors[0].color_mode = 'follow_main' as typeof original.strap_colors[0]['color_mode'];
+    const followsMainEntry = {
+      ...entry,
+      lines: entry.lines.map((line) => ({ ...line, color_mode: 'follow_main' as const })),
+    };
+    expect(selectMobileStrapColor(original, LINE_A, COLOR_B, followsMainEntry)).toBe(original);
+    const selected = selectMobileStrapColor(original, LINE_A, COLOR_A, followsMainEntry);
+    expect(selected.strap_colors[0]).toMatchObject({ color: original.color, color_id: COLOR_A });
+    expect(applyCreatedMobileStrapColor(original, {
+      technicalStrapLineId: LINE_A, typeId: shared.strap_type_id, measureId: shared.measure_id,
+      baseGroupId: GROUP_A, productId: GROUP_B, colorId: COLOR_A, colorName: 'PRETO',
+    }, manifest(followsMainEntry))).toBe(original);
+  });
   it('troca somente a posição escolhida e descarta receita/cor incompatíveis sem alterar consumo', () => {
     const original = draft();
     const next = selectMobileStrapMaterial(original, LINE_B, GROUP_B, entry);

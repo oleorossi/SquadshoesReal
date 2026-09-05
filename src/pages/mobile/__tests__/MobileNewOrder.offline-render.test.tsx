@@ -16,7 +16,8 @@ vi.mock('@/hooks/useAuth', () => ({
   useAuth: () => ({ user: { id: mocks.ownerId }, loading: false }),
 }));
 vi.mock('@/hooks/useAccessControl', () => ({
-  useCan: () => ({ canCreate: true, loading: false }),
+  useCan: () => ({ canCreate: true, loading: false, roles: ['admin'] }),
+  useAccessControl: () => ({ canSeeFinancialValues: true }),
 }));
 vi.mock('@/lib/mobile/networkStatus', () => ({ useOnlineStatus: () => false }));
 vi.mock('@/lib/mobile/syncEngine', () => ({ triggerSync: vi.fn() }));
@@ -197,9 +198,15 @@ describe('novo PV mobile em cold-start offline', () => {
 
     expect(await screen.findByText(/cores disponíveis carregadas do catálogo deste usuário/i))
       .toBeInTheDocument();
+    expect(screen.getByText('Para cadastrar uma nova cor, conecte-se à internet.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Não encontrou a cor/ })).not.toBeInTheDocument();
     const firstSelector = screen.getByRole('combobox', { name: 'Cor de Tira 1' });
     expect(firstSelector).toBeEnabled();
     await user.click(firstSelector);
+    const search = screen.getByPlaceholderText('Buscar cor deste material…');
+    await user.type(search, 'dour');
+    expect(screen.queryByRole('option', { name: 'PRETO' })).not.toBeInTheDocument();
+    await user.clear(search);
     expect(await screen.findByRole('option', { name: 'PRETO' })).toBeInTheDocument();
     await user.click(screen.getByRole('option', { name: 'DOURADO' }));
     expect(firstSelector).toHaveTextContent('DOURADO');

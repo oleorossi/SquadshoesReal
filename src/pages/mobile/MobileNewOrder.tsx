@@ -33,6 +33,11 @@ import { Input } from '@/components/ui/input';
 import { NumberInput } from '@/components/ui/number-input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SignatureCanvas } from '@/components/mobile/SignatureCanvas';
+import {
+  SaleOrderStrapColorCreateDialog,
+  type SaleOrderStrapColorCreateContext,
+  type SaleOrderStrapColorCreated,
+} from '@/components/sale-orders/SaleOrderStrapColorCreateDialog';
 import type { SaleOrderItemFormData } from '@/hooks/useSaleOrders';
 import {
   ensureTechnicalStrapLineIds,
@@ -74,7 +79,8 @@ import {
   resolveSheetCommercialColorGroup,
 } from '@/lib/materialVariantColorGroup';
 import { useAuth } from '@/hooks/useAuth';
-import { useCan } from '@/hooks/useAccessControl';
+import { useAccessControl, useCan } from '@/hooks/useAccessControl';
+import { canUseQuickGroupVariantForRoles } from '@/lib/quickGroupVariant';
 import { parseSizes } from '@/lib/labelUtils';
 
 interface ClientLite {
@@ -183,6 +189,52 @@ export function updateMobileDraftItem(
   const next = [...items];
   next[expectedIndex] = nextItem;
   return next;
+}
+
+/** A cor pertence ao material da posição, não a uma receita já materializada. */
+export function selectMobileStrapColor(
+  item: DraftItem,
+  lineId: string,
+  colorId: string,
+  manifestEntry: MobileStrapManifestReference | null | undefined,
+): DraftItem {
+  const strapIndex = (item.strap_colors || []).findIndex((strap) => technicalStrapLineId(strap) === lineId);
+  const strap = item.strap_colors?.[strapIndex];
+  const manifestLine = manifestEntry?.lines.find((line) => line.technical_strap_line_id === lineId);
+  if (!strap || !manifestLine || !manifestLineMatchesSnapshot(strap, manifestLine)) return item;
+  const material = mobileStrapSelectedMaterial(manifestLine, strap);
+  const color = material?.allowed_colors.find((entry) => entry.id === colorId);
+  if (!color) return item;
+  if (strapColorMode(strap) === 'follow_main'
+      && normalizeStrapColorKey(color.name) !== normalizeStrapColorKey(item.color)) return item;
+  const straps = [...item.strap_colors];
+  straps[strapIndex] = {
+    ...strap,
+    color_mode: strapColorMode(strap),
+    color_id: color.id,
+    color: strapColorMode(strap) === 'follow_main' ? item.color : color.name,
+    ...(strapIdentityBasis(strap) === 'reference_base' ? {
+      base_group_id: material.base_group_id,
+      base_group_name: material.base_group_name,
+    } : {}),
+  };
+  return { ...item, strap_colors: straps, strap_sourcing: setStrapSourcing(item.strap_sourcing, lineId, null) };
+}
+
+/** Retornos atrasados nunca mudam uma posição que trocou tipo, medida ou material. */
+export function applyCreatedMobileStrapColor(
+  item: DraftItem,
+  created: SaleOrderStrapColorCreated,
+  manifest: MobileStrapOfflineManifest,
+): DraftItem {
+  const strap = item.strap_colors?.find((line) => technicalStrapLineId(line) === created.technicalStrapLineId);
+  const entry = findMobileStrapManifestReference(manifest, item.reference_id, item.material_variant_id);
+  const manifestLine = entry?.lines.find((line) => line.technical_strap_line_id === created.technicalStrapLineId);
+  if (!strap || strapIdentityBasis(strap) !== 'reference_base'
+      || strapColorMode(strap) !== 'select_on_order'
+      || strap.strap_type_id !== created.typeId || strap.measure_id !== created.measureId
+      || mobileStrapSelectedMaterial(manifestLine, strap)?.base_group_id !== created.baseGroupId) return item;
+  return selectMobileStrapColor(item, created.technicalStrapLineId, created.colorId, entry);
 }
 
 type Step = 'client' | 'items' | 'review' | 'success';
@@ -749,6 +801,8 @@ function MobileStrapIdentityEditor({
   manifest,
   manifestLoading,
   manifestError,
+  canCreateColor = false,
+  onCreateColor,
   onValidationChange,
   onChange,
 }: {
@@ -759,6 +813,8 @@ function MobileStrapIdentityEditor({
   manifest?: MobileStrapOfflineManifest | null;
   manifestLoading: boolean;
   manifestError: string | null;
+  canCreateColor?: boolean;
+  onCreateColor?: (context: SaleOrderStrapColorCreateContext, initialColor: string) => void;
   onValidationChange: (index: number, result: MobileStrapValidationResult) => void;
   onChange: (item: DraftItem) => void;
 }) {
@@ -906,6 +962,41 @@ function MobileStrapIdentityEditor({
         const materialMode = strapMaterialMode(manifestLine || strap);
         const material = mobileStrapSelectedMaterial(manifestLine, strap);
         const materials = mobileStrapMaterialOptions(manifestLine);
+        const measureResolved = !!manifestLine
+          && isUuid(manifestLine.strap_type_id)
+          && isUuid(manifestLine.measure_id)
+          && manifestLine.strap_type_id === strap.strap_type_id
+          && manifestLine.measure_id === strap.measure_id;
+        const registerColorControl = !usesFinishedGroup && !followsMainColor && canCreateColor ? (
+          online ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-auto min-h-11 w-full whitespace-normal text-xs"
+              disabled={!onCreateColor || !material || !measureResolved || manifestLoading || !lineId}
+              onClick={() => {
+                if (!onCreateColor || !material || !lineId || !measureResolved) return;
+                onCreateColor({
+                  referenceId: item.reference_id,
+                  materialVariantId: item.material_variant_id || null,
+                  technicalStrapLineId: lineId,
+                  label: strap.label || `Tira ${strapIndex + 1}`,
+                  typeId: manifestLine.strap_type_id,
+                  typeName: strap.strap_type_name || strap.group_name || 'Tipo definido na ficha',
+                  measureId: manifestLine.measure_id,
+                  measureName: strap.measure_name || 'Medida definida na ficha',
+                  baseGroupId: material.base_group_id,
+                  baseGroupName: material.base_group_name,
+                }, followsMainColor ? item.color : '');
+              }}
+            >
+              Não encontrou a cor? Cadastrar neste material
+            </Button>
+          ) : (
+            <p className="text-xs text-muted-foreground">Para cadastrar uma nova cor, conecte-se à internet.</p>
+          )
+        ) : null;
         const materialControl = !usesFinishedGroup && materialMode === 'select_on_order' ? (
           <div className="space-y-1">
             <Select
@@ -939,11 +1030,13 @@ function MobileStrapIdentityEditor({
           return (
             <div key={lineId || strapIndex} className="space-y-2 rounded-md border p-2">
               <p className="text-xs font-semibold">{strap.label || `Tira ${strapIndex + 1}`}</p>
+              <p className="text-[11px] text-muted-foreground">{strap.group_name || 'Tipo e medida definidos na ficha técnica'}</p>
               {materialControl}
               <div className={`rounded-md border px-3 py-2 text-xs ${item.color ? 'bg-muted/30' : 'border-destructive/50 text-destructive'}`}>
                 <p className="font-semibold">{item.color || 'Defina a cor principal do item'}</p>
                 <p className="mt-0.5 text-[11px] text-muted-foreground">Segue a cor principal no material desta posição</p>
               </div>
+              {registerColorControl}
               <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-[11px]">
                 <p className="font-semibold text-primary">
                   {selection?.source_mode === 'buy_ready'
@@ -976,15 +1069,11 @@ function MobileStrapIdentityEditor({
           ? [selectedColor, ...identityColors]
           : identityColors;
         const identityGroupResolved = !!material;
-        const measureResolved = !!manifestLine
-          && isUuid(manifestLine.strap_type_id)
-          && isUuid(manifestLine.measure_id)
-          && manifestLine.strap_type_id === strap.strap_type_id
-          && manifestLine.measure_id === strap.measure_id;
         const selectionWasInvalidated = !!lineId && invalidatedLineIds.has(lineId);
         return (
           <div key={lineId || strapIndex} className="space-y-2 rounded-md border p-2">
             <p className="text-xs font-semibold">{strap.label || `Tira ${strapIndex + 1}`}</p>
+            <p className="text-[11px] text-muted-foreground">{strap.group_name || 'Tipo e medida definidos na ficha técnica'}</p>
             {materialControl}
             <p className="text-[11px] text-muted-foreground">
               {usesFinishedGroup ? 'Produto acabado comprado pronto' : 'Produção interna · escolha a cor do material desta posição'}
@@ -993,19 +1082,9 @@ function MobileStrapIdentityEditor({
               value={strap.color_id || ''}
               disabled={!manifestEntry || manifestLoading || !identityGroupResolved || !measureResolved || identityColors.length === 0}
               onValueChange={(colorId) => {
-                const color = identityColors.find((entry) => entry.id === colorId);
-                if (!color) return;
-                const straps = [...(item.strap_colors || [])];
-                straps[strapIndex] = {
-                  ...strap,
-                  color_mode: strapColorMode(strap),
-                  color_id: color.id,
-                  color: color.name,
-                  ...(!usesFinishedGroup ? {
-                    base_group_id: material?.base_group_id || null,
-                    base_group_name: material?.base_group_name || null,
-                  } : {}),
-                };
+                if (!lineId) return;
+                const nextItem = selectMobileStrapColor(item, lineId, colorId, manifestEntry);
+                if (nextItem === item) return;
                 if (lineId) {
                   setInvalidatedLineIds((current) => {
                     if (!current.has(lineId)) return current;
@@ -1014,22 +1093,25 @@ function MobileStrapIdentityEditor({
                     return next;
                   });
                 }
-                onChange({
-                  ...item,
-                  strap_colors: straps,
-                  strap_sourcing: setStrapSourcing(item.strap_sourcing, lineId, null),
-                });
+                onChange(nextItem);
               }}
             >
               <SelectTrigger className={!strap.color_id ? 'border-amber-500/60' : ''} aria-label={`Cor de ${strap.label || `Tira ${strapIndex + 1}`}`}>
                 <SelectValue placeholder={strap.color ? `${strap.color} — confirme` : 'Cor canônica'} />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent
+                searchable
+                searchPlaceholder="Buscar cor deste material…"
+                searchEmptyText={online && canCreateColor && !usesFinishedGroup
+                  ? 'Cor não encontrada. Use o cadastro abaixo do seletor.'
+                  : 'Nenhuma cor cadastrada corresponde à busca.'}
+              >
                 {displayedColors.map((entry) => (
                   <SelectItem key={entry.id} value={entry.id} disabled={!identityColors.some((color) => color.id === entry.id)}>{entry.name}{entry.id === strap.color_id && !colorIsAvailable ? ' · vínculo inválido' : ''}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            {registerColorControl}
             {!manifestLoading && !!manifestEntry && !identityGroupResolved && (
               <p className="text-xs text-destructive">
                 {usesFinishedGroup
@@ -1078,7 +1160,13 @@ export default function MobileNewOrder() {
   const online = useOnlineStatus();
   const { user, loading: authLoading } = useAuth();
   const perm = useCan('/sales');
+  const stockPermission = useCan('/estoque');
+  const { canSeeFinancialValues } = useAccessControl();
+  const canCreateStrapColor = !stockPermission.loading && stockPermission.canCreate && canSeeFinancialValues
+    && canUseQuickGroupVariantForRoles(stockPermission.roles || []);
   const ownerId = user?.id || '';
+  const currentSessionRef = useRef({ ownerId, online });
+  currentSessionRef.current = { ownerId, online };
   const [step, setStep] = useState<Step>('client');
   const [requestId, setRequestId] = useState<string>(newRequestId());
 
@@ -1100,11 +1188,21 @@ export default function MobileNewOrder() {
   const [materialProducts, setMaterialProducts] = useState<ProductLite[]>([]);
   const [materialProductGroups, setMaterialProductGroups] = useState<ProductGroupLite[]>([]);
   const [items, setItems] = useState<DraftItem[]>([]);
+  const currentItemsRef = useRef(items);
+  currentItemsRef.current = items;
+  const [colorRegistration, setColorRegistration] = useState<{
+    context: SaleOrderStrapColorCreateContext;
+    initialColor: string;
+    expectedItem: DraftItem;
+    itemIndex: number;
+    ownerId: string;
+  } | null>(null);
   const [refSearch, setRefSearch] = useState('');
   const [billingDate, setBillingDate] = useState('');
   const [catalogState, setCatalogState] = useState<'idle' | 'cached' | 'ready' | 'error'>('idle');
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [strapManifest, setStrapManifest] = useState<MobileStrapOfflineManifest | null>(null);
+  const strapManifestRequestRef = useRef(0);
   const [strapManifestOwnerId, setStrapManifestOwnerId] = useState('');
   const [strapManifestState, setStrapManifestState] = useState<
     'idle' | 'loading' | 'cached' | 'ready' | 'missing' | 'error'
@@ -1115,6 +1213,48 @@ export default function MobileNewOrder() {
   const [strapValidationByItemIndex, setStrapValidationByItemIndex] = useState<
     Record<number, MobileStrapValidationResult>
   >({});
+  const handleCreatedStrapColor = async (created: SaleOrderStrapColorCreated) => {
+    const registration = colorRegistration;
+    if (!registration || currentSessionRef.current.ownerId !== registration.ownerId
+        || !currentSessionRef.current.online) {
+      throw new Error('Reconecte-se à mesma conta para atualizar as cores do pedido.');
+    }
+    if (created.technicalStrapLineId !== registration.context.technicalStrapLineId
+        || created.typeId !== registration.context.typeId
+        || created.measureId !== registration.context.measureId
+        || created.baseGroupId !== registration.context.baseGroupId) {
+      throw new Error('O cadastro retornou outra identidade de tira. Reabra a posição correta para selecionar a cor.');
+    }
+    // Não acrescentar a cor manualmente ao cache: o manifesto é a validação do
+    // servidor para esta combinação de posição, material, tipo e medida.
+    const manifestRequest = ++strapManifestRequestRef.current;
+    const fresh = await fetchMobileStrapOfflineManifest();
+    if (currentSessionRef.current.ownerId !== registration.ownerId
+        || !currentSessionRef.current.online || manifestRequest !== strapManifestRequestRef.current) {
+      throw new Error('A sessão ou a conexão mudou. Reabra o pedido para selecionar a cor cadastrada.');
+    }
+    await saveMobileStrapOfflineManifest(registration.ownerId, fresh);
+    if (currentSessionRef.current.ownerId !== registration.ownerId
+        || !currentSessionRef.current.online || manifestRequest !== strapManifestRequestRef.current) return;
+    const currentItem = currentItemsRef.current[registration.itemIndex];
+    const nextItem = currentItem === registration.expectedItem
+      ? applyCreatedMobileStrapColor(currentItem, created, fresh)
+      : currentItem;
+    setStrapManifest(fresh);
+    setStrapManifestOwnerId(registration.ownerId);
+    setStrapManifestState('ready');
+    setStrapManifestError(null);
+    if (!currentItem || nextItem === currentItem) {
+      toast.warning('Cor cadastrada. A posição mudou ou o catálogo exige revisão; selecione a cor novamente no material correto.');
+      return;
+    }
+    setItems((current) => updateMobileDraftItem(
+      current,
+      registration.expectedItem,
+      registration.itemIndex,
+      () => nextItem,
+    ));
+  };
   const handleStrapValidationChange = useCallback((index: number, result: MobileStrapValidationResult) => {
     setStrapValidationByItemIndex((current) => {
       const previous = current[index];
@@ -1141,6 +1281,7 @@ export default function MobileNewOrder() {
     const previousOwnerId = previousOwnerIdRef.current;
     const ownerChanged = mobileOwnerSessionChanged(previousOwnerId, ownerId);
     previousOwnerIdRef.current = ownerId;
+    if (ownerChanged || !ownerId) setColorRegistration(null);
 
     if (!ownerId) {
       // Nunca mantenha cliente/itens comerciais em memória entre sessões do
@@ -1225,6 +1366,7 @@ export default function MobileNewOrder() {
   // no IndexedDB pode habilitar as escolhas independentes de cor.
   useEffect(() => {
     let cancelled = false;
+    const manifestRequest = ++strapManifestRequestRef.current;
     if (!ownerId) return () => { cancelled = true; };
 
     setStrapManifest(null);
@@ -1233,7 +1375,7 @@ export default function MobileNewOrder() {
     setStrapManifestError(null);
     void (async () => {
       const cached = await loadMobileStrapOfflineManifest(ownerId).catch(() => null);
-      if (cancelled) return;
+      if (cancelled || manifestRequest !== strapManifestRequestRef.current) return;
       if (cached) {
         setStrapManifest(cached);
         setStrapManifestOwnerId(ownerId);
@@ -1246,14 +1388,14 @@ export default function MobileNewOrder() {
 
       try {
         const fresh = await fetchMobileStrapOfflineManifest();
-        if (cancelled) return;
+        if (cancelled || manifestRequest !== strapManifestRequestRef.current) return;
         setStrapManifest(fresh);
         setStrapManifestOwnerId(ownerId);
         setStrapManifestState('ready');
         setStrapManifestError(null);
         await saveMobileStrapOfflineManifest(ownerId, fresh);
       } catch (error) {
-        if (cancelled) return;
+        if (cancelled || manifestRequest !== strapManifestRequestRef.current) return;
         setStrapManifestError(error instanceof Error ? error.message : String(error));
         setStrapManifestState(cached ? 'cached' : 'error');
       }
@@ -2287,6 +2429,10 @@ export default function MobileNewOrder() {
                   manifest={ownerScopedStrapManifest}
                   manifestLoading={strapManifestState === 'idle' || strapManifestState === 'loading'}
                   manifestError={strapManifestError}
+                  canCreateColor={canCreateStrapColor}
+                  onCreateColor={(context, initialColor) => setColorRegistration({
+                    context, initialColor, expectedItem: it, itemIndex: idx, ownerId,
+                  })}
                   onValidationChange={handleStrapValidationChange}
                   onChange={(next) => setItems((current) => updateMobileDraftItem(
                     current,
@@ -2301,6 +2447,15 @@ export default function MobileNewOrder() {
         })}
 
         {/* Adicionar novo item */}
+        {colorRegistration && online && colorRegistration.ownerId === ownerId && canCreateStrapColor && (
+          <SaleOrderStrapColorCreateDialog
+            open
+            onOpenChange={(open) => { if (!open) setColorRegistration(null); }}
+            context={colorRegistration.context}
+            initialColor={colorRegistration.initialColor}
+            onCreated={handleCreatedStrapColor}
+          />
+        )}
         <details className="border-[1.5px] border-dashed border-foreground/20 rounded-lg p-3" open={items.length === 0}>
           <summary className="font-bold text-sm cursor-pointer">+ Adicionar referência</summary>
           <SearchInput

@@ -17,6 +17,7 @@ interface OfficialColorCatalog {
     group_id?: string | null;
     color?: string | null;
     active?: boolean;
+    unit?: string | null;
   }>;
   variants?: Array<{
     finished_product_id?: string | null;
@@ -151,7 +152,35 @@ export function strapColorsForIdentity(
   } | null | undefined,
   resolvedBaseGroupId?: string | null,
 ) {
-  return identity?.identity_basis === 'finished_product_group'
-    ? purchasedReadyStrapColorsForGroup(catalog, identity.identity_group_id)
-    : officialStrapColorsForBase(catalog, resolvedBaseGroupId);
+  if (identity?.identity_basis === 'finished_product_group') {
+    return purchasedReadyStrapColorsForGroup(catalog, identity.identity_group_id);
+  }
+  // A intenção do PV usa a cor do SKU da matéria-prima. O writer materializa o
+  // vínculo oficial e a variante a partir da receita aprovada ao salvar; exigi-los
+  // antes da escolha escondia cores já cadastradas (I91: só 5 de 43 apareciam).
+  // Preserva também fontes acabadas/compradas válidas de cores descontinuadas.
+  const colors = new Map(
+    officialStrapColorsForBase(catalog, resolvedBaseGroupId).map(color => [color.id, color]),
+  );
+  if (catalog && resolvedBaseGroupId) {
+    const idsByLabel = canonicalIdsByLabel(catalog);
+    const finishedProductIds = new Set((catalog.variants || []).map(variant => variant.finished_product_id));
+    const candidateCounts = new Map<string, number>();
+    // Espelha a materialização prospectiva do writer: um SKU linear de
+    // matéria-prima inequívoco. Produto acabado não vira matéria-prima, e
+    // duas opções para a mesma cor exigem designação oficial prévia.
+    catalog.products.forEach(product => {
+      if (product.group_id !== resolvedBaseGroupId || product.active === false
+          || product.unit !== 'm'
+          || finishedProductIds.has(product.id)) return;
+      const ids = idsByLabel.get(normalizeColor(product.color));
+      if (ids?.size !== 1) return;
+      const [colorId] = ids;
+      candidateCounts.set(colorId, (candidateCounts.get(colorId) || 0) + 1);
+    });
+    catalog.colors.forEach(color => {
+      if (color.active && candidateCounts.get(color.id) === 1) colors.set(color.id, color);
+    });
+  }
+  return [...colors.values()].sort((left, right) => left.name.localeCompare(right.name, 'pt-BR'));
 }
