@@ -18,6 +18,12 @@ R$ 45,54/m. Largura 1370 mm, comprimento cadastral 1000 mm e espessura 1 mm.
 Novos produtos começam sem saldo. As cores vêm dos produtos ativos de Glow:
 CHAMPAGNE, PRATA, COBRE e OURO LIGHT.
 
+Esclarecimento do dono: R$ 45,54/m já inclui as duas faces, a dublagem simples
+e o frete. O consumo preenchido em cada linha é o de uma peça do cabedal,
+não o de uma face. Somar as áreas das peças (I701: 2,74 + 2,28 dm²) e aplicar
+uma única vez o preço do metro do material acabado. Não eliminar uma peça
+sob a interpretação de que ela seria a segunda face do dublado.
+
 ## Diagnóstico
 
 A variante Glow da I701 já existia, com material principal Glow e sem exceção

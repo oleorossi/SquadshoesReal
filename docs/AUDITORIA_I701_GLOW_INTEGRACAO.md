@@ -2,11 +2,13 @@
 
 Auditoria de 05/09/2026, após a publicação de `53971ae`.
 
-**Revisão de engenharia reaberta pelo dono:** R$ 45,54/m é o custo completo
-do dublado, incluindo as duas faces, dublagem simples e frete. Os testes
-abaixo demonstram o comportamento do sistema, mas não confirmam que as áreas
-de 2,74 e 2,28 dm² sejam peças independentes. Essa interpretação está pendente
-de confirmação; os totais calculados com sua soma não são valores aprovados.
+**Regra esclarecida pelo dono:** cada consumo cadastrado corresponde a uma
+peça do cabedal, não a uma face do material. As peças de 2,74 e 2,28 dm²
+continuam somadas. R$ 45,54/m é o custo completo do dublado, incluindo as duas
+faces, dublagem simples e frete; nenhum desses itens deve ser cobrado novamente.
+A hipótese de retirar os 2,28 dm² como segunda face foi descartada, sem alteração
+dos consumos cadastrados. O dono ainda aponta valores incorretos; a divergência
+exata de valor/tela está em investigação, sem aprovação dos totais por ele.
 
 Verificação local do ajuste: 182 testes relacionados passaram, typecheck real
 (`tsconfig.app.json`), build e lint das linhas alteradas passaram. A suíte
@@ -99,6 +101,14 @@ legado na forração do motor TypeScript. A proteção adicional desta entrega
 cobre o cabedal composto. As quatro cores válidas da I701 têm o dublado e a
 forração correspondentes; o parecer não cobre combinações inválidas arbitrárias
 nos demais componentes.
+
+Após o esclarecimento sobre peças, a revisão da apresentação de custos
+identificou candidatos à divergência relatada: o resumo superior considera
+somente `sheet_materials` (vazio na I701); a aba Custos usa a ficha tradicional,
+sem variante/cor; sua média de Napa inclui um SKU em `un` junto aos SKUs em
+metros; e a coluna "Preço/un" mostra preço por dm² sem explicitar a unidade.
+Esses achados não estabelecem qual valor motivou a reclamação do dono. A tela
+e os valores observado/esperado ainda precisam ser identificados.
 
 ## Pendências da referência
 
