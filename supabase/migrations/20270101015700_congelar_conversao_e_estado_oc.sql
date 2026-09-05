@@ -21,6 +21,9 @@ BEGIN
      ) IS NULL
      OR pg_catalog.to_regprocedure(
        'public.purchase_order_receipt_factor_121(text,text,text,numeric,numeric,text,text)'
+     ) IS NULL
+     OR pg_catalog.to_regprocedure(
+       'public.tg_block_invalid_purchase_order_receipt()'
      ) IS NULL THEN
     RAISE EXCEPTION 'Preflight 15700: fronteira de OC 12100 ausente';
   END IF;
@@ -100,6 +103,60 @@ REVOKE ALL ON FUNCTION private.purchase_order_snapshot_receipt_factor_157(
 
 ALTER TABLE public.purchase_order_items
   ADD COLUMN IF NOT EXISTS generic_conversion_snapshot_version smallint;
+
+-- O guard antigo de transicao da OC comparava a unidade da linha somente com
+-- o cadastro vivo. Para snapshot v1, a unidade de compra congelada e a fonte
+-- correta; ainda exigimos que a unidade-base atual seja a mesma que recebera o
+-- saldo. Linhas legadas/strap continuam exatamente na validacao viva anterior,
+-- e embalagens seguem fora deste JOIN.
+CREATE OR REPLACE FUNCTION public.tg_block_invalid_purchase_order_receipt()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+BEGIN
+  IF NEW.status IN ('receiving', 'received')
+     AND OLD.status IS DISTINCT FROM NEW.status
+     AND EXISTS (
+       SELECT 1
+         FROM public.purchase_order_items item
+         JOIN public.products product ON product.id = item.product_id
+        WHERE item.purchase_order_id = NEW.id
+          AND (
+            product.is_artisanal IS TRUE
+            OR (
+              item.generic_conversion_snapshot_version = 1
+              AND (
+                public.po_norm_unit(COALESCE(product.unit, 'un'))
+                  IS DISTINCT FROM
+                    public.po_norm_unit(item.stock_unit_snapshot)
+                OR public.po_norm_unit(COALESCE(item.unit, '')) NOT IN (
+                  public.po_norm_unit(item.stock_unit_snapshot),
+                  public.po_norm_unit(item.purchase_unit_snapshot)
+                )
+              )
+            )
+            OR (
+              item.generic_conversion_snapshot_version IS DISTINCT FROM 1
+              AND public.po_norm_unit(COALESCE(item.unit, '')) NOT IN (
+                public.po_norm_unit(COALESCE(product.unit, 'un')),
+                public.po_norm_unit(COALESCE(
+                  NULLIF(pg_catalog.btrim(product.purchase_unit), ''),
+                  NULLIF(pg_catalog.btrim(product.purchase_order_unit), ''),
+                  NULLIF(pg_catalog.btrim(product.unit), ''),
+                  'un'
+                ))
+              )
+            )
+          )
+     ) THEN
+    RAISE EXCEPTION
+      'OC possui item artesanal ou unidade invalida; corrija as linhas antes de iniciar o recebimento.';
+  END IF;
+  RETURN NEW;
+END;
+$function$;
 
 -- Toda INSERT futura de produto em OC generica recebe snapshot server-side.
 -- UPDATE nao cria snapshot em linha antiga: a ausencia integral continua sendo
@@ -209,6 +266,16 @@ BEGIN
        OR v_new_snapshot_count <> 0 THEN
       RAISE EXCEPTION
         'Snapshot de linha legada nao pode ser preenchido implicitamente'
+        USING ERRCODE = '55000';
+    END IF;
+    IF NEW.quantity IS DISTINCT FROM OLD.quantity THEN
+      RAISE EXCEPTION
+        'Item legado sem conversao congelada: crie nova OC para alterar a quantidade'
+        USING ERRCODE = '55000';
+    END IF;
+    IF NEW.unit IS DISTINCT FROM OLD.unit THEN
+      RAISE EXCEPTION
+        'Item legado sem conversao congelada: crie nova OC para alterar a unidade'
         USING ERRCODE = '55000';
     END IF;
     RETURN NEW;
@@ -586,8 +653,24 @@ DO $assert_157$
 DECLARE
   v_command regprocedure :=
     'public.execute_purchase_order_command(text,jsonb,uuid,uuid,timestamptz)'::regprocedure;
+  v_status_guard regprocedure :=
+    'public.tg_block_invalid_purchase_order_receipt()'::regprocedure;
+  v_status_guard_definition text := pg_catalog.pg_get_functiondef(
+    'public.tg_block_invalid_purchase_order_receipt()'::regprocedure
+  );
   v_failed_contracts text;
 BEGIN
+  IF position('generic_conversion_snapshot_version = 1'
+       IN v_status_guard_definition) = 0
+     OR NOT EXISTS (
+       SELECT 1
+         FROM pg_catalog.pg_proc procedure
+        WHERE procedure.oid = v_status_guard
+          AND procedure.prosecdef
+          AND procedure.proconfig @> ARRAY['search_path=""']::text[]
+     ) THEN
+    RAISE EXCEPTION 'Guard de status da OC nao honra snapshot v1';
+  END IF;
   IF NOT EXISTS (
     SELECT 1
       FROM pg_catalog.pg_proc procedure
@@ -639,6 +722,14 @@ BEGIN
         WHERE trigger_info.tgrelid = 'public.purchase_order_items'::regclass
           AND trigger_info.tgname =
             'trg_generic_po_item_conversion_snapshot_update_157'
+          AND NOT trigger_info.tgisinternal
+     )
+     OR NOT EXISTS (
+       SELECT 1
+         FROM pg_catalog.pg_trigger trigger_info
+        WHERE trigger_info.tgrelid = 'public.purchase_orders'::regclass
+          AND trigger_info.tgname = 'trg_block_invalid_purchase_order_receipt'
+          AND trigger_info.tgfoid = v_status_guard
           AND NOT trigger_info.tgisinternal
      ) THEN
     RAISE EXCEPTION 'Constraint/triggers de snapshot 15700 ausentes';

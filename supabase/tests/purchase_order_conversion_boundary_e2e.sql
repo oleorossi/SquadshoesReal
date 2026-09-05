@@ -9,6 +9,7 @@ BEGIN;
 
 SET LOCAL statement_timeout = '90s';
 SET LOCAL lock_timeout = '15s';
+SET LOCAL plpgsql.check_asserts = on;
 
 SELECT set_config('request.jwt.claim.role', 'service_role', true);
 SELECT set_config(
@@ -418,6 +419,64 @@ BEGIN
     PERFORM pg_catalog.set_config('session_replication_role', 'origin', true);
     RAISE;
   END;
+  v_request_id := pg_catalog.gen_random_uuid();
+  v_rejected := false;
+  BEGIN
+    PERFORM public.execute_purchase_order_command(
+      'edit',
+      pg_catalog.jsonb_build_object(
+        'items', pg_catalog.jsonb_build_array(
+          pg_catalog.jsonb_build_object(
+            'item_id', v_legacy_item_id,
+            'quantity', 2
+          )
+        )
+      ),
+      v_request_id, v_legacy_po_id, NULL
+    );
+  EXCEPTION WHEN SQLSTATE '55000' THEN
+    v_rejected := true;
+  END;
+  ASSERT v_rejected,
+    'EDIT misturou quantidade nova em linha legada sem snapshot';
+  ASSERT (SELECT item.quantity FROM public.purchase_order_items item
+           WHERE item.id = v_legacy_item_id) = 1,
+    'EDIT legado rejeitado alterou quantidade';
+  ASSERT NOT EXISTS (
+    SELECT 1 FROM public.purchase_order_command_receipts receipt
+     WHERE receipt.client_request_id = v_request_id
+  ), 'EDIT legado rejeitado deixou receipt';
+
+  v_request_id := pg_catalog.gen_random_uuid();
+  v_rejected := false;
+  BEGIN
+    PERFORM public.execute_purchase_order_command(
+      'append',
+      pg_catalog.jsonb_build_object(
+        'items', pg_catalog.jsonb_build_array(
+          pg_catalog.jsonb_build_object(
+            'product_id', v_legacy_product_id,
+            'quantity', 1,
+            'unit', 'm',
+            'unit_price', 240
+          )
+        )
+      ),
+      v_request_id, v_legacy_po_id, NULL
+    );
+  EXCEPTION WHEN SQLSTATE '55000' THEN
+    v_rejected := true;
+  END;
+  ASSERT v_rejected,
+    'APPEND misturou quantidade nova em linha legada sem snapshot';
+  ASSERT (SELECT item.quantity FROM public.purchase_order_items item
+           WHERE item.id = v_legacy_item_id) = 1,
+    'APPEND legado rejeitado alterou quantidade';
+  ASSERT NOT EXISTS (
+    SELECT 1 FROM public.purchase_order_command_receipts receipt
+     WHERE receipt.client_request_id = v_request_id
+  ), 'APPEND legado rejeitado deixou receipt';
+
   UPDATE public.products product
      SET dimensions_width = 1200, conversion_rate = 120
    WHERE product.id = v_legacy_product_id;
@@ -874,7 +933,8 @@ SELECT pg_catalog.jsonb_build_object(
   'ok', true,
   'proof',
     'snapshot_create+snapshot_append+append_guard+partial+replay+wac+'
-    || 'legacy_fallback+status_allowlist+finite_guard+base_unit_guard+'
+    || 'legacy_fallback+legacy_quantity_guard+status_allowlist+'
+    || 'finite_guard+base_unit_guard+'
     || 'partial_tuple_guard+ap_financial_lock+append_dedupe+'
     || 'nonfinancial_update',
   'rollback', true
