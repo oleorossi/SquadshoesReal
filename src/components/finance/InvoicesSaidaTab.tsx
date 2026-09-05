@@ -9,8 +9,9 @@ import { NfeViewerDialog } from '@/components/nfe/NfeViewerDialog';
 import { format, parseISO } from 'date-fns';
 
 const STATUS_CONFIG: Record<string, { label: string; icon: React.ReactNode; className: string }> = {
-  processando: { label: 'Processando', icon: <Clock className="h-3 w-3" />, className: 'bg-amber-500/15 text-amber-700 border-amber-500/30' },
-  autorizada: { label: 'Autorizada', icon: <CheckCircle className="h-3 w-3" />, className: 'bg-emerald-500/15 text-emerald-700 border-emerald-500/30' },
+  processando: { label: 'Processando', icon: <Clock className="h-3 w-3" />, className: 'bg-amber-500/15 text-amber-600 border-amber-500/30' },
+  autorizada: { label: 'Autorizada', icon: <CheckCircle className="h-3 w-3" />, className: 'bg-emerald-500/15 text-emerald-600 border-emerald-500/30' },
+  erro: { label: 'Erro', icon: <AlertCircle className="h-3 w-3" />, className: 'bg-destructive/15 text-destructive border-destructive/30' },
   rejeitada: { label: 'Rejeitada', icon: <XCircle className="h-3 w-3" />, className: 'bg-destructive/15 text-destructive border-destructive/30' },
   cancelada: { label: 'Cancelada', icon: <AlertCircle className="h-3 w-3" />, className: 'bg-muted text-muted-foreground border-muted' },
 };
@@ -18,15 +19,20 @@ const STATUS_CONFIG: Record<string, { label: string; icon: React.ReactNode; clas
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 export default function InvoicesSaidaTab() {
-  const { data: nfes = [], isLoading } = useNfeEmitidas();
+  const { data: nfes = [], isLoading, isError, refetch } = useNfeEmitidas();
   const checkStatus = useCheckNfeStatus();
   const [checkingId, setCheckingId] = useState<string | null>(null);
   const [viewerNfe, setViewerNfe] = useState<NfeEmitida | null>(null);
 
   const handleCheckStatus = async (id: string) => {
     setCheckingId(id);
-    await checkStatus.mutateAsync(id);
-    setCheckingId(null);
+    try {
+      await checkStatus.mutateAsync(id);
+    } catch {
+      // O hook já apresenta a falha; liberar o botão permite nova tentativa.
+    } finally {
+      setCheckingId(null);
+    }
   };
 
   return (
@@ -38,7 +44,12 @@ export default function InvoicesSaidaTab() {
         </CardTitle>
       </CardHeader>
       <CardContent>
-        {isLoading ? (
+        {isError ? (
+          <div role="alert" className="space-y-2 py-8 text-center">
+            <p className="text-sm text-destructive">Não foi possível consultar as notas de saída.</p>
+            <Button size="sm" variant="outline" onClick={() => refetch()}>Recarregar notas de saída</Button>
+          </div>
+        ) : isLoading ? (
           <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>
         ) : nfes.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -63,7 +74,7 @@ export default function InvoicesSaidaTab() {
             </TableHeader>
             <TableBody>
               {nfes.map((nfe: any) => {
-                const cfg = STATUS_CONFIG[nfe.status] || STATUS_CONFIG.processando;
+                const cfg = STATUS_CONFIG[nfe.status] || { label: nfe.status || 'Não informado', icon: <AlertCircle className="h-3 w-3" />, className: 'bg-muted text-muted-foreground' };
                 return (
                   <TableRow key={nfe.id}>
                     <TableCell className="font-mono font-bold">{nfe.numero || '—'}</TableCell>
@@ -91,6 +102,7 @@ export default function InvoicesSaidaTab() {
                             variant="outline"
                             onClick={() => handleCheckStatus(nfe.id)}
                             disabled={checkingId === nfe.id}
+                            aria-label={`Consultar situação da NF-e ${nfe.numero || 'sem número'}`}
                           >
                             {checkingId === nfe.id ? (
                               <Loader2 className="h-3.5 w-3.5 animate-spin" />

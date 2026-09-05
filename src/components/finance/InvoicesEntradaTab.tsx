@@ -16,10 +16,15 @@ import type { ParsedNFeDuplicata } from '@/lib/nfeParser';
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 function InvoiceItemsRow({ invoiceId, onLaunchStock }: { invoiceId: string; onLaunchStock: (items: InvoiceItem[]) => void }) {
-  const { data: items = [] } = useInvoiceItems(invoiceId);
+  const { data: items = [], isPending, isError, refetch } = useInvoiceItems(invoiceId);
   const pendingItems = items.filter(i => !i.added_to_stock);
   const allAdded = items.length > 0 && pendingItems.length === 0;
 
+  if (isError) return <div role="alert" className="space-y-2 py-2">
+    <p className="text-sm text-destructive">Não foi possível consultar os itens desta nota. O estoque não foi considerado conferido.</p>
+    <Button size="sm" variant="outline" onClick={() => refetch()}>Tentar itens novamente</Button>
+  </div>;
+  if (isPending) return <p role="status" className="text-sm text-muted-foreground py-2">Carregando itens da nota…</p>;
   if (items.length === 0) return <p className="text-xs text-muted-foreground py-2">Nenhum item</p>;
   return (
     <div className="space-y-3">
@@ -77,7 +82,7 @@ function InvoiceItemsRow({ invoiceId, onLaunchStock }: { invoiceId: string; onLa
 }
 
 export default function InvoicesEntradaTab() {
-  const { data: invoices = [] } = useInvoices();
+  const { data: invoices = [], isPending, isError, refetch } = useInvoices();
   const { data: suppliers = [] } = useSuppliers();
   const deleteInvoice = useDeleteInvoice();
   const addSupplier = useAddSupplier();
@@ -161,7 +166,16 @@ export default function InvoicesEntradaTab() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {invoices.length === 0 ? (
+            {isError ? (
+              <TableRow><TableCell colSpan={7} className="py-8">
+                <div role="alert" className="space-y-2 text-center">
+                  <p className="text-sm text-destructive">Não foi possível consultar as notas de entrada.</p>
+                  <Button size="sm" variant="outline" onClick={() => refetch()}>Recarregar notas de entrada</Button>
+                </div>
+              </TableCell></TableRow>
+            ) : isPending ? (
+              <TableRow><TableCell colSpan={7} className="py-8 text-center text-muted-foreground"><span role="status">Carregando notas de entrada…</span></TableCell></TableRow>
+            ) : invoices.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                   Nenhuma nota fiscal importada. Clique em "Importar XML" para começar.
