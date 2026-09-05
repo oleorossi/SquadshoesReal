@@ -470,7 +470,7 @@ BEGIN
   v_manifest_again := public.get_mobile_strap_offline_manifest(
     ARRAY[v_sheet_id]::uuid[]
   );
-  ASSERT (v_manifest ->> 'version')::integer = 1
+  ASSERT (v_manifest ->> 'version')::integer = 2
      AND v_manifest ->> 'manifest_hash'
            = v_manifest_again ->> 'manifest_hash'
      AND v_manifest -> 'references'

@@ -3,6 +3,7 @@ import { filterOperationalOperatorItems } from '@/lib/operatorPrintEligibility';
 import { isCancelledOrDraftOrder } from '@/lib/orderStatus';
 import {
   effectiveOperatorStrapColor,
+  effectiveOperatorStrapMaterial,
   operatorStrapSequence,
   type OperatorStrapLineLike,
 } from '@/lib/operatorStrapSequence';
@@ -130,7 +131,7 @@ export function operatorStrapsHtml(
         <td class="sn">${index + 1}</td>
         <td class="sl">${positionLabel}${labelSuffix}</td>
         <td class="sc">${esc(effectiveOperatorStrapColor(strap, mainColor))}</td>
-        <td>${esc(strap.group_name || '—')}</td>
+        <td>${esc(effectiveOperatorStrapMaterial(strap))}</td>
       </tr>`;
   }).join('');
   return `

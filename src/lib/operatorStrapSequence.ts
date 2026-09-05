@@ -11,6 +11,8 @@ export interface OperatorStrapLineLike extends StrapIdentityLike {
   measure_id?: string | null;
   group_id?: string | null;
   group_name?: string | null;
+  base_group_id?: string | null;
+  base_group_name?: string | null;
   consumption?: number | string | null;
   consumption_per_size?: Record<string, unknown> | null;
   [key: string]: unknown;
@@ -64,6 +66,11 @@ export function effectiveOperatorStrapColor(
   return String(line.color || '').trim() || String(mainColor || '').trim() || '—';
 }
 
+/** Material efetivamente salvo no PV; o rótulo antigo permanece só no legado. */
+export function effectiveOperatorStrapMaterial(line: OperatorStrapLineLike): string {
+  return String(line.base_group_name || line.group_name || '').trim() || '—';
+}
+
 function canonicalStrapText(value: unknown): string {
   return String(value ?? '').trim();
 }
@@ -113,6 +120,8 @@ export function operatorStrapGroupingSignature(
     identityGroupId: canonicalStrapText(line.identity_group_id),
     groupId: canonicalStrapText(line.group_id),
     groupName: canonicalStrapText(line.group_name).toUpperCase(),
+    baseGroupId: canonicalStrapText(line.base_group_id),
+    baseGroupName: canonicalStrapText(line.base_group_name).toUpperCase(),
     label: canonicalStrapText(line.label || 'TIRA').toUpperCase(),
     colorId: canonicalStrapText(line.color_id),
     color: effectiveOperatorStrapColor(line, mainColor).toUpperCase(),

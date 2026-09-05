@@ -28,7 +28,9 @@ describe('Cabedal e tiras coexistem na ficha e no PV', () => {
 
   it('explica a origem correta da tira conforme o Cabedal esteja presente ou ausente', () => {
     expect(technicalSheets).toContain('hasReferenceBaseStrapLine && strapsFollowLining');
-    expect(technicalSheets).toContain('Como esta ficha não tem Cabedal');
+    expect(technicalSheets).toContain('Por padrão, esta ficha sem Cabedal usa o material de');
+    expect(technicalSheets).toContain('cada posição pode ter material próprio');
+    expect(technicalSheets).toContain('defina um material fixo por posição ou os materiais permitidos no pedido');
     expect(technicalSheets).toContain('usam o material definido em <strong className="text-foreground">Cabedal</strong>');
   });
 

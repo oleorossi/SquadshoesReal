@@ -4,12 +4,20 @@ import {
   type StrapIdentityBasis,
   type StrapIdentityLike,
 } from '@/lib/strapIdentity';
+import {
+  applyStrapMaterialPolicy,
+  normalizeStrapMaterialPolicy,
+  strapMaterialMode,
+  validateStrapMaterialPolicy,
+  type StrapMaterialPolicyLike,
+} from '@/lib/strapMaterialPolicy';
 
 export type StrapColorMode = 'follow_main' | 'select_on_order';
 
 /** Identidade imutável de uma linha de tira da ficha técnica. */
-export interface TechnicalStrapLineLike extends StrapIdentityLike {
+export interface TechnicalStrapLineLike extends StrapIdentityLike, StrapMaterialPolicyLike {
   id?: string | null;
+  label?: string | null;
   technical_strap_line_id?: string | null;
   strap_type_id?: string | null;
   measure_id?: string | null;
@@ -95,7 +103,7 @@ export function ensureTechnicalStrapLineIds<T extends object & TechnicalStrapLin
       id: technicalStrapLineId,
       technical_strap_line_id: technicalStrapLineId,
     });
-    return applyTechnicalStrapColorMode(normalized, strapColorMode(normalized));
+    return normalizeStrapMaterialPolicy(applyTechnicalStrapColorMode(normalized, strapColorMode(normalized)));
   });
 }
 
@@ -135,13 +143,19 @@ export function applyTechnicalStrapIdentity<T extends TechnicalStrapLineLike>(
     identity_basis: identityBasis,
     identity_group_id: identityBasis === 'finished_product_group' ? identityGroupId || null : null,
   };
-  return applyTechnicalStrapColorMode(identified, strapColorMode(identified));
+  const materialPolicy = identityBasis === 'finished_product_group'
+    ? { ...identified, ...applyStrapMaterialPolicy(identified, 'follow_reference') }
+    : identified;
+  return applyTechnicalStrapColorMode(materialPolicy, strapColorMode(materialPolicy));
 }
 
 /** Copia o tipo da primeira tira sem alterar identidade, rótulo ou consumo de cada linha. */
 export function replicateFirstTechnicalStrapType<T extends TechnicalStrapLineLike>(lines: T[]): T[] {
   const first = lines[0];
   if (!first || lines.length < 2) return lines;
+  const materialMode = strapMaterialMode(first);
+  // Não distribuir uma política corrompida às demais posições.
+  if (!materialMode || validateStrapMaterialPolicy(first).length > 0) return lines;
 
   return lines.map((line, index) => {
     if (index === 0) return line;
@@ -150,7 +164,10 @@ export function replicateFirstTechnicalStrapType<T extends TechnicalStrapLineLik
       strap_type_id: first.strap_type_id,
       measure_id: first.measure_id,
     }, strapIdentityBasis(first), first.identity_group_id);
-    return applyTechnicalStrapColorMode(identified, strapColorMode(first));
+    const withMaterial = { ...identified, ...applyStrapMaterialPolicy(
+      identified, materialMode, first.material_group_id, first.allowed_material_group_ids,
+    ) };
+    return applyTechnicalStrapColorMode(withMaterial, strapColorMode(first));
   });
 }
 
@@ -166,5 +183,6 @@ export function hasCanonicalTechnicalStrapIdentity(
   if (!measure || measure.strap_type_id !== line.strap_type_id) return false;
   const type = types.find((entry) => entry.id === line.strap_type_id && entry.active !== false);
   if (!type) return false;
+  if (validateStrapMaterialPolicy(line).length > 0) return false;
   return strapIdentityBasis(line) !== 'finished_product_group' || isUuid(line.identity_group_id);
 }

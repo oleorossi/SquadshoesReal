@@ -24,7 +24,7 @@ function deleteDatabase(name: string): Promise<void> {
 
 function manifest(hash: string) {
   return {
-    version: 1 as const,
+    version: 2 as const,
     generated_at: '2026-09-05T12:00:00.000Z',
     manifest_hash: hash,
     references: [{
@@ -39,12 +39,21 @@ function manifest(hash: string) {
         strap_type_id: TYPE_ID,
         measure_id: MEASURE_ID,
         color_mode: 'select_on_order' as const,
+        material_mode: 'follow_reference' as const,
+        material_group_id: null,
+        allowed_material_group_ids: [],
         internal_production_enabled: true,
         group_id: null,
         group_name: null,
         consumption: 28,
         consumption_per_size: null,
         base_group_id: GROUP_ID,
+        base_group_name: 'NAPA SOFT',
+        material_options: [{
+          base_group_id: GROUP_ID,
+          base_group_name: 'NAPA SOFT',
+          allowed_colors: [{ id: COLOR_ID, name: 'CHAMPAGNE' }],
+        }],
         allowed_colors: [{ id: COLOR_ID, name: 'CHAMPAGNE' }],
       }],
     }],
@@ -117,11 +126,16 @@ describe('manifesto offline de tiras no IndexedDB simulado', () => {
           color_mode: 'select_on_order',
           color: 'CHAMPAGNE',
           color_id: COLOR_ID,
+          material_mode: 'select_on_order',
+          allowed_material_group_ids: [GROUP_ID],
+          base_group_id: GROUP_ID,
+          base_group_name: 'NAPA SOFT',
         }],
       }],
     };
     await firstQueue.enqueueOrder('owner-a', queuedPayload, { editor: 'snapshot' });
     queuedPayload.items[0].strap_colors[0].color = 'DOURADO EDITADO DEPOIS';
+    queuedPayload.items[0].strap_colors[0].base_group_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
     expect((await firstLoad.loadMobileStrapOfflineManifest('owner-a'))?.manifest_hash)
       .toBe('hash-owner-a');
@@ -148,6 +162,8 @@ describe('manifesto offline de tiras no IndexedDB simulado', () => {
     expect(beforeRetry.payload.items[0].strap_colors?.[0]).toMatchObject({
       color: 'CHAMPAGNE',
       color_id: COLOR_ID,
+      base_group_id: GROUP_ID,
+      base_group_name: 'NAPA SOFT',
     });
     await queueAfterReload.markAttemptFailed(
       'owner-a',

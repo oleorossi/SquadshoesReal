@@ -51,12 +51,15 @@ import { listMissingTechnicalStrapSnapshots } from '@/lib/strapSnapshotGuard';
 import { classifyMobileOrderError, submitMobileSaleOrderAtomic } from '@/lib/mobile/atomicSaleOrder';
 import { confirmMobileSaleOrder } from '@/lib/mobile/confirmSaleOrder';
 import { strapIdentityBasis } from '@/lib/strapIdentity';
+import { strapMaterialMode, validateStrapMaterialPolicy } from '@/lib/strapMaterialPolicy';
 import { reconcileEditableStrapSnapshots } from '@/lib/reconcileStrapSnapshots';
 import {
   fetchMobileStrapOfflineManifest,
   findMobileStrapManifestReference,
   loadMobileStrapOfflineManifest,
   mobileTechnicalStrapLinesFromManifest,
+  mobileStrapMaterialOptions,
+  mobileStrapSelectedMaterial,
   saveMobileStrapOfflineManifest,
   type MobileStrapManifestReference,
   type MobileStrapOfflineManifest,
@@ -342,7 +345,8 @@ export function reconcileMobileDraftItemWithManifest(
       if (!manifestLine || !isUuid(snapshot.color_id)) return false;
       if (manifestLine.identity_basis === 'finished_product_group'
           && snapshot.identity_group_id !== manifestLine.identity_group_id) return false;
-      return manifestLine.allowed_colors.some((color) => color.id === snapshot.color_id);
+      return !!mobileStrapSelectedMaterial(manifestLine, snapshot)?.allowed_colors
+        .some((color) => color.id === snapshot.color_id);
     },
   });
   const aligned = alignMobileStrapsToMainColor(
@@ -394,12 +398,18 @@ function manifestLineMatchesSnapshot(
   manifestLine: MobileStrapManifestReference['lines'][number],
 ): boolean {
   return technicalStrapLineId(strap) === manifestLine.technical_strap_line_id
+    && validateStrapMaterialPolicy(strap).length === 0
+    && validateStrapMaterialPolicy(manifestLine).length === 0
     && strap.strap_type_id === manifestLine.strap_type_id
     && strap.measure_id === manifestLine.measure_id
     && strapIdentityBasis(strap) === manifestLine.identity_basis
     && (manifestLine.identity_basis !== 'finished_product_group'
       || strap.identity_group_id === manifestLine.identity_group_id)
-    && strapColorMode(strap) === manifestLine.color_mode;
+    && strapColorMode(strap) === manifestLine.color_mode
+    && strapMaterialMode(strap) === strapMaterialMode(manifestLine)
+    && (strap.material_group_id || null) === (manifestLine.material_group_id || null)
+    && JSON.stringify([...(strap.allowed_material_group_ids || [])].sort())
+      === JSON.stringify([...(manifestLine.allowed_material_group_ids || [])].sort());
 }
 
 export function mobileSelectableStrapManifestIssues(
@@ -430,17 +440,30 @@ export function mobileSelectableStrapManifestIssues(
     if (!isUuid(manifestLine.strap_type_id) || !isUuid(manifestLine.measure_id)) {
       return [`${context} está sem família/medida ativa e compatível. Corrija a linha na ficha técnica.`];
     }
-    const identityGroupId = manifestLine.identity_basis === 'finished_product_group'
-      ? manifestLine.identity_group_id
-      : manifestLine.base_group_id;
-    if (!isUuid(identityGroupId)) {
+    if (validateStrapMaterialPolicy(manifestLine).length > 0) {
+      return [`${context}: política de material inválida na ficha técnica.`];
+    }
+    const material = mobileStrapSelectedMaterial(manifestLine, strap);
+    if (!material) {
+      if (strapMaterialMode(manifestLine) === 'select_on_order') {
+        return [`${context}: selecione um material permitido para esta posição.`];
+      }
       return [`${context} não possui grupo-base efetivo resolvido. Revise a referência ou variante de material.`];
     }
-    if (strapColorMode(strap) !== 'select_on_order') return [];
+    if (strap.base_group_id && strap.base_group_id !== material.base_group_id) {
+      return [`${context}: o material não corresponde à ficha publicada. Reabra o item para atualizar.`];
+    }
+    if (strapColorMode(strap) !== 'select_on_order') {
+      if (strapMaterialMode(manifestLine) !== 'follow_reference'
+          && !material.allowed_colors.some((color) => normalizeStrapColorKey(color.name) === normalizeStrapColorKey(item.color))) {
+        return [`${context}: a cor principal não está disponível no material desta posição.`];
+      }
+      return [];
+    }
     if (!String(strap.color || '').trim() || !isUuid(strap.color_id)) {
       return [`${context} exige a seleção de uma cor canônica.`];
     }
-    if (!manifestLine.allowed_colors.some((color) => color.id === strap.color_id)) {
+    if (!material.allowed_colors.some((color) => color.id === strap.color_id)) {
       return [`${context}: a cor selecionada não pertence ao grupo-base efetivo. Selecione outra cor.`];
     }
     return [];
@@ -449,11 +472,12 @@ export function mobileSelectableStrapManifestIssues(
 
 export function mobileIndependentStrapReviewLines(item: DraftItem) {
   return (item.strap_colors || []).flatMap((strap, index) => {
-    if (strapColorMode(strap) !== 'select_on_order') return [];
+    if (strapColorMode(strap) !== 'select_on_order' && strapMaterialMode(strap) === 'follow_reference') return [];
     return [{
       key: technicalStrapLineId(strap) || `legacy:${index}`,
       position: `TIRA ${index + 1}`,
       color: String(strap.color || '').trim() || 'cor não selecionada',
+      material: String(strap.base_group_name || strap.group_name || '').trim(),
     }];
   });
 }
@@ -515,25 +539,36 @@ export function clearIncompatibleMobileStrapSelections(
   let strapSourcing = item.strap_sourcing || {};
   const strapColors = (item.strap_colors || []).map((strap) => {
     const normalized = { ...strap, color_mode: strapColorMode(strap) };
-    if (strapColorMode(normalized) !== 'select_on_order') return normalized;
-
     const lineId = technicalStrapLineId(normalized);
     const manifestLine = lineId ? manifestByLineId.get(lineId) : null;
     if (!lineId || !manifestLine) return normalized;
 
+    const material = mobileStrapSelectedMaterial(manifestLine, normalized);
+    const hasOwnBaseSnapshot = manifestLine.identity_basis === 'reference_base';
+    const materialChanged = hasOwnBaseSnapshot && (normalized.base_group_id || null) !== (material?.base_group_id || null);
+    const materialNameChanged = hasOwnBaseSnapshot && (normalized.base_group_name || null) !== (material?.base_group_name || null);
     const isAvailable = isUuid(normalized.color_id)
       && manifestLineMatchesSnapshot(normalized, manifestLine)
-      && manifestLine.allowed_colors.some((color) => color.id === normalized.color_id);
-    if (isAvailable) return normalized;
+      && !!material?.allowed_colors.some((color) => color.id === normalized.color_id);
+    const followsMain = strapColorMode(normalized) !== 'select_on_order';
+    if (!materialChanged && !materialNameChanged && (isAvailable || followsMain)) return normalized;
 
-    if (Object.prototype.hasOwnProperty.call(strapSourcing, lineId)) {
+    if ((materialChanged || (!isAvailable && !followsMain)) && Object.prototype.hasOwnProperty.call(strapSourcing, lineId)) {
       strapSourcing = setStrapSourcing(strapSourcing, lineId, null);
       changed = true;
     }
-    if (!normalized.color && !normalized.color_id) return normalized;
-    clearedLineIds.push(lineId);
-    changed = true;
-    return { ...normalized, color: '', color_id: null };
+    const clearColor = !isAvailable && !followsMain && !!(normalized.color || normalized.color_id);
+    if (clearColor) clearedLineIds.push(lineId);
+    changed ||= materialChanged || materialNameChanged || clearColor;
+    return {
+      ...normalized,
+      ...(hasOwnBaseSnapshot ? {
+        base_group_id: material?.base_group_id || null,
+        base_group_name: material?.base_group_name || null,
+      } : {}),
+      color: clearColor ? '' : normalized.color,
+      color_id: clearColor || (materialChanged && !isAvailable) ? null : normalized.color_id,
+    };
   });
 
   if (!changed) return { item, clearedLineIds };
@@ -541,6 +576,36 @@ export function clearIncompatibleMobileStrapSelections(
     item: { ...item, strap_colors: strapColors, strap_sourcing: strapSourcing },
     clearedLineIds,
   };
+}
+
+/** Escolha comercial por UUID da posição; nunca reutiliza receita de outra base. */
+export function selectMobileStrapMaterial(
+  item: DraftItem,
+  lineId: string,
+  baseGroupId: string,
+  manifestEntry: MobileStrapManifestReference | null | undefined,
+): DraftItem {
+  const manifestLine = manifestEntry?.lines.find((line) => line.technical_strap_line_id === lineId);
+  if (!manifestLine || manifestLine.identity_basis !== 'reference_base'
+      || strapMaterialMode(manifestLine) !== 'select_on_order') return item;
+  const material = mobileStrapMaterialOptions(manifestLine).find((entry) => entry.base_group_id === baseGroupId);
+  if (!material) return item;
+  const index = (item.strap_colors || []).findIndex((line) => technicalStrapLineId(line) === lineId);
+  const strap = item.strap_colors?.[index];
+  if (!strap || !manifestLineMatchesSnapshot(strap, manifestLine)) return item;
+  const followsMain = strapColorMode(strap) === 'follow_main';
+  const color = material.allowed_colors.find((entry) => followsMain
+    ? normalizeStrapColorKey(entry.name) === normalizeStrapColorKey(item.color)
+    : entry.id === strap.color_id);
+  const straps = [...item.strap_colors];
+  straps[index] = {
+    ...strap,
+    base_group_id: material.base_group_id,
+    base_group_name: material.base_group_name,
+    color: followsMain ? item.color : color?.name || '',
+    color_id: color?.id || null,
+  };
+  return { ...item, strap_colors: straps, strap_sourcing: setStrapSourcing(item.strap_sourcing, lineId, null) };
 }
 
 export function buildMobileSaleOrderItemsPayload(items: DraftItem[]): SaleOrderItemFormData[] {
@@ -732,7 +797,7 @@ function MobileStrapIdentityEditor({
   ), [previewLines]);
   const validationFingerprint = mobileStrapValidationFingerprint(item, billingDate);
   const selectableStrapCount = (item.strap_colors || []).filter(
-    (strap) => strapColorMode(strap) === 'select_on_order',
+    (strap) => strapColorMode(strap) === 'select_on_order' || strapMaterialMode(strap) !== 'follow_reference',
   ).length;
   const validationIssues = useMemo(() => mobileSelectableStrapValidationIssues({
     item,
@@ -805,7 +870,7 @@ function MobileStrapIdentityEditor({
 
   return (
     <div className="mt-3 space-y-2 border-t pt-3">
-      <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Cores das tiras</p>
+      <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Materiais e cores das tiras</p>
       {manifestLoading && !manifestEntry && selectableStrapCount > 0 && (
         <p className="rounded-md border bg-muted/30 p-2 text-xs text-muted-foreground">
           Carregando catálogo offline de tiras…
@@ -823,7 +888,7 @@ function MobileStrapIdentityEditor({
       )}
       {!online && !!manifestEntry && selectableStrapCount > 0 && (
         <p className="rounded-md border border-primary/30 bg-primary/5 p-2 text-xs text-muted-foreground">
-          Modo offline: cores disponíveis carregadas do catálogo deste usuário. O servidor revalidará a ficha durante a sincronização.
+          Modo offline: cores disponíveis carregadas do catálogo deste usuário, conforme o material de cada posição. O servidor revalidará a ficha durante a sincronização.
         </p>
       )}
       {!billingDate && (
@@ -838,19 +903,52 @@ function MobileStrapIdentityEditor({
         const selection = lineId ? aligned.strapSourcing[lineId] : null;
         const usesFinishedGroup = strapIdentityBasis(strap) === 'finished_product_group';
         const followsMainColor = !usesFinishedGroup && strapColorMode(strap) === 'follow_main';
+        const materialMode = strapMaterialMode(manifestLine || strap);
+        const material = mobileStrapSelectedMaterial(manifestLine, strap);
+        const materials = mobileStrapMaterialOptions(manifestLine);
+        const materialControl = !usesFinishedGroup && materialMode === 'select_on_order' ? (
+          <div className="space-y-1">
+            <Select
+              value={material?.base_group_id || ''}
+              disabled={!manifestLine || manifestLoading || !lineId || materials.length === 0}
+              onValueChange={(groupId) => {
+                if (lineId) onChange(selectMobileStrapMaterial(item, lineId, groupId, manifestEntry));
+              }}
+            >
+              <SelectTrigger className={!material ? 'border-destructive/50' : ''} aria-label={`Material de ${strap.label || `Tira ${strapIndex + 1}`}`}>
+                <SelectValue placeholder="Selecione o material desta posição" />
+              </SelectTrigger>
+              <SelectContent>
+                {materials.map((entry) => (
+                  <SelectItem key={entry.base_group_id} value={entry.base_group_id}>{entry.base_group_name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {!material && <p className="text-xs text-destructive">Selecione um material permitido na ficha técnica.</p>}
+            {!manifestLoading && manifestLine && materials.length === 0 && (
+              <p className="text-xs text-destructive">Nenhum material elegível no catálogo desta posição. Atualize o catálogo ou revise a ficha.</p>
+            )}
+          </div>
+        ) : (
+          <p className="text-[11px] text-muted-foreground">
+            Material: {material?.base_group_name || strap.base_group_name || (usesFinishedGroup ? strap.group_name : null) || 'não resolvido'}
+            {!usesFinishedGroup && (materialMode === 'fixed_group' ? ' · fixo na ficha' : ' · segue a referência')}
+          </p>
+        );
         if (followsMainColor) {
           return (
             <div key={lineId || strapIndex} className="space-y-2 rounded-md border p-2">
               <p className="text-xs font-semibold">{strap.label || `Tira ${strapIndex + 1}`}</p>
+              {materialControl}
               <div className={`rounded-md border px-3 py-2 text-xs ${item.color ? 'bg-muted/30' : 'border-destructive/50 text-destructive'}`}>
                 <p className="font-semibold">{item.color || 'Defina a cor principal do item'}</p>
-                <p className="mt-0.5 text-[11px] text-muted-foreground">Segue a cor principal e usa a napa-base da referência</p>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">Segue a cor principal no material desta posição</p>
               </div>
               <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-[11px]">
                 <p className="font-semibold text-primary">
                   {selection?.source_mode === 'buy_ready'
                     ? 'Origem comprada preservada do histórico'
-                    : 'Produção interna com a napa-base da referência'}
+                    : 'Produção interna com o material desta posição'}
                 </p>
                 {!selection?.source_mode && (
                   <p className="mt-0.5 text-muted-foreground">
@@ -858,14 +956,17 @@ function MobileStrapIdentityEditor({
                   </p>
                 )}
               </div>
-              {!manifestLoading && manifestLine && !manifestLine.base_group_id && (
-                <p className="text-xs text-destructive">A referência não identifica a napa-base por UUID. Corrija o cadastro no hub.</p>
+              {!manifestLoading && manifestLine && !material && materialMode !== 'select_on_order' && (
+                <p className="text-xs text-destructive">A posição não identifica um material-base elegível. Corrija o cadastro no hub.</p>
+              )}
+              {material && materialMode !== 'follow_reference' && !material.allowed_colors.some((color) => normalizeStrapColorKey(color.name) === normalizeStrapColorKey(item.color)) && (
+                <p className="text-xs text-destructive">A cor principal não está disponível no material desta posição.</p>
               )}
             </div>
           );
         }
 
-        const identityColors = manifestLine?.allowed_colors || [];
+        const identityColors = material?.allowed_colors || [];
         const selectedColor = strap.color_id && strap.color
           ? { id: strap.color_id, name: String(strap.color) }
           : null;
@@ -874,9 +975,7 @@ function MobileStrapIdentityEditor({
         const displayedColors = selectedColor && !colorIsAvailable
           ? [selectedColor, ...identityColors]
           : identityColors;
-        const identityGroupResolved = usesFinishedGroup
-          ? isUuid(manifestLine?.identity_group_id)
-          : isUuid(manifestLine?.base_group_id);
+        const identityGroupResolved = !!material;
         const measureResolved = !!manifestLine
           && isUuid(manifestLine.strap_type_id)
           && isUuid(manifestLine.measure_id)
@@ -886,11 +985,12 @@ function MobileStrapIdentityEditor({
         return (
           <div key={lineId || strapIndex} className="space-y-2 rounded-md border p-2">
             <p className="text-xs font-semibold">{strap.label || `Tira ${strapIndex + 1}`}</p>
+            {materialControl}
             <p className="text-[11px] text-muted-foreground">
-              {usesFinishedGroup ? 'Produto acabado comprado pronto' : 'Produção interna · escolha a cor da napa-base'}
+              {usesFinishedGroup ? 'Produto acabado comprado pronto' : 'Produção interna · escolha a cor do material desta posição'}
             </p>
             <Select
-              value={strap.color_id || undefined}
+              value={strap.color_id || ''}
               disabled={!manifestEntry || manifestLoading || !identityGroupResolved || !measureResolved || identityColors.length === 0}
               onValueChange={(colorId) => {
                 const color = identityColors.find((entry) => entry.id === colorId);
@@ -901,6 +1001,10 @@ function MobileStrapIdentityEditor({
                   color_mode: strapColorMode(strap),
                   color_id: color.id,
                   color: color.name,
+                  ...(!usesFinishedGroup ? {
+                    base_group_id: material?.base_group_id || null,
+                    base_group_name: material?.base_group_name || null,
+                  } : {}),
                 };
                 if (lineId) {
                   setInvalidatedLineIds((current) => {
@@ -930,7 +1034,7 @@ function MobileStrapIdentityEditor({
               <p className="text-xs text-destructive">
                 {usesFinishedGroup
                   ? 'A ficha não identifica o grupo do produto acabado por UUID.'
-                  : 'A referência/variante não identifica a napa-base por UUID.'}
+                  : 'Selecione um material elegível nesta posição ou revise a ficha técnica.'}
               </p>
             )}
             {!manifestLoading && !!manifestEntry && !measureResolved && (
@@ -1223,24 +1327,36 @@ export default function MobileNewOrder() {
 
   // ── Carrega clientes ──
   useEffect(() => {
-    if (step !== 'client') return;
+    if (step !== 'client' || !online || !ownerId) return;
+    let cancelled = false;
     const t = setTimeout(async () => {
-      let q = supabase
-        .from('clients')
-        .select('id, razao_social, nome_fantasia, cnpj, cidade, estado')
-        .eq('active', true)
-        .limit(40);
-      if (clientSearch.length >= 2) {
-        // search_norm (banco) ignora acento/caixa/espaço — "tamara" casa "TÂMARA".
-        // searchNormOrFilter tokeniza por espaço/"/" com AND entre termos.
-        const orFilter = searchNormOrFilter(clientSearch);
-        if (orFilter) q = q.or(orFilter);
+      try {
+        let q = supabase
+          .from('clients')
+          .select('id, razao_social, nome_fantasia, cnpj, cidade, estado')
+          .eq('active', true)
+          .limit(40);
+        if (clientSearch.length >= 2) {
+          // search_norm (banco) ignora acento/caixa/espaço — "tamara" casa "TÂMARA".
+          // searchNormOrFilter tokeniza por espaço/"/" com AND entre termos.
+          const orFilter = searchNormOrFilter(clientSearch);
+          if (orFilter) q = q.or(orFilter);
+        }
+        const { data, error } = await q;
+        if (error) throw error;
+        if (!cancelled) setClients(data ?? []);
+      } catch {
+        if (!cancelled) {
+          setClients([]);
+          toast.error('Não foi possível carregar os clientes. Verifique a conexão e tente novamente.');
+        }
       }
-      const { data } = await q;
-      setClients(data ?? []);
     }, 200);
-    return () => clearTimeout(t);
-  }, [step, clientSearch]);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [step, clientSearch, online, ownerId]);
 
   // ── Carrega refs (preload no step de items) ──
   useEffect(() => {
@@ -2428,7 +2544,7 @@ export default function MobileNewOrder() {
                     <div className="mt-1 space-y-0.5 text-[11px] text-muted-foreground">
                       {independentStraps.map((strap) => (
                         <p key={strap.key}>
-                          <span className="font-semibold text-foreground">{strap.position}</span>: {strap.color}
+                          <span className="font-semibold text-foreground">{strap.position}</span>: {strap.material ? `${strap.material} · ` : ''}{strap.color}
                         </p>
                       ))}
                     </div>

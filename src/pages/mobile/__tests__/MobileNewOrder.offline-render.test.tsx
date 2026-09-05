@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
@@ -41,6 +41,7 @@ const LINE_ID = '11111111-1111-4111-8111-111111111111';
 const TYPE_ID = '22222222-2222-4222-8222-222222222222';
 const MEASURE_ID = '33333333-3333-4333-8333-333333333333';
 const GROUP_ID = '44444444-4444-4444-8444-444444444444';
+const SECOND_GROUP_ID = '77777777-7777-4777-8777-777777777777';
 const BLACK_ID = '55555555-5555-4555-8555-555555555555';
 const GOLD_ID = '66666666-6666-4666-8666-666666666666';
 
@@ -113,7 +114,7 @@ describe('novo PV mobile em cold-start offline', () => {
       productGroups: [],
     });
     await saveMobileStrapOfflineManifest('owner-offline', {
-      version: 1,
+      version: 2,
       generated_at: '2026-09-05T12:00:00.000Z',
       manifest_hash: 'manifest-render-test',
       references: [{
@@ -236,6 +237,109 @@ describe('novo PV mobile em cold-start offline', () => {
     expect(screen.getByRole('button', { name: 'Revisar →' })).toBeDisabled();
     expect(screen.getByRole('combobox', { name: 'Cor de Tira 1' })).toBeDisabled();
     expect(mocks.rpc).not.toHaveBeenCalled();
+    view.queryClient.clear();
+  });
+
+  it('seleciona material e cor por posição offline e conserva ambos após reload', async () => {
+    const ownerId = 'owner-mixed-materials';
+    mocks.ownerId = ownerId;
+    const technicalLine = {
+      id: LINE_ID,
+      technical_strap_line_id: LINE_ID,
+      label: 'Tira 1',
+      identity_basis: 'reference_base' as const,
+      identity_group_id: null,
+      strap_type_id: TYPE_ID,
+      measure_id: MEASURE_ID,
+      color_mode: 'select_on_order' as const,
+      material_mode: 'select_on_order' as const,
+      material_group_id: null,
+      allowed_material_group_ids: [GROUP_ID, SECOND_GROUP_ID],
+      consumption: 28,
+      consumption_per_size: { '37': 0, '38': 30 },
+    };
+    await saveMobileOrderCatalog(ownerId, {
+      references: [{ id: REFERENCE_ID, name: 'I91 MATERIAIS', sale_price: 100, status_ficha: 'publicada', sizes: '34-40', has_straps: true, strap_colors: [technicalLine] }],
+      referenceColorVariants: [], materialVariants: [], products: [], productGroups: [],
+    });
+    await saveMobileStrapOfflineManifest(ownerId, {
+      version: 2,
+      generated_at: '2026-09-05T12:00:00.000Z',
+      manifest_hash: 'materials-render-v2',
+      references: [{
+        reference_id: REFERENCE_ID,
+        material_variant_id: null,
+        lines: [{
+          ...technicalLine,
+          position: 1,
+          base_group_id: null,
+          base_group_name: null,
+          allowed_colors: [],
+          material_options: [{
+            base_group_id: GROUP_ID,
+            base_group_name: 'NAPA SOFT',
+            allowed_colors: [{ id: BLACK_ID, name: 'PRETO' }],
+          }, {
+            base_group_id: SECOND_GROUP_ID,
+            base_group_name: 'NAPA SOFT + MASSABOX',
+            allowed_colors: [{ id: GOLD_ID, name: 'DOURADO' }],
+          }],
+        }],
+      }],
+    });
+    await saveDraft(ownerId, 'draft-materials', {
+      client: { id: 'client-materials', razao_social: 'CLIENTE MATERIAIS' },
+      items: [{
+        reference_id: REFERENCE_ID, reference_name: 'I91 MATERIAIS', color: 'OFF WHITE', grade: { '37': 1 }, unit_price: 100, unit_price_source: 'manual',
+        strap_colors: [{ ...technicalLine, base_group_id: GROUP_ID, base_group_name: 'NAPA SOFT', color: 'PRETO', color_id: BLACK_ID }],
+        strap_sourcing: { [LINE_ID]: { source_mode: 'internal', recipe_id: 'old-recipe' } },
+      }],
+      billingDate: '2026-09-07',
+    });
+    localStorage.setItem(mobileCurrentDraftKey(ownerId), 'draft-materials');
+    const user = userEvent.setup();
+    const first = renderOfflineOrder();
+    const material = await screen.findByRole('combobox', { name: 'Material de Tira 1' });
+    await waitFor(() => expect(material).toHaveTextContent('NAPA SOFT'));
+    await user.click(material);
+    await user.click(await screen.findByRole('option', { name: 'NAPA SOFT + MASSABOX' }));
+    const color = screen.getByRole('combobox', { name: 'Cor de Tira 1' });
+    expect(color).not.toHaveTextContent('PRETO');
+    await user.click(color);
+    expect(screen.queryByRole('option', { name: 'PRETO' })).not.toBeInTheDocument();
+    await user.click(await screen.findByRole('option', { name: 'DOURADO' }));
+    await waitFor(async () => {
+      const saved = await loadDraft<{ items: Array<{ strap_colors: unknown[]; strap_sourcing: unknown }> }>(ownerId, 'draft-materials');
+      expect(saved?.items[0].strap_colors[0]).toMatchObject({
+        technical_strap_line_id: LINE_ID,
+        base_group_id: SECOND_GROUP_ID,
+        base_group_name: 'NAPA SOFT + MASSABOX',
+        color: 'DOURADO', color_id: GOLD_ID,
+        consumption: 28, consumption_per_size: { '37': 0, '38': 30 },
+      });
+      expect(saved?.items[0].strap_sourcing).toEqual({});
+    }, { timeout: 1_500 });
+    first.unmount();
+    first.queryClient.clear();
+    const reopened = renderOfflineOrder();
+    await waitFor(() => {
+      expect(screen.getByRole('combobox', { name: 'Material de Tira 1' })).toHaveTextContent('NAPA SOFT + MASSABOX');
+      expect(screen.getByRole('combobox', { name: 'Cor de Tira 1' })).toHaveTextContent('DOURADO');
+    });
+    expect(mocks.rpc).not.toHaveBeenCalled();
+    reopened.queryClient.clear();
+  });
+
+  it('não consulta clientes offline mesmo após o debounce inicial sem rascunho', async () => {
+    mocks.ownerId = 'owner-offline-without-draft';
+    const view = renderOfflineOrder();
+    expect(screen.getByRole('heading', { name: 'Escolha o cliente' })).toBeInTheDocument();
+    // Deixa o timer de clientes e as leituras do IndexedDB terminarem. Uma
+    // restauração rápida de draft não pode esconder tentativa de rede.
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 350)); });
+    expect(mocks.from).not.toHaveBeenCalled();
+    expect(mocks.rpc).not.toHaveBeenCalled();
+    view.unmount();
     view.queryClient.clear();
   });
 });

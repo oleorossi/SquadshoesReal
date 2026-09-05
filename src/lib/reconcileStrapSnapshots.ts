@@ -6,12 +6,17 @@ import {
 } from '@/lib/technicalStrapLines';
 import { strapIdentityBasis } from '@/lib/strapIdentity';
 import {
+  resolveStrapMaterialBaseGroupId,
+  strapMaterialMode,
+  type StrapMaterialPolicyLike,
+} from '@/lib/strapMaterialPolicy';
+import {
   pruneStrapSourcing,
   setStrapSourcing,
   type StrapSourcingMap,
 } from '@/lib/strapSourcing';
 
-export interface ReconcileStrapLineLike extends TechnicalStrapLineLike {
+export interface ReconcileStrapLineLike extends TechnicalStrapLineLike, StrapMaterialPolicyLike {
   label?: string | null;
   color?: string | null;
   color_id?: string | null;
@@ -101,6 +106,12 @@ function technicalStrapStructure(line: ReconcileStrapLineLike) {
       ? line.identity_group_id || null
       : null,
     colorMode: strapColorMode(line),
+    materialMode: strapMaterialMode(line),
+    materialGroupId: line.material_group_id || null,
+    // JSON inválido precisa chegar ao validador sem virar lista vazia válida.
+    allowedMaterialGroupIds: Array.isArray(line.allowed_material_group_ids)
+      ? [...line.allowed_material_group_ids].sort()
+      : line.allowed_material_group_ids == null ? [] : canonicalValue(line.allowed_material_group_ids),
     internalProductionEnabled: line.internal_production_enabled ?? null,
     groupId: line.group_id || null,
     groupName: String(line.group_name || '').trim(),
@@ -137,6 +148,8 @@ function sameSourcingInputs(
     && (snapshotBasis !== 'finished_product_group'
       || snapshot.identity_group_id === technical.identity_group_id)
     && strapColorMode(snapshot) === strapColorMode(technical)
+    && strapMaterialMode(snapshot) === strapMaterialMode(technical)
+    && (snapshot.base_group_id || null) === (reconciled.base_group_id || null)
     && (snapshot.internal_production_enabled ?? null)
       === (technical.internal_production_enabled ?? null)
     && (snapshot.group_id || null) === (technical.group_id || null)
@@ -158,6 +171,9 @@ function defaultColorScopeIsCompatible(
   if (snapshotBasis !== technicalBasis) return false;
   if (snapshotBasis === 'finished_product_group') {
     return (snapshot.identity_group_id || null) === (technical.identity_group_id || null);
+  }
+  if (snapshot.base_group_id || technical.base_group_id) {
+    return snapshot.base_group_id === technical.base_group_id;
   }
   return (snapshot.group_id || null) === (technical.group_id || null);
 }
@@ -184,14 +200,33 @@ function reconciledLine<T extends ReconcileStrapLineLike>(
 ): T {
   const lineId = technicalStrapLineId(technical);
   const basis = strapIdentityBasis(technical);
+  const baseGroupId = basis === 'reference_base'
+    ? resolveStrapMaterialBaseGroupId(technical, {
+      referenceBaseGroupId: technical.base_group_id || snapshot?.base_group_id,
+      selectedBaseGroupId: snapshot?.base_group_id,
+    })
+    : null;
+  // A ficha manda na política; somente a escolha ainda permitida atravessa.
+  // Nome material é snapshot, não o rótulo legado do tipo de tira.
+  const materialLine = {
+    ...technical,
+    ...(baseGroupId || snapshot?.base_group_id || technical.material_mode ? {
+      base_group_id: baseGroupId,
+      base_group_name: baseGroupId && snapshot?.base_group_id === baseGroupId
+        ? snapshot.base_group_name || null
+        : baseGroupId && technical.base_group_id === baseGroupId
+          ? technical.base_group_name || null
+          : null,
+    } : {}),
+  } as T;
   const preserveFollowMainColor = !!snapshot
     && strapColorMode(snapshot) === 'follow_main'
     && strapColorMode(technical) === 'follow_main';
   const preserveSelectedColor = !!snapshot
-    && selectedColorCanBePreserved(snapshot, technical, canPreserveColor);
+    && selectedColorCanBePreserved(snapshot, materialLine, canPreserveColor);
   const preserveColor = preserveFollowMainColor || preserveSelectedColor;
   return {
-    ...technical,
+    ...materialLine,
     id: lineId || technical.id || null,
     technical_strap_line_id: lineId || technical.technical_strap_line_id || null,
     identity_basis: basis,

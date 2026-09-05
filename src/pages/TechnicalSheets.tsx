@@ -65,7 +65,7 @@ import { useSoleColorMappings, useUpsertSoleColorMapping } from '@/hooks/useSole
  import { useComponentColorMappings, useAddComponentColorRow, useUpdateComponentColorRow, useDeleteComponentColorRow } from '@/hooks/useComponentColorMappings';
  import { useComponentColorDefaults } from '@/hooks/useComponentColorDefaults';
 import { useCostPolicies } from '@/hooks/useCostPolicies';
-import { useArtisanalStrapCatalog } from '@/hooks/useArtisanalStraps';
+import { useArtisanalStrapCatalog, useStrapBaseGroupCandidates } from '@/hooks/useArtisanalStraps';
 import { useProducts } from '@/hooks/useProducts';
 import { useReadyStock } from '@/hooks/useReadyStock';
 import { useCan } from '@/hooks/useAccessControl';
@@ -96,6 +96,8 @@ import {
   type StrapColorMode,
 } from '@/lib/technicalStrapLines';
 import { strapIdentityBasis } from '@/lib/strapIdentity';
+import { normalizeStrapMaterialPolicy, strapMaterialMode, validateStrapMaterialPolicy } from '@/lib/strapMaterialPolicy';
+import TechnicalStrapMaterialPolicyEditor from '@/components/technical-sheets/TechnicalStrapMaterialPolicyEditor';
 import { referenceStrapBaseGroups } from '@/lib/referenceStrapBaseGroups';
 import { CONSUMPTION_SECTORS, normalizeDirectComponentSectors } from '@/lib/consumptionSector';
 
@@ -1469,6 +1471,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
   // colunas realmente alteradas. Não comparar direto com `sheet`: o form
   // hidrata defaults e normaliza identidades legadas de tiras ao abrir.
   const persistedFormRef = React.useRef<SheetFormData>(cloneTechnicalSheetSnapshot(form));
+  const strapMaterialCandidatesQuery = useStrapBaseGroupCandidates(!!form.has_straps);
   const activeStrapIdentityGroups = useMemo(() => {
     const selectedIds = new Set((form.strap_colors || [])
       .map((line) => line.identity_group_id)
@@ -1938,6 +1941,22 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       if (form.has_straps) {
         if (!strapCatalog || strapCatalogQuery.isError) {
           toast.error('Não foi possível validar as famílias e medidas de tira. Recarregue o catálogo canônico.');
+          return;
+        }
+        const needsOwnMaterial = normalizedStraps.some(line => strapMaterialMode(line) !== 'follow_reference');
+        if (needsOwnMaterial && (strapMaterialCandidatesQuery.isLoading || strapMaterialCandidatesQuery.isError || !strapMaterialCandidatesQuery.data)) {
+          toast.error('Aguarde o catálogo de materiais elegíveis ou recarregue a ficha antes de salvar.');
+          setAbaAtiva('range-aviamento');
+          return;
+        }
+        const eligibleMaterialIds = strapMaterialCandidatesQuery.data
+          ? new Set(strapMaterialCandidatesQuery.data.map(group => group.id))
+          : undefined;
+        const materialIssues = normalizedStraps.flatMap((line, index) => validateStrapMaterialPolicy(line, eligibleMaterialIds)
+          .map(issue => `${line.label || `Tira ${index + 1}`}: ${issue}`));
+        if (materialIssues.length > 0) {
+          toast.error(materialIssues[0], { duration: 8000 });
+          setAbaAtiva('range-aviamento');
           return;
         }
         const invalidLines = normalizedStraps.filter((line) => (
@@ -3657,9 +3676,9 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
             {form.has_straps && (
               <p className="text-xs text-muted-foreground">
                 {hasReferenceBaseStrapLine && strapsFollowLining
-                  ? <>Como esta ficha não tem Cabedal, as tiras que seguem a referência usam o material definido em <strong className="text-foreground">Forração</strong>; tiras compradas prontas mantêm o próprio grupo.</>
+                  ? <>Por padrão, esta ficha sem Cabedal usa o material de <strong className="text-foreground">Forração</strong> nas tiras. Na aba Range Aviamento, cada posição pode ter material próprio; tiras compradas prontas mantêm o grupo acabado.</>
                   : hasReferenceBaseStrapLine
-                  ? <>As tiras que seguem a referência usam o material definido em <strong className="text-foreground">Cabedal</strong> e são consumidas junto dele; tiras compradas prontas mantêm o próprio grupo.</>
+                  ? <>Por padrão, as tiras usam o material definido em <strong className="text-foreground">Cabedal</strong>. Na aba Range Aviamento, defina um material fixo por posição ou os materiais permitidos no pedido; tiras compradas prontas mantêm o grupo acabado.</>
                   : <>Estas tiras são compradas prontas e usam o próprio grupo configurado na aba <strong className="text-foreground">Range Aviamento</strong>.</>}
               </p>
             )}
@@ -3770,7 +3789,8 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
               <div className="space-y-3">
                 <p className="text-xs text-muted-foreground">
                   Defina quantas tiras este modelo possui, a <strong>família, medida e base de identidade</strong> de cada uma
-                  e o consumo por numeração <strong>por pé</strong> (em cm).
+                  e o consumo por numeração <strong>por pé</strong> (em cm). Cada posição pode seguir o material da referência,
+                  ter material fixo ou permitir escolher o material no pedido.
                   O sistema multiplica por <strong>2</strong> (par = 2 pés) ao calcular o consumo.
                   A <strong>política de cor</strong> define se cada tira segue a cor principal ou recebe
                   uma seleção própria no Pedido de Venda; a identidade técnica fica fixa aqui por UUID.
@@ -3781,7 +3801,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                     <div className="space-y-1">
                       <p className="text-sm font-medium">Mesma estrutura em várias tiras</p>
                       <p id="replicate-strap-type-help" className="text-xs text-muted-foreground">
-                        Copia família, medida, base e política de cor da primeira tira para as demais.
+                        Copia família, medida, base e políticas de material e cor da primeira tira para as demais.
                         Os nomes e consumos de cada tira são mantidos.
                       </p>
                     </div>
@@ -3799,7 +3819,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                       title="Configure a família, medida e base da primeira tira para aplicar às demais"
                       onClick={() => {
                         updateField('strap_colors', replicateFirstTechnicalStrapType(form.strap_colors));
-                        toast.success('Família, medida, base e política de cor aplicadas às demais. Salve a ficha para confirmar.');
+                        toast.success('Estrutura e políticas de material e cor aplicadas às demais. Salve a ficha para confirmar.');
                       }}
                     >
                       <Copy className="h-3.5 w-3.5" aria-hidden="true" />
@@ -3894,12 +3914,12 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                           >
                             <SelectTrigger><SelectValue /></SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="reference_base">Segue a napa da referência</SelectItem>
+                              <SelectItem value="reference_base">Produzida a partir do material do cabedal</SelectItem>
                               <SelectItem value="finished_product_group">Grupo próprio · comprada pronta</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
-                        {strapIdentityBasis(strap) === 'reference_base' && (
+                        {strapIdentityBasis(strap) === 'reference_base' && strapMaterialMode(strap) === 'follow_reference' && (
                           <div className="space-y-1.5">
                             <Label className="text-xs font-semibold">Napa-base definida pela referência</Label>
                             <div className={cn(
@@ -3970,6 +3990,21 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                           </div>
                         )}
                       </div>
+                      {strapIdentityBasis(strap) === 'reference_base' && (
+                        <TechnicalStrapMaterialPolicyEditor
+                          line={strap}
+                          label={strap.label || `Tira ${idx + 1}`}
+                          groups={strapMaterialCandidatesQuery.data || []}
+                          knownGroups={groups}
+                          loading={strapMaterialCandidatesQuery.isLoading}
+                          failed={strapMaterialCandidatesQuery.isError}
+                          onChange={nextLine => {
+                            const updated = [...(form.strap_colors || [])];
+                            updated[idx] = nextLine;
+                            updateField('strap_colors', updated);
+                          }}
+                        />
+                      )}
                       <div className="space-y-1.5">
                         <Label className="text-xs font-semibold">Política de cor</Label>
                         <Select
@@ -4164,6 +4199,11 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                           ? last?.identity_group_id || null
                           : null,
                         color_mode: strapColorMode(last),
+                        material_mode: normalizeStrapMaterialPolicy(last || {}).material_mode,
+                        material_group_id: last?.material_group_id || null,
+                        allowed_material_group_ids: Array.isArray(last?.allowed_material_group_ids)
+                          ? [...last.allowed_material_group_ids]
+                          : [],
                         consumption: last?.consumption,
                         consumption_per_size: { ...(last?.consumption_per_size || {}) },
                       },

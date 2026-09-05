@@ -1,26 +1,39 @@
 import { supabase } from '@/integrations/supabase/client';
 import type { StrapIdentityBasis } from '@/lib/strapIdentity';
-import type { StrapColorMode } from '@/lib/technicalStrapLines';
+import { isUuid, type StrapColorMode } from '@/lib/technicalStrapLines';
+import {
+  resolveStrapMaterialBaseGroupId,
+  strapMaterialMode,
+  validateStrapMaterialPolicy,
+  type StrapMaterialPolicyLike,
+} from '@/lib/strapMaterialPolicy';
 import {
   loadMobileCatalogEntry,
   saveMobileCatalogEntry,
 } from '@/lib/mobile/offlineQueue';
 
-export const MOBILE_STRAP_OFFLINE_MANIFEST_VERSION = 1 as const;
-export const MOBILE_STRAP_OFFLINE_CACHE_SCHEMA_VERSION = 1 as const;
-export const MOBILE_STRAP_OFFLINE_CACHE_KEY = 'mobile-strap-offline-manifest:v1';
+export const MOBILE_STRAP_OFFLINE_MANIFEST_VERSION = 2 as const;
+export const MOBILE_STRAP_OFFLINE_CACHE_SCHEMA_VERSION = 2 as const;
+export const MOBILE_STRAP_OFFLINE_CACHE_KEY = 'mobile-strap-offline-manifest:v2';
 
 export interface MobileStrapManifestColor {
   id: string;
   name: string;
 }
 
+export interface MobileStrapManifestMaterial {
+  base_group_id: string;
+  base_group_name: string;
+  allowed_colors: MobileStrapManifestColor[];
+}
+
 /**
  * Snapshot técnico não financeiro necessário para montar e revisar um item
- * sem rede. `allowed_colors` e `base_group_id` já vêm resolvidos pelo servidor
- * para a combinação exata referência + variante.
+ * sem rede. A política e as cores de cada `material_options` vêm do servidor
+ * para a combinação exata referência + variante + UUID da posição. O topo
+ * `allowed_colors`/`base_group_id` continua resolvido para bases herdadas/fixas.
  */
-export interface MobileStrapManifestLine {
+export interface MobileStrapManifestLine extends StrapMaterialPolicyLike {
   technical_strap_line_id: string | null;
   position: number;
   label?: string | null;
@@ -35,6 +48,8 @@ export interface MobileStrapManifestLine {
   consumption?: number | null;
   consumption_per_size?: Record<string, number> | null;
   base_group_id: string | null;
+  base_group_name?: string | null;
+  material_options?: MobileStrapManifestMaterial[];
   allowed_colors: MobileStrapManifestColor[];
 }
 
@@ -105,6 +120,23 @@ function normalizeConsumptionPerSize(value: unknown): Record<string, number> | n
   }));
 }
 
+function normalizeMaterialOptions(value: unknown): MobileStrapManifestMaterial[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  return value.flatMap((raw) => {
+    const option = asObject(raw);
+    const id = stringOrNull(option?.base_group_id);
+    const name = stringOrNull(option?.base_group_name);
+    if (!isUuid(id) || !name || seen.has(id)) return [];
+    seen.add(id);
+    return [{
+      base_group_id: id,
+      base_group_name: name,
+      allowed_colors: normalizeAllowedColors(option?.allowed_colors),
+    }];
+  });
+}
+
 function normalizeManifestLine(raw: unknown, index: number): MobileStrapManifestLine | null {
   const line = asObject(raw);
   if (!line) return null;
@@ -124,6 +156,12 @@ function normalizeManifestLine(raw: unknown, index: number): MobileStrapManifest
     color_mode: identityBasis === 'finished_product_group' || line.color_mode === 'select_on_order'
       ? 'select_on_order'
       : 'follow_main',
+    // Modo desconhecido fica inválido: nunca ampliar silenciosamente a política.
+    material_mode: line.material_mode == null ? 'follow_reference' : String(line.material_mode),
+    material_group_id: line.material_group_id == null ? null : String(line.material_group_id),
+    allowed_material_group_ids: Array.isArray(line.allowed_material_group_ids)
+      ? line.allowed_material_group_ids.map(String)
+      : line.allowed_material_group_ids == null ? [] : ['invalid'],
     internal_production_enabled: typeof line.internal_production_enabled === 'boolean'
       ? line.internal_production_enabled
       : null,
@@ -132,8 +170,50 @@ function normalizeManifestLine(raw: unknown, index: number): MobileStrapManifest
     consumption: finiteNumberOrNull(line.consumption),
     consumption_per_size: normalizeConsumptionPerSize(line.consumption_per_size),
     base_group_id: stringOrNull(line.base_group_id),
+    base_group_name: stringOrNull(line.base_group_name),
+    material_options: normalizeMaterialOptions(line.material_options),
     allowed_colors: normalizeAllowedColors(line.allowed_colors),
   };
+}
+
+/** Opções autorizadas pela posição, sem usar grupos do cache de outra linha. */
+export function mobileStrapMaterialOptions(
+  line: MobileStrapManifestLine | null | undefined,
+): MobileStrapManifestMaterial[] {
+  if (!line || validateStrapMaterialPolicy(line).length > 0) return [];
+  const mode = strapMaterialMode(line);
+  const groupId = line.identity_basis === 'finished_product_group'
+    ? line.identity_group_id
+    : line.base_group_id;
+  // O topo v2 continua sendo fonte válida para a base herdada e compra pronta.
+  // fixed/select exigem a lista por material: não herdam cores de outra base.
+  const options = line.material_options?.length ? line.material_options : (
+    mode === 'follow_reference' && isUuid(groupId)
+      ? [{ base_group_id: groupId, base_group_name: line.base_group_name || line.group_name || '', allowed_colors: line.allowed_colors }]
+      : []
+  );
+  return options.filter((option) => {
+    if (!isUuid(option.base_group_id)) return false;
+    if (line.identity_basis === 'finished_product_group') return option.base_group_id === groupId;
+    return resolveStrapMaterialBaseGroupId(line, {
+      referenceBaseGroupId: line.base_group_id,
+      selectedBaseGroupId: option.base_group_id,
+    }) === option.base_group_id;
+  });
+}
+
+export function mobileStrapSelectedMaterial(
+  line: MobileStrapManifestLine | null | undefined,
+  snapshot?: StrapMaterialPolicyLike | null,
+): MobileStrapManifestMaterial | null {
+  if (!line) return null;
+  const groupId = line.identity_basis === 'finished_product_group'
+    ? line.identity_group_id
+    : resolveStrapMaterialBaseGroupId(line, {
+      referenceBaseGroupId: line.base_group_id,
+      selectedBaseGroupId: snapshot?.base_group_id,
+    });
+  return mobileStrapMaterialOptions(line).find((option) => option.base_group_id === groupId) || null;
 }
 
 export function normalizeMobileStrapOfflineManifest(
@@ -231,6 +311,11 @@ export function mobileTechnicalStrapLinesFromManifest(
     strap_type_id: line.strap_type_id,
     measure_id: line.measure_id,
     color_mode: line.color_mode,
+    material_mode: line.material_mode,
+    material_group_id: line.material_group_id,
+    allowed_material_group_ids: line.allowed_material_group_ids,
+    base_group_id: line.base_group_id,
+    base_group_name: line.base_group_name,
     internal_production_enabled: line.internal_production_enabled,
     group_id: line.group_id,
     group_name: line.group_name,

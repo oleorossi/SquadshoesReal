@@ -175,6 +175,11 @@ describe('technicalStrapLines', () => {
         strap_type_id: before[0].strap_type_id,
         measure_id: before[0].measure_id,
         color_mode: 'select_on_order',
+        material_mode: 'follow_reference',
+        material_group_id: null,
+        allowed_material_group_ids: [],
+        base_group_id: null,
+        base_group_name: null,
       });
     });
   });
@@ -228,6 +233,45 @@ describe('technicalStrapLines', () => {
       identity_basis: 'reference_base',
       identity_group_id: null,
       color_mode: 'follow_main',
+    });
+  });
+
+  it.each(['fixed_group', 'select_on_order'] as const)('replica política de material %s preservando UUID e consumo', mode => {
+    const groupId = crypto.randomUUID();
+    const [first, second] = ensureTechnicalStrapLineIds([
+      {
+        material_mode: mode,
+        material_group_id: mode === 'fixed_group' ? groupId : null,
+        allowed_material_group_ids: mode === 'select_on_order' ? [groupId] : [],
+        consumption: 40, consumption_per_size: { '34': 40 },
+      },
+      { consumption: 60, consumption_per_size: { '34': 60 } },
+    ]);
+    const [, copied] = replicateFirstTechnicalStrapType([first, second]);
+    expect(copied).toMatchObject({
+      technical_strap_line_id: second.technical_strap_line_id,
+      material_mode: mode, material_group_id: first.material_group_id,
+      allowed_material_group_ids: first.allowed_material_group_ids,
+      consumption: 60, consumption_per_size: { '34': 60 },
+    });
+    expect(copied.allowed_material_group_ids).not.toBe(first.allowed_material_group_ids);
+  });
+
+  it('não replica política de material explícita desconhecida', () => {
+    const lines = [{ material_mode: 'future_mode' }, { material_mode: 'follow_reference' }];
+    expect(replicateFirstTechnicalStrapType(lines)).toBe(lines);
+    const [hydrated] = ensureTechnicalStrapLineIds(lines);
+    expect(hydrated.material_mode).toBe('future_mode');
+  });
+
+  it('a escolha explícita de compra pronta remove política e snapshot da matéria-prima', () => {
+    const ready = applyTechnicalStrapIdentity({
+      material_mode: 'fixed_group', material_group_id: crypto.randomUUID(),
+      base_group_id: crypto.randomUUID(), base_group_name: 'NAPA SOFT + MASSABOX', consumption: 42,
+    }, 'finished_product_group', crypto.randomUUID());
+    expect(ready).toMatchObject({
+      material_mode: 'follow_reference', material_group_id: null, allowed_material_group_ids: [],
+      base_group_id: null, base_group_name: null, consumption: 42,
     });
   });
 

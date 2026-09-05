@@ -1,11 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import {
   effectiveOperatorStrapColor,
+  effectiveOperatorStrapMaterial,
   operatorStrapGroupingSignature,
   operatorStrapSequence,
 } from '@/lib/operatorStrapSequence';
 
 describe('operatorStrapSequence', () => {
+  it('usa material efetivo do snapshot e distingue duas bases do mesmo tipo/cor', () => {
+    const base = { id: '11111111-1111-4111-8111-111111111111', color: 'AZUL',
+      group_name: 'TIRA OVERLOCK 5MM' };
+    const first = { ...base, base_group_id: 'grupo-1', base_group_name: 'NAPA SOFT' };
+    const second = { ...base, base_group_id: 'grupo-2', base_group_name: 'NAPA SOFT + MASSABOX' };
+    expect(effectiveOperatorStrapMaterial(second)).toBe('NAPA SOFT + MASSABOX');
+    expect(effectiveOperatorStrapMaterial(base)).toBe('TIRA OVERLOCK 5MM');
+    expect(operatorStrapGroupingSignature([first])).not.toBe(operatorStrapGroupingSignature([second]));
+  });
+
   it('preserva a posição do array quando as linhas têm UUID', () => {
     const lines = [
       { id: 'ffffffff-ffff-4fff-8fff-ffffffffffff', label: 'TIRA 1', color: 'Azul' },

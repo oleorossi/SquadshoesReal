@@ -125,6 +125,18 @@ describe('calculateStrapConsumptionCm — valor por PAR (não por pé)', () => {
 });
 
 describe('resolveOrderStraps — merge item × ficha', () => {
+  it('snapshot canônico conserva material, ordem e zero sem injetar a ficha atual', () => {
+    const id = '0198f35c-7f4d-7000-8000-000000000001';
+    const snapshot = [{ id, label: 'Posição antiga', color: 'Preto', consumption: 0,
+      base_group_id: 'material-a', base_group_name: 'NAPA SOFT + MASSABOX' }];
+    const merged = resolveOrderStraps(snapshot, [
+      { id, label: 'Posição renomeada', consumption: 60, base_group_id: 'material-b' },
+      { id: '0198f35c-7f4d-7000-8000-000000000002', label: 'Nova posição', consumption: 40 },
+    ]);
+    expect(merged).toEqual(snapshot);
+    expect(calculateStrapConsumptionCm(merged[0], { quantity: 12 })).toBe(0);
+  });
+
   it('item sobrescreve ficha quando casa por id+label', () => {
     const merged = resolveOrderStraps(
       [{ id: 1, label: 'Tira 1', color: 'Preto', consumption: 50 }],

@@ -54,6 +54,7 @@ import {
   type StrapColorMode,
 } from '@/lib/technicalStrapLines';
 import { strapColorsForIdentity } from '@/lib/officialStrapColors';
+import { resolveStrapMaterialBaseGroupId, strapMaterialMode } from '@/lib/strapMaterialPolicy';
 import {
   isPurchasedReadyStrap,
   strapIdentityBasis,
@@ -98,7 +99,7 @@ interface ReferenceOption {
   updated_at?: string | null;
 }
 
-interface SaleOrderStrapResolutionLine extends StrapCatalogResolutionLine {
+interface SaleOrderStrapResolutionLine extends StrapCatalogResolutionLine, ReconcileStrapLineLike {
   identity_basis?: StrapIdentityBasis | null;
   identity_group_id?: string | null;
   color_mode?: StrapColorMode | null;
@@ -166,6 +167,13 @@ const EMPTY_STRAP_SOURCING_MAP = Object.freeze({}) as StrapSourcingMap;
 // e nulo no item significa "material da propria ficha", que agora e escolha
 // legitima e nao mais ausencia de escolha.
 const SHEET_MATERIAL_OPTION = '__ficha__';
+
+function materialBaseForStrap(strap: ReconcileStrapLineLike, inheritedBase?: string | null) {
+  return resolveStrapMaterialBaseGroupId(strap, {
+    referenceBaseGroupId: inheritedBase,
+    selectedBaseGroupId: strap.base_group_id,
+  });
+}
 
 function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, onUpdate, onRemove, onCopyGradeFromPrevious, onSaveStateAndNavigate, isSelected, onToggleSelect, priceLookup, maxDiscountPct = 0, variantsByRef = EMPTY_VARIANTS_BY_REF, onColorIssueChange, onSheetMaterialSelectableChange, saleOrderId, saleOrderStatus, billingWeek, requiredAt }: Props) {
   const qc = useQueryClient();
@@ -697,7 +705,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     straps.forEach((strap) => {
       const lineId = technicalStrapLineId(strap);
       const resolvedLine = lineId ? strapLineByKey.get(lineId) : undefined;
-      const resolvedBaseGroupId = resolvedLine?.baseGroupId;
+      const resolvedBaseGroupId = materialBaseForStrap(strap, resolvedLine?.baseGroupId);
       const identityBasis = strapIdentityBasis(strap);
       const usesReferenceBase = identityBasis === 'reference_base';
       const usesFinishedGroup = identityBasis === 'finished_product_group';
@@ -705,7 +713,9 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       hasPurchasedReady ||= usesFinishedGroup;
       const identityGroupResolved = usesFinishedGroup
         ? isUuid(strap.identity_group_id)
-        : isUuid(resolvedBaseGroupId);
+        : strapMaterialMode(strap) === 'select_on_order'
+          ? Array.isArray(strap.allowed_material_group_ids) && strap.allowed_material_group_ids.some(isUuid)
+          : isUuid(resolvedBaseGroupId);
       const canonicalMeasure = isUuid(strap.measure_id)
         ? strapCatalog?.measures.find((entry) => entry.id === strap.measure_id && entry.active !== false)
         : null;
@@ -792,7 +802,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       };
       const current = next[lineId];
       if (current && Object.entries(candidate).every(
-        ([key, value]) => (current as Record<string, unknown>)[key] === value,
+        ([key, value]) => current[key as keyof typeof current] === value,
       )) return;
       next = setStrapSourcing(next, lineId, candidate);
       changed = true;
@@ -858,6 +868,14 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
 
   const strapSnapshotMissing = hasStrapsEffective
     && (!Array.isArray(item.strap_colors) || item.strap_colors.length === 0);
+  const strapMaterialIssues = preserveCommittedStrapSnapshot ? []
+    : strapPresentationDefinitions.flatMap((strap, ordinal) => {
+      if (strapIdentityBasis(strap) !== 'reference_base') return [];
+      const mode = strapMaterialMode(strap);
+      if (mode === 'follow_reference') return [];
+      if (mode && isUuid(materialBaseForStrap(strap))) return [];
+      return [strap.label || `Tira ${ordinal + 1}`];
+    });
   const independentReferenceBaseColorIssues = preserveCommittedStrapSnapshot
     ? []
     : strapPresentationDefinitions.flatMap((strap, ordinal) => {
@@ -865,17 +883,18 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
           || strapColorMode(strap) !== 'select_on_order') return [];
       const lineId = technicalStrapLineId(strap);
       const resolvedLine = lineId ? strapLineByKey.get(lineId) : undefined;
+      const baseGroupId = materialBaseForStrap(strap, resolvedLine?.baseGroupId);
       const availableColorsForLine = strapColorsForIdentity(
         strapCatalog,
         strap,
-        resolvedLine?.baseGroupId,
+        baseGroupId,
       );
       const missingIdentity = !String(strap.color || '').trim() || !isUuid(strap.color_id);
       const invalidForResolvedBase = !missingIdentity
         && !!strapCatalog
         && !strapCatalogLoading
         && !strapLinesLoading
-        && isUuid(resolvedLine?.baseGroupId)
+        && isUuid(baseGroupId)
         && !availableColorsForLine.some((color) => color.id === strap.color_id);
       if (!missingIdentity && !invalidForResolvedBase) return [];
       return [{
@@ -891,9 +910,10 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   const hasColorIssue = coverColorIssues.length > 0
     || strapSnapshotMissing
     || strapCanonicalMainMissing
+    || strapMaterialIssues.length > 0
     || independentReferenceBaseColorIssues.length > 0;
   const colorIssueKey = hasColorIssue
-    ? `${item.color}|${coverColorIssues.map(i => i.name).join(',')}|${strapSnapshotMissing}|${strapCanonicalMainMissing}|${independentReferenceBaseColorIssues.map((issue) => `${issue.lineId}:${issue.label}`).join(',')}`
+    ? `${item.color}|${coverColorIssues.map(i => i.name).join(',')}|${strapSnapshotMissing}|${strapCanonicalMainMissing}|${strapMaterialIssues.join(',')}|${independentReferenceBaseColorIssues.map((issue) => `${issue.lineId}:${issue.label}`).join(',')}`
     : '';
 
   // Reporta a pendência ao pai (chave estável evita churn) + limpa no unmount.
@@ -905,12 +925,15 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
           ...coverColorIssues.map(i => i.name),
           ...(strapSnapshotMissing ? ['ficha técnica sem linhas de tira'] : []),
           ...(strapCanonicalMainMissing ? ['identidade canônica da cor das tiras'] : []),
+          ...strapMaterialIssues.map((label) => `material de ${label}`),
           ...independentReferenceBaseColorIssues.map((issue) => issue.label),
         ],
         message: strapSnapshotMissing
           ? 'Esta referência exige tiras, mas o item não possui snapshot das linhas técnicas. Abra a ficha técnica, cadastre as tiras e volte ao pedido; nenhuma cor ou variante será inferida.'
           : strapCanonicalMainMissing
             ? `A cor ${referenceBaseMaterialWithArticle} não corresponde a uma cor canônica ou alias aprovado. Corrija essa identidade no estoque antes de salvar.`
+            : strapMaterialIssues.length > 0
+              ? `Selecione um material permitido para ${strapMaterialIssues.join(', ')} antes de salvar o pedido.`
             : independentReferenceBaseColorIssues.length > 0
               ? `Defina uma cor canônica para ${independentReferenceBaseColorIssues.map((issue) => issue.label).join(', ')} antes de salvar o pedido.`
               : undefined,
@@ -1070,17 +1093,29 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     if (previous.value === current) return;
     previousStrapMaterialVariantRef.current = { initialized: true, value: current };
 
+    if (preserveCommittedStrapSnapshot) return;
+
     let next = strapSourcingMap;
     let changed = false;
+    let materialChanged = false;
+    const updatedStraps = (item.strap_colors || []).map((strap) => {
+      if (strapIdentityBasis(strap) !== 'reference_base'
+          || strapMaterialMode(strap) !== 'follow_reference') return strap;
+      if (!strap.base_group_id && !strap.base_group_name) return strap;
+      materialChanged = true;
+      return { ...strap, base_group_id: null, base_group_name: null };
+    });
     ((item.strap_colors as SaleOrderItemStrap[]) || []).forEach((strap) => {
-      if (strapIdentityBasis(strap) !== 'reference_base') return;
+      if (strapIdentityBasis(strap) !== 'reference_base'
+          || strapMaterialMode(strap) !== 'follow_reference') return;
       const lineId = technicalStrapLineId(strap);
       if (!getStrapSourcingSelection(next, lineId)) return;
       next = setStrapSourcing(next, lineId, null);
       changed = true;
     });
+    if (materialChanged) latestRef.current.onUpdate(latestRef.current.index, 'strap_colors', updatedStraps);
     if (changed) latestRef.current.onUpdate(latestRef.current.index, 'strap_sourcing', next);
-  }, [item.material_variant_id, item.strap_colors, strapSourcingMap]);
+  }, [item.material_variant_id, item.strap_colors, strapSourcingMap, preserveCommittedStrapSnapshot]);
 
   // Uma cor independente de tira interna só é válida dentro da napa-base
   // efetiva da referência/variante. Quando esse grupo muda, conserva a escolha
@@ -1100,11 +1135,12 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
           || strapColorMode(strap) !== 'select_on_order') return strap;
       const lineId = technicalStrapLineId(strap);
       const resolvedLine = lineId ? strapLineByKey.get(lineId) : undefined;
-      if (!isUuid(resolvedLine?.baseGroupId)) return strap;
+      const baseGroupId = materialBaseForStrap(strap, resolvedLine?.baseGroupId);
+      if (!isUuid(baseGroupId)) return strap;
       const available = strapColorsForIdentity(
         strapCatalog,
         strap,
-        resolvedLine.baseGroupId,
+        baseGroupId,
       );
       const canonical = isUuid(strap.color_id)
         ? available.find((color) => color.id === strap.color_id)
@@ -2052,7 +2088,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
             <div className="rounded-lg border border-border/60 overflow-hidden">
               <div className="px-3 py-1.5 border-b flex items-center justify-between bg-muted/30">
                 <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                  Cores das Tiras
+                  Materiais e cores das tiras
                 </span>
                 <span className="text-xs text-muted-foreground">
                   {hasOnlyFinishedGroups
@@ -2070,7 +2106,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                   {hasOnlyFinishedGroups
                     ? 'Estas tiras são compradas prontas: o pedido baixa o SKU acabado da cor escolhida e não movimenta napa-base.'
                     : hasIndependentReferenceBase
-                      ? `Escolha a cor nas posições marcadas.${followMainReferenceBaseCount > 0 ? ` As demais seguem a cor ${referenceBaseMaterialWithArticle}.` : ''} O grupo-base, a medida e o consumo continuam definidos pela ficha.${hasMixedStrapIdentities ? ' As compradas prontas baixam o SKU acabado.' : ''}`
+                      ? `Escolha material e cor nas posições liberadas pela ficha.${followMainReferenceBaseCount > 0 ? ` As demais seguem a cor ${referenceBaseMaterialWithArticle}.` : ''} Medida e consumo continuam definidos pela ficha.${hasMixedStrapIdentities ? ' As compradas prontas baixam o SKU acabado.' : ''}`
                     : hasMixedStrapIdentities
                       ? 'O pedido prepara apenas as tiras internas com napa; as compradas prontas baixam o SKU acabado.'
                       : 'Ao salvar, o sistema resolve estas tiras pela napa-base da referência e pela origem configurada no catálogo.'}
@@ -2174,6 +2210,13 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                   const resolvedLine = lineId ? strapLineByKey.get(lineId) : undefined;
                   const purchasedReady = isPurchasedReadyStrap(strap);
                   const usesFinishedGroup = strapIdentityBasis(strap) === 'finished_product_group';
+                  const materialMode = strapMaterialMode(strap);
+                  const baseGroupId = materialBaseForStrap(strap, resolvedLine?.baseGroupId);
+                  const materialOptions = productGroups.filter((group) =>
+                    Array.isArray(strap.allowed_material_group_ids) && strap.allowed_material_group_ids.includes(group.id));
+                  const materialName = strap.base_group_name
+                    || productGroups.find((group) => group.id === baseGroupId)?.name
+                    || resolvedLine?.baseGroupName;
                   const colorMode = strapColorMode(strap);
                   const selectsOnOrder = colorMode === 'select_on_order';
                   const independentReferenceBase = !usesFinishedGroup && selectsOnOrder;
@@ -2190,7 +2233,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                   const identityColors = strapColorsForIdentity(
                     strapCatalog,
                     strap,
-                    resolvedLine?.baseGroupId,
+                    baseGroupId,
                   );
                   const selectedColor = strapCatalog?.colors.find((entry) => entry.id === strap.color_id);
                   const colorIsAvailable = !!strap.color_id
@@ -2200,7 +2243,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                     : identityColors;
                   const identityGroupResolved = usesFinishedGroup
                     ? isUuid(strap.identity_group_id)
-                    : isUuid(resolvedLine?.baseGroupId);
+                    : isUuid(baseGroupId);
                   const canonicalMeasure = isUuid(strap.measure_id)
                     ? strapCatalog?.measures.find((entry) => entry.id === strap.measure_id && entry.active !== false)
                     : null;
@@ -2228,6 +2271,41 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                         <span className="text-xs font-bold text-muted-foreground uppercase truncate">{strap.label || `Tira ${sIdx + 1}`}</span>
                         {strap.group_name && <span className="text-xs text-muted-foreground opacity-70 truncate max-w-[80px]">({strap.group_name})</span>}
                       </div>
+                      {!usesFinishedGroup && (materialMode === 'select_on_order' && !preserveCommittedStrapSnapshot ? (
+                        <Select
+                          value={baseGroupId || ''}
+                          disabled={!strapCatalog || strapCatalogLoading}
+                          onValueChange={(groupId) => {
+                            if (!strapCatalog || strapCatalogLoading) return;
+                            const group = materialOptions.find((entry) => entry.id === groupId);
+                            if (!group || groupId === baseGroupId) return;
+                            const availableColors = strapColorsForIdentity(strapCatalog, strap, groupId);
+                            const retainedColor = availableColors.find((entry) => entry.id === strap.color_id);
+                            const updated = snapshotStraps.map((entry) => (
+                              technicalStrapLineId(entry) === lineId ? {
+                                ...entry, base_group_id: group.id, base_group_name: group.name,
+                                ...(selectsOnOrder ? {
+                                  color_id: retainedColor?.id || null,
+                                  color: retainedColor?.name || '',
+                                } : {}),
+                              } : entry
+                            ));
+                            onUpdate(index, 'strap_colors', updated);
+                            onUpdate(index, 'strap_sourcing', setStrapSourcing(strapSourcingMap, lineId, null));
+                          }}
+                        >
+                          <SelectTrigger className="h-9" aria-label={`Material de ${strap.label || `Tira ${sIdx + 1}`}`}>
+                            <SelectValue placeholder="Selecione o material desta posição" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {materialOptions.map((group) => <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">
+                          Material: {materialName || (materialMode === 'follow_reference' ? 'Segue a referência' : 'Não resolvido')}
+                        </p>
+                      ))}
                       {selectsOnOrder ? readOnlyHistoricalColor ? (
                         <div className="flex h-9 items-center justify-between gap-2 rounded-md border border-border/60 bg-muted/30 px-3 text-sm">
                           <span className="truncate font-medium">
@@ -2239,7 +2317,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                         </div>
                       ) : (
                         <Select
-                          value={strap.color_id || undefined}
+                          value={strap.color_id || ''}
                           disabled={!item.reference_id || !strapCatalog || strapLinesLoading || !identityGroupResolved || !measureResolved}
                           onValueChange={(colorId) => {
                             const canonical = identityColors.find((entry) => entry.id === colorId);
@@ -2296,7 +2374,9 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                             ? 'A linha técnica não identifica uma família e medida canônicas coerentes por UUID.'
                             : usesFinishedGroup
                               ? 'A linha técnica não identifica o grupo do produto acabado por UUID.'
-                              : 'A referência/variante não identifica a napa-base por UUID. Corrija o cadastro estrutural no estoque.'}
+                              : materialMode === 'select_on_order'
+                                ? 'Selecione um dos materiais permitidos para esta posição.'
+                                : 'A ficha não identifica o material-base desta posição. Revise o cadastro técnico.'}
                         </p>
                       )}
                       {selectsOnOrder

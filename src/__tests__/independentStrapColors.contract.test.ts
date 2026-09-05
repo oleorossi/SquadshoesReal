@@ -38,7 +38,7 @@ describe('cores independentes por linha de tira', () => {
     expect(desktop).toContain('aria-label={`Cor de ${strap.label || `Tira ${sIdx + 1}`}`}');
     expect(technicalSheets).toContain('aria-label={`Política de cor de ${strap.label || `Tira ${idx + 1}`}`}');
     expect(mobile).toContain('mobileIndependentStrapReviewLines(it)');
-    expect(mobile).toContain('{strap.position}</span>: {strap.color}');
+    expect(mobile).toContain('{strap.position}</span>: {strap.material ? `${strap.material} · ` : \'\'}{strap.color}');
   });
 
   it('valida grupo/cor pelo manifesto owner-scoped e bloqueia cold-start offline sem cache', () => {
@@ -46,7 +46,8 @@ describe('cores independentes por linha de tira', () => {
     expect(mobile).toContain('fetchMobileStrapOfflineManifest()');
     expect(mobile).toContain('saveMobileStrapOfflineManifest(ownerId, fresh)');
     expect(mobile).toContain('findMobileStrapManifestReference(');
-    expect(mobile).toContain('manifestLine.allowed_colors.some');
+    expect(mobile).toContain('mobileStrapSelectedMaterial(manifestLine, strap)');
+    expect(mobile).toContain('material.allowed_colors.some');
     expect(mobile).toContain('}, online);');
     expect(mobile).toContain('Catálogo offline de tiras indisponível');
     expect(mobile).toContain('!ownerScopedStrapManifest');

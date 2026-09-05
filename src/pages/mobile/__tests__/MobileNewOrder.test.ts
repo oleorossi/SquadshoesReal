@@ -616,7 +616,7 @@ describe('identidade comercial material no PV mobile', () => {
     const measureId = '66666666-6666-4666-8666-666666666666';
     const groupId = '44444444-4444-4444-8444-444444444444';
     const manifest: MobileStrapOfflineManifest = {
-      version: 1,
+      version: 2,
       generated_at: '2026-09-05T12:00:00Z',
       manifest_hash: 'hash-v1',
       references: [{
@@ -687,7 +687,7 @@ describe('identidade comercial material no PV mobile', () => {
       }],
       strap_sourcing: { [lineId]: { source_mode: 'internal' } },
     }, {
-      version: 1,
+      version: 2,
       generated_at: '2026-09-05T12:00:00Z',
       manifest_hash: 'sem-tiras',
       references: [{

@@ -141,6 +141,12 @@ describe('identidade de duplicata com cores independentes por tira', () => {
     expect(saleOrderItemDuplicateKey(differentMode)).not.toBe(saleOrderItemDuplicateKey(original));
   });
 
+  it('não mescla a mesma cor/posição em materiais-base diferentes', () => {
+    const original = item([{ ...strap(lineA, red, 'select_on_order'), base_group_id: lineA }]);
+    const anotherMaterial = item([{ ...strap(lineA, red, 'select_on_order'), base_group_id: lineB }]);
+    expect(saleOrderItemDuplicateKey(original)).not.toBe(saleOrderItemDuplicateKey(anotherMaterial));
+  });
+
   it('não alerta duplicidade para mesma referência/cor com tiras diferentes', () => {
     const original = item([
       strap(lineA, red, 'select_on_order'),

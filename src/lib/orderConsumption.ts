@@ -94,6 +94,8 @@ export type MaterialConsumptionRow = {
    * (cabedal/forração) a própria `groupName` já é a família. Ver
    * `specs/tira-base-napa-por-ficha-tecnica.md`. */
   materialFamily?: string | null;
+  /** Identidade física da família quando o snapshot a conhece. */
+  materialFamilyId?: string | null;
   /**
    * Produtos EXATOS que originaram a linha, quando o consumo veio de um cadastro
    * que já aponta o `product_id` (componentes diretos, BOM, itens-padrão do
@@ -581,7 +583,7 @@ const addConsumptionRow = (map: Map<string, MaterialConsumptionRow>, row: Materi
   const materialIdentity = exactProductIds.length === 1
     ? `product:${exactProductIds[0]}`
     : `${groupName}||${materialName}`;
-  const key = `${row.componentType}||${materialIdentity}||${color}||${productUnit}||${materialFamily}||box:${boxIdentity}`;
+  const key = `${row.componentType}||${materialIdentity}||${color}||${productUnit}||${row.materialFamilyId || materialFamily}||box:${boxIdentity}`;
   const existing = map.get(key);
 
   if (existing) {
@@ -624,6 +626,7 @@ const addConsumptionRow = (map: Map<string, MaterialConsumptionRow>, row: Materi
     sizeBreakdown: row.sizeBreakdown,
     soleProductId: row.soleProductId,
     materialFamily: row.materialFamily || null,
+    ...(row.materialFamilyId ? { materialFamilyId: row.materialFamilyId } : {}),
     productIds: row.productIds?.length ? [...new Set(row.productIds.filter(Boolean))] : undefined,
     boxTypeIds: row.boxTypeIds?.length ? [...new Set(row.boxTypeIds.filter(Boolean))] : undefined,
   });
@@ -2132,8 +2135,12 @@ export function computeConsumptionForItems(
         color: strap.color || orderColor,
         totalQuantity: strapConsumptionCm / 100,
         materialFamily: strapIdentityBasis(strap) === 'reference_base'
-          ? refNapaFamily
+          ? strap.base_group_name || groupNameById(strap.base_group_id)
+            || (strap.material_mode && strap.material_mode !== 'follow_reference'
+              ? 'Material por posição não resolvido'
+              : refNapaFamily)
           : null,
+        materialFamilyId: strap.base_group_id,
         productIds: strapRulePids,
       });
     }

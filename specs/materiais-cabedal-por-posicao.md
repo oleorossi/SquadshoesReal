@@ -1,6 +1,8 @@
 # Materiais de cabedal por posição
 
-Estado: **em desenvolvimento; seleção por posição ainda não implementada**.
+Estado: **seleção de material por posição linear implementada; validação final e
+publicação pendentes**. Peças de cabedal medidas por área continuam fora desta
+implementação, aguardando a definição de engenharia descrita abaixo.
 
 ## Objetivo integral
 
@@ -33,7 +35,7 @@ por área não deve exigir família/medida de tira nem passar por receita linear
 Uma tira linear não pode usar dm² como se fossem centímetros. Não inventar
 consumo, largura, rendimento ou preço para preencher dados ausentes.
 
-## Evidências da auditoria de 05/09/2026
+## Evidências da auditoria inicial de 05/09/2026 (antes desta implementação)
 
 - `technicalStrapLines.ts` e `strapIdentity.ts` preservam UUID técnico e política
   de cor, mas só reconhecem `reference_base` e `finished_product_group`. A
@@ -99,20 +101,87 @@ consumo, largura, rendimento ou preço para preencher dados ausentes.
 
 ## Progresso e verificação
 
-- Pré-requisito de impressão implementado nesta branch:
-  `operatorStrapGroupingSignature` passa a considerar identidade de origem,
-  grupo de identidade, grupo e nome do material presentes no snapshot. O
-  fallback legado e a ordem técnica permanecem. Isso protege os campos atuais;
-  a futura identidade material por posição também deverá entrar na assinatura.
-- Cinco testes adicionados: origem distinta; dois identificadores de grupo;
-  material composto versus puro; compatibilidade legada/grafia. Quatro deles
-  reproduziram o agrupamento incorreto antes da correção.
-- Verificação do pré-requisito: 38 testes focados aprovados em quatro arquivos,
-  TypeScript canônico e ESLint dos arquivos alterados aprovados. Revisão
-  independente sem bloqueio para esse diff. Não é prova do novo fluxo completo.
-- **Não concluídos:** definição do tipo de posição, editor, seleção/persistência
-  comercial por posição, resolvedores SQL, preview/offline, consumo físico,
-  reserva/débito e verificação operacional da nova configuração.
+### Implementado na branch `codex/cabedal-materiais-por-posicao`
+
+- Política técnica independente da origem e da cor: `material_mode` aceita
+  `follow_reference`, `fixed_group` ou `select_on_order`. Material fixo usa
+  `material_group_id`; escolha comercial exige uma lista explícita de 1 a 25
+  `allowed_material_group_ids`. Grupos são UUIDs indivisíveis, inclusive o
+  composto NAPA SOFT + MASSABOX. Compra pronta não recebe política de base.
+- Editor na ficha, seleção material/cor no PV desktop e no mobile, manifesto
+  offline versão 2 e persistência dos rascunhos. Catálogo antigo não é tratado
+  como capaz de autorizar o novo fluxo. Trocar uma posição invalida somente sua
+  origem; mudar a variante principal preserva escolhas próprias ainda válidas.
+- Snapshot comercial e de origem preservam `base_group_id`/`base_group_name`;
+  a origem também conserva produto-base, variante e receita exatos. Itens com
+  materiais diferentes não são mesclados como duplicatas.
+- Migration `20270101016100_materiais_por_posicao_tira.sql`: validação técnica,
+  resolução por UUID da posição, materialização por base/cor, writer reidratado,
+  guard do item, preview, manifesto, diagnóstico e guarda de confirmação.
+  Helpers privados sem EXECUTE público. Nenhum dado histórico é reescrito.
+  As versões 159/160 pertencem ao trabalho financeiro separado; esta migration
+  não depende delas e não as inclui.
+- Consumo e agrupamento distinguem a identidade física/material, não só o nome.
+  A/B/A soma as duas contribuições A e mantém B separado. As fichas de operador
+  rica e rápida mostram a sequência, material e cor congelados. Snapshot
+  canônico não é completado pela ficha viva, preservando inclusive zero explícito.
+- As posições continuam lineares, com a entrada existente em cm/pé e snapshot
+  em cm/par. Matéria-prima é calculada pela receita/rendimento do material.
+  Não há conversão automática para área nem novo débito de cabedal paralelo.
+
+### Evidências e limites de verificação
+
+- Testes automatizados cobrem política, editor real renderizado, seleção desktop,
+  mobile/offline com IndexedDB, cópia, reconciliação histórica, consumo e impressão.
+  Rodada integral: 4.186 testes aprovados, 8 ignorados e nenhuma falha
+  (`bun run test --maxWorkers=4 --testTimeout=15000`). O tempo adicional foi
+  necessário para a consulta inicial de RLS: falhou por timeout de 5 segundos
+  na suíte e passou isoladamente, com os cinco testes de segurança aprovados.
+  Build de produção, TypeScript canônico, gate ESLint contra `origin/main`,
+  tokens e nomes acessíveis sem regressões passaram.
+- Ensaio PostgreSQL efêmero (PGlite), com definições reais das funções e schema
+  relevante, dados sintéticos e rollback: writer/materializador A/B/A, bases
+  distintas, pin, receitas, payload adulterado, preview 10/20/30 m e rendimentos
+  100/60, manifesto v2, material ausente, atomicidade após a primeira posição e
+  histórico aprovado sem demanda passaram. Adaptadores locais limitados a auth
+  e SHA256; nenhuma função de domínio substituída por mock.
+- Ensaio ampliado: enfileiramento real A/B/A gerou três contribuições, duas
+  variantes e produto/receita/base corretos por UUID; replay não duplicou o job.
+  A regressão sintética de cinco posições e três cores também passou, mantendo
+  o modo material legado e permitindo cor principal não canônica quando todas
+  as posições têm cores independentes. Promoção de rascunho com política técnica
+  alterada foi recusada mesmo mantendo exatamente o mesmo SKU/cor/receita.
+- Esse ensaio não replica todo o conjunto de FKs, RLS e gatilhos operacionais de
+  produção. Portanto não comprova sozinho concorrência, reserva, fabricação e
+  baixa física ponta a ponta. Testes de integração ignorados por falta de
+  ambiente não contam como aprovados.
+- A tentativa de conferir o editor num navegador real foi inconclusiva: Chrome
+  sem resposta e navegador interno indisponível. O componente real foi testado
+  em DOM, mas não há aprovação visual nem screenshot final válido.
+- Revisão independente das funções instaladas e consumidores TS: o resolvedor
+  antigo de base global está órfão e o débito legado é no-op. O caminho canônico
+  mantém UUID da posição, produto-base, receita e rendimento até a reserva,
+  lote, recebimento e baixa. Nenhum P1/P2 confirmado nessa revisão; ela é leitura
+  de código, não um ensaio completo de baixa em produção.
+- **Pendentes:** publicação pelo CI e verificação da versão instalada, conferência
+  visual e ensaio operacional completo de reserva/fabricação/baixa em ambiente
+  descartável. Continua pendente também a decisão sobre peças por área; não
+  inventar consumos para encerrá-la.
+
+### Publicação e contingência
+
+- Preservar o gate existente: CI integral do commit → migrations → Edge/Vercel.
+  Não publicar diretamente pela integração Git nativa de main nem aplicar SQL
+  fora do histórico de migrations. Main deve conter só o trabalho desta branch;
+  as alterações financeiras isoladas não fazem parte desta entrega.
+- Se o CI ou a aplicação da migration falharem, não liberar o frontend. Após a
+  publicação, verificar versão 2 do manifesto, políticas/ACL e SHA do deploy.
+- Navegadores mobile que mantenham o bundle antigo precisam atualizar para usar
+  o manifesto v2; o cache v1 não autoriza escolhas de material por posição.
+- Em falha funcional, interromper novas configurações por posição e preparar
+  correção compatível. Não apagar os novos campos ou restaurar resolvedor global
+  sobre pedidos já confirmados; não refazer históricos nem debitar estoque
+  retroativamente. Uma reversão apenas visual não desfaz a migration do banco.
 
 ## Testes de aceitação necessários
 

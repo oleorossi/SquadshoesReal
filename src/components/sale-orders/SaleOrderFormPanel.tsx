@@ -234,6 +234,10 @@ export function saleOrderItemStrapCombinationSignature(
           : `legacy:${index}`,
       String(line.color_id || '').trim().toLowerCase(),
       strapColorMode(line),
+      String(line.base_group_id || line.material_group_id || '').trim().toLowerCase(),
+      String(line.identity_group_id || '').trim().toLowerCase(),
+      String(line.measure_id || '').trim().toLowerCase(),
+      line.identity_basis || 'reference_base',
     ] as const);
   if (allLinesHaveCanonicalIds) {
     signatureLines.sort((a, b) => (

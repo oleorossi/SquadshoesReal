@@ -38,6 +38,18 @@ const preview = (overrides: Record<string, unknown> = {}) => parseCanonicalStrap
 });
 
 describe('preview canônica de tiras', () => {
+  it('soma posições do mesmo material físico, mas separa snapshots com outro SKU base', () => {
+    const rows = replaceWithCanonicalStrapRows([], ctx, [preview(),
+      preview({ technical_strap_line_id: 'outra-posicao' }),
+      preview({ technical_strap_line_id: 'sku-historico', base_product_id: 'outro-sku-soft' }),
+    ]) as CanonicalStrapConsumptionRow[];
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({ baseProductId: 'base-soft', totalQuantity: 1280 });
+    expect(rows[0].artisanal?.baseQty).toBe(20);
+    expect(rows[1]).toMatchObject({ baseProductId: 'outro-sku-soft', totalQuantity: 640 });
+    expect(canonicalStrapCutRows([preview(), preview({ base_product_id: 'outro-sku-soft' })])).toHaveLength(2);
+  });
+
   it('explica transformação ainda não congelada sem inventar base nem bloquear o worker', () => {
     const warning = 'A transformação física será congelada na primeira demanda.';
     const pending = preview({ resolved: {

@@ -41,6 +41,7 @@ import { getUpperWorkEligibility, requiresUpperCut } from '@/lib/upperCutEligibi
 import { leftoverLabelsFromSheet } from '@/lib/cabedalLeftover';
 import {
   effectiveOperatorStrapColor,
+  effectiveOperatorStrapMaterial,
   operatorStrapGroupingSignature,
   operatorStrapSequence,
   type OperatorStrapLineLike,
@@ -2321,7 +2322,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             position: strapIndex + 1,
             technicalStrapLineId: s?.technical_strap_line_id || s?.id || undefined,
             name: s?.label || `TIRA ${strapIndex + 1}`,
-            material: s?.group_name || '',
+            material: effectiveOperatorStrapMaterial(s),
             qty: undefined,
             // O snapshot por linha é autoritativo. Pedidos antigos, nos quais
             // a tira ainda não repetia a cor no JSON, seguem a cor principal.

@@ -536,6 +536,11 @@ export type SaleOrderItemFormData = {
   strap_colors?: Array<{
     id: string;
     technical_strap_line_id?: string;
+    material_mode?: 'follow_reference' | 'fixed_group' | 'select_on_order' | null;
+    material_group_id?: string | null;
+    allowed_material_group_ids?: string[] | null;
+    base_group_id?: string | null;
+    base_group_name?: string | null;
     label: string;
     color: string;
     strap_type_id?: string | null;
@@ -555,6 +560,9 @@ export type SaleOrderItemFormData = {
     color_id?: string | null;
     strap_variant_id?: string | null;
     recipe_id?: string | null;
+    base_group_id?: string | null;
+    base_group_name?: string | null;
+    base_product_id?: string | null;
     gross_required_m?: number | null;
     required_at?: string | null;
     main_production_start?: string | null;

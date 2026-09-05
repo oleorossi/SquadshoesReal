@@ -9,6 +9,7 @@ export interface StrapStockLine {
   strapVariantId: string | null;
   colorId: string | null;
   baseGroupId: string | null;
+  baseGroupName?: string | null;
   recipeId: string | null;
   baseProductId: string | null;
   finishedProductId: string | null;
@@ -167,6 +168,7 @@ export function useStrapStockLines(input: StrapStockLinesInput, enabled = true) 
           strapVariantId: strOrNull(row.strap_variant_id),
           colorId: strOrNull(resolved.color_id || catalog.color_id || source.color_id),
           baseGroupId: strOrNull(resolved.base_group_id || catalog.base_group_id),
+          baseGroupName: strOrNull(resolved.base_group_name || catalog.base_group_name),
           recipeId: strOrNull(row.recipe_id),
           baseProductId: strOrNull(row.base_product_id),
           finishedProductId: strOrNull(row.finished_product_id),

@@ -40,6 +40,52 @@ function strap(
 }
 
 describe('strapPresentationLines', () => {
+  it('preserva política malformada para validação sem quebrar assinatura ou herdar material', () => {
+    const malformed = strap(lineA, {
+      material_mode: 'select_on_order',
+      allowed_material_group_ids: { [typeA]: true } as unknown as string[],
+    });
+    expect(() => technicalStrapSequenceSignature([malformed])).not.toThrow();
+    expect(sameTechnicalStrapStructure(malformed, { ...malformed })).toBe(true);
+    expect(sameTechnicalStrapStructure(malformed, { ...malformed, allowed_material_group_ids: [] })).toBe(false);
+    const result = reconcileEditableStrapSnapshots({
+      snapshotLines: [strap(lineA, { base_group_id: typeA })],
+      technicalLines: [malformed],
+    });
+    expect(result.lines[0].allowed_material_group_ids).toEqual({ [typeA]: true });
+    expect(result.lines[0].base_group_id).toBeNull();
+    expect(result.lines[0].color_id).toBeNull();
+  });
+
+  it('preserva material permitido por UUID e descarta origem ao mudar material fixo', () => {
+    const original = strap(lineA, { material_mode: 'select_on_order',
+      allowed_material_group_ids: [typeA, typeB], base_group_id: typeB,
+      base_group_name: 'NAPA SOFT + MASSABOX' });
+    const technical = strap(lineA, { material_mode: 'select_on_order',
+      allowed_material_group_ids: [typeB, typeA], color: '', color_id: null });
+    const preserved = reconcileEditableStrapSnapshots({
+      snapshotLines: [original], technicalLines: [technical],
+    });
+    expect(preserved.lines[0]).toMatchObject({ base_group_id: typeB,
+      base_group_name: 'NAPA SOFT + MASSABOX', color_id: red });
+    const changed = reconcileEditableStrapSnapshots({ snapshotLines: [original],
+      technicalLines: [{ ...technical, material_mode: 'fixed_group', material_group_id: typeA,
+        allowed_material_group_ids: [] }],
+      sourcing: { [lineA]: { source_mode: 'internal', color_id: red, strap_variant_id: lineC } },
+    });
+    expect(changed.lines[0]).toMatchObject({ base_group_id: typeA, base_group_name: null, color_id: null });
+    expect(changed.sourcing).toEqual({});
+  });
+
+  it('não herda material arbitrário quando a ficha retira a opção selecionada', () => {
+    const original = strap(lineA, { material_mode: 'select_on_order',
+      allowed_material_group_ids: [typeA, typeB], base_group_id: typeB });
+    const technical = strap(lineA, { material_mode: 'select_on_order', allowed_material_group_ids: [typeA] });
+    const result = strapPresentationLines([original], [technical], false)[0];
+    expect(result.base_group_id).toBeNull();
+    expect(result.color_id).toBeNull();
+  });
+
   it('distingue ficha ainda não carregada de remoção autoritativa de todas as tiras', () => {
     const snapshot = [strap(lineA)];
     expect(strapPresentationLines(snapshot, undefined, false)).toBe(snapshot);

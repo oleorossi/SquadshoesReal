@@ -21,6 +21,13 @@ const UUID_STRAPS = [
 ];
 
 describe('atalho legado da ficha de operador · sequência de tiras', () => {
+  it('imprime o material-base efetivo sem decompor grupo composto', () => {
+    const html = operatorStrapsHtml('Aviamento', [{ ...UUID_STRAPS[0],
+      base_group_id: 'grupo-composto', base_group_name: 'NAPA SOFT + MASSABOX' }], 'PRETO');
+    expect(html).toContain('NAPA SOFT + MASSABOX');
+    expect(html).not.toContain('<td>TIRA OVERLOCK 5MM</td>');
+  });
+
   it('imprime as posições UUID na ordem do snapshot e a cor efetiva por linha', () => {
     const html = operatorStrapsHtml('Aviamento', UUID_STRAPS, 'PRETO');
 

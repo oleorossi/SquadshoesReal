@@ -148,7 +148,8 @@ export function replaceWithCanonicalStrapRows(
 
   for (const preview of previews) {
     const stableIdentity = preview.strapVariantId || preview.technicalStrapLineId;
-    const key = [stableIdentity, preview.sourceMode || 'unresolved', preview.recipeId || 'no-recipe'].join('::');
+    const key = [stableIdentity, preview.sourceMode || 'unresolved', preview.recipeId || 'no-recipe',
+      preview.baseProductId || 'no-base', preview.finishedProductId || 'no-finished'].join('::');
     const existing = grouped.get(key);
     const presentationWarnings = [...preview.blockingReasons,
       ...(preview.snapshotWarning ? [preview.snapshotWarning] : [])];
@@ -257,6 +258,8 @@ export function canonicalStrapCutRows(
       const key = [
         preview.strapVariantId || preview.technicalStrapLineId,
         preview.recipeId || 'recipe-unresolved',
+        preview.baseProductId || 'base-unresolved',
+        preview.finishedProductId || 'finished-unresolved',
       ].join('::');
       const gross = Math.max(0, finiteOrZero(preview.grossRequiredM));
       const baseRequired = Math.max(0, finiteOrZero(preview.baseRequiredM));
