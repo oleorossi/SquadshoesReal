@@ -1,8 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { addDays, format, parseISO, startOfMonth, endOfMonth, subMonths, isAfter, isBefore } from 'date-fns';
-import { openBalanceOf, sumOpenBalance } from '@/lib/ledgerBalance';
-import { percentageOf, sumOpenDueInPeriod, sumRealizedInPeriod } from '@/lib/financeMath';
+import { openBalanceOf, sumOpenBalance, type LedgerRow } from '@/lib/ledgerBalance';
+import { percentageOf, sumOpenDueInPeriod } from '@/lib/financeMath';
+import { signedCashCents, summarizeFinancialCash, type FinancialCashMovement } from '@/lib/financialCash';
+import { fetchFinancialCashMovements, fetchFinancialCashCmvMovements, fetchFinancialCmvPending, type FinancialCmvPending } from '@/services/financialCashService';
+import { fetchFinancialRows } from '@/lib/financialPagination';
 
 export type DREInventoryMonth = {
   period: string;
@@ -57,6 +60,9 @@ export type DREReport = {
    *  zero resultado: sem isto o DRE renderiza uma tabela toda zerada que lê
    *  como "empresa sem atividade" em vez de "falta lançar baixa". */
   origemVazia: { recebimentos: boolean; pagamentos: boolean; cmv: boolean };
+  cashWarnings: { legacyDatedCount: number; undatedLegacyCount: number; undatedReceipts: number; undatedPayments: number; undatedCmv: number };
+  cmvPending: FinancialCmvPending[];
+  hasFactoringMovements: boolean;
 };
 
 /**
@@ -172,19 +178,17 @@ export function useCashFlowProjection(daysAhead: 30 | 60 | 90 = 90) {
  * Motor ÚNICO `dreByCash`: tudo reconhecido pela data em que o dinheiro entra/sai,
  * NÃO por competência (due_date). Antes existiam 2 DREs irreconciliáveis — uma por
  * caixa (DRETab, não-montada) e esta por competência. Agora há uma só, por caixa:
- *   • Receita  = accounts_receivable.amount_received na data payment_date (entrou caixa)
- *   • CMV      = AP material/MOD/frete pagos na data payment_date (transitório — o
- *                grupo 3 troca por CMV reconhecido proporcional ao recebimento)
- *   • Desp.Op  = demais AP pagas na data payment_date
+ *   • Receita = eventos de recebimento/estorno em sua própria data.
+ *   • CMV = reconhecimento proporcional por evento, sem mover meses anteriores.
+ *   • Desp.Op = eventos de pagamento/estorno com categoria capturada na baixa.
  *   • Juros factoring = financial_entries (sale_order_factoring) — despesa financeira
  *                separada (a AR agora é bruta, ver useSaleOrders.ts)
  *
  * O relatório por COMPETÊNCIA/variação de estoque continua disponível como
  * REFERÊNCIA em useDREInventoryVariation (não é a DRE principal).
  *
- * ⚠ Limitação do modelo de dados: não há ledger de parcelas de pagamento.
- * payment_date é único por título e reflete a última baixa; em múltiplas baixas,
- * o acumulado pago/recebido fica alocado nessa última data.
+ * Legado discriminado apenas por acumulado continua identificado como legado;
+ * saldo sem data fica fora dos meses, com alerta explícito, nunca datado hoje.
  */
 export function useDREAuto(monthsBack: number = 6) {
   return useQuery({
@@ -195,40 +199,21 @@ export function useDREAuto(monthsBack: number = 6) {
       const startDate = format(startOfMonth(subMonths(now, monthsBack - 1)), 'yyyy-MM-dd');
       const endDate = format(endOfMonth(now), 'yyyy-MM-dd');
 
-      const [recRes, payRes, factRes, cmvRes, companyRes] = await Promise.all([
-        // Receita por CAIXA: linhas com recebimento na janela (payment_date).
-        supabase
-          .from('accounts_receivable')
-          .select('payment_date, amount_received, status')
-          .gte('payment_date', startDate)
-          .lte('payment_date', endDate)
-          .gt('amount_received', 0)
-          .neq('status', 'cancelled'),
-        // Despesas por CAIXA: linhas pagas na janela (payment_date).
-        supabase
-          .from('accounts_payable')
-          .select('payment_date, amount_paid, status, category')
-          .gte('payment_date', startDate)
-          .lte('payment_date', endDate)
-          .gt('amount_paid', 0)
-          .neq('status', 'cancelled'),
+      const [cashRows, factoringRows, cmvRows, companyRes, cmvPending] = await Promise.all([
+        fetchFinancialCashMovements(startDate, endDate),
         // Juros de factoring: despesa financeira separada (AR é bruta).
-        supabase
+        fetchFinancialRows<{ id: string; entry_date: string; amount: number; type: string; reference_type: string; status: string }>((from, to) => supabase
           .from('financial_entries')
-          .select('entry_date, amount, type, reference_type, status')
+          .select('id, entry_date, amount, type, reference_type, status', { count: 'exact' })
           .eq('reference_type', 'sale_order_factoring')
           .eq('type', 'despesa')
           .gte('entry_date', startDate)
-          .lte('entry_date', endDate),
-        // CMV RECONHECIDO por caixa (cash matching) — sale_order_cmv_recognized
-        // distribui o CMV total proporcional ao recebimento. Reconhecido na data
-        // recognized_date (= payment_date da parcela). Substitui o CMV por compra
-        // (material/MOD/frete de AP), que era regime de competência/compra.
-        (supabase as any)
-          .from('sale_order_cmv_recognized')
-          .select('recognized_date, recognized_amount')
-          .gte('recognized_date', startDate)
-          .lte('recognized_date', endDate),
+          .lte('entry_date', endDate)
+          .order('id', { ascending: true }).range(from, to)),
+        fetchFinancialCashCmvMovements(startDate, endDate).catch(error => {
+          const message = error && typeof error === 'object' && 'message' in error ? String(error.message) : String(error);
+          throw new Error(`Falha ao carregar o CMV reconhecido: ${message}`);
+        }),
         // Regime tributário da empresa primária pra ajustar DRE:
         // regime_tributario='1' = Simples Nacional → impostos vão no DAS,
         // não devem somar separadamente em "impostos" no DRE.
@@ -237,10 +222,12 @@ export function useDREAuto(monthsBack: number = 6) {
           .select('regime_tributario, razao_social')
           .eq('is_primary', true)
           .maybeSingle(),
+        fetchFinancialCmvPending(startDate, endDate),
       ]);
-      if (recRes.error) throw recRes.error;
-      if (payRes.error) throw payRes.error;
-      if (factRes.error) throw factRes.error;
+      const receiptsSummary = summarizeFinancialCash(cashRows, 'receivable', startDate, endDate);
+      const paymentsSummary = summarizeFinancialCash(cashRows, 'payable', startDate, endDate);
+      const cmvCashRows: FinancialCashMovement[] = cmvRows.map(row => ({ ...row, kind: 'receivable', account_id: row.id, category: 'cmv' }));
+      const cmvSummary = summarizeFinancialCash(cmvCashRows, 'receivable', startDate, endDate);
       // ⚠ O guard abaixo cobre FALHA de fonte, não fonte VAZIA — e vazio também
       // vira lucro fictício, só que com outra cara: um DRE inteiro de zeros lê
       // como "empresa sem atividade" em vez de "ninguém lançou recebimento nem
@@ -248,14 +235,20 @@ export function useDREAuto(monthsBack: number = 6) {
       // amount_paid, 0 linha de CMV reconhecido. A UI usa isto pra dizer o que
       // falta lançar em vez de renderizar a tabela zerada.
       const origemVazia = {
-        recebimentos: (recRes.data || []).length === 0,
-        pagamentos: (payRes.data || []).length === 0,
-        cmv: ((cmvRes?.data as any[]) || []).length === 0,
+        recebimentos: receiptsSummary.movements === 0,
+        pagamentos: paymentsSummary.movements === 0,
+        cmv: cmvSummary.movements === 0,
+      };
+      const cashWarnings = {
+        legacyDatedCount: receiptsSummary.legacyDatedCount + paymentsSummary.legacyDatedCount + cmvSummary.legacyDatedCount,
+        undatedLegacyCount: receiptsSummary.undatedLegacyCount + paymentsSummary.undatedLegacyCount + cmvSummary.undatedLegacyCount,
+        undatedReceipts: receiptsSummary.undatedLegacyAmount,
+        undatedPayments: paymentsSummary.undatedLegacyAmount,
+        undatedCmv: cmvSummary.undatedLegacyAmount,
       };
       // DRE financeira não pode degradar CMV/regime tributário para zero: isso
       // transforma falha de fonte em lucro fictício. A UI mostra o erro e permite
       // tentar novamente sem apresentar números incompletos como verdadeiros.
-      if (cmvRes?.error) throw new Error(`Falha ao carregar o CMV reconhecido: ${cmvRes.error.message}`);
       if (companyRes?.error) throw new Error(`Falha ao carregar o regime tributário: ${companyRes.error.message}`);
       if (!companyRes?.data?.regime_tributario) {
         throw new Error('Empresa principal sem regime tributário cadastrado. A DRE não pode classificar impostos com segurança.');
@@ -281,58 +274,36 @@ export function useDREAuto(monthsBack: number = 6) {
         };
       }
 
-      // Receitas: caixa recebido (amount_received) na data payment_date.
-      (recRes.data || []).forEach((r) => {
-        if (!r.payment_date) return;
-        const m = r.payment_date.substring(0, 7);
-        if (months[m]) months[m].receita += Number(r.amount_received || 0);
-      });
-
-      // CMV reconhecido por caixa (cash matching) — proporcional ao recebimento.
-      (cmvRes?.data || []).forEach((c: any) => {
-        if (!c.recognized_date) return;
-        const m = String(c.recognized_date).substring(0, 7);
-        if (months[m]) months[m].cmv += Number(c.recognized_amount || 0);
-      });
-
-      // Despesas por categoria — caixa pago (amount_paid) na data payment_date.
-      // ⚠ Categorias de CUSTO DE PRODUTO (material, mao_de_obra, frete, overhead)
-      // são EXCLUÍDAS aqui: elas já estão representadas via CMV reconhecido
-      // (order_costs → sale_order_cmv → sale_order_cmv_recognized). Somá-las
-      // também como despesa = double-count. Compra de material é formação de
-      // estoque (balanço), reconhecida como CMV só quando o produto é vendido E
-      // o recebimento entra. Aqui ficam só despesas operacionais/SG&A e impostos.
-      (payRes.data || []).forEach((p) => {
-        if (!p.payment_date) return;
-        const m = p.payment_date.substring(0, 7);
-        if (!months[m]) return;
-        const v = Number(p.amount_paid || 0);
-        const cat = p.category;
-        if (cat === 'material' || cat === 'mao_de_obra' || cat === 'frete' || cat === 'overhead') {
-          // já contabilizado no CMV reconhecido — não somar de novo.
-          return;
-        } else if (cat === 'imposto') {
-          // Simples Nacional: PIS/COFINS/ICMS/IRPJ/CSLL/ISS são consolidados em DAS único.
-          // Lançar como "imposto" separadamente distorce o DRE — DAS já é despesa
-          // operacional consolidada. Empresas em Simples NÃO têm linha "Impostos"
-          // separada do DRE; pagamento DAS aparece em despesas operacionais.
-          if (isSimplesNacional) {
-            months[m].despOperacionais += v;
-          } else {
-            months[m].impostos += v;
-          }
-        } else {
-          months[m].despOperacionais += v;
-        }
-      });
+      // Material/MOD/frete/overhead permanecem no CMV, sem duplicar a compra
+      // como despesa. Preserva a classificação tributária já adotada pelo módulo.
+      const operatingRows = cashRows.filter(row => row.kind === 'payable'
+        && !['material', 'mao_de_obra', 'frete', 'overhead'].includes(row.category)
+        && (row.category !== 'imposto' || isSimplesNacional));
+      const taxRows = isSimplesNacional ? [] : cashRows.filter(row => row.kind === 'payable' && row.category === 'imposto');
+      for (const month of Object.values(months)) {
+        const from = `${month.period}-01`;
+        const to = format(endOfMonth(parseISO(from)), 'yyyy-MM-dd');
+        month.receita = summarizeFinancialCash(cashRows, 'receivable', from, to).amount;
+        month.cmv = summarizeFinancialCash(cmvCashRows, 'receivable', from, to).amount;
+        month.despOperacionais = summarizeFinancialCash(operatingRows, 'payable', from, to).amount;
+        month.impostos = summarizeFinancialCash(taxRows, 'payable', from, to).amount;
+      }
 
       // Juros de factoring (despesa financeira) por mês de lançamento.
-      (factRes.data || []).forEach((e) => {
+      let hasFactoringMovements = false;
+      factoringRows.forEach((e) => {
         const st = String(e.status || '').toLowerCase();
         if (st === 'cancelado' || st === 'cancelled' || st === 'estornado') return;
         if (!e.entry_date) return;
         const m = e.entry_date.substring(0, 7);
-        if (months[m]) months[m].jurosFactoring += Number(e.amount || 0);
+        const cents = signedCashCents(e.amount);
+        if (cents < 0) throw new Error('Despesa de factoring com valor negativo. Revise o lançamento de origem.');
+        if (months[m]) {
+          if (cents > 0) hasFactoringMovements = true;
+          const total = Math.round(months[m].jurosFactoring * 100) + cents;
+          if (!Number.isSafeInteger(total)) throw new Error('O total de factoring excede o limite de precisão.');
+          months[m].jurosFactoring = total / 100;
+        }
       });
 
       // Calcular derivados.
@@ -352,6 +323,9 @@ export function useDREAuto(monthsBack: number = 6) {
         months: Object.values(months).sort((a, b) => a.period.localeCompare(b.period)),
         company: companyRes.data as DREReport['company'],
         origemVazia,
+        cashWarnings,
+        cmvPending,
+        hasFactoringMovements,
       } satisfies DREReport;
     },
   });
@@ -689,26 +663,33 @@ export function useFinanceKPIs() {
       const lastMonthStart = format(startOfMonth(subMonths(now, 1)), 'yyyy-MM-dd');
       const lastMonthEnd = format(endOfMonth(subMonths(now, 1)), 'yyyy-MM-dd');
 
-      const [banksRes, payRes, recRes] = await Promise.all([
-        supabase.from('bank_accounts').select('current_balance').eq('active', true),
-        supabase
+      const [banks, pays, recs, cashRows] = await Promise.all([
+        fetchFinancialRows<{ id: string; current_balance: number }>((from, to) => supabase.from('bank_accounts').select('id,current_balance', { count: 'exact' }).eq('active', true).order('id').range(from, to)),
+        fetchFinancialRows<LedgerRow & { id: string }>((from, to) => supabase
           .from('accounts_payable')
-          .select('due_date, payment_date, amount, amount_paid, status')
-          .neq('status', 'cancelled'),
-        supabase
+          .select('id, due_date, amount, amount_paid, status', { count: 'exact' })
+          .neq('status', 'cancelled').order('id').range(from, to)),
+        fetchFinancialRows<LedgerRow & { id: string }>((from, to) => supabase
           .from('accounts_receivable')
-          .select('due_date, payment_date, amount, amount_received, status')
-          .neq('status', 'cancelled'),
+          .select('id, due_date, amount, amount_received, status', { count: 'exact' })
+          .neq('status', 'cancelled').order('id').range(from, to)),
+        fetchFinancialCashMovements(lastMonthStart, monthEnd),
       ]);
-      if (banksRes.error) throw banksRes.error;
-      if (payRes.error) throw payRes.error;
-      if (recRes.error) throw recRes.error;
 
-      const banks = banksRes.data || [];
-      const pays = payRes.data || [];
-      const recs = recRes.data || [];
+      const totalBalanceCents = banks.reduce((sum, bank) => {
+        const total = sum + signedCashCents(bank.current_balance);
+        if (!Number.isSafeInteger(total)) throw new Error('O saldo bancário excede o limite de precisão.');
+        return total;
+      }, 0);
+      const totalBalance = totalBalanceCents / 100;
 
-      const totalBalance = banks.reduce((s, b) => s + Number(b.current_balance || 0), 0);
+      for (const [kind, rows] of [['payable', pays], ['receivable', recs]] as const) {
+        for (const row of rows) {
+          const principal = signedCashCents(row.amount);
+          const settled = signedCashCents(kind === 'payable' ? row.amount_paid : row.amount_received);
+          if (principal < 0 || settled < 0 || settled > principal) throw new Error('Título financeiro com valor ou saldo liquidado inconsistente. Revise a origem antes de calcular indicadores.');
+        }
+      }
 
       const totalPayable = sumOpenBalance(pays, 'payable');
       const totalReceivable = sumOpenBalance(recs, 'receivable');
@@ -716,9 +697,11 @@ export function useFinanceKPIs() {
       // "Receita/Despesa do mês" é REALIZADO em regime de caixa. Valores com
       // vencimento no mês ficam em campos de previsão separados — misturar os
       // dois fazia um título ainda não recebido aparecer como receita efetiva.
-      const monthRevenue = sumRealizedInPeriod(recs, 'receivable', monthStart, monthEnd);
-      const monthExpenses = sumRealizedInPeriod(pays, 'payable', monthStart, monthEnd);
-      const lastMonthRevenue = sumRealizedInPeriod(recs, 'receivable', lastMonthStart, lastMonthEnd);
+      const receipts = summarizeFinancialCash(cashRows, 'receivable', monthStart, monthEnd);
+      const payments = summarizeFinancialCash(cashRows, 'payable', monthStart, monthEnd);
+      const monthRevenue = receipts.amount;
+      const monthExpenses = payments.amount;
+      const lastMonthRevenue = summarizeFinancialCash(cashRows, 'receivable', lastMonthStart, lastMonthEnd).amount;
       const monthReceivableForecast = sumOpenDueInPeriod(recs, 'receivable', monthStart, monthEnd);
       const monthPayableForecast = sumOpenDueInPeriod(pays, 'payable', monthStart, monthEnd);
 
@@ -740,6 +723,12 @@ export function useFinanceKPIs() {
         monthPayableForecast,
         monthForecastResult: monthReceivableForecast - monthPayableForecast,
         revenueGrowth,
+        cashWarnings: {
+          legacyDatedCount: receipts.legacyDatedCount + payments.legacyDatedCount,
+          undatedLegacyCount: receipts.undatedLegacyCount + payments.undatedLegacyCount,
+          undatedReceipts: receipts.undatedLegacyAmount,
+          undatedPayments: payments.undatedLegacyAmount,
+        },
       };
     },
   });

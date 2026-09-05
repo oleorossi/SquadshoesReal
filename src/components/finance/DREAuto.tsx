@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
@@ -31,10 +32,13 @@ export function DREAuto() {
     isLoading: invLoading,
     error: inventoryError,
     refetch: refetchInventory,
-  } = useDREInventoryVariation(months, Boolean(report) && !error);
+  } = useDREInventoryVariation(months, Boolean(report) && !error && !report?.cmvPending?.length);
   const data = report?.months || [];
   const company = report?.company || null;
   const isSimplesNacional = String(company?.regime_tributario || '') === '1';
+  const periodButtons = <div className="flex gap-1" role="group" aria-label="Período da apuração">
+    {([3, 6, 12] as const).map(m => <Button key={m} variant={months === m ? 'default' : 'outline'} size="sm" aria-pressed={months === m} onClick={() => setMonths(m)}>{m} meses</Button>)}
+  </div>;
 
   if (isLoading) return <Skeleton className="h-96" />;
 
@@ -48,6 +52,7 @@ export function DREAuto() {
             Os números não serão exibidos enquanto alguma fonte de receita, CMV, despesa ou regime tributário estiver indisponível.
           </p>
           <p className="text-xs font-mono text-destructive/80 mt-2">{(error as Error).message}</p>
+          <div className="flex justify-center mt-4">{periodButtons}</div>
           <Button size="sm" variant="outline" className="mt-4 gap-1.5" onClick={() => refetch()}>
             <RefreshCw className="h-3.5 w-3.5" /> Tentar novamente
           </Button>
@@ -60,19 +65,39 @@ export function DREAuto() {
   // reconhecido, a tabela abaixo sairia inteira zerada e passaria por DRE
   // legítimo de uma empresa parada — quando o que falta é lançar as baixas.
   const vazio = report?.origemVazia;
-  const semNenhumLancamento = Boolean(vazio?.recebimentos && vazio?.pagamentos && vazio?.cmv);
+  const cashWarnings = report?.cashWarnings;
+  const cashWarningPanel = (cashWarnings?.legacyDatedCount || cashWarnings?.undatedLegacyCount) ? (
+    <div role="alert" className="rounded-md border border-warning p-3 space-y-2 text-sm">
+      <p className="font-medium">Histórico anterior sem discriminação completa</p>
+      {!!cashWarnings.legacyDatedCount && <p>{cashWarnings.legacyDatedCount} valor(es) antigo(s) usa(m) a data que já estava registrada; não há detalhe das baixas anteriores.</p>}
+      {!!cashWarnings.undatedLegacyCount && <p>Fora dos meses por falta de data: recebimentos {fmt(cashWarnings.undatedReceipts)}, pagamentos {fmt(cashWarnings.undatedPayments)} e CMV {fmt(cashWarnings.undatedCmv)}. A apuração é incompleta enquanto essas datas não forem comprovadas.</p>}
+    </div>
+  ) : null;
+  if (report?.cmvPending?.length) {
+    return <Card className="border-warning"><CardContent className="py-6 space-y-3">
+      {cashWarningPanel}
+      {periodButtons}
+      <p role="alert" className="font-semibold">Apuração incompleta: movimentos com custo pendente</p>
+      <p className="text-sm text-muted-foreground">Há {report.cmvPending.length} movimento(s) de vendas com pendência de custo neste período, incluindo recebimentos, estornos ou saldos anteriores. Os valores de caixa estão preservados, mas não serão apresentados como lucro com custo zero.</p>
+      <p className="text-sm text-muted-foreground">Revise a formação do custo e a pendência de reconhecimento. O sistema não cria custos nem datas históricas automaticamente.</p>
+      <div className="flex gap-2"><Button variant="outline" asChild><Link to="/sales">Revisar vendas</Link></Button><Button variant="outline" onClick={() => refetch()}>Atualizar apuração</Button></div>
+    </CardContent></Card>;
+  }
+  const semNenhumLancamento = Boolean(vazio?.recebimentos && vazio?.pagamentos && vazio?.cmv && !report?.hasFactoringMovements);
   if (semNenhumLancamento) {
     return (
       <Card>
         <CardContent className="py-10">
+          {periodButtons}
+          {cashWarningPanel}
           <EmptyState
             icon={AlertTriangle}
             title="Sem lançamentos no período"
             description={
               'A DRE é por regime de CAIXA: ela só enxerga título com baixa registrada. ' +
               'Na janela selecionada não há nenhum recebimento em Contas a Receber, ' +
-              'nenhum pagamento em Contas a Pagar e nenhum CMV reconhecido — por isso ' +
-              'não há resultado a apurar. Registre as baixas para a apuração aparecer.'
+              'nenhum pagamento em Contas a Pagar, CMV reconhecido ou despesa de factoring — por isso ' +
+              'não há resultado a apurar. Importe e concilie o extrato, ou registre movimentos já ocorridos.'
             }
           />
         </CardContent>
@@ -92,6 +117,7 @@ export function DREAuto() {
 
   return (
     <div className="space-y-4">
+      {cashWarningPanel}
       {isSimplesNacional && (
         <div className="rounded-md border border-blue-500/30 bg-blue-500/5 p-3 flex items-start gap-2 text-sm">
           <Info className="h-4 w-4 mt-0.5 text-blue-600 shrink-0" />
@@ -115,21 +141,10 @@ export function DREAuto() {
             (recebimento) / sai (pagamento). Juros de factoring entram como despesa financeira.
           </p>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Em títulos com múltiplas baixas, o acumulado fica na data da última baixa até existir um razão detalhado de pagamentos.
+            Cada baixa e cada estorno novo permanece em sua própria data. Valores anteriores sem discriminação são identificados separadamente.
           </p>
         </div>
-        <div className="flex gap-1">
-          {([3, 6, 12] as const).map((m) => (
-            <Button
-              key={m}
-              variant={months === m ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setMonths(m)}
-            >
-              {m} meses
-            </Button>
-          ))}
-        </div>
+        {periodButtons}
       </div>
 
       {/* Totalizadores — "% vai pro bolso" em destaque na primeira linha,

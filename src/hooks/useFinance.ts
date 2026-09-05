@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { sanitizeUuidFields } from '@/lib/utils';
 import { invalidateFinanceDerivedQueries } from '@/lib/financeQueryInvalidation';
 import { fetchFinancialRows } from '@/lib/financialPagination';
+import type { Database } from '@/integrations/supabase/types';
 
 export type AccountPayable = {
   id: string;
@@ -49,6 +50,20 @@ export type AccountReceivable = {
   sale_orders?: { order_number: string; client_name: string } | null;
 };
 
+function assertNoDirectCashWrite(data: Record<string, unknown>, creating = false) {
+  for (const field of ['amount_paid', 'amount_received']) {
+    if (data[field] !== undefined && (!creating || Number(data[field]) !== 0)) {
+      throw new Error('Registre pagamentos e recebimentos pelo comando de baixa, não pela edição do título.');
+    }
+  }
+  if (data.payment_date !== undefined && (!creating || data.payment_date !== null)) {
+    throw new Error('A data do movimento pertence ao histórico de baixas.');
+  }
+  if (data.status !== undefined && (!creating || data.status !== 'pending')) {
+    throw new Error('A situação financeira é calculada a partir das baixas.');
+  }
+}
+
 export function useAccountsPayable(enabled = true) {
   return useQuery({
     queryKey: ['accounts_payable'],
@@ -86,9 +101,10 @@ export function useAccountsReceivable(enabled = true) {
 export function useCreateAccountPayable() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (account: Omit<AccountPayable, 'id' | 'created_at' | 'updated_at' | 'suppliers'>) => {
+    mutationFn: async (account: Database['public']['Tables']['accounts_payable']['Insert']) => {
       if (!Number.isFinite(account.amount) || account.amount <= 0) throw new Error('Valor deve ser um número positivo.');
-      const { error } = await supabase.from('accounts_payable').insert(sanitizeUuidFields(account) as any);
+      assertNoDirectCashWrite(account, true);
+      const { error } = await supabase.from('accounts_payable').insert(sanitizeUuidFields(account) as Database['public']['Tables']['accounts_payable']['Insert']);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -103,9 +119,10 @@ export function useCreateAccountPayable() {
 export function useCreateAccountReceivable() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (account: Omit<AccountReceivable, 'id' | 'created_at' | 'updated_at' | 'sale_orders'>) => {
+    mutationFn: async (account: Database['public']['Tables']['accounts_receivable']['Insert']) => {
       if (!Number.isFinite(account.amount) || account.amount <= 0) throw new Error('Valor deve ser um número positivo.');
-      const { error } = await supabase.from('accounts_receivable').insert(sanitizeUuidFields(account) as any);
+      assertNoDirectCashWrite(account, true);
+      const { error } = await supabase.from('accounts_receivable').insert(sanitizeUuidFields(account) as Database['public']['Tables']['accounts_receivable']['Insert']);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -121,23 +138,13 @@ export function useUpdateAccountPayable() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, ...data }: Partial<AccountPayable> & { id: string }) => {
-      const { suppliers, ...cleanData } = data as any;
-      // Guard: prevent amount/status edits on already-paid rows to preserve audit trail.
-      // Uses a conditional UPDATE (.neq) instead of SELECT-then-UPDATE to avoid a race
-      // where a concurrent payment flips status between our SELECT and UPDATE.
-      if (cleanData.amount !== undefined || cleanData.status !== undefined) {
-        const { data: updated, error } = await supabase
-          .from('accounts_payable')
-          .update(sanitizeUuidFields(cleanData) as any)
-          .eq('id', id)
-          .not('status', 'in', '("paid","cancelled")')
-          .select('id');
-        if (error) throw error;
-        if (!updated || updated.length === 0) throw new Error('Conta já paga ou cancelada — não é possível editar.');
-        return;
-      }
-      const { error } = await supabase.from('accounts_payable').update(sanitizeUuidFields(cleanData) as any).eq('id', id);
+      const { suppliers, ...cleanData } = data;
+      assertNoDirectCashWrite(cleanData);
+      // A trava definitiva é transacional no banco, inclusive contra concorrência
+      // com baixas e alterações incompatíveis com a origem fiscal/compra.
+      const { data: updated, error } = await supabase.from('accounts_payable').update(sanitizeUuidFields(cleanData)).eq('id', id).select('id');
       if (error) throw error;
+      if (!updated?.length) throw new Error('Conta não encontrada ou sem permissão para editar.');
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['accounts_payable'] });
@@ -152,23 +159,11 @@ export function useUpdateAccountReceivable() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, ...data }: Partial<AccountReceivable> & { id: string }) => {
-      const { sale_orders, ...cleanData } = data as any;
-      // Guard: prevent amount/status edits on already-received rows to preserve audit trail.
-      // Uses a conditional UPDATE (.neq) instead of SELECT-then-UPDATE to avoid a race
-      // where a concurrent payment flips status between our SELECT and UPDATE.
-      if (cleanData.amount !== undefined || cleanData.status !== undefined) {
-        const { data: updated, error } = await supabase
-          .from('accounts_receivable')
-          .update(sanitizeUuidFields(cleanData) as any)
-          .eq('id', id)
-          .not('status', 'in', '("received","cancelled")')
-          .select('id');
-        if (error) throw error;
-        if (!updated || updated.length === 0) throw new Error('Conta já recebida ou cancelada — não é possível editar.');
-        return;
-      }
-      const { error } = await supabase.from('accounts_receivable').update(sanitizeUuidFields(cleanData) as any).eq('id', id);
+      const { sale_orders, ...cleanData } = data;
+      assertNoDirectCashWrite(cleanData);
+      const { data: updated, error } = await supabase.from('accounts_receivable').update(sanitizeUuidFields(cleanData)).eq('id', id).select('id');
       if (error) throw error;
+      if (!updated?.length) throw new Error('Conta não encontrada ou sem permissão para editar.');
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['accounts_receivable'] });
@@ -183,58 +178,21 @@ export function useDeleteAccountPayable() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      // Refuse to hard-delete paid AP rows to preserve the audit trail.
+      // O banco também recusa título com qualquer evento, mesmo já estornado.
       const { data, error } = await supabase
         .from('accounts_payable')
         .delete()
         .eq('id', id)
         .neq('status', 'paid')
+        .eq('amount_paid', 0)
         .select('id');
       if (error) throw error;
-      if (!data || data.length === 0) throw new Error('Conta já paga não pode ser excluída. Estorne o pagamento antes de excluir.');
+      if (!data || data.length === 0) throw new Error('Conta com pagamento não pode ser excluída. O histórico deve ser preservado.');
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['accounts_payable'] });
       invalidateFinanceDerivedQueries(qc);
       toast.success('Conta excluída!');
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-}
-
-/**
- * Estorno de pagamento — a ÚNICA saída para uma AP marcada como paga por engano.
- * Sem ele a linha ficava congelada para sempre: `useDeleteAccountPayable` recusa
- * `status='paid'` e `useUpdateAccountPayable` recusa edição de amount/status, e
- * não existia nenhuma ação de cancelar na UI. O estorno devolve a conta para
- * 'pending', de onde ela pode ser editada, excluída ou paga de novo.
- *
- * ⚠ `amount_paid` TEM que ir a zero no MESMO update. O trigger `trg_auto_close_ap`
- * (BEFORE UPDATE OF amount_paid, amount) reabre a conta como 'paid' sempre que
- * `amount_paid >= amount` — mexer só no status devolveria 'paid' na mesma
- * transação, silenciosamente. Vale para pagamento parcial também.
- *
- * Predicado atômico `.eq('status','paid')` (mesmo padrão do markPaid): dois
- * estornos concorrentes → o segundo não casa linha e falha explícito, em vez de
- * zerar um pagamento que outra sessão acabou de registrar.
- */
-export function useReverseAccountPayable() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (id: string) => {
-      const { data, error } = await supabase
-        .from('accounts_payable')
-        .update({ status: 'pending', amount_paid: 0, payment_date: null })
-        .eq('id', id)
-        .eq('status', 'paid')
-        .select('id');
-      if (error) throw error;
-      if (!data || data.length === 0) throw new Error('Conta não está paga — nada a estornar.');
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['accounts_payable'] });
-      invalidateFinanceDerivedQueries(qc);
-      toast.success('Pagamento estornado. A conta voltou para "À Vencer".');
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -250,46 +208,15 @@ export function useDeleteAccountReceivable() {
         .delete()
         .eq('id', id)
         .not('status', 'in', '("received","cancelled")')
+        .eq('amount_received', 0)
         .select('id');
       if (error) throw error;
-      if (!data || data.length === 0) throw new Error('Conta já recebida ou cancelada não pode ser excluída. Estorne o recebimento antes de excluir.');
+      if (!data || data.length === 0) throw new Error('Conta recebida ou cancelada não pode ser excluída. O histórico deve ser preservado.');
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['accounts_receivable'] });
       invalidateFinanceDerivedQueries(qc);
       toast.success('Conta excluída!');
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-}
-
-/**
- * Espelho de `useReverseAccountPayable` para o lado a receber — mesmo beco sem
- * saída (delete e update recusam `status='received'`), mesma trava do trigger
- * `trg_auto_close_ar`, que reabre como 'received' se `amount_received >= amount`.
- *
- * Colateral esperado: `trg_ar_recompute_cmv` dispara em UPDATE OF status /
- * amount_received / payment_date e recalcula o reconhecimento de CMV do PV
- * vinculado. Isso é o comportamento correto de um estorno — o CMV reconhecido
- * some junto com o recebimento —, não um efeito a suprimir.
- */
-export function useReverseAccountReceivable() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (id: string) => {
-      const { data, error } = await supabase
-        .from('accounts_receivable')
-        .update({ status: 'pending', amount_received: 0, payment_date: null })
-        .eq('id', id)
-        .eq('status', 'received')
-        .select('id');
-      if (error) throw error;
-      if (!data || data.length === 0) throw new Error('Conta não está recebida — nada a estornar.');
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['accounts_receivable'] });
-      invalidateFinanceDerivedQueries(qc);
-      toast.success('Recebimento estornado. A conta voltou para "À Vencer".');
     },
     onError: (e: Error) => toast.error(e.message),
   });

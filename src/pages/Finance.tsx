@@ -1,7 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useCan } from '@/hooks/useAccessControl';
 import { CurrencyDollar as DollarSign, TrendUp as TrendingUp, TrendDown as TrendingDown, Warning as AlertTriangle, Plus, PencilSimple as Pencil, Trash as Trash2, CheckCircle, ArrowCounterClockwise as Undo2, Clock, CircleNotch as Loader2, FileText, Buildings as Building2, ChartBar as BarChart3, Calculator, Bank as Landmark, FileArrowUp as FileUp, FileArrowDown as FileDown, UserCheck, MagnifyingGlass, Percent, ArrowsClockwise as RefreshCw } from '@phosphor-icons/react';
@@ -35,7 +33,6 @@ import {
   useCreateAccountPayable, useCreateAccountReceivable,
   useUpdateAccountPayable, useUpdateAccountReceivable,
   useDeleteAccountPayable, useDeleteAccountReceivable,
-  useReverseAccountPayable, useReverseAccountReceivable,
   type AccountPayable, type AccountReceivable,
 } from '@/hooks/useFinance';
 import {
@@ -58,13 +55,16 @@ import FactoringTab from '@/components/finance/FactoringTab';
 import BankReconciliationTab from '@/components/finance/BankReconciliationTab';
 import BoletoUploadDialog from '@/components/finance/BoletoUploadDialog';
 import FinanceAttachments from '@/components/finance/FinanceAttachments';
+import FinancialSettlementDialog from '@/components/finance/FinancialSettlementDialog';
+import FinancialSettlementHistoryDialog from '@/components/finance/FinancialSettlementHistoryDialog';
+import { useFinancialSettlementCommand } from '@/hooks/useFinancialSettlements';
+import { type RegisterSettlementEntry, type SettlementTarget } from '@/lib/financialSettlement';
 import { FinanceReportsTab } from '@/components/finance/FinanceReportsTab';
 import { SmartDashboard } from '@/components/finance/SmartDashboard';
 import { NetMarginChart } from '@/components/finance/NetMarginChart';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { getSecondaryRoutesForGroup } from '@/data/navigation';
 import { Panel } from '@/components/ui/panel';
-import { invalidateFinanceDerivedQueries } from '@/lib/financeQueryInvalidation';
 
 const fmt = (v: number | null | undefined) => {
   const n = Number(v);
@@ -77,6 +77,8 @@ const statusConfig: Record<string, { label: string; variant: 'default' | 'second
   received: { label: 'Recebido', variant: 'default' },
   overdue: { label: 'Vencido', variant: 'destructive' },
   cancelled: { label: 'Cancelado', variant: 'secondary' },
+  parcial: { label: 'Parcial', variant: 'secondary' },
+  partial: { label: 'Parcial', variant: 'secondary' },
 };
 
 // Lê "hoje" no momento da chamada — não captura na carga do módulo (senão fica
@@ -179,12 +181,18 @@ const CHART_COLORS = ['hsl(var(--primary))', 'hsl(var(--destructive))', 'hsl(142
 // FinanceDashboard removed — substituído por SmartDashboard (módulo de inteligência financeira).
 
 // ─── Payable Form Dialog (reused from original) ───
+type FinancialAccountForm = Partial<AccountPayable & AccountReceivable> & { is_recurring?: boolean; recurring_months?: number };
+
 function PayableFormDialog({ open, onOpenChange, editing, suppliers, onSave }: {
   open: boolean; onOpenChange: (o: boolean) => void; editing: AccountPayable | null;
-  suppliers: { id: string; name: string }[]; onSave: (data: any) => void;
+  suppliers: { id: string; name: string }[]; onSave: (data: FinancialAccountForm) => Promise<void>;
 }) {
   const [form, setForm] = useState<any>({});
   const [overdueWarning, setOverdueWarning] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const [saveError, setSaveError] = useState('');
+  const [partialCreation, setPartialCreation] = useState(false);
   useEffect(() => {
     if (open) {
       setForm({
@@ -195,20 +203,34 @@ function PayableFormDialog({ open, onOpenChange, editing, suppliers, onSave }: {
         is_recurring: (editing as any)?.is_recurring || false, recurring_months: 12,
       });
       setOverdueWarning(false);
+      setSaveError('');
+      setPartialCreation(false);
     }
   }, [open, editing]);
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (savingRef.current || saving || partialCreation) return;
     if (form.due_date && isBefore(parseISO(form.due_date), todayMidnight()) && !overdueWarning) {
       setOverdueWarning(true);
       return;
     }
-    onSave(form);
-    onOpenChange(false);
+    savingRef.current = true;
+    setSaving(true);
+    setSaveError('');
+    try {
+      await onSave(form);
+      onOpenChange(false);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Não foi possível salvar a conta.');
+      if (error instanceof Error && error.name === 'PartialFinancialCreationError') setPartialCreation(true);
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={value => { if (!savingRef.current) onOpenChange(value); }}>
       <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{editing ? 'Editar' : 'Nova'} Conta a Pagar</DialogTitle>
@@ -292,8 +314,9 @@ function PayableFormDialog({ open, onOpenChange, editing, suppliers, onSave }: {
           )}
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button onClick={handleSave}>Salvar</Button>
+          {saveError && <p role="alert" className="text-sm text-destructive">{saveError}</p>}
+          <Button variant="outline" disabled={saving} onClick={() => onOpenChange(false)}>Cancelar</Button>
+          <Button disabled={saving || partialCreation} onClick={handleSave}>{saving ? 'Salvando…' : 'Salvar'}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -302,11 +325,15 @@ function PayableFormDialog({ open, onOpenChange, editing, suppliers, onSave }: {
 
 // ─── Receivable Form Dialog ───
 function ReceivableFormDialog({ open, onOpenChange, editing, onSave }: {
-  open: boolean; onOpenChange: (o: boolean) => void; editing: AccountReceivable | null; onSave: (data: any) => void;
+  open: boolean; onOpenChange: (o: boolean) => void; editing: AccountReceivable | null; onSave: (data: FinancialAccountForm) => Promise<void>;
 }) {
   const [form, setForm] = useState<any>({});
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const [saveError, setSaveError] = useState('');
   useEffect(() => {
     if (open) {
+      setSaveError('');
       setForm({
         description: editing?.description || '', client_name: editing?.client_name || '', client_cnpj: editing?.client_cnpj || '',
         category: editing?.category || 'venda', due_date: editing?.due_date || '', amount: editing?.amount || 0,
@@ -316,7 +343,7 @@ function ReceivableFormDialog({ open, onOpenChange, editing, onSave }: {
     }
   }, [open, editing]);
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={value => { if (!savingRef.current) onOpenChange(value); }}>
       <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{editing ? 'Editar' : 'Nova'} Conta a Receber</DialogTitle>
@@ -352,8 +379,17 @@ function ReceivableFormDialog({ open, onOpenChange, editing, onSave }: {
           )}
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button onClick={() => { onSave(form); onOpenChange(false); }}>Salvar</Button>
+          {saveError && <p role="alert" className="text-sm text-destructive">{saveError}</p>}
+          <Button variant="outline" disabled={saving} onClick={() => onOpenChange(false)}>Cancelar</Button>
+          <Button disabled={saving} onClick={async () => {
+            if (savingRef.current) return;
+            savingRef.current = true;
+            setSaving(true);
+            setSaveError('');
+            try { await onSave(form); onOpenChange(false); }
+            catch (error) { setSaveError(error instanceof Error ? error.message : 'Não foi possível salvar a conta.'); }
+            finally { savingRef.current = false; setSaving(false); }
+          }}>{saving ? 'Salvando…' : 'Salvar'}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -759,6 +795,7 @@ const FINANCE_TAB_ALIASES: Record<string, FinanceTab> = {
   operational: 'comissoes-factoring',   // nome anterior da aba
   comissoes: 'comissoes-factoring',
   factoring: 'comissoes-factoring',
+  conciliacao: 'comissoes-factoring',
   relatorios: 'reports',
   dre: 'reports',
   cashflow: 'reports',
@@ -779,7 +816,7 @@ export default function Finance() {
     clearOnChange: ['subtab'],
     migrateFrom: 'financeTab',
   });
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const needsLedger = financeTab === 'accounts' || financeTab === 'dashboard';
   const {
     data: payables = [],
@@ -796,15 +833,15 @@ export default function Finance() {
   // Fornecedores só alimentam os formulários da aba Contas. Evita baixar o
   // cadastro inteiro ao abrir Visão Geral, Notas ou Relatórios.
   const { data: suppliers = [] } = useSuppliers(financeTab === 'accounts');
-  const qc = useQueryClient();
   const createPayable = useCreateAccountPayable();
   const createReceivable = useCreateAccountReceivable();
   const updatePayable = useUpdateAccountPayable();
   const updateReceivable = useUpdateAccountReceivable();
   const deletePayable = useDeleteAccountPayable();
   const deleteReceivable = useDeleteAccountReceivable();
-  const reversePayable = useReverseAccountPayable();
-  const reverseReceivable = useReverseAccountReceivable();
+  const settlement = useFinancialSettlementCommand();
+  const [settlementTargets, setSettlementTargets] = useState<SettlementTarget[]>([]);
+  const [historyTarget, setHistoryTarget] = useState<{ id: string; kind: 'payable' | 'receivable'; description: string } | null>(null);
   // Gates de ação por área (referência de adoção do controle CRUD). Admin e
   // usuários sem permissão granular sempre passam — não restringe quem já podia.
   // ⚠ Usa o path do ITEM DE MENU ('/financeiro'), não a rota-redirect '/finance':
@@ -828,6 +865,17 @@ export default function Finance() {
   // "Contas → A Pagar"). O helper normaliza a aba-pai; a filha é sedimentada
   // aqui, uma vez, a partir do parâmetro cru — antes que a normalização o apague.
   const rawTabParam = searchParams.get('tab');
+  const factoringSubTab = ['factoring', 'conciliacao'].includes(rawTabParam ?? '')
+    ? rawTabParam!
+    : ['comissoes', 'factoring', 'conciliacao'].includes(searchParams.get('subtab') ?? '')
+      ? searchParams.get('subtab')! : 'comissoes';
+  useEffect(() => {
+    if (!['comissoes', 'factoring', 'conciliacao'].includes(rawTabParam ?? '')) return;
+    const params = new URLSearchParams(searchParams);
+    params.set('tab', 'comissoes-factoring');
+    params.set('subtab', rawTabParam!);
+    setSearchParams(params, { replace: true });
+  }, [rawTabParam, searchParams, setSearchParams]);
   const semeouSubtab = useRef(false);
   useEffect(() => {
     if (semeouSubtab.current || !rawTabParam) return;
@@ -881,34 +929,7 @@ export default function Finance() {
       toast.error(`${ok} excluída(s), ${failed} falha(s)${reason ? ` — ${reason}` : ''}`);
     } else toast.success(`${ok} conta(s) excluída(s)`);
   };
-  const handleBulkMarkReceived = async () => {
-    const todayStr = format(todayMidnight(), 'yyyy-MM-dd');
-    const candidates = Array.from(selectedReceivables)
-      .map(id => receivables.find(x => x.id === id))
-      .filter((r): r is AccountReceivable => !!r && r.status !== 'received' && r.status !== 'cancelled');
-    setSelectedReceivables(new Set());
-    if (candidates.length === 0) return;
-    // Use direct Supabase call with atomic-claim predicate to prevent
-    // concurrent bulk/single receives from overwriting already-processed rows.
-    const results = await Promise.allSettled(
-      candidates.map(async r => {
-        const { data, error } = await supabase
-          .from('accounts_receivable')
-          .update({ status: 'received', amount_received: r.amount, payment_date: todayStr, updated_at: new Date().toISOString() })
-          .eq('id', r.id)
-          .not('status', 'in', '(received,cancelled)')
-          .select('id');
-        if (error) throw error;
-        if (!data || data.length === 0) throw new Error('Already processed');
-      })
-    );
-    qc.invalidateQueries({ queryKey: ['accounts_receivable'] });
-    invalidateFinanceDerivedQueries(qc);
-    const failed = results.filter(r => r.status === 'rejected').length;
-    const ok = results.filter(r => r.status === 'fulfilled').length;
-    if (failed > 0) toast.error(`${ok} marcada(s), ${failed} falha(s) — verifique e tente novamente.`);
-    else if (ok > 0) toast.success(`${ok} conta(s) marcada(s) como recebida(s)`);
-  };
+  const handleBulkMarkReceived = () => openSettlement(receivables.filter(row => selectedReceivables.has(row.id)), 'receivable');
   const handleBulkDeletePayables = async () => {
     const ids = Array.from(selectedPayables);
     setSelectedPayables(new Set());
@@ -920,34 +941,41 @@ export default function Finance() {
       toast.error(`${ok} excluída(s), ${failed} falha(s)${reason ? ` — ${reason}` : ''}`);
     } else toast.success(`${ok} conta(s) excluída(s)`);
   };
-  const handleBulkMarkPaid = async () => {
-    const todayStr = format(todayMidnight(), 'yyyy-MM-dd');
-    const candidates = Array.from(selectedPayables)
-      .map(id => payables.find(x => x.id === id))
-      .filter((p): p is AccountPayable => !!p && p.status !== 'paid' && p.status !== 'cancelled');
+  const handleBulkMarkPaid = () => openSettlement(payables.filter(row => selectedPayables.has(row.id)), 'payable');
+
+  function openSettlement(rows: (AccountPayable | AccountReceivable)[], kind: 'payable' | 'receivable') {
+    if (!finPerm.canEdit || settlement.isPending || settlement.loadingPending) return;
+    if (settlement.pendingError || settlement.pendingCommand) {
+      toast.error('Confirme a operação pendente antes de registrar outra baixa.');
+      return;
+    }
+    const targets = rows.filter(row => !isSettled(row, kind) && openBalanceOf(row, kind) > 0)
+      .map(row => ({ id: row.id, kind, description: row.description, openAmount: Math.round(openBalanceOf(row, kind) * 100) / 100 }));
+    if (!targets.length) { toast.info('Nenhum título selecionado tem saldo aberto.'); return; }
+    if (targets.length > 200) { toast.error('Selecione no máximo 200 títulos por lote.'); return; }
+    setSettlementTargets(targets);
+  }
+
+  async function confirmSettlement(entries: RegisterSettlementEntry[]) {
+    if (!finPerm.canEdit) throw new Error('Você não tem permissão para registrar baixas.');
+    await settlement.mutateAsync({ command: 'register', payload: { source_type: 'manual', entries } });
     setSelectedPayables(new Set());
-    if (candidates.length === 0) return;
-    // Atomic-claim predicate (mesmo padrão do markPaid unário) evita que um bulk
-    // e um pagamento individual concorrentes sobrescrevam linha já processada.
-    const results = await Promise.allSettled(
-      candidates.map(async p => {
-        const { data, error } = await supabase
-          .from('accounts_payable')
-          .update({ status: 'paid', amount_paid: p.amount, payment_date: todayStr })
-          .eq('id', p.id)
-          .not('status', 'in', '(paid,cancelled)')
-          .select('id');
-        if (error) throw error;
-        if (!data || data.length === 0) throw new Error('Already processed');
-      })
-    );
-    qc.invalidateQueries({ queryKey: ['accounts_payable'] });
-    invalidateFinanceDerivedQueries(qc);
-    const failed = results.filter(r => r.status === 'rejected').length;
-    const ok = results.filter(r => r.status === 'fulfilled').length;
-    if (failed > 0) toast.error(`${ok} marcada(s), ${failed} falha(s) — verifique e tente novamente.`);
-    else if (ok > 0) toast.success(`${ok} conta(s) marcada(s) como paga(s)`);
-  };
+    setSelectedReceivables(new Set());
+    setSettlementTargets([]);
+    toast.success(`${entries.length} movimento(s) registrado(s). O histórico foi preservado.`);
+  }
+
+  async function retryPendingSettlement() {
+    try {
+      await settlement.mutateAsync(null);
+      setSettlementTargets([]);
+      setSelectedPayables(new Set());
+      setSelectedReceivables(new Set());
+      toast.success('Operação confirmada, sem duplicar a baixa.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível confirmar a operação.');
+    }
+  }
 
   const loading = needsLedger && (loadingP || loadingR);
   const ledgerError = needsLedger ? (payablesError || receivablesError) : null;
@@ -982,18 +1010,16 @@ export default function Finance() {
   const handleSavePayable = async (data: any) => {
     const amt = Number(data.amount);
     if (!Number.isFinite(amt) || amt <= 0) {
-      toast.error('Valor deve ser maior que zero.');
-      return;
+      throw new Error('Valor deve ser maior que zero.');
     }
     if (!data.due_date) {
-      toast.error('Data de vencimento é obrigatória.');
-      return;
+      throw new Error('Data de vencimento é obrigatória.');
     }
     // Always strip recurring_months before sending to DB (client-only field)
     const { recurring_months, ...dbData } = data;
 
     if (editingPayable) {
-      updatePayable.mutate({ id: editingPayable.id, ...dbData });
+      await updatePayable.mutateAsync({ id: editingPayable.id, ...dbData });
     } else if (data.is_recurring && recurring_months > 1 && data.due_date) {
       // Gera N lançamentos mensais com mesma data do mês — em sequência, capturando falhas.
       const baseDate = new Date(data.due_date + 'T12:00:00');
@@ -1020,55 +1046,39 @@ export default function Finance() {
       if (failed === 0) {
         toast.success(`${months} lançamentos recorrentes criados!`);
       } else {
-        toast.error(`${months - failed} criado(s), ${failed} falhou(aram). Verifique e tente novamente as faltantes.`);
+        const error = new Error(`${months - failed} criado(s), ${failed} falhou(aram). Confira as contas antes de criar somente as faltantes; repetir o lote inteiro pode duplicar títulos.`);
+        error.name = 'PartialFinancialCreationError';
+        throw error;
       }
     } else {
-      createPayable.mutate({ ...dbData, status: 'pending', amount_paid: 0 });
+      await createPayable.mutateAsync({ ...dbData, status: 'pending', amount_paid: 0 });
     }
     setEditingPayable(null);
   };
 
-  const handleSaveReceivable = (data: any) => {
+  const handleSaveReceivable = async (data: FinancialAccountForm) => {
     const amt = Number(data.amount);
-    if (!Number.isFinite(amt) || amt <= 0) { toast.error('Valor deve ser maior que zero.'); return; }
-    if (!data.due_date) { toast.error('Data de vencimento é obrigatória.'); return; }
-    if (editingReceivable) updateReceivable.mutate({ id: editingReceivable.id, ...data });
-    else createReceivable.mutate({ ...data, status: 'pending', amount_received: 0 });
+    if (!Number.isFinite(amt) || amt <= 0) throw new Error('Valor deve ser maior que zero.');
+    if (!data.due_date) throw new Error('Data de vencimento é obrigatória.');
+    if (editingReceivable) await updateReceivable.mutateAsync({ ...data, id: editingReceivable.id, amount: amt });
+    else await createReceivable.mutateAsync({ ...data, amount: amt, due_date: data.due_date, status: 'pending', amount_received: 0 });
     setEditingReceivable(null);
-  };
-
-  const markPaid = async (p: AccountPayable) => {
-    if (p.status === 'paid' || p.status === 'cancelled') return;
-    const { data: claimed, error } = await supabase
-      .from('accounts_payable')
-      .update({ status: 'paid', amount_paid: p.amount, payment_date: format(todayMidnight(), 'yyyy-MM-dd') })
-      .eq('id', p.id)
-      .not('status', 'in', '(paid,cancelled)')
-      .select('id');
-    if (error) { toast.error(error.message); return; }
-    if (!claimed?.length) { toast.info('Conta já paga ou cancelada — reabra-a antes de marcar como paga.'); return; }
-    qc.invalidateQueries({ queryKey: ['accounts_payable'] });
-    invalidateFinanceDerivedQueries(qc);
-    toast.success('Conta marcada como paga.');
-  };
-  const markReceived = async (r: AccountReceivable) => {
-    if (r.status === 'received' || r.status === 'cancelled') return;
-    const { data: claimed, error } = await supabase
-      .from('accounts_receivable')
-      .update({ status: 'received', amount_received: r.amount, payment_date: format(todayMidnight(), 'yyyy-MM-dd') })
-      .eq('id', r.id)
-      .not('status', 'in', '(received,cancelled)')
-      .select('id');
-    if (error) { toast.error(error.message); return; }
-    if (!claimed?.length) { toast.info('Conta já estava recebida.'); return; }
-    qc.invalidateQueries({ queryKey: ['accounts_receivable'] });
-    invalidateFinanceDerivedQueries(qc);
-    toast.success('Conta marcada como recebida.');
   };
 
   return (
     <>
       <div className="space-y-5 page-enter editorial-stagger">
+        {(settlement.pendingCommand || settlement.pendingError) && (
+          <Card role="alert" className="border-warning">
+            <CardContent className="pt-4 space-y-3">
+              <p className="font-medium">Existe uma operação financeira sem confirmação nesta sessão.</p>
+              <p className="text-sm text-muted-foreground">Não registre a mesma baixa novamente. A confirmação repete a identificação original e não duplica o movimento.</p>
+              {settlement.pendingCommand && <p className="text-sm">{settlement.pendingCommand.payload.entries.length} movimento(s) · {settlement.pendingCommand.command === 'register' ? 'Baixa' : 'Estorno'}</p>}
+              {settlement.pendingError && <p className="text-sm text-destructive">{settlement.pendingError.message}</p>}
+              {settlement.pendingCommand && <Button disabled={!finPerm.canEdit || settlement.isPending} onClick={retryPendingSettlement}>Confirmar operação pendente</Button>}
+            </CardContent>
+          </Card>
+        )}
         <EditorialPageHeader
           sectionLabel="FINANCEIRO · CENTRAL"
           title="Financeiro"
@@ -1245,14 +1255,7 @@ export default function Finance() {
                       <>
                         {selectedPayables.size > 0 && (<>
                           {finPerm.canEdit && (
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button size="sm" variant="default" className="bg-success text-success-foreground hover:bg-success/90"><CheckCircle className="h-4 w-4 mr-1" /> Pago ({selectedPayables.size})</Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Marcar {selectedPayables.size} conta(s) como paga(s)?</AlertDialogTitle><AlertDialogDescription>O valor total será considerado pago na data de hoje. Contas já pagas ou canceladas são ignoradas.</AlertDialogDescription></AlertDialogHeader>
-                              <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={handleBulkMarkPaid}>Confirmar</AlertDialogAction></AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
+                          <Button size="sm" disabled={settlement.isPending || settlement.loadingPending} onClick={handleBulkMarkPaid}><CheckCircle className="h-4 w-4 mr-1" /> Registrar pagamentos ({selectedPayables.size})</Button>
                           )}
                           {finPerm.canDelete && (
                           <AlertDialog>
@@ -1409,27 +1412,11 @@ export default function Finance() {
                                 <TableCell><Badge variant={cfg.variant}>{cfg.label}</Badge></TableCell>
                                 <TableCell className="text-right">
                                   <div className="flex gap-1 justify-end">
-                                    {eff !== 'paid' && eff !== 'cancelled' && (
-                                      <AlertDialog>
-                                        <AlertDialogTrigger asChild><Button size="icon" variant="ghost" className="h-7 w-7" title="Marcar Pago"><CheckCircle className="h-3.5 w-3.5 text-green-600" /></Button></AlertDialogTrigger>
-                                        <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Marcar como Pago?</AlertDialogTitle><AlertDialogDescription>Registrar pagamento de {fmt(p.amount)} na data de hoje?</AlertDialogDescription></AlertDialogHeader>
-                                          <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => markPaid(p)}>Confirmar</AlertDialogAction></AlertDialogFooter>
-                                        </AlertDialogContent>
-                                      </AlertDialog>
-                                    )}
-                                    {/* Estorno: única saída de uma AP paga. Sem ele a linha fica
-                                        congelada — não exclui, não edita valor/status. */}
-                                    {p.status === 'paid' && (
-                                      <AlertDialog>
-                                        <AlertDialogTrigger asChild><Button size="icon" variant="ghost" className="h-7 w-7" title="Estornar pagamento" aria-label="Estornar pagamento"><Undo2 className="h-3.5 w-3.5 text-amber-600" /></Button></AlertDialogTrigger>
-                                        <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Estornar pagamento?</AlertDialogTitle><AlertDialogDescription>A conta de {fmt(p.amount)} volta para "À Vencer", com o valor pago zerado e a data de pagamento apagada. Depois disso ela pode ser editada, excluída ou paga de novo.</AlertDialogDescription></AlertDialogHeader>
-                                          <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => reversePayable.mutate(p.id)}>Estornar</AlertDialogAction></AlertDialogFooter>
-                                        </AlertDialogContent>
-                                      </AlertDialog>
-                                    )}
-                                    <Button size="icon" variant="ghost" className="h-7 w-7" aria-label="Editar conta" onClick={() => { setEditingPayable(p); setPayableDialog(true); }}><Pencil className="h-3.5 w-3.5" /></Button>
+                                    {finPerm.canEdit && eff !== 'paid' && eff !== 'cancelled' && <Button size="icon" variant="ghost" className="h-7 w-7" aria-label="Registrar pagamento" disabled={settlement.isPending || settlement.loadingPending} onClick={() => openSettlement([p], 'payable')}><CheckCircle className="h-3.5 w-3.5 text-success" /></Button>}
+                                    <Button size="icon" variant="ghost" className="h-7 w-7" aria-label="Histórico de pagamentos e estornos" onClick={() => setHistoryTarget({ id: p.id, kind: 'payable', description: p.description })}><Clock className="h-3.5 w-3.5" /></Button>
+                                    <Button size="icon" variant="ghost" className="h-7 w-7" disabled={!finPerm.canEdit} aria-label="Editar conta" onClick={() => { setEditingPayable(p); setPayableDialog(true); }}><Pencil className="h-3.5 w-3.5" /></Button>
                                     <AlertDialog>
-                                      <AlertDialogTrigger asChild><Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" aria-label="Excluir conta"><Trash2 className="h-3.5 w-3.5" /></Button></AlertDialogTrigger>
+                                      <AlertDialogTrigger asChild><Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" disabled={!finPerm.canDelete || p.amount_paid > 0} aria-label="Excluir conta"><Trash2 className="h-3.5 w-3.5" /></Button></AlertDialogTrigger>
                                       <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Excluir conta?</AlertDialogTitle><AlertDialogDescription>Esta ação não pode ser desfeita.</AlertDialogDescription></AlertDialogHeader>
                                         <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => deletePayable.mutate(p.id)}>Excluir</AlertDialogAction></AlertDialogFooter>
                                       </AlertDialogContent>
@@ -1470,14 +1457,7 @@ export default function Finance() {
                       <>
                         {selectedReceivables.size > 0 && (<>
                           {finPerm.canEdit && (
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button size="sm" variant="default" className="bg-success text-success-foreground hover:bg-success/90"><CheckCircle className="h-4 w-4 mr-1" /> Recebido ({selectedReceivables.size})</Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Marcar {selectedReceivables.size} conta(s) como recebida(s)?</AlertDialogTitle><AlertDialogDescription>O valor total será considerado recebido na data de hoje.</AlertDialogDescription></AlertDialogHeader>
-                              <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={handleBulkMarkReceived}>Confirmar</AlertDialogAction></AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
+                          <Button size="sm" disabled={settlement.isPending || settlement.loadingPending} onClick={handleBulkMarkReceived}><CheckCircle className="h-4 w-4 mr-1" /> Registrar recebimentos ({selectedReceivables.size})</Button>
                           )}
                           {finPerm.canDelete && (
                           <AlertDialog>
@@ -1600,26 +1580,11 @@ export default function Finance() {
                                 <TableCell><Badge variant={cfg.variant}>{cfg.label}</Badge></TableCell>
                                 <TableCell className="text-right">
                                   <div className="flex gap-1 justify-end">
-                                    {eff !== 'received' && eff !== 'cancelled' && (
-                                      <AlertDialog>
-                                        <AlertDialogTrigger asChild><Button size="icon" variant="ghost" className="h-7 w-7" title="Marcar Recebido"><CheckCircle className="h-3.5 w-3.5 text-green-600" /></Button></AlertDialogTrigger>
-                                        <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Marcar como Recebido?</AlertDialogTitle><AlertDialogDescription>Registrar recebimento de {fmt(r.amount)} na data de hoje?</AlertDialogDescription></AlertDialogHeader>
-                                          <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => markReceived(r)}>Confirmar</AlertDialogAction></AlertDialogFooter>
-                                        </AlertDialogContent>
-                                      </AlertDialog>
-                                    )}
-                                    {/* Espelho do estorno da AP — mesmo beco sem saída do lado a receber. */}
-                                    {r.status === 'received' && (
-                                      <AlertDialog>
-                                        <AlertDialogTrigger asChild><Button size="icon" variant="ghost" className="h-7 w-7" title="Estornar recebimento" aria-label="Estornar recebimento"><Undo2 className="h-3.5 w-3.5 text-amber-600" /></Button></AlertDialogTrigger>
-                                        <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Estornar recebimento?</AlertDialogTitle><AlertDialogDescription>A conta de {fmt(r.amount)} volta para "À Vencer", com o valor recebido zerado e a data de pagamento apagada. O reconhecimento de CMV do PV vinculado é recalculado.</AlertDialogDescription></AlertDialogHeader>
-                                          <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => reverseReceivable.mutate(r.id)}>Estornar</AlertDialogAction></AlertDialogFooter>
-                                        </AlertDialogContent>
-                                      </AlertDialog>
-                                    )}
-                                    <Button size="icon" variant="ghost" className="h-7 w-7" aria-label="Editar conta" onClick={() => { setEditingReceivable(r); setReceivableDialog(true); }}><Pencil className="h-3.5 w-3.5" /></Button>
+                                    {finPerm.canEdit && eff !== 'received' && eff !== 'cancelled' && <Button size="icon" variant="ghost" className="h-7 w-7" aria-label="Registrar recebimento" disabled={settlement.isPending || settlement.loadingPending} onClick={() => openSettlement([r], 'receivable')}><CheckCircle className="h-3.5 w-3.5 text-success" /></Button>}
+                                    <Button size="icon" variant="ghost" className="h-7 w-7" aria-label="Histórico de recebimentos e estornos" onClick={() => setHistoryTarget({ id: r.id, kind: 'receivable', description: r.description })}><Clock className="h-3.5 w-3.5" /></Button>
+                                    <Button size="icon" variant="ghost" className="h-7 w-7" disabled={!finPerm.canEdit} aria-label="Editar conta" onClick={() => { setEditingReceivable(r); setReceivableDialog(true); }}><Pencil className="h-3.5 w-3.5" /></Button>
                                     <AlertDialog>
-                                      <AlertDialogTrigger asChild><Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" aria-label="Excluir conta"><Trash2 className="h-3.5 w-3.5" /></Button></AlertDialogTrigger>
+                                      <AlertDialogTrigger asChild><Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" disabled={!finPerm.canDelete || r.amount_received > 0} aria-label="Excluir conta"><Trash2 className="h-3.5 w-3.5" /></Button></AlertDialogTrigger>
                                       <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Excluir conta?</AlertDialogTitle><AlertDialogDescription>Esta ação não pode ser desfeita.</AlertDialogDescription></AlertDialogHeader>
                                         <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => deleteReceivable.mutate(r.id)}>Excluir</AlertDialogAction></AlertDialogFooter>
                                       </AlertDialogContent>
@@ -1649,7 +1614,12 @@ export default function Finance() {
             <TabsContent value="invoices"><UnifiedInvoicesTab /></TabsContent>
 
             <TabsContent value="comissoes-factoring">
-              <Tabs defaultValue="comissoes">
+              <Tabs value={factoringSubTab} onValueChange={value => {
+                const params = new URLSearchParams(searchParams);
+                params.set('tab', 'comissoes-factoring');
+                params.set('subtab', value);
+                setSearchParams(params);
+              }}>
                 <TabsList className="h-8 gap-1 mb-4">
                   <TabsTrigger value="comissoes" className="gap-1 text-xs h-7">
                     <UserCheck className="h-3.5 w-3.5" /> Comissões
@@ -1676,6 +1646,12 @@ export default function Finance() {
       <PayableFormDialog open={payableDialog} onOpenChange={setPayableDialog} editing={editingPayable} suppliers={suppliers.map(s => ({ id: s.id, name: s.name }))} onSave={handleSavePayable} />
       <BoletoUploadDialog open={boletoUploadDialog} onOpenChange={setBoletoUploadDialog} suppliers={suppliers.map(s => ({ id: s.id, name: s.name }))} />
       <ReceivableFormDialog open={receivableDialog} onOpenChange={setReceivableDialog} editing={editingReceivable} onSave={handleSaveReceivable} />
+      <FinancialSettlementDialog targets={settlementTargets} open={settlementTargets.length > 0} onOpenChange={open => { if (!open && !settlement.isPending) setSettlementTargets([]); }} onConfirm={confirmSettlement} pending={settlement.isPending} />
+      <FinancialSettlementHistoryDialog target={historyTarget} onOpenChange={open => { if (!open && !settlement.isPending) setHistoryTarget(null); }} canEdit={finPerm.canEdit && !settlement.pendingCommand && !settlement.pendingError} pending={settlement.isPending} onReverse={async entries => {
+        if (!finPerm.canEdit) throw new Error('Você não tem permissão para estornar movimentos.');
+        await settlement.mutateAsync({ command: 'reverse', payload: { entries } });
+        toast.success('Estorno registrado. O movimento original permanece no histórico.');
+      }} />
     </>
   );
 }

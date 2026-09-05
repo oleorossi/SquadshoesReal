@@ -82,6 +82,11 @@ export function SmartDashboard({ onNavigate }: { onNavigate?: (tab: string) => v
 
   return (
     <div className="space-y-5">
+      {(kpis.cashWarnings?.legacyDatedCount > 0 || kpis.cashWarnings?.undatedLegacyCount > 0) && <div role="alert" className="rounded-md border border-warning p-3 text-sm space-y-1">
+        <p className="font-medium">Os indicadores de caixa contêm histórico anterior sem discriminação completa.</p>
+        {!!kpis.cashWarnings.legacyDatedCount && <p>{kpis.cashWarnings.legacyDatedCount} valor(es) usa(m) a data antiga registrada.</p>}
+        {!!kpis.cashWarnings.undatedLegacyCount && <p>Sem data comprovada e fora dos totais mensais: recebimentos {fmt(kpis.cashWarnings.undatedReceipts)} e pagamentos {fmt(kpis.cashWarnings.undatedPayments)}.</p>}
+      </div>}
        {/* ─── ALERTAS INTELIGENTES (TOPO) ─── */}
        <Card className="border-primary/30 shadow-sm">
          <CardHeader className="pb-3">
@@ -169,7 +174,7 @@ export function SmartDashboard({ onNavigate }: { onNavigate?: (tab: string) => v
                 <Wallet className="h-5 w-5 text-primary" />
               </div>
               <div className="min-w-0">
-                <p className="text-xs text-muted-foreground">Saldo em Bancos</p>
+                <p className="text-xs text-muted-foreground">Saldo cadastrado em bancos</p>
                 {kpis.bankAccountsCount === 0 ? (
                   // Sem contas cadastradas: "R$ 0,00" parecia dado real e
                   // contradizia o alerta de saldo. Estado vazio orientativo
@@ -185,6 +190,7 @@ export function SmartDashboard({ onNavigate }: { onNavigate?: (tab: string) => v
                   // StatNumber canônico (Anton adaptativo) em vez de <p> ad-hoc.
                   <StatNumber value={fmt(kpis.totalBalance)} base={26} min={14} className={balanceColor} />
                 )}
+                {kpis.bankAccountsCount > 0 && <p className="text-xs text-muted-foreground mt-1">Baixas de títulos não atualizam este saldo automaticamente.</p>}
               </div>
             </div>
           </CardContent>

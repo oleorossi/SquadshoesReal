@@ -3,7 +3,6 @@ import {
   ArrowDown,
   ArrowUp,
   CheckCircle,
-  CurrencyCircleDollar,
   DownloadSimple,
   HandPalm,
   Package,
@@ -53,7 +52,6 @@ import {
   useCreateArtisanalStrapContractorLossClaim,
   useCloseArtisanalStrapContractorPaymentCycle,
   useDecideArtisanalStrapContractorLossClaim,
-  useMarkArtisanalStrapContractorPaymentCyclePaid,
   usePrepareArtisanalStrapPurchaseOrderApproval,
   useRegisterArtisanalStrapPurchaseReceipt,
   useRequestArtisanalStrapReworkMaterial,
@@ -84,6 +82,7 @@ import {
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { cn } from '@/lib/utils';
 import { StrapStatusBadge } from './StrapStatusBadge';
+import MarkContractorCyclePaidDialog from '@/components/artisanal-straps/MarkContractorCyclePaidDialog';
 
 function meters(value: unknown) {
   const number = Number(value);
@@ -1354,31 +1353,6 @@ function ReworkRequestsPanel({
   );
 }
 
-function MarkCyclePaidDialog({
-  target,
-  onClose,
-}: {
-  target: StrapContractorPaymentCycleOperational | null;
-  onClose: () => void;
-}) {
-  const markPaid = useMarkArtisanalStrapContractorPaymentCyclePaid();
-  const [paymentDate, setPaymentDate] = useState(todayInputValue());
-  const [paymentMethod, setPaymentMethod] = useState('');
-  const close = () => { setPaymentDate(todayInputValue()); setPaymentMethod(''); onClose(); };
-  return (
-    <Dialog open={!!target} onOpenChange={(open) => { if (!open) close(); }}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader><DialogTitle>Confirmar pagamento do ciclo</DialogTitle><DialogDescription>{target?.contractor_name} · líquido {currency(target?.net_amount)}</DialogDescription></DialogHeader>
-        <div className="space-y-3">
-          <div className="space-y-1"><Label>Data do pagamento *</Label><Input type="date" value={paymentDate} onChange={(event) => setPaymentDate(event.target.value)} /></div>
-          <div className="space-y-1"><Label>Meio de pagamento</Label><Input value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)} placeholder="PIX, transferência…" /></div>
-        </div>
-        <DialogFooter><Button variant="outline" onClick={close}>Cancelar</Button><Button disabled={!target || !paymentDate || markPaid.isPending} onClick={async () => { if (!target) return; await markPaid.mutateAsync({ cycleId: target.cycle_id, paymentDate, paymentMethod: paymentMethod.trim() }); close(); }}><CurrencyCircleDollar className="mr-1 h-4 w-4" /> Confirmar pago</Button></DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 function ContractorPaymentCyclesPanel({
   rows,
   canManage,
@@ -1416,7 +1390,7 @@ function ContractorPaymentCyclesPanel({
           </article>
         ))}
       </div>
-      <MarkCyclePaidDialog target={paidTarget} onClose={() => setPaidTarget(null)} />
+      <MarkContractorCyclePaidDialog target={paidTarget} onClose={() => setPaidTarget(null)} />
     </Panel>
   );
 }

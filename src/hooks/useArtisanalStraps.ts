@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { LegacyStrapProductAllocationInput } from '@/lib/legacyStrapMigration';
 import { createSingleFlightCooldown } from '@/lib/singleFlightCooldown';
+import { invalidateFinanceDerivedQueries } from '@/lib/financeQueryInvalidation';
 import type { StrapIdentityBasis } from '@/lib/strapIdentity';
 import {
   technicalStrapContextErrorCode,
@@ -1980,7 +1981,8 @@ export function useCloseArtisanalStrapContractorPaymentCycle() {
     },
     onSuccess: (data) => {
       invalidateArtisanalStrapOperations(queryClient);
-      queryClient.invalidateQueries({ queryKey: ['accounts-payable'] });
+      queryClient.invalidateQueries({ queryKey: ['accounts_payable'] });
+      invalidateFinanceDerivedQueries(queryClient);
       toast.success(data?.replayed ? 'Ciclo já estava fechado (replay seguro).' : 'Ciclo fechado e lançamento financeiro criado.');
     },
     onError: (error: unknown) => {
@@ -2007,7 +2009,11 @@ export function useMarkArtisanalStrapContractorPaymentCyclePaid() {
     },
     onSuccess: () => {
       invalidateArtisanalStrapOperations(queryClient);
-      queryClient.invalidateQueries({ queryKey: ['accounts-payable'] });
+      queryClient.invalidateQueries({ queryKey: ['accounts_payable'] });
+      queryClient.invalidateQueries({ queryKey: ['financial-settlement-history'] });
+      queryClient.invalidateQueries({ queryKey: ['financial-cash-events'] });
+      queryClient.invalidateQueries({ queryKey: ['bank-reconciliation'] });
+      invalidateFinanceDerivedQueries(queryClient);
       toast.success('Ciclo e lançamento financeiro marcados como pagos.');
     },
     onError: (error: unknown) => {

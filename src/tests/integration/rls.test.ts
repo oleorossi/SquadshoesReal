@@ -58,10 +58,12 @@
    });
  
    it('should block unauthorized DELETE on critical records', async () => {
+     // Nunca apontar teste de permissão para todos os movimentos reais. A ACL
+     // de DELETE deve recusar a chamada inclusive com um alvo fictício exato.
      const { error } = await supabase
        .from('stock_movements')
        .delete()
-       .neq('id', '00000000-0000-0000-0000-000000000000');
+       .eq('id', '00000000-0000-0000-0000-000000000000');
      
      expect(error).toBeDefined();
    });
