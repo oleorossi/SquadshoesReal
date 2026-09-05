@@ -622,13 +622,6 @@ SELECT pg_catalog.jsonb_build_object(
 ) AS bank_reconciliation_ofx_e2e_result;
 
 ROLLBACK;
-
-SELECT pg_catalog.jsonb_build_object(
-  'marker', 'bank_reconciliation_ofx_e2e_rollback',
-  'bank_residue', (SELECT pg_catalog.count(*) FROM public.bank_accounts
-    WHERE name LIKE 'E2E OFX160 %'),
-  'payable_residue', (SELECT pg_catalog.count(*) FROM public.accounts_payable
-    WHERE description LIKE 'E2E OFX160 %'),
-  'receivable_residue', (SELECT pg_catalog.count(*) FROM public.accounts_receivable
-    WHERE description LIKE 'E2E OFX160 %')
-) AS bank_reconciliation_ofx_e2e_rollback_result;
+-- O workflow de dry-run remove este ROLLBACK e acrescenta um ROLLBACK externo.
+-- Residuos devem ser comprovados em um SELECT read-only separado, depois do run;
+-- consultar aqui contaria corretamente as fixtures ainda abertas da transacao externa.

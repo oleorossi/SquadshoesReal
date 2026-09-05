@@ -10,6 +10,30 @@ SET LOCAL statement_timeout = '90s';
 SET LOCAL lock_timeout = '15s';
 SET LOCAL plpgsql.check_asserts = on;
 
+-- O setup pre-migration precisa validar seus eventos pendentes antes do DDL com
+-- SET CONSTRAINTS ALL IMMEDIATE. Constraints criadas depois nessa mesma
+-- transacao podem herdar esse modo; restaure apenas as que o schema declara
+-- INITIALLY DEFERRED, reproduzindo o modo normal de producao sem desabilita-las.
+DO $restore_financial159_initially_deferred_constraints$
+DECLARE
+  v_constraint record;
+BEGIN
+  FOR v_constraint IN
+    SELECT namespace.nspname, constraint_info.conname
+      FROM pg_catalog.pg_constraint constraint_info
+      JOIN pg_catalog.pg_namespace namespace
+        ON namespace.oid = constraint_info.connamespace
+     WHERE constraint_info.condeferrable
+       AND constraint_info.condeferred
+  LOOP
+    EXECUTE pg_catalog.format(
+      'SET CONSTRAINTS %I.%I DEFERRED',
+      v_constraint.nspname, v_constraint.conname
+    );
+  END LOOP;
+END;
+$restore_financial159_initially_deferred_constraints$;
+
 -- Auth negativa sem criar usuario real.
 SELECT pg_catalog.set_config('request.jwt.claim.role', 'authenticated', true);
 SELECT pg_catalog.set_config(
