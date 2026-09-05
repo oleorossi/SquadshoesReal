@@ -80,6 +80,8 @@ jobs:
             QUERY_PATH=/tmp/supabase-dry-run.sql
             {
               echo 'BEGIN;'
+              echo "SET LOCAL lock_timeout = '5s';"
+              echo "SET LOCAL statement_timeout = '90s';"
               sed -E '/^[[:space:]]*BEGIN;[[:space:]]*$/d; /^[[:space:]]*COMMIT;[[:space:]]*$/d; /^[[:space:]]*ROLLBACK;[[:space:]]*$/d' "$SQL_PATH"
               if [ -n "$VALIDATION_SQL_PATH" ]; then
                 sed -E '/^[[:space:]]*BEGIN;[[:space:]]*$/d; /^[[:space:]]*COMMIT;[[:space:]]*$/d; /^[[:space:]]*ROLLBACK;[[:space:]]*$/d' "$VALIDATION_SQL_PATH"
