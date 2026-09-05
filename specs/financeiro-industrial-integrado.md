@@ -101,3 +101,18 @@ Nenhum item da matriz está concluído só porque existe um teste ou arquivo. Re
 - Exclusão direta de NF pode apagar itens e remover o vínculo de AP sem reverter estoque; ACL de NF precisa de revisão por papel. Preservar histórico existente, sem correção em massa.
 - O gatilho de estorno de CMV considera uma entry ativa de factoring suficiente para manter CMV. Como o cancelamento atual estorna receita antes de excluir factoring, CMV pode sobreviver. A próxima fronteira transacional deve tratar receita, custo e despesa financeira com preservação dos fatos liquidados.
 - Pagamentos parciais usam valor acumulado e uma única data; não há histórico suficiente para separar meses. Implantar fatos imutáveis de liquidação antes da conciliação persistente, sem inventar datas anteriores.
+
+### Inventário de liquidações para a próxima etapa
+
+| Origem | Escrita atual / limite confirmado | Próxima proteção |
+|---|---|---|
+| Financeiro manual (`Finance.tsx`) | Baixa integral unitária/lote por alteração direta de status, acumulado e uma data | Comando único de liquidação, evento por data/conta e idempotência |
+| Conciliação (`BankReconciliationTab.tsx`) | Leitura → soma → gravação; duas baixas podem sobrescrever-se; seleção conciliada só em memória | Extrato persistido por conta confirmada + FITID, lock, replay e teste concorrente; leitor OFX ainda não conectado |
+| CRUD e estorno (`useFinance.ts`) | Parcial ainda pode ser editada/excluída; estorno zera acumulado/data sem evento | Fronteira server-side, proibir hard-delete de caixa e estornar evento individual com motivo |
+| OC e ciclos de terceiros | Cancelamento da OC pode cancelar AP parcial sem olhar valor pago; AP do ciclo também pode ser alterada no financeiro genérico | Proteção de caixa pago e definição única de quem controla o título; não confundir com a decisão de quando criar AP |
+| Folha (`usePayrollPayments.ts`) | Já usa registro/reversão de pagamentos com ledger próprio e idempotência, separado de AP/AR | Reutilizar o padrão e integrar relatórios sem duplicar despesas; não aprovar períodos históricos |
+| OS e terceiros | OS registra evento só na transição final; ciclo pode marcar a AP inteira como paga | Eventos de parciais e integração do pagamento com a origem do título |
+| DRE/CMV (`useFinanceIntelligence.ts`, `recompute_sale_order_cmv_recognition`) | Usa acumulado e última data, não distingue meses de pagamentos parciais; folha ainda fora da DRE AP/AR | Consumo dos fatos de liquidação por competência/caixa, com testes de dois meses e estorno individual |
+| Factoring/indicadores | Algumas falhas de consulta ainda podem virar zero/remoção; consumidores de KPI/crédito ainda possuem consultas diretas limitadas | Falha explícita, preservação de despesa histórica, paginação por consumidor e reconciliação bruto/líquido |
+
+Devolução fiscal já possui uma base útil: `complete_nfe_devolucao_command` trava AR, reduz apenas saldo não recebido e grava `nfe_devolucao_ar_effects`. Preservar esse contrato ao unificar os eventos. A evidência viva continua sendo AP=0 e AR=1.053 sem valor recebido; não fabricar liquidações anteriores para preencher a trilha nova.
