@@ -1,6 +1,7 @@
 import { isUuid } from '@/lib/technicalStrapLines';
+import { strapIdentityBasis, type StrapIdentityLike } from '@/lib/strapIdentity';
 
-export interface OperatorStrapLineLike {
+export interface OperatorStrapLineLike extends StrapIdentityLike {
   id?: string | null;
   technical_strap_line_id?: string | null;
   label?: string | null;
@@ -8,6 +9,8 @@ export interface OperatorStrapLineLike {
   color_id?: string | null;
   strap_type_id?: string | null;
   measure_id?: string | null;
+  group_id?: string | null;
+  group_name?: string | null;
   consumption?: number | string | null;
   consumption_per_size?: Record<string, unknown> | null;
   [key: string]: unknown;
@@ -87,9 +90,11 @@ function canonicalStrapConsumptionPerSize(
  *
  * A ordem do array devolvido por `operatorStrapSequence` faz parte da chave:
  * UUID identifica a linha, mas nunca é usado para reordená-la. Além da
- * apresentação, entram identidade e medidas porque duas OPs com a mesma cor
- * podem conservar consumos históricos diferentes e não podem compartilhar a
- * ficha de Aviamento. As chaves de `consumption_per_size` são ordenadas apenas
+ * apresentação, entram identidade, material e medidas porque duas OPs com a
+ * mesma cor podem conservar materiais ou consumos históricos diferentes e não
+ * podem compartilhar a ficha de Aviamento. Grupo composto é uma identidade
+ * indivisível; nunca decompomos seu nome em materiais. As chaves de
+ * `consumption_per_size` são ordenadas apenas
  * para neutralizar a ordem de inserção do objeto; as linhas continuam na
  * sequência técnica.
  */
@@ -104,6 +109,10 @@ export function operatorStrapGroupingSignature(
     lineId: canonicalStrapText(line.technical_strap_line_id || line.id),
     strapTypeId: canonicalStrapText(line.strap_type_id),
     measureId: canonicalStrapText(line.measure_id),
+    identityBasis: strapIdentityBasis(line),
+    identityGroupId: canonicalStrapText(line.identity_group_id),
+    groupId: canonicalStrapText(line.group_id),
+    groupName: canonicalStrapText(line.group_name).toUpperCase(),
     label: canonicalStrapText(line.label || 'TIRA').toUpperCase(),
     colorId: canonicalStrapText(line.color_id),
     color: effectiveOperatorStrapColor(line, mainColor).toUpperCase(),

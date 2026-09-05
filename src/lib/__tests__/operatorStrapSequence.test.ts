@@ -138,6 +138,40 @@ describe('operatorStrapGroupingSignature', () => {
     ], 'Preto')).not.toBe(base);
   });
 
+  it('separa a base da referência de um grupo de tira comprado pronto', () => {
+    const inherited = operatorStrapGroupingSignature([{ ...line, identity_basis: 'reference_base' }]);
+    const finished = operatorStrapGroupingSignature([{ ...line, identity_basis: 'finished_product_group' }]);
+
+    expect(inherited).not.toBe(finished);
+  });
+
+  it.each(['identity_group_id', 'group_id'])('separa materiais distintos por %s mesmo com mesma cor e medida', field => {
+    const first = operatorStrapGroupingSignature([{
+      ...line, [field]: '11111111-1111-4111-8111-111111111111',
+    }]);
+    const second = operatorStrapGroupingSignature([{
+      ...line, [field]: '22222222-2222-4222-8222-222222222222',
+    }]);
+
+    expect(first).not.toBe(second);
+  });
+
+  it('não oculta a diferença de material de snapshots legados sem grupo canônico', () => {
+    const pure = operatorStrapGroupingSignature([{ ...line, group_name: 'NAPA SOFT' }]);
+    const composite = operatorStrapGroupingSignature([{ ...line, group_name: 'NAPA SOFT + MASSABOX' }]);
+
+    expect(pure).not.toBe(composite);
+  });
+
+  it('preserva compatibilidade da identidade legada e neutraliza só a grafia do material', () => {
+    const legacy = operatorStrapGroupingSignature([{ ...line, group_name: ' napa soft ' }]);
+    const canonical = operatorStrapGroupingSignature([{
+      ...line, identity_basis: 'reference_base', identity_group_id: null, group_id: null, group_name: 'NAPA SOFT',
+    }]);
+
+    expect(legacy).toBe(canonical);
+  });
+
   it('preserva a sequência técnica do array sem ordenar UUID', () => {
     const second = {
       ...line,
