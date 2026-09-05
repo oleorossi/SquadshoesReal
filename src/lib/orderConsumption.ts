@@ -23,6 +23,7 @@ import {
   type SoleColorRule,
 } from '@/lib/soleColorResolution';
 import { isLeftoverCabedalExtra, leftoverCabedalDisplayName } from '@/lib/cabedalLeftover';
+import { upperAccessoryFollowsBaseMaterial } from '@/lib/upperAccessoryVariant';
 
 /**
  * Oráculo TypeScript legado de consumo de materiais.
@@ -76,6 +77,9 @@ export type MaterialConsumptionRow = {
    *  há consumo NÃO calculado por falta de cadastro. Espelha o
    *  `consumption_warning` do SQL `calculate_order_consumption_by_grade`. */
   warning?: string;
+  /** Cor solicitada não existe no grupo da variante: nenhum SKU alternativo
+   * pode servir como identidade operacional ou disponibilidade. */
+  colorMismatch?: boolean;
   /** Breakdown agregado por numeração (somado entre items que casam em
    *  grupo+cor+unidade). Usado pelo Solado pra mostrar totais reais por Nº. */
   sizeBreakdown?: Record<string, number>;
@@ -474,21 +478,53 @@ export function resolveMaterialProductCanonical(
   allProducts: any[],
   productGroups: any[],
 ): any | null {
-  if (!groupName) return null;
-  const group = (productGroups || []).find((g: any) => g.name === groupName);
-  if (!group) return null;
+  return resolveMaterialProductWithColorStatus(groupName, color, allProducts, productGroups).product;
+}
+
+/** Mantém o diagnóstico color_mismatch que o resolver SQL devolve junto ao
+ * candidato de conversão. O candidato de outra cor nunca pode virar pin. */
+interface MaterialColorProduct {
+  id: string;
+  group_id?: string | null;
+  name?: string | null;
+  color?: string | null;
+  quantity?: number | null;
+}
+
+interface MaterialColorGroup {
+  id: string;
+  name?: string | null;
+  is_color_agnostic?: boolean | null;
+  composite_layers?: Array<{ composite_group_id?: string }> | null;
+}
+
+export function resolveMaterialProductWithColorStatus<T extends MaterialColorProduct>(
+  groupName: string,
+  color: string | null | undefined,
+  allProducts: T[],
+  productGroups: MaterialColorGroup[],
+  options: { strictCompositeColor?: boolean } = {},
+): { product: T | null; colorMismatch: boolean } {
+  const missing = { product: null, colorMismatch: false };
+  if (!groupName) return missing;
+  const group = (productGroups || []).find((g) => g.name === groupName);
+  if (!group) return missing;
   const byStock = (allProducts || [])
-    .filter((p: any) => p.group_id === group.id)
-    .sort((a: any, b: any) => (Number(b.quantity) || 0) - (Number(a.quantity) || 0));
-  if (byStock.length === 0) return null;
+    .filter((p) => p.group_id === group.id)
+    .sort((a, b) => (Number(b.quantity) || 0) - (Number(a.quantity) || 0));
+  if (byStock.length === 0) return missing;
   const colorNorm = normColorCanonical(color === '—' ? '' : color);
+  const strictCompositeColor = options.strictCompositeColor && !!group.composite_layers?.length;
   if (colorNorm) {
-    const exact = byStock.find((p: any) => normColorCanonical(p.color) === colorNorm);
-    if (exact) return exact;
-    const partial = byStock.find((p: any) => normColorCanonical(p.name).includes(colorNorm));
-    if (partial) return partial;
+    const exact = byStock.find((p) => normColorCanonical(p.color) === colorNorm);
+    if (exact) return { product: exact, colorMismatch: false };
+    if (strictCompositeColor) return { product: byStock[0], colorMismatch: true };
+    const partial = byStock.find((p) => normColorCanonical(p.name).includes(colorNorm));
+    if (partial) return { product: partial, colorMismatch: false };
   }
-  return byStock[0];
+  const colorMismatch = !!strictCompositeColor || (!!colorNorm && group.is_color_agnostic !== true
+    && byStock.some((product) => !!product.color?.trim()));
+  return { product: byStock[0], colorMismatch };
 }
 
 /**
@@ -590,6 +626,7 @@ const addConsumptionRow = (map: Map<string, MaterialConsumptionRow>, row: Materi
     existing.totalQuantity += totalQuantity;
     if (row.widthMissing) existing.widthMissing = true;
     if (row.warning && !existing.warning) existing.warning = row.warning;
+    if (row.colorMismatch) existing.colorMismatch = true;
     // Soma breakdown por numeração quando ambos têm (Solado).
     if (row.sizeBreakdown) {
       existing.sizeBreakdown = existing.sizeBreakdown || {};
@@ -623,6 +660,7 @@ const addConsumptionRow = (map: Map<string, MaterialConsumptionRow>, row: Materi
     totalQuantity,
     widthMissing: row.widthMissing,
     warning: row.warning,
+    ...(row.colorMismatch ? { colorMismatch: true } : {}),
     sizeBreakdown: row.sizeBreakdown,
     soleProductId: row.soleProductId,
     materialFamily: row.materialFamily || null,
@@ -697,7 +735,7 @@ export async function fetchConsumptionContext(
       .eq('active', true),
     client
       .from('product_groups')
-      .select('id, name, dimensions_length, dimensions_width, dimensions_unit, box_type_id, box_type_master_id, box_type_colmeia_id, box_type_fitilho_id, pairs_per_box_individual, pairs_per_box_master, pairs_per_box_colmeia, pairs_per_box_fitilho'),
+      .select('id, name, is_color_agnostic, composite_layers:product_group_layers!product_group_layers_composite_group_id_fkey(composite_group_id), dimensions_length, dimensions_width, dimensions_unit, box_type_id, box_type_master_id, box_type_colmeia_id, box_type_fitilho_id, pairs_per_box_individual, pairs_per_box_master, pairs_per_box_colmeia, pairs_per_box_fitilho'),
     client
       .from('component_sheets')
       .select('product_id, dimensions_width, dimensions_length, dimensions_unit, yield_per_size, yield_per_sole, products!inner(group_id, name, color, unit)'),
@@ -1418,11 +1456,12 @@ export function computeConsumptionForItems(
       // F2-04 em silêncio (TS loose não acusa). O pin da variante (upperVariant.pin),
       // o do solado e o motor irmão bomConsumption.ts nunca testaram `active`.
       const upperPin = upperVariant.pin
-        || (isPrincipal && (sheet as any)?.upper_material_product_id
+        || (!upperVariantDriven && isPrincipal && (sheet as any)?.upper_material_product_id
           ? (allProducts || []).find((p: any) => p.id === (sheet as any).upper_material_product_id)
           : null);
-      const upperProduct = upperPin
-        || resolveMaterialProductCanonical(upperMatch.group, orderColor, allProducts || [], productGroups || []);
+      const upperResolution = resolveMaterialProductWithColorStatus(upperMatch.group, orderColor, allProducts || [], productGroups || [], { strictCompositeColor: upperVariantDriven });
+      const upperProduct = upperPin || upperResolution.product;
+      const upperColorMismatch = upperVariantDriven && !upperPin && upperResolution.colorMismatch;
       const upperSheet = getConversionSheetForProduct(upperProduct?.id, upperMatch.group, { color: orderColor, mode: 'linear', preferYield: true });
       const altRecord = isPrincipal ? null : upperAlts.find((a: any) => a.material === upperMatch.group);
       // Override LEGADO da variante substitui o escalar E suprime o per-size da
@@ -1447,7 +1486,9 @@ export function computeConsumptionForItems(
         color: orderColor,
         totalQuantity: upperTotal,
         widthMissing: isLinearWidthMissing(upperSheet, 'm'),
-        productIds: upperProduct?.id ? [upperProduct.id] : undefined,
+        colorMismatch: upperColorMismatch,
+        warning: upperColorMismatch ? `Cor ${orderColor} não cadastrada em ${upperMatch.group}. Cadastre o SKU antes de separar.` : undefined,
+        productIds: !upperColorMismatch && upperProduct?.id ? [upperProduct.id] : undefined,
       });
     }
 
@@ -1458,15 +1499,24 @@ export function computeConsumptionForItems(
       if (!mandMat.material || (mandConsumption <= 0 && !mandHasPerSizeConsumption)) continue;
       // Item fixado (product_id) → exibe o nome do produto exato (o débito SQL
       // debita esse item; ver debit_stock_for_order). Sem pino, mantém o rótulo.
+      const followsUpper = upperAccessoryFollowsBaseMaterial(mandMat, sheet?.upper_material);
+      const followsVariant = followsUpper && upperVariantDriven;
+      const mandGroup = followsVariant ? upperVariant.groupName : mandMat.material;
+      const inheritedPin = followsUpper
+        ? upperVariant.pin || (!upperVariantDriven && sheet?.upper_material_product_id
+          ? (allProducts || []).find((p: any) => p.id === sheet.upper_material_product_id)
+          : null)
+        : null;
       const pinnedProd = mandMat.product_id
         ? (allProducts || []).find((p: any) => p.id === mandMat.product_id)
-        : null;
-      const mandProduct = pinnedProd
-        || resolveMaterialProductCanonical(mandMat.material, orderColor, allProducts || [], productGroups || []);
+        : inheritedPin;
+      const mandResolution = resolveMaterialProductWithColorStatus(mandGroup, orderColor, allProducts || [], productGroups || [], { strictCompositeColor: followsVariant });
+      const mandProduct = pinnedProd || mandResolution.product;
+      const mandColorMismatch = followsVariant && !pinnedProd && mandResolution.colorMismatch;
       // Conversão dm²→m pela cs do produto PINADO quando houver (ordem do SQL:
       // get_material_conversion_info do pin — F2-04; caso vivo: NAPA ONÇA com
       // waste próprio ≠ da cs casada por cor do grupo).
-      const mandSheet = getConversionSheetForProduct(mandProduct?.id, mandMat.material, { color: orderColor, mode: 'linear', preferYield: true });
+      const mandSheet = getConversionSheetForProduct(mandProduct?.id, mandGroup, { color: orderColor, mode: 'linear', preferYield: true });
       const mandOverride = (mandMat.consumption_per_size && Object.keys(mandMat.consumption_per_size).length > 0)
         ? mandMat.consumption_per_size
         : null;
@@ -1474,15 +1524,17 @@ export function computeConsumptionForItems(
       const leftoverExtra = isLeftoverCabedalExtra(mandMat, sheet);
       addConsumptionRow(consumptionMap, {
         componentType: 'Cabedal',
-        groupName: mandMat.material,
-        materialName: leftoverExtra
+        groupName: mandGroup,
+        materialName: mandColorMismatch ? 'Cabedal' : followsVariant ? mandProduct?.name || mandGroup : leftoverExtra
           ? leftoverCabedalDisplayName({ ...mandMat, product_name: pinnedProd?.name || mandMat.product_name })
           : (pinnedProd?.name || mandMat.label || 'Material Fixo'),
         productUnit: 'metro',
         color: orderColor,
         totalQuantity: mandTotal,
         widthMissing: isLinearWidthMissing(mandSheet, 'm'),
-        productIds: mandProduct?.id ? [mandProduct.id] : undefined,
+        colorMismatch: mandColorMismatch,
+        warning: mandColorMismatch ? `Cor ${orderColor} não cadastrada em ${mandGroup}. Cadastre o SKU antes de separar.` : undefined,
+        productIds: !mandColorMismatch && mandProduct?.id ? [mandProduct.id] : undefined,
       });
     }
 

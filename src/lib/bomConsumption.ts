@@ -18,12 +18,14 @@ import {
   reduceSoleTechnicalSpecsByRecency,
   resolveSoleProductIdCanonical,
   resolveMaterialProductCanonical,
+  resolveMaterialProductWithColorStatus,
   resolveInsoleBaseProductCanonical,
 } from '@/lib/orderConsumption';
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
 import { resolveCanonicalPackaging, type PackagingBoxType } from '@/lib/packagingConsumption';
 import { resolvePinnedSoleProductIdByColor, type SoleColorRule } from '@/lib/soleColorResolution';
 import { isLeftoverCabedalExtra, leftoverCabedalDisplayName } from '@/lib/cabedalLeftover';
+import { upperAccessoryFollowsBaseMaterial } from '@/lib/upperAccessoryVariant';
 import {
   type ArtisanalStrapCutRow,
 } from '@/lib/strapRollCut';
@@ -52,6 +54,7 @@ export type ConsumptionRow = {
    *  entra mesmo com qtd 0 só pra alertar o gap de cadastro — espelha o
    *  `warning` do motor canônico (orderConsumption.ts). */
   warning?: string;
+  colorMismatch?: boolean;
   /** Identidade canônica da tira; usada pelo picking para nunca casar napa por
    * nome/cor. Ausente somente em relatórios históricos anteriores ao cutover. */
   strapVariantId?: string | null;
@@ -181,6 +184,7 @@ const addConsumptionRow = (map: Map<string, ConsumptionRow>, row: ConsumptionRow
     existing.totalQuantity += totalQuantity;
     if (row.widthMissing) existing.widthMissing = true;
     if (row.warning && !existing.warning) existing.warning = row.warning;
+    if (row.colorMismatch) existing.colorMismatch = true;
     if (row.technicalStrapLineIds?.length) {
       existing.technicalStrapLineIds = Array.from(new Set([
         ...(existing.technicalStrapLineIds || []),
@@ -217,6 +221,7 @@ const addConsumptionRow = (map: Map<string, ConsumptionRow>, row: ConsumptionRow
     widthMissing: row.widthMissing,
     plateEquivalent: row.plateEquivalent,
     warning: row.warning,
+    ...(row.colorMismatch ? { colorMismatch: true } : {}),
     strapVariantId: row.strapVariantId,
     recipeId: row.recipeId,
     baseProductId: row.baseProductId,
@@ -354,7 +359,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     // `fachete_material_group_id` pro componente Fachete (BOM-2/BOM-5);
     // `category` pra classificar itens-padrão do solado (F2-01).
     supabase.from('products').select('id, name, color, category, group_id, quantity, unit, sole_classification, is_fachetado, fachete_material_group_id').eq('active', true),
-    supabase.from('product_groups').select('id, name, dimensions_length, dimensions_width, dimensions_unit, box_type_id, box_type_master_id, box_type_colmeia_id, box_type_fitilho_id, pairs_per_box_individual, pairs_per_box_master, pairs_per_box_colmeia, pairs_per_box_fitilho'),
+    supabase.from('product_groups').select('id, name, is_color_agnostic, composite_layers:product_group_layers!product_group_layers_composite_group_id_fkey(composite_group_id), dimensions_length, dimensions_width, dimensions_unit, box_type_id, box_type_master_id, box_type_colmeia_id, box_type_fitilho_id, pairs_per_box_individual, pairs_per_box_master, pairs_per_box_colmeia, pairs_per_box_fitilho'),
     supabase
       .from('component_sheets')
       .select('product_id, dimensions_width, dimensions_length, dimensions_unit, yield_per_size, yield_per_sole, products!inner(group_id, name, color, unit)'),
@@ -898,13 +903,15 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       const upperPinId: string | null =
         (variant?.upper_material_product_id && (allProducts || []).some((p: any) => p.id === variant.upper_material_product_id))
           ? variant.upper_material_product_id
-          : (isPrincipal && (sheet as any)?.upper_material_product_id
-              && (allProducts || []).some((p: any) => p.id === (sheet as any).upper_material_product_id)
-            ? (sheet as any).upper_material_product_id
+          : (!upperVariantGroup && isPrincipal && sheet?.upper_material_product_id
+              && (allProducts || []).some((p) => p.id === sheet.upper_material_product_id)
+            ? sheet.upper_material_product_id
             : null);
+      const upperResolution = resolveMaterialProductWithColorStatus(upperMatch.group, orderColor, allProducts || [], productGroups || [], { strictCompositeColor: !!upperVariantGroup });
       const upperProduct = upperPinId
         ? (allProducts || []).find((p) => p.id === upperPinId) || null
-        : resolveMaterialProductCanonical(upperMatch.group, orderColor, allProducts || [], productGroups || []);
+        : upperResolution.product;
+      const upperColorMismatch = !!upperVariantGroup && !upperPinId && upperResolution.colorMismatch;
       const upperSheet = getConversionSheetForProduct(upperProduct?.id, upperMatch.group, { color: orderColor, mode: 'linear', preferYield: true });
       const altRecord = isPrincipal ? null : upperAlts.find((a: any) => a.material === upperMatch.group);
       const overridePerSize = isPrincipal
@@ -914,9 +921,11 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       // SQL — F2-02); o multiplicador por tamanho saiu (era só do TS).
       const { total: upperTotal } = calculateConsumptionWithUnit(item, upperMatch.consumption, upperSheet, 'metro', overridePerSize);
       addConsumptionRow(consumptionMap, {
-        componentType: 'Cabedal', groupName: upperMatch.group, materialName: upperProduct?.name || 'Cabedal',
+        componentType: 'Cabedal', groupName: upperMatch.group, materialName: upperColorMismatch ? 'Cabedal' : upperProduct?.name || 'Cabedal',
         productUnit: 'metro', color: orderColor, totalQuantity: upperTotal,
-        productIds: upperProduct?.id ? [upperProduct.id] : undefined,
+        colorMismatch: upperColorMismatch,
+        warning: upperColorMismatch ? `Cor ${orderColor} não cadastrada em ${upperMatch.group}. Cadastre o SKU antes de separar.` : undefined,
+        productIds: !upperColorMismatch && upperProduct?.id ? [upperProduct.id] : undefined,
       });
     }
 
@@ -926,20 +935,35 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       if (!mandMat.material || (mandConsumption <= 0 && !mandHasPerSizeConsumption)) continue;
       // Item fixado (product_id) vence; sem pino resolve grupo+cor. A identidade
       // física dirige tanto a conversão quanto a agregação operacional.
+      const followsUpper = upperAccessoryFollowsBaseMaterial(mandMat, sheet?.upper_material);
+      const followsVariant = followsUpper && !!upperVariantGroup;
+      const mandGroup = followsVariant ? upperVariantGroup : mandMat.material;
+      const variantPin = variant?.upper_material_product_id
+        ? (allProducts || []).find((p) => p.id === variant.upper_material_product_id) || null
+        : null;
+      const inheritedPin = followsUpper
+        ? variantPin || (!upperVariantGroup && sheet?.upper_material_product_id
+          ? (allProducts || []).find((p) => p.id === sheet.upper_material_product_id) || null
+          : null)
+        : null;
+      const mandResolution = resolveMaterialProductWithColorStatus(mandGroup, orderColor, allProducts || [], productGroups || [], { strictCompositeColor: followsVariant });
       const mandProduct = mandMat.product_id
         ? (allProducts || []).find((p) => p.id === mandMat.product_id) || null
-        : resolveMaterialProductCanonical(mandMat.material, orderColor, allProducts || [], productGroups || []);
-      const mandSheet = getConversionSheetForProduct(mandProduct?.id, mandMat.material, { color: orderColor, mode: 'linear', preferYield: true });
+        : inheritedPin || mandResolution.product;
+      const mandColorMismatch = followsVariant && !inheritedPin && mandResolution.colorMismatch;
+      const mandSheet = getConversionSheetForProduct(mandProduct?.id, mandGroup, { color: orderColor, mode: 'linear', preferYield: true });
       const mandOverride = (mandMat.consumption_per_size && Object.keys(mandMat.consumption_per_size).length > 0) ? mandMat.consumption_per_size : null;
       const { total: mandTotal } = calculateConsumptionWithUnit(item, mandConsumption, mandSheet, 'metro', mandOverride);
       const leftoverExtra = isLeftoverCabedalExtra(mandMat, sheet);
       addConsumptionRow(consumptionMap, {
-        componentType: 'Cabedal', groupName: mandMat.material,
-        materialName: leftoverExtra
+        componentType: 'Cabedal', groupName: mandGroup,
+        materialName: mandColorMismatch ? 'Cabedal' : followsVariant ? mandProduct?.name || mandGroup : leftoverExtra
           ? leftoverCabedalDisplayName({ ...mandMat, product_name: mandProduct?.name || mandMat.product_name })
           : (mandProduct?.name || mandMat.label || 'Material Fixo'),
         productUnit: 'metro', color: orderColor, totalQuantity: mandTotal,
-        productIds: mandProduct?.id ? [mandProduct.id] : undefined,
+        colorMismatch: mandColorMismatch,
+        warning: mandColorMismatch ? `Cor ${orderColor} não cadastrada em ${mandGroup}. Cadastre o SKU antes de separar.` : undefined,
+        productIds: !mandColorMismatch && mandProduct?.id ? [mandProduct.id] : undefined,
       });
     }
 

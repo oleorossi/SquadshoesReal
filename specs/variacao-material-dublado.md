@@ -57,6 +57,10 @@ equivalente ao trocar a camada externa.
 - `variant_drives_upper` continua desligado para cabedal composto.
 - Cabedal debita um SKU acabado de dublado. A lista de camadas é cadastral;
   não gera débito adicional de Glow puro ou Massa Box.
+- Materiais adicionais obrigatórios do cabedal, sem produto fixado e do
+  mesmo grupo do cabedal original, também acompanham a variante. Suas áreas
+  continuam somadas ao consumo principal. Produtos fixados, sobras e
+  materiais de outros grupos preservam sua identidade.
 - Forração usa seu próprio SKU de Glow puro.
 - Área por par e conversão pela largura da ficha de componente continuam nos
   motores existentes; não há perda de corte adicional.

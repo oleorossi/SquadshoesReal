@@ -125,6 +125,7 @@ export async function annotateConsumptionAvailability(
   };
 
   const rowAvailable = (row: ConsumptionRow): number => {
+    if (row.colorMismatch) return 0;
     if (row.boxTypeIds && row.boxTypeIds.length > 0) {
       const wanted = new Set(row.boxTypeIds);
       return (ctx.boxTypes || [])

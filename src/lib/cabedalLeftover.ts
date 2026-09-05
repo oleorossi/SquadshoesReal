@@ -1,3 +1,5 @@
+import { sameUpperMaterialIdentity } from '@/lib/upperAccessoryVariant';
+
 /**
  * Sobra de napa no cabedal — Material 2+ de outra espessura.
  *
@@ -87,8 +89,13 @@ export function isLeftoverCabedalExtra(
   const extraName = String(extra.material || '').trim();
   const principalName = String(principal?.upper_material || '').trim();
   if (!extraName || !principalName) return false;
-  return isSameCabedalGroup(extraName, principalName)
-    || isSameNapaFamily(extraName, principalName);
+  // Duas peças do mesmo material podem somar áreas distintas (I701: 2,74
+  // + 2,28 dm²/par). Sem marca explícita ou SKU próprio isso é consumo
+  // aditivo, não prova de sobra de outra espessura.
+  if (isSameCabedalGroup(extraName, principalName)) {
+    return !sameUpperMaterialIdentity(extraName, principalName) || !!extra.product_id?.trim();
+  }
+  return isSameNapaFamily(extraName, principalName);
 }
 
 export function leftoverRequiresPin(

@@ -45,6 +45,33 @@ describe('cabedalLeftover — família de espessura', () => {
 });
 
 describe('cabedalLeftover — pin e duplicata', () => {
+  it('permite as duas peças da I701 no mesmo grupo sem inventar um pin de sobra', () => {
+    const principal = { upper_material: 'NAPA SOFT + MASSABOX', upper_material_product_id: null };
+    const extra = { material: 'NAPA SOFT + MASSABOX', mandatory: true, product_id: null, consumption: 2.28 };
+    expect(isLeftoverCabedalExtra(extra, principal)).toBe(false);
+    expect(validateCabedalLeftovers([extra], principal)).toEqual([]);
+    expect(listLeftoverCabedalLabels([extra], principal)).toEqual([]);
+  });
+
+  it('nova seleção do mesmo grupo segue aditiva quando a UI inicializa leftover false', () => {
+    const extra = { material: PRINCIPAL.upper_material, mandatory: true, leftover: false, product_id: null };
+    expect(isLeftoverCabedalExtra(extra, PRINCIPAL)).toBe(false);
+    expect(validateCabedalLeftovers([extra], PRINCIPAL)).toEqual([]);
+  });
+
+  it('não libera como aditivos nomes aproximados que o resolver SQL considera grupos diferentes', () => {
+    const principal = { upper_material: 'NAPA SOFT + MASSABOX' };
+    const extra = { material: 'NAPA SOFT MASSABOX', mandatory: true, product_id: null };
+    expect(isLeftoverCabedalExtra(extra, principal)).toBe(true);
+    expect(validateCabedalLeftovers([extra], principal)).toEqual([{ message: CABEDAL_LEFTOVER_NEEDS_PIN, extraIndex: 0 }]);
+  });
+
+  it('continua inferindo sobra para um SKU próprio do mesmo grupo', () => {
+    expect(isLeftoverCabedalExtra({
+      material: PRINCIPAL.upper_material, mandatory: true, product_id: 'p-napa-12',
+    }, PRINCIPAL)).toBe(true);
+  });
+
   it('permite NAPA CONHAQUE 1.2 ao lado da 1.0 sem pin (grupos distintos)', () => {
     expect(validateCabedalLeftovers([
       { material: 'NAPA CONHAQUE 1.2', mandatory: true, consumption: 0.04 },
