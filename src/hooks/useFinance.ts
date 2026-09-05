@@ -10,6 +10,7 @@ export type AccountPayable = {
   description: string;
   supplier_id: string | null;
   invoice_id: string | null;
+  purchase_order_id?: string | null;
   category: string;
   due_date: string;
   amount: number;
