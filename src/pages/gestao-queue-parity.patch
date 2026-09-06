@@ -1,0 +1,54 @@
+--- a/src/pages/ProducaoKanbanGestao.tsx
++++ b/src/pages/ProducaoKanbanGestao.tsx
+@@ -23,7 +23,7 @@
+ import { usePersistedState } from '@/hooks/usePersistedState';
+ import { searchMatchesAllTerms, searchMatchesAny, splitSearchTerms, normalizeForSearch } from '@/lib/searchUtils';
+ import { toast } from 'sonner';
+-import { deriveCards, todayISO, KanbanCardData } from '@/components/production/kanban/kanbanDerive';
++import { cardsForQueueRow, todayISO, KanbanCardData } from '@/components/production/kanban/kanbanDerive';
+ import { buildPointingPlan } from '@/components/production/kanban/pointingPlan';
+ import { KanbanOpCard } from '@/components/production/kanban/KanbanOpCard';
+ import { DropApontarDialog } from '@/components/production/kanban/DropApontarDialog';
+@@ -220,8 +220,7 @@
+     const out: KanbanCardData[] = [];
+     for (const q of queue) {
+       const stages = stagesByOrder.get(q.order_id);
+-      if (!stages?.length) continue;
+-      out.push(...deriveCards(q, stages, flowOrder, levelOf));
++      out.push(...cardsForQueueRow(q, stages, flowOrder, levelOf));
+     }
+     return out;
+   }, [queue, stagesByOrder, flowOrder, levelOf]);
+@@ -866,7 +865,7 @@
+               variant="ghost"
+               size="sm"
+               className="h-9 text-xs"
+-              onClick={() => setSelectedIds(new Set(matches.map(m => m.q.order_id)))}
++              onClick={() => setSelectedIds(new Set(matches.map(m => m.key)))}
+             >
+               Selecionar as {matches.length} encontradas
+             </Button>
+@@ -1130,7 +1129,7 @@
+             <Button className="mt-3 h-10" onClick={retryLoad}>Tentar de novo</Button>
+           </div>
+         </div>
+-      ) : allCards.length === 0 ? (
++      ) : queue.length === 0 ? (
+         <div className="flex-1 flex items-center justify-center">
+           <EmptyState
+             icon={KanbanIcon}
+@@ -1138,6 +1137,14 @@
+             description="OPs criadas a partir dos PVs entram aqui automaticamente."
+           />
+         </div>
++      ) : allCards.length === 0 ? (
++        <div className="flex-1 flex items-center justify-center">
++          <EmptyState
++            icon={AlertTriangle}
++            title="Fila com OPs invisíveis"
++            description={`${queue.length} OP${queue.length > 1 ? 's' : ''} na fila não viraram card. Recarregue o quadro — isto NÃO é fábrica vazia.`}
++          />
++        </div>
+       ) : filtering && matches.length === 0 ? (
+         /* Filtrando e nada casou: o quadro fica vazio de propósito */
+         <div className="flex-1 flex items-center justify-center">
