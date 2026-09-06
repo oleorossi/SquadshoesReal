@@ -10,6 +10,7 @@ export type AccountPayable = {
   description: string;
   supplier_id: string | null;
   invoice_id: string | null;
+  purchase_order_id?: string | null;
   category: string;
   due_date: string;
   amount: number;
@@ -122,9 +123,6 @@ export function useUpdateAccountPayable() {
   return useMutation({
     mutationFn: async ({ id, ...data }: Partial<AccountPayable> & { id: string }) => {
       const { suppliers, ...cleanData } = data as any;
-      // Guard: prevent amount/status edits on already-paid rows to preserve audit trail.
-      // Uses a conditional UPDATE (.neq) instead of SELECT-then-UPDATE to avoid a race
-      // where a concurrent payment flips status between our SELECT and UPDATE.
       if (cleanData.amount !== undefined || cleanData.status !== undefined) {
         const { data: updated, error } = await supabase
           .from('accounts_payable')
@@ -153,9 +151,6 @@ export function useUpdateAccountReceivable() {
   return useMutation({
     mutationFn: async ({ id, ...data }: Partial<AccountReceivable> & { id: string }) => {
       const { sale_orders, ...cleanData } = data as any;
-      // Guard: prevent amount/status edits on already-received rows to preserve audit trail.
-      // Uses a conditional UPDATE (.neq) instead of SELECT-then-UPDATE to avoid a race
-      // where a concurrent payment flips status between our SELECT and UPDATE.
       if (cleanData.amount !== undefined || cleanData.status !== undefined) {
         const { data: updated, error } = await supabase
           .from('accounts_receivable')
@@ -183,7 +178,6 @@ export function useDeleteAccountPayable() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      // Refuse to hard-delete paid AP rows to preserve the audit trail.
       const { data, error } = await supabase
         .from('accounts_payable')
         .delete()
@@ -202,22 +196,6 @@ export function useDeleteAccountPayable() {
   });
 }
 
-/**
- * Estorno de pagamento — a ÚNICA saída para uma AP marcada como paga por engano.
- * Sem ele a linha ficava congelada para sempre: `useDeleteAccountPayable` recusa
- * `status='paid'` e `useUpdateAccountPayable` recusa edição de amount/status, e
- * não existia nenhuma ação de cancelar na UI. O estorno devolve a conta para
- * 'pending', de onde ela pode ser editada, excluída ou paga de novo.
- *
- * ⚠ `amount_paid` TEM que ir a zero no MESMO update. O trigger `trg_auto_close_ap`
- * (BEFORE UPDATE OF amount_paid, amount) reabre a conta como 'paid' sempre que
- * `amount_paid >= amount` — mexer só no status devolveria 'paid' na mesma
- * transação, silenciosamente. Vale para pagamento parcial também.
- *
- * Predicado atômico `.eq('status','paid')` (mesmo padrão do markPaid): dois
- * estornos concorrentes → o segundo não casa linha e falha explícito, em vez de
- * zerar um pagamento que outra sessão acabou de registrar.
- */
 export function useReverseAccountPayable() {
   const qc = useQueryClient();
   return useMutation({
@@ -244,7 +222,6 @@ export function useDeleteAccountReceivable() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      // Refuse to hard-delete received/cancelled AR rows to preserve the audit trail.
       const { data, error } = await supabase
         .from('accounts_receivable')
         .delete()
@@ -263,16 +240,6 @@ export function useDeleteAccountReceivable() {
   });
 }
 
-/**
- * Espelho de `useReverseAccountPayable` para o lado a receber — mesmo beco sem
- * saída (delete e update recusam `status='received'`), mesma trava do trigger
- * `trg_auto_close_ar`, que reabre como 'received' se `amount_received >= amount`.
- *
- * Colateral esperado: `trg_ar_recompute_cmv` dispara em UPDATE OF status /
- * amount_received / payment_date e recalcula o reconhecimento de CMV do PV
- * vinculado. Isso é o comportamento correto de um estorno — o CMV reconhecido
- * some junto com o recebimento —, não um efeito a suprimir.
- */
 export function useReverseAccountReceivable() {
   const qc = useQueryClient();
   return useMutation({
