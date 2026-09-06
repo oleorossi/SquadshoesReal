@@ -1,4 +1,4 @@
-import { isUuid } from '@/lib/technicalStrapLines';
+import { isUuid, strapColorMode, type StrapColorMode } from '@/lib/technicalStrapLines';
 import { strapIdentityBasis, type StrapIdentityLike } from '@/lib/strapIdentity';
 
 export interface OperatorStrapLineLike extends StrapIdentityLike {
@@ -7,6 +7,7 @@ export interface OperatorStrapLineLike extends StrapIdentityLike {
   label?: string | null;
   color?: string | null;
   color_id?: string | null;
+  color_mode?: StrapColorMode | null;
   strap_type_id?: string | null;
   measure_id?: string | null;
   group_id?: string | null;
@@ -58,12 +59,15 @@ export function operatorStrapSequence<T extends OperatorStrapLineLike>(
   return sequence;
 }
 
-/** Cor efetiva impressa: snapshot por linha do PV; legado cai na cor principal. */
+/** Cor própria ausente fica visível; somente follow_main/legado herda a principal. */
 export function effectiveOperatorStrapColor(
   line: OperatorStrapLineLike,
   mainColor?: string | null,
 ): string {
-  return String(line.color || '').trim() || String(mainColor || '').trim() || '—';
+  const selected = String(line.color || '').trim();
+  if (selected) return selected;
+  if (strapColorMode(line) === 'select_on_order') return '—';
+  return String(mainColor || '').trim() || '—';
 }
 
 /** Material efetivamente salvo no PV; o rótulo antigo permanece só no legado. */

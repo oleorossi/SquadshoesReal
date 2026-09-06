@@ -39,6 +39,17 @@ describe('atalho legado da ficha de operador · sequência de tiras', () => {
     expect(html).toContain('data-strap-position="2"');
   });
 
+  it('não inventa COBRE para Strass sem cor própria no snapshot', () => {
+    const html = operatorStrapsHtml('Aviamento', [{
+      ...UUID_STRAPS[1], identity_basis: 'finished_product_group',
+      identity_group_id: 'c45ff936-5ac5-49b5-98c4-4aed5e10e82d',
+      group_name: 'TIRA STRASS 6MM',
+    }], 'COBRE');
+    expect(html).toContain('TIRA STRASS 6MM');
+    expect(html).toContain('<td class="sc">—</td>');
+    expect(html).not.toContain('COBRE');
+  });
+
   it('carrega o snapshot strap_colors nas consultas e no caller do atalho', () => {
     const shortcutSource = readFileSync(
       resolve(process.cwd(), 'src/lib/printOperatorFichas.ts'),

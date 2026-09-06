@@ -85,9 +85,7 @@ import {
 } from '@/lib/cabedalLeftover';
 import { getShoeSizeMappings } from '@/utils/shoeUtils';
 import {
-  applyCanonicalTechnicalStrapMeasure,
   applyTechnicalStrapColorMode,
-  applyTechnicalStrapIdentity,
   ensureTechnicalStrapLineIds,
   hasCanonicalTechnicalStrapIdentity,
   newTechnicalStrapLineId,
@@ -96,8 +94,10 @@ import {
   type StrapColorMode,
 } from '@/lib/technicalStrapLines';
 import { strapIdentityBasis } from '@/lib/strapIdentity';
+import { applyTechnicalStrapMeasureWithSource, isTechnicalStrapSourceAllowed, technicalStrapSourcePolicy } from '@/lib/technicalStrapSourcePolicy';
 import { normalizeStrapMaterialPolicy, strapMaterialMode, validateStrapMaterialPolicy } from '@/lib/strapMaterialPolicy';
 import TechnicalStrapMaterialPolicyEditor from '@/components/technical-sheets/TechnicalStrapMaterialPolicyEditor';
+import TechnicalStrapSourceEditor from '@/components/technical-sheets/TechnicalStrapSourceEditor';
 import { referenceStrapBaseGroups } from '@/lib/referenceStrapBaseGroups';
 import { CONSUMPTION_SECTORS, normalizeDirectComponentSectors } from '@/lib/consumptionSector';
 
@@ -1472,16 +1472,6 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
   // hidrata defaults e normaliza identidades legadas de tiras ao abrir.
   const persistedFormRef = React.useRef<SheetFormData>(cloneTechnicalSheetSnapshot(form));
   const strapMaterialCandidatesQuery = useStrapBaseGroupCandidates(!!form.has_straps);
-  const activeStrapIdentityGroups = useMemo(() => {
-    const selectedIds = new Set((form.strap_colors || [])
-      .map((line) => line.identity_group_id)
-      .filter(Boolean));
-    return (strapCatalog?.groups || [])
-      .filter((group) => selectedIds.has(group.id) || (strapCatalog?.products || []).some((product) => (
-        product.group_id === group.id && product.active !== false && product.unit === 'm'
-      )))
-      .sort((left, right) => left.name.localeCompare(right.name, 'pt-BR'));
-  }, [form.strap_colors, strapCatalog]);
   const hasReferenceBaseStrapLine = useMemo(
     () => (form.strap_colors || []).some(line => strapIdentityBasis(line) === 'reference_base'),
     [form.strap_colors],
@@ -1964,6 +1954,14 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
         ));
         if (invalidLines.length > 0) {
           toast.error(`${invalidLines.length} tira(s) sem família, medida ou base de identidade canônicas. Preencha os campos destacados antes de salvar.`);
+          setAbaAtiva('range-aviamento');
+          return;
+        }
+        const unsupportedSource = normalizedStraps.find(line => !isTechnicalStrapSourceAllowed(
+          line, technicalStrapSourcePolicy(strapCatalog, line.measure_id),
+        ));
+        if (unsupportedSource) {
+          toast.error(`${unsupportedSource.label || 'Tira'}: escolha uma origem cadastrada para esta família e medida.`, { duration: 8000 });
           setAbaAtiva('range-aviamento');
           return;
         }
@@ -3895,30 +3893,18 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                           </Button>
                         )}
                       </div>
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-semibold">
-                            Base da identidade <span className="text-destructive">*</span>
-                          </Label>
-                          <Select
-                            value={strapIdentityBasis(strap)}
-                            onValueChange={(value) => {
-                              const updated = [...(form.strap_colors || [])];
-                              updated[idx] = applyTechnicalStrapIdentity(
-                                updated[idx],
-                                value as 'reference_base' | 'finished_product_group',
-                                null,
-                              );
-                              updateField('strap_colors', updated);
-                            }}
-                          >
-                            <SelectTrigger><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="reference_base">Produzida a partir do material do cabedal</SelectItem>
-                              <SelectItem value="finished_product_group">Grupo próprio · comprada pronta</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
+                      <TechnicalStrapSourceEditor
+                        line={strap}
+                        label={strap.label || `Tira ${idx + 1}`}
+                        catalog={strapCatalog}
+                        loading={strapCatalogQuery.isLoading}
+                        failed={strapCatalogQuery.isError}
+                        onChange={nextLine => {
+                          const updated = [...(form.strap_colors || [])];
+                          updated[idx] = nextLine;
+                          updateField('strap_colors', updated);
+                        }}
+                      >
                         {strapIdentityBasis(strap) === 'reference_base' && strapMaterialMode(strap) === 'follow_reference' && (
                           <div className="space-y-1.5">
                             <Label className="text-xs font-semibold">Napa-base definida pela referência</Label>
@@ -3958,38 +3944,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                             )}
                           </div>
                         )}
-                        {strapIdentityBasis(strap) === 'finished_product_group' && (
-                          <div className="space-y-1.5">
-                            <Label className="text-xs font-semibold">
-                              Grupo do produto acabado <span className="text-destructive">*</span>
-                            </Label>
-                            <Select
-                              value={strap.identity_group_id || ''}
-                              onValueChange={(groupId) => {
-                                const updated = [...(form.strap_colors || [])];
-                                updated[idx] = applyTechnicalStrapIdentity(
-                                  updated[idx],
-                                  'finished_product_group',
-                                  groupId,
-                                );
-                                updateField('strap_colors', updated);
-                              }}
-                            >
-                              <SelectTrigger className={!strap.identity_group_id ? 'border-destructive focus:ring-destructive' : ''}>
-                                <SelectValue placeholder="Selecione o grupo acabado" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {activeStrapIdentityGroups.map((group) => (
-                                  <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <p className="text-xs text-muted-foreground">
-                              Origem fixa no PV: <strong>Comprar pronta</strong>.
-                            </p>
-                          </div>
-                        )}
-                      </div>
+                      </TechnicalStrapSourceEditor>
                       {strapIdentityBasis(strap) === 'reference_base' && (
                         <TechnicalStrapMaterialPolicyEditor
                           line={strap}
@@ -4058,7 +4013,8 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                             const measure = activeStrapMeasures.find((entry) => entry.id === measureId);
                             if (!measure) return;
                             const updated = [...(form.strap_colors || [])];
-                            updated[idx] = applyCanonicalTechnicalStrapMeasure(updated[idx], measure);
+                            if (!strapCatalog) return;
+                            updated[idx] = applyTechnicalStrapMeasureWithSource(updated[idx], measure, strapCatalog);
                             updateField('strap_colors', updated);
                           }}
                         >

@@ -905,11 +905,10 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       if (mode && isUuid(materialBaseForStrap(strap))) return [];
       return [strap.label || `Tira ${ordinal + 1}`];
     });
-  const independentReferenceBaseColorIssues = preserveCommittedStrapSnapshot
+  const selectedStrapColorIssues = preserveCommittedStrapSnapshot
     ? []
     : strapPresentationDefinitions.flatMap((strap, ordinal) => {
-      if (strapIdentityBasis(strap) !== 'reference_base'
-          || strapColorMode(strap) !== 'select_on_order') return [];
+      if (strapColorMode(strap) !== 'select_on_order') return [];
       const lineId = technicalStrapLineId(strap);
       const resolvedLine = lineId ? strapLineByKey.get(lineId) : undefined;
       const baseGroupId = materialBaseForStrap(strap, resolvedLine?.baseGroupId);
@@ -940,9 +939,9 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     || strapSnapshotMissing
     || strapCanonicalMainMissing
     || strapMaterialIssues.length > 0
-    || independentReferenceBaseColorIssues.length > 0;
+    || selectedStrapColorIssues.length > 0;
   const colorIssueKey = hasColorIssue
-    ? `${item.color}|${coverColorIssues.map(i => i.name).join(',')}|${strapSnapshotMissing}|${strapCanonicalMainMissing}|${strapMaterialIssues.join(',')}|${independentReferenceBaseColorIssues.map((issue) => `${issue.lineId}:${issue.label}`).join(',')}`
+    ? `${item.color}|${coverColorIssues.map(i => i.name).join(',')}|${strapSnapshotMissing}|${strapCanonicalMainMissing}|${strapMaterialIssues.join(',')}|${selectedStrapColorIssues.map((issue) => `${issue.lineId}:${issue.label}`).join(',')}`
     : '';
 
   // Reporta a pendência ao pai (chave estável evita churn) + limpa no unmount.
@@ -955,7 +954,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
           ...(strapSnapshotMissing ? ['ficha técnica sem linhas de tira'] : []),
           ...(strapCanonicalMainMissing ? ['identidade canônica da cor das tiras'] : []),
           ...strapMaterialIssues.map((label) => `material de ${label}`),
-          ...independentReferenceBaseColorIssues.map((issue) => issue.label),
+          ...selectedStrapColorIssues.map((issue) => issue.label),
         ],
         message: strapSnapshotMissing
           ? 'Esta referência exige tiras, mas o item não possui snapshot das linhas técnicas. Abra a ficha técnica, cadastre as tiras e volte ao pedido; nenhuma cor ou variante será inferida.'
@@ -963,8 +962,8 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
             ? `A cor ${referenceBaseMaterialWithArticle} não corresponde a uma cor canônica ou alias aprovado. Corrija essa identidade no estoque antes de salvar.`
             : strapMaterialIssues.length > 0
               ? `Selecione um material permitido para ${strapMaterialIssues.join(', ')} antes de salvar o pedido.`
-            : independentReferenceBaseColorIssues.length > 0
-              ? `Defina uma cor canônica para ${independentReferenceBaseColorIssues.map((issue) => issue.label).join(', ')} antes de salvar o pedido.`
+            : selectedStrapColorIssues.length > 0
+              ? `Defina uma cor canônica para ${selectedStrapColorIssues.map((issue) => issue.label).join(', ')} antes de salvar o pedido.`
               : undefined,
       }
       : null);
@@ -1146,10 +1145,10 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     if (changed) latestRef.current.onUpdate(latestRef.current.index, 'strap_sourcing', next);
   }, [item.material_variant_id, item.strap_colors, strapSourcingMap, preserveCommittedStrapSnapshot]);
 
-  // Uma cor independente de tira interna só é válida dentro da napa-base
-  // efetiva da referência/variante. Quando esse grupo muda, conserva a escolha
-  // se o mesmo UUID continuar disponível; caso contrário limpa cor e origem
-  // para que o seletor obrigatório mostre a pendência antes do save.
+  // A cor escolhida pertence ao material desta posição: napa-base da tira
+  // interna ou grupo acabado da tira pronta. Limpa também UUIDs de cabedal
+  // herdados indevidamente por snapshots antigos de Strass, sem afetar as
+  // posições que seguem a cor principal nem pedidos já comprometidos.
   useEffect(() => {
     if (preserveCommittedStrapSnapshot
         || !strapCatalog
@@ -1160,8 +1159,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     let sourcingChanged = false;
     let nextSourcing = strapSourcingMap;
     const updated = straps.map((strap) => {
-      if (strapIdentityBasis(strap) !== 'reference_base'
-          || strapColorMode(strap) !== 'select_on_order') return strap;
+      if (strapColorMode(strap) !== 'select_on_order') return strap;
       const lineId = technicalStrapLineId(strap);
       const resolvedLine = lineId ? strapLineByKey.get(lineId) : undefined;
       const baseGroupId = materialBaseForStrap(strap, resolvedLine?.baseGroupId);
@@ -2351,7 +2349,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                       ) : (
                         <Select
                           value={strap.color_id || ''}
-                          disabled={!item.reference_id || !strapCatalog || strapLinesLoading || !identityGroupResolved || !measureResolved}
+                          disabled={!item.reference_id || !strapCatalog || strapCatalogLoading || strapLinesLoading || !identityGroupResolved || !measureResolved}
                           onValueChange={(colorId) => {
                             const canonical = identityColors.find((entry) => entry.id === colorId);
                             if (!canonical) return;
@@ -2472,7 +2470,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                             : 'A cor atual não possui produto ativo ou fonte válida neste material. Escolha uma opção válida.'}
                         </p>
                       )}
-                      {independentReferenceBase && !readOnlyHistoricalColor && !strap.color_id && !strap.color && (
+                      {selectsOnOrder && !readOnlyHistoricalColor && !strap.color_id && !strap.color && (
                         <p className="text-xs leading-tight text-destructive">
                           Selecione uma cor canônica para esta posição antes de salvar.
                         </p>

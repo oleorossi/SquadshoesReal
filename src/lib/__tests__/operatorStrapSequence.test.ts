@@ -99,6 +99,12 @@ describe('effectiveOperatorStrapColor', () => {
     expect(effectiveOperatorStrapColor({}, 'Preto')).toBe('Preto');
     expect(effectiveOperatorStrapColor({}, '')).toBe('—');
   });
+
+  it('não imprime a cor do calçado como escolha ausente de tira independente', () => {
+    expect(effectiveOperatorStrapColor({ color_mode: 'select_on_order', color: '' }, 'COBRE')).toBe('—');
+    expect(effectiveOperatorStrapColor({ identity_basis: 'finished_product_group', color: '' }, 'COBRE')).toBe('—');
+    expect(effectiveOperatorStrapColor({ color_mode: 'follow_main', color: '' }, 'COBRE')).toBe('COBRE');
+  });
 });
 
 describe('operatorStrapGroupingSignature', () => {

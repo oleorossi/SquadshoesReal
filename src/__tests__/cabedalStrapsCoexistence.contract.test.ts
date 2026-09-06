@@ -45,7 +45,7 @@ describe('Cabedal e tiras coexistem na ficha e no PV', () => {
     expect(saleOrderItemForm).not.toMatch(/modelHasCabedal[\s\S]{0,200}update\(idx, 'strap_colors', \[\]\)/);
 
     expect(saleOrderItemForm).toContain('const strapSnapshotMissing = hasStrapsEffective');
-    expect(saleOrderItemForm).toContain('const independentReferenceBaseColorIssues =');
+    expect(saleOrderItemForm).toContain('const selectedStrapColorIssues =');
     expect(saleOrderItemForm).toContain('hasStrapsEffective && hasFollowMainReferenceBaseStraps');
   });
 

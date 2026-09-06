@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import SaleOrderItemForm from '../SaleOrderItemForm';
 import type { SaleOrderItemFormData } from '@/hooks/useSaleOrders';
 import type SaleOrderStrapColorCreateDialog from '../SaleOrderStrapColorCreateDialog';
+import type { ReferenceMaterialVariant } from '@/hooks/useReferenceMaterialVariants';
 
 type ColorDialogProps = ComponentProps<typeof SaleOrderStrapColorCreateDialog>;
 
@@ -83,14 +84,19 @@ function initialItem(color = BLACK): SaleOrderItemFormData {
   };
 }
 
-function mount(initial: SaleOrderItemFormData, status = 'Rascunho', lines = technicalLines) {
+function mount(initial: SaleOrderItemFormData, status = 'Rascunho', lines = technicalLines, options: {
+  products?: typeof PRODUCTS;
+  groups?: typeof GROUPS;
+  variantsByRef?: ComponentProps<typeof SaleOrderItemForm>['variantsByRef'];
+} = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   qc.setQueryData(['sheet_specs_for_colors', REF], { upper_material: 'NAPA SOFT', upper_material_group_id: SOFT, has_straps: true });
-  qc.setQueryData(['products_for_colors'], PRODUCTS);
-  qc.setQueryData(['product_groups_colors'], GROUPS);
+  qc.setQueryData(['products_for_colors'], options.products || PRODUCTS);
+  qc.setQueryData(['product_groups_colors'], options.groups || GROUPS);
   let latest = initial;
   let replaceItem: (next: SaleOrderItemFormData) => void;
   const updates = vi.fn();
+  const colorIssues = vi.fn();
   const referenceData = references.map(reference => ({ ...reference, strap_colors: lines }));
   function Harness() {
     const [item, setItem] = useState(initial);
@@ -99,6 +105,7 @@ function mount(initial: SaleOrderItemFormData, status = 'Rascunho', lines = tech
     return <SaleOrderItemForm
       item={item} index={0} references={referenceData} canRemove={false} isAdmin={false}
       saleOrderStatus={status} onRemove={vi.fn()}
+      variantsByRef={options.variantsByRef} onColorIssueChange={colorIssues}
       onUpdate={(_index, field, value) => {
         updates(field, value);
         setItem(current => ({ ...current, [field]: value }));
@@ -106,7 +113,7 @@ function mount(initial: SaleOrderItemFormData, status = 'Rascunho', lines = tech
     />;
   }
   const view = render(<QueryClientProvider client={qc}><MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><Harness /></MemoryRouter></QueryClientProvider>);
-  return { ...view, current: () => latest, replace: (next: SaleOrderItemFormData) => replaceItem(next), updates, qc };
+  return { ...view, current: () => latest, replace: (next: SaleOrderItemFormData) => replaceItem(next), updates, colorIssues, qc };
 }
 
 beforeEach(() => {
@@ -265,5 +272,149 @@ describe('SaleOrderItemForm — material por posição', () => {
     expect(screen.queryAllByRole('option')).toHaveLength(0);
     expect(view.current().strap_colors[0].base_group_id).toBeNull();
     expect(view.current().strap_colors[0].allowed_material_group_ids).toEqual({ [SOFT]: true });
+  });
+});
+
+describe('SaleOrderItemForm — I703 com Overlock e Strass 6 mm', () => {
+  const GLOW = '66666666-6666-4666-8666-666666666666';
+  const STRASS = 'c45ff936-5ac5-49b5-98c4-4aed5e10e82d';
+  const STRASS_TYPE = '381eb21d-2170-45f7-ab7c-3601a8857ea9';
+  const STRASS_MEASURE = '00f07325-347b-4e65-90e6-fed33f70eacc';
+  const COPPER = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+  const CRYSTAL = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+  const PINK = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+  const OFF_WHITE = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
+  const BLACK_BASE = 'abababab-abab-4bab-8bab-abababababab';
+  const STRASS_COLORS = [
+    { id: CRYSTAL, name: 'CRISTAL COM FUNDO BRANCO', active: true },
+    { id: PINK, name: 'ROSADO COM FUNDO ROSADO', active: true },
+    { id: OFF_WHITE, name: 'OFF WHITE', active: true },
+    { id: BLACK_BASE, name: 'PRETO COM FUNDO PRETO', active: true },
+  ];
+  const products = [
+    ...PRODUCTS,
+    { id: 'glow-copper', group_id: GLOW, name: 'GLOW METALIC + MASSABOX COBRE', color: 'COBRE', active: true, unit: 'm' },
+    { id: 'glow-gold', group_id: GLOW, name: 'GLOW METALIC + MASSABOX OURO', color: 'OURO', active: true, unit: 'm' },
+    ...STRASS_COLORS.map(color => ({
+      id: `strass-${color.id}`, group_id: STRASS, name: `TIRA STRASS 6MM ${color.name}`,
+      color: color.name, active: true, unit: 'm',
+    })),
+    { id: 'strass-inactive', group_id: STRASS, name: 'TIRA STRASS 6MM OURO', color: 'OURO', active: false, unit: 'm' },
+  ];
+  const groups = [...GROUPS, { id: GLOW, name: 'GLOW METALIC + MASSABOX' }, { id: STRASS, name: 'TIRA STRASS 6MM' }];
+  const lines: Array<NonNullable<SaleOrderItemFormData['strap_colors']>[number] & {
+    internal_production_enabled: boolean;
+  }> = [
+    {
+      ...technicalLines[0], color_mode: 'follow_main', material_mode: 'follow_reference',
+      allowed_material_group_ids: [], internal_production_enabled: true,
+      consumption: 44, consumption_per_size: { '34': 44 },
+    },
+    {
+      ...technicalLines[1], strap_type_id: STRASS_TYPE, measure_id: STRASS_MEASURE,
+      identity_basis: 'finished_product_group', identity_group_id: STRASS,
+      color_mode: 'select_on_order', material_mode: 'follow_reference',
+      allowed_material_group_ids: [], internal_production_enabled: false,
+      consumption: 50, consumption_per_size: { '34': 50 },
+    },
+  ];
+
+  function setup(legacy = false) {
+    state.catalog = {
+      ...state.catalog,
+      products, groups,
+      types: [{ id: TYPE, name: 'TIRA OVERLOCK', active: true }, { id: STRASS_TYPE, name: 'TIRA STRASS', active: true }],
+      measures: [
+        { id: MEASURE, strap_type_id: TYPE, display_name: '5 mm', active: true },
+        { id: STRASS_MEASURE, strap_type_id: STRASS_TYPE, display_name: '6 mm', active: true },
+      ],
+      colors: [{ id: COPPER, name: 'COBRE', active: true }, { id: GOLD, name: 'OURO', active: true }, ...STRASS_COLORS],
+      official_products: [],
+      // OFF WHITE e PRETO também devem aparecer: são SKUs cadastrados,
+      // mesmo que a compra pronta ainda precise completar sua variante.
+      variants: STRASS_COLORS.slice(0, 2).map(color => ({
+        id: `variant-${color.id}`, finished_product_id: `strass-${color.id}`,
+        base_group_id: STRASS, identity_basis: 'finished_product_group',
+        color_id: color.id, measure_id: STRASS_MEASURE, status: 'active',
+      })),
+    };
+    const initial: SaleOrderItemFormData = {
+      ...initialItem(), material_variant_id: GLOW, color: 'COBRE',
+      strap_colors: lines.map((line, ordinal) => ({
+        ...line,
+        ...(ordinal === 0 || legacy ? {
+          identity_basis: 'reference_base', identity_group_id: null,
+          color_mode: 'follow_main', internal_production_enabled: true,
+          base_group_id: GLOW, base_group_name: 'GLOW METALIC + MASSABOX',
+        } : {}),
+        color: 'COBRE', color_id: COPPER,
+      })),
+      strap_sourcing: {
+        [LINE_A]: { source_mode: 'internal', color_id: COPPER, strap_variant_id: TYPE, recipe_id: MEASURE },
+        [LINE_B]: { source_mode: 'internal', color_id: COPPER, strap_variant_id: STRASS_TYPE, recipe_id: STRASS_MEASURE },
+      },
+    };
+    const variant = {
+      id: GLOW, reference_id: REF, material_name: 'GLOW METALIC + MASSABOX', active: true,
+      main_material_group_id: GLOW, upper_material_group_id: GLOW,
+    } as ReferenceMaterialVariant;
+    const options = { products, groups, variantsByRef: new Map([[REF, [variant]]]) };
+    return { initial, options };
+  }
+
+  it('reconcilia a política da TIRA 2 por UUID e oferece somente os quatro produtos Strass ativos', async () => {
+    const { initial, options } = setup(true);
+    const user = userEvent.setup();
+    const view = mount(initial, 'Rascunho', lines, options);
+    await waitFor(() => expect(view.current().strap_colors[1]).toMatchObject({
+      identity_basis: 'finished_product_group', identity_group_id: STRASS,
+      color_mode: 'select_on_order', color: '', color_id: null,
+      consumption: 50, consumption_per_size: { '34': 50 },
+    }));
+    expect(view.current().strap_colors[0]).toMatchObject({ color: 'COBRE', color_id: COPPER, base_group_id: GLOW, consumption: 44, consumption_per_size: { '34': 44 } });
+    expect(view.current().strap_sourcing).toHaveProperty(LINE_A);
+    expect(view.current().strap_sourcing).not.toHaveProperty(LINE_B);
+    expect(screen.queryByRole('combobox', { name: 'Cor de TIRA 1' })).not.toBeInTheDocument();
+    expect(screen.getByText('Tipo da ficha: TIRA STRASS · 6 mm')).toBeInTheDocument();
+    expect(screen.getAllByText('Material: GLOW METALIC + MASSABOX')).toHaveLength(1);
+    await user.click(screen.getByRole('combobox', { name: 'Cor de TIRA 2' }));
+    expect(screen.getAllByRole('option').map(option => option.textContent)).toEqual(STRASS_COLORS.map(color => color.name).sort());
+    await user.click(screen.getByRole('option', { name: 'ROSADO COM FUNDO ROSADO' }));
+    expect(view.current().strap_colors[1]).toMatchObject({ color_id: PINK, color: 'ROSADO COM FUNDO ROSADO', consumption: 50 });
+
+    await act(async () => view.replace({ ...view.current(), color: 'OURO' }));
+    await waitFor(() => expect(view.current().strap_colors[0].color_id).toBe(GOLD));
+    expect(view.current().strap_colors[1]).toMatchObject({ color_id: PINK, color: 'ROSADO COM FUNDO ROSADO' });
+  });
+
+  it('limpa a cor de cabedal inválida em snapshot já classificado como Strass e exige selecionar sua cor', async () => {
+    const { initial, options } = setup();
+    const view = mount(initial, 'Rascunho', lines, options);
+    await waitFor(() => expect(view.current().strap_colors[1]).toMatchObject({ color: '', color_id: null }));
+    expect(view.current().strap_sourcing).not.toHaveProperty(LINE_B);
+    expect(view.current().strap_sourcing).toHaveProperty(LINE_A);
+    expect(view.colorIssues).toHaveBeenLastCalledWith(0, expect.objectContaining({ materials: expect.arrayContaining(['TIRA 2']) }));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('combobox', { name: 'Cor de TIRA 2' }));
+    expect(screen.queryByRole('option', { name: /COBRE/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('option', { name: 'OFF WHITE' }));
+    await waitFor(() => expect(view.colorIssues).toHaveBeenLastCalledWith(0, null));
+  });
+
+  it('aguarda o catálogo sem apagar uma escolha independente já salva', () => {
+    const { initial, options } = setup();
+    initial.strap_colors[1] = { ...initial.strap_colors[1], color: 'OFF WHITE', color_id: OFF_WHITE };
+    state.loading = true;
+    const view = mount(initial, 'Rascunho', lines, options);
+    expect(view.current().strap_colors[1]).toMatchObject({ color: 'OFF WHITE', color_id: OFF_WHITE });
+    expect(screen.getByRole('combobox', { name: 'Cor de TIRA 2' })).toBeDisabled();
+  });
+
+  it('preserva o snapshot e a origem de um pedido já comprometido', () => {
+    const { initial, options } = setup(true);
+    const view = mount(initial, 'Em Produção', lines, options);
+    expect(view.current()).toEqual(initial);
+    expect(view.updates.mock.calls.filter(([field]) => field === 'strap_colors' || field === 'strap_sourcing')).toEqual([]);
+    expect(screen.queryByRole('combobox', { name: 'Cor de TIRA 2' })).not.toBeInTheDocument();
   });
 });
