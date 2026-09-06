@@ -693,7 +693,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       materialVariantId: item.material_variant_id,
       color: item.color,
     },
-    hasStrapsEffective && hasFollowMainReferenceBaseStraps,
+    hasStrapsEffective && hasFollowMainReferenceBaseStraps && !preserveCommittedStrapSnapshot,
   );
   const canonicalStrapColorByKey = useMemo(() => {
     const candidates = new Map<string, Set<string>>();
@@ -2190,7 +2190,8 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                   aborta o PV INTEIRO quando falta perfil de largura, SKU oficial
                   da cor ou rendimento aprovado. Antes disso só se descobria pelo
                   texto cru do RAISE, que não nomeia item nem napa. */}
-              {hasFollowMainReferenceBaseStraps
+              {!preserveCommittedStrapSnapshot
+                && hasFollowMainReferenceBaseStraps
                 && internalStrapReadiness?.requiresReferenceBase
                 && internalStrapReadiness.ready === false && (
                 <div className="flex flex-col gap-2 border-b border-amber-500/40 bg-amber-500/10 px-3 py-3 sm:flex-row sm:items-start sm:justify-between">
@@ -2547,11 +2548,22 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                         );
                         const blocked = !!effective && !!line?.blockReason;
                         // Antes do primeiro save, a origem interna ainda não existe no
-                        // snapshot do item. O preview já conhece a pendência do catálogo,
-                        // então o rótulo não pode depender somente de `strap_sourcing`.
-                        const internalCatalogPending = !purchasedReady
+                        // snapshot do item. A prontidão consulta o mesmo resolvedor do
+                        // save e continua disponível mesmo quando a prévia detalhada da
+                        // linha ainda não carregou, então o rótulo não pode depender
+                        // somente de `strap_sourcing` ou de `resolvedLine`.
+                        const readinessIssueForLine = internalStrapReadiness?.issues.find(
+                          (issue) => !issue.technicalStrapLineId || issue.technicalStrapLineId === lineId,
+                        );
+                        const readinessBlocksReferenceBase = !usesFinishedGroup
+                          && colorMode === 'follow_main'
+                          && internalStrapReadiness?.requiresReferenceBase === true
+                          && internalStrapReadiness.ready === false
+                          && !!readinessIssueForLine;
+                        const internalCatalogPending = !preserveCommittedStrapSnapshot
+                          && !purchasedReady
                           && effective !== 'buy_ready'
-                          && !!line?.internalBlockReason;
+                          && (!!line?.internalBlockReason || readinessBlocksReferenceBase);
                         const fmt = (v: number | null | undefined, d = 2) =>
                           v == null ? '—' : v.toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d });
                         return (
@@ -2573,7 +2585,11 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                                         : 'Produção interna automática'}
                               </span>
                             </div>
-                            {!usesFinishedGroup && !effective ? (
+                            {!usesFinishedGroup && !effective && internalCatalogPending ? (
+                              <p className="text-[10px] leading-snug text-amber-700 dark:text-amber-400">
+                                {readinessIssueForLine?.message || line?.internalBlockReason || 'Complete o cadastro interno desta tira antes de salvar.'}
+                              </p>
+                            ) : !usesFinishedGroup && !effective ? (
                               <p className="text-[10px] leading-snug text-muted-foreground">
                                 A identidade exata pela napa-base e a origem de estoque serão materializadas na mesma transação do salvamento.
                               </p>

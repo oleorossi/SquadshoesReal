@@ -15,6 +15,7 @@ import { supabase } from '@/integrations/supabase/client';
 export interface InternalStrapReadinessIssue {
   code: string;
   message: string;
+  technicalStrapLineId: string | null;
 }
 
 export interface InternalStrapReadiness {
@@ -54,6 +55,7 @@ function parseIssues(value: unknown): InternalStrapReadinessIssue[] {
       return {
         code: String(record.code || 'cadastro_incompleto'),
         message: String(record.message || ''),
+        technicalStrapLineId: str(record.technical_strap_line_id),
       };
     })
     .filter((issue) => !!issue.message);

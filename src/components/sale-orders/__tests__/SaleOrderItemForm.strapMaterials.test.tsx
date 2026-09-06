@@ -19,6 +19,7 @@ HTMLElement.prototype.scrollIntoView ??= () => {};
 const state = vi.hoisted(() => ({
   catalog: {} as Record<string, unknown>, loading: false, canCreate: false,
   strapLines: [] as Array<Record<string, unknown>>,
+  internalReadiness: undefined as Record<string, unknown> | undefined,
   colorDialog: null as ColorDialogProps | null,
 }));
 vi.mock('@/hooks/useAccessControl', () => ({ useAccessControl: () => ({
@@ -33,7 +34,7 @@ vi.mock('@/hooks/useArtisanalStraps', () => ({
   useArtisanalStrapCatalogDiagnostics: () => ({ data: undefined }),
 }));
 vi.mock('@/hooks/useStrapStockLines', () => ({ useStrapStockLines: () => ({ data: state.strapLines, isLoading: false }) }));
-vi.mock('@/hooks/useInternalStrapReadiness', () => ({ useInternalStrapReadiness: () => ({ data: undefined }) }));
+vi.mock('@/hooks/useInternalStrapReadiness', () => ({ useInternalStrapReadiness: () => ({ data: state.internalReadiness }) }));
 vi.mock('@/hooks/useProducts', () => ({ useAddProduct: () => ({ mutateAsync: vi.fn() }), ProductSchema: { parse: vi.fn() } }));
 vi.mock('@/hooks/useComponentSheets', () => ({ useAddComponentSheet: () => ({ mutateAsync: vi.fn() }) }));
 vi.mock('@/components/sale-orders/ItemSectorOutsourcingSection', () => ({ ItemSectorOutsourcingSection: () => null }));
@@ -121,6 +122,7 @@ beforeEach(() => {
   state.loading = false;
   state.canCreate = false;
   state.strapLines = [];
+  state.internalReadiness = undefined;
   state.colorDialog = null;
   state.catalog = {
     types: [{ id: TYPE, active: true, name: 'Tira' }],
@@ -422,22 +424,92 @@ describe('SaleOrderItemForm — I703 com Overlock e Strass 6 mm', () => {
 
   it('não anuncia produção automática quando falta o cadastro exato do material interno', () => {
     const { initial, options } = setup();
-    // Estado real antes do primeiro save: o preview já diagnostica o catálogo,
+    // Estado real antes do primeiro save: a prontidão já diagnostica o catálogo,
     // mas o item ainda não possui uma origem congelada em strap_sourcing.
     delete initial.strap_sourcing[LINE_A];
-    state.strapLines = [{
-      key: LINE_A,
-      technicalStrapLineId: LINE_A,
+    state.internalReadiness = {
+      requiresReferenceBase: true,
+      ready: false,
       baseGroupId: GLOW,
-      sourceMode: null,
-      internalBlockReason: 'Nenhum material/cor elegível para a receita interna.',
-      blockReason: 'Nenhum material/cor elegível para a receita interna.',
-    }];
+      baseGroupName: 'GLOW METALIC + MASSABOX',
+      colorId: COPPER,
+      colorName: 'COBRE',
+      issues: [{
+        code: 'internal_material_unavailable',
+        message: 'Nenhum material/cor elegível para a receita interna.',
+        technicalStrapLineId: LINE_A,
+      }],
+    };
 
     mount(initial, 'Rascunho', lines, options);
 
     expect(screen.getByText('Produção interna · cadastro pendente')).toBeInTheDocument();
     expect(screen.queryByText('Produção interna automática')).not.toBeInTheDocument();
+    expect(screen.getByText('Comprada pronta · origem fixa')).toBeInTheDocument();
+    expect(screen.getByText('Nenhum material/cor elegível para a receita interna.')).toBeInTheDocument();
+    expect(screen.queryByText(/serão materializadas na mesma transação/)).not.toBeInTheDocument();
+  });
+
+  it('não propaga a pendência de prontidão para outra linha técnica', () => {
+    const { initial, options } = setup();
+    const twoInternalLines: typeof lines = lines.map((line, index) => index === 0 ? line : ({
+      ...line,
+      strap_type_id: TYPE,
+      measure_id: MEASURE,
+      identity_basis: 'reference_base',
+      identity_group_id: null,
+      color_mode: 'follow_main',
+      internal_production_enabled: true,
+    }));
+    initial.strap_colors = initial.strap_colors.map((line, index) => index === 0 ? line : ({
+      ...twoInternalLines[index],
+      base_group_id: GLOW,
+      base_group_name: 'GLOW METALIC + MASSABOX',
+      color: 'COBRE',
+      color_id: COPPER,
+    }));
+    state.internalReadiness = {
+      requiresReferenceBase: true,
+      ready: false,
+      baseGroupId: GLOW,
+      baseGroupName: 'GLOW METALIC + MASSABOX',
+      colorId: COPPER,
+      colorName: 'COBRE',
+      issues: [{
+        code: 'internal_material_unavailable',
+        message: 'Outra posição sem cadastro interno.',
+        technicalStrapLineId: LINE_B,
+      }],
+    };
+
+    mount(initial, 'Rascunho', twoInternalLines, options);
+
+    expect(screen.getAllByText('Produção interna · cadastro pendente')).toHaveLength(1);
+    expect(screen.getAllByText('Produção interna automática')).toHaveLength(1);
+  });
+
+  it('não aplica a prontidão viva a um snapshot já comprometido', () => {
+    const { initial, options } = setup();
+    state.internalReadiness = {
+      requiresReferenceBase: true,
+      ready: false,
+      baseGroupId: GLOW,
+      baseGroupName: 'GLOW METALIC + MASSABOX',
+      colorId: COPPER,
+      colorName: 'COBRE',
+      issues: [{
+        code: 'internal_material_unavailable',
+        message: 'TIRA 1 sem cadastro interno.',
+        technicalStrapLineId: LINE_A,
+      }],
+    };
+
+    mount(initial, 'Em Produção', lines, options);
+
+    expect(screen.queryByText('Produção interna · cadastro pendente')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Cadastro da tira interna incompleto/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/pedido inteiro não salva/)).not.toBeInTheDocument();
+    expect(screen.getByText('Comprada pronta · origem fixa')).toBeInTheDocument();
   });
 
   it('usa um rótulo genérico quando a pendência interna não é de cadastro', () => {
