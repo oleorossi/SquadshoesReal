@@ -2560,7 +2560,11 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                                   ? 'Comprada pronta · origem fixa'
                                   : effective === 'buy_ready' && complete
                                     ? 'Compra pronta · histórico congelado'
-                                    : 'Produção interna automática'}
+                                    : effective === 'internal' && line?.internalBlockReason
+                                      ? 'Produção interna · cadastro pendente'
+                                      : effective === 'internal' && blocked
+                                        ? 'Produção interna · pendência'
+                                        : 'Produção interna automática'}
                               </span>
                             </div>
                             {!usesFinishedGroup && !effective ? (

@@ -18,6 +18,7 @@ HTMLElement.prototype.scrollIntoView ??= () => {};
 
 const state = vi.hoisted(() => ({
   catalog: {} as Record<string, unknown>, loading: false, canCreate: false,
+  strapLines: [] as Array<Record<string, unknown>>,
   colorDialog: null as ColorDialogProps | null,
 }));
 vi.mock('@/hooks/useAccessControl', () => ({ useAccessControl: () => ({
@@ -31,7 +32,7 @@ vi.mock('@/hooks/useArtisanalStraps', () => ({
   useArtisanalStrapCatalog: () => ({ data: state.loading ? undefined : state.catalog, isLoading: state.loading }),
   useArtisanalStrapCatalogDiagnostics: () => ({ data: undefined }),
 }));
-vi.mock('@/hooks/useStrapStockLines', () => ({ useStrapStockLines: () => ({ data: [], isLoading: false }) }));
+vi.mock('@/hooks/useStrapStockLines', () => ({ useStrapStockLines: () => ({ data: state.strapLines, isLoading: false }) }));
 vi.mock('@/hooks/useInternalStrapReadiness', () => ({ useInternalStrapReadiness: () => ({ data: undefined }) }));
 vi.mock('@/hooks/useProducts', () => ({ useAddProduct: () => ({ mutateAsync: vi.fn() }), ProductSchema: { parse: vi.fn() } }));
 vi.mock('@/hooks/useComponentSheets', () => ({ useAddComponentSheet: () => ({ mutateAsync: vi.fn() }) }));
@@ -119,6 +120,7 @@ function mount(initial: SaleOrderItemFormData, status = 'Rascunho', lines = tech
 beforeEach(() => {
   state.loading = false;
   state.canCreate = false;
+  state.strapLines = [];
   state.colorDialog = null;
   state.catalog = {
     types: [{ id: TYPE, active: true, name: 'Tira' }],
@@ -416,5 +418,39 @@ describe('SaleOrderItemForm — I703 com Overlock e Strass 6 mm', () => {
     expect(view.current()).toEqual(initial);
     expect(view.updates.mock.calls.filter(([field]) => field === 'strap_colors' || field === 'strap_sourcing')).toEqual([]);
     expect(screen.queryByRole('combobox', { name: 'Cor de TIRA 2' })).not.toBeInTheDocument();
+  });
+
+  it('não anuncia produção automática quando falta o cadastro exato do material interno', () => {
+    const { initial, options } = setup();
+    state.strapLines = [{
+      key: LINE_A,
+      technicalStrapLineId: LINE_A,
+      baseGroupId: GLOW,
+      sourceMode: 'internal',
+      internalBlockReason: 'Nenhum material/cor elegível para a receita interna.',
+      blockReason: 'Nenhum material/cor elegível para a receita interna.',
+    }];
+
+    mount(initial, 'Rascunho', lines, options);
+
+    expect(screen.getByText('Produção interna · cadastro pendente')).toBeInTheDocument();
+    expect(screen.queryByText('Produção interna automática')).not.toBeInTheDocument();
+  });
+
+  it('usa um rótulo genérico quando a pendência interna não é de cadastro', () => {
+    const { initial, options } = setup();
+    state.strapLines = [{
+      key: LINE_A,
+      technicalStrapLineId: LINE_A,
+      baseGroupId: GLOW,
+      sourceMode: 'internal',
+      internalBlockReason: null,
+      blockReason: 'Cronograma global ainda não definido.',
+    }];
+
+    mount(initial, 'Rascunho', lines, options);
+
+    expect(screen.getByText('Produção interna · pendência')).toBeInTheDocument();
+    expect(screen.queryByText('Produção interna · cadastro pendente')).not.toBeInTheDocument();
   });
 });
