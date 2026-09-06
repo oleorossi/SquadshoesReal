@@ -2546,6 +2546,12 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                           getStrapSourcingSelection(strapSourcingMap, lineId),
                         );
                         const blocked = !!effective && !!line?.blockReason;
+                        // Antes do primeiro save, a origem interna ainda não existe no
+                        // snapshot do item. O preview já conhece a pendência do catálogo,
+                        // então o rótulo não pode depender somente de `strap_sourcing`.
+                        const internalCatalogPending = !purchasedReady
+                          && effective !== 'buy_ready'
+                          && !!line?.internalBlockReason;
                         const fmt = (v: number | null | undefined, d = 2) =>
                           v == null ? '—' : v.toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d });
                         return (
@@ -2560,7 +2566,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                                   ? 'Comprada pronta · origem fixa'
                                   : effective === 'buy_ready' && complete
                                     ? 'Compra pronta · histórico congelado'
-                                    : effective === 'internal' && line?.internalBlockReason
+                                    : internalCatalogPending
                                       ? 'Produção interna · cadastro pendente'
                                       : effective === 'internal' && blocked
                                         ? 'Produção interna · pendência'

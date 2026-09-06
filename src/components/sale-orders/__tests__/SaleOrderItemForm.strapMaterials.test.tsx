@@ -422,11 +422,14 @@ describe('SaleOrderItemForm — I703 com Overlock e Strass 6 mm', () => {
 
   it('não anuncia produção automática quando falta o cadastro exato do material interno', () => {
     const { initial, options } = setup();
+    // Estado real antes do primeiro save: o preview já diagnostica o catálogo,
+    // mas o item ainda não possui uma origem congelada em strap_sourcing.
+    delete initial.strap_sourcing[LINE_A];
     state.strapLines = [{
       key: LINE_A,
       technicalStrapLineId: LINE_A,
       baseGroupId: GLOW,
-      sourceMode: 'internal',
+      sourceMode: null,
       internalBlockReason: 'Nenhum material/cor elegível para a receita interna.',
       blockReason: 'Nenhum material/cor elegível para a receita interna.',
     }];
