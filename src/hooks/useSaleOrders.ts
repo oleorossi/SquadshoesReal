@@ -6,6 +6,8 @@ import { syncFinancialRecordsCore } from '@/lib/financialSync';
 import { isValidStatusTransition } from '@/lib/saleOrderStateMachine';
 import { logAuditEvent } from '@/services/auditService';
 import { recomputeMaterialGate } from '@/hooks/useMaterialGate';
+import { fetchAllPages } from '@/lib/supabasePaginate';
+import { SALE_ORDERS_LIST_SELECT } from '@/lib/saleOrderListColumns';
 import { canonicalStageOrder } from '@/components/production/worksheet/stageOrder';
 import { pruneStrapSourcing } from '@/lib/strapSourcing';
 import { resolveGroupSuppliers } from '@/lib/groupSupplierResolution';
@@ -600,9 +602,13 @@ export function useSaleOrders() {
       // client_number vem por EMBED (FK sale_orders.client_id → clients) em vez
       // de uma 2ª query serial à tabela clients — corta 1 round-trip por mount
       // da lista de PVs. (auditoria perf)
+      //
+      // ⚠ PERF (2026-08-30): NÃO usar select('*'). client_signature_data_url é
+      // PNG em data-URL; setores/reports/contractors/sales baixavam as
+      // assinaturas sem pintá-las. Ver SALE_ORDERS_LIST_SELECT.
       const { data, error } = await supabase
         .from('sale_orders')
-        .select('*, clients(client_number)')
+        .select(SALE_ORDERS_LIST_SELECT)
         .is('deleted_at', null) // soft delete: esconde PVs com deleted_at != null
         .order('created_at', { ascending: false })
         .limit(1000);
@@ -646,10 +652,17 @@ export function useSaleOrderAllItems() {
       //                              production_excluded_at (filtro operacional)
       // Se um consumidor novo precisar de `grade`, crie uma queryKey própria em vez
       // de alargar esta — ela é baixada em toda visita ao /sales.
-      const { data, error } = await supabase
-        .from('sale_order_items')
-        .select('id, sale_order_id, reference_id, color, quantity, unit_price, production_excluded_at');
-      if (error) throw error;
+      //
+      // ⚠ PERF (2026-08-30): PostgREST corta em 1.000 linhas SEM erro. Com a
+      // carteira crescendo isso virava pares/comissões errados em silêncio.
+      // fetchAllPages pagina até o universo completo.
+      const data = await fetchAllPages((from, to) =>
+        supabase
+          .from('sale_order_items')
+          .select('id, sale_order_id, reference_id, color, quantity, unit_price, production_excluded_at')
+          .order('id')
+          .range(from, to),
+      );
       return data;
     },
     staleTime: 2 * 60 * 1000,

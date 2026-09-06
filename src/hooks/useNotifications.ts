@@ -43,6 +43,8 @@ export function useNotifications() {
     // montasse primeiro escrevia shape errado pro outro consumidor —
     // NotificationBell quebrava com 'notifications.filter is not a function'.
     queryKey: ['notifications_aggregated'],
+    staleTime: 2 * 60 * 1000,
+    gcTime: 15 * 60 * 1000,
     queryFn: async () => {
       // Promise.allSettled — if one source fails (e.g. notifications table is
       // unreachable), still render whatever the other call returned.
@@ -323,8 +325,6 @@ export function useNotifications() {
 
       return notifications;
     },
-
-    staleTime: 5 * 60 * 1000, // 5 min
     refetchInterval: 10 * 60 * 1000, // auto-refresh 10 min
   });
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { User, Session } from '@supabase/supabase-js';
+import { clearQueryPersistence } from '@/lib/queryPersistence';
 
 /**
  * useAuth — fonte de verdade da sessão do usuário.
@@ -64,6 +65,7 @@ export function useAuth() {
 
   const signOut = async () => {
     await supabase.auth.signOut();
+    await clearQueryPersistence();
   };
 
   return { user, session, loading, signOut };

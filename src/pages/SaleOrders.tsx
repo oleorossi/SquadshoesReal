@@ -8,6 +8,7 @@ import { useDebounce } from 'use-debounce';
 import { loadPvConsumption, pvConsumptionQueryKey, PV_CONSUMPTION_STALE_MS } from '@/lib/pvConsumption';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
+import { useMinWidth } from '@/hooks/use-mobile';
 import PendenciasView from '@/components/sale-orders/PendenciasView';
 import { ArrowUp, ArrowsDownUp, Baby, Barcode, Buildings, ShoppingCart, Plus, CircleNotch as Loader2, Copy, Printer, Factory, PencilSimple as Pencil, FileText, Funnel as Filter, X, MagnifyingGlass as Search, Package, Clock, CaretDown, ChartBar as BarChart3, ClipboardText as ClipboardList, ArrowsClockwise as RefreshCw, Tag, SquaresFour as LayoutDashboard, Lightning as Zap, FileXls as FileSpreadsheet, Receipt, XCircle, CheckCircle, Check, Download, TrendUp as TrendingUp, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw, HandPalm as Hand, UploadSimple as Upload, Trash as Trash2, ListChecks, ArrowSquareOut as ExternalLink, DotsThree, Images } from '@phosphor-icons/react';
 import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
@@ -308,6 +309,7 @@ function useRefreshMinBillingInBackground(staleIds: string[]) {
 }
 
 export default function SaleOrders() {
+  const isMdUp = useMinWidth(768);
   const { data: orders = [], isLoading, isError, error } = useSaleOrders();
   const { data: allSaleItems = [] } = useSaleOrderAllItems();
   // Só PVs ativos: os terminais (Faturado/Finalizado s/ NF/Cancelado) nunca chegam a
@@ -2085,7 +2087,8 @@ export default function SaleOrders() {
           </Panel>
         ) : (
           <>
-          <div className="space-y-2 md:hidden">
+          {!isMdUp && (
+          <div className="space-y-2">
             {sortedOrders.map(order => {
               const pairs = pairsBySaleOrder[order.id] || 0;
               const minBilling = minBillingMap.get(order.id) || null;
@@ -2136,11 +2139,13 @@ export default function SaleOrders() {
               );
             })}
           </div>
+          )}
+          {isMdUp && (
           <div
             ref={sel.containerRef}
             onMouseDown={sel.onContainerMouseDown}
             data-marquee-container
-            className="relative hidden overflow-x-auto rounded-lg border border-border bg-card shadow-sm md:block"
+            className="relative overflow-x-auto rounded-lg border border-border bg-card shadow-sm"
           >
             <Table className="min-w-[640px]">
               <TableHeader>
@@ -2438,6 +2443,17 @@ export default function SaleOrders() {
                 container .relative pra coords absolutas funcionarem). */}
             <MarqueeOverlay rect={sel.marqueeRect} />
           </div>
+          )}
+          {!isMdUp && (
+            <div className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-4 py-2.5 text-sm">
+              <span className="text-muted-foreground">{filteredOrders.length} pedido(s){filteredOrders.length !== orders.length ? ` de ${orders.length}` : ''}</span>
+              {canSeeFinancialValues && (
+                <span className="text-muted-foreground">
+                  Total: <span className="font-bold font-mono text-foreground">{formatCurrency(filteredOrders.reduce((s, o) => s + Number(o.total || 0), 0))}</span>
+                </span>
+              )}
+            </div>
+          )}
           </>
         )}
       </div>

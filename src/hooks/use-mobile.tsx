@@ -19,6 +19,23 @@ export function useIsMobile() {
 }
 
 /**
+ * Media query síncrona (useSyncExternalStore): o 1º paint já sabe se é
+ * desktop. useIsMobile começa `undefined→false` e no celular piscava a
+ * tabela antes dos cards.
+ */
+export function useMinWidth(px: number) {
+  return React.useSyncExternalStore(
+    (onStoreChange) => {
+      const mql = window.matchMedia(`(min-width: ${px}px)`);
+      mql.addEventListener('change', onStoreChange);
+      return () => mql.removeEventListener('change', onStoreChange);
+    },
+    () => window.matchMedia(`(min-width: ${px}px)`).matches,
+    () => true,
+  );
+}
+
+/**
  * Pointer primário é "grosso" (dedo) — celular E iPad, independente da largura
  * (o iPad passa do breakpoint de 768px e escaparia do useIsMobile). Use pra
  * decisões de INTERAÇÃO (autofocus que abre teclado, alvo de toque, drag),

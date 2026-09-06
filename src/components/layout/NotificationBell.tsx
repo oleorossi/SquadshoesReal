@@ -1,4 +1,4 @@
-import { Bell, CurrencyDollar as DollarSign, Package, Factory, Users as Users2, Package as PackageSearch, ArrowSquareOut as ExternalLink } from '@phosphor-icons/react';
+import { Bell, CurrencyDollar as DollarSign, Package, Factory, Users as Users2, Package as PackageSearch, ArrowSquareOut as ExternalLink, AddressBook } from '@phosphor-icons/react';
 import { useNotifications, NotificationItem } from '@/hooks/useNotifications';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Badge } from '@/components/ui/badge';
@@ -12,6 +12,7 @@ const CATEGORY_ICON: Record<string, typeof DollarSign> = {
   production: Factory,
   hr: Users2,
   purchasing: PackageSearch,
+  crm: AddressBook,
 };
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -20,6 +21,7 @@ const CATEGORY_LABEL: Record<string, string> = {
   production: 'Produção',
   hr: 'RH',
   purchasing: 'Compras',
+  crm: 'CRM',
 };
 
 const SEVERITY_STYLES: Record<string, string> = {
