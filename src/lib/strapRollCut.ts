@@ -277,6 +277,7 @@ export interface ArtisanalStrapCutRow {
     usableBaseWidthMm: number;
     theoreticalYieldMPerM: number;
     blockingReasons: string[];
+    snapshotWarning?: string | null;
   };
   /**
    * Material-base do rolo (ex.: "NAPA SOFT") — `base_product_name` da receita

@@ -1107,7 +1107,8 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
 
   /** Detecção de duplicata — cascata compartilhada em `@/lib/duplicateDetection`,
    *  a mesma que os outros 6 caminhos de cadastro usam (spec R1.1/R4.1).
-   *  `allProducts` vem de `useProducts()`: lista COMPLETA, inativos incluídos. */
+   *  `allProducts` vem de `useProducts()`: catálogo lean (colunas de lista),
+   *  inativos incluídos — basta pra casar nome/SKU/cor/grupo. */
   const checkDuplicateName = useCallback((name: string, groupId: string | null, color?: string, sku?: string) => {
     setDuplicateMatch(findDuplicate(
       { id: product?.id, name, color, sku, group_id: groupId },

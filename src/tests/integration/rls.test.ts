@@ -61,7 +61,8 @@
      const { error } = await supabase
        .from('stock_movements')
        .delete()
-       .neq('id', '00000000-0000-0000-0000-000000000000');
+       // Se a proteção regredir, o teste nunca deve apagar movimentações reais.
+       .eq('id', '00000000-0000-0000-0000-000000000000');
      
      expect(error).toBeDefined();
    });

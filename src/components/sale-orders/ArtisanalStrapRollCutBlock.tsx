@@ -14,7 +14,8 @@ function StrapLine({ row }: { row: ArtisanalStrapCutRow }) {
   const blocked = !snapshot
     || snapshot.baseRequiredM <= 0
     || snapshot.confirmedYieldMPerM <= 0
-    || snapshot.blockingReasons.length > 0;
+    || snapshot.blockingReasons.length > 0
+    || !!snapshot.snapshotWarning;
   return (
     <div className="px-3 py-2.5 hover:bg-red-500/5">
       <div className="flex items-start justify-between gap-3">
@@ -42,12 +43,12 @@ function StrapLine({ row }: { row: ArtisanalStrapCutRow }) {
             </span>
           </div>
         ) : (
-          <div className="flex shrink-0 flex-col items-end gap-0.5 text-right">
+          <div className="flex max-w-xs shrink-0 flex-col items-end gap-0.5 text-right">
             <span className="flex items-center gap-1 text-xs text-red-600 dark:text-red-400">
-              <Warning className="h-3.5 w-3.5" /> {snapshot?.blockingReasons.join(' · ') || 'Snapshot canônico incompleto'}
+              <Warning className="h-3.5 w-3.5" /> {snapshot?.snapshotWarning || snapshot?.blockingReasons.join(' · ') || 'Snapshot canônico incompleto'}
             </span>
-            <Link to="/tiras-artesanais?tab=receitas" className="text-[11px] underline text-red-600/80 dark:text-red-400/80">
-              Corrigir receita no Hub de Tiras →
+            <Link to={snapshot?.snapshotWarning ? '/tiras-artesanais' : '/tiras-artesanais?tab=receitas'} className="text-[11px] underline text-red-600/80 dark:text-red-400/80">
+              {snapshot?.snapshotWarning ? 'Acompanhar no Hub de Tiras →' : 'Corrigir receita no Hub de Tiras →'}
             </Link>
           </div>
         )}

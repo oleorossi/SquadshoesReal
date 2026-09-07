@@ -2,63 +2,135 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 
 /**
- * Invalida TODAS as caches afetadas por uma transição/apontamento de produção,
- * garantindo sincronia entre PCP Hub, Quadro, Ordens, Setores, Ondas, Gargalos,
- * Capacidade e relatórios — "mover em uma tela reflete em todas".
+ * Superfície de invalidação pós-produção.
  *
- * ⚠ Esta é a LISTA CENTRAL. Toda query nova que leia order_stages/orders de
- * produção deve registrar sua key raiz aqui — keys privadas com invalidação
- * ad-hoc local foi exatamente o que deixou Gargalos/Capacidade/Lote stale
- * por até 5min (auditoria 2026-07-01).
+ * - `pointing`: apontamento / realtime de order_stages — OPs, etapas, ledger,
+ *   telas de setor e quadro vivo. NÃO toca PV, ondas, capacidade, auditoria.
+ * - `kanban`: motor dinâmico (Planejamento / Estouro / fila) — o apontamento
+ *   dispara recompute no servidor; aqui só refetch das views.
+ * - `full`: lista central completa (mudança estrutural: ficha, delete de etapa,
+ *   etc.) — "mover em uma tela reflete em todas".
  */
-export function invalidateProductionCaches(queryClient: ReturnType<typeof useQueryClient>) {
-  const keys = [
-    ['orders'],
-    ['order_stages'],
-    ['production_pointings'],
-    ['notifications'],
-    // PCP Hub — Ordens (Orders.tsx)
-    ['sale_orders_for_ops'],
-    // PCP Hub — Dashboard / KPIs
-    ['producao-kpis'],
-    // Quadro de Produção — modo Cartões (ProductionLive.tsx)
-    ['live_pairs_rate'],
-    // Quadro de Produção — modo Lote agregado (view v_sector_workload_active)
-    ['v_sector_workload_active'],
-    // Gargalo diário / semanal (Chão de Fábrica)
-    ['sector-daily-load'],
-    ['sector-period-load'],
-    // Capacidade (CapacityPlanning.tsx)
-    ['cap_stages_v4'],
-    ['cap_orders_v4'],
-    // Auditoria de fluxo e análise pós-OP
-    ['order-flow-audit'],
-    ['post-op-analysis-v2'],
-    // Telas de setor com queries próprias
-    ['sale_orders_for_corte'],
-    ['sale_orders_for_picking'],
-    ['sale_orders_for_manifest'],
-    // Ondas de produção
-    ['waves'],
-    ['wave-detail'],
-    ['finishing-packages'],
-    // Pedidos de venda (refletem progresso da OP)
-    ['sale_orders'],
-    // Gate de material (badge "sem matéria-prima até dd/MM" no card do Kanban).
-    // Faltava aqui: com staleTime de 2min, reservar/receber material não
-    // refletia no quadro — o operador seguia vendo "travada" já resolvida.
-    ['orders-material-gate'],
-    ['order-material-gate'],
-    // Motor dinâmico de produção (Planejamento/Kanban/Estouro — o apontamento
-    // dispara recompute no servidor; aqui só refetch das views)
-    ['sector_settings'],
-    ['production_schedule_grid'],
-    ['production_schedule_ops'],
-    ['production_queue_detail'],
-    ['production_overloads'],
-    ['production_engine_runs'],
+export type ProductionCacheSurface = 'pointing' | 'kanban' | 'full';
+
+/** Orders + etapas + telas de setor / quadro que o operador vê após apontar. */
+export const ORDER_STAGES_CACHE_KEYS: readonly (readonly string[])[] = [
+  ['orders'],
+  ['order_stages'],
+  ['production_pointings'],
+  ['notifications'],
+  // PCP Hub — Ordens (Orders.tsx)
+  ['sale_orders_for_ops'],
+  // PCP Hub — Dashboard / KPIs leves (pares do dia)
+  ['producao-kpis'],
+  // Quadro de Produção — modo Cartões (ProductionLive.tsx)
+  ['live_pairs_rate'],
+  // Quadro de Produção — modo Lote agregado (view v_sector_workload_active)
+  ['v_sector_workload_active'],
+  // Gargalo diário / semanal (Chão de Fábrica)
+  ['sector-daily-load'],
+  ['sector-period-load'],
+  // Telas de setor com queries próprias
+  ['sale_orders_for_corte'],
+  ['sale_orders_for_picking'],
+  ['sale_orders_for_manifest'],
+  // Gate de material (badge no card do Kanban)
+  ['orders-material-gate'],
+  ['order-material-gate'],
+];
+
+/** Views do motor dinâmico (Planejamento / Kanban gestão / Estouro). */
+export const KANBAN_ENGINE_CACHE_KEYS: readonly (readonly string[])[] = [
+  ['sector_settings'],
+  ['production_schedule_grid'],
+  ['production_schedule_ops'],
+  ['production_queue_detail'],
+  ['production_overloads'],
+  ['production_engine_runs'],
+];
+
+/**
+ * Keys extras só no `full` — PV, ondas, capacidade e relatórios pesados.
+ * Apontamento NÃO deve invalidá-las (blast radius / auditoria P1.2).
+ */
+export const PRODUCTION_FULL_EXTRA_CACHE_KEYS: readonly (readonly string[])[] = [
+  // Capacidade (CapacityPlanning.tsx)
+  ['cap_stages_v4'],
+  ['cap_orders_v4'],
+  // Auditoria de fluxo e análise pós-OP
+  ['order-flow-audit'],
+  ['post-op-analysis-v2'],
+  // Ondas de produção
+  ['waves'],
+  ['wave-detail'],
+  ['finishing-packages'],
+  // Pedidos de venda (refletem progresso da OP — só em mudança estrutural)
+  ['sale_orders'],
+];
+
+export function productionCacheKeysForSurface(
+  surface: ProductionCacheSurface = 'full',
+): readonly (readonly string[])[] {
+  if (surface === 'pointing') return ORDER_STAGES_CACHE_KEYS;
+  if (surface === 'kanban') return KANBAN_ENGINE_CACHE_KEYS;
+  return [
+    ...ORDER_STAGES_CACHE_KEYS,
+    ...KANBAN_ENGINE_CACHE_KEYS,
+    ...PRODUCTION_FULL_EXTRA_CACHE_KEYS,
   ];
-  keys.forEach((k) => queryClient.invalidateQueries({ queryKey: k }));
+}
+
+function invalidateKeyList(
+  queryClient: ReturnType<typeof useQueryClient>,
+  keys: readonly (readonly string[])[],
+) {
+  keys.forEach((k) => queryClient.invalidateQueries({ queryKey: [...k] }));
+}
+
+/** Só orders / order_stages / setor / quadro vivo. */
+export function invalidateOrderStagesCaches(
+  queryClient: ReturnType<typeof useQueryClient>,
+) {
+  invalidateKeyList(queryClient, ORDER_STAGES_CACHE_KEYS);
+}
+
+/** Só views do motor dinâmico de produção. */
+export function invalidateKanbanEngineCaches(
+  queryClient: ReturnType<typeof useQueryClient>,
+) {
+  invalidateKeyList(queryClient, KANBAN_ENGINE_CACHE_KEYS);
+}
+
+/**
+ * Invalida caches de produção por superfície.
+ *
+ * Default `full` preserva o contrato antigo (lista central completa).
+ * Apontamento / realtime devem passar `{ surface: 'pointing' }` e, quando
+ * o motor pode ter recomputado, também `invalidateKanbanEngineCaches`.
+ *
+ * ⚠ Toda query nova que leia order_stages/orders de produção deve registrar
+ * sua key raiz em ORDER_STAGES_CACHE_KEYS (ou KANBAN / FULL_EXTRA) — keys
+ * privadas com invalidação ad-hoc local foi exatamente o que deixou
+ * Gargalos/Capacidade/Lote stale por até 5min (auditoria 2026-07-01).
+ */
+export function invalidateProductionCaches(
+  queryClient: ReturnType<typeof useQueryClient>,
+  options?: ProductionCacheSurface | { surface?: ProductionCacheSurface },
+) {
+  const surface: ProductionCacheSurface =
+    typeof options === 'string' ? options : (options?.surface ?? 'full');
+  invalidateKeyList(queryClient, productionCacheKeysForSurface(surface));
+}
+
+/**
+ * Apontamento + realtime: etapas/setor/quadro E motor (recompute no servidor).
+ * Explicitamente NÃO inclui sale_orders / waves / capacidade / auditoria.
+ */
+export function invalidateAfterPointing(
+  queryClient: ReturnType<typeof useQueryClient>,
+) {
+  invalidateOrderStagesCaches(queryClient);
+  invalidateKanbanEngineCaches(queryClient);
 }
 
 export function useProductionTransitions() {
@@ -152,7 +224,7 @@ export function useProductionTransitions() {
       }
     }
 
-    invalidateProductionCaches(queryClient);
+    invalidateAfterPointing(queryClient);
 
     // Achata pro shape que os callers já checam (`r.success`), preservando o
     // resultado da finalização e expondo os avisos aceitos.
@@ -166,5 +238,8 @@ export function useProductionTransitions() {
     };
   };
 
-  return { finalizeSectorTask, invalidateProductionCaches: () => invalidateProductionCaches(queryClient) };
+  return {
+    finalizeSectorTask,
+    invalidateProductionCaches: () => invalidateProductionCaches(queryClient),
+  };
 }

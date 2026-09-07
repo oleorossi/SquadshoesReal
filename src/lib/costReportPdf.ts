@@ -1,5 +1,3 @@
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import logoUrl from '@/assets/logo-squad-shoes.jpg';
@@ -13,6 +11,9 @@ import {
   slugForFilename,
   CostSummary,
 } from './costReport';
+
+type JsPDF = import('jspdf').jsPDF;
+type AutoTable = typeof import('jspdf-autotable').default;
 
 const fmtBRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const fmtDay = (d: string | null | undefined) => {
@@ -43,7 +44,7 @@ export interface CostReportOptions {
 export interface CostReportResult {
   filename: string;
   summary: CostSummary;
-  doc: jsPDF;
+  doc: JsPDF;
 }
 
 const COLORS = {
@@ -62,16 +63,21 @@ function kindLabel(kind: CostReportKind): { long: string; entity: string; provid
     : { long: 'Ordens de Serviço', entity: 'OS', providerLabel: 'Prestador' };
 }
 
-function lastY(doc: jsPDF, fallback: number): number {
+function lastY(doc: JsPDF, fallback: number): number {
   const y = (doc as any).lastAutoTable?.finalY;
   return typeof y === 'number' ? y : fallback;
 }
 
 /**
- * Monta o documento de forma SÍNCRONA (testável sem DOM). O logo é opcional —
- * `generateCostReportPdf` carrega o JPG e repassa o dataURL; testes podem omitir.
+ * Monta o documento PDF. O logo é opcional — `generateCostReportPdf` carrega o
+ * JPG e repassa o dataURL; testes podem omitir.
+ * jspdf/autotable entram via dynamic import (lazy: só no clique de exportar).
  */
-export function buildCostReportDoc(opts: CostReportOptions, logoDataUrl?: string): CostReportResult {
+export async function buildCostReportDoc(opts: CostReportOptions, logoDataUrl?: string): Promise<CostReportResult> {
+  const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+    import('jspdf'),
+    import('jspdf-autotable'),
+  ]);
   const { kind, rows, period, basis, providerName, generatedBy, scope } = opts;
   const lbl = kindLabel(kind);
   const summary = summarizeRows(rows);
@@ -287,7 +293,7 @@ async function loadLogoDataUrl(): Promise<string | undefined> {
 export async function generateCostReportPdf(opts: CostReportOptions): Promise<CostReportResult> {
   const logo = await loadLogoDataUrl();
   const stamped: CostReportOptions = { ...opts, generatedAt: opts.generatedAt || new Date().toISOString() };
-  const result = buildCostReportDoc(stamped, logo);
+  const result = await buildCostReportDoc(stamped, logo);
   result.doc.save(result.filename);
   return result;
 }

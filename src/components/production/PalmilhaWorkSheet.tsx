@@ -13,8 +13,11 @@ import { PaginatedSheet, type SheetBlock } from './worksheet/PaginatedSheet';
 import { formatOpNumber } from './worksheet/stageOrder';
 import { fichaModelFor } from './worksheet/fichaModel';
 import { TraceStrip } from './worksheet/TraceStrip';
+import { SectorMaterials } from './worksheet/SectorMaterials';
+import type { ConsumptionRow } from '@/hooks/useBulkOrderConsumption';
 
 export interface PalmilhaGroup {
+  consumption?: ConsumptionRow[];
   soleName: string;
   insoleColor: string;
   totalPairs: number;
@@ -432,8 +435,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
                   </div>
                 )}
 
-                {/* "Consumo Previsto" removido em 2026-06-12 — métrica de
-                    planejamento, não pertence à ficha de operador. */}
+                <SectorMaterials rows={group.consumption} sector="Corte Fibra" excludeComponents={['Palmilha']} />
 
                 {/* 6º passe (2026-06-12): tally SEMPRE — antes era suprimido
                     quando readyMade, mas o dono exige Controle de Fichas em

@@ -196,7 +196,19 @@ describe('calculateBomForOrders — falha fechada contra BOM parcial', () => {
   });
 
   it('também propaga erro de uma fonte complementar em vez de omitir o componente', async () => {
-    mockDb.tables = buildBomTables();
+    const tables = buildBomTables();
+    // Precisa de ao menos 1 candidato de solado pra a query escopada de
+    // sole_technical_specs disparar (P1.1); sem produto no grupo da ficha a
+    // consulta é pulada e o erro engolido.
+    (tables.products as any[]).push({
+      id: 'p-sole',
+      name: 'SOLADO 11 PRETO',
+      color: 'PRETO',
+      group_id: 'g-packaging-sole',
+      sole_classification: 'solado',
+      active: true,
+    });
+    mockDb.tables = tables;
     mockDb.errors.sole_technical_specs = { message: 'specs indisponíveis' };
 
     await expect(calculateBomForOrders(['op1']))

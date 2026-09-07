@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { sanitizeUuidFields } from '@/lib/utils';
 import { invalidateFinanceDerivedQueries } from '@/lib/financeQueryInvalidation';
+import { fetchFinancialRows } from '@/lib/financialPagination';
 
 export type AccountPayable = {
   id: string;
@@ -55,13 +56,12 @@ export function useAccountsPayable(enabled = true) {
     gcTime: 5 * 60 * 1000,
     enabled,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const rows = await fetchFinancialRows<AccountPayable>((from, to) => supabase
         .from('accounts_payable')
-        .select('*, suppliers(name, cnpj)')
-        .order('due_date', { ascending: true })
-        .limit(2000);
-      if (error) throw error;
-      return data as AccountPayable[];
+        .select('*, suppliers(name, cnpj)', { count: 'exact' })
+        .order('id', { ascending: true })
+        .range(from, to));
+      return rows.sort((a, b) => a.due_date.localeCompare(b.due_date) || a.id.localeCompare(b.id));
     },
   });
 }
@@ -73,13 +73,12 @@ export function useAccountsReceivable(enabled = true) {
     gcTime: 5 * 60 * 1000,
     enabled,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const rows = await fetchFinancialRows<AccountReceivable>((from, to) => supabase
         .from('accounts_receivable')
-        .select('*, sale_orders(order_number, client_name)')
-        .order('due_date', { ascending: true })
-        .limit(2000);
-      if (error) throw error;
-      return data as AccountReceivable[];
+        .select('*, sale_orders(order_number, client_name)', { count: 'exact' })
+        .order('id', { ascending: true })
+        .range(from, to));
+      return rows.sort((a, b) => a.due_date.localeCompare(b.due_date) || a.id.localeCompare(b.id));
     },
   });
 }

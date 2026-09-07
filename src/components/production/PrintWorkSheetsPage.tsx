@@ -23,6 +23,7 @@ import { useSectorGroupingConfig } from '@/hooks/useSectorGroupingConfig';
 import {
   useBulkOrderConsumption,
   bulkConsumptionKey,
+  filterConsumptionForSector,
   type ConsumptionRow,
 } from '@/hooks/useBulkOrderConsumption';
 import { calcGroupPlateAreaDm2 } from '@/lib/orderConsumption';
@@ -38,6 +39,57 @@ import { pmgLabelForSize } from '@/lib/aviamentoSizeRanges';
 import { useAviamentoPmgDefault } from '@/hooks/useAviamentoPmgDefault';
 import { getUpperWorkEligibility, requiresUpperCut } from '@/lib/upperCutEligibility';
 import { leftoverLabelsFromSheet } from '@/lib/cabedalLeftover';
+import {
+  effectiveOperatorStrapColor,
+  effectiveOperatorStrapMaterial,
+  operatorStrapGroupingSignature,
+  operatorStrapSequence,
+  type OperatorStrapLineLike,
+} from '@/lib/operatorStrapSequence';
+import {
+  addAllocatedPairs,
+  aggregateConsumptionByAllocatedPairs,
+  cloneAllocatedPairs,
+  lotPartitionKey,
+  mergeAllocatedPairs,
+  type AllocatedPairsByOp,
+} from '@/lib/lotConsumptionAllocation';
+
+interface PrintableOperatorStrapLine extends OperatorStrapLineLike {
+  group_name?: string | null;
+}
+
+interface PrintableOrderStrapSnapshot {
+  strap_colors?: unknown;
+  color?: string | null;
+}
+
+interface AllocatedPairsCarrier {
+  allocatedPairsByOp?: AllocatedPairsByOp;
+}
+
+function allocatedPairsOf(value: unknown): ReadonlyMap<string, number> | undefined {
+  return (value as AllocatedPairsCarrier | null | undefined)?.allocatedPairsByOp;
+}
+
+function ensureAllocatedPairs(value: object): AllocatedPairsByOp {
+  const carrier = value as AllocatedPairsCarrier;
+  carrier.allocatedPairsByOp = carrier.allocatedPairsByOp ?? new Map();
+  return carrier.allocatedPairsByOp;
+}
+
+function copyAllocatedPairs<T extends object>(target: T, source: unknown): T {
+  (target as AllocatedPairsCarrier).allocatedPairsByOp = cloneAllocatedPairs(allocatedPairsOf(source));
+  return target;
+}
+
+function printableOperatorStraps(
+  order: PrintableOrderStrapSnapshot,
+): PrintableOperatorStrapLine[] {
+  return Array.isArray(order.strap_colors)
+    ? order.strap_colors as PrintableOperatorStrapLine[]
+    : [];
+}
 
 /**
  * CSS do modo CARTÃO (aprovado pelo dono 31/07/2026 — "Opção B, 3 colunas").
@@ -691,6 +743,7 @@ function groupOrdersByRefColor(orders: any[]): Array<{
     }
     const orderTotal = Number(order.total_pairs ?? 0);
     g.totalPairs += orderTotal;
+    addAllocatedPairs(ensureAllocatedPairs(g), order.op_number, orderTotal);
     if (order.due_date && order.due_date > g.latestDueDate) g.latestDueDate = order.due_date;
     // order.grid ora chega como CURVA-BASE (soma 12), ora como GRADE TOTAL
     // (soma 120/360/444 — bug do 7º passe). resolveFicha deriva o CORRUGADO
@@ -992,7 +1045,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     })).filter(i => i.reference_id && i.quantity > 0),
     [orders],
   );
-  const { data: consumptionByKey } = useBulkOrderConsumption(consumptionInputs);
+  const {
+    data: consumptionByKey,
+    isLoading: consumptionLoading,
+    isError: consumptionFailed,
+  } = useBulkOrderConsumption(consumptionInputs);
 
   // Índice op_number → order pra lookup ao agregar consumo por grupo.
   const ordersByOpNumber = useMemo(() => {
@@ -1009,23 +1066,36 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
    * pra anexar `consumption` a cada SilkColorGroup / PalmilhaGroup /
    * SoleColorBand antes do render.
    *
-   * `groupPairs`: pares REAIS do grupo. OPs splitadas em lote mantêm o
-   * op_number da OP-mãe, então o lookup resolve o consumo da OP INTEIRA —
-   * cada ficha de lote mostrava o consumo cheio (lote 1 e lote 2 de 360
-   * pares imprimiam ambos o consumo de 720 → operador separava material
-   * 2×). Quando groupPairs < soma cheia das OPs, rateia proporcionalmente.
+   * `allocatedPairsByOp`: pares REAIS de cada OP representados pelo grupo.
+   * OPs splitadas em lote mantêm o op_number da OP-mãe, então o lookup resolve
+   * o consumo da OP INTEIRA. O rateio precisa acontecer POR OP antes de somar:
+   * um lote pode conter 50% da OP-A e 75% da OP-B, proporções que uma razão
+   * global aplicada ao grupo não consegue representar corretamente.
    */
   const consumptionForOpNumbers = useMemo(
-    () => (opNumbers: string[] | undefined, groupPairs?: number): ConsumptionRow[] => {
+    () => (
+      opNumbers: string[] | undefined,
+      allocatedPairsByOp?: ReadonlyMap<string, number>,
+    ): ConsumptionRow[] => {
       if (!consumptionByKey || !opNumbers || opNumbers.length === 0) return [];
-      const byProduct = new Map<string, ConsumptionRow>();
-      let fullPairs = 0;
+      const slices: Array<{
+        rows: readonly ConsumptionRow[];
+        fullPairs: number;
+        allocatedPairs: number;
+      }> = [];
+      const seenOps = new Set<string>();
       for (const op of opNumbers) {
-        const o = ordersByOpNumber.get(String(op));
+        const opKey = String(op);
+        if (seenOps.has(opKey)) continue;
+        seenOps.add(opKey);
+        const o = ordersByOpNumber.get(opKey);
         if (!o?.reference_id) continue;
         const qty = Number(o.total_pairs ?? o.quantity ?? 0);
         if (qty <= 0) continue;
-        fullPairs += qty;
+        const allocatedPairs = allocatedPairsByOp
+          ? Number(allocatedPairsByOp.get(opKey) ?? 0)
+          : qty;
+        if (!(allocatedPairs > 0)) continue;
         // Mesmos campos do consumptionInputs (grade + tiras na chave) — senão
         // o lookup erra quando 2 OPs têm mesma ref+cor+qtd mas grades/tiras
         // diferentes.
@@ -1038,42 +1108,41 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           (o.material_variant_id ?? null) as string | null,
           o.id,
         );
-        const rows = consumptionByKey.get(key) ?? [];
-        for (const r of rows) {
-          const existing = byProduct.get(r.product_id);
-          if (!existing) {
-            byProduct.set(r.product_id, { ...r });
-          } else {
-            existing.required += r.required;
-            existing.available = Math.max(existing.available, r.available);
-            existing.stock_ok = existing.available >= existing.required;
-          }
-        }
+        slices.push({ rows: consumptionByKey.get(key) ?? [], fullPairs: qty, allocatedPairs });
       }
-      const rows = Array.from(byProduct.values());
-      if (groupPairs && groupPairs > 0 && fullPairs > 0 && groupPairs < fullPairs) {
-        const ratio = groupPairs / fullPairs;
-        for (const r of rows) {
-          r.required = r.required * ratio;
-          r.stock_ok = r.available >= r.required;
-        }
-      }
-      return rows;
+      return aggregateConsumptionByAllocatedPairs(slices, (r) => [
+        r.product_id,
+        r.component || '',
+        r.color || '',
+        r.unit || '',
+        r.materialFamily || '',
+        r.consumption_sector || '',
+        r.consumption_sector_source || '',
+        r.material_source || '',
+      ].join('::'));
     },
     [consumptionByKey, ordersByOpNumber],
   );
 
-  const { data: silkRegistrations = [] } = useQuery({
-    queryKey: ['sole_silk_registrations'],
-    queryFn: async () => {
-      const { data, error } = await (supabase as any).from('sole_silk_registrations').select('*');
-      if (error) throw error;
-      return data;
-    },
-  });
+  // P1.5: IDs das OPs/PVs já carregados — escopo de clients/silk/PV/NF.
+  // Antes sale_orders/clients/silk vinham SEM filtro (catálogo inteiro).
+  const orderIds = useMemo(() => orders.map((o: any) => o.id).filter(Boolean), [orders]);
+  const saleOrderIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const o of orders as any[]) if (o.sale_order_id) ids.add(o.sale_order_id);
+    return Array.from(ids).sort();
+  }, [orders]);
 
-  const { data: saleOrders = [] } = useQuery({
-    queryKey: ['sale_orders_for_worksheets_v5'],
+  // Gates por setor — queries caras só quando o chip correspondente está ativo.
+  const needsExpedicao = activeSectors.has('Expedição');
+  const needsRelatorio = activeSectors.has('Relatório Gerencial');
+  const needsPlateArea = activeSectors.has('Corte Palmilha');
+  const needsSoleSizeConj =
+    activeSectors.has('Solagem') || activeSectors.has('Colagem');
+
+  const { data: saleOrders = [], isFetched: saleOrdersFetched } = useQuery({
+    queryKey: ['sale_orders_for_worksheets_v5', saleOrderIds],
+    enabled: saleOrderIds.length > 0,
     queryFn: async () => {
       // Bug: pedia 'economic_group_id' (não existe em sale_orders — está em
       // clients) e 'total_value' (a coluna real é 'total'). Resultado: 400
@@ -1083,16 +1152,81 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
         // ⚠ Lista EXPLÍCITA: coluna que a ficha usa e não está aqui chega
         // `undefined` e o recurso some em silêncio. `box_grouping` liga o resumo
         // de caixas por numeração na ficha de Expedição.
-        .select('id, client_id, client_name, client_cnpj, order_number, client_order_number, delivery_deadline, status, total, packaging_mode, box_grouping, representative, payment_condition, valor_frete');
+        .select('id, client_id, client_name, client_cnpj, order_number, client_order_number, delivery_deadline, status, total, packaging_mode, box_grouping, representative, payment_condition, valor_frete')
+        .in('id', saleOrderIds);
       if (error) throw error;
-      return data;
+      return data || [];
+    },
+  });
+  const saleOrdersReady = saleOrderIds.length === 0 || saleOrdersFetched;
+
+  const clientIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const so of saleOrders as any[]) if (so?.client_id) ids.add(so.client_id);
+    return Array.from(ids).sort();
+  }, [saleOrders]);
+
+  const { data: clientsInfo = [], isFetched: clientsFetched } = useQuery({
+    queryKey: ['clients_for_expedicao_v3', clientIds],
+    enabled: saleOrdersReady && clientIds.length > 0,
+    queryFn: async () => {
+      // Endereço completo necessário pra ficha de expedição (etiqueta correta).
+      // silk_url + logo_url usados como fallback de marca na ficha de Silk.
+      const { data, error } = await (supabase as any)
+        .from('clients')
+        .select('id, razao_social, cnpj, inscricao_estadual, endereco, bairro, cidade, estado, cep, telefone, economic_group_id, silk_url, logo_url')
+        .in('id', clientIds);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+  const clientsReady = clientIds.length === 0 || clientsFetched;
+
+  const economicGroupIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const c of clientsInfo as any[]) if (c?.economic_group_id) ids.add(c.economic_group_id);
+    return Array.from(ids).sort();
+  }, [clientsInfo]);
+
+  // Cascata de marca: registros do cliente + do grupo econômico + defaults
+  // (client_id/economic_group_id nulos). Sem defaults a ficha de Silk perde o
+  // fallback "Squad Shoes" cadastrado no solado.
+  const { data: silkRegistrations = [] } = useQuery({
+    queryKey: ['sole_silk_registrations', clientIds, economicGroupIds],
+    enabled: saleOrdersReady && clientsReady,
+    queryFn: async () => {
+      const parts = ['and(client_id.is.null,economic_group_id.is.null)'];
+      if (clientIds.length > 0) parts.push(`client_id.in.(${clientIds.join(',')})`);
+      if (economicGroupIds.length > 0) {
+        parts.push(`economic_group_id.in.(${economicGroupIds.join(',')})`);
+      }
+      const { data, error } = await (supabase as any)
+        .from('sole_silk_registrations')
+        .select('id, client_id, economic_group_id, sole_product_id, sole_type, silk_name, silk_url')
+        .or(parts.join(','));
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  // Grupos econômicos (silk_url/logo_url) — fallback de marca quando o cliente
+  // não tem silk própria mas pertence a um grupo que tem.
+  const { data: economicGroupsInfo = [] } = useQuery({
+    queryKey: ['economic_groups_for_silk', economicGroupIds],
+    enabled: economicGroupIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('economic_groups')
+        .select('id, silk_url, logo_url')
+        .in('id', economicGroupIds);
+      if (error) throw error;
+      return data || [];
     },
   });
 
   // Stages só carregados quando "Relatório Gerencial" está selecionado.
   // (Query de order_costs REMOVIDA em 2026-06-12 — a seção "Custos & Margem"
   //  saiu do Relatório Gerencial a pedido do dono.)
-  const orderIds = useMemo(() => orders.map((o: any) => o.id).filter(Boolean), [orders]);
 
   // Lot sizing (PR 2026-05-23): carrega lots em batch; cada OP splitada vira
   // N virtual orders. Groupings abaixo usam `expandedOrders` no lugar de `orders`
@@ -1106,7 +1240,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     queryKey: ['order_stages_for_report', orderIds],
     // Gate pelo setor: só o Relatório Gerencial consome stages — sem o gate
     // toda impressão de qualquer setor disparava a query à toa.
-    enabled: orderIds.length > 0 && activeSectors.has('Relatório Gerencial'),
+    enabled: orderIds.length > 0 && needsRelatorio,
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('order_stages')
@@ -1117,42 +1251,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     },
   });
 
-  const { data: clientsInfo = [] } = useQuery({
-    queryKey: ['clients_for_expedicao_v3'],
-    queryFn: async () => {
-      // Endereço completo necessário pra ficha de expedição (etiqueta correta).
-      // silk_url + logo_url usados como fallback de marca na ficha de Silk.
-      const { data, error } = await (supabase as any)
-        .from('clients')
-        .select('id, razao_social, cnpj, inscricao_estadual, endereco, bairro, cidade, estado, cep, telefone, economic_group_id, silk_url, logo_url');
-      if (error) throw error;
-      return data || [];
-    },
-  });
-
-  // Grupos econômicos (silk_url/logo_url) — fallback de marca quando o cliente
-  // não tem silk própria mas pertence a um grupo que tem.
-  const { data: economicGroupsInfo = [] } = useQuery({
-    queryKey: ['economic_groups_for_silk'],
-    queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from('economic_groups')
-        .select('id, silk_url, logo_url');
-      if (error) throw error;
-      return data || [];
-    },
-  });
-
   // NF-e emitidas vinculadas aos PVs (pra exibir número/chave na ficha de expedição)
-  const saleOrderIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const o of orders as any[]) if (o.sale_order_id) ids.add(o.sale_order_id);
-    return Array.from(ids);
-  }, [orders]);
-
   const { data: nfeForExpedicao = [] } = useQuery({
     queryKey: ['nfe_emitidas_for_expedicao', saleOrderIds],
-    enabled: saleOrderIds.length > 0,
+    enabled: needsExpedicao && saleOrderIds.length > 0,
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('nfe_emitidas')
@@ -1167,7 +1269,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   // Transportadora do PV (pra ficha de expedição)
   const { data: saleOrdersTransport = [] } = useQuery({
     queryKey: ['sale_orders_transport', saleOrderIds],
-    enabled: saleOrderIds.length > 0,
+    enabled: needsExpedicao && saleOrderIds.length > 0,
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('sale_orders')
@@ -1310,9 +1412,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
 
   // Baldes de numeração conjugada (ex.: 23/24 = 1 par físico) por grupo de
   // solado — re-bucketiza as colunas de grade da Solagem/Colagem (C1).
+  // P1.5: só Solagem/Colagem consomem — não busca pra outros setores.
   const { data: soleSizeConjugations = [] } = useQuery({
     queryKey: ['sole_size_conjugations_for_print', allSoleGroupIds],
-    enabled: allSoleGroupIds.length > 0,
+    enabled: needsSoleSizeConj && allSoleGroupIds.length > 0,
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('sole_size_conjugations')
@@ -1384,8 +1487,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   // Área da placa (dm²) por NOME de grupo — base da conversão dm²→placas
   // (1000×1500mm = 150 dm²/placa). Usada só pra EXIBIR a base na ficha de
   // Corte de Placa; o número de placas em si já vem convertido do motor.
+  // P1.5: gate no setor — sem Corte Palmilha a query não roda.
   const { data: plateAreaByGroupName } = useQuery({
     queryKey: ['plate_area_by_group_name_v1'],
+    enabled: needsPlateArea,
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('product_groups')
@@ -1790,6 +1895,30 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orders, sizeFilter, soleFilter, resolveSoleForOrder]);
 
+  const ambiguousConsumptionMaterials = useMemo(() => {
+    if (!consumptionByKey) return [];
+    const labels = new Set<string>();
+    for (const order of printOrders) {
+      const quantity = Number(order.total_pairs ?? order.quantity ?? 0);
+      if (!order.reference_id || quantity <= 0) continue;
+      const key = bulkConsumptionKey(
+        order.reference_id,
+        order.color,
+        quantity,
+        (order.grid ?? null) as Record<string, number> | null,
+        Array.isArray(order.strap_colors) ? order.strap_colors : null,
+        (order.material_variant_id ?? null) as string | null,
+        order.id,
+      );
+      for (const row of consumptionByKey.get(key) ?? []) {
+        if (row.consumption_sector_source !== 'ambiguous') continue;
+        const color = String(row.color || '').trim();
+        labels.add(`${row.product_name}${color && color !== '—' ? ` · ${color}` : ''}`);
+      }
+    }
+    return Array.from(labels).sort((left, right) => left.localeCompare(right, 'pt-BR'));
+  }, [consumptionByKey, printOrders]);
+
   const expandedOrders = useMemo(
     () => expandOrdersByLots(printOrders as any[], lotsMap),
     [printOrders, lotsMap],
@@ -1997,6 +2126,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       const baseGrid = (order.grid || {}) as Record<string, number>;
       const baseSum = Object.values(baseGrid).reduce((s, v) => s + (Number(v) || 0), 0);
       const orderTotal = Number(order.total_pairs ?? 0);
+      addAllocatedPairs(ensureAllocatedPairs(group), order.op_number, orderTotal);
       const multiplier = baseSum > 0 ? orderTotal / baseSum : 0;
       const ficha = resolveFicha(orderTotal, baseGrid);
       group.baseGrade = foldFichaIntoGroup(group, ficha, ficha.baseCurve, group.baseGrade);
@@ -2089,19 +2219,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     // — antes a chave ignorava tiras e cospia 1 ficha só com as tiras da 1ª
     // OP, virando fantasma as tiras das demais (bug reportado 2026-05-18).
     // Modelos sem tiras: retorna '' (não muda nada — comportamento atual).
-    const computeStrapSignature = (order: any): string => {
-      const raw = Array.isArray(order?.strap_colors) ? order.strap_colors : [];
-      if (raw.length === 0) return '';
-      return [...raw]
-        .sort((a: any, b: any) => {
-          const ka = parseInt(a?.id, 10);
-          const kb = parseInt(b?.id, 10);
-          if (isFinite(ka) && isFinite(kb)) return ka - kb;
-          return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
-        })
-        .map((s: any) => `${(s?.label || 'TIRA').toUpperCase()}=${(s?.color || '').toUpperCase().trim()}`)
-        .join('|');
-    };
+    const computeStrapSignature = (order: PrintableOrderStrapSnapshot): string =>
+      operatorStrapGroupingSignature(printableOperatorStraps(order), order.color);
 
     for (const order of expandedOrders) {
       const sheetId = order.reference_id;
@@ -2201,16 +2320,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
         }
         // Sequência de tiras na ordem da ficha técnica (TIRA 1, TIRA 2, ...).
         // Renderizada no Aviamento pra o operador montar na ordem certa.
-        // Stable sort por id (string) pra garantir consistência.
-        const strapColorsRaw = Array.isArray((order as any).strap_colors)
-          ? ((order as any).strap_colors as Array<any>)
-          : [];
-        const strapsOrdered = [...strapColorsRaw].sort((a: any, b: any) => {
-          const ka = parseInt(a?.id, 10);
-          const kb = parseInt(b?.id, 10);
-          if (isFinite(ka) && isFinite(kb)) return ka - kb;
-          return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
-        });
+        // A posição no array é a posição técnica. UUID identifica a linha, mas
+        // não carrega ordem; snapshots antigos inteiramente numéricos seguem
+        // ordenados pelo helper de compatibilidade.
+        const strapColorsRaw = printableOperatorStraps(order);
+        const strapsOrdered = operatorStrapSequence(strapColorsRaw);
         // Resolução de faixa P/M/G do Aviamento (mesma do grid: override por ref →
         // padrão global → sem faixa). Usada pra quebrar a MEDIDA da tira por faixa,
         // porque cada numeração tem um comprimento (consumption_per_size).
@@ -2222,12 +2336,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           if (useDefaultAviStrap) return pmgLabelForSize(size, aviamentoDefaultBoundaries!);
           return null;
         };
-        const strapsAsComponents = strapsOrdered.map((s: any) => {
+        const strapsAsComponents = strapsOrdered.map((s, strapIndex) => {
           // Medida da tira em CM por PAR (strap_colors[].consumption[_per_size] já é
           // cm/par — ver GradingCadTab "comprimento base (cm)"). Quebra por faixa
           // P/M/G (cada tamanho tem um comprimento); usa o MAIOR cm da faixa.
           const cps = (s?.consumption_per_size && typeof s.consumption_per_size === 'object')
-            ? (s.consumption_per_size as Record<string, any>) : {};
+            ? s.consumption_per_size : {};
           const bandCm: Record<string, number> = {};
           const bandOrder: string[] = [];
           for (const size of Object.keys(cps).sort((a, b) => Number(a) - Number(b))) {
@@ -2249,10 +2363,14 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             if (v > 0) cmBySize[size] = Math.round(v * 10) / 10;
           }
           return {
-            name: s?.label || 'TIRA',
-            material: s?.group_name || '',
+            position: strapIndex + 1,
+            technicalStrapLineId: s?.technical_strap_line_id || s?.id || undefined,
+            name: s?.label || `TIRA ${strapIndex + 1}`,
+            material: effectiveOperatorStrapMaterial(s),
             qty: undefined,
-            color: s?.color || '—',
+            // O snapshot por linha é autoritativo. Pedidos antigos, nos quais
+            // a tira ainda não repetia a cor no JSON, seguem a cor principal.
+            color: effectiveOperatorStrapColor(s, colorName),
             cm: Number(s?.consumption) > 0 ? Math.round(Number(s.consumption) * 10) / 10 : undefined,
             cmBands: cmBands.length >= 2 ? cmBands : undefined,
             cmBySize: Object.keys(cmBySize).length > 0 ? cmBySize : undefined,
@@ -2358,6 +2476,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       const baseGrid = (order.grid || {}) as Record<string, number>;
       const baseSum = Object.values(baseGrid).reduce((s, v) => s + (Number(v) || 0), 0);
       const orderTotal = Number(order.total_pairs ?? 0);
+      addAllocatedPairs(ensureAllocatedPairs(cg), order.op_number, orderTotal);
       const multiplier = baseSum > 0 ? orderTotal / baseSum : 0;
       const ficha = resolveFicha(orderTotal, baseGrid);
       // Fichas (corrugados) por REFERÊNCIA — mesma conta do rodapé da grade.
@@ -2437,6 +2556,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           if (scaled > 0) lb.combinedGrid[size] = (lb.combinedGrid[size] ?? 0) + scaled;
         }
         lb.totalPairs = Object.values(lb.combinedGrid).reduce((s, v) => s + v, 0);
+        addAllocatedPairs(ensureAllocatedPairs(lb), order.op_number, orderTotal);
         // Mesma folding de ficha/corrugado do grupo (baseGradeSum/fichas/mixed).
         lb.baseGrid = foldFichaIntoGroup(lb, ficha, ficha.baseCurve, lb.baseGrid);
         if (order.op_number) lb.opNumbers.push(order.op_number);
@@ -2629,6 +2749,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
         const baseGrid = (order.grid || {}) as Record<string, number>;
         const baseSum = Object.values(baseGrid).reduce((s: number, v) => s + (Number(v) || 0), 0);
         const orderTotal = Number(order.total_pairs ?? 0);
+        addAllocatedPairs(ensureAllocatedPairs(band), order.op_number, orderTotal);
         const multiplier = baseSum > 0 ? orderTotal / baseSum : 0;
         const ficha = resolveFicha(orderTotal, baseGrid);
         band.baseGrade = foldFichaIntoGroup(
@@ -2928,17 +3049,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       // Materiais técnicos da ficha.
       const mats = sheetMaterialsByRef.get(order.reference_id) || { upper: null, lining: null, insole: null };
 
-      // Tiras configuradas no item de venda (ordenadas por id numérico).
+      // Tiras configuradas no item de venda, na posição técnica do snapshot.
       const strapColorsRaw = Array.isArray((order as any).strap_colors)
         ? ((order as any).strap_colors as Array<any>)
         : [];
-      const straps = [...strapColorsRaw]
-        .sort((a: any, b: any) => {
-          const ka = parseInt(a?.id, 10);
-          const kb = parseInt(b?.id, 10);
-          if (isFinite(ka) && isFinite(kb)) return ka - kb;
-          return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
-        })
+      const straps = operatorStrapSequence(strapColorsRaw)
         .map((s: any) => ({
           label: s?.label || undefined,
           color: s?.color || undefined,
@@ -3056,7 +3171,21 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
 
   const today = new Date().toLocaleDateString('pt-BR');
   const printPairCount = printOrders.reduce((total, order) => total + (Number(order.total_pairs) || 0), 0);
-  const printBlocked = activeSectors.size === 0 || sheetCount === 0 || initialQueriesLoading || failedQueries > 0;
+  const failedPrintQueryCount = failedQueries + (consumptionFailed ? 1 : 0);
+  const hasAmbiguousConsumptionRouting = ambiguousConsumptionMaterials.length > 0;
+  const printBlocked = activeSectors.size === 0
+    || sheetCount === 0
+    || initialQueriesLoading
+    || consumptionLoading
+    || failedPrintQueryCount > 0
+    || hasAmbiguousConsumptionRouting;
+  const printBlockedTitle = consumptionLoading
+    ? 'O consumo dos materiais ainda está sendo calculado'
+    : failedPrintQueryCount > 0
+      ? 'Consultas de dados falharam — recarregue a página antes de imprimir'
+      : hasAmbiguousConsumptionRouting
+        ? 'Há materiais com mais de um setor configurado — corrija a ficha técnica antes de imprimir'
+        : undefined;
 
   return (
     /* print:p-0 print:space-y-0 — sem isso o p-6 (24px) + a margem do
@@ -3143,9 +3272,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
               onClick={() => { void printInBrowser(); }}
               className="gap-2"
               disabled={printBlocked || preparingNativePrint}
-              title={failedQueries > 0 ? 'Consultas de dados falharam — recarregue a página antes de imprimir' : 'Abre o diálogo do navegador. Você pode imprimir ou escolher “Salvar como PDF”.'}
+              title={printBlockedTitle || 'Abre o diálogo do navegador. Você pode imprimir ou escolher “Salvar como PDF”.'}
             >
-              {preparingNativePrint ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+              {preparingNativePrint || initialQueriesLoading || consumptionLoading
+                ? <Loader2 className="h-4 w-4 animate-spin" />
+                : <Printer className="h-4 w-4" />}
               Imprimir
             </Button>
 
@@ -3153,18 +3284,37 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
               onClick={() => { printTabRef.current = openPrintTab(); void printWith(); }}
               className="gap-2"
               disabled={printBlocked || preparingNativePrint}
-              title={failedQueries > 0 ? 'Consultas de dados falharam — recarregue a página antes de imprimir' : 'Gera um PDF padronizado no servidor, indicado para celular e quando a geometria precisa ser idêntica entre impressoras.'}
+              title={printBlockedTitle || 'Gera um PDF padronizado no servidor, indicado para celular e quando a geometria precisa ser idêntica entre impressoras.'}
             >
-              {initialQueriesLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+              {initialQueriesLoading || consumptionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
               PDF padronizado
             </Button>
           </div>
         </div>
 
-        {failedQueries > 0 && (
+        {failedPrintQueryCount > 0 && (
           <div className="flex items-start gap-2 border-y border-destructive/30 bg-destructive/10 px-4 py-2.5 text-xs text-destructive" role="alert">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" weight="fill" />
-            <span><strong>{failedQueries} consulta{failedQueries > 1 ? 's falharam' : ' falhou'}.</strong> Cliente, solado ou consumo podem sair incompletos. Recarregue a página antes de emitir.</span>
+            <span><strong>{failedPrintQueryCount} consulta{failedPrintQueryCount > 1 ? 's falharam' : ' falhou'}.</strong> Cliente, solado ou consumo podem sair incompletos. Recarregue a página antes de emitir.</span>
+          </div>
+        )}
+
+        {consumptionLoading && (
+          <div className="flex items-center gap-2 border-y border-border bg-muted/30 px-4 py-2.5 text-xs text-muted-foreground" role="status">
+            <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+            Calculando os materiais de cada setor. A emissão será liberada quando a conferência terminar.
+          </div>
+        )}
+
+        {hasAmbiguousConsumptionRouting && (
+          <div className="flex items-start gap-2 border-y border-destructive/30 bg-destructive/10 px-4 py-2.5 text-xs text-destructive" role="alert">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" weight="fill" />
+            <span>
+              <strong>Destino de material conflitante.</strong> Estes materiais aparecem em mais de um setor da mesma ficha: {' '}
+              {ambiguousConsumptionMaterials.slice(0, 4).join(' · ')}
+              {ambiguousConsumptionMaterials.length > 4 ? ` · +${ambiguousConsumptionMaterials.length - 4}` : ''}.
+              {' '}Corrija o setor na ficha técnica antes de emitir.
+            </span>
           </div>
         )}
 
@@ -3284,11 +3434,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
                 groups={palmilhaGroups.map(g => ({
                   ...g,
                   clientNames: clientNamesForPvs(g.pvNumbers),
+                  consumption: filterConsumptionForSector(consumptionForOpNumbers(g.opNumbers, allocatedPairsOf(g)), 'Corte Fibra'),
                   // Operação do setor: placas a cortar deste solado. Filtra o
                   // consumo em unidade `placa` (component Palmilha em placa);
                   // palmilha pronta-na-cor sai como `par` e não entra aqui.
-                  plateOps: consumptionForOpNumbers(g.opNumbers, g.totalPairs)
-                    .filter(r => (r.unit || '').toLowerCase() === 'placa' && (r.required || 0) > 0)
+                  plateOps: filterConsumptionForSector(consumptionForOpNumbers(g.opNumbers, allocatedPairsOf(g)), 'Corte Fibra')
+                    .filter(r => r.component === 'Palmilha' && (r.unit || '').toLowerCase() === 'placa' && (r.required || 0) > 0)
                     .map(r => ({
                       name: r.product_name,
                       qty: r.required,
@@ -3383,18 +3534,21 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
               const filtered = filterGroupForSector(soleGroup, sector);
               if (!filtered) continue;
               for (const cg of filtered.colorGroups) {
-                const existing = colorMap.get(cg.color);
+                const mergeKey = `${cg.color}::${lotPartitionKey(cg.lotInfo)}`;
+                const existing = colorMap.get(mergeKey);
                 if (!existing) {
-                  colorMap.set(cg.color, {
+                  const cloned = copyAllocatedPairs({
                     ...cg,
                     refs: [],  // remove refs (pedido user 22/05/2026)
                     combinedGrid: { ...cg.combinedGrid },
                     knifeGrid: cg.knifeGrid ? { ...cg.knifeGrid } : undefined,
                     opNumbers: [...cg.opNumbers],
                     pvNumbers: cg.pvNumbers ? [...cg.pvNumbers] : [],
-                  });
+                  }, cg);
+                  colorMap.set(mergeKey, cloned);
                 } else {
                   existing.totalPairs += cg.totalPairs;
+                  mergeAllocatedPairs(ensureAllocatedPairs(existing), allocatedPairsOf(cg));
                   for (const [size, qty] of Object.entries(cg.combinedGrid)) {
                     existing.combinedGrid[size] = (existing.combinedGrid[size] || 0) + qty;
                   }
@@ -3479,7 +3633,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
                   // Mostrar as refs todas da cor erra por excesso e é visível;
                   // mostrar uma foto anônima erra por omissão e engana o cortador.
                   const matRefImages = scoped.length > 0 ? scoped : allRefImages;
-                  expanded.push({
+                  const materialGroup = copyAllocatedPairs({
                     ...cg,
                     liningMaterial: lb.material || undefined,
                     refImages: matRefImages,
@@ -3495,21 +3649,30 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
                     totalPairs: lb.totalPairs,
                     opNumbers: [...lb.opNumbers],
                     pvNumbers: [...lb.pvNumbers],
-                  });
+                  }, lb);
+                  expanded.push(materialGroup);
                 }
               } else {
                 const only = bd && bd.size === 1 ? Array.from(bd.values())[0] : null;
-                expanded.push(only ? { ...cg, liningMaterial: only.material || undefined } : cg);
+                if (only) {
+                  expanded.push(copyAllocatedPairs({
+                    ...cg,
+                    liningMaterial: only.material || undefined,
+                  }, only));
+                } else {
+                  expanded.push(cg);
+                }
               }
             }
             const byColor = new Map<string, SilkColorGroup>();
             for (const cg of expanded) {
               const colorKey = (cg.color || '').trim().toUpperCase() || '∅';
               const matKey = (cg.liningMaterial || '').trim().toUpperCase();
-              const groupKey = matKey ? `${colorKey}::${matKey}` : colorKey;
+              const materialKey = matKey ? `${colorKey}::${matKey}` : colorKey;
+              const groupKey = `${materialKey}::${lotPartitionKey(cg.lotInfo)}`;
               const existing = byColor.get(groupKey);
               if (!existing) {
-                byColor.set(groupKey, {
+                const cloned = copyAllocatedPairs({
                   ...cg,
                   combinedGrid: { ...cg.combinedGrid },
                   knifeGrid: cg.knifeGrid ? { ...cg.knifeGrid } : undefined,
@@ -3528,9 +3691,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
                   // pares no dedup abaixo); copiar os objetos evita corromper o
                   // array de origem (compartilhado com outros setores/renders).
                   refImages: (cg.refImages || []).map((ri: any) => ({ ...ri })),
-                });
+                }, cg);
+                byColor.set(groupKey, cloned);
               } else {
                 existing.totalPairs += cg.totalPairs;
+                mergeAllocatedPairs(ensureAllocatedPairs(existing), allocatedPairsOf(cg));
                 for (const [size, qty] of Object.entries(cg.combinedGrid)) {
                   existing.combinedGrid[size] = (existing.combinedGrid[size] || 0) + qty;
                 }
@@ -3736,20 +3901,14 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             // tiras de todas as fichas somadas). A fonte é a MESMA do modal do
             // PV/débito (strap_colors → metros = cm/par ÷ 100), então bate por
             // construção com o que a fábrica separa/consome.
-            const attachConsumo = sectorName === 'Corte Forração'
-              || sectorName === 'Corte Cabedal'
-              || sectorName === 'Aviamento';
             const enriched = groupsForSector.map(g => ({
               ...withClientNames(g),
               sizeBand: bandForOps(g.colorGroups.flatMap(cg => cg.opNumbers || [])),
-              ...(attachConsumo
-                ? {
-                    colorGroups: g.colorGroups.map(cg => ({
-                      ...cg,
-                      consumption: consumptionForOpNumbers(cg.opNumbers, cg.totalPairs),
-                    })),
-                  }
-                : {}),
+              colorGroups: g.colorGroups.map(cg => ({
+                ...cg,
+                consumption: filterConsumptionForSector(
+                  consumptionForOpNumbers(cg.opNumbers, allocatedPairsOf(cg)), sectorName),
+              })),
             }));
             return [
               <div key={`${sectorName}-maco`} className="page-break">
@@ -3804,7 +3963,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           return <div className="page-break">
               <SolagemWorkSheet
                 sector="Colagem"
-                bands={data.bands}
+                bands={data.bands.map(band => ({ ...band,
+                  consumption: filterConsumptionForSector(consumptionForOpNumbers(band.opNumbers, allocatedPairsOf(band)), 'Colagem'),
+                }))}
                 allSizes={data.allSizes}
                 grandTotal={data.grandTotal}
                 sizeBand={bandForOps(data.bands.flatMap(b => b.opNumbers || []))}
@@ -3868,12 +4029,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             const strapsRaw = Array.isArray((representative as any).strap_colors)
               ? ((representative as any).strap_colors as Array<any>)
               : [];
-            const strapColorsOrdered = [...strapsRaw].sort((a: any, b: any) => {
-              const ka = parseInt(a?.id, 10);
-              const kb = parseInt(b?.id, 10);
-              if (isFinite(ka) && isFinite(kb)) return ka - kb;
-              return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
-            });
+            const strapColorsOrdered = operatorStrapSequence(strapsRaw);
             return {
               order: syntheticOrder,
               silk,
@@ -3883,6 +4039,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
               hasStraps,
               strapColors: strapColorsOrdered,
               opNumbers: group.opNumbers,
+              consumption: filterConsumptionForSector(consumptionForOpNumbers(group.opNumbers, allocatedPairsOf(group)), sectorName),
               sizeBand: bandForOps(group.opNumbers),
               clientName: clientNamesForPvs(group.pvNumbers).join(' · ') || undefined,
               mixedGrades: group.mixedGrades,
@@ -3925,7 +4082,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           if (!data || data.bands.length === 0) return null;
           return <div className="page-break">
               <SolagemWorkSheet
-                bands={data.bands}
+                bands={data.bands.map(band => ({ ...band,
+                  consumption: filterConsumptionForSector(consumptionForOpNumbers(band.opNumbers, allocatedPairsOf(band)), 'Solagem'),
+                }))}
                 allSizes={data.allSizes}
                 grandTotal={data.grandTotal}
                 sizeBand={bandForOps(data.bands.flatMap(b => b.opNumbers || []))}
@@ -3998,13 +4157,15 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             const strapsRaw = Array.isArray((order as any).strap_colors)
               ? ((order as any).strap_colors as Array<any>)
               : [];
-            const strapColorsOrdered = [...strapsRaw].sort((a: any, b: any) => {
-              const ka = parseInt(a?.id, 10);
-              const kb = parseInt(b?.id, 10);
-              if (isFinite(ka) && isFinite(kb)) return ka - kb;
-              return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
-            });
+            const strapColorsOrdered = operatorStrapSequence(strapsRaw);
             const acabPairsPerBox = resolveAcabPairsPerBox(order);
+            const opNumbers = [order.op_number].filter(Boolean);
+            const allocatedPairsByOp = new Map<string, number>();
+            addAllocatedPairs(
+              allocatedPairsByOp,
+              order.op_number,
+              Number(order.total_pairs ?? order.quantity ?? 0),
+            );
             return {
               order: syntheticOrder,
               silk,
@@ -4016,7 +4177,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
               // Só anexa quando o grupo do solado resolveu (senão omite e o
               // componente cai no fallback item.pairsPerBox ?? order.pairs_per_box ?? 12).
               ...(acabPairsPerBox != null ? { pairsPerBox: acabPairsPerBox } : {}),
-              opNumbers: [order.op_number].filter(Boolean),
+              consumption: filterConsumptionForSector(consumptionForOpNumbers(
+                opNumbers, allocatedPairsByOp), 'Acabamento'),
+              opNumbers,
               clientName: clientNamesForPvs([(order as any).sale_order_number]).join(' · ') || undefined,
               lotInfo:
                 (order as any)._total_lots && (order as any)._total_lots > 1

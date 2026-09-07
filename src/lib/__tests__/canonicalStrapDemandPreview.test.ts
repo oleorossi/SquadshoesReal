@@ -38,6 +38,36 @@ const preview = (overrides: Record<string, unknown> = {}) => parseCanonicalStrap
 });
 
 describe('preview canônica de tiras', () => {
+  it('soma posições do mesmo material físico, mas separa snapshots com outro SKU base', () => {
+    const rows = replaceWithCanonicalStrapRows([], ctx, [preview(),
+      preview({ technical_strap_line_id: 'outra-posicao' }),
+      preview({ technical_strap_line_id: 'sku-historico', base_product_id: 'outro-sku-soft' }),
+    ]) as CanonicalStrapConsumptionRow[];
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({ baseProductId: 'base-soft', totalQuantity: 1280 });
+    expect(rows[0].artisanal?.baseQty).toBe(20);
+    expect(rows[1]).toMatchObject({ baseProductId: 'outro-sku-soft', totalQuantity: 640 });
+    expect(canonicalStrapCutRows([preview(), preview({ base_product_id: 'outro-sku-soft' })])).toHaveLength(2);
+  });
+
+  it('explica transformação ainda não congelada sem inventar base nem bloquear o worker', () => {
+    const warning = 'A transformação física será congelada na primeira demanda.';
+    const pending = preview({ resolved: {
+      strap_product_name: 'TIRA TESTE', strap_color_name: 'PRETO',
+      base_product_name: 'NAPA TESTE', confirmed_yield_m_per_m: null,
+      base_required_m: null, snapshot_warning: warning,
+    } });
+    expect(pending.blockingReasons).toEqual([]);
+    expect(pending.snapshotWarning).toBe(warning);
+    const [row] = replaceWithCanonicalStrapRows([], ctx, [pending]) as CanonicalStrapConsumptionRow[];
+    expect(row.totalQuantity).toBe(640);
+    expect(row.warning).toBe(warning);
+    expect(row.artisanal).toMatchObject({ pending: true, baseQty: 0 });
+    const [cut] = canonicalStrapCutRows([pending]);
+    expect(cut.metros_necessarios).toBe(640);
+    expect(cut.canonical).toMatchObject({ baseRequiredM: 0, snapshotWarning: warning, blockingReasons: [] });
+  });
+
   it('mantém uma pendência neutra quando a preview não provou a identidade exata', () => {
     const rows = replaceWithCanonicalStrapRows([
       {
@@ -79,7 +109,7 @@ describe('preview canônica de tiras', () => {
     expect(strap.productIds).toEqual(['finished-soft']);
     expect(strap.available).toBe(25);
     expect(strap.artisanal).toEqual({
-      baseName: 'NAPA SOFT · OFF WHITE', baseQty: 10, yieldPerMeter: 64,
+      baseName: 'NAPA SOFT', baseQty: 10, yieldPerMeter: 64,
       pending: undefined,
     });
     expect(rows.some((row) => row.totalQuantity === 999)).toBe(false);
@@ -107,6 +137,46 @@ describe('preview canônica de tiras', () => {
     const rows = replaceWithCanonicalStrapRows([], ctx, [preview(), madrid]) as any[];
     expect(rows.map((row) => row.strapVariantId)).toEqual(['variant-soft', 'variant-madrid']);
     expect(rows.map((row) => row.baseProductId)).toEqual(['base-soft', 'base-madrid']);
+  });
+
+  it('coloca a tira na família do grupo, não no SKU com cor (PV-00169 Massabox)', () => {
+    const massabox = preview({
+      technical_strap_line_id: '33333333-3333-4333-8333-333333333333',
+      strap_variant_id: 'variant-glow',
+      recipe_id: 'recipe-glow',
+      base_product_id: 'base-glow-cobre',
+      finished_product_id: 'finished-soft',
+      gross_required_m: 160,
+      resolved: {
+        strap_product_name: 'TIRA OVERLOCK 5MM',
+        strap_color_name: 'COBRE',
+        base_group_name: 'GLOW METALIC + MASSABOX',
+        base_product_name: 'GLOW METALIC + MASSABOX - COBRE',
+        confirmed_yield_m_per_m: 60.6,
+        base_required_m: 2.64,
+        cut_band_width_mm: 20,
+        usable_base_width_mm_snapshot: 1370,
+        theoretical_yield_m_per_m: 68,
+      },
+    });
+    const [row] = replaceWithCanonicalStrapRows([], ctx, [massabox]) as CanonicalStrapConsumptionRow[];
+    expect(row.artisanal?.baseName).toBe('GLOW METALIC + MASSABOX');
+    expect(row.materialFamily).toBe('GLOW METALIC + MASSABOX');
+    expect(row.color).toBe('COBRE');
+
+    // Sem base_group_name, ainda tira o sufixo do SKU.
+    const skuOnly = preview({
+      technical_strap_line_id: '44444444-4444-4444-8444-444444444444',
+      resolved: {
+        strap_product_name: 'TIRA OVERLOCK 5MM',
+        strap_color_name: 'COBRE',
+        base_product_name: 'GLOW METALIC + MASSABOX COBRE',
+        confirmed_yield_m_per_m: 60,
+        base_required_m: 2,
+      },
+    });
+    const [fallback] = replaceWithCanonicalStrapRows([], ctx, [skuOnly]) as CanonicalStrapConsumptionRow[];
+    expect(fallback.artisanal?.baseName).toBe('GLOW METALIC + MASSABOX');
   });
 
   it('não deixa uma linha resolvida esconder outra sem linha técnica', () => {

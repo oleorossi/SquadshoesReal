@@ -1,6 +1,7 @@
 import { buildGroupedReportHtml } from './printGroupedReport';
 import { openPrintWindow, writePrintWindow } from './printOrder';
 import { escapeHtml } from './htmlUtils';
+import { scaleGradeWithLargestRemainder } from './scaleGrade';
 
 const SIZES = ['17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','37','38','39','40','41','42','43','44','45'];
 
@@ -59,9 +60,9 @@ export function buildSolagemSectionHtml(
     const gradeSum = Object.values(grade).reduce((s, v) => s + v, 0);
     const totalPairs = order.quantity || gradeSum || 0;
     const multiplier = gradeSum > 0 ? totalPairs / gradeSum : 0;
+    const scaled = scaleGradeWithLargestRemainder(grade, multiplier, totalPairs);
 
-    for (const [size, qty] of Object.entries(grade)) {
-      const q = Math.round(qty * multiplier);
+    for (const [size, q] of Object.entries(scaled)) {
       if (q <= 0) continue;
       const soleColor = getSoleColorForOrder(order.color);
       if (!soleMap.has(soleColor)) {

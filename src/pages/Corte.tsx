@@ -242,6 +242,9 @@ export default function Corte() {
         const orderQty = Number(order.quantity) || 0;
         const realTotal = Math.max(gradeSum, orderQty);
         const multiplier = gradeSum > 0 ? realTotal / gradeSum : 0;
+        const scaledGrade = gradeSum > 0
+          ? scaleGradeWithLargestRemainder(grade, multiplier, realTotal)
+          : {};
 
         const materials = materialsByRef.get(order.reference_id) || [];
         for (const mat of materials) {
@@ -253,9 +256,8 @@ export default function Corte() {
 
           const sizeMap: Record<string, number> = {};
           let total = 0;
-          for (const [size, qty] of Object.entries(grade)) {
-            const q = Math.round((Number(qty) || 0) * multiplier);
-            if (q > 0) { sizeMap[size] = (sizeMap[size] || 0) + q; total += q; }
+          for (const [size, q] of Object.entries(scaledGrade)) {
+            if (q > 0) { sizeMap[size] = q; total += q; }
           }
 
           rows.push({
@@ -286,9 +288,8 @@ export default function Corte() {
           if (!fb.name || categoriesCovered.has(fb.category)) continue;
           const sizeMap: Record<string, number> = {};
           let total = 0;
-          for (const [size, qty] of Object.entries(grade)) {
-            const q = Math.round((Number(qty) || 0) * multiplier);
-            if (q > 0) { sizeMap[size] = (sizeMap[size] || 0) + q; total += q; }
+          for (const [size, q] of Object.entries(scaledGrade)) {
+            if (q > 0) { sizeMap[size] = q; total += q; }
           }
           if (total === 0) continue;
           rows.push({
@@ -571,6 +572,9 @@ if (totalPairsAll !== palmTotal) {
           const gradeSum = getGradeTotal(grade);
           const totalPairs = getOrderTotalPairs(order);
           const fichas = gradeSum > 0 ? totalPairs / gradeSum : 0;
+          const scaledTotal = gradeSum > 0
+            ? scaleGradeWithLargestRemainder(grade || {}, fichas || 1, totalPairs)
+            : {};
           const isSelected = selectedOrders.has(order.id);
 
           const corteStage = allStages.find(s => s.order_id === order.id && isCorteStage(s.stage_name));
@@ -683,7 +687,7 @@ if (totalPairsAll !== palmTotal) {
                               <TableCell className="text-xs font-bold">Total ({Math.ceil(fichas)} fichas)</TableCell>
                               {activeSizes.map(s => (
                                 <TableCell key={s} className="text-sm text-center font-mono font-bold">
-                                  {Math.round((grade[s] || 0) * fichas)}
+                                  {scaledTotal[s] || 0}
                                 </TableCell>
                               ))}
                               <TableCell className="text-sm text-center font-mono font-bold bg-muted">
@@ -773,7 +777,7 @@ if (totalPairsAll !== palmTotal) {
                             </tr>
                             <tr style="background:#f5f5f0;font-weight:700;">
                               <td style="border:1px solid #999;padding:3px 6px;font-size:10px;">Total (${Math.ceil(fichas)} fichas)</td>
-                              ${activeSizes.map(s => `<td style="border:1px solid #999;padding:3px 6px;text-align:center;font-family:monospace;font-size:11px;">${Math.round((grade[s] || 0) * fichas)}</td>`).join('')}
+                              ${activeSizes.map(s => `<td style="border:1px solid #999;padding:3px 6px;text-align:center;font-family:monospace;font-size:11px;">${scaledTotal[s] || 0}</td>`).join('')}
                               <td style="border:1px solid #999;padding:3px 6px;text-align:center;font-family:monospace;font-weight:700;font-size:12px;background:#e0e0c8;">${totalPairs}</td>
                             </tr>
                           </tbody>
@@ -1049,6 +1053,9 @@ if (totalPairsAll !== palmTotal) {
                 const orderQty = Number(order.quantity) || 0;
                 const realTotal = Math.max(gradeSum, orderQty);
                 const multiplier = gradeSum > 0 ? realTotal / gradeSum : 0;
+                const scaledGrade = gradeSum > 0
+                  ? scaleGradeWithLargestRemainder(grade, multiplier, realTotal)
+                  : {};
                 const materials = reportMatsByRef.get(order.reference_id) || [];
                 const orderRows: CuttingRow[] = [];
                 for (const mat of materials) {
@@ -1059,9 +1066,8 @@ if (totalPairsAll !== palmTotal) {
                   if (!cuttingCategory) continue;
                   const sizeMap: Record<string, number> = {};
                   let total = 0;
-                  for (const [size, qty] of Object.entries(grade)) {
-                    const q = Math.round((Number(qty) || 0) * multiplier);
-                    if (q > 0) { sizeMap[size] = (sizeMap[size] || 0) + q; total += q; }
+                  for (const [size, q] of Object.entries(scaledGrade)) {
+                    if (q > 0) { sizeMap[size] = q; total += q; }
                   }
                   const row: CuttingRow = { refCode: ref.code || '', refName: ref.name || '', color: order.color || mat.color || '—', materialName: mat.products?.name || '—', materialCategory: cuttingCategory, sizes: sizeMap, totalPairs: total, orderNumber: order.order_number || '', orderId: order.id };
                   rows.push(row);
@@ -1289,8 +1295,7 @@ if (totalPairsAll !== palmTotal) {
                     const cat = classifyCuttingCategory(gi?.name || mat.products?.category || '', gi?.is_bom_color_source || false) || '';
                     const sizeMap: Record<string, number> = {};
                     let total = 0;
-                    for (const [size, qty] of Object.entries(grade)) {
-                      const q = Math.round((Number(qty) || 0) * multiplier);
+                    for (const [size, q] of Object.entries(scaledTotal)) {
                       if (q > 0) { sizeMap[size] = q; total += q; }
                     }
                     return { color: order.color || mat.color || '—', materialName: mat.products?.name || '—', category: cat, sizes: sizeMap, total };

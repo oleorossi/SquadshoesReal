@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CheckCircle,
@@ -26,6 +26,7 @@ import {
   createQuickGroupVariant,
   formatQuickVariantColor,
   normalizeQuickVariantColor,
+  type QuickGroupVariantInput,
   type QuickGroupVariantResult,
 } from '@/lib/quickGroupVariant';
 
@@ -35,7 +36,13 @@ interface Props {
   products: Product[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCreated?: (result: QuickGroupVariantResult) => void;
+  onCreated?: (result: QuickGroupVariantResult) => void | Promise<void>;
+  initialColor?: string;
+  /** No PV, a nova cor é cadastro sem entrada de estoque. */
+  fixedQuantity?: number;
+  contextNote?: ReactNode;
+  /** O cadastro contextual valida a ficha no servidor; o cadastro geral mantém sua RPC. */
+  createVariant?: (input: QuickGroupVariantInput) => Promise<QuickGroupVariantResult>;
 }
 
 const money = (value: number) => new Intl.NumberFormat('pt-BR', {
@@ -75,6 +82,10 @@ export default function QuickColorVariantDialog({
   open,
   onOpenChange,
   onCreated,
+  initialColor = '',
+  fixedQuantity,
+  contextNote,
+  createVariant = createQuickGroupVariant,
 }: Props) {
   const queryClient = useQueryClient();
   const { data: catalogColors = [] } = useColors();
@@ -85,6 +96,9 @@ export default function QuickColorVariantDialog({
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
   const requestIdRef = useRef<string | null>(null);
+  const initializedSessionRef = useRef<string | null>(null);
+  const createdResultRef = useRef<QuickGroupVariantResult | null>(null);
+  const [createdResult, setCreatedResult] = useState<QuickGroupVariantResult | null>(null);
 
   const {
     data: templateSheet,
@@ -114,16 +128,26 @@ export default function QuickColorVariantDialog({
   });
 
   useEffect(() => {
-    if (!open) return;
-    setColor('');
-    setQuantity(0);
+    if (!open) {
+      initializedSessionRef.current = null;
+      return;
+    }
+    const sessionKey = `${group.id}:${template?.id || ''}`;
+    // Uma nova sugestão externa não apaga a operação já iniciada nem o recibo
+    // necessário para retomar a seleção sem cadastrar o mesmo produto outra vez.
+    if (initializedSessionRef.current === sessionKey) return;
+    initializedSessionRef.current = sessionKey;
+    setColor(initialColor);
+    setQuantity(fixedQuantity ?? 0);
     // O usuário redigita o custo e confirma que bate com o modelo. Isso evita
     // aceitar um preço herdado sem que ele tenha sido conferido.
     setUnitPrice(0);
     setConfirmed(false);
     setFormError('');
     requestIdRef.current = null;
-  }, [open, template?.id]);
+    createdResultRef.current = null;
+    setCreatedResult(null);
+  }, [open, group.id, template?.id, initialColor, fixedQuantity]);
 
   const existingColors = useMemo(
     () => new Set(products.map(product => normalizeQuickVariantColor(product.color || '')).filter(Boolean)),
@@ -135,18 +159,19 @@ export default function QuickColorVariantDialog({
   const standardPrice = Number(template?.unit_price) || 0;
   const samePrice = Boolean(template)
     && Math.abs(Number(unitPrice) - standardPrice) < 0.0000005;
-  const validNumbers = Number.isFinite(quantity) && quantity >= 0
+  const effectiveQuantity = fixedQuantity ?? quantity;
+  const validNumbers = Number.isFinite(effectiveQuantity) && effectiveQuantity >= 0
     && Number.isFinite(unitPrice) && unitPrice >= 0;
   const canSubmit = Boolean(
-    template
-    && !sheetLoading
-    && !sheetError
-    && normalizedColor
-    && !duplicateColor
-    && validNumbers
-    && samePrice
-    && confirmed
-    && !submitting,
+    !submitting && (createdResult || (template
+      && !sheetLoading
+      && !sheetError
+      && normalizedColor
+      && !duplicateColor
+      && validNumbers
+      && samePrice
+      && confirmed
+    )),
   );
 
   const handlePriceChange = (value: number) => {
@@ -164,39 +189,47 @@ export default function QuickColorVariantDialog({
 
   const handleSubmit = async () => {
     if (!template || !canSubmit) return;
-    const requestId = requestIdRef.current || globalThis.crypto?.randomUUID?.();
-    if (!requestId) {
-      setFormError('O navegador não oferece uma identificação segura para esta operação.');
-      return;
-    }
-    requestIdRef.current = requestId;
     setSubmitting(true);
     setFormError('');
     try {
-      const result = await createQuickGroupVariant({
-        groupId: group.id,
-        templateProductId: template.id,
-        color: formattedColor,
-        quantity,
-        unitPrice,
-        requestId,
-      });
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['products'] }),
-        queryClient.invalidateQueries({ queryKey: ['component_sheets'] }),
-        queryClient.invalidateQueries({ queryKey: ['component_sheets_by_product', group.id] }),
-        queryClient.invalidateQueries({ queryKey: ['quick_variant_group_sheets', group.id] }),
-        queryClient.invalidateQueries({ queryKey: ['group_stock_rollups'] }),
-      ]);
+      let result = createdResultRef.current;
+      if (!result) {
+        const requestId = requestIdRef.current || globalThis.crypto?.randomUUID?.();
+        if (!requestId) throw new Error('O navegador não oferece uma identificação segura para esta operação.');
+        requestIdRef.current = requestId;
+        result = await createVariant({
+          groupId: group.id,
+          templateProductId: template.id,
+          color: formattedColor,
+          quantity: effectiveQuantity,
+          unitPrice,
+          requestId,
+        });
+        // O produto já existe. Qualquer falha posterior repete só a atualização,
+        // nunca o cadastro (nem mesmo se o catálogo já mostrar cor duplicada).
+        createdResultRef.current = result;
+        setCreatedResult(result);
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['products'] }),
+          queryClient.invalidateQueries({ queryKey: ['component_sheets'] }),
+          queryClient.invalidateQueries({ queryKey: ['component_sheets_by_product', group.id] }),
+          queryClient.invalidateQueries({ queryKey: ['quick_variant_group_sheets', group.id] }),
+          queryClient.invalidateQueries({ queryKey: ['group_stock_rollups'] }),
+        ]);
+      }
+      await onCreated?.(result);
       toast.success(`Variação ${result.color} criada`, {
-        description: `Saldo inicial: ${quantity.toLocaleString('pt-BR')} ${template.unit || ''} · ${money(unitPrice)} por ${template.unit || 'unidade'}.`,
+        description: `Saldo inicial: ${effectiveQuantity.toLocaleString('pt-BR')} ${template.unit || ''} · ${money(unitPrice)} por ${template.unit || 'unidade'}.`,
       });
-      onCreated?.(result);
       onOpenChange(false);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Não foi possível criar a variação.';
-      setFormError(message);
-      toast.error('Variação não criada', { description: message });
+      const created = !!createdResultRef.current;
+      const description = created
+        ? `A cor já foi criada. ${message} Use “Recarregar e continuar”; não é necessário criar novamente.`
+        : message;
+      setFormError(description);
+      toast.error(created ? 'Cor criada; atualização pendente' : 'Variação não criada', { description });
     } finally {
       setSubmitting(false);
     }
@@ -211,16 +244,22 @@ export default function QuickColorVariantDialog({
             Nova variação · {group.name}
           </DialogTitle>
           <DialogDescription>
-            Informe somente a nova cor, o saldo inicial e o mesmo valor unitário do item-modelo.
+            {fixedQuantity == null
+              ? 'Informe somente a nova cor, o saldo inicial e o mesmo valor unitário do item-modelo.'
+              : fixedQuantity === 0
+                ? 'Informe a nova cor e confirme o valor do item-modelo. Este cadastro não registra entrada de estoque.'
+                : 'Informe a nova cor e confirme o valor do item-modelo. A quantidade inicial foi definida pelo cadastro de origem.'}
           </DialogDescription>
         </DialogHeader>
+
+        {contextNote}
 
         {!template ? (
           <div className="border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
             Escolha o ícone “Usar como modelo” em uma das linhas do grupo.
           </div>
         ) : (
-          <div className="space-y-4">
+          <fieldset disabled={submitting || !!createdResult} className="space-y-4">
             <div className="border-l-2 border-primary bg-primary/5 px-3 py-2.5">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="min-w-0">
@@ -289,23 +328,30 @@ export default function QuickColorVariantDialog({
                 <datalist id="quick-variant-color-catalog">
                   {catalogColors.map(item => <option key={item.id} value={item.nome} />)}
                 </datalist>
-                {duplicateColor && <p className="mt-1 text-xs text-destructive">Esta cor já existe no grupo.</p>}
+                {duplicateColor && !createdResult && <p className="mt-1 text-xs text-destructive">Esta cor já existe no grupo.</p>}
               </div>
 
               <div>
-                <Label htmlFor="quick-variant-quantity" className="text-xs">Quantidade inicial <RequiredMark /></Label>
-                <NumberInput
-                  id="quick-variant-quantity"
-                  value={quantity}
-                  onChange={(value) => {
-                    setQuantity(value);
-                    setFormError('');
-                    requestIdRef.current = null;
-                  }}
-                  min={0}
-                  unit={template.unit || undefined}
-                  className="mt-1"
-                />
+                {fixedQuantity != null ? <>
+                  <p className="text-xs font-medium">Quantidade inicial</p>
+                  <p className="mt-1 rounded-md border bg-muted/20 px-3 py-2 text-sm">
+                    {fixedQuantity.toLocaleString('pt-BR')} {template.unit || ''}{fixedQuantity === 0 ? ' — sem entrada de estoque' : ' — quantidade fixa'}
+                  </p>
+                </> : <>
+                  <Label htmlFor="quick-variant-quantity" className="text-xs">Quantidade inicial <RequiredMark /></Label>
+                  <NumberInput
+                    id="quick-variant-quantity"
+                    value={quantity}
+                    onChange={(value) => {
+                      setQuantity(value);
+                      setFormError('');
+                      requestIdRef.current = null;
+                    }}
+                    min={0}
+                    unit={template.unit || undefined}
+                    className="mt-1"
+                  />
+                </>}
               </div>
               <div>
                 <Label htmlFor="quick-variant-price" className="text-xs">Valor unitário <RequiredMark /></Label>
@@ -341,14 +387,14 @@ export default function QuickColorVariantDialog({
                 {formError}
               </div>
             )}
-          </div>
+          </fieldset>
         )}
 
         <DialogFooter>
           <Button type="button" variant="outline" disabled={submitting} onClick={() => onOpenChange(false)}>Cancelar</Button>
           <Button type="button" className="gap-1.5" disabled={!canSubmit} onClick={handleSubmit}>
             {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
-            Criar variação
+            {createdResult ? 'Recarregar e continuar' : 'Criar variação'}
           </Button>
         </DialogFooter>
       </DialogContent>

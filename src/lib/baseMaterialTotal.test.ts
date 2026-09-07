@@ -4,6 +4,7 @@ import {
   computePurchaseBaseTotal,
   isBaseMaterialGroup,
   isSuspectUnrolledArtisanal,
+  normalizeBaseFamilyName,
   type BaseMaterialInput,
 } from './baseMaterialTotal';
 
@@ -29,6 +30,19 @@ const COGUMELO: BaseMaterialInput[] = [
     artisanal: { baseName: 'NAPA SOFT', baseQty: 234.72 / 61, yieldPerMeter: 61 },
   })),
 ];
+
+describe('normalizeBaseFamilyName', () => {
+  it('tira a cor do SKU pra casar com o grupo do cabedal', () => {
+    expect(normalizeBaseFamilyName('GLOW METALIC + MASSABOX - COBRE', 'COBRE'))
+      .toBe('GLOW METALIC + MASSABOX');
+    expect(normalizeBaseFamilyName('GLOW METALIC + MASSABOX COBRE', 'COBRE'))
+      .toBe('GLOW METALIC + MASSABOX');
+    expect(normalizeBaseFamilyName('NAPA SOFT · OFF WHITE', 'OFF WHITE'))
+      .toBe('NAPA SOFT');
+    expect(normalizeBaseFamilyName('GLOW METALIC + MASSABOX', 'COBRE'))
+      .toBe('GLOW METALIC + MASSABOX');
+  });
+});
 
 describe('computeBaseMaterialTotal', () => {
   it('soma tiras convertidas + napa direta sem arredondar cada parcela', () => {

@@ -17,6 +17,8 @@
 // `base_product_name` de receita. A NAPA SUDANI da forração ficaria de fora e o
 // total do COGUMELO daria 16,47 em vez de 36,74 (o número que o dono confere).
 
+import { stripColorFromName } from '@/lib/utils';
+
 /** Componentes cujo consumo DIRETO já é o material base (napa cortada do rolo). */
 export const BASE_MATERIAL_COMPONENTS = new Set([
   'Cabedal', 'Forração', 'Fachete', 'Forração Palmilha',
@@ -25,12 +27,43 @@ export const BASE_MATERIAL_COMPONENTS = new Set([
 /** Unidades lineares aceitas — o total do base é sempre em metros. */
 export const BASE_LINEAR_UNITS = new Set(['m', 'metro', 'metros', 'mt']);
 
+/**
+ * Nome da FAMÍLIA de napa na lista de compra / PDF — sem a cor do SKU.
+ *
+ * Cabedal e forração já chegam com `product_groups.name`
+ * (ex.: "GLOW METALIC + MASSABOX"). A tira interna vinha com `products.name`
+ * (ex.: "GLOW METALIC + MASSABOX - COBRE") e abria uma família fantasma no
+ * consumo, com o cobre da tira fora do bloco do Massabox.
+ */
+export function normalizeBaseFamilyName(
+  name: string | null | undefined,
+  color?: string | null,
+): string {
+  const raw = (name || '').toString().trim();
+  if (!raw) return 'Material base';
+
+  let cleaned = stripColorFromName(raw, color).trim();
+  const colorText = (color || '').toString().trim();
+  if (colorText) {
+    const escaped = colorText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // Separadores usados em SKU: " · COR", " • COR", e sufixo " COR" sem hífen
+    // (ex.: "GLOW METALIC + MASSABOX COBRE").
+    cleaned = cleaned
+      .replace(new RegExp(`\\s*[·•]\\s*${escaped}\\s*$`, 'i'), '')
+      .replace(new RegExp(`\\s+${escaped}\\s*$`, 'i'), '')
+      .trim();
+  }
+  return cleaned || raw;
+}
+
 /** Forma mínima que o cálculo precisa de uma linha de consumo. */
 export type BaseMaterialInput = {
   componentType: string;
   groupName: string;
   productUnit: string;
   totalQuantity: number;
+  /** Cor da linha — usada só pra tirar o sufixo de cor do SKU da napa-base. */
+  color?: string;
   /** Consumo ~100× inflado (largura da ficha de componente não cadastrada). */
   widthMissing?: boolean;
   /** Consumo não calculado (ex.: solado fachetado sem specs). */
@@ -139,8 +172,9 @@ export function computeBaseMaterialTotal(rows: BaseMaterialInput[]): BaseMateria
     if (r.artisanal?.pending) { skipped++; continue; }
     // Tira artesanal: conta o equivalente em napa, NUNCA os metros de tira
     // (169,20 m de tira = 2,82 m de napa; somar os 169,20 inflaria 60×).
+    // Família = grupo (sem cor do SKU), pra casar com cabedal/forração.
     if (r.artisanal && r.artisanal.baseQty > 0) {
-      const name = r.artisanal.baseName || 'Material base';
+      const name = normalizeBaseFamilyName(r.artisanal.baseName, r.color);
       byName.set(name, (byName.get(name) || 0) + r.artisanal.baseQty);
       continue;
     }

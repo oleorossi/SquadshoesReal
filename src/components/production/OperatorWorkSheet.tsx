@@ -9,6 +9,8 @@ import { gradeTableFont, floorSafeScale, A4_CONTENT_WIDTH_PX } from './worksheet
 import { fitBesideGrade, SIDE_BY_SIDE_GAP_PX } from './worksheet/sideBySide';
 import { resolveFicha } from './worksheet/fichaSize';
 import { TallyBox } from './worksheet/TallyBox';
+import { SectorMaterials } from './worksheet/SectorMaterials';
+import type { ConsumptionRow } from '@/hooks/useBulkOrderConsumption';
 import { TALLY_SIZE } from './worksheet/density';
 import { CompletionFooter } from './worksheet/CompletionFooter';
 import { PaginatedSheet, type SheetBlock } from './worksheet/PaginatedSheet';
@@ -23,6 +25,7 @@ import type { SizeBand } from './worksheet/InfantilTag';
 
 /** Um grupo/OP dentro do maço do setor (Montagem: ref+cor; Acabamento: OP). */
 export interface OperatorWorkSheetItem {
+  consumption?: ConsumptionRow[];
   order: ProductionOrder;
   silk?: { silk_name: string; silk_url: string | null };
   soleColor?: string | null;
@@ -735,6 +738,8 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
             </div>
           </div>
         )}
+
+        <SectorMaterials rows={item.consumption} sector={sector} />
 
         {/* TallyBox — controle de fichas do operador. 6º passe (2026-06-12):
             renderiza pra QUALQUER setor (antes só Silk/Colagem/Montagem/

@@ -7,6 +7,7 @@ import {
 } from '@/lib/canonicalConsumptionReport';
 import type { MaterialConsumptionRow } from '@/lib/orderConsumption';
 import { formatUnitLabel } from '@/lib/unitLabels';
+import { matchesConsumptionSector } from '@/lib/consumptionSector';
 
 export type ConsumptionComponent =
   | 'Solado'
@@ -34,6 +35,9 @@ export interface ConsumptionRow {
   stock_ok: boolean;
   debit_mode: 'hard' | 'soft';
   source?: string;
+  consumption_sector?: string | null;
+  consumption_sector_source?: string | null;
+  material_source?: string | null;
   matched_by?: string;
   unit?: string;
   category?: string;
@@ -73,6 +77,8 @@ const COMPONENT_TYPE_TO_BULK: Record<string, ConsumptionComponent> = {
   Químicos: 'Químicos',
   Embalagem: 'Embalagem',
   Outros: 'Outros',
+  'Componente Direto': 'Componente Direto',
+  BOM: 'BOM',
 };
 
 /**
@@ -91,7 +97,9 @@ export const toBulkConsumptionRow = (r: MaterialConsumptionRow): ConsumptionRow 
   product_id: r.productIds?.[0]
     || r.boxTypeIds?.[0]
     || `${r.componentType}::${r.groupName}::${r.color}::${r.productUnit}::${(r.materialFamily || '').trim()}`,
-  product_name: r.groupName || r.materialName,
+  product_name: ['direct_components', 'sheet_materials', 'component_color', 'component_color_default'].includes(r.consumptionMaterialSource || '')
+    ? r.materialName || r.groupName
+    : r.groupName || r.materialName,
   color: r.color,
   consumption_per_unit: 0,
   required: r.totalQuantity,
@@ -101,6 +109,9 @@ export const toBulkConsumptionRow = (r: MaterialConsumptionRow): ConsumptionRow 
   unit: r.productUnit,
   category: r.groupName,
   source: r.widthMissing ? 'width_missing' : 'canonical',
+  consumption_sector: r.consumptionSector || null,
+  consumption_sector_source: r.consumptionSectorSource || null,
+  material_source: r.consumptionMaterialSource || null,
   materialFamily: r.materialFamily || null,
 });
 
@@ -227,31 +238,39 @@ export const filterConsumptionForSector = (
   // saíam impressos na ficha de Corte de Placa de Fibra.
   const unclassified = (r: ConsumptionRow) => !r.component || r.component === 'Outros';
 
+  // Setor explícito/congelado vence a taxonomia. O fallback permanece apenas
+  // para snapshots legados, sem deslocar cabedal/forro de seus quadros de contexto.
+  const filter = (fallback: (row: ConsumptionRow) => boolean) => rows.filter((row) => (
+    row.consumption_sector_source !== 'ambiguous' && (row.consumption_sector?.trim()
+      ? matchesConsumptionSector(row.consumption_sector, sector)
+      : fallback(row))
+  ));
+
   switch (sector) {
     case 'Corte Fibra':
       // \beva\b: só a palavra isolada (placa EVA) — /forma/ removido (não há
       // match legítimo e capturava 'plataforma').
-      return rows.filter(r =>
+      return filter(r =>
         r.component === 'Palmilha' ||
         (unclassified(r) && byName(r, /palmilha|\beva\b|placa\s+de\s+fibra/)),
       );
     // 'Forração Palmilha' (forro que cobre a placa) é CORTADO no Corte
     // Forração — é napa de forro, não placa do Corte Fibra.
     case 'Corte Forração':
-      return rows.filter(r =>
+      return filter(r =>
         r.component === 'Forração' ||
         r.component === 'Forração Palmilha' ||
         r.component === 'Fachete',
       );
     case 'Corte Cabedal':
-      return rows.filter(r => r.component === 'Cabedal' || r.component === 'Fachete');
+      return filter(r => r.component === 'Cabedal' || r.component === 'Fachete');
     case 'Costura':
     // Setores de FICHA (2026-06-12): a camada de impressão divide 'Costura'
     // em 'Costura Palmilha' e 'Costura Cabedal' — ambos derivam do mesmo
     // setor único do fluxo, então roteiam os mesmos materiais.
     case 'Costura Palmilha':
     case 'Costura Cabedal':
-      return rows.filter(r =>
+      return filter(r =>
         r.component === 'Cabedal' ||
         r.component === 'Forração' ||
         byName(r, /linha|fio/),
@@ -260,7 +279,7 @@ export const filterConsumptionForSector = (
       // Aviamento VÊ cabedal + forro (regra da ficha: tema showMaterials='both'
       // no SilkMontageWorkSheet). 'Forração Palmilha' fica de fora — é corte
       // do setor Corte Forração, não material manuseado no Aviamento.
-      return rows.filter(r =>
+      return filter(r =>
         r.component === 'Cabedal' ||
         r.component === 'Forração' ||
         r.component === 'Tiras' ||
@@ -274,26 +293,26 @@ export const filterConsumptionForSector = (
         byName(r, /fivela|ilho|tira|presilha|botão|rebite|tacha|elástic|elastic|aviamento/),
       );
     case 'Silk':
-      return rows.filter(r => byName(r, /tinta|silk|estampa|emulsão|sublimação/));
+      return filter(r => byName(r, /tinta|silk|estampa|emulsão|sublimação/));
     case 'Colagem':
-      return rows.filter(r =>
+      return filter(r =>
         r.component === 'Solado' || r.component === 'Químicos' || byName(r, /cola|adesivo|cimento|primer/),
       );
     case 'Montagem':
-      return rows.filter(r =>
+      return filter(r =>
         r.component === 'Solado' ||
         r.component === 'Palmilha' ||
         r.component === 'Químicos' ||
         byName(r, /cola|adesivo/),
       );
     case 'Solagem':
-      return rows.filter(r => r.component === 'Solado' || r.component === 'Químicos' || byName(r, /cola|adesivo|primer/));
+      return filter(r => r.component === 'Solado' || r.component === 'Químicos' || byName(r, /cola|adesivo|primer/));
     case 'Acabamento':
-      return rows.filter(r => r.component === 'Embalagem' || byName(r, /caixa|sacola|tag|etiqueta|papel\s+seda/));
+      return filter(r => r.component === 'Embalagem' || byName(r, /caixa|sacola|tag|etiqueta|papel\s+seda/));
     case 'Expedição':
-      return rows.filter(r => r.component === 'Embalagem' || byName(r, /caixa|sacola|fita|etiqueta|romaneio/));
+      return filter(r => r.component === 'Embalagem' || byName(r, /caixa|sacola|fita|etiqueta|romaneio/));
     default:
-      return rows;
+      return filter(() => true);
   }
 };
 
@@ -310,9 +329,12 @@ export const aggregateConsumption = (
   for (const key of keys) {
     const rows = rowsByKey.get(key) || [];
     for (const r of rows) {
-      const existing = byProduct.get(r.product_id);
+      const productKey = [r.product_id, r.component, r.color || '', r.unit || '',
+        r.materialFamily || '', r.consumption_sector || '', r.consumption_sector_source || '',
+        r.material_source || ''].join('::');
+      const existing = byProduct.get(productKey);
       if (!existing) {
-        byProduct.set(r.product_id, { ...r });
+        byProduct.set(productKey, { ...r });
       } else {
         existing.required += r.required;
         existing.available = Math.max(existing.available, r.available);

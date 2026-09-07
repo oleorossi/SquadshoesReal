@@ -14,7 +14,7 @@ import {
   ListNumbers,
 } from '@phosphor-icons/react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { computeBaseMaterialTotal } from '@/lib/baseMaterialTotal';
+import { computeBaseMaterialTotal, normalizeBaseFamilyName } from '@/lib/baseMaterialTotal';
 import { buildColAvailability, sizeSortKey } from '@/lib/soleMatrixHtml';
 import type { ArtisanalStrapCutRow } from '@/lib/strapRollCut';
 import ArtisanalStrapRollCutBlock from '@/components/sale-orders/ArtisanalStrapRollCutBlock';
@@ -235,7 +235,7 @@ function SoleCoveragePanel({ rows, grossNeed = false }: { rows: ConsumptionRow[]
           const hasShortage = known && shortage > 0;
           return (
             <article
-              key={`${row.groupName}-${row.color}-${row.boxTypeIds?.join(',') || row.productIds?.join(',') || index}`}
+              key={`${row.groupName}-${row.color}-${row.consumptionSector || ''}-${row.boxTypeIds?.join(',') || row.productIds?.join(',') || index}`}
               className="px-4 py-3"
             >
               <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
@@ -611,6 +611,9 @@ export default function MaterialConsumptionView({
             )}
             {row.groupName}
           </div>
+          {row.consumptionSector && (
+            <p className="mt-1 text-xs text-muted-foreground">Setor: {row.consumptionSector}</p>
+          )}
         </TableCell>
         <TableCell>{row.materialName}</TableCell>
         <TableCell>{row.color}</TableCell>
@@ -630,11 +633,11 @@ export default function MaterialConsumptionView({
           {row.artisanal && (
             row.artisanal.pending ? (
               <div className="mt-0.5 whitespace-nowrap text-[10px] font-normal text-amber-600 dark:text-amber-400">
-                base {row.artisanal.baseName} · rendimento a cadastrar
+                base {normalizeBaseFamilyName(row.artisanal.baseName, row.color)} · rendimento a cadastrar
               </div>
             ) : (
               <div className="mt-0.5 whitespace-nowrap text-[10px] font-normal text-muted-foreground">
-                ≈ {formatQty(row.artisanal.baseQty, 'm')} m {row.artisanal.baseName}
+                ≈ {formatQty(row.artisanal.baseQty, 'm')} m {normalizeBaseFamilyName(row.artisanal.baseName, row.color)}
                 <span className="opacity-70"> · artesanal (1 m → {row.artisanal.yieldPerMeter} m)</span>
               </div>
             )

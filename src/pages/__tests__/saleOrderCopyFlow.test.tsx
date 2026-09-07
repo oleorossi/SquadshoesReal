@@ -66,6 +66,8 @@ vi.mock('@/integrations/supabase/client', () => {
 import SaleOrderFormPanel, {
   removeItemsAtIndices,
   restoreItemsAt,
+  saleOrderItemDuplicateKey,
+  shouldWarnSaleOrderItemDuplicate,
 } from '@/components/sale-orders/SaleOrderFormPanel';
 
 const ITEMS: SaleOrderItemFormData[] = [
@@ -73,6 +75,119 @@ const ITEMS: SaleOrderItemFormData[] = [
   { id: 'i-B', reference_id: 'REF-B', color: 'BRANCO', grade: { '38': 6 }, unit_price: 110, quantity: 6, fichas: 1 },
   { id: 'i-C', reference_id: 'REF-C', color: 'AZUL', grade: { '39': 7 }, unit_price: 120, quantity: 7, fichas: 1 },
 ];
+
+describe('identidade de duplicata com cores independentes por tira', () => {
+  const lineA = '11111111-1111-4111-8111-111111111111';
+  const lineB = '22222222-2222-4222-8222-222222222222';
+  const red = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const blue = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  const item = (strapColors: NonNullable<SaleOrderItemFormData['strap_colors']>) => ({
+    ...ITEMS[0],
+    strap_colors: strapColors,
+  });
+  const strap = (lineId: string, colorId: string, colorMode: 'follow_main' | 'select_on_order') => ({
+    id: lineId,
+    technical_strap_line_id: lineId,
+    label: lineId === lineA ? 'TIRA 1' : 'TIRA 2',
+    color: colorId === red ? 'VERMELHO' : 'AZUL',
+    color_id: colorId,
+    identity_basis: 'reference_base' as const,
+    color_mode: colorMode,
+  });
+
+  it('considera equivalente a mesma combinação em outra ordem de apresentação', () => {
+    const first = item([
+      strap(lineA, red, 'select_on_order'),
+      strap(lineB, blue, 'select_on_order'),
+    ]);
+    const reordered = item([
+      { ...strap(lineB, blue, 'select_on_order'), label: 'SEGUNDA TIRA' },
+      { ...strap(lineA, red, 'select_on_order'), label: 'PRIMEIRA TIRA' },
+    ]);
+
+    expect(saleOrderItemDuplicateKey(first)).toBe(saleOrderItemDuplicateKey(reordered));
+  });
+
+  it('mantém equivalência por UUID v7 canônico ao reordenar as linhas', () => {
+    const lineV7A = '0198f35c-7f4d-7000-8000-000000000001';
+    const lineV7B = '0198f35c-7f4d-7000-8000-000000000002';
+    const first = item([
+      strap(lineV7A, red, 'select_on_order'),
+      strap(lineV7B, blue, 'select_on_order'),
+    ]);
+    const reordered = item([
+      strap(lineV7B, blue, 'select_on_order'),
+      strap(lineV7A, red, 'select_on_order'),
+    ]);
+
+    expect(saleOrderItemDuplicateKey(first)).toBe(saleOrderItemDuplicateKey(reordered));
+  });
+
+  it('não mescla cores trocadas entre posições nem políticas diferentes', () => {
+    const original = item([
+      strap(lineA, red, 'select_on_order'),
+      strap(lineB, blue, 'select_on_order'),
+    ]);
+    const colorsSwapped = item([
+      strap(lineA, blue, 'select_on_order'),
+      strap(lineB, red, 'select_on_order'),
+    ]);
+    const differentMode = item([
+      strap(lineA, red, 'follow_main'),
+      strap(lineB, blue, 'select_on_order'),
+    ]);
+
+    expect(saleOrderItemDuplicateKey(colorsSwapped)).not.toBe(saleOrderItemDuplicateKey(original));
+    expect(saleOrderItemDuplicateKey(differentMode)).not.toBe(saleOrderItemDuplicateKey(original));
+  });
+
+  it('não mescla a mesma cor/posição em materiais-base diferentes', () => {
+    const original = item([{ ...strap(lineA, red, 'select_on_order'), base_group_id: lineA }]);
+    const anotherMaterial = item([{ ...strap(lineA, red, 'select_on_order'), base_group_id: lineB }]);
+    expect(saleOrderItemDuplicateKey(original)).not.toBe(saleOrderItemDuplicateKey(anotherMaterial));
+  });
+
+  it('não alerta duplicidade para mesma referência/cor com tiras diferentes', () => {
+    const original = item([
+      strap(lineA, red, 'select_on_order'),
+      strap(lineB, blue, 'select_on_order'),
+    ]);
+    const colorsSwapped = item([
+      strap(lineA, blue, 'select_on_order'),
+      strap(lineB, red, 'select_on_order'),
+    ]);
+
+    expect(shouldWarnSaleOrderItemDuplicate([original, colorsSwapped], 1)).toBe(false);
+  });
+
+  it('alerta duplicidade quando a chave produtiva completa é idêntica', () => {
+    const original = item([
+      strap(lineA, red, 'select_on_order'),
+      strap(lineB, blue, 'select_on_order'),
+    ]);
+    const reordered = item([
+      strap(lineB, blue, 'select_on_order'),
+      strap(lineA, red, 'select_on_order'),
+    ]);
+
+    expect(shouldWarnSaleOrderItemDuplicate([original, reordered], 1)).toBe(true);
+  });
+
+  it('mantém a posição como identidade conservadora em snapshots legados sem UUID', () => {
+    const legacy = (position: number, colorId: string) => ({
+      id: String(position),
+      label: `TIRA ${position}`,
+      color: colorId === red ? 'VERMELHO' : 'AZUL',
+      color_id: colorId,
+      identity_basis: 'reference_base' as const,
+      color_mode: 'select_on_order' as const,
+    });
+    const original = item([legacy(1, red), legacy(2, blue)]);
+    const colorsSwapped = item([legacy(1, blue), legacy(2, red)]);
+
+    expect(saleOrderItemDuplicateKey(colorsSwapped)).not.toBe(saleOrderItemDuplicateKey(original));
+  });
+});
 
 const FORM: SaleOrderFormData = {
   client_id: 'cli-1', client_name: 'PONTO MIX', client_cnpj: '', client_contact: '',
@@ -119,6 +234,53 @@ function PanelHarness({
     </MemoryRouter>
   );
 }
+
+describe('badge visual de duplicidade produtiva', () => {
+  const lineA = '0198f35c-7f4d-7000-8000-000000000001';
+  const lineB = '0198f35c-7f4d-7000-8000-000000000002';
+  const red = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const blue = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  const strap = (lineId: string, colorId: string) => ({
+    id: lineId,
+    technical_strap_line_id: lineId,
+    label: lineId === lineA ? 'TIRA 1' : 'TIRA 2',
+    color: colorId === red ? 'VERMELHO' : 'AZUL',
+    color_id: colorId,
+    identity_basis: 'reference_base' as const,
+    color_mode: 'select_on_order' as const,
+  });
+  const configuredItem = (
+    id: string,
+    colors: [string, string],
+  ): SaleOrderItemFormData => ({
+    ...ITEMS[0],
+    id,
+    strap_colors: [strap(lineA, colors[0]), strap(lineB, colors[1])],
+  });
+
+  it('não sinaliza mesma referência/cor principal quando as tiras são diferentes', () => {
+    render(<PanelHarness initialItems={[
+      configuredItem('x-1', [red, blue]),
+      configuredItem('y-1', [blue, red]),
+    ]} />);
+
+    expect(screen.queryByText('Duplicado · mesma configuração')).toBeNull();
+  });
+
+  it('sinaliza somente a repetição real não adjacente em X, Y, X', () => {
+    render(<PanelHarness initialItems={[
+      configuredItem('x-1', [red, blue]),
+      configuredItem('y-1', [blue, red]),
+      configuredItem('x-2', [red, blue]),
+    ]} />);
+
+    expect(screen.getAllByText('Duplicado · mesma configuração')).toHaveLength(1);
+    expect(screen.getByTestId('item-2').parentElement?.textContent)
+      .toContain('Duplicado · mesma configuração');
+    expect(screen.getByTestId('item-0').parentElement?.textContent)
+      .not.toContain('Duplicado · mesma configuração');
+  });
+});
 
 describe('cópia parcial — do clique aos índices', () => {
   it('entrega ao pai exatamente os itens marcados', async () => {

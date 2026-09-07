@@ -3,6 +3,8 @@
  * as an XLSX file — one sheet per sector plus a "Resumo Geral" sheet.
  */
 
+import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
+
 const SIZES = ['17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','37','38','39','40','41','42','43','44','45'];
 
 type OrderData = {
@@ -96,9 +98,10 @@ function buildGroupRows(
       const so = saleOrders.find(s => s.id === order.sale_order_id);
       if (so?.client_name) g.clients.add(so.client_name);
     }
+    const scaled = scaleGradeWithLargestRemainder(grade, multiplier, totalPairs);
     for (const s of SIZES) {
-      const qty = Number(grade[s]) || 0;
-      if (qty > 0) g.sizes[s] = (g.sizes[s] || 0) + Math.round(qty * multiplier);
+      const qty = Number(scaled[s]) || 0;
+      if (qty > 0) g.sizes[s] = (g.sizes[s] || 0) + qty;
     }
   }
 
@@ -131,8 +134,8 @@ function buildSolagemRows(orders: OrderData[]): { color: string; sizes: Record<s
     })();
     if (!soleMap.has(soleColor)) soleMap.set(soleColor, { color: soleColor, sizes: {}, total: 0 });
     const row = soleMap.get(soleColor)!;
-    for (const [size, qty] of Object.entries(grade)) {
-      const q = Math.round(Number(qty) * multiplier);
+    const scaled = scaleGradeWithLargestRemainder(grade, multiplier, totalPairs);
+    for (const [size, q] of Object.entries(scaled)) {
       if (q > 0) { row.sizes[size] = (row.sizes[size] || 0) + q; row.total += q; }
     }
   }

@@ -1,7 +1,10 @@
 import { pickConsumptionForSize } from '@/lib/materialConsumption';
+import { isUuid } from '@/lib/technicalStrapLines';
+import type { StrapMaterialPolicyLike } from '@/lib/strapMaterialPolicy';
 
-type StrapDefinition = {
+type StrapDefinition = StrapMaterialPolicyLike & {
   id?: string | number | null;
+  technical_strap_line_id?: string | null;
   label?: string | null;
   color?: string | null;
   group_id?: string | null;
@@ -18,6 +21,8 @@ type StrapContext = {
 };
 
 const getStrapKey = (strap: StrapDefinition) => {
+  const canonicalId = strap.technical_strap_line_id || String(strap.id || '');
+  if (isUuid(canonicalId)) return canonicalId.toLowerCase();
   const idPart = strap.id == null ? '' : String(strap.id);
   const labelPart = strap.label?.trim().toLowerCase() || '';
   return `${idPart}::${labelPart}`;
@@ -32,6 +37,11 @@ export const resolveOrderStraps = (
   itemStraps: StrapDefinition[] = [],
   sheetStraps: StrapDefinition[] = [],
 ): StrapDefinition[] => {
+  // O writer já congelou a sequência completa por UUID. Mesclar com a ficha
+  // viva injetaria novas posições ou consumos em pedidos históricos.
+  if (itemStraps.length > 0 && itemStraps.every((strap) => (
+    isUuid(strap.technical_strap_line_id || String(strap.id || ''))
+  ))) return itemStraps.map((strap) => ({ ...strap }));
   const itemMap = new Map(itemStraps.map((strap) => [getStrapKey(strap), strap]));
   const usedKeys = new Set<string>();
   const merged: StrapDefinition[] = [];

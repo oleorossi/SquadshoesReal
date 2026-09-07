@@ -28,20 +28,25 @@ describe('Cabedal e tiras coexistem na ficha e no PV', () => {
 
   it('explica a origem correta da tira conforme o Cabedal esteja presente ou ausente', () => {
     expect(technicalSheets).toContain('hasReferenceBaseStrapLine && strapsFollowLining');
-    expect(technicalSheets).toContain('Como esta ficha não tem Cabedal');
+    expect(technicalSheets).toContain('Por padrão, esta ficha sem Cabedal usa o material de');
+    expect(technicalSheets).toContain('cada posição pode ter material próprio');
+    expect(technicalSheets).toContain('defina um material fixo por posição ou os materiais permitidos no pedido');
     expect(technicalSheets).toContain('usam o material definido em <strong className="text-foreground">Cabedal</strong>');
   });
 
   it('o formulário do PV materializa e valida tiras mesmo quando há Cabedal', () => {
     expect(saleOrderItemForm).toContain('const hasStrapsEffective = useMemo');
     expect(saleOrderItemForm).toContain('|| !!selectedRef?.has_straps');
-    expect(saleOrderItemForm).toContain('refHasStrapsEffective = !!selectedRef?.has_straps || refStrapDefs.length > 0');
+    expect(saleOrderItemForm).toContain('|| referenceStrapDefinitions.length > 0');
+    expect(saleOrderItemForm).toContain('reconcileEditableStrapSnapshots({');
+    expect(saleOrderItemForm).toContain('preserveCommittedStrapSnapshot || selectedRef?.strap_colors === undefined');
     expect(saleOrderItemForm).not.toContain('if (modelHasCabedal) return false');
     expect(saleOrderItemForm).not.toContain('&& !modelHasCabedal');
     expect(saleOrderItemForm).not.toMatch(/modelHasCabedal[\s\S]{0,200}update\(idx, 'strap_colors', \[\]\)/);
 
-    const enabledCalls = saleOrderItemForm.match(/\n\s+hasStrapsEffective,\n\s+\);/g) || [];
-    expect(enabledCalls.length).toBeGreaterThanOrEqual(2);
+    expect(saleOrderItemForm).toContain('const strapSnapshotMissing = hasStrapsEffective');
+    expect(saleOrderItemForm).toContain('const selectedStrapColorIssues =');
+    expect(saleOrderItemForm).toContain('hasStrapsEffective && hasFollowMainReferenceBaseStraps');
   });
 
   it('trocar o cartão de construção do Cabedal preserva tiras já habilitadas', () => {

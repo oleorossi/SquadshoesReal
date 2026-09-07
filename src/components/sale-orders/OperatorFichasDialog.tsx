@@ -62,6 +62,13 @@ interface OpRow {
   technical_sheets?: { name: string | null; code: string | null; production_sectors: unknown } | null;
   sale_order_items?: {
     grade: Record<string, number> | null;
+    strap_colors: Array<{
+      id?: string;
+      technical_strap_line_id?: string;
+      label?: string;
+      color?: string;
+      group_name?: string;
+    }> | null;
     production_excluded_at: string | null;
   } | null;
   sale_orders?: { order_number: string | null; client_name: string | null } | null;
@@ -96,7 +103,7 @@ export default function OperatorFichasDialog({ open, onOpenChange, saleOrderId, 
       // (sale_order_id e cross_dock_sale_order_id).
       const { data, error: qErr } = await (supabase as any)
         .from('orders')
-        .select('id, order_number, reference_id, color, quantity, grade, status, sale_order_item_id, technical_sheets:reference_id(name, code, production_sectors), sale_order_items!sale_order_item_id(grade, production_excluded_at), sale_orders!sale_order_id(order_number, client_name)')
+        .select('id, order_number, reference_id, color, quantity, grade, status, sale_order_item_id, technical_sheets:reference_id(name, code, production_sectors), sale_order_items!sale_order_item_id(grade, strap_colors, production_excluded_at), sale_orders!sale_order_id(order_number, client_name)')
         .eq('sale_order_id', saleOrderId)
         .order('order_number', { ascending: true });
       if (qErr) throw qErr;
@@ -176,6 +183,7 @@ export default function OperatorFichasDialog({ open, onOpenChange, saleOrderId, 
         sale_order_number: row.sale_orders?.order_number ?? orderNumber,
         client_name: row.sale_orders?.client_name ?? '',
         sale_order_item_id: row.sale_order_item_id,
+        strap_colors: row.sale_order_items?.strap_colors ?? [],
         status: row.status,
       })));
       onOpenChange(false);

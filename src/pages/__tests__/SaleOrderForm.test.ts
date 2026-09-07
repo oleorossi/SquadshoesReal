@@ -134,6 +134,13 @@ describe('mapLoadedSaleOrderItem', () => {
         unit_price: 125,
         quantity: 10,
         strap_colors: [],
+        strap_sourcing: {
+          '11111111-1111-4111-8111-111111111111': {
+            source_mode: 'internal',
+            color_id: '22222222-2222-4222-8222-222222222222',
+            recipe_id: '33333333-3333-4333-8333-333333333333',
+          },
+        },
         strap_sourcing_revision: 7,
         production_excluded_at: '2026-08-30T12:00:00Z',
         production_exclusion_reason: 'Ficha aposentada pelo administrador',
@@ -161,6 +168,7 @@ describe('mapLoadedSaleOrderItem', () => {
     // canonicaliza o reference_id legado
     expect(mappedItems[0].reference_id).toBe('canonical-reference');
     expect(mappedItems[0].strap_sourcing_revision).toBe(7);
+    expect(mappedItems[0].strap_sourcing).toEqual(loadedItems[0].strap_sourcing);
     expect(mappedItems[0]).toMatchObject({
       production_excluded_at: '2026-08-30T12:00:00Z',
       production_exclusion_reason: 'Ficha aposentada pelo administrador',
@@ -214,6 +222,16 @@ describe('buildCopySeedPayload', () => {
         label: 'TIRA CHATA 8MM',
         color: 'PRETO',
         color_id: '22222222-2222-4222-8222-222222222222',
+        identity_basis: 'reference_base',
+        color_mode: 'select_on_order',
+      }, {
+        id: '55555555-5555-4555-8555-555555555555',
+        technical_strap_line_id: '55555555-5555-4555-8555-555555555555',
+        label: 'TIRA CHATA 8MM — POSIÇÃO 2',
+        color: 'VERMELHO',
+        color_id: '66666666-6666-4666-8666-666666666666',
+        identity_basis: 'reference_base',
+        color_mode: 'select_on_order',
       }],
       strap_sourcing: {
         '11111111-1111-4111-8111-111111111111': {
@@ -265,7 +283,7 @@ describe('buildCopySeedPayload', () => {
     expect(seed.items.every((it) => !('strap_sourcing_revision' in it))).toBe(true);
   });
 
-  it('preserva a definição física do item (ref, cor, grade, preço, tiras, sourcing, observação)', () => {
+  it('preserva cores independentes das tiras, mas limpa a origem operacional para rederivar no novo PV', () => {
     expect(seed.items[0]).toMatchObject({
       reference_id: 'ref-1',
       color: 'PRETO',
@@ -279,17 +297,20 @@ describe('buildCopySeedPayload', () => {
         label: 'TIRA CHATA 8MM',
         color: 'PRETO',
         color_id: '22222222-2222-4222-8222-222222222222',
+        identity_basis: 'reference_base',
+        color_mode: 'select_on_order',
+      }, {
+        technical_strap_line_id: '55555555-5555-4555-8555-555555555555',
+        color: 'VERMELHO',
+        color_id: '66666666-6666-4666-8666-666666666666',
+        identity_basis: 'reference_base',
+        color_mode: 'select_on_order',
       }],
-      strap_sourcing: {
-        '11111111-1111-4111-8111-111111111111': {
-          source_mode: 'internal',
-          color_id: '22222222-2222-4222-8222-222222222222',
-          strap_variant_id: '33333333-3333-4333-8333-333333333333',
-          recipe_id: '44444444-4444-4444-8444-444444444444',
-        },
-      },
+      strap_sourcing: {},
       observation: 'obs do item',
     });
+    // A cópia é imutável: a reabertura/edição comum segue com a origem carregada.
+    expect(items[0].strap_sourcing).toHaveProperty('11111111-1111-4111-8111-111111111111');
   });
 
   it('reseta a intenção de terceirização — herdá-la geraria OS no save do novo PV sem ninguém pedir', () => {

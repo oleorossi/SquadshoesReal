@@ -48,10 +48,9 @@ export const useSectorGroupingConfig = () => {
       const { data, error } = await supabase
         .from('sector_grouping_config' as any)
         .select('sector, strategy, notes');
-      if (error) {
-        console.warn('[useSectorGroupingConfig] fallback to defaults:', error.message);
-        return [];
-      }
+      // Erro ≠ vazio: antes engolia a falha e fingia "sem config".
+      // getStrategy/getSectorsByStrategy já caem nos DEFAULTS quando data falta.
+      if (error) throw error;
       return (data as any[]) ?? [];
     },
   });

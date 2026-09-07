@@ -25,6 +25,7 @@ const batchMatrix = read('src/components/artisanal-straps/ArtisanalStrapBatchMat
 const groupColorProducts = read('src/lib/groupColorProducts.ts');
 const contractorHooks = read('src/hooks/useContractors.ts');
 const technicalSheets = read('src/pages/TechnicalSheets.tsx');
+const technicalStrapSourcePolicy = read('src/lib/technicalStrapSourcePolicy.ts');
 const canonicalPreview = read('src/lib/canonicalStrapDemandPreview.ts');
 const strapCutBlock = read('src/components/sale-orders/ArtisanalStrapRollCutBlock.tsx');
 const pickingList = read('src/pages/PickingListPage.tsx');
@@ -176,7 +177,8 @@ describe('Tiras artesanais — contrato do frontend canônico', () => {
   });
 
   it('grava família e medida canônicas na linha UUID da ficha técnica', () => {
-    expect(technicalSheets).toContain('applyCanonicalTechnicalStrapMeasure');
+    expect(technicalSheets).toContain('applyTechnicalStrapMeasureWithSource');
+    expect(technicalStrapSourcePolicy).toContain('applyCanonicalTechnicalStrapMeasure');
     expect(technicalSheets).toContain('hasCanonicalTechnicalStrapIdentity');
     expect(technicalSheets).toContain("setAbaAtiva('range-aviamento')");
     expect(technicalSheets).toContain('activeStrapMeasures.length === 0');

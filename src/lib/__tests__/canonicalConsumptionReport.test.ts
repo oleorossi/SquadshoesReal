@@ -157,6 +157,45 @@ describe('canonicalConsumptionReport', () => {
       .toThrow(CanonicalConsumptionReportError);
   });
 
+  it('aceita available/stock_ok/debit_mode null (SQL às vezes manda null explícito)', () => {
+    const parsed = validateCanonicalConsumptionReport(response([{
+      ...materialLine(),
+      available: null,
+      stock_ok: null,
+      debit_mode: null,
+    }]));
+    expect(parsed.lines[0]).toMatchObject({
+      available: 0,
+      stock_ok: false,
+      debit_mode: 'soft',
+    });
+  });
+
+  it('coerciona required/available string→number como o service legado', () => {
+    const parsed = validateCanonicalConsumptionReport(response([{
+      ...materialLine(),
+      required: '12.5' as unknown as number,
+      available: '3' as unknown as number,
+    }]));
+    expect(parsed.lines[0].required).toBe(12.5);
+    expect(parsed.lines[0].available).toBe(3);
+  });
+
+  it('na mensagem de erro cita o campo (não só Invalid input do union)', () => {
+    let caught: CanonicalConsumptionReportError | null = null;
+    try {
+      validateCanonicalConsumptionReport(response([{
+        ...materialLine(),
+        component: null as unknown as string,
+      }]));
+    } catch (error) {
+      caught = error as CanonicalConsumptionReportError;
+    }
+    expect(caught).toBeInstanceOf(CanonicalConsumptionReportError);
+    expect(caught!.message).toMatch(/lines\.0\.component/i);
+    expect(caught!.issues.some((issue) => issue.path.includes('component'))).toBe(true);
+  });
+
   it('aceita tira sem UUID técnico somente quando a pendência vem explícita', () => {
     const blocked = {
       scope_key: IDS.scope1,

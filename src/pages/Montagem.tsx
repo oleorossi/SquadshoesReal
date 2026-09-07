@@ -31,6 +31,7 @@ import { useOrderStraps } from '@/hooks/useOrderStraps';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { TableSkeleton } from '@/components/layout/PageSkeleton';
 import { safeUrlAttr } from '@/lib/htmlUtils';
+import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
 
 const SIZES = ['17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','37','38','39','40','41','42','43','44','45'];
 
@@ -359,6 +360,9 @@ export default function Montagem() {
           </div>
           {montagemOrders.map(order => {
             const { ref, grade, activeSizes, gradeSum, totalPairs, totalFichas, fichas, imageUrl } = buildPrintContent(order);
+            const scaledTotal = gradeSum > 0
+              ? scaleGradeWithLargestRemainder(grade || {}, fichas || 1, totalPairs)
+              : {};
             const isExpanded = expandedOrderId === order.id;
             const so = saleOrders.find((s: any) => s.id === order.sale_order_id);
 
@@ -477,7 +481,7 @@ export default function Montagem() {
                                 <TableCell className="text-xs font-bold">Total ({totalFichas} fichas)</TableCell>
                                 {activeSizes.map(s => (
                                   <TableCell key={s} className="text-sm text-center font-mono font-bold">
-                                    {Math.round((Number(grade[s]) || 0) * (fichas || 1))}
+                                    {scaledTotal[s] || 0}
                                   </TableCell>
                                 ))}
                                 <TableCell className="text-sm text-center font-mono font-bold bg-muted">{totalPairs}</TableCell>

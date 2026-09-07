@@ -74,6 +74,25 @@ function buildItem(over: Partial<ConsumptionItem> = {}): ConsumptionItem {
   };
 }
 
+describe('material de tira por posição no oráculo TS', () => {
+  it('soma posições da mesma base e separa UUIDs distintos mesmo com nome igual', () => {
+    const positions = [
+      '11111111-1111-4111-8111-111111111111',
+      '22222222-2222-4222-8222-222222222222',
+      '33333333-3333-4333-8333-333333333333',
+    ].map((id, index) => ({ id, technical_strap_line_id: id, label: 'TIRA',
+      group_name: 'TIRA OVERLOCK 5MM', color: 'PRETO', consumption: 40,
+      identity_basis: 'reference_base', material_mode: 'select_on_order',
+      base_group_id: index === 1 ? 'base-b' : 'base-a', base_group_name: 'NAPA SOFT',
+    }));
+    const rows = computeConsumptionForItems([buildItem({ strap_colors: positions })], buildContext())
+      .filter(row => row.componentType === 'Tiras');
+    expect(rows).toHaveLength(2);
+    expect(rows.find(row => row.materialFamilyId === 'base-a')?.totalQuantity).toBeCloseTo(19.2);
+    expect(rows.find(row => row.materialFamilyId === 'base-b')?.totalQuantity).toBeCloseTo(9.6);
+  });
+});
+
 function buildContext(): ConsumptionContext {
   return {
     materials: [

@@ -2,7 +2,10 @@ import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tansta
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useEffect, useRef } from 'react';
-import { invalidateProductionCaches } from '@/hooks/useProductionTransitions';
+import {
+  invalidateAfterPointing,
+  invalidateProductionCaches,
+} from '@/hooks/useProductionTransitions';
 import { shouldLoadOrderStages } from '@/lib/productionLoading';
 
 // Default fallback stages when no BOM operations exist.
@@ -303,10 +306,9 @@ export function useUpdateOrderStage() {
       });
     },
     onSuccess: () => {
-      // Invalidação CENTRAL: apontar/atualizar etapa precisa refletir em
-      // Setores, Quadro, Dashboard, Gargalos, Capacidade e Ondas — não só
-      // na lista de estágios (gap da auditoria 2026-07-01).
-      invalidateProductionCaches(qc);
+      // Update de etapa (status/operador/obs) — pointing+motor bastam pro
+      // quadro/setores. Delete abaixo usa full (ondas/PV podem refletir).
+      invalidateAfterPointing(qc);
       toast.success('Etapa atualizada!');
     },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
@@ -326,6 +328,7 @@ export function useDeleteOrderStage() {
       });
     },
     onSuccess: () => {
+      // Delete é estrutural — lista full (ondas/capacidade/PV podem refletir).
       invalidateProductionCaches(qc);
       toast.success('Etapa excluída!');
     },
@@ -393,7 +396,8 @@ export function useApontarProducao() {
     onSuccess: (data) => {
       // Sem gravação (aguardando confirmação) = nada a invalidar
       if ((data as ApontarResult | null)?.needs_confirmation) return;
-      invalidateProductionCaches(qc);
+      // Apontamento: orders/etapas/setor/quadro + motor. Sem sale_orders/MRP/ondas.
+      invalidateAfterPointing(qc);
     },
     onError: (err: Error) => toast.error(`Erro no apontamento: ${err.message}`),
   });
@@ -403,15 +407,21 @@ export function useApontarProducao() {
 // tela de setor) não podem disputar o mesmo topic do canal realtime.
 let realtimeChannelSeq = 0;
 
+/** Debounce base do realtime; sob rajada sobe um pouco pra coalescer melhor. */
+const REALTIME_DEBOUNCE_MS = 400;
+const REALTIME_BURST_DEBOUNCE_MS = 600;
+const REALTIME_BURST_THRESHOLD = 3;
+
 /**
- * Assinatura realtime de order_stages → invalidação CENTRAL debounced.
+ * Assinatura realtime de order_stages → invalidação apontamento+motor debounced.
  * Montar uma vez por tela que exiba produção (o PCPHub já monta pra todas as
  * abas). Qualquer terminal que mover/apontar reflete aqui em ~1s, sem esperar
- * staleTime.
+ * staleTime. NÃO invalida sale_orders / ondas / capacidade (P1.2).
  */
 export function useRealtimeOrderStages() {
   const qc = useQueryClient();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const burstCountRef = useRef(0);
   /** Já assinou uma vez? Distingue adesão inicial de REconexão. */
   const assinouRef = useRef(false);
   useEffect(() => {
@@ -419,9 +429,17 @@ export function useRealtimeOrderStages() {
       .channel(`order-stages-realtime-${++realtimeChannelSeq}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'order_stages' }, () => {
         // Debounce: bulk finalize dispara N eventos em rajada — coalesce numa
-        // única invalidação pra não refetchar ~20 queries N vezes.
+        // única invalidação pra não refetchar o quadro N vezes.
+        burstCountRef.current += 1;
         if (timerRef.current) clearTimeout(timerRef.current);
-        timerRef.current = setTimeout(() => invalidateProductionCaches(qc), 400);
+        const delay =
+          burstCountRef.current >= REALTIME_BURST_THRESHOLD
+            ? REALTIME_BURST_DEBOUNCE_MS
+            : REALTIME_DEBOUNCE_MS;
+        timerRef.current = setTimeout(() => {
+          burstCountRef.current = 0;
+          invalidateAfterPointing(qc);
+        }, delay);
       })
       .subscribe((status, err) => {
         if (status === 'CHANNEL_ERROR') console.warn('[realtime] order-stages:', err?.message);
@@ -433,17 +451,17 @@ export function useRealtimeOrderStages() {
         // de tela), mostrando a fábrica de antes da queda com cara de quadro
         // vivo. Ao reassinar, buscamos o estado inteiro de novo.
         // ⚠ Só na REconexão. O callback também recebe SUBSCRIBED na adesão
-        // inicial, e invalidar ali refazia ~25 queries logo depois do
+        // inicial, e invalidar ali refazia a lista full logo depois do
         // carregamento — toda tela de produção buscava tudo duas vezes.
         if (status === 'SUBSCRIBED') {
-          if (assinouRef.current) invalidateProductionCaches(qc);
+          if (assinouRef.current) invalidateAfterPointing(qc);
           assinouRef.current = true;
         }
       });
     // Aba volta do sono / máquina reconecta: o canal pode ter morrido em
     // silêncio. O `online` do browser é o gatilho mais confiável que existe
     // sem inventar heartbeat próprio.
-    const onOnline = () => invalidateProductionCaches(qc);
+    const onOnline = () => invalidateAfterPointing(qc);
     window.addEventListener('online', onOnline);
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);

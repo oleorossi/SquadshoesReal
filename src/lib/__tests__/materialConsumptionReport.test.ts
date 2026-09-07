@@ -271,4 +271,60 @@ describe('materialConsumptionReport', () => {
     expect(html).not.toContain('>Falta<');
     expect(html).toContain('Necessidade');
   });
+
+  it('não cria bloco separado quando a tira traz SKU Massabox com cor (PV-00169)', () => {
+    const html = buildMaterialConsumptionReportHtml({
+      title: 'Consumo total - PV-00169',
+      generatedAt: new Date('2026-09-07T12:00:00-03:00'),
+      mode: 'total',
+      artisanalStrapRows: [],
+      rows: [
+        row({
+          componentType: 'Cabedal',
+          groupName: 'GLOW METALIC + MASSABOX',
+          materialName: 'Cabedal',
+          color: 'CHAMPAGNE',
+          productUnit: 'm',
+          totalQuantity: 15.39,
+          available: 0,
+          productIds: ['glow-champagne'],
+        }),
+        row({
+          componentType: 'Cabedal',
+          groupName: 'GLOW METALIC + MASSABOX',
+          materialName: 'Cabedal',
+          color: 'COBRE',
+          productUnit: 'm',
+          totalQuantity: 8.4,
+          available: 0,
+          productIds: ['glow-cobre'],
+        }),
+        row({
+          componentType: 'Tiras',
+          groupName: 'TIRA OVERLOCK 5MM',
+          materialName: 'Produção interna',
+          color: 'COBRE',
+          productUnit: 'm',
+          totalQuantity: 160,
+          available: 0,
+          productIds: ['tira-cobre'],
+          artisanal: {
+            baseName: 'GLOW METALIC + MASSABOX - COBRE',
+            baseQty: 2.64,
+            yieldPerMeter: 60.6,
+          },
+        }),
+      ],
+    });
+
+    expect(html).toContain('GLOW METALIC + MASSABOX');
+    expect(html).not.toContain('GLOW METALIC + MASSABOX - COBRE');
+    expect(html).toContain('2,64 m');
+    expect(html).toContain('prod. interna');
+    // Um único bloco de família: cabedal champagne + cabedal cobre + tira cobre.
+    expect((html.match(/class="napa-family-name"/g) || []).length).toBe(1);
+    expect(html).toContain('26,43 m');
+    // Cobre da tira entra na mesma linha de cor do cabedal Massabox.
+    expect(html).toMatch(/<td>COBRE<\/td>[\s\S]*?8,40 m[\s\S]*?2,64 m<small>prod\. interna<\/small>[\s\S]*?11,04 m/);
+  });
 });

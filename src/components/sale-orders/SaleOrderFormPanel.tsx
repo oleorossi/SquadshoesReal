@@ -41,6 +41,7 @@ import {
 } from '@/lib/factoringCalc';
 import { computeARSchedule } from '@/lib/saleOrderAR';
 import { getMaterialVariantReadinessIssue } from '@/lib/saleOrderCommercialReadiness';
+import { strapColorMode, technicalStrapLineId } from '@/lib/technicalStrapLines';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
@@ -208,6 +209,95 @@ export function restoreItemsAt(
     .sort((a, b) => a.index - b.index)
     .forEach(({ item, index }) => next.splice(Math.min(index, next.length), 0, item));
   return next;
+}
+
+/**
+ * Assinatura produtiva das tiras do item. A ordem do array é apenas ordem de
+ * apresentação/impressão; a identidade da combinação é o UUID imutável de cada
+ * linha técnica com sua política e cor canônica. Ordenar pelos UUIDs evita que
+ * uma simples reordenação visual impeça a mesclagem de combinações equivalentes.
+ * Se qualquer linha ainda for legada, a ordem vira parte da assinatura: é mais
+ * seguro deixar de mesclar do que permutar duas cores sem identidade estável.
+ */
+export function saleOrderItemStrapCombinationSignature(
+  item: Pick<SaleOrderItemFormData, 'strap_colors'>,
+): string {
+  const lines = Array.isArray(item.strap_colors) ? item.strap_colors : [];
+  const lineIds = lines.map((line) => technicalStrapLineId(line)?.toLowerCase() || null);
+  const allLinesHaveCanonicalIds = lineIds.every(Boolean);
+  const signatureLines = lines
+    .map((line, index) => [
+      allLinesHaveCanonicalIds
+        ? lineIds[index]!
+        : lineIds[index]
+          ? `uuid:${lineIds[index]}`
+          : `legacy:${index}`,
+      String(line.color_id || '').trim().toLowerCase(),
+      strapColorMode(line),
+      String(line.base_group_id || line.material_group_id || '').trim().toLowerCase(),
+      String(line.identity_group_id || '').trim().toLowerCase(),
+      String(line.measure_id || '').trim().toLowerCase(),
+      line.identity_basis || 'reference_base',
+    ] as const);
+  if (allLinesHaveCanonicalIds) {
+    signatureLines.sort((a, b) => (
+      a[0].localeCompare(b[0])
+      || a[1].localeCompare(b[1])
+      || a[2].localeCompare(b[2])
+    ));
+  }
+  return JSON.stringify(signatureLines);
+}
+
+/** Identidade completa usada tanto para detectar quanto para mesclar duplicatas. */
+export function saleOrderItemDuplicateKey(item: SaleOrderItemFormData): string {
+  return JSON.stringify([
+    item.reference_id,
+    item.color || '',
+    item.material_variant_id || '',
+    item.fichas ?? 1,
+    saleOrderItemStrapCombinationSignature(item),
+  ]);
+}
+
+/**
+ * O aviso imediato precisa usar a mesma identidade produtiva do submit/merge.
+ * Comparar só referência + cor principal gera falso positivo quando as cores
+ * das posições de tira são diferentes.
+ */
+export function shouldWarnSaleOrderItemDuplicate(
+  items: SaleOrderItemFormData[],
+  itemIndex: number,
+): boolean {
+  const item = items[itemIndex];
+  if (!item?.reference_id || !item.color || isProductionExcludedSaleOrderItem(item)) return false;
+  const key = saleOrderItemDuplicateKey(item);
+  return items.some((candidate, candidateIndex) => (
+    candidateIndex !== itemIndex
+    && !!candidate.reference_id
+    && !isProductionExcludedSaleOrderItem(candidate)
+    && saleOrderItemDuplicateKey(candidate) === key
+  ));
+}
+
+/**
+ * Marca somente a segunda ocorrência (e seguintes) na ordem visual. A lista
+ * pode conter X, Y, X: por isso não basta comparar com o item adjacente.
+ */
+export function saleOrderDuplicateVisualIndices(
+  items: SaleOrderItemFormData[],
+  visualOrder: number[],
+): Set<number> {
+  const seen = new Set<string>();
+  const duplicates = new Set<number>();
+  visualOrder.forEach((itemIndex) => {
+    const item = items[itemIndex];
+    if (!item?.reference_id || !item.color || isProductionExcludedSaleOrderItem(item)) return;
+    const key = saleOrderItemDuplicateKey(item);
+    if (seen.has(key)) duplicates.add(itemIndex);
+    else seen.add(key);
+  });
+  return duplicates;
 }
 
 const formatCurrency = (v: number) =>
@@ -700,7 +790,7 @@ export default function SaleOrderFormPanel({
        if (field === 'reference_id' || field === 'color') {
          const item = next[idx];
          if (item.reference_id && item.color) {
-           const isDup = next.some((it, i) => i !== idx && it.reference_id === item.reference_id && it.color === item.color);
+           const isDup = shouldWarnSaleOrderItemDuplicate(next, idx);
            if (isDup) {
              const ref = references.find(r => r.id === item.reference_id);
              toast.info(`Item duplicado: ${ref?.code || 'Ref'} (${item.color})`, {
@@ -990,11 +1080,15 @@ export default function SaleOrderFormPanel({
     });
     return indices;
   }, [items]);
+  const duplicateItemIndices = useMemo(
+    () => saleOrderDuplicateVisualIndices(items, sortedIndices),
+    [items, sortedIndices],
+  );
 
    /**
     * Identidade produtiva de um item para fins de duplicata.
     *
-    * Antes era só `reference_id + color`, e isso quebrava de duas formas ao
+    * Antes era só `reference_id + color`, e isso quebrava de três formas ao
     * mesclar:
     *  • `material_variant_id` fora da chave — dois itens da mesma ref/cor mas de
     *    VARIANTES diferentes eram acusados de duplicados, e o merge herdava a
@@ -1007,13 +1101,14 @@ export default function SaleOrderFormPanel({
     *    com o `fichas` herdado, e a diferença sumia (ou inflava, se o primeiro
     *    item tivesse o `fichas` maior).
     *
-    * Com os dois na chave, itens que diferem por variante ou por fichas deixam
-    * de ser reportados como duplicados e nunca chegam ao merge. Itens realmente
-    * idênticos continuam mesclando como antes.
+    *  • `strap_colors` fora da chave — duas combinações independentes de tiras
+    *    eram somadas, mas o snapshot do primeiro item vencia e o consumo/débito
+    *    dos pares do segundo passava a usar as cores erradas.
+    *
+    * O helper compartilhado pela detecção e pelo merge inclui tudo isso. Itens
+    * realmente idênticos continuam mesclando mesmo se as linhas de tira vierem
+    * em outra ordem de apresentação.
     */
-   const duplicateKey = (item: SaleOrderItemFormData) =>
-     `${item.reference_id}-${item.color || ''}-${(item as any).material_variant_id || ''}-${item.fichas ?? 1}`;
-
    const editableItemCount = useMemo(
      () => items.filter((item) => !isProductionExcludedSaleOrderItem(item)).length,
      [items],
@@ -1040,7 +1135,7 @@ export default function SaleOrderFormPanel({
 
      items.forEach(item => {
        if (!item.reference_id || isProductionExcludedSaleOrderItem(item)) return;
-       const key = duplicateKey(item);
+       const key = saleOrderItemDuplicateKey(item);
        if (seen.has(key)) {
          const ref = references.find(r => r.id === item.reference_id);
          const label = `${ref?.code || 'Ref'} (${item.color || 'Sem cor'})`;
@@ -2010,7 +2105,7 @@ export default function SaleOrderFormPanel({
           const item = items[idx];
           const prevItem = sortPos > 0 ? items[sortedIndices[sortPos - 1]] : null;
           const isSameRef = prevItem?.reference_id === item.reference_id && !!item.reference_id;
-          const isSameRefAndColor = isSameRef && prevItem?.color === item.color;
+          const isProductiveDuplicate = duplicateItemIndices.has(idx);
           // Cabeçalho de grupo: aparece no 1º item de cada referência, agrupando
           // visualmente as cores da mesma ref. Pedido user 11/06/2026.
           const isNewRefGroup = !!item.reference_id && !isSameRef;
@@ -2033,15 +2128,15 @@ export default function SaleOrderFormPanel({
             )}
             <div
               className={
-                isSameRefAndColor && item.color
+                isProductiveDuplicate
                   ? 'ml-6 border-l-4 border-destructive/50 pl-3 bg-destructive/5 rounded-r-md relative'
                   : isSameRef
                     ? 'ml-3 border-l-2 border-primary/30 pl-2 bg-primary/5 rounded-r-md'
                     : ''
               }>
-              {isSameRefAndColor && item.color && (
+              {isProductiveDuplicate && (
                 <div className="absolute -top-2 left-3 px-2 py-0.5 rounded-full bg-destructive text-destructive-foreground text-xs font-bold uppercase tracking-wider shadow-sm z-10">
-                  Duplicado · mesma ref+cor
+                  Duplicado · mesma configuração
                 </div>
               )}
               <SaleOrderItemForm
@@ -2505,14 +2600,14 @@ export default function SaleOrderFormPanel({
            </AlertDialogTitle>
            <AlertDialogDescription asChild>
              <div className="text-sm text-muted-foreground">
-             Os seguintes itens aparecem mais de uma vez no pedido (mesma referência + mesma cor):
+             Os seguintes itens aparecem mais de uma vez no pedido (mesma configuração produtiva, inclusive cores das tiras):
              <ul className="mt-2 list-disc list-inside font-medium text-foreground">
                {duplicateList.map((item, i) => (
                  <li key={i}>{item}</li>
                ))}
              </ul>
              <p className="mt-3 font-medium">
-               Recomendado: mesclar — somamos as quantidades e a grade num único item por (ref + cor).
+               Recomendado: mesclar — somamos as quantidades e a grade num único item por combinação produtiva.
                Isso evita criar várias OPs pequenas pra uma mesma combinação na produção.
              </p>
              <p className="mt-2 text-xs text-muted-foreground">
@@ -2536,7 +2631,7 @@ export default function SaleOrderFormPanel({
            </Button>
            <AlertDialogAction onClick={() => {
              // Mescla: soma quantities + mescla grades por identidade produtiva
-             // (ref + cor + variante de material + fichas — ver duplicateKey).
+             // (ref + cor + variante + fichas + combinação de tiras — ver helper).
              // A chave TEM que ser a mesma da detecção, senão o diálogo acusa uma
              // duplicata que o merge não junta (ou junta o que não devia).
              const mergedMap = new Map<string, SaleOrderItemFormData>();
@@ -2545,7 +2640,7 @@ export default function SaleOrderFormPanel({
                  mergedMap.set(`__production_excluded__${item.id || itemIndex}`, item);
                  return;
                }
-               const key = duplicateKey(item);
+               const key = saleOrderItemDuplicateKey(item);
                if (!item.reference_id) {
                  mergedMap.set(`__nokey__${mergedMap.size}`, item);
                  return;

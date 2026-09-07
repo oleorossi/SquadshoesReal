@@ -57,6 +57,19 @@ const renderView = (props: Partial<Parameters<typeof MaterialConsumptionView>[0]
   );
 
 describe('MaterialConsumptionView — tela buy-first', () => {
+  it('mostra o setor configurado de cada contribuição do mesmo componente', () => {
+    renderView({ rows: [
+      row({ componentType: 'Componente Direto', groupName: 'COMPONENTES DIVERSOS',
+        materialName: 'BINÓCULO 6MM', productUnit: 'un', totalQuantity: 150,
+        consumptionSector: 'Aviamento' }),
+      row({ componentType: 'Componente Direto', groupName: 'COMPONENTES DIVERSOS',
+        materialName: 'BINÓCULO 6MM', productUnit: 'un', totalQuantity: 250,
+        consumptionSector: 'Solagem' }),
+    ] });
+    expect(screen.getByText('Setor: Aviamento')).toBeInTheDocument();
+    expect(screen.getByText('Setor: Solagem')).toBeInTheDocument();
+  });
+
   it('lidera com o material base a comprar e a contagem de faltas', () => {
     renderView();
     // NAPA SOFT: 1,00 (OFF WHITE) + 1,00 (PRETO) = 2,00 m de napa. Palmilha/EVA

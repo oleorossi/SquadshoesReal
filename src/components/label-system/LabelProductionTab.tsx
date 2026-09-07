@@ -52,6 +52,7 @@ import { resolveLabelBoxCapacity, type SolePackagingCapacity } from '@/lib/label
 import { DEFAULT_MANUFACTURER_NAME, DEFAULT_MANUFACTURER_CNPJ } from '@/lib/companySender';
 import { cn } from '@/lib/utils';
 import { isCancelledOrDraftOrder } from '@/lib/orderStatus';
+import { labelStrapSequence } from '@/lib/labelStrapSequence';
 import { packSaleOrderItem, packSaleOrderItemBySize } from '@/lib/boxPacking';
 import { toast } from 'sonner';
 import { useCompanies } from '@/hooks/useNfe';
@@ -808,20 +809,7 @@ export function LabelProductionTab() {
       for (const item of data || []) {
         const straps = item.strap_colors as any[];
         if (Array.isArray(straps) && straps.length > 0) {
-          // Ordena por id numérico antes de montar a label, garantindo
-          // sequência TIRA 1 → TIRA 2 → TIRA 3 mesmo se o usuário tiver
-          // reordenado/deletado tiras na ficha técnica (id pode ficar
-          // fora de ordem natural no array).
-          const ordered = [...straps].sort((a: any, b: any) => {
-            const ka = parseInt(a?.id, 10);
-            const kb = parseInt(b?.id, 10);
-            if (isFinite(ka) && isFinite(kb)) return ka - kb;
-            return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
-          });
-          const sig = ordered
-            .filter((s: any) => s.label && s.color)
-            .map((s: any) => `${s.label}:${s.color}`)
-            .join('|');
+          const sig = labelStrapSequence(straps, item.color);
           if (sig) {
             map.set(item.id, sig);
             if (item.sale_order_id && item.reference_id) {
@@ -923,6 +911,10 @@ export function LabelProductionTab() {
   // ⚠ Bug corrigido: o handler de sale_orders invalidava 'sale_orders_for_labels'
   //   mas a query é 'sale_orders_for_labels_v2' (com _v2) → edição de PV nunca
   //   refletia. Faltava ainda escutar sale_order_items (cor/grade/qtd/tiras do PV).
+  // ⚠ PERF: sem debounce, UPDATE em loop (status de OP, grade do item) dispara
+  // N refetches em rajada. Coalesce 400ms — mesmo padrão de InputCostsPage /
+  // useRealtimeOrderStages.
+  const labelRealtimeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     const labelKeys = [
       ['orders_for_labels_all'],
@@ -934,29 +926,50 @@ export function LabelProductionTab() {
     ];
     // (1) fresh ao entrar na tela
     for (const k of labelKeys) queryClient.invalidateQueries({ queryKey: k });
+
+    let pending = new Set<string>();
+    const scheduleInvalidate = (keys: string[][]) => {
+      for (const k of keys) pending.add(k[0]);
+      if (labelRealtimeTimerRef.current) clearTimeout(labelRealtimeTimerRef.current);
+      labelRealtimeTimerRef.current = setTimeout(() => {
+        const roots = pending;
+        pending = new Set();
+        for (const root of roots) {
+          queryClient.invalidateQueries({ queryKey: [root] });
+        }
+      }, 400);
+    };
+
     // (2) realtime enquanto aberta
     const channel = supabase
       .channel('labels-tab-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
-        queryClient.invalidateQueries({ queryKey: ['orders_for_labels_all'] });
         // OP entra/sai da production_queue junto com INSERT/UPDATE de status em
         // orders (o motor enfileira OP nova e remove finalizada) — invalida o
         // gate pra fila refletir sem esperar remount.
-        queryClient.invalidateQueries({ queryKey: ['sale_orders_scheduled_for_labels'] });
+        scheduleInvalidate([
+          ['orders_for_labels_all'],
+          ['sale_orders_scheduled_for_labels'],
+        ]);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sale_orders' }, () => {
-        queryClient.invalidateQueries({ queryKey: ['sale_orders_for_labels_v2'] });
+        scheduleInvalidate([['sale_orders_for_labels_v2']]);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sale_order_items' }, () => {
-        queryClient.invalidateQueries({ queryKey: ['sale_orders_for_labels_v2'] });
-        queryClient.invalidateQueries({ queryKey: ['sale_order_items_strap_lookup'] });
-        queryClient.invalidateQueries({ queryKey: ['sale_order_items_color_lookup'] });
-        queryClient.invalidateQueries({ queryKey: ['orders_for_labels_all'] });
+        scheduleInvalidate([
+          ['sale_orders_for_labels_v2'],
+          ['sale_order_items_strap_lookup'],
+          ['sale_order_items_color_lookup'],
+          ['orders_for_labels_all'],
+        ]);
       })
       .subscribe((status, err) => {
         if (status === 'CHANNEL_ERROR') { /* realtime error — subscription will retry */ }
       });
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      if (labelRealtimeTimerRef.current) clearTimeout(labelRealtimeTimerRef.current);
+      supabase.removeChannel(channel);
+    };
   }, [queryClient]);
 
   const saleOrdersMap = useMemo(() => {

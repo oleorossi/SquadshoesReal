@@ -425,26 +425,45 @@ export const deleteDraft = async (ownerId: string, clientRequestId: string): Pro
 
 // ── Catálogo do novo PV ────────────────────────────────────────────────────
 
-export const saveMobileOrderCatalog = async <T>(ownerId: string, data: T): Promise<void> => {
+export const saveMobileCatalogEntry = async <T>(
+  ownerId: string,
+  key: string,
+  data: T,
+): Promise<void> => {
   const owner = requireOwnerId(ownerId);
+  const logicalKey = key?.trim();
+  if (!logicalKey) throw new Error('A chave do catálogo offline é obrigatória.');
   const db = await getDb();
   const cached: CatalogCachePayload<T> = {
-    storage_key: mobileOwnerStorageKey(owner, MOBILE_ORDER_CATALOG_KEY),
+    storage_key: mobileOwnerStorageKey(owner, logicalKey),
     ownerId: owner,
-    key: MOBILE_ORDER_CATALOG_KEY,
+    key: logicalKey,
     data,
     updatedAt: Date.now(),
   };
   await db.put(CATALOG_STORE, cached);
 };
 
-export const loadMobileOrderCatalog = async <T>(ownerId: string): Promise<T | null> => {
+export const loadMobileCatalogEntry = async <T>(
+  ownerId: string,
+  key: string,
+): Promise<T | null> => {
   const owner = requireOwnerId(ownerId);
+  const logicalKey = key?.trim();
+  if (!logicalKey) throw new Error('A chave do catálogo offline é obrigatória.');
   const db = await getDb();
   const cached = await db.get(
     CATALOG_STORE,
-    mobileOwnerStorageKey(owner, MOBILE_ORDER_CATALOG_KEY),
+    mobileOwnerStorageKey(owner, logicalKey),
   ) as CatalogCachePayload<T> | undefined;
-  if (!cached || cached.ownerId !== owner) return null;
+  if (!cached || cached.ownerId !== owner || cached.key !== logicalKey) return null;
   return cached.data;
 };
+
+export const saveMobileOrderCatalog = async <T>(ownerId: string, data: T): Promise<void> => {
+  await saveMobileCatalogEntry(ownerId, MOBILE_ORDER_CATALOG_KEY, data);
+};
+
+export const loadMobileOrderCatalog = async <T>(ownerId: string): Promise<T | null> => (
+  loadMobileCatalogEntry<T>(ownerId, MOBILE_ORDER_CATALOG_KEY)
+);
