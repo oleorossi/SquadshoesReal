@@ -265,6 +265,24 @@ const assertQuerySucceeded = (
 };
 
 /**
+ * Wrapper fail-closed do fetch escopado (P1.1): o helper joga o erro cru do
+ * PostgREST; aqui reembrulhamos no mesmo contrato de `assertQuerySucceeded`
+ * pra a Lista de Separação nunca publicar BOM parcial quando `products` falha.
+ */
+async function fetchScopedProductsOrThrow(
+  client: any,
+  groupIds: string[],
+  extraProductIds: string[] = [],
+): Promise<any[]> {
+  try {
+    return await fetchActiveProductsByGroupIds(client, groupIds, extraProductIds);
+  } catch (error) {
+    assertQuerySucceeded('products', { error: error as any });
+    return [];
+  }
+}
+
+/**
  * O worker de tiras já persiste o netting completo. A view de picking guarda a
  * identidade e os rótulos, mas `planned_finished_m` é bruto e
  * `remaining_finished_m` ainda inclui estoque acabado/inbound comprometidos.
@@ -445,7 +463,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     for (const layer of g.composite_layers || []) addGroup(layer?.composite_group_id);
   }
 
-  let allProducts = await fetchActiveProductsByGroupIds(
+  let allProducts = await fetchScopedProductsOrThrow(
     supabase,
     [...scopeGroupIds],
     [...scopeProductIds],
@@ -459,7 +477,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     ),
   ];
   if (facheteExtraGroups.length > 0) {
-    const extra = await fetchActiveProductsByGroupIds(supabase, facheteExtraGroups);
+    const extra = await fetchScopedProductsOrThrow(supabase, facheteExtraGroups);
     const seen = new Set(allProducts.map((p: any) => p.id));
     for (const p of extra) {
       if (!seen.has(p.id)) allProducts.push(p);
@@ -521,7 +539,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     const seen = new Set(allProducts.map((p: any) => p.id));
     const missingProducts = moreProducts.filter((id) => !seen.has(id));
     if (missingGroups.length > 0 || missingProducts.length > 0) {
-      const extra = await fetchActiveProductsByGroupIds(supabase, missingGroups, missingProducts);
+      const extra = await fetchScopedProductsOrThrow(supabase, missingGroups, missingProducts);
       for (const p of extra) {
         if (!seen.has(p.id)) {
           allProducts.push(p);
@@ -632,7 +650,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     const missingProducts = moreProducts.filter((id) => id && !seen.has(id));
     const missingGroups = moreGroups.filter((id) => id && !scopeGroupIds.has(id));
     if (missingGroups.length > 0 || missingProducts.length > 0) {
-      const extra = await fetchActiveProductsByGroupIds(supabase, missingGroups, missingProducts);
+      const extra = await fetchScopedProductsOrThrow(supabase, missingGroups, missingProducts);
       for (const p of extra) {
         if (!seen.has(p.id)) {
           allProducts.push(p);
@@ -1824,7 +1842,7 @@ export async function calculateSoleBreakdownByGrade(orderIds: string[]): Promise
   }
 
   // Só SKUs dos grupos de solado destas fichas (P1.1).
-  let allProducts = await fetchActiveProductsByGroupIds(
+  let allProducts = await fetchScopedProductsOrThrow(
     supabase,
     [...soleGroupIds],
     [...soleProductIds],
@@ -1895,7 +1913,7 @@ export async function calculateSoleBreakdownByGrade(orderIds: string[]): Promise
 
     const missingVariantSoles = [...variantSoleById.values()].filter((id) => !productById.has(id));
     if (missingVariantSoles.length > 0) {
-      const extra = await fetchActiveProductsByGroupIds(supabase, [], missingVariantSoles);
+      const extra = await fetchScopedProductsOrThrow(supabase, [], missingVariantSoles);
       for (const p of extra) {
         productById.set(p.id, p);
         allProducts.push(p);
