@@ -488,7 +488,7 @@ describe('materialConsumptionReport', () => {
     expect(html).toContain('Mão de obra/m');
     expect(html).toContain('Valor total');
     // Duas células "—" para unitário e total (além de não inventar R$).
-    expect(html).toMatch(/Mão de obra\/m[\s\S]*?<td class="num">—<\/td>\s*<td class="num strong">—<\/td>/);
+    expect(html).toMatch(/Mão de obra\/m[\s\S]*?<td class="num cost-unit">—<\/td>\s*<td class="num cost-spend">—<\/td>/);
     expect(html).not.toContain('R$');
   });
 
@@ -531,8 +531,9 @@ describe('materialConsumptionReport', () => {
       ],
     });
 
-    expect(html).toContain('Preço unitário');
-    expect(html).toContain('Valor a gastar');
+    expect(html).toContain('Preço/un.');
+    expect(html).toContain('A gastar');
+    expect(html).toContain('Total a gastar');
     expect(html).toContain('NAPA MADRID');
     expect(html).toContain('OFF WHITE');
     expect(html).toContain('R$\u00a012,50');
@@ -541,8 +542,13 @@ describe('materialConsumptionReport', () => {
     expect(html).toContain('R$\u00a0180,00');
     // Valor a gastar completo (necessidade × unitário) — não cortado no markup
     expect(html).toContain('R$\u00a03.420,00');
+    // Soma do manifesto: 186,38 + 180,00 + 3.420,00 = 3.786,38
+    expect(html).toContain('R$\u00a03.786,38');
+    expect(html).toContain('class="num cost-spend"');
+    expect(html).toContain('class="num cost-unit"');
+    expect(html).toContain('--spend:');
 
-    // Layout: no modo total a 7ª coluna é Valor a gastar (não Un.), precisa de
+    // Layout: no modo total a 7ª coluna é A gastar (não Un.), precisa de
     // largura suficiente e alinhamento à direita — a regra antiga dava 8%+center.
     expect(html).toMatch(
       /\.materials-table\.total-mode th:nth-child\(7\)\s*\{\s*width:20%;\s*text-align:right;\s*\}/,

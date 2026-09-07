@@ -174,6 +174,39 @@ const reportRowAvailable = (row: ConsumptionRow): number => {
   return Math.max(0, (Number(row.totalQuantity) || 0) - rowShortfall(row));
 };
 
+/**
+ * Soma o "Valor a gastar" exatamente como a seção 02 renderiza: itens
+ * agregados (SKU compartilhado uma vez) + solados linha a linha. Tira
+ * convertida fica de fora (custo já está na napa das aplicações).
+ */
+export function computeMaterialsSpendTotal(rows: ConsumptionRow[]): number | null {
+  let total = 0;
+  let any = false;
+
+  const nonSole = aggregateItems(
+    rows.filter((row) => row.componentType !== 'Solado' && !isConvertedInternalStrap(row)),
+  );
+  for (const item of nonSole) {
+    const unitPrice = item.rows.map((row) => row.unitPrice).find((price) => price != null && Number.isFinite(price)) ?? null;
+    if (unitPrice == null) continue;
+    total += item.total * unitPrice;
+    any = true;
+  }
+
+  for (const row of rows.filter((entry) => entry.componentType === 'Solado')) {
+    const cost = rowTotalCost(row);
+    if (cost == null) continue;
+    total += cost;
+    any = true;
+  }
+
+  return any ? total : null;
+};
+
+const costCellsHtml = (unitPrice: number | null, totalCost: number | null): string => `
+      <td class="num cost-unit">${unitPrice != null ? escapeHtml(formatCurrency(unitPrice)) : '—'}</td>
+      <td class="num cost-spend">${totalCost != null ? escapeHtml(formatMoney(totalCost)) : '—'}</td>`;
+
 const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): string => {
   const sectionMap = new Map<string, string[]>();
   const sectionOrder = new Map<string, number>();
@@ -227,9 +260,6 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
       : '';
     const unitPrice = item.rows.map((row) => row.unitPrice).find((price) => price != null && Number.isFinite(price)) ?? null;
     const totalCost = unitPrice != null ? item.total * unitPrice : null;
-    const costCells = `
-      <td class="num">${unitPrice != null ? escapeHtml(formatCurrency(unitPrice)) : '—'}</td>
-      <td class="num strong">${totalCost != null ? escapeHtml(formatMoney(totalCost)) : '—'}</td>`;
     const coverageCells = totalMode ? '' : `
       <td class="num">${converted || !item.known ? '—' : formatQty(item.available, item.productUnit)}</td>
       <td class="num${short > 0 ? ' shortage' : ''}">${converted
@@ -247,7 +277,7 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
       <td class="num strong">${needHtml}</td>
       ${coverageCells}
       <td class="unit">${escapeHtml(formatUnit(item.productUnit))}</td>
-      ${costCells}
+      ${costCellsHtml(unitPrice, totalCost)}
     </tr>`, componentIndex(componentTypes[0] || item.componentType));
   }
 
@@ -260,9 +290,6 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
     const shortSizes = soleShortSizes(row);
     const unitPrice = row.unitPrice != null && Number.isFinite(row.unitPrice) ? row.unitPrice : null;
     const totalCost = rowTotalCost(row);
-    const costCells = `
-      <td class="num">${unitPrice != null ? escapeHtml(formatCurrency(unitPrice)) : '—'}</td>
-      <td class="num strong">${totalCost != null ? escapeHtml(formatMoney(totalCost)) : '—'}</td>`;
     const coverageCells = totalMode ? '' : `
       <td class="num">${known ? formatQty(usefulStock, row.productUnit) : '—'}</td>
       <td class="num${short > 0 ? ' shortage' : ''}">${known && short > 0 ? `${formatQty(short, row.productUnit)}${shortSizes.length ? `<small>${shortSizes.length} nº</small>` : ''}` : '—'}</td>`;
@@ -273,14 +300,14 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
       <td class="num strong">${formatQty(row.totalQuantity, row.productUnit)}</td>
       ${coverageCells}
       <td class="unit">${escapeHtml(formatUnit(row.productUnit))}</td>
-      ${costCells}
+      ${costCellsHtml(unitPrice, totalCost)}
     </tr>
     <tr class="grade-row"><td colspan="${colCount}">${renderSoleGrade(row, totalMode)}</td></tr>`, componentIndex('Solado'));
   }
 
   const head = totalMode
-    ? '<tr><th>Grupo</th><th>Aplicação</th><th>Cor</th><th class="num">Necessidade</th><th>Un.</th><th class="num">Preço unitário</th><th class="num">Valor a gastar</th></tr>'
-    : '<tr><th>Grupo</th><th>Aplicação</th><th>Cor</th><th class="num">Necessidade</th><th class="num">Estoque</th><th class="num">Falta</th><th>Un.</th><th class="num">Preço unitário</th><th class="num">Valor a gastar</th></tr>';
+    ? '<tr><th>Grupo</th><th>Aplicação</th><th>Cor</th><th class="num">Necessidade</th><th>Un.</th><th class="num col-unit">Preço/un.</th><th class="num col-spend">A gastar</th></tr>'
+    : '<tr><th>Grupo</th><th>Aplicação</th><th>Cor</th><th class="num">Necessidade</th><th class="num">Estoque</th><th class="num">Falta</th><th>Un.</th><th class="num col-unit">Preço/un.</th><th class="num col-spend">A gastar</th></tr>';
 
   return Array.from(sectionMap.entries())
     .sort(([a], [b]) => (sectionOrder.get(a) ?? componentIndex(a)) - (sectionOrder.get(b) ?? componentIndex(b)))
@@ -316,8 +343,8 @@ const renderArtisanalStraps = (rows: ArtisanalStrapCutRow[]): string => {
           <td>${escapeHtml(row.color || '—')}${row.baseName ? ` · ${escapeHtml(row.baseName)}` : ''}</td>
           <td class="num strong">${formatQty(row.metros_necessarios, 'm')} m</td>
           <td class="num strong">${!blocked && snapshot ? `${formatQty(snapshot.baseRequiredM, 'm')} m` : '—'}</td>
-          <td class="num">${hasLaborCost ? escapeHtml(formatCurrency(laborCost)) : '—'}</td>
-          <td class="num strong">${laborTotal != null ? escapeHtml(formatMoney(laborTotal)) : '—'}</td>
+          <td class="num cost-unit">${hasLaborCost ? escapeHtml(formatCurrency(laborCost)) : '—'}</td>
+          <td class="num cost-spend">${laborTotal != null ? escapeHtml(formatMoney(laborTotal)) : '—'}</td>
           <td>${blocked ? `<span class="flag warning">${escapeHtml(snapshot?.snapshotWarning || snapshot?.blockingReasons.join(' · ') || 'snapshot incompleto')}</span>` : `<span class="flag ok">receita conferida</span>`}</td>
         </tr>`;
       }).join('')}</tbody>
@@ -340,6 +367,7 @@ export function buildMaterialConsumptionReportHtml({
   const majorShortfalls = topShortfalls(rows, 5);
   const totalsByUnit = unitTotals(rows);
   const pendingTiraM = pendingStrapMeters(rows);
+  const spendTotal = computeMaterialsSpendTotal(rows);
 
   const totalStrip = Array.from(totalsByUnit.entries()).filter(([, total]) => total > 0).map(([unit, total]) => `
     <span><strong>${formatQty(total, unit)}</strong> ${escapeHtml(formatUnit(unit))}</span>
@@ -360,14 +388,15 @@ export function buildMaterialConsumptionReportHtml({
   const manifest = totalMode
     ? `<div class="manifest manifest-total" aria-label="Resumo do consumo total">
     <div><dl><dt>Necessidade de material base</dt><dd>${baseTotal ? `${formatQty(baseTotal.total, 'm')} m` : '—'}</dd></dl><small>napa direta + conversões confirmadas</small></div>
+    <div><dl><dt>Total a gastar</dt><dd class="spend">${spendTotal != null ? escapeHtml(formatMoney(spendTotal)) : '—'}</dd></dl><small>necessidade × preço cadastrado</small></div>
     <div><dl><dt>Pendências</dt><dd>${pendingCount}</dd></dl><small>cadastro a revisar</small></div>
     <div><dl><dt>Escopo calculado</dt><dd>${rows.length} linha${rows.length === 1 ? '' : 's'}</dd></dl><small>ficha técnica + grade + variante do PV</small></div>
   </div>`
     : `<div class="manifest" aria-label="Resumo da decisão">
     <div><dl><dt>Necessidade de material base</dt><dd>${baseTotal ? `${formatQty(baseTotal.total, 'm')} m` : '—'}</dd></dl><small>napa direta + conversões confirmadas</small></div>
     <div><dl><dt>Itens em falta</dt><dd class="shortage">${shortCount}</dd></dl><small>estoque líquido</small></div>
+    <div><dl><dt>Total a gastar</dt><dd class="spend">${spendTotal != null ? escapeHtml(formatMoney(spendTotal)) : '—'}</dd></dl><small>necessidade × preço</small></div>
     <div><dl><dt>Pendências</dt><dd>${pendingCount}</dd></dl><small>cadastro a revisar</small></div>
-    <div><dl><dt>Escopo calculado</dt><dd>${rows.length} linha${rows.length === 1 ? '' : 's'}</dd></dl><small>ficha técnica + grade + variante do PV</small></div>
   </div>`;
 
   return `<!doctype html>
@@ -380,9 +409,9 @@ export function buildMaterialConsumptionReportHtml({
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="${FONT_LINK}" rel="stylesheet">
   <style>
-    @page { size: A4 portrait; margin: 10mm 9mm 12mm; }
+    @page { size: A4 portrait; margin: 10mm 8mm 12mm; }
     * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-    :root { --ink:#11100f; --paper:#fbfaf7; --muted:#726d66; --line:#cbc6bd; --soft:#efede8; --accent:#d9264e; --warn:#a45b0b; --ok:#176c42; }
+    :root { --ink:#11100f; --paper:#fbfaf7; --muted:#726d66; --line:#cbc6bd; --soft:#efede8; --spend:#f0ebe3; --accent:#d9264e; --warn:#a45b0b; --ok:#176c42; }
     html, body { margin:0; padding:0; color:var(--ink); background:white; }
     body { font: 9.2pt/1.32 'Fira Sans', Arial, sans-serif; }
     h1, h2, p { margin:0; }
@@ -393,14 +422,15 @@ export function buildMaterialConsumptionReportHtml({
     .doc-meta { text-align:right; color:var(--muted); font-size:7.8pt; white-space:nowrap; }
     .doc-meta strong { display:block; color:var(--ink); font-family:'Fira Code',monospace; font-size:8.5pt; }
     .mode-banner { margin:6px 0 0; padding:4px 8px; border:1px solid var(--ink); background:var(--ink); color:white; letter-spacing:.16em; }
-    .manifest { display:grid; grid-template-columns:1.4fr .8fr .8fr 1.6fr; border-bottom:2px solid var(--ink); background:var(--paper); }
-    .manifest-total { grid-template-columns:1.6fr .8fr 1.4fr; }
+    .manifest { display:grid; grid-template-columns:1.35fr .75fr 1.2fr .9fr; border-bottom:2px solid var(--ink); background:var(--paper); }
+    .manifest-total { grid-template-columns:1.35fr 1.35fr .7fr 1fr; }
     .manifest > div { min-height:53px; padding:8px 9px; border-right:1px solid var(--line); }
     .manifest > div:last-child { border-right:0; }
     .manifest dl { margin:0; }
     .manifest dt { margin-bottom:3px; }
     .manifest dd { margin:0; font-size:15pt; font-weight:700; line-height:1; }
     .manifest dd.shortage { color:var(--accent); }
+    .manifest dd.spend { color:var(--ink); font-size:13.5pt; letter-spacing:-.01em; }
     .manifest small { display:block; margin-top:4px; color:var(--muted); font-size:7.4pt; }
     .scope { display:flex; gap:12px; align-items:flex-start; margin-top:7px; padding:6px 8px; border:1px solid var(--line); background:var(--paper); }
     .scope-label { flex:0 0 auto; }
@@ -411,10 +441,10 @@ export function buildMaterialConsumptionReportHtml({
     .pending-strip strong { font-family:'Fira Code',monospace; color:var(--warn); }
     .pending-strip small { color:var(--muted); }
     .report-section { margin-top:11px; }
-    .section-heading { display:grid; grid-template-columns:27px 1fr minmax(160px, 42%); align-items:end; gap:8px; margin-bottom:5px; padding-top:5px; border-top:2px solid var(--ink); }
+    .section-heading { display:grid; grid-template-columns:27px 1fr minmax(140px, 38%); align-items:end; gap:8px; margin-bottom:6px; padding-top:6px; border-top:2px solid var(--ink); }
     .section-number { color:var(--accent); font-size:12pt; font-weight:700; }
     .section-heading h2 { font-family:'Anton','Arial Narrow',Impact,sans-serif; font-size:15pt; line-height:1; font-weight:400; text-transform:uppercase; }
-    .section-note { color:var(--muted); font-size:7.6pt; text-align:right; }
+    .section-note { color:var(--muted); font-size:7.2pt; text-align:right; line-height:1.35; }
     .napa-family { margin-top:8px; border:1px solid var(--ink); break-inside:avoid; }
     .napa-family-head { display:flex; align-items:baseline; gap:10px; padding:6px 8px; background:var(--ink); color:white; }
     .napa-family-name { font-family:'Anton','Arial Narrow',Impact,sans-serif; font-size:13pt; line-height:1; letter-spacing:.02em; text-transform:uppercase; }
@@ -424,11 +454,15 @@ export function buildMaterialConsumptionReportHtml({
     .napa-table .app-qty small { display:block; color:var(--muted); font-size:6.4pt; font-weight:500; }
     .report-table { width:100%; border-collapse:collapse; table-layout:fixed; }
     .report-table thead { display:table-header-group; }
-    .report-table th { padding:4px 5px; border-top:1px solid var(--ink); border-bottom:1px solid var(--ink); background:var(--soft); color:var(--muted); font-size:7pt; font-weight:700; letter-spacing:.08em; text-align:left; text-transform:uppercase; }
-    .report-table td { padding:5px 6px; border-bottom:1px solid var(--line); vertical-align:top; overflow-wrap:anywhere; }
+    .report-table th { padding:5px 4px; border-top:1px solid var(--ink); border-bottom:1px solid var(--ink); background:var(--soft); color:var(--muted); font-size:6.5pt; font-weight:700; letter-spacing:.04em; text-align:left; text-transform:uppercase; }
+    .report-table th.num { letter-spacing:.02em; }
+    .report-table td { padding:5px 5px; border-bottom:1px solid var(--line); vertical-align:top; overflow-wrap:anywhere; }
     .report-table .num { text-align:right; white-space:nowrap; overflow:visible; }
     .report-table .unit { width:34px; text-align:center; color:var(--muted); }
     .report-table .strong { font-weight:700; }
+    .cost-unit { color:var(--muted); font-weight:500; font-size:8.4pt; }
+    .cost-spend { font-weight:700; font-size:9.4pt; background:var(--spend); }
+    .report-table th.col-spend { background:var(--spend); color:var(--ink); }
     .status-cell { width:112px; }
     .flag { display:inline-block; max-width:100%; border:1px solid currentColor; padding:1px 5px; border-radius:99px; font-size:6.7pt; font-weight:700; line-height:1.25; }
     .flag.warning { color:var(--warn); background:#fff8e9; }
@@ -440,10 +474,10 @@ export function buildMaterialConsumptionReportHtml({
     .shortage small { display:block; color:var(--muted); font-size:6.5pt; font-weight:500; }
     .row-warning { margin-top:2px; color:var(--warn); font-size:6.7pt; line-height:1.25; }
     .qty-preview { display:block; margin-top:1px; color:var(--muted); font-family:'Fira Sans',sans-serif; font-size:6.5pt; font-weight:500; }
-    .component-block { margin-top:8px; break-inside:auto; }
-    .component-heading { display:flex; justify-content:space-between; gap:10px; padding:3px 5px; border-left:4px solid var(--accent); background:var(--ink); color:white; font-size:7.6pt; font-weight:700; letter-spacing:.09em; text-transform:uppercase; }
+    .component-block { margin-top:9px; border:1px solid var(--line); break-inside:auto; overflow:hidden; }
+    .component-heading { display:flex; justify-content:space-between; gap:10px; padding:4px 7px; border-left:4px solid var(--accent); background:var(--ink); color:white; font-size:7.6pt; font-weight:700; letter-spacing:.09em; text-transform:uppercase; }
     .component-heading span:last-child { color:#ccc8c1; font-family:'Fira Code',monospace; font-size:6.8pt; }
-    /* Cobertura: 9 cols — Grupo · Aplicação · Cor · Necessidade · Estoque · Falta · Un. · Preço · Valor */
+    /* Cobertura: 9 cols — Grupo · Aplicação · Cor · Necessidade · Estoque · Falta · Un. · Preço · A gastar */
     .materials-table th:nth-child(1) { width:14%; }
     .materials-table th:nth-child(2) { width:14%; }
     .materials-table th:nth-child(3) { width:10%; }
@@ -453,7 +487,7 @@ export function buildMaterialConsumptionReportHtml({
     .materials-table th:nth-child(7) { width:5%; text-align:center; }
     .materials-table th:nth-child(8) { width:12%; }
     .materials-table th:nth-child(9) { width:18%; }
-    /* Total: 7 cols — Grupo · Aplicação · Cor · Necessidade · Un. · Preço · Valor a gastar */
+    /* Total: 7 cols — Grupo · Aplicação · Cor · Necessidade · Un. · Preço · A gastar */
     .materials-table.total-mode th:nth-child(1) { width:18%; }
     .materials-table.total-mode th:nth-child(2) { width:18%; }
     .materials-table.total-mode th:nth-child(3) { width:12%; }
@@ -461,7 +495,8 @@ export function buildMaterialConsumptionReportHtml({
     .materials-table.total-mode th:nth-child(5) { width:6%; text-align:center; }
     .materials-table.total-mode th:nth-child(6) { width:14%; }
     .materials-table.total-mode th:nth-child(7) { width:20%; text-align:right; }
-    .grade-row td { padding:0 5px 6px 5px; border-bottom:1px solid var(--ink); }
+    .materials-table td.cost-spend { padding-right:7px; }
+    .grade-row td { padding:0 5px 6px 5px; border-bottom:1px solid var(--ink); background:white; }
     .sole-grade { padding:4px 0 0 12px; overflow:visible; }
     .sole-grade table { width:100%; border-collapse:collapse; font-size:7.2pt; table-layout:auto; }
     .sole-grade th, .sole-grade td { padding:2px 4px; border:1px solid var(--line); text-align:center; white-space:nowrap; }
