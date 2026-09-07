@@ -217,6 +217,45 @@ describe('MaterialConsumptionView — tela buy-first', () => {
     expect(onGerarOC).toHaveBeenCalledWith({ grossNeed: false });
   });
 
+  it('oferece seletor de item do PV com o valor selecionado', () => {
+    const onSelectedItemIdChange = vi.fn();
+    const { rerender } = renderView({
+      itemOptions: [
+        { id: 'item-1', label: 'Item 1 · I90 · PRETO' },
+        { id: 'item-2', label: 'Item 2 · I90 · OFF WHITE' },
+      ],
+      selectedItemId: null,
+      onSelectedItemIdChange,
+    });
+
+    expect(screen.getByRole('combobox', { name: /Filtrar consumo por item/i }))
+      .toHaveTextContent('Todos os itens');
+
+    rerender(
+      <MemoryRouter>
+        <MaterialConsumptionView
+          rows={ROWS}
+          artisanalStrapRows={[]}
+          title="Consumo de Materiais — PV-00151"
+          itemOptions={[
+            { id: 'item-1', label: 'Item 1 · I90 · PRETO' },
+            { id: 'item-2', label: 'Item 2 · I90 · OFF WHITE' },
+          ]}
+          selectedItemId="item-2"
+          onSelectedItemIdChange={onSelectedItemIdChange}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('combobox', { name: /Filtrar consumo por item/i }))
+      .toHaveTextContent('Item 2 · I90 · OFF WHITE');
+  });
+
+  it('esconde o seletor de item quando não há opções', () => {
+    renderView();
+    expect(screen.queryByRole('combobox', { name: /Filtrar consumo por item/i })).not.toBeInTheDocument();
+  });
+
   it('mantém Gerar ordem de compra visível no modo Consumo total', async () => {
     const onGerarOC = vi.fn();
     const user = userEvent.setup();

@@ -98,11 +98,16 @@ type Props = {
    */
   extraSections?: ReactNode;
   /**
-   * Dentro do diálogo em tela cheia o título já está no chrome. O herói
-   * fica só com os números — senão "Consumo de materiais" aparece duas vezes
-   * e empurra o mapa de solados pra baixo da dobra.
+   * Título compacto (legado). O herói fica só com os números.
    */
   embedded?: boolean;
+  /**
+   * Itens do(s) PV(s) pra filtrar o consumo inteiro (solado + materiais).
+   * `selectedItemId = null` ⇒ consumo geral consolidado.
+   */
+  itemOptions?: { id: string; label: string }[];
+  selectedItemId?: string | null;
+  onSelectedItemIdChange?: (itemId: string | null) => void;
 };
 
 // Separador interno da chave de seção composta cor|família (agrupamento por Cor).
@@ -315,6 +320,9 @@ export default function MaterialConsumptionView({
   emptyMessage = 'Nenhum consumo de material encontrado.',
   extraSections,
   embedded = false,
+  itemOptions = [],
+  selectedItemId = null,
+  onSelectedItemIdChange,
 }: Props) {
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
@@ -884,8 +892,27 @@ export default function MaterialConsumptionView({
             <h3 className="display mt-1 text-xl leading-none">Consumo e cobertura de estoque</h3>
           </div>
 
-        {/* ── Barra de controle: agrupar, buscar, totais ─────────────────── */}
+        {/* ── Barra de controle: item, agrupar, buscar, totais ─────────────────── */}
         <div className="sticky top-0 z-10 flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border bg-background/95 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+          {itemOptions.length > 0 && onSelectedItemIdChange && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Item</span>
+              <Select
+                value={selectedItemId ?? '__all__'}
+                onValueChange={(v) => onSelectedItemIdChange(v === '__all__' ? null : v)}
+              >
+                <SelectTrigger className="h-8 w-[18rem] max-w-[min(18rem,70vw)] text-xs" aria-label="Filtrar consumo por item do pedido">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">Todos os itens</SelectItem>
+                  {itemOptions.map((opt) => (
+                    <SelectItem key={opt.id} value={opt.id}>{opt.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="flex items-center gap-1.5">
             <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Agrupar</span>
             <Select value={groupBy} onValueChange={(v) => setGroupBy(v as GroupBy)}>
