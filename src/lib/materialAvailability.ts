@@ -1,5 +1,71 @@
 import { supabase } from '@/integrations/supabase/client';
+import { resolveGroupSuppliers, type GroupSupplier } from '@/lib/groupSupplierResolution';
 import { isDiscretePurchaseUnit, normalizeUnit } from '@/lib/unitConversion';
+
+/** Nome placeholder quando não há fornecedor de produto nem de grupo. */
+export const UNDEFINED_SUPPLIER_NAME = 'Fornecedor não definido';
+export const ARTISANAL_SUPPLIER_NAME = 'Terceirizado (OS)';
+
+/**
+ * Resolve o fornecedor da falta: `products.supplier_id` primeiro; senão o
+ * fornecedor do grupo (`group_suppliers`), igual a `materialAutoPO` /
+ * `generateAutoPurchaseOrders`. Sem esse fallback, materiais como GLOW METALIC
+ * (fornecedor Soares no grupo, SKUs sem `supplier_id`) caíam em
+ * "Sem fornecedor definido" na etapa 2 do PV.
+ */
+export function resolveMaterialShortageSupplier(params: {
+  productSupplierId: string | null | undefined;
+  productSupplier: { name: string | null; lead_time_days: number | null } | null | undefined;
+  groupSupplier: GroupSupplier | null | undefined;
+  groupLinkedSupplier: { name: string | null; lead_time_days: number | null } | null | undefined;
+  productLeadTimeDays: number | null | undefined;
+  productSupplierLeadTimeDays: number | null | undefined;
+  isArtisanal: boolean;
+}): { supplier_id: string | null; supplier_name: string; lead_time_days: number } {
+  const productSupplier = params.productSupplierId ? params.productSupplier : null;
+  const groupSupplier = params.groupSupplier;
+  const linked = !productSupplier && groupSupplier?.supplier_id
+    ? params.groupLinkedSupplier
+    : null;
+  const resolved = productSupplier ?? linked ?? null;
+
+  const supplier_id = params.productSupplierId
+    ?? groupSupplier?.supplier_id
+    ?? null;
+  const supplier_name = productSupplier?.name
+    || groupSupplier?.supplier_name
+    || (params.isArtisanal ? ARTISANAL_SUPPLIER_NAME : UNDEFINED_SUPPLIER_NAME);
+
+  const lead_time_days = Number(resolved?.lead_time_days) > 0
+    ? Number(resolved?.lead_time_days)
+    : Number(params.productSupplierLeadTimeDays) > 0
+      ? Number(params.productSupplierLeadTimeDays)
+      : Number(params.productLeadTimeDays) > 0
+        ? Number(params.productLeadTimeDays)
+        : 10;
+
+  return { supplier_id, supplier_name, lead_time_days };
+}
+
+/**
+ * Chave de agrupamento da prévia de compra. Nome de grupo sem `supplier_id`
+ * casado ainda forma um card próprio (não o balde "sem fornecedor").
+ */
+export function purchaseSupplierGroupKey(
+  supplierId: string | null | undefined,
+  supplierName: string | null | undefined,
+): string {
+  if (supplierId) return supplierId;
+  const name = String(supplierName || '').trim();
+  if (
+    name
+    && name !== UNDEFINED_SUPPLIER_NAME
+    && name !== ARTISANAL_SUPPLIER_NAME
+  ) {
+    return `name:${name}`;
+  }
+  return '__sem_fornecedor__';
+}
 
 export interface MaterialShortage {
   product_id: string;
@@ -187,11 +253,13 @@ type ProductRow = {
   id: string;
   name: string | null;
   sku: string | null;
+  color: string | null;
   unit: string | null;
   quantity: number | null;
   reserved_stock: number | null;
   unit_price: number | null;
   supplier_id: string | null;
+  group_id: string | null;
   supplier_lead_time_days: number | null;
   lead_time_days: number | null;
   sole_moq: number | null;
@@ -257,12 +325,18 @@ export async function enrichMaterialShortages(rawAvailability: RawMaterialAvaila
   }
   const { data: products, error: productsError } = await supabase
     .from('products')
-    .select('id, name, sku, unit, quantity, reserved_stock, unit_price, supplier_id, supplier_lead_time_days, lead_time_days, sole_moq, min_stock, max_stock, is_artisanal, purchase_unit, purchase_order_unit, conversion_rate, category')
+    .select('id, name, sku, color, unit, quantity, reserved_stock, unit_price, supplier_id, group_id, supplier_lead_time_days, lead_time_days, sole_moq, min_stock, max_stock, is_artisanal, purchase_unit, purchase_order_unit, conversion_rate, category')
     .in('id', productIds);
   if (productsError) throw productsError;
 
   const rows = (products || []) as unknown as ProductRow[];
-  const supplierIds = [...new Set(rows.map(p => p.supplier_id).filter(Boolean))] as string[];
+  const groupIds = [...new Set(rows.map(p => p.group_id).filter(Boolean))] as string[];
+  const groupSupplierById = await resolveGroupSuppliers(groupIds);
+
+  const supplierIds = [...new Set([
+    ...rows.map(p => p.supplier_id).filter(Boolean),
+    ...[...groupSupplierById.values()].map(g => g.supplier_id).filter(Boolean),
+  ])] as string[];
   const { data: suppliers, error: suppliersError } = supplierIds.length > 0
     ? await supabase.from('suppliers').select('id, name, lead_time_days').in('id', supplierIds)
     : { data: [] as SupplierRow[], error: null };
@@ -281,12 +355,19 @@ export async function enrichMaterialShortages(rawAvailability: RawMaterialAvaila
     const product = productById.get(need.product_id);
     if (!product) continue;
 
-    const supplier = product.supplier_id ? supplierMap.get(product.supplier_id) : null;
-    const leadTime = Number(supplier?.lead_time_days) > 0
-      ? Number(supplier?.lead_time_days)
-      : Number(product.supplier_lead_time_days) > 0
-        ? Number(product.supplier_lead_time_days)
-        : 10;
+    const groupSupplier = product.group_id ? groupSupplierById.get(product.group_id) : null;
+    const resolvedSupplier = resolveMaterialShortageSupplier({
+      productSupplierId: product.supplier_id,
+      productSupplier: product.supplier_id ? supplierMap.get(product.supplier_id) : null,
+      groupSupplier,
+      groupLinkedSupplier: groupSupplier?.supplier_id
+        ? supplierMap.get(groupSupplier.supplier_id)
+        : null,
+      productLeadTimeDays: product.lead_time_days,
+      productSupplierLeadTimeDays: product.supplier_lead_time_days,
+      isArtisanal: !!product.is_artisanal,
+    });
+    const leadTime = resolvedSupplier.lead_time_days;
 
     const moq = Number(product.sole_moq ?? product.min_stock ?? 0);
     const minStock = Number(product.min_stock ?? 0);
@@ -324,6 +405,12 @@ export async function enrichMaterialShortages(rawAvailability: RawMaterialAvaila
     // simples pra somar exatamente suggested.
     const scaledGrade = need.grade ? scaleGradeToTotal(need.grade, suggested) : null;
 
+    // Solado mantém a cor do PV (baldes distintos). Demais materiais colapsam
+    // cores no agregado, mas o SKU do catálogo ainda tem cor própria — sem ela
+    // "GLOW METALIC" Champagne e Cobre apareciam como linhas idênticas.
+    const displayColor = need.color
+      ?? (product.color ? String(product.color).trim() || null : null);
+
     shortages.push({
       product_id: product.id,
       product_name: product.name || need.product_name,
@@ -333,8 +420,8 @@ export async function enrichMaterialShortages(rawAvailability: RawMaterialAvaila
       shortage: shortageQty,
       unit: consumptionUnit,
       unit_price: Number(product.unit_price ?? 0),
-      supplier_id: product.supplier_id ?? null,
-      supplier_name: supplier?.name || (product.is_artisanal ? 'Terceirizado (OS)' : 'Fornecedor não definido'),
+      supplier_id: resolvedSupplier.supplier_id,
+      supplier_name: resolvedSupplier.supplier_name,
       lead_time_days: leadTime,
       moq,
       suggested_qty: suggested,
@@ -353,7 +440,7 @@ export async function enrichMaterialShortages(rawAvailability: RawMaterialAvaila
       // faturaria a OC por um fator solto.
       purchase_unit_price: Number(product.unit_price ?? 0) * (conversionRate > 1 ? conversionRate : 1),
       reference_labels: need.referenceLabels,
-      color: need.color,
+      color: displayColor,
       grade: scaledGrade,
     });
     if (leadTime > maxLeadTime) maxLeadTime = leadTime;

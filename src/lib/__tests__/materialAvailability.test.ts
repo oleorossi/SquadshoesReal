@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   aggregateMaterialAvailability,
+  purchaseSupplierGroupKey,
+  resolveMaterialShortageSupplier,
+  UNDEFINED_SUPPLIER_NAME,
   type RawMaterialAvailability,
 } from '../materialAvailability';
 
@@ -118,5 +121,82 @@ describe('aggregateMaterialAvailability', () => {
         grade: { '34': 576, '35': 576, '36': 576 },
       },
     ]);
+  });
+});
+
+describe('resolveMaterialShortageSupplier', () => {
+  it('usa o fornecedor do produto quando há supplier_id', () => {
+    expect(resolveMaterialShortageSupplier({
+      productSupplierId: 'sup-1',
+      productSupplier: { name: 'Direto', lead_time_days: 7 },
+      groupSupplier: { supplier_id: 'sup-grupo', supplier_name: 'Soares' },
+      groupLinkedSupplier: { name: 'Soares', lead_time_days: 12 },
+      productLeadTimeDays: 5,
+      productSupplierLeadTimeDays: null,
+      isArtisanal: false,
+    })).toEqual({
+      supplier_id: 'sup-1',
+      supplier_name: 'Direto',
+      lead_time_days: 7,
+    });
+  });
+
+  it('herda Soares do grupo quando o SKU não tem supplier_id (GLOW METALIC)', () => {
+    expect(resolveMaterialShortageSupplier({
+      productSupplierId: null,
+      productSupplier: null,
+      groupSupplier: { supplier_id: 'sup-soares', supplier_name: 'Soares' },
+      groupLinkedSupplier: { name: 'Soares', lead_time_days: 15 },
+      productLeadTimeDays: null,
+      productSupplierLeadTimeDays: null,
+      isArtisanal: false,
+    })).toEqual({
+      supplier_id: 'sup-soares',
+      supplier_name: 'Soares',
+      lead_time_days: 15,
+    });
+  });
+
+  it('mantém o nome do grupo mesmo sem casar suppliers.id', () => {
+    expect(resolveMaterialShortageSupplier({
+      productSupplierId: null,
+      productSupplier: null,
+      groupSupplier: { supplier_id: null, supplier_name: 'Soares' },
+      groupLinkedSupplier: null,
+      productLeadTimeDays: 10,
+      productSupplierLeadTimeDays: null,
+      isArtisanal: false,
+    })).toEqual({
+      supplier_id: null,
+      supplier_name: 'Soares',
+      lead_time_days: 10,
+    });
+  });
+
+  it('só marca indefinido quando produto e grupo não têm fornecedor', () => {
+    expect(resolveMaterialShortageSupplier({
+      productSupplierId: null,
+      productSupplier: null,
+      groupSupplier: null,
+      groupLinkedSupplier: null,
+      productLeadTimeDays: null,
+      productSupplierLeadTimeDays: null,
+      isArtisanal: false,
+    }).supplier_name).toBe(UNDEFINED_SUPPLIER_NAME);
+  });
+});
+
+describe('purchaseSupplierGroupKey', () => {
+  it('agrupa por id quando existe', () => {
+    expect(purchaseSupplierGroupKey('sup-soares', 'Soares')).toBe('sup-soares');
+  });
+
+  it('agrupa pelo nome do grupo quando o id não casou — evita falso "sem fornecedor"', () => {
+    expect(purchaseSupplierGroupKey(null, 'Soares')).toBe('name:Soares');
+  });
+
+  it('só usa o balde sem fornecedor no placeholder', () => {
+    expect(purchaseSupplierGroupKey(null, UNDEFINED_SUPPLIER_NAME)).toBe('__sem_fornecedor__');
+    expect(purchaseSupplierGroupKey(null, null)).toBe('__sem_fornecedor__');
   });
 });
