@@ -32,6 +32,15 @@ const canonicalConsumptionRpc = supabase as unknown as CanonicalConsumptionRpcCl
 
 const uuid = z.string().uuid();
 const finiteNonNegative = z.number().finite().nonnegative();
+/** null/undefined → default; .default() sozinho NÃO cobre null explícito do SQL. */
+const finiteNonNegativeOrDefault = (fallback: number) =>
+  finiteNonNegative.nullish().transform((value) => value ?? fallback);
+const booleanOrDefault = (fallback: boolean) =>
+  z.boolean().nullish().transform((value) => value ?? fallback);
+const debitModeOrDefault = z
+  .enum(['hard', 'soft'])
+  .nullish()
+  .transform((value) => value ?? 'soft' as const);
 const gradeSchema = z.record(
   z.union([z.number().finite().nonnegative(), z.string()]),
 ).nullable().superRefine((grade, ctx) => {
@@ -59,12 +68,13 @@ const lineBaseSchema = z.object({
   product_name: z.string().min(1),
   product_unit: z.string().min(1),
   required: finiteNonNegative,
-  available: finiteNonNegative.optional().default(0),
-  stock_ok: z.boolean().optional().default(false),
+  // null/undefined do SQL → default; .optional().default() rejeita null explícito.
+  available: finiteNonNegativeOrDefault(0),
+  stock_ok: booleanOrDefault(false),
   source: z.string().optional().nullable(),
   consumption_sector: z.string().optional().nullable(),
   consumption_sector_source: z.string().optional().nullable(),
-  debit_mode: z.enum(['hard', 'soft']).optional().default('soft'),
+  debit_mode: debitModeOrDefault,
   color: z.string().optional().nullable(),
   product_color: z.string().optional().nullable(),
   product_category: z.string().optional().nullable(),
@@ -76,35 +86,43 @@ const lineBaseSchema = z.object({
   matched_by: z.string().optional().nullable(),
 });
 
-const materialLineSchema = lineBaseSchema.extend({
+const materialLineObject = lineBaseSchema.extend({
   line_kind: z.literal('material'),
   product_id: uuid.nullable(),
-}).superRefine((line, ctx) => {
-  const warning = [line.warning, line.conversion_warning, line.consumption_warning]
-    .some((value) => typeof value === 'string' && value.trim().length > 0);
-  if (line.required > 0 && !line.product_id) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['product_id'],
-      message: 'linha positiva do motor sem product_id',
-    });
-  }
-  if (line.required === 0 && !line.product_id && !warning) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['warning'],
-      message: 'linha sem identidade precisa explicar a pendência',
-    });
-  }
 });
 
-const packagingLineSchema = lineBaseSchema.extend({
+const packagingLineObject = lineBaseSchema.extend({
   line_kind: z.literal('packaging'),
   box_type_id: uuid.nullable(),
   packaging_type: z.string().min(1),
-  unit_price: finiteNonNegative.optional().default(0),
+  unit_price: finiteNonNegativeOrDefault(0),
   supplier_id: uuid.optional().nullable(),
-}).superRefine((line, ctx) => {
+});
+
+const canonicalLineSchema = z.discriminatedUnion('line_kind', [
+  materialLineObject,
+  packagingLineObject,
+]).superRefine((line, ctx) => {
+  if (line.line_kind === 'material') {
+    const warning = [line.warning, line.conversion_warning, line.consumption_warning]
+      .some((value) => typeof value === 'string' && value.trim().length > 0);
+    if (line.required > 0 && !line.product_id) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['product_id'],
+        message: 'linha positiva do motor sem product_id',
+      });
+    }
+    if (line.required === 0 && !line.product_id && !warning) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['warning'],
+        message: 'linha sem identidade precisa explicar a pendência',
+      });
+    }
+    return;
+  }
+
   if (line.required > 0 && !line.box_type_id) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -120,11 +138,6 @@ const packagingLineSchema = lineBaseSchema.extend({
     });
   }
 });
-
-const canonicalLineSchema = z.union([
-  materialLineSchema,
-  packagingLineSchema,
-]);
 
 const strapPreviewSchema = z.object({
   scope_key: uuid,
@@ -170,15 +183,65 @@ const responseSchema = z.object({
 export type CanonicalConsumptionLine = z.infer<typeof canonicalLineSchema>;
 export type CanonicalConsumptionReport = z.infer<typeof responseSchema>;
 
+/** Achata union/discriminated errors pra a mensagem citar o campo real. */
+function flattenZodIssues(
+  issues: z.ZodIssue[],
+  prefix: (string | number)[] = [],
+): Array<{ path: string; message: string }> {
+  const out: Array<{ path: string; message: string }> = [];
+  for (const issue of issues) {
+    const path = [...prefix, ...issue.path];
+    const nested = (issue as z.ZodIssue & {
+      unionErrors?: z.ZodError[];
+    }).unionErrors;
+    if (nested && nested.length > 0) {
+      for (const branch of nested) {
+        out.push(...flattenZodIssues(branch.issues, path));
+      }
+      continue;
+    }
+    out.push({
+      path: path.join('.') || '(root)',
+      message: issue.message,
+    });
+  }
+  return out;
+}
+
+/**
+ * Coerce numeric fields that Postgres/json drivers sometimes deliver as
+ * strings. Does not invent values — failed coercion stays for Zod to reject.
+ */
+function coerceCanonicalLine(line: unknown): unknown {
+  if (!line || typeof line !== 'object') return line;
+  const o = { ...(line as Record<string, unknown>) };
+  for (const key of ['quantity', 'required', 'available', 'unit_price'] as const) {
+    const value = o[key];
+    if (typeof value === 'string' && value.trim() !== '' && !Number.isNaN(Number(value))) {
+      o[key] = Number(value);
+    }
+  }
+  if (typeof o.product_unit === 'string' && o.product_unit.trim() === '') {
+    o.product_unit = 'un';
+  }
+  return o;
+}
+
+function coerceCanonicalReport(raw: unknown): unknown {
+  if (!raw || typeof raw !== 'object') return raw;
+  const report = { ...(raw as Record<string, unknown>) };
+  if (Array.isArray(report.lines)) {
+    report.lines = report.lines.map(coerceCanonicalLine);
+  }
+  return report;
+}
+
 export class CanonicalConsumptionReportError extends Error {
   readonly issues: Array<{ path: string; message: string }>;
   readonly raw: unknown;
 
   constructor(error: z.ZodError, raw: unknown) {
-    const issues = error.issues.map((issue) => ({
-      path: issue.path.join('.') || '(root)',
-      message: issue.message,
-    }));
+    const issues = flattenZodIssues(error.issues);
     super(
       `RPC de consumo canônico devolveu payload inválido: ${issues
         .slice(0, 5)
@@ -194,7 +257,7 @@ export class CanonicalConsumptionReportError extends Error {
 export function validateCanonicalConsumptionReport(
   raw: unknown,
 ): CanonicalConsumptionReport {
-  const parsed = responseSchema.safeParse(raw);
+  const parsed = responseSchema.safeParse(coerceCanonicalReport(raw));
   if (!parsed.success) throw new CanonicalConsumptionReportError(parsed.error, raw);
   return parsed.data;
 }
