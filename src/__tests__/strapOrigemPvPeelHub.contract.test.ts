@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-const MIGRATION = 'supabase/migrations/20270101017000_strap_origem_pv_peel_napa_hub.sql';
+const MIGRATION = 'supabase/migrations/20270101017200_strap_origem_pv_peel_napa_hub.sql';
 
 describe('strap origem PV + peel napa migration contract', () => {
   const sql = readFileSync(MIGRATION, 'utf8');
