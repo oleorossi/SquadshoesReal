@@ -575,8 +575,34 @@ export default function MaterialConsumptionView({
       </div>
     );
   }
+
+  const itemFilterControl = itemOptions.length > 0 && onSelectedItemIdChange ? (
+    <div className="flex items-center gap-1.5">
+      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Item</span>
+      <Select
+        value={selectedItemId ?? '__all__'}
+        onValueChange={(v) => onSelectedItemIdChange(v === '__all__' ? null : v)}
+      >
+        <SelectTrigger className="h-8 w-[18rem] max-w-[min(18rem,70vw)] text-xs" aria-label="Filtrar consumo por item do pedido">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="__all__">Todos os itens</SelectItem>
+          {itemOptions.map((opt) => (
+            <SelectItem key={opt.id} value={opt.id}>{opt.label}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  ) : null;
+
   if (rows.length === 0) {
-    return <p className="py-8 text-center text-muted-foreground">{emptyMessage}</p>;
+    return (
+      <div className="space-y-3 py-4">
+        {itemFilterControl}
+        <p className="py-8 text-center text-muted-foreground">{emptyMessage}</p>
+      </div>
+    );
   }
 
   const colCount = grossNeed ? 5 : 7;
@@ -894,25 +920,7 @@ export default function MaterialConsumptionView({
 
         {/* ── Barra de controle: item, agrupar, buscar, totais ─────────────────── */}
         <div className="sticky top-0 z-10 flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border bg-background/95 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-          {itemOptions.length > 0 && onSelectedItemIdChange && (
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Item</span>
-              <Select
-                value={selectedItemId ?? '__all__'}
-                onValueChange={(v) => onSelectedItemIdChange(v === '__all__' ? null : v)}
-              >
-                <SelectTrigger className="h-8 w-[18rem] max-w-[min(18rem,70vw)] text-xs" aria-label="Filtrar consumo por item do pedido">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__all__">Todos os itens</SelectItem>
-                  {itemOptions.map((opt) => (
-                    <SelectItem key={opt.id} value={opt.id}>{opt.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
+          {itemFilterControl}
           <div className="flex items-center gap-1.5">
             <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Agrupar</span>
             <Select value={groupBy} onValueChange={(v) => setGroupBy(v as GroupBy)}>

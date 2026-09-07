@@ -256,6 +256,22 @@ describe('MaterialConsumptionView — tela buy-first', () => {
     expect(screen.queryByRole('combobox', { name: /Filtrar consumo por item/i })).not.toBeInTheDocument();
   });
 
+  it('mantém o seletor de item no empty state pra voltar a Todos', () => {
+    renderView({
+      rows: [],
+      itemOptions: [
+        { id: 'item-1', label: 'Item 1 · I90 · PRETO' },
+        { id: 'item-2', label: 'Item 2 · I90 · OFF WHITE' },
+      ],
+      selectedItemId: 'item-2',
+      onSelectedItemIdChange: vi.fn(),
+      emptyMessage: 'Nenhum consumo neste item.',
+    });
+    expect(screen.getByRole('combobox', { name: /Filtrar consumo por item/i }))
+      .toHaveTextContent('Item 2 · I90 · OFF WHITE');
+    expect(screen.getByText('Nenhum consumo neste item.')).toBeInTheDocument();
+  });
+
   it('mantém Gerar ordem de compra visível no modo Consumo total', async () => {
     const onGerarOC = vi.fn();
     const user = userEvent.setup();

@@ -25,8 +25,8 @@ import {
  * Em 05/08/2026 absorveu também o caso de UM PV: a página `?view=consumo&ids=…`
  * atende os dois escopos com o mesmo código.
  *
- * 22/08/2026: a carga mora em `loadPvConsumption` + React Query, pra o prefetch
- * ao abrir o detalhe do PV ainda valer quando a nova aba de consumo abre.
+ * 22/08/2026: a carga mora em `loadPvConsumption` + React Query (prefetch no
+ * detalhe do PV ajuda a mesma aba; nova aba sempre busca de novo).
  *
  * 07/09/2026: filtro por item do PV (`?item=`) reescopa o report canônico
  * (solado + materiais + tiras) sem nova RPC.
@@ -48,7 +48,7 @@ export default function SummaryConsumptionPanel({ saleOrderIds, onGerarOC, embed
   );
   const ids = useMemo(() => (idsKey ? idsKey.split(',') : []), [idsKey]);
 
-  const { data, isLoading, error, refetch } = useQuery({
+  const { data, isLoading, error, refetch, dataUpdatedAt } = useQuery({
     queryKey: pvConsumptionQueryKey(ids),
     queryFn: () => loadPvConsumption(ids),
     enabled: ids.length > 0,
@@ -80,7 +80,8 @@ export default function SummaryConsumptionPanel({ saleOrderIds, onGerarOC, embed
   };
 
   const scopedQuery = useQuery({
-    queryKey: [...pvConsumptionQueryKey(ids), 'scope', selectedItemId ?? 'all'] as const,
+    // dataUpdatedAt invalida o escopo quando "Recalcular" refresca o report.
+    queryKey: [...pvConsumptionQueryKey(ids), 'scope', selectedItemId ?? 'all', dataUpdatedAt] as const,
     queryFn: async () => {
       if (!data?.report) return { rows: data?.rows ?? [], artisanalStrapRows: data?.artisanalStrapRows ?? [] };
       if (!selectedItemId) {
