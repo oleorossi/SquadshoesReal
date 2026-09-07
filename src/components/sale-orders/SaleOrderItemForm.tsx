@@ -1261,10 +1261,13 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     if (changed) latestRef.current.onUpdate(latestRef.current.index, 'strap_sourcing', next);
   }, [item.material_variant_id, item.strap_colors, strapSourcingMap, preserveCommittedStrapSnapshot]);
 
-  // A cor escolhida pertence ao material desta posição: napa-base da tira
-  // interna ou grupo acabado da tira pronta. Limpa também UUIDs de cabedal
-  // herdados indevidamente por snapshots antigos de Strass, sem afetar as
-  // posições que seguem a cor principal nem pedidos já comprometidos.
+  // Normaliza o rótulo da cor canônica já escolhida. NÃO apaga color_id só
+  // porque a cor saiu da lista "disponível" do material (SKU inativo, alias
+  // pendente, mapeamento falho): reabrir o PV destruía tira Strass já salva e
+  // pedia "Selecione a cor canônica" sem o operador ter mexido no item. A UI
+  // já mostra "vínculo inválido" quando a cor não está em identityColors.
+  // UUID órfão (sumiu do catálogo) ou texto sem identidade canônica continuam
+  // sendo limpos — aí não há o que preservar.
   useEffect(() => {
     if (preserveCommittedStrapSnapshot
         || !strapCatalog
@@ -1285,8 +1288,11 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
         strap,
         baseGroupId,
       );
+      const catalogColor = isUuid(strap.color_id)
+        ? (strapCatalog.colors || []).find((color) => color.id === strap.color_id && color.active !== false)
+        : null;
       const canonical = isUuid(strap.color_id)
-        ? available.find((color) => color.id === strap.color_id)
+        ? available.find((color) => color.id === strap.color_id) || catalogColor
         : null;
       if (canonical) {
         if (strap.color === canonical.name) return strap;
@@ -1294,6 +1300,8 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
         return { ...strap, color: canonical.name };
       }
       if (!strap.color && !strap.color_id) return strap;
+      // color_id órfão (não existe no catálogo) ou só texto sem UUID: limpa.
+      // Escolha ainda listada no catálogo já foi tratada acima.
       colorsChanged = true;
       if (getStrapSourcingSelection(nextSourcing, lineId)) {
         nextSourcing = setStrapSourcing(nextSourcing, lineId, null);

@@ -403,16 +403,35 @@ describe('SaleOrderItemForm — I703 com Overlock e Strass 6 mm', () => {
     expect(view.current().strap_colors[1]).toMatchObject({ color_id: PINK, color: 'ROSADO COM FUNDO ROSADO' });
   });
 
-  it('limpa a cor de cabedal inválida em snapshot já classificado como Strass e exige selecionar sua cor', async () => {
+  it('preserva color_id canônico já salvo na Strass mesmo fora da lista disponível do material', async () => {
+    // SKU do grupo acabado com rótulo que não mapeia → available fica sem OFF WHITE.
+    // Antes o efeito de limpeza apagava a escolha ao abrir o PV.
+    state.catalog = {
+      ...state.catalog,
+      products: [
+        { id: 'glow-copper', group_id: GLOW, name: 'GLOW METALIC + MASSABOX COBRE', color: 'COBRE', active: true, unit: 'm' },
+        { id: 'strass-off', group_id: STRASS, name: 'TIRA STRASS 6MM OFF WHITE', color: 'OFF-WHITE CRAZY', active: true, unit: 'm' },
+      ],
+    };
+    const { initial, options } = setup();
+    initial.strap_colors[1] = { ...initial.strap_colors[1], color: 'OFF WHITE', color_id: OFF_WHITE };
+    const view = mount(initial, 'Rascunho', lines, options);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 40)); });
+    expect(view.current().strap_colors[1]).toMatchObject({ color: 'OFF WHITE', color_id: OFF_WHITE });
+    expect(screen.queryByText(/Selecione uma cor canônica para esta posição/)).not.toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Cor de TIRA 2' })).toHaveTextContent('OFF WHITE');
+  });
+
+  it('mantém cor de cabedal herdada na Strass e sinaliza vínculo inválido em vez de apagar ao reabrir', async () => {
     const { initial, options } = setup();
     const view = mount(initial, 'Rascunho', lines, options);
-    await waitFor(() => expect(view.current().strap_colors[1]).toMatchObject({ color: '', color_id: null }));
-    expect(view.current().strap_sourcing).not.toHaveProperty(LINE_B);
-    expect(view.current().strap_sourcing).toHaveProperty(LINE_A);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 40)); });
+    expect(view.current().strap_colors[1]).toMatchObject({ color: 'COBRE', color_id: COPPER });
     expect(view.colorIssues).toHaveBeenLastCalledWith(0, expect.objectContaining({ materials: expect.arrayContaining(['TIRA 2']) }));
+    expect(screen.getByText(/não possui produto ativo no grupo acabado/)).toBeInTheDocument();
     const user = userEvent.setup();
     await user.click(screen.getByRole('combobox', { name: 'Cor de TIRA 2' }));
-    expect(screen.queryByRole('option', { name: /COBRE/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /COBRE/ })).toBeInTheDocument();
     await user.click(screen.getByRole('option', { name: 'OFF WHITE' }));
     await waitFor(() => expect(view.colorIssues).toHaveBeenLastCalledWith(0, null));
   });

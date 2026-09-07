@@ -170,7 +170,11 @@ function defaultColorScopeIsCompatible(
   const technicalBasis = strapIdentityBasis(technical);
   if (snapshotBasis !== technicalBasis) return false;
   if (snapshotBasis === 'finished_product_group') {
-    return (snapshot.identity_group_id || null) === (technical.identity_group_id || null);
+    // Snapshot antigo podia gravar a cor sem identity_group_id. A ficha atual
+    // preenche o grupo; apagar a cor só por isso forçava reescolher Strass ao
+    // reabrir o PV. Ausência no snapshot = adotar o grupo técnico.
+    if (!snapshot.identity_group_id) return !!technical.identity_group_id;
+    return snapshot.identity_group_id === (technical.identity_group_id || null);
   }
   if (snapshot.base_group_id || technical.base_group_id) {
     return snapshot.base_group_id === technical.base_group_id;
@@ -185,8 +189,9 @@ function selectedColorCanBePreserved<T extends ReconcileStrapLineLike>(
 ): boolean {
   if (strapColorMode(snapshot) !== 'select_on_order'
       || strapColorMode(technical) !== 'select_on_order'
-      || !String(snapshot.color || '').trim()
       || !isUuid(snapshot.color_id)) return false;
+  // Texto vazio com color_id válido ainda é escolha persistida (rótulo pode
+  // ser reconstruído do catálogo). Exigir os dois apagava a Strass ao reabrir.
   if (strapIdentityBasis(snapshot) !== strapIdentityBasis(technical)) return false;
   return canPreserveColor
     ? canPreserveColor({ snapshot, technical })

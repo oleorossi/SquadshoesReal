@@ -352,6 +352,43 @@ describe('reconcileEditableStrapSnapshots', () => {
 
     expect(result.lines[0]).toMatchObject({ color: '', color_id: null });
   });
+
+  it('preserva cor de finished_product_group mesmo sem identity_group_id no snapshot', () => {
+    const finishedGroup = 'c45ff936-5ac5-49b5-98c4-4aed5e10e82d';
+    const result = reconcileEditableStrapSnapshots({
+      snapshotLines: [strap(lineA, {
+        identity_basis: 'finished_product_group',
+        identity_group_id: null,
+        color_mode: 'select_on_order',
+        color: 'OFF WHITE',
+        color_id: blue,
+      })],
+      technicalLines: [strap(lineA, {
+        identity_basis: 'finished_product_group',
+        identity_group_id: finishedGroup,
+        color_mode: 'select_on_order',
+        color: '',
+        color_id: null,
+      })],
+      sourcing: {},
+    });
+
+    expect(result.lines[0]).toMatchObject({
+      identity_basis: 'finished_product_group',
+      identity_group_id: finishedGroup,
+      color: 'OFF WHITE',
+      color_id: blue,
+    });
+  });
+
+  it('preserva color_id sem texto no snapshot select_on_order', () => {
+    const result = reconcileEditableStrapSnapshots({
+      snapshotLines: [strap(lineA, { color: '', color_id: blue })],
+      technicalLines: [strap(lineA, { color: '', color_id: null })],
+      sourcing: {},
+    });
+    expect(result.lines[0]).toMatchObject({ color: '', color_id: blue });
+  });
 });
 
 describe('comparador estrutural', () => {
