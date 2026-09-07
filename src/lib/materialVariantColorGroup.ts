@@ -462,3 +462,30 @@ export function resolveStrapBaseReadout({
     divergesFromLining: !!liningGroupId && liningGroupId !== resolved.groupId,
   };
 }
+
+/**
+ * Sandália sem cabedal + variante com material principal: a napa das tiras
+ * artesanais (`follow_reference`) só herda o Glow/napa da variante se o
+ * resolver cair em `variant_lining` ou `variant_main`. Origem `sheet` com
+ * principal preenchido = no-op silencioso (PV mostra Glow, tira corta a
+ * forração/base da ficha). Caso típico I704 / SR02.
+ */
+export function variantLeavesStrapBaseOnSheet({
+  variant, sheet, cascade, products,
+}: {
+  variant: VariantCascadePins & { main_material_group_id?: string | null } | null | undefined;
+  sheet: Parameters<typeof resolveStrapBaseReadout>[0]['sheet'];
+  cascade: VariantCascadeSelection;
+  products: MaterialVariantColorProduct[];
+}): boolean {
+  if (!variant?.main_material_group_id) return false;
+  const strapsFollowLining = sheet?.has_straps === true
+    && !sheet.upper_material?.trim()
+    && !sheet.upper_material_group_id
+    && !findActiveMaterialVariantProduct(products, sheet?.upper_material_product_id);
+  if (!strapsFollowLining) return false;
+  const readout = resolveStrapBaseReadout({ variant, sheet, cascade, products });
+  if (!readout) return true;
+  return readout.origin === 'sheet'
+    && readout.groupId !== variant.main_material_group_id;
+}

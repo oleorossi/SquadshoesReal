@@ -109,3 +109,12 @@ describe('resolveStrapBaseReadout espelha resolve_strap_base_group_id', () => {
     })).toBeNull();
   });
 });
+
+describe('Aviso I704 — principal Glow sem converter tiras', () => {
+  it('a aba Variantes detecta e avisa quando a base da tira fica na ficha', () => {
+    expect(TAB).toContain('variantLeavesStrapBaseOnSheet');
+    expect(TAB).toContain('leavesOnSheet');
+    expect(TAB).toContain('não</strong> converte');
+    expect(TAB).toContain('consumo/débito corta a napa da ficha');
+  });
+});

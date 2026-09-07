@@ -37,19 +37,25 @@ function invalidateSheetImpact(qc: QueryClient) {
   invalidateSheetAudit(qc);
 }
 
-/** Save da ficha já persistiu — propaga consumo sem desfazer o UPDATE. */
-async function propagateSheetConsumption(qc: QueryClient, sheetId: string) {
+/**
+ * Save da ficha já persistiu — propaga consumo para PVs Aprovados sem fato
+ * físico. Falha aqui NÃO desfaz o UPDATE.
+ */
+async function propagateSheetConsumption(
+  qc: QueryClient,
+  sheetId: string,
+  opts?: { emptyMessage?: string; saveLabel?: string },
+) {
   invalidateSheetImpact(qc);
   try {
     const summary = await autoResyncUnstartedOpsForSheet(sheetId);
     invalidateSheetImpact(qc);
-    toastAutoResyncSummary(summary, {
-      emptyMessage: 'Ficha salva. Nenhum PV aprovado pendente de atualização de consumo.',
-    });
+    toastAutoResyncSummary(summary, { emptyMessage: opts?.emptyMessage });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'falha ao propagar consumo';
+    const label = opts?.saveLabel || 'Ficha salva';
     toast.warning(
-      `Ficha salva, mas o consumo das OPs não foi atualizado automaticamente: ${message}`,
+      `${label}, mas o consumo das OPs não foi atualizado automaticamente: ${message}`,
       { duration: 10000 },
     );
   }
@@ -576,7 +582,10 @@ export function useUpdateSheet() {
           : row);
       });
       qc.invalidateQueries({ queryKey: ['technical_sheets', 'cabedal-par-pe-audit'] });
-      void propagateSheetConsumption(qc, updatedSheet.id);
+      void propagateSheetConsumption(qc, updatedSheet.id, {
+        emptyMessage: 'Ficha salva. Nenhum PV aprovado pendente de atualização de consumo.',
+        saveLabel: 'Ficha salva',
+      });
     },
     onError: (err: Error) => {
       console.error('[useUpdateSheet] mutationFn falhou:', err);
@@ -753,7 +762,10 @@ export function useAddSheetMaterial() {
     },
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ['sheet_materials', variables.sheetId] });
-      void propagateSheetConsumption(qc, variables.sheetId);
+      toast.success('Material adicionado.');
+      void propagateSheetConsumption(qc, variables.sheetId, {
+        saveLabel: 'Material adicionado',
+      });
     },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
   });
@@ -769,7 +781,10 @@ export function useBulkAddSheetMaterials() {
     },
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ['sheet_materials', variables.sheetId] });
-      void propagateSheetConsumption(qc, variables.sheetId);
+      toast.success(`${variables.materials.length} materiais adicionados.`);
+      void propagateSheetConsumption(qc, variables.sheetId, {
+        saveLabel: 'Materiais adicionados',
+      });
     },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
   });
@@ -791,7 +806,8 @@ export function useUpdateSheetMaterial(sheetId: string | null) {
         return;
       }
       qc.invalidateQueries({ queryKey: ['sheet_materials', sheetId] });
-      void propagateSheetConsumption(qc, sheetId);
+      toast.success('Material atualizado.');
+      void propagateSheetConsumption(qc, sheetId, { saveLabel: 'Material atualizado' });
     },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
   });
@@ -813,7 +829,8 @@ export function useDeleteSheetMaterial(sheetId: string | null) {
         return;
       }
       qc.invalidateQueries({ queryKey: ['sheet_materials', sheetId] });
-      void propagateSheetConsumption(qc, sheetId);
+      toast.success('Material removido.');
+      void propagateSheetConsumption(qc, sheetId, { saveLabel: 'Material removido' });
     },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
   });
