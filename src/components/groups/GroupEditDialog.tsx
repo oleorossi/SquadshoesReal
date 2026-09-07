@@ -21,6 +21,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from '@/components/ui/command';
+import { SearchLocatorStrip } from '@/components/ui/searchable-select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -31,7 +32,7 @@ import { CONSUMPTION_UNITS_BY_GROUP } from '@/lib/measurementUnits';
 import { sectorOfGroup, sectorLabel, SECTOR_OPTIONS } from '@/lib/categoryFromGroup';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { NumberInput } from '@/components/ui/number-input';
-import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { SEARCH_RENDER_CAP, capSearchResults, searchMatchesAllTerms, searchRefineHint } from '@/lib/searchUtils';
 import { SearchInput } from '@/components/ui/search-input';
 import { EmptyState } from '@/components/ui/empty-state';
 import { getFootwearSectorGuide, normalizeTaxonomyName } from '@/lib/footwearMaterialTaxonomy';
@@ -116,6 +117,10 @@ function AddItemsToGroupDialog({ open, onOpenChange, groupId, groupName }: {
     () => availableBase.filter(p => searchMatchesAllTerms(search, p.name, p.sku, p.category, p.color)),
     [availableBase, search],
   );
+  const { visible, capped, totalMatched, cap } = useMemo(
+    () => capSearchResults(available, SEARCH_RENDER_CAP),
+    [available],
+  );
 
   const toggle = (id: string) => {
     setSelected(prev => {
@@ -161,12 +166,12 @@ function AddItemsToGroupDialog({ open, onOpenChange, groupId, groupName }: {
           value={search}
           onChange={setSearch}
           placeholder="Buscar por nome, SKU, categoria ou cor…"
-          resultCount={available.length}
+          resultCount={totalMatched}
           totalCount={availableBase.length}
         />
 
         <ScrollArea className="flex-1 min-h-0 max-h-[400px] -mx-6 px-6">
-          {available.length === 0 ? (
+          {totalMatched === 0 ? (
             search ? (
               <EmptyState
                 size="sm"
@@ -182,7 +187,7 @@ function AddItemsToGroupDialog({ open, onOpenChange, groupId, groupName }: {
             )
           ) : (
             <div className="space-y-1">
-              {available.map(p => (
+              {visible.map(p => (
                 <label
                   key={p.id}
                   className={`flex items-center gap-3 p-2 rounded-md cursor-pointer hover:bg-accent transition-colors ${selected.has(p.id) ? 'bg-primary/5 border border-primary/20' : 'border border-transparent'}`}
@@ -202,6 +207,11 @@ function AddItemsToGroupDialog({ open, onOpenChange, groupId, groupName }: {
                   </Badge>
                 </label>
               ))}
+              {capped && (
+                <p className="px-2 py-2 text-xs text-muted-foreground">
+                  {searchRefineHint(totalMatched, cap)}
+                </p>
+              )}
             </div>
           )}
         </ScrollArea>
@@ -522,6 +532,7 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
   // defined' ao abrir a edição. Restaurado 2026-06-07. [[group-edit-dropped-state]]
   const [parentGroupId, setParentGroupId] = useState<string>(group.parent_group_id || '');
   const [linkChildOpen, setLinkChildOpen] = useState(false);
+  const [linkChildSearch, setLinkChildSearch] = useState('');
   const [unitWeightKg, setUnitWeightKg] = useState<number>(group.unit_weight_kg || 0);
   const [purchaseMultiple, setPurchaseMultiple] = useState<number>((group as any).purchase_multiple || 0);
   const [isArtisanalStrap, setIsArtisanalStrap] = useState(group.is_artisanal_strap === true);
@@ -554,6 +565,18 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
       && (childrenByParent.get(candidate.id)?.length || 0) === 0
     )),
     [availableToLinkAsChild, childrenByParent, sector],
+  );
+
+  const filteredLinkableChildren = useMemo(() => {
+    if (!linkChildSearch.trim()) return linkableChildren;
+    return linkableChildren.filter((candidate) =>
+      searchMatchesAllTerms(linkChildSearch, candidate.name),
+    );
+  }, [linkableChildren, linkChildSearch]);
+
+  const linkableCap = useMemo(
+    () => capSearchResults(filteredLinkableChildren, SEARCH_RENDER_CAP),
+    [filteredLinkableChildren],
   );
 
   const selectedFamily = useMemo(
@@ -1191,24 +1214,44 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                   <CardHeader className="pb-3">
                     <CardTitle className="flex items-center justify-between gap-3 text-sm">
                       <span className="flex items-center gap-2"><Rows className="h-4 w-4 text-primary" /> 3. Grupos / linhas ({childrenGroups.length})</span>
-                      <Popover open={linkChildOpen} onOpenChange={setLinkChildOpen}>
+                      <Popover open={linkChildOpen} onOpenChange={(o) => { setLinkChildOpen(o); if (!o) setLinkChildSearch(''); }}>
                         <PopoverTrigger asChild>
                           <Button type="button" size="sm" variant="outline" disabled={!isFamilyPersisted || sectorChanged} className="h-8 gap-1.5 text-xs"><Link2 className="h-3.5 w-3.5" /> Vincular grupo existente</Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-80 p-0" align="end">
-                          <Command>
-                            <CommandInput placeholder="Buscar grupo do mesmo setor..." />
+                          <Command shouldFilter={false} label="Buscar grupo do mesmo setor...">
+                            <SearchLocatorStrip
+                              label="Localizar grupo"
+                              matchedCount={linkableCap.totalMatched}
+                              totalCount={linkableChildren.length}
+                              hasQuery={!!linkChildSearch.trim()}
+                            />
+                            <CommandInput
+                              placeholder="Buscar grupo do mesmo setor..."
+                              value={linkChildSearch}
+                              onValueChange={setLinkChildSearch}
+                            />
                             <CommandList>
-                              <CommandEmpty>Nenhum grupo solto disponível em {sectorLabel(sector)}.</CommandEmpty>
+                              <CommandEmpty>
+                                {linkChildSearch ? (
+                                  <span className="flex flex-col items-center gap-2">
+                                    <span>Nenhum resultado para "{linkChildSearch}"</span>
+                                    <Button type="button" variant="outline" size="sm" onClick={() => setLinkChildSearch('')}>Limpar busca</Button>
+                                  </span>
+                                ) : (
+                                  `Nenhum grupo solto disponível em ${sectorLabel(sector)}.`
+                                )}
+                              </CommandEmpty>
                               <CommandGroup heading={`Grupos soltos em ${sectorLabel(sector)}`}>
-                                {linkableChildren.map((candidate) => (
+                                {linkableCap.visible.map((candidate) => (
                                   <CommandItem
                                     key={candidate.id}
-                                    value={candidate.name}
+                                    value={candidate.id}
                                     onSelect={async () => {
                                       try {
                                         await updateGroup.mutateAsync({ id: candidate.id, data: { parent_group_id: group.id } });
                                         setLinkChildOpen(false);
+                                        setLinkChildSearch('');
                                       } catch { /* toast pelo hook */ }
                                     }}
                                   >
@@ -1217,6 +1260,11 @@ export default function GroupEditDialog({ open, onOpenChange, group }: GroupEdit
                                     <Badge variant="outline" className="ml-auto h-4 text-[8px]">{itemCountByGroup.get(candidate.id) || 0} itens</Badge>
                                   </CommandItem>
                                 ))}
+                                {linkableCap.capped && (
+                                  <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                                    {searchRefineHint(linkableCap.totalMatched, linkableCap.cap)}
+                                  </div>
+                                )}
                               </CommandGroup>
                             </CommandList>
                           </Command>

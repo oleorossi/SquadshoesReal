@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Tag, Warning } from '@phosphor-icons/react';
+import { Tag, Warning, MagnifyingGlass as Search } from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -14,6 +14,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { SearchInput } from '@/components/ui/search-input';
+import { EmptyState } from '@/components/ui/empty-state';
 import {
   buildPartialLabelPrintRows,
   clampPartialLabelQuantity,
@@ -241,11 +242,22 @@ export function PartialPrintSelectionDialog({
           </div>
 
           {visibleRows.length === 0 && (
-            <div className="py-12 text-center text-sm text-muted-foreground">
-              {allRows.length === 0
-                ? 'Os itens selecionados não possuem grade por numeração.'
-                : `Nenhuma numeração encontrada para “${search}”.`}
-            </div>
+            allRows.length === 0 ? (
+              <div className="py-12 text-center text-sm text-muted-foreground">
+                Os itens selecionados não possuem grade por numeração.
+              </div>
+            ) : (
+              <EmptyState
+                size="sm"
+                icon={Search}
+                title={`Nenhum resultado para "${search}"`}
+                action={
+                  <Button variant="outline" size="sm" onClick={() => setSearch('')}>
+                    Limpar busca
+                  </Button>
+                }
+              />
+            )
           )}
         </div>
 

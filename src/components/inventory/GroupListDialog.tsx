@@ -19,7 +19,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import GroupDialog from '@/components/groups/GroupDialog';
-import { searchMatchesAllTerms, splitSearchTerms } from '@/lib/searchUtils';
+import { searchMatchesAllTerms, splitSearchTerms, SEARCH_RENDER_CAP, capSearchResults, searchRefineHint } from '@/lib/searchUtils';
 
 interface GroupListDialogProps {
   open: boolean;
@@ -208,6 +208,15 @@ export function GroupListDialog({ open, onOpenChange }: GroupListDialogProps) {
     return items.filter(p => searchMatchesAllTerms(search, p.name, p.sku, p.color));
   }, [products, search]);
 
+  const groupsCap = useMemo(
+    () => capSearchResults(groupsWithProducts, SEARCH_RENDER_CAP),
+    [groupsWithProducts],
+  );
+  const ungroupedCap = useMemo(
+    () => capSearchResults(ungrouped, SEARCH_RENDER_CAP),
+    [ungrouped],
+  );
+
   const handleSaveEdit = () => {
     // no longer used - handled by GroupEditDialog
   };
@@ -274,7 +283,7 @@ export function GroupListDialog({ open, onOpenChange }: GroupListDialogProps) {
               )
             ) : (
               <Accordion type="multiple" className="space-y-1">
-                {groupsWithProducts.map(g => (
+                {groupsCap.visible.map(g => (
                   <AccordionItem
                     key={g.id}
                     value={g.id}
@@ -450,8 +459,13 @@ export function GroupListDialog({ open, onOpenChange }: GroupListDialogProps) {
                     </AccordionContent>
                   </AccordionItem>
                 ))}
+                {groupsCap.capped && (
+                  <p className="px-2 py-1.5 text-xs text-muted-foreground">
+                    {searchRefineHint(groupsCap.totalMatched, groupsCap.cap)}
+                  </p>
+                )}
 
-                {ungrouped.length > 0 && (
+                {ungroupedCap.totalMatched > 0 && (
                   <AccordionItem
                     value="__ungrouped"
                     className={`border rounded-lg px-1 border-dashed ${dragOverGroupId === '__ungrouped' ? 'border-primary bg-primary/5 ring-2 ring-primary/20' : ''}`}
@@ -465,7 +479,7 @@ export function GroupListDialog({ open, onOpenChange }: GroupListDialogProps) {
                         <div className="flex items-center gap-3">
                           <Package className="h-4 w-4 text-muted-foreground shrink-0" />
                           <span className="font-semibold text-sm text-muted-foreground">Sem grupo</span>
-                          <Badge variant="outline" className="text-xs font-mono">{ungrouped.length} itens</Badge>
+                          <Badge variant="outline" className="text-xs font-mono">{ungroupedCap.totalMatched} itens</Badge>
                         </div>
                       </AccordionTrigger>
                     </div>
@@ -476,7 +490,7 @@ export function GroupListDialog({ open, onOpenChange }: GroupListDialogProps) {
                         onDragLeave={handleDragLeave}
                         onDrop={(e) => handleDrop(e, null)}
                       >
-                        {ungrouped.map(p => (
+                        {ungroupedCap.visible.map(p => (
                           <div
                             key={p.id}
                             draggable
@@ -496,6 +510,11 @@ export function GroupListDialog({ open, onOpenChange }: GroupListDialogProps) {
                             </div>
                           </div>
                         ))}
+                        {ungroupedCap.capped && (
+                          <p className="px-2 py-1.5 text-xs text-muted-foreground">
+                            {searchRefineHint(ungroupedCap.totalMatched, ungroupedCap.cap)}
+                          </p>
+                        )}
                       </div>
                     </AccordionContent>
                   </AccordionItem>

@@ -8,10 +8,11 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { SearchableSelect, SearchLocatorStrip } from '@/components/ui/searchable-select';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn, getSoleModelName } from '@/lib/utils';
-import { normalizeForSearch, searchMatchesAllTerms } from '@/lib/searchUtils';
+import { normalizeForSearch, searchMatchesAllTerms, SEARCH_RENDER_CAP, capSearchResults, searchRefineHint } from '@/lib/searchUtils';
 import { useGroups, type ProductGroup } from '@/hooks/useGroups';
 import { useProducts } from '@/hooks/useProducts';
 import { getGroupPath } from '@/lib/groupHierarchy';
@@ -197,9 +198,14 @@ export function GroupMaterialSelect({
       ));
   }, [selectableGroups, search, groupIndex]);
 
+  const { visible: visibleOptions, capped, totalMatched, cap } = useMemo(
+    () => capSearchResults(filtered, SEARCH_RENDER_CAP),
+    [filtered],
+  );
+
   const sections = useMemo(() => {
     const byFamily = new Map<string, { label: string; options: GroupSelectOption[] }>();
-    for (const option of filtered) {
+    for (const option of visibleOptions) {
       const key = option.familyLabel || '__SEM_FAMILIA__';
       const section = byFamily.get(key) || {
         label: option.familyLabel || 'Grupos sem família',
@@ -215,7 +221,7 @@ export function GroupMaterialSelect({
         if (b.key === '__SEM_FAMILIA__') return -1;
         return a.label.localeCompare(b.label, 'pt-BR');
       });
-  }, [filtered]);
+  }, [visibleOptions]);
 
   const selectedGroup = useMemo(() => groups.find(group =>
     group.name.trim().localeCompare(value.trim(), 'pt-BR', { sensitivity: 'base' }) === 0), [groups, value]);
@@ -256,10 +262,25 @@ export function GroupMaterialSelect({
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-[var(--radix-popover-trigger-width)] min-w-[320px] max-w-[calc(100vw-2rem)] p-0" align="start">
-          <Command shouldFilter={false}>
+          <Command shouldFilter={false} label="Buscar família, grupo, SKU ou cor...">
+            <SearchLocatorStrip
+              label="Localizar material"
+              matchedCount={totalMatched}
+              totalCount={selectableGroups.length}
+              hasQuery={!!search.trim()}
+            />
             <CommandInput placeholder="Buscar família, grupo, SKU ou cor..." value={search} onValueChange={setSearch} />
             <CommandList>
-              <CommandEmpty>Nenhum grupo-folha encontrado</CommandEmpty>
+              <CommandEmpty>
+                {search ? (
+                  <span className="flex flex-col items-center gap-2">
+                    <span>Nenhum resultado para "{search}"</span>
+                    <Button type="button" variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button>
+                  </span>
+                ) : (
+                  'Nenhum grupo-folha encontrado'
+                )}
+              </CommandEmpty>
               {sections.map(section => (
                 <CommandGroup
                   key={section.key}
@@ -312,6 +333,11 @@ export function GroupMaterialSelect({
                   })}
                 </CommandGroup>
               ))}
+              {capped && (
+                <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                  {searchRefineHint(totalMatched, cap)}
+                </div>
+              )}
             </CommandList>
           </Command>
         </PopoverContent>
@@ -423,39 +449,21 @@ export function StrapGroupCombobox({ value, groups, onChange }: {
   groups: any[];
   onChange: (groupId: string) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState('');
-  const selected = groups.find((g: any) => g.id === value);
-  const filtered = useMemo(() => {
-    if (!search.trim()) return groups;
-    return groups.filter((g: any) => searchMatchesAllTerms(search, g.name));
-  }, [groups, search]);
+  const options = useMemo(
+    () => groups.map((g: any) => ({ value: g.id as string, label: String(g.name || '') })),
+    [groups],
+  );
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button variant="outline" role="combobox" aria-expanded={open}
-          className="w-[200px] h-8 px-2 text-xs font-normal justify-between">
-          <span className="truncate">{selected?.name || 'Grupo de material...'}</span>
-          <ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-[300px] p-0" align="start">
-        <Command shouldFilter={false}>
-          <CommandInput placeholder="Buscar tira/material..." value={search} onValueChange={setSearch} className="h-9 text-xs" />
-          <CommandList>
-            <CommandEmpty>Nenhum grupo encontrado.</CommandEmpty>
-            <CommandGroup>
-              {filtered.map((g: any) => (
-                <CommandItem key={g.id} value={g.id} onSelect={() => { onChange(g.id); setOpen(false); setSearch(''); }} className="text-xs">
-                  <Check className={cn('mr-2 h-3.5 w-3.5', value === g.id ? 'opacity-100' : 'opacity-0')} />
-                  {g.name}
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
+    <SearchableSelect
+      value={value}
+      onChange={onChange}
+      options={options}
+      placeholder="Grupo de material..."
+      searchPlaceholder="Buscar tira/material..."
+      searchLabel="Localizar grupo"
+      emptyText="Nenhum grupo encontrado."
+      className="h-8 w-[200px] px-2 text-xs"
+    />
   );
 }
 
@@ -524,11 +532,15 @@ export function SoleProductSelect({ label, value, onChange }: { label: string; v
     if (!search.trim()) return soleModels;
     return soleModels.filter((m) => searchMatchesAllTerms(search, m.name, m.sku, m.groupName));
   }, [soleModels, search]);
+  const { visible, capped, totalMatched, cap } = useMemo(
+    () => capSearchResults(filtered, SEARCH_RENDER_CAP),
+    [filtered],
+  );
 
   return (
     <div>
       <Label className="text-xs text-muted-foreground">{label}</Label>
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setSearch(''); }}>
         <PopoverTrigger asChild>
           <Button variant="outline" role="combobox" aria-expanded={open} className="mt-1 h-9 w-full justify-between text-sm font-normal">
             {value || 'Selecionar solado...'}
@@ -536,12 +548,27 @@ export function SoleProductSelect({ label, value, onChange }: { label: string; v
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-[350px] p-0" align="start">
-          <Command shouldFilter={false}>
+          <Command shouldFilter={false} label="Buscar solado...">
+            <SearchLocatorStrip
+              label="Localizar solado"
+              matchedCount={totalMatched}
+              totalCount={soleModels.length}
+              hasQuery={!!search.trim()}
+            />
             <CommandInput placeholder="Buscar solado..." value={search} onValueChange={setSearch} />
             <CommandList>
-              <CommandEmpty>Nenhum solado encontrado nos grupos de solado.</CommandEmpty>
-              <CommandGroup heading={`Modelos de solado (${filtered.length})`}>
-                {filtered.map((m) => (
+              <CommandEmpty>
+                {search ? (
+                  <span className="flex flex-col items-center gap-2">
+                    <span>Nenhum resultado para "{search}"</span>
+                    <Button type="button" variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button>
+                  </span>
+                ) : (
+                  'Nenhum solado encontrado nos grupos de solado.'
+                )}
+              </CommandEmpty>
+              <CommandGroup heading="Modelos de solado">
+                {visible.map((m) => (
                   <CommandItem key={m.id} value={m.id} onSelect={() => { onChange(m.name, m.group_id, m.id); setOpen(false); setSearch(''); }}>
                     <Check className={cn("mr-2 h-4 w-4", value === m.name ? "opacity-100" : "opacity-0")} />
                     <div className="flex flex-col">
@@ -552,6 +579,11 @@ export function SoleProductSelect({ label, value, onChange }: { label: string; v
                     </div>
                   </CommandItem>
                 ))}
+                {capped && (
+                  <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                    {searchRefineHint(totalMatched, cap)}
+                  </div>
+                )}
               </CommandGroup>
             </CommandList>
           </Command>
@@ -612,17 +644,25 @@ export function DirectComponentSelect({ label, value, onChange }: { label: strin
     if (!groupSearch.trim()) return groups;
     return groups.filter(g => searchMatchesAllTerms(groupSearch, g.name));
   }, [groups, groupSearch]);
+  const groupCap = useMemo(
+    () => capSearchResults(filteredGroups, SEARCH_RENDER_CAP),
+    [filteredGroups],
+  );
 
   const filteredItems = useMemo(() => {
     if (!itemSearch.trim()) return itemsOfGroup;
     return itemsOfGroup.filter((p: any) => searchMatchesAllTerms(itemSearch, p.name, p.sku, p.color));
   }, [itemsOfGroup, itemSearch]);
+  const itemCap = useMemo(
+    () => capSearchResults(filteredItems, SEARCH_RENDER_CAP),
+    [filteredItems],
+  );
 
   return (
     <div>
       <Label className="text-xs text-muted-foreground">{label}</Label>
       {/* Passo 1 — Grupo */}
-      <Popover open={groupOpen} onOpenChange={setGroupOpen}>
+      <Popover open={groupOpen} onOpenChange={(o) => { setGroupOpen(o); if (!o) setGroupSearch(''); }}>
         <PopoverTrigger asChild>
           <Button variant="outline" role="combobox" aria-expanded={groupOpen} className="mt-1 h-9 w-full justify-between text-sm font-normal">
             <span className="truncate">{effectiveGroupName || '1) Selecionar grupo...'}</span>
@@ -630,12 +670,27 @@ export function DirectComponentSelect({ label, value, onChange }: { label: strin
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-[350px] p-0" align="start">
-          <Command shouldFilter={false}>
+          <Command shouldFilter={false} label="Buscar grupo...">
+            <SearchLocatorStrip
+              label="Localizar grupo"
+              matchedCount={groupCap.totalMatched}
+              totalCount={groups.length}
+              hasQuery={!!groupSearch.trim()}
+            />
             <CommandInput placeholder="Buscar grupo..." value={groupSearch} onValueChange={setGroupSearch} />
             <CommandList>
-              <CommandEmpty>Nenhum grupo encontrado.</CommandEmpty>
-              <CommandGroup heading={`Grupos (${filteredGroups.length})`}>
-                {filteredGroups.map(g => (
+              <CommandEmpty>
+                {groupSearch ? (
+                  <span className="flex flex-col items-center gap-2">
+                    <span>Nenhum resultado para "{groupSearch}"</span>
+                    <Button type="button" variant="outline" size="sm" onClick={() => setGroupSearch('')}>Limpar busca</Button>
+                  </span>
+                ) : (
+                  'Nenhum grupo encontrado.'
+                )}
+              </CommandEmpty>
+              <CommandGroup heading="Grupos">
+                {groupCap.visible.map(g => (
                   <CommandItem key={g.id} value={g.id} onSelect={() => {
                     setGroupOverride(g.id);
                     // trocar de grupo invalida um item selecionado de outro grupo
@@ -646,13 +701,18 @@ export function DirectComponentSelect({ label, value, onChange }: { label: strin
                     <span className="text-sm">{g.name}</span>
                   </CommandItem>
                 ))}
+                {groupCap.capped && (
+                  <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                    {searchRefineHint(groupCap.totalMatched, groupCap.cap)}
+                  </div>
+                )}
               </CommandGroup>
             </CommandList>
           </Command>
         </PopoverContent>
       </Popover>
       {/* Passo 2 — Item do grupo (habilita só após escolher o grupo) */}
-      <Popover open={itemOpen} onOpenChange={(o) => { if (o && !effectiveGroupId) return; setItemOpen(o); }}>
+      <Popover open={itemOpen} onOpenChange={(o) => { if (o && !effectiveGroupId) return; setItemOpen(o); if (!o) setItemSearch(''); }}>
         <PopoverTrigger asChild>
           <Button variant="outline" role="combobox" aria-expanded={itemOpen} disabled={!effectiveGroupId}
             className="mt-1 h-9 w-full justify-between text-sm font-normal">
@@ -663,12 +723,27 @@ export function DirectComponentSelect({ label, value, onChange }: { label: strin
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-[350px] p-0" align="start">
-          <Command shouldFilter={false}>
+          <Command shouldFilter={false} label="Buscar item por nome, SKU ou cor...">
+            <SearchLocatorStrip
+              label="Localizar item"
+              matchedCount={itemCap.totalMatched}
+              totalCount={itemsOfGroup.length}
+              hasQuery={!!itemSearch.trim()}
+            />
             <CommandInput placeholder="Buscar item por nome, SKU ou cor..." value={itemSearch} onValueChange={setItemSearch} />
             <CommandList>
-              <CommandEmpty>Nenhum item ativo nesse grupo.</CommandEmpty>
-              <CommandGroup heading={`Itens do grupo (${filteredItems.length})`}>
-                {filteredItems.map((p: any) => (
+              <CommandEmpty>
+                {itemSearch ? (
+                  <span className="flex flex-col items-center gap-2">
+                    <span>Nenhum resultado para "{itemSearch}"</span>
+                    <Button type="button" variant="outline" size="sm" onClick={() => setItemSearch('')}>Limpar busca</Button>
+                  </span>
+                ) : (
+                  'Nenhum item ativo nesse grupo.'
+                )}
+              </CommandEmpty>
+              <CommandGroup heading="Itens do grupo">
+                {itemCap.visible.map((p: any) => (
                   <CommandItem key={p.id} value={p.id} onSelect={() => { onChange(p.id, p.name, Number(p.unit_price || 0), (p.unit || 'un').toString().trim() || 'un'); setItemOpen(false); setItemSearch(''); }}>
                     <Check className={cn("mr-2 h-4 w-4", value === p.id ? "opacity-100" : "opacity-0")} />
                     <div className="flex flex-col">
@@ -680,6 +755,11 @@ export function DirectComponentSelect({ label, value, onChange }: { label: strin
                     </div>
                   </CommandItem>
                 ))}
+                {itemCap.capped && (
+                  <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                    {searchRefineHint(itemCap.totalMatched, itemCap.cap)}
+                  </div>
+                )}
               </CommandGroup>
             </CommandList>
           </Command>

@@ -7,10 +7,16 @@ import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { SearchLocatorStrip } from '@/components/ui/searchable-select';
 import { Check, CaretUpDown as ChevronsUpDown, Plus, Circle, Warning as AlertTriangle, Package } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import {
+  SEARCH_RENDER_CAP,
+  capSearchResults,
+  searchMatchesAllTerms,
+  searchRefineHint,
+} from '@/lib/searchUtils';
 
 interface ColorLookupSelectProps {
   label: string;
@@ -75,6 +81,11 @@ export function ColorLookupSelect({ label, value, onChange, required }: ColorLoo
     );
   }, [colors, search]);
 
+  const { visible, capped, totalMatched, cap } = useMemo(
+    () => capSearchResults(filtered, SEARCH_RENDER_CAP),
+    [filtered],
+  );
+
   const handleAddColor = async () => {
     if (!newColorName.trim()) return;
     const result = await addColor.mutateAsync({
@@ -118,7 +129,13 @@ export function ColorLookupSelect({ label, value, onChange, required }: ColorLoo
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-[350px] p-0" align="start">
-            <Command shouldFilter={false}>
+            <Command shouldFilter={false} label="Buscar por nome, código, HEX ou Pantone…">
+              <SearchLocatorStrip
+                label="Localizar cor"
+                matchedCount={totalMatched}
+                totalCount={colors.length}
+                hasQuery={!!search.trim()}
+              />
               <CommandInput placeholder="Buscar por nome, código, HEX ou Pantone…" value={search} onValueChange={setSearch} />
               <CommandList>
                 <CommandEmpty>
@@ -127,8 +144,8 @@ export function ColorLookupSelect({ label, value, onChange, required }: ColorLoo
                     <Button variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button>
                   </div>
                 </CommandEmpty>
-                <CommandGroup heading={`Cores disponíveis (${filtered.length})`}>
-                  {filtered.map(c => (
+                <CommandGroup heading="Cores disponíveis">
+                  {visible.map(c => (
                     <CommandItem key={c.id} value={c.id} onSelect={() => { onChange(c.id); setOpen(false); setSearch(''); }}>
                       <Check className={cn("mr-2 h-4 w-4", value === c.id ? "opacity-100" : "opacity-0")} />
                       <div className="flex items-center gap-2 flex-1">
@@ -146,6 +163,11 @@ export function ColorLookupSelect({ label, value, onChange, required }: ColorLoo
                       </div>
                     </CommandItem>
                   ))}
+                  {capped && (
+                    <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                      {searchRefineHint(totalMatched, cap)}
+                    </div>
+                  )}
                 </CommandGroup>
               </CommandList>
               <div className="border-t p-2">

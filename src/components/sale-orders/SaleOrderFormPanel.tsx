@@ -45,18 +45,20 @@ import { strapColorMode, technicalStrapLineId } from '@/lib/technicalStrapLines'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
- import { cn } from '@/lib/utils';
- import { toast } from 'sonner';
- import {
-   AlertDialog,
-   AlertDialogAction,
-   AlertDialogCancel,
-   AlertDialogContent,
-   AlertDialogDescription,
-   AlertDialogFooter,
-   AlertDialogHeader,
-   AlertDialogTitle,
- } from "@/components/ui/alert-dialog";
+import { SearchLocatorStrip } from '@/components/ui/searchable-select';
+import { SEARCH_RENDER_CAP, capSearchResults, searchMatchesAllTerms, searchRefineHint } from '@/lib/searchUtils';
+import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 
 interface Client {
@@ -309,6 +311,7 @@ function SearchableClientSelect({ clients, value, onSelect }: {
   onSelect: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
   const selected = clients.find(c => c.id === value);
   const label = selected
     ? `${selected.client_number ? `#${selected.client_number} — ` : ''}${selected.razao_social}`
@@ -336,8 +339,23 @@ function SearchableClientSelect({ clients, value, onSelect }: {
       .filter(Boolean) as typeof clients;
   }, [recentClientNames, clients]);
 
+  const filteredClients = useMemo(() => {
+    if (!search.trim()) return clients;
+    return clients.filter(c =>
+      searchMatchesAllTerms(search, c.razao_social, c.cnpj, c.client_number != null ? String(c.client_number) : null),
+    );
+  }, [clients, search]);
+
+  const { visible, capped, totalMatched, cap } = useMemo(
+    () => capSearchResults(filteredClients, SEARCH_RENDER_CAP),
+    [filteredClients],
+  );
+
+  const clientDisplay = (c: typeof clients[number], withCnpj = false) =>
+    `${c.client_number ? `#${c.client_number} — ` : ''}${c.razao_social}${withCnpj && c.cnpj ? ` (${c.cnpj})` : ''}`;
+
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setSearch(''); }}>
       <PopoverTrigger asChild>
         <Button variant="outline" role="combobox" aria-expanded={open} className="h-9 w-full justify-between font-normal text-left">
           <span className="truncate">{label}</span>
@@ -345,42 +363,61 @@ function SearchableClientSelect({ clients, value, onSelect }: {
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
-        <Command>
-          <CommandInput placeholder="Buscar por nome, CNPJ ou código..." />
+        <Command shouldFilter={false} label="Buscar por nome, CNPJ ou código...">
+          <SearchLocatorStrip
+            label="Localizar cliente"
+            matchedCount={totalMatched}
+            totalCount={clients.length}
+            hasQuery={!!search.trim()}
+          />
+          <CommandInput
+            placeholder="Buscar por nome, CNPJ ou código..."
+            aria-label="Buscar por nome, CNPJ ou código..."
+            value={search}
+            onValueChange={setSearch}
+          />
           <CommandList>
-            <CommandEmpty>Nenhum cliente encontrado.</CommandEmpty>
-            {recentClients.length > 0 && (
+            <CommandEmpty>
+              {search ? (
+                <span className="flex flex-col items-center gap-2">
+                  <span>Nenhum resultado para "{search}"</span>
+                  <Button type="button" variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button>
+                </span>
+              ) : (
+                'Nenhum cliente encontrado.'
+              )}
+            </CommandEmpty>
+            {!search.trim() && recentClients.length > 0 && (
               <CommandGroup heading="Recentes">
-                {recentClients.map(c => {
-                  const display = `${c.client_number ? `#${c.client_number} — ` : ''}${c.razao_social}`;
-                  return (
-                    <CommandItem
-                      key={`recent-${c.id}`}
-                      value={`${display} ${c.cnpj || ''}`}
-                      onSelect={() => { onSelect(c.id); setOpen(false); }}
-                    >
-                      <History className="mr-2 h-3 w-3 text-muted-foreground" />
-                      <Check className={cn('mr-2 h-3.5 w-3.5', value === c.id ? 'opacity-100' : 'opacity-0')} />
-                      <span className="truncate">{display}</span>
-                    </CommandItem>
-                  );
-                })}
+                {recentClients.map(c => (
+                  <CommandItem
+                    key={`recent-${c.id}`}
+                    value={c.id}
+                    onSelect={() => { onSelect(c.id); setOpen(false); setSearch(''); }}
+                  >
+                    <History className="mr-2 h-3 w-3 text-muted-foreground" />
+                    <Check className={cn('mr-2 h-3.5 w-3.5', value === c.id ? 'opacity-100' : 'opacity-0')} />
+                    <span className="truncate">{clientDisplay(c)}</span>
+                  </CommandItem>
+                ))}
               </CommandGroup>
             )}
-            <CommandGroup heading={recentClients.length > 0 ? 'Todos os Clientes' : undefined}>
-              {clients.map(c => {
-                const display = `${c.client_number ? `#${c.client_number} — ` : ''}${c.razao_social} ${c.cnpj ? `(${c.cnpj})` : ''}`;
-                return (
-                  <CommandItem
-                    key={c.id}
-                    value={display}
-                    onSelect={() => { onSelect(c.id); setOpen(false); }}
-                  >
-                    <Check className={cn('mr-2 h-3.5 w-3.5', value === c.id ? 'opacity-100' : 'opacity-0')} />
-                    {display}
-                  </CommandItem>
-                );
-              })}
+            <CommandGroup heading={recentClients.length > 0 && !search.trim() ? 'Todos os Clientes' : undefined}>
+              {visible.map(c => (
+                <CommandItem
+                  key={c.id}
+                  value={c.id}
+                  onSelect={() => { onSelect(c.id); setOpen(false); setSearch(''); }}
+                >
+                  <Check className={cn('mr-2 h-3.5 w-3.5', value === c.id ? 'opacity-100' : 'opacity-0')} />
+                  <span className="truncate">{clientDisplay(c, true)}</span>
+                </CommandItem>
+              ))}
+              {capped && (
+                <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                  {searchRefineHint(totalMatched, cap)}
+                </div>
+              )}
             </CommandGroup>
           </CommandList>
         </Command>

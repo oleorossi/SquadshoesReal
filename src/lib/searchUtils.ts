@@ -121,3 +121,37 @@ export function searchNormOrFilter(query: string | null | undefined, column = 's
   if (tokens.length === 1) return `${column}.ilike.%${tokens[0]}%`;
   return `and(${tokens.map(t => `${column}.ilike.%${t}%`).join(',')})`;
 }
+
+/**
+ * Teto padrão de renderização pra pickers/dialogs de busca.
+ * Com catálogos grandes, montar tudo no DOM trava a abertura — o refino
+ * vem da digitação, não do scroll. Espelhado no SearchableSelect.
+ */
+export const SEARCH_RENDER_CAP = 100;
+
+/**
+ * Corta a lista filtrada no teto de renderização dos localizadores.
+ * `totalMatched` = tamanho real do filtro (pro contador / hint);
+ * `visible` = o que entra no DOM; `capped` = se houve corte.
+ */
+export function capSearchResults<T>(
+  filtered: T[],
+  cap: number = SEARCH_RENDER_CAP,
+): { visible: T[]; capped: boolean; totalMatched: number; cap: number } {
+  const totalMatched = filtered.length;
+  const safeCap = Number.isFinite(cap) && cap > 0 ? Math.floor(cap) : SEARCH_RENDER_CAP;
+  if (totalMatched <= safeCap) {
+    return { visible: filtered, capped: false, totalMatched, cap: safeCap };
+  }
+  return {
+    visible: filtered.slice(0, safeCap),
+    capped: true,
+    totalMatched,
+    cap: safeCap,
+  };
+}
+
+/** Texto do rodapé quando a lista filtrada ultrapassa o teto. */
+export function searchRefineHint(totalMatched: number, cap: number = SEARCH_RENDER_CAP): string {
+  return `Mostrando ${cap} de ${totalMatched} — digite pra refinar`;
+}
