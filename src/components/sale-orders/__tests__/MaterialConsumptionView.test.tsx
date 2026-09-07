@@ -214,6 +214,7 @@ describe('MaterialConsumptionView — tela buy-first', () => {
     renderView({ onGerarOC });
     await userEvent.setup().click(screen.getByRole('button', { name: /Gerar ordem de compra/i }));
     expect(onGerarOC).toHaveBeenCalledOnce();
+    expect(onGerarOC).toHaveBeenCalledWith({ grossNeed: false });
   });
 
   it('mantém Gerar ordem de compra visível no modo Consumo total', async () => {
@@ -224,6 +225,7 @@ describe('MaterialConsumptionView — tela buy-first', () => {
     expect(screen.getByRole('button', { name: /Gerar ordem de compra/i })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Gerar ordem de compra/i }));
     expect(onGerarOC).toHaveBeenCalledOnce();
+    expect(onGerarOC).toHaveBeenCalledWith({ grossNeed: true });
   });
 
   it('gera um PDF real no servidor em vez de usar a impressão solta do navegador', async () => {
