@@ -521,8 +521,8 @@ describe('materialConsumptionReport', () => {
       ],
     });
 
-    expect(html).toContain('Custo/un');
-    expect(html).toContain('Custo total');
+    expect(html).toContain('Preço unitário');
+    expect(html).toContain('Valor a gastar');
     expect(html).toContain('NAPA MADRID');
     expect(html).toContain('OFF WHITE');
     expect(html).toContain('R$\u00a012,50');

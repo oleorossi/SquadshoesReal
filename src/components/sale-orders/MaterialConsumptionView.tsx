@@ -1061,8 +1061,8 @@ export default function MaterialConsumptionView({
                   <TableHead aria-sort={sortKey === 'productUnit' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined} className="w-20">
                     <button type="button" className="flex w-full select-none items-center justify-center hover:text-foreground" onClick={() => handleSort('productUnit')}>Un <SortIcon col="productUnit" /></button>
                   </TableHead>
-                  <TableHead className="w-28 text-right">Custo/un</TableHead>
-                  <TableHead className="w-32 text-right">Custo total</TableHead>
+                  <TableHead className="w-28 text-right">Preço unitário</TableHead>
+                  <TableHead className="w-32 text-right">Valor a gastar</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
