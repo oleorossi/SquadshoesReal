@@ -7,7 +7,7 @@ export type EffectiveStrapPvOrigem = StrapPvOrigem | 'sku_acabado';
 
 /**
  * Padrão do seletor quando Hub = escolhe_no_pv e o operador ainda não escolheu.
- * "Prestador mais OS" — remessa de napa + OS (specs/origem-tira-pv-hub-os.md).
+ * "Comprar pronto" (= prestador + OS + remessa de napa) — specs/origem-tira-pv-hub-os.md.
  */
 export const DEFAULT_STRAP_PV_ORIGEM: StrapPvOrigem = 'prestador';
 
@@ -120,6 +120,9 @@ export interface StrapHubIncompleteMeasureGap {
 /**
  * Gaps de Hub para a origem efetiva. Frete/prestador padrão entram na fatia
  * da OS automática (RPC) — aqui só preços da medida.
+ *
+ * ⚠ Origem fábrica NÃO exige mão de obra do prestador. Só `prestador` cobra
+ * `preco_prestador_per_m`; fábrica cobra (quando o save quiser) o artesanal.
  */
 export function listStrapHubIncompleteForOrigem(
   lines: readonly StrapPvOrigemLineLike[] | null | undefined,
@@ -132,6 +135,7 @@ export function listStrapHubIncompleteForOrigem(
     const effective = resolveEffectiveStrapPvOrigem(line, measure);
     const label = (line.label || `Tira ${index + 1}`).trim() || `Tira ${index + 1}`;
     const measureId = line.measure_id || null;
+    // Fábrica / SKU acabado / sem origem: nunca emitir gap de MO do prestador.
     if (effective === 'fabrica') {
       const price = Number(measure?.preco_artesanal_per_m);
       if (!(price > 0)) {
@@ -142,6 +146,7 @@ export function listStrapHubIncompleteForOrigem(
           message: `${label}: cadastre o preço artesanal (R$/m) no Hub de Tiras.`,
         });
       }
+      continue;
     }
     if (effective === 'prestador') {
       const price = Number(measure?.preco_prestador_per_m);

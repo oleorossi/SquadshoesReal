@@ -75,6 +75,38 @@ describe('strapPvOrigem', () => {
     expect(grouped.find((gap) => gap.measureId === 'm2')?.needsArtesanal).toBe(true);
   });
 
+  it('fábrica nunca exige mão de obra do prestador (mesmo sem preco_prestador)', () => {
+    const issues = listStrapHubIncompleteForOrigem(
+      [
+        { label: 'TIRA 1', measure_id: 'm1', pv_origem: 'fabrica' },
+        { label: 'TIRA 2', measure_id: 'm1', pv_origem: 'fabrica' },
+      ],
+      [
+        {
+          id: 'm1',
+          origem_padrao: 'escolhe_no_pv',
+          preco_artesanal_per_m: 0.8,
+          preco_prestador_per_m: null,
+        },
+      ],
+    );
+    expect(issues).toEqual([]);
+    expect(issues.some((issue) => issue.code === 'preco_prestador_ausente')).toBe(false);
+  });
+
+  it('Hub sempre_fabrica ignora pv_origem=prestador residual e não cobra MO', () => {
+    const issues = listStrapHubIncompleteForOrigem(
+      [{ label: 'TIRA 1', measure_id: 'm1', pv_origem: 'prestador' }],
+      [{
+        id: 'm1',
+        origem_padrao: 'sempre_fabrica',
+        preco_artesanal_per_m: 1,
+        preco_prestador_per_m: null,
+      }],
+    );
+    expect(issues.map((issue) => issue.code)).toEqual([]);
+  });
+
   it('frete/m exige Y > 0', () => {
     expect(strapFreightPerMeter(80, 1600)).toBeCloseTo(0.05);
     expect(strapFreightPerMeter(80, 0)).toBeNull();

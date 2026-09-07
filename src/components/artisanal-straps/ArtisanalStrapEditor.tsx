@@ -821,22 +821,26 @@ export function ArtisanalStrapEditor({
 
                 {canSeeFinancial && form.origemPadrao !== 'sempre_sku_acabado' && (
                   <div className="grid gap-3 sm:grid-cols-2 sm:col-span-2">
-                    <div className="space-y-1.5">
-                      <Label>Preço artesanal (R$/m)</Label>
-                      <NumberInput
-                        value={form.precoArtesanalPerM}
-                        onChange={(value) => setField('precoArtesanalPerM', value)}
-                        disabled={readOnly}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>Mão de obra prestador (R$/m)</Label>
-                      <NumberInput
-                        value={form.precoPrestadorPerM}
-                        onChange={(value) => setField('precoPrestadorPerM', value)}
-                        disabled={readOnly}
-                      />
-                    </div>
+                    {(form.origemPadrao === 'sempre_fabrica' || form.origemPadrao === 'escolhe_no_pv') && (
+                      <div className="space-y-1.5">
+                        <Label>Preço artesanal (R$/m)</Label>
+                        <NumberInput
+                          value={form.precoArtesanalPerM}
+                          onChange={(value) => setField('precoArtesanalPerM', value)}
+                          disabled={readOnly}
+                        />
+                      </div>
+                    )}
+                    {form.origemPadrao === 'escolhe_no_pv' && (
+                      <div className="space-y-1.5">
+                        <Label>Mão de obra prestador (R$/m)</Label>
+                        <NumberInput
+                          value={form.precoPrestadorPerM}
+                          onChange={(value) => setField('precoPrestadorPerM', value)}
+                          disabled={readOnly}
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
 
