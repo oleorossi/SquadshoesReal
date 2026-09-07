@@ -38,10 +38,11 @@ describe('upsert de PAPEL do solado sem ON CONFLICT inválido', () => {
     expect(setRole).toContain(".eq('sole_group_id', params.soleGroupId)");
     expect(setRole).toContain(".eq('role', params.role)");
     expect(setRole).toContain('.maybeSingle()');
-    expect(setRole).toContain('.update(payload)');
+    expect(setRole).toContain('.update(updatePayload)');
     expect(setRole).toContain('.insert(payload)');
     expect(setRole).not.toContain('onConflict');
     expect(setRole).not.toContain('.upsert(');
+    expect(setRole).not.toContain('as any');
   });
 
   it('a migration de origem criou o índice parcial (histórico do bug)', () => {
