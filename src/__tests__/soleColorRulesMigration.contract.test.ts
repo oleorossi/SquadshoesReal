@@ -24,7 +24,11 @@ describe('migration de regras de cor do solado', () => {
     expect(SQL).toMatch(/CREATE OR REPLACE FUNCTION public\.resolve_sole_for_variant_color/);
     expect(SQL).toMatch(/resolve_sole_for_variant_color\(p_material_variant_id, p_color\)/);
     expect(SQL).toMatch(/resolve_sole_for_variant_color\(v_variant_id, p_color\)/);
-    expect(SQL).toMatch(/IF v_variant_id IS NULL AND v_resolved_product_id IS NULL THEN/);
+    // O gate `v_variant_id IS NULL AND …` foi regressão desta migration e é
+    // revertido por 08000/16700 — ver soleDebitVariantFallback.contract.test.ts.
+    // Aqui só travamos a troca do resolver color-aware no débito.
+    expect(SQL).toMatch(/resolve_sole_for_variant_color\(v_variant_id, p_color\)/);
+    expect(SQL).toMatch(/\$patch_debit\$/);
   });
 
   it('expõe diagnóstico para variante física ausente', () => {
