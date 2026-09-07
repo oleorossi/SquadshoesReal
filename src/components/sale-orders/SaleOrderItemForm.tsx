@@ -14,6 +14,7 @@ import { resolveSaleOrderItemPrice, type SaleOrderPriceResolution } from '@/lib/
 import {
   SaleOrderItemFormData,
   isProductionExcludedSaleOrderItem,
+  saleOrderItemQuantityFromGrade,
 } from '@/hooks/useSaleOrders';
 import { useAccessControl } from '@/hooks/useAccessControl';
 // StockAvailabilityBadge removido do form — checagem só no save
@@ -129,6 +130,8 @@ interface Props {
   canRemove: boolean;
   isAdmin: boolean;
   onUpdate: (idx: number, field: string, value: any) => void;
+  /** Patch multi-campo num único setState (grade+quantity, fichas+quantity). */
+  onUpdateFields?: (idx: number, patch: Partial<SaleOrderItemFormData>) => void;
   onRemove: (idx: number) => void;
   onCopyGradeFromPrevious?: (idx: number) => void;
   onSaveStateAndNavigate?: () => void;
@@ -189,7 +192,7 @@ function materialBaseForStrap(strap: ReconcileStrapLineLike, inheritedBase?: str
   });
 }
 
-function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, onUpdate, onRemove, onCopyGradeFromPrevious, onSaveStateAndNavigate, isSelected, onToggleSelect, priceLookup, maxDiscountPct = 0, variantsByRef = EMPTY_VARIANTS_BY_REF, onColorIssueChange, onSheetMaterialSelectableChange, saleOrderId, saleOrderStatus, billingWeek, requiredAt }: Props) {
+function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, onUpdate, onUpdateFields, onRemove, onCopyGradeFromPrevious, onSaveStateAndNavigate, isSelected, onToggleSelect, priceLookup, maxDiscountPct = 0, variantsByRef = EMPTY_VARIANTS_BY_REF, onColorIssueChange, onSheetMaterialSelectableChange, saleOrderId, saleOrderStatus, billingWeek, requiredAt }: Props) {
   const qc = useQueryClient();
   const access = useAccessControl();
   const { canSeeFinancialValues } = access;
@@ -200,7 +203,18 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   const productionExcluded = isProductionExcludedSaleOrderItem(item);
   const { data: strapCatalog, isLoading: strapCatalogLoading } = useArtisanalStrapCatalog(false);
   const fichas = item.fichas || 1;
-  const setFichas = (v: number) => onUpdate(index, 'fichas', v);
+  const setFichas = (v: number) => {
+    const nextFichas = Math.max(1, v);
+    const patch = {
+      fichas: nextFichas,
+      quantity: saleOrderItemQuantityFromGrade(item.grade, nextFichas),
+    };
+    if (onUpdateFields) onUpdateFields(index, patch);
+    else {
+      onUpdate(index, 'fichas', nextFichas);
+      onUpdate(index, 'quantity', patch.quantity);
+    }
+  };
 
   // editColorsDialog removido — variante de cor não é mais editada no PV.
   const [strapResolutionOpen, setStrapResolutionOpen] = useState(false);
@@ -1400,6 +1414,8 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     }
   }, [variantCabedalColor, hasStrapsEffective, item.color, preserveCommittedStrapSnapshot]);
 
+  // Safety net: se quantity divergir de Σgrade×fichas (carga legada / bulk
+  // antigo), alinha. O caminho quente (grade/fichas) já grava os dois juntos.
   useEffect(() => {
     if (totalPairs !== item.quantity) {
       const { index: idx, onUpdate: update } = latestRef.current;
@@ -1408,7 +1424,16 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   }, [totalPairs, item.quantity]);
 
   const handleGradeChange = (size: string, value: number) => {
-    onUpdate(index, 'grade', { ...grade, [size]: value });
+    const nextGrade = { ...grade, [size]: value };
+    const patch = {
+      grade: nextGrade,
+      quantity: saleOrderItemQuantityFromGrade(nextGrade, fichas),
+    };
+    if (onUpdateFields) onUpdateFields(index, patch);
+    else {
+      onUpdate(index, 'grade', nextGrade);
+      onUpdate(index, 'quantity', patch.quantity);
+    }
   };
 
   const finalGrade: Record<string, number> = {};
@@ -1432,7 +1457,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
 
   return (
     <div
-      className={`rounded-lg border shadow-sm overflow-hidden mb-4 transition-all hover:border-primary/30 ${isSelected ? 'bg-primary/5 border-primary/40' : 'bg-card'}`}
+      className={`rounded-lg border shadow-sm overflow-hidden mb-4 transition-colors hover:border-primary/30 ${isSelected ? 'bg-primary/5 border-primary/40' : 'bg-card'}`}
       aria-disabled={productionExcluded || undefined}
     >
       {/* Item header bar */}
@@ -2064,7 +2089,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                       }}
                       onFocus={e => e.target.select()}
                       className={cn(
-                        "w-full h-10 text-sm font-mono text-center rounded border transition-all",
+                        "w-full h-10 text-sm font-mono text-center rounded border transition-colors",
                         val > 0 ? 'border-primary/50 bg-primary/5 font-bold ring-1 ring-primary/10' : 'border-input hover:bg-muted/30',
                         isConjugated && 'border-primary/30',
                         isOrphan && 'border-amber-400 bg-amber-50 dark:bg-amber-950/30 ring-1 ring-amber-300/40',

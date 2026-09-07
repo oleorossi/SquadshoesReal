@@ -24,6 +24,7 @@ import {
   buildExtraItemColumns,
   filterProductionSaleOrderItems,
   withoutProductionExclusionMetadata,
+  withSaleOrderItemClientKey,
   useCreateSaleOrder,
   useUpdateSaleOrder,
   SaleOrderFormData,
@@ -102,12 +103,12 @@ const emptyForm: SaleOrderFormData = {
   external_nfe_number: '',
 };
 
-const emptyItem: SaleOrderItemFormData = {
+const emptyItem = (): SaleOrderItemFormData => withSaleOrderItemClientKey({
   reference_id: '', color: '', grade: {}, unit_price: 0, quantity: 0, fichas: 1, observation: null,
   selected_terceirizacao_ids: [],
   terceirizacao_quantities: {},
   outsourced_sectors: {},
-};
+});
 
 type SaleOrderSnapshotHeader = Database['public']['Tables']['sale_orders']['Row'] & {
   order_version?: number | null;
@@ -527,7 +528,7 @@ export default function SaleOrderForm() {
   };
 
   const [form, setForm] = useState<SaleOrderFormData>(emptyForm);
-  const [items, setItems] = useState<SaleOrderItemFormData[]>([{ ...emptyItem }]);
+  const [items, setItems] = useState<SaleOrderItemFormData[]>([emptyItem()]);
   const originalStrapSourcingRef = useRef(new Map<string, {
     revision: number;
     lines: NonNullable<SaleOrderItemFormData['strap_sourcing']>;
@@ -606,7 +607,7 @@ export default function SaleOrderForm() {
         );
       }
       setForm({ ...emptyForm, ...seed.form });
-      setItems(seed.items);
+      setItems(seed.items.map(withSaleOrderItemClientKey));
       setSelectedClientId(seed.selectedClientId || '');
       const n = seed.items.length;
       toast.success(
@@ -626,7 +627,7 @@ export default function SaleOrderForm() {
       if (parsed?.ownerId === user.id && (parsed?.form || parsed?.items?.length)) {
         setPendingDraft({
           form: parsed.form ?? emptyForm,
-          items: parsed.items?.length ? parsed.items : [{ ...emptyItem }],
+          items: parsed.items?.length ? parsed.items : [emptyItem()],
           selectedClientId: parsed.selectedClientId ?? '',
           packagingProductId: parsed.packagingProductId ?? '',
           packagingQuantity: parsed.packagingQuantity ?? 0,
@@ -675,7 +676,7 @@ export default function SaleOrderForm() {
     if (!pendingDraft) return;
     preserveExistingDraftRef.current = false;
     setForm(pendingDraft.form);
-    setItems(pendingDraft.items);
+    setItems(pendingDraft.items.map(withSaleOrderItemClientKey));
     setSelectedClientId(pendingDraft.selectedClientId);
     setPackagingProductId(pendingDraft.packagingProductId);
     setPackagingQuantity(pendingDraft.packagingQuantity);
@@ -736,7 +737,7 @@ export default function SaleOrderForm() {
       setOrderLoaded(false);
       setLoadError(null);
       setForm(emptyForm);
-      setItems([{ ...emptyItem }]);
+      setItems([emptyItem()]);
       editorBaselineReadyRef.current = false;
       originalItemsSigRef.current = null;
       originalDeadlineRef.current = null;
@@ -766,7 +767,7 @@ export default function SaleOrderForm() {
   const [hasUnsavedEdits, setHasUnsavedEdits] = useState(false);
   const editorBaselineRevisionRef = useRef(buildSaleOrderEditorRevision({
     form: emptyForm,
-    items: [{ ...emptyItem }],
+    items: [emptyItem()],
     selectedClientId: '',
     packagingProductId: '',
     packagingQuantity: 0,
@@ -1020,7 +1021,7 @@ export default function SaleOrderForm() {
       const nextPackagingProductId = order.packaging_product_id || '';
       const nextPackagingQuantity = Number(order.packaging_quantity) || 0;
       const nextClientId = String(order.client_id || '');
-      let nextItems: SaleOrderItemFormData[] = [{ ...emptyItem }];
+      let nextItems: SaleOrderItemFormData[] = [emptyItem()];
       if (persistedItems.length > 0) {
         const mapped = persistedItems.map(i => mapLoadedSaleOrderItem(i, canonicalReferenceIdMap));
         // Sort items so that the same reference (and color) always appears together in editing

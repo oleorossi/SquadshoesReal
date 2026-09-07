@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { napaDisplayName, type StrapSourceMode, type StrapSourcingMap } from '@/lib/strapSourcing';
 import { technicalStrapLineId } from '@/lib/technicalStrapLines';
@@ -112,31 +113,53 @@ function cacheKey(input: StrapStockLinesInput): string {
   });
 }
 
+/** Debounce só de grade/qty — ref/cor/sourcing mudam com menos frequência e
+ *  devem refetch na hora; digitar grade não deve disparar RPC a cada tecla. */
+function useDebouncedGradeQuantity(
+  grade: StrapStockLinesInput['grade'],
+  quantity: StrapStockLinesInput['quantity'],
+  ms = 400,
+): { grade: StrapStockLinesInput['grade']; quantity: StrapStockLinesInput['quantity'] } {
+  const [debounced, setDebounced] = useState({ grade, quantity });
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebounced({ grade, quantity }), ms);
+    return () => window.clearTimeout(t);
+  }, [grade, quantity, ms]);
+  return debounced;
+}
+
 export function useStrapStockLines(input: StrapStockLinesInput, enabled = true) {
   const straps = Array.isArray(input.strapColors) ? input.strapColors as StrapColorEntry[] : [];
   const hasStraps = straps.some((strap) => !!technicalStrapLineId(strap));
+  const debounced = useDebouncedGradeQuantity(input.grade, input.quantity, 400);
+  const queryInput: StrapStockLinesInput = {
+    ...input,
+    grade: debounced.grade,
+    quantity: debounced.quantity,
+  };
 
   return useQuery<StrapStockLine[]>({
-    queryKey: ['strap_stock_lines_preview', cacheKey(input)],
+    queryKey: ['strap_stock_lines_preview', cacheKey(queryInput)],
     enabled: enabled && !!input.referenceId && hasStraps,
     staleTime: 30_000,
     gcTime: 5 * 60_000,
+    placeholderData: keepPreviousData,
     queryFn: async () => {
       const { data, error } = await rpc('preview_sale_order_strap_demand_draft', {
         p_item: {
-          reference_id: input.referenceId,
-          sale_order_id: input.saleOrderId || null,
-          sale_order_item_id: input.saleOrderItemId || null,
-          material_variant_id: input.materialVariantId || null,
-          color: input.itemColor || null,
-          quantity: Number(input.quantity) || 0,
-          grade: input.grade || {},
+          reference_id: queryInput.referenceId,
+          sale_order_id: queryInput.saleOrderId || null,
+          sale_order_item_id: queryInput.saleOrderItemId || null,
+          material_variant_id: queryInput.materialVariantId || null,
+          color: queryInput.itemColor || null,
+          quantity: Number(queryInput.quantity) || 0,
+          grade: queryInput.grade || {},
           strap_colors: straps,
-          strap_sourcing: input.strapSourcing || {},
-          billing_week: input.billingWeek || null,
-          main_production_start: input.mainProductionStart || null,
-          required_at: input.requiredAt || null,
-          schedule_revision: input.scheduleRevision || 0,
+          strap_sourcing: queryInput.strapSourcing || {},
+          billing_week: queryInput.billingWeek || null,
+          main_production_start: queryInput.mainProductionStart || null,
+          required_at: queryInput.requiredAt || null,
+          schedule_revision: queryInput.scheduleRevision || 0,
         },
       });
       if (error) throw error;

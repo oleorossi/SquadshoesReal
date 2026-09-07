@@ -87,15 +87,33 @@ export function buildExtraItemColumns(item: SaleOrderItemFormData): Record<strin
 export function withoutProductionExclusionMetadata(
   item: SaleOrderItemFormData,
 ): Omit<SaleOrderItemFormData,
-  'production_excluded_at' | 'production_exclusion_reason' | 'production_exclusion_request_id'> {
+  'production_excluded_at' | 'production_exclusion_reason' | 'production_exclusion_request_id' | 'clientKey'> {
   const {
     production_excluded_at: _productionExcludedAt,
     production_exclusion_reason: _productionExclusionReason,
     production_exclusion_request_id: _productionExclusionRequestId,
     production_excluded_by: _productionExcludedBy,
+    clientKey: _clientKey,
     ...writable
   } = item as SaleOrderItemFormData & { production_excluded_by?: string | null };
   return writable;
+}
+
+/** Pares do item = Σgrade × fichas. Fonte única pra sync grade→quantity. */
+export function saleOrderItemQuantityFromGrade(
+  grade: Record<string, number> | null | undefined,
+  fichas: number | null | undefined,
+): number {
+  const gradeTotal = Object.values(grade || {}).reduce((s, v) => s + (Number(v) || 0), 0);
+  return gradeTotal * Math.max(1, Number(fichas) || 1);
+}
+
+/** Garante `clientKey` estável em item sem `id` (lista React / remount). */
+export function withSaleOrderItemClientKey(
+  item: SaleOrderItemFormData,
+): SaleOrderItemFormData {
+  if (item.id || item.clientKey) return item;
+  return { ...item, clientKey: crypto.randomUUID() };
 }
 
 export function isProductionExcludedSaleOrderItem(
@@ -522,6 +540,10 @@ export type SaleOrderItemFormData = {
    *  para o item (OP, OS, alocação de lote) tem o vínculo destruído a cada
    *  salvamento. Ver migration 20260919120000. */
   id?: string;
+  /** Chave só de UI pra `key={…}` em item ainda sem `id` (PV novo / rascunho).
+   *  Nunca vai pro banco — `withoutProductionExclusionMetadata` e o payload
+   *  explícito de update a descartam. */
+  clientKey?: string;
   /** Estado somente-leitura de uma linha preservada no histórico comercial,
    * mas retirada definitivamente da produção pelo comando administrativo. */
   production_excluded_at?: string | null;

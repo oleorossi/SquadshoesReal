@@ -16,6 +16,8 @@ import {
   ORDER_TYPES,
   filterProductionSaleOrderItems,
   isProductionExcludedSaleOrderItem,
+  saleOrderItemQuantityFromGrade,
+  withSaleOrderItemClientKey,
 } from '@/hooks/useSaleOrders';
 import { volumesForPairs, pairsPerVolumeForMode, isPairAsVolumeMode, collectiveTypeForMode } from '@/lib/packagingPairsPerBox';
 import { packSaleOrderItem, packSaleOrderItemBySize, singleSizeMisfits } from '@/lib/boxPacking';
@@ -149,9 +151,9 @@ interface Props {
   onColorIssueChange?: (index: number, info: { color: string; materials: string[] } | null) => void;
 }
 
-const emptyItem: SaleOrderItemFormData = {
+const emptyItem = (): SaleOrderItemFormData => withSaleOrderItemClientKey({
   reference_id: '', color: '', grade: {}, unit_price: 0, quantity: 0, fichas: 1,
-};
+});
 
 /**
  * Reindexa a seleção do bulk-edit depois que o item `removedIdx` sai da lista.
@@ -775,7 +777,14 @@ export default function SaleOrderFormPanel({
   const addItem = () => {
     setItems(prev => {
       const last = prev[prev.length - 1];
-      return [...prev, { ...emptyItem, grade: last ? { ...last.grade } : {}, fichas: last?.fichas || 1 }];
+      const grade = last ? { ...last.grade } : {};
+      const fichas = last?.fichas || 1;
+      return [...prev, withSaleOrderItemClientKey({
+        ...emptyItem(),
+        grade,
+        fichas,
+        quantity: saleOrderItemQuantityFromGrade(grade, fichas),
+      })];
     });
     setTimeout(() => {
       lastItemRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -841,15 +850,28 @@ export default function SaleOrderFormPanel({
      });
      }, [references, setItems]);
 
+  // Patch multi-campo num único setItems — evita o double-render grade→quantity.
+  const updateItemFields = useCallback((idx: number, patch: Partial<SaleOrderItemFormData>) => {
+    setItems(prev => {
+      if (isProductionExcludedSaleOrderItem(prev[idx])) return prev;
+      return prev.map((item, i) => i === idx ? { ...item, ...patch } : item);
+    });
+  }, [setItems]);
+
   // Estável de propósito (memo do SaleOrderItemForm): lê o item anterior via
   // itemsRef, então não precisa de `items` nas dependências.
   const copyGradeFromPrevious = useCallback((i: number) => {
     if (i <= 0) return;
     const prev = itemsRef.current[i - 1];
     if (!prev) return;
-    updateItem(i, 'grade', { ...prev.grade });
-    updateItem(i, 'fichas', prev.fichas || 1);
-  }, [updateItem]);
+    const grade = { ...prev.grade };
+    const fichas = prev.fichas || 1;
+    updateItemFields(i, {
+      grade,
+      fichas,
+      quantity: saleOrderItemQuantityFromGrade(grade, fichas),
+    });
+  }, [updateItemFields]);
 
    // ── Bulk-edit de itens (pedido user 20/05/2026) ─────────────────────────
    // Seleção múltipla de itens do PV pra aplicar mudanças em lote: copiar
@@ -914,10 +936,13 @@ export default function SaleOrderFormPanel({
      }
      setItems(prev => prev.map((item, i) => {
        if (!others.includes(i) || isProductionExcludedSaleOrderItem(item)) return item;
+       const fichas = sourceFichas || item.fichas || 1;
+       const grade = { ...sourceGrade };
        return {
          ...item,
-         grade: { ...sourceGrade },
-         fichas: sourceFichas || item.fichas || 1,
+         grade,
+         fichas,
+         quantity: saleOrderItemQuantityFromGrade(grade, fichas),
        };
      }));
      toast.success(`Grade copiada do item #${firstIdx + 1} pra ${others.length} ${others.length === 1 ? 'item' : 'itens'}`);
@@ -944,7 +969,14 @@ export default function SaleOrderFormPanel({
      const ids = Array.from(selectedItemIndices)
        .filter((idx) => !isProductionExcludedSaleOrderItem(itemsRef.current[idx]));
      if (ids.length === 0) return;
-     setItems(prev => prev.map((item, i) => ids.includes(i) && !isProductionExcludedSaleOrderItem(item) ? { ...item, fichas: n } : item));
+     setItems(prev => prev.map((item, i) => {
+       if (!ids.includes(i) || isProductionExcludedSaleOrderItem(item)) return item;
+       return {
+         ...item,
+         fichas: n,
+         quantity: saleOrderItemQuantityFromGrade(item.grade, n),
+       };
+     }));
      toast.success(`${n} ${n === 1 ? 'ficha' : 'fichas'} aplicado em ${ids.length} ${ids.length === 1 ? 'item' : 'itens'}`);
      setBulkFichasInput('');
    }, [bulkFichasInput, selectedItemIndices, setItems]);
@@ -986,7 +1018,14 @@ export default function SaleOrderFormPanel({
        return;
      }
      const totalPairs = Object.values(cleanGrade).reduce((s, v) => s + v, 0);
-     setItems(prev => prev.map((item, i) => ids.includes(i) && !isProductionExcludedSaleOrderItem(item) ? { ...item, grade: { ...cleanGrade } } : item));
+     setItems(prev => prev.map((item, i) => {
+       if (!ids.includes(i) || isProductionExcludedSaleOrderItem(item)) return item;
+       return {
+         ...item,
+         grade: { ...cleanGrade },
+         quantity: saleOrderItemQuantityFromGrade(cleanGrade, item.fichas),
+       };
+     }));
      toast.success(`Grade aplicada em ${ids.length} ${ids.length === 1 ? 'item' : 'itens'} (${totalPairs} pares por ficha)`);
      setBulkGradeInput({});
    }, [bulkGradeInput, selectedItemIndices, setItems]);
@@ -1244,7 +1283,7 @@ export default function SaleOrderFormPanel({
       )}
       {/* Mapa do preenchimento: mantém a orientação quando o pedido tem muitas
           referências e evita rolagem longa só para voltar aos dados comerciais. */}
-      <nav aria-label="Etapas do pedido" className="sticky top-0 z-20 -mx-1 flex gap-1 overflow-x-auto border-y bg-background/95 px-1 py-2 backdrop-blur sm:static sm:mx-0 sm:rounded-lg sm:border sm:bg-muted/20 sm:px-2">
+      <nav aria-label="Etapas do pedido" className="sticky top-0 z-20 -mx-1 flex gap-1 overflow-x-auto border-y bg-background px-1 py-2 sm:static sm:mx-0 sm:rounded-lg sm:border sm:bg-muted/20 sm:px-2">
         <span className="hidden shrink-0 items-center px-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground lg:flex">Preenchimento</span>
         <Button type="button" variant="ghost" size="sm" className="min-h-10 shrink-0 gap-1.5 bg-background shadow-sm sm:bg-transparent sm:shadow-none" onClick={() => document.getElementById('pv-cliente')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
           <User className="h-4 w-4" />
@@ -2152,7 +2191,7 @@ export default function SaleOrderFormPanel({
             : 'Referência';
           const groupColorCount = isNewRefGroup ? items.filter((i) => i.reference_id === item.reference_id).length : 0;
           return (
-            <Fragment key={`${idx}-${item.reference_id}`}>
+            <Fragment key={item.id || item.clientKey || `idx-${idx}`}>
             {isNewRefGroup && (
               <div className="flex items-center gap-3 mt-4 mb-1 first:mt-0">
                 <div className="h-px flex-1 bg-border" />
@@ -2194,6 +2233,7 @@ export default function SaleOrderFormPanel({
                 maxDiscountPct={clientPricing?.maxDiscountPct ?? 0}
                 variantsByRef={allVariantsByRef}
                 onUpdate={updateItem}
+                onUpdateFields={updateItemFields}
                 onRemove={removeItem}
                 onCopyGradeFromPrevious={copyGradeFromPrevious}
                 onSaveStateAndNavigate={onSaveStateAndNavigate}
@@ -2496,7 +2536,7 @@ export default function SaleOrderFormPanel({
         const formStarted = submitAttempted || !!form.client_name || validItemsCount > 0;
 
         return (
-          <div className="fixed bottom-0 left-0 right-0 z-30 border-t bg-background/95 backdrop-blur-md shadow-[0_-4px_12px_rgba(0,0,0,0.05)] dark:shadow-[0_-4px_12px_rgba(0,0,0,0.3)]">
+          <div className="fixed bottom-0 left-0 right-0 z-30 border-t bg-background shadow-[0_-4px_12px_rgba(0,0,0,0.05)] dark:shadow-[0_-4px_12px_rgba(0,0,0,0.3)]">
             <div className="max-w-[var(--main-max,1600px)] mx-auto px-3 sm:px-6 py-2.5 sm:py-3 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3">
               {/* Resumo de totais — grid em mobile pra evitar squeeze, inline em sm+ */}
               <div className="grid grid-cols-3 sm:flex sm:items-center sm:gap-6 sm:flex-1 sm:min-w-0">

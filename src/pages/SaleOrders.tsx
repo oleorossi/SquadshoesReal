@@ -1629,7 +1629,7 @@ export default function SaleOrders() {
 
   if (isLoading) {
     return (
-      <div className="w-full space-y-6 page-enter">
+      <div className="w-full space-y-6">
         <EditorialPageHeader
           sectionLabel="COMERCIAL · PV"
           title="Pedidos de Venda"
@@ -1643,7 +1643,7 @@ export default function SaleOrders() {
 
   if (isError) {
     return (
-      <div className="w-full space-y-6 page-enter">
+      <div className="w-full space-y-6">
         <EditorialPageHeader
           sectionLabel="COMERCIAL · PV"
           title="Pedidos de Venda"
@@ -1663,7 +1663,7 @@ export default function SaleOrders() {
   // sem rota nova (requisito 13 de specs/pv-producao-performance-e-pendencias.md).
   if (isPendenciasView) {
     return (
-      <div className="w-full space-y-6 page-enter">
+      <div className="w-full space-y-6">
         <EditorialPageHeader
           sectionLabel="COMERCIAL · PV"
           title="Pendências de lançamento"
@@ -1688,7 +1688,7 @@ export default function SaleOrders() {
   if (isConsumptionView) {
     return (
       <>
-        <div className="w-full space-y-6 page-enter">
+        <div className="w-full space-y-6">
           <EditorialPageHeader
             sectionLabel="COMERCIAL · PV"
             title="Consumo de Materiais"
@@ -1743,7 +1743,7 @@ export default function SaleOrders() {
 
   return (
     <>
-      <div className="w-full space-y-6 page-enter editorial-stagger">
+      <div className="w-full space-y-6">
         <EditorialPageHeader
           sectionLabel="COMERCIAL · PV"
           title="Pedidos de Venda"
