@@ -3,9 +3,15 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { SearchLocatorStrip } from '@/components/ui/searchable-select';
 import { Check, CaretUpDown as ChevronsUpDown, User } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import {
+  SEARCH_RENDER_CAP,
+  capSearchResults,
+  searchMatchesAllTerms,
+  searchRefineHint,
+} from '@/lib/searchUtils';
 import type { Employee } from '@/hooks/useEmployees';
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -25,8 +31,8 @@ const roleLine = (e: Employee) =>
 
 /**
  * Seletor de funcionário com busca (cargo/setor/matrícula), acento-insensível.
- * Espelha o padrão Command+Popover do ColorLookupSelect. Mostra o saldo aberto
- * de vales no item, pra dar contexto antes de lançar um novo adiantamento.
+ * Espelha o contrato do SearchableSelect (faixa N de M + RENDER_CAP). Mostra o
+ * saldo aberto de vales no item, pra dar contexto antes de lançar um novo adiantamento.
  */
 export function EmployeeCombobox({
   value, onChange, employees, openBalanceByEmployee, placeholder = 'Selecione o funcionário...', className,
@@ -45,6 +51,11 @@ export function EmployeeCombobox({
     if (!search.trim()) return active;
     return active.filter(e => searchMatchesAllTerms(search, e.name, e.role, e.department, e.external_id));
   }, [active, search]);
+
+  const { visible, capped, totalMatched, cap } = useMemo(
+    () => capSearchResults(filtered, SEARCH_RENDER_CAP),
+    [filtered],
+  );
 
   return (
     <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setSearch(''); }}>
@@ -67,7 +78,13 @@ export function EmployeeCombobox({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[--radix-popover-trigger-width] min-w-[300px] p-0" align="start">
-        <Command shouldFilter={false}>
+        <Command shouldFilter={false} label="Buscar por nome, cargo, setor ou matrícula...">
+          <SearchLocatorStrip
+            label="Localizar funcionário"
+            matchedCount={totalMatched}
+            totalCount={active.length}
+            hasQuery={!!search.trim()}
+          />
           <CommandInput placeholder="Buscar por nome, cargo, setor ou matrícula..." value={search} onValueChange={setSearch} />
           <CommandList>
             <CommandEmpty>
@@ -80,8 +97,8 @@ export function EmployeeCombobox({
                 'Nenhum funcionário encontrado.'
               )}
             </CommandEmpty>
-            <CommandGroup heading={`Funcionários ativos (${filtered.length})`}>
-              {filtered.map(e => {
+            <CommandGroup heading="Funcionários ativos">
+              {visible.map(e => {
                 const openBalance = openBalanceByEmployee?.get(e.id) ?? 0;
                 return (
                   <CommandItem
@@ -108,6 +125,11 @@ export function EmployeeCombobox({
                   </CommandItem>
                 );
               })}
+              {capped && (
+                <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                  {searchRefineHint(totalMatched, cap)}
+                </div>
+              )}
             </CommandGroup>
           </CommandList>
         </Command>

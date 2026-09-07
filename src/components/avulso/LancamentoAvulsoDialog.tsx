@@ -18,7 +18,7 @@ import { useSuppliers } from '@/hooks/useSuppliers';
 import { useProducts } from '@/hooks/useProducts';
 import { useContractors } from '@/hooks/useContractors';
 import { useCreateAvulsoPurchaseOrder, useCreateAvulsoServiceOrder } from '@/hooks/useAvulso';
-import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { searchMatchesAllTerms, capSearchResults, searchRefineHint } from '@/lib/searchUtils';
 import { SearchInput } from '@/components/ui/search-input';
 import { formatCurrency } from '@/lib/utils';
 
@@ -93,7 +93,10 @@ export function LancamentoAvulsoDialog({ open, onOpenChange, mode }: LancamentoA
     () => products.filter((p: any) => searchMatchesAllTerms(productFilter, p.name, p.sku)),
     [products, productFilter],
   );
-  const filteredProducts = useMemo(() => matchingProducts.slice(0, 30), [matchingProducts]);
+  const productCap = useMemo(
+    () => capSearchResults(matchingProducts, 30),
+    [matchingProducts],
+  );
 
   const ocTotal = quantity * unitPrice;
   const total = isOC ? ocTotal : totalValue;
@@ -198,7 +201,7 @@ export function LancamentoAvulsoDialog({ open, onOpenChange, mode }: LancamentoA
                   totalCount={products.length}
                 />
                 <div className="max-h-44 overflow-y-auto rounded-md border border-border divide-y divide-border/60">
-                  {filteredProducts.length === 0 ? (
+                  {productCap.totalMatched === 0 ? (
                     productFilter.trim() ? (
                       <div className="flex flex-col items-center gap-1.5 p-3">
                         <p className="text-xs text-muted-foreground text-center">Nenhum resultado para "{productFilter}"</p>
@@ -208,19 +211,26 @@ export function LancamentoAvulsoDialog({ open, onOpenChange, mode }: LancamentoA
                       <p className="text-xs text-muted-foreground p-3 text-center">Nenhum produto encontrado</p>
                     )
                   ) : (
-                    filteredProducts.map((p: any) => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => setProductId(p.id)}
-                        className={`w-full text-left px-3 py-2 text-sm transition-colors hover:bg-muted/40 ${productId === p.id ? 'bg-primary/10' : ''}`}
-                      >
-                        <span className="font-medium">{p.name}</span>
-                        <span className="text-xs text-muted-foreground ml-2">
-                          SKU: {p.sku} · Estoque: {(Number(p.quantity) || 0).toLocaleString('pt-BR')} {p.unit || 'un'}
-                        </span>
-                      </button>
-                    ))
+                    <>
+                      {productCap.visible.map((p: any) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => setProductId(p.id)}
+                          className={`w-full text-left px-3 py-2 text-sm transition-colors hover:bg-muted/40 ${productId === p.id ? 'bg-primary/10' : ''}`}
+                        >
+                          <span className="font-medium">{p.name}</span>
+                          <span className="text-xs text-muted-foreground ml-2">
+                            SKU: {p.sku} · Estoque: {(Number(p.quantity) || 0).toLocaleString('pt-BR')} {p.unit || 'un'}
+                          </span>
+                        </button>
+                      ))}
+                      {productCap.capped && (
+                        <p className="px-3 py-2 text-xs text-muted-foreground">
+                          {searchRefineHint(productCap.totalMatched, productCap.cap)}
+                        </p>
+                      )}
+                    </>
                   )}
                 </div>
               </div>

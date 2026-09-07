@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,10 +7,12 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { SearchLocatorStrip } from '@/components/ui/searchable-select';
 import { MagnifyingGlass as Search, CircleNotch as Loader2, Check } from '@phosphor-icons/react';
 import { useSuppliers, type Supplier } from '@/hooks/useSuppliers';
 import type { GroupSupplier } from '@/hooks/useGroupSuppliers';
 import { cn } from '@/lib/utils';
+import { SEARCH_RENDER_CAP, capSearchResults, searchMatchesAllTerms, searchRefineHint } from '@/lib/searchUtils';
 
 type Props = {
   open: boolean;
@@ -83,7 +85,18 @@ export default function SupplierFormDialog({ open, onOpenChange, editing, onSubm
 
   const set = (key: string, val: string | number) => setForm(f => ({ ...f, [key]: val }));
 
-  const activeSuppliers = suppliers.filter(s => s.active);
+  const [supplierSearch, setSupplierSearch] = useState('');
+  const activeSuppliers = useMemo(() => suppliers.filter(s => s.active), [suppliers]);
+  const filteredSuppliers = useMemo(() => {
+    if (!supplierSearch.trim()) return activeSuppliers;
+    return activeSuppliers.filter(s =>
+      searchMatchesAllTerms(supplierSearch, s.name, s.trade_name, s.cnpj),
+    );
+  }, [activeSuppliers, supplierSearch]);
+  const supplierCap = useMemo(
+    () => capSearchResults(filteredSuppliers, SEARCH_RENDER_CAP),
+    [filteredSuppliers],
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -104,7 +117,7 @@ export default function SupplierFormDialog({ open, onOpenChange, editing, onSubm
                   placeholder="Nome do fornecedor"
                   className="flex-1"
                 />
-                <Popover open={searchOpen} onOpenChange={setSearchOpen}>
+                <Popover open={searchOpen} onOpenChange={(o) => { setSearchOpen(o); if (!o) setSupplierSearch(''); }}>
                   <PopoverTrigger asChild>
                     <Button 
                       type="button" 
@@ -121,15 +134,35 @@ export default function SupplierFormDialog({ open, onOpenChange, editing, onSubm
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-80 p-0" align="end">
-                    <Command>
-                      <CommandInput placeholder="Buscar por nome ou CNPJ..." />
+                    <Command shouldFilter={false} label="Buscar por nome ou CNPJ...">
+                      <SearchLocatorStrip
+                        label="Localizar fornecedor"
+                        matchedCount={supplierCap.totalMatched}
+                        totalCount={activeSuppliers.length}
+                        hasQuery={!!supplierSearch.trim()}
+                      />
+                      <CommandInput
+                        placeholder="Buscar por nome ou CNPJ..."
+                        aria-label="Buscar por nome ou CNPJ..."
+                        value={supplierSearch}
+                        onValueChange={setSupplierSearch}
+                      />
                       <CommandList>
-                        <CommandEmpty>Nenhum fornecedor encontrado</CommandEmpty>
+                        <CommandEmpty>
+                          {supplierSearch ? (
+                            <span className="flex flex-col items-center gap-2">
+                              <span>Nenhum resultado para "{supplierSearch}"</span>
+                              <Button type="button" variant="outline" size="sm" onClick={() => setSupplierSearch('')}>Limpar busca</Button>
+                            </span>
+                          ) : (
+                            'Nenhum fornecedor encontrado'
+                          )}
+                        </CommandEmpty>
                         <CommandGroup heading="Fornecedores cadastrados">
-                          {activeSuppliers.map(supplier => (
+                          {supplierCap.visible.map(supplier => (
                             <CommandItem
                               key={supplier.id}
-                              value={`${supplier.name} ${supplier.cnpj}`}
+                              value={supplier.id}
                               onSelect={() => handleSelectSupplier(supplier)}
                               className="flex flex-col items-start gap-0.5"
                             >
@@ -147,6 +180,11 @@ export default function SupplierFormDialog({ open, onOpenChange, editing, onSubm
                               </div>
                             </CommandItem>
                           ))}
+                          {supplierCap.capped && (
+                            <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                              {searchRefineHint(supplierCap.totalMatched, supplierCap.cap)}
+                            </div>
+                          )}
                         </CommandGroup>
                       </CommandList>
                     </Command>

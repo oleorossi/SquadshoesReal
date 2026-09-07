@@ -17,7 +17,7 @@ import { useSoleConjugations } from '@/hooks/useSoleConjugations';
 import { getSoleModelName } from '@/lib/utils';
 import { toast } from 'sonner';
 import { MagnifyingGlass, Plus, Package, Palette, Info, Link as Link2, Check } from '@phosphor-icons/react';
-import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { searchMatchesAllTerms, SEARCH_RENDER_CAP, capSearchResults, searchRefineHint } from '@/lib/searchUtils';
 import { getGradeQuantityForKey } from '@/lib/gradeDistribution';
 import { adjustProductsStock } from '@/lib/stockCommand';
 
@@ -218,6 +218,15 @@ function AddToGroupDialog({ open, onOpenChange, groupId, groupName }: {
     };
   }, [allProducts, groupId, search]);
 
+  const availableCap = useMemo(
+    () => capSearchResults(available, SEARCH_RENDER_CAP),
+    [available],
+  );
+  const alreadyCap = useMemo(
+    () => capSearchResults(alreadyInGroup, SEARCH_RENDER_CAP),
+    [alreadyInGroup],
+  );
+
   const toggle = (id: string) => {
     setSelected(prev => {
       const next = new Set(prev);
@@ -286,12 +295,12 @@ function AddToGroupDialog({ open, onOpenChange, groupId, groupName }: {
             )
           ) : (
             <div className="space-y-3">
-              {available.length > 0 && (
+              {availableCap.totalMatched > 0 && (
                 <div className="space-y-1">
                   <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground px-1 pb-0.5">
-                    Disponíveis ({available.length})
+                    Disponíveis ({availableCap.totalMatched})
                   </p>
-                  {available.map(p => (
+                  {availableCap.visible.map(p => (
                     <label
                       key={p.id}
                       className={`flex items-center gap-3 p-2 rounded-md cursor-pointer hover:bg-accent transition-colors ${selected.has(p.id) ? 'bg-primary/5 border border-primary/20' : 'border border-transparent'}`}
@@ -311,14 +320,19 @@ function AddToGroupDialog({ open, onOpenChange, groupId, groupName }: {
                       </Badge>
                     </label>
                   ))}
+                  {availableCap.capped && (
+                    <p className="px-2 py-1.5 text-xs text-muted-foreground">
+                      {searchRefineHint(availableCap.totalMatched, availableCap.cap)}
+                    </p>
+                  )}
                 </div>
               )}
-              {alreadyInGroup.length > 0 && (
+              {alreadyCap.totalMatched > 0 && (
                 <div className="space-y-1 pt-2 border-t border-border/50">
                   <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground px-1 pb-0.5">
-                    Já no grupo ({alreadyInGroup.length})
+                    Já no grupo ({alreadyCap.totalMatched})
                   </p>
-                  {alreadyInGroup.map(p => (
+                  {alreadyCap.visible.map(p => (
                     <div
                       key={p.id}
                       className="flex items-center gap-3 p-2 rounded-md opacity-60 border border-transparent"
@@ -335,6 +349,11 @@ function AddToGroupDialog({ open, onOpenChange, groupId, groupName }: {
                       <Badge variant="secondary" className="text-xs shrink-0">no grupo</Badge>
                     </div>
                   ))}
+                  {alreadyCap.capped && (
+                    <p className="px-2 py-1.5 text-xs text-muted-foreground">
+                      {searchRefineHint(alreadyCap.totalMatched, alreadyCap.cap)}
+                    </p>
+                  )}
                 </div>
               )}
             </div>

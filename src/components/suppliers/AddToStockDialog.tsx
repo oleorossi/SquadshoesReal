@@ -19,7 +19,7 @@ import { createProductWithStock } from '@/lib/stockCommand';
 import { CATEGORIES, UNITS, LOCATIONS } from '@/types/inventory';
 import { SearchInput } from '@/components/ui/search-input';
 import { NumberInput } from '@/components/ui/number-input';
-import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { searchMatchesAllTerms, capSearchResults, searchRefineHint } from '@/lib/searchUtils';
 
 type Props = {
   open: boolean;
@@ -184,6 +184,15 @@ export default function AddToStockDialog({ open, onOpenChange, items, invoiceSup
     }
   }, [open, currentIdx, currentItem, products, invoiceSupplierId]);
 
+  const filteredProducts = useMemo(
+    () => products.filter(p => searchMatchesAllTerms(productSearch, p.name, p.sku)),
+    [products, productSearch],
+  );
+  const productCap = useMemo(
+    () => capSearchResults(filteredProducts, 20),
+    [filteredProducts],
+  );
+
   if (!currentItem) return null;
 
   // A unidade da NF é diferente (canônica) da unidade de estoque escolhida?
@@ -192,10 +201,6 @@ export default function AddToStockDialog({ open, onOpenChange, items, invoiceSup
   const nfUnitCanon = canonicalUnit(currentItem.unit);
   const stockUnitCanon = canonicalUnit(newUnit);
   const needsConversion = !!currentItem.unit && nfUnitCanon !== stockUnitCanon;
-
-  const filteredProducts = products.filter(p =>
-    searchMatchesAllTerms(productSearch, p.name, p.sku)
-  );
 
   const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -549,7 +554,7 @@ export default function AddToStockDialog({ open, onOpenChange, items, invoiceSup
                 totalCount={products.length}
               />
               <div className="max-h-40 overflow-y-auto rounded-md border divide-y">
-                {filteredProducts.length === 0 ? (
+                {productCap.totalMatched === 0 ? (
                   <div className="p-3 text-center space-y-1">
                     <p className="text-xs text-muted-foreground">
                       {productSearch ? `Nenhum resultado para "${productSearch}"` : 'Nenhum produto encontrado'}
@@ -560,16 +565,25 @@ export default function AddToStockDialog({ open, onOpenChange, items, invoiceSup
                       </Button>
                     )}
                   </div>
-                ) : filteredProducts.slice(0, 20).map(p => (
-                  <button
-                    key={p.id}
-                    className={`w-full text-left px-3 py-2 text-sm hover:bg-muted/50 transition-colors ${selectedProductId === p.id ? 'bg-primary/10' : ''}`}
-                    onClick={() => setSelectedProductId(p.id)}
-                  >
-                    <span className="font-medium">{p.name}</span>
-                    <span className="text-xs text-muted-foreground ml-2">SKU: {p.sku} | Estoque: {p.quantity} {p.unit}</span>
-                  </button>
-                ))}
+                ) : (
+                  <>
+                    {productCap.visible.map(p => (
+                      <button
+                        key={p.id}
+                        className={`w-full text-left px-3 py-2 text-sm hover:bg-muted/50 transition-colors ${selectedProductId === p.id ? 'bg-primary/10' : ''}`}
+                        onClick={() => setSelectedProductId(p.id)}
+                      >
+                        <span className="font-medium">{p.name}</span>
+                        <span className="text-xs text-muted-foreground ml-2">SKU: {p.sku} | Estoque: {p.quantity} {p.unit}</span>
+                      </button>
+                    ))}
+                    {productCap.capped && (
+                      <p className="px-3 py-2 text-xs text-muted-foreground">
+                        {searchRefineHint(productCap.totalMatched, productCap.cap)}
+                      </p>
+                    )}
+                  </>
+                )}
               </div>
             </div>
           ) : (
