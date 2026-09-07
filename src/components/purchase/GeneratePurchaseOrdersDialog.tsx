@@ -507,17 +507,33 @@ export default function GeneratePurchaseOrdersDialog({
         )}
 
         {!isLoading && !isError && drafts.length === 0 && (
-          <div className="flex flex-col items-center gap-2 py-12 text-muted-foreground">
+          <div className="flex flex-col items-center gap-3 py-12 text-muted-foreground">
             <Package className="h-8 w-8" />
-            <p className="text-sm">
+            <p className="text-sm text-center max-w-md">
               {excludedStrapNeeds.length > 0
                 ? 'Não há material comum a comprar. As tiras identificadas seguem no motor automático.'
                 : needWarnings.length > 0
                 ? 'Nada a comprar: o que este pedido precisa está bloqueado pelos avisos acima.'
+                : purchasableNeeds.length === 0 && needs.length === 0
+                ? 'Nenhuma necessidade calculada para este(s) pedido(s). Confira se o PV tem itens e ficha técnica.'
                 : netOfStock
                   ? 'Nenhum material em falta — o estoque cobre este(s) pedido(s).'
                   : 'Nenhum material necessário encontrado para este(s) pedido(s).'}
             </p>
+            {netOfStock
+              && excludedStrapNeeds.length === 0
+              && needWarnings.length === 0
+              && (purchasableNeeds.length > 0 || needs.length > 0) && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={() => setNetOfStock(false)}
+              >
+                Comprar necessidade bruta (sem descontar estoque)
+              </Button>
+            )}
           </div>
         )}
 
