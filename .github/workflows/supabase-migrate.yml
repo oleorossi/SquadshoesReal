@@ -194,6 +194,16 @@ jobs:
           # O snapshot isolado contém o histórico remoto e somente as novas
           # locais pós-cutover. MCP pode registrar uma versão posterior antes
           # do CI; incluir as pendentes evita deixar lacunas nessa sequência.
+          #
+          # 19200 (rateio multi-prestador) já está no banco (RPC/view vivos) sem
+          # registro neste carimbo. Reexecutar quebra no CREATE UNIQUE INDEX
+          # existente — marcar applied e aplicar só 19300/19400 via --include-all.
+          if [[ -f "${SUPABASE_MIGRATION_WORKDIR}/supabase/migrations/20270101019200_os_rateio_multi_prestador.sql" ]]; then
+            echo "↪ migration repair --status applied 20270101019200"
+            supabase --workdir "${SUPABASE_MIGRATION_WORKDIR}" migration repair \
+              --status applied \
+              20270101019200
+          fi
           supabase --workdir "${SUPABASE_MIGRATION_WORKDIR}" db push \
             --linked \
             --include-all \
