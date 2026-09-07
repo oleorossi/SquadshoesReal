@@ -1,4 +1,4 @@
-import { computeBaseMaterialTotal } from '@/lib/baseMaterialTotal';
+import { computeBaseMaterialTotal, normalizeBaseFamilyName } from '@/lib/baseMaterialTotal';
 import { buildBuyList } from '@/lib/buyList';
 import {
   aggregateItems,
@@ -213,7 +213,7 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
     const napaNote = converted
       ? item.rows
         .map((row) => row.artisanal
-          ? `${formatQty(row.artisanal.baseQty, 'm')} m ${row.artisanal.baseName}`
+          ? `${formatQty(row.artisanal.baseQty, 'm')} m ${normalizeBaseFamilyName(row.artisanal.baseName, row.color)}`
           : '')
         .filter(Boolean)
         .join(' + ')

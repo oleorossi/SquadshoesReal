@@ -109,7 +109,7 @@ describe('preview canônica de tiras', () => {
     expect(strap.productIds).toEqual(['finished-soft']);
     expect(strap.available).toBe(25);
     expect(strap.artisanal).toEqual({
-      baseName: 'NAPA SOFT · OFF WHITE', baseQty: 10, yieldPerMeter: 64,
+      baseName: 'NAPA SOFT', baseQty: 10, yieldPerMeter: 64,
       pending: undefined,
     });
     expect(rows.some((row) => row.totalQuantity === 999)).toBe(false);
@@ -137,6 +137,46 @@ describe('preview canônica de tiras', () => {
     const rows = replaceWithCanonicalStrapRows([], ctx, [preview(), madrid]) as any[];
     expect(rows.map((row) => row.strapVariantId)).toEqual(['variant-soft', 'variant-madrid']);
     expect(rows.map((row) => row.baseProductId)).toEqual(['base-soft', 'base-madrid']);
+  });
+
+  it('coloca a tira na família do grupo, não no SKU com cor (PV-00169 Massabox)', () => {
+    const massabox = preview({
+      technical_strap_line_id: '33333333-3333-4333-8333-333333333333',
+      strap_variant_id: 'variant-glow',
+      recipe_id: 'recipe-glow',
+      base_product_id: 'base-glow-cobre',
+      finished_product_id: 'finished-soft',
+      gross_required_m: 160,
+      resolved: {
+        strap_product_name: 'TIRA OVERLOCK 5MM',
+        strap_color_name: 'COBRE',
+        base_group_name: 'GLOW METALIC + MASSABOX',
+        base_product_name: 'GLOW METALIC + MASSABOX - COBRE',
+        confirmed_yield_m_per_m: 60.6,
+        base_required_m: 2.64,
+        cut_band_width_mm: 20,
+        usable_base_width_mm_snapshot: 1370,
+        theoretical_yield_m_per_m: 68,
+      },
+    });
+    const [row] = replaceWithCanonicalStrapRows([], ctx, [massabox]) as CanonicalStrapConsumptionRow[];
+    expect(row.artisanal?.baseName).toBe('GLOW METALIC + MASSABOX');
+    expect(row.materialFamily).toBe('GLOW METALIC + MASSABOX');
+    expect(row.color).toBe('COBRE');
+
+    // Sem base_group_name, ainda tira o sufixo do SKU.
+    const skuOnly = preview({
+      technical_strap_line_id: '44444444-4444-4444-8444-444444444444',
+      resolved: {
+        strap_product_name: 'TIRA OVERLOCK 5MM',
+        strap_color_name: 'COBRE',
+        base_product_name: 'GLOW METALIC + MASSABOX COBRE',
+        confirmed_yield_m_per_m: 60,
+        base_required_m: 2,
+      },
+    });
+    const [fallback] = replaceWithCanonicalStrapRows([], ctx, [skuOnly]) as CanonicalStrapConsumptionRow[];
+    expect(fallback.artisanal?.baseName).toBe('GLOW METALIC + MASSABOX');
   });
 
   it('não deixa uma linha resolvida esconder outra sem linha técnica', () => {

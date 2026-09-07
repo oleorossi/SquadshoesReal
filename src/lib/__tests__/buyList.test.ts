@@ -81,6 +81,45 @@ describe('buildBuyList', () => {
     expect(bl.grandTotal).toBeCloseTo(17.5, 10);
   });
 
+  it('não abre família fantasma quando a tira traz SKU com cor (Massabox + Cobre)', () => {
+    const bl = buildBuyList([
+      row({
+        componentType: 'Cabedal',
+        groupName: 'GLOW METALIC + MASSABOX',
+        materialName: 'Cabedal',
+        color: 'COBRE',
+        totalQuantity: 8.4,
+      }),
+      row({
+        componentType: 'Cabedal',
+        groupName: 'GLOW METALIC + MASSABOX',
+        materialName: 'Cabedal',
+        color: 'CHAMPAGNE',
+        totalQuantity: 15.39,
+      }),
+      row({
+        componentType: 'Tiras',
+        groupName: 'TIRA OVERLOCK 5MM',
+        materialName: 'Produção interna',
+        color: 'COBRE',
+        totalQuantity: 160,
+        artisanal: {
+          baseName: 'GLOW METALIC + MASSABOX - COBRE',
+          baseQty: 2.64,
+          yieldPerMeter: 60.6,
+        },
+      }),
+    ]);
+
+    expect(bl.families.map((f) => f.napa)).toEqual(['GLOW METALIC + MASSABOX']);
+    const family = bl.families[0];
+    expect(family.total).toBeCloseTo(26.43, 2);
+    const cobre = family.colors.find((c) => c.color === 'COBRE')!;
+    expect(cobre.cabedal).toBeCloseTo(8.4, 10);
+    expect(cobre.tira).toBeCloseTo(2.64, 10);
+    expect(cobre.qty).toBeCloseTo(11.04, 10);
+  });
+
   it('tira sem rendimento sai em pendingStraps, fora do total, e marca a cor', () => {
     const bl = buildBuyList([
       row({ color: 'ROSADO', totalQuantity: 5 }),

@@ -14,7 +14,7 @@ import {
   ListNumbers,
 } from '@phosphor-icons/react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { computeBaseMaterialTotal } from '@/lib/baseMaterialTotal';
+import { computeBaseMaterialTotal, normalizeBaseFamilyName } from '@/lib/baseMaterialTotal';
 import { buildColAvailability, sizeSortKey } from '@/lib/soleMatrixHtml';
 import type { ArtisanalStrapCutRow } from '@/lib/strapRollCut';
 import ArtisanalStrapRollCutBlock from '@/components/sale-orders/ArtisanalStrapRollCutBlock';
@@ -633,11 +633,11 @@ export default function MaterialConsumptionView({
           {row.artisanal && (
             row.artisanal.pending ? (
               <div className="mt-0.5 whitespace-nowrap text-[10px] font-normal text-amber-600 dark:text-amber-400">
-                base {row.artisanal.baseName} · rendimento a cadastrar
+                base {normalizeBaseFamilyName(row.artisanal.baseName, row.color)} · rendimento a cadastrar
               </div>
             ) : (
               <div className="mt-0.5 whitespace-nowrap text-[10px] font-normal text-muted-foreground">
-                ≈ {formatQty(row.artisanal.baseQty, 'm')} m {row.artisanal.baseName}
+                ≈ {formatQty(row.artisanal.baseQty, 'm')} m {normalizeBaseFamilyName(row.artisanal.baseName, row.color)}
                 <span className="opacity-70"> · artesanal (1 m → {row.artisanal.yieldPerMeter} m)</span>
               </div>
             )

@@ -1,5 +1,6 @@
 import type { MaterialConsumptionRow, ConsumptionContext } from '@/lib/orderConsumption';
 import type { ArtisanalStrapCutRow, StrapRollCutResult } from '@/lib/strapRollCut';
+import { normalizeBaseFamilyName } from '@/lib/baseMaterialTotal';
 
 export type CanonicalStrapSourceMode = 'internal' | 'buy_ready' | null;
 
@@ -19,7 +20,10 @@ export interface CanonicalStrapDemandPreview {
   finishedProductId: string | null;
   strapProductName: string;
   strapColorName: string;
+  /** SKU oficial da napa (pode incluir a cor). */
   baseProductName: string | null;
+  /** Família de napa (`product_groups.name`) — preferida na lista de compra. */
+  baseGroupName: string | null;
   confirmedYieldMPerM: number | null;
   baseRequiredM: number | null;
   cutBandWidthMm: number | null;
@@ -73,6 +77,7 @@ export function parseCanonicalStrapDemandPreview(
     strapProductName: String(resolved.strap_product_name || 'Tira sem cadastro'),
     strapColorName: String(resolved.strap_color_name || '—'),
     baseProductName: stringOrNull(resolved.base_product_name),
+    baseGroupName: stringOrNull(resolved.base_group_name),
     confirmedYieldMPerM: numberOrNull(resolved.confirmed_yield_m_per_m),
     baseRequiredM: numberOrNull(resolved.base_required_m),
     cutBandWidthMm: numberOrNull(resolved.cut_band_width_mm),
@@ -81,6 +86,33 @@ export function parseCanonicalStrapDemandPreview(
     blockingReasons: parseCanonicalBlockingReasons(value.blocking_reasons),
     ...(resolved.snapshot_warning ? { snapshotWarning: stringOrNull(resolved.snapshot_warning) } : {}),
   };
+}
+
+/**
+ * Família de napa pra buy-list / PDF. Prefere o grupo da ficha; se a RPC só
+ * mandou o SKU com cor, tira o sufixo. Sem isso o cobre da tira vira bloco
+ * "GLOW METALIC + MASSABOX - COBRE" separado do cabedal Massabox.
+ */
+export function resolveStrapBaseFamilyName(
+  preview: Pick<CanonicalStrapDemandPreview, 'baseGroupName' | 'baseProductName' | 'strapColorName' | 'baseProductId'>,
+  ctx?: Pick<ConsumptionContext, 'allProducts' | 'productGroups'>,
+): string {
+  const fromGroup = (preview.baseGroupName || '').trim();
+  if (fromGroup) return fromGroup;
+
+  if (preview.baseProductId && ctx?.allProducts?.length) {
+    const product = (ctx.allProducts as Array<{ id?: string; group_id?: string | null }>)
+      .find((entry) => String(entry.id) === String(preview.baseProductId));
+    const groupId = product?.group_id;
+    if (groupId) {
+      const group = (ctx.productGroups as Array<{ id?: string; name?: string }> | undefined)
+        ?.find((entry) => String(entry.id) === String(groupId));
+      const groupName = (group?.name || '').trim();
+      if (groupName) return groupName;
+    }
+  }
+
+  return normalizeBaseFamilyName(preview.baseProductName, preview.strapColorName);
 }
 
 export type CanonicalStrapConsumptionRow = MaterialConsumptionRow & {
@@ -190,6 +222,7 @@ export function replaceWithCanonicalStrapRows(
       || preview.blockingReasons.length > 0
       || !!preview.snapshotWarning
     );
+    const baseFamilyName = resolveStrapBaseFamilyName(preview, ctx);
 
     grouped.set(key, {
       componentType: 'Tiras',
@@ -199,14 +232,14 @@ export function replaceWithCanonicalStrapRows(
       color: preview.strapColorName || '—',
       totalQuantity: gross,
       productIds: preview.finishedProductId ? [preview.finishedProductId] : [],
-      materialFamily: internal ? preview.baseProductName : null,
+      materialFamily: internal ? baseFamilyName : null,
       available: netStock(product),
       warning: presentationWarnings.length > 0
         ? presentationWarnings.join(' · ')
         : undefined,
       artisanal: internal
         ? {
-            baseName: preview.baseProductName || 'Material base não resolvido',
+            baseName: baseFamilyName || 'Material base não resolvido',
             baseQty: pendingInternal ? 0 : baseRequired,
             yieldPerMeter,
             pending: pendingInternal || undefined,
@@ -286,7 +319,7 @@ export function canonicalStrapCutRows(
         color: preview.strapColorName || '—',
         largura_mm: bandWidth,
         metros_necessarios: gross,
-        baseName: preview.baseProductName || undefined,
+        baseName: resolveStrapBaseFamilyName(preview) || undefined,
         cut: canonicalCutPlaceholder(bandWidth, preview.blockingReasons.join(' · ') || undefined),
         canonical: {
           recipeId: preview.recipeId,

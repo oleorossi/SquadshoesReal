@@ -21,7 +21,7 @@
  * cor: filtrar NAPA SOFT e agrupar por cor mostra de onde saem os metros, sem
  * misturar unidade de produção (metro de tira) com unidade de compra.
  */
-import { BASE_MATERIAL_COMPONENTS, BASE_LINEAR_UNITS } from '@/lib/baseMaterialTotal';
+import { BASE_MATERIAL_COMPONENTS, BASE_LINEAR_UNITS, normalizeBaseFamilyName } from '@/lib/baseMaterialTotal';
 import { normTxt, type ConsumptionRow } from '@/lib/consumptionRows';
 
 /** Aplicação da napa na ficha — tira interna conta o metro de napa. */
@@ -88,12 +88,16 @@ export const isBuyListRow = (row: ConsumptionRow): boolean => {
 
 /**
  * Família de material base da linha. Tira artesanal cai na napa da receita
- * (`artisanal.baseName`), nunca no nome do grupo da tira.
+ * (`artisanal.baseName`), nunca no nome do grupo da tira. Se o baseName ainda
+ * carregar a cor do SKU, normaliza pra casar com o grupo do cabedal.
  */
 export function baseMaterialName(row: ConsumptionRow): string | null {
-  if (row.artisanal?.pending) return (row.artisanal.baseName || '').trim() || null;
+  if (row.artisanal?.pending) {
+    const raw = (row.artisanal.baseName || '').trim();
+    return raw ? normalizeBaseFamilyName(raw, row.color) : null;
+  }
   if (row.artisanal && Number(row.artisanal.baseQty) > 0) {
-    return (row.artisanal.baseName || '').trim() || 'Material base';
+    return normalizeBaseFamilyName(row.artisanal.baseName, row.color);
   }
   if (isDirectNapaRow(row)) return (row.groupName || '').trim() || null;
   return null;
@@ -142,14 +146,19 @@ export function buildBuyList(rows: ConsumptionRow[]): BuyList {
     // Tira com napa-base conhecida e SEM rendimento: não converte às cegas —
     // sai em bloco próprio, pedindo o cadastro que falta.
     if (row.artisanal?.pending) {
-      const napa = row.artisanal.baseName || 'Material base';
+      const napa = normalizeBaseFamilyName(row.artisanal.baseName, row.color);
       pendingStraps.push({ tira: row.groupName, color: row.color, napa, tiraM: row.totalQuantity });
       const k = `${normTxt(napa)}||${normTxt(row.color)}`;
       pendCountByKey.set(k, (pendCountByKey.get(k) || 0) + 1);
       continue;
     }
     if (row.artisanal && row.artisanal.baseQty > 0) {
-      addNapa(row.artisanal.baseName || 'Material base', row.color, row.artisanal.baseQty, 'tira');
+      addNapa(
+        normalizeBaseFamilyName(row.artisanal.baseName, row.color),
+        row.color,
+        row.artisanal.baseQty,
+        'tira',
+      );
       continue;
     }
     if (isDirectNapaRow(row)) {
