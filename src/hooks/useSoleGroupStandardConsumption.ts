@@ -1,10 +1,14 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import type { Database, Json } from '@/integrations/supabase/types';
 import {
   autoResyncUnstartedOpsForSoleGroup,
   toastAutoResyncSummary,
 } from '@/lib/resyncOPs';
+
+type SoleGroupItemInsert = Database['public']['Tables']['sole_group_standard_items']['Insert'];
+type SoleGroupItemUpdate = Database['public']['Tables']['sole_group_standard_items']['Update'];
 
 /**
  * Consumo padrão de um MODELO (grupo) de solado.
@@ -204,17 +208,21 @@ export function useSetSoleGroupRole() {
       perPair: number;
       perSize?: Record<string, number>;
     }) => {
-      const payload = {
+      const perSizeJson: Json =
+        params.perSize && Object.keys(params.perSize).length > 0
+          ? params.perSize
+          : {};
+      const payload: SoleGroupItemInsert = {
         sole_group_id: params.soleGroupId,
         role: params.role,
         material_product_id: null,
         consumption_per_pair: params.perPair,
-        consumption_per_size:
-          params.perSize && Object.keys(params.perSize).length > 0 ? params.perSize : {},
+        consumption_per_size: perSizeJson,
         unit: 'dm²',
       };
+      const updatePayload: SoleGroupItemUpdate = payload;
 
-      const { data: existing, error: findErr } = await (supabase as any)
+      const { data: existing, error: findErr } = await supabase
         .from('sole_group_standard_items')
         .select('id')
         .eq('sole_group_id', params.soleGroupId)
@@ -223,15 +231,15 @@ export function useSetSoleGroupRole() {
       if (findErr) throw findErr;
 
       if (existing?.id) {
-        const { error } = await (supabase as any)
+        const { error } = await supabase
           .from('sole_group_standard_items')
-          .update(payload)
+          .update(updatePayload)
           .eq('id', existing.id);
         if (error) throw error;
         return;
       }
 
-      const { error } = await (supabase as any)
+      const { error } = await supabase
         .from('sole_group_standard_items')
         .insert(payload);
       if (error) throw error;
