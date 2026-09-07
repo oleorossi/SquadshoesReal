@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowRight, CaretDown, CheckCircle, CurrencyDollar, Handshake,
-  Needle, Package, PaperPlaneTilt, Path, Scissors, Storefront, Warning,
+  Needle, Package, PaperPlaneTilt, Path, Plus, Scissors, Storefront, Warning,
 } from '@phosphor-icons/react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -21,20 +21,23 @@ import {
   contractorServicePriority,
   getContractorServiceFocus,
 } from '@/lib/contractorServiceFocus';
+import {
+  allocationKey,
+  computeOsAllocationBreakdown,
+  validateOsAllocationDrafts,
+} from '@/lib/osAllocationEngine';
 import { useContractors } from '@/hooks/useContractors';
 import { useSaleOrders } from '@/hooks/useSaleOrders';
 import {
   usePvOutsourceableLines, useGenerateOpServiceOrders,
   type OutsourceableLine,
+  type OutsourceableContractorOption,
 } from '@/hooks/useGenerateOpServiceOrders';
 
 /**
- * Assistente Pedido → Serviços/OPs, com conclusão direta na tela de serviços.
- *
- * A rota principal da fábrica é Costura de cabedal + Aviamento. Os demais
- * serviços continuam disponíveis, mas ficam numa área secundária para não
- * transformar o lançamento diário em uma varredura de setores irrelevantes.
- * Cada demanda mantém o vínculo com a OP e o setor corretos no payload.
+ * Assistente Pedido → Serviços/OPs com rateio multi-prestador.
+ * Cada OP×atividade admite várias parcelas (prestador + qtd + tarifa);
+ * a sobra sem OS permanece na fábrica.
  */
 
 export interface GenerateServiceOrdersWizardProps {
@@ -52,6 +55,13 @@ interface ServiceGroup {
   primary: boolean;
 }
 
+interface SplitDraft {
+  localId: string;
+  contractorId: string;
+  rate: number;
+  qty: number;
+}
+
 interface ChosenLine {
   line: OutsourceableLine;
   contractorId: string;
@@ -63,6 +73,42 @@ interface ChosenLine {
 const keyOf = (line: { order_id: string; sector: string }) => `${line.order_id}::${line.sector}`;
 const domIdOf = (prefix: string, value: string) => `${prefix}-${value.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
 const STEPS = ['Pedido', 'Serviços e OPs'] as const;
+let splitSeq = 0;
+const nextSplitId = () => `split-${++splitSeq}`;
+
+const remainingOf = (line: OutsourceableLine) => {
+  if (line.remaining_quantity != null && Number.isFinite(Number(line.remaining_quantity))) {
+    return Math.max(0, Math.trunc(Number(line.remaining_quantity)));
+  }
+  return Math.max(0, Math.trunc(Number(line.quantity) || 0));
+};
+
+const availableContractorsOf = (line: OutsourceableLine): OutsourceableContractorOption[] => {
+  if (Array.isArray(line.available_contractors) && line.available_contractors.length > 0) {
+    return line.available_contractors.filter((item) => item.contractor_id && !item.config_issue);
+  }
+  if (line.default_contractor_id) {
+    return [{
+      terceirizacao_id: line.default_terceirizacao_id || '',
+      contractor_id: line.default_contractor_id,
+      contractor_name: line.default_contractor_name,
+      value_per_pair: line.default_rate,
+    }];
+  }
+  return [];
+};
+
+const defaultSplitFor = (line: OutsourceableLine): SplitDraft | null => {
+  const first = availableContractorsOf(line)[0];
+  const remaining = remainingOf(line);
+  if (!first || remaining <= 0) return null;
+  return {
+    localId: nextSplitId(),
+    contractorId: first.contractor_id,
+    rate: Number(first.value_per_pair) > 0 ? Number(first.value_per_pair) : Number(line.default_rate) || 0,
+    qty: remaining,
+  };
+};
 
 const isCompletedStage = (status: string | null | undefined) => (
   (status || '')
@@ -77,26 +123,6 @@ const formatPlanningDate = (iso: string | null | undefined) => {
   if (!iso) return '—';
   const parsed = new Date(iso.length === 10 ? `${iso}T00:00:00` : iso);
   return Number.isNaN(parsed.getTime()) ? '—' : parsed.toLocaleDateString('pt-BR');
-};
-
-const formatPlanningDays = (value: number | null | undefined) => {
-  const days = Number(value);
-  if (!Number.isFinite(days) || days < 0) return '—';
-  return `${days.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} ${days === 1 ? 'dia' : 'dias'}`;
-};
-
-const planningSourceLabel = (source: string | null | undefined) => {
-  const normalized = (source || '').trim().toLowerCase();
-  if (!normalized) return null;
-  const labels: Record<string, string> = {
-    production_schedule: 'cronograma da produção',
-    production_schedule_next_sector: 'próxima etapa do cronograma',
-    manual_override: 'retorno ajustado manualmente',
-    order_planned_delivery: 'prazo planejado da OP',
-    sale_order_delivery_deadline: 'prazo de entrega do PV',
-    fallback_14_days: 'prazo padrão de 14 dias úteis',
-  };
-  return labels[normalized] || source;
 };
 
 export function GenerateServiceOrdersWizard({
@@ -121,12 +147,7 @@ export function GenerateServiceOrdersWizard({
   const [step, setStep] = useState(0);
   const [saleOrderId, setSaleOrderId] = useState('');
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
-  const [qtyByKey, setQtyByKey] = useState<Record<string, number>>({});
-  // Prestador e tarifa pertencem à ficha de CADA OP. Um estado por setor faria
-  // a primeira referência do grupo sobrescrever silenciosamente as demais.
-  const [contractorByKey, setContractorByKey] = useState<Record<string, string>>({});
-  const [rateByKey, setRateByKey] = useState<Record<string, number>>({});
-  const [dirtyRateOriginByKey, setDirtyRateOriginByKey] = useState<Record<string, string>>({});
+  const [splitsByKey, setSplitsByKey] = useState<Record<string, SplitDraft[]>>({});
   const [openSectors, setOpenSectors] = useState<Record<string, boolean>>({});
   const [showOtherServices, setShowOtherServices] = useState(false);
   const autoSelectedForPvRef = useRef<string | null>(null);
@@ -144,10 +165,7 @@ export function GenerateServiceOrdersWizard({
     setStep(initialSaleOrderId ? 1 : 0);
     setSaleOrderId(initialSaleOrderId || '');
     setSelectedKeys(new Set());
-    setQtyByKey({});
-    setContractorByKey({});
-    setRateByKey({});
-    setDirtyRateOriginByKey({});
+    setSplitsByKey({});
     setOpenSectors({});
     setShowOtherServices(false);
     autoSelectedForPvRef.current = null;
@@ -155,10 +173,7 @@ export function GenerateServiceOrdersWizard({
 
   useEffect(() => {
     setSelectedKeys(new Set());
-    setQtyByKey({});
-    setContractorByKey({});
-    setRateByKey({});
-    setDirtyRateOriginByKey({});
+    setSplitsByKey({});
     setOpenSectors({});
     setShowOtherServices(false);
   }, [saleOrderId]);
@@ -188,50 +203,15 @@ export function GenerateServiceOrdersWizard({
 
   const primaryGroups = useMemo(() => groups.filter((group) => group.primary), [groups]);
   const otherGroups = useMemo(() => groups.filter((group) => !group.primary), [groups]);
-  const activeContractorIds = useMemo(
-    () => new Set(contractors.filter((contractor) => contractor.active).map((contractor) => contractor.id)),
-    [contractors],
-  );
 
   useEffect(() => {
     if (!groups.length) return;
-    setContractorByKey(() => {
-      const next: Record<string, string> = {};
-      for (const group of groups) {
-        for (const line of group.lines) {
-          const key = keyOf(line);
-          if (line.default_contractor_id && activeContractorIds.has(line.default_contractor_id)) {
-            next[key] = line.default_contractor_id;
-          }
-        }
-      }
-      return next;
-    });
-    setRateByKey((previous) => {
-      const next: Record<string, number> = {};
-      for (const group of groups) {
-        for (const line of group.lines) {
-          const key = keyOf(line);
-          // Um valor digitado pelo usuário é uma exceção intencional. Todo o
-          // restante segue a tarifa viva da ficha após invalidação/refetch.
-          const currentOrigin = `${line.default_terceirizacao_id || ''}::${line.default_contractor_id || ''}`;
-          if (dirtyRateOriginByKey[key] === currentOrigin && previous[key] != null) {
-            next[key] = previous[key];
-            continue;
-          }
-          if (line.default_rate != null && Number(line.default_rate) > 0) {
-            next[key] = Number(line.default_rate);
-          }
-        }
-      }
-      return next;
-    });
     setOpenSectors((previous) => {
       if (Object.keys(previous).length) return previous;
       const route = primaryGroups.length ? primaryGroups : groups.slice(0, 1);
       return Object.fromEntries(route.map((group) => [group.sector, true]));
     });
-  }, [activeContractorIds, dirtyRateOriginByKey, groups, primaryGroups]);
+  }, [groups, primaryGroups]);
 
   const loadingWizardData = loadingLines || loadingContractors || (step === 0 && loadingSaleOrders);
   const wizardDataFailed = linesFailed || contractorsFailed || (step === 0 && saleOrdersFailed);
@@ -279,12 +259,11 @@ export function GenerateServiceOrdersWizard({
       keywords: `${contractor.name} ${contractor.trade_name || ''} ${contractor.service_type || ''}`,
     })), [contractors]);
 
-  const isEligible = (line: OutsourceableLine) => !line.already_has_os
+  const isEligible = (line: OutsourceableLine) => remainingOf(line) > 0
     && !isCompletedStage(line.sector_status)
-    && line.planning_config_ready === true
-    && !!line.default_terceirizacao_id
-    && !!line.default_contractor_id;
-  const qtyOf = (line: OutsourceableLine) => qtyByKey[keyOf(line)] ?? line.quantity;
+    && availableContractorsOf(line).length > 0
+    && (line.planning_config_ready === true
+      || (line.planning_config_ready == null && !!line.default_contractor_id));
 
   // A ficha já diz o que sai: Costura de cabedal e Aviamento elegíveis entram
   // marcados. O operador só desmarca o que fica interno. Outros serviços
@@ -293,24 +272,45 @@ export function GenerateServiceOrdersWizard({
     if (!open || step !== 1 || !saleOrderId || !lines.length) return;
     if (autoSelectedForPvRef.current === saleOrderId) return;
     autoSelectedForPvRef.current = saleOrderId;
-    const eligibleKeys = lines
-      .filter((line) => {
-        if (!isEligible(line)) return false;
-        const focus = getContractorServiceFocus(line.sector, line.sector_label);
-        return focus === 'costura_cabedal' || focus === 'aviamento';
-      })
-      .map(keyOf);
-    if (eligibleKeys.length === 0) return;
-    setSelectedKeys(new Set(eligibleKeys));
+    const eligible = lines.filter((line) => {
+      if (!isEligible(line)) return false;
+      const focus = getContractorServiceFocus(line.sector, line.sector_label);
+      return focus === 'costura_cabedal' || focus === 'aviamento';
+    });
+    if (eligible.length === 0) return;
+    const nextKeys = new Set(eligible.map(keyOf));
+    const nextSplits: Record<string, SplitDraft[]> = {};
+    for (const line of eligible) {
+      const split = defaultSplitFor(line);
+      if (split) nextSplits[keyOf(line)] = [split];
+    }
+    setSelectedKeys(nextKeys);
+    setSplitsByKey(nextSplits);
   }, [open, step, saleOrderId, lines]);
+
+  const ensureSplits = (line: OutsourceableLine, previous: Record<string, SplitDraft[]>) => {
+    const key = keyOf(line);
+    if (previous[key]?.length) return previous;
+    const split = defaultSplitFor(line);
+    if (!split) return previous;
+    return { ...previous, [key]: [split] };
+  };
 
   const toggleOp = (line: OutsourceableLine) => {
     if (!isEligible(line)) return;
+    const key = keyOf(line);
+    const wasSelected = selectedKeys.has(key);
     setSelectedKeys((previous) => {
       const next = new Set(previous);
-      const key = keyOf(line);
       if (next.has(key)) next.delete(key); else next.add(key);
       return next;
+    });
+    setSplitsByKey((previous) => {
+      if (wasSelected) {
+        const { [key]: _, ...rest } = previous;
+        return rest;
+      }
+      return ensureSplits(line, previous);
     });
   };
 
@@ -326,6 +326,74 @@ export function GenerateServiceOrdersWizard({
       }
       return next;
     });
+    setSplitsByKey((previous) => {
+      if (allOn) {
+        const next = { ...previous };
+        for (const line of eligible) delete next[keyOf(line)];
+        return next;
+      }
+      let next = { ...previous };
+      for (const line of eligible) next = ensureSplits(line, next);
+      return next;
+    });
+  };
+
+  const updateSplit = (lineKey: string, localId: string, patch: Partial<SplitDraft>) => {
+    setSplitsByKey((previous) => ({
+      ...previous,
+      [lineKey]: (previous[lineKey] || []).map((split) => (
+        split.localId === localId ? { ...split, ...patch } : split
+      )),
+    }));
+  };
+
+  const addSplit = (line: OutsourceableLine) => {
+    const key = keyOf(line);
+    const options = availableContractorsOf(line);
+    const used = new Set((splitsByKey[key] || []).map((split) => split.contractorId));
+    const nextContractor = options.find((item) => !used.has(item.contractor_id));
+    if (!nextContractor) {
+      toast.error('Cadastre outro prestador nesta atividade na ficha técnica.');
+      return;
+    }
+    const breakdown = computeOsAllocationBreakdown({
+      orderQuantity: line.quantity,
+      existing: (line.existing_allocations || []).map((a) => ({ quantity: Number(a.quantity) || 0 })),
+      drafts: (splitsByKey[key] || []).map((s) => ({ quantity: s.qty, unitPrice: s.rate })),
+    });
+    if (breakdown.factoryQuantity <= 0) {
+      toast.error('Não há pares restantes nesta OP/atividade para outro prestador.');
+      return;
+    }
+    setSelectedKeys((previous) => new Set(previous).add(key));
+    setSplitsByKey((previous) => ({
+      ...previous,
+      [key]: [
+        ...(previous[key] || []),
+        {
+          localId: nextSplitId(),
+          contractorId: nextContractor.contractor_id,
+          rate: Number(nextContractor.value_per_pair) > 0 ? Number(nextContractor.value_per_pair) : 0,
+          qty: breakdown.factoryQuantity,
+        },
+      ],
+    }));
+  };
+
+  const removeSplit = (lineKey: string, localId: string) => {
+    setSplitsByKey((previous) => {
+      const nextSplits = (previous[lineKey] || []).filter((split) => split.localId !== localId);
+      if (nextSplits.length === 0) {
+        const { [lineKey]: _, ...rest } = previous;
+        setSelectedKeys((keys) => {
+          const next = new Set(keys);
+          next.delete(lineKey);
+          return next;
+        });
+        return rest;
+      }
+      return { ...previous, [lineKey]: nextSplits };
+    });
   };
 
   const chosen = useMemo<ChosenLine[]>(() => {
@@ -334,37 +402,51 @@ export function GenerateServiceOrdersWizard({
       for (const line of group.lines) {
         const key = keyOf(line);
         if (!selectedKeys.has(key)) continue;
-        const contractorId = contractorByKey[key] || '';
-        const rate = rateByKey[key] ?? 0;
-        const qty = qtyOf(line);
-        // A prévia e o writer compartilham o mesmo gate. Campo ausente também
-        // bloqueia: a UI nova só sobe depois da migration correspondente.
-        const planningReady = line.planning_config_ready === true
-          && !!line.default_terceirizacao_id
-          && contractorId === line.default_contractor_id;
-        result.push({
-          line,
-          contractorId,
-          rate,
-          qty,
-          ready: isEligible(line)
-            && !!contractorId
-            && rate > 0
-            && qty > 0
-            && planningReady,
+        const splits = splitsByKey[key] || [];
+        const existing = (line.existing_allocations || []).map((a) => ({
+          quantity: Number(a.quantity) || 0,
+          contractorId: a.contractor_id,
+        }));
+        const drafts = splits.map((split) => ({
+          key: allocationKey(line.order_id, line.sector, split.contractorId),
+          orderId: line.order_id,
+          sector: line.sector,
+          contractorId: split.contractorId,
+          quantity: split.qty,
+          unitPrice: split.rate,
+        }));
+        const validation = validateOsAllocationDrafts({
+          orderQuantity: line.quantity,
+          existing,
+          drafts,
         });
+        const availableIds = new Set(availableContractorsOf(line).map((item) => item.contractor_id));
+        for (const split of splits) {
+          result.push({
+            line,
+            contractorId: split.contractorId,
+            rate: split.rate,
+            qty: split.qty,
+            ready: isEligible(line)
+              && validation.ok
+              && availableIds.has(split.contractorId)
+              && split.rate > 0
+              && split.qty > 0,
+          });
+        }
       }
     }
     return result;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groups, selectedKeys, qtyByKey, contractorByKey, rateByKey]);
+  }, [groups, selectedKeys, splitsByKey]);
 
   const ready = chosen.filter((item) => item.ready);
   const blockedCount = chosen.length - ready.length;
   const totalPairs = ready.reduce((sum, item) => sum + item.qty, 0);
   const totalValue = ready.reduce((sum, item) => sum + item.qty * item.rate, 0);
 
-  const contractorName = (contractorId: string) => {
+  const contractorName = (contractorId: string, line?: OutsourceableLine) => {
+    const fromLine = line?.available_contractors?.find((item) => item.contractor_id === contractorId);
+    if (fromLine?.contractor_name) return fromLine.contractor_name;
     const contractor = contractors.find((candidate) => candidate.id === contractorId);
     return contractor?.trade_name || contractor?.name || 'Prestador não definido';
   };
@@ -487,23 +569,33 @@ export function GenerateServiceOrdersWizard({
                 const key = keyOf(line);
                 const checked = selectedKeys.has(key);
                 const done = isCompletedStage(line.sector_status);
-                const selectedContractorId = contractorByKey[key] || '';
-                const selectedRate = rateByKey[key] ?? 0;
-                const capacity = Number(line.capacity_pairs_per_day);
-                const leadDays = line.total_lead_days ?? line.lead_days;
-                const components = Array.isArray(line.material_components)
-                  ? line.material_components.filter(Boolean)
-                  : [];
+                const remaining = remainingOf(line);
+                const splits = splitsByKey[key] || [];
+                const options = availableContractorsOf(line);
+                const existing = line.existing_allocations || [];
+                const breakdown = computeOsAllocationBreakdown({
+                  orderQuantity: line.quantity,
+                  existing: existing.map((a) => ({
+                    quantity: Number(a.quantity) || 0,
+                    unitPrice: Number(a.unit_price) || 0,
+                  })),
+                  drafts: splits.map((s) => ({ quantity: s.qty, unitPrice: s.rate })),
+                });
                 const lineId = domIdOf('service-order-line', key);
-                const quantityId = `${lineId}-quantity`;
-                const rateId = `${lineId}-rate`;
+                const splitContractorOptions: SearchableOption[] = options.map((item) => ({
+                  value: item.contractor_id,
+                  label: item.contractor_name || 'Prestador',
+                  description: item.value_per_pair != null
+                    ? formatCurrency(Number(item.value_per_pair))
+                    : undefined,
+                }));
                 return (
                   <div
                     key={key}
                     className={cn(
                       'rounded-md border px-2.5 py-2',
                       checked ? 'border-green-500/40 bg-green-500/5'
-                        : line.already_has_os ? 'border-border bg-muted/20 opacity-70'
+                        : remaining <= 0 ? 'border-border bg-muted/20 opacity-70'
                         : 'border-border/60 hover:bg-muted/30',
                     )}
                   >
@@ -527,105 +619,149 @@ export function GenerateServiceOrdersWizard({
                             · {line.ref_code || '—'}{line.color ? ` · ${line.color}` : ''}
                           </span>
                         </div>
-                        {line.already_has_os ? (
-                          <div className="text-[10px] text-amber-700 dark:text-amber-400">OS já gerada para esta OP e serviço</div>
+                        <div className="mt-0.5 text-[10px] text-muted-foreground">
+                          {line.quantity.toLocaleString('pt-BR')} pares · alocados {breakdown.existingQuantity.toLocaleString('pt-BR')} · sobra {remaining.toLocaleString('pt-BR')}
+                        </div>
+                        {remaining <= 0 ? (
+                          <div className="text-[10px] text-amber-700 dark:text-amber-400">Rateio completo nesta OP/atividade</div>
                         ) : done ? (
                           <div className="text-[10px] text-muted-foreground">Etapa já concluída internamente</div>
                         ) : null}
                       </div>
-                      <div className="w-[92px] shrink-0">
-                        <NumberInput
-                          id={quantityId}
-                          aria-label={`Quantidade da OP ${line.op_number} para ${group.label}`}
-                          value={qtyOf(line)}
-                          onChange={(value) => setQtyByKey((previous) => ({
-                            ...previous,
-                            [key]: Math.max(0, Math.min(line.quantity, Math.round(value))),
-                          }))}
-                          step="1"
-                          min={0}
-                          disabled={!checked}
-                          className="h-8 text-xs"
-                        />
-                      </div>
-                      <span className="w-10 shrink-0 text-right text-[10px] text-muted-foreground">/{line.quantity}</span>
                     </div>
 
-                    <div className="ml-7 mt-2 space-y-1.5 border-t border-border/60 pt-2">
-                      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_150px]">
-                        <div>
-                          <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                            Prestador desta ficha
-                          </Label>
-                          <div className="mt-1 flex h-9 items-center rounded-md border border-border bg-muted/25 px-3 text-xs font-medium text-foreground">
-                            {selectedContractorId
-                              ? contractorName(selectedContractorId)
-                              : 'Prestador não configurado'}
+                    {existing.length > 0 && (
+                      <div className="ml-7 mt-2 space-y-1 rounded-md border border-border/60 bg-muted/20 px-2 py-1.5">
+                        <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Já gerado</p>
+                        {existing.map((allocation) => (
+                          <div key={allocation.os_id} className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                            <span>
+                              <strong className="text-foreground">{allocation.contractor_name || 'Prestador'}</strong>
+                              {allocation.os_number ? ` · OS ${allocation.os_number}` : ''}
+                              {allocation.service_date || allocation.created_at
+                                ? ` · ${formatPlanningDate(allocation.service_date || allocation.created_at)}`
+                                : ''}
+                            </span>
+                            <span className="font-mono tabular-nums">
+                              {(Number(allocation.quantity) || 0).toLocaleString('pt-BR')} · {formatCurrency(Number(allocation.total_value) || 0)}
+                            </span>
                           </div>
-                        </div>
-                        <div>
-                          <Label htmlFor={rateId} className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-                            <CurrencyDollar className="h-3 w-3" /> Tarifa por par
-                          </Label>
-                          <NumberInput
-                            id={rateId}
-                            aria-label={`Tarifa por par da OP ${line.op_number} para ${group.label}`}
-                            value={selectedRate}
-                            onChange={(value) => {
-                              const origin = `${line.default_terceirizacao_id || ''}::${line.default_contractor_id || ''}`;
-                              setDirtyRateOriginByKey((previous) => ({ ...previous, [key]: origin }));
-                              setRateByKey((previous) => ({ ...previous, [key]: value }));
-                            }}
-                            step="0.01"
-                            min={0}
-                            disabled={!isEligible(line)}
-                            className="mt-1 h-9"
-                          />
-                        </div>
+                        ))}
                       </div>
-                      {checked && selectedContractorId && selectedRate <= 0 && (
-                        <p className="flex items-center gap-1 text-[10px] font-medium text-amber-700 dark:text-amber-400">
-                          <Warning className="h-3 w-3" /> Informe a tarifa por par desta OP.
-                        </p>
-                      )}
-                      {checked && qtyOf(line) !== line.quantity && (
-                        <p className="flex items-start gap-1 text-[10px] font-medium text-amber-700 dark:text-amber-400">
-                          <Warning className="mt-0.5 h-3 w-3 shrink-0" />
-                          A OS parcial usa a proporção da grade integral da OP para estimar os materiais. Confira o aviso no cálculo impresso quando a parcela tiver outra distribuição de numerações.
-                        </p>
-                      )}
-                      <div className="grid gap-x-4 gap-y-1 text-[10.5px] sm:grid-cols-2 lg:grid-cols-4">
-                        <span><strong className="text-foreground">Capacidade:</strong>{' '}
-                          {Number.isFinite(capacity) && capacity > 0 ? `${capacity.toLocaleString('pt-BR')} pares/dia` : 'não configurada'}
-                        </span>
-                        <span><strong className="text-foreground">Execução:</strong> {formatPlanningDays(line.execution_days)}</span>
-                        <span><strong className="text-foreground">Fila:</strong> {formatPlanningDays(line.queue_days)}</span>
-                        <span><strong className="text-foreground">Antecedência:</strong> {formatPlanningDays(leadDays)}</span>
-                        <span><strong className="text-foreground">Enviar em:</strong> {formatPlanningDate(line.recommended_send_date)}</span>
-                        <span><strong className="text-foreground">Retornar até:</strong> {formatPlanningDate(line.required_return_date)}</span>
-                        {line.return_before_sector && (
-                          <span className="sm:col-span-2"><strong className="text-foreground">Antes de:</strong> {line.return_before_sector}</span>
-                        )}
-                        {components.length > 0 && (
-                          <span className="sm:col-span-2 lg:col-span-4"><strong className="text-foreground">Materiais:</strong> {components.join(' · ')}</span>
+                    )}
+
+                    {checked && (
+                      <div className="ml-7 mt-2 space-y-2 border-t border-border/60 pt-2">
+                        {splits.map((split, index) => {
+                          const usedElsewhere = new Set(
+                            splits.filter((item) => item.localId !== split.localId).map((item) => item.contractorId),
+                          );
+                          const filteredOptions = splitContractorOptions.filter((opt) => (
+                            opt.value === split.contractorId || !usedElsewhere.has(opt.value)
+                          ));
+                          const quantityId = `${lineId}-${split.localId}-qty`;
+                          const rateId = `${lineId}-${split.localId}-rate`;
+                          return (
+                            <div key={split.localId} className="space-y-2 rounded-md border border-border/70 bg-card/60 p-2">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                                  Parcela {index + 1}
+                                </span>
+                                {splits.length > 1 && (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 px-2 text-[11px] text-muted-foreground"
+                                    onClick={() => removeSplit(key, split.localId)}
+                                  >
+                                    Remover
+                                  </Button>
+                                )}
+                              </div>
+                              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_110px_110px]">
+                                <div>
+                                  <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                                    Prestador
+                                  </Label>
+                                  <SearchableSelect
+                                    value={split.contractorId}
+                                    onChange={(value) => {
+                                      const cfg = options.find((item) => item.contractor_id === value);
+                                      updateSplit(key, split.localId, {
+                                        contractorId: value,
+                                        rate: Number(cfg?.value_per_pair) > 0
+                                          ? Number(cfg?.value_per_pair)
+                                          : split.rate,
+                                      });
+                                    }}
+                                    options={filteredOptions}
+                                    placeholder="Prestador…"
+                                    className="mt-1"
+                                  />
+                                </div>
+                                <div>
+                                  <Label htmlFor={quantityId} className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                                    Pares
+                                  </Label>
+                                  <NumberInput
+                                    id={quantityId}
+                                    value={split.qty}
+                                    onChange={(value) => updateSplit(key, split.localId, {
+                                      qty: Math.max(0, Math.round(value)),
+                                    })}
+                                    step="1"
+                                    min={0}
+                                    className="mt-1 h-9 text-xs"
+                                  />
+                                </div>
+                                <div>
+                                  <Label htmlFor={rateId} className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                                    <CurrencyDollar className="h-3 w-3" /> R$/par
+                                  </Label>
+                                  <NumberInput
+                                    id={rateId}
+                                    value={split.rate}
+                                    onChange={(value) => updateSplit(key, split.localId, { rate: value })}
+                                    step="0.01"
+                                    min={0}
+                                    className="mt-1 h-9"
+                                  />
+                                </div>
+                              </div>
+                              <p className="text-[10px] text-muted-foreground">
+                                Subtotal {formatCurrency(split.qty * split.rate)} · {contractorName(split.contractorId, line)}
+                              </p>
+                            </div>
+                          );
+                        })}
+
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-8 gap-1.5 text-[11px]"
+                            onClick={() => addSplit(line)}
+                            disabled={breakdown.factoryQuantity <= 0 || options.length <= splits.length}
+                          >
+                            <Plus className="h-3.5 w-3.5" /> Outro prestador
+                          </Button>
+                          <span className="text-[11px] text-muted-foreground">
+                            Fábrica: <strong className="font-mono text-foreground">{breakdown.factoryQuantity.toLocaleString('pt-BR')}</strong> pares
+                            {breakdown.overAllocated && (
+                              <span className="ml-2 font-medium text-amber-700 dark:text-amber-400">rateio acima da OP</span>
+                            )}
+                          </span>
+                        </div>
+
+                        {line.planning_config_issue && (
+                          <p className="flex items-start gap-1 text-[10px] font-medium text-amber-700 dark:text-amber-400">
+                            <Warning className="mt-0.5 h-3 w-3 shrink-0" /> {line.planning_config_issue}
+                          </p>
                         )}
                       </div>
-                      {planningSourceLabel(line.planning_source) && (
-                        <p className="text-[10px] text-muted-foreground">
-                          Prévia por {planningSourceLabel(line.planning_source)}; capacidade e datas são recalculadas pelo servidor ao gerar.
-                        </p>
-                      )}
-                      {line.planning_config_issue && (
-                        <p className="flex items-start gap-1 text-[10px] font-medium text-amber-700 dark:text-amber-400">
-                          <Warning className="mt-0.5 h-3 w-3 shrink-0" /> {line.planning_config_issue}
-                        </p>
-                      )}
-                      {line.planning_warning && line.planning_warning !== line.planning_config_issue && (
-                        <p className="flex items-start gap-1 text-[10px] font-medium text-amber-700 dark:text-amber-400">
-                          <Warning className="mt-0.5 h-3 w-3 shrink-0" /> {line.planning_warning}
-                        </p>
-                      )}
-                    </div>
+                    )}
                   </div>
                 );
               })}
@@ -645,7 +781,7 @@ export function GenerateServiceOrdersWizard({
             Gerar ordem de serviço
           </DialogTitle>
           <DialogDescription className="max-w-3xl text-sm">
-            Escolha somente o que vai para fora. Cada OP mostra a prévia de capacidade, prazo e materiais; o servidor recalcula tudo ao gerar.
+            Rateie por cor/OP: parte na fábrica, parte em um ou mais prestadores, com quantidade e valor por parcela.
           </DialogDescription>
         </DialogHeader>
 
@@ -786,7 +922,9 @@ export function GenerateServiceOrdersWizard({
                           <Scissors className="h-3.5 w-3.5" /> Rota principal
                         </p>
                         <p className="mt-1 text-sm font-semibold">Costura de cabedal e Aviamento primeiro</p>
-                        <p className="text-[11px] text-muted-foreground">OPs da ficha já vêm marcadas. Confira o prestador e a tarifa por par; desmarque o que fica interno.</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          Rateie por OP/cor entre fábrica e prestadores. Cadastre vários prestadores na ficha da referência.
+                        </p>
                       </div>
                       <Badge variant="outline" className="w-fit border-primary/25 bg-card font-mono text-[10px] text-primary">
                         {primaryGroups.reduce((sum, group) => sum + group.lines.filter(isEligible).length, 0)} OPs na rota
@@ -825,7 +963,7 @@ export function GenerateServiceOrdersWizard({
                   {blockedCount > 0 && (
                     <div className="flex gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-300">
                       <Warning className="mt-0.5 h-4 w-4 shrink-0" />
-                      <span>{blockedCount} {blockedCount === 1 ? 'OP marcada ficará de fora' : 'OPs marcadas ficarão de fora'} por configuração incompleta na ficha, falta de tarifa ou quantidade inválida. Isso não bloqueia as demais.</span>
+                      <span>{blockedCount} {blockedCount === 1 ? 'parcela marcada ficará de fora' : 'parcelas marcadas ficarão de fora'} por configuração incompleta, prestador duplicado, tarifa ou quantidade inválida.</span>
                     </div>
                   )}
                 </>

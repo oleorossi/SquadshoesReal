@@ -17,6 +17,7 @@ import {
   type PvServiceOrderOpRef,
   type PvServiceOrderSaleItemRef,
 } from '@/lib/pvServiceOrderAttribution';
+import { groupLedgerByContractor } from '@/lib/osAllocationEngine';
 
 interface PvServiceOrderItemRow extends PvServiceOrderLineRef {
   strap_variant_id?: string | null;
@@ -30,6 +31,9 @@ interface PvServiceOrderHeaderRow extends PvServiceOrderHeaderRef, StrapServiceO
   status: string;
   target_sector: string | null;
   sector: string | null;
+  contractor_id?: string | null;
+  unit_price?: number | null;
+  service_date?: string | null;
   contractors: { name: string | null; trade_name: string | null } | null;
 }
 
@@ -111,8 +115,8 @@ export function PvServiceOrdersCard({ saleOrderId }: { saleOrderId: string }) {
         // O hint `orders!order_id` é obrigatório: service_orders possui mais de
         // uma relação com orders no schema exposto pelo PostgREST.
         .select(`
-          id, order_number, target_sector, sector, quantity, total_value, status,
-          order_id, related_order_id, created_at, source_sale_order_id, sale_order_id,
+          id, order_number, target_sector, sector, quantity, unit_price, total_value, status,
+          contractor_id, order_id, related_order_id, created_at, service_date, source_sale_order_id, sale_order_id,
           linked_sale_order_ids, source_sale_order_item_id, selected_sale_order_item_ids,
           artisanal_recipe_id, canonical_strap_recipe_id, artisanal_output_name,
           artisanal_output_color, artisanal_output_meters, artisanal_for_order_meters,
@@ -224,6 +228,23 @@ export function PvServiceOrdersCard({ saleOrderId }: { saleOrderId: string }) {
   const hasUnallocatedValues = rows.some((row) => row.pv_attribution.totalValue == null);
   const hasGenericOrders = rows.some((row) => !isStrapServiceOrder(row));
   const hasStrapOrders = rows.some((row) => isStrapServiceOrder(row));
+  const byContractor = groupLedgerByContractor(
+    rows
+      .filter((r) => !isOsCancelled(normalizeOsStatus(r.status)) && !isStrapServiceOrder(r))
+      .map((r) => ({
+        contractorId: r.contractor_id || 'sem-prestador',
+        contractorName: r.contractors?.trade_name || r.contractors?.name || 'Prestador',
+        quantity: Number(r.pv_attribution.quantity) || Number(r.quantity) || 0,
+        totalValue: Number(r.pv_attribution.totalValue) || Number(r.total_value) || 0,
+        row: r,
+      })),
+  );
+
+  const formatOsDate = (iso: string | null | undefined) => {
+    if (!iso) return '—';
+    const parsed = new Date(iso.length === 10 ? `${iso}T00:00:00` : iso);
+    return Number.isNaN(parsed.getTime()) ? '—' : parsed.toLocaleDateString('pt-BR');
+  };
 
   return (
     <div className="rounded-xl border border-border bg-card p-4 space-y-3">
@@ -249,7 +270,21 @@ export function PvServiceOrdersCard({ saleOrderId }: { saleOrderId: string }) {
 
       <p className="text-[11px] text-muted-foreground">
         Serviços comuns são geridos em <strong>Terceirizados</strong>; produção e remessas de tira pertencem à <strong>Central de Tiras</strong>.
+        Cada linha mostra prestador, data e valor para conferir o rateio.
       </p>
+
+      {byContractor.length > 1 && (
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {byContractor.map((group) => (
+            <div key={group.contractorId} className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+              <p className="truncate text-xs font-semibold text-foreground">{group.contractorName}</p>
+              <p className="mt-0.5 font-mono text-[11px] tabular-nums text-muted-foreground">
+                {group.quantity.toLocaleString('pt-BR')} pares · {formatCurrency(group.totalValue)}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="rounded-lg border border-border/60 overflow-x-auto">
         <table className="w-full text-sm">
@@ -257,7 +292,9 @@ export function PvServiceOrdersCard({ saleOrderId }: { saleOrderId: string }) {
             <tr className="text-left text-[11px] uppercase tracking-wide">
               <th className="px-3 py-2 font-semibold">Serviço · Contratada</th>
               <th className="px-3 py-2 font-semibold">OP</th>
+              <th className="px-3 py-2 font-semibold">Data</th>
               <th className="px-3 py-2 font-semibold text-right">Pares</th>
+              <th className="px-3 py-2 font-semibold text-right">R$/par</th>
               <th className="px-3 py-2 font-semibold text-right">Total</th>
               <th className="px-3 py-2 font-semibold text-center">Status</th>
             </tr>
@@ -298,8 +335,12 @@ export function PvServiceOrdersCard({ saleOrderId }: { saleOrderId: string }) {
                     )}
                   </td>
                   <td className="px-3 py-2 text-xs font-mono whitespace-nowrap">{attribution.opNumbers.join(', ') || r.orders?.order_number || '—'}</td>
+                  <td className="px-3 py-2 text-xs whitespace-nowrap">{formatOsDate(r.service_date || r.created_at)}</td>
                   <td className="px-3 py-2 text-right font-mono tabular-nums text-xs">
                     {attribution.quantity == null ? '—' : attribution.quantity.toLocaleString('pt-BR')}
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono tabular-nums text-xs">
+                    {r.unit_price == null ? '—' : formatCurrency(Number(r.unit_price))}
                   </td>
                   <td className="px-3 py-2 text-right font-mono tabular-nums text-xs">
                     {attribution.totalValue == null ? '—' : formatCurrency(attribution.totalValue)}

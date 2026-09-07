@@ -87,9 +87,9 @@ export function ReferenceTerceirizacoesPanel({ sheetId }: { sheetId: string }) {
             Atividades externas
           </h3>
           <p className="mt-0.5 max-w-2xl text-xs text-muted-foreground">
-            Configure quem executa cada atividade, quantos pares entrega por dia,
-            quando o lote precisa voltar e quais componentes entram no cálculo de necessidade.
-            A remessa física é registrada separadamente no despacho da OS.
+            Cadastre um ou mais prestadores por atividade (rateio). Capacidade,
+            retorno e componentes entram no cálculo; a remessa física continua
+            no despacho da OS.
           </p>
         </div>
         <Button onClick={openAdd} size="sm" className="h-9 shrink-0 gap-1.5" disabled={isLoading || isError}>
@@ -382,13 +382,17 @@ function TerceirizacaoFormDialog({
   );
   const selectedContractor = contractors.find((contractor) => contractor.id === contractorId);
   const contractorCanActivate = selectedContractor?.active === true;
-  const usedActiveSectors = useMemo(
+  // Rateio multi-prestador: a mesma atividade pode ter N prestadores ativos.
+  // Só bloqueia duplicata exata (atividade + prestador).
+  const usedActiveSectorContractors = useMemo(
     () => new Set(entries
-      .filter((entry) => entry.active && entry.id !== editing?.id && !!entry.sector)
-      .map((entry) => entry.sector)),
+      .filter((entry) => entry.active && entry.id !== editing?.id && !!entry.sector && !!entry.contractor_id)
+      .map((entry) => `${entry.sector}::${entry.contractor_id}`)),
     [editing?.id, entries],
   );
-  const sectorAlreadyConfigured = usedActiveSectors.has(sector);
+  const sectorContractorAlreadyConfigured = !!sector
+    && !!contractorId
+    && usedActiveSectorContractors.has(`${sector}::${contractorId}`);
   const liveReturnSectors = useMemo(
     () => serviceOrderReturnSectorsFromSettings(sectorSettings),
     [sectorSettings],
@@ -406,7 +410,7 @@ function TerceirizacaoFormDialog({
 
   const fullConfigurationValid = !!sector
     && sectorSettingsReady
-    && (!active || !sectorAlreadyConfigured)
+    && (!active || !sectorContractorAlreadyConfigured)
     && !!contractorId
     && contractorsReady
     && (!active || contractorCanActivate)
@@ -494,7 +498,6 @@ function TerceirizacaoFormDialog({
                   <SelectItem
                     key={option.value}
                     value={option.value}
-                    disabled={active && usedActiveSectors.has(option.value)}
                   >
                     {option.label}
                   </SelectItem>
@@ -506,9 +509,9 @@ function TerceirizacaoFormDialog({
                 Esta linha legada não tem atividade reconhecida. Escolha uma antes de reativar/salvar.
               </p>
             )}
-            {active && sectorAlreadyConfigured && (
+            {active && sectorContractorAlreadyConfigured && (
               <p className="mt-1 text-xs font-medium text-destructive">
-                Esta atividade já tem um prestador ativo; edite a configuração existente.
+                Este prestador já está ativo nesta atividade; edite a configuração existente ou escolha outro.
               </p>
             )}
           </div>
