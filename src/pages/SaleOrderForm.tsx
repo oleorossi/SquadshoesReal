@@ -79,6 +79,11 @@ import {
   SaleOrderCommandExecutionError,
 } from '@/lib/saleOrderCommand';
 import { strapColorMode } from '@/lib/technicalStrapLines';
+import { useArtisanalStrapCatalog } from '@/hooks/useArtisanalStraps';
+import {
+  listMissingStrapPvOrigemChoices,
+  listStrapHubIncompleteForOrigem,
+} from '@/lib/strapPvOrigem';
 
 const emptyForm: SaleOrderFormData = {
   client_id: null,
@@ -411,9 +416,26 @@ export default function SaleOrderForm() {
   const createOrder = useCreateSaleOrder();
   const updateOrder = useUpdateSaleOrder();
   const checkStock = useCheckStockAvailability();
+  const { data: strapCatalog } = useArtisanalStrapCatalog();
   const { user } = useAuth();
   const perm = useCan('/sales');
   const draftKey = saleOrderDraftKey(user?.id);
+
+  const assertStrapOrigemReady = (productionItems: SaleOrderItemFormData[]): string | null => {
+    const measures = strapCatalog?.measures || [];
+    for (const item of productionItems) {
+      const straps = Array.isArray(item.strap_colors) ? item.strap_colors : [];
+      if (straps.length === 0) continue;
+      const missing = listMissingStrapPvOrigemChoices(straps, measures);
+      if (missing[0]) return missing[0].message;
+      const hubGaps = listStrapHubIncompleteForOrigem(straps, measures)
+        .filter((issue) => issue.code === 'preco_prestador_ausente');
+      if (hubGaps[0]) {
+        return `${hubGaps[0].message} Abra o Hub de Tiras e complete antes de salvar.`;
+      }
+    }
+    return null;
+  };
 
   // A URL direta não pode contornar a matriz CRUD. A proteção de rota governa
   // visualização; aqui a operação exige explicitamente create/edit.
@@ -1512,6 +1534,10 @@ export default function SaleOrderForm() {
       const tiraSemCor = findTiraSemCor(productionItems);
       if (tiraSemCor) { toast.error(tiraSemCor, { duration: 8000 }); return; }
     }
+    {
+      const origemGap = assertStrapOrigemReady(productionItems);
+      if (origemGap) { toast.error(origemGap, { duration: 8000 }); return; }
+    }
     if (productionItems.some(i => i.quantity <= 0)) {
       toast.error('A quantidade dos itens deve ser maior que zero.');
       return;
@@ -1649,6 +1675,10 @@ export default function SaleOrderForm() {
     {
       const tiraSemCor = findTiraSemCor(productionItems);
       if (tiraSemCor) { toast.error(tiraSemCor, { duration: 8000 }); return; }
+    }
+    {
+      const origemGap = assertStrapOrigemReady(productionItems);
+      if (origemGap) { toast.error(origemGap, { duration: 8000 }); return; }
     }
     // GUARD: bloqueia salvar com cor não cadastrada no material (cabedal/forração/
     // tira). Sem produto na cor, o débito é pulado (ruptura). Cadastre antes.

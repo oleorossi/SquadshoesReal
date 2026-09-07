@@ -621,6 +621,9 @@ export type Database = {
           display_name: string
           finished_width_mm: number
           id: string
+          origem_padrao: string
+          preco_artesanal_per_m: number | null
+          preco_prestador_per_m: number | null
           strap_type_id: string
           updated_at: string
         }
@@ -630,6 +633,9 @@ export type Database = {
           display_name: string
           finished_width_mm: number
           id?: string
+          origem_padrao?: string
+          preco_artesanal_per_m?: number | null
+          preco_prestador_per_m?: number | null
           strap_type_id: string
           updated_at?: string
         }
@@ -639,6 +645,9 @@ export type Database = {
           display_name?: string
           finished_width_mm?: number
           id?: string
+          origem_padrao?: string
+          preco_artesanal_per_m?: number | null
+          preco_prestador_per_m?: number | null
           strap_type_id?: string
           updated_at?: string
         }
@@ -5245,6 +5254,8 @@ export type Database = {
           search_norm: string | null
           service_type: string | null
           state: string | null
+          strap_freight_amount: number | null
+          strap_freight_per_meters: number | null
           trade_name: string | null
           updated_at: string
         }
@@ -5265,6 +5276,8 @@ export type Database = {
           search_norm?: string | null
           service_type?: string | null
           state?: string | null
+          strap_freight_amount?: number | null
+          strap_freight_per_meters?: number | null
           trade_name?: string | null
           updated_at?: string
         }
@@ -5285,6 +5298,8 @@ export type Database = {
           search_norm?: string | null
           service_type?: string | null
           state?: string | null
+          strap_freight_amount?: number | null
+          strap_freight_per_meters?: number | null
           trade_name?: string | null
           updated_at?: string
         }

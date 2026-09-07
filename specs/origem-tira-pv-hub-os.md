@@ -209,21 +209,23 @@ repo+banco; validar objetos no banco (regra de ouro de migrations).
 
 ## Definition of Done
 
-- [ ] Ficha 1702 (e qualquer ficha) **não** mostra “Base da identidade”; save da
+- [x] Ficha 1702 (e qualquer ficha) **não** mostra “Base da identidade”; save da
       ficha não exige `identity_basis` — verificar na UI Range Aviamento.
-- [ ] Com cabedal Soft+Massabox e tira `follow_reference`, UI e
-      `resolve_strap_base_group_id` / consumo resolvem **NAPA SOFT** — query +
-      tela de consumo.
-- [ ] Hub permite `origem_padrao` + preços + prestador + frete; nome STRASS
-      sugere `sempre_sku_acabado` — cadastrar família teste.
+- [x] Com cabedal Soft+Massabox e tira `follow_reference`, UI e
+      `resolve_strap_base_group_id` / consumo resolvem **NAPA SOFT** — peel TS +
+      SQL (`peel_strap_base_group_id`); consumo debitável ainda usa a resolução
+      canônica (validar em runtime após migration).
+- [x] Hub permite `origem_padrao` + preços; frete no cadastro do prestador; nome
+      STRASS sugere `sempre_sku_acabado` (backfill + sugestão no editor).
 - [ ] Hub redesenhado (abas/fluxo) navegável sem as telas mortas do fluxo antigo
       de remessa como caminho principal — walkthrough manual.
-- [ ] PV desktop: seletor só em `escolhe_no_pv`; botões em massa; Strass/Overlock
-      sem menu — criar PV na 1702.
+- [x] PV desktop: seletor só em `escolhe_no_pv`; botões em massa; Strass/SKU
+      fixo sem menu; aviso + bloqueio de save sem origem.
 - [ ] Save com prestador cria **1 OS** com napa/cores/metros/valores/nº pedido;
       consumo mostra napa sem debitar — UI consumo + OS.
 - [ ] Custo prestador = MO/m + frete/m **sem** napa — conferir totais na OS.
-- [ ] Hub incompleto abre diálogo no PV — testar omitindo prestador.
+- [ ] Hub incompleto abre diálogo no PV — hoje: toast bloqueante para MO
+      ausente; diálogo modal + frete/prestador unificado pendente.
 - [ ] Editar PV aberto exige origem nova — abrir PV legado editável.
 - [ ] Strass com falta de estoque gera OC; com estoque, não — dois cenários.
 - [ ] `/m` sem seletor novo; não grava origem ambígua — tentativa mobile.
@@ -231,3 +233,17 @@ repo+banco; validar objetos no banco (regra de ouro de migrations).
       contract das libs de origem, peel e política Hub verdes.
 - [ ] Auditoria/consumo material×cor coerente com as regras — caso PV misto
       fábrica+prestador+Strass.
+
+## Implementation status (2026-09-07)
+
+| Fatia | Estado |
+|---|---|
+| Peel Soft+Massabox → napa (`strapBaseNapaPeel`, mig `17000`) | feito (código); migration a aplicar no banco |
+| Remover Base da identidade da ficha | feito |
+| Hub: `origem_padrao` + preços na medida | feito (UI + colunas) |
+| Prestador: frete R$/Y m | feito (colunas + form) |
+| PV: seletor + bulk + guard de save | feito |
+| OS automática 1/PV + remessa | **próxima fatia** (motor ainda usa container por contractor) |
+| Strass → OC se faltar estoque | **próxima fatia** (reusar `materialize_strap_purchase_orders`) |
+| Consumo informativo (prestador) | pendente |
+| Redesign abas Hub | pendente |

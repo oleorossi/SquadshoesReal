@@ -46,6 +46,9 @@ export interface Contractor {
   notes: string;
   active: boolean;
   payment_days: number;
+  /** Frete de tira: R$ X a cada Y metros (spec origem-tira-pv-hub-os). */
+  strap_freight_amount?: number | null;
+  strap_freight_per_meters?: number | null;
   created_at: string;
   updated_at: string;
 }

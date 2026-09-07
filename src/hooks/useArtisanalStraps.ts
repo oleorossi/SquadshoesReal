@@ -62,6 +62,9 @@ export interface ArtisanalStrapMeasure {
   display_name: string;
   finished_width_mm: number;
   active: boolean;
+  origem_padrao?: string | null;
+  preco_artesanal_per_m?: number | null;
+  preco_prestador_per_m?: number | null;
 }
 
 export interface CanonicalStrapColor {
