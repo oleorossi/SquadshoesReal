@@ -99,11 +99,16 @@ type Props = {
    */
   extraSections?: ReactNode;
   /**
-   * Dentro do diálogo em tela cheia o título já está no chrome. O herói
-   * fica só com os números — senão "Consumo de materiais" aparece duas vezes
-   * e empurra o mapa de solados pra baixo da dobra.
+   * Título compacto (legado). O herói fica só com os números.
    */
   embedded?: boolean;
+  /**
+   * Itens do(s) PV(s) pra filtrar o consumo inteiro (solado + materiais).
+   * `selectedItemId = null` ⇒ consumo geral consolidado.
+   */
+  itemOptions?: { id: string; label: string }[];
+  selectedItemId?: string | null;
+  onSelectedItemIdChange?: (itemId: string | null) => void;
 };
 
 // Separador interno da chave de seção composta cor|família (agrupamento por Cor).
@@ -316,6 +321,9 @@ export default function MaterialConsumptionView({
   emptyMessage = 'Nenhum consumo de material encontrado.',
   extraSections,
   embedded = false,
+  itemOptions = [],
+  selectedItemId = null,
+  onSelectedItemIdChange,
 }: Props) {
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
@@ -568,8 +576,39 @@ export default function MaterialConsumptionView({
       </div>
     );
   }
+
+  const itemFilterControl = itemOptions.length > 0 && onSelectedItemIdChange ? (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border bg-muted/40 px-3 py-2.5">
+      <div className="flex items-center gap-1.5">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Item</span>
+        <Select
+          value={selectedItemId ?? '__all__'}
+          onValueChange={(v) => onSelectedItemIdChange(v === '__all__' ? null : v)}
+        >
+          <SelectTrigger className="h-9 w-[20rem] max-w-[min(20rem,75vw)] text-xs" aria-label="Filtrar consumo por item do pedido">
+            <SelectValue placeholder="Todos os itens" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">Todos os itens</SelectItem>
+            {itemOptions.map((opt) => (
+              <SelectItem key={opt.id} value={opt.id}>{opt.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Filtra solado, materiais e tiras deste item do PV (mesmo modelo, cor diferente = item separado).
+      </p>
+    </div>
+  ) : null;
+
   if (rows.length === 0) {
-    return <p className="py-8 text-center text-muted-foreground">{emptyMessage}</p>;
+    return (
+      <div className="space-y-3 py-4">
+        {itemFilterControl}
+        <p className="py-8 text-center text-muted-foreground">{emptyMessage}</p>
+      </div>
+    );
   }
 
   const colCount = grossNeed ? 7 : 9;
@@ -889,6 +928,8 @@ export default function MaterialConsumptionView({
             : 'Compara com o estoque líquido para decidir o que comprar. Consumo total mostra a necessidade bruta.'}
         </p>
       </div>
+
+      {itemFilterControl}
 
       {orderHeaders && orderHeaders.length > 0 && (
         <div className="flex flex-wrap gap-x-6 gap-y-1 rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
