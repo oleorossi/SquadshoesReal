@@ -1427,6 +1427,19 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       return data ?? [];
     },
   });
+  const { data: strapPeelLayers = [] } = useQuery({
+    queryKey: ['product_group_layers', 'strap-peel'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('product_group_layers')
+        .select('composite_group_id, component_group_id, is_color_source');
+      if (error) {
+        console.error('[TechnicalSheets] Falha ao carregar product_group_layers:', error);
+        return [];
+      }
+      return data ?? [];
+    },
+  });
   const [form, setForm] = useState<SheetFormData>(() => {
     const f = { ...emptySheetForm };
     Object.keys(f).forEach(key => {
@@ -1503,6 +1516,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       groups,
       products,
       variants: materialVariantsBySheet?.get(sheet.id) || [],
+      layers: strapPeelLayers,
     });
   }, [
     sheet,
@@ -1518,6 +1532,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
     groups,
     products,
     materialVariantsBySheet,
+    strapPeelLayers,
   ]);
   const [dirty, setDirty] = useState(false);
 

@@ -13,6 +13,7 @@ import {
 } from '@/lib/strapMaterialPolicy';
 
 export type StrapColorMode = 'follow_main' | 'select_on_order';
+export type StrapPvOrigem = 'fabrica' | 'prestador';
 
 /** Identidade imutável de uma linha de tira da ficha técnica. */
 export interface TechnicalStrapLineLike extends StrapIdentityLike, StrapMaterialPolicyLike {
@@ -22,6 +23,8 @@ export interface TechnicalStrapLineLike extends StrapIdentityLike, StrapMaterial
   strap_type_id?: string | null;
   measure_id?: string | null;
   color_mode?: StrapColorMode | null;
+  /** Escolha do PV quando Hub = escolhe_no_pv (spec origem-tira-pv-hub-os). */
+  pv_origem?: StrapPvOrigem | null;
 }
 
 export interface TechnicalStrapMeasureLike {

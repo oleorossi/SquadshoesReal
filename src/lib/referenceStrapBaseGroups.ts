@@ -1,3 +1,5 @@
+import { peelStrapBaseGroup, type StrapPeelLayer } from '@/lib/strapBaseNapaPeel';
+
 export interface ReferenceStrapBaseGroup {
   id: string;
   name: string;
@@ -51,17 +53,22 @@ const normalizeName = (value?: string | null) =>
  * A precedência por variante espelha `resolve_strap_base_group_id` no banco.
  * O nome legado da ficha só entra como informação visual e é marcado como
  * não canônico: o motor operacional continua exigindo UUID de grupo/produto.
+ *
+ * Grupos compostos (dublados) são reduzidos à camada de napa (`is_color_source`)
+ * quando `layers` é informado — a tira nunca herda Soft+Massabox como base.
  */
 export function referenceStrapBaseGroups({
   sheet,
   groups,
   products,
   variants,
+  layers = [],
 }: {
   sheet: ReferenceSheetLike;
   groups: GroupLike[];
   products: ProductLike[];
   variants: ReferenceVariantLike[];
+  layers?: readonly StrapPeelLayer[];
 }): ReferenceStrapBaseGroup[] {
   const groupsById = new Map(groups.map((group) => [group.id, group]));
   const groupsByName = new Map(groups.map((group) => [normalizeName(group.name), group]));
@@ -70,15 +77,16 @@ export function referenceStrapBaseGroups({
 
   const addGroup = (group: GroupLike | undefined, origin: string, canonical: boolean) => {
     if (!group) return;
-    const existing = resolved.get(group.id);
+    const peeled = peelStrapBaseGroup(group, layers, groupsById) || group;
+    const existing = resolved.get(peeled.id);
     if (existing) {
       if (!existing.origins.includes(origin)) existing.origins.push(origin);
       existing.canonical = existing.canonical || canonical;
       return;
     }
-    resolved.set(group.id, {
-      id: group.id,
-      name: group.name,
+    resolved.set(peeled.id, {
+      id: peeled.id,
+      name: peeled.name,
       origins: [origin],
       canonical,
     });

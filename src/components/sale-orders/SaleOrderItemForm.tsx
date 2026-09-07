@@ -22,7 +22,13 @@ import { supabase } from '@/integrations/supabase/client';
 import StrapCatalogResolutionDrawer, {
   type StrapCatalogResolutionLine,
 } from './StrapCatalogResolutionDrawer';
+import StrapPvOrigemChooser, {
+  StrapPvOrigemBulkActions,
+  type StrapPvOrigemChoice,
+} from './StrapPvOrigemChooser';
 import { ProductFormDialog } from '@/components/inventory/ProductFormDialog';
+import { normalizeStrapOrigemPadrao } from '@/lib/strapBaseNapaPeel';
+import { listMissingStrapPvOrigemChoices } from '@/lib/strapPvOrigem';
 import { useAddProduct, ProductSchema } from '@/hooks/useProducts';
 import { useAddComponentSheet } from '@/hooks/useComponentSheets';
 import type { ProductFormData } from '@/types/inventory';
@@ -2128,7 +2134,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                 </span>
               </div>
 
-              <div className="px-3 py-2 border-b bg-muted/10">
+              <div className="px-3 py-2 border-b bg-muted/10 space-y-2">
                 <span className="text-xs text-muted-foreground">
                   {hasOnlyFinishedGroups
                     ? 'Estas tiras são compradas prontas: o pedido baixa o SKU acabado da cor escolhida e não movimenta napa-base.'
@@ -2138,6 +2144,40 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                       ? 'O pedido prepara apenas as tiras internas com napa; as compradas prontas baixam o SKU acabado.'
                       : 'Ao salvar, o sistema resolve estas tiras pela napa-base da referência e pela origem configurada no catálogo.'}
                 </span>
+                {!preserveCommittedStrapSnapshot && (
+                  <StrapPvOrigemBulkActions
+                    disabled={productionExcluded || preserveCommittedStrapSnapshot}
+                    onAllFactory={() => {
+                      const updated = straps.map((strap: any) => {
+                        const measure = strapCatalog?.measures.find((entry) => entry.id === strap.measure_id);
+                        if (normalizeStrapOrigemPadrao(measure?.origem_padrao) !== 'escolhe_no_pv') return strap;
+                        return { ...strap, pv_origem: 'fabrica' as const };
+                      });
+                      onUpdate(index, 'strap_colors', updated);
+                    }}
+                    onAllContractor={() => {
+                      const updated = straps.map((strap: any) => {
+                        const measure = strapCatalog?.measures.find((entry) => entry.id === strap.measure_id);
+                        if (normalizeStrapOrigemPadrao(measure?.origem_padrao) !== 'escolhe_no_pv') return strap;
+                        return { ...strap, pv_origem: 'prestador' as const };
+                      });
+                      onUpdate(index, 'strap_colors', updated);
+                    }}
+                  />
+                )}
+                {!preserveCommittedStrapSnapshot && (() => {
+                  const missingOrigem = listMissingStrapPvOrigemChoices(
+                    straps,
+                    strapCatalog?.measures || [],
+                  );
+                  if (missingOrigem.length === 0) return null;
+                  return (
+                    <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-2 text-[11px] leading-snug text-amber-800 dark:text-amber-300">
+                      Escolha a origem em {missingOrigem.length} posição{missingOrigem.length === 1 ? '' : 'ões'}
+                      {' '}antes de salvar ({missingOrigem.map((issue) => issue.label).join(', ')}).
+                    </div>
+                  );
+                })()}
               </div>
 
               {strapStructuralContext.hasIssue && (
@@ -2547,11 +2587,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                           getStrapSourcingSelection(strapSourcingMap, lineId),
                         );
                         const blocked = !!effective && !!line?.blockReason;
-                        // Antes do primeiro save, a origem interna ainda não existe no
-                        // snapshot do item. A prontidão consulta o mesmo resolvedor do
-                        // save e continua disponível mesmo quando a prévia detalhada da
-                        // linha ainda não carregou, então o rótulo não pode depender
-                        // somente de `strap_sourcing` ou de `resolvedLine`.
+                        const measure = strapCatalog?.measures.find((entry) => entry.id === strap.measure_id);
                         const readinessIssueForLine = internalStrapReadiness?.issues.find(
                           (issue) => !issue.technicalStrapLineId || issue.technicalStrapLineId === lineId,
                         );
@@ -2571,8 +2607,21 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                             'rounded-md border px-2 py-1.5 space-y-1',
                             blocked ? 'border-amber-500/50 bg-amber-500/10' : 'border-border/60 bg-muted/20',
                           )}>
+                            <StrapPvOrigemChooser
+                              label={strap.label || `Tira ${sIdx + 1}`}
+                              origemPadrao={measure?.origem_padrao}
+                              value={(strap.pv_origem === 'fabrica' || strap.pv_origem === 'prestador')
+                                ? strap.pv_origem as StrapPvOrigemChoice
+                                : null}
+                              disabled={preserveCommittedStrapSnapshot || productionExcluded}
+                              onChange={(next) => {
+                                const updated = [...straps];
+                                updated[sIdx] = { ...strap, pv_origem: next };
+                                onUpdate(index, 'strap_colors', updated);
+                              }}
+                            />
                             <div className="flex items-center justify-between gap-1">
-                              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Origem</span>
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Estoque</span>
                               <span className="text-[10px] text-muted-foreground">
                                 {purchasedReady
                                   ? 'Comprada pronta · origem fixa'
@@ -2582,7 +2631,9 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                                       ? 'Produção interna · cadastro pendente'
                                       : effective === 'internal' && blocked
                                         ? 'Produção interna · pendência'
-                                        : 'Produção interna automática'}
+                                        : strap.pv_origem === 'prestador'
+                                          ? 'Prestador · OS com remessa de napa'
+                                          : 'Produção interna automática'}
                               </span>
                             </div>
                             {!usesFinishedGroup && !effective && internalCatalogPending ? (

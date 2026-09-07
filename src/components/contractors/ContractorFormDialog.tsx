@@ -122,6 +122,39 @@ export function ContractorFormDialog({
             </Select>
             <p className="text-xs text-muted-foreground">Inativar preserva OS, tarifas e pagamentos anteriores.</p>
           </div>
+          <div className="space-y-1.5">
+            <Label>Frete de tira (R$)</Label>
+            <Input
+              type="number"
+              min={0}
+              step="0.01"
+              value={value.strap_freight_amount ?? ''}
+              onChange={e => onChange(p => ({
+                ...p,
+                strap_freight_amount: e.target.value === '' ? null : Number(e.target.value),
+              }))}
+              placeholder="Ex.: 70"
+              className="font-mono"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Frete a cada (metros)</Label>
+            <Input
+              type="number"
+              min={0}
+              step="1"
+              value={value.strap_freight_per_meters ?? ''}
+              onChange={e => onChange(p => ({
+                ...p,
+                strap_freight_per_meters: e.target.value === '' ? null : Number(e.target.value),
+              }))}
+              placeholder="Ex.: 1600"
+              className="font-mono"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Usado na OS de remessa de tira (R$/m = valor ÷ metros). Deixe em branco se o prestador não faz tira.
+            </p>
+          </div>
           <div className="space-y-1.5 sm:col-span-2">
             <Label>Observações</Label>
             <Textarea value={value.notes || ''} onChange={e => onChange(p => ({ ...p, notes: e.target.value }))} rows={3} className="resize-none" />
