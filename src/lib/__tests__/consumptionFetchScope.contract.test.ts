@@ -19,7 +19,7 @@ describe('P1.1 escopo do fetch de consumo', () => {
     expect(orderSrc).toMatch(/\.in\('group_id',\s*chunk\)/);
     // A query de products do helper ainda projeta as colunas do motor.
     expect(orderSrc).toMatch(
-      /\.from\('products'\)[\s\S]{0,400}?\.select\('id, name, unit, color, category, group_id, quantity, reserved_stock, stock_grade, sole_classification, is_fachetado, fachete_material_group_id'\)/,
+      /\.from\('products'\)[\s\S]{0,400}?\.select\('id, name, unit, color, category, group_id, quantity, reserved_stock, stock_grade, sole_classification, is_fachetado, fachete_material_group_id, unit_price'\)/,
     );
   });
 
