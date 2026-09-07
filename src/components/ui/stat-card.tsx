@@ -55,8 +55,8 @@ export function StatCard({
       } : undefined}
       className={cn(
         'group relative bg-card border border-border rounded-lg overflow-hidden',
-        'transition-all duration-200',
-        onClick && 'cursor-pointer hover:border-foreground/40 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+        'transition-all duration-200 ease-out',
+        onClick && 'cursor-pointer hover:border-foreground/40 hover:-translate-y-0.5 active:scale-[0.96] motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
         className,
       )}
     >

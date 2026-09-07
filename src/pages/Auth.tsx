@@ -58,7 +58,7 @@ export default function Auth() {
         </div>
 
         {/* centro — wordmark Anton */}
-        <div className="relative z-10">
+        <div className="relative z-10 editorial-rise">
           <h1 className="display text-white" style={{ fontSize: 'clamp(3.5rem, 7vw, 5.5rem)', lineHeight: 0.84 }}>
             Squad<br /><span className="text-primary">Shoes</span>
           </h1>
@@ -83,7 +83,7 @@ export default function Auth() {
       <div className="flex-1 flex items-center justify-center px-6 py-12 relative">
         <span className="mono hidden lg:block absolute top-6 right-7 text-[11px] text-muted-foreground/50">v.2026</span>
 
-        <div className="w-full max-w-sm space-y-9">
+        <div className="w-full max-w-sm space-y-9 editorial-stagger">
           {/* logo mobile */}
           <div className="lg:hidden flex items-center gap-3">
             <div className="w-12 h-12 rounded-xl overflow-hidden ring-1 ring-primary/20 bg-card">
