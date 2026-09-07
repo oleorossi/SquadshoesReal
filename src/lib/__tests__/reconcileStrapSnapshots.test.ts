@@ -143,6 +143,39 @@ describe('strapPresentationLines', () => {
       color_id: blue,
     });
   });
+
+  it('preserva pv_origem do snapshot ao reconciliar com a ficha', () => {
+    const snapshot = [strap(lineA, { color: 'AZUL', color_id: blue, pv_origem: 'fabrica' })];
+    const currentSheet = [strap(lineA, {
+      label: 'TIRA ATUAL',
+      measure_id: measureB,
+      consumption: 70,
+      color: '',
+      color_id: null,
+    })];
+    const presented = strapPresentationLines(snapshot, currentSheet, false)[0];
+    expect(presented).toMatchObject({
+      label: 'TIRA ATUAL',
+      measure_id: measureB,
+      color: 'AZUL',
+      color_id: blue,
+      pv_origem: 'fabrica',
+    });
+    // Simula "Todas no prestador": grava no snapshot e o reconcile seguinte
+    // NÃO pode apagar a escolha (era o bug dos botões em massa).
+    const afterBulk = strapPresentationLines(
+      [{ ...presented, pv_origem: 'prestador' }],
+      currentSheet,
+      false,
+    )[0];
+    expect(afterBulk.pv_origem).toBe('prestador');
+    expect(
+      reconcileEditableStrapSnapshots({
+        snapshotLines: [{ ...presented, pv_origem: 'prestador' }],
+        technicalLines: currentSheet,
+      }).lines[0].pv_origem,
+    ).toBe('prestador');
+  });
 });
 
 describe('reconcileEditableStrapSnapshots', () => {

@@ -208,8 +208,14 @@ function reconciledLine<T extends ReconcileStrapLineLike>(
     : null;
   // A ficha manda na política; somente a escolha ainda permitida atravessa.
   // Nome material é snapshot, não o rótulo legado do tipo de tira.
+  // pv_origem nunca vem da ficha — tira do spread técnico pra não ressuscitar
+  // lixo se algum save antigo gravou origem na linha da ficha.
+  const {
+    pv_origem: _technicalPvOrigem,
+    ...technicalWithoutPvOrigem
+  } = technical as T & { pv_origem?: unknown };
   const materialLine = {
-    ...technical,
+    ...technicalWithoutPvOrigem,
     ...(baseGroupId || snapshot?.base_group_id || technical.material_mode ? {
       base_group_id: baseGroupId,
       base_group_name: baseGroupId && snapshot?.base_group_id === baseGroupId
@@ -225,6 +231,14 @@ function reconciledLine<T extends ReconcileStrapLineLike>(
   const preserveSelectedColor = !!snapshot
     && selectedColorCanBePreserved(snapshot, materialLine, canPreserveColor);
   const preserveColor = preserveFollowMainColor || preserveSelectedColor;
+  // pv_origem é escolha comercial do PV (escolhe_no_pv). A ficha técnica não a
+  // carrega — se o reconciliador não a reaplicar do snapshot, os botões em massa
+  // e o seletor individual gravam e o próximo efeito de reconcile apaga.
+  // Não escreva `null`: JSON.stringify diferencia de chave ausente e o efeito
+  // de reconcile entraria em loop regravando strap_colors.
+  const preservedPvOrigem = snapshot?.pv_origem === 'fabrica' || snapshot?.pv_origem === 'prestador'
+    ? snapshot.pv_origem
+    : undefined;
   return {
     ...materialLine,
     id: lineId || technical.id || null,
@@ -236,6 +250,7 @@ function reconciledLine<T extends ReconcileStrapLineLike>(
     color_mode: strapColorMode(technical),
     color: preserveColor ? snapshot?.color || '' : '',
     color_id: preserveColor ? snapshot?.color_id || null : null,
+    ...(preservedPvOrigem ? { pv_origem: preservedPvOrigem } : {}),
   } as T;
 }
 

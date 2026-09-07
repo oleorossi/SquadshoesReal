@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyDefaultStrapPvOrigemChoices,
+  DEFAULT_STRAP_PV_ORIGEM,
   listMissingStrapPvOrigemChoices,
   listStrapHubIncompleteForOrigem,
   resolveEffectiveStrapPvOrigem,
@@ -63,5 +65,34 @@ describe('strapPvOrigem', () => {
     expect(sourceModeForEffectiveOrigem('fabrica')).toBe('internal');
     expect(sourceModeForEffectiveOrigem('prestador')).toBe('internal');
     expect(sourceModeForEffectiveOrigem(null)).toBeNull();
+  });
+
+  it('padrão comprar pronto (= prestador) só preenche escolhe_no_pv vazio', () => {
+    const { lines, changed } = applyDefaultStrapPvOrigemChoices(
+      [
+        { label: 'Tira 1', measure_id: 'm1', pv_origem: null },
+        { label: 'Tira 2', measure_id: 'm2', pv_origem: 'fabrica' },
+        { label: 'Strass', measure_id: 'm3' },
+        { label: 'Legado', measure_id: 'm4' },
+      ],
+      [
+        { id: 'm1', origem_padrao: 'escolhe_no_pv' },
+        { id: 'm2', origem_padrao: 'escolhe_no_pv' },
+        { id: 'm3', origem_padrao: 'sempre_sku_acabado' },
+        { id: 'm4' },
+      ],
+    );
+    expect(changed).toBe(true);
+    expect(lines[0].pv_origem).toBe(DEFAULT_STRAP_PV_ORIGEM);
+    expect(DEFAULT_STRAP_PV_ORIGEM).toBe('prestador');
+    expect(lines[1].pv_origem).toBe('fabrica');
+    expect(lines[2].pv_origem).toBeUndefined();
+    expect(lines[3].pv_origem).toBeUndefined();
+    expect(applyDefaultStrapPvOrigemChoices(lines, [
+      { id: 'm1', origem_padrao: 'escolhe_no_pv' },
+      { id: 'm2', origem_padrao: 'escolhe_no_pv' },
+      { id: 'm3', origem_padrao: 'sempre_sku_acabado' },
+      { id: 'm4' },
+    ]).changed).toBe(false);
   });
 });

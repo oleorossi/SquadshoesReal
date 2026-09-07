@@ -49,7 +49,7 @@ export default function StrapPvOrigemChooser({
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="fabrica">Feita na fábrica</SelectItem>
-          <SelectItem value="prestador">Prestador (OS + remessa de napa)</SelectItem>
+          <SelectItem value="prestador">Comprar pronto (prestador · OS + remessa)</SelectItem>
         </SelectContent>
       </Select>
     </div>

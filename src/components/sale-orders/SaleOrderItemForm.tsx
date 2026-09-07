@@ -29,6 +29,7 @@ import StrapPvOrigemChooser, {
 import { ProductFormDialog } from '@/components/inventory/ProductFormDialog';
 import { normalizeStrapOrigemPadrao } from '@/lib/strapBaseNapaPeel';
 import {
+  applyDefaultStrapPvOrigemChoices,
   listMissingStrapPvOrigemChoices,
   resolveEffectiveStrapPvOrigem,
   sourceModeForEffectiveOrigem,
@@ -895,6 +896,21 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     strapCatalog?.measures,
     strapLineByKey,
     strapSourcingMap,
+  ]);
+
+  // Padrão "comprar pronto" (= prestador) nas posições escolhe_no_pv ainda vazias.
+  // Só preenche ausência; escolha explícita do operador (fábrica/prestador) fica.
+  useEffect(() => {
+    if (preserveCommittedStrapSnapshot) return;
+    if (!strapCatalog?.measures?.length) return;
+    const straps = (item.strap_colors as SaleOrderItemStrap[]) || [];
+    if (straps.length === 0) return;
+    const { lines, changed } = applyDefaultStrapPvOrigemChoices(straps, strapCatalog.measures);
+    if (changed) latestRef.current.onUpdate(latestRef.current.index, 'strap_colors', lines);
+  }, [
+    item.strap_colors,
+    preserveCommittedStrapSnapshot,
+    strapCatalog?.measures,
   ]);
 
   const availableColors: string[] = useMemo(() => {
@@ -2200,9 +2216,19 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                   <StrapPvOrigemBulkActions
                     disabled={productionExcluded || preserveCommittedStrapSnapshot}
                     onAllFactory={() => {
-                      const updated = straps.map((strap) => {
-                        const measure = strapCatalog?.measures.find((entry) => entry.id === strap.measure_id);
-                        if (normalizeStrapOrigemPadrao(measure?.origem_padrao) !== 'escolhe_no_pv') return strap;
+                      const eligible = new Set(
+                        straps
+                          .filter((strap) => {
+                            const measure = strapCatalog?.measures.find((entry) => entry.id === strap.measure_id);
+                            return normalizeStrapOrigemPadrao(measure?.origem_padrao) === 'escolhe_no_pv';
+                          })
+                          .map((strap) => technicalStrapLineId(strap))
+                          .filter((id): id is string => !!id),
+                      );
+                      if (eligible.size === 0) return;
+                      const updated = snapshotStraps.map((strap) => {
+                        const lineId = technicalStrapLineId(strap);
+                        if (!lineId || !eligible.has(lineId)) return strap;
                         return { ...strap, pv_origem: 'fabrica' as const };
                       });
                       onUpdate(index, 'strap_colors', updated);
@@ -2216,9 +2242,19 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                       onUpdate(index, 'strap_sourcing', nextSourcing);
                     }}
                     onAllContractor={() => {
-                      const updated = straps.map((strap) => {
-                        const measure = strapCatalog?.measures.find((entry) => entry.id === strap.measure_id);
-                        if (normalizeStrapOrigemPadrao(measure?.origem_padrao) !== 'escolhe_no_pv') return strap;
+                      const eligible = new Set(
+                        straps
+                          .filter((strap) => {
+                            const measure = strapCatalog?.measures.find((entry) => entry.id === strap.measure_id);
+                            return normalizeStrapOrigemPadrao(measure?.origem_padrao) === 'escolhe_no_pv';
+                          })
+                          .map((strap) => technicalStrapLineId(strap))
+                          .filter((id): id is string => !!id),
+                      );
+                      if (eligible.size === 0) return;
+                      const updated = snapshotStraps.map((strap) => {
+                        const lineId = technicalStrapLineId(strap);
+                        if (!lineId || !eligible.has(lineId)) return strap;
                         return { ...strap, pv_origem: 'prestador' as const };
                       });
                       onUpdate(index, 'strap_colors', updated);
@@ -2683,10 +2719,13 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                                 : null}
                               disabled={preserveCommittedStrapSnapshot || productionExcluded}
                               onChange={(next) => {
-                                const updated = [...straps];
-                                updated[sIdx] = { ...strap, pv_origem: next };
-                                onUpdate(index, 'strap_colors', updated);
                                 const lineKey = technicalStrapLineId(strap);
+                                const updated = snapshotStraps.map((entry) => (
+                                  technicalStrapLineId(entry) === lineKey
+                                    ? { ...entry, pv_origem: next }
+                                    : entry
+                                ));
+                                onUpdate(index, 'strap_colors', updated);
                                 if (lineKey && !isPurchasedReadyStrap(strap)) {
                                   onUpdate(
                                     index,
