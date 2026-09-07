@@ -41,6 +41,7 @@ import {
   resolveStrapBaseReadout,
   seedVariantCascade,
   variantDrivesNoComponent,
+  variantLeavesStrapBaseOnSheet,
   type MaterialVariantGroupLayer,
   type VariantCascadeSelection,
 } from '@/lib/materialVariantColorGroup';
@@ -658,11 +659,23 @@ function GroupCombobox({
        products,
      });
      if (!readout) return null;
+     const sheetForReadout = {
+       ...sheetMaterials,
+       lining_material_group_id: liningGroupId,
+     };
      return {
        ...readout,
        groupName: groups.find(group => group.id === readout.groupId)?.name ?? 'material da ficha',
        liningGroupName: groups.find(group => group.id === liningGroupId)?.name
          ?? sheetMaterials.lining_material ?? 'forração da ficha',
+       // I704 / sandália sem cabedal: principal Glow sem pin/cascata de forração
+       // deixa a tira na napa da ficha — consumo e débito na cor errada.
+       leavesOnSheet: variantLeavesStrapBaseOnSheet({
+         variant: formData,
+         sheet: sheetForReadout,
+         cascade,
+         products,
+       }),
      };
    }, [sheetMaterials, formData, cascade, groups, products]);
 
@@ -1483,13 +1496,18 @@ function GroupCombobox({
                         {strapBaseReadout && (
                           <p className={cn(
                             'rounded-md border px-2 py-1.5 text-[11px] leading-snug',
-                            strapBaseReadout.divergesFromLining
+                            strapBaseReadout.divergesFromLining || strapBaseReadout.leavesOnSheet
                               ? 'border-warning/40 bg-warning/10 text-warning'
                               : 'border-border/60 bg-background/60 text-muted-foreground',
                           )}>
                             <strong className="text-foreground">Base da tira:</strong>{' '}
                             sai de <strong className="text-foreground">{strapBaseReadout.groupName}</strong>
-                            {strapBaseReadout.divergesFromLining
+                            {strapBaseReadout.leavesOnSheet
+                              ? <> — ⚠ o material principal desta variante <strong>não</strong> converte
+                                  as tiras. Neste modelo sem cabedal, marque <strong>Forração</strong> em
+                                  “Componentes que seguem” ou pin a Forração no Glow; senão o PV vende
+                                  Glow e o consumo/débito corta a napa da ficha.</>
+                              : strapBaseReadout.divergesFromLining
                               ? <> — ⚠ diferente da Forração (<strong>{strapBaseReadout.liningGroupName}</strong>).
                                   Revise a Forração da ficha antes de liberar esta variante.</>
                               : <> · segue a Forração. Para trocar esse material na variante, altere a

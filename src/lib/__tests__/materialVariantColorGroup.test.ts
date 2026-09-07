@@ -3,6 +3,9 @@ import {
   activeProductColorsForGroup,
   resolveMaterialVariantColorGroup,
   resolveSheetCommercialColorGroup,
+  resolveStrapBaseReadout,
+  variantLeavesStrapBaseOnSheet,
+  EMPTY_VARIANT_CASCADE,
 } from '@/lib/materialVariantColorGroup';
 
 const groups = [
@@ -134,5 +137,49 @@ describe('resolveSheetCommercialColorGroup', () => {
 
     expect(colors).toEqual(['PRETO']);
     expect(colors).not.toContain('OURO LIGHT');
+  });
+});
+
+describe('variantLeavesStrapBaseOnSheet (I704 / sandália sem cabedal)', () => {
+  const sheet = {
+    has_straps: true,
+    upper_material: '',
+    lining_material: 'NAPA SOFT',
+    upper_material_group_id: null,
+    lining_material_group_id: 'g-soft',
+    strap_base_group_id: null,
+  };
+
+  it('acusa no-op quando só o principal é Glow e a forração não segue', () => {
+    expect(variantLeavesStrapBaseOnSheet({
+      variant: { main_material_group_id: 'g-glow' },
+      sheet,
+      cascade: EMPTY_VARIANT_CASCADE,
+      products: [],
+    })).toBe(true);
+    expect(resolveStrapBaseReadout({
+      variant: { main_material_group_id: 'g-glow' },
+      sheet,
+      cascade: EMPTY_VARIANT_CASCADE,
+      products: [],
+    })?.origin).toBe('sheet');
+  });
+
+  it('não acusa quando Forração segue o principal', () => {
+    expect(variantLeavesStrapBaseOnSheet({
+      variant: { main_material_group_id: 'g-glow' },
+      sheet,
+      cascade: { ...EMPTY_VARIANT_CASCADE, lining: true },
+      products: [],
+    })).toBe(false);
+  });
+
+  it('não acusa quando a variante pina a Forração no Glow', () => {
+    expect(variantLeavesStrapBaseOnSheet({
+      variant: { main_material_group_id: 'g-glow', lining_material_group_id: 'g-glow' },
+      sheet,
+      cascade: EMPTY_VARIANT_CASCADE,
+      products: [],
+    })).toBe(false);
   });
 });
