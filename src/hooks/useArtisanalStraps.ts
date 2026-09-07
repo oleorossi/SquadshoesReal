@@ -1040,25 +1040,48 @@ function invalidateArtisanalStrapOperations(queryClient: ReturnType<typeof useQu
   queryClient.invalidateQueries({ queryKey: ['artisanal-strap-cost-variance'] });
 }
 
-export function useArtisanalStrapCatalog(includeArchived = false) {
+export interface ArtisanalStrapCatalogOptions {
+  /** Histórico legado (Hub). No PV é custo morto e um timeout nele derrubava o catálogo inteiro. */
+  includeLegacyHistory?: boolean;
+  enabled?: boolean;
+}
+
+export function useArtisanalStrapCatalog(
+  includeArchived = false,
+  options: ArtisanalStrapCatalogOptions = {},
+) {
+  const includeLegacyHistory = options.includeLegacyHistory === true;
+  const enabled = options.enabled !== false;
   return useQuery({
-    queryKey: ['artisanal-strap-catalog', includeArchived],
+    queryKey: ['artisanal-strap-catalog', includeArchived, includeLegacyHistory],
+    enabled,
     queryFn: async () => {
+      const catalogPromise = untypedSupabase.rpc('list_artisanal_strap_catalog', {
+        p_include_archived: includeArchived,
+      });
+      const legacyPromise = includeLegacyHistory
+        ? untypedSupabase.rpc('list_legacy_artisanal_strap_recipe_history')
+        : Promise.resolve({ data: [], error: null });
       const [catalogResult, legacyHistoryResult] = await Promise.all([
-        untypedSupabase.rpc('list_artisanal_strap_catalog', {
-          p_include_archived: includeArchived,
-        }),
-        untypedSupabase.rpc('list_legacy_artisanal_strap_recipe_history'),
+        catalogPromise,
+        legacyPromise,
       ]);
       if (catalogResult.error) throw catalogResult.error;
-      const legacyHistoryError = legacyHistoryResult.error as { code?: string } | null;
+      // Timeout/erro no histórico legado NÃO pode derrubar o catálogo canônico:
+      // o PV só precisa de measures/types/colors; o Hub degrada sem a aba antiga.
+      const legacyHistoryError = legacyHistoryResult.error as { code?: string; message?: string } | null;
       if (legacyHistoryError && legacyHistoryError.code !== 'PGRST202') {
-        throw legacyHistoryResult.error;
+        console.warn(
+          '[artisanal-strap-catalog] histórico legado indisponível:',
+          legacyHistoryError.message || legacyHistoryError.code,
+        );
       }
       const catalog = normalizeCatalog(catalogResult.data);
       return {
         ...catalog,
-        legacy_recipes: asArray<LegacyArtisanalStrapRecipe>(legacyHistoryResult.data),
+        legacy_recipes: legacyHistoryError
+          ? []
+          : asArray<LegacyArtisanalStrapRecipe>(legacyHistoryResult.data),
       };
     },
     staleTime: 2 * 60 * 1000,

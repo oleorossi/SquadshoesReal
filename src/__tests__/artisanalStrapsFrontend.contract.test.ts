@@ -368,8 +368,13 @@ describe('Tiras artesanais — contrato do frontend canônico', () => {
 
   it('preserva o histórico anterior e oferece reaproveitamento explícito', () => {
     expect(hooks).toContain("rpc('list_legacy_artisanal_strap_recipe_history')");
+    expect(hooks).toContain('includeLegacyHistory');
     expect(hooks).toContain("rpc('reuse_legacy_artisanal_strap_recipe'");
     expect(hooks).toContain('legacy_recipes:');
+    // Timeout/erro no legado não pode derrubar o catálogo canônico (PV).
+    expect(hooks).toContain('histórico legado indisponível');
+    expect(hooks).not.toMatch(/if \(legacyHistoryError && legacyHistoryError\.code !== 'PGRST202'\) \{\s*throw legacyHistoryResult\.error;/);
+    expect(hub).toContain('includeLegacyHistory: true');
     expect(hub).toContain('Cadastros do sistema anterior');
     expect(hub).toContain('Histórico legado');
     expect(hub).toContain('Reaproveitar');

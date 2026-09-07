@@ -199,7 +199,9 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     && !!access.can?.('/estoque', 'create')
     && canUseQuickGroupVariantForRoles(access.roles || []);
   const productionExcluded = isProductionExcludedSaleOrderItem(item);
-  const { data: strapCatalog, isLoading: strapCatalogLoading } = useArtisanalStrapCatalog(false);
+  const { data: strapCatalog, isLoading: strapCatalogLoading } = useArtisanalStrapCatalog(false, {
+    includeLegacyHistory: false,
+  });
   const fichas = item.fichas || 1;
   const setFichas = (v: number) => onUpdate(index, 'fichas', v);
 
@@ -1931,8 +1933,10 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
               size="sm"
               className="shrink-0"
               onClick={() => {
+                // Só limpa o vínculo da variante inativa. A cor comercial do
+                // item costuma continuar válida no material da ficha — apagar
+                // forçava o operador a reescolher CHAMPAGNE etc. sem necessidade.
                 onUpdate(index, 'material_variant_id', null);
-                onUpdate(index, 'color', '');
               }}
             >
               Usar material da ficha
