@@ -477,7 +477,7 @@ async function loadStockContext(
     productIds.size > 0
       ? supabase
         .from('products')
-        .select('id, name, unit, color, category, group_id, quantity, reserved_stock, stock_grade')
+        .select('id, name, unit, color, category, group_id, quantity, reserved_stock, stock_grade, unit_price')
         .in('id', [...productIds])
       : Promise.resolve({ data: [], error: null }),
     boxTypeIds.size > 0

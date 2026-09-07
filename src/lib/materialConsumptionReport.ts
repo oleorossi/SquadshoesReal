@@ -15,7 +15,7 @@ import {
   unitTotals,
 } from '@/lib/consumptionAvailability';
 import { formatQty, formatUnit } from '@/lib/consumptionFormat';
-import { COMPONENT_ORDER, type ConsumptionRow } from '@/lib/consumptionRows';
+import { COMPONENT_ORDER, type ConsumptionRow, rowTotalCost } from '@/lib/consumptionRows';
 import { escapeHtml } from '@/lib/htmlUtils';
 import { buildColAvailability, sizeSortKey } from '@/lib/soleMatrixHtml';
 import type { ArtisanalStrapCutRow } from '@/lib/strapRollCut';
@@ -183,7 +183,7 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
     sectionMap.set(componentType, current);
     sectionOrder.set(componentType, Math.min(sectionOrder.get(componentType) ?? order, order));
   };
-  const colCount = totalMode ? 5 : 7;
+  const colCount = totalMode ? 7 : 9;
 
   // Tira interna CONVERTIDA: napa já está em §01; metros×rendimento em §03.
   // Tira PENDING fica nesta seção como cadastro incompleto — a demanda da ficha
@@ -225,6 +225,11 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
         .filter(Boolean)
         .join(' + ')
       : '';
+    const unitPrice = item.rows.map((row) => row.unitPrice).find((price) => price != null && Number.isFinite(price)) ?? null;
+    const totalCost = unitPrice != null ? item.total * unitPrice : null;
+    const costCells = `
+      <td class="num">${unitPrice != null ? escapeHtml(formatCurrency(unitPrice)) : '—'}</td>
+      <td class="num strong">${totalCost != null ? escapeHtml(formatMoney(totalCost)) : '—'}</td>`;
     const coverageCells = totalMode ? '' : `
       <td class="num">${converted || !item.known ? '—' : formatQty(item.available, item.productUnit)}</td>
       <td class="num${short > 0 ? ' shortage' : ''}">${converted
@@ -242,6 +247,7 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
       <td class="num strong">${needHtml}</td>
       ${coverageCells}
       <td class="unit">${escapeHtml(formatUnit(item.productUnit))}</td>
+      ${costCells}
     </tr>`, componentIndex(componentTypes[0] || item.componentType));
   }
 
@@ -252,6 +258,11 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
     const known = rowKnown(row);
     const usefulStock = reportRowAvailable(row);
     const shortSizes = soleShortSizes(row);
+    const unitPrice = row.unitPrice != null && Number.isFinite(row.unitPrice) ? row.unitPrice : null;
+    const totalCost = rowTotalCost(row);
+    const costCells = `
+      <td class="num">${unitPrice != null ? escapeHtml(formatCurrency(unitPrice)) : '—'}</td>
+      <td class="num strong">${totalCost != null ? escapeHtml(formatMoney(totalCost)) : '—'}</td>`;
     const coverageCells = totalMode ? '' : `
       <td class="num">${known ? formatQty(usefulStock, row.productUnit) : '—'}</td>
       <td class="num${short > 0 ? ' shortage' : ''}">${known && short > 0 ? `${formatQty(short, row.productUnit)}${shortSizes.length ? `<small>${shortSizes.length} nº</small>` : ''}` : '—'}</td>`;
@@ -262,13 +273,14 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
       <td class="num strong">${formatQty(row.totalQuantity, row.productUnit)}</td>
       ${coverageCells}
       <td class="unit">${escapeHtml(formatUnit(row.productUnit))}</td>
+      ${costCells}
     </tr>
     <tr class="grade-row"><td colspan="${colCount}">${renderSoleGrade(row, totalMode)}</td></tr>`, componentIndex('Solado'));
   }
 
   const head = totalMode
-    ? '<tr><th>Grupo</th><th>Aplicação</th><th>Cor</th><th class="num">Necessidade</th><th>Un.</th></tr>'
-    : '<tr><th>Grupo</th><th>Aplicação</th><th>Cor</th><th class="num">Necessidade</th><th class="num">Estoque</th><th class="num">Falta</th><th>Un.</th></tr>';
+    ? '<tr><th>Grupo</th><th>Aplicação</th><th>Cor</th><th class="num">Necessidade</th><th>Un.</th><th class="num">Custo/un</th><th class="num">Custo total</th></tr>'
+    : '<tr><th>Grupo</th><th>Aplicação</th><th>Cor</th><th class="num">Necessidade</th><th class="num">Estoque</th><th class="num">Falta</th><th>Un.</th><th class="num">Custo/un</th><th class="num">Custo total</th></tr>';
 
   return Array.from(sectionMap.entries())
     .sort(([a], [b]) => (sectionOrder.get(a) ?? componentIndex(a)) - (sectionOrder.get(b) ?? componentIndex(b)))

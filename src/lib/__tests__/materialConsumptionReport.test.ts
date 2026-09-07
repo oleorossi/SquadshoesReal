@@ -491,4 +491,43 @@ describe('materialConsumptionReport', () => {
     expect(html).toMatch(/Mão de obra\/m[\s\S]*?<td class="num">—<\/td>\s*<td class="num strong">—<\/td>/);
     expect(html).not.toContain('R$');
   });
+
+  it('mostra custo/un e custo total por material e cor no Consumo total', () => {
+    const html = buildMaterialConsumptionReportHtml({
+      title: 'Consumo total - PV-00193',
+      mode: 'total',
+      artisanalStrapRows: [],
+      rows: [
+        row({
+          componentType: 'Cabedal',
+          groupName: 'NAPA MADRID',
+          materialName: 'Cabedal',
+          color: 'OFF WHITE',
+          productUnit: 'm',
+          totalQuantity: 14.91,
+          unitPrice: 12.5,
+          productIds: ['napa-madrid-off'],
+        }),
+        row({
+          componentType: 'Embalagem',
+          groupName: 'EMBALAGEM',
+          materialName: 'CAIXA COLMEIA 11',
+          color: '—',
+          productUnit: 'un',
+          totalQuantity: 45,
+          unitPrice: 4,
+          boxTypeIds: ['bt-colmeia'],
+        }),
+      ],
+    });
+
+    expect(html).toContain('Custo/un');
+    expect(html).toContain('Custo total');
+    expect(html).toContain('NAPA MADRID');
+    expect(html).toContain('OFF WHITE');
+    expect(html).toContain('R$\u00a012,50');
+    expect(html).toContain('R$\u00a0186,38');
+    expect(html).toContain('R$\u00a04,00');
+    expect(html).toContain('R$\u00a0180,00');
+  });
 });

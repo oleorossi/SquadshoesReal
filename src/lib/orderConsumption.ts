@@ -699,7 +699,7 @@ const CONSUMPTION_IN_CHUNK = 100;
  * auto-derivado em `orderConsumption.test.ts` casa essa string.
  */
 export const CONSUMPTION_PRODUCT_SELECT =
-  'id, name, unit, color, category, group_id, quantity, reserved_stock, stock_grade, sole_classification, is_fachetado, fachete_material_group_id';
+  'id, name, unit, color, category, group_id, quantity, reserved_stock, stock_grade, sole_classification, is_fachetado, fachete_material_group_id, unit_price';
 
 /**
  * Produtos ativos só dos grupos (e pins soltos) envolvidos nas fichas.
@@ -720,7 +720,7 @@ export async function fetchActiveProductsByGroupIds(
       .from('products')
       // `unit` / `category` / `is_fachetado` / `fachete_material_group_id`:
       // ver CONSUMPTION_PRODUCT_SELECT — guard auto-derivado trava regressão.
-      .select('id, name, unit, color, category, group_id, quantity, reserved_stock, stock_grade, sole_classification, is_fachetado, fachete_material_group_id')
+      .select('id, name, unit, color, category, group_id, quantity, reserved_stock, stock_grade, sole_classification, is_fachetado, fachete_material_group_id, unit_price')
       .eq('active', true)
       .in('group_id', chunk);
     if (error) throw error;
@@ -732,7 +732,7 @@ export async function fetchActiveProductsByGroupIds(
     const chunk = missingExtras.slice(i, i + CONSUMPTION_IN_CHUNK);
     const { data, error } = await client
       .from('products')
-      .select('id, name, unit, color, category, group_id, quantity, reserved_stock, stock_grade, sole_classification, is_fachetado, fachete_material_group_id')
+      .select('id, name, unit, color, category, group_id, quantity, reserved_stock, stock_grade, sole_classification, is_fachetado, fachete_material_group_id, unit_price')
       .eq('active', true)
       .in('id', chunk);
     if (error) throw error;

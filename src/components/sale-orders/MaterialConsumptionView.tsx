@@ -19,12 +19,13 @@ import { buildColAvailability, sizeSortKey } from '@/lib/soleMatrixHtml';
 import type { ArtisanalStrapCutRow } from '@/lib/strapRollCut';
 import ArtisanalStrapRollCutBlock from '@/components/sale-orders/ArtisanalStrapRollCutBlock';
 import ConsumptionDecisionRail, { type ConsumptionFilter } from '@/components/sale-orders/ConsumptionDecisionRail';
-import { type ConsumptionRow, COMPONENT_ORDER } from '@/lib/consumptionRows';
+import { type ConsumptionRow, COMPONENT_ORDER, rowTotalCost } from '@/lib/consumptionRows';
 import { buildBuyList, isBuyListRow, baseMaterialName, rowBelongsToBaseFamily, type BuyListColor } from '@/lib/buyList';
 import { formatQty, formatUnit, pluralizeItens } from '@/lib/consumptionFormat';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { buildMaterialConsumptionReportHtml, materialConsumptionReportFilename } from '@/lib/materialConsumptionReport';
 import { openPrintTab, printHtmlAsPdf } from '@/lib/printPdf';
+import { formatCurrency, formatMoney } from '@/lib/utils';
 import {
   aggregateItems,
   countPending,
@@ -571,7 +572,7 @@ export default function MaterialConsumptionView({
     return <p className="py-8 text-center text-muted-foreground">{emptyMessage}</p>;
   }
 
-  const colCount = grossNeed ? 5 : 7;
+  const colCount = grossNeed ? 7 : 9;
 
   // ── Render de uma linha da tabela mestra ────────────────────────────────
   const renderRow = (row: ConsumptionRow, index: number, neutralStock: boolean, sectionKey: string) => {
@@ -688,6 +689,19 @@ export default function MaterialConsumptionView({
           </>
         )}
         <TableCell className="text-center text-xs text-muted-foreground">{formatUnit(row.productUnit)}</TableCell>
+        <TableCell className="text-right font-mono tabular-nums text-muted-foreground">
+          {row.unitPrice != null && Number.isFinite(row.unitPrice)
+            ? formatCurrency(row.unitPrice)
+            : <span className="text-muted-foreground">—</span>}
+        </TableCell>
+        <TableCell className="text-right font-mono font-bold tabular-nums">
+          {(() => {
+            const total = rowTotalCost(row);
+            return total != null
+              ? formatMoney(total)
+              : <span className="font-normal text-muted-foreground">—</span>;
+          })()}
+        </TableCell>
       </TableRow>
     );
   };
@@ -695,6 +709,8 @@ export default function MaterialConsumptionView({
   const renderBand = (item: ItemGroup) => {
     const short = itemShortfall(item);
     const ok = item.known && short === 0;
+    const unitPrice = item.rows.map((row) => row.unitPrice).find((price) => price != null && Number.isFinite(price)) ?? null;
+    const totalCost = unitPrice != null ? item.total * unitPrice : null;
     return (
       <TableRow key={`band-${item.key}`} className="border-0 hover:bg-transparent">
         <TableCell colSpan={colCount} className="p-0">
@@ -705,6 +721,16 @@ export default function MaterialConsumptionView({
             <span className={`font-mono text-lg font-bold tabular-nums ${grossNeed ? 'text-foreground' : item.known ? 'text-green-700 dark:text-green-400' : 'text-amber-700 dark:text-amber-400'}`}>
               {formatQty(item.total, item.productUnit)}<span className="ml-0.5 text-xs font-semibold">{formatUnit(item.productUnit)}</span>
             </span>
+            {totalCost != null && (
+              <span className="font-mono text-sm font-semibold tabular-nums text-foreground">
+                · {formatMoney(totalCost)}
+                {unitPrice != null && (
+                  <span className="ml-1 text-[11px] font-normal text-muted-foreground">
+                    ({formatCurrency(unitPrice)}/{formatUnit(item.productUnit)})
+                  </span>
+                )}
+              </span>
+            )}
             <span className="font-mono text-[11px] text-muted-foreground">
               = {item.rows.map((r) => `${formatQty(r.totalQuantity, r.productUnit)} ${r.materialName || 'aplicação'}`).join(' + ')}
             </span>
@@ -994,6 +1020,8 @@ export default function MaterialConsumptionView({
                   <TableHead aria-sort={sortKey === 'productUnit' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined} className="w-20">
                     <button type="button" className="flex w-full select-none items-center justify-center hover:text-foreground" onClick={() => handleSort('productUnit')}>Un <SortIcon col="productUnit" /></button>
                   </TableHead>
+                  <TableHead className="w-28 text-right">Custo/un</TableHead>
+                  <TableHead className="w-32 text-right">Custo total</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>

@@ -24,6 +24,11 @@ export type ConsumptionRow = MaterialConsumptionRow & {
   previewQuantity?: number;
   /** Solado: estoque por numeração do produto exato. */
   soleSizeStock?: Record<string, number>;
+  /**
+   * Preço unitário do produto/cor (ou caixa) resolvido para a linha.
+   * Null quando não há SKU/caixa confiável ou o preço não veio no contexto.
+   */
+  unitPrice?: number | null;
   /** Snapshot explicativo da conversão canônica da tira interna em napa. */
   artisanal?: { baseName: string; baseQty: number; yieldPerMeter: number; pending?: boolean };
   strapVariantId?: string | null;
@@ -76,6 +81,81 @@ export const normTxt = (s: string) => (s || '')
 
 const netStock = (product: { quantity?: number | null; reserved_stock?: number | null } | undefined): number =>
   Math.max(0, (Number(product?.quantity) || 0) - (Number(product?.reserved_stock) || 0));
+
+const finiteNonNegativePrice = (value: unknown): number | null => {
+  if (value == null || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+};
+
+/**
+ * Preço unitário do balde da linha (SKU pinado, solado, caixa ou grupo+cor).
+ * Quando vários produtos/caixas batem, usa o primeiro preço finito em ordem
+ * estável de id — divergência rara no mesmo balde; evita inventar média.
+ */
+export function resolveRowUnitPrice(
+  row: Pick<ConsumptionRow, 'boxTypeIds' | 'productIds' | 'soleProductId' | 'groupName' | 'color' | 'colorMismatch'>,
+  ctx: Pick<ConsumptionContext, 'allProducts' | 'productGroups' | 'boxTypes'>,
+  colorMatchesProduct: (product: any, color: string) => boolean,
+): number | null {
+  if (row.colorMismatch) return null;
+
+  if (row.boxTypeIds && row.boxTypeIds.length > 0) {
+    const wanted = new Set(row.boxTypeIds);
+    const boxes = (ctx.boxTypes || [])
+      .filter((box) => wanted.has(box.id))
+      .slice()
+      .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    for (const box of boxes) {
+      const price = finiteNonNegativePrice(box.unit_price);
+      if (price != null) return price;
+    }
+    return null;
+  }
+
+  if (row.soleProductId) {
+    const product = (ctx.allProducts || []).find((entry: any) => entry.id === row.soleProductId);
+    return finiteNonNegativePrice(product?.unit_price);
+  }
+
+  if (row.productIds && row.productIds.length > 0) {
+    const wanted = new Set(row.productIds);
+    const products = (ctx.allProducts || [])
+      .filter((product: any) => wanted.has(product.id))
+      .slice()
+      .sort((a: any, b: any) => String(a.id).localeCompare(String(b.id)));
+    for (const product of products) {
+      const price = finiteNonNegativePrice(product.unit_price);
+      if (price != null) return price;
+    }
+    return null;
+  }
+
+  const group = (ctx.productGroups || []).find((candidate: any) =>
+    normTxt(candidate.name) === normTxt(row.groupName));
+  const products = (ctx.allProducts || [])
+    .filter((product: any) => {
+      const belongs = group
+        ? product.group_id === group.id
+        : normTxt(product.name) === normTxt(row.groupName);
+      return belongs && colorMatchesProduct(product, row.color);
+    })
+    .slice()
+    .sort((a: any, b: any) => String(a.id).localeCompare(String(b.id)));
+  for (const product of products) {
+    const price = finiteNonNegativePrice(product.unit_price);
+    if (price != null) return price;
+  }
+  return null;
+}
+
+/** Custo total da linha = necessidade × preço unitário (null se sem preço). */
+export function rowTotalCost(row: Pick<ConsumptionRow, 'totalQuantity' | 'unitPrice'>): number | null {
+  const unit = row.unitPrice;
+  if (unit == null || !Number.isFinite(unit)) return null;
+  const qty = Number(row.totalQuantity) || 0;
+  return qty * unit;
+}
 
 function extractStockGrade(product: any): Record<string, number> {
   const result: Record<string, number> = {};
@@ -163,6 +243,9 @@ export async function annotateConsumptionAvailability(
   for (const row of canonicalRows) {
     if (row.componentType === 'Solado') row.soleSizeStock = soleStock(row);
     else if (row.available == null) row.available = rowAvailable(row);
+    if (row.unitPrice == null) {
+      row.unitPrice = resolveRowUnitPrice(row, ctx, colorMatchesProduct);
+    }
   }
 
   const sortedRows = [...canonicalRows].sort((a, b) => {
