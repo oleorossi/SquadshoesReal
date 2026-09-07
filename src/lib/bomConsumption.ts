@@ -276,11 +276,13 @@ async function fetchScopedProductsOrThrow(
 ): Promise<Awaited<ReturnType<typeof fetchActiveProductsByGroupIds>>> {
   try {
     return await fetchActiveProductsByGroupIds(client, groupIds, extraProductIds);
-  } catch (error: unknown) {
-    const detail = error instanceof Error
-      ? error
-      : { message: String((error as { message?: string })?.message ?? error ?? '') };
-    assertQuerySucceeded('products', { error: detail });
+  } catch (error) {
+    const message = error instanceof Error
+      ? error.message
+      : (error && typeof error === 'object' && 'message' in error
+        ? String((error as { message?: unknown }).message ?? '')
+        : 'erro desconhecido');
+    assertQuerySucceeded('products', { error: { message } });
     return [];
   }
 }
