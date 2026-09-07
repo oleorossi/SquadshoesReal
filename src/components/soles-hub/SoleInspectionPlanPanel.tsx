@@ -7,6 +7,7 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import type { Json } from '@/integrations/supabase/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -38,13 +39,13 @@ export default function SoleInspectionPlanPanel({ soleGroupId, soleGroupName }: 
     queryKey: ['sole_inspection_plan', soleGroupId],
     enabled: !!soleGroupId,
     queryFn: async () => {
-      const { data: row, error } = await (supabase as any)
+      const { data: row, error } = await supabase
         .from('product_groups')
         .select('id, name, sole_inspection_plan')
         .eq('id', soleGroupId!)
         .maybeSingle();
       if (error) throw error;
-      return row as { id: string; name: string; sole_inspection_plan: unknown } | null;
+      return row;
     },
     staleTime: 30_000,
   });
@@ -56,8 +57,8 @@ export default function SoleInspectionPlanPanel({ soleGroupId, soleGroupName }: 
   const save = useMutation({
     mutationFn: async () => {
       if (!soleGroupId) throw new Error('Solado sem família (group_id) — vincule ao grupo antes.');
-      const payload = serializeSoleInspectionPlan(form);
-      const { error } = await (supabase as any)
+      const payload = serializeSoleInspectionPlan(form) as Json;
+      const { error } = await supabase
         .from('product_groups')
         .update({ sole_inspection_plan: payload })
         .eq('id', soleGroupId);
