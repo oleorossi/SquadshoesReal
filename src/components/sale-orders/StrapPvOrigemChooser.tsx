@@ -38,7 +38,7 @@ export default function StrapPvOrigemChooser({
         Fábrica ou prestador · {label}
       </Label>
       <Select
-        value={value || ''}
+        value={value ?? undefined}
         disabled={disabled}
         onValueChange={(next) => {
           if (next === 'fabrica' || next === 'prestador') onChange(next);
@@ -49,7 +49,7 @@ export default function StrapPvOrigemChooser({
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="fabrica">Feita na fábrica</SelectItem>
-          <SelectItem value="prestador">Comprar pronto (prestador · OS + remessa)</SelectItem>
+          <SelectItem value="prestador">Prestador mais OS</SelectItem>
         </SelectContent>
       </Select>
     </div>
