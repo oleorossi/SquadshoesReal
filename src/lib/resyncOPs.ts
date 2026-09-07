@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { executeSaleOrderCommand } from '@/lib/saleOrderCommand';
 
@@ -110,4 +111,89 @@ export async function resyncOPsForSheet(sheetId: string): Promise<SheetResyncSum
   }
 
   return resyncOPRecords(ops);
+}
+
+export interface AutoResyncSummary {
+  resynced: number;
+  skippedInactive: number;
+  skippedStarted: number;
+  errors: Array<{ order_number?: string | null; message?: string }>;
+}
+
+function parseAutoResyncPayload(raw: unknown): AutoResyncSummary {
+  const data = (raw || {}) as Record<string, unknown>;
+  const errorsRaw = Array.isArray(data.errors) ? data.errors : [];
+  return {
+    resynced: Number(data.resynced) || 0,
+    skippedInactive: Number(data.skipped_inactive) || 0,
+    skippedStarted: Number(data.skipped_started) || 0,
+    errors: errorsRaw.map((row) => {
+      const item = (row || {}) as Record<string, unknown>;
+      return {
+        order_number: item.order_number == null ? null : String(item.order_number),
+        message: item.message == null ? undefined : String(item.message),
+      };
+    }),
+  };
+}
+
+/**
+ * Propaga consumo da ficha para OPs de PVs Aprovados sem fato físico.
+ * A ficha já deve ter sido salva — falha aqui não desfaz o UPDATE.
+ */
+export async function autoResyncUnstartedOpsForSheet(
+  sheetId: string,
+): Promise<AutoResyncSummary> {
+  const { data, error } = await (supabase as any).rpc(
+    'auto_resync_unstarted_ops_for_sheet',
+    { p_sheet_id: sheetId },
+  );
+  if (error) throw error;
+  return parseAutoResyncPayload(data);
+}
+
+/** Propaga consumo após alteração no Consumo Padrão de um grupo de solado. */
+export async function autoResyncUnstartedOpsForSoleGroup(
+  soleGroupId: string,
+): Promise<AutoResyncSummary> {
+  const { data, error } = await (supabase as any).rpc(
+    'auto_resync_unstarted_ops_for_sole_group',
+    { p_sole_group_id: soleGroupId },
+  );
+  if (error) throw error;
+  return parseAutoResyncPayload(data);
+}
+
+/** Toast padrão após save da ficha / solado (não aborta o fluxo do caller). */
+export function toastAutoResyncSummary(
+  summary: AutoResyncSummary,
+  opts?: { emptyMessage?: string },
+): void {
+  const parts: string[] = [];
+  if (summary.resynced > 0) {
+    parts.push(
+      `${summary.resynced} OP${summary.resynced === 1 ? '' : 's'} com consumo atualizado`,
+    );
+  }
+  if (summary.skippedStarted > 0) {
+    parts.push(
+      `${summary.skippedStarted} já iniciada${summary.skippedStarted === 1 ? '' : 's'} (só sinalizada)`,
+    );
+  }
+  if (summary.errors.length > 0) {
+    const first = summary.errors[0];
+    const label = first.order_number || 'OP';
+    toast.warning(
+      `Consumo parcial: ${summary.errors.length} falha(s). Ex.: ${label} — ${first.message || 'erro'}`,
+      { duration: 10000 },
+    );
+    return;
+  }
+  if (parts.length > 0) {
+    toast.success(parts.join(' · '), { duration: 6000 });
+    return;
+  }
+  if (opts?.emptyMessage) {
+    toast.success(opts.emptyMessage);
+  }
 }

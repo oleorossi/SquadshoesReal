@@ -8,11 +8,16 @@ import {
 } from '@/lib/technicalStrapLines';
 import { replaceTechnicalSheetCacheRow } from '@/lib/technicalSheetPatch';
 import { invalidateProductionCaches } from '@/hooks/useProductionTransitions';
+import {
+  autoResyncUnstartedOpsForSheet,
+  toastAutoResyncSummary,
+} from '@/lib/resyncOPs';
 
 /**
- * Alterar uma ficha invalida o plano/snapshot por trigger do banco, mas NUNCA
- * reescreve uma OP automaticamente. O operador revisa o impacto e, se a
- * correção realmente deve valer, executa o resync administrativo transacional.
+ * Alterar uma ficha invalida o plano/snapshot por trigger do banco. Em seguida
+ * o cliente propaga o consumo automaticamente para OPs de PVs Aprovados sem
+ * fato físico (auto_resync_unstarted_ops_for_sheet). OPs já iniciadas só
+ * ficam sinalizadas — resync destrutivo continua manual/admin.
  */
 function invalidateSheetAudit(qc: QueryClient) {
   // A auditoria industrial alimenta os badges do catálogo e a régua da
@@ -28,7 +33,26 @@ function invalidateSheetImpact(qc: QueryClient) {
   qc.invalidateQueries({ queryKey: ['pv_outdated_status'] });
   qc.invalidateQueries({ queryKey: ['sale-order-command-preflight'] });
   qc.invalidateQueries({ queryKey: ['system-diag', 'pv-system'] });
+  qc.invalidateQueries({ queryKey: ['pv-consumption'] });
   invalidateSheetAudit(qc);
+}
+
+/** Save da ficha já persistiu — propaga consumo sem desfazer o UPDATE. */
+async function propagateSheetConsumption(qc: QueryClient, sheetId: string) {
+  invalidateSheetImpact(qc);
+  try {
+    const summary = await autoResyncUnstartedOpsForSheet(sheetId);
+    invalidateSheetImpact(qc);
+    toastAutoResyncSummary(summary, {
+      emptyMessage: 'Ficha salva. Nenhum PV aprovado pendente de atualização de consumo.',
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'falha ao propagar consumo';
+    toast.warning(
+      `Ficha salva, mas o consumo das OPs não foi atualizado automaticamente: ${message}`,
+      { duration: 10000 },
+    );
+  }
 }
 
 export type OverheadHistoryEntry = {
@@ -552,8 +576,7 @@ export function useUpdateSheet() {
           : row);
       });
       qc.invalidateQueries({ queryKey: ['technical_sheets', 'cabedal-par-pe-audit'] });
-      invalidateSheetImpact(qc);
-      toast.success('Ficha atualizada; OPs existentes foram preservadas e o impacto ficou sinalizado.');
+      void propagateSheetConsumption(qc, updatedSheet.id);
     },
     onError: (err: Error) => {
       console.error('[useUpdateSheet] mutationFn falhou:', err);
@@ -730,8 +753,7 @@ export function useAddSheetMaterial() {
     },
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ['sheet_materials', variables.sheetId] });
-      invalidateSheetImpact(qc);
-      toast.success('Material adicionado; OPs existentes não foram alteradas automaticamente.');
+      void propagateSheetConsumption(qc, variables.sheetId);
     },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
   });
@@ -747,8 +769,7 @@ export function useBulkAddSheetMaterials() {
     },
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ['sheet_materials', variables.sheetId] });
-      invalidateSheetImpact(qc);
-      toast.success(`${variables.materials.length} materiais adicionados; OPs existentes foram preservadas.`);
+      void propagateSheetConsumption(qc, variables.sheetId);
     },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
   });
@@ -765,9 +786,12 @@ export function useUpdateSheetMaterial(sheetId: string | null) {
       if (error) throw error;
     },
     onSuccess: () => {
+      if (!sheetId) {
+        invalidateSheetImpact(qc);
+        return;
+      }
       qc.invalidateQueries({ queryKey: ['sheet_materials', sheetId] });
-      invalidateSheetImpact(qc);
-      toast.success('Material atualizado; OPs existentes não foram alteradas automaticamente.');
+      void propagateSheetConsumption(qc, sheetId);
     },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
   });
@@ -784,9 +808,12 @@ export function useDeleteSheetMaterial(sheetId: string | null) {
       if (error) throw error;
     },
     onSuccess: () => {
+      if (!sheetId) {
+        invalidateSheetImpact(qc);
+        return;
+      }
       qc.invalidateQueries({ queryKey: ['sheet_materials', sheetId] });
-      invalidateSheetImpact(qc);
-      toast.success('Material removido; OPs existentes não foram alteradas automaticamente.');
+      void propagateSheetConsumption(qc, sheetId);
     },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
   });

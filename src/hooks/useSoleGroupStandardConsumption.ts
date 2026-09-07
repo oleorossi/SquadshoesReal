@@ -1,6 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import {
+  autoResyncUnstartedOpsForSoleGroup,
+  toastAutoResyncSummary,
+} from '@/lib/resyncOPs';
 
 /**
  * Consumo padrão de um MODELO (grupo) de solado.
@@ -64,6 +68,19 @@ export function rolesForSole(
   }
   if (isFachetado) roles.push('fachete');
   return roles;
+}
+
+async function propagateSoleGroupConsumption(soleGroupId: string) {
+  try {
+    const summary = await autoResyncUnstartedOpsForSoleGroup(soleGroupId);
+    toastAutoResyncSummary(summary);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'falha ao propagar consumo';
+    toast.warning(
+      `Consumo do solado salvo, mas OPs aprovadas não foram atualizadas: ${message}`,
+      { duration: 10000 },
+    );
+  }
 }
 
 export interface SoleGroupItemRow {
@@ -201,7 +218,10 @@ export function useSetSoleGroupRole() {
       // O espelho mudou em todas as cores do grupo — quem lê specs recarrega.
       qc.invalidateQueries({ queryKey: ['sole_technical_specs'] });
       qc.invalidateQueries({ queryKey: ['soleSpecs'] });
+      qc.invalidateQueries({ queryKey: ['pv-consumption'] });
+      qc.invalidateQueries({ queryKey: ['pv_outdated_status'] });
       toast.success(`${ROLE_LABEL[vars.role]} salvo para todas as cores do modelo.`);
+      void propagateSoleGroupConsumption(vars.soleGroupId);
     },
     onError: (err: Error) => toast.error(`Erro ao salvar: ${err.message}`),
   });
@@ -240,7 +260,10 @@ export function useUpsertSoleGroupItem() {
     },
     onSuccess: (_d, vars) => {
       qc.invalidateQueries({ queryKey: ['sole_group_standard_items', vars.soleGroupId] });
+      qc.invalidateQueries({ queryKey: ['pv-consumption'] });
+      qc.invalidateQueries({ queryKey: ['pv_outdated_status'] });
       toast.success('Item padrão salvo.');
+      void propagateSoleGroupConsumption(vars.soleGroupId);
     },
     onError: (err: Error) => toast.error(`Erro ao salvar: ${err.message}`),
   });
@@ -258,7 +281,10 @@ export function useRemoveSoleGroupItem() {
     },
     onSuccess: (_d, vars) => {
       qc.invalidateQueries({ queryKey: ['sole_group_standard_items', vars.soleGroupId] });
+      qc.invalidateQueries({ queryKey: ['pv-consumption'] });
+      qc.invalidateQueries({ queryKey: ['pv_outdated_status'] });
       toast.success('Item removido.');
+      void propagateSoleGroupConsumption(vars.soleGroupId);
     },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
   });
@@ -304,7 +330,10 @@ export function useCopySoleGroupItems() {
     },
     onSuccess: (count, vars) => {
       qc.invalidateQueries({ queryKey: ['sole_group_standard_items', vars.toGroupId] });
+      qc.invalidateQueries({ queryKey: ['pv-consumption'] });
+      qc.invalidateQueries({ queryKey: ['pv_outdated_status'] });
       toast.success(`${count} ${count === 1 ? 'item copiado' : 'itens copiados'}.`);
+      void propagateSoleGroupConsumption(vars.toGroupId);
     },
     onError: (err: Error) => toast.error(err.message),
   });
