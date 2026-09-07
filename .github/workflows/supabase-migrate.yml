@@ -179,6 +179,7 @@ jobs:
         run: |
           supabase --workdir "${SUPABASE_MIGRATION_WORKDIR}" db push \
             --linked \
+            --include-all \
             --dry-run \
             --yes
           echo "🟡 DRY RUN concluído — nenhuma migration foi aplicada."
@@ -190,8 +191,12 @@ jobs:
           SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: |
           echo "🟢 Aplicando migrations pendentes..."
+          # O snapshot isolado contém o histórico remoto e somente as novas
+          # locais pós-cutover. MCP pode registrar uma versão posterior antes
+          # do CI; incluir as pendentes evita deixar lacunas nessa sequência.
           supabase --workdir "${SUPABASE_MIGRATION_WORKDIR}" db push \
             --linked \
+            --include-all \
             --yes
           echo "✅ Concluído"
 

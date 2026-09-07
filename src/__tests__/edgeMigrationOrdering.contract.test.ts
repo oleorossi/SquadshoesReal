@@ -20,6 +20,18 @@ const waitScript = readFileSync(
 );
 
 describe('ordem de deploy das Edge Functions', () => {
+  it('inclui lacunas pós-cutover quando o MCP já registrou uma migration posterior', () => {
+    const snapshotStep = migrationWorkflow.indexOf('Fetch and validate remote migration snapshot');
+    const stageStep = migrationWorkflow.indexOf('Stage post-cutover local migrations');
+    expect(snapshotStep).toBeGreaterThan(-1);
+    expect(stageStep).toBeGreaterThan(snapshotStep);
+    expect(migrationWorkflow).toContain('"${version}" > "${SUPABASE_MIGRATION_CUTOFF}"');
+    const pushes = [...migrationWorkflow.matchAll(/supabase --workdir "\$\{SUPABASE_MIGRATION_WORKDIR\}" db push[\s\S]*?--yes/g)];
+    expect(pushes).toHaveLength(2);
+    for (const [command] of pushes) expect(command).toContain('--include-all');
+    expect(pushes[0][0]).toContain('--dry-run');
+  });
+
   it('só publica o conjunto canônico após banco validado e SHA atual', () => {
     const waitStep = edgeWorkflow.indexOf('Wait for database migrations from this commit');
     const freshnessStep = edgeWorkflow.indexOf('Refuse a stale main commit');
