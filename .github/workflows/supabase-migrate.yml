@@ -195,15 +195,19 @@ jobs:
           # locais pós-cutover. MCP pode registrar uma versão posterior antes
           # do CI; incluir as pendentes evita deixar lacunas nessa sequência.
           #
-          # 19200 (rateio multi-prestador) já está no banco (RPC/view vivos) sem
-          # registro neste carimbo. Reexecutar quebra no CREATE UNIQUE INDEX
-          # existente — marcar applied e aplicar só 19300/19400 via --include-all.
-          if [[ -f "${SUPABASE_MIGRATION_WORKDIR}/supabase/migrations/20270101019200_os_rateio_multi_prestador.sql" ]]; then
-            echo "↪ migration repair --status applied 20270101019200"
-            supabase --workdir "${SUPABASE_MIGRATION_WORKDIR}" migration repair \
-              --status applied \
-              20270101019200
-          fi
+          # Rateio já aplicado sob 19200 (e reestampado localmente para 19900).
+          # Sem repair, o push tenta recriar índices e falha com 42P07.
+          for stamp in 20270101019200 20270101019900; do
+            shopt -s nullglob
+            matches=("${SUPABASE_MIGRATION_WORKDIR}/supabase/migrations/${stamp}_"*.sql)
+            shopt -u nullglob
+            if (( ${#matches[@]} == 1 )); then
+              echo "↪ migration repair --status applied ${stamp}"
+              supabase --workdir "${SUPABASE_MIGRATION_WORKDIR}" migration repair \
+                --status applied \
+                "${stamp}"
+            fi
+          done
           supabase --workdir "${SUPABASE_MIGRATION_WORKDIR}" db push \
             --linked \
             --include-all \
