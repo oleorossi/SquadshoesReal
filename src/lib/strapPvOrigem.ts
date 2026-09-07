@@ -7,8 +7,7 @@ export type EffectiveStrapPvOrigem = StrapPvOrigem | 'sku_acabado';
 
 /**
  * Padrão do seletor quando Hub = escolhe_no_pv e o operador ainda não escolheu.
- * Na prática da Squad (exceto Strass), "comprar pronto" = prestador com remessa
- * de napa — ver specs/origem-tira-pv-hub-os.md.
+ * "Prestador mais OS" — remessa de napa + OS (specs/origem-tira-pv-hub-os.md).
  */
 export const DEFAULT_STRAP_PV_ORIGEM: StrapPvOrigem = 'prestador';
 
