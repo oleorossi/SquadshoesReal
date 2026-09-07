@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const SQL = readFileSync(
-  resolve(__dirname, '../../supabase/migrations/20270101019400_reload_schema_os_rateio.sql'),
+  resolve(__dirname, '../../supabase/migrations/20270101020100_reload_schema_os_rateio.sql'),
   'utf8',
 );
 
