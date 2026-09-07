@@ -186,6 +186,14 @@ export function useSoleGroupRoles(soleGroupId: string | null | undefined) {
  * Grava um PAPEL na tabela de origem. O espelho em `sole_technical_specs`
  * (todas as cores × todas as numerações) é responsabilidade do trigger — o
  * cliente não replica nada à mão.
+ *
+ * NÃO usa `.upsert({ onConflict: 'sole_group_id,role' })`: o índice histórico
+ * era parcial (`WHERE role IS NOT NULL`, mig 20261102120200) e o PostgREST não
+ * repete o predicado no ON CONFLICT — sintoma vivo
+ * "no unique or exclusion constraint matching the ON CONFLICT specification".
+ * A mig 20270101019100 recria o índice total; mesmo assim o client faz
+ * select+update/insert (mesmo padrão de `useUpsertPayrollRun`) pra não
+ * depender do arbiter do PostgREST.
  */
 export function useSetSoleGroupRole() {
   const qc = useQueryClient();
@@ -196,20 +204,36 @@ export function useSetSoleGroupRole() {
       perPair: number;
       perSize?: Record<string, number>;
     }) => {
+      const payload = {
+        sole_group_id: params.soleGroupId,
+        role: params.role,
+        material_product_id: null,
+        consumption_per_pair: params.perPair,
+        consumption_per_size:
+          params.perSize && Object.keys(params.perSize).length > 0 ? params.perSize : {},
+        unit: 'dm²',
+      };
+
+      const { data: existing, error: findErr } = await (supabase as any)
+        .from('sole_group_standard_items')
+        .select('id')
+        .eq('sole_group_id', params.soleGroupId)
+        .eq('role', params.role)
+        .maybeSingle();
+      if (findErr) throw findErr;
+
+      if (existing?.id) {
+        const { error } = await (supabase as any)
+          .from('sole_group_standard_items')
+          .update(payload)
+          .eq('id', existing.id);
+        if (error) throw error;
+        return;
+      }
+
       const { error } = await (supabase as any)
         .from('sole_group_standard_items')
-        .upsert(
-          {
-            sole_group_id: params.soleGroupId,
-            role: params.role,
-            material_product_id: null,
-            consumption_per_pair: params.perPair,
-            consumption_per_size:
-              params.perSize && Object.keys(params.perSize).length > 0 ? params.perSize : {},
-            unit: 'dm²',
-          },
-          { onConflict: 'sole_group_id,role' },
-        );
+        .insert(payload);
       if (error) throw error;
     },
     onSuccess: (_d, vars) => {
