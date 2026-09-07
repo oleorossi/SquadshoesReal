@@ -7,7 +7,7 @@
 -- ---------------------------------------------------------------------------
 DROP INDEX IF EXISTS public.uq_os_per_op_sector;
 
-CREATE UNIQUE INDEX uq_os_per_op_sector_contractor
+CREATE UNIQUE INDEX IF NOT EXISTS uq_os_per_op_sector_contractor
   ON public.service_orders (order_id, target_sector, contractor_id)
   WHERE order_id IS NOT NULL
     AND target_sector IS NOT NULL
@@ -22,7 +22,7 @@ COMMENT ON INDEX public.uq_os_per_op_sector_contractor IS
 -- ---------------------------------------------------------------------------
 DROP INDEX IF EXISTS public.uq_reference_terceirizacoes_active_ref_sector;
 
-CREATE UNIQUE INDEX uq_reference_terceirizacoes_active_ref_sector_contractor
+CREATE UNIQUE INDEX IF NOT EXISTS uq_reference_terceirizacoes_active_ref_sector_contractor
   ON public.reference_terceirizacoes (
     reference_id,
     public.normalize_outsource_sector(sector),
