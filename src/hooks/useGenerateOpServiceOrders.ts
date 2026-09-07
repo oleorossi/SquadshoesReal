@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { fetchCanonicalConsumptionReport } from '@/lib/canonicalConsumptionReport';
 import { materializeCanonicalConsumptionByScope } from '@/lib/canonicalConsumptionByScope';
 import type { ConsumptionRow } from '@/lib/consumptionRows';
+import { isSchemaCacheTransientError } from '@/lib/postgrestErrors';
 import {
   rankServiceOrderCandidates,
   type QueuePullFilter,
@@ -134,6 +135,16 @@ export function usePvOutsourceableLines(saleOrderId: string | null) {
         return decorateOutsourceableLines(lines);
       }
     },
+    // RPC recriado em migrations de rateio — PGRST002 na janela fria do schema.
+    retry: (failureCount, error) => {
+      if (isSchemaCacheTransientError(error)) return failureCount < 4;
+      return failureCount < 2;
+    },
+    retryDelay: (attemptIndex, error) => (
+      isSchemaCacheTransientError(error)
+        ? Math.min(700 * 2 ** attemptIndex, 6000)
+        : Math.min(1000 * 2 ** attemptIndex, 10000)
+    ),
     staleTime: 30_000,
   });
 }

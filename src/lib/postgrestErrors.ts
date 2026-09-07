@@ -5,17 +5,23 @@ interface PostgrestErrorLike {
   hint?: string;
 }
 
+function postgrestDiagnostic(error: unknown): { code: string; diagnostic: string } {
+  const details = error && typeof error === 'object'
+    ? error as PostgrestErrorLike
+    : {};
+  return {
+    code: details.code || '',
+    diagnostic: [details.message, details.details, details.hint].filter(Boolean).join(' '),
+  };
+}
+
 /**
  * Reconhece somente a ausência de uma relation durante a pequena janela entre
  * deploy do frontend e migration. Permissões, rede e qualquer outro erro
  * continuam visíveis em vez de serem mascarados por um fallback.
  */
 export function isMissingPostgrestRelation(error: unknown, relation: string): boolean {
-  const details = error && typeof error === 'object'
-    ? error as PostgrestErrorLike
-    : {};
-  const code = details.code || '';
-  const diagnostic = [details.message, details.details, details.hint].filter(Boolean).join(' ');
+  const { code, diagnostic } = postgrestDiagnostic(error);
   const mentionsRelation = diagnostic
     .toLocaleLowerCase('pt-BR')
     .includes(relation.toLocaleLowerCase('pt-BR'));
@@ -23,4 +29,14 @@ export function isMissingPostgrestRelation(error: unknown, relation: string): bo
     ['42P01', 'PGRST205'].includes(code)
     || /(does not exist|schema cache|not find|não existe)/i.test(diagnostic)
   );
+}
+
+/**
+ * Janela fria do PostgREST ao recarregar o catálogo (PGRST002) — típica logo
+ * após migration com DROP/CREATE de RPC ou view. Não é falha de rede do cliente.
+ */
+export function isSchemaCacheTransientError(error: unknown): boolean {
+  const { code, diagnostic } = postgrestDiagnostic(error);
+  return code === 'PGRST002'
+    || /could not query the database for the schema cache/i.test(diagnostic);
 }

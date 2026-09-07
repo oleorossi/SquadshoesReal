@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { isMissingPostgrestRelation } from '@/lib/postgrestErrors';
+import {
+  isMissingPostgrestRelation,
+  isSchemaCacheTransientError,
+} from '@/lib/postgrestErrors';
 
 describe('isMissingPostgrestRelation', () => {
   it('reconhece os códigos retornados por Postgres e pelo cache do PostgREST', () => {
@@ -26,5 +29,28 @@ describe('isMissingPostgrestRelation', () => {
       { code: '42501', message: 'permission denied for v_strap_service_orders' },
       'v_strap_service_orders',
     )).toBe(false);
+  });
+});
+
+describe('isSchemaCacheTransientError', () => {
+  it('reconhece PGRST002 e a mensagem de schema cache', () => {
+    expect(isSchemaCacheTransientError({
+      code: 'PGRST002',
+      message: 'Could not query the database for the schema cache. Retrying.',
+    })).toBe(true);
+    expect(isSchemaCacheTransientError({
+      message: 'Could not query the database for the schema cache',
+    })).toBe(true);
+  });
+
+  it('não confunde com ausência de relation ou erro de rede genérico', () => {
+    expect(isSchemaCacheTransientError({
+      code: 'PGRST205',
+      message: "Could not find the table 'public.v_pv_outsourcing_ledger' in the schema cache",
+    })).toBe(false);
+    expect(isSchemaCacheTransientError({
+      message: 'Failed to fetch',
+    })).toBe(false);
+    expect(isSchemaCacheTransientError(null)).toBe(false);
   });
 });

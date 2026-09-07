@@ -82,30 +82,33 @@ describe('Terceirizados — contrato visual e organizacional do módulo', () => 
       'required_return_date', 'planning_source', 'planning_warning',
       'planning_config_ready', 'planning_config_issue',
     ].forEach((field) => expect(serviceOrderGenerationHook).toContain(field));
-    ['Capacidade:', 'Execução:', 'Fila:', 'Antecedência:', 'Enviar em:', 'Retornar até:', 'Materiais:']
-      .forEach((label) => expect(serviceOrderWizard).toContain(label));
     expect(serviceOrderWizard).toContain('require_planning_config: true');
-    expect(serviceOrderWizard).toContain('Prestador desta ficha');
+    expect(serviceOrderWizard).toContain('Outro prestador');
+    expect(serviceOrderWizard).toContain('Fábrica:');
+    expect(serviceOrderWizard).toContain('Cadastre o prestador e a tarifa na ficha (aba Terceirizados)');
+    expect(serviceOrderWizard).toContain('/fichas-tecnicas?ref=');
+    expect(serviceOrderWizard).toContain('tab=terceirizados');
     expect(serviceOrderWizard).not.toContain('onContractorChange');
-    expect(serviceOrderWizard).toContain('recalculadas pelo servidor ao gerar');
+    expect(serviceOrderGenerationHook).toContain('isSchemaCacheTransientError');
   });
 
   it('preserva o prestador e a tarifa definidos por ficha em cada OP', () => {
-    expect(serviceOrderWizard).toContain('contractorByKey');
-    expect(serviceOrderWizard).toContain('rateByKey');
+    expect(serviceOrderWizard).toContain('splitsByKey');
+    expect(serviceOrderWizard).toContain('availableContractorsOf');
     expect(serviceOrderWizard).toContain('const key = keyOf(line)');
     expect(serviceOrderWizard).not.toContain('contractorBySector');
     expect(serviceOrderWizard).not.toContain('rateBySector');
-    expect(serviceOrderWizard).toContain('dirtyRateOriginByKey');
+    expect(serviceOrderWizard).toContain('defaultSplitFor');
     expect(serviceOrderWizard).toContain('line.default_contractor_id');
     expect(referenceTerceirizacoesHook).toContain("queryKey: ['pv_outsourceable_lines']");
     expect(referenceTerceirizacoesHook).toContain("queryKey: ['service_order_generation_gaps']");
   });
 
   it('preserva OS parcial com aviso e não transforma erro de leitura em opt-out', () => {
-    expect(serviceOrderWizard).toContain('&& qty > 0');
+    expect(serviceOrderWizard).toContain('&& split.qty > 0');
     expect(serviceOrderWizard).not.toContain('qty === line.quantity');
-    expect(serviceOrderWizard).toContain('A OS parcial usa a proporção da grade integral da OP');
+    expect(serviceOrderWizard).toContain('remaining_quantity');
+    expect(serviceOrderWizard).toContain('Fábrica:');
     expect(serviceOrderWizard).toContain('isError: linesFailed');
     expect(serviceOrderWizard).toContain('isError: contractorsFailed');
     expect(serviceOrderWizard).toContain('isError: saleOrdersFailed');
@@ -122,7 +125,7 @@ describe('Terceirizados — contrato visual e organizacional do módulo', () => 
     expect(serviceOrderWizard).toContain("aria-current={state === 'active' ? 'step' : undefined}");
     expect(serviceOrderWizard).toContain("disabled={state === 'future'}");
     expect(serviceOrderWizard).toContain('aria-labelledby={`${lineId}-label`}');
-    expect(serviceOrderWizard).toContain('aria-label={`Quantidade da OP ${line.op_number} para ${group.label}`}');
+    expect(serviceOrderWizard).toContain('htmlFor={quantityId}');
     expect(serviceOrderWizard).toContain('htmlFor={rateId}');
   });
 
@@ -285,7 +288,7 @@ describe('Terceirizados — contrato visual e organizacional do módulo', () => 
     expect(dispatchDialog).toContain('Kit de material da ficha');
     expect(dispatchDialog).toContain('buildDispatchMaterialKit');
     expect(dispatchDialog).toContain('onDispatched');
-    expect(serviceOrderWizard).toContain('OPs da ficha já vêm marcadas');
+    expect(serviceOrderWizard).toContain('OPs disponíveis');
     expect(serviceOrderWizard).toContain('autoSelectedForPvRef');
   });
 });
