@@ -211,9 +211,11 @@ describe('materialConsumptionReport', () => {
       ],
     });
 
+    // §01 traz a tira como metro de napa; §02 não repete 1.402 m de tira.
     expect(html).toContain('prod. interna');
-    expect(html).toContain('20,04 m NAPA SOFT');
+    expect(html).toContain('20,04 m');
     expect(html).not.toContain('class="num shortage">1.402,80');
+    expect(html).not.toContain('>1.402,80<');
     const totalsStrip = html.match(/<div class="totals-strip">[\s\S]*?<\/div>/)?.[0] || '';
     expect(totalsStrip).toContain('40,25');
     expect(totalsStrip).not.toContain('1.402,80');
@@ -222,8 +224,8 @@ describe('materialConsumptionReport', () => {
     expect(html).toContain('>Forração<');
     expect(html).toContain('>Tira<');
     expect(html).toContain('20,21 m');
-    expect(html).toContain('20,04 m');
     expect(html).toContain('40,25 m');
+    expect(html).not.toContain('<span>Tiras</span>');
   });
 
   it('no modo consumo total ignora estoque e agrupa napa por família e cor', () => {
@@ -270,6 +272,64 @@ describe('materialConsumptionReport', () => {
     expect(html).not.toContain('>Estoque<');
     expect(html).not.toContain('>Falta<');
     expect(html).toContain('Necessidade');
+    expect(html).not.toContain('>1.402,80<');
+  });
+
+  it('PV-00193: strip de metros ignora tira pending e §02 não lista metros de tira', () => {
+    const forracao = (color: string) => row({
+      componentType: 'Forração Palmilha',
+      groupName: 'NAPA MADRID',
+      materialName: 'NAPA MADRID',
+      color,
+      productUnit: 'm',
+      totalQuantity: 28.15,
+      available: 0,
+    });
+    const tiraOk = (color: string) => row({
+      componentType: 'Tiras',
+      groupName: `TIRA CHATA 8 mm · NAPA MADRID · ${color}`,
+      materialName: 'Produção interna',
+      color,
+      productUnit: 'm',
+      totalQuantity: 1044,
+      available: 0,
+      artisanal: { baseName: 'NAPA MADRID', baseQty: 14.91, yieldPerMeter: 70 },
+    });
+    const html = buildMaterialConsumptionReportHtml({
+      title: 'Consumo total — PV-00193',
+      generatedAt: new Date('2026-09-07T13:58:00-03:00'),
+      mode: 'total',
+      artisanalStrapRows: [],
+      rows: [
+        forracao('CAPUCCINO'), forracao('OFF WHITE'), forracao('ROCHA'),
+        tiraOk('CAPUCCINO'), tiraOk('OFF WHITE'), tiraOk('ROCHA'),
+        row({
+          componentType: 'Tiras',
+          groupName: 'Tira sem cadastro',
+          materialName: 'Produção interna',
+          color: 'OFF WHITE',
+          productUnit: 'm',
+          totalQuantity: 1044,
+          available: 0,
+          warning: 'Variante exata ativa nao encontrada',
+          artisanal: {
+            baseName: 'NAPA MADRID',
+            baseQty: 0,
+            yieldPerMeter: 0,
+            pending: true,
+          },
+        }),
+      ],
+    });
+
+    const totalsStrip = html.match(/<div class="totals-strip">[\s\S]*?<\/div>/)?.[0] || '';
+    expect(totalsStrip).toContain('129,18');
+    expect(totalsStrip).not.toContain('1.173,21');
+    expect(totalsStrip).not.toContain('1.044,00');
+    expect(html).toContain('Tira com cadastro pendente');
+    expect(html).toContain('pending-strip');
+    expect(html).toContain('129,18 m');
+    expect(html).not.toContain('<span>Tiras</span>');
   });
 
   it('não cria bloco separado quando a tira traz SKU Massabox com cor (PV-00169)', () => {
@@ -326,5 +386,36 @@ describe('materialConsumptionReport', () => {
     expect(html).toContain('26,43 m');
     // Cobre da tira entra na mesma linha de cor do cabedal Massabox.
     expect(html).toMatch(/<td>COBRE<\/td>[\s\S]*?8,40 m[\s\S]*?2,64 m<small>prod\. interna<\/small>[\s\S]*?11,04 m/);
+  });
+
+  it('grade do solado não quebra numeração/quantidade em células', () => {
+    const html = buildMaterialConsumptionReportHtml({
+      title: 'Consumo total — PV-00193',
+      generatedAt: new Date('2026-09-07T13:58:00-03:00'),
+      mode: 'total',
+      artisanalStrapRows: [],
+      rows: [
+        row({
+          componentType: 'Solado',
+          groupName: 'SOLADO 01',
+          materialName: '01',
+          color: 'CARAMELO',
+          productUnit: 'par',
+          totalQuantity: 1800,
+          soleProductId: 'sole-1',
+          sizeBreakdown: {
+            '34': 150, '35': 300, '36': 300, '37': 450, '38': 300, '39': 150, '40': 150,
+          },
+        }),
+      ],
+    });
+
+    expect(html).toContain('white-space:nowrap');
+    expect(html).toContain('table-layout:auto');
+    expect(html).toContain('>40</th>');
+    expect(html).toContain('>150<');
+    expect(html).toContain('>450<');
+    // Não pode partir "40" em "4"+"0" nem "150" em "1"+"5"+"0".
+    expect(html).not.toMatch(/<th class="grade-num">4<\/th>\s*<th class="grade-num">0<\/th>/);
   });
 });

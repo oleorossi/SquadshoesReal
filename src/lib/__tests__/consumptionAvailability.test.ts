@@ -5,6 +5,9 @@ import {
   countShort,
   itemShortfall,
   isConvertedInternalStrap,
+  isInternalStrapRow,
+  isPendingInternalStrap,
+  pendingStrapMeters,
   rowIsShort,
   rowKnown,
   rowShortfall,
@@ -234,5 +237,59 @@ describe('tira artesanal — o motor consome napa, não metro de tira', () => {
     const totals = unitTotals([napa, tira]);
     expect(totals.get('m')).toBeCloseTo(40.25, 2);
     expect(countShort([napa, tira])).toBe(1);
+  });
+
+  it('PV-00193: tira pending NÃO infla o strip de metros com 1.044 m de tira', () => {
+    // 3 cores × (28,15 forração + 14,91 tira convertida) = 129,21 m de napa.
+    // 1 linha órfã pending com 1.044 m de tira — antes virava 1.173,21 m no strip.
+    const forracao = (color: string) => row({
+      componentType: 'Forração Palmilha',
+      groupName: 'NAPA MADRID',
+      materialName: 'NAPA MADRID',
+      color,
+      productUnit: 'm',
+      totalQuantity: 28.15,
+      available: 0,
+    });
+    const tiraOk = (color: string) => row({
+      componentType: 'Tiras',
+      groupName: `TIRA CHATA 8 mm · NAPA MADRID · ${color}`,
+      materialName: 'Produção interna',
+      color,
+      productUnit: 'm',
+      totalQuantity: 1044,
+      available: 0,
+      artisanal: { baseName: 'NAPA MADRID', baseQty: 14.91, yieldPerMeter: 70 },
+    });
+    const tiraPending = row({
+      componentType: 'Tiras',
+      groupName: 'Tira sem cadastro',
+      materialName: 'Produção interna',
+      color: 'OFF WHITE',
+      productUnit: 'm',
+      totalQuantity: 1044,
+      available: 0,
+      warning: 'Variante exata ativa nao encontrada',
+      artisanal: {
+        baseName: 'NAPA MADRID',
+        baseQty: 0,
+        yieldPerMeter: 0,
+        pending: true,
+      },
+    });
+
+    const rows = [
+      forracao('CAPUCCINO'), forracao('OFF WHITE'), forracao('ROCHA'),
+      tiraOk('CAPUCCINO'), tiraOk('OFF WHITE'), tiraOk('ROCHA'),
+      tiraPending,
+    ];
+    const totals = unitTotals(rows);
+    expect(isPendingInternalStrap(tiraPending)).toBe(true);
+    expect(isInternalStrapRow(tiraPending)).toBe(true);
+    expect(pendingStrapMeters(rows)).toBeCloseTo(1044, 2);
+    // 3 × (28,15 + 14,91) = 129,18 — o PDF vivo arredonda 129,21 por precisão
+    // intermediária do motor; o strip não pode incluir os 1.044 m de tira.
+    expect(totals.get('m')).toBeCloseTo(129.18, 2);
+    expect(totals.get('m')).not.toBeCloseTo(1173.21, 2);
   });
 });

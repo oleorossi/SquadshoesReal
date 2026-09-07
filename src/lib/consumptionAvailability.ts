@@ -42,6 +42,22 @@ export const isConvertedInternalStrap = (r: ConsumptionRow): boolean =>
   && Number(r.artisanal.baseQty) > 0;
 
 /**
+ * Tira artesanal sem rendimento/cadastro: os metros de tira NÃO entram na
+ * métrica de compra nem no strip "Necessidade total" — senão 1.044 m de tira
+ * pendente somam com 129 m de napa e o PDF mente (PV-00193).
+ */
+export const isPendingInternalStrap = (r: ConsumptionRow): boolean =>
+  !!r.artisanal?.pending;
+
+/**
+ * Tira interna (convertida OU pendente): detalhe mora no bloco de napa (§01) /
+ * transformação (§03), nunca como linha de "necessidade comprável" em metros
+ * de tira na conferência por aplicação.
+ */
+export const isInternalStrapRow = (r: ConsumptionRow): boolean =>
+  isConvertedInternalStrap(r) || isPendingInternalStrap(r);
+
+/**
  * Linhas na métrica de COMPRA do motor: tira interna some e o equivalente em
  * napa entra no balde da família/cor (ou vira linha nova se a napa ainda não
  * aparecia). Solado, palmilha, químicos e tira comprada-pronta ficam iguais.
@@ -100,6 +116,9 @@ export function toPurchaseDecisionRows(rows: ConsumptionRow[]): ConsumptionRow[]
  * Totais por unidade na métrica do motor: tira interna conta o metro de napa,
  * nunca o metro de tira. Sem isso o PDF soma 6.044 m (tira+napa) e o herói
  * mostra 247 m — os dois números não batem.
+ *
+ * Tira `pending` também fica de fora: ainda não há napa equivalente confiável,
+ * e somar os metros brutos de tira infla o strip (1.173 m vs 129 m no PV-00193).
  */
 export function unitTotals(rows: ConsumptionRow[]): Map<string, number> {
   const map = new Map<string, number>();
@@ -109,10 +128,19 @@ export function unitTotals(rows: ConsumptionRow[]): Map<string, number> {
     map.set(key, (map.get(key) || 0) + qty);
   };
   for (const row of rows) {
+    if (isPendingInternalStrap(row)) continue;
     if (isConvertedInternalStrap(row)) add('m', Number(row.artisanal?.baseQty) || 0);
     else add(row.productUnit, row.totalQuantity);
   }
   return map;
+}
+
+/** Metros de tira com cadastro/rendimento pendente — alerta, não compra. */
+export function pendingStrapMeters(rows: ConsumptionRow[]): number {
+  return rows.reduce(
+    (total, row) => total + (isPendingInternalStrap(row) ? Math.max(0, Number(row.totalQuantity) || 0) : 0),
+    0,
+  );
 }
 
 /**

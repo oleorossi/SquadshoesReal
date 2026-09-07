@@ -5,7 +5,9 @@ import {
   countPending,
   countShort,
   isConvertedInternalStrap,
+  isInternalStrapRow,
   itemShortfall,
+  pendingStrapMeters,
   rowAvailable,
   rowKnown,
   rowShortfall,
@@ -183,7 +185,11 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
   };
   const colCount = totalMode ? 5 : 7;
 
-  const nonSole = aggregateItems(rows.filter((row) => row.componentType !== 'Solado'))
+  // Tira interna (convertida ou pending): napa já está em §01; metros de tira
+  // e rendimento ficam só em §03. Repetir 1.044 m aqui faz o documento "não bater".
+  const nonSole = aggregateItems(
+    rows.filter((row) => row.componentType !== 'Solado' && !isInternalStrapRow(row)),
+  )
     .sort((a, b) => componentIndex(a.componentType) - componentIndex(b.componentType)
       || a.groupName.localeCompare(b.groupName, 'pt-BR')
       || a.color.localeCompare(b.color, 'pt-BR'));
@@ -315,10 +321,14 @@ export function buildMaterialConsumptionReportHtml({
   const pendingCount = countPending(rows);
   const majorShortfalls = topShortfalls(rows, 5);
   const totalsByUnit = unitTotals(rows);
+  const pendingTiraM = pendingStrapMeters(rows);
 
   const totalStrip = Array.from(totalsByUnit.entries()).filter(([, total]) => total > 0).map(([unit, total]) => `
     <span><strong>${formatQty(total, unit)}</strong> ${escapeHtml(formatUnit(unit))}</span>
   `).join('');
+  const pendingStrip = pendingTiraM > 0
+    ? `<div class="pending-strip"><span class="flag warning">Tira com cadastro pendente</span><strong>${formatQty(pendingTiraM, 'm')} m de tira</strong><small>não entra na necessidade em metros de napa — corrija no Hub de Tiras / regrave o PV</small></div>`
+    : '';
   const shortfallList = majorShortfalls.length ? `<ol class="shortfall-list">${majorShortfalls.map((shortfall) => `
     <li><span>${escapeHtml(shortfall.label)}${shortfall.color && shortfall.color !== '—' ? ` · ${escapeHtml(shortfall.color)}` : ''}</span><strong>${formatQty(shortfall.qty, shortfall.unit)} ${escapeHtml(formatUnit(shortfall.unit))}</strong></li>
   `).join('')}</ol>` : '<p class="all-covered">Estoque cobre todos os itens conhecidos.</p>';
@@ -379,6 +389,9 @@ export function buildMaterialConsumptionReportHtml({
     .scope-list { display:flex; flex-wrap:wrap; gap:3px 14px; }
     .totals-strip { display:flex; flex-wrap:wrap; gap:4px 14px; margin:8px 0 3px; padding:5px 0; border-bottom:1px solid var(--line); color:var(--muted); font-size:8pt; }
     .totals-strip strong { color:var(--ink); font-family:'Fira Code',monospace; }
+    .pending-strip { display:flex; flex-wrap:wrap; align-items:baseline; gap:6px 10px; margin:0 0 6px; padding:5px 7px; border:1px solid #e0b35a; background:#fff8e9; font-size:7.6pt; }
+    .pending-strip strong { font-family:'Fira Code',monospace; color:var(--warn); }
+    .pending-strip small { color:var(--muted); }
     .report-section { margin-top:11px; }
     .section-heading { display:grid; grid-template-columns:27px 1fr minmax(160px, 42%); align-items:end; gap:8px; margin-bottom:5px; padding-top:5px; border-top:2px solid var(--ink); }
     .section-number { color:var(--accent); font-size:12pt; font-weight:700; }
@@ -417,11 +430,11 @@ export function buildMaterialConsumptionReportHtml({
     .materials-table th:nth-child(7) { width:8%; text-align:center; }
     .materials-table.total-mode th:nth-child(4) { width:22%; } .materials-table.total-mode th:nth-child(5) { width:10%; text-align:center; }
     .grade-row td { padding:0 5px 6px 5px; border-bottom:1px solid var(--ink); }
-    .sole-grade { padding:4px 0 0 22%; }
-    .sole-grade table { width:100%; border-collapse:collapse; font-size:7.2pt; table-layout:fixed; }
-    .sole-grade th, .sole-grade td { padding:2px 3px; border:1px solid var(--line); text-align:center; }
-    .sole-grade th:first-child { width:72px; text-align:left; background:var(--soft); }
-    .grade-num { font-family:'Fira Code',monospace; font-variant-numeric:tabular-nums; }
+    .sole-grade { padding:4px 0 0 12px; overflow:visible; }
+    .sole-grade table { width:100%; border-collapse:collapse; font-size:7.2pt; table-layout:auto; }
+    .sole-grade th, .sole-grade td { padding:2px 4px; border:1px solid var(--line); text-align:center; white-space:nowrap; }
+    .sole-grade th:first-child { width:72px; min-width:72px; text-align:left; background:var(--soft); white-space:nowrap; }
+    .grade-num { font-family:'Fira Code',monospace; font-variant-numeric:tabular-nums; white-space:nowrap; }
     .decision-grid { display:grid; grid-template-columns:1fr 1.35fr; gap:10px; margin-top:8px; }
     .decision-box { border:1px solid var(--ink); padding:7px 8px; break-inside:avoid; }
     .decision-box h3 { margin:0 0 4px; font-size:7.4pt; letter-spacing:.12em; text-transform:uppercase; }
@@ -443,6 +456,7 @@ export function buildMaterialConsumptionReportHtml({
   ${manifest}
   ${renderScope(orderHeaders)}
   <div class="totals-strip"><strong>Necessidade total</strong>${totalStrip}</div>
+  ${pendingStrip}
   ${totalMode ? `<div class="decision-box" style="margin-top:8px"><h3>Leitura correta</h3><p>${reading}</p></div>` : `<div class="decision-grid">
     <div class="decision-box"><h3>Leitura correta</h3><p>${reading}</p></div>
     <div class="decision-box"><h3>Maiores faltas</h3>${shortfallList}</div>
@@ -453,8 +467,8 @@ export function buildMaterialConsumptionReportHtml({
       <span class="section-number">02</span>
       <div><p class="section-kicker">Conferência completa</p><h2>Materiais por aplicação</h2></div>
       <p class="section-note">${totalMode
-        ? 'Somente a necessidade do pedido. Tira interna aparece com o equivalente em napa.'
-        : 'A falta de solado é calculada por numeração; os demais itens usam o balde grupo + cor + unidade.'}</p>
+        ? 'Somente a necessidade do pedido. Tira interna fica na §01 (napa) e na §03 (metros de tira × rendimento).'
+        : 'A falta de solado é calculada por numeração; os demais itens usam o balde grupo + cor + unidade. Tira interna: §01/§03.'}</p>
     </div>
     ${renderMaterialSections(rows, totalMode)}
   </section>

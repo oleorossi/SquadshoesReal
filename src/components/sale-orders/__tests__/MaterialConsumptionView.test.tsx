@@ -280,8 +280,9 @@ describe('MaterialConsumptionView — tela buy-first', () => {
       ],
     });
 
-    expect(screen.getAllByText('prod. interna').length).toBeGreaterThan(0);
-    expect(screen.getByText('1.402,80')).toBeInTheDocument();
+    // Metros de tira saem da tabela de aplicações (moram no bloco de transformação
+    // quando há artisanalStrapRows). A compra/falta é só napa.
+    expect(screen.queryByText('1.402,80')).not.toBeInTheDocument();
     const faltaCard = screen.getByRole('button', { name: 'Ver itens em falta' });
     expect(within(faltaCard).getByText('1')).toBeInTheDocument();
     expect(screen.getAllByText(/40,25/).length).toBeGreaterThan(0);

@@ -30,9 +30,11 @@ import {
   countPending,
   countShort,
   isConvertedInternalStrap,
+  isInternalStrapRow,
   itemIsShort,
   itemKey,
   itemShortfall,
+  pendingStrapMeters,
   rowAvailable,
   rowIsShort,
   rowKnown,
@@ -393,12 +395,16 @@ export default function MaterialConsumptionView({
   // de materiais gerais. Antes, clicar em "Napa", buscar outro material ou
   // filtrar "Coberto" desmontava o bloco inteiro e recriava o relato original
   // de que a parte de solados não aparecia.
+  //
+  // Tira interna (convertida/pending) também sai da tabela: napa já está no
+  // bloco de material base e o detalhe tira×rendimento mora em
+  // ArtisanalStrapRollCutBlock — repetir 1.044 m aqui confunde com a compra.
   const visibleSoleRows = useMemo(
     () => rows.filter((row) => row.componentType === 'Solado'),
     [rows],
   );
   const visibleMaterialRows = useMemo(
-    () => visibleRows.filter((row) => row.componentType !== 'Solado'),
+    () => visibleRows.filter((row) => row.componentType !== 'Solado' && !isInternalStrapRow(row)),
     [visibleRows],
   );
 
@@ -518,6 +524,7 @@ export default function MaterialConsumptionView({
   }, [sortedRows, groupBy, isShortRow, buyList]);
 
   const totalsByUnit = useMemo(() => unitTotals(visibleRows), [visibleRows]);
+  const pendingTiraM = useMemo(() => pendingStrapMeters(rows), [rows]);
 
   // ── Números do trilho (sempre sobre TODAS as linhas, não sobre o filtro) ──
   const baseTotal = useMemo(() => computeBaseMaterialTotal(rows), [rows]);
@@ -932,6 +939,13 @@ export default function MaterialConsumptionView({
             ))}
             <span>{pluralizeItens(visibleRows.length)}{filterActive && visibleRows.length !== rows.length ? ` de ${rows.length}` : ''}</span>
           </span>
+          {pendingTiraM > 0 && (
+            <span className="inline-flex flex-wrap items-baseline gap-x-2 gap-y-0.5 rounded-md border border-amber-600/30 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-800 dark:text-amber-300">
+              <span className="font-semibold">Tira com cadastro pendente</span>
+              <span className="font-mono font-bold tabular-nums">{formatQty(pendingTiraM, 'm')} m</span>
+              <span className="text-muted-foreground">não entra na necessidade de napa</span>
+            </span>
+          )}
           {filterActive && (
             <button
               type="button"
@@ -1008,8 +1022,23 @@ export default function MaterialConsumptionView({
                   ).size;
                   const [secLabel, secFamily] = String(sectionKey).split(SECTION_SEP);
                   const applicationSplit = (() => {
+                    // A tabela omite tiras internas; o band de aplicação precisa
+                    // do buyList completo pra cabedal/forração/tira fecharem.
+                    if (secFamily) {
+                      const famName = groupBy === 'base' ? secLabel : secFamily;
+                      const colorName = groupBy === 'base' ? secFamily : secLabel;
+                      const family = buyList.families.find((entry) => entry.napa === famName);
+                      const colorSplit = family?.colors.find((entry) => {
+                        const color = (entry.color || '').trim();
+                        if (colorName === 'Sem cor') return !color;
+                        return color === colorName;
+                      });
+                      if (colorSplit) return colorSplit;
+                    }
                     const fromSection = buildBuyList(sectionRows);
-                    if (fromSection.families.length !== 1 || fromSection.families[0].colors.length !== 1) return null;
+                    if (fromSection.families.length !== 1 || fromSection.families[0].colors.length !== 1) {
+                      return null;
+                    }
                     return fromSection.families[0].colors[0];
                   })();
                   out.push(
