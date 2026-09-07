@@ -8,7 +8,7 @@
 // produção, garante a virada do dia com recompute_production_schedule_if_stale.
 // =============================================================================
 import { useQuery, useMutation, useQueryClient, QueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { shouldRetryProductionQueue } from '@/lib/productionLoading';
@@ -152,15 +152,23 @@ export interface EngineRun {
  * mostrando a agenda de ONTEM: medido, 33 das 54 OPs mudam de data na virada.
  * 90s é barato (são views pequenas) e fecha a janela sem inventar um canal novo.
  *
- * P1.6: não polla com a aba oculta (`document.hidden`) — o quadro em background
- * não precisa gastar rede; ao voltar o react-query refetcha no foco.
+ * P1.6: não polla com a aba oculta — o quadro em background não precisa gastar
+ * rede. O hook reage a `visibilitychange` pra retomar o intervalo ao voltar
+ * (só ler `document.hidden` numa função estática não re-renderiza a query).
  */
 const ENGINE_REFETCH_MS = 90_000;
 
-/** false quando a aba está oculta — para o poll do motor sem mudar o piso. */
-function engineRefetchInterval(): number | false {
-  if (typeof document !== 'undefined' && document.hidden) return false;
-  return ENGINE_REFETCH_MS;
+/** Intervalo do motor: `false` com aba oculta; baseMs quando visível. */
+export function useEngineRefetchInterval(baseMs = ENGINE_REFETCH_MS): number | false {
+  const [visible, setVisible] = useState(
+    () => typeof document === 'undefined' || !document.hidden,
+  );
+  useEffect(() => {
+    const onVisibility = () => setVisible(!document.hidden);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, []);
+  return visible ? baseMs : false;
 }
 
 export const ENGINE_QUERY_KEYS = [
@@ -181,12 +189,14 @@ export function invalidateEngineCaches(qc: QueryClient) {
 // ── Leitura ──────────────────────────────────────────────────────────────────
 
 export function useSectorSettings() {
+  const refetchInterval = useEngineRefetchInterval();
   return useQuery({
     queryKey: ['sector_settings'],
     staleTime: 60_000,
     // Ordem, ativação e grupos paralelos governam colunas e elegibilidade do
     // Kanban; precisam do mesmo piso de frescor das views do motor.
-    refetchInterval: engineRefetchInterval,
+    refetchInterval,
+    refetchIntervalInBackground: false,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('sector_settings')
@@ -199,9 +209,11 @@ export function useSectorSettings() {
 }
 
 export function useProductionScheduleGrid(fromISO: string, toISO: string) {
+  const refetchInterval = useEngineRefetchInterval();
   return useQuery({
     queryKey: ['production_schedule_grid', fromISO, toISO],
-    refetchInterval: engineRefetchInterval,
+    refetchInterval,
+    refetchIntervalInBackground: false,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('v_production_schedule_grid')
@@ -251,9 +263,11 @@ export function useOpSchedule(orderId: string | null) {
 }
 
 export function useProductionQueueDetail() {
+  const refetchInterval = useEngineRefetchInterval();
   return useQuery({
     queryKey: ['production_queue_detail'],
-    refetchInterval: engineRefetchInterval,
+    refetchInterval,
+    refetchIntervalInBackground: false,
     retry: shouldRetryProductionQueue,
     queryFn: async () => {
       const { data, error } = await supabase
@@ -267,9 +281,11 @@ export function useProductionQueueDetail() {
 }
 
 export function useProductionOverloads() {
+  const refetchInterval = useEngineRefetchInterval();
   return useQuery({
     queryKey: ['production_overloads'],
-    refetchInterval: engineRefetchInterval,
+    refetchInterval,
+    refetchIntervalInBackground: false,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('v_production_overloads')

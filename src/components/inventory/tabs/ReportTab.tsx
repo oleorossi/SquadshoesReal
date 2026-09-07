@@ -31,7 +31,7 @@ export function ReportTab() {
          .select('id, name, code, image_url, status, shoe_category')
          .order('updated_at', { ascending: false })
          .limit(4);
-       if (error) return [];
+       if (error) throw error;
        return (data || []).map((t: any) => ({
          id: t.id,
          name: t.name || t.code,
