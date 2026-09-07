@@ -575,6 +575,8 @@ export type SaleOrderItemFormData = {
     group_name?: string | null;
     consumption?: number | null;
     consumption_per_size?: Record<string, number> | null;
+    /** Escolha do PV quando Hub = escolhe_no_pv (fábrica | prestador). */
+    pv_origem?: 'fabrica' | 'prestador' | null;
   }>;
   /** Origem explícita por `technical_strap_line_id`; ausência bloqueia confirmação. */
   strap_sourcing?: Record<string, {

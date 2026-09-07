@@ -1,10 +1,16 @@
 import {
   normalizeStrapOrigemPadrao,
-  type StrapOrigemPadrao,
 } from '@/lib/strapBaseNapaPeel';
 import type { StrapPvOrigem } from '@/lib/technicalStrapLines';
 
 export type EffectiveStrapPvOrigem = StrapPvOrigem | 'sku_acabado';
+
+/**
+ * Padrão do seletor quando Hub = escolhe_no_pv e o operador ainda não escolheu.
+ * Na prática da Squad (exceto Strass), "comprar pronto" = prestador com remessa
+ * de napa — ver specs/origem-tira-pv-hub-os.md.
+ */
+export const DEFAULT_STRAP_PV_ORIGEM: StrapPvOrigem = 'prestador';
 
 export interface StrapPvOrigemLineLike {
   label?: string | null;
@@ -39,6 +45,19 @@ export interface MissingStrapPvOrigemIssue {
   message: string;
 }
 
+function measureRequiresPvOrigemChoice(
+  measure: StrapPvOrigemMeasureLike | null | undefined,
+): boolean {
+  if (measure?.origem_padrao == null || measure.origem_padrao === '') return false;
+  return normalizeStrapOrigemPadrao(measure.origem_padrao) === 'escolhe_no_pv';
+}
+
+function hasExplicitStrapPvOrigem(
+  line: StrapPvOrigemLineLike | null | undefined,
+): line is StrapPvOrigemLineLike & { pv_origem: StrapPvOrigem } {
+  return line?.pv_origem === 'fabrica' || line?.pv_origem === 'prestador';
+}
+
 /** Posições escolhe_no_pv sem pv_origem — bloqueiam save no desktop (spec).
  *  Se a medida ainda não traz `origem_padrao` (migration não aplicada / catálogo
  *  antigo), não bloqueia — senão o PV inteiro trava sem o Hub estar pronto. */
@@ -50,10 +69,8 @@ export function listMissingStrapPvOrigemChoices(
   const issues: MissingStrapPvOrigemIssue[] = [];
   for (const [index, line] of (lines || []).entries()) {
     const measure = line.measure_id ? byId.get(line.measure_id) : undefined;
-    if (measure?.origem_padrao == null || measure.origem_padrao === '') continue;
-    const padrao = normalizeStrapOrigemPadrao(measure.origem_padrao) as StrapOrigemPadrao;
-    if (padrao !== 'escolhe_no_pv') continue;
-    if (line.pv_origem === 'fabrica' || line.pv_origem === 'prestador') continue;
+    if (!measureRequiresPvOrigemChoice(measure)) continue;
+    if (hasExplicitStrapPvOrigem(line)) continue;
     const label = (line.label || `Tira ${index + 1}`).trim() || `Tira ${index + 1}`;
     issues.push({
       label,
@@ -63,6 +80,27 @@ export function listMissingStrapPvOrigemChoices(
     });
   }
   return issues;
+}
+
+/**
+ * Preenche `pv_origem` ausente com o padrão (prestador / comprar pronto) só nas
+ * posições `escolhe_no_pv`. Não sobrescreve escolha explícita do operador.
+ */
+export function applyDefaultStrapPvOrigemChoices<T extends StrapPvOrigemLineLike>(
+  lines: readonly T[] | null | undefined,
+  measures: readonly StrapPvOrigemMeasureLike[] | null | undefined,
+): { lines: T[]; changed: boolean } {
+  const source = lines || [];
+  const byId = new Map((measures || []).map((measure) => [measure.id, measure]));
+  let changed = false;
+  const next = source.map((line) => {
+    const measure = line.measure_id ? byId.get(line.measure_id) : undefined;
+    if (!measureRequiresPvOrigemChoice(measure)) return line;
+    if (hasExplicitStrapPvOrigem(line)) return line;
+    changed = true;
+    return { ...line, pv_origem: DEFAULT_STRAP_PV_ORIGEM };
+  });
+  return { lines: changed ? next : [...source], changed };
 }
 
 export interface StrapHubIncompleteIssue {
