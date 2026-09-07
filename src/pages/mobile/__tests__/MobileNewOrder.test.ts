@@ -838,6 +838,24 @@ describe('identidade comercial material no PV mobile', () => {
     })).toEqual(['25', '26', '27', '28', '29', '30', '31', '32', '33', '34']);
   });
 
+  it('Infantil com faixa adulta legada (default) usa 21–33, como o desktop', () => {
+    expect(mobileReferenceSizes({
+      id: 'infantil-default-adulto',
+      name: 'I90',
+      sizes: '33-41',
+      status_ficha: 'publicada',
+      shoe_category: { name: 'Infantil' },
+    })).toEqual(['21', '22', '23', '24', '25', '26', '27', '28', '29', '30', '31', '32', '33']);
+
+    expect(mobileReferenceSizes({
+      id: 'infantil-sem-faixa',
+      name: 'I91',
+      sizes: null,
+      status_ficha: 'publicada',
+      shoe_category: { name: 'Infantil' },
+    })).toEqual(['21', '22', '23', '24', '25', '26', '27', '28', '29', '30', '31', '32', '33']);
+  });
+
   it('recalcula faixa automática pela grade sem sobrescrever preço manual', () => {
     const lookup: PriceLookup = {
       byRefColor: new Map(),

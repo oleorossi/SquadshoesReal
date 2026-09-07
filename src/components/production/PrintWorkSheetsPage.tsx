@@ -1124,17 +1124,25 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     [consumptionByKey, ordersByOpNumber],
   );
 
-  const { data: silkRegistrations = [] } = useQuery({
-    queryKey: ['sole_silk_registrations'],
-    queryFn: async () => {
-      const { data, error } = await (supabase as any).from('sole_silk_registrations').select('*');
-      if (error) throw error;
-      return data;
-    },
-  });
+  // P1.5: IDs das OPs/PVs já carregados — escopo de clients/silk/PV/NF.
+  // Antes sale_orders/clients/silk vinham SEM filtro (catálogo inteiro).
+  const orderIds = useMemo(() => orders.map((o: any) => o.id).filter(Boolean), [orders]);
+  const saleOrderIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const o of orders as any[]) if (o.sale_order_id) ids.add(o.sale_order_id);
+    return Array.from(ids).sort();
+  }, [orders]);
 
-  const { data: saleOrders = [] } = useQuery({
-    queryKey: ['sale_orders_for_worksheets_v5'],
+  // Gates por setor — queries caras só quando o chip correspondente está ativo.
+  const needsExpedicao = activeSectors.has('Expedição');
+  const needsRelatorio = activeSectors.has('Relatório Gerencial');
+  const needsPlateArea = activeSectors.has('Corte Palmilha');
+  const needsSoleSizeConj =
+    activeSectors.has('Solagem') || activeSectors.has('Colagem');
+
+  const { data: saleOrders = [], isFetched: saleOrdersFetched } = useQuery({
+    queryKey: ['sale_orders_for_worksheets_v5', saleOrderIds],
+    enabled: saleOrderIds.length > 0,
     queryFn: async () => {
       // Bug: pedia 'economic_group_id' (não existe em sale_orders — está em
       // clients) e 'total_value' (a coluna real é 'total'). Resultado: 400
@@ -1144,16 +1152,81 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
         // ⚠ Lista EXPLÍCITA: coluna que a ficha usa e não está aqui chega
         // `undefined` e o recurso some em silêncio. `box_grouping` liga o resumo
         // de caixas por numeração na ficha de Expedição.
-        .select('id, client_id, client_name, client_cnpj, order_number, client_order_number, delivery_deadline, status, total, packaging_mode, box_grouping, representative, payment_condition, valor_frete');
+        .select('id, client_id, client_name, client_cnpj, order_number, client_order_number, delivery_deadline, status, total, packaging_mode, box_grouping, representative, payment_condition, valor_frete')
+        .in('id', saleOrderIds);
       if (error) throw error;
-      return data;
+      return data || [];
+    },
+  });
+  const saleOrdersReady = saleOrderIds.length === 0 || saleOrdersFetched;
+
+  const clientIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const so of saleOrders as any[]) if (so?.client_id) ids.add(so.client_id);
+    return Array.from(ids).sort();
+  }, [saleOrders]);
+
+  const { data: clientsInfo = [], isFetched: clientsFetched } = useQuery({
+    queryKey: ['clients_for_expedicao_v3', clientIds],
+    enabled: saleOrdersReady && clientIds.length > 0,
+    queryFn: async () => {
+      // Endereço completo necessário pra ficha de expedição (etiqueta correta).
+      // silk_url + logo_url usados como fallback de marca na ficha de Silk.
+      const { data, error } = await (supabase as any)
+        .from('clients')
+        .select('id, razao_social, cnpj, inscricao_estadual, endereco, bairro, cidade, estado, cep, telefone, economic_group_id, silk_url, logo_url')
+        .in('id', clientIds);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+  const clientsReady = clientIds.length === 0 || clientsFetched;
+
+  const economicGroupIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const c of clientsInfo as any[]) if (c?.economic_group_id) ids.add(c.economic_group_id);
+    return Array.from(ids).sort();
+  }, [clientsInfo]);
+
+  // Cascata de marca: registros do cliente + do grupo econômico + defaults
+  // (client_id/economic_group_id nulos). Sem defaults a ficha de Silk perde o
+  // fallback "Squad Shoes" cadastrado no solado.
+  const { data: silkRegistrations = [] } = useQuery({
+    queryKey: ['sole_silk_registrations', clientIds, economicGroupIds],
+    enabled: saleOrdersReady && clientsReady,
+    queryFn: async () => {
+      const parts = ['and(client_id.is.null,economic_group_id.is.null)'];
+      if (clientIds.length > 0) parts.push(`client_id.in.(${clientIds.join(',')})`);
+      if (economicGroupIds.length > 0) {
+        parts.push(`economic_group_id.in.(${economicGroupIds.join(',')})`);
+      }
+      const { data, error } = await (supabase as any)
+        .from('sole_silk_registrations')
+        .select('id, client_id, economic_group_id, sole_product_id, sole_type, silk_name, silk_url')
+        .or(parts.join(','));
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  // Grupos econômicos (silk_url/logo_url) — fallback de marca quando o cliente
+  // não tem silk própria mas pertence a um grupo que tem.
+  const { data: economicGroupsInfo = [] } = useQuery({
+    queryKey: ['economic_groups_for_silk', economicGroupIds],
+    enabled: economicGroupIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('economic_groups')
+        .select('id, silk_url, logo_url')
+        .in('id', economicGroupIds);
+      if (error) throw error;
+      return data || [];
     },
   });
 
   // Stages só carregados quando "Relatório Gerencial" está selecionado.
   // (Query de order_costs REMOVIDA em 2026-06-12 — a seção "Custos & Margem"
   //  saiu do Relatório Gerencial a pedido do dono.)
-  const orderIds = useMemo(() => orders.map((o: any) => o.id).filter(Boolean), [orders]);
 
   // Lot sizing (PR 2026-05-23): carrega lots em batch; cada OP splitada vira
   // N virtual orders. Groupings abaixo usam `expandedOrders` no lugar de `orders`
@@ -1167,7 +1240,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     queryKey: ['order_stages_for_report', orderIds],
     // Gate pelo setor: só o Relatório Gerencial consome stages — sem o gate
     // toda impressão de qualquer setor disparava a query à toa.
-    enabled: orderIds.length > 0 && activeSectors.has('Relatório Gerencial'),
+    enabled: orderIds.length > 0 && needsRelatorio,
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('order_stages')
@@ -1178,42 +1251,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     },
   });
 
-  const { data: clientsInfo = [] } = useQuery({
-    queryKey: ['clients_for_expedicao_v3'],
-    queryFn: async () => {
-      // Endereço completo necessário pra ficha de expedição (etiqueta correta).
-      // silk_url + logo_url usados como fallback de marca na ficha de Silk.
-      const { data, error } = await (supabase as any)
-        .from('clients')
-        .select('id, razao_social, cnpj, inscricao_estadual, endereco, bairro, cidade, estado, cep, telefone, economic_group_id, silk_url, logo_url');
-      if (error) throw error;
-      return data || [];
-    },
-  });
-
-  // Grupos econômicos (silk_url/logo_url) — fallback de marca quando o cliente
-  // não tem silk própria mas pertence a um grupo que tem.
-  const { data: economicGroupsInfo = [] } = useQuery({
-    queryKey: ['economic_groups_for_silk'],
-    queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from('economic_groups')
-        .select('id, silk_url, logo_url');
-      if (error) throw error;
-      return data || [];
-    },
-  });
-
   // NF-e emitidas vinculadas aos PVs (pra exibir número/chave na ficha de expedição)
-  const saleOrderIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const o of orders as any[]) if (o.sale_order_id) ids.add(o.sale_order_id);
-    return Array.from(ids);
-  }, [orders]);
-
   const { data: nfeForExpedicao = [] } = useQuery({
     queryKey: ['nfe_emitidas_for_expedicao', saleOrderIds],
-    enabled: saleOrderIds.length > 0,
+    enabled: needsExpedicao && saleOrderIds.length > 0,
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('nfe_emitidas')
@@ -1228,7 +1269,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   // Transportadora do PV (pra ficha de expedição)
   const { data: saleOrdersTransport = [] } = useQuery({
     queryKey: ['sale_orders_transport', saleOrderIds],
-    enabled: saleOrderIds.length > 0,
+    enabled: needsExpedicao && saleOrderIds.length > 0,
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('sale_orders')
@@ -1371,9 +1412,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
 
   // Baldes de numeração conjugada (ex.: 23/24 = 1 par físico) por grupo de
   // solado — re-bucketiza as colunas de grade da Solagem/Colagem (C1).
+  // P1.5: só Solagem/Colagem consomem — não busca pra outros setores.
   const { data: soleSizeConjugations = [] } = useQuery({
     queryKey: ['sole_size_conjugations_for_print', allSoleGroupIds],
-    enabled: allSoleGroupIds.length > 0,
+    enabled: needsSoleSizeConj && allSoleGroupIds.length > 0,
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('sole_size_conjugations')
@@ -1445,8 +1487,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   // Área da placa (dm²) por NOME de grupo — base da conversão dm²→placas
   // (1000×1500mm = 150 dm²/placa). Usada só pra EXIBIR a base na ficha de
   // Corte de Placa; o número de placas em si já vem convertido do motor.
+  // P1.5: gate no setor — sem Corte Palmilha a query não roda.
   const { data: plateAreaByGroupName } = useQuery({
     queryKey: ['plate_area_by_group_name_v1'],
+    enabled: needsPlateArea,
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('product_groups')

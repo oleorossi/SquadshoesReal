@@ -32,7 +32,7 @@ export default function Quality() {
     values: ['defects', 'batch-test'] as const,
     defaultValue: 'defects',
   });
-  const { data: records = [], isLoading } = useAllQualityRecords();
+  const { data: records = [], isLoading, isError, refetch } = useAllQualityRecords();
   const resolve = useResolveQualityRecord();
   const [search, setSearch] = useState('');
   const [severityFilter, setSeverityFilter] = useState('all');
@@ -68,6 +68,30 @@ export default function Quality() {
           />
           <StatGridSkeleton count={4} />
           <TableSkeleton rows={8} />
+        </div>
+      </AppLayout>
+    );
+  }
+
+  if (isError) {
+    return (
+      <AppLayout>
+        <div className="space-y-5 page-enter">
+          <EditorialPageHeader
+            sectionLabel="QUALIDADE · INSPEÇÕES"
+            title="Qualidade & Auditorias"
+            description="Defeitos registrados por setor — rastreamento por OP e plano de ação"
+          />
+          <EmptyState
+            icon={AlertTriangle}
+            title="Falha ao carregar os dados"
+            description="Não foi possível buscar os registros de qualidade. Tente novamente."
+            action={
+              <Button variant="outline" size="sm" onClick={() => refetch()}>
+                Tentar novamente
+              </Button>
+            }
+          />
         </div>
       </AppLayout>
     );

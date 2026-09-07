@@ -2,9 +2,9 @@ import { PageSkeleton } from '@/components/layout/PageSkeleton';
 import { useState, useEffect, useMemo } from 'react';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { useUpdateProduct, ProductSchema, useProducts } from '@/hooks/useProducts';
+import { useUpdateProduct, ProductSchema, useProducts, useProductDetail } from '@/hooks/useProducts';
 import { useForceDeleteProductFlow } from '@/components/inventory/ForceDeleteProductDialog';
 import { MasterVariantDialog } from '@/components/inventory/MasterVariantDialog';
 import { MaterialClassificationRail } from '@/components/groups/MaterialClassificationRail';
@@ -103,15 +103,8 @@ export default function ProductDetail() {
   const [variantDialogOpen, setVariantDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const { data: product, isLoading, isError } = useQuery({
-    queryKey: ['product-detail', id],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('products').select('*').eq('id', id!).single();
-      if (error) throw error;
-      return data as Product;
-    },
-    enabled: !!id,
-  });
+  // Editor precisa da row completa — NÃO reusar o catálogo lean de useProducts.
+  const { data: product, isLoading, isError } = useProductDetail(id);
 
   const { data: groups = [] } = useGroups();
   const { data: suppliers = [] } = useSuppliers();

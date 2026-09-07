@@ -591,22 +591,89 @@ export type SaleOrderItemFormData = {
   outsourced_sectors?: Record<string, string> | null;
 };
 
+/**
+ * Teto do recorte de `useSaleOrders`. Espelha `ORDERS_QUERY_LIMIT`: quem
+ * renderiza a lista pode comparar `orders.length >= SALE_ORDERS_QUERY_LIMIT`
+ * pra avisar que o recorte mordeu. Edição/detalhe NÃO usam esta lista — o
+ * formulário hidrata via `get_sale_order_editor_snapshot`.
+ */
+export const SALE_ORDERS_QUERY_LIMIT = 1000;
+
+/**
+ * Colunas da lista de PVs (e dos setores/comissões/terceiros que reusam o
+ * mesmo cache). Exclui payload pesado (`client_signature_data_url`,
+ * `search_norm`, campos só do editor). União medida nos consumidores:
+ * SaleOrders (lista/detalhe/dup/forçar produção), ComissoesTab,
+ * OutsourcingPlanningTab, GenerateServiceOrdersWizard, páginas de setor.
+ *
+ * ⚠ `order_version` é load-bearing pro botão "Forçar Produção" na lista —
+ * sem ele o RPC recusa. Não remova.
+ */
+export const SALE_ORDER_LIST_SELECT = [
+  'id',
+  'order_number',
+  'order_version',
+  'status',
+  'client_id',
+  'client_name',
+  'client_cnpj',
+  'client_contact',
+  'client_order_number',
+  'representative',
+  'representative_id',
+  'payment_condition',
+  'delivery_deadline',
+  'delivery_week',
+  'delivery_month',
+  'billing_week',
+  'notes',
+  'nfe',
+  'remessa',
+  'is_factoring',
+  'factoring_config_id',
+  'packaging_mode',
+  'total',
+  'commission_value',
+  'created_at',
+  'updated_at',
+  'nfe_required',
+  'order_type',
+  'parent_order_id',
+  'picking_individually_done_at',
+  'clients(client_number)',
+].join(', ');
+
+/**
+ * Teto do recorte de `useSaleOrderAllItems`. Sem `.limit()` o PostgREST aplica
+ * o `max_rows` do projeto (tipicamente 1000) em silêncio — a lista de /sales
+ * perdia pares/comissões acima do teto sem aviso. Preferir paginar se um dia
+ * a base passar deste valor; até lá o warn em DEV (e o length check) é o sinal.
+ */
+export const SALE_ORDER_ITEMS_ALL_QUERY_LIMIT = 5000;
+
 export function useSaleOrders() {
   return useQuery({
     queryKey: ['sale_orders'],
     queryFn: async () => {
-      // Cap to the most recent 1000 sale orders to avoid loading the
-      // entire historical base on every dashboard/list mount.
+      // Cap to the most recent SALE_ORDERS_QUERY_LIMIT sale orders to avoid
+      // loading the entire historical base on every dashboard/list mount.
       // client_number vem por EMBED (FK sale_orders.client_id → clients) em vez
       // de uma 2ª query serial à tabela clients — corta 1 round-trip por mount
       // da lista de PVs. (auditoria perf)
+      // ⚠ PERF (P1.3): era `select('*')` — trazia assinatura, search_norm e
+      // dezenas de colunas só do editor em toda visita a /sales e setores.
       const { data, error } = await supabase
         .from('sale_orders')
-        .select('*, clients(client_number)')
+        .select(SALE_ORDER_LIST_SELECT)
         .is('deleted_at', null) // soft delete: esconde PVs com deleted_at != null
         .order('created_at', { ascending: false })
-        .limit(1000);
+        .limit(SALE_ORDERS_QUERY_LIMIT);
       if (error) throw error;
+      if (data && data.length >= SALE_ORDERS_QUERY_LIMIT && import.meta.env.DEV) {
+        console.warn(
+          `useSaleOrders: hit ${SALE_ORDERS_QUERY_LIMIT}-row ceiling — some sale orders may be missing`,
+        );
+      }
 
       return (data || []).map((so: any) => ({
         ...so,
@@ -646,10 +713,18 @@ export function useSaleOrderAllItems() {
       //                              production_excluded_at (filtro operacional)
       // Se um consumidor novo precisar de `grade`, crie uma queryKey própria em vez
       // de alargar esta — ela é baixada em toda visita ao /sales.
+      // ⚠ PERF (P1.3): `.limit` explícito + warn em DEV — sem isso o PostgREST
+      // aplica max_rows em silêncio e a lista perde pares acima do teto.
       const { data, error } = await supabase
         .from('sale_order_items')
-        .select('id, sale_order_id, reference_id, color, quantity, unit_price, production_excluded_at');
+        .select('id, sale_order_id, reference_id, color, quantity, unit_price, production_excluded_at')
+        .limit(SALE_ORDER_ITEMS_ALL_QUERY_LIMIT);
       if (error) throw error;
+      if (data && data.length >= SALE_ORDER_ITEMS_ALL_QUERY_LIMIT && import.meta.env.DEV) {
+        console.warn(
+          `useSaleOrderAllItems: hit ${SALE_ORDER_ITEMS_ALL_QUERY_LIMIT}-row ceiling — some items may be missing`,
+        );
+      }
       return data;
     },
     staleTime: 2 * 60 * 1000,

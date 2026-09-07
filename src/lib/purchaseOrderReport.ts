@@ -1,4 +1,3 @@
-import * as XLSX from 'xlsx';
 import type { PurchaseOrder, PurchaseOrderItemSummary } from '@/hooks/usePurchaseOrders';
 
 export interface PurchaseOrderReportSummary {
@@ -24,11 +23,12 @@ export function summarizePurchaseOrders(orders: PurchaseOrder[], today: string):
   };
 }
 
-export function exportPurchaseOrdersXlsx(
+export async function exportPurchaseOrdersXlsx(
   orders: PurchaseOrder[],
   summaries: Map<string, PurchaseOrderItemSummary> | undefined,
   statusLabel: (status: string) => string,
 ) {
+  const XLSX = await import('xlsx'); // lazy: ~424KB só ao exportar
   const rows = orders.flatMap(order => {
     const items = summaries?.get(order.id)?.items || [];
     const base = {
