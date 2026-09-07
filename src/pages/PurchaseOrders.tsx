@@ -350,10 +350,14 @@ export default function PurchaseOrders() {
     }
   }, [selectedOrders, filtered, toCostRow, fromDate, toDate, basis, supplierFilter]);
 
-  const handleExportExcel = useCallback(() => {
+  const handleExportExcel = useCallback(async () => {
     if (!filtered.length) return toast.error('Nenhuma OC no filtro atual.');
-    exportPurchaseOrdersXlsx(filtered, itemSummaries, status => STATUS_MAP[status]?.label ?? status);
-    toast.success('Relatório Excel detalhado gerado.');
+    try {
+      await exportPurchaseOrdersXlsx(filtered, itemSummaries, status => STATUS_MAP[status]?.label ?? status);
+      toast.success('Relatório Excel detalhado gerado.');
+    } catch {
+      toast.error('Erro ao gerar Excel.');
+    }
   }, [filtered, itemSummaries]);
 
   const pendingCount = orders.filter(o => o.status === 'pending').length;

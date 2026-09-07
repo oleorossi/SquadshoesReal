@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { thumbUrl } from '@/lib/imageThumb';
 import { norm, fmtDate, KanbanCardData } from './kanbanDerive';
 import { buildPointingPlan, moveOptions, applyPointing, skipBlockedByPartial } from './pointingPlan';
+import { isStageSkipped } from '@/lib/production/stageFlow';
 
 /** Valor-sentinela do select de mover (shadcn Select não aceita value vazio). */
 const MOVE_ATUAL = '__atual';
@@ -380,14 +381,26 @@ export function DropApontarDialog({
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-64 text-xs space-y-1">
-                  {stages.map(s => (
-                    <div key={s.id} className="flex justify-between font-mono">
-                      <span className={s.status === 'concluido' ? 'text-muted-foreground line-through' : ''}>
-                        {norm(s.stage_name)}
-                      </span>
-                      <span>{s.quantity_processed}/{s.quantity_total}</span>
-                    </div>
-                  ))}
+                  {stages.map(s => {
+                    // Setor pulado fica concluído com 0 — não confundir com entrega total
+                    // (auditoria kanban 2026-08-06 / mig 20270101008200).
+                    const skipped = isStageSkipped(s);
+                    return (
+                      <div key={s.id} className="flex justify-between font-mono">
+                        <span className={
+                          skipped
+                            ? 'text-amber-600 dark:text-amber-400'
+                            : s.status === 'concluido'
+                              ? 'text-muted-foreground line-through'
+                              : ''
+                        }>
+                          {norm(s.stage_name)}
+                          {skipped ? ' · pulado' : ''}
+                        </span>
+                        <span>{s.quantity_processed}/{s.quantity_total}</span>
+                      </div>
+                    );
+                  })}
                 </PopoverContent>
               </Popover>
 
