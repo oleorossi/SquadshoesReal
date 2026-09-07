@@ -52,7 +52,10 @@ describe('consumo — preço unitário e valor a gastar', () => {
     expect(viewSrc).toContain('Preço unitário');
     expect(viewSrc).toContain('Valor a gastar');
     expect(viewSrc).toContain('rowTotalCost');
-    expect(reportSrc).toContain('Preço unitário');
-    expect(reportSrc).toContain('Valor a gastar');
+    // PDF: rótulos curtos (cabem na coluna) + classes de hierarquia visual
+    expect(reportSrc).toContain('Preço/un.');
+    expect(reportSrc).toContain('A gastar');
+    expect(reportSrc).toContain('cost-spend');
+    expect(reportSrc).toContain('computeMaterialsSpendTotal');
   });
 });
