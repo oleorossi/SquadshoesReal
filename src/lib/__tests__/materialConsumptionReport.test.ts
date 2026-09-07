@@ -329,7 +329,10 @@ describe('materialConsumptionReport', () => {
     expect(html).toContain('Tira com cadastro pendente');
     expect(html).toContain('pending-strip');
     expect(html).toContain('129,18 m');
-    expect(html).not.toContain('<span>Tiras</span>');
+    // Pending aparece na §02 como cadastro incompleto (demanda da ficha).
+    expect(html).toContain('<span>Tiras</span>');
+    expect(html).toContain('Tira sem cadastro');
+    expect(html).toContain('is-pending');
   });
 
   it('não cria bloco separado quando a tira traz SKU Massabox com cor (PV-00169)', () => {
