@@ -378,7 +378,7 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
             onChange={(v) => { setSearch(v); setPage(1); }}
             placeholder={`Buscar ${title.toLowerCase()}, SKU ou categoria…`}
             getSuggestions={(term) => {
-              const list: any[] = (allProducts as any[]) || [];
+              const list: Product[] = allProducts || [];
               const seen = new Set<string>();
               const out: SmartSearchSuggestion[] = [];
               for (const p of list) {
@@ -551,7 +551,7 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
               if (scannedSku) {
                 // Lookup direto por SKU — não depende do universo `useProducts`
                 // (que só carrega depois da página útil).
-                const cached = (allProducts as any[]).find((p) => p.sku === scannedSku);
+                const cached = allProducts.find((p) => p.sku === scannedSku);
                 if (cached) {
                   openEdit(cached);
                   toast.info(`Material encontrado: ${cached.name}`);
@@ -564,8 +564,9 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
                   if (error) {
                     toast.error(`Falha ao buscar SKU: ${error.message}`);
                   } else if (found) {
-                    openEdit(found as any);
-                    toast.info(`Material encontrado: ${(found as any).name}`);
+                    const product = found as Product;
+                    openEdit(product);
+                    toast.info(`Material encontrado: ${product.name}`);
                   } else {
                     toast.error(`SKU "${scannedSku}" não encontrado no estoque`);
                   }

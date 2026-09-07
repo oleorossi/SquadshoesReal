@@ -47,7 +47,7 @@ import ComponentSheets from '@/pages/ComponentSheets';
  import { OperationsTab } from '@/components/technical-sheets/OperationsTab';
  // ColorVariantsTab removido — cor é definida no PV, não na ficha técnica.
  import { MaterialVariantsTab } from '@/components/technical-sheets/MaterialVariantsTab';
- import { useAllActiveReferenceMaterialVariants } from '@/hooks/useReferenceMaterialVariants';
+ import { useAllActiveReferenceMaterialVariants, type ReferenceMaterialVariant } from '@/hooks/useReferenceMaterialVariants';
 import { VersionsTab } from '@/components/technical-sheets/VersionsTab';
 import { TechnicalReferencePanel } from '@/components/technical-sheets/TechnicalReferencePanel';
 import { NonFiniteDevWatcher } from '@/components/technical-sheets/NonFiniteDevWatcher';
@@ -108,7 +108,7 @@ import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { EmptyState } from '@/components/ui/empty-state';
 import { SearchInput } from '@/components/ui/search-input';
 import { normalizeForSearch, searchMatchesAllTerms } from '@/lib/searchUtils';
-import { getTechnicalSheetAuditGaps } from '@/lib/technicalSheetAudit';
+import { getTechnicalSheetAuditGaps, type TechnicalSheetAuditRow } from '@/lib/technicalSheetAudit';
 import { Link as Link2, Info } from '@phosphor-icons/react';
 import { SoleSizeConjugationsEditor } from '@/components/inventory/SoleSizeConjugationsEditor';
 import { ComponentGroupSelect, GroupMaterialSelect, SoleClassificationBadge, SoleProductSelect, DirectComponentSelect, NcmInlineEditor } from '@/components/technical-sheets/sheetSelectors';
@@ -1135,8 +1135,8 @@ function TechnicalSheetExpandedPanel({
 }: {
   sheetId: string;
   onBack: () => void;
-  materialVariantsBySheet: Map<string, any[]> | undefined;
-  auditBySheetId: Map<string, any>;
+  materialVariantsBySheet: Map<string, ReferenceMaterialVariant[]> | undefined;
+  auditBySheetId: Map<string, TechnicalSheetAuditRow>;
   auditLoaded: boolean;
 }) {
   const { data: sheet, isLoading, isError, error, refetch } = useTechnicalSheetDetail(sheetId);
@@ -1200,7 +1200,8 @@ function TechnicalSheetExpandedPanel({
               <span>{sheet.upper_material || 'Material s/ def.'}</span>
               <ChevronRight className="h-2.5 w-2.5" />
               <span className="text-primary truncate max-w-[150px]">
-                {(sheet as any).reference_color_variants?.[0]?.color || 'Sem cores'}
+                {/* reference_color_variants não vem no select('*') do detail. */}
+                Sem cores
               </span>
               <ChevronRight className="h-2.5 w-2.5" />
               <span className="bg-primary/10 text-primary px-1 rounded">{globalFormatCurrency(sheet.sale_price || 0)}</span>
@@ -1210,7 +1211,7 @@ function TechnicalSheetExpandedPanel({
             <Badge
               variant="secondary"
               className="px-2 py-0 h-5 text-xs bg-warning/10 text-warning border-warning/30 gap-1 shrink-0"
-              title={materialVariantsBySheet!.get(sheet.id)!.map((v: any) => v.material_name).join(', ')}
+              title={materialVariantsBySheet!.get(sheet.id)!.map((v) => v.material_name).join(', ')}
             >
               <Package className="h-3 w-3" /> {materialVariantsBySheet!.get(sheet.id)!.length} Materiais
             </Badge>
