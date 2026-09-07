@@ -393,9 +393,9 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
             <div>
               <p className="font-medium text-foreground">Fornecedores</p>
               <p>
-                Cadastre depois na página <strong>Grupos</strong> (botão "+ Fornecedor"
-                em cada grupo). Cada grupo aceita múltiplos fornecedores com preço, prazo e
-                condição de pagamento próprios.
+                Depois de criar, abra o grupo e use a aba <strong>Fornecedores</strong>
+                (também resumida em Geral → Compras e abastecimento). Cada grupo aceita
+                múltiplos fornecedores com preço, prazo e condição de pagamento próprios.
               </p>
             </div>
           </div>}
