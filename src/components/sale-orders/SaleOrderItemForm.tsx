@@ -2148,7 +2148,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                   <StrapPvOrigemBulkActions
                     disabled={productionExcluded || preserveCommittedStrapSnapshot}
                     onAllFactory={() => {
-                      const updated = straps.map((strap: any) => {
+                      const updated = straps.map((strap) => {
                         const measure = strapCatalog?.measures.find((entry) => entry.id === strap.measure_id);
                         if (normalizeStrapOrigemPadrao(measure?.origem_padrao) !== 'escolhe_no_pv') return strap;
                         return { ...strap, pv_origem: 'fabrica' as const };
@@ -2156,7 +2156,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                       onUpdate(index, 'strap_colors', updated);
                     }}
                     onAllContractor={() => {
-                      const updated = straps.map((strap: any) => {
+                      const updated = straps.map((strap) => {
                         const measure = strapCatalog?.measures.find((entry) => entry.id === strap.measure_id);
                         if (normalizeStrapOrigemPadrao(measure?.origem_padrao) !== 'escolhe_no_pv') return strap;
                         return { ...strap, pv_origem: 'prestador' as const };

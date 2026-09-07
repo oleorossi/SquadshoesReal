@@ -645,7 +645,7 @@ export function ArtisanalStrapEditor({
           origem_padrao: form.origemPadrao,
           preco_artesanal_per_m: form.precoArtesanalPerM > 0 ? form.precoArtesanalPerM : null,
           preco_prestador_per_m: form.precoPrestadorPerM > 0 ? form.precoPrestadorPerM : null,
-        } as any)
+        })
         .eq('id', measureId);
       if (measureError) {
         setValidationError(`Tira salva, mas origem/preços do Hub falharam: ${measureError.message}`);
