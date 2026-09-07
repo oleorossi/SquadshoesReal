@@ -658,7 +658,7 @@ gatilhos (`trg_…` de UPDATE e `trg_…_insert`). Tocar `OLD.stock_grade` sem c
 Travado por `src/__tests__/gradeCoherenceEmptyGradeMigration.contract.test.ts`.
 
 ✅ **FECHADO — resíduo escalar em produto com grade** (spec `resync-estorno-unificado`,
-mig `20270101017100`): quando o produto tem buckets reais em `stock_grade` e sobra
+mig `20270101017300`): quando o produto tem buckets reais em `stock_grade` e sobra
 crédito sem grade rastreável (`sole_grade` pendente), `restore_product_stocks_for_order`
 **NÃO** credita o escalar (nunca inventa numeração). A pendência fica em
 `op_restore_consistency_report()` e na aba Consumo de `/system-diagnostics`. Estorno de

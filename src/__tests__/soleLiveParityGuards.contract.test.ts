@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 /**
  * Guards de solado precisam ler o CORPO VIVO no banco — não só o arquivo .sql.
- * Migration 20270101017100 cria run_sole_live_parity_guards() com cases de:
+ * Migration 20270101017300 cria run_sole_live_parity_guards() com cases de:
  *   - debit fallback com variante
  *   - COALESCE no by_grade
  *   - cobertura list_sole_spec_gaps
@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest';
  */
 const ROOT = resolve(__dirname, '../..');
 const MIG = readFileSync(
-  resolve(ROOT, 'supabase/migrations/20270101017100_sole-audit-restore-parity-inspection.sql'),
+  resolve(ROOT, 'supabase/migrations/20270101017300_sole-audit-restore-parity-inspection.sql'),
   'utf8',
 );
 const DIAG = readFileSync(resolve(ROOT, 'src/pages/SystemDiagnostics.tsx'), 'utf8');

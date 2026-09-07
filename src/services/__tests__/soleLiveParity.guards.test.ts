@@ -2,7 +2,7 @@
  * Guard de harmonização vivo do domínio solado.
  *
  * Skip sem RUN_DB_INTEGRATION — igual aos outros parity. Invoca
- * run_sole_live_parity_guards() (migration 20270101017100), que lê
+ * run_sole_live_parity_guards() (migration 20270101017300), que lê
  * pg_get_functiondef do banco.
  */
 import { describe, it, expect } from 'vitest';

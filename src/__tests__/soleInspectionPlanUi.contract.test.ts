@@ -7,7 +7,7 @@ const read = (rel: string) => readFileSync(resolve(ROOT, rel), 'utf8');
 
 describe('Plano de inspeção por família de solado', () => {
   it('migration cria sole_inspection_plan em product_groups', () => {
-    const mig = read('supabase/migrations/20270101017100_sole-audit-restore-parity-inspection.sql');
+    const mig = read('supabase/migrations/20270101017300_sole-audit-restore-parity-inspection.sql');
     expect(mig).toContain('ADD COLUMN IF NOT EXISTS sole_inspection_plan jsonb');
     expect(mig).toMatch(/NÃO inventar valores|NÃO inventa/i);
   });
