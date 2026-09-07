@@ -691,27 +691,130 @@ export async function fetchTechnicalSheetsForConsumption(
   return m;
 }
 
+/** Chunk pra `.in()` PostgREST — evita URL longa em PV/lista com muitas fichas. */
+const CONSUMPTION_IN_CHUNK = 100;
+
 /**
- * Roda as consultas de contexto (idênticas às do modal) e monta os mapas de
- * resolução de cor (solado/palmilha/forro) + straps. Reutilizável por qualquer
- * caller (modal por PV ou ficha por OP).
+ * Colunas de `products` exigidas pelo motor. Literal no `.select()` — o guard
+ * auto-derivado em `orderConsumption.test.ts` casa essa string.
+ */
+export const CONSUMPTION_PRODUCT_SELECT =
+  'id, name, unit, color, category, group_id, quantity, reserved_stock, stock_grade, sole_classification, is_fachetado, fachete_material_group_id';
+
+/**
+ * Produtos ativos só dos grupos (e pins soltos) envolvidos nas fichas.
+ * Substitui o full-catalog `.eq('active', true)` sem filtro — P1.1.
+ */
+export async function fetchActiveProductsByGroupIds(
+  client: any,
+  groupIds: string[],
+  extraProductIds: string[] = [],
+): Promise<any[]> {
+  const groups = [...new Set((groupIds || []).filter(Boolean))];
+  const extras = [...new Set((extraProductIds || []).filter(Boolean))];
+  const byId = new Map<string, any>();
+
+  for (let i = 0; i < groups.length; i += CONSUMPTION_IN_CHUNK) {
+    const chunk = groups.slice(i, i + CONSUMPTION_IN_CHUNK);
+    const { data, error } = await client
+      .from('products')
+      // `unit` / `category` / `is_fachetado` / `fachete_material_group_id`:
+      // ver CONSUMPTION_PRODUCT_SELECT — guard auto-derivado trava regressão.
+      .select('id, name, unit, color, category, group_id, quantity, reserved_stock, stock_grade, sole_classification, is_fachetado, fachete_material_group_id')
+      .eq('active', true)
+      .in('group_id', chunk);
+    if (error) throw error;
+    for (const p of data || []) byId.set(p.id, p);
+  }
+
+  const missingExtras = extras.filter((id) => !byId.has(id));
+  for (let i = 0; i < missingExtras.length; i += CONSUMPTION_IN_CHUNK) {
+    const chunk = missingExtras.slice(i, i + CONSUMPTION_IN_CHUNK);
+    const { data, error } = await client
+      .from('products')
+      .select('id, name, unit, color, category, group_id, quantity, reserved_stock, stock_grade, sole_classification, is_fachetado, fachete_material_group_id')
+      .eq('active', true)
+      .in('id', chunk);
+    if (error) throw error;
+    for (const p of data || []) byId.set(p.id, p);
+  }
+
+  return [...byId.values()];
+}
+
+function collectStrapGroupIds(strapColors: unknown): string[] {
+  if (!Array.isArray(strapColors)) return [];
+  const ids: string[] = [];
+  for (const strap of strapColors) {
+    const gid = (strap as any)?.group_id;
+    if (gid) ids.push(String(gid));
+  }
+  return ids;
+}
+
+function collectDirectComponentProductIds(directComponents: unknown): string[] {
+  if (!Array.isArray(directComponents)) return [];
+  const ids: string[] = [];
+  for (const row of directComponents) {
+    const pid = (row as any)?.product_id;
+    if (pid) ids.push(String(pid));
+  }
+  return ids;
+}
+
+/**
+ * Roda as consultas de contexto e monta os mapas de resolução de cor
+ * (solado/palmilha/forro) + straps. Reutilizável por qualquer caller.
+ *
+ * P1.1: products / component_sheets / sole_technical_specs são escopados aos
+ * grupos e solados das fichas pedidas — não ao catálogo inteiro.
  */
 export async function fetchConsumptionContext(
   refIds: string[],
   client: any = supabase,
 ): Promise<ConsumptionContext> {
   const unique = [...new Set(refIds.filter(Boolean))];
+  if (unique.length === 0) {
+    return {
+      materials: [],
+      allProducts: [],
+      productGroups: [],
+      boxTypes: [],
+      legacyPackagingProductIds: new Set(),
+      componentSheets: [],
+      soleColorMap: new Map(),
+      palmilhaColorMap: new Map(),
+      palmilhaDefaultMap: new Map(),
+      liningColorMap: new Map(),
+      liningDefaultMap: new Map(),
+      sheetStrapsMap: new Map(),
+      sheetSoleGroupMap: new Map(),
+      soleConjugationsByGroup: new Map(),
+      soleColorGroupMap: new Map(),
+      sheetPrimarySoleMap: new Map(),
+      facheteSpecBySole: new Map(),
+      facheteConsumptionPerSizeBySole: new Map(),
+      liningSpecBySole: new Map(),
+      liningConsumptionPerSizeBySole: new Map(),
+      insoleSpecBySole: new Map(),
+      insoleConsumptionPerSizeBySole: new Map(),
+      insoleLiningSpecBySole: new Map(),
+      insoleLiningConsumptionPerSizeBySole: new Map(),
+      componentColorMap: new Map(),
+      componentColorDefaultMap: new Map(),
+      materialVariantsById: new Map(),
+      soleStandardItemsBySole: new Map(),
+      soleGroupStandardItemsBySole: new Map(),
+    };
+  }
 
   const [
     { data: materials, error: materialsError },
-    { data: allProducts, error: allProductsError },
     { data: productGroups, error: productGroupsError },
-    { data: componentSheets, error: componentSheetsError },
-    { data: sheetStrapData, error: sheetStrapDataError },
+    { data: sheetSeedRows, error: sheetSeedError },
     { data: soleColorMappings, error: soleColorMappingsError },
     { data: palmilhaColorMappings, error: palmilhaColorMappingsError },
     { data: liningColorMappings, error: liningColorMappingsError },
-    { data: sheetSoleGroups, error: sheetSoleGroupsError },
     { data: componentColorMappings, error: componentColorMappingsError },
     { data: materialVariants, error: materialVariantsError },
     { data: componentColorDefaults, error: componentColorDefaultsError },
@@ -726,27 +829,18 @@ export async function fetchConsumptionContext(
       // motor, por item.
       .select('sheet_id, product_id, group_id, quantity_per_unit, color, material_variant_id, products(name, unit, category, color), product_groups!sheet_materials_group_id_fkey(name)')
       .in('sheet_id', unique),
-    client
-      .from('products')
-      // `unit` entrou pra resolução da unidade de ESTOQUE da palmilha (fix
-      // auditoria motores 2026-07-01: linha em dm² quando o estoque é em dm²).
-      // `category` entrou pra classificar os itens-padrão do solado (F2-01).
-      .select('id, name, unit, color, category, group_id, quantity, reserved_stock, stock_grade, sole_classification, is_fachetado, fachete_material_group_id')
-      .eq('active', true),
+    // Grupos são poucos (~centenas) e o motor resolve por NOME — carregar todos
+    // é barato; o caro era `products` sem filtro.
     client
       .from('product_groups')
       .select('id, name, is_color_agnostic, composite_layers:product_group_layers!product_group_layers_composite_group_id_fkey(composite_group_id), dimensions_length, dimensions_width, dimensions_unit, box_type_id, box_type_master_id, box_type_colmeia_id, box_type_fitilho_id, pairs_per_box_individual, pairs_per_box_master, pairs_per_box_colmeia, pairs_per_box_fitilho'),
     client
-      .from('component_sheets')
-      .select('product_id, dimensions_width, dimensions_length, dimensions_unit, yield_per_size, yield_per_sole, products!inner(group_id, name, color, unit)'),
-    client
       .from('technical_sheets')
-      .select('id, strap_colors')
+      .select('id, strap_colors, sole_group_id, primary_sole_id, upper_material, upper_material_group_id, upper_material_product_id, lining_material, lining_material_product_id, insole_material, sole_material, strap_base_group_id, direct_components')
       .in('id', unique),
     client.from('technical_sheet_sole_colors').select('sheet_id, product_color, sole_product_id, sole_group_id').in('sheet_id', unique),
     client.from('technical_sheet_palmilha_colors').select('sheet_id, cabedal_color, palmilha_color, palmilha_product_id').in('sheet_id', unique),
     client.from('technical_sheet_lining_colors').select('sheet_id, cabedal_color, lining_color').in('sheet_id', unique),
-    client.from('technical_sheets').select('id, sole_group_id, primary_sole_id').in('id', unique),
     client.from('technical_sheet_component_colors').select('sheet_id, cabedal_color, product_id, quantity_per_unit').in('sheet_id', unique),
     // Variantes de material das fichas envolvidas — o motor resolve por item
     // (item.material_variant_id) com a MESMA precedência dos resolvers SQL.
@@ -770,14 +864,11 @@ export async function fetchConsumptionContext(
 
   const contextError = [
     materialsError,
-    allProductsError,
     productGroupsError,
-    componentSheetsError,
-    sheetStrapDataError,
+    sheetSeedError,
     soleColorMappingsError,
     palmilhaColorMappingsError,
     liningColorMappingsError,
-    sheetSoleGroupsError,
     componentColorMappingsError,
     materialVariantsError,
     componentColorDefaultsError,
@@ -785,6 +876,117 @@ export async function fetchConsumptionContext(
     packagingBridgesError,
   ].find(Boolean);
   if (contextError) throw contextError;
+
+  const sheetSoleGroups = sheetSeedRows || [];
+  const sheetStrapData = sheetSeedRows || [];
+
+  // --- Escopo de produtos: só grupos/pins tocados por estas fichas -----------
+  const groupIds = new Set<string>();
+  const productIds = new Set<string>();
+  const addGroup = (id: unknown) => { if (id) groupIds.add(String(id)); };
+  const addProduct = (id: unknown) => { if (id) productIds.add(String(id)); };
+
+  const groupIdByName = new Map<string, string>();
+  for (const g of (productGroups || []) as any[]) {
+    if (g?.id && g?.name) groupIdByName.set(normalizeText(g.name), g.id);
+  }
+  const addGroupByName = (name: unknown) => {
+    if (!name || typeof name !== 'string') return;
+    const id = groupIdByName.get(normalizeText(name));
+    if (id) groupIds.add(id);
+  };
+
+  for (const m of (materials || []) as any[]) {
+    addGroup(m.group_id);
+    addProduct(m.product_id);
+  }
+  for (const s of (sheetSeedRows || []) as any[]) {
+    addGroup(s.sole_group_id);
+    addGroup(s.upper_material_group_id);
+    addGroup(s.strap_base_group_id);
+    addProduct(s.primary_sole_id);
+    addProduct(s.upper_material_product_id);
+    addProduct(s.lining_material_product_id);
+    addGroupByName(s.upper_material);
+    addGroupByName(s.lining_material);
+    addGroupByName(s.insole_material);
+    addGroupByName(s.sole_material);
+    for (const gid of collectStrapGroupIds(s.strap_colors)) addGroup(gid);
+    for (const pid of collectDirectComponentProductIds(s.direct_components)) addProduct(pid);
+  }
+  for (const m of (soleColorMappings || []) as any[]) {
+    addProduct(m.sole_product_id);
+    addGroup(m.sole_group_id);
+  }
+  for (const m of (palmilhaColorMappings || []) as any[]) addProduct(m.palmilha_product_id);
+  for (const m of (componentColorMappings || []) as any[]) addProduct(m.product_id);
+  for (const v of (materialVariants || []) as any[]) {
+    addGroup(v.upper_material_group_id);
+    addGroup(v.lining_material_group_id);
+    addGroup(v.insole_material_group_id);
+    addGroup(v.main_material_group_id);
+    addProduct(v.upper_material_product_id);
+    addProduct(v.lining_material_product_id);
+    addProduct(v.insole_material_product_id);
+    addProduct(v.sole_material_product_id);
+  }
+  for (const d of (componentColorDefaults || []) as any[]) {
+    addGroup(d.group_id);
+    addProduct(d.product_id);
+  }
+  for (const bridge of (packagingBridges || []) as any[]) addProduct(bridge.product_id);
+
+  // Camadas compostas do grupo: resolução de cor precisa dos SKUs filhos.
+  for (const g of (productGroups || []) as any[]) {
+    if (!groupIds.has(g.id)) continue;
+    for (const layer of g.composite_layers || []) addGroup(layer?.composite_group_id);
+  }
+
+  let allProducts = await fetchActiveProductsByGroupIds(
+    client,
+    [...groupIds],
+    [...productIds],
+  );
+
+  // Fachete: grupo do material só aparece depois de carregar o solado.
+  const facheteGroupIds = [
+    ...new Set(
+      (allProducts || [])
+        .filter((p: any) => p.is_fachetado && p.fachete_material_group_id)
+        .map((p: any) => String(p.fachete_material_group_id))
+        .filter((id) => !groupIds.has(id)),
+    ),
+  ];
+  if (facheteGroupIds.length > 0) {
+    const extra = await fetchActiveProductsByGroupIds(client, facheteGroupIds);
+    const seen = new Set(allProducts.map((p: any) => p.id));
+    for (const p of extra) {
+      if (!seen.has(p.id)) allProducts.push(p);
+    }
+    for (const id of facheteGroupIds) groupIds.add(id);
+  }
+
+  // Fichas de componente só dos produtos no escopo (largura dm²→m).
+  const componentProductIds = [
+    ...new Set([
+      ...allProducts.map((p: any) => p.id).filter(Boolean),
+      ...[...productIds],
+    ]),
+  ];
+  let componentSheets: any[] = [];
+  if (componentProductIds.length > 0) {
+    const rows: any[] = [];
+    for (let i = 0; i < componentProductIds.length; i += CONSUMPTION_IN_CHUNK) {
+      const chunk = componentProductIds.slice(i, i + CONSUMPTION_IN_CHUNK);
+      const { data, error } = await client
+        .from('component_sheets')
+        .select('product_id, dimensions_width, dimensions_length, dimensions_unit, yield_per_size, yield_per_sole, products!inner(group_id, name, color, unit)')
+        .in('product_id', chunk);
+      if (error) throw error;
+      rows.push(...(data || []));
+    }
+    componentSheets = rows;
+  }
 
   // (sheet_id, cor do cabedal) → produto-solado específico
   const soleColorMap = new Map<string, string>();
@@ -885,84 +1087,68 @@ export async function fetchConsumptionContext(
     }
   }
 
-  // Consumo de FACHETE por numeração (dm²/par) dos solados fachetados. Espelha
-  // o caminho SQL de calculate_order_consumption (que adiciona o componente
-  // "Fachete"): só carregamos as specs dos solados marcados is_fachetado.
+  // Specs do solado (forro / palmilha / fachete) — UMA query escopada aos
+  // candidatos destas fichas. Antes: 2 full-table scans (lining + insole) +
+  // 1 filtrada (fachete). P1.1.
   const facheteSpecBySole = new Map<string, Record<string, number>>();
   const facheteConsumptionPerSizeBySole = new Map<string, Record<string, number>>();
-  const fachetadoSoleIds = (allProducts || [])
-    .filter((p: any) => p.is_fachetado)
-    .map((p: any) => p.id);
-  if (fachetadoSoleIds.length > 0) {
-    const { data: facheteSpecs } = await client
-      .from('sole_technical_specs')
-      .select('sole_id, size, updated_at, fachete_lining_consumption_dm2, fachete_lining_consumption_per_size')
-      .in('sole_id', fachetadoSoleIds);
-    for (const r of reduceSoleTechnicalSpecsByRecency(facheteSpecs as any[])) {
-      const v = Number(r.fachete_lining_consumption_dm2) || 0;
-      if (v > 0 && r.size != null) {
-        const m = facheteSpecBySole.get(r.sole_id) || {};
-        m[String(r.size)] = v;
-        facheteSpecBySole.set(r.sole_id, m);
-      }
-      const canonical = mergePerSizeConsumption(
-        facheteConsumptionPerSizeBySole.get(r.sole_id),
-        r.fachete_lining_consumption_per_size,
-      );
-      if (Object.keys(canonical).length > 0) facheteConsumptionPerSizeBySole.set(r.sole_id, canonical);
-    }
-  }
-
-  // FORRO DO CABEDAL por numeração (dm²/par) vindo do SOLADO
-  // (`sole_technical_specs.lining_consumption_dm2`). Fonte do consumo do forro
-  // desde 2026-07-01: a ficha só escolhe o grupo/cor; o consumo é por solado.
-  // O mapa JSONB canônico é lido junto: filtros `.gt(0)` não servem porque um
-  // solado pode ter apenas o mapa por tamanho, com os escalares legados vazios.
   const liningSpecBySole = new Map<string, Record<string, number>>();
   const liningConsumptionPerSizeBySole = new Map<string, Record<string, number>>();
-  {
-    const { data: liningSpecs } = await client
-      .from('sole_technical_specs')
-      .select('sole_id, size, updated_at, lining_consumption_dm2, lining_consumption_per_size');
-    for (const r of reduceSoleTechnicalSpecsByRecency(liningSpecs as any[])) {
-      const v = Number(r.lining_consumption_dm2) || 0;
-      if (v > 0 && r.size != null) {
-        const m = liningSpecBySole.get(r.sole_id) || {};
-        m[String(r.size)] = v;
-        liningSpecBySole.set(r.sole_id, m);
-      }
-      const canonical = mergePerSizeConsumption(
-        liningConsumptionPerSizeBySole.get(r.sole_id),
-        r.lining_consumption_per_size,
-      );
-      if (Object.keys(canonical).length > 0) liningConsumptionPerSizeBySole.set(r.sole_id, canonical);
-    }
-  }
-
-  // PALMILHA (placa + forração) por numeração vinda do SOLADO
-  // (`sole_technical_specs.insole_consumption_dm2` / `insole_lining_consumption_dm2`).
-  // MESMA fonte da produção/ondas (SQL by_grade) — antes o modal usava o yield da
-  // ficha de componente e divergia. Query SEPARADA da do forro: um solado pode ter
-  // forro=0 e palmilha>0 (o `.gt(lining)` da query do forro excluiria essas linhas).
   const insoleSpecBySole = new Map<string, Record<string, number>>();
   const insoleLiningSpecBySole = new Map<string, Record<string, number>>();
   const insoleConsumptionPerSizeBySole = new Map<string, Record<string, number>>();
   const insoleLiningConsumptionPerSizeBySole = new Map<string, Record<string, number>>();
   {
-    const { data: insoleSpecs } = await client
-      .from('sole_technical_specs')
-      .select('sole_id, size, updated_at, insole_consumption_dm2, insole_lining_consumption_dm2, insole_consumption_per_size, insole_lining_consumption_per_size');
-    for (const r of reduceSoleTechnicalSpecsByRecency(insoleSpecs as any[])) {
-      const iv = Number(r.insole_consumption_dm2) || 0;
-      if (iv > 0 && r.size != null) {
+    const soleCandidateIds = new Set<string>();
+    for (const pid of soleColorMap.values()) soleCandidateIds.add(pid);
+    for (const pid of sheetPrimarySoleMap.values()) soleCandidateIds.add(pid);
+    const soleCandidateGroupIds = new Set<string>([
+      ...sheetSoleGroupMap.values(),
+      ...soleColorGroupMap.values(),
+    ]);
+    for (const p of (allProducts || []) as any[]) {
+      if (p.group_id && soleCandidateGroupIds.has(p.group_id)) soleCandidateIds.add(p.id);
+      if (p.is_fachetado) soleCandidateIds.add(p.id);
+    }
+    for (const v of materialVariantsById.values()) {
+      if (v.sole_material_product_id) soleCandidateIds.add(v.sole_material_product_id);
+    }
+
+    const soleIdList = [...soleCandidateIds];
+    const specRows: any[] = [];
+    for (let i = 0; i < soleIdList.length; i += CONSUMPTION_IN_CHUNK) {
+      const chunk = soleIdList.slice(i, i + CONSUMPTION_IN_CHUNK);
+      const { data, error } = await client
+        .from('sole_technical_specs')
+        .select('sole_id, size, updated_at, lining_consumption_dm2, lining_consumption_per_size, insole_consumption_dm2, insole_lining_consumption_dm2, insole_consumption_per_size, insole_lining_consumption_per_size, fachete_lining_consumption_dm2, fachete_lining_consumption_per_size')
+        .in('sole_id', chunk);
+      if (error) throw error;
+      specRows.push(...(data || []));
+    }
+
+    for (const r of reduceSoleTechnicalSpecsByRecency(specRows)) {
+      const liningV = Number(r.lining_consumption_dm2) || 0;
+      if (liningV > 0 && r.size != null) {
+        const m = liningSpecBySole.get(r.sole_id) || {};
+        m[String(r.size)] = liningV;
+        liningSpecBySole.set(r.sole_id, m);
+      }
+      const liningCanonical = mergePerSizeConsumption(
+        liningConsumptionPerSizeBySole.get(r.sole_id),
+        r.lining_consumption_per_size,
+      );
+      if (Object.keys(liningCanonical).length > 0) liningConsumptionPerSizeBySole.set(r.sole_id, liningCanonical);
+
+      const insoleV = Number(r.insole_consumption_dm2) || 0;
+      if (insoleV > 0 && r.size != null) {
         const m = insoleSpecBySole.get(r.sole_id) || {};
-        m[String(r.size)] = iv;
+        m[String(r.size)] = insoleV;
         insoleSpecBySole.set(r.sole_id, m);
       }
-      const lv = Number(r.insole_lining_consumption_dm2) || 0;
-      if (lv > 0 && r.size != null) {
+      const insoleLiningV = Number(r.insole_lining_consumption_dm2) || 0;
+      if (insoleLiningV > 0 && r.size != null) {
         const m = insoleLiningSpecBySole.get(r.sole_id) || {};
-        m[String(r.size)] = lv;
+        m[String(r.size)] = insoleLiningV;
         insoleLiningSpecBySole.set(r.sole_id, m);
       }
       const insoleCanonical = mergePerSizeConsumption(
@@ -974,7 +1160,21 @@ export async function fetchConsumptionContext(
         insoleLiningConsumptionPerSizeBySole.get(r.sole_id),
         r.insole_lining_consumption_per_size,
       );
-      if (Object.keys(insoleLiningCanonical).length > 0) insoleLiningConsumptionPerSizeBySole.set(r.sole_id, insoleLiningCanonical);
+      if (Object.keys(insoleLiningCanonical).length > 0) {
+        insoleLiningConsumptionPerSizeBySole.set(r.sole_id, insoleLiningCanonical);
+      }
+
+      const facheteV = Number(r.fachete_lining_consumption_dm2) || 0;
+      if (facheteV > 0 && r.size != null) {
+        const m = facheteSpecBySole.get(r.sole_id) || {};
+        m[String(r.size)] = facheteV;
+        facheteSpecBySole.set(r.sole_id, m);
+      }
+      const facheteCanonical = mergePerSizeConsumption(
+        facheteConsumptionPerSizeBySole.get(r.sole_id),
+        r.fachete_lining_consumption_per_size,
+      );
+      if (Object.keys(facheteCanonical).length > 0) facheteConsumptionPerSizeBySole.set(r.sole_id, facheteCanonical);
     }
   }
 
