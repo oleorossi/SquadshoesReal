@@ -2450,7 +2450,7 @@ export default function SaleOrders() {
         itemLabel={sel.count === 1 ? 'PV selecionado' : 'PVs selecionados'}
         actions={[
           ...(canEditPv ? [{ label: 'Aprovar', icon: <Check className="h-3.5 w-3.5" />, onClick: handleBulkApprove }] : []),
-          ...(canBuy ? [{ label: 'Gerar OCs', icon: <ShoppingCart className="h-3.5 w-3.5" />, variant: 'outline' as const, onClick: handleBulkPurchaseOrders }] : []),
+          ...(canBuy ? [{ label: 'Gerar ordem de compra', icon: <ShoppingCart className="h-3.5 w-3.5" />, variant: 'outline' as const, onClick: handleBulkPurchaseOrders }] : []),
           { label: 'Emitir NF-e', icon: <Receipt className="h-3.5 w-3.5" />, onClick: () => openBulkNfe('emit') },
           { label: 'Etiqueta Individual', icon: <Barcode className="h-3.5 w-3.5" />, variant: 'outline' as const, onClick: handleBulkLabels },
           ...(canEditPv ? [{ label: 'Cancelar', icon: <X className="h-3.5 w-3.5" />, variant: 'destructive' as const, onClick: handleBulkCancel }] : []),
@@ -2673,9 +2673,9 @@ export default function SaleOrders() {
                       size="sm"
                       className="gap-2"
                       onClick={() => setPoGenTarget({ ids: [selectedOrder.id], numbers: [selectedOrder.order_number] })}
-                      title="Gera Ordens de Compra só para este pedido (canal Compras por Pedido, separado do MRP)"
+                      title="Calcula o consumo da ficha técnica, desconta o estoque e gera uma OC por fornecedor (canal Compras por Pedido)"
                     >
-                      <ShoppingCart className="h-3.5 w-3.5" /> Gerar OCs
+                      <ShoppingCart className="h-3.5 w-3.5" /> Gerar ordem de compra
                     </Button>
                   )}
                   {/* Picking individual — desde 31/07/2026 a baixa sai sozinha na

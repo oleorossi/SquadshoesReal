@@ -385,8 +385,9 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
             Materiais necessários para {titleScope}
           </DialogTitle>
           <DialogDescription>
-            Gera uma Ordem de Compra por fornecedor (+ uma agrupada "Sem Fornecedor").
-            Estas OCs ficam no canal <strong>Compras por Pedido</strong> — separadas do MRP/ondas.
+            Calcula o consumo da ficha técnica deste pedido, desconta o estoque disponível
+            e gera <strong>uma Ordem de Compra por fornecedor</strong> (+ uma agrupada
+            &quot;Sem Fornecedor&quot;). Canal <strong>Compras por Pedido</strong> — separado do MRP/ondas.
           </DialogDescription>
         </DialogHeader>
 
@@ -799,7 +800,7 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
               className="gap-2"
             >
               {generate.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShoppingCart className="h-4 w-4" />}
-              Confirmar e Gerar
+              {generate.isPending ? 'Gerando…' : 'Gerar ordem de compra'}
             </Button>
           </div>
         </DialogFooter>

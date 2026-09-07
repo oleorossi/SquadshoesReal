@@ -28,7 +28,7 @@ import {
  */
 type Props = {
   saleOrderIds: string[];
-  /** Ação primária da tela (Gerar OC). Omitida ⇒ o botão não aparece. */
+  /** Ação primária da tela (Gerar ordem de compra). Omitida ⇒ o botão não aparece. */
   onGerarOC?: () => void;
   /** Diálogo em tela cheia: some o título duplicado do herói. */
   embedded?: boolean;

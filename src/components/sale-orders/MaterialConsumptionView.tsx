@@ -65,7 +65,7 @@ import {
  *  - **Coluna "Falta"** com o número. Antes existia só o selo "falta", sem
  *    dizer QUANTO — o comprador ia buscar em outra tela.
  *  - **Trilho de decisão** sticky (`ConsumptionDecisionRail`) com material base,
- *    itens em falta, maiores faltas e a ação primária "Gerar OC".
+ *    itens em falta, maiores faltas e a ação primária "Gerar ordem de compra".
  *  - **Solado como mapa de compra prioritário**: a grade aparece aberta logo
  *    após o resumo, mostrando necessidade, estoque e falta POR NÚMERO. Solado
  *    não fica mais enterrado na ordenação nem depende de uma seta minúscula.

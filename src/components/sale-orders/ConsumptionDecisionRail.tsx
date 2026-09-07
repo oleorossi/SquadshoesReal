@@ -57,7 +57,8 @@ type Props = {
   /** Necessidade bruta do pedido, estoque ignorado. */
   grossNeed?: boolean;
   onGrossNeedChange?: (v: boolean) => void;
-  /** Ação primária: abre a geração de OC do(s) PV(s). Omitida ⇒ botão não aparece. */
+  /** Ação primária: abre a geração de OC do(s) PV(s) — consumo da ficha, líquido
+   *  de estoque, 1 OC por fornecedor. Omitida ⇒ botão não aparece. */
   onGerarOC?: () => void;
   onRecalcular?: () => void;
   onPrintPdf: () => void;
@@ -172,23 +173,28 @@ export default function ConsumptionDecisionRail({
       </button>
       )}
 
-        <Button
-          type="button"
-          variant={grossNeed ? 'default' : 'outline'}
-          size="sm"
-          aria-pressed={grossNeed}
-          className="w-full gap-1.5"
-          onClick={() => onGrossNeedChange?.(!grossNeed)}
-        >
-          Consumo total
-        </Button>
-
-      {onGerarOC && !grossNeed && (
+      {/* CTA primária = comprar a falta. Antes sumia no modo "Consumo total"
+          (toggle de visualização), e o botão preto do toggle ocupava o lugar
+          da ação — o operador via só a necessidade bruta e perdia o caminho
+          pra OC. A geração sempre abre o canal Compras por Pedido, que por
+          padrão desconta estoque e agrupa por fornecedor. */}
+      {onGerarOC && (
         <Button type="button" className="w-full gap-2" onClick={onGerarOC}>
           <ShoppingCart className="h-4 w-4" />
-          Gerar OC deste consumo
+          Gerar ordem de compra
         </Button>
       )}
+
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        aria-pressed={grossNeed}
+        className="w-full gap-1.5"
+        onClick={() => onGrossNeedChange?.(!grossNeed)}
+      >
+        {grossNeed ? 'Voltar à cobertura de estoque' : 'Consumo total'}
+      </Button>
 
       {/* ── Maiores faltas: responde "quanto pedir" sem ler a tabela ──── */}
       {!grossNeed && topShort.length > 0 && (

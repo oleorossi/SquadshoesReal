@@ -78,7 +78,7 @@ export default function PurchaseOrdersPerPv() {
         <EmptyState
           icon={ShoppingCart}
           title="Nenhuma OC por pedido"
-          description='Abra um PV e use "Gerar OCs", ou selecione vários pedidos na lista para gerar em lote.'
+          description='Abra um PV e use "Gerar ordem de compra", ou selecione vários pedidos na lista para gerar em lote.'
         />
       ) : (
         groups.map(([pvId, pos]) => (
