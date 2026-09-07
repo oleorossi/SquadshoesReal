@@ -270,14 +270,19 @@ const assertQuerySucceeded = (
  * pra a Lista de Separação nunca publicar BOM parcial quando `products` falha.
  */
 async function fetchScopedProductsOrThrow(
-  client: any,
+  client: Parameters<typeof fetchActiveProductsByGroupIds>[0],
   groupIds: string[],
   extraProductIds: string[] = [],
-): Promise<any[]> {
+): Promise<Awaited<ReturnType<typeof fetchActiveProductsByGroupIds>>> {
   try {
     return await fetchActiveProductsByGroupIds(client, groupIds, extraProductIds);
   } catch (error) {
-    assertQuerySucceeded('products', { error: error as any });
+    const message = error instanceof Error
+      ? error.message
+      : (error && typeof error === 'object' && 'message' in error
+        ? String((error as { message?: unknown }).message ?? '')
+        : 'erro desconhecido');
+    assertQuerySucceeded('products', { error: { message } });
     return [];
   }
 }
@@ -463,7 +468,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     for (const layer of g.composite_layers || []) addGroup(layer?.composite_group_id);
   }
 
-  let allProducts = await fetchScopedProductsOrThrow(
+  const allProducts = await fetchScopedProductsOrThrow(
     supabase,
     [...scopeGroupIds],
     [...scopeProductIds],
@@ -1842,7 +1847,7 @@ export async function calculateSoleBreakdownByGrade(orderIds: string[]): Promise
   }
 
   // Só SKUs dos grupos de solado destas fichas (P1.1).
-  let allProducts = await fetchScopedProductsOrThrow(
+  const allProducts = await fetchScopedProductsOrThrow(
     supabase,
     [...soleGroupIds],
     [...soleProductIds],
