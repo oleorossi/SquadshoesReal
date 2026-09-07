@@ -205,14 +205,24 @@ describe('MaterialConsumptionView — tela buy-first', () => {
     expect(screen.queryByLabelText('em estoque')).not.toBeInTheDocument();
   });
 
-  it('“Gerar OC” só aparece quando o escopo sabe gerar', async () => {
+  it('“Gerar ordem de compra” só aparece quando o escopo sabe gerar', async () => {
     const onGerarOC = vi.fn();
     const { unmount } = renderView();
-    expect(screen.queryByRole('button', { name: /Gerar OC/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Gerar ordem de compra/i })).not.toBeInTheDocument();
     unmount();
 
     renderView({ onGerarOC });
-    await userEvent.setup().click(screen.getByRole('button', { name: /Gerar OC/i }));
+    await userEvent.setup().click(screen.getByRole('button', { name: /Gerar ordem de compra/i }));
+    expect(onGerarOC).toHaveBeenCalledOnce();
+  });
+
+  it('mantém Gerar ordem de compra visível no modo Consumo total', async () => {
+    const onGerarOC = vi.fn();
+    const user = userEvent.setup();
+    renderView({ onGerarOC });
+    await user.click(screen.getAllByRole('button', { name: 'Consumo total' })[0]);
+    expect(screen.getByRole('button', { name: /Gerar ordem de compra/i })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Gerar ordem de compra/i }));
     expect(onGerarOC).toHaveBeenCalledOnce();
   });
 
