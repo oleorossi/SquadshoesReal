@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   canonicalStrapCutRows,
+  collapseDuplicateStaleStrapPreviews,
+  formatCanonicalStrapProductName,
   parseCanonicalStrapDemandPreview,
   replaceWithCanonicalStrapRows,
   type CanonicalStrapConsumptionRow,
@@ -26,6 +28,7 @@ const preview = (overrides: Record<string, unknown> = {}) => parseCanonicalStrap
   blocking_reasons: [],
   resolved: {
     strap_product_name: 'TIRA CHATA 8MM · NAPA SOFT',
+    measure_name: 'CHATA 8MM',
     strap_color_name: 'OFF WHITE',
     base_product_name: 'NAPA SOFT · OFF WHITE',
     confirmed_yield_m_per_m: 64,
@@ -38,6 +41,108 @@ const preview = (overrides: Record<string, unknown> = {}) => parseCanonicalStrap
 });
 
 describe('preview canônica de tiras', () => {
+  it('rótulo usa a medida da ficha quando o SKU acabado não veio', () => {
+    const orphan = preview({
+      strap_variant_id: null,
+      recipe_id: null,
+      base_product_id: null,
+      finished_product_id: null,
+      blocking_reasons: [{
+        code: 'frozen_source_snapshot_stale',
+        message: 'A origem congelada da tira diverge do catalogo; salve novamente o pedido antes de confirmar.',
+      }],
+      resolved: {
+        strap_product_name: null,
+        measure_name: 'CHATA 8 mm',
+        strap_color_name: 'OFF WHITE',
+        base_group_name: 'NAPA MADRID',
+        confirmed_yield_m_per_m: null,
+        base_required_m: null,
+      },
+    });
+    expect(formatCanonicalStrapProductName(orphan)).toBe(
+      'TIRA CHATA 8 mm · NAPA MADRID · OFF WHITE',
+    );
+  });
+
+  it('remove fantasma OFF WHITE que só duplica a CHATA já conferida (PV-00193)', () => {
+    const healthy = preview({
+      sale_order_item_id: 'item-off',
+      technical_strap_line_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      strap_variant_id: 'variant-madrid',
+      recipe_id: 'recipe-madrid',
+      base_product_id: 'base-madrid',
+      finished_product_id: 'finished-madrid',
+      gross_required_m: 1044,
+      resolved: {
+        strap_product_name: 'TIRA CHATA 8 mm · NAPA MADRID · OFF WHITE',
+        measure_name: 'CHATA 8 mm',
+        strap_color_name: 'OFF WHITE',
+        base_group_name: 'NAPA MADRID',
+        base_product_name: 'NAPA MADRID · OFF WHITE',
+        confirmed_yield_m_per_m: 70,
+        base_required_m: 14.91,
+      },
+    });
+    const ghost = preview({
+      sale_order_item_id: 'item-off',
+      technical_strap_line_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      strap_variant_id: null,
+      recipe_id: null,
+      base_product_id: null,
+      finished_product_id: null,
+      gross_required_m: 1044,
+      blocking_reasons: [
+        { code: 'variant_snapshot_stale', message: 'Variante escolhida nao corresponde mais a identidade tecnica atual.' },
+        { code: 'frozen_source_snapshot_stale', message: 'A origem congelada da tira diverge do catalogo; salve novamente o pedido antes de confirmar.' },
+      ],
+      resolved: {
+        strap_product_name: null,
+        measure_name: 'CHATA 8 mm',
+        strap_color_name: 'OFF WHITE',
+        base_group_name: 'NAPA MADRID',
+        confirmed_yield_m_per_m: null,
+        base_required_m: null,
+      },
+    });
+
+    const collapsed = collapseDuplicateStaleStrapPreviews([healthy, ghost]);
+    expect(collapsed).toHaveLength(1);
+    expect(collapsed[0].technicalStrapLineId).toBe(healthy.technicalStrapLineId);
+
+    const rows = replaceWithCanonicalStrapRows([], ctx, [healthy, ghost]) as CanonicalStrapConsumptionRow[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0].groupName).toContain('CHATA 8 mm');
+    expect(rows[0].artisanal?.pending).toBeFalsy();
+    expect(canonicalStrapCutRows([healthy, ghost])).toHaveLength(1);
+  });
+
+  it('não apaga uma 2ª medida real bloqueada (outra metragem)', () => {
+    const healthy = preview();
+    const otherMeasure = preview({
+      technical_strap_line_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      strap_variant_id: null,
+      recipe_id: null,
+      base_product_id: null,
+      finished_product_id: null,
+      gross_required_m: 200,
+      blocking_reasons: [{
+        code: 'frozen_source_snapshot_stale',
+        message: 'A origem congelada da tira diverge do catalogo',
+      }],
+      resolved: {
+        strap_product_name: null,
+        measure_name: 'OVERLOCK 5MM',
+        strap_color_name: 'OFF WHITE',
+        base_group_name: 'NAPA SOFT',
+      },
+    });
+    const collapsed = collapseDuplicateStaleStrapPreviews([healthy, otherMeasure]);
+    expect(collapsed).toHaveLength(2);
+    const [row] = replaceWithCanonicalStrapRows([], ctx, [otherMeasure]) as CanonicalStrapConsumptionRow[];
+    expect(row.groupName).toBe('TIRA OVERLOCK 5MM · NAPA SOFT · OFF WHITE');
+  });
+
   it('soma posições do mesmo material físico, mas separa snapshots com outro SKU base', () => {
     const rows = replaceWithCanonicalStrapRows([], ctx, [preview(),
       preview({ technical_strap_line_id: 'outra-posicao' }),
@@ -192,11 +297,7 @@ describe('preview canônica de tiras', () => {
       resolved: {},
     });
 
-    const rows = replaceWithCanonicalStrapRows(
-      [],
-      ctx,
-      [preview(), pending],
-    ) as CanonicalStrapConsumptionRow[];
+    const rows = replaceWithCanonicalStrapRows([], ctx, [preview(), pending]) as CanonicalStrapConsumptionRow[];
     expect(rows).toHaveLength(2);
     expect(rows).toEqual(expect.arrayContaining([
       expect.objectContaining({ strapVariantId: 'variant-soft' }),

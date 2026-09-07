@@ -19,6 +19,8 @@ export interface CanonicalStrapDemandPreview {
   baseProductId: string | null;
   finishedProductId: string | null;
   strapProductName: string;
+  /** Medida canônica da ficha (`artisanal_strap_measures.display_name`). */
+  measureName: string | null;
   strapColorName: string;
   /** SKU oficial da napa (pode incluir a cor). */
   baseProductName: string | null;
@@ -30,8 +32,17 @@ export interface CanonicalStrapDemandPreview {
   usableBaseWidthMm: number | null;
   theoreticalYieldMPerM: number | null;
   blockingReasons: string[];
+  /** Códigos crus dos blocking_reasons (além das mensagens). */
+  blockingCodes: string[];
   snapshotWarning?: string | null;
 }
+
+const STRAP_LABEL_FALLBACK = 'Tira sem cadastro';
+
+const finiteOrZero = (value: unknown): number => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
 
 const stringOrNull = (value: unknown): string | null =>
   value == null || value === '' ? null : String(value);
@@ -41,6 +52,16 @@ const numberOrNull = (value: unknown): number | null => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 };
+
+/** Códigos em que a preview é snapshot/UUID fantasma — não uma 2ª medida real. */
+const STALE_STRAP_PREVIEW_CODES = new Set([
+  'frozen_source_snapshot_stale',
+  'variant_snapshot_stale',
+  'variant_identity_not_persisted',
+  'technical_line_identity_invalid',
+  'technical_identity_snapshot_stale',
+  'technical_line_missing',
+]);
 
 export function parseCanonicalBlockingReasons(value: unknown): string[] {
   if (!Array.isArray(value)) return value ? [String(value)] : [];
@@ -54,38 +75,14 @@ export function parseCanonicalBlockingReasons(value: unknown): string[] {
     .filter(Boolean);
 }
 
-/** Normaliza uma linha bruta devolvida pelas duas preview RPCs. */
-export function parseCanonicalStrapDemandPreview(
-  value: Record<string, unknown>,
-): CanonicalStrapDemandPreview {
-  const resolved = value.resolved && typeof value.resolved === 'object'
-    ? value.resolved as Record<string, unknown>
-    : {};
-  const sourceMode = value.source_mode === 'internal' || value.source_mode === 'buy_ready'
-    ? value.source_mode
-    : null;
-
-  return {
-    saleOrderItemId: stringOrNull(value.sale_order_item_id),
-    technicalStrapLineId: stringOrNull(value.technical_strap_line_id) || '',
-    strapVariantId: stringOrNull(value.strap_variant_id),
-    sourceMode,
-    grossRequiredM: finiteOrZero(value.gross_required_m),
-    recipeId: stringOrNull(value.recipe_id),
-    baseProductId: stringOrNull(value.base_product_id),
-    finishedProductId: stringOrNull(value.finished_product_id),
-    strapProductName: String(resolved.strap_product_name || 'Tira sem cadastro'),
-    strapColorName: String(resolved.strap_color_name || '—'),
-    baseProductName: stringOrNull(resolved.base_product_name),
-    baseGroupName: stringOrNull(resolved.base_group_name),
-    confirmedYieldMPerM: numberOrNull(resolved.confirmed_yield_m_per_m),
-    baseRequiredM: numberOrNull(resolved.base_required_m),
-    cutBandWidthMm: numberOrNull(resolved.cut_band_width_mm),
-    usableBaseWidthMm: numberOrNull(resolved.usable_base_width_mm_snapshot),
-    theoreticalYieldMPerM: numberOrNull(resolved.theoretical_yield_m_per_m),
-    blockingReasons: parseCanonicalBlockingReasons(value.blocking_reasons),
-    ...(resolved.snapshot_warning ? { snapshotWarning: stringOrNull(resolved.snapshot_warning) } : {}),
-  };
+export function parseCanonicalBlockingCodes(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object') return '';
+      return String((entry as Record<string, unknown>).code || '');
+    })
+    .filter(Boolean);
 }
 
 /**
@@ -115,6 +112,143 @@ export function resolveStrapBaseFamilyName(
   return normalizeBaseFamilyName(preview.baseProductName, preview.strapColorName);
 }
 
+/**
+ * Rótulo exibido na tela/PDF. Sem SKU acabado, usa a medida da ficha (e napa/cor
+ * quando houver) — nunca esconde a medida real atrás de "Tira sem cadastro".
+ */
+export function formatCanonicalStrapProductName(
+  preview: Pick<
+    CanonicalStrapDemandPreview,
+    | 'strapProductName'
+    | 'measureName'
+    | 'baseGroupName'
+    | 'baseProductName'
+    | 'strapColorName'
+    | 'baseProductId'
+  >,
+): string {
+  const named = (preview.strapProductName || '').trim();
+  if (named && named !== STRAP_LABEL_FALLBACK) return named;
+
+  const measure = (preview.measureName || '').trim();
+  const base = resolveStrapBaseFamilyName(preview);
+  const color = (preview.strapColorName || '').trim();
+  const parts = [
+    measure ? (measure.toUpperCase().startsWith('TIRA') ? measure : `TIRA ${measure}`) : null,
+    base || null,
+    color && color !== '—' ? color : null,
+  ].filter(Boolean) as string[];
+  return parts.length > 0 ? parts.join(' · ') : STRAP_LABEL_FALLBACK;
+}
+
+const approxSameMeters = (a: number, b: number): boolean =>
+  Math.abs(finiteOrZero(a) - finiteOrZero(b)) < 0.05;
+
+const isHealthyStrapPreview = (preview: CanonicalStrapDemandPreview): boolean => {
+  if (preview.blockingReasons.length > 0 || preview.snapshotWarning) return false;
+  if (!preview.sourceMode) return false;
+  if (preview.sourceMode === 'internal') {
+    return !!preview.recipeId && !!preview.baseProductId && finiteOrZero(preview.confirmedYieldMPerM) > 0;
+  }
+  return !!preview.finishedProductId;
+};
+
+const isStaleGhostStrapPreview = (preview: CanonicalStrapDemandPreview): boolean => {
+  if (isHealthyStrapPreview(preview)) return false;
+  if (preview.finishedProductId) return false;
+  if (preview.blockingCodes.some((code) => STALE_STRAP_PREVIEW_CODES.has(code))) return true;
+  const blob = [
+    ...preview.blockingReasons,
+    preview.snapshotWarning || '',
+  ].join(' ').toLowerCase();
+  return /origem congelada|diverge do catalogo|variante escolhida|variante exata|linha tecnica/
+    .test(blob);
+};
+
+/**
+ * Remove preview fantasma que só repete a demanda de uma linha já saudável
+ * (mesmo item/cor/metragem), típico de `strap_colors`/`strap_sourcing` obsoleto
+ * no rascunho — caso PV-00193 OFF WHITE ("Tira sem cadastro" + CHATA 8 mm ok).
+ */
+export function collapseDuplicateStaleStrapPreviews(
+  previews: CanonicalStrapDemandPreview[],
+): CanonicalStrapDemandPreview[] {
+  if (previews.length < 2) return previews;
+  const healthy = previews.filter(isHealthyStrapPreview);
+  if (healthy.length === 0) return previews;
+
+  return previews.filter((preview) => {
+    if (!isStaleGhostStrapPreview(preview)) return true;
+    const ghostColor = (preview.strapColorName || '').trim().toLowerCase();
+    const ghostMeasure = (preview.measureName || '').trim().toLowerCase();
+    const ghostBase = resolveStrapBaseFamilyName(preview).trim().toLowerCase();
+    return !healthy.some((ok) => {
+      if (preview.saleOrderItemId && ok.saleOrderItemId
+          && preview.saleOrderItemId !== ok.saleOrderItemId) {
+        return false;
+      }
+      if (preview.technicalStrapLineId && ok.technicalStrapLineId
+          && preview.technicalStrapLineId === ok.technicalStrapLineId) {
+        return true;
+      }
+      const sameColor = ghostColor
+        && ghostColor === (ok.strapColorName || '').trim().toLowerCase();
+      const sameMeters = approxSameMeters(preview.grossRequiredM, ok.grossRequiredM);
+      if (!(sameColor && sameMeters && preview.grossRequiredM > 0)) return false;
+      if (ghostMeasure) {
+        const okMeasure = (ok.measureName || '').trim().toLowerCase();
+        const okLabel = (ok.strapProductName || '').trim().toLowerCase();
+        if (okMeasure && okMeasure !== ghostMeasure
+            && !okLabel.includes(ghostMeasure)) {
+          return false;
+        }
+      }
+      if (ghostBase) {
+        const okBase = resolveStrapBaseFamilyName(ok).trim().toLowerCase();
+        if (okBase && okBase !== ghostBase) return false;
+      }
+      return true;
+    });
+  });
+}
+
+/** Normaliza uma linha bruta devolvida pelas duas preview RPCs. */
+export function parseCanonicalStrapDemandPreview(
+  value: Record<string, unknown>,
+): CanonicalStrapDemandPreview {
+  const resolved = value.resolved && typeof value.resolved === 'object'
+    ? value.resolved as Record<string, unknown>
+    : {};
+  const sourceMode = value.source_mode === 'internal' || value.source_mode === 'buy_ready'
+    ? value.source_mode
+    : null;
+  const rawName = stringOrNull(resolved.strap_product_name);
+
+  return {
+    saleOrderItemId: stringOrNull(value.sale_order_item_id),
+    technicalStrapLineId: stringOrNull(value.technical_strap_line_id) || '',
+    strapVariantId: stringOrNull(value.strap_variant_id),
+    sourceMode,
+    grossRequiredM: finiteOrZero(value.gross_required_m),
+    recipeId: stringOrNull(value.recipe_id),
+    baseProductId: stringOrNull(value.base_product_id),
+    finishedProductId: stringOrNull(value.finished_product_id),
+    strapProductName: rawName || STRAP_LABEL_FALLBACK,
+    measureName: stringOrNull(resolved.measure_name),
+    strapColorName: String(resolved.strap_color_name || '—'),
+    baseProductName: stringOrNull(resolved.base_product_name),
+    baseGroupName: stringOrNull(resolved.base_group_name),
+    confirmedYieldMPerM: numberOrNull(resolved.confirmed_yield_m_per_m),
+    baseRequiredM: numberOrNull(resolved.base_required_m),
+    cutBandWidthMm: numberOrNull(resolved.cut_band_width_mm),
+    usableBaseWidthMm: numberOrNull(resolved.usable_base_width_mm_snapshot),
+    theoreticalYieldMPerM: numberOrNull(resolved.theoretical_yield_m_per_m),
+    blockingReasons: parseCanonicalBlockingReasons(value.blocking_reasons),
+    blockingCodes: parseCanonicalBlockingCodes(value.blocking_reasons),
+    ...(resolved.snapshot_warning ? { snapshotWarning: stringOrNull(resolved.snapshot_warning) } : {}),
+  };
+}
+
 export type CanonicalStrapConsumptionRow = MaterialConsumptionRow & {
   available?: number;
   artisanal?: { baseName: string; baseQty: number; yieldPerMeter: number; pending?: boolean };
@@ -123,11 +257,6 @@ export type CanonicalStrapConsumptionRow = MaterialConsumptionRow & {
   recipeId: string | null;
   baseProductId: string | null;
   technicalStrapLineIds: string[];
-};
-
-const finiteOrZero = (value: unknown): number => {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : 0;
 };
 
 interface StockProductLike {
@@ -150,7 +279,8 @@ export function replaceWithCanonicalStrapRows(
   ctx: ConsumptionContext,
   previews: CanonicalStrapDemandPreview[],
 ): MaterialConsumptionRow[] {
-  if (previews.length === 0) {
+  const effectivePreviews = collapseDuplicateStaleStrapPreviews(previews);
+  if (effectivePreviews.length === 0) {
     const nonStrapRows = rows.filter((row) => row.componentType !== 'Tiras');
     const hasUnresolvedStrap = rows.some((row) => row.componentType === 'Tiras');
     if (!hasUnresolvedStrap) return nonStrapRows;
@@ -178,7 +308,7 @@ export function replaceWithCanonicalStrapRows(
   );
   const grouped = new Map<string, CanonicalStrapConsumptionRow>();
 
-  for (const preview of previews) {
+  for (const preview of effectivePreviews) {
     const stableIdentity = preview.strapVariantId || preview.technicalStrapLineId;
     const key = [stableIdentity, preview.sourceMode || 'unresolved', preview.recipeId || 'no-recipe',
       preview.baseProductId || 'no-base', preview.finishedProductId || 'no-finished'].join('::');
@@ -193,6 +323,7 @@ export function replaceWithCanonicalStrapRows(
       : preview.sourceMode === 'buy_ready'
         ? 'Comprada pronta'
         : 'Origem pendente';
+    const displayName = formatCanonicalStrapProductName(preview);
 
     if (existing) {
       existing.totalQuantity += gross;
@@ -226,7 +357,7 @@ export function replaceWithCanonicalStrapRows(
 
     grouped.set(key, {
       componentType: 'Tiras',
-      groupName: preview.strapProductName || 'Tira sem cadastro',
+      groupName: displayName,
       materialName: sourceLabel,
       productUnit: 'm',
       color: preview.strapColorName || '—',
@@ -285,7 +416,7 @@ export function canonicalStrapCutRows(
 ): ArtisanalStrapCutRow[] {
   const grouped = new Map<string, ArtisanalStrapCutRow>();
 
-  previews
+  collapseDuplicateStaleStrapPreviews(previews)
     .filter((preview) => preview.sourceMode === 'internal' && preview.grossRequiredM > 0)
     .forEach((preview) => {
       const key = [
@@ -315,7 +446,7 @@ export function canonicalStrapCutRows(
 
       grouped.set(key, {
         key,
-        groupName: preview.strapProductName || 'Tira sem cadastro',
+        groupName: formatCanonicalStrapProductName(preview),
         color: preview.strapColorName || '—',
         largura_mm: bandWidth,
         metros_necessarios: gross,
