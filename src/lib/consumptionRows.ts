@@ -149,7 +149,7 @@ export function resolveRowUnitPrice(
   return null;
 }
 
-/** Custo total da linha = necessidade × preço unitário (null se sem preço). */
+/** Valor a gastar na linha = necessidade × preço unitário (null se sem preço). */
 export function rowTotalCost(row: Pick<ConsumptionRow, 'totalQuantity' | 'unitPrice'>): number | null {
   const unit = row.unitPrice;
   if (unit == null || !Number.isFinite(unit)) return null;

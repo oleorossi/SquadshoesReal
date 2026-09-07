@@ -17,6 +17,7 @@ import { VersionChecker, manualVersionCheck } from "@/components/VersionChecker"
 import PageSkeleton, { DashboardSkeleton } from "@/components/layout/PageSkeleton";
 import { clearStalePwaArtifacts } from "@/utils/pwa-utils";
 import { publicVitrineRoute } from "./router.public";
+import { isSchemaCacheTransientError } from "@/lib/postgrestErrors";
 
 // Eager-loaded (auth flow)
 import Auth from "./pages/Auth";
@@ -133,18 +134,28 @@ const queryClient = new QueryClient({
     onError: (error: unknown, query) => {
       // Show a toast for every failed query that hasn't been handled locally.
       // Auth errors are silent (user will be redirected to login).
+      // Dispara só depois que o retryer esgota — falhas intermediárias não tostam.
       const e = error as any;
       const isAuthError = e?.status === 401 || e?.status === 403 || e?.message?.includes('JWT');
-      if (!isAuthError) {
-        // A queryKey é convenção interna em inglês ('clients', 'orders') — não é
-        // texto de UI. Mensagem principal em pt-BR; o detalhe técnico vai na
-        // description pra manter a diagnosticabilidade sem virar o título.
-        const label = (query.queryKey[0] as string) || 'dados';
-        toast.error('Falha ao carregar dados. Verifique a conexão e tente novamente.', {
-          id: `qerr-${label}`,
+      if (isAuthError) return;
+
+      // PGRST002: janela fria pós-migration. Não mascarar como "falha de conexão".
+      if (isSchemaCacheTransientError(error)) {
+        toast.error('API atualizando schema — tente de novo em alguns segundos.', {
+          id: 'qerr-schema-cache',
           description: e?.message || undefined,
         });
+        return;
       }
+
+      // A queryKey é convenção interna em inglês ('clients', 'orders') — não é
+      // texto de UI. Mensagem principal em pt-BR; o detalhe técnico vai na
+      // description pra manter a diagnosticabilidade sem virar o título.
+      const label = (query.queryKey[0] as string) || 'dados';
+      toast.error('Falha ao carregar dados. Verifique a conexão e tente novamente.', {
+        id: `qerr-${label}`,
+        description: e?.message || undefined,
+      });
     },
   }),
   mutationCache: new MutationCache({
@@ -152,6 +163,10 @@ const queryClient = new QueryClient({
       const e = error as any;
       const isAuthError = e?.status === 401 || e?.status === 403 || e?.message?.includes('JWT');
       if (!isAuthError && !e?._handled) {
+        if (isSchemaCacheTransientError(error)) {
+          toast.error('API atualizando schema — tente de novo em alguns segundos.');
+          return;
+        }
         toast.error(e?.message || 'Operação falhou. Tente novamente.');
       }
     },
@@ -161,9 +176,16 @@ const queryClient = new QueryClient({
       retry: (failureCount, error: any) => {
         // Don't retry on auth errors or specific 4xx
         if (error?.status === 401 || error?.status === 403 || error?.message?.includes('JWT')) return false;
+        // Schema cache pós-DDL: mais tentativas antes de toastar.
+        if (isSchemaCacheTransientError(error)) return failureCount < 4;
         return failureCount < 2;
       },
-      retryDelay: attemptIndex => Math.min(1000 * 2 ** attemptIndex, 10000),
+      retryDelay: (attemptIndex, error) => {
+        if (isSchemaCacheTransientError(error)) {
+          return Math.min(800 * 2 ** attemptIndex, 8000);
+        }
+        return Math.min(1000 * 2 ** attemptIndex, 10000);
+      },
       staleTime: 60 * 1000,
       gcTime: 15 * 60 * 1000,
       // refetchOnWindowFocus DESLIGADO (perf): num ERP com 500+ useQuery, voltar

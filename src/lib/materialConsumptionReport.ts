@@ -279,8 +279,8 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
   }
 
   const head = totalMode
-    ? '<tr><th>Grupo</th><th>Aplicação</th><th>Cor</th><th class="num">Necessidade</th><th>Un.</th><th class="num">Custo/un</th><th class="num">Custo total</th></tr>'
-    : '<tr><th>Grupo</th><th>Aplicação</th><th>Cor</th><th class="num">Necessidade</th><th class="num">Estoque</th><th class="num">Falta</th><th>Un.</th><th class="num">Custo/un</th><th class="num">Custo total</th></tr>';
+    ? '<tr><th>Grupo</th><th>Aplicação</th><th>Cor</th><th class="num">Necessidade</th><th>Un.</th><th class="num">Preço unitário</th><th class="num">Valor a gastar</th></tr>'
+    : '<tr><th>Grupo</th><th>Aplicação</th><th>Cor</th><th class="num">Necessidade</th><th class="num">Estoque</th><th class="num">Falta</th><th>Un.</th><th class="num">Preço unitário</th><th class="num">Valor a gastar</th></tr>';
 
   return Array.from(sectionMap.entries())
     .sort(([a], [b]) => (sectionOrder.get(a) ?? componentIndex(a)) - (sectionOrder.get(b) ?? componentIndex(b)))

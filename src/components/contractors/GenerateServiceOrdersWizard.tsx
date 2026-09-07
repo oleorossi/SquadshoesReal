@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   ArrowRight, CaretDown, CheckCircle, CurrencyDollar, Handshake,
   Needle, Package, PaperPlaneTilt, Path, Plus, Scissors, Storefront, Warning,
@@ -626,6 +627,25 @@ export function GenerateServiceOrdersWizard({
                           <div className="text-[10px] text-amber-700 dark:text-amber-400">Rateio completo nesta OP/atividade</div>
                         ) : done ? (
                           <div className="text-[10px] text-muted-foreground">Etapa já concluída internamente</div>
+                        ) : options.length === 0 ? (
+                          <div className="mt-1 space-y-1 text-[10px] font-medium text-amber-700 dark:text-amber-400">
+                            <p className="flex items-start gap-1">
+                              <Warning className="mt-0.5 h-3 w-3 shrink-0" />
+                              Prestador/tarifa não cadastrados nesta ficha para {group.label}.
+                            </p>
+                            {line.reference_id ? (
+                              <Link
+                                to={`/fichas-tecnicas?ref=${encodeURIComponent(line.reference_id)}&tab=terceirizados`}
+                                className="inline-flex items-center gap-1 text-primary underline-offset-2 hover:underline"
+                                onClick={() => onOpenChange(false)}
+                              >
+                                Cadastre o prestador e a tarifa na ficha (aba Terceirizados)
+                                <ArrowRight className="h-3 w-3" />
+                              </Link>
+                            ) : (
+                              <span>Cadastre o prestador e a tarifa na ficha (aba Terceirizados).</span>
+                            )}
+                          </div>
                         ) : null}
                       </div>
                     </div>
@@ -756,9 +776,21 @@ export function GenerateServiceOrdersWizard({
                         </div>
 
                         {line.planning_config_issue && (
-                          <p className="flex items-start gap-1 text-[10px] font-medium text-amber-700 dark:text-amber-400">
-                            <Warning className="mt-0.5 h-3 w-3 shrink-0" /> {line.planning_config_issue}
-                          </p>
+                          <div className="space-y-1 text-[10px] font-medium text-amber-700 dark:text-amber-400">
+                            <p className="flex items-start gap-1">
+                              <Warning className="mt-0.5 h-3 w-3 shrink-0" /> {line.planning_config_issue}
+                            </p>
+                            {options.length === 0 && line.reference_id && (
+                              <Link
+                                to={`/fichas-tecnicas?ref=${encodeURIComponent(line.reference_id)}&tab=terceirizados`}
+                                className="inline-flex items-center gap-1 text-primary underline-offset-2 hover:underline"
+                                onClick={() => onOpenChange(false)}
+                              >
+                                Cadastre o prestador e a tarifa na ficha (aba Terceirizados)
+                                <ArrowRight className="h-3 w-3" />
+                              </Link>
+                            )}
+                          </div>
                         )}
                       </div>
                     )}
