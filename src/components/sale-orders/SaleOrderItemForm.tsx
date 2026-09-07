@@ -159,6 +159,11 @@ interface Props {
   saleOrderStatus?: string | null;
   billingWeek?: string | null;
   requiredAt?: string | null;
+  /** Dados compartilhados pelo panel — evita N× useQuery idêntico por item. */
+  sharedProducts?: Array<{ id: string; name: string | null; color: string | null; group_id: string | null; category: string | null; active: boolean | null }>;
+  sharedProductGroups?: Array<{ id: string; name: string | null; colors: unknown; is_color_agnostic: boolean | null }>;
+  sharedStrapCatalog?: unknown;
+  sharedStrapCatalogLoading?: boolean;
 }
 
 function parseSizeRange(sizes?: string | null, shoeCategory?: string | null): number[] {
@@ -192,7 +197,7 @@ function materialBaseForStrap(strap: ReconcileStrapLineLike, inheritedBase?: str
   });
 }
 
-function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, onUpdate, onUpdateFields, onRemove, onCopyGradeFromPrevious, onSaveStateAndNavigate, isSelected, onToggleSelect, priceLookup, maxDiscountPct = 0, variantsByRef = EMPTY_VARIANTS_BY_REF, onColorIssueChange, onSheetMaterialSelectableChange, saleOrderId, saleOrderStatus, billingWeek, requiredAt }: Props) {
+function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, onUpdate, onUpdateFields, onRemove, onCopyGradeFromPrevious, onSaveStateAndNavigate, isSelected, onToggleSelect, priceLookup, maxDiscountPct = 0, variantsByRef = EMPTY_VARIANTS_BY_REF, onColorIssueChange, onSheetMaterialSelectableChange, saleOrderId, saleOrderStatus, billingWeek, requiredAt, sharedProducts, sharedProductGroups, sharedStrapCatalog, sharedStrapCatalogLoading }: Props) {
   const qc = useQueryClient();
   const access = useAccessControl();
   const { canSeeFinancialValues } = access;
@@ -201,7 +206,11 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     && !!access.can?.('/estoque', 'create')
     && canUseQuickGroupVariantForRoles(access.roles || []);
   const productionExcluded = isProductionExcludedSaleOrderItem(item);
-  const { data: strapCatalog, isLoading: strapCatalogLoading } = useArtisanalStrapCatalog(false);
+  const catalogQuery = useArtisanalStrapCatalog(false, sharedStrapCatalog === undefined);
+  const strapCatalog = (sharedStrapCatalog !== undefined ? sharedStrapCatalog : catalogQuery.data) as ReturnType<typeof useArtisanalStrapCatalog>['data'];
+  const strapCatalogLoading = sharedStrapCatalog !== undefined
+    ? !!sharedStrapCatalogLoading
+    : catalogQuery.isLoading;
   const fichas = item.fichas || 1;
   const setFichas = (v: number) => {
     const nextFichas = Math.max(1, v);
@@ -518,8 +527,9 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   const activeMaterialVariants = variantsByRef.get(item.reference_id || '') ?? [];
   const selectedMaterialVariant = activeMaterialVariants.find(v => v.id === item.material_variant_id);
 
-  const { data: allProducts = [] } = useQuery({
+  const { data: fetchedProducts = [] } = useQuery({
     queryKey: ['products_for_colors'],
+    enabled: sharedProducts === undefined,
     queryFn: async () => {
       // Inclui inativos para distinguir pin legado desativado de produto ainda
       // válido. Os resolvers ignoram o primeiro e continuam pelo grupo/ficha;
@@ -530,9 +540,11 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     staleTime: 5 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
   });
+  const allProducts = sharedProducts ?? fetchedProducts;
 
-  const { data: productGroups = [] } = useQuery({
+  const { data: fetchedProductGroups = [] } = useQuery({
     queryKey: ['product_groups_colors'],
+    enabled: sharedProductGroups === undefined,
     queryFn: async () => {
       const { data } = await supabase.from('product_groups').select('id, name, colors, is_color_agnostic');
       return data || [];
@@ -540,6 +552,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     staleTime: 5 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
   });
+  const productGroups = sharedProductGroups ?? fetchedProductGroups;
 
   // Resolve o group_id da cor principal do item — usado pra cadastrar a cor
   // do material no ProductFormDialog. Prioriza a variante explicitamente
@@ -2069,32 +2082,20 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                     >
                       {size}
                     </label>
-                    <input
-                      type="number"
+                    <NumberInput
+                      value={val || 0}
+                      onChange={(v) => handleGradeChange(size, Math.max(0, Math.floor(v)))}
                       min={0}
-                      step={1}
-                      value={val || ''}
-                      onChange={e => {
-                        const raw = e.target.value.replace(',', '.');
-                        const parsed = Number(raw);
-                        const safe = Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0;
-                        handleGradeChange(size, safe);
-                      }}
-                      onBlur={e => {
-                        const raw = e.target.value.replace(',', '.');
-                        const parsed = Number(raw);
-                        if (Number.isFinite(parsed) && parsed !== Math.floor(parsed)) {
-                          e.target.value = String(Math.floor(Math.max(0, parsed)));
-                        }
-                      }}
-                      onFocus={e => e.target.select()}
+                      step="1"
+                      decimals={0}
+                      inputMode="numeric"
+                      placeholder="–"
                       className={cn(
-                        "w-full h-10 text-sm font-mono text-center rounded border transition-colors",
+                        "h-10 px-1 text-sm text-center rounded border transition-colors md:text-sm",
                         val > 0 ? 'border-primary/50 bg-primary/5 font-bold ring-1 ring-primary/10' : 'border-input hover:bg-muted/30',
                         isConjugated && 'border-primary/30',
                         isOrphan && 'border-amber-400 bg-amber-50 dark:bg-amber-950/30 ring-1 ring-amber-300/40',
                       )}
-                      placeholder="–"
                     />
                   </div>
                 );

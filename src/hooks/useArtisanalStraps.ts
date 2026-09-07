@@ -1040,9 +1040,10 @@ function invalidateArtisanalStrapOperations(queryClient: ReturnType<typeof useQu
   queryClient.invalidateQueries({ queryKey: ['artisanal-strap-cost-variance'] });
 }
 
-export function useArtisanalStrapCatalog(includeArchived = false) {
+export function useArtisanalStrapCatalog(includeArchived = false, enabled = true) {
   return useQuery({
     queryKey: ['artisanal-strap-catalog', includeArchived],
+    enabled,
     queryFn: async () => {
       const [catalogResult, legacyHistoryResult] = await Promise.all([
         untypedSupabase.rpc('list_artisanal_strap_catalog', {

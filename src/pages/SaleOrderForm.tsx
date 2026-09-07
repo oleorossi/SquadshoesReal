@@ -417,7 +417,7 @@ export default function SaleOrderForm() {
   const createOrder = useCreateSaleOrder();
   const updateOrder = useUpdateSaleOrder();
   const checkStock = useCheckStockAvailability();
-  const { data: strapCatalog } = useArtisanalStrapCatalog();
+  const { data: strapCatalog, isLoading: strapCatalogLoading } = useArtisanalStrapCatalog();
   const { user } = useAuth();
   const perm = useCan('/sales');
   const draftKey = saleOrderDraftKey(user?.id);
@@ -2341,6 +2341,8 @@ export default function SaleOrderForm() {
           minBillingISO={liveMinBillingISO}
           computingMinBilling={computingLive}
           onColorIssueChange={handleColorIssueChange}
+          strapCatalog={strapCatalog}
+          strapCatalogLoading={strapCatalogLoading}
         />
         </fieldset>
 

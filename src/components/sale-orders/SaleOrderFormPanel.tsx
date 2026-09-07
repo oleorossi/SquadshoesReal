@@ -1,4 +1,4 @@
- import { useMemo, useEffect, useRef, useState, useCallback, Fragment } from 'react';
+ import { useMemo, useEffect, useRef, useState, useCallback, Fragment, memo } from 'react';
 import { Plus, CircleNotch as Loader2, User, Truck, ClipboardText as ClipboardList, Info, Percent, CaretUpDown as ChevronsUpDown, CaretDown, Check, ClockCounterClockwise as History, Warning as AlertTriangle, CheckCircle as CheckCircle2, Calculator, Money as Banknote, Receipt, Package, Phone, EnvelopeSimple, CopySimple as Copy, Trash } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -149,6 +149,9 @@ interface Props {
   computingMinBilling?: boolean;
   /** Reporta itens com cor não cadastrada — pra o pai BLOQUEAR o salvamento. */
   onColorIssueChange?: (index: number, info: { color: string; materials: string[] } | null) => void;
+  /** Catálogo de tiras já buscado pelo SaleOrderForm — evita N× fetch por item. */
+  strapCatalog?: unknown;
+  strapCatalogLoading?: boolean;
 }
 
 const emptyItem = (): SaleOrderItemFormData => withSaleOrderItemClientKey({
@@ -603,6 +606,138 @@ function FactoringField({ form, setForm, totalValue }: {
   );
 }
 
+/** Lista de itens memoizada: tipar no header comercial (cliente/notas) não
+ *  re-reconcilia o mapa de SaleOrderItemForm — o memo do item já protege
+ *  irmãos na digitação de grade; isto protege a lista inteira na digitação
+ *  do cabeçalho. */
+interface SaleOrderItemsListProps {
+  items: SaleOrderItemFormData[];
+  sortedIndices: number[];
+  duplicateItemIndices: Set<number>;
+  references: any[];
+  saleOrderId?: string | null;
+  saleOrderStatus?: string | null;
+  billingWeek: string | null;
+  requiredAt: string | null;
+  isAdmin: boolean;
+  priceLookup?: PriceLookup;
+  maxDiscountPct: number;
+  variantsByRef: ReadonlyMap<string, readonly any[]>;
+  selectedItemIndices: Set<number>;
+  onColorIssueChange?: Props['onColorIssueChange'];
+  onSheetMaterialSelectableChange: (index: number, selectable: boolean) => void;
+  onUpdate: (idx: number, field: string, value: any) => void;
+  onUpdateFields: (idx: number, patch: Partial<SaleOrderItemFormData>) => void;
+  onRemove: (idx: number) => void;
+  onCopyGradeFromPrevious: (idx: number) => void;
+  onSaveStateAndNavigate?: () => void;
+  onToggleSelect: (idx: number) => void;
+  sharedProducts: Array<{ id: string; name: string | null; color: string | null; group_id: string | null; category: string | null; active: boolean | null }>;
+  sharedProductGroups: Array<{ id: string; name: string | null; colors: unknown; is_color_agnostic: boolean | null }>;
+  sharedStrapCatalog?: unknown;
+  sharedStrapCatalogLoading?: boolean;
+}
+
+const SaleOrderItemsList = memo(function SaleOrderItemsList({
+  items,
+  sortedIndices,
+  duplicateItemIndices,
+  references,
+  saleOrderId,
+  saleOrderStatus,
+  billingWeek,
+  requiredAt,
+  isAdmin,
+  priceLookup,
+  maxDiscountPct,
+  variantsByRef,
+  selectedItemIndices,
+  onColorIssueChange,
+  onSheetMaterialSelectableChange,
+  onUpdate,
+  onUpdateFields,
+  onRemove,
+  onCopyGradeFromPrevious,
+  onSaveStateAndNavigate,
+  onToggleSelect,
+  sharedProducts,
+  sharedProductGroups,
+  sharedStrapCatalog,
+  sharedStrapCatalogLoading,
+}: SaleOrderItemsListProps) {
+  return (
+    <>
+      {sortedIndices.map((idx, sortPos) => {
+        const item = items[idx];
+        const prevItem = sortPos > 0 ? items[sortedIndices[sortPos - 1]] : null;
+        const isSameRef = prevItem?.reference_id === item.reference_id && !!item.reference_id;
+        const isProductiveDuplicate = duplicateItemIndices.has(idx);
+        const isNewRefGroup = !!item.reference_id && !isSameRef;
+        const groupRef = isNewRefGroup ? references.find((r) => r.id === item.reference_id) : null;
+        const groupLabel = groupRef
+          ? (groupRef.name || groupRef.code || 'Referência')
+          : 'Referência';
+        const groupColorCount = isNewRefGroup ? items.filter((i) => i.reference_id === item.reference_id).length : 0;
+        return (
+          <Fragment key={item.id || item.clientKey || `idx-${idx}`}>
+            {isNewRefGroup && (
+              <div className="flex items-center gap-3 mt-4 mb-1 first:mt-0">
+                <div className="h-px flex-1 bg-border" />
+                <span className="shrink-0 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  {groupLabel}
+                  <span className="ml-1.5 font-normal normal-case text-muted-foreground/70">· {groupColorCount} {groupColorCount === 1 ? 'cor' : 'cores'}</span>
+                </span>
+                <div className="h-px flex-1 bg-border" />
+              </div>
+            )}
+            <div
+              className={
+                isProductiveDuplicate
+                  ? 'ml-6 border-l-4 border-destructive/50 pl-3 bg-destructive/5 rounded-r-md relative'
+                  : isSameRef
+                    ? 'ml-3 border-l-2 border-primary/30 pl-2 bg-primary/5 rounded-r-md'
+                    : ''
+              }>
+              {isProductiveDuplicate && (
+                <div className="absolute -top-2 left-3 px-2 py-0.5 rounded-full bg-destructive text-destructive-foreground text-xs font-bold uppercase tracking-wider shadow-sm z-10">
+                  Duplicado · mesma configuração
+                </div>
+              )}
+              <SaleOrderItemForm
+                saleOrderId={saleOrderId}
+                saleOrderStatus={saleOrderStatus}
+                billingWeek={billingWeek}
+                requiredAt={requiredAt}
+                item={item}
+                index={idx}
+                onColorIssueChange={onColorIssueChange}
+                onSheetMaterialSelectableChange={onSheetMaterialSelectableChange}
+                references={references}
+                canRemove={items.length > 1 && !isProductionExcludedSaleOrderItem(item)}
+                isAdmin={isAdmin}
+                priceLookup={priceLookup}
+                maxDiscountPct={maxDiscountPct}
+                variantsByRef={variantsByRef}
+                onUpdate={onUpdate}
+                onUpdateFields={onUpdateFields}
+                onRemove={onRemove}
+                onCopyGradeFromPrevious={onCopyGradeFromPrevious}
+                onSaveStateAndNavigate={onSaveStateAndNavigate}
+                isSelected={!isProductionExcludedSaleOrderItem(item) && selectedItemIndices.has(idx)}
+                onToggleSelect={isProductionExcludedSaleOrderItem(item) ? undefined : onToggleSelect}
+                sharedProducts={sharedProducts}
+                sharedProductGroups={sharedProductGroups}
+                sharedStrapCatalog={sharedStrapCatalog}
+                sharedStrapCatalogLoading={sharedStrapCatalogLoading}
+              />
+            </div>
+          </Fragment>
+        );
+      })}
+    </>
+  );
+});
+
 export default function SaleOrderFormPanel({
   saleOrderId, form, setForm, items, setItems, clients, representatives, references,
    isAdmin, selectedClientId, onClientSelect, onSubmit, onCancel, onUserEdit, isPending, submitLabel,
@@ -610,6 +745,7 @@ export default function SaleOrderFormPanel({
    packagingQuantity: _packagingQuantity, onPackagingQuantityChange: _onPackagingQuantityChange,
    onSaveStateAndNavigate, onCopyToNewOrder, onDeleteSelectedItems,
    minBillingISO, computingMinBilling, onColorIssueChange,
+   strapCatalog: sharedStrapCatalog, strapCatalogLoading: sharedStrapCatalogLoading,
  }: Props) {
    // Índice do item → o material da ficha está oferecido no seletor dele?
    // Quem resolve isso é o SaleOrderItemForm (ficha × grupo efetivo de cada
@@ -642,6 +778,26 @@ export default function SaleOrderFormPanel({
   // com uma só, todo PV é da primária e o campo seria ruído. NULL = primária.
   const { data: companies = [] } = useCompanies();
   const primaryCompany = companies.find(c => c.is_primary);
+
+  // Shared pelo form inteiro: 1 fetch, N itens leem via props (não N subscribers).
+  const { data: sharedProducts = [] } = useQuery({
+    queryKey: ['products_for_colors'],
+    queryFn: async () => {
+      const { data } = await supabase.from('products').select('id, name, color, group_id, category, active');
+      return data || [];
+    },
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+  });
+  const { data: sharedProductGroups = [] } = useQuery({
+    queryKey: ['product_groups_colors'],
+    queryFn: async () => {
+      const { data } = await supabase.from('product_groups').select('id, name, colors, is_color_agnostic');
+      return data || [];
+    },
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+  });
 
   // Defaults comerciais do cliente OU do grupo econômico (precedência cliente > grupo).
   // Pré-popula campos vazios quando o cliente é selecionado pela primeira vez.
@@ -2177,73 +2333,35 @@ export default function SaleOrderFormPanel({
             <Badge variant="outline" className="font-mono">{items.length} Referência(s)</Badge>
           </div>
         </div>
-        {sortedIndices.map((idx, sortPos) => {
-          const item = items[idx];
-          const prevItem = sortPos > 0 ? items[sortedIndices[sortPos - 1]] : null;
-          const isSameRef = prevItem?.reference_id === item.reference_id && !!item.reference_id;
-          const isProductiveDuplicate = duplicateItemIndices.has(idx);
-          // Cabeçalho de grupo: aparece no 1º item de cada referência, agrupando
-          // visualmente as cores da mesma ref. Pedido user 11/06/2026.
-          const isNewRefGroup = !!item.reference_id && !isSameRef;
-          const groupRef = isNewRefGroup ? references.find((r) => r.id === item.reference_id) : null;
-          const groupLabel = groupRef
-            ? (groupRef.name || groupRef.code || 'Referência')
-            : 'Referência';
-          const groupColorCount = isNewRefGroup ? items.filter((i) => i.reference_id === item.reference_id).length : 0;
-          return (
-            <Fragment key={item.id || item.clientKey || `idx-${idx}`}>
-            {isNewRefGroup && (
-              <div className="flex items-center gap-3 mt-4 mb-1 first:mt-0">
-                <div className="h-px flex-1 bg-border" />
-                <span className="shrink-0 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                  {groupLabel}
-                  <span className="ml-1.5 font-normal normal-case text-muted-foreground/70">· {groupColorCount} {groupColorCount === 1 ? 'cor' : 'cores'}</span>
-                </span>
-                <div className="h-px flex-1 bg-border" />
-              </div>
-            )}
-            <div
-              className={
-                isProductiveDuplicate
-                  ? 'ml-6 border-l-4 border-destructive/50 pl-3 bg-destructive/5 rounded-r-md relative'
-                  : isSameRef
-                    ? 'ml-3 border-l-2 border-primary/30 pl-2 bg-primary/5 rounded-r-md'
-                    : ''
-              }>
-              {isProductiveDuplicate && (
-                <div className="absolute -top-2 left-3 px-2 py-0.5 rounded-full bg-destructive text-destructive-foreground text-xs font-bold uppercase tracking-wider shadow-sm z-10">
-                  Duplicado · mesma configuração
-                </div>
-              )}
-              <SaleOrderItemForm
-                saleOrderId={saleOrderId}
-                saleOrderStatus={form.status}
-                billingWeek={form.delivery_month && form.delivery_week
-                  ? `${form.delivery_month}-${form.delivery_week}`
-                  : null}
-                requiredAt={form.delivery_deadline || null}
-                item={item}
-                index={idx}
-                onColorIssueChange={onColorIssueChange}
-                onSheetMaterialSelectableChange={handleSheetMaterialSelectable}
-                references={references}
-                canRemove={items.length > 1 && !isProductionExcludedSaleOrderItem(item)}
-                isAdmin={isAdmin}
-                priceLookup={clientPricing?.lookup}
-                maxDiscountPct={clientPricing?.maxDiscountPct ?? 0}
-                variantsByRef={allVariantsByRef}
-                onUpdate={updateItem}
-                onUpdateFields={updateItemFields}
-                onRemove={removeItem}
-                onCopyGradeFromPrevious={copyGradeFromPrevious}
-                onSaveStateAndNavigate={onSaveStateAndNavigate}
-                isSelected={!isProductionExcludedSaleOrderItem(item) && selectedItemIndices.has(idx)}
-                onToggleSelect={isProductionExcludedSaleOrderItem(item) ? undefined : toggleItemSelection}
-              />
-            </div>
-            </Fragment>
-          );
-        })}
+        <SaleOrderItemsList
+          items={items}
+          sortedIndices={sortedIndices}
+          duplicateItemIndices={duplicateItemIndices}
+          references={references}
+          saleOrderId={saleOrderId}
+          saleOrderStatus={form.status}
+          billingWeek={form.delivery_month && form.delivery_week
+            ? `${form.delivery_month}-${form.delivery_week}`
+            : null}
+          requiredAt={form.delivery_deadline || null}
+          isAdmin={isAdmin}
+          priceLookup={clientPricing?.lookup}
+          maxDiscountPct={clientPricing?.maxDiscountPct ?? 0}
+          variantsByRef={allVariantsByRef}
+          selectedItemIndices={selectedItemIndices}
+          onColorIssueChange={onColorIssueChange}
+          onSheetMaterialSelectableChange={handleSheetMaterialSelectable}
+          onUpdate={updateItem}
+          onUpdateFields={updateItemFields}
+          onRemove={removeItem}
+          onCopyGradeFromPrevious={copyGradeFromPrevious}
+          onSaveStateAndNavigate={onSaveStateAndNavigate}
+          onToggleSelect={toggleItemSelection}
+          sharedProducts={sharedProducts}
+          sharedProductGroups={sharedProductGroups}
+          sharedStrapCatalog={sharedStrapCatalog}
+          sharedStrapCatalogLoading={sharedStrapCatalogLoading}
+        />
         <Button type="button" variant="outline" size="sm" onClick={addItem} className="gap-1.5 w-full">
           <Plus className="h-3.5 w-3.5" /> Novo Item
         </Button>
