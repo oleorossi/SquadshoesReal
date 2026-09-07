@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { manualVersionCheck } from '@/components/VersionChecker';
 import { CabedalParPeAuditPanel } from '@/components/technical-sheets/CabedalParPeAuditPanel';
 import OrphanDirectComponentsPanel from '@/components/technical-sheets/OrphanDirectComponentsPanel';
+import SoleSpecGapsPanel from '@/components/soles-hub/SoleSpecGapsPanel';
 import { useStockDebitHoles, summarizeStockDebitHoles, useReconcileStockDebitHole } from '@/hooks/useStockDebitHoles';
 
 type SchemaObject = {
@@ -55,6 +56,17 @@ type SaleOrderOutboxHealth = {
   last_run?: { ran_at?: string; error?: string | null } | null;
 };
 
+type OpRestoreRow = {
+  order_id: string;
+  order_number: string;
+  order_status: string;
+  product_id: string;
+  product_name: string;
+  product_color: string | null;
+  qtd_sem_grade: number;
+  motivo: string;
+};
+
 type DiagnosticsRpcResults = {
   pcp_freshness_report: ConsistencyRow[];
   component_colors_consistency_report: ConsistencyRow[];
@@ -66,6 +78,8 @@ type DiagnosticsRpcResults = {
   cost_consistency_report: ConsistencyRow[];
   timeclock_identity_report: ConsistencyRow[];
   get_sale_order_outbox_health: SaleOrderOutboxHealth;
+  run_sole_live_parity_guards: ParityRow[];
+  op_restore_consistency_report: OpRestoreRow[];
 };
 
 /** RPCs de diagnóstico criadas por migrations que podem anteceder o types.ts
@@ -243,6 +257,8 @@ export default function SystemDiagnostics() {
   // arquivo do equipamento só exporta IDUsuário/Nome/Dep. Sem âncora temporal, o
   // ponto de quem saiu era atribuído a quem herdou o número.
   const [clockChecks, setClockChecks] = useState<ConsistencyRow[] | null>(null);
+  const [soleParityChecks, setSoleParityChecks] = useState<ParityRow[] | null>(null);
+  const [restorePendencias, setRestorePendencias] = useState<OpRestoreRow[] | null>(null);
   const [consRunning, setConsRunning] = useState(false);
   const [consChecksError, setConsChecksError] = useState<string | null>(null);
 
@@ -274,8 +290,10 @@ export default function SystemDiagnostics() {
     setStaleResRows(null);
     setCostChecks(null);
     setClockChecks(null);
+    setSoleParityChecks(null);
+    setRestorePendencias(null);
     try {
-      const [consRes, parRes, freshRes, cpcRes, debitRes, guardRes, capRes, linkRes, staleResRes, costRes, clockRes] = await Promise.all([
+      const [consRes, parRes, freshRes, cpcRes, debitRes, guardRes, capRes, linkRes, staleResRes, costRes, clockRes, soleParRes, restoreRes] = await Promise.all([
         supabase.rpc('consumption_consistency_report'),
         supabase.rpc('run_consumption_parity_tests'),
         // RPCs pós-types gerados usam o recorte tipado local declarado acima.
@@ -297,9 +315,11 @@ export default function SystemDiagnostics() {
         diagnosticsRpcClient.rpc('cost_consistency_report'),
         // timeclock_identity_report — saúde do casamento ponto×funcionário (mig 20261227120000).
         diagnosticsRpcClient.rpc('timeclock_identity_report'),
+        diagnosticsRpcClient.rpc('run_sole_live_parity_guards'),
+        diagnosticsRpcClient.rpc('op_restore_consistency_report'),
       ]);
 
-      const queryError = [consRes, parRes, freshRes, cpcRes, debitRes, guardRes, capRes, linkRes, staleResRes, costRes, clockRes]
+      const queryError = [consRes, parRes, freshRes, cpcRes, debitRes, guardRes, capRes, linkRes, staleResRes, costRes, clockRes, soleParRes, restoreRes]
         .map((result) => result.error)
         .find(Boolean);
       if (queryError) throw queryError;
@@ -315,6 +335,8 @@ export default function SystemDiagnostics() {
       setLinkChecks(linkRes.data ?? []);
       setStaleResRows(staleResRes.data ?? []);
       setParityChecks((parRes.data ?? []) as ParityRow[]);
+      setSoleParityChecks((soleParRes.data ?? []) as ParityRow[]);
+      setRestorePendencias((restoreRes.data ?? []) as OpRestoreRow[]);
       toast.success('Verificação de consumo concluída');
     } catch (error: unknown) {
       const message = errorMessage(error, 'Falha ao consultar as verificações de consumo.');
@@ -859,6 +881,9 @@ export default function SystemDiagnostics() {
           {/* Normalização assistida pé×par do cabedal (spec consumo-cabedal-padrao-par). */}
           <CabedalParPeAuditPanel />
 
+          {/* Spec do solado por NUMERAÇÃO — existência ≠ cobertura (PV-00151). */}
+          <SoleSpecGapsPanel />
+
           {/* Componente direto cujo produto foi apagado: jsonb sem FK, então o
               vínculo morre calado e o material some do custo e da compra.
               Recadastrar não reata (ID novo) — daí o religamento assistido. */}
@@ -1315,6 +1340,65 @@ export default function SystemDiagnostics() {
                   </div>
                   {p.message && <p className="text-xs text-muted-foreground mt-0.5 break-all">{p.message}</p>}
                 </div>
+              </div>
+            ))}
+          </Panel>
+
+          <Panel
+            eyebrow="SOLADOS · PARIDADE VIVA"
+            title="Guards vivos do solado"
+            subtitle="Lê o corpo atual no banco (pg_get_functiondef): fallback de débito+variante, COALESCE no by_grade, cobertura de spec, smoke com variante sem pin, restore sem crédito escalar cego. Fonte: run_sole_live_parity_guards()."
+            bodyClassName="space-y-2"
+          >
+            {soleParityChecks === null && !consRunning && (
+              <p className="text-sm text-muted-foreground">Rode a verificação acima pra incluir os guards vivos de solado.</p>
+            )}
+            {soleParityChecks !== null && soleParityChecks.length === 0 && !consRunning && (
+              <Alert variant="destructive">
+                <XCircle className="h-4 w-4" />
+                <AlertTitle>Guards de solado não executados</AlertTitle>
+                <AlertDescription>run_sole_live_parity_guards() devolveu 0 casos — migration 20270101017100 pode estar pendente.</AlertDescription>
+              </Alert>
+            )}
+            {(soleParityChecks ?? []).map((p, i) => (
+              <div key={i} className="flex items-start gap-3 p-3 rounded-lg border border-border bg-muted/30">
+                <div className="mt-0.5">{p.ok ? <CheckCircle2 className="h-4 w-4 text-success" /> : <XCircle className="h-4 w-4 text-destructive" />}</div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-semibold text-foreground">{p.case_name}</p>
+                    <Badge variant="outline" className={`text-xs uppercase ${p.ok ? 'text-success' : 'text-destructive'}`}>{p.ok ? 'ok' : 'falhou'}</Badge>
+                  </div>
+                  {p.message && <p className="text-xs text-muted-foreground mt-0.5 break-all">{p.message}</p>}
+                </div>
+              </div>
+            ))}
+          </Panel>
+
+          <Panel
+            eyebrow="ESTOQUE · ESTORNO"
+            title="Pendências de estorno com grade"
+            subtitle="Produto com stock_grade real e crédito sem numeração rastreável — o motor NÃO inventa balde nem credita só o escalar. Fonte: op_restore_consistency_report()."
+            bodyClassName="space-y-2"
+          >
+            {restorePendencias === null && !consRunning && (
+              <p className="text-sm text-muted-foreground">Rode a verificação acima pra listar pendências de estorno graduado.</p>
+            )}
+            {restorePendencias !== null && restorePendencias.length === 0 && !consRunning && (
+              <div className="flex items-center gap-2 text-sm text-success">
+                <CheckCircle2 className="h-4 w-4" /> Nenhuma pendência de resíduo sem grade.
+              </div>
+            )}
+            {(restorePendencias ?? []).map((row, i) => (
+              <div key={i} className="rounded-md border border-border/60 px-3 py-2 text-sm space-y-0.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-mono font-semibold">{row.order_number}</span>
+                  <Badge variant="outline" className="text-[10px]">{row.order_status}</Badge>
+                  <span className="text-muted-foreground">{row.product_name}{row.product_color ? ` · ${row.product_color}` : ''}</span>
+                  <Badge className="bg-amber-500/10 text-amber-600 border-transparent text-[10px] tabular-nums">
+                    {Number(row.qtd_sem_grade).toLocaleString('pt-BR')} sem grade
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">{row.motivo}</p>
               </div>
             ))}
           </Panel>

@@ -351,6 +351,11 @@ usa a largura da ficha de componente do grupo **da variante**. Débito/reserva/c
 derivam a variante server-side via `orders.sale_order_item_id` (não há coluna de
 variante em `orders`).
 
+✅ **Débito + variante:** gate vivo é `IF v_resolved_product_id IS NULL` (migs `08000`/
+`16700`) — pin vence; ausência de pin cai na cascata da ficha. Trava viva:
+`run_sole_live_parity_guards()`. UI de gaps: `SoleSpecGapsPanel` em `/solados` e
+`/system-diagnostics`.
+
 ### Forro/palmilha: fonte de verdade = SOLADO da referência (anti-duplicidade)
 O consumo de **forro** e **palmilha** vem dos valores preenchidos no **solado** da
 referência (`sole_technical_specs`: `lining_consumption_dm2` = forro do cabedal,
@@ -434,12 +439,13 @@ débito de forro.** Alcance: **6.148 pares** vendidos em tamanhos 25–33 sem sp
 
 Fechado por dois checks novos (`solado_sem_spec_na_faixa_vendida`,
 `forro_palmilha_debita_zero`) + `list_sole_spec_gaps()`, que devolve a lista acionável
-(solado, numeração, pares vendidos, fichas, PVs).
+(solado, numeração, pares vendidos, fichas, PVs) — **também na UI** (`SoleSpecGapsPanel`
+em `/solados` e Diagnósticos → Consumo).
 
 ⚠ **A migration NÃO inventa os dm² que faltam** — é dado de engenharia do dono.
 Extrapolar consumo por numeração dentro de migration seria fabricar cadastro. Enquanto
 as 9 numerações do INFANTIL não forem preenchidas, o forro segue debitando zero nelas —
-agora com alarme.
+agora com alarme na tela. Checklist: `docs/SOLADOS_ACOES_DONO.md`.
 
 ⚠ **Isto nunca foi divergência TS×SQL:** `orderConsumption.ts` produz o mesmo zero
 (`calculateGradeBasedDm2` com fallback 0). Os dois lados concordam no número errado — a

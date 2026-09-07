@@ -496,42 +496,23 @@ usa a largura da ficha de componente do grupo **da variante**. Débito/reserva/c
 derivam a variante server-side via `orders.sale_order_item_id` (não há coluna de
 variante em `orders`).
 
-⚠ **FURO ABERTO — variante ativa desliga o fallback do solado no DÉBITO (21/08/2026).**
-`debit_sole_stock_by_grade` tem hoje:
+✅ **FECHADO — fallback de solado no DÉBITO com variante (mig `08000` + `16700`).**
+A `20270101002000` tinha introduzido o gate ruim
+`IF v_variant_id IS NULL AND v_resolved_product_id IS NULL` — com variante sem pin de
+solado a cascata canônica nunca rodava. Restaurado para
+`IF v_resolved_product_id IS NULL THEN → resolve_sole_color`: pin de variante VENCE;
+ausência de pin NÃO desliga a ficha. Contrato: `soleDebitVariantFallback.contract.test.ts`
++ cases vivos em `run_sole_live_parity_guards()` (corpo **vivo** via `pg_get_functiondef`,
+não só o arquivo da migration).
 
-```sql
-IF v_variant_id IS NULL AND v_resolved_product_id IS NULL THEN   -- cascata canônica
-```
-
-`resolve_sole_for_variant_color` é resolver de **override**: devolve ZERO linhas quando a
-variante não pina solado — e **as 68 variantes ativas não pinam** (medido 21/08/2026). Com
-variante presente a condição é falsa, a cascata canônica nunca roda e a função sai no
-`RETURN` **sem debitar nem reservar o solado**. O comentário dentro da própria função diz o
-contrário do código: *"Resolução canônica (cascata de cor) quando a variante não pina
-solado"*.
-
-Veio de `20270101002000_regras-cor-solado-pintavel.sql`, no mesmo bloco que (com
-justificativa) trocou o resolver por um color-aware e (sem justificativa nenhuma) trocou
-`IF v_resolved_product_id IS NULL` por `IF v_variant_id IS NULL AND ...`.
-
-⚠ **NÃO é o mesmo furo que a mig `20270101006600` consertou.** Aquela corrigiu o clobber
+⚠ **NÃO confundir com o clobber do CONSUMO** (`20270101006600`): aquele era
 `v_sole_product_id := v_variant_sole_pid` em `calculate_order_consumption_by_grade`
-(consumo/custeio/MRP). Este é o lado do DÉBITO e **continua aberto** — o commit e o PR #146
-afirmaram que `debit_sole_stock_by_grade` "faz o fallback CERTO"; **essa afirmação estava
-errada**.
+(COALESCE consertou). O case vivo `bygrade_variante_nao_clobber_solado` em
+`run_sole_live_parity_guards()` trava o corpo atual — `variantSoleClobber.contract.test.ts`
+sozinho só prova o arquivo da migration.
 
-Estado medido em 21/08/2026: as 6 OPs vivas com variante têm solado reservado (288 un,
-`hard`), mas os snapshots foram congelados em **10/08**, antes da regressão. O risco é
-**prospectivo**: OP nova com variante nasce sem reserva de solado. Decisão do dono: registrar
-agora, tratar em rodada própria. Antes de "consertar", confirmar se o gate por
-`v_variant_id` foi intenção da regra de solado pintável ou descuido do patch.
-
-⚠ **`variantSoleClobber.contract.test.ts` é verde-congelado.** Ele lê o ARQUIVO da migration
-`20270101006600` e casa strings — prova que ela foi ESCRITA com `COALESCE`, não que o corpo
-vivo de `calculate_order_consumption_by_grade` tem. Como o repo recria essa função inteira
-com frequência (≥8 migrations até hoje), o clobber pode voltar sem nenhum teste ficar
-vermelho. A proteção de verdade seria um caso em `run_consumption_parity_tests()`, que roda
-contra o banco.
+UI da cobertura de spec: `list_sole_spec_gaps` aparece em `/solados` e
+`/system-diagnostics` → Consumo (`SoleSpecGapsPanel`) — sem inventar dm².
 
 ### Forro/palmilha: fonte de verdade = SOLADO da referência (anti-duplicidade)
 O consumo de **forro** e **palmilha** vem dos valores preenchidos no **solado** da
@@ -616,12 +597,13 @@ débito de forro.** Alcance: **6.148 pares** vendidos em tamanhos 25–33 sem sp
 
 Fechado por dois checks novos (`solado_sem_spec_na_faixa_vendida`,
 `forro_palmilha_debita_zero`) + `list_sole_spec_gaps()`, que devolve a lista acionável
-(solado, numeração, pares vendidos, fichas, PVs).
+(solado, numeração, pares vendidos, fichas, PVs) — **também na UI** (`SoleSpecGapsPanel`
+em `/solados` e Diagnósticos → Consumo). Checklist do dono: `docs/SOLADOS_ACOES_DONO.md`.
 
 ⚠ **A migration NÃO inventa os dm² que faltam** — é dado de engenharia do dono.
 Extrapolar consumo por numeração dentro de migration seria fabricar cadastro. Enquanto
 as 9 numerações do INFANTIL não forem preenchidas, o forro segue debitando zero nelas —
-agora com alarme.
+agora com alarme na tela.
 
 ⚠ **Isto nunca foi divergência TS×SQL:** `orderConsumption.ts` produz o mesmo zero
 (`calculateGradeBasedDm2` com fallback 0). Os dois lados concordam no número errado — a
@@ -675,14 +657,12 @@ gatilhos (`trg_…` de UPDATE e `trg_…_insert`). Tocar `OLD.stock_grade` sem c
 `TG_OP = 'UPDATE'` dá *"record old is not assigned yet"* em toda criação de produto.
 Travado por `src/__tests__/gradeCoherenceEmptyGradeMigration.contract.test.ts`.
 
-⚠ **Armadilha vizinha, NÃO resolvida** (decisão de produto em aberto): o ramo de "resíduo
-escalar" de `restore_product_stocks_for_order` credita `quantity` de produto **com**
-numeração **sem tocar `stock_grade`** — o que viola a invariante por construção e cai no
-mesmo `RAISE`. Hoje isso não afeta o estorno de solado (o `v_pending_sole` zera o
-resíduo), mas há resíduo vivo: medido em 20/08/2026, **8 OPs `Finalizado` do produto
-`238`** (12 a 16 un cada) estourariam se fossem canceladas. Corrigir exige decidir de onde
-sai a numeração desse crédito — não dá pra inventar dentro de migration. Não "conserte"
-pelos dois lados sozinho.
+✅ **FECHADO — resíduo escalar em produto com grade** (spec `resync-estorno-unificado`,
+mig `20270101017100`): quando o produto tem buckets reais em `stock_grade` e sobra
+crédito sem grade rastreável (`sole_grade` pendente), `restore_product_stocks_for_order`
+**NÃO** credita o escalar (nunca inventa numeração). A pendência fica em
+`op_restore_consistency_report()` e na aba Consumo de `/system-diagnostics`. Estorno de
+solado com reserva `kind='sole_grade'` segue por `restore_sole_grade_for_order`.
 
 ### Quando converter (sinal de decisão)
 Presença de **ficha de componente com largura > 0**. Caminhos que aplicam a regra:

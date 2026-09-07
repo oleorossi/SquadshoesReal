@@ -15613,6 +15613,7 @@ export type Database = {
           sector: string
           shared_specs: boolean
           silk_url: string | null
+          sole_inspection_plan: Json
           unit_weight_kg: number | null
           updated_at: string
         }
@@ -15651,6 +15652,7 @@ export type Database = {
           sector: string
           shared_specs?: boolean
           silk_url?: string | null
+          sole_inspection_plan?: Json
           unit_weight_kg?: number | null
           updated_at?: string
         }
@@ -15689,6 +15691,7 @@ export type Database = {
           sector?: string
           shared_specs?: boolean
           silk_url?: string | null
+          sole_inspection_plan?: Json
           unit_weight_kg?: number | null
           updated_at?: string
         }
