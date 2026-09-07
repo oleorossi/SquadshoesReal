@@ -661,7 +661,7 @@ export default function ArtisanalStraps() {
   const [legacyProductDiagnostic, setLegacyProductDiagnostic] = useState<ArtisanalStrapLegacyMigrationDiagnostic | null>(null);
   const [incrementalApplyDiagnostic, setIncrementalApplyDiagnostic] = useState<ArtisanalStrapLegacyMigrationDiagnostic | null>(null);
 
-  const catalogQuery = useArtisanalStrapCatalog(true);
+  const catalogQuery = useArtisanalStrapCatalog(true, { includeLegacyHistory: true });
   const catalog = catalogQuery.data || EMPTY_CATALOG;
   const demandsQuery = useArtisanalStrapDemands(true);
   const productionQuery = useArtisanalStrapProduction(operationView === 'producao' || controlView === 'diagnostico');
