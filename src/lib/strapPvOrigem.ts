@@ -105,8 +105,17 @@ export function applyDefaultStrapPvOrigemChoices<T extends StrapPvOrigemLineLike
 
 export interface StrapHubIncompleteIssue {
   label: string;
+  measureId: string | null;
   code: 'preco_prestador_ausente' | 'preco_artesanal_ausente';
   message: string;
+}
+
+/** Medida com um ou mais preços faltando — uma linha no diálogo do PV. */
+export interface StrapHubIncompleteMeasureGap {
+  measureId: string;
+  labels: string[];
+  needsArtesanal: boolean;
+  needsPrestador: boolean;
 }
 
 /**
@@ -123,11 +132,13 @@ export function listStrapHubIncompleteForOrigem(
     const measure = line.measure_id ? byId.get(line.measure_id) : undefined;
     const effective = resolveEffectiveStrapPvOrigem(line, measure);
     const label = (line.label || `Tira ${index + 1}`).trim() || `Tira ${index + 1}`;
+    const measureId = line.measure_id || null;
     if (effective === 'fabrica') {
       const price = Number(measure?.preco_artesanal_per_m);
       if (!(price > 0)) {
         issues.push({
           label,
+          measureId,
           code: 'preco_artesanal_ausente',
           message: `${label}: cadastre o preço artesanal (R$/m) no Hub de Tiras.`,
         });
@@ -138,6 +149,7 @@ export function listStrapHubIncompleteForOrigem(
       if (!(price > 0)) {
         issues.push({
           label,
+          measureId,
           code: 'preco_prestador_ausente',
           message: `${label}: cadastre a mão de obra do prestador (R$/m) no Hub de Tiras.`,
         });
@@ -145,6 +157,27 @@ export function listStrapHubIncompleteForOrigem(
     }
   }
   return issues;
+}
+
+/** Agrupa issues por medida (UUID) para o diálogo de completar no PV. */
+export function groupStrapHubIncompleteByMeasure(
+  issues: readonly StrapHubIncompleteIssue[],
+): StrapHubIncompleteMeasureGap[] {
+  const byMeasure = new Map<string, StrapHubIncompleteMeasureGap>();
+  for (const issue of issues) {
+    if (!issue.measureId) continue;
+    const current = byMeasure.get(issue.measureId) || {
+      measureId: issue.measureId,
+      labels: [],
+      needsArtesanal: false,
+      needsPrestador: false,
+    };
+    if (!current.labels.includes(issue.label)) current.labels.push(issue.label);
+    if (issue.code === 'preco_artesanal_ausente') current.needsArtesanal = true;
+    if (issue.code === 'preco_prestador_ausente') current.needsPrestador = true;
+    byMeasure.set(issue.measureId, current);
+  }
+  return Array.from(byMeasure.values());
 }
 
 /** Frete/m = amount / per_meters; Y deve ser > 0. */

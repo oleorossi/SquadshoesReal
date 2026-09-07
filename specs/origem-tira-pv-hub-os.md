@@ -224,8 +224,9 @@ repo+banco; validar objetos no banco (regra de ouro de migrations).
 - [ ] Save com prestador cria **1 OS** com napa/cores/metros/valores/nº pedido;
       consumo mostra napa sem debitar — UI consumo + OS.
 - [ ] Custo prestador = MO/m + frete/m **sem** napa — conferir totais na OS.
-- [ ] Hub incompleto abre diálogo no PV — hoje: toast bloqueante para MO
-      ausente; diálogo modal + frete/prestador unificado pendente.
+- [x] Hub incompleto abre diálogo no PV — toast bloqueante para MO
+      ausente substituído por `StrapHubIncompleteDialog` (preço MO/artesanal
+      na medida); frete/prestador unificado ainda pendente.
 - [ ] Editar PV aberto exige origem nova — abrir PV legado editável.
 - [ ] Strass com falta de estoque gera OC; com estoque, não — dois cenários.
 - [ ] `/m` sem seletor novo; não grava origem ambígua — tentativa mobile.
