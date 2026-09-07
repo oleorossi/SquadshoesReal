@@ -499,7 +499,8 @@ export default function SaleOrders() {
   // "Ficha Montagem": abre a seleção de OPs em vez de imprimir o PV inteiro.
   const [operatorFichasOpen, setOperatorFichasOpen] = useState(false);
   // Canal "Compras por Pedido" — alvo do modal de geração de OCs (1 ou N PVs).
-  const [poGenTarget, setPoGenTarget] = useState<{ ids: string[]; numbers: string[] } | null>(null);
+  // netOfStock: true = comprar só a falta; false = necessidade bruta (Consumo total).
+  const [poGenTarget, setPoGenTarget] = useState<{ ids: string[]; numbers: string[]; netOfStock: boolean } | null>(null);
 
   // Busca NÃO persiste: reseta ao sair e voltar pra tela (useState remonta
   // limpo). Antes usava usePersistedState com a chave 'searchTerm' — a MESMA
@@ -1223,7 +1224,11 @@ export default function SaleOrders() {
   const handleBulkPurchaseOrders = () => {
     const selected = orders.filter(o => selectedIds.has(o.id));
     if (selected.length === 0) return;
-    setPoGenTarget({ ids: selected.map(o => o.id), numbers: selected.map(o => o.order_number) });
+    setPoGenTarget({
+      ids: selected.map(o => o.id),
+      numbers: selected.map(o => o.order_number),
+      netOfStock: true,
+    });
   };
 
   const handleBulkLabels = () => {
@@ -1719,9 +1724,10 @@ export default function SaleOrders() {
           ) : (
             <SummaryConsumptionPanel
               saleOrderIds={consumptionViewIds}
-              onGerarOC={canBuy ? () => setPoGenTarget({
+              onGerarOC={canBuy ? ({ grossNeed }) => setPoGenTarget({
                 ids: consumptionViewIds,
                 numbers: consumptionViewOrders.map((o: any) => o.order_number),
+                netOfStock: !grossNeed,
               }) : undefined}
             />
           )}
@@ -1734,6 +1740,7 @@ export default function SaleOrders() {
               onOpenChange={(v) => { if (!v) setPoGenTarget(null); }}
               pvIds={poGenTarget.ids}
               pvNumbers={poGenTarget.numbers}
+              initialNetOfStock={poGenTarget.netOfStock}
             />
           </Suspense>
         )}
@@ -2672,7 +2679,11 @@ export default function SaleOrders() {
                       variant="outline"
                       size="sm"
                       className="gap-2"
-                      onClick={() => setPoGenTarget({ ids: [selectedOrder.id], numbers: [selectedOrder.order_number] })}
+                      onClick={() => setPoGenTarget({
+                        ids: [selectedOrder.id],
+                        numbers: [selectedOrder.order_number],
+                        netOfStock: true,
+                      })}
                       title="Calcula o consumo da ficha técnica, desconta o estoque e gera uma OC por fornecedor (canal Compras por Pedido)"
                     >
                       <ShoppingCart className="h-3.5 w-3.5" /> Gerar ordem de compra
@@ -3437,10 +3448,10 @@ export default function SaleOrders() {
             onOpenChange={(v) => { if (!v) setConsumoDialog(null); }}
             saleOrderIds={consumoDialog.ids}
             orderNumbers={consumoDialog.numbers}
-            onGerarOC={canBuy ? () => {
+            onGerarOC={canBuy ? ({ grossNeed }) => {
               const { ids, numbers } = consumoDialog;
               setConsumoDialog(null);
-              setPoGenTarget({ ids, numbers });
+              setPoGenTarget({ ids, numbers, netOfStock: !grossNeed });
             } : undefined}
           />
         </Suspense>
@@ -3482,6 +3493,7 @@ export default function SaleOrders() {
             onOpenChange={(v) => { if (!v) setPoGenTarget(null); }}
             pvIds={poGenTarget.ids}
             pvNumbers={poGenTarget.numbers}
+            initialNetOfStock={poGenTarget.netOfStock}
           />
         </Suspense>
       )}

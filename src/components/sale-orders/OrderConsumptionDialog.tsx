@@ -8,7 +8,7 @@ type Props = {
   onOpenChange: (v: boolean) => void;
   saleOrderIds: string[];
   orderNumbers: string[];
-  onGerarOC?: () => void;
+  onGerarOC?: (opts: { grossNeed: boolean }) => void;
 };
 
 /**

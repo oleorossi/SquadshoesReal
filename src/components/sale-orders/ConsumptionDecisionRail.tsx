@@ -57,9 +57,10 @@ type Props = {
   /** Necessidade bruta do pedido, estoque ignorado. */
   grossNeed?: boolean;
   onGrossNeedChange?: (v: boolean) => void;
-  /** Ação primária: abre a geração de OC do(s) PV(s) — consumo da ficha, líquido
-   *  de estoque, 1 OC por fornecedor. Omitida ⇒ botão não aparece. */
-  onGerarOC?: () => void;
+  /** Ação primária: abre a geração de OC do(s) PV(s) — 1 OC por fornecedor.
+   *  Passa `grossNeed` pra o canal Compras por Pedido nascer bruto (Consumo
+   *  total) ou líquido de estoque (cobertura). Omitida ⇒ botão não aparece. */
+  onGerarOC?: (opts: { grossNeed: boolean }) => void;
   onRecalcular?: () => void;
   onPrintPdf: () => void;
   loading?: boolean;
@@ -173,13 +174,15 @@ export default function ConsumptionDecisionRail({
       </button>
       )}
 
-      {/* CTA primária = comprar a falta. Antes sumia no modo "Consumo total"
-          (toggle de visualização), e o botão preto do toggle ocupava o lugar
-          da ação — o operador via só a necessidade bruta e perdia o caminho
-          pra OC. A geração sempre abre o canal Compras por Pedido, que por
-          padrão desconta estoque e agrupa por fornecedor. */}
+      {/* CTA primária = gerar OC. O modo "Consumo total" (grossNeed) decide se
+          a OC nasce com necessidade bruta ou líquida de estoque; o modal ainda
+          permite override. Agrupa por fornecedor no canal Compras por Pedido. */}
       {onGerarOC && (
-        <Button type="button" className="w-full gap-2" onClick={onGerarOC}>
+        <Button
+          type="button"
+          className="w-full gap-2"
+          onClick={() => onGerarOC({ grossNeed })}
+        >
           <ShoppingCart className="h-4 w-4" />
           Gerar ordem de compra
         </Button>

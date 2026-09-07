@@ -89,7 +89,7 @@ type Props = {
   /** Botão "Recalcular" do trilho — omitido quando não fornecido. */
   onRecalcular?: () => void;
   /** Ação PRIMÁRIA: abre a geração de OC do(s) PV(s). Omitida ⇒ botão não aparece. */
-  onGerarOC?: () => void;
+  onGerarOC?: (opts: { grossNeed: boolean }) => void;
   emptyMessage?: string;
   /**
    * Blocos específicos do escopo (ex.: Corte de Cabedal — Terceirização, que só

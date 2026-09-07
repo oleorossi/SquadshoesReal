@@ -51,9 +51,18 @@ describe('Compras por Pedido — geração atômica e idempotente', () => {
   it('alinha o gate visual às roles autorizadas pela RPC/RLS', () => {
     expect(saleOrders).toContain("const canBuy = isAdmin || roles.includes('gerente')");
     expect(saleOrders).toMatch(
-      /<SummaryConsumptionPanel[\s\S]*?onGerarOC=\{canBuy \? \(\) => setPoGenTarget/,
+      /<SummaryConsumptionPanel[\s\S]*?onGerarOC=\{canBuy \? \(\{ grossNeed \}\) => setPoGenTarget/,
     );
     expect(migration).toContain("user_has_any_role(ARRAY['admin', 'gerente'])");
     expect(migration).toContain("FROM PUBLIC, anon");
+  });
+
+  it('Consumo total abre a OC sem descontar estoque; cobertura e botão do PV netam', () => {
+    expect(dialog).toContain('initialNetOfStock');
+    expect(dialog).toContain('if (open) setNetOfStock(initialNetOfStock)');
+    expect(saleOrders).toContain('netOfStock: !grossNeed');
+    expect(saleOrders).toContain('initialNetOfStock={poGenTarget.netOfStock}');
+    // Botão direto no detalhe do PV e bulk continuam líquidos.
+    expect(saleOrders).toMatch(/setPoGenTarget\(\{[\s\S]*?netOfStock:\s*true/);
   });
 });

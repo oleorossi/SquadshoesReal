@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { computePurchaseBaseTotal } from '@/lib/baseMaterialTotal';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
@@ -58,6 +58,12 @@ type Props = {
   pvNumbers?: string[];
   /** Disparado após gerar com sucesso (ex.: abrir aba "Compras deste PV"). */
   onGenerated?: (createdIds: string[]) => void;
+  /**
+   * Estado inicial do checkbox "Descontar estoque".
+   * - true (default): comprar só a falta líquida (cobertura / botão direto no PV)
+   * - false: necessidade bruta — vem do modo "Consumo total" da tela de consumo
+   */
+  initialNetOfStock?: boolean;
 };
 
 interface PurchasingProduct {
@@ -86,11 +92,22 @@ interface PurchasingProduct {
  * PV(s) agrupados por fornecedor (+ balde "Sem Fornecedor") e gera uma OC por
  * grupo com source_type='per_pv'. Não interfere no MRP/ondas.
  */
-export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds, pvNumbers, onGenerated }: Props) {
+export default function GeneratePurchaseOrdersDialog({
+  open,
+  onOpenChange,
+  pvIds,
+  pvNumbers,
+  onGenerated,
+  initialNetOfStock = true,
+}: Props) {
   // Default LIGADO: numa ordem de compra você quer comprar a FALTA, não a
   // necessidade bruta — senão recompra material que já está em estoque (ex.:
-  // cola/binóculo). O usuário pode desligar pra ver o bruto.
-  const [netOfStock, setNetOfStock] = useState(true);
+  // cola/binóculo). O modo "Consumo total" passa initialNetOfStock=false.
+  const [netOfStock, setNetOfStock] = useState(initialNetOfStock);
+  // Ao (re)abrir, espelha o modo da tela de consumo / botão do PV.
+  useEffect(() => {
+    if (open) setNetOfStock(initialNetOfStock);
+  }, [open, initialNetOfStock]);
   // GUARD: cor não cadastrada bloqueia gerar OC; override consciente p/ casos benignos.
   const [overrideColorMismatch, setOverrideColorMismatch] = useState(false);
   // GUARD: aviso da RPC (ex.: largura/conversão faltante) bloqueia gerar — a OC
@@ -480,6 +497,15 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
           </div>
         )}
 
+        {!isLoading && !isError && (
+          <div className="flex items-center gap-2">
+            <Checkbox id="net-of-stock" checked={netOfStock} onCheckedChange={(v) => setNetOfStock(!!v)} />
+            <Label htmlFor="net-of-stock" className="text-sm font-normal cursor-pointer">
+              Descontar estoque disponível (comprar só a falta líquida)
+            </Label>
+          </div>
+        )}
+
         {!isLoading && !isError && drafts.length === 0 && (
           <div className="flex flex-col items-center gap-2 py-12 text-muted-foreground">
             <Package className="h-8 w-8" />
@@ -529,14 +555,6 @@ export default function GeneratePurchaseOrdersDialog({ open, onOpenChange, pvIds
                   {summary.noSupplierItemCount + summary.colorMismatchCount + needWarnings.length + openPurchaseWarnings.length}
                 </p>
               </div>
-            </div>
-
-            {/* Opção de netar estoque */}
-            <div className="flex items-center gap-2">
-              <Checkbox id="net-of-stock" checked={netOfStock} onCheckedChange={(v) => setNetOfStock(!!v)} />
-              <Label htmlFor="net-of-stock" className="text-sm font-normal cursor-pointer">
-                Descontar estoque disponível (comprar só a falta líquida)
-              </Label>
             </div>
 
             {/* Legenda do excedente por múltiplo de compra (só quando há) */}
