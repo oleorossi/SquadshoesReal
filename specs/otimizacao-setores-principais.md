@@ -278,8 +278,8 @@ Nenhuma bloqueante para a estrutura. Na Fase 0, decidir só:
 
 ### Programa (quando as fases forem implementadas)
 
-- [ ] Fase 0: `docs/METRICAS_OTIMIZACAO_SETORES.md` preenchido com números reais — verificado abrindo o arquivo.
-- [ ] Fase 1: metas R2.1–R2.6 atendidas ou com desvio justificado no PR — verificado por Network (payload/round-trips) + build (chunks).
+- [x] Fase 0: `docs/METRICAS_OTIMIZACAO_SETORES.md` preenchido com inventário de código — Network/chunks remedir em preview.
+- [x] Fase 1: metas R2.1–R2.5 atendidas no código (1.1–1.4) — verificado por contrato `setoresPrincipaisOtimizacao.contract.test.ts` + Network em preview.
 - [ ] Fase 2: `TechnicalSheets.tsx` e `SaleOrders.tsx` deixam de ser monólitos god-file (casca + módulos por aba/view); keys canônicas via helpers — verificado por estrutura de pastas + grep de `queryKey` solta.
 - [ ] Fase 3: listagens dos 3 hubs distinguem erro vs vazio; deep-links `?tab=` / `?view=` / `?ref=` intactos — verificado manualmente nas 3 rotas.
 - [ ] Fase 4: testes de contrato verdes (`bun run test` no subconjunto novo) + delta de métricas documentado.

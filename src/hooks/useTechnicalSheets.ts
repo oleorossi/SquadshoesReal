@@ -305,6 +305,87 @@ export function useTechnicalSheets() {
   });
 }
 
+/**
+ * Colunas do catálogo `/fichas-tecnicas` (lista + filtros + autofill/BOM peer).
+ * Não inclui JSONBs pesados que só o editor abre (strap_colors, production_sectors,
+ * direct_components, size_multipliers, lead times, capacidades).
+ *
+ * ⚠ Ao ler coluna nova no catálogo/autofill/BOM copy, incluir AQUI — TS loose
+ * não acusa ausência.
+ */
+export const TECHNICAL_SHEET_CATALOG_COLUMNS = [
+  'id',
+  'code',
+  'name',
+  'collection',
+  'shoe_category',
+  'status',
+  'status_ficha',
+  'retired_at',
+  'colors',
+  'description',
+  'sale_price',
+  'images',
+  'sole_material',
+  'upper_material',
+  'lining_material',
+  'insole_material',
+  'upper_consumption',
+  'lining_consumption',
+  'insole_consumption',
+  'components_accessories',
+  'sole_consumption',
+  'sole_process',
+  'sole_group_id',
+  'primary_sole_id',
+  'updated_at',
+].join(', ');
+
+/**
+ * Lista do hub de fichas — substitui `select('*')` na abertura do catálogo.
+ * Detalhe da ficha aberta: `useTechnicalSheetDetail(id)`.
+ */
+export function useTechnicalSheetsCatalog() {
+  return useQuery({
+    queryKey: ['technical_sheets', 'catalog'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('technical_sheets')
+        // Cast: o client tipado só aceita `*` ou literais do schema; lista
+        // explícita montada em runtime vira GenericStringError sem o `as`.
+        .select(TECHNICAL_SHEET_CATALOG_COLUMNS as '*')
+        .order('updated_at', { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+    staleTime: 5 * 60 * 1000,
+    gcTime: 15 * 60 * 1000,
+  });
+}
+
+/**
+ * Row completa de uma ficha — editor. Não reusar o cache do catálogo como se
+ * fosse `*`: campos ausentes viram undefined em TS loose e o save pode gravar
+ * NULL por cima do valor real (mesmo padrão de `useProductDetail`).
+ */
+export function useTechnicalSheetDetail(id: string | null | undefined) {
+  return useQuery({
+    queryKey: ['technical_sheets', 'detail', id],
+    enabled: !!id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('technical_sheets')
+        .select('*')
+        .eq('id', id!)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    staleTime: 60 * 1000,
+    gcTime: 5 * 60 * 1000,
+  });
+}
+
 /** Colunas que a lista de PV realmente lê das fichas. Auditadas em SaleOrders.tsx
  *  (busca por sku, refById, segmento Adulto/Infantil, rótulo do item). */
 export const TECHNICAL_SHEET_LITE_COLUMNS = 'id, code, name, shoe_category, retired_at';
@@ -616,8 +697,12 @@ export function useUpdateSheet() {
       qc.setQueryData<TechnicalSheetCacheRow[]>(['technical_sheets'], (cached) => (
         replaceTechnicalSheetCacheRow(cached, updatedSheet)
       ));
-      // A lista leve tem chave própria e antes era invalidada por prefixo. Ela
-      // também precisa refletir renome/código/categoria sem um refetch global.
+      qc.setQueryData(['technical_sheets', 'detail', updatedSheet.id], updatedSheet);
+      // Catálogo / lite / editor têm chave própria — patchar campos de identidade
+      // e os que o catálogo mostra, sem forçar refetch do `*`.
+      qc.setQueryData<TechnicalSheetCacheRow[]>(['technical_sheets', 'catalog'], (cached) => (
+        replaceTechnicalSheetCacheRow(cached, updatedSheet)
+      ));
       qc.setQueryData<TechnicalSheetCacheRow[]>(['technical_sheets', 'lite'], (cached) => {
         if (!cached) return cached;
         return cached.map((row) => row.id === updatedSheet.id
@@ -626,9 +711,13 @@ export function useUpdateSheet() {
               name: updatedSheet.name,
               code: updatedSheet.code,
               shoe_category: updatedSheet.shoe_category,
+              retired_at: updatedSheet.retired_at,
             }
           : row);
       });
+      qc.setQueryData<TechnicalSheetCacheRow[]>(['technical_sheets', 'editor'], (cached) => (
+        replaceTechnicalSheetCacheRow(cached, updatedSheet)
+      ));
       qc.invalidateQueries({ queryKey: ['technical_sheets', 'cabedal-par-pe-audit'] });
       void propagateSheetConsumption(qc, updatedSheet.id, {
         emptyMessage: 'Ficha salva. Nenhum PV aprovado pendente de atualização de consumo.',

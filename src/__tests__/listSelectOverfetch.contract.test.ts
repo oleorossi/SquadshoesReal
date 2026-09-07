@@ -38,7 +38,7 @@ describe('P1.3/P1.4 — selects lean em listas (overfetch)', () => {
   it('useProducts catálogo usa PRODUCT_LIST_SELECT; detalhe busca row completa', () => {
     expect(productsHook).toContain('PRODUCT_LIST_SELECT');
     expect(productsHook).toContain('export function useProductDetail');
-    const listStart = productsHook.indexOf('export function useProducts()');
+    const listStart = productsHook.indexOf('export function useProducts');
     const listEnd = productsHook.indexOf('export function useProductDetail', listStart);
     const listBody = productsHook.slice(listStart, listEnd);
     expect(listBody).toContain('.select(PRODUCT_LIST_SELECT)');

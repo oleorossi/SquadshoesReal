@@ -37,7 +37,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import {
-  useTechnicalSheets, useAddSheet, useUpdateSheet,
+  useTechnicalSheetsCatalog, useTechnicalSheetDetail, useAddSheet, useUpdateSheet,
   useSheetMaterials, useAddSheetMaterial, useUpdateSheetMaterial, useDeleteSheetMaterial, useBulkAddSheetMaterials,
   SheetFormData, SheetMaterialFormData, emptySheetForm, useOverheadHistory, useCloneSheet,
 } from '@/hooks/useTechnicalSheets';
@@ -204,7 +204,7 @@ function suggestedConsumptionSector(category?: string | null): string {
 }
 
 export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {}) {
-  const { data: sheets = [], isLoading } = useTechnicalSheets();
+  const { data: sheets = [], isLoading } = useTechnicalSheetsCatalog();
   const { data: stock = [] } = useReadyStock();
   const sheetsAuditQuery = useSheetsAudit();
   const auditBySheetId = useMemo(() => new Map(
@@ -623,116 +623,13 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
             </CardContent>
           </Card>
         ) : expandedId ? (
-          /* ── Detail View ── */
-          (() => {
-             try {
-               const sheet = sheets.find(s => s.id === expandedId);
-               if (!sheet) {
-                 return (
-                   <Card className="border-dashed">
-                     <CardContent className="flex flex-col items-center justify-center py-16 text-muted-foreground space-y-4">
-                       <div className="h-12 w-12 rounded-full bg-destructive/10 flex items-center justify-center">
-                         <AlertTriangle className="h-6 w-6 text-destructive" />
-                       </div>
-                       <div className="text-center">
-                         <p className="font-semibold text-foreground">Ficha não encontrada</p>
-                         <p className="text-sm">Não foi possível carregar os dados desta referência ou ela não existe mais.</p>
-                       </div>
-                       <Button variant="outline" onClick={() => setExpandedId(null)} className="gap-2">
-                         <ArrowLeft className="h-4 w-4" />
-                         Voltar para a Lista
-                       </Button>
-                     </CardContent>
-                   </Card>
-                 );
-               }
-               return (
-                 <div className="space-y-4">
-                   <div className="flex items-center gap-3">
-                     <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground" onClick={() => setExpandedId(null)}>
-                       <ArrowLeft className="h-4 w-4" /> Voltar à lista
-                     </Button>
-                     <Separator orientation="vertical" className="h-5" />
-                     <div className="flex items-center gap-2 min-w-0">
-                       {sheet.images && Array.isArray(sheet.images) && sheet.images.length > 0 ? (
-                         <SignedImage src={String(sheet.images[0])} alt={sheet.name} className="h-8 w-8 rounded object-cover border shrink-0" />
-                       ) : (
-                         <div className="h-8 w-8 rounded bg-muted flex items-center justify-center border shrink-0">
-                           <Package className="h-4 w-4 text-muted-foreground/40" />
-                         </div>
-                       )}
-                        <div className="flex flex-col">
-                          <h3 className="font-bold text-lg truncate leading-tight">{sheet.name}</h3>
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground uppercase font-bold flex-wrap">
-                            <span>{sheet.upper_material || 'Material s/ def.'}</span>
-                            <ChevronRight className="h-2.5 w-2.5" />
-                            {/* reference_color_variants não vem no select('*') de useTechnicalSheets —
-                                cai sempre no fallback 'Sem cores' (comportamento atual preservado). */}
-                            <span className="text-primary truncate max-w-[150px]">{(sheet as any).reference_color_variants?.[0]?.color || 'Sem cores'}</span>
-                            <ChevronRight className="h-2.5 w-2.5" />
-                            <span className="bg-primary/10 text-primary px-1 rounded">{globalFormatCurrency(sheet.sale_price || 0)}</span>
-                          </div>
-                        </div>
-                        {/* SKU/code removido do header em 2026-05: a referência operacional
-                            é o Nome do Modelo. SKU continua como coluna na lista, mas não
-                            aparece mais como badge ao lado do nome. */}
-                        {/* Badge "tem variante de material" — sinaliza que essa ref pode ser
-                            cadastrada no PV em N versões de material principal (Napa, Santorini,…) */}
-                        {(materialVariantsBySheet?.get(sheet.id)?.length ?? 0) > 0 && (
-                          <Badge variant="secondary" className="px-2 py-0 h-5 text-xs bg-warning/10 text-warning border-warning/30 gap-1 shrink-0" title={materialVariantsBySheet!.get(sheet.id)!.map(v => v.material_name).join(', ')}>
-                            <Package className="h-3 w-3" /> {materialVariantsBySheet!.get(sheet.id)!.length} Materiais
-                          </Badge>
-                        )}
-                        {sheet.shoe_category && <Badge variant="outline" className="text-xs shrink-0">{sheet.shoe_category}</Badge>}
-                     </div>
-                   </div>
- 
-                   {/* ── Technical Summary & Completeness ── */}
-                    <AppErrorBoundary
-                      key={sheet.id}
-                      fallbackTitle="Não foi possível abrir esta Ficha Técnica"
-                    >
-                      <SheetCompleteness
-                        sheet={sheet}
-                        audit={auditBySheetId.get(sheet.id)}
-                        auditLoaded={sheetsAuditQuery.isSuccess}
-                      />
-                      <VariantOverviewHeader sheet={sheet} />
-                      <Card>
-                        <CardContent className="p-4 sm:p-6">
-                          <SheetDetail sheet={sheet} onSaveSuccess={() => setExpandedId(null)} />
-                        </CardContent>
-                      </Card>
-                    </AppErrorBoundary>
-                 </div>
-               );
-             } catch (error) {
-               console.error("Error rendering technical sheet detail:", error);
-               return (
-                 <Card className="border-destructive/20 bg-destructive/5">
-                   <CardContent className="flex flex-col items-center justify-center py-16 text-muted-foreground space-y-4">
-                     <div className="h-12 w-12 rounded-full bg-destructive/10 flex items-center justify-center">
-                       <AlertTriangle className="h-6 w-6 text-destructive" />
-                     </div>
-                     <div className="text-center">
-                       <p className="font-semibold text-foreground">Erro ao carregar Ficha Técnica</p>
-                       <p className="text-sm">Ocorreu um erro inesperado ao processar os dados desta referência.</p>
-                     </div>
-                     <div className="flex gap-2">
-                       <Button variant="outline" onClick={() => window.location.reload()} className="gap-2">
-                         <RefreshCw className="h-4 w-4" />
-                         Recarregar
-                       </Button>
-                       <Button onClick={() => setExpandedId(null)} className="gap-2">
-                         <ArrowLeft className="h-4 w-4" />
-                         Voltar para a Lista
-                       </Button>
-                     </div>
-                   </CardContent>
-                 </Card>
-               );
-              }
-           })()
+          <TechnicalSheetExpandedPanel
+            sheetId={expandedId}
+            onBack={() => setExpandedId(null)}
+            materialVariantsBySheet={materialVariantsBySheet}
+            auditBySheetId={auditBySheetId}
+            auditLoaded={sheetsAuditQuery.isSuccess}
+          />
         ) : (
           /* ── Catálogo · opção 05 (pranchetas) ou relação nominal ── */
           catalogView === 'cards' ? (
@@ -1228,6 +1125,117 @@ function QuickCreateForm({ onCreated, onCancel }: { onCreated: (id: string) => v
 }
 
 /* ===== Completeness Indicator ===== */
+/* ===== DETAIL SHELL (catalog list stays lite; full row loads here) ===== */
+function TechnicalSheetExpandedPanel({
+  sheetId,
+  onBack,
+  materialVariantsBySheet,
+  auditBySheetId,
+  auditLoaded,
+}: {
+  sheetId: string;
+  onBack: () => void;
+  materialVariantsBySheet: Map<string, any[]> | undefined;
+  auditBySheetId: Map<string, any>;
+  auditLoaded: boolean;
+}) {
+  const { data: sheet, isLoading, isError, error, refetch } = useTechnicalSheetDetail(sheetId);
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center py-16">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (isError || !sheet) {
+    return (
+      <Card className="border-dashed">
+        <CardContent className="flex flex-col items-center justify-center py-16 text-muted-foreground space-y-4">
+          <div className="h-12 w-12 rounded-full bg-destructive/10 flex items-center justify-center">
+            <AlertTriangle className="h-6 w-6 text-destructive" />
+          </div>
+          <div className="text-center">
+            <p className="font-semibold text-foreground">Ficha não encontrada</p>
+            <p className="text-sm">
+              {error instanceof Error
+                ? error.message
+                : 'Não foi possível carregar os dados desta referência ou ela não existe mais.'}
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => refetch()} className="gap-2">
+              <RefreshCw className="h-4 w-4" />
+              Tentar novamente
+            </Button>
+            <Button variant="outline" onClick={onBack} className="gap-2">
+              <ArrowLeft className="h-4 w-4" />
+              Voltar para a Lista
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground" onClick={onBack}>
+          <ArrowLeft className="h-4 w-4" /> Voltar à lista
+        </Button>
+        <Separator orientation="vertical" className="h-5" />
+        <div className="flex items-center gap-2 min-w-0">
+          {sheet.images && Array.isArray(sheet.images) && sheet.images.length > 0 ? (
+            <SignedImage src={String(sheet.images[0])} alt={sheet.name} className="h-8 w-8 rounded object-cover border shrink-0" />
+          ) : (
+            <div className="h-8 w-8 rounded bg-muted flex items-center justify-center border shrink-0">
+              <Package className="h-4 w-4 text-muted-foreground/40" />
+            </div>
+          )}
+          <div className="flex flex-col">
+            <h3 className="font-bold text-lg truncate leading-tight">{sheet.name}</h3>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground uppercase font-bold flex-wrap">
+              <span>{sheet.upper_material || 'Material s/ def.'}</span>
+              <ChevronRight className="h-2.5 w-2.5" />
+              <span className="text-primary truncate max-w-[150px]">
+                {(sheet as any).reference_color_variants?.[0]?.color || 'Sem cores'}
+              </span>
+              <ChevronRight className="h-2.5 w-2.5" />
+              <span className="bg-primary/10 text-primary px-1 rounded">{globalFormatCurrency(sheet.sale_price || 0)}</span>
+            </div>
+          </div>
+          {(materialVariantsBySheet?.get(sheet.id)?.length ?? 0) > 0 && (
+            <Badge
+              variant="secondary"
+              className="px-2 py-0 h-5 text-xs bg-warning/10 text-warning border-warning/30 gap-1 shrink-0"
+              title={materialVariantsBySheet!.get(sheet.id)!.map((v: any) => v.material_name).join(', ')}
+            >
+              <Package className="h-3 w-3" /> {materialVariantsBySheet!.get(sheet.id)!.length} Materiais
+            </Badge>
+          )}
+          {sheet.shoe_category && <Badge variant="outline" className="text-xs shrink-0">{sheet.shoe_category}</Badge>}
+        </div>
+      </div>
+
+      <AppErrorBoundary key={sheet.id} fallbackTitle="Não foi possível abrir esta Ficha Técnica">
+        <SheetCompleteness
+          sheet={sheet}
+          audit={auditBySheetId.get(sheet.id)}
+          auditLoaded={auditLoaded}
+        />
+        <VariantOverviewHeader sheet={sheet} />
+        <Card>
+          <CardContent className="p-4 sm:p-6">
+            <SheetDetail sheet={sheet} onSaveSuccess={onBack} />
+          </CardContent>
+        </Card>
+      </AppErrorBoundary>
+    </div>
+  );
+}
+
 function SheetCompleteness({
   sheet,
   audit,
@@ -1406,7 +1414,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
     const [isSoleFachetado, setIsSoleFachetado] = useState(false);
  
   const { data: componentSheets = [] } = useComponentSheets();
-  const { data: allSheets = [] } = useTechnicalSheets();
+  const { data: allSheets = [] } = useTechnicalSheetsCatalog();
   const activeAllSheets = useMemo(
     () => allSheets.filter((candidate) => !(
       candidate as typeof candidate & { retired_at?: string | null }
@@ -5827,7 +5835,7 @@ function SheetBOM({ sheetId, safetyPct, onSafetyChange, shoeCategory }: {
       return data;
     },
   });
-  const { data: sheets = [] } = useTechnicalSheets();
+  const { data: sheets = [] } = useTechnicalSheetsCatalog();
   const { data: componentSheets = [] } = useComponentSheets();
   const addMaterial = useAddSheetMaterial();
   const updateMaterial = useUpdateSheetMaterial(sheetId);

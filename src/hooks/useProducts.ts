@@ -141,9 +141,10 @@ export const PRODUCT_LIST_SELECT = [
 ].join(', ');
 
 /** Catálogo paginado com colunas lean — use em listagens / selectors. */
-export function useProducts() {
+export function useProducts(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ['products'],
+    enabled: options?.enabled ?? true,
     queryFn: async () => {
       const PAGE = 1000;
       // Get total count first so we can fetch all pages in parallel.

@@ -1,5 +1,8 @@
 import { parseDateOnly } from '@/lib/dateOnly';
 import { useState, useMemo, useEffect, lazy, Suspense, type ReactNode } from 'react';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { ListPagination } from '@/components/ui/list-pagination';
+import { PAGE_SIZE, paginateInMemory } from '@/lib/pagination';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -722,10 +725,20 @@ export default function SaleOrders() {
     });
   }, [filteredOrders, sort, pairsBySaleOrder]);
 
-  // ⚠ A seleção é alimentada por `sortedOrders`, NÃO por `filteredOrders`. O
-  // Shift+clique seleciona um INTERVALO por índice: se a fonte estivesse na ordem
-  // não ordenada, o intervalo marcaria linhas diferentes das que estão na tela.
-  const sel = useMarqueeSelection(sortedOrders, (o) => o.id);
+  // Paginação client-side (Fase 1.4): limiar 75 / página 50 — mesmo contrato
+  // das outras listagens. Reseta quando o filtro muda.
+  const [listPage, setListPage] = useState(1);
+  useEffect(() => { setListPage(1); }, [filteredOrders]);
+  const paged = useMemo(
+    () => paginateInMemory(sortedOrders, { page: listPage }),
+    [sortedOrders, listPage],
+  );
+  const visibleOrders = paged.items;
+  const isMobile = useIsMobile();
+
+  // ⚠ A seleção é alimentada pelas linhas VISÍVEIS (página atual). Shift+clique
+  // seleciona intervalo na tela; selectedIds persiste entre páginas.
+  const sel = useMarqueeSelection(visibleOrders, (o) => o.id);
   const selectedIds = sel.selectedIds;
   // Shim: aceita Set<string> direto OU updater. Usado em locais como
   // `setSelectedIds(new Set())` (= sel.clear) e em handlers de bulk que
@@ -2097,8 +2110,9 @@ export default function SaleOrders() {
           </Panel>
         ) : (
           <>
-          <div className="space-y-2 md:hidden">
-            {sortedOrders.map(order => {
+          {isMobile ? (
+          <div className="space-y-2">
+            {visibleOrders.map(order => {
               const pairs = pairsBySaleOrder[order.id] || 0;
               const minBilling = minBillingMap.get(order.id) || null;
               const isOverdue = !!(order.delivery_deadline && parseDateOnly(order.delivery_deadline) < new Date() && !TERMINAL_BILLED_STATUSES.includes(order.status) && order.status !== 'Cancelado');
@@ -2148,11 +2162,12 @@ export default function SaleOrders() {
               );
             })}
           </div>
+          ) : (
           <div
             ref={sel.containerRef}
             onMouseDown={sel.onContainerMouseDown}
             data-marquee-container
-            className="relative hidden overflow-x-auto rounded-lg border border-border bg-card shadow-sm md:block"
+            className="relative overflow-x-auto rounded-lg border border-border bg-card shadow-sm"
           >
             <Table className="min-w-[640px]">
               <TableHeader>
@@ -2176,7 +2191,7 @@ export default function SaleOrders() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sortedOrders.map(order => {
+                {visibleOrders.map(order => {
                   const isSelected = sel.isSelected(order.id);
                   const isOverdue = order.delivery_deadline && parseDateOnly(order.delivery_deadline) < new Date() && !TERMINAL_BILLED_STATUSES.includes(order.status) && order.status !== 'Cancelado';
                   const isInformal = (order as any).nfe_required === false;
@@ -2450,6 +2465,16 @@ export default function SaleOrders() {
                 container .relative pra coords absolutas funcionarem). */}
             <MarqueeOverlay rect={sel.marqueeRect} />
           </div>
+          )}
+          <ListPagination
+            page={paged.page}
+            total={paged.total}
+            totalPages={paged.totalPages}
+            showPager={paged.showPager}
+            onPageChange={setListPage}
+            pageSize={PAGE_SIZE}
+            itemLabel="pedidos"
+          />
           </>
         )}
       </div>
