@@ -44042,6 +44042,27 @@ export type Database = {
           solado_id: string
         }[]
       }
+      op_restore_consistency_report: {
+        Args: never
+        Returns: {
+          motivo: string
+          order_id: string
+          order_number: string
+          order_status: string
+          product_color: string
+          product_id: string
+          product_name: string
+          qtd_sem_grade: number
+        }[]
+      }
+      run_sole_live_parity_guards: {
+        Args: never
+        Returns: {
+          case_name: string
+          message: string
+          ok: boolean
+        }[]
+      }
       list_stock_debit_holes: {
         Args: { p_days?: number }
         Returns: {
