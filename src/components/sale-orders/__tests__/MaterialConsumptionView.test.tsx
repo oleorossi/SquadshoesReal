@@ -298,6 +298,51 @@ describe('MaterialConsumptionView — tela buy-first', () => {
     expect(screen.getAllByText(/40,25/).length).toBeGreaterThan(0);
   });
 
+  it('tira com cadastro pendente permanece na tabela como cadastro incompleto (PV-00169)', () => {
+    renderView({
+      rows: [
+        row({
+          componentType: 'Forração Palmilha',
+          groupName: 'NAPA SOFT',
+          materialName: 'Forração Palmilha',
+          color: 'CARAMELO',
+          totalQuantity: 10,
+          available: 100,
+          productIds: ['napa-caramelo'],
+        }),
+        row({
+          componentType: 'Tiras',
+          groupName: 'TIRA CHATA 8 mm · NAPA SOFT · CARAMELO',
+          materialName: 'Produção interna',
+          color: 'CARAMELO',
+          productUnit: 'm',
+          totalQuantity: 184.8,
+          available: 0,
+          warning: 'Receita exata nao encontrada para a base da ficha',
+          artisanal: {
+            baseName: 'NAPA SOFT',
+            baseQty: 0,
+            yieldPerMeter: 0,
+            pending: true,
+          },
+        }),
+      ],
+    });
+
+    // Demanda da ficha não pode sumir da conferência só porque o rendimento falta.
+    const materials = screen.getByRole('table', { name: 'Materiais gerais' });
+    expect(within(materials).getByText('TIRA CHATA 8 mm · NAPA SOFT · CARAMELO')).toBeInTheDocument();
+    expect(within(materials).getAllByText('184,80').length).toBeGreaterThan(0);
+    expect(screen.getByText(/Tira com cadastro pendente/i)).toBeInTheDocument();
+    // Strip de totais (fora da tabela) não inclui os metros brutos de tira.
+    const totalsLabel = screen.getByText((content, el) =>
+      el?.tagName === 'SPAN' && /^\d+ itens?$/.test(content.trim()),
+    );
+    const totalsStrip = totalsLabel.parentElement;
+    expect(totalsStrip?.textContent || '').toMatch(/10,00/);
+    expect(totalsStrip?.textContent || '').not.toMatch(/184,80/);
+  });
+
   it('no diálogo não repete o título do chrome no herói', () => {
     renderView({ embedded: true });
     expect(screen.queryByRole('heading', { name: /Consumo de Materiais — PV-00151/i })).not.toBeInTheDocument();

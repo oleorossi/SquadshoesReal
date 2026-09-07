@@ -50,9 +50,9 @@ export const isPendingInternalStrap = (r: ConsumptionRow): boolean =>
   !!r.artisanal?.pending;
 
 /**
- * Tira interna (convertida OU pendente): detalhe mora no bloco de napa (§01) /
- * transformação (§03), nunca como linha de "necessidade comprável" em metros
- * de tira na conferência por aplicação.
+ * Tira interna (convertida OU pendente). Convertida some da tabela de compra
+ * (vira napa); pending aparece como cadastro incompleto mas NÃO soma no strip
+ * de metros compráveis — ver `unitTotals` / `pendingStrapMeters`.
  */
 export const isInternalStrapRow = (r: ConsumptionRow): boolean =>
   isConvertedInternalStrap(r) || isPendingInternalStrap(r);

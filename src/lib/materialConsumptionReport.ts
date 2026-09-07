@@ -5,7 +5,6 @@ import {
   countPending,
   countShort,
   isConvertedInternalStrap,
-  isInternalStrapRow,
   itemShortfall,
   pendingStrapMeters,
   rowAvailable,
@@ -185,10 +184,11 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
   };
   const colCount = totalMode ? 5 : 7;
 
-  // Tira interna (convertida ou pending): napa já está em §01; metros de tira
-  // e rendimento ficam só em §03. Repetir 1.044 m aqui faz o documento "não bater".
+  // Tira interna CONVERTIDA: napa já está em §01; metros×rendimento em §03.
+  // Tira PENDING fica nesta seção como cadastro incompleto — a demanda da ficha
+  // precisa aparecer na conferência (PV-00169), sem entrar no strip de napa.
   const nonSole = aggregateItems(
-    rows.filter((row) => row.componentType !== 'Solado' && !isInternalStrapRow(row)),
+    rows.filter((row) => row.componentType !== 'Solado' && !isConvertedInternalStrap(row)),
   )
     .sort((a, b) => componentIndex(a.componentType) - componentIndex(b.componentType)
       || a.groupName.localeCompare(b.groupName, 'pt-BR')
@@ -467,8 +467,8 @@ export function buildMaterialConsumptionReportHtml({
       <span class="section-number">02</span>
       <div><p class="section-kicker">Conferência completa</p><h2>Materiais por aplicação</h2></div>
       <p class="section-note">${totalMode
-        ? 'Somente a necessidade do pedido. Tira interna fica na §01 (napa) e na §03 (metros de tira × rendimento).'
-        : 'A falta de solado é calculada por numeração; os demais itens usam o balde grupo + cor + unidade. Tira interna: §01/§03.'}</p>
+        ? 'Somente a necessidade do pedido. Tira convertida: §01 (napa) e §03 (metros × rendimento). Tira com cadastro pendente aparece abaixo como ▲.'
+        : 'A falta de solado é calculada por numeração; os demais itens usam o balde grupo + cor + unidade. Tira convertida: §01/§03; tira pendente fica com ▲.'}</p>
     </div>
     ${renderMaterialSections(rows, totalMode)}
   </section>

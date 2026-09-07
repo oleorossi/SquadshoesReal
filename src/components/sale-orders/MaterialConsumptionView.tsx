@@ -30,7 +30,6 @@ import {
   countPending,
   countShort,
   isConvertedInternalStrap,
-  isInternalStrapRow,
   itemIsShort,
   itemKey,
   itemShortfall,
@@ -396,15 +395,16 @@ export default function MaterialConsumptionView({
   // filtrar "Coberto" desmontava o bloco inteiro e recriava o relato original
   // de que a parte de solados não aparecia.
   //
-  // Tira interna (convertida/pending) também sai da tabela: napa já está no
-  // bloco de material base e o detalhe tira×rendimento mora em
-  // ArtisanalStrapRollCutBlock — repetir 1.044 m aqui confunde com a compra.
+  // Tira interna CONVERTIDA sai da tabela: a napa já está no bloco de material
+  // base e o detalhe tira×rendimento mora em ArtisanalStrapRollCutBlock.
+  // Tira PENDING permanece visível como cadastro incompleto — senão a demanda
+  // da ficha some da conferência (PV-00169: 184,80 m "não aparecem").
   const visibleSoleRows = useMemo(
     () => rows.filter((row) => row.componentType === 'Solado'),
     [rows],
   );
   const visibleMaterialRows = useMemo(
-    () => visibleRows.filter((row) => row.componentType !== 'Solado' && !isInternalStrapRow(row)),
+    () => visibleRows.filter((row) => row.componentType !== 'Solado' && !isConvertedInternalStrap(row)),
     [visibleRows],
   );
 
@@ -1022,8 +1022,8 @@ export default function MaterialConsumptionView({
                   ).size;
                   const [secLabel, secFamily] = String(sectionKey).split(SECTION_SEP);
                   const applicationSplit = (() => {
-                    // A tabela omite tiras internas; o band de aplicação precisa
-                    // do buyList completo pra cabedal/forração/tira fecharem.
+                    // A tabela omite tiras convertidas; o band de aplicação
+                    // precisa do buyList completo pra cabedal/forração/tira fecharem.
                     if (secFamily) {
                       const famName = groupBy === 'base' ? secLabel : secFamily;
                       const colorName = groupBy === 'base' ? secFamily : secLabel;
