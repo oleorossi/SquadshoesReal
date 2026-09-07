@@ -4,16 +4,12 @@ import { describe, expect, it } from 'vitest';
 
 /**
  * Guards de solado precisam ler o CORPO VIVO no banco — não só o arquivo .sql.
- * Migration 20270101018000 cria run_sole_live_parity_guards() com cases de:
- *   - debit fallback com variante
- *   - COALESCE no by_grade
- *   - cobertura list_sole_spec_gaps
- *   - smoke by_grade + variante sem pin
- *   - restore sem crédito escalar cego
+ * 18000 criou run_sole_live_parity_guards(); 19000 reforça size-sem-spec e
+ * emissão Forração Palmilha/Palmilha. O contrato trava a DEFINIÇÃO VIGENTE (19000).
  */
 const ROOT = resolve(__dirname, '../..');
 const MIG = readFileSync(
-  resolve(ROOT, 'supabase/migrations/20270101018000_sole-audit-restore-parity-inspection.sql'),
+  resolve(ROOT, 'supabase/migrations/20270101019000_sole-live-parity-size-sem-spec.sql'),
   'utf8',
 );
 const DIAG = readFileSync(resolve(ROOT, 'src/pages/SystemDiagnostics.tsx'), 'utf8');
@@ -42,7 +38,13 @@ describe('run_sole_live_parity_guards — contrato da migration', () => {
   it('trava restore sem crédito escalar cego', () => {
     expect(MIG).toContain('restore_graded_nao_credita_escalar_cego');
     expect(MIG).toContain('nao credita residuo escalar');
-    expect(MIG).toContain('op_restore_consistency_report');
+  });
+
+  it('reforça size-sem-spec e emissão Forração Palmilha', () => {
+    expect(MIG).toContain('runtime_size_sem_spec_forro_palmilha_zero');
+    expect(MIG).toContain('runtime_list_sole_spec_gaps_acionavel');
+    expect(MIG).toContain('bygrade_emite_forracao_palmilha_e_palmilha');
+    expect(MIG).toContain("''component'', ''Forração Palmilha''");
   });
 });
 

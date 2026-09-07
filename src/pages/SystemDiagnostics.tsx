@@ -1357,7 +1357,7 @@ export default function SystemDiagnostics() {
               <Alert variant="destructive">
                 <XCircle className="h-4 w-4" />
                 <AlertTitle>Guards de solado não executados</AlertTitle>
-                <AlertDescription>run_sole_live_parity_guards() devolveu 0 casos — migration 20270101018000 pode estar pendente.</AlertDescription>
+                <AlertDescription>run_sole_live_parity_guards() devolveu 0 casos — migration 20270101019000 pode estar pendente.</AlertDescription>
               </Alert>
             )}
             {(soleParityChecks ?? []).map((p, i) => (

@@ -921,6 +921,7 @@ describe('calculateBomForOrders — paridade de cor e specs incompletas', () => 
     const insole = rows.find((row) => row.componentType === 'Palmilha');
     const insoleLining = rows.find((row) => row.materialName === 'Forração Palmilha');
 
+    expect(insoleLining?.componentType).toBe('Forração Palmilha');
     for (const row of [lining, insole, insoleLining]) {
       expect(row?.totalQuantity).toBeGreaterThan(0);
       expect(row?.warning).toMatch(/contribuíram ZERO.*36, 37, 38/);
@@ -940,7 +941,7 @@ describe('calculateBomForOrders — componente Fachete (BOM-5)', () => {
     mockDb.tables = t;
     const rows = await calculateBomForOrders(['op1']);
     const fachete = rows.find(r => r.materialName === 'Fachete');
-    expect(fachete?.componentType).toBe('Forração');
+    expect(fachete?.componentType).toBe('Fachete');
     expect(fachete?.groupName).toBe('FORRO FACHETE');
     // 2 dm²/par × 720 = 1440; sem ficha de componente com largura → dm² + aviso.
     expect(fachete?.totalQuantity).toBeCloseTo(1440, 6);

@@ -1684,6 +1684,8 @@ describe('orderConsumption — contrato de colunas do fetch', () => {
   it('fixes da auditoria de débito não regridem (BOM-1/BOM-3/TS-1)', () => {
     const bomSrc = readFileSync(resolve(process.cwd(), 'src/lib/bomConsumption.ts'), 'utf8');
     expect(bomSrc).toContain("materialName: 'Forração Palmilha'");
+    expect(bomSrc).toContain("componentType: 'Forração Palmilha'");
+    expect(bomSrc).toContain("componentType: 'Fachete'");
     expect(bomSrc).toContain('suppressCabedalForracao');
     expect(bomSrc).toContain('insoleLiningSpecBySole');
     const dialogSrc = readFileSync(resolve(process.cwd(), 'src/components/orders/OrderConsumptionDialog.tsx'), 'utf8');

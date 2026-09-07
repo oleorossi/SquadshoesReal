@@ -1747,11 +1747,14 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
   const autoFillFromSoleSpecs = async (soleProductId: string) => {
     if (!soleProductId) return;
     try {
-      // 1. Try sole_technical_specs first (direct per-sole specs)
-      // ⚠ Forro do CABEDAL (lining_consumption) NÃO vem mais do solado — desde
-      // 2026-06-30 é cabedal a cabedal, definido aqui na ficha do modelo. Do
-      // solado só puxamos o que é padronizado por solado: placa da palmilha e
-      // forração da palmilha (napa que reveste a placa).
+      // Quantidade por numeração de placa / forração da palmilha é padrão do
+      // SOLADO (Consumo Padrão → sole_group_standard_items → mirror em
+      // sole_technical_specs). A ficha só escolhe o GRUPO do material.
+      // ⚠ NÃO gravar *_per_size na ficha: mergePerSizeConsumption deixa a ficha
+      // por cima do solado e "Puxar do Solado" congelava o mapa — editar o
+      // Consumo Padrão depois não mudava o modal/débito.
+      // Forro do CABEDAL: escalar opcional na ficha; mapa por número também é do
+      // solado (papel forro_cabedal) quando sole_drives_consumption.
       const { data: specs } = await supabase
         .from('sole_technical_specs')
         .select('size, insole_consumption_dm2, insole_lining_consumption_dm2')
@@ -1760,26 +1763,24 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       const hasDirectSpecs = specs && specs.some(s => s.insole_consumption_dm2 !== null || (s as any).insole_lining_consumption_dm2 !== null);
 
       if (hasDirectSpecs) {
-        const insoleMap: Record<string, number> = {};
-        const insoleLiningMap: Record<string, number> = {};
+        const insoleVals: number[] = [];
+        const insoleLiningVals: number[] = [];
         specs!.forEach(s => {
-          if (s.insole_consumption_dm2 !== null) insoleMap[String(s.size)] = Number(s.insole_consumption_dm2);
+          if (s.insole_consumption_dm2 !== null) insoleVals.push(Number(s.insole_consumption_dm2));
           const il = (s as any).insole_lining_consumption_dm2;
-          if (il !== null && il !== undefined) insoleLiningMap[String(s.size)] = Number(il);
+          if (il !== null && il !== undefined) insoleLiningVals.push(Number(il));
         });
-        const insoleVals = Object.values(insoleMap);
-        const insoleLiningVals = Object.values(insoleLiningMap);
         if (insoleVals.length > 0) {
           updateField('insole_consumption', Number((insoleVals.reduce((a, b) => a + b, 0) / insoleVals.length).toFixed(4)));
-          updateField('insole_consumption_per_size', insoleMap);
-          flashField('insole_consumption_per_size');
+          updateField('insole_consumption_per_size', {});
+          flashField('insole_consumption');
         }
         if (insoleLiningVals.length > 0) {
           updateField('insole_lining_consumption', Number((insoleLiningVals.reduce((a, b) => a + b, 0) / insoleLiningVals.length).toFixed(4)));
-          updateField('insole_lining_consumption_per_size', insoleLiningMap);
-          flashField('insole_lining_consumption_per_size');
+          updateField('insole_lining_consumption_per_size', {});
+          flashField('insole_lining_consumption');
         }
-        toast.success("Consumos técnicos do solado aplicados com sucesso!");
+        toast.success('Escalars sincronizados. O mapa por numeração continua no Hub → Solados → Consumo Padrão.');
         return;
       }
 
@@ -1837,9 +1838,10 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
           liningApplied = true;
         }
         if (insoleGroup && productGroupId === insoleGroup.id && !insoleApplied) {
+          // Mesma regra da placa: escalar só; mapa por número no Consumo Padrão.
           updateField('insole_consumption', Number(avg.toFixed(4)));
-          updateField('insole_consumption_per_size', sizeMap);
-          flashField('insole_consumption_per_size');
+          updateField('insole_consumption_per_size', {});
+          flashField('insole_consumption');
           insoleApplied = true;
         }
       }
@@ -1848,7 +1850,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
         const parts = [];
         if (liningApplied) parts.push('forração');
         if (insoleApplied) parts.push('palmilha');
-        toast.success(`Consumos de ${parts.join(' e ')} aplicados do grupo!`);
+        toast.success(`Escalars de ${parts.join(' e ')} aplicados. Mapa por numeração: Hub → Solados → Consumo Padrão.`);
       } else {
         toast.info("Consumo para este solado não encontrado nas fichas de componentes. Configure na edição do grupo em Estoque.");
       }

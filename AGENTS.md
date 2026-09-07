@@ -451,6 +451,19 @@ agora com alarme na tela. Checklist: `docs/SOLADOS_ACOES_DONO.md`.
 (`calculateGradeBasedDm2` com fallback 0). Os dois lados concordam no número errado — a
 tela mostra exatamente o que o estoque debita.
 
+### `stock_grade = '{}'` é "sem numeração" — NUNCA NULL (CANÔNICO, 20/08/2026)
+
+> A coluna `products.stock_grade` tem **`DEFAULT '{}'::jsonb`**. Todo código que pergunta
+> "esse produto tem grade?" tem que contar **buckets reais** (chave que não começa com
+> `_`) — testar `IS NOT NULL` responde "sim" para a base inteira.
+
+✅ **FECHADO — resíduo escalar em produto com grade** (spec `resync-estorno-unificado`,
+mig `20270101018000`): quando o produto tem buckets reais em `stock_grade` e sobra
+crédito sem grade rastreável (`sole_grade` pendente), `restore_product_stocks_for_order`
+**NÃO** credita o escalar (nunca inventa numeração). A pendência fica em
+`op_restore_consistency_report()` e na aba Consumo de `/system-diagnostics`. Estorno de
+solado com reserva `kind='sole_grade'` segue por `restore_sole_grade_for_order`.
+
 ### Quando converter (sinal de decisão)
 Presença de **ficha de componente com largura > 0**. Caminhos que aplicam a regra:
 upper (cabedal), lining (forro), insole (palmilha) e **sheet_materials (BOM)** — este

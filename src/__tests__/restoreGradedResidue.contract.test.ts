@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 /**
  * Spec resync-estorno-unificado: produto com grade real NÃO recebe crédito
- * escalar sem numeração rastreável. A migration 17100 reescreve
+ * escalar sem numeração rastreável. A migration 18000 reescreve
  * restore_product_stocks_for_order e cria op_restore_consistency_report.
  */
 const ROOT = resolve(__dirname, '../..');

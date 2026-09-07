@@ -137,13 +137,6 @@ export default function SoleSpecGapsPanel({
         </p>
       )}
 
-      {!loading && !error && gapRows.length === 0 && facheteRows.length === 0 && (
-        <div className="flex items-center gap-2 text-sm text-success">
-          <CheckCircle className="h-4 w-4" />
-          Cobertura ok — nenhuma numeração vendida sem spec e nenhum fachete sem dm².
-        </div>
-      )}
-
       {!loading && gapRows.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <Badge className="bg-amber-500/10 text-amber-600 border-transparent">

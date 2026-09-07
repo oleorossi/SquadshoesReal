@@ -1319,8 +1319,10 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
         } else {
           forrTotal = calculateConsumptionWithUnit(item, insoleLiningCons, forrSheet, 'metro', undefined, soleProductIdForInsole).total;
         }
+        // componentType DISTINTO 'Forração Palmilha' (paridade orderConsumption):
+        // roteamento por setor (Corte Forração vs Corte Fibra / Aviamento) depende disso.
         if (forrTotal > 0 || forrWarning) addConsumptionRow(consumptionMap, {
-          componentType: 'Forração', groupName: liningGroupForPalm, materialName: 'Forração Palmilha',
+          componentType: 'Forração Palmilha', groupName: liningGroupForPalm, materialName: 'Forração Palmilha',
           productUnit: 'metro', color: orderColor, totalQuantity: forrTotal,
           widthMissing: forrWidthMissing,
           warning: forrWarning,
@@ -1397,14 +1399,14 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
         const facheteWidthMissing = isLinearWidthMissing(facheteSheet, 'm');
         const facheteTotal = facheteWidthMissing ? facheteDm2 : convertDm2ToLinearMeters(facheteDm2, facheteSheet);
         addConsumptionRow(consumptionMap, {
-          componentType: 'Forração', groupName: facheteMaterialName, materialName: 'Fachete',
+          componentType: 'Fachete', groupName: facheteMaterialName, materialName: 'Fachete',
           productUnit: facheteWidthMissing ? 'dm2' : 'metro', color: facheteLiningColor,
           totalQuantity: facheteTotal, widthMissing: facheteWidthMissing,
           warning: facheteWarning,
         });
       } else {
         addConsumptionRow(consumptionMap, {
-          componentType: 'Forração', groupName: facheteMaterialName || 'Fachete', materialName: 'Fachete',
+          componentType: 'Fachete', groupName: facheteMaterialName || 'Fachete', materialName: 'Fachete',
           productUnit: 'dm2', color: facheteLiningColor, totalQuantity: 0,
           warning: 'Solado fachetado sem consumo de fachete cadastrado — a forração extra do salto NÃO entrou na Lista. Cadastre fachete_lining_consumption_dm2 em Materiais → Solado.',
         });

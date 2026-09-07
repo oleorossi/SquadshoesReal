@@ -567,7 +567,6 @@ export default function SolesCadastroTab({ sole }: Props) {
 
       <SoleInspectionPlanPanel
         soleGroupId={groupId}
-        soleGroupName={sole.name}
       />
 
       {/* 4 — CARACTERÍSTICAS (fachetado) */}

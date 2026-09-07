@@ -49,3 +49,16 @@ grade**, o cancelamento/resync **não** inventa numeração. Resolver:
 - ajuste manual de grade no Hub → Estoque, com inventário conferido.
 
 Referência: `specs/resync-estorno-unificado.md`.
+
+## 5. Padronização Forração / Fibra (lembrete)
+
+| Papel no Consumo Padrão | Quantidade | Material (ficha) | Débito |
+|---|---|---|---|
+| `forro_cabedal` | dm²/par no solado | `lining_material` | soft → Forração |
+| `placa_palmilha` (fibra) | dm²/par no solado | `insole_material` | soft → Palmilha (Corte Fibra) |
+| `forracao_palmilha` | dm²/par no solado | mesmo forro resolvido | soft → Forração Palmilha |
+| `fachete` | dm²/par no solado | grupo fachete do solado | soft → Fachete |
+
+A ficha **não** deve guardar mapa `*_per_size` desses papéis quando o solado dirige
+o consumo — “Puxar do Solado” só sincroniza o escalar e limpa o mapa da ficha.
+Cadastre numeração em **Hub → Solados → Consumos → Consumo Padrão**.

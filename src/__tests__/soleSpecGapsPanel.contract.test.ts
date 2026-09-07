@@ -32,5 +32,8 @@ describe('SoleSpecGapsPanel está ligado às telas canônicas', () => {
     expect(panel).toContain('useSoleSpecGaps');
     expect(panel).toContain('Não inventa dm²');
     expect(panel).toContain('useSoleFacheteGaps');
+    // Um empty state só — sem linha verde duplicada + EmptyState.
+    expect(panel).toContain('Nada pendente de engenharia nesta varredura');
+    expect(panel).not.toContain('Cobertura ok — nenhuma numeração vendida sem spec');
   });
 });
