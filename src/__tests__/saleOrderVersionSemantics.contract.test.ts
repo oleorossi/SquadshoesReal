@@ -115,9 +115,11 @@ describe('segurança material e recuperação do editor', () => {
 
   it('carrega cabeçalho, itens e versão em um único snapshot sob RLS', () => {
     const snapshot = sqlFunction('get_sale_order_editor_snapshot');
-    const loadStart = saleOrderForm.indexOf('// Load existing order for edit.');
-    const loadEnd = saleOrderForm.indexOf('// Update representative match', loadStart);
-    const loader = saleOrderForm.slice(loadStart, loadEnd);
+    // O fetch do RPC roda em paralelo com as fichas; a hidratação do form
+    // só aplica o snapshot quando as referências chegam (otimização de carga).
+    const fetchStart = saleOrderForm.indexOf('// Snapshot do PV em paralelo');
+    const loadEnd = saleOrderForm.indexOf('// Update representative match', fetchStart);
+    const loader = saleOrderForm.slice(fetchStart, loadEnd);
 
     expect(snapshot).toContain('SECURITY INVOKER');
     expect(snapshot).toContain("'order', to_jsonb(so)");
@@ -125,7 +127,10 @@ describe('segurança material e recuperação do editor', () => {
     expect(migration).toMatch(
       /REVOKE ALL ON FUNCTION public\.get_sale_order_editor_snapshot\(uuid\)[\s\S]*?FROM PUBLIC, anon;/,
     );
-    expect(loader).toContain(".rpc(\n        'get_sale_order_editor_snapshot'");
+    expect(fetchStart).toBeGreaterThanOrEqual(0);
+    expect(loader).toMatch(/\.rpc\(\s*'get_sale_order_editor_snapshot'/);
+    expect(loader).toContain('pendingSnapshotRef.current');
+    expect(loader).toContain('// Load existing order for edit.');
     expect(loader).not.toContain("from('sale_orders').select('*')");
     expect(loader).not.toContain("from('sale_order_items').select('*')");
   });
