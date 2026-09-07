@@ -151,8 +151,17 @@ export interface EngineRun {
  * A Central fica num monitor o dia todo, então ela atravessava a meia-noite
  * mostrando a agenda de ONTEM: medido, 33 das 54 OPs mudam de data na virada.
  * 90s é barato (são views pequenas) e fecha a janela sem inventar um canal novo.
+ *
+ * P1.6: não polla com a aba oculta (`document.hidden`) — o quadro em background
+ * não precisa gastar rede; ao voltar o react-query refetcha no foco.
  */
 const ENGINE_REFETCH_MS = 90_000;
+
+/** false quando a aba está oculta — para o poll do motor sem mudar o piso. */
+function engineRefetchInterval(): number | false {
+  if (typeof document !== 'undefined' && document.hidden) return false;
+  return ENGINE_REFETCH_MS;
+}
 
 export const ENGINE_QUERY_KEYS = [
   ['sector_settings'],
@@ -177,7 +186,7 @@ export function useSectorSettings() {
     staleTime: 60_000,
     // Ordem, ativação e grupos paralelos governam colunas e elegibilidade do
     // Kanban; precisam do mesmo piso de frescor das views do motor.
-    refetchInterval: ENGINE_REFETCH_MS,
+    refetchInterval: engineRefetchInterval,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('sector_settings')
@@ -192,7 +201,7 @@ export function useSectorSettings() {
 export function useProductionScheduleGrid(fromISO: string, toISO: string) {
   return useQuery({
     queryKey: ['production_schedule_grid', fromISO, toISO],
-    refetchInterval: ENGINE_REFETCH_MS,
+    refetchInterval: engineRefetchInterval,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('v_production_schedule_grid')
@@ -244,7 +253,7 @@ export function useOpSchedule(orderId: string | null) {
 export function useProductionQueueDetail() {
   return useQuery({
     queryKey: ['production_queue_detail'],
-    refetchInterval: ENGINE_REFETCH_MS,
+    refetchInterval: engineRefetchInterval,
     retry: shouldRetryProductionQueue,
     queryFn: async () => {
       const { data, error } = await supabase
@@ -260,7 +269,7 @@ export function useProductionQueueDetail() {
 export function useProductionOverloads() {
   return useQuery({
     queryKey: ['production_overloads'],
-    refetchInterval: ENGINE_REFETCH_MS,
+    refetchInterval: engineRefetchInterval,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('v_production_overloads')
