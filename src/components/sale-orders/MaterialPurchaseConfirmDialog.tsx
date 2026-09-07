@@ -10,7 +10,11 @@ import {
   Calendar, Truck, Warning as AlertTriangle, ShoppingCart,
   FloppyDisk as Save, XCircle, Money, Storefront,
 } from '@phosphor-icons/react';
-import { MaterialAvailabilityResult, MaterialShortage } from '@/lib/materialAvailability';
+import {
+  MaterialAvailabilityResult,
+  MaterialShortage,
+  purchaseSupplierGroupKey,
+} from '@/lib/materialAvailability';
 import { SubmitFlowStepper } from './SubmitFlowStepper';
 import { useSuppliers } from '@/hooks/useSuppliers';
 import { supabase } from '@/integrations/supabase/client';
@@ -146,7 +150,10 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, onCo
 
     const map = new Map<string, PurchaseLine[]>();
     for (const line of lines) {
-      const key = line.supplierId || NO_SUPPLIER;
+      // Mesma cascata do enrich: id do produto → id do grupo → nome do grupo.
+      // Antes só o id contava, então "Soares" vindo de group_suppliers sem
+      // casamento em `suppliers.id` caía no balde sem fornecedor.
+      const key = purchaseSupplierGroupKey(line.supplierId, line.supplierName);
       const arr = map.get(key) || [];
       arr.push(line);
       map.set(key, arr);
@@ -154,19 +161,21 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, onCo
 
     const built = [...map.entries()].map(([key, items]) => ({
       key,
-      supplierId: key === NO_SUPPLIER ? null : key,
+      supplierId: key === NO_SUPPLIER ? null : (items[0].supplierId || null),
       supplierName: key === NO_SUPPLIER ? 'Sem fornecedor definido' : items[0].supplierName,
       leadTimeDays: Math.max(...items.map(i => i.leadTimeDays || 0)),
       total: items.reduce((sum, i) => sum + i.total, 0),
       items: [...items].sort((a, b) => a.shortage.product_name.localeCompare(b.shortage.product_name, 'pt-BR')),
     }));
 
-    const blockedGroup = built.find(g => g.supplierId === null) || null;
+    // Bloqueado = sem fornecedor de verdade. Card com nome de grupo (mesmo
+    // sem UUID) já saiu do rascunho "A definir".
+    const blockedGroup = built.find(g => g.key === NO_SUPPLIER) || null;
     // Ordem por consequência: o fornecedor que puxa mais dinheiro primeiro —
     // é a variável da decisão. Desempate por nome pra a lista não dançar entre
     // uma abertura e outra.
     const ready = built
-      .filter(g => g.supplierId !== null)
+      .filter(g => g.key !== NO_SUPPLIER)
       .sort((a, b) => b.total - a.total || a.supplierName.localeCompare(b.supplierName, 'pt-BR'));
 
     return {
@@ -336,7 +345,7 @@ export function MaterialPurchaseConfirmDialog({ open, onOpenChange, result, onCo
           )}
 
           {groups.map(group => {
-            const isBlocked = group.supplierId === null;
+            const isBlocked = group.key === NO_SUPPLIER;
             return (
               <section
                 key={group.key}
