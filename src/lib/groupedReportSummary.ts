@@ -1,3 +1,5 @@
+import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
+
 export const GROUPED_REPORT_SIZES = ['17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','37','38','39','40','41','42','43','44','45'];
 
 export type GroupedOrderData = {
@@ -249,11 +251,16 @@ function normalizeGroupPart(value: string): string {
     const individualSizes: Record<string, number> = {};
     const perFichaSizes: Record<string, number> = {};
     if (grade) {
+      const scaledGrade = scaleGradeWithLargestRemainder(
+        grade as Record<string, number>,
+        multiplier,
+        totalPairs,
+      );
       for (const size of GROUPED_REPORT_SIZES) {
         const qty = Number(grade[size]) || 0;
         if (qty > 0) {
-          const scaled = Math.round(qty * multiplier);
-          group.sizes[size] = (group.sizes[size] || 0) + scaled;
+          const scaled = Number(scaledGrade[size]) || 0;
+          if (scaled > 0) group.sizes[size] = (group.sizes[size] || 0) + scaled;
           individualSizes[size] = scaled;
           perFichaSizes[size] = qty;
         }

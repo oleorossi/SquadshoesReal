@@ -318,7 +318,8 @@ function groupOrdersByColor(orders: OrderData[], saleOrders?: SaleOrderData[]): 
             const gradeSum = getGradeTotal(grade);
             const totalPairs = getOrderTotalPairs(o);
             const multiplier = gradeSum > 0 ? totalPairs / gradeSum : 0;
-            return Math.round((Number(grade[s]) || 0) * multiplier) > 0;
+            const scaled = scaleGradeWithLargestRemainder(grade, multiplier, totalPairs);
+            return (Number(scaled[s]) || 0) > 0;
           })
         );
         if (refActiveSizes.length === 0) continue;

@@ -11,6 +11,7 @@ import { useOrders } from '@/hooks/useOrders';
 import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
 import { useOrderStraps } from '@/hooks/useOrderStraps';
  import { buildGroupedReportSummary } from '@/lib/groupedReportSummary';
+import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
 import { SignedImage } from '@/components/ui/signed-image';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -390,13 +391,16 @@ ${styles}
                             const gradeSum = grade ? Object.values(grade).reduce((s, v) => s + Number(v || 0), 0) : 0;
                             const totalPairs = Number((order as any).quantity) || gradeSum || 0;
                             const multiplier = gradeSum > 0 ? totalPairs / gradeSum : 1;
+                            const scaledGrade = gradeSum > 0
+                              ? scaleGradeWithLargestRemainder(grade || {}, multiplier, totalPairs)
+                              : {};
                             return (
                               <tr key={order.id} className="border-b border-border/40">
                                 <td className="px-3 py-2 font-mono text-xs font-semibold">{order.order_number}</td>
                                 <td className="px-3 py-2 text-xs">{ref ? `${ref.code || ''} ${ref.name || ''}`.trim() : '—'}</td>
                                 <td className="px-3 py-2 text-xs">{(order as any).color || '—'}</td>
                                 {summary.allActiveSizes.map(s => {
-                                  const qty = grade ? Math.round((Number(grade[s]) || 0) * multiplier) : 0;
+                                  const qty = Number(scaledGrade[s]) || 0;
                                   return <td key={s} className="px-2 py-2 text-center font-mono text-xs">{qty || ''}</td>;
                                 })}
                                 <td className="px-3 py-2 text-center font-mono font-bold text-xs">{totalPairs}</td>

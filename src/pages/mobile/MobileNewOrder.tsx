@@ -253,10 +253,17 @@ const SHEET_MATERIAL_OPTION = '__ficha__';
 
 export const MOBILE_TECHNICAL_SHEET_SELECT = 'id, name, sale_price, status_ficha, sizes, upper_material_group_id, upper_material, lining_material, shoe_category_id, shoe_category:silk_shoe_category(name), has_straps, strap_colors, variant_drives_upper, variant_drives_lining';
 
+/** Espelha SaleOrderItemForm.parseSizeRange: Infantil com faixa adulta legada
+ *  (default 33-41/34-40) usa 21–33; faixa física publicada na ficha vence. */
 export function mobileReferenceSizes(reference: RefLite | null | undefined): string[] {
-  const publishedRange = parseSizes(reference?.sizes || undefined);
+  const sizes = reference?.sizes || undefined;
+  const category = reference?.shoe_category?.name || null;
+  if (category === 'Infantil' && (!sizes || sizes === '33-41' || sizes === '34-40')) {
+    return SIZE_RANGE_CHILD;
+  }
+  const publishedRange = parseSizes(sizes);
   if (publishedRange.length > 0) return publishedRange;
-  return reference?.shoe_category?.name === 'Infantil' ? SIZE_RANGE_CHILD : SIZE_RANGE_ADULT;
+  return category === 'Infantil' ? SIZE_RANGE_CHILD : SIZE_RANGE_ADULT;
 }
 
 const draftItemQuantity = (item: DraftItem) =>
