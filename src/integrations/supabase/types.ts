@@ -15613,6 +15613,7 @@ export type Database = {
           sector: string
           shared_specs: boolean
           silk_url: string | null
+          sole_inspection_plan: Json
           unit_weight_kg: number | null
           updated_at: string
         }
@@ -15651,6 +15652,7 @@ export type Database = {
           sector: string
           shared_specs?: boolean
           silk_url?: string | null
+          sole_inspection_plan?: Json
           unit_weight_kg?: number | null
           updated_at?: string
         }
@@ -15689,6 +15691,7 @@ export type Database = {
           sector?: string
           shared_specs?: boolean
           silk_url?: string | null
+          sole_inspection_plan?: Json
           unit_weight_kg?: number | null
           updated_at?: string
         }
@@ -44037,6 +44040,27 @@ export type Database = {
           pvs: string
           solado: string
           solado_id: string
+        }[]
+      }
+      op_restore_consistency_report: {
+        Args: never
+        Returns: {
+          motivo: string
+          order_id: string
+          order_number: string
+          order_status: string
+          product_color: string
+          product_id: string
+          product_name: string
+          qtd_sem_grade: number
+        }[]
+      }
+      run_sole_live_parity_guards: {
+        Args: never
+        Returns: {
+          case_name: string
+          message: string
+          ok: boolean
         }[]
       }
       list_stock_debit_holes: {

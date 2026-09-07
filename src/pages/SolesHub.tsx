@@ -25,6 +25,7 @@ import SolesEstoqueTab from '@/components/soles-hub/SolesEstoqueTab';
 import SolesConsumosTab from '@/components/soles-hub/SolesConsumosTab';
 import SolesHistoricoTab from '@/components/soles-hub/SolesHistoricoTab';
 import SoleCreateDialog from '@/components/soles-hub/SoleCreateDialog';
+import SoleSpecGapsPanel from '@/components/soles-hub/SoleSpecGapsPanel';
 import { useForceDeleteProductFlow } from '@/components/inventory/ForceDeleteProductDialog';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { useCan } from '@/hooks/useAccessControl';
@@ -84,6 +85,7 @@ export default function SolesHub() {
   const { data: soles = [], isLoading } = useSoleProducts();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get('tab');
+  const requestedSole = searchParams.get('sole');
   const [tab, setTab] = usePersistedState<string>(
     'soles-hub-tab',
     requestedTab === 'consumos' ? 'consumos' : 'cadastro',
@@ -193,7 +195,25 @@ export default function SolesHub() {
   // sem sincronizar a URL o usuário cairia no Cadastro e pareceria que perdeu a tela.
   useEffect(() => {
     if (requestedTab === 'consumos' && tab !== 'consumos') setTab('consumos');
+    if (requestedTab === 'cadastro' && tab !== 'cadastro') setTab('cadastro');
   }, [requestedTab, setTab, tab]);
+
+  // Deep-link de Diagnósticos / lista de gaps: ?sole=<uuid>&tab=consumos
+  useEffect(() => {
+    if (!requestedSole) return;
+    if (soles.some((p) => p.id === requestedSole)) {
+      setSelectedId(requestedSole);
+    }
+  }, [requestedSole, soles, setSelectedId]);
+
+  const openSoleFromGaps = (soleId: string, intent: 'consumos' | 'cadastro') => {
+    setSelectedId(soleId);
+    setTab(intent);
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', intent);
+    next.set('sole', soleId);
+    setSearchParams(next, { replace: true });
+  };
 
   const handleTabChange = (nextTab: string) => {
     setTab(nextTab);
@@ -268,6 +288,11 @@ export default function SolesHub() {
 
         {/* Dialog de exclusão forçada (aparece quando o solado tem vínculos) */}
         {deleteFlow.dialog}
+
+        <SoleSpecGapsPanel
+          compact
+          onOpenSole={openSoleFromGaps}
+        />
 
         {/* Layout: lista esquerda + detalhe direita */}
         <div className="grid grid-cols-12 gap-4 min-h-[600px]">
