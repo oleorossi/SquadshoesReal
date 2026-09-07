@@ -417,7 +417,9 @@ export default function SaleOrderForm() {
   const createOrder = useCreateSaleOrder();
   const updateOrder = useUpdateSaleOrder();
   const checkStock = useCheckStockAvailability();
-  const { data: strapCatalog } = useArtisanalStrapCatalog(false, { includeLegacyHistory: false });
+  const { data: strapCatalog, isLoading: strapCatalogLoading } = useArtisanalStrapCatalog(false, {
+    includeLegacyHistory: false,
+  });
   const { user } = useAuth();
   const perm = useCan('/sales');
   const draftKey = saleOrderDraftKey(user?.id);
