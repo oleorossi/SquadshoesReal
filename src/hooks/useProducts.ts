@@ -81,6 +81,66 @@ export function stripProductPhysicalFields<T extends Record<string, unknown>>(da
 }
 
 
+/**
+ * Colunas do catálogo/lista de materiais. União do que MaterialsTab /
+ * ProductTable / AddToStockDialog / TechnicalReferencePanel / grupos leem.
+ * Exclui campos só do editor (lot_number, expiration_date, brand, NCM,
+ * gestaoclick_id, strap_migration_*, etc.).
+ *
+ * Embed de `product_groups`:
+ * - `name` — busca / agrupamento
+ * - `consumption_unit` — TechnicalReferencePanel (senão cai em product.unit)
+ * - `purchase_multiple` / `package_weight_kg` — NF→estoque (F5-03)
+ *
+ * Editores que precisam da row completa usam `useProductDetail(id)` — a página
+ * `/estoque/:id` já faz isso; ProductFormDialog só cria (product=null).
+ */
+export const PRODUCT_LIST_SELECT = [
+  'id',
+  'name',
+  'technical_name',
+  'sku',
+  'category',
+  'color',
+  'quantity',
+  'reserved_stock',
+  'stock_grade',
+  'min_stock',
+  'max_stock',
+  'unit',
+  'unit_price',
+  'location',
+  'group_id',
+  'active',
+  'image_url',
+  'purchase_unit',
+  'purchase_order_unit',
+  'conversion_rate',
+  'purchase_multiple',
+  'consumption_unit',
+  'dimensions_width',
+  'dimensions_length',
+  'dimensions_thickness',
+  'dimensions_unit',
+  'yield_per_meter',
+  'yield_unit',
+  'is_artisanal',
+  'is_chemical',
+  'is_standard_sole_item',
+  'sole_material',
+  'heel_height',
+  'sole_classification',
+  'box_type_id',
+  'supplier_id',
+  'supplier_color_code',
+  'lead_time_days',
+  'calculation_method',
+  'updated_at',
+  'created_at',
+  'product_groups!products_group_id_fkey(name, consumption_unit, purchase_multiple, package_weight_kg)',
+].join(', ');
+
+/** Catálogo paginado com colunas lean — use em listagens / selectors. */
 export function useProducts() {
   return useQuery({
     queryKey: ['products'],
@@ -101,15 +161,10 @@ export function useProducts() {
         const results = await Promise.all(batchPages.map(i =>
           supabase
             .from('products')
-            // consumption_unit incluído (2026-05-31): TechnicalReferencePanel
-            // lê product.product_groups?.consumption_unit ao adicionar material
-            // ao BOM. Sem ele cai pro fallback product.unit (estoque, ex: 'un'/
-            // 'rolo'), gerando consumo na unidade errada.
-            // package_weight_kg incluído (F5-03, 2026-07): AddToStockDialog e
-            // o lançamento em lote do Suppliers convertem NF→estoque via
-            // convertNfToStockUnit; sem o peso da embalagem do grupo a
-            // Prioridade 5 (pacote→massa) bloqueava mesmo com peso cadastrado.
-            .select('*, product_groups!products_group_id_fkey(name, consumption_unit, purchase_multiple, package_weight_kg)')
+            // ⚠ PERF (P1.4): era `select('*', product_groups…)` — baixava a
+            // row inteira (grade jsonb + metadados de migração) em toda visita
+            // ao estoque / PV / fornecedores. Lista = PRODUCT_LIST_SELECT.
+            .select(PRODUCT_LIST_SELECT)
             .order('updated_at', { ascending: false })
             .range(i * PAGE, (i + 1) * PAGE - 1),
         ));
@@ -122,6 +177,29 @@ export function useProducts() {
     },
     staleTime: 5 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
+  });
+}
+
+/**
+ * Row completa de um produto — formulários/editores. Não reusar o cache lean
+ * de `useProducts` como se fosse `*`: campos ausentes viram undefined em
+ * TS loose e o save pode gravar NULL por cima do valor real.
+ */
+export function useProductDetail(id: string | null | undefined) {
+  return useQuery({
+    queryKey: ['product-detail', id],
+    enabled: !!id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('products')
+        .select('*, product_groups!products_group_id_fkey(name, consumption_unit, purchase_multiple, package_weight_kg)')
+        .eq('id', id!)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    staleTime: 60 * 1000,
+    gcTime: 5 * 60 * 1000,
   });
 }
 
@@ -246,8 +324,9 @@ export function useUpdateProduct() {
         .eq('id', id);
       if (error) throw error;
     },
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['product-detail', vars.id] });
       toast.success('Produto atualizado com sucesso!');
     },
     onError: (err: Error) => toast.error(`Erro ao atualizar: ${err.message}`),
