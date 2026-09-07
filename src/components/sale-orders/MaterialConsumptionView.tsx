@@ -577,22 +577,27 @@ export default function MaterialConsumptionView({
   }
 
   const itemFilterControl = itemOptions.length > 0 && onSelectedItemIdChange ? (
-    <div className="flex items-center gap-1.5">
-      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Item</span>
-      <Select
-        value={selectedItemId ?? '__all__'}
-        onValueChange={(v) => onSelectedItemIdChange(v === '__all__' ? null : v)}
-      >
-        <SelectTrigger className="h-8 w-[18rem] max-w-[min(18rem,70vw)] text-xs" aria-label="Filtrar consumo por item do pedido">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="__all__">Todos os itens</SelectItem>
-          {itemOptions.map((opt) => (
-            <SelectItem key={opt.id} value={opt.id}>{opt.label}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border bg-muted/40 px-3 py-2.5">
+      <div className="flex items-center gap-1.5">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Item</span>
+        <Select
+          value={selectedItemId ?? '__all__'}
+          onValueChange={(v) => onSelectedItemIdChange(v === '__all__' ? null : v)}
+        >
+          <SelectTrigger className="h-9 w-[20rem] max-w-[min(20rem,75vw)] text-xs" aria-label="Filtrar consumo por item do pedido">
+            <SelectValue placeholder="Todos os itens" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">Todos os itens</SelectItem>
+            {itemOptions.map((opt) => (
+              <SelectItem key={opt.id} value={opt.id}>{opt.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Filtra solado, materiais e tiras deste item do PV (mesmo modelo, cor diferente = item separado).
+      </p>
     </div>
   ) : null;
 
@@ -898,6 +903,8 @@ export default function MaterialConsumptionView({
         </p>
       </div>
 
+      {itemFilterControl}
+
       {orderHeaders && orderHeaders.length > 0 && (
         <div className="flex flex-wrap gap-x-6 gap-y-1 rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
           {orderHeaders.map((h, i) => (
@@ -918,9 +925,8 @@ export default function MaterialConsumptionView({
             <h3 className="display mt-1 text-xl leading-none">Consumo e cobertura de estoque</h3>
           </div>
 
-        {/* ── Barra de controle: item, agrupar, buscar, totais ─────────────────── */}
+        {/* ── Barra de controle: agrupar, buscar, totais ─────────────────── */}
         <div className="sticky top-0 z-10 flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border bg-background/95 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-          {itemFilterControl}
           <div className="flex items-center gap-1.5">
             <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Agrupar</span>
             <Select value={groupBy} onValueChange={(v) => setGroupBy(v as GroupBy)}>
