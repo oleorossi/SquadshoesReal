@@ -91,7 +91,10 @@ import { useArtisanalStrapCatalog } from '@/hooks/useArtisanalStraps';
 import {
   listMissingStrapPvOrigemChoices,
   listStrapHubIncompleteForOrigem,
+  type StrapHubIncompleteIssue,
 } from '@/lib/strapPvOrigem';
+import StrapHubIncompleteDialog from '@/components/sale-orders/StrapHubIncompleteDialog';
+import type { StrapHubPricePatch } from '@/components/sale-orders/StrapHubIncompleteDialog';
 
 const emptyForm: SaleOrderFormData = {
   client_id: null,
@@ -431,20 +434,78 @@ export default function SaleOrderForm() {
   const perm = useCan('/sales');
   const draftKey = saleOrderDraftKey(user?.id);
 
-  const assertStrapOrigemReady = (productionItems: SaleOrderItemFormData[]): string | null => {
-    const measures = strapCatalog?.measures || [];
+  // Hub incompleto (MO/preço): diálogo no PV — não toast pedindo navegar fora.
+  const [hubIncompleteDialog, setHubIncompleteDialog] = useState<{
+    open: boolean;
+    issues: StrapHubIncompleteIssue[];
+    resume: null | {
+      kind: 'submit';
+      opts: SubmitOptions;
+    } | {
+      kind: 'doSubmit';
+      statusOverride?: string;
+    };
+  }>({ open: false, issues: [], resume: null });
+  // Preços acabados de gravar no diálogo — o catálogo React Query pode ainda
+  // estar stale no próximo handleSubmit; o override (ref + state) fecha a janela.
+  const [hubPriceOverrides, setHubPriceOverrides] = useState<Record<string, {
+    preco_artesanal_per_m?: number | null;
+    preco_prestador_per_m?: number | null;
+  }>>({});
+  const hubPriceOverridesRef = useRef(hubPriceOverrides);
+  hubPriceOverridesRef.current = hubPriceOverrides;
+
+  const buildStrapMeasuresForGuards = (
+    overrides: typeof hubPriceOverrides = hubPriceOverridesRef.current,
+  ) => {
+    const base = strapCatalog?.measures || [];
+    if (Object.keys(overrides).length === 0) return base;
+    return base.map((measure) => {
+      const patch = overrides[measure.id];
+      return patch ? { ...measure, ...patch } : measure;
+    });
+  };
+
+  const collectStrapHubIncomplete = (
+    productionItems: SaleOrderItemFormData[],
+    measures = buildStrapMeasuresForGuards(),
+  ): StrapHubIncompleteIssue[] => {
+    const issues: StrapHubIncompleteIssue[] = [];
+    for (const item of productionItems) {
+      const straps = Array.isArray(item.strap_colors) ? item.strap_colors : [];
+      if (straps.length === 0) continue;
+      for (const issue of listStrapHubIncompleteForOrigem(straps, measures)) {
+        // Bloqueio atual do save: mão de obra do prestador. Preço artesanal
+        // segue listado pela lib; frete/prestador padrão entram na fatia OS.
+        if (issue.code !== 'preco_prestador_ausente') continue;
+        issues.push(issue);
+      }
+    }
+    return issues;
+  };
+
+  /** Só escolha de origem ausente — gaps de Hub abrem diálogo separado. */
+  const assertStrapOrigemChoiceReady = (
+    productionItems: SaleOrderItemFormData[],
+    measures = buildStrapMeasuresForGuards(),
+  ): string | null => {
     for (const item of productionItems) {
       const straps = Array.isArray(item.strap_colors) ? item.strap_colors : [];
       if (straps.length === 0) continue;
       const missing = listMissingStrapPvOrigemChoices(straps, measures);
       if (missing[0]) return missing[0].message;
-      const hubGaps = listStrapHubIncompleteForOrigem(straps, measures)
-        .filter((issue) => issue.code === 'preco_prestador_ausente');
-      if (hubGaps[0]) {
-        return `${hubGaps[0].message} Abra o Hub de Tiras e complete antes de salvar.`;
-      }
     }
     return null;
+  };
+
+  const openHubIncompleteIfNeeded = (
+    productionItems: SaleOrderItemFormData[],
+    resume: NonNullable<typeof hubIncompleteDialog.resume>,
+  ): boolean => {
+    const hubGaps = collectStrapHubIncomplete(productionItems);
+    if (hubGaps.length === 0) return false;
+    setHubIncompleteDialog({ open: true, issues: hubGaps, resume });
+    return true;
   };
 
   // A URL direta não pode contornar a matriz CRUD. A proteção de rota governa
@@ -1581,8 +1642,12 @@ export default function SaleOrderForm() {
       if (tiraSemCor) { toast.error(tiraSemCor, { duration: 8000 }); return; }
     }
     {
-      const origemGap = assertStrapOrigemReady(productionItems);
+      const origemGap = assertStrapOrigemChoiceReady(productionItems);
       if (origemGap) { toast.error(origemGap, { duration: 8000 }); return; }
+      if (openHubIncompleteIfNeeded(productionItems, {
+        kind: 'doSubmit',
+        statusOverride,
+      })) return;
     }
     if (productionItems.some(i => i.quantity <= 0)) {
       toast.error('A quantidade dos itens deve ser maior que zero.');
@@ -1723,8 +1788,12 @@ export default function SaleOrderForm() {
       if (tiraSemCor) { toast.error(tiraSemCor, { duration: 8000 }); return; }
     }
     {
-      const origemGap = assertStrapOrigemReady(productionItems);
+      const origemGap = assertStrapOrigemChoiceReady(productionItems);
       if (origemGap) { toast.error(origemGap, { duration: 8000 }); return; }
+      if (openHubIncompleteIfNeeded(productionItems, {
+        kind: 'submit',
+        opts,
+      })) return;
     }
     // GUARD: bloqueia salvar com cor não cadastrada no material (cabedal/forração/
     // tira). Sem produto na cor, o débito é pulado (ruptura). Cadastre antes.
@@ -2718,6 +2787,41 @@ export default function SaleOrderForm() {
         isCancelling={updateOrder.isPending && cancelOpsDialog.open}
         onConfirm={handleConfirmCancelOps}
         onReload={() => window.location.reload()}
+      />
+
+      <StrapHubIncompleteDialog
+        open={hubIncompleteDialog.open}
+        onOpenChange={(open) => {
+          if (!open) setHubIncompleteDialog({ open: false, issues: [], resume: null });
+        }}
+        issues={hubIncompleteDialog.issues}
+        catalog={strapCatalog}
+        onCompleted={(patches: StrapHubPricePatch[]) => {
+          const resume = hubIncompleteDialog.resume;
+          const nextOverrides = { ...hubPriceOverridesRef.current };
+          for (const patch of patches) {
+            nextOverrides[patch.measureId] = {
+              ...nextOverrides[patch.measureId],
+              ...(patch.precoArtesanalPerM !== undefined
+                ? { preco_artesanal_per_m: patch.precoArtesanalPerM }
+                : {}),
+              ...(patch.precoPrestadorPerM !== undefined
+                ? { preco_prestador_per_m: patch.precoPrestadorPerM }
+                : {}),
+            };
+          }
+          // Ref síncrono: o handleSubmit/doSubmit seguinte lê daqui antes do
+          // re-render aplicar o state.
+          hubPriceOverridesRef.current = nextOverrides;
+          setHubPriceOverrides(nextOverrides);
+          setHubIncompleteDialog({ open: false, issues: [], resume: null });
+          if (resume?.kind === 'submit') {
+            const fakeEvent = { preventDefault() {} } as React.FormEvent;
+            void handleSubmit(fakeEvent, resume.opts);
+          } else if (resume?.kind === 'doSubmit') {
+            void doSubmit(resume.statusOverride);
+          }
+        }}
       />
 
       {/* Atalho de finalização: oferece gerar OS de terceirização deste pedido */}

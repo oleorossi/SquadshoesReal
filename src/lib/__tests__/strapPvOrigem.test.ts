@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest';
 import {
   applyDefaultStrapPvOrigemChoices,
   DEFAULT_STRAP_PV_ORIGEM,
+  groupStrapHubIncompleteByMeasure,
   listMissingStrapPvOrigemChoices,
   listStrapHubIncompleteForOrigem,
   resolveEffectiveStrapPvOrigem,
@@ -52,6 +52,27 @@ describe('strapPvOrigem', () => {
       ],
     );
     expect(issues.map((issue) => issue.code)).toEqual(['preco_artesanal_ausente']);
+    expect(issues[0].measureId).toBe('m1');
+  });
+
+  it('agrupa gaps de Hub por medida para o diálogo do PV', () => {
+    const issues = listStrapHubIncompleteForOrigem(
+      [
+        { label: 'TIRA 1', measure_id: 'm1', pv_origem: 'prestador' },
+        { label: 'TIRA 2', measure_id: 'm1', pv_origem: 'prestador' },
+        { label: 'TIRA 3', measure_id: 'm2', pv_origem: 'fabrica' },
+      ],
+      [
+        { id: 'm1', origem_padrao: 'escolhe_no_pv', preco_prestador_per_m: null },
+        { id: 'm2', origem_padrao: 'escolhe_no_pv', preco_artesanal_per_m: null },
+      ],
+    );
+    const grouped = groupStrapHubIncompleteByMeasure(issues);
+    expect(grouped).toHaveLength(2);
+    const prestador = grouped.find((gap) => gap.measureId === 'm1');
+    expect(prestador?.needsPrestador).toBe(true);
+    expect(prestador?.labels).toEqual(['TIRA 1', 'TIRA 2']);
+    expect(grouped.find((gap) => gap.measureId === 'm2')?.needsArtesanal).toBe(true);
   });
 
   it('frete/m exige Y > 0', () => {
