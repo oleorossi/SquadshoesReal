@@ -421,4 +421,74 @@ describe('materialConsumptionReport', () => {
     // Não pode partir "40" em "4"+"0" nem "150" em "1"+"5"+"0".
     expect(html).not.toMatch(/<th class="grade-num">4<\/th>\s*<th class="grade-num">0<\/th>/);
   });
+
+  it('mostra mão de obra/m e valor total nas tiras artesanais', () => {
+    const html = buildMaterialConsumptionReportHtml({
+      title: 'Consumo total - PV-00193',
+      mode: 'total',
+      artisanalStrapRows: [{
+        key: 'tira-1',
+        groupName: 'TIRA CHATA 8 mm · NAPA MADRID · OFF WHITE',
+        color: 'OFF WHITE',
+        baseName: 'NAPA MADRID',
+        largura_mm: 8,
+        metros_necessarios: 1044,
+        cut: {
+          largura_mm: 8, metros_uteis_por_banda: 0, n_bandas: 0, cm_a_cortar: 0,
+          rolos: 0, n_rolos_completos: 0, cm_no_ultimo_rolo: 0, valid: false, widthMissing: false,
+        },
+        canonical: {
+          recipeId: 'recipe-1',
+          baseRequiredM: 14.91,
+          confirmedYieldMPerM: 70,
+          usableBaseWidthMm: 1370,
+          theoreticalYieldMPerM: 70,
+          transformationCostPerM: 1.5,
+          blockingReasons: [],
+        },
+      }],
+      rows: [],
+    });
+
+    expect(html).toContain('Mão de obra/m');
+    expect(html).toContain('Valor total');
+    expect(html).toContain('R$\u00a01,50');
+    expect(html).toContain('R$\u00a01.566,00');
+    expect(html).toContain('receita conferida');
+  });
+
+  it('mostra traço quando o custo de mão de obra da tira não está disponível', () => {
+    const html = buildMaterialConsumptionReportHtml({
+      title: 'Consumo total - PV-00193',
+      mode: 'total',
+      artisanalStrapRows: [{
+        key: 'tira-sem-custo',
+        groupName: 'ELÁSTICO FORRADO 7 mm · NAPA MADRID · CAPUCCINO',
+        color: 'CAPUCCINO',
+        baseName: 'NAPA MADRID',
+        largura_mm: 7,
+        metros_necessarios: 312,
+        cut: {
+          largura_mm: 7, metros_uteis_por_banda: 0, n_bandas: 0, cm_a_cortar: 0,
+          rolos: 0, n_rolos_completos: 0, cm_no_ultimo_rolo: 0, valid: false, widthMissing: false,
+        },
+        canonical: {
+          recipeId: 'recipe-2',
+          baseRequiredM: 10.4,
+          confirmedYieldMPerM: 30,
+          usableBaseWidthMm: 1370,
+          theoreticalYieldMPerM: 30,
+          transformationCostPerM: null,
+          blockingReasons: [],
+        },
+      }],
+      rows: [],
+    });
+
+    expect(html).toContain('Mão de obra/m');
+    expect(html).toContain('Valor total');
+    // Duas células "—" para unitário e total (além de não inventar R$).
+    expect(html).toMatch(/Mão de obra\/m[\s\S]*?<td class="num">—<\/td>\s*<td class="num strong">—<\/td>/);
+    expect(html).not.toContain('R$');
+  });
 });
