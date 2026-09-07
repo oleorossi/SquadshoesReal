@@ -19,7 +19,7 @@ import {
  * fábrica; reabrir o assistente permite mandar o saldo a outro prestador.
  *
  * Backend: `get_pv_outsourceable_lines` + `generate_op_service_orders`
- * (rateio multi-prestador em 20270101019200).
+ * (rateio multi-prestador em 20270101019900).
  */
 
 export interface OutsourceableContractorOption {

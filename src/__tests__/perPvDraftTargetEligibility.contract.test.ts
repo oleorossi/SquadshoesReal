@@ -6,7 +6,7 @@ const ROOT = resolve(__dirname, '../..');
 const read = (path: string) => readFileSync(resolve(ROOT, path), 'utf8');
 
 const migration = read(
-  'supabase/migrations/20270101019300_per_pv_purchase_include_draft_targets.sql',
+  'supabase/migrations/20270101020000_per_pv_purchase_include_draft_targets.sql',
 );
 const dialog = read('src/components/purchase/GeneratePurchaseOrdersDialog.tsx');
 
