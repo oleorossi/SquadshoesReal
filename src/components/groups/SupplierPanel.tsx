@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { EmptyState } from '@/components/ui/empty-state';
 import {
   useGroupSuppliers, useDeleteGroupSupplier, useAddGroupSupplier, useUpdateGroupSupplier,
   useGroupSupplierMaterials, useAddGroupSupplierMaterial, useUpdateGroupSupplierMaterial, useDeleteGroupSupplierMaterial,
@@ -111,7 +112,15 @@ function MaterialsTable({ supplier }: { supplier: GroupSupplier }) {
   );
 }
 
-export default function SupplierPanel({ groupId }: { groupId: string }) {
+interface SupplierPanelProps {
+  groupId: string;
+  /** Embutido no dialog de edição do grupo — sem faixa de expansão de tabela. */
+  embedded?: boolean;
+  /** Esconde o cabeçalho interno quando o Card/aba já traz o título. */
+  hideHeader?: boolean;
+}
+
+export default function SupplierPanel({ groupId, embedded = false, hideHeader = false }: SupplierPanelProps) {
   const { data: suppliers = [] } = useGroupSuppliers(groupId);
   const addSupplier = useAddGroupSupplier();
   const updateSupplier = useUpdateGroupSupplier();
@@ -133,19 +142,38 @@ export default function SupplierPanel({ groupId }: { groupId: string }) {
   };
 
   return (
-    <div className="space-y-3 p-4 bg-muted/20 border-t">
-      <div className="flex items-center justify-between">
-        <p className="text-sm font-semibold flex items-center gap-1.5">
-          <Truck className="h-4 w-4 text-primary" />
-          Fornecedores ({suppliers.length})
-        </p>
-        <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={openAdd}>
-          <Plus className="h-3 w-3" /> Fornecedor
-        </Button>
-      </div>
+    <div className={embedded ? 'space-y-3' : 'space-y-3 border-t bg-muted/20 p-4'}>
+      {!hideHeader && (
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-semibold flex items-center gap-1.5">
+            <Truck className="h-4 w-4 text-primary" />
+            Fornecedores ({suppliers.length})
+          </p>
+          <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={openAdd}>
+            <Plus className="h-3 w-3" /> Fornecedor
+          </Button>
+        </div>
+      )}
+      {hideHeader && (
+        <div className="flex justify-end">
+          <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={openAdd}>
+            <Plus className="h-3.5 w-3.5" /> Adicionar fornecedor
+          </Button>
+        </div>
+      )}
 
       {suppliers.length === 0 && (
-        <p className="text-xs text-muted-foreground py-3 text-center">Nenhum fornecedor cadastrado neste grupo.</p>
+        <EmptyState
+          size="sm"
+          icon={Truck}
+          title="Nenhum fornecedor neste grupo"
+          description="Cadastre quem vende este material — preço, prazo e condição de pagamento alimentam a OC automática."
+          action={
+            <Button size="sm" className="h-8 gap-1.5" onClick={openAdd}>
+              <Plus className="h-3.5 w-3.5" /> Cadastrar fornecedor
+            </Button>
+          }
+        />
       )}
 
       <div className="space-y-2">
