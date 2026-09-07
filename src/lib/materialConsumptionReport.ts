@@ -426,7 +426,7 @@ export function buildMaterialConsumptionReportHtml({
     .report-table thead { display:table-header-group; }
     .report-table th { padding:4px 5px; border-top:1px solid var(--ink); border-bottom:1px solid var(--ink); background:var(--soft); color:var(--muted); font-size:7pt; font-weight:700; letter-spacing:.08em; text-align:left; text-transform:uppercase; }
     .report-table td { padding:5px 6px; border-bottom:1px solid var(--line); vertical-align:top; overflow-wrap:anywhere; }
-    .report-table .num { text-align:right; white-space:nowrap; }
+    .report-table .num { text-align:right; white-space:nowrap; overflow:visible; }
     .report-table .unit { width:34px; text-align:center; color:var(--muted); }
     .report-table .strong { font-weight:700; }
     .status-cell { width:112px; }
@@ -443,10 +443,24 @@ export function buildMaterialConsumptionReportHtml({
     .component-block { margin-top:8px; break-inside:auto; }
     .component-heading { display:flex; justify-content:space-between; gap:10px; padding:3px 5px; border-left:4px solid var(--accent); background:var(--ink); color:white; font-size:7.6pt; font-weight:700; letter-spacing:.09em; text-transform:uppercase; }
     .component-heading span:last-child { color:#ccc8c1; font-family:'Fira Code',monospace; font-size:6.8pt; }
-    .materials-table th:nth-child(1) { width:22%; } .materials-table th:nth-child(2) { width:24%; }
-    .materials-table th:nth-child(3) { width:13%; } .materials-table th:nth-child(4), .materials-table th:nth-child(5), .materials-table th:nth-child(6) { width:11%; }
-    .materials-table th:nth-child(7) { width:8%; text-align:center; }
-    .materials-table.total-mode th:nth-child(4) { width:22%; } .materials-table.total-mode th:nth-child(5) { width:10%; text-align:center; }
+    /* Cobertura: 9 cols — Grupo · Aplicação · Cor · Necessidade · Estoque · Falta · Un. · Preço · Valor */
+    .materials-table th:nth-child(1) { width:14%; }
+    .materials-table th:nth-child(2) { width:14%; }
+    .materials-table th:nth-child(3) { width:10%; }
+    .materials-table th:nth-child(4),
+    .materials-table th:nth-child(5),
+    .materials-table th:nth-child(6) { width:9%; }
+    .materials-table th:nth-child(7) { width:5%; text-align:center; }
+    .materials-table th:nth-child(8) { width:12%; }
+    .materials-table th:nth-child(9) { width:18%; }
+    /* Total: 7 cols — Grupo · Aplicação · Cor · Necessidade · Un. · Preço · Valor a gastar */
+    .materials-table.total-mode th:nth-child(1) { width:18%; }
+    .materials-table.total-mode th:nth-child(2) { width:18%; }
+    .materials-table.total-mode th:nth-child(3) { width:12%; }
+    .materials-table.total-mode th:nth-child(4) { width:12%; }
+    .materials-table.total-mode th:nth-child(5) { width:6%; text-align:center; }
+    .materials-table.total-mode th:nth-child(6) { width:14%; }
+    .materials-table.total-mode th:nth-child(7) { width:20%; text-align:right; }
     .grade-row td { padding:0 5px 6px 5px; border-bottom:1px solid var(--ink); }
     .sole-grade { padding:4px 0 0 12px; overflow:visible; }
     .sole-grade table { width:100%; border-collapse:collapse; font-size:7.2pt; table-layout:auto; }

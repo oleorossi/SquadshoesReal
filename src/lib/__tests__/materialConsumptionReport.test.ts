@@ -518,6 +518,16 @@ describe('materialConsumptionReport', () => {
           unitPrice: 4,
           boxTypeIds: ['bt-colmeia'],
         }),
+        row({
+          componentType: 'Solado',
+          groupName: 'SOLADO 01',
+          materialName: 'Solado',
+          color: 'PRETO',
+          productUnit: 'par',
+          totalQuantity: 1800,
+          unitPrice: 1.9,
+          productIds: ['solado-01-preto'],
+        }),
       ],
     });
 
@@ -529,5 +539,18 @@ describe('materialConsumptionReport', () => {
     expect(html).toContain('R$\u00a0186,38');
     expect(html).toContain('R$\u00a04,00');
     expect(html).toContain('R$\u00a0180,00');
+    // Valor a gastar completo (necessidade × unitário) — não cortado no markup
+    expect(html).toContain('R$\u00a03.420,00');
+
+    // Layout: no modo total a 7ª coluna é Valor a gastar (não Un.), precisa de
+    // largura suficiente e alinhamento à direita — a regra antiga dava 8%+center.
+    expect(html).toMatch(
+      /\.materials-table\.total-mode th:nth-child\(7\)\s*\{\s*width:20%;\s*text-align:right;\s*\}/,
+    );
+    expect(html).not.toMatch(
+      /\.materials-table\.total-mode th:nth-child\(7\)\s*\{\s*width:8%/,
+    );
+    // Cobertura também reserva espaço explícito para Preço (8) e Valor (9)
+    expect(html).toMatch(/\.materials-table th:nth-child\(9\)\s*\{\s*width:18%;\s*\}/);
   });
 });
