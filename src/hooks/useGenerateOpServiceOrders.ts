@@ -13,13 +13,37 @@ import {
  * Geração de OS de terceirização por Pedido → Serviço → OP.
  *
  * Fluxo: escolhe o PV, escolhe os serviços (setores) que vão pra rua e, em cada
- * serviço, marca as OPs enviadas. Gera UMA OS por (OP × setor) atrelada à OP
- * (`service_orders.order_id`), reusando o schema existente — a OS aparece no
- * quadro "Na Rua" e segue o fluxo de envio/retorno/pagamento normal.
+ * serviço, marca as OPs enviadas. Gera UMA OS por (OP × setor × prestador)
+ * atrelada à OP (`service_orders.order_id`). Rateio parcial deixa a sobra na
+ * fábrica; reabrir o assistente permite mandar o saldo a outro prestador.
  *
- * Backend: migration 20260703120000 (`get_pv_outsourceable_lines` +
- * `generate_op_service_orders`).
+ * Backend: `get_pv_outsourceable_lines` + `generate_op_service_orders`
+ * (rateio multi-prestador em 20270101019200).
  */
+
+export interface OutsourceableContractorOption {
+  terceirizacao_id: string;
+  contractor_id: string;
+  contractor_name: string | null;
+  value_per_pair: number | null;
+  capacity_pairs_per_day?: number | null;
+  return_before_sector?: string | null;
+  material_components?: string[] | null;
+  config_issue?: string | null;
+}
+
+export interface OutsourceableExistingAllocation {
+  os_id: string;
+  os_number?: string | null;
+  contractor_id: string;
+  contractor_name?: string | null;
+  quantity: number;
+  unit_price: number;
+  total_value: number;
+  status: string;
+  created_at?: string | null;
+  service_date?: string | null;
+}
 
 export interface OutsourceableLine {
   order_id: string;
@@ -57,8 +81,15 @@ export interface OutsourceableLine {
   /** Configuração completa da ficha usada para autorizar a geração planejada. */
   planning_config_ready?: boolean;
   planning_config_issue?: string | null;
+  /** true quando o rateio já cobriu 100% da OP nesta atividade. */
   already_has_os: boolean;
   existing_os_status: string | null;
+  /** Pares já cobertos por OS ativas desta OP×atividade. */
+  allocated_quantity?: number;
+  /** Pares ainda disponíveis para nova OS ou fábrica. */
+  remaining_quantity?: number;
+  existing_allocations?: OutsourceableExistingAllocation[];
+  available_contractors?: OutsourceableContractorOption[];
   /** Filtro que puxou esta linha na fila (prazo / estoque). */
   queue_pull?: QueuePullFilter;
 }
