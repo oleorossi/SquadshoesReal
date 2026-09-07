@@ -10,12 +10,12 @@ const SQL = readFileSync(
 describe('rateio multi-prestador de OS — contrato SQL', () => {
   it('troca a unicidade OP×setor por OP×setor×prestador', () => {
     expect(SQL).toContain('DROP INDEX IF EXISTS public.uq_os_per_op_sector');
-    expect(SQL).toMatch(/CREATE UNIQUE INDEX uq_os_per_op_sector_contractor[\s\S]*order_id, target_sector, contractor_id/);
+    expect(SQL).toMatch(/CREATE UNIQUE INDEX IF NOT EXISTS uq_os_per_op_sector_contractor[\s\S]*order_id, target_sector, contractor_id/);
   });
 
   it('permite vários prestadores ativos por atividade na ficha', () => {
     expect(SQL).toContain('DROP INDEX IF EXISTS public.uq_reference_terceirizacoes_active_ref_sector');
-    expect(SQL).toMatch(/CREATE UNIQUE INDEX uq_reference_terceirizacoes_active_ref_sector_contractor[\s\S]*contractor_id/);
+    expect(SQL).toMatch(/CREATE UNIQUE INDEX IF NOT EXISTS uq_reference_terceirizacoes_active_ref_sector_contractor[\s\S]*contractor_id/);
   });
 
   it('limita a soma das OS ativas à quantidade da OP', () => {
