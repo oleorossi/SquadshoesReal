@@ -3,6 +3,7 @@ import {
   listMissingStrapPvOrigemChoices,
   listStrapHubIncompleteForOrigem,
   resolveEffectiveStrapPvOrigem,
+  sourceModeForEffectiveOrigem,
   strapFreightPerMeter,
 } from '@/lib/strapPvOrigem';
 
@@ -55,5 +56,12 @@ describe('strapPvOrigem', () => {
     expect(strapFreightPerMeter(80, 1600)).toBeCloseTo(0.05);
     expect(strapFreightPerMeter(80, 0)).toBeNull();
     expect(strapFreightPerMeter(null, 1600)).toBeNull();
+  });
+
+  it('origem efetiva mapeia para source_mode do motor', () => {
+    expect(sourceModeForEffectiveOrigem('sku_acabado')).toBe('buy_ready');
+    expect(sourceModeForEffectiveOrigem('fabrica')).toBe('internal');
+    expect(sourceModeForEffectiveOrigem('prestador')).toBe('internal');
+    expect(sourceModeForEffectiveOrigem(null)).toBeNull();
   });
 });

@@ -243,7 +243,7 @@ repo+banco; validar objetos no banco (regra de ouro de migrations).
 | Hub: `origem_padrao` + preços na medida | feito (UI + colunas) |
 | Prestador: frete R$/Y m | feito (colunas + form) |
 | PV: seletor + bulk + guard de save | feito |
-| OS automática 1/PV + remessa | **próxima fatia** (motor ainda usa container por contractor) |
-| Strass → OC se faltar estoque | **próxima fatia** (reusar `materialize_strap_purchase_orders`) |
+| OS automática 1/PV + remessa | feito no motor (`18200`: OS amarrada ao `sale_order_id`; preço MO+frete). Criação na aprovação/demanda, não no create do PV. |
+| Strass → OC se faltar estoque | mapeamento Hub/`pv_origem` → `buy_ready` no PV; OC via ramo existente `materialize_strap_purchase_orders` |
 | Consumo informativo (prestador) | pendente |
 | Redesign abas Hub | pendente |

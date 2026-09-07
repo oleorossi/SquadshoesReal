@@ -28,7 +28,11 @@ import StrapPvOrigemChooser, {
 } from './StrapPvOrigemChooser';
 import { ProductFormDialog } from '@/components/inventory/ProductFormDialog';
 import { normalizeStrapOrigemPadrao } from '@/lib/strapBaseNapaPeel';
-import { listMissingStrapPvOrigemChoices } from '@/lib/strapPvOrigem';
+import {
+  listMissingStrapPvOrigemChoices,
+  resolveEffectiveStrapPvOrigem,
+  sourceModeForEffectiveOrigem,
+} from '@/lib/strapPvOrigem';
 import { useAddProduct, ProductSchema } from '@/hooks/useProducts';
 import { useAddComponentSheet } from '@/hooks/useComponentSheets';
 import type { ProductFormData } from '@/types/inventory';
@@ -844,6 +848,54 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     });
     if (changed) latestRef.current.onUpdate(latestRef.current.index, 'strap_sourcing', next);
   }, [item.strap_colors, preserveCommittedStrapSnapshot, strapLineByKey, strapSourcingMap]);
+
+  // Hub origem_padrao + pv_origem → source_mode do motor (internal | buy_ready).
+  useEffect(() => {
+    if (preserveCommittedStrapSnapshot) return;
+    if (!strapCatalog?.measures?.length) return;
+    const straps = (item.strap_colors as SaleOrderItemStrap[]) || [];
+    if (straps.length === 0) return;
+    let next = strapSourcingMap;
+    let changed = false;
+    for (const strap of straps) {
+      const lineId = technicalStrapLineId(strap);
+      if (!lineId) continue;
+      // Identidade acabada já congela buy_ready no efeito acima.
+      if (isPurchasedReadyStrap(strap)) continue;
+      const measure = strapCatalog.measures.find((entry) => entry.id === strap.measure_id);
+      if (measure?.origem_padrao == null || measure.origem_padrao === '') continue;
+      const effective = resolveEffectiveStrapPvOrigem(strap, measure);
+      const mode = sourceModeForEffectiveOrigem(effective);
+      if (!mode) continue;
+      const current = getStrapSourcingOverride(next, lineId);
+      if (current === mode) continue;
+      if (mode === 'buy_ready') {
+        const line = strapLineByKey.get(lineId);
+        const colorId = line?.colorId || strap.color_id || null;
+        if (!line?.strapVariantId || !colorId || !line.canBuyReady) continue;
+        next = setStrapSourcing(next, lineId, {
+          source_mode: 'buy_ready',
+          color_id: colorId,
+          strap_variant_id: line.strapVariantId,
+          recipe_id: null,
+          gross_required_m: line.strapRequiredM,
+          required_at: line.requiredAt,
+          main_production_start: line.mainProductionStart,
+          schedule_revision: line.scheduleRevision,
+        });
+      } else {
+        next = setStrapSourcing(next, lineId, 'internal');
+      }
+      changed = true;
+    }
+    if (changed) latestRef.current.onUpdate(latestRef.current.index, 'strap_sourcing', next);
+  }, [
+    item.strap_colors,
+    preserveCommittedStrapSnapshot,
+    strapCatalog?.measures,
+    strapLineByKey,
+    strapSourcingMap,
+  ]);
 
   const availableColors: string[] = useMemo(() => {
     // Variante selecionada: a cor vem EXCLUSIVAMENTE do grupo efetivo que o
@@ -2154,6 +2206,14 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                         return { ...strap, pv_origem: 'fabrica' as const };
                       });
                       onUpdate(index, 'strap_colors', updated);
+                      let nextSourcing = strapSourcingMap;
+                      updated.forEach((strap) => {
+                        const lineId = technicalStrapLineId(strap);
+                        if (!lineId || isPurchasedReadyStrap(strap)) return;
+                        if (strap.pv_origem !== 'fabrica') return;
+                        nextSourcing = setStrapSourcing(nextSourcing, lineId, 'internal');
+                      });
+                      onUpdate(index, 'strap_sourcing', nextSourcing);
                     }}
                     onAllContractor={() => {
                       const updated = straps.map((strap) => {
@@ -2162,6 +2222,14 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                         return { ...strap, pv_origem: 'prestador' as const };
                       });
                       onUpdate(index, 'strap_colors', updated);
+                      let nextSourcing = strapSourcingMap;
+                      updated.forEach((strap) => {
+                        const lineId = technicalStrapLineId(strap);
+                        if (!lineId || isPurchasedReadyStrap(strap)) return;
+                        if (strap.pv_origem !== 'prestador') return;
+                        nextSourcing = setStrapSourcing(nextSourcing, lineId, 'internal');
+                      });
+                      onUpdate(index, 'strap_sourcing', nextSourcing);
                     }}
                   />
                 )}
@@ -2618,6 +2686,14 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                                 const updated = [...straps];
                                 updated[sIdx] = { ...strap, pv_origem: next };
                                 onUpdate(index, 'strap_colors', updated);
+                                const lineKey = technicalStrapLineId(strap);
+                                if (lineKey && !isPurchasedReadyStrap(strap)) {
+                                  onUpdate(
+                                    index,
+                                    'strap_sourcing',
+                                    setStrapSourcing(strapSourcingMap, lineKey, 'internal'),
+                                  );
+                                }
                               }}
                             />
                             <div className="flex items-center justify-between gap-1">

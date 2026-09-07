@@ -120,3 +120,12 @@ export function strapFreightPerMeter(
   if (!Number.isFinite(a) || a < 0 || !Number.isFinite(y) || !(y > 0)) return null;
   return a / y;
 }
+
+/** Motor canônico: sku → buy_ready; fábrica/prestador → internal (OS no prestador). */
+export function sourceModeForEffectiveOrigem(
+  origem: EffectiveStrapPvOrigem | null | undefined,
+): 'internal' | 'buy_ready' | null {
+  if (origem === 'sku_acabado') return 'buy_ready';
+  if (origem === 'fabrica' || origem === 'prestador') return 'internal';
+  return null;
+}
