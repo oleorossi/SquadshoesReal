@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -137,6 +138,7 @@ export function useActiveReferenceTerceirizacoes(referenceId: string | null) {
     queryKey: ['reference_terceirizacoes_active', referenceId],
     enabled: !!referenceId,
     staleTime: 60_000,
+    meta: { silentError: true },
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('reference_terceirizacoes')
@@ -150,9 +152,44 @@ export function useActiveReferenceTerceirizacoes(referenceId: string | null) {
   });
 }
 
+/**
+ * Prefetch em lote das terceirizações ativas das refs do PV. Um `.in(...)`
+ * no open; o mapa alimenta `ItemSectorOutsourcingSection` sem N queries.
+ */
+export function useActiveReferenceTerceirizacoesBatch(referenceIds: string[]) {
+  const ids = useMemo(
+    () => [...new Set(referenceIds.filter(Boolean))].sort(),
+    [referenceIds],
+  );
+  return useQuery({
+    queryKey: ['reference_terceirizacoes_active_batch', ids],
+    enabled: ids.length > 0,
+    staleTime: 60_000,
+    meta: { silentError: true },
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('reference_terceirizacoes')
+        .select(SELECT)
+        .in('reference_id', ids)
+        .eq('active', true)
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      const map = new Map<string, ReferenceTerceirizacao[]>();
+      for (const id of ids) map.set(id, []);
+      for (const row of (data || []) as ReferenceTerceirizacao[]) {
+        const list = map.get(row.reference_id) || [];
+        list.push(row);
+        map.set(row.reference_id, list);
+      }
+      return map as ReadonlyMap<string, ReferenceTerceirizacao[]>;
+    },
+  });
+}
+
 function invalidate(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ['reference_terceirizacoes'] });
   qc.invalidateQueries({ queryKey: ['reference_terceirizacoes_active'] });
+  qc.invalidateQueries({ queryKey: ['reference_terceirizacoes_active_batch'] });
   qc.invalidateQueries({ queryKey: ['pv_outsourceable_lines'] });
   qc.invalidateQueries({ queryKey: ['service_order_generation_gaps'] });
   qc.invalidateQueries({ queryKey: ['pv_terceirizacao_lines'] });

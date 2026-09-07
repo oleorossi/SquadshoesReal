@@ -38,12 +38,24 @@ import { useFactoringConfigs } from '@/components/finance/FactoringTab';
 import { useCompanies } from '@/hooks/useNfe';
 import { useAllActiveReferenceMaterialVariants } from '@/hooks/useReferenceMaterialVariants';
 import {
+  internalStrapReadinessKey,
+  useInternalStrapReadinessBatch,
+  type InternalStrapReadiness,
+  type InternalStrapReadinessInput,
+} from '@/hooks/useInternalStrapReadiness';
+import {
+  useActiveReferenceTerceirizacoesBatch,
+  type ReferenceTerceirizacao,
+} from '@/hooks/useReferenceTerceirizacoes';
+import { isCommittedSaleOrderStrapSnapshotStatus } from '@/lib/saleOrderStateMachine';
+import { strapColorMode, technicalStrapLineId } from '@/lib/technicalStrapLines';
+import { strapIdentityBasis } from '@/lib/strapIdentity';
+import {
   calculateFactoringDiscount,
   parsePaymentConditionInstallments,
 } from '@/lib/factoringCalc';
 import { computeARSchedule } from '@/lib/saleOrderAR';
 import { getMaterialVariantReadinessIssue } from '@/lib/saleOrderCommercialReadiness';
-import { strapColorMode, technicalStrapLineId } from '@/lib/technicalStrapLines';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
@@ -636,6 +648,11 @@ interface SaleOrderItemsListProps {
   sharedProductGroups: Array<{ id: string; name: string | null; colors: unknown; is_color_agnostic: boolean | null }>;
   sharedStrapCatalog?: unknown;
   sharedStrapCatalogLoading?: boolean;
+  sharedInternalStrapReadinessByKey?: ReadonlyMap<string, InternalStrapReadiness>;
+  sharedReferenceTerceirizacoesByRef?: ReadonlyMap<string, ReferenceTerceirizacao[]>;
+  sharedReferenceTerceirizacoesLoading?: boolean;
+  sharedReferenceTerceirizacoesFailed?: boolean;
+  onRetrySharedReferenceTerceirizacoes?: () => void;
 }
 
 const SaleOrderItemsList = memo(function SaleOrderItemsList({
@@ -664,6 +681,11 @@ const SaleOrderItemsList = memo(function SaleOrderItemsList({
   sharedProductGroups,
   sharedStrapCatalog,
   sharedStrapCatalogLoading,
+  sharedInternalStrapReadinessByKey,
+  sharedReferenceTerceirizacoesByRef,
+  sharedReferenceTerceirizacoesLoading,
+  sharedReferenceTerceirizacoesFailed,
+  onRetrySharedReferenceTerceirizacoes,
 }: SaleOrderItemsListProps) {
   return (
     <>
@@ -727,8 +749,23 @@ const SaleOrderItemsList = memo(function SaleOrderItemsList({
                 onToggleSelect={isProductionExcludedSaleOrderItem(item) ? undefined : onToggleSelect}
                 sharedProducts={sharedProducts}
                 sharedProductGroups={sharedProductGroups}
-                sharedStrapCatalog={sharedStrapCatalog}
+                sharedStrapCatalog={sharedStrapCatalog as any}
                 sharedStrapCatalogLoading={sharedStrapCatalogLoading}
+                sharedInternalStrapReadiness={
+                  sharedInternalStrapReadinessByKey?.get(internalStrapReadinessKey({
+                    referenceId: item.reference_id,
+                    materialVariantId: item.material_variant_id,
+                    color: item.color,
+                  }) || '') || undefined
+                }
+                sharedReferenceTerceirizacoes={
+                  item.reference_id
+                    ? sharedReferenceTerceirizacoesByRef?.get(item.reference_id)
+                    : undefined
+                }
+                sharedReferenceTerceirizacoesLoading={sharedReferenceTerceirizacoesLoading}
+                sharedReferenceTerceirizacoesFailed={sharedReferenceTerceirizacoesFailed}
+                onRetrySharedReferenceTerceirizacoes={onRetrySharedReferenceTerceirizacoes}
               />
             </div>
           </Fragment>
@@ -737,6 +774,9 @@ const SaleOrderItemsList = memo(function SaleOrderItemsList({
     </>
   );
 });
+
+const EMPTY_STRAP_READINESS_MAP: ReadonlyMap<string, InternalStrapReadiness> = new Map();
+const EMPTY_TERCEIRIZACOES_MAP: ReadonlyMap<string, ReferenceTerceirizacao[]> = new Map();
 
 export default function SaleOrderFormPanel({
   saleOrderId, form, setForm, items, setItems, clients, representatives, references,
@@ -846,6 +886,44 @@ export default function SaleOrderFormPanel({
   const selectedSheetIds = useMemo(() => {
     return [...new Set(items.map(i => i.reference_id).filter(Boolean))];
   }, [items]);
+
+  // Readiness de tiras: 1 RPC para todas as tuplas únicas (ref|variant|color).
+  const strapReadinessInputs = useMemo((): InternalStrapReadinessInput[] => {
+    if (isCommittedSaleOrderStrapSnapshotStatus(form.status)) return [];
+    return items.flatMap((item) => {
+      if (!item.reference_id) return [];
+      const straps = Array.isArray(item.strap_colors) ? item.strap_colors : [];
+      const hasFollowMain = straps.some((strap) =>
+        strapIdentityBasis(strap) === 'reference_base'
+        && strapColorMode(strap) === 'follow_main');
+      if (!hasFollowMain && straps.length === 0) {
+        // Ficha pode ter reference_base mesmo se o item ainda não reconciliou
+        // strap_colors — o diagnose unitário também rodava nesses casos via
+        // hasStrapsEffective. Inclui a tupla e deixa o SQL dizer se precisa.
+        const ref = references.find((r: any) => r.id === item.reference_id);
+        if (!ref?.has_straps) return [];
+      } else if (!hasFollowMain) {
+        return [];
+      }
+      return [{
+        referenceId: item.reference_id,
+        materialVariantId: item.material_variant_id,
+        color: item.color,
+      }];
+    });
+  }, [form.status, items, references]);
+
+  const { data: strapReadinessByKey = EMPTY_STRAP_READINESS_MAP } = useInternalStrapReadinessBatch(
+    strapReadinessInputs,
+    strapReadinessInputs.length > 0,
+  );
+
+  const {
+    data: terceirizacoesByRef = EMPTY_TERCEIRIZACOES_MAP,
+    isLoading: terceirizacoesLoading,
+    isError: terceirizacoesFailed,
+    refetch: refetchTerceirizacoes,
+  } = useActiveReferenceTerceirizacoesBatch(selectedSheetIds);
 
   // Visão contextual SOMENTE LEITURA. A configuração canônica é sempre:
   // ficha -> tipo de solado -> slots de caixa em product_groups -> box_types.
@@ -2361,6 +2439,11 @@ export default function SaleOrderFormPanel({
           sharedProductGroups={sharedProductGroups}
           sharedStrapCatalog={sharedStrapCatalog}
           sharedStrapCatalogLoading={sharedStrapCatalogLoading}
+          sharedInternalStrapReadinessByKey={strapReadinessByKey}
+          sharedReferenceTerceirizacoesByRef={terceirizacoesByRef}
+          sharedReferenceTerceirizacoesLoading={terceirizacoesLoading}
+          sharedReferenceTerceirizacoesFailed={terceirizacoesFailed}
+          onRetrySharedReferenceTerceirizacoes={() => { void refetchTerceirizacoes(); }}
         />
         <Button type="button" variant="outline" size="sm" onClick={addItem} className="gap-1.5 w-full">
           <Plus className="h-3.5 w-3.5" /> Novo Item

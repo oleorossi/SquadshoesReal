@@ -34,7 +34,18 @@ vi.mock('@/hooks/useArtisanalStraps', () => ({
   useArtisanalStrapCatalogDiagnostics: () => ({ data: undefined }),
 }));
 vi.mock('@/hooks/useStrapStockLines', () => ({ useStrapStockLines: () => ({ data: state.strapLines, isLoading: false }) }));
-vi.mock('@/hooks/useInternalStrapReadiness', () => ({ useInternalStrapReadiness: () => ({ data: state.internalReadiness }) }));
+vi.mock('@/hooks/useInternalStrapReadiness', () => ({
+  READY_FALLBACK: {
+    requiresReferenceBase: false,
+    ready: true,
+    baseGroupId: null,
+    baseGroupName: null,
+    colorId: null,
+    colorName: null,
+    issues: [],
+  },
+  useInternalStrapReadiness: () => ({ data: state.internalReadiness }),
+}));
 vi.mock('@/hooks/useProducts', () => ({ useAddProduct: () => ({ mutateAsync: vi.fn() }), ProductSchema: { parse: vi.fn() } }));
 vi.mock('@/hooks/useComponentSheets', () => ({ useAddComponentSheet: () => ({ mutateAsync: vi.fn() }) }));
 vi.mock('@/components/sale-orders/ItemSectorOutsourcingSection', () => ({ ItemSectorOutsourcingSection: () => null }));
@@ -108,6 +119,7 @@ function mount(initial: SaleOrderItemFormData, status = 'Rascunho', lines = tech
       item={item} index={0} references={referenceData} canRemove={false} isAdmin={false}
       saleOrderStatus={status} onRemove={vi.fn()}
       variantsByRef={options.variantsByRef} onColorIssueChange={colorIssues}
+      sharedInternalStrapReadiness={state.internalReadiness as any}
       onUpdate={(_index, field, value) => {
         updates(field, value);
         setItem(current => ({ ...current, [field]: value }));

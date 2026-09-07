@@ -21,6 +21,24 @@ export async function fetchMinBillingDate(saleOrderId: string): Promise<string |
 }
 
 /**
+ * Lê o cache materializado (`get_min_billing_cached`) — caminho barato do open
+ * do editor. O motor live (`compute_min_billing_date`) só deve rodar depois que
+ * o usuário altera itens/quantidade.
+ */
+export async function fetchMinBillingDateCached(saleOrderId: string): Promise<string | null> {
+  if (!saleOrderId) return null;
+  const { data, error } = await supabase.rpc('get_min_billing_cached' as any, {
+    p_sale_order_ids: [saleOrderId],
+  });
+  if (error) {
+    console.error('[minBillingDateCached] erro:', error);
+    return null;
+  }
+  const row = Array.isArray(data) ? data[0] : null;
+  return (row?.min_billing_date as string) || null;
+}
+
+/**
  * Versão em lote — retorna um Map<sale_order_id, min_date>.
  */
 export async function fetchMinBillingDates(saleOrderIds: string[]): Promise<Map<string, string>> {

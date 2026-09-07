@@ -148,6 +148,12 @@ const queryClient = new QueryClient({
         return;
       }
 
+      // Queries auxiliares do editor (readiness/terceirização) marcam
+      // meta.silentError — falha local não vira toast de "sem conexão".
+      if ((query.meta as { silentError?: boolean } | undefined)?.silentError === true) {
+        return;
+      }
+
       // A queryKey é convenção interna em inglês ('clients', 'orders') — não é
       // texto de UI. Mensagem principal em pt-BR; o detalhe técnico vai na
       // description pra manter a diagnosticabilidade sem virar o título.

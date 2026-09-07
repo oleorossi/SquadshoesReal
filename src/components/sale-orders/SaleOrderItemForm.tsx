@@ -52,11 +52,16 @@ import {
   type StrapSourcingMap,
 } from '@/lib/strapSourcing';
 import { useStrapStockLines } from '@/hooks/useStrapStockLines';
-import { useInternalStrapReadiness } from '@/hooks/useInternalStrapReadiness';
+import {
+  READY_FALLBACK,
+  type InternalStrapReadiness,
+} from '@/hooks/useInternalStrapReadiness';
 import {
   useArtisanalStrapCatalog,
   useArtisanalStrapCatalogDiagnostics,
+  type ArtisanalStrapCatalog,
 } from '@/hooks/useArtisanalStraps';
+import type { ReferenceTerceirizacao } from '@/hooks/useReferenceTerceirizacoes';
 import { ArtisanalStrapEditor } from '@/components/artisanal-straps/ArtisanalStrapEditor';
 import { listBuyReadyStrapGaps, type BuyReadyStrapGap } from '@/lib/buyReadyStrapGap';
 import {
@@ -163,8 +168,14 @@ interface Props {
   /** Dados compartilhados pelo panel — evita N× useQuery idêntico por item. */
   sharedProducts?: Array<{ id: string; name: string | null; color: string | null; group_id: string | null; category: string | null; active: boolean | null }>;
   sharedProductGroups?: Array<{ id: string; name: string | null; colors: unknown; is_color_agnostic: boolean | null }>;
-  sharedStrapCatalog?: unknown;
+  sharedStrapCatalog?: ArtisanalStrapCatalog | null;
   sharedStrapCatalogLoading?: boolean;
+  /** Readiness de tiras já batcheado pelo painel. */
+  sharedInternalStrapReadiness?: InternalStrapReadiness;
+  sharedReferenceTerceirizacoes?: ReferenceTerceirizacao[];
+  sharedReferenceTerceirizacoesLoading?: boolean;
+  sharedReferenceTerceirizacoesFailed?: boolean;
+  onRetrySharedReferenceTerceirizacoes?: () => void;
 }
 
 function parseSizeRange(sizes?: string | null, shoeCategory?: string | null): number[] {
@@ -198,7 +209,7 @@ function materialBaseForStrap(strap: ReconcileStrapLineLike, inheritedBase?: str
   });
 }
 
-function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, onUpdate, onUpdateFields, onRemove, onCopyGradeFromPrevious, onSaveStateAndNavigate, isSelected, onToggleSelect, priceLookup, maxDiscountPct = 0, variantsByRef = EMPTY_VARIANTS_BY_REF, onColorIssueChange, onSheetMaterialSelectableChange, saleOrderId, saleOrderStatus, billingWeek, requiredAt, sharedProducts, sharedProductGroups, sharedStrapCatalog, sharedStrapCatalogLoading }: Props) {
+function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, onUpdate, onUpdateFields, onRemove, onCopyGradeFromPrevious, onSaveStateAndNavigate, isSelected, onToggleSelect, priceLookup, maxDiscountPct = 0, variantsByRef = EMPTY_VARIANTS_BY_REF, onColorIssueChange, onSheetMaterialSelectableChange, saleOrderId, saleOrderStatus, billingWeek, requiredAt, sharedProducts, sharedProductGroups, sharedStrapCatalog, sharedStrapCatalogLoading, sharedInternalStrapReadiness, sharedReferenceTerceirizacoes, sharedReferenceTerceirizacoesLoading, sharedReferenceTerceirizacoesFailed, onRetrySharedReferenceTerceirizacoes }: Props) {
   const qc = useQueryClient();
   const access = useAccessControl();
   const { canSeeFinancialValues } = access;
@@ -207,9 +218,17 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     && !!access.can?.('/estoque', 'create')
     && canUseQuickGroupVariantForRoles(access.roles || []);
   const productionExcluded = isProductionExcludedSaleOrderItem(item);
-  const { data: strapCatalog, isLoading: strapCatalogLoading } = useArtisanalStrapCatalog(false, {
+  const localStrapCatalogQuery = useArtisanalStrapCatalog(false, {
     includeLegacyHistory: false,
+    // Painel sempre passa loading (mesmo false); ausência do prop = uso avulso.
+    enabled: sharedStrapCatalogLoading === undefined,
   });
+  const strapCatalog = sharedStrapCatalogLoading !== undefined
+    ? sharedStrapCatalog
+    : localStrapCatalogQuery.data;
+  const strapCatalogLoading = sharedStrapCatalogLoading !== undefined
+    ? !!sharedStrapCatalogLoading
+    : localStrapCatalogQuery.isLoading;
   const fichas = item.fichas || 1;
   const setFichas = (v: number) => {
     const nextFichas = Math.max(1, v);
@@ -722,15 +741,13 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   // A linha `reference_base` sem `strap_sourcing` (todo item novo) nunca chega a
   // `blocked` no bloco de Origem abaixo — `effective` é null —, então o cadastro
   // faltando da napa-base só aparecia como texto cru do Postgres DEPOIS de o PV
-  // inteiro ser montado. Esta consulta espelha o writer do save, em leitura.
-  const { data: internalStrapReadiness } = useInternalStrapReadiness(
-    {
-      referenceId: item.reference_id,
-      materialVariantId: item.material_variant_id,
-      color: item.color,
-    },
-    hasStrapsEffective && hasFollowMainReferenceBaseStraps && !preserveCommittedStrapSnapshot,
-  );
+  // inteiro ser montado. O painel bate o diagnose em lote; aqui só lê o mapa.
+  const needsInternalStrapReadiness = hasStrapsEffective
+    && hasFollowMainReferenceBaseStraps
+    && !preserveCommittedStrapSnapshot;
+  const internalStrapReadiness: InternalStrapReadiness = needsInternalStrapReadiness
+    ? (sharedInternalStrapReadiness || READY_FALLBACK)
+    : READY_FALLBACK;
   const canonicalStrapColorByKey = useMemo(() => {
     const candidates = new Map<string, Set<string>>();
     const add = (label: string | null | undefined, colorId: string) => {
@@ -2883,6 +2900,10 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
             referenceId={item.reference_id}
             value={item.outsourced_sectors}
             onChange={(next) => onUpdate(index, 'outsourced_sectors', next)}
+            sharedReferenceConfigs={sharedReferenceTerceirizacoes}
+            sharedConfigsLoading={sharedReferenceTerceirizacoesLoading}
+            sharedConfigsFailed={sharedReferenceTerceirizacoesFailed}
+            onRetrySharedConfigs={onRetrySharedReferenceTerceirizacoes}
           />
         )}
       </fieldset>

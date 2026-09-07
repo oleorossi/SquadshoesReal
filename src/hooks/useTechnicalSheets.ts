@@ -347,6 +347,54 @@ export function useTechnicalSheetsLite() {
   });
 }
 
+/**
+ * Colunas que o editor do PV lê do array `references` (SaleOrderForm +
+ * SaleOrderItemForm + painel). Auditadas 07/09/2026 — NÃO incluir
+ * upper/lining/sole (vão em `sheet_specs_for_colors` por item) nem
+ * production_sectors / images pesadas além do que a UI mostra.
+ *
+ * ⚠ Ao passar a ler uma coluna nova via `references`/`selectedRef`, ela TEM
+ * que entrar aqui. TS loose não acusa coluna ausente.
+ */
+export const TECHNICAL_SHEET_EDITOR_COLUMNS = [
+  'id',
+  'code',
+  'name',
+  'colors',
+  'sizes',
+  'shoe_category',
+  'sale_price',
+  'suggested_price',
+  'images',
+  'image_url',
+  'ncm',
+  'status_ficha',
+  'retired_at',
+  'has_straps',
+  'strap_colors',
+  'updated_at',
+].join(', ');
+
+/**
+ * Catálogo de fichas do editor do PV — ~subconjunto do `select('*')` canônico.
+ * Com 53 fichas o `*` chegava a ~227 kB e BLOQUEAVA o hydrate do snapshot.
+ */
+export function useTechnicalSheetsEditor() {
+  return useQuery({
+    queryKey: ['technical_sheets', 'editor'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('technical_sheets')
+        .select(TECHNICAL_SHEET_EDITOR_COLUMNS)
+        .order('updated_at', { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+    staleTime: 5 * 60 * 1000,
+    gcTime: 15 * 60 * 1000,
+  });
+}
+
 export function useSheetMaterials(sheetId: string | null) {
   return useQuery({
     queryKey: ['sheet_materials', sheetId],

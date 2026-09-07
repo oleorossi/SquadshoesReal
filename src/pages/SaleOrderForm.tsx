@@ -36,7 +36,7 @@ import {
   StrapSourcingAdminOverrideDialog,
   type StrapSourcingAdminOverrideTarget,
 } from '@/components/sale-orders/StrapSourcingAdminOverrideDialog';
-import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
+import { useTechnicalSheetsEditor } from '@/hooks/useTechnicalSheets';
 import { useClients } from '@/hooks/useClients';
 import { useRepresentatives } from '@/hooks/useRepresentatives';
 import { useAuth } from '@/hooks/useAuth';
@@ -58,7 +58,14 @@ import {
 import { MaterialPurchaseConfirmDialog } from '@/components/sale-orders/MaterialPurchaseConfirmDialog';
 import { checkSectorCapacity, CapacityCheckResult } from '@/lib/sectorCapacity';
 import { SectorOverloadDialog } from '@/components/sale-orders/SectorOverloadDialog';
-import { computeMinBillingForNewOrder, fetchMinBillingDate, isBeforeMinDate, toISOWeek, type MinBillingResult } from '@/lib/minBillingDate';
+import {
+  computeMinBillingForNewOrder,
+  fetchMinBillingDate,
+  fetchMinBillingDateCached,
+  isBeforeMinDate,
+  toISOWeek,
+  type MinBillingResult,
+} from '@/lib/minBillingDate';
 import { MinBillingDateSuggestionDialog } from '@/components/sale-orders/MinBillingDateSuggestionDialog';
 import { OverrideOutsourceCosturaDialog } from '@/components/sale-orders/OverrideOutsourceCosturaDialog';
 import { monthWeekToISODate, isoToMonthWeek } from '@/lib/billingWeek';
@@ -411,7 +418,7 @@ export default function SaleOrderForm() {
     isError: referencesFailed,
     error: referencesError,
     refetch: refetchReferences,
-  } = useTechnicalSheets();
+  } = useTechnicalSheetsEditor();
   const { data: clients = [] } = useClients();
   const { data: representatives = [] } = useRepresentatives();
   const createOrder = useCreateSaleOrder();
@@ -476,12 +483,12 @@ export default function SaleOrderForm() {
   const isAdmin = useIsAdmin();
 
   const canonicalReferenceIdMap = useMemo(
-    () => getCanonicalReferenceIdMap(references as Array<{ id: string; code?: string | null; name?: string | null; updated_at?: string | null; retired_at?: string | null }>),
+    () => getCanonicalReferenceIdMap(references as unknown as Array<{ id: string; code?: string | null; name?: string | null; updated_at?: string | null; retired_at?: string | null }>),
     [references]
   );
 
   const canonicalReferences = useMemo(
-    () => getCanonicalSaleOrderReferences(references as Array<{ id: string; code?: string | null; name?: string | null; updated_at?: string | null; retired_at?: string | null }>),
+    () => getCanonicalSaleOrderReferences(references as unknown as Array<{ id: string; code?: string | null; name?: string | null; updated_at?: string | null; retired_at?: string | null }>),
     [references]
   );
 
@@ -725,6 +732,9 @@ export default function SaleOrderForm() {
   const [checkingStock, setCheckingStock] = useState(false);
   const [checkingReadiness, setCheckingReadiness] = useState(false);
   const [orderLoaded, setOrderLoaded] = useState(false);
+  // Snapshot do PV em paralelo com as fichas: não espera `referencesLoading`.
+  const pendingSnapshotRef = useRef<SaleOrderEditorSnapshot | null>(null);
+  const [snapshotFetched, setSnapshotFetched] = useState(false);
 
   // Bug histórico: navegar de /sales/edit/A pra /sales/edit/B (via GlobalSearch)
   // não desmontava o componente — `id` mudava no useParams mas o useEffect que
@@ -749,6 +759,8 @@ export default function SaleOrderForm() {
       setSelectedClientId('');
       setPackagingProductId('');
       setPackagingQuantity(0);
+      pendingSnapshotRef.current = null;
+      setSnapshotFetched(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
@@ -909,8 +921,8 @@ export default function SaleOrderForm() {
   // (useRef + setTimeout) por passagem explícita de parâmetro — mais previsível
   // em duplo-click / re-render.
 
-  // Recalculate live min_billing_date with debounce whenever items change
-  // (or on edit mode load). Drives the red badge in SaleOrderFormPanel.
+  // Min-billing badge: no open de edit lê o CACHE (barato); o motor live só
+  // roda depois que o usuário altera itens/quantidade (assinatura ≠ baseline).
   useEffect(() => {
     const productionItems = filterProductionSaleOrderItems(items)
       .filter(i => i.reference_id && i.quantity > 0);
@@ -923,7 +935,12 @@ export default function SaleOrderForm() {
       setComputingLive(true);
       try {
         if (isEdit && id) {
-          const iso = await fetchMinBillingDate(id);
+          const currentSig = buildItemsPurchaseSignature(items, form.packaging_mode);
+          const useCache = originalItemsSigRef.current !== null
+            && currentSig === originalItemsSigRef.current;
+          const iso = useCache
+            ? await fetchMinBillingDateCached(id)
+            : await fetchMinBillingDate(id);
           if (!cancelled) setLiveMinBillingISO(iso);
         } else {
           const capInputs = productionItems.map((it) => {
@@ -944,7 +961,7 @@ export default function SaleOrderForm() {
       cancelled = true;
       clearTimeout(timeout);
     };
-  }, [items, isEdit, id, canonicalReferences]);
+  }, [items, isEdit, id, canonicalReferences, form.packaging_mode]);
 
   // ⚠ PERF: esta função desce como prop até SaleOrderItemForm, que é `memo()`.
   // Se ela mudar de identidade a cada render, o memo vira no-op e TODOS os itens do
@@ -968,24 +985,49 @@ export default function SaleOrderForm() {
     navigate('/estoque?returnTo=sale-order');
   }, [draftKey, navigate, user?.id]);
 
-  // Load existing order for edit. Cabeçalho e itens formam uma única revisão:
-  // qualquer erro deixa a tela fechada, sem formulário parcialmente hidratado.
+  // Snapshot do PV em paralelo com as fichas: não espera `referencesLoading`.
+  // Aplica o map canônico só quando as fichas chegam (ou já estão em cache).
   useEffect(() => {
-    if (!id || orderLoaded || referencesLoading || referencesFailed) return;
+    if (!id || orderLoaded || referencesFailed || snapshotFetched) return;
     let cancelled = false;
     (async () => {
       setLoading(true);
       setLoadError(null);
-      const snapshotClient = supabase as unknown as SaleOrderEditorSnapshotRpcClient;
-      const { data: snapshotData, error: snapshotError } = await snapshotClient.rpc(
-        'get_sale_order_editor_snapshot',
-        { p_sale_order_id: id },
-      );
-      if (cancelled) return;
-      if (snapshotError) throw new Error(`Pedido: ${snapshotError.message}`);
-      const order = snapshotData?.order;
-      if (!order) throw new Error('Pedido não encontrado.');
-      const persistedItems = Array.isArray(snapshotData?.items) ? snapshotData.items : [];
+      try {
+        const snapshotClient = supabase as unknown as SaleOrderEditorSnapshotRpcClient;
+        const { data: snapshotData, error: snapshotError } = await snapshotClient.rpc(
+          'get_sale_order_editor_snapshot',
+          { p_sale_order_id: id },
+        );
+        if (cancelled) return;
+        if (snapshotError) throw new Error(`Pedido: ${snapshotError.message}`);
+        if (!snapshotData?.order) throw new Error('Pedido não encontrado.');
+        pendingSnapshotRef.current = snapshotData;
+        setSnapshotFetched(true);
+      } catch (error: unknown) {
+        if (cancelled) return;
+        const message = error instanceof Error ? error.message : String(error);
+        setLoadError(message);
+        setLoading(false);
+        setOrderLoaded(false);
+        editorBaselineReadyRef.current = false;
+        pendingSnapshotRef.current = null;
+        setSnapshotFetched(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [id, orderLoaded, referencesFailed, snapshotFetched, loadAttempt]);
+
+  // Load existing order for edit. Cabeçalho e itens formam uma única revisão:
+  // qualquer erro deixa a tela fechada, sem formulário parcialmente hidratado.
+  useEffect(() => {
+    if (!id || orderLoaded || referencesLoading || referencesFailed || !snapshotFetched) return;
+    const snapshotData = pendingSnapshotRef.current;
+    if (!snapshotData?.order) return;
+
+    const order = snapshotData.order;
+    const persistedItems = Array.isArray(snapshotData.items) ? snapshotData.items : [];
+    try {
       const rep = representatives.find(r => r.name === order.representative);
       const nextForm: SaleOrderFormData = {
         client_id: (order as any).client_id || null,
@@ -1068,16 +1110,17 @@ export default function SaleOrderForm() {
       setHasUnsavedEdits(false);
       setOrderLoaded(true);
       setLoading(false);
-    })().catch((error: unknown) => {
-      if (cancelled) return;
+      pendingSnapshotRef.current = null;
+    } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       setLoadError(message);
       setLoading(false);
       setOrderLoaded(false);
       editorBaselineReadyRef.current = false;
-    });
-    return () => { cancelled = true; };
-  }, [id, orderLoaded, referencesLoading, referencesFailed, canonicalReferenceIdMap, loadAttempt]);
+      pendingSnapshotRef.current = null;
+      setSnapshotFetched(false);
+    }
+  }, [id, orderLoaded, referencesLoading, referencesFailed, snapshotFetched, canonicalReferenceIdMap, references, representatives, loadAttempt]);
 
   // Update representative match when reps load after order
   useEffect(() => {

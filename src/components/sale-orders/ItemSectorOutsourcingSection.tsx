@@ -53,10 +53,19 @@ export interface ItemSectorOutsourcingSectionProps {
   value?: Record<string, string> | null;
   onChange: (next: Record<string, string>) => void;
   disabled?: boolean;
+  /** Prefetch do painel — evita N queries por item no open do PV. */
+  sharedReferenceConfigs?: ReferenceTerceirizacao[];
+  sharedConfigsLoading?: boolean;
+  sharedConfigsFailed?: boolean;
+  onRetrySharedConfigs?: () => void;
 }
 
 export function ItemSectorOutsourcingSection({
   referenceId, value, onChange, disabled,
+  sharedReferenceConfigs,
+  sharedConfigsLoading,
+  sharedConfigsFailed,
+  onRetrySharedConfigs,
 }: ItemSectorOutsourcingSectionProps) {
   const {
     data: contractors = [],
@@ -70,12 +79,19 @@ export function ItemSectorOutsourcingSection({
     isError: settingsFailed,
     refetch: refetchSettings,
   } = useSectorSettings();
+  const useShared = sharedReferenceConfigs !== undefined;
   const {
-    data: referenceConfigs = [],
-    isLoading: loadingConfigs,
-    isError: configsFailed,
-    refetch: refetchConfigs,
-  } = useActiveReferenceTerceirizacoes(referenceId);
+    data: hookConfigs = [],
+    isLoading: loadingHookConfigs,
+    isError: hookConfigsFailed,
+    refetch: refetchHookConfigs,
+  } = useActiveReferenceTerceirizacoes(useShared ? null : referenceId);
+  const referenceConfigs = useShared ? sharedReferenceConfigs : hookConfigs;
+  const loadingConfigs = useShared ? !!sharedConfigsLoading : loadingHookConfigs;
+  const configsFailed = useShared ? !!sharedConfigsFailed : hookConfigsFailed;
+  const refetchConfigs = useShared
+    ? (onRetrySharedConfigs || (() => undefined))
+    : refetchHookConfigs;
   const map = value && typeof value === 'object' ? value : {};
 
   // Setor clicado mas ainda sem prestador. Vive só aqui: não pode ir pro mapa.

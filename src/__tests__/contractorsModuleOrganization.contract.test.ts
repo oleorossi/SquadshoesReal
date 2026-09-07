@@ -155,7 +155,8 @@ describe('Terceirizados — contrato visual e organizacional do módulo', () => 
   });
 
   it('só grava no item do PV atividades completas da referência', () => {
-    expect(itemOutsourcing).toContain('useActiveReferenceTerceirizacoes(referenceId)');
+    expect(itemOutsourcing).toContain('useActiveReferenceTerceirizacoes');
+    expect(itemOutsourcing).toMatch(/sharedReferenceConfigs|useActiveReferenceTerceirizacoes\(/);
     expect(itemOutsourcing).toContain('isReferencePlanningReady');
     expect(itemOutsourcing).toContain('activeContractorIds.has(config.contractor_id)');
     expect(itemOutsourcing).toContain('REFERENCE_OUTSOURCE_SECTORS');
