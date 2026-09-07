@@ -6,6 +6,7 @@
 -- 1) Unicidade: OP × setor × prestador (não mais OP × setor)
 -- ---------------------------------------------------------------------------
 DROP INDEX IF EXISTS public.uq_os_per_op_sector;
+DROP INDEX IF EXISTS public.uq_os_per_op_sector_contractor;
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_os_per_op_sector_contractor
   ON public.service_orders (order_id, target_sector, contractor_id)
@@ -21,6 +22,7 @@ COMMENT ON INDEX public.uq_os_per_op_sector_contractor IS
 -- 2) Ficha: vários prestadores ativos por atividade
 -- ---------------------------------------------------------------------------
 DROP INDEX IF EXISTS public.uq_reference_terceirizacoes_active_ref_sector;
+DROP INDEX IF EXISTS public.uq_reference_terceirizacoes_active_ref_sector_contractor;
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_reference_terceirizacoes_active_ref_sector_contractor
   ON public.reference_terceirizacoes (

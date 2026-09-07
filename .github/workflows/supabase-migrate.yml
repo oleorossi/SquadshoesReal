@@ -194,6 +194,20 @@ jobs:
           # O snapshot isolado contém o histórico remoto e somente as novas
           # locais pós-cutover. MCP pode registrar uma versão posterior antes
           # do CI; incluir as pendentes evita deixar lacunas nessa sequência.
+          #
+          # Rateio já aplicado sob 19200 (e reestampado localmente para 19900).
+          # Sem repair, o push tenta recriar índices e falha com 42P07.
+          for stamp in 20270101019200 20270101019900; do
+            shopt -s nullglob
+            matches=("${SUPABASE_MIGRATION_WORKDIR}/supabase/migrations/${stamp}_"*.sql)
+            shopt -u nullglob
+            if (( ${#matches[@]} == 1 )); then
+              echo "↪ migration repair --status applied ${stamp}"
+              supabase --workdir "${SUPABASE_MIGRATION_WORKDIR}" migration repair \
+                --status applied \
+                "${stamp}"
+            fi
+          done
           supabase --workdir "${SUPABASE_MIGRATION_WORKDIR}" db push \
             --linked \
             --include-all \
