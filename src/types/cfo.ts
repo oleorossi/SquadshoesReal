@@ -44,3 +44,18 @@ export interface CfoEntry {
 export type CfoPlanInput = Omit<CfoPlan, 'id' | 'created_at' | 'updated_at'> & { id?: string };
 export type CfoOrderInput = Omit<CfoOrder, 'id' | 'created_at' | 'updated_at'> & { id?: string };
 export type CfoEntryInput = Omit<CfoEntry, 'id' | 'created_at' | 'updated_at'> & { id?: string };
+
+/** Totais informados pelo usuário para a semana (segunda a domingo). */
+export interface CfoWeekInput {
+  id: string;
+  plano_id: string;
+  semana_inicio: string;
+  contas_semana: number;
+  reinvestimento: number;
+  /** NULL = produção ainda não informada; zero = semana sem produção. */
+  pares_produzidos: number | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export type CfoWeekSaveInput = Omit<CfoWeekInput, 'id' | 'created_at' | 'updated_at'> & { id?: string };

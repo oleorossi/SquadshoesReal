@@ -12,14 +12,21 @@ sincronização automática com o financeiro.
 ## Como usar
 
 1. Crie um plano com período, saldo disponível no início e reserva mínima desejada.
-2. Cadastre cada pedido, sua data de entrega e o lucro esperado. Informe se esse
+2. Preencha **uma semana por vez**, conforme acompanhar a produção: contas,
+   reinvestimento em materiais e pares produzidos naquela semana. Contas e
+   reinvestimento são obrigatórios ao salvar aquela semana; as semanas futuras
+   podem continuar sem preenchimento. Zero confirma ausência de gasto ou de
+   produção; pares em branco indicam que a produção ainda não foi apurada.
+3. Cadastre cada pedido, sua data de entrega e o lucro esperado. Informe se esse
    lucro **já desconta os materiais**.
-3. Informe o valor total a receber, quando conhecido, e cadastre os recebimentos
+4. Informe o valor total a receber, quando conhecido, e cadastre os recebimentos
    nas datas esperadas. Use um lançamento por parcela.
-4. Cadastre as compras de material nas respectivas datas de pagamento e vincule-as
+5. Cadastre as compras de material nas respectivas datas de pagamento e vincule-as
    ao pedido quando forem específicas dele.
-5. Registre despesas, aportes e retiradas que devem afetar o saldo.
-6. Conforme os valores forem pagos ou recebidos, registre a data e o valor
+6. Detalhe despesas, aportes e retiradas nas datas em que devem afetar o saldo.
+   As despesas, retiradas e compras detalhadas já compõem os totais semanais; o
+   CFO complementa apenas o valor que ainda não foi detalhado.
+7. Conforme os valores forem pagos ou recebidos, registre a data e o valor
    realizados. Confira a evolução semanal e as semanas abaixo da reserva.
 
 O saldo inicial precisa representar o dinheiro disponível **no começo da data
@@ -85,6 +92,26 @@ A definição de campos fica em `src/types/cfo.ts`.
 | `saldo_inicial` | Saldo no começo da data inicial; pode ser negativo |
 | `reserva_minima` | Piso de saldo desejado; não é uma saída financeira |
 
+### Dados da semana — `CfoWeekInput`
+
+| Campo | Significado |
+|---|---|
+| `plano_id` | Plano ao qual pertence |
+| `semana_inicio` | Segunda-feira canônica da semana; a chave não muda quando o plano começa numa quarta-feira |
+| `contas_semana` | Total manual das despesas e retiradas da semana; obrigatório e não negativo |
+| `reinvestimento` | Orçamento manual total para materiais da semana; não é calculado a partir do saldo restante |
+| `pares_produzidos` | Quantidade produzida somente naquela semana, inteira e não negativa; `null` significa ainda não informada e `0` confirma ausência de produção |
+
+Existe no máximo um registro por plano e segunda-feira. Contas e reinvestimento
+sem registro aparecem como **não informados**, nunca como zero confirmado. O
+indicador de semanas sem contas informa quando a projeção ainda é provisória.
+Lançamentos existentes continuam participando do caixa mesmo antes de preencher
+todas as semanas.
+
+O limite de produção por semana é 2.147.483.647 pares, igual ao tipo `integer` do
+banco. O acumulado pode ultrapassar esse limite ao somar semanas, com verificação
+de precisão de inteiro seguro no cálculo.
+
 ### Pedido — `CfoOrder`
 
 | Campo | Significado |
@@ -147,7 +174,48 @@ período.
 
 Material sem pedido vinculado afeta o caixa, mas não é rateado automaticamente
 entre pedidos. Despesas gerais, aportes e retiradas também não alteram o lucro
-informado de um pedido.
+informado de um pedido. A mesma regra vale para o complemento semanal de materiais:
+sem vínculo com pedido, ele muda o caixa e não é deduzido do lucro individual.
+
+### Totais semanais e detalhamento sem duplicação
+
+O reinvestimento é o **total que o usuário pretende destinar aos materiais da
+semana**. Não é o saldo que sobra, um percentual automático ou uma segunda reserva.
+O valor informado permanece visível, mesmo quando os pagamentos detalhados
+ultrapassam esse orçamento.
+
+```text
+contas detalhadas = despesas + retiradas com data efetiva dentro do trecho da semana
+materiais detalhados = materiais com data efetiva dentro do trecho da semana
+
+contas complementares = máximo(0, contas informadas − contas detalhadas)
+reinvestimento complementar = máximo(0, reinvestimento informado − materiais detalhados)
+
+despesas projetadas = despesas detalhadas + contas complementares
+materiais projetados = materiais detalhados + reinvestimento complementar
+```
+
+O valor realizado substitui o previsto também nessa conciliação. Cancelamentos
+não cobrem o orçamento, mas pagamentos realizados de um pedido posteriormente
+cancelado continuam sendo fatos de caixa. Se o detalhamento exceder o total manual,
+todos os lançamentos prevalecem e a projeção mostra um aviso para revisar o
+orçamento. Um total manual menor nunca apaga pagamentos.
+
+Por hipótese conservadora, os complementos são saídas previstas no **primeiro dia
+mostrado da semana**, antes dos recebimentos daquele dia. Para distribuir as saídas
+em datas específicas, o usuário deve detalhá-las. Ao detalhar R$ 300 de um orçamento
+de materiais de R$ 1.000, o complemento cai para R$ 700; a saída total continua em
+R$ 1.000.
+
+Na primeira e na última semana parciais, os valores manuais correspondem ao trecho
+visível do plano. Não há rateio automático por dias. Pagamentos anteriores à data
+inicial já pertencem ao saldo inicial e não reduzem novamente o complemento desse
+trecho. A chave da semana continua sendo a segunda-feira canônica.
+
+Pares produzidos não geram lucro, recebimentos nem consumo de material por conta
+própria. A coluna acumulada soma apenas as quantidades semanais informadas desde o
+começo do plano. Uma semana sem produção informada permanece `null`; o acumulado
+transporta apenas os números conhecidos, sem estimativa para preencher lacunas.
 
 ### Caixa por pagamento e recebimento
 
@@ -172,7 +240,7 @@ para conferir a cobertura dos lançamentos de recebimento; somá-la novamente ao
 lançamentos duplicaria a entrada.
 
 Sem valor ou data de recebimento, ainda é possível projetar o lucro. O saldo de
-caixa representa apenas os lançamentos cadastrados e deve indicar que há pedidos
+caixa considera lançamentos e complementos semanais e deve indicar que há pedidos
 sem recebimentos completos. Não inferir entrada igual ao lucro, nem inventar
 receita como material + lucro.
 
@@ -193,6 +261,18 @@ da reserva mínima gera um alerta separado de ficar efetivamente sem caixa.
 É possível avaliar atraso de recebimentos previstos e aumento de materiais
 previstos. Os lançamentos realizados preservam suas datas e valores. A comparação
 recalcula o caixa sem alterar os registros salvos no plano.
+
+O complemento de reinvestimento é calculado **antes da simulação**, usando os
+valores-base do detalhamento. Depois, o aumento percentual incide sobre o material
+previsto e esse complemento. Material já realizado permanece igual. Os totais
+manuais de contas e reinvestimento também permanecem iguais na exibição.
+
+Exemplo: reinvestimento de R$ 1.000, com R$ 400 realizados e R$ 200 previstos,
+produz um complemento-base de R$ 400. Com aumento de 50%, o caixa projeta
+R$ 400 realizados + R$ 300 previstos + R$ 600 de complemento = **R$ 1.300**.
+Recalcular o complemento contra o detalhamento já aumentado consumiria o aumento
+do custo dentro do orçamento antigo e esconderia parte do impacto. Os avisos de
+detalhamento acima do orçamento comparam os valores-base salvos.
 
 Quando o lucro foi informado antes dos materiais, o custo ajustado do cenário
 também afeta o resultado calculado do pedido. Quando o usuário informou o lucro
@@ -265,6 +345,20 @@ Os testes do motor devem comprovar comportamento de negócio, principalmente:
     semanal positivo; saídas e entradas na mesma data seguem a ordem conservadora.
 14. Cenários alteram apenas previsões; preservam realizados e não gravam suas
     alterações como movimentos reais.
+15. Contas semanais somam despesas e retiradas; reinvestimento soma materiais.
+    Apenas os complementos são acrescentados, sem duplicar o detalhamento.
+16. Lançamentos acima dos totais manuais prevalecem no caixa e produzem aviso;
+    o valor manual original continua visível.
+17. Sem registro semanal, contas e reinvestimento são desconhecidos. Zero
+    informado e semana ainda não preenchida permanecem estados diferentes.
+18. Produção semanal acumula somente números informados, distingue `null` de zero
+    e não inventa lucro ou recebimento.
+19. Complementos em semana parcial entram no primeiro dia mostrado, usando a
+    chave da segunda-feira e sem recontar pagamentos anteriores ao corte.
+20. No cenário, o complemento-base de reinvestimento e as compras previstas
+    aumentam; compras realizadas e valores manuais salvos permanecem iguais.
+21. Dados duplicados para a mesma semana, datas que não são segunda-feira,
+    quantidades fracionárias e números não finitos são rejeitados.
 
 Na interface, verificar criação e edição de plano, pedido e lançamento, o estado
 vazio, mensagens de erro ao persistir, atualização da tabela semanal e acesso de

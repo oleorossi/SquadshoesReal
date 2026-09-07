@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { CfoEntry, CfoOrder, CfoPlan } from '@/types/cfo';
-import { buildCfoProjection } from '@/lib/cfoProjection';
+import type { CfoEntry, CfoOrder, CfoPlan, CfoWeekInput } from '@/types/cfo';
+import { buildCfoProjection, getCfoWeekKey } from '@/lib/cfoProjection';
 
 const plan: CfoPlan = {
   id: 'plano-1', nome: 'Planejamento', data_inicio: '2026-09-07', data_fim: '2026-09-20',
@@ -24,6 +24,13 @@ function entry(overrides: Partial<CfoEntry> = {}): CfoEntry {
   };
 }
 
+function weekInput(overrides: Partial<CfoWeekInput> = {}): CfoWeekInput {
+  return {
+    id: 'semana-1', plano_id: plan.id, semana_inicio: '2026-09-07',
+    contas_semana: 1000, reinvestimento: 2000, pares_produzidos: 300, ...overrides,
+  };
+}
+
 describe('buildCfoProjection', () => {
   it('mantém calendário vazio sem inventar pedidos, recebimentos ou lucro', () => {
     const result = buildCfoProjection(plan, [], [], options);
@@ -31,6 +38,7 @@ describe('buildCfoProjection', () => {
     expect(result.totals).toEqual({
       lucroTotal: 0, saldoFinal: 0, menorSaldo: 0, capitalNecessario: 0,
       recebimentos: 0, materiais: 0, saidas: 0,
+      paresProduzidos: 0, contasInformadas: 0, reinvestimentoInformado: 0, semanasSemContas: 2,
     });
     expect(result.firstShortfallDate).toBeNull();
     expect(result.warnings).toEqual([]);
@@ -241,6 +249,18 @@ describe('buildCfoProjection', () => {
     expect(() => buildCfoProjection({ ...plan, data_inicio: '2028-02-29', data_fim: '2030-03-01' }, [], [], options)).toThrow();
   });
 
+  it('projeta até 31/12/9999 sem incrementar além do último dia suportado', () => {
+    const lastPlan = { ...plan, data_inicio: '9999-12-30', data_fim: '9999-12-31' };
+    const result = buildCfoProjection(lastPlan, [], [entry({ data_prevista: '9999-12-31', valor_previsto: 50 })], options);
+    expect(result.weeks).toHaveLength(1);
+    expect(result.weeks[0]).toMatchObject({ inicio: '9999-12-30', fim: '9999-12-31', semanaChave: '9999-12-27', recebimentos: 50 });
+    const delayed = buildCfoProjection(lastPlan, [], [entry({ data_prevista: '9999-12-31', valor_previsto: 50 })], {
+      ...options, receivableDelayDays: 1,
+    });
+    expect(delayed.totals.recebimentos).toBe(0);
+    expect(delayed.warnings.map(warning => warning.code)).not.toContain('previsoes-anteriores');
+  });
+
   it('não mistura registros de outros planos', () => {
     const result = buildCfoProjection(plan, [order({ plano_id: 'outro' })], [entry({ plano_id: 'outro' })], options);
     expect(result.totals.lucroTotal).toBe(0);
@@ -278,5 +298,201 @@ describe('buildCfoProjection', () => {
     { valor_previsto: Number.MAX_SAFE_INTEGER },
   ])('rejeita lançamento que não pode ser calculado: %j', override => {
     expect(() => buildCfoProjection(plan, [], [entry(override)], options)).toThrow();
+  });
+});
+
+describe('CFO — contas, reinvestimento e produção semanais', () => {
+  it('desconta contas e reinvestimento informados e acumula apenas os pares produzidos na semana', () => {
+    const result = buildCfoProjection({ ...plan, saldo_inicial: 10000 }, [], [], {
+      ...options, weeklyInputs: [weekInput(), weekInput({
+        id: 'semana-2', semana_inicio: '2026-09-14', contas_semana: 1500, reinvestimento: 2500, pares_produzidos: 400,
+      })],
+    });
+    expect(result.weeks[0]).toMatchObject({
+      semanaChave: '2026-09-07', contasInformadas: 1000, reinvestimentoInformado: 2000,
+      contasComplementares: 1000, reinvestimentoComplementar: 2000,
+      paresProduzidos: 300, paresAcumulados: 300, saldoFinal: 7000,
+    });
+    expect(result.weeks[1]).toMatchObject({ paresProduzidos: 400, paresAcumulados: 700, saldoFinal: 3000 });
+    expect(result.totals).toMatchObject({
+      contasInformadas: 2500, reinvestimentoInformado: 4500, materiais: 4500,
+      saidas: 7000, paresProduzidos: 700, semanasSemContas: 0,
+    });
+  });
+
+  it('completa os totais sem somar despesas, retiradas ou compras detalhadas duas vezes', () => {
+    const result = buildCfoProjection({ ...plan, saldo_inicial: 5000 }, [], [
+      entry({ tipo: 'despesa', data_prevista: '2026-09-08', valor_previsto: 400 }),
+      entry({ tipo: 'retirada', data_prevista: '2026-09-09', valor_previsto: 100 }),
+      entry({ tipo: 'material', status: 'realizado', data_realizada: '2026-09-10', valor_realizado: 700 }),
+      entry({ tipo: 'material', data_prevista: '2026-09-11', valor_previsto: 300 }),
+    ], { ...options, weeklyInputs: [weekInput()] });
+    expect(result.weeks[0]).toMatchObject({
+      contasInformadas: 1000, contasComplementares: 500, despesas: 900, retiradas: 100,
+      reinvestimentoInformado: 2000, reinvestimentoComplementar: 1000, materiais: 2000, saldoFinal: 2000,
+    });
+    expect(result.totals.saidas).toBe(3000);
+    expect(result.warnings.map(warning => warning.code)).toContain('complementos-no-inicio-da-semana');
+  });
+
+  it('mantém o detalhamento acima dos totais manuais e avisa os excessos', () => {
+    const result = buildCfoProjection(plan, [], [
+      entry({ tipo: 'despesa', data_prevista: '2026-09-08', valor_previsto: 600 }),
+      entry({ tipo: 'retirada', data_prevista: '2026-09-08', valor_previsto: 50 }),
+      entry({ tipo: 'material', data_prevista: '2026-09-09', valor_previsto: 300 }),
+    ], { ...options, weeklyInputs: [weekInput({ contas_semana: 500, reinvestimento: 200 })] });
+    expect(result.weeks[0]).toMatchObject({
+      contasInformadas: 500, reinvestimentoInformado: 200, contasComplementares: 0,
+      reinvestimentoComplementar: 0, despesas: 600, retiradas: 50, materiais: 300, saldoFinal: -950,
+    });
+    expect(result.warnings.map(warning => warning.code)).toEqual(expect.arrayContaining([
+      'contas-semanais-excedidas', 'reinvestimento-semanal-excedido',
+    ]));
+  });
+
+  it('usa o orçamento manual de materiais, sem tratar todo o saldo restante como reinvestimento', () => {
+    const result = buildCfoProjection({ ...plan, saldo_inicial: 10000 }, [], [], {
+      ...options, weeklyInputs: [weekInput({ contas_semana: 1000, reinvestimento: 1500 })],
+    });
+    expect(result.weeks[0]).toMatchObject({ reinvestimentoInformado: 1500, materiais: 1500, saldoFinal: 7500 });
+  });
+
+  it('no cenário, eleva só material previsto e complemento calculado na base, preservando compras realizadas', () => {
+    const entries = [
+      entry({ tipo: 'material', status: 'realizado', data_prevista: '2026-09-21', valor_previsto: 999, data_realizada: '2026-09-08', valor_realizado: 400 }),
+      entry({ tipo: 'material', data_prevista: '2026-09-09', valor_previsto: 200 }),
+    ];
+    const result = buildCfoProjection(plan, [order({ lucro_informado: 2000, lucro_liquido: false })], entries, {
+      ...options, materialIncreasePct: 50,
+      weeklyInputs: [weekInput({ contas_semana: 0, reinvestimento: 1000 })],
+    });
+    // Base: 400 realizado + 200 previsto + 400 complemento. Cenário: 400 + 300 + 600.
+    expect(result.weeks[0]).toMatchObject({ reinvestimentoInformado: 1000, reinvestimentoComplementar: 600, materiais: 1300 });
+    expect(result.totals).toMatchObject({ reinvestimentoInformado: 1000, materiais: 1300, saldoFinal: -1300 });
+    // O complemento semanal não tem vínculo com o pedido e não deve ser deduzido do lucro dele.
+    expect(result.orderProfits['pedido-1']).toBe(1300);
+    expect(entries[0].valor_realizado).toBe(400);
+    expect(entries[1].valor_previsto).toBe(200);
+  });
+
+  it('não cria complemento no cenário quando materiais realizados já consomem o orçamento inteiro', () => {
+    const result = buildCfoProjection(plan, [], [
+      entry({ tipo: 'material', status: 'realizado', data_realizada: '2026-09-08', valor_realizado: 1000 }),
+    ], { ...options, materialIncreasePct: 100, weeklyInputs: [weekInput({ contas_semana: 0, reinvestimento: 1000 })] });
+    expect(result.weeks[0]).toMatchObject({ materiais: 1000, reinvestimentoComplementar: 0 });
+  });
+
+  it('não usa pagamentos cancelados nem previsões de pedido cancelado para cobrir o orçamento', () => {
+    const result = buildCfoProjection(plan, [order({ status: 'cancelado' })], [
+      entry({ tipo: 'material', data_prevista: '2026-09-08', valor_previsto: 500 }),
+      entry({ tipo: 'material', status: 'cancelado', data_prevista: '2026-09-08', valor_previsto: 800 }),
+      entry({ tipo: 'material', status: 'realizado', data_realizada: '2026-09-08', valor_realizado: 200 }),
+    ], { ...options, weeklyInputs: [weekInput({ contas_semana: 0, reinvestimento: 1000 })] });
+    expect(result.weeks[0]).toMatchObject({ materiais: 1000, reinvestimentoComplementar: 800 });
+    expect(result.totals.lucroTotal).toBe(0);
+  });
+
+  it('semana parcial usa a chave de segunda e complementa no primeiro dia mostrado, sem repetir despesas anteriores', () => {
+    const result = buildCfoProjection({ ...plan, data_inicio: '2026-09-09', data_fim: '2026-09-11', saldo_inicial: 100 }, [], [
+      entry({ tipo: 'despesa', data_prevista: '2026-09-08', valor_previsto: 1000 }),
+      entry({ tipo: 'material', data_prevista: '2026-09-08', valor_previsto: 1000 }),
+      entry({ tipo: 'recebimento', data_prevista: '2026-09-09', valor_previsto: 1000 }),
+      entry({ tipo: 'despesa', data_prevista: '2026-09-10', valor_previsto: 100 }),
+      entry({ tipo: 'material', data_prevista: '2026-09-11', valor_previsto: 200 }),
+    ], { ...options, weeklyInputs: [weekInput({ contas_semana: 400, reinvestimento: 600 })] });
+    expect(result.weeks[0]).toMatchObject({
+      inicio: '2026-09-09', fim: '2026-09-11', semanaChave: '2026-09-07',
+      contasComplementares: 300, reinvestimentoComplementar: 400, saldoFinal: 100, menorSaldo: -600,
+    });
+    expect(result.firstShortfallDate).toBe('2026-09-09');
+  });
+
+  it('não interpreta semanas ausentes como contas zero e mantém a projeção existente provisória', () => {
+    const result = buildCfoProjection(plan, [], [entry({ tipo: 'despesa', valor_previsto: 100 })], {
+      ...options, weeklyInputs: [],
+    });
+    expect(result.weeks[0]).toMatchObject({ contasInformadas: null, reinvestimentoInformado: null, paresProduzidos: null });
+    expect(result.weeks[1]).toMatchObject({ contasComplementares: 0, reinvestimentoComplementar: 0 });
+    expect(result.totals).toMatchObject({ saldoFinal: -100, semanasSemContas: 2, contasInformadas: 0 });
+    expect(result.warnings.find(warning => warning.code === 'contas-semanais-nao-informadas')?.message).toContain('provisória');
+    const legacy = buildCfoProjection(plan, [], [], options);
+    expect(legacy.warnings.map(warning => warning.code)).not.toContain('contas-semanais-nao-informadas');
+  });
+
+  it('preserva zero informado para contas, reinvestimento e produção, distinguindo produção desconhecida', () => {
+    const result = buildCfoProjection(plan, [], [], {
+      ...options, weeklyInputs: [
+        weekInput({ contas_semana: 0, reinvestimento: 0, pares_produzidos: 0 }),
+        weekInput({ id: 'semana-2', semana_inicio: '2026-09-14', contas_semana: 0, reinvestimento: 0, pares_produzidos: null }),
+      ],
+    });
+    expect(result.weeks[0]).toMatchObject({ contasInformadas: 0, reinvestimentoInformado: 0, paresProduzidos: 0, paresAcumulados: 0 });
+    expect(result.weeks[1]).toMatchObject({ contasInformadas: 0, reinvestimentoInformado: 0, paresProduzidos: null, paresAcumulados: 0 });
+    expect(result.totals.semanasSemContas).toBe(0);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('acumula produção informada sem inventar pares, lucro ou receitas nas semanas desconhecidas', () => {
+    const result = buildCfoProjection({ ...plan, data_fim: '2026-09-27' }, [], [], {
+      ...options, weeklyInputs: [
+        weekInput({ contas_semana: 0, reinvestimento: 0, pares_produzidos: 100 }),
+        weekInput({ id: 'semana-3', semana_inicio: '2026-09-21', contas_semana: 0, reinvestimento: 0, pares_produzidos: 200 }),
+      ],
+    });
+    expect(result.weeks.map(week => [week.paresProduzidos, week.paresAcumulados])).toEqual([[100, 100], [null, 100], [200, 300]]);
+    expect(result.totals).toMatchObject({ paresProduzidos: 300, lucroTotal: 0, recebimentos: 0, saldoFinal: 0, semanasSemContas: 1 });
+  });
+
+  it('aceita o limite integer por semana e acumula duas semanas sem truncar o total', () => {
+    const result = buildCfoProjection(plan, [], [], {
+      ...options, weeklyInputs: [
+        weekInput({ contas_semana: 0, reinvestimento: 0, pares_produzidos: 2_147_483_647 }),
+        weekInput({ id: 'semana-2', semana_inicio: '2026-09-14', contas_semana: 0, reinvestimento: 0, pares_produzidos: 2_147_483_647 }),
+      ],
+    });
+    expect(result.totals.paresProduzidos).toBe(4_294_967_294);
+    expect(result.weeks[1].paresAcumulados).toBe(4_294_967_294);
+  });
+
+  it('ignora outros planos e semanas fora do horizonte sem transportar produção histórica', () => {
+    const result = buildCfoProjection(plan, [], [], {
+      ...options, weeklyInputs: [
+        weekInput({ plano_id: 'outro-plano', pares_produzidos: 900 }),
+        weekInput({ semana_inicio: '2026-08-31', pares_produzidos: 800 }),
+        weekInput({ semana_inicio: '2026-09-21', pares_produzidos: 700 }),
+      ],
+    });
+    expect(result.totals).toMatchObject({ paresProduzidos: 0, contasInformadas: 0, reinvestimentoInformado: 0, saldoFinal: 0 });
+  });
+
+  it('concilia centavos e não cria complemento residual para 0,10 + 0,20', () => {
+    const result = buildCfoProjection(plan, [], [
+      entry({ tipo: 'material', data_prevista: '2026-09-08', valor_previsto: 0.1 }),
+      entry({ tipo: 'material', data_prevista: '2026-09-08', valor_previsto: 0.2 }),
+    ], { ...options, weeklyInputs: [weekInput({ contas_semana: 0, reinvestimento: 0.3 })] });
+    expect(result.weeks[0]).toMatchObject({ materiais: 0.3, reinvestimentoComplementar: 0 });
+  });
+
+  it.each([
+    ['2026-09-07', '2026-09-07'], ['2026-09-09', '2026-09-07'], ['2026-09-13', '2026-09-07'],
+    ['2027-01-03', '2026-12-28'], ['2028-02-29', '2028-02-28'],
+  ])('resolve a segunda-feira de %s como %s', (date, expected) => {
+    expect(getCfoWeekKey(date)).toBe(expected);
+  });
+
+  it('rejeita duas entradas para a mesma semana, mesmo com IDs diferentes', () => {
+    expect(() => buildCfoProjection(plan, [], [], {
+      ...options, weeklyInputs: [weekInput(), weekInput({ id: 'duplicada' })],
+    })).toThrow('duplicados');
+  });
+
+  it.each([
+    { semana_inicio: '2026-09-08' }, { semana_inicio: '2026-02-30' }, { semana_inicio: '0000-01-01' },
+    { contas_semana: NaN }, { contas_semana: Infinity }, { contas_semana: -1 },
+    { reinvestimento: NaN }, { reinvestimento: Infinity }, { reinvestimento: -1 },
+    { pares_produzidos: NaN }, { pares_produzidos: Infinity }, { pares_produzidos: -1 },
+    { pares_produzidos: 1.5 }, { pares_produzidos: 2_147_483_648 }, { pares_produzidos: Number.MAX_SAFE_INTEGER + 1 },
+  ])('rejeita dado semanal inválido: %j', overrides => {
+    expect(() => buildCfoProjection(plan, [], [], { ...options, weeklyInputs: [weekInput(overrides)] })).toThrow();
   });
 });

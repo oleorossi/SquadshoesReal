@@ -17,7 +17,7 @@ import { HubTabsList } from '@/components/layout/HubTabs';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useCan } from '@/hooks/useAccessControl';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
-import { useCfoPlans, useCfoOrders, useCfoEntries, useDeleteCfoOrder, useDeleteCfoEntry } from '@/hooks/useCfo';
+import { useCfoPlans, useCfoOrders, useCfoEntries, useCfoWeeks, useDeleteCfoOrder, useDeleteCfoEntry } from '@/hooks/useCfo';
 import { buildCfoProjection, type CfoProjectionResult } from '@/lib/cfoProjection';
 import { cn, formatCurrency as money } from '@/lib/utils';
 import { safeFormatBR } from '@/lib/date';
@@ -26,16 +26,21 @@ import CfoPlanDialog from '@/components/finance/cfo/CfoPlanDialog';
 import CfoOrderDialog from '@/components/finance/cfo/CfoOrderDialog';
 import CfoEntryDialog from '@/components/finance/cfo/CfoEntryDialog';
 import { CFO_ENTRY_LABELS } from '@/lib/cfoLabels';
+import CfoWeeklyInputs from '@/components/finance/cfo/CfoWeeklyInputs';
 
 const CFO_VIEWS = ['weeks', 'orders', 'entries'] as const;
 const dateShort = (date: string) => safeFormatBR(date, '—', 'dd/MM');
 const numberShort = (value: number) => new Intl.NumberFormat('pt-BR', { notation: 'compact', maximumFractionDigits: 1 }).format(value);
 
 function exportWeeks(projection: CfoProjectionResult) {
-  const header = ['Início', 'Fim', 'Saldo inicial', 'Recebimentos', 'Aportes', 'Materiais', 'Despesas', 'Retiradas', 'Saldo final', 'Menor saldo', 'Lucro das entregas', 'Lucro acumulado'];
+  const header = ['Início', 'Fim', 'Saldo inicial', 'Recebimentos', 'Aportes', 'Materiais', 'Despesas', 'Retiradas', 'Saldo final', 'Menor saldo', 'Lucro das entregas', 'Lucro acumulado', 'Contas informadas', 'Reinvestimento informado', 'Pares produzidos', 'Pares acumulados'];
   const rows = projection.weeks.map(w => [safeFormatBR(w.inicio), safeFormatBR(w.fim), ...[
     w.saldoInicial, w.recebimentos, w.aportes, w.materiais, w.despesas, w.retiradas, w.saldoFinal, w.menorSaldo, w.lucro, w.lucroAcumulado,
-  ].map(n => n.toFixed(2).replace('.', ','))]);
+  ].map(n => n.toFixed(2).replace('.', ',')),
+    w.contasInformadas === null ? '' : w.contasInformadas.toFixed(2).replace('.', ','),
+    w.reinvestimentoInformado === null ? '' : w.reinvestimentoInformado.toFixed(2).replace('.', ','),
+    w.paresProduzidos === null ? '' : String(w.paresProduzidos), String(w.paresAcumulados),
+  ]);
   const blob = new Blob(['\uFEFF', [header, ...rows].map(row => row.join(';')).join('\r\n')], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'cfo-projecao-semanal.csv'; anchor.click();
@@ -50,6 +55,7 @@ export default function CfoTab() {
   const plan = plans.find(p => p.id === params.get('cfoPlano')) ?? plans[0];
   const ordersQuery = useCfoOrders(plan?.id);
   const entriesQuery = useCfoEntries(plan?.id);
+  const weeksQuery = useCfoWeeks(plan?.id);
   const orders = ordersQuery.data ?? [];
   const entries = entriesQuery.data ?? [];
   const removeOrder = useDeleteCfoOrder();
@@ -64,17 +70,17 @@ export default function CfoTab() {
   const { value: view, setValue: setView } = useUrlTabState({ values: CFO_VIEWS, defaultValue: 'weeks', param: 'cfoView' });
   const scenario = delay > 0 || increase > 0;
   const calculation = useMemo(() => {
-    if (!plan || !ordersQuery.data || !entriesQuery.data) return { projection: null, error: null };
-    try { return { projection: buildCfoProjection(plan, ordersQuery.data, entriesQuery.data, { receivableDelayDays: delay, materialIncreasePct: increase }), error: null }; }
+    if (!plan || !ordersQuery.data || !entriesQuery.data || !weeksQuery.data) return { projection: null, error: null };
+    try { return { projection: buildCfoProjection(plan, ordersQuery.data, entriesQuery.data, { receivableDelayDays: delay, materialIncreasePct: increase, weeklyInputs: weeksQuery.data }), error: null }; }
     catch (error) { return { projection: null, error: error instanceof Error ? error.message : 'Confira as datas e os valores do planejamento.' }; }
-  }, [plan, ordersQuery.data, entriesQuery.data, delay, increase]);
+  }, [plan, ordersQuery.data, entriesQuery.data, weeksQuery.data, delay, increase]);
   const base = useMemo(() => {
-    if (!scenario || !plan || !ordersQuery.data || !entriesQuery.data) return null;
-    try { return buildCfoProjection(plan, ordersQuery.data, entriesQuery.data); } catch { return null; }
-  }, [plan, ordersQuery.data, entriesQuery.data, scenario]);
+    if (!scenario || !plan || !ordersQuery.data || !entriesQuery.data || !weeksQuery.data) return null;
+    try { return buildCfoProjection(plan, ordersQuery.data, entriesQuery.data, { weeklyInputs: weeksQuery.data }); } catch { return null; }
+  }, [plan, ordersQuery.data, entriesQuery.data, weeksQuery.data, scenario]);
   const projection = calculation.projection;
-  const loading = plansQuery.isLoading || (plan && (ordersQuery.isLoading || entriesQuery.isLoading));
-  const error = plansQuery.error || ordersQuery.error || entriesQuery.error || calculation.error;
+  const loading = plansQuery.isLoading || (plan && (ordersQuery.isLoading || entriesQuery.isLoading || weeksQuery.isLoading));
+  const error = plansQuery.error || ordersQuery.error || entriesQuery.error || weeksQuery.error || calculation.error;
   const choosePlan = (id: string) => {
     setParams(current => { const next = new URLSearchParams(current); next.set('cfoPlano', id); return next; });
     setDelay(0); setIncrease(0);
@@ -105,7 +111,7 @@ export default function CfoTab() {
 
     {loading ? <div className="space-y-4"><Skeleton className="h-24" /><Skeleton className="h-80" /></div> : error ? <Card><CardContent className="py-8 space-y-3 text-center">
       <WarningCircle className="h-8 w-8 mx-auto text-destructive" /><p className="font-semibold">Não foi possível abrir a projeção</p><p className="text-sm text-muted-foreground">{typeof error === 'string' ? error : (error as Error).message}</p>
-      <Button variant="outline" onClick={() => { void plansQuery.refetch(); if (plan) { void ordersQuery.refetch(); void entriesQuery.refetch(); } }}><ArrowsClockwise className="mr-2 h-4 w-4" />Tentar novamente</Button>
+      <Button variant="outline" onClick={() => { void plansQuery.refetch(); if (plan) { void ordersQuery.refetch(); void entriesQuery.refetch(); void weeksQuery.refetch(); } }}><ArrowsClockwise className="mr-2 h-4 w-4" />Tentar novamente</Button>
       {plan && permission.canEdit && <Button variant="outline" className="ml-2" onClick={() => setPlanDialog('edit')}>Conferir configuração</Button>}
     </CardContent></Card> : !plan ? <Card><EmptyState icon={ChartLineUp} title="Comece pela data e pelo saldo inicial" description="Depois adicione pedidos, lucro esperado e compras de material. Cada lançamento atualiza as semanas do planejamento."
       action={permission.canCreate ? <Button onClick={() => setPlanDialog('new')}>Criar planejamento CFO</Button> : <p className="text-sm text-muted-foreground">Peça a criação do plano a alguém com permissão de cadastro no Financeiro.</p>} /></Card> : projection && <>
@@ -116,7 +122,7 @@ export default function CfoTab() {
       </div>
 
       <div className="rounded-lg border border-border p-3 text-sm leading-relaxed text-muted-foreground">
-        <strong className="text-foreground">Lucro e caixa têm datas diferentes.</strong> O lucro aparece na entrega. O caixa muda nos recebimentos e pagamentos que você programar. Este planejamento não gera contas a pagar, não altera estoque e não soma automaticamente os títulos do Financeiro.
+        <strong className="text-foreground">Lucro e caixa têm datas diferentes.</strong> O lucro aparece na entrega. O caixa considera os recebimentos, as contas e o reinvestimento que você informar. Este planejamento não gera contas a pagar, não altera estoque e não soma automaticamente os títulos do Financeiro.
       </div>
 
       {projection.warnings.length > 0 && <div className="rounded-lg border border-warning/40 bg-warning/5 p-4 space-y-2" role="status">
@@ -127,7 +133,7 @@ export default function CfoTab() {
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
         <StatCard label="Lucro das entregas" value={money(projection.totals.lucroTotal)} hint="Soma dos resultados dos pedidos no período" tone={projection.totals.lucroTotal < 0 ? 'destructive' : 'success'} icon={ChartLineUp} />
         <StatCard label={scenario ? 'Caixa final simulado' : 'Caixa final projetado'} value={money(projection.totals.saldoFinal)} hint={`Saldo inicial de ${money(plan.saldo_inicial)} + entradas − saídas`} tone={projection.totals.saldoFinal < 0 ? 'destructive' : 'default'} icon={Wallet} />
-        <StatCard label="Compras de materiais" value={money(projection.totals.materiais)} hint="Pagamentos previstos e realizados no período" />
+        <StatCard label="Compras de materiais" value={money(projection.totals.materiais)} hint="Reinvestimento semanal com compras detalhadas incluídas" />
         <StatCard label="Capital adicional necessário" value={money(projection.totals.capitalNecessario)} hint={projection.firstShortfallDate ? `Primeiro déficit em ${safeFormatBR(projection.firstShortfallDate)}` : 'Para cobrir o menor saldo, sem incluir a reserva'} tone={projection.totals.capitalNecessario > 0 ? 'destructive' : 'default'} />
       </div>
 
@@ -145,7 +151,14 @@ export default function CfoTab() {
       <Tabs value={view} onValueChange={v => setView(v as typeof view)}>
         <HubTabsList ariaLabel="Acompanhamento CFO" tabs={[{ value: 'weeks', label: 'Semana a semana', icon: Calendar }, { value: 'orders', label: 'Pedidos', badge: orders.length }, { value: 'entries', label: 'Entradas e saídas', badge: entries.length }]} />
         <TabsContent value="weeks" className="space-y-4">
-          {orders.length === 0 && entries.length === 0 ? <EmptyState size="sm" title="Seu primeiro pedido começa a projeção" description="Adicione a entrega e o lucro. Em seguida, programe quando pagar os materiais e receber do cliente." action={permission.canCreate && <Button onClick={() => setOrderDialog('new')}>Projetar primeiro pedido</Button>} /> : <>
+          <CfoWeeklyInputs key={plan.id} plan={plan} weeks={projection.weeks} records={weeksQuery.data ?? []} />
+          <div className="grid gap-3 sm:grid-cols-3">
+            <StatCard label="Contas informadas" value={money(projection.totals.contasInformadas)} hint={projection.totals.semanasSemContas > 0 ? `${projection.totals.semanasSemContas} semana(s) com preenchimento pendente` : 'Todas as semanas preenchidas'} />
+            <StatCard label="Reinvestimento definido" value={money(projection.totals.reinvestimentoInformado)} hint="Soma dos valores escolhidos por você" />
+            <StatCard label="Pares produzidos" value={projection.totals.paresProduzidos.toLocaleString('pt-BR')} hint="Acumulado das semanas já apuradas" />
+          </div>
+          {orders.length === 0 && entries.length === 0 && <EmptyState size="sm" title="Adicione os pedidos para projetar as entradas" description="As contas e o reinvestimento já podem ser preenchidos. Cadastre entregas, lucro e recebimentos para completar a projeção." action={permission.canCreate && <Button onClick={() => setOrderDialog('new')}>Projetar primeiro pedido</Button>} />}
+          <>
             <Card><CardContent className="pt-5"><h3 className="text-base font-semibold">Dinheiro disponível ao fim de cada semana</h3>
               <div className="h-64 mt-4" role="img" aria-label="Gráfico do saldo de caixa no fim de cada semana. Valores completos na tabela abaixo."><ResponsiveContainer width="100%" height="100%"><LineChart data={projection.weeks} margin={{ top: 8, right: 16, left: 8, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} /><XAxis dataKey="inicio" tickFormatter={dateShort} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} /><YAxis tickFormatter={numberShort} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
@@ -165,8 +178,8 @@ export default function CfoTab() {
                 <TableCell className="text-right tabular-nums whitespace-nowrap">{money(w.lucro)}</TableCell><TableCell className="text-right tabular-nums whitespace-nowrap font-medium">{money(w.lucroAcumulado)}</TableCell>
               </TableRow>)}</TableBody>
             </Table></div>
-            <p className="text-xs text-muted-foreground">Semanas de segunda a domingo, limitadas ao período escolhido. Outras saídas = despesas operacionais + retiradas. O lucro das entregas não é somado novamente ao caixa.</p>
-          </>}
+            <p className="text-xs text-muted-foreground">Semanas de segunda a domingo, limitadas ao período escolhido. Outras saídas incluem as contas informadas e os lançamentos de despesas/retiradas, sem duplicá-los. O complemento ainda não detalhado é considerado como saída no primeiro dia exibido. O lucro não é somado novamente ao caixa.</p>
+          </>
         </TabsContent>
 
         <TabsContent value="orders"><div className="rounded-lg border border-border"><Table>

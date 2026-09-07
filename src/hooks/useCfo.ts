@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { getISODay, parseISO } from 'date-fns';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { fetchFinancialRows } from '@/lib/financialPagination';
+import { isCfoDate } from '@/lib/cfoDates';
 import { useCan } from '@/hooks/useAccessControl';
-import type { CfoEntry, CfoEntryInput, CfoOrder, CfoOrderInput, CfoPlan, CfoPlanInput } from '@/types/cfo';
+import type { CfoEntry, CfoEntryInput, CfoOrder, CfoOrderInput, CfoPlan, CfoPlanInput, CfoWeekInput, CfoWeekSaveInput } from '@/types/cfo';
 
 interface CfoTable<Row, Input> {
   Row: { [Key in keyof Row]: Row[Key] };
@@ -20,6 +22,7 @@ interface CfoDatabase {
       cfo_planos: CfoTable<CfoPlan, CfoPlanInput>;
       cfo_pedidos: CfoTable<CfoOrder, CfoOrderInput>;
       cfo_lancamentos: CfoTable<CfoEntry, CfoEntryInput>;
+      cfo_semanas: CfoTable<CfoWeekInput, CfoWeekSaveInput>;
     };
     Views: Record<never, never>;
     Functions: Record<never, never>;
@@ -111,6 +114,57 @@ export function useCfoSaleOrders() {
     queryFn: () => fetchFinancialRows<CfoSaleOrder>((from, to) => supabase.from('sale_orders')
       .select('id, order_number, client_name, total, delivery_date:delivery_deadline', { count: 'exact' })
       .is('deleted_at', null).order('id').range(from, to)),
+  });
+}
+
+export function useCfoWeeks(planId?: string | null) {
+  const permission = useCan('/financeiro');
+  return useQuery({
+    queryKey: ['cfo-weeks', planId],
+    ...queryTimes,
+    enabled: !!planId && !permission.loading && permission.canView,
+    queryFn: async () => {
+      const rows = await fetchFinancialRows<CfoWeekInput>((from, to) => cfoDb.from('cfo_semanas')
+        .select('*', { count: 'exact' }).eq('plano_id', planId!).order('id').range(from, to));
+      return rows.sort((a, b) => a.semana_inicio.localeCompare(b.semana_inicio));
+    },
+  });
+}
+
+export function useSaveCfoWeek() {
+  const qc = useQueryClient();
+  const permission = useCan('/financeiro');
+  return useMutation({
+    mutationFn: async ({ id, ...input }: CfoWeekSaveInput) => {
+      requirePermission(id ? permission.canEdit : permission.canCreate);
+      if (!isCfoDate(input.semana_inicio) || getISODay(parseISO(input.semana_inicio)) !== 1) {
+        throw new Error('Informe a segunda-feira que inicia a semana.');
+      }
+      if (!Number.isFinite(input.contas_semana) || input.contas_semana < 0
+          || !Number.isFinite(input.reinvestimento) || input.reinvestimento < 0) {
+        throw new Error('Informe os valores das contas da semana e do reinvestimento. Use zero quando não houver valor.');
+      }
+      if (input.pares_produzidos !== null && (!Number.isInteger(input.pares_produzidos)
+          || input.pares_produzidos < 0 || input.pares_produzidos > 2_147_483_647)) {
+        throw new Error('Informe uma quantidade inteira de pares entre zero e 2.147.483.647, ou deixe a produção em branco.');
+      }
+      const query = id ? cfoDb.from('cfo_semanas').update(input).eq('id', id).eq('plano_id', input.plano_id) : cfoDb.from('cfo_semanas').insert(input);
+      const { data, error } = await query.select('*').single();
+      if (error?.code === '23505') throw new Error('Esta semana já foi preenchida. Atualize a projeção para editar os valores salvos.');
+      throwCfoError(error);
+      return data as CfoWeekInput;
+    },
+    onSuccess: async (data) => {
+      const queryKey = ['cfo-weeks', data.plano_id];
+      qc.setQueryData<CfoWeekInput[]>(queryKey, current => [
+        ...(current ?? []).filter(row => row.plano_id === data.plano_id
+          && row.id !== data.id && row.semana_inicio !== data.semana_inicio),
+        data,
+      ].sort((a, b) => a.semana_inicio.localeCompare(b.semana_inicio)));
+      await qc.invalidateQueries({ queryKey });
+      toast.success('Valores da semana salvos!');
+    },
+    onError: (error: Error) => toast.error(error.message),
   });
 }
 

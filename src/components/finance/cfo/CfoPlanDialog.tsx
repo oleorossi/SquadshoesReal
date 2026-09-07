@@ -50,7 +50,7 @@ export default function CfoPlanDialog({ plan, onClose, onSaved }: Props) {
           <p className="text-xs text-muted-foreground">Pode ser negativo. Valores pagos ou recebidos antes da data inicial já devem estar neste saldo.</p></div>
         <div className="space-y-1.5"><Label htmlFor="cfo-plan-reserve">Reserva mínima desejada</Label><CurrencyInput id="cfo-plan-reserve" value={form.reserva_minima} onChange={v => change('reserva_minima', v)} />
           <p className="text-xs text-muted-foreground">O CFO avisa quando o saldo fica abaixo deste valor.</p></div>
-        {plan && <p className="text-sm text-warning">Ao alterar o período, confira também o saldo inicial. Os lançamentos permanecem salvos nas datas originais.</p>}
+        {plan && <p className="text-sm text-warning">Ao alterar o período, confira o saldo inicial e os totais semanais, especialmente nas semanas que ficarem incompletas. Os lançamentos permanecem salvos nas datas originais.</p>}
         <DialogFooter><Button type="button" variant="outline" onClick={onClose} disabled={save.isPending}>Cancelar</Button><Button type="submit" disabled={save.isPending}>{save.isPending ? 'Salvando…' : 'Salvar planejamento'}</Button></DialogFooter>
       </form>
     </DialogContent>
