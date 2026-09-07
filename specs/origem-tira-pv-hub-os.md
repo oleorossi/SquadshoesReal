@@ -238,7 +238,7 @@ repo+banco; validar objetos no banco (regra de ouro de migrations).
 
 | Fatia | Estado |
 |---|---|
-| Peel Soft+Massabox → napa (`strapBaseNapaPeel`, mig `17400`) | feito; objetos no banco; carimbo local `17400` (evita colisão com `17100`/`17200` audit já no remoto) |
+| Peel Soft+Massabox → napa (`strapBaseNapaPeel`, mig `18100`) | feito; objetos no banco; carimbo local `18100` (evita colisão com série audit remota `17000`–`17400`) |
 | Remover Base da identidade da ficha | feito |
 | Hub: `origem_padrao` + preços na medida | feito (UI + colunas) |
 | Prestador: frete R$/Y m | feito (colunas + form) |

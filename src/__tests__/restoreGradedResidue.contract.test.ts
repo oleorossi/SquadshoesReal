@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
  */
 const ROOT = resolve(__dirname, '../..');
 const MIG = readFileSync(
-  resolve(ROOT, 'supabase/migrations/20270101017300_sole-audit-restore-parity-inspection.sql'),
+  resolve(ROOT, 'supabase/migrations/20270101018000_sole-audit-restore-parity-inspection.sql'),
   'utf8',
 );
 const SPEC = readFileSync(resolve(ROOT, 'specs/resync-estorno-unificado.md'), 'utf8');
