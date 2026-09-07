@@ -318,9 +318,44 @@ describe('preview canônica de tiras', () => {
       confirmedYieldMPerM: 64,
       usableBaseWidthMm: 1370,
       theoreticalYieldMPerM: 68,
+      transformationCostPerM: null,
     });
     expect(rows[0].cut.valid).toBe(false);
     expect(rows[0].cut.n_bandas).toBe(0);
+  });
+
+  it('extrai o custo de mão de obra do catalog e preserva R$/m na agregação', () => {
+    const withCost = preview({
+      resolved: {
+        strap_product_name: 'TIRA CHATA 8MM · NAPA SOFT',
+        strap_color_name: 'OFF WHITE',
+        base_product_name: 'NAPA SOFT · OFF WHITE',
+        confirmed_yield_m_per_m: 64,
+        base_required_m: 10,
+        cut_band_width_mm: 20,
+        usable_base_width_mm_snapshot: 1370,
+        theoretical_yield_m_per_m: 68,
+        catalog: { transformation_cost_per_m: 1.25 },
+      },
+    });
+    expect(withCost.transformationCostPerM).toBe(1.25);
+
+    const fromTopLevel = preview({
+      sale_order_item_id: 'item-2',
+      gross_required_m: 320,
+      resolved: {
+        strap_product_name: 'TIRA CHATA 8MM · NAPA SOFT',
+        strap_color_name: 'OFF WHITE',
+        base_product_name: 'NAPA SOFT · OFF WHITE',
+        confirmed_yield_m_per_m: 64,
+        base_required_m: 5,
+        transformation_cost_per_m: 1.25,
+      },
+    });
+    const [cut] = canonicalStrapCutRows([withCost, fromTopLevel]);
+    expect(cut.metros_necessarios).toBe(960);
+    expect(cut.canonical?.baseRequiredM).toBe(15);
+    expect(cut.canonical?.transformationCostPerM).toBe(1.25);
   });
 
   it('mantém bloqueio acionável quando a receita exata não existe', () => {

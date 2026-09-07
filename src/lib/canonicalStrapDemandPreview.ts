@@ -31,6 +31,12 @@ export interface CanonicalStrapDemandPreview {
   cutBandWidthMm: number | null;
   usableBaseWidthMm: number | null;
   theoreticalYieldMPerM: number | null;
+  /**
+   * Custo de transformação (mão de obra) por metro de tira acabada
+   * (`artisanal_strap_recipes.transformation_cost_per_m`). Null quando a
+   * receita não resolveu, a origem é buy_ready ou o usuário não vê financeiro.
+   */
+  transformationCostPerM: number | null;
   blockingReasons: string[];
   /** Códigos crus dos blocking_reasons (além das mensagens). */
   blockingCodes: string[];
@@ -223,6 +229,9 @@ export function parseCanonicalStrapDemandPreview(
     ? value.source_mode
     : null;
   const rawName = stringOrNull(resolved.strap_product_name);
+  const catalog = resolved.catalog && typeof resolved.catalog === 'object'
+    ? resolved.catalog as Record<string, unknown>
+    : {};
 
   return {
     saleOrderItemId: stringOrNull(value.sale_order_item_id),
@@ -243,6 +252,9 @@ export function parseCanonicalStrapDemandPreview(
     cutBandWidthMm: numberOrNull(resolved.cut_band_width_mm),
     usableBaseWidthMm: numberOrNull(resolved.usable_base_width_mm_snapshot),
     theoreticalYieldMPerM: numberOrNull(resolved.theoretical_yield_m_per_m),
+    transformationCostPerM: numberOrNull(
+      resolved.transformation_cost_per_m ?? catalog.transformation_cost_per_m,
+    ),
     blockingReasons: parseCanonicalBlockingReasons(value.blocking_reasons),
     blockingCodes: parseCanonicalBlockingCodes(value.blocking_reasons),
     ...(resolved.snapshot_warning ? { snapshotWarning: stringOrNull(resolved.snapshot_warning) } : {}),
@@ -431,6 +443,7 @@ export function canonicalStrapCutRows(
       const yieldPerMeter = Math.max(0, finiteOrZero(preview.confirmedYieldMPerM));
       const usableWidth = Math.max(0, finiteOrZero(preview.usableBaseWidthMm));
       const theoreticalYield = Math.max(0, finiteOrZero(preview.theoreticalYieldMPerM));
+      const transformationCostPerM = preview.transformationCostPerM;
       const existing = grouped.get(key);
 
       if (existing?.canonical) {
@@ -440,6 +453,11 @@ export function canonicalStrapCutRows(
           ...existing.canonical.blockingReasons,
           ...preview.blockingReasons,
         ]));
+        // R$/m é taxa da receita — não soma na agregação. Preenche se a 1ª
+        // linha veio sem financeiro e uma posterior trouxe o custo.
+        if (existing.canonical.transformationCostPerM == null && transformationCostPerM != null) {
+          existing.canonical.transformationCostPerM = transformationCostPerM;
+        }
         if (preview.snapshotWarning) existing.canonical.snapshotWarning = preview.snapshotWarning;
         return;
       }
@@ -458,6 +476,7 @@ export function canonicalStrapCutRows(
           confirmedYieldMPerM: yieldPerMeter,
           usableBaseWidthMm: usableWidth,
           theoreticalYieldMPerM: theoreticalYield,
+          transformationCostPerM,
           blockingReasons: [...preview.blockingReasons],
           ...(preview.snapshotWarning ? { snapshotWarning: preview.snapshotWarning } : {}),
         },

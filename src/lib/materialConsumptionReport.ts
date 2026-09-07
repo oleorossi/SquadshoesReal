@@ -19,6 +19,7 @@ import { COMPONENT_ORDER, type ConsumptionRow } from '@/lib/consumptionRows';
 import { escapeHtml } from '@/lib/htmlUtils';
 import { buildColAvailability, sizeSortKey } from '@/lib/soleMatrixHtml';
 import type { ArtisanalStrapCutRow } from '@/lib/strapRollCut';
+import { formatCurrency, formatMoney } from '@/lib/utils';
 
 export interface MaterialConsumptionReportOrderHeader {
   order_number: string;
@@ -291,15 +292,20 @@ const renderArtisanalStraps = (rows: ArtisanalStrapCutRow[]): string => {
       <p class="section-note">Separação da napa-base conforme o snapshot aprovado da receita.</p>
     </div>
     <table class="report-table">
-      <thead><tr><th>Tira</th><th>Cor / base</th><th class="num">Tira necessária</th><th class="num">Napa a separar</th><th>Situação</th></tr></thead>
+      <thead><tr><th>Tira</th><th>Cor / base</th><th class="num">Tira necessária</th><th class="num">Napa a separar</th><th class="num">Mão de obra/m</th><th class="num">Valor total</th><th>Situação</th></tr></thead>
       <tbody>${rows.map((row) => {
         const snapshot = row.canonical;
         const blocked = !snapshot || snapshot.baseRequiredM <= 0 || snapshot.confirmedYieldMPerM <= 0 || snapshot.blockingReasons.length > 0 || !!snapshot.snapshotWarning;
+        const laborCost = snapshot?.transformationCostPerM;
+        const hasLaborCost = laborCost != null && Number.isFinite(laborCost);
+        const laborTotal = hasLaborCost ? row.metros_necessarios * (laborCost as number) : null;
         return `<tr class="${blocked ? 'is-pending' : ''}">
           <td><strong>${escapeHtml(row.groupName)}</strong></td>
           <td>${escapeHtml(row.color || '—')}${row.baseName ? ` · ${escapeHtml(row.baseName)}` : ''}</td>
           <td class="num strong">${formatQty(row.metros_necessarios, 'm')} m</td>
           <td class="num strong">${!blocked && snapshot ? `${formatQty(snapshot.baseRequiredM, 'm')} m` : '—'}</td>
+          <td class="num">${hasLaborCost ? escapeHtml(formatCurrency(laborCost)) : '—'}</td>
+          <td class="num strong">${laborTotal != null ? escapeHtml(formatMoney(laborTotal)) : '—'}</td>
           <td>${blocked ? `<span class="flag warning">${escapeHtml(snapshot?.snapshotWarning || snapshot?.blockingReasons.join(' · ') || 'snapshot incompleto')}</span>` : `<span class="flag ok">receita conferida</span>`}</td>
         </tr>`;
       }).join('')}</tbody>

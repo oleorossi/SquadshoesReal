@@ -2,6 +2,7 @@ import { Badge } from '@/components/ui/badge';
 import { Link } from 'react-router-dom';
 import { Scissors, Warning } from '@phosphor-icons/react';
 import type { ArtisanalStrapCutRow } from '@/lib/strapRollCut';
+import { formatCurrency, formatMoney } from '@/lib/utils';
 
 /**
  * Orientação operacional derivada do saldo líquido persistido pelo worker e do
@@ -16,6 +17,9 @@ function StrapLine({ row }: { row: ArtisanalStrapCutRow }) {
     || snapshot.confirmedYieldMPerM <= 0
     || snapshot.blockingReasons.length > 0
     || !!snapshot.snapshotWarning;
+  const laborCost = snapshot?.transformationCostPerM;
+  const hasLaborCost = laborCost != null && Number.isFinite(laborCost);
+  const laborTotal = hasLaborCost ? row.metros_necessarios * (laborCost as number) : null;
   return (
     <div className="px-3 py-2.5 hover:bg-red-500/5">
       <div className="flex items-start justify-between gap-3">
@@ -31,6 +35,8 @@ function StrapLine({ row }: { row: ArtisanalStrapCutRow }) {
             {snapshot?.usableBaseWidthMm ? ` · largura útil ${snapshot.usableBaseWidthMm.toLocaleString('pt-BR')} mm` : ''}
             {row.largura_mm > 0 ? ` · banda ${row.largura_mm.toLocaleString('pt-BR')} mm` : ''}
             {snapshot?.theoreticalYieldMPerM ? ` · teórico ${snapshot.theoreticalYieldMPerM.toLocaleString('pt-BR', { maximumFractionDigits: 6 })} m/m` : ''}
+            {hasLaborCost ? ` · mão de obra ${formatCurrency(laborCost)}/m` : ''}
+            {laborTotal != null ? ` · total ${formatMoney(laborTotal)}` : ''}
           </div>
         </div>
 

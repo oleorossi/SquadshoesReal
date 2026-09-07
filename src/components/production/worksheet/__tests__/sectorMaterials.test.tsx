@@ -27,7 +27,8 @@ describe('aviso de transformação física ainda não congelada', () => {
       cut: { largura_mm: 5, metros_uteis_por_banda: 0, n_bandas: 0, cm_a_cortar: 0,
         rolos: 0, n_rolos_completos: 0, cm_no_ultimo_rolo: 0, valid: false, widthMissing: false },
       canonical: { recipeId: 'recipe', baseRequiredM: 0, confirmedYieldMPerM: 0,
-        usableBaseWidthMm: 0, theoreticalYieldMPerM: 0, blockingReasons: [], snapshotWarning: warning },
+        usableBaseWidthMm: 0, theoreticalYieldMPerM: 0, transformationCostPerM: null,
+        blockingReasons: [], snapshotWarning: warning },
     };
     render(<MemoryRouter><ArtisanalStrapRollCutBlock rows={[pending]} /></MemoryRouter>);
     expect(screen.getByText(warning)).toBeInTheDocument();
