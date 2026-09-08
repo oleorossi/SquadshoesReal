@@ -279,6 +279,11 @@ function SoleCoveragePanel({ rows, grossNeed = false }: { rows: ConsumptionRow[]
                     <dt className="eyebrow">Necessidade</dt>
                     <dd className="mt-1 font-mono text-base font-bold tabular-nums">
                       {formatQty(row.totalQuantity, row.productUnit)} {formatUnit(row.productUnit)}
+                      {row.plateEquivalent != null && row.plateEquivalent > 0 && (
+                        <div className="mt-0.5 text-[10px] font-normal text-muted-foreground">
+                          ≈ {formatQty(row.plateEquivalent, 'placa')} placas
+                        </div>
+                      )}
                     </dd>
                   </div>
                   {!grossNeed && (
@@ -677,6 +682,11 @@ export default function MaterialConsumptionView({
           ) : row.warning && !(row.totalQuantity > 0) ? (
             <span className="font-normal text-muted-foreground">—</span>
           ) : formatQty(row.totalQuantity, row.productUnit)}
+          {row.plateEquivalent != null && row.plateEquivalent > 0 && (
+            <div className="mt-0.5 whitespace-nowrap text-[10px] font-normal text-muted-foreground">
+              ≈ {formatQty(row.plateEquivalent, 'placa')} placas
+            </div>
+          )}
           {row.artisanal && (
             row.artisanal.pending ? (
               <div className="mt-0.5 whitespace-nowrap text-[10px] font-normal text-amber-600 dark:text-amber-400">

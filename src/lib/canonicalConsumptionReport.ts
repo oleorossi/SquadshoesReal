@@ -15,6 +15,7 @@ import {
   type ConsumptionRow,
 } from '@/lib/consumptionRows';
 import type { ArtisanalStrapCutRow } from '@/lib/strapRollCut';
+import { dm2ToPlates, type PlateDualProduct } from '@/lib/insolePlateDualDisplay';
 
 interface CanonicalConsumptionRpcResult {
   data: unknown;
@@ -491,7 +492,7 @@ async function loadStockContext(
     productIds.size > 0
       ? supabase
         .from('products')
-        .select('id, name, unit, color, category, group_id, quantity, reserved_stock, stock_grade, unit_price')
+        .select('id, name, unit, color, category, group_id, quantity, reserved_stock, stock_grade, unit_price, purchase_unit, conversion_rate, dimensions_width, dimensions_length, dimensions_unit, product_groups!products_group_id_fkey(name, sector, dimensions_width, dimensions_length, dimensions_unit)')
         .in('id', [...productIds])
       : Promise.resolve({ data: [], error: null }),
     boxTypeIds.size > 0
@@ -510,6 +511,27 @@ async function loadStockContext(
   } as unknown as ConsumptionContext;
 }
 
+/** Anexa ≈ placas nas linhas de fibra/palmilha emitidas em dm². */
+export function enrichInsolePlateEquivalent(
+  rows: MaterialConsumptionRow[],
+  products: Array<Record<string, unknown>>,
+): MaterialConsumptionRow[] {
+  if (!rows.length || !products.length) return rows;
+  const byId = new Map(products.map((p) => [String(p.id), p]));
+  return rows.map((row) => {
+    if (row.plateEquivalent != null && row.plateEquivalent > 0) return row;
+    const unit = String(row.productUnit || '').toLowerCase();
+    if (unit !== 'dm2' && unit !== 'dm²') return row;
+    if (row.componentType !== 'Palmilha') return row;
+    const product = (row.productIds || [])
+      .map((id) => byId.get(id))
+      .find(Boolean) as PlateDualProduct | undefined;
+    const plates = dm2ToPlates(row.totalQuantity, product);
+    if (plates == null || !(plates > 0)) return row;
+    return { ...row, plateEquivalent: plates };
+  });
+}
+
 export async function materializeCanonicalConsumptionReport(
   report: CanonicalConsumptionReport,
   scopeKeys?: ReadonlySet<string>,
@@ -518,8 +540,9 @@ export async function materializeCanonicalConsumptionReport(
     ? report.lines.filter((line) => scopeKeys.has(line.scope_key))
     : report.lines;
   const scopedPreviews = canonicalStrapPreviews(report, scopeKeys);
-  const rows = adaptCanonicalConsumptionLines(scopedLines);
+  const adapted = adaptCanonicalConsumptionLines(scopedLines);
   const ctx = await loadStockContext(scopedLines, scopedPreviews);
+  const rows = enrichInsolePlateEquivalent(adapted, (ctx.allProducts || []) as Array<Record<string, unknown>>);
   return annotateConsumptionAvailability(
     rows,
     ctx,

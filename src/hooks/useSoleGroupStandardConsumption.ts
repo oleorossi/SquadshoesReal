@@ -18,10 +18,10 @@ type SoleGroupItemUpdate = Database['public']['Tables']['sole_group_standard_ite
  *  ITEM  — o solado manda no material E na quantidade (cola, linha, EVA).
  *          Mora em `sole_group_standard_items`, chaveado por grupo.
  *
- *  PAPEL — o solado manda só na quantidade; QUAL material entra é decidido pela
- *          ficha do modelo / PV (forro do cabedal, placa e forração da palmilha,
- *          fachete). Mora na MESMA tabela, com `role` preenchido e
- *          `material_product_id` nulo.
+ *  PAPEL — o solado manda na quantidade. Forro/forração/fachete: o material
+ *          vem da ficha/PV (`material_product_id` nulo). Fibra (`placa_palmilha`):
+ *          o solado também pode pinuar o SKU (`material_product_id` opcional) —
+ *          esse pin manda no débito/consumo acima do grupo da ficha.
  *
  * `sole_technical_specs` continua existindo, mas como ESPELHO DERIVADO: o
  * trigger `tg_sgsi_mirror_papel` replica as linhas PAPEL nas colunas de consumo
@@ -45,7 +45,7 @@ export const ROLE_COLUMNS: Record<SoleRole, { scalar: string; perSize: string }>
 
 export const ROLE_LABEL: Record<SoleRole, string> = {
   forro_cabedal: 'Forro do cabedal',
-  placa_palmilha: 'Placa da palmilha',
+  placa_palmilha: 'Fibra de palmilha',
   forracao_palmilha: 'Forração da palmilha',
   fachete: 'Fachete',
 };
@@ -53,10 +53,13 @@ export const ROLE_LABEL: Record<SoleRole, string> = {
 /** Quem escolhe o material de cada papel — texto exibido na linha. */
 export const ROLE_SOURCE: Record<SoleRole, string> = {
   forro_cabedal: 'material escolhido pela ficha e pelo PV',
-  placa_palmilha: 'material escolhido pela ficha',
+  placa_palmilha: 'SKU selecionado aqui manda no débito/consumo (acima da ficha)',
   forracao_palmilha: 'material escolhido pela ficha e pelo PV',
   fachete: 'material escolhido pelo grupo de fachete do solado',
 };
+
+/** Papéis que além da quantidade pinam o produto no próprio Consumo Padrão. */
+export const ROLE_WITH_MATERIAL_PIN: ReadonlySet<SoleRole> = new Set(['placa_palmilha']);
 
 /**
  * Papéis aplicáveis à classificação do solado. Palmilha pronta vem forrada de
@@ -110,6 +113,9 @@ export interface RoleValue {
   variesBySize: boolean;
   /** Numerações da grade do solado, ordenadas. */
   sizes: number[];
+  /** SKU pinado no Consumo Padrão (só fibra / placa_palmilha). */
+  materialProductId: string | null;
+  materialProduct?: { id: string; name: string; sku: string | null; unit: string } | null;
 }
 
 /** Linhas do tipo ITEM de um grupo de solado. */
@@ -157,7 +163,7 @@ export function useSoleGroupRoles(soleGroupId: string | null | undefined) {
         (supabase as any).from('sole_technical_specs').select('size').in('sole_id', soleIds).order('size'),
         (supabase as any)
           .from('sole_group_standard_items')
-          .select('role, consumption_per_pair, consumption_per_size')
+          .select('role, consumption_per_pair, consumption_per_size, material_product_id, products!material_product_id(id, name, sku, unit)')
           .eq('sole_group_id', soleGroupId)
           .not('role', 'is', null),
       ]);
@@ -171,12 +177,22 @@ export function useSoleGroupRoles(soleGroupId: string | null | undefined) {
       (Object.keys(ROLE_COLUMNS) as SoleRole[]).forEach((role) => {
         const row = ((roleRows || []) as any[]).find((r) => r.role === role);
         const perSize = (row?.consumption_per_size || {}) as Record<string, number>;
+        const mat = row?.products
+          ? {
+              id: row.products.id as string,
+              name: row.products.name as string,
+              sku: (row.products.sku as string | null) ?? null,
+              unit: row.products.unit as string,
+            }
+          : null;
         byRole[role] = {
           role,
           perPair: Number(row?.consumption_per_pair) || 0,
           perSize,
           variesBySize: Object.keys(perSize).length > 0,
           sizes,
+          materialProductId: (row?.material_product_id as string | null) ?? null,
+          materialProduct: mat,
         };
       });
 
@@ -207,15 +223,21 @@ export function useSetSoleGroupRole() {
       role: SoleRole;
       perPair: number;
       perSize?: Record<string, number>;
+      /** Só honrado em `placa_palmilha` (fibra). Outros papéis forçam null. */
+      materialProductId?: string | null;
     }) => {
       const perSizeJson: Json =
         params.perSize && Object.keys(params.perSize).length > 0
           ? params.perSize
           : {};
+      const allowPin = ROLE_WITH_MATERIAL_PIN.has(params.role);
+      const materialProductId = allowPin
+        ? (params.materialProductId ?? null)
+        : null;
       const payload: SoleGroupItemInsert = {
         sole_group_id: params.soleGroupId,
         role: params.role,
-        material_product_id: null,
+        material_product_id: materialProductId,
         consumption_per_pair: params.perPair,
         consumption_per_size: perSizeJson,
         unit: 'dm²',
