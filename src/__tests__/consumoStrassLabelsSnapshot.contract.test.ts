@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 const root = resolve(__dirname, '../..');
 const migration = readFileSync(
-  resolve(root, 'supabase/migrations/20270101020300_consumo-strass-labels-snapshot-incompleto.sql'),
+  resolve(root, 'supabase/migrations/20270101020900_consumo-strass-labels-snapshot-incompleto.sql'),
   'utf8',
 );
 const parser = readFileSync(
