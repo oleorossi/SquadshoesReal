@@ -1,5 +1,5 @@
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { napaDisplayName, type StrapSourceMode, type StrapSourcingMap } from '@/lib/strapSourcing';
 import { technicalStrapLineId } from '@/lib/technicalStrapLines';
@@ -80,6 +80,8 @@ function parseBlockingReasons(value: unknown): string[] {
 }
 
 export interface StrapStockLinesInput {
+  /** Chave estável do item no batch (id persistido ou clientKey). */
+  itemKey?: string | null;
   saleOrderId?: string | null;
   saleOrderItemId?: string | null;
   referenceId: string | null | undefined;
@@ -97,6 +99,7 @@ export interface StrapStockLinesInput {
 
 function cacheKey(input: StrapStockLinesInput): string {
   return JSON.stringify({
+    itemKey: input.itemKey || null,
     referenceId: input.referenceId || null,
     saleOrderId: input.saleOrderId || null,
     saleOrderItemId: input.saleOrderItemId || null,
@@ -128,6 +131,93 @@ function useDebouncedGradeQuantity(
   return debounced;
 }
 
+function buildPreviewPayload(input: StrapStockLinesInput, straps: StrapColorEntry[]) {
+  return {
+    item_key: input.itemKey || input.saleOrderItemId || null,
+    reference_id: input.referenceId,
+    sale_order_id: input.saleOrderId || null,
+    sale_order_item_id: input.saleOrderItemId || null,
+    material_variant_id: input.materialVariantId || null,
+    color: input.itemColor || null,
+    quantity: Number(input.quantity) || 0,
+    grade: input.grade || {},
+    strap_colors: straps,
+    strap_sourcing: input.strapSourcing || {},
+    billing_week: input.billingWeek || null,
+    main_production_start: input.mainProductionStart || null,
+    required_at: input.requiredAt || null,
+    schedule_revision: input.scheduleRevision || 0,
+  };
+}
+
+export function parseStrapStockLines(
+  data: unknown,
+  straps: StrapColorEntry[],
+): StrapStockLine[] {
+  return ((data || []) as RpcRow[]).map((row, index) => {
+    const ordinal = Math.max(0, Number(row.line_ordinal) || index + 1) - 1;
+    const source = straps[ordinal] || straps[index] || {};
+    const resolved = row.resolved && typeof row.resolved === 'object'
+      ? row.resolved as Record<string, unknown>
+      : {};
+    const catalog = resolved.catalog && typeof resolved.catalog === 'object'
+      ? resolved.catalog as Record<string, unknown>
+      : {};
+    const availability = catalog.source_availability
+      && typeof catalog.source_availability === 'object'
+      ? catalog.source_availability as Record<string, unknown>
+      : {};
+    const lineId = strOrNull(row.technical_strap_line_id) || technicalStrapLineId(source) || `invalid-${index}`;
+    const sourceMode = row.source_mode === 'internal' || row.source_mode === 'buy_ready'
+      ? row.source_mode
+      : null;
+    const blockingReasons = parseBlockingReasons(row.blocking_reasons);
+    const strapColor = str(resolved.strap_color_name || resolved.color_name || source.color);
+    const baseName = strOrNull(resolved.base_product_name);
+
+    return {
+      key: lineId,
+      technicalStrapLineId: lineId,
+      strapVariantId: strOrNull(row.strap_variant_id),
+      colorId: strOrNull(resolved.color_id || catalog.color_id || source.color_id),
+      baseGroupId: strOrNull(resolved.base_group_id || catalog.base_group_id),
+      baseGroupName: strOrNull(resolved.base_group_name || catalog.base_group_name),
+      recipeId: strOrNull(row.recipe_id),
+      baseProductId: strOrNull(row.base_product_id),
+      finishedProductId: strOrNull(row.finished_product_id),
+      sourceMode,
+      strapProductName: str(resolved.strap_product_name || resolved.finished_product_name || source.label) || 'Tira',
+      strapColor,
+      strapRequiredM: Number(row.gross_required_m) || 0,
+      napaProductName: baseName ? napaDisplayName(baseName, strapColor) : null,
+      yieldPerMeter: numOrNull(resolved.confirmed_yield_m_per_m || resolved.confirmed_yield),
+      napaRequiredM: numOrNull(resolved.base_required_m),
+      purchasePrice: numOrNull(resolved.purchase_price),
+      internalUnitCost: numOrNull(resolved.internal_unit_cost),
+      canInternal: resolved.can_internal === true,
+      canBuyReady: resolved.can_buy_ready === true,
+      canConsumeFinishedStock: catalog.finished_stock_consumption_allowed === true,
+      internalBlockReason: strOrNull(availability.internal_block_reason),
+      buyReadyBlockReason: strOrNull(availability.buy_ready_block_reason),
+      requiredAt: strOrNull(resolved.required_at),
+      mainProductionStart: strOrNull(resolved.main_production_start),
+      scheduleRevision: numOrNull(resolved.schedule_revision),
+      blockingReasons,
+      snapshotWarning: strOrNull(resolved.snapshot_warning),
+      blockReason: blockingReasons[0] || null,
+    };
+  });
+}
+
+/** Chave estável do item no mapa batch (id persistido ou clientKey). */
+export function strapStockLinesItemKey(input: {
+  saleOrderItemId?: string | null;
+  clientKey?: string | null;
+  itemKey?: string | null;
+}): string | null {
+  return input.itemKey || input.saleOrderItemId || input.clientKey || null;
+}
+
 export function useStrapStockLines(input: StrapStockLinesInput, enabled = true) {
   const straps = Array.isArray(input.strapColors) ? input.strapColors as StrapColorEntry[] : [];
   const hasStraps = straps.some((strap) => !!technicalStrapLineId(strap));
@@ -144,79 +234,143 @@ export function useStrapStockLines(input: StrapStockLinesInput, enabled = true) 
     staleTime: 30_000,
     gcTime: 5 * 60_000,
     placeholderData: keepPreviousData,
+    meta: { silentError: true },
     queryFn: async () => {
       const { data, error } = await rpc('preview_sale_order_strap_demand_draft', {
-        p_item: {
-          reference_id: queryInput.referenceId,
-          sale_order_id: queryInput.saleOrderId || null,
-          sale_order_item_id: queryInput.saleOrderItemId || null,
-          material_variant_id: queryInput.materialVariantId || null,
-          color: queryInput.itemColor || null,
-          quantity: Number(queryInput.quantity) || 0,
-          grade: queryInput.grade || {},
-          strap_colors: straps,
-          strap_sourcing: queryInput.strapSourcing || {},
-          billing_week: queryInput.billingWeek || null,
-          main_production_start: queryInput.mainProductionStart || null,
-          required_at: queryInput.requiredAt || null,
-          schedule_revision: queryInput.scheduleRevision || 0,
-        },
+        p_item: buildPreviewPayload(queryInput, straps),
+      });
+      if (error) throw error;
+      return parseStrapStockLines(data, straps);
+    },
+  });
+}
+
+/**
+ * Um RPC para todos os itens com tiras do editor. O painel chama; cada item
+ * lê `map.get(strapStockLinesItemKey(...))`.
+ */
+export function useStrapStockLinesBatch(
+  inputs: StrapStockLinesInput[],
+  enabled = true,
+) {
+  // Debounce grade/qty de TODOS os itens juntos — digitação na grade não
+  // dispara N× batch a cada tecla.
+  const gradeQtySig = useMemo(
+    () => inputs.map((input) => JSON.stringify({
+      k: strapStockLinesItemKey({
+        itemKey: input.itemKey,
+        saleOrderItemId: input.saleOrderItemId,
+      }),
+      q: Number(input.quantity) || 0,
+      g: input.grade || null,
+    })).join(';'),
+    [inputs],
+  );
+  const [debouncedSig, setDebouncedSig] = useState(gradeQtySig);
+  const [debouncedInputs, setDebouncedInputs] = useState(inputs);
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      setDebouncedSig(gradeQtySig);
+      setDebouncedInputs(inputs);
+    }, 400);
+    return () => window.clearTimeout(t);
+  }, [gradeQtySig, inputs]);
+
+  // Enquanto o debounce não aplica, usa o último payload estável — mas se a
+  // identidade estrutural mudou (ref/cor/sourcing), aplica na hora.
+  const structuralSig = useMemo(
+    () => inputs.map((input) => JSON.stringify({
+      k: strapStockLinesItemKey({
+        itemKey: input.itemKey,
+        saleOrderItemId: input.saleOrderItemId,
+      }),
+      r: input.referenceId || null,
+      v: input.materialVariantId || null,
+      c: input.itemColor || null,
+      sc: input.strapColors || [],
+      ss: input.strapSourcing || {},
+      bw: input.billingWeek || null,
+      mps: input.mainProductionStart || null,
+      ra: input.requiredAt || null,
+      sr: input.scheduleRevision || 0,
+      so: input.saleOrderId || null,
+    })).join(';'),
+    [inputs],
+  );
+  const [lastStructural, setLastStructural] = useState(structuralSig);
+  const effectiveInputs = structuralSig !== lastStructural
+    ? inputs
+    : (debouncedSig === gradeQtySig ? inputs : debouncedInputs);
+  useEffect(() => {
+    if (structuralSig !== lastStructural) setLastStructural(structuralSig);
+  }, [structuralSig, lastStructural]);
+
+  const payload = useMemo(() => {
+    const seen = new Set<string>();
+    const items: Array<ReturnType<typeof buildPreviewPayload> & { item_key: string }> = [];
+    const strapsByKey = new Map<string, StrapColorEntry[]>();
+    for (const input of effectiveInputs) {
+      const key = strapStockLinesItemKey({
+        itemKey: input.itemKey,
+        saleOrderItemId: input.saleOrderItemId,
+      });
+      if (!key || !input.referenceId || seen.has(key)) continue;
+      const straps = Array.isArray(input.strapColors)
+        ? input.strapColors as StrapColorEntry[]
+        : [];
+      if (!straps.some((strap) => !!technicalStrapLineId(strap))) continue;
+      seen.add(key);
+      const row = buildPreviewPayload({ ...input, itemKey: key }, straps);
+      items.push({ ...row, item_key: key });
+      strapsByKey.set(key, straps);
+    }
+    items.sort((a, b) => a.item_key.localeCompare(b.item_key));
+    return { items, strapsByKey };
+  }, [effectiveInputs]);
+
+  const payloadKey = useMemo(
+    () => payload.items.map((row) => cacheKey({
+      itemKey: row.item_key,
+      saleOrderId: row.sale_order_id as string | null,
+      saleOrderItemId: row.sale_order_item_id as string | null,
+      referenceId: row.reference_id as string | null,
+      materialVariantId: row.material_variant_id as string | null,
+      itemColor: row.color as string | null,
+      strapColors: row.strap_colors,
+      strapSourcing: row.strap_sourcing as StrapSourcingMap,
+      quantity: row.quantity as number,
+      grade: row.grade as Record<string, number>,
+      billingWeek: row.billing_week as string | null,
+      mainProductionStart: row.main_production_start as string | null,
+      requiredAt: row.required_at as string | null,
+      scheduleRevision: row.schedule_revision as number,
+    })).join('||'),
+    [payload],
+  );
+
+  return useQuery<ReadonlyMap<string, StrapStockLine[]>>({
+    queryKey: ['strap_stock_lines_preview_batch', payloadKey],
+    enabled: enabled && payload.items.length > 0,
+    staleTime: 30_000,
+    gcTime: 5 * 60_000,
+    placeholderData: keepPreviousData,
+    meta: { silentError: true },
+    queryFn: async () => {
+      const { data, error } = await rpc('preview_sale_order_strap_demand_draft_batch', {
+        p_items: payload.items,
       });
       if (error) throw error;
 
-      return ((data || []) as RpcRow[]).map((row, index) => {
-        const ordinal = Math.max(0, Number(row.line_ordinal) || index + 1) - 1;
-        const source = straps[ordinal] || straps[index] || {};
-        const resolved = row.resolved && typeof row.resolved === 'object'
-          ? row.resolved as Record<string, unknown>
-          : {};
-        const catalog = resolved.catalog && typeof resolved.catalog === 'object'
-          ? resolved.catalog as Record<string, unknown>
-          : {};
-        const availability = catalog.source_availability
-          && typeof catalog.source_availability === 'object'
-          ? catalog.source_availability as Record<string, unknown>
-          : {};
-        const lineId = strOrNull(row.technical_strap_line_id) || technicalStrapLineId(source) || `invalid-${index}`;
-        const sourceMode = row.source_mode === 'internal' || row.source_mode === 'buy_ready'
-          ? row.source_mode
-          : null;
-        const blockingReasons = parseBlockingReasons(row.blocking_reasons);
-        const strapColor = str(resolved.strap_color_name || resolved.color_name || source.color);
-        const baseName = strOrNull(resolved.base_product_name);
-
-        return {
-          key: lineId,
-          technicalStrapLineId: lineId,
-          strapVariantId: strOrNull(row.strap_variant_id),
-          colorId: strOrNull(resolved.color_id || catalog.color_id || source.color_id),
-          baseGroupId: strOrNull(resolved.base_group_id || catalog.base_group_id),
-          baseGroupName: strOrNull(resolved.base_group_name || catalog.base_group_name),
-          recipeId: strOrNull(row.recipe_id),
-          baseProductId: strOrNull(row.base_product_id),
-          finishedProductId: strOrNull(row.finished_product_id),
-          sourceMode,
-          strapProductName: str(resolved.strap_product_name || resolved.finished_product_name || source.label) || 'Tira',
-          strapColor,
-          strapRequiredM: Number(row.gross_required_m) || 0,
-          napaProductName: baseName ? napaDisplayName(baseName, strapColor) : null,
-          yieldPerMeter: numOrNull(resolved.confirmed_yield_m_per_m || resolved.confirmed_yield),
-          napaRequiredM: numOrNull(resolved.base_required_m),
-          purchasePrice: numOrNull(resolved.purchase_price),
-          internalUnitCost: numOrNull(resolved.internal_unit_cost),
-          canInternal: resolved.can_internal === true,
-          canBuyReady: resolved.can_buy_ready === true,
-          canConsumeFinishedStock: catalog.finished_stock_consumption_allowed === true,
-          internalBlockReason: strOrNull(availability.internal_block_reason),
-          buyReadyBlockReason: strOrNull(availability.buy_ready_block_reason),
-          requiredAt: strOrNull(resolved.required_at),
-          mainProductionStart: strOrNull(resolved.main_production_start),
-          scheduleRevision: numOrNull(resolved.schedule_revision),
-          blockingReasons,
-          snapshotWarning: strOrNull(resolved.snapshot_warning),
-          blockReason: blockingReasons[0] || null,
-        };
-      });
+      const map = new Map<string, StrapStockLine[]>();
+      const row = (data || {}) as Record<string, unknown>;
+      for (const [key, value] of Object.entries(row)) {
+        const straps = payload.strapsByKey.get(key) || [];
+        map.set(key, parseStrapStockLines(value, straps));
+      }
+      for (const item of payload.items) {
+        if (!map.has(item.item_key)) map.set(item.item_key, []);
+      }
+      return map;
     },
   });
 }
