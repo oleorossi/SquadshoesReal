@@ -4,12 +4,16 @@
 --
 -- Sintoma §03: "Variante exata ativa nao encontrada" + origem congelada stale
 -- em TIRA 5 mm · GLOW METALIC · COBRE (Napa a separar = —).
+--
+-- Pré-requisito do trigger: variante reference_base ativa exige
+-- `base_material_color_official_products` ativo na cor (mig 04400).
 
 BEGIN;
 
 DO $catalog$
 DECLARE
   v_glow uuid;
+  v_actor uuid := '49371f4d-641f-466d-be26-686ef57743ec'; -- mesmo ator das migs de catálogo
   v_recipe record;
   v_color record;
   v_type_name text;
@@ -17,7 +21,10 @@ DECLARE
   v_presentation_group uuid;
   v_finished_id uuid;
   v_variant_id uuid;
+  v_base_product_id uuid;
+  v_candidate_count integer;
   v_created integer := 0;
+  v_skipped integer := 0;
 BEGIN
   SELECT id INTO v_glow
     FROM public.product_groups
@@ -30,16 +37,24 @@ BEGIN
     RETURN;
   END IF;
 
-  -- Perfil de largura precisa existir (auto-provision ja rodou em PVs
-  -- anteriores). Sem perfil, a resolucao do catalogo ainda funciona para
-  -- identidade da variante; o rendimento e da receita.
+  IF NOT EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = v_actor) THEN
+    SELECT p.id INTO v_actor
+      FROM public.profiles p
+     WHERE COALESCE(p.approved, false)
+     ORDER BY p.created_at
+     LIMIT 1;
+  END IF;
+  IF v_actor IS NULL THEN
+    RAISE EXCEPTION 'Sem perfil aprovado para designar SKU oficial GLOW';
+  END IF;
+
   IF NOT EXISTS (
     SELECT 1 FROM public.base_material_width_profiles wp
      WHERE wp.base_group_id = v_glow
        AND wp.status = 'approved'
        AND wp.valid_to IS NULL
   ) THEN
-    RAISE NOTICE 'GLOW METALIC sem perfil de largura aprovado; variantes ainda assim serao criadas';
+    RAISE NOTICE 'GLOW METALIC sem perfil de largura aprovado; ativacao pode falhar no assert';
   END IF;
 
   FOR v_recipe IN
@@ -58,7 +73,6 @@ BEGIN
     v_type_name := v_recipe.type_name;
     v_measure_display := v_recipe.display_name;
 
-    -- Grupo de apresentacao: TIRA OVERLOCK 5MM / TIRA CHATA 8MM quando existir.
     SELECT g.id INTO v_presentation_group
       FROM public.product_groups g
      WHERE upper(btrim(g.name)) = upper(btrim(
@@ -84,7 +98,51 @@ BEGIN
          AND public.resolve_strap_canonical_color_id(p.color) IS NOT NULL
          AND lower(COALESCE(p.unit, '')) = 'm'
     LOOP
-      -- UNIQUE (measure, base, color) — pode existir com outro identity_basis.
+      -- 1) SKU oficial da napa (obrigatório antes do INSERT da variante).
+      SELECT o.official_product_id INTO v_base_product_id
+        FROM public.base_material_color_official_products o
+       WHERE o.base_group_id = v_glow
+         AND o.color_id = v_color.color_id
+         AND o.status = 'active'
+       LIMIT 1;
+
+      IF v_base_product_id IS NULL THEN
+        SELECT count(*)::integer, min(p.id)
+          INTO v_candidate_count, v_base_product_id
+          FROM public.products p
+         WHERE p.group_id = v_glow
+           AND COALESCE(p.active, true)
+           AND lower(COALESCE(p.unit, '')) = 'm'
+           AND public.resolve_strap_canonical_color_id(p.color) = v_color.color_id
+           AND NOT EXISTS (
+             SELECT 1 FROM public.artisanal_strap_variants av
+              WHERE av.finished_product_id = p.id
+           );
+
+        IF v_candidate_count IS DISTINCT FROM 1 THEN
+          RAISE NOTICE
+            'GLOW %: % candidatos lineares — variante nao criada',
+            v_color.color_name, COALESCE(v_candidate_count, 0);
+          v_skipped := v_skipped + 1;
+          CONTINUE;
+        END IF;
+
+        PERFORM set_config('app.artisanal_strap_catalog_write', '1', true);
+        PERFORM set_config(
+          'app.strap_change_reason',
+          'Backfill GLOW: SKU unico e inequivoco',
+          true
+        );
+        INSERT INTO public.base_material_color_official_products (
+          base_group_id, color_id, official_product_id, status,
+          approved_by, approved_at, review_reason
+        ) VALUES (
+          v_glow, v_color.color_id, v_base_product_id, 'active',
+          v_actor, now(), 'Backfill GLOW: SKU unico e inequivoco'
+        );
+      END IF;
+
+      -- 2) Variante existente (qualquer identity_basis) → reativa.
       SELECT av.id, av.finished_product_id
         INTO v_variant_id, v_finished_id
         FROM public.artisanal_strap_variants av
@@ -113,6 +171,9 @@ BEGIN
              SET status = 'active',
                  internal_production_enabled = true,
                  identity_basis = 'reference_base',
+                 min_stock_replenishment_mode = COALESCE(
+                   min_stock_replenishment_mode, 'internal'
+                 ),
                  review_reason = NULL
            WHERE id = v_variant_id;
         END IF;
@@ -163,7 +224,9 @@ BEGIN
     END LOOP;
   END LOOP;
 
-  RAISE NOTICE 'Variantes GLOW criadas/reativadas neste run: %', v_created;
+  RAISE NOTICE
+    'Variantes GLOW criadas=%; cores puladas sem SKU unico=%',
+    v_created, v_skipped;
 END
 $catalog$;
 
@@ -343,6 +406,8 @@ $resync$;
 DO $post$
 DECLARE
   v_glow uuid;
+  v_cobre uuid;
+  v_missing_cobre integer;
   v_missing integer;
 BEGIN
   SELECT id INTO v_glow
@@ -353,19 +418,45 @@ BEGIN
     RETURN;
   END IF;
 
-  -- Toda cor linear ativa de GLOW com receita aprovada precisa de variante.
+  SELECT id INTO v_cobre
+    FROM public.canonical_colors
+   WHERE upper(btrim(name)) = 'COBRE' AND active
+   LIMIT 1;
+
+  -- COBRE é o caso reportado na conferência — tem que existir variante ativa.
+  IF v_cobre IS NOT NULL THEN
+    SELECT count(*)::integer
+      INTO v_missing_cobre
+      FROM public.artisanal_strap_recipes r
+     WHERE r.base_group_id = v_glow
+       AND r.status = 'approved'
+       AND r.valid_from <= now()
+       AND (r.valid_to IS NULL OR r.valid_to > now())
+       AND NOT EXISTS (
+         SELECT 1
+           FROM public.artisanal_strap_variants av
+          WHERE av.measure_id = r.measure_id
+            AND av.base_group_id = v_glow
+            AND av.color_id = v_cobre
+            AND av.identity_basis = 'reference_base'
+            AND av.status = 'active'
+            AND COALESCE(av.internal_production_enabled, false)
+       );
+    IF v_missing_cobre > 0 THEN
+      RAISE EXCEPTION
+        'Pos-condicao: faltam % variantes GLOW×medida×COBRE',
+        v_missing_cobre;
+    END IF;
+  END IF;
+
+  -- Demais cores: só as que já têm SKU oficial designado.
   SELECT count(*)::integer
     INTO v_missing
     FROM public.artisanal_strap_recipes r
-    CROSS JOIN LATERAL (
-      SELECT DISTINCT public.resolve_strap_canonical_color_id(p.color) AS color_id
-        FROM public.products p
-       WHERE p.group_id = v_glow
-         AND COALESCE(p.active, true)
-         AND lower(COALESCE(p.unit, '')) = 'm'
-         AND public.resolve_strap_canonical_color_id(p.color) IS NOT NULL
-    ) colors
+    CROSS JOIN public.base_material_color_official_products o
    WHERE r.base_group_id = v_glow
+     AND o.base_group_id = v_glow
+     AND o.status = 'active'
      AND r.status = 'approved'
      AND r.valid_from <= now()
      AND (r.valid_to IS NULL OR r.valid_to > now())
@@ -374,7 +465,7 @@ BEGIN
          FROM public.artisanal_strap_variants av
         WHERE av.measure_id = r.measure_id
           AND av.base_group_id = v_glow
-          AND av.color_id = colors.color_id
+          AND av.color_id = o.color_id
           AND av.identity_basis = 'reference_base'
           AND av.status = 'active'
           AND COALESCE(av.internal_production_enabled, false)
@@ -382,7 +473,7 @@ BEGIN
 
   IF v_missing > 0 THEN
     RAISE EXCEPTION
-      'Pos-condicao: faltam % variantes ativas GLOW×medida×cor',
+      'Pos-condicao: faltam % variantes ativas GLOW×medida×cor (com oficial)',
       v_missing;
   END IF;
 END

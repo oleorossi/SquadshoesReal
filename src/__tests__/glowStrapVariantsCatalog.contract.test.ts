@@ -17,10 +17,11 @@ describe('SQL — variantes GLOW METALIC × medida × cor', () => {
     expect(migration).toContain('INSERT INTO public.products');
   });
 
-  it('não grava designation oficial (approved_by) nem ON CONFLICT frágil', () => {
-    expect(migration).not.toContain('INSERT INTO public.base_material_color_official_products');
-    expect(migration).not.toContain('ON CONFLICT DO NOTHING');
-    expect(migration).toContain('unico candidato linear');
+  it('designa SKU oficial antes de criar variante reference_base', () => {
+    expect(migration).toContain('INSERT INTO public.base_material_color_official_products');
+    expect(migration).toContain('approved_by');
+    expect(migration).toContain('SKU unico e inequivoco');
+    expect(migration).toContain('49371f4d-641f-466d-be26-686ef57743ec');
   });
 
   it('realinha strap_sourcing de PVs abertos sem demanda vigente', () => {
@@ -31,8 +32,8 @@ describe('SQL — variantes GLOW METALIC × medida × cor', () => {
     expect(migration).toContain('base_product_id');
   });
 
-  it('pós-condição exige variante ativa para cada receita×cor', () => {
-    expect(migration).toContain('v_missing');
-    expect(migration).toContain('faltam % variantes ativas GLOW');
+  it('pós-condição exige variante ativa GLOW×COBRE', () => {
+    expect(migration).toContain('v_missing_cobre');
+    expect(migration).toContain('faltam % variantes GLOW×medida×COBRE');
   });
 });
