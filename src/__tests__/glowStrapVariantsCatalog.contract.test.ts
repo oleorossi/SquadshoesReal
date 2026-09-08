@@ -35,6 +35,12 @@ describe('SQL — variantes GLOW METALIC × medida × cor', () => {
     expect(migration).toContain('base_product_id');
   });
 
+
+  it('não usa min(uuid) — Postgres não tem aggregate min em uuid', () => {
+    expect(migration).not.toMatch(/min\(\s*p\.id\s*\)/i);
+    expect(migration).toContain('(array_agg(p.id ORDER BY p.created_at NULLS LAST, p.id))[1]');
+  });
+
   it('pós-condição exige variante ativa GLOW×COBRE', () => {
     expect(migration).toContain('v_missing_cobre');
     expect(migration).toContain('faltam % variantes GLOW×medida×COBRE');
