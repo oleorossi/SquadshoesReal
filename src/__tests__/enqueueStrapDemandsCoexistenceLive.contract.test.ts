@@ -43,9 +43,11 @@ describe('enqueue_sale_order_strap_demands — corpo vivo', () => {
   const latest = latestEnqueueMigration();
   const enqueue = sqlFunction(latest.sql, 'enqueue_sale_order_strap_demands');
 
-  it('usa a migration de restauracao pos-20400 (nao a 20400)', () => {
+  it('usa a migration mais recente do enqueue (pos-20400)', () => {
+    // 21600 restaura coexistencia; 21700 garante preview operacional se a
+    // 21600 ja tiver sido aplicada cedo com preview publico.
     expect(latest.file).toMatch(
-      /20270101021600_restore_enqueue_strap_coexistence_after_20400\.sql$/,
+      /20270101021[67]00_.*\.sql$/,
     );
   });
 
@@ -56,6 +58,13 @@ describe('enqueue_sale_order_strap_demands — corpo vivo', () => {
     expect(enqueue).toContain("'color_mode'");
     expect(enqueue).toContain("'material_mode'");
     expect(enqueue).toContain("'allowed_material_group_ids'");
+  });
+
+  it('usa preview operacional privado (nao o publico com yield NULL)', () => {
+    expect(enqueue).toContain('private.preview_sale_order_strap_demand_operational');
+    expect(enqueue).not.toContain(
+      'public.preview_sale_order_strap_demand(p_sale_order_id)',
+    );
   });
 
   it('preserva no-ops de pre-baseline da 20400', () => {

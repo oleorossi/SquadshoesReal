@@ -1,23 +1,14 @@
 -- =============================================================================
--- Restaura coexistência cabedal+tiras em enqueue_sale_order_strap_demands
+-- enqueue: preview operacional privado (corrige Identidade financeira interna)
 -- =============================================================================
--- Sintoma (PV-00169 / INFANTIL → Em Produção):
---   1) "PV nao congelou exatamente as linhas de tira da ficha vigente…"
---   2) "Identidade financeira interna incompleta"
+-- A 20400 (e a 21600 aplicada cedo) lia public.preview_sale_order_strap_demand,
+-- que zera confirmed_yield_m_per_m antes da primeira demanda. No confirm,
+-- capture_strap_financial_snapshot recebia yield NULL e estourava
+-- "Identidade financeira interna incompleta" (PV-00169).
 --
--- Causas (ambas regressao da 20400):
---   1) MUTEX upper_material → [] no freeze (falso positivo com cabedal+tiras)
---   2) preview PUBLICO (yield NULL pre-demanda) → capture_strap_financial_snapshot
---
--- Esta migration:
---   1) restaura o bloco de freeze da 16100 (coexist + color/material policy +
---      production_excluded_at)
---   2) volta o preview operacional privado (15500/16100)
---   3) preserva os no-ops de pré-baseline da 20400 (schedule_changed /
---      item_updated com blocker sem demanda corrente → RETURN NULL)
---
--- Se a 21600 ja tiver sido aplicada com preview publico, a 21700 reinstala
--- o mesmo corpo corrigido.
+-- Contrato 15500/16100: enqueue usa private.preview_sale_order_strap_demand_operational.
+-- Esta migration reinstala o corpo ja corrigido da 21600 (idempotente se a
+-- 21600 ja veio com o preview operacional).
 -- =============================================================================
 
 CREATE OR REPLACE FUNCTION public.enqueue_sale_order_strap_demands(
