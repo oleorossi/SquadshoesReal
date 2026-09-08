@@ -400,6 +400,42 @@ describe('MaterialConsumptionView — tela buy-first', () => {
     expect(totalsStrip?.textContent || '').not.toMatch(/184,80/);
   });
 
+  it('separa tira Strass numa aba própria, fora das demais tiras', async () => {
+    const user = userEvent.setup();
+    renderView({
+      rows: [
+        row({
+          componentType: 'Tiras',
+          groupName: 'TIRA OVERLOCK 5MM · NAPA SOFT',
+          materialName: 'Produção interna',
+          color: 'PRETO',
+          totalQuantity: 100,
+          available: 50,
+          artisanal: { baseName: 'NAPA SOFT', baseQty: 2, yieldPerMeter: 50, pending: true },
+          warning: 'pendente',
+        }),
+        row({
+          componentType: 'Tiras',
+          groupName: 'TIRA STRASS 6MM',
+          materialName: 'Comprada pronta',
+          color: 'PRETO',
+          totalQuantity: 80,
+          available: 10,
+          strapSourceMode: 'buy_ready',
+        }),
+      ],
+    });
+
+    const materiais = screen.getByRole('table', { name: 'Materiais gerais' });
+    expect(within(materiais).getByText(/OVERLOCK/i)).toBeInTheDocument();
+    expect(within(materiais).queryByText(/STRASS/i)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('tab', { name: /Tira Strass/i }));
+    const strass = await screen.findByRole('table', { name: 'Tira Strass' });
+    expect(within(strass).getByText('TIRA STRASS 6MM')).toBeInTheDocument();
+    expect(within(strass).queryByText(/OVERLOCK/i)).not.toBeInTheDocument();
+  });
+
   it('no diálogo não repete o título do chrome no herói', () => {
     renderView({ embedded: true });
     expect(screen.queryByRole('heading', { name: /Consumo de Materiais — PV-00151/i })).not.toBeInTheDocument();

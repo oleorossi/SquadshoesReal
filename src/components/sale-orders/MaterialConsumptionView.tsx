@@ -31,6 +31,7 @@ import {
   countPending,
   countShort,
   isConvertedInternalStrap,
+  isStrassStrapRow,
   itemIsShort,
   itemKey,
   itemShortfall,
@@ -45,6 +46,7 @@ import {
   unitTotals,
   type ItemGroup,
 } from '@/lib/consumptionAvailability';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 /**
  * Apresentação canônica do consumo de materiais — tela + PDF. FONTE ÚNICA
@@ -338,6 +340,8 @@ export default function MaterialConsumptionView({
   const [search, setSearch] = useState('');
   const [baseFamily, setBaseFamily] = useState<string | null>(null);
   const [grossNeed, setGrossNeed] = useState(false);
+  /** Aba Materiais gerais × Tira Strass — só aparece quando há STRASS no consumo. */
+  const [materialsTab, setMaterialsTab] = useState<'materiais' | 'strass'>('materiais');
 
   const buyList = useMemo(() => buildBuyList(rows), [rows]);
 
@@ -413,14 +417,28 @@ export default function MaterialConsumptionView({
   // base e o detalhe tira×rendimento mora em ArtisanalStrapRollCutBlock.
   // Tira PENDING permanece visível como cadastro incompleto — senão a demanda
   // da ficha some da conferência (PV-00169: 184,80 m "não aparecem").
+  //
+  // STRASS (acabada) sai para aba própria — não mistura com overlock/chata.
   const visibleSoleRows = useMemo(
     () => rows.filter((row) => row.componentType === 'Solado'),
     [rows],
   );
-  const visibleMaterialRows = useMemo(
-    () => visibleRows.filter((row) => row.componentType !== 'Solado' && !isConvertedInternalStrap(row)),
+  const hasStrass = useMemo(() => rows.some(isStrassStrapRow), [rows]);
+  const visibleStrassRows = useMemo(
+    () => visibleRows.filter(isStrassStrapRow),
     [visibleRows],
   );
+  const visibleGeneralRows = useMemo(
+    () => visibleRows.filter((row) => (
+      row.componentType !== 'Solado'
+      && !isConvertedInternalStrap(row)
+      && !isStrassStrapRow(row)
+    )),
+    [visibleRows],
+  );
+  const visibleMaterialRows = materialsTab === 'strass' && hasStrass
+    ? visibleStrassRows
+    : visibleGeneralRows;
 
   const sortedRows = useMemo(() => {
     const canonical = (a: ConsumptionRow, b: ConsumptionRow) => {
@@ -488,8 +506,9 @@ export default function MaterialConsumptionView({
 
     if (groupBy === 'componentType') {
       for (const row of sortedRows) {
-        if (!out.has(row.componentType)) out.set(row.componentType, []);
-        out.get(row.componentType)!.push(row);
+        const section = materialsTab === 'strass' ? 'Tira Strass' : row.componentType;
+        if (!out.has(section)) out.set(section, []);
+        out.get(section)!.push(row);
       }
       return out;
     }
@@ -535,7 +554,7 @@ export default function MaterialConsumptionView({
       emitSection(k, byVal.get(k)!);
     }
     return out;
-  }, [sortedRows, groupBy, isShortRow, buyList]);
+  }, [sortedRows, groupBy, isShortRow, buyList, materialsTab]);
 
   const totalsByUnit = useMemo(() => unitTotals(visibleRows), [visibleRows]);
   const pendingTiraM = useMemo(() => pendingStrapMeters(rows), [rows]);
@@ -956,9 +975,45 @@ export default function MaterialConsumptionView({
         <div className="min-w-0 space-y-3">
           <SoleCoveragePanel rows={visibleSoleRows} grossNeed={grossNeed} />
 
-          <div>
-            <p className="eyebrow">Materiais gerais</p>
-            <h3 className="display mt-1 text-xl leading-none">Consumo e cobertura de estoque</h3>
+          <Tabs
+            value={hasStrass ? materialsTab : 'materiais'}
+            onValueChange={(value) => {
+              if (value === 'materiais' || value === 'strass') setMaterialsTab(value);
+            }}
+            className="space-y-3"
+          >
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <p className="eyebrow">
+                {materialsTab === 'strass' && hasStrass ? 'Compra pronta' : 'Materiais gerais'}
+              </p>
+              <h3 className="display mt-1 text-xl leading-none">
+                {materialsTab === 'strass' && hasStrass
+                  ? 'Tira Strass'
+                  : 'Consumo e cobertura de estoque'}
+              </h3>
+              {materialsTab === 'strass' && hasStrass ? (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Separada das tiras de produção interna (overlock, chata). SKU acabado comprado pronto.
+                </p>
+              ) : null}
+            </div>
+            {hasStrass ? (
+              <TabsList aria-label="Segmentar materiais e tira Strass">
+                <TabsTrigger value="materiais" className="text-xs">
+                  Materiais
+                  <span className="ml-1.5 font-mono tabular-nums opacity-70">
+                    {visibleGeneralRows.length}
+                  </span>
+                </TabsTrigger>
+                <TabsTrigger value="strass" className="text-xs">
+                  Tira Strass
+                  <span className="ml-1.5 font-mono tabular-nums opacity-70">
+                    {visibleStrassRows.length}
+                  </span>
+                </TabsTrigger>
+              </TabsList>
+            ) : null}
           </div>
 
         {/* ── Barra de controle: agrupar, buscar, totais ─────────────────── */}
@@ -1047,7 +1102,10 @@ export default function MaterialConsumptionView({
           </p>
         ) : visibleMaterialRows.length > 0 ? (
           <div className="overflow-hidden overflow-x-auto rounded-lg border">
-            <Table aria-label="Materiais gerais" className="[&_tbody_tr]:border-dashed [&_tbody_tr]:border-border/70 [&_td]:py-2">
+            <Table
+              aria-label={materialsTab === 'strass' && hasStrass ? 'Tira Strass' : 'Materiais gerais'}
+              className="[&_tbody_tr]:border-dashed [&_tbody_tr]:border-border/70 [&_td]:py-2"
+            >
               <TableHeader>
                 <TableRow className="bg-muted/50">
                   <TableHead aria-sort={sortKey === 'groupName' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
@@ -1157,12 +1215,21 @@ export default function MaterialConsumptionView({
               </TableBody>
             </Table>
           </div>
-        ) : null}
+        ) : (
+          <p className="py-8 text-center text-sm text-muted-foreground">
+            {materialsTab === 'strass' && hasStrass
+              ? 'Nenhuma tira Strass neste filtro.'
+              : 'Nenhum material geral neste filtro.'}
+          </p>
+        )}
 
         {/* Bloco separado: tiras artesanais cortadas do rolo (vermelho) */}
-        <ArtisanalStrapRollCutBlock rows={artisanalStrapRows} />
+        {materialsTab !== 'strass' || !hasStrass ? (
+          <ArtisanalStrapRollCutBlock rows={artisanalStrapRows} />
+        ) : null}
 
         {extraSections}
+          </Tabs>
       </div>
 
         <ConsumptionDecisionRail

@@ -42,6 +42,16 @@ export const isConvertedInternalStrap = (r: ConsumptionRow): boolean =>
   && Number(r.artisanal.baseQty) > 0;
 
 /**
+ * Tira de STRASS (acabada / buy_ready). Vai em aba/seção própria no Consumo —
+ * não mistura com overlock/chata de produção interna (pedido do dono).
+ */
+export const isStrassStrapRow = (
+  r: Pick<ConsumptionRow, 'componentType' | 'groupName' | 'materialName'>,
+): boolean =>
+  r.componentType === 'Tiras'
+  && /strass/i.test(`${r.groupName || ''} ${r.materialName || ''}`);
+
+/**
  * Tira artesanal sem rendimento/cadastro: os metros de tira NÃO entram na
  * métrica de compra nem no strip "Necessidade total" — senão 1.044 m de tira
  * pendente somam com 129 m de napa e o PDF mente (PV-00193).

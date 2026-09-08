@@ -5,6 +5,7 @@ import {
   countPending,
   countShort,
   isConvertedInternalStrap,
+  isStrassStrapRow,
   itemShortfall,
   pendingStrapMeters,
   rowAvailable,
@@ -43,6 +44,10 @@ export interface MaterialConsumptionReportInput {
 const FONT_LINK = 'https://fonts.googleapis.com/css2?family=Anton&family=Fira+Sans:wght@400;500;600;700;800&family=Fira+Code:wght@400;500;600;700&display=swap';
 
 const componentIndex = (componentType: string): number => {
+  if (componentType === 'Tira Strass') {
+    const tiras = COMPONENT_ORDER.indexOf('Tiras');
+    return (tiras >= 0 ? tiras : COMPONENT_ORDER.length) + 0.5;
+  }
   const index = COMPONENT_ORDER.indexOf(componentType as (typeof COMPONENT_ORDER)[number]);
   return index >= 0 ? index : COMPONENT_ORDER.length;
 };
@@ -221,11 +226,20 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
   // Tira interna CONVERTIDA: napa já está em §01; metros×rendimento em §03.
   // Tira PENDING fica nesta seção como cadastro incompleto — a demanda da ficha
   // precisa aparecer na conferência (PV-00169), sem entrar no strip de napa.
+  // STRASS vai em seção própria ("Tira Strass"), fora do bloco genérico Tiras.
   const nonSole = aggregateItems(
-    rows.filter((row) => row.componentType !== 'Solado' && !isConvertedInternalStrap(row)),
+    rows.filter((row) => (
+      row.componentType !== 'Solado'
+      && !isConvertedInternalStrap(row)
+      && !isStrassStrapRow(row)
+    )),
   )
     .sort((a, b) => componentIndex(a.componentType) - componentIndex(b.componentType)
       || a.groupName.localeCompare(b.groupName, 'pt-BR')
+      || a.color.localeCompare(b.color, 'pt-BR'));
+
+  const strassItems = aggregateItems(rows.filter(isStrassStrapRow))
+    .sort((a, b) => a.groupName.localeCompare(b.groupName, 'pt-BR')
       || a.color.localeCompare(b.color, 'pt-BR'));
 
   for (const item of nonSole) {
@@ -279,6 +293,35 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
       <td class="unit">${escapeHtml(formatUnit(item.productUnit))}</td>
       ${costCellsHtml(unitPrice, totalCost)}
     </tr>`, componentIndex(componentTypes[0] || item.componentType));
+  }
+
+  for (const item of strassItems) {
+    const applications = Array.from(new Set(item.rows.map((row) => row.materialName).filter(Boolean)));
+    const short = totalMode ? 0 : itemShortfall(item);
+    const previewQuantity = item.rows.reduce(
+      (total, row) => total + Math.max(0, Number(row.previewQuantity) || 0),
+      0,
+    );
+    const needHtml = previewQuantity > 0 && !(item.total > 0)
+      ? `≈ ${formatQty(previewQuantity, item.productUnit)}<small class="qty-preview">prévia da ficha</small>`
+      : formatQty(item.total, item.productUnit);
+    const warnings = Array.from(new Set(item.rows.flatMap((row) => row.warning ? [row.warning] : [])));
+    const unitPrice = item.rows.map((row) => row.unitPrice).find((price) => price != null && Number.isFinite(price)) ?? null;
+    const totalCost = unitPrice != null ? item.total * unitPrice : null;
+    const coverageCells = totalMode ? '' : `
+      <td class="num">${!item.known ? '—' : formatQty(item.available, item.productUnit)}</td>
+      <td class="num${short > 0 ? ' shortage' : ''}">${item.known && short > 0
+        ? formatQty(short, item.productUnit)
+        : '—'}</td>`;
+    append('Tira Strass', `<tr class="material-row${short > 0 ? ' is-short' : ''}${!item.known ? ' is-pending' : ''}">
+      <td><strong>${escapeHtml(item.groupName)}</strong>${warnings.length ? `<div class="row-warning">▲ ${escapeHtml(warnings.join(' · '))}</div>` : ''}</td>
+      <td>${escapeHtml(applications.join(' + ') || item.groupName)}</td>
+      <td>${escapeHtml(item.color || '—')}</td>
+      <td class="num strong">${needHtml}</td>
+      ${coverageCells}
+      <td class="unit">${escapeHtml(formatUnit(item.productUnit))}</td>
+      ${costCellsHtml(unitPrice, totalCost)}
+    </tr>`, componentIndex('Tira Strass'));
   }
 
   const soles = rows.filter((row) => row.componentType === 'Solado')

@@ -7,6 +7,7 @@ import {
   isConvertedInternalStrap,
   isInternalStrapRow,
   isPendingInternalStrap,
+  isStrassStrapRow,
   pendingStrapMeters,
   rowIsShort,
   rowKnown,
@@ -214,6 +215,24 @@ describe('tira artesanal — o motor consome napa, não metro de tira', () => {
     expect(isConvertedInternalStrap(tira)).toBe(true);
     expect(rowIsShort(tira)).toBe(false);
     expect(rowShortfall(tira)).toBe(0);
+  });
+
+  it('reconhece tira Strass para aba/seção própria no Consumo', () => {
+    expect(isStrassStrapRow({
+      componentType: 'Tiras',
+      groupName: 'TIRA STRASS 6MM',
+      materialName: 'Comprada pronta',
+    })).toBe(true);
+    expect(isStrassStrapRow({
+      componentType: 'Tiras',
+      groupName: 'TIRA OVERLOCK 5MM · NAPA SOFT',
+      materialName: 'Produção interna',
+    })).toBe(false);
+    expect(isStrassStrapRow({
+      componentType: 'Forração',
+      groupName: 'NAPA STRASS FALSO',
+      materialName: 'Forração',
+    })).toBe(false);
   });
 
   it('soma o equivalente em napa no balde que o motor realmente baixa', () => {
