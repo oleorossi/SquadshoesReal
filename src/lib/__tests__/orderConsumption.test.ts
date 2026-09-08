@@ -1744,6 +1744,33 @@ describe('orderConsumption — contrato de colunas do fetch', () => {
     expect(tira.materialFamily ?? null).toBeNull();
   });
 
+  it('STRASS sem texto de cor (só color_id / finished_product_group) continua no consumo', () => {
+    const strap = [{
+      technical_strap_line_id: '11111111-1111-4111-8111-111111111111',
+      label: 'STRASS LATERAL',
+      color: '',
+      color_id: '22222222-2222-4222-8222-222222222222',
+      group_id: 'g-strass',
+      group_name: 'TIRA STRASS 6MM',
+      identity_basis: 'finished_product_group' as const,
+      consumption: 40,
+    }];
+    const item = buildItem({
+      color: 'OFF WHITE',
+      strap_colors: strap,
+      technical_sheets: buildSheet({ upper_material: 'NAPA SOFT' }),
+    });
+    const tiras = computeConsumptionForItems([item], buildContext())
+      .filter((row) => row.componentType === 'Tiras');
+
+    expect(tiras).toHaveLength(1);
+    expect(tiras[0].groupName).toMatch(/STRASS/i);
+    // Não herda a cor do cabedal — posição ainda sem texto de cor.
+    expect(tiras[0].color).toBe('—');
+    expect(tiras[0].materialFamily ?? null).toBeNull();
+    expect(tiras[0].totalQuantity).toBeGreaterThan(0);
+  });
+
   it('a base estrutural da tira não muda por alternativa legada de Forração/cor', () => {
     const ctx = buildContext();
     ctx.productGroups.push({
