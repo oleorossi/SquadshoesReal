@@ -31,6 +31,7 @@ describe('fibra palmilha — pin no Consumo Padrão', () => {
     expect(HOOK).toContain('ROLE_WITH_MATERIAL_PIN');
     expect(HOOK).toContain('materialProductId');
     expect(PANEL).toContain('ROLE_WITH_MATERIAL_PIN');
-    expect(PANEL).toContain('Selecionar fibra');
+    expect(PANEL).toContain('Material para débito');
+    expect(PANEL).toContain('Buscar fibra');
   });
 });
