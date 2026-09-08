@@ -79,6 +79,19 @@ Remedir Network/chunks em preview e colar abaixo.
 
 ## Pós-Fase 4 (guarda final)
 
+### Delta de código (medido no repo — Network em preview continua sob demanda)
+
+| Métrica | Baseline (Fase 0) | Depois (Fases 1–3) | Delta |
+|---|---|---|---|
+| `/fichas-tecnicas` select lista | `*` (~dezenas de cols / ~227 kB audit) | `TECHNICAL_SHEET_CATALOG_COLUMNS` (25 cols) | payload lista enxuto; `*` só no detail |
+| Ficha lite (PV) ⊆ catalog | n/d | 5 cols lite ⊂ 25 catalog | contrato Fase 4 |
+| `TechnicalSheets.tsx` linhas | ~7k monólito | ~5,3k + módulos extraídos | split Fase 2 |
+| Hub `/estoque` first paint | Overview/recharts eager | lazy fora de Materiais | chunk Overview adiado |
+| Materiais double-fetch | paginado + `useProducts` paralelo | `useProducts` só após página útil | menos round-trip inicial |
+| `/sales` DOM | cards + tabela juntos | um layout (`useIsMobile`) + pager | menos nós |
+| Query keys canônicas | strings soltas | `src/lib/queryKeys.ts` + invalidate helpers | invalidação por prefixo |
+| Hub listagens erro vs vazio | Ficha/Materiais fingiam empty | `isError` + retry nos 3 | Fase 3.1 |
+
 | Meta R2 | Atingida? | Evidência |
 |---|---|---|
 | R2.1 Estoque sem catálogo completo na listagem | parcial | listagem = paginado; universo adiado pós-página |
@@ -87,3 +100,5 @@ Remedir Network/chunks em preview e colar abaixo.
 | R2.4 Ficha save sem over-invalidation | parcial | patch cache catalog/detail/lite/editor; propagação intacta |
 | R2.5 PV lista paginada/virtual + um layout | sim (código) | `paginateInMemory` + `useIsMobile` |
 | R2.6 PV promover ≤ 3 s (não regressão) | n/d nesta entrega | contrato pré-existente |
+
+**Remedir Network/TTFB em preview** (quando houver): colar números reais na tabela “Pós-Fase 1” acima — o inventário de código já fecha o DoD da Fase 4 para o que é verificável em CI.

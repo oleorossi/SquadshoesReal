@@ -175,6 +175,69 @@ describe('Fase 3 — UX de fluxo', () => {
   });
 });
 
+describe('Fase 4 — guarda do programa', () => {
+  it('4.1 lite ⊆ catalog; catalog/detail/list selects corretos', () => {
+    expect(sheetsHook).toContain('TECHNICAL_SHEET_CATALOG_COLUMNS');
+    expect(sheetsHook).toContain('TECHNICAL_SHEET_LITE_COLUMNS');
+
+    const catalogMatch = sheetsHook.match(
+      /export const TECHNICAL_SHEET_CATALOG_COLUMNS = \[([\s\S]*?)\]\.join/,
+    );
+    expect(catalogMatch).toBeTruthy();
+    const catalogCols = catalogMatch![1]
+      .split(',')
+      .map((c) => c.trim().replace(/^['"]|['"]$/g, ''))
+      .filter(Boolean);
+
+    const liteMatch = sheetsHook.match(
+      /export const TECHNICAL_SHEET_LITE_COLUMNS = '([^']+)'/,
+    );
+    expect(liteMatch).toBeTruthy();
+    const liteCols = liteMatch![1].split(', ').map((c) => c.trim());
+    for (const col of liteCols) {
+      expect(catalogCols).toContain(col);
+    }
+
+    const catalogFn = sheetsHook.slice(
+      sheetsHook.indexOf('export function useTechnicalSheetsCatalog'),
+      sheetsHook.indexOf('export function useTechnicalSheetDetail'),
+    );
+    expect(catalogFn).toContain('.select(TECHNICAL_SHEET_CATALOG_COLUMNS');
+    expect(catalogFn).not.toMatch(/\.select\('\*'\)/);
+
+    const detailFn = sheetsHook.slice(
+      sheetsHook.indexOf('export function useTechnicalSheetDetail'),
+      sheetsHook.indexOf('TECHNICAL_SHEET_LITE_COLUMNS'),
+    );
+    expect(detailFn).toMatch(/\.select\('\*'\)/);
+
+    // Listas lean dos outros dois setores (cross-check com listSelectOverfetch).
+    expect(productsHook).toContain('PRODUCT_LIST_SELECT');
+    expect(saleOrdersHook).toContain('SALE_ORDER_LIST_SELECT');
+  });
+
+  it('4.1 hooks principais não invalidam products/sheets/orders com string solta', () => {
+    // Após Fase 2.3, o caminho feliz usa helpers. Strings soltas nestes hooks
+    // pra a chave canônica principal são regressão.
+    expect(productsHook).not.toMatch(/invalidateQueries\(\{\s*queryKey:\s*\['products'\]/);
+    expect(sheetsHook).not.toMatch(/invalidateQueries\(\{\s*queryKey:\s*\['technical_sheets'\]\s*\}/);
+    expect(saleOrdersHook).not.toMatch(/invalidateQueries\(\{\s*queryKey:\s*\['sale_orders'\]\s*\}/);
+    expect(productsHook).toContain('invalidateProducts(');
+    expect(sheetsHook).toContain('invalidateTechnicalSheets(');
+    expect(saleOrdersHook).toContain('invalidateSaleOrders(');
+  });
+
+  it('4.3 guias documentam o padrão load-bearing', () => {
+    const agents = readFileSync(resolve(ROOT, '../AGENTS.md'), 'utf8');
+    const claude = readFileSync(resolve(ROOT, '../CLAUDE.md'), 'utf8');
+    for (const doc of [agents, claude]) {
+      expect(doc).toContain('useTechnicalSheetsCatalog');
+      expect(doc).toContain('@/lib/queryKeys');
+      expect(doc).toContain('isError');
+    }
+  });
+});
+
 describe('paginateInMemory', () => {
   it('abaixo do limiar devolve tudo sem pager', () => {
     const items = Array.from({ length: PAGER_THRESHOLD }, (_, i) => i);

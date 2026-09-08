@@ -282,6 +282,6 @@ Nenhuma bloqueante para a estrutura. Na Fase 0, decidir só:
 - [x] Fase 1: metas R2.1–R2.5 atendidas no código (1.1–1.4) — verificado por contrato `setoresPrincipaisOtimizacao.contract.test.ts` + Network em preview.
 - [x] Fase 2: `TechnicalSheets.tsx` e `SaleOrders.tsx` deixam de ser monólitos god-file (casca + módulos por aba/view); keys canônicas via helpers — verificado por estrutura de pastas + grep de `queryKey` solta.
 - [x] Fase 3: listagens dos 3 hubs distinguem erro vs vazio; deep-links `?tab=` / `?view=` / `?ref=` intactos — verificado manualmente nas 3 rotas.
-- [ ] Fase 4: testes de contrato verdes (`bun run test` no subconjunto novo) + delta de métricas documentado.
-- [ ] `bunx tsc -p tsconfig.app.json --noEmit` limpo em todo PR do programa.
-- [ ] Após edits visuais: `bun run check:tokens` limpo.
+- [x] Fase 4: testes de contrato verdes (`bun run test` no subconjunto novo) + delta de métricas documentado.
+- [x] `bunx tsc -p tsconfig.app.json --noEmit` limpo em todo PR do programa.
+- [x] Após edits visuais: `bun run check:tokens` limpo.

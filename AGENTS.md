@@ -131,6 +131,15 @@ atual, URLs e os secrets exigidos pelos workflows.
   toast/`use-toast` existe mas não é o padrão).
 - Cast de payload Supabase com `as X` / `as unknown as X` é aceito aqui (consequência do TS loose +
   types gerados) — não é smell a "consertar".
+- **Setores principais (Estoque / Ficha / PV) — load-bearing desde o programa
+  `specs/otimizacao-setores-principais.md`:**
+  - Ficha: lista do hub = `useTechnicalSheetsCatalog` (colunas explícitas); PV =
+    `useTechnicalSheetsLite`; editor = `useTechnicalSheetDetail` (`select('*')` só aí).
+    **Não** reabrir o hub com `useTechnicalSheets()` / `select('*')`.
+  - Keys: invalidar/ler via `@/lib/queryKeys` (`productsKeys` / `technicalSheetsKeys` /
+    `saleOrdersKeys` + `invalidate*`). Não inventar string solta nova pra estas entidades.
+  - Listagens dos 3 hubs: tratar `isError` **antes** de empty — falha de rede nunca vira
+    “Nenhum registro”.
 
 ### Formulários
 - **Padrão dominante: `useState` controlado** + submit via mutation hook (objeto `form`/`setForm`
