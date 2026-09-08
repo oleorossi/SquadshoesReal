@@ -18,7 +18,7 @@ SECURITY DEFINER
 SET search_path = ''
 AS $function$
 DECLARE
-  -- unresolved_names_ficha_20270101020400
+  -- unresolved_names_ficha_20270101020700
   v_is_service boolean := COALESCE(
     pg_catalog.current_setting('request.jwt.claim.role', true), ''
   ) = 'service_role'
@@ -251,7 +251,7 @@ BEGIN
   SELECT pg_get_functiondef(
     'public.calculate_consumption_report_batch(uuid[],uuid[])'::regprocedure
   ) INTO v_batch;
-  IF position('unresolved_names_ficha_20270101020400' IN v_batch) = 0 THEN
+  IF position('unresolved_names_ficha_20270101020700' IN v_batch) = 0 THEN
     RAISE EXCEPTION 'Guard: marker unresolved_names_ficha ausente no batch';
   END IF;
   IF position('reference_name' IN v_batch) = 0 THEN

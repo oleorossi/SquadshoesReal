@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 const ROOT = resolve(__dirname, '../..');
 const migration = readFileSync(resolve(
   ROOT,
-  'supabase/migrations/20270101020300_corrigir_palmilha_sem_material_e_override_fibra.sql',
+  'supabase/migrations/20270101020600_corrigir_palmilha_sem_material_e_override_fibra.sql',
 ), 'utf8');
 
 describe('SQL — backfill palmilha sem material + limpa override INFANTIL', () => {

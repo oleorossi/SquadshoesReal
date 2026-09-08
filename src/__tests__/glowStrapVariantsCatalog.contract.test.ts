@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 const ROOT = resolve(__dirname, '../..');
 const migration = readFileSync(resolve(
   ROOT,
-  'supabase/migrations/20270101020500_garantir_variantes_tira_glow_cores.sql',
+  'supabase/migrations/20270101020800_garantir_variantes_tira_glow_cores.sql',
 ), 'utf8');
 
 describe('SQL — variantes GLOW METALIC × medida × cor', () => {

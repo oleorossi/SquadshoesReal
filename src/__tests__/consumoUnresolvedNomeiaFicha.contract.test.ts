@@ -9,12 +9,12 @@ import {
 const ROOT = resolve(__dirname, '../..');
 const migration = readFileSync(resolve(
   ROOT,
-  'supabase/migrations/20270101020400_consumo_unresolved_nomeia_ficha.sql',
+  'supabase/migrations/20270101020700_consumo_unresolved_nomeia_ficha.sql',
 ), 'utf8');
 
 describe('SQL — unresolved de palmilha nomeia a ficha', () => {
   it('enriquece reference_name e reescreve product_name/warning', () => {
-    expect(migration).toContain('unresolved_names_ficha_20270101020400');
+    expect(migration).toContain('unresolved_names_ficha_20270101020700');
     expect(migration).toContain("'reference_name'");
     expect(migration).toContain("'Ficha '");
     expect(migration).toContain('Palmilha sem material');
