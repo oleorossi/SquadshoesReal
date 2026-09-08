@@ -283,6 +283,7 @@ export type ConsumptionContext = {
  */
 export const TECHNICAL_SHEET_CONSUMPTION_COLUMNS = `
   id,
+  name,
   has_straps,
   upper_material,
   upper_material_group_id,
@@ -1947,14 +1948,20 @@ export function computeConsumptionForItems(
         : undefined;
 
       if (insoleUnresolved) {
+        const sheetLabel = (sheet?.name && String(sheet.name).trim()) || null;
+        const fichaPrefix = sheetLabel ? `Ficha ${sheetLabel}` : 'Ficha';
         addConsumptionRow(consumptionMap, {
           componentType: 'Palmilha',
-          groupName: 'PALMILHA (material não cadastrado)',
-          materialName: 'Palmilha',
+          groupName: sheetLabel
+            ? `${fichaPrefix} · Palmilha sem material`
+            : 'PALMILHA (material não cadastrado)',
+          materialName: sheetLabel
+            ? `${fichaPrefix} · Palmilha sem material`
+            : 'Palmilha',
           productUnit: 'dm2',
           color: palmColor,
           totalQuantity: 0,
-          warning: `A ficha tem consumo de palmilha (${computeInsoleDm2().toFixed(2)} dm² no total) mas NÃO tem Material da Palmilha cadastrado — a linha inteira fica fora do consumo, da reserva e do débito. Cadastre em Ficha Técnica → Palmilha.`,
+          warning: `${fichaPrefix}: tem consumo de palmilha (${computeInsoleDm2().toFixed(2)} dm² no total) mas NÃO tem Material da Palmilha cadastrado — a linha inteira fica fora do consumo, da reserva e do débito. Cadastre em Ficha Técnica → Palmilha.`,
         });
       } else if (isAreaStockUnit(palmStockUnit)) {
         // Estoque em ÁREA: emite em dm² CRU. O sistema NÃO acrescenta perda de
