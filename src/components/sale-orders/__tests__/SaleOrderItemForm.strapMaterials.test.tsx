@@ -422,6 +422,28 @@ describe('SaleOrderItemForm — I703 com Overlock e Strass 6 mm', () => {
     expect(screen.getByRole('combobox', { name: 'Cor de TIRA 2' })).toHaveTextContent('OFF WHITE');
   });
 
+  it('preserva Strass ao reabrir quando o snapshot omite identity_basis', async () => {
+    // Pedidos gravados sem identity_basis: strapIdentityBasis() vira reference_base
+    // e o reconcile apagava a cor → "Selecione a cor canônica" sem o operador mexer.
+    const { initial, options } = setup();
+    initial.strap_colors[1] = {
+      ...initial.strap_colors[1],
+      identity_basis: null,
+      identity_group_id: null,
+      color: 'OFF WHITE',
+      color_id: OFF_WHITE,
+    };
+    const view = mount(initial, 'Rascunho', lines, options);
+    await waitFor(() => expect(view.current().strap_colors[1]).toMatchObject({
+      identity_basis: 'finished_product_group',
+      identity_group_id: STRASS,
+      color: 'OFF WHITE',
+      color_id: OFF_WHITE,
+    }));
+    expect(screen.queryByText(/Selecione uma cor canônica para esta posição/)).not.toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Cor de TIRA 2' })).toHaveTextContent('OFF WHITE');
+  });
+
   it('mantém cor de cabedal herdada na Strass e sinaliza vínculo inválido em vez de apagar ao reabrir', async () => {
     const { initial, options } = setup();
     const view = mount(initial, 'Rascunho', lines, options);

@@ -142,10 +142,13 @@ function sameSourcingInputs(
 ): boolean {
   const snapshotBasis = strapIdentityBasis(snapshot);
   const technicalBasis = strapIdentityBasis(technical);
+  const basisCompatible = snapshotBasis === technicalBasis
+    || snapshotBasisAdoptsFinishedGroup(snapshot, technical);
   return snapshot.strap_type_id === technical.strap_type_id
     && snapshot.measure_id === technical.measure_id
-    && snapshotBasis === technicalBasis
-    && (snapshotBasis !== 'finished_product_group'
+    && basisCompatible
+    && (technicalBasis !== 'finished_product_group'
+      || !snapshot.identity_group_id
       || snapshot.identity_group_id === technical.identity_group_id)
     && strapColorMode(snapshot) === strapColorMode(technical)
     && strapMaterialMode(snapshot) === strapMaterialMode(technical)
@@ -162,13 +165,37 @@ function sameSourcingInputs(
     && (snapshot.color_id || null) === (reconciled.color_id || null);
 }
 
+/**
+ * Snapshot legado omite `identity_basis` (strapIdentityBasis cai em
+ * reference_base) ou gravou o default `reference_base` com cor select_on_order
+ * já escolhida. Strass na ficha é finished_product_group — limpar a cor só por
+ * esse default forçava "Selecione a cor canônica" ao reabrir PV já salvo.
+ * Mudança real de modo (ex.: follow_main → select_on_order) continua limpando
+ * via selectedColorCanBePreserved.
+ */
+function snapshotBasisAdoptsFinishedGroup(
+  snapshot: ReconcileStrapLineLike,
+  technical: ReconcileStrapLineLike,
+): boolean {
+  if (strapIdentityBasis(technical) !== 'finished_product_group') return false;
+  const raw = snapshot?.identity_basis;
+  if (raw == null || String(raw).trim() === '') return true;
+  return raw === 'reference_base'
+    && strapColorMode(snapshot) === 'select_on_order'
+    && isUuid(snapshot.color_id);
+}
+
 function defaultColorScopeIsCompatible(
   snapshot: ReconcileStrapLineLike,
   technical: ReconcileStrapLineLike,
 ): boolean {
   const snapshotBasis = strapIdentityBasis(snapshot);
   const technicalBasis = strapIdentityBasis(technical);
-  if (snapshotBasis !== technicalBasis) return false;
+  if (snapshotBasis !== technicalBasis) {
+    if (!snapshotBasisAdoptsFinishedGroup(snapshot, technical)) return false;
+    // Ausência/default legado no snapshot = adotar o grupo acabado da ficha.
+    return !!technical.identity_group_id;
+  }
   if (snapshotBasis === 'finished_product_group') {
     // Snapshot antigo podia gravar a cor sem identity_group_id. A ficha atual
     // preenche o grupo; apagar a cor só por isso forçava reescolher Strass ao
@@ -192,7 +219,10 @@ function selectedColorCanBePreserved<T extends ReconcileStrapLineLike>(
       || !isUuid(snapshot.color_id)) return false;
   // Texto vazio com color_id válido ainda é escolha persistida (rótulo pode
   // ser reconstruído do catálogo). Exigir os dois apagava a Strass ao reabrir.
-  if (strapIdentityBasis(snapshot) !== strapIdentityBasis(technical)) return false;
+  if (strapIdentityBasis(snapshot) !== strapIdentityBasis(technical)
+      && !snapshotBasisAdoptsFinishedGroup(snapshot, technical)) {
+    return false;
+  }
   return canPreserveColor
     ? canPreserveColor({ snapshot, technical })
     : defaultColorScopeIsCompatible(snapshot, technical);

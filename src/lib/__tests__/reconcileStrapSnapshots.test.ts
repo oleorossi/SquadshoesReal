@@ -381,6 +381,75 @@ describe('reconcileEditableStrapSnapshots', () => {
     });
   });
 
+  it('preserva cor Strass quando snapshot omite identity_basis (vira reference_base)', () => {
+    const finishedGroup = 'c45ff936-5ac5-49b5-98c4-4aed5e10e82d';
+    const source = {
+      source_mode: 'buy_ready' as const,
+      color_id: blue,
+      strap_variant_id: null,
+    };
+    // Pedidos gravados antes do cutover de identidade omitiam identity_basis.
+    // strapIdentityBasis() cai em reference_base e o reconcile apagava a cor —
+    // UI: "Selecione a cor canônica" ao reabrir PV com Strass já escolhida.
+    const result = reconcileEditableStrapSnapshots({
+      snapshotLines: [strap(lineA, {
+        identity_basis: null,
+        identity_group_id: null,
+        color_mode: 'select_on_order',
+        color: 'OFF WHITE',
+        color_id: blue,
+        internal_production_enabled: false,
+      })],
+      technicalLines: [strap(lineA, {
+        identity_basis: 'finished_product_group',
+        identity_group_id: finishedGroup,
+        color_mode: 'select_on_order',
+        color: '',
+        color_id: null,
+        internal_production_enabled: false,
+      })],
+      sourcing: { [lineA]: source },
+    });
+
+    expect(result.lines[0]).toMatchObject({
+      identity_basis: 'finished_product_group',
+      identity_group_id: finishedGroup,
+      color: 'OFF WHITE',
+      color_id: blue,
+    });
+    expect(result.sourcing).toEqual({ [lineA]: source });
+  });
+
+  it('preserva cor Strass com identity_basis reference_base legado e select_on_order', () => {
+    const finishedGroup = 'c45ff936-5ac5-49b5-98c4-4aed5e10e82d';
+    const result = reconcileEditableStrapSnapshots({
+      snapshotLines: [strap(lineA, {
+        identity_basis: 'reference_base',
+        identity_group_id: null,
+        color_mode: 'select_on_order',
+        color: 'OFF WHITE',
+        color_id: blue,
+        internal_production_enabled: false,
+      })],
+      technicalLines: [strap(lineA, {
+        identity_basis: 'finished_product_group',
+        identity_group_id: finishedGroup,
+        color_mode: 'select_on_order',
+        color: '',
+        color_id: null,
+        internal_production_enabled: false,
+      })],
+      sourcing: {},
+    });
+
+    expect(result.lines[0]).toMatchObject({
+      identity_basis: 'finished_product_group',
+      identity_group_id: finishedGroup,
+      color: 'OFF WHITE',
+      color_id: blue,
+    });
+  });
+
   it('preserva color_id sem texto no snapshot select_on_order', () => {
     const result = reconcileEditableStrapSnapshots({
       snapshotLines: [strap(lineA, { color: '', color_id: blue })],
