@@ -2361,7 +2361,15 @@ export function computeConsumptionForItems(
       // Tira sem cor declarada não tem SKU determinístico. O SQL a sinaliza e
       // não reserva/debita; exibi-la como consumo criava uma falsa demanda no
       // picking e quebrava a paridade TS × SQL.
-      if (!(strap.color || '').toString().trim()) continue;
+      // Exceção: finished_product_group (STRASS) escolhe cor por UUID — o texto
+      // pode estar vazio com color_id preenchido. Omitir a linha faz a demanda
+      // sumir do consumo mesmo com preview canônica incompleta.
+      const strapColorText = (strap.color || '').toString().trim();
+      const strapColorId = (strap as { color_id?: string | null }).color_id;
+      if (!strapColorText && !strapColorId
+          && strapIdentityBasis(strap) !== 'finished_product_group') {
+        continue;
+      }
       const strapConsumptionCm = calculateStrapConsumptionCm(strap, {
         grade: (item as any).grade || {},
         quantity: itemQuantity,
@@ -2376,7 +2384,7 @@ export function computeConsumptionForItems(
       // aplica regra (nem default) — paridade com o SQL, que avisa e não
       // debita. allProducts só tem ativos e o guard de grupo espelha o JOIN
       // p.group_id = v_group_id do SQL.
-      const strapRuleColor = (strap.color || '').toString().trim();
+      const strapRuleColor = strapColorText;
       let strapRulePids: string[] | undefined;
       if (strap.group_id && strapRuleColor) {
         const rulePid = componentColorDefaultMap.get(`${strap.group_id}::${normalizeColorKey(strapRuleColor)}`)
@@ -2386,19 +2394,21 @@ export function computeConsumptionForItems(
         }
       }
 
+      const finishedGroup = strapIdentityBasis(strap) === 'finished_product_group';
       addConsumptionRow(consumptionMap, {
         componentType: 'Tiras',
         groupName: strap.group_name || strap.label || 'Tira',
         materialName: strap.label || strap.group_name || 'Tira',
         productUnit: 'metro',
-        color: strap.color || orderColor,
+        // STRASS: cor da posição, nunca a cor do cabedal do item.
+        color: strapColorText || (finishedGroup ? '—' : orderColor),
         totalQuantity: strapConsumptionCm / 100,
-        materialFamily: strapIdentityBasis(strap) === 'reference_base'
-          ? strap.base_group_name || groupNameById(strap.base_group_id)
+        materialFamily: finishedGroup
+          ? null
+          : strap.base_group_name || groupNameById(strap.base_group_id)
             || (strap.material_mode && strap.material_mode !== 'follow_reference'
               ? 'Material por posição não resolvido'
-              : refNapaFamily)
-          : null,
+              : refNapaFamily),
         materialFamilyId: strap.base_group_id,
         productIds: strapRulePids,
       });
