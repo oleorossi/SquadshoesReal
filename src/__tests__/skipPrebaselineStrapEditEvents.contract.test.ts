@@ -6,7 +6,7 @@ const ROOT = resolve(__dirname, '../..');
 const migration = readFileSync(
   resolve(
     ROOT,
-    'supabase/migrations/20270101009300_skip_prebaseline_strap_edit_events.sql',
+    'supabase/migrations/20270101020400_skip_prebaseline_strap_edit_events.sql',
   ),
   'utf8',
 );
