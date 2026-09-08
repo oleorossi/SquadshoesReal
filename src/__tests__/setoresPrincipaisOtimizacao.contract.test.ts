@@ -91,8 +91,8 @@ describe('Fase 2 — modularização setores principais', () => {
   it('2.1 ficha: abas extraídas para components/technical-sheets', () => {
     expect(sheetsPage).toContain("from '@/components/technical-sheets/PhotosByColorTab'");
     expect(sheetsPage).toContain("from '@/components/technical-sheets/ProductionSectorsTab'");
-    expect(sheetsPage).toContain("from '@/components/technical-sheets/SheetBOM'");
-    expect(sheetsPage).toContain("from '@/components/technical-sheets/CostsAnalysisTab'");
+    expect(sheetsPage).toContain("import('@/components/technical-sheets/SheetBOM')");
+    expect(sheetsPage).toContain("import('@/components/technical-sheets/CostsAnalysisTab')");
     expect(sheetsPage).toContain("from '@/components/technical-sheets/SheetImageUpload'");
     expect(sheetsPage).toContain("from '@/lib/technicalSheetSizes'");
     const bom = read('components/technical-sheets/SheetBOM.tsx');
@@ -137,6 +137,41 @@ describe('Fase 2 — modularização setores principais', () => {
     expect(typeof invalidateProducts).toBe('function');
     expect(typeof invalidateTechnicalSheets).toBe('function');
     expect(typeof invalidateSaleOrders).toBe('function');
+  });
+});
+
+describe('Fase 3 — UX de fluxo', () => {
+  it('3.1 listagens distinguem isError de vazio', () => {
+    expect(sheetsPage).toContain('isError');
+    expect(sheetsPage).toContain('Erro ao carregar fichas técnicas');
+    expect(sheetsPage).toContain('Erro ao carregar a ficha');
+    expect(saleOrdersPage).toContain('if (isError)');
+    expect(saleOrdersPage).toContain('Erro ao carregar pedidos');
+    expect(materialsTab).toContain('isPaginatedError');
+    expect(materialsTab).toContain('Erro ao carregar materiais');
+  });
+
+  it('3.3 ficha defere BOM/custos na Engenharia', () => {
+    expect(sheetsPage).toContain('DeferredMount');
+    expect(sheetsPage).toContain("import('@/components/technical-sheets/SheetBOM')");
+    expect(read('components/technical-sheets/DeferredMount.tsx')).toContain('requestIdleCallback');
+  });
+
+  it('3.4 PV preserva deep-links de view', () => {
+    expect(saleOrdersPage).toContain("searchParams.get('view') === 'consumo'");
+    expect(saleOrdersPage).toContain("searchParams.get('view') === 'pendencias'");
+    expect(sheetsPage).toContain("searchParams.get('ref')");
+    expect(sheetsPage).toContain('useUrlTabState');
+  });
+
+  it('3.2/3.5 dirty-guard material + toast estruturado no ajuste', () => {
+    const productForm = read('components/inventory/ProductFormDialog.tsx');
+    expect(productForm).toContain('confirmCloseOpen');
+    expect(productForm).toContain('Descartar alterações?');
+    expect(productForm).toContain('requestClose');
+    const adjust = read('pages/StockAdjustmentPage.tsx');
+    expect(adjust).toMatch(/from ['"]@\/lib\/toast-messages['"]/);
+    expect(adjust).toContain("toastError(err, 'salvar ajuste de estoque'");
   });
 });
 

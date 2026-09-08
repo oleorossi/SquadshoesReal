@@ -8,7 +8,7 @@
  
  import { CaretRight as ChevronRight, CheckCircle } from '@phosphor-icons/react';
  
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, lazy, Suspense } from 'react';
 import { buildBulkSolePatch, evaluateTechnicalSheetReadiness } from '@/lib/technicalSheetReadiness';
 import type { TechnicalSheetAuditSignals, TechnicalSheetReadinessInput } from '@/lib/technicalSheetReadiness';
 import { buildTechnicalSheetPatch, cloneTechnicalSheetSnapshot } from '@/lib/technicalSheetPatch';
@@ -37,10 +37,16 @@ import { PhotosByColorTab } from '@/components/technical-sheets/PhotosByColorTab
 import { ProductionSectorsTab, STRAP_LABEL_OPTIONS } from '@/components/technical-sheets/ProductionSectorsTab';
 import { SheetImageUpload } from '@/components/technical-sheets/SheetImageUpload';
 import { SectionTitle, FieldInput, FieldSelect } from '@/components/technical-sheets/sheetFormFields';
-import { SheetBOM } from '@/components/technical-sheets/SheetBOM';
-import { CostsAnalysisTab as CostsTab } from '@/components/technical-sheets/CostsAnalysisTab';
+import { DeferredMount } from '@/components/technical-sheets/DeferredMount';
 import { getSizesForCategory, parseSizesFromRange, ADULT_SIZES, CHILD_SIZES } from '@/lib/technicalSheetSizes';
 import { Checkbox } from '@/components/ui/checkbox';
+
+const SheetBOM = lazy(() =>
+  import('@/components/technical-sheets/SheetBOM').then((m) => ({ default: m.SheetBOM })),
+);
+const CostsTab = lazy(() =>
+  import('@/components/technical-sheets/CostsAnalysisTab').then((m) => ({ default: m.CostsAnalysisTab })),
+);
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import {
@@ -160,7 +166,7 @@ function YieldFromPlate({ groupName, consumptionDm2, groups }: { groupName: stri
 
 
 export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {}) {
-  const { data: sheets = [], isLoading } = useTechnicalSheetsCatalog();
+  const { data: sheets = [], isLoading, isError, error, refetch } = useTechnicalSheetsCatalog();
   const { data: stock = [] } = useReadyStock();
   const sheetsAuditQuery = useSheetsAudit();
   const auditBySheetId = useMemo(() => new Map(
@@ -357,6 +363,31 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
 
   if (isLoading) {
     return <><div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div></>;
+  }
+
+  if (isError) {
+    return (
+      <>
+        <div className="space-y-4 page-enter">
+          <EditorialPageHeader
+            sectionLabel="ENGENHARIA · FICHAS"
+            title="Fichas Técnicas"
+            description="Materiais, consumos e custos"
+          />
+          <EmptyState
+            icon={AlertTriangle}
+            title="Erro ao carregar fichas técnicas"
+            description={error instanceof Error ? error.message : 'Tente recarregar a lista.'}
+            action={
+              <Button variant="outline" onClick={() => refetch()} className="gap-2">
+                <RefreshCw className="h-4 w-4" />
+                Tentar novamente
+              </Button>
+            }
+          />
+        </div>
+      </>
+    );
   }
 
   return (
@@ -1105,7 +1136,7 @@ function TechnicalSheetExpandedPanel({
     );
   }
 
-  if (isError || !sheet) {
+  if (isError) {
     return (
       <Card className="border-dashed">
         <CardContent className="flex flex-col items-center justify-center py-16 text-muted-foreground space-y-4">
@@ -1113,11 +1144,11 @@ function TechnicalSheetExpandedPanel({
             <AlertTriangle className="h-6 w-6 text-destructive" />
           </div>
           <div className="text-center">
-            <p className="font-semibold text-foreground">Ficha não encontrada</p>
+            <p className="font-semibold text-foreground">Erro ao carregar a ficha</p>
             <p className="text-sm">
               {error instanceof Error
                 ? error.message
-                : 'Não foi possível carregar os dados desta referência ou ela não existe mais.'}
+                : 'Não foi possível carregar os dados desta referência.'}
             </p>
           </div>
           <div className="flex gap-2">
@@ -1130,6 +1161,26 @@ function TechnicalSheetExpandedPanel({
               Voltar para a Lista
             </Button>
           </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!sheet) {
+    return (
+      <Card className="border-dashed">
+        <CardContent className="flex flex-col items-center justify-center py-16 text-muted-foreground space-y-4">
+          <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
+            <Package className="h-6 w-6 text-muted-foreground/50" />
+          </div>
+          <div className="text-center">
+            <p className="font-semibold text-foreground">Ficha não encontrada</p>
+            <p className="text-sm">Esta referência não existe mais ou foi removida.</p>
+          </div>
+          <Button variant="outline" onClick={onBack} className="gap-2">
+            <ArrowLeft className="h-4 w-4" />
+            Voltar para a Lista
+          </Button>
         </CardContent>
       </Card>
     );
@@ -3696,61 +3747,66 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
              </div>
           </div>
 
-          {/* ═══ SECTION 3: BOM (Bill of Materials) ═══ */}
-          <div className="rounded-lg border bg-card p-4">
-            <SheetBOM sheetId={sheet.id} safetyPct={form.safety_margin_pct}
-              onSafetyChange={v => updateField('safety_margin_pct', v)} shoeCategory={form.shoe_category} />
-          </div>
-
-          {/* ═══ SECTION 4: Consumos Técnicos de Componentes ═══ */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* ═══ SECTION 4: Consumos Técnicos de Componentes ═══ */}
-            <div className="rounded-lg border bg-card p-4">
-              <div className="mb-4">
-                <h3 className="text-sm font-bold flex items-center gap-2">
-                  <Layers className="h-4 w-4 text-primary" />
-                  Consumos Técnicos
-                </h3>
+          {/* Seções pesadas (BOM / consumos / custos) só depois do idle —
+              specs da Engenharia ficam interativos no first paint (Fase 3.3). */}
+          <DeferredMount>
+            <Suspense fallback={<div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>}>
+              {/* ═══ SECTION 3: BOM (Bill of Materials) ═══ */}
+              <div className="rounded-lg border bg-card p-4">
+                <SheetBOM sheetId={sheet.id} safetyPct={form.safety_margin_pct}
+                  onSafetyChange={v => updateField('safety_margin_pct', v)} shoeCategory={form.shoe_category} />
               </div>
-              <div className="mb-4 rounded-lg border bg-muted/20 p-3">
-                <p className="text-xs font-semibold">Setor de consumo dos componentes técnicos</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Informe o setor físico responsável pelo consumo. O roteamento é obrigatório para liberar fichas novas.
-                </p>
-                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  {[
-                    ['fibra', 'Fibra'],
-                    ['forracao_palmilha', 'Forração da Palmilha'],
-                    ['cabedal', 'Cabedal'],
-                    ['solado', 'Solado'],
-                  ].map(([key, label]) => (
-                    <div key={key}>
-                      <Label className="text-xs text-muted-foreground">{label}</Label>
-                      <Select
-                        value={(form.component_consumption_sectors || {})[key] || ''}
-                        onValueChange={(sector) => updateField('component_consumption_sectors', {
-                          ...(form.component_consumption_sectors || {}), [key]: sector,
-                        })}
-                      >
-                        <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="Selecione" /></SelectTrigger>
-                        <SelectContent>{CONSUMPTION_SECTORS.map(sector => <SelectItem key={sector} value={sector}>{sector}</SelectItem>)}</SelectContent>
-                      </Select>
+
+              {/* ═══ SECTION 4: Consumos Técnicos de Componentes ═══ */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
+                <div className="rounded-lg border bg-card p-4">
+                  <div className="mb-4">
+                    <h3 className="text-sm font-bold flex items-center gap-2">
+                      <Layers className="h-4 w-4 text-primary" />
+                      Consumos Técnicos
+                    </h3>
+                  </div>
+                  <div className="mb-4 rounded-lg border bg-muted/20 p-3">
+                    <p className="text-xs font-semibold">Setor de consumo dos componentes técnicos</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Informe o setor físico responsável pelo consumo. O roteamento é obrigatório para liberar fichas novas.
+                    </p>
+                    <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      {[
+                        ['fibra', 'Fibra'],
+                        ['forracao_palmilha', 'Forração da Palmilha'],
+                        ['cabedal', 'Cabedal'],
+                        ['solado', 'Solado'],
+                      ].map(([key, label]) => (
+                        <div key={key}>
+                          <Label className="text-xs text-muted-foreground">{label}</Label>
+                          <Select
+                            value={(form.component_consumption_sectors || {})[key] || ''}
+                            onValueChange={(sector) => updateField('component_consumption_sectors', {
+                              ...(form.component_consumption_sectors || {}), [key]: sector,
+                            })}
+                          >
+                            <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                            <SelectContent>{CONSUMPTION_SECTORS.map(sector => <SelectItem key={sector} value={sector}>{sector}</SelectItem>)}</SelectContent>
+                          </Select>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  </div>
+                  <ComponentSheets
+                    embedded
+                    filterProductIds={sheetMaterials.map((m: any) => m.product_id).filter(Boolean)}
+                    hideSoles={true}
+                  />
+                </div>
+
+                {/* ═══ SECTION 5: Análise de Custos Unificada ═══ */}
+                <div className="rounded-lg border bg-card p-4 h-full">
+                  <CostsTab sheetId={sheet.id} form={form} groups={groups || []} />
                 </div>
               </div>
-              <ComponentSheets
-                embedded
-                filterProductIds={sheetMaterials.map((m: any) => m.product_id).filter(Boolean)}
-                hideSoles={true}
-              />
-            </div>
-
-            {/* ═══ SECTION 5: Análise de Custos Unificada ═══ */}
-            <div className="rounded-lg border bg-card p-4 h-full">
-              <CostsTab sheetId={sheet.id} form={form} groups={groups || []} />
-            </div>
-          </div>
+            </Suspense>
+          </DeferredMount>
         </TabsContent>
 
         {/* TAB: Range Aviamento — faixas P/M/G próprias do setor de Aviamento */}
@@ -4284,7 +4340,9 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
               </p>
             </CardContent>
           </Card>
-          <CostsTab sheetId={sheet.id} form={form} groups={groups || []} />
+          <Suspense fallback={<div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>}>
+            <CostsTab sheetId={sheet.id} form={form} groups={groups || []} />
+          </Suspense>
         </TabsContent>
 
          {/* TAB: Variantes — apenas MATERIAL (cor é definida no PV)

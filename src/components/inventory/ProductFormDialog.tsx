@@ -198,6 +198,8 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
   const [createComponentSheet, setCreateComponentSheet] = useState(false);
   const [itemPackageWeight, setItemPackageWeight] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  const [userEdited, setUserEdited] = useState(false);
+  const [confirmCloseOpen, setConfirmCloseOpen] = useState(false);
   const [duplicateMatch, setDuplicateMatch] = useState<{
     product: Product;
     /** Por que o sistema considerou duplicado — exibido no banner pro user
@@ -412,6 +414,27 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
     }
     return currentSizes.map(String);
   }, [isSolado, soleConjugations, currentSizes, sizeFrom, sizeTo]);
+
+  useEffect(() => {
+    if (open) {
+      setUserEdited(false);
+      setConfirmCloseOpen(false);
+    }
+  }, [open, product?.id]);
+
+  const closeSilently = useCallback(() => {
+    setUserEdited(false);
+    setConfirmCloseOpen(false);
+    onOpenChange(false);
+  }, [onOpenChange]);
+
+  const requestClose = useCallback(() => {
+    if (userEdited && !submitting) {
+      setConfirmCloseOpen(true);
+      return;
+    }
+    closeSilently();
+  }, [userEdited, submitting, closeSilently]);
 
   useEffect(() => {
     if (product) {
@@ -1006,7 +1029,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
       }
 
       localStorage.setItem('inventory_active_tab', 'materials');
-      onOpenChange(false);
+      closeSilently();
     } catch (err: unknown) {
       if (err && typeof err === 'object' && (err as any).name === 'ZodError') {
         const msgs = (err as any).errors?.map((e: any) => e.message).join('; ') || 'Dados inválidos';
@@ -1018,7 +1041,8 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
     }
   };
 
-  const update = <K extends keyof ProductFormData>(key: K, value: ProductFormData[K]) =>
+  const update = <K extends keyof ProductFormData>(key: K, value: ProductFormData[K]) => {
+    setUserEdited(true);
     setForm(prev => {
       const next = { ...prev, [key]: value };
 
@@ -1085,6 +1109,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
 
       return next;
     });
+  };
 
   /** Aplica um template de conversão (chave do CONVERSION_TEMPLATES). */
   const applyConversionTemplate = (templateKey: string) => {
@@ -1133,7 +1158,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(next) => { if (!next) requestClose(); else onOpenChange(true); }}>
       <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEditing ? 'Editar Material' : 'Novo Material'}</DialogTitle>
@@ -2078,7 +2103,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
             )}
           </Tabs>
           <div className="flex justify-end gap-3 pt-2">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>Cancelar</Button>
+            <Button type="button" variant="outline" onClick={requestClose} disabled={submitting}>Cancelar</Button>
             <Button type="submit" disabled={submitting || (attempted && !isFormValid)}>
               {submitting
                 ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Salvando...</>
@@ -2087,6 +2112,21 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
           </div>
         </form>
       </DialogContent>
+
+      <AlertDialog open={confirmCloseOpen} onOpenChange={setConfirmCloseOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Descartar alterações?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Há alterações não salvas neste material. Fechar agora descarta o que foi editado.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Continuar editando</AlertDialogCancel>
+            <AlertDialogAction onClick={closeSilently}>Descartar</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog
         open={!!propagationPrompt}

@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDebounce } from "use-debounce";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { toastError } from "@/lib/toast-messages";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -834,8 +835,8 @@ export default function StockAdjustmentPage() {
        qc.invalidateQueries({ queryKey: ["products"] });
        qc.invalidateQueries({ queryKey: ["stock-adjustment-products"] });
        qc.invalidateQueries({ queryKey: ["stock_movements"] });
-     } catch (err: any) {
-       toast.error("Erro ao salvar: " + err.message);
+     } catch (err: unknown) {
+       toastError(err, 'salvar ajuste de estoque', { duration: 8000 });
      } finally {
        setSaving(false);
      }

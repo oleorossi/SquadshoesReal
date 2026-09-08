@@ -67,6 +67,16 @@ Remedir Network/chunks em preview e colar abaixo.
 | 2.2 PV | Extraídos `saleOrderListConstants`, `SaleOrderSortHead`, `SaleOrderMobileCard`, `useMinBillingMap` |
 | 2.3 Keys | `src/lib/queryKeys.ts` + wire em `useProducts` / `useTechnicalSheets` / `useSaleOrders` |
 
+## Pós-Fase 3 (UX)
+
+| Item | Mudança |
+|---|---|
+| 3.1 | Ficha catálogo/detail, Materiais e PV distinguem `isError` de empty |
+| 3.2 | `ProductFormDialog` confirma ao fechar com edição suja |
+| 3.3 | `DeferredMount` + lazy `SheetBOM`/`CostsTab` na Engenharia |
+| 3.4 | Deep-links `?view=consumo|pendencias`, `?ref=`, `useUrlTabState` preservados (contrato) |
+| 3.5 | Ajuste de estoque usa `toastError` no catch genérico |
+
 ## Pós-Fase 4 (guarda final)
 
 | Meta R2 | Atingida? | Evidência |

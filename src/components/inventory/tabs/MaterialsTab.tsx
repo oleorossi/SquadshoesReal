@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { useDebounce } from 'use-debounce';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { toast } from 'sonner';
-import { Plus, CircleNotch as Loader2, Barcode, CaretLeft as ChevronLeft, CaretRight as ChevronRight, MagnifyingGlass, FileArrowUp as FileUp, Stack as Layers, ArrowsDownUp as ArrowUpDown, X, DotsThree as MoreHorizontal, Rows as Rows3, Rows as Rows2, Eye } from '@phosphor-icons/react';
+import { Plus, CircleNotch as Loader2, Barcode, CaretLeft as ChevronLeft, CaretRight as ChevronRight, MagnifyingGlass, FileArrowUp as FileUp, Stack as Layers, ArrowsDownUp as ArrowUpDown, X, DotsThree as MoreHorizontal, Rows as Rows3, Rows as Rows2, Eye, Warning as AlertTriangle, ArrowsClockwise as RefreshCw } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
@@ -192,7 +192,7 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
   // Lista da UI = paginado. Universo (`useProducts`) só depois da página útil —
   // evita double-fetch bloqueando a primeira pintura (Fase 1.3). Stats de grupo
   // / edição em massa atualizam quando o universo chega.
-  const { data: paginatedData, isLoading: isPaginatedLoading, isFetched: pageFetched } = usePaginatedProducts({
+  const { data: paginatedData, isLoading: isPaginatedLoading, isFetched: pageFetched, isError: isPaginatedError, error: paginatedError, refetch: refetchPaginated } = usePaginatedProducts({
     search: debouncedSearch,
     groupId: effectiveGroup,
     supplierId: supplierFilter,
@@ -582,6 +582,19 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
         <div className="flex justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin text-primary" />
         </div>
+      ) : isPaginatedError ? (
+        <EmptyState
+          size="sm"
+          icon={AlertTriangle}
+          title="Erro ao carregar materiais"
+          description={paginatedError instanceof Error ? paginatedError.message : 'Tente novamente.'}
+          action={
+            <Button variant="outline" size="sm" className="gap-2" onClick={() => refetchPaginated()}>
+              <RefreshCw className="h-4 w-4" />
+              Tentar novamente
+            </Button>
+          }
+        />
       ) : paginatedProducts.length === 0 && debouncedSearch.trim() ? (
         <EmptyState
           size="sm"
