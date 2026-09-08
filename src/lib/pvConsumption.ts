@@ -181,7 +181,7 @@ export async function loadPvConsumption(ids: string[]): Promise<PvConsumptionRes
   return { rows, artisanalStrapRows, orderHeaders, report, items };
 }
 
-/** URL da tela cheia de consumo (nova aba / compartilhável). */
+/** URL da tela cheia de consumo (mesma aba / compartilhável). */
 export function pvConsumptionPath(ids: string[], itemId?: string | null): string {
   const unique = normalizePvConsumptionIds(ids);
   const params = new URLSearchParams();
