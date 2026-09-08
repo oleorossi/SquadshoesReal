@@ -1,8 +1,26 @@
 import { describe, expect, it } from 'vitest';
 import {
+  describePostgrestError,
   isMissingPostgrestRelation,
   isSchemaCacheTransientError,
 } from '@/lib/postgrestErrors';
+
+describe('describePostgrestError', () => {
+  it('lê message de objeto PostgREST e nunca vira [object Object]', () => {
+    expect(describePostgrestError({
+      code: '42501',
+      message: 'permission denied for table artisanal_strap_measures',
+    })).toBe('permission denied for table artisanal_strap_measures');
+    expect(describePostgrestError({
+      message: 'new row violates row-level security policy',
+      details: 'Failing row contains',
+      hint: 'use the catalog RPC',
+    })).toBe('new row violates row-level security policy Failing row contains use the catalog RPC');
+    expect(describePostgrestError({ code: '42501' })).toBe('Erro desconhecido');
+    expect(describePostgrestError({})).not.toBe('[object Object]');
+    expect(describePostgrestError({ nested: { x: 1 } })).not.toBe('[object Object]');
+  });
+});
 
 describe('isMissingPostgrestRelation', () => {
   it('reconhece os códigos retornados por Postgres e pelo cache do PostgREST', () => {

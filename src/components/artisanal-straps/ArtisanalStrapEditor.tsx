@@ -36,12 +36,13 @@ import {
   type SaveArtisanalStrapBundleResult,
   useSaveArtisanalStrapBundle,
 } from '@/hooks/useArtisanalStraps';
-import { supabase } from '@/integrations/supabase/client';
 import {
   normalizeStrapOrigemPadrao,
   suggestSkuAcabadoOrigemFromName,
   type StrapOrigemPadrao,
 } from '@/lib/strapBaseNapaPeel';
+import { describePostgrestError } from '@/lib/postgrestErrors';
+import { saveArtisanalStrapMeasureHubFields } from '@/lib/saveArtisanalStrapMeasureHubFields';
 import { useSuppliers } from '@/hooks/useSuppliers';
 import {
   canonicalStrapColorForProduct,
@@ -639,16 +640,20 @@ export function ArtisanalStrapEditor({
     });
     const measureId = result.measure_id || form.measureId;
     if (measureId) {
-      const { error: measureError } = await supabase
-        .from('artisanal_strap_measures')
-        .update({
-          origem_padrao: form.origemPadrao,
-          preco_artesanal_per_m: form.precoArtesanalPerM > 0 ? form.precoArtesanalPerM : null,
-          preco_prestador_per_m: form.precoPrestadorPerM > 0 ? form.precoPrestadorPerM : null,
-        })
-        .eq('id', measureId);
-      if (measureError) {
-        setValidationError(`Tira salva, mas origem/preços do Hub falharam: ${measureError.message}`);
+      try {
+        await saveArtisanalStrapMeasureHubFields(
+          measureId,
+          {
+            origemPadrao: form.origemPadrao,
+            precoArtesanalPerM: form.precoArtesanalPerM > 0 ? form.precoArtesanalPerM : null,
+            precoPrestadorPerM: form.precoPrestadorPerM > 0 ? form.precoPrestadorPerM : null,
+          },
+          'Cadastro de origem e preços no Hub de Tiras',
+        );
+      } catch (measureError: unknown) {
+        setValidationError(
+          `Tira salva, mas origem/preços do Hub falharam: ${describePostgrestError(measureError)}`,
+        );
         return;
       }
     }

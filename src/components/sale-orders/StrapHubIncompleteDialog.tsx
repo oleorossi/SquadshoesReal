@@ -14,8 +14,9 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { NumberInput } from '@/components/ui/number-input';
-import { supabase } from '@/integrations/supabase/client';
 import type { ArtisanalStrapCatalog } from '@/hooks/useArtisanalStraps';
+import { describePostgrestError } from '@/lib/postgrestErrors';
+import { saveArtisanalStrapMeasureHubFields } from '@/lib/saveArtisanalStrapMeasureHubFields';
 import {
   groupStrapHubIncompleteByMeasure,
   type StrapHubIncompleteIssue,
@@ -135,27 +136,27 @@ export default function StrapHubIncompleteDialog({
     try {
       const patches: StrapHubPricePatch[] = [];
       for (const draft of drafts) {
-        const patch: {
-          preco_artesanal_per_m?: number | null;
-          preco_prestador_per_m?: number | null;
-        } = {};
         const resultPatch: StrapHubPricePatch = { measureId: draft.measureId };
+        const fields: {
+          precoArtesanalPerM?: number | null;
+          precoPrestadorPerM?: number | null;
+        } = {};
         if (draft.needsArtesanal) {
           const value = draft.precoArtesanalPerM > 0 ? draft.precoArtesanalPerM : null;
-          patch.preco_artesanal_per_m = value;
+          fields.precoArtesanalPerM = value;
           resultPatch.precoArtesanalPerM = value;
         }
         if (draft.needsPrestador) {
           const value = draft.precoPrestadorPerM > 0 ? draft.precoPrestadorPerM : null;
-          patch.preco_prestador_per_m = value;
+          fields.precoPrestadorPerM = value;
           resultPatch.precoPrestadorPerM = value;
         }
-        if (Object.keys(patch).length === 0) continue;
-        const { error } = await supabase
-          .from('artisanal_strap_measures')
-          .update(patch)
-          .eq('id', draft.measureId);
-        if (error) throw error;
+        if (Object.keys(fields).length === 0) continue;
+        await saveArtisanalStrapMeasureHubFields(
+          draft.measureId,
+          fields,
+          'Completar Hub de Tiras pelo PV',
+        );
         patches.push(resultPatch);
       }
       await queryClient.invalidateQueries({ queryKey: ['artisanal-strap-catalog'] });
@@ -163,7 +164,7 @@ export default function StrapHubIncompleteDialog({
       onOpenChange(false);
       onCompleted(patches);
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = describePostgrestError(error);
       setValidationError(message);
       toast.error('Não foi possível gravar os preços no Hub de Tiras.', {
         description: message,

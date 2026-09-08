@@ -5,14 +5,32 @@ interface PostgrestErrorLike {
   hint?: string;
 }
 
+function asText(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
 function postgrestDiagnostic(error: unknown): { code: string; diagnostic: string } {
   const details = error && typeof error === 'object'
     ? error as PostgrestErrorLike
     : {};
   return {
-    code: details.code || '',
-    diagnostic: [details.message, details.details, details.hint].filter(Boolean).join(' '),
+    code: asText(details.code) || '',
+    diagnostic: [asText(details.message), asText(details.details), asText(details.hint)]
+      .filter(Boolean)
+      .join(' '),
   };
+}
+
+/**
+ * Mensagem legível de erro PostgREST / Error / string.
+ * Não usa `String(object)` — isso vira `[object Object]` no toast do Hub.
+ */
+export function describePostgrestError(error: unknown, fallback = 'Erro desconhecido'): string {
+  if (typeof error === 'string' && error.trim()) return error;
+  const { diagnostic } = postgrestDiagnostic(error);
+  if (diagnostic) return diagnostic;
+  if (error instanceof Error && error.message) return error.message;
+  return fallback;
 }
 
 /**
