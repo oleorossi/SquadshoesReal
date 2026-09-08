@@ -1637,8 +1637,8 @@ export default function Timesheet() {
     },
     {
       value: 'arquivos',
-      label: 'Arquivos',
-      description: 'Baixe os arquivos importados.',
+      label: 'Arquivo original',
+      description: 'Baixe o TXT/XLS do relógio.',
       icon: ArchiveBox,
       step: undefined,
     },

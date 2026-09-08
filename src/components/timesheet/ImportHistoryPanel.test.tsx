@@ -1,20 +1,22 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ImportHistoryPanel from './ImportHistoryPanel';
 
 const mocks = vi.hoisted(() => ({
+  downloadImportFile: vi.fn(),
   resolve: vi.fn(),
   resolvePending: false,
   resolveVariables: undefined as string | undefined,
   dismiss: vi.fn(),
   dismissPending: false,
   dismissVariables: undefined as { quarantineId: string; reason: string } | undefined,
+  importLogs: [] as Array<Record<string, unknown>>,
 }));
 
 vi.mock('@/hooks/useTimeImportLogs', () => ({
-  downloadImportFile: vi.fn(),
+  downloadImportFile: (...args: unknown[]) => mocks.downloadImportFile(...args),
   useTimeImportLogs: () => ({
-    data: [],
+    data: mocks.importLogs,
     isLoading: false,
     isFetching: false,
     refetch: vi.fn(),
@@ -77,6 +79,75 @@ vi.mock('@/hooks/useTimeImportLogs', () => ({
   }),
 }));
 
+vi.mock('sonner', () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
+const SAMPLE_LOG = {
+  id: 'log-1',
+  file_name: 'AFD001.txt',
+  batch_id: 'ID-2026-03-ponto',
+  start_date: '2026-03-01',
+  end_date: '2026-03-15',
+  inserted_count: 12,
+  updated_count: 0,
+  skipped_count: 1,
+  error_count: 0,
+  total_rows: 13,
+  status: 'success' as const,
+  error_messages: null,
+  notes: null,
+  imported_by: null,
+  created_at: '2026-03-10T12:00:00.000Z',
+  file_path: 'imports/AFD001.txt',
+  file_size_bytes: 1200,
+  mime_type: 'text/plain',
+  archive_status: 'available' as const,
+  archived_at: '2026-03-10T12:00:01.000Z',
+  coverage_scope: 'all_employees' as const,
+  covered_employee_external_ids: [],
+};
+
+describe('ImportHistoryPanel — arquivo original (auditoria)', () => {
+  beforeEach(() => {
+    mocks.downloadImportFile.mockReset();
+    mocks.downloadImportFile.mockResolvedValue(undefined);
+    mocks.importLogs = [SAMPLE_LOG];
+  });
+
+  it('no modo judicial destaca download do original e esconde a fila operacional', async () => {
+    render(<ImportHistoryPanel judicialFocus />);
+
+    expect(screen.getByText(/uso em auditoria ou processo/i)).toBeInTheDocument();
+    expect(screen.getByText(/Protocolo: ID-2026-03-ponto/i)).toBeInTheDocument();
+    expect(screen.queryByText('Pendências de vínculo da importação')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Baixar original/i }));
+    await waitFor(() => {
+      expect(mocks.downloadImportFile).toHaveBeenCalledWith('imports/AFD001.txt', 'AFD001.txt');
+    });
+  });
+
+  it('filtra pelo período coberto pelo arquivo e limpa o filtro', () => {
+    render(<ImportHistoryPanel judicialFocus />);
+
+    fireEvent.change(screen.getByLabelText('Data inicial'), {
+      target: { value: '2026-04-01' },
+    });
+    fireEvent.change(screen.getByLabelText('Data final'), {
+      target: { value: '2026-04-30' },
+    });
+
+    expect(screen.getByText(/Nenhum arquivo encontrado/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Limpar filtro de período/i }));
+    expect(screen.getByText('AFD001.txt')).toBeInTheDocument();
+  });
+});
+
 describe('ImportHistoryPanel — quarentena de importação', () => {
   beforeEach(() => {
     mocks.resolve.mockReset();
@@ -85,6 +156,7 @@ describe('ImportHistoryPanel — quarentena de importação', () => {
     mocks.dismiss.mockReset();
     mocks.dismissPending = false;
     mocks.dismissVariables = undefined;
+    mocks.importLogs = [];
   });
 
   it('preserva e classifica uma linha externa somente com justificativa', () => {

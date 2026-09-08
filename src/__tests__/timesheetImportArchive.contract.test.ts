@@ -13,6 +13,8 @@ const IMPORT_HOOK = read('src/hooks/useTimesheet.ts');
 const HISTORY_HOOK = read('src/hooks/useTimeImportLogs.ts');
 const HISTORY_PANEL = read('src/components/timesheet/ImportHistoryPanel.tsx');
 const PAGE = read('src/pages/Timesheet.tsx');
+const RH_HUB = read('src/pages/RHHub.tsx');
+const IMPORT_ARCHIVE = read('src/lib/ponto/importArchive.ts');
 
 describe('arquivo permanente das importações do relógio de ponto', () => {
   it('mantém o mesmo lote textual nas batidas, no protocolo e no arquivo', () => {
@@ -78,6 +80,16 @@ describe('arquivo permanente das importações do relógio de ponto', () => {
     expect(PAGE).toContain('<TabsContent value="arquivos"><ImportHistoryPanel /></TabsContent>');
     expect(HISTORY_PANEL).toContain('Os documentos não podem ser excluídos');
     expect(HISTORY_PANEL).toContain('Baixar original');
+  });
+
+  it('expõe o download judicial em Relatórios do hub de Pessoas', () => {
+    expect(RH_HUB).toContain("param: 'reportView'");
+    expect(RH_HUB).toContain("defaultValue: 'horas'");
+    expect(RH_HUB).toContain("<ImportHistoryPanel judicialFocus />");
+    expect(RH_HUB).toContain('Arquivo original do relógio');
+    expect(HISTORY_PANEL).toContain('judicialFocus');
+    expect(HISTORY_PANEL).toContain('Uso em auditoria ou processo');
+    expect(IMPORT_ARCHIVE).toContain('export function importLogOverlapsPeriod');
   });
 
   it('reimporta dias existentes e deixa as lacunas para o calendário interno', () => {

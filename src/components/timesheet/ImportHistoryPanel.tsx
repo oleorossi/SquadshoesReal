@@ -31,6 +31,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { SearchInput } from '@/components/ui/search-input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
+import { PeriodRangeFilter } from '@/components/hr/PeriodRangeFilter';
 import {
   downloadImportFile,
   TimeImportLog,
@@ -41,7 +42,13 @@ import {
   useTimeImportQuarantine,
   useTimeImportQuarantineHistory,
 } from '@/hooks/useTimeImportLogs';
+import { importLogOverlapsPeriod } from '@/lib/ponto/importArchive';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
+
+interface ImportHistoryPanelProps {
+  /** Quando true, destaca o uso judicial/auditoria e esconde a fila operacional de vínculo. */
+  judicialFocus?: boolean;
+}
 
 const fmtSize = (bytes?: number | null) => {
   if (!bytes) return 'Tamanho não registrado';
@@ -117,7 +124,7 @@ const coverageBadge = (log: TimeImportLog) => {
   return <Badge variant="secondary">Escopo legado não comprovado</Badge>;
 };
 
-export default function ImportHistoryPanel() {
+export default function ImportHistoryPanel({ judicialFocus = false }: ImportHistoryPanelProps) {
   const { data: logs = [], isLoading, refetch, isFetching } = useTimeImportLogs();
   const {
     data: quarantine = [],
@@ -140,20 +147,26 @@ export default function ImportHistoryPanel() {
   const [dismissTarget, setDismissTarget] = useState<TimeImportQuarantineEntry | null>(null);
   const [dismissReason, setDismissReason] = useState('');
   const [search, setSearch] = useState('');
+  const [periodFilter, setPeriodFilter] = useState<{ from: string; to: string }>({ from: '', to: '' });
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   const filteredLogs = useMemo(() => {
-    return logs.filter(log => searchMatchesAllTerms(
-      search,
-      log.file_name,
-      log.batch_id,
-      log.start_date,
-      log.end_date,
-      log.status,
-    ));
-  }, [logs, search]);
+    return logs.filter(log => {
+      if (!importLogOverlapsPeriod(log, periodFilter.from, periodFilter.to)) return false;
+      return searchMatchesAllTerms(
+        search,
+        log.file_name,
+        log.batch_id,
+        log.start_date,
+        log.end_date,
+        log.status,
+      );
+    });
+  }, [logs, search, periodFilter.from, periodFilter.to]);
 
   const availableFiles = useMemo(() => logs.filter(isAvailable).length, [logs]);
+  const availableInView = useMemo(() => filteredLogs.filter(isAvailable).length, [filteredLogs]);
+  const showOperationalQueue = !judicialFocus;
 
   const handleDownload = async (log: TimeImportLog) => {
     if (!log.file_path || !isAvailable(log)) return;
@@ -186,7 +199,9 @@ export default function ImportHistoryPanel() {
           </p>
           <h3 className="text-xl font-semibold">Arquivos originais do relógio de ponto</h3>
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-            Cada importação nova guarda o arquivo original antes de aplicar qualquer batida. Os documentos não podem ser excluídos e permanecem disponíveis para conferência e download.
+            {judicialFocus
+              ? 'Baixe o mesmo arquivo que saiu do relógio (TXT/XLS), com o nome e o conteúdo originais. Guarde o protocolo do lote — serve para conferência interna e eventual processo judicial.'
+              : 'Cada importação nova guarda o arquivo original antes de aplicar qualquer batida. Os documentos não podem ser excluídos e permanecem disponíveis para conferência e download.'}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -209,6 +224,45 @@ export default function ImportHistoryPanel() {
         </div>
       </div>
 
+      {judicialFocus && (
+        <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm">
+          <p className="font-semibold text-foreground">Uso em auditoria ou processo</p>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
+            <li>O download devolve o binário original do equipamento — não é um relatório recalculado.</li>
+            <li>Filtre pelo período das batidas cobertas pelo arquivo (não só pela data em que você importou).</li>
+            <li>Anote o protocolo do lote (visível nos detalhes) junto do documento anexado ao processo.</li>
+            <li>Importações antigas sem badge “Original preservado” não têm arquivo recuperável no sistema.</li>
+          </ul>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <PeriodRangeFilter
+          label="Período coberto pelo arquivo"
+          value={periodFilter}
+          onChange={setPeriodFilter}
+          className="flex-1"
+        />
+        {(periodFilter.from || periodFilter.to) && (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="h-8 shrink-0"
+            onClick={() => setPeriodFilter({ from: '', to: '' })}
+          >
+            Limpar filtro de período
+          </Button>
+        )}
+      </div>
+      {(periodFilter.from || periodFilter.to) && (
+        <p className="text-xs text-muted-foreground">
+          Mostrando {filteredLogs.length} arquivo(s) · {availableInView} com original baixável.
+        </p>
+      )}
+
+      {showOperationalQueue && (
+      <>
       <Card className={quarantine.length > 0 ? 'border-warning/40' : ''}>
         <CardContent className="p-0">
           <div className="flex flex-col gap-2 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
@@ -374,6 +428,8 @@ export default function ImportHistoryPanel() {
           )}
         </CardContent>
       </Card>
+      </>
+      )}
 
       <SearchInput
         className="max-w-xl"
@@ -401,7 +457,9 @@ export default function ImportHistoryPanel() {
             <EmptyState
               icon={MagnifyingGlass}
               title="Nenhum arquivo encontrado"
-              description="Altere a busca para localizar outra importação."
+              description={periodFilter.from || periodFilter.to || search.trim()
+                ? 'Altere a busca ou o período para localizar outra importação.'
+                : 'Altere a busca para localizar outra importação.'}
             />
           </CardContent>
         </Card>
@@ -433,6 +491,11 @@ export default function ImportHistoryPanel() {
                           {coverageBadge(log)}
                           <span className="text-xs text-muted-foreground">{fmtSize(log.file_size_bytes)}</span>
                         </div>
+                        {log.batch_id && (
+                          <p className="truncate font-mono text-[10px] text-muted-foreground" title={log.batch_id}>
+                            Protocolo: {log.batch_id}
+                          </p>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{fmtPeriod(log.start_date, log.end_date)}</TableCell>
@@ -450,7 +513,7 @@ export default function ImportHistoryPanel() {
                           <Eye className="h-3.5 w-3.5" /> Detalhes
                         </Button>
                         <Button
-                          variant="outline"
+                          variant={judicialFocus ? 'default' : 'outline'}
                           size="sm"
                           className="h-8 gap-1"
                           disabled={!log.file_path || !isAvailable(log) || downloadingId === log.id}
@@ -458,7 +521,7 @@ export default function ImportHistoryPanel() {
                           title={isAvailable(log) ? `Baixar ${log.file_name}` : 'O original não está disponível para esta importação'}
                         >
                           {downloadingId === log.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-                          Baixar
+                          Baixar original
                         </Button>
                       </div>
                     </TableCell>
