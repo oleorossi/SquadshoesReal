@@ -62,11 +62,14 @@ UPDATE public.technical_sheets ts
      OR COALESCE(ts.sole_drives_consumption, false)
    );
 
--- 2) Fichas do solado INFANTIL: limpa mapa congelado de palmilha na ficha.
---    Quantidade por numeração mora no Consumo Padrão (mig 20270101000100:
---    4,28 / 4,56). Mapas na ficha escondem essa régua (precedência: ficha
---    vence solado). Escopo deliberado = grupo INFANTIL; fichas adultas com
---    override explícito (ex. SP130 34–40) ficam intactas.
+-- 2) Fichas cujo solado dirige o consumo: limpa mapa congelado de palmilha
+--    na ficha. Quantidade por numeração mora no Consumo Padrão
+--    (Hub → Solados → Consumos → papel "Placa da palmilha" / fibra).
+--    Mapas na ficha escondem essa régua (precedência: ficha vence solado).
+--
+--    Escopo: SOLADO 01 (adulto canônico) + INFANTIL (régua 4,28/4,56).
+--    Fichas de outros solados com override explícito (ex. SP130 34–40 em
+--    solado adulto distinto) ficam intactas.
 UPDATE public.technical_sheets ts
    SET insole_consumption_per_size = '{}'::jsonb,
        updated_at = now()
@@ -75,12 +78,18 @@ UPDATE public.technical_sheets ts
    AND ts.insole_consumption_per_size IS NOT NULL
    AND ts.insole_consumption_per_size <> '{}'::jsonb
    AND (
-     ts.sole_group_id = '5902f5eb-668a-421e-a0b6-ce0ace9f1a6c'::uuid
+     ts.sole_group_id IN (
+       '69c86aa8-57af-45e8-813f-19a1b50340d8'::uuid, -- SOLADO 01
+       '5902f5eb-668a-421e-a0b6-ce0ace9f1a6c'::uuid  -- INFANTIL
+     )
      OR EXISTS (
        SELECT 1
          FROM public.products sole
         WHERE sole.id = ts.primary_sole_id
-          AND sole.group_id = '5902f5eb-668a-421e-a0b6-ce0ace9f1a6c'::uuid
+          AND sole.group_id IN (
+            '69c86aa8-57af-45e8-813f-19a1b50340d8'::uuid,
+            '5902f5eb-668a-421e-a0b6-ce0ace9f1a6c'::uuid
+          )
      )
    );
 
@@ -115,18 +124,24 @@ BEGIN
      AND ts.insole_consumption_per_size IS NOT NULL
      AND ts.insole_consumption_per_size <> '{}'::jsonb
      AND (
-       ts.sole_group_id = '5902f5eb-668a-421e-a0b6-ce0ace9f1a6c'::uuid
+       ts.sole_group_id IN (
+         '69c86aa8-57af-45e8-813f-19a1b50340d8'::uuid,
+         '5902f5eb-668a-421e-a0b6-ce0ace9f1a6c'::uuid
+       )
        OR EXISTS (
          SELECT 1
            FROM public.products sole
           WHERE sole.id = ts.primary_sole_id
-            AND sole.group_id = '5902f5eb-668a-421e-a0b6-ce0ace9f1a6c'::uuid
+            AND sole.group_id IN (
+              '69c86aa8-57af-45e8-813f-19a1b50340d8'::uuid,
+              '5902f5eb-668a-421e-a0b6-ce0ace9f1a6c'::uuid
+            )
        )
      );
 
   IF v_still_override > 0 THEN
     RAISE EXCEPTION
-      'Pos-condicao: ainda ha % fichas INFANTIL com mapa de palmilha sob sole_drives',
+      'Pos-condicao: ainda ha % fichas SOLADO 01/INFANTIL com mapa de palmilha sob sole_drives',
       v_still_override;
   END IF;
 END

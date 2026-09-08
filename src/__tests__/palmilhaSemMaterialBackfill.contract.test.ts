@@ -25,10 +25,12 @@ describe('SQL — backfill palmilha sem material + limpa override INFANTIL', () 
     }
   });
 
-  it('limpa insole_consumption_per_size só no solado INFANTIL', () => {
+  it('limpa insole_consumption_per_size em SOLADO 01 e INFANTIL', () => {
     expect(migration).toContain("insole_consumption_per_size = '{}'::jsonb");
-    expect(migration).toContain('5902f5eb-668a-421e-a0b6-ce0ace9f1a6c');
+    expect(migration).toContain('69c86aa8-57af-45e8-813f-19a1b50340d8'); // SOLADO 01
+    expect(migration).toContain('5902f5eb-668a-421e-a0b6-ce0ace9f1a6c'); // INFANTIL
     expect(migration).toContain('primary_sole_id');
+    expect(migration).toContain('Placa da palmilha');
   });
 
   it('trava pós-condição via audit.missing_insole_material', () => {
