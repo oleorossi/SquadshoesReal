@@ -296,8 +296,215 @@ Testes automatizados que travam o contrato:
 
 ---
 
+## 9. Catálogo de relatórios vs `computePeriodFolha`
+
+Auditoria arquivo-a-arquivo (08/09/2026). Referência canônica: `computePeriodFolha` → `calculateSalaryPayroll` (`src/lib/salaryPayroll.ts`), versão `saldo-periodo-v2-2026-08-26`. O `day_ledger` carrega bruto → compensado → `payable_*`.
+
+**Legenda de veredito**
+
+| Tag | Significado |
+|---|---|
+| **CORRECT** | Mesmos minutos/R$ que a folha (ou snapshot dela) |
+| **INTENTIONAL_DIVERGENCE** | Número diferente de propósito (conferência semanal, presença, operacional) |
+| **BUG/STALE** | Fórmula errada, cópia desatualizada, motor morto ainda exposto, ou leftover de banco de horas |
+| **ORPHAN** | Arquivo existe, **nenhum** mount/rota viva no hub atual |
+
+### 9.1 Hub vivo (`/rh`)
+
+#### R01 — Folha / Fechamento
+| Campo | Valor |
+|---|---|
+| **Nome + path** | Folha do Mês · `src/pages/Payroll.tsx` (via `FolhaConsolidada` → `RHHub` aba `folha`) |
+| **Claims** | Calcula/fecha período; HE, faltas, atraso líquido, adiantamentos, líquido; holerite |
+| **Fonte** | `computePeriodFolha` direto no calculate (`Payroll.tsx` ~879); persistência em `payroll_runs` + `calculation_snapshot` |
+| **Motor** | `computePeriodFolha` + `day_ledger` |
+| **Veredito** | **CORRECT** |
+| **Evidência** | Grava `overtime_50_minutes = he_minutes`, `overtime_amount = he_value`, `deductions_amount = atraso_desconto`, `absence_discount = falta_desconto` (`Payroll.tsx:937–945`). |
+
+#### R02 — FolhaConsolidada
+| Campo | Valor |
+|---|---|
+| **Nome + path** | `src/components/hr/FolhaConsolidada.tsx` |
+| **Claims** | Wrapper da Folha (fusão Relatório + Folha do Mês) |
+| **Fonte** | Reexporta `<Payroll />` |
+| **Motor** | Mesmo que R01 |
+| **Veredito** | **CORRECT** (sem cálculo próprio) |
+| **Evidência** | Arquivo inteiro = lazy `Payroll` (`FolhaConsolidada.tsx:9–19`). |
+
+#### R03 — Relatório de Faltas
+| Campo | Valor |
+|---|---|
+| **Nome + path** | Relatório de Faltas · `src/components/hr/RelatorioFaltas.tsx` (sub-view da Folha) |
+| **Claims** | Dias de falta = dia útil coberto sem trabalho; desconto R$ = coluna Faltas da folha |
+| **Fonte** | `computePeriodFolha` → `falta_dates` / `falta_desconto` |
+| **Motor** | `computePeriodFolha` (+ print via `printRhReport`) |
+| **Veredito** | **CORRECT** |
+| **Evidência** | Header do arquivo + chamada com `coveredDates`/`absenceDates` (`RelatorioFaltas.tsx:6–8`, `:245–263`). |
+
+#### R04 — Relatório de Atrasos
+| Campo | Valor |
+|---|---|
+| **Nome + path** | Relatório de Atrasos · `src/components/hr/RelatorioAtrasos.tsx` |
+| **Claims** | Atraso bruto por dia + líquido após compensação; R$ = coluna Atrasos da folha |
+| **Fonte** | `computePeriodFolha` → `late_days` / `atraso_minutes` / `atraso_desconto` |
+| **Motor** | `computePeriodFolha` + `atrasoReportPrint.ts` |
+| **Veredito** | **CORRECT** |
+| **Evidência** | `RelatorioAtrasos.tsx:5–7`, `:257–275`; print `atrasoReportPrint.ts:8–10`. |
+
+#### R05 — TimeBalanceReports (aba Relatórios / “Espelho” do hub)
+| Campo | Valor |
+|---|---|
+| **Nome + path** | Relatórios do Ponto · `src/pages/TimeBalanceReports.tsx` + `EmployeeBalanceCalendar` + `lib/ponto/timeBalanceReports.ts` |
+| **Claims** | Quadro completo / “Horas extras” / “Pendências semanais”; calendário por semana ISO; saldo final pagável |
+| **Fonte** | Inputs: `computeComparativoRows` → `computePeriodFolha` (`day_ledger`, `he_minutes`, `atraso_minutes`). Apresentação semanal: `buildEmployeeTimeBalanceReport` reagrupa ledger e faz `worked − expected` **por semana ISO** |
+| **Motor** | Folha para totais pagáveis; **semanal bruto** para cards “Horas extras” / “Pendências” |
+| **Veredito** | **INTENTIONAL_DIVERGENCE** (semanal) + **CORRECT** (`finalPayableBalanceMinutes` / quadro completo) |
+| **Evidência** | Payable injetado em `TimeBalanceReports.tsx:124–131`; semana recalcula em `timeBalanceReports.ts:123–138` (`overtimeMinutes = max(0, balance)` sem piso 10min nem compensação cross-week). UI admite: “compensação dentro de cada semana” (`TimeBalanceReports.tsx:270–271`). Filtro `kind=overtime` usa `totalOvertimeMinutes` **semanal**, não `he_minutes` (`:160`, `reportsForKind`). |
+
+#### R06 — printTimeBalanceReports / Relatório gerência
+| Campo | Valor |
+|---|---|
+| **Nome + path** | `src/lib/printTimeBalanceReports.ts` |
+| **Claims** | PDF do calendário semanal; relatório gerência com “Resultado final” |
+| **Fonte** | Consome `EmployeeTimeBalanceReport` (R05) |
+| **Motor** | Mesma dualidade R05 |
+| **Veredito** | **INTENTIONAL_DIVERGENCE** no print de “Horas extras”; **CORRECT** no “Resultado final” (`finalPayableBalanceMinutes`) |
+| **Evidência** | `printTimeBalanceReports.ts:65–69`, `:88–109`, `:168`. |
+
+#### R07 — Espelho de ponto (página legal MTE)
+| Campo | Valor |
+|---|---|
+| **Nome + path** | `src/pages/EspelhoPontoPage.tsx` · rota `/rh/espelho-ponto/:employeeId` |
+| **Claims** | Espelho Portaria 671: batidas, jornada, saldo dia a dia |
+| **Fonte** | Ledger: `computePeriodFolha` → `day_ledger`. Totais do rodapé: soma de `diffMin` (saldo **bruto** por dia) |
+| **Motor** | `computePeriodFolha` para status/worked/expected; **não** usa `payable_*` nos totais |
+| **Veredito** | **CORRECT** no status/falta/pendência (mesma fonte da folha); **INTENTIONAL_DIVERGENCE** nos totais de saldo (bruto, sem compensação de período) |
+| **Evidência** | `EspelhoPontoPage.tsx:117–139`, `:185–189`, totais `:222–230`. Comentário de header ainda cita “Movimentações de banco de horas” (`:13`) — **STALE** (banco dropado). |
+
+#### R08 — printTimeMirror (botão “Imprimir espelho” na Folha)
+| Campo | Valor |
+|---|---|
+| **Nome + path** | `src/lib/printTimeMirror.ts` · chamado por `Payroll.printEspelho` |
+| **Claims** | Calendário individual legal; HE e atraso do dia; “Valor HE (1,5×)” |
+| **Fonte** | Dias de `comparativo.printData` (batidas/worked/expected). **R$ HE recalculado localmente**: `(Σ excedente/dia / 60) × (salário÷220) × 1,5` — **sem** compensação, **sem** taxas individuais, **sem** piso 10min |
+| **Motor** | ❌ **Não** usa `computePeriodFolha` para dinheiro |
+| **Veredito** | **BUG/STALE** |
+| **Evidência** | Fórmula `printTimeMirror.ts:88–98`, label “Valor HE (1,5×)” `:266`. Comentário contraditório “MESMA conta da folha” + “sem compensação” (`:88–91`). Param `bankHoursBalance` ainda na API (`:80`) — leftover, não renderizado. Caller `Payroll.tsx:696–729` ainda fala “saldo de banco”. |
+
+#### R09 — printPayrollBundle (maço Folha)
+| Campo | Valor |
+|---|---|
+| **Nome + path** | `src/lib/printPayrollBundle.ts` |
+| **Claims** | Resumo + calendário de tempo + holerite por funcionário |
+| **Fonte** | `payroll_runs` + `day_ledger` (`payable_overtime_minutes` / `payable_delay_minutes`) |
+| **Motor** | Snapshot/result da folha |
+| **Veredito** | **CORRECT** |
+| **Evidência** | Células HE/atraso usam `payable_*` (`printPayrollBundle.ts:231–232`); holerite parte de `overtime_amount` / `deductions_amount` (`:262–299`). |
+
+#### R10 — printRhReport (resumo gerencial PDF)
+| Campo | Valor |
+|---|---|
+| **Nome + path** | `src/lib/printRhReport.ts` · montado em `Payroll` |
+| **Claims** | Tabela gerencial: pendências brutas, créditos brutos, saldo final, HE R$, líquido |
+| **Fonte** | Números já vindos de `SalaryPayrollResult` (comparativo/folha) |
+| **Motor** | Sem recálculo — presenter |
+| **Veredito** | **CORRECT** (dados); KPIs rotulam bruto vs “H.E. a pagar” de forma explícita |
+| **Evidência** | `Payroll.tsx:647–660` (`Pendências`/`Horas extras` = bruto; `H.E. a pagar`/`Saldo final` = pós-compensação). |
+
+#### R11 — Excel da Folha (`exportFolhaExcel`)
+| Campo | Valor |
+|---|---|
+| **Nome + path** | `src/lib/exportFolhaExcel.ts` |
+| **Claims** | Resumo + detalhe dia a dia + “Como ler” (compensação + piso 10min) |
+| **Fonte** | `SalaryPayrollResult` / `day_ledger` (sem recálculo financeiro) |
+| **Motor** | `computePeriodFolha` via snapshot ou comparativo vivo |
+| **Veredito** | **CORRECT** |
+| **Evidência** | Docblock `:26–32`; colunas `payable_overtime_minutes` / `payable_delay_minutes` no detalhe. |
+
+#### R12 — payrollComparativo (orquestração impressão/export)
+| Campo | Valor |
+|---|---|
+| **Nome + path** | `src/lib/payrollComparativo.ts` |
+| **Claims** | Fonte única Mês/Q1/Q2 para print e Excel |
+| **Fonte** | `computePeriodFolha` por intervalo |
+| **Motor** | `computePeriodFolha` |
+| **Veredito** | **CORRECT** |
+| **Evidência** | `:7–9`, chamada `:265+`. |
+
+### 9.2 Ponto (`Timesheet`) — operacional vs pagamento
+
+#### R13 — ExceptionsTab
+| Campo | Valor |
+|---|---|
+| **Nome + path** | `src/components/timesheet/ExceptionsTab.tsx` (aba Corrigir → Exceções) |
+| **Claims** | Detecta batida ímpar / sequência inválida / HE excessiva (heurística) |
+| **Fonte** | `calculateDaySummary` + tabela `time_exceptions` |
+| **Motor** | ❌ Não é motor de pagamento |
+| **Veredito** | **INTENTIONAL_DIVERGENCE** (fila de qualidade, não holerite) |
+| **Evidência** | Detecção local `:79+`; montado em `Timesheet.tsx:1785`. |
+
+#### R14 — PendingTimeRecordsPanel / TimePendings
+| Campo | Valor |
+|---|---|
+| **Nome + path** | `PendingTimeRecordsPanel` + `src/pages/TimePendings.tsx` |
+| **Claims** | Batidas incompletas a corrigir antes de fechar |
+| **Fonte** | SQL/RPC de pendências; cutoff via `get_bank_hours_cutoff` |
+| **Motor** | Regime C (SQL por dia), não `computePeriodFolha` |
+| **Veredito** | **INTENTIONAL_DIVERGENCE**; leftover de nome “banco” no cutoff |
+| **Evidência** | `useBankHoursCutoff.ts:4–6` ainda documenta “corte do banco de horas”; UI de pendências filtra a partir dessa data (`TimePendings.tsx:199–200`). |
+
+### 9.3 Orphans / dead code (existem no disco, fora do hub)
+
+| ID | Path | O que pretendia | Motor | Veredito |
+|---|---|---|---|---|
+| R15 | `OverviewTab.tsx` | Visão geral HE/déficit/faltas/custo HE | Chama `computePeriodFolha` **mas** sem `absenceDates` / `coveredDates` / swaps (`:154–161`); copy “sem compensação” (`:362`) enquanto `he_minutes` já é líquido | **ORPHAN + BUG/STALE** se remontado |
+| R16 | `LateArrivalsTab.tsx` | Atraso de **entrada** (1ª batida − horário) com tolerância da escala | Fórmula própria (`:132–145`); ≠ `atraso_minutes` da folha | **ORPHAN**; seria **INTENTIONAL** (métrica operacional) se reativado — não confundir com R04 |
+| R17 | `DivergencesTab.tsx` | Batidas ímpares / completar manual | Contagem de punches, sem folha | **ORPHAN** / operacional |
+| R18 | `PreFolha.tsx` | Pré-folha + CSV contador a partir de `payroll_runs` | Lê snapshot gravado (`overtime_amount`, `absent_days`) — alinhado **se** a Folha gravou | **ORPHAN**; conteúdo seria **CORRECT** se remontado |
+| R19 | `KPIsRH.tsx` | Absenteísmo + % HE do mês | HE de `payroll_runs`; absenteísmo de `employee_absences` (`absenteeism.ts`) — **não** é o mesmo que `falta_days` da folha | **ORPHAN**; HE **CORRECT** vs runs; absenteísmo **INTENTIONAL** (justificadas inclusas) |
+| R20 | `AbsenceReport.tsx` | Cadastro/relatório de ausências | `absenteeism.ts`, sem ponto | **ORPHAN** (sem rota em `App.tsx`) |
+| R21 | `printTimesheet.ts` / `evaluationDetail` | Avaliação de jornada impressa | Com `payrollResult` → **CORRECT**; fallback local ainda soma crédito/atraso **por dia** (`:702–703`) | Lib viva via Excel/tipos; print HTML quase sem caller. Fallback = **BUG** se usado sem `payrollResult` |
+
+### 9.4 Banco de horas — leftovers em relatórios
+
+| Local | Estado |
+|---|---|
+| Tabelas / fluxo de pagamento | Dropados (`20260910130000`); HE paga na folha |
+| `EspelhoPontoPage` header | Comentário “Movimentações de banco de horas” — **STALE** |
+| `printTimeMirror` | Param `bankHoursBalance` — **STALE** API |
+| `Payroll.printEspelho` comment | “saldo de banco” — **STALE** |
+| `useBankHoursCutoff` / `TimePendings` | RPC `get_bank_hours_cutoff` ainda usada como **data mínima de pendências** — nome legado, função viva (filtro) |
+| `pontoEngine.computeWeekly` / `weeklyTimeCalculation` | Comentários ainda citam banco/Overview — **STALE**; UI viva não monta Overview |
+| Rotas | `/rh/banco-de-horas` → redirect (`RHHub` / `App.tsx`) |
+
+### 9.5 Matriz rápida
+
+| Relatório | Vivo? | vs Folha |
+|---|---|---|
+| Folha / FolhaConsolidada | sim | CORRECT |
+| RelatorioFaltas | sim | CORRECT |
+| RelatorioAtrasos + PDF | sim | CORRECT |
+| TimeBalanceReports (payable / quadro) | sim | CORRECT |
+| TimeBalanceReports (HE/déficit semanal) | sim | INTENTIONAL_DIVERGENCE |
+| printTimeBalance* | sim | mesma dualidade |
+| EspelhoPontoPage (status) | sim | CORRECT |
+| EspelhoPontoPage (totais saldo) | sim | INTENTIONAL (bruto) |
+| printTimeMirror (R$ HE 1,5× ÷220) | sim | **BUG/STALE** |
+| printPayrollBundle / printRhReport / Excel | sim | CORRECT |
+| Exceptions / Pendências | sim | INTENTIONAL (operacional) |
+| Overview / LateArrivals / Divergences / PreFolha / KPIsRH / AbsenceReport | **não montados** | ORPHAN |
+
+### 9.6 Prioridade se for corrigir (sem mexer no motor)
+
+1. **P0** — `printTimeMirror`: parar de inventar `salário÷220×1,5`; usar `he_minutes`/`he_value` (e atraso líquido) do `SalaryPayrollResult` já disponível no comparativo; remover `bankHoursBalance`.
+2. **P1** — Rotular na UI de Relatórios “HE da semana (conferência)” vs “HE paga (folha)” — já parcialmente feito no copy, reforçar no KPI “Total de horas extras” quando `kind=overtime`.
+3. **P2** — Limpar orphans ou remontar de propósito (PreFolha/CSV contador é o mais útil).
+4. **P3** — Apagar/atualizar comentários de banco de horas (I5 + §9.4).
+
+---
+
 ## Veredito final
 
-O setor Pessoas **já calcula** o que o dono descreveu: batidas do relógio → importação → jornada esperada → balanço entre dias no período → HE só no saldo líquido positivo acima de 10 minutos → pagamento na folha com taxas R$/h individuais.
+O setor Pessoas **já calcula** o que o dono descreveu no caminho de **pagamento**: batidas → importação → jornada esperada → balanço entre dias no período → HE só no saldo líquido positivo acima de 10 minutos → folha com taxas R$/h individuais.
 
-O trabalho útil daqui pra frente é **clareza de interface e um único rótulo do que é pagamento**, não reescrever o motor `computePeriodFolha`.
+Os gaps vivos são de **apresentação**: (1) relatório semanal ≠ holerite por desenho; (2) `printTimeMirror` ainda paga HE com fórmula legada ÷220×1,5; (3) vários componentes “de relatório” órfãos e leftovers de banco de horas na cópia. Não é necessário reescrever `computePeriodFolha` para fechar o contrato do dono — é necessário alinhar os prints/labels ao motor que já existe.
