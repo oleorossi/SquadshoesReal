@@ -70,10 +70,32 @@ BEGIN
     v_patched := replace(v_patched, v_anchor, v_replacement);
   END IF;
 
-  -- 2) missing_lining_material: grupo também quando solado tem forração de palmilha
-  v_anchor :=
-    $old$(COALESCE(ts.sole_drives_consumption, false) AND COALESCE(sp.sole_has_lining_specs, false))$old$;
-  IF position(v_anchor IN v_patched) > 0 THEN
+  -- 2) missing_lining_material: grupo também quando solado tem forração de palmilha.
+  -- pg_get_viewdef costuma omitir os parênteses do AND (AND > OR); aceitar as duas formas.
+  IF position(
+       'OR COALESCE(sp.sole_has_insole_lining_specs, false)'
+       IN v_patched
+     ) = 0 THEN
+    v_anchor :=
+      $old$COALESCE(ts.sole_drives_consumption, false) AND COALESCE(sp.sole_has_lining_specs, false)$old$;
+    v_replacement :=
+      $new$COALESCE(ts.sole_drives_consumption, false) AND (
+        COALESCE(sp.sole_has_lining_specs, false)
+        OR COALESCE(sp.sole_has_insole_lining_specs, false)
+      )$new$;
+    IF position(v_anchor IN v_patched) = 0 THEN
+      v_anchor :=
+        $old$(COALESCE(ts.sole_drives_consumption, false) AND COALESCE(sp.sole_has_lining_specs, false))$old$;
+      v_replacement :=
+        $new$(COALESCE(ts.sole_drives_consumption, false) AND (
+          COALESCE(sp.sole_has_lining_specs, false)
+          OR COALESCE(sp.sole_has_insole_lining_specs, false)
+        ))$new$;
+    END IF;
+    IF position(v_anchor IN v_patched) = 0 THEN
+      RAISE EXCEPTION
+        'Patch forracao/solado recusado: missing_lining_material sem ancora nem insole_lining';
+    END IF;
     v_occurrences := (
       length(v_patched) - length(replace(v_patched, v_anchor, ''))
     ) / length(v_anchor);
@@ -82,18 +104,7 @@ BEGIN
         'Patch forracao/solado recusado: esperava 1 missing_lining_material sole_has_lining, encontrou %',
         v_occurrences;
     END IF;
-    v_replacement :=
-      $new$(COALESCE(ts.sole_drives_consumption, false) AND (
-        COALESCE(sp.sole_has_lining_specs, false)
-        OR COALESCE(sp.sole_has_insole_lining_specs, false)
-      ))$new$;
     v_patched := replace(v_patched, v_anchor, v_replacement);
-  ELSIF position(
-      'OR COALESCE(sp.sole_has_insole_lining_specs, false)'
-      IN v_patched
-    ) = 0 THEN
-    RAISE EXCEPTION
-      'Patch forracao/solado recusado: missing_lining_material sem ancora nem insole_lining';
   END IF;
 
   -- 3) missing_lining_consumption: com sole_drives, consumo NÃO mora na ficha
@@ -134,20 +145,23 @@ BEGIN
     );
   END IF;
 
-  -- 5) sole_driven_but_specs_missing — ramo forração: lining OU insole_lining
+  -- 5) sole_driven_but_specs_missing — ramo forração: lining OU insole_lining.
+  -- Forma viva observada: uma linha só, com casts ''::text / 0::numeric.
   IF position(
        'NOT COALESCE(sp.sole_has_insole_lining_specs, false)'
        IN v_patched
      ) = 0 THEN
     v_anchor :=
-      $old$COALESCE(ts.lining_material, '') <> ''
-        AND NOT COALESCE(sp.sole_has_lining_specs, false)
-        AND COALESCE(ts.lining_consumption, 0) <= 0$old$;
+      $old$COALESCE(ts.lining_material, ''::text) <> ''::text AND NOT COALESCE(sp.sole_has_lining_specs, false) AND COALESCE(ts.lining_consumption, 0::numeric) <= 0::numeric$old$;
     v_replacement :=
-      $new$COALESCE(ts.lining_material, '') <> ''
-        AND NOT COALESCE(sp.sole_has_lining_specs, false)
-        AND NOT COALESCE(sp.sole_has_insole_lining_specs, false)
-        AND COALESCE(ts.lining_consumption, 0) <= 0$new$;
+      $new$COALESCE(ts.lining_material, ''::text) <> ''::text AND NOT COALESCE(sp.sole_has_lining_specs, false) AND NOT COALESCE(sp.sole_has_insole_lining_specs, false) AND COALESCE(ts.lining_consumption, 0::numeric) <= 0::numeric$new$;
+
+    IF position(v_anchor IN v_patched) = 0 THEN
+      v_anchor :=
+        $old$COALESCE(ts.lining_material, '') <> '' AND NOT COALESCE(sp.sole_has_lining_specs, false) AND COALESCE(ts.lining_consumption, 0) <= 0$old$;
+      v_replacement :=
+        $new$COALESCE(ts.lining_material, '') <> '' AND NOT COALESCE(sp.sole_has_lining_specs, false) AND NOT COALESCE(sp.sole_has_insole_lining_specs, false) AND COALESCE(ts.lining_consumption, 0) <= 0$new$;
+    END IF;
 
     IF position(v_anchor IN v_patched) = 0 THEN
       v_anchor :=

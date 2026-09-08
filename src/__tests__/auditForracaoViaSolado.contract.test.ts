@@ -41,10 +41,20 @@ describe('SQL — auditoria: forração/fibra via solado', () => {
   });
 
   it('exige lining_material também quando o solado só tem forração de palmilha', () => {
+    // Forma viva do pg_get_viewdef: AND sem parênteses externos (AND > OR).
+    expect(migration).toContain(
+      'COALESCE(ts.sole_drives_consumption, false) AND COALESCE(sp.sole_has_lining_specs, false)',
+    );
     expect(migration).toContain(
       'OR COALESCE(sp.sole_has_insole_lining_specs, false)',
     );
     expect(migration).toContain('missing_lining_material');
+  });
+
+  it('ancora sole_driven em uma linha com casts tipados do deparse', () => {
+    expect(migration).toContain(
+      "COALESCE(ts.lining_material, ''::text) <> ''::text AND NOT COALESCE(sp.sole_has_lining_specs, false) AND COALESCE(ts.lining_consumption, 0::numeric) <= 0::numeric",
+    );
   });
 
   it('preserva security_invoker e não reintroduz requires_cutting_cabedal', () => {
