@@ -1,30 +1,28 @@
--- Diagnóstico SOMENTE LEITURA: tira STRASS no Consumo — PV infantil Dakotton
+-- Diagnóstico SOMENTE LEITURA: tira STRASS no Consumo — PV-00169 (Dakotton infantil)
 -- Projeto: ssvxfoybzmjlypnipqzn
 -- Cole no SQL Editor e rode bloco a bloco.
+--
+-- Causa já corrigida em produção (migs 20900/21000 + parser TS): snapshot
+-- buy_ready sem strap_product_name → "Tira sem cadastro" / colapso vs overlock.
 
--- 1) PVs do cliente
+-- 1) PV-00169 (e aliases de número)
 SELECT so.id, so.order_number, so.status, so.client_name, so.created_at
   FROM public.sale_orders so
- WHERE so.client_name ILIKE '%dakotton%'
+ WHERE so.order_number ILIKE '%00169%'
+    OR so.order_number ~ '(^|[^0-9])169([^0-9]|$)'
+    OR so.client_name ILIKE '%dakotton%'
     OR so.client_name ILIKE '%dakoton%'
-    OR EXISTS (
-      SELECT 1 FROM public.clients c
-       WHERE c.id = so.client_id
-         AND (
-           c.razao_social ILIKE '%dakotton%'
-           OR c.razao_social ILIKE '%dakoton%'
-           OR coalesce(c.nome_fantasia, '') ILIKE '%dakotton%'
-           OR coalesce(c.nome_fantasia, '') ILIKE '%dakoton%'
-         )
-    )
- ORDER BY so.created_at DESC;
+ ORDER BY so.created_at DESC
+ LIMIT 20;
 
 -- 2) Itens + contagem de tiras na ficha vs snapshot do PV
 --    (troque o order_number se quiser filtrar um PV)
 WITH pvs AS (
   SELECT so.id, so.order_number, so.client_name
     FROM public.sale_orders so
-   WHERE so.client_name ILIKE '%dakotton%'
+   WHERE so.order_number ILIKE '%00169%'
+      OR so.order_number ~ '(^|[^0-9])169([^0-9]|$)'
+      OR so.client_name ILIKE '%dakotton%'
       OR so.client_name ILIKE '%dakoton%'
 )
 SELECT
@@ -69,7 +67,9 @@ ORDER BY p.order_number, i.created_at;
 WITH pvs AS (
   SELECT so.id, so.order_number
     FROM public.sale_orders so
-   WHERE so.client_name ILIKE '%dakotton%'
+   WHERE so.order_number ILIKE '%00169%'
+      OR so.order_number ~ '(^|[^0-9])169([^0-9]|$)'
+      OR so.client_name ILIKE '%dakotton%'
       OR so.client_name ILIKE '%dakoton%'
 ),
 sheet AS (
@@ -105,7 +105,9 @@ SELECT s.*
 WITH pvs AS (
   SELECT so.id
     FROM public.sale_orders so
-   WHERE so.client_name ILIKE '%dakotton%'
+   WHERE so.order_number ILIKE '%00169%'
+      OR so.order_number ~ '(^|[^0-9])169([^0-9]|$)'
+      OR so.client_name ILIKE '%dakotton%'
       OR so.client_name ILIKE '%dakoton%'
 )
 SELECT p.id AS sale_order_id, preview.*
@@ -117,7 +119,9 @@ SELECT p.id AS sale_order_id, preview.*
 WITH pvs AS (
   SELECT so.id, so.order_number
     FROM public.sale_orders so
-   WHERE so.client_name ILIKE '%dakotton%'
+   WHERE so.order_number ILIKE '%00169%'
+      OR so.order_number ~ '(^|[^0-9])169([^0-9]|$)'
+      OR so.client_name ILIKE '%dakotton%'
       OR so.client_name ILIKE '%dakoton%'
 )
 SELECT
