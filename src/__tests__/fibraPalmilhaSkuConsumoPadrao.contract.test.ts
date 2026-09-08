@@ -31,7 +31,9 @@ describe('fibra palmilha — pin no Consumo Padrão', () => {
     expect(HOOK).toContain('ROLE_WITH_MATERIAL_PIN');
     expect(HOOK).toContain('materialProductId');
     expect(PANEL).toContain('ROLE_WITH_MATERIAL_PIN');
+    // Caixa âmbar "Material para débito" + busca (38ff7e82) — o pin do SKU
+    // que o estoque baixa. Não travar no placeholder antigo "Selecionar fibra".
     expect(PANEL).toContain('Material para débito');
-    expect(PANEL).toContain('Buscar fibra');
+    expect(PANEL).toContain('Buscar fibra / placa');
   });
 });
