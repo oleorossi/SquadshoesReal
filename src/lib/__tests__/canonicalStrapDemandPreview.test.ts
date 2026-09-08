@@ -65,6 +65,96 @@ describe('preview canônica de tiras', () => {
     );
   });
 
+  it('snapshot pré-demanda de STRASS usa group_name/color (não some como “Tira sem cadastro”)', () => {
+    const strass = parseCanonicalStrapDemandPreview({
+      sale_order_item_id: 'item-strass',
+      technical_strap_line_id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+      strap_variant_id: 'variant-strass-preto',
+      source_mode: 'buy_ready',
+      gross_required_m: 508,
+      recipe_id: null,
+      base_product_id: null,
+      finished_product_id: 'finished-strass-preto',
+      blocking_reasons: [],
+      resolved: {
+        // Espelho do rebuild incompleto em preview_sale_order_strap_demand_draft:
+        // group_name/label/color, sem strap_product_name/strap_color_name.
+        physical_snapshot_complete: false,
+        identity_basis: 'finished_product_group',
+        group_name: 'TIRA STRASS 6MM',
+        label: 'STRASS LATERAL',
+        color: 'PRETO',
+        strap_product_name: null,
+        strap_color_name: null,
+        measure_name: null,
+        snapshot_warning:
+          'A versao, o rendimento e a necessidade de base serao congelados na primeira demanda; antes disso, apenas os IDs e o consumo tecnico do item estao preservados.',
+      },
+    });
+
+    expect(strass.strapProductName).toBe('TIRA STRASS 6MM');
+    expect(strass.strapColorName).toBe('PRETO');
+    expect(formatCanonicalStrapProductName(strass)).toBe('TIRA STRASS 6MM');
+
+    const stockCtx = {
+      allProducts: [
+        { id: 'finished-strass-preto', name: 'TIRA STRASS 6MM PRETO FUNDO PRETO', quantity: 12, reserved_stock: 0 },
+      ],
+      productGroups: [],
+    } as any;
+    const [row] = replaceWithCanonicalStrapRows([], stockCtx, [strass]) as CanonicalStrapConsumptionRow[];
+    expect(row.groupName).toMatch(/STRASS/i);
+    expect(row.materialName).toBe('Comprada pronta');
+    expect(row.color).toBe('PRETO');
+    expect(row.totalQuantity).toBe(508);
+    expect(row.artisanal).toBeUndefined();
+    expect(row.productIds).toEqual(['finished-strass-preto']);
+  });
+
+  it('não colapsa STRASS buy_ready contra overlock interna com mesma cor/metragem', () => {
+    const overlock = preview({
+      sale_order_item_id: 'item-mix',
+      technical_strap_line_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      strap_variant_id: 'variant-overlock',
+      source_mode: 'internal',
+      gross_required_m: 508,
+      resolved: {
+        strap_product_name: 'TIRA OVERLOCK 5MM · NAPA SOFT',
+        measure_name: 'OVERLOCK 5MM',
+        strap_color_name: 'PRETO',
+        base_group_name: 'NAPA SOFT',
+        confirmed_yield_m_per_m: 64,
+        base_required_m: 7.94,
+      },
+    });
+    const strassGhost = parseCanonicalStrapDemandPreview({
+      sale_order_item_id: 'item-mix',
+      technical_strap_line_id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+      strap_variant_id: null,
+      source_mode: 'buy_ready',
+      gross_required_m: 508,
+      recipe_id: null,
+      base_product_id: null,
+      finished_product_id: null,
+      blocking_reasons: [{
+        code: 'frozen_source_snapshot_stale',
+        message: 'A origem congelada da tira diverge do catalogo',
+      }],
+      resolved: {
+        group_name: 'TIRA STRASS 6MM',
+        color: 'PRETO',
+        strap_product_name: null,
+        measure_name: null,
+      },
+    });
+
+    const collapsed = collapseDuplicateStaleStrapPreviews([overlock, strassGhost]);
+    expect(collapsed).toHaveLength(2);
+    const rows = replaceWithCanonicalStrapRows([], ctx, [overlock, strassGhost]) as CanonicalStrapConsumptionRow[];
+    expect(rows.some((row) => /STRASS/i.test(row.groupName))).toBe(true);
+    expect(rows.some((row) => /OVERLOCK/i.test(row.groupName))).toBe(true);
+  });
+
   it('remove fantasma OFF WHITE que só duplica a CHATA já conferida (PV-00193)', () => {
     const healthy = preview({
       sale_order_item_id: 'item-off',
