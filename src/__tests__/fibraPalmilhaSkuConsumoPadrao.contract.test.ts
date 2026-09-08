@@ -4,7 +4,7 @@ import { join } from 'node:path';
 
 const ROOT = join(process.cwd());
 const MIGRATION = readFileSync(
-  join(ROOT, 'supabase/migrations/20270101021100_fibra-palmilha-sku-no-consumo-padrao.sql'),
+  join(ROOT, 'supabase/migrations/20270101021200_fibra-palmilha-sku-no-consumo-padrao.sql'),
   'utf8',
 );
 const HOOK = readFileSync(
