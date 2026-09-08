@@ -55,6 +55,9 @@ const analysisViewLabels: Record<string, string> = {
   'centro-controle': 'Centro de Controle',
 };
 
+const UUID_SEGMENT_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 function slugToLabel(segment: string): string {
   const decoded = decodeURIComponent(segment).replace(/-/g, ' ');
   return decoded.charAt(0).toUpperCase() + decoded.slice(1);
@@ -76,9 +79,37 @@ function findDestination(pathname: string) {
 }
 
 function labelForPath(pathname: string, segment: string) {
+  if (UUID_SEGMENT_RE.test(segment)) return 'Detalhe';
   return destinationByPath.get(pathname)?.label
     ?? segmentLabels[segment]
     ?? slugToLabel(segment);
+}
+
+/**
+ * Rótulo da tela atual pra o chrome mobile (top bar). Prefere o catálogo de
+ * navegação; em rotas de detalhe com UUID cai em "Detalhe" em vez do hash.
+ */
+export function resolveMobileNavMeta(pathname: string, search = ''): { label: string; group?: string } {
+  if (pathname === '/' || pathname === '/dashboard') {
+    return { label: 'Painel', group: 'Início' };
+  }
+
+  const destination = findDestination(pathname);
+  if (pathname === '/producao/analises') {
+    const view = new URLSearchParams(search).get('view') || '';
+    const viewLabel = analysisViewLabels[view];
+    if (viewLabel) {
+      return { label: viewLabel, group: destination?.group ?? 'Produção' };
+    }
+  }
+
+  if (destination) {
+    return { label: destination.label, group: destination.group };
+  }
+
+  const segments = pathname.split('/').filter(Boolean);
+  const last = segments[segments.length - 1] || '';
+  return { label: labelForPath(pathname, last) };
 }
 
 export default function PageHeader({ title, compact }: { title?: string; subtitle?: string; compact?: boolean }) {
@@ -110,6 +141,13 @@ export default function PageHeader({ title, compact }: { title?: string; subtitl
   segments.forEach((segment, index) => {
     pathAccum += `/${segment}`;
     if (index === 0 && skipFirstSegment) return;
+
+    // UUID no meio da trilha (ex.: /orders/:id/edit) some quando o próximo
+    // segmento já rotula a ação — evita "… › Detalhe › Editar".
+    if (UUID_SEGMENT_RE.test(segment)) {
+      const next = segments[index + 1];
+      if (next && segmentLabels[next]) return;
+    }
 
     const isLast = index === segments.length - 1;
     crumbs.push({
