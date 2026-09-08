@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { ModeToggle } from './ModeToggle';
-import PageHeader from './PageHeader';
+import PageHeader, { resolveMobileNavMeta } from './PageHeader';
 import { BottomNav } from './BottomNav';
 import { usePrefetchRoute } from '@/hooks/usePrefetchRoute';
 import { useNavOrder, reorderKeys, insertKey } from '@/hooks/useNavOrder';
@@ -227,6 +227,11 @@ export default function AppLayout({ children, printMode = false }: { children: R
   const filteredSystemItems = isAdmin ? systemItems : [];
   const { prefetch, cancel: cancelPrefetch } = usePrefetchRoute();
   const isDashboard = location.pathname === '/' || location.pathname === '/dashboard';
+  const mobileNavMeta = resolveMobileNavMeta(location.pathname, location.search);
+
+  // Fecha o drawer ao navegar — senão a pessoa troca de tela pelo BottomNav e
+  // o menu lateral continua aberto por cima.
+  useEffect(() => { setMobileOpen(false); }, [location.pathname]);
 
   if (isInsideLayout) return <>{children}</>;
 
@@ -936,22 +941,23 @@ export default function AppLayout({ children, printMode = false }: { children: R
               'md:hidden sticky top-0 z-30 border-b border-border/60 h-14 flex items-center px-4 gap-2 bg-background/95 backdrop-blur-sm safe-top box-content',
               printMode && 'print:hidden'
             )}>
-              {!isDashboard ? (
-                <Button variant="ghost" size="icon" aria-label="Voltar para a tela anterior" className="h-9 w-9" onClick={() => navigate(-1)}>
+              <Button variant="ghost" size="icon" aria-label="Abrir menu lateral" className="h-9 w-9 shrink-0" onClick={() => setMobileOpen(true)}>
+                <Menu className="h-5 w-5" aria-hidden="true" />
+              </Button>
+              {!isDashboard && (
+                <Button variant="ghost" size="icon" aria-label="Voltar para a tela anterior" className="h-9 w-9 shrink-0 -ml-1" onClick={() => navigate(-1)}>
                   <ArrowLeft className="h-5 w-5" aria-hidden="true" />
-                </Button>
-              ) : (
-                <Button variant="ghost" size="icon" aria-label="Abrir menu lateral" className="h-9 w-9" onClick={() => setMobileOpen(true)}>
-                  <Menu className="h-5 w-5" aria-hidden="true" />
                 </Button>
               )}
               <div className="h-8 w-8 rounded-lg overflow-hidden ring-1 ring-border bg-card shrink-0 shadow-sm">
                 <img src={logoImg} alt="Squad Shoes" className="h-full w-full object-contain" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-base font-extrabold text-foreground leading-tight tracking-tight truncate">Squad Shoes</p>
+                <p className="text-base font-extrabold text-foreground leading-tight tracking-tight truncate">
+                  {isDashboard ? 'Squad Shoes' : mobileNavMeta.label}
+                </p>
                 <p className="text-xs text-muted-foreground leading-tight mt-0.5 font-semibold tracking-[0.05em] uppercase truncate">
-                  {isDashboard ? "Gestão Industrial" : "Sistema"}
+                  {isDashboard ? 'Gestão Industrial' : (mobileNavMeta.group || 'Squad Shoes')}
                 </p>
               </div>
               <div className="flex items-center gap-0.5">
