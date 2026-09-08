@@ -3507,9 +3507,10 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                   )}
                 </div>
                 <div className="space-y-3">
-                  <GroupMaterialSelect label="Placa / EVA" value={form.insole_material} onChange={v => { updateField('insole_material', v); autoFillConsumption(v, 'insole_material'); }} />
-                  {/* Tipo de Placa removido — vem do cadastro do Solado (insole_plate_product
-                      duplicava o que já tá em Solados → Cadastro). */}
+                  <GroupMaterialSelect label="Fibra / placa" value={form.insole_material} onChange={v => { updateField('insole_material', v); autoFillConsumption(v, 'insole_material'); }} />
+                  {/* Tipo de Placa removido — o SKU da fibra pinado em Solados →
+                      Consumo Padrão manda no débito; a ficha só escolhe o grupo
+                      como fallback quando o solado não tem pin. */}
 
                   {(() => {
                     const soleProd = form.sole_group_id ? products.find(p => p.group_id === form.sole_group_id) : null;

@@ -21,9 +21,10 @@ import { cn } from '@/lib/utils';
 import {
   useSoleGroupItems, useSoleGroupRoles, useSetSoleGroupRole,
   useUpsertSoleGroupItem, useRemoveSoleGroupItem, useCopySoleGroupItems,
-  useSoleGroupsWithItems, rolesForSole, ROLE_LABEL, ROLE_SOURCE,
+  useSoleGroupsWithItems, rolesForSole, ROLE_LABEL, ROLE_SOURCE, ROLE_WITH_MATERIAL_PIN,
   type SoleRole, type SoleGroupItemRow,
 } from '@/hooks/useSoleGroupStandardConsumption';
+import { isInsoleFiberColorAgnostic } from '@/lib/saleOrderReadinessCorrections';
 
 /**
  * Consumo padrão do MODELO de solado — cadastro único.
@@ -34,7 +35,7 @@ import {
  * SKU de cor.
  *
  * Duas naturezas de linha — ver useSoleGroupStandardConsumption.ts:
- *   PAPEL — quantidade aqui, material escolhido pela ficha/PV.
+ *   PAPEL — quantidade aqui; fibra também pinua o SKU. Demais materiais da ficha/PV.
  *   ITEM  — material e quantidade, ambos do solado.
  *
  * Princípio de cadastro: UM número por linha. A grade por numeração só aparece
@@ -49,7 +50,13 @@ interface Props {
   isFachetado?: boolean | null;
 }
 
-type RoleDraft = { perPair: number; perSize: Record<string, number>; open: boolean; dirty: boolean };
+type RoleDraft = {
+  perPair: number;
+  perSize: Record<string, number>;
+  open: boolean;
+  dirty: boolean;
+  materialProductId: string | null;
+};
 type ItemDraft = { perPair: number; perSize: Record<string, number>; open: boolean; unit: string; dirty: boolean };
 
 export default function SoleStandardConsumptionPanel({
@@ -84,13 +91,13 @@ export default function SoleStandardConsumptionPanel({
     staleTime: 60_000,
   });
 
-  // Materiais selecionáveis (tudo menos solado).
+  // Materiais selecionáveis (tudo menos solado). Fibra filtra pra placa/área.
   const { data: materials = [] } = useQuery({
     queryKey: ['materials_for_sole_standard'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('products')
-        .select('id, name, sku, unit, category, color')
+        .select('id, name, sku, unit, category, color, group_id, product_groups!products_group_id_fkey(name, sector)')
         .eq('active', true)
         .order('name')
         .limit(1000);
@@ -102,6 +109,16 @@ export default function SoleStandardConsumptionPanel({
     },
     staleTime: 5 * 60_000,
   });
+
+  const fiberMaterials = useMemo(() => {
+    return (materials as any[]).filter((p) => {
+      const unit = String(p.unit || '').toLowerCase();
+      const groupName = p.product_groups?.name || '';
+      const sector = p.product_groups?.sector || p.category || '';
+      if (['dm²', 'dm2', 'm²', 'm2', 'placa', 'placas'].includes(unit)) return true;
+      return isInsoleFiberColorAgnostic(sector, { name: groupName, is_color_agnostic: p.product_groups?.is_color_agnostic ?? null });
+    });
+  }, [materials]);
 
   const [roleDrafts, setRoleDrafts] = useState<Record<string, RoleDraft>>({});
   const [itemDrafts, setItemDrafts] = useState<Record<string, ItemDraft>>({});
@@ -122,6 +139,7 @@ export default function SoleStandardConsumptionPanel({
         perSize: v?.perSize ?? {},
         open: !!v?.variesBySize,
         dirty: false,
+        materialProductId: v?.materialProductId ?? null,
       };
     });
     setRoleDrafts(next);
@@ -163,6 +181,7 @@ export default function SoleStandardConsumptionPanel({
       role,
       perPair: d.perPair,
       perSize: d.open ? d.perSize : {},
+      materialProductId: ROLE_WITH_MATERIAL_PIN.has(role) ? d.materialProductId : null,
     });
     setRoleDrafts((p) => ({ ...p, [role]: { ...p[role], dirty: false } }));
   };
@@ -284,13 +303,14 @@ export default function SoleStandardConsumptionPanel({
         <div className="px-3 py-2 bg-muted/40 border-b border-border/60 flex items-center gap-2">
           <Badge variant="outline" className="text-xs h-5 border-primary/40 text-primary">PAPEL</Badge>
           <span className="text-xs text-muted-foreground">
-            O solado define a quantidade; o material vem da ficha e do pedido.
+            Quantidade do solado. Na fibra, selecione também o SKU — ele manda no débito/consumo.
           </span>
         </div>
         <div className="divide-y divide-border/60">
           {applicableRoles.map((role) => {
             const d = roleDrafts[role];
             if (!d) return null;
+            const pinMaterial = ROLE_WITH_MATERIAL_PIN.has(role);
             return (
               <div key={role} className="px-3 py-2.5 space-y-2">
                 <div className="flex items-center gap-3 flex-wrap">
@@ -334,6 +354,31 @@ export default function SoleStandardConsumptionPanel({
                     {d.dirty ? 'Salvar' : 'Salvo'}
                   </Button>
                 </div>
+                {pinMaterial && (
+                  <div className="flex items-center gap-2 flex-wrap pl-0 sm:pl-0">
+                    <Package2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <Select
+                      value={d.materialProductId || '__none__'}
+                      onValueChange={(v) =>
+                        patchRole(role, {
+                          materialProductId: v === '__none__' ? null : v,
+                        })
+                      }
+                    >
+                      <SelectTrigger className="h-8 w-full max-w-md text-xs">
+                        <SelectValue placeholder="Selecionar fibra / placa…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">Sem SKU pinado (usa a ficha)</SelectItem>
+                        {fiberMaterials.map((m: any) => (
+                          <SelectItem key={m.id} value={m.id}>
+                            {m.name}{m.sku ? ` · ${m.sku}` : ''} · {m.unit}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
                 {d.open && sizes.length > 0 &&
                   renderGrid(d.perSize, (size, v) =>
                     patchRole(role, { perSize: { ...d.perSize, [size]: v } }),

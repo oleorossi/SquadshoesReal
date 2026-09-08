@@ -36,6 +36,7 @@ import { CheckCircle, XCircle, Trash, Download } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { useArtisanalStrapCatalog } from '@/hooks/useArtisanalStraps';
 import { isNominalBuyReadyStrapIdentity } from '@/lib/strapIdentity';
+import { fiberStockDualDisplay } from '@/lib/insolePlateDualDisplay';
 
 function ImageZoomDialog({ src, alt, open, onOpenChange }: { src: string; alt: string; open: boolean; onOpenChange: (o: boolean) => void }) {
   if (!src) return null;
@@ -515,7 +516,8 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
                  // estão nessa situação hoje — o clamp as mostrava como "0".
                  const available = freeQty - reserved;
 
-                 // Aproximação em unidade de compra (ex: ≈ 5 placas) quando há conversão configurada
+                 // Dual display fibra: dm² (estoque) + ≈ placas (medida física).
+                 // Sempre que for fibra/palmilha em área — mesmo sem purchase_unit.
                  const purchaseUnit = (product as any).purchase_unit;
                  const convRate = Number((product as any).conversion_rate) || 1;
                  const dimWidth = Number((product as any).dimensions_width) || 0;
@@ -529,6 +531,15 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
                    if (factor > 0 && factor !== 1) {
                      approxInPurchase = { qty: totalQty / factor, unit: purchaseUnit };
                    }
+                 }
+                 if (!approxInPurchase) {
+                   const dual = fiberStockDualDisplay(totalQty, {
+                     ...product,
+                     purchase_unit: purchaseUnit,
+                     conversion_rate: convRate,
+                     product_groups: (product as any).product_groups,
+                   });
+                   if (dual) approxInPurchase = { qty: dual.plates, unit: 'placa' };
                  }
 
                  return (

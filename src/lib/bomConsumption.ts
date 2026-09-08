@@ -771,6 +771,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
   // então divergia do modal, da ficha de operador e do débito SQL, e ainda
   // suprimia as linhas equivalentes do BOM via `stdCoveredProductIds`.
   const soleGroupStandardItemsBySole = new Map<string, Array<{ standardItemId: string; perPair: number; perSize: Record<string, number>; unit: string | null }>>();
+  const soleFiberPinBySole = new Map<string, string>();
   {
     const candidateIds = new Set<string>();
     for (const pid of soleColorMap.values()) candidateIds.add(pid);
@@ -812,18 +813,26 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     if (groupIdsForStd.size > 0) {
       const groupItemsResult = await supabase
         .from('sole_group_standard_items' as never)
-        .select('sole_group_id, material_product_id, consumption_per_pair, consumption_per_size, unit')
+        .select('sole_group_id, role, material_product_id, consumption_per_pair, consumption_per_size, unit')
         .in('sole_group_id', [...groupIdsForStd]);
       assertQuerySucceeded('itens-padrão vigentes do grupo de solado', groupItemsResult);
       const groupItems = groupItemsResult.data || [];
       const byGroup = new Map<string, any[]>();
+      const fiberPinByGroup = new Map<string, string>();
       for (const r of (groupItems || []) as any[]) {
+        if (r.role === 'placa_palmilha' && r.material_product_id) {
+          fiberPinByGroup.set(r.sole_group_id, r.material_product_id);
+          continue;
+        }
+        if (r.role != null) continue;
         const arr = byGroup.get(r.sole_group_id) || [];
         arr.push(r);
         byGroup.set(r.sole_group_id, arr);
       }
       for (const p of (allProducts || []) as any[]) {
         if (!candidateIds.has(p.id) || !p.group_id) continue;
+        const fiberPin = fiberPinByGroup.get(p.group_id);
+        if (fiberPin) soleFiberPinBySole.set(p.id, fiberPin);
         const rows = byGroup.get(p.group_id);
         if (!rows || rows.length === 0) continue;
         const arr = soleGroupStandardItemsBySole.get(p.id) || [];
@@ -1212,18 +1221,30 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       || ((insoleSoleProd as any)?.sole_classification === 'palmilha_pronta');
     if (!isPalmilhaPronta) {
       const insoleGroupName = insoleVariantGroup || sheet?.insole_material || '';
-      const insoleGroup = (productGroups || []).find((g: any) => g.name === insoleGroupName);
-      // Produto de palmilha RESOLVIDO como no SQL: pin da variante > produto de
-      // área do grupo (cor exata > cor no nome > maior estoque). Grupos legados
-      // podem conter também palmilha pronta/linear; uma ficha não-pronta nunca
-      // deve escolher esse SKU só porque ele tem mais saldo.
+      let insoleGroup = (productGroups || []).find((g: any) => g.name === insoleGroupName);
+      // Produto de palmilha RESOLVIDO como no SQL: pin da variante > pin do
+      // Consumo Padrão do solado > produto de área do grupo.
       const insoleVariantPin = variant?.insole_material_product_id
         ? (allProducts || []).find((p: any) => p.id === variant.insole_material_product_id) || null
         : null;
+      const soleFiberPinId = soleProductIdForInsole
+        ? soleFiberPinBySole.get(soleProductIdForInsole) || null
+        : null;
+      const soleFiberPinProduct = soleFiberPinId
+        ? (allProducts || []).find((p: any) => p.id === soleFiberPinId) || null
+        : null;
       const resolvedPalmProd = insoleVariantPin
+        || soleFiberPinProduct
         || resolveInsoleBaseProductCanonical(insoleGroupName, orderColor, allProducts || [], productGroups || []);
+      const resolvedInsoleGroupName = insoleGroupName
+        || (resolvedPalmProd?.group_id
+          ? ((productGroups || []).find((g: any) => g.id === resolvedPalmProd.group_id)?.name || '')
+          : '');
+      if (!insoleGroup && resolvedPalmProd?.group_id) {
+        insoleGroup = (productGroups || []).find((g: any) => g.id === resolvedPalmProd.group_id) || null;
+      }
       // Ficha de conversão: cs do produto resolvido primeiro (F2-04).
-      const insoleSheet = getConversionSheetForProduct(resolvedPalmProd?.id, insoleGroupName, { mode: 'plate', preferYield: true });
+      const insoleSheet = getConversionSheetForProduct(resolvedPalmProd?.id, resolvedInsoleGroupName || insoleGroupName, { mode: 'plate', preferYield: true });
       // PLACA por número: ficha por número > mapa canônico do tipo de solado >
       // legado `insole_consumption_dm2` > escalar da ficha. Override legado da
       // variante é consumo explícito e continua vencendo todos esses mapas.
@@ -1261,28 +1282,30 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       const insoleStockIsLinear = LINEAR_UNITS.has(insoleStockUnit.toLowerCase());
       if (insoleStockIsDm2) {
         addConsumptionRow(consumptionMap, {
-          componentType: 'Palmilha', groupName: insoleGroupName,
+          componentType: 'Palmilha', groupName: resolvedInsoleGroupName || insoleGroupName || resolvedPalmProd?.name || 'Palmilha',
           materialName: resolvedPalmProd?.name || 'Palmilha',
           productUnit: insoleStockUnit, color: resolvedPalmProd?.color || '—',
           totalQuantity: insoleDm2,
           plateEquivalent: insolePlateAreaDm2 > 0 ? insolePlates : undefined,
+          productIds: resolvedPalmProd?.id ? [resolvedPalmProd.id] : undefined,
           warning: insoleWarning,
         });
       } else if (insoleStockIsLinear) {
-        const linSheet = getConversionSheetForProduct(resolvedPalmProd?.id, insoleGroupName, { mode: 'linear', preferYield: true });
+        const linSheet = getConversionSheetForProduct(resolvedPalmProd?.id, resolvedInsoleGroupName || insoleGroupName, { mode: 'linear', preferYield: true });
         const linWidthMissing = isLinearWidthMissing(linSheet as any, 'm');
         addConsumptionRow(consumptionMap, {
-          componentType: 'Palmilha', groupName: insoleGroupName,
+          componentType: 'Palmilha', groupName: resolvedInsoleGroupName || insoleGroupName || resolvedPalmProd?.name || 'Palmilha',
           materialName: resolvedPalmProd?.name || 'Palmilha',
           productUnit: linWidthMissing ? 'dm2' : 'metro',
           color: resolvedPalmProd?.color || '—',
           totalQuantity: linWidthMissing ? insoleDm2 : convertDm2ToLinearMeters(insoleDm2, linSheet as any),
           widthMissing: linWidthMissing,
+          productIds: resolvedPalmProd?.id ? [resolvedPalmProd.id] : undefined,
           warning: insoleWarning,
         });
       } else {
         addConsumptionRow(consumptionMap, {
-          componentType: 'Palmilha', groupName: insoleGroupName, materialName: 'Palmilha',
+          componentType: 'Palmilha', groupName: resolvedInsoleGroupName || insoleGroupName || 'Palmilha', materialName: 'Palmilha',
           productUnit: 'placa', color: '—', totalQuantity: insolePlates,
           warning: insoleWarning,
         });
