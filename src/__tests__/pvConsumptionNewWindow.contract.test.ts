@@ -9,10 +9,11 @@ const saleOrders = read('src/pages/SaleOrders.tsx');
 const panel = read('src/components/sale-orders/SummaryConsumptionPanel.tsx');
 const pvConsumption = read('src/lib/pvConsumption.ts');
 
-describe('Consumo de materiais — nova aba + filtro por item', () => {
-  it('abre a tela cheia em nova aba em vez do diálogo de prévia', () => {
+describe('Consumo de materiais — mesma aba + filtro por item', () => {
+  it('abre a tela cheia na mesma aba em vez de nova janela ou diálogo de prévia', () => {
     expect(saleOrders).toContain('openPvConsumption');
-    expect(saleOrders).toContain("window.open(pvConsumptionPath(unique), '_blank', 'noopener,noreferrer')");
+    expect(saleOrders).toContain('navigate(pvConsumptionPath(unique))');
+    expect(saleOrders).not.toContain("window.open(pvConsumptionPath(unique)");
     expect(saleOrders).not.toContain('sale-orders/OrderConsumptionDialog');
     expect(saleOrders).not.toContain('setConsumoDialog');
     expect(saleOrders).not.toContain('consumoDialog');

@@ -26,7 +26,7 @@ import {
  * atende os dois escopos com o mesmo código.
  *
  * 22/08/2026: a carga mora em `loadPvConsumption` + React Query (prefetch no
- * detalhe do PV ajuda a mesma aba; nova aba sempre busca de novo).
+ * detalhe do PV reaproveita o cache na mesma aba).
  *
  * 07/09/2026: filtro por item do PV (`?item=`) reescopa o report canônico
  * (solado + materiais + tiras) sem nova RPC.

@@ -32,8 +32,11 @@ const reportSrc = readFileSync(
 
 describe('consumo — preço unitário e valor a gastar', () => {
   it('caminho vivo (canonical) busca unit_price dos produtos e caixas', () => {
+    // unit_price precisa estar no select; campos extras (purchase_unit,
+    // dimensions_*, join de product_groups) podem vir depois — a fibra
+    // (20270101021200) alongou a projeção sem abandonar o preço.
     expect(canonicalSrc).toMatch(
-      /\.from\('products'\)[\s\S]{0,250}?\.select\('id, name, unit, color, category, group_id, quantity, reserved_stock, stock_grade, unit_price'\)/,
+      /\.from\('products'\)[\s\S]{0,400}?\.select\('id, name, unit, color, category, group_id, quantity, reserved_stock, stock_grade, unit_price[^']*'\)/,
     );
     expect(canonicalSrc).toMatch(
       /\.from\('box_types'\)[\s\S]{0,200}?\.select\('[^']*unit_price[^']*'\)/,

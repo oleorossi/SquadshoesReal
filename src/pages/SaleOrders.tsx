@@ -1045,7 +1045,9 @@ export default function SaleOrders() {
       queryFn: () => loadPvConsumption(unique),
       staleTime: PV_CONSUMPTION_STALE_MS,
     });
-    window.open(pvConsumptionPath(unique), '_blank', 'noopener,noreferrer');
+    // Mesma aba: a tela cheia já vive em `?view=consumo` neste host.
+    setDetailDialogOpen(false);
+    navigate(pvConsumptionPath(unique));
   };
 
   const handleBulkConsumption = () => {
@@ -1238,7 +1240,7 @@ export default function SaleOrders() {
     setSelectedOrder(order);
     setDetailDialogOpen(true);
     // Prefetch do consumo enquanto o detalhe ainda carrega os itens — o clique
-    // em "Consumo de materiais" (nova aba) reaproveita o cache.
+    // em "Consumo de materiais" (mesma aba) reaproveita o cache.
     prefetchPvConsumption(order.id);
     // ?pv= na URL: o detalhe passa a sobreviver ao F5, abrir em duas abas e ser
     // mandado por link — antes ele só existia em estado local.
@@ -1516,8 +1518,8 @@ export default function SaleOrders() {
     );
   }
 
-  // Consumo de Materiais — página cheia (`?view=consumo&ids=`), aberta em nova
-  // aba a partir do PV. URL compartilhável / F5. Usa `loadPvConsumption`.
+  // Consumo de Materiais — página cheia (`?view=consumo&ids=`), na mesma aba
+  // a partir do PV. URL compartilhável / F5. Usa `loadPvConsumption`.
   if (isConsumptionView) {
     return (
       <>
