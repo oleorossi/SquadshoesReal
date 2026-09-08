@@ -18,6 +18,7 @@ const requireNewSheetRouting = read(
   'supabase/migrations/20270101009700_require_routing_on_new_technical_sheets.sql',
 );
 const technicalSheetsPage = read('src/pages/TechnicalSheets.tsx');
+const sheetBom = read('src/components/technical-sheets/SheetBOM.tsx');
 
 describe('Migrations pós-cutover — pacote seguro de 24/08/2026', () => {
   it('remove apenas os três writers legados depois de validar os substitutos', () => {
@@ -155,10 +156,17 @@ describe('Migrations pós-cutover — pacote seguro de 24/08/2026', () => {
     expect(technicalSheetsPage).not.toMatch(
       /baixa.{0,30}in[ií]cio.{0,30}(?:deste |do )?setor/i,
     );
+    expect(sheetBom).not.toContain(
+      'A baixa é registrada no início do setor selecionado.',
+    );
+    expect(sheetBom).not.toMatch(
+      /baixa.{0,30}in[ií]cio.{0,30}(?:deste |do )?setor/i,
+    );
     expect(technicalSheetsPage).toContain(
       'O roteamento é obrigatório para liberar fichas novas.',
     );
-    expect(technicalSheetsPage).toContain(
+    // Texto do BOM (extraído da página na Fase 2).
+    expect(sheetBom).toContain(
       'Setor físico responsável pelo consumo deste material.',
     );
   });
