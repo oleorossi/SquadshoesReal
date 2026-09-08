@@ -59,6 +59,42 @@ describe('attachUnresolvedStrapQuantityPreview', () => {
       true,
     )).toEqual([unresolved]);
   });
+
+  // Regressão PV-00169 / Dakotton: se a preview canônica trouxe OVERLOCK mas
+  // omitiu STRASS (linha só na ficha, ausente do snapshot do item), o Consumo
+  // NÃO reanexa a STRASS calculada — hasCanonicalPreview=true early-return.
+  // Hoje o path Consumo nem gera Tiras em `lines` (só strap_previews), então
+  // este teste documenta o buraco do helper; o conserto real é emitir a gap
+  // no SQL (sheet line_id ∉ item.strap_colors).
+  it('com preview parcial, STRASS calculada pela ficha continua sumindo (buraco conhecido)', () => {
+    const overlockCanonical: ConsumptionRow = {
+      componentType: 'Tiras',
+      groupName: 'TIRA OVERLOCK 5MM · NAPA SOFT',
+      materialName: 'Produção interna',
+      productUnit: 'm',
+      color: 'PRETO',
+      totalQuantity: 508,
+      productIds: [],
+      strapSourceMode: 'internal',
+    };
+    const strassCalculated: MaterialConsumptionRow = {
+      componentType: 'Tiras',
+      groupName: 'TIRA STRASS 6MM',
+      materialName: 'STRASS LATERAL',
+      productUnit: 'm',
+      color: 'PRETO',
+      totalQuantity: 120,
+    };
+
+    const rows = attachUnresolvedStrapQuantityPreview(
+      [overlockCanonical],
+      [strassCalculated],
+      true,
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(rows.some((row) => /STRASS/i.test(row.groupName))).toBe(false);
+  });
 });
 
 describe('custo unitário por item/cor', () => {

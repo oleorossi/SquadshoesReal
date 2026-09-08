@@ -155,6 +155,90 @@ describe('preview canônica de tiras', () => {
     expect(rows.some((row) => /OVERLOCK/i.test(row.groupName))).toBe(true);
   });
 
+  // source_mode NULL: o guard buy_ready≠internal não dispara, mas a família-base
+  // ("Material base" vs "NAPA SOFT") ainda impede o colapso — não é a causa da
+  // ausência total. A STRASS só some de verdade quando NEM entra na preview.
+  it('com source_mode null, STRASS nomeada por group_name não colapsa contra overlock', () => {
+    const overlock = preview({
+      sale_order_item_id: 'item-mix',
+      technical_strap_line_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      strap_variant_id: 'variant-overlock',
+      source_mode: 'internal',
+      gross_required_m: 508,
+      resolved: {
+        strap_product_name: 'TIRA OVERLOCK 5MM · NAPA SOFT',
+        measure_name: 'OVERLOCK 5MM',
+        strap_color_name: 'PRETO',
+        base_group_name: 'NAPA SOFT',
+        confirmed_yield_m_per_m: 64,
+        base_required_m: 7.94,
+      },
+    });
+    const strassNoMode = parseCanonicalStrapDemandPreview({
+      sale_order_item_id: 'item-mix',
+      technical_strap_line_id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+      strap_variant_id: null,
+      source_mode: null,
+      gross_required_m: 508,
+      recipe_id: null,
+      base_product_id: null,
+      finished_product_id: null,
+      blocking_reasons: [{
+        code: 'source_mode_required',
+        message: 'Escolha Produzir com napa propria ou Comprar tira pronta.',
+      }, {
+        code: 'frozen_source_snapshot_stale',
+        message: 'A origem congelada da tira diverge do catalogo',
+      }],
+      resolved: {
+        group_name: 'TIRA STRASS 6MM',
+        identity_basis: 'finished_product_group',
+        color: 'PRETO',
+        strap_product_name: null,
+        measure_name: null,
+      },
+    });
+
+    const collapsed = collapseDuplicateStaleStrapPreviews([overlock, strassNoMode]);
+    expect(collapsed).toHaveLength(2);
+    expect(collapsed.some((row) => /STRASS/i.test(row.strapProductName))).toBe(true);
+  });
+
+  it('replaceWithCanonical apaga Tiras calculadas que não vieram na preview (STRASS só na ficha)', () => {
+    const calculatedStrass = {
+      componentType: 'Tiras' as const,
+      groupName: 'TIRA STRASS 6MM',
+      materialName: 'STRASS LATERAL',
+      productUnit: 'm',
+      color: 'PRETO',
+      totalQuantity: 120,
+      productIds: [] as string[],
+    };
+    const overlockOnly = preview({
+      sale_order_item_id: 'item-dakotton',
+      technical_strap_line_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      source_mode: 'internal',
+      gross_required_m: 508,
+      resolved: {
+        strap_product_name: 'TIRA OVERLOCK 5MM',
+        measure_name: 'OVERLOCK 5MM',
+        strap_color_name: 'PRETO',
+        base_group_name: 'NAPA SOFT',
+        confirmed_yield_m_per_m: 64,
+        base_required_m: 7.94,
+      },
+    });
+
+    const rows = replaceWithCanonicalStrapRows(
+      [calculatedStrass],
+      ctx,
+      [overlockOnly],
+    ) as CanonicalStrapConsumptionRow[];
+
+    expect(rows.some((row) => /OVERLOCK/i.test(row.groupName))).toBe(true);
+    expect(rows.some((row) => /STRASS/i.test(row.groupName))).toBe(false);
+  });
+
   it('remove fantasma OFF WHITE que só duplica a CHATA já conferida (PV-00193)', () => {
     const healthy = preview({
       sale_order_item_id: 'item-off',

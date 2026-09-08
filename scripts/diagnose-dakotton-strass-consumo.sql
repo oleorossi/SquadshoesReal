@@ -2,8 +2,20 @@
 -- Projeto: ssvxfoybzmjlypnipqzn
 -- Cole no SQL Editor e rode bloco a bloco.
 --
--- Causa já corrigida em produção (migs 20900/21000 + parser TS): snapshot
--- buy_ready sem strap_product_name → "Tira sem cadastro" / colapso vs overlock.
+-- Hipótese A (já mitigada em 20900/21000 + parser TS): snapshot buy_ready sem
+-- strap_product_name → "Tira sem cadastro" / colapso vs overlock. Se o bloco 4
+-- DEVOLVE uma linha STRASS com group_name/label, o rótulo deveria aparecer.
+--
+-- Hipótese B (causa mais provável de AUSÊNCIA TOTAL após A): STRASS está na
+-- ficha (technical_sheets.strap_colors) e NÃO no snapshot do item
+-- (sale_order_items.strap_colors). A preview itera SÓ o item → linha nunca
+-- nasce. Com outras tiras na preview, attachUnresolvedStrapQuantityPreview
+-- early-return e replaceWithCanonicalStrapRows descarta qualquer Tiras
+-- calculada. Bloco 3 ≠ ≠ deve acusar isso.
+--
+-- Hipótese C (secundária): source_mode NULL no sourcing da STRASS + mesma
+-- cor/metragem da overlock → collapseDuplicateStaleStrapPreviews ainda pode
+-- apagar (guard buy_ready≠internal exige sourceMode truthy nos dois lados).
 
 -- 1) PV-00169 (e aliases de número)
 SELECT so.id, so.order_number, so.status, so.client_name, so.created_at
