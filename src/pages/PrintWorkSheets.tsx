@@ -110,7 +110,7 @@ export default function PrintWorkSheets() {
   const [search, setSearch] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set(deepLinkIds));
   const [showPrintView, setShowPrintView] = useState(false);
-  // Atalho "Cartões de lote": entra na tela de impressão JÁ em modo cartão, mas
+  // Atalho "Cartão físico": entra na tela de impressão JÁ nesse modo, mas
   // ainda passando pelo preview (o dono escolheu isso em vez de imprimir direto
   // — uma tiragem pode sair com dezenas de cartões e os setores ainda não foram
   // escolhidos neste ponto).
@@ -369,9 +369,9 @@ export default function PrintWorkSheets() {
                   disabled={selectedOrders.length === 0}
                   onClick={() => openPreview(true)}
                   className="gap-2"
-                  title="Prévia de cartões recortáveis por lote de setor"
+                  title="Prévia de cartão físico por corrugado cheio (12/15/18), um por OP"
                 >
-                  <Cards className="h-4 w-4" /> Cartões de lote
+                  <Cards className="h-4 w-4" /> Cartão físico
                 </Button>
                 <Button
                   variant="ghost"

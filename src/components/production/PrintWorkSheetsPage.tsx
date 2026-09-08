@@ -8,8 +8,14 @@ import { Button } from '@/components/ui/button';
 import { Printer, ArrowLeft, Stack as Layers, Cards, FileText, Check, ArrowsClockwise, CircleNotch as Loader2, Warning as AlertTriangle } from '@phosphor-icons/react';
 import OperatorWorkSheet from '@/components/production/OperatorWorkSheet';
 import { PalmilhaWorkSheet, type PalmilhaGroup } from '@/components/production/PalmilhaWorkSheet';
-import { CartaoLote } from '@/components/production/CartaoLote';
-import { SilkMontageWorkSheet, collectCompactThumbs, type SoleSilkGroup, type SilkColorGroup, type GroupedSector } from '@/components/production/SilkMontageWorkSheet';
+import { CartaoFisico } from '@/components/production/CartaoFisico';
+import { SilkMontageWorkSheet, type SoleSilkGroup, type SilkColorGroup, type GroupedSector } from '@/components/production/SilkMontageWorkSheet';
+import {
+  buildCartaoFisicoCards,
+  CARTAO_FISICO_EMITTERS,
+  isCartaoFisicoEmitter,
+  type CartaoFisicoCard,
+} from '@/lib/cartaoFisico';
 import type { SectorAlert } from '@/components/production/worksheet/SectorAlerts';
 import { SolagemWorkSheet, type SoleColorBand } from '@/components/production/SolagemWorkSheet';
 import { ExpedicaoWorkSheet, type ExpedicaoCustomerGroup, type ExpedicaoOrder } from '@/components/production/ExpedicaoWorkSheet';
@@ -839,17 +845,18 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   // Default = todos os setores marcados (equivalente ao antigo "Imprimir tudo").
   // User clica num chip pra ativar/desativar — conteúdo da tela atualiza ao vivo.
   const [activeSectors, setActiveSectors] = useState<Set<string>>(
-    () => new Set(initialSectors ?? SECTORS),
+    () => {
+      const seed = initialSectors ?? SECTORS;
+      if (initialCartao) {
+        return new Set([...seed].filter((s) => isCartaoFisicoEmitter(s)));
+      }
+      return new Set(seed);
+    },
   );
 
-  // Modo CARTÃO (31/07/2026): em vez das fichas A4, emite um cartão de 99mm por
-  // LOTE DE SETOR, 12 por folha A4 paisagem. O recorte do lote é exatamente o
-  // que `buildColorGroupedSheets` já produz (com as peculiaridades de cada
-  // setor) — o cartão não reagrupa nada por conta própria.
-  // ⚠ É modo de VISUALIZAÇÃO, não só de impressão (31/07/2026). Antes ele só
-  // ligava dentro do `printWith` e desligava logo depois, então NUNCA havia
-  // preview dos cartões — o dono mandava imprimir às cegas. Agora o preview
-  // reflete o modo e o `printWith` só imprime o que está na tela.
+  // Modo CARTÃO FÍSICO (spec cartao-fisico-corrugado): 1 cartão por corrugado
+  // cheio (12/15/18) por OP, nos 6 setores emissores. Substitui o CartaoLote
+  // de posto. É modo de VISUALIZAÇÃO (preview = o que imprime).
   const [cartao, setCartao] = useState(!!initialCartao);
 
   // ── Saída invertida (2026-07-24, pedido do dono) ──
@@ -955,7 +962,17 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       return next;
     });
   };
-  const markAllSectors = () => setActiveSectors(new Set(SECTORS));
+  const sectorChoices = cartao ? CARTAO_FISICO_EMITTERS : SECTORS;
+  const setCartaoMode = (on: boolean) => {
+    setCartao(on);
+    if (on) {
+      setActiveSectors((prev) => {
+        const next = new Set([...prev].filter((s) => isCartaoFisicoEmitter(s)));
+        return next.size > 0 ? next : new Set(CARTAO_FISICO_EMITTERS);
+      });
+    }
+  };
+  const markAllSectors = () => setActiveSectors(new Set(sectorChoices));
   const clearSectors = () => setActiveSectors(new Set());
   // Imprime com o layout escolhido. flushSync força o re-render (ficha completa OU
   // reduzida) ANTES do window.print(), pra o diálogo já pegar o DOM certo.
@@ -3117,11 +3134,73 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [printOrders, saleOrders, clientsInfo, resolveSoleForOrder, soleGroupPackaging, orderStagesData, activeSectors, variantsByRef, tsImageByRef, sheetMaterialsByRef, silkRegistrations, economicGroupsInfo]);
 
+  // ── Cartão físico: 1 por corrugado cheio × OP × setor emissor ─────────────
+  const cartaoFisicoCards = useMemo((): CartaoFisicoCard[] => {
+    if (!cartao) return [];
+    const out: CartaoFisicoCard[] = [];
+    for (const sector of CARTAO_FISICO_EMITTERS) {
+      if (!activeSectors.has(sector)) continue;
+      const inputs = printOrders.map((order: any) => {
+        const sheetId = order.reference_id as string | undefined;
+        const sheet = sheetId ? sheetById.get(sheetId) : null;
+        const upper = getUpperWorkEligibility(sheet);
+        let eligible = true;
+        if (sector === 'Corte Cabedal') {
+          eligible = upper.requiresUpperCut;
+        } else if (sector === 'Costura Cabedal') {
+          eligible = orderInRoteiro(sheetId, sector) && upper.requiresUpperSewing;
+        } else if (sector === 'Corte Forração') {
+          const needsLining = liningFlagLookup.get(sheetId || '') === true
+            && !isEffectiveReadyMade(sheetId, order.color);
+          eligible = orderInRoteiro(sheetId, sector) && needsLining;
+        } else {
+          eligible = orderInRoteiro(sheetId, sector);
+        }
+
+        const refLabel = order.reference_code || order.reference_name || '';
+        const colorLower = (order.color || '').toLowerCase();
+        const variants = sheetId ? (variantsByRef.get(sheetId) || []) : [];
+        const exactVariant = variants.find((v: any) => (v.color || '').toLowerCase() === colorLower);
+        const imageUrl = exactVariant?.image_url
+          || variants.find((v: any) => v.image_url)?.image_url
+          || (sheetId ? tsImageByRef.get(sheetId) : null)
+          || null;
+
+        let materialLabel: string | null = null;
+        if (sector === 'Corte Palmilha') {
+          materialLabel = soleNameFor(sheetId, order.color) || null;
+        } else if (sector === 'Corte Forração') {
+          materialLabel = (sheetId && sheetMaterialsByRef.get(sheetId)?.lining) || null;
+        }
+
+        return {
+          opNumber: String(order.op_number || ''),
+          pvLabel: order.sale_order_number || null,
+          referenceLabel: refLabel || null,
+          color: order.color || null,
+          materialLabel,
+          imageUrl,
+          totalPairs: Number(order.total_pairs) || 0,
+          grid: (order.grid ?? null) as Record<string, number> | null,
+          eligible,
+        };
+      });
+      out.push(...buildCartaoFisicoCards({
+        sectorName: sector,
+        sectorDisplayLabel: sectorLabel(sector),
+        orders: inputs,
+      }));
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cartao, activeSectors, printOrders, sheetById, liningFlagLookup, variantsByRef, tsImageByRef, sheetMaterialsByRef, resolveSoleForOrder]);
+
   // ── Contagem total de fichas que vão pra impressão ─────────────────────────
   // Soma as fichas de cada setor ATIVO. Cada componente memoizado já filtra
   // pelo activeSectors, então palmilhaGroups/silkMontageGroups/solagemData/
   // expedicaoGroups/reportGroups são vazios pra setores não-marcados.
   const sheetCount = useMemo(() => {
+    if (cartao) return cartaoFisicoCards.length;
     let total = 0;
     if (activeSectors.has('Corte Palmilha') && palmilhaGroups.length > 0) total += 1;
     if (activeSectors.has('Solagem') && solagemData?.solagem && solagemData.solagem.bands.length > 0) total += 1;
@@ -3167,7 +3246,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     // das deps de propósito (mesmo padrão dos memos vizinhos); os dados que
     // elas leem chegam via silkMontageGroups/upperSectorGroups/groupedWorksheets.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSectors, palmilhaGroups, solagemData, silkMontageGroups, upperSectorGroups, aviamentoGroups, groupedWorksheets, acabamentoOrders.length, expedicaoGroups, reportGroups]);
+  }, [cartao, cartaoFisicoCards, activeSectors, palmilhaGroups, solagemData, silkMontageGroups, upperSectorGroups, aviamentoGroups, groupedWorksheets, acabamentoOrders.length, expedicaoGroups, reportGroups]);
 
   const today = new Date().toLocaleDateString('pt-BR');
   const printPairCount = printOrders.reduce((total, order) => total + (Number(order.total_pairs) || 0), 0);
@@ -3210,10 +3289,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             <div className="min-w-0">
               <p className="eyebrow">ETAPA 02 · CONFERÊNCIA</p>
               <h1 className="mt-0.5 font-display text-2xl uppercase leading-none tracking-wide">
-                {cartao ? 'Cartões de lote' : 'Fichas de operador'}
+                {cartao ? 'Cartão físico' : 'Fichas de operador'}
               </h1>
               <p className="mt-1 text-xs text-muted-foreground">
-                Revise a rota e o conteúdo antes de emitir o arquivo.
+                {cartao
+                  ? 'Um cartão por corrugado cheio (12/15/18), por OP — acompanha o fardo na saída do setor.'
+                  : 'Revise a rota e o conteúdo antes de emitir o arquivo.'}
               </p>
             </div>
           </div>
@@ -3228,7 +3309,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
               <dd className="font-mono text-sm font-bold tabular-nums">{printPairCount.toLocaleString('pt-BR')}</dd>
             </div>
             <div className="px-3 text-center">
-              <dt className="eyebrow">FICHAS</dt>
+              <dt className="eyebrow">{cartao ? 'CARTÕES' : 'FICHAS'}</dt>
               <dd className="font-mono text-sm font-bold tabular-nums">{sheetCount}</dd>
             </div>
           </dl>
@@ -3237,7 +3318,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             <div className="inline-flex border border-border bg-muted/30 p-0.5" aria-label="Formato da prévia">
               <button
                 type="button"
-                onClick={() => setCartao(false)}
+                onClick={() => setCartaoMode(false)}
                 aria-pressed={!cartao}
                 className={`inline-flex h-8 items-center gap-1.5 px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${!cartao ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
               >
@@ -3245,12 +3326,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
               </button>
               <button
                 type="button"
-                onClick={() => setCartao(true)}
+                onClick={() => setCartaoMode(true)}
                 aria-pressed={cartao}
                 className={`inline-flex h-8 items-center gap-1.5 px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${cartao ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-                title="Cartões recortáveis por lote de setor, 12 por folha A4 horizontal"
+                title="Cartão físico por corrugado cheio (12/15/18), um por OP, recortável em A4 horizontal"
               >
-                <Cards className="h-3.5 w-3.5" /> Cartões
+                <Cards className="h-3.5 w-3.5" /> Cartão físico
               </button>
             </div>
 
@@ -3325,7 +3406,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             <div className="flex items-center gap-2">
               <Layers className="h-4 w-4 text-primary" />
               <p className="text-xs font-bold uppercase tracking-wide">Rota de produção</p>
-              <span className="font-mono text-[10px] text-muted-foreground">{activeSectors.size}/{SECTORS.length}</span>
+              <span className="font-mono text-[10px] text-muted-foreground">{activeSectors.size}/{sectorChoices.length}</span>
             </div>
             <div className="flex items-center gap-1 text-xs">
               <button type="button" onClick={markAllSectors} className="px-2 py-1 font-semibold text-primary hover:underline">Todos</button>
@@ -3335,14 +3416,14 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           </div>
           <div className="overflow-x-auto pb-1">
             <div className="flex min-w-max" role="group" aria-label="Setores incluídos na impressão">
-              {SECTORS.map((sector, index) => {
+              {sectorChoices.map((sector, index) => {
                 const active = activeSectors.has(sector);
                 return (
                   <button
                     key={sector}
                     type="button"
                     onClick={() => toggleSector(sector)}
-                    className={`group relative flex h-14 w-36 items-center gap-2 border-y border-r px-2.5 text-left transition-colors first:border-l focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${active ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground'} ${sector === 'Relatório Gerencial' ? 'ml-3 border-l' : ''}`}
+                    className={`group relative flex h-14 w-36 items-center gap-2 border-y border-r px-2.5 text-left transition-colors first:border-l focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${active ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground'} ${!cartao && sector === 'Relatório Gerencial' ? 'ml-3 border-l' : ''}`}
                     aria-pressed={active}
                   >
                     <span className={`flex h-7 w-7 shrink-0 items-center justify-center border font-mono text-[10px] font-bold ${active ? 'border-primary-foreground/50' : 'border-border bg-muted/40'}`}>
@@ -3422,12 +3503,31 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       <ReversePrintContext.Provider value={printReversing}>
       <ReversibleStack reverse={printReversing}>
 
+        {/* Cartão físico — 1 por corrugado cheio × OP × setor emissor.
+            Fora de .page-break pra o CSS do modo cartão não esconder. */}
+        {cartao && cartaoFisicoCards.map((card) => (
+          <CartaoFisico
+            key={`${card.sectorName}-${card.opNumber}-${card.index}/${card.of}`}
+            sectorName={card.sectorDisplayLabel}
+            opNumber={card.opNumber}
+            pvLabel={card.pvLabel}
+            title={card.title}
+            subtitle={card.subtitle}
+            imageUrl={card.imageUrl}
+            sizes={card.sizes}
+            grade={card.grade}
+            totalPairs={card.totalPairs}
+            lotLabel={card.lotLabel}
+            lotCode={card.lotCode}
+          />
+        ))}
+
         {/* ── Corte Palmilha ──
             Decisão 24/05/2026 (v3): user prefere ficha em múltiplas A4 a
             scale comprimido. Sem chunking — page-break-after entre fichas
             distintas, conteúdo flui naturalmente. Blocos atômicos
             (.keep-together) evitam quebra no meio de uma seção. */}
-        {includesSector('Corte Palmilha') && palmilhaGroups.length > 0 && (
+        {!cartao && includesSector('Corte Palmilha') && palmilhaGroups.length > 0 && (
           <div className="page-break">
               <PalmilhaWorkSheet
                 sectorLabel="Corte de Placa de Fibra"
@@ -3455,7 +3555,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
 
         {/* ── Setores agrupados (Corte Forração, Corte Cabedal, Costura Palmilha,
             Costura Cabedal, Aviamento por referência, Silk por solado) ── */}
-        {(() => {
+        {!cartao && (() => {
           const smGroups = silkMontageGroups || [];
           const upperGroups = upperSectorGroups || [];
           const aviGroups = aviamentoGroups || [];
@@ -3828,70 +3928,6 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
                   return out;
                 })()
               : undefined;
-            // Modo CARTÃO (31/07/2026): 1 cartão por LOTE DE SETOR. O lote é o
-            // colorGroup que o `buildColorGroupedSheets` já montou e que o
-            // `filterGroupForSector` acima já filtrou — o cartão NÃO reagrupa
-            // nada por conta própria, então herda todas as peculiaridades de
-            // cada setor (napa do Corte Forração, requiresUpperSewing da
-            // Costura Cabedal, roteiro, assinatura de tiras, lote…).
-            if (cartao) {
-              const lotes = groupsForSector.flatMap(g =>
-                g.colorGroups.map(cg => ({ g, cg })));
-              return lotes.map(({ g, cg }, i) => {
-                const grid = (cg.combinedGrid || {}) as Record<string, number>;
-                const sizes = Object.keys(grid)
-                  .filter(s => (Number(grid[s]) || 0) > 0)
-                  .sort((a, b) => (Number(a) || 0) - (Number(b) || 0));
-                // Mesma cascata de foto do card completo: variante exata →
-                // alternativa com imagem → imagem mestre da ficha técnica.
-                const img = cg.variantImageUrl
-                  || (cg.alternateVariants || []).find(v => v.image_url)?.image_url
-                  || cg.technicalSheetImageUrl
-                  || null;
-                // Fotos POR REFERÊNCIA no Corte Forração (31/07/2026). O `img`
-                // acima é escalar e vem do spread da PRIMEIRA ref fundida — num
-                // cartão que junta 3 modelos (PV-00147: DS20 + DS22 + S-039 em
-                // OFF WHITE · NAPA SUDANI) ele mostrava um e escondia dois.
-                // `collectCompactThumbs` é a MESMA função da ficha: dedup por
-                // foto, descarte de placeholder e a cascata de resolução
-                // completa (variante da cor → alternativa → ficha técnica), que
-                // a cascata manual acima nem tem. Gate no setor porque os
-                // outros cartões não têm por que mudar — e o Corte Cabedal em
-                // particular NÃO pode: o `mergeColorsAcrossSoles` dele não
-                // acumula refImages no ramo de fusão, então sairiam fotos
-                // incompletas (só as do 1º solado). Sem thumbs, cai no `img`.
-                const cardThumbs = sectorName === 'Corte Forração'
-                  ? collectCompactThumbs(cg).map(t => ({
-                      url: t.resolvedUrl,
-                      refLabel: t.refNames.join(' · '),
-                      fichas: t.fichas,
-                      refCount: t.refNames.length,
-                    }))
-                  : [];
-                // Corte Forração separa por cor + NAPA: sem o material no
-                // título, duas napas da mesma cor viram cartões idênticos.
-                const titulo = cg.liningMaterial ? `${cg.color} · ${cg.liningMaterial}` : cg.color;
-                const refs = (cg.refs || []).map(r => r.name || r.code).filter(Boolean);
-                return (
-                  <CartaoLote
-                    key={`${sectorName}-cartao-${i}-${g.soleName}-${cg.color}`}
-                    sectorName={sectorName}
-                    pvLabel={(cg.pvNumbers || []).join(' · ') || undefined}
-                    lotLabel={`${i + 1} de ${lotes.length}`}
-                    lotCode={`${i + 1}/${lotes.length}`}
-                    imageUrl={img}
-                    images={cardThumbs.length > 0 ? cardThumbs : undefined}
-                    title={titulo}
-                    subtitle={g.groupKind === 'reference' ? undefined : g.soleName}
-                    sizes={sizes}
-                    grade={grid}
-                    totalPairs={cg.totalPairs}
-                    refs={refs.length > 0 ? refs : undefined}
-                    note={cg.fichas ? `${cg.fichas} fichas` : undefined}
-                  />
-                );
-              });
-            }
             // Enriquecimento por grupo: clientes + faixa etária (selo do
             // sub-header). Faixa agregada do setor vai no header.
             // Consumo (motor canônico = modal do PV) anexado nos setores de
