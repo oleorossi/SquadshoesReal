@@ -169,6 +169,37 @@ describe('SaleOrderItemForm — material por posição', () => {
     expect(view.current().strap_sourcing).toHaveProperty(LINE_B);
   });
 
+  it('congela o UUID da variante resolvida na origem interna já escolhida', async () => {
+    const initial = initialItem();
+    initial.strap_sourcing = {
+      [LINE_A]: { source_mode: 'internal' },
+      [LINE_B]: initial.strap_sourcing[LINE_B],
+    };
+    state.strapLines = [{
+      key: LINE_A,
+      technicalStrapLineId: LINE_A,
+      strapVariantId: TYPE,
+      colorId: BLACK,
+      recipeId: MEASURE,
+      baseProductId: 'p-soft-black',
+      baseGroupId: SOFT,
+      sourceMode: 'internal',
+      canInternal: true,
+      strapRequiredM: 12,
+    }];
+    const view = mount(initial);
+    await waitFor(() => {
+      expect(view.current().strap_sourcing[LINE_A]).toMatchObject({
+        source_mode: 'internal',
+        color_id: BLACK,
+        strap_variant_id: TYPE,
+        recipe_id: MEASURE,
+        base_product_id: 'p-soft-black',
+      });
+    });
+    expect(view.current().strap_sourcing).toHaveProperty(LINE_B);
+  });
+
   it('abre cadastro com tipo e material da ficha e aplica retorno somente na posição correta', async () => {
     state.canCreate = true;
     const user = userEvent.setup();

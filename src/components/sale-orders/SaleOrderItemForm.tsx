@@ -45,10 +45,15 @@ import { normalizeForSearch, searchMatchesAllTerms } from '@/lib/searchUtils';
 import {
   getStrapSourcingSelection,
   getStrapSourcingOverride,
+  hydrateInternalStrapSourcingMap,
   isCompleteStrapSourcingSelection,
   normalizeStrapColorKey,
+  setInternalStrapSourcing,
   setStrapSourcing,
+  strapPreviewIdentityFromLine,
+  strapSourcingFieldsEqual,
   strapSourcingKey,
+  internalStrapSourcingFromPreview,
   type StrapSourcingMap,
 } from '@/lib/strapSourcing';
 import { useStrapStockLines, type StrapStockLine } from '@/hooks/useStrapStockLines';
@@ -927,13 +932,12 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       const mode = sourceModeForEffectiveOrigem(effective);
       if (!mode) continue;
       const current = getStrapSourcingOverride(next, lineId);
-      if (current === mode) continue;
+      const line = strapLineByKey.get(lineId);
       if (mode === 'buy_ready') {
-        const line = strapLineByKey.get(lineId);
         const colorId = line?.colorId || strap.color_id || null;
         if (!line?.strapVariantId || !colorId || !line.canBuyReady) continue;
-        next = setStrapSourcing(next, lineId, {
-          source_mode: 'buy_ready',
+        const candidate = {
+          source_mode: 'buy_ready' as const,
           color_id: colorId,
           strap_variant_id: line.strapVariantId,
           recipe_id: null,
@@ -941,9 +945,24 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
           required_at: line.requiredAt,
           main_production_start: line.mainProductionStart,
           schedule_revision: line.scheduleRevision,
-        });
+        };
+        if (strapSourcingFieldsEqual(getStrapSourcingSelection(next, lineId), candidate)) continue;
+        next = setStrapSourcing(next, lineId, candidate);
       } else {
-        next = setStrapSourcing(next, lineId, 'internal');
+        const candidate = internalStrapSourcingFromPreview(
+          strapPreviewIdentityFromLine(line, strap.color_id),
+          strap.color_id,
+        );
+        const selection = getStrapSourcingSelection(next, lineId);
+        if (candidate) {
+          if (isUuid(selection?.strap_variant_id)
+            && selection.strap_variant_id !== candidate.strap_variant_id) continue;
+          if (strapSourcingFieldsEqual(selection, candidate)) continue;
+          next = setStrapSourcing(next, lineId, candidate);
+        } else {
+          if (current === 'internal') continue;
+          next = setStrapSourcing(next, lineId, 'internal');
+        }
       }
       changed = true;
     }
@@ -955,6 +974,26 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     strapLineByKey,
     strapSourcingMap,
   ]);
+
+  // Origem interna escolhida (Hub, seletor ou "Todas no prestador") sem o UUID
+  // da variante: o preview devolve `variant_identity_not_persisted`. Completa
+  // com a identidade já resolvida — o mesmo contrato do buy_ready acima.
+  useEffect(() => {
+    if (preserveCommittedStrapSnapshot) return;
+    const { map, changed } = hydrateInternalStrapSourcingMap(
+      strapSourcingMap,
+      (lineId) => {
+        const strap = ((item.strap_colors as SaleOrderItemStrap[]) || [])
+          .find((entry) => technicalStrapLineId(entry) === lineId);
+        if (strap && isPurchasedReadyStrap(strap)) return null;
+        return strapPreviewIdentityFromLine(
+          strapLineByKey.get(lineId),
+          strap?.color_id,
+        );
+      },
+    );
+    if (changed) latestRef.current.onUpdate(latestRef.current.index, 'strap_sourcing', map);
+  }, [item.strap_colors, preserveCommittedStrapSnapshot, strapLineByKey, strapSourcingMap]);
 
   const availableColors: string[] = useMemo(() => {
     // Variante selecionada: a cor vem EXCLUSIVAMENTE do grupo efetivo que o
@@ -2303,7 +2342,12 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                         const lineId = technicalStrapLineId(strap);
                         if (!lineId || isPurchasedReadyStrap(strap)) return;
                         if (strap.pv_origem !== 'fabrica') return;
-                        nextSourcing = setStrapSourcing(nextSourcing, lineId, 'internal');
+                        nextSourcing = setInternalStrapSourcing(
+                          nextSourcing,
+                          lineId,
+                          strapPreviewIdentityFromLine(strapLineByKey.get(lineId), strap.color_id),
+                          strap.color_id,
+                        );
                       });
                       // Um único write: dois onUpdate seguidos já são seguros via
                       // setState funcional, mas o patch atômico deixa explícito que
@@ -2335,7 +2379,12 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                         const lineId = technicalStrapLineId(strap);
                         if (!lineId || isPurchasedReadyStrap(strap)) return;
                         if (strap.pv_origem !== 'prestador') return;
-                        nextSourcing = setStrapSourcing(nextSourcing, lineId, 'internal');
+                        nextSourcing = setInternalStrapSourcing(
+                          nextSourcing,
+                          lineId,
+                          strapPreviewIdentityFromLine(strapLineByKey.get(lineId), strap.color_id),
+                          strap.color_id,
+                        );
                       });
                       if (onUpdateFields) onUpdateFields(index, { strap_colors: updated, strap_sourcing: nextSourcing });
                       else {
@@ -2811,10 +2860,14 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                                 // sourcing no mesmo setState pra o save ler pv_origem
                                 // coerente (senão o toast exige MO do prestador).
                                 if (lineKey && !isPurchasedReadyStrap(strap)) {
-                                  const nextSourcing = setStrapSourcing(
+                                  const nextSourcing = setInternalStrapSourcing(
                                     strapSourcingMap,
                                     lineKey,
-                                    'internal',
+                                    strapPreviewIdentityFromLine(
+                                      strapLineByKey.get(lineKey),
+                                      strap.color_id,
+                                    ),
+                                    strap.color_id,
                                   );
                                   if (onUpdateFields) {
                                     onUpdateFields(index, {

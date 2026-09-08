@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   getStrapSourcingOverride,
+  hydrateInternalStrapSourcingMap,
+  internalStrapSourcingFromPreview,
   isCompleteStrapSourcingSelection,
   missingStrapSourcingLineIds,
   normalizeStrapColorKey,
   pruneStrapSourcing,
+  setInternalStrapSourcing,
   setStrapSourcing,
   strapSourcingKey,
   type StrapSourcingMap,
@@ -72,5 +75,93 @@ describe('strapSourcing — identidade por linha técnica UUID', () => {
 
   it('normalização de cor é somente de apresentação', () => {
     expect(normalizeStrapColorKey(' Cura of White ')).toBe('CURA OF WHITE');
+  });
+});
+
+describe('strapSourcing — UUID da variante na origem interna', () => {
+  const RECIPE_A = '44444444-5555-4666-8777-888888888888';
+  const BASE_A = '55555555-6666-4777-8888-999999999999';
+  const VARIANT_B = '66666666-7777-4888-8999-aaaaaaaaaaaa';
+
+  it('não confirma origem só com source_mode; exige o UUID resolvido', () => {
+    expect(internalStrapSourcingFromPreview({
+      colorId: COLOR_A,
+    })).toBeNull();
+    expect(internalStrapSourcingFromPreview({
+      colorId: COLOR_A,
+      strapVariantId: VARIANT_A,
+      recipeId: RECIPE_A,
+      baseProductId: BASE_A,
+    })).toMatchObject({
+      source_mode: 'internal',
+      color_id: COLOR_A,
+      strap_variant_id: VARIANT_A,
+      recipe_id: RECIPE_A,
+      base_product_id: BASE_A,
+    });
+  });
+
+  it('grava o UUID quando o preview já resolveu a variante', () => {
+    const map = setInternalStrapSourcing({}, LINE_A, {
+      colorId: COLOR_A,
+      strapVariantId: VARIANT_A,
+      recipeId: RECIPE_A,
+    }, COLOR_A);
+    expect(map[LINE_A]).toMatchObject({
+      source_mode: 'internal',
+      color_id: COLOR_A,
+      strap_variant_id: VARIANT_A,
+    });
+    expect(isCompleteStrapSourcingSelection(map[LINE_A])).toBe(true);
+  });
+
+  it('cai em source_mode interno quando o preview ainda não tem UUID', () => {
+    const map = setInternalStrapSourcing({}, LINE_A, { colorId: COLOR_A });
+    expect(map[LINE_A]).toEqual({ source_mode: 'internal' });
+  });
+
+  it('hidrata origem interna incompleta com a variante resolvida', () => {
+    const incomplete = setStrapSourcing({}, LINE_A, 'internal');
+    const { map, changed } = hydrateInternalStrapSourcingMap(incomplete, (lineId) => (
+      lineId === LINE_A
+        ? { colorId: COLOR_A, strapVariantId: VARIANT_A, recipeId: RECIPE_A, baseProductId: BASE_A }
+        : null
+    ));
+    expect(changed).toBe(true);
+    expect(map[LINE_A]).toMatchObject({
+      source_mode: 'internal',
+      color_id: COLOR_A,
+      strap_variant_id: VARIANT_A,
+      recipe_id: RECIPE_A,
+      base_product_id: BASE_A,
+    });
+  });
+
+  it('não troca uma variante já persistida por outra do preview', () => {
+    const frozen = setStrapSourcing({}, LINE_A, {
+      source_mode: 'internal',
+      color_id: COLOR_A,
+      strap_variant_id: VARIANT_A,
+    });
+    const { map, changed } = hydrateInternalStrapSourcingMap(frozen, () => ({
+      colorId: COLOR_A,
+      strapVariantId: VARIANT_B,
+    }));
+    expect(changed).toBe(false);
+    expect(map[LINE_A].strap_variant_id).toBe(VARIANT_A);
+  });
+
+  it('é no-op quando a origem interna já está completa e igual', () => {
+    const complete = setInternalStrapSourcing({}, LINE_A, {
+      colorId: COLOR_A,
+      strapVariantId: VARIANT_A,
+      recipeId: RECIPE_A,
+    });
+    const { changed } = hydrateInternalStrapSourcingMap(complete, () => ({
+      colorId: COLOR_A,
+      strapVariantId: VARIANT_A,
+      recipeId: RECIPE_A,
+    }));
+    expect(changed).toBe(false);
   });
 });
