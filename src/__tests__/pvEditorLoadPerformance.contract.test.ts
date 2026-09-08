@@ -62,6 +62,25 @@ describe('PV editor — carga otimizada', () => {
     expect(saleOrderForm).toMatch(
       /if \(!id \|\| orderLoaded \|\| referencesFailed \|\| snapshotFetched\) return/,
     );
+
+    // Colunas dropadas em 20260512210000 — nunca reintroduzir no select do editor.
+    const editorColumnsMatch = sheetsHook.match(
+      /export const TECHNICAL_SHEET_EDITOR_COLUMNS = \[([\s\S]*?)\]\.join/,
+    );
+    expect(editorColumnsMatch, 'TECHNICAL_SHEET_EDITOR_COLUMNS deve existir').toBeTruthy();
+    const editorColumns = (editorColumnsMatch![1].match(/'([^']+)'/g) ?? []).map((s) =>
+      s.slice(1, -1),
+    );
+    for (const dropped of [
+      'suggested_price',
+      'barcode',
+      'assembly_steps',
+      'cor_palmilha_id',
+      'cor_tiras_id',
+    ]) {
+      expect(editorColumns, `coluna dropada ${dropped}`).not.toContain(dropped);
+    }
+    expect(itemForm).not.toMatch(/selectedRef\?\.suggested_price/);
   });
 
   it('edit open usa cache de min-billing; live so apos edicao', () => {

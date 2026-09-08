@@ -451,7 +451,6 @@ export const TECHNICAL_SHEET_EDITOR_COLUMNS = [
   'sizes',
   'shoe_category',
   'sale_price',
-  'suggested_price',
   'images',
   'image_url',
   'ncm',

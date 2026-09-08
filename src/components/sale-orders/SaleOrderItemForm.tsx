@@ -110,7 +110,6 @@ interface ReferenceOption {
   images?: unknown;
   image_url?: string | null;
   ncm?: string | null;
-  suggested_price?: number | null;
   packaging_box_dimensions?: string | null;
   status_ficha?: string | null;
   status?: string | null;
@@ -343,7 +342,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   const gradeTotal = Object.values(grade).reduce((s, v) => s + (v || 0), 0);
   const totalPairs = gradeTotal * fichas;
   const itemTotal = totalPairs * (item.unit_price || 0);
-  const pdv = selectedRef?.suggested_price || selectedRef?.sale_price || 0;
+  const pdv = selectedRef?.sale_price || 0;
 
   const { data: sheetSpecs } = useQuery({
     queryKey: ['sheet_specs_for_colors', item.reference_id],
