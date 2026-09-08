@@ -302,17 +302,18 @@ Auditoria arquivo-a-arquivo (08/09/2026). Referência canônica: `computePeriodF
 
 ### 9.0 Veredito — os relatórios de hoje estão corretos?
 
-**Na maior parte, sim — o que paga e o que desconta bate com a folha.** Faltas, atrasos líquidos, Excel, maço de holerite, PDF gerencial e os totais pagáveis da aba Relatórios usam `computePeriodFolha` (ou o snapshot gravado).
+**No cálculo de pagamento, sim.** O que a Folha grava e mostra (resumo, holerite, PDF gerencial) usa `computePeriodFolha`.
 
-Há **um bug vivo no print** e **duas divergências de propósito** que confundem se o usuário achar que “é o mesmo número da folha”:
+Há **um bug vivo no print**, **divergências de propósito** e um **gap de navegação** maior do que parecia:
 
 | Situação | Veredito | O que fazer |
 |---|---|---|
-| Folha, Faltas, Atrasos, Excel, printPayrollBundle, printRhReport | **CORRECT** | Confiar |
+| Folha (resumo / calendário / holerite / PDF gerencial) | **CORRECT** | Confiar |
 | Aba Relatórios → “Horas extras” / “Pendências semanais” | **INTENTIONAL** | Conferência por semana ISO; o holerite é a verdade de pagamento |
-| Espelho legal (`/rh/espelho-ponto`) — totais de saldo | **INTENTIONAL** | Soma saldo **bruto** dia a dia (sem compensação do período) |
-| Botão **Imprimir espelho** na Folha (`printTimeMirror`) | **BUG** | HE em R$ = `salário÷220 × 1,5 × Σ excedente/dia` — ignora taxas individuais, compensação e piso de 10 min |
-| Overview / LateArrivals / PreFolha / KPIsRH | **ORPHAN** | Existem no disco, não estão montados no hub atual |
+| Espelho legal (`/rh/espelho-ponto`) — totais de saldo | **INTENTIONAL** | Soma saldo **bruto**; rota **sem link** no hub |
+| Botão **Imprimir espelho** na Folha (`printTimeMirror`) | **BUG** | HE em R$ = `salário÷220 × 1,5 × Σ excedente/dia` |
+| Excel / Documentos / Faltas / Atrasos | **INALCANÇÁVEL** | Código pronto atrás de `reportsOnly` sem caller — remontar (§10) |
+| Overview / LateArrivals / PreFolha / KPIsRH | **ORPHAN** | Existem no disco, não montados |
 
 **Legenda de veredito**
 
@@ -503,35 +504,125 @@ Há **um bug vivo no print** e **duas divergências de propósito** que confunde
 
 ### 9.5 Matriz rápida
 
-| Relatório | Vivo? | vs Folha |
+| Relatório | Acessível no hub? | vs Folha |
 |---|---|---|
-| Espelho bruto do relógio (docs Folha) | sim | CORRECT (sem cálculo) |
-| Folha / FolhaConsolidada | sim | CORRECT |
-| RelatorioFaltas | sim | CORRECT |
-| RelatorioAtrasos + PDF | sim | CORRECT |
-| TimeBalanceReports (payable / quadro) | sim | CORRECT |
+| TimeBalanceReports (payable / quadro) | sim (aba Relatórios) | CORRECT |
 | TimeBalanceReports (HE/déficit semanal) | sim | INTENTIONAL_DIVERGENCE |
 | printTimeBalance* | sim | mesma dualidade |
-| EspelhoPontoPage (status) | sim | CORRECT |
-| EspelhoPontoPage (totais saldo) | sim | INTENTIONAL (bruto) |
-| printTimeMirror (R$ HE 1,5× ÷220) | sim | **BUG/STALE** |
-| printPayrollBundle / printRhReport / Excel | sim | CORRECT |
-| Exceptions / Pendências | sim | INTENTIONAL (operacional) |
+| Folha / FolhaConsolidada (resumo, calendário, holerite, PDF gerencial) | sim (aba Folha) | CORRECT |
+| printTimeMirror (botão Imprimir espelho na Folha) | sim | **BUG/STALE** |
+| EspelhoPontoPage (rota `/rh/espelho-ponto/:id`) | rota existe, **sem link no hub** | status CORRECT; totais INTENTIONAL |
+| Documentos / Excel / maço PDF / RelatorioFaltas / RelatorioAtrasos | código vivo, **UI inalcançável** (`reportsOnly` sem caller) | CORRECT se remontados |
+| Exceptions / Pendências (Ponto) | sim | INTENTIONAL (operacional) |
 | Overview / LateArrivals / Divergences / PreFolha / KPIsRH / AbsenceReport | **não montados** | ORPHAN |
+
+> **Errata vs §9.1 R03/R04/R00/R11:** na navegação atual do hub, Faltas, Atrasos, Excel e o painel Documentos **não aparecem** — ficaram no branch `Payroll({ reportsOnly: true })`, que nenhum caller passa. A análise de cálculo desses módulos continua válida; o gap agora é de **descoberta/remontagem** (ver §10).
 
 ### 9.5.1 Como o usuário deve ler cada tela
 
-1. **Quer saber o que vai pagar?** → Folha (holerite / Excel / maço). Relatórios de Faltas e Atrasos batem com essas colunas.
+1. **Quer saber o que vai pagar?** → Folha (resumo / holerite / PDF gerencial).
 2. **Quer conferir se a semana fechou?** → Relatórios → “Horas extras” / “Pendências semanais” (saldo da semana ISO; pode divergir do holerite).
-3. **Quer ver só o que o relógio marcou?** → Folha → Documentos → Espelho relógio de ponto (bruto).
-4. **Quer o documento legal dia a dia?** → Espelho Portaria 671; totais de saldo ali são brutos. **Não use** o “Valor HE (1,5×)” do botão Imprimir espelho da Folha como valor a pagar — está com fórmula legada (R08).
+3. **Quer o documento legal dia a dia?** → rota `/rh/espelho-ponto/:id` (hoje só por URL). Totais de saldo ali são brutos.
+4. **Não use** o “Valor HE (1,5×)” do botão Imprimir espelho da Folha como valor a pagar — fórmula legada (R08).
+5. Excel / Faltas / Atrasos / maço de documentos: código pronto, **remontar** (T02/U02 no §10).
 
 ### 9.6 Prioridade se for corrigir (sem mexer no motor)
 
-1. **P0** — `printTimeMirror`: parar de inventar `salário÷220×1,5`; usar `he_minutes`/`he_value` (e atraso líquido) do `SalaryPayrollResult` já disponível no comparativo; remover `bankHoursBalance`.
-2. **P1** — Rotular na UI de Relatórios “HE da semana (conferência)” vs “HE paga (folha)” — já parcialmente feito no copy, reforçar no KPI “Total de horas extras” quando `kind=overtime`.
-3. **P2** — Limpar orphans ou remontar de propósito (PreFolha/CSV contador é o mais útil).
-4. **P3** — Apagar/atualizar comentários de banco de horas (I5 + §9.4).
+1. **P0** — `printTimeMirror`: parar de inventar `salário÷220×1,5`; usar `he_minutes`/`he_value` do comparativo.
+2. **P0** — Remontar Documentos/Excel/Faltas/Atrasos **ou** cortar o branch morto `reportsOnly`.
+3. **P0** — Entrada descoberta para o Espelho Portaria 671.
+4. **P1** — Labels “HE da semana” vs “HE paga”; banner de confiança na aba Relatórios.
+5. **P1** — Perf: lazy Q1/Q2 no comparativo; não montar prévia HTML na Folha; batch de upsert; reusar snapshot.
+6. **P2** — Orphans: apagar ou remontar PreFolha (CSV contador).
+
+---
+
+## 10. Melhorias e otimizações — backlog priorizado
+
+Escopo: relatórios/acessos do hub Pessoas. **Não** inclui reescrever `computePeriodFolha`.
+
+### 10.0 Achado estrutural (hub)
+
+Após a fusão Folha+Relatório e a troca da aba hub “Espelho” por `TimeBalanceReports`:
+
+| O que o spec/docs prometiam | O que o hub entrega hoje |
+|---|---|
+| 4 telas: Equipe · Ponto · Espelho · Folha | Equipe · Ponto · **Relatórios semanais** · Folha |
+| Espelho do funcionário (Portaria 671) | Rota `/rh/espelho-ponto/:id` **sem Link** em lugar nenhum |
+| Documentos / Excel / Faltas / Atrasos | Branch `reportsOnly` **sem caller** (`FolhaConsolidada` monta `<Payroll />` sem a prop) |
+
+Isso explica por que o RH “perdeu” Excel e relatórios de falta/atraso sem o motor ter sumido.
+
+### 10.1 Correctness / confiança
+
+| ID | P | Esforço | Evidência | Mudança proposta | Risco |
+|---|---|---|---|---|---|
+| **T01** | P0 | S | `printTimeMirror.ts:88–98`, `:266`; `Payroll.tsx:696–729` | HE/atraso do print = `SalaryPayrollResult` (taxas individuais + compensação + piso 10). Remover “Valor HE (1,5×)” e `bankHoursBalance`. | Baixo |
+| **T02** | P0 | M | `Payroll.tsx:168`, `:1116`; `FolhaConsolidada.tsx:18`; grep zero `reportsOnly={true}` | Remontar Documentos/Excel/Faltas/Atrasos na Folha (sub-abas) **ou** deletar o branch. | Médio se remontar sem alinhar período |
+| **T03** | P1 | S | `TimeBalanceReports.tsx:159–163`, `:322` | KPI “Total de horas extras” = semanal. Renomear + mostrar “HE paga (folha)” ao lado. | Baixo |
+| **T04** | P1 | S | `EspelhoPontoPage.tsx:222–230` | Rotular totais como saldo bruto; opcionalmente mostrar HE/atraso líquidos do período. | Baixo |
+| **T05** | P1 | M | `Timesheet.tsx` `folhaForEmployee` sem `absenceDates`/`coveredDates` | Passar os mesmos args que a Folha — evita divergência no resumo do Ponto. | Médio (números na tela mudam) |
+| **T06** | P2 | S | `RelatorioFaltas`/`Atrasos` `queryKey` com `.length` | Chave por ids/`updated_at` (quando remontados). | Baixo |
+| **T07** | P2 | S | Leftovers “banco de horas” (§9.4) | Limpar copy/API. | Nenhum |
+
+### 10.2 UX / descoberta
+
+| ID | P | Esforço | Evidência | Mudança proposta | Risco |
+|---|---|---|---|---|---|
+| **U01** | P0 | M | Spec item 12.3; `App.tsx` rota sem Link; hub monta só `TimeBalanceReports` | CTA Equipe/Folha/Relatórios → Espelho legal + AEJ. | Médio (navegação) |
+| **U02** | P0 | M | Painel Documentos só em `reportsOnly` | Devolver Excel + maço PDF + Faltas/Atrasos na Folha. | Baixo (UI já escrita) |
+| **U03** | P1 | S | Três “espelhos” diferentes (semanal / legal / bruto / printTimeMirror) | Glossário curto na UI. | Baixo |
+| **U04** | P1 | S | Copy semanal vs holerite | Banner: “Números desta aba ≠ holerite; pagamento em Folha.” | Nenhum |
+| **U05** | P2 | S | LEGACY map `relatorios`/`absenteismo` → `espelho` | Remapear ou avisar. | Baixo |
+
+### 10.3 Performance
+
+| ID | P | Esforço | Evidência | Mudança proposta | Risco |
+|---|---|---|---|---|---|
+| **P01** | P1 | M | `payrollComparativo.ts:293–295` — **3× `computePeriodFolha` por funcionário** (range+Q1+Q2) | Lazy Q1/Q2 só no Excel; tela só o intervalo. | Médio |
+| **P02** | P1 | M | `Payroll.tsx:554–569` `previewHtml`/`buildPayrollHtml` sempre, mesmo com painel Documentos morto | Não montar prévia HTML enquanto `reportsOnly===false`. | Baixo |
+| **P03** | P1 | M | `calculateAll` upsert **por funcionário** sequencial | Batch RPC ou pool + um invalidate. | Médio (travas de status) |
+| **P04** | P1 | S | TimeBalance / Faltas / Atrasos recalculam vivo e ignoram snapshot aprovado | Preferir `calculation_snapshot` quando run não-rascunho. | Baixo |
+| **P05** | P2 | S | `groupPayrollPunchesByEmployee` O(records×emps) | `Map` por id. | Nenhum |
+| **P06** | P2 | S | Várias queryKeys de `fetchTimeRecordsInRange` | Key canônica compartilhada. | Baixo |
+| **P07** | P2 | M | HTML monolítico nos prints | Paginar / virtualizar prévia. | Médio |
+| **P08** | P3 | S | `calculateAll` refetch total mesmo com cache | Reusar React Query + epoch. | Baixo |
+
+**Cheiros concretos:**
+
+1. Folha grava snapshot, mas Relatórios/Faltas/Atrasos (se remontados) **não o leem**.
+2. `TimeBalanceReports` chama `computeComparativoRows` completo (inclui Q1/Q2 inúteis para o calendário).
+3. Prévia HTML do maço continua no main thread da Folha sem UI Documentos.
+
+### 10.4 Consolidação / código morto
+
+| ID | P | Esforço | Mudança | Risco |
+|---|---|---|---|---|
+| **D01** | P1 | S | Apagar ou remontar orphans: Overview, LateArrivals, Divergences, KPIsRH, AbsenceReport, PreFolha | Baixo |
+| **D02** | P1 | M | Decisão: remontar `reportsOnly` (U02) **ou** deletar branch + dead UI | Médio se deletar Excel |
+| **D03** | P2 | S | `printTimesheet` fallback sem `payrollResult` → obrigar result | Baixo |
+| **D04** | P2 | S | Enxugar `computeWeekly`/comments de Overview morto | Baixo |
+| **D05** | P3 | S | Inline `FolhaConsolidada` | Nenhum |
+
+### 10.5 Gaps de produto
+
+| ID | P | Esforço | Mudança | Risco |
+|---|---|---|---|---|
+| **G01** | P0 | M | Espelho legal + AEJ descobertos no hub, números alinhados à folha | Médio (compliance) |
+| **G02** | P1 | M | Remontar PreFolha / CSV contador a partir do snapshot | Baixo |
+| **G03** | P1 | S | Deep-link Folha → Ponto no funcionário com pendência | Baixo |
+| **G04** | P2 | M | Dashboard absenteísmo justificado vs falta descontada (labels explícitos) | Médio |
+| **G05** | P2 | L | Diff rascunho vivo × snapshot aprovado após reimport | Médio |
+| **G06** | P3 | M | Relatório “cadastro incompleto” (jornada/taxas HE) antes do fechamento | Baixo |
+
+### 10.6 Ordem sugerida de ataque
+
+1. **T01** — printTimeMirror para de mentir R$
+2. **T02 + U02** — devolver Documentos/Excel/Faltas/Atrasos (ou cortar de vez)
+3. **U01 + G01** — espelho legal descobível
+4. **T03 + U03 + U04** — labels de confiança
+5. **P02 → P01 → P03 → P04** — perf Folha/comparativo/snapshot
+6. **D01 / G02** — orphans: apagar vs PreFolha CSV
 
 ---
 
@@ -539,4 +630,12 @@ Há **um bug vivo no print** e **duas divergências de propósito** que confunde
 
 O setor Pessoas **já calcula** o que o dono descreveu no caminho de **pagamento**: batidas → importação → jornada esperada → balanço entre dias no período → HE só no saldo líquido positivo acima de 10 minutos → folha com taxas R$/h individuais.
 
-Os gaps vivos são de **apresentação**: (1) relatório semanal ≠ holerite por desenho; (2) `printTimeMirror` ainda paga HE com fórmula legada ÷220×1,5; (3) vários componentes “de relatório” órfãos e leftovers de banco de horas na cópia. Não é necessário reescrever `computePeriodFolha` para fechar o contrato do dono — é necessário alinhar os prints/labels ao motor que já existe.
+Os gaps vivos são de **apresentação e navegação**, não do motor:
+
+1. Relatório semanal ≠ holerite por desenho (ok se rotulado).
+2. `printTimeMirror` ainda inventa HE com ÷220×1,5 (**bug**).
+3. Excel / Faltas / Atrasos / Documentos estão **prontos no código e inalcançáveis no hub** (`reportsOnly`).
+4. Espelho Portaria 671 existe por URL, **sem entrada** na navegação.
+5. Há custo de performance evitável (3 folhas/funcionário no comparativo, prévia HTML morta, upsert N×1).
+
+Não é necessário reescrever `computePeriodFolha` — é necessário alinhar prints/labels, remontar o que ficou órfão no hub e reduzir recomputes.
