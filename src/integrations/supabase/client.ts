@@ -54,4 +54,4 @@ const rawRpc = supabase.rpc.bind(supabase);
     }
   }
   return rawRpc(fn as never, args as never, opts as never);
-}) as typeof supabase.rpc;
+}) as unknown as typeof supabase.rpc;
