@@ -38,7 +38,7 @@ export default function StrapPvOrigemChooser({
         Fábrica ou prestador · {label}
       </Label>
       <Select
-        value={value || ''}
+        value={value ?? undefined}
         disabled={disabled}
         onValueChange={(next) => {
           if (next === 'fabrica' || next === 'prestador') onChange(next);

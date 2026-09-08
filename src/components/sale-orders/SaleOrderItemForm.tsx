@@ -940,21 +940,6 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     strapSourcingMap,
   ]);
 
-  // Padrão "comprar pronto" (= prestador) nas posições escolhe_no_pv ainda vazias.
-  // Só preenche ausência; escolha explícita do operador (fábrica/prestador) fica.
-  useEffect(() => {
-    if (preserveCommittedStrapSnapshot) return;
-    if (!strapCatalog?.measures?.length) return;
-    const straps = (item.strap_colors as SaleOrderItemStrap[]) || [];
-    if (straps.length === 0) return;
-    const { lines, changed } = applyDefaultStrapPvOrigemChoices(straps, strapCatalog.measures);
-    if (changed) latestRef.current.onUpdate(latestRef.current.index, 'strap_colors', lines);
-  }, [
-    item.strap_colors,
-    preserveCommittedStrapSnapshot,
-    strapCatalog?.measures,
-  ]);
-
   const availableColors: string[] = useMemo(() => {
     // Variante selecionada: a cor vem EXCLUSIVAMENTE do grupo efetivo que o
     // resolver estrutural escolheu. `available_colors` é legado/auditoria.
@@ -1143,12 +1128,26 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     // O reconciliador casa exclusivamente o UUID da posição, preserva somente
     // escolhas de cor ainda válidas e invalida origem/receita quando qualquer
     // entrada produtiva (inclusive família ou medida) mudou.
+    //
+    // O padrão "comprar pronto" (= prestador) em escolhe_no_pv vazio entra AQUI,
+    // no mesmo write que o reconcile — um efeito separado perdia a corrida:
+    // default gravava prestador e o reconcile (mesmo tick, snapshot velho)
+    // sobrescrevia strap_colors sem pv_origem.
     const reconciled = reconcileEditableStrapSnapshots({
       snapshotLines: currentStraps,
       technicalLines: refStrapDefs,
       sourcing: latestStrapSourcingMapRef.current,
     });
-    if (reconciled.linesChanged) update(idx, 'strap_colors', reconciled.lines);
+    let nextLines = reconciled.lines as SaleOrderItemStrap[];
+    let linesChanged = reconciled.linesChanged;
+    if (strapCatalog?.measures?.length) {
+      const defaults = applyDefaultStrapPvOrigemChoices(nextLines, strapCatalog.measures);
+      if (defaults.changed) {
+        nextLines = defaults.lines;
+        linesChanged = true;
+      }
+    }
+    if (linesChanged) update(idx, 'strap_colors', nextLines);
     if (reconciled.sourcingChanged) update(idx, 'strap_sourcing', reconciled.sourcing);
   }, [
     item.reference_id,
@@ -1157,6 +1156,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     preserveCommittedStrapSnapshot,
     referenceStrapDefinitions,
     selectedRef,
+    strapCatalog?.measures,
   ]);
 
   // Recalcula toda a cadeia comercial quando muda referência, material, cor,
@@ -2282,7 +2282,6 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                         if (!lineId || !eligible.has(lineId)) return strap;
                         return { ...strap, pv_origem: 'fabrica' as const };
                       });
-                      onUpdate(index, 'strap_colors', updated);
                       let nextSourcing = strapSourcingMap;
                       updated.forEach((strap) => {
                         const lineId = technicalStrapLineId(strap);
@@ -2290,7 +2289,14 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                         if (strap.pv_origem !== 'fabrica') return;
                         nextSourcing = setStrapSourcing(nextSourcing, lineId, 'internal');
                       });
-                      onUpdate(index, 'strap_sourcing', nextSourcing);
+                      // Um único write: dois onUpdate seguidos já são seguros via
+                      // setState funcional, mas o patch atômico deixa explícito que
+                      // pv_origem=fábrica e o sourcing viajam juntos.
+                      if (onUpdateFields) onUpdateFields(index, { strap_colors: updated, strap_sourcing: nextSourcing });
+                      else {
+                        onUpdate(index, 'strap_colors', updated);
+                        onUpdate(index, 'strap_sourcing', nextSourcing);
+                      }
                     }}
                     onAllContractor={() => {
                       const eligible = new Set(
@@ -2308,7 +2314,6 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                         if (!lineId || !eligible.has(lineId)) return strap;
                         return { ...strap, pv_origem: 'prestador' as const };
                       });
-                      onUpdate(index, 'strap_colors', updated);
                       let nextSourcing = strapSourcingMap;
                       updated.forEach((strap) => {
                         const lineId = technicalStrapLineId(strap);
@@ -2316,13 +2321,17 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                         if (strap.pv_origem !== 'prestador') return;
                         nextSourcing = setStrapSourcing(nextSourcing, lineId, 'internal');
                       });
-                      onUpdate(index, 'strap_sourcing', nextSourcing);
+                      if (onUpdateFields) onUpdateFields(index, { strap_colors: updated, strap_sourcing: nextSourcing });
+                      else {
+                        onUpdate(index, 'strap_colors', updated);
+                        onUpdate(index, 'strap_sourcing', nextSourcing);
+                      }
                     }}
                   />
                 )}
                 {!preserveCommittedStrapSnapshot && (() => {
                   const missingOrigem = listMissingStrapPvOrigemChoices(
-                    straps,
+                    snapshotStraps,
                     strapCatalog?.measures || [],
                   );
                   if (missingOrigem.length === 0) return null;
@@ -2765,9 +2774,15 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                             <StrapPvOrigemChooser
                               label={strap.label || `Tira ${sIdx + 1}`}
                               origemPadrao={measure?.origem_padrao}
-                              value={(strap.pv_origem === 'fabrica' || strap.pv_origem === 'prestador')
-                                ? strap.pv_origem as StrapPvOrigemChoice
-                                : null}
+                              value={(() => {
+                                const snap = snapshotStraps.find(
+                                  (entry) => technicalStrapLineId(entry) === lineId,
+                                ) || snapshotStraps[sIdx];
+                                const choice = snap?.pv_origem ?? strap.pv_origem;
+                                return (choice === 'fabrica' || choice === 'prestador')
+                                  ? choice as StrapPvOrigemChoice
+                                  : null;
+                              })()}
                               disabled={preserveCommittedStrapSnapshot || productionExcluded}
                               onChange={(next) => {
                                 const lineKey = technicalStrapLineId(strap);
@@ -2776,13 +2791,28 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                                     ? { ...entry, pv_origem: next }
                                     : entry
                                 ));
-                                onUpdate(index, 'strap_colors', updated);
+                                // Fábrica não gera OS de prestador — grava origem e
+                                // sourcing no mesmo setState pra o save ler pv_origem
+                                // coerente (senão o toast exige MO do prestador).
                                 if (lineKey && !isPurchasedReadyStrap(strap)) {
-                                  onUpdate(
-                                    index,
-                                    'strap_sourcing',
-                                    setStrapSourcing(strapSourcingMap, lineKey, 'internal'),
+                                  const nextSourcing = setStrapSourcing(
+                                    strapSourcingMap,
+                                    lineKey,
+                                    'internal',
                                   );
+                                  if (onUpdateFields) {
+                                    onUpdateFields(index, {
+                                      strap_colors: updated,
+                                      strap_sourcing: nextSourcing,
+                                    });
+                                  } else {
+                                    onUpdate(index, 'strap_colors', updated);
+                                    onUpdate(index, 'strap_sourcing', nextSourcing);
+                                  }
+                                } else if (onUpdateFields) {
+                                  onUpdateFields(index, { strap_colors: updated });
+                                } else {
+                                  onUpdate(index, 'strap_colors', updated);
                                 }
                               }}
                             />

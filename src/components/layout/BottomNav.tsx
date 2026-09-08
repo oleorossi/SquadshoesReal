@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { House as Home, Factory, Package, ShoppingCart, DotsThree as MoreHorizontal, X, Star, MagnifyingGlass as Search } from '@phosphor-icons/react';
+import { House as Home, Factory, Package, ShoppingCart, DotsThree as MoreHorizontal, X, Star } from '@phosphor-icons/react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { menuGroups, orderGroupsForRoles, secondaryRoutes } from '@/data/navigation';
@@ -7,6 +7,7 @@ import { useAccessControl } from '@/hooks/useAccessControl';
 import { useMenuFavorites } from '@/hooks/useMenuFavorites';
 import { useCurrentUserRoles } from '@/hooks/useUserManagement';
 import { normalizeForSearch } from '@/lib/searchUtils';
+import { SearchInput } from '@/components/ui/search-input';
 
 const PRIMARY_ITEMS = [
   { icon: Home,         label: 'Painel',   path: '/dashboard' },
@@ -86,6 +87,14 @@ export function BottomNav() {
     filteredFavItems.length > 0
     || filteredGroups.length > 0
     || filteredSecondary.length > 0;
+  const maisResultCount =
+    filteredFavItems.length
+    + filteredGroups.reduce((n, g) => n + g.items.length, 0)
+    + filteredSecondary.length;
+  const maisTotalCount =
+    favItems.length
+    + visibleGroups.reduce((n, g) => n + g.items.length, 0)
+    + secondaryItems.length;
 
   useEffect(() => {
     setMoreOpen(false);
@@ -190,20 +199,21 @@ export function BottomNav() {
             </button>
           </div>
           <div className="px-4 pb-2">
-            <label className="relative block">
-              <span className="sr-only">Buscar tela</span>
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-              <input
-                ref={searchInputRef}
-                type="search"
-                value={maisQuery}
-                onChange={(e) => setMaisQuery(e.target.value)}
-                placeholder="Buscar tela…"
-                autoComplete="off"
-                enterKeyHint="search"
-                className="h-11 w-full rounded-xl border border-border bg-muted/40 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              />
-            </label>
+            <SearchInput
+              ref={searchInputRef}
+              value={maisQuery}
+              onChange={setMaisQuery}
+              placeholder="Buscar tela…"
+              aria-label="Buscar tela"
+              autoFocus
+              hideHint
+              disableSlashFocus
+              enterKeyHint="search"
+              resultCount={maisResultCount}
+              totalCount={maisTotalCount}
+              className="w-full"
+              inputClassName="rounded-xl bg-muted/40"
+            />
           </div>
           <div className="px-4 pb-4 space-y-4 max-h-[60vh] overflow-y-auto">
             {!hasMaisResults && (

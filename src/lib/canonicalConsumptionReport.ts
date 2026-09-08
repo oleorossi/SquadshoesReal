@@ -84,6 +84,8 @@ const lineBaseSchema = z.object({
   consumption_warning: z.string().optional().nullable(),
   warning: z.string().optional().nullable(),
   matched_by: z.string().optional().nullable(),
+  /** Nome da ficha (technical_sheets.name) — enriquecido no batch. */
+  reference_name: z.string().optional().nullable(),
 });
 
 const materialLineObject = lineBaseSchema.extend({
@@ -357,10 +359,21 @@ export function adaptCanonicalConsumptionLines(
     if (scopeKeys && !scopeKeys.has(line.scope_key)) continue;
     const component = componentType(line);
     const packaging = line.line_kind === 'packaging';
+    const referenceName = line.reference_name?.trim() || null;
+    const unresolvedPalmilha = !packaging
+      && (line.source || '').toLowerCase() === 'unresolved'
+      && component === 'Palmilha'
+      && !line.product_id;
+    // unresolved de palmilha: não agregar várias fichas sob o mesmo placeholder.
     const groupName = packaging
       ? 'Embalagem'
-      : line.product_group_name?.trim() || line.product_name.trim();
-    const materialName = line.product_name.trim();
+      : unresolvedPalmilha && referenceName
+        ? `Ficha ${referenceName}`
+        : line.product_group_name?.trim() || line.product_name.trim();
+    const materialName = unresolvedPalmilha && referenceName
+      && !line.product_name.trim().toLowerCase().startsWith('ficha ')
+      ? `Ficha ${referenceName} · ${line.product_name.trim()}`
+      : line.product_name.trim();
     const color = (line.color || line.product_color || '—').trim() || '—';
     const unit = line.product_unit.trim();
     const consumptionSector = line.consumption_sector?.trim() || null;
@@ -378,6 +391,7 @@ export function adaptCanonicalConsumptionLines(
       consumptionSector || '',
       line.consumption_sector_source || '',
       line.source || '',
+      unresolvedPalmilha ? (line.reference_id || '') : '',
     ].join('::');
     const existing = grouped.get(key);
     const grade = component === 'Solado' ? line.effective_grade : null;
