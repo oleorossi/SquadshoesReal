@@ -426,8 +426,8 @@ export function buildMaterialConsumptionReportHtml({
     ? '<p class="mode-banner">Consumo total · estoque ignorado · necessidade bruta do pedido</p>'
     : '';
   const reading = totalMode
-    ? 'Este documento ignora o estoque. Os números são o consumo bruto da ficha para realizar o pedido. Tira artesanal com receita conferida entra como metro de napa — o motor não compra metro de tira.'
-    : '“Necessidade” é consumo bruto. “Falta” já desconta o estoque líquido e é o número usado para decidir reposição. Tira artesanal com receita conferida entra como metro de napa — o motor não compra metro de tira.';
+    ? 'Este documento ignora o estoque. Os números são o consumo bruto da ficha para realizar o pedido. Tira artesanal com receita conferida entra como metro de napa — o motor não compra metro de tira. Tira comprada pronta (STRASS) aparece em §02 “Tira Strass”, não na coluna Tira da napa.'
+    : '“Necessidade” é consumo bruto. “Falta” já desconta o estoque líquido e é o número usado para decidir reposição. Tira artesanal com receita conferida entra como metro de napa — o motor não compra metro de tira. Tira comprada pronta (STRASS) aparece em §02 “Tira Strass”, não na coluna Tira da napa.';
   const manifest = totalMode
     ? `<div class="manifest manifest-total" aria-label="Resumo do consumo total">
     <div><dl><dt>Necessidade de material base</dt><dd>${baseTotal ? `${formatQty(baseTotal.total, 'm')} m` : '—'}</dd></dl><small>napa direta + conversões confirmadas</small></div>
