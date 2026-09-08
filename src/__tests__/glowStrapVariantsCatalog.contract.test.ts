@@ -22,9 +22,6 @@ describe('SQL — variantes GLOW METALIC × medida × cor', () => {
     expect(migration).toContain('approved_by');
     expect(migration).toContain('SKU unico e inequivoco');
     expect(migration).toContain('49371f4d-641f-466d-be26-686ef57743ec');
-    // PG do projeto não tem aggregate min(uuid) — quebrou db push em 08/09/2026.
-    expect(migration).not.toMatch(/\bmin\s*\(\s*p\.id\s*\)/i);
-    expect(migration).toContain('(array_agg(p.id ORDER BY p.id))[1]');
   });
 
   it('realinha strap_sourcing de PVs abertos sem demanda vigente', () => {
@@ -35,9 +32,10 @@ describe('SQL — variantes GLOW METALIC × medida × cor', () => {
     expect(migration).toContain('base_product_id');
   });
 
-
+  // PG do projeto não tem aggregate min(uuid) — quebrou db push em 08/09/2026.
+  // Forma viva na 20800 (já aplicada): array_agg ordenado por created_at, id.
   it('não usa min(uuid) — Postgres não tem aggregate min em uuid', () => {
-    expect(migration).not.toMatch(/min\(\s*p\.id\s*\)/i);
+    expect(migration).not.toMatch(/\bmin\s*\(\s*p\.id\s*\)/i);
     expect(migration).toContain('(array_agg(p.id ORDER BY p.created_at NULLS LAST, p.id))[1]');
   });
 
