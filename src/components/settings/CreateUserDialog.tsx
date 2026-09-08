@@ -34,7 +34,6 @@ const ROLES: RoleDef[] = [
   { key: 'almoxarifado', label: 'Almoxarifado', description: 'Só estoque', modules: ['dashboard', 'estoque'] },
   { key: 'nfe_operator', label: 'Operador NF-e', description: 'NF + cadastros básicos', modules: ['dashboard', 'vendas', 'clientes', 'nfe', 'empresas_fiscal'] },
   { key: 'rh', label: 'RH', description: 'Funcionários e ponto. SEM folha', modules: ['dashboard', 'rh', 'terceirizados'] },
-  { key: 'montador', label: 'Montador / Solador', description: 'Só a própria produção (lançar pares e ver relatório pessoal)', modules: ['dashboard', 'ficha_montadores_self'] },
   { key: 'consulta', label: 'Consulta', description: 'Acesso amplo em modo leitura', modules: ['dashboard', 'estoque', 'produtos', 'ordens', 'vendas', 'clientes', 'reports', 'financeiro', 'nfe', 'empresas_fiscal', 'fornecedores', 'terceirizados', 'rh', 'producao', 'expedicao'] },
 ];
 

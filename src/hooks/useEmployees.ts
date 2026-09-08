@@ -45,8 +45,6 @@ export interface Employee {
   /** R$/par por dificuldade quando producao (fonte única; snapshot no apontamento). */
   valor_par_medio: number | null;
   valor_par_dificil: number | null;
-  /** Login ERP vinculado (self-service /minha-producao). NULL = sem acesso próprio. */
-  user_id: string | null;
   work_schedule_id: string | null;
   /** Adicionais de HE por funcionário (regime contrato). 0 = hora simples.
    *  LEGADO (percentual) — substituídos por he_normal_rate/he_sunday_holiday_rate
@@ -99,7 +97,7 @@ type EmployeePayKeys =
   | 'payment_type' | 'daily_rate' | 'work_schedule_id'
   | 'overtime_50_pct' | 'overtime_100_pct' | 'night_bonus_pct'
   | 'he_normal_rate' | 'he_sunday_holiday_rate'
-  | 'valor_par_medio' | 'valor_par_dificil' | 'user_id';
+  | 'valor_par_medio' | 'valor_par_dificil';
 type EmployeeForm =
   Omit<Employee, 'id' | 'created_at' | 'updated_at' | EmployeePayKeys> &
   Partial<Pick<Employee, EmployeePayKeys>>;

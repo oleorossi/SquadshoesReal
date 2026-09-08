@@ -4,7 +4,6 @@ import {
   producaoExportToCsv,
   semanaAnteriorDe,
 } from '@/lib/fichaMontadoresExport';
-import { resolveModuleForPath, isRouteAllowed } from '@/hooks/useAccessControl';
 
 describe('fichaMontadoresExport', () => {
   it('monta CSV com BOM e pares por dia', () => {
@@ -33,28 +32,9 @@ describe('fichaMontadoresExport', () => {
   });
 
   it('semanaAnteriorDe recua 7 dias a partir da segunda', () => {
-    // 2026-09-07 é segunda
     expect(semanaAnteriorDe('2026-09-07')).toEqual({
       from: '2026-08-31',
       to: '2026-09-06',
     });
-  });
-});
-
-describe('acesso minha-producao', () => {
-  it('rota mapeia para ficha_montadores_self', () => {
-    expect(resolveModuleForPath('/minha-producao')).toBe('ficha_montadores_self');
-  });
-
-  it('papel montador acessa minha-producao e não a ficha RH', () => {
-    const montador = { isAdmin: false, roles: ['montador'], perms: [] };
-    expect(isRouteAllowed('/minha-producao', montador)).toBe(true);
-    expect(isRouteAllowed('/fichas-montadores', montador)).toBe(false);
-  });
-
-  it('RH acessa as duas telas', () => {
-    const rh = { isAdmin: false, roles: ['rh'], perms: [] };
-    expect(isRouteAllowed('/minha-producao', rh)).toBe(true);
-    expect(isRouteAllowed('/fichas-montadores', rh)).toBe(true);
   });
 });
