@@ -970,6 +970,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
         const next = new Set([...prev].filter((s) => isCartaoFisicoEmitter(s)));
         return next.size > 0 ? next : new Set(CARTAO_FISICO_EMITTERS);
       });
+    } else {
+      // Volta ao A4 com a rota completa marcada (DoD: setores completos).
+      setActiveSectors(new Set(SECTORS));
     }
   };
   const markAllSectors = () => setActiveSectors(new Set(sectorChoices));
@@ -3252,17 +3255,19 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   const printPairCount = printOrders.reduce((total, order) => total + (Number(order.total_pairs) || 0), 0);
   const failedPrintQueryCount = failedQueries + (consumptionFailed ? 1 : 0);
   const hasAmbiguousConsumptionRouting = ambiguousConsumptionMaterials.length > 0;
+  // Cartão físico não usa consumo de materiais — não espera nem bloqueia por
+  // consumptionLoading / roteamento ambíguo (só queries estruturais + cartões).
   const printBlocked = activeSectors.size === 0
     || sheetCount === 0
     || initialQueriesLoading
-    || consumptionLoading
-    || failedPrintQueryCount > 0
-    || hasAmbiguousConsumptionRouting;
-  const printBlockedTitle = consumptionLoading
+    || (!cartao && consumptionLoading)
+    || (cartao ? failedQueries > 0 : failedPrintQueryCount > 0)
+    || (!cartao && hasAmbiguousConsumptionRouting);
+  const printBlockedTitle = (!cartao && consumptionLoading)
     ? 'O consumo dos materiais ainda está sendo calculado'
-    : failedPrintQueryCount > 0
+    : (cartao ? failedQueries > 0 : failedPrintQueryCount > 0)
       ? 'Consultas de dados falharam — recarregue a página antes de imprimir'
-      : hasAmbiguousConsumptionRouting
+      : (!cartao && hasAmbiguousConsumptionRouting)
         ? 'Há materiais com mais de um setor configurado — corrija a ficha técnica antes de imprimir'
         : undefined;
 
@@ -3355,7 +3360,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
               disabled={printBlocked || preparingNativePrint}
               title={printBlockedTitle || 'Abre o diálogo do navegador. Você pode imprimir ou escolher “Salvar como PDF”.'}
             >
-              {preparingNativePrint || initialQueriesLoading || consumptionLoading
+              {preparingNativePrint || initialQueriesLoading || (!cartao && consumptionLoading)
                 ? <Loader2 className="h-4 w-4 animate-spin" />
                 : <Printer className="h-4 w-4" />}
               Imprimir
@@ -3367,27 +3372,27 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
               disabled={printBlocked || preparingNativePrint}
               title={printBlockedTitle || 'Gera um PDF padronizado no servidor, indicado para celular e quando a geometria precisa ser idêntica entre impressoras.'}
             >
-              {initialQueriesLoading || consumptionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+              {initialQueriesLoading || (!cartao && consumptionLoading) ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
               PDF padronizado
             </Button>
           </div>
         </div>
 
-        {failedPrintQueryCount > 0 && (
+        {(cartao ? failedQueries > 0 : failedPrintQueryCount > 0) && (
           <div className="flex items-start gap-2 border-y border-destructive/30 bg-destructive/10 px-4 py-2.5 text-xs text-destructive" role="alert">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" weight="fill" />
-            <span><strong>{failedPrintQueryCount} consulta{failedPrintQueryCount > 1 ? 's falharam' : ' falhou'}.</strong> Cliente, solado ou consumo podem sair incompletos. Recarregue a página antes de emitir.</span>
+            <span><strong>{(cartao ? failedQueries : failedPrintQueryCount)} consulta{(cartao ? failedQueries : failedPrintQueryCount) > 1 ? 's falharam' : ' falhou'}.</strong> Cliente, solado ou consumo podem sair incompletos. Recarregue a página antes de emitir.</span>
           </div>
         )}
 
-        {consumptionLoading && (
+        {!cartao && consumptionLoading && (
           <div className="flex items-center gap-2 border-y border-border bg-muted/30 px-4 py-2.5 text-xs text-muted-foreground" role="status">
             <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
             Calculando os materiais de cada setor. A emissão será liberada quando a conferência terminar.
           </div>
         )}
 
-        {hasAmbiguousConsumptionRouting && (
+        {!cartao && hasAmbiguousConsumptionRouting && (
           <div className="flex items-start gap-2 border-y border-destructive/30 bg-destructive/10 px-4 py-2.5 text-xs text-destructive" role="alert">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" weight="fill" />
             <span>
@@ -3970,7 +3975,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             soma aviso+página cheia podia fragmentar com as metades trocadas
             na pilha). Folha própria = unidade página-alinhada que a inversão
             posiciona corretamente; custa 1 folha só quando há divergência. */}
-        {solagemData && ([['Solagem', solagemData.solagem], ['Colagem', solagemData.colagem]] as const)
+        {!cartao && solagemData && ([['Solagem', solagemData.solagem], ['Colagem', solagemData.colagem]] as const)
           .filter((entry): entry is ['Solagem' | 'Colagem', NonNullable<typeof solagemData.solagem>] =>
             !!entry[1] && entry[1].grandTotal !== entry[1].expectedTotal)
           .map(([sec, d]) => (
@@ -3993,7 +3998,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             SOMAR as cores de cabedal que compartilham o mesmo solado+cor do solado
             — antes dividia por ref+cor do cabedal (480 + 480), agora consolida
             (960). Reusa solagemData (bandas próprias do setor — roteiro B1). */}
-        {includesSector('Colagem') && (() => {
+        {!cartao && includesSector('Colagem') && (() => {
           const data = solagemData?.colagem;
           if (!data || data.bands.length === 0) return null;
           return <div className="page-break">
@@ -4015,7 +4020,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             Colagem SAIU daqui em 2026-06-08 → consolida por solado (bloco acima).
             Silk SAIU em 2026-06-12 → agrupamento solado+cor compacto com a
             logomarca (silkMontageGroups, bloco de setores agrupados acima). */}
-        {groupedWorksheets && (['Montagem'] as const).flatMap((sectorName) => {
+        {!cartao && groupedWorksheets && (['Montagem'] as const).flatMap((sectorName) => {
           if (!includesSector(sectorName)) return [];
           // B1: só imprime a ficha do setor pra grupos cuja ficha técnica tem
           // o setor no roteiro (production_sectors; null/[] = sem restrição).
@@ -4113,7 +4118,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             Colagem/Montagem — o maço saía com o último passo do solado na
             frente ("de trás pra frente"). Ordem canônica: SECTORS /
             CANONICAL_STAGE_ORDER / DISPLAY_SECTORS. */}
-        {includesSector('Solagem') && (() => {
+        {!cartao && includesSector('Solagem') && (() => {
           const data = solagemData?.solagem;
           if (!data || data.bands.length === 0) return null;
           return <div className="page-break">
@@ -4137,7 +4142,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             header gigante por OP). Lot sizing: expandedOrders → OPs splitadas
             viram N grupos (1 por lote). B1: acabamentoOrders já filtradas
             pelo roteiro (production_sectors). */}
-        {includesSector('Acabamento') && (() => {
+        {!cartao && includesSector('Acabamento') && (() => {
           if (acabamentoOrders.length === 0) return null;
           const resolveOrderImage = (order: any) => {
             const repColorLower = (order.color || '').toLowerCase();
@@ -4242,7 +4247,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
         })()}
 
         {/* ── Expedição: 1 ficha por cliente/CNPJ ── */}
-        {includesSector('Expedição') && expedicaoGroups && expedicaoGroups.map((group) => (
+        {!cartao && includesSector('Expedição') && expedicaoGroups && expedicaoGroups.map((group) => (
           <div key={`exped-${group.client_id}`} className="page-break">
             <ExpedicaoWorkSheet sectorLabel={`Expedição · ${group.client_name}`} group={group} sizeBand={bandForOps(group.orders.map((o: any) => o.op_number).filter(Boolean))} />
           </div>
@@ -4253,7 +4258,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             ocupam 2-3 A4 naturalmente. .keep-together nos blocos de cada
             seção (header, tabela de OPs, tabela de custos, footer) garante
             que cada bloco fica inteiro na sua página. */}
-        {includesSector('Relatório Gerencial') && reportGroups && reportGroups.map((rg) => (
+        {!cartao && includesSector('Relatório Gerencial') && reportGroups && reportGroups.map((rg) => (
           <div key={`report-${rg.saleOrder.id}`} className="page-break">
             <ManagementReport
               sectorLabel={`Relatório Gerencial · ${rg.saleOrder.order_number || 'PV —'}`}
