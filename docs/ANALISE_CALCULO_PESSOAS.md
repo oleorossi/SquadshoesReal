@@ -300,6 +300,20 @@ Testes automatizados que travam o contrato:
 
 Auditoria arquivo-a-arquivo (08/09/2026). Referência canônica: `computePeriodFolha` → `calculateSalaryPayroll` (`src/lib/salaryPayroll.ts`), versão `saldo-periodo-v2-2026-08-26`. O `day_ledger` carrega bruto → compensado → `payable_*`.
 
+### 9.0 Veredito — os relatórios de hoje estão corretos?
+
+**Na maior parte, sim — o que paga e o que desconta bate com a folha.** Faltas, atrasos líquidos, Excel, maço de holerite, PDF gerencial e os totais pagáveis da aba Relatórios usam `computePeriodFolha` (ou o snapshot gravado).
+
+Há **um bug vivo no print** e **duas divergências de propósito** que confundem se o usuário achar que “é o mesmo número da folha”:
+
+| Situação | Veredito | O que fazer |
+|---|---|---|
+| Folha, Faltas, Atrasos, Excel, printPayrollBundle, printRhReport | **CORRECT** | Confiar |
+| Aba Relatórios → “Horas extras” / “Pendências semanais” | **INTENTIONAL** | Conferência por semana ISO; o holerite é a verdade de pagamento |
+| Espelho legal (`/rh/espelho-ponto`) — totais de saldo | **INTENTIONAL** | Soma saldo **bruto** dia a dia (sem compensação do período) |
+| Botão **Imprimir espelho** na Folha (`printTimeMirror`) | **BUG** | HE em R$ = `salário÷220 × 1,5 × Σ excedente/dia` — ignora taxas individuais, compensação e piso de 10 min |
+| Overview / LateArrivals / PreFolha / KPIsRH | **ORPHAN** | Existem no disco, não estão montados no hub atual |
+
 **Legenda de veredito**
 
 | Tag | Significado |
@@ -310,6 +324,16 @@ Auditoria arquivo-a-arquivo (08/09/2026). Referência canônica: `computePeriodF
 | **ORPHAN** | Arquivo existe, **nenhum** mount/rota viva no hub atual |
 
 ### 9.1 Hub vivo (`/rh`)
+
+#### R00 — Espelho relógio de ponto (documento bruto na Folha)
+| Campo | Valor |
+|---|---|
+| **Nome + path** | Painel Documentos da Folha · `Payroll.tsx` (`reportSel.espelho` → `printPayrollBundle`) |
+| **Claims** | Registro bruto das batidas importadas — **sem cálculo** — só conferência |
+| **Fonte** | `time_records.punches` agrupados por funcionário (`scopedEspelho`) |
+| **Motor** | Nenhum (não calcula HE/atraso/falta) |
+| **Veredito** | **CORRECT** para o que promete (presença bruta) |
+| **Evidência** | Copy em `Payroll.tsx:1145–1146`; montagem `scopedEspelho` ~484–524. Não confundir com R07/R08. |
 
 #### R01 — Folha / Fechamento
 | Campo | Valor |
@@ -481,6 +505,7 @@ Auditoria arquivo-a-arquivo (08/09/2026). Referência canônica: `computePeriodF
 
 | Relatório | Vivo? | vs Folha |
 |---|---|---|
+| Espelho bruto do relógio (docs Folha) | sim | CORRECT (sem cálculo) |
 | Folha / FolhaConsolidada | sim | CORRECT |
 | RelatorioFaltas | sim | CORRECT |
 | RelatorioAtrasos + PDF | sim | CORRECT |
@@ -493,6 +518,13 @@ Auditoria arquivo-a-arquivo (08/09/2026). Referência canônica: `computePeriodF
 | printPayrollBundle / printRhReport / Excel | sim | CORRECT |
 | Exceptions / Pendências | sim | INTENTIONAL (operacional) |
 | Overview / LateArrivals / Divergences / PreFolha / KPIsRH / AbsenceReport | **não montados** | ORPHAN |
+
+### 9.5.1 Como o usuário deve ler cada tela
+
+1. **Quer saber o que vai pagar?** → Folha (holerite / Excel / maço). Relatórios de Faltas e Atrasos batem com essas colunas.
+2. **Quer conferir se a semana fechou?** → Relatórios → “Horas extras” / “Pendências semanais” (saldo da semana ISO; pode divergir do holerite).
+3. **Quer ver só o que o relógio marcou?** → Folha → Documentos → Espelho relógio de ponto (bruto).
+4. **Quer o documento legal dia a dia?** → Espelho Portaria 671; totais de saldo ali são brutos. **Não use** o “Valor HE (1,5×)” do botão Imprimir espelho da Folha como valor a pagar — está com fórmula legada (R08).
 
 ### 9.6 Prioridade se for corrigir (sem mexer no motor)
 
