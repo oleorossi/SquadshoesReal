@@ -193,6 +193,12 @@ export function collapseDuplicateStaleStrapPreviews(
           && preview.saleOrderItemId !== ok.saleOrderItemId) {
         return false;
       }
+      // buy_ready (STRASS) ≠ internal (overlock/chata): mesma cor/metragem
+      // não prova duplicata — colapsar apaga a demanda comprada pronta.
+      if (preview.sourceMode && ok.sourceMode
+          && preview.sourceMode !== ok.sourceMode) {
+        return false;
+      }
       if (preview.technicalStrapLineId && ok.technicalStrapLineId
           && preview.technicalStrapLineId === ok.technicalStrapLineId) {
         return true;
@@ -228,7 +234,14 @@ export function parseCanonicalStrapDemandPreview(
   const sourceMode = value.source_mode === 'internal' || value.source_mode === 'buy_ready'
     ? value.source_mode
     : null;
-  const rawName = stringOrNull(resolved.strap_product_name);
+  // Snapshot pré-demanda (committed + physical_snapshot_complete=false) grava
+  // group_name/label/color da linha do item, sem strap_product_name. Sem este
+  // fallback a STRASS vira "Tira sem cadastro" e some na busca da tela.
+  const rawName = stringOrNull(resolved.strap_product_name)
+    || stringOrNull(resolved.group_name)
+    || stringOrNull(resolved.label);
+  const rawColor = stringOrNull(resolved.strap_color_name)
+    || stringOrNull(resolved.color);
   const catalog = resolved.catalog && typeof resolved.catalog === 'object'
     ? resolved.catalog as Record<string, unknown>
     : {};
@@ -244,7 +257,7 @@ export function parseCanonicalStrapDemandPreview(
     finishedProductId: stringOrNull(value.finished_product_id),
     strapProductName: rawName || STRAP_LABEL_FALLBACK,
     measureName: stringOrNull(resolved.measure_name),
-    strapColorName: String(resolved.strap_color_name || '—'),
+    strapColorName: rawColor || '—',
     baseProductName: stringOrNull(resolved.base_product_name),
     baseGroupName: stringOrNull(resolved.base_group_name),
     confirmedYieldMPerM: numberOrNull(resolved.confirmed_yield_m_per_m),
@@ -273,6 +286,7 @@ export type CanonicalStrapConsumptionRow = MaterialConsumptionRow & {
 
 interface StockProductLike {
   id?: unknown;
+  name?: unknown;
   quantity?: unknown;
   reserved_stock?: unknown;
 }
@@ -335,7 +349,6 @@ export function replaceWithCanonicalStrapRows(
       : preview.sourceMode === 'buy_ready'
         ? 'Comprada pronta'
         : 'Origem pendente';
-    const displayName = formatCanonicalStrapProductName(preview);
 
     if (existing) {
       existing.totalQuantity += gross;
@@ -356,6 +369,15 @@ export function replaceWithCanonicalStrapRows(
     const product = preview.finishedProductId
       ? productsById.get(preview.finishedProductId)
       : undefined;
+    const productName = String(product?.name || '').trim();
+    const namedPreview = preview.strapProductName
+      && preview.strapProductName !== STRAP_LABEL_FALLBACK
+      ? preview.strapProductName
+      : (productName || preview.strapProductName);
+    const displayName = formatCanonicalStrapProductName({
+      ...preview,
+      strapProductName: namedPreview,
+    });
     const internal = preview.sourceMode === 'internal';
     const pendingInternal = internal && (
       !preview.recipeId
