@@ -5,7 +5,7 @@ import { corsHeaders } from "../_shared/cors.ts";
 // mudar tb em /src/hooks/useAccessControl.ts (ROLE_MODULES).
 const VALID_ROLES = [
   "admin", "gerente", "producao", "almoxarifado", "comercial",
-  "consulta", "nfe_operator", "rh",
+  "consulta", "nfe_operator", "rh", "montador",
 ] as const;
 
 Deno.serve(async (req) => {
@@ -67,6 +67,7 @@ Deno.serve(async (req) => {
       // Não substitui as roles — só adiciona override que useAccessControl usa
       // com precedência. Se vier vazio/null, RBAC normal por roles.
       allowed_modules,
+      employee_id,
     } = body as {
       email?: string;
       password?: string;
@@ -74,6 +75,8 @@ Deno.serve(async (req) => {
       roles?: string[];
       approve?: boolean;
       allowed_modules?: string[];
+      /** Quando preenchido, vincula o login novo a este employees.id (self-service). */
+      employee_id?: string;
     };
 
     if (!email || !password) {
@@ -199,11 +202,27 @@ Deno.serve(async (req) => {
       }
     }
 
+    let employeeLinked: string | null = null;
+    let employeeLinkWarning: string | undefined;
+    if (typeof employee_id === "string" && employee_id.length > 0) {
+      const { error: linkErr } = await adminClient
+        .from("employees")
+        .update({ user_id: newUserId })
+        .eq("id", employee_id);
+      if (linkErr) {
+        employeeLinkWarning = `Usuário criado, mas falha ao vincular funcionário: ${linkErr.message}. Vincule em Funcionários → Conta de acesso.`;
+      } else {
+        employeeLinked = employee_id;
+      }
+    }
+
     return new Response(JSON.stringify({
       user: createData.user,
       roles: cleanRoles,
       approved: shouldApprove,
       allowed_modules: cleanModules,
+      employee_id: employeeLinked,
+      warning: employeeLinkWarning,
     }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

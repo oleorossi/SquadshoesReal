@@ -33,6 +33,8 @@ import { HubTabsList } from '@/components/layout/HubTabs';
 import AdvancesPanel from '@/components/hr/AdvancesPanel';
 import { useProductionSectors } from '@/hooks/useSectorRoster';
 import { normalizeEmployeeEmploymentState } from '@/lib/employeeEmployment';
+import { useProfiles } from '@/hooks/useUserManagement';
+import { Link } from 'react-router-dom';
 
 // Folha por hora: o que importa do cadastro é nome, matrícula, salário-referência
 // (220h/mês) e contato/PIX. HE/escala/mensalista-diarista foram aposentados (as
@@ -41,6 +43,7 @@ const emptyEmployee = {
   name: '', cpf: '', external_id: '', role: '', department: '', salary: 0,
   phone: '', whatsapp: '', pix_key: '', pix_type: '', notes: '', active: true,
   admission_date: new Date().toISOString().split('T')[0], termination_date: null as string | null,
+  user_id: null as string | null,
 };
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -50,6 +53,7 @@ const fmtDate = (date?: string | null) => date
 
 export default function Employees() {
   const { data: employees = [], isLoading, isError } = useEmployees();
+  const { data: profiles = [] } = useProfiles();
   const addEmployee = useAddEmployee();
   const updateEmployee = useUpdateEmployee();
   const deleteEmployee = useDeleteEmployee();
@@ -631,6 +635,34 @@ export default function Employees() {
                     : ''}
                   Cada apontamento na Ficha de Montadores guarda o valor da época (congelado). Reajustar aqui não altera folhas passadas.
                 </p>
+                <div className="sm:col-span-2 space-y-2 border-t border-border pt-3">
+                  <Label>Conta de acesso (Minha produção)</Label>
+                  <Select
+                    value={(form as any).user_id || '__none__'}
+                    onValueChange={(v) => setForm(f => ({ ...f, user_id: v === '__none__' ? null : v } as any))}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Sem login vinculado" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Sem login vinculado</SelectItem>
+                      {profiles
+                        .filter((p) => {
+                          const taken = employees.some(e => e.user_id === p.id && e.id !== editing?.id);
+                          return !taken || p.id === (form as any).user_id;
+                        })
+                        .map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {(p.full_name || p.email || p.id).trim()}
+                            {p.approved ? '' : ' (pendente)'}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Vincula um login do ERP a este funcionário. Com o papel <strong>Montador / Solador</strong>,
+                    a pessoa abre <Link className="underline" to="/minha-producao">/minha-producao</Link> e
+                    lança só os próprios pares. Crie o usuário em Configurações se ainda não existir.
+                  </p>
+                </div>
               </>
             )}
 

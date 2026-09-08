@@ -126,6 +126,7 @@ export const navigationCatalog: NavigationResource[] = [
   // Pessoas
   { path: '/rh', label: 'Pessoas', group: 'RH', icon: Users, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/RHHub') },
   { path: '/fichas-montadores', label: 'Ficha Montadores', group: 'RH', icon: ClipboardCheck, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/FichaMontadoresPage') },
+  { path: '/minha-producao', label: 'Minha produção', group: 'RH', icon: Footprints, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/MinhaProducaoPage') },
   { path: '/terceirizados', label: 'Terceirizados', group: 'RH', icon: Truck, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/TerceirizadosHub') },
   // Esta fila tem filtros, sugestões por padrão e aplicação em lote; não é a
   // mesma revisão manual embutida no Ponto do RH, então permanece no Cmd+K.
@@ -212,7 +213,7 @@ const menuGroupsDeclarados: NavigationGroup[] = [
   },
   {
     label: 'RH', icon: Users,
-    items: [resource('/rh'), resource('/fichas-montadores'), resource('/terceirizados')],
+    items: [resource('/rh'), resource('/fichas-montadores'), resource('/minha-producao'), resource('/terceirizados')],
   },
 ];
 
@@ -361,6 +362,7 @@ export const ROLE_MENU_PRESENTATION: Record<string, RoleMenuPresentation> = {
   nfe_operator: { home: '/nfe',                  groupOrder: ['Fiscal', 'Comercial'] },
   almoxarifado: { home: '/estoque',              groupOrder: ['Estoque'] },
   rh:           { home: '/rh',                   groupOrder: ['RH'] },
+  montador:     { home: '/minha-producao',       groupOrder: ['RH'] },
 };
 
 /**
@@ -368,7 +370,7 @@ export const ROLE_MENU_PRESENTATION: Record<string, RoleMenuPresentation> = {
  * nunca a ordem incidental das linhas no banco, que mudaria a experiência da
  * pessoa sem ninguém ter decidido nada.
  */
-const PRIORIDADE_DE_PAPEL = ['admin', 'gerente', 'consulta', 'producao', 'comercial', 'nfe_operator', 'almoxarifado', 'rh'];
+const PRIORIDADE_DE_PAPEL = ['admin', 'gerente', 'consulta', 'producao', 'comercial', 'nfe_operator', 'almoxarifado', 'rh', 'montador'];
 
 export function resolveRoleHome(roles: readonly string[]): string {
   const papel = PRIORIDADE_DE_PAPEL.find((r) => roles.includes(r));

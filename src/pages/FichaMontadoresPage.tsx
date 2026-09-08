@@ -47,7 +47,10 @@ import { ratesOfRow, sumProducaoRows, type FichaMontadorRow } from "@/lib/montad
 import { adjustParesByFicha, fichasFromPares, isFichaLocked, parseParesEntry, rateForEntryCategory } from "@/lib/fichaMontadoresEntry";
 import { searchMatchesAllTerms } from "@/lib/searchUtils";
 import { toast } from "sonner";
-import { Printer, ChartBar, ClipboardText, Users, CurrencyDollar, FloppyDisk, CaretLeft, CaretRight, Warning, CheckCircle, Clock, CalendarBlank, ListBullets, Plus, Minus, LockKey, ArrowDown, X } from "@phosphor-icons/react";
+import { Printer, ChartBar, ClipboardText, Users, CurrencyDollar, FloppyDisk, CaretLeft, CaretRight, Warning, CheckCircle, Clock, CalendarBlank, ListBullets, Plus, Minus, LockKey, ArrowDown, X, FileArrowDown } from "@phosphor-icons/react";
+import {
+  buildProducaoExportRows, downloadTextFile, producaoExportToCsv, semanaAnteriorDe,
+} from "@/lib/fichaMontadoresExport";
 
 type Grade = "adulto" | "infantil";
 /** Duas abas: LANÇAR e VER. "Produtividade" e "Relatórios" eram telas separadas
@@ -649,10 +652,15 @@ export default function FichaMontadoresPage() {
     // wd[6] = domingo. Com wd[4] (sexta) o fim de semana ficava FORA do intervalo
     // buscado: o sábado nem chegava do banco, então não aparecia em lugar nenhum.
     const cands = [chamadaDia, wd[0], wd[6], range.from, range.to].filter(Boolean) as string[];
+    // Semana anterior entra na busca pra o comparativo do resumo não ficar cego.
+    if (pMode === "semana") {
+      const prev = semanaAnteriorDe(range.from);
+      cands.push(prev.from, prev.to);
+    }
     const shift = (iso: string, days: number) =>
       isoOf(new Date(new Date(iso + "T00:00:00").getTime() + days * 864e5));
     return { from: shift(cands.reduce((a, b) => (a < b ? a : b)), -1), to: shift(cands.reduce((a, b) => (a > b ? a : b)), 1) };
-  }, [chamadaDia, semanaAnchor, range.from, range.to]);
+  }, [chamadaDia, semanaAnchor, range.from, range.to, pMode]);
 
   const { data: employees = [] } = useEmployees();
   const { data: employeeSectors = [] } = useEmployeeSectors();
@@ -1212,6 +1220,35 @@ export default function FichaMontadoresPage() {
     return { ...base, semDetalhe, legado };
   }, [fichasFiltradas]);
 
+  /** Comparativo só no modo semana: pares/bruto da semana imediatamente anterior
+   *  (mesmos filtros de pessoa/pagamento). */
+  const resumoSemanaAnterior = useMemo(() => {
+    if (pMode !== "semana") return null;
+    const prev = semanaAnteriorDe(range.from);
+    const rows = fichas.filter((f) =>
+      f.dia >= prev.from && f.dia <= prev.to
+      && (filtroMontador === "__all__" || f.montador_id === filtroMontador)
+      && (pagStatus === "todos" || estadoDe(f) === pagStatus));
+    return { ...sumProducaoRows(rows as unknown as FichaMontadorRow[]), ...prev };
+  }, [pMode, range.from, fichas, filtroMontador, pagStatus, estadoDe]);
+
+  function exportarCsvPeriodo() {
+    const nomePorId = new Map(montadores.map((e) => [e.id, e.name] as const));
+    const rows = buildProducaoExportRows(
+      fichasFiltradas as unknown as Parameters<typeof buildProducaoExportRows>[0],
+      nomePorId,
+    );
+    if (!rows.length) {
+      toast.message("Nada para exportar neste período.");
+      return;
+    }
+    downloadTextFile(
+      `ficha-montadores_${setor}_${range.from}_${range.to}.csv`,
+      producaoExportToCsv(rows),
+    );
+    toast.success(`CSV com ${rows.length} linha(s) baixado.`);
+  }
+
   /**
    * CALENDÁRIO em grade de mês (R2): pares por DIA, somando todos os montadores
    * que passaram no filtro. Semana começa na SEGUNDA (`dowIdx`), igual ao PDF.
@@ -1521,7 +1558,11 @@ export default function FichaMontadoresPage() {
             </div>
           </div>
 
-          {montadores.length === 0 ? (
+          {loading && montadores.length > 0 ? (
+            <Panel className="p-8 flex items-center justify-center gap-2 text-muted-foreground">
+              <Clock className="h-5 w-5 animate-pulse" /> Carregando lançamentos…
+            </Panel>
+          ) : montadores.length === 0 ? (
             <Panel>
               <EmptyState icon={Users} title={`Nenhum ${cfgSetor.sing} por par em ${cfgSetor.label}`}
                 description={`Defina setor, regime “Por par” e R$/par no cadastro antes de lançar. Pessoas mensalistas deste setor não aparecem na chamada porque não compõem a folha por produção.`}
@@ -1940,10 +1981,21 @@ export default function FichaMontadoresPage() {
           eyebrow="FECHAMENTO SEMANAL"
           title={`Conferência de ${cfgSetor.label}`}
           subtitle="O período, a pessoa e o status abaixo controlam todas as visões e o relatório impresso."
-          actions={<Button type="button" variant="outline" size="sm" className="h-9 w-9 gap-1.5 p-0 sm:w-auto sm:px-3" disabled={agg.length === 0}
-            title="Gera rendimento por pessoa e calendário no mesmo documento, respeitando todos os filtros."
-            aria-label="Imprimir relatório"
-            onClick={imprimirRelatorioCompleto}><Printer className="h-4 w-4" /><span className="hidden sm:inline">Imprimir relatório</span></Button>}
+          actions={
+            <div className="flex items-center gap-1.5">
+              <Button type="button" variant="outline" size="sm" className="h-9 w-9 gap-1.5 p-0 sm:w-auto sm:px-3"
+                disabled={fichasFiltradas.length === 0}
+                title="Baixa CSV do período (Excel pt-BR)."
+                aria-label="Exportar CSV"
+                onClick={exportarCsvPeriodo}>
+                <FileArrowDown className="h-4 w-4" /><span className="hidden sm:inline">Exportar CSV</span>
+              </Button>
+              <Button type="button" variant="outline" size="sm" className="h-9 w-9 gap-1.5 p-0 sm:w-auto sm:px-3" disabled={agg.length === 0}
+                title="Gera rendimento por pessoa e calendário no mesmo documento, respeitando todos os filtros."
+                aria-label="Imprimir relatório"
+                onClick={imprimirRelatorioCompleto}><Printer className="h-4 w-4" /><span className="hidden sm:inline">Imprimir relatório</span></Button>
+            </div>
+          }
         >
         <div className="flex flex-wrap items-end gap-3">
           <div>
@@ -2074,6 +2126,42 @@ export default function FichaMontadoresPage() {
               })}
             </div>
           </section>
+
+          {resumoSemanaAnterior && (
+            <div className="grid grid-cols-2 gap-3 rounded-lg border border-border bg-muted/30 p-3 text-sm sm:grid-cols-4">
+              <div className="col-span-2 sm:col-span-4 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                vs semana anterior ({fmtDia(resumoSemanaAnterior.from)}–{fmtDia(resumoSemanaAnterior.to)})
+              </div>
+              <div>
+                <p className="text-[10px] uppercase text-muted-foreground">Pares</p>
+                <p className="font-mono tabular-nums">
+                  {resumoPeriodo.pares.toLocaleString("pt-BR")}
+                  <span className={`ml-1 text-xs ${resumoPeriodo.pares - resumoSemanaAnterior.pares >= 0 ? "text-green-600" : "text-red-600"}`}>
+                    ({resumoPeriodo.pares - resumoSemanaAnterior.pares >= 0 ? "+" : ""}
+                    {(resumoPeriodo.pares - resumoSemanaAnterior.pares).toLocaleString("pt-BR")})
+                  </span>
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase text-muted-foreground">Bruto</p>
+                <p className="font-mono tabular-nums">
+                  {fmtBRL(resumoPeriodo.bruto)}
+                  <span className={`ml-1 text-xs ${resumoPeriodo.bruto - resumoSemanaAnterior.bruto >= 0 ? "text-green-600" : "text-red-600"}`}>
+                    ({resumoPeriodo.bruto - resumoSemanaAnterior.bruto >= 0 ? "+" : ""}
+                    {fmtBRL(resumoPeriodo.bruto - resumoSemanaAnterior.bruto)})
+                  </span>
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase text-muted-foreground">Anterior · pares</p>
+                <p className="font-mono tabular-nums text-muted-foreground">{resumoSemanaAnterior.pares.toLocaleString("pt-BR")}</p>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase text-muted-foreground">Anterior · bruto</p>
+                <p className="font-mono tabular-nums text-muted-foreground">{fmtBRL(resumoSemanaAnterior.bruto)}</p>
+              </div>
+            </div>
+          )}
 
           {(resumoPeriodo.taxaVariou || resumoPeriodo.legado > 0 || resumoPeriodo.semDetalhe > 0) && (
             <div className="flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-xs text-amber-700 dark:text-amber-400">

@@ -7368,6 +7368,7 @@ export type Database = {
           updated_at: string
           valor_par_dificil: number | null
           valor_par_medio: number | null
+          user_id: string | null
           whatsapp: string | null
           work_schedule_id: string | null
         }
@@ -7408,6 +7409,7 @@ export type Database = {
           updated_at?: string
           valor_par_dificil?: number | null
           valor_par_medio?: number | null
+          user_id?: string | null
           whatsapp?: string | null
           work_schedule_id?: string | null
         }
@@ -7448,6 +7450,7 @@ export type Database = {
           updated_at?: string
           valor_par_dificil?: number | null
           valor_par_medio?: number | null
+          user_id?: string | null
           whatsapp?: string | null
           work_schedule_id?: string | null
         }

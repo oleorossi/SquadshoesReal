@@ -55,6 +55,7 @@ export const ROLES = [
   { key: 'comercial', label: 'Comercial', description: 'Vendas, clientes e relatórios' },
   { key: 'nfe_operator', label: 'Operador NF-e', description: 'Emite NF-e, vê PV + cliente; sem AR/AP/DRE' },
   { key: 'rh', label: 'RH', description: 'Funcionários, ponto, banco de horas, escalas (sem folha)' },
+  { key: 'montador', label: 'Montador / Solador', description: 'Só a própria produção' },
   { key: 'consulta', label: 'Consulta', description: 'Apenas visualização' },
 ] as const;
 

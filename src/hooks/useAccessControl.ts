@@ -160,6 +160,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/centro-controle': 'producao',
   '/imprimir-fichas': 'producao',
   '/fichas-montadores': 'ficha_montadores',
+  '/minha-producao': 'ficha_montadores_self',
   '/quotations': 'financeiro',
   '/manifests': 'expedicao',
   '/transporters': 'expedicao',
@@ -227,7 +228,7 @@ export const ROLE_MODULES: Record<string, string[]> = {
     'dashboard', 'estoque', 'produtos', 'ordens', 'vendas', 'clientes',
     'relatorios', 'financeiro', 'nfe', 'empresas_fiscal',
     'fornecedores', 'terceirizados', 'rh', 'rh_folha',
-    'producao', 'expedicao', 'ficha_montadores', 'ficha_pagamento',
+    'producao', 'expedicao', 'ficha_montadores', 'ficha_pagamento', 'ficha_montadores_self',
   ],
   producao: [
     'dashboard', 'estoque', 'produtos', 'ordens', 'producao', 'vendas', 'expedicao', 'ficha_montadores',
@@ -236,6 +237,7 @@ export const ROLE_MODULES: Record<string, string[]> = {
     // como o hub passou a ser governado por 'terceirizados', concedemos aqui pra não
     // tirar acesso de ninguém na unificação.
     'terceirizados',
+    'ficha_montadores_self',
   ],
   almoxarifado: [
     'dashboard', 'estoque',
@@ -256,7 +258,11 @@ export const ROLE_MODULES: Record<string, string[]> = {
   // RH: cadastros, ponto, banco de horas, escalas, faltas. SEM folha de pagamento
   // (gera financial_entries, restrito a admin).
   rh: [
-    'dashboard', 'rh', 'terceirizados', 'ficha_montadores',
+    'dashboard', 'rh', 'terceirizados', 'ficha_montadores', 'ficha_montadores_self',
+  ],
+  // Montador/solador: só a própria produção. Sem RH, sem pagar, sem grade da equipe.
+  montador: [
+    'dashboard', 'ficha_montadores_self',
   ],
 };
 

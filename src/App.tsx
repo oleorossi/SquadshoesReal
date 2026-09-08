@@ -1116,6 +1116,11 @@ const router = createBrowserRouter([
         lazy: () => import("./pages/FichaMontadoresPage").then(m => ({ Component: m.default })),
       },
       {
+        // Self-service do montador/solador (regime por par) — só a própria produção
+        path: "minha-producao",
+        lazy: () => import("./pages/MinhaProducaoPage").then(m => ({ Component: m.default })),
+      },
+      {
         path: "reports",
         lazy: () => import("./pages/Reports").then(m => ({ Component: m.default })),
       },
