@@ -38,18 +38,58 @@ export type ConsumptionRow = MaterialConsumptionRow & {
   technicalStrapLineIds?: string[];
 };
 
+const normStrapLabel = (value: string) => (value || '')
+  .toLowerCase()
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .trim();
+
+const strapCoveredByCanonical = (
+  calculated: MaterialConsumptionRow,
+  canonicalStraps: ConsumptionRow[],
+): boolean => {
+  const calculatedGroup = normStrapLabel(calculated.groupName || '');
+  const calculatedFull = normStrapLabel(
+    `${calculated.groupName || ''} ${calculated.materialName || ''}`,
+  );
+  if (!calculatedGroup && !calculatedFull) return false;
+
+  return canonicalStraps.some((row) => {
+    const canonicalGroup = normStrapLabel(row.groupName || '');
+    const canonicalFull = normStrapLabel(
+      `${row.groupName || ''} ${row.materialName || ''}`,
+    );
+    if (!canonicalGroup && !canonicalFull) return false;
+
+    const calculatedStem = calculatedGroup.split(/\s*[·|]\s*/)[0]?.trim() || calculatedGroup;
+    const canonicalStem = canonicalGroup.split(/\s*[·|]\s*/)[0]?.trim() || canonicalGroup;
+
+    return (
+      (calculatedStem && canonicalStem && (
+        calculatedStem === canonicalStem
+        || calculatedStem.includes(canonicalStem)
+        || canonicalStem.includes(calculatedStem)
+      ))
+      || (calculatedFull && canonicalFull && (
+        canonicalFull.includes(calculatedFull)
+        || calculatedFull.includes(canonicalFull)
+      ))
+      || (/strass/i.test(calculatedFull) && /strass/i.test(canonicalFull))
+    );
+  });
+};
+
 /**
  * Preserva a quantidade calculada pela ficha como PRÉVIA quando a RPC canônica
- * ainda não devolveu nenhuma tira. As linhas continuam com quantidade
- * operacional zero e aviso, portanto não viram falta nem sugestão de compra.
+ * ainda não devolveu nenhuma tira — ou quando devolveu só parte das linhas
+ * (ex.: OVERLOCK na preview, STRASS só na ficha). As linhas órfãs ficam com
+ * quantidade operacional zero e aviso, portanto não viram falta nem OC.
  */
 export function attachUnresolvedStrapQuantityPreview(
   canonicalRows: ConsumptionRow[],
   calculatedRows: MaterialConsumptionRow[],
   hasCanonicalPreview: boolean,
 ): ConsumptionRow[] {
-  if (hasCanonicalPreview) return canonicalRows;
-
   const calculatedStraps = calculatedRows.filter((row) =>
     row.componentType === 'Tiras' && Number(row.totalQuantity) > 0);
   if (calculatedStraps.length === 0) return canonicalRows;
@@ -58,15 +98,32 @@ export function attachUnresolvedStrapQuantityPreview(
     || 'A tira permanece bloqueada até resolver variante, base, cor e receita por ID.';
   const previewWarning = `${unresolvedWarning} A metragem exibida é somente uma prévia calculada pela ficha.`;
 
+  const asPreview = (row: MaterialConsumptionRow): ConsumptionRow => ({
+    ...row,
+    totalQuantity: 0,
+    previewQuantity: Number(row.totalQuantity),
+    productIds: [],
+    warning: previewWarning,
+  });
+
+  if (!hasCanonicalPreview) {
+    return [
+      ...canonicalRows.filter((row) => row.componentType !== 'Tiras'),
+      ...calculatedStraps.map(asPreview),
+    ];
+  }
+
+  // Preview parcial: não apagar STRASS (ou outra tira) calculada pela ficha
+  // que a RPC omitiu porque o snapshot do item não tem o line_id.
+  const canonicalStraps = canonicalRows.filter((row) => row.componentType === 'Tiras');
+  const orphanCalculated = calculatedStraps.filter(
+    (row) => !strapCoveredByCanonical(row, canonicalStraps),
+  );
+  if (orphanCalculated.length === 0) return canonicalRows;
+
   return [
-    ...canonicalRows.filter((row) => row.componentType !== 'Tiras'),
-    ...calculatedStraps.map((row): ConsumptionRow => ({
-      ...row,
-      totalQuantity: 0,
-      previewQuantity: Number(row.totalQuantity),
-      productIds: [],
-      warning: previewWarning,
-    })),
+    ...canonicalRows,
+    ...orphanCalculated.map(asPreview),
   ];
 }
 

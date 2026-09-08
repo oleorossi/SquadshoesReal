@@ -52,9 +52,13 @@ export default function OrderConsumptionDialog({ open, onOpenChange, orderIds, t
       const baseRows = adaptCanonicalConsumptionLines(report.lines);
       const previews = canonicalStrapPreviews(report).map(({ preview }) => preview);
       // Quantidades e identidades já vêm do motor operacional. Esta tela só
-      // agrega/adapta; linhas exclusivamente diagnósticas (qtd 0) não imprimem.
+      // agrega/adapta. Não filtre Tiras com aviso e qtd 0: a STRASS (e outras
+      // gaps da ficha) precisa aparecer mesmo bloqueada / sem metragem.
       const computed = applyCanonicalStrapsForPresentation(baseRows, previews)
-        .filter((row) => !(row.warning && !(row.totalQuantity > 0))) as ConsumptionRow[];
+        .filter((row) => {
+          if (row.componentType === 'Tiras') return true;
+          return !(row.warning && !(row.totalQuantity > 0));
+        }) as ConsumptionRow[];
 
       const sortedRows = [...computed].sort((a, b) => {
         const typeDiff = COMPONENT_ORDER.indexOf(a.componentType as any) - COMPONENT_ORDER.indexOf(b.componentType as any);

@@ -6,12 +6,10 @@
 -- strap_product_name → "Tira sem cadastro" / colapso vs overlock. Se o bloco 4
 -- DEVOLVE uma linha STRASS com group_name/label, o rótulo deveria aparecer.
 --
--- Hipótese B (causa mais provável de AUSÊNCIA TOTAL após A): STRASS está na
--- ficha (technical_sheets.strap_colors) e NÃO no snapshot do item
--- (sale_order_items.strap_colors). A preview itera SÓ o item → linha nunca
--- nasce. Com outras tiras na preview, attachUnresolvedStrapQuantityPreview
--- early-return e replaceWithCanonicalStrapRows descarta qualquer Tiras
--- calculada. Bloco 3 ≠ ≠ deve acusar isso.
+-- Hipótese B (mitigada em 21100): STRASS na ficha e NÃO no snapshot do item.
+-- A preview iterava SÓ o item → linha nunca nascia. O batch une line_ids da
+-- ficha ausentes do item antes do preview. Bloco 3 ainda acusa o gap no dado;
+-- o Consumo deve listar a tira com aviso sheet_strap_missing_from_item_snapshot.
 --
 -- Hipótese C (secundária): source_mode NULL no sourcing da STRASS + mesma
 -- cor/metragem da overlock → collapseDuplicateStaleStrapPreviews ainda pode

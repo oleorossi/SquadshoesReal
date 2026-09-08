@@ -52,21 +52,25 @@ describe('attachUnresolvedStrapQuantityPreview', () => {
     expect(rowShortfall(row)).toBe(0);
   });
 
-  it('não altera a linha quando existe preview canônica', () => {
+  it('não altera a linha quando a preview canônica já cobre a tira calculada', () => {
+    const covered: ConsumptionRow = {
+      ...unresolved,
+      groupName: 'TIRA CHATA 8MM · NAPA SOFT',
+      materialName: 'Produção interna',
+      color: 'CAPUCCINO',
+      totalQuantity: 17.25,
+    };
     expect(attachUnresolvedStrapQuantityPreview(
-      [unresolved],
+      [covered],
       [calculatedStrap],
       true,
-    )).toEqual([unresolved]);
+    )).toEqual([covered]);
   });
 
-  // Regressão PV-00169 / Dakotton: se a preview canônica trouxe OVERLOCK mas
-  // omitiu STRASS (linha só na ficha, ausente do snapshot do item), o Consumo
-  // NÃO reanexa a STRASS calculada — hasCanonicalPreview=true early-return.
-  // Hoje o path Consumo nem gera Tiras em `lines` (só strap_previews), então
-  // este teste documenta o buraco do helper; o conserto real é emitir a gap
-  // no SQL (sheet line_id ∉ item.strap_colors).
-  it('com preview parcial, STRASS calculada pela ficha continua sumindo (buraco conhecido)', () => {
+  // Regressão PV-00169 / Dakotton: preview trouxe OVERLOCK e omitiu STRASS
+  // (linha só na ficha). O helper reanexa a STRASS como prévia bloqueada.
+  // O path Consumo canônico corrige no SQL (mig 21100); isto é defesa TS.
+  it('com preview parcial, reanexa STRASS calculada pela ficha como prévia', () => {
     const overlockCanonical: ConsumptionRow = {
       componentType: 'Tiras',
       groupName: 'TIRA OVERLOCK 5MM · NAPA SOFT',
@@ -92,8 +96,13 @@ describe('attachUnresolvedStrapQuantityPreview', () => {
       true,
     );
 
-    expect(rows).toHaveLength(1);
-    expect(rows.some((row) => /STRASS/i.test(row.groupName))).toBe(false);
+    expect(rows).toHaveLength(2);
+    const strass = rows.find((row) => /STRASS/i.test(row.groupName));
+    expect(strass).toMatchObject({
+      totalQuantity: 0,
+      previewQuantity: 120,
+    });
+    expect(strass?.warning).toContain('somente uma prévia');
   });
 });
 
