@@ -107,7 +107,9 @@ BEGIN
        LIMIT 1;
 
       IF v_base_product_id IS NULL THEN
-        SELECT count(*)::integer, min(p.id)
+        -- PG do projeto não tem aggregate min(uuid); espelha o padrão
+        -- de 05500: count + (array_agg … ORDER BY id)[1].
+        SELECT count(*)::integer, (array_agg(p.id ORDER BY p.id))[1]
           INTO v_candidate_count, v_base_product_id
           FROM public.products p
          WHERE p.group_id = v_glow
