@@ -3795,7 +3795,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                   </div>
                   <ComponentSheets
                     embedded
-                    filterProductIds={sheetMaterials.map((m: any) => m.product_id).filter(Boolean)}
+                    filterProductIds={sheetMaterials.map((m) => m.product_id).filter((id): id is string => Boolean(id))}
                     hideSoles={true}
                   />
                 </div>
