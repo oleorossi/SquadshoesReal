@@ -2,6 +2,14 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { paginateInMemory, PAGE_SIZE, PAGER_THRESHOLD } from '@/lib/pagination';
+import {
+  productsKeys,
+  technicalSheetsKeys,
+  saleOrdersKeys,
+  invalidateProducts,
+  invalidateTechnicalSheets,
+  invalidateSaleOrders,
+} from '@/lib/queryKeys';
 
 const ROOT = resolve(__dirname, '..');
 const read = (path: string) => readFileSync(resolve(ROOT, path), 'utf8');
@@ -11,14 +19,17 @@ const sheetsPage = read('pages/TechnicalSheets.tsx');
 const estoquePage = read('pages/Index.tsx');
 const materialsTab = read('components/inventory/tabs/MaterialsTab.tsx');
 const saleOrdersPage = read('pages/SaleOrders.tsx');
+const productsHook = read('hooks/useProducts.ts');
+const saleOrdersHook = read('hooks/useSaleOrders.ts');
+const queryKeysSrc = read('lib/queryKeys.ts');
 
 describe('Fase 1 — otimização setores principais', () => {
   it('ficha: catálogo tem colunas explícitas e detail separado', () => {
     expect(sheetsHook).toContain('TECHNICAL_SHEET_CATALOG_COLUMNS');
     expect(sheetsHook).toContain('export function useTechnicalSheetsCatalog');
     expect(sheetsHook).toContain('export function useTechnicalSheetDetail');
-    expect(sheetsHook).toContain("queryKey: ['technical_sheets', 'catalog']");
-    expect(sheetsHook).toContain("queryKey: ['technical_sheets', 'detail', id]");
+    expect(sheetsHook).toContain('technicalSheetsKeys.catalog');
+    expect(sheetsHook).toContain('technicalSheetsKeys.detail(id)');
 
     const catalogStart = sheetsHook.indexOf('export function useTechnicalSheetsCatalog');
     const catalogEnd = sheetsHook.indexOf('export function useTechnicalSheetDetail', catalogStart);
@@ -69,10 +80,63 @@ describe('Fase 1 — otimização setores principais', () => {
   it('useUpdateSheet patcha catalog + detail + lite + editor', () => {
     const updateStart = sheetsHook.indexOf('export function useUpdateSheet');
     const updateBody = sheetsHook.slice(updateStart, updateStart + 4500);
-    expect(updateBody).toContain("['technical_sheets', 'catalog']");
-    expect(updateBody).toContain("['technical_sheets', 'detail', updatedSheet.id]");
-    expect(updateBody).toContain("['technical_sheets', 'lite']");
-    expect(updateBody).toContain("['technical_sheets', 'editor']");
+    expect(updateBody).toContain('technicalSheetsKeys.catalog');
+    expect(updateBody).toContain('technicalSheetsKeys.detail(updatedSheet.id)');
+    expect(updateBody).toContain('technicalSheetsKeys.lite');
+    expect(updateBody).toContain('technicalSheetsKeys.editor');
+  });
+});
+
+describe('Fase 2 — modularização setores principais', () => {
+  it('2.1 ficha: abas extraídas para components/technical-sheets', () => {
+    expect(sheetsPage).toContain("from '@/components/technical-sheets/PhotosByColorTab'");
+    expect(sheetsPage).toContain("from '@/components/technical-sheets/ProductionSectorsTab'");
+    expect(sheetsPage).toContain("from '@/components/technical-sheets/SheetBOM'");
+    expect(sheetsPage).toContain("from '@/components/technical-sheets/CostsAnalysisTab'");
+    expect(sheetsPage).toContain("from '@/components/technical-sheets/SheetImageUpload'");
+    expect(sheetsPage).toContain("from '@/lib/technicalSheetSizes'");
+    const bom = read('components/technical-sheets/SheetBOM.tsx');
+    expect(bom).toContain("from '@/lib/componentCategories'");
+    // Página não redefine o monólito inline.
+    expect(sheetsPage).not.toMatch(/function SheetBOM\(/);
+    expect(sheetsPage).not.toMatch(/function PhotosByColorTab\(/);
+    expect(sheetsPage).not.toMatch(/function CostsAnalysisTab\(/);
+  });
+
+  it('2.2 PV: lista usa constantes/card/sort extraídos', () => {
+    expect(saleOrdersPage).toContain("from '@/components/sale-orders/saleOrderListConstants'");
+    expect(saleOrdersPage).toContain("from '@/components/sale-orders/SaleOrderSortHead'");
+    expect(saleOrdersPage).toContain("from '@/components/sale-orders/SaleOrderMobileCard'");
+    expect(saleOrdersPage).toContain("from '@/hooks/useMinBillingMap'");
+    expect(saleOrdersPage).not.toMatch(/function SaleOrderSortHead\(/);
+    expect(saleOrdersPage).not.toMatch(/function SaleOrderMobileCard\(/);
+  });
+
+  it('2.3 keys canônicas via helpers + invalidadores', () => {
+    expect(queryKeysSrc).toContain('export const productsKeys');
+    expect(queryKeysSrc).toContain('export const technicalSheetsKeys');
+    expect(queryKeysSrc).toContain('export const saleOrdersKeys');
+    expect(queryKeysSrc).toContain('export function invalidateProducts');
+    expect(queryKeysSrc).toContain('export function invalidateTechnicalSheets');
+    expect(queryKeysSrc).toContain('export function invalidateSaleOrders');
+
+    expect(productsHook).toContain("from '@/lib/queryKeys'");
+    expect(productsHook).toContain('queryKey: productsKeys.all');
+    expect(productsHook).toContain('invalidateProducts(');
+
+    expect(sheetsHook).toContain('queryKey: technicalSheetsKeys.all');
+    expect(sheetsHook).toContain('invalidateTechnicalSheets(');
+
+    expect(saleOrdersHook).toContain('queryKey: saleOrdersKeys.all');
+    expect(saleOrdersHook).toContain('invalidateSaleOrders(');
+
+    // Helpers batem no prefixo esperado (contrato runtime leve).
+    expect(productsKeys.all).toEqual(['products']);
+    expect(technicalSheetsKeys.catalog).toEqual(['technical_sheets', 'catalog']);
+    expect(saleOrdersKeys.items('x')).toEqual(['sale_order_items', 'x']);
+    expect(typeof invalidateProducts).toBe('function');
+    expect(typeof invalidateTechnicalSheets).toBe('function');
+    expect(typeof invalidateSaleOrders).toBe('function');
   });
 });
 

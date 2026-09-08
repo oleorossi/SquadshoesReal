@@ -5,6 +5,7 @@ import { ProductFormData } from '@/types/inventory';
 import { toast } from 'sonner';
 import { sanitizeUuidFields } from '@/lib/utils';
 import { SECTOR_OPTIONS } from '@/lib/categoryFromGroup';
+import { productsKeys, invalidateProducts } from '@/lib/queryKeys';
 import { z } from 'zod';
 import {
   createProductWithStock,
@@ -143,7 +144,7 @@ export const PRODUCT_LIST_SELECT = [
 /** Catálogo paginado com colunas lean — use em listagens / selectors. */
 export function useProducts(options?: { enabled?: boolean }) {
   return useQuery({
-    queryKey: ['products'],
+    queryKey: productsKeys.all,
     enabled: options?.enabled ?? true,
     queryFn: async () => {
       const PAGE = 1000;
@@ -188,7 +189,7 @@ export function useProducts(options?: { enabled?: boolean }) {
  */
 export function useProductDetail(id: string | null | undefined) {
   return useQuery({
-    queryKey: ['product-detail', id],
+    queryKey: productsKeys.detail(id),
     enabled: !!id,
     queryFn: async () => {
       const { data, error } = await supabase
@@ -231,7 +232,7 @@ export function useAddProduct() {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['products'] });
+      invalidateProducts(queryClient);
       toast.success('Produto adicionado com sucesso!');
     },
     onError: (err: Error) => toast.error(`Erro ao adicionar: ${err.message}`),
@@ -326,8 +327,8 @@ export function useUpdateProduct() {
       if (error) throw error;
     },
     onSuccess: (_data, vars) => {
-      queryClient.invalidateQueries({ queryKey: ['products'] });
-      queryClient.invalidateQueries({ queryKey: ['product-detail', vars.id] });
+      invalidateProducts(queryClient);
+      queryClient.invalidateQueries({ queryKey: productsKeys.detail(vars.id) });
       toast.success('Produto atualizado com sucesso!');
     },
     onError: (err: Error) => toast.error(`Erro ao atualizar: ${err.message}`),
@@ -351,7 +352,7 @@ export function useSetProductsGroup() {
       return { count: ids.length };
     },
     onSuccess: ({ count }) => {
-      queryClient.invalidateQueries({ queryKey: ['products'] });
+      invalidateProducts(queryClient);
       queryClient.invalidateQueries({ queryKey: ['product_groups'] });
       if (count) toast.success(`${count} ${count === 1 ? 'item atualizado' : 'itens atualizados'}.`);
     },
@@ -375,7 +376,7 @@ export function useBulkSetProductPrice() {
       return { count: ids.length };
     },
     onSuccess: ({ count }) => {
-      queryClient.invalidateQueries({ queryKey: ['products'] });
+      invalidateProducts(queryClient);
       if (count) toast.success(`Preço aplicado em ${count} ${count === 1 ? 'item' : 'itens'}.`);
     },
     onError: (err: Error) => toast.error(`Erro ao aplicar preço: ${err.message}`),
@@ -393,7 +394,7 @@ export function useSyncSiblings() {
       if (error) throw error;
     },
     onSuccess: (_data, vars) => {
-      queryClient.invalidateQueries({ queryKey: ['products'] });
+      invalidateProducts(queryClient);
       toast.success(`${vars.siblingIds.length} ${vars.siblingIds.length === 1 ? 'material similar atualizado' : 'materiais similares atualizados'}`);
     },
     onError: (err: Error) => toast.error(`Erro ao sincronizar: ${err.message}`),
@@ -502,7 +503,7 @@ export function useDeleteProduct() {
       return { force: false };
     },
     onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: ['products'] });
+      invalidateProducts(queryClient);
       queryClient.invalidateQueries({ queryKey: ['sheet_materials'] });
       queryClient.invalidateQueries({ queryKey: ['material_reservations'] });
       if (result?.force && result.summary) {
@@ -557,7 +558,7 @@ export function useBatchAddProducts() {
       return ids.map((id) => byId.get(id)).filter(Boolean);
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['products'] });
+      invalidateProducts(queryClient);
       toast.success(`${data.length} itens criados com sucesso!`);
     },
     onError: (err: Error) => toast.error(`Erro ao criar itens: ${err.message}`),
@@ -624,7 +625,7 @@ export function useAutoGroupProducts() {
       return { created, assigned };
     },
     onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: ['products'] });
+      invalidateProducts(queryClient);
       queryClient.invalidateQueries({ queryKey: ['product_groups'] });
       if (result.created === 0 && result.assigned === 0) {
         toast.info('Nenhum agrupamento necessário — todos os itens já estão agrupados ou são únicos.');

@@ -40,9 +40,6 @@ import { SectionTitle, FieldInput, FieldSelect } from '@/components/technical-sh
 import { SheetBOM } from '@/components/technical-sheets/SheetBOM';
 import { CostsAnalysisTab as CostsTab } from '@/components/technical-sheets/CostsAnalysisTab';
 import { getSizesForCategory, parseSizesFromRange, ADULT_SIZES, CHILD_SIZES } from '@/lib/technicalSheetSizes';
-import {
-  COMPONENT_CATEGORIES, matchCategory, emptyMaterialForm, suggestedConsumptionSector,
-} from '@/lib/componentCategories';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';

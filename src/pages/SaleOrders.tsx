@@ -4,6 +4,27 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { ListPagination } from '@/components/ui/list-pagination';
 import { PAGE_SIZE, paginateInMemory } from '@/lib/pagination';
 import {
+  STATUS_OPTIONS,
+  STATUS_TRANSITION_OPTIONS,
+  STATUS_COLORS,
+  STATUS_DOT,
+  STATUS_BAND,
+  TERMINAL_BILLED_STATUSES,
+  SORT_ACCESSORS,
+  formatSaleOrderCurrency as formatCurrency,
+  formatSaleOrderDate as formatDate,
+  formatSaleOrderDateShort as formatDateShort,
+  type SortKey,
+} from '@/components/sale-orders/saleOrderListConstants';
+import { SaleOrderSortHead as SortHead } from '@/components/sale-orders/SaleOrderSortHead';
+import { SaleOrderMobileCard } from '@/components/sale-orders/SaleOrderMobileCard';
+import {
+  useMinBillingMap,
+  useRefreshMinBillingInBackground,
+  EMPTY_MIN_BILLING_MAP,
+  EMPTY_STALE_IDS,
+} from '@/hooks/useMinBillingMap';
+import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
@@ -93,23 +114,6 @@ import { normalizeForSearch, searchMatchesAllTerms, splitSearchTerms } from '@/l
 import { safeUrlAttr } from '@/lib/htmlUtils';
 import SalesOperationsRail, { SalesOperationsRailSkeleton } from '@/components/sale-orders/SalesOperationsRail';
 
-// TODOS os status canônicos do sale_orders (saleOrderStateMachine.ts).
-// Antes faltavam 'Pendente', 'Expedido' e 'Concluído' — PVs nesses status
-// não conseguiam ver options válidas no dropdown porque o filtro de
-// transições removia tudo do STATUS_OPTIONS. Resultado: usuário via só
-// "Cancelado" porque era a única transição comum em vários estados.
-const STATUS_OPTIONS = ['Rascunho', 'Pendente', 'Aprovado', 'Em Produção', 'Faturado', 'Expedido', 'Concluído', 'Finalizado s/ NF', 'Cancelado'] as const;
-
-// Transições válidas por status, pré-computadas uma vez. Antes isto era um IIFE
-// dentro do <SelectContent> de CADA linha: Set + spread + filter + map por linha,
-// a todo render — e mesmo com o dropdown fechado, porque o Radix avalia os
-// children do content quando o JSX é criado, não quando abre.
-// (auditoria PV 07/08/2026)
-// Colunas ordenáveis. Só entram aqui as que têm campo confirmado no dado —
-// cabeçalho que parece clicável e não ordena é pior que cabeçalho estático.
-// "Nº Cliente" e "Cidade" ficaram de fora por isso.
-type SortKey = 'order_number' | 'client_name' | 'total' | 'status' | 'pairs' | 'delivery_deadline';
-
 interface ForceProductionCommandResponse {
   ok: boolean;
   error?: { message?: string };
@@ -118,200 +122,6 @@ interface ForceProductionCommandResponse {
     updated_ops?: number;
     created_stages?: number;
   };
-}
-
-const SORT_ACCESSORS: Record<SortKey, (o: any, pairs: Record<string, number>) => string | number | null> = {
-  order_number: (o) => o.order_number ?? null,
-  client_name: (o) => o.client_name ?? null,
-  total: (o) => Number(o.total) || 0,
-  status: (o) => o.status ?? null,
-  pairs: (o, pairs) => pairs[o.id] ?? 0,
-  delivery_deadline: (o) => o.delivery_deadline ?? null,
-};
-
-/** Cabeçalho ordenável. Um clique ordena crescente, outro decrescente, o terceiro
- *  volta à ordem natural — sem estado morto em que o usuário não sabe como sair. */
-function SortHead({ sk, sort, onSort, align, children }: {
-  sk: SortKey;
-  sort: { key: SortKey; dir: 'asc' | 'desc' } | null;
-  onSort: (k: SortKey) => void;
-  align?: 'right';
-  children: ReactNode;
-}) {
-  const active = sort?.key === sk;
-  // aria-sort pertence ao <th>, não ao botão dentro dele — no botão o leitor de
-  // tela ignora e a coluna não se anuncia como ordenada.
-  return (
-    <TableHead
-      aria-sort={active ? (sort!.dir === 'asc' ? 'ascending' : 'descending') : 'none'}
-      className={align === 'right' ? 'text-right tabular-nums' : undefined}
-    >
-      <button
-        type="button"
-        onClick={() => onSort(sk)}
-        aria-label={`Ordenar por ${typeof children === 'string' ? children : sk}`}
-        className={cn(
-          'inline-flex items-center gap-1 uppercase tracking-wider font-bold text-xs hover:text-foreground transition-colors',
-          align === 'right' && 'flex-row-reverse',
-          active ? 'text-foreground' : 'text-muted-foreground',
-        )}
-      >
-        {children}
-        {active
-          ? <ArrowUp className={cn('h-3 w-3 shrink-0 transition-transform', sort!.dir === 'desc' && 'rotate-180')} weight="bold" />
-          : <ArrowsDownUp className="h-3 w-3 shrink-0 opacity-30" />}
-      </button>
-    </TableHead>
-  );
-}
-
-const STATUS_TRANSITION_OPTIONS: Record<string, readonly string[]> = Object.fromEntries(
-  STATUS_OPTIONS.map((s) => {
-    const allowed = new Set<string>([s, ...getValidNextStatuses(s)]);
-    return [s, STATUS_OPTIONS.filter((o) => allowed.has(o))];
-  }),
-);
-
-// Audit visual: cores anteriores text-{color}-400 em dark caíam abaixo do
-// ratio WCAG AA (4.5:1) sobre o fundo /15. text-{color}-300 dá contraste
-// adequado mantendo a paleta semântica original.
-const STATUS_COLORS: Record<string, string> = {
-  'Rascunho': 'bg-muted text-muted-foreground border-border',
-  'Pendente': 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-300 border-yellow-500/30',
-  'Aprovado': 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30',
-  'Em Produção': 'bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30',
-  'Faturado': 'bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-500/30',
-  'Expedido': 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border-cyan-500/30',
-  'Concluído': 'bg-green-500/15 text-green-700 dark:text-green-300 border-green-500/30',
-  'Finalizado s/ NF': 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30',
-  'Cancelado': 'bg-destructive/15 text-destructive border-destructive/30',
-};
-
-const STATUS_DOT: Record<string, string> = {
-  'Rascunho': 'bg-muted-foreground',
-  'Pendente': 'bg-yellow-500',
-  'Aprovado': 'bg-emerald-500',
-  'Em Produção': 'bg-blue-500',
-  'Faturado': 'bg-violet-500',
-  'Expedido': 'bg-cyan-500',
-  'Concluído': 'bg-green-500',
-  'Finalizado s/ NF': 'bg-amber-500',
-  'Cancelado': 'bg-destructive',
-};
-
-// Tom sutil (5%) da faixa full-bleed do header da prévia, por status — espelha a
-// semântica de STATUS_DOT. Status colors em alpha baixo são permitidas (CLAUDE.md);
-// default neutro pra status desconhecido.
-const STATUS_BAND: Record<string, string> = {
-  'Rascunho': 'bg-muted/40',
-  'Pendente': 'bg-yellow-500/5',
-  'Aprovado': 'bg-emerald-500/5',
-  'Em Produção': 'bg-blue-500/5',
-  'Faturado': 'bg-violet-500/5',
-  'Expedido': 'bg-cyan-500/5',
-  'Concluído': 'bg-green-500/5',
-  'Finalizado s/ NF': 'bg-amber-500/5',
-  'Cancelado': 'bg-destructive/5',
-};
-
-const TERMINAL_BILLED_STATUSES = ['Faturado', 'Finalizado s/ NF'];
-
-// Formatadores hoistados: `new Intl.*` — e `toLocaleDateString`, que constrói um
-// por dentro — montam um formatador a CADA chamada. A lista formata ~6 células por
-// linha e re-renderiza a cada tecla digitada na busca, então isso eram centenas de
-// construções por render. Mesma saída, mesmo locale, mesmas opções: só a instância
-// passa a ser reusada. (auditoria PV 07/08/2026)
-//
-// ⚠ NÃO trocar por `formatCurrency` de @/lib/utils — aquele usa BRL_UNIT_PRICE e
-// vai a 4 casas; totais de PV virariam R$ 1.234,5678. O equivalente lá é formatMoney.
-const BRL_FMT = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
-const DATE_FMT = new Intl.DateTimeFormat('pt-BR');
-const DATE_SHORT_FMT = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit' });
-
-const formatCurrency = (v: number) => BRL_FMT.format(v);
-
-const formatDate = (d: string | null) =>
-  d ? DATE_FMT.format(parseDateOnly(d)) : '—';
-
-const formatDateShort = (d: string) =>
-  DATE_SHORT_FMT.format(parseDateOnly(d));
-
-// Lookup batch de min_billing_date pra todos os PVs ativos.
-// Usado pra marcar em vermelho linhas com delivery_deadline < min_billing_date.
-//
-// ⚠ PERF (2026-08-03): chama a RPC `compute_min_billing_dates(uuid[])` — motor em
-// LOTE — em vez de ler a view `sale_order_min_billing`.
-//
-// Histórico: a view rodava `compute_min_billing_date(id)` POR LINHA, e 87% do custo
-// de cada chamada era uma segunda query escondida (`get_wave_material_needs_core`,
-// necessidade de material por cor/variante/grade). Medido: 160,6ms por pedido, dos
-// quais 139,9ms eram essa chamada. A versão em lote faz UMA chamada pra todos os
-// pedidos (~1,8× mais rápido no total).
-//
-// NÃO voltar a ler a view aqui: ela materializa TODOS os PVs não-cancelados antes de
-// qualquer filtro — o `.in(...)` do PostgREST não empurra o predicado pra dentro do
-// argumento da função, então filtrar depois não economiza nada.
-//
-// ⚠ PERF (2026-08-03, fase 1a da spec): nem a RPC em lote roda mais aqui. Medido:
-// `compute_min_billing_dates` levava 1.058 ms pra 58 linhas tocando 37.035 buffers, e
-// era a consulta mais cara do banco inteiro (1.225 s acumulados em pg_stat_statements).
-// Bater o N+1 resolveu a QUANTIDADE de chamadas, não o custo de cada uma.
-//
-// Agora a lista lê o cache (`get_min_billing_cached`): 0,888 ms / 18 buffers. O
-// recálculo mora em `refresh_min_billing_cache` e roda em SEGUNDO PLANO — requisito 25
-// da spec: nunca no caminho crítico da lista.
-// Referências estáveis: um `new Map()` / `[]` inline como default de hook muda de
-// identidade a cada render e faz o efeito de recálculo disparar em loop.
-const EMPTY_MIN_BILLING_MAP: Map<string, string> = new Map();
-const EMPTY_STALE_IDS: string[] = [];
-
-function useMinBillingMap(activeIds: string[]) {
-  // Ordena pra estabilizar a queryKey — a ordem de `orders` varia entre refetches
-  // e uma key instável refaria a query cara sem necessidade.
-  const ids = useMemo(() => [...activeIds].sort(), [activeIds]);
-  return useQuery<{ map: Map<string, string>; staleIds: string[] }>({
-    queryKey: ['sale_order_min_billing_map', ids],
-    queryFn: async () => {
-      const map = new Map<string, string>();
-      const staleIds: string[] = [];
-      if (ids.length === 0) return { map, staleIds };
-      const { data, error } = await supabase
-        .rpc('get_min_billing_cached' as any, { p_sale_order_ids: ids });
-      if (error || !data) return { map, staleIds };
-      for (const row of data as any[]) {
-        if (row.sale_order_id && row.min_billing_date) {
-          map.set(row.sale_order_id, row.min_billing_date);
-        }
-        if (row.sale_order_id && row.stale) staleIds.push(row.sale_order_id);
-      }
-      return { map, staleIds };
-    },
-    enabled: ids.length > 0,
-    // Alinhado ao staleTime de useSaleOrders (5min), a lista que este map decora.
-    staleTime: 5 * 60 * 1000,
-  });
-}
-
-// Recalcula em segundo plano o que o cache marcou como velho e invalida o map quando
-// terminar. Roda DEPOIS da lista já ter renderizado — não bloqueia nada.
-function useRefreshMinBillingInBackground(staleIds: string[]) {
-  const qc = useQueryClient();
-  const key = staleIds.join(',');
-  useEffect(() => {
-    if (!staleIds.length) return;
-    let cancelled = false;
-    (async () => {
-      const { error } = await supabase.rpc('refresh_min_billing_cache' as any, {
-        p_sale_order_ids: staleIds,
-      });
-      if (!cancelled && !error) {
-        qc.invalidateQueries({ queryKey: ['sale_order_min_billing_map'] });
-      }
-    })();
-    return () => { cancelled = true; };
-    // `key` estabiliza a lista de ids; `staleIds` muda de referência a cada render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, qc]);
 }
 
 export default function SaleOrders() {
@@ -2112,55 +1922,22 @@ export default function SaleOrders() {
           <>
           {isMobile ? (
           <div className="space-y-2">
-            {visibleOrders.map(order => {
-              const pairs = pairsBySaleOrder[order.id] || 0;
-              const minBilling = minBillingMap.get(order.id) || null;
-              const isOverdue = !!(order.delivery_deadline && parseDateOnly(order.delivery_deadline) < new Date() && !TERMINAL_BILLED_STATUSES.includes(order.status) && order.status !== 'Cancelado');
-              const isInfeasible = !!(minBilling && order.delivery_deadline && order.delivery_deadline < minBilling && !TERMINAL_BILLED_STATUSES.includes(order.status) && order.status !== 'Cancelado');
-              return (
-                <article
-                  key={order.id}
-                  className={cn(
-                    'rounded-xl border bg-card p-4 shadow-sm transition-colors',
-                    sel.isSelected(order.id) && 'border-primary bg-primary/5',
-                    (isOverdue || isInfeasible) && 'border-l-4 border-l-destructive',
-                  )}
-                >
-                  <div className="flex items-start gap-3">
-                    <Checkbox
-                      checked={sel.isSelected(order.id)}
-                      onCheckedChange={() => sel.toggle(order.id)}
-                      aria-label={`Selecionar pedido ${order.order_number}`}
-                      className="mt-1"
-                    />
-                    <button type="button" onClick={() => openOrderDetails(order)} className="min-w-0 flex-1 text-left">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-mono text-sm font-bold text-primary">{order.order_number || '—'}</span>
-                        <Badge variant="outline" className={cn('shrink-0 text-xs', STATUS_COLORS[order.status])}>
-                          <span className={cn('h-1.5 w-1.5 rounded-full', STATUS_DOT[order.status])} />
-                          {order.status}
-                        </Badge>
-                      </div>
-                      <p className="mt-1 truncate text-sm font-semibold">{order.client_name}</p>
-                      <div className="mt-2 grid grid-cols-3 gap-2 text-xs text-muted-foreground">
-                        <span><strong className="block font-mono text-sm text-foreground">{pairs.toLocaleString('pt-BR')}</strong>pares</span>
-                        {canSeeFinancialValues && <span><strong className="block truncate font-mono text-sm text-foreground">{formatCurrency(Number(order.total))}</strong>total</span>}
-                        <span className={cn('text-right', (isOverdue || isInfeasible) && 'font-semibold text-destructive')}><strong className="block text-sm text-foreground">{formatDate(order.delivery_deadline)}</strong>entrega</span>
-                      </div>
-                      {isInfeasible && minBilling && <p className="mt-2 text-xs font-semibold text-destructive">Data mínima viável: {formatDate(minBilling)}</p>}
-                    </button>
-                  </div>
-                  <div className="mt-3 flex gap-2 border-t pt-3">
-                    <Button variant="outline" size="sm" className="min-h-10 flex-1 gap-1.5" onMouseEnter={() => prefetchPvConsumption(order.id)} onClick={() => openPvConsumption([order.id])}>
-                      <Package className="h-4 w-4" /> Consumo
-                    </Button>
-                    <Button variant="outline" size="sm" className="min-h-10 flex-1 gap-1.5" disabled={!canEditPv} onClick={() => navigate(`/sales/edit/${order.id}`)}>
-                      <Pencil className="h-4 w-4" /> Editar
-                    </Button>
-                  </div>
-                </article>
-              );
-            })}
+            {visibleOrders.map(order => (
+              <SaleOrderMobileCard
+                key={order.id}
+                order={order}
+                pairs={pairsBySaleOrder[order.id] || 0}
+                minBilling={minBillingMap.get(order.id) || null}
+                selected={sel.isSelected(order.id)}
+                canSeeFinancialValues={canSeeFinancialValues}
+                canEditPv={canEditPv}
+                onToggleSelect={() => sel.toggle(order.id)}
+                onOpenDetails={() => openOrderDetails(order)}
+                onPrefetchConsumption={() => prefetchPvConsumption(order.id)}
+                onOpenConsumption={() => openPvConsumption([order.id])}
+                onEdit={() => navigate(`/sales/edit/${order.id}`)}
+              />
+            ))}
           </div>
           ) : (
           <div

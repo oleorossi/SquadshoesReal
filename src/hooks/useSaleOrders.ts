@@ -27,6 +27,11 @@ import {
   strapColorMode,
   type StrapColorMode,
 } from '@/lib/technicalStrapLines';
+import {
+  saleOrdersKeys,
+  invalidateProducts,
+  invalidateSaleOrders,
+} from '@/lib/queryKeys';
 
 // Rota default viva de uma OP. Usa Corte Fibra (Corte Palmilha é só alias
 // histórico) e mantém as duas costuras independentes. A numeração vem de
@@ -677,7 +682,7 @@ export const SALE_ORDER_ITEMS_ALL_QUERY_LIMIT = 5000;
 
 export function useSaleOrders() {
   return useQuery({
-    queryKey: ['sale_orders'],
+    queryKey: saleOrdersKeys.all,
     queryFn: async () => {
       // Cap to the most recent SALE_ORDERS_QUERY_LIMIT sale orders to avoid
       // loading the entire historical base on every dashboard/list mount.
@@ -711,7 +716,7 @@ export function useSaleOrders() {
 
 export function useSaleOrderItems(saleOrderId: string | null) {
   return useQuery({
-    queryKey: ['sale_order_items', saleOrderId],
+    queryKey: saleOrdersKeys.items(saleOrderId),
     enabled: !!saleOrderId,
     queryFn: async () => {
       const { data, error } = await supabase
@@ -869,7 +874,7 @@ export function useCreateSaleOrder() {
       return data;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['sale_orders'] });
+      invalidateSaleOrders(qc);
       qc.invalidateQueries({ queryKey: ['accounts_receivable'] });
       qc.invalidateQueries({ queryKey: ['financial_entries'] });
       // Profitability aggregate may have shifted with the new order's revenue.
@@ -1005,12 +1010,12 @@ export function useUpdateSaleOrderStatus(options?: {
       return engineResult;
     },
     onSuccess: (engineResult, vars) => {
-      qc.invalidateQueries({ queryKey: ['sale_orders'] });
+      invalidateSaleOrders(qc);
       qc.invalidateQueries({ queryKey: ['orders'] });
       qc.invalidateQueries({ queryKey: ['order_stages'] });
       qc.invalidateQueries({ queryKey: ['accounts_receivable'] });
       qc.invalidateQueries({ queryKey: ['financial_entries'] });
-      qc.invalidateQueries({ queryKey: ['products'] });
+      invalidateProducts(qc);
       qc.invalidateQueries({ queryKey: ['stock_movements'] });
       qc.invalidateQueries({ queryKey: ['material_reservations'] });
       qc.invalidateQueries({ queryKey: ['mrp_suggestions'] });
@@ -1215,7 +1220,7 @@ export function useUpdateSaleOrder() {
       return { id, receipt };
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['sale_orders'] });
+      invalidateSaleOrders(qc);
       qc.invalidateQueries({ queryKey: ['orders'] });
       qc.invalidateQueries({ queryKey: ['sale_order_items'] });
       qc.invalidateQueries({ queryKey: ['sale_order_items_all'] });
@@ -1224,7 +1229,7 @@ export function useUpdateSaleOrder() {
       qc.invalidateQueries({ queryKey: ['consumption-source'] });
       qc.invalidateQueries({ queryKey: ['pv-consumption'] });
       qc.invalidateQueries({ queryKey: ['order_stages'] });
-      qc.invalidateQueries({ queryKey: ['products'] });
+      invalidateProducts(qc);
       qc.invalidateQueries({ queryKey: ['stock_movements'] });
       qc.invalidateQueries({ queryKey: ['purchase_orders'] });
       // Editar o PV recria OPs → o trigger do banco já recalculou o motor
@@ -1407,7 +1412,7 @@ export function useDeleteSaleOrder() {
       return response.result;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['sale_orders'] });
+      invalidateSaleOrders(qc);
       qc.invalidateQueries({ queryKey: ['sale_orders_with_nfe'] });
       // As OPs do PV também somem (cascata no soft_delete_sale_order) — refaz a
       // lista de OPs pra elas sumirem na hora, sem precisar dar refresh.
@@ -1444,7 +1449,7 @@ export function useRestoreSaleOrder() {
       return response;
     },
     onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: ['sale_orders'] });
+      invalidateSaleOrders(qc);
       qc.invalidateQueries({ queryKey: ['sale_orders_with_nfe'] });
       // Restaurar o PV reexibe as OPs escondidas pela cascata.
       qc.invalidateQueries({ queryKey: ['orders'] });
@@ -1520,7 +1525,7 @@ export function useBulkSyncFinancial() {
     onSuccess: (count) => {
       qc.invalidateQueries({ queryKey: ['accounts_receivable'] });
       qc.invalidateQueries({ queryKey: ['financial_entries'] });
-      qc.invalidateQueries({ queryKey: ['sale_orders'] });
+      invalidateSaleOrders(qc);
       toast.success(`Sincronização financeira concluída para ${count} pedidos!`);
     },
     onError: (err: Error) => toast.error(`Erro na sincronização: ${err.message}`),
@@ -1568,10 +1573,10 @@ export function useCommitPickingForSaleOrder() {
       return data as PickingResult;
     },
     onSuccess: (result) => {
-      qc.invalidateQueries({ queryKey: ['products'] });
+      invalidateProducts(qc);
       qc.invalidateQueries({ queryKey: ['stock_movements'] });
       qc.invalidateQueries({ queryKey: ['material_reservations'] });
-      qc.invalidateQueries({ queryKey: ['sale_orders'] });
+      invalidateSaleOrders(qc);
       qc.invalidateQueries({ queryKey: ['orders'] });
       // Invalida a query do Picking Semanal pra ele recarregar e excluir
       // este PV da lista (filtro picking_individually_done_at IS NULL).

@@ -59,6 +59,14 @@ Remedir Network/chunks em preview e colar abaixo.
 | `/estoque` first paint | paginado + products paralelo | só paginado primeiro | _medir_ |
 | `/sales` DOM nodes lista | cards + tabela | um dos dois | _medir_ |
 
+## Pós-Fase 2 (modularização)
+
+| Item | Mudança |
+|---|---|
+| 2.1 Ficha | Extraídos `SheetBOM`, `CostsAnalysisTab`, `PhotosByColorTab`, `ProductionSectorsTab`, `SheetImageUpload`, `sheetFormFields`, `componentCategories`, `technicalSheetSizes` — página ~5,3k linhas (era ~7k) |
+| 2.2 PV | Extraídos `saleOrderListConstants`, `SaleOrderSortHead`, `SaleOrderMobileCard`, `useMinBillingMap` |
+| 2.3 Keys | `src/lib/queryKeys.ts` + wire em `useProducts` / `useTechnicalSheets` / `useSaleOrders` |
+
 ## Pós-Fase 4 (guarda final)
 
 | Meta R2 | Atingida? | Evidência |

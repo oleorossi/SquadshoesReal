@@ -12,6 +12,12 @@ import {
   autoResyncUnstartedOpsForSheet,
   toastAutoResyncSummary,
 } from '@/lib/resyncOPs';
+import {
+  technicalSheetsKeys,
+  invalidateProducts,
+  invalidateTechnicalSheets,
+  invalidateSaleOrders,
+} from '@/lib/queryKeys';
 
 /**
  * Alterar uma ficha invalida o plano/snapshot por trigger do banco. Em seguida
@@ -29,7 +35,7 @@ function invalidateSheetAudit(qc: QueryClient) {
 }
 
 function invalidateSheetImpact(qc: QueryClient) {
-  qc.invalidateQueries({ queryKey: ['sale_orders'] });
+  invalidateSaleOrders(qc);
   qc.invalidateQueries({ queryKey: ['pv_outdated_status'] });
   qc.invalidateQueries({ queryKey: ['sale-order-command-preflight'] });
   qc.invalidateQueries({ queryKey: ['system-diag', 'pv-system'] });
@@ -291,7 +297,7 @@ export type SheetMaterialFormData = {
 
 export function useTechnicalSheets() {
   return useQuery({
-    queryKey: ['technical_sheets'],
+    queryKey: technicalSheetsKeys.all,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('technical_sheets')
@@ -347,7 +353,7 @@ export const TECHNICAL_SHEET_CATALOG_COLUMNS = [
  */
 export function useTechnicalSheetsCatalog() {
   return useQuery({
-    queryKey: ['technical_sheets', 'catalog'],
+    queryKey: technicalSheetsKeys.catalog,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('technical_sheets')
@@ -370,7 +376,7 @@ export function useTechnicalSheetsCatalog() {
  */
 export function useTechnicalSheetDetail(id: string | null | undefined) {
   return useQuery({
-    queryKey: ['technical_sheets', 'detail', id],
+    queryKey: technicalSheetsKeys.detail(id),
     enabled: !!id,
     queryFn: async () => {
       const { data, error } = await supabase
@@ -409,12 +415,12 @@ export const TECHNICAL_SHEET_LITE_COLUMNS = 'id, code, name, shoe_category, reti
  * armadilha já documentada em TECHNICAL_SHEET_CONSUMPTION_COLUMNS.
  *
  * A sub-key ['technical_sheets','lite'] é invalidada de graça por todo
- * `invalidateQueries({ queryKey: ['technical_sheets'] })` do projeto — o match do
+ * `invalidateQueries({ queryKey: technicalSheetsKeys.all })` do projeto — o match do
  * React Query é por prefixo.
  */
 export function useTechnicalSheetsLite() {
   return useQuery({
-    queryKey: ['technical_sheets', 'lite'],
+    queryKey: technicalSheetsKeys.lite,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('technical_sheets')
@@ -462,7 +468,7 @@ export const TECHNICAL_SHEET_EDITOR_COLUMNS = [
  */
 export function useTechnicalSheetsEditor() {
   return useQuery({
-    queryKey: ['technical_sheets', 'editor'],
+    queryKey: technicalSheetsKeys.editor,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('technical_sheets')
@@ -643,7 +649,7 @@ export function useAddSheet() {
       return data;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['technical_sheets'] });
+      invalidateTechnicalSheets(qc);
       invalidateSheetAudit(qc);
       toast.success('Ficha técnica criada!');
     },
@@ -694,16 +700,16 @@ export function useUpdateSheet() {
       // O UPDATE já devolve a linha final (incluindo updated_at e efeitos de
       // triggers). Substituí-la no cache evita baixar novamente todas as fichas
       // e seus JSONBs pesados após cada pequena correção.
-      qc.setQueryData<TechnicalSheetCacheRow[]>(['technical_sheets'], (cached) => (
+      qc.setQueryData<TechnicalSheetCacheRow[]>(technicalSheetsKeys.all, (cached) => (
         replaceTechnicalSheetCacheRow(cached, updatedSheet)
       ));
-      qc.setQueryData(['technical_sheets', 'detail', updatedSheet.id], updatedSheet);
+      qc.setQueryData(technicalSheetsKeys.detail(updatedSheet.id), updatedSheet);
       // Catálogo / lite / editor têm chave própria — patchar campos de identidade
       // e os que o catálogo mostra, sem forçar refetch do `*`.
-      qc.setQueryData<TechnicalSheetCacheRow[]>(['technical_sheets', 'catalog'], (cached) => (
+      qc.setQueryData<TechnicalSheetCacheRow[]>(technicalSheetsKeys.catalog, (cached) => (
         replaceTechnicalSheetCacheRow(cached, updatedSheet)
       ));
-      qc.setQueryData<TechnicalSheetCacheRow[]>(['technical_sheets', 'lite'], (cached) => {
+      qc.setQueryData<TechnicalSheetCacheRow[]>(technicalSheetsKeys.lite, (cached) => {
         if (!cached) return cached;
         return cached.map((row) => row.id === updatedSheet.id
           ? {
@@ -715,10 +721,10 @@ export function useUpdateSheet() {
             }
           : row);
       });
-      qc.setQueryData<TechnicalSheetCacheRow[]>(['technical_sheets', 'editor'], (cached) => (
+      qc.setQueryData<TechnicalSheetCacheRow[]>(technicalSheetsKeys.editor, (cached) => (
         replaceTechnicalSheetCacheRow(cached, updatedSheet)
       ));
-      qc.invalidateQueries({ queryKey: ['technical_sheets', 'cabedal-par-pe-audit'] });
+      qc.invalidateQueries({ queryKey: technicalSheetsKeys.cabedalParPeAudit });
       void propagateSheetConsumption(qc, updatedSheet.id, {
         emptyMessage: 'Ficha salva. Nenhum PV aprovado pendente de atualização de consumo.',
         saveLabel: 'Ficha salva',
@@ -851,11 +857,11 @@ export function useDeleteSheet() {
       return result;
     },
     onSuccess: (result) => {
-      qc.invalidateQueries({ queryKey: ['technical_sheets'] });
+      invalidateTechnicalSheets(qc);
       invalidateProductionCaches(qc);
       qc.invalidateQueries({ queryKey: ['production_waves'] });
       qc.invalidateQueries({ queryKey: ['production_alerts_active'] });
-      qc.invalidateQueries({ queryKey: ['products'] });
+      invalidateProducts(qc);
       qc.invalidateQueries({ queryKey: ['stock_movements'] });
       qc.invalidateQueries({ queryKey: ['material_reservations'] });
       qc.invalidateQueries({ queryKey: ['production_consumptions'] });
@@ -1143,7 +1149,7 @@ export function useCloneSheet() {
       }
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['technical_sheets'] });
+      invalidateTechnicalSheets(qc);
       invalidateSheetAudit(qc);
       toast.success('Ficha copiada com sucesso!');
     },
