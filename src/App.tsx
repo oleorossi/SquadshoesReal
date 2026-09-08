@@ -182,6 +182,10 @@ const queryClient = new QueryClient({
       retry: (failureCount, error: any) => {
         // Don't retry on auth errors or specific 4xx
         if (error?.status === 401 || error?.status === 403 || error?.message?.includes('JWT')) return false;
+        // Timeout de statement: retentar só alonga a tela em "Resolvendo…".
+        if (/statement timeout|canceling statement due to statement timeout/i.test(String(error?.message || ''))) {
+          return false;
+        }
         // Schema cache pós-DDL: mais tentativas antes de toastar.
         if (isSchemaCacheTransientError(error)) return failureCount < 4;
         return failureCount < 2;

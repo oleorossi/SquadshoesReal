@@ -44,6 +44,12 @@ import {
   type InternalStrapReadinessInput,
 } from '@/hooks/useInternalStrapReadiness';
 import {
+  strapStockLinesItemKey,
+  useStrapStockLinesBatch,
+  type StrapStockLine,
+  type StrapStockLinesInput,
+} from '@/hooks/useStrapStockLines';
+import {
   useActiveReferenceTerceirizacoesBatch,
   type ReferenceTerceirizacao,
 } from '@/hooks/useReferenceTerceirizacoes';
@@ -631,6 +637,7 @@ interface SaleOrderItemsListProps {
   saleOrderStatus?: string | null;
   billingWeek: string | null;
   requiredAt: string | null;
+  mainProductionStart?: string | null;
   isAdmin: boolean;
   priceLookup?: PriceLookup;
   maxDiscountPct: number;
@@ -649,6 +656,9 @@ interface SaleOrderItemsListProps {
   sharedStrapCatalog?: unknown;
   sharedStrapCatalogLoading?: boolean;
   sharedInternalStrapReadinessByKey?: ReadonlyMap<string, InternalStrapReadiness>;
+  sharedStrapStockLinesByKey?: ReadonlyMap<string, StrapStockLine[]>;
+  sharedStrapStockLinesLoading?: boolean;
+  sharedStrapStockLinesError?: boolean;
   sharedReferenceTerceirizacoesByRef?: ReadonlyMap<string, ReferenceTerceirizacao[]>;
   sharedReferenceTerceirizacoesLoading?: boolean;
   sharedReferenceTerceirizacoesFailed?: boolean;
@@ -682,10 +692,14 @@ const SaleOrderItemsList = memo(function SaleOrderItemsList({
   sharedStrapCatalog,
   sharedStrapCatalogLoading,
   sharedInternalStrapReadinessByKey,
+  sharedStrapStockLinesByKey,
+  sharedStrapStockLinesLoading,
+  sharedStrapStockLinesError,
   sharedReferenceTerceirizacoesByRef,
   sharedReferenceTerceirizacoesLoading,
   sharedReferenceTerceirizacoesFailed,
   onRetrySharedReferenceTerceirizacoes,
+  mainProductionStart,
 }: SaleOrderItemsListProps) {
   return (
     <>
@@ -730,6 +744,7 @@ const SaleOrderItemsList = memo(function SaleOrderItemsList({
                 saleOrderStatus={saleOrderStatus}
                 billingWeek={billingWeek}
                 requiredAt={requiredAt}
+                mainProductionStart={mainProductionStart}
                 item={item}
                 index={idx}
                 onColorIssueChange={onColorIssueChange}
@@ -758,6 +773,18 @@ const SaleOrderItemsList = memo(function SaleOrderItemsList({
                     color: item.color,
                   }) || '') || undefined
                 }
+                sharedStrapStockLines={
+                  sharedStrapStockLinesByKey
+                    ? (sharedStrapStockLinesByKey.get(
+                        strapStockLinesItemKey({
+                          saleOrderItemId: item.id,
+                          clientKey: item.clientKey,
+                        }) || '',
+                      ) || [])
+                    : undefined
+                }
+                sharedStrapStockLinesLoading={sharedStrapStockLinesLoading}
+                sharedStrapStockLinesError={sharedStrapStockLinesError}
                 sharedReferenceTerceirizacoes={
                   item.reference_id
                     ? sharedReferenceTerceirizacoesByRef?.get(item.reference_id)
@@ -776,6 +803,7 @@ const SaleOrderItemsList = memo(function SaleOrderItemsList({
 });
 
 const EMPTY_STRAP_READINESS_MAP: ReadonlyMap<string, InternalStrapReadiness> = new Map();
+const EMPTY_STRAP_STOCK_LINES_MAP: ReadonlyMap<string, StrapStockLine[]> = new Map();
 const EMPTY_TERCEIRIZACOES_MAP: ReadonlyMap<string, ReferenceTerceirizacao[]> = new Map();
 
 export default function SaleOrderFormPanel({
@@ -916,6 +944,55 @@ export default function SaleOrderFormPanel({
   const { data: strapReadinessByKey = EMPTY_STRAP_READINESS_MAP } = useInternalStrapReadinessBatch(
     strapReadinessInputs,
     strapReadinessInputs.length > 0,
+  );
+
+  const billingWeekForStraps = form.delivery_month && form.delivery_week
+    ? `${form.delivery_month}-${form.delivery_week}`
+    : null;
+  const requiredAtForStraps = form.delivery_deadline || null;
+  const mainProductionStartForStraps = minBillingISO || null;
+
+  // Preview de estoque/consumo das tiras: 1 RPC para todos os itens com tiras.
+  const strapStockLinesInputs = useMemo((): StrapStockLinesInput[] => {
+    return items.flatMap((item) => {
+      const itemKey = strapStockLinesItemKey({
+        saleOrderItemId: item.id,
+        clientKey: item.clientKey,
+      });
+      if (!itemKey || !item.reference_id) return [];
+      const straps = Array.isArray(item.strap_colors) ? item.strap_colors : [];
+      if (!straps.some((strap) => !!technicalStrapLineId(strap))) return [];
+      return [{
+        itemKey,
+        saleOrderId: saleOrderId || null,
+        saleOrderItemId: item.id || null,
+        referenceId: item.reference_id,
+        materialVariantId: item.material_variant_id,
+        itemColor: item.color,
+        strapColors: straps,
+        strapSourcing: item.strap_sourcing || {},
+        quantity: item.quantity,
+        grade: item.grade,
+        billingWeek: billingWeekForStraps,
+        mainProductionStart: mainProductionStartForStraps,
+        requiredAt: requiredAtForStraps,
+      }];
+    });
+  }, [
+    items,
+    saleOrderId,
+    billingWeekForStraps,
+    mainProductionStartForStraps,
+    requiredAtForStraps,
+  ]);
+
+  const {
+    data: strapStockLinesByKey = EMPTY_STRAP_STOCK_LINES_MAP,
+    isLoading: strapStockLinesLoading,
+    isError: strapStockLinesFailed,
+  } = useStrapStockLinesBatch(
+    strapStockLinesInputs,
+    strapStockLinesInputs.length > 0,
   );
 
   const {
@@ -2418,10 +2495,9 @@ export default function SaleOrderFormPanel({
           references={references}
           saleOrderId={saleOrderId}
           saleOrderStatus={form.status}
-          billingWeek={form.delivery_month && form.delivery_week
-            ? `${form.delivery_month}-${form.delivery_week}`
-            : null}
-          requiredAt={form.delivery_deadline || null}
+          billingWeek={billingWeekForStraps}
+          requiredAt={requiredAtForStraps}
+          mainProductionStart={mainProductionStartForStraps}
           isAdmin={isAdmin}
           priceLookup={clientPricing?.lookup}
           maxDiscountPct={clientPricing?.maxDiscountPct ?? 0}
@@ -2440,6 +2516,9 @@ export default function SaleOrderFormPanel({
           sharedStrapCatalog={sharedStrapCatalog}
           sharedStrapCatalogLoading={sharedStrapCatalogLoading}
           sharedInternalStrapReadinessByKey={strapReadinessByKey}
+          sharedStrapStockLinesByKey={strapStockLinesByKey}
+          sharedStrapStockLinesLoading={strapStockLinesLoading}
+          sharedStrapStockLinesError={strapStockLinesFailed}
           sharedReferenceTerceirizacoesByRef={terceirizacoesByRef}
           sharedReferenceTerceirizacoesLoading={terceirizacoesLoading}
           sharedReferenceTerceirizacoesFailed={terceirizacoesFailed}

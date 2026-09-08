@@ -51,7 +51,7 @@ import {
   strapSourcingKey,
   type StrapSourcingMap,
 } from '@/lib/strapSourcing';
-import { useStrapStockLines } from '@/hooks/useStrapStockLines';
+import { useStrapStockLines, type StrapStockLine } from '@/hooks/useStrapStockLines';
 import {
   READY_FALLBACK,
   type InternalStrapReadiness,
@@ -165,6 +165,7 @@ interface Props {
   saleOrderStatus?: string | null;
   billingWeek?: string | null;
   requiredAt?: string | null;
+  mainProductionStart?: string | null;
   /** Dados compartilhados pelo panel — evita N× useQuery idêntico por item. */
   sharedProducts?: Array<{ id: string; name: string | null; color: string | null; group_id: string | null; category: string | null; active: boolean | null }>;
   sharedProductGroups?: Array<{ id: string; name: string | null; colors: unknown; is_color_agnostic: boolean | null }>;
@@ -172,6 +173,10 @@ interface Props {
   sharedStrapCatalogLoading?: boolean;
   /** Readiness de tiras já batcheado pelo painel. */
   sharedInternalStrapReadiness?: InternalStrapReadiness;
+  /** Preview de estoque/consumo já batcheado pelo painel. */
+  sharedStrapStockLines?: StrapStockLine[];
+  sharedStrapStockLinesLoading?: boolean;
+  sharedStrapStockLinesError?: boolean;
   sharedReferenceTerceirizacoes?: ReferenceTerceirizacao[];
   sharedReferenceTerceirizacoesLoading?: boolean;
   sharedReferenceTerceirizacoesFailed?: boolean;
@@ -209,7 +214,7 @@ function materialBaseForStrap(strap: ReconcileStrapLineLike, inheritedBase?: str
   });
 }
 
-function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, onUpdate, onUpdateFields, onRemove, onCopyGradeFromPrevious, onSaveStateAndNavigate, isSelected, onToggleSelect, priceLookup, maxDiscountPct = 0, variantsByRef = EMPTY_VARIANTS_BY_REF, onColorIssueChange, onSheetMaterialSelectableChange, saleOrderId, saleOrderStatus, billingWeek, requiredAt, sharedProducts, sharedProductGroups, sharedStrapCatalog, sharedStrapCatalogLoading, sharedInternalStrapReadiness, sharedReferenceTerceirizacoes, sharedReferenceTerceirizacoesLoading, sharedReferenceTerceirizacoesFailed, onRetrySharedReferenceTerceirizacoes }: Props) {
+function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, onUpdate, onUpdateFields, onRemove, onCopyGradeFromPrevious, onSaveStateAndNavigate, isSelected, onToggleSelect, priceLookup, maxDiscountPct = 0, variantsByRef = EMPTY_VARIANTS_BY_REF, onColorIssueChange, onSheetMaterialSelectableChange, saleOrderId, saleOrderStatus, billingWeek, requiredAt, mainProductionStart, sharedProducts, sharedProductGroups, sharedStrapCatalog, sharedStrapCatalogLoading, sharedInternalStrapReadiness, sharedStrapStockLines, sharedStrapStockLinesLoading, sharedStrapStockLinesError, sharedReferenceTerceirizacoes, sharedReferenceTerceirizacoesLoading, sharedReferenceTerceirizacoesFailed, onRetrySharedReferenceTerceirizacoes }: Props) {
   const qc = useQueryClient();
   const access = useAccessControl();
   const { canSeeFinancialValues } = access;
@@ -708,7 +713,9 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   const strapSourcingMap = item.strap_sourcing || EMPTY_STRAP_SOURCING_MAP;
   const latestStrapSourcingMapRef = useRef(strapSourcingMap);
   latestStrapSourcingMapRef.current = strapSourcingMap;
-  const { data: strapLines = [], isLoading: strapLinesLoading } = useStrapStockLines(
+  // Painel bate preview em lote; uso avulso (mobile/testes) mantém o hook unitário.
+  const usesSharedStrapStockLines = sharedStrapStockLines !== undefined;
+  const localStrapStockLinesQuery = useStrapStockLines(
     {
       saleOrderId,
       saleOrderItemId: item.id || null,
@@ -722,10 +729,20 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       quantity: item.quantity,
       grade: item.grade,
       billingWeek,
+      mainProductionStart,
       requiredAt,
     },
-    hasStrapsEffective,
+    hasStrapsEffective && !usesSharedStrapStockLines,
   );
+  const strapLines = usesSharedStrapStockLines
+    ? (sharedStrapStockLines || [])
+    : (localStrapStockLinesQuery.data || []);
+  const strapLinesLoading = usesSharedStrapStockLines
+    ? !!sharedStrapStockLinesLoading
+    : localStrapStockLinesQuery.isLoading;
+  const strapLinesError = usesSharedStrapStockLines
+    ? !!sharedStrapStockLinesError
+    : localStrapStockLinesQuery.isError;
   const strapLineByKey = useMemo(
     () => new Map(strapLines.map((l) => [l.key, l])),
     [strapLines],
@@ -2842,6 +2859,10 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                               </p>
                             ) : strapLinesLoading && !line ? (
                               <p className="text-[10px] leading-tight text-muted-foreground">Resolvendo material e consumo…</p>
+                            ) : strapLinesError && !line ? (
+                              <p className="text-[10px] leading-snug text-amber-700 dark:text-amber-400">
+                                Não foi possível resolver estoque/consumo das tiras. Tente recarregar o pedido.
+                              </p>
                             ) : effective === 'internal' ? (
                               line?.snapshotWarning ? (
                                 <p className="text-[10px] leading-snug text-muted-foreground">

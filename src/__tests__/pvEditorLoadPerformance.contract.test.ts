@@ -5,10 +5,14 @@ import { describe, expect, it } from 'vitest';
 const ROOT = resolve(__dirname, '../..');
 const read = (path: string) => readFileSync(resolve(ROOT, path), 'utf8');
 
-const MIGRATION =
+const READINESS_MIGRATION =
   'supabase/migrations/20270101020200_pv-editor-strap-readiness-batch.sql';
-const migration = read(MIGRATION);
+const PREVIEW_MIGRATION =
+  'supabase/migrations/20270101021300_pv-editor-strap-preview-batch.sql';
+const readinessMigration = read(READINESS_MIGRATION);
+const previewMigration = read(PREVIEW_MIGRATION);
 const readinessHook = read('src/hooks/useInternalStrapReadiness.ts');
+const strapStockHook = read('src/hooks/useStrapStockLines.ts');
 const itemForm = read('src/components/sale-orders/SaleOrderItemForm.tsx');
 const panel = read('src/components/sale-orders/SaleOrderFormPanel.tsx');
 const saleOrderForm = read('src/pages/SaleOrderForm.tsx');
@@ -28,16 +32,16 @@ function sqlFunction(source: string, name: string): string {
 
 describe('PV editor — carga otimizada', () => {
   it('batch de readiness reusa o diagnose unitario e tem grants corretos', () => {
-    const fn = sqlFunction(migration, 'diagnose_sale_order_internal_strap_readiness_batch');
+    const fn = sqlFunction(readinessMigration, 'diagnose_sale_order_internal_strap_readiness_batch');
     expect(fn).toContain('STABLE');
     expect(fn).toContain('SECURITY DEFINER');
     expect(fn).toContain('public.diagnose_sale_order_internal_strap_readiness(');
     expect(fn).not.toMatch(/\bINSERT INTO\b/);
     expect(fn).not.toMatch(/\bUPDATE public\./);
-    expect(migration).toMatch(
+    expect(readinessMigration).toMatch(
       /GRANT EXECUTE ON FUNCTION\s+public\.diagnose_sale_order_internal_strap_readiness_batch\(jsonb\)\s+TO authenticated, service_role/,
     );
-    expect(migration).toMatch(
+    expect(readinessMigration).toMatch(
       /REVOKE ALL ON FUNCTION\s+public\.diagnose_sale_order_internal_strap_readiness_batch\(jsonb\)\s+FROM PUBLIC, anon/,
     );
   });
@@ -49,6 +53,42 @@ describe('PV editor — carga otimizada', () => {
     expect(panel).toContain('sharedInternalStrapReadinessByKey');
     expect(itemForm).toContain('sharedInternalStrapReadiness');
     expect(itemForm).not.toMatch(/useInternalStrapReadiness\s*\(/);
+  });
+
+  it('batch de preview de tiras reusa o preview unitario e tem grants corretos', () => {
+    const fn = sqlFunction(previewMigration, 'preview_sale_order_strap_demand_draft_batch');
+    expect(fn).toContain('STABLE');
+    expect(fn).toContain('SECURITY DEFINER');
+    expect(fn).toContain('public.preview_sale_order_strap_demand_draft(');
+    expect(fn).not.toMatch(/\bINSERT INTO\b/);
+    expect(fn).not.toMatch(/\bUPDATE public\./);
+    expect(previewMigration).toMatch(
+      /GRANT EXECUTE ON FUNCTION\s+public\.preview_sale_order_strap_demand_draft_batch\(jsonb\)\s+TO authenticated, service_role/,
+    );
+    expect(previewMigration).toMatch(
+      /REVOKE ALL ON FUNCTION\s+public\.preview_sale_order_strap_demand_draft_batch\(jsonb\)\s+FROM PUBLIC, anon/,
+    );
+  });
+
+  it('agenda do preview e hoisted fora do loop de linhas', () => {
+    const fn = sqlFunction(previewMigration, 'preview_sale_order_strap_demand_draft_pre_05500');
+    const forPos = fn.indexOf('FOR v_line IN');
+    expect(forPos).toBeGreaterThan(0);
+    expect(fn.slice(0, forPos)).toContain('FROM public.resolve_sale_order_main_production_start');
+    expect(fn.slice(forPos)).not.toContain('FROM public.resolve_sale_order_main_production_start');
+    expect(fn).toContain('v_item_main_start');
+  });
+
+  it('o painel bate preview de tiras em lote e o item nao dispara o unitario no mount', () => {
+    expect(strapStockHook).toContain('useStrapStockLinesBatch');
+    expect(strapStockHook).toContain('preview_sale_order_strap_demand_draft_batch');
+    expect(strapStockHook).toContain("meta: { silentError: true }");
+    expect(panel).toContain('useStrapStockLinesBatch');
+    expect(panel).toContain('sharedStrapStockLinesByKey');
+    expect(itemForm).toContain('sharedStrapStockLines');
+    expect(itemForm).toContain('usesSharedStrapStockLines');
+    // Unitário só com enabled=false quando o painel fornece o mapa.
+    expect(itemForm).toMatch(/hasStrapsEffective && !usesSharedStrapStockLines/);
   });
 
   it('editor usa fichas enxutas e snapshot em paralelo', () => {
@@ -71,8 +111,15 @@ describe('PV editor — carga otimizada', () => {
     expect(saleOrderForm).toContain('useCache');
   });
 
-  it('toast global respeita meta.silentError', () => {
+  it('toast global respeita meta.silentError e nao retenta statement timeout', () => {
     expect(app).toContain('silentError');
     expect(readinessHook).toContain("meta: { silentError: true }");
+    expect(strapStockHook).toContain("meta: { silentError: true }");
+    expect(app).toMatch(/statement timeout/i);
+  });
+
+  it('item mostra erro local em vez de spinner eterno no preview', () => {
+    expect(itemForm).toContain('Não foi possível resolver estoque/consumo das tiras');
+    expect(itemForm).toContain('strapLinesError');
   });
 });
