@@ -550,7 +550,7 @@ describe('ArtisanalStrapConversionEditor', () => {
     expect(screen.getByRole('heading', { name: 'Cadastrar tipo e material' })).toBeInTheDocument();
     expect(screen.getByLabelText(/Largura da banda/i)).toHaveValue('18');
     expect(screen.getByLabelText(/Rendimento real confirmado/i)).toHaveValue('68');
-    expect(screen.getByRole('button', { name: 'Criar nova versão' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /Informar mão de obra|Criar nova versão/i }).length).toBeGreaterThan(0);
   });
 
   it('bloqueia um contexto ainda não inicializado para não sobrescrever edição transitória', () => {
@@ -793,12 +793,13 @@ describe('ArtisanalStrapConversionEditor', () => {
     expect(screen.getByRole('heading', { name: 'Cadastrar tipo e material' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Adicionar outro material' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Confirmar rendimento e salvar/i })).toBeDisabled();
-    await user.click(screen.getByRole('button', { name: 'Criar nova versão' }));
+    await user.click(screen.getAllByRole('button', { name: /Informar mão de obra|Criar nova versão/i })[0]);
     expect(screen.getByText('Nova versão em rascunho')).toBeInTheDocument();
+    // Em create com receita já existente o motivo já vem pré-preenchido.
     expect(screen.getByLabelText(/Motivo da alteração/i)).toHaveValue('Nova versão da conversão');
     await user.clear(screen.getByLabelText(/Rendimento real confirmado/i));
     await user.type(screen.getByLabelText(/Rendimento real confirmado/i), '67');
-    await user.click(screen.getByRole('button', { name: /Confirmar rendimento e salvar/i }));
+    await user.click(screen.getByRole('button', { name: /Confirmar nova versão e salvar|Confirmar rendimento e salvar/i }));
 
     await waitFor(() => expect(mutations.confirmConversion).toHaveBeenCalledTimes(1));
     expect(mutations.saveMaterialConversions).not.toHaveBeenCalled();
@@ -825,10 +826,46 @@ describe('ArtisanalStrapConversionEditor', () => {
     expect(screen.getByLabelText(/Rendimento real confirmado/i)).toHaveValue('65');
     expect(screen.getByLabelText(/Motivo da alteração/i))
       .toHaveValue('Nova versão baseada no rendimento realizado de 65 m/m');
-    await user.click(screen.getByRole('button', { name: 'Salvar conversão' }));
+    await user.click(screen.getByRole('button', { name: 'Confirmar nova versão e salvar' }));
 
-    await waitFor(() => expect(mutations.saveConversion).toHaveBeenCalledTimes(1));
-    expect(mutations.saveConversion.mock.calls[0][0].payload.recipe.id).toBeUndefined();
+    // Com permissão de aprovação, a nova versão já entra vigente — senão o
+    // custo de MO ficaria em rascunho e consumo/financeiro seguiriam em R$0.
+    await waitFor(() => expect(mutations.confirmConversion).toHaveBeenCalledTimes(1));
+    expect(mutations.saveConversion).not.toHaveBeenCalled();
+    expect(mutations.confirmConversion.mock.calls[0][0].payload.recipe.id).toBeUndefined();
+  });
+
+  it('desbloqueia o custo de mão de obra via Informar mão de obra na conversão aprovada', async () => {
+    const user = userEvent.setup();
+    render(
+      <ArtisanalStrapConversionEditor
+        open
+        onOpenChange={vi.fn()}
+        catalog={catalogWithConfiguredMaterial}
+        capabilities={capabilities}
+        mode="edit"
+        origin="hub"
+        recipeId="recipe-approved"
+      />,
+    );
+
+    expect(screen.getByLabelText(/Custo de transformação \(mão de obra\)/i)).toBeDisabled();
+    expect(screen.getAllByRole('button', { name: 'Informar mão de obra' }).length).toBeGreaterThan(0);
+
+    await user.click(screen.getAllByRole('button', { name: 'Informar mão de obra' })[0]);
+
+    expect(screen.getByText('Nova versão em rascunho')).toBeInTheDocument();
+    const costInput = screen.getByLabelText(/Custo de transformação \(mão de obra\)/i);
+    expect(costInput).not.toBeDisabled();
+    await user.clear(costInput);
+    await user.type(costInput, '1,25');
+    expect(screen.getByLabelText(/Motivo da alteração/i)).toHaveValue('Cadastro do custo de mão de obra');
+    await user.click(screen.getByRole('button', { name: 'Confirmar nova versão e salvar' }));
+
+    await waitFor(() => expect(mutations.confirmConversion).toHaveBeenCalledTimes(1));
+    const recipePayload = mutations.confirmConversion.mock.calls[0][0].payload.recipe;
+    expect(recipePayload.id).toBeUndefined();
+    expect(recipePayload.transformation_cost_per_m).toBe(1.25);
   });
 
   it('trata review como consulta e não rebaixa uma receita pendente para rascunho', () => {

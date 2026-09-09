@@ -532,6 +532,17 @@ export function ArtisanalStrapConversionEditor({
     setValidationError(null);
   };
 
+  /** Versão aprovada é imutável — abre rascunho editável para cadastrar MO/custo. */
+  const startNewRecipeVersion = (reasonHint = 'Nova versão da conversão') => {
+    if (interactionLocked || !canSeeFinancial) return;
+    setCreateRecipeVersion(true);
+    setForm((current) => ({
+      ...current,
+      reason: current.reason.trim() ? current.reason : reasonHint,
+    }));
+    setValidationError(null);
+  };
+
   const addMaterial = () => {
     if (interactionLocked || addMaterialDisabledReason) return;
     setForm((current) => {
@@ -713,7 +724,9 @@ export function ArtisanalStrapConversionEditor({
           editableWidthProfileId: primaryContext.editableWidthProfile?.id,
           reason,
         });
-      } else if (canConfirmImmediately && mode === 'create') {
+      } else if (canConfirmImmediately && (mode === 'create' || createRecipeVersion)) {
+        // Nova versão com permissão de aprovação já entra vigente — senão o
+        // custo de MO ficaria só em rascunho e consumo/financeiro seguiriam em R$0.
         await confirmConversion.mutateAsync({ reason, payload });
       } else {
         await saveConversion.mutateAsync({ reason, payload });
@@ -1082,18 +1095,28 @@ export function ArtisanalStrapConversionEditor({
                         <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
                           <div>
                             <p className="text-sm font-semibold">Versão aprovada preservada</p>
-                            <p className="text-xs text-muted-foreground">Pedidos anteriores continuam usando o snapshot já registrado.</p>
+                            <p className="text-xs text-muted-foreground">
+                              {numberOrZero(context.currentRecipe.transformation_cost_per_m) <= 0 && canSeeFinancial
+                                ? 'Para cadastrar a mão de obra (R$/m), abra uma nova versão. Pedidos já confirmados mantêm o snapshot antigo.'
+                                : 'Pedidos anteriores continuam usando o snapshot já registrado. Qualquer ajuste exige nova versão.'}
+                            </p>
                           </div>
                           {canWrite && !createRecipeVersion && !isReviewMode && (
                             <Button
                               type="button"
                               variant="outline"
                               size="sm"
-                              onClick={() => setCreateRecipeVersion(true)}
+                              onClick={() => startNewRecipeVersion(
+                                numberOrZero(context.currentRecipe?.transformation_cost_per_m) <= 0
+                                  ? 'Cadastro do custo de mão de obra'
+                                  : 'Nova versão da conversão',
+                              )}
                               disabled={interactionLocked || !canSeeFinancial}
                               aria-describedby={!canSeeFinancial ? 'strap-conversion-version-financial-help' : undefined}
                             >
-                              Criar nova versão
+                              {numberOrZero(context.currentRecipe.transformation_cost_per_m) <= 0 && canSeeFinancial
+                                ? 'Informar mão de obra'
+                                : 'Criar nova versão'}
                             </Button>
                           )}
                           {createRecipeVersion && <Badge variant="secondary">Nova versão em rascunho</Badge>}
@@ -1173,7 +1196,14 @@ export function ArtisanalStrapConversionEditor({
                         </div>
                       </div>
 
-                      <details className="rounded-lg border border-border bg-muted/20 p-3" open={Boolean(context.currentRecipe || legacyRecipe)}>
+                      <details
+                        className="rounded-lg border border-border bg-muted/20 p-3"
+                        open={Boolean(
+                          context.currentRecipe
+                          || legacyRecipe
+                          || (canSeeFinancial && material.transformationCost <= 0),
+                        )}
+                      >
                         <summary className="cursor-pointer text-sm font-semibold">Produção e custo</summary>
                         <p className="mt-1 text-xs text-muted-foreground">
                           Configuração operacional deste material. O rendimento continua independente da cor.
@@ -1215,8 +1245,10 @@ export function ArtisanalStrapConversionEditor({
                             </div>
                           )}
                           {canSeeFinancial && (
-                            <div className="space-y-1.5">
-                              <Label htmlFor={transformationCostId}>Custo de transformação</Label>
+                            <div className="space-y-1.5 sm:col-span-2">
+                              <Label htmlFor={transformationCostId}>
+                                Custo de transformação (mão de obra)
+                              </Label>
                               <NumberInput
                                 id={transformationCostId}
                                 value={material.transformationCost}
@@ -1224,6 +1256,29 @@ export function ArtisanalStrapConversionEditor({
                                 unit="R$/m"
                                 disabled={isSaving || !context.canEditRecipeFields}
                               />
+                              {context.canEditRecipeFields ? (
+                                <p className="text-xs text-muted-foreground">
+                                  Esse R$/m aparece no consumo de material (mão de obra) e no lançamento
+                                  financeiro da OS/provisão do prestador. Pedidos já confirmados mantêm o
+                                  snapshot anterior.
+                                </p>
+                              ) : canWrite && !createRecipeVersion && !isReviewMode ? (
+                                <div className="space-y-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-2">
+                                  <p className="text-xs text-muted-foreground">
+                                    Campo bloqueado: a conversão aprovada não pode ser editada no lugar.
+                                    Abra uma nova versão para informar a mão de obra.
+                                  </p>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="secondary"
+                                    onClick={() => startNewRecipeVersion('Cadastro do custo de mão de obra')}
+                                    disabled={interactionLocked || !canSeeFinancial}
+                                  >
+                                    Informar mão de obra
+                                  </Button>
+                                </div>
+                              ) : null}
                             </div>
                           )}
                         </div>
@@ -1294,10 +1349,12 @@ export function ArtisanalStrapConversionEditor({
                   ? 'Salvando…'
                   : legacyRecipe
                     ? 'Confirmar e ativar'
-                    : canConfirmImmediately && mode === 'create'
+                    : canConfirmImmediately && (mode === 'create' || createRecipeVersion)
                       ? isMultiMaterialCreate && form.materials.length > 1
                         ? `Confirmar ${form.materials.length} rendimentos e salvar`
-                        : 'Confirmar rendimento e salvar'
+                        : createRecipeVersion
+                          ? 'Confirmar nova versão e salvar'
+                          : 'Confirmar rendimento e salvar'
                       : isMultiMaterialCreate && form.materials.length > 1
                         ? `Salvar ${form.materials.length} conversões`
                         : 'Salvar conversão'}
