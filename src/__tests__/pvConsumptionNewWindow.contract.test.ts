@@ -30,5 +30,8 @@ describe('Consumo de materiais — mesma aba + filtro por item', () => {
     expect(panel).toContain('materializePvConsumptionScope');
     expect(panel).toContain('itemOptions');
     expect(panel).toContain('selectedItemIds');
+    // Toggle de item não pode zerar a tela no spinner.
+    expect(panel).toContain('keepPreviousData');
+    expect(panel).toContain('loading={isLoading && !data}');
   });
 });

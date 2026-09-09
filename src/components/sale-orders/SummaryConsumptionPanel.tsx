@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import MaterialConsumptionView, {
   type ConsumptionPartitionMode,
@@ -39,6 +39,9 @@ import {
  * com `partition: 'order_reference'` — sem nova RPC.
  *
  * 09/09/2026: `?item=` aceita CSV (`id1,id2`) pra multi-seleção de itens.
+ *
+ * 09/09/2026: reescopo por item mantém rows anteriores (`keepPreviousData`) —
+ * sem spinner de página a cada toggle do multi-select.
  */
 type Props = {
   saleOrderIds: string[];
@@ -138,6 +141,8 @@ export default function SummaryConsumptionPanel({ saleOrderIds, onGerarOC, embed
     },
     enabled: !!data?.report || (!!data && !hasItemFilter && effectivePartition === 'none'),
     staleTime: PV_CONSUMPTION_STALE_MS,
+    // Toggle de item troca a query key — sem isto a tela inteira some no spinner.
+    placeholderData: keepPreviousData,
   });
 
   const rows = scopedQuery.data?.rows ?? data?.rows ?? [];
@@ -158,16 +163,14 @@ export default function SummaryConsumptionPanel({ saleOrderIds, onGerarOC, embed
     [items, multiPv],
   );
 
-  const scopeLoading = scopedQuery.isLoading && !scopedQuery.data
-    && (hasItemFilter || effectivePartition === 'order_reference');
-
+  // Spinner só na carga inicial do PV — reescopo por item/partição mantém a tela.
   return (
     <MaterialConsumptionView
       rows={rows}
       artisanalStrapRows={artisanalStrapRows}
       title={singlePvNumber ? `Consumo de Materiais — ${singlePvNumber}` : 'Consumo Consolidado'}
       orderHeaders={singlePv ? undefined : orderHeaders}
-      loading={(isLoading && !data) || scopeLoading}
+      loading={isLoading && !data}
       onRecalcular={() => { void refetch(); }}
       onGerarOC={onGerarOC}
       emptyMessage={

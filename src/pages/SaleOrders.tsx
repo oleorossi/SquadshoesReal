@@ -564,11 +564,15 @@ export default function SaleOrders() {
   };
   // Bookmarks da rota legada carregam a mesma ferramenta no host; os IDs ficam
   // na URL para não perder a seleção ao atravessar o redirect.
+  // Depende só de view/ids — não de `item` — senão cada toggle do multi-select
+  // recria o array e re-renderiza o painel à toa.
+  const consumptionViewParam = searchParams.get('view');
+  const consumptionIdsParam = searchParams.get('ids') || '';
   const consumptionViewIds = useMemo(() => {
-    if (searchParams.get('view') !== 'consumo') return [];
-    return (searchParams.get('ids') || '').split(',').map((id) => id.trim()).filter(Boolean);
-  }, [searchParams]);
-  const isConsumptionView = searchParams.get('view') === 'consumo';
+    if (consumptionViewParam !== 'consumo') return [];
+    return consumptionIdsParam.split(',').map((id) => id.trim()).filter(Boolean);
+  }, [consumptionViewParam, consumptionIdsParam]);
+  const isConsumptionView = consumptionViewParam === 'consumo';
   const isPendenciasView = searchParams.get('view') === 'pendencias';
   const consumptionViewOrders = useMemo(
     () => orders.filter((order) => consumptionViewIds.includes(order.id)),

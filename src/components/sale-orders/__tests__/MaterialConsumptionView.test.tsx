@@ -257,6 +257,24 @@ describe('MaterialConsumptionView — tela buy-first', () => {
       .toHaveTextContent('2 itens selecionados');
   });
 
+  it('mantém o rótulo legível nos itens marcados (sem bg-accent preto)', async () => {
+    const user = userEvent.setup();
+    renderView({
+      itemOptions: [
+        { id: 'item-1', label: 'Item 1 · I90 · PRETO' },
+        { id: 'item-2', label: 'Item 2 · I90 · OFF WHITE' },
+      ],
+      selectedItemIds: ['item-1', 'item-2'],
+      onSelectedItemIdsChange: vi.fn(),
+    });
+
+    await user.click(screen.getByRole('combobox', { name: /Filtrar consumo por item/i }));
+    const selectedRow = screen.getByRole('button', { name: /Item 1 · I90 · PRETO/i });
+    expect(selectedRow).toHaveTextContent('Item 1 · I90 · PRETO');
+    expect(selectedRow).toHaveClass('bg-muted');
+    expect(selectedRow).not.toHaveClass('bg-accent');
+  });
+
   it('esconde o seletor de item quando não há opções', () => {
     renderView();
     expect(screen.queryByRole('combobox', { name: /Filtrar consumo por item/i })).not.toBeInTheDocument();

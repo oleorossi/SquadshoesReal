@@ -421,8 +421,8 @@ function ItemFilterMultiSelect({
             type="button"
             onClick={selectAll}
             className={cn(
-              'flex w-full items-center gap-2.5 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent',
-              allSelected && 'bg-accent',
+              'flex w-full items-center gap-2.5 rounded-sm px-2 py-1.5 text-left text-sm text-foreground hover:bg-muted/60',
+              allSelected && 'bg-muted',
             )}
           >
             <ItemCheckMark checked={allSelected} />
@@ -436,8 +436,8 @@ function ItemFilterMultiSelect({
                 type="button"
                 onClick={() => toggle(opt.id)}
                 className={cn(
-                  'flex w-full items-center gap-2.5 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent',
-                  selected && 'bg-accent',
+                  'flex w-full items-center gap-2.5 rounded-sm px-2 py-1.5 text-left text-sm text-foreground hover:bg-muted/60',
+                  selected && 'bg-muted',
                 )}
               >
                 <ItemCheckMark checked={selected} />
