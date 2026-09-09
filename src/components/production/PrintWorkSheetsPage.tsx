@@ -13,7 +13,9 @@ import { SilkMontageWorkSheet, type SoleSilkGroup, type SilkColorGroup, type Gro
 import {
   buildCartaoFisicoCards,
   CARTAO_FISICO_EMITTERS,
+  CARTAO_FISICO_PER_PAGE,
   isCartaoFisicoEmitter,
+  layoutCutStackPages,
   type CartaoFisicoCard,
 } from '@/lib/cartaoFisico';
 import type { SectorAlert } from '@/components/production/worksheet/SectorAlerts';
@@ -110,9 +112,13 @@ function printableOperatorStraps(
  * estava "180". 84mm e 74mm cabem mais cartões, mas com a grade truncada.
  *
  * A altura é do CONTEÚDO (o cartão não tem height fixa) e varia por setor —
- * Corte Forração tem consumo e fica mais alto que Corte Palmilha. O
- * empacotamento é do fragmentador do browser, igual à ficha reduzida:
- * `break-inside: avoid` mantém o cartão inteiro e a folha enche até o fim.
+ * Corte Forração tem consumo e fica mais alto que Corte Palmilha.
+ *
+ * Ordem do DOM = cut-stack (`layoutCutStackPages`): cada `.cartao-page` é uma
+ * folha A4 com até 12 cartões. Empilhar as folhas e cortar a mesma posição
+ * entrega a sequência k/N sem reordenar na mão. Não reordenar no CSS.
+ * Wrappers de página também fazem o "Inverter saída" inverter por FOLHA
+ * (não por cartão), preservando a geometria cut-stack na impressora face-up.
  */
 const cartaoStyles = `
   @media screen {
@@ -121,18 +127,38 @@ const cartaoStyles = `
        só sumiam no @media print, induzindo a uma conferência falsa. */
     .cartao-grid .pagi-sheet,
     .cartao-grid .page-break { display: none !important; }
+    /* Separador visual entre folhas na prévia (não imprime). */
+    .cartao-page + .cartao-page {
+      border-top: 1px dashed #ccc;
+      margin-top: 4mm;
+      padding-top: 4mm;
+    }
   }
   @media print {
     @page { size: A4 landscape; margin: 0; }
     /* O paginador explícito e os maços de ficha não participam deste modo. */
     .print-area .pagi-sheet, .print-area .page-break { display: none !important; }
     .cartao-grid {
+      display: block !important;
+      width: auto !important;
+      padding: 0 !important;
+      background: transparent !important;
+    }
+    .cartao-page {
       display: flex !important;
       flex-wrap: wrap !important;
       align-content: flex-start !important;
       gap: 2mm !important;
       padding: 3mm !important;
-      width: auto !important;
+      width: 297mm !important;
+      min-height: 210mm !important;
+      box-sizing: border-box !important;
+      break-after: page !important;
+      page-break-after: always !important;
+    }
+    .cartao-page:last-child {
+      break-after: auto !important;
+      page-break-after: auto !important;
     }
     /* Cartão inteiro ou nada — nunca parte entre duas folhas. */
     .cartao-lote {
@@ -143,13 +169,19 @@ const cartaoStyles = `
   /* Preview em TELA no mesmo empacotamento do papel (regra WYSIWYG do
      PRINT_SPEC §0.2-1: nada que mude altura pode viver só em @media print). */
   .cartao-grid {
+    display: block;
+    width: 297mm;
+    margin: 0 auto;
+    background: #fff;
+  }
+  .cartao-page {
     display: flex;
     flex-wrap: wrap;
     align-content: flex-start;
     gap: 2mm;
     padding: 3mm;
     width: 297mm;
-    margin: 0 auto;
+    box-sizing: border-box;
     background: #fff;
   }
 `;
@@ -3198,6 +3230,13 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cartao, activeSectors, printOrders, sheetById, liningFlagLookup, variantsByRef, tsImageByRef, sheetMaterialsByRef, resolveSoleForOrder]);
 
+  // Cut-stack: reordena a lista sequencial em folhas de 12 pra empilhar e
+  // cortar a mesma posição já sair com k/N em sequência.
+  const cartaoFisicoPages = useMemo(
+    () => layoutCutStackPages(cartaoFisicoCards, CARTAO_FISICO_PER_PAGE),
+    [cartaoFisicoCards],
+  );
+
   // ── Contagem total de fichas que vão pra impressão ─────────────────────────
   // Soma as fichas de cada setor ATIVO. Cada componente memoizado já filtra
   // pelo activeSectors, então palmilhaGroups/silkMontageGroups/solagemData/
@@ -3502,29 +3541,34 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       {/* Saída invertida (2026-07-24): durante o print, o provider liga a
           inversão nas páginas de cada PaginatedSheet e o ReversibleStack
           inverte a ordem dos maços de setor — juntos, reversão completa do
-          documento página a página. Sem gate por modo: vale para as fichas e
-          para os cartões de lote (nestes a ordem é irrelevante, vão pra
-          tesoura, mas inverter não atrapalha). */}
+          documento página a página. No modo Cartão físico os filhos top-level
+          são wrappers `.cartao-page` (cut-stack): inverter por FOLHA preserva
+          a geometria de empilhar-e-cortar; não inverter cartão a cartão. */}
       <ReversePrintContext.Provider value={printReversing}>
       <ReversibleStack reverse={printReversing}>
 
         {/* Cartão físico — 1 por corrugado cheio × OP × setor emissor.
-            Fora de .page-break pra o CSS do modo cartão não esconder. */}
-        {cartao && cartaoFisicoCards.map((card) => (
-          <CartaoFisico
-            key={`${card.sectorName}-${card.opNumber}-${card.index}/${card.of}`}
-            sectorName={card.sectorDisplayLabel}
-            opNumber={card.opNumber}
-            pvLabel={card.pvLabel}
-            title={card.title}
-            subtitle={card.subtitle}
-            imageUrl={card.imageUrl}
-            sizes={card.sizes}
-            grade={card.grade}
-            totalPairs={card.totalPairs}
-            lotLabel={card.lotLabel}
-            lotCode={card.lotCode}
-          />
+            Fora de .page-break pra o CSS do modo cartão não esconder.
+            Páginas explícitas = cut-stack (layoutCutStackPages). */}
+        {cartao && cartaoFisicoPages.map((pageCards, pageIdx) => (
+          <div key={`cartao-page-${pageIdx}`} className="cartao-page">
+            {pageCards.map((card) => (
+              <CartaoFisico
+                key={`${card.sectorName}-${card.opNumber}-${card.index}/${card.of}`}
+                sectorName={card.sectorDisplayLabel}
+                opNumber={card.opNumber}
+                pvLabel={card.pvLabel}
+                title={card.title}
+                subtitle={card.subtitle}
+                imageUrl={card.imageUrl}
+                sizes={card.sizes}
+                grade={card.grade}
+                totalPairs={card.totalPairs}
+                lotLabel={card.lotLabel}
+                lotCode={card.lotCode}
+              />
+            ))}
+          </div>
         ))}
 
         {/* ── Corte Palmilha ──

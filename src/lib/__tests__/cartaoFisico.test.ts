@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
   buildCartaoFisicoCards,
   CARTAO_FISICO_EMITTERS,
+  CARTAO_FISICO_PER_PAGE,
   countFullCorrugados,
   gradeForOneCorrugado,
   isCartaoFisicoEmitter,
+  layoutCutStack,
+  layoutCutStackPages,
 } from '@/lib/cartaoFisico';
 
 describe('cartaoFisico', () => {
@@ -121,5 +124,56 @@ describe('cartaoFisico', () => {
       null,
     );
     expect(Object.values(fromTotal).reduce((s, v) => s + v, 0)).toBe(12);
+  });
+
+  describe('layoutCutStack', () => {
+    it('capacidade canônica = 12 (3×4 A4 paisagem)', () => {
+      expect(CARTAO_FISICO_PER_PAGE).toBe(12);
+    });
+
+    it('N ≤ capacity → identidade (uma página)', () => {
+      const items = Array.from({ length: 10 }, (_, i) => i);
+      expect(layoutCutStackPages(items, 12)).toEqual([items]);
+      expect(layoutCutStack(items, 12)).toEqual(items);
+      expect(layoutCutStackPages([], 12)).toEqual([]);
+    });
+
+    it('N = 24 / C = 12 → slot 0 das duas páginas = itens 0 e 1', () => {
+      const items = Array.from({ length: 24 }, (_, i) => i);
+      const pages = layoutCutStackPages(items, 12);
+      expect(pages).toHaveLength(2);
+      expect(pages[0]).toHaveLength(12);
+      expect(pages[1]).toHaveLength(12);
+      // Empilhar e cortar a posição 0 entrega a sequência 0,1
+      expect(pages[0][0]).toBe(0);
+      expect(pages[1][0]).toBe(1);
+      // Posição 1 → 2,3; última posição → 22,23
+      expect(pages.map((p) => p[1])).toEqual([2, 3]);
+      expect(pages.map((p) => p[11])).toEqual([22, 23]);
+      // Página 1 (0-based) = pares; página 2 = ímpares (1-based do plano)
+      expect(pages[0]).toEqual([0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22]);
+      expect(pages[1]).toEqual([1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23]);
+    });
+
+    it('N = 13 / C = 12 → 2 páginas; slot 0 = 0,1; sem inventar card', () => {
+      const items = Array.from({ length: 13 }, (_, i) => i);
+      const pages = layoutCutStackPages(items, 12);
+      expect(pages).toHaveLength(2);
+      expect(pages[0][0]).toBe(0);
+      expect(pages[1][0]).toBe(1);
+      expect(pages[0]).toHaveLength(7);
+      expect(pages[1]).toHaveLength(6);
+      expect(pages.flat()).toHaveLength(13);
+    });
+
+    it('round-trip: emitidos = permutação dos originais (sem perda/duplicata)', () => {
+      for (const n of [1, 11, 12, 13, 24, 25, 36, 40, 260]) {
+        const items = Array.from({ length: n }, (_, i) => `c${i}`);
+        const laid = layoutCutStack(items, CARTAO_FISICO_PER_PAGE);
+        expect(laid).toHaveLength(n);
+        expect([...laid].sort()).toEqual([...items].sort());
+        expect(new Set(laid).size).toBe(n);
+      }
+    });
   });
 });
