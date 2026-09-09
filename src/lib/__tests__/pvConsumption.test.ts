@@ -164,7 +164,12 @@ describe('materializePvConsumptionScope / path', () => {
 
   it('sem item materializa o report inteiro', async () => {
     await materializePvConsumptionScope(report as never, null);
-    expect(mocks.materializeCanonicalConsumptionReport).toHaveBeenCalledWith(report);
+    // 3º arg = opts de identidade (undefined quando o caller não passa)
+    expect(mocks.materializeCanonicalConsumptionReport).toHaveBeenCalledWith(
+      report,
+      undefined,
+      undefined,
+    );
   });
 
   it('com item passa scopeKeys = Set([itemId])', async () => {
@@ -172,6 +177,7 @@ describe('materializePvConsumptionScope / path', () => {
     expect(mocks.materializeCanonicalConsumptionReport).toHaveBeenCalledWith(
       report,
       new Set(['item-1']),
+      undefined,
     );
   });
 
