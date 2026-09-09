@@ -9,6 +9,8 @@ import {
   loadPvConsumption,
   materializePvConsumptionScope,
   normalizePvConsumptionIds,
+  normalizePvConsumptionItemIds,
+  parsePvConsumptionItemParam,
   pvConsumptionItemLabel,
   pvConsumptionQueryKey,
   PV_CONSUMPTION_STALE_MS,
@@ -35,6 +37,8 @@ import {
  *
  * 09/09/2026: modo estendido "Por PV e modelo" rematerializa o mesmo report
  * com `partition: 'order_reference'` — sem nova RPC.
+ *
+ * 09/09/2026: `?item=` aceita CSV (`id1,id2`) pra multi-seleção de itens.
  */
 type Props = {
   saleOrderIds: string[];
@@ -63,29 +67,41 @@ export default function SummaryConsumptionPanel({ saleOrderIds, onGerarOC, embed
 
   const items = data?.items ?? [];
   const itemParam = searchParams.get('item');
-  const selectedItemId = useMemo(() => {
-    if (!itemParam) return null;
-    return items.some((item) => item.id === itemParam) ? itemParam : null;
+  const selectedItemIds = useMemo(() => {
+    const requested = parsePvConsumptionItemParam(itemParam);
+    if (requested.length === 0) return [] as string[];
+    const known = new Set(items.map((item) => item.id));
+    return requested.filter((id) => known.has(id));
   }, [itemParam, items]);
 
-  // Item inválido/ausente na URL → limpa pra não ficar um filtro fantasma.
+  // IDs inválidos/ausentes na URL → reescreve (ou limpa) pra não ficar filtro fantasma.
   useEffect(() => {
     if (!itemParam) return;
     if (isLoading && !data) return;
-    if (items.some((item) => item.id === itemParam)) return;
+    const requested = parsePvConsumptionItemParam(itemParam);
+    const known = new Set(items.map((item) => item.id));
+    const valid = requested.filter((id) => known.has(id));
+    if (valid.length === requested.length) return;
     const next = new URLSearchParams(searchParams);
-    next.delete('item');
+    if (valid.length === 0) next.delete('item');
+    else next.set('item', valid.join(','));
     setSearchParams(next, { replace: true });
   }, [itemParam, items, isLoading, data, searchParams, setSearchParams]);
 
-  const setSelectedItemId = (nextId: string | null) => {
+  const setSelectedItemIds = (nextIds: string[]) => {
+    const unique = normalizePvConsumptionItemIds(nextIds);
     const next = new URLSearchParams(searchParams);
-    if (nextId) next.set('item', nextId);
-    else next.delete('item');
+    // Vazio ou todos os itens do PV → equivalente a "Todos os itens".
+    const selectsAll = items.length > 0
+      && unique.length === items.length
+      && items.every((item) => unique.includes(item.id));
+    if (unique.length === 0 || selectsAll) next.delete('item');
+    else next.set('item', unique.join(','));
     setSearchParams(next, { replace: true });
   };
 
-  const canPartition = !!data?.canPartitionByOrderReference && !selectedItemId;
+  const hasItemFilter = selectedItemIds.length > 0;
+  const canPartition = !!data?.canPartitionByOrderReference && !hasItemFilter;
   const effectivePartition: ConsumptionPartitionMode =
     canPartition && partitionMode === 'order_reference' ? 'order_reference' : 'none';
 
@@ -94,12 +110,16 @@ export default function SummaryConsumptionPanel({ saleOrderIds, onGerarOC, embed
     if (!canPartition && partitionMode !== 'none') setPartitionMode('none');
   }, [canPartition, partitionMode]);
 
+  const scopeKey = hasItemFilter
+    ? [...selectedItemIds].sort().join(',')
+    : 'all';
+
   const scopedQuery = useQuery({
     // dataUpdatedAt invalida o escopo quando "Recalcular" refresca o report.
     queryKey: [
       ...pvConsumptionQueryKey(ids),
       'scope',
-      selectedItemId ?? 'all',
+      scopeKey,
       effectivePartition,
       dataUpdatedAt,
     ] as const,
@@ -111,12 +131,12 @@ export default function SummaryConsumptionPanel({ saleOrderIds, onGerarOC, embed
         ? { partition: 'order_reference' as const, ...data.identity }
         : undefined;
       // Consolidado sem filtro de item: reusa as rows já materializadas no load.
-      if (!selectedItemId && effectivePartition === 'none') {
+      if (!hasItemFilter && effectivePartition === 'none') {
         return { rows: data.rows, artisanalStrapRows: data.artisanalStrapRows };
       }
-      return materializePvConsumptionScope(data.report, selectedItemId, partitionOpts);
+      return materializePvConsumptionScope(data.report, selectedItemIds, partitionOpts);
     },
-    enabled: !!data?.report || (!!data && !selectedItemId && effectivePartition === 'none'),
+    enabled: !!data?.report || (!!data && !hasItemFilter && effectivePartition === 'none'),
     staleTime: PV_CONSUMPTION_STALE_MS,
   });
 
@@ -139,7 +159,7 @@ export default function SummaryConsumptionPanel({ saleOrderIds, onGerarOC, embed
   );
 
   const scopeLoading = scopedQuery.isLoading && !scopedQuery.data
-    && (!!selectedItemId || effectivePartition === 'order_reference');
+    && (hasItemFilter || effectivePartition === 'order_reference');
 
   return (
     <MaterialConsumptionView
@@ -164,8 +184,8 @@ export default function SummaryConsumptionPanel({ saleOrderIds, onGerarOC, embed
       }
       embedded={embedded}
       itemOptions={itemOptions}
-      selectedItemId={selectedItemId}
-      onSelectedItemIdChange={setSelectedItemId}
+      selectedItemIds={selectedItemIds}
+      onSelectedItemIdsChange={setSelectedItemIds}
       canPartition={canPartition}
       partitionMode={effectivePartition}
       onPartitionModeChange={setPartitionMode}

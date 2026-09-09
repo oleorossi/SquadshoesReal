@@ -222,12 +222,25 @@ describe('materializePvConsumptionScope / path', () => {
     expect(mocks.materializeCanonicalConsumptionReport).toHaveBeenCalledWith(report);
   });
 
-  it('com item passa scopeKeys = Set([itemId])', async () => {
+  it('com item único passa scopeKeys = Set([itemId])', async () => {
     await materializePvConsumptionScope(report as never, 'item-1');
     expect(mocks.materializeCanonicalConsumptionReport).toHaveBeenCalledWith(
       report,
       new Set(['item-1']),
     );
+  });
+
+  it('com vários itens passa scopeKeys com todos os IDs', async () => {
+    await materializePvConsumptionScope(report as never, ['item-1', 'item-2']);
+    expect(mocks.materializeCanonicalConsumptionReport).toHaveBeenCalledWith(
+      report,
+      new Set(['item-1', 'item-2']),
+    );
+  });
+
+  it('array vazio materializa o report inteiro', async () => {
+    await materializePvConsumptionScope(report as never, []);
+    expect(mocks.materializeCanonicalConsumptionReport).toHaveBeenCalledWith(report);
   });
 
   it('com partição encaminha opts sem alterar o scope', async () => {
@@ -240,9 +253,11 @@ describe('materializePvConsumptionScope / path', () => {
     );
   });
 
-  it('monta a URL da tela cheia com ids e item opcional', () => {
+  it('monta a URL da tela cheia com ids e item opcional (1 ou N)', () => {
     expect(pvConsumptionPath(['pv-1', 'pv-1'])).toBe('/sales?view=consumo&ids=pv-1');
     expect(pvConsumptionPath(['pv-1'], 'item-1'))
       .toBe('/sales?view=consumo&ids=pv-1&item=item-1');
+    expect(pvConsumptionPath(['pv-1'], ['item-1', 'item-2']))
+      .toBe('/sales?view=consumo&ids=pv-1&item=item-1%2Citem-2');
   });
 });

@@ -165,21 +165,37 @@ export function pvConsumptionCanPartition(items: PvConsumptionItem[]): boolean {
   return orderIds.size > 1 || models.size > 1;
 }
 
+/** Normaliza 0..N IDs de item (string única, CSV implícito via array, ou null). */
+export function normalizePvConsumptionItemIds(
+  itemIds?: string | string[] | null,
+): string[] {
+  if (itemIds == null) return [];
+  const list = Array.isArray(itemIds) ? itemIds : [itemIds];
+  return normalizePvConsumptionIds(list);
+}
+
+/** Lê `?item=id` ou `?item=id1,id2` da URL. */
+export function parsePvConsumptionItemParam(param: string | null | undefined): string[] {
+  if (!param) return [];
+  return normalizePvConsumptionIds(param.split(','));
+}
+
 /**
- * Materializa o consumo no escopo total ou de um único item do PV.
+ * Materializa o consumo no escopo total ou de 1..N itens do PV.
  * Reusa o report já carregado — sem nova ida ao motor SQL.
  */
 export async function materializePvConsumptionScope(
   report: CanonicalConsumptionReport,
-  itemId: string | null | undefined,
+  itemIds?: string | string[] | null,
   opts?: AdaptCanonicalOptions,
 ): Promise<{ rows: ConsumptionRow[]; artisanalStrapRows: ArtisanalStrapCutRow[] }> {
-  if (!itemId) {
+  const ids = normalizePvConsumptionItemIds(itemIds);
+  if (ids.length === 0) {
     return opts
       ? materializeCanonicalConsumptionReport(report, undefined, opts)
       : materializeCanonicalConsumptionReport(report);
   }
-  const scopeKeys = new Set([itemId]);
+  const scopeKeys = new Set(ids);
   return opts
     ? materializeCanonicalConsumptionReport(report, scopeKeys, opts)
     : materializeCanonicalConsumptionReport(report, scopeKeys);
@@ -251,11 +267,15 @@ export async function loadPvConsumption(ids: string[]): Promise<PvConsumptionRes
 }
 
 /** URL da tela cheia de consumo (mesma aba / compartilhável). */
-export function pvConsumptionPath(ids: string[], itemId?: string | null): string {
+export function pvConsumptionPath(
+  ids: string[],
+  itemIds?: string | string[] | null,
+): string {
   const unique = normalizePvConsumptionIds(ids);
   const params = new URLSearchParams();
   params.set('view', 'consumo');
   if (unique.length > 0) params.set('ids', unique.join(','));
-  if (itemId) params.set('item', itemId);
+  const items = normalizePvConsumptionItemIds(itemIds);
+  if (items.length > 0) params.set('item', items.join(','));
   return `/sales?${params.toString()}`;
 }
