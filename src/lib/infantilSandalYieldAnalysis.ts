@@ -26,23 +26,32 @@ export const I701_REFERENCE_GRADE: Record<string, number> = {
 export const I701_ROLL_WIDTH_MM = 1370;
 
 /**
- * Duas peças aditivas do cabedal I701 (auditoria Glow 05/09/2026).
- * Sem rótulo vivo de “traseiro/frente” no fixture: a peça principal é o
- * `upper_consumption`; a aditiva é o acessório obrigatório do mesmo material.
- * Hipótese de mapeamento até o SQL live confirmar labels:
- *   - traseiro candidato = peça maior (2,74)
- *   - frente candidata   = peça menor (2,28)
+ * Anatomia da sandália infantil da foto (25–34):
+ *   1) TRASEIRO — contraforte do calcanhar + tira de tornozelo (fivela)
+ *   2) TIRAS DA FRENTE — 2 tiras lisas + 1 tira com corações pastel
+ *
+ * Duas peças aditivas do cabedal I701 (auditoria Glow 05/09/2026) mapeadas
+ * a essa anatomia até o SQL live confirmar labels:
+ *   - traseiro = peça maior (2,74) ← upper_consumption
+ *   - frente   = peça menor (2,28) ← acessório mandatory
+ * Corações coloridos são scrap de cor sobre a tira superior (fora destes dm²).
  */
+export const INFANTIL_SANDAL_PHOTO_BOM = {
+  traseiro: ['contraforte_calcanhar', 'tira_tornozelo_fivela'],
+  tirasFrente: ['tira_coracoes_pastel', 'tira_lisa_media', 'tira_lisa_inferior'],
+  foraDoCabedal: ['palmilha', 'solado', 'fivela_metal'],
+} as const;
+
 export const I701_CABEDAL_AREA_PIECES = [
   {
     key: 'traseiro_candidato',
-    label: 'Peça principal do cabedal (candidato a traseiro)',
+    label: 'Traseiro (contraforte + tornozelo) — candidato',
     dm2PerPair: 2.74,
     source: 'upper_consumption',
   },
   {
     key: 'frente_candidata',
-    label: 'Peça aditiva do cabedal (candidata a tiras/frente)',
+    label: 'Tiras da frente (3 tiras + base dos corações) — candidata',
     dm2PerPair: 2.28,
     source: 'components_accessories[mandatory]',
   },

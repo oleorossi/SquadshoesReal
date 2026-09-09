@@ -1,48 +1,59 @@
 # Análise de rendimento — sandália infantil 25–34
 
-> Continuação do ciclo ficha→PV→débito→Kanban (**mesmo PR**, sem branch extra).  
+> Continuação do ciclo ficha→PV→débito→Kanban (**mesmo PR**).  
 > Branch: `cursor/alinhamento-ficha-pv-debito-kanban-43d3`  
-> Ficha de referência: **I701** (`049cef09-f46f-4017-b9c7-e927b52b8632`)  
-> Grade de referência: **480 pares · 25–34 · 80 em 29/30 · 40 nos demais**  
-> Largura útil do dublado: **1370 mm = 137 dm²/m**
+> Foto de referência: `docs/assets/sandalia-infantil-25-34-traseiro-tiras.jpg`  
+> Faixa: **25–34** · Grade auditoria: **480 pares** (80 em 29/30 · 40 nos demais)  
+> Ficha quantitativa usada: **I701** (`049cef09-f46f-4017-b9c7-e927b52b8632`) — dublado 1370 mm  
+> Se a foto for **outra referência**, informar o código da ficha para reapontar o SQL.
+
+![Sandália infantil 25–34 — traseiro e tiras da frente](./assets/sandalia-infantil-25-34-traseiro-tiras.jpg)
 
 ## Objetivo
 
 Analisar o **rendimento dos itens em separado**, nesta ordem:
 
 1. **Traseiro** primeiro  
-2. **Tiras / peça da frente** depois  
+2. **Tiras da frente** depois  
 
 Rendimento = `pares ÷ metros` (pares por metro linear de material).
 
 ---
 
-## Veredito (fechado offline + confirmado pela auditoria Glow viva)
+## Anatomia da peça (pela foto)
 
-As duas peças de **área do cabedal** da I701 têm rendimento separado na grade 480:
+| Grupo | Peças visíveis | Material aparente |
+|---|---|---|
+| **1. Traseiro** | Contraforte no calcanhar + tira de tornozelo com fivela dourada e furos de ajuste | Sintético off-white (mesmo material do cabedal) · forro bege no verso |
+| **2. Tiras da frente** | (a) tira decorativa superior com **corações** pastel sobrepostos · (b) tira lisa intermediária · (c) tira lisa inferior | Base off-white + recortes de coração em rosa / amarelo / branco |
+| Apoio (fora deste corte) | Palmilha acolchoada + solado marrom texturizado | Não entram no rendimento de cabedal/tiras |
 
-| Ordem | Peça (hipótese de rótulo) | dm²/par | m na grade 480 | **Rendimento** |
-|:---:|---|---:|---:|---:|
-| 1 | Traseiro candidato (`upper_consumption`) | 2,74 | **9,600000** | **50,0000 pares/m** |
-| 2 | Frente candidata (acessório mandatory) | 2,28 | **7,988321** | **≈ 60,0877 pares/m** |
-| Σ | Dublado (mesma matéria) | 5,02 | **17,588321** | **≈ 27,2908 pares/m** |
-
-Fórmula: `m = dm²_par × pares ÷ 137`.
-
-**Confirmação viva (05/09/2026)** em `docs/AUDITORIA_I701_GLOW_INTEGRACAO.md`, após medição no banco:
-
-- cabedal principal → **9,6 m** de Glow dublado  
-- segunda linha → **7,988321 m**  
-- total → `(2,74 + 2,28) × 480 ÷ 137 = 17,5883211679 m`
-
-Travado por `analyzeI701CabedalPiecesSeparated()` + 5 testes em
-`src/lib/__tests__/infantilSandalYieldAnalysis.test.ts`.
+Ordem de análise pedida = **traseiro → tiras da frente**. Corações coloridos são **acréscimo de cor** sobre a tira superior da frente (mesmo consumo geométrico da base + scrap de cor por coração).
 
 ---
 
-## 1) Traseiro (candidato) — peça principal 2,74 dm²/par
+## Veredito — rendimento separado (grade 480)
 
-Fonte: `technical_sheets.upper_consumption = 2,74` (fixture `i701CompositeIntegration` + auditoria Glow).
+Base quantitativa: duas peças de **área do cabedal** da I701 (auditoria Glow viva 05/09/2026), mapeadas à anatomia da foto:
+
+| Ordem | Grupo (foto) | Fonte na ficha | dm²/par | m na grade 480 | **Rendimento** |
+|:---:|---|---|---:|---:|---:|
+| **1** | **Traseiro** (contraforte + tornozelo) | `upper_consumption` | 2,74 | **9,600000** | **50,0000 pares/m** |
+| **2** | **Tiras da frente** (3 tiras + base dos corações) | acessório mandatory | 2,28 | **7,988321** | **≈ 60,0877 pares/m** |
+| Σ | Cabedal off-white (mesma matéria) | — | 5,02 | **17,588321** | **≈ 27,2908 pares/m** |
+
+Fórmula: `m = dm²/par × pares ÷ 137` (largura útil 1370 mm → 137 dm²/m).
+
+**Confirmação viva (Glow):** cabedal principal **9,6 m** + segunda linha **7,988321 m** = `(2,74 + 2,28) × 480 ÷ 137`.  
+Travado por `analyzeI701CabedalPiecesSeparated()` + testes.
+
+> **Mapeamento foto↔ficha:** hipótese até labels vivos — peça maior (2,74) = traseiro; peça menor (2,28) = frente. Se o plano de corte inverter os rótulos, trocar as seções; os **números de m e rendimento não mudam**.
+
+---
+
+## 1) Traseiro — 2,74 dm²/par · 50 pares/m
+
+Peças da foto: **contraforte do calcanhar** + **tira de tornozelo** (fivela + furos).
 
 | size | pares | dm² | m |
 |---:|---:|---:|---:|
@@ -63,12 +74,17 @@ Fonte: `technical_sheets.upper_consumption = 2,74` (fixture `i701CompositeIntegr
 | consumo médio / par | 0,020000 m |
 | **rendimento** | **50,0000 pares/m** |
 
+Hardware (fivela dourada): item de aviamento — **não** entra no rendimento de metro do sintético.
+
 ---
 
-## 2) Tiras / peça da frente (candidata) — peça aditiva 2,28 dm²/par
+## 2) Tiras da frente — 2,28 dm²/par · ≈ 60,09 pares/m
 
-Fonte: acessório obrigatório do mesmo material  
-(`components_accessories` mandatory, consumo 2,28 dm²/par) — **não** é sobra; soma ao cabedal.
+Peças da foto:
+
+1. Tira superior com **fileira de corações** (rosa / amarelo / branco)  
+2. Tira lisa intermediária  
+3. Tira lisa inferior  
 
 | size | pares | dm² | m |
 |---:|---:|---:|---:|
@@ -89,50 +105,33 @@ Fonte: acessório obrigatório do mesmo material
 | consumo médio / par | 0,016642 m |
 | **rendimento** | **≈ 60,0877 pares/m** |
 
----
+### Corações coloridos (acréscimo)
 
-## Hipótese de mapeamento traseiro ↔ frente
-
-Decisão do dono (Glow 05/09): cada consumo cadastrado é uma **peça do cabedal**, não uma face do material. As peças 2,74 e 2,28 **continuam somadas** no mesmo dublado.
-
-No fixture/audit as duas peças **não trazem label** “traseiro” / “frente” — só geometria:
-
-| peça | dm²/par | hipótese até confirmar no banco |
-|---|---:|---|
-| `upper_consumption` | 2,74 | **traseiro** (maior) |
-| acessório mandatory | 2,28 | **frente / tiras em área** |
-
-Se o plano de corte da I701 inverter os rótulos, trocar as seções 1↔2; os metros e rendimentos **permanecem os mesmos números**, só muda o nome.
+Os corações são recortes **sobrepostos** na tira superior. O consumo **geométrico da base** já está no 2,28 dm². O scrap de **cor** (rosa/amarelo/branco) é material **adicional por cor**, tipicamente em `strap_colors` / acessórios coloridos — **não** está no fixture I701/Glow usado aqui. Pendente de SQL live para metragem por cor.
 
 ---
 
-## Tiras lineares (`strap_colors`) e elástico de traseiro
+## Soma (conferência)
 
-Além das peças em dm², a ficha **pode** ter:
+| grupo | m / 480 pares |
+|---|---:|
+| 1. Traseiro | 9,600000 |
+| 2. Tiras da frente | 7,988321 |
+| **Total sintético off-white** | **17,588321** |
 
-1. **Elástico / acessório linear “Traseiro”** em `components_accessories` (unidade m)  
-2. **Tiras da frente** em `strap_colors` (cm/par → m)
-
-O fixture I701/Glow usado na auditoria **não inclui** `strap_colors` nem elástico rotulado — só as duas peças de área. Por isso:
-
-- rendimento **de área** (seções 1–2) = **fechado** (Glow viva + testes)  
-- rendimento **linear** de tiras/elástico = **pendente de SQL live** neste ambiente
-
-Instrumentação pronta (mesma branch):
-
-- Classificador: `classifyYieldBucket` (rótulo traseiro vs frente)
-- Motor de linhas: `analyzeInfantilSandalYield`
-- SQL live: `sql-scripts/audit-i701-rendimento-traseiro-tiras-25-34.sql`
-- Runner: `scripts/run-infantil-yield-analysis.mjs`  
-  (`VITE_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`)
-
-Bloqueio deste ambiente: MCP Supabase sem auth interativa; sem secrets no shell.
+Rendimento conjunto do dublado/sintético: **≈ 27,2908 pares/m**.
 
 ---
 
-## Lacuna conhecida (solado infantil)
+## Tiras lineares (`strap_colors`) — se a ficha usar cm/par
 
-Specs do solado `INFANTIL` só cobrem **34–40**. Grade 25–33 cai em fallback — forro/palmilha dirigidos pelo solado podem debitar zero ou média. Isso **não altera** o rendimento das peças de cabedal acima, mas afeta consumo dirigido pelo solado no mesmo PV infantil.
+Se esta referência cadastrar as tiras em **cm/par** (em vez de dm² de área), o motor `analyzeInfantilSandalYield` + SQL `sql-scripts/audit-i701-rendimento-traseiro-tiras-25-34.sql` classificam:
+
+1. linhas com rótulo **traseiro/talão/calcanhar** → bucket traseiro  
+2. demais tiras (e rótulo **frente**) → bucket tiras da frente  
+
+Runner: `scripts/run-infantil-yield-analysis.mjs` (exige `VITE_SUPABASE_URL` + service role).  
+Neste ambiente: **sem secrets** → números lineares vivos ainda pendentes.
 
 ---
 
@@ -140,20 +139,20 @@ Specs do solado `INFANTIL` só cobrem **34–40**. Grade 25–33 cai em fallback
 
 | Tipo | Caminho |
 |---|---|
-| Analisador TS | `src/lib/infantilSandalYieldAnalysis.ts` |
+| Foto | `docs/assets/sandalia-infantil-25-34-traseiro-tiras.jpg` |
+| Analisador | `src/lib/infantilSandalYieldAnalysis.ts` |
 | Testes (5) | `src/lib/__tests__/infantilSandalYieldAnalysis.test.ts` |
 | SQL live | `sql-scripts/audit-i701-rendimento-traseiro-tiras-25-34.sql` |
-| Runner live | `scripts/run-infantil-yield-analysis.mjs` |
-| Evidência Glow | `docs/AUDITORIA_I701_GLOW_INTEGRACAO.md` |
-| Planejamento auditoria | `docs/AUDITORIA_ALINHAMENTO_FICHA_PV_DEBITO_KANBAN_2026-09-09.md` |
+| Runner | `scripts/run-infantil-yield-analysis.mjs` |
+| Glow | `docs/AUDITORIA_I701_GLOW_INTEGRACAO.md` |
 
 ## Status
 
-- [x] Ordem traseiro → frente respeitada
-- [x] Rendimento **separado** das duas peças de área I701 na grade 25–34
-- [x] Soma confere auditoria Glow viva (17,588321 m)
-- [x] Tudo na **mesma** branch/PR
-- [ ] Confirmar labels vivos (traseiro/frente) + tiras `strap_colors` / elástico via SQL (secrets)
-- [ ] Se a sandália **não** for I701, informar o código da ficha
+- [x] Anatomia da foto: traseiro vs tiras da frente documentada  
+- [x] Rendimento **separado** na ordem pedida (traseiro → frente)  
+- [x] Números I701 conferem Glow viva (17,588321 m)  
+- [x] Mesma branch/PR  
+- [ ] Confirmar se a foto é I701 ou outra ficha (código)  
+- [ ] Labels vivos + scrap dos corações via SQL live  
 
 **Sem PRs separados.**
