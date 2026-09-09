@@ -15,7 +15,7 @@ import {
   topShortfalls,
   unitTotals,
 } from '@/lib/consumptionAvailability';
-import { formatQty, formatUnit } from '@/lib/consumptionFormat';
+import { formatQty, formatUnit, formatPricePerUnit } from '@/lib/consumptionFormat';
 import { COMPONENT_ORDER, type ConsumptionRow, rowTotalCost } from '@/lib/consumptionRows';
 import { escapeHtml } from '@/lib/htmlUtils';
 import { buildColAvailability, sizeSortKey } from '@/lib/soleMatrixHtml';
@@ -213,8 +213,8 @@ export function computeMaterialsSpendTotal(rows: ConsumptionRow[]): number | nul
   return any ? total : null;
 };
 
-const costCellsHtml = (unitPrice: number | null, totalCost: number | null): string => `
-      <td class="num cost-unit">${unitPrice != null ? escapeHtml(formatCurrency(unitPrice)) : '—'}</td>
+const costCellsHtml = (unitPrice: number | null, totalCost: number | null, unit?: string): string => `
+      <td class="num cost-unit">${unitPrice != null ? escapeHtml(formatPricePerUnit(unitPrice, unit || 'un', formatCurrency)) : '—'}</td>
       <td class="num cost-spend">${totalCost != null ? escapeHtml(formatMoney(totalCost)) : '—'}</td>`;
 
 const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): string => {
@@ -296,7 +296,7 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
       <td class="num strong">${needHtml}</td>
       ${coverageCells}
       <td class="unit">${escapeHtml(formatUnit(item.productUnit))}</td>
-      ${costCellsHtml(unitPrice, totalCost)}
+      ${costCellsHtml(unitPrice, totalCost, item.productUnit)}
     </tr>`, componentIndex(componentTypes[0] || item.componentType));
   }
 
@@ -325,7 +325,7 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
       <td class="num strong">${needHtml}</td>
       ${coverageCells}
       <td class="unit">${escapeHtml(formatUnit(item.productUnit))}</td>
-      ${costCellsHtml(unitPrice, totalCost)}
+      ${costCellsHtml(unitPrice, totalCost, item.productUnit)}
     </tr>`, componentIndex('Tira Strass'));
   }
 
@@ -348,14 +348,14 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
       <td class="num strong">${formatQty(row.totalQuantity, row.productUnit)}</td>
       ${coverageCells}
       <td class="unit">${escapeHtml(formatUnit(row.productUnit))}</td>
-      ${costCellsHtml(unitPrice, totalCost)}
+      ${costCellsHtml(unitPrice, totalCost, row.productUnit)}
     </tr>
     <tr class="grade-row"><td colspan="${colCount}">${renderSoleGrade(row, totalMode)}</td></tr>`, componentIndex('Solado'));
   }
 
   const head = totalMode
-    ? '<tr><th>Grupo</th><th>Aplicação</th><th>Cor</th><th class="num">Necessidade</th><th>Un.</th><th class="num col-unit">Preço/un.</th><th class="num col-spend">A gastar</th></tr>'
-    : '<tr><th>Grupo</th><th>Aplicação</th><th>Cor</th><th class="num">Necessidade</th><th class="num">Estoque</th><th class="num">Falta</th><th>Un.</th><th class="num col-unit">Preço/un.</th><th class="num col-spend">A gastar</th></tr>';
+    ? '<tr><th>Grupo</th><th>Aplicação</th><th>Cor</th><th class="num">Necessidade</th><th>Un.</th><th class="num col-unit">Preço/un. consumo</th><th class="num col-spend">A gastar</th></tr>'
+    : '<tr><th>Grupo</th><th>Aplicação</th><th>Cor</th><th class="num">Necessidade</th><th class="num">Estoque</th><th class="num">Falta</th><th>Un.</th><th class="num col-unit">Preço/un. consumo</th><th class="num col-spend">A gastar</th></tr>';
 
   return Array.from(sectionMap.entries())
     .sort(([a], [b]) => (sectionOrder.get(a) ?? componentIndex(a)) - (sectionOrder.get(b) ?? componentIndex(b)))

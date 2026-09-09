@@ -1706,7 +1706,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                       {UNITS.map(u => <SelectItem key={u} value={u}>{UNIT_LABELS[u] ?? u}</SelectItem>)}
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-muted-foreground mt-0.5">Mesma unidade usada no estoque e nas fichas técnicas</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Unidade do estoque e do Consumo de Materiais (ex.: kg para cola, m para elástico)</p>
                 </div>
                 <div>
                   <Label className="text-xs text-muted-foreground">Unidade de Compra (NF / OC)</Label>

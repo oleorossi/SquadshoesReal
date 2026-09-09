@@ -16,6 +16,10 @@ import {
 } from '@/lib/consumptionRows';
 import type { ArtisanalStrapCutRow } from '@/lib/strapRollCut';
 import { dm2ToPlates, type PlateDualProduct } from '@/lib/insolePlateDualDisplay';
+import {
+  alignConsumptionRowsToDisplayUnit,
+  type StockUnitProduct,
+} from '@/lib/alignConsumptionToStockUnit';
 
 interface CanonicalConsumptionRpcResult {
   data: unknown;
@@ -521,7 +525,7 @@ async function loadStockContext(
     productIds.size > 0
       ? supabase
         .from('products')
-        .select('id, name, unit, color, category, group_id, quantity, reserved_stock, stock_grade, unit_price, purchase_unit, conversion_rate, dimensions_width, dimensions_length, dimensions_unit, product_groups!products_group_id_fkey(name, sector, dimensions_width, dimensions_length, dimensions_unit)')
+        .select('id, name, unit, color, category, group_id, quantity, reserved_stock, stock_grade, unit_price, purchase_unit, conversion_rate, dimensions_width, dimensions_length, dimensions_unit, product_groups!products_group_id_fkey(name, sector, consumption_unit, dimensions_width, dimensions_length, dimensions_unit)')
         .in('id', [...productIds])
       : Promise.resolve({ data: [], error: null }),
     boxTypeIds.size > 0
@@ -573,9 +577,17 @@ export async function materializeCanonicalConsumptionReport(
   const adapted = adaptCanonicalConsumptionLines(scopedLines, undefined, opts);
   const ctx = await loadStockContext(scopedLines, scopedPreviews);
   const rows = enrichInsolePlateEquivalent(adapted, (ctx.allProducts || []) as Array<Record<string, unknown>>);
-  return annotateConsumptionAvailability(
+  const annotated = await annotateConsumptionAvailability(
     rows,
     ctx,
     scopedPreviews.map(({ preview }) => preview),
   );
+  // Necessidade, estoque e R$/un na unidade de consumo do cadastro (grupo → item).
+  return {
+    ...annotated,
+    rows: alignConsumptionRowsToDisplayUnit(
+      annotated.rows,
+      (ctx.allProducts || []) as StockUnitProduct[],
+    ),
+  };
 }

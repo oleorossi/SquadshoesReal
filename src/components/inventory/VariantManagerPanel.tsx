@@ -311,7 +311,7 @@ function VariantDetailSheet({ open, onOpenChange, product, otherVariants }: {
             <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide">Preços & Compras</h4>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-xs">Custo unitário (R$)</Label>
+                <Label className="text-xs">Custo por {form.unit ?? 'un'} (R$)</Label>
                 <NumberInput value={form.unit_price ?? 0} onChange={v => update('unit_price', v)} min={0} step="0.0001" className="mt-1 h-9" />
               </div>
               <div>
@@ -382,7 +382,7 @@ function VariantDetailSheet({ open, onOpenChange, product, otherVariants }: {
 const BULK_FIELDS = [
   'technical_name', 'group_id', 'supplier_id',
   'yield_per_meter', 'yield_unit',
-  'purchase_unit', 'production_unit', 'conversion_rate', 'purchase_order_unit',
+  'unit', 'purchase_unit', 'production_unit', 'conversion_rate', 'purchase_order_unit',
   'lead_time_days', 'unit_price', 'price_wholesale', 'price_retail',
   'min_stock', 'max_stock', 'safety_stock', 'location', 'active',
   'min_order_quantity',
@@ -395,6 +395,7 @@ const BULK_LABELS: Record<BulkField, string> = {
   supplier_id: 'Fornecedor padrão',
   yield_per_meter: 'Rendimento por metro',
   yield_unit: 'Unidade de rendimento',
+  unit: 'Unidade de consumo',
   purchase_unit: 'Unidade de compra',
   production_unit: 'Unidade de produção',
   conversion_rate: 'Taxa de conversão',
@@ -1004,6 +1005,7 @@ export function VariantBulkEditPanel({ variants, onCancel, onOpenGroupSpecs }: V
     supplier_id: string | null;
     yield_per_meter: number | null;
     yield_unit: string | null;
+    unit: string | null;
     purchase_unit: string | null;
     production_unit: string | null;
     conversion_rate: number | null;
@@ -1063,8 +1065,11 @@ export function VariantBulkEditPanel({ variants, onCancel, onOpenGroupSpecs }: V
    *  única a travar. */
   const conversionTravada = useMemo(() => {
     const compra = groupForm?.purchase_unit ?? variants[0]?.purchase_unit ?? '';
-    return !!compra && !!singleBulkStockUnit && compra === singleBulkStockUnit;
-  }, [groupForm?.purchase_unit, singleBulkStockUnit, variants]);
+    const estoque = (dirty.has('unit') && groupForm?.unit)
+      ? groupForm.unit
+      : singleBulkStockUnit;
+    return !!compra && !!estoque && compra === estoque;
+  }, [dirty, groupForm?.purchase_unit, groupForm?.unit, singleBulkStockUnit, variants]);
 
   const updateGroup = <K extends keyof GroupForm>(k: K, v: GroupForm[K]) => {
     setGroupForm(prev => (prev ? { ...prev, [k]: v } : prev));
@@ -1093,6 +1098,7 @@ export function VariantBulkEditPanel({ variants, onCancel, onOpenGroupSpecs }: V
       supplier_id: comum('supplier_id', t.supplier_id || null),
       yield_per_meter: comum('yield_per_meter', Number(t.yield_per_meter) || 0),
       yield_unit: comum('yield_unit', t.yield_unit || 'dm²'),
+      unit: comum('unit', t.unit || 'un'),
       purchase_unit: comum('purchase_unit', t.purchase_unit || 'un'),
       production_unit: comum('production_unit', t.production_unit || 'un'),
       conversion_rate: comum('conversion_rate', Number(t.conversion_rate) || 1),
@@ -1177,7 +1183,7 @@ export function VariantBulkEditPanel({ variants, onCancel, onOpenGroupSpecs }: V
       return;
     }
     // Confirmação para mudança crítica de unidade
-    if (dirty.has('purchase_unit') || dirty.has('production_unit')) {
+    if (dirty.has('purchase_unit') || dirty.has('production_unit') || dirty.has('unit')) {
       setConfirmUnitOpen(true);
       return;
     }
@@ -1209,9 +1215,18 @@ export function VariantBulkEditPanel({ variants, onCancel, onOpenGroupSpecs }: V
       }
       if (payload.conversion_rate != null) payload.conversion_rate = safeNum(payload.conversion_rate, 1) || 1;
       if (payload.yield_per_meter != null) payload.yield_per_meter = safeNum(payload.yield_per_meter) || null;
+      // Unidade de consumo = estoque: espelha em consumption_unit (trigger também
+      // sincroniza, mas gravamos explícito pra não depender só do DB).
+      if (payload.unit) {
+        payload.consumption_unit = payload.unit;
+      }
       // Mesmo se o usuário confirmar antes do effect visual rodar, a borda de
       // persistência mantém compra=estoque ⇒ fator 1 para a seleção efetiva.
       if (payload.purchase_unit && singleBulkStockUnit && payload.purchase_unit === singleBulkStockUnit) {
+        payload.conversion_rate = 1;
+      }
+      // Se a unidade de consumo mudou e ficou igual à de compra, trava fator 1.
+      if (payload.unit && (payload.purchase_unit || bulkVariants[0]?.purchase_unit) === payload.unit) {
         payload.conversion_rate = 1;
       }
 
@@ -1401,7 +1416,7 @@ export function VariantBulkEditPanel({ variants, onCancel, onOpenGroupSpecs }: V
           <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide">Preços Base</h4>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <BulkLabel field="unit_price" divergence={divergence}>Custo unitário (R$ por {bulkUnitLabel})</BulkLabel>
+              <BulkLabel field="unit_price" divergence={divergence}>Custo por {bulkUnitLabel} (R$)</BulkLabel>
               <NumberInput value={groupForm.unit_price ?? undefined} onChange={v => updateGroup('unit_price', v)} step="0.0001" className="mt-1 h-9" />
             </div>
             <div>
@@ -1468,6 +1483,16 @@ export function VariantBulkEditPanel({ variants, onCancel, onOpenGroupSpecs }: V
             <ArrowRightLeft className="h-3 w-3" /> Conversão de Unidades
           </h4>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <BulkLabel field="unit" divergence={divergence}>Unidade de consumo</BulkLabel>
+              <Select value={groupForm.unit ?? ''} onValueChange={v => updateGroup('unit', v)}>
+                <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Manter" /></SelectTrigger>
+                <SelectContent>{UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
+              </Select>
+              <p className="mt-1 text-[10px] text-muted-foreground">
+                Estoque e Consumo de Materiais usam esta unidade (ex.: cola → kg, elástico → m).
+              </p>
+            </div>
             <div>
               <BulkLabel field="purchase_unit" divergence={divergence}>Unidade de compra</BulkLabel>
               <Select value={groupForm.purchase_unit ?? ''} onValueChange={v => updateGroup('purchase_unit', v)}>

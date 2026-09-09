@@ -23,7 +23,7 @@ import ArtisanalStrapRollCutBlock from '@/components/sale-orders/ArtisanalStrapR
 import ConsumptionDecisionRail, { type ConsumptionFilter } from '@/components/sale-orders/ConsumptionDecisionRail';
 import { type ConsumptionRow, COMPONENT_ORDER, rowTotalCost } from '@/lib/consumptionRows';
 import { buildBuyList, isBuyListRow, baseMaterialName, rowBelongsToBaseFamily, type BuyListColor } from '@/lib/buyList';
-import { formatQty, formatUnit, pluralizeItens } from '@/lib/consumptionFormat';
+import { formatQty, formatUnit, formatPricePerUnit, pluralizeItens } from '@/lib/consumptionFormat';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { buildMaterialConsumptionReportHtml, materialConsumptionReportFilename } from '@/lib/materialConsumptionReport';
 import { openPrintTab, printHtmlAsPdf } from '@/lib/printPdf';
@@ -912,7 +912,7 @@ export default function MaterialConsumptionView({
         <TableCell className="text-center text-xs text-muted-foreground">{formatUnit(row.productUnit)}</TableCell>
         <TableCell className="text-right font-mono tabular-nums text-muted-foreground">
           {row.unitPrice != null && Number.isFinite(row.unitPrice)
-            ? formatCurrency(row.unitPrice)
+            ? formatPricePerUnit(row.unitPrice, row.productUnit, formatCurrency)
             : <span className="text-muted-foreground">—</span>}
         </TableCell>
         <TableCell className="text-right font-mono font-bold tabular-nums">
@@ -947,7 +947,7 @@ export default function MaterialConsumptionView({
                 · {formatMoney(totalCost)}
                 {unitPrice != null && (
                   <span className="ml-1 text-[11px] font-normal text-muted-foreground">
-                    ({formatCurrency(unitPrice)}/{formatUnit(item.productUnit)})
+                    ({formatPricePerUnit(unitPrice, item.productUnit, formatCurrency)})
                   </span>
                 )}
               </span>
@@ -1250,7 +1250,7 @@ export default function MaterialConsumptionView({
                                       </>
                                     )}
                                     <TableHead className="w-20 text-center">Un</TableHead>
-                                    <TableHead className="w-28 text-right">Preço unitário</TableHead>
+                                    <TableHead className="w-32 text-right">Preço/un. consumo</TableHead>
                                     <TableHead className="w-32 text-right">Valor a gastar</TableHead>
                                   </TableRow>
                                 </TableHeader>
@@ -1458,7 +1458,7 @@ export default function MaterialConsumptionView({
                   <TableHead aria-sort={sortKey === 'productUnit' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined} className="w-20">
                     <button type="button" className="flex w-full select-none items-center justify-center hover:text-foreground" onClick={() => handleSort('productUnit')}>Un <SortIcon col="productUnit" /></button>
                   </TableHead>
-                  <TableHead className="w-28 text-right">Preço unitário</TableHead>
+                  <TableHead className="w-32 text-right">Preço/un. consumo</TableHead>
                   <TableHead className="w-32 text-right">Valor a gastar</TableHead>
                 </TableRow>
               </TableHeader>

@@ -1064,7 +1064,7 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                             <p className="mt-1 text-[10px] text-muted-foreground">
                               {consumptionUnit === '__none__'
                                 ? 'A unidade de cada item será preservada.'
-                                : 'Define o padrão técnico do grupo; as unidades das variantes são preservadas e editadas em “Variantes de cor”.'}
+                                : 'Padrão técnico do grupo e unidade usada no Consumo de Materiais quando conversível (ex.: grupo em m com itens em cm → relatório em m). As unidades das variantes continuam editáveis em “Variantes de cor”.'}
                             </p>
                           </div>
                         </div>
@@ -1500,7 +1500,7 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                     <span className="mt-0.5 block text-[10px] text-muted-foreground">A aba Cores busca no catálogo, compara grafias parecidas e cria em lote sem duplicar.</span>
                   </span>
                 </button>
-              ) : null}
+              )}
               {products.length === 0 ? (
                 <p className="text-xs text-muted-foreground py-4 text-center">Nenhum item neste grupo.</p>
               ) : (
