@@ -48,6 +48,15 @@ export function isCommittedSaleOrderStrapSnapshotStatus(status: unknown): boolea
 }
 
 /**
+ * Factoring (`factoring_config_id`) só pode mudar em Rascunho/Pendente —
+ * espelha o gate do preflight (`factoring_after_financial_fact`).
+ * Form novo (status vazio) continua editável.
+ */
+export function canEditSaleOrderFactoring(status: unknown): boolean {
+  return !isCommittedSaleOrderStrapSnapshotStatus(status);
+}
+
+/**
  * Maps each status to the set of statuses it may transition into.
  * Terminal statuses (Concluído, Cancelado) have an empty array.
  */

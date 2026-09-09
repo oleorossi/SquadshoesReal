@@ -53,7 +53,11 @@ import {
   useActiveReferenceTerceirizacoesBatch,
   type ReferenceTerceirizacao,
 } from '@/hooks/useReferenceTerceirizacoes';
-import { isCommittedSaleOrderStrapSnapshotStatus } from '@/lib/saleOrderStateMachine';
+import {
+  canEditSaleOrderFactoring,
+  isCommittedSaleOrderStrapSnapshotStatus,
+} from '@/lib/saleOrderStateMachine';
+import { applyClientCommercialDefaultsToForm } from '@/lib/saleOrderCommercialDefaults';
 import { strapColorMode, technicalStrapLineId } from '@/lib/technicalStrapLines';
 import { strapIdentityBasis } from '@/lib/strapIdentity';
 import {
@@ -460,6 +464,7 @@ function FactoringField({ form, setForm, totalValue }: {
   const { data: configs = [] } = useFactoringConfigs();
   const activeConfigs = configs.filter(c => c.active);
   const selectedConfig = activeConfigs.find(c => c.id === form.factoring_config_id);
+  const factoringEditable = canEditSaleOrderFactoring(form.status);
 
   const simulation = (() => {
     if (!selectedConfig || totalValue <= 0) return null;
@@ -495,17 +500,27 @@ function FactoringField({ form, setForm, totalValue }: {
         <Checkbox
           id="is_factoring"
           checked={form.is_factoring}
+          disabled={!factoringEditable}
           onCheckedChange={(checked) => setForm(f => ({
             ...f,
             is_factoring: !!checked,
             factoring_config_id: checked ? (activeConfigs[0]?.id || '') : '',
           }))}
         />
-        <Label htmlFor="is_factoring" className="text-xs font-bold cursor-pointer flex items-center gap-1.5">
+        <Label
+          htmlFor="is_factoring"
+          className={`text-xs font-bold flex items-center gap-1.5 ${factoringEditable ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'}`}
+        >
           <Percent className="h-3.5 w-3.5 text-primary" />
           Pedido via Factoring
         </Label>
       </div>
+
+      {!factoringEditable && (
+        <p className="text-xs text-muted-foreground leading-snug">
+          Factoring só pode mudar antes da aprovação (Rascunho/Pendente).
+        </p>
+      )}
 
       {form.is_factoring && (
         <div className="space-y-3">
@@ -516,7 +531,11 @@ function FactoringField({ form, setForm, totalValue }: {
             {/* Audit visual: factoring marcado mas sem config selecionada gerava
                 erro silencioso no save. Agora destaca em vermelho e o handler
                 no submit bloqueia. */}
-            <Select value={form.factoring_config_id} onValueChange={v => setForm(f => ({ ...f, factoring_config_id: v }))}>
+            <Select
+              value={form.factoring_config_id}
+              disabled={!factoringEditable}
+              onValueChange={v => setForm(f => ({ ...f, factoring_config_id: v }))}
+            >
               <SelectTrigger className={`h-9 ${!form.factoring_config_id ? 'border-destructive focus:ring-destructive' : ''}`}>
                 <SelectValue placeholder="Selecione a factoring..." />
               </SelectTrigger>
@@ -869,19 +888,17 @@ export default function SaleOrderFormPanel({
 
   // Defaults comerciais do cliente OU do grupo econômico (precedência cliente > grupo).
   // Pré-popula campos vazios quando o cliente é selecionado pela primeira vez.
+  // Em edição NÃO injeta factoring_config_id: vazio = sem factoring (intencional).
   const { data: commercialDefaults } = useClientCommercialDefaults(selectedClientId);
   const defaultsApplied = useRef<string | null>(null);
   useEffect(() => {
     if (!selectedClientId || !commercialDefaults) return;
     if (defaultsApplied.current === selectedClientId) return;
     defaultsApplied.current = selectedClientId;
-    setForm(f => ({
-      ...f,
-      // Só preenche se o campo estiver vazio — preserva o que o user já mexeu
-      payment_condition: f.payment_condition || commercialDefaults.payment_condition || '',
-      factoring_config_id: f.factoring_config_id || commercialDefaults.factoring_config_id || '',
+    setForm(f => applyClientCommercialDefaultsToForm(f, commercialDefaults, {
+      isEdit: !!saleOrderId,
     }));
-  }, [selectedClientId, commercialDefaults, setForm]);
+  }, [selectedClientId, commercialDefaults, setForm, saleOrderId]);
 
   // Credit exposure: sum of open AR for selected client
   // Tabela de preço do cliente + teto de desconto — pra auto-aplicar o preço no

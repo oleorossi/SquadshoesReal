@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   SALE_ORDER_STATUS,
+  canEditSaleOrderFactoring,
   isCommittedSaleOrderStrapSnapshotStatus,
 } from '@/lib/saleOrderStateMachine';
 
@@ -35,6 +36,28 @@ describe('isCommittedSaleOrderStrapSnapshotStatus', () => {
     }
     for (const status of ['Rascunho', 'Pendente', 'draft', 'pending', '', null, undefined]) {
       expect(isCommittedSaleOrderStrapSnapshotStatus(status), String(status)).toBe(false);
+    }
+  });
+});
+
+describe('canEditSaleOrderFactoring', () => {
+  it('permite editar em Rascunho/Pendente e form novo', () => {
+    for (const status of ['Rascunho', 'Pendente', 'draft', 'pending', '', null, undefined]) {
+      expect(canEditSaleOrderFactoring(status), String(status)).toBe(true);
+    }
+  });
+
+  it('bloqueia após aprovação (Aprovado / Em Produção / posteriores)', () => {
+    for (const status of [
+      SALE_ORDER_STATUS.APROVADO,
+      SALE_ORDER_STATUS.EM_PRODUCAO,
+      SALE_ORDER_STATUS.FATURADO,
+      SALE_ORDER_STATUS.EXPEDIDO,
+      SALE_ORDER_STATUS.CONCLUIDO,
+      SALE_ORDER_STATUS.FINALIZADO_SEM_NF,
+      SALE_ORDER_STATUS.CANCELADO,
+    ]) {
+      expect(canEditSaleOrderFactoring(status), status).toBe(false);
     }
   });
 });
