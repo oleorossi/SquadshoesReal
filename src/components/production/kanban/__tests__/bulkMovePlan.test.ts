@@ -10,7 +10,7 @@ import {
 } from '../bulkMovePlan';
 
 const FLOW = new Map<string, number>([
-  ['Corte Palmilha', 1],
+  ['Corte Fibra', 1], ['Corte Palmilha', 1],
   ['Corte Forração', 1],
   ['Costura', 2],
 ]);
@@ -131,7 +131,7 @@ describe('prévia da distribuição em lote', () => {
 
   it('mantém pulos de setor fora do lote até haver gravação atômica', () => {
     const serialFlow = new Map<string, number>([
-      ['Corte Palmilha', 1], ['Corte Forração', 2], ['Costura', 3],
+      ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Corte Forração', 2], ['Costura', 3],
     ]);
     const batch = buildBulkMoveBatch(
       [card('1', 'Corte Palmilha')],

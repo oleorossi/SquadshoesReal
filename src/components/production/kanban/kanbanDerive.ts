@@ -1,7 +1,16 @@
 import type { QueueDetailRow } from '@/hooks/useProductionEngine';
 import type { OrderStage } from '@/hooks/useOrderStages';
 
-export const norm = (s: string) => (s === 'Mesa' ? 'Aviamento' : s);
+/**
+ * Normaliza grafias legadas pro nome vivo das colunas do Kanban /
+ * `sector_settings`. Sem isto, OP antiga com `Corte Palmilha` abria coluna
+ * fantasma ao lado de `Corte Fibra` (R1.5), e `Mesa` ao lado de `Aviamento`.
+ */
+export const norm = (s: string) => {
+  if (s === 'Mesa') return 'Aviamento';
+  if (s === 'Corte Palmilha') return 'Corte Fibra';
+  return s;
+};
 export const fmtDate = (iso: string | null) =>
   iso ? new Date(iso + 'T12:00:00').toLocaleDateString('pt-BR') : '—';
 

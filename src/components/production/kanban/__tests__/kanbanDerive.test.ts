@@ -17,7 +17,7 @@ import type { QueueDetailRow } from '@/hooks/useProductionEngine';
  */
 
 const FLOW = new Map<string, number>([
-  ['Corte Palmilha', 10], ['Corte Forração', 20], ['Costura Palmilha', 30],
+  ['Corte Fibra', 10], ['Corte Palmilha', 10], ['Corte Forração', 20], ['Costura Palmilha', 30],
   ['Costura Cabedal', 40], ['Aviamento', 50], ['Silk', 60], ['Colagem', 70],
   ['Montagem', 80], ['Solagem', 90], ['Acabamento', 100], ['Expedição', 110],
 ]);
@@ -45,7 +45,7 @@ describe('deriveCard — caminho normal', () => {
   it('OP sem nenhum apontamento fica no primeiro setor, sem entrega e sem parcial', () => {
     const stages = [stage('Corte Palmilha', 1), stage('Corte Forração', 2), stage('Acabamento', 3)];
     const card = deriveCard(queue(), stages, FLOW)!;
-    expect(card.column).toBe('Corte Palmilha');
+    expect(card.column).toBe('Corte Fibra');
     expect(card.front).toBeNull();
     expect(card.delivered).toBe(0);
     expect(card.isPartial).toBe(false);
@@ -108,7 +108,7 @@ describe('deriveCard — setor PULADO não pode virar entrega completa', () => {
 
   it('aponta o buraco deixado pra trás: 108 pares nunca cortados', () => {
     const gap = deriveCard(queue(), opPulada(), FLOW)!.upstreamGap;
-    expect(gap).toEqual({ sector: 'Corte Palmilha', missing: 108 });
+    expect(gap).toEqual({ sector: 'Corte Fibra', missing: 108 });
   });
 
   it('OP-2026-01195: mesma mecânica, 24 pares de buraco', () => {
@@ -121,7 +121,7 @@ describe('deriveCard — setor PULADO não pode virar entrega completa', () => {
     expect(card.column).toBe('Acabamento');
     expect(card.delivered).toBe(0);
     expect(card.isPartial).toBe(true);
-    expect(card.upstreamGap).toEqual({ sector: 'Corte Palmilha', missing: 24 });
+    expect(card.upstreamGap).toEqual({ sector: 'Corte Fibra', missing: 24 });
   });
 
   it('pulo com o lote CHEIO segue legítimo: sem buraco e sem âmbar', () => {
@@ -170,7 +170,7 @@ describe('deriveCards — setores em paralelo', () => {
   // Espelha sector_settings de produção: grupo "corte" (10,20) colapsa em 10;
   // grupo "costura_aviamento" (30,40,50) colapsa em 30; o resto é serial.
   const LEVEL = new Map<string, number>([
-    ['Corte Palmilha', 10], ['Corte Forração', 10],
+    ['Corte Fibra', 10], ['Corte Palmilha', 10], ['Corte Forração', 10],
     ['Costura Palmilha', 30], ['Costura Cabedal', 30], ['Aviamento', 30],
     ['Silk', 60], ['Colagem', 70], ['Montagem', 80], ['Solagem', 90],
     ['Acabamento', 100], ['Expedição', 110],
@@ -184,7 +184,7 @@ describe('deriveCards — setores em paralelo', () => {
 
   it('OP nova aparece nas DUAS colunas do grupo de corte', () => {
     const cards = deriveCards(queue(), rota(), FLOW, LEVEL);
-    expect(cards.map(c => c.column)).toEqual(['Corte Palmilha', 'Corte Forração']);
+    expect(cards.map(c => c.column)).toEqual(['Corte Fibra', 'Corte Forração']);
   });
 
   it('cada card tem chave própria — seleção não vaza pro irmão', () => {
@@ -196,7 +196,7 @@ describe('deriveCards — setores em paralelo', () => {
   it('cada card aponta o irmão, pra não parecer duplicata', () => {
     const cards = deriveCards(queue(), rota(), FLOW, LEVEL);
     expect(cards[0].parallelSiblings).toEqual(['Corte Forração']);
-    expect(cards[1].parallelSiblings).toEqual(['Corte Palmilha']);
+    expect(cards[1].parallelSiblings).toEqual(['Corte Fibra']);
   });
 
   it('fechar UM setor do par deixa só o outro — não ressuscita o concluído', () => {
@@ -223,7 +223,7 @@ describe('deriveCards — setores em paralelo', () => {
   });
 
   it('sem mapa de níveis, cai no comportamento serial antigo', () => {
-    expect(deriveCards(queue(), rota(), FLOW).map(c => c.column)).toEqual(['Corte Palmilha']);
+    expect(deriveCards(queue(), rota(), FLOW).map(c => c.column)).toEqual(['Corte Fibra']);
   });
 
   it('OP terminada não gera card nenhum', () => {
@@ -254,7 +254,7 @@ describe('deriveCards — setores em paralelo', () => {
  */
 describe('deriveCards — regressões do code-review', () => {
   const LEVEL = new Map<string, number>([
-    ['Corte Palmilha', 10], ['Corte Forração', 10],
+    ['Corte Fibra', 10], ['Corte Palmilha', 10], ['Corte Forração', 10],
     ['Costura Palmilha', 30], ['Costura Cabedal', 30], ['Aviamento', 30],
     ['Silk', 60], ['Acabamento', 100],
   ]);
@@ -301,10 +301,10 @@ describe('deriveCards — regressões do code-review', () => {
     const cards = deriveCards(queue(), stages, FLOW, LEVEL);
     const colunas = cards.map(c => c.column);
     expect(colunas).toContain('Acabamento');      // o card que já existia
-    expect(colunas).toContain('Corte Palmilha');  // os 108 pares órfãos, agora visíveis
-    expect(cards.find(c => c.column === 'Corte Palmilha')!.delivered).toBe(180);
+    expect(colunas).toContain('Corte Fibra');  // os 108 pares órfãos, agora visíveis
+    expect(cards.find(c => c.column === 'Corte Fibra')!.delivered).toBe(180);
     expect(cards.find(c => c.column === 'Acabamento')!.upstreamGap)
-      .toEqual({ sector: 'Corte Palmilha', missing: 108 });
+      .toEqual({ sector: 'Corte Fibra', missing: 108 });
   });
 
   it('dois setores FORA do cadastro não viram irmãos falsos', () => {

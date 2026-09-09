@@ -6,10 +6,10 @@ function isBackwardMove(
   stages: OrderStage[], column: string, target: string, flowOrder: Map<string, number>,
 ): boolean {
   const ordOf = new Map(stages.map(s => [norm(s.stage_name), s.stage_order]));
-  const cur = ordOf.get(column);
-  const tgt = ordOf.get(target);
+  const cur = ordOf.get(norm(column));
+  const tgt = ordOf.get(norm(target));
   if (cur !== undefined && tgt !== undefined) return tgt < cur;
-  return (flowOrder.get(target) ?? 0) < (flowOrder.get(column) ?? 0);
+  return (flowOrder.get(norm(target)) ?? 0) < (flowOrder.get(norm(column)) ?? 0);
 }
 
 export interface PointingPlan {
@@ -86,14 +86,17 @@ export function moveOptions(
   flowOrder: Map<string, number>,
   levelOf?: Map<string, number>,
 ) {
-  const { column } = card;
+  const column = norm(card.column);
   const ordered = orderStagesByRoute(card.stages, flowOrder);
   const columnStage = ordered.find(stage => norm(stage.stage_name) === column) ?? null;
-  const nivel = (stageName: string, stageOrder?: number) => (
-    levelOf?.get(stageName)
-    ?? flowOrder.get(stageName)
-    ?? (stageOrder === undefined ? 1_000_000 : 1_000_000 + stageOrder)
-  );
+  const nivel = (stageName: string, stageOrder?: number) => {
+    const nome = norm(stageName);
+    return (
+      levelOf?.get(nome)
+      ?? flowOrder.get(nome)
+      ?? (stageOrder === undefined ? 1_000_000 : 1_000_000 + stageOrder)
+    );
+  };
   const columnLevel = nivel(column, columnStage?.stage_order);
   const hasOpenParallelSibling = ordered.some(stage => (
     stage.status !== 'concluido'
@@ -122,7 +125,9 @@ export function buildPointingPlan(
   flowOrder: Map<string, number>,
   levelOf?: Map<string, number>,
 ): PointingPlan {
-  const { column } = card;
+  // Card de teste / snapshot legado pode ainda trazer "Corte Palmilha"/"Mesa"
+  // na coluna; o vocabulário vivo do quadro é sempre o canônico.
+  const column = norm(card.column);
   const ordered = orderStagesByRoute(card.stages, flowOrder);
   const seq = ordered.filter(s => s.status !== 'concluido').map(s => norm(s.stage_name));
   const colIdx = seq.indexOf(column);
@@ -136,36 +141,44 @@ export function buildPointingPlan(
     }
   }
 
+  // Alvo e coluna vivem no vocabulário canônico (norm). Sem isso, dropar em
+  // "Corte Palmilha" com coluna "Corte Fibra" (alias) falhava com
+  // "OP não passa por…" mesmo com a etapa na rota.
+  const targetNorm = target === null ? null : norm(target);
+
   // Antes de decidir frente/estorno, o alvo precisa existir NA ROTA DA OP.
   // Um setor global anterior mas ausente da ficha caía no branch de estorno e
   // alterava `front`, embora a OP nunca passasse por ele.
-  const targetStage = target === null
+  const targetStage = targetNorm === null
     ? null
-    : ordered.find(stage => norm(stage.stage_name) === target) ?? null;
-  if (target !== null && target !== column && !targetStage) {
+    : ordered.find(stage => norm(stage.stage_name) === targetNorm) ?? null;
+  if (targetNorm !== null && targetNorm !== column && !targetStage) {
     return {
       pointedStage, isBackward: false, skipped: [], remaining, stageRemaining,
       available: false,
-      unavailableReason: `Esta OP não passa por ${target} (ou o setor já está concluído).`,
+      unavailableReason: `Esta OP não passa por ${targetNorm} (ou o setor já está concluído).`,
     };
   }
 
   const columnStage = ordered.find(stage => norm(stage.stage_name) === column) ?? null;
-  const nivel = (stageName: string, stageOrder?: number) => (
-    levelOf?.get(stageName)
-    ?? flowOrder.get(stageName)
-    ?? (stageOrder === undefined ? 1_000_000 : 1_000_000 + stageOrder)
-  );
-  if (targetStage && target !== column && columnStage
-      && nivel(target, targetStage.stage_order) === nivel(column, columnStage.stage_order)) {
+  const nivel = (stageName: string, stageOrder?: number) => {
+    const nome = norm(stageName);
+    return (
+      levelOf?.get(nome)
+      ?? flowOrder.get(nome)
+      ?? (stageOrder === undefined ? 1_000_000 : 1_000_000 + stageOrder)
+    );
+  };
+  if (targetStage && targetNorm !== column && columnStage
+      && nivel(targetNorm, targetStage.stage_order) === nivel(column, columnStage.stage_order)) {
     return {
       pointedStage, isBackward: false, skipped: [], remaining, stageRemaining,
       available: false,
-      unavailableReason: `${target} é um setor paralelo a ${column}; aponte cada card separadamente.`,
+      unavailableReason: `${targetNorm} é um setor paralelo a ${column}; aponte cada card separadamente.`,
     };
   }
 
-  const isBackward = target !== null && isBackwardMove(ordered, column, target, flowOrder);
+  const isBackward = targetNorm !== null && isBackwardMove(ordered, column, targetNorm, flowOrder);
 
   if (isBackward) {
     const backward = resolveBackwardMove(card, ordered, nivel);
@@ -173,7 +186,7 @@ export function buildPointingPlan(
     // O destino visual precisa ser exatamente o resolvido para este estado do
     // card. Assim uma volta distante não estorna uma etapa diferente da que a
     // tela promete, mas a última etapa parcial ainda consegue voltar um nível.
-    if (backwardStage && target !== backward.target) {
+    if (backwardStage && targetNorm !== backward.target) {
       return {
         pointedStage: backwardStage,
         isBackward: true,
@@ -182,7 +195,7 @@ export function buildPointingPlan(
         stageRemaining: backwardStage.quantity_processed,
         available: false,
         unavailableReason: backward.target
-          ? `Para estornar ${norm(backwardStage.stage_name)}, volte para ${backward.target}; não é seguro voltar direto para ${target}.`
+          ? `Para estornar ${norm(backwardStage.stage_name)}, volte para ${backward.target}; não é seguro voltar direto para ${targetNorm}.`
           : `Não há um setor anterior seguro para estornar ${norm(backwardStage.stage_name)}.`,
       };
     }
@@ -192,24 +205,24 @@ export function buildPointingPlan(
       skipped: [],
       remaining: backwardStage ? backwardStage.quantity_processed : 0,
       stageRemaining: backwardStage ? backwardStage.quantity_processed : 0,
-      available: !!backwardStage && backwardStage.quantity_processed > 0 && target === backward.target,
-      unavailableReason: backwardStage && target === backward.target
+      available: !!backwardStage && backwardStage.quantity_processed > 0 && targetNorm === backward.target,
+      unavailableReason: backwardStage && targetNorm === backward.target
         ? undefined
         : 'Nenhum setor desta OP tem apontamento pra estornar.',
     };
   }
 
-  if (target !== null && target !== column) {
-    const targetIdx = seq.indexOf(target);
+  if (targetNorm !== null && targetNorm !== column) {
+    const targetIdx = seq.indexOf(targetNorm);
     if (targetIdx < 0) {
       return {
         pointedStage, isBackward: false, skipped: [], remaining, stageRemaining,
         available: false,
-        unavailableReason: `Esta OP não passa por ${target} (ou o setor já está concluído).`,
+        unavailableReason: `Esta OP não passa por ${targetNorm} (ou o setor já está concluído).`,
       };
     }
     const nivelCol = nivel(column, columnStage?.stage_order);
-    const nivelAlvo = nivel(target, targetStage?.stage_order);
+    const nivelAlvo = nivel(targetNorm, targetStage?.stage_order);
     const openParallelSiblings = ordered
       .filter(stage => stage.status !== 'concluido')
       .filter(stage => norm(stage.stage_name) !== column)

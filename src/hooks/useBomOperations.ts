@@ -24,12 +24,14 @@ export const emptyOperationForm: BomOperationFormData = {
   active: true,
 };
 
-// Ordem canônica pós PR1-PR3 (Mesa→Aviamento, Costura PR2).
+// Ordem canônica pós PR1-PR3 (Mesa→Aviamento, Costura PR2, Corte Fibra + Cabedal).
 export const PRODUCTION_STAGES = [
-  'Corte Palmilha',
+  'Corte Fibra',
   'Corte Forração',
+  'Corte Cabedal',
+  'Costura Palmilha',
+  'Costura Cabedal',
   'Aviamento',
-  'Costura',
   'Silk',
   'Colagem',
   'Montagem',

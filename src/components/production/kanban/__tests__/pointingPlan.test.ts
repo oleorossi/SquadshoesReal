@@ -10,7 +10,7 @@ import type { OrderStage } from '@/hooks/useOrderStages';
  */
 
 const FLOW = new Map<string, number>([
-  ['Corte Palmilha', 1], ['Corte Forração', 2], ['Costura', 3],
+  ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Corte Forração', 2], ['Costura', 3],
   ['Aviamento', 4], ['Silk', 5], ['Montagem', 6],
 ]);
 
@@ -132,7 +132,7 @@ describe('buildPointingPlan', () => {
       stage('Costura', 3),
     ];
     const levels = new Map([
-      ['Corte Palmilha', 1], ['Corte Forração', 1], ['Costura', 2],
+      ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Corte Forração', 1], ['Costura', 2],
     ]);
     const plan = buildPointingPlan(
       makeCard({ stages, column: 'Corte Forração', front: stages[0] }),
@@ -197,7 +197,7 @@ describe('buildPointingPlan', () => {
       stage('Costura', 3),
     ];
     const levels = new Map([
-      ['Corte Palmilha', 1], ['Corte Forração', 1], ['Costura', 2],
+      ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Corte Forração', 1], ['Costura', 2],
     ]);
     const openSibling = buildPointingPlan(
       makeCard({ stages, column: 'Corte Palmilha' }),
@@ -244,12 +244,12 @@ describe('buildPointingPlan', () => {
  */
 describe('rota da OP prevalece sobre sector_settings (dados de produção)', () => {
   const FLOW_REAL = new Map<string, number>([
-    ['Corte Palmilha', 10], ['Corte Forração', 20], ['Aviamento', 30], ['Costura', 40],
+    ['Corte Fibra', 10], ['Corte Palmilha', 10], ['Corte Forração', 20], ['Aviamento', 30], ['Costura', 40],
     ['Silk', 50], ['Colagem', 60], ['Montagem', 70], ['Solagem', 80],
     ['Acabamento', 90], ['Expedição', 100],
   ]);
   const ROTA_REAL: Array<[string, number]> = [
-    ['Corte Palmilha', 1], ['Corte Forração', 2], ['Costura', 3], ['Aviamento', 4],
+    ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Corte Forração', 2], ['Costura', 3], ['Aviamento', 4],
     ['Silk', 5], ['Colagem', 6], ['Montagem', 7], ['Solagem', 8],
     ['Acabamento', 9], ['Expedição', 10],
   ];
@@ -300,7 +300,7 @@ describe('moveOptions', () => {
     const front = stages[0];
     const opts = moveOptions(makeCard({ stages, column: 'Corte Forração', front }), FLOW);
     expect(opts.fwdOptions).toEqual(['Costura', 'Aviamento']);
-    expect(opts.backOption).toBe('Corte Palmilha');
+    expect(opts.backOption).toBe('Corte Fibra');
   });
 
   it('sem progresso não oferece volta', () => {
@@ -315,7 +315,7 @@ describe('moveOptions', () => {
       stage('Corte Palmilha', 1), stage('Corte Forração', 2), stage('Costura', 3),
     ];
     const levels = new Map([
-      ['Corte Palmilha', 1], ['Corte Forração', 1], ['Costura', 2],
+      ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Corte Forração', 1], ['Costura', 2],
     ]);
     const opts = moveOptions(
       makeCard({ stages, column: 'Corte Palmilha' }),
@@ -335,7 +335,7 @@ describe('moveOptions', () => {
       makeCard({ stages, column: 'Corte Forração', front: stages[1] }),
       FLOW,
     );
-    expect(opts.backOption).toBe('Corte Palmilha');
+    expect(opts.backOption).toBe('Corte Fibra');
   });
 
   it('não oferece setor pulado com zero como origem de estorno', () => {
@@ -348,7 +348,7 @@ describe('moveOptions', () => {
       makeCard({ stages, column: 'Costura', front: stages[1] }),
       FLOW,
     );
-    expect(opts.backOption).toBe('Corte Palmilha');
+    expect(opts.backOption).toBe('Corte Fibra');
   });
 });
 
@@ -398,7 +398,7 @@ describe('skipBlockedByPartial', () => {
 
   it('não confunde disponibilidade a montante com saldo necessário para fechar um pulo', () => {
     const limitedFlow = new Map<string, number>([
-      ['Corte Palmilha', 1], ['Costura Palmilha', 2], ['Silk', 3], ['Montagem', 4],
+      ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Costura Palmilha', 2], ['Silk', 3], ['Montagem', 4],
     ]);
     const limitedStages = [
       stage('Corte Palmilha', 1, { status: 'em_andamento', quantity_processed: 50 }),
@@ -450,7 +450,7 @@ describe('applyPointing — confirmação humana do pulo', () => {
       stage('Corte Palmilha', 1), stage('Corte Forração', 2), stage('Costura', 3),
     ];
     const levels = new Map([
-      ['Corte Palmilha', 1], ['Corte Forração', 1], ['Costura', 2],
+      ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Corte Forração', 1], ['Costura', 2],
     ]);
     const parallelCard = makeCard({ stages: parallelStages, column: 'Corte Palmilha' });
     const plan = buildPointingPlan(parallelCard, 'Costura', FLOW, levels);

@@ -10,20 +10,21 @@ export const ALL_PRODUCTION_SECTORS = [
    // Sub-etapas paralelas de Corte (decisão 2026-05-12):
    //   - Corte Fibra: sempre (todo sapato tem palmilha)
    //   - Corte Forração: quando o modelo tem forração na palmilha
+   //   - Corte Cabedal: opt-in por modelo (cabedal / cabedal forrado) —
+   //     ConstructionConfigPanel escreve; o trigger tg_normalize_production_sectors
+   //     MANTÉM (mig 20270101005300). Comentário antigo dizia que o trigger
+   //     descartava — stale: o chip sumia e a ficha ficava com setor órfão
+   //     visível só no Kanban via R1.5.
    // Costura dividida em DOIS setores independentes que trabalham lado a lado
    // (decisão do dono 2026-10-01, migration 20261001120000):
    //   - Costura Palmilha: costura palmilha + forração (interna)
    //   - Costura Cabedal: costura do cabedal (é a terceirizável)
-   // ⚠ 'Corte Cabedal' NÃO é selecionável: o trigger
-   // tg_normalize_production_sectors descarta ele do array (fora da lista
-   // canônica), então o chip era salvo e sumia em silêncio. A impressão
-   // decide essa sub-etapa pelos sinais reais de identidade/consumo do
-   // Cabedal; tiras habilitadas são um fluxo independente.
    // ⚠ A ordem aqui espelha `canonical_stage_order()` no banco. Setor que
    // você adicionar aqui TEM que entrar na lista canônica do trigger também,
    // senão o usuário marca, salva, e o valor desaparece sem erro.
    { name: 'Corte Fibra',      order: 1 },
    { name: 'Corte Forração',   order: 2 },
+   { name: 'Corte Cabedal',    order: 2 },
    { name: 'Costura Palmilha', order: 3 },
    { name: 'Costura Cabedal',  order: 4 },
    { name: 'Aviamento',        order: 5 },

@@ -14,7 +14,7 @@
  */
 
 export type SectorKey =
-  | 'corte_palmilha' | 'corte_forracao'
+  | 'corte_palmilha' | 'corte_forracao' | 'corte_cabedal'
   | 'costura_palmilha' | 'costura_cabedal'
   | 'mesa' | 'silk'
   | 'colagem' | 'montagem' | 'solagem' | 'acabamento' | 'expedicao'
@@ -34,6 +34,10 @@ export const SECTOR_NORMALIZE: Record<string, SectorKey> = {
   'corte fibra': 'corte_palmilha',
   'corte forração': 'corte_forracao',
   'corte forracao': 'corte_forracao',
+  // Opt-in por modelo (ConstructionConfigPanel) — order 2 no SQL, paralelo ao
+  // grupo 'corte'. Sem este mapa, sheetHasSector / planejamento tratavam o
+  // nome como desconhecido e o Kanban não achava parallel_group estático.
+  'corte cabedal':  'corte_cabedal',
   'aviamento':      'mesa',
   'mesa':           'mesa',
   // Costura dividida em dois setores paralelos (2026-10-01). O legado
@@ -75,6 +79,7 @@ export function sheetHasSector(sheet: { production_sectors?: unknown } | null | 
 export const SECTOR_LABELS: Record<SectorKey, string> = {
   corte_palmilha:   'Corte Fibra',
   corte_forracao:   'Corte Forração',
+  corte_cabedal:    'Corte Cabedal',
   costura_palmilha: 'Costura Palmilha',
   costura_cabedal:  'Costura Cabedal',
   mesa:             'Aviamento',   // enum interno é "mesa", label do usuário é Aviamento
@@ -99,6 +104,7 @@ export const SECTOR_LABELS: Record<SectorKey, string> = {
 export const DISPLAY_SECTORS: { key: SectorKey; label: string }[] = [
   { key: 'corte_palmilha',   label: SECTOR_LABELS.corte_palmilha },
   { key: 'corte_forracao',   label: SECTOR_LABELS.corte_forracao },
+  { key: 'corte_cabedal',    label: SECTOR_LABELS.corte_cabedal },
   { key: 'costura_palmilha', label: SECTOR_LABELS.costura_palmilha },
   { key: 'costura_cabedal',  label: SECTOR_LABELS.costura_cabedal },
   { key: 'mesa',             label: SECTOR_LABELS.mesa },
@@ -117,7 +123,7 @@ export const DISPLAY_SECTORS: { key: SectorKey; label: string }[] = [
  * desde a migration 20261001120000 — hoje são `Costura Palmilha` e `Costura Cabedal`).
  */
 export const SECTOR_FLOW: string[] = [
-  'Corte Fibra', 'Corte Forração',
+  'Corte Fibra', 'Corte Forração', 'Corte Cabedal',
   'Costura Palmilha', 'Costura Cabedal', 'Aviamento',
   'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição',
 ];
@@ -129,7 +135,7 @@ export const SECTOR_FLOW: string[] = [
  * 2026-07-29). Setor sem grupo é sequencial: só arranca quando o nível anterior
  * entrega.
  *
- *   Corte Fibra ‖ Corte Forração                        → grupo 'corte'
+ *   Corte Fibra ‖ Corte Forração ‖ Corte Cabedal        → grupo 'corte'
  *   Costura Palmilha ‖ Costura Cabedal ‖ Aviamento     → grupo 'costura_aviamento'
  *   Silk → Colagem → Montagem → Solagem → Acabamento → Expedição   (sequenciais)
  *
@@ -140,6 +146,7 @@ export const SECTOR_FLOW: string[] = [
 export const SECTOR_PARALLEL_GROUP: Record<string, string | null> = {
   'Corte Fibra':      'corte',
   'Corte Forração':   'corte',
+  'Corte Cabedal':    'corte',
   'Costura Palmilha': 'costura_aviamento',
   'Costura Cabedal':  'costura_aviamento',
   'Aviamento':        'costura_aviamento',

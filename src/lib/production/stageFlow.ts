@@ -16,7 +16,7 @@ const STAGE_ALIASES: Record<string, string> = {
   Costura: 'Costura Palmilha',
 };
 
-const CUTTING_STAGES = new Set(['Corte Fibra', 'Corte Forração', 'Corte Palmilha']);
+const CUTTING_STAGES = new Set(['Corte Fibra', 'Corte Forração', 'Corte Cabedal', 'Corte Palmilha']);
 
 export function canonicalStageName(name: string): string {
   const trimmed = (name || '').trim();
