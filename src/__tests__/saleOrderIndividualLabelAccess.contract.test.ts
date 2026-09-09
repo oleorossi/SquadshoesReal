@@ -31,6 +31,20 @@ describe('acesso à etiqueta individual em Pedidos de Venda', () => {
     expect(saleOrders).toContain('navigate(`/label-system?${params.toString()}`)');
   });
 
+  it('mantém Consumo como ação direta da seleção, fora do menu Mais', () => {
+    const bulkBar = saleOrders.slice(
+      saleOrders.indexOf('<BulkActionsBar'),
+      saleOrders.indexOf('{/* Preview + Emit NF-e'),
+    );
+    const primaryActions = bulkBar.slice(0, bulkBar.indexOf('secondaryActions={['));
+    const secondaryActions = bulkBar.slice(bulkBar.indexOf('secondaryActions={['));
+
+    expect(primaryActions).toContain("label: 'Consumo'");
+    expect(primaryActions).toContain('onClick: handleBulkConsumption');
+    expect(secondaryActions).not.toContain("label: 'Consumo'");
+    expect(bulkBar).toContain('bottom-[calc(4.5rem+env(safe-area-inset-bottom))]');
+  });
+
   it('mantém o atalho explícito no detalhe do pedido', () => {
     expect(saleOrders).toContain('navigate(`/label-system?sale_order=${selectedOrder.id}`)');
     expect(saleOrders).toContain('Etiqueta Individual');

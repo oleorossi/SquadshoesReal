@@ -1,7 +1,9 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import MaterialConsumptionView from '@/components/sale-orders/MaterialConsumptionView';
+import MaterialConsumptionView, {
+  type ConsumptionPartitionMode,
+} from '@/components/sale-orders/MaterialConsumptionView';
 import UpperCutOutsourcingSection from '@/components/sale-orders/UpperCutOutsourcingSection';
 import {
   loadPvConsumption,
@@ -30,6 +32,9 @@ import {
  *
  * 07/09/2026: filtro por item do PV (`?item=`) reescopa o report canônico
  * (solado + materiais + tiras) sem nova RPC.
+ *
+ * 09/09/2026: modo estendido "Por PV e modelo" rematerializa o mesmo report
+ * com `partition: 'order_reference'` — sem nova RPC.
  */
 type Props = {
   saleOrderIds: string[];
@@ -42,6 +47,7 @@ type Props = {
 
 export default function SummaryConsumptionPanel({ saleOrderIds, onGerarOC, embedded = false }: Props) {
   const [searchParams, setSearchParams] = useSearchParams();
+  const [partitionMode, setPartitionMode] = useState<ConsumptionPartitionMode>('none');
   const idsKey = useMemo(
     () => normalizePvConsumptionIds(saleOrderIds).sort().join(','),
     [saleOrderIds],
@@ -79,26 +85,45 @@ export default function SummaryConsumptionPanel({ saleOrderIds, onGerarOC, embed
     setSearchParams(next, { replace: true });
   };
 
+  const canPartition = !!data?.canPartitionByOrderReference && !selectedItemId;
+  const effectivePartition: ConsumptionPartitionMode =
+    canPartition && partitionMode === 'order_reference' ? 'order_reference' : 'none';
+
+  // Volta ao consolidado se o escopo deixa de permitir partição (ex.: filtro de item).
+  useEffect(() => {
+    if (!canPartition && partitionMode !== 'none') setPartitionMode('none');
+  }, [canPartition, partitionMode]);
+
   const scopedQuery = useQuery({
     // dataUpdatedAt invalida o escopo quando "Recalcular" refresca o report.
-    queryKey: [...pvConsumptionQueryKey(ids), 'scope', selectedItemId ?? 'all', dataUpdatedAt] as const,
+    queryKey: [
+      ...pvConsumptionQueryKey(ids),
+      'scope',
+      selectedItemId ?? 'all',
+      effectivePartition,
+      dataUpdatedAt,
+    ] as const,
     queryFn: async () => {
-      if (!data?.report) return { rows: data?.rows ?? [], artisanalStrapRows: data?.artisanalStrapRows ?? [] };
-      if (!selectedItemId) {
+      if (!data?.report) {
+        return { rows: data?.rows ?? [], artisanalStrapRows: data?.artisanalStrapRows ?? [] };
+      }
+      const partitionOpts = effectivePartition === 'order_reference'
+        ? { partition: 'order_reference' as const, ...data.identity }
+        : undefined;
+      // Consolidado sem filtro de item: reusa as rows já materializadas no load.
+      if (!selectedItemId && effectivePartition === 'none') {
         return { rows: data.rows, artisanalStrapRows: data.artisanalStrapRows };
       }
-      return materializePvConsumptionScope(data.report, selectedItemId);
+      return materializePvConsumptionScope(data.report, selectedItemId, partitionOpts);
     },
-    enabled: !!data?.report || (!!data && !selectedItemId),
+    enabled: !!data?.report || (!!data && !selectedItemId && effectivePartition === 'none'),
     staleTime: PV_CONSUMPTION_STALE_MS,
   });
 
-  const rows = selectedItemId
-    ? (scopedQuery.data?.rows ?? [])
-    : (data?.rows ?? []);
-  const artisanalStrapRows = selectedItemId
-    ? (scopedQuery.data?.artisanalStrapRows ?? [])
-    : (data?.artisanalStrapRows ?? []);
+  const rows = scopedQuery.data?.rows ?? data?.rows ?? [];
+  const artisanalStrapRows = scopedQuery.data?.artisanalStrapRows
+    ?? data?.artisanalStrapRows
+    ?? [];
   const orderHeaders = data?.orderHeaders ?? [];
 
   const singlePv = ids.length === 1 ? ids[0] : null;
@@ -113,7 +138,8 @@ export default function SummaryConsumptionPanel({ saleOrderIds, onGerarOC, embed
     [items, multiPv],
   );
 
-  const scopeLoading = !!selectedItemId && scopedQuery.isLoading && !scopedQuery.data;
+  const scopeLoading = scopedQuery.isLoading && !scopedQuery.data
+    && (!!selectedItemId || effectivePartition === 'order_reference');
 
   return (
     <MaterialConsumptionView
@@ -140,6 +166,9 @@ export default function SummaryConsumptionPanel({ saleOrderIds, onGerarOC, embed
       itemOptions={itemOptions}
       selectedItemId={selectedItemId}
       onSelectedItemIdChange={setSelectedItemId}
+      canPartition={canPartition}
+      partitionMode={effectivePartition}
+      onPartitionModeChange={setPartitionMode}
     />
   );
 }

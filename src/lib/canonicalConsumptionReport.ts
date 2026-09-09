@@ -349,11 +349,24 @@ const mergeGrade = (
 /**
  * Adapta fatos SQL ao shape visual. Não calcula consumo: `totalQuantity` é
  * sempre o `required` devolvido pela RPC; a grade é apenas breakdown do solado.
+ *
+ * `partition: 'order_reference'` mantém fatias por PV + modelo (modo estendido);
+ * o default `none` consolida o mesmo material entre pedidos/fichas.
  */
+export type AdaptCanonicalOptions = {
+  partition?: 'none' | 'order_reference';
+  orderNumberBySaleOrderId?: ReadonlyMap<string, string>;
+  referenceLabelById?: ReadonlyMap<string, { code: string; name: string | null }>;
+};
+
 export function adaptCanonicalConsumptionLines(
   lines: CanonicalConsumptionLine[],
   scopeKeys?: ReadonlySet<string>,
+  opts?: AdaptCanonicalOptions,
 ): MaterialConsumptionRow[] {
+  const partition = opts?.partition ?? 'none';
+  const orderNumberBySaleOrderId = opts?.orderNumberBySaleOrderId;
+  const referenceLabelById = opts?.referenceLabelById;
   const grouped = new Map<string, MaterialConsumptionRow>();
 
   for (const line of lines) {
@@ -381,6 +394,8 @@ export function adaptCanonicalConsumptionLines(
     const warning = warningText(line);
     const productId = !packaging ? line.product_id : null;
     const boxTypeId = packaging ? line.box_type_id : null;
+    const saleOrderId = line.sale_order_id || null;
+    const referenceId = line.reference_id || null;
     const key = [
       component,
       productId || '',
@@ -393,6 +408,8 @@ export function adaptCanonicalConsumptionLines(
       line.consumption_sector_source || '',
       line.source || '',
       unresolvedPalmilha ? (line.reference_id || '') : '',
+      partition === 'order_reference' ? (saleOrderId || '') : '',
+      partition === 'order_reference' ? (referenceId || '') : '',
     ].join('::');
     const existing = grouped.get(key);
     const grade = component === 'Solado' ? line.effective_grade : null;
@@ -417,7 +434,8 @@ export function adaptCanonicalConsumptionLines(
       continue;
     }
 
-    grouped.set(key, {
+    const refLabel = referenceId ? referenceLabelById?.get(referenceId) : undefined;
+    const row: MaterialConsumptionRow = {
       componentType: component,
       groupName,
       materialName,
@@ -434,7 +452,18 @@ export function adaptCanonicalConsumptionLines(
       soleProductId: component === 'Solado' ? productId : null,
       productIds: productId ? [productId] : [],
       boxTypeIds: boxTypeId ? [boxTypeId] : [],
-    });
+    };
+
+    if (partition === 'order_reference') {
+      row.saleOrderId = saleOrderId;
+      row.referenceId = referenceId;
+      row.orderNumber = (saleOrderId && orderNumberBySaleOrderId?.get(saleOrderId))
+        || null;
+      row.referenceCode = refLabel?.code || null;
+      row.referenceName = refLabel?.name || referenceName;
+    }
+
+    grouped.set(key, row);
   }
 
   return [...grouped.values()].filter(
@@ -535,12 +564,13 @@ export function enrichInsolePlateEquivalent(
 export async function materializeCanonicalConsumptionReport(
   report: CanonicalConsumptionReport,
   scopeKeys?: ReadonlySet<string>,
+  opts?: AdaptCanonicalOptions,
 ): Promise<{ rows: ConsumptionRow[]; artisanalStrapRows: ArtisanalStrapCutRow[] }> {
   const scopedLines = scopeKeys
     ? report.lines.filter((line) => scopeKeys.has(line.scope_key))
     : report.lines;
   const scopedPreviews = canonicalStrapPreviews(report, scopeKeys);
-  const adapted = adaptCanonicalConsumptionLines(scopedLines);
+  const adapted = adaptCanonicalConsumptionLines(scopedLines, undefined, opts);
   const ctx = await loadStockContext(scopedLines, scopedPreviews);
   const rows = enrichInsolePlateEquivalent(adapted, (ctx.allProducts || []) as Array<Record<string, unknown>>);
   return annotateConsumptionAvailability(

@@ -2264,17 +2264,18 @@ export default function SaleOrders() {
         selectedIds={sel.selectedIds}
         onClear={sel.clear}
         itemLabel={sel.count === 1 ? 'PV selecionado' : 'PVs selecionados'}
+        className="bottom-[calc(4.5rem+env(safe-area-inset-bottom))] md:bottom-4"
         actions={[
           ...(canEditPv ? [{ label: 'Aprovar', icon: <Check className="h-3.5 w-3.5" />, onClick: handleBulkApprove }] : []),
           ...(canBuy ? [{ label: 'Gerar ordem de compra', icon: <ShoppingCart className="h-3.5 w-3.5" />, variant: 'outline' as const, onClick: handleBulkPurchaseOrders }] : []),
           { label: 'Emitir NF-e', icon: <Receipt className="h-3.5 w-3.5" />, onClick: () => openBulkNfe('emit') },
           { label: 'Etiqueta Individual', icon: <Barcode className="h-3.5 w-3.5" />, variant: 'outline' as const, onClick: handleBulkLabels },
+          { label: 'Consumo', icon: <BarChart3 className="h-3.5 w-3.5" />, variant: 'outline' as const, onClick: handleBulkConsumption },
           ...(canEditPv ? [{ label: 'Cancelar', icon: <X className="h-3.5 w-3.5" />, variant: 'destructive' as const, onClick: handleBulkCancel }] : []),
         ]}
         secondaryActions={[
           ...(canEditPv ? [{ label: 'Alterar Status', icon: <ListChecks className="h-3.5 w-3.5" />, variant: 'outline' as const, onClick: () => { setBulkStatusTarget(''); setBulkStatusOpen(true); } }] : []),
           { label: 'Pré-visualizar NF-e', icon: <Receipt className="h-3.5 w-3.5" />, variant: 'outline', onClick: () => openBulkNfe('preview') },
-          { label: 'Consumo', icon: <BarChart3 className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkConsumption },
           { label: 'Visão Geral', icon: <LayoutDashboard className="h-3.5 w-3.5" />, variant: 'outline', onClick: () => setOverviewOpen(true) },
           { label: 'Imprimir Fichas', icon: <Printer className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkPrint },
           { label: 'Exportar Excel', icon: <Download className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkExport },

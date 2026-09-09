@@ -118,6 +118,15 @@ export type MaterialConsumptionRow = {
    * Comparação verde/vermelho continua em dm² (= estoque); placas são informativas.
    */
   plateEquivalent?: number;
+  /**
+   * Identidade do PV/modelo quando a adaptação partiu por `order_reference`
+   * (modo estendido da tela de consumo). Ausente no consolidado.
+   */
+  saleOrderId?: string | null;
+  referenceId?: string | null;
+  orderNumber?: string | null;
+  referenceCode?: string | null;
+  referenceName?: string | null;
 };
 
 /**

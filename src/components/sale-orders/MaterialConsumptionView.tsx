@@ -47,6 +47,7 @@ import {
   type ItemGroup,
 } from '@/lib/consumptionAvailability';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { buildOrderReferencePartitions } from '@/lib/consumptionPartitions';
 
 /**
  * Apresentação canônica do consumo de materiais — tela + PDF. FONTE ÚNICA
@@ -78,6 +79,8 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
  * `consumptionAvailability.ts` e `buyList.ts`, testados à parte.
  */
 export type OrderHeader = { order_number: string; client_order_number?: string | null };
+
+export type ConsumptionPartitionMode = 'none' | 'order_reference';
 
 type Props = {
   /** Linhas do motor canônico já anotadas (available / soleSizeStock / artisanal). */
@@ -111,6 +114,10 @@ type Props = {
   itemOptions?: { id: string; label: string }[];
   selectedItemId?: string | null;
   onSelectedItemIdChange?: (itemId: string | null) => void;
+  /** Há mais de um PV ou mais de um modelo → libera o seletor estendido. */
+  canPartition?: boolean;
+  partitionMode?: ConsumptionPartitionMode;
+  onPartitionModeChange?: (mode: ConsumptionPartitionMode) => void;
 };
 
 // Separador interno da chave de seção composta cor|família (agrupamento por Cor).
@@ -331,6 +338,9 @@ export default function MaterialConsumptionView({
   itemOptions = [],
   selectedItemId = null,
   onSelectedItemIdChange,
+  canPartition = false,
+  partitionMode = 'none',
+  onPartitionModeChange,
 }: Props) {
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
@@ -586,12 +596,18 @@ export default function MaterialConsumptionView({
       title: reportTitle,
       orderHeaders,
       mode: grossNeed ? 'total' : 'coverage',
+      partitionMode,
     });
     void printHtmlAsPdf(html, {
       filename: materialConsumptionReportFilename(reportTitle),
       target,
     });
-  }, [rows, title, artisanalStrapRows, orderHeaders, grossNeed]);
+  }, [rows, title, artisanalStrapRows, orderHeaders, grossNeed, partitionMode]);
+
+  const orderReferencePartitions = useMemo(
+    () => (partitionMode === 'order_reference' ? buildOrderReferencePartitions(rows) : []),
+    [partitionMode, rows],
+  );
 
   if (loading) {
     return (
@@ -958,6 +974,30 @@ export default function MaterialConsumptionView({
         </p>
       </div>
 
+      {canPartition && onPartitionModeChange ? (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border bg-muted/40 px-3 py-2.5">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Visão</span>
+            <Tabs
+              value={partitionMode}
+              onValueChange={(value) => {
+                if (value === 'none' || value === 'order_reference') onPartitionModeChange(value);
+              }}
+            >
+              <TabsList aria-label="Consolidado ou por PV e modelo">
+                <TabsTrigger value="none" className="text-xs">Consolidado</TabsTrigger>
+                <TabsTrigger value="order_reference" className="text-xs">Por PV e modelo</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {partitionMode === 'order_reference'
+              ? 'Quebra o consumo por número do pedido e pelo modelo (referência) de cada item.'
+              : 'Soma o mesmo material entre pedidos e modelos — lista de compra.'}
+          </p>
+        </div>
+      ) : null}
+
       {itemFilterControl}
 
       {orderHeaders && orderHeaders.length > 0 && (
@@ -973,6 +1013,158 @@ export default function MaterialConsumptionView({
 
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <div className="min-w-0 space-y-3">
+          {partitionMode === 'order_reference' && orderReferencePartitions.length > 0 ? (
+            <div className="space-y-6">
+              {orderReferencePartitions.map((order) => {
+                const orderVisible = order.models.flatMap((model) => model.rows).filter((r) => {
+                  if (!searchMatchesAllTerms(
+                    search,
+                    r.groupName,
+                    r.materialName,
+                    r.color,
+                    r.componentType,
+                    baseMaterialName(r) || '',
+                    r.orderNumber || '',
+                    r.referenceCode || '',
+                    r.referenceName || '',
+                  )) return false;
+                  if (baseFamily && !rowBelongsToBaseFamily(r, baseFamily)) return false;
+                  if (napaOnly && !isBuyListRow(r) && !(baseFamily && rowBelongsToBaseFamily(r, baseFamily))) return false;
+                  switch (filter) {
+                    case 'short': return isShortRow(r);
+                    case 'pending': return isPendingRow(r);
+                    case 'ok': return !isPendingRow(r) && !isShortRow(r) && !isConvertedInternalStrap(r);
+                    default: return true;
+                  }
+                });
+                if (orderVisible.length === 0
+                  && !order.models.some((m) => m.rows.some((r) => r.componentType === 'Solado'))) {
+                  return null;
+                }
+                return (
+                  <section
+                    key={order.saleOrderId || order.orderNumber}
+                    className="space-y-4 rounded-lg border border-border bg-card/40 p-3"
+                  >
+                    <header className="border-b border-border pb-2">
+                      <p className="eyebrow">Pedido</p>
+                      <h3 className="display mt-0.5 text-2xl leading-none text-primary">{order.orderNumber}</h3>
+                    </header>
+                    {order.models.map((model) => {
+                      const soleRows = model.rows.filter((r) => r.componentType === 'Solado');
+                      const modelMaterialRows = model.rows.filter((r) => {
+                        if (r.componentType === 'Solado') return false;
+                        if (isConvertedInternalStrap(r)) return false;
+                        if (materialsTab === 'strass' ? !isStrassStrapRow(r) : isStrassStrapRow(r)) return false;
+                        if (!searchMatchesAllTerms(
+                          search,
+                          r.groupName,
+                          r.materialName,
+                          r.color,
+                          r.componentType,
+                          baseMaterialName(r) || '',
+                        )) return false;
+                        if (baseFamily && !rowBelongsToBaseFamily(r, baseFamily)) return false;
+                        if (napaOnly && !isBuyListRow(r) && !(baseFamily && rowBelongsToBaseFamily(r, baseFamily))) return false;
+                        switch (filter) {
+                          case 'short': return isShortRow(r);
+                          case 'pending': return isPendingRow(r);
+                          case 'ok': return !isPendingRow(r) && !isShortRow(r) && !isConvertedInternalStrap(r);
+                          default: return true;
+                        }
+                      });
+                      if (soleRows.length === 0 && modelMaterialRows.length === 0) return null;
+                      const byComponent = new Map<string, ConsumptionRow[]>();
+                      for (const row of modelMaterialRows) {
+                        const section = materialsTab === 'strass' ? 'Tira Strass' : row.componentType;
+                        if (!byComponent.has(section)) byComponent.set(section, []);
+                        byComponent.get(section)!.push(row);
+                      }
+                      const sectionPrefix = `${order.orderNumber}::${model.referenceLabel}`;
+                      return (
+                        <div key={`${sectionPrefix}-${model.referenceId || 'x'}`} className="space-y-3">
+                          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                            <p className="eyebrow">Modelo</p>
+                            <h4 className="font-display text-lg uppercase tracking-wide text-foreground">
+                              {model.referenceLabel}
+                            </h4>
+                            {model.rows[0]?.referenceName
+                              && model.rows[0].referenceName !== model.referenceLabel ? (
+                              <span className="text-xs text-muted-foreground">{model.rows[0].referenceName}</span>
+                            ) : null}
+                          </div>
+                          <SoleCoveragePanel rows={soleRows} grossNeed={grossNeed} />
+                          {modelMaterialRows.length > 0 ? (
+                            <div className="overflow-hidden overflow-x-auto rounded-lg border">
+                              <Table
+                                aria-label={`Materiais ${order.orderNumber} ${model.referenceLabel}`}
+                                className="[&_tbody_tr]:border-dashed [&_tbody_tr]:border-border/70 [&_td]:py-2"
+                              >
+                                <TableHeader>
+                                  <TableRow className="bg-muted/50">
+                                    <TableHead>Grupo de material</TableHead>
+                                    <TableHead>Aplicação</TableHead>
+                                    <TableHead>Cor</TableHead>
+                                    <TableHead className="text-right">Necessidade</TableHead>
+                                    {!grossNeed && (
+                                      <>
+                                        <TableHead className="w-32 text-right">Em estoque</TableHead>
+                                        <TableHead className="w-32 text-right">Falta</TableHead>
+                                      </>
+                                    )}
+                                    <TableHead className="w-20 text-center">Un</TableHead>
+                                    <TableHead className="w-28 text-right">Preço unitário</TableHead>
+                                    <TableHead className="w-32 text-right">Valor a gastar</TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {Array.from(byComponent.entries()).flatMap(([sectionKey, sectionRows]) => {
+                                    const out: JSX.Element[] = [];
+                                    const subt = new Map<string, number>();
+                                    for (const r of sectionRows) {
+                                      subt.set(r.productUnit, (subt.get(r.productUnit) || 0) + r.totalQuantity);
+                                    }
+                                    const subtotal = Array.from(subt.entries())
+                                      .map(([u, v]) => `${formatQty(v, u)} ${formatUnit(u)}`)
+                                      .join(' · ');
+                                    out.push(
+                                      <TableRow key={`sec-${sectionPrefix}-${sectionKey}`} className="border-0 hover:bg-transparent">
+                                        <TableCell colSpan={colCount} className="border-y border-border bg-muted/60 py-1.5">
+                                          <div className="flex flex-wrap items-baseline justify-between gap-2">
+                                            <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-foreground">
+                                              <span aria-hidden="true" className="inline-block h-3.5 w-[3px] rounded-sm bg-primary" />
+                                              {sectionKey}
+                                            </span>
+                                            <span className="text-xs tabular-nums text-muted-foreground">{subtotal}</span>
+                                          </div>
+                                        </TableCell>
+                                      </TableRow>,
+                                    );
+                                    const items = aggregateItems(sectionRows);
+                                    for (const item of items) {
+                                      const multi = item.rows.length > 1;
+                                      if (multi) out.push(renderBand(item));
+                                      item.rows.forEach((row, i) => out.push(renderRow(row, i, multi, `${sectionPrefix}::${sectionKey}`)));
+                                    }
+                                    return out;
+                                  })}
+                                </TableBody>
+                              </Table>
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </section>
+                );
+              })}
+              {materialsTab !== 'strass' || !hasStrass ? (
+                <ArtisanalStrapRollCutBlock rows={artisanalStrapRows} />
+              ) : null}
+              {extraSections}
+            </div>
+          ) : (
+          <>
           <SoleCoveragePanel rows={visibleSoleRows} grossNeed={grossNeed} />
 
           <Tabs
@@ -1230,6 +1422,8 @@ export default function MaterialConsumptionView({
 
         {extraSections}
           </Tabs>
+          </>
+          )}
       </div>
 
         <ConsumptionDecisionRail

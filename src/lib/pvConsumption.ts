@@ -2,6 +2,7 @@ import { supabase } from '@/integrations/supabase/client';
 import {
   fetchCanonicalConsumptionReport,
   materializeCanonicalConsumptionReport,
+  type AdaptCanonicalOptions,
   type CanonicalConsumptionReport,
 } from '@/lib/canonicalConsumptionReport';
 import type { ConsumptionRow } from '@/lib/consumptionRows';
@@ -14,6 +15,7 @@ export type PvConsumptionItem = {
   orderNumber: string;
   /** 1-based index within the PV (ordem created_at). */
   index: number;
+  referenceId: string | null;
   referenceCode: string;
   referenceName: string | null;
   color: string;
@@ -27,6 +29,10 @@ export type PvConsumptionResult = {
   /** Relatório bruto — permite reescopar por item sem nova RPC. */
   report: CanonicalConsumptionReport | null;
   items: PvConsumptionItem[];
+  /** Mapas de identidade pra rematerializar o modo "Por PV e modelo". */
+  identity: AdaptCanonicalOptions;
+  /** Há mais de um PV ou mais de um modelo no escopo → vale o seletor estendido. */
+  canPartitionByOrderReference: boolean;
 };
 
 /** Cache curto: o prefetch ao abrir o PV ainda vale quando o operador clica Consumo. */
@@ -64,14 +70,23 @@ type SaleOrderItemRow = {
   color: string | null;
   quantity: number | null;
   created_at: string | null;
-  technical_sheets: { code: string | null; name: string | null } | { code: string | null; name: string | null }[] | null;
+  technical_sheets: {
+    id: string | null;
+    code: string | null;
+    name: string | null;
+  } | {
+    id: string | null;
+    code: string | null;
+    name: string | null;
+  }[] | null;
 };
 
 function sheetFields(
   sheet: SaleOrderItemRow['technical_sheets'],
-): { code: string; name: string | null } {
+): { id: string | null; code: string; name: string | null } {
   const row = Array.isArray(sheet) ? sheet[0] : sheet;
   return {
+    id: row?.id?.trim() || null,
     code: (row?.code || '').trim(),
     name: row?.name?.trim() || null,
   };
@@ -104,6 +119,7 @@ function buildPvConsumptionItems(
         saleOrderId,
         orderNumber,
         index: idx + 1,
+        referenceId: sheet.id,
         referenceCode: sheet.code,
         referenceName: sheet.name,
         color: (row.color || '').trim(),
@@ -120,6 +136,33 @@ function buildPvConsumptionItems(
   return items;
 }
 
+export function buildPvConsumptionIdentity(
+  items: PvConsumptionItem[],
+  orderHeadersById: Map<string, string>,
+): AdaptCanonicalOptions {
+  const referenceLabelById = new Map<string, { code: string; name: string | null }>();
+  for (const item of items) {
+    if (!item.referenceId) continue;
+    if (referenceLabelById.has(item.referenceId)) continue;
+    referenceLabelById.set(item.referenceId, {
+      code: item.referenceCode,
+      name: item.referenceName,
+    });
+  }
+  return {
+    orderNumberBySaleOrderId: orderHeadersById,
+    referenceLabelById,
+  };
+}
+
+export function pvConsumptionCanPartition(items: PvConsumptionItem[]): boolean {
+  const orderIds = new Set(items.map((item) => item.saleOrderId));
+  const referenceIds = new Set(
+    items.map((item) => item.referenceId).filter((id): id is string => !!id),
+  );
+  return orderIds.size > 1 || referenceIds.size > 1;
+}
+
 /**
  * Materializa o consumo no escopo total ou de um único item do PV.
  * Reusa o report já carregado — sem nova ida ao motor SQL.
@@ -127,11 +170,12 @@ function buildPvConsumptionItems(
 export async function materializePvConsumptionScope(
   report: CanonicalConsumptionReport,
   itemId: string | null | undefined,
+  opts?: AdaptCanonicalOptions,
 ): Promise<{ rows: ConsumptionRow[]; artisanalStrapRows: ArtisanalStrapCutRow[] }> {
   if (!itemId) {
-    return materializeCanonicalConsumptionReport(report);
+    return materializeCanonicalConsumptionReport(report, undefined, opts);
   }
-  return materializeCanonicalConsumptionReport(report, new Set([itemId]));
+  return materializeCanonicalConsumptionReport(report, new Set([itemId]), opts);
 }
 
 /**
@@ -142,7 +186,15 @@ export async function materializePvConsumptionScope(
 export async function loadPvConsumption(ids: string[]): Promise<PvConsumptionResult> {
   const uniqueIds = normalizePvConsumptionIds(ids);
   if (uniqueIds.length === 0) {
-    return { rows: [], artisanalStrapRows: [], orderHeaders: [], report: null, items: [] };
+    return {
+      rows: [],
+      artisanalStrapRows: [],
+      orderHeaders: [],
+      report: null,
+      items: [],
+      identity: {},
+      canPartitionByOrderReference: false,
+    };
   }
 
   const [report, { data: saleOrders, error: saleOrdersError }, { data: saleOrderItems, error: itemsError }] =
@@ -154,7 +206,7 @@ export async function loadPvConsumption(ids: string[]): Promise<PvConsumptionRes
         .in('id', uniqueIds),
       supabase
         .from('sale_order_items')
-        .select('id, sale_order_id, color, quantity, created_at, technical_sheets(code, name)')
+        .select('id, sale_order_id, color, quantity, created_at, technical_sheets(id, code, name)')
         .in('sale_order_id', uniqueIds)
         .order('created_at', { ascending: true }),
     ]);
@@ -164,6 +216,7 @@ export async function loadPvConsumption(ids: string[]): Promise<PvConsumptionRes
 
   const orderRows = (saleOrders || []) as SaleOrderHeaderRow[];
   const orderById = new Map(orderRows.map((so) => [so.id, so]));
+  const orderNumberById = new Map(orderRows.map((so) => [so.id, so.order_number]));
 
   const orderHeaders: OrderHeader[] = orderRows.map((so) => ({
     order_number: so.order_number,
@@ -174,11 +227,20 @@ export async function loadPvConsumption(ids: string[]): Promise<PvConsumptionRes
     (saleOrderItems || []) as SaleOrderItemRow[],
     orderById,
   );
+  const identity = buildPvConsumptionIdentity(items, orderNumberById);
 
   const { rows, artisanalStrapRows } =
     await materializeCanonicalConsumptionReport(report);
 
-  return { rows, artisanalStrapRows, orderHeaders, report, items };
+  return {
+    rows,
+    artisanalStrapRows,
+    orderHeaders,
+    report,
+    items,
+    identity,
+    canPartitionByOrderReference: pvConsumptionCanPartition(items),
+  };
 }
 
 /** URL da tela cheia de consumo (mesma aba / compartilhável). */

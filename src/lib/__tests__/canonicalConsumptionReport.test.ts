@@ -254,4 +254,73 @@ describe('canonicalConsumptionReport', () => {
       finishedProductId: IDS.product,
     });
   });
+
+  it('partição order_reference separa o mesmo material por PV e modelo', () => {
+    const saleOrderB = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const referenceB = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    const parsed = validateCanonicalConsumptionReport(response([
+      materialLine(IDS.scope1, 12.5),
+      {
+        ...materialLine(IDS.scope2, 7.5),
+        sale_order_id: saleOrderB,
+        reference_id: referenceB,
+        reference_name: 'I90',
+      },
+    ]));
+
+    const consolidated = adaptCanonicalConsumptionLines(parsed.lines);
+    expect(consolidated).toHaveLength(1);
+    expect(consolidated[0].totalQuantity).toBe(20);
+    expect(consolidated[0].saleOrderId).toBeUndefined();
+
+    const partitioned = adaptCanonicalConsumptionLines(parsed.lines, undefined, {
+      partition: 'order_reference',
+      orderNumberBySaleOrderId: new Map([
+        [IDS.saleOrder, 'PV-00194'],
+        [saleOrderB, 'PV-00193'],
+      ]),
+      referenceLabelById: new Map([
+        [IDS.reference, { code: 'BT01', name: 'Botinha' }],
+        [referenceB, { code: 'I90', name: 'Infantil 90' }],
+      ]),
+    });
+
+    expect(partitioned).toHaveLength(2);
+    expect(partitioned.map((row) => row.totalQuantity).sort((a, b) => a - b)).toEqual([7.5, 12.5]);
+    expect(partitioned).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        orderNumber: 'PV-00194',
+        referenceCode: 'BT01',
+        totalQuantity: 12.5,
+        sizeBreakdown: { '34': 4, '35': 6 },
+      }),
+      expect.objectContaining({
+        orderNumber: 'PV-00193',
+        referenceCode: 'I90',
+        totalQuantity: 7.5,
+        sizeBreakdown: { '34': 4, '35': 6 },
+      }),
+    ]));
+  });
+
+  it('partição order_reference soma grades só dentro da mesma fatia PV+modelo', () => {
+    const parsed = validateCanonicalConsumptionReport(response([
+      materialLine(IDS.scope1, 12.5),
+      materialLine(IDS.scope2, 7.5),
+    ]));
+
+    const partitioned = adaptCanonicalConsumptionLines(parsed.lines, undefined, {
+      partition: 'order_reference',
+      orderNumberBySaleOrderId: new Map([[IDS.saleOrder, 'PV-00100']]),
+      referenceLabelById: new Map([[IDS.reference, { code: 'SR01', name: null }]]),
+    });
+
+    expect(partitioned).toHaveLength(1);
+    expect(partitioned[0]).toMatchObject({
+      orderNumber: 'PV-00100',
+      referenceCode: 'SR01',
+      totalQuantity: 20,
+      sizeBreakdown: { '34': 8, '35': 12 },
+    });
+  });
 });

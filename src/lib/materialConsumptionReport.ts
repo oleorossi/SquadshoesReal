@@ -21,6 +21,9 @@ import { escapeHtml } from '@/lib/htmlUtils';
 import { buildColAvailability, sizeSortKey } from '@/lib/soleMatrixHtml';
 import type { ArtisanalStrapCutRow } from '@/lib/strapRollCut';
 import { formatCurrency, formatMoney } from '@/lib/utils';
+import { buildOrderReferencePartitions } from '@/lib/consumptionPartitions';
+
+export type ConsumptionPartitionMode = 'none' | 'order_reference';
 
 export interface MaterialConsumptionReportOrderHeader {
   order_number: string;
@@ -39,6 +42,8 @@ export interface MaterialConsumptionReportInput {
    * `total` = necessidade bruta do pedido, estoque ignorado.
    */
   mode?: 'coverage' | 'total';
+  /** Quebra o PDF por PV → modelo quando `order_reference`. */
+  partitionMode?: ConsumptionPartitionMode;
 }
 
 const FONT_LINK = 'https://fonts.googleapis.com/css2?family=Anton&family=Fira+Sans:wght@400;500;600;700;800&family=Fira+Code:wght@400;500;600;700&display=swap';
@@ -402,6 +407,7 @@ export function buildMaterialConsumptionReportHtml({
   orderHeaders,
   generatedAt = new Date(),
   mode = 'coverage',
+  partitionMode = 'none',
 }: MaterialConsumptionReportInput): string {
   const totalMode = mode === 'total';
   const baseTotal = computeBaseMaterialTotal(rows);
@@ -411,6 +417,9 @@ export function buildMaterialConsumptionReportHtml({
   const totalsByUnit = unitTotals(rows);
   const pendingTiraM = pendingStrapMeters(rows);
   const spendTotal = computeMaterialsSpendTotal(rows);
+  const partitioned = partitionMode === 'order_reference'
+    ? buildOrderReferencePartitions(rows)
+    : [];
 
   const totalStrip = Array.from(totalsByUnit.entries()).filter(([, total]) => total > 0).map(([unit, total]) => `
     <span><strong>${formatQty(total, unit)}</strong> ${escapeHtml(formatUnit(unit))}</span>
@@ -424,6 +433,9 @@ export function buildMaterialConsumptionReportHtml({
   const generatedLabel = generatedAt.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
   const modeBanner = totalMode
     ? '<p class="mode-banner">Consumo total · estoque ignorado · necessidade bruta do pedido</p>'
+    : '';
+  const partitionBanner = partitionMode === 'order_reference'
+    ? '<p class="mode-banner" style="margin-top:4px;background:transparent;color:var(--ink);border-color:var(--ink)">Visão estendida · por PV e modelo</p>'
     : '';
   const reading = totalMode
     ? 'Este documento ignora o estoque. Os números são o consumo bruto da ficha para realizar o pedido. Tira artesanal com receita conferida entra como metro de napa — o motor não compra metro de tira. Tira comprada pronta (STRASS) aparece em §02 “Tira Strass”, não na coluna Tira da napa.'
@@ -441,6 +453,21 @@ export function buildMaterialConsumptionReportHtml({
     <div><dl><dt>Total a gastar</dt><dd class="spend">${spendTotal != null ? escapeHtml(formatMoney(spendTotal)) : '—'}</dd></dl><small>necessidade × preço</small></div>
     <div><dl><dt>Pendências</dt><dd>${pendingCount}</dd></dl><small>cadastro a revisar</small></div>
   </div>`;
+
+  const materialsBody = partitioned.length > 0
+    ? partitioned.map((order) => `
+      <div class="partition-order" style="margin-top:12px;border:1px solid var(--ink);padding:8px;break-inside:avoid">
+        <p class="section-kicker">Pedido</p>
+        <h2 style="font-family:'Anton',Impact,sans-serif;font-size:16pt;line-height:1;margin:2px 0 8px;text-transform:uppercase">${escapeHtml(order.orderNumber)}</h2>
+        ${order.models.map((model) => `
+          <div style="margin-top:8px;padding-top:6px;border-top:1px solid var(--line)">
+            <p class="section-kicker">Modelo</p>
+            <h3 style="font-size:11pt;margin:2px 0 6px;text-transform:uppercase;letter-spacing:.04em">${escapeHtml(model.referenceLabel)}</h3>
+            ${renderMaterialSections(model.rows, totalMode)}
+          </div>
+        `).join('')}
+      </div>`).join('')
+    : renderMaterialSections(rows, totalMode);
 
   return `<!doctype html>
 <html lang="pt-BR">
@@ -559,7 +586,7 @@ export function buildMaterialConsumptionReportHtml({
 </head>
 <body>
   <header class="masthead">
-    <div><p class="brandline">Squad Shoes · suprimentos industriais</p><h1>${escapeHtml(title)}</h1>${modeBanner}</div>
+    <div><p class="brandline">Squad Shoes · suprimentos industriais</p><h1>${escapeHtml(title)}</h1>${modeBanner}${partitionBanner}</div>
     <p class="doc-meta">Documento operacional<strong>${escapeHtml(generatedLabel)}</strong></p>
   </header>
 
@@ -571,16 +598,16 @@ export function buildMaterialConsumptionReportHtml({
     <div class="decision-box"><h3>Leitura correta</h3><p>${reading}</p></div>
     <div class="decision-box"><h3>Maiores faltas</h3>${shortfallList}</div>
   </div>`}
-  ${renderBaseNeed(rows, totalMode)}
+  ${partitioned.length > 0 ? '' : renderBaseNeed(rows, totalMode)}
   <section class="report-section">
     <div class="section-heading">
       <span class="section-number">02</span>
-      <div><p class="section-kicker">Conferência completa</p><h2>Materiais por aplicação</h2></div>
+      <div><p class="section-kicker">Conferência completa</p><h2>${partitioned.length > 0 ? 'Materiais por PV e modelo' : 'Materiais por aplicação'}</h2></div>
       <p class="section-note">${totalMode
         ? 'Somente a necessidade do pedido. Tira convertida: §01 (napa) e §03 (metros × rendimento). Tira com cadastro pendente aparece abaixo como ▲.'
         : 'A falta de solado é calculada por numeração; os demais itens usam o balde grupo + cor + unidade. Tira convertida: §01/§03; tira pendente fica com ▲.'}</p>
     </div>
-    ${renderMaterialSections(rows, totalMode)}
+    ${materialsBody}
   </section>
   ${renderArtisanalStraps(artisanalStrapRows)}
   <p class="footer-note">${totalMode
