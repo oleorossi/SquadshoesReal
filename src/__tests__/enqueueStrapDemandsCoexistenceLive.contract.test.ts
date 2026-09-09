@@ -5,7 +5,8 @@ import { describe, expect, it } from 'vitest';
 /**
  * A 20400 reescreveu enqueue e reintroduziu o MUTEX upper_material → [].
  * O corpo VIVO (maior carimbo que redefine a função) tem que manter
- * coexistência 14675/16100 + no-ops de pré-baseline da 20400.
+ * coexistência 14675/16100 + no-ops de pré-baseline da 20400 + freeze
+ * canônico 21900 (prepare × ficha sem falso positivo).
  */
 const ROOT = resolve(__dirname, '../..');
 const MIGRATIONS = resolve(ROOT, 'supabase/migrations');
@@ -29,25 +30,24 @@ function latestEnqueueMigration(): { file: string; sql: string } {
   return hit;
 }
 
-function sqlFunction(sql: string, name: string): string {
-  const marker = `CREATE OR REPLACE FUNCTION public.${name}`;
+function sqlFunction(sql: string, name: string, schema = 'public'): string {
+  const marker = `CREATE OR REPLACE FUNCTION ${schema}.${name}`;
   const start = sql.lastIndexOf(marker);
-  expect(start, `${name} deve existir`).toBeGreaterThanOrEqual(0);
+  expect(start, `${schema}.${name} deve existir`).toBeGreaterThanOrEqual(0);
   const tail = sql.slice(start);
-  const end = tail.indexOf('\n$$;');
-  expect(end, `${name} deve terminar com $$;`).toBeGreaterThanOrEqual(0);
-  return tail.slice(0, end + 4);
+  const end = Math.max(tail.indexOf('\n$$;'), tail.indexOf('\n$function$;'));
+  expect(end, `${schema}.${name} deve terminar com $$;/$function$;`).toBeGreaterThanOrEqual(0);
+  const closer = tail.indexOf('\n$$;') === end ? 4 : 12;
+  return tail.slice(0, end + closer);
 }
 
 describe('enqueue_sale_order_strap_demands — corpo vivo', () => {
   const latest = latestEnqueueMigration();
   const enqueue = sqlFunction(latest.sql, 'enqueue_sale_order_strap_demands');
 
-  it('usa a migration mais recente do enqueue (pos-20400)', () => {
-    // 21600 restaura coexistencia; 21700 garante preview operacional se a
-    // 21600 ja tiver sido aplicada cedo com preview publico.
+  it('usa a migration mais recente do enqueue (freeze canônico 21900)', () => {
     expect(latest.file).toMatch(
-      /20270101021[67]00_.*\.sql$/,
+      /20270101021900_.*\.sql$/,
     );
   });
 
@@ -55,9 +55,8 @@ describe('enqueue_sale_order_strap_demands — corpo vivo', () => {
     expect(enqueue).toContain('upper_and_straps_coexist_20270101014675');
     expect(enqueue).not.toContain('nullif(btrim(coalesce(ts.upper_material');
     expect(enqueue).toContain('production_excluded_at IS NULL');
-    expect(enqueue).toContain("'color_mode'");
-    expect(enqueue).toContain("'material_mode'");
-    expect(enqueue).toContain("'allowed_material_group_ids'");
+    expect(enqueue).toContain('private.canonical_strap_freeze_projection');
+    expect(enqueue).toContain('strap_freeze_canonical_20270101021900');
   });
 
   it('usa preview operacional privado (nao o publico com yield NULL)', () => {
@@ -82,5 +81,24 @@ describe('enqueue_sale_order_strap_demands — corpo vivo', () => {
     expect(enqueue).toContain(
       'PV nao congelou exatamente as linhas de tira da ficha vigente; revise a ficha e o item antes de confirmar',
     );
+  });
+});
+
+describe('canonical_strap_freeze_projection — contrato', () => {
+  const latest = latestEnqueueMigration();
+  const helper = sqlFunction(latest.sql, 'canonical_strap_freeze_projection', 'private');
+
+  it('espelha prepare: zera identity_group_id em reference_base', () => {
+    expect(helper).toContain('finished_product_group');
+    expect(helper).toContain('identity_group_id');
+    expect(helper).toMatch(/ELSE NULL/);
+  });
+
+  it('normaliza UUID, consumo numerico e lista de materiais ordenada', () => {
+    expect(helper).toContain('try_parse_uuid');
+    expect(helper).toContain('::numeric');
+    expect(helper).toContain('ORDER BY parsed.uid');
+    expect(helper).toContain('allowed_material_group_ids');
+    expect(helper).toContain('consumption_per_size');
   });
 });
