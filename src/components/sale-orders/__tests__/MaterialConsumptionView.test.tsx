@@ -233,6 +233,7 @@ describe('MaterialConsumptionView — tela buy-first', () => {
       .toHaveTextContent('Todos os itens');
 
     await user.click(screen.getByRole('combobox', { name: /Filtrar consumo por item/i }));
+    expect(screen.getByText(/Marque um ou mais itens/i)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Item 1 · I90 · PRETO/i }));
     expect(onSelectedItemIdsChange).toHaveBeenCalledWith(['item-1']);
 

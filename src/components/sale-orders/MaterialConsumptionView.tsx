@@ -13,7 +13,6 @@ import {
   Warning as WarningIcon,
   CheckCircle,
   ListNumbers,
-  Check,
   CaretUpDown as ChevronsUpDown,
 } from '@phosphor-icons/react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -338,6 +337,20 @@ function itemFilterTriggerLabel(
   return `${selectedIds.length} itens selecionados`;
 }
 
+function ItemCheckMark({ checked }: { checked: boolean }) {
+  return (
+    <span
+      className={cn(
+        'grid h-4 w-4 shrink-0 place-items-center rounded border text-[10px] leading-none text-primary-foreground',
+        checked ? 'border-primary bg-primary' : 'border-muted-foreground/40 bg-background',
+      )}
+      aria-hidden
+    >
+      {checked ? '✓' : ''}
+    </span>
+  );
+}
+
 function ItemFilterMultiSelect({
   options,
   selectedIds,
@@ -350,6 +363,7 @@ function ItemFilterMultiSelect({
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const allSelected = selectedIds.length === 0;
 
   const filtered = useMemo(() => {
     if (!search.trim()) return options;
@@ -384,7 +398,14 @@ function ItemFilterMultiSelect({
           <ChevronsUpDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-2" align="start">
+      <PopoverContent
+        className="w-[var(--radix-popover-trigger-width)] p-2"
+        align="start"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
+        <p className="mb-2 px-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+          Marque um ou mais itens
+        </p>
         {options.length > 6 ? (
           <SearchInput
             placeholder="Buscar nesta lista…"
@@ -400,11 +421,11 @@ function ItemFilterMultiSelect({
             type="button"
             onClick={selectAll}
             className={cn(
-              'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent',
-              selectedIds.length === 0 && 'bg-accent',
+              'flex w-full items-center gap-2.5 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent',
+              allSelected && 'bg-accent',
             )}
           >
-            <Check className={cn('h-4 w-4 shrink-0', selectedIds.length === 0 ? 'opacity-100' : 'opacity-0')} />
+            <ItemCheckMark checked={allSelected} />
             Todos os itens
           </button>
           {filtered.map((opt) => {
@@ -415,11 +436,11 @@ function ItemFilterMultiSelect({
                 type="button"
                 onClick={() => toggle(opt.id)}
                 className={cn(
-                  'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent',
+                  'flex w-full items-center gap-2.5 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent',
                   selected && 'bg-accent',
                 )}
               >
-                <Check className={cn('h-4 w-4 shrink-0', selected ? 'opacity-100' : 'opacity-0')} />
+                <ItemCheckMark checked={selected} />
                 <span className="truncate">{opt.label}</span>
               </button>
             );
@@ -429,12 +450,15 @@ function ItemFilterMultiSelect({
           )}
         </div>
         {selectedIds.length > 0 ? (
-          <div className="mt-2 border-t border-border pt-2">
+          <div className="mt-2 flex items-center justify-between gap-2 border-t border-border pt-2">
+            <span className="px-1 font-mono text-[10px] text-muted-foreground">
+              {selectedIds.length}/{options.length} itens
+            </span>
             <Button
               type="button"
               variant="ghost"
               size="sm"
-              className="h-7 w-full text-xs"
+              className="h-7 text-xs"
               onClick={selectAll}
             >
               Limpar seleção
