@@ -39,6 +39,7 @@ import {
   StrapReceiptDialog,
   StrapSuspendDialog,
 } from '@/components/artisanal-straps/ArtisanalStrapExternalOperations';
+import { MeasureLaborCostControl } from '@/components/artisanal-straps/MeasureLaborCostControl';
 import { StrapIdentityTrail } from '@/components/artisanal-straps/StrapIdentityTrail';
 import { StrapStatusBadge } from '@/components/artisanal-straps/StrapStatusBadge';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
@@ -1289,6 +1290,14 @@ function CatalogTab({
                       </button>
                     ))}
                   </div>
+                  {catalog.capabilities.can_see_financial_values && (
+                    <MeasureLaborCostControl
+                      measureId={measure.id}
+                      measureLabel={`${type?.name || 'Tipo'} · ${measure.display_name}`}
+                      currentLaborCostPerM={Number(measure.preco_artesanal_per_m) || 0}
+                      canEdit={catalog.capabilities.manage_strap_catalog === true}
+                    />
+                  )}
                   {catalog.capabilities.manage_strap_catalog && (
                     <Button
                       type="button"
