@@ -178,7 +178,13 @@ describe('submitMobileSaleOrderAtomic', () => {
     });
 
     const error = await submitMobileSaleOrderAtomic(payload).catch((caught) => caught);
-    expect(error).toMatchObject({ message: 'create command cria somente rascunho' });
+    expect(error).toMatchObject({
+      message: 'O pedido NÃO foi salvo. create command cria somente rascunho',
+      receipt: {
+        ok: false,
+        error: { code: 'PZ114', message: 'create command cria somente rascunho' },
+      },
+    });
     expect(classifyMobileOrderError(error)).toBe('permanent');
   });
 
