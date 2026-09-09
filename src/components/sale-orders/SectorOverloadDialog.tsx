@@ -17,6 +17,7 @@ import { formatDateBR } from '@/lib/dateOnly';
 const SECTOR_ICONS: Record<SectorKey, React.ComponentType<any>> = {
   corte_palmilha:   Scissors,
   corte_forracao:   Layers,
+  corte_cabedal:    Scissors,
   mesa:             LayoutGrid,
   costura_palmilha: Pen,
   costura_cabedal:  Pen,

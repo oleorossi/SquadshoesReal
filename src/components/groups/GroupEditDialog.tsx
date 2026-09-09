@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { PencilSimple as Pencil, Palette, FloppyDisk as Save, Package, Plus, MagnifyingGlass as Search, Ruler, CircleNotch as Loader2, Flask as FlaskConical, Stack as Layers, X, LinkSimple as Link2, ArrowRight, Check, Warning as AlertTriangle, ArrowsLeftRight, Rows, Info, Factory, SquaresFour, Scissors, Truck } from '@phosphor-icons/react';
+import { Palette, FloppyDisk as Save, Package, Plus, MagnifyingGlass as Search, Ruler, CircleNotch as Loader2, Flask as FlaskConical, Stack as Layers, X, LinkSimple as Link2, ArrowRight, Check, Warning as AlertTriangle, ArrowsLeftRight, Rows, Info, Factory, SquaresFour, Scissors, Truck } from '@phosphor-icons/react';
 import { ProductGroup, useUpdateGroup, useGroups } from '@/hooks/useGroups';
 import { useProducts } from '@/hooks/useProducts';
 import GroupColorsTab from './GroupColorsTab';
@@ -22,7 +22,6 @@ import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from '@/components/ui/command';
 import { SearchLocatorStrip } from '@/components/ui/searchable-select';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -42,7 +41,7 @@ import { isHeterogeneousGroup } from '@/lib/materialIdentity';
  *  o `MasterVariantDialog` deixou de ser um segundo diálogo e virou painel. */
 export type GroupEditTab =
   | 'general' | 'hierarchy' | 'specs' | 'packaging' | 'composition'
-  | 'colors' | 'items' | 'bulk';
+  | 'colors' | 'suppliers' | 'items' | 'bulk';
 
 interface GroupEditDialogProps {
   open: boolean;
@@ -634,7 +633,7 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
       if (showDimensionsTab) out.push('specs');
       if (show.packaging) out.push('packaging');
       if (isCompositeMaterial) out.push('composition');
-      out.push('colors', 'items', 'bulk');
+      out.push('colors', 'suppliers', 'items', 'bulk');
     }
     return out;
   }, [isContainer, showDimensionsTab, show.packaging, isCompositeMaterial]);
@@ -969,7 +968,7 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                           variant="outline"
                           size="sm"
                           className="mt-3 h-9 gap-1.5"
-                          onClick={() => { setVariantsDialogTab('group'); setVariantsDialogOpen(true); }}
+                          onClick={() => setActiveTab('bulk')}
                           disabled={products.length === 0}
                         >
                           <Palette className="h-4 w-4" /> Editar dados de {products.length} item(ns)
@@ -1501,74 +1500,13 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                   </span>
                 </button>
               )}
-              {products.length === 0 ? (
-                <p className="text-xs text-muted-foreground py-4 text-center">Nenhum item neste grupo.</p>
-              ) : (
-                <div className="rounded-md border overflow-x-auto max-h-80 overflow-y-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-muted/30 hover:bg-muted/30">
-                        <TableHead className="text-xs">Nome</TableHead>
-                        <TableHead className="text-xs">SKU</TableHead>
-                        <TableHead className="text-xs">Cor</TableHead>
-                        <TableHead className="text-xs text-right">Estoque</TableHead>
-                        <TableHead className="text-xs text-center">Ações</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {products.map(p => (
-                        <TableRow key={p.id}>
-                          <TableCell className="text-xs font-medium">
-                            {!isCanonicalStrapGroup && editingProductId === p.id ? (
-                              <div className="flex gap-1">
-                                <Input
-                                  value={editProductName}
-                                  onChange={e => setEditProductName(e.target.value)}
-                                  className="h-6 text-xs"
-                                  onKeyDown={e => { if (e.key === 'Enter') handleSaveProductName(p.id); if (e.key === 'Escape') setEditingProductId(null); }}
-                                  autoFocus
-                                />
-                                <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => handleSaveProductName(p.id)}>
-                                  <Save className="h-3 w-3" />
-                                </Button>
-                              </div>
-                            ) : (
-                              p.name
-                            )}
-                          </TableCell>
-                          <TableCell className="text-xs font-mono text-muted-foreground">{p.sku}</TableCell>
-                          <TableCell className="text-xs">{p.color || '—'}</TableCell>
-                          <TableCell className="text-xs text-right font-mono">{p.quantity} {p.unit}</TableCell>
-                          <TableCell className="text-center">
-                            <div className="flex justify-center gap-1">
-                              {!isCanonicalStrapGroup && <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6"
-                                onClick={() => {
-                                  setEditingProductId(p.id);
-                                  setEditProductName(p.name);
-                                }}
-                                title="Renomear"
-                              >
-                                <Pencil className="h-3 w-3" />
-                              </Button>}
-                              {!isCanonicalStrapGroup && <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6 text-primary"
-                                onClick={() => window.open(`/estoque/${p.id}`, '_blank')}
-                                title="Editar Material Completo"
-                              >
-                                <Package className="h-3.5 w-3.5" />
-                              </Button>}
-                              {isCanonicalStrapGroup && <Button variant="ghost" size="sm" onClick={() => { onOpenChange(false); navigate(`/tiras-artesanais?tab=cadastro&editor=1&mode=review&origin=grupos&purpose=stock_variant&baseGroupId=${encodeURIComponent(group.id)}`); }}>Abrir no Hub</Button>}
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+              {grupoHeterogeneo && (
+                <div className="flex items-start gap-2 border border-warning/40 bg-warning/10 px-3 py-2 text-xs">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" weight="fill" />
+                  <span className="text-muted-foreground">
+                    Este grupo guarda <strong className="text-foreground">mais de um material</strong> — a coluna Nome distingue cada um.
+                    O cadastro rápido de cor fica desligado aqui: ele copiaria os dados de um irmão qualquer.
+                  </span>
                 </div>
               )}
               <VariantListPanel

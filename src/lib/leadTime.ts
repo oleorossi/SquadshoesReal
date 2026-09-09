@@ -112,6 +112,11 @@ export const SECTOR_CONFIG: Record<SectorKey, {
   // legada continua em sewing; o default da categoria também cai nela.
   corte_palmilha: { capField: 'corte_palmilha_capacity_per_day', categoryCapField: 'sewing_capacity_per_day', fallbackCapField: 'sewing_capacity_per_day', ltField: 'lead_time_corte_dias', hardFallbackDays: 1 },
   corte_forracao: { capField: 'cutting_capacity_per_day',   ltField: 'lead_time_corte_dias',      hardFallbackDays: 2 },
+  // Opt-in por modelo (grupo paralelo 'corte'). Sem coluna própria de capacidade
+  // ainda — costuma ir pra terceirização (UpperCutOutsourcing). Reusa a coluna
+  // de corte + LT de corte pra o Record<SectorKey, …> fechar; o motor de gargalo
+  // não trata este setor como bottleneck.
+  corte_cabedal:  { capField: 'cutting_capacity_per_day',   ltField: 'lead_time_corte_dias',      hardFallbackDays: 2 },
   // Costura dividida em dois setores paralelos (migration 20261001120000).
   // Cada um tem capacidade própria, com fallback pra coluna antiga enquanto as
   // fichas não forem recadastradas — a migration já copiou o valor, o fallback

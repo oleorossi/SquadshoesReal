@@ -52,7 +52,7 @@ describe('consumo — preço unitário e valor a gastar', () => {
   it('annotate resolve unitPrice e a UI/PDF mostram preço e valor a gastar', () => {
     expect(rowsSrc).toContain('resolveRowUnitPrice');
     expect(rowsSrc).toContain('row.unitPrice = resolveRowUnitPrice');
-    expect(viewSrc).toContain('Preço unitário');
+    expect(viewSrc).toContain('Preço/un. consumo');
     expect(viewSrc).toContain('Valor a gastar');
     expect(viewSrc).toContain('rowTotalCost');
     // PDF: rótulos curtos (cabem na coluna) + classes de hierarquia visual
