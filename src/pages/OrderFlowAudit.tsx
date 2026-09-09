@@ -16,6 +16,7 @@ import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { narrowPostgrestRelation } from '@/lib/narrowPostgrestClient';
 
 type StepStatus = 'ok' | 'warning' | 'error' | 'pending';
 
@@ -39,6 +40,23 @@ interface OrderAudit {
   overallScore: number;
   overallStatus: StepStatus;
 }
+
+interface OrderFlowReservationRow {
+  id: string;
+  order_id: string;
+  product_id: string;
+  quantity_reserved: number;
+  quantity_consumed: number | null;
+  status: string;
+  reservation_type: string | null;
+  orders: {
+    order_number: string | null;
+    reference_id: string | null;
+    references: { name: string | null } | null;
+  } | null;
+}
+
+const orderFlowReservationsRelation = narrowPostgrestRelation<OrderFlowReservationRow>(supabase);
 
 // Rank canônico do status do PV (PT-BR; tolera legado em inglês). Usado pra decidir
 // se cada etapa do fluxo "já deveria ter acontecido". -1 = cancelado.
@@ -83,7 +101,7 @@ function useOrderFlowAudit() {
         return (supabase.from as any)(table).select(columns).or(filters.join(','));
       };
       const [reservationsRes, giRes, fgrRes, wipRes, arRes, cogsRes, stagesRes] = await Promise.all([
-        opIds.length ? supabase.from('material_reservations').select('id, order_id, product_id, quantity_reserved, quantity_consumed, status, reservation_type, orders(order_number, reference_id, references(name))').in('order_id', opIds) : Promise.resolve({ data: [], error: null }),
+        opIds.length ? orderFlowReservationsRelation.from('material_reservations').select('id, order_id, product_id, quantity_reserved, quantity_consumed, status, reservation_type, orders(order_number, reference_id, references(name))').in('order_id', opIds) : Promise.resolve({ data: [], error: null }),
         linkedToOrderOrSaleOrder('goods_issues', 'id, order_id, sale_order_id, status, total_value, issue_number'),
         linkedToOrderOrSaleOrder('finished_goods_receipts', 'id, order_id, sale_order_id, quantity_good, quantity_scrap, total_cost, inspection_status'),
         linkedToOrderOrSaleOrder('wip_ledger', 'id, order_id, sale_order_id, entry_type, amount'),

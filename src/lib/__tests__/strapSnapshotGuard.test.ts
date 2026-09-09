@@ -16,11 +16,10 @@ describe('listMissingTechnicalStrapSnapshots', () => {
     )).toEqual([]);
   });
 
-  it('não transforma flag órfã de modelo com cabedal em demanda de tira', () => {
+  it('bloqueia snapshot ausente quando cabedal e tiras coexistem', () => {
     expect(listMissingTechnicalStrapSnapshots(
       [{ reference_id: 'cabedal', strap_colors: [] }],
       [{ id: 'cabedal', has_straps: true, upper_material: 'NAPA', strap_colors: [] }],
-    )).toEqual([]);
+    )).toEqual([{ index: 0, referenceId: 'cabedal', label: 'item 1' }]);
   });
 });
-

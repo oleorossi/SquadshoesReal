@@ -35,6 +35,10 @@ export interface OrderCostResult {
        *  (dm²→física pela largura da ficha) também não resolveu. Custo NÃO somado
        *  (subtotal=0); UI deve alertar erro de cadastro. */
       conversion_warning?: string;
+      /** Cor pedida sem SKU exato no grupo físico. O subtotal é zero e o
+       *  custo é deliberadamente parcial até o cadastro ser corrigido. */
+      resolution_warning?: 'color_mismatch';
+      requested_color?: string;
     }>;
     labor: Array<{
       operation: string;
@@ -55,7 +59,8 @@ export interface OrderCostResult {
   };
   /** Avisos do SQL na granularidade do item: 'no_active_cost_policy' (overhead/
    *  embalagem zerados), 'unit_mismatch:<produto>' (linha não convertida),
-   *  'strap_color_not_registered:<cor>'. Vazio no caminho agregado de PV. */
+   *  'strap_color_not_registered:<cor>' e
+   *  'material_color_not_registered:<componente>:<cor>'. */
   warnings?: string[];
   /** Soma da grade base do item (tipicamente ~12); 0 quando sem grade. */
   grade_sum?: number;
@@ -66,6 +71,19 @@ export interface OrderCostResult {
   items?: OrderCostResult[];
   item_count?: number;
   total_quantity?: number;
+}
+
+const MATERIAL_COLOR_WARNING_PREFIX = 'material_color_not_registered:';
+
+/** Extrai somente pendências de identidade física do custo. Outros avisos
+ * continuam informativos, mas cor sem SKU torna o custo incompleto. */
+export function getMissingMaterialColorLabels(warnings?: string[]): string[] {
+  return Array.from(new Set(
+    (warnings ?? [])
+      .filter((warning) => warning.startsWith(MATERIAL_COLOR_WARNING_PREFIX))
+      .map((warning) => warning.slice(MATERIAL_COLOR_WARNING_PREFIX.length).replace(':', ' · '))
+      .filter(Boolean),
+  ));
 }
 
 export async function calculateOrderCost(

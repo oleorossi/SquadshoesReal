@@ -30,6 +30,7 @@ import { useSaleOrders, useSaleOrderAllItems } from '@/hooks/useSaleOrders';
 import { useContractors, useServiceOrders, useCreateServiceOrder } from '@/hooks/useContractors';
 import { generateServiceOrderNumber } from '@/lib/serviceOrderStock';
 import { sheetHasSector } from '@/lib/sectors';
+import { requiresUpperCut } from '@/lib/upperCutEligibility';
 
 /**
  * Aba "Planejamento" de /terceirizados — projeção semanal (8 semanas) de
@@ -41,8 +42,8 @@ import { sheetHasSector } from '@/lib/sectors';
  *   • Costura      → production_sectors contém 'Costura' (via sheetHasSector,
  *                    mesma taxonomia de src/lib/sectors usada pelo motor de
  *                    capacidade sectorCapacity.ts — não divergir).
- *   • Corte Cabedal→ has_straps === false (regra canônica: ficha SEM tiras
- *                    corta cabedal; com tiras o corte é o fluxo de tiras).
+ *   • Corte Cabedal→ presença de material/consumo de cabedal. Tiras são um
+ *                    fluxo adicional e podem coexistir na mesma referência.
  *
  * Capacidade interna semanal — APROXIMAÇÃO documentada:
  * a capacidade/dia é cadastrada POR FICHA TÉCNICA (costura_capacity_per_day /
@@ -62,9 +63,22 @@ interface PlanningSheet {
   name: string | null;
   code: string | null;
   production_sectors: unknown;
-  has_straps: boolean | null;
+  upper_material: string | null;
+  upper_material_group_id: string | null;
+  upper_material_product_id: string | null;
+  upper_consumption: number | null;
+  upper_consumption_per_size: Record<string, number> | null;
+  components_accessories: unknown;
   costura_capacity_per_day: number | null;
   cutting_capacity_per_day: number | null;
+}
+
+interface PlanningSaleOrderItem {
+  id: string;
+  sale_order_id: string | null;
+  reference_id: string | null;
+  quantity: number | null;
+  production_excluded_at?: string | null;
 }
 
 const PLANNING_SECTORS: {
@@ -78,8 +92,7 @@ const PLANNING_SECTORS: {
     key: 'corte_cabedal',
     label: 'Corte Cabedal',
     icon: Scissors,
-    // Regra canônica: cabedal é cortado quando a ficha NÃO é de tiras.
-    appliesTo: (s) => s.has_straps === false,
+    appliesTo: (s) => requiresUpperCut(s),
     capPerDay: (s) => Number(s.cutting_capacity_per_day || 0),
   },
   {
@@ -124,6 +137,22 @@ interface WeekSectorCell {
   excess: number;           // max(0, demand - capacityWeek)
   pvIds: string[];
   pvNumbers: string[];
+  saleOrderItemIds: string[];
+}
+
+export function filterOperationalOutsourcingItems<
+  T extends { production_excluded_at?: string | null },
+>(items: readonly T[]): T[] {
+  return items.filter((item) => !item.production_excluded_at);
+}
+
+export function buildOutsourcingServiceOrderProvenance(
+  cell: Pick<WeekSectorCell, 'pvIds' | 'saleOrderItemIds'>,
+) {
+  return {
+    linked_sale_order_ids: cell.pvIds,
+    selected_sale_order_item_ids: cell.saleOrderItemIds,
+  };
 }
 
 export function OutsourcingPlanningTab() {
@@ -139,7 +168,7 @@ export function OutsourcingPlanningTab() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('technical_sheets')
-        .select('id, name, code, production_sectors, has_straps, costura_capacity_per_day, cutting_capacity_per_day');
+        .select('id, name, code, production_sectors, upper_material, upper_material_group_id, upper_material_product_id, upper_consumption, upper_consumption_per_size, components_accessories, costura_capacity_per_day, cutting_capacity_per_day');
       if (error) throw error;
       return (data || []) as PlanningSheet[];
     },
@@ -158,8 +187,9 @@ export function OutsourcingPlanningTab() {
   }, [sheets]);
 
   const itemsByPv = useMemo(() => {
-    const m = new Map<string, any[]>();
-    (allItems as any[]).forEach((it) => {
+    const m = new Map<string, PlanningSaleOrderItem[]>();
+    const planningItems = allItems as unknown as PlanningSaleOrderItem[];
+    filterOperationalOutsourcingItems(planningItems).forEach((it) => {
       if (!it.sale_order_id) return;
       if (!m.has(it.sale_order_id)) m.set(it.sale_order_id, []);
       m.get(it.sale_order_id)!.push(it);
@@ -228,6 +258,7 @@ export function OutsourcingPlanningTab() {
         let pairsWithoutCap = 0;
         const pvIds = new Set<string>();
         const pvNumbers = new Set<string>();
+        const saleOrderItemIds = new Set<string>();
 
         for (const pv of pvsInWeek) {
           for (const item of itemsByPv.get(pv.id) || []) {
@@ -241,6 +272,7 @@ export function OutsourcingPlanningTab() {
             else pairsWithoutCap += qty;
             pvIds.add(pv.id);
             pvNumbers.add(pv.order_number || pv.id.slice(0, 8));
+            if (item.id) saleOrderItemIds.add(item.id);
           }
         }
 
@@ -265,6 +297,7 @@ export function OutsourcingPlanningTab() {
           excess,
           pvIds: Array.from(pvIds),
           pvNumbers: Array.from(pvNumbers).sort(),
+          saleOrderItemIds: Array.from(saleOrderItemIds).sort(),
         });
       }
     }
@@ -303,7 +336,7 @@ export function OutsourcingPlanningTab() {
         status: 'Pendente',
         target_sector: assignTarget.sectorKey,
         bottleneck_week: assignTarget.weekIso,
-        linked_sale_order_ids: assignTarget.pvIds,
+        ...buildOutsourcingServiceOrderProvenance(assignTarget),
         dispatch_tracked: true,
         notes: 'Gerada pela aba Planejamento (demanda > capacidade interna). Preço pela tabela vigente.',
       } as any);

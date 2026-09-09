@@ -11,6 +11,8 @@ import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { Client, ClientFormData, EconomicGroup } from '@/hooks/useClients';
+import { lookupCnpj, type CnpjLookupResult } from '@/lib/cnpjLookup';
+import { validateCnpj } from '@/lib/validateCnpj';
 import RepresentativeTab from './RepresentativeTab';
 
 const ESTADOS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
@@ -43,19 +45,6 @@ async function fetchCep(cep: string) {
     const res = await fetchWithTimeout(`https://viacep.com.br/ws/${clean}/json/`);
     const data = await res.json();
     if (data.erro) return null;
-    return data;
-  } catch {
-    return null;
-  }
-}
-
-async function fetchCnpj(cnpj: string) {
-  const clean = cnpj.replace(/\D/g, '');
-  if (clean.length !== 14) return null;
-  try {
-    const res = await fetchWithTimeout(`https://brasilapi.com.br/api/cnpj/v1/${clean}`);
-    if (!res.ok) return null;
-    const data = await res.json();
     return data;
   } catch {
     return null;
@@ -162,10 +151,21 @@ export default function ClientFormDialog({ open, onOpenChange, editingClient, fo
       toast.error('CNPJ deve ter 14 dígitos.');
       return;
     }
+    if (!validateCnpj(clean)) {
+      toast.error('CNPJ inválido — verifique os dígitos verificadores.');
+      return;
+    }
+
     setLoadingCnpj(true);
-    const data = await fetchCnpj(clean);
-    setLoadingCnpj(false);
-    if (data) {
+    let result: CnpjLookupResult;
+    try {
+      result = await lookupCnpj(clean);
+    } finally {
+      setLoadingCnpj(false);
+    }
+
+    if (result.status === 'success') {
+      const { data } = result;
       setForm(f => ({
         ...f,
         razao_social: data.razao_social || f.razao_social,
@@ -176,13 +176,35 @@ export default function ClientFormDialog({ open, onOpenChange, editingClient, fo
         cidade: data.municipio || f.cidade,
         estado: data.uf || f.estado,
         cep: data.cep ? String(data.cep).replace(/\D/g, '').replace(/(\d{5})(\d{3})/, '$1-$2') : f.cep,
-        codigo_municipio: data.codigo_municipio_ibge || f.codigo_municipio,
+        codigo_municipio: data.codigo_municipio_ibge
+          ? String(data.codigo_municipio_ibge)
+          : f.codigo_municipio,
         telefone: data.ddd_telefone_1 || f.telefone,
         email: data.email || f.email,
       }));
       toast.success('Dados do CNPJ preenchidos automaticamente!');
-    } else {
-      toast.error('CNPJ não encontrado na Receita Federal.');
+      return;
+    }
+
+    switch (result.status) {
+      case 'invalid':
+        toast.error('CNPJ inválido — verifique os dígitos informados.');
+        break;
+      case 'not-found':
+        toast.error('CNPJ não encontrado na base consultada da Receita Federal.');
+        break;
+      case 'rate-limit':
+        toast.warning('Limite temporário de consultas atingido. Aguarde um instante e tente novamente.');
+        break;
+      case 'timeout':
+        toast.warning('A consulta do CNPJ demorou demais. Tente novamente.');
+        break;
+      case 'service':
+        toast.error('O serviço de consulta de CNPJ está indisponível no momento. Tente novamente mais tarde.');
+        break;
+      case 'network':
+        toast.error('Não foi possível acessar o serviço de consulta de CNPJ. Tente novamente; se persistir, avise o suporte.');
+        break;
     }
   };
 

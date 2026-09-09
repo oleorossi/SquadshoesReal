@@ -2,6 +2,10 @@ import { supabase } from '@/integrations/supabase/client';
 
 import { roundUpToPurchaseMultiple, effectivePurchaseMultiple } from '@/lib/purchaseMultiple';
 import { resolveGroupSupplier } from '@/lib/groupSupplierResolution';
+import {
+  executePurchaseOrderCommand,
+  purchaseOrderLogicalKey,
+} from '@/services/purchaseOrderCommandService';
 
 export interface MaterialAutoPOResult {
   poNumber: string;
@@ -17,12 +21,11 @@ export interface MaterialAutoPOResult {
  * eta_days = lead efetivo (OC aberta > grupo > produto > 10).
  * promised_date = comprar-até + lead → chega perto do início, não meses antes.
  */
-async function stampPoLeadTiming(params: {
-  poId: string;
+async function computePoLeadTiming(params: {
   saleOrderId: string | null;
   productId: string;
   existingPurchaseBy?: string | null;
-}): Promise<{ purchaseByDate: string | null; etaDays: number }> {
+}): Promise<{ purchaseByDate: string | null; etaDays: number; promisedDate: string | null }> {
   let purchaseBy: string | null = params.existingPurchaseBy ?? null;
   if (params.saleOrderId) {
     const { data } = await supabase.rpc('compute_po_purchase_by_date' as never, {
@@ -37,15 +40,13 @@ async function stampPoLeadTiming(params: {
     p_prod_deadline_days: null,
   } as never);
   const etaDays = Math.max(0, Number(leadRaw) || 10);
-  const patch: Record<string, unknown> = { eta_days: etaDays };
+  let promisedDate: string | null = null;
   if (purchaseBy) {
-    patch.purchase_by_date = purchaseBy;
     const d = new Date(`${purchaseBy}T12:00:00`);
     d.setDate(d.getDate() + etaDays);
-    patch.promised_date = d.toISOString().slice(0, 10);
+    promisedDate = d.toISOString().slice(0, 10);
   }
-  await supabase.from('purchase_orders').update(patch as never).eq('id', params.poId);
-  return { purchaseByDate: purchaseBy, etaDays };
+  return { purchaseByDate: purchaseBy, etaDays, promisedDate };
 }
 
 /** Erro de domínio: material artesanal é produzido por OS, nunca comprado. */
@@ -157,28 +158,26 @@ export async function autoCreateMaterialPO(params: {
   };
 
   if (openPO) {
-    const { error: upsertErr } = await (supabase as any).rpc('upsert_po_item_atomic', {
-      p_po_id: openPO.id,
-      p_product_id: productId,
-      p_qty_delta: orderQty,
-      p_unit_price: unitPrice,
-      p_unit: unit,
-      p_current_stock: currentStock,
-      p_min_stock: minStock,
-      p_max_stock: minStock + shortageQty,
-    });
-    if (upsertErr) throw new Error(`Falha ao acumular item na OC ${openPO.order_number}: ${upsertErr.message}`);
-
-    await (supabase as any)
-      .from('purchase_orders')
-      .update({ notes: (openPO.notes || '') + appendNote })
-      .eq('id', openPO.id);
-
-    const timing = await stampPoLeadTiming({
-      poId: openPO.id,
+    const timing = await computePoLeadTiming({
       saleOrderId: linkedPvId,
       productId,
       existingPurchaseBy: openPO.purchase_by_date ?? null,
+    });
+    await executePurchaseOrderCommand({
+      command: 'append',
+      purchaseOrderId: openPO.id,
+      payload: {
+        header_patch: {
+          notes_append: appendNote,
+          purchase_by_date_min: timing.purchaseByDate,
+          promised_date: timing.promisedDate,
+          eta_days: timing.etaDays,
+          linked_sale_order_ids_add: linkedPvId ? [linkedPvId] : [],
+          source_pv_ids_add: linkedPvId ? [linkedPvId] : [],
+        },
+        items: [itemBase],
+      },
+      logicalKey: purchaseOrderLogicalKey('material-append', orderRef, productId),
     });
     return {
       poNumber: openPO.order_number,
@@ -190,69 +189,37 @@ export async function autoCreateMaterialPO(params: {
   }
 
   const idempotencyKey = linkedPvId ? `auto:${linkedPvId}:${productId}` : null;
-  const { data: po, error: poErr } = await (supabase as any)
-    .from('purchase_orders')
-    .insert({
-      supplier_name: supplierName,
-      supplier_id: supplierId,
-      auto_generated: true,
-      total_value: orderQty * unitPrice,
-      notes: `Gerada automaticamente — Falta de "${productName}" para PV ${orderRef}. Pedir ${orderQty} ${unit}.`,
-      ...(linkedPvId
-        ? { linked_sale_order_ids: [linkedPvId], source_pv_ids: [linkedPvId], source_type: 'auto_pv', idempotency_key: idempotencyKey }
-        : {}),
-    })
-    .select('id, order_number')
-    .single();
-
-  if (poErr || !po) {
-    if (poErr?.code === '23505' && idempotencyKey) {
-      const { data: existing } = await (supabase as any)
-        .from('purchase_orders')
-        .select('id, order_number, purchase_by_date')
-        .eq('idempotency_key', idempotencyKey)
-        .not('status', 'in', '(cancelled,received,receiving)')
-        .maybeSingle();
-      if (existing?.order_number) {
-        const timing = await stampPoLeadTiming({
-          poId: existing.id,
-          saleOrderId: linkedPvId,
-          productId,
-          existingPurchaseBy: existing.purchase_by_date ?? null,
-        });
-        return {
-          poNumber: existing.order_number,
-          supplierName,
-          accumulated: true,
-          purchaseByDate: timing.purchaseByDate,
-          etaDays: timing.etaDays,
-        };
-      }
-    }
-    return null;
-  }
-
-  const { error: itemErr } = await (supabase as any).from('purchase_order_items').insert({
-    purchase_order_id: po.id,
-    ...itemBase,
-  });
-  if (itemErr) {
-    const { error: cleanupErr } = await (supabase as any).from('purchase_orders').delete().eq('id', po.id);
-    if (cleanupErr) {
-      throw new Error(`Falha ao inserir item (${itemErr.message}) e ao limpar OC órfã (${cleanupErr.message}). Verifique a OC ${po.order_number} manualmente.`);
-    }
-    throw new Error(`Falha ao inserir item na OC ${po.order_number}: ${itemErr.message}`);
-  }
-
-  const timing = await stampPoLeadTiming({
-    poId: po.id,
+  const timing = await computePoLeadTiming({
     saleOrderId: linkedPvId,
     productId,
   });
+  const result = await executePurchaseOrderCommand({
+    command: 'create',
+    payload: {
+      header: {
+        supplier_name: supplierName,
+        supplier_id: supplierId,
+        auto_generated: true,
+        source_type: linkedPvId ? 'auto_pv' : 'manual',
+        idempotency_key: idempotencyKey,
+        notes: `Gerada automaticamente — Falta de "${productName}" para PV ${orderRef}. Pedir ${orderQty} ${unit}.`,
+        linked_sale_order_ids: linkedPvId ? [linkedPvId] : [],
+        source_pv_ids: linkedPvId ? [linkedPvId] : [],
+        purchase_by_date: timing.purchaseByDate,
+        promised_date: timing.promisedDate,
+        eta_days: timing.etaDays,
+      },
+      items: [itemBase],
+      return_existing_on_idempotency: Boolean(idempotencyKey),
+    },
+    logicalKey: purchaseOrderLogicalKey('material-create', orderRef, productId),
+  });
+  const po = result.purchase_order as { order_number?: string } | undefined;
+  if (!po?.order_number) return null;
   return {
     poNumber: po.order_number,
     supplierName,
-    accumulated: false,
+    accumulated: Boolean(result.deduplicated),
     purchaseByDate: timing.purchaseByDate,
     etaDays: timing.etaDays,
   };

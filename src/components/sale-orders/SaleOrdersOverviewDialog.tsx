@@ -10,11 +10,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { CircleNotch as Loader2, ShoppingCart, Package, CurrencyDollar as DollarSign, Users, Calendar, Warning as AlertTriangle, CheckCircle as CheckCircle2, FloppyDisk as Save, ArrowsClockwise as RefreshCw } from '@phosphor-icons/react';
-import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useSaleOrderAllItems } from '@/hooks/useSaleOrders';
 import { fetchMinBillingDates, isBeforeMinDate } from '@/lib/minBillingDate';
+import { updateSaleOrderBillingViaCommand } from '@/lib/saleOrderHeaderCommand';
 import { MinBillingDateConfirmDialog } from './MinBillingDateConfirmDialog';
 
 type SaleOrder = any;
@@ -184,43 +184,51 @@ export default function SaleOrdersOverviewDialog({ open, onOpenChange, orders }:
     try {
       const ids = orders.map(o => o.id);
 
-      if (manualOverride && pendingViolation) {
-        // Atualiza os que violam com flag + original_min_billing_date
-        const violatingIds = pendingViolation.violatingIds;
-        const nonViolatingIds = ids.filter(id => !violatingIds.includes(id));
-
-        // Update em lote para os não-violadores
-        if (nonViolatingIds.length > 0) {
-          const { error: e1 } = await supabase
-            .from('sale_orders')
-            .update(updateData)
-            .in('id', nonViolatingIds);
-          if (e1) throw e1;
-        }
-
-        // Update individual para os violadores (cada um com seu original_min)
-        for (const vid of violatingIds) {
-          const minISO = pendingViolation.minDateMap.get(vid);
-          const { error: e2 } = await supabase
-            .from('sale_orders')
-            .update({
+      // Serial por agregado: cada PV tem sua própria versão, recibo e eventual
+      // falha concorrente. Um UPDATE direto em lote contornava toda a fronteira.
+      const failures: string[] = [];
+      let updated = 0;
+      for (const saleOrderId of ids) {
+        const violates = Boolean(
+          manualOverride && pendingViolation?.violatingIds.includes(saleOrderId),
+        );
+        const patch = violates
+          ? {
               ...updateData,
               manual_billing_override: true,
-              original_min_billing_date: minISO || null,
+              original_min_billing_date: pendingViolation?.minDateMap.get(saleOrderId) || null,
               manual_override_reason: reason,
-            })
-            .eq('id', vid);
-          if (e2) throw e2;
+            }
+          : manualOverride
+            ? updateData
+            : {
+                ...updateData,
+                manual_billing_override: false,
+                manual_override_reason: null,
+              };
+        try {
+          await updateSaleOrderBillingViaCommand({
+            saleOrderId,
+            patch,
+            intent: 'overview-delivery',
+          });
+          updated += 1;
+        } catch (error) {
+          const label = orders.find((order) => order.id === saleOrderId)?.order_number
+            || saleOrderId.slice(0, 8);
+          failures.push(`${label}: ${error instanceof Error ? error.message : String(error)}`);
         }
-      } else {
-        const { error } = await supabase
-          .from('sale_orders')
-          .update({ ...updateData, manual_billing_override: false, manual_override_reason: null })
-          .in('id', ids);
-        if (error) throw error;
+      }
+      if (failures.length > 0) {
+        toast.warning(`${failures.length} pedido(s) não foram atualizados.`, {
+          description: failures.slice(0, 3).join('\n'),
+          duration: 12000,
+        });
       }
 
-      toast.success(`${ids.length} ${ids.length === 1 ? 'pedido atualizado' : 'pedidos atualizados'}.`);
+      if (updated > 0) {
+        toast.success(`${updated} ${updated === 1 ? 'pedido atualizado' : 'pedidos atualizados'}.`);
+      }
       qc.invalidateQueries({ queryKey: ['sale_orders'] });
       setBulkMonth(''); setBulkWeek(''); setBulkDeadline('');
       setPendingViolation(null);

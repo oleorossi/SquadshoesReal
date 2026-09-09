@@ -25,6 +25,7 @@ import {
 import {
   computeWaveTimeline, getWaveMaterialNeeds,
   createWaveWithMaterialOrders,
+  isBlockingWaveMaterialWarning,
   WaveTimeline, WaveMaterialNeed, ArtisanalOsNeed,
 } from '@/services/waveTimelineService';
 import { toast } from 'sonner';
@@ -121,9 +122,12 @@ function MaterialNeedsPanel({ needs, wavePurchaseDeadline }: {
   needs: WaveMaterialNeed[];
   wavePurchaseDeadline?: string | null;
 }) {
-  const shortages = needs.filter(n => n.shortage > 0 && !n.is_artisanal);
+  const blocked = needs.filter(n => isBlockingWaveMaterialWarning(n.conversion_warning));
+  const shortages = needs.filter(n =>
+    n.shortage > 0 && !n.is_artisanal && !isBlockingWaveMaterialWarning(n.conversion_warning));
   const artisanal = needs.filter(n => n.is_artisanal);
-  const ok = needs.filter(n => n.shortage === 0 && !n.is_artisanal);
+  const ok = needs.filter(n =>
+    n.shortage === 0 && !n.is_artisanal && !isBlockingWaveMaterialWarning(n.conversion_warning));
 
   return (
     <div className="space-y-3">
@@ -140,6 +144,11 @@ function MaterialNeedsPanel({ needs, wavePurchaseDeadline }: {
             <XCircle className="h-3 w-3" /> {shortages.length} em falta
           </Badge>
         )}
+        {blocked.length > 0 && (
+          <Badge variant="outline" className="gap-1 text-xs bg-destructive/10 text-destructive border-destructive/30">
+            <AlertTriangle className="h-3 w-3" /> {blocked.length} cadastro(s) bloqueante(s)
+          </Badge>
+        )}
         {artisanal.length > 0 && (
           <Badge variant="outline" className="gap-1 text-xs bg-amber-500/10 text-amber-600 border-amber-500/20">
             <Wrench className="h-3 w-3" /> {artisanal.length} artesanais
@@ -149,6 +158,20 @@ function MaterialNeedsPanel({ needs, wavePurchaseDeadline }: {
           <span className="text-xs text-muted-foreground italic">Nenhum material identificado nas fichas técnicas.</span>
         )}
       </div>
+
+      {blocked.length > 0 && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 space-y-1.5">
+          <p className="text-xs font-semibold text-destructive">
+            Corrija estes materiais antes de criar a onda
+          </p>
+          {blocked.map((need) => (
+            <p key={`${need.product_id}:${need.color}`} className="text-xs text-destructive">
+              <strong>{need.product_name}</strong>{need.color ? ` · ${need.color}` : ''}
+              {' — não existe SKU exato dessa cor no grupo do material.'}
+            </p>
+          ))}
+        </div>
+      )}
 
       {/* Shortage rows */}
       {shortages.length > 0 && (
@@ -326,6 +349,10 @@ export function WaveBuilder({
 
   async function handleCreate(generatePOs: boolean) {
     if (!selected.size || creating) return;
+    if (hasMaterialBlockers) {
+      toast.error('Corrija as cores de material sem SKU antes de criar a onda.');
+      return;
+    }
     if (hasShortages && !generatePOs && !shortageOverrideConfirmed) {
       toast.error('Confirme o override para criar a onda sem gerar as OCs dos materiais em falta.');
       return;
@@ -405,6 +432,8 @@ export function WaveBuilder({
   const matchCount = clientGroups.reduce((s, g) => s + g.orders.length, 0);
   const totalPairs = pendingOrders.filter(o => selected.has(o.id)).reduce((s, o) => s + o.total_pairs, 0);
   const hasShortages = materialNeeds.some(n => !n.is_artisanal && n.shortage > 0);
+  const hasMaterialBlockers = materialNeeds.some(n =>
+    isBlockingWaveMaterialWarning(n.conversion_warning));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -603,19 +632,19 @@ export function WaveBuilder({
                   <Button
                     variant="outline"
                     onClick={() => handleCreate(false)}
-                    disabled={creating || previewLoading || !shortageOverrideConfirmed}
+                    disabled={creating || previewLoading || hasMaterialBlockers || !shortageOverrideConfirmed}
                   >
                     {creating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                     Criar onda sem OC
                   </Button>
-                  <Button onClick={() => handleCreate(true)} disabled={creating || previewLoading}>
+                  <Button onClick={() => handleCreate(true)} disabled={creating || previewLoading || hasMaterialBlockers}>
                     {creating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <ShoppingBag className="h-4 w-4 mr-2" />}
                     Criar onda + Gerar OCs
                   </Button>
                 </>
               )}
               {!hasShortages && (
-                <Button onClick={() => handleCreate(false)} disabled={creating || previewLoading}>
+                <Button onClick={() => handleCreate(false)} disabled={creating || previewLoading || hasMaterialBlockers}>
                   {creating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle className="h-4 w-4 mr-2" />}
                   Criar onda (materiais OK)
                 </Button>

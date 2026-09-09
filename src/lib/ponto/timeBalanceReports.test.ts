@@ -35,6 +35,24 @@ function ledgerDay(
 }
 
 describe('timeBalanceReports — fechamento semanal', () => {
+  it('reduz a meta somente pelos minutos de abono parcial aplicados no ledger', () => {
+    const partial = {
+      ...ledgerDay('2026-06-01', 540, 0, 'debit'),
+      excused_minutes: 240,
+      raw_balance_minutes: -300,
+      raw_delay_minutes: 300,
+      payable_delay_minutes: 300,
+    };
+    const report = buildEmployeeTimeBalanceReport({
+      id: 'ana',
+      name: 'Ana',
+      ledger: [partial],
+    });
+
+    expect(report.totalExpectedMinutes).toBe(300);
+    expect(report.totalDeficitMinutes).toBe(300);
+  });
+
   it('compensa +40min e −1h dentro da semana e gera débito de 20min', () => {
     const report = buildEmployeeTimeBalanceReport({
       id: 'ana',
@@ -126,13 +144,15 @@ describe('timeBalanceReports — fechamento semanal', () => {
     const reports = buildTimeBalanceReports([
       { id: 'extra', name: 'Extra', paymentType: 'mensalista', ledger: [ledgerDay('2026-06-01', 480, 540)] },
       { id: 'debito', name: 'Débito', paymentType: 'mensalista', ledger: [ledgerDay('2026-06-01', 480, 420)] },
+      { id: 'zerado', name: 'Zerado', paymentType: 'mensalista', ledger: [ledgerDay('2026-06-01', 480, 480)] },
       { id: 'remoto', name: 'Remoto', paymentType: 'remoto', ledger: [ledgerDay('2026-06-01', 480, 0)] },
       { id: 'producao', name: 'Produção', paymentType: 'producao', ledger: [ledgerDay('2026-06-01', 480, 0)] },
     ]);
 
-    expect(reports.map(report => report.id)).toEqual(['debito', 'extra']);
+    expect(reports.map(report => report.id)).toEqual(['debito', 'extra', 'zerado']);
     expect(reportsForKind(reports, 'overtime').map(report => report.id)).toEqual(['extra']);
     expect(reportsForKind(reports, 'deficit').map(report => report.id)).toEqual(['debito']);
+    expect(reportsForKind(reports, 'all').map(report => report.id)).toEqual(['debito', 'extra', 'zerado']);
   });
 });
 

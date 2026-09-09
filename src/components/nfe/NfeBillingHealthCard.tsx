@@ -16,9 +16,24 @@ interface HealthRow {
   delivery_deadline: string | null;
   nfes_autorizadas: number;
   nfes_ativas: number;
-  ar_pendente: number;
+  ar_pendente: number | null;
+  ar_count: number | null;
   health: string;
 }
+
+interface BillingHealthRpcResult {
+  data: unknown;
+  error: { message: string } | null;
+}
+
+interface BillingHealthRpcClient {
+  rpc(
+    functionName: 'get_sale_order_billing_health_for_current_user',
+    args: { p_include_ok: boolean },
+  ): PromiseLike<BillingHealthRpcResult>;
+}
+
+const billingHealthClient = supabase as unknown as BillingHealthRpcClient;
 
 const HEALTH_LABELS: Record<string, { label: string; tone: 'red' | 'amber' | 'muted' }> = {
   faturado_sem_nf: { label: 'Faturado sem NF', tone: 'red' },
@@ -28,20 +43,20 @@ const HEALTH_LABELS: Record<string, { label: string; tone: 'red' | 'amber' | 'mu
 
 export function NfeBillingHealthCard() {
   const [expanded, setExpanded] = useState(false);
-  const { data: rows = [], isLoading } = useQuery<HealthRow[]>({
+  const { data: rows = [], isLoading, isError } = useQuery<HealthRow[]>({
     queryKey: ['v_sale_order_billing_health'],
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from('v_sale_order_billing_health')
-        .select('*')
-        .not('health', 'in', '("ok","cancelado","informal_ok")');
+      const { data, error } = await billingHealthClient.rpc(
+        'get_sale_order_billing_health_for_current_user',
+        { p_include_ok: false },
+      );
       if (error) throw error;
-      return (data || []) as HealthRow[];
+      return (Array.isArray(data) ? data : []) as HealthRow[];
     },
     refetchInterval: 60_000,
   });
 
-  if (isLoading) return null;
+  if (isLoading || isError) return null;
 
   const counts = rows.reduce<Record<string, number>>((acc, r) => {
     acc[r.health] = (acc[r.health] || 0) + 1;

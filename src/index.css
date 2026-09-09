@@ -732,7 +732,8 @@ a:focus-visible {
 @keyframes slide-in    { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes slide-down  { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes fade-in     { from { opacity: 0; } to { opacity: 1; } }
-@keyframes page-enter  { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+/* Sem filter:blur — compositing caro em árvores grandes (lista de PV, dashboards). */
+@keyframes page-enter  { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes badge-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 @keyframes shimmer     { from { background-position: -200% 0; } to { background-position: 200% 0; } }
 @keyframes spin        { to { transform: rotate(360deg); } }
@@ -1077,18 +1078,11 @@ a:focus-visible {
     background: hsl(var(--muted-foreground) / 0.35);
   }
 
-  /* ── Page entrance animation ── */
-  .page-enter {
-    animation: pageEnter 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
-  }
-  @keyframes pageEnter {
-    from { opacity: 0; transform: translateY(8px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
-
+  /* ── Page entrance: usa @keyframes page-enter (topo do arquivo).
+     Não redefinir aqui — a cópia `pageEnter` com blur foi removida (perf). ── */
   /* ── Staggered children entrance ── */
   .stagger-children > * {
-    animation: pageEnter 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: page-enter 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
   .stagger-children > *:nth-child(1) { animation-delay: 0ms; }
   .stagger-children > *:nth-child(2) { animation-delay: 40ms; }
@@ -1344,7 +1338,7 @@ a:focus-visible {
    ════════════════════════════════════════════════════════════════════════════ */
 
 @keyframes editorial-rise {
-  0%   { opacity: 0; transform: translateY(24px); }
+  0%   { opacity: 0; transform: translateY(12px); }
   100% { opacity: 1; transform: translateY(0); }
 }
 
@@ -1472,10 +1466,13 @@ a:focus-visible {
   .editorial-rise,
   .editorial-fade,
   .editorial-slide,
-  .rule-line {
+  .rule-line,
+  .grid-kpi-fluid > *,
+  .page-enter {
     animation: none !important;
     opacity: 1 !important;
     transform: none !important;
+    filter: none !important;
   }
 }
 
@@ -1496,6 +1493,17 @@ a:focus-visible {
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 0.625rem;
 }
+.grid-kpi-fluid > * {
+  opacity: 0;
+  animation: editorial-rise 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.grid-kpi-fluid > *:nth-child(1) { animation-delay: 40ms; }
+.grid-kpi-fluid > *:nth-child(2) { animation-delay: 100ms; }
+.grid-kpi-fluid > *:nth-child(3) { animation-delay: 160ms; }
+.grid-kpi-fluid > *:nth-child(4) { animation-delay: 220ms; }
+.grid-kpi-fluid > *:nth-child(5) { animation-delay: 280ms; }
+.grid-kpi-fluid > *:nth-child(6) { animation-delay: 340ms; }
+.grid-kpi-fluid > *:nth-child(n+7) { animation-delay: 400ms; }
 
 /* Container constraint pra 4K / monitores muito largos.
    Dashboard com 6 KPI cards num monitor 4K esticam absurdo; aqui limita. */
@@ -1604,9 +1612,12 @@ a:focus-visible {
   /* Editorial-stagger off em print (já está, mas reforça) */
   .print-area .editorial-stagger > *,
   .print-area .editorial-rise,
-  .print-area .editorial-fade {
+  .print-area .editorial-fade,
+  .print-area .grid-kpi-fluid > *,
+  .print-area .page-enter {
     opacity: 1 !important;
     transform: none !important;
+    filter: none !important;
     animation: none !important;
   }
 }

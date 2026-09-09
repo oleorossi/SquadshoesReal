@@ -1,6 +1,125 @@
 import { describe, expect, it } from 'vitest';
-import { buildCopySeedPayload, mapLoadedSaleOrderItem } from '../SaleOrderForm';
-import type { SaleOrderFormData, SaleOrderItemFormData } from '@/hooks/useSaleOrders';
+import {
+  buildCopySeedPayload,
+  buildItemsPurchaseSignature,
+  buildSaleOrderEditorRevision,
+  buildSaleOrderUpdateItems,
+  clearSaleOrderDraft,
+  editorChangedDuringSave,
+  mapLoadedSaleOrderItem,
+  resolveSaleOrderMutationTarget,
+} from '../SaleOrderForm';
+import {
+  type SaleOrderFormData,
+  type SaleOrderItemFormData,
+} from '@/hooks/useSaleOrders';
+
+describe('contenções do estado do editor de PV', () => {
+  const form = {
+    client_name: 'Cliente',
+    status: 'Rascunho',
+    packaging_mode: 'colmeia',
+  } as SaleOrderFormData;
+  const item = {
+    reference_id: 'ref-1',
+    color: 'PRETO',
+    quantity: 10,
+    grade: { '37': 10 },
+    unit_price: 100,
+    material_variant_id: 'variant-1',
+  } as SaleOrderItemFormData;
+
+  it('invalida a assinatura de compra ao mudar variante de material ou embalagem', () => {
+    const base = buildItemsPurchaseSignature([item], 'colmeia');
+    expect(buildItemsPurchaseSignature([{ ...item, material_variant_id: 'variant-2' }], 'colmeia'))
+      .not.toBe(base);
+    expect(buildItemsPurchaseSignature([item], 'individual_master'))
+      .not.toBe(base);
+  });
+
+  it('não recoloca item retirado da produção na assinatura de compra', () => {
+    const base = buildItemsPurchaseSignature([item], 'colmeia');
+    const retired = {
+      ...item,
+      reference_id: 'ref-aposentada',
+      color: '',
+      quantity: 0,
+      production_excluded_at: '2026-08-30T12:00:00Z',
+      production_exclusion_reason: 'Ficha aposentada pelo administrador',
+      production_exclusion_request_id: '11111111-1111-4111-8111-111111111111',
+    } as SaleOrderItemFormData;
+
+    expect(buildItemsPurchaseSignature([item, retired], 'colmeia')).toBe(base);
+  });
+
+  it('detecta alterações por revisão completa do estado, inclusive seletores fora do DOM', () => {
+    const base = buildSaleOrderEditorRevision({
+      form,
+      items: [item],
+      selectedClientId: 'client-1',
+      packagingProductId: 'pack-1',
+      packagingQuantity: 10,
+    });
+    expect(buildSaleOrderEditorRevision({
+      form,
+      items: [item],
+      selectedClientId: 'client-1',
+      packagingProductId: 'pack-1',
+      packagingQuantity: 10,
+    })).toBe(base);
+    expect(buildSaleOrderEditorRevision({
+      form,
+      items: [item],
+      selectedClientId: 'client-2',
+      packagingProductId: 'pack-1',
+      packagingQuantity: 10,
+    })).not.toBe(base);
+  });
+
+  it('preserva dirty quando o usuário edita enquanto a mutation está em voo', () => {
+    const submittedRevision = buildSaleOrderEditorRevision({
+      form,
+      items: [item],
+      selectedClientId: 'client-1',
+      packagingProductId: 'pack-1',
+      packagingQuantity: 10,
+    });
+    const latestRevision = buildSaleOrderEditorRevision({
+      form: { ...form, notes: 'alterado depois do clique em salvar' },
+      items: [item],
+      selectedClientId: 'client-1',
+      packagingProductId: 'pack-1',
+      packagingQuantity: 10,
+    });
+
+    expect(editorChangedDuringSave(submittedRevision, latestRevision)).toBe(true);
+    expect(editorChangedDuringSave(submittedRevision, submittedRevision)).toBe(false);
+  });
+
+  it('continua um CREATE confirmado como UPDATE do mesmo PV', () => {
+    const continuation = {
+      id: 'pv-ja-criado',
+      orderVersion: 4,
+    };
+
+    expect(resolveSaleOrderMutationTarget(undefined, continuation)).toBe('pv-ja-criado');
+    expect(resolveSaleOrderMutationTarget('pv-da-rota', continuation)).toBe('pv-da-rota');
+    expect(resolveSaleOrderMutationTarget(undefined, null)).toBeNull();
+  });
+
+  it('limpa apenas o rascunho namespaced do usuário após criar', () => {
+    sessionStorage.setItem('sale_order_draft:vendedor-1', 'rascunho-1');
+    localStorage.setItem('sale_order_draft:vendedor-1', 'rascunho-1');
+    localStorage.setItem('sale_order_draft:vendedor-2', 'rascunho-2');
+
+    clearSaleOrderDraft('vendedor-1');
+
+    expect(sessionStorage.getItem('sale_order_draft:vendedor-1')).toBeNull();
+    expect(localStorage.getItem('sale_order_draft:vendedor-1')).toBeNull();
+    expect(localStorage.getItem('sale_order_draft:vendedor-2')).toBe('rascunho-2');
+    localStorage.removeItem('sale_order_draft:vendedor-2');
+  });
+});
 
 // Guard de regressão do incidente PV-00146: ao carregar os itens de um PV para
 // edição, o `id` de cada sale_order_item TEM que ser preservado — sem ele, o
@@ -19,7 +138,17 @@ describe('mapLoadedSaleOrderItem', () => {
         unit_price: 125,
         quantity: 10,
         strap_colors: [],
+        strap_sourcing: {
+          '11111111-1111-4111-8111-111111111111': {
+            source_mode: 'internal',
+            color_id: '22222222-2222-4222-8222-222222222222',
+            recipe_id: '33333333-3333-4333-8333-333333333333',
+          },
+        },
         strap_sourcing_revision: 7,
+        production_excluded_at: '2026-08-30T12:00:00Z',
+        production_exclusion_reason: 'Ficha aposentada pelo administrador',
+        production_exclusion_request_id: '11111111-1111-4111-8111-111111111111',
       },
       {
         id: 'sale-order-item-2',
@@ -43,6 +172,12 @@ describe('mapLoadedSaleOrderItem', () => {
     // canonicaliza o reference_id legado
     expect(mappedItems[0].reference_id).toBe('canonical-reference');
     expect(mappedItems[0].strap_sourcing_revision).toBe(7);
+    expect(mappedItems[0].strap_sourcing).toEqual(loadedItems[0].strap_sourcing);
+    expect(mappedItems[0]).toMatchObject({
+      production_excluded_at: '2026-08-30T12:00:00Z',
+      production_exclusion_reason: 'Ficha aposentada pelo administrador',
+      production_exclusion_request_id: '11111111-1111-4111-8111-111111111111',
+    });
   });
 });
 
@@ -91,6 +226,16 @@ describe('buildCopySeedPayload', () => {
         label: 'TIRA CHATA 8MM',
         color: 'PRETO',
         color_id: '22222222-2222-4222-8222-222222222222',
+        identity_basis: 'reference_base',
+        color_mode: 'select_on_order',
+      }, {
+        id: '55555555-5555-4555-8555-555555555555',
+        technical_strap_line_id: '55555555-5555-4555-8555-555555555555',
+        label: 'TIRA CHATA 8MM — POSIÇÃO 2',
+        color: 'VERMELHO',
+        color_id: '66666666-6666-4666-8666-666666666666',
+        identity_basis: 'reference_base',
+        color_mode: 'select_on_order',
       }],
       strap_sourcing: {
         '11111111-1111-4111-8111-111111111111': {
@@ -106,6 +251,9 @@ describe('buildCopySeedPayload', () => {
       selected_terceirizacao_ids: ['terc-1'],
       terceirizacao_quantities: { 'terc-1': 5 },
       outsourced_sectors: { costura: 'contractor-1' },
+      production_excluded_at: '2026-08-30T12:00:00Z',
+      production_exclusion_reason: 'Ficha aposentada pelo administrador',
+      production_exclusion_request_id: '11111111-1111-4111-8111-111111111111',
     },
     {
       id: 'item-db-2',
@@ -128,12 +276,18 @@ describe('buildCopySeedPayload', () => {
     companyIsActive: true,
   });
 
+  it('não leva metadados internos da retirada produtiva para o novo writer', () => {
+    expect(seed.items[0]).not.toHaveProperty('production_excluded_at');
+    expect(seed.items[0]).not.toHaveProperty('production_exclusion_reason');
+    expect(seed.items[0]).not.toHaveProperty('production_exclusion_request_id');
+  });
+
   it('NÃO leva o id do item — o novo PV cria linhas novas, nunca atualiza as do pedido origem', () => {
     expect(seed.items.every((it) => !('id' in it) || it.id === undefined)).toBe(true);
     expect(seed.items.every((it) => !('strap_sourcing_revision' in it))).toBe(true);
   });
 
-  it('preserva a definição física do item (ref, cor, grade, preço, tiras, sourcing, observação)', () => {
+  it('preserva cores independentes das tiras, mas limpa a origem operacional para rederivar no novo PV', () => {
     expect(seed.items[0]).toMatchObject({
       reference_id: 'ref-1',
       color: 'PRETO',
@@ -147,17 +301,20 @@ describe('buildCopySeedPayload', () => {
         label: 'TIRA CHATA 8MM',
         color: 'PRETO',
         color_id: '22222222-2222-4222-8222-222222222222',
+        identity_basis: 'reference_base',
+        color_mode: 'select_on_order',
+      }, {
+        technical_strap_line_id: '55555555-5555-4555-8555-555555555555',
+        color: 'VERMELHO',
+        color_id: '66666666-6666-4666-8666-666666666666',
+        identity_basis: 'reference_base',
+        color_mode: 'select_on_order',
       }],
-      strap_sourcing: {
-        '11111111-1111-4111-8111-111111111111': {
-          source_mode: 'internal',
-          color_id: '22222222-2222-4222-8222-222222222222',
-          strap_variant_id: '33333333-3333-4333-8333-333333333333',
-          recipe_id: '44444444-4444-4444-8444-444444444444',
-        },
-      },
+      strap_sourcing: {},
       observation: 'obs do item',
     });
+    // A cópia é imutável: a reabertura/edição comum segue com a origem carregada.
+    expect(items[0].strap_sourcing).toHaveProperty('11111111-1111-4111-8111-111111111111');
   });
 
   it('reseta a intenção de terceirização — herdá-la geraria OS no save do novo PV sem ninguém pedir', () => {
@@ -235,5 +392,43 @@ describe('buildCopySeedPayload', () => {
       companyIsActive: true,
     });
     expect(comEmpresaAtiva.form.company_id).toBe('empresa-ativa');
+  });
+});
+
+describe('buildSaleOrderUpdateItems', () => {
+  it('não reanexa itens presentes no load e ausentes do editor', () => {
+    const loaded = [
+      { id: 'a', reference_id: 'r1', quantity: 10 },
+      { id: 'b', reference_id: 'r2', quantity: 20 },
+    ] as SaleOrderItemFormData[];
+    const editor = [
+      { id: 'a', reference_id: 'r1', quantity: 12 },
+    ] as SaleOrderItemFormData[];
+
+    const payload = buildSaleOrderUpdateItems(editor);
+    const removedFromEditor = loaded
+      .map((item) => item.id)
+      .filter((id) => !editor.some((item) => item.id === id));
+
+    expect(removedFromEditor).toEqual(['b']);
+    expect(payload.map((item) => item.id)).toEqual(['a']);
+    expect(payload[0].quantity).toBe(12);
+    for (const id of removedFromEditor) {
+      expect(payload.some((item) => item.id === id)).toBe(false);
+    }
+  });
+
+  it('mantém só itens com referência e aplica normalize', () => {
+    const editor = [
+      { id: 'a', reference_id: 'r1', quantity: 1 },
+      { id: 'orphan', reference_id: '', quantity: 2 },
+    ] as SaleOrderItemFormData[];
+    const payload = buildSaleOrderUpdateItems(editor, (item) => ({
+      ...item,
+      reference_id: `canon:${item.reference_id}`,
+    }));
+    expect(payload).toHaveLength(1);
+    expect(payload[0].id).toBe('a');
+    expect(payload[0].reference_id).toBe('canon:r1');
   });
 });

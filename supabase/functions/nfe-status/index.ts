@@ -105,14 +105,16 @@ Deno.serve(async (req) => {
     const d = detailData?.data || {};
     const newStatus = mapSituacao(d.situacao_nf);
 
-    const updateData: any = {
-      status: newStatus,
-      updated_at: new Date().toISOString(),
+    const providerSnapshot: Record<string, unknown> = {
+      provider_nfe_id: nfe.provider_nfe_id,
     };
-    if (d.chave) updateData.chave_acesso = d.chave;
-    if (d.numero_nf) updateData.numero = String(d.numero_nf);
-    if (d.serie) updateData.serie = String(d.serie);
-    if (d.protocolo) updateData.protocolo = d.protocolo;
+    if (d.chave) providerSnapshot.chave_acesso = d.chave;
+    if (d.numero_nf) providerSnapshot.numero = String(d.numero_nf);
+    if (d.serie) providerSnapshot.serie = String(d.serie);
+    if (d.protocolo) providerSnapshot.protocolo = d.protocolo;
+    if (d.protocolo_cancelamento) {
+      providerSnapshot.protocolo_cancelamento = d.protocolo_cancelamento;
+    }
 
     // ⚠ NENHUM destes campos existe na API do ClickNotas — a spec não traz
     // URL de arquivo em lugar nenhum, e `danfe_url`/`xml_url` estão vazios em
@@ -123,47 +125,49 @@ Deno.serve(async (req) => {
     // detalhe que já foi buscado. Não gastar tempo "consertando" isso.
     const danfeUrl = d.url_danfe || d.danfe_url || d.url_pdf || d.link_pdf || d.url_pdf_danfe || d.link_danfe || '';
     const xmlUrl = d.url_xml || d.xml_url || d.link_xml || d.url_xml_nfe || '';
-    if (danfeUrl) updateData.danfe_url = String(danfeUrl);
-    if (xmlUrl) updateData.xml_url = String(xmlUrl);
-    if (d.data_emissao && !nfe.data_emissao) {
+    if (danfeUrl) providerSnapshot.danfe_url = String(danfeUrl);
+    if (xmlUrl) providerSnapshot.xml_url = String(xmlUrl);
+    if (d.data_emissao) {
       const time = d.hora_emissao ? `${d.data_emissao}T${d.hora_emissao}` : d.data_emissao;
       const norm = /Z$|[+-]\d{2}:\d{2}$/.test(time) ? time : time + "-03:00";
       const t = new Date(norm).getTime();
       if (!Number.isNaN(t) && t > 0 && t < Date.now() + 86_400_000) {
-        updateData.data_emissao = norm;
+        providerSnapshot.data_emissao = norm;
       }
     }
-    if (newStatus === "rejeitada" && d.mensagem) updateData.motivo_rejeicao = d.mensagem;
-
-    const { data: updatedRows, error: updateNfeErr } = await adminClient
-      .from("nfe_emitidas")
-      .update(updateData)
-      .eq("id", nfe_id)
-      .eq("status", nfe.status)
-      .select("id");
-    if (updateNfeErr) throw new Error(`Falha ao atualizar NF-e: ${updateNfeErr.message}`);
-
-    if (newStatus === "autorizada" && d.numero_nf && nfe.sale_order_id
-        && updatedRows && updatedRows.length > 0) {
-      // Faturamento MANUAL (decisão 2026-06-13, alinhado ao emit-nfe síncrono):
-      // a NF é emitida DIAS ANTES da entrega, então autorizar a NF — inclusive
-      // via polling assíncrono — NÃO pode avançar o PV pra "Faturado" (isso
-      // reconheceria receita+CMV antes da venda confirmada). Aqui só gravamos o
-      // NÚMERO da NF no PV (rastreabilidade); o status 'Faturado' fica para o
-      // usuário acionar no dropdown do PV. Auditoria 2026-06-14, Área 4.
-      const { error: updateSoErr } = await adminClient
-        .from("sale_orders")
-        .update({ nfe: String(d.numero_nf) }) // só o nº da NF; status NÃO muda
-        .eq("id", nfe.sale_order_id)
-        .neq("status", "Cancelado");
-      if (updateSoErr) console.error("nfe-status: failed to update sale_order:", updateSoErr.message);
+    if (newStatus === "rejeitada" && d.mensagem) {
+      providerSnapshot.motivo_rejeicao = d.mensagem;
     }
 
+    // A RPC serializa NF/PV na ordem fiscal canônica, impede regressão de
+    // estado e grava o número no PV sem faturá-lo automaticamente.
+    const { data: observation, error: observationErr } = await adminClient.rpc(
+      "observe_nfe_provider_status_126",
+      {
+        p_nfe_id: nfe_id,
+        p_provider_status: newStatus,
+        p_snapshot: providerSnapshot,
+        p_source: "nfe-status",
+      },
+    );
+    if (observationErr) {
+      throw new Error(`Falha ao reconciliar NF-e: ${observationErr.message}`);
+    }
+    const reconciliationPending = observation?.ok === false
+      && observation?.reconciliation_required === true;
+
     return new Response(JSON.stringify({
-      success: true,
-      nfe: { ...nfe, ...updateData },
+      success: !reconciliationPending,
+      ...(reconciliationPending ? { reconciliation_needed: true } : {}),
+      nfe: {
+        ...nfe,
+        ...providerSnapshot,
+        status: observation?.local_status ?? nfe.status,
+      },
+      observation,
       provider_response: detailData,
     }), {
+      status: reconciliationPending ? 202 : 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error: unknown) {

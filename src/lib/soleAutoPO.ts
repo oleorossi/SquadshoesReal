@@ -1,5 +1,9 @@
 import { supabase } from '@/integrations/supabase/client';
 import { resolveGroupSupplier } from '@/lib/groupSupplierResolution';
+import {
+  executePurchaseOrderCommand,
+  purchaseOrderLogicalKey,
+} from '@/services/purchaseOrderCommandService';
 
 export interface SoleAutoPOResult {
   poNumber: string;
@@ -310,27 +314,15 @@ async function criarOuAcumularOCDeSolado(ctx: SolePOContext): Promise<SoleAutoPO
   const appendNote = `\nSolado insuficiente para OP ${orderRef}. Grade: ${gradeDesc}`;
 
   if (openPO) {
-    // ── Accumulate into existing open OC (atomic — closes lost-update race) ─
-    const { error: upsertErr } = await (supabase as any).rpc('upsert_po_item_atomic', {
-      p_po_id: openPO.id,
-      p_product_id: soleProductId,
-      p_qty_delta: orderQty,
-      p_unit_price: unitPrice,
-      p_unit: unit,
-      p_current_stock: currentStock,
-      p_min_stock: minStock,
-      p_max_stock: minStock + orderQty,
-      p_grade_delta: poItemGrade,
-      p_color: soleProductColor || color || null,
+    await executePurchaseOrderCommand({
+      command: 'append',
+      purchaseOrderId: openPO.id,
+      payload: {
+        header_patch: { notes_append: appendNote },
+        items: [itemBase],
+      },
+      logicalKey: purchaseOrderLogicalKey('sole-append', orderId, soleProductId),
     });
-    // upsert_po_item_atomic already updates purchase_orders.total_value in
-    // the same transaction (audit-2 fix), so no separate increment needed.
-    if (upsertErr) throw new Error(`Falha ao acumular solado na OC ${openPO.order_number}: ${upsertErr.message}`);
-    await (supabase as any)
-      .from('purchase_orders')
-      .update({ notes: (openPO.notes || '') + appendNote })
-      .eq('id', openPO.id);
-
     return { poNumber: openPO.order_number, supplierName, accumulated: true };
   }
 
@@ -348,53 +340,30 @@ async function criarOuAcumularOCDeSolado(ctx: SolePOContext): Promise<SoleAutoPO
   // OC se a OP de origem for deletada (era NULL em 52/52 e o único vínculo
   // ficava no texto da nota).
   const idempotencyKey = `sole:${orderId}:${soleProductId}`;
-  const { data: po, error: poErr } = await (supabase as any)
-    .from('purchase_orders')
-    .insert({
-      supplier_name: supplierName,
-      supplier_id: supplierId,
-      auto_generated: true,
-      source_type: 'auto_op',
-      reference_order_id: orderId,
-      idempotency_key: idempotencyKey,
-      total_value: orderQty * unitPrice,
-      notes: `Gerada automaticamente — Solado insuficiente para OP ${orderRef}. Grade necessária: ${gradeDesc}`,
-      ...(linkedPvId ? { linked_sale_order_ids: [linkedPvId], source_pv_ids: [linkedPvId] } : {}),
-    })
-    .select('id, order_number')
-    .single();
-
-  if (poErr || !po) {
-    // 23505 = a mesma (OP, solado) já gerou OC ABERTA. Não é erro: devolve a OC
-    // existente pro caller mostrar "acumulada" em vez de criar a segunda.
-    // O filtro tem que casar com o índice ux_purchase_orders_idem_auto
-    // (cancelled/received/receiving ficam de fora): devolver uma OC já RECEBIDA
-    // como "acumulada" seria mentira — a demanda nova não entrou em lugar nenhum.
-    if (poErr?.code === '23505') {
-      const { data: existing } = await (supabase as any)
-        .from('purchase_orders')
-        .select('order_number')
-        .eq('idempotency_key', idempotencyKey)
-        .not('status', 'in', '(cancelled,received,receiving)')
-        .maybeSingle();
-      if (existing?.order_number) {
-        return { poNumber: existing.order_number, supplierName, accumulated: true };
-      }
-    }
-    return null;
-  }
-
-  const { error: itemErr } = await (supabase as any).from('purchase_order_items').insert({
-    purchase_order_id: po.id,
-    ...itemBase,
+  const result = await executePurchaseOrderCommand({
+    command: 'create',
+    payload: {
+      header: {
+        supplier_name: supplierName,
+        supplier_id: supplierId,
+        auto_generated: true,
+        source_type: 'auto_op',
+        reference_order_id: orderId,
+        idempotency_key: idempotencyKey,
+        notes: `Gerada automaticamente — Solado insuficiente para OP ${orderRef}. Grade necessária: ${gradeDesc}`,
+        linked_sale_order_ids: linkedPvId ? [linkedPvId] : [],
+        source_pv_ids: linkedPvId ? [linkedPvId] : [],
+      },
+      items: [itemBase],
+      return_existing_on_idempotency: true,
+    },
+    logicalKey: purchaseOrderLogicalKey('sole-create', orderId, soleProductId),
   });
-  if (itemErr) {
-    const { error: cleanupErr } = await (supabase as any).from('purchase_orders').delete().eq('id', po.id);
-    if (cleanupErr) {
-      throw new Error(`Falha ao inserir item (${itemErr.message}) e ao limpar OC órfã (${cleanupErr.message}). Verifique a OC ${po.order_number} manualmente.`);
-    }
-    throw new Error(`Falha ao inserir item de solado na OC ${po.order_number}: ${itemErr.message}`);
-  }
-
-  return { poNumber: po.order_number, supplierName, accumulated: false };
+  const createdPo = result.purchase_order as { order_number?: string } | undefined;
+  if (!createdPo?.order_number) return null;
+  return {
+    poNumber: createdPo.order_number,
+    supplierName,
+    accumulated: Boolean(result.deduplicated),
+  };
 }

@@ -14,14 +14,19 @@ import {
 } from '@/lib/materialConsumption';
 import { calculateStrapConsumptionCm, resolveOrderStraps } from '@/lib/strapConsumption';
 import {
+  fetchActiveProductsByGroupIds,
   mergePerSizeConsumption,
   reduceSoleTechnicalSpecsByRecency,
   resolveSoleProductIdCanonical,
   resolveMaterialProductCanonical,
+  resolveMaterialProductWithColorStatus,
+  resolveInsoleBaseProductCanonical,
 } from '@/lib/orderConsumption';
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
-import { caixaCollectiveTypeFromName, shouldShowCaixaForMode, wholePackagingDemand, type CollectiveType } from '@/lib/packagingPairsPerBox';
+import { resolveCanonicalPackaging, type PackagingBoxType } from '@/lib/packagingConsumption';
 import { resolvePinnedSoleProductIdByColor, type SoleColorRule } from '@/lib/soleColorResolution';
+import { isLeftoverCabedalExtra, leftoverCabedalDisplayName } from '@/lib/cabedalLeftover';
+import { upperAccessoryFollowsBaseMaterial } from '@/lib/upperAccessoryVariant';
 import {
   type ArtisanalStrapCutRow,
 } from '@/lib/strapRollCut';
@@ -29,6 +34,7 @@ import {
   canonicalStrapCutRows,
   parseCanonicalStrapDemandPreview,
 } from '@/lib/canonicalStrapDemandPreview';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 export type ConsumptionRow = {
   componentType: string;
@@ -49,13 +55,79 @@ export type ConsumptionRow = {
    *  entra mesmo com qtd 0 só pra alertar o gap de cadastro — espelha o
    *  `warning` do motor canônico (orderConsumption.ts). */
   warning?: string;
+  colorMismatch?: boolean;
   /** Identidade canônica da tira; usada pelo picking para nunca casar napa por
    * nome/cor. Ausente somente em relatórios históricos anteriores ao cutover. */
   strapVariantId?: string | null;
   recipeId?: string | null;
   baseProductId?: string | null;
   technicalStrapLineIds?: string[];
+  /** Napa remanescente já persistida pelo netting (não recalcular na UI). */
+  strapBaseRequiredM?: number;
+  strapBaseName?: string | null;
+  strapConfirmedYieldMPerM?: number | null;
+  /** Identidade do estoque de embalagem; não é products.id. */
+  boxTypeId?: string | null;
+  /** Produtos físicos exatos que originaram a linha. Quando há um único ID,
+   *  ele é a identidade de agregação da Lista de Separação. */
+  productIds?: string[];
 };
+
+type CanonicalStrapNetDemandRow = {
+  id: string;
+  origin_type?: string | null;
+  sale_order_item_id?: string | null;
+  technical_strap_line_id?: string | null;
+  strap_variant_id?: string | null;
+  recipe_id?: string | null;
+  base_product_id?: string | null;
+  source_mode?: string | null;
+  replenishment_required_m?: number | null;
+  base_required_m?: number | null;
+  status?: string | null;
+};
+
+type UpperMaterialAccessory = {
+  id?: unknown;
+  material?: string | null;
+  consumption?: number | string | null;
+  consumption_per_size?: Record<string, number> | null;
+  mandatory?: boolean | null;
+  leftover?: boolean | null;
+  product_id?: string | null;
+  product_name?: string | null;
+  label?: string | null;
+};
+
+/**
+ * Recorte local das relações canônicas de tiras. Elas são criadas por migration
+ * e podem ainda não constar no arquivo gerado em um checkout que antecede o
+ * deploy. O cast fica restrito a esta fronteira e mantém linha/argumentos da RPC
+ * tipados sem transformar o cliente inteiro em `any`.
+ */
+type CanonicalStrapDatabase = {
+  public: {
+    Tables: Record<never, never>;
+    Views: {
+      v_strap_demands_operational: {
+        Row: Record<string, unknown>;
+        Relationships: [];
+      };
+      v_strap_picking_operational: {
+        Row: Record<string, unknown>;
+        Relationships: [];
+      };
+    };
+    Functions: {
+      preview_sale_order_strap_demand: {
+        Args: { p_sale_order_id: string };
+        Returns: Record<string, unknown>[];
+      };
+    };
+  };
+};
+
+const canonicalStrapClient = supabase as unknown as SupabaseClient<CanonicalStrapDatabase>;
 
 export const COMPONENT_ORDER = [
   'Cabedal', 'Forração', 'Palmilha', 'Solado', 'Tiras', 'Químicos', 'Embalagem', 'Outros',
@@ -94,25 +166,46 @@ const addConsumptionRow = (map: Map<string, ConsumptionRow>, row: ConsumptionRow
   const productUnit = row.productUnit?.trim() || 'un';
   const color = row.color?.trim() || '—';
   const materialName = row.materialName?.trim() || groupName;
-  // Nome do material na chave — paridade com orderConsumption.ts: produtos
-  // distintos do mesmo grupo/cor/unidade (ex.: "Binóculo 10mm" × "Binóculo 10mm
-  // Strass" em COMPONENTES DIVERSOS/OURO LIGHT) são linhas separadas, senão a
-  // Lista de Separação some com um deles.
+  // Produto físico exato vence o rótulo na identidade. Isso permite somar
+  // Material 1 + Material 2 quando ambos resolvem pro mesmo SKU, sem colapsar
+  // dois SKUs distintos do mesmo grupo/cor. Sem ID exato, o nome continua na
+  // chave (protege Binóculo 10mm × Binóculo 10mm Strass, por exemplo).
+  const exactProductIds = Array.from(new Set((row.productIds || []).filter(Boolean))).sort();
+  const materialIdentity = exactProductIds.length === 1
+    ? `product:${exactProductIds[0]}`
+    : `${groupName}||${materialName}`;
   const strapIdentity = row.componentType === 'Tiras' && row.strapVariantId
     ? `||${row.strapVariantId}||${row.recipeId || ''}||${row.baseProductId || ''}`
     : '';
-  const key = `${row.componentType}||${groupName}||${materialName}||${color}||${productUnit}${strapIdentity}`;
+  const boxIdentity = row.boxTypeId ? `||box:${row.boxTypeId}` : '';
+  const key = `${row.componentType}||${materialIdentity}||${color}||${productUnit}${strapIdentity}${boxIdentity}`;
   const existing = map.get(key);
 
   if (existing) {
     existing.totalQuantity += totalQuantity;
     if (row.widthMissing) existing.widthMissing = true;
     if (row.warning && !existing.warning) existing.warning = row.warning;
+    if (row.colorMismatch) existing.colorMismatch = true;
     if (row.technicalStrapLineIds?.length) {
       existing.technicalStrapLineIds = Array.from(new Set([
         ...(existing.technicalStrapLineIds || []),
         ...row.technicalStrapLineIds,
       ]));
+    }
+    if (row.strapBaseRequiredM != null) {
+      existing.strapBaseRequiredM = (existing.strapBaseRequiredM || 0)
+        + nonNegativeQuantity(row.strapBaseRequiredM);
+    }
+    if (!existing.strapBaseName && row.strapBaseName) existing.strapBaseName = row.strapBaseName;
+    if (!existing.strapConfirmedYieldMPerM && row.strapConfirmedYieldMPerM) {
+      existing.strapConfirmedYieldMPerM = row.strapConfirmedYieldMPerM;
+    }
+    if (!existing.boxTypeId && row.boxTypeId) existing.boxTypeId = row.boxTypeId;
+    if (exactProductIds.length > 0) {
+      existing.productIds = Array.from(new Set([
+        ...(existing.productIds || []),
+        ...exactProductIds,
+      ])).sort();
     }
     // Equivalência em placas soma junto (é linear na mesma proporção do dm²).
     if (row.plateEquivalent) existing.plateEquivalent = (existing.plateEquivalent || 0) + row.plateEquivalent;
@@ -129,12 +222,124 @@ const addConsumptionRow = (map: Map<string, ConsumptionRow>, row: ConsumptionRow
     widthMissing: row.widthMissing,
     plateEquivalent: row.plateEquivalent,
     warning: row.warning,
+    ...(row.colorMismatch ? { colorMismatch: true } : {}),
     strapVariantId: row.strapVariantId,
     recipeId: row.recipeId,
     baseProductId: row.baseProductId,
     technicalStrapLineIds: row.technicalStrapLineIds,
+    strapBaseRequiredM: row.strapBaseRequiredM,
+    strapBaseName: row.strapBaseName,
+    strapConfirmedYieldMPerM: row.strapConfirmedYieldMPerM,
+    boxTypeId: row.boxTypeId,
+    productIds: exactProductIds.length > 0 ? exactProductIds : undefined,
   });
 };
+
+const nonNegativeQuantity = (value: unknown): number => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+};
+
+type QueryResultLike<T = unknown> = {
+  data?: T | null;
+  error?: { message?: string | null } | Error | null;
+};
+
+/**
+ * A Lista de Separação é um documento operacional: uma consulta incompleta
+ * não pode virar silenciosamente um BOM parcial. Mantemos o nome da fonte no
+ * erro para que a tela consiga orientar o diagnóstico sem publicar quantidades
+ * aparentemente válidas.
+ */
+const assertQuerySucceeded = (
+  label: string,
+  result: QueryResultLike,
+): void => {
+  if (!result?.error) return;
+  const detail = result.error instanceof Error
+    ? result.error.message
+    : result.error.message;
+  throw new Error(
+    `Não foi possível gerar a Lista de Separação: falha ao carregar ${label}${detail ? ` (${detail})` : ''}. Nenhum BOM parcial foi gerado.`,
+  );
+};
+
+/**
+ * Wrapper fail-closed do fetch escopado (P1.1): o helper joga o erro cru do
+ * PostgREST; aqui reembrulhamos no mesmo contrato de `assertQuerySucceeded`
+ * pra a Lista de Separação nunca publicar BOM parcial quando `products` falha.
+ */
+async function fetchScopedProductsOrThrow(
+  client: Parameters<typeof fetchActiveProductsByGroupIds>[0],
+  groupIds: string[],
+  extraProductIds: string[] = [],
+): Promise<Awaited<ReturnType<typeof fetchActiveProductsByGroupIds>>> {
+  try {
+    return await fetchActiveProductsByGroupIds(client, groupIds, extraProductIds);
+  } catch (error) {
+    const message = error instanceof Error
+      ? error.message
+      : (error && typeof error === 'object' && 'message' in error
+        ? String((error as { message?: unknown }).message ?? '')
+        : 'erro desconhecido');
+    assertQuerySucceeded('products', { error: { message } });
+    return [];
+  }
+}
+
+/**
+ * O worker de tiras já persiste o netting completo. A view de picking guarda a
+ * identidade e os rótulos, mas `planned_finished_m` é bruto e
+ * `remaining_finished_m` ainda inclui estoque acabado/inbound comprometidos.
+ * A quantidade operacional líquida vive em `v_strap_demands_operational`.
+ */
+async function fetchCanonicalStrapNetDemands(
+  saleOrderItemIds: string[],
+): Promise<Map<string, CanonicalStrapNetDemandRow>> {
+  if (saleOrderItemIds.length === 0) return new Map();
+
+  const { data, error } = await canonicalStrapClient
+    .from('v_strap_demands_operational')
+    .select('id, origin_type, sale_order_item_id, technical_strap_line_id, strap_variant_id, recipe_id, base_product_id, source_mode, replenishment_required_m, base_required_m, status')
+    .in('sale_order_item_id', saleOrderItemIds)
+    .eq('origin_type', 'sale_order')
+    .not('status', 'in', '(superseded,cancelled,error)');
+  if (error) throw error;
+
+  return new Map(
+    ((data || []) as CanonicalStrapNetDemandRow[])
+      .filter((row) => row.id)
+      .map((row) => [row.id, row]),
+  );
+}
+
+function netDemandForPickingRow(
+  pickingRow: Record<string, unknown>,
+  netDemandById: Map<string, CanonicalStrapNetDemandRow>,
+): CanonicalStrapNetDemandRow {
+  const demandId = String(pickingRow.sale_order_strap_demand_id || '').trim();
+  const demand = demandId ? netDemandById.get(demandId) : undefined;
+  if (!demand) {
+    throw new Error(
+      'A Lista de Separação encontrou uma tira sem saldo líquido canônico. ' +
+      'Reprocesse o pedido na aba Tiras; nenhum valor bruto foi usado.',
+    );
+  }
+
+  const pickingItemId = String(pickingRow.sale_order_item_id || '').trim();
+  const demandItemId = String(demand.sale_order_item_id || '').trim();
+  const pickingLineId = String(pickingRow.technical_strap_line_id || '').trim();
+  const demandLineId = String(demand.technical_strap_line_id || '').trim();
+  if ((pickingItemId && demandItemId && pickingItemId !== demandItemId)
+      || (pickingLineId && demandLineId && pickingLineId !== demandLineId)) {
+    throw new Error(
+      'A Lista de Separação encontrou identidade divergente no saldo canônico de tiras. ' +
+      'Reprocesse o pedido antes de separar.',
+    );
+  }
+
+  return demand;
+}
 
 export async function calculateBomForOrders(orderIds: string[]): Promise<ConsumptionRow[]> {
   if (orderIds.length === 0) return [];
@@ -152,14 +357,14 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
   const saleOrderIds = [...new Set(ordersData.map(o => o.sale_order_id).filter(Boolean))] as string[];
 
   const [
-    { data: sheetsData },
-    { data: materials, error: materialsError },
-    { data: allProducts },
-    { data: productGroups },
-    { data: componentSheets },
-    { data: saleOrderItems },
-    { data: soleColorMappings },
-    { data: saleOrdersPkg },
+    sheetsResult,
+    materialsResult,
+    productGroupsResult,
+    saleOrderItemsResult,
+    soleColorMappingsResult,
+    saleOrdersPkgResult,
+    boxTypesResult,
+    packagingBridgesResult,
   ] = await Promise.all([
     supabase
       .from('technical_sheets')
@@ -171,18 +376,11 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       // de uma variante (semântica get_effective_bom) — escopo aplicado no loop.
       .select('sheet_id, product_id, group_id, quantity_per_unit, color, material_variant_id, products(name, unit, category), product_groups(name)')
       .in('sheet_id', refIds),
-    // `quantity` entra pra cascata canônica de solado (P0/P2 escolhem por maior
-    // estoque); `unit` pra unidade de estoque; `is_fachetado`/
-    // `fachete_material_group_id` pro componente Fachete (BOM-2/BOM-5);
-    // `category` pra classificar itens-padrão do solado (F2-01).
-    supabase.from('products').select('id, name, color, category, group_id, quantity, unit, sole_classification, is_fachetado, fachete_material_group_id').eq('active', true),
-    supabase.from('product_groups').select('id, name, dimensions_length, dimensions_width, dimensions_unit'),
-    supabase
-      .from('component_sheets')
-      .select('product_id, dimensions_width, dimensions_length, dimensions_unit, yield_per_size, yield_per_sole, products!inner(group_id, name, color, unit)'),
+    // Grupos são baratos; products sem filtro era o custo (P1.1).
+    supabase.from('product_groups').select('id, name, is_color_agnostic, composite_layers:product_group_layers!product_group_layers_composite_group_id_fkey(composite_group_id), dimensions_length, dimensions_width, dimensions_unit, box_type_id, box_type_master_id, box_type_colmeia_id, box_type_fitilho_id, pairs_per_box_individual, pairs_per_box_master, pairs_per_box_colmeia, pairs_per_box_fitilho'),
     saleOrderItemIds.length > 0
       ? supabase.from('sale_order_items').select('id, strap_colors, fichas, material_variant_id').in('id', saleOrderItemIds)
-      : Promise.resolve({ data: [] }),
+      : Promise.resolve({ data: [], error: null }),
     (supabase as any)
       .from('technical_sheet_sole_colors')
       .select('sheet_id, product_color, sole_product_id, sole_group_id')
@@ -192,13 +390,125 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     // Lista de Separação deve mostrar SÓ a do modo (espelha o modal/orderConsumption).
     saleOrderIds.length > 0
       ? supabase.from('sale_orders').select('id, packaging_mode').in('id', saleOrderIds)
-      : Promise.resolve({ data: [] }),
+      : Promise.resolve({ data: [], error: null }),
+    supabase
+      .from('box_types' as never)
+      .select('id, nome, tipo, quantity, unit_price, supplier_id, active, pairs_per_box_default, metros_per_amarrado_default'),
+    supabase
+      .from('legacy_packaging_product_bridges' as never)
+      .select('product_id, box_type_id'),
   ]);
 
-  if (materialsError) throw materialsError;
+  const requiredQueries: Array<[string, QueryResultLike]> = [
+    ['fichas técnicas', sheetsResult],
+    ['materiais da ficha', materialsResult],
+    ['grupos de produtos', productGroupsResult],
+    ['itens dos pedidos', saleOrderItemsResult],
+    ['mapeamentos de cor do solado', soleColorMappingsResult],
+    ['modo de embalagem dos pedidos', saleOrdersPkgResult],
+    ['tipos de embalagem', boxTypesResult],
+    ['ponte de embalagem legada', packagingBridgesResult],
+  ];
+  for (const [label, result] of requiredQueries) assertQuerySucceeded(label, result);
+
+  const sheetsData = sheetsResult.data || [];
+  const materials = materialsResult.data || [];
+  const productGroups = productGroupsResult.data || [];
+  const saleOrderItems = saleOrderItemsResult.data || [];
+  const soleColorMappings = soleColorMappingsResult.data || [];
+  const saleOrdersPkg = saleOrdersPkgResult.data || [];
+  const boxTypes = (boxTypesResult.data || []) as PackagingBoxType[];
+  const legacyPackagingProductIds = new Set<string>(
+    ((packagingBridgesResult.data || []) as unknown as Array<{ product_id?: string | null }>)
+      .map((bridge) => bridge.product_id)
+      .filter(Boolean),
+  );
+
+  // Escopo de products = grupos/pins destas fichas (espelha fetchConsumptionContext).
+  const scopeGroupIds = new Set<string>();
+  const scopeProductIds = new Set<string>();
+  const groupIdByName = new Map<string, string>();
+  for (const g of (productGroups || []) as any[]) {
+    if (g?.id && g?.name) groupIdByName.set(normalizeText(g.name), g.id);
+  }
+  const addGroup = (id: unknown) => { if (id) scopeGroupIds.add(String(id)); };
+  const addProduct = (id: unknown) => { if (id) scopeProductIds.add(String(id)); };
+  const addGroupByName = (name: unknown) => {
+    if (!name || typeof name !== 'string') return;
+    const id = groupIdByName.get(normalizeText(name));
+    if (id) scopeGroupIds.add(id);
+  };
+  for (const m of (materials || []) as any[]) {
+    addGroup(m.group_id);
+    addProduct(m.product_id);
+  }
+  for (const s of (sheetsData || []) as any[]) {
+    addGroup(s.sole_group_id);
+    addProduct(s.primary_sole_id);
+    addProduct(s.upper_material_product_id);
+    addProduct(s.lining_material_product_id);
+    addGroupByName(s.upper_material);
+    addGroupByName(s.lining_material);
+    addGroupByName(s.insole_material);
+    addGroupByName(s.sole_material);
+    if (Array.isArray(s.strap_colors)) {
+      for (const strap of s.strap_colors) addGroup((strap as any)?.group_id);
+    }
+    if (Array.isArray(s.direct_components)) {
+      for (const row of s.direct_components) addProduct((row as any)?.product_id);
+    }
+  }
+  for (const m of (soleColorMappings || []) as any[]) {
+    addProduct(m.sole_product_id);
+    addGroup(m.sole_group_id);
+  }
+  for (const bridge of legacyPackagingProductIds) addProduct(bridge);
+  for (const g of (productGroups || []) as any[]) {
+    if (!scopeGroupIds.has(g.id)) continue;
+    for (const layer of g.composite_layers || []) addGroup(layer?.composite_group_id);
+  }
+
+  const allProducts = await fetchScopedProductsOrThrow(
+    supabase,
+    [...scopeGroupIds],
+    [...scopeProductIds],
+  );
+  const facheteExtraGroups = [
+    ...new Set(
+      (allProducts || [])
+        .filter((p: any) => p.is_fachetado && p.fachete_material_group_id)
+        .map((p: any) => String(p.fachete_material_group_id))
+        .filter((id) => !scopeGroupIds.has(id)),
+    ),
+  ];
+  if (facheteExtraGroups.length > 0) {
+    const extra = await fetchScopedProductsOrThrow(supabase, facheteExtraGroups);
+    const seen = new Set(allProducts.map((p: any) => p.id));
+    for (const p of extra) {
+      if (!seen.has(p.id)) allProducts.push(p);
+    }
+  }
+
+  const componentProductIds = [...new Set(allProducts.map((p: any) => p.id).filter(Boolean))];
+  let componentSheets: any[] = [];
+  if (componentProductIds.length > 0) {
+    const componentSheetsResult = await supabase
+      .from('component_sheets')
+      .select('product_id, dimensions_width, dimensions_length, dimensions_unit, yield_per_size, yield_per_sole, products!inner(group_id, name, color, unit)')
+      .in('product_id', componentProductIds);
+    assertQuerySucceeded('fichas de componentes', componentSheetsResult);
+    componentSheets = componentSheetsResult.data || [];
+  }
 
   const sheetsMap = new Map((sheetsData || []).map(s => [s.id, s]));
   const saleItemsMap = new Map((saleOrderItems || []).map((si: any) => [si.id, si]));
+  const ordersWithoutSheet = ordersData.filter((order) => !sheetsMap.has(order.reference_id));
+  if (ordersWithoutSheet.length > 0) {
+    const labels = ordersWithoutSheet.map((order) => order.id).join(', ');
+    throw new Error(
+      `Não foi possível gerar a Lista de Separação: ${ordersWithoutSheet.length} OP(s) sem ficha técnica carregada (${labels}). Nenhum BOM parcial foi gerado.`,
+    );
+  }
 
   // Variantes de material das fichas envolvidas (troca de grupo por componente
   // + pin de solado). Mesma precedência do motor canônico/resolvers SQL.
@@ -206,11 +516,42 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
   {
     const variantIds = [...new Set((saleOrderItems || []).map((si: any) => si.material_variant_id).filter(Boolean))];
     if (variantIds.length > 0) {
-      const { data: variantRows } = await (supabase as any)
-        .from('reference_material_variants')
+      const variantResult = await supabase
+        .from('reference_material_variants' as never)
         .select('id, reference_id, upper_material_product_id, upper_material_group_id, lining_material_product_id, lining_material_group_id, insole_material_product_id, insole_material_group_id, insole_consumption_override, sole_material_product_id, sole_consumption_override, main_material_group_id')
         .in('id', variantIds);
+      assertQuerySucceeded('variantes de material', variantResult);
+      const variantRows = variantResult.data || [];
       for (const v of (variantRows || []) as any[]) variantsById.set(v.id, v);
+    }
+  }
+
+  // Amplia o escopo com pins/grupos da variante (carregados depois do seed).
+  {
+    const moreGroups: string[] = [];
+    const moreProducts: string[] = [];
+    for (const v of variantsById.values()) {
+      if (v.upper_material_group_id) moreGroups.push(v.upper_material_group_id);
+      if (v.lining_material_group_id) moreGroups.push(v.lining_material_group_id);
+      if (v.insole_material_group_id) moreGroups.push(v.insole_material_group_id);
+      if (v.main_material_group_id) moreGroups.push(v.main_material_group_id);
+      if (v.upper_material_product_id) moreProducts.push(v.upper_material_product_id);
+      if (v.lining_material_product_id) moreProducts.push(v.lining_material_product_id);
+      if (v.insole_material_product_id) moreProducts.push(v.insole_material_product_id);
+      if (v.sole_material_product_id) moreProducts.push(v.sole_material_product_id);
+    }
+    const missingGroups = moreGroups.filter((id) => !scopeGroupIds.has(id));
+    const seen = new Set(allProducts.map((p: any) => p.id));
+    const missingProducts = moreProducts.filter((id) => !seen.has(id));
+    if (missingGroups.length > 0 || missingProducts.length > 0) {
+      const extra = await fetchScopedProductsOrThrow(supabase, missingGroups, missingProducts);
+      for (const p of extra) {
+        if (!seen.has(p.id)) {
+          allProducts.push(p);
+          seen.add(p.id);
+        }
+      }
+      for (const id of missingGroups) scopeGroupIds.add(id);
     }
   }
   const packagingModeBySaleOrder = new Map<string, string | null>(
@@ -239,11 +580,13 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
   {
     const soleGroupIds = Array.from(new Set(sheetSoleGroupMap.values()));
     if (soleGroupIds.length > 0) {
-      const { data: conjugations } = await (supabase as any)
-        .from('sole_color_conjugations')
+      const conjugationsResult = await supabase
+        .from('sole_color_conjugations' as never)
         .select('sole_group_id, cabedal_color, palmilha_color, resolution_mode, is_default, active')
         .in('sole_group_id', soleGroupIds)
         .eq('active', true);
+      assertQuerySucceeded('coligações de cor do solado', conjugationsResult);
+      const conjugations = conjugationsResult.data || [];
       for (const c of (conjugations || []) as any[]) {
         const arr = soleConjugationsByGroup.get(c.sole_group_id) || [];
         arr.push({
@@ -261,10 +604,12 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
   // (sheet_id::corNormalizada), mesma paridade de match do SQL/motor canônico.
   const componentColorMap = new Map<string, Array<{ productId: string; quantityPerUnit: number }>>();
   {
-    const { data: componentColorMappings } = await (supabase as any)
-      .from('technical_sheet_component_colors')
+    const componentColorMappingsResult = await supabase
+      .from('technical_sheet_component_colors' as never)
       .select('sheet_id, cabedal_color, product_id, quantity_per_unit')
       .in('sheet_id', refIds);
+    assertQuerySucceeded('componentes por cor', componentColorMappingsResult);
+    const componentColorMappings = componentColorMappingsResult.data || [];
     for (const m of (componentColorMappings || []) as any[]) {
       if (!m.product_id) continue;
       const key = `${m.sheet_id}::${normalizeColorKey(m.cabedal_color)}`;
@@ -281,14 +626,42 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
   // (orderConsumption.ts).
   const componentColorDefaultMap = new Map<string, string>();
   {
-    const { data: componentColorDefaults } = await (supabase as any)
-      .from('component_color_defaults')
+    const componentColorDefaultsResult = await supabase
+      .from('component_color_defaults' as never)
       .select('group_id, cabedal_color, product_id, is_default')
       .eq('active', true);
+    assertQuerySucceeded('padrões globais de componentes por cor', componentColorDefaultsResult);
+    const componentColorDefaults = componentColorDefaultsResult.data || [];
     for (const d of (componentColorDefaults || []) as any[]) {
       if (!d.group_id || !d.product_id) continue;
       const key = d.is_default ? `${d.group_id}::*` : `${d.group_id}::${normalizeColorKey(d.cabedal_color)}`;
       componentColorDefaultMap.set(key, d.product_id);
+    }
+  }
+
+  // Produtos citados por componentes-por-cor / defaults precisam estar no escopo.
+  {
+    const moreProducts: string[] = [];
+    const moreGroups: string[] = [];
+    for (const rows of componentColorMap.values()) {
+      for (const row of rows) moreProducts.push(row.productId);
+    }
+    for (const [key, pid] of componentColorDefaultMap.entries()) {
+      moreProducts.push(pid);
+      const gid = key.split('::')[0];
+      if (gid) moreGroups.push(gid);
+    }
+    const seen = new Set(allProducts.map((p: any) => p.id));
+    const missingProducts = moreProducts.filter((id) => id && !seen.has(id));
+    const missingGroups = moreGroups.filter((id) => id && !scopeGroupIds.has(id));
+    if (missingGroups.length > 0 || missingProducts.length > 0) {
+      const extra = await fetchScopedProductsOrThrow(supabase, missingGroups, missingProducts);
+      for (const p of extra) {
+        if (!seen.has(p.id)) {
+          allProducts.push(p);
+          seen.add(p.id);
+        }
+      }
     }
   }
 
@@ -297,41 +670,53 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
   const liningColorMap = new Map<string, string>();
   const liningDefaultMap = new Map<string, string>();
   {
-    const { data: liningColorMappings } = await (supabase as any)
-      .from('technical_sheet_lining_colors')
+    const liningColorMappingsResult = await supabase
+      .from('technical_sheet_lining_colors' as never)
       .select('sheet_id, cabedal_color, lining_color')
       .in('sheet_id', refIds);
+    assertQuerySucceeded('mapeamentos de cor da forração', liningColorMappingsResult);
+    const liningColorMappings = liningColorMappingsResult.data || [];
     for (const m of (liningColorMappings || []) as any[]) {
       liningColorMap.set(`${m.sheet_id}::${normalizeColorKey(m.cabedal_color)}`, m.lining_color);
       if (m.cabedal_color === '__DEFAULT__') liningDefaultMap.set(m.sheet_id, m.lining_color);
     }
   }
 
-  // FORRO DO CABEDAL por número (dm²/par) do SOLADO — fonte do consumo do forro
-  // (2026-07-01), espelha orderConsumption/custeio. A ficha só escolhe grupo/cor.
+  // Specs do solado escopadas aos candidatos destas fichas (P1.1) — antes era
+  // full-table scan de sole_technical_specs.
   const liningSpecBySole = new Map<string, Record<string, number>>();
-  // FORRAÇÃO DA PALMILHA por número (dm²/par) do SOLADO
-  // (insole_lining_consumption_dm2) — mesma fonte do motor canônico
-  // (orderConsumption.ts) e do SQL by_grade. Faltava na Lista de Separação:
-  // o campo era buscado na ficha mas nunca emitido (auditoria 2026-07-19, BOM-1).
   const insoleLiningSpecBySole = new Map<string, Record<string, number>>();
-  // PALMILHA PLACA por número (dm²/par) do SOLADO (insole_consumption_dm2) —
-  // BOM-4: a Lista de Separação ignorava e usava só escalar/yield da ficha,
-  // divergindo do modal/débito quando o solado dirige o consumo.
   const insoleSpecBySole = new Map<string, Record<string, number>>();
-  // FACHETE por número (dm²/par) do SOLADO (fachete_lining_consumption_dm2) —
-  // BOM-5: componente inteiro faltava na Lista de Separação.
   const facheteSpecBySole = new Map<string, Record<string, number>>();
-  // Mapas JSONB canônicos do TIPO de solado. Eles vencem os campos `*_dm2`
-  // legados, que continuam como fallback por compatibilidade de cadastro.
   const liningConsumptionPerSizeBySole = new Map<string, Record<string, number>>();
   const insoleConsumptionPerSizeBySole = new Map<string, Record<string, number>>();
   const insoleLiningConsumptionPerSizeBySole = new Map<string, Record<string, number>>();
   const facheteConsumptionPerSizeBySole = new Map<string, Record<string, number>>();
   {
-    const { data: liningSpecs } = await (supabase as any)
-      .from('sole_technical_specs')
-      .select('sole_id, size, updated_at, lining_consumption_dm2, insole_lining_consumption_dm2, insole_consumption_dm2, fachete_lining_consumption_dm2, lining_consumption_per_size, insole_lining_consumption_per_size, insole_consumption_per_size, fachete_lining_consumption_per_size');
+    const soleCandidateIds = new Set<string>();
+    for (const pid of soleColorMap.values()) soleCandidateIds.add(pid);
+    for (const pid of sheetPrimarySoleMap.values()) soleCandidateIds.add(pid);
+    const soleCandidateGroupIds = new Set<string>([
+      ...sheetSoleGroupMap.values(),
+      ...soleColorGroupMap.values(),
+    ]);
+    for (const p of (allProducts || []) as any[]) {
+      if (p.group_id && soleCandidateGroupIds.has(p.group_id)) soleCandidateIds.add(p.id);
+      if (p.is_fachetado) soleCandidateIds.add(p.id);
+    }
+    for (const v of variantsById.values()) {
+      if (v?.sole_material_product_id) soleCandidateIds.add(v.sole_material_product_id);
+    }
+
+    let liningSpecs: any[] = [];
+    if (soleCandidateIds.size > 0) {
+      const liningSpecsResult = await supabase
+        .from('sole_technical_specs' as never)
+        .select('sole_id, size, updated_at, lining_consumption_dm2, insole_lining_consumption_dm2, insole_consumption_dm2, fachete_lining_consumption_dm2, lining_consumption_per_size, insole_lining_consumption_per_size, insole_consumption_per_size, fachete_lining_consumption_per_size')
+        .in('sole_id', [...soleCandidateIds]);
+      assertQuerySucceeded('consumos técnicos do solado', liningSpecsResult);
+      liningSpecs = liningSpecsResult.data || [];
+    }
     for (const r of reduceSoleTechnicalSpecsByRecency(liningSpecs as any[])) {
       const v = Number(r.lining_consumption_dm2) || 0;
       if (v > 0 && r.size != null) {
@@ -386,6 +771,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
   // então divergia do modal, da ficha de operador e do débito SQL, e ainda
   // suprimia as linhas equivalentes do BOM via `stdCoveredProductIds`.
   const soleGroupStandardItemsBySole = new Map<string, Array<{ standardItemId: string; perPair: number; perSize: Record<string, number>; unit: string | null }>>();
+  const soleFiberPinBySole = new Map<string, string>();
   {
     const candidateIds = new Set<string>();
     for (const pid of soleColorMap.values()) candidateIds.add(pid);
@@ -401,11 +787,13 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       if (v?.sole_material_product_id) candidateIds.add(v.sole_material_product_id);
     }
     if (candidateIds.size > 0) {
-      const { data: stdItems } = await (supabase as any)
-        .from('sole_standard_items_consumption')
+      const stdItemsResult = await supabase
+        .from('sole_standard_items_consumption' as never)
         .select('sole_product_id, standard_item_id, size, consumption, unit')
         .in('sole_product_id', [...candidateIds])
         .gt('consumption', 0);
+      assertQuerySucceeded('itens-padrão legados do solado', stdItemsResult);
+      const stdItems = stdItemsResult.data || [];
       for (const r of (stdItems || []) as any[]) {
         const cons = Number(r.consumption) || 0;
         if (cons <= 0 || r.size == null || !r.standard_item_id) continue;
@@ -423,18 +811,28 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       if (candidateIds.has(p.id) && p.group_id) groupIdsForStd.add(p.group_id);
     }
     if (groupIdsForStd.size > 0) {
-      const { data: groupItems } = await (supabase as any)
-        .from('sole_group_standard_items')
-        .select('sole_group_id, material_product_id, consumption_per_pair, consumption_per_size, unit')
+      const groupItemsResult = await supabase
+        .from('sole_group_standard_items' as never)
+        .select('sole_group_id, role, material_product_id, consumption_per_pair, consumption_per_size, unit')
         .in('sole_group_id', [...groupIdsForStd]);
+      assertQuerySucceeded('itens-padrão vigentes do grupo de solado', groupItemsResult);
+      const groupItems = groupItemsResult.data || [];
       const byGroup = new Map<string, any[]>();
+      const fiberPinByGroup = new Map<string, string>();
       for (const r of (groupItems || []) as any[]) {
+        if (r.role === 'placa_palmilha' && r.material_product_id) {
+          fiberPinByGroup.set(r.sole_group_id, r.material_product_id);
+          continue;
+        }
+        if (r.role != null) continue;
         const arr = byGroup.get(r.sole_group_id) || [];
         arr.push(r);
         byGroup.set(r.sole_group_id, arr);
       }
       for (const p of (allProducts || []) as any[]) {
         if (!candidateIds.has(p.id) || !p.group_id) continue;
+        const fiberPin = fiberPinByGroup.get(p.group_id);
+        if (fiberPin) soleFiberPinBySole.set(p.id, fiberPin);
         const rows = byGroup.get(p.group_id);
         if (!rows || rows.length === 0) continue;
         const arr = soleGroupStandardItemsBySole.get(p.id) || [];
@@ -494,16 +892,20 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
   };
   const fallbackAverageWarning = (missing: string[]): string =>
     `Tamanhos usando a média escalar da ficha (sem consumo por numeração): ${missing.join(', ')}`;
+  const zeroSizesWarning = (missing: string[]): string =>
+    `Tamanhos SEM consumo cadastrado — contribuíram ZERO ao cálculo: ${missing.join(', ')}`;
+  const sizeWarning = (missing: string[], scalar: number): string | undefined =>
+    missing.length === 0 ? undefined : (scalar > 0 ? fallbackAverageWarning(missing) : zeroSizesWarning(missing));
 
   const groupHasColor = (groupName: string, color: string): boolean => {
     if (!groupName || !color || color === '—') return false;
-    const normalizedColor = color.toLowerCase().trim();
+    const normalizedColor = normalizeColorKey(color);
     const group = (productGroups || []).find((g: any) => g.name === groupName);
     if (!group) return false;
     return (allProducts || []).some((p: any) => {
       if (p.group_id !== group.id) return false;
-      const pName = (p.name || '').toLowerCase();
-      const pColor = (p.color || '').toLowerCase();
+      const pName = normalizeColorKey(p.name);
+      const pColor = normalizeColorKey(p.color);
       if (pColor === normalizedColor || pName === normalizedColor) return true;
       const afterDelimiter = pName.includes(':') ? pName.split(':').pop()?.trim() : pName.includes('-') ? pName.split('-').pop()?.trim() : '';
       if (afterDelimiter && afterDelimiter === normalizedColor) return true;
@@ -520,11 +922,19 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     return (allProducts || []).filter((p: any) => p.group_id === group.id).length;
   };
 
+  const hasPositivePerSizeConsumption = (value: unknown): boolean =>
+    !!value
+    && typeof value === 'object'
+    && Object.values(value as Record<string, unknown>).some((entry) => Number(entry) > 0);
+
   const resolveOption = (
     mainGroup: string, mainConsumption: number,
-    alternatives: any[], color: string
+    alternatives: UpperMaterialAccessory[], color: string,
+    mainConsumptionPerSize?: unknown,
   ): { group: string; consumption: number } | null => {
-    if (mainGroup && mainConsumption > 0) {
+    const mainHasConsumption = mainConsumption > 0
+      || hasPositivePerSizeConsumption(mainConsumptionPerSize);
+    if (mainGroup && mainHasConsumption) {
       if (!color || color === '—' || groupHasColor(mainGroup, color)) {
         return { group: mainGroup, consumption: mainConsumption };
       }
@@ -532,13 +942,18 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     for (const alt of alternatives) {
       const altGroup = alt.material?.trim();
       const altConsumption = Number(alt.consumption) || 0;
-      if (altGroup && altConsumption > 0 && groupHasColor(altGroup, color)) {
+      const altHasConsumption = altConsumption > 0
+        || hasPositivePerSizeConsumption(alt.consumption_per_size);
+      if (altGroup && altHasConsumption && groupHasColor(altGroup, color)) {
         return { group: altGroup, consumption: altConsumption };
       }
     }
     const candidates = [
-      ...(mainGroup && mainConsumption > 0 ? [{ group: mainGroup, consumption: mainConsumption }] : []),
-      ...alternatives.filter((a: any) => a.material?.trim() && (Number(a.consumption) || 0) > 0).map((a: any) => ({ group: a.material.trim(), consumption: Number(a.consumption) })),
+      ...(mainGroup && mainHasConsumption ? [{ group: mainGroup, consumption: mainConsumption }] : []),
+      ...alternatives
+        .filter((a) => a.material?.trim()
+          && ((Number(a.consumption) || 0) > 0 || hasPositivePerSizeConsumption(a.consumption_per_size)))
+        .map((a) => ({ group: a.material!.trim(), consumption: Number(a.consumption) || 0 })),
     ];
     if (candidates.length === 0) return null;
     candidates.sort((a, b) => countGroupProducts(b.group) - countGroupProducts(a.group));
@@ -549,7 +964,11 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
 
   for (const order of ordersData) {
     const sheet = sheetsMap.get(order.reference_id) as any;
-    if (!sheet) continue;
+    if (!sheet) {
+      throw new Error(
+        `Não foi possível gerar a Lista de Separação: a OP ${order.id} está sem ficha técnica carregada. Nenhum BOM parcial foi gerado.`,
+      );
+    }
 
     const saleItem = order.sale_order_item_id ? saleItemsMap.get(order.sale_order_item_id) as any : null;
     const item = {
@@ -567,6 +986,31 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     };
     const itemQuantity = Number(item.quantity) || 0;
     const orderColor = item.color || '—';
+    const itemPackagingMode = order.sale_order_id
+      ? (packagingModeBySaleOrder.get(order.sale_order_id) ?? null)
+      : null;
+
+    const packagingSoleGroup = sheet?.sole_group_id
+      ? (productGroups || []).find((group) => group.id === sheet.sole_group_id) || null
+      : null;
+    for (const packaging of resolveCanonicalPackaging({
+      mode: itemPackagingMode,
+      quantity: itemQuantity,
+      grade: item.grade,
+      soleGroup: packagingSoleGroup,
+      boxTypes,
+    })) {
+      addConsumptionRow(consumptionMap, {
+        componentType: 'Embalagem',
+        groupName: 'EMBALAGEM',
+        materialName: packaging.name,
+        productUnit: packaging.unit,
+        color: '—',
+        totalQuantity: packaging.required,
+        warning: packaging.warning,
+        boxTypeId: packaging.boxTypeId,
+      });
+    }
 
     // Variante de material do item do PV: troca a ORIGEM (grupo/produto) por
     // componente, com a área da ficha — espelha o motor canônico
@@ -598,13 +1042,19 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
 
     // Cabedal
     const allCabedalAccessories = Array.isArray(sheet?.components_accessories)
-      ? (sheet.components_accessories as any[]).filter((e: any) => e.material && !e.id)
+      ? (sheet.components_accessories as UpperMaterialAccessory[]).filter((e) => e.material && !e.id)
       : [];
-    const upperAlts = allCabedalAccessories.filter((e: any) => !e.mandatory);
-    const mandatoryCabedalMaterials = allCabedalAccessories.filter((e: any) => e.mandatory === true);
+    const upperAlts = allCabedalAccessories.filter((e) => !e.mandatory);
+    const mandatoryCabedalMaterials = allCabedalAccessories.filter((e) => e.mandatory === true);
     const upperMatch = upperVariantGroup
       ? { group: upperVariantGroup, consumption: Number(sheet?.upper_consumption) || 0 }
-      : resolveOption(sheet?.upper_material || '', Number(sheet?.upper_consumption) || 0, upperAlts, orderColor);
+      : resolveOption(
+          sheet?.upper_material || '',
+          Number(sheet?.upper_consumption) || 0,
+          upperAlts,
+          orderColor,
+          sheet?.upper_consumption_per_size,
+        );
     if (upperMatch) {
       const isPrincipal = !!upperVariantGroup || upperMatch.group === (sheet?.upper_material || '');
       // Pin de SKU (variante > ficha): a cs do produto pinado dirige a conversão
@@ -612,11 +1062,16 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       const upperPinId: string | null =
         (variant?.upper_material_product_id && (allProducts || []).some((p: any) => p.id === variant.upper_material_product_id))
           ? variant.upper_material_product_id
-          : (isPrincipal && (sheet as any)?.upper_material_product_id
-              && (allProducts || []).some((p: any) => p.id === (sheet as any).upper_material_product_id)
-            ? (sheet as any).upper_material_product_id
+          : (!upperVariantGroup && isPrincipal && sheet?.upper_material_product_id
+              && (allProducts || []).some((p) => p.id === sheet.upper_material_product_id)
+            ? sheet.upper_material_product_id
             : null);
-      const upperSheet = getConversionSheetForProduct(upperPinId, upperMatch.group, { color: orderColor, mode: 'linear', preferYield: true });
+      const upperResolution = resolveMaterialProductWithColorStatus(upperMatch.group, orderColor, allProducts || [], productGroups || [], { strictCompositeColor: !!upperVariantGroup });
+      const upperProduct = upperPinId
+        ? (allProducts || []).find((p) => p.id === upperPinId) || null
+        : upperResolution.product;
+      const upperColorMismatch = !!upperVariantGroup && !upperPinId && upperResolution.colorMismatch;
+      const upperSheet = getConversionSheetForProduct(upperProduct?.id, upperMatch.group, { color: orderColor, mode: 'linear', preferYield: true });
       const altRecord = isPrincipal ? null : upperAlts.find((a: any) => a.material === upperMatch.group);
       const overridePerSize = isPrincipal
         ? (sheet?.upper_consumption_per_size && Object.keys(sheet.upper_consumption_per_size).length > 0 ? sheet.upper_consumption_per_size : null)
@@ -625,21 +1080,49 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       // SQL — F2-02); o multiplicador por tamanho saiu (era só do TS).
       const { total: upperTotal } = calculateConsumptionWithUnit(item, upperMatch.consumption, upperSheet, 'metro', overridePerSize);
       addConsumptionRow(consumptionMap, {
-        componentType: 'Cabedal', groupName: upperMatch.group, materialName: 'Cabedal',
+        componentType: 'Cabedal', groupName: upperMatch.group, materialName: upperColorMismatch ? 'Cabedal' : upperProduct?.name || 'Cabedal',
         productUnit: 'metro', color: orderColor, totalQuantity: upperTotal,
+        colorMismatch: upperColorMismatch,
+        warning: upperColorMismatch ? `Cor ${orderColor} não cadastrada em ${upperMatch.group}. Cadastre o SKU antes de separar.` : undefined,
+        productIds: !upperColorMismatch && upperProduct?.id ? [upperProduct.id] : undefined,
       });
     }
 
     for (const mandMat of mandatoryCabedalMaterials) {
       const mandConsumption = Number(mandMat.consumption) || 0;
-      if (!mandMat.material || mandConsumption <= 0) continue;
-      // Item fixado (product_id): converte pela cs do produto pinado (F2-04).
-      const mandSheet = getConversionSheetForProduct(mandMat.product_id, mandMat.material, { color: orderColor, mode: 'linear', preferYield: true });
+      const mandHasPerSizeConsumption = hasPositivePerSizeConsumption(mandMat.consumption_per_size);
+      if (!mandMat.material || (mandConsumption <= 0 && !mandHasPerSizeConsumption)) continue;
+      // Item fixado (product_id) vence; sem pino resolve grupo+cor. A identidade
+      // física dirige tanto a conversão quanto a agregação operacional.
+      const followsUpper = upperAccessoryFollowsBaseMaterial(mandMat, sheet?.upper_material);
+      const followsVariant = followsUpper && !!upperVariantGroup;
+      const mandGroup = followsVariant ? upperVariantGroup : mandMat.material;
+      const variantPin = variant?.upper_material_product_id
+        ? (allProducts || []).find((p) => p.id === variant.upper_material_product_id) || null
+        : null;
+      const inheritedPin = followsUpper
+        ? variantPin || (!upperVariantGroup && sheet?.upper_material_product_id
+          ? (allProducts || []).find((p) => p.id === sheet.upper_material_product_id) || null
+          : null)
+        : null;
+      const mandResolution = resolveMaterialProductWithColorStatus(mandGroup, orderColor, allProducts || [], productGroups || [], { strictCompositeColor: followsVariant });
+      const mandProduct = mandMat.product_id
+        ? (allProducts || []).find((p) => p.id === mandMat.product_id) || null
+        : inheritedPin || mandResolution.product;
+      const mandColorMismatch = followsVariant && !inheritedPin && mandResolution.colorMismatch;
+      const mandSheet = getConversionSheetForProduct(mandProduct?.id, mandGroup, { color: orderColor, mode: 'linear', preferYield: true });
       const mandOverride = (mandMat.consumption_per_size && Object.keys(mandMat.consumption_per_size).length > 0) ? mandMat.consumption_per_size : null;
       const { total: mandTotal } = calculateConsumptionWithUnit(item, mandConsumption, mandSheet, 'metro', mandOverride);
+      const leftoverExtra = isLeftoverCabedalExtra(mandMat, sheet);
       addConsumptionRow(consumptionMap, {
-        componentType: 'Cabedal', groupName: mandMat.material, materialName: 'Material Fixo',
+        componentType: 'Cabedal', groupName: mandGroup,
+        materialName: mandColorMismatch ? 'Cabedal' : followsVariant ? mandProduct?.name || mandGroup : leftoverExtra
+          ? leftoverCabedalDisplayName({ ...mandMat, product_name: mandProduct?.name || mandMat.product_name })
+          : (mandProduct?.name || mandMat.label || 'Material Fixo'),
         productUnit: 'metro', color: orderColor, totalQuantity: mandTotal,
+        colorMismatch: mandColorMismatch,
+        warning: mandColorMismatch ? `Cor ${orderColor} não cadastrada em ${mandGroup}. Cadastre o SKU antes de separar.` : undefined,
+        productIds: !mandColorMismatch && mandProduct?.id ? [mandProduct.id] : undefined,
       });
     }
 
@@ -715,8 +1198,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       if (isPrincipalLining && hasLiningSolePerSize) {
         const liningDm2 = calculateGradeBasedDm2(item, liningMatch.consumption, null, liningSolePerSize, soleProductId);
         liningTotal = liningWidthMissing ? liningDm2 : convertDm2ToLinearMeters(liningDm2, liningSheet);
-        const missing = sizesMissingFromSpec(item.grade, liningSolePerSize);
-        if (missing.length > 0 && liningMatch.consumption > 0) liningWarning = fallbackAverageWarning(missing);
+        liningWarning = sizeWarning(sizesMissingFromSpec(item.grade, liningSolePerSize), liningMatch.consumption);
       } else {
         liningTotal = calculateConsumptionWithUnit(item, liningMatch.consumption, liningSheet, 'metro', liningOverride, soleProductId).total;
       }
@@ -739,18 +1221,30 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       || ((insoleSoleProd as any)?.sole_classification === 'palmilha_pronta');
     if (!isPalmilhaPronta) {
       const insoleGroupName = insoleVariantGroup || sheet?.insole_material || '';
-      const insoleGroup = (productGroups || []).find((g: any) => g.name === insoleGroupName);
-      // Produto de palmilha RESOLVIDO como no SQL (F2-03): pin da variante >
-      // resolve_material_product (cor exata > cor no nome > maior estoque do
-      // grupo). É o produto que débito/reserva/custeio baixam — a unidade da
-      // linha segue a DELE.
+      let insoleGroup = (productGroups || []).find((g: any) => g.name === insoleGroupName);
+      // Produto de palmilha RESOLVIDO como no SQL: pin da variante > pin do
+      // Consumo Padrão do solado > produto de área do grupo.
       const insoleVariantPin = variant?.insole_material_product_id
         ? (allProducts || []).find((p: any) => p.id === variant.insole_material_product_id) || null
         : null;
+      const soleFiberPinId = soleProductIdForInsole
+        ? soleFiberPinBySole.get(soleProductIdForInsole) || null
+        : null;
+      const soleFiberPinProduct = soleFiberPinId
+        ? (allProducts || []).find((p: any) => p.id === soleFiberPinId) || null
+        : null;
       const resolvedPalmProd = insoleVariantPin
-        || resolveMaterialProductCanonical(insoleGroupName, orderColor, allProducts || [], productGroups || []);
+        || soleFiberPinProduct
+        || resolveInsoleBaseProductCanonical(insoleGroupName, orderColor, allProducts || [], productGroups || []);
+      const resolvedInsoleGroupName = insoleGroupName
+        || (resolvedPalmProd?.group_id
+          ? ((productGroups || []).find((g: any) => g.id === resolvedPalmProd.group_id)?.name || '')
+          : '');
+      if (!insoleGroup && resolvedPalmProd?.group_id) {
+        insoleGroup = (productGroups || []).find((g: any) => g.id === resolvedPalmProd.group_id) || null;
+      }
       // Ficha de conversão: cs do produto resolvido primeiro (F2-04).
-      const insoleSheet = getConversionSheetForProduct(resolvedPalmProd?.id, insoleGroupName, { mode: 'plate', preferYield: true });
+      const insoleSheet = getConversionSheetForProduct(resolvedPalmProd?.id, resolvedInsoleGroupName || insoleGroupName, { mode: 'plate', preferYield: true });
       // PLACA por número: ficha por número > mapa canônico do tipo de solado >
       // legado `insole_consumption_dm2` > escalar da ficha. Override legado da
       // variante é consumo explícito e continua vencendo todos esses mapas.
@@ -770,9 +1264,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
         ? calculateGradeBasedDm2(item, insoleScalarConsumption, null, insoleSolePerSize, soleProductIdForInsole)
         : calculateGradeBasedDm2(item, insoleScalarConsumption, insoleSheet, undefined, soleProductIdForInsole);
       const insoleMissing = hasInsoleSolePerSize ? sizesMissingFromSpec(item.grade, insoleSolePerSize) : [];
-      const insoleWarning = (insoleMissing.length > 0 && insoleScalarConsumption > 0)
-        ? fallbackAverageWarning(insoleMissing)
-        : undefined;
+      const insoleWarning = sizeWarning(insoleMissing, insoleScalarConsumption);
       const groupPlateArea = calcGroupPlateAreaDm2(insoleGroup);
       // Área da placa: dimensões do GRUPO prevalecem; fallback = dimensões da
       // própria ficha de componente (mesma conta do convertDm2ToPlates).
@@ -790,28 +1282,30 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       const insoleStockIsLinear = LINEAR_UNITS.has(insoleStockUnit.toLowerCase());
       if (insoleStockIsDm2) {
         addConsumptionRow(consumptionMap, {
-          componentType: 'Palmilha', groupName: insoleGroupName,
+          componentType: 'Palmilha', groupName: resolvedInsoleGroupName || insoleGroupName || resolvedPalmProd?.name || 'Palmilha',
           materialName: resolvedPalmProd?.name || 'Palmilha',
           productUnit: insoleStockUnit, color: resolvedPalmProd?.color || '—',
           totalQuantity: insoleDm2,
           plateEquivalent: insolePlateAreaDm2 > 0 ? insolePlates : undefined,
+          productIds: resolvedPalmProd?.id ? [resolvedPalmProd.id] : undefined,
           warning: insoleWarning,
         });
       } else if (insoleStockIsLinear) {
-        const linSheet = getConversionSheetForProduct(resolvedPalmProd?.id, insoleGroupName, { mode: 'linear', preferYield: true });
+        const linSheet = getConversionSheetForProduct(resolvedPalmProd?.id, resolvedInsoleGroupName || insoleGroupName, { mode: 'linear', preferYield: true });
         const linWidthMissing = isLinearWidthMissing(linSheet as any, 'm');
         addConsumptionRow(consumptionMap, {
-          componentType: 'Palmilha', groupName: insoleGroupName,
+          componentType: 'Palmilha', groupName: resolvedInsoleGroupName || insoleGroupName || resolvedPalmProd?.name || 'Palmilha',
           materialName: resolvedPalmProd?.name || 'Palmilha',
           productUnit: linWidthMissing ? 'dm2' : 'metro',
           color: resolvedPalmProd?.color || '—',
           totalQuantity: linWidthMissing ? insoleDm2 : convertDm2ToLinearMeters(insoleDm2, linSheet as any),
           widthMissing: linWidthMissing,
+          productIds: resolvedPalmProd?.id ? [resolvedPalmProd.id] : undefined,
           warning: insoleWarning,
         });
       } else {
         addConsumptionRow(consumptionMap, {
-          componentType: 'Palmilha', groupName: insoleGroupName, materialName: 'Palmilha',
+          componentType: 'Palmilha', groupName: resolvedInsoleGroupName || insoleGroupName || 'Palmilha', materialName: 'Palmilha',
           productUnit: 'placa', color: '—', totalQuantity: insolePlates,
           warning: insoleWarning,
         });
@@ -844,13 +1338,14 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
         if (hasInsoleLiningSolePerSize) {
           const forrDm2 = calculateGradeBasedDm2(item, insoleLiningCons, null, insoleLiningSolePerSize, soleProductIdForInsole);
           forrTotal = forrWidthMissing ? forrDm2 : convertDm2ToLinearMeters(forrDm2, forrSheet);
-          const missing = sizesMissingFromSpec(item.grade, insoleLiningSolePerSize);
-          if (missing.length > 0 && insoleLiningCons > 0) forrWarning = fallbackAverageWarning(missing);
+          forrWarning = sizeWarning(sizesMissingFromSpec(item.grade, insoleLiningSolePerSize), insoleLiningCons);
         } else {
           forrTotal = calculateConsumptionWithUnit(item, insoleLiningCons, forrSheet, 'metro', undefined, soleProductIdForInsole).total;
         }
+        // componentType DISTINTO 'Forração Palmilha' (paridade orderConsumption):
+        // roteamento por setor (Corte Forração vs Corte Fibra / Aviamento) depende disso.
         if (forrTotal > 0 || forrWarning) addConsumptionRow(consumptionMap, {
-          componentType: 'Forração', groupName: liningGroupForPalm, materialName: 'Forração Palmilha',
+          componentType: 'Forração Palmilha', groupName: liningGroupForPalm, materialName: 'Forração Palmilha',
           productUnit: 'metro', color: orderColor, totalQuantity: forrTotal,
           widthMissing: forrWidthMissing,
           warning: forrWarning,
@@ -870,9 +1365,14 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     const resolvedSoleGroupName = resolvedSolePid
       ? (groupNameById((insoleSoleProd as any)?.group_id) || (insoleSoleProd as any)?.name || '')
       : '';
+    const unresolvedSoleGroupName = (sheet?.sole_material || '').toString().trim();
+    const soleUnresolvedWarning = !resolvedSolePid && unresolvedSoleGroupName
+      ? `Solado "${unresolvedSoleGroupName}" não resolve produto no estoque (texto livre na ficha, sem grupo de solado, sem solado principal e sem mapeamento por cor) — NÃO será reservado nem debitado, e não entra no custeio. Vincule o solado em Ficha Técnica → Solado.`
+      : undefined;
     addConsumptionRow(consumptionMap, {
       componentType: 'Solado', groupName: resolvedSoleGroupName || sheet?.sole_material || '', materialName: 'Solado',
       productUnit: 'par', color: soleColor, totalQuantity: itemQuantity,
+      warning: soleUnresolvedWarning,
     });
 
     // FACHETE — forração EXTRA do salto fachetado (BOM-5). Espelha o motor
@@ -922,14 +1422,14 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
         const facheteWidthMissing = isLinearWidthMissing(facheteSheet, 'm');
         const facheteTotal = facheteWidthMissing ? facheteDm2 : convertDm2ToLinearMeters(facheteDm2, facheteSheet);
         addConsumptionRow(consumptionMap, {
-          componentType: 'Forração', groupName: facheteMaterialName, materialName: 'Fachete',
+          componentType: 'Fachete', groupName: facheteMaterialName, materialName: 'Fachete',
           productUnit: facheteWidthMissing ? 'dm2' : 'metro', color: facheteLiningColor,
           totalQuantity: facheteTotal, widthMissing: facheteWidthMissing,
           warning: facheteWarning,
         });
       } else {
         addConsumptionRow(consumptionMap, {
-          componentType: 'Forração', groupName: facheteMaterialName || 'Fachete', materialName: 'Fachete',
+          componentType: 'Fachete', groupName: facheteMaterialName || 'Fachete', materialName: 'Fachete',
           productUnit: 'dm2', color: facheteLiningColor, totalQuantity: 0,
           warning: 'Solado fachetado sem consumo de fachete cadastrado — a forração extra do salto NÃO entrou na Lista. Cadastre fachete_lining_consumption_dm2 em Materiais → Solado.',
         });
@@ -1119,31 +1619,11 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       ...variantBomLines,
     ];
 
-    // Embalagem: a ficha pode listar VÁRIAS caixas no BOM (colmeia + individual)
-    // como ALTERNATIVAS. Quando o pedido define um packaging_mode, mostra só a
-    // caixa do modo escolhido — senão a Lista de Separação somava/exibia os dois
-    // modos no grupo "Embalagem". Pré-varre os tipos de caixa presentes nesta
-    // ficha pra o filtro só agir quando há alternativa real (espelha o modal —
-    // orderConsumption.ts / shouldShowCaixaForMode).
-    const itemPackagingMode = order.sale_order_id
-      ? (packagingModeBySaleOrder.get(order.sale_order_id) ?? null)
-      : null;
-    const presentCaixaTypes = new Set<CollectiveType>();
-    if (itemPackagingMode) {
-      for (const m of itemMaterials) {
-        const p = m.products as any;
-        if (!p) continue;
-        const gName = (m.product_groups as any)?.name || p.category || p.name || '';
-        if (classifyBomMaterial(gName, p.name || '', p.category || '') !== 'Embalagem') continue;
-        const t = caixaCollectiveTypeFromName(p.name);
-        if (t) presentCaixaTypes.add(t);
-      }
-    }
-
     for (const material of itemMaterials) {
       const product = material.products as any;
       const group = material.product_groups as any;
       if (!product) continue;
+      if (legacyPackagingProductIds.has(material.product_id)) continue;
 
       // Skip se já entrou via componentes diretos/por cor (BOM-6) — direct tem
       // prioridade; BOM é fallback pra materiais não declarados direto (mesma
@@ -1157,11 +1637,6 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       const groupKey = groupName.toLowerCase();
       const specHasGroup = specGroupsWithConsumption.has(groupKey);
       const bomType = classifyBomMaterial(groupName, product.name || '', product.category || '');
-
-      // Embalagem com modo definido: pula a caixa que NÃO é a do packaging_mode
-      // do pedido (só quando há alternativas reais na ficha — ver pré-varredura).
-      if (bomType === 'Embalagem'
-        && !shouldShowCaixaForMode(product.name, itemPackagingMode, presentCaixaTypes)) continue;
 
       if (specHasGroup) {
         const isUpperGroup = upperMatch?.group?.toLowerCase() === groupKey;
@@ -1183,12 +1658,6 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       const rawQty = (Number(material.quantity_per_unit) || 0) * itemQuantity;
       let totalQty = rawQty;
       let widthMissing = false;
-
-      // Espelha o consumo do PV e o débito SQL: caixa é inteira e fecha por
-      // item/OP antes de consolidar. Fitilho em metro permanece fracionário.
-      if (bomType === 'Embalagem') {
-        totalQty = wholePackagingDemand(rawQty, productUnit);
-      }
 
       // Materiais de ÁREA cortados de bobina (napa/couro): têm ficha de
       // componente e quantity_per_unit está em dm²/par. Converter para metros
@@ -1224,13 +1693,19 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
   // Substitui as tiras calculadas por rótulo pelos snapshots persistidos do
   // worker. O restante do BOM continua no motor existente. Esta leitura ocorre
   // depois da confirmação do PV (picking), quando a view canônica já conhece
-  // variante/base/receita exatas e a origem escolhida.
+  // variante/base/receita exatas e a origem escolhida. Quantidade vem da view
+  // de demandas: `planned_finished_m`/`remaining_finished_m` da view de picking
+  // não descontam toda a cobertura já comprometida.
   if (saleOrderItemIds.length > 0) {
-    const { data: canonicalStraps, error: canonicalStrapsError } = await (supabase as any)
-      .from('v_strap_picking_operational')
-      .select('*')
-      .in('sale_order_item_id', saleOrderItemIds)
-      .not('status', 'in', '(superseded,cancelled,error)');
+    const [canonicalStrapsResult, netDemandById] = await Promise.all([
+      canonicalStrapClient
+        .from('v_strap_picking_operational')
+        .select('*')
+        .in('sale_order_item_id', saleOrderItemIds)
+        .not('status', 'in', '(superseded,cancelled,error)'),
+      fetchCanonicalStrapNetDemands(saleOrderItemIds),
+    ]);
+    const { data: canonicalStraps, error: canonicalStrapsError } = canonicalStrapsResult;
     if (canonicalStrapsError) throw canonicalStrapsError;
 
     const expectedTechnicalLineIds = new Set<string>();
@@ -1252,24 +1727,42 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
           'Reprocesse o pedido na aba Tiras antes de separar; nenhum cálculo legado foi usado.',
         );
       }
+    }
 
+    // Snapshot antigo pode não carregar mais `strap_colors`, embora a demanda
+    // persistida exista. A presença da linha canônica basta para substituir o
+    // cálculo legado; exigir o JSON do item faria o bruto reaparecer nesses PVs.
+    if ((canonicalStraps || []).length > 0) {
       for (const [key, row] of consumptionMap) {
         if (row.componentType === 'Tiras') consumptionMap.delete(key);
       }
       for (const row of canonicalStraps as any[]) {
+        const netDemand = netDemandForPickingRow(row, netDemandById);
         addConsumptionRow(consumptionMap, {
           componentType: 'Tiras',
           groupName: row.finished_product_name || 'Tira sem cadastro',
           materialName: row.source_mode === 'buy_ready' ? 'Comprada pronta' : 'Produção interna',
           productUnit: 'm',
           color: row.color_name || '—',
-          totalQuantity: Number(row.planned_finished_m) || 0,
+          // Falta líquida ainda operacional: já desconta atendimento parcial,
+          // tira pronta reservada e inbound acabado comprometido. Zero é
+          // cobertura completa e, portanto, não gera linha de separação.
+          totalQuantity: nonNegativeQuantity(netDemand.replenishment_required_m),
           strapVariantId: row.strap_variant_id || null,
           recipeId: row.recipe_id || null,
           baseProductId: row.base_product_id || null,
           technicalStrapLineIds: row.technical_strap_line_id
             ? [row.technical_strap_line_id]
             : [],
+          strapBaseRequiredM: row.source_mode === 'internal'
+            ? nonNegativeQuantity(netDemand.base_required_m)
+            : undefined,
+          strapBaseName: row.source_mode === 'internal'
+            ? row.base_product_name || null
+            : null,
+          strapConfirmedYieldMPerM: row.source_mode === 'internal'
+            ? nonNegativeQuantity(row.confirmed_yield_snapshot) || null
+            : null,
         });
       }
     }
@@ -1335,11 +1828,10 @@ export async function calculateSoleBreakdownByGrade(orderIds: string[]): Promise
   const saleOrderItemIds = [...new Set(ordersData.map(o => (o as any).sale_order_item_id).filter(Boolean))] as string[];
 
   const [
-    { data: sheets },
-    { data: soleMappings },
-    { data: allProducts },
-    { data: productGroups },
-    { data: saleOrderItems },
+    sheetsResult,
+    soleMappingsResult,
+    productGroupsResult,
+    saleOrderItemsResult,
   ] = await Promise.all([
     supabase
       .from('technical_sheets')
@@ -1349,13 +1841,42 @@ export async function calculateSoleBreakdownByGrade(orderIds: string[]): Promise
       .from('technical_sheet_sole_colors')
       .select('sheet_id, product_color, sole_product_id, sole_group_id')
       .in('sheet_id', refIds),
-    // `quantity` entra pra cascata (P0/P2 escolhem por maior estoque).
-    supabase.from('products').select('id, name, color, group_id, quantity').eq('active', true),
     supabase.from('product_groups').select('id, name'),
     saleOrderItemIds.length > 0
       ? supabase.from('sale_order_items').select('id, material_variant_id').in('id', saleOrderItemIds)
-      : Promise.resolve({ data: [] as any[] }),
+      : Promise.resolve({ data: [] as Array<{ id: string; material_variant_id: string | null }>, error: null }),
   ]);
+
+  const requiredQueries: Array<[string, QueryResultLike]> = [
+    ['fichas técnicas da grade de solados', sheetsResult],
+    ['mapeamentos de cor da grade de solados', soleMappingsResult],
+    ['grupos da grade de solados', productGroupsResult],
+    ['itens dos pedidos da grade de solados', saleOrderItemsResult],
+  ];
+  for (const [label, result] of requiredQueries) assertQuerySucceeded(label, result);
+
+  const sheets = sheetsResult.data || [];
+  const soleMappings = soleMappingsResult.data || [];
+  const productGroups = productGroupsResult.data || [];
+  const saleOrderItems = saleOrderItemsResult.data || [];
+
+  const soleGroupIds = new Set<string>();
+  const soleProductIds = new Set<string>();
+  for (const s of (sheets || []) as any[]) {
+    if (s.sole_group_id) soleGroupIds.add(s.sole_group_id);
+    if (s.primary_sole_id) soleProductIds.add(s.primary_sole_id);
+  }
+  for (const m of (soleMappings || []) as any[]) {
+    if (m.sole_group_id) soleGroupIds.add(m.sole_group_id);
+    if (m.sole_product_id) soleProductIds.add(m.sole_product_id);
+  }
+
+  // Só SKUs dos grupos de solado destas fichas (P1.1).
+  const allProducts = await fetchScopedProductsOrThrow(
+    supabase,
+    [...soleGroupIds],
+    [...soleProductIds],
+  );
 
   const sheetMap = new Map<string, any>((sheets || []).map((s: any) => [s.id, s]));
   const groupNameById = new Map<string, string>((productGroups || []).map((g: any) => [g.id, g.name]));
@@ -1379,11 +1900,13 @@ export async function calculateSoleBreakdownByGrade(orderIds: string[]): Promise
   {
     const soleGroupIds = Array.from(new Set(sheetSoleGroupMap.values()));
     if (soleGroupIds.length > 0) {
-      const { data: conjugations } = await (supabase as any)
-        .from('sole_color_conjugations')
+      const conjugationsResult = await supabase
+        .from('sole_color_conjugations' as never)
         .select('sole_group_id, cabedal_color, palmilha_color, resolution_mode, is_default, active')
         .in('sole_group_id', soleGroupIds)
         .eq('active', true);
+      assertQuerySucceeded('coligações de cor da grade de solados', conjugationsResult);
+      const conjugations = conjugationsResult.data || [];
       for (const c of (conjugations || []) as any[]) {
         const arr = soleConjugationsByGroup.get(c.sole_group_id) || [];
         arr.push({
@@ -1403,10 +1926,12 @@ export async function calculateSoleBreakdownByGrade(orderIds: string[]): Promise
     const variantIds = [...new Set((saleOrderItems || []).map((si: any) => si.material_variant_id).filter(Boolean))];
     const variantSoleById = new Map<string, string>();
     if (variantIds.length > 0) {
-      const { data: variantRows } = await (supabase as any)
-        .from('reference_material_variants')
+      const variantRowsResult = await supabase
+        .from('reference_material_variants' as never)
         .select('id, sole_material_product_id')
         .in('id', variantIds);
+      assertQuerySucceeded('variantes de solado da grade', variantRowsResult);
+      const variantRows = variantRowsResult.data || [];
       for (const v of (variantRows || []) as any[]) {
         if (v.sole_material_product_id) variantSoleById.set(v.id, v.sole_material_product_id);
       }
@@ -1415,6 +1940,15 @@ export async function calculateSoleBreakdownByGrade(orderIds: string[]): Promise
       const pid = si.material_variant_id ? variantSoleById.get(si.material_variant_id) : undefined;
       if (pid) variantSoleByItem.set(si.id, pid);
     }
+
+    const missingVariantSoles = [...variantSoleById.values()].filter((id) => !productById.has(id));
+    if (missingVariantSoles.length > 0) {
+      const extra = await fetchScopedProductsOrThrow(supabase, [], missingVariantSoles);
+      for (const p of extra) {
+        productById.set(p.id, p);
+        allProducts.push(p);
+      }
+    }
   }
 
   const breakdown = new Map<string, SoleBreakdownRow>();
@@ -1422,7 +1956,11 @@ export async function calculateSoleBreakdownByGrade(orderIds: string[]): Promise
 
   for (const order of ordersData) {
     const sheet = sheetMap.get(order.reference_id);
-    if (!sheet) continue;
+    if (!sheet) {
+      throw new Error(
+        `Não foi possível gerar a grade de solados: a OP ${order.id} está sem ficha técnica carregada. Nenhuma grade parcial foi gerada.`,
+      );
+    }
     const variantPid = (order as any).sale_order_item_id
       ? variantSoleByItem.get((order as any).sale_order_item_id)
       : undefined;
@@ -1452,10 +1990,17 @@ export async function calculateSoleBreakdownByGrade(orderIds: string[]): Promise
       : (((sheet.sole_material || '').toString().trim() || '—').trim() || '—');
     const soleColor = resolvedProd
       ? (((resolvedProd.color || '').toString().trim() || '—').trim() || '—')
-      : (((sheet.sole_color || '').toString().trim() || '—').trim() || '—');
+      : ((((order.color || sheet.sole_color || '').toString().trim()) || '—').trim() || '—');
 
     const grade = (order.grade as Record<string, number> | null) || {};
-    const baseSum = Object.values(grade).reduce((s, v) => s + (Number(v) || 0), 0);
+    const baseGrade: Record<string, number> = {};
+    for (const [size, raw] of Object.entries(grade)) {
+      const quantity = Number(raw);
+      if (!size.startsWith('_') && Number.isFinite(quantity) && quantity > 0) {
+        baseGrade[size] = quantity;
+      }
+    }
+    const baseSum = Object.values(baseGrade).reduce((s, v) => s + v, 0);
     const orderTotal = Number(order.quantity) || 0;
     if (orderTotal <= 0) continue;
     const multiplier = baseSum > 0 ? orderTotal / baseSum : 0;
@@ -1467,8 +2012,8 @@ export async function calculateSoleBreakdownByGrade(orderIds: string[]): Promise
     const row = breakdown.get(key)!;
 
     if (baseSum > 0) {
-      for (const [size, qty] of Object.entries(grade)) {
-        const scaled = Math.round((Number(qty) || 0) * multiplier);
+      const scaledGrade = scaleGradeWithLargestRemainder(baseGrade, multiplier, orderTotal);
+      for (const [size, scaled] of Object.entries(scaledGrade)) {
         if (scaled > 0) {
           row.sizes[size] = (row.sizes[size] || 0) + scaled;
           sizeSet.add(size);
@@ -1504,8 +2049,10 @@ export async function calculateSoleBreakdownByGrade(orderIds: string[]): Promise
  * reconstrói rolo, bandas ou largura genéricos. O bloco permanece separado dos
  * materiais BOM normais na Lista de Separação e no Resumo de Consumo do PV.
  *
- * Identidade, metragem, origem, receita e largura vêm da preview canônica do PV.
- * Não há fallback por nome/grupo/cor nem consulta à tabela de receitas legada.
+ * Identidade e snapshots de conferência vêm das fontes canônicas do PV. A
+ * quantidade operacional vem obrigatoriamente do netting persistido pelo
+ * worker: estoque acabado, inbound comprometido e atendimento parcial já foram
+ * descontados antes deste código. Não há fallback bruto por nome/grupo/cor.
  */
 export async function calculateArtisanalStrapRollCut(orderIds: string[]): Promise<ArtisanalStrapCutRow[]> {
   if (orderIds.length === 0) return [];
@@ -1524,19 +2071,107 @@ export async function calculateArtisanalStrapRollCut(orderIds: string[]): Promis
     .filter(Boolean));
   if (saleOrderIds.length === 0 || selectedItemIds.size === 0) return [];
 
-  const results = await Promise.all(saleOrderIds.map((saleOrderId) =>
-    (supabase as any).rpc('preview_sale_order_strap_demand', {
-      p_sale_order_id: saleOrderId,
-    })));
+  const selectedItemIdList = [...selectedItemIds] as string[];
+  const [results, pickingResult, netDemandById] = await Promise.all([
+    Promise.all(saleOrderIds.map((saleOrderId) =>
+      canonicalStrapClient.rpc('preview_sale_order_strap_demand', {
+        p_sale_order_id: saleOrderId,
+      }))),
+    canonicalStrapClient
+      .from('v_strap_picking_operational')
+      .select('*')
+      .in('sale_order_item_id', selectedItemIdList)
+      .eq('source_mode', 'internal')
+      .not('status', 'in', '(superseded,cancelled,error)'),
+    fetchCanonicalStrapNetDemands(selectedItemIdList),
+  ]);
+  if (pickingResult.error) throw pickingResult.error;
 
-  const previews = [];
+  const previewByLine = new Map<string, ReturnType<typeof parseCanonicalStrapDemandPreview>>();
   for (const result of results as Array<{ data?: unknown; error?: { message?: string } | null }>) {
     if (result.error) throw result.error;
     for (const raw of (Array.isArray(result.data) ? result.data : []) as Record<string, unknown>[]) {
       const preview = parseCanonicalStrapDemandPreview(raw);
-      if (preview.saleOrderItemId && selectedItemIds.has(preview.saleOrderItemId)) previews.push(preview);
+      if (preview.saleOrderItemId && selectedItemIds.has(preview.saleOrderItemId)
+          && preview.technicalStrapLineId) {
+        previewByLine.set(
+          `${preview.saleOrderItemId}::${preview.technicalStrapLineId}`,
+          preview,
+        );
+      }
     }
   }
 
-  return canonicalStrapCutRows(previews);
+  const pickingRows = ((pickingResult.data || []) as Record<string, unknown>[])
+    .filter((row) => row.source_mode === 'internal'
+      && selectedItemIds.has(String(row.sale_order_item_id || '')));
+  const resolvedPickingKeys = new Set(pickingRows.map((row) =>
+    `${String(row.sale_order_item_id || '')}::${String(row.technical_strap_line_id || '')}`));
+  const missingPickingLines = [...previewByLine.entries()]
+    .filter(([, preview]) => preview.sourceMode === 'internal')
+    .map(([key]) => key)
+    .filter((key) => !resolvedPickingKeys.has(key));
+  if (missingPickingLines.length > 0) {
+    throw new Error(
+      `A separação encontrou ${missingPickingLines.length} tira(s) interna(s) sem demanda canônica. ` +
+      'Reprocesse o pedido na aba Tiras; a metragem bruta da preview não foi usada.',
+    );
+  }
+
+  const netPreviews: ReturnType<typeof parseCanonicalStrapDemandPreview>[] = [];
+  for (const row of pickingRows) {
+    const netDemand = netDemandForPickingRow(row, netDemandById);
+    const netFinishedM = nonNegativeQuantity(netDemand.replenishment_required_m);
+    if (netFinishedM <= 0) continue;
+
+    const saleOrderItemId = String(row.sale_order_item_id || '');
+    const technicalStrapLineId = String(row.technical_strap_line_id || '');
+    const preview = previewByLine.get(`${saleOrderItemId}::${technicalStrapLineId}`)
+      || parseCanonicalStrapDemandPreview({
+        sale_order_item_id: saleOrderItemId,
+        technical_strap_line_id: technicalStrapLineId,
+        strap_variant_id: row.strap_variant_id,
+        source_mode: 'internal',
+        recipe_id: row.recipe_id,
+        base_product_id: row.base_product_id,
+        finished_product_id: row.finished_product_id,
+        resolved: {
+          strap_product_name: row.finished_product_name,
+          strap_color_name: row.color_name,
+          base_product_name: row.base_product_name,
+          confirmed_yield_m_per_m: row.confirmed_yield_snapshot,
+        },
+      });
+    const baseRequiredM = nonNegativeQuantity(netDemand.base_required_m);
+    const confirmedYieldMPerM = nonNegativeQuantity(row.confirmed_yield_snapshot)
+      || nonNegativeQuantity(preview.confirmedYieldMPerM);
+    const blockingReasons = [...preview.blockingReasons];
+    if (!row.strap_variant_id) blockingReasons.push('Variante canônica da tira ausente');
+    if (!row.recipe_id) blockingReasons.push('Receita canônica da tira ausente');
+    if (!row.base_product_id) blockingReasons.push('Material-base canônico ausente');
+    if (!(confirmedYieldMPerM > 0)) blockingReasons.push('Rendimento confirmado ausente');
+    if (!(baseRequiredM > 0)) blockingReasons.push('Necessidade líquida de napa não persistida');
+
+    netPreviews.push({
+      ...preview,
+      saleOrderItemId,
+      technicalStrapLineId,
+      strapVariantId: String(row.strap_variant_id || '') || null,
+      sourceMode: 'internal',
+      // `canonicalStrapCutRows` agrega o campo de metragem recebido. Nesta
+      // fronteira ele recebe a falta LÍQUIDA persistida, nunca o bruto da RPC.
+      grossRequiredM: netFinishedM,
+      recipeId: String(row.recipe_id || '') || null,
+      baseProductId: String(row.base_product_id || '') || null,
+      finishedProductId: String(row.finished_product_id || '') || null,
+      strapProductName: String(row.finished_product_name || preview.strapProductName || 'Tira sem cadastro'),
+      strapColorName: String(row.color_name || preview.strapColorName || '—'),
+      baseProductName: String(row.base_product_name || preview.baseProductName || '') || null,
+      confirmedYieldMPerM,
+      baseRequiredM,
+      blockingReasons: Array.from(new Set(blockingReasons)),
+    });
+  }
+
+  return canonicalStrapCutRows(netPreviews);
 }

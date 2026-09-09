@@ -8,6 +8,7 @@ const read = (path: string) => readFileSync(resolve(ROOT, path), 'utf8');
 const migration = read('supabase/migrations/20270101005050_resolve_s039_strap_catalog.sql');
 const autoIntentMigration = read('supabase/migrations/20270101005500_auto_internal_strap_intent_from_pv.sql');
 const itemForm = read('src/components/sale-orders/SaleOrderItemForm.tsx');
+const strapReconciler = read('src/lib/reconcileStrapSnapshots.ts');
 const drawer = read('src/components/sale-orders/StrapCatalogResolutionDrawer.tsx');
 const editor = read('src/components/artisanal-straps/ArtisanalStrapEditor.tsx');
 const createDialog = read('src/components/sale-orders/CreateStrapProductDialog.tsx');
@@ -173,11 +174,11 @@ describe('S-039 — resolução canônica das tiras', () => {
     expect(itemForm).toContain('Solicite a correção ao administrador.');
     expect(itemForm).toContain('setStrapResolutionOpen(true)');
     expect(itemForm).toContain('<StrapCatalogResolutionDrawer');
-    expect(itemForm).toContain("onUpdate(index, 'strap_colors', resolvedWithItemColors)");
-    expect(itemForm).toContain('const currentByLineId = new Map(');
-    expect(itemForm).toContain('color_id: isUuid(current?.color_id) ? current.color_id : null');
-    expect(itemForm).toContain("nextSourcing = setStrapSourcing(nextSourcing, lineId, null)");
-    expect(itemForm).toContain("onUpdate(index, 'strap_sourcing', nextSourcing)");
+    expect(itemForm).toContain('const reconciled = reconcileEditableStrapSnapshots({');
+    expect(itemForm).toContain("onUpdate(index, 'strap_colors', reconciled.lines)");
+    expect(itemForm).toContain("onUpdate(index, 'strap_sourcing', reconciled.sourcing)");
+    expect(strapReconciler).toContain('const snapshotById = new Map');
+    expect(strapReconciler).toContain("nextSourcing = setStrapSourcing(nextSourcing, lineId, null)");
     const resolvedCallbackStart = itemForm.indexOf('onResolved={(strapColors)');
     const resolvedCallbackEnd = itemForm.indexOf('          }}\n        />', resolvedCallbackStart);
     expect(resolvedCallbackStart).toBeGreaterThanOrEqual(0);
@@ -245,11 +246,11 @@ describe('S-039 — resolução canônica das tiras', () => {
     expect(hooks).toContain("queryClient.invalidateQueries({ queryKey: ['artisanal-strap-catalog'] })");
   });
 
-  it('faz reference_base seguir o cabedal e mantém finished_product_group independente', () => {
+  it('faz reference_base follow_main seguir o cabedal e mantém as demais cores independentes', () => {
     expect(itemForm).toContain('const canonicalStrapColorByKey = useMemo(() => {');
     expect(itemForm).toContain("alias.status === 'approved'");
     expect(itemForm).toContain('if (ids.size !== 1) return');
-    expect(itemForm).toContain("if (strapIdentityBasis(presentation) !== 'reference_base') return strap");
+    expect(itemForm).toContain("|| strapColorMode(presentation) !== 'follow_main') return strap");
     expect(itemForm).toContain('const targetColor = canonicalMainStrapColor?.name || item.color.trim()');
     expect(itemForm).toContain('return { ...strap, color: targetColor, color_id: targetColorId }');
     expect(itemForm).toContain("if (strapIdentityBasis(strap) === 'reference_base') return strap");
@@ -273,6 +274,8 @@ describe('S-039 — resolução canônica das tiras', () => {
     expect(saleOrderForm).not.toContain('listarTirasSemOrigem');
     expect(saleOrders).not.toContain('listarTirasSemOrigem');
     expect(mobileNewOrder).not.toContain('missingStrapSourcingLineIds');
-    expect(mobileNewOrder).toContain('mobileFinishedStrapIdentityIssues(items, strapCatalog)');
+    expect(mobileNewOrder).toContain('mobileFinishedStrapIdentityIssues(items)');
+    expect(mobileNewOrder).toContain('mobileSelectableStrapManifestIssues(item, manifestEntry)');
+    expect(mobileNewOrder).toContain('O writer atômico');
   });
 });

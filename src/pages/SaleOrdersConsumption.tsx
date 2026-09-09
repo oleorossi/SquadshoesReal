@@ -18,7 +18,7 @@ export default function SaleOrdersConsumption() {
 
   return (
     <AppLayout>
-      <div className="space-y-5 page-enter">
+      <div className="space-y-5">
         <EditorialPageHeader
           sectionLabel="COMERCIAL · CONSUMO"
           title="Consumo Consolidado"

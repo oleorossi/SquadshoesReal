@@ -4,7 +4,9 @@ import { describe, expect, it } from 'vitest';
 
 const ROOT = resolve(__dirname, '../..');
 const read = (path: string) => readFileSync(resolve(ROOT, path), 'utf8');
+const catalogCoreMigration = read('supabase/migrations/20270101003000_artisanal_straps_catalog_core.sql');
 const migration = read('supabase/migrations/20270101004800_color_agnostic_strap_conversions.sql');
+const materialConfirmationMigration = read('supabase/migrations/20270101008800_confirmar-rendimento-tira-por-material.sql');
 const conversionEditor = read('src/components/artisanal-straps/ArtisanalStrapConversionEditor.tsx');
 const stockEditor = read('src/components/artisanal-straps/ArtisanalStrapEditor.tsx');
 const hub = read('src/pages/ArtisanalStraps.tsx');
@@ -20,9 +22,20 @@ describe('conversão de tiras independente de cor', () => {
     expect(migration).not.toContain('INSERT INTO public.products');
   });
 
+  it('mantém uma única receita para a medida e a família do material-base, sem dimensão de cor', () => {
+    expect(catalogCoreMigration).toContain('UNIQUE (measure_id, base_group_id, version)');
+    expect(catalogCoreMigration).toMatch(
+      /artisanal_strap_recipes_current_approved_uq[\s\S]*\(measure_id, base_group_id\)/,
+    );
+    expect(materialConfirmationMigration).toContain("'color_scope', 'all'");
+    expect(materialConfirmationMigration).toContain('Rendimento de tira nao aceita cor, produto ou variante de estoque');
+  });
+
   it('não apresenta seletor de cor nem produto no editor de conversão', () => {
     expect(conversionEditor).toContain('Defina os números uma única vez por família, medida e napa-base');
     expect(conversionEditor).toContain('Nenhuma cor é gravada aqui');
+    expect(conversionEditor).toContain('NAPA SOFT 1370 × 1000 mm');
+    expect(conversionEditor).toContain('Tira Meia Cana 10 mm = 55 m/m em qualquer cor');
     expect(conversionEditor).not.toContain('colorId');
     expect(conversionEditor).not.toContain('Cor canônica');
     expect(conversionEditor).not.toContain('finishedProductId');

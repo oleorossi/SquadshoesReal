@@ -1,5 +1,4 @@
 import { useState, useMemo } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import {
   useWorkSchedules, useTimeRecords, useImportBatches,
   WorkSchedule,
@@ -20,6 +19,7 @@ import { getBatchDateRange } from '@/lib/timeControlFilters';
 import { useEmployees } from '@/hooks/useEmployees';
 import { findEmployeeMatch } from '@/lib/employeeMatching';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { applyManualPunchCompletion } from '@/services/pendingTimeRecordsService';
 
 const DAYS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
@@ -63,19 +63,24 @@ export default function DivergencesTab() {
     batchRange?.endDate,
   );
 
-  const defaultSchedule: WorkSchedule = schedules.find(s => s.is_default) || schedules[0] || {
+  const defaultSchedule = useMemo<WorkSchedule>(() => schedules.find(s => s.is_default) || schedules[0] || {
     id: '', name: 'Default', entry_time: '08:00', lunch_start: '12:00', lunch_end: '13:00',
     exit_time: '17:48', saturday_entry: '08:00', saturday_exit: '12:00', weekly_hours: 44,
     overtime_multiplier: 1.5, night_overtime_multiplier: 1.7, holiday_multiplier: 1.5,
     tolerance_minutes: 10, minimum_overtime_minutes: 0, is_default: true, works_sunday: false, works_monday: true, works_tuesday: true, works_wednesday: true, works_thursday: true, works_friday: true, works_saturday: true, created_at: '', updated_at: '',
-  };
+  }, [schedules]);
 
   const divergences = useMemo<Divergence[]>(() => {
     const result: Divergence[] = [];
     // Filtro de coligados: diverg\u00eancia s\u00f3 conta pra funcion\u00e1rio vinculado.
     // Records de ex-funcion\u00e1rio (Ana Carolina sem external_id) somem daqui.
     let filteredRecords = records.filter(r =>
-      findEmployeeMatch(employees, r.employee_name, r.employee_external_id, { linkedOnly: true })
+      findEmployeeMatch(employees, r.employee_name, r.employee_external_id, {
+        linkedOnly: true,
+        employeeId: r.employee_id,
+        recordDate: r.record_date,
+        allowNameFallback: false,
+      })
     );
 
     if (filterEmployee !== '__all__') {
@@ -120,13 +125,18 @@ export default function DivergencesTab() {
 
     result.sort((a, b) => a.date.localeCompare(b.date) || a.employeeName.localeCompare(b.employeeName));
     return result;
-  }, [records, filterEmployee, searchEmployee, defaultSchedule]);
+  }, [records, filterEmployee, searchEmployee, defaultSchedule, employees]);
 
   const employeeNames = useMemo(() => {
     // Só nomes coligados — ex-funcionário não polui o dropdown
     const names = new Set(
       records
-        .filter(r => findEmployeeMatch(employees, r.employee_name, r.employee_external_id, { linkedOnly: true }))
+        .filter(r => findEmployeeMatch(employees, r.employee_name, r.employee_external_id, {
+          linkedOnly: true,
+          employeeId: r.employee_id,
+          recordDate: r.record_date,
+          allowNameFallback: false,
+        }))
         .map(r => r.employee_name)
     );
     return Array.from(names).sort();
@@ -140,25 +150,22 @@ export default function DivergencesTab() {
 
   const handleAddManualPunch = async () => {
     if (!selectedDivergence || !manualTime) return;
-    if (!/^\d{2}:\d{2}$/.test(manualTime)) {
+    if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(manualTime)) {
       toast.error('Formato inválido. Use HH:MM');
       return;
     }
     setSaving(true);
     try {
-      const newPunches = [...selectedDivergence.punches, manualTime + '*'].sort((a, b) =>
-        cleanPunch(a).localeCompare(cleanPunch(b))
-      );
-      const { error } = await supabase
-        .from('time_records')
-        .update({ punches: newPunches })
-        .eq('id', selectedDivergence.recordId);
-      if (error) throw error;
+      await applyManualPunchCompletion({
+        timeRecordId: selectedDivergence.recordId,
+        punchTime: manualTime,
+        reason: 'Correção manual da divergência',
+      });
       toast.success('Batida manual adicionada com sucesso');
       queryClient.invalidateQueries({ queryKey: ['time_records'] });
       setAddDialogOpen(false);
-    } catch (err: any) {
-      toast.error(err.message || 'Erro ao salvar');
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao salvar');
     } finally {
       setSaving(false);
     }

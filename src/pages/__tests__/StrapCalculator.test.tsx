@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import StrapCalculator from '@/pages/StrapCalculator';
 
 describe('Calculadora de Tiras', () => {
-  it('simula uma nova medida com perda sem carregar ou salvar receita', async () => {
+  it('simula uma nova medida pelo rendimento teórico sem oferecer perda percentual', async () => {
     const user = userEvent.setup();
     render(<StrapCalculator embedded />);
 
@@ -15,17 +15,13 @@ describe('Calculadora de Tiras', () => {
     const larguraBanda = screen.getByLabelText('Largura da banda de corte');
     await user.clear(larguraBanda);
     await user.type(larguraBanda, '18');
-    await user.click(screen.getByRole('radio', { name: 'Perda estimada' }));
-
-    const perda = screen.getByLabelText('Perda estimada');
-    await user.clear(perda);
-    await user.type(perda, '10');
+    expect(screen.queryByRole('radio', { name: /perda/i })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/perda/i)).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Calcular' }));
 
-    expect(screen.getByText('Rendimento usado na simulação')).toBeInTheDocument();
-    expect(screen.getByText('68,4')).toBeInTheDocument();
+    expect(screen.getByText('Rendimento teórico · por metro linear')).toBeInTheDocument();
+    expect(screen.getByText(/resultado usa somente a capacidade geométrica/i)).toBeInTheDocument();
     expect(screen.getByText(/nenhum valor desta aba é salvo/i)).toBeInTheDocument();
-    expect(screen.getByText(/não é reaplicada/i)).toBeInTheDocument();
   });
 
   it('exige rendimento quando a base real é escolhida', async () => {

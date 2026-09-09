@@ -1,3 +1,5 @@
+import { requiresUpperCut } from '@/lib/upperCutEligibility';
+
 export type TechnicalSheetReadinessStageKey =
   | 'identity'
   | 'engineering'
@@ -39,8 +41,12 @@ export interface TechnicalSheetReadinessInput {
   has_straps?: unknown;
   strap_colors?: unknown;
   upper_material?: unknown;
+  upper_material_group_id?: unknown;
+  upper_material_product_id?: unknown;
   upper_consumption?: unknown;
   upper_consumption_per_size?: unknown;
+  components_accessories?: unknown;
+  requires_cutting_cabedal?: unknown;
   insole_ready_made?: unknown;
   insole_material?: unknown;
   sole_drives_consumption?: unknown;
@@ -74,6 +80,7 @@ const hasConfiguredStrap = (line: unknown): boolean => {
 };
 
 const RELEASE_STATUSES = new Set(['validada', 'publicada']);
+const UPPER_PRODUCTION_SECTORS = new Set(['corte cabedal', 'costura cabedal']);
 
 export function evaluateTechnicalSheetReadiness(
   sheet: TechnicalSheetReadinessInput,
@@ -93,15 +100,33 @@ export function evaluateTechnicalSheetReadiness(
   if (!hasPositiveScalar(sheet.sole_consumption)) engineeringIssues.push('consumo do solado');
 
   let strapIssues = false;
-  if (sheet.has_straps) {
-    const straps = Array.isArray(sheet.strap_colors) ? sheet.strap_colors : [];
+  const straps = Array.isArray(sheet.strap_colors) ? sheet.strap_colors : [];
+  const requiresStraps = sheet.has_straps === true || straps.length > 0;
+  if (requiresStraps) {
     if (straps.length === 0 || straps.some((line: unknown) => !hasConfiguredStrap(line))) {
       engineeringIssues.push('tiras com identidade e consumo');
       strapIssues = true;
     }
-  } else {
-    if (!String(sheet.upper_material || '').trim()) engineeringIssues.push('material do cabedal');
-    if (!hasConsumption(sheet.upper_consumption, sheet.upper_consumption_per_size)) {
+  }
+
+  // Cabedal e tiras são requisitos independentes. Modelo somente de tiras não
+  // precisa inventar cabedal; porém, assim que a rota viva ou qualquer sinal
+  // estrutural exige cabedal, validamos identidade E consumo. O flag legado
+  // `requires_cutting_cabedal` pode estar stale e não participa desta decisão.
+  const hasUpperIdentity = String(sheet.upper_material || '').trim().length > 0
+    || Boolean(sheet.upper_material_group_id)
+    || Boolean(sheet.upper_material_product_id);
+  const hasUpperConsumption = hasConsumption(sheet.upper_consumption, sheet.upper_consumption_per_size);
+  const hasUpperProductionRoute = Array.isArray(sheet.production_sectors)
+    && sheet.production_sectors.some((sector) => (
+      UPPER_PRODUCTION_SECTORS.has(String(sector || '').trim().toLowerCase())
+    ));
+  const requiresUpper = !requiresStraps
+    || hasUpperProductionRoute
+    || requiresUpperCut(sheet);
+  if (requiresUpper) {
+    if (!hasUpperIdentity) engineeringIssues.push('material do cabedal');
+    if (!hasUpperConsumption) {
       engineeringIssues.push('consumo do cabedal');
     }
   }

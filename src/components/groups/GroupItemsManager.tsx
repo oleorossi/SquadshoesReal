@@ -3,8 +3,9 @@
 // grupo, mover item(ns) para outro grupo, remover do grupo (group_id=null),
 // adicionar itens existentes ao grupo e editar atributos do item (reusa o
 // ProductFormDialog do estoque). Tudo via products.group_id (useSetProductsGroup).
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { SearchInput } from '@/components/ui/search-input';
@@ -14,12 +15,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { EmptyState } from '@/components/ui/empty-state';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import {
-  MagnifyingGlass, Plus, PencilSimple, Trash, ArrowRight, CaretLeft, Package, X, Tag,
+  MagnifyingGlass, Plus, PencilSimple, Trash, ArrowRight, CaretLeft, Package, X, Tag, Palette,
 } from '@phosphor-icons/react';
 import { useProducts, useUpdateProduct, useSetProductsGroup, useBulkSetProductPrice } from '@/hooks/useProducts';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import type { ProductGroup } from '@/hooks/useGroups';
 import type { Product } from '@/types/inventory';
+import QuickColorVariantDialog from '@/components/groups/QuickColorVariantDialog';
+import {
+  quickVariantEligibility,
+  recommendVariantTemplate,
+  type QuickVariantSheetPattern,
+} from '@/lib/quickGroupVariant';
+import { supabase } from '@/integrations/supabase/client';
 
 interface Props {
   group: ProductGroup | null;
@@ -27,6 +35,7 @@ interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   canEdit: boolean;
+  canCreate: boolean;
 }
 
 const matches = (p: Product, q: string) =>
@@ -35,7 +44,7 @@ const byName = (a: Product, b: Product) => String(a.name ?? '').localeCompare(St
 
 const ADD_LIMIT = 200;
 
-export default function GroupItemsManager({ group, groups, open, onOpenChange, canEdit }: Props) {
+export default function GroupItemsManager({ group, groups, open, onOpenChange, canEdit, canCreate }: Props) {
   const navigate = useNavigate();
   const { data: products = [] } = useProducts();
   const setGroup = useSetProductsGroup();
@@ -49,11 +58,15 @@ export default function GroupItemsManager({ group, groups, open, onOpenChange, c
   const [bulkPrice, setBulkPrice] = useState<number>(0);
   const [addSearch, setAddSearch] = useState('');
   const [addSelected, setAddSelected] = useState<Set<string>>(new Set());
+  const [quickVariantOpen, setQuickVariantOpen] = useState(false);
+  const [quickVariantTemplate, setQuickVariantTemplate] = useState<Product | null>(null);
+  const quickVariantTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   // Reset quando troca de grupo ou reabre.
   useEffect(() => {
     setMode('list'); setSearch(''); setSelected(new Set());
     setMoveTarget(''); setBulkPrice(0); setAddSearch(''); setAddSelected(new Set());
+    setQuickVariantOpen(false); setQuickVariantTemplate(null);
   }, [group?.id, open]);
 
   const groupItems = useMemo(() => {
@@ -69,6 +82,38 @@ export default function GroupItemsManager({ group, groups, open, onOpenChange, c
     return (products as Product[]).filter(p => (p as any).group_id !== group.id && matches(p, addSearch)).sort(byName);
   }, [products, group, addSearch]);
   const candidatesShown = candidates.slice(0, ADD_LIMIT);
+  const quickSheetQueryKey = useMemo(
+    () => groupItems.map(item => item.id).sort().join(','),
+    [groupItems],
+  );
+  const {
+    data: quickVariantSheets = [],
+    isLoading: quickVariantSheetsLoading,
+    isError: quickVariantSheetsError,
+  } = useQuery({
+    queryKey: ['quick_variant_group_sheets', group?.id, quickSheetQueryKey],
+    enabled: open && !!group?.id && groupItems.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('component_sheets')
+        .select('product_id, dimensions_length, dimensions_width, dimensions_thickness, dimensions_unit, yield_per_size, yield_per_sole, default_sole_group_id, notes')
+        .in('product_id', groupItems.map(item => item.id));
+      if (error) throw error;
+      return data as unknown as QuickVariantSheetPattern[];
+    },
+    staleTime: 60_000,
+  });
+  const quickSheetsByProduct = useMemo(
+    () => new Map(quickVariantSheets.map(sheet => [sheet.product_id, sheet])),
+    [quickVariantSheets],
+  );
+  const recommendedTemplate = useMemo(
+    () => recommendVariantTemplate(groupItems, quickSheetsByProduct),
+    [groupItems, quickSheetsByProduct],
+  );
+  const quickVariantReason = group
+    ? quickVariantEligibility(group, groupItems)
+    : 'Grupo não selecionado.';
 
   const otherGroups = useMemo(() => {
     const parentIds = new Set(groups.map(item => item.parent_group_id).filter(Boolean));
@@ -111,12 +156,23 @@ export default function GroupItemsManager({ group, groups, open, onOpenChange, c
     await setGroup.mutateAsync({ ids: [...addSelected], group_id: group.id });
     setAddSelected(new Set()); setMode('list');
   };
+  const openQuickVariant = (template?: Product | null, trigger?: HTMLButtonElement | null) => {
+    if (!canCreate || quickVariantReason) return;
+    const resolved = template || recommendedTemplate.product;
+    if (!resolved) return;
+    quickVariantTriggerRef.current = trigger || null;
+    setQuickVariantTemplate(resolved);
+    setQuickVariantOpen(true);
+  };
   const allChecked = items.length > 0 && items.every(p => selected.has(p.id));
   const colCls = 'px-3 py-2 text-left';
 
   return (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
+      <Dialog open={open} onOpenChange={(next) => {
+        if (!next) setQuickVariantOpen(false);
+        onOpenChange(next);
+      }}>
         <DialogContent className="max-w-4xl max-h-[88vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -125,7 +181,7 @@ export default function GroupItemsManager({ group, groups, open, onOpenChange, c
             </DialogTitle>
             <DialogDescription>
               {mode === 'list'
-                ? `${items.length} ${items.length === 1 ? 'item' : 'itens'} neste grupo. Mova, remova ou edite; ou adicione itens existentes.`
+                ? `${items.length} ${items.length === 1 ? 'item' : 'itens'} neste grupo. Crie uma nova variação, mova, remova ou edite itens.`
                 : 'Busque produtos de outros grupos (ou sem grupo) e adicione a este grupo.'}
             </DialogDescription>
           </DialogHeader>
@@ -133,19 +189,63 @@ export default function GroupItemsManager({ group, groups, open, onOpenChange, c
           {/* ───────── modo LISTA ───────── */}
           {mode === 'list' && (
             <div className="flex flex-col gap-3 min-h-0 flex-1">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <SearchInput
                   value={search}
                   onChange={setSearch}
                   placeholder="Buscar por nome, SKU ou cor…"
                   resultCount={items.length}
                   totalCount={groupItems.length}
-                  className="flex-1"
+                  className="min-w-[220px] flex-1"
                 />
-                {canEdit && <Button onClick={() => setMode('add')} className="gap-1.5 h-9">
+                {canCreate && (
+                  <Button
+                    onClick={(event) => openQuickVariant(null, event.currentTarget)}
+                    disabled={
+                      !!quickVariantReason
+                      || quickVariantSheetsLoading
+                      || quickVariantSheetsError
+                      || !recommendedTemplate.product
+                    }
+                    title={quickVariantReason
+                      || (recommendedTemplate.hasTie
+                        ? 'Escolha o item-modelo pelo ícone de paleta em uma linha.'
+                        : `Usará ${recommendedTemplate.product?.name || 'o padrão predominante'} como modelo.`)}
+                    className="h-9 gap-1.5"
+                  >
+                    <Palette className="h-4 w-4" /> Nova variação
+                  </Button>
+                )}
+                {canEdit && <Button variant="outline" onClick={() => setMode('add')} className="gap-1.5 h-9">
                   <Plus className="h-4 w-4" /> Adicionar itens
                 </Button>}
               </div>
+
+              {canCreate && quickVariantReason && (
+                <div className="flex items-center gap-2 border border-foreground/15 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                  <Palette className="h-4 w-4 shrink-0" />
+                  Cadastro rápido indisponível: {quickVariantReason}
+                </div>
+              )}
+              {canCreate && quickVariantSheetsError && !quickVariantReason && (
+                <div className="flex items-center gap-2 border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
+                  <Palette className="h-4 w-4 shrink-0" />
+                  Não foi possível comparar as fichas do grupo. Escolha o modelo pelo ícone de paleta em uma linha.
+                </div>
+              )}
+              {canCreate && !quickVariantSheetsLoading && !quickVariantSheetsError && !quickVariantReason && recommendedTemplate.product && recommendedTemplate.matchingCount < recommendedTemplate.totalCount && (
+                <div className="flex items-center gap-2 border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
+                  <Palette className="h-4 w-4 shrink-0" />
+                  O grupo tem padrões diferentes. “Nova variação” usará o padrão predominante
+                  ({recommendedTemplate.matchingCount} de {recommendedTemplate.totalCount} itens). Também é possível escolher o modelo pelo ícone de paleta em cada linha.
+                </div>
+              )}
+              {canCreate && !quickVariantSheetsLoading && !quickVariantSheetsError && !quickVariantReason && !recommendedTemplate.product && (
+                <div className="flex items-center gap-2 border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
+                  <Palette className="h-4 w-4 shrink-0" />
+                  Não há um padrão predominante. Escolha o item-modelo pelo ícone de paleta em uma das linhas.
+                </div>
+              )}
 
               <div className="flex-1 overflow-auto rounded-lg border border-border">
                 {items.length === 0 ? (
@@ -186,6 +286,17 @@ export default function GroupItemsManager({ group, groups, open, onOpenChange, c
                           <td className="px-3 py-2 text-muted-foreground">{(p as any).color || '—'}</td>
                           <td className="px-3 py-2 text-right tabular-nums">{Number((p as any).quantity ?? 0).toLocaleString('pt-BR')} <span className="text-muted-foreground text-xs">{(p as any).unit || ''}</span></td>
                           <td className="px-3 py-2 text-right whitespace-nowrap">
+                            {canCreate && !quickVariantReason && p.active !== false && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-primary"
+                                title={`Criar nova variação usando ${p.name} como modelo`}
+                                onClick={(event) => openQuickVariant(p, event.currentTarget)}
+                              >
+                                <Palette className="h-4 w-4" />
+                              </Button>
+                            )}
                             {canEdit && <Button variant="ghost" size="icon" className="h-7 w-7" title="Editar item" onClick={() => navigate(`/estoque/${p.id}`)}>
                               <PencilSimple className="h-4 w-4" />
                             </Button>}
@@ -292,6 +403,28 @@ export default function GroupItemsManager({ group, groups, open, onOpenChange, c
           )}
         </DialogContent>
       </Dialog>
+
+      {group && (
+        <QuickColorVariantDialog
+          group={group}
+          template={quickVariantTemplate}
+          products={groupItems}
+          open={quickVariantOpen}
+          onOpenChange={(next) => {
+            setQuickVariantOpen(next);
+            if (!next) {
+              setQuickVariantTemplate(null);
+              const trigger = quickVariantTriggerRef.current;
+              quickVariantTriggerRef.current = null;
+              window.requestAnimationFrame(() => trigger?.focus());
+            }
+          }}
+          onCreated={() => {
+            setSelected(new Set());
+            setSearch('');
+          }}
+        />
+      )}
 
     </>
   );

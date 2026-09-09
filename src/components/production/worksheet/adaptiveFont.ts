@@ -126,3 +126,49 @@ export function floorSafeScale(font: AdaptiveTableFont): number {
     FONT_FLOORS.textPx / font.textPx,
   );
 }
+
+/** Largura útil da coluna de conteúdo de uma página A4 do `PaginatedSheet`:
+ *  210mm menos os 2×8mm de padding lateral = 194mm. Em px @96dpi. */
+export const A4_CONTENT_WIDTH_PX = Math.floor(194 * (96 / 25.4));
+
+/** Colunas de largura FIXA da tabela de grade (o `width` do `th` manda sob
+ *  `table-layout: fixed`): o rótulo ("Total × N fichas") e a coluna "Total". */
+const GRADE_LABEL_COL_PX = 96;
+const GRADE_TOTAL_COL_PX = 56;
+/** Razão largura/altura de glifo. Anton é condensado (mesma razão usada pelo
+ *  `adaptiveFontSize` nas chamadas em Anton); Fira Code é monoespaçada. */
+const ANTON_WIDTH_RATIO = 0.45;
+const MONO_WIDTH_RATIO = 0.62;
+/** Respiro horizontal por célula (padding de 1px de cada lado + folga). */
+const GRADE_CELL_GUTTER_PX = 4;
+
+/**
+ * Largura MÍNIMA, em px, que a tabela de grade precisa para não CORTAR
+ * conteúdo.
+ *
+ * Existe porque a grade vive sob `table-layout: fixed` + `overflow: hidden`:
+ * número que não cabe na coluna é **cortado em silêncio** — o operador lê "18"
+ * onde estava "180" e nada vaza para denunciar (CLAUDE.md → "Largura mínima
+ * antes de estreitar qualquer coisa: a GRADE manda"). Toda vez que um layout
+ * for tirar largura da grade, ele tem que passar por aqui antes.
+ *
+ * O maior conteúdo de uma coluna de numeração é o número da linha TOTAL, em
+ * Anton `displayPx`; o cabeçalho (chave da numeração, Fira Code `headerPx`)
+ * concorre quando a chave é longa (ex.: conjugada "33/34").
+ *
+ * @param sizeKeys      Numerações ativas (uma coluna cada).
+ * @param font          Bucket do `adaptiveTableFont`/`gradeTableFont` em uso.
+ * @param maxCellDigits Dígitos do maior número da grade. Default 4 (folgado).
+ */
+export function gradeMinWidthPx(
+  sizeKeys: ReadonlyArray<string>,
+  font: AdaptiveTableFont,
+  maxCellDigits = 4,
+): number {
+  const headerChars = sizeKeys.reduce((m, s) => Math.max(m, String(s).length), 1);
+  const perColumn = Math.max(
+    headerChars * MONO_WIDTH_RATIO * font.headerPx,
+    maxCellDigits * ANTON_WIDTH_RATIO * font.displayPx,
+  ) + GRADE_CELL_GUTTER_PX;
+  return Math.ceil(GRADE_LABEL_COL_PX + GRADE_TOTAL_COL_PX + sizeKeys.length * perColumn);
+}

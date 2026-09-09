@@ -24,6 +24,7 @@ import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { useProducts } from '@/hooks/useProducts';
 import { adjustStockSafe } from '@/lib/stockAdjustments';
+import { createProductWithStock } from '@/lib/stockCommand';
 import { findDuplicate } from '@/lib/duplicateDetection';
 import { CATEGORIES } from '@/types/inventory';
 import SupplierFormDialog from '@/components/suppliers/SupplierFormDialog';
@@ -147,7 +148,7 @@ function InvoiceItemsRow({ invoice, supplierName }: { invoice: Invoice; supplier
             // dá pra resolver conversão. Salva com a unit/qty crua da NF
             // (operador depois ajusta unit + conversion_rate). Avisa via
             // skipped list pra ele saber que precisa revisar.
-            const { data: newProd, error } = await supabase.from('products').insert({
+            const created = await createProductWithStock({
               name: item.product_name,
               sku: item.product_code || `NF-${item.id.slice(0, 8)}`,
               category: CATEGORIES[0],
@@ -157,23 +158,12 @@ function InvoiceItemsRow({ invoice, supplierName }: { invoice: Invoice; supplier
               unit_price: item.unit_price,
               min_stock: 0,
               max_stock: 0,
-              active: true,
-              image_url: '',
-            }).select().single();
-            if (error) throw error;
-            productId = newProd.id;
-
-            // Erro capturado: sem isso o produto nasceria com saldo mas sem o
-            // movimento correspondente, e a auditoria de estoque não fecharia.
-            const { error: mvErr } = await supabase.from('stock_movements').insert({
-              product_id: productId,
-              movement_type: 'in',
-              quantity: item.quantity,
-              previous_stock: 0,
-              new_stock: item.quantity,
-              description: `Entrada via NF (lote, novo) - ${item.product_name}`,
+              reason: `Entrada via NF (lote, novo) - ${item.product_name}`,
             });
-            if (mvErr) throw new Error(`Produto criado, mas o movimento de estoque não foi registrado: ${mvErr.message}`);
+            if (!created.success || !created.product_id) {
+              throw new Error(created.errors?.[0]?.error || 'Falha ao criar produto e lançar o saldo inicial');
+            }
+            productId = created.product_id;
             // Marca como "skipped" no sentido de "precisa revisão", mas
             // continua entrando no estoque (não tem cadastro pra validar).
             skippedItems.push(`${item.product_name}: produto NOVO criado com unit "${item.unit}" — revise o cadastro pra ajustar conversion_rate antes da próxima NF.`);

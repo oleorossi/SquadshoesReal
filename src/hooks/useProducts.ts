@@ -1,10 +1,17 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { forceDeleteProductCommand } from '@/services/purchaseOrderCommandService';
 import { ProductFormData } from '@/types/inventory';
 import { toast } from 'sonner';
 import { sanitizeUuidFields } from '@/lib/utils';
 import { SECTOR_OPTIONS } from '@/lib/categoryFromGroup';
+import { productsKeys, invalidateProducts } from '@/lib/queryKeys';
 import { z } from 'zod';
+import {
+  createProductWithStock,
+  createProductsWithStock,
+  type CreateProductWithStockInput,
+} from '@/lib/stockCommand';
 
 export const ProductSchema = z.object({
   name: z.string().min(1, "Nome é obrigatório").max(255),
@@ -58,10 +65,87 @@ export function normalizeProductSupplierColor<T extends {
   return { ...data, supplier_color_code: supplierColorCode };
 }
 
+export function stripProductPhysicalFields<T extends Record<string, unknown>>(data: T) {
+  const {
+    quantity,
+    current_stock,
+    reserved_stock,
+    stock_grade,
+    blocked_qty,
+    quarantine_qty,
+    ...metadata
+  } = data;
+  return {
+    metadata,
+    physical: { quantity, current_stock, reserved_stock, stock_grade, blocked_qty, quarantine_qty },
+  };
+}
 
-export function useProducts() {
+
+/**
+ * Colunas do catálogo/lista de materiais. União do que MaterialsTab /
+ * ProductTable / AddToStockDialog / TechnicalReferencePanel / grupos leem.
+ * Exclui campos só do editor (lot_number, expiration_date, brand, NCM,
+ * gestaoclick_id, strap_migration_*, etc.).
+ *
+ * Embed de `product_groups`:
+ * - `name` — busca / agrupamento
+ * - `consumption_unit` — TechnicalReferencePanel (senão cai em product.unit)
+ * - `purchase_multiple` / `package_weight_kg` — NF→estoque (F5-03)
+ *
+ * Editores que precisam da row completa usam `useProductDetail(id)` — a página
+ * `/estoque/:id` já faz isso; ProductFormDialog só cria (product=null).
+ */
+export const PRODUCT_LIST_SELECT = [
+  'id',
+  'name',
+  'technical_name',
+  'sku',
+  'category',
+  'color',
+  'quantity',
+  'reserved_stock',
+  'stock_grade',
+  'min_stock',
+  'max_stock',
+  'unit',
+  'unit_price',
+  'location',
+  'group_id',
+  'active',
+  'image_url',
+  'purchase_unit',
+  'purchase_order_unit',
+  'conversion_rate',
+  'purchase_multiple',
+  'consumption_unit',
+  'dimensions_width',
+  'dimensions_length',
+  'dimensions_thickness',
+  'dimensions_unit',
+  'yield_per_meter',
+  'yield_unit',
+  'is_artisanal',
+  'is_chemical',
+  'is_standard_sole_item',
+  'sole_material',
+  'heel_height',
+  'sole_classification',
+  'box_type_id',
+  'supplier_id',
+  'supplier_color_code',
+  'lead_time_days',
+  'calculation_method',
+  'updated_at',
+  'created_at',
+  'product_groups!products_group_id_fkey(name, consumption_unit, purchase_multiple, package_weight_kg)',
+].join(', ');
+
+/** Catálogo paginado com colunas lean — use em listagens / selectors. */
+export function useProducts(options?: { enabled?: boolean }) {
   return useQuery({
-    queryKey: ['products'],
+    queryKey: productsKeys.all,
+    enabled: options?.enabled ?? true,
     queryFn: async () => {
       const PAGE = 1000;
       // Get total count first so we can fetch all pages in parallel.
@@ -79,15 +163,10 @@ export function useProducts() {
         const results = await Promise.all(batchPages.map(i =>
           supabase
             .from('products')
-            // consumption_unit incluído (2026-05-31): TechnicalReferencePanel
-            // lê product.product_groups?.consumption_unit ao adicionar material
-            // ao BOM. Sem ele cai pro fallback product.unit (estoque, ex: 'un'/
-            // 'rolo'), gerando consumo na unidade errada.
-            // package_weight_kg incluído (F5-03, 2026-07): AddToStockDialog e
-            // o lançamento em lote do Suppliers convertem NF→estoque via
-            // convertNfToStockUnit; sem o peso da embalagem do grupo a
-            // Prioridade 5 (pacote→massa) bloqueava mesmo com peso cadastrado.
-            .select('*, product_groups!products_group_id_fkey(name, consumption_unit, purchase_multiple, package_weight_kg)')
+            // ⚠ PERF (P1.4): era `select('*', product_groups…)` — baixava a
+            // row inteira (grade jsonb + metadados de migração) em toda visita
+            // ao estoque / PV / fornecedores. Lista = PRODUCT_LIST_SELECT.
+            .select(PRODUCT_LIST_SELECT)
             .order('updated_at', { ascending: false })
             .range(i * PAGE, (i + 1) * PAGE - 1),
         ));
@@ -103,22 +182,57 @@ export function useProducts() {
   });
 }
 
+/**
+ * Row completa de um produto — formulários/editores. Não reusar o cache lean
+ * de `useProducts` como se fosse `*`: campos ausentes viram undefined em
+ * TS loose e o save pode gravar NULL por cima do valor real.
+ */
+export function useProductDetail(id: string | null | undefined) {
+  return useQuery({
+    queryKey: productsKeys.detail(id),
+    enabled: !!id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('products')
+        .select('*, product_groups!products_group_id_fkey(name, consumption_unit, purchase_multiple, package_weight_kg)')
+        .eq('id', id!)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    staleTime: 60 * 1000,
+    gcTime: 5 * 60 * 1000,
+  });
+}
+
 export function useAddProduct() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (form: ProductFormData) => {
       const normalized = normalizeProductSupplierColor(form);
-      const payload = { ...sanitizeUuidFields(normalized), max_stock: form.max_stock ?? 0 };
+      const sanitized = {
+        ...sanitizeUuidFields(normalized),
+        max_stock: form.max_stock ?? 0,
+      } as ProductFormData;
+      const product: CreateProductWithStockInput = {
+        ...sanitized,
+        quantity: Number(sanitized.quantity ?? 0),
+        reason: 'Cadastro manual de produto com saldo/grade inicial',
+      };
+      const result = await createProductWithStock(product);
+      if (!result.success || !result.product_id) {
+        throw new Error(result.errors?.[0]?.error || 'Falha ao cadastrar produto');
+      }
       const { data, error } = await supabase
         .from('products')
-        .insert(payload as any)
         .select()
+        .eq('id', result.product_id)
         .single();
       if (error) throw error;
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['products'] });
+      invalidateProducts(queryClient);
       toast.success('Produto adicionado com sucesso!');
     },
     onError: (err: Error) => toast.error(`Erro ao adicionar: ${err.message}`),
@@ -200,19 +314,21 @@ export function useUpdateProduct() {
       // concurrency control). A direct write races with debit RPCs and bypasses
       // the audit trail; same guard applied to usePackaging (audit-37 [3]).
       const normalized = normalizeProductSupplierColor(data);
-      const { quantity, stock_grade, min_stock_grade, ...safeData } = normalized;
-      if (quantity !== undefined || stock_grade !== undefined) {
+      const { metadata: safeData, physical } = stripProductPhysicalFields(normalized);
+      const { min_stock_grade: _ignoredMinStockGrade, ...metadata } = safeData;
+      if (physical.quantity !== undefined || physical.stock_grade !== undefined || physical.reserved_stock !== undefined) {
         // Surface a developer warning; the stock adjustment page is the correct path.
-        console.warn('[useUpdateProduct] quantity/stock_grade stripped — use adjust_stock RPC or stock adjustment page.');
+        console.warn('[useUpdateProduct] physical stock fields stripped — use the canonical stock command.');
       }
       const { error } = await supabase
         .from('products')
-        .update(sanitizeUuidFields(safeData) as any)
+        .update(sanitizeUuidFields(metadata) as never)
         .eq('id', id);
       if (error) throw error;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['products'] });
+    onSuccess: (_data, vars) => {
+      invalidateProducts(queryClient);
+      queryClient.invalidateQueries({ queryKey: productsKeys.detail(vars.id) });
       toast.success('Produto atualizado com sucesso!');
     },
     onError: (err: Error) => toast.error(`Erro ao atualizar: ${err.message}`),
@@ -236,7 +352,7 @@ export function useSetProductsGroup() {
       return { count: ids.length };
     },
     onSuccess: ({ count }) => {
-      queryClient.invalidateQueries({ queryKey: ['products'] });
+      invalidateProducts(queryClient);
       queryClient.invalidateQueries({ queryKey: ['product_groups'] });
       if (count) toast.success(`${count} ${count === 1 ? 'item atualizado' : 'itens atualizados'}.`);
     },
@@ -260,7 +376,7 @@ export function useBulkSetProductPrice() {
       return { count: ids.length };
     },
     onSuccess: ({ count }) => {
-      queryClient.invalidateQueries({ queryKey: ['products'] });
+      invalidateProducts(queryClient);
       if (count) toast.success(`Preço aplicado em ${count} ${count === 1 ? 'item' : 'itens'}.`);
     },
     onError: (err: Error) => toast.error(`Erro ao aplicar preço: ${err.message}`),
@@ -278,7 +394,7 @@ export function useSyncSiblings() {
       if (error) throw error;
     },
     onSuccess: (_data, vars) => {
-      queryClient.invalidateQueries({ queryKey: ['products'] });
+      invalidateProducts(queryClient);
       toast.success(`${vars.siblingIds.length} ${vars.siblingIds.length === 1 ? 'material similar atualizado' : 'materiais similares atualizados'}`);
     },
     onError: (err: Error) => toast.error(`Erro ao sincronizar: ${err.message}`),
@@ -293,6 +409,15 @@ export interface ProductLinksSummary {
   /** Fichas que levam o produto como COMPONENTE DIRETO (jsonb, sem FK). */
   direct_components: number;
   hasAny: boolean;
+}
+
+interface ForceDeleteProductSummary {
+  product_name: string;
+  sheet_materials_count: number;
+  reservations_count: number;
+  purchase_items_count: number;
+  stock_movements_count: number;
+  direct_components_count: number;
 }
 
 /** Conta vínculos antes de excluir — útil pra mostrar resumo no AlertDialog. */
@@ -344,9 +469,17 @@ export function useDeleteProduct() {
       const force = typeof input === 'string' ? false : Boolean(input.force);
 
       if (force) {
-        const { data, error } = await (supabase as any).rpc('force_delete_product', { p_product_id: id });
-        if (error) throw error;
-        return { force: true, summary: data as Record<string, any> };
+        const { data: product, error: productError } = await supabase
+          .from('products')
+          .select('updated_at')
+          .eq('id', id)
+          .single();
+        if (productError) throw productError;
+        const summary = await forceDeleteProductCommand({
+          productId: id,
+          expectedUpdatedAt: product.updated_at,
+        });
+        return { force: true, summary: summary as unknown as ForceDeleteProductSummary };
       }
 
       const links = await fetchProductLinks(id);
@@ -370,7 +503,7 @@ export function useDeleteProduct() {
       return { force: false };
     },
     onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: ['products'] });
+      invalidateProducts(queryClient);
       queryClient.invalidateQueries({ queryKey: ['sheet_materials'] });
       queryClient.invalidateQueries({ queryKey: ['material_reservations'] });
       if (result?.force && result.summary) {
@@ -398,15 +531,34 @@ export function useBatchAddProducts() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (items: ProductFormData[]) => {
+      const split = items.map((item) => {
+        const normalized = normalizeProductSupplierColor(item);
+        return sanitizeUuidFields(normalized) as ProductFormData;
+      });
+      const result = await createProductsWithStock(split.map((item) => ({
+        ...item,
+        quantity: Number(item.quantity ?? 0),
+        reason: 'Cadastro manual em lote com saldo/grade inicial',
+      })));
+      if (!result.success) {
+        throw new Error(result.errors?.[0]?.error || 'Falha ao cadastrar produtos em lote');
+      }
+      const ids = (result.results ?? [])
+        .map((row) => row.product_id)
+        .filter((id): id is string => typeof id === 'string');
+      if (ids.length !== split.length) {
+        throw new Error('Comando de estoque retornou lote de produtos incompleto');
+      }
       const { data, error } = await supabase
         .from('products')
-        .insert(items.map(i => sanitizeUuidFields(i)) as any)
-        .select();
+        .select()
+        .in('id', ids);
       if (error) throw error;
-      return data;
+      const byId = new Map((data || []).map((product) => [product.id, product]));
+      return ids.map((id) => byId.get(id)).filter(Boolean);
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['products'] });
+      invalidateProducts(queryClient);
       toast.success(`${data.length} itens criados com sucesso!`);
     },
     onError: (err: Error) => toast.error(`Erro ao criar itens: ${err.message}`),
@@ -473,7 +625,7 @@ export function useAutoGroupProducts() {
       return { created, assigned };
     },
     onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: ['products'] });
+      invalidateProducts(queryClient);
       queryClient.invalidateQueries({ queryKey: ['product_groups'] });
       if (result.created === 0 && result.assigned === 0) {
         toast.info('Nenhum agrupamento necessário — todos os itens já estão agrupados ou são únicos.');

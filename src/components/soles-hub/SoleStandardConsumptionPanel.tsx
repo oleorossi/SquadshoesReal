@@ -21,9 +21,10 @@ import { cn } from '@/lib/utils';
 import {
   useSoleGroupItems, useSoleGroupRoles, useSetSoleGroupRole,
   useUpsertSoleGroupItem, useRemoveSoleGroupItem, useCopySoleGroupItems,
-  useSoleGroupsWithItems, rolesForSole, ROLE_LABEL, ROLE_SOURCE,
+  useSoleGroupsWithItems, rolesForSole, ROLE_LABEL, ROLE_SOURCE, ROLE_WITH_MATERIAL_PIN,
   type SoleRole, type SoleGroupItemRow,
 } from '@/hooks/useSoleGroupStandardConsumption';
+import { isInsoleFiberColorAgnostic } from '@/lib/saleOrderReadinessCorrections';
 
 /**
  * Consumo padrão do MODELO de solado — cadastro único.
@@ -34,7 +35,7 @@ import {
  * SKU de cor.
  *
  * Duas naturezas de linha — ver useSoleGroupStandardConsumption.ts:
- *   PAPEL — quantidade aqui, material escolhido pela ficha/PV.
+ *   PAPEL — quantidade aqui; fibra também pinua o SKU. Demais materiais da ficha/PV.
  *   ITEM  — material e quantidade, ambos do solado.
  *
  * Princípio de cadastro: UM número por linha. A grade por numeração só aparece
@@ -49,7 +50,13 @@ interface Props {
   isFachetado?: boolean | null;
 }
 
-type RoleDraft = { perPair: number; perSize: Record<string, number>; open: boolean; dirty: boolean };
+type RoleDraft = {
+  perPair: number;
+  perSize: Record<string, number>;
+  open: boolean;
+  dirty: boolean;
+  materialProductId: string | null;
+};
 type ItemDraft = { perPair: number; perSize: Record<string, number>; open: boolean; unit: string; dirty: boolean };
 
 export default function SoleStandardConsumptionPanel({
@@ -84,13 +91,13 @@ export default function SoleStandardConsumptionPanel({
     staleTime: 60_000,
   });
 
-  // Materiais selecionáveis (tudo menos solado).
+  // Materiais selecionáveis (tudo menos solado). Fibra filtra pra placa/área.
   const { data: materials = [] } = useQuery({
     queryKey: ['materials_for_sole_standard'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('products')
-        .select('id, name, sku, unit, category, color')
+        .select('id, name, sku, unit, category, color, group_id, product_groups!products_group_id_fkey(name, sector, is_color_agnostic)')
         .eq('active', true)
         .order('name')
         .limit(1000);
@@ -102,6 +109,28 @@ export default function SoleStandardConsumptionPanel({
     },
     staleTime: 5 * 60_000,
   });
+
+  const [fiberSearch, setFiberSearch] = useState('');
+
+  const fiberMaterials = useMemo(() => {
+    const list = (materials as any[]).filter((p) => {
+      const unit = String(p.unit || '').toLowerCase();
+      const groupName = p.product_groups?.name || '';
+      const sector = p.product_groups?.sector || p.category || '';
+      const label = `${p.name || ''} ${groupName} ${sector}`.toLowerCase();
+      if (['dm²', 'dm2', 'm²', 'm2', 'placa', 'placas'].includes(unit)) return true;
+      if (isInsoleFiberColorAgnostic(sector, { name: groupName, is_color_agnostic: p.product_groups?.is_color_agnostic ?? null })) {
+        return true;
+      }
+      // Fallback por nome: PLACA EVA, FIBRA DE PALMILHA, etc.
+      return /\b(fibra|placa|palmilha|eva)\b/.test(label) && !/\b(forr|napa|solado)\b/.test(label);
+    });
+    if (!fiberSearch.trim()) return list;
+    return list.filter((p) => searchMatchesAllTerms(
+      fiberSearch,
+      [p.name, p.sku, p.category, p.product_groups?.name].filter(Boolean).join(' '),
+    ));
+  }, [materials, fiberSearch]);
 
   const [roleDrafts, setRoleDrafts] = useState<Record<string, RoleDraft>>({});
   const [itemDrafts, setItemDrafts] = useState<Record<string, ItemDraft>>({});
@@ -122,6 +151,7 @@ export default function SoleStandardConsumptionPanel({
         perSize: v?.perSize ?? {},
         open: !!v?.variesBySize,
         dirty: false,
+        materialProductId: v?.materialProductId ?? null,
       };
     });
     setRoleDrafts(next);
@@ -163,6 +193,7 @@ export default function SoleStandardConsumptionPanel({
       role,
       perPair: d.perPair,
       perSize: d.open ? d.perSize : {},
+      materialProductId: ROLE_WITH_MATERIAL_PIN.has(role) ? d.materialProductId : null,
     });
     setRoleDrafts((p) => ({ ...p, [role]: { ...p[role], dirty: false } }));
   };
@@ -284,13 +315,14 @@ export default function SoleStandardConsumptionPanel({
         <div className="px-3 py-2 bg-muted/40 border-b border-border/60 flex items-center gap-2">
           <Badge variant="outline" className="text-xs h-5 border-primary/40 text-primary">PAPEL</Badge>
           <span className="text-xs text-muted-foreground">
-            O solado define a quantidade; o material vem da ficha e do pedido.
+            Quantidade do solado. Na fibra, selecione também o SKU — ele manda no débito/consumo.
           </span>
         </div>
         <div className="divide-y divide-border/60">
           {applicableRoles.map((role) => {
             const d = roleDrafts[role];
             if (!d) return null;
+            const pinMaterial = ROLE_WITH_MATERIAL_PIN.has(role);
             return (
               <div key={role} className="px-3 py-2.5 space-y-2">
                 <div className="flex items-center gap-3 flex-wrap">
@@ -334,6 +366,95 @@ export default function SoleStandardConsumptionPanel({
                     {d.dirty ? 'Salvar' : 'Salvo'}
                   </Button>
                 </div>
+                {pinMaterial && (() => {
+                  const selected = (materials as any[]).find((m) => m.id === d.materialProductId);
+                  const missingPin = !d.materialProductId;
+                  return (
+                    <div
+                      className={cn(
+                        'rounded-md border px-3 py-2.5 space-y-2',
+                        missingPin
+                          ? 'border-amber-500/40 bg-amber-500/10'
+                          : 'border-border/60 bg-muted/20',
+                      )}
+                    >
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Package2 className="h-4 w-4 text-primary shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs font-semibold uppercase tracking-wide">
+                            Material para débito
+                          </div>
+                          <div className="text-[11px] text-muted-foreground">
+                            SKU que o estoque baixa na fibra — sem isto o débito cai no grupo da ficha.
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Select
+                          value={d.materialProductId || '__none__'}
+                          onValueChange={(v) => {
+                            patchRole(role, {
+                              materialProductId: v === '__none__' ? null : v,
+                            });
+                            setFiberSearch('');
+                          }}
+                        >
+                          <SelectTrigger className="h-9 w-full max-w-lg text-xs">
+                            <SelectValue placeholder="Buscar fibra / placa…" />
+                          </SelectTrigger>
+                          <SelectContent className="max-h-[300px]">
+                            <div className="p-2 sticky top-0 bg-popover z-10 border-b border-border/50">
+                              <SearchInput
+                                value={fiberSearch}
+                                onChange={setFiberSearch}
+                                placeholder="Nome, SKU ou grupo…"
+                                onKeyDown={(e) => e.stopPropagation()}
+                                inputClassName="h-7 text-xs"
+                              />
+                            </div>
+                            <SelectItem value="__none__" className="text-xs">
+                              Sem SKU pinado (usa a ficha)
+                            </SelectItem>
+                            {fiberMaterials.length === 0 ? (
+                              <div className="px-2 py-4 text-xs text-muted-foreground text-center italic">
+                                {fiberSearch
+                                  ? `Nenhum resultado para "${fiberSearch}"`
+                                  : 'Nenhum produto de fibra/placa ativo no estoque'}
+                              </div>
+                            ) : (
+                              fiberMaterials.map((m: any) => (
+                                <SelectItem key={m.id} value={m.id} className="text-xs">
+                                  <div className="flex flex-col">
+                                    <span>{m.name}</span>
+                                    <span className="text-xs text-muted-foreground">
+                                      {m.product_groups?.name || m.category}
+                                      {m.sku ? ` · SKU ${m.sku}` : ''}
+                                      {` · ${m.unit}`}
+                                    </span>
+                                  </div>
+                                </SelectItem>
+                              ))
+                            )}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {selected ? (
+                        <div className="text-xs font-mono text-foreground">
+                          Selecionado: <span className="font-semibold">{selected.name}</span>
+                          {selected.sku ? ` · SKU ${selected.sku}` : ''} · {selected.unit}
+                        </div>
+                      ) : (
+                        <div className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+                          <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                          <span>
+                            Selecione o SKU e clique em <strong>Salvar</strong> — sem pin o débito
+                            continua resolvendo pelo grupo da ficha (pode pegar o produto errado).
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
                 {d.open && sizes.length > 0 &&
                   renderGrid(d.perSize, (size, v) =>
                     patchRole(role, { perSize: { ...d.perSize, [size]: v } }),

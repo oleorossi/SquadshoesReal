@@ -81,10 +81,12 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   // Rotas do menu de Produção (remodelagem do motor diário, 0747cea) — todas
   // governadas pelo módulo 'producao', igual às demais /producao/*.
   '/producao/planejamento': 'producao',
+  '/producao/antecipacao': 'producao',
   '/producao/kanban': 'producao',
   '/producao/estouro': 'producao',
   '/producao/setores': 'producao',
   '/producao/apontamento': 'producao',
+  '/producao/calculadora-grade': 'producao',
   '/producao/analises': 'producao',
   '/producao/produtividade': 'producao',
   '/relatorios/diario-producao': 'reports',
@@ -112,7 +114,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/capacity-planning': 'producao',
   '/gargalos': 'producao',
   // Hub unificado "Terceirizados" (rota canônica /terceirizados): Na Rua + OS +
-  // Planejamento + Prestadores + Receitas + Relatório. Governado pelo módulo
+  // Planejamento + Prestadores + Relatório. Governado pelo módulo
   // 'terceirizados' (mesmo do antigo /contractors) — e o papel 'producao' recebe
   // esse módulo em ROLE_MODULES, então quem acessava QUALQUER uma das duas telas
   // antigas continua com acesso.
@@ -584,7 +586,7 @@ export function isActionAllowed(path: string, action: PermissionAction, input: R
  * ⚠ Passe o path do ITEM DE MENU (o que a matriz grava), não uma rota-redirect.
  */
 export function useCan(path: string) {
-  const { can, loading, isAdmin, permsLoading } = useAccessControl();
+  const { can, loading, isAdmin, roles, permsLoading } = useAccessControl();
   // NÃO memoizar: `can` fecha sobre perms/roles que chegam async — memoizar por
   // deps incompletas congelava gates desatualizados (fail-open) e não recalculava
   // quando os grants chegavam. Recalcular a cada render é barato e sempre reflete
@@ -595,6 +597,7 @@ export function useCan(path: string) {
   return {
     loading: loading || permsLoading,
     isAdmin,
+    roles,
     canView: can(path, 'view'),
     canCreate: actionsReady && can(path, 'create'),
     canEdit: actionsReady && can(path, 'edit'),

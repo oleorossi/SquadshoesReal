@@ -16,7 +16,7 @@
  *   • Prestadores          → cadastro/CRUD das contratadas (Contractors)
  *   • Tarifas por Referência → R$/par por ficha (TerceirizacaoCoberturaPanel)
  *
- * Receitas artesanais agora pertencem ao hub único de Engenharia. O parâmetro
+ * Receitas de tiras agora pertencem ao grupo próprio Central de Tiras. O parâmetro
  * legado `?tab=recipes` é preservado apenas como redirect.
  *
  * As páginas originais são renderizadas em modo `embedded` (sem header/AppLayout

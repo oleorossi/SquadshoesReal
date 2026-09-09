@@ -10,6 +10,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useContractors } from '@/hooks/useContractors';
 import { generateServiceOrderNumber } from '@/lib/serviceOrderStock';
 import { normTxt } from '@/lib/consumptionRows';
+import { requiresUpperCut } from '@/lib/upperCutEligibility';
 
 /**
  * CORTE DE CABEDAL — TERCEIRIZAÇÃO, no consumo de UM PV.
@@ -19,9 +20,9 @@ import { normTxt } from '@/lib/consumptionRows';
  * Vive à parte porque só faz sentido com UM pedido: a OS amarra PV + referência
  * + cor, e um lote de PVs não tem uma OS única.
  *
- * Itens do PV cuja ficha técnica NÃO tem tiras (`has_straps !== true`) passam
- * pela sub-etapa "Corte Cabedal". Aqui a OS de terceirização é gerada direto,
- * espelhando o payload do `ServiceOrderFormDialog`.
+ * Itens do PV cuja ficha técnica possui consumo de cabedal passam pela
+ * sub-etapa "Corte Cabedal". Tiras são independentes: uma referência mista
+ * continua aparecendo aqui e também segue o fluxo operacional das tiras.
  */
 type UpperCutGroup = {
   key: string;
@@ -62,7 +63,7 @@ export default function UpperCutOutsourcingSection({ saleOrderId, orderNumber }:
     queryFn: async () => {
       const { data: items, error } = await supabase
         .from('sale_order_items')
-        .select('reference_id, color, quantity, technical_sheets(code, name, has_straps)')
+        .select('reference_id, color, quantity, technical_sheets(code, name, upper_material, upper_material_group_id, upper_material_product_id, upper_consumption, upper_consumption_per_size, components_accessories)')
         .eq('sale_order_id', saleOrderId);
       if (error) throw error;
 
@@ -70,7 +71,7 @@ export default function UpperCutOutsourcingSection({ saleOrderId, orderNumber }:
       const groupsMap = new Map<string, UpperCutGroup>();
       for (const item of (items || []) as any[]) {
         const sheet = item.technical_sheets;
-        if (!item.reference_id || !sheet || sheet.has_straps === true) continue;
+        if (!item.reference_id || !sheet || !requiresUpperCut(sheet)) continue;
         const color = (item.color || '').trim() || '—';
         const key = `${item.reference_id}|${normTxt(color)}`;
         const g = groupsMap.get(key) || {
@@ -215,7 +216,7 @@ export default function UpperCutOutsourcingSection({ saleOrderId, orderNumber }:
         Corte de Cabedal — Terceirização
       </h3>
       <p className="text-xs text-muted-foreground">
-        Referências deste pedido com corte de cabedal (modelo sem tiras). Selecione a terceirizada e
+        Referências deste pedido com consumo de cabedal. Selecione a terceirizada e
         gere a Ordem de Serviço direto daqui — ela entra como <strong>Pendente</strong> nas listas do
         menu Terceirizados. Quando a ficha tem cabedal, gerar a OS <strong>dá baixa na napa do
         cabedal</strong> na metragem deste lote (o material sai da fábrica com a terceirizada).

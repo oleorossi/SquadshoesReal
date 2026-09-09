@@ -132,13 +132,13 @@ describe('slugForFilename', () => {
 });
 
 describe('buildCostReportDoc (smoke)', () => {
-  it('gera PDF não-vazio e resumo correto pras 3 linhas-fixture', () => {
+  it('gera PDF não-vazio e resumo correto pras 3 linhas-fixture', async () => {
     const rows = [
       row({ number: 'OC-1', provider: 'A', total: 100, isPaid: true, createdAt: '2026-05-01T00:00:00Z' }),
       row({ number: 'OC-2', provider: 'B', total: 200, isPaid: false, createdAt: '2026-05-15T00:00:00Z' }),
       row({ number: 'OC-3', provider: 'A', total: 300, isPaid: false, createdAt: '2026-06-01T00:00:00Z' }),
     ];
-    const { doc, summary, filename } = buildCostReportDoc({
+    const { doc, summary, filename } = await buildCostReportDoc({
       kind: 'OC',
       rows,
       period: { from: '2026-05-01', to: '2026-06-30' },

@@ -75,6 +75,7 @@ export async function exportFolhaExcel(rows: FolhaExportRow[], periodLabel: stri
         'Batidas (horários)': d.punches.join(' · ') || (d.status === 'absence' ? '— (falta)' : '—'),
         'Esperado (h)': h2(d.expected_minutes),
         'Trabalhado (h)': d.status === 'pending' ? 'ímpar' : h2(d.worked_minutes),
+        'Ausência remunerada (h)': h2(d.excused_minutes || 0),
         'Situação do dia': KIND_LABEL[d.status] || d.status,
         'Saldo bruto (h)': d.status === 'absence' || d.status === 'pending' ? '' : h2(d.raw_balance_minutes),
         'Crédito bruto (min)': d.raw_credit_minutes,
@@ -90,8 +91,8 @@ export async function exportFolhaExcel(rows: FolhaExportRow[], periodLabel: stri
   const wsDet = XLSX.utils.json_to_sheet(detalhe);
   wsDet['!cols'] = [
     { wch: 9 }, { wch: 22 }, { wch: 11 }, { wch: 5 }, { wch: 26 }, { wch: 11 },
-    { wch: 13 }, { wch: 24 }, { wch: 13 }, { wch: 16 }, { wch: 16 }, { wch: 16 },
-    { wch: 14 }, { wch: 18 }, { wch: 25 }, { wch: 18 },
+    { wch: 13 }, { wch: 25 }, { wch: 24 }, { wch: 13 }, { wch: 16 }, { wch: 16 },
+    { wch: 16 }, { wch: 14 }, { wch: 18 }, { wch: 25 }, { wch: 18 },
   ];
   XLSX.utils.book_append_sheet(wb, wsDet, 'Detalhe dia a dia');
 
@@ -102,6 +103,7 @@ export async function exportFolhaExcel(rows: FolhaExportRow[], periodLabel: stri
     ['Os valores e o detalhe vêm do MESMO ledger usado no fechamento da Folha.'],
     ['• Excesso de um dia compensa atraso parcial de outro dentro do período selecionado.'],
     ['• Falta integral fica separada e não entra na compensação de minutos.'],
+    ['• Ausência remunerada parcial cobre somente a defasagem do dia e nunca gera HE.'],
     ['• Primeiro calcula-se crédito bruto − atraso bruto. Saldo positivo acima de 10min vira HE;'],
     ['  saldo de 1 a 10min é descartado; saldo negativo vira atraso líquido descontável.'],
     ['• A compensação consome primeiro créditos de taxa normal e preserva domingo/feriado.'],

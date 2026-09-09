@@ -836,8 +836,9 @@ export function buildProductionOrderPrintHtml(order: any, materials: any[]) {
       const multiplier = gradeSum > 0 ? totalPairs / gradeSum : 0;
       const headerCells = activeSizes.map(s => `<th style="border:1px solid #999;padding:3px 4px;text-align:center;font-size:10px;background:#e8e8d0;">${s}</th>`).join('');
       const baseCells = activeSizes.map(s => `<td style="border:1px solid #999;padding:3px 4px;text-align:center;font-family:monospace;font-size:10px;color:#666;">${Number(grade[s]) || 0}</td>`).join('');
+      const scaledGrade = scaleGradeWithLargestRemainder(grade, multiplier, totalPairs);
       const scaledCells = activeSizes.map(s => {
-        const qty = Math.round((Number(grade[s]) || 0) * multiplier);
+        const qty = Number(scaledGrade[s]) || 0;
         return `<td style="border:1px solid #999;padding:3px 4px;text-align:center;font-family:monospace;font-size:11px;font-weight:700;">${qty}</td>`;
       }).join('');
       const showBaseRow = gradeSum !== totalPairs;

@@ -40,8 +40,9 @@ interface ConstructionConfigPanelProps {
 //   Cabedal cortado (Corte Cabedal). Palmilha vem pronta na cor.
 // • Cabedal Forrado (com forração)     → COM Corte Cabedal, Corte Forração,
 //   Costura (costura palmilha+forração e cabedal).
-// • Tiras (has_straps=true)            → SEM Corte Cabedal (tira já vem
-//   cortada). COM Costura (só palmilha+forração).
+// • Tiras (has_straps=true)            → pode ser uma construção somente de
+//   tiras OU uma capacidade adicional de um modelo com Cabedal. Selecionar um
+//   cartão de Cabedal nunca desabilita as tiras já configuradas.
 // Silk fica entre Aviamento e Colagem quando ativado.
 //
 // ⚠ TODA lista termina em 'Expedição' (decisão do dono, 07/08/2026). Até então
@@ -156,14 +157,12 @@ function applyModel(
     onChange('requires_cutting', true);
     onChange('requires_cutting_cabedal', true);
     onChange('requires_sewing', false);
-    onChange('has_straps', false);
     onSectors?.(sectors);
   } else if (model === 'cabedal_forrado') {
     onChange('insole_ready_made', false);
     onChange('construction_type', _requires_sewing ? 'corte_costura' : 'corte_fio');
     onChange('requires_cutting', true);
     onChange('requires_cutting_cabedal', true);
-    onChange('has_straps', false);
     onSectors?.(sectors);
   } else {
     onChange('insole_ready_made', false);
@@ -246,7 +245,7 @@ export function ConstructionConfigPanel({
   requires_cutting: _rc,
   requires_cutting_cabedal: _rcc = true,
   requires_sewing,
-  has_straps: _hs,
+  has_straps,
   has_colored_lining,
   colored_lining_mode,
   insole_color_mode,
@@ -291,6 +290,11 @@ export function ConstructionConfigPanel({
       <div className="flex items-center gap-2">
         <Layers className="h-4 w-4 text-primary" />
         <h3 className="text-sm font-semibold">Modelo de Construção</h3>
+        {has_straps && activeModel !== 'tiras' && (
+          <Badge variant="secondary" className="text-xs">
+            Cabedal + Tiras
+          </Badge>
+        )}
         <Badge variant="outline" className="text-xs ml-auto">
           Define roteiro e consumo
         </Badge>

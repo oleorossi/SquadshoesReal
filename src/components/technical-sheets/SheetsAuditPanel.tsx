@@ -7,36 +7,12 @@ import { Button } from '@/components/ui/button';
 import { SearchInput } from '@/components/ui/search-input';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
+import {
+  getTechnicalSheetAuditGaps,
+  type TechnicalSheetAuditRow,
+} from '@/lib/technicalSheetAudit';
 import { cn } from '@/lib/utils';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
-
-type AuditRow = {
-  id: string;
-  code: string;
-  name: string;
-  status: string | null;
-  sole_drives_consumption: boolean;
-  missing_upper_material: boolean;
-  missing_upper_consumption: boolean;
-  missing_lining_material: boolean;
-  missing_lining_consumption: boolean;
-  missing_insole_material: boolean;
-  missing_insole_consumption: boolean;
-  missing_sole_material: boolean;
-  missing_sole_consumption: boolean;
-  sole_fachetado_sem_fachete: boolean;
-  sole_driven_but_specs_missing: boolean;
-  missing_sole_color_mapping: boolean;
-  straps_without_colors: boolean;
-  straps_without_group: boolean;
-  missing_mod: boolean;
-  upper_per_size_partial_no_fallback: boolean;
-  missing_production_sectors: boolean;
-  missing_primary_sole_id: boolean;
-  invalid_published_ncm: boolean;
-  unit_configuration_issue: boolean;
-  area_material_width_missing: boolean;
-};
 
 type SoleAuditRow = {
   sole_id: string;
@@ -80,40 +56,17 @@ type AuditSummary = {
   material_area_sem_largura: number;
 };
 
-const GAP_LABELS: { key: keyof AuditRow; label: string; severity: 'critical' | 'warn' }[] = [
-  { key: 'missing_upper_material', label: 'Grupo do cabedal', severity: 'critical' },
-  { key: 'missing_upper_consumption', label: 'Consumo do cabedal', severity: 'critical' },
-  { key: 'missing_lining_material', label: 'Grupo da forração', severity: 'critical' },
-  { key: 'missing_lining_consumption', label: 'Consumo da forração', severity: 'critical' },
-  { key: 'missing_insole_material', label: 'Grupo da palmilha', severity: 'critical' },
-  { key: 'missing_insole_consumption', label: 'Consumo da palmilha', severity: 'critical' },
-  { key: 'missing_sole_material', label: 'Grupo do solado', severity: 'critical' },
-  { key: 'missing_sole_consumption', label: 'Consumo do solado', severity: 'critical' },
-  { key: 'sole_driven_but_specs_missing', label: 'Solado dirige consumo mas não tem specs', severity: 'critical' },
-  { key: 'missing_sole_color_mapping', label: 'Cores do solado', severity: 'warn' },
-  { key: 'sole_fachetado_sem_fachete', label: 'Fachete (solado fachetado)', severity: 'warn' },
-  { key: 'straps_without_colors', label: 'Tiras sem cores', severity: 'warn' },
-  { key: 'straps_without_group', label: 'Tiras sem grupo', severity: 'warn' },
-  { key: 'missing_mod', label: 'MOD (mão-de-obra)', severity: 'warn' },
-  { key: 'upper_per_size_partial_no_fallback', label: 'Cabedal per-size parcial', severity: 'warn' },
-  { key: 'missing_production_sectors', label: 'Setores de produção não configurados', severity: 'critical' },
-  { key: 'missing_primary_sole_id', label: 'Solado principal sem vínculo de estoque', severity: 'critical' },
-  { key: 'invalid_published_ncm', label: 'NCM inválido em ficha publicada', severity: 'critical' },
-  { key: 'unit_configuration_issue', label: 'Unidade ou conversão de estoque', severity: 'critical' },
-  { key: 'area_material_width_missing', label: 'Largura do material de área', severity: 'critical' },
-];
-
-function useSheetsAudit() {
+export function useSheetsAudit() {
   return useQuery({
     queryKey: ['sheets_audit'],
     staleTime: 60_000,
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('v_technical_sheets_audit' as any)
+        .from('v_technical_sheets_audit')
         .select('*')
         .order('code');
       if (error) throw error;
-      return (data as any[]) as AuditRow[];
+      return data as unknown as TechnicalSheetAuditRow[];
     },
   });
 }
@@ -149,10 +102,6 @@ function useSolesAudit() {
   });
 }
 
-function getGapsForRow(row: AuditRow) {
-  return GAP_LABELS.filter(g => row[g.key]);
-}
-
 export function SheetsAuditPanel({
   open, onOpenChange, onJumpToSheet,
 }: {
@@ -169,10 +118,10 @@ export function SheetsAuditPanel({
 
   const filtered = useMemo(() => {
     let r = rows;
-    if (filter === 'incomplete') r = r.filter(row => getGapsForRow(row).length > 0);
-    else if (filter === 'complete') r = r.filter(row => getGapsForRow(row).length === 0);
+    if (filter === 'incomplete') r = r.filter(row => getTechnicalSheetAuditGaps(row).length > 0);
+    else if (filter === 'complete') r = r.filter(row => getTechnicalSheetAuditGaps(row).length === 0);
     else if (filter === 'critical') r = r.filter(row =>
-      getGapsForRow(row).some(g => g.severity === 'critical')
+      getTechnicalSheetAuditGaps(row).some(g => g.severity === 'critical')
     );
     if (search.trim()) {
       r = r.filter(row => searchMatchesAllTerms(search, row.code, row.name));
@@ -305,7 +254,7 @@ export function SheetsAuditPanel({
 function SheetsAuditTab({
   rows, isLoading, search, setSearch, filter, setFilter, summary, onJumpToSheet,
 }: {
-  rows: AuditRow[];
+  rows: TechnicalSheetAuditRow[];
   isLoading: boolean;
   search: string;
   setSearch: (v: string) => void;
@@ -316,10 +265,10 @@ function SheetsAuditTab({
 }) {
   const filtered = useMemo(() => {
     let r = rows;
-    if (filter === 'incomplete') r = r.filter(row => getGapsForRow(row).length > 0);
-    else if (filter === 'complete') r = r.filter(row => getGapsForRow(row).length === 0);
+    if (filter === 'incomplete') r = r.filter(row => getTechnicalSheetAuditGaps(row).length > 0);
+    else if (filter === 'complete') r = r.filter(row => getTechnicalSheetAuditGaps(row).length === 0);
     else if (filter === 'critical') r = r.filter(row =>
-      getGapsForRow(row).some(g => g.severity === 'critical')
+      getTechnicalSheetAuditGaps(row).some(g => g.severity === 'critical')
     );
     if (search.trim()) {
       r = r.filter(row => searchMatchesAllTerms(search, row.code, row.name));
@@ -427,7 +376,7 @@ function SheetsAuditTab({
         ) : (
           <div className="space-y-2">
             {filtered.map(row => {
-              const gaps = getGapsForRow(row);
+              const gaps = getTechnicalSheetAuditGaps(row);
               const hasCritical = gaps.some(g => g.severity === 'critical');
               return (
                 <div

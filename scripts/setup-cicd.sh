@@ -4,9 +4,9 @@
 # =============================================================================
 # Verifica e guia a configuração do pipeline:
 #   • GitHub: hook do Claude já push automático no fim do turno
-#   • Vercel: auto-deploy a cada push em main (configurado no dashboard)
-#   • Supabase: GitHub Action aplica migrations quando arquivos em
-#     supabase/migrations/** mudam — PRECISA de 3 secrets configurados.
+#   • CI: valida todo push em main.
+#   • Supabase: GitHub Action aplica migrations somente depois do CI verde.
+#   • Vercel/Edge: aguardam todas as migrations do mesmo SHA antes do deploy.
 #
 # Uso:
 #   bash scripts/setup-cicd.sh           — relatório de status
@@ -55,7 +55,7 @@ echo -e "${BOLD}2) Vercel — auto-deploy${NC}"
 VERCEL_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" "$PRODUCTION_URL" 2>/dev/null || echo "000")
 if [[ "$VERCEL_RESPONSE" =~ ^(200|301|302)$ ]]; then
   echo -e "   ${GREEN}✓${NC} Site live respondendo HTTP $VERCEL_RESPONSE"
-  echo -e "   Vercel auto-deploya em pushes para main (configurado no dashboard)."
+  echo -e "   Produção é publicada pelo workflow após CI e banco do mesmo SHA."
 else
   echo -e "   ${YELLOW}⚠${NC} Site retornou HTTP $VERCEL_RESPONSE"
   echo -e "   Verifique no dashboard: https://vercel.com/dashboard"
@@ -119,9 +119,11 @@ echo -e "  ${BOLD}Sua mudança${NC}"
 echo -e "       ↓"
 echo -e "  ${BOLD}git commit + push${NC}  ────►  ${GREEN}feature branch${NC}"
 echo -e "       ↓ (stop hook auto-merge)"
-echo -e "  ${GREEN}main${NC}  ────────────►  ${GREEN}Vercel build${NC}  ────►  ${GREEN}site live${NC}"
-echo -e "       ↓ (se mexeu em supabase/migrations/**)"
-echo -e "  ${GREEN}GitHub Actions${NC}  ──►  ${GREEN}supabase db push${NC}  ──►  ${GREEN}DB live${NC}"
+echo -e "  ${GREEN}main${NC}  ────────────►  ${GREEN}CI integral${NC}"
+echo -e "       ↓ (somente se verde; mesmo SHA)"
+echo -e "  ${GREEN}Supabase migrations${NC}  ──►  ${GREEN}DB live${NC}"
+echo -e "       ↓ (frontend e Edge aguardam o banco)"
+echo -e "  ${GREEN}Vercel + Edge Functions${NC}  ──►  ${GREEN}produção live${NC}"
 echo ""
 echo -e "${YELLOW}Importante:${NC} migrations aplicadas via Supabase MCP (durante este"
 echo -e "chat) NÃO ficam registradas em supabase_migrations.schema_migrations."

@@ -150,6 +150,34 @@ export function emptyPage<T = unknown>(): PageResult<T> {
 }
 
 /**
+ * Pagina um array já filtrado/ordenado em memória (lista de PV, etc.).
+ * Mesma regra de limiar do `fetchPage`: ≤75 mostra tudo sem pager.
+ */
+export function paginateInMemory<T>(
+  items: T[],
+  params: PageParams = {},
+): PageResult<T> {
+  const pageSize = Math.max(1, params.pageSize ?? PAGE_SIZE);
+  const pagerThreshold = Math.max(pageSize, params.pagerThreshold ?? PAGER_THRESHOLD);
+  const total = items.length;
+  const showPager = total > pagerThreshold;
+  if (!showPager) {
+    return { items, total, page: 1, totalPages: 1, showPager: false, isComplete: true };
+  }
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const current = Math.min(Math.max(1, Math.floor(params.page ?? 1)), totalPages);
+  const from = (current - 1) * pageSize;
+  return {
+    items: items.slice(from, from + pageSize),
+    total,
+    page: current,
+    totalPages,
+    showPager: true,
+    isComplete: false,
+  };
+}
+
+/**
  * Janela de números de página pro pager, com elipse.
  * Ex.: `pageWindow(7, 20)` → `[1, '…', 6, 7, 8, '…', 20]`.
  */

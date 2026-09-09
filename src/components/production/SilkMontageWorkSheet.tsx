@@ -1,7 +1,8 @@
 import React from 'react';
 import { PaintBrush as Paintbrush, Hammer, Pen, Paperclip, Sparkle as Sparkles, Cloud, Scissors, Warning as AlertTriangle } from '@phosphor-icons/react';
 import { adaptiveLabelFontSize } from '@/lib/adaptiveFontSize';
-import { gradeTableFont, floorSafeScale } from './worksheet/adaptiveFont';
+import { gradeTableFont, floorSafeScale, gradeMinWidthPx, A4_CONTENT_WIDTH_PX, type AdaptiveTableFont } from './worksheet/adaptiveFont';
+import { fitBesideGrade, thumbRowWidthPx, SIDE_BY_SIDE_GAP_PX } from './worksheet/sideBySide';
 import { TallyBox } from './worksheet/TallyBox';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { HeaderIdentification } from './worksheet/HeaderIdentification';
@@ -15,6 +16,7 @@ import { SectorAlerts, type SectorAlert } from './worksheet/SectorAlerts';
 import { SignedImage } from '@/components/ui/signed-image';
 import { formatOpNumber } from './worksheet/stageOrder';
 import type { ConsumptionRow } from '@/hooks/useBulkOrderConsumption';
+import { SectorMaterials } from './worksheet/SectorMaterials';
 
 /** Quantidade pt-BR: inteiro sem casas, fracionário com 1-2 casas. */
 const fmtConsumoQty = (n: number) =>
@@ -131,26 +133,39 @@ export interface SilkColorGroup {
    *  Forração (theme.showCompactImages). Ausente ⇒ cai nos campos escalares
    *  acima (1 foto representativa). */
   refImages?: RefImageEntry[];
-  /** TRUE quando o modelo tem tiras (has_straps). Usado no Corte Forração pra
-   *  esconder QUALQUER referência ao cabedal — modelo de tira não tem cabedal,
-   *  o cortador só corta a forração na cor da palmilha. */
+  /** TRUE quando o modelo tem tiras (has_straps). É independente do cabedal:
+   *  uma referência pode ter ambos os fluxos habilitados. */
   hasStraps?: boolean;
   /** Componentes auxiliares (capa, tira, presilha, etc) — pra setor Aviamento/Mesa. */
-  components?: Array<{ name: string; material?: string; qty?: string; color?: string; cm?: number; cmBands?: Array<{ band: string; cm: number }>; cmBySize?: Record<string, number> }>;
+  components?: Array<{
+    /** Posição da linha no array técnico; UUID identifica, mas não ordena. */
+    position?: number;
+    technicalStrapLineId?: string;
+    name: string;
+    material?: string;
+    qty?: string;
+    /** Cor efetiva congelada por linha no item do PV. */
+    color?: string;
+    cm?: number;
+    cmBands?: Array<{ band: string; cm: number }>;
+    cmBySize?: Record<string, number>;
+  }>;
   /** Lista de alertas específicos pra essa cor/setor (ex: "Modelo fachetado"). */
   alerts?: SectorAlert[];
   /** TRUE quando a palmilha desta cor PRECISA ser forrada (insole_has_lining
    *  E não é palmilha pronta). Usado pra filtrar Corte Forração — cores sem
    *  forração não devem aparecer nessa ficha. */
   requiresLiningCut?: boolean;
-  /** TRUE quando o modelo NÃO tem tiras (has_straps=false), ou seja, tem
-   *  cabedal completo a cortar. Usado pra filtrar Corte Cabedal — modelos
-   *  com tiras não passam por esse setor. */
+  /** TRUE quando há material/consumo de cabedal a cortar. Não depende de
+   *  has_straps; referências mistas passam por Corte Cabedal e por Tiras. */
   requiresUpperCut?: boolean;
   /** TRUE quando o cabedal passa por COSTURA: tem cabedal a cortar
    *  (requiresUpperCut) E a ficha técnica NÃO é corte a fio
    *  (upper_corte_a_fio=false). Filtra a ficha 'Costura Cabedal'. */
   requiresUpperSewing?: boolean;
+  /** Sobra de napa de outra espessura (Material extra do cabedal). Exibida
+   *  em Corte/Costura Cabedal — soma ao Material 1, não o substitui. */
+  leftoverNapas?: string[];
   /** Etapas de Aviamento que se aplicam a essa ficha (subset de
    *  ["Frente","Traseira","Costura de tiras"]). Renderizado como
    *  checklist por etapa × numeração no setor Aviamento. */
@@ -259,7 +274,8 @@ const SECTOR_THEME: Record<GroupedSector, {
   // nome da cor + grade por ficha + total por numeração + alerta fachetado
   // (audit E2 10/06/2026: o alerta é EXECUTADO por este setor).
   'Corte Forração':   { icon: Cloud,      compact: true,  showFrenteTraseiro: false, showSilkImage: false, showProductImage: false, showAlerts: true,  showPiecesToSew: false, showCompactImages: true },
-  // Corte Cabedal — só em modelos has_straps=false. Sem silk; foto do produto
+  // Corte Cabedal — referências com consumo de cabedal, tenham tiras ou não.
+  // Sem silk; foto do produto
   // pra identificação do cabedal por cor.
   'Corte Cabedal':    { icon: Scissors,   compact: false, showFrenteTraseiro: false, showSilkImage: false, showProductImage: true,  showAlerts: true,  showPiecesToSew: false },
   // Costura Palmilha (2026-06-12, ex-'Costura'): mesmíssimo layout compacto
@@ -358,10 +374,72 @@ export function collectCompactThumbs(
  *  conferência visual do modelo, quem manda no corte é o código e a grade.
  *  Abaixo disso a sandália vira borrão, e a regra da casa é remover conteúdo
  *  antes de encolher além do legível (CLAUDE.md, "Tamanho de fonte em print"). */
+/** Respiro entre miniaturas da faixa compacta. Alias do respiro da regra
+ *  compartilhada (`worksheet/sideBySide`) — os dois têm que ser o MESMO número,
+ *  senão a largura declarada em `data-rigid-width` mede uma régua e o layout
+ *  usa outra. */
+export const COMPACT_THUMB_GAP_PX = SIDE_BY_SIDE_GAP_PX;
+
 export function compactThumbPx(count: number): number {
   if (count <= 1) return 92;
   if (count === 2) return 68;
   return 52;
+}
+
+/**
+ * A faixa de miniaturas cabe AO LADO da grade nesta cor?
+ *
+ * A conta é toda sobre LARGURA porque é a largura que tem piso: a grade vive
+ * sob `table-layout: fixed` e corta número em silêncio quando aperta
+ * (CLAUDE.md → "a GRADE manda"). Só há ganho de altura se o que sobrar para a
+ * tabela continuar acima de `gradeMinWidthPx`; não sobrando, a faixa volta a
+ * empilhar sobre a grade, como era antes de 2026-08-29.
+ *
+ * Pura e exportada de propósito — é a regra que decide o layout, e decisão de
+ * layout que só existe dentro do JSX não tem como ser travada por teste.
+ */
+/**
+ * Grade de origem da tabela desta cor: por FACA no Corte Cabedal (quando a ref
+ * tem `knife_size_ranges`), por segmento no Aviamento, por numeração no resto.
+ */
+export function gradeSourceGrid(
+  cg: Pick<SilkColorGroup, 'knifeGrid' | 'aviamentoGrid' | 'combinedGrid'>,
+  sector: GroupedSector,
+): Record<string, number> {
+  if (sector === 'Corte Cabedal' && cg.knifeGrid && Object.keys(cg.knifeGrid).length > 0) return cg.knifeGrid;
+  if (sector === 'Aviamento' && cg.aviamentoGrid && Object.keys(cg.aviamentoGrid).length > 0) return cg.aviamentoGrid;
+  return cg.combinedGrid;
+}
+
+/**
+ * Colunas que a grade desta cor REALMENTE renderiza.
+ *
+ * Fonte única de propósito: o `minScale` que a ficha passa ao `PaginatedSheet`
+ * tem de sair da MESMA lista que a tabela desenha. Enquanto eram duas contas, o
+ * piso vinha de `Object.keys(cg.combinedGrid)` — sem filtrar numeração zerada e
+ * ignorando que Corte Cabedal e Aviamento desenham por FACA/segmento, não por
+ * numeração. Ver `worksheet/adaptiveFont.floorSafeScale`.
+ */
+export function gradeSizesOf(
+  cg: Pick<SilkColorGroup, 'knifeGrid' | 'aviamentoGrid' | 'combinedGrid'>,
+  sector: GroupedSector,
+): string[] {
+  const src = gradeSourceGrid(cg, sector);
+  return sortSizes(Object.keys(src).filter(s => (src[s] ?? 0) > 0));
+}
+
+export function thumbsFitBesideGrade(
+  thumbCount: number,
+  thumbPx: number,
+  sizeKeys: ReadonlyArray<string>,
+  font: AdaptiveTableFont,
+  maxCellDigits = 4,
+  availableWidthPx: number = A4_CONTENT_WIDTH_PX,
+): boolean {
+  return fitBesideGrade({
+    asideWidthPx: thumbRowWidthPx(thumbCount, thumbPx),
+    sizeKeys, font, maxCellDigits, availableWidthPx,
+  }).fits;
 }
 
 export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBand, sectorLabel, knives, facaRanges }: Props) => {
@@ -417,12 +495,8 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
       && cg.aviamentoGrid
       && Object.keys(cg.aviamentoGrid).length > 0;
     const usingBuckets = usingKnife || usingAviamentoPmg;
-    const sourceGrid: Record<string, number> = usingKnife
-      ? cg.knifeGrid!
-      : usingAviamentoPmg
-        ? cg.aviamentoGrid!
-        : cg.combinedGrid;
-    const activeSizes = sortSizes(Object.keys(sourceGrid).filter(s => (sourceGrid[s] ?? 0) > 0));
+    const sourceGrid: Record<string, number> = gradeSourceGrid(cg, sector);
+    const activeSizes = gradeSizesOf(cg, sector);
     // F-M3 (2026-06-17): na grade por faixa (faca/P-M-G), a soma das colunas
     // exibidas tem que fechar com o total de pares do grupo — senão alguma
     // numeração não foi mapeada e o operador produziria a menos/a mais. Aviso
@@ -560,30 +634,63 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
               operário do Aviamento trabalha peça a peça. Display-only: o storage
               em strap_colors continua POR PAR e os motores não mudam.) */}
           {sector === 'Aviamento' && (() => {
-            const hasData = (c: { cmBySize?: Record<string, number>; cmBands?: Array<{ band: string; cm: number }>; cm?: number }) =>
-              (!!c.cmBySize && Object.keys(c.cmBySize).length > 0) || (!!c.cmBands && c.cmBands.length > 0) || (c.cm != null && c.cm > 0);
-            const straps = (cg.components || []).filter(c => /^TIRA(\s|$)/i.test(c.name || '') && hasData(c));
+            // Toda posição aparece, mesmo sem medida cadastrada: omitir uma
+            // linha faria TIRA 3 parecer TIRA 2. A medida ausente fica "—".
+            const straps = (cg.components || []).filter(c =>
+              Boolean(c.technicalStrapLineId) || /^TIRA(\s|$)/i.test(c.name || ''),
+            );
             if (straps.length === 0) return null;
-            return straps.map((c, i) => (
-              <tr key={`strap-row-${i}`} style={{ borderBottom: '1px solid #000', borderTop: i === 0 ? '1.5px solid #000' : undefined }}>
-                <td className="py-1 font-mono font-bold uppercase tracking-wider" style={{ borderRight: '1px solid #000', padding: '4px 6px', fontSize: '9px', color: '#C00000' }}>
-                  {c.name}
-                </td>
-                {activeSizes.map(s => {
-                  // Preenche a coluna pela numeração crua (grade individual); cai pra
-                  // faixa P/M/G; por último a média (curva constante / só média cadastrada).
-                  // O valor armazenado é POR PAR → exibe POR PÉ (÷2, 1 casa decimal).
-                  const vPar = c.cmBySize?.[s] ?? c.cmBands?.find(b => b.band === s)?.cm ?? c.cm ?? null;
-                  const v = vPar != null ? Math.round((vPar / 2) * 10) / 10 : null;
-                  return (
-                    <td key={s} className="font-mono font-bold" style={{ fontSize: `${ft.cellPx}px`, borderRight: '1px solid #000', padding: `${ft.padY}px 1px`, color: '#C00000', lineHeight: 1.2 }}>
-                      {v != null ? `${v}cm` : '—'}
-                    </td>
-                  );
-                })}
-                <td className="py-1" />
-              </tr>
-            ));
+            return straps.map((c, i) => {
+              const position = c.position || i + 1;
+              const positionLabel = `TIRA ${position}`;
+              const technicalLabel = String(c.name || '').trim();
+              const material = String(c.material || '').trim();
+              const showTechnicalLabel = !!technicalLabel
+                && technicalLabel.toLocaleUpperCase('pt-BR') !== positionLabel;
+              return (
+                <tr
+                  key={c.technicalStrapLineId || `strap-row-${position}-${i}`}
+                  data-strap-position={position}
+                  data-technical-strap-line-id={c.technicalStrapLineId}
+                  style={{ borderBottom: '1px solid #000', borderTop: i === 0 ? '1.5px solid #000' : undefined }}
+                >
+                  <td className="py-1 font-mono font-bold uppercase" style={{ borderRight: '1px solid #000', padding: '4px 6px', color: '#000', lineHeight: 1.05 }}>
+                    <span className="block tracking-wider" style={{ fontSize: '9px' }}>{positionLabel}</span>
+                    {showTechnicalLabel && (
+                      <span className="block mt-0.5" style={{ fontSize: '9px', fontWeight: 600 }}>{technicalLabel}</span>
+                    )}
+                    <span
+                      data-strap-color
+                      className="block mt-0.5"
+                      style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '18px', letterSpacing: '-0.01em', color: '#C00000' }}
+                    >
+                      {c.color || '—'}
+                    </span>
+                    {material && (
+                      <span
+                        data-strap-material
+                        className="block mt-0.5"
+                        style={{ fontFamily: "'Fira Sans', sans-serif", fontSize: '10px', fontWeight: 600, lineHeight: 1.15, whiteSpace: 'normal', overflowWrap: 'anywhere' }}
+                      >
+                        {material}
+                      </span>
+                    )}
+                  </td>
+                  {activeSizes.map(s => {
+                    // Preenche a coluna pela numeração crua; cai pra faixa P/M/G;
+                    // por último, média. Storage por par → exibição por pé (÷2).
+                    const vPar = c.cmBySize?.[s] ?? c.cmBands?.find(b => b.band === s)?.cm ?? c.cm ?? null;
+                    const v = vPar != null ? Math.round((vPar / 2) * 10) / 10 : null;
+                    return (
+                      <td key={s} className="font-mono font-bold" style={{ fontSize: `${ft.cellPx}px`, borderRight: '1px solid #000', padding: `${ft.padY}px 1px`, color: '#C00000', lineHeight: 1.2 }}>
+                        {v != null ? `${v}cm` : '—'}
+                      </td>
+                    );
+                  })}
+                  <td className="py-1" />
+                </tr>
+              );
+            });
           })()}
 
           {/* Etapas de Aviamento — campos fillable por etapa × numeração.
@@ -619,9 +726,11 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
           ⚠ grade por {usingAviamentoPmg ? 'faixa P/M/G' : 'faca'} não fecha com o total ({displayedSum} ≠ {cg.totalPairs} pares) — conferir mapeamento de numerações
         </p>
       )}
-      {sector === 'Aviamento' && (cg.components || []).some(c => /^TIRA(\s|$)/i.test(c.name || '') && ((c.cmBySize && Object.keys(c.cmBySize).length > 0) || (c.cmBands?.length ?? 0) > 0 || (c.cm != null && c.cm > 0))) && (
+      {sector === 'Aviamento' && (cg.components || []).some(c =>
+        Boolean(c.technicalStrapLineId) || /^TIRA(\s|$)/i.test(c.name || ''),
+      ) && (
         <p className="leading-tight mt-0.5" style={{ fontSize: '9px', fontWeight: 700, color: '#C00000' }}>
-          Linhas TIRA = medida em cm "do pé" por numeração (ou faixa P/M/G, quando cadastrada).
+          Linhas TIRA = sequência da ficha técnica · cor e material do PV · medida em cm "do pé" por numeração (ou faixa P/M/G).
         </p>
       )}
       </>
@@ -1166,6 +1275,96 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
           // cor 26→20px, total 22→17px, margens mb-1→mb-0.5 / pt-1.5→pt-1,
           // grade 1 bucket menor (dense) e tally size="sm".
           if (theme.compact) {
+            // ── Foto AO LADO da grade (2026-08-29) ──
+            // A faixa de miniaturas gastava ~86px de ALTURA usando ~13% da
+            // largura; logo abaixo, a grade tem quase a mesma altura e usa a
+            // largura inteira. Lado a lado, a foto para de custar altura — e é
+            // exatamente o que faltava pra 2ª cor subir pra folha 1 (medido no
+            // PV-00167: folha 1 de 60% → 84% de ocupação, maço nas mesmas 2
+            // folhas). Mesma leitura que gerou a "Opção A" da `density.ts`, e o
+            // mesmo arranjo que a `ReducedWorkSheet` já usa.
+            //
+            // ⚠ A miniatura NÃO encolhe: continua nos 92px que o dono pediu em
+            // 22/07 ("o cortador identifica o modelo por elas"). O que muda é
+            // só onde ela senta.
+            //
+            // ⚠ Só entra lado a lado quando a grade CONTINUA acima da largura
+            // mínima que ela precisa pra não cortar número — a grade manda na
+            // largura (CLAUDE.md), e o corte do `table-layout: fixed` é
+            // silencioso. Não cabendo, empilha como antes.
+            const compactThumbs = theme.showCompactImages ? collectCompactThumbs(cg) : [];
+            const compactThumbSize = compactThumbPx(compactThumbs.length);
+            const compactGrid = cg.combinedGrid || {};
+            const compactSizes = sortSizes(
+              Object.keys(compactGrid).filter(sz => (compactGrid[sz] ?? 0) > 0),
+            );
+            const compactDigits = compactSizes.reduce(
+              (m, sz) => Math.max(m, String(compactGrid[sz] ?? 0).length), 1,
+            );
+            const thumbsBesideGrade = thumbsFitBesideGrade(
+              compactThumbs.length, compactThumbSize,
+              compactSizes, gradeTableFont(compactSizes, true), compactDigits,
+            );
+            /* Faixa de miniaturas: 1 por REFERÊNCIA da cor, com legenda quando
+               o card cobre mais de um modelo. Placeholder e refs que caem na
+               mesma foto são descartados (collectCompactThumbs). */
+            const compactThumbStrip = compactThumbs.length === 0 ? null : (() => {
+            const thumbs = compactThumbs;
+            // Legenda aparece quando o card cobre mais de um MODELO — não
+            // "mais de uma foto". Duas refs que compartilham a mesma foto
+            // viram 1 miniatura, e sem isso o cortador não saberia que ali
+            // moram dois modelos (pedido do dono 31/07/2026).
+            const distinctRefs = thumbs.reduce((s, t) => s + Math.max(1, t.refNames.length), 0);
+            const withCaption = distinctRefs > 1;
+            // Imagem MAIOR (pedido user 2026-07-22): o total do modelo saiu
+            // de cima da foto (cobria a sandália) pra uma faixa ABAIXO da
+            // imagem — o operador vê o modelo inteiro. 92px (era 54).
+            // Encolhe conforme o nº de modelos pra caber lado a lado sem
+            // engordar o card (Opção A, 31/07/2026) — ver compactThumbPx.
+            const IMG = compactThumbSize;
+            return (
+              <div className={`flex flex-wrap gap-2${thumbsBesideGrade ? '' : ' keep-together keep-with-next mt-1 mb-1'}`}>
+                {thumbs.map((t, ti) => (
+                  <div key={t.sheetId || t.resolvedUrl || ti} className="flex flex-col items-center gap-0.5 shrink-0">
+                    <div className="flex flex-col items-center">
+                      <ProductImageBlock
+                        variantImageUrl={t.variantImageUrl}
+                        alternateVariants={t.alternateVariants}
+                        technicalSheetImageUrl={t.technicalSheetImageUrl}
+                        orderColor={cg.color}
+                        size={IMG}
+                        alt={`${group.soleName} ${cg.color}${t.refName ? ' ' + t.refName : ''}`}
+                      />
+                      {/* Fichas (corrugados) DESTE modelo — faixa vermelha
+                          ABAIXO da foto (não cobre a sandália). É o que o
+                          cortador conta. Só quando agrupa >1 modelo (2026-07-22). */}
+                      {withCaption && t.fichas != null && t.fichas > 0 && (
+                        <div
+                          style={{ width: IMG, border: '1.5px solid #C00000', borderTop: 0, background: '#fff', textAlign: 'center', lineHeight: 1, padding: '2px 0', printColorAdjust: 'exact' }}
+                        >
+                          <span style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '17px', color: '#C00000', letterSpacing: '-0.02em' }}>
+                            {t.fichas}
+                          </span>
+                          <span style={{ fontFamily: "'Fira Code', monospace", fontSize: '7px', letterSpacing: '0.12em', color: '#C00000', textTransform: 'uppercase', marginLeft: 2 }}>
+                            fichas
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    {withCaption && t.refNames.length > 0 && (
+                      <span
+                        className="block truncate text-center uppercase font-bold"
+                        style={{ fontFamily: "'Fira Code', monospace", fontSize: '8.5px', letterSpacing: '0.06em', color: '#C00000', maxWidth: IMG }}
+                        title={t.refNames.join(' · ')}
+                      >
+                        {t.refNames.join(' · ')}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            );
+            })();
             return (
               <div key={idx} className="pt-1" style={{ borderTop: '2px solid #000' }}>
                 <div className="keep-together keep-with-next flex items-end justify-between gap-3 mb-0.5">
@@ -1222,69 +1421,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                     </span>
                   </div>
                 </div>
-                {/* Faixa de fotos do produto (Corte Forração, 2026-07-22):
-                    1 miniatura por REFERÊNCIA da cor, com legenda. Placeholder
-                    e refs que caem na mesma foto são descartados. Legenda só
-                    quando há >1 foto (com 1, a badge de ref no cabeçalho já
-                    identifica). */}
-                {theme.showCompactImages && (() => {
-                  const thumbs = collectCompactThumbs(cg);
-                  if (thumbs.length === 0) return null;
-                  // Legenda aparece quando o card cobre mais de um MODELO — não
-                  // "mais de uma foto". Duas refs que compartilham a mesma foto
-                  // viram 1 miniatura, e sem isso o cortador não saberia que ali
-                  // moram dois modelos (pedido do dono 31/07/2026).
-                  const distinctRefs = thumbs.reduce((s, t) => s + Math.max(1, t.refNames.length), 0);
-                  const withCaption = distinctRefs > 1;
-                  // Imagem MAIOR (pedido user 2026-07-22): o total do modelo saiu
-                  // de cima da foto (cobria a sandália) pra uma faixa ABAIXO da
-                  // imagem — o operador vê o modelo inteiro. 92px (era 54).
-                  // Encolhe conforme o nº de modelos pra caber lado a lado sem
-                  // engordar o card (Opção A, 31/07/2026) — ver compactThumbPx.
-                  const IMG = compactThumbPx(thumbs.length);
-                  return (
-                    <div className="keep-together keep-with-next flex flex-wrap gap-2 mt-1 mb-1">
-                      {thumbs.map((t, ti) => (
-                        <div key={t.sheetId || t.resolvedUrl || ti} className="flex flex-col items-center gap-0.5 shrink-0">
-                          <div className="flex flex-col items-center">
-                            <ProductImageBlock
-                              variantImageUrl={t.variantImageUrl}
-                              alternateVariants={t.alternateVariants}
-                              technicalSheetImageUrl={t.technicalSheetImageUrl}
-                              orderColor={cg.color}
-                              size={IMG}
-                              alt={`${group.soleName} ${cg.color}${t.refName ? ' ' + t.refName : ''}`}
-                            />
-                            {/* Fichas (corrugados) DESTE modelo — faixa vermelha
-                                ABAIXO da foto (não cobre a sandália). É o que o
-                                cortador conta. Só quando agrupa >1 modelo (2026-07-22). */}
-                            {withCaption && t.fichas != null && t.fichas > 0 && (
-                              <div
-                                style={{ width: IMG, border: '1.5px solid #C00000', borderTop: 0, background: '#fff', textAlign: 'center', lineHeight: 1, padding: '2px 0', printColorAdjust: 'exact' }}
-                              >
-                                <span style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '17px', color: '#C00000', letterSpacing: '-0.02em' }}>
-                                  {t.fichas}
-                                </span>
-                                <span style={{ fontFamily: "'Fira Code', monospace", fontSize: '7px', letterSpacing: '0.12em', color: '#C00000', textTransform: 'uppercase', marginLeft: 2 }}>
-                                  fichas
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                          {withCaption && t.refNames.length > 0 && (
-                            <span
-                              className="block truncate text-center uppercase font-bold"
-                              style={{ fontFamily: "'Fira Code', monospace", fontSize: '8.5px', letterSpacing: '0.06em', color: '#C00000', maxWidth: IMG }}
-                              title={t.refNames.join(' · ')}
-                            >
-                              {t.refNames.join(' · ')}
-                            </span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  );
-                })()}
+                {!thumbsBesideGrade && compactThumbStrip}
                 {/* Logomarca POR COR — só quando as cores da ficha resolvem
                     silks DIFERENTES (senão o bloco único acima cobre tudo). */}
                 {theme.showSilkImage && uniqueSilks.length > 1 && cg.silk && (
@@ -1315,11 +1452,30 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                     </div>
                   </div>
                 )}
-                <div className="keep-together">
-                  {renderGradeTable(cg)}
-                </div>
+                {thumbsBesideGrade ? (
+                  // A linha declara a largura que exige: com a foto ao lado, a
+                  // grade não pode ser espremida abaixo do seu mínimo — nem pelo
+                  // zoom do auto-fit, que aperta a largura local (growCeilingFor).
+                  <div
+                    className="keep-together flex items-start gap-2 mt-1 mb-1"
+                    data-rigid-width={
+                      compactThumbs.length * compactThumbSize
+                      + compactThumbs.length * COMPACT_THUMB_GAP_PX
+                      + gradeMinWidthPx(compactSizes, gradeTableFont(compactSizes, true), compactDigits)
+                    }
+                  >
+                    <div className="shrink-0">{compactThumbStrip}</div>
+                    <div className="min-w-0 flex-1">{renderGradeTable(cg)}</div>
+                  </div>
+                ) : (
+                  <div className="keep-together">
+                    {renderGradeTable(cg)}
+                  </div>
+                )}
                 {renderCompactAlerts(cg)}
                 {renderConsumoCorte(cg)}
+                <SectorMaterials rows={cg.consumption} sector={sector}
+                  excludeComponents={CONSUMO_COMPONENTS_BY_SECTOR[sector] || []} />
                 <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={cg.totalPairs} title={tallyTitle} size={TALLY_SIZE} />
               </div>
             );
@@ -1440,6 +1596,14 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                     </span>
                   </div>
                 )}
+                {(sector === 'Costura Cabedal' || sector === 'Corte Cabedal') && (cg.leftoverNapas?.length ?? 0) > 0 && (
+                  <div className="keep-together keep-with-next px-2 py-0.5 mb-1" style={{ border: '1.5px solid #000' }}>
+                    <span className="section-label block" style={{ color: '#000' }}>Sobra de napa</span>
+                    <span className="text-[11px] font-bold uppercase tracking-wide text-black">
+                      {cg.leftoverNapas!.join(' · ')}
+                    </span>
+                  </div>
+                )}
 
                 {/* Sequência de Tiras / componentes auxiliares (Aviamento /
                     Montagem) — insumo de execução, com ordem das tiras da
@@ -1552,6 +1716,8 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
 
                 {/* Consumo de Tiras · Metros (Aviamento — metros por ficha + total) */}
                 {renderConsumoTiras(cg)}
+                <SectorMaterials rows={cg.consumption} sector={sector}
+                  excludeComponents={sector === 'Aviamento' ? ['Tiras'] : CONSUMO_COMPONENTS_BY_SECTOR[sector] || []} />
 
                 {/* Tally Box */}
                 <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={cg.totalPairs} title={tallyTitle} size={TALLY_SIZE} />
@@ -1632,6 +1798,6 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
   // `theme.compact` rebaixa um bucket — precisa entrar na conta, senão o piso
   // sai otimista justo no layout mais denso (Corte Forração / Silk).
   const minScale = groups.reduce((mx, g) => g.colorGroups.reduce((m2, cg) => Math.max(m2,
-    floorSafeScale(gradeTableFont(Object.keys(cg.combinedGrid || {}), theme.compact))), mx), 0);
+    floorSafeScale(gradeTableFont(gradeSizesOf(cg, sector), theme.compact))), mx), 0);
   return <PaginatedSheet sectorLabel={sectorLabel || sector} blocks={blocks} minScale={minScale} />;
 };

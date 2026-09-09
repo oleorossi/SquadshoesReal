@@ -6,9 +6,9 @@
  * divergir do cadastro por numeração. A migration de correção de dado é que
  * deve fazê-lo passar; não normalize nem esconda a divergência aqui.
  */
-import { describe, expect, it } from 'vitest';
-import { createClient } from '@supabase/supabase-js';
-import { supabase as anonClient } from '@/integrations/supabase/client';
+import { describe, expect, it, vi } from 'vitest';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '@/integrations/supabase/types';
 import {
   computeConsumptionForItems,
   fetchConsumptionContext,
@@ -18,27 +18,57 @@ import {
   type MaterialConsumptionRow,
 } from '@/lib/orderConsumption';
 import { validateConsumptionPayload, type ConsumptionLine } from '@/services/consumptionService';
+import { resolveCanonicalPackaging } from '@/lib/packagingConsumption';
+import { buildPerPvPurchaseOrders } from '@/lib/perPvPurchasing';
+
+// orderConsumption/consumptionService oferecem o singleton do browser como
+// default, mas esta suíte sempre injeta o cliente service-role abaixo. O mock
+// hoisted impede que o módulo gerado tente criar um anonClient sem publishable
+// key durante a coleta do Vitest no CI.
+vi.mock('@/integrations/supabase/client', () => ({ supabase: null }));
 
 const ENABLED = process.env.RUN_DB_INTEGRATION === '1';
 const REFERENCE_NAMES = ['CF 09 ', 'DS21', 'S-039'] as const;
 
+interface PackagingConsumptionSqlRow {
+  box_type_id: string;
+  box_name: string;
+  packaging_type: string;
+  unit: string;
+  required: number;
+  available: number;
+  supplier_id: string | null;
+  unit_price: number;
+  warning?: string | null;
+}
+
 /**
- * `technical_sheets` está sob a policy `technical_sheets_select_approved`, que
- * exige `is_approved_user()`. A chave publishable NÃO é um usuário aprovado, então
- * um SELECT anônimo volta 0 linhas **sem erro** — e o teste falharia na checagem de
- * fixture, vermelho por motivo ambiental em vez de por divergência de número.
- *
- * Para rodar de verdade, exporte `SUPABASE_SERVICE_ROLE_KEY`. Sem ela, o teste faz
- * skip dizendo o porquê, em vez de fingir um vermelho que não prova nada.
+ * `technical_sheets` exige usuário aprovado. Quando a integração é habilitada,
+ * URL + service role são obrigatórias e a ausência falha explicitamente. Quando
+ * está desabilitada, este módulo não instancia cliente algum — assim a suíte
+ * normal pode ser coletada sem credenciais de banco/browser.
  */
-const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const supabase = SERVICE_KEY
-  ? createClient(
-      process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '',
-      SERVICE_KEY,
-      { auth: { persistSession: false } },
-    )
-  : anonClient;
+let integrationClient: SupabaseClient<Database> | null = null;
+
+function dbClient(): SupabaseClient<Database> {
+  if (!ENABLED) {
+    throw new Error('Cliente DB solicitado com RUN_DB_INTEGRATION desligado.');
+  }
+
+  const url = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+  if (!url || !serviceRoleKey) {
+    throw new Error(
+      'RUN_DB_INTEGRATION=1 exige VITE_SUPABASE_URL (ou SUPABASE_URL) e '
+        + 'SUPABASE_SERVICE_ROLE_KEY; a paridade não aceita cliente anônimo.',
+    );
+  }
+
+  integrationClient ??= createClient<Database>(url, serviceRoleKey, {
+    auth: { persistSession: false },
+  });
+  return integrationClient;
+}
 const FALLBACK_GRADE: Record<string, number> = {
   '34': 1,
   '35': 1,
@@ -81,11 +111,41 @@ const resolveTsProductId = (
   )?.id ?? null;
 };
 
+type ProductParityMetadata = {
+  components: Set<string>;
+  units: Set<string>;
+  materials: Set<string>;
+  sources: Set<string>;
+};
+
+const addMetadata = (
+  metadata: Map<string, ProductParityMetadata>,
+  productId: string,
+  values: { component: string; unit?: string; material: string; source?: string },
+) => {
+  const current = metadata.get(productId) ?? {
+    components: new Set<string>(),
+    units: new Set<string>(),
+    materials: new Set<string>(),
+    sources: new Set<string>(),
+  };
+  current.components.add(values.component);
+  if (values.unit) current.units.add(values.unit);
+  current.materials.add(values.material);
+  if (values.source) current.sources.add(values.source);
+  metadata.set(productId, current);
+};
+
 const aggregateTsByProduct = (
   rows: MaterialConsumptionRow[],
   ctx: ConsumptionContext,
-): { quantities: Map<string, number>; unresolved: MaterialConsumptionRow[] } => {
+): {
+  quantities: Map<string, number>;
+  metadata: Map<string, ProductParityMetadata>;
+  unresolved: MaterialConsumptionRow[];
+} => {
   const quantities = new Map<string, number>();
+  const metadata = new Map<string, ProductParityMetadata>();
   const unresolved: MaterialConsumptionRow[] = [];
 
   for (const row of rows) {
@@ -96,22 +156,38 @@ const aggregateTsByProduct = (
       continue;
     }
     quantities.set(productId, (quantities.get(productId) || 0) + Number(row.totalQuantity));
+    addMetadata(metadata, productId, {
+      component: row.componentType,
+      unit: row.productUnit,
+      material: row.materialName,
+    });
   }
 
-  return { quantities, unresolved };
+  return { quantities, metadata, unresolved };
 };
 
-const aggregateSqlByProduct = (rows: ConsumptionLine[]): Map<string, number> => {
+const aggregateSqlByProduct = (rows: ConsumptionLine[]): {
+  quantities: Map<string, number>;
+  metadata: Map<string, ProductParityMetadata>;
+} => {
   const quantities = new Map<string, number>();
+  const metadata = new Map<string, ProductParityMetadata>();
   for (const row of rows) {
     if (!row.product_id || !(Number(row.required) > 0)) continue;
     quantities.set(row.product_id, (quantities.get(row.product_id) || 0) + Number(row.required));
+    addMetadata(metadata, row.product_id, {
+      component: row.component,
+      unit: row.unit,
+      material: row.product_name,
+      source: row.source,
+    });
   }
-  return quantities;
+  return { quantities, metadata };
 };
 
 (ENABLED ? describe : describe.skip)('consumo — paridade numérica TS × SQL', () => {
-  it('compara referências reais por product_id com tolerância de 0,01', async (testCtx) => {
+  it('compara referências reais por product_id com tolerância de 0,01', async () => {
+    const supabase = dbClient();
     const { data: references, error: referencesError } = await supabase
       .from('technical_sheets')
       .select('id, name')
@@ -119,16 +195,6 @@ const aggregateSqlByProduct = (rows: ConsumptionLine[]): Map<string, number> => 
     if (referencesError) throw referencesError;
 
     const foundNames = new Set((references || []).map(reference => reference.name));
-
-    // RLS devolve 0 linhas SEM erro para quem não é usuário aprovado. Isso é
-    // ambiente, não divergência — falhar aqui produziria um vermelho que continua
-    // vermelho depois da correção de dado, e portanto não prova nada.
-    if (foundNames.size === 0 && !SERVICE_KEY) {
-      testCtx.skip(
-        'technical_sheets exige is_approved_user(); exporte SUPABASE_SERVICE_ROLE_KEY para rodar a paridade de verdade.',
-      );
-      return;
-    }
 
     expect(
       REFERENCE_NAMES.filter(name => !foundNames.has(name)),
@@ -180,7 +246,7 @@ const aggregateSqlByProduct = (rows: ConsumptionLine[]): Map<string, number> => 
           p_grade: grade,
           p_color: color,
           p_material_variant_id: null,
-        },
+        } as never,
       );
       if (sqlError) throw sqlError;
       const sqlRows = validateConsumptionPayload((sqlPayload as unknown) ?? []);
@@ -191,21 +257,32 @@ const aggregateSqlByProduct = (rows: ConsumptionLine[]): Map<string, number> => 
         mismatches.push({
           reference: reference.name,
           product_id: null,
+          ts_component: row.componentType,
+          ts_unit: row.productUnit,
           ts_required: row.totalQuantity,
           sql_required: null,
           material: row.materialName,
         });
       }
 
-      const productIds = new Set([...ts.quantities.keys(), ...sql.keys()]);
+      const productIds = new Set([...ts.quantities.keys(), ...sql.quantities.keys()]);
       for (const productId of productIds) {
         const tsRequired = ts.quantities.get(productId) || 0;
-        const sqlRequired = sql.get(productId) || 0;
+        const sqlRequired = sql.quantities.get(productId) || 0;
         if (Math.abs(tsRequired - sqlRequired) > 0.01) {
+          const tsMeta = ts.metadata.get(productId);
+          const sqlMeta = sql.metadata.get(productId);
           mismatches.push({
             reference: reference.name,
             product_id: productId,
             product_name: ctx.allProducts.find(product => product.id === productId)?.name ?? null,
+            ts_components: [...(tsMeta?.components ?? [])],
+            sql_components: [...(sqlMeta?.components ?? [])],
+            ts_units: [...(tsMeta?.units ?? [])],
+            sql_units: [...(sqlMeta?.units ?? [])],
+            ts_materials: [...(tsMeta?.materials ?? [])],
+            sql_materials: [...(sqlMeta?.materials ?? [])],
+            sql_sources: [...(sqlMeta?.sources ?? [])],
             ts_required: tsRequired,
             sql_required: sqlRequired,
             delta: tsRequired - sqlRequired,
@@ -215,5 +292,99 @@ const aggregateSqlByProduct = (rows: ConsumptionLine[]): Map<string, number> => 
     }
 
     expect(mismatches, JSON.stringify(mismatches, null, 2)).toEqual([]);
+  }, 30_000);
+
+  it('DS21 seleciona uma única caixa por modo e mantém fitilho em metros', async () => {
+    const supabase = dbClient();
+    const { data: reference, error: referenceError } = await supabase
+      .from('technical_sheets')
+      .select('id, sole_group_id')
+      .eq('name', 'DS21')
+      .single();
+    if (referenceError) throw referenceError;
+    expect(reference?.sole_group_id, 'DS21 precisa continuar vinculada ao grupo de solado').toBeTruthy();
+
+    const ctx = await fetchConsumptionContext([reference.id], supabase);
+    const soleGroup = ctx.productGroups.find((group) => group.id === reference.sole_group_id);
+    expect(soleGroup, 'Grupo de solado da DS21 não foi carregado').toBeTruthy();
+
+    const grade = { '34': 6 };
+    for (const mode of ['colmeia', 'individual', 'individual_fitilho'] as const) {
+      const tsRows = resolveCanonicalPackaging({
+        mode,
+        quantity: 24,
+        grade,
+        soleGroup,
+        boxTypes: ctx.boxTypes || [],
+      }).filter((row) => row.boxTypeId && !row.warning);
+
+      const { data, error } = await supabase.rpc(
+        'calculate_packaging_consumption' as never,
+        {
+          p_reference_id: reference.id,
+          p_order_quantity: 24,
+          p_packaging_mode: mode,
+          p_grade: grade,
+        } as never,
+      );
+      if (error) throw error;
+      const sqlRows = ((data || []) as unknown as PackagingConsumptionSqlRow[])
+        .filter((row) => row.box_type_id && !row.warning);
+
+      expect(
+        sqlRows.map((row) => row.packaging_type).sort(),
+        `${mode}: quantidade de slots SQL inesperada`,
+      ).toEqual(mode === 'individual_fitilho' ? ['fitilho', 'individual'] : [mode]);
+      expect(
+        tsRows.map((row) => ({
+          box_type_id: row.boxTypeId,
+          packaging_type: row.packagingType,
+          unit: row.unit,
+          required: row.required,
+        })).sort((a, b) => a.packaging_type.localeCompare(b.packaging_type)),
+      ).toEqual(
+        sqlRows.map((row) => ({
+          box_type_id: row.box_type_id,
+          packaging_type: row.packaging_type,
+          unit: row.unit,
+          required: Number(row.required),
+        })).sort((a, b) => a.packaging_type.localeCompare(b.packaging_type)),
+      );
+
+      // O mesmo payload discriminado alimenta o botão de OC exclusiva sem
+      // inventar um products.id para a caixa. O draft mantém exatamente o(s)
+      // slot(s) selecionado(s) pelo modo — um para colmeia/individual e dois
+      // apenas quando o modo pede individual + fitilho.
+      const purchaseDrafts = buildPerPvPurchaseOrders(sqlRows.map((row) => ({
+        material_id: null,
+        box_type_id: row.box_type_id,
+        packaging_type: row.packaging_type,
+        product_name: row.box_name,
+        unit: row.unit,
+        color: null,
+        needed_qty: Number(row.required),
+        stock_qty: Number(row.available) || 0,
+        shortage: Math.max(0, Number(row.required) - (Number(row.available) || 0)),
+        supplier_id: row.supplier_id,
+        supplier_name: null,
+        last_unit_price: Number(row.unit_price) || 0,
+      })));
+      const purchaseItems = purchaseDrafts.flatMap((draft) => draft.items);
+      expect(
+        purchaseItems.map((item) => ({
+          material_id: item.material_id,
+          box_type_id: item.box_type_id,
+          unit: item.unit,
+          quantity: item.quantity,
+        })).sort((a, b) => (a.box_type_id || '').localeCompare(b.box_type_id || '')),
+      ).toEqual(
+        sqlRows.map((row) => ({
+          material_id: null,
+          box_type_id: row.box_type_id,
+          unit: row.unit,
+          quantity: Number(row.required),
+        })).sort((a, b) => a.box_type_id.localeCompare(b.box_type_id)),
+      );
+    }
   }, 30_000);
 });

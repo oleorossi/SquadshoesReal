@@ -55,9 +55,23 @@ function renderDay(day?: TimeBalanceDay): string {
   </td>`;
 }
 
+function reportHeading(kind: TimeBalanceReportKind): string {
+  if (kind === 'overtime') return 'Relatório de horas extras';
+  if (kind === 'deficit') return 'Relatório de pendências semanais';
+  return 'Espelho de ponto';
+}
+
 function renderEmployee(report: EmployeeTimeBalanceReport, kind: TimeBalanceReportKind, periodLabel: string, index: number): string {
-  const relevantMinutes = kind === 'overtime' ? report.totalOvertimeMinutes : report.totalDeficitMinutes;
-  const relevantWeeks = kind === 'overtime' ? report.overtimeWeeks : report.deficitWeeks;
+  const relevantMinutes = kind === 'overtime'
+    ? report.totalOvertimeMinutes
+    : kind === 'deficit'
+      ? report.totalDeficitMinutes
+      : report.finalPayableBalanceMinutes;
+  const relevantWeeks = kind === 'overtime'
+    ? report.overtimeWeeks
+    : kind === 'deficit'
+      ? report.deficitWeeks
+      : report.weeks.length;
   const weekRows = report.weeks.map(week => {
     const slots = Array.from<TimeBalanceDay | undefined>({ length: 7 });
     for (const day of week.days) slots[daySlot(day.dayOfWeek)] = day;
@@ -76,10 +90,10 @@ function renderEmployee(report: EmployeeTimeBalanceReport, kind: TimeBalanceRepo
     : report.finalPayableBalanceMinutes < 0 ? 'negative-text' : '';
 
   return `<section class="employee${index > 0 ? ' page-break' : ''}">
-    <h1>${kind === 'overtime' ? 'Relatório de horas extras' : 'Relatório de pendências semanais'}</h1>
+    <h1>${reportHeading(kind)}</h1>
     <p class="subtitle">${escapeHtml(report.name)} · ${escapeHtml(report.department)} · ${escapeHtml(periodLabel)}</p>
     <div class="summary">
-      <div><span>${kind === 'overtime' ? 'Horas extras' : 'Débito semanal'}</span><strong class="${kind === 'overtime' ? 'positive-text' : 'negative-text'}">${formatBalanceMinutes(kind === 'overtime' ? relevantMinutes : -relevantMinutes)}</strong></div>
+      <div><span>${kind === 'overtime' ? 'Horas extras' : kind === 'deficit' ? 'Débito semanal' : 'Saldo final'}</span><strong class="${kind === 'overtime' ? 'positive-text' : kind === 'deficit' ? 'negative-text' : (report.finalPayableBalanceMinutes < 0 ? 'negative-text' : report.finalPayableBalanceMinutes > 0 ? 'positive-text' : '')}">${formatBalanceMinutes(kind === 'deficit' ? -relevantMinutes : relevantMinutes)}</strong></div>
       <div><span>Semanas no relatório</span><strong>${relevantWeeks}</strong></div>
       <div><span>Trabalhadas</span><strong>${formatBalanceMinutes(report.totalWorkedMinutes, false)}</strong></div>
       <div><span>Meta do período</span><strong>${formatBalanceMinutes(report.totalExpectedMinutes, false)}</strong></div>
@@ -213,7 +227,7 @@ export function printTimeBalanceReports(
   kind: TimeBalanceReportKind,
   periodLabel: string,
 ): void {
-  const title = kind === 'overtime' ? 'Horas extras' : 'Pendências semanais';
+  const title = kind === 'overtime' ? 'Horas extras' : kind === 'deficit' ? 'Pendências semanais' : 'Espelho de ponto';
   printHtml(`${title} · ${periodLabel}`, buildTimeBalanceReportHtml(reports, kind, periodLabel), { landscape: true });
 }
 

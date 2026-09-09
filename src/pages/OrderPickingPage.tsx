@@ -15,7 +15,6 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { READY_TO_SHIP_STATUSES } from '@/lib/logistics/routeManagement';
 import { getISOWeekFromString, fmtDayMonthBR } from '@/lib/isoWeek';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
@@ -32,6 +31,7 @@ interface OrderItem {
 
 interface ReadyOrder {
   id: string;
+  order_version: number;
   order_number: string | null;
   client_name: string | null;
   delivery_deadline: string | null;
@@ -42,6 +42,32 @@ interface ReadyOrder {
   pickup_window: 'tuesday' | 'friday' | null;
   pickup_date: string | null;
   wave_code: string | null;
+}
+
+interface ShipmentCommandResponse {
+  ok: boolean;
+  shipped_count?: number;
+  error?: { message?: string };
+}
+
+interface ReadySaleOrderRow {
+  id: string;
+  order_version: number;
+  order_number: string | null;
+  client_name: string | null;
+  delivery_deadline: string | null;
+  packaging_mode: string | null;
+  status: string;
+  nfe_required: boolean | null;
+  nfe_external: boolean | null;
+  orders: Array<{ id: string; status: string }> | null;
+  sale_order_items: Array<{
+    id: string;
+    color: string | null;
+    quantity: number | null;
+    grade: Record<string, number> | null;
+    technical_sheets: { name: string | null } | null;
+  }> | null;
 }
 
 type PickupTabKey = string; // ex: "W2026-19::tuesday" ou "no-wave"
@@ -78,17 +104,32 @@ export default function OrderPickingPage() {
       const { data, error } = await supabase
         .from('sale_orders')
         .select(`
-          id, order_number, client_name, delivery_deadline, packaging_mode,
+          id, order_version, order_number, client_name, delivery_deadline,
+          packaging_mode, status, nfe_required, nfe_external,
+          orders(id, status),
           sale_order_items(id, reference_id, color, quantity, grade,
             technical_sheets:reference_id(name))
-        `)
-        .in('status', [...READY_TO_SHIP_STATUSES])
-        .is('shipped_at' as any, null)
+        ` as never)
+        .in('status', ['Faturado', 'Em Produção'])
+        .is('shipped_at' as never, null)
         .order('delivery_deadline', { ascending: true, nullsFirst: false });
       if (error) throw error;
 
-      const baseOrders = (data ?? []).map((so: any) => {
-        const items: OrderItem[] = (so.sale_order_items ?? []).map((i: any) => ({
+      const rows = (data ?? []) as unknown as ReadySaleOrderRow[];
+      const readyCandidates = rows.filter((so) => {
+        if (so.status === 'Faturado') return true;
+        if (so.status !== 'Em Produção') return false;
+        if (so.nfe_required && !so.nfe_external) return false;
+        const productionOrders = Array.isArray(so.orders) ? so.orders : [];
+        return productionOrders.length > 0 && productionOrders.every((op) =>
+          [
+            'Finalizado', 'FINALIZADO', 'Faturado', 'Concluída',
+            'Concluído', 'Concluido', 'completed',
+          ].includes(op.status),
+        );
+      });
+      const baseOrders = readyCandidates.map((so) => {
+        const items: OrderItem[] = (so.sale_order_items ?? []).map((i) => ({
           id: i.id,
           reference_name: i.technical_sheets?.name ?? null,
           color: i.color ?? null,
@@ -98,6 +139,7 @@ export default function OrderPickingPage() {
         const total_pairs = items.reduce((s, i) => s + i.quantity, 0);
         return {
           id: so.id,
+          order_version: Number(so.order_version),
           order_number: so.order_number,
           client_name: so.client_name,
           delivery_deadline: so.delivery_deadline,
@@ -122,15 +164,26 @@ export default function OrderPickingPage() {
   // ── Confirm shipment ────────────────────────────────────────────────────────
   const confirmShipment = useMutation({
     mutationFn: async (ids: string[]) => {
-      // Atomic: sets shipped_at + optional manifest link via SELECT FOR UPDATE
-      const { data: count, error: rpcErr } = await supabase.rpc('register_order_shipment' as any, {
+      const selectedOrders = ids.map(id => orders.find(order => order.id === id));
+      if (selectedOrders.some(order => !order || !Number.isInteger(order.order_version))) {
+        throw new Error('Versão de um ou mais PVs não está disponível. Recarregue a conferência.');
+      }
+      const expectedVersions = Object.fromEntries(
+        selectedOrders.map(order => [order!.id, order!.order_version]),
+      );
+      // PV, OPs, rota e vínculo com manifesto fecham na mesma transação.
+      const requestId = crypto.randomUUID();
+      const { data, error: rpcErr } = await supabase.rpc('register_order_shipment_command' as never, {
         p_sale_order_ids: ids,
+        p_expected_versions: expectedVersions,
         p_manifest_id: null,
         p_checked_by: null,
-      });
+        p_client_request_id: requestId,
+      } as never);
       if (rpcErr) throw rpcErr;
-      // register_order_shipment already sets status='Expedido' server-side
-      return Number(count ?? ids.length);
+      const response = data as unknown as ShipmentCommandResponse;
+      if (!response?.ok) throw new Error(response?.error?.message || 'Expedição recusada pelo servidor.');
+      return Number(response.shipped_count ?? ids.length);
     },
     onSuccess: (count, ids) => {
       if (count < ids.length) {

@@ -1,8 +1,10 @@
 import { useState, useMemo, useCallback, type ReactNode } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { SearchInput } from '@/components/ui/search-input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   CircleNotch as Loader2,
   ArrowsDownUp as ArrowUpDown,
@@ -10,36 +12,44 @@ import {
   ArrowDown,
   Warning as WarningIcon,
   CheckCircle,
-  CaretRight,
-  CaretDown,
+  ListNumbers,
+  CaretUpDown as ChevronsUpDown,
 } from '@phosphor-icons/react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { computeBaseMaterialTotal, BASE_MATERIAL_COMPONENTS, BASE_GROUP_PATTERN } from '@/lib/baseMaterialTotal';
+import { computeBaseMaterialTotal, normalizeBaseFamilyName } from '@/lib/baseMaterialTotal';
 import { buildColAvailability, sizeSortKey } from '@/lib/soleMatrixHtml';
 import type { ArtisanalStrapCutRow } from '@/lib/strapRollCut';
 import ArtisanalStrapRollCutBlock from '@/components/sale-orders/ArtisanalStrapRollCutBlock';
 import ConsumptionDecisionRail, { type ConsumptionFilter } from '@/components/sale-orders/ConsumptionDecisionRail';
-import { type ConsumptionRow, COMPONENT_ORDER } from '@/lib/consumptionRows';
-import { isBuyListRow } from '@/lib/buyList';
+import { type ConsumptionRow, COMPONENT_ORDER, rowTotalCost } from '@/lib/consumptionRows';
+import { buildBuyList, isBuyListRow, baseMaterialName, rowBelongsToBaseFamily, type BuyListColor } from '@/lib/buyList';
 import { formatQty, formatUnit, pluralizeItens } from '@/lib/consumptionFormat';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { buildMaterialConsumptionReportHtml, materialConsumptionReportFilename } from '@/lib/materialConsumptionReport';
 import { openPrintTab, printHtmlAsPdf } from '@/lib/printPdf';
+import { cn, formatCurrency, formatMoney } from '@/lib/utils';
 import {
   aggregateItems,
   countPending,
   countShort,
+  isConvertedInternalStrap,
+  isStrassStrapRow,
   itemIsShort,
   itemKey,
   itemShortfall,
+  pendingStrapMeters,
   rowAvailable,
   rowIsShort,
   rowKnown,
   rowShortfall,
   soleShortSizes,
+  toPurchaseDecisionRows,
   topShortfalls,
+  unitTotals,
   type ItemGroup,
 } from '@/lib/consumptionAvailability';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { buildOrderReferencePartitions } from '@/lib/consumptionPartitions';
 
 /**
  * Apresentação canônica do consumo de materiais — tela + PDF. FONTE ÚNICA
@@ -60,10 +70,10 @@ import {
  *  - **Coluna "Falta"** com o número. Antes existia só o selo "falta", sem
  *    dizer QUANTO — o comprador ia buscar em outra tela.
  *  - **Trilho de decisão** sticky (`ConsumptionDecisionRail`) com material base,
- *    itens em falta, maiores faltas e a ação primária "Gerar OC".
- *  - **Solado como linha expansível**: a grade abre mostrando necessidade,
- *    estoque e falta POR NÚMERO (antes a matriz mostrava só a necessidade, com o
- *    estoque escondido no `title` da célula).
+ *    itens em falta, maiores faltas e a ação primária "Gerar ordem de compra".
+ *  - **Solado como mapa de compra prioritário**: a grade aparece aberta logo
+ *    após o resumo, mostrando necessidade, estoque e falta POR NÚMERO. Solado
+ *    não fica mais enterrado na ordenação nem depende de uma seta minúscula.
  *  - Os três banners âmbar viraram um cartão recolhível no trilho.
  *
  * O que NÃO mudou de propósito: a aritmética. Disponibilidade, falta, agregação
@@ -71,6 +81,8 @@ import {
  * `consumptionAvailability.ts` e `buyList.ts`, testados à parte.
  */
 export type OrderHeader = { order_number: string; client_order_number?: string | null };
+
+export type ConsumptionPartitionMode = 'none' | 'order_reference';
 
 type Props = {
   /** Linhas do motor canônico já anotadas (available / soleSizeStock / artisanal). */
@@ -85,7 +97,7 @@ type Props = {
   /** Botão "Recalcular" do trilho — omitido quando não fornecido. */
   onRecalcular?: () => void;
   /** Ação PRIMÁRIA: abre a geração de OC do(s) PV(s). Omitida ⇒ botão não aparece. */
-  onGerarOC?: () => void;
+  onGerarOC?: (opts: { grossNeed: boolean }) => void;
   emptyMessage?: string;
   /**
    * Blocos específicos do escopo (ex.: Corte de Cabedal — Terceirização, que só
@@ -93,27 +105,36 @@ type Props = {
    * o trilho tem 18rem e esses blocos têm select e tabela.
    */
   extraSections?: ReactNode;
+  /**
+   * Título compacto (legado). O herói fica só com os números.
+   */
+  embedded?: boolean;
+  /**
+   * Itens do(s) PV(s) pra filtrar o consumo inteiro (solado + materiais).
+   * `selectedItemIds = []` ⇒ consumo geral consolidado.
+   */
+  itemOptions?: { id: string; label: string }[];
+  selectedItemIds?: string[];
+  onSelectedItemIdsChange?: (itemIds: string[]) => void;
+  /** Há mais de um PV ou mais de um modelo → libera o seletor estendido. */
+  canPartition?: boolean;
+  partitionMode?: ConsumptionPartitionMode;
+  onPartitionModeChange?: (mode: ConsumptionPartitionMode) => void;
 };
 
 // Separador interno da chave de seção composta cor|família (agrupamento por Cor).
 const SECTION_SEP = String.fromCharCode(31);
 
-// Família de napa de uma linha, pra segmentar por cor × família.
-const rowFamily = (r: ConsumptionRow): string | null => {
-  if (r.componentType === 'Tiras') return (r.materialFamily || '').trim() || null;
-  if (BASE_MATERIAL_COMPONENTS.has(r.componentType)) {
-    const g = (r.groupName || '').trim();
-    return g && BASE_GROUP_PATTERN.test(g) ? g : null;
-  }
-  return null;
-};
+// Família de napa de uma linha: tira artesanal cai na napa da receita.
+const rowFamily = (r: ConsumptionRow): string | null => baseMaterialName(r);
 
 type SortKey = 'componentType' | 'groupName' | 'materialName' | 'color' | 'totalQuantity' | 'productUnit';
-type GroupBy = 'componentType' | 'groupName' | 'color' | 'status';
+type GroupBy = 'componentType' | 'base' | 'groupName' | 'color' | 'status';
 
 const GROUP_BY_LABEL: Record<GroupBy, string> = {
   componentType: 'Componente',
-  groupName: 'Material',
+  base: 'Material base',
+  groupName: 'Grupo',
   color: 'Cor',
   status: 'Status',
 };
@@ -128,7 +149,7 @@ const STATUS_SECTIONS = ['Em falta', 'Cadastro incompleto', 'Coberto pelo estoqu
  * estoque no `title` da célula — quem precisava saber o quanto comprar de cada
  * número não tinha o dado na tela.
  */
-function SoleGradeDetail({ row }: { row: ConsumptionRow }) {
+function SoleGradeDetail({ row, grossNeed = false }: { row: ConsumptionRow; grossNeed?: boolean }) {
   const sizes = useMemo(
     () => Object.keys(row.sizeBreakdown || {}).sort((a, b) => sizeSortKey(a) - sizeSortKey(b)),
     [row.sizeBreakdown],
@@ -148,8 +169,8 @@ function SoleGradeDetail({ row }: { row: ConsumptionRow }) {
   }
 
   return (
-    <div className="overflow-x-auto px-3 py-2">
-      <table className="border-collapse text-xs">
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-max border-collapse text-xs">
         <thead>
           <tr>
             <th className="border border-border bg-muted/50 px-2 py-1 text-left text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
@@ -165,11 +186,13 @@ function SoleGradeDetail({ row }: { row: ConsumptionRow }) {
         <tbody>
           {([
             { label: 'Necessidade', get: (s: string) => Number(row.sizeBreakdown?.[s]) || 0 },
-            { label: 'Em estoque', get: (s: string) => Number(avail[s]) || 0 },
-            { label: 'Falta', get: (s: string) => Math.max(0, (Number(row.sizeBreakdown?.[s]) || 0) - (Number(avail[s]) || 0)) },
+            ...(!grossNeed ? [
+              { label: 'Estoque útil', get: (s: string) => Number(avail[s]) || 0 },
+              { label: 'Falta', get: (s: string) => Math.max(0, (Number(row.sizeBreakdown?.[s]) || 0) - (Number(avail[s]) || 0)) },
+            ] as const : []),
           ] as const).map(({ label, get }) => (
             <tr key={label}>
-              <th className="border border-border bg-muted/30 px-2 py-1 text-left text-[11px] font-semibold">
+              <th scope="row" className="border border-border bg-muted/30 px-2 py-1 text-left text-[11px] font-semibold">
                 {label}
               </th>
               {sizes.map((s) => {
@@ -194,6 +217,259 @@ function SoleGradeDetail({ row }: { row: ConsumptionRow }) {
   );
 }
 
+/**
+ * Solado é uma decisão de compra por grade, não mais uma linha genérica da
+ * tabela. O bloco fica acima da dobra e sempre aberto no estado inicial.
+ */
+function SoleCoveragePanel({ rows, grossNeed = false }: { rows: ConsumptionRow[]; grossNeed?: boolean }) {
+  if (rows.length === 0) return null;
+
+  return (
+    <section
+      className="overflow-hidden rounded-lg border border-border bg-card"
+      aria-label="Solados por numeração"
+    >
+      <header className="flex flex-wrap items-end justify-between gap-3 border-b border-border bg-muted/40 px-4 py-3">
+        <div>
+          <p className="eyebrow">{grossNeed ? 'Necessidade do pedido' : 'Prioridade de compra'}</p>
+          <h3 className="display mt-1 text-xl leading-none sm:text-2xl">Mapa de solados · grade por numeração</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {grossNeed
+              ? 'Quantidade necessária em cada número, sem descontar estoque.'
+              : 'Necessidade, estoque aproveitável e quantidade a comprar em cada número. Este mapa permanece visível ao filtrar os materiais gerais.'}
+          </p>
+        </div>
+        <Badge variant="outline" className="font-mono tabular-nums">
+          {rows.length} {rows.length === 1 ? 'solado' : 'solados'}
+        </Badge>
+      </header>
+
+      <div className="divide-y divide-border">
+        {rows.map((row, index) => {
+          const known = rowKnown(row);
+          const shortage = rowShortfall(row);
+          const usefulStock = Math.max(0, row.totalQuantity - shortage);
+          const shortSizes = soleShortSizes(row);
+          const hasShortage = known && shortage > 0;
+          return (
+            <article
+              key={`${row.groupName}-${row.color}-${row.consumptionSector || ''}-${row.boxTypeIds?.join(',') || row.productIds?.join(',') || index}`}
+              className="px-4 py-3"
+            >
+              <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h4 className="text-sm font-bold text-foreground">{row.groupName}</h4>
+                    {row.color && row.color !== '—' && (
+                      <Badge variant="secondary" className="text-[10px]">{row.color}</Badge>
+                    )}
+                    {!grossNeed && !known ? (
+                      <Badge variant="outline" className="border-amber-500/50 text-[10px] text-amber-700 dark:text-amber-400">
+                        Cadastro incompleto
+                      </Badge>
+                    ) : !grossNeed && hasShortage ? (
+                      <Badge variant="destructive" className="text-[10px]">
+                        Falta em {shortSizes.length || 1} {shortSizes.length === 1 ? 'número' : 'números'}
+                      </Badge>
+                    ) : !grossNeed ? (
+                      <Badge variant="outline" className="text-[10px] text-green-700 dark:text-green-400">
+                        Grade coberta
+                      </Badge>
+                    ) : null}
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">{row.materialName || 'Solado'}</p>
+                  {row.warning && (
+                    <p className="mt-1 max-w-2xl text-xs text-amber-700 dark:text-amber-400">
+                      {row.warning}
+                    </p>
+                  )}
+                </div>
+
+                <dl className={`grid divide-x divide-border overflow-hidden rounded-md border border-border bg-background text-right ${grossNeed ? 'grid-cols-1' : 'grid-cols-3'}`}>
+                  <div className="px-3 py-2">
+                    <dt className="eyebrow">Necessidade</dt>
+                    <dd className="mt-1 font-mono text-base font-bold tabular-nums">
+                      {formatQty(row.totalQuantity, row.productUnit)} {formatUnit(row.productUnit)}
+                      {row.plateEquivalent != null && row.plateEquivalent > 0 && (
+                        <div className="mt-0.5 text-[10px] font-normal text-muted-foreground">
+                          ≈ {formatQty(row.plateEquivalent, 'placa')} placas
+                        </div>
+                      )}
+                    </dd>
+                  </div>
+                  {!grossNeed && (
+                    <>
+                  <div className="px-3 py-2">
+                    <dt className="eyebrow">Estoque útil</dt>
+                    <dd className="mt-1 font-mono text-base font-bold tabular-nums">
+                      {known ? `${formatQty(usefulStock, row.productUnit)} ${formatUnit(row.productUnit)}` : '—'}
+                    </dd>
+                  </div>
+                  <div className="px-3 py-2">
+                    <dt className="eyebrow">Comprar</dt>
+                    <dd className={`mt-1 font-mono text-base font-bold tabular-nums ${
+                      !known ? 'text-muted-foreground' : hasShortage ? 'text-destructive' : 'text-green-700 dark:text-green-400'
+                    }`}>
+                      {known ? `${formatQty(shortage, row.productUnit)} ${formatUnit(row.productUnit)}` : '—'}
+                    </dd>
+                  </div>
+                    </>
+                  )}
+                </dl>
+              </div>
+              <SoleGradeDetail row={row} grossNeed={grossNeed} />
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function itemFilterTriggerLabel(
+  selectedIds: string[],
+  options: { id: string; label: string }[],
+): string {
+  if (selectedIds.length === 0) return 'Todos os itens';
+  if (selectedIds.length === 1) {
+    return options.find((opt) => opt.id === selectedIds[0])?.label ?? '1 item selecionado';
+  }
+  return `${selectedIds.length} itens selecionados`;
+}
+
+function ItemCheckMark({ checked }: { checked: boolean }) {
+  return (
+    <span
+      className={cn(
+        'grid h-4 w-4 shrink-0 place-items-center rounded border text-[10px] leading-none text-primary-foreground',
+        checked ? 'border-primary bg-primary' : 'border-muted-foreground/40 bg-background',
+      )}
+      aria-hidden
+    >
+      {checked ? '✓' : ''}
+    </span>
+  );
+}
+
+function ItemFilterMultiSelect({
+  options,
+  selectedIds,
+  onChange,
+}: {
+  options: { id: string; label: string }[];
+  selectedIds: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const allSelected = selectedIds.length === 0;
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return options;
+    return options.filter((opt) => searchMatchesAllTerms(search, opt.label));
+  }, [options, search]);
+
+  const toggle = (id: string) => {
+    if (selectedSet.has(id)) onChange(selectedIds.filter((x) => x !== id));
+    else onChange([...selectedIds, id]);
+  };
+
+  const selectAll = () => onChange([]);
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) setSearch('');
+      }}
+    >
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          aria-label="Filtrar consumo por item do pedido"
+          className="h-9 w-[20rem] max-w-[min(20rem,75vw)] justify-between px-3 text-xs font-normal"
+        >
+          <span className="truncate">{itemFilterTriggerLabel(selectedIds, options)}</span>
+          <ChevronsUpDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        className="w-[var(--radix-popover-trigger-width)] p-2"
+        align="start"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
+        <p className="mb-2 px-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+          Marque um ou mais itens
+        </p>
+        {options.length > 6 ? (
+          <SearchInput
+            placeholder="Buscar nesta lista…"
+            value={search}
+            onChange={setSearch}
+            resultCount={filtered.length}
+            totalCount={options.length}
+            className="mb-2"
+          />
+        ) : null}
+        <div className="max-h-56 space-y-0.5 overflow-y-auto">
+          <button
+            type="button"
+            onClick={selectAll}
+            className={cn(
+              'flex w-full items-center gap-2.5 rounded-sm px-2 py-1.5 text-left text-sm text-foreground hover:bg-muted/60',
+              allSelected && 'bg-muted',
+            )}
+          >
+            <ItemCheckMark checked={allSelected} />
+            Todos os itens
+          </button>
+          {filtered.map((opt) => {
+            const selected = selectedSet.has(opt.id);
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => toggle(opt.id)}
+                className={cn(
+                  'flex w-full items-center gap-2.5 rounded-sm px-2 py-1.5 text-left text-sm text-foreground hover:bg-muted/60',
+                  selected && 'bg-muted',
+                )}
+              >
+                <ItemCheckMark checked={selected} />
+                <span className="truncate">{opt.label}</span>
+              </button>
+            );
+          })}
+          {filtered.length === 0 && (
+            <p className="px-2 py-1.5 text-sm text-muted-foreground">Nenhum item encontrado</p>
+          )}
+        </div>
+        {selectedIds.length > 0 ? (
+          <div className="mt-2 flex items-center justify-between gap-2 border-t border-border pt-2">
+            <span className="px-1 font-mono text-[10px] text-muted-foreground">
+              {selectedIds.length}/{options.length} itens
+            </span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs"
+              onClick={selectAll}
+            >
+              Limpar seleção
+            </Button>
+          </div>
+        ) : null}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export default function MaterialConsumptionView({
   rows,
   artisanalStrapRows,
@@ -204,6 +480,13 @@ export default function MaterialConsumptionView({
   onGerarOC,
   emptyMessage = 'Nenhum consumo de material encontrado.',
   extraSections,
+  embedded = false,
+  itemOptions = [],
+  selectedItemIds = [],
+  onSelectedItemIdsChange,
+  canPartition = false,
+  partitionMode = 'none',
+  onPartitionModeChange,
 }: Props) {
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
@@ -211,7 +494,17 @@ export default function MaterialConsumptionView({
   const [filter, setFilter] = useState<ConsumptionFilter>('all');
   const [napaOnly, setNapaOnly] = useState(false);
   const [search, setSearch] = useState('');
-  const [openSoles, setOpenSoles] = useState<Record<string, boolean>>({});
+  const [baseFamily, setBaseFamily] = useState<string | null>(null);
+  const [grossNeed, setGrossNeed] = useState(false);
+  /** Aba Materiais gerais × Tira Strass — só aparece quando há STRASS no consumo. */
+  const [materialsTab, setMaterialsTab] = useState<'materiais' | 'strass'>('materiais');
+
+  const buyList = useMemo(() => buildBuyList(rows), [rows]);
+
+  const selectBaseFamily = useCallback((name: string | null) => {
+    setBaseFamily((current) => (name == null || current === name ? null : name));
+    if (name) setGroupBy('base');
+  }, []);
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -234,7 +527,9 @@ export default function MaterialConsumptionView({
   // TODAS as linhas do item curto, senão a soma na tela não fecha com o motivo.
   const shortItemKeys = useMemo(() => {
     const s = new Set<string>();
-    for (const it of aggregateItems(rows.filter((r) => r.componentType !== 'Solado'))) {
+    for (const it of aggregateItems(
+      toPurchaseDecisionRows(rows.filter((r) => r.componentType !== 'Solado')),
+    )) {
       if (itemIsShort(it)) s.add(it.key);
     }
     return s;
@@ -248,18 +543,58 @@ export default function MaterialConsumptionView({
 
   const visibleRows = useMemo(() => {
     return rows.filter((r) => {
-      if (!searchMatchesAllTerms(search, r.groupName, r.materialName, r.color, r.componentType)) {
+      if (!searchMatchesAllTerms(
+        search,
+        r.groupName,
+        r.materialName,
+        r.color,
+        r.componentType,
+        baseMaterialName(r) || '',
+      )) {
         return false;
       }
-      if (napaOnly && !isBuyListRow(r)) return false;
+      if (baseFamily && !rowBelongsToBaseFamily(r, baseFamily)) return false;
+      if (napaOnly && !isBuyListRow(r) && !(baseFamily && rowBelongsToBaseFamily(r, baseFamily))) return false;
       switch (filter) {
         case 'short': return isShortRow(r);
         case 'pending': return isPendingRow(r);
-        case 'ok': return !isPendingRow(r) && !isShortRow(r);
+        case 'ok': return !isPendingRow(r) && !isShortRow(r) && !isConvertedInternalStrap(r);
         default: return true;
       }
     });
-  }, [rows, search, filter, napaOnly, isShortRow]);
+  }, [rows, search, filter, napaOnly, baseFamily, isShortRow]);
+
+  // Solado é o mapa prioritário da tela e não participa dos filtros da tabela
+  // de materiais gerais. Antes, clicar em "Napa", buscar outro material ou
+  // filtrar "Coberto" desmontava o bloco inteiro e recriava o relato original
+  // de que a parte de solados não aparecia.
+  //
+  // Tira interna CONVERTIDA sai da tabela: a napa já está no bloco de material
+  // base e o detalhe tira×rendimento mora em ArtisanalStrapRollCutBlock.
+  // Tira PENDING permanece visível como cadastro incompleto — senão a demanda
+  // da ficha some da conferência (PV-00169: 184,80 m "não aparecem").
+  //
+  // STRASS (acabada) sai para aba própria — não mistura com overlock/chata.
+  const visibleSoleRows = useMemo(
+    () => rows.filter((row) => row.componentType === 'Solado'),
+    [rows],
+  );
+  const hasStrass = useMemo(() => rows.some(isStrassStrapRow), [rows]);
+  const visibleStrassRows = useMemo(
+    () => visibleRows.filter(isStrassStrapRow),
+    [visibleRows],
+  );
+  const visibleGeneralRows = useMemo(
+    () => visibleRows.filter((row) => (
+      row.componentType !== 'Solado'
+      && !isConvertedInternalStrap(row)
+      && !isStrassStrapRow(row)
+    )),
+    [visibleRows],
+  );
+  const visibleMaterialRows = materialsTab === 'strass' && hasStrass
+    ? visibleStrassRows
+    : visibleGeneralRows;
 
   const sortedRows = useMemo(() => {
     const canonical = (a: ConsumptionRow, b: ConsumptionRow) => {
@@ -270,15 +605,15 @@ export default function MaterialConsumptionView({
         || a.materialName.localeCompare(b.materialName, 'pt-BR')
         || a.color.localeCompare(b.color, 'pt-BR');
     };
-    if (!sortKey) return [...visibleRows].sort(canonical);
+    if (!sortKey) return [...visibleMaterialRows].sort(canonical);
     const dir = sortDir === 'asc' ? 1 : -1;
-    return [...visibleRows].sort((a, b) => {
+    return [...visibleMaterialRows].sort((a, b) => {
       if (sortKey === 'totalQuantity') return (a.totalQuantity - b.totalQuantity) * dir;
       const aVal = (a[sortKey] || '').toLowerCase();
       const bVal = (b[sortKey] || '').toLowerCase();
       return aVal.localeCompare(bVal, 'pt-BR') * dir || canonical(a, b);
     });
-  }, [visibleRows, sortKey, sortDir]);
+  }, [visibleMaterialRows, sortKey, sortDir]);
 
   /**
    * Seções da tabela mestra. `groupBy` decide a SEGMENTAÇÃO e as colunas decidem
@@ -289,10 +624,47 @@ export default function MaterialConsumptionView({
   const grouped = useMemo(() => {
     const out = new Map<string, ConsumptionRow[]>();
 
+    const emitFamilyColors = (famRows: Map<string, ConsumptionRow[]>, familyFirst: boolean) => {
+      const familyOrder = buyList.families.map((f) => f.napa);
+      const extra = Array.from(famRows.keys()).filter((name) => !familyOrder.includes(name))
+        .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+      for (const fam of [...familyOrder.filter((name) => famRows.has(name)), ...extra]) {
+        const byColor = new Map<string, ConsumptionRow[]>();
+        for (const row of famRows.get(fam)!) {
+          const color = (row.color || '').trim() || 'Sem cor';
+          if (!byColor.has(color)) byColor.set(color, []);
+          byColor.get(color)!.push(row);
+        }
+        const colors = Array.from(byColor.keys()).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+        for (const color of colors) {
+          const key = familyFirst ? `${fam}${SECTION_SEP}${color}` : `${color}${SECTION_SEP}${fam}`;
+          out.set(key, byColor.get(color)!);
+        }
+      }
+    };
+
+    if (groupBy === 'base') {
+      const families = new Map<string, ConsumptionRow[]>();
+      const other: ConsumptionRow[] = [];
+      for (const row of sortedRows) {
+        const fam = baseMaterialName(row);
+        if (fam) {
+          if (!families.has(fam)) families.set(fam, []);
+          families.get(fam)!.push(row);
+        } else {
+          other.push(row);
+        }
+      }
+      emitFamilyColors(families, true);
+      if (other.length) out.set('Outros materiais', other);
+      return out;
+    }
+
     if (groupBy === 'componentType') {
       for (const row of sortedRows) {
-        if (!out.has(row.componentType)) out.set(row.componentType, []);
-        out.get(row.componentType)!.push(row);
+        const section = materialsTab === 'strass' ? 'Tira Strass' : row.componentType;
+        if (!out.has(section)) out.set(section, []);
+        out.get(section)!.push(row);
       }
       return out;
     }
@@ -330,9 +702,7 @@ export default function MaterialConsumptionView({
         else neutral.push(r);
       }
       if (fams.size === 0) { out.set(label, secRows); return; }
-      for (const f of Array.from(fams.keys()).sort((a, b) => a.localeCompare(b, 'pt-BR'))) {
-        out.set(`${label}${SECTION_SEP}${f}`, fams.get(f)!);
-      }
+      emitFamilyColors(fams, false);
       if (neutral.length) out.set(label, neutral);
     };
     if (empties.length) emitSection(emptyLabel, empties);
@@ -340,13 +710,10 @@ export default function MaterialConsumptionView({
       emitSection(k, byVal.get(k)!);
     }
     return out;
-  }, [sortedRows, groupBy, isShortRow]);
+  }, [sortedRows, groupBy, isShortRow, buyList, materialsTab]);
 
-  const totalsByUnit = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const row of visibleRows) map.set(row.productUnit, (map.get(row.productUnit) || 0) + row.totalQuantity);
-    return map;
-  }, [visibleRows]);
+  const totalsByUnit = useMemo(() => unitTotals(visibleRows), [visibleRows]);
+  const pendingTiraM = useMemo(() => pendingStrapMeters(rows), [rows]);
 
   // ── Números do trilho (sempre sobre TODAS as linhas, não sobre o filtro) ──
   const baseTotal = useMemo(() => computeBaseMaterialTotal(rows), [rows]);
@@ -355,7 +722,7 @@ export default function MaterialConsumptionView({
   const topShort = useMemo(() => topShortfalls(rows, 5), [rows]);
   const napaCount = useMemo(() => rows.filter(isBuyListRow).length, [rows]);
   const okCount = useMemo(
-    () => rows.filter((r) => !isPendingRow(r) && !isShortRow(r)).length,
+    () => rows.filter((r) => !isPendingRow(r) && !isShortRow(r) && !isConvertedInternalStrap(r)).length,
     [rows, isShortRow],
   );
   const pendingReasons = useMemo(() => ({
@@ -366,17 +733,27 @@ export default function MaterialConsumptionView({
 
   const handlePrintPdf = useCallback(() => {
     const target = openPrintTab();
+    const reportTitle = grossNeed
+      ? title.replace(/consumo de materiais/i, 'Consumo total')
+      : title;
     const html = buildMaterialConsumptionReportHtml({
       rows,
       artisanalStrapRows,
-      title,
+      title: reportTitle,
       orderHeaders,
+      mode: grossNeed ? 'total' : 'coverage',
+      partitionMode,
     });
     void printHtmlAsPdf(html, {
-      filename: materialConsumptionReportFilename(title),
+      filename: materialConsumptionReportFilename(reportTitle),
       target,
     });
-  }, [rows, title, artisanalStrapRows, orderHeaders]);
+  }, [rows, title, artisanalStrapRows, orderHeaders, grossNeed, partitionMode]);
+
+  const orderReferencePartitions = useMemo(
+    () => (partitionMode === 'order_reference' ? buildOrderReferencePartitions(rows) : []),
+    [partitionMode, rows],
+  );
 
   if (loading) {
     return (
@@ -385,41 +762,50 @@ export default function MaterialConsumptionView({
       </div>
     );
   }
+
+  const itemFilterControl = itemOptions.length > 0 && onSelectedItemIdsChange ? (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border bg-muted/40 px-3 py-2.5">
+      <div className="flex items-center gap-1.5">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Item</span>
+        <ItemFilterMultiSelect
+          options={itemOptions}
+          selectedIds={selectedItemIds}
+          onChange={onSelectedItemIdsChange}
+        />
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Filtra solado, materiais e tiras dos itens marcados do PV (mesmo modelo, cor diferente = item separado).
+      </p>
+    </div>
+  ) : null;
+
   if (rows.length === 0) {
-    return <p className="py-8 text-center text-muted-foreground">{emptyMessage}</p>;
+    return (
+      <div className="space-y-3 py-4">
+        {itemFilterControl}
+        <p className="py-8 text-center text-muted-foreground">{emptyMessage}</p>
+      </div>
+    );
   }
+
+  const colCount = grossNeed ? 7 : 9;
 
   // ── Render de uma linha da tabela mestra ────────────────────────────────
   const renderRow = (row: ConsumptionRow, index: number, neutralStock: boolean, sectionKey: string) => {
+    const converted = isConvertedInternalStrap(row);
     const known = rowKnown(row);
     const avail = rowAvailable(row);
     const short = rowShortfall(row);
     const itemShort = isShortRow(row);
     // Item curto (mesmo material em várias aplicações) não pode aparecer
     // coberto só porque ESTA linha cabe no estoque — o balde inteiro não cabe.
-    const ok = known && short === 0 && !itemShort;
-    const isSole = row.componentType === 'Solado';
+    const ok = !converted && known && short === 0 && !itemShort;
     const hasQuantityPreview = !(row.totalQuantity > 0) && Number(row.previewQuantity) > 0;
-    const soleKey = `${sectionKey}|${row.groupName}|${row.color}|${index}`;
-    const isOpen = !!openSoles[soleKey];
 
-    const main = (
+    return (
       <TableRow key={`${sectionKey}-${row.groupName}-${row.materialName}-${row.color}-${index}`}>
-        <TableCell className={`font-medium ${!neutralStock && known && !ok ? 'border-l-2 border-red-500/60' : ''}`}>
+        <TableCell className={`font-medium ${!grossNeed && !neutralStock && !converted && known && !ok ? 'border-l-2 border-red-500/60' : ''}`}>
           <div className="flex items-center gap-1.5">
-            {isSole && (
-              <button
-                type="button"
-                onClick={() => setOpenSoles((p) => ({ ...p, [soleKey]: !p[soleKey] }))}
-                aria-expanded={isOpen}
-                aria-label={isOpen ? 'Fechar grade por numeração' : 'Abrir grade por numeração'}
-                className="shrink-0 rounded-sm text-muted-foreground hover:text-foreground"
-              >
-                {isOpen
-                  ? <CaretDown className="h-3.5 w-3.5" aria-hidden="true" />
-                  : <CaretRight className="h-3.5 w-3.5" aria-hidden="true" />}
-              </button>
-            )}
             {row.widthMissing && (
               <TooltipProvider delayDuration={150}>
                 <Tooltip>
@@ -449,6 +835,9 @@ export default function MaterialConsumptionView({
             )}
             {row.groupName}
           </div>
+          {row.consumptionSector && (
+            <p className="mt-1 text-xs text-muted-foreground">Setor: {row.consumptionSector}</p>
+          )}
         </TableCell>
         <TableCell>{row.materialName}</TableCell>
         <TableCell>{row.color}</TableCell>
@@ -465,24 +854,37 @@ export default function MaterialConsumptionView({
           ) : row.warning && !(row.totalQuantity > 0) ? (
             <span className="font-normal text-muted-foreground">—</span>
           ) : formatQty(row.totalQuantity, row.productUnit)}
+          {row.plateEquivalent != null && row.plateEquivalent > 0 && (
+            <div className="mt-0.5 whitespace-nowrap text-[10px] font-normal text-muted-foreground">
+              ≈ {formatQty(row.plateEquivalent, 'placa')} placas
+            </div>
+          )}
           {row.artisanal && (
             row.artisanal.pending ? (
               <div className="mt-0.5 whitespace-nowrap text-[10px] font-normal text-amber-600 dark:text-amber-400">
-                base {row.artisanal.baseName} · rendimento a cadastrar
+                base {normalizeBaseFamilyName(row.artisanal.baseName, row.color)} · rendimento a cadastrar
               </div>
             ) : (
               <div className="mt-0.5 whitespace-nowrap text-[10px] font-normal text-muted-foreground">
-                ≈ {formatQty(row.artisanal.baseQty, 'm')} m {row.artisanal.baseName}
+                ≈ {formatQty(row.artisanal.baseQty, 'm')} m {normalizeBaseFamilyName(row.artisanal.baseName, row.color)}
                 <span className="opacity-70"> · artesanal (1 m → {row.artisanal.yieldPerMeter} m)</span>
               </div>
             )
           )}
         </TableCell>
+        {!grossNeed && (
+          <>
         <TableCell
           className="text-right"
-          aria-label={neutralStock ? 'total do item na faixa acima' : !known ? 'cadastro incompleto' : ok ? 'em estoque' : 'em falta'}
+          aria-label={
+            converted ? 'produção interna — o motor consome napa'
+              : neutralStock ? 'total do item na faixa acima'
+              : !known ? 'cadastro incompleto'
+              : ok ? 'em estoque'
+              : 'em falta'
+          }
         >
-          {neutralStock || !known ? (
+          {converted || neutralStock || !known ? (
             <span className="text-muted-foreground">—</span>
           ) : (
             <span className="inline-flex items-center justify-end gap-1">
@@ -494,50 +896,66 @@ export default function MaterialConsumptionView({
           )}
         </TableCell>
         <TableCell className="text-right">
-          {neutralStock || !known || short === 0 ? (
+          {converted ? (
+            <span className="text-[11px] font-medium text-muted-foreground">prod. interna</span>
+          ) : neutralStock || !known || short === 0 ? (
             <span className="text-muted-foreground">—</span>
           ) : (
             <span className="inline-flex items-center justify-end gap-1 font-mono font-bold tabular-nums text-red-600 dark:text-red-400">
               <WarningIcon weight="fill" className="h-3 w-3 shrink-0" aria-hidden="true" />
               {formatQty(short, row.productUnit)}
-              {isSole && soleShortSizes(row).length > 0 && (
-                <span className="ml-0.5 text-[10px] font-normal">em {soleShortSizes(row).length} nº</span>
-              )}
             </span>
           )}
         </TableCell>
+          </>
+        )}
         <TableCell className="text-center text-xs text-muted-foreground">{formatUnit(row.productUnit)}</TableCell>
+        <TableCell className="text-right font-mono tabular-nums text-muted-foreground">
+          {row.unitPrice != null && Number.isFinite(row.unitPrice)
+            ? formatCurrency(row.unitPrice)
+            : <span className="text-muted-foreground">—</span>}
+        </TableCell>
+        <TableCell className="text-right font-mono font-bold tabular-nums">
+          {(() => {
+            const total = rowTotalCost(row);
+            return total != null
+              ? formatMoney(total)
+              : <span className="font-normal text-muted-foreground">—</span>;
+          })()}
+        </TableCell>
       </TableRow>
     );
-
-    if (!isSole || !isOpen) return [main];
-    return [
-      main,
-      <TableRow key={`${soleKey}-grade`} className="border-0 hover:bg-transparent">
-        <TableCell colSpan={7} className="bg-muted/30 p-0">
-          <SoleGradeDetail row={row} />
-        </TableCell>
-      </TableRow>,
-    ];
   };
 
   const renderBand = (item: ItemGroup) => {
     const short = itemShortfall(item);
     const ok = item.known && short === 0;
+    const unitPrice = item.rows.map((row) => row.unitPrice).find((price) => price != null && Number.isFinite(price)) ?? null;
+    const totalCost = unitPrice != null ? item.total * unitPrice : null;
     return (
       <TableRow key={`band-${item.key}`} className="border-0 hover:bg-transparent">
-        <TableCell colSpan={7} className="p-0">
-          <div className={`flex flex-wrap items-baseline gap-x-3 gap-y-1 border-y px-3 py-2 ${item.known ? 'border-green-600/25 bg-green-500/5' : 'border-amber-600/25 bg-amber-500/5'}`}>
-            <span className={`text-[11px] font-bold uppercase tracking-wider ${item.known ? 'text-green-700 dark:text-green-400' : 'text-amber-700 dark:text-amber-400'}`}>
+        <TableCell colSpan={colCount} className="p-0">
+          <div className={`flex flex-wrap items-baseline gap-x-3 gap-y-1 border-y px-3 py-2 ${grossNeed ? 'border-border bg-muted/30' : item.known ? 'border-green-600/25 bg-green-500/5' : 'border-amber-600/25 bg-amber-500/5'}`}>
+            <span className={`text-[11px] font-bold uppercase tracking-wider ${grossNeed ? 'text-foreground' : item.known ? 'text-green-700 dark:text-green-400' : 'text-amber-700 dark:text-amber-400'}`}>
               Total do item · {item.groupName}
             </span>
-            <span className={`font-mono text-lg font-bold tabular-nums ${item.known ? 'text-green-700 dark:text-green-400' : 'text-amber-700 dark:text-amber-400'}`}>
+            <span className={`font-mono text-lg font-bold tabular-nums ${grossNeed ? 'text-foreground' : item.known ? 'text-green-700 dark:text-green-400' : 'text-amber-700 dark:text-amber-400'}`}>
               {formatQty(item.total, item.productUnit)}<span className="ml-0.5 text-xs font-semibold">{formatUnit(item.productUnit)}</span>
             </span>
+            {totalCost != null && (
+              <span className="font-mono text-sm font-semibold tabular-nums text-foreground">
+                · {formatMoney(totalCost)}
+                {unitPrice != null && (
+                  <span className="ml-1 text-[11px] font-normal text-muted-foreground">
+                    ({formatCurrency(unitPrice)}/{formatUnit(item.productUnit)})
+                  </span>
+                )}
+              </span>
+            )}
             <span className="font-mono text-[11px] text-muted-foreground">
               = {item.rows.map((r) => `${formatQty(r.totalQuantity, r.productUnit)} ${r.materialName || 'aplicação'}`).join(' + ')}
             </span>
-            {!item.known ? (
+            {!grossNeed && (!item.known ? (
               <span className="ml-auto text-[11px] text-amber-600 dark:text-amber-400">estoque não comparável — cadastro incompleto</span>
             ) : ok ? (
               <span className="ml-auto inline-flex items-center gap-1 text-[11px]">
@@ -551,34 +969,76 @@ export default function MaterialConsumptionView({
                 <span className="text-muted-foreground">em estoque {formatQty(item.available, item.productUnit)} {formatUnit(item.productUnit)} ·</span>
                 <span className="font-medium text-red-600 dark:text-red-400">faltam {formatQty(short, item.productUnit)} {formatUnit(item.productUnit)}</span>
               </span>
-            )}
+            ))}
           </div>
         </TableCell>
       </TableRow>
     );
   };
 
+  const renderApplicationBand = (split: BuyListColor, key: string) => (
+    <TableRow key={`app-${key}`} className="border-0 hover:bg-transparent">
+      <TableCell colSpan={colCount} className="p-0">
+        <div
+          className="flex flex-wrap items-baseline gap-x-5 gap-y-1 border-b border-border bg-muted/30 px-3 py-2"
+          aria-label={`Consumo por aplicação em ${split.color}`}
+        >
+          {([
+            { label: 'Cabedal', qty: split.cabedal },
+            { label: 'Forração', qty: split.forracao },
+            { label: 'Tira', qty: split.tira, note: split.tira > 0 ? 'prod. interna' : undefined },
+          ] as const).map((part) => (
+            <span key={part.label} className="inline-flex items-baseline gap-1.5">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{part.label}</span>
+              <span className="font-mono text-sm font-bold tabular-nums">
+                {part.qty > 0 ? `${formatQty(part.qty, 'm')} m` : '—'}
+              </span>
+              {'note' in part && part.note ? (
+                <span className="text-[10px] text-muted-foreground">{part.note}</span>
+              ) : null}
+            </span>
+          ))}
+          <span className="ml-auto font-mono text-sm font-bold tabular-nums">
+            {formatQty(split.qty, 'm')} m
+          </span>
+        </div>
+      </TableCell>
+    </TableRow>
+  );
+
   const filterLabel: Record<ConsumptionFilter, string> = {
     all: '', short: 'em falta', pending: 'com cadastro incompleto', ok: 'cobertas pelo estoque',
   };
-  const filterActive = filter !== 'all' || napaOnly || !!search;
-  const clearFilters = () => { setFilter('all'); setNapaOnly(false); setSearch(''); };
+  const filterActive = filter !== 'all' || napaOnly || !!search || !!baseFamily;
+  const clearFilters = () => {
+    setFilter('all');
+    setNapaOnly(false);
+    setSearch('');
+    setBaseFamily(null);
+  };
   const visibleShortItems = countShort(visibleRows);
 
   return (
-    <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
-      <div className="min-w-0 space-y-3">
-        {/* Manifesto operacional: contexto + decisão no mesmo plano, sem
-            duplicar cartões soltos. O trilho à direita continua sendo a ação;
-            esta faixa explica a leitura antes da tabela. */}
-        <section className="grid overflow-hidden border-y-2 border-foreground bg-card sm:grid-cols-[minmax(0,1.5fr)_repeat(3,minmax(7rem,0.55fr))]" aria-label="Resumo operacional do consumo">
-          <div className="border-b border-border px-4 py-3 sm:border-b-0 sm:border-r">
-            <p className="eyebrow">Suprimentos · conferência do pedido</p>
-            <h2 className="display mt-1 text-2xl leading-none sm:text-3xl">{title}</h2>
-            <p className="mt-1.5 max-w-xl text-xs text-muted-foreground">
-              Necessidade é consumo bruto; falta já desconta o estoque líquido e orienta a reposição.
-            </p>
-          </div>
+    <div className="space-y-4">
+      {/* O resumo ocupa toda a largura; abaixo dele, o mapa de solados abre a
+          coluna principal enquanto o trilho mantém a ação de compra visível. */}
+      <section
+        className={`grid overflow-hidden border-y-2 border-foreground bg-card ${
+          embedded
+            ? 'sm:grid-cols-3'
+            : 'sm:grid-cols-[minmax(0,1.5fr)_repeat(3,minmax(7rem,0.55fr))]'
+        }`}
+        aria-label="Resumo operacional do consumo"
+      >
+          {!embedded && (
+            <div className="border-b border-border px-4 py-3 sm:border-b-0 sm:border-r">
+              <p className="eyebrow">Simulação atual · ficha e estoque agora</p>
+              <h2 className="display mt-1 text-2xl leading-none sm:text-3xl">{title}</h2>
+              <p className="mt-1.5 max-w-xl text-xs text-muted-foreground">
+                Recalcula a ficha vigente. Uma OP já congelada pode manter o planejamento histórico usado na reserva e na baixa.
+              </p>
+            </div>
+          )}
           <dl className="border-r border-border px-3 py-3">
             <dt className="eyebrow">Material base</dt>
             <dd className="mt-1 font-mono text-xl font-bold leading-none tabular-nums">
@@ -589,6 +1049,9 @@ export default function MaterialConsumptionView({
           <dl className="border-r border-border px-3 py-3">
             <dt className="eyebrow">Em falta</dt>
             <dd className="mt-1">
+              {grossNeed ? (
+                <span className="font-mono text-xl font-bold leading-none tabular-nums text-muted-foreground">—</span>
+              ) : (
               <button
                 type="button"
                 onClick={() => setFilter((f) => f === 'short' ? 'all' : 'short')}
@@ -600,8 +1063,9 @@ export default function MaterialConsumptionView({
               >
                 {emFaltaCount}
               </button>
+              )}
             </dd>
-            <dd className="mt-1 text-[10px] text-muted-foreground">itens para repor</dd>
+            <dd className="mt-1 text-[10px] text-muted-foreground">{grossNeed ? 'estoque ignorado' : 'itens para repor'}</dd>
           </dl>
           <dl className="px-3 py-3">
             <dt className="eyebrow">Pendências</dt>
@@ -620,25 +1084,273 @@ export default function MaterialConsumptionView({
             </dd>
             <dd className="mt-1 text-[10px] text-muted-foreground">cadastros a revisar</dd>
           </dl>
-        </section>
+      </section>
 
-        {orderHeaders && orderHeaders.length > 0 && (
-          <div className="flex flex-wrap gap-x-6 gap-y-1 rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
-            {orderHeaders.map((h, i) => (
-              <span key={`${h.order_number}-${i}`} className="text-foreground">
-                <span className="text-muted-foreground">Pedido:</span> <span className="font-medium">{h.order_number}</span>
-                {h.client_order_number && <span className="text-muted-foreground"> · Pedido Cliente: {h.client_order_number}</span>}
-              </span>
-            ))}
+      <div className="flex flex-wrap items-center gap-3">
+        <Button
+          type="button"
+          variant={grossNeed ? 'default' : 'outline'}
+          size="sm"
+          aria-pressed={grossNeed}
+          onClick={() => {
+            setGrossNeed((current) => {
+              const next = !current;
+              if (next) setFilter('all');
+              return next;
+            });
+          }}
+          className="gap-1.5"
+        >
+          <ListNumbers className="h-4 w-4" weight="bold" aria-hidden="true" />
+          Consumo total
+        </Button>
+        <p className="text-xs text-muted-foreground">
+          {grossNeed
+            ? 'Estoque ignorado — só a quantidade necessária para realizar o pedido.'
+            : 'Compara com o estoque líquido para decidir o que comprar. Consumo total mostra a necessidade bruta.'}
+        </p>
+      </div>
+
+      {canPartition && onPartitionModeChange ? (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border bg-muted/40 px-3 py-2.5">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Visão</span>
+            <Tabs
+              value={partitionMode}
+              onValueChange={(value) => {
+                if (value === 'none' || value === 'order_reference') onPartitionModeChange(value);
+              }}
+            >
+              <TabsList aria-label="Consolidado ou por PV e modelo">
+                <TabsTrigger value="none" className="text-xs">Consolidado</TabsTrigger>
+                <TabsTrigger value="order_reference" className="text-xs">Por PV e modelo</TabsTrigger>
+              </TabsList>
+            </Tabs>
           </div>
-        )}
+          <p className="text-xs text-muted-foreground">
+            {partitionMode === 'order_reference'
+              ? 'Quebra o consumo por número do pedido e pelo modelo (referência) de cada item.'
+              : 'Soma o mesmo material entre pedidos e modelos — lista de compra.'}
+          </p>
+        </div>
+      ) : null}
+
+      {itemFilterControl}
+
+      {orderHeaders && orderHeaders.length > 0 && (
+        <div className="flex flex-wrap gap-x-6 gap-y-1 rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
+          {orderHeaders.map((h, i) => (
+            <span key={`${h.order_number}-${i}`} className="text-foreground">
+              <span className="text-muted-foreground">Pedido:</span> <span className="font-medium">{h.order_number}</span>
+              {h.client_order_number && <span className="text-muted-foreground"> · Pedido Cliente: {h.client_order_number}</span>}
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
+        <div className="min-w-0 space-y-3">
+          {partitionMode === 'order_reference' && orderReferencePartitions.length > 0 ? (
+            <div className="space-y-6">
+              {orderReferencePartitions.map((order) => {
+                const orderVisible = order.models.flatMap((model) => model.rows).filter((r) => {
+                  if (!searchMatchesAllTerms(
+                    search,
+                    r.groupName,
+                    r.materialName,
+                    r.color,
+                    r.componentType,
+                    baseMaterialName(r) || '',
+                    r.orderNumber || '',
+                    r.referenceCode || '',
+                    r.referenceName || '',
+                  )) return false;
+                  if (baseFamily && !rowBelongsToBaseFamily(r, baseFamily)) return false;
+                  if (napaOnly && !isBuyListRow(r) && !(baseFamily && rowBelongsToBaseFamily(r, baseFamily))) return false;
+                  switch (filter) {
+                    case 'short': return isShortRow(r);
+                    case 'pending': return isPendingRow(r);
+                    case 'ok': return !isPendingRow(r) && !isShortRow(r) && !isConvertedInternalStrap(r);
+                    default: return true;
+                  }
+                });
+                if (orderVisible.length === 0
+                  && !order.models.some((m) => m.rows.some((r) => r.componentType === 'Solado'))) {
+                  return null;
+                }
+                return (
+                  <section
+                    key={order.saleOrderId || order.orderNumber}
+                    className="space-y-4 rounded-lg border border-border bg-card/40 p-3"
+                  >
+                    <header className="border-b border-border pb-2">
+                      <p className="eyebrow">Pedido</p>
+                      <h3 className="display mt-0.5 text-2xl leading-none text-primary">{order.orderNumber}</h3>
+                    </header>
+                    {order.models.map((model) => {
+                      const soleRows = model.rows.filter((r) => r.componentType === 'Solado');
+                      const modelMaterialRows = model.rows.filter((r) => {
+                        if (r.componentType === 'Solado') return false;
+                        if (isConvertedInternalStrap(r)) return false;
+                        if (materialsTab === 'strass' ? !isStrassStrapRow(r) : isStrassStrapRow(r)) return false;
+                        if (!searchMatchesAllTerms(
+                          search,
+                          r.groupName,
+                          r.materialName,
+                          r.color,
+                          r.componentType,
+                          baseMaterialName(r) || '',
+                        )) return false;
+                        if (baseFamily && !rowBelongsToBaseFamily(r, baseFamily)) return false;
+                        if (napaOnly && !isBuyListRow(r) && !(baseFamily && rowBelongsToBaseFamily(r, baseFamily))) return false;
+                        switch (filter) {
+                          case 'short': return isShortRow(r);
+                          case 'pending': return isPendingRow(r);
+                          case 'ok': return !isPendingRow(r) && !isShortRow(r) && !isConvertedInternalStrap(r);
+                          default: return true;
+                        }
+                      });
+                      if (soleRows.length === 0 && modelMaterialRows.length === 0) return null;
+                      const byComponent = new Map<string, ConsumptionRow[]>();
+                      for (const row of modelMaterialRows) {
+                        const section = materialsTab === 'strass' ? 'Tira Strass' : row.componentType;
+                        if (!byComponent.has(section)) byComponent.set(section, []);
+                        byComponent.get(section)!.push(row);
+                      }
+                      const sectionPrefix = `${order.orderNumber}::${model.referenceLabel}`;
+                      return (
+                        <div key={`${sectionPrefix}-${model.referenceId || 'x'}`} className="space-y-3">
+                          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                            <p className="eyebrow">Modelo</p>
+                            <h4 className="font-display text-lg uppercase tracking-wide text-foreground">
+                              {model.referenceLabel}
+                            </h4>
+                            {model.rows[0]?.referenceName
+                              && model.rows[0].referenceName !== model.referenceLabel ? (
+                              <span className="text-xs text-muted-foreground">{model.rows[0].referenceName}</span>
+                            ) : null}
+                          </div>
+                          <SoleCoveragePanel rows={soleRows} grossNeed={grossNeed} />
+                          {modelMaterialRows.length > 0 ? (
+                            <div className="overflow-hidden overflow-x-auto rounded-lg border">
+                              <Table
+                                aria-label={`Materiais ${order.orderNumber} ${model.referenceLabel}`}
+                                className="[&_tbody_tr]:border-dashed [&_tbody_tr]:border-border/70 [&_td]:py-2"
+                              >
+                                <TableHeader>
+                                  <TableRow className="bg-muted/50">
+                                    <TableHead>Grupo de material</TableHead>
+                                    <TableHead>Aplicação</TableHead>
+                                    <TableHead>Cor</TableHead>
+                                    <TableHead className="text-right">Necessidade</TableHead>
+                                    {!grossNeed && (
+                                      <>
+                                        <TableHead className="w-32 text-right">Em estoque</TableHead>
+                                        <TableHead className="w-32 text-right">Falta</TableHead>
+                                      </>
+                                    )}
+                                    <TableHead className="w-20 text-center">Un</TableHead>
+                                    <TableHead className="w-28 text-right">Preço unitário</TableHead>
+                                    <TableHead className="w-32 text-right">Valor a gastar</TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {Array.from(byComponent.entries()).flatMap(([sectionKey, sectionRows]) => {
+                                    const out: JSX.Element[] = [];
+                                    const subt = new Map<string, number>();
+                                    for (const r of sectionRows) {
+                                      subt.set(r.productUnit, (subt.get(r.productUnit) || 0) + r.totalQuantity);
+                                    }
+                                    const subtotal = Array.from(subt.entries())
+                                      .map(([u, v]) => `${formatQty(v, u)} ${formatUnit(u)}`)
+                                      .join(' · ');
+                                    out.push(
+                                      <TableRow key={`sec-${sectionPrefix}-${sectionKey}`} className="border-0 hover:bg-transparent">
+                                        <TableCell colSpan={colCount} className="border-y border-border bg-muted/60 py-1.5">
+                                          <div className="flex flex-wrap items-baseline justify-between gap-2">
+                                            <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-foreground">
+                                              <span aria-hidden="true" className="inline-block h-3.5 w-[3px] rounded-sm bg-primary" />
+                                              {sectionKey}
+                                            </span>
+                                            <span className="text-xs tabular-nums text-muted-foreground">{subtotal}</span>
+                                          </div>
+                                        </TableCell>
+                                      </TableRow>,
+                                    );
+                                    const items = aggregateItems(sectionRows);
+                                    for (const item of items) {
+                                      const multi = item.rows.length > 1;
+                                      if (multi) out.push(renderBand(item));
+                                      item.rows.forEach((row, i) => out.push(renderRow(row, i, multi, `${sectionPrefix}::${sectionKey}`)));
+                                    }
+                                    return out;
+                                  })}
+                                </TableBody>
+                              </Table>
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </section>
+                );
+              })}
+              {materialsTab !== 'strass' || !hasStrass ? (
+                <ArtisanalStrapRollCutBlock rows={artisanalStrapRows} />
+              ) : null}
+              {extraSections}
+            </div>
+          ) : (
+          <>
+          <SoleCoveragePanel rows={visibleSoleRows} grossNeed={grossNeed} />
+
+          <Tabs
+            value={hasStrass ? materialsTab : 'materiais'}
+            onValueChange={(value) => {
+              if (value === 'materiais' || value === 'strass') setMaterialsTab(value);
+            }}
+            className="space-y-3"
+          >
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <p className="eyebrow">
+                {materialsTab === 'strass' && hasStrass ? 'Compra pronta' : 'Materiais gerais'}
+              </p>
+              <h3 className="display mt-1 text-xl leading-none">
+                {materialsTab === 'strass' && hasStrass
+                  ? 'Tira Strass'
+                  : 'Consumo e cobertura de estoque'}
+              </h3>
+              {materialsTab === 'strass' && hasStrass ? (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Separada das tiras de produção interna (overlock, chata). SKU acabado comprado pronto.
+                </p>
+              ) : null}
+            </div>
+            {hasStrass ? (
+              <TabsList aria-label="Segmentar materiais e tira Strass">
+                <TabsTrigger value="materiais" className="text-xs">
+                  Materiais
+                  <span className="ml-1.5 font-mono tabular-nums opacity-70">
+                    {visibleGeneralRows.length}
+                  </span>
+                </TabsTrigger>
+                <TabsTrigger value="strass" className="text-xs">
+                  Tira Strass
+                  <span className="ml-1.5 font-mono tabular-nums opacity-70">
+                    {visibleStrassRows.length}
+                  </span>
+                </TabsTrigger>
+              </TabsList>
+            ) : null}
+          </div>
 
         {/* ── Barra de controle: agrupar, buscar, totais ─────────────────── */}
         <div className="sticky top-0 z-10 flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border bg-background/95 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/80">
           <div className="flex items-center gap-1.5">
             <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Agrupar</span>
             <Select value={groupBy} onValueChange={(v) => setGroupBy(v as GroupBy)}>
-              <SelectTrigger className="h-8 w-[9.5rem] text-xs">
+              <SelectTrigger className="h-8 w-[11rem] text-xs">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -648,6 +1360,27 @@ export default function MaterialConsumptionView({
               </SelectContent>
             </Select>
           </div>
+          {buyList.families.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filtrar por material base">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Base</span>
+              {buyList.families.map((family) => (
+                <button
+                  key={family.napa}
+                  type="button"
+                  aria-pressed={baseFamily === family.napa}
+                  onClick={() => selectBaseFamily(family.napa)}
+                  className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold transition-colors ${
+                    baseFamily === family.napa
+                      ? 'bg-primary text-primary-foreground'
+                      : 'border border-border bg-muted/40 text-muted-foreground hover:bg-muted'
+                  }`}
+                >
+                  {family.napa}
+                  <span className="font-mono tabular-nums opacity-70">{formatQty(family.total, 'm')} m</span>
+                </button>
+              ))}
+            </div>
+          )}
           <SearchInput
             value={search}
             onChange={setSearch}
@@ -667,6 +1400,13 @@ export default function MaterialConsumptionView({
             ))}
             <span>{pluralizeItens(visibleRows.length)}{filterActive && visibleRows.length !== rows.length ? ` de ${rows.length}` : ''}</span>
           </span>
+          {pendingTiraM > 0 && (
+            <span className="inline-flex flex-wrap items-baseline gap-x-2 gap-y-0.5 rounded-md border border-amber-600/30 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-800 dark:text-amber-300">
+              <span className="font-semibold">Tira com cadastro pendente</span>
+              <span className="font-mono font-bold tabular-nums">{formatQty(pendingTiraM, 'm')} m</span>
+              <span className="text-muted-foreground">não entra na necessidade de napa</span>
+            </span>
+          )}
           {filterActive && (
             <button
               type="button"
@@ -676,6 +1416,7 @@ export default function MaterialConsumptionView({
               mostrando {visibleRows.length} de {rows.length}
               {filter !== 'all' ? ` · ${filterLabel[filter]}` : ''}
               {napaOnly ? ' · de napa' : ''}
+              {baseFamily ? ` · ${baseFamily}` : ''}
               {filter === 'short' && visibleShortItems !== visibleRows.length
                 ? ` · ${visibleShortItems} ${visibleShortItems === 1 ? 'item' : 'itens'}`
                 : ''}
@@ -686,11 +1427,14 @@ export default function MaterialConsumptionView({
 
         {visibleRows.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">
-            Nenhuma linha {filter !== 'all' ? filterLabel[filter] : ''}{napaOnly ? ' de napa' : ''} {search ? `para “${search}”` : ''}.
+            Nenhuma linha {filter !== 'all' ? filterLabel[filter] : ''}{napaOnly ? ' de napa' : ''}{baseFamily ? ` de ${baseFamily}` : ''} {search ? `para “${search}”` : ''}.
           </p>
-        ) : (
+        ) : visibleMaterialRows.length > 0 ? (
           <div className="overflow-hidden overflow-x-auto rounded-lg border">
-            <Table className="[&_tbody_tr]:border-dashed [&_tbody_tr]:border-border/70 [&_td]:py-2">
+            <Table
+              aria-label={materialsTab === 'strass' && hasStrass ? 'Tira Strass' : 'Materiais gerais'}
+              className="[&_tbody_tr]:border-dashed [&_tbody_tr]:border-border/70 [&_td]:py-2"
+            >
               <TableHeader>
                 <TableRow className="bg-muted/50">
                   <TableHead aria-sort={sortKey === 'groupName' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
@@ -705,11 +1449,17 @@ export default function MaterialConsumptionView({
                   <TableHead aria-sort={sortKey === 'totalQuantity' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
                     <button type="button" className="flex w-full select-none items-center justify-end hover:text-foreground" onClick={() => handleSort('totalQuantity')}>Necessidade <SortIcon col="totalQuantity" /></button>
                   </TableHead>
+                  {!grossNeed && (
+                    <>
                   <TableHead className="w-32 text-right">Em estoque</TableHead>
                   <TableHead className="w-32 text-right">Falta</TableHead>
+                    </>
+                  )}
                   <TableHead aria-sort={sortKey === 'productUnit' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined} className="w-20">
                     <button type="button" className="flex w-full select-none items-center justify-center hover:text-foreground" onClick={() => handleSort('productUnit')}>Un <SortIcon col="productUnit" /></button>
                   </TableHead>
+                  <TableHead className="w-28 text-right">Preço unitário</TableHead>
+                  <TableHead className="w-32 text-right">Valor a gastar</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -734,12 +1484,32 @@ export default function MaterialConsumptionView({
                   const short = new Set(
                     sectionRows
                       .filter(isShortRow)
-                      .map((r) => (r.componentType === 'Solado' ? `sole||${r.groupName}||${r.color}` : itemKey(r))),
+                      .map(itemKey),
                   ).size;
                   const [secLabel, secFamily] = String(sectionKey).split(SECTION_SEP);
+                  const applicationSplit = (() => {
+                    // A tabela omite tiras convertidas; o band de aplicação
+                    // precisa do buyList completo pra cabedal/forração/tira fecharem.
+                    if (secFamily) {
+                      const famName = groupBy === 'base' ? secLabel : secFamily;
+                      const colorName = groupBy === 'base' ? secFamily : secLabel;
+                      const family = buyList.families.find((entry) => entry.napa === famName);
+                      const colorSplit = family?.colors.find((entry) => {
+                        const color = (entry.color || '').trim();
+                        if (colorName === 'Sem cor') return !color;
+                        return color === colorName;
+                      });
+                      if (colorSplit) return colorSplit;
+                    }
+                    const fromSection = buildBuyList(sectionRows);
+                    if (fromSection.families.length !== 1 || fromSection.families[0].colors.length !== 1) {
+                      return null;
+                    }
+                    return fromSection.families[0].colors[0];
+                  })();
                   out.push(
                     <TableRow key={`sec-${sectionKey}`} className="border-0 hover:bg-transparent">
-                      <TableCell colSpan={7} className="border-y border-border bg-muted/60 py-1.5">
+                      <TableCell colSpan={colCount} className="border-y border-border bg-muted/60 py-1.5">
                         <div className="flex flex-wrap items-baseline justify-between gap-2">
                           <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-foreground">
                             <span aria-hidden="true" className="inline-block h-3.5 w-[3px] rounded-sm bg-primary" />
@@ -756,32 +1526,44 @@ export default function MaterialConsumptionView({
                       </TableCell>
                     </TableRow>,
                   );
+                  if (applicationSplit && String(sectionKey).includes(SECTION_SEP)) {
+                    out.push(renderApplicationBand(applicationSplit, sectionKey));
+                  }
 
-                  // Dentro da seção: solado linha a linha (avaliado por numeração)
-                  // e o resto por balde de estoque, com faixa quando o mesmo
-                  // material aparece em mais de uma aplicação.
-                  const soleRows = sectionRows.filter((r) => r.componentType === 'Solado');
-                  const items = aggregateItems(sectionRows.filter((r) => r.componentType !== 'Solado'));
+                  // Dentro da seção: materiais por balde de estoque, com faixa
+                  // quando o mesmo produto aparece em mais de uma aplicação.
+                  // Solados ficam no mapa de grade dedicado, acima da tabela.
+                  const items = aggregateItems(sectionRows);
                   for (const item of items) {
                     const multi = item.rows.length > 1;
                     if (multi) out.push(renderBand(item));
-                    item.rows.forEach((row, i) => out.push(...renderRow(row, i, multi, sectionKey)));
+                    item.rows.forEach((row, i) => out.push(renderRow(row, i, multi, sectionKey)));
                   }
-                  soleRows.forEach((row, i) => out.push(...renderRow(row, i, false, sectionKey)));
                   return out;
                 })}
               </TableBody>
             </Table>
           </div>
+        ) : (
+          <p className="py-8 text-center text-sm text-muted-foreground">
+            {materialsTab === 'strass' && hasStrass
+              ? 'Nenhuma tira Strass neste filtro.'
+              : 'Nenhum material geral neste filtro.'}
+          </p>
         )}
 
         {/* Bloco separado: tiras artesanais cortadas do rolo (vermelho) */}
-        <ArtisanalStrapRollCutBlock rows={artisanalStrapRows} />
+        {materialsTab !== 'strass' || !hasStrass ? (
+          <ArtisanalStrapRollCutBlock rows={artisanalStrapRows} />
+        ) : null}
 
         {extraSections}
+          </Tabs>
+          </>
+          )}
       </div>
 
-      <ConsumptionDecisionRail
+        <ConsumptionDecisionRail
         baseTotal={baseTotal}
         shortCount={emFaltaCount}
         pendingCount={pendingCount}
@@ -794,11 +1576,19 @@ export default function MaterialConsumptionView({
         onFilterChange={setFilter}
         napaOnly={napaOnly}
         onNapaOnlyChange={setNapaOnly}
+        selectedBaseFamily={baseFamily}
+        onSelectBaseFamily={selectBaseFamily}
+        grossNeed={grossNeed}
+        onGrossNeedChange={(value) => {
+          setGrossNeed(value);
+          if (value) setFilter('all');
+        }}
         onGerarOC={onGerarOC}
         onRecalcular={onRecalcular}
         onPrintPdf={handlePrintPdf}
         loading={loading}
-      />
+        />
+      </div>
     </div>
   );
 }

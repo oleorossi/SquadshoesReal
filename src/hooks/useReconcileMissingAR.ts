@@ -27,17 +27,31 @@ export interface MissingARSaleOrder {
   situacao_nf: SituacaoNf;
 }
 
+interface MissingArRpcResult {
+  data: unknown;
+  error: { message: string } | null;
+}
+
+interface MissingArRpcClient {
+  rpc(functionName: 'list_faturado_sem_ar'): PromiseLike<MissingArRpcResult>;
+}
+
+const missingArClient = supabase as unknown as MissingArRpcClient;
+
 async function fetchMissingAR(): Promise<MissingARSaleOrder[]> {
-  const { data, error } = await supabase
-    .from('v_faturado_sem_ar' as any)
-    .select('id, order_number, total, situacao_nf');
+  const { data, error } = await missingArClient.rpc('list_faturado_sem_ar');
   if (error) throw error;
-  return ((data || []) as any[])
+  const rows = Array.isArray(data) ? data as Array<Record<string, unknown>> : [];
+  return rows
     .map((r) => ({
-      id: r.id as string,
-      order_number: (r.order_number as string) || '',
+      id: String(r.id ?? ''),
+      order_number: String(r.order_number ?? ''),
       total: Number(r.total) || 0,
-      situacao_nf: (r.situacao_nf as SituacaoNf) || 'sem_nf',
+      situacao_nf: (
+        r.situacao_nf === 'nf_autorizada' || r.situacao_nf === 'nf_externa'
+          ? r.situacao_nf
+          : 'sem_nf'
+      ) as SituacaoNf,
     }))
     .sort((a, b) => a.order_number.localeCompare(b.order_number));
 }

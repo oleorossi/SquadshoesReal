@@ -3,7 +3,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const ilikeMock = vi.fn();
-const fromMock = vi.fn(() => ({ select: () => ({ ilike: (col: string, val: string) => ilikeMock(col, val) }) }));
+const isMock = vi.fn();
+const fromMock = vi.fn(() => ({
+  select: () => ({
+    is: (col: string, val: null) => {
+      isMock(col, val);
+      return { ilike: (ilikeCol: string, ilikeVal: string) => ilikeMock(ilikeCol, ilikeVal) };
+    },
+  }),
+}));
 
 vi.mock('@/integrations/supabase/client', () => ({
   supabase: { from: (_table: string) => fromMock() },
@@ -14,6 +22,7 @@ import { findSheetNameCollision } from '../useTechnicalSheets';
 
 beforeEach(() => {
   ilikeMock.mockReset();
+  isMock.mockReset();
   fromMock.mockClear();
 });
 
@@ -21,9 +30,15 @@ const linhas = (rows: unknown[]) => ilikeMock.mockResolvedValue({ data: rows, er
 
 describe('findSheetNameCollision', () => {
   it('acha a ficha de mesmo nome', async () => {
-    linhas([{ id: 'a', name: 'SP130', code: 'SP130' }]);
+    linhas([{ id: 'a', name: 'SP130', code: 'SP130', retired_at: null }]);
     const dup = await findSheetNameCollision('SP130');
     expect(dup).toMatchObject({ id: 'a', name: 'SP130' });
+    expect(isMock).toHaveBeenCalledWith('retired_at', null);
+  });
+
+  it('ignora ficha aposentada e libera o nome para um cadastro operacional novo', async () => {
+    linhas([{ id: 'aposentada', name: 'SP130', code: 'SP130', retired_at: '2026-08-30T12:00:00Z' }]);
+    expect(await findSheetNameCollision('SP130')).toBeNull();
   });
 
   // Foi exatamente assim que a duplicata real nasceu: mesmo nome, código vazio.

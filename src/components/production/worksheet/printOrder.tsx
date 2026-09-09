@@ -30,8 +30,11 @@ import React, { createContext } from 'react';
  * O layout reduzido (.reduced-card) TAMBÉM inverte (fix da revisão
  * 2026-07-24): Expedição e Relatório Gerencial não têm variante reduzida —
  * no "Relatório simplificado" imprimem a ficha completa e precisam da
- * compensação. Os cards recortáveis reordenados são inofensivos (vão pra
- * tesoura; o empacotamento por A4 é do browser de qualquer forma).
+ * compensação.
+ *
+ * Cartão físico: os filhos top-level do stack são wrappers de FOLHA
+ * (`.cartao-page`, até 12 cartões em cut-stack). Inverter por folha — não por
+ * cartão — preserva a geometria de empilhar-e-cortar na impressora face-up.
  */
 export const ReversePrintContext = createContext(false);
 

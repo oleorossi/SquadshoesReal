@@ -15,6 +15,7 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { CircleNotch as Loader2, Plus, WarningCircle, Check, X } from '@phosphor-icons/react';
 import { toast } from 'sonner';
+import { createProductWithStock } from '@/lib/stockCommand';
 
 type SoleClassification = 'tradicional' | 'palmilha_pronta' | 'conjugado';
 
@@ -179,26 +180,23 @@ export default function SoleCreateDialog({ open, onOpenChange, onCreated }: Prop
         min_stock: minStock || 0,
         active: true,
         unit_price: unitPrice,
-        stock_grade: grade,
         sole_classification: classification,
         is_fachetado: isFachetado,
         group_id: groupId || null,
         sole_technical_notes: notes.trim() || null,
+        stock_grade: grade,
+        reason: 'Cadastro do solado com grade inicial',
       };
 
-      const { data, error } = await (supabase as any)
-        .from('products')
-        .insert(payload)
-        .select('id')
-        .single();
-
-      if (error) {
-        if (error.code === '23505') {
+      const result = await createProductWithStock(payload);
+      if (!result.success || !result.product_id) {
+        const code = result.errors?.[0]?.error;
+        if (code === 'SKU_ALREADY_EXISTS') {
           throw new Error(`SKU "${effectiveSku}" já existe. Use outro nome ou cor.`);
         }
-        throw error;
+        throw new Error(code || 'Falha ao cadastrar solado e grade inicial');
       }
-      return data?.id as string;
+      return result.product_id;
     },
     onSuccess: (newId) => {
       toast.success(`Solado "${name}" cadastrado.`);

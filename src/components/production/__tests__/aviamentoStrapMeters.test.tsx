@@ -6,11 +6,11 @@ import type { ConsumptionRow } from '@/hooks/useBulkOrderConsumption';
 // PaginatedSheet observa cada bloco com ResizeObserver — inexistente no jsdom.
 // Mock no-op: os blocos ainda são commitados no DOM (measurement=0 → 1 página).
 beforeAll(() => {
-  (globalThis as any).ResizeObserver = class {
+  vi.stubGlobal('ResizeObserver', class {
     observe() {}
     unobserve() {}
     disconnect() {}
-  };
+  });
 });
 
 const strapRow = (name: string, meters: number): ConsumptionRow => ({
@@ -48,6 +48,69 @@ const aviamentoGroup: SoleSilkGroup = {
 };
 
 describe('SilkMontageWorkSheet · Aviamento · Consumo de Tiras (metros)', () => {
+  it('mostra a sequência técnica e a cor efetiva de cada tira, inclusive sem medida', () => {
+    const withSequence: SoleSilkGroup = {
+      ...aviamentoGroup,
+      colorGroups: [{
+        ...aviamentoGroup.colorGroups[0],
+        components: [
+          {
+            position: 1,
+            technicalStrapLineId: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+            name: 'TIRA 1',
+            color: 'AZUL',
+            material: 'NAPA SOFT',
+            cm: 40,
+          },
+          {
+            position: 2,
+            technicalStrapLineId: '11111111-1111-4111-8111-111111111111',
+            name: 'ALÇA FRONTAL',
+            color: 'BRANCO',
+            material: 'NAPA SOFT + MASSABOX',
+            cm: 42,
+          },
+          {
+            position: 3,
+            technicalStrapLineId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+            name: 'TIRA 3',
+            color: 'VERMELHO',
+          },
+        ],
+      }],
+    };
+
+    const { container, rerender } = render(
+      <SilkMontageWorkSheet groups={[withSequence]} sector="Aviamento" />,
+    );
+    const rows = Array.from(container.querySelectorAll<HTMLElement>('[data-strap-position]'));
+
+    expect(rows.map((row) => row.dataset.strapPosition)).toEqual(['1', '2', '3']);
+    expect(rows[0]).toHaveTextContent('TIRA 1');
+    expect(rows[0]).toHaveTextContent('AZUL');
+    expect(rows[0]).toHaveTextContent('NAPA SOFT');
+    expect(rows[1]).toHaveTextContent('TIRA 2');
+    expect(rows[1]).toHaveTextContent('ALÇA FRONTAL');
+    expect(rows[1]).toHaveTextContent('BRANCO');
+    expect(rows[1]).toHaveTextContent('NAPA SOFT + MASSABOX');
+    const material = rows[1].querySelector<HTMLElement>('[data-strap-material]')!;
+    const color = rows[1].querySelector<HTMLElement>('[data-strap-color]')!;
+    expect(material).toHaveTextContent('NAPA SOFT + MASSABOX');
+    expect(material).toHaveStyle({ fontSize: '10px', whiteSpace: 'normal', overflowWrap: 'anywhere' });
+    expect(color).toHaveStyle({ fontSize: '18px' });
+    expect(rows[2]).toHaveTextContent('TIRA 3');
+    expect(rows[2]).toHaveTextContent('VERMELHO');
+    expect(rows[2]).toHaveTextContent('—');
+    expect(rows[2].querySelector('[data-strap-material]')).toBeNull();
+    // Os pisos também valem após o auto-fit mínimo de 0,8.
+    expect(Number.parseFloat(material.style.fontSize) * 0.8).toBeGreaterThanOrEqual(7.5);
+    expect(Number.parseFloat(color.style.fontSize) * 0.8).toBeGreaterThanOrEqual(14);
+    expect(screen.getByText(/cor e material do PV/i)).toBeInTheDocument();
+
+    rerender(<SilkMontageWorkSheet groups={[withSequence]} sector="Montagem" />);
+    expect(container.querySelector('[data-strap-position]')).toBeNull();
+  });
+
   it('renderiza o bloco de metros de tira e o Total Geral quando há tiras', () => {
     render(<SilkMontageWorkSheet groups={[aviamentoGroup]} sector="Aviamento" />);
 

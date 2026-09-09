@@ -2,7 +2,11 @@
 
 ## Deployment Architecture
 
-- **Deploy:** Vercel (auto-deploy a cada push em `main`).
+- **Deploy:** Vercel via GitHub Action após o CI verde; a integração Git nativa
+  não publica produção diretamente. `vercel.json` bloqueia somente a branch
+  `main` em `git.deploymentEnabled`; previews das demais branches permanecem
+  habilitados. Não remover essa trava: em 05/09/2026 a integração nativa publicou
+  `ba751cd` cerca de cinco minutos antes do CI, ignorando o gate de migrations.
 - **Production URL:** https://squadshoes-real.vercel.app
 - **Branch de deploy:** `main`
 - **Branch de trabalho:** `Codex/zen-knuth-4c26c5` (ou qualquer `Codex/*`).
@@ -29,15 +33,18 @@ git commit + push (manual ou via stop hook)
 GitHub feature branch atualizada
      ↓ (stop hook auto-merge)
 GitHub main atualizada
-     ↓ (Vercel GitHub integration)
-Vercel build → site live em ~1-2min
-     ↓ (se mexeu em supabase/migrations/**)
-GitHub Action `supabase-migrate.yml`
      ↓
-supabase db push → DB live
+CI integral
+     ↓ (somente se verde, sempre no mesmo SHA)
+GitHub Action `supabase-migrate.yml` → supabase db push
+     ↓ (frontend e Edge aguardam todas as migrations do commit)
+Vercel Production Deploy + publicação das Edge Functions
+     ↓
+site e backend live
 ```
 
-**Status / configuração**: rode `bash scripts/setup-cicd.sh` pra ver o status atual, URLs e os passos pendentes (especialmente os 3 secrets do Supabase que precisam ser cadastrados manualmente).
+**Status / configuração**: rode `bash scripts/setup-cicd.sh` pra ver o status
+atual, URLs e os secrets exigidos pelos workflows.
 
 ## Conflict Resolution Strategy
 
@@ -124,6 +131,15 @@ supabase db push → DB live
   toast/`use-toast` existe mas não é o padrão).
 - Cast de payload Supabase com `as X` / `as unknown as X` é aceito aqui (consequência do TS loose +
   types gerados) — não é smell a "consertar".
+- **Setores principais (Estoque / Ficha / PV) — load-bearing desde o programa
+  `specs/otimizacao-setores-principais.md`:**
+  - Ficha: lista do hub = `useTechnicalSheetsCatalog` (colunas explícitas); PV =
+    `useTechnicalSheetsLite`; editor = `useTechnicalSheetDetail` (`select('*')` só aí).
+    **Não** reabrir o hub com `useTechnicalSheets()` / `select('*')`.
+  - Keys: invalidar/ler via `@/lib/queryKeys` (`productsKeys` / `technicalSheetsKeys` /
+    `saleOrdersKeys` + `invalidate*`). Não inventar string solta nova pra estas entidades.
+  - Listagens dos 3 hubs: tratar `isError` **antes** de empty — falha de rede nunca vira
+    “Nenhum registro”.
 
 ### Formulários
 - **Padrão dominante: `useState` controlado** + submit via mutation hook (objeto `form`/`setForm`
@@ -344,6 +360,11 @@ usa a largura da ficha de componente do grupo **da variante**. Débito/reserva/c
 derivam a variante server-side via `orders.sale_order_item_id` (não há coluna de
 variante em `orders`).
 
+✅ **Débito + variante:** gate vivo é `IF v_resolved_product_id IS NULL` (migs `08000`/
+`16700`) — pin vence; ausência de pin cai na cascata da ficha. Trava viva:
+`run_sole_live_parity_guards()`. UI de gaps: `SoleSpecGapsPanel` em `/solados` e
+`/system-diagnostics`.
+
 ### Forro/palmilha: fonte de verdade = SOLADO da referência (anti-duplicidade)
 O consumo de **forro** e **palmilha** vem dos valores preenchidos no **solado** da
 referência (`sole_technical_specs`: `lining_consumption_dm2` = forro do cabedal,
@@ -427,16 +448,30 @@ débito de forro.** Alcance: **6.148 pares** vendidos em tamanhos 25–33 sem sp
 
 Fechado por dois checks novos (`solado_sem_spec_na_faixa_vendida`,
 `forro_palmilha_debita_zero`) + `list_sole_spec_gaps()`, que devolve a lista acionável
-(solado, numeração, pares vendidos, fichas, PVs).
+(solado, numeração, pares vendidos, fichas, PVs) — **também na UI** (`SoleSpecGapsPanel`
+em `/solados` e Diagnósticos → Consumo).
 
 ⚠ **A migration NÃO inventa os dm² que faltam** — é dado de engenharia do dono.
 Extrapolar consumo por numeração dentro de migration seria fabricar cadastro. Enquanto
 as 9 numerações do INFANTIL não forem preenchidas, o forro segue debitando zero nelas —
-agora com alarme.
+agora com alarme na tela. Checklist: `docs/SOLADOS_ACOES_DONO.md`.
 
 ⚠ **Isto nunca foi divergência TS×SQL:** `orderConsumption.ts` produz o mesmo zero
 (`calculateGradeBasedDm2` com fallback 0). Os dois lados concordam no número errado — a
 tela mostra exatamente o que o estoque debita.
+
+### `stock_grade = '{}'` é "sem numeração" — NUNCA NULL (CANÔNICO, 20/08/2026)
+
+> A coluna `products.stock_grade` tem **`DEFAULT '{}'::jsonb`**. Todo código que pergunta
+> "esse produto tem grade?" tem que contar **buckets reais** (chave que não começa com
+> `_`) — testar `IS NOT NULL` responde "sim" para a base inteira.
+
+✅ **FECHADO — resíduo escalar em produto com grade** (spec `resync-estorno-unificado`,
+mig `20270101018000`): quando o produto tem buckets reais em `stock_grade` e sobra
+crédito sem grade rastreável (`sole_grade` pendente), `restore_product_stocks_for_order`
+**NÃO** credita o escalar (nunca inventa numeração). A pendência fica em
+`op_restore_consistency_report()` e na aba Consumo de `/system-diagnostics`. Estorno de
+solado com reserva `kind='sole_grade'` segue por `restore_sole_grade_for_order`.
 
 ### Quando converter (sinal de decisão)
 Presença de **ficha de componente com largura > 0**. Caminhos que aplicam a regra:

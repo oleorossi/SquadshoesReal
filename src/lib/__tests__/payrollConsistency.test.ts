@@ -73,6 +73,34 @@ describe('consistência da folha e dos relatórios', () => {
     expect(withAbsence.rows[0].result.excused_days).toBe(1);
   });
 
+  it('comparativo preserva abono parcial sem converter em dia integral', () => {
+    const employee = {
+      id: 'employee-partial',
+      name: 'Funcionário parcial',
+      external_id: '2',
+      active: true,
+      salary: 2100,
+      payment_type: 'mensalista',
+      work_schedule_id: SCHEDULE.id,
+    };
+    const result = computeComparativoRows({
+      employees: [employee],
+      schedules: [SCHEDULE],
+      defaultSchedule: SCHEDULE,
+      holidaysSet: new Set(),
+      timeRecords: [{ employee_external_id: '999', employee_name: 'Outro', record_date: '2026-05-05', punches: ['08:00', '18:00'] }],
+      advancesList: [],
+      absenceMinutesByEmployee: new Map([['employee-partial', new Map([['2026-05-05', 240]])]]),
+      range: { from: '2026-05-05', to: '2026-05-05' },
+      period: '2026-05',
+    }).rows[0].result;
+
+    expect(result.falta_days).toBe(0);
+    expect(result.excused_days).toBe(0);
+    expect(result.atraso_minutes).toBe(300);
+    expect(result.day_ledger?.[0].excused_minutes).toBe(240);
+  });
+
   it('snapshot preserva versão, ledger e resultado financeiro', () => {
     const result = computePeriodFolha({
       salary: 2200,
@@ -98,11 +126,13 @@ describe('consistência da folha e dos relatórios', () => {
       },
       schedule: SCHEDULE,
       result,
+      inputEpoch: 42,
     });
     const restored = readPayrollSnapshot(JSON.parse(JSON.stringify(snapshot)));
     expect(restored?.rule_version).toBe(PAYROLL_RULE_VERSION);
     expect(restored?.result.net_value).toBe(result.net_value);
     expect(restored?.result.day_ledger).toEqual(result.day_ledger);
+    expect(restored?.input_epoch).toBe(42);
 
     const inconsistent = { ...snapshot, rule_version: 'regra-adulterada' };
     expect(readPayrollSnapshot(inconsistent)).toBeNull();

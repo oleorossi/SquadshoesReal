@@ -36,6 +36,13 @@ import {
   type SaveArtisanalStrapBundleResult,
   useSaveArtisanalStrapBundle,
 } from '@/hooks/useArtisanalStraps';
+import {
+  normalizeStrapOrigemPadrao,
+  suggestSkuAcabadoOrigemFromName,
+  type StrapOrigemPadrao,
+} from '@/lib/strapBaseNapaPeel';
+import { describePostgrestError } from '@/lib/postgrestErrors';
+import { saveArtisanalStrapMeasureHubFields } from '@/lib/saveArtisanalStrapMeasureHubFields';
 import { useSuppliers } from '@/hooks/useSuppliers';
 import {
   canonicalStrapColorForProduct,
@@ -87,6 +94,9 @@ interface EditorForm {
   measureId: string;
   measureName: string;
   finishedWidthMm: number;
+  origemPadrao: StrapOrigemPadrao;
+  precoArtesanalPerM: number;
+  precoPrestadorPerM: number;
   identityBasis: ArtisanalStrapIdentityBasis;
   identityGroupId: string;
   internalProductionEnabled: boolean;
@@ -123,6 +133,9 @@ const EMPTY_FORM: EditorForm = {
   measureId: '',
   measureName: '',
   finishedWidthMm: 0,
+  origemPadrao: 'escolhe_no_pv',
+  precoArtesanalPerM: 0,
+  precoPrestadorPerM: 0,
   identityBasis: 'reference_base',
   identityGroupId: '',
   internalProductionEnabled: true,
@@ -269,6 +282,14 @@ export function ArtisanalStrapEditor({
       measureId: selectedMeasure?.id || '',
       measureName: selectedMeasure?.display_name || '',
       finishedWidthMm: numberOrZero(selectedMeasure?.finished_width_mm),
+      origemPadrao: normalizeStrapOrigemPadrao(
+        selectedMeasure?.origem_padrao
+          || (suggestSkuAcabadoOrigemFromName(selectedType?.name || selectedMeasure?.display_name)
+            ? 'sempre_sku_acabado'
+            : 'escolhe_no_pv'),
+      ),
+      precoArtesanalPerM: numberOrZero(selectedMeasure?.preco_artesanal_per_m),
+      precoPrestadorPerM: numberOrZero(selectedMeasure?.preco_prestador_per_m),
       identityBasis: selectedIdentityBasis,
       identityGroupId: selectedIdentityGroupId,
       internalProductionEnabled: selectedInternalProductionEnabled,
@@ -617,6 +638,26 @@ export function ArtisanalStrapEditor({
         recipe: undefined,
       },
     });
+    const measureId = result.measure_id || form.measureId;
+    if (measureId) {
+      try {
+        await saveArtisanalStrapMeasureHubFields(
+          measureId,
+          {
+            origemPadrao: form.origemPadrao,
+            precoArtesanalPerM: form.precoArtesanalPerM > 0 ? form.precoArtesanalPerM : null,
+            precoPrestadorPerM: form.precoPrestadorPerM > 0 ? form.precoPrestadorPerM : null,
+          },
+          'Cadastro de origem e preços no Hub de Tiras',
+        );
+      } catch (measureError: unknown) {
+        setValidationError(
+          `Tira salva, mas origem/preços do Hub falharam: ${describePostgrestError(measureError)}`,
+        );
+        return;
+      }
+    }
+
     onSaved?.(result.variant_id, result, form.colorId);
     onOpenChange(false);
   };
@@ -761,6 +802,52 @@ export function ArtisanalStrapEditor({
                     </div>
                   )}
                 </div>
+
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label>Origem no Pedido de Venda *</Label>
+                  <Select
+                    value={form.origemPadrao}
+                    onValueChange={(value) => setField('origemPadrao', normalizeStrapOrigemPadrao(value))}
+                    disabled={readOnly}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="sempre_fabrica">Sempre feita na fábrica</SelectItem>
+                      <SelectItem value="sempre_sku_acabado">Sempre SKU acabado (ex.: Strass)</SelectItem>
+                      <SelectItem value="escolhe_no_pv">Escolhe no pedido (fábrica ou prestador)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    {suggestSkuAcabadoOrigemFromName(selectedType?.name || form.typeName)
+                      ? 'Nome com Strass: sugerimos SKU acabado. Confirme ou altere.'
+                      : 'Define se o PV mostra seletor ou já aplica a origem.'}
+                  </p>
+                </div>
+
+                {canSeeFinancial && form.origemPadrao !== 'sempre_sku_acabado' && (
+                  <div className="grid gap-3 sm:grid-cols-2 sm:col-span-2">
+                    {(form.origemPadrao === 'sempre_fabrica' || form.origemPadrao === 'escolhe_no_pv') && (
+                      <div className="space-y-1.5">
+                        <Label>Preço artesanal (R$/m)</Label>
+                        <NumberInput
+                          value={form.precoArtesanalPerM}
+                          onChange={(value) => setField('precoArtesanalPerM', value)}
+                          disabled={readOnly}
+                        />
+                      </div>
+                    )}
+                    {form.origemPadrao === 'escolhe_no_pv' && (
+                      <div className="space-y-1.5">
+                        <Label>Mão de obra prestador (R$/m)</Label>
+                        <NumberInput
+                          value={form.precoPrestadorPerM}
+                          onChange={(value) => setField('precoPrestadorPerM', value)}
+                          disabled={readOnly}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {form.identityBasis === 'reference_base' ? (
                   <div className="space-y-1.5">

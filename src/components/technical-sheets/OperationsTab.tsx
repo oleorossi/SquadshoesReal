@@ -20,7 +20,6 @@ import TimeStudyDialog from './TimeStudyDialog';
 import { useCostPolicies } from '@/hooks/useCostPolicies';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
-import { toast } from 'sonner';
 
 const STAGE_COLORS: Record<string, string> = {
    // Sub-etapas de Corte — 3 cores diferentes pra distinguir visualmente
@@ -83,7 +82,7 @@ interface OperationsTabProps {
   assemblyCapacityPerDay?: number;
   expeditionCapacityPerDay?: number;
   finishingCapacityPerDay?: number;
-  onUpdateSheet?: (data: Record<string, any>) => void;
+  onUpdateSheet: (data: Record<string, unknown>) => Promise<void>;
   /* Audit visual F2: setores ativos no modelo da ficha (vindo de
      production_sectors). Quando informado, setores não-aplicáveis ficam
      visualmente desaproximados (opacity + label "não usado neste modelo")
@@ -249,16 +248,15 @@ export function OperationsTab({
          expedition_capacity_per_day: capExpedicao,
          knife_size_ranges: knifeRanges,
       };
-      const { error } = await supabase
-        .from('technical_sheets')
-        .update(payload as any)
-        .eq('id', sheetId);
-      if (error) throw error;
-      onUpdateSheet?.(payload);
-      toast.success('Dados de produção salvos!');
+      // A persistência pertence ao chamador. Antes este componente gravava
+      // diretamente e depois disparava useUpdateSheet sem await, duplicando o
+      // UPDATE (e o recálculo global de produção) para o mesmo clique.
+      await onUpdateSheet(payload);
       window.history.back();
-    } catch (err: any) {
-      toast.error(`Erro: ${err.message}`);
+    } catch (err) {
+      // useUpdateSheet já apresenta o erro ao usuário; o catch evita rejection
+      // não tratada e mantém a tela aberta para correção/tentativa novamente.
+      console.error('[OperationsTab] Falha ao salvar dados de produção:', err);
     } finally {
       setSaving(false);
     }

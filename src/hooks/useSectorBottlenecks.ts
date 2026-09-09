@@ -156,6 +156,9 @@ export function useBulkAssignServiceOrders() {
               quantity: order.quantity,
               unit_price: input.unit_price,
               quoted_deadline: input.quoted_deadline,
+              // Gargalo é o único lote de contingência que preserva o writer
+              // legado; callers novos do RPC são fail-closed por padrão.
+              require_planning_config: false,
             })),
           });
           if (error) throw error;

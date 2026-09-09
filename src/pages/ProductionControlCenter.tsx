@@ -850,8 +850,12 @@ function OutsourceHistorySection() {
       // sem acento, então a OS concluída de verdade nunca entrava na
       // pontualidade e o ranking mostrava 0% no prazo.
       if (isOsDone(os.status)) {
-        const promised = os.service_date ? parseISO(os.service_date) : null;
-        const delivered = os.updated_at ? parseISO(os.updated_at) : null;
+        // Nas OS planejadas, service_date é a SAÍDA e quoted_deadline é o
+        // RETORNO. O fallback mantém a leitura das OS legadas.
+        const promisedDate = os.quoted_deadline || os.service_date;
+        const promised = promisedDate ? parseISO(promisedDate) : null;
+        const deliveredAt = os.delivered_at || os.receipt_generated_at || os.updated_at;
+        const delivered = deliveredAt ? parseISO(deliveredAt) : null;
         if (promised && delivered) {
           const delta = differenceInDays(delivered, promised);
           if (delta <= 0) {
@@ -1099,7 +1103,10 @@ function SettingsDialog({ open, onClose }: { open: boolean; onClose: () => void 
 
 function OutsourceOsRow({ os, onConfirmDeadline }: { os: any; onConfirmDeadline: () => void }) {
   const status = String(os.status || '').toLowerCase();
-  const needsDeadline = !os.service_date || ['aguardando_aceite', 'pendente'].includes(status);
+  const needsDeadline = !os.quoted_deadline || ['aguardando_aceite'].includes(status);
+  const statusLabel = needsDeadline
+    ? 'Aguardando prazo'
+    : ['pendente', 'aguardando_envio'].includes(status) ? 'Prazo calculado' : 'Em andamento';
   const opLabel = os.orders?.order_number
     ? `OP ${os.orders.order_number}${os.orders?.technical_sheets?.name ? ` · ${os.orders.technical_sheets.name}` : ''}`
     : '—';
@@ -1110,7 +1117,7 @@ function OutsourceOsRow({ os, onConfirmDeadline }: { os: any; onConfirmDeadline:
         needsDeadline ? 'bg-amber-500/10 text-amber-600 border-amber-500/30'
                       : 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
       }`}>
-        {needsDeadline ? 'Aguardando prazo' : 'Em andamento'}
+        {statusLabel}
       </Badge>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium">
@@ -1120,9 +1127,23 @@ function OutsourceOsRow({ os, onConfirmDeadline }: { os: any; onConfirmDeadline:
           {opLabel} · {os.quantity || 0} pares
           {os.unit_price ? ` · R$ ${Number(os.unit_price).toFixed(2)}/p` : ''}
           {os.total_value ? ` · total R$ ${Number(os.total_value).toFixed(2)}` : ''}
-          {os.service_date ? ` · prazo ${format(parseISO(os.service_date), 'dd/MM/yyyy')}` : ''}
+          {os.service_date ? ` · enviar ${format(parseISO(os.service_date), 'dd/MM/yyyy')}` : ''}
+          {os.quoted_deadline ? ` · retornar ${format(parseISO(os.quoted_deadline), 'dd/MM/yyyy')}` : ''}
         </p>
         {os.description && <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{os.description}</p>}
+        {Number(os.provider_capacity_pairs_per_day) > 0 && (
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            Capacidade {Number(os.provider_capacity_pairs_per_day).toLocaleString('pt-BR')} pares/dia
+            {os.execution_days ? ` · execução ${os.execution_days}d` : ''}
+            {os.queue_days != null ? ` · fila ${os.queue_days}d` : ''}
+            {os.return_before_sector ? ` · retorno antes de ${os.return_before_sector}` : ''}
+          </p>
+        )}
+        {os.planning_warning && (
+          <p className="mt-1 flex items-start gap-1 text-[11px] font-medium text-amber-700 dark:text-amber-400">
+            <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" /> {os.planning_warning}
+          </p>
+        )}
       </div>
       {needsDeadline && (
         <Button size="sm" variant="outline" className="gap-1.5" onClick={onConfirmDeadline}>
@@ -1142,7 +1163,6 @@ function OutsourceDialog({ target, onClose }: { target: BottleneckRow | null; on
   const [quantity, setQuantity] = useState<number>(target?.quantity ?? 0);
   const [unitPrice, setUnitPrice] = useState<number>(0);
   const [deadline, setDeadline] = useState('');
-  const [materialsNotes, setMaterialsNotes] = useState('');
   const [notes, setNotes] = useState('');
 
   useEffect(() => {
@@ -1152,7 +1172,6 @@ function OutsourceDialog({ target, onClose }: { target: BottleneckRow | null; on
       setContractorId('');
       setNewContractor('');
       setDeadline('');
-      setMaterialsNotes('');
       setNotes('');
     }
   }, [target?.orderId]);
@@ -1203,6 +1222,9 @@ function OutsourceDialog({ target, onClose }: { target: BottleneckRow | null; on
           quantity,
           unit_price: unitPrice,
           quoted_deadline: deadline || null,
+          // Exceção explícita do painel de gargalo: permite contingência
+          // manual mesmo antes de completar o planejamento da ficha.
+          require_planning_config: false,
         }],
       });
       if (error) throw error;
@@ -1214,13 +1236,12 @@ function OutsourceDialog({ target, onClose }: { target: BottleneckRow | null; on
 
       // O writer canônico cuida dos vínculos e da idempotência. Estas notas são
       // apenas o contexto operacional específico do painel de capacidade.
-      if (result.os_id && (materialsNotes || notes)) {
+      if (result.os_id && notes) {
         // Campos de gargalo ainda não estão completos no types.ts gerado.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { error: noteError } = await (supabase as any)
           .from('service_orders')
           .update({
-            materials_sent: materialsNotes ? [{ note: materialsNotes }] : [],
             notes: notes || `OP em gargalo: ${target.reason}. Capacidade da ficha: ${Math.round(target.fichaCapacity)}/dia.`,
           })
           .eq('id', result.os_id);
@@ -1311,17 +1332,11 @@ function OutsourceDialog({ target, onClose }: { target: BottleneckRow | null; on
             </div>
 
             <div className="col-span-2">
-              <Label>Prazo de entrega <span className="text-muted-foreground">(opcional)</span></Label>
+              <Label>Data de retorno <span className="text-muted-foreground">(automática, com ajuste opcional)</span></Label>
               <Input type="date" value={deadline} onChange={e => setDeadline(e.target.value)} />
               <p className="text-xs text-muted-foreground mt-1">
-                Se definir agora, o setor seguinte da OP fica bloqueado até esta data.
+                Sem ajuste manual, o servidor calcula o retorno e a data de envio pela capacidade cadastrada na ficha.
               </p>
-            </div>
-
-            <div className="col-span-2">
-              <Label>Materiais enviados</Label>
-              <Textarea rows={2} value={materialsNotes} onChange={e => setMaterialsNotes(e.target.value)}
-                placeholder="Ex: 220 cabedais MOD-038 marrom, 220 forrações..." />
             </div>
 
             <div className="col-span-2">
@@ -1355,7 +1370,7 @@ function ConfirmDeadlineDialog({ os, onClose }: { os: any | null; onClose: () =>
       const { error } = await (supabase as any)
         .from('service_orders')
         .update({
-          service_date: deadline,
+          quoted_deadline: deadline,
           status: 'em_andamento',
           updated_at: new Date().toISOString(),
         })
@@ -1379,7 +1394,7 @@ function ConfirmDeadlineDialog({ os, onClose }: { os: any | null; onClose: () =>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Calendar className="h-4 w-4" /> Confirmar prazo da costureira
+            <Calendar className="h-4 w-4" /> Confirmar data de retorno
           </DialogTitle>
           <DialogDescription>Defina a data combinada de devolução da OS terceirizada.</DialogDescription>
         </DialogHeader>
@@ -1396,10 +1411,10 @@ function ConfirmDeadlineDialog({ os, onClose }: { os: any | null; onClose: () =>
           </Card>
 
           <div>
-            <Label>Data prometida pela costureira *</Label>
+            <Label>Data prometida pelo prestador *</Label>
             <Input type="date" value={deadline} onChange={e => setDeadline(e.target.value)} />
             <p className="text-xs text-muted-foreground mt-1">
-              Setor seguinte da OP fica bloqueado até esta data via trigger no banco.
+              A etapa dependente permanece bloqueada até o retorno efetivo da OS; esta data mede o prazo combinado e eventuais atrasos.
             </p>
           </div>
 

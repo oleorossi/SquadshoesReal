@@ -1,9 +1,9 @@
-import { Footprints, ImageSquare as ImagePlus, Package, Stack as Layers } from '@phosphor-icons/react';
+import { Footprints, ImageSquare as ImagePlus, Package, Stack as Layers, Trash, Warning } from '@phosphor-icons/react';
 
-import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { SignedImage } from '@/components/ui/signed-image';
+import type { TechnicalSheetAuditGap } from '@/lib/technicalSheetAudit';
 import { cn } from '@/lib/utils';
 
 export interface TechnicalSheetGridItem {
@@ -25,10 +25,11 @@ interface MaterialVariantSummary {
 interface Props {
   sheets: TechnicalSheetGridItem[];
   materialVariantsBySheet?: ReadonlyMap<string, readonly MaterialVariantSummary[]>;
+  auditGapsBySheet?: ReadonlyMap<string, readonly TechnicalSheetAuditGap[]>;
   canDelete: boolean;
   onOpenSheet: (id: string) => void;
   onEditImage: (sheet: TechnicalSheetGridItem) => void;
-  onDeleteSheet: (id: string) => void;
+  onDeleteSheet: (sheet: TechnicalSheetGridItem) => void;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -36,6 +37,7 @@ const STATUS_LABELS: Record<string, string> = {
   em_revisao: 'Em revisão',
   validada: 'Validada',
   publicada: 'Publicada',
+  arquivada: 'Arquivada',
 };
 
 const STATUS_STYLES: Record<string, string> = {
@@ -43,6 +45,7 @@ const STATUS_STYLES: Record<string, string> = {
   validada: 'border-primary/20 bg-primary/10 text-primary',
   em_revisao: 'border-warning/30 bg-warning/10 text-warning',
   rascunho: 'border-border bg-muted text-muted-foreground',
+  arquivada: 'border-border bg-muted text-muted-foreground',
 };
 
 function getImage(sheet: TechnicalSheetGridItem): string | null {
@@ -78,6 +81,7 @@ function SheetThumbnail({ sheet }: { sheet: TechnicalSheetGridItem }) {
 export function TechnicalSheetCardGrid({
   sheets,
   materialVariantsBySheet,
+  auditGapsBySheet,
   canDelete,
   onOpenSheet,
   onEditImage,
@@ -88,6 +92,9 @@ export function TechnicalSheetCardGrid({
       {sheets.map(sheet => {
         const status = sheet.status_ficha || 'rascunho';
         const variants = materialVariantsBySheet?.get(sheet.id) || [];
+        const auditGaps = auditGapsBySheet?.get(sheet.id) || [];
+        const auditGapLabels = auditGaps.map(gap => gap.label).join(' • ');
+        const hasCriticalAuditGap = auditGaps.some(gap => gap.severity === 'critical');
 
         return (
           <article
@@ -119,6 +126,35 @@ export function TechnicalSheetCardGrid({
               </div>
 
               <div className="flex flex-1 flex-col space-y-1.5 p-2 sm:p-2.5">
+                {auditGaps.length > 0 && (
+                  <div
+                    className={cn(
+                      'rounded-sm border p-1.5',
+                      hasCriticalAuditGap
+                        ? 'border-destructive/30 bg-destructive/5'
+                        : 'border-warning/30 bg-warning/10',
+                    )}
+                    aria-label={`${auditGaps.length} ${auditGaps.length === 1 ? 'pendência' : 'pendências'}: ${auditGapLabels}`}
+                  >
+                    <Badge
+                      variant={hasCriticalAuditGap ? 'destructive-soft' : 'warning-soft'}
+                      className="gap-1 px-1.5 py-0 text-[9px]"
+                    >
+                      <Warning className="h-3 w-3 shrink-0" weight="fill" />
+                      {auditGaps.length} {auditGaps.length === 1 ? 'pendência' : 'pendências'}
+                    </Badge>
+                    <p
+                      className={cn(
+                        'mt-1 line-clamp-2 text-[9px] font-medium leading-tight sm:text-[10px]',
+                        hasCriticalAuditGap ? 'text-destructive' : 'text-warning',
+                      )}
+                      title={auditGapLabels}
+                    >
+                      {auditGapLabels}
+                    </p>
+                  </div>
+                )}
+
                 <div className="min-h-8">
                   {sheet.code && (
                     <p className="truncate font-mono text-[9px] text-muted-foreground sm:text-[10px]" title={`Código interno: ${sheet.code}`}>
@@ -168,13 +204,17 @@ export function TechnicalSheetCardGrid({
                   <ImagePlus className="h-3.5 w-3.5" />
                 </Button>
                 {canDelete && (
-                  <DeleteConfirmButton
-                    onConfirm={() => onDeleteSheet(sheet.id)}
-                    title={`Excluir ficha ${sheet.name}?`}
-                    description="A ficha e os materiais vinculados a ela serão removidos juntos. Ficha usada em OP ou pedido é recusada. Esta ação não pode ser desfeita."
-                    size="h-11 w-11 sm:h-8 sm:w-8"
-                    iconSize="h-3.5 w-3.5"
-                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-11 w-11 text-destructive hover:text-destructive sm:h-8 sm:w-8"
+                    aria-label={`Excluir ficha ${sheet.name}`}
+                    title={`Excluir ficha ${sheet.name}`}
+                    onClick={() => onDeleteSheet(sheet)}
+                  >
+                    <Trash className="h-3.5 w-3.5" />
+                  </Button>
                 )}
               </div>
             </div>

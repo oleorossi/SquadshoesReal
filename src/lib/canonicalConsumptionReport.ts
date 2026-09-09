@@ -1,0 +1,581 @@
+import { z } from 'zod';
+import { supabase } from '@/integrations/supabase/client';
+import {
+  classifyBomMaterial,
+  type ConsumptionContext,
+  type MaterialConsumptionRow,
+} from '@/lib/orderConsumption';
+import {
+  parseCanonicalStrapDemandPreview,
+  replaceWithCanonicalStrapRows,
+  type CanonicalStrapDemandPreview,
+} from '@/lib/canonicalStrapDemandPreview';
+import {
+  annotateConsumptionAvailability,
+  type ConsumptionRow,
+} from '@/lib/consumptionRows';
+import type { ArtisanalStrapCutRow } from '@/lib/strapRollCut';
+import { dm2ToPlates, type PlateDualProduct } from '@/lib/insolePlateDualDisplay';
+
+interface CanonicalConsumptionRpcResult {
+  data: unknown;
+  error: { message?: string } | null;
+}
+
+interface CanonicalConsumptionRpcClient {
+  rpc: (
+    name: string,
+    params?: Record<string, unknown>,
+  ) => PromiseLike<CanonicalConsumptionRpcResult>;
+}
+
+const canonicalConsumptionRpc = supabase as unknown as CanonicalConsumptionRpcClient;
+
+const uuid = z.string().uuid();
+const finiteNonNegative = z.number().finite().nonnegative();
+/** null/undefined → default; .default() sozinho NÃO cobre null explícito do SQL. */
+const finiteNonNegativeOrDefault = (fallback: number) =>
+  finiteNonNegative.nullish().transform((value) => value ?? fallback);
+const booleanOrDefault = (fallback: boolean) =>
+  z.boolean().nullish().transform((value) => value ?? fallback);
+const debitModeOrDefault = z
+  .enum(['hard', 'soft'])
+  .nullish()
+  .transform((value) => value ?? 'soft' as const);
+const gradeSchema = z.record(
+  z.union([z.number().finite().nonnegative(), z.string()]),
+).nullable().superRefine((grade, ctx) => {
+  for (const [key, value] of Object.entries(grade || {})) {
+    if (key.startsWith('_')) continue;
+    if (typeof value !== 'number') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [key],
+        message: 'quantidade da grade deve ser numérica',
+      });
+    }
+  }
+});
+
+const lineBaseSchema = z.object({
+  scope_key: uuid,
+  scope_type: z.enum(['sale_order_item', 'production_order']),
+  sale_order_id: uuid.nullable(),
+  sale_order_item_id: uuid.nullable(),
+  reference_id: uuid,
+  quantity: z.number().finite().positive(),
+  effective_grade: gradeSchema,
+  component: z.string().min(1),
+  product_name: z.string().min(1),
+  product_unit: z.string().min(1),
+  required: finiteNonNegative,
+  // null/undefined do SQL → default; .optional().default() rejeita null explícito.
+  available: finiteNonNegativeOrDefault(0),
+  stock_ok: booleanOrDefault(false),
+  source: z.string().optional().nullable(),
+  consumption_sector: z.string().optional().nullable(),
+  consumption_sector_source: z.string().optional().nullable(),
+  debit_mode: debitModeOrDefault,
+  color: z.string().optional().nullable(),
+  product_color: z.string().optional().nullable(),
+  product_category: z.string().optional().nullable(),
+  product_group_id: uuid.optional().nullable(),
+  product_group_name: z.string().optional().nullable(),
+  conversion_warning: z.string().optional().nullable(),
+  consumption_warning: z.string().optional().nullable(),
+  warning: z.string().optional().nullable(),
+  matched_by: z.string().optional().nullable(),
+  /** Nome da ficha (technical_sheets.name) — enriquecido no batch. */
+  reference_name: z.string().optional().nullable(),
+});
+
+const materialLineObject = lineBaseSchema.extend({
+  line_kind: z.literal('material'),
+  product_id: uuid.nullable(),
+});
+
+const packagingLineObject = lineBaseSchema.extend({
+  line_kind: z.literal('packaging'),
+  box_type_id: uuid.nullable(),
+  packaging_type: z.string().min(1),
+  unit_price: finiteNonNegativeOrDefault(0),
+  supplier_id: uuid.optional().nullable(),
+});
+
+const canonicalLineSchema = z.discriminatedUnion('line_kind', [
+  materialLineObject,
+  packagingLineObject,
+]).superRefine((line, ctx) => {
+  if (line.line_kind === 'material') {
+    const warning = [line.warning, line.conversion_warning, line.consumption_warning]
+      .some((value) => typeof value === 'string' && value.trim().length > 0);
+    if (line.required > 0 && !line.product_id) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['product_id'],
+        message: 'linha positiva do motor sem product_id',
+      });
+    }
+    if (line.required === 0 && !line.product_id && !warning) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['warning'],
+        message: 'linha sem identidade precisa explicar a pendência',
+      });
+    }
+    return;
+  }
+
+  if (line.required > 0 && !line.box_type_id) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['box_type_id'],
+      message: 'embalagem positiva sem box_type_id',
+    });
+  }
+  if (line.required === 0 && !line.box_type_id && !line.warning?.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['warning'],
+      message: 'embalagem sem identidade precisa explicar a pendência',
+    });
+  }
+});
+
+const strapPreviewSchema = z.object({
+  scope_key: uuid,
+  scope_type: z.enum(['sale_order_item', 'production_order']),
+  sale_order_id: uuid,
+  sale_order_item_id: uuid,
+  line_ordinal: z.number().int().nonnegative(),
+  technical_strap_line_id: uuid.nullable(),
+  strap_variant_id: uuid.nullable(),
+  source_mode: z.enum(['internal', 'buy_ready']).nullable(),
+  gross_required_m: finiteNonNegative,
+  recipe_id: uuid.nullable(),
+  base_product_id: uuid.nullable(),
+  finished_product_id: uuid.nullable(),
+  blocking_reasons: z.array(z.unknown()),
+  resolved: z.record(z.unknown()),
+}).passthrough().superRefine((preview, ctx) => {
+  if (!preview.technical_strap_line_id && preview.blocking_reasons.length === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['technical_strap_line_id'],
+      message: 'preview sem linha técnica precisa explicar a pendência',
+    });
+  }
+  if (preview.gross_required_m > 0
+      && !preview.source_mode
+      && preview.blocking_reasons.length === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['source_mode'],
+      message: 'demanda positiva sem origem precisa explicar a pendência',
+    });
+  }
+});
+
+const responseSchema = z.object({
+  version: z.literal(1),
+  engine: z.literal('calculate_order_consumption_by_grade'),
+  lines: z.array(canonicalLineSchema),
+  strap_previews: z.array(strapPreviewSchema),
+});
+
+export type CanonicalConsumptionLine = z.infer<typeof canonicalLineSchema>;
+export type CanonicalConsumptionReport = z.infer<typeof responseSchema>;
+
+/** Achata union/discriminated errors pra a mensagem citar o campo real. */
+function flattenZodIssues(
+  issues: z.ZodIssue[],
+  prefix: (string | number)[] = [],
+): Array<{ path: string; message: string }> {
+  const out: Array<{ path: string; message: string }> = [];
+  for (const issue of issues) {
+    const path = [...prefix, ...issue.path];
+    const nested = (issue as z.ZodIssue & {
+      unionErrors?: z.ZodError[];
+    }).unionErrors;
+    if (nested && nested.length > 0) {
+      for (const branch of nested) {
+        out.push(...flattenZodIssues(branch.issues, path));
+      }
+      continue;
+    }
+    out.push({
+      path: path.join('.') || '(root)',
+      message: issue.message,
+    });
+  }
+  return out;
+}
+
+/**
+ * Coerce numeric fields that Postgres/json drivers sometimes deliver as
+ * strings. Does not invent values — failed coercion stays for Zod to reject.
+ */
+function coerceCanonicalLine(line: unknown): unknown {
+  if (!line || typeof line !== 'object') return line;
+  const o = { ...(line as Record<string, unknown>) };
+  for (const key of ['quantity', 'required', 'available', 'unit_price'] as const) {
+    const value = o[key];
+    if (typeof value === 'string' && value.trim() !== '' && !Number.isNaN(Number(value))) {
+      o[key] = Number(value);
+    }
+  }
+  if (typeof o.product_unit === 'string' && o.product_unit.trim() === '') {
+    o.product_unit = 'un';
+  }
+  return o;
+}
+
+function coerceCanonicalReport(raw: unknown): unknown {
+  if (!raw || typeof raw !== 'object') return raw;
+  const report = { ...(raw as Record<string, unknown>) };
+  if (Array.isArray(report.lines)) {
+    report.lines = report.lines.map(coerceCanonicalLine);
+  }
+  return report;
+}
+
+export class CanonicalConsumptionReportError extends Error {
+  readonly issues: Array<{ path: string; message: string }>;
+  readonly raw: unknown;
+
+  constructor(error: z.ZodError, raw: unknown) {
+    const issues = flattenZodIssues(error.issues);
+    super(
+      `RPC de consumo canônico devolveu payload inválido: ${issues
+        .slice(0, 5)
+        .map((issue) => `${issue.path}: ${issue.message}`)
+        .join('; ')}`,
+    );
+    this.name = 'CanonicalConsumptionReportError';
+    this.issues = issues;
+    this.raw = raw;
+  }
+}
+
+export function validateCanonicalConsumptionReport(
+  raw: unknown,
+): CanonicalConsumptionReport {
+  const parsed = responseSchema.safeParse(coerceCanonicalReport(raw));
+  if (!parsed.success) throw new CanonicalConsumptionReportError(parsed.error, raw);
+  return parsed.data;
+}
+
+const uniqueIds = (ids: string[] | null | undefined): string[] =>
+  [...new Set((ids || []).map((id) => id.trim()).filter(Boolean))].sort();
+
+export async function fetchCanonicalConsumptionReport(params: {
+  saleOrderIds?: string[];
+  orderIds?: string[];
+}): Promise<CanonicalConsumptionReport> {
+  const saleOrderIds = uniqueIds(params.saleOrderIds);
+  const orderIds = uniqueIds(params.orderIds);
+  if ((saleOrderIds.length > 0) === (orderIds.length > 0)) {
+    throw new Error('Informe exatamente um escopo de consumo: PVs ou OPs.');
+  }
+
+  const { data, error } = await canonicalConsumptionRpc.rpc(
+    'calculate_consumption_report_batch',
+    {
+      p_sale_order_ids: saleOrderIds.length > 0 ? saleOrderIds : null,
+      p_order_ids: orderIds.length > 0 ? orderIds : null,
+    },
+  );
+  if (error) throw new Error(error.message || 'Falha ao calcular consumo canônico.');
+  return validateCanonicalConsumptionReport(data);
+}
+
+const formatCanonicalWarning = (value: string): string => {
+  const prefix = 'material_color_not_registered:';
+  if (!value.startsWith(prefix)) return value;
+  const [component = 'Material', color = 'cor solicitada'] = value
+    .slice(prefix.length)
+    .split(':');
+  return `${component} · ${color}: não existe SKU dessa cor no grupo físico.`;
+};
+
+const warningText = (line: CanonicalConsumptionLine): string | undefined => {
+  const sectorWarning = line.consumption_sector_source === 'ambiguous'
+    ? 'Setor de consumo conflitante: revise os setores cadastrados para este material antes de imprimir as fichas.'
+    : undefined;
+  const values = [line.warning, line.conversion_warning, line.consumption_warning, sectorWarning]
+    .map((value) => value?.trim())
+    .filter((value): value is string => !!value)
+    .map(formatCanonicalWarning);
+  return values.length > 0 ? [...new Set(values)].join(' · ') : undefined;
+};
+
+const componentType = (line: CanonicalConsumptionLine): string => {
+  const raw = line.component.trim();
+  const normalized = raw.toLowerCase();
+  if (raw === 'BOM' || raw === 'Componente Direto' || raw === 'Item padrão (solado)') return raw;
+  if (normalized.includes('forração palmilha') || normalized.includes('forracao palmilha')) {
+    return 'Forração Palmilha';
+  }
+  if (normalized.includes('forração') || normalized.includes('forracao') || normalized.includes('lining')) {
+    return 'Forração';
+  }
+  if (normalized.includes('fachete')) return 'Fachete';
+  if (normalized.includes('palmilha')) return 'Palmilha';
+  if (normalized === 'solado' || normalized.includes('primary_sole')) return 'Solado';
+  if (normalized.includes('cabedal')) return 'Cabedal';
+  if (normalized.includes('tira')) return 'Tiras';
+  if (normalized.includes('embalagem')) return 'Embalagem';
+
+  return classifyBomMaterial(
+    line.product_group_name || '',
+    line.product_name,
+    line.product_category || raw,
+  );
+};
+
+const mergeGrade = (
+  target: Record<string, number> | undefined,
+  source: Record<string, number | string> | null,
+): Record<string, number> | undefined => {
+  if (!source) return target;
+  const result = { ...(target || {}) };
+  for (const [size, quantity] of Object.entries(source)) {
+    if (size.startsWith('_') || typeof quantity !== 'number' || !(quantity > 0)) continue;
+    result[size] = (result[size] || 0) + quantity;
+  }
+  return Object.keys(result).length > 0 ? result : target;
+};
+
+/**
+ * Adapta fatos SQL ao shape visual. Não calcula consumo: `totalQuantity` é
+ * sempre o `required` devolvido pela RPC; a grade é apenas breakdown do solado.
+ *
+ * `partition: 'order_reference'` mantém fatias por PV + modelo (modo estendido);
+ * o default `none` consolida o mesmo material entre pedidos/fichas.
+ */
+export type AdaptCanonicalOptions = {
+  partition?: 'none' | 'order_reference';
+  orderNumberBySaleOrderId?: ReadonlyMap<string, string>;
+  referenceLabelById?: ReadonlyMap<string, { code: string; name: string | null }>;
+};
+
+export function adaptCanonicalConsumptionLines(
+  lines: CanonicalConsumptionLine[],
+  scopeKeys?: ReadonlySet<string>,
+  opts?: AdaptCanonicalOptions,
+): MaterialConsumptionRow[] {
+  const partition = opts?.partition ?? 'none';
+  const orderNumberBySaleOrderId = opts?.orderNumberBySaleOrderId;
+  const referenceLabelById = opts?.referenceLabelById;
+  const grouped = new Map<string, MaterialConsumptionRow>();
+
+  for (const line of lines) {
+    if (scopeKeys && !scopeKeys.has(line.scope_key)) continue;
+    const component = componentType(line);
+    const packaging = line.line_kind === 'packaging';
+    const referenceName = line.reference_name?.trim() || null;
+    const unresolvedPalmilha = !packaging
+      && (line.source || '').toLowerCase() === 'unresolved'
+      && component === 'Palmilha'
+      && !line.product_id;
+    // unresolved de palmilha: não agregar várias fichas sob o mesmo placeholder.
+    const groupName = packaging
+      ? 'Embalagem'
+      : unresolvedPalmilha && referenceName
+        ? `Ficha ${referenceName}`
+        : line.product_group_name?.trim() || line.product_name.trim();
+    const materialName = unresolvedPalmilha && referenceName
+      && !line.product_name.trim().toLowerCase().startsWith('ficha ')
+      ? `Ficha ${referenceName} · ${line.product_name.trim()}`
+      : line.product_name.trim();
+    const color = (line.color || line.product_color || '—').trim() || '—';
+    const unit = line.product_unit.trim();
+    const consumptionSector = line.consumption_sector?.trim() || null;
+    const warning = warningText(line);
+    const productId = !packaging ? line.product_id : null;
+    const boxTypeId = packaging ? line.box_type_id : null;
+    const saleOrderId = line.sale_order_id || null;
+    const referenceId = line.reference_id || null;
+    const key = [
+      component,
+      productId || '',
+      boxTypeId || '',
+      groupName,
+      materialName,
+      color,
+      unit,
+      consumptionSector || '',
+      line.consumption_sector_source || '',
+      line.source || '',
+      unresolvedPalmilha ? (line.reference_id || '') : '',
+      partition === 'order_reference' ? (saleOrderId || '') : '',
+      partition === 'order_reference' ? (referenceId || '') : '',
+    ].join('::');
+    const existing = grouped.get(key);
+    const grade = component === 'Solado' ? line.effective_grade : null;
+
+    if (existing) {
+      existing.totalQuantity += line.required;
+      existing.sizeBreakdown = mergeGrade(existing.sizeBreakdown, grade);
+      existing.productIds = [...new Set([
+        ...(existing.productIds || []),
+        ...(productId ? [productId] : []),
+      ])];
+      existing.boxTypeIds = [...new Set([
+        ...(existing.boxTypeIds || []),
+        ...(boxTypeId ? [boxTypeId] : []),
+      ])];
+      if (warning) {
+        existing.warning = [...new Set([
+          ...(existing.warning ? existing.warning.split(' · ') : []),
+          warning,
+        ])].join(' · ');
+      }
+      continue;
+    }
+
+    const refLabel = referenceId ? referenceLabelById?.get(referenceId) : undefined;
+    const row: MaterialConsumptionRow = {
+      componentType: component,
+      groupName,
+      materialName,
+      productUnit: unit,
+      color,
+      totalQuantity: line.required,
+      consumptionSector,
+      consumptionSectorSource: line.consumption_sector_source || null,
+      consumptionMaterialSource: line.source || null,
+      widthMissing: !!line.conversion_warning
+        && /largura|dimens(?:ão|ao)/i.test(line.conversion_warning),
+      warning,
+      sizeBreakdown: mergeGrade(undefined, grade),
+      soleProductId: component === 'Solado' ? productId : null,
+      productIds: productId ? [productId] : [],
+      boxTypeIds: boxTypeId ? [boxTypeId] : [],
+    };
+
+    if (partition === 'order_reference') {
+      row.saleOrderId = saleOrderId;
+      row.referenceId = referenceId;
+      row.orderNumber = (saleOrderId && orderNumberBySaleOrderId?.get(saleOrderId))
+        || null;
+      row.referenceCode = refLabel?.code || null;
+      row.referenceName = refLabel?.name || referenceName;
+    }
+
+    grouped.set(key, row);
+  }
+
+  return [...grouped.values()].filter(
+    (row) => row.totalQuantity > 0 || !!row.warning,
+  );
+}
+
+export type ScopedCanonicalStrapPreview = {
+  scopeKey: string;
+  preview: CanonicalStrapDemandPreview;
+};
+
+export function canonicalStrapPreviews(
+  report: CanonicalConsumptionReport,
+  scopeKeys?: ReadonlySet<string>,
+): ScopedCanonicalStrapPreview[] {
+  return report.strap_previews
+    .filter((raw) => !scopeKeys || scopeKeys.has(raw.scope_key))
+    .map((raw) => ({
+      scopeKey: raw.scope_key,
+      preview: parseCanonicalStrapDemandPreview(raw as unknown as Record<string, unknown>),
+    }));
+}
+
+const emptyContext = (allProducts: unknown[] = []): ConsumptionContext => ({
+  allProducts,
+  productGroups: [],
+  componentSheets: [],
+  materials: [],
+  boxTypes: [],
+} as unknown as ConsumptionContext);
+
+export function applyCanonicalStrapsForPresentation(
+  rows: MaterialConsumptionRow[],
+  previews: CanonicalStrapDemandPreview[],
+): MaterialConsumptionRow[] {
+  return replaceWithCanonicalStrapRows(rows, emptyContext(), previews);
+}
+
+async function loadStockContext(
+  lines: CanonicalConsumptionLine[],
+  previews: ScopedCanonicalStrapPreview[],
+): Promise<ConsumptionContext> {
+  const productIds = new Set<string>();
+  const boxTypeIds = new Set<string>();
+  for (const line of lines) {
+    if (line.line_kind === 'material' && line.product_id) productIds.add(line.product_id);
+    if (line.line_kind === 'packaging' && line.box_type_id) boxTypeIds.add(line.box_type_id);
+  }
+  for (const { preview } of previews) {
+    if (preview.finishedProductId) productIds.add(preview.finishedProductId);
+  }
+
+  const [productsResult, boxesResult] = await Promise.all([
+    productIds.size > 0
+      ? supabase
+        .from('products')
+        .select('id, name, unit, color, category, group_id, quantity, reserved_stock, stock_grade, unit_price, purchase_unit, conversion_rate, dimensions_width, dimensions_length, dimensions_unit, product_groups!products_group_id_fkey(name, sector, dimensions_width, dimensions_length, dimensions_unit)')
+        .in('id', [...productIds])
+      : Promise.resolve({ data: [], error: null }),
+    boxTypeIds.size > 0
+      ? supabase
+        .from('box_types')
+        .select('id, nome, quantity, unit_price, supplier_id, active')
+        .in('id', [...boxTypeIds])
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (productsResult.error) throw productsResult.error;
+  if (boxesResult.error) throw boxesResult.error;
+
+  return {
+    ...emptyContext(productsResult.data || []),
+    boxTypes: boxesResult.data || [],
+  } as unknown as ConsumptionContext;
+}
+
+/** Anexa ≈ placas nas linhas de fibra/palmilha emitidas em dm². */
+export function enrichInsolePlateEquivalent(
+  rows: MaterialConsumptionRow[],
+  products: Array<Record<string, unknown>>,
+): MaterialConsumptionRow[] {
+  if (!rows.length || !products.length) return rows;
+  const byId = new Map(products.map((p) => [String(p.id), p]));
+  return rows.map((row) => {
+    if (row.plateEquivalent != null && row.plateEquivalent > 0) return row;
+    const unit = String(row.productUnit || '').toLowerCase();
+    if (unit !== 'dm2' && unit !== 'dm²') return row;
+    if (row.componentType !== 'Palmilha') return row;
+    const product = (row.productIds || [])
+      .map((id) => byId.get(id))
+      .find(Boolean) as PlateDualProduct | undefined;
+    const plates = dm2ToPlates(row.totalQuantity, product);
+    if (plates == null || !(plates > 0)) return row;
+    return { ...row, plateEquivalent: plates };
+  });
+}
+
+export async function materializeCanonicalConsumptionReport(
+  report: CanonicalConsumptionReport,
+  scopeKeys?: ReadonlySet<string>,
+  opts?: AdaptCanonicalOptions,
+): Promise<{ rows: ConsumptionRow[]; artisanalStrapRows: ArtisanalStrapCutRow[] }> {
+  const scopedLines = scopeKeys
+    ? report.lines.filter((line) => scopeKeys.has(line.scope_key))
+    : report.lines;
+  const scopedPreviews = canonicalStrapPreviews(report, scopeKeys);
+  const adapted = adaptCanonicalConsumptionLines(scopedLines, undefined, opts);
+  const ctx = await loadStockContext(scopedLines, scopedPreviews);
+  const rows = enrichInsolePlateEquivalent(adapted, (ctx.allProducts || []) as Array<Record<string, unknown>>);
+  return annotateConsumptionAvailability(
+    rows,
+    ctx,
+    scopedPreviews.map(({ preview }) => preview),
+  );
+}

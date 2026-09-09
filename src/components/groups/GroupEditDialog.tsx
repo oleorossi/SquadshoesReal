@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { PencilSimple as Pencil, Palette, FloppyDisk as Save, Package, Plus, MagnifyingGlass as Search, Ruler, CircleNotch as Loader2, Flask as FlaskConical, Stack as Layers, X, LinkSimple as Link2, ArrowRight, Check, Warning as AlertTriangle, ArrowsLeftRight, Rows, Info, Factory, SquaresFour, Scissors } from '@phosphor-icons/react';
+import { PencilSimple as Pencil, Palette, FloppyDisk as Save, Package, Plus, MagnifyingGlass as Search, Ruler, CircleNotch as Loader2, Flask as FlaskConical, Stack as Layers, X, LinkSimple as Link2, ArrowRight, Check, Warning as AlertTriangle, ArrowsLeftRight, Rows, Info, Factory, SquaresFour, Scissors, Truck } from '@phosphor-icons/react';
 import { ProductGroup, useUpdateGroup, useGroups } from '@/hooks/useGroups';
 import { useProducts } from '@/hooks/useProducts';
 import GroupColorsTab from './GroupColorsTab';
 import { MaterialClassificationRail } from './MaterialClassificationRail';
 import GroupCompositionTab from './GroupCompositionTab';
+import SupplierPanel from './SupplierPanel';
+import { useGroupSuppliers } from '@/hooks/useGroupSuppliers';
 import { useForceDeleteProductFlow } from '@/components/inventory/ForceDeleteProductDialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
@@ -19,6 +21,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from '@/components/ui/command';
+import { SearchLocatorStrip } from '@/components/ui/searchable-select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -29,7 +32,7 @@ import { CONSUMPTION_UNITS_BY_GROUP } from '@/lib/measurementUnits';
 import { sectorOfGroup, sectorLabel, SECTOR_OPTIONS } from '@/lib/categoryFromGroup';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { NumberInput } from '@/components/ui/number-input';
-import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { SEARCH_RENDER_CAP, capSearchResults, searchMatchesAllTerms, searchRefineHint } from '@/lib/searchUtils';
 import { SearchInput } from '@/components/ui/search-input';
 import { EmptyState } from '@/components/ui/empty-state';
 import { getFootwearSectorGuide, normalizeTaxonomyName } from '@/lib/footwearMaterialTaxonomy';
@@ -124,6 +127,10 @@ function AddItemsToGroupDialog({ open, onOpenChange, groupId, groupName }: {
     () => availableBase.filter(p => searchMatchesAllTerms(search, p.name, p.sku, p.category, p.color)),
     [availableBase, search],
   );
+  const { visible, capped, totalMatched, cap } = useMemo(
+    () => capSearchResults(available, SEARCH_RENDER_CAP),
+    [available],
+  );
 
   const toggle = (id: string) => {
     setSelected(prev => {
@@ -169,12 +176,12 @@ function AddItemsToGroupDialog({ open, onOpenChange, groupId, groupName }: {
           value={search}
           onChange={setSearch}
           placeholder="Buscar por nome, SKU, categoria ou cor…"
-          resultCount={available.length}
+          resultCount={totalMatched}
           totalCount={availableBase.length}
         />
 
         <ScrollArea className="flex-1 min-h-0 max-h-[400px] -mx-6 px-6">
-          {available.length === 0 ? (
+          {totalMatched === 0 ? (
             search ? (
               <EmptyState
                 size="sm"
@@ -190,7 +197,7 @@ function AddItemsToGroupDialog({ open, onOpenChange, groupId, groupName }: {
             )
           ) : (
             <div className="space-y-1">
-              {available.map(p => (
+              {visible.map(p => (
                 <label
                   key={p.id}
                   className={`flex items-center gap-3 p-2 rounded-md cursor-pointer hover:bg-accent transition-colors ${selected.has(p.id) ? 'bg-primary/5 border border-primary/20' : 'border border-transparent'}`}
@@ -210,6 +217,11 @@ function AddItemsToGroupDialog({ open, onOpenChange, groupId, groupName }: {
                   </Badge>
                 </label>
               ))}
+              {capped && (
+                <p className="px-2 py-2 text-xs text-muted-foreground">
+                  {searchRefineHint(totalMatched, cap)}
+                </p>
+              )}
             </div>
           )}
         </ScrollArea>
@@ -534,9 +546,15 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
   // defined' ao abrir a edição. Restaurado 2026-06-07. [[group-edit-dropped-state]]
   const [parentGroupId, setParentGroupId] = useState<string>(group.parent_group_id || '');
   const [linkChildOpen, setLinkChildOpen] = useState(false);
+  const [linkChildSearch, setLinkChildSearch] = useState('');
   const [unitWeightKg, setUnitWeightKg] = useState<number>(group.unit_weight_kg || 0);
   const [purchaseMultiple, setPurchaseMultiple] = useState<number>((group as any).purchase_multiple || 0);
   const [isArtisanalStrap, setIsArtisanalStrap] = useState(group.is_artisanal_strap === true);
+
+  // Fornecedores do grupo (group_suppliers) — sumiram da UI no refactor da árvore
+  // de estoque (1401c9db) e nunca voltaram ao dialog. OC automática e lead time
+  // leem daqui; sem a aba, o cadastro fica órfão.
+  const { data: groupSuppliers = [] } = useGroupSuppliers(isContainer ? undefined : group.id);
 
   const affectedProductsCount = useMemo(() => {
     if (!isContainer) return products.length;
@@ -561,6 +579,18 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
       && (childrenByParent.get(candidate.id)?.length || 0) === 0
     )),
     [availableToLinkAsChild, childrenByParent, sector],
+  );
+
+  const filteredLinkableChildren = useMemo(() => {
+    if (!linkChildSearch.trim()) return linkableChildren;
+    return linkableChildren.filter((candidate) =>
+      searchMatchesAllTerms(linkChildSearch, candidate.name),
+    );
+  }, [linkableChildren, linkChildSearch]);
+
+  const linkableCap = useMemo(
+    () => capSearchResults(filteredLinkableChildren, SEARCH_RENDER_CAP),
+    [filteredLinkableChildren],
   );
 
   const selectedFamily = useMemo(
@@ -646,8 +676,13 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
       return;
     }
 
-    setSaving(true);
     const finalUnit = consumptionUnit === '__none__' ? null : consumptionUnit;
+    if (sharedSpecs && !finalUnit) {
+      toast.error('Linhas com variantes precisam de uma unidade de consumo do grupo. Se as unidades forem individuais, escolha “Coleção de itens”.');
+      return;
+    }
+
+    setSaving(true);
     
     try {
       await updateGroup.mutateAsync({
@@ -686,40 +721,12 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
         );
       }
 
-      // Propaga a unidade de consumo e outras specs para todos os itens do grupo
-      const prevUnit = group.consumption_unit ?? null;
-      const unitChanged = finalUnit !== prevUnit;
-
-      if (products.length > 0) {
-        const updateData: any = {};
-        // sharedSpecs força a propagação da unidade de CONSUMO a todos os itens (mesmo sem
-        // troca). NÃO sobrescrevemos products.unit (estoque): em material de área a unidade
-        // de consumo é dm² mas a de estoque é m/placa — sobrescrever corromperia o estoque.
-        if (unitChanged || sharedSpecs) updateData.consumption_unit = finalUnit;
-
-        // Preço, localização e múltiplo de compra saíram daqui em 02/08/2026:
-        // eram uma SEGUNDA porta gravando `products`, sem selo de divergência e
-        // sem prévia, então achatavam valor próprio em silêncio. Porta única
-        // agora é a aba "Em massa" desta mesma janela (`VariantBulkEditPanel`,
-        // spec `estoque-cores-e-editores.md` R3.1).
-
-        if (Object.keys(updateData).length > 0) {
-          const { error } = await supabase
-            .from('products')
-            .update(updateData)
-            .eq('group_id', group.id);
-
-          if (error) {
-            toast.error(`Erro ao atualizar itens do grupo: ${error.message}`);
-          } else {
-            queryClient.invalidateQueries({ queryKey: ['products'] });
-            queryClient.invalidateQueries({ queryKey: ['paginated_products'] });
-            if (unitChanged) {
-              toast.success(`Unidade de consumo aplicada em ${products.length} ${products.length === 1 ? 'item' : 'itens'}.`);
-            }
-          }
-        }
-      }
+      // A unidade salva aqui pertence ao GRUPO. As unidades individuais das
+      // variantes vivem em products e têm porta única no editor de variantes.
+      // Não faça um segundo UPDATE em products: além de apagar configurações
+      // próprias quando o grupo volta para "Definida por item", o gatilho
+      // legado unit↔consumption_unit transformava NULL em products.unit=NULL e
+      // abortava o save pelo NOT NULL do estoque.
 
       onOpenChange(false);
     } catch (err: any) {
@@ -741,7 +748,7 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                 </div>
                 <div className="min-w-0">
                   <DialogTitle className="truncate text-lg font-bold leading-tight">{group.name}</DialogTitle>
-                  <DialogDescription className="sr-only">Edite setor, hierarquia, especificações e itens do grupo.</DialogDescription>
+                  <DialogDescription className="sr-only">Edite setor, hierarquia, fornecedores, especificações e itens do grupo.</DialogDescription>
                   <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                     <Badge variant="outline" className="h-5 gap-1 px-2 font-medium">
                       {isContainer ? `família · ${childrenGroups.length} subgrupo(s)` : 'grupo-folha'}
@@ -804,6 +811,17 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
               {!isContainer && <TabsTrigger value="colors" className="min-w-[132px] flex-1 justify-start gap-2 rounded-sm border border-transparent px-3 py-2 text-left font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm">
                 <Palette className="h-4 w-4 shrink-0" />
                 <span><span className="block text-xs font-semibold">Cores</span><span className="block text-[9px] font-normal text-muted-foreground">catálogo e duplicatas</span></span>
+              </TabsTrigger>}
+              {!isContainer && <TabsTrigger value="suppliers" className="min-w-[132px] flex-1 justify-start gap-2 rounded-sm border border-transparent px-3 py-2 text-left font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                <Truck className="h-4 w-4 shrink-0" />
+                <span>
+                  <span className="block text-xs font-semibold">Fornecedores</span>
+                  <span className="block text-[9px] font-normal text-muted-foreground">
+                    {groupSuppliers.length === 0
+                      ? 'não cadastrado'
+                      : `${groupSuppliers.length} vínculo(s)`}
+                  </span>
+                </span>
               </TabsTrigger>}
               {!isContainer && <TabsTrigger value="items" className="min-w-[132px] flex-1 justify-start gap-2 rounded-sm border border-transparent px-3 py-2 text-left font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm">
                 <Rows className="h-4 w-4 shrink-0" />
@@ -873,6 +891,95 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                 <>
                   <Card className="border-foreground/20">
                     <CardHeader className="pb-3">
+                      <CardTitle className="flex items-center justify-between gap-3 text-sm font-bold">
+                        <span className="flex items-center gap-2">
+                          <Truck className="h-4 w-4 text-primary" />
+                          Compras e abastecimento
+                        </span>
+                        {groupSuppliers.length === 0 ? (
+                          <Badge variant="outline" className="border-warning/40 bg-warning/10 font-medium text-warning">
+                            Sem fornecedor
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="font-medium">
+                            {groupSuppliers.length} fornecedor(es)
+                          </Badge>
+                        )}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_200px] sm:items-start">
+                        <div className="space-y-2">
+                          <Label className="text-xs font-semibold">Fornecedores do grupo</Label>
+                          {groupSuppliers.length === 0 ? (
+                            <p className="text-xs leading-relaxed text-muted-foreground">
+                              Quem vende este material (prazo, condição e preço de referência). Sem vínculo, a OC automática nasce provisória.
+                            </p>
+                          ) : (
+                            <ul className="space-y-1.5">
+                              {groupSuppliers.slice(0, 3).map((supplier) => (
+                                <li key={supplier.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
+                                  <span className="font-medium text-foreground">{supplier.supplier_name}</span>
+                                  {supplier.lead_time_days > 0 && (
+                                    <span className="text-muted-foreground">{supplier.lead_time_days} dias</span>
+                                  )}
+                                  {supplier.payment_terms && (
+                                    <Badge variant="outline" className="h-4 px-1.5 text-[10px]">{supplier.payment_terms}</Badge>
+                                  )}
+                                </li>
+                              ))}
+                              {groupSuppliers.length > 3 && (
+                                <li className="text-[11px] text-muted-foreground">
+                                  +{groupSuppliers.length - 3} outro(s)
+                                </li>
+                              )}
+                            </ul>
+                          )}
+                          <Button
+                            type="button"
+                            variant={groupSuppliers.length === 0 ? 'default' : 'outline'}
+                            size="sm"
+                            className="mt-1 h-9 gap-1.5"
+                            onClick={() => setActiveTab('suppliers')}
+                          >
+                            <Truck className="h-4 w-4" />
+                            {groupSuppliers.length === 0 ? 'Cadastrar fornecedor' : 'Gerenciar fornecedores'}
+                          </Button>
+                        </div>
+                        <div>
+                          <Label className="text-xs font-semibold">Múltiplo de compra</Label>
+                          <NumberInput
+                            value={purchaseMultiple}
+                            onChange={(value) => setPurchaseMultiple(value || 0)}
+                            min={0}
+                            step="1"
+                            placeholder="Ex.: 50"
+                            className="mt-1 h-9"
+                          />
+                          <p className="mt-1 text-[10px] text-muted-foreground">0 = sem arredondamento de embalagem.</p>
+                        </div>
+                      </div>
+
+                      <div className="border-t border-foreground/10 pt-4">
+                        <p className="text-xs leading-relaxed text-muted-foreground">
+                          Custo, localização, estoque mínimo e fornecedor <strong className="font-medium text-foreground">por SKU</strong> continuam próprios de cada variante. Use a edição em massa só quando quiser substituir esses valores em todas as cores.
+                        </p>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="mt-3 h-9 gap-1.5"
+                          onClick={() => { setVariantsDialogTab('group'); setVariantsDialogOpen(true); }}
+                          disabled={products.length === 0}
+                        >
+                          <Palette className="h-4 w-4" /> Editar dados de {products.length} item(ns)
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border-foreground/20">
+                    <CardHeader className="pb-3">
                       <CardTitle className="flex items-center gap-2 text-sm font-bold">
                         <Palette className="h-4 w-4 text-primary" /> Como os itens variam
                       </CardTitle>
@@ -884,7 +991,9 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                           {[
                             { value: 'variant', title: 'Varia por cor', text: 'Cada cor é um SKU com saldo e custo próprios.' },
                             { value: 'bom-source', title: 'Origina cores no BOM', text: 'Além de variar, oferece suas cores às referências.' },
-                            { value: 'agnostic', title: 'Cor não se aplica', text: 'Consumo e débito resolvem apenas pelo grupo.' },
+                            { value: 'agnostic', title: 'Cor não se aplica', text: sector === 'Palmilha'
+                              ? 'A fibra/placa é o suporte. A cor entra no forro que a reveste.'
+                              : 'Consumo e débito resolvem apenas pelo grupo.' },
                           ].map((option) => {
                             const disabled = option.value === 'bom-source' && !show.bomColorSource;
                             const selected = colorBehavior === option.value;
@@ -943,7 +1052,7 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                             <Select value={consumptionUnit} onValueChange={setConsumptionUnit}>
                               <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Definida por item" /></SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="__none__">Definida por item</SelectItem>
+                                <SelectItem value="__none__" disabled={sharedSpecs}>Definida por item</SelectItem>
                                 {Object.entries(CONSUMPTION_UNITS_BY_GROUP).map(([groupName, units]) => (
                                   <React.Fragment key={groupName}>
                                     <div className="bg-muted/50 px-2 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{groupName}</div>
@@ -953,7 +1062,9 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                               </SelectContent>
                             </Select>
                             <p className="mt-1 text-[10px] text-muted-foreground">
-                              {sharedSpecs ? `Será aplicada às ${products.length} variantes ao salvar; a unidade de estoque é preservada.` : 'Deixe por item quando composição ou unidade mudarem dentro do grupo.'}
+                              {consumptionUnit === '__none__'
+                                ? 'A unidade de cada item será preservada.'
+                                : 'Define o padrão técnico do grupo; as unidades das variantes são preservadas e editadas em “Variantes de cor”.'}
                             </p>
                           </div>
                         </div>
@@ -967,7 +1078,7 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                         <FlaskConical className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
                         <div><p className="text-sm font-medium">Tiras artesanais</p><p className="mt-1 text-xs text-muted-foreground">Receita, cor, rendimento e produto acabado têm cadastro canônico próprio.</p></div>
                       </div>
-                      <Button type="button" variant="outline" onClick={() => { onOpenChange(false); navigate(`/tiras-artesanais?tab=cadastro&editor=1&mode=create&origin=grupos&baseGroupId=${encodeURIComponent(group.id)}`); }}>Abrir cadastro de tiras</Button>
+                      <Button type="button" variant="outline" onClick={() => { onOpenChange(false); navigate(`/tiras-artesanais?tab=cadastro&editor=1&mode=create&origin=grupos&purpose=stock_variant&baseGroupId=${encodeURIComponent(group.id)}`); }}>Abrir cadastro de tiras</Button>
                     </div>
                   )}
 
@@ -989,23 +1100,6 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                       <Scissors className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                     </div>
                   )}
-
-                  <Card className="border-foreground/20">
-                    <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-sm font-bold"><Package className="h-4 w-4 text-primary" /> Abastecimento compartilhado</CardTitle></CardHeader>
-                    <CardContent className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_220px] sm:items-end">
-                      <div>
-                        <p className="text-xs leading-relaxed text-muted-foreground">Custo, localização, estoque mínimo e fornecedor continuam próprios de cada SKU. Use a edição em massa somente quando quiser substituir esses valores nas variantes.</p>
-                        <Button type="button" variant="outline" size="sm" className="mt-3 h-9 gap-1.5" onClick={() => setActiveTab('bulk')} disabled={products.length === 0}>
-                          <Palette className="h-4 w-4" /> Editar dados de {products.length} item(ns)
-                        </Button>
-                      </div>
-                      <div>
-                        <Label className="text-xs font-semibold">Múltiplo de compra</Label>
-                        <NumberInput value={purchaseMultiple} onChange={value => setPurchaseMultiple(value || 0)} min={0} step="1" placeholder="Ex.: 50" className="mt-1 h-9" />
-                        <p className="mt-1 text-[10px] text-muted-foreground">0 = sem arredondamento de embalagem.</p>
-                      </div>
-                    </CardContent>
-                  </Card>
 
                   {larguraDivergente && (
                     <div className="border border-warning/40 bg-warning/10 px-3 py-2.5 text-xs">
@@ -1152,24 +1246,44 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                   <CardHeader className="pb-3">
                     <CardTitle className="flex items-center justify-between gap-3 text-sm">
                       <span className="flex items-center gap-2"><Rows className="h-4 w-4 text-primary" /> 3. Grupos / linhas ({childrenGroups.length})</span>
-                      <Popover open={linkChildOpen} onOpenChange={setLinkChildOpen}>
+                      <Popover open={linkChildOpen} onOpenChange={(o) => { setLinkChildOpen(o); if (!o) setLinkChildSearch(''); }}>
                         <PopoverTrigger asChild>
                           <Button type="button" size="sm" variant="outline" disabled={!isFamilyPersisted || sectorChanged} className="h-8 gap-1.5 text-xs"><Link2 className="h-3.5 w-3.5" /> Vincular grupo existente</Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-80 p-0" align="end">
-                          <Command>
-                            <CommandInput placeholder="Buscar grupo do mesmo setor..." />
+                          <Command shouldFilter={false} label="Buscar grupo do mesmo setor...">
+                            <SearchLocatorStrip
+                              label="Localizar grupo"
+                              matchedCount={linkableCap.totalMatched}
+                              totalCount={linkableChildren.length}
+                              hasQuery={!!linkChildSearch.trim()}
+                            />
+                            <CommandInput
+                              placeholder="Buscar grupo do mesmo setor..."
+                              value={linkChildSearch}
+                              onValueChange={setLinkChildSearch}
+                            />
                             <CommandList>
-                              <CommandEmpty>Nenhum grupo solto disponível em {sectorLabel(sector)}.</CommandEmpty>
+                              <CommandEmpty>
+                                {linkChildSearch ? (
+                                  <span className="flex flex-col items-center gap-2">
+                                    <span>Nenhum resultado para "{linkChildSearch}"</span>
+                                    <Button type="button" variant="outline" size="sm" onClick={() => setLinkChildSearch('')}>Limpar busca</Button>
+                                  </span>
+                                ) : (
+                                  `Nenhum grupo solto disponível em ${sectorLabel(sector)}.`
+                                )}
+                              </CommandEmpty>
                               <CommandGroup heading={`Grupos soltos em ${sectorLabel(sector)}`}>
-                                {linkableChildren.map((candidate) => (
+                                {linkableCap.visible.map((candidate) => (
                                   <CommandItem
                                     key={candidate.id}
-                                    value={candidate.name}
+                                    value={candidate.id}
                                     onSelect={async () => {
                                       try {
                                         await updateGroup.mutateAsync({ id: candidate.id, data: { parent_group_id: group.id } });
                                         setLinkChildOpen(false);
+                                        setLinkChildSearch('');
                                       } catch { /* toast pelo hook */ }
                                     }}
                                   >
@@ -1178,6 +1292,11 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                                     <Badge variant="outline" className="ml-auto h-4 text-[8px]">{itemCountByGroup.get(candidate.id) || 0} itens</Badge>
                                   </CommandItem>
                                 ))}
+                                {linkableCap.capped && (
+                                  <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                                    {searchRefineHint(linkableCap.totalMatched, linkableCap.cap)}
+                                  </div>
+                                )}
                               </CommandGroup>
                             </CommandList>
                           </Command>
@@ -1276,7 +1395,11 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                     <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                     <div>
                       <p className="text-xs font-semibold">Cor não se aplica a este grupo</p>
-                      <p className="mt-0.5 text-[11px] text-muted-foreground">Os SKUs continuam na aba Itens, mas não são tratados como variantes de cor no consumo.</p>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        {sector === 'Palmilha'
+                          ? 'A fibra/placa é o suporte. A variação de cor fica no forro que a reveste.'
+                          : 'Os SKUs continuam na aba Itens, mas não são tratados como variantes de cor no consumo.'}
+                      </p>
                     </div>
                   </div>
                   <Button type="button" size="sm" variant="outline" onClick={() => setActiveTab('general')}>Alterar regra</Button>
@@ -1308,7 +1431,7 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
               {isCanonicalStrapGroup ? (
                 <div className="flex flex-col gap-3 rounded-md border border-primary/30 bg-primary/5 p-4 sm:flex-row sm:items-center sm:justify-between">
                   <p className="text-xs text-muted-foreground">A fusão, criação e revisão de cores desta família pertencem ao catálogo canônico de Tiras.</p>
-                  <Button type="button" variant="outline" onClick={() => { onOpenChange(false); navigate(`/tiras-artesanais?tab=cadastro&editor=1&mode=review&origin=grupos&baseGroupId=${encodeURIComponent(group.id)}`); }}>Revisar no Hub de Tiras</Button>
+                  <Button type="button" variant="outline" onClick={() => { onOpenChange(false); navigate(`/tiras-artesanais?tab=cadastro&editor=1&mode=review&origin=grupos&purpose=stock_variant&baseGroupId=${encodeURIComponent(group.id)}`); }}>Revisar no Hub de Tiras</Button>
                 </div>
               ) : !isColorAgnostic ? (
                 <GroupColorsTab
@@ -1320,10 +1443,29 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
               ) : null}
             </TabsContent>}
 
-            {/* Tab: Itens — lista de variantes de cor.
-                Antes era uma tabela crua (nome · SKU · cor · estoque) e a lista
-                RICA vivia no `MasterVariantDialog`, um segundo diálogo. Agora é
-                o mesmo painel nos dois lugares: uma janela só. */}
+            {/* Tab: Fornecedores — group_suppliers (comercial do grupo). Órfão desde
+                o refactor da árvore em 1401c9db; OC automática e lead time leem daqui. */}
+            {!isContainer && (
+              <TabsContent value="suppliers" className="mt-4 space-y-4">
+                <Card className="border-foreground/20">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-2 text-sm font-bold">
+                      <Truck className="h-4 w-4 text-primary" />
+                      Fornecedores deste grupo
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="mb-4 text-xs leading-relaxed text-muted-foreground">
+                      Vínculo comercial do material: contato, prazo, condição de pagamento e materiais cotados.
+                      É o que a ordem de compra automática usa para escolher fornecedor e ETA.
+                    </p>
+                    <SupplierPanel groupId={group.id} embedded hideHeader />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            )}
+
+            {/* Tab: Items */}
             {!isContainer && <TabsContent value="items" className="space-y-4 mt-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <Label className="flex items-center gap-2 text-sm font-semibold">
@@ -1331,7 +1473,7 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                   Itens do Grupo ({products.length})
                 </Label>
                 <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => isCanonicalStrapGroup
-                  ? navigate(`/tiras-artesanais?tab=cadastro&editor=1&mode=create&origin=grupos&baseGroupId=${encodeURIComponent(group.id)}`)
+                  ? navigate(`/tiras-artesanais?tab=cadastro&editor=1&mode=create&origin=grupos&purpose=stock_variant&baseGroupId=${encodeURIComponent(group.id)}`)
                   : setAddDialogOpen(true)}>
                   <Plus className="h-3.5 w-3.5" />
                   {isCanonicalStrapGroup ? 'Cadastrar no Hub' : 'Mover item existente'}
@@ -1341,7 +1483,7 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
               {isCanonicalStrapGroup && (
                 <div className="flex flex-col gap-2 rounded-md border border-primary/30 bg-primary/5 p-3 sm:flex-row sm:items-center sm:justify-between">
                   <p className="text-xs text-muted-foreground">Cores, produto acabado, piso e receita desta família são criados juntos no hub de Tiras.</p>
-                  <Button type="button" size="sm" variant="outline" onClick={() => { onOpenChange(false); navigate(`/tiras-artesanais?tab=cadastro&editor=1&mode=create&origin=grupos&baseGroupId=${encodeURIComponent(group.id)}`); }}>
+                  <Button type="button" size="sm" variant="outline" onClick={() => { onOpenChange(false); navigate(`/tiras-artesanais?tab=cadastro&editor=1&mode=create&origin=grupos&purpose=stock_variant&baseGroupId=${encodeURIComponent(group.id)}`); }}>
                     Abrir cadastro canônico
                   </Button>
                 </div>
@@ -1358,14 +1500,75 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                     <span className="mt-0.5 block text-[10px] text-muted-foreground">A aba Cores busca no catálogo, compara grafias parecidas e cria em lote sem duplicar.</span>
                   </span>
                 </button>
-              )}
-              {grupoHeterogeneo && (
-                <div className="flex items-start gap-2 border border-warning/40 bg-warning/10 px-3 py-2 text-xs">
-                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" weight="fill" />
-                  <span className="text-muted-foreground">
-                    Este grupo guarda <strong className="text-foreground">mais de um material</strong> — a coluna Nome distingue cada um.
-                    O cadastro rápido de cor fica desligado aqui: ele copiaria os dados de um irmão qualquer.
-                  </span>
+              ) : null}
+              {products.length === 0 ? (
+                <p className="text-xs text-muted-foreground py-4 text-center">Nenhum item neste grupo.</p>
+              ) : (
+                <div className="rounded-md border overflow-x-auto max-h-80 overflow-y-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/30 hover:bg-muted/30">
+                        <TableHead className="text-xs">Nome</TableHead>
+                        <TableHead className="text-xs">SKU</TableHead>
+                        <TableHead className="text-xs">Cor</TableHead>
+                        <TableHead className="text-xs text-right">Estoque</TableHead>
+                        <TableHead className="text-xs text-center">Ações</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {products.map(p => (
+                        <TableRow key={p.id}>
+                          <TableCell className="text-xs font-medium">
+                            {!isCanonicalStrapGroup && editingProductId === p.id ? (
+                              <div className="flex gap-1">
+                                <Input
+                                  value={editProductName}
+                                  onChange={e => setEditProductName(e.target.value)}
+                                  className="h-6 text-xs"
+                                  onKeyDown={e => { if (e.key === 'Enter') handleSaveProductName(p.id); if (e.key === 'Escape') setEditingProductId(null); }}
+                                  autoFocus
+                                />
+                                <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => handleSaveProductName(p.id)}>
+                                  <Save className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            ) : (
+                              p.name
+                            )}
+                          </TableCell>
+                          <TableCell className="text-xs font-mono text-muted-foreground">{p.sku}</TableCell>
+                          <TableCell className="text-xs">{p.color || '—'}</TableCell>
+                          <TableCell className="text-xs text-right font-mono">{p.quantity} {p.unit}</TableCell>
+                          <TableCell className="text-center">
+                            <div className="flex justify-center gap-1">
+                              {!isCanonicalStrapGroup && <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                onClick={() => {
+                                  setEditingProductId(p.id);
+                                  setEditProductName(p.name);
+                                }}
+                                title="Renomear"
+                              >
+                                <Pencil className="h-3 w-3" />
+                              </Button>}
+                              {!isCanonicalStrapGroup && <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 text-primary"
+                                onClick={() => window.open(`/estoque/${p.id}`, '_blank')}
+                                title="Editar Material Completo"
+                              >
+                                <Package className="h-3.5 w-3.5" />
+                              </Button>}
+                              {isCanonicalStrapGroup && <Button variant="ghost" size="sm" onClick={() => { onOpenChange(false); navigate(`/tiras-artesanais?tab=cadastro&editor=1&mode=review&origin=grupos&purpose=stock_variant&baseGroupId=${encodeURIComponent(group.id)}`); }}>Abrir no Hub</Button>}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </div>
               )}
               <VariantListPanel

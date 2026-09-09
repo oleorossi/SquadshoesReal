@@ -12,8 +12,11 @@ import { PaginatedSheet, type SheetBlock } from './worksheet/PaginatedSheet';
 import { formatOpNumber } from './worksheet/stageOrder';
 import { fichaModelFor } from './worksheet/fichaModel';
 import { TraceStrip } from './worksheet/TraceStrip';
+import { SectorMaterials } from './worksheet/SectorMaterials';
+import type { ConsumptionRow } from '@/hooks/useBulkOrderConsumption';
 
 export interface SoleColorBand {
+  consumption?: ConsumptionRow[];
   soleColor: string;
   grade: Record<string, number>;
   totalPairs: number;
@@ -56,6 +59,21 @@ interface Props {
   clientNames?: string[];
   /** Rótulo da faixa de cabeçalho de página (PaginatedSheet). */
   sectorLabel?: string;
+}
+
+/**
+ * Numerações que a grade de uma banda REALMENTE renderiza.
+ *
+ * Fonte única de propósito: o `minScale` que a ficha passa ao `PaginatedSheet`
+ * tem de sair da MESMA lista que a tabela desenha (ver a nota gêmea na ficha de
+ * palmilha). Enquanto eram duas contas, o piso vinha de `Object.keys(grade)` e
+ * divergia do que o operador lê no papel.
+ */
+export function solagemBandSizes(
+  allSizes: ReadonlyArray<string>,
+  band: Pick<SoleColorBand, 'grade' | 'baseGrade'>,
+): string[] {
+  return allSizes.filter(s => (band.grade[s] ?? 0) > 0 || (band.baseGrade?.[s] ?? 0) > 0);
 }
 
 const isPretoColor = (c: string) => /preto|black|pb/i.test((c || '').trim());
@@ -102,9 +120,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 1
     // Fix 22/05/2026: tabela mostra só o range desta band (não todos os
     // tamanhos universais). Union de grade + baseGrade — qualquer tamanho
     // com valor > 0 em pelo menos um deles entra.
-    const bandSizes = allSizes.filter(s =>
-      (band.grade[s] ?? 0) > 0 || (band.baseGrade?.[s] ?? 0) > 0
-    );
+    const bandSizes = solagemBandSizes(allSizes, band);
     // Fontes adaptativas pela qtd de colunas (2026-06-12) — grades densas
     // e chaves conjugadas ("33/34") cortavam com fonte fixa.
     const ft = gradeTableFont(bandSizes);
@@ -288,8 +304,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 1
           </tbody>
         </table>
 
-        {/* "Consumo Previsto" removido em 2026-06-12 — métrica de
-            planejamento, não pertence à ficha de operador. */}
+        <SectorMaterials rows={band.consumption} sector={sector} />
 
         <div className="px-2 py-1.5 border-t border-black">
           <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={band.totalPairs} title={tallyTitle} size={TALLY_SIZE} />
@@ -398,6 +413,6 @@ export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 1
   // Sem isto o AUTO_FIT_FLOOR global (0.80) encolhia por cima de fontes que já
   // estavam no piso. Decisão do dono 31/07/2026: legibilidade vence densidade.
   const minScale = bands.reduce((mx, b) => Math.max(mx,
-    floorSafeScale(gradeTableFont(Object.keys(b.grade || {})))), 0);
+    floorSafeScale(gradeTableFont(solagemBandSizes(allSizes, b)))), 0);
   return <PaginatedSheet sectorLabel={sectorLabel || sector} blocks={blocks} minScale={minScale} />;
 };

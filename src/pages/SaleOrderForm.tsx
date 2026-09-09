@@ -1,8 +1,7 @@
 import { FormSkeleton } from '@/components/layout/PageSkeleton';
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, FileMagnifyingGlass as FileSearch, ArrowCounterClockwise as RotateCcw, Handshake, CheckCircle, Warning as AlertTriangle, PaperPlaneTilt } from '@phosphor-icons/react';
-import { SendSectorToContractorDialog } from '@/components/sale-orders/SendSectorToContractorDialog';
+import { ArrowLeft, FileMagnifyingGlass as FileSearch, ArrowCounterClockwise as RotateCcw, Handshake, CheckCircle, Warning as AlertTriangle } from '@phosphor-icons/react';
 // `newISO` é date-only: `new Date(iso)` parseia UTC e o toast confirmava o dia
 // ANTERIOR ao que era gravado em `delivery_deadline`.
 import { formatDateBR } from '@/lib/dateOnly';
@@ -23,6 +22,9 @@ import { PvServiceOrdersCard } from '@/components/sale-orders/PvServiceOrdersCar
 import { GenerateServiceOrdersWizard } from '@/components/contractors/GenerateServiceOrdersWizard';
 import {
   buildExtraItemColumns,
+  filterProductionSaleOrderItems,
+  withoutProductionExclusionMetadata,
+  withSaleOrderItemClientKey,
   useCreateSaleOrder,
   useUpdateSaleOrder,
   SaleOrderFormData,
@@ -34,7 +36,7 @@ import {
   StrapSourcingAdminOverrideDialog,
   type StrapSourcingAdminOverrideTarget,
 } from '@/components/sale-orders/StrapSourcingAdminOverrideDialog';
-import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
+import { useTechnicalSheetsEditor } from '@/hooks/useTechnicalSheets';
 import { useClients } from '@/hooks/useClients';
 import { useRepresentatives } from '@/hooks/useRepresentatives';
 import { useAuth } from '@/hooks/useAuth';
@@ -44,23 +46,57 @@ import { useCheckStockAvailability } from '@/hooks/useOrders';
 import { getCanonicalReferenceIdMap, getCanonicalSaleOrderReferences } from '@/lib/saleOrderReferences';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
 import { toast } from 'sonner';
 import { checkSoleAvailability, SoleAvailabilityResult } from '@/lib/soleAvailability';
 import { SolePurchaseConfirmDialog } from '@/components/sale-orders/SolePurchaseConfirmDialog';
-import { enrichMaterialShortages, MaterialAvailabilityResult } from '@/lib/materialAvailability';
+import {
+  enrichMaterialShortages,
+  MaterialAvailabilityResult,
+  RawMaterialAvailability,
+} from '@/lib/materialAvailability';
 import { MaterialPurchaseConfirmDialog } from '@/components/sale-orders/MaterialPurchaseConfirmDialog';
 import { checkSectorCapacity, CapacityCheckResult } from '@/lib/sectorCapacity';
 import { SectorOverloadDialog } from '@/components/sale-orders/SectorOverloadDialog';
-import { computeMinBillingForNewOrder, fetchMinBillingDate, isBeforeMinDate, toISOWeek, type MinBillingResult } from '@/lib/minBillingDate';
+import {
+  computeMinBillingForNewOrder,
+  fetchMinBillingDate,
+  fetchMinBillingDateCached,
+  isBeforeMinDate,
+  toISOWeek,
+  type MinBillingResult,
+} from '@/lib/minBillingDate';
 import { MinBillingDateSuggestionDialog } from '@/components/sale-orders/MinBillingDateSuggestionDialog';
 import { OverrideOutsourceCosturaDialog } from '@/components/sale-orders/OverrideOutsourceCosturaDialog';
 import { monthWeekToISODate, isoToMonthWeek } from '@/lib/billingWeek';
-import { listMissingTechnicalStrapSnapshots } from '@/lib/strapSnapshotGuard';
+import {
+  listMissingTechnicalStrapSnapshots,
+  type StrapSnapshotReferenceLike,
+} from '@/lib/strapSnapshotGuard';
 import {
   isCommittedStrapSourcingError,
   sameStrapSourcingSelection,
   strapSourcingErrorDetails,
 } from '@/lib/strapSourcingOverride';
+import {
+  clientCommercialBlockMessage,
+  fetchClientSalesContext,
+} from '@/lib/mobile/clientContext';
+import {
+  countExpectedRemovedSaleOrderItems,
+  formatUnknownSaleOrderUpdateError,
+  isStaleSaleOrderVersionError,
+  SaleOrderCommandExecutionError,
+} from '@/lib/saleOrderCommand';
+import { strapColorMode } from '@/lib/technicalStrapLines';
+import { useArtisanalStrapCatalog } from '@/hooks/useArtisanalStraps';
+import {
+  listMissingStrapPvOrigemChoices,
+  listStrapHubIncompleteForOrigem,
+  type StrapHubIncompleteIssue,
+} from '@/lib/strapPvOrigem';
+import StrapHubIncompleteDialog from '@/components/sale-orders/StrapHubIncompleteDialog';
+import type { StrapHubPricePatch } from '@/components/sale-orders/StrapHubIncompleteDialog';
 
 const emptyForm: SaleOrderFormData = {
   client_id: null,
@@ -79,12 +115,30 @@ const emptyForm: SaleOrderFormData = {
   external_nfe_number: '',
 };
 
-const emptyItem: SaleOrderItemFormData = {
+const emptyItem = (): SaleOrderItemFormData => withSaleOrderItemClientKey({
   reference_id: '', color: '', grade: {}, unit_price: 0, quantity: 0, fichas: 1, observation: null,
   selected_terceirizacao_ids: [],
   terceirizacao_quantities: {},
   outsourced_sectors: {},
+});
+
+type SaleOrderSnapshotHeader = Database['public']['Tables']['sale_orders']['Row'] & {
+  order_version?: number | null;
 };
+type SaleOrderSnapshotItem = Database['public']['Tables']['sale_order_items']['Row'];
+interface SaleOrderEditorSnapshot {
+  order: SaleOrderSnapshotHeader | null;
+  items: SaleOrderSnapshotItem[];
+}
+interface SaleOrderEditorSnapshotRpcClient {
+  rpc: (
+    functionName: 'get_sale_order_editor_snapshot',
+    args: { p_sale_order_id: string },
+  ) => PromiseLike<{
+    data: SaleOrderEditorSnapshot | null;
+    error: { message: string } | null;
+  }>;
+}
 
 const SALE_ORDER_DRAFT_KEY_PREFIX = 'sale_order_draft';
 
@@ -97,6 +151,62 @@ const SALE_ORDER_DRAFT_KEY_PREFIX = 'sale_order_draft';
  */
 function saleOrderDraftKey(userId: string | null | undefined): string {
   return `${SALE_ORDER_DRAFT_KEY_PREFIX}:${userId ?? 'anonymous'}`;
+}
+
+export function clearSaleOrderDraft(userId: string | null | undefined): void {
+  const key = saleOrderDraftKey(userId);
+  try { sessionStorage.removeItem(key); } catch { /* storage indisponível */ }
+  try { localStorage.removeItem(key); } catch { /* storage indisponível */ }
+}
+
+export function buildItemsPurchaseSignature(
+  items: SaleOrderItemFormData[],
+  packagingMode: SaleOrderFormData['packaging_mode'],
+): string {
+  return JSON.stringify({
+    packaging_mode: packagingMode || null,
+    items: filterProductionSaleOrderItems(items).filter((item) => item.reference_id).map((item) => ({
+      r: item.reference_id,
+      q: item.quantity,
+      c: (item.color || '').trim().toUpperCase(),
+      g: item.grade || {},
+      mv: item.material_variant_id || null,
+      s: Array.isArray(item.strap_colors)
+        ? item.strap_colors.map((line) => ({ color: line?.color || '', color_id: line?.color_id || '' }))
+        : [],
+      so: item.strap_sourcing || {},
+    })).sort((left, right) => `${left.r}${left.c}${left.mv || ''}`.localeCompare(`${right.r}${right.c}${right.mv || ''}`)),
+  });
+}
+
+export function buildSaleOrderEditorRevision(input: {
+  form: SaleOrderFormData;
+  items: SaleOrderItemFormData[];
+  selectedClientId: string;
+  packagingProductId: string;
+  packagingQuantity: number;
+}): string {
+  return JSON.stringify(input);
+}
+
+export function editorChangedDuringSave(
+  submittedRevision: string,
+  latestRevision: string,
+): boolean {
+  return submittedRevision !== latestRevision;
+}
+
+export interface CreatedSaleOrderContinuation {
+  id: string;
+  orderVersion: number;
+}
+
+/** CREATE já confirmado com editor divergente deve continuar como UPDATE. */
+export function resolveSaleOrderMutationTarget(
+  routeOrderId: string | undefined,
+  continuation: CreatedSaleOrderContinuation | null,
+): string | null {
+  return routeOrderId || continuation?.id || null;
 }
 
 // Cópia parcial de itens (edição → novo PV): a edição grava o seed aqui e navega
@@ -226,16 +336,27 @@ export function buildCopySeedPayload(args: {
       order_type: f.order_type,
       status: 'Rascunho',
     },
-    items: seedItems.map(({ id: _itemId, strap_sourcing_revision: _sourceRevision, ...rest }) => ({
-      ...rest,
-      material_variant_id:
-        rest.material_variant_id && activeVariantIds.has(rest.material_variant_id)
-          ? rest.material_variant_id
-          : null,
-      selected_terceirizacao_ids: [],
-      terceirizacao_quantities: {},
-      outsourced_sectors: {},
-    })),
+    items: seedItems.map((item) => {
+      const {
+        id: _itemId,
+        strap_sourcing_revision: _sourceRevision,
+        ...rest
+      } = withoutProductionExclusionMetadata(item);
+      return {
+        ...rest,
+        material_variant_id:
+          rest.material_variant_id && activeVariantIds.has(rest.material_variant_id)
+            ? rest.material_variant_id
+            : null,
+        // As cores/posições são definição física e viajam no novo item, mas a
+        // origem contém receita, variante e agenda do PV anterior. O novo writer
+        // deve resolvê-la novamente no contexto da nova data/variante.
+        strap_sourcing: {},
+        selected_terceirizacao_ids: [],
+        terceirizacao_quantities: {},
+        outsourced_sectors: {},
+      };
+    }),
   };
 }
 
@@ -246,6 +367,18 @@ interface SubmitOptions {
 
 const formatCurrency = (value: number) =>
   value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+/**
+ * Payload de update = exatamente os itens do editor (com referência).
+ * Soft-exclude server-side trata remoções; NÃO reanexar ids carregados
+ * que o usuário tirou da lista (regressão PV-00169).
+ */
+export function buildSaleOrderUpdateItems(
+  editorItems: readonly SaleOrderItemFormData[],
+  normalize: (item: SaleOrderItemFormData) => SaleOrderItemFormData = (item) => item,
+): SaleOrderItemFormData[] {
+  return editorItems.filter((item) => !!item.reference_id).map(normalize);
+}
 
 // Extraída pra ser testável de fora do componente (guard de regressão do
 // incidente PV-00146). O `id` PRECISA viajar junto: é ele que faz o save
@@ -262,6 +395,9 @@ export function mapLoadedSaleOrderItem(
   const normalizedReferenceId = canonicalReferenceIdMap.get(i.reference_id) || i.reference_id;
   return {
     id: i.id,
+    production_excluded_at: i.production_excluded_at ?? null,
+    production_exclusion_reason: i.production_exclusion_reason ?? null,
+    production_exclusion_request_id: i.production_exclusion_request_id ?? null,
     reference_id: normalizedReferenceId,
     color: i.color || '',
     grade,
@@ -293,15 +429,98 @@ export default function SaleOrderForm() {
   const navigate = useNavigate();
   const isEdit = !!id;
 
-  const { data: references = [], isLoading: referencesLoading } = useTechnicalSheets();
+  const {
+    data: references = [],
+    isLoading: referencesLoading,
+    isError: referencesFailed,
+    error: referencesError,
+    refetch: refetchReferences,
+  } = useTechnicalSheetsEditor();
   const { data: clients = [] } = useClients();
   const { data: representatives = [] } = useRepresentatives();
   const createOrder = useCreateSaleOrder();
   const updateOrder = useUpdateSaleOrder();
   const checkStock = useCheckStockAvailability();
+  const { data: strapCatalog, isLoading: strapCatalogLoading } = useArtisanalStrapCatalog(false, {
+    includeLegacyHistory: false,
+  });
   const { user } = useAuth();
   const perm = useCan('/sales');
   const draftKey = saleOrderDraftKey(user?.id);
+
+  // Hub incompleto (MO/preço): diálogo no PV — não toast pedindo navegar fora.
+  const [hubIncompleteDialog, setHubIncompleteDialog] = useState<{
+    open: boolean;
+    issues: StrapHubIncompleteIssue[];
+    resume: null | {
+      kind: 'submit';
+      opts: SubmitOptions;
+    } | {
+      kind: 'doSubmit';
+      statusOverride?: string;
+    };
+  }>({ open: false, issues: [], resume: null });
+  // Preços acabados de gravar no diálogo — o catálogo React Query pode ainda
+  // estar stale no próximo handleSubmit; o override (ref + state) fecha a janela.
+  const [hubPriceOverrides, setHubPriceOverrides] = useState<Record<string, {
+    preco_artesanal_per_m?: number | null;
+    preco_prestador_per_m?: number | null;
+  }>>({});
+  const hubPriceOverridesRef = useRef(hubPriceOverrides);
+  hubPriceOverridesRef.current = hubPriceOverrides;
+
+  const buildStrapMeasuresForGuards = (
+    overrides: typeof hubPriceOverrides = hubPriceOverridesRef.current,
+  ) => {
+    const base = strapCatalog?.measures || [];
+    if (Object.keys(overrides).length === 0) return base;
+    return base.map((measure) => {
+      const patch = overrides[measure.id];
+      return patch ? { ...measure, ...patch } : measure;
+    });
+  };
+
+  const collectStrapHubIncomplete = (
+    productionItems: SaleOrderItemFormData[],
+    measures = buildStrapMeasuresForGuards(),
+  ): StrapHubIncompleteIssue[] => {
+    const issues: StrapHubIncompleteIssue[] = [];
+    for (const item of productionItems) {
+      const straps = Array.isArray(item.strap_colors) ? item.strap_colors : [];
+      if (straps.length === 0) continue;
+      for (const issue of listStrapHubIncompleteForOrigem(straps, measures)) {
+        // Bloqueio atual do save: mão de obra do prestador. Preço artesanal
+        // segue listado pela lib; frete/prestador padrão entram na fatia OS.
+        if (issue.code !== 'preco_prestador_ausente') continue;
+        issues.push(issue);
+      }
+    }
+    return issues;
+  };
+
+  /** Só escolha de origem ausente — gaps de Hub abrem diálogo separado. */
+  const assertStrapOrigemChoiceReady = (
+    productionItems: SaleOrderItemFormData[],
+    measures = buildStrapMeasuresForGuards(),
+  ): string | null => {
+    for (const item of productionItems) {
+      const straps = Array.isArray(item.strap_colors) ? item.strap_colors : [];
+      if (straps.length === 0) continue;
+      const missing = listMissingStrapPvOrigemChoices(straps, measures);
+      if (missing[0]) return missing[0].message;
+    }
+    return null;
+  };
+
+  const openHubIncompleteIfNeeded = (
+    productionItems: SaleOrderItemFormData[],
+    resume: NonNullable<typeof hubIncompleteDialog.resume>,
+  ): boolean => {
+    const hubGaps = collectStrapHubIncomplete(productionItems);
+    if (hubGaps.length === 0) return false;
+    setHubIncompleteDialog({ open: true, issues: hubGaps, resume });
+    return true;
+  };
 
   // A URL direta não pode contornar a matriz CRUD. A proteção de rota governa
   // visualização; aqui a operação exige explicitamente create/edit.
@@ -324,7 +543,9 @@ export default function SaleOrderForm() {
   const [cancelOpsPreflight, setCancelOpsPreflight] = useState<{
     isRunning: boolean;
     error: string | null;
-  }>({ isRunning: false, error: null });
+    hasVersionConflict: boolean;
+  }>({ isRunning: false, error: null, hasVersionConflict: false });
+  const [versionConflictError, setVersionConflictError] = useState<string | null>(null);
   // Estado React desabilita o botão no render seguinte; o ref fecha também a
   // janela de dois cliques no mesmo frame antes de qualquer OP ser cancelada.
   const cancelOpsPreflightRunningRef = useRef(false);
@@ -337,12 +558,12 @@ export default function SaleOrderForm() {
   const isAdmin = useIsAdmin();
 
   const canonicalReferenceIdMap = useMemo(
-    () => getCanonicalReferenceIdMap(references as Array<{ id: string; code?: string | null; name?: string | null; updated_at?: string | null }>),
+    () => getCanonicalReferenceIdMap(references as unknown as Array<{ id: string; code?: string | null; name?: string | null; updated_at?: string | null; retired_at?: string | null }>),
     [references]
   );
 
   const canonicalReferences = useMemo(
-    () => getCanonicalSaleOrderReferences(references as Array<{ id: string; code?: string | null; name?: string | null; updated_at?: string | null }>),
+    () => getCanonicalSaleOrderReferences(references as unknown as Array<{ id: string; code?: string | null; name?: string | null; updated_at?: string | null; retired_at?: string | null }>),
     [references]
   );
 
@@ -367,10 +588,11 @@ export default function SaleOrderForm() {
         : [];
       const semCor = straps.filter((s) => {
         if (!s) return false;
-        const referenceBase = (s.identity_basis || 'reference_base') === 'reference_base';
-        // Para reference_base, a cor principal do item e a intenção: o writer
-        // atômico resolve o UUID e materializa a variante antes do INSERT/UPDATE.
-        if (referenceBase && String(its[i].color || '').trim()) return false;
+        // Somente reference_base + follow_main deriva a identidade da cor
+        // principal. Uma tira interna select_on_order precisa carregar texto e
+        // UUID canônicos da posição, assim como uma tira comprada pronta.
+        if (strapColorMode(s) === 'follow_main'
+            && String(its[i].color || '').trim()) return false;
         return !String(s.color || '').trim() || !String(s.color_id || '').trim();
       });
       if (semCor.length === 0) continue;
@@ -390,7 +612,7 @@ export default function SaleOrderForm() {
   };
 
   const [form, setForm] = useState<SaleOrderFormData>(emptyForm);
-  const [items, setItems] = useState<SaleOrderItemFormData[]>([{ ...emptyItem }]);
+  const [items, setItems] = useState<SaleOrderItemFormData[]>([emptyItem()]);
   const originalStrapSourcingRef = useRef(new Map<string, {
     revision: number;
     lines: NonNullable<SaleOrderItemFormData['strap_sourcing']>;
@@ -400,6 +622,12 @@ export default function SaleOrderForm() {
   // Só é descartada após a RPC confirmar a criação, evitando PV duplicado em
   // timeout/resposta perdida.
   const clientRequestIdRef = useRef<string | null>(null);
+  // Se o usuário altera o editor no pequeno intervalo entre o clique e a
+  // confirmação do CREATE, o PV já existe no servidor. A próxima tentativa
+  // precisa atualizar ESSE PV (com expected_version), nunca repetir o CREATE
+  // com outra chave e gerar uma duplicata. A continuação também viaja no
+  // rascunho local para sobreviver a F5/fechamento da aba.
+  const createdOrderContinuationRef = useRef<CreatedSaleOrderContinuation | null>(null);
   // Ligado quando a tela nasce de uma cópia E já havia rascunho salvo. O caminho
   // do seed pula o prompt "Rascunho encontrado" (a cópia vence a tela), e sem
   // esta trava o auto-save de 5s gravaria o pedido copiado POR CIMA de um
@@ -422,6 +650,8 @@ export default function SaleOrderForm() {
   const [packagingProductId, setPackagingProductId] = useState<string>('');
   const [packagingQuantity, setPackagingQuantity] = useState<number>(0);
   const [loading, setLoading] = useState(isEdit || referencesLoading);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
 
   // Pending draft detection: cargas anteriores salvaram um rascunho em
   // sessionStorage (saída pra /estoque) ou localStorage (auto-save).
@@ -434,6 +664,8 @@ export default function SaleOrderForm() {
     packagingQuantity: number;
     savedAt?: number;
     source: 'session' | 'local';
+    continuationOrderId?: string;
+    continuationOrderVersion?: number;
   }>(null);
 
   useEffect(() => {
@@ -459,7 +691,7 @@ export default function SaleOrderForm() {
         );
       }
       setForm({ ...emptyForm, ...seed.form });
-      setItems(seed.items);
+      setItems(seed.items.map(withSaleOrderItemClientKey));
       setSelectedClientId(seed.selectedClientId || '');
       const n = seed.items.length;
       toast.success(
@@ -479,12 +711,14 @@ export default function SaleOrderForm() {
       if (parsed?.ownerId === user.id && (parsed?.form || parsed?.items?.length)) {
         setPendingDraft({
           form: parsed.form ?? emptyForm,
-          items: parsed.items?.length ? parsed.items : [{ ...emptyItem }],
+          items: parsed.items?.length ? parsed.items : [emptyItem()],
           selectedClientId: parsed.selectedClientId ?? '',
           packagingProductId: parsed.packagingProductId ?? '',
           packagingQuantity: parsed.packagingQuantity ?? 0,
           savedAt: parsed.savedAt,
           source: sessionRaw ? 'session' : 'local',
+          continuationOrderId: parsed.continuationOrderId || undefined,
+          continuationOrderVersion: Number(parsed.continuationOrderVersion) || undefined,
         });
       }
     } catch { /* ignore corrupted draft */ }
@@ -505,7 +739,17 @@ export default function SaleOrderForm() {
       try {
         localStorage.setItem(
           draftKey,
-          JSON.stringify({ ownerId: user.id, form, items, selectedClientId, packagingProductId, packagingQuantity, savedAt: Date.now() }),
+          JSON.stringify({
+            ownerId: user.id,
+            form,
+            items,
+            selectedClientId,
+            packagingProductId,
+            packagingQuantity,
+            continuationOrderId: createdOrderContinuationRef.current?.id,
+            continuationOrderVersion: createdOrderContinuationRef.current?.orderVersion,
+            savedAt: Date.now(),
+          }),
         );
       } catch { /* ignore quota errors */ }
     }, 5_000);
@@ -514,11 +758,20 @@ export default function SaleOrderForm() {
 
   const restoreDraft = () => {
     if (!pendingDraft) return;
+    preserveExistingDraftRef.current = false;
     setForm(pendingDraft.form);
-    setItems(pendingDraft.items);
+    setItems(pendingDraft.items.map(withSaleOrderItemClientKey));
     setSelectedClientId(pendingDraft.selectedClientId);
     setPackagingProductId(pendingDraft.packagingProductId);
     setPackagingQuantity(pendingDraft.packagingQuantity);
+    if (pendingDraft.continuationOrderId && pendingDraft.continuationOrderVersion) {
+      createdOrderContinuationRef.current = {
+        id: pendingDraft.continuationOrderId,
+        orderVersion: pendingDraft.continuationOrderVersion,
+      };
+      loadedOrderVersionRef.current = pendingDraft.continuationOrderVersion;
+      clientRequestIdRef.current = null;
+    }
     sessionStorage.removeItem(draftKey);
     localStorage.removeItem(draftKey);
     setPendingDraft(null);
@@ -526,6 +779,7 @@ export default function SaleOrderForm() {
   };
 
   const discardDraft = () => {
+    preserveExistingDraftRef.current = false;
     sessionStorage.removeItem(draftKey);
     localStorage.removeItem(draftKey);
     setPendingDraft(null);
@@ -535,7 +789,15 @@ export default function SaleOrderForm() {
   // Dispensar (Esc/X/clique fora) ≠ Descartar: fechar o dialog só esconde o
   // aviso — o rascunho continua no storage pra próxima visita. Apagar de vez
   // é SÓ pelo botão "Descartar" explícito.
-  const dismissDraftPrompt = () => setPendingDraft(null);
+  const dismissDraftPrompt = () => {
+    preserveExistingDraftRef.current = true;
+    setPendingDraft(null);
+    toast.info(
+      'O rascunho anterior foi preservado e continuará disponível na próxima visita a "Novo Pedido". ' +
+      'Esta sessão não será auto-salva; salve o pedido ao terminar.',
+      { duration: 10000 },
+    );
+  };
 
   useEffect(() => {
     if (!referencesLoading && !isEdit) {
@@ -543,7 +805,11 @@ export default function SaleOrderForm() {
     }
   }, [referencesLoading, isEdit]);
   const [checkingStock, setCheckingStock] = useState(false);
+  const [checkingReadiness, setCheckingReadiness] = useState(false);
   const [orderLoaded, setOrderLoaded] = useState(false);
+  // Snapshot do PV em paralelo com as fichas: não espera `referencesLoading`.
+  const pendingSnapshotRef = useRef<SaleOrderEditorSnapshot | null>(null);
+  const [snapshotFetched, setSnapshotFetched] = useState(false);
 
   // Bug histórico: navegar de /sales/edit/A pra /sales/edit/B (via GlobalSearch)
   // não desmontava o componente — `id` mudava no useParams mas o useEffect que
@@ -556,13 +822,20 @@ export default function SaleOrderForm() {
     // pra evitar mexer no mount inicial.
     if (orderLoaded) {
       setOrderLoaded(false);
+      setLoadError(null);
       setForm(emptyForm);
-      setItems([{ ...emptyItem }]);
+      setItems([emptyItem()]);
+      editorBaselineReadyRef.current = false;
+      originalItemsSigRef.current = null;
+      originalDeadlineRef.current = null;
+      originalItemReferenceByIdRef.current.clear();
       originalStrapSourcingRef.current.clear();
       setStrapOverrideTarget(null);
       setSelectedClientId('');
       setPackagingProductId('');
       setPackagingQuantity(0);
+      pendingSnapshotRef.current = null;
+      setSnapshotFetched(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
@@ -572,27 +845,44 @@ export default function SaleOrderForm() {
   const [materialResult, setMaterialResult] = useState<MaterialAvailabilityResult | null>(null);
   const [materialDialogOpen, setMaterialDialogOpen] = useState(false);
 
-  // Bug fix (2026-06-02): só re-checar estoque/solado (que abre "gerar Ordem de
-  // Compra?") quando os itens que afetam COMPRA mudarem. Assinatura dos itens do
+  // Bug fix (2026-06-02): só re-checar estoque/solado (prévia de compra) quando
+  // os itens que afetam COMPRA mudarem. Assinatura dos itens do
   // pedido carregado em edição, comparada no submit. Sem isto, qualquer edição
-  // (data, obs, cliente) reabria o prompt de OC porque a falta de estoque persiste.
-  const itemsPurchaseSig = (its: SaleOrderItemFormData[]) => JSON.stringify(
-    its.filter(i => i.reference_id).map(i => ({
-      r: i.reference_id,
-      q: i.quantity,
-      c: (i.color || '').trim().toUpperCase(),
-      g: (i as any).grade || {},
-      s: Array.isArray((i as any).strap_colors)
-        ? (i as any).strap_colors.map((x: any) => ({ color: x?.color || '', color_id: x?.color_id || '' }))
-        : [],
-      so: (i as any).strap_sourcing || {},
-    })).sort((a, b) => (a.r + a.c).localeCompare(b.r + b.c)),
-  );
-  // Alterações não salvas. Alimentado por evento de DOM vindo do painel — ver a
-  // nota no <form> de SaleOrderFormPanel sobre por que snapshot não serve aqui.
-  // ⚠ `originalItemsSigRef` NÃO serve de baseline: ele cobre só os campos de
-  // COMPRA do item (itemsPurchaseSig), não o formulário.
+  // (data, obs, cliente) reabria a prévia porque a falta de estoque persiste.
+  // Alterações não salvas derivam da revisão completa do estado persistível.
+  // Isso cobre Selects Radix e mudanças programáticas legítimas que não emitem
+  // input/change. Na edição, a baseline só fica pronta depois de cabeçalho e
+  // itens carregarem juntos; portanto hidratação parcial nunca marca o PV sujo.
   const [hasUnsavedEdits, setHasUnsavedEdits] = useState(false);
+  const editorBaselineRevisionRef = useRef(buildSaleOrderEditorRevision({
+    form: emptyForm,
+    items: [emptyItem()],
+    selectedClientId: '',
+    packagingProductId: '',
+    packagingQuantity: 0,
+  }));
+  const editorBaselineReadyRef = useRef(!isEdit);
+  const currentEditorRevision = useMemo(() => buildSaleOrderEditorRevision({
+    form,
+    items,
+    selectedClientId,
+    packagingProductId,
+    packagingQuantity,
+  }), [form, items, selectedClientId, packagingProductId, packagingQuantity]);
+  // Atualizado durante o render (não num effect) para que o callback assíncrono
+  // da mutation sempre enxergue a revisão mais recente, inclusive se a resposta
+  // chegar antes de effects pendentes rodarem.
+  const latestEditorRevisionRef = useRef(currentEditorRevision);
+  latestEditorRevisionRef.current = currentEditorRevision;
+  const postSaveDivergedRef = useRef(false);
+  useEffect(() => {
+    if (!editorBaselineReadyRef.current) return;
+    if (postSaveDivergedRef.current) {
+      setHasUnsavedEdits(true);
+      return;
+    }
+    setHasUnsavedEdits(currentEditorRevision !== editorBaselineRevisionRef.current);
+  }, [currentEditorRevision]);
   const [pendingExit, setPendingExit] = useState<null | (() => void)>(null);
   // O mesmo diálogo serve pra Voltar/Cancelar e pra cópia, mas o texto genérico
   // ("descarta o que foi digitado") seria meia-verdade no fluxo de cópia: os
@@ -622,12 +912,18 @@ export default function SaleOrderForm() {
 
   const originalItemsSigRef = useRef<string | null>(null);
   const originalDeadlineRef = useRef<string | null>(null);
+  const originalItemReferenceByIdRef = useRef(new Map<string, string>());
+  // Versão observada junto do cabeçalho+itens. O save envia exatamente esta
+  // revisão ao command boundary; reler a versão só no clique esconderia uma
+  // edição concorrente feita em outra aba entre a carga e o submit.
+  const loadedOrderVersionRef = useRef<number | null>(null);
+  const updateCommandIntentRef = useRef<{ revision: string; id: string } | null>(null);
   useEffect(() => {
     if (isEdit && originalItemsSigRef.current === null && items.some(i => i.reference_id)) {
-      originalItemsSigRef.current = itemsPurchaseSig(items);
+      originalItemsSigRef.current = buildItemsPurchaseSignature(items, form.packaging_mode);
       originalDeadlineRef.current = form.delivery_deadline || '';
     }
-  }, [isEdit, items]);
+  }, [isEdit, items, form.packaging_mode]);
   const [capacityResult, setCapacityResult] = useState<CapacityCheckResult | null>(null);
   const [capacityDialogOpen, setCapacityDialogOpen] = useState(false);
   const [minBillingDialogOpen, setMinBillingDialogOpen] = useState(false);
@@ -660,10 +956,6 @@ export default function SaleOrderForm() {
     minDateISO: string;
   }>(null);
   const [billingOverrideReason, setBillingOverrideReason] = useState('');
-  // Dialog de terceirização da costura: abre após save quando o PV foi
-  // salvo com manual_billing_override=true. saleOrderId fica setado pra
-  // o dialog buscar as OPs criadas e disparar a RPC.
-  const [sendSectorOpen, setSendSectorOpen] = useState(false);
   const [outsourceCosturaOpen, setOutsourceCosturaOpen] = useState(false);
   const [outsourceCosturaPvId, setOutsourceCosturaPvId] = useState<string | null>(null);
   const [outsourceCosturaPendingNav, setOutsourceCosturaPendingNav] = useState<boolean>(false);
@@ -704,11 +996,12 @@ export default function SaleOrderForm() {
   // (useRef + setTimeout) por passagem explícita de parâmetro — mais previsível
   // em duplo-click / re-render.
 
-  // Recalculate live min_billing_date with debounce whenever items change
-  // (or on edit mode load). Drives the red badge in SaleOrderFormPanel.
+  // Min-billing badge: no open de edit lê o CACHE (barato); o motor live só
+  // roda depois que o usuário altera itens/quantidade (assinatura ≠ baseline).
   useEffect(() => {
-    const validItems = items.filter(i => i.reference_id && i.quantity > 0);
-    if (validItems.length === 0) {
+    const productionItems = filterProductionSaleOrderItems(items)
+      .filter(i => i.reference_id && i.quantity > 0);
+    if (productionItems.length === 0) {
       setLiveMinBillingISO(null);
       return;
     }
@@ -717,10 +1010,15 @@ export default function SaleOrderForm() {
       setComputingLive(true);
       try {
         if (isEdit && id) {
-          const iso = await fetchMinBillingDate(id);
+          const currentSig = buildItemsPurchaseSignature(items, form.packaging_mode);
+          const useCache = originalItemsSigRef.current !== null
+            && currentSig === originalItemsSigRef.current;
+          const iso = useCache
+            ? await fetchMinBillingDateCached(id)
+            : await fetchMinBillingDate(id);
           if (!cancelled) setLiveMinBillingISO(iso);
         } else {
-          const capInputs = validItems.map((it) => {
+          const capInputs = productionItems.map((it) => {
             const ref = canonicalReferences.find((r: any) => r.id === it.reference_id);
             const refLabel = ref ? `${(ref as any).code || ''} - ${(ref as any).name || ''}`.trim() : it.reference_id.substring(0, 8);
             return { reference_id: it.reference_id, reference_label: refLabel, quantity: it.quantity };
@@ -738,7 +1036,7 @@ export default function SaleOrderForm() {
       cancelled = true;
       clearTimeout(timeout);
     };
-  }, [items, isEdit, id, canonicalReferences]);
+  }, [items, isEdit, id, canonicalReferences, form.packaging_mode]);
 
   // ⚠ PERF: esta função desce como prop até SaleOrderItemForm, que é `memo()`.
   // Se ela mudar de identidade a cada render, o memo vira no-op e TODOS os itens do
@@ -751,20 +1049,62 @@ export default function SaleOrderForm() {
   const handleSaveStateAndNavigate = useCallback(() => {
     sessionStorage.setItem(
       draftKey,
-      JSON.stringify({ ownerId: user?.id, ...draftStateRef.current, savedAt: Date.now() }),
+      JSON.stringify({
+        ownerId: user?.id,
+        ...draftStateRef.current,
+        continuationOrderId: createdOrderContinuationRef.current?.id,
+        continuationOrderVersion: createdOrderContinuationRef.current?.orderVersion,
+        savedAt: Date.now(),
+      }),
     );
     navigate('/estoque?returnTo=sale-order');
   }, [draftKey, navigate, user?.id]);
 
-  // Load existing order for edit (only once, after references are ready)
+  // Snapshot do PV em paralelo com as fichas: não espera `referencesLoading`.
+  // Aplica o map canônico só quando as fichas chegam (ou já estão em cache).
   useEffect(() => {
-    if (!id || orderLoaded || referencesLoading) return;
+    if (!id || orderLoaded || referencesFailed || snapshotFetched) return;
+    let cancelled = false;
     (async () => {
       setLoading(true);
-      const { data: order } = await supabase.from('sale_orders').select('*').eq('id', id).single();
-      if (!order) { toast.error('Pedido não encontrado'); navigate('/sales'); return; }
+      setLoadError(null);
+      try {
+        const snapshotClient = supabase as unknown as SaleOrderEditorSnapshotRpcClient;
+        const { data: snapshotData, error: snapshotError } = await snapshotClient.rpc(
+          'get_sale_order_editor_snapshot',
+          { p_sale_order_id: id },
+        );
+        if (cancelled) return;
+        if (snapshotError) throw new Error(`Pedido: ${snapshotError.message}`);
+        if (!snapshotData?.order) throw new Error('Pedido não encontrado.');
+        pendingSnapshotRef.current = snapshotData;
+        setSnapshotFetched(true);
+      } catch (error: unknown) {
+        if (cancelled) return;
+        const message = error instanceof Error ? error.message : String(error);
+        setLoadError(message);
+        setLoading(false);
+        setOrderLoaded(false);
+        editorBaselineReadyRef.current = false;
+        pendingSnapshotRef.current = null;
+        setSnapshotFetched(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [id, orderLoaded, referencesFailed, snapshotFetched, loadAttempt]);
+
+  // Load existing order for edit. Cabeçalho e itens formam uma única revisão:
+  // qualquer erro deixa a tela fechada, sem formulário parcialmente hidratado.
+  useEffect(() => {
+    if (!id || orderLoaded || referencesLoading || referencesFailed || !snapshotFetched) return;
+    const snapshotData = pendingSnapshotRef.current;
+    if (!snapshotData?.order) return;
+
+    const order = snapshotData.order;
+    const persistedItems = Array.isArray(snapshotData.items) ? snapshotData.items : [];
+    try {
       const rep = representatives.find(r => r.name === order.representative);
-      setForm({
+      const nextForm: SaleOrderFormData = {
         client_id: (order as any).client_id || null,
         // Sem carregar company_id, reabrir o PV mostrava o emitente como matriz/
         // padrão e um novo save sobrescrevia a coluna com null. (PV-00140, 2026-06-16)
@@ -792,14 +1132,17 @@ export default function SaleOrderForm() {
         // interno e (com o RPC já gravando a coluna) o save resetava pra false.
         nfe_external: (order as any).nfe_external === true,
         external_nfe_number: (order as any).external_nfe_number || '',
-      });
-      setPackagingProductId((order as any).packaging_product_id || '');
-      setPackagingQuantity((order as any).packaging_quantity || 0);
-      const client = clients.find(c => c.razao_social === order.client_name);
-      setSelectedClientId(client?.id || '');
-      const { data: orderItems } = await supabase.from('sale_order_items').select('*').eq('sale_order_id', id);
-      if (orderItems && orderItems.length > 0) {
-        const mapped = orderItems.map(i => mapLoadedSaleOrderItem(i, canonicalReferenceIdMap));
+        // Terceirização planejada faz parte do mesmo agregado do PV. Sem
+        // hidratar estes campos, reabrir e salvar apagava a escolha existente.
+        outsource_to_contractor_id: order.outsource_to_contractor_id || null,
+        outsource_to_sector: order.outsource_to_sector || null,
+      };
+      const nextPackagingProductId = order.packaging_product_id || '';
+      const nextPackagingQuantity = Number(order.packaging_quantity) || 0;
+      const nextClientId = String(order.client_id || '');
+      let nextItems: SaleOrderItemFormData[] = [emptyItem()];
+      if (persistedItems.length > 0) {
+        const mapped = persistedItems.map(i => mapLoadedSaleOrderItem(i, canonicalReferenceIdMap));
         // Sort items so that the same reference (and color) always appears together in editing
         const refLabel = (refId: string) => {
           const ref = (references as any[]).find(r => r.id === refId);
@@ -817,12 +1160,42 @@ export default function SaleOrderForm() {
             lines: buildExtraItemColumns(item).strap_sourcing as NonNullable<SaleOrderItemFormData['strap_sourcing']>,
           }]];
         }));
-        setItems(mapped);
+        nextItems = mapped;
       }
+      originalItemsSigRef.current = buildItemsPurchaseSignature(nextItems, nextForm.packaging_mode);
+      originalDeadlineRef.current = nextForm.delivery_deadline || '';
+      originalItemReferenceByIdRef.current = new Map(nextItems.flatMap((item) =>
+        item.id ? [[item.id, item.reference_id] as const] : []));
+      editorBaselineRevisionRef.current = buildSaleOrderEditorRevision({
+        form: nextForm,
+        items: nextItems,
+        selectedClientId: nextClientId,
+        packagingProductId: nextPackagingProductId,
+        packagingQuantity: nextPackagingQuantity,
+      });
+      editorBaselineReadyRef.current = true;
+      loadedOrderVersionRef.current = Number(
+        (order as unknown as { order_version?: number | null }).order_version,
+      ) || 1;
+      setForm(nextForm);
+      setItems(nextItems);
+      setPackagingProductId(nextPackagingProductId);
+      setPackagingQuantity(nextPackagingQuantity);
+      setSelectedClientId(nextClientId);
+      setHasUnsavedEdits(false);
       setOrderLoaded(true);
       setLoading(false);
-    })();
-  }, [id, orderLoaded, referencesLoading, canonicalReferenceIdMap]);
+      pendingSnapshotRef.current = null;
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      setLoadError(message);
+      setLoading(false);
+      setOrderLoaded(false);
+      editorBaselineReadyRef.current = false;
+      pendingSnapshotRef.current = null;
+      setSnapshotFetched(false);
+    }
+  }, [id, orderLoaded, referencesLoading, referencesFailed, snapshotFetched, canonicalReferenceIdMap, references, representatives, loadAttempt]);
 
   // Update representative match when reps load after order
   useEffect(() => {
@@ -835,13 +1208,6 @@ export default function SaleOrderForm() {
       if (rep) setForm(f => ({ ...f, representative: rep.id }));
     })();
   }, [representatives.length, orderLoaded]);
-
-  // Update client match when clients load after order
-  useEffect(() => {
-    if (!orderLoaded || selectedClientId) return;
-    const client = clients.find(c => c.razao_social === form.client_name);
-    if (client) setSelectedClientId(client.id);
-  }, [clients.length, orderLoaded]);
 
   const handleClientSelect = (clientId: string) => {
     setSelectedClientId(clientId);
@@ -1004,9 +1370,13 @@ export default function SaleOrderForm() {
    */
   const isCostPartial = (c: OrderCostResult): boolean => {
     const noLabor = !c.labor_cost || c.labor_cost <= 0; // MOD ausente (sem cronoanálise)
-    const scan = (r?: OrderCostResult) => (r?.breakdown?.materials || []).some(m => !!m.conversion_warning);
-    const widthMissing = scan(c) || (c.items || []).some(scan); // largura de ficha faltando
-    return noLabor || widthMissing;
+    const scan = (r?: OrderCostResult) => (r?.breakdown?.materials || []).some(m =>
+      !!m.conversion_warning || m.resolution_warning === 'color_mismatch');
+    const hasBlockingWarning = (r?: OrderCostResult) => (r?.warnings || []).some(w =>
+      w.startsWith('material_color_not_registered:'));
+    const details = [c, ...(c.items || [])];
+    const materialIncomplete = details.some(scan) || details.some(hasBlockingWarning);
+    return noLabor || materialIncomplete;
   };
 
   const checkMarginAfterSave = async (orderId?: string) => {
@@ -1060,32 +1430,71 @@ export default function SaleOrderForm() {
    * pra permitir re-disparo após confirmação do CancelOpsAndEditDialog.
    */
   const dispatchMutation = (statusOverride?: string, cancelOpIds: string[] = []) => {
-    const f = formLatestRef.current;
-    const validItems = items.filter(i => i.reference_id).map(normalizeItemReference);
+    // Snapshot coerente do editor: callbacks de rede podem nascer em um render
+    // anterior, mas nunca devem reenviar itens/embalagem antigos.
+    const editorSnapshot = draftStateRef.current;
+    const f = editorSnapshot.form;
+    const validItems = buildSaleOrderUpdateItems(
+      editorSnapshot.items,
+      normalizeItemReference,
+    );
+    const productionItems = filterProductionSaleOrderItems(validItems);
     const total = validItems.reduce((s, i) => s + i.unit_price * i.quantity, 0);
     const rep = representatives.find(r => r.id === f.representative);
     const commission_value = rep ? total * (rep.commission_pct ?? 0) / 100 : 0;
     const orderData = { ...f, representative: rep?.name || f.representative };
     if (statusOverride) orderData.status = statusOverride;
-    const resolvedClientId = (f as any).client_id || selectedClientId || null;
+    const resolvedClientId = f.client_id || editorSnapshot.selectedClientId || null;
+    // Snapshot exato associado à mutation. A revisão pode continuar mudando na
+    // tela enquanto a rede responde; o sucesso só limpa/navega se ainda for esta.
+    const submittedRevision = buildSaleOrderEditorRevision(editorSnapshot);
+    // Pedido avulso não passa por política/tabela/limite de um cadastro de
+    // cliente. Decisão 11.d: pode ser persistido somente como Rascunho.
+    if (!resolvedClientId) orderData.status = 'Rascunho';
 
     // A origem das tiras já foi escolhida por linha no formulário. Ao salvar,
     // trigger + fila canônicos fazem netting, lote e compra; não existe segundo
     // escritor de OC/OS no cliente.
     const isOverride = !!(f as any).manual_billing_override;
-    const handlePostSave = async (pvId: string | undefined) => {
+    const handlePostSave = async (pvId: string | undefined, persistedVersion?: number) => {
+      if (editorChangedDuringSave(submittedRevision, latestEditorRevisionRef.current)) {
+        if (!isEdit && pvId) {
+          const orderVersion = Number(persistedVersion) || 1;
+          createdOrderContinuationRef.current = { id: pvId, orderVersion };
+          loadedOrderVersionRef.current = orderVersion;
+          // CREATE já confirmado: repetir a chave só reproduziria o recibo;
+          // trocar a chave criaria um segundo PV. Daqui em diante é UPDATE.
+          clientRequestIdRef.current = null;
+        }
+        postSaveDivergedRef.current = true;
+        setHasUnsavedEdits(true);
+        toast.warning('A versão enviada foi salva, mas há alterações locais ainda não salvas.', {
+          description: pvId && !isEdit
+            ? 'Revise os campos e clique em Salvar novamente. A próxima gravação atualizará o mesmo PV, sem duplicá-lo.'
+            : 'Revise os campos e clique em Salvar novamente. Esta tela não será fechada.',
+          duration: 10000,
+        });
+        return;
+      }
+
       // Salvou: desarma a guarda. Sem isto o beforeunload continuaria disparando
       // depois do save, e os diálogos de pós-save (tiras, OS, costura) navegam
       // sozinhos — o usuário levaria um aviso de "alterações não salvas" logo
       // depois de o toast dizer que salvou.
+      postSaveDivergedRef.current = false;
+      createdOrderContinuationRef.current = null;
+      editorBaselineRevisionRef.current = submittedRevision;
+      editorBaselineReadyRef.current = true;
       setHasUnsavedEdits(false);
+      if (!isEdit) clientRequestIdRef.current = null;
+      if (!isEdit && !preserveExistingDraftRef.current) clearSaleOrderDraft(user?.id);
       // Salvou: a exclusão já foi aplicada no banco. Um "Desfazer" ainda aberto
       // restauraria os itens só na tela e daria a falsa impressão de que voltaram.
       toast.dismiss(PV_ITEM_DELETE_TOAST_ID);
       void checkMarginAfterSave(pvId);
       if (!pvId) { navigate('/sales'); return; }
-      if (validItems.some((item) => Array.isArray(item.strap_colors) && item.strap_colors.length > 0)) {
-        toast.info('Demanda de tiras enviada ao processamento canônico. Acompanhe em Engenharia → Tiras → Demandas.');
+      if (productionItems.some((item) => Array.isArray(item.strap_colors) && item.strap_colors.length > 0)) {
+        toast.info('Demanda de tiras enviada ao processamento canônico. Acompanhe em Central de Tiras → Operação → Demandas.');
       }
       if (isOverride) {
         setOutsourceCosturaPvId(pvId);
@@ -1111,38 +1520,76 @@ export default function SaleOrderForm() {
       }
     };
 
-    if (isEdit) {
+    const effectiveOrderId = resolveSaleOrderMutationTarget(id, createdOrderContinuationRef.current);
+    if (effectiveOrderId) {
+      if (updateCommandIntentRef.current?.revision !== submittedRevision) {
+        updateCommandIntentRef.current = {
+          revision: submittedRevision,
+          id: crypto.randomUUID(),
+        };
+      }
+      const expectedRemovedCount = countExpectedRemovedSaleOrderItems(
+        [...originalItemReferenceByIdRef.current.keys()],
+        validItems.map((item) => item.id),
+      );
       updateOrder.mutate({
-        id: id!,
+        id: effectiveOrderId,
         order: orderData,
         items: validItems,
         client_id: resolvedClientId,
         representative_id: f.representative || null,
         commission_value,
-        packaging_product_id: packagingProductId || null,
-        packaging_quantity: packagingQuantity,
+        packaging_product_id: editorSnapshot.packagingProductId || null,
+        packaging_quantity: editorSnapshot.packagingQuantity,
         cancel_op_ids: cancelOpIds,
+        expected_order_version: loadedOrderVersionRef.current,
+        idempotency_key: updateCommandIntentRef.current.id,
+        expected_removed_count: expectedRemovedCount,
       } as any, {
-        onSuccess: () => {
+        onSuccess: (updated: { receipt?: { order_version?: number } } | undefined) => {
+          updateCommandIntentRef.current = null;
+          const persistedVersion = Number(updated?.receipt?.order_version) || 0;
+          if (persistedVersion > 0) loadedOrderVersionRef.current = persistedVersion;
           if (cancelOpIds.length > 0) {
             cancelOpsPreflightRunningRef.current = false;
-            setCancelOpsPreflight({ isRunning: false, error: null });
+            setCancelOpsPreflight({
+              isRunning: false,
+              error: null,
+              hasVersionConflict: false,
+            });
             setCancelOpsDialog({ open: false, ops: [] });
             toast.success(
               `${cancelOpIds.length} OP${cancelOpIds.length === 1 ? '' : 's'} cancelada${cancelOpIds.length === 1 ? '' : 's'} e edição salva atomicamente.`,
             );
           }
-          handlePostSave(id!);
+          handlePostSave(effectiveOrderId, persistedVersion);
         },
         onError: (error: unknown) => {
+          // O servidor fechou este receipt como failed: manter a mesma chave
+          // apenas repetiria a falha para sempre, mesmo após corrigir uma ficha
+          // ou integração que não altera order_version. Erro de transporte sem
+          // receipt preserva a chave para recuperar eventual commit ambíguo.
+          if (error instanceof SaleOrderCommandExecutionError) {
+            updateCommandIntentRef.current = null;
+          }
+          const message = formatUnknownSaleOrderUpdateError(error);
+          const hasVersionConflict = isStaleSaleOrderVersionError(error);
+          // Exclusão local ainda na tela: troca o toast infinito "salve para
+          // aplicar" por recusa explícita — senão parece que a remoção "pegou".
+          toast.warning('Remoção não aplicada — o servidor recusou o salvamento.', {
+            id: PV_ITEM_DELETE_TOAST_ID,
+            duration: 12000,
+            description: message,
+          });
           if (cancelOpIds.length > 0) {
-            const message = error instanceof Error
-              ? error.message
-              : error && typeof error === 'object' && 'message' in error
-                ? String((error as { message?: unknown }).message || 'O servidor recusou a edição atômica.')
-                : 'O servidor recusou a edição atômica.';
             cancelOpsPreflightRunningRef.current = false;
-            setCancelOpsPreflight({ isRunning: false, error: message });
+            setCancelOpsPreflight({
+              isRunning: false,
+              error: message,
+              hasVersionConflict,
+            });
+          } else if (hasVersionConflict) {
+            setVersionConflictError(message);
           }
           if (!isCommittedStrapSourcingError(error)) return;
           if (!isAdmin) {
@@ -1190,13 +1637,12 @@ export default function SaleOrderForm() {
         client_id: resolvedClientId,
         representative_id: f.representative || null,
         commission_value,
-        packaging_product_id: packagingProductId || null,
-        packaging_quantity: packagingQuantity,
+        packaging_product_id: editorSnapshot.packagingProductId || null,
+        packaging_quantity: editorSnapshot.packagingQuantity,
         client_request_id: clientRequestId,
       } as any, {
-        onSuccess: (created: { id?: string } | undefined) => {
-          clientRequestIdRef.current = null;
-          handlePostSave(created?.id);
+        onSuccess: (created: { id?: string; receipt?: { order_version?: number } } | undefined) => {
+          handlePostSave(created?.id, Number(created?.receipt?.order_version) || 1);
         },
       });
     }
@@ -1205,21 +1651,30 @@ export default function SaleOrderForm() {
   const doSubmit = async (statusOverride?: string) => {
     const f = formLatestRef.current;
     const validItems = items.filter(i => i.reference_id).map(normalizeItemReference);
+    const productionItems = filterProductionSaleOrderItems(validItems);
     if (validItems.length === 0) {
       toast.error('Adicione pelo menos um item ao pedido.');
       return;
     }
-    if (validItems.some(i => !i.color?.trim())) {
+    if (productionItems.some(i => !i.color?.trim())) {
       toast.error('Selecione uma cor para todos os itens.');
       return;
     }
     // Paridade com handleSubmit: dialogs de confirmação chamam doSubmit direto,
     // então o guard de tira sem cor também precisa valer aqui.
     {
-      const tiraSemCor = findTiraSemCor(validItems);
+      const tiraSemCor = findTiraSemCor(productionItems);
       if (tiraSemCor) { toast.error(tiraSemCor, { duration: 8000 }); return; }
     }
-    if (validItems.some(i => i.quantity <= 0)) {
+    {
+      const origemGap = assertStrapOrigemChoiceReady(productionItems);
+      if (origemGap) { toast.error(origemGap, { duration: 8000 }); return; }
+      if (openHubIncompleteIfNeeded(productionItems, {
+        kind: 'doSubmit',
+        statusOverride,
+      })) return;
+    }
+    if (productionItems.some(i => i.quantity <= 0)) {
       toast.error('A quantidade dos itens deve ser maior que zero.');
       return;
     }
@@ -1242,7 +1697,11 @@ export default function SaleOrderForm() {
         .eq('sale_order_id', id)
         .in('status', ['Em Produção', 'Concluída', 'Finalizado']);
       if (blocking && blocking.length > 0) {
-        setCancelOpsPreflight({ isRunning: false, error: null });
+        setCancelOpsPreflight({
+          isRunning: false,
+          error: null,
+          hasVersionConflict: false,
+        });
         setCancelOpsDialog({
           open: true,
           ops: blocking as BlockingOp[],
@@ -1260,8 +1719,65 @@ export default function SaleOrderForm() {
     const ops = cancelOpsDialog.ops;
     const pendingOverride = cancelOpsDialog.pendingStatusOverride;
     cancelOpsPreflightRunningRef.current = true;
-    setCancelOpsPreflight({ isRunning: true, error: null });
+    setCancelOpsPreflight({
+      isRunning: true,
+      error: null,
+      hasVersionConflict: false,
+    });
     dispatchMutation(pendingOverride, ops.map((op) => op.id));
+  };
+
+  const validateAuthoritativeSources = async (productionItems: SaleOrderItemFormData[]): Promise<boolean> => {
+    const clientId = String(formLatestRef.current.client_id || selectedClientId || '');
+    setCheckingReadiness(true);
+    try {
+      if (clientId) {
+        const { commercialDefaults, priceLookup } = await fetchClientSalesContext(clientId);
+        if (!isEdit && commercialDefaults.block_new_orders) {
+          toast.error(clientCommercialBlockMessage(commercialDefaults), { duration: 9000 });
+          return false;
+        }
+        if (priceLookup.context && !priceLookup.context.effective) {
+          toast.error(
+            `A tabela de preços “${priceLookup.context.name}” não está vigente. Corrija o cadastro antes de salvar.`,
+            { duration: 9000 },
+          );
+          return false;
+        }
+      }
+
+      const referenceIds = [...new Set(productionItems.map((item) => item.reference_id))];
+      if (referenceIds.length === 0) return true;
+      const { data: sheets, error } = await supabase
+        .from('technical_sheets')
+        .select('id, status_ficha')
+        .in('id', referenceIds);
+      if (error) throw error;
+      const sheetById = new Map((sheets || []).map((sheet) => [sheet.id, sheet]));
+      const missing = referenceIds.find((referenceId) => !sheetById.has(referenceId));
+      if (missing) {
+        toast.error('Uma ficha técnica do pedido não pôde ser localizada. Recarregue a tela antes de salvar.');
+        return false;
+      }
+      const unpublishedChangedItem = productionItems.find((item) => {
+        const originalReference = item.id ? originalItemReferenceByIdRef.current.get(item.id) : null;
+        const isNewSelection = !item.id || originalReference !== item.reference_id;
+        const status = String(sheetById.get(item.reference_id)?.status_ficha || '').toLowerCase();
+        return isNewSelection && status !== 'publicada';
+      });
+      if (unpublishedChangedItem) {
+        toast.error('Novos itens só podem usar uma ficha técnica publicada. Publique a referência e tente novamente.');
+        return false;
+      }
+      return true;
+    } catch (error: unknown) {
+      toast.error('Não foi possível validar política, tabela de preços e fichas técnicas.', {
+        description: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    } finally {
+      setCheckingReadiness(false);
+    }
   };
 
   const handleSubmit = async (
@@ -1269,15 +1785,20 @@ export default function SaleOrderForm() {
     opts: SubmitOptions = {},
   ) => {
     e.preventDefault();
+    if (checkingReadiness) return;
     if ((isEdit && !perm.canEdit) || (!isEdit && !perm.canCreate)) {
       toast.error('Você não tem permissão para salvar pedidos de venda.');
       return;
     }
     const f = formLatestRef.current;
     const validItems = items.filter(i => i.reference_id).map(normalizeItemReference);
+    const productionItems = filterProductionSaleOrderItems(validItems);
     if (validItems.length === 0) { toast.error('Adicione pelo menos um item ao pedido.'); return; }
-    if (validItems.some(i => !i.color?.trim())) { toast.error('Selecione uma cor para todos os itens.'); return; }
-    const missingStrapSnapshots = listMissingTechnicalStrapSnapshots(validItems, canonicalReferences as any[]);
+    if (productionItems.some(i => !i.color?.trim())) { toast.error('Selecione uma cor para todos os itens.'); return; }
+    const missingStrapSnapshots = listMissingTechnicalStrapSnapshots(
+      productionItems,
+      canonicalReferences as StrapSnapshotReferenceLike[],
+    );
     if (missingStrapSnapshots.length > 0) {
       toast.error(
         `Demanda de tira não resolvida em ${missingStrapSnapshots[0].label}: a ficha exige tiras, mas o item está sem linhas técnicas. ` +
@@ -1288,15 +1809,25 @@ export default function SaleOrderForm() {
     }
     // GUARD: bloqueia salvar com TIRA de cor vazia (débito pulado em silêncio).
     {
-      const tiraSemCor = findTiraSemCor(validItems);
+      const tiraSemCor = findTiraSemCor(productionItems);
       if (tiraSemCor) { toast.error(tiraSemCor, { duration: 8000 }); return; }
+    }
+    {
+      const origemGap = assertStrapOrigemChoiceReady(productionItems);
+      if (origemGap) { toast.error(origemGap, { duration: 8000 }); return; }
+      if (openHubIncompleteIfNeeded(productionItems, {
+        kind: 'submit',
+        opts,
+      })) return;
     }
     // GUARD: bloqueia salvar com cor não cadastrada no material (cabedal/forração/
     // tira). Sem produto na cor, o débito é pulado (ruptura). Cadastre antes.
     {
       const pendentes = Object.entries(colorIssues).filter(([k]) => {
         const i = Number(k);
-        return i < items.length && !!items[i]?.reference_id;
+        return i < items.length
+          && !!items[i]?.reference_id
+          && !items[i]?.production_excluded_at;
       });
       if (pendentes.length > 0) {
         const [, first] = pendentes[0];
@@ -1316,6 +1847,10 @@ export default function SaleOrderForm() {
       toast.error('Selecione qual factoring está antecipando este pedido.');
       return;
     }
+
+    // Política, tabela e fonte técnica são pré-condições, não avisos
+    // contornáveis. Se qualquer leitura falhar, nenhum writer é chamado.
+    if (!await validateAuthoritativeSources(productionItems)) return;
 
     // 0) Em pedidos NOVOS com cliente cadastrado, valida limite de crédito.
     //    Permite seguir mediante confirmação, mas avisa explicitamente.
@@ -1374,7 +1909,7 @@ export default function SaleOrderForm() {
     //    Se a data estiver vazia OU for anterior ao mínimo calculado, abre o diálogo.
     //    opts.skipMinBillingCheck=true vem de handleMinBillingConfirm/handleMinBillingManual
     //    pra evitar reabrir o dialog após o usuário já ter confirmado.
-    const doMinBillingCheck = !isEdit && validItems.length > 0 && !opts.skipMinBillingCheck;
+    const doMinBillingCheck = !isEdit && productionItems.length > 0 && !opts.skipMinBillingCheck;
     if (doMinBillingCheck) {
       setComputingMinBilling(true);
       try {
@@ -1395,7 +1930,7 @@ export default function SaleOrderForm() {
             };
           }
         } else {
-          const capInputs = validItems.map((it) => {
+          const capInputs = productionItems.map((it) => {
             const ref = canonicalReferences.find((r: any) => r.id === it.reference_id);
             const refLabel = ref ? `${(ref as any).code || ''} - ${(ref as any).name || ''}`.trim() : it.reference_id.substring(0, 8);
             return { reference_id: it.reference_id, reference_label: refLabel, quantity: it.quantity };
@@ -1424,15 +1959,24 @@ export default function SaleOrderForm() {
 
     // Bug fix (2026-06-02): em EDIÇÃO, não re-perguntar sobre compra/capacidade
     // quando nada relevante mudou. Itens de compra inalterados (ref/qtd/cor/grade/
-    // tiras) → não re-checa estoque/solado (prompt "gerar Ordem de Compra?"). Se a
+    // tiras) → não re-checa estoque/solado (prévia da compra). Se a
     // data de faturamento também não mudou → salva direto (pula a capacidade tb).
     // Só itens OU data mudando é que volta a checar. Na dúvida, checa (seguro).
-    if (isEdit && originalItemsSigRef.current !== null && itemsPurchaseSig(items) === originalItemsSigRef.current) {
+    if (isEdit && originalItemsSigRef.current !== null
+        && buildItemsPurchaseSignature(items, f.packaging_mode) === originalItemsSigRef.current) {
       if (originalDeadlineRef.current !== null && (f.delivery_deadline || '') === originalDeadlineRef.current) {
         doSubmit();
         return;
       }
-      await runCapacityCheck(validItems);
+      await runCapacityCheck(productionItems);
+      return;
+    }
+
+    // Um PV pode ficar apenas com linhas comerciais preservadas depois que o
+    // admin retira a ficha. Elas precisam continuar no payload do UPDATE, mas
+    // não existe estoque, solado ou capacidade a verificar para essas linhas.
+    if (productionItems.length === 0) {
+      doSubmit();
       return;
     }
 
@@ -1441,7 +1985,7 @@ export default function SaleOrderForm() {
     // Run all stock checks concurrently. `allSettled` nunca rejeita — quem diz se
     // a consulta de cada item respondeu é o status do resultado, checado abaixo.
     const stockResults = await Promise.allSettled(
-      validItems.map(async (item) => {
+      productionItems.map(async (item) => {
         const ref = canonicalReferences.find((r: any) => r.id === item.reference_id);
         const refLabel = ref ? `${(ref as any).code || ''} - ${(ref as any).name || ''}`.trim() : item.reference_id.substring(0, 8);
         // Passa strap_colors + grade pra que a checagem detecte shortage
@@ -1470,13 +2014,12 @@ export default function SaleOrderForm() {
     // normais em vez de a falta virar save direto.
     const continueAfterStockCheck = async () => {
       try {
-        // Collect all insufficient materials
-        // Passa color + grade do item do PV pra cada shortage. A função
-        // enrichMaterialShortages decide se mantém esses campos (solados →
-        // agrupa por cor/grade) ou descarta (forros/tiras → agrega por
-        // product_id apenas).
-        const rawShortages: Array<{ product_id: string; product_name: string; required: number; available: number; referenceLabel: string; color?: string | null; grade?: Record<string, number> | null }> = [];
-        const validItemsList = validItems;
+        // Colete TODAS as contribuições antes de decidir se há falta. Cada RPC
+        // recebe só um item e compara contra o mesmo estoque; filtrar aqui por
+        // `mat.sufficient` perderia faltas agregadas (ex.: 3 × 17 kg > 29 kg,
+        // embora cada uma das três respostas isoladas diga "suficiente").
+        const rawAvailability: RawMaterialAvailability[] = [];
+        const validItemsList = productionItems;
         let resultIdx = 0;
         for (const result of stockResults) {
           const sourceItem = validItemsList[resultIdx];
@@ -1485,38 +2028,35 @@ export default function SaleOrderForm() {
           const itemGrade = (sourceItem as any)?.grade ?? null;
           const itemColor = result.value.color || null;
           for (const mat of result.value.availability) {
-            if (!mat.sufficient) {
-              rawShortages.push({
-                product_id: mat.product_id,
-                product_name: mat.product_name,
-                required: mat.required,
-                available: mat.available,
-                referenceLabel: `${result.value.refLabel} (${itemColor || 'sem cor'})`,
-                color: itemColor,
-                grade: itemGrade,
-              });
-            }
+            rawAvailability.push({
+              product_id: mat.product_id || null,
+              product_name: mat.product_name,
+              required: mat.required,
+              available: mat.available,
+              referenceLabel: `${result.value.refLabel} (${itemColor || 'sem cor'})`,
+              color: itemColor,
+              grade: itemGrade,
+            });
           }
         }
-
         // TIRAS são tratadas EXCLUSIVAMENTE pela fila canônica após o save. Remove
-        // tiras deste caminho antigo pra NÃO gerar OC DUPLICADA.
+        // tiras desta prévia porque elas seguem outro planejamento operacional.
         // Exclui: (a) product_id nulo = tira de cor nova sem produto (check_stock_availability
         // agora emite a falta, mas quem resolve é o dialog de tiras); (b) produtos cujo grupo
         // é de tira — identificado pelos group_ids das strap_colors dos itens (autoritativo) +
         // regex de nome de grupo como reforço.
         const strapGroupIds = new Set<string>();
-        for (const it of validItems) {
+        for (const it of productionItems) {
           const straps = Array.isArray((it as any).strap_colors) ? (it as any).strap_colors : [];
           for (const s of straps) if (s?.group_id) strapGroupIds.add(String(s.group_id));
         }
         const STRAP_GROUP_RE = /tira|el[aá]stic|tran[çc]/i;
 
-        let materialShortages = rawShortages.filter((s) => s.product_id != null);
-        if (rawShortages.length > 0) {
+        let materialAvailability = rawAvailability.filter((s) => s.product_id != null);
+        if (rawAvailability.length > 0) {
           // Enriquece solados: substitui cor do sapato pela cor real cadastrada do solado
           // (check_stock_availability não retorna cor do solado). E identifica tiras pra excluir.
-          const productIds = [...new Set(rawShortages.map((s) => s.product_id).filter(Boolean))];
+          const productIds = [...new Set(rawAvailability.map((s) => s.product_id).filter(Boolean))];
           const { data: prodMeta } = await supabase
             .from('products')
             .select('id, category, color, group_id, product_groups(name)')
@@ -1527,21 +2067,24 @@ export default function SaleOrderForm() {
                 strapGroupIds.has(String(p.group_id)) || STRAP_GROUP_RE.test(p.product_groups?.name || ''))
               .map((p: any) => p.id as string)
           );
-          materialShortages = materialShortages.filter((s) => !strapProductIds.has(s.product_id));
+          materialAvailability = materialAvailability.filter((s) => !strapProductIds.has(s.product_id));
 
           const soleColor = new Map(
             (prodMeta || [])
               .filter((p: any) => p.category === 'Solado' && p.color)
               .map((p: any) => [p.id, p.color as string])
           );
-          for (const s of materialShortages) {
+          for (const s of materialAvailability) {
             const realColor = soleColor.get(s.product_id);
             if (realColor) s.color = realColor;
           }
         }
 
-        if (materialShortages.length > 0) {
-          const enriched = await enrichMaterialShortages(materialShortages);
+        if (materialAvailability.length > 0) {
+          // O enriquecimento conhece a categoria do produto: mantém solados
+          // separados por cor/grade e só então colapsa as cores dos materiais
+          // comuns, comparando o consumo total contra o estoque uma única vez.
+          const enriched = await enrichMaterialShortages(materialAvailability);
           if (enriched.shortages.length > 0) {
             setMaterialResult(enriched);
             setMaterialDialogOpen(true);
@@ -1552,7 +2095,7 @@ export default function SaleOrderForm() {
 
         // Material OK — check sole availability and offer to generate POs
         const soleCheck = await checkSoleAvailability(
-          validItems.map((it) => {
+          productionItems.map((it) => {
             const ref = canonicalReferences.find((r: any) => r.id === it.reference_id);
             const refLabel = ref ? `${(ref as any).code || ''} - ${(ref as any).name || ''}`.trim() : it.reference_id.substring(0, 8);
             return {
@@ -1573,7 +2116,7 @@ export default function SaleOrderForm() {
           return;
         }
         // Check de capacidade setorial
-        await runCapacityCheck(validItems);
+        await runCapacityCheck(productionItems);
       } catch (err: any) {
         // (c) a checagem de material/solado morreu no meio (RPC, rede, enriquecimento).
         // Antes caía direto no doSubmit(): o PV era salvo sem ninguém saber que a
@@ -1581,9 +2124,9 @@ export default function SaleOrderForm() {
         setCheckingStock(false);
         setUnverifiedConfirm({
           what: 'a disponibilidade de materiais e de solado deste pedido',
-          consequence: 'O pedido pode ser salvo com material ou solado em falta, sem a Ordem de Compra ser oferecida.',
+          consequence: 'O pedido pode ser salvo sem a prévia de compra. O servidor ainda recalcula as faltas após o commit e registra qualquer bloqueio como atenção operacional.',
           detail: err?.message,
-          resume: () => { void runCapacityCheck(validItems); },
+          resume: () => { void runCapacityCheck(productionItems); },
         });
       }
     };
@@ -1595,7 +2138,7 @@ export default function SaleOrderForm() {
     const unverifiedItems: string[] = [];
     stockResults.forEach((result, idx) => {
       if (result.status === 'fulfilled' && result.value.availability) return;
-      const item = validItems[idx];
+      const item = productionItems[idx];
       const ref = canonicalReferences.find((r: any) => r.id === item?.reference_id);
       const refLabel = result.status === 'fulfilled'
         ? result.value.refLabel
@@ -1615,7 +2158,7 @@ export default function SaleOrderForm() {
         what: unverifiedItems.length === 1
           ? `o estoque de 1 item: ${unverifiedItems[0]}`
           : `o estoque de ${unverifiedItems.length} itens: ${listados}`,
-        consequence: 'Pode faltar material na produção sem a Ordem de Compra ser oferecida. Os itens que responderam seguem sendo checados normalmente.',
+        consequence: 'A prévia pode omitir faltas deste item. O servidor ainda recalcula o pedido após o commit; os itens que responderam seguem sendo mostrados normalmente.',
         detail: failed ? (failed.reason?.message ?? String(failed.reason)) : undefined,
         resume: () => { setCheckingStock(true); void continueAfterStockCheck(); },
       });
@@ -1707,14 +2250,19 @@ export default function SaleOrderForm() {
     applyMinBillingManual(newISO, reason);
   };
 
-  const runCapacityCheck = async (validItems: SaleOrderItemFormData[]) => {
+  const runCapacityCheck = async (candidateItems: SaleOrderItemFormData[]) => {
+    const productionItems = filterProductionSaleOrderItems(candidateItems);
+    if (productionItems.length === 0) {
+      doSubmit();
+      return;
+    }
     const deadline = formLatestRef.current.delivery_deadline;
     if (!deadline) {
       doSubmit();
       return;
     }
     try {
-      const capInputs = validItems.map((it) => {
+      const capInputs = productionItems.map((it) => {
         const ref = canonicalReferences.find((r: any) => r.id === it.reference_id);
         const refLabel = ref ? `${(ref as any).code || ''} - ${(ref as any).name || ''}`.trim() : it.reference_id.substring(0, 8);
         return { reference_id: it.reference_id, reference_label: refLabel, quantity: it.quantity };
@@ -1770,14 +2318,16 @@ export default function SaleOrderForm() {
     setTimeout(() => doSubmit(), 100);
   };
 
-  const handleSoleConfirm = (_generatedPO: boolean) => {
+  const handleSoleConfirm = () => {
     setSoleDialogOpen(false);
     if (soleResult?.minBillingDateISO && !form.delivery_deadline) {
       setForm(f => ({ ...f, delivery_deadline: soleResult.minBillingDateISO! }));
     }
     setTimeout(() => {
-      const validItems = items.filter(i => i.reference_id).map(normalizeItemReference);
-      runCapacityCheck(validItems);
+      const productionItems = filterProductionSaleOrderItems(
+        items.filter(i => i.reference_id).map(normalizeItemReference),
+      );
+      runCapacityCheck(productionItems);
     }, 100);
   };
 
@@ -1803,21 +2353,54 @@ export default function SaleOrderForm() {
     });
   };
 
-  const handleMaterialConfirm = (action: 'with_po' | 'without_po' | 'draft') => {
+  const handleMaterialConfirm = (action: 'continue' | 'draft') => {
     setMaterialDialogOpen(false);
     if (action !== 'draft' && materialResult?.minPurchaseDateISO && !form.delivery_deadline) {
       setForm(f => ({ ...f, delivery_deadline: materialResult.minPurchaseDateISO! }));
     }
     setTimeout(() => {
       if (action === 'draft') { doSubmit('Rascunho'); return; }
-      const validItems = items.filter(i => i.reference_id).map(normalizeItemReference);
-      runCapacityCheck(validItems);
+      const productionItems = filterProductionSaleOrderItems(
+        items.filter(i => i.reference_id).map(normalizeItemReference),
+      );
+      runCapacityCheck(productionItems);
     }, 100);
   };
 
-  if (loading) {
+  if (loading && !referencesFailed && !loadError) {
     return (
       <FormSkeleton blocks={3} fieldsPerBlock={4} />
+    );
+  }
+
+  if (referencesFailed) {
+    return (
+      <div className="mx-auto max-w-xl space-y-4 rounded-lg border border-destructive/40 bg-destructive/5 p-6">
+        <h1 className="text-lg font-bold">Não foi possível carregar as fichas técnicas</h1>
+        <p className="text-sm text-muted-foreground">
+          A criação e a edição ficam bloqueadas até a fonte técnica responder.
+          {referencesError instanceof Error ? ` ${referencesError.message}` : ''}
+        </p>
+        <div className="flex gap-2">
+          <Button onClick={() => void refetchReferences()}>Tentar novamente</Button>
+          <Button variant="outline" onClick={() => navigate('/sales')}>Voltar</Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (isEdit && loadError) {
+    return (
+      <div className="mx-auto max-w-xl space-y-4 rounded-lg border border-destructive/40 bg-destructive/5 p-6">
+        <h1 className="text-lg font-bold">Pedido não carregado</h1>
+        <p className="text-sm text-muted-foreground">
+          Cabeçalho e itens precisam carregar juntos antes da edição. {loadError}
+        </p>
+        <div className="flex gap-2">
+          <Button onClick={() => setLoadAttempt((attempt) => attempt + 1)}>Tentar novamente</Button>
+          <Button variant="outline" onClick={() => navigate('/sales')}>Voltar</Button>
+        </div>
+      </div>
     );
   }
 
@@ -1847,25 +2430,21 @@ export default function SaleOrderForm() {
                 <Button
                   variant="outline" size="sm" className="h-9 gap-1.5"
                   onClick={() => { setGenOsPvId(id); setGenOsNavAfter(false); setGenOsOpen(true); }}
+                  disabled={hasUnsavedEdits}
+                  title={hasUnsavedEdits ? 'Salve o pedido antes de gerar OS sobre os dados persistidos.' : undefined}
                 >
                   <Handshake className="h-4 w-4" /> Gerar OS
-                </Button>
-              )}
-              {/* Envio POSTERIOR: setor que não foi marcado nos itens antes da OP
-                  nascer, ou OS que falhou na criação automática (o trigger engole
-                  o erro de propósito — falhar a OS não pode travar a OP). */}
-              {isEdit && id && (
-                <Button
-                  variant="outline" size="sm" className="h-9 gap-1.5"
-                  onClick={() => setSendSectorOpen(true)}
-                >
-                  <PaperPlaneTilt className="h-4 w-4" /> Enviar pra prestador
                 </Button>
               )}
             </>
           }
         />
 
+        <fieldset
+          disabled={createOrder.isPending || updateOrder.isPending || checkingReadiness || checkingStock || computingMinBilling}
+          className="m-0 min-w-0 border-0 p-0 disabled:cursor-wait"
+          aria-busy={createOrder.isPending || updateOrder.isPending || checkingReadiness || checkingStock || computingMinBilling}
+        >
         <SaleOrderFormPanel
           saleOrderId={isEdit ? id : null}
           form={form}
@@ -1880,10 +2459,12 @@ export default function SaleOrderForm() {
           onClientSelect={handleClientSelect}
           onSubmit={handleSubmit}
           onCancel={guardExit(() => navigate('/sales'))}
-          onUserEdit={() => setHasUnsavedEdits(true)}
-          isPending={createOrder.isPending || updateOrder.isPending || checkingStock || computingMinBilling}
+          onUserEdit={() => undefined}
+          isPending={createOrder.isPending || updateOrder.isPending || checkingReadiness || checkingStock || computingMinBilling}
           submitLabel={
-            computingMinBilling
+            checkingReadiness
+              ? 'Validando política e fichas...'
+              : computingMinBilling
               ? 'Calculando semana mínima...'
               : checkingStock
                 ? 'Verificando estoque...'
@@ -1899,7 +2480,10 @@ export default function SaleOrderForm() {
           minBillingISO={liveMinBillingISO}
           computingMinBilling={computingLive}
           onColorIssueChange={handleColorIssueChange}
+          strapCatalog={strapCatalog}
+          strapCatalogLoading={strapCatalogLoading}
         />
+        </fieldset>
 
         {/* OS deste pedido (read-only) — geração fica em Terceirizados → Gerar OS por Pedido */}
         {isEdit && id && (
@@ -1908,14 +2492,6 @@ export default function SaleOrderForm() {
           </div>
         )}
 
-        {isEdit && id && (
-          <SendSectorToContractorDialog
-            open={sendSectorOpen}
-            onOpenChange={setSendSectorOpen}
-            saleOrderId={id}
-            saleOrderLabel={form?.order_number || null}
-          />
-        )}
       </div>
 
       {/* Dialog de rascunho — opt-in pra restaurar / descartar */}
@@ -1964,7 +2540,6 @@ export default function SaleOrderForm() {
         open={materialDialogOpen}
         onOpenChange={abortSubmit(setMaterialDialogOpen, 'compra de material')}
         result={materialResult}
-        saleOrderId={isEdit ? id : null}
         onConfirm={handleMaterialConfirm}
       />
 
@@ -2184,20 +2759,101 @@ export default function SaleOrderForm() {
         }}
       />
 
+      <AlertDialog
+        open={versionConflictError !== null}
+        onOpenChange={(open) => { if (!open) setVersionConflictError(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-600" />
+              Este PV mudou enquanto estava aberto
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>{versionConflictError}</p>
+                <p>
+                  Nenhuma alteração deste envio foi aplicada. Você pode continuar
+                  nesta tela para consultar ou copiar seus dados, mas precisa
+                  recarregar o PV antes de salvar novamente.
+                </p>
+                <p className="font-medium text-foreground">
+                  Ao recarregar, alterações locais ainda não salvas serão descartadas.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Continuar revisando</AlertDialogCancel>
+            <AlertDialogAction onClick={() => window.location.reload()}>
+              Recarregar e revisar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <CancelOpsAndEditDialog
         open={cancelOpsDialog.open}
         onOpenChange={(v) => {
           if (!v && !updateOrder.isPending && !cancelOpsPreflight.isRunning) {
+            const hadFailure = Boolean(cancelOpsPreflight.error);
             cancelOpsPreflightRunningRef.current = false;
             setCancelOpsDialog({ open: false, ops: [] });
-            setCancelOpsPreflight({ isRunning: false, error: null });
+            setCancelOpsPreflight({
+              isRunning: false,
+              error: null,
+              hasVersionConflict: false,
+            });
+            if (hadFailure) {
+              toast.error('Pedido não salvo — remoções locais não foram aplicadas.', {
+                id: PV_ITEM_DELETE_TOAST_ID,
+                duration: 10000,
+              });
+            }
           }
         }}
         ops={cancelOpsDialog.ops}
         isPreflighting={cancelOpsPreflight.isRunning}
         preflightError={cancelOpsPreflight.error}
+        hasVersionConflict={cancelOpsPreflight.hasVersionConflict}
         isCancelling={updateOrder.isPending && cancelOpsDialog.open}
         onConfirm={handleConfirmCancelOps}
+        onReload={() => window.location.reload()}
+      />
+
+      <StrapHubIncompleteDialog
+        open={hubIncompleteDialog.open}
+        onOpenChange={(open) => {
+          if (!open) setHubIncompleteDialog({ open: false, issues: [], resume: null });
+        }}
+        issues={hubIncompleteDialog.issues}
+        catalog={strapCatalog}
+        onCompleted={(patches: StrapHubPricePatch[]) => {
+          const resume = hubIncompleteDialog.resume;
+          const nextOverrides = { ...hubPriceOverridesRef.current };
+          for (const patch of patches) {
+            nextOverrides[patch.measureId] = {
+              ...nextOverrides[patch.measureId],
+              ...(patch.precoArtesanalPerM !== undefined
+                ? { preco_artesanal_per_m: patch.precoArtesanalPerM }
+                : {}),
+              ...(patch.precoPrestadorPerM !== undefined
+                ? { preco_prestador_per_m: patch.precoPrestadorPerM }
+                : {}),
+            };
+          }
+          // Ref síncrono: o handleSubmit/doSubmit seguinte lê daqui antes do
+          // re-render aplicar o state.
+          hubPriceOverridesRef.current = nextOverrides;
+          setHubPriceOverrides(nextOverrides);
+          setHubIncompleteDialog({ open: false, issues: [], resume: null });
+          if (resume?.kind === 'submit') {
+            const fakeEvent = { preventDefault() {} } as React.FormEvent;
+            void handleSubmit(fakeEvent, resume.opts);
+          } else if (resume?.kind === 'doSubmit') {
+            void doSubmit(resume.statusOverride);
+          }
+        }}
       />
 
       {/* Atalho de finalização: oferece gerar OS de terceirização deste pedido */}

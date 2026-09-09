@@ -18,41 +18,6 @@ export const STRAP_YIELD_DEFAULTS = {
   comprimentoRoloM: ROLO_COMPRIMENTO_M,
 } as const;
 
-const YIELD_DECIMALS = 6;
-
-function roundYield(value: number) {
-  const factor = 10 ** YIELD_DECIMALS;
-  return Math.round((value + Number.EPSILON) * factor) / factor;
-}
-
-/**
- * Converte a perda operacional informada na tela no rendimento confirmado canônico.
- *
- * A porcentagem é apenas uma forma alternativa de cadastrar o rendimento real. Ela
- * não é persistida nem reaplicada no consumo, evitando descontar a mesma perda duas
- * vezes. Ex.: 76 m/m teóricos com 10% de perda = 68,4 m/m confirmados.
- */
-export function confirmedStrapYieldFromLossPercentage(
-  theoreticalYieldMPerM: number,
-  lossPercentage: number,
-) {
-  const theoreticalYield = Number(theoreticalYieldMPerM);
-  const loss = Number(lossPercentage);
-  if (!(theoreticalYield > 0) || !Number.isFinite(loss) || loss < 0 || loss >= 100) return 0;
-  return roundYield(theoreticalYield * (1 - loss / 100));
-}
-
-/** Calcula a perda equivalente para alternar de rendimento real para porcentagem. */
-export function strapYieldLossPercentageFromConfirmed(
-  theoreticalYieldMPerM: number,
-  confirmedYieldMPerM: number,
-) {
-  const theoreticalYield = Number(theoreticalYieldMPerM);
-  const confirmedYield = Number(confirmedYieldMPerM);
-  if (!(theoreticalYield > 0) || !(confirmedYield > 0) || confirmedYield > theoreticalYield) return 0;
-  return roundYield((1 - confirmedYield / theoreticalYield) * 100);
-}
-
 export interface StrapYieldInput {
   /** `Lm` — largura útil do material (mm). */
   larguraMaterialMm: number;
@@ -127,13 +92,16 @@ function resolveOperationalYield(
  * `valid:false` + `error` (não lança). Cálculo interno em precisão total; a UI arredonda.
  */
 export function computeStrapYield(input: StrapYieldInput): StrapYieldResult {
-  const Lm = Number(input.larguraMaterialMm) || 0;
-  const Lt = Number(input.larguraTiraMm) || 0;
-  const Cr = Number(input.comprimentoRoloM) || 0;
+  const Lm = Number(input.larguraMaterialMm);
+  const Lt = Number(input.larguraTiraMm);
+  const Cr = Number(input.comprimentoRoloM);
 
-  if (!(Lm > 0)) return fail('Informe a largura útil do material.');
-  if (!(Lt > 0)) return fail('Informe a largura da banda de corte.');
-  if (!(Cr > 0)) return fail('Informe o comprimento do rolo.');
+  if (!Number.isFinite(Lm) || !(Lm > 0)) return fail('Informe a largura útil do material.');
+  if (!Number.isFinite(Lt) || !(Lt > 0)) return fail('Informe a largura da banda de corte.');
+  if (!Number.isFinite(Cr) || !(Cr > 0)) return fail('Informe o comprimento do rolo.');
+  if (input.custoMetroLinear != null && !Number.isFinite(Number(input.custoMetroLinear))) {
+    return fail('Informe um custo por metro linear válido.');
+  }
   if (Lt > Lm) return fail('A largura da banda de corte é maior que a largura do material.');
   const bandasCompletas = Math.floor(Lm / Lt);
   if (bandasCompletas < 1) return fail('A largura útil não comporta uma banda completa.');
@@ -289,16 +257,19 @@ function failNeeded(error: string): StrapMaterialNeededResult {
  * OBRIGATÓRIO aqui, pois é ele que fixa em que comprimento a faixa é cortada.
  */
 export function computeStrapMaterialNeeded(input: StrapMaterialNeededInput): StrapMaterialNeededResult {
-  const Lm = Number(input.larguraMaterialMm) || 0;
-  const Lt = Number(input.larguraTiraMm) || 0;
-  const Cr = Number(input.comprimentoRoloM) || 0;
-  const T = Number(input.tiraDesejadaM) || 0;
+  const Lm = Number(input.larguraMaterialMm);
+  const Lt = Number(input.larguraTiraMm);
+  const Cr = Number(input.comprimentoRoloM);
+  const T = Number(input.tiraDesejadaM);
 
-  if (!(Lm > 0)) return failNeeded('Informe a largura útil do material.');
-  if (!(Lt > 0)) return failNeeded('Informe a largura da banda de corte.');
-  if (!(T > 0)) return failNeeded('Informe quantos metros de tira você precisa.');
+  if (!Number.isFinite(Lm) || !(Lm > 0)) return failNeeded('Informe a largura útil do material.');
+  if (!Number.isFinite(Lt) || !(Lt > 0)) return failNeeded('Informe a largura da banda de corte.');
+  if (!Number.isFinite(T) || !(T > 0)) return failNeeded('Informe quantos metros de tira você precisa.');
   if (Lt > Lm) return failNeeded('A largura da banda de corte é maior que a largura do material.');
-  if (!(Cr > 0)) return failNeeded('Informe o comprimento do rolo (define a largura a cortar).');
+  if (!Number.isFinite(Cr) || !(Cr > 0)) return failNeeded('Informe o comprimento do rolo (define a largura a cortar).');
+  if (input.custoMetroLinear != null && !Number.isFinite(Number(input.custoMetroLinear))) {
+    return failNeeded('Informe um custo por metro linear válido.');
+  }
   const bandasCompletas = Math.floor(Lm / Lt);
   if (bandasCompletas < 1) return failNeeded('A largura útil não comporta uma banda completa.');
   const metragemPorMetroBruto = bandasCompletas;
@@ -428,9 +399,9 @@ export function partialCutYield(
   comprimentoM: number,
   custoMetroLinear?: number | null,
 ): PartialCutResult {
-  const rate = Number(metragemPorMetroLiq) || 0;
-  const Lm = Number(comprimentoM) || 0;
-  const valid = rate > 0 && Lm > 0;
+  const rate = Number(metragemPorMetroLiq);
+  const Lm = Number(comprimentoM);
+  const valid = Number.isFinite(rate) && rate > 0 && Number.isFinite(Lm) && Lm > 0;
 
   const tiraM = valid ? rate * Lm : 0;
 

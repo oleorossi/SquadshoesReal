@@ -174,9 +174,22 @@ export async function autoStartDueWaves(): Promise<number> {
 }
 
 export async function advanceWaveStage(waveId: string, stage: ProductionStage): Promise<ProductionStage | null> {
-  const { data, error } = await supabase.rpc('advance_wave_stage' as any, { p_wave_id: waveId, p_stage: stage });
+  type WaveStageCommandResult = {
+    data: { next_stage?: ProductionStage | null } | null;
+    error: { message?: string } | null;
+  };
+  const callRpc = supabase.rpc as unknown as (
+    functionName: string,
+    args: Record<string, unknown>,
+  ) => PromiseLike<WaveStageCommandResult>;
+  const { data, error } = await callRpc('execute_production_wave_stage_command', {
+    p_wave_id: waveId,
+    p_expected_stage: stage,
+    p_client_request_id: crypto.randomUUID(),
+  });
   if (error) throw error;
-  return (data as ProductionStage) ?? null;
+  const nextStage = data?.next_stage;
+  return nextStage ?? null;
 }
 
 export async function getFinishingPackages(waveId: string): Promise<FinishingPackage[]> {
@@ -232,6 +245,25 @@ export async function listPendingSaleOrdersForWeek(weekStart: string): Promise<
     total_pairs: number; delivery_deadline: string | null; op_numbers: string[];
   }>
 > {
+  interface PendingSaleOrderItemRow {
+    quantity: number | null;
+    production_excluded_at: string | null;
+  }
+
+  interface PendingSaleOrderRow {
+    id: string;
+    order_number: string | null;
+    client_cnpj: string | null;
+    delivery_deadline: string | null;
+    clients: { razao_social: string | null } | null;
+    sale_order_items: PendingSaleOrderItemRow[] | null;
+    orders: Array<{ order_number: string | null }> | null;
+  }
+
+  interface PendingAssignedSourceRow {
+    sale_order_id: string | null;
+  }
+
   const weekEnd = new Date(new Date(weekStart).getTime() + 6 * 86400000)
     .toISOString().slice(0, 10);
 
@@ -240,29 +272,43 @@ export async function listPendingSaleOrdersForWeek(weekStart: string): Promise<
     .select('sale_order_id, production_wave_items!inner(wave_id, production_waves!inner(id, status))')
     .in('production_wave_items.production_waves.status', ['planning', 'running']);
 
-  const assignedIds = new Set<string>(
-    (assignedData ?? []).map((r: any) => r.sale_order_id).filter(Boolean)
+  const assignedRows = (assignedData ?? []) as unknown as PendingAssignedSourceRow[];
+  const assignedIds = new Set(
+    assignedRows
+      .map((row) => row.sale_order_id)
+      .filter((saleOrderId): saleOrderId is string => Boolean(saleOrderId)),
   );
 
-  const { data, error } = await supabase
+  const { data: rawData, error } = await supabase
     .from('sale_orders')
-    .select('id, order_number, client_cnpj, delivery_deadline, clients(razao_social), sale_order_items(quantity), orders!sale_order_id(order_number)')
+    .select('id, order_number, client_cnpj, delivery_deadline, clients(razao_social), sale_order_items(quantity, production_excluded_at), orders!sale_order_id(order_number)')
     .in('status', ['Aprovado', 'Em Produção'])
     .lte('delivery_deadline', weekEnd);
 
   if (error) throw error;
-  return (data ?? [])
-    .filter((so: any) => !assignedIds.has(so.id))
-    .map((so: any) => ({
-      id: so.id,
-      code: so.order_number ?? null,
-      client_name: so.clients?.razao_social ?? null,
-      cnpj: so.client_cnpj ?? null,
-      delivery_deadline: so.delivery_deadline ?? null,
-      total_pairs: (so.sale_order_items ?? []).reduce(
-        (s: number, i: any) => s + Number(i.quantity || 0), 0),
-      op_numbers: (so.orders ?? []).map((op: any) => op.order_number).filter(Boolean),
-    }));
+  const data = (rawData ?? []) as unknown as PendingSaleOrderRow[];
+  return data
+    .filter((so) => !assignedIds.has(so.id))
+    .map((so) => {
+      const productionItems = (so.sale_order_items ?? []).filter(
+        (item) => !item.production_excluded_at,
+      );
+      return {
+        id: so.id,
+        code: so.order_number ?? null,
+        client_name: so.clients?.razao_social ?? null,
+        cnpj: so.client_cnpj ?? null,
+        delivery_deadline: so.delivery_deadline ?? null,
+        total_pairs: productionItems.reduce(
+          (sum, item) => sum + Number(item.quantity || 0), 0),
+        op_numbers: (so.orders ?? [])
+          .map((op) => op.order_number)
+          .filter((orderNumber): orderNumber is string => Boolean(orderNumber)),
+      };
+    })
+    // Um PV cujo único item foi retirado da produção continua preservado no
+    // histórico/comercial, mas não pode voltar para uma onda vazia.
+    .filter((so: { total_pairs: number }) => so.total_pairs > 0);
 }
 
 export type WaveSaleOrder = {

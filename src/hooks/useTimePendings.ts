@@ -21,7 +21,7 @@ export interface PunchSuggestion {
   reason: string;                 // explicação humana
   missing_count: number;          // quantas batidas faltavam
   observed_days: number;          // tamanho da amostra histórica
-  is_absent_covered: boolean;     // dia coberto por ausência justificada
+  is_absent_covered: boolean;     // dia coberto por ausência remunerada
   pattern: {
     observed: string[] | null;    // 4 batidas medianas (se observed_days >= 5)
     schedule: string[] | null;    // 4 batidas do work_schedule
@@ -48,10 +48,8 @@ export interface TimePending {
   urgency: Urgency;
   suggestion: PunchSuggestion | null;  // gerado pela função SQL suggest_punches_for_record
   /**
-   * Mais de uma ficha de `employees` casou com este registro (crachá + nome).
-   * A view escolhe uma por precedência external_id > nome (migration
-   * 20261226120000) — a flag existe pra o RH ver que o cadastro está duplicado
-   * e corrigir a causa, já que o `employee_id` aqui é uma escolha, não um fato.
+   * A linha não possui `employee_id` canônico. Nenhuma pessoa foi escolhida por
+   * crachá/nome; o RH precisa corrigir matrícula/vigência e resolver o vínculo.
    */
   employee_match_ambiguous: boolean;
 }
@@ -79,6 +77,14 @@ const isPendingRow = (r: TimePending): boolean => {
   return PROBLEM_STATUSES.includes(r.day_summary?.status);
 };
 
+function errorMessage(error: unknown): string | null {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object' && 'message' in error) {
+    return String(error.message);
+  }
+  return null;
+}
+
 /**
  * Lista de registros de ponto problemáticos (status inconsistent/irregular/partial,
  * ou 2 batidas com almoço inferido) nos últimos 90 dias úteis.
@@ -91,15 +97,18 @@ export function useTimePendings(opts?: { onlyProblems?: boolean }) {
       // Paginada: a view passa de 1.000 linhas com facilidade e o corte padrão
       // do PostgREST escondia pendência (auditoria T7). Ordem determinística
       // (days_since + employee) pra a paginação não repetir/pular linha.
-      const rows = await fetchAllPages<TimePending>((from, to) =>
-        (supabase as any)
+      const rows = await fetchAllPages<TimePending>((from, to) => {
+        const page = supabase
           .from('v_time_pendings')
           .select('*')
           .order('days_since', { ascending: false })
           .order('employee_id', { ascending: true })
           .order('record_date', { ascending: true })
-          .range(from, to),
-      );
+          .range(from, to);
+        // A view declara vários campos como nullable/Json nos tipos gerados,
+        // embora o contrato SQL os normalize. Isola essa adaptação na borda.
+        return page as unknown as PromiseLike<{ data: TimePending[] | null; error: unknown }>;
+      });
       return opts?.onlyProblems ? rows.filter(isPendingRow) : rows;
     },
     staleTime: 60_000,
@@ -113,7 +122,7 @@ export function usePendingCountByEmployee(maxAgeDays = 30) {
   return useQuery({
     queryKey: ['get_pending_count_by_employee', maxAgeDays],
     queryFn: async () => {
-      const { data, error } = await (supabase as any).rpc('get_pending_count_by_employee', {
+      const { data, error } = await supabase.rpc('get_pending_count_by_employee', {
         p_max_age_days: maxAgeDays,
       });
       if (error) throw error;
@@ -143,7 +152,7 @@ export function useCompletePunches() {
     mutationFn: async ({
       timeRecordId, punches, reason,
     }: { timeRecordId: string; punches: string[]; reason?: string }) => {
-      const { error } = await (supabase as any).rpc('complete_punches', {
+      const { error } = await supabase.rpc('complete_punches', {
         p_time_record_id: timeRecordId,
         p_punches: punches,
         p_reason: reason ?? null,
@@ -157,9 +166,39 @@ export function useCompletePunches() {
       qc.invalidateQueries({ queryKey: ['time_records'] });
       toast.success('Batidas atualizadas. Banco de horas recalculado.');
     },
-    onError: (err: any) => {
-      toast.error(err?.message || 'Falha ao completar batidas.');
+    onError: (err: unknown) => {
+      toast.error(errorMessage(err) || 'Falha ao completar batidas.');
     },
+  });
+}
+
+/** Reprocessa uma linha legada sem FK depois da correção de matrícula/vigência. */
+export function useResolveTimeRecordIdentity() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (timeRecordId: string) => {
+      const { error } = await (supabase as unknown as {
+        rpc: (name: 'resolve_unlinked_time_record', args: {
+          p_time_record_id: string;
+          p_expected_employee_id: null;
+          p_reason: string;
+        }) => Promise<{ error: { message: string } | null }>;
+      }).rpc('resolve_unlinked_time_record', {
+        p_time_record_id: timeRecordId,
+        p_expected_employee_id: null,
+        p_reason: 'Reprocessamento após correção de matrícula/vigência',
+      });
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['v_time_pendings'] });
+      qc.invalidateQueries({ queryKey: ['get_pending_count_by_employee'] });
+      qc.invalidateQueries({ queryKey: ['pending-time-records'] });
+      qc.invalidateQueries({ queryKey: ['employee-pending-summary'] });
+      qc.invalidateQueries({ queryKey: ['time_records'] });
+      toast.success('Vínculo canônico resolvido. A pendência já pode ser corrigida.');
+    },
+    onError: (error: Error) => toast.error(error.message),
   });
 }
 
@@ -180,7 +219,7 @@ export function useBulkApplySuggestions() {
       const ok: string[] = [];
       const failed: Array<{ id: string; error: string }> = [];
       for (const it of items) {
-        const { error } = await (supabase as any).rpc('complete_punches', {
+        const { error } = await supabase.rpc('complete_punches', {
           p_time_record_id: it.timeRecordId,
           p_punches: it.punches,
           p_reason: reason,
@@ -202,8 +241,8 @@ export function useBulkApplySuggestions() {
         console.warn('Bulk apply failures:', failed);
       }
     },
-    onError: (err: any) => {
-      toast.error(err?.message || 'Falha no bulk apply.');
+    onError: (err: unknown) => {
+      toast.error(errorMessage(err) || 'Falha no bulk apply.');
     },
   });
 }
@@ -214,6 +253,7 @@ export function useBulkApplySuggestions() {
  * (ausência não precisa de batida).
  */
 export function isAutoResolvable(p: TimePending): boolean {
+  if (!p.employee_id || p.employee_match_ambiguous) return false;
   const s = p.suggestion;
   if (!s) return false;
   if (s.source === 'none') return false;

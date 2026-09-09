@@ -24,6 +24,7 @@ import MoveGroupsDialog from '@/components/groups/MoveGroupsDialog';
 import FamilySuggestionsDialog from '@/components/groups/FamilySuggestionsDialog';
 import { ProductFormDialog } from '@/components/inventory/ProductFormDialog';
 import CreateStrapProductDialog from '@/components/sale-orders/CreateStrapProductDialog';
+import { canUseQuickGroupVariantForRoles } from '@/lib/quickGroupVariant';
 
 /**
  * Grupo de tira/elástico/trança: o item novo aqui é uma COR de tira, que precisa
@@ -58,6 +59,7 @@ export default function GroupOrganizationPanel({ permPath, extraActions }: Props
   const addProduct = useAddProduct();
   const addComponentSheet = useAddComponentSheet();
   const perm = useCan(permPath);
+  const canCreateQuickVariant = perm.canCreate && canUseQuickGroupVariantForRoles(perm.roles);
 
   const [editGroup, setEditGroup] = useState<ProductGroup | null>(null);
   const [itemsGroup, setItemsGroup] = useState<ProductGroup | null>(null);
@@ -187,6 +189,7 @@ export default function GroupOrganizationPanel({ permPath, extraActions }: Props
             products={products as unknown as ProductLite[]}
             rollups={rollups}
             perm={perm}
+            canManageItems={perm.canEdit || canCreateQuickVariant}
             filter={debouncedSearch}
             onClearFilter={() => setSearch('')}
             selectedLeafIds={selectedLeafIds}
@@ -225,6 +228,7 @@ export default function GroupOrganizationPanel({ permPath, extraActions }: Props
         open={!!itemsGroup}
         onOpenChange={(o) => { if (!o) setItemsGroup(null); }}
         canEdit={perm.canEdit}
+        canCreate={canCreateQuickVariant}
       />
 
       <MoveGroupsDialog

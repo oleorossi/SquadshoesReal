@@ -15,10 +15,11 @@ import { useUpdateInvoiceItem, useSuppliers, useAddSupplier, type InvoiceItem } 
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { adjustStockSafe } from '@/lib/stockAdjustments';
+import { createProductWithStock } from '@/lib/stockCommand';
 import { CATEGORIES, UNITS, LOCATIONS } from '@/types/inventory';
 import { SearchInput } from '@/components/ui/search-input';
 import { NumberInput } from '@/components/ui/number-input';
-import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { searchMatchesAllTerms, capSearchResults, searchRefineHint } from '@/lib/searchUtils';
 
 type Props = {
   open: boolean;
@@ -183,6 +184,15 @@ export default function AddToStockDialog({ open, onOpenChange, items, invoiceSup
     }
   }, [open, currentIdx, currentItem, products, invoiceSupplierId]);
 
+  const filteredProducts = useMemo(
+    () => products.filter(p => searchMatchesAllTerms(productSearch, p.name, p.sku)),
+    [products, productSearch],
+  );
+  const productCap = useMemo(
+    () => capSearchResults(filteredProducts, 20),
+    [filteredProducts],
+  );
+
   if (!currentItem) return null;
 
   // A unidade da NF é diferente (canônica) da unidade de estoque escolhida?
@@ -191,10 +201,6 @@ export default function AddToStockDialog({ open, onOpenChange, items, invoiceSup
   const nfUnitCanon = canonicalUnit(currentItem.unit);
   const stockUnitCanon = canonicalUnit(newUnit);
   const needsConversion = !!currentItem.unit && nfUnitCanon !== stockUnitCanon;
-
-  const filteredProducts = products.filter(p =>
-    searchMatchesAllTerms(productSearch, p.name, p.sku)
-  );
 
   const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -316,28 +322,27 @@ export default function AddToStockDialog({ open, onOpenChange, items, invoiceSup
             pConversionRate = newConversionRate;
           }
 
-          const { data: newProdId, error } = await supabase.rpc('create_product_with_initial_stock', {
-            p_name: newName,
-            p_sku: newSku,
-            p_category: newCategory,
-            p_unit: newUnit,
-            p_location: newLocation || 'Almoxarifado A',
-            p_quantity: createQty,
-            p_unit_price: createPrice,
-            p_min_stock: 0,
-            p_max_stock: 0,
-            p_group_id: newGroupId || null,
-            p_description: null,
-            p_supplier_id: newSupplierId || null,
-            p_reason: `Entrada via NF (novo produto) - ${currentItem.product_name}`,
-            p_color: newColor.trim() || null,
-            p_purchase_unit: pPurchaseUnit,
-            p_conversion_rate: pConversionRate,
-            // types.ts (gerado) ainda descreve a assinatura de 13 params —
-            // cast pra não regenerar o arquivo e arrastar drift de schema.
-          } as any);
-          if (error) throw error;
-          productId = newProdId as string;
+          const created = await createProductWithStock({
+            name: newName,
+            sku: newSku,
+            category: newCategory,
+            unit: newUnit,
+            location: newLocation || 'Almoxarifado A',
+            quantity: createQty,
+            unit_price: createPrice,
+            min_stock: 0,
+            max_stock: 0,
+            group_id: newGroupId || null,
+            supplier_id: newSupplierId || null,
+            reason: `Entrada via NF (novo produto) - ${currentItem.product_name}`,
+            color: newColor.trim() || null,
+            purchase_unit: pPurchaseUnit,
+            conversion_rate: pConversionRate,
+          });
+          if (!created.success || !created.product_id) {
+            throw new Error(created.errors?.[0]?.error || 'Falha ao criar produto com saldo inicial');
+          }
+          productId = created.product_id;
 
           if (newGroupId) {
             const group = groups.find(g => g.id === newGroupId);
@@ -549,7 +554,7 @@ export default function AddToStockDialog({ open, onOpenChange, items, invoiceSup
                 totalCount={products.length}
               />
               <div className="max-h-40 overflow-y-auto rounded-md border divide-y">
-                {filteredProducts.length === 0 ? (
+                {productCap.totalMatched === 0 ? (
                   <div className="p-3 text-center space-y-1">
                     <p className="text-xs text-muted-foreground">
                       {productSearch ? `Nenhum resultado para "${productSearch}"` : 'Nenhum produto encontrado'}
@@ -560,16 +565,25 @@ export default function AddToStockDialog({ open, onOpenChange, items, invoiceSup
                       </Button>
                     )}
                   </div>
-                ) : filteredProducts.slice(0, 20).map(p => (
-                  <button
-                    key={p.id}
-                    className={`w-full text-left px-3 py-2 text-sm hover:bg-muted/50 transition-colors ${selectedProductId === p.id ? 'bg-primary/10' : ''}`}
-                    onClick={() => setSelectedProductId(p.id)}
-                  >
-                    <span className="font-medium">{p.name}</span>
-                    <span className="text-xs text-muted-foreground ml-2">SKU: {p.sku} | Estoque: {p.quantity} {p.unit}</span>
-                  </button>
-                ))}
+                ) : (
+                  <>
+                    {productCap.visible.map(p => (
+                      <button
+                        key={p.id}
+                        className={`w-full text-left px-3 py-2 text-sm hover:bg-muted/50 transition-colors ${selectedProductId === p.id ? 'bg-primary/10' : ''}`}
+                        onClick={() => setSelectedProductId(p.id)}
+                      >
+                        <span className="font-medium">{p.name}</span>
+                        <span className="text-xs text-muted-foreground ml-2">SKU: {p.sku} | Estoque: {p.quantity} {p.unit}</span>
+                      </button>
+                    ))}
+                    {productCap.capped && (
+                      <p className="px-3 py-2 text-xs text-muted-foreground">
+                        {searchRefineHint(productCap.totalMatched, productCap.cap)}
+                      </p>
+                    )}
+                  </>
+                )}
               </div>
             </div>
           ) : (

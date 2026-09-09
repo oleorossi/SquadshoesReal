@@ -28,7 +28,8 @@ import { useWorkSchedules, useHolidays, useSwapSets, useTimesheetCoverage, useTi
 import { useAbsences } from '@/hooks/useRH';
 import { useCompanySettings } from '@/hooks/useCompanySettings';
 import { generateAEJ, downloadAEJ } from '@/lib/aejExporter';
-import { expandAbsenceDatesByEmployee, resolveHolidaysForPayrollRange } from '@/lib/ponto/periodDates';
+import { computePeriodFolha } from '@/lib/salaryPayroll';
+import { expandAbsenceCreditsByEmployee, resolveHolidaysForPayrollRange } from '@/lib/ponto/periodDates';
 import { format, parseISO, startOfMonth, endOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -51,7 +52,7 @@ const fmtMin = (m: number) => {
   return `${sign}${String(Math.floor(abs / 60)).padStart(2, '0')}:${String(abs % 60).padStart(2, '0')}`;
 };
 
-const cleanPunch = (p: string) => p.replace(/[\*"]/g, '');
+const cleanPunch = (p: string) => p.replace(/[*"]/g, '');
 
 function nextPeriods(count = 6): { value: string; label: string }[] {
   const out: { value: string; label: string }[] = [];
@@ -89,27 +90,20 @@ export default function EspelhoPontoPage() {
     ? schedules.find(s => s.id === employee.work_schedule_id)
     : schedules.find(s => s.is_default);
 
-  // Records do funcionário no período (filtra por external_id se houver, senão por nome)
+  // A FK resolvida pelo servidor é a única identidade financeira. Registros sem
+  // vínculo ficam na fila de pendências; o navegador não tenta adivinhar a pessoa.
   const employeeRecords = useMemo(() => {
     if (!employee) return [];
-    return records.filter(r => {
-      if (employee.admission_date && r.record_date < employee.admission_date) return false;
-      if (employee.termination_date && r.record_date > employee.termination_date) return false;
-      if (employee.external_id && r.employee_external_id) {
-        const ids = employee.external_id.split(',').map(x => x.trim());
-        if (ids.includes(r.employee_external_id.trim())) return true;
-      }
-      return r.employee_name.toLowerCase().trim() === employee.name.toLowerCase().trim();
-    });
+    return records.filter(r => r.employee_id === employee.id);
   }, [records, employee]);
 
   const holidaySet = useMemo(
     () => resolveHolidaysForPayrollRange(holidays, periodStart, periodEnd),
     [holidays, periodStart, periodEnd],
   );
-  const absenceDates = useMemo(
-    () => expandAbsenceDatesByEmployee(absences, periodStart, periodEnd).get(employeeId || '') || new Set<string>(),
-    [absences, employeeId, periodStart, periodEnd],
+  const absenceCredits = useMemo(
+    () => expandAbsenceCreditsByEmployee(absences, periodStart, periodEnd),
+    [absences, periodStart, periodEnd],
   );
   // Troca de dia: espelho lê o dia trocado como normal (não feriado/domingo) e a
   // folga da troca como neutra — alinhado à folha e ao banco de horas.
@@ -119,6 +113,31 @@ export default function EspelhoPontoPage() {
   // à Folha e ao Relatório de Faltas.
   const { data: espCoverage } = useTimesheetCoverage(periodStart, periodEnd);
   const coveredDates = espCoverage?.coveredDates;
+
+  // O espelho usa o MESMO ledger da folha para saldo/abonos. Antes recalculava
+  // `trabalhado - previsto` localmente: ausência integral continuava reduzindo o
+  // saldo e ausência parcial virava falta cheia, embora a folha dissesse outra coisa.
+  const ledgerByDate = useMemo(() => {
+    if (!schedule || !employee) return new Map();
+    const punchesByDate = new Map<string, string[]>();
+    for (const record of employeeRecords) punchesByDate.set(record.record_date, (record.punches as string[]) || []);
+    const result = computePeriodFolha({
+      salary: Number(employee.salary) || 0,
+      from: periodStart,
+      to: periodEnd,
+      schedule,
+      holidaysSet: holidaySet,
+      swapWorkedSet,
+      swapOffSet,
+      punchesByDate,
+      absenceDates: absenceCredits.fullDayDates.get(employee.id),
+      absenceMinutes: absenceCredits.partialMinutes.get(employee.id),
+      coveredDates,
+      activeFrom: employee.admission_date || null,
+      activeTo: employee.termination_date || null,
+    });
+    return new Map((result.day_ledger || []).map(day => [day.date, day]));
+  }, [schedule, employee, employeeRecords, periodStart, periodEnd, holidaySet, swapWorkedSet, swapOffSet, absenceCredits, coveredDates]);
 
   // Banco de horas REMOVIDO (reforma 2026-07-09): o espelho passa a mostrar só o
   // realizado vs. esperado do período (tabela dia-a-dia + totais no rodapé). Não há
@@ -156,10 +175,18 @@ export default function EspelhoPontoPage() {
       const isSwap = swapMode !== undefined;
       // Dia de troca prevalece sobre feriado (é lido como dia útil normal / neutro).
       const isHoliday = !isSwap && holidaySet.has(dateStr);
-      const isExcused = absenceDates.has(dateStr);
       const punchesRaw = withinEmployment ? (recordMap.get(dateStr) || []) : [];
       const punchesTreated = punchesRaw.map(cleanPunch);
       const summary = calculateDaySummary(punchesRaw, dow, schedule as WorkSchedule, isHoliday, swapMode);
+      const ledger = ledgerByDate.get(dateStr);
+      const workedMin = withinEmployment ? (ledger?.worked_minutes ?? summary.workedMinutes) : 0;
+      const expectedMin = withinEmployment ? (ledger?.expected_minutes ?? summary.expectedMinutes) : 0;
+      const excusedMin = Number(ledger?.excused_minutes) || 0;
+      const diffMin = !withinEmployment || ledger?.status === 'neutral' || ledger?.status === 'pending' || ledger?.status === 'excused'
+        ? 0
+        : ledger?.status === 'absence'
+          ? -expectedMin
+          : (ledger?.raw_balance_minutes ?? (workedMin - expectedMin));
       out.push({
         date: dateStr,
         dow,
@@ -167,9 +194,9 @@ export default function EspelhoPontoPage() {
         isHoliday,
         punchesRaw,
         punchesTreated,
-        workedMin: withinEmployment ? summary.workedMinutes : 0,
-        expectedMin: withinEmployment ? summary.expectedMinutes : 0,
-        diffMin: withinEmployment ? summary.workedMinutes - summary.expectedMinutes : 0,
+        workedMin,
+        expectedMin,
+        diffMin,
         // Dia de troca trabalhado = 'Troca' (lê normal); sem batida = neutro ('—').
         // Falta só em dia útil COBERTO pelo relógio (se houver set de cobertura); dia
         // sem importação (lacuna/além do arquivo) = '—', não falta.
@@ -178,7 +205,10 @@ export default function EspelhoPontoPage() {
                 : punchesTreated.length % 2 !== 0 ? 'Pendência' : '—')
               : isHoliday ? 'Feriado'
               : dow === 0 ? 'Domingo'
-              : isExcused && punchesTreated.length === 0 && summary.expectedMinutes > 0 ? 'Abonado'
+              : ledger?.status === 'excused' ? 'Abonado'
+              : ledger?.status === 'absence' ? 'Falta'
+              : ledger?.status === 'pending' ? 'Pendência'
+              : excusedMin > 0 ? `Abono ${fmtMin(excusedMin)}`
               : punchesTreated.length === 0 && summary.expectedMinutes > 0 && (!coveredDates || coveredDates.has(dateStr)) ? 'Falta'
               : punchesTreated.length === 0 ? '—'
               : punchesTreated.length % 2 !== 0 ? 'Pendência'
@@ -187,16 +217,17 @@ export default function EspelhoPontoPage() {
       cursor.setDate(cursor.getDate() + 1);
     }
     return out;
-  }, [employeeRecords, employee, holidaySet, absenceDates, swapWorkedSet, swapOffSet, swapModeFor, coveredDates, schedule, periodStart, periodEnd]);
+  }, [employeeRecords, employee, holidaySet, ledgerByDate, swapModeFor, coveredDates, schedule, periodStart, periodEnd]);
 
   const totals = useMemo(() => {
     return days.reduce((acc, d) => ({
       worked: acc.worked + (d.workedMin || 0),
       expected: acc.expected + (d.expectedMin || 0),
+      balance: acc.balance + (d.diffMin || 0),
       diasComBatida: acc.diasComBatida + (d.punchesTreated.length > 0 ? 1 : 0),
       diasFalta: acc.diasFalta + (d.status === 'Falta' ? 1 : 0),
       diasPendentes: acc.diasPendentes + (d.status === 'Pendência' ? 1 : 0),
-    }), { worked: 0, expected: 0, diasComBatida: 0, diasFalta: 0, diasPendentes: 0 });
+    }), { worked: 0, expected: 0, balance: 0, diasComBatida: 0, diasFalta: 0, diasPendentes: 0 });
   }, [days]);
 
   const handlePeriodChange = (v: string) => {
@@ -383,8 +414,8 @@ export default function EspelhoPontoPage() {
                 <td colSpan={4} className="border border-black px-1 py-1 text-right text-[8pt]">TOTAIS</td>
                 <td className="border border-black px-1 py-1 text-right font-mono">{fmtMin(totals.expected)}</td>
                 <td className="border border-black px-1 py-1 text-right font-mono">{fmtMin(totals.worked)}</td>
-                <td className={`border border-black px-1 py-1 text-right font-mono ${totals.worked - totals.expected > 0 ? 'text-emerald-700' : totals.worked - totals.expected < 0 ? 'text-rose-700' : ''}`}>
-                  {totals.worked - totals.expected > 0 ? '+' : ''}{fmtMin(totals.worked - totals.expected)}
+                <td className={`border border-black px-1 py-1 text-right font-mono ${totals.balance > 0 ? 'text-emerald-700' : totals.balance < 0 ? 'text-rose-700' : ''}`}>
+                  {totals.balance > 0 ? '+' : ''}{fmtMin(totals.balance)}
                 </td>
                 <td className="border border-black px-1 py-1 text-center text-[7pt]">
                   {totals.diasFalta > 0 && `${totals.diasFalta}F `}{totals.diasPendentes > 0 && `${totals.diasPendentes}P`}
@@ -394,7 +425,7 @@ export default function EspelhoPontoPage() {
           </table>
         </div>
 
-        {/* Saldo do período = realizado − esperado (sem banco de horas). */}
+        {/* Saldo apurado pelo ledger da folha, já considerando cobertura e abonos. */}
         <table className="w-full border-collapse mb-3 text-[9pt]">
           <tbody>
             <tr>
@@ -403,8 +434,8 @@ export default function EspelhoPontoPage() {
               <td className="border border-black px-2 py-1 font-bold uppercase text-[8pt] bg-black/5 w-[25%]">Total trabalhado</td>
               <td className="border border-black px-2 py-1 font-mono">{fmtMin(totals.worked)}</td>
               <td className="border border-black px-2 py-1 font-bold uppercase text-[8pt] bg-black/5 w-[20%]">SALDO DO PERÍODO</td>
-              <td className={`border border-black px-2 py-1 font-mono font-bold ${totals.worked - totals.expected > 0 ? 'text-emerald-700' : totals.worked - totals.expected < 0 ? 'text-rose-700' : ''}`}>
-                {totals.worked - totals.expected > 0 ? '+' : ''}{fmtMin(totals.worked - totals.expected)}
+              <td className={`border border-black px-2 py-1 font-mono font-bold ${totals.balance > 0 ? 'text-emerald-700' : totals.balance < 0 ? 'text-rose-700' : ''}`}>
+                {totals.balance > 0 ? '+' : ''}{fmtMin(totals.balance)}
               </td>
             </tr>
           </tbody>

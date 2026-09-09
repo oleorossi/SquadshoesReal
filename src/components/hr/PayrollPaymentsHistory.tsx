@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Panel } from '@/components/ui/panel';
 import {
@@ -11,13 +13,13 @@ import {
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { SearchableSelect } from '@/components/ui/searchable-select';
-import { MagnifyingGlass, Receipt, Printer, FileArrowDown, Trash, X } from '@phosphor-icons/react';
+import { MagnifyingGlass, Receipt, Printer, FileArrowDown, ArrowCounterClockwise, X } from '@phosphor-icons/react';
 import { toast } from 'sonner';
-import { formatCurrency } from '@/lib/utils';
+import { cn, formatCurrency } from '@/lib/utils';
 import { formatDateBR } from '@/lib/dateOnly';
 import { useEmployees } from '@/hooks/useEmployees';
 import {
-  usePayrollPaymentsHistory, useDeletePayrollPayment, getReceiptSignedUrl,
+  usePayrollPaymentsHistory, useReversePayrollPayment, getReceiptSignedUrl,
   paymentMethodLabel, formatPayrollPeriod, type PayrollPaymentWithRefs,
 } from '@/hooks/usePayrollPayments';
 import { printPayrollReceipt } from '@/lib/printPayrollReceipt';
@@ -30,14 +32,15 @@ export default function PayrollPaymentsHistory() {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [q, setQ] = useState('');
-  const [deleteTarget, setDeleteTarget] = useState<PayrollPaymentWithRefs | null>(null);
+  const [reverseTarget, setReverseTarget] = useState<PayrollPaymentWithRefs | null>(null);
+  const [reversalReason, setReversalReason] = useState('');
 
   const { data: payments = [], isLoading } = usePayrollPaymentsHistory({
     employeeId: employeeId === 'all' ? null : employeeId,
     from: from || null,
     to: to || null,
   });
-  const del = useDeletePayrollPayment();
+  const reversePayment = useReversePayrollPayment();
 
   const filtered = useMemo(() => {
     if (!q.trim()) return payments;
@@ -46,13 +49,15 @@ export default function PayrollPaymentsHistory() {
       norm(p.employee?.name || '').includes(t) ||
       norm(formatPayrollPeriod(p.run?.period || '')).includes(t) ||
       norm(paymentMethodLabel(p.method)).includes(t) ||
-      norm(p.reference || '').includes(t));
+      norm(p.reference || '').includes(t) ||
+      norm(p.reversal_reason || '').includes(t));
   }, [payments, q]);
 
   const kpis = useMemo(() => {
-    const total = filtered.reduce((s, p) => s + (Number(p.amount) || 0), 0);
-    const withReceipt = filtered.filter(p => p.receipt_path).length;
-    return { total, count: filtered.length, withReceipt };
+    const active = filtered.filter(payment => !payment.reversed_at);
+    const total = active.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    const withReceipt = active.filter(p => p.receipt_path).length;
+    return { total, count: active.length, withReceipt };
   }, [filtered]);
 
   const empOptions = useMemo(
@@ -93,7 +98,7 @@ export default function PayrollPaymentsHistory() {
   return (
     <div className="space-y-4">
       <StatGrid>
-        <StatCard label="Pagamentos" value={kpis.count} hint="no filtro atual" />
+        <StatCard label="Pagamentos" value={kpis.count} hint="ativos no filtro atual" />
         <StatCard label="Total pago" value={formatCurrency(kpis.total)} tone="primary" />
         <StatCard label="Com recibo anexado" value={`${kpis.withReceipt}/${kpis.count}`} hint="recibo assinado" tone={kpis.count > 0 && kpis.withReceipt === kpis.count ? 'success' : 'default'} />
       </StatGrid>
@@ -147,63 +152,115 @@ export default function PayrollPaymentsHistory() {
                 <TableHead>Funcionário</TableHead>
                 <TableHead>Folha</TableHead>
                 <TableHead>Forma</TableHead>
+                <TableHead>Status</TableHead>
                 <TableHead className="text-right">Valor</TableHead>
                 <TableHead>Recibo</TableHead>
                 <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map(p => (
-                <TableRow key={p.id} className="hover:bg-muted/30">
-                  <TableCell className="font-mono tabular-nums text-sm whitespace-nowrap">{formatDateBR(p.paid_on)}</TableCell>
-                  <TableCell className="font-medium">
-                    {p.employee?.name || '—'}
-                    {p.employee?.department && <span className="ml-1.5 text-[11px] text-muted-foreground">· {p.employee.department}</span>}
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground whitespace-nowrap">{formatPayrollPeriod(p.run?.period || '')}</TableCell>
-                  <TableCell><Badge variant="secondary" className="font-normal">{paymentMethodLabel(p.method)}</Badge></TableCell>
-                  <TableCell className="text-right font-mono tabular-nums font-semibold">{formatCurrency(p.amount)}</TableCell>
-                  <TableCell>
-                    {p.receipt_path
-                      ? <Button size="sm" variant="ghost" className="h-7 gap-1.5 text-emerald-600" onClick={() => openReceipt(p.receipt_path)}><FileArrowDown className="h-4 w-4" /> Baixar</Button>
-                      : <span className="text-xs text-muted-foreground">—</span>}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex justify-end gap-1">
-                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Imprimir recibo" onClick={() => printFor(p)}><Printer className="h-4 w-4" /></Button>
-                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-600 hover:text-red-700" title="Remover pagamento" aria-label="Remover pagamento"
-                        disabled={del.isPending}
-                        onClick={() => setDeleteTarget(p)}>
-                        <Trash className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {filtered.map(p => {
+                const isReversed = Boolean(p.reversed_at);
+                return (
+                  <TableRow key={p.id} className={cn('hover:bg-muted/30', isReversed && 'bg-muted/30')}>
+                    <TableCell className="font-mono tabular-nums text-sm whitespace-nowrap">{formatDateBR(p.paid_on)}</TableCell>
+                    <TableCell className="font-medium">
+                      {p.employee?.name || '—'}
+                      {p.employee?.department && <span className="ml-1.5 text-[11px] text-muted-foreground">· {p.employee.department}</span>}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground whitespace-nowrap">{formatPayrollPeriod(p.run?.period || '')}</TableCell>
+                    <TableCell><Badge variant="secondary" className="font-normal">{paymentMethodLabel(p.method)}</Badge></TableCell>
+                    <TableCell>
+                      {isReversed
+                        ? <Badge variant="destructive-soft">Estornado</Badge>
+                        : <Badge variant="success-soft">Confirmado</Badge>}
+                      {isReversed && p.reversal_reason && (
+                        <div className="mt-1 max-w-[180px] truncate text-[11px] text-destructive" title={p.reversal_reason}>
+                          {p.reversal_reason}
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell className={cn('text-right font-mono tabular-nums font-semibold', isReversed && 'text-muted-foreground line-through')}>{formatCurrency(p.amount)}</TableCell>
+                    <TableCell>
+                      {p.receipt_path
+                        ? <Button size="sm" variant="ghost" className="h-7 gap-1.5 text-emerald-600" onClick={() => openReceipt(p.receipt_path)}><FileArrowDown className="h-4 w-4" /> Baixar</Button>
+                        : <span className="text-xs text-muted-foreground">—</span>}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex justify-end gap-1">
+                        {!isReversed && (
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Imprimir recibo" onClick={() => printFor(p)}><Printer className="h-4 w-4" /></Button>
+                        )}
+                        {!isReversed && (
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive hover:text-destructive" title="Estornar pagamento" aria-label="Estornar pagamento"
+                            disabled={reversePayment.isPending}
+                            onClick={() => {
+                              setReversalReason('');
+                              setReverseTarget(p);
+                            }}>
+                            <ArrowCounterClockwise className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         )}
       </Panel>
 
-      <AlertDialog open={!!deleteTarget} onOpenChange={o => { if (!o) setDeleteTarget(null); }}>
+      <AlertDialog
+        open={!!reverseTarget}
+        onOpenChange={o => {
+          if (!o && !reversePayment.isPending) {
+            setReverseTarget(null);
+            setReversalReason('');
+          }
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remover pagamento?</AlertDialogTitle>
+            <AlertDialogTitle>Estornar pagamento?</AlertDialogTitle>
             <AlertDialogDescription>
-              {deleteTarget
-                ? `${deleteTarget.employee?.name || '—'} — ${formatCurrency(deleteTarget.amount)} em ${formatDateBR(deleteTarget.paid_on)}. `
+              {reverseTarget
+                ? `${reverseTarget.employee?.name || '—'} — ${formatCurrency(reverseTarget.amount)} em ${formatDateBR(reverseTarget.paid_on)}. `
                 : ''}
-              O recibo anexado também será excluído e a folha pode voltar a "aprovado".
+              O registro e o recibo anexado serão preservados. O valor deixará de compor os totais pagos e o saldo da folha será recalculado.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <div className="space-y-1.5">
+            <Label htmlFor="history-payment-reversal-reason">Motivo do estorno *</Label>
+            <Textarea
+              id="history-payment-reversal-reason"
+              value={reversalReason}
+              onChange={event => setReversalReason(event.target.value)}
+              placeholder="Explique por que este pagamento deve ser estornado"
+              rows={3}
+              autoFocus
+            />
+          </div>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel disabled={reversePayment.isPending}>Voltar</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              disabled={del.isPending}
-              onClick={() => { if (deleteTarget) del.mutate({ id: deleteTarget.id }); setDeleteTarget(null); }}
+              disabled={!reversalReason.trim() || reversePayment.isPending}
+              onClick={event => {
+                event.preventDefault();
+                if (!reverseTarget || !reversalReason.trim()) return;
+                reversePayment.mutate(
+                  { id: reverseTarget.id, reason: reversalReason },
+                  {
+                    onSuccess: () => {
+                      setReverseTarget(null);
+                      setReversalReason('');
+                    },
+                  },
+                );
+              }}
             >
-              Remover
+              Confirmar estorno
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

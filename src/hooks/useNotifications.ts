@@ -13,6 +13,27 @@ export interface NotificationItem {
   sector?: string;
 }
 
+type DashboardNotificationData = Pick<
+  Awaited<ReturnType<typeof apiService.getDashboardNotifications>>,
+  'overduePayables' | 'overdueReceivables' | 'lowStockProducts' |
+  'pendingPOs' | 'pendingAdvances' | 'staleOrders'
+>;
+
+const EMPTY_DASHBOARD_NOTIFICATIONS: DashboardNotificationData = {
+  overduePayables: [],
+  overdueReceivables: [],
+  lowStockProducts: [],
+  pendingPOs: [],
+  pendingAdvances: [],
+  staleOrders: [],
+};
+
+function dashboardLedgerRow<Row extends { amount: number }>(row: Row): Row & { status: string } {
+  // As consultas do dashboard já filtram os status encerrados, mas não trazem
+  // a coluna. String vazia preserva o tratamento anterior de openBalanceOf.
+  return { status: '', ...row };
+}
+
 
 export function useNotifications() {
   return useQuery({
@@ -37,13 +58,13 @@ export function useNotifications() {
           .eq('read', false)
           .order('created_at', { ascending: false })
           .limit(20),
-        (supabase as any)
+        supabase
           .from('v_sector_bottlenecks')
           .select('sector, week_start, ops_count, total_pairs_planned, severity, utilization_pct')
           .eq('is_bottleneck', true)
           .order('week_start', { ascending: true })
           .limit(10),
-        (supabase as any)
+        supabase
           .from('crm_interactions')
           .select('id, subject, scheduled_for, interaction_type, external_contact_name, clients(razao_social)')
           .is('completed_at', null)
@@ -51,16 +72,15 @@ export function useNotifications() {
           .lte('scheduled_for', in3days.toISOString())
           .order('scheduled_for', { ascending: true })
           .limit(30),
-        (supabase as any)
+        supabase
           .from('v_strap_purchase_order_notifications_operational')
           .select('id, event_type, purchase_order_id, order_number, criticality, title, message, created_at')
           .order('created_at', { ascending: false })
           .limit(30),
       ]);
-      const data = dashRes.status === 'fulfilled' ? dashRes.value : {
-        overduePayables: [], overdueReceivables: [], lowStockProducts: [],
-        pendingPOs: [], pendingAdvances: [], staleOrders: [],
-      } as any;
+      const data: DashboardNotificationData = dashRes.status === 'fulfilled'
+        ? dashRes.value
+        : EMPTY_DASHBOARD_NOTIFICATIONS;
       const sectorNotifications =
         sectorRes.status === 'fulfilled' && !sectorRes.value.error
           ? (sectorRes.value.data || [])
@@ -85,7 +105,7 @@ export function useNotifications() {
       if (strapPurchaseRes.status === 'fulfilled' && strapPurchaseRes.value.error) {
         console.warn('[useNotifications] strap purchase query failed:', strapPurchaseRes.value.error.message);
       }
-      strapPurchaseNotifications.forEach((entry: any) => {
+      strapPurchaseNotifications.forEach(entry => {
         const criticality = String(entry.criticality || '').toLocaleLowerCase('pt-BR');
         notifications.push({
           id: `strap-purchase-${entry.id}`,
@@ -110,7 +130,7 @@ export function useNotifications() {
 
       // --- Contas a pagar vencidas ---
       if (overduePayables && overduePayables.length > 0) {
-        const totalOverdue = overduePayables.reduce((s, p) => s + openBalanceOf(p, 'payable'), 0);
+        const totalOverdue = overduePayables.reduce((s, p) => s + openBalanceOf(dashboardLedgerRow(p), 'payable'), 0);
         notifications.push({
           id: 'overdue-payables',
           category: 'finance',
@@ -123,7 +143,7 @@ export function useNotifications() {
 
       // --- Contas a receber vencidas ---
       if (overdueReceivables && overdueReceivables.length > 0) {
-        const totalOverdue = overdueReceivables.reduce((s, r) => s + openBalanceOf(r, 'receivable'), 0);
+        const totalOverdue = overdueReceivables.reduce((s, r) => s + openBalanceOf(dashboardLedgerRow(r), 'receivable'), 0);
         notifications.push({
           id: 'overdue-receivables',
           category: 'finance',
@@ -175,14 +195,14 @@ export function useNotifications() {
         });
       }
 
-      // --- Adiantamentos pendentes ---
+      // --- Adiantamentos em aberto ---
       if (pendingAdvances && pendingAdvances.length > 0) {
         const totalAdv = pendingAdvances.reduce((s, a) => s + a.amount, 0);
         notifications.push({
           id: 'pending-advances',
           category: 'hr',
           severity: 'info',
-          title: `${pendingAdvances.length} adiantamento(s) pendente(s)`,
+          title: `${pendingAdvances.length} adiantamento(s) em aberto`,
           description: `Total: ${fmt(totalAdv)}`,
           link: '/rh?tab=folha',
         });
@@ -201,15 +221,15 @@ export function useNotifications() {
       }
       // --- Gargalos de setor (Costura, Aviamento, Corte) ---
       if (bottlenecks && bottlenecks.length > 0) {
-        const critical = bottlenecks.filter((b: any) => b.severity === 'critical');
-        const warning = bottlenecks.filter((b: any) => b.severity === 'warning');
+        const critical = bottlenecks.filter(b => b.severity === 'critical');
+        const warning = bottlenecks.filter(b => b.severity === 'warning');
         if (critical.length > 0) {
           notifications.push({
             id: 'bottleneck-critical',
             category: 'production',
             severity: 'critical',
             title: `${critical.length} gargalo(s) crítico(s) detectado(s)`,
-            description: critical.slice(0, 2).map((b: any) =>
+            description: critical.slice(0, 2).map(b =>
               `${b.sector} semana ${new Date(b.week_start + 'T00:00:00').toLocaleDateString('pt-BR')} (${b.utilization_pct}%)`
             ).join('; '),
             link: '/gargalos',
@@ -221,7 +241,7 @@ export function useNotifications() {
             category: 'production',
             severity: 'warning',
             title: `${warning.length} setor(es) próximo(s) da saturação`,
-            description: warning.slice(0, 2).map((b: any) =>
+            description: warning.slice(0, 2).map(b =>
               `${b.sector} semana ${new Date(b.week_start + 'T00:00:00').toLocaleDateString('pt-BR')} (${b.utilization_pct}%)`
             ).join('; '),
             link: '/gargalos',
@@ -240,12 +260,12 @@ export function useNotifications() {
       if (crmScheduled.length > 0) {
         const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
         const tomorrowStart = new Date(todayStart); tomorrowStart.setDate(tomorrowStart.getDate() + 1);
-        const overdue = crmScheduled.filter((c: any) => new Date(c.scheduled_for) < todayStart);
-        const today = crmScheduled.filter((c: any) => {
+        const overdue = crmScheduled.filter(c => new Date(c.scheduled_for) < todayStart);
+        const today = crmScheduled.filter(c => {
           const d = new Date(c.scheduled_for);
           return d >= todayStart && d < tomorrowStart;
         });
-        const upcoming = crmScheduled.filter((c: any) => new Date(c.scheduled_for) >= tomorrowStart);
+        const upcoming = crmScheduled.filter(c => new Date(c.scheduled_for) >= tomorrowStart);
 
         if (overdue.length > 0) {
           notifications.push({
@@ -253,7 +273,7 @@ export function useNotifications() {
             category: 'crm',
             severity: 'critical',
             title: `${overdue.length} contato(s) CRM atrasado(s)`,
-            description: overdue.slice(0, 3).map((c: any) =>
+            description: overdue.slice(0, 3).map(c =>
               `${c.clients?.razao_social || c.external_contact_name || '—'}: ${c.subject}`
             ).join('; ') + (overdue.length > 3 ? '...' : ''),
             link: '/crm',
@@ -265,7 +285,7 @@ export function useNotifications() {
             category: 'crm',
             severity: 'warning',
             title: `${today.length} contato(s) CRM hoje`,
-            description: today.slice(0, 3).map((c: any) =>
+            description: today.slice(0, 3).map(c =>
               `${c.clients?.razao_social || c.external_contact_name || '—'}: ${c.subject}`
             ).join('; ') + (today.length > 3 ? '...' : ''),
             link: '/crm',
@@ -277,7 +297,7 @@ export function useNotifications() {
             category: 'crm',
             severity: 'info',
             title: `${upcoming.length} contato(s) CRM próximo(s) (3 dias)`,
-            description: upcoming.slice(0, 3).map((c: any) =>
+            description: upcoming.slice(0, 3).map(c =>
               `${c.clients?.razao_social || c.external_contact_name || '—'} em ${new Date(c.scheduled_for).toLocaleDateString('pt-BR')}`
             ).join('; ') + (upcoming.length > 3 ? '...' : ''),
             link: '/crm',

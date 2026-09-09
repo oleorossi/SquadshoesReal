@@ -1,6 +1,14 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import type { Database, Json } from '@/integrations/supabase/types';
+import {
+  autoResyncUnstartedOpsForSoleGroup,
+  toastAutoResyncSummary,
+} from '@/lib/resyncOPs';
+
+type SoleGroupItemInsert = Database['public']['Tables']['sole_group_standard_items']['Insert'];
+type SoleGroupItemUpdate = Database['public']['Tables']['sole_group_standard_items']['Update'];
 
 /**
  * Consumo padrão de um MODELO (grupo) de solado.
@@ -10,10 +18,10 @@ import { toast } from 'sonner';
  *  ITEM  — o solado manda no material E na quantidade (cola, linha, EVA).
  *          Mora em `sole_group_standard_items`, chaveado por grupo.
  *
- *  PAPEL — o solado manda só na quantidade; QUAL material entra é decidido pela
- *          ficha do modelo / PV (forro do cabedal, placa e forração da palmilha,
- *          fachete). Mora na MESMA tabela, com `role` preenchido e
- *          `material_product_id` nulo.
+ *  PAPEL — o solado manda na quantidade. Forro/forração/fachete: o material
+ *          vem da ficha/PV (`material_product_id` nulo). Fibra (`placa_palmilha`):
+ *          o solado também pode pinuar o SKU (`material_product_id` opcional) —
+ *          esse pin manda no débito/consumo acima do grupo da ficha.
  *
  * `sole_technical_specs` continua existindo, mas como ESPELHO DERIVADO: o
  * trigger `tg_sgsi_mirror_papel` replica as linhas PAPEL nas colunas de consumo
@@ -37,7 +45,7 @@ export const ROLE_COLUMNS: Record<SoleRole, { scalar: string; perSize: string }>
 
 export const ROLE_LABEL: Record<SoleRole, string> = {
   forro_cabedal: 'Forro do cabedal',
-  placa_palmilha: 'Placa da palmilha',
+  placa_palmilha: 'Fibra de palmilha',
   forracao_palmilha: 'Forração da palmilha',
   fachete: 'Fachete',
 };
@@ -45,10 +53,13 @@ export const ROLE_LABEL: Record<SoleRole, string> = {
 /** Quem escolhe o material de cada papel — texto exibido na linha. */
 export const ROLE_SOURCE: Record<SoleRole, string> = {
   forro_cabedal: 'material escolhido pela ficha e pelo PV',
-  placa_palmilha: 'material escolhido pela ficha',
+  placa_palmilha: 'SKU selecionado aqui manda no débito/consumo (acima da ficha)',
   forracao_palmilha: 'material escolhido pela ficha e pelo PV',
   fachete: 'material escolhido pelo grupo de fachete do solado',
 };
+
+/** Papéis que além da quantidade pinam o produto no próprio Consumo Padrão. */
+export const ROLE_WITH_MATERIAL_PIN: ReadonlySet<SoleRole> = new Set(['placa_palmilha']);
 
 /**
  * Papéis aplicáveis à classificação do solado. Palmilha pronta vem forrada de
@@ -64,6 +75,19 @@ export function rolesForSole(
   }
   if (isFachetado) roles.push('fachete');
   return roles;
+}
+
+async function propagateSoleGroupConsumption(soleGroupId: string) {
+  try {
+    const summary = await autoResyncUnstartedOpsForSoleGroup(soleGroupId);
+    toastAutoResyncSummary(summary);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'falha ao propagar consumo';
+    toast.warning(
+      `Consumo do solado salvo, mas OPs aprovadas não foram atualizadas: ${message}`,
+      { duration: 10000 },
+    );
+  }
 }
 
 export interface SoleGroupItemRow {
@@ -89,6 +113,9 @@ export interface RoleValue {
   variesBySize: boolean;
   /** Numerações da grade do solado, ordenadas. */
   sizes: number[];
+  /** SKU pinado no Consumo Padrão (só fibra / placa_palmilha). */
+  materialProductId: string | null;
+  materialProduct?: { id: string; name: string; sku: string | null; unit: string } | null;
 }
 
 /** Linhas do tipo ITEM de um grupo de solado. */
@@ -136,7 +163,7 @@ export function useSoleGroupRoles(soleGroupId: string | null | undefined) {
         (supabase as any).from('sole_technical_specs').select('size').in('sole_id', soleIds).order('size'),
         (supabase as any)
           .from('sole_group_standard_items')
-          .select('role, consumption_per_pair, consumption_per_size')
+          .select('role, consumption_per_pair, consumption_per_size, material_product_id, products!material_product_id(id, name, sku, unit)')
           .eq('sole_group_id', soleGroupId)
           .not('role', 'is', null),
       ]);
@@ -150,12 +177,22 @@ export function useSoleGroupRoles(soleGroupId: string | null | undefined) {
       (Object.keys(ROLE_COLUMNS) as SoleRole[]).forEach((role) => {
         const row = ((roleRows || []) as any[]).find((r) => r.role === role);
         const perSize = (row?.consumption_per_size || {}) as Record<string, number>;
+        const mat = row?.products
+          ? {
+              id: row.products.id as string,
+              name: row.products.name as string,
+              sku: (row.products.sku as string | null) ?? null,
+              unit: row.products.unit as string,
+            }
+          : null;
         byRole[role] = {
           role,
           perPair: Number(row?.consumption_per_pair) || 0,
           perSize,
           variesBySize: Object.keys(perSize).length > 0,
           sizes,
+          materialProductId: (row?.material_product_id as string | null) ?? null,
+          materialProduct: mat,
         };
       });
 
@@ -169,6 +206,14 @@ export function useSoleGroupRoles(soleGroupId: string | null | undefined) {
  * Grava um PAPEL na tabela de origem. O espelho em `sole_technical_specs`
  * (todas as cores × todas as numerações) é responsabilidade do trigger — o
  * cliente não replica nada à mão.
+ *
+ * NÃO usa `.upsert({ onConflict: 'sole_group_id,role' })`: o índice histórico
+ * era parcial (`WHERE role IS NOT NULL`, mig 20261102120200) e o PostgREST não
+ * repete o predicado no ON CONFLICT — sintoma vivo
+ * "no unique or exclusion constraint matching the ON CONFLICT specification".
+ * A mig 20270101019100 recria o índice total; mesmo assim o client faz
+ * select+update/insert (mesmo padrão de `useUpsertPayrollRun`) pra não
+ * depender do arbiter do PostgREST.
  */
 export function useSetSoleGroupRole() {
   const qc = useQueryClient();
@@ -178,21 +223,47 @@ export function useSetSoleGroupRole() {
       role: SoleRole;
       perPair: number;
       perSize?: Record<string, number>;
+      /** Só honrado em `placa_palmilha` (fibra). Outros papéis forçam null. */
+      materialProductId?: string | null;
     }) => {
-      const { error } = await (supabase as any)
+      const perSizeJson: Json =
+        params.perSize && Object.keys(params.perSize).length > 0
+          ? params.perSize
+          : {};
+      const allowPin = ROLE_WITH_MATERIAL_PIN.has(params.role);
+      const materialProductId = allowPin
+        ? (params.materialProductId ?? null)
+        : null;
+      const payload: SoleGroupItemInsert = {
+        sole_group_id: params.soleGroupId,
+        role: params.role,
+        material_product_id: materialProductId,
+        consumption_per_pair: params.perPair,
+        consumption_per_size: perSizeJson,
+        unit: 'dm²',
+      };
+      const updatePayload: SoleGroupItemUpdate = payload;
+
+      const { data: existing, error: findErr } = await supabase
         .from('sole_group_standard_items')
-        .upsert(
-          {
-            sole_group_id: params.soleGroupId,
-            role: params.role,
-            material_product_id: null,
-            consumption_per_pair: params.perPair,
-            consumption_per_size:
-              params.perSize && Object.keys(params.perSize).length > 0 ? params.perSize : {},
-            unit: 'dm²',
-          },
-          { onConflict: 'sole_group_id,role' },
-        );
+        .select('id')
+        .eq('sole_group_id', params.soleGroupId)
+        .eq('role', params.role)
+        .maybeSingle();
+      if (findErr) throw findErr;
+
+      if (existing?.id) {
+        const { error } = await supabase
+          .from('sole_group_standard_items')
+          .update(updatePayload)
+          .eq('id', existing.id);
+        if (error) throw error;
+        return;
+      }
+
+      const { error } = await supabase
+        .from('sole_group_standard_items')
+        .insert(payload);
       if (error) throw error;
     },
     onSuccess: (_d, vars) => {
@@ -201,7 +272,10 @@ export function useSetSoleGroupRole() {
       // O espelho mudou em todas as cores do grupo — quem lê specs recarrega.
       qc.invalidateQueries({ queryKey: ['sole_technical_specs'] });
       qc.invalidateQueries({ queryKey: ['soleSpecs'] });
+      qc.invalidateQueries({ queryKey: ['pv-consumption'] });
+      qc.invalidateQueries({ queryKey: ['pv_outdated_status'] });
       toast.success(`${ROLE_LABEL[vars.role]} salvo para todas as cores do modelo.`);
+      void propagateSoleGroupConsumption(vars.soleGroupId);
     },
     onError: (err: Error) => toast.error(`Erro ao salvar: ${err.message}`),
   });
@@ -240,7 +314,10 @@ export function useUpsertSoleGroupItem() {
     },
     onSuccess: (_d, vars) => {
       qc.invalidateQueries({ queryKey: ['sole_group_standard_items', vars.soleGroupId] });
+      qc.invalidateQueries({ queryKey: ['pv-consumption'] });
+      qc.invalidateQueries({ queryKey: ['pv_outdated_status'] });
       toast.success('Item padrão salvo.');
+      void propagateSoleGroupConsumption(vars.soleGroupId);
     },
     onError: (err: Error) => toast.error(`Erro ao salvar: ${err.message}`),
   });
@@ -258,7 +335,10 @@ export function useRemoveSoleGroupItem() {
     },
     onSuccess: (_d, vars) => {
       qc.invalidateQueries({ queryKey: ['sole_group_standard_items', vars.soleGroupId] });
+      qc.invalidateQueries({ queryKey: ['pv-consumption'] });
+      qc.invalidateQueries({ queryKey: ['pv_outdated_status'] });
       toast.success('Item removido.');
+      void propagateSoleGroupConsumption(vars.soleGroupId);
     },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
   });
@@ -304,7 +384,10 @@ export function useCopySoleGroupItems() {
     },
     onSuccess: (count, vars) => {
       qc.invalidateQueries({ queryKey: ['sole_group_standard_items', vars.toGroupId] });
+      qc.invalidateQueries({ queryKey: ['pv-consumption'] });
+      qc.invalidateQueries({ queryKey: ['pv_outdated_status'] });
       toast.success(`${count} ${count === 1 ? 'item copiado' : 'itens copiados'}.`);
+      void propagateSoleGroupConsumption(vars.toGroupId);
     },
     onError: (err: Error) => toast.error(err.message),
   });

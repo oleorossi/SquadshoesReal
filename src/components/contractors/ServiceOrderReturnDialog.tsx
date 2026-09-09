@@ -26,7 +26,7 @@ import {
 } from '@/lib/serviceOrderItemReceipts';
 import { callUntypedRpc } from '@/lib/supabaseRpc';
 import type { TablesInsert } from '@/integrations/supabase/types';
-import { CalendarBlank as Calendar, Camera, CheckCircle, CircleNotch as Loader2, CurrencyDollar, Package } from '@phosphor-icons/react';
+import { CalendarBlank as Calendar, Camera, CheckCircle, CircleNotch as Loader2, CurrencyDollar, Package, Warning } from '@phosphor-icons/react';
 
 /**
  * Registrar Retorno de OS terceirizada (Fase 1 facção).
@@ -98,11 +98,11 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
   const qc = useQueryClient();
   const soId = serviceOrder?.id ?? null;
 
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading, isError, error: loadError, refetch } = useQuery({
     queryKey: ['so_return_dialog', soId],
     enabled: open && !!soId,
     queryFn: async () => {
-      const [{ data: bal, error: balErr }, { data: rets, error: retErr }, { data: cbals }, itemRes] = await Promise.all([
+      const [{ data: bal, error: balErr }, { data: rets, error: retErr }, { data: cbals, error: cbalsErr }, itemRes] = await Promise.all([
         (supabase as any).from('v_service_order_balance').select('*').eq('service_order_id', soId).maybeSingle(),
         (supabase as any)
           .from('service_order_returns')
@@ -114,6 +114,8 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
       ]);
       if (balErr) throw balErr;
       if (retErr) throw retErr;
+      if (cbalsErr) throw cbalsErr;
+      if (!bal) throw new Error('O saldo físico desta OS não foi encontrado.');
       const itemError = itemRes.error as { code?: string; message?: string } | null;
       const itemRpcMissing = itemError && (
         ['42883', 'PGRST202'].includes(itemError.code || '')
@@ -134,7 +136,17 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
   // Detecta OS dividida pelo próprio saldo (vale em qualquer tela que abra o dialog,
   // ex.: "Na Rua"), com o prop como dica enquanto o saldo carrega.
   const dispatchTracked = !!((balance as any)?.dispatch_tracked ?? serviceOrder?.dispatchTracked);
-  const { data: contractors = [] } = useContractors();
+  const {
+    data: contractors = [],
+    isLoading: loadingContractors,
+    isError: contractorsFailed,
+    error: contractorsError,
+    refetch: refetchContractors,
+  } = useContractors();
+  const loadFailed = isError || contractorsFailed;
+  const errorMessage = (isError ? loadError : contractorsError) instanceof Error
+    ? (isError ? loadError : contractorsError).message
+    : 'Não foi possível carregar o saldo físico e os prestadores desta OS.';
   const contractorBals = data?.contractorBals ?? [];
 
   const [qtyGood, setQtyGood] = useState(0);
@@ -158,7 +170,7 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
   const selBal = contractorBals.find(b => b.contractor_id === contractor);
   const inField = dispatchTracked
     ? Math.max(0, Number(selBal?.qty_in_field ?? 0))
-    : Math.max(0, Number(balance?.qty_in_field ?? serviceOrder?.quantity ?? 0));
+    : Math.max(0, Number(balance?.qty_in_field ?? 0));
 
   // Reset (só na ABERTURA) — não mexe no prestador depois pra não reverter a escolha.
   useEffect(() => {
@@ -255,7 +267,7 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
   };
 
   const handleSave = async () => {
-    if (!soId || saving) return;
+    if (!soId || saving || loadFailed || !balance) return;
     if (dispatchTracked && !contractor) { toast.error('Selecione de qual prestador está voltando.'); return; }
     if (totalReturn <= 0) { toast.error('Informe ao menos 1 par devolvido.'); return; }
     if (exceeds) { toast.error(`Retorno excede o saldo na rua (${inField} pares).`); return; }
@@ -348,6 +360,9 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
       qc.invalidateQueries({ queryKey: ['service_order_overview'] });
       qc.invalidateQueries({ queryKey: ['service_order_timeline', soId] });
       qc.invalidateQueries({ queryKey: ['so_return_dialog', soId] });
+      qc.invalidateQueries({ queryKey: ['so_dispatch_dialog', soId] });
+      qc.invalidateQueries({ queryKey: ['pv_service_orders'] });
+      qc.invalidateQueries({ queryKey: ['consolidated_service_orders'] });
       onSaved?.({ completed });
       if (completed) onOpenChange(false);
       else refetch();
@@ -370,9 +385,24 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
           </DialogTitle>
         </DialogHeader>
 
-        {isLoading ? (
+        {isLoading || loadingContractors ? (
           <div className="flex items-center justify-center py-8">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : loadFailed ? (
+          <div role="alert" className="space-y-3 rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+            <p className="flex items-start gap-2">
+              <Warning className="mt-0.5 h-4 w-4 shrink-0" />
+              <span><strong>Conferência bloqueada.</strong> {errorMessage}</span>
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void Promise.all([refetch(), refetchContractors()])}
+            >
+              Tentar novamente
+            </Button>
           </div>
         ) : (
           <div className="space-y-4">
@@ -625,7 +655,7 @@ export default function ServiceOrderReturnDialog({ open, onOpenChange, serviceOr
 
         <DialogFooter>
           <Button variant="outline" className="h-9" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button className="h-9" onClick={handleSave} disabled={saving || isLoading || totalReturn <= 0 || exceeds || !returnDate || ((effectiveQtyDefect > 0 || effectiveQtyLoss > 0) && !defectNotes.trim()) || (dispatchTracked && !contractor)}>
+          <Button className="h-9" onClick={handleSave} disabled={saving || isLoading || loadingContractors || loadFailed || !balance || totalReturn <= 0 || exceeds || !returnDate || ((effectiveQtyDefect > 0 || effectiveQtyLoss > 0) && !defectNotes.trim()) || (dispatchTracked && !contractor)}>
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Concluir conferência'}
           </Button>
         </DialogFooter>

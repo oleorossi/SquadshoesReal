@@ -13,10 +13,15 @@
  */
 
 import { roundUpToPurchaseMultiple } from '@/lib/purchaseMultiple';
+import { rateGradeToTotal } from '@/lib/gradeDistribution';
 
 /** Uma necessidade de material vinda da RPC compute_materials_per_pv. */
 export interface PvMaterialNeed {
-  material_id: string;
+  /** Identidade de estoque XOR: material comum usa products; embalagem usa
+   *  box_types diretamente, sem produto espelho/nome inferido. */
+  material_id: string | null;
+  box_type_id?: string | null;
+  packaging_type?: string | null;
   product_name: string;
   unit: string;
   color?: string | null;
@@ -56,6 +61,11 @@ export interface PvMaterialNeed {
    *  nas linhas de solado; demais materiais vêm null. Exibida na OC como no
    *  consumo de materiais. */
   grade?: Record<string, number> | null;
+  /** Falta líquida do solado por numeração, calculada contra stock_grade pela
+   *  RPC específica de compra. Quando netOfStock=true, esta é a grade da OC. */
+  shortage_grade?: Record<string, number> | null;
+  /** Há OC/ROP ainda aberta para o mesmo produto. Exige confirmação consciente. */
+  open_purchase_warning?: string | null;
   /** TRUE quando a cor pedida não tem produto cadastrado e o consumo caiu numa
    *  cor diferente (matched_by='color_mismatch'). GUARD: a OC marca a linha e
    *  bloqueia a geração até cadastrar a cor. */
@@ -74,7 +84,10 @@ export interface PvMaterialNeed {
 }
 
 export interface DraftPurchaseOrderItem {
-  material_id: string;
+  /** Exatamente um entre material_id e box_type_id deve estar preenchido. */
+  material_id: string | null;
+  box_type_id?: string | null;
+  packaging_type?: string | null;
   product_name: string;
   unit: string;
   color: string | null;
@@ -84,6 +97,9 @@ export interface DraftPurchaseOrderItem {
   technical_name?: string | null;
   /** Quantidade a comprar (default = needed_qty bruto; editável na UI). */
   quantity: number;
+  /** Decisão explícita do operador: true compra só a falta; false preserva o
+   * estoque e permite comprar até a necessidade bruta atual. */
+  net_of_stock: boolean;
   needed_qty: number;
   stock_qty: number;
   unit_price: number;
@@ -94,6 +110,8 @@ export interface DraftPurchaseOrderItem {
   rounding_surplus?: number;
   /** Grade do solado por numeração (total de pares). Só em linhas de solado. */
   grade?: Record<string, number> | null;
+  /** Peso por numeração da falta líquida; usado só enquanto o draft é montado. */
+  shortage_grade?: Record<string, number> | null;
   /** Cor pedida sem produto cadastrado (caiu noutra cor). Bloqueia a OC. */
   color_mismatch?: boolean;
   /** Aviso acionável vindo da RPC (ver PvMaterialNeed.conversion_warning).
@@ -282,6 +300,26 @@ function colorKey(c: string | null | undefined): string {
   return (c ?? '').trim().toLowerCase();
 }
 
+export function perPvStockIdentity(item: {
+  material_id?: string | null;
+  box_type_id?: string | null;
+}): { kind: 'product' | 'box_type'; id: string } | null {
+  const productId = nonEmptyId(item.material_id);
+  const boxTypeId = nonEmptyId(item.box_type_id);
+  if ((productId === null) === (boxTypeId === null)) return null;
+  return productId
+    ? { kind: 'product', id: productId }
+    : { kind: 'box_type', id: boxTypeId! };
+}
+
+export function perPvStockIdentityKey(item: {
+  material_id?: string | null;
+  box_type_id?: string | null;
+}): string {
+  const identity = perPvStockIdentity(item);
+  return identity ? `${identity.kind}:${identity.id}` : 'invalid';
+}
+
 /**
  * Unidades de COMPRA contáveis (vendidas por inteiro) — a quantidade da OC
  * arredonda pra cima pro inteiro. Espelha DISCRETE_PURCHASE_UNITS de
@@ -314,11 +352,13 @@ export function buildPerPvPurchaseOrders(
 ): DraftPurchaseOrder[] {
   const netOfStock = opts.netOfStock ?? false;
 
-  // 1) Mescla por (material_id + cor).
+  // 1) Mescla por (tipo de identidade + UUID + cor).
   const merged = new Map<string, DraftPurchaseOrderItem & { supplier_id: string | null; supplier_name: string | null; conversion_factor: number; purchase_unit: string | null }>();
   for (const n of needs) {
-    if (!n || !n.material_id) continue;
-    const key = `${n.material_id}::${colorKey(n.color)}`;
+    if (!n) continue;
+    const identity = perPvStockIdentity(n);
+    if (!identity) continue;
+    const key = `${identity.kind}:${identity.id}::${colorKey(n.color)}`;
     const needed = Number(n.needed_qty) || 0;
     const stock = Number(n.stock_qty) || 0;
     const price = Number(n.last_unit_price) || 0;
@@ -329,6 +369,7 @@ export function buildPerPvPurchaseOrders(
       // mantém o maior preço conhecido (mais conservador pra estimativa)
       existing.unit_price = Math.max(existing.unit_price, price);
       existing.grade = mergeGrade(existing.grade, n.grade);
+      existing.shortage_grade = mergeGrade(existing.shortage_grade, n.shortage_grade);
       existing.color_mismatch = !!existing.color_mismatch || !!n.color_mismatch;
       // Basta UM aviso pra linha estar comprometida — guarda o primeiro (a RPC
       // já agrega por (produto, cor), então na prática só há um).
@@ -339,13 +380,16 @@ export function buildPerPvPurchaseOrders(
       existing.product_group_id = existing.product_group_id || n.product_group_id || null;
     } else {
       merged.set(key, {
-        material_id: n.material_id,
+        material_id: identity.kind === 'product' ? identity.id : null,
+        box_type_id: identity.kind === 'box_type' ? identity.id : null,
+        packaging_type: n.packaging_type ?? null,
         product_name: n.product_name,
         unit: n.unit || 'un',
         color: (n.color ?? null) || null,
         sku: n.sku ?? null,
         technical_name: n.technical_name ?? null,
         quantity: 0, // definido abaixo
+        net_of_stock: netOfStock,
         needed_qty: round3(needed),
         stock_qty: round3(stock),
         unit_price: price,
@@ -353,6 +397,7 @@ export function buildPerPvPurchaseOrders(
         purchase_unit: n.purchase_unit ?? null,
         conversion_factor: Number(n.conversion_factor) > 0 ? Number(n.conversion_factor) : 1,
         grade: n.grade ?? null,
+        shortage_grade: n.shortage_grade ?? null,
         color_mismatch: !!n.color_mismatch,
         conversion_warning: n.conversion_warning ?? null,
         strap_variant_id: n.strap_variant_id ?? null,
@@ -403,6 +448,13 @@ export function buildPerPvPurchaseOrders(
       stock_qty: stockP,
       unit_price: priceP,
       quantity: qty,
+      // A grade persistida precisa fechar com a quantidade REAL da OC (falta
+      // líquida + múltiplo), não com a demanda bruta devolvida pela RPC. Sem
+      // este rateio o recebimento de solado trava em soma(grade) != quantity.
+      grade: rateGradeToTotal(
+        netOfStock && it.shortage_grade ? it.shortage_grade : it.grade,
+        qty,
+      ),
       rounding_surplus,
     });
   }
@@ -423,12 +475,15 @@ export function buildPerPvPurchaseOrders(
     }
     g.items.push({
       material_id: it.material_id,
+      box_type_id: it.box_type_id ?? null,
+      packaging_type: it.packaging_type ?? null,
       product_name: it.product_name,
       unit: it.unit,
       color: it.color,
       sku: it.sku ?? null,
       technical_name: it.technical_name ?? null,
       quantity: it.quantity,
+      net_of_stock: it.net_of_stock,
       needed_qty: it.needed_qty,
       stock_qty: it.stock_qty,
       unit_price: it.unit_price,
@@ -460,7 +515,8 @@ export function buildPerPvPurchaseOrders(
 
 /** Uma necessidade que a RPC devolveu com aviso — a UI precisa mostrar. */
 export interface PvNeedWarning {
-  material_id: string;
+  material_id: string | null;
+  box_type_id?: string | null;
   product_name: string;
   color: string | null;
   unit: string;
@@ -489,11 +545,12 @@ export function collectPvNeedWarnings(needs: PvMaterialNeed[]): PvNeedWarning[] 
   for (const n of needs || []) {
     const message = (n?.conversion_warning ?? '').trim();
     if (!message) continue;
-    const key = `${n.material_id}::${colorKey(n.color)}::${message}`;
+    const key = `${perPvStockIdentityKey(n)}::${colorKey(n.color)}::${message}`;
     if (seen.has(key)) continue;
     seen.add(key);
     out.push({
       material_id: n.material_id,
+      box_type_id: n.box_type_id ?? null,
       product_name: n.product_name,
       color: (n.color ?? null) || null,
       unit: n.unit || 'un',
@@ -505,6 +562,30 @@ export function collectPvNeedWarnings(needs: PvMaterialNeed[]): PvNeedWarning[] 
     (a.needed_qty > 0 ? 1 : 0) - (b.needed_qty > 0 ? 1 : 0)
     || a.product_name.localeCompare(b.product_name, 'pt-BR'));
   return out;
+}
+
+/** OCs/ROPs abertas são um risco diferente de cadastro incompleto: o operador
+ *  pode prosseguir, mas precisa reconhecer conscientemente a compra já existente. */
+export function collectOpenPurchaseWarnings(needs: PvMaterialNeed[]): PvNeedWarning[] {
+  const seen = new Set<string>();
+  const out: PvNeedWarning[] = [];
+  for (const n of needs || []) {
+    const message = (n?.open_purchase_warning ?? '').trim();
+    if (!message) continue;
+    const key = `${perPvStockIdentityKey(n)}::${message}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      material_id: n.material_id,
+      box_type_id: n.box_type_id ?? null,
+      product_name: n.product_name,
+      color: (n.color ?? null) || null,
+      unit: n.unit || 'un',
+      needed_qty: round3(Number(n.needed_qty) || 0),
+      message,
+    });
+  }
+  return out.sort((a, b) => a.product_name.localeCompare(b.product_name, 'pt-BR'));
 }
 
 export interface PerPvDraftSummary {
@@ -529,6 +610,20 @@ export function summarizePerPvDrafts(drafts: DraftPurchaseOrder[]): PerPvDraftSu
     total: round3(drafts.reduce((s, d) => s + d.total, 0)),
     colorMismatchCount: drafts.reduce((s, d) => s + d.items.filter((i) => i.color_mismatch).length, 0),
   };
+}
+
+/**
+ * Embalagem canônica (`box_types`) não possui o balde operacional "Sem
+ * Fornecedor": a fronteira atômica exige o fornecedor cadastrado no próprio
+ * tipo de embalagem. Materiais de `products` continuam podendo formar a OC
+ * manual sem fornecedor, portanto a guarda precisa discriminar a identidade.
+ */
+export function collectPerPvPackagingWithoutSupplier(
+  drafts: DraftPurchaseOrder[],
+): DraftPurchaseOrderItem[] {
+  return drafts.flatMap((draft) => draft.supplier_id === null
+    ? draft.items.filter((item) => perPvStockIdentity(item)?.kind === 'box_type')
+    : []);
 }
 
 /**

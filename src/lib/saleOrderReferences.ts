@@ -3,6 +3,7 @@ type ReferenceLike = {
   code?: string | null;
   name?: string | null;
   updated_at?: string | null;
+  retired_at?: string | null;
 };
 
 const normalize = (value?: string | null) => value?.trim().toLowerCase() || '';
@@ -41,27 +42,46 @@ const getUpdatedAtTime = (value?: string | null) => {
 
 export function getCanonicalSaleOrderReferences<T extends ReferenceLike>(references: T[]): T[] {
   const canonicalByKey = new Map<string, T>();
+  const retiredReferences: T[] = [];
 
   [...references]
-    .sort((a, b) => getUpdatedAtTime(b.updated_at) - getUpdatedAtTime(a.updated_at))
+    .sort((a, b) => {
+      // A aposentadoria atualiza updated_at. Sem esta prioridade, a ficha que
+      // acabou de sair do catalogo venceria a irma ativa e a esconderia do PV.
+      const byRetirement = Number(Boolean(a.retired_at)) - Number(Boolean(b.retired_at));
+      return byRetirement || getUpdatedAtTime(b.updated_at) - getUpdatedAtTime(a.updated_at);
+    })
     .forEach((reference) => {
+      if (reference.retired_at) {
+        // Mantem cada UUID aposentado no lookup do formulario historico. O
+        // seletor oculta essas linhas, exceto a que ja pertence ao item aberto.
+        retiredReferences.push(reference);
+        return;
+      }
       const key = getReferenceKey(reference);
       if (!canonicalByKey.has(key)) {
         canonicalByKey.set(key, reference);
       }
     });
 
-  return Array.from(canonicalByKey.values());
+  return [...canonicalByKey.values(), ...retiredReferences];
 }
 
 export function getCanonicalReferenceIdMap<T extends ReferenceLike>(references: T[]) {
-  const canonicalReferences = getCanonicalSaleOrderReferences(references);
+  const canonicalReferences = getCanonicalSaleOrderReferences(references)
+    .filter(reference => !reference.retired_at);
   const canonicalIdByKey = new Map(
     canonicalReferences.map((reference) => [getReferenceKey(reference), reference.id])
   );
 
   return references.reduce((map, reference) => {
-    map.set(reference.id, canonicalIdByKey.get(getReferenceKey(reference)) || reference.id);
+    // Uma linha historica nunca troca silenciosamente de FK ao abrir o PV.
+    map.set(
+      reference.id,
+      reference.retired_at
+        ? reference.id
+        : canonicalIdByKey.get(getReferenceKey(reference)) || reference.id,
+    );
     return map;
   }, new Map<string, string>());
 }

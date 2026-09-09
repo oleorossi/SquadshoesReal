@@ -47,7 +47,10 @@ import { ratesOfRow, sumProducaoRows, type FichaMontadorRow } from "@/lib/montad
 import { adjustParesByFicha, fichasFromPares, isFichaLocked, parseParesEntry, rateForEntryCategory } from "@/lib/fichaMontadoresEntry";
 import { searchMatchesAllTerms } from "@/lib/searchUtils";
 import { toast } from "sonner";
-import { Printer, ChartBar, ClipboardText, Users, CurrencyDollar, FloppyDisk, CaretLeft, CaretRight, Warning, CheckCircle, Clock, CalendarBlank, ListBullets, Plus, Minus, LockKey, ArrowDown, X } from "@phosphor-icons/react";
+import { Printer, ChartBar, ClipboardText, Users, CurrencyDollar, FloppyDisk, CaretLeft, CaretRight, Warning, CheckCircle, Clock, CalendarBlank, ListBullets, Plus, Minus, LockKey, ArrowDown, X, FileArrowDown, Copy } from "@phosphor-icons/react";
+import {
+  buildProducaoExportRows, downloadTextFile, producaoExportToCsv, semanaAnteriorDe,
+} from "@/lib/fichaMontadoresExport";
 
 type Grade = "adulto" | "infantil";
 /** Duas abas: LANÇAR e VER. "Produtividade" e "Relatórios" eram telas separadas
@@ -489,33 +492,44 @@ function FichaCounter({ value, tamanho, diff, pessoa, locked, onChange, onKeyDow
   };
 
   return (
-    <div className={`inline-grid min-w-[190px] grid-cols-[44px_minmax(88px,1fr)_44px] overflow-hidden rounded-lg border transition-colors ${locked ? "border-border bg-muted/50 opacity-70" : tone}`}>
-      <button type="button" disabled={locked || value < tamanho}
-        onClick={() => onChange(adjustParesByFicha(value, tamanho, -1))}
-        className="flex min-h-11 items-center justify-center border-r border-border/70 text-muted-foreground transition-colors hover:bg-background/70 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-35"
-        aria-label={`Remover uma ficha de ${tamanho} pares de ${pessoa}`}>
-        <Minus className="h-4 w-4" weight="bold" />
-      </button>
-      <label className="relative flex min-w-0 flex-col items-center justify-center bg-background/75 px-1 py-1">
-        <span className="sr-only">Pares de {DIFF_LABEL[diff]}, ficha {tamanho}, {pessoa}</span>
-        <input inputMode="numeric" enterKeyHint="next" readOnly={locked}
-          value={value || ""} placeholder="0"
-          onFocus={(event) => event.target.select()}
-          onChange={(event) => parse(event.target.value)}
-          onKeyDown={onKeyDown}
-          data-ficha-entry={`${diff}-${tamanho}`}
-          className="h-6 w-full bg-transparent text-center font-mono text-base font-bold tabular-nums text-foreground outline-none placeholder:text-muted-foreground/35 read-only:cursor-not-allowed"
-          aria-label={`${DIFF_LABEL[diff]} · ficha de ${tamanho} pares — ${pessoa}${locked ? " (fechado pela folha, somente leitura)" : ""}`} />
-        <span className={`font-mono text-[9px] font-bold uppercase tracking-[0.12em] ${accent}`}>
-          {fichasCount} {fichasCount === 1 ? "ficha" : "fichas"} · pares
-        </span>
-      </label>
+    <div className="inline-flex items-stretch gap-1.5">
+      <div className={`inline-grid min-w-[190px] grid-cols-[44px_minmax(88px,1fr)_44px] overflow-hidden rounded-lg border transition-colors ${locked ? "border-border bg-muted/50 opacity-70" : tone}`}>
+        <button type="button" disabled={locked || value < tamanho}
+          onClick={() => onChange(adjustParesByFicha(value, tamanho, -1))}
+          className="flex min-h-11 items-center justify-center border-r border-border/70 text-muted-foreground transition-colors hover:bg-background/70 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-35"
+          aria-label={`Remover uma ficha de ${tamanho} pares de ${pessoa}`}>
+          <Minus className="h-4 w-4" weight="bold" />
+        </button>
+        <label className="relative flex min-w-0 flex-col items-center justify-center bg-background/75 px-1 py-1">
+          <span className="sr-only">Pares de {DIFF_LABEL[diff]}, ficha {tamanho}, {pessoa}</span>
+          <input inputMode="numeric" enterKeyHint="next" readOnly={locked}
+            value={value || ""} placeholder="7f"
+            title={`Digite pares ou abreviação: 7f = ${7 * tamanho} pares`}
+            onFocus={(event) => event.target.select()}
+            onChange={(event) => parse(event.target.value)}
+            onKeyDown={onKeyDown}
+            data-ficha-entry={`${diff}-${tamanho}`}
+            className="h-6 w-full bg-transparent text-center font-mono text-base font-bold tabular-nums text-foreground outline-none placeholder:text-muted-foreground/40 read-only:cursor-not-allowed"
+            aria-label={`${DIFF_LABEL[diff]} · ficha de ${tamanho} pares — ${pessoa}${locked ? " (fechado pela folha, somente leitura)" : ""}`} />
+          <span className={`font-mono text-[9px] font-bold uppercase tracking-[0.12em] ${accent}`}>
+            {fichasCount} {fichasCount === 1 ? "ficha" : "fichas"} · pares
+          </span>
+        </label>
+        <button type="button" disabled={locked}
+          onClick={() => onChange(adjustParesByFicha(value, tamanho, 1))}
+          className="flex min-h-11 flex-col items-center justify-center border-l border-border/70 text-foreground transition-colors hover:bg-background/70 disabled:cursor-not-allowed disabled:opacity-35"
+          aria-label={`Adicionar uma ficha de ${tamanho} pares para ${pessoa}`}>
+          <Plus className="h-4 w-4" weight="bold" />
+          <span className="font-mono text-[8px] font-bold uppercase tracking-wider">1 ficha</span>
+        </button>
+      </div>
       <button type="button" disabled={locked}
-        onClick={() => onChange(adjustParesByFicha(value, tamanho, 1))}
-        className="flex min-h-11 flex-col items-center justify-center border-l border-border/70 text-foreground transition-colors hover:bg-background/70 disabled:cursor-not-allowed disabled:opacity-35"
-        aria-label={`Adicionar uma ficha de ${tamanho} pares para ${pessoa}`}>
-        <Plus className="h-4 w-4" weight="bold" />
-        <span className="font-mono text-[8px] font-bold uppercase tracking-wider">1 ficha</span>
+        onClick={() => onChange(adjustParesByFicha(value, tamanho, 5))}
+        className={`flex min-h-11 min-w-[44px] flex-col items-center justify-center rounded-lg border px-2 font-mono text-[10px] font-bold uppercase tracking-wider transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${locked ? "border-border bg-muted/50 text-muted-foreground" : medio ? "border-amber-500/40 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 dark:text-amber-400" : "border-green-600/40 bg-green-600/10 text-green-700 hover:bg-green-600/20 dark:text-green-400"}`}
+        aria-label={`Adicionar 5 fichas de ${tamanho} pares para ${pessoa}`}
+        title={`+5 fichas = +${5 * tamanho} pares`}>
+        <span>+5</span>
+        <span className="text-[8px] opacity-70">fichas</span>
       </button>
     </div>
   );
@@ -598,6 +612,9 @@ export default function FichaMontadoresPage() {
   // régua não altera dados; só muda qual combinação recebe os cliques rápidos.
   const [diaSize, setDiaSize] = useState<number>(12);
   const [diaDiff, setDiaDiff] = useState<Diff>("medio");
+  // No celular a matriz Semana vira um dia por vez — a grade Seg–Dom não cabe
+  // sem scroll horizontal e esconde o nome da pessoa.
+  const [semanaDiaFoco, setSemanaDiaFoco] = useState(todayISO());
   useEffect(() => {
     if (!diffsAtivos.includes(diaDiff)) setDiaDiff("medio");
   }, [diffsAtivos, diaDiff]);
@@ -649,10 +666,15 @@ export default function FichaMontadoresPage() {
     // wd[6] = domingo. Com wd[4] (sexta) o fim de semana ficava FORA do intervalo
     // buscado: o sábado nem chegava do banco, então não aparecia em lugar nenhum.
     const cands = [chamadaDia, wd[0], wd[6], range.from, range.to].filter(Boolean) as string[];
+    // Semana anterior entra na busca pra o comparativo do resumo não ficar cego.
+    if (pMode === "semana") {
+      const prev = semanaAnteriorDe(range.from);
+      cands.push(prev.from, prev.to);
+    }
     const shift = (iso: string, days: number) =>
       isoOf(new Date(new Date(iso + "T00:00:00").getTime() + days * 864e5));
     return { from: shift(cands.reduce((a, b) => (a < b ? a : b)), -1), to: shift(cands.reduce((a, b) => (a > b ? a : b)), 1) };
-  }, [chamadaDia, semanaAnchor, range.from, range.to]);
+  }, [chamadaDia, semanaAnchor, range.from, range.to, pMode]);
 
   const { data: employees = [] } = useEmployees();
   const { data: employeeSectors = [] } = useEmployeeSectors();
@@ -841,6 +863,11 @@ export default function FichaMontadoresPage() {
   }, [montadores, origPares, totalDiaPares]);
 
   const weekDays = useMemo(() => weekDaysOf(semanaAnchor), [semanaAnchor]);
+  useEffect(() => {
+    if (weekDays.includes(semanaDiaFoco)) return;
+    const hoje = todayISO();
+    setSemanaDiaFoco(weekDays.includes(hoje) ? hoje : weekDays[0]);
+  }, [weekDays, semanaDiaFoco]);
   /** (montador|dia) reivindicado por uma folha OU já pago. Nos dois estados o
    *  apontamento está fechado: mudar pares quebraria o snapshot da folha. */
   const diaFechado = useMemo(() => {
@@ -985,7 +1012,7 @@ export default function FichaMontadoresPage() {
     );
   }
 
-  async function salvarDia() {
+  async function salvarDia(): Promise<boolean> {
     setSavingDia(true);
     try {
       const changed = montadores.filter((e) => JSON.stringify(mapOf(e.id)) !== JSON.stringify(origPares[e.id] || emptyDiffMap()));
@@ -995,20 +1022,23 @@ export default function FichaMontadoresPage() {
       avisarBloqueio(bloqueados);
       if (erros.length) {
         toast.error(`Nada foi alterado. Corrija e tente novamente: ${erros.join(" · ")}`);
-        return;
+        return false;
       }
-      if (bloqueados.length) return;
+      if (bloqueados.length) return false;
       if (gravados) {
         await carregar();
         setSalvoEm(new Date());
         toast.success(`Dia salvo — ${gravados} ${gravados === 1 ? "lançamento" : "lançamentos"}.`);
-      } else toast.message("Nada para salvar.");
+        return true;
+      }
+      toast.message("Nada para salvar.");
+      return false;
     } finally {
       setSavingDia(false);
     }
   }
 
-  async function salvarSemana() {
+  async function salvarSemana(): Promise<boolean> {
     setSavingSem(true);
     try {
       const itens: { dia: string; e: { id: string; name: string }; dm: DiffSizeMap }[] = [];
@@ -1023,17 +1053,55 @@ export default function FichaMontadoresPage() {
       avisarBloqueio(bloqueados);
       if (erros.length) {
         toast.error(`Nada foi alterado. Corrija e tente novamente: ${erros.join(" · ")}`);
-        return;
+        return false;
       }
-      if (bloqueados.length) return;
+      if (bloqueados.length) return false;
       if (gravados) {
         await carregar();
         setSalvoEm(new Date());
         toast.success(`Semana salva — ${gravados} lançamento${gravados === 1 ? "" : "s"}.`);
-      } else toast.message("Nada para salvar.");
+        return true;
+      }
+      toast.message("Nada para salvar.");
+      return false;
     } finally {
       setSavingSem(false);
     }
+  }
+
+  /** Depois de lançar, o próximo passo natural é conferir totais e pagar. */
+  async function salvarEConferir() {
+    const dirty = chamadaView === "dia" ? dirtyDia : dirtySem;
+    if (dirty > 0) {
+      const ok = chamadaView === "dia" ? await salvarDia() : await salvarSemana();
+      if (!ok) return;
+    }
+    if (chamadaView === "dia") setSemanaAnchor(chamadaDia);
+    setPMode("semana");
+    setReportView("resumo");
+    setTab("producao");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function copiarDeOntem() {
+    const ontem = isoOf(new Date(new Date(chamadaDia + "T00:00:00").getTime() - 864e5));
+    const updates: Record<string, DiffSizeMap> = {};
+    for (const employee of montadores) {
+      if (diaFechado.has(`${employee.id}|${chamadaDia}`)) continue;
+      const src = fichas.find((f) => isChamada(f) && f.montador_id === employee.id && f.dia === ontem);
+      if (!src) continue;
+      const dm = diffSizeMapOf(src);
+      if (paresOfDiffMap(dm) <= 0) continue;
+      updates[employee.id] = dm;
+    }
+    const n = Object.keys(updates).length;
+    if (!n) {
+      toast.message(`Nenhuma produção em ${fmtDia(ontem)} para copiar (ou todos os dias já estão na folha).`);
+      return;
+    }
+    setSalvoEm(null);
+    setPares((current) => ({ ...current, ...updates }));
+    toast.success(`Copiado de ${fmtDia(ontem)} — ${n} pessoa${n === 1 ? "" : "s"}. Revise e salve.`);
   }
 
   function avancarEntrada(event: ReactKeyboardEvent<HTMLInputElement>) {
@@ -1212,6 +1280,35 @@ export default function FichaMontadoresPage() {
     return { ...base, semDetalhe, legado };
   }, [fichasFiltradas]);
 
+  /** Comparativo só no modo semana: pares/bruto da semana imediatamente anterior
+   *  (mesmos filtros de pessoa/pagamento). */
+  const resumoSemanaAnterior = useMemo(() => {
+    if (pMode !== "semana") return null;
+    const prev = semanaAnteriorDe(range.from);
+    const rows = fichas.filter((f) =>
+      f.dia >= prev.from && f.dia <= prev.to
+      && (filtroMontador === "__all__" || f.montador_id === filtroMontador)
+      && (pagStatus === "todos" || estadoDe(f) === pagStatus));
+    return { ...sumProducaoRows(rows as unknown as FichaMontadorRow[]), ...prev };
+  }, [pMode, range.from, fichas, filtroMontador, pagStatus, estadoDe]);
+
+  function exportarCsvPeriodo() {
+    const nomePorId = new Map(montadores.map((e) => [e.id, e.name] as const));
+    const rows = buildProducaoExportRows(
+      fichasFiltradas as unknown as Parameters<typeof buildProducaoExportRows>[0],
+      nomePorId,
+    );
+    if (!rows.length) {
+      toast.message("Nada para exportar neste período.");
+      return;
+    }
+    downloadTextFile(
+      `ficha-montadores_${setor}_${range.from}_${range.to}.csv`,
+      producaoExportToCsv(rows),
+    );
+    toast.success(`CSV com ${rows.length} linha(s) baixado.`);
+  }
+
   /**
    * CALENDÁRIO em grade de mês (R2): pares por DIA, somando todos os montadores
    * que passaram no filtro. Semana começa na SEGUNDA (`dowIdx`), igual ao PDF.
@@ -1376,9 +1473,33 @@ export default function FichaMontadoresPage() {
       <EditorialPageHeader
         sectionLabel={`PRODUÇÃO · ${cfgSetor.label.toUpperCase()}`}
         title="Ficha de produção"
-        description="Lance os pares do dia e feche a semana no mesmo lugar. O valor por par fica congelado em cada apontamento e segue para a folha."
+        description="Lance → confira → pague. O valor por par fica congelado em cada apontamento e segue para a folha."
         meta={<><span className="font-bold">{montadores.length}</span> PESSOA{montadores.length === 1 ? "" : "S"} POR PAR · <span className="font-bold">{fichasHoje}</span> FICHA{fichasHoje === 1 ? "" : "S"} HOJE</>}
       />
+
+      {/* Jornada em uma linha: o administrativo não precisa adivinhar a ordem. */}
+      <ol aria-label="Jornada da ficha" className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+        <li className={tab === "lancamento" ? "text-foreground" : ""}>
+          <button type="button" className="hover:text-foreground" onClick={() => setTab("lancamento")}>1 · Lançar</button>
+        </li>
+        <li aria-hidden className="text-border">→</li>
+        <li className={tab === "producao" && reportView === "resumo" ? "text-foreground" : ""}>
+          <button type="button" className="hover:text-foreground" onClick={() => {
+            if (temRascunho && !confirmarDescarte()) return;
+            if (temRascunho) iniciarTrocaDeContexto();
+            if (chamadaView === "dia") setSemanaAnchor(chamadaDia);
+            setPMode("semana"); setReportView("resumo"); setTab("producao");
+          }}>2 · Conferir / pagar</button>
+        </li>
+        <li aria-hidden className="text-border">→</li>
+        <li className={tab === "producao" && reportView !== "resumo" ? "text-foreground" : ""}>
+          <button type="button" className="hover:text-foreground" onClick={() => {
+            if (temRascunho && !confirmarDescarte()) return;
+            if (temRascunho) iniciarTrocaDeContexto();
+            setTab("producao"); setReportView("calendario");
+          }}>3 · Relatórios</button>
+        </li>
+      </ol>
 
       {/* Contexto compacto: a bancada de lançamento é o herói da tela; esta
           faixa só responde onde estou e qual trabalho vou fazer. */}
@@ -1407,9 +1528,17 @@ export default function FichaMontadoresPage() {
           <div className="flex flex-wrap items-center gap-2">
             <nav aria-label="Etapa da ficha" className="flex overflow-hidden rounded-lg border border-border bg-background">
               {TABS.map((item) => (
-                <button key={item.id} type="button" onClick={() => { if (item.id !== tab) setTab(item.id); }} title={item.description}
+                <button key={item.id} type="button" onClick={() => {
+                  if (item.id === tab) return;
+                  if (item.id === "producao" && temRascunho && !confirmarDescarte()) return;
+                  if (item.id === "producao" && temRascunho) iniciarTrocaDeContexto();
+                  setTab(item.id);
+                }} title={item.description}
                   className={`flex min-h-9 items-center gap-2 border-r border-border px-3 text-xs font-semibold transition-colors last:border-r-0 ${tab === item.id ? "bg-foreground text-background" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"}`}>
                   <item.icon className="h-4 w-4" /> {item.label}
+                  {item.id === "producao" && temRascunho && tab === "lancamento" && (
+                    <span className="rounded-sm bg-amber-500 px-1 py-0.5 font-mono text-[9px] font-bold uppercase text-white" title="Há rascunho não salvo na bancada">rascunho</span>
+                  )}
                 </button>
               ))}
             </nav>
@@ -1521,7 +1650,11 @@ export default function FichaMontadoresPage() {
             </div>
           </div>
 
-          {montadores.length === 0 ? (
+          {loading && montadores.length > 0 ? (
+            <Panel className="p-8 flex items-center justify-center gap-2 text-muted-foreground">
+              <Clock className="h-5 w-5 animate-pulse" /> Carregando lançamentos…
+            </Panel>
+          ) : montadores.length === 0 ? (
             <Panel>
               <EmptyState icon={Users} title={`Nenhum ${cfgSetor.sing} por par em ${cfgSetor.label}`}
                 description={`Defina setor, regime “Por par” e R$/par no cadastro antes de lançar. Pessoas mensalistas deste setor não aparecem na chamada porque não compõem a folha por produção.`}
@@ -1537,6 +1670,12 @@ export default function FichaMontadoresPage() {
                 : `Régua ativa: ficha ${diaSize}, ${DIFF_LABEL[diaDiff].toLowerCase()}. Clique em +1 ficha ou digite os pares; 7f vira ${7 * diaSize} pares.`}
               actions={
                 <div className="flex flex-wrap items-center gap-2">
+                  <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5"
+                    disabled={loading || savingDia}
+                    title="Preenche o dia atual com a produção de ontem (só linhas ainda editáveis)."
+                    onClick={copiarDeOntem}>
+                    <Copy className="h-3.5 w-3.5" /> Copiar de ontem
+                  </Button>
                   <Button type="button" variant={detalharDia ? "default" : "outline"} size="sm" className="h-8"
                     aria-pressed={detalharDia} onClick={() => setDetalharDia((v) => !v)}>
                     {detalharDia ? "Voltar à régua" : "Conferir grade"}
@@ -1545,9 +1684,9 @@ export default function FichaMontadoresPage() {
                 </div>
               }
             >
-              {/* A régua é a assinatura da tela: primeiro o encarregado escolhe
-                  a ficha física que está contando; depois percorre as pessoas. */}
-              <section aria-label="Régua de lançamento" className="border-b border-border bg-foreground text-background">
+              {/* A régua fica sticky: no celular o encarregado escolhe 12/médio uma
+                  vez e rola a lista sem perder o contexto da ficha física. */}
+              <section aria-label="Régua de lançamento" className="sticky top-0 z-sticky border-b border-border bg-foreground text-background shadow-sm">
                 <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_auto]">
                   <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center">
                     <div className="flex items-center gap-2">
@@ -1745,9 +1884,14 @@ export default function FichaMontadoresPage() {
                     ? <span className="ml-2 font-semibold text-amber-600">● {dirtyDia} pessoa{dirtyDia === 1 ? "" : "s"} alterada{dirtyDia === 1 ? "" : "s"}</span>
                     : salvoEm && <span className="ml-2 font-medium text-green-600"><CheckCircle className="mr-1 inline h-3 w-3" />Salvo às {salvoEm.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>}
                 </span>
-                <Button type="button" onClick={salvarDia} disabled={savingDia || dirtyDia === 0} className="h-10 gap-2">
-                  <FloppyDisk className="h-4 w-4" /> {savingDia ? "Salvando…" : "Salvar alterações"}
-                </Button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button type="button" variant="outline" onClick={() => void salvarDia()} disabled={savingDia || dirtyDia === 0} className="h-10 gap-2">
+                    <FloppyDisk className="h-4 w-4" /> {savingDia ? "Salvando…" : "Salvar"}
+                  </Button>
+                  <Button type="button" onClick={() => void salvarEConferir()} disabled={savingDia} className="h-10 gap-2">
+                    <ChartBar className="h-4 w-4" /> {dirtyDia > 0 ? (savingDia ? "Salvando…" : "Salvar e conferir") : "Conferir e pagar"}
+                  </Button>
+                </div>
               </div>
             </Panel>
           ) : (
@@ -1781,11 +1925,66 @@ export default function FichaMontadoresPage() {
                 </div>
               }
             >
-              {/* Uma linha por pessoa, com as duas dificuldades à vista. Substituiu
-                  a matriz que editava UMA fatia (dificuldade × tamanho) por vez:
-                  eram até 6 passadas na mesma grade, e a marca +N existia só pra
-                  avisar do que a célula não conseguia mostrar. */}
-              <div className="overflow-x-auto">
+              {/* No celular: um dia por vez com a mesma bancada da visão Dia.
+                  A grade Seg–Dom continua no desktop. */}
+              <div className="space-y-3 p-3 md:hidden">
+                <div className="flex gap-1 overflow-x-auto pb-1" role="tablist" aria-label="Dia da semana">
+                  {weekDays.map((d, i) => {
+                    const ativo = d === semanaDiaFoco;
+                    const paresDia = rosterFiltrado.reduce((s, e) => s + paresOfDiffMap(weekMap(e.id, d)), 0);
+                    return (
+                      <button key={d} type="button" role="tab" aria-selected={ativo}
+                        onClick={() => setSemanaDiaFoco(d)}
+                        className={`shrink-0 rounded-lg border px-3 py-2 text-left transition-colors ${ativo ? "border-foreground bg-foreground text-background" : "border-border bg-card text-muted-foreground hover:bg-muted/40"}`}>
+                        <span className="block font-mono text-[9px] font-bold uppercase tracking-wider opacity-70">{WD_SHORT[i]}</span>
+                        <span className="block text-sm font-bold tabular-nums">{d.slice(8)}</span>
+                        {paresDia > 0 && <span className={`block font-mono text-[9px] ${ativo ? "text-background/70" : "text-primary"}`}>{paresDia}p</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                  {weekdayName(semanaDiaFoco)} · ficha {semSize}
+                  {diffsAtivos.length > 1 ? " · médio e difícil na mesma linha" : ""}
+                </p>
+                <div className="divide-y divide-border/60 rounded-lg border border-border">
+                  {rosterFiltrado.map((e) => {
+                    const cel = weekMap(e.id, semanaDiaFoco);
+                    const pp = paresOfDiffMap(cel);
+                    const fechado = diaFechado.get(`${e.id}|${semanaDiaFoco}`);
+                    const alterado = JSON.stringify(cel) !== JSON.stringify(origWeek[`${e.id}|${semanaDiaFoco}`] || emptyDiffMap());
+                    return (
+                      <div key={e.id} className={`space-y-3 p-3 ${alterado ? "bg-amber-500/[0.025]" : ""}`}>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="flex items-center gap-1.5 truncate text-sm font-semibold">
+                              {e.name}
+                              {fechado && <LockKey className="h-3.5 w-3.5 text-muted-foreground" />}
+                            </p>
+                            {alterado && <span className="font-mono text-[9px] font-bold uppercase text-amber-600">alterado</span>}
+                          </div>
+                          <span className="shrink-0 font-mono text-sm font-bold tabular-nums">{pp.toLocaleString("pt-BR")} <span className="text-[9px] font-normal uppercase text-muted-foreground">pares</span></span>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {diffsAtivos.map((df) => (
+                            <FichaCounter key={df} value={cel[df][semSize] || 0} tamanho={semSize} diff={df} pessoa={e.name}
+                              locked={Boolean(fechado) || loading || savingSem}
+                              onChange={(value) => setWeekCell(e.id, semanaDiaFoco, df, semSize, value)}
+                              onKeyDown={avancarEntrada} />
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {rosterFiltrado.length === 0 && (
+                    <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+                      Nenhum resultado para "{busca}".
+                      <Button type="button" variant="outline" size="sm" className="ml-2 h-7" onClick={() => setBusca("")}>Limpar busca</Button>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="hidden overflow-x-auto md:block">
                 <div className="min-w-[680px] divide-y divide-border/60 sm:min-w-0">
                 {rosterFiltrado.map((e) => {
                   const porPar = String(e.payment_type || "").toLowerCase() === "producao";
@@ -1892,9 +2091,14 @@ export default function FichaMontadoresPage() {
                 <span className="text-[11px] text-muted-foreground" aria-live="polite">Semana {weekLabel} (todos os tamanhos): <strong className="text-foreground">{semParesTotal.toLocaleString("pt-BR")}</strong> pares · <strong className="text-primary">{semFichasTotal}</strong> fichas
                   {dirtySem > 0 && <span className="ml-2 font-semibold text-amber-600">● {dirtySem} dia{dirtySem === 1 ? "" : "s"} alterado{dirtySem === 1 ? "" : "s"}</span>}
                 </span>
-                <Button type="button" onClick={salvarSemana} disabled={savingSem || dirtySem === 0} className="h-10 gap-2">
-                  <FloppyDisk className="h-4 w-4" /> {savingSem ? "Salvando…" : "Salvar alterações"}
-                </Button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button type="button" variant="outline" onClick={() => void salvarSemana()} disabled={savingSem || dirtySem === 0} className="h-10 gap-2">
+                    <FloppyDisk className="h-4 w-4" /> {savingSem ? "Salvando…" : "Salvar"}
+                  </Button>
+                  <Button type="button" onClick={() => void salvarEConferir()} disabled={savingSem} className="h-10 gap-2">
+                    <ChartBar className="h-4 w-4" /> {dirtySem > 0 ? (savingSem ? "Salvando…" : "Salvar e conferir") : "Conferir e pagar"}
+                  </Button>
+                </div>
               </div>
             </Panel>
           )}
@@ -1922,11 +2126,19 @@ export default function FichaMontadoresPage() {
                 <Button type="button" variant="outline" className="h-10 flex-1 gap-1.5 sm:flex-none" onClick={() => setConfirmarDescartarDock(true)}>
                   <X className="h-4 w-4" /> Descartar
                 </Button>
-                <Button type="button" className="h-10 flex-1 gap-1.5 sm:flex-none"
+                <Button type="button" variant="outline" className="h-10 flex-1 gap-1.5 sm:flex-none"
                   disabled={chamadaView === "dia" ? savingDia : savingSem}
                   onClick={() => { if (chamadaView === "dia") void salvarDia(); else void salvarSemana(); }}>
                   <FloppyDisk className="h-4 w-4" />
-                  {chamadaView === "dia" ? (savingDia ? "Salvando…" : "Salvar o dia") : (savingSem ? "Salvando…" : "Salvar semana")}
+                  {chamadaView === "dia" ? (savingDia ? "Salvando…" : "Salvar") : (savingSem ? "Salvando…" : "Salvar")}
+                </Button>
+                <Button type="button" className="h-10 flex-1 gap-1.5 sm:flex-none"
+                  disabled={chamadaView === "dia" ? savingDia : savingSem}
+                  onClick={() => void salvarEConferir()}>
+                  <ChartBar className="h-4 w-4" />
+                  {chamadaView === "dia"
+                    ? (savingDia ? "…" : "Salvar e conferir")
+                    : (savingSem ? "…" : "Salvar e conferir")}
                 </Button>
               </div>
             </aside>
@@ -1940,10 +2152,21 @@ export default function FichaMontadoresPage() {
           eyebrow="FECHAMENTO SEMANAL"
           title={`Conferência de ${cfgSetor.label}`}
           subtitle="O período, a pessoa e o status abaixo controlam todas as visões e o relatório impresso."
-          actions={<Button type="button" variant="outline" size="sm" className="h-9 w-9 gap-1.5 p-0 sm:w-auto sm:px-3" disabled={agg.length === 0}
-            title="Gera rendimento por pessoa e calendário no mesmo documento, respeitando todos os filtros."
-            aria-label="Imprimir relatório"
-            onClick={imprimirRelatorioCompleto}><Printer className="h-4 w-4" /><span className="hidden sm:inline">Imprimir relatório</span></Button>}
+          actions={
+            <div className="flex items-center gap-1.5">
+              <Button type="button" variant="outline" size="sm" className="h-9 w-9 gap-1.5 p-0 sm:w-auto sm:px-3"
+                disabled={fichasFiltradas.length === 0}
+                title="Baixa CSV do período (Excel pt-BR)."
+                aria-label="Exportar CSV"
+                onClick={exportarCsvPeriodo}>
+                <FileArrowDown className="h-4 w-4" /><span className="hidden sm:inline">Exportar CSV</span>
+              </Button>
+              <Button type="button" variant="outline" size="sm" className="h-9 w-9 gap-1.5 p-0 sm:w-auto sm:px-3" disabled={agg.length === 0}
+                title="Gera rendimento por pessoa e calendário no mesmo documento, respeitando todos os filtros."
+                aria-label="Imprimir relatório"
+                onClick={imprimirRelatorioCompleto}><Printer className="h-4 w-4" /><span className="hidden sm:inline">Imprimir relatório</span></Button>
+            </div>
+          }
         >
         <div className="flex flex-wrap items-end gap-3">
           <div>
@@ -1953,7 +2176,13 @@ export default function FichaMontadoresPage() {
               <button key={m} type="button"
                 // "Esta semana" volta pra semana corrente: o rótulo promete isso.
                 // Navegar com as setas move a âncora; o preset a traz de volta.
-                onClick={() => { setPMode(m); if (m === "semana") setSemanaAnchor(todayISO()); }}
+                onClick={() => {
+                  if (m === pMode && m !== "semana") return;
+                  if (temRascunho && !confirmarDescarte()) return;
+                  if (temRascunho) iniciarTrocaDeContexto();
+                  setPMode(m);
+                  if (m === "semana") setSemanaAnchor(todayISO());
+                }}
                 className={`rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors ${pMode === m ? "border-foreground bg-foreground text-background" : "border-border bg-card text-muted-foreground hover:bg-muted/40"}`}>{periodLabel[m]}</button>
             ))}
             </div>
@@ -1964,7 +2193,11 @@ export default function FichaMontadoresPage() {
           {pMode === "semana" && (
             <div className="flex items-center gap-1">
               <Button type="button" variant="outline" size="sm" className="h-9 w-9 p-0"
-                onClick={() => deslocarSemana(-1)} aria-label="Semana anterior"><CaretLeft className="h-4 w-4" /></Button>
+                onClick={() => {
+                  if (temRascunho && !confirmarDescarte()) return;
+                  if (temRascunho) iniciarTrocaDeContexto();
+                  deslocarSemana(-1);
+                }} aria-label="Semana anterior"><CaretLeft className="h-4 w-4" /></Button>
               <div className="inline-flex h-9 min-w-0 items-center gap-2 rounded-md border border-border bg-card px-2 text-xs font-medium tabular-nums sm:px-3 sm:text-sm">
                 <span>{fmtDia(range.from)} – {fmtDia(range.to)}</span>
                 {totals.valorAberto > 0
@@ -1974,7 +2207,11 @@ export default function FichaMontadoresPage() {
                     : <span className="hidden font-mono text-xs text-muted-foreground sm:inline">sem produção</span>}
               </div>
               <Button type="button" variant="outline" size="sm" className="h-9 w-9 p-0"
-                onClick={() => deslocarSemana(1)} aria-label="Próxima semana"><CaretRight className="h-4 w-4" /></Button>
+                onClick={() => {
+                  if (temRascunho && !confirmarDescarte()) return;
+                  if (temRascunho) iniciarTrocaDeContexto();
+                  deslocarSemana(1);
+                }} aria-label="Próxima semana"><CaretRight className="h-4 w-4" /></Button>
             </div>
           )}
           {pMode === "custom" && (
@@ -2074,6 +2311,51 @@ export default function FichaMontadoresPage() {
               })}
             </div>
           </section>
+
+          {resumoSemanaAnterior && (
+            <div className="space-y-3 rounded-lg border border-border bg-muted/30 p-3 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                  vs semana anterior ({fmtDia(resumoSemanaAnterior.from)}–{fmtDia(resumoSemanaAnterior.to)})
+                </div>
+                <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5"
+                  disabled={fichasFiltradas.length === 0}
+                  onClick={exportarCsvPeriodo}>
+                  <FileArrowDown className="h-3.5 w-3.5" /> Exportar CSV
+                </Button>
+              </div>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div>
+                <p className="text-[10px] uppercase text-muted-foreground">Pares</p>
+                <p className="font-mono tabular-nums">
+                  {resumoPeriodo.pares.toLocaleString("pt-BR")}
+                  <span className={`ml-1 text-xs ${resumoPeriodo.pares - resumoSemanaAnterior.pares >= 0 ? "text-green-600" : "text-red-600"}`}>
+                    ({resumoPeriodo.pares - resumoSemanaAnterior.pares >= 0 ? "+" : ""}
+                    {(resumoPeriodo.pares - resumoSemanaAnterior.pares).toLocaleString("pt-BR")})
+                  </span>
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase text-muted-foreground">Bruto</p>
+                <p className="font-mono tabular-nums">
+                  {fmtBRL(resumoPeriodo.bruto)}
+                  <span className={`ml-1 text-xs ${resumoPeriodo.bruto - resumoSemanaAnterior.bruto >= 0 ? "text-green-600" : "text-red-600"}`}>
+                    ({resumoPeriodo.bruto - resumoSemanaAnterior.bruto >= 0 ? "+" : ""}
+                    {fmtBRL(resumoPeriodo.bruto - resumoSemanaAnterior.bruto)})
+                  </span>
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase text-muted-foreground">Anterior · pares</p>
+                <p className="font-mono tabular-nums text-muted-foreground">{resumoSemanaAnterior.pares.toLocaleString("pt-BR")}</p>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase text-muted-foreground">Anterior · bruto</p>
+                <p className="font-mono tabular-nums text-muted-foreground">{fmtBRL(resumoSemanaAnterior.bruto)}</p>
+              </div>
+              </div>
+            </div>
+          )}
 
           {(resumoPeriodo.taxaVariou || resumoPeriodo.legado > 0 || resumoPeriodo.semDetalhe > 0) && (
             <div className="flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-xs text-amber-700 dark:text-amber-400">

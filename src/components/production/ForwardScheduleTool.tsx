@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import {
   computeForwardSchedule, setHolidayCache, checkSectorCapacity, SECTOR_LABELS,
-  fetchCategoryDefaultsMap, categoryDefaultsFor,
+  fetchCategoryDefaultsMap, categoryDefaultsFor, offsetsFromSettings,
 } from '@/lib/sectorCapacity';
 import { useHolidays } from '@/hooks/useTimesheet';
 import { Panel } from '@/components/ui/panel';
@@ -61,6 +61,19 @@ export function ForwardScheduleTool() {
     queryFn: () => fetchCategoryDefaultsMap(),
   });
 
+  const { data: sectorOffsetRows = [] } = useQuery({
+    queryKey: ['sector_settings', 'start_offset_days'],
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('sector_settings')
+        .select('sector, start_offset_days');
+      if (error) return [];
+      return (data || []) as Array<{ sector: string; start_offset_days?: number | null }>;
+    },
+  });
+  const sectorOffsets = useMemo(() => offsetsFromSettings(sectorOffsetRows), [sectorOffsetRows]);
+
   const [sheetId, setSheetId] = useState<string>('');
   const [qty, setQty] = useState<number>(600);
   const [startISO, setStartISO] = useState<string>(todayISO());
@@ -76,8 +89,8 @@ export function ForwardScheduleTool() {
     if (!sheet || qty <= 0 || !startISO) return null;
     const d = new Date(startISO + 'T00:00:00');
     if (isNaN(d.getTime())) return null;
-    return computeForwardSchedule(sheet, qty, d, {}, categoryDefaultsFor(sheet, categoryDefaultsMap));
-  }, [sheet, qty, startISO, categoryDefaultsMap]);
+    return computeForwardSchedule(sheet, qty, d, {}, categoryDefaultsFor(sheet, categoryDefaultsMap), sectorOffsets);
+  }, [sheet, qty, startISO, categoryDefaultsMap, sectorOffsets]);
 
   // B2 (advisory, capacidade finita): checa se algum setor JÁ está sobrecarregado
   // na janela projetada (carga das outras OPs ativas), reusando o MESMO motor

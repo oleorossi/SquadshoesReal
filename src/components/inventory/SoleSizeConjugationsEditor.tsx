@@ -13,6 +13,7 @@ import {
   useUpsertSoleConjugation,
   useDeleteSoleConjugation,
 } from '@/hooks/useSoleConjugations';
+import { configureProductGrades } from '@/lib/stockCommand';
 
 interface Props {
   /** product_groups.id do solado */
@@ -28,6 +29,12 @@ type DraftRow = {
   sizes: number[];
   display_order: number;
 };
+
+interface SoleGroupProductStock {
+  id: string;
+  quantity: number | null;
+  stock_grade: Record<string, unknown> | null;
+}
 
 /**
  * Editor de numerações conjugadas para um GRUPO de solado.
@@ -198,12 +205,12 @@ export function SoleSizeConjugationsEditor({ soleGroupId, sizeFrom, sizeTo }: Pr
         const newTo = Math.max(sizeTo, ...draftsOutOfRange);
         const { data: groupProducts, error: pErr } = await (supabase as any)
           .from('products')
-          .select('id, stock_grade')
+          .select('id, quantity, stock_grade')
           .eq('group_id', soleGroupId)
           .eq('category', 'Solado')
           .eq('active', true);
         if (pErr) throw pErr;
-        for (const prod of (groupProducts || [])) {
+        const gradeUpdates = ((groupProducts || []) as SoleGroupProductStock[]).map((prod) => {
           const grade = { ...(prod.stock_grade || {}) };
           grade._size_from = newFrom;
           grade._size_to = newTo;
@@ -211,11 +218,19 @@ export function SoleSizeConjugationsEditor({ soleGroupId, sizeFrom, sizeTo }: Pr
           for (let s = newFrom; s <= newTo; s++) {
             if (grade[String(s)] == null) grade[String(s)] = 0;
           }
-          const { error: uErr } = await (supabase as any)
-            .from('products')
-            .update({ stock_grade: grade })
-            .eq('id', prod.id);
-          if (uErr) throw uErr;
+          return {
+            product_id: prod.id,
+            expected_previous_qty: Number(prod.quantity ?? 0),
+            expected_grade: (prod.stock_grade as Record<string, unknown> | null) ?? null,
+            new_grade: grade,
+            reason: 'Expansao da faixa para numeracoes conjugadas do solado',
+          };
+        });
+        if (gradeUpdates.length > 0) {
+          const result = await configureProductGrades(gradeUpdates);
+          if (!result.success) {
+            throw new Error(result.errors?.[0]?.error || 'Falha ao expandir a grade dos solados');
+          }
         }
         toast.info(`Range expandido: ${sizeFrom}-${sizeTo} → ${newFrom}-${newTo}`);
         // A expansão regrava stock_grade._size_from/_to de TODAS as variantes —

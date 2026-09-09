@@ -3,30 +3,38 @@ import { Fragment, useMemo, useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { CircleNotch as Loader2, CurrencyDollar as DollarSign, Calculator, CheckCircle as CheckCircle2, Receipt, Warning as AlertTriangle, Wallet, Clock, Printer, DownloadSimple, IdentificationCard, CalendarBlank, Paperclip, FilePdf, Package, ArrowSquareOut } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, CurrencyDollar as DollarSign, Calculator, CheckCircle as CheckCircle2, Receipt, Warning as AlertTriangle, Wallet, Clock, Printer, DownloadSimple, IdentificationCard, CalendarBlank, Paperclip, FilePdf, Package, ArrowSquareOut, XCircle } from '@phosphor-icons/react';
 import { printRhReport, type RhCell } from '@/lib/printRhReport';
 import { useQuery } from '@tanstack/react-query';
 import { useEmployees } from '@/hooks/useEmployees';
-import { useHolidays, useSwapSets, useTimesheetCoverage, useWorkSchedules } from '@/hooks/useTimesheet';
-import { useAbsences, usePayrollRuns, useUpsertPayrollRun, useUpdatePayrollStatus } from '@/hooks/useRH';
+import {
+  buildSwapSets,
+  fetchTimesheetCoverage,
+  useHolidays,
+  useSwapSets,
+  useTimesheetCoverage,
+  useWorkSchedules,
+} from '@/hooks/useTimesheet';
+import { useAbsences, useCancelPayrollRun, usePayrollRuns, useUpsertPayrollRun, useUpdatePayrollStatus } from '@/hooks/useRH';
 import { usePayrollPaymentSummaries } from '@/hooks/usePayrollPayments';
 import { RegistrarPagamentoDialog } from '@/components/hr/RegistrarPagamentoDialog';
 import { computePeriodFolha, getDaysInRange, type SalaryDayLedger, type SalaryPayrollResult } from '@/lib/salaryPayroll';
-import { computeComparativoRows } from '@/lib/payrollComparativo';
+import { computeComparativoRows, groupPayrollPunchesByEmployee } from '@/lib/payrollComparativo';
 import { fetchTimeRecordsInRange } from '@/lib/ponto/fetchTimeRecords';
-import { expandAbsenceDatesByEmployee, resolveHolidaysForPayrollRange } from '@/lib/ponto/periodDates';
+import { expandAbsenceCreditsByEmployee, resolveHolidaysForPayrollRange } from '@/lib/ponto/periodDates';
 import { printTimeMirror, type TimeMirrorDay } from '@/lib/printTimeMirror';
 import { exportFolhaExcel } from '@/lib/exportFolhaExcel';
-import { printPayrollBundle, buildPayrollHtml, fmtDeltaMin, type BundleEmployee, type BundleRun } from '@/lib/printPayrollBundle';
+import { printPayrollBundle, buildPayrollHtml, fmtDeltaMin, isFinancialPayrollRun, type BundleEmployee, type BundleRun } from '@/lib/printPayrollBundle';
 import { buildPayrollSnapshot, readPayrollSnapshot } from '@/lib/payrollSnapshot';
 import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/integrations/supabase/client';
@@ -44,7 +52,7 @@ import {
 import RelatorioFaltas from '@/components/hr/RelatorioFaltas';
 import RelatorioAtrasos from '@/components/hr/RelatorioAtrasos';
 import { employeeOverlapsEmploymentRange } from '@/lib/employeeEmployment';
-import { findEmployeeMatch } from '@/lib/employeeMatching';
+import { OPEN_EMPLOYEE_ADVANCE_STATUSES } from '@/lib/employeeAdvances';
 
 const fmt = (v: number) => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 /** Minutos → "7h00". */
@@ -61,6 +69,22 @@ const fmtSaldoHoras = (min: number) => {
 };
 
 const MONTHS_PT = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+
+async function beginPayrollCalculationEpoch(): Promise<number> {
+  const rpcClient = supabase as unknown as {
+    rpc: (name: 'begin_payroll_calculation') => Promise<{
+      data: unknown;
+      error: { message: string } | null;
+    }>;
+  };
+  const { data, error } = await rpcClient.rpc('begin_payroll_calculation');
+  if (error) throw new Error(error.message);
+  const revision = Number(data);
+  if (!Number.isSafeInteger(revision) || revision <= 0) {
+    throw new Error('O banco devolveu uma revisão inválida dos insumos da folha.');
+  }
+  return revision;
+}
 
 /** Último dia do mês "YYYY-MM" como "YYYY-MM-DD". */
 function lastDayOfMonth(ym: string): string {
@@ -121,7 +145,25 @@ const STATUS_BADGES = {
   rascunho: { label: 'Rascunho', variant: 'secondary' as const },
   aprovado: { label: 'Aprovado', variant: 'default' as const },
   pago: { label: 'Pago', variant: 'outline' as const },
+  cancelado: { label: 'Cancelado', variant: 'destructive-soft' as const },
 };
+
+interface PayrollDetailLine {
+  label: string;
+  value: number;
+  type: 'p' | 'd';
+  always?: boolean;
+  highlight?: boolean;
+}
+
+type EspelhoBundleEmployee = BundleEmployee & {
+  matchId: string;
+  rawDays: NonNullable<BundleEmployee['rawDays']>;
+};
+
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
 
 export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean } = {}) {
   const today = new Date();
@@ -132,6 +174,8 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
   const [detailRun, setDetailRun] = useState<string | null>(null);
   const [approveRun, setApproveRun] = useState<string | null>(null);
   const [payRun, setPayRun] = useState<string | null>(null);
+  const [cancelRun, setCancelRun] = useState<string | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
   // Visão do Relatório consolidado: tabela (Folha) · calendário de tempo · holerites.
   const [view, setView] = useState<'folha' | 'calendario' | 'holerite'>('folha');
   const [calEmp, setCalEmp] = useState<string>('');
@@ -172,7 +216,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
     [salaryEmployees, appliedFrom, appliedTo],
   );
   const { data: schedules = [] } = useWorkSchedules();
-  const defaultSchedule = useMemo(() => (schedules as any[]).find(s => s.is_default) || (schedules as any[])[0] || null, [schedules]);
+  const defaultSchedule = useMemo(() => schedules.find(s => s.is_default) || schedules[0] || null, [schedules]);
   const { data: queriedRuns = [], isLoading } = usePayrollRuns(appliedPeriod);
   // Protege também períodos históricos que, antes da separação, possam ter
   // recebido uma linha de produção na chave mensal/quinzenal.
@@ -181,13 +225,17 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
     const paymentType = snapshot?.result.payment_type || employeeMap.get(run.employee_id)?.payment_type;
     return String(paymentType || 'mensalista').toLowerCase() !== 'producao';
   }), [queriedRuns, employeeMap]);
+  // Canceladas continuam em `runs` para histórico e auditoria. Todo artefato e
+  // total financeiro usa esta coleção separada.
+  const financialRuns = useMemo(() => runs.filter(isFinancialPayrollRun), [runs]);
   const { data: holidaysList = [] } = useHolidays();
   const upsertRun = useUpsertPayrollRun();
   const updateStatus = useUpdatePayrollStatus();
+  const cancelPayrollRun = useCancelPayrollRun();
 
   // Feriados OBRIGATÓRIOS (optional !== true) → crédito na taxa individual de feriado.
   const holidaysSet = useMemo(
-    () => resolveHolidaysForPayrollRange(holidaysList as any[], appliedFrom, appliedTo),
+    () => resolveHolidaysForPayrollRange(holidaysList, appliedFrom, appliedTo),
     [holidaysList, appliedFrom, appliedTo],
   );
 
@@ -202,17 +250,17 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
   const { data: paySummaries = {} } = usePayrollPaymentSummaries(runIds);
 
   const totals = useMemo(() => {
-    const proventos = runs.reduce((s, r) => s + (r.total_proventos || 0), 0);
-    const descontos = runs.reduce((s, r) => s + ((r.absence_discount || 0) + (r.deductions_amount || 0)), 0);
-    const advances = runs.reduce((s, r) => s + (r.advances_total || 0), 0);
-    const liquido = runs.reduce((s, r) => s + (r.total_liquido || 0), 0);
-    const advancesCount = runs.filter(r => (r.advances_total || 0) > 0).length;
+    const proventos = financialRuns.reduce((s, r) => s + (r.total_proventos || 0), 0);
+    const descontos = financialRuns.reduce((s, r) => s + ((r.absence_discount || 0) + (r.deductions_amount || 0)), 0);
+    const advances = financialRuns.reduce((s, r) => s + (r.advances_total || 0), 0);
+    const liquido = financialRuns.reduce((s, r) => s + (r.total_liquido || 0), 0);
+    const advancesCount = financialRuns.filter(r => (r.advances_total || 0) > 0).length;
     return { proventos, descontos, advances, liquido, advancesCount };
-  }, [runs]);
+  }, [financialRuns]);
 
   // Setor de uma run = department do funcionário (fallback "Sem setor").
   const setorOf = (employee_id: string) =>
-    (employeeMap.get(employee_id) as any)?.department?.trim() || 'Sem setor';
+    employeeMap.get(employee_id)?.department?.trim() || 'Sem setor';
 
   // Setores presentes na folha do período (pro filtro).
   const setoresDisponiveis = useMemo(() => {
@@ -236,10 +284,10 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
       .map(([setor, rs]) => ({
         setor,
         runs: rs,
-        proventos: rs.reduce((s, r) => s + (r.total_proventos || 0), 0),
-        descontos: rs.reduce((s, r) => s + ((r.absence_discount || 0) + (r.deductions_amount || 0)), 0),
-        advances: rs.reduce((s, r) => s + (r.advances_total || 0), 0),
-        liquido: rs.reduce((s, r) => s + (r.total_liquido || 0), 0),
+        proventos: rs.filter(isFinancialPayrollRun).reduce((s, r) => s + (r.total_proventos || 0), 0),
+        descontos: rs.filter(isFinancialPayrollRun).reduce((s, r) => s + ((r.absence_discount || 0) + (r.deductions_amount || 0)), 0),
+        advances: rs.filter(isFinancialPayrollRun).reduce((s, r) => s + (r.advances_total || 0), 0),
+        liquido: rs.filter(isFinancialPayrollRun).reduce((s, r) => s + (r.total_liquido || 0), 0),
       }))
       .sort((a, b) => a.setor.localeCompare(b.setor, 'pt-BR'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -269,32 +317,35 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
         .select('employee_id, amount, advance_date, status, payroll_run_id')
         .gte('advance_date', appliedFrom).lte('advance_date', appliedTo)
         // Mesmo critério de calculateAll (~:565): as DUAS condições, não uma OU outra.
-        // Com `.or(...)` entrava vale já pago (status≠pending) e vale já amarrado a
-        // outra folha (payroll_run_id preenchido) — o comparativo/Excel mostrava líquido
-        // diferente da folha gravada. Ex.: vale de R$ 500 pending já vinculado a uma run
+        // `pending` e `paid` são valores entregues ainda a descontar; ambos entram
+        // apenas enquanto desvinculados. Vale já amarrado a outra folha não entra
+        // de novo — senão o comparativo/Excel diverge da folha gravada.
+        // Ex.: vale de R$ 500 já vinculado a uma run
         // anterior → folha R$ 2.200, comparativo R$ 1.700 (D18, auditoria 2026-07-29).
         .is('payroll_run_id', null)
-        .eq('status', 'pending');
+        .in('status', [...OPEN_EMPLOYEE_ADVANCE_STATUSES]);
       if (error) throw error;
-      return (data || []) as any[];
+      return data || [];
     },
   });
   const { data: compAbsences = [] } = useAbsences({ from: appliedFrom, to: appliedTo });
-  const compAbsenceDates = useMemo(
-    () => expandAbsenceDatesByEmployee(compAbsences, appliedFrom, appliedTo),
+  const compAbsenceCredits = useMemo(
+    () => expandAbsenceCreditsByEmployee(compAbsences, appliedFrom, appliedTo),
     [compAbsences, appliedFrom, appliedTo],
   );
   const comparativo = useMemo(() => computeComparativoRows({
     employees: salaryEmployees, schedules, defaultSchedule, holidaysSet, swapWorkedSet, swapOffSet,
     timeRecords: compRecords, advancesList: compAdvances, producaoRows: [],
-    absenceDatesByEmployee: compAbsenceDates,
+    absenceDatesByEmployee: compAbsenceCredits.fullDayDates,
+    absenceMinutesByEmployee: compAbsenceCredits.partialMinutes,
     range: { from: appliedFrom, to: appliedTo }, period: compPeriod,
     maxCovered: coverage?.maxCovered || null,
-  }), [salaryEmployees, schedules, defaultSchedule, holidaysSet, swapWorkedSet, swapOffSet, compRecords, compAdvances, compAbsenceDates, appliedFrom, appliedTo, compPeriod, coverage]);
+    coveredDates: coverage?.coveredDates,
+  }), [salaryEmployees, schedules, defaultSchedule, holidaysSet, swapWorkedSet, swapOffSet, compRecords, compAdvances, compAbsenceCredits, appliedFrom, appliedTo, compPeriod, coverage]);
 
   // Rascunho = prévia viva. Aprovada/paga = resultado congelado no snapshot.
   const reportComparativoRows = useMemo(() => {
-    const runByEmployee = new Map(runs.map(run => [run.employee_id, run]));
+    const runByEmployee = new Map(financialRuns.map(run => [run.employee_id, run]));
     return comparativo.rows.map(row => {
       const run = runByEmployee.get(row.id);
       const snapshot = run && run.status !== 'rascunho' ? readPayrollSnapshot(run.calculation_snapshot) : null;
@@ -302,13 +353,13 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
         ? { ...row, name: snapshot.employee.name, result: snapshot.result }
         : row;
     });
-  }, [comparativo.rows, runs]);
+  }, [comparativo.rows, financialRuns]);
 
   // Resumo gerencial de horas da mesma fonte canônica usada para calcular a
   // folha. Pendência e crédito são brutos; saldo final é o que realmente sobra
   // depois da compensação e entra como débito ou H.E. no fechamento.
   const timeTotals = useMemo(() => {
-    const visibleEmployeeIds = new Set(runs.map(run => run.employee_id));
+    const visibleEmployeeIds = new Set(financialRuns.map(run => run.employee_id));
     return reportComparativoRows.reduce((total, row) => {
       if (!visibleEmployeeIds.has(row.id) || row.result.payment_type !== 'mensalista') return total;
       total.rawDelay += Number(row.result.raw_delay_minutes) || 0;
@@ -318,7 +369,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
       total.payableOvertime += Number(row.result.he_minutes) || 0;
       return total;
     }, { rawDelay: 0, rawCredit: 0, compensated: 0, payableDelay: 0, payableOvertime: 0 });
-  }, [reportComparativoRows, runs]);
+  }, [reportComparativoRows, financialRuns]);
 
   const finalTimeBalance = timeTotals.payableOvertime - timeTotals.payableDelay;
 
@@ -358,7 +409,9 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
 
   const handleExportExcel = () => {
     if (comparativo.rows.length === 0) { toast.error('Nada pra exportar.'); return; }
-    const runByEmployee = new Map(runs.map(run => [run.employee_id, run]));
+    // Sem folha ativa, mantém a prévia viva do comparativo. Uma folha cancelada,
+    // porém, jamais fornece snapshot/valores congelados ao Excel.
+    const runByEmployee = new Map(financialRuns.map(run => [run.employee_id, run]));
     exportFolhaExcel(
       comparativo.rows.map(r => {
         const run = runByEmployee.get(r.id);
@@ -381,7 +434,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
 
   // Funcionários do período no shape do bundle (run financeiro + dias do
   // calendário). Fonte única pra prévia E impressão.
-  const bundleEmps = useMemo<BundleEmployee[]>(() => runs.map(r => {
+  const bundleEmps = useMemo<BundleEmployee[]>(() => financialRuns.map(r => {
     const emp = employeeMap.get(r.employee_id);
     const crow = comparativo.rows.find(cr => cr.id === r.employee_id);
     const snapshot = r.status !== 'rascunho' ? readPayrollSnapshot(r.calculation_snapshot) : null;
@@ -426,21 +479,17 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
       run: bundleRun,
       days: reportResult?.day_ledger || [],
     };
-  }), [runs, employeeMap, comparativo.rows, porParByEmp]);
+  }), [financialRuns, employeeMap, comparativo.rows, porParByEmp]);
 
   // Espelho relógio de ponto: registro BRUTO das batidas importadas, agrupado por
   // matrícula (employee_external_id). Independe da folha calculada — usa direto o
   // compRecords (time_records do período), pra conferência do arquivo do relógio.
   const espelhoEmps = useMemo(() => {
-    type EspGroup = { id: string; name: string; role?: string; department?: string; matchId?: string; rawDays: { date: string; punches: string[] }[] };
-    const byEmployee = new Map<string, EspGroup>();
-    for (const rec of (compRecords as any[])) {
-      const emp = findEmployeeMatch(
-        employees,
-        rec.employee_name || '',
-        rec.employee_external_id || null,
-        { recordDate: rec.record_date, allowNameFallback: !rec.employee_external_id },
-      );
+    const byEmployee = new Map<string, EspelhoBundleEmployee>();
+    for (const rec of compRecords) {
+      const emp = rec.employee_id
+        ? employees.find(employee => employee.id === rec.employee_id)
+        : undefined;
       if (!emp || !employeeOverlapsEmploymentRange(emp, appliedFrom, appliedTo)) continue;
       const clockId = String(rec.employee_external_id ?? emp.external_id ?? emp.id);
       const g = byEmployee.get(emp.id) || {
@@ -450,17 +499,25 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
         department: emp.department,
         matchId: emp.id,
         rawDays: [],
+        run: {
+          base_salary: 0,
+          total_proventos: 0,
+          overtime_amount: 0,
+          total_liquido: 0,
+          period: appliedPeriod,
+        },
+        days: [],
       };
       g.rawDays.push({ date: rec.record_date, punches: Array.isArray(rec.punches) ? rec.punches : [] });
       byEmployee.set(emp.id, g);
     }
-    const out: EspGroup[] = [];
+    const out: EspelhoBundleEmployee[] = [];
     for (const g of byEmployee.values()) {
       g.rawDays.sort((a, b) => a.date.localeCompare(b.date));
       out.push(g);
     }
     return out.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
-  }, [compRecords, employees, appliedFrom, appliedTo]);
+  }, [compRecords, employees, appliedFrom, appliedTo, appliedPeriod]);
 
   // Escopo do Espelho (Todos / um funcionário) — casa o employee_id escolhido com
   // a matrícula (external_id) do registro bruto.
@@ -501,13 +558,13 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
     const espList = !reportSel.espelho
       ? []
       : previewPaged
-        ? scopedEspelho.filter((x: any) => x.matchId === previewEmps[0]?.id)
+        ? scopedEspelho.filter(x => x.matchId === previewEmps[0]?.id)
         : scopedEspelho;
     if (previewEmps.length === 0 && espList.length === 0) return '';
     const docs = previewPaged
       ? { folha: false, setor: false, calendario: reportSel.calendario, holerite: reportSel.holerite, espelho: reportSel.espelho }
       : reportSel;
-    return buildPayrollHtml({ periodTitle, docs, employees: previewEmps as any, espelhoEmployees: espList as any, autoPrint: false, groupBy: 'employee' });
+    return buildPayrollHtml({ periodTitle, docs, employees: previewEmps, espelhoEmployees: espList, autoPrint: false, groupBy: 'employee' });
 
   }, [previewEmps, previewPaged, reportSel, periodTitle, scopedEspelho]);
 
@@ -527,7 +584,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
       toast.error(espelhoOnly ? 'Nenhuma batida importada no período pra conferir.' : 'Nada pra gerar — calcule a folha do período primeiro.');
       return;
     }
-    printPayrollBundle({ periodTitle, docs: reportSel, employees: scopeEmps as any, espelhoEmployees: scopedEspelho as any, groupBy: 'employee' });
+    printPayrollBundle({ periodTitle, docs: reportSel, employees: scopeEmps, espelhoEmployees: scopedEspelho, groupBy: 'employee' });
   };
 
   // Banco de horas REMOVIDO (reforma 2026-07-09): o Espelho não mostra mais saldo
@@ -541,7 +598,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
     const generatedAt = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
 
     const compByEmployee = new Map(comparativo.rows.map(row => [row.id, row]));
-    const src = runs.map(run => {
+    const src = financialRuns.map(run => {
       const live = compByEmployee.get(run.employee_id);
       const snapshot = run.status !== 'rascunho' ? readPayrollSnapshot(run.calculation_snapshot) : null;
       return {
@@ -643,7 +700,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
     const row = comparativo.rows.find(r => r.id === empId);
     const emp = employeeMap.get(empId);
     if (!row || !emp) { toast.error('Sem dados de ponto pra gerar o espelho deste funcionário.'); return; }
-    const days: TimeMirrorDay[] = row.printData.days.map((d: any) => ({
+    const days: TimeMirrorDay[] = row.printData.days.map(d => ({
       date: d.date, dayOfWeek: d.dayOfWeek, punches: d.punches,
       workedMinutes: d.workedMinutes, expectedMinutes: d.expectedMinutes,
       overtimeMinutes: d.overtimeMinutes, status: d.status as TimeMirrorDay['status'],
@@ -652,14 +709,16 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
     printTimeMirror({
       employee: {
         name: emp.name,
-        external_id: (emp as any).external_id,
-        role: (emp as any).role,
-        department: (emp as any).department,
-        cpf: (emp as any).cpf,
-        pis: (emp as any).pis,
-        admission_date: (emp as any).admission_date,
+        external_id: emp.external_id || undefined,
+        role: emp.role,
+        department: emp.department,
+        cpf: emp.cpf || undefined,
+        admission_date: emp.admission_date,
       },
-      company: { name: (typeof window !== 'undefined' && (window as any).COMPANY_NAME) || 'Empresa' },
+      company: {
+        name: (typeof window !== 'undefined'
+          && (window as Window & { COMPANY_NAME?: string }).COMPANY_NAME) || 'Empresa',
+      },
       period: compPeriod,
       days,
       // Por par: NÃO alimentar o espelho com o salário do cadastro. O espelho usa
@@ -667,7 +726,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
       // recebe hora extra nenhuma. Com o salário preenchido, o documento LEGAL
       // exibia um valor de HE que não será pago. Sem ele, o campo sai "—" e o
       // espelho fica sendo o que deve ser aqui: registro de presença.
-      monthlySalary: porParByEmp.has(empId) ? 0 : Number((emp as any).salary) || 0,
+      monthlySalary: porParByEmp.has(empId) ? 0 : Number(emp.salary) || 0,
     });
   };
 
@@ -689,11 +748,65 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
     // Dias do mês p/ a base proporcional da quinzena: 1ª(15) + 2ª(mês−15) = salário EXATO
     // (sem pagar 1 dia a mais num mês de 31). Mês cheio ignora (cBaseDays undefined).
     const cMonthDays = daysBetween(`${cFrom.slice(0, 7)}-01`, lastDayOfMonth(cFrom.slice(0, 7)));
-    const periodSalaryEmployees = salaryEmployees.filter(employee =>
-      employeeOverlapsEmploymentRange(employee, cFrom, cTo),
-    );
     setCalcRunning(true);
     try {
+      // Handshake de frescor: o token vem ANTES de todas as leituras. Cada
+      // fonte abaixo é consultada novamente na rede; closures/cache da tela não
+      // podem legitimar um cálculo velho com uma revisão nova.
+      const inputEpochBefore = await beginPayrollCalculationEpoch();
+      const [
+        freshEmployeesResult,
+        freshSchedulesResult,
+        freshHolidaysResult,
+        freshSwapsResult,
+        timeRecords,
+        advancesResult,
+        absencesResult,
+        freshCoverage,
+      ] = await Promise.all([
+        supabase.from('employees').select('*').order('name'),
+        supabase.from('work_schedules').select('*').order('name'),
+        supabase.from('holidays').select('*').order('holiday_date'),
+        supabase.from('workday_swaps').select('*').order('work_date'),
+        fetchTimeRecordsInRange(cFrom, cTo),
+        supabase
+          .from('employee_advances')
+          .select('employee_id, amount, advance_date, status, payroll_run_id')
+          .gte('advance_date', cFrom)
+          .lte('advance_date', cTo)
+          .is('payroll_run_id', null)
+          .in('status', [...OPEN_EMPLOYEE_ADVANCE_STATUSES]),
+        supabase
+          .from('employee_absences')
+          .select('employee_id, start_date, end_date, absence_type, paid, justified, hours_per_day')
+          .lte('start_date', cTo)
+          .gte('end_date', cFrom),
+        fetchTimesheetCoverage(cFrom, cTo),
+      ]);
+      if (freshEmployeesResult.error) throw freshEmployeesResult.error;
+      if (freshSchedulesResult.error) throw freshSchedulesResult.error;
+      if (freshHolidaysResult.error) throw freshHolidaysResult.error;
+      if (freshSwapsResult.error) throw freshSwapsResult.error;
+      if (advancesResult.error) throw advancesResult.error;
+      if (absencesResult.error) throw absencesResult.error;
+
+      const inputEpoch = await beginPayrollCalculationEpoch();
+      if (inputEpoch !== inputEpochBefore) {
+        throw new Error('Os dados de ponto/RH mudaram durante a leitura. Tente calcular novamente.');
+      }
+
+      const calculationEmployees = (freshEmployeesResult.data || []) as typeof employees;
+      const calculationSchedules = (freshSchedulesResult.data || []) as typeof schedules;
+      const calculationHolidaysList = freshHolidaysResult.data || [];
+      const calculationDefaultSchedule = calculationSchedules.find(schedule => schedule.is_default)
+        || calculationSchedules[0]
+        || null;
+      const calculationSwapSets = buildSwapSets(freshSwapsResult.data || []);
+      const periodSalaryEmployees = calculationEmployees
+        .filter(employeeUsesSalaryClosing)
+        .filter(employee => employeeOverlapsEmploymentRange(employee, cFrom, cTo));
+      const calculationEmployeeMap = new Map(calculationEmployees.map(employee => [employee.id, employee]));
+
       // Pré-voo atômico: o banco também recusa janelas sobrepostas, mas faria
       // isso funcionário a funcionário durante o loop. Validar todos antes evita
       // gerar parte da equipe e parar no primeiro conflito.
@@ -712,7 +825,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
           return !!existingRange && payrollRangesOverlap(existingRange, targetRange);
         });
         if (conflicts.length > 0) {
-          const names = Array.from(new Set(conflicts.map(run => employeeMap.get(run.employee_id)?.name || 'Funcionário')));
+          const names = Array.from(new Set(conflicts.map(run => calculationEmployeeMap.get(run.employee_id)?.name || 'Funcionário')));
           const preview = names.slice(0, 4).join(', ');
           const remaining = names.length > 4 ? ` e mais ${names.length - 4}` : '';
           toast.error(
@@ -724,90 +837,40 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
         }
       }
 
-      const calculationHolidays = resolveHolidaysForPayrollRange(holidaysList as any[], cFrom, cTo);
+      const calculationHolidays = resolveHolidaysForPayrollRange(calculationHolidaysList, cFrom, cTo);
       // Clamp à cobertura: dias após a última data importada NÃO entram (evita contar
       // como falta quem ainda não teve o ponto baixado). Folha fica "parcial" até importar.
-      const maxCov = coverage?.maxCovered || null;
+      const maxCov = freshCoverage.maxCovered || null;
       const clamped = !!(maxCov && maxCov < cTo);
 
-      // Batidas do período. time_records não tem FK pra employees — casa por
-      // matrícula (employee_external_id) ou nome.
-      // Paginado: o cap default de 1000 rows do PostgREST cortava dias do fim
-      // do período silenciosamente → dia sem ponto = falta descontada errada.
-      // Fonte ÚNICA paginada (mesma do comparativo/calendário e do relatório de
-      // atrasos) — motores do RH sincronizados.
-      const timeRecords = await fetchTimeRecordsInRange(cFrom, cTo);
+      const identity = groupPayrollPunchesByEmployee(calculationEmployees, timeRecords);
 
-      const byExternalId = new Map<string, Map<string, string[]>>();
-      const byExtIdName = new Map<string, Map<string, string[]>>(); // chave `${extId}|${nome}`
-      const byName = new Map<string, Map<string, string[]>>();
-      const extIdNames = new Map<string, Set<string>>(); // extId → nomes distintos (detecta matrícula compartilhada)
-      for (const r of (timeRecords || []) as any[]) {
-        const punches: string[] = Array.isArray(r.punches) ? r.punches : [];
-        const nameKey = (r.employee_name || '').toLowerCase().trim();
-        if (r.employee_external_id) {
-          const k = String(r.employee_external_id);
-          if (!byExternalId.has(k)) byExternalId.set(k, new Map());
-          byExternalId.get(k)!.set(r.record_date, punches);
-          if (!extIdNames.has(k)) extIdNames.set(k, new Set());
-          if (nameKey) extIdNames.get(k)!.add(nameKey);
-          const kn = `${k}|${nameKey}`;
-          if (!byExtIdName.has(kn)) byExtIdName.set(kn, new Map());
-          byExtIdName.get(kn)!.set(r.record_date, punches);
-        }
-        if (nameKey) {
-          if (!byName.has(nameKey)) byName.set(nameKey, new Map());
-          byName.get(nameKey)!.set(r.record_date, punches);
-        }
-      }
-
-      // Adiantamentos pendentes do período (único desconto). Vales já amarrados
-      // a outra folha (payroll_run_id) não entram de novo.
-      const { data: advances, error: advancesError } = await supabase
-        .from('employee_advances')
-        .select('employee_id, amount, advance_date, status, payroll_run_id')
-        .gte('advance_date', cFrom)
-        .lte('advance_date', cTo)
-        .is('payroll_run_id', null)
-        .eq('status', 'pending');
-      if (advancesError) throw advancesError;
+      // Adiantamentos em aberto do período (único desconto): tanto `pending`
+      // quanto `paid` representam dinheiro entregue ainda a descontar. Vales já
+      // amarrados a outra folha (payroll_run_id) não entram de novo.
       const advancesByEmp = new Map<string, number>();
-      for (const a of (advances || []) as any[]) {
+      for (const a of advancesResult.data || []) {
         advancesByEmp.set(a.employee_id, (advancesByEmp.get(a.employee_id) || 0) + Number(a.amount || 0));
       }
 
       // B4 (auditoria 2026-06-29): ausências JUSTIFICADAS (férias/atestado/licença)
       // no período → dias abonados (não descontam falta). Expande [start,end]∩[período].
-      const { data: absences, error: absencesError } = await supabase
-        .from('employee_absences')
-        .select('employee_id, start_date, end_date')
-        .lte('start_date', cTo)
-        .gte('end_date', cFrom);
-      if (absencesError) throw absencesError;
-      const absencesByEmp = expandAbsenceDatesByEmployee((absences || []) as any[], cFrom, cTo);
+      const absenceCredits = expandAbsenceCreditsByEmployee(absencesResult.data || [], cFrom, cTo);
 
       let calculated = 0;
       let withIncomplete = 0;
-      let sharedMatricula = 0;
       let withMissingHeRate = 0;  // HE em minutos mas taxa R$/h não cadastrada → HE R$0
       // A folha comum contém somente os regimes salariais. Produção por par é
       // fechada semanalmente na Ficha de Montadores e nunca é consultada aqui.
       for (const emp of periodSalaryEmployees) {
-        // Match das batidas por MATRÍCULA + NOME. Se a matrícula é compartilhada por
-        // mais de um nome (ex.: ext_id 1 = "valdilene" + "Dona Val"), pega SÓ as
-        // batidas com o nome DESTE funcionário — senão herdaria o ponto do outro.
-        // Matrícula única → casa pela matrícula (robusto a divergência de grafia).
-        const extKey = (emp as any).external_id ? String((emp as any).external_id) : '';
-        const nameKey = emp.name.toLowerCase().trim();
-        const extShared = !!extKey && (extIdNames.get(extKey)?.size || 0) > 1;
-        if (extShared) sharedMatricula++;
-        const empPunches = (extKey ? byExtIdName.get(`${extKey}|${nameKey}`) : null)
-          || (!extShared && extKey ? byExternalId.get(extKey) : null)
-          || byName.get(nameKey)
-          || new Map<string, string[]>();
+        // Duplicata idêntica é deduplicada; variantes conflitantes viram uma
+        // batida ímpar determinística para bloquear o fechamento, nunca um
+        // sobrescrito silencioso que altere salário/HE.
+        const empPunches = identity.byEmployee.get(emp.id) || new Map<string, string[]>();
 
         // Escala do funcionário (própria ou a padrão — ex.: Dona Val não tem própria).
-        const sch = (emp.work_schedule_id && (schedules as any[]).find(s => s.id === emp.work_schedule_id)) || defaultSchedule;
+        const sch = (emp.work_schedule_id && calculationSchedules.find(s => s.id === emp.work_schedule_id))
+          || calculationDefaultSchedule;
 
         const regime = String(emp.payment_type || 'mensalista').toLowerCase() as 'mensalista' | 'remoto' | 'diarista';
 
@@ -818,23 +881,24 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
           from: cFrom, to: cTo,
           schedule: sch,
           holidaysSet: calculationHolidays,
-          swapWorkedSet,
-          swapOffSet,
+          swapWorkedSet: calculationSwapSets.swapWorkedSet,
+          swapOffSet: calculationSwapSets.swapOffSet,
           punchesByDate: empPunches,
-          absenceDates: absencesByEmp.get(emp.id),
+          absenceDates: absenceCredits.fullDayDates.get(emp.id),
+          absenceMinutes: absenceCredits.partialMinutes.get(emp.id),
           advancesTotal: advancesByEmp.get(emp.id) || 0,
-          activeFrom: (emp as any).admission_date || null,   // não descontar dias antes da admissão
-          activeTo: (emp as any).termination_date || null,   // nem depois da demissão
-          coveredDates: coverage?.coveredDates,              // falta só em dia lido pelo relógio (lacuna no meio ≠ falta)
+          activeFrom: emp.admission_date || null,   // não descontar dias antes da admissão
+          activeTo: emp.termination_date || null,   // nem depois da demissão
+          coveredDates: freshCoverage.coveredDates,           // falta só em dia lido pelo relógio (lacuna no meio ≠ falta)
           periodDays: cBaseDays,   // mês cheio = salário (undefined); quinzena = proporcional
           monthDays: cMonthDays,   // 1ª+2ª quinzena somam o salário exato (sem dia a mais)
           maxCoveredDate: maxCov,
           payRegime: regime,
-          dailyRate: Number((emp as any).daily_rate) || 0,
+          dailyRate: Number(emp.daily_rate) || 0,
           // HE em R$/h ABSOLUTO por funcionário (spec 2026-07-09) — dia útil/sábado/noturno
           // e domingo/feriado. Falta/atraso passam a usar dias úteis do mês (motor).
-          heNormalRate: Number((emp as any).he_normal_rate) || 0,
-          heSundayHolidayRate: Number((emp as any).he_sunday_holiday_rate) || 0,
+          heNormalRate: Number(emp.he_normal_rate) || 0,
+          heSundayHolidayRate: Number(emp.he_sunday_holiday_rate) || 0,
         });
         if (result.pending_days > 0) withIncomplete++;
         if (result.he_rate_missing) withMissingHeRate++;
@@ -855,6 +919,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
           },
           schedule: sch ? { ...sch } : null,
           result,
+          inputEpoch,
         });
         await upsertRun.mutateAsync({
           employee_id: emp.id,
@@ -895,10 +960,11 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
         (clamped ? ` Parcial: ponto importado só até ${maxCov!.split('-').reverse().join('/')}.` : '') +
         (withIncomplete > 0 ? ` ${withIncomplete} com batida incompleta — confira no Ponto.` : '') +
         (withMissingHeRate > 0 ? ` ⚠ ${withMissingHeRate} com hora extra mas SEM valor de HE cadastrado (HE saiu R$0) — preencha "Hora extra (R$/h)" no cadastro do funcionário.` : '') +
-        (sharedMatricula > 0 ? ` ⚠ ${sharedMatricula} com matrícula compartilhada — confira o cadastro (pode haver ponto de 2 pessoas na mesma matrícula).` : ''),
+        (identity.conflicts.length > 0 ? ` ⚠ ${identity.conflicts.length} dia(s) com batidas conflitantes foram deixados como pendência.` : '') +
+        (identity.unmatched.length > 0 ? ` ⚠ ${identity.unmatched.length} registro(s) sem ficha vigente ficaram fora da folha; corrija a matrícula no Ponto.` : ''),
       );
-    } catch (err: any) {
-      toast.error(`Erro ao calcular folha: ${err.message}`);
+    } catch (error: unknown) {
+      toast.error(`Erro ao calcular folha: ${errorMessage(error, 'falha desconhecida')}`);
     } finally {
       setCalcRunning(false);
     }
@@ -987,8 +1053,8 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
             value={docScope}
             onChange={setDocScope}
             options={[
-              { value: 'all', label: `${runs.length || espelhoEmps.length} com documentos no período${periodSalaryEmployeeCount > (runs.length || espelhoEmps.length) ? ` · ${periodSalaryEmployeeCount - (runs.length || espelhoEmps.length)} sem registro` : ''}` },
-              ...runs.map(r => ({ value: r.employee_id, label: employeeMap.get(r.employee_id)?.name || '—' })),
+              { value: 'all', label: `${financialRuns.length || espelhoEmps.length} com documentos no período${periodSalaryEmployeeCount > (financialRuns.length || espelhoEmps.length) ? ` · ${periodSalaryEmployeeCount - (financialRuns.length || espelhoEmps.length)} sem registro` : ''}` },
+              ...financialRuns.map(r => ({ value: r.employee_id, label: employeeMap.get(r.employee_id)?.name || '—' })),
             ]}
             placeholder="Funcionário"
             searchPlaceholder="Buscar funcionário..."
@@ -1148,7 +1214,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
       <PayrollPendingAdvancesAlert from={appliedFrom} to={appliedTo} />
 
       <StatGrid>
-        <StatCard label="Funcionários" value={runs.length} hint="na folha do período" />
+        <StatCard label="Funcionários" value={financialRuns.length} hint="na folha ativa do período" />
         <StatCard label="Pendências de horas" value={fmtSaldoHoras(-timeTotals.rawDelay)} hint="antes da compensação" tone="warning" />
         <StatCard label="Horas extras" value={fmtSaldoHoras(timeTotals.rawCredit)} hint="antes da compensação" tone="success" />
         <StatCard
@@ -1270,7 +1336,13 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
               const approvalReason = approvalBlockReason(r);
               const sum = paySummaries[r.id];
               const parcial = r.status === 'aprovado' && !!sum && sum.paidTotal > 0.005 && sum.paidTotal < (r.total_liquido || 0) - 0.005;
-              const result = reportComparativoRows.find(row => row.id === r.employee_id)?.result;
+              const hasActivePayment = Number(sum?.paidTotal || 0) > 0.005;
+              // A cancelada é um documento histórico próprio. Depois que uma
+              // nova geração nasce para a mesma competência, nunca misture as
+              // horas vivas/da nova folha com os valores congelados da antiga.
+              const result = r.status === 'cancelado'
+                ? readPayrollSnapshot(r.calculation_snapshot)?.result
+                : reportComparativoRows.find(row => row.id === r.employee_id)?.result;
               const rawDelay = Number(result?.raw_delay_minutes) || 0;
               const rawCredit = Number(result?.raw_credit_minutes) || 0;
               const compensated = Number(result?.compensated_minutes) || 0;
@@ -1345,6 +1417,23 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
                           {r.status === 'pago'
                             ? <Receipt className="h-4 w-4 text-emerald-600" />
                             : <DollarSign className="h-4 w-4 text-primary" />}
+                        </Button>
+                      )}
+                      {(r.status === 'aprovado' || r.status === 'pago') && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7"
+                          onClick={() => {
+                            setCancelReason('');
+                            setCancelRun(r.id);
+                          }}
+                          disabled={hasActivePayment}
+                          title={hasActivePayment
+                            ? 'Estorne todos os pagamentos antes de cancelar a folha'
+                            : 'Cancelar folha e liberar novo cálculo'}
+                        >
+                          <XCircle className="h-4 w-4 text-destructive" />
                         </Button>
                       )}
                     </div>
@@ -1437,11 +1526,11 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
 
       {view === 'holerite' && (
         <Panel title={`Holerites · ${periodTitle}`} flush>
-          {runs.length === 0 ? (
+          {financialRuns.length === 0 ? (
             <div className="p-2"><EmptyState icon={Receipt} title="Nenhuma folha calculada" description={`Não há folha para ${periodTitle}. Clique em "Calcular folha".`} /></div>
           ) : (
             <div className="divide-y divide-border">
-              {runs.map(r => {
+              {financialRuns.map(r => {
                 const emp = employeeMap.get(r.employee_id);
                 return (
                   <div key={r.id} className="flex items-center gap-3 px-4 py-2.5">
@@ -1467,11 +1556,87 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
             onOpenChange={(o) => !o && setPayRun(null)}
             run={r}
             employeeName={emp?.name || '—'}
-            employeeCpf={(emp as any)?.cpf}
-            employeeRole={(emp as any)?.role}
+            employeeCpf={emp?.cpf || undefined}
+            employeeRole={emp?.role}
           />
         );
       })()}
+
+      {/* Cancelamento auditado: mantém a folha original e libera nova geração. */}
+      <Dialog
+        open={!!cancelRun}
+        onOpenChange={(open) => {
+          if (!open && !cancelPayrollRun.isPending) {
+            setCancelRun(null);
+            setCancelReason('');
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          {(() => {
+            const run = runs.find(item => item.id === cancelRun);
+            const employee = run ? employeeMap.get(run.employee_id) : null;
+            if (!run) return null;
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle>Cancelar folha de {employee?.name || 'funcionário'}</DialogTitle>
+                  <DialogDescription>
+                    A folha será preservada como histórico e esta competência poderá ser calculada novamente.
+                    Pagamentos ativos precisam ser estornados antes desta operação.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-2">
+                  <label htmlFor="payroll-cancel-reason" className="text-sm font-medium">
+                    Justificativa obrigatória
+                  </label>
+                  <Textarea
+                    id="payroll-cancel-reason"
+                    value={cancelReason}
+                    onChange={event => setCancelReason(event.target.value)}
+                    placeholder="Ex.: folha aprovada com jornada incorreta"
+                    rows={4}
+                    disabled={cancelPayrollRun.isPending}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    A justificativa, autoria e data ficam gravadas no histórico de auditoria.
+                  </p>
+                </div>
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setCancelRun(null);
+                      setCancelReason('');
+                    }}
+                    disabled={cancelPayrollRun.isPending}
+                  >
+                    Voltar
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    disabled={cancelReason.trim().length < 4 || cancelPayrollRun.isPending}
+                    onClick={async () => {
+                      try {
+                        await cancelPayrollRun.mutateAsync({ id: run.id, reason: cancelReason });
+                        setCancelRun(null);
+                        setCancelReason('');
+                      } catch {
+                        // O hook já apresenta a mensagem segura devolvida pelo servidor.
+                      }
+                    }}
+                  >
+                    {cancelPayrollRun.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Cancelar folha
+                  </Button>
+                </DialogFooter>
+              </>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
 
       {/* Confirmação de aprovação quando há adiantamento */}
       <AlertDialog open={!!approveRun} onOpenChange={(o) => !o && setApproveRun(null)}>
@@ -1555,7 +1720,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
             const hpTxM = hp ? Number(hp.taxa_medio) || 0 : 0;
             const hpTxD = hp ? Number(hp.taxa_dificil) || 0 : 0;
             const asterisco = hp?.taxa_variou ? ' *' : '';
-            const lines = hp
+            const lines: PayrollDetailLine[] = (hp
               ? [
                   {
                     label: `Pares médios — ${hpMed.toLocaleString('pt-BR')} × ${fmt(hpTxM)}${asterisco}`,
@@ -1566,7 +1731,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
                     value: Number(hp.bruto_dificil) || 0, type: 'p' as const,
                   },
                   { label: 'Adiantamentos do período', value: r.advances_total || 0, type: 'd' as const, highlight: true },
-                ].filter(l => l.value > 0 || (l as any).always)
+                ]
               : [
                   {
                     label: isFullMonth ? 'Salário base' : `Salário do período (${pdays} dia(s) proporcional)`,
@@ -1576,7 +1741,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
                   { label: `Faltas (${r.absent_days || 0} dia(s))`, value: r.absence_discount || 0, type: 'd' as const, highlight: (r.absent_days || 0) > 0 },
                   { label: 'Atrasos / saídas cedo', value: r.deductions_amount || 0, type: 'd' as const },
                   { label: 'Adiantamentos do período', value: r.advances_total || 0, type: 'd' as const, highlight: true },
-                ].filter(l => l.value > 0 || (l as any).always);
+                ]).filter(l => l.value > 0 || l.always);
 
             return (
               <div className="space-y-3">
@@ -1606,13 +1771,13 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
                   </TableHeader>
                   <TableBody>
                     {lines.map((l, i) => (
-                      <TableRow key={i} className={(l as any).highlight ? 'bg-amber-500/10' : ''}>
-                        <TableCell className={(l as any).highlight ? 'font-semibold text-amber-700 dark:text-amber-400' : ''}>
-                          {(l as any).highlight && <Wallet className="inline h-3.5 w-3.5 mr-1 -mt-0.5" />}
+                      <TableRow key={i} className={l.highlight ? 'bg-amber-500/10' : ''}>
+                        <TableCell className={l.highlight ? 'font-semibold text-amber-700 dark:text-amber-400' : ''}>
+                          {l.highlight && <Wallet className="inline h-3.5 w-3.5 mr-1 -mt-0.5" />}
                           {l.label}
                         </TableCell>
                         <TableCell className="text-right font-mono tabular-nums">{l.type === 'p' ? fmt(l.value) : ''}</TableCell>
-                        <TableCell className={`text-right font-mono tabular-nums ${(l as any).highlight ? 'text-amber-700 dark:text-amber-400 font-semibold' : 'text-destructive'}`}>
+                        <TableCell className={`text-right font-mono tabular-nums ${l.highlight ? 'text-amber-700 dark:text-amber-400 font-semibold' : 'text-destructive'}`}>
                           {l.type === 'd' ? fmt(l.value) : ''}
                         </TableCell>
                       </TableRow>
@@ -1653,7 +1818,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
 }
 
 /**
- * Aviso no topo da Folha: vales pendentes do período (serão descontados ao
+ * Aviso no topo da Folha: vales em aberto do período (serão descontados ao
  * aprovar). HE/banco de horas foram aposentados — só adiantamento sobra.
  */
 function PayrollPendingAdvancesAlert({ from, to }: { from: string; to: string }) {
@@ -1667,15 +1832,18 @@ function PayrollPendingAdvancesAlert({ from, to }: { from: string; to: string })
     queryKey: ['payroll_pending_advances', from, to],
     enabled: valid,
     queryFn: async () => {
-      const { data } = await (supabase as any)
+      const { data, error } = await supabase
         .from('employee_advances')
         .select('id, amount, status, payroll_run_id')
         .gte('advance_date', periodStart)
-        .lte('advance_date', periodEnd);
-      const pending = (data || []).filter((a: any) => a.payroll_run_id == null && a.status === 'pending');
+        .lte('advance_date', periodEnd)
+        .is('payroll_run_id', null)
+        .in('status', [...OPEN_EMPLOYEE_ADVANCE_STATUSES]);
+      if (error) throw error;
+      const openAdvances = data || [];
       return {
-        count: pending.length,
-        total: pending.reduce((s: number, a: any) => s + Number(a.amount || 0), 0),
+        count: openAdvances.length,
+        total: openAdvances.reduce((s, a) => s + Number(a.amount || 0), 0),
       };
     },
     staleTime: 30_000,
@@ -1687,7 +1855,7 @@ function PayrollPendingAdvancesAlert({ from, to }: { from: string; to: string })
       <div className="flex items-center gap-2 text-xs text-amber-700 dark:text-amber-400">
         <AlertTriangle className="h-4 w-4 shrink-0" />
         <span>
-          <strong className="font-bold">{data.count} vale(s)</strong> pendente(s) neste período —
+          <strong className="font-bold">{data.count} vale(s)</strong> em aberto neste período —
           total {data.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}.
           Serão descontados automaticamente ao aprovar a folha.
         </span>

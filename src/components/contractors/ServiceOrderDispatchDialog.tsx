@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import type { Json } from '@/integrations/supabase/types';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -10,7 +11,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useContractors } from '@/hooks/useContractors';
-import { CircleNotch as Loader2, Truck, Package, Check } from '@phosphor-icons/react';
+import type { ServiceOrderMaterialRequirements } from '@/hooks/useContractors';
+import { CircleNotch as Loader2, Truck, Package, Check, Warning } from '@phosphor-icons/react';
+import {
+  buildDispatchMaterialKit,
+  toPersistedMaterialsSent,
+  type CockpitMaterialSent,
+} from '@/lib/serviceOrderCockpit';
 
 /**
  * Enviar OS terceirizada PRA RUA em PARCELAS (tranches). Complementa o retorno
@@ -41,6 +48,8 @@ export interface DispatchDialogServiceOrder {
   description?: string | null;
   contractorName?: string | null;
   contractorId?: string | null;  // prestador padrão da OS (default do envio)
+  material_requirements?: ServiceOrderMaterialRequirements | null;
+  materials_sent?: CockpitMaterialSent[] | null;
 }
 
 interface Props {
@@ -49,13 +58,15 @@ interface Props {
   serviceOrder: DispatchDialogServiceOrder | null;
   /** Pedido pra abrir o recebimento (o caller controla o ServiceOrderReturnDialog). */
   onReceive?: () => void;
+  /** Depois do envio: o caller imprime o recibo com o kit confirmado. */
+  onDispatched?: (payload: { qty: number; materials: CockpitMaterialSent[] }) => void;
 }
 
-export default function ServiceOrderDispatchDialog({ open, onOpenChange, serviceOrder, onReceive }: Props) {
+export default function ServiceOrderDispatchDialog({ open, onOpenChange, serviceOrder, onReceive, onDispatched }: Props) {
   const qc = useQueryClient();
   const soId = serviceOrder?.id ?? null;
 
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading, isError, error: loadError, refetch } = useQuery({
     queryKey: ['so_dispatch_dialog', soId],
     enabled: open && !!soId,
     queryFn: async () => {
@@ -67,18 +78,29 @@ export default function ServiceOrderDispatchDialog({ open, onOpenChange, service
       if (balErr) throw balErr;
       if (dispErr) throw dispErr;
       if (retErr) throw retErr;
+      if (!bal) throw new Error('O saldo físico desta OS não foi encontrado.');
       return { balance: (bal ?? null) as BalanceRow | null, dispatches: (disp ?? []) as DispatchRow[], returns: (rets ?? []) as ReturnRow[] };
     },
   });
 
   const balance = data?.balance ?? null;
-  const ordered = Number(balance?.qty_sent ?? serviceOrder?.quantity ?? 0);
+  const ordered = Number(balance?.qty_sent ?? 0);
   const dispatched = Number(balance?.qty_dispatched ?? 0);
   const toDispatch = Math.max(0, Number(balance?.qty_to_dispatch ?? Math.max(0, ordered - dispatched)));
   const inField = Math.max(0, Number(balance?.qty_in_field ?? 0));
   const received = (balance?.qty_returned_good ?? 0) + (balance?.qty_returned_defect ?? 0) + (balance?.qty_loss ?? 0);
 
-  const { data: contractors = [] } = useContractors();
+  const {
+    data: contractors = [],
+    isLoading: loadingContractors,
+    isError: contractorsFailed,
+    error: contractorsError,
+    refetch: refetchContractors,
+  } = useContractors();
+  const loadFailed = isError || contractorsFailed;
+  const errorMessage = (isError ? loadError : contractorsError) instanceof Error
+    ? (isError ? loadError : contractorsError).message
+    : 'Não foi possível carregar o saldo físico e os prestadores desta OS.';
   const contractorName = (id?: string | null) => {
     const c = (contractors as any[]).find(x => x.id === id);
     return c ? (c.trade_name || c.name || 'Prestador') : null;
@@ -88,12 +110,27 @@ export default function ServiceOrderDispatchDialog({ open, onOpenChange, service
   const [notes, setNotes] = useState('');
   const [contractor, setContractor] = useState<string>('');
   const [saving, setSaving] = useState(false);
+  const [kit, setKit] = useState<CockpitMaterialSent[]>([]);
+  const kitLocked = (serviceOrder?.materials_sent || []).some((material) => (material.material || '').trim() && Number(material.meters || material.quantity || 0) > 0);
 
   // Default: manda o que falta pro prestador padrão da OS (1 clique).
   useEffect(() => {
-    if (open) { setQty(toDispatch); setNotes(''); setContractor(serviceOrder?.contractorId || ''); }
-
+    if (open) {
+      setQty(toDispatch);
+      setNotes('');
+      setContractor(serviceOrder?.contractorId || '');
+    }
   }, [open, toDispatch, serviceOrder?.contractorId]);
+
+  useEffect(() => {
+    if (!open) return;
+    setKit(buildDispatchMaterialKit({
+      requirements: serviceOrder?.material_requirements,
+      existingSent: serviceOrder?.materials_sent,
+      dispatchQty: qty,
+      orderQty: Number(serviceOrder?.quantity || qty || 0),
+    }));
+  }, [open, qty, serviceOrder?.material_requirements, serviceOrder?.materials_sent, serviceOrder?.quantity]);
 
   const exceeds = qty > toDispatch;
   const fmtDate = useMemo(() => (s: string) => new Date(s).toLocaleDateString('pt-BR'), []);
@@ -106,21 +143,33 @@ export default function ServiceOrderDispatchDialog({ open, onOpenChange, service
   }, [data]);
 
   const handleSave = async () => {
-    if (!soId || saving) return;
+    if (!soId || saving || loadFailed || !balance) return;
     if (!contractor) { toast.error('Selecione o prestador desta remessa.'); return; }
     if (qty <= 0) { toast.error('Informe ao menos 1 par pra enviar.'); return; }
     if (exceeds) { toast.error(`Envio excede o que falta (${toDispatch} pares a enviar).`); return; }
     setSaving(true);
     try {
+      const materials = toPersistedMaterialsSent(kit);
       const { error } = await (supabase as any).from('service_order_dispatches').insert({
         service_order_id: soId, qty_dispatched: qty, notes: notes.trim() || null,
         contractor_id: contractor || null,
       });
       if (error) throw error;
+      if (!kitLocked && materials.length > 0) {
+        const { error: matErr } = await supabase
+          .from('service_orders')
+          .update({ materials_sent: materials as unknown as Json })
+          .eq('id', soId);
+        if (matErr) throw matErr;
+      }
       const left = toDispatch - qty;
       toast.success(left > 0 ? `${qty} pares enviados — faltam ${left} pra enviar.` : `${qty} pares enviados — pedido todo na rua.`);
       ['service_orders', 'v_contractor_metrics', 'service_order_overview', 'so_dispatch_dialog', 'so_return_dialog']
         .forEach(k => qc.invalidateQueries({ queryKey: [k] }));
+      qc.invalidateQueries({ queryKey: ['pv_service_orders'] });
+      qc.invalidateQueries({ queryKey: ['consolidated_service_orders'] });
+      qc.invalidateQueries({ queryKey: ['v_contractor_history_orders'] });
+      onDispatched?.({ qty, materials });
       refetch();
     } catch (e: any) {
       toast.error(`Falha ao registrar envio: ${e?.message || 'erro desconhecido'}`);
@@ -136,8 +185,23 @@ export default function ServiceOrderDispatchDialog({ open, onOpenChange, service
           <DialogTitle>Enviar pra rua — OS {serviceOrder?.order_number ?? ''}</DialogTitle>
         </DialogHeader>
 
-        {isLoading ? (
+        {isLoading || loadingContractors ? (
           <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+        ) : loadFailed ? (
+          <div role="alert" className="space-y-3 rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+            <p className="flex items-start gap-2">
+              <Warning className="mt-0.5 h-4 w-4 shrink-0" />
+              <span><strong>Envio bloqueado.</strong> {errorMessage}</span>
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void Promise.all([refetch(), refetchContractors()])}
+            >
+              Tentar novamente
+            </Button>
+          </div>
         ) : (
           <div className="space-y-4">
             {serviceOrder?.contractorName && <Badge variant="outline">{serviceOrder.contractorName}</Badge>}
@@ -186,6 +250,49 @@ export default function ServiceOrderDispatchDialog({ open, onOpenChange, service
             {exceeds && <p className="text-xs text-red-600">Envio ({qty}) maior que o que falta enviar ({toDispatch}).</p>}
             {toDispatch === 0 && <p className="text-xs text-muted-foreground">Pedido todo enviado. Use <strong>Receber</strong> conforme a banca devolve.</p>}
 
+            <div className="rounded-md border border-border p-2.5 space-y-2">
+              <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                <Package className="h-3.5 w-3.5" /> Kit de material da ficha
+              </p>
+              {kit.length === 0 ? (
+                <p className="text-[11px] text-muted-foreground">
+                  Esta OS ainda não tem snapshot de materiais. O recibo sai com os pares; a quantidade de material pode ser lançada depois.
+                </p>
+              ) : (
+                <div className="space-y-1.5">
+                  {kit.map((material, index) => (
+                    <div key={`${material.material}-${index}`} className="flex items-center gap-2">
+                      <span className="min-w-0 flex-1 truncate text-xs">
+                        {material.material}{material.color ? ` · ${material.color}` : ''}
+                      </span>
+                      <NumberInput
+                        value={Number(material.quantity ?? material.meters) || 0}
+                        onChange={(value) => {
+                          if (kitLocked) return;
+                          setKit((current) => current.map((row, rowIndex) => (
+                            rowIndex === index
+                              ? { ...row, quantity: value, meters: value }
+                              : row
+                          )));
+                        }}
+                        min={0}
+                        step="0.01"
+                        disabled={kitLocked}
+                        className="h-8 w-[92px] text-xs"
+                        aria-label={`Quantidade de ${material.material || 'material'}`}
+                      />
+                      <span className="w-8 shrink-0 text-[10px] text-muted-foreground">{material.unit || 'm'}</span>
+                    </div>
+                  ))}
+                  <p className="text-[11px] text-muted-foreground">
+                    {kitLocked
+                      ? 'Remessa já documentada nesta OS — conferir no recibo.'
+                      : 'Quantidade proporcional aos pares desta saída. Confira antes de imprimir o recibo.'}
+                  </p>
+                </div>
+              )}
+            </div>
+
             {/* Checklist de movimentos */}
             {timeline.length > 0 && (
               <div className="border border-border rounded-md p-2 max-h-40 overflow-auto space-y-1">
@@ -210,12 +317,12 @@ export default function ServiceOrderDispatchDialog({ open, onOpenChange, service
 
         <DialogFooter className="gap-2 sm:gap-2">
           {onReceive && (
-            <Button variant="outline" className="h-9 gap-1.5 mr-auto" onClick={() => { onOpenChange(false); onReceive(); }} disabled={inField <= 0}>
+            <Button variant="outline" className="h-9 gap-1.5 mr-auto" onClick={() => { onOpenChange(false); onReceive(); }} disabled={loadFailed || !balance || inField <= 0}>
               <Package className="h-4 w-4" /> Receber
             </Button>
           )}
           <Button variant="outline" className="h-9" onClick={() => onOpenChange(false)}>Fechar</Button>
-          <Button className="h-9 gap-1.5" onClick={handleSave} disabled={saving || isLoading || qty <= 0 || exceeds || !contractor}>
+          <Button className="h-9 gap-1.5" onClick={handleSave} disabled={saving || isLoading || loadingContractors || loadFailed || !balance || qty <= 0 || exceeds || !contractor}>
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Truck className="h-4 w-4" />} Enviar pra rua
           </Button>
         </DialogFooter>

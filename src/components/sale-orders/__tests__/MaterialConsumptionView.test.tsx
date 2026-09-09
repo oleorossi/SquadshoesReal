@@ -38,7 +38,7 @@ const ROWS: ConsumptionRow[] = [
   row({ componentType: 'Forração Palmilha', groupName: 'NAPA SOFT', materialName: 'Forração Palmilha', color: 'PRETO', totalQuantity: 1, available: 5.01 }),
   row({
     componentType: 'Solado', groupName: 'SOLADO 01', materialName: 'Solado', color: 'PRETO',
-    productUnit: 'par', totalQuantity: 198,
+    productUnit: 'par', totalQuantity: 198, soleProductId: 'p-solado-01',
     sizeBreakdown: { '35': 90, '36': 108 },
     soleSizeStock: { '35': 12, '36': 0 },
   }),
@@ -57,6 +57,19 @@ const renderView = (props: Partial<Parameters<typeof MaterialConsumptionView>[0]
   );
 
 describe('MaterialConsumptionView — tela buy-first', () => {
+  it('mostra o setor configurado de cada contribuição do mesmo componente', () => {
+    renderView({ rows: [
+      row({ componentType: 'Componente Direto', groupName: 'COMPONENTES DIVERSOS',
+        materialName: 'BINÓCULO 6MM', productUnit: 'un', totalQuantity: 150,
+        consumptionSector: 'Aviamento' }),
+      row({ componentType: 'Componente Direto', groupName: 'COMPONENTES DIVERSOS',
+        materialName: 'BINÓCULO 6MM', productUnit: 'un', totalQuantity: 250,
+        consumptionSector: 'Solagem' }),
+    ] });
+    expect(screen.getByText('Setor: Aviamento')).toBeInTheDocument();
+    expect(screen.getByText('Setor: Solagem')).toBeInTheDocument();
+  });
+
   it('lidera com o material base a comprar e a contagem de faltas', () => {
     renderView();
     // NAPA SOFT: 1,00 (OFF WHITE) + 1,00 (PRETO) = 2,00 m de napa. Palmilha/EVA
@@ -74,22 +87,44 @@ describe('MaterialConsumptionView — tela buy-first', () => {
     // Antes existia só "falta" sem número; a coluna Falta é a novidade.
     expect(screen.getByRole('columnheader', { name: 'Falta' })).toBeInTheDocument();
     // (90−12) + (108−0) = 186 pares, ignorando sobra de outros números.
-    expect(screen.getByText('186')).toBeInTheDocument();
-    expect(screen.getByText(/em 2 nº/)).toBeInTheDocument();
+    const soles = screen.getByRole('region', { name: 'Solados por numeração' });
+    expect(within(soles).getByText(/186 par/)).toBeInTheDocument();
+    expect(within(soles).getByText(/Falta em 2 números/i)).toBeInTheDocument();
   });
 
-  it('abre a grade do solado com necessidade, estoque e falta por número', async () => {
-    const user = userEvent.setup();
+  it('mantém a grade do solado aberta no topo com necessidade, estoque e falta por número', () => {
     renderView();
-    expect(screen.queryByText('Numeração')).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: /Abrir grade por numeração/i }));
-    const grade = screen.getByText('Numeração').closest('table')!;
+    const soles = screen.getByRole('region', { name: 'Solados por numeração' });
+    expect(within(soles).getByText(/Mapa de solados/i)).toBeInTheDocument();
+    const grade = within(soles).getByText('Numeração').closest('table')!;
     // O estoque por número era invisível antes (só no `title` da célula).
     expect(within(grade).getByText('Necessidade')).toBeInTheDocument();
-    expect(within(grade).getByText('Em estoque')).toBeInTheDocument();
+    expect(within(grade).getByText('Estoque útil')).toBeInTheDocument();
     expect(within(grade).getByText('Falta')).toBeInTheDocument();
     // 90 necessários, 12 em estoque, 78 faltando no 35.
     expect(within(grade).getByText('78')).toBeInTheDocument();
+  });
+
+  it('destaca solado não resolvido como cadastro incompleto, nunca como grade coberta', () => {
+    renderView({
+      rows: [row({
+        componentType: 'Solado',
+        groupName: 'Solado Ricardo Tratorado',
+        materialName: 'Solado',
+        productUnit: 'par',
+        totalQuantity: 80,
+        sizeBreakdown: { '34': 20, '35': 20, '36': 20, '37': 20 },
+        soleProductId: null,
+        warning: 'Solado não resolve produto ativo no estoque — não será reservado nem debitado.',
+      })],
+    });
+
+    const soles = screen.getByRole('region', { name: 'Solados por numeração' });
+    expect(within(soles).getByText('Cadastro incompleto')).toBeInTheDocument();
+    expect(within(soles).getByText(/não será reservado nem debitado/i)).toBeInTheDocument();
+    expect(within(soles).queryByText('Grade coberta')).not.toBeInTheDocument();
+    expect(within(soles).queryByText(/Comprar 80/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Ver itens em falta' })).toHaveTextContent('0');
   });
 
   it('o filtro "Em falta" esconde o que está coberto', async () => {
@@ -116,7 +151,7 @@ describe('MaterialConsumptionView — tela buy-first', () => {
     renderView();
     await user.type(screen.getByLabelText(/Buscar material/i), 'solado');
     expect(screen.getByText(/mostrando 1 de 5/)).toBeInTheDocument();
-    expect(within(screen.getByRole('table')).getByText('SOLADO 01')).toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: 'Solados por numeração' })).getByText('SOLADO 01')).toBeInTheDocument();
     expect(screen.queryByText('OURO LIGHT')).not.toBeInTheDocument();
   });
 
@@ -127,10 +162,13 @@ describe('MaterialConsumptionView — tela buy-first', () => {
     expect(screen.getByText('5 itens')).toBeInTheDocument();
     expect(screen.getAllByText('198').length).toBeGreaterThan(0);
 
-    await user.click(screen.getByRole('button', { name: /^Napa/i }));
+    await user.click(screen.getByRole('button', { name: /^Napa \d/i }));
     expect(screen.getByRole('button', { name: /mostrando 2 de 5 · de napa/i })).toBeInTheDocument();
     expect(screen.getByText('2 itens de 5')).toBeInTheDocument();
-    const table = screen.getByRole('table');
+    // O recorte vale para a tabela/totais. O mapa prioritário de solados não
+    // pode desaparecer por causa de um filtro de materiais gerais.
+    expect(screen.getByRole('region', { name: 'Solados por numeração' })).toBeInTheDocument();
+    const table = screen.getByRole('table', { name: 'Materiais gerais' });
     expect(within(table).queryByText('OURO LIGHT')).not.toBeInTheDocument();
     expect(within(table).queryByText('SOLADO 01')).not.toBeInTheDocument();
     expect(within(table).getByText('OFF WHITE')).toBeInTheDocument();
@@ -140,11 +178,11 @@ describe('MaterialConsumptionView — tela buy-first', () => {
     const user = userEvent.setup();
     renderView();
     await user.click(screen.getByRole('button', { name: /^Em falta/i }));
-    await user.click(screen.getByRole('button', { name: /^Napa/i }));
+    await user.click(screen.getByRole('button', { name: /^Napa \d/i }));
     // Das 2 napas, só OFF WHITE está em falta (PRETO tem 5,01 p/ 1,00).
     expect(screen.getByRole('button', { name: /mostrando 1 de 5 · em falta · de napa/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Em falta/i })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: /^Napa/i })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: /^Napa \d/i })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('estoque compartilhado não pinta de verde uma linha de item em falta', async () => {
@@ -167,15 +205,112 @@ describe('MaterialConsumptionView — tela buy-first', () => {
     expect(screen.queryByLabelText('em estoque')).not.toBeInTheDocument();
   });
 
-  it('“Gerar OC” só aparece quando o escopo sabe gerar', async () => {
+  it('“Gerar ordem de compra” só aparece quando o escopo sabe gerar', async () => {
     const onGerarOC = vi.fn();
     const { unmount } = renderView();
-    expect(screen.queryByRole('button', { name: /Gerar OC/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Gerar ordem de compra/i })).not.toBeInTheDocument();
     unmount();
 
     renderView({ onGerarOC });
-    await userEvent.setup().click(screen.getByRole('button', { name: /Gerar OC/i }));
+    await userEvent.setup().click(screen.getByRole('button', { name: /Gerar ordem de compra/i }));
     expect(onGerarOC).toHaveBeenCalledOnce();
+    expect(onGerarOC).toHaveBeenCalledWith({ grossNeed: false });
+  });
+
+  it('oferece multi-seleção de itens do PV com o valor selecionado', async () => {
+    const onSelectedItemIdsChange = vi.fn();
+    const user = userEvent.setup();
+    const { rerender } = renderView({
+      itemOptions: [
+        { id: 'item-1', label: 'Item 1 · I90 · PRETO' },
+        { id: 'item-2', label: 'Item 2 · I90 · OFF WHITE' },
+      ],
+      selectedItemIds: [],
+      onSelectedItemIdsChange,
+    });
+
+    expect(screen.getByRole('combobox', { name: /Filtrar consumo por item/i }))
+      .toHaveTextContent('Todos os itens');
+
+    await user.click(screen.getByRole('combobox', { name: /Filtrar consumo por item/i }));
+    expect(screen.getByText(/Marque um ou mais itens/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Item 1 · I90 · PRETO/i }));
+    expect(onSelectedItemIdsChange).toHaveBeenCalledWith(['item-1']);
+
+    rerender(
+      <MemoryRouter>
+        <MaterialConsumptionView
+          rows={ROWS}
+          artisanalStrapRows={[]}
+          title="Consumo de Materiais — PV-00151"
+          itemOptions={[
+            { id: 'item-1', label: 'Item 1 · I90 · PRETO' },
+            { id: 'item-2', label: 'Item 2 · I90 · OFF WHITE' },
+          ]}
+          selectedItemIds={['item-1', 'item-2']}
+          onSelectedItemIdsChange={onSelectedItemIdsChange}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('combobox', { name: /Filtrar consumo por item/i }))
+      .toHaveTextContent('2 itens selecionados');
+  });
+
+  it('mantém o rótulo legível nos itens marcados (sem bg-accent preto)', async () => {
+    const user = userEvent.setup();
+    renderView({
+      itemOptions: [
+        { id: 'item-1', label: 'Item 1 · I90 · PRETO' },
+        { id: 'item-2', label: 'Item 2 · I90 · OFF WHITE' },
+      ],
+      selectedItemIds: ['item-1', 'item-2'],
+      onSelectedItemIdsChange: vi.fn(),
+    });
+
+    await user.click(screen.getByRole('combobox', { name: /Filtrar consumo por item/i }));
+    const selectedRow = screen.getByRole('button', { name: /Item 1 · I90 · PRETO/i });
+    expect(selectedRow).toHaveTextContent('Item 1 · I90 · PRETO');
+    expect(selectedRow).toHaveClass('bg-muted');
+    expect(selectedRow).not.toHaveClass('bg-accent');
+  });
+
+  it('esconde o seletor de item quando não há opções', () => {
+    renderView();
+    expect(screen.queryByRole('combobox', { name: /Filtrar consumo por item/i })).not.toBeInTheDocument();
+  });
+
+  it('mantém o seletor de item no empty state pra voltar a Todos', async () => {
+    const onSelectedItemIdsChange = vi.fn();
+    const user = userEvent.setup();
+    renderView({
+      rows: [],
+      itemOptions: [
+        { id: 'item-1', label: 'Item 1 · I90 · PRETO' },
+        { id: 'item-2', label: 'Item 2 · I90 · OFF WHITE' },
+      ],
+      selectedItemIds: ['item-2'],
+      onSelectedItemIdsChange,
+      emptyMessage: 'Nenhum consumo neste item.',
+    });
+    expect(screen.getByRole('combobox', { name: /Filtrar consumo por item/i }))
+      .toHaveTextContent('Item 2 · I90 · OFF WHITE');
+    expect(screen.getByText('Nenhum consumo neste item.')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('combobox', { name: /Filtrar consumo por item/i }));
+    await user.click(screen.getByRole('button', { name: /^Todos os itens$/i }));
+    expect(onSelectedItemIdsChange).toHaveBeenCalledWith([]);
+  });
+
+  it('mantém Gerar ordem de compra visível no modo Consumo total', async () => {
+    const onGerarOC = vi.fn();
+    const user = userEvent.setup();
+    renderView({ onGerarOC });
+    await user.click(screen.getAllByRole('button', { name: 'Consumo total' })[0]);
+    expect(screen.getByRole('button', { name: /Gerar ordem de compra/i })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Gerar ordem de compra/i }));
+    expect(onGerarOC).toHaveBeenCalledOnce();
+    expect(onGerarOC).toHaveBeenCalledWith({ grossNeed: true });
   });
 
   it('gera um PDF real no servidor em vez de usar a impressão solta do navegador', async () => {
@@ -214,5 +349,197 @@ describe('MaterialConsumptionView — tela buy-first', () => {
     expect(screen.getByText('≈ 17,25')).toBeInTheDocument();
     expect(screen.getByText('prévia calculada pela ficha')).toBeInTheDocument();
     expect(screen.queryByText(/faltam 17,25/i)).not.toBeInTheDocument();
+  });
+
+  it('tira artesanal conferida não entra como falta de 1.402 m — o motor compra napa', () => {
+    renderView({
+      rows: [
+        row({
+          componentType: 'Forração Palmilha',
+          groupName: 'NAPA SOFT',
+          materialName: 'Forração Palmilha',
+          color: 'NEW WHISKY',
+          totalQuantity: 20.21,
+          available: 0,
+          productIds: ['napa-new-whisky'],
+        }),
+        row({
+          componentType: 'Tiras',
+          groupName: 'TIRA OVERLOCK 5 mm · NAPA SOFT · NEW WHISKY',
+          materialName: 'Produção interna',
+          color: 'NEW WHISKY',
+          totalQuantity: 1402.8,
+          available: 0,
+          productIds: ['tira-overlock-new-whisky'],
+          baseProductId: 'napa-new-whisky',
+          artisanal: { baseName: 'NAPA SOFT', baseQty: 20.04, yieldPerMeter: 70 },
+        }),
+      ],
+    });
+
+    // Metros de tira saem da tabela de aplicações (moram no bloco de transformação
+    // quando há artisanalStrapRows). A compra/falta é só napa.
+    expect(screen.queryByText('1.402,80')).not.toBeInTheDocument();
+    const faltaCard = screen.getByRole('button', { name: 'Ver itens em falta' });
+    expect(within(faltaCard).getByText('1')).toBeInTheDocument();
+    expect(screen.getAllByText(/40,25/).length).toBeGreaterThan(0);
+  });
+
+  it('tira com cadastro pendente permanece na tabela como cadastro incompleto (PV-00169)', () => {
+    renderView({
+      rows: [
+        row({
+          componentType: 'Forração Palmilha',
+          groupName: 'NAPA SOFT',
+          materialName: 'Forração Palmilha',
+          color: 'CARAMELO',
+          totalQuantity: 10,
+          available: 100,
+          productIds: ['napa-caramelo'],
+        }),
+        row({
+          componentType: 'Tiras',
+          groupName: 'TIRA CHATA 8 mm · NAPA SOFT · CARAMELO',
+          materialName: 'Produção interna',
+          color: 'CARAMELO',
+          productUnit: 'm',
+          totalQuantity: 184.8,
+          available: 0,
+          warning: 'Receita exata nao encontrada para a base da ficha',
+          artisanal: {
+            baseName: 'NAPA SOFT',
+            baseQty: 0,
+            yieldPerMeter: 0,
+            pending: true,
+          },
+        }),
+      ],
+    });
+
+    // Demanda da ficha não pode sumir da conferência só porque o rendimento falta.
+    const materials = screen.getByRole('table', { name: 'Materiais gerais' });
+    expect(within(materials).getByText('TIRA CHATA 8 mm · NAPA SOFT · CARAMELO')).toBeInTheDocument();
+    expect(within(materials).getAllByText('184,80').length).toBeGreaterThan(0);
+    expect(screen.getByText(/Tira com cadastro pendente/i)).toBeInTheDocument();
+    // Strip de totais (fora da tabela) não inclui os metros brutos de tira.
+    const totalsLabel = screen.getByText((content, el) =>
+      el?.tagName === 'SPAN' && /^\d+ itens?$/.test(content.trim()),
+    );
+    const totalsStrip = totalsLabel.parentElement;
+    expect(totalsStrip?.textContent || '').toMatch(/10,00/);
+    expect(totalsStrip?.textContent || '').not.toMatch(/184,80/);
+  });
+
+  it('separa tira Strass numa aba própria, fora das demais tiras', async () => {
+    const user = userEvent.setup();
+    renderView({
+      rows: [
+        row({
+          componentType: 'Tiras',
+          groupName: 'TIRA OVERLOCK 5MM · NAPA SOFT',
+          materialName: 'Produção interna',
+          color: 'PRETO',
+          totalQuantity: 100,
+          available: 50,
+          artisanal: { baseName: 'NAPA SOFT', baseQty: 2, yieldPerMeter: 50, pending: true },
+          warning: 'pendente',
+        }),
+        row({
+          componentType: 'Tiras',
+          groupName: 'TIRA STRASS 6MM',
+          materialName: 'Comprada pronta',
+          color: 'PRETO',
+          totalQuantity: 80,
+          available: 10,
+          strapSourceMode: 'buy_ready',
+        }),
+      ],
+    });
+
+    const materiais = screen.getByRole('table', { name: 'Materiais gerais' });
+    expect(within(materiais).getByText(/OVERLOCK/i)).toBeInTheDocument();
+    expect(within(materiais).queryByText(/STRASS/i)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('tab', { name: /Tira Strass/i }));
+    const strass = await screen.findByRole('table', { name: 'Tira Strass' });
+    expect(within(strass).getByText('TIRA STRASS 6MM')).toBeInTheDocument();
+    expect(within(strass).queryByText(/OVERLOCK/i)).not.toBeInTheDocument();
+  });
+
+  it('no diálogo não repete o título do chrome no herói', () => {
+    renderView({ embedded: true });
+    expect(screen.queryByRole('heading', { name: /Consumo de Materiais — PV-00151/i })).not.toBeInTheDocument();
+    expect(screen.getByText('Necessidade de material base')).toBeInTheDocument();
+  });
+
+  it('filtra por material base e agrupa a cor em cabedal, forração e tira', async () => {
+    const user = userEvent.setup();
+    renderView({
+      rows: [
+        row({
+          componentType: 'Cabedal',
+          groupName: 'NAPA SOFT',
+          materialName: 'Cabedal',
+          color: 'NEW WHISKY',
+          totalQuantity: 10,
+          available: 0,
+          productIds: ['napa-new-whisky'],
+        }),
+        row({
+          componentType: 'Forração Palmilha',
+          groupName: 'NAPA SOFT',
+          materialName: 'Forração Palmilha',
+          color: 'NEW WHISKY',
+          totalQuantity: 20.21,
+          available: 0,
+          productIds: ['napa-new-whisky'],
+        }),
+        row({
+          componentType: 'Tiras',
+          groupName: 'TIRA OVERLOCK 5 mm · NAPA SOFT · NEW WHISKY',
+          materialName: 'Produção interna',
+          color: 'NEW WHISKY',
+          totalQuantity: 1402.8,
+          available: 0,
+          productIds: ['tira-overlock-new-whisky'],
+          baseProductId: 'napa-new-whisky',
+          artisanal: { baseName: 'NAPA SOFT', baseQty: 20.04, yieldPerMeter: 70 },
+        }),
+        row({
+          componentType: 'Palmilha',
+          groupName: 'PALMILHA',
+          materialName: 'EVA 3MM',
+          color: 'PRETO',
+          totalQuantity: 5.08,
+          available: 0,
+        }),
+      ],
+    });
+
+    await user.click(within(screen.getByRole('group', { name: 'Filtrar por material base' })).getByRole('button', { name: /NAPA SOFT/i }));
+    const breakdown = screen.getByLabelText(/Consumo por aplicação em NEW WHISKY/i);
+    expect(within(breakdown).getByText('Cabedal')).toBeInTheDocument();
+    expect(within(breakdown).getByText('Forração')).toBeInTheDocument();
+    expect(within(breakdown).getByText('Tira')).toBeInTheDocument();
+    expect(within(breakdown).getByText('10,00 m')).toBeInTheDocument();
+    expect(within(breakdown).getByText('20,21 m')).toBeInTheDocument();
+    expect(within(breakdown).getByText('20,04 m')).toBeInTheDocument();
+    expect(within(breakdown).getByText('prod. interna')).toBeInTheDocument();
+    expect(screen.queryByText('EVA 3MM')).not.toBeInTheDocument();
+  });
+
+  it('Consumo total esconde estoque e falta e mantém a necessidade do pedido', async () => {
+    const user = userEvent.setup();
+    renderView();
+    expect(screen.getByRole('columnheader', { name: 'Falta' })).toBeInTheDocument();
+
+    await user.click(screen.getAllByRole('button', { name: 'Consumo total' })[0]);
+    expect(screen.queryByRole('columnheader', { name: 'Falta' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Em estoque' })).not.toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Necessidade' })).toBeInTheDocument();
+    expect(screen.getAllByText(/Estoque ignorado/i).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: 'Ver itens em falta' })).not.toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: 'Solados por numeração' })).queryByText('Estoque útil')).not.toBeInTheDocument();
+    expect(screen.getByText('OURO LIGHT')).toBeInTheDocument();
   });
 });

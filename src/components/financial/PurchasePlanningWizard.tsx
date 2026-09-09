@@ -21,6 +21,10 @@ import { format, addDays, startOfWeek, endOfWeek, isAfter, isBefore } from 'date
 import { ptBR } from 'date-fns/locale';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { roundUpToPurchaseMultiple, applyPurchaseMultiple } from '@/lib/purchaseMultiple';
+import {
+  executePurchaseOrderCommand,
+  purchaseOrderLogicalKey,
+} from '@/services/purchaseOrderCommandService';
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const fmtQty = (v: number) => v.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
@@ -571,24 +575,11 @@ export default function PurchasePlanningWizard() {
           const qty = computeBuyQty(deficit, productsMap.get(item.product_id!));
           return { product_id: item.product_id!, current_stock: item.current_stock, qty, unit_price: item.unit_price, unit: item.unit };
         });
-        const totalValue = lines.reduce((s, l) => s + l.qty * l.unit_price, 0);
         const supplierId = items.find(i => i.supplier_id)?.supplier_id ?? null;
         const idempSig = items.filter(i => i.product_id).map(i => `${i.product_id}:${Math.ceil(Math.max(0, i.total_needed - i.current_stock))}`).sort().join('|');
         const idempKey = `wizard|${supplierId || supplierName}|${idempSig}`;
         const buyBy = items.map(i => i.earliest_purchase_deadline).filter(Boolean).sort()[0] || null;
-        const { data: po, error: poErr } = await supabase.from('purchase_orders').insert({
-          supplier_name: supplierName,
-          supplier_id: supplierId,
-          total_value: totalValue,
-          notes: 'Plano de compras baseado em pedidos',
-          auto_generated: true,
-          status: 'pending',
-          idempotency_key: idempKey,
-          ...(buyBy ? { purchase_by_date: buyBy } : {}),
-        }).select('id').single();
-        if (poErr) throw poErr;
         const poItems = lines.map(l => ({
-          purchase_order_id: po.id,
           product_id: l.product_id,
           current_stock: l.current_stock,
           min_stock: 0,
@@ -599,12 +590,27 @@ export default function PurchasePlanningWizard() {
           unit: l.unit,
         }));
         if (poItems.length === 0) {
-          await supabase.from('purchase_orders').delete().eq('id', po.id);
           continue;
         }
-        const { error: itemsErr } = await supabase.from('purchase_order_items').insert(poItems);
-        if (itemsErr) throw itemsErr;
-        count++;
+        const result = await executePurchaseOrderCommand({
+          command: 'create',
+          payload: {
+            header: {
+              supplier_name: supplierName,
+              supplier_id: supplierId,
+              notes: 'Plano de compras baseado em pedidos',
+              auto_generated: true,
+              status: 'pending',
+              source_type: 'mrp',
+              idempotency_key: idempKey,
+              purchase_by_date: buyBy,
+            },
+            items: poItems,
+            return_existing_on_idempotency: true,
+          },
+          logicalKey: purchaseOrderLogicalKey('planning-wizard', idempKey),
+        });
+        if (!result.deduplicated) count++;
       }
       toast.success(`${count} ${count === 1 ? 'Ordem de Compra criada' : 'Ordens de Compra criadas'} com sucesso!`);
       setCurrentStep(0);

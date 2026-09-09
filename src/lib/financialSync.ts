@@ -55,14 +55,71 @@ type ExistingAR = {
   status: string | null;
   installment_number: number | null;
   amount?: number;
+  amount_received?: number | null;
   due_date?: string | null;
   notes?: string | null;
 };
 
+function hasRecordedReceipt(ar: ExistingAR): boolean {
+  return ['received', 'recebido', 'partial', 'parcial'].includes(String(ar.status || '').toLowerCase())
+    || Number(ar.amount_received ?? 0) > 0;
+}
+
+/**
+ * Cancela somente cobranças sem nenhum caixa registrado. O filtro no UPDATE
+ * repete a decisão no servidor para preservar uma baixa parcial que aconteça
+ * entre a leitura inicial e esta mutação.
+ */
+async function cancelUnreceivedAR(
+  db: DbClient,
+  existingAR: ExistingAR[],
+  operation: string,
+) {
+  const idsToCancel = existingAR
+    .filter((ar) => !['cancelled', 'cancelado'].includes(String(ar.status || '')))
+    .filter((ar) => !hasRecordedReceipt(ar))
+    .map((ar) => ar.id);
+  if (idsToCancel.length === 0) return;
+
+  const { error } = await db.from('accounts_receivable')
+    .update({ status: 'cancelled' })
+    .in('id', idsToCancel)
+    .not('status', 'in', '(received,recebido,partial,parcial,cancelled,cancelado)')
+    .or('amount_received.is.null,amount_received.eq.0');
+  if (error) throw new Error(`${operation}: ${error.message}`);
+}
+
+/**
+ * Receita confirmada ainda e reversível: preserva a linha de auditoria como
+ * estornada. Entries já postadas, pagas ou conciliadas ficam intocadas; rascunhos
+ * continuam removidos como antes.
+ */
+async function reverseReversibleSaleOrderRevenue(
+  db: DbClient,
+  saleOrderId: string,
+  operation: string,
+) {
+  const { error: reverseError } = await db.from('financial_entries')
+    .update({ status: 'estornado' })
+    .eq('reference_id', saleOrderId)
+    .eq('reference_type', 'sale_order')
+    .eq('type', 'receita')
+    .eq('status', 'confirmed');
+  if (reverseError) throw new Error(`${operation}: ${reverseError.message}`);
+
+  const { error: deleteError } = await db.from('financial_entries')
+    .delete()
+    .eq('reference_id', saleOrderId)
+    .eq('reference_type', 'sale_order')
+    .eq('type', 'receita')
+    .not('status', 'in', '(posted,paid,reconciled,confirmed,estornado,cancelado,cancelled)');
+  if (deleteError) throw new Error(`${operation}: ${deleteError.message}`);
+}
+
 /**
  * Reconcilia as parcelas de accounts_receivable com o cronograma desejado.
- *  - Parcela existente não-recebida → UPDATE (valores/datas/labels).
- *  - Parcela 'received' é sagrada — não toca.
+ *  - Parcela existente sem baixa → UPDATE (valores/datas/labels).
+ *  - Parcela parcial/recebida é sagrada — não toca.
  *  - Não existe → INSERT com (installment_number, total_installments).
  *  - Rows não-recebidas fora do cronograma ou duplicadas → CANCEL.
  */
@@ -85,6 +142,7 @@ export async function reconcileARInstallments(
   const byNum = new Map<number, ExistingAR>();
   for (const ar of existingAR) {
     if (ar.status === 'cancelled') continue;
+    if (ar.status === 'cancelado') continue;
     const num = ar.installment_number ?? 1;
     // Mais de 1 row no mesmo número (corrupção legacy ou race pré-constraint):
     // mantém o primeiro — os outros caem na limpeza final como duplicatas.
@@ -93,7 +151,7 @@ export async function reconcileARInstallments(
 
   for (const inst of schedule) {
     const existing = byNum.get(inst.installment_number);
-    if (existing && existing.status === 'received') continue; // sagrado, não toca
+    if (existing && hasRecordedReceipt(existing)) continue; // caixa registrado é sagrado
     if (existing) {
       const updatePayload: Record<string, any> = {
         amount: inst.amount,
@@ -105,7 +163,11 @@ export async function reconcileARInstallments(
         description: metadata.description_for(inst),
       };
       if (metadata.notes !== undefined) updatePayload.notes = metadata.notes;
-      const { error } = await db.from('accounts_receivable').update(updatePayload).eq('id', existing.id);
+      const { error } = await db.from('accounts_receivable')
+        .update(updatePayload)
+        .eq('id', existing.id)
+        .not('status', 'in', '(received,recebido,partial,parcial,cancelled,cancelado)')
+        .or('amount_received.is.null,amount_received.eq.0');
       must(`Atualizar parcela ${inst.installment_number}/${N}`, error);
     } else {
       const { error } = await db.from('accounts_receivable').insert({
@@ -128,23 +190,17 @@ export async function reconcileARInstallments(
 
   // Cancela parcelas a mais (usuário reduziu o nº de parcelas) e duplicatas.
   const desiredNums = new Set(schedule.map((s) => s.installment_number));
-  const idsToCancel = existingAR
-    .filter((ar) => ar.status !== 'cancelled' && ar.status !== 'received')
+  const rowsToCancel = existingAR
+    .filter((ar) => !['cancelled', 'cancelado'].includes(String(ar.status || '')))
+    .filter((ar) => !hasRecordedReceipt(ar))
     .filter((ar) => {
       const num = ar.installment_number ?? 1;
       if (!desiredNums.has(num)) return true; // parcela fora do schedule
       const owner = byNum.get(num);
       return owner ? owner.id !== ar.id : false; // duplicata: cancela todas exceto owner
-    })
-    .map((ar) => ar.id);
+    });
 
-  if (idsToCancel.length > 0) {
-    const { error } = await db.from('accounts_receivable')
-      .update({ status: 'cancelled' })
-      .in('id', idsToCancel)
-      .neq('status', 'received');
-    must('Cancelar parcelas extras/duplicadas', error);
-  }
+  await cancelUnreceivedAR(db, rowsToCancel, 'Cancelar parcelas extras/duplicadas');
 }
 
 /**
@@ -169,7 +225,7 @@ export async function syncFinancialRecordsCore(
 
   const { data: existingAR, error: arErr } = await db
     .from('accounts_receivable')
-    .select('id, amount, status, installment_number, total_installments, due_date, notes')
+    .select('id, amount, amount_received, status, installment_number, total_installments, due_date, notes')
     .eq('sale_order_id', saleOrderId);
   must('Buscar contas a receber existentes', arErr);
 
@@ -181,47 +237,17 @@ export async function syncFinancialRecordsCore(
   // a flag tenha sido virada depois de Faturar) e saímos.
   if (nfeRequired === false || so.status === 'Finalizado s/ NF') {
     if (existingAR && existingAR.length > 0) {
-      const idsToCancel = existingAR.filter((ar: ExistingAR) => ar.status !== 'cancelled' && ar.status !== 'received').map((ar: ExistingAR) => ar.id);
-      if (idsToCancel.length > 0) {
-        const { error } = await db.from('accounts_receivable')
-          .update({ status: 'cancelled' })
-          .in('id', idsToCancel)
-          .neq('status', 'received');
-        must('Cancelar AR de PV informal', error);
-      }
+      await cancelUnreceivedAR(db, existingAR, 'Cancelar AR de PV informal');
     }
-    const { error: delErr } = await db
-      .from('financial_entries')
-      .delete()
-      .eq('reference_id', saleOrderId)
-      .eq('reference_type', 'sale_order')
-      .not('status', 'in', '(posted,paid,reconciled,confirmed)');
-    must('Remover financial_entries de PV informal', delErr);
+    await reverseReversibleSaleOrderRevenue(db, saleOrderId, 'Estornar receita de PV informal');
     return;
   }
 
   if (so.status === 'Cancelado') {
     if (existingAR && existingAR.length > 0) {
-      const idsToCancel = existingAR.filter((ar: ExistingAR) => ar.status !== 'cancelled').map((ar: ExistingAR) => ar.id);
-      if (idsToCancel.length > 0) {
-        // .neq('status','received') prevents overwriting a concurrently-received
-        // AR row — that income is real and must not be cancelled.
-        const { error } = await db.from('accounts_receivable')
-          .update({ status: 'cancelled' })
-          .in('id', idsToCancel)
-          .neq('status', 'received');
-        must('Cancelar contas a receber', error);
-      }
+      await cancelUnreceivedAR(db, existingAR, 'Cancelar contas a receber');
     }
-    // Remove only unposted/draft revenue entries — confirmed/posted rows are the
-    // SPED audit trail and must not be deleted (same guard as useDeleteSaleOrder).
-    const { error: delErr } = await db
-      .from('financial_entries')
-      .delete()
-      .eq('reference_id', saleOrderId)
-      .eq('reference_type', 'sale_order')
-      .not('status', 'in', '(posted,paid,reconciled,confirmed)');
-    must('Remover financial_entries de PV cancelado', delErr);
+    await reverseReversibleSaleOrderRevenue(db, saleOrderId, 'Estornar receita de PV cancelado');
 
     // Despesas de juros factoring podem ser sempre removidas no cancel — não vão
     // pro SPED e dependem 1:1 do PV ativo. Se PV reativar depois, o sync recria.
@@ -266,25 +292,16 @@ export async function syncFinancialRecordsCore(
         } else {
           console.warn(`syncFinancialRecords: PV ${saleOrderId} 'Faturado' SEM NF-e autorizada nem NF externa — receita NÃO reconhecida (gate anti-ghost-revenue).`);
           if (existingAR && existingAR.length > 0) {
-            const idsToCancel = existingAR
-              .filter((ar: ExistingAR) => ar.status !== 'cancelled' && ar.status !== 'received')
-              // Parcelas criadas pelo backfill autorizado NÃO são canceladas pelo
-              // gate (senão cria/cancela em loop a cada sync).
-              .filter((ar: ExistingAR) => !(ar.notes || '').includes(BACKFILL_SEM_NF_MARKER))
-              .map((ar: ExistingAR) => ar.id);
-            if (idsToCancel.length > 0) {
-              const { error } = await db.from('accounts_receivable').update({ status: 'cancelled' }).in('id', idsToCancel).neq('status', 'received');
-              must('Cancelar AR de PV sem NF autorizada', error);
-            }
+            // Parcelas criadas pelo backfill autorizado NÃO são canceladas pelo
+            // gate (senão cria/cancela em loop a cada sync).
+            const regularAR = existingAR.filter((ar: ExistingAR) => !(ar.notes || '').includes(BACKFILL_SEM_NF_MARKER));
+            await cancelUnreceivedAR(db, regularAR, 'Cancelar AR de PV sem NF autorizada');
             // Se só existem parcelas do backfill autorizado, mantém tudo como está.
             if (existingAR.some((ar: ExistingAR) => (ar.notes || '').includes(BACKFILL_SEM_NF_MARKER))) {
               return;
             }
           }
-          const { error: delErr } = await db.from('financial_entries').delete()
-            .eq('reference_id', saleOrderId).eq('reference_type', 'sale_order')
-            .not('status', 'in', '(posted,paid,reconciled,confirmed)');
-          must('Remover receita não-postada (gate)', delErr);
+          await reverseReversibleSaleOrderRevenue(db, saleOrderId, 'Estornar receita barrada pelo gate fiscal');
           return;
         }
       }
@@ -322,11 +339,9 @@ export async function syncFinancialRecordsCore(
     if (arTotal <= 0) {
       console.warn(`syncFinancialRecords: Faturado PV ${saleOrderId} has arTotal=${arTotal} — cancelling any existing AR to avoid ghost revenue.`);
       if (existingAR && existingAR.length > 0) {
-        const idsToCancel = existingAR.filter((ar: ExistingAR) => ar.status !== 'cancelled').map((ar: ExistingAR) => ar.id);
-        if (idsToCancel.length > 0) {
-          await db.from('accounts_receivable').update({ status: 'cancelled' }).in('id', idsToCancel).neq('status', 'received');
-        }
+        await cancelUnreceivedAR(db, existingAR, 'Cancelar AR de PV faturado com total zerado');
       }
+      await reverseReversibleSaleOrderRevenue(db, saleOrderId, 'Estornar receita de PV faturado com total zerado');
       return;
     }
 
@@ -357,9 +372,10 @@ export async function syncFinancialRecordsCore(
     // Só considera lançamentos ATIVOS (trilha de auditoria preservada).
     const { data: existingEntry, error: feErr } = await db
       .from('financial_entries')
-      .select('id')
+      .select('id, status')
       .eq('reference_id', saleOrderId)
       .eq('reference_type', 'sale_order')
+      .eq('type', 'receita')
       .not('status', 'in', '(cancelado,cancelled,estornado)');
     must('Buscar financial_entries existentes', feErr);
 
@@ -379,7 +395,8 @@ export async function syncFinancialRecordsCore(
         .update({ amount: total, description: `Faturamento - ${so.client_name} - ${so.order_number || ''}` })
         .eq('reference_id', saleOrderId)
         .eq('reference_type', 'sale_order')
-        .not('status', 'in', '(cancelado,cancelled,estornado)');
+        .eq('type', 'receita')
+        .eq('status', 'confirmed');
       must('Atualizar financial_entry de faturamento', error);
     }
 
@@ -462,7 +479,7 @@ export async function syncFinancialRecordsCore(
     });
     const byNum = new Map(schedule.map((s) => [s.installment_number, s]));
     for (const ar of existingAR) {
-      if (ar.status === 'received' || ar.status === 'cancelled') continue;
+      if (hasRecordedReceipt(ar) || ar.status === 'cancelled' || ar.status === 'cancelado') continue;
       const num = ar.installment_number ?? 1;
       const inst = byNum.get(num);
       if (!inst) continue; // row "órfã" do cronograma — será revisada se PV voltar pra Aprovado/Faturado
@@ -470,7 +487,11 @@ export async function syncFinancialRecordsCore(
       if (Number(ar.amount) !== inst.amount) updates.amount = inst.amount;
       if (ar.due_date !== inst.due_date) updates.due_date = inst.due_date;
       if (Object.keys(updates).length > 0) {
-        const { error } = await db.from('accounts_receivable').update(updates).eq('id', ar.id);
+        const { error } = await db.from('accounts_receivable')
+          .update(updates)
+          .eq('id', ar.id)
+          .not('status', 'in', '(received,recebido,partial,parcial,cancelled,cancelado)')
+          .or('amount_received.is.null,amount_received.eq.0');
         must(`Atualizar parcela ${num} pós-Faturado`, error);
       }
     }

@@ -1,17 +1,44 @@
 import { parseDateOnly } from '@/lib/dateOnly';
 import { useState, useMemo, useEffect, lazy, Suspense, type ReactNode } from 'react';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { ListPagination } from '@/components/ui/list-pagination';
+import { PAGE_SIZE, paginateInMemory } from '@/lib/pagination';
+import {
+  STATUS_OPTIONS,
+  STATUS_TRANSITION_OPTIONS,
+  STATUS_COLORS,
+  STATUS_DOT,
+  STATUS_BAND,
+  TERMINAL_BILLED_STATUSES,
+  SORT_ACCESSORS,
+  formatSaleOrderCurrency as formatCurrency,
+  formatSaleOrderDate as formatDate,
+  formatSaleOrderDateShort as formatDateShort,
+  type SortKey,
+} from '@/components/sale-orders/saleOrderListConstants';
+import { SaleOrderSortHead as SortHead } from '@/components/sale-orders/SaleOrderSortHead';
+import { SaleOrderMobileCard } from '@/components/sale-orders/SaleOrderMobileCard';
+import {
+  useMinBillingMap,
+  useRefreshMinBillingInBackground,
+  EMPTY_MIN_BILLING_MAP,
+  EMPTY_STALE_IDS,
+} from '@/hooks/useMinBillingMap';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useDebounce } from 'use-debounce';
-import { getSignedUrl } from '@/lib/getSignedUrl';
-import { loadPvConsumption, pvConsumptionQueryKey, PV_CONSUMPTION_STALE_MS } from '@/lib/pvConsumption';
-import { resolveMaterialLabels, materialLabelKey } from '@/lib/labelUtils';
+import {
+  loadPvConsumption,
+  pvConsumptionPath,
+  pvConsumptionQueryKey,
+  PV_CONSUMPTION_STALE_MS,
+} from '@/lib/pvConsumption';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import PendenciasView from '@/components/sale-orders/PendenciasView';
-import { ArrowUp, ArrowsDownUp, Baby, Buildings, ShoppingCart, Plus, CircleNotch as Loader2, Copy, Printer, Factory, PencilSimple as Pencil, FileText, Funnel as Filter, X, MagnifyingGlass as Search, Package, Clock, CaretDown, ChartBar as BarChart3, ClipboardText as ClipboardList, ArrowsClockwise as RefreshCw, Tag, SquaresFour as LayoutDashboard, Lightning as Zap, FileXls as FileSpreadsheet, Receipt, XCircle, CheckCircle, Check, Download, TrendUp as TrendingUp, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw, HandPalm as Hand, UploadSimple as Upload, Trash as Trash2, ListChecks, ArrowSquareOut as ExternalLink, DotsThree, Images } from '@phosphor-icons/react';
+import { ArrowUp, ArrowsDownUp, Baby, Barcode, Buildings, ShoppingCart, Plus, CircleNotch as Loader2, Copy, Printer, Factory, PencilSimple as Pencil, FileText, Funnel as Filter, X, MagnifyingGlass as Search, Package, Clock, CaretDown, ChartBar as BarChart3, ClipboardText as ClipboardList, ArrowsClockwise as RefreshCw, Tag, SquaresFour as LayoutDashboard, Lightning as Zap, FileXls as FileSpreadsheet, Receipt, XCircle, CheckCircle, Check, Download, TrendUp as TrendingUp, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw, HandPalm as Hand, UploadSimple as Upload, Trash as Trash2, ListChecks, ArrowSquareOut as ExternalLink, DotsThree, Images } from '@phosphor-icons/react';
 import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
 import { BulkActionsBar, MarqueeOverlay } from '@/components/ui/bulk-actions-bar';
 import { cn } from "@/lib/utils";
@@ -21,7 +48,6 @@ import { cn } from "@/lib/utils";
 // primeiro paint e o ganho é zero. (auditoria PV 07/08/2026)
 const MarginDialog = lazy(() => import('@/components/sale-orders/MarginDialog'));
 const OrderPhotosDialog = lazy(() => import('@/components/sale-orders/OrderPhotosDialog'));
-const OrderConsumptionDialog = lazy(() => import('@/components/sale-orders/OrderConsumptionDialog'));
 const OperatorFichasDialog = lazy(() => import('@/components/sale-orders/OperatorFichasDialog'));
 const GenerateServiceOrdersWizard = lazy(() => import('@/components/contractors/GenerateServiceOrdersWizard').then(m => ({ default: m.GenerateServiceOrdersWizard })));
 const GeneratePurchaseOrdersDialog = lazy(() => import('@/components/purchase/GeneratePurchaseOrdersDialog'));
@@ -29,6 +55,8 @@ import PurchaseOrdersForPvCard from '@/components/purchase/PurchaseOrdersForPvCa
 import { PvOutdatedBadge } from '@/components/sale-orders/PvOutdatedBadge';
 import { RevertInvoiceButton } from '@/components/sale-orders/RevertInvoiceButton';
 import SummaryConsumptionPanel from '@/components/sale-orders/SummaryConsumptionPanel';
+import type { SaleOrderReadinessCorrectionTarget } from '@/components/sale-orders/SaleOrderReadinessCorrectionDialog';
+const SaleOrderReadinessCorrectionDialog = lazy(() => import('@/components/sale-orders/SaleOrderReadinessCorrectionDialog'));
 const SaleOrdersOverviewDialog = lazy(() => import('@/components/sale-orders/SaleOrdersOverviewDialog'));
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { Button } from '@/components/ui/button';
@@ -51,7 +79,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useSaleOrders, useSaleOrderAllItems, useCreateSaleOrder, useDeleteSaleOrder, useUpdateSaleOrderStatus, useResyncOPsFromSheets, useResyncOPsFromPV, useCommitPickingForSaleOrder, useRealtimeSaleOrders, SaleOrderFormData, SaleOrderItemFormData, PackagingMode, ORDER_TYPE_LABELS, DEFAULT_OP_STAGES, opStageOrder, listarTirasSemCor } from '@/hooks/useSaleOrders';
+import { useSaleOrders, useSaleOrderAllItems, useCreateSaleOrder, useDeleteSaleOrder, useUpdateSaleOrderStatus, useResyncOPsFromSheets, useResyncOPsFromPV, useCommitPickingForSaleOrder, useRealtimeSaleOrders, SaleOrderFormData, SaleOrderItemFormData, PackagingMode, ORDER_TYPE_LABELS } from '@/hooks/useSaleOrders';
+import {
+  executeSaleOrderCommand,
+  preflightSaleOrderCommand,
+  SaleOrderReadinessBlockedError,
+} from '@/lib/saleOrderCommand';
 import { useTechnicalSheetsLite } from '@/hooks/useTechnicalSheets';
 import { useClients, useEconomicGroups } from '@/hooks/useClients';
 import { supabase } from '@/integrations/supabase/client';
@@ -71,14 +104,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRepresentatives } from '@/hooks/useRepresentatives';
 import { printHtml, buildSaleOrderHtmlWithData, printSaleOrderPdf, fetchCompanySettings } from '@/lib/printOrder';
 import { printAllSectorsForSaleOrder } from '@/lib/printSaleOrderOPs';
-import { autoCreateSolePO, autoCreateSolePOFromShortfall } from '@/lib/soleAutoPO';
-import { buildThermalLabelsHtml, THERMAL_DEFAULT_DIMENSIONS } from '@/lib/printLabels';
-import { resolveSenderCnpj } from '@/lib/companySender';
-import { openPrintTab, printHtmlAsPdf } from '@/lib/printPdf';
-import { createPrintJob, setPrintJobStatus } from '@/lib/printJobs';
-import { todayISO, todayPlusDaysISO } from '@/lib/date';
-import { computeARSchedule } from '@/lib/saleOrderAR';
-import logoImg from '@/assets/logo-squad-shoes.jpg';
+import { todayISO } from '@/lib/date';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { TableSkeleton } from '@/components/layout/PageSkeleton';
 import { getValidNextStatuses } from '@/lib/saleOrderStateMachine';
@@ -86,224 +112,16 @@ import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import { normalizeForSearch, searchMatchesAllTerms, splitSearchTerms } from '@/lib/searchUtils';
 import { safeUrlAttr } from '@/lib/htmlUtils';
-import { warnPackagingDebit } from '@/lib/packagingDebitWarnings';
 import SalesOperationsRail, { SalesOperationsRailSkeleton } from '@/components/sale-orders/SalesOperationsRail';
 
-// TODOS os status canônicos do sale_orders (saleOrderStateMachine.ts).
-// Antes faltavam 'Pendente', 'Expedido' e 'Concluído' — PVs nesses status
-// não conseguiam ver options válidas no dropdown porque o filtro de
-// transições removia tudo do STATUS_OPTIONS. Resultado: usuário via só
-// "Cancelado" porque era a única transição comum em vários estados.
-const STATUS_OPTIONS = ['Rascunho', 'Pendente', 'Aprovado', 'Em Produção', 'Faturado', 'Expedido', 'Concluído', 'Finalizado s/ NF', 'Cancelado'] as const;
-
-// Transições válidas por status, pré-computadas uma vez. Antes isto era um IIFE
-// dentro do <SelectContent> de CADA linha: Set + spread + filter + map por linha,
-// a todo render — e mesmo com o dropdown fechado, porque o Radix avalia os
-// children do content quando o JSX é criado, não quando abre.
-// (auditoria PV 07/08/2026)
-// Colunas ordenáveis. Só entram aqui as que têm campo confirmado no dado —
-// cabeçalho que parece clicável e não ordena é pior que cabeçalho estático.
-// "Nº Cliente" e "Cidade" ficaram de fora por isso.
-type SortKey = 'order_number' | 'client_name' | 'total' | 'status' | 'pairs' | 'delivery_deadline';
-
-interface SaleOrderItemLabelMaterialRow {
-  id: string;
-  material_variant_id: string | null;
-  material_variant_commercial_snapshot: unknown;
-}
-
-const SORT_ACCESSORS: Record<SortKey, (o: any, pairs: Record<string, number>) => string | number | null> = {
-  order_number: (o) => o.order_number ?? null,
-  client_name: (o) => o.client_name ?? null,
-  total: (o) => Number(o.total) || 0,
-  status: (o) => o.status ?? null,
-  pairs: (o, pairs) => pairs[o.id] ?? 0,
-  delivery_deadline: (o) => o.delivery_deadline ?? null,
-};
-
-/** Cabeçalho ordenável. Um clique ordena crescente, outro decrescente, o terceiro
- *  volta à ordem natural — sem estado morto em que o usuário não sabe como sair. */
-function SortHead({ sk, sort, onSort, align, children }: {
-  sk: SortKey;
-  sort: { key: SortKey; dir: 'asc' | 'desc' } | null;
-  onSort: (k: SortKey) => void;
-  align?: 'right';
-  children: ReactNode;
-}) {
-  const active = sort?.key === sk;
-  // aria-sort pertence ao <th>, não ao botão dentro dele — no botão o leitor de
-  // tela ignora e a coluna não se anuncia como ordenada.
-  return (
-    <TableHead
-      aria-sort={active ? (sort!.dir === 'asc' ? 'ascending' : 'descending') : 'none'}
-      className={align === 'right' ? 'text-right tabular-nums' : undefined}
-    >
-      <button
-        type="button"
-        onClick={() => onSort(sk)}
-        aria-label={`Ordenar por ${typeof children === 'string' ? children : sk}`}
-        className={cn(
-          'inline-flex items-center gap-1 uppercase tracking-wider font-bold text-xs hover:text-foreground transition-colors',
-          align === 'right' && 'flex-row-reverse',
-          active ? 'text-foreground' : 'text-muted-foreground',
-        )}
-      >
-        {children}
-        {active
-          ? <ArrowUp className={cn('h-3 w-3 shrink-0 transition-transform', sort!.dir === 'desc' && 'rotate-180')} weight="bold" />
-          : <ArrowsDownUp className="h-3 w-3 shrink-0 opacity-30" />}
-      </button>
-    </TableHead>
-  );
-}
-
-const STATUS_TRANSITION_OPTIONS: Record<string, readonly string[]> = Object.fromEntries(
-  STATUS_OPTIONS.map((s) => {
-    const allowed = new Set<string>([s, ...getValidNextStatuses(s)]);
-    return [s, STATUS_OPTIONS.filter((o) => allowed.has(o))];
-  }),
-);
-
-// Audit visual: cores anteriores text-{color}-400 em dark caíam abaixo do
-// ratio WCAG AA (4.5:1) sobre o fundo /15. text-{color}-300 dá contraste
-// adequado mantendo a paleta semântica original.
-const STATUS_COLORS: Record<string, string> = {
-  'Rascunho': 'bg-muted text-muted-foreground border-border',
-  'Pendente': 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-300 border-yellow-500/30',
-  'Aprovado': 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30',
-  'Em Produção': 'bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30',
-  'Faturado': 'bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-500/30',
-  'Expedido': 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border-cyan-500/30',
-  'Concluído': 'bg-green-500/15 text-green-700 dark:text-green-300 border-green-500/30',
-  'Finalizado s/ NF': 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30',
-  'Cancelado': 'bg-destructive/15 text-destructive border-destructive/30',
-};
-
-const STATUS_DOT: Record<string, string> = {
-  'Rascunho': 'bg-muted-foreground',
-  'Pendente': 'bg-yellow-500',
-  'Aprovado': 'bg-emerald-500',
-  'Em Produção': 'bg-blue-500',
-  'Faturado': 'bg-violet-500',
-  'Expedido': 'bg-cyan-500',
-  'Concluído': 'bg-green-500',
-  'Finalizado s/ NF': 'bg-amber-500',
-  'Cancelado': 'bg-destructive',
-};
-
-// Tom sutil (5%) da faixa full-bleed do header da prévia, por status — espelha a
-// semântica de STATUS_DOT. Status colors em alpha baixo são permitidas (CLAUDE.md);
-// default neutro pra status desconhecido.
-const STATUS_BAND: Record<string, string> = {
-  'Rascunho': 'bg-muted/40',
-  'Pendente': 'bg-yellow-500/5',
-  'Aprovado': 'bg-emerald-500/5',
-  'Em Produção': 'bg-blue-500/5',
-  'Faturado': 'bg-violet-500/5',
-  'Expedido': 'bg-cyan-500/5',
-  'Concluído': 'bg-green-500/5',
-  'Finalizado s/ NF': 'bg-amber-500/5',
-  'Cancelado': 'bg-destructive/5',
-};
-
-const TERMINAL_BILLED_STATUSES = ['Faturado', 'Finalizado s/ NF'];
-
-// Formatadores hoistados: `new Intl.*` — e `toLocaleDateString`, que constrói um
-// por dentro — montam um formatador a CADA chamada. A lista formata ~6 células por
-// linha e re-renderiza a cada tecla digitada na busca, então isso eram centenas de
-// construções por render. Mesma saída, mesmo locale, mesmas opções: só a instância
-// passa a ser reusada. (auditoria PV 07/08/2026)
-//
-// ⚠ NÃO trocar por `formatCurrency` de @/lib/utils — aquele usa BRL_UNIT_PRICE e
-// vai a 4 casas; totais de PV virariam R$ 1.234,5678. O equivalente lá é formatMoney.
-const BRL_FMT = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
-const DATE_FMT = new Intl.DateTimeFormat('pt-BR');
-const DATE_SHORT_FMT = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit' });
-
-const formatCurrency = (v: number) => BRL_FMT.format(v);
-
-const formatDate = (d: string | null) =>
-  d ? DATE_FMT.format(parseDateOnly(d)) : '—';
-
-const formatDateShort = (d: string) =>
-  DATE_SHORT_FMT.format(parseDateOnly(d));
-
-// Lookup batch de min_billing_date pra todos os PVs ativos.
-// Usado pra marcar em vermelho linhas com delivery_deadline < min_billing_date.
-//
-// ⚠ PERF (2026-08-03): chama a RPC `compute_min_billing_dates(uuid[])` — motor em
-// LOTE — em vez de ler a view `sale_order_min_billing`.
-//
-// Histórico: a view rodava `compute_min_billing_date(id)` POR LINHA, e 87% do custo
-// de cada chamada era uma segunda query escondida (`get_wave_material_needs_core`,
-// necessidade de material por cor/variante/grade). Medido: 160,6ms por pedido, dos
-// quais 139,9ms eram essa chamada. A versão em lote faz UMA chamada pra todos os
-// pedidos (~1,8× mais rápido no total).
-//
-// NÃO voltar a ler a view aqui: ela materializa TODOS os PVs não-cancelados antes de
-// qualquer filtro — o `.in(...)` do PostgREST não empurra o predicado pra dentro do
-// argumento da função, então filtrar depois não economiza nada.
-//
-// ⚠ PERF (2026-08-03, fase 1a da spec): nem a RPC em lote roda mais aqui. Medido:
-// `compute_min_billing_dates` levava 1.058 ms pra 58 linhas tocando 37.035 buffers, e
-// era a consulta mais cara do banco inteiro (1.225 s acumulados em pg_stat_statements).
-// Bater o N+1 resolveu a QUANTIDADE de chamadas, não o custo de cada uma.
-//
-// Agora a lista lê o cache (`get_min_billing_cached`): 0,888 ms / 18 buffers. O
-// recálculo mora em `refresh_min_billing_cache` e roda em SEGUNDO PLANO — requisito 25
-// da spec: nunca no caminho crítico da lista.
-// Referências estáveis: um `new Map()` / `[]` inline como default de hook muda de
-// identidade a cada render e faz o efeito de recálculo disparar em loop.
-const EMPTY_MIN_BILLING_MAP: Map<string, string> = new Map();
-const EMPTY_STALE_IDS: string[] = [];
-
-function useMinBillingMap(activeIds: string[]) {
-  // Ordena pra estabilizar a queryKey — a ordem de `orders` varia entre refetches
-  // e uma key instável refaria a query cara sem necessidade.
-  const ids = useMemo(() => [...activeIds].sort(), [activeIds]);
-  return useQuery<{ map: Map<string, string>; staleIds: string[] }>({
-    queryKey: ['sale_order_min_billing_map', ids],
-    queryFn: async () => {
-      const map = new Map<string, string>();
-      const staleIds: string[] = [];
-      if (ids.length === 0) return { map, staleIds };
-      const { data, error } = await supabase
-        .rpc('get_min_billing_cached' as any, { p_sale_order_ids: ids });
-      if (error || !data) return { map, staleIds };
-      for (const row of data as any[]) {
-        if (row.sale_order_id && row.min_billing_date) {
-          map.set(row.sale_order_id, row.min_billing_date);
-        }
-        if (row.sale_order_id && row.stale) staleIds.push(row.sale_order_id);
-      }
-      return { map, staleIds };
-    },
-    enabled: ids.length > 0,
-    // Alinhado ao staleTime de useSaleOrders (5min), a lista que este map decora.
-    staleTime: 5 * 60 * 1000,
-  });
-}
-
-// Recalcula em segundo plano o que o cache marcou como velho e invalida o map quando
-// terminar. Roda DEPOIS da lista já ter renderizado — não bloqueia nada.
-function useRefreshMinBillingInBackground(staleIds: string[]) {
-  const qc = useQueryClient();
-  const key = staleIds.join(',');
-  useEffect(() => {
-    if (!staleIds.length) return;
-    let cancelled = false;
-    (async () => {
-      const { error } = await supabase.rpc('refresh_min_billing_cache' as any, {
-        p_sale_order_ids: staleIds,
-      });
-      if (!cancelled && !error) {
-        qc.invalidateQueries({ queryKey: ['sale_order_min_billing_map'] });
-      }
-    })();
-    return () => { cancelled = true; };
-    // `key` estabiliza a lista de ids; `staleIds` muda de referência a cada render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, qc]);
+interface ForceProductionCommandResponse {
+  ok: boolean;
+  error?: { message?: string };
+  result?: {
+    created_ops?: number;
+    updated_ops?: number;
+    created_stages?: number;
+  };
 }
 
 export default function SaleOrders() {
@@ -329,7 +147,26 @@ export default function SaleOrders() {
   const { data: representatives = [] } = useRepresentatives();
   const createOrder = useCreateSaleOrder();
   const deleteOrder = useDeleteSaleOrder();
-  const updateStatus = useUpdateSaleOrderStatus();
+  const isAdmin = useIsAdmin();
+  // Geração em lote pode encontrar mais de um PV bloqueado. A fila preserva
+  // todos eles em vez de deixar o último erro sobrescrever os anteriores.
+  const [readinessCorrectionTargets, setReadinessCorrectionTargets] = useState<SaleOrderReadinessCorrectionTarget[]>([]);
+  const readinessCorrectionTarget = readinessCorrectionTargets[0] || null;
+  const updateStatus = useUpdateSaleOrderStatus({
+    onReadinessBlocked: (blocked, vars) => {
+      const nextTarget: SaleOrderReadinessCorrectionTarget = {
+        id: vars.id,
+        orderNumber: orders.find((order) => order.id === vars.id)?.order_number || null,
+        status: vars.status,
+        preflight: blocked.preflight,
+      };
+      setReadinessCorrectionTargets((current) => {
+        const existingIndex = current.findIndex((target) => target.id === vars.id);
+        if (existingIndex < 0) return [...current, nextTarget];
+        return current.map((target, index) => index === existingIndex ? nextTarget : target);
+      });
+    },
+  });
   // Qual PV está sendo promovido agora — alimenta o indicador da linha (req. 30).
   const statusPendingId = updateStatus.isPending
     ? (updateStatus.variables as { id?: string } | undefined)?.id ?? null
@@ -426,16 +263,13 @@ export default function SaleOrders() {
   // a queryKey ['user_roles', id] devolvendo string[], enquanto useUserRoles
   // devolve UserRole[]. Uma chave, dois formatos → includes('admin') dava false
   // pra admin de verdade. Usa o hook canônico.
-  const isAdmin = useIsAdmin();
   // Produção/almoxarifado veem PVs pra contexto de produção, mas SEM valores
   // (preço unit, total, comissão). canSeeFinancialValues=false bloqueia colunas
   // e KPIs financeiros sem retirar a navegação.
-  const { canSeeFinancialValues, canAccessModule, roles } = useAccessControl();
-  // Espelha o gate do SERVIDOR (migration 20261231120300): a policy RESTRICTIVE
-  // de UPDATE em sale_orders só passa para admin ou comercial. A UI tem que dizer
-  // o MESMO — mostrar o lápis para quem o banco vai recusar troca um bug por
-  // outro: em vez de editar sem poder, o usuário abre o form, preenche e leva um
-  // erro de RLS no submit.
+  const { canSeeFinancialValues, roles } = useAccessControl();
+  // Espelha o gate do SaleOrderCommand: admin, gerente ou comercial, sempre
+  // respeitando a ação granular `edit` da tela. Mostrar o lápis para um grant
+  // somente-leitura permitiria iniciar uma mutação que a própria UI proibiu.
   //
   // ⚠ Antes as duas portas de edição discordavam entre si: o lápis da linha não
   // tinha gate nenhum e o botão "Editar" do detalhe exigia isAdmin. A incoerência
@@ -443,8 +277,11 @@ export default function SaleOrders() {
   // Gate de permissões da tela de Pedidos (criar/excluir) — esconde ações de
   // usuários explicitamente restritos; admins/sem-grant continuam vendo tudo.
   const perm = useCan('/sales');
-  const canEditPv = isAdmin || (roles.includes('comercial') && perm.canEdit);
-  const canBuy = canAccessModule('financeiro');
+  const canEditPv = perm.canEdit
+    && (isAdmin || roles.includes('gerente') || roles.includes('comercial'));
+  // Espelha a policy de escrita de purchase_orders/items. Acesso de consulta ao
+  // módulo financeiro não concede autoridade para criar uma OC.
+  const canBuy = isAdmin || roles.includes('gerente');
 
   // Confirmação estruturada genérica (AlertDialog) — substitui os confirm()
   // nativos de ações de alto impacto da página.
@@ -475,11 +312,11 @@ export default function SaleOrders() {
   const [overviewOpen, setOverviewOpen] = useState(false);
   const [marginDialogOpen, setMarginDialogOpen] = useState(false);
   const [photosDialogOpen, setPhotosDialogOpen] = useState(false);
-  const [consumoDialog, setConsumoDialog] = useState<{ ids: string[]; numbers: string[] } | null>(null);
   // "Ficha Montagem": abre a seleção de OPs em vez de imprimir o PV inteiro.
   const [operatorFichasOpen, setOperatorFichasOpen] = useState(false);
   // Canal "Compras por Pedido" — alvo do modal de geração de OCs (1 ou N PVs).
-  const [poGenTarget, setPoGenTarget] = useState<{ ids: string[]; numbers: string[] } | null>(null);
+  // netOfStock: true = comprar só a falta; false = necessidade bruta (Consumo total).
+  const [poGenTarget, setPoGenTarget] = useState<{ ids: string[]; numbers: string[]; netOfStock: boolean } | null>(null);
 
   // Busca NÃO persiste: reseta ao sair e voltar pra tela (useState remonta
   // limpo). Antes usava usePersistedState com a chave 'searchTerm' — a MESMA
@@ -698,10 +535,20 @@ export default function SaleOrders() {
     });
   }, [filteredOrders, sort, pairsBySaleOrder]);
 
-  // ⚠ A seleção é alimentada por `sortedOrders`, NÃO por `filteredOrders`. O
-  // Shift+clique seleciona um INTERVALO por índice: se a fonte estivesse na ordem
-  // não ordenada, o intervalo marcaria linhas diferentes das que estão na tela.
-  const sel = useMarqueeSelection(sortedOrders, (o) => o.id);
+  // Paginação client-side (Fase 1.4): limiar 75 / página 50 — mesmo contrato
+  // das outras listagens. Reseta quando o filtro muda.
+  const [listPage, setListPage] = useState(1);
+  useEffect(() => { setListPage(1); }, [filteredOrders]);
+  const paged = useMemo(
+    () => paginateInMemory(sortedOrders, { page: listPage }),
+    [sortedOrders, listPage],
+  );
+  const visibleOrders = paged.items;
+  const isMobile = useIsMobile();
+
+  // ⚠ A seleção é alimentada pelas linhas VISÍVEIS (página atual). Shift+clique
+  // seleciona intervalo na tela; selectedIds persiste entre páginas.
+  const sel = useMarqueeSelection(visibleOrders, (o) => o.id);
   const selectedIds = sel.selectedIds;
   // Shim: aceita Set<string> direto OU updater. Usado em locais como
   // `setSelectedIds(new Set())` (= sel.clear) e em handlers de bulk que
@@ -717,11 +564,15 @@ export default function SaleOrders() {
   };
   // Bookmarks da rota legada carregam a mesma ferramenta no host; os IDs ficam
   // na URL para não perder a seleção ao atravessar o redirect.
+  // Depende só de view/ids — não de `item` — senão cada toggle do multi-select
+  // recria o array e re-renderiza o painel à toa.
+  const consumptionViewParam = searchParams.get('view');
+  const consumptionIdsParam = searchParams.get('ids') || '';
   const consumptionViewIds = useMemo(() => {
-    if (searchParams.get('view') !== 'consumo') return [];
-    return (searchParams.get('ids') || '').split(',').map((id) => id.trim()).filter(Boolean);
-  }, [searchParams]);
-  const isConsumptionView = searchParams.get('view') === 'consumo';
+    if (consumptionViewParam !== 'consumo') return [];
+    return consumptionIdsParam.split(',').map((id) => id.trim()).filter(Boolean);
+  }, [consumptionViewParam, consumptionIdsParam]);
+  const isConsumptionView = consumptionViewParam === 'consumo';
   const isPendenciasView = searchParams.get('view') === 'pendencias';
   const consumptionViewOrders = useMemo(
     () => orders.filter((order) => consumptionViewIds.includes(order.id)),
@@ -731,6 +582,7 @@ export default function SaleOrders() {
     const next = new URLSearchParams(searchParams);
     next.delete('view');
     next.delete('ids');
+    next.delete('item');
     setSearchParams(next, { replace: true });
   };
   const toggleSelect = (id: string) => sel.toggle(id);
@@ -922,6 +774,10 @@ export default function SaleOrders() {
   };
 
   const handleBulkStatusChange = async (status: string, viabilityConfirmed = false) => {
+    if (!canEditPv) {
+      toast.error('Você não tem permissão para alterar o status de pedidos de venda.');
+      return;
+    }
     const ids = Array.from(selectedIds);
     // Pré-check só se o status alvo é Aprovado/Em Produção (estados que
     // disparam o pipeline produtivo). Cancelar/Rascunho não precisam de
@@ -973,11 +829,23 @@ export default function SaleOrders() {
       }
     }
     const failed = results.filter(r => r.status === 'rejected').length;
+    const readinessBlocked = results.filter(
+      (result): result is PromiseRejectedResult =>
+        result.status === 'rejected'
+        && result.reason instanceof SaleOrderReadinessBlockedError,
+    ).length;
+    const otherFailures = failed - readinessBlocked;
+    const updated = ids.length - failed;
     setSelectedIds(new Set());
     if (failed === 0) {
       toast.success(`${ids.length} pedido(s) atualizado(s) para "${status}"`);
     } else {
-      toast.error(`${ids.length - failed} atualizado(s), ${failed} falha(s).`);
+      const summary = [`${updated} atualizado(s)`];
+      if (readinessBlocked > 0) summary.push(`${readinessBlocked} aguardam correção`);
+      if (otherFailures > 0) summary.push(`${otherFailures} falha(s)`);
+      const message = `${summary.join(' · ')}.`;
+      if (otherFailures > 0) toast.error(message);
+      else toast.warning(message);
     }
   };
 
@@ -1057,18 +925,60 @@ export default function SaleOrders() {
     if (skipped > 0) toast.info(`${skipped} pedido(s) ignorado(s) — status não permite edição de entrega.`);
     if (editableIds.length === 0) return;
 
-    const { data: updated, error } = await supabase.from('sale_orders').update(updates)
-      .in('id', editableIds)
-      .not('status', 'in', '("Faturado","Finalizado s/ NF","Expedido","Cancelado","Concluído")')
-      .select('id');
-    if (error) {
-      toast.error(`Erro ao atualizar: ${error.message}`);
-      return;
+    // Um único PATCH direto não tinha expected_version, receipt nem
+    // rematerialização de PV ativo. O lote é intencionalmente serial: cada PV
+    // passa pelo mesmo command boundary da edição individual e falha isolado.
+    let updatedCount = 0;
+    const failures: string[] = [];
+    for (const orderId of editableIds) {
+      try {
+        const [{ data: header, error: headerError }, { data: items, error: itemsError }] = await Promise.all([
+          supabase.from('sale_orders').select('*').eq('id', orderId).single(),
+          supabase.from('sale_order_items').select('*').eq('sale_order_id', orderId).order('created_at'),
+        ]);
+        if (headerError || !header) throw headerError || new Error('PV não encontrado');
+        if (itemsError) throw itemsError;
+        if (!items?.length) throw new Error('PV sem itens não pode ser atualizado');
+        if (PROTECTED_STATUSES.includes(header.status)) {
+          throw new Error(`status mudou para ${header.status}`);
+        }
+
+        const expectedOrderVersion = Number(
+          (header as unknown as { order_version?: number | null }).order_version,
+        ) || 0;
+        const preflight = await preflightSaleOrderCommand({
+          saleOrderId: orderId,
+          command: 'update',
+          expectedOrderVersion,
+        });
+        if (!preflight.ready) throw new SaleOrderReadinessBlockedError(preflight);
+
+        await executeSaleOrderCommand({
+          saleOrderId: orderId,
+          command: 'update',
+          expectedOrderVersion,
+          idempotencyKey: `pv:${orderId}:bulk-delivery:${crypto.randomUUID()}`,
+          payload: {
+            header: { ...header, ...updates },
+            items,
+            teardown_op_ids: [],
+            cancel_op_ids: [],
+          },
+        });
+        updatedCount += 1;
+      } catch (error) {
+        const label = orders.find((order) => order.id === orderId)?.order_number || orderId.slice(0, 8);
+        failures.push(`${label}: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
-    const racedCount = editableIds.length - (updated?.length ?? 0);
-    if (racedCount > 0) toast.warning(`${racedCount} pedido(s) ignorado(s) — status mudou enquanto editava.`);
+    if (failures.length > 0) {
+      toast.warning(`${failures.length} pedido(s) não foram atualizados.`, {
+        description: failures.slice(0, 3).join('\n'),
+        duration: 12000,
+      });
+    }
     queryClient.invalidateQueries({ queryKey: ['sale_orders'] });
-    toast.success(`${updated?.length ?? 0} pedido(s) atualizado(s)`);
+    if (updatedCount > 0) toast.success(`${updatedCount} pedido(s) atualizado(s)`);
     setBulkMonth('');
     setBulkWeek('');
     setSelectedIds(new Set());
@@ -1131,209 +1041,43 @@ export default function SaleOrders() {
     handleExportSaleOrdersExcel(list);
   };
 
-  const handleBulkConsumption = () => {
-    if (selectedIds.size === 0) return;
-    const ids = Array.from(selectedIds);
+  const openPvConsumption = (ids: string[]) => {
+    const unique = [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
+    if (unique.length === 0) return;
     void queryClient.prefetchQuery({
-      queryKey: pvConsumptionQueryKey(ids),
-      queryFn: () => loadPvConsumption(ids),
+      queryKey: pvConsumptionQueryKey(unique),
+      queryFn: () => loadPvConsumption(unique),
       staleTime: PV_CONSUMPTION_STALE_MS,
     });
-    navigate(`/sales?view=consumo&ids=${ids.join(',')}`);
+    // Mesma aba: a tela cheia já vive em `?view=consumo` neste host.
+    setDetailDialogOpen(false);
+    navigate(pvConsumptionPath(unique));
+  };
+
+  const handleBulkConsumption = () => {
+    if (selectedIds.size === 0) return;
+    openPvConsumption(Array.from(selectedIds));
   };
 
   const handleBulkPurchaseOrders = () => {
     const selected = orders.filter(o => selectedIds.has(o.id));
     if (selected.length === 0) return;
-    setPoGenTarget({ ids: selected.map(o => o.id), numbers: selected.map(o => o.order_number) });
+    setPoGenTarget({
+      ids: selected.map(o => o.id),
+      numbers: selected.map(o => o.order_number),
+      netOfStock: true,
+    });
   };
 
-  const handleBulkLabels = async () => {
+  const handleBulkLabels = () => {
     if (selectedIds.size === 0) return;
-    const pw = openPrintTab();
-    try {
-      const selectedOrders = orders.filter(o => selectedIds.has(o.id));
-      const labels: Parameters<typeof buildThermalLabelsHtml>[0] = [];
-
-      // ── Tudo em LOTE ────────────────────────────────────────────────────────
-      // Antes: 1 query de OPs por PV + 4 queries SEQUENCIAIS por OP (ficha,
-      // variante de cor, item do PV, material) — e o resolveMaterialLabel ainda
-      // fazia de 1 a 4 por dentro. Para 10 PVs davam ~290 idas e voltas EM SÉRIE,
-      // com a janela de impressão já aberta e em branco o tempo todo. Nada era
-      // deduplicado: 6 OPs da mesma referência refaziam a mesma consulta 6 vezes.
-      // (auditoria PV 07/08/2026)
-      const orderIds = selectedOrders.map(o => o.id);
-      const { data: allOps } = await supabase
-        .from('orders')
-        .select('id, order_number, reference_id, color, grade, quantity, sale_order_item_id, sale_order_id')
-        .in('sale_order_id', orderIds);
-      if (!allOps || allOps.length === 0) {
-        pw?.close();
-        toast.info('Nenhuma etiqueta para gerar.');
-        return;
-      }
-      const requestedLabels = (allOps as any[]).reduce((sum, op) => {
-        const grade = op.grade && typeof op.grade === 'object' && !Array.isArray(op.grade)
-          ? op.grade as Record<string, number> : null;
-        const gradeTotal = grade ? Object.values(grade).reduce((a, qty) => a + (Number(qty) || 0), 0) : 0;
-        return sum + (gradeTotal > 0 ? gradeTotal : (Number(op.quantity) || 0));
-      }, 0);
-      if (requestedLabels > 5000) {
-        pw?.close();
-        toast.error(`A seleção geraria ${requestedLabels.toLocaleString('pt-BR')} etiquetas. Reduza o lote para no máximo 5.000.`);
-        return;
-      }
-
-      const refIds = [...new Set(allOps.map((o: any) => o.reference_id).filter(Boolean))];
-      const soiIds = [...new Set(allOps.map((o: any) => o.sale_order_item_id).filter(Boolean))];
-
-      const [sheetsRes, variantsRes, soiRes] = await Promise.all([
-        supabase.from('technical_sheets').select('id, image_url, images, shoe_category, code, name').in('id', refIds),
-        supabase.from('reference_color_variants').select('reference_id, color, image_url, barcode').in('reference_id', refIds),
-        soiIds.length > 0
-          ? supabase
-            .from('sale_order_items')
-            .select('id, material_variant_id, material_variant_commercial_snapshot')
-            .in('id', soiIds)
-            .overrideTypes<SaleOrderItemLabelMaterialRow[], { merge: false }>()
-          : Promise.resolve({ data: [] }),
-      ]);
-
-      const sheetById = new Map<string, any>((sheetsRes.data || []).map((r: any) => [r.id, r]));
-      // ⚠ Chave (reference_id + cor), NÃO só reference_id: o código de barras
-      // varia POR COR. Indexar só pela referência faria etiquetas visualmente
-      // corretas apontarem para o produto errado no leitor.
-      //
-      // ⚠ Cor CRUA, sem trim/uppercase — é a semântica exata do `.eq('color', …)`
-      // que este lote substituiu. Normalizar pareceu mais robusto e é pior: duas
-      // grafias da mesma cor na mesma referência colidiriam na chave e uma
-      // venceria em silêncio, imprimindo o código de barras do produto errado.
-      // Sem normalizar, cor divergente simplesmente não casa e cai no fallback de
-      // antes (o número da OP). Medido em 08/08/2026: zero colisões e zero OPs
-      // que mudariam de resultado — os dois caminhos dão o MESMO hoje, então
-      // fica o que não tem risco latente.
-      const variantKey = (refId: string, color: string) => `${refId}|${color || ''}`;
-      const variantByRefColor = new Map<string, any>(
-        (variantsRes.data || []).map((v: any) => [variantKey(v.reference_id, v.color), v]),
-      );
-      const materialVariantBySoi = new Map<string, string | null>(
-        ((soiRes as any).data || []).map((r: any) => [r.id, r.material_variant_id || null]),
-      );
-      const materialVariantSnapshotBySoi = new Map<string, unknown>(
-        (soiRes.data || []).map((r) => [r.id, r.material_variant_commercial_snapshot || null]),
-      );
-
-      // Materiais: 1 chamada em lote no lugar de uma (com 1–4 queries dentro) por OP.
-      const materialByKey = await resolveMaterialLabels(
-        allOps.map((op: any) => ({
-          referenceId: op.reference_id,
-          materialVariantId: materialVariantBySoi.get(op.sale_order_item_id) ?? null,
-          materialVariantCommercialSnapshot: materialVariantSnapshotBySoi.get(op.sale_order_item_id) ?? null,
-          color: op.color || '',
-        })),
-      ).catch(() => new Map<string, string>());
-
-      // URLs assinadas: dedup por URL crua e um Promise.all só.
-      const rawUrls = new Set<string>();
-      for (const op of allOps as any[]) {
-        const sheet = sheetById.get(op.reference_id);
-        const rawRef = (sheet?.images as string[] | null)?.[0] || sheet?.image_url || '';
-        if (rawRef) rawUrls.add(rawRef);
-        const v = variantByRefColor.get(variantKey(op.reference_id, op.color || ''));
-        if (v?.image_url) rawUrls.add(v.image_url);
-      }
-      const signedList = await Promise.all(
-        [...rawUrls].map(async (u) => [u, await getSignedUrl(u).catch(() => '')] as const),
-      );
-      const signedByRaw = new Map<string, string>(signedList);
-
-      const opsBySaleOrder = new Map<string, any[]>();
-      for (const op of allOps as any[]) {
-        const arr = opsBySaleOrder.get(op.sale_order_id) || [];
-        arr.push(op);
-        opsBySaleOrder.set(op.sale_order_id, arr);
-      }
-
-      // A montagem abaixo continua na MESMA ordem de antes (por PV, por OP, por
-      // numeração da grade) — o maço impresso não pode mudar de ordem.
-      for (const order of selectedOrders) {
-        const displayOrderNumber = order.client_order_number || order.order_number || '';
-        const linkedOps = opsBySaleOrder.get(order.id);
-        if (!linkedOps || linkedOps.length === 0) continue;
-        for (const op of linkedOps) {
-          const refData = sheetById.get(op.reference_id);
-          const rawRefImageUrl = ((refData as any)?.images as string[] | null)?.[0] || refData?.image_url || '';
-          const refImageUrl = rawRefImageUrl ? (signedByRaw.get(rawRefImageUrl) || '') : '';
-          const color = op.color || '';
-          const variant = variantByRefColor.get(variantKey(op.reference_id, color));
-          const labelBarcode = variant?.barcode || op.order_number || '';
-          const imgUrl = variant?.image_url ? (signedByRaw.get(variant.image_url) || '') : refImageUrl;
-          const mainMaterial = materialByKey.get(materialLabelKey({
-            referenceId: op.reference_id,
-            materialVariantId: materialVariantBySoi.get(op.sale_order_item_id) ?? null,
-            materialVariantCommercialSnapshot: materialVariantSnapshotBySoi.get(op.sale_order_item_id) ?? null,
-            color,
-          })) || '';
-          const grade = op.grade as Record<string, number> | null;
-          if (grade && Object.keys(grade).length > 0) {
-            for (const [size, qty] of Object.entries(grade)) {
-              const count = Number(qty) || 0;
-              for (let i = 0; i < count; i++) {
-                labels.push({
-                  refCode: refData?.code || '',
-                  refName: refData?.name || '',
-                  mainMaterial,
-                  color,
-                  size,
-                  barcode: labelBarcode,
-                  imageUrl: imgUrl,
-                  shoeCategory: refData?.shoe_category || '',
-                  clientOrderNumber: displayOrderNumber,
-                });
-              }
-            }
-          } else {
-            const opQty = Number(op.quantity) || 0;
-            for (let i = 0; i < opQty; i++) {
-              labels.push({
-                refCode: refData?.code || '',
-                refName: refData?.name || '',
-                mainMaterial,
-                color,
-                size: '—',
-                barcode: labelBarcode,
-                imageUrl: imgUrl,
-                shoeCategory: refData?.shoe_category || '',
-                clientOrderNumber: displayOrderNumber,
-              });
-            }
-          }
-        }
-      }
-      if (labels.length === 0) {
-        pw?.close();
-        toast.info('Nenhuma etiqueta para gerar.');
-        return;
-      }
-      const logoUrl = new URL(logoImg, window.location.origin).href;
-      const senderCnpj = resolveSenderCnpj(companies, (selectedOrders[0] as any)?.company_id);
-      const html = buildThermalLabelsHtml(labels, logoUrl, THERMAL_DEFAULT_DIMENSIONS, undefined, senderCnpj);
-      const jobId = await createPrintJob({
-        batchName: `Térmicas de pedidos - ${new Date().toLocaleString('pt-BR')}`,
-        totalLabels: labels.length,
-        orderIds: (allOps as any[]).map(op => op.id),
-      });
-      const submitted = await printHtmlAsPdf(html, {
-        filename: `etiquetas-pedidos-${new Date().toISOString().slice(0, 10)}`,
-        target: pw,
-        jobId,
-      });
-      if (!submitted) await setPrintJobStatus(jobId, 'failed');
-      if (submitted) toast.success(`${labels.length} etiqueta(s) enviadas para geração do PDF.`);
-    } catch (err: any) {
-      pw?.close();
-      toast.error(err.message);
-    }
+    // A Central é a fonte canônica: exclui OPs canceladas/rascunhos, respeita
+    // embalagem Colméia e separa ativas, impressas e finalizadas. O gerador
+    // legado desta página consultava TODAS as OPs dos PVs e podia reimprimir
+    // canceladas (PV-00162: 2.124 etiquetas indevidas em 25/08/2026).
+    const params = new URLSearchParams();
+    for (const id of selectedIds) params.append('sale_order', id);
+    navigate(`/label-system?${params.toString()}`);
   };
 
   /** Abre BulkNfeDialog com os PVs selecionados.
@@ -1499,10 +1243,9 @@ export default function SaleOrders() {
   const openOrderDetails = async (order: any) => {
     setSelectedOrder(order);
     setDetailDialogOpen(true);
-    // Prefetch do consumo + chunk do diálogo enquanto o detalhe ainda carrega
-    // os itens — o clique em "Consumo de materiais" reaproveita o cache.
+    // Prefetch do consumo enquanto o detalhe ainda carrega os itens — o clique
+    // em "Consumo de materiais" (mesma aba) reaproveita o cache.
     prefetchPvConsumption(order.id);
-    void import('@/components/sale-orders/OrderConsumptionDialog');
     // ?pv= na URL: o detalhe passa a sobreviver ao F5, abrir em duas abas e ser
     // mandado por link — antes ele só existia em estado local.
     //
@@ -1554,6 +1297,10 @@ export default function SaleOrders() {
   };
 
   const handleBulkGenerateOPs = async (viabilityConfirmed = false) => {
+    if (!canEditPv) {
+      toast.error('Você não tem permissão para aprovar pedidos de venda.');
+      return;
+    }
     if (pendingOrders.length === 0) { toast.info('Nenhum rascunho para aprovar.'); return; }
 
     // Pré-check de viabilidade: bloqueia approval em massa de PVs com
@@ -1593,263 +1340,47 @@ export default function SaleOrders() {
     }
 
     setGeneratingOPs(true);
-    let ordersProcessed = 0, opsCreated = 0;
+    let ordersProcessed = 0;
+    let opsCreated = 0;
+    let readinessBlockedCount = 0;
     const errors: string[] = [];
-    for (const order of pendingOrders) {
-      try {
-        // Achado D (auditoria 2026-07-01): mesmo guard da aprovação individual —
-        // tira com COR VAZIA em strap_colors gera consumo fantasma na OP. Checa
-        // ANTES do claim pra pular o PV sem deixá-lo meio-aprovado.
-        {
-          const { data: guardItems, error: guardErr } = await supabase
-            .from('sale_order_items')
-            .select('color, strap_colors, technical_sheets(name, code)')
-            .eq('sale_order_id', order.id);
-          if (guardErr) { errors.push(`${order.order_number}: falha ao validar tiras — ${guardErr.message}`); continue; }
-          const tirasSemCor = listarTirasSemCor(
-            (guardItems || []).map((it: any) => ({
-              strap_colors: it.strap_colors,
-              color: it.color,
-              reference_label: it.technical_sheets?.code || it.technical_sheets?.name || null,
-            })),
-          );
-          if (tirasSemCor.length > 0) {
-            errors.push(`${order.order_number}: tira sem COR definida (${tirasSemCor.slice(0, 3).join('; ')}) — defina a cor antes de aprovar.`);
+
+    // A aprovação em lote é apenas coordenação de chamadas seriais ao mesmo
+    // comando canônico usado na linha individual. Status, OPs, plano material,
+    // reservas, recibo e efeitos financeiros pertencem ao SaleOrderCommand.
+    try {
+      for (const order of pendingOrders) {
+        try {
+          const result = await updateStatus.mutateAsync({
+            id: order.id,
+            status: 'Aprovado',
+          });
+          ordersProcessed++;
+          opsCreated += Number(result?.ops_criadas) || 0;
+        } catch (error: unknown) {
+          if (error instanceof SaleOrderReadinessBlockedError) {
+            readinessBlockedCount += 1;
             continue;
           }
+          const message = error instanceof Error ? error.message : String(error);
+          errors.push(`${order.order_number}: ${message}`);
         }
-
-        // Atomic claim: flip status to Aprovado FIRST so only one concurrent
-        // call (double-click, two browser tabs) wins the pipeline for this PV.
-        const { data: pvClaimed, error: pvClaimErr } = await supabase
-          .from('sale_orders')
-          .update({ status: 'Aprovado' })
-          .eq('id', order.id)
-          .in('status', ['Pendente', 'Rascunho'])
-          .select('id');
-        if (pvClaimErr) { errors.push(`${order.order_number}: ${pvClaimErr.message}`); continue; }
-        if (!pvClaimed || pvClaimed.length === 0) {
-          errors.push(`${order.order_number}: já aprovado ou status alterado — ignorado.`);
-          continue;
-        }
-
-        // AR idempotency: agora 1 PV pode ter N parcelas (uma row por parcela do
-        // payment_condition). Conta as ativas (não-cancelled) por installment_number
-        // e só insere o que falta — preservando rows recebidas ou já criadas em
-        // execuções anteriores.
-        const { data: existingBulkAR } = await supabase
-          .from('accounts_receivable')
-          .select('installment_number, status')
-          .eq('sale_order_id', order.id)
-          .neq('status', 'cancelled');
-        const existingNums = new Set((existingBulkAR ?? []).map((r) => r.installment_number ?? 1));
-        const bulkSchedule = computeARSchedule({
-          total: Number(order.total),
-          paymentCondition: order.payment_condition,
-          deliveryDeadline: order.delivery_deadline || todayPlusDaysISO(30),
-          isFactoring: false,
-          factoringReceivingDays: null,
-        });
-        // Parcelas em UM insert. Eram N idas ao servidor em serie — numa condicao
-        // 30/60/90 isso e 3 round-trips por PV, e a aprovacao em lote percorre
-        // PV a PV. A idempotencia nao muda: continua filtrando por
-        // installment_number ja existente ANTES de montar o lote.
-        const arFaltantes = bulkSchedule
-          .filter(inst => !existingNums.has(inst.installment_number))
-          .map(inst => ({
-            description: `PV ${order.order_number} - ${order.client_name}`
-              + (bulkSchedule.length > 1 ? ` (${inst.installment_number}/${bulkSchedule.length})` : ''),
-            client_name: order.client_name,
-            client_cnpj: order.client_cnpj || '',
-            sale_order_id: order.id,
-            category: 'venda',
-            due_date: inst.due_date,
-            amount: inst.amount,
-            amount_received: 0,
-            status: 'pending',
-            installment_number: inst.installment_number,
-            total_installments: inst.total_installments,
-            notes: order.payment_condition ? `Condição: ${order.payment_condition}` : '',
-          }));
-        if (arFaltantes.length > 0) {
-          const { error: arError } = await supabase.from('accounts_receivable').insert(arFaltantes as any);
-          if (arError) errors.push(`${order.order_number}: ${arError.message}`);
-        }
-        // ⚠ Era select('*'): trazia strap_colors, strap_sourcing e o snapshot
-        // comercial (jsonb pesados) que este laco NAO usa — ele so le id,
-        // reference_id, quantity, color, grade e fichas. Em PV de 9 itens isso
-        // e payload grande a toa, por PV, na aprovacao em lote.
-        const { data: pvItems } = await supabase
-          .from('sale_order_items')
-          .select('id, reference_id, quantity, color, grade, fichas')
-          .eq('sale_order_id', order.id);
-        if (pvItems && pvItems.length > 0) {
-          // O1 fix (audit PV 2026-06): o claim acima (status → 'Aprovado') dispara
-          // o trigger do banco que JÁ cria 1 OP por item + reserva soft. Refetch
-          // das OPs do PV e dedupe por sale_order_item_id (mesmo padrão de
-          // useUpdateSaleOrderStatus em useSaleOrders.ts) — sem isso o handler
-          // inseria uma SEGUNDA OP por item e debitava o estoque de novo.
-          const { data: existingBulkOps } = await supabase
-            .from('orders')
-            .select('id, sale_order_item_id')
-            .eq('sale_order_id', order.id)
-            .neq('status', 'Cancelada');
-          const existingItemOpIds = new Set(
-            (existingBulkOps || []).map((op: any) => op.sale_order_item_id).filter(Boolean)
-          );
-          const createdBulkOps: Array<{ id: string; reference_id: string; quantity: number }> = [];
-          let pvHadFailures = false;
-          const pkgMode = (order as any).packaging_mode || 'individual_amarrado';
-          for (const item of pvItems) {
-            if (!item.reference_id || existingItemOpIds.has(item.id)) continue;
-            const grade = item.grade as Record<string, number> | null;
-            const fichas = (item as any).fichas || 1;
-            const scaledGrade: Record<string, number> = {};
-            if (grade) {
-              for (const [size, qty] of Object.entries(grade)) {
-                const val = (Number(qty) || 0) * fichas;
-                if (val > 0) scaledGrade[size] = val;
-              }
-            }
-            const { data: createdOp, error: opError } = await supabase.from('orders').insert({ reference_id: item.reference_id, quantity: item.quantity, color: item.color || '', grade: Object.keys(scaledGrade).length > 0 ? scaledGrade : (grade || {}), sale_order_id: order.id, sale_order_item_id: item.id, notes: `Gerada automaticamente do ${order.order_number}`, status: 'Reservado' }).select('id, reference_id, quantity').single();
-            if (opError) { errors.push(`${order.order_number}: OP - ${opError.message}`); pvHadFailures = true; continue; }
-
-            let opHadCriticalFailure = false;
-            const { error: debitError } = await supabase.rpc('hybrid_debit_stock_for_order', { p_reference_id: item.reference_id, p_order_quantity: item.quantity, p_color: item.color || '', p_order_id: createdOp?.id || null, p_order_grade: Object.keys(scaledGrade).length > 0 ? scaledGrade : (grade || null), p_force_soft: true } as any);
-            if (debitError) { errors.push(`${order.order_number}: Estoque - ${debitError.message}`); opHadCriticalFailure = true; }
-
-            if (!opHadCriticalFailure) {
-              // FIX A3: process_order_stock_out removido — hybrid_debit_stock_for_order já cobre o BOM.
-
-              // Debit sole stock by grade — capture error and attempt auto-PO
-              if (Object.keys(scaledGrade).length > 0) {
-                const { error: soleError } = await supabase.rpc('debit_sole_stock_by_grade', {
-                  p_reference_id: item.reference_id,
-                  p_order_id: createdOp.id,
-                  p_color: item.color || '',
-                  p_order_grade: scaledGrade,
-                  p_force_soft: true,
-                } as any);
-                if (soleError) {
-                  errors.push(`${order.order_number}: Solado - ${soleError.message}`);
-                  try {
-                    const po = await autoCreateSolePO({
-                      referenceId: item.reference_id,
-                      orderId: createdOp.id,
-                      color: item.color || '',
-                      grade: scaledGrade,
-                      orderRef: order.order_number,
-                    });
-                    if (po) errors.push(`${order.order_number}: OC ${po.poNumber} ${po.accumulated ? 'acumulada' : 'criada'} (${po.supplierName}).`);
-                  } catch (_e) { /* logged */ }
-                } else {
-                  // Achado C (auditoria 2026-07-01): com p_force_soft=true o RPC não
-                  // erra por falta — a OC automática dispara do RESULTADO do débito
-                  // (déficit por numeração); o caminho por erro fica como fallback.
-                  try {
-                    const po = await autoCreateSolePOFromShortfall({
-                      orderId: createdOp.id,
-                      orderRef: order.order_number,
-                    });
-                    if (po) errors.push(`${order.order_number}: solado em falta (parcial) — OC ${po.poNumber} ${po.accumulated ? 'acumulada' : 'criada'} (${po.supplierName}).`);
-                  } catch (_e) { /* logged */ }
-                }
-              }
-              // A confirmação do PV já enfileirou as tiras no worker canônico.
-              // Criar a OP não reserva nem debita napa/tira diretamente.
-              // A configuração vem exclusivamente do tipo de solado. A RPC é
-              // reconciliável: trigger + caller não duplicam o débito.
-              const { data: pkgData, error: pkgError } = await supabase.rpc('debit_packaging_for_order', {
-                p_sale_order_id: order.id,
-                p_order_id: createdOp.id,
-                p_reference_id: item.reference_id,
-                p_order_quantity: item.quantity,
-                p_packaging_mode: pkgMode,
-                p_force_soft: false,
-              } as any);
-              if (pkgError) errors.push(`${order.order_number}: Embalagem - ${pkgError.message}`);
-              else warnPackagingDebit(pkgData, order.order_number);
-
-              createdBulkOps.push(createdOp);
-              opsCreated++;
-            } else {
-              // Critical debit failed — run restore chain for any partial debits before cancelling.
-              pvHadFailures = true;
-              try {
-                await supabase.rpc('release_order_reservations', { p_order_id: createdOp.id } as any);
-              } catch (_) { /* best-effort */ }
-              try {
-                await supabase.rpc('restore_sole_grade_for_order', { p_order_id: createdOp.id } as any);
-              } catch (_) { /* best-effort */ }
-              try {
-                await supabase.rpc('restore_product_stocks_for_order', { p_order_id: createdOp.id } as any);
-              } catch (_) { /* best-effort */ }
-              await supabase.from('orders')
-                .update({ status: 'Cancelada', notes: 'Cancelada — falha no débito em aprovação em massa' })
-                .eq('id', createdOp.id);
-            }
-          }
-          // Generate production stages only for successfully debited OPs
-          if (createdBulkOps.length > 0) {
-            const refIds = [...new Set(createdBulkOps.map(op => op.reference_id))];
-            const { data: sheetsData } = await supabase
-              .from('technical_sheets')
-              .select('id, production_sectors')
-              .in('id', refIds);
-            const sectorsMap = new Map<string, string[]>();
-            sheetsData?.forEach((s: any) => {
-              // O4 fix: fallback canônico vem de DEFAULT_OP_STAGES (useSaleOrders.ts,
-              // ordem do stageOrder.ts) — a lista legada local tinha 'Mesa' e omitia 'Costura'.
-              const sectors = Array.isArray(s.production_sectors) && s.production_sectors.length > 0
-                ? s.production_sectors.map((x: any) => String(x))
-                : DEFAULT_OP_STAGES.map(d => d.name);
-              sectorsMap.set(s.id, sectors);
-            });
-            for (const op of createdBulkOps) {
-              const sectorNames = sectorsMap.get(op.reference_id) || DEFAULT_OP_STAGES.map(d => d.name);
-              const rows = sectorNames.map((name: string, idx: number) => {
-                return {
-                  order_id: op.id, stage_name: name,
-                  stage_order: opStageOrder(name, idx), status: 'pendente',
-                  quantity_total: op.quantity, quantity_processed: 0,
-                };
-              });
-              await supabase.from('order_stages').insert(rows);
-            }
-          }
-          if (pvHadFailures) {
-            errors.push(`${order.order_number}: aprovação não concluída — corrija o estoque e reaprove.`);
-            // Restore stock and cancel the OPs that DID succeed so they don't remain as
-            // orphaned 'Reservado' OPs under a 'Pendente' PV, which would cause
-            // double-debit if the PV is re-approved.
-            if (createdBulkOps.length > 0) {
-              const successOpIds = createdBulkOps.map(op => op.id);
-              for (const op of createdBulkOps) {
-                try { await supabase.rpc('release_order_reservations', { p_order_id: op.id } as any); } catch (_) {}
-                try { await supabase.rpc('restore_sole_grade_for_order', { p_order_id: op.id } as any); } catch (_) {}
-                try { await supabase.rpc('restore_product_stocks_for_order', { p_order_id: op.id } as any); } catch (_) {}
-              }
-              await supabase.from('order_stages').delete().in('order_id', successOpIds);
-              await supabase.from('orders')
-                .update({ status: 'Cancelada', notes: 'Cancelada — aprovação em massa parcialmente falhou' })
-                .in('id', successOpIds);
-            }
-            // Revert the atomic claim to the original status — a Rascunho PV that
-            // fails approval must return to Rascunho, not be silently promoted to Pendente.
-            await supabase.from('sale_orders').update({ status: order.status }).eq('id', order.id);
-            continue;
-          }
-        }
-        ordersProcessed++;
-      } catch (err: any) { errors.push(`${order.order_number}: ${err.message}`); }
+      }
+    } finally {
+      setGeneratingOPs(false);
     }
-    setGeneratingOPs(false);
-    queryClient.invalidateQueries({ queryKey: ['sale_orders'] });
-    queryClient.invalidateQueries({ queryKey: ['orders'] });
-    queryClient.invalidateQueries({ queryKey: ['accounts_receivable'] });
-    queryClient.invalidateQueries({ queryKey: ['order_stages'] });
-    if (ordersProcessed > 0) toast.success(`${ordersProcessed} pedido(s) aprovado(s), ${opsCreated} OP(s) gerada(s) com etapas!`);
-    if (errors.length > 0) toast.warning(`Avisos: ${errors.slice(0, 3).join('; ')}`);
+
+    if (ordersProcessed > 0) {
+      toast.success(`${ordersProcessed} pedido(s) aprovado(s), ${opsCreated} OP(s) gerada(s) pelo comando canônico.`);
+    }
+    if (readinessBlockedCount > 0 || errors.length > 0) {
+      const summary: string[] = [];
+      if (readinessBlockedCount > 0) summary.push(`${readinessBlockedCount} aguardam correção`);
+      if (errors.length > 0) summary.push(`${errors.length} outra(s) falha(s)`);
+      toast.warning(summary.join(' · '), errors.length > 0 ? {
+        description: errors.slice(0, 3).join('; '),
+      } : undefined);
+    }
   };
 
   const handleExportSaleOrdersExcel = async (ordersToExport: typeof filteredOrders) => {
@@ -1940,7 +1471,7 @@ export default function SaleOrders() {
 
   if (isLoading) {
     return (
-      <div className="w-full space-y-6 page-enter">
+      <div className="w-full space-y-6">
         <EditorialPageHeader
           sectionLabel="COMERCIAL · PV"
           title="Pedidos de Venda"
@@ -1954,7 +1485,7 @@ export default function SaleOrders() {
 
   if (isError) {
     return (
-      <div className="w-full space-y-6 page-enter">
+      <div className="w-full space-y-6">
         <EditorialPageHeader
           sectionLabel="COMERCIAL · PV"
           title="Pedidos de Venda"
@@ -1974,7 +1505,7 @@ export default function SaleOrders() {
   // sem rota nova (requisito 13 de specs/pv-producao-performance-e-pendencias.md).
   if (isPendenciasView) {
     return (
-      <div className="w-full space-y-6 page-enter">
+      <div className="w-full space-y-6">
         <EditorialPageHeader
           sectionLabel="COMERCIAL · PV"
           title="Pendências de lançamento"
@@ -1991,15 +1522,12 @@ export default function SaleOrders() {
     );
   }
 
-  // Consumo de Materiais — PÁGINA multi-PV (`?ids=`).
-  //
-  // 1 PV abre no diálogo (OrderConsumptionDialog) pra não perder o detalhe
-  // nem o `?pv=` da URL. Esta página continua no lote (N PVs, URL
-  // compartilhável, F5). As duas usam `loadPvConsumption` + o mesmo motor.
+  // Consumo de Materiais — página cheia (`?view=consumo&ids=`), na mesma aba
+  // a partir do PV. URL compartilhável / F5. Usa `loadPvConsumption`.
   if (isConsumptionView) {
     return (
       <>
-        <div className="w-full space-y-6 page-enter">
+        <div className="w-full space-y-6">
           <EditorialPageHeader
             sectionLabel="COMERCIAL · PV"
             title="Consumo de Materiais"
@@ -2030,10 +1558,11 @@ export default function SaleOrders() {
           ) : (
             <SummaryConsumptionPanel
               saleOrderIds={consumptionViewIds}
-              onGerarOC={() => setPoGenTarget({
+              onGerarOC={canBuy ? ({ grossNeed }) => setPoGenTarget({
                 ids: consumptionViewIds,
                 numbers: consumptionViewOrders.map((o: any) => o.order_number),
-              })}
+                netOfStock: !grossNeed,
+              }) : undefined}
             />
           )}
         </div>
@@ -2045,6 +1574,7 @@ export default function SaleOrders() {
               onOpenChange={(v) => { if (!v) setPoGenTarget(null); }}
               pvIds={poGenTarget.ids}
               pvNumbers={poGenTarget.numbers}
+              initialNetOfStock={poGenTarget.netOfStock}
             />
           </Suspense>
         )}
@@ -2054,7 +1584,7 @@ export default function SaleOrders() {
 
   return (
     <>
-      <div className="w-full space-y-6 page-enter editorial-stagger">
+      <div className="w-full space-y-6">
         <EditorialPageHeader
           sectionLabel="COMERCIAL · PV"
           title="Pedidos de Venda"
@@ -2077,7 +1607,7 @@ export default function SaleOrders() {
                   <span className="hidden sm:inline">Novo Pedido</span>
                 </Button>
               )}
-              <Button
+              {canEditPv && <Button
                 variant="outline"
                 size="sm"
                 // Confirmação com CONTAGEM antes de rodar. Esta é a ação mais cara
@@ -2112,6 +1642,17 @@ export default function SaleOrders() {
                 {pendingOrders.length > 0 && (
                   <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">{pendingOrders.length}</Badge>
                 )}
+              </Button>}
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 gap-2"
+                onClick={() => navigate('/label-system')}
+                aria-label="Etiqueta Individual"
+                title="Abrir a geração de etiquetas térmicas das caixas individuais"
+              >
+                <Barcode className="h-4 w-4" />
+                <span className="hidden sm:inline">Etiqueta Individual</span>
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -2136,7 +1677,7 @@ export default function SaleOrders() {
                         disabled={resyncOPs.isPending}
                         onSelect={() => setPendingConfirm({
                           title: 'Resincronizar OPs com as fichas?',
-                          description: 'Isso irá estornar e re-debitar o estoque de TODAS as OPs ativas com base nas fichas técnicas atualizadas.',
+                          description: 'Cada OP ativa será revalidada e resincronizada em uma transação isolada. OPs com fato físico ou erro permanecem intactas; o histórico não é reescrito.',
                           actionLabel: 'Resincronizar',
                           onConfirm: () => resyncOPs.mutate(),
                         })}
@@ -2385,62 +1926,31 @@ export default function SaleOrders() {
           </Panel>
         ) : (
           <>
-          <div className="space-y-2 md:hidden">
-            {sortedOrders.map(order => {
-              const pairs = pairsBySaleOrder[order.id] || 0;
-              const minBilling = minBillingMap.get(order.id) || null;
-              const isOverdue = !!(order.delivery_deadline && parseDateOnly(order.delivery_deadline) < new Date() && !TERMINAL_BILLED_STATUSES.includes(order.status) && order.status !== 'Cancelado');
-              const isInfeasible = !!(minBilling && order.delivery_deadline && order.delivery_deadline < minBilling && !TERMINAL_BILLED_STATUSES.includes(order.status) && order.status !== 'Cancelado');
-              return (
-                <article
-                  key={order.id}
-                  className={cn(
-                    'rounded-xl border bg-card p-4 shadow-sm transition-colors',
-                    sel.isSelected(order.id) && 'border-primary bg-primary/5',
-                    (isOverdue || isInfeasible) && 'border-l-4 border-l-destructive',
-                  )}
-                >
-                  <div className="flex items-start gap-3">
-                    <Checkbox
-                      checked={sel.isSelected(order.id)}
-                      onCheckedChange={() => sel.toggle(order.id)}
-                      aria-label={`Selecionar pedido ${order.order_number}`}
-                      className="mt-1"
-                    />
-                    <button type="button" onClick={() => openOrderDetails(order)} className="min-w-0 flex-1 text-left">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-mono text-sm font-bold text-primary">{order.order_number || '—'}</span>
-                        <Badge variant="outline" className={cn('shrink-0 text-xs', STATUS_COLORS[order.status])}>
-                          <span className={cn('h-1.5 w-1.5 rounded-full', STATUS_DOT[order.status])} />
-                          {order.status}
-                        </Badge>
-                      </div>
-                      <p className="mt-1 truncate text-sm font-semibold">{order.client_name}</p>
-                      <div className="mt-2 grid grid-cols-3 gap-2 text-xs text-muted-foreground">
-                        <span><strong className="block font-mono text-sm text-foreground">{pairs.toLocaleString('pt-BR')}</strong>pares</span>
-                        {canSeeFinancialValues && <span><strong className="block truncate font-mono text-sm text-foreground">{formatCurrency(Number(order.total))}</strong>total</span>}
-                        <span className={cn('text-right', (isOverdue || isInfeasible) && 'font-semibold text-destructive')}><strong className="block text-sm text-foreground">{formatDate(order.delivery_deadline)}</strong>entrega</span>
-                      </div>
-                      {isInfeasible && minBilling && <p className="mt-2 text-xs font-semibold text-destructive">Data mínima viável: {formatDate(minBilling)}</p>}
-                    </button>
-                  </div>
-                  <div className="mt-3 flex gap-2 border-t pt-3">
-                    <Button variant="outline" size="sm" className="min-h-10 flex-1 gap-1.5" onMouseEnter={() => prefetchPvConsumption(order.id)} onClick={() => setConsumoDialog({ ids: [order.id], numbers: [order.order_number] })}>
-                      <Package className="h-4 w-4" /> Consumo
-                    </Button>
-                    <Button variant="outline" size="sm" className="min-h-10 flex-1 gap-1.5" disabled={!canEditPv} onClick={() => navigate(`/sales/edit/${order.id}`)}>
-                      <Pencil className="h-4 w-4" /> Editar
-                    </Button>
-                  </div>
-                </article>
-              );
-            })}
+          {isMobile ? (
+          <div className="space-y-2">
+            {visibleOrders.map(order => (
+              <SaleOrderMobileCard
+                key={order.id}
+                order={order}
+                pairs={pairsBySaleOrder[order.id] || 0}
+                minBilling={minBillingMap.get(order.id) || null}
+                selected={sel.isSelected(order.id)}
+                canSeeFinancialValues={canSeeFinancialValues}
+                canEditPv={canEditPv}
+                onToggleSelect={() => sel.toggle(order.id)}
+                onOpenDetails={() => openOrderDetails(order)}
+                onPrefetchConsumption={() => prefetchPvConsumption(order.id)}
+                onOpenConsumption={() => openPvConsumption([order.id])}
+                onEdit={() => navigate(`/sales/edit/${order.id}`)}
+              />
+            ))}
           </div>
+          ) : (
           <div
             ref={sel.containerRef}
             onMouseDown={sel.onContainerMouseDown}
             data-marquee-container
-            className="relative hidden overflow-x-auto rounded-lg border border-border bg-card shadow-sm md:block"
+            className="relative overflow-x-auto rounded-lg border border-border bg-card shadow-sm"
           >
             <Table className="min-w-[640px]">
               <TableHeader>
@@ -2464,7 +1974,7 @@ export default function SaleOrders() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sortedOrders.map(order => {
+                {visibleOrders.map(order => {
                   const isSelected = sel.isSelected(order.id);
                   const isOverdue = order.delivery_deadline && parseDateOnly(order.delivery_deadline) < new Date() && !TERMINAL_BILLED_STATUSES.includes(order.status) && order.status !== 'Cancelado';
                   const isInformal = (order as any).nfe_required === false;
@@ -2579,11 +2089,14 @@ export default function SaleOrders() {
                             disparava DUAS orquestrações concorrentes sobre o mesmo
                             PV. Desabilita a coluna inteira, não só a linha: duas
                             promoções simultâneas disputam as mesmas linhas de estoque. */}
-                        <Select value={order.status} disabled={updateStatus.isPending} onValueChange={async (v) => {
+                        <Select value={order.status} disabled={!canEditPv || updateStatus.isPending} onValueChange={async (v) => {
                           try {
                             await updateStatus.mutateAsync({ id: order.id, status: v });
-                          } catch (err: any) {
-                            toast.error(`Erro ao atualizar status: ${err.message}`);
+                          } catch {
+                            // A mutation é a dona única do feedback: readiness abre
+                            // a janela estruturada e os demais erros geram um toast.
+                            // mutateAsync ainda rejeita depois do onError; engolir
+                            // aqui evita duas mensagens para a mesma falha.
                           }
                         }}>
                           <SelectTrigger aria-label={`Status do pedido ${order.order_number}: ${order.status}. Alterar`} className="h-7 w-[130px] text-xs border-0 bg-transparent p-0 shadow-none hover:ring-1 hover:ring-border [&>svg]:hidden disabled:opacity-60">
@@ -2655,7 +2168,7 @@ export default function SaleOrders() {
                           <Button variant="ghost" size="icon" className="h-7 w-7" title="Editar" disabled={!canEditPv} onClick={() => navigate(`/sales/edit/${order.id}`)}>
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
-                          <Button variant="ghost" size="icon" className="h-7 w-7" title="Consumo de materiais" onMouseEnter={() => prefetchPvConsumption(order.id)} onClick={() => setConsumoDialog({ ids: [order.id], numbers: [order.order_number] })}>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" title="Consumo de materiais" onMouseEnter={() => prefetchPvConsumption(order.id)} onClick={() => openPvConsumption([order.id])}>
                             <Package className="h-3.5 w-3.5" />
                           </Button>
                           {isAdmin && order.status === 'Faturado' && (
@@ -2677,9 +2190,21 @@ export default function SaleOrders() {
                                 actionLabel: 'Forçar produção',
                                 onConfirm: async () => {
                                 try {
-                                  const { data, error } = await supabase.rpc('force_sale_order_production', { p_sale_order_id: order.id } as any);
+                                  const expectedVersion = Number(order.order_version);
+                                  if (!Number.isInteger(expectedVersion) || expectedVersion < 0) {
+                                    throw new Error('Versão do PV indisponível. Recarregue a lista antes de promover.');
+                                  }
+                                  const requestId = crypto.randomUUID();
+                                  const { data, error } = await supabase.rpc('force_sale_order_production_command' as never, {
+                                    p_sale_order_id: order.id,
+                                    p_expected_order_version: expectedVersion,
+                                    p_client_request_id: requestId,
+                                    p_override_id: null,
+                                  } as never);
                                   if (error) throw error;
-                                  const r = (data as any) || {};
+                                  const response = data as unknown as ForceProductionCommandResponse;
+                                  if (!response?.ok) throw new Error(response?.error?.message || 'Promoção recusada pelo servidor.');
+                                  const r = response.result || {};
                                   toast.success(`Produção forçada • ${r.created_ops ?? 0} OP(s) criada(s), ${r.updated_ops ?? 0} atualizada(s), ${r.created_stages ?? 0} etapa(s) geradas`);
                                   queryClient.invalidateQueries({ queryKey: ['sale_orders'] });
                                   queryClient.invalidateQueries({ queryKey: ['orders'] });
@@ -2723,6 +2248,16 @@ export default function SaleOrders() {
                 container .relative pra coords absolutas funcionarem). */}
             <MarqueeOverlay rect={sel.marqueeRect} />
           </div>
+          )}
+          <ListPagination
+            page={paged.page}
+            total={paged.total}
+            totalPages={paged.totalPages}
+            showPager={paged.showPager}
+            onPageChange={setListPage}
+            pageSize={PAGE_SIZE}
+            itemLabel="pedidos"
+          />
           </>
         )}
       </div>
@@ -2733,18 +2268,19 @@ export default function SaleOrders() {
         selectedIds={sel.selectedIds}
         onClear={sel.clear}
         itemLabel={sel.count === 1 ? 'PV selecionado' : 'PVs selecionados'}
+        className="bottom-[calc(4.5rem+env(safe-area-inset-bottom))] md:bottom-4"
         actions={[
-          { label: 'Aprovar', icon: <Check className="h-3.5 w-3.5" />, onClick: handleBulkApprove },
-          ...(canBuy ? [{ label: 'Gerar OCs', icon: <ShoppingCart className="h-3.5 w-3.5" />, variant: 'outline' as const, onClick: handleBulkPurchaseOrders }] : []),
+          ...(canEditPv ? [{ label: 'Aprovar', icon: <Check className="h-3.5 w-3.5" />, onClick: handleBulkApprove }] : []),
+          ...(canBuy ? [{ label: 'Gerar ordem de compra', icon: <ShoppingCart className="h-3.5 w-3.5" />, variant: 'outline' as const, onClick: handleBulkPurchaseOrders }] : []),
           { label: 'Emitir NF-e', icon: <Receipt className="h-3.5 w-3.5" />, onClick: () => openBulkNfe('emit') },
-          { label: 'Cancelar', icon: <X className="h-3.5 w-3.5" />, variant: 'destructive', onClick: handleBulkCancel },
+          { label: 'Etiqueta Individual', icon: <Barcode className="h-3.5 w-3.5" />, variant: 'outline' as const, onClick: handleBulkLabels },
+          { label: 'Consumo', icon: <BarChart3 className="h-3.5 w-3.5" />, variant: 'outline' as const, onClick: handleBulkConsumption },
+          ...(canEditPv ? [{ label: 'Cancelar', icon: <X className="h-3.5 w-3.5" />, variant: 'destructive' as const, onClick: handleBulkCancel }] : []),
         ]}
         secondaryActions={[
-          { label: 'Alterar Status', icon: <ListChecks className="h-3.5 w-3.5" />, variant: 'outline', onClick: () => { setBulkStatusTarget(''); setBulkStatusOpen(true); } },
+          ...(canEditPv ? [{ label: 'Alterar Status', icon: <ListChecks className="h-3.5 w-3.5" />, variant: 'outline' as const, onClick: () => { setBulkStatusTarget(''); setBulkStatusOpen(true); } }] : []),
           { label: 'Pré-visualizar NF-e', icon: <Receipt className="h-3.5 w-3.5" />, variant: 'outline', onClick: () => openBulkNfe('preview') },
-          { label: 'Consumo', icon: <BarChart3 className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkConsumption },
           { label: 'Visão Geral', icon: <LayoutDashboard className="h-3.5 w-3.5" />, variant: 'outline', onClick: () => setOverviewOpen(true) },
-          { label: 'Etiquetas', icon: <Tag className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkLabels },
           { label: 'Imprimir Fichas', icon: <Printer className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkPrint },
           { label: 'Exportar Excel', icon: <Download className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkExport },
           ...(perm.canDelete ? [{ label: 'Excluir', icon: <Trash2 className="h-3.5 w-3.5" />, variant: 'destructive' as const, onClick: handleBulkDelete }] : []),
@@ -2909,7 +2445,11 @@ export default function SaleOrders() {
                         try {
                           await updateStatus.mutateAsync({ id: selectedOrder.id, status: 'Aprovado' });
                         } catch (error: any) {
-                          toast.error(`Erro ao aprovar: ${error?.message || error}`);
+                          // O guard de prontidão já abriu a correção estruturada;
+                          // repetir a mensagem completa em toast encobre o modal.
+                          if (!(error instanceof SaleOrderReadinessBlockedError)) {
+                            toast.error(`Erro ao aprovar: ${error?.message || error}`);
+                          }
                           return;
                         }
                         toast.success(`Pedido ${selectedOrder.order_number} aprovado.`);
@@ -2939,24 +2479,28 @@ export default function SaleOrders() {
                   <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Ações de materiais e produção">
                   {isAdmin && (selectedOrder.status === 'Aprovado' || selectedOrder.status === 'Em Produção') && (
                     <Button variant="outline" size="sm" className="gap-2" disabled={resyncPVOPs.isPending} onClick={() => setPendingConfirm({
-                      title: 'Recriar as OPs deste pedido?',
-                      description: 'Isso irá excluir as OPs atuais e recriar com base nos itens atuais do pedido.',
-                      actionLabel: 'Recriar OPs',
+                      title: 'Resincronizar as OPs deste pedido?',
+                      description: 'Revalida ficha, plano e reservas de cada OP ativa em transação própria, preservando identidade e histórico. OP com fato físico não é reescrita.',
+                      actionLabel: 'Resincronizar OPs',
                       onConfirm: () => resyncPVOPs.mutate(selectedOrder.id),
                     })}>
                       {resyncPVOPs.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Resync OPs
                     </Button>
                   )}
-                  <Button variant="outline" size="sm" className="gap-2" title="O que comprar, quanto falta e a grade do solado" onMouseEnter={() => prefetchPvConsumption(selectedOrder.id)} onClick={() => setConsumoDialog({ ids: [selectedOrder.id], numbers: [selectedOrder.order_number] })}><Package className="h-3.5 w-3.5" /> Consumo de materiais</Button>
+                  <Button variant="outline" size="sm" className="gap-2" title="O que comprar, quanto falta e a grade do solado" onMouseEnter={() => prefetchPvConsumption(selectedOrder.id)} onClick={() => openPvConsumption([selectedOrder.id])}><Package className="h-3.5 w-3.5" /> Consumo de materiais</Button>
                   {canBuy && (
                     <Button
                       variant="outline"
                       size="sm"
                       className="gap-2"
-                      onClick={() => setPoGenTarget({ ids: [selectedOrder.id], numbers: [selectedOrder.order_number] })}
-                      title="Gera Ordens de Compra só para este pedido (canal Compras por Pedido, separado do MRP)"
+                      onClick={() => setPoGenTarget({
+                        ids: [selectedOrder.id],
+                        numbers: [selectedOrder.order_number],
+                        netOfStock: true,
+                      })}
+                      title="Calcula o consumo da ficha técnica, desconta o estoque e gera uma OC por fornecedor (canal Compras por Pedido)"
                     >
-                      <ShoppingCart className="h-3.5 w-3.5" /> Gerar OCs
+                      <ShoppingCart className="h-3.5 w-3.5" /> Gerar ordem de compra
                     </Button>
                   )}
                   {/* Picking individual — desde 31/07/2026 a baixa sai sozinha na
@@ -3020,13 +2564,19 @@ export default function SaleOrders() {
                       <DropdownMenuItem onSelect={() => { void printSaleOrderPdf(selectedOrder); }} className="gap-2">
                         <FileText className="h-4 w-4" /> Gerar Pedido (PDF)
                       </DropdownMenuItem>
-                      {/* A página completa preserva caixa externa, hangtag e os
-                          demais formatos vinculados ao PV, além da etiqueta térmica. */}
-                      <DropdownMenuItem onSelect={() => navigate(`/label-system?sale_order=${selectedOrder.id}`)} className="gap-2">
-                        <Tag className="h-4 w-4" /> Etiquetas
-                      </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
+                  {/* Atalho explícito: o deep-link abre a Central já filtrada e
+                      agora também pré-seleciona as referências deste PV. */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 gap-2"
+                    onClick={() => navigate(`/label-system?sale_order=${selectedOrder.id}`)}
+                    title="Abrir as etiquetas térmicas das caixas individuais deste pedido"
+                  >
+                    <Barcode className="h-3.5 w-3.5" /> Etiqueta Individual
+                  </Button>
                 {/* Atalho: cria uma Ordem de Serviço com os itens deste pedido
                     (terceirização) — mesmo fluxo/tabela da OS do menu. Primário
                     (vermelho) por ser uma ação de criação, igual Gerar OCs/OPs. */}
@@ -3176,6 +2726,15 @@ export default function SaleOrders() {
                                     <div className="min-w-0">
                                       <div className="flex flex-wrap items-center gap-2">
                                         <p className="text-sm font-semibold">{item.color || '—'}</p>
+                                        {item.production_excluded_at && (
+                                          <Badge
+                                            variant="outline"
+                                            className="gap-1 border-warning/40 bg-warning/10 text-warning-foreground"
+                                          >
+                                            <AlertTriangle className="h-3 w-3" weight="fill" />
+                                            Retirado da produção
+                                          </Badge>
+                                        )}
                                         {(item.productionOrders || []).map((op: any) => (
                                           <MaterialReservationErrorBadge
                                             key={op.id}
@@ -3184,6 +2743,17 @@ export default function SaleOrders() {
                                           />
                                         ))}
                                       </div>
+                                      {item.production_excluded_at && (
+                                        <div
+                                          role="status"
+                                          className="mt-2 border border-warning/40 bg-warning/10 px-2.5 py-2 text-xs text-warning-foreground"
+                                        >
+                                          <p className="font-semibold">Este item não faz mais parte da carga de produção.</p>
+                                          <p className="mt-0.5 break-words">
+                                            {item.production_exclusion_reason || 'Exclusão administrativa registrada sem motivo informado.'}
+                                          </p>
+                                        </div>
+                                      )}
                                       {(item.strap_colors as any[])?.length > 0 && (
                                         <div className="flex flex-wrap gap-2 mt-2 p-2 rounded bg-muted/30 border border-border/40">
                                           <p className="text-xs font-bold text-muted-foreground uppercase w-full">Cores das Tiras:</p>
@@ -3581,7 +3151,37 @@ export default function SaleOrders() {
         </DialogContent>
       </Dialog>
 
-      {/* Confirmação estruturada genérica (substitui confirm() nativo) */}
+      {readinessCorrectionTarget && (
+        <Suspense fallback={null}>
+          <SaleOrderReadinessCorrectionDialog
+            target={readinessCorrectionTarget}
+            isAdmin={isAdmin}
+            statusChangePending={updateStatus.isPending}
+            onClose={() => setReadinessCorrectionTargets((current) => current.slice(1))}
+            onEditOrder={() => {
+              const target = readinessCorrectionTarget;
+              if (!target) return;
+              setReadinessCorrectionTargets((current) => current.filter((item) => item.id !== target.id));
+              navigate(`/sales/edit/${target.id}`);
+            }}
+            onRetry={async (overrideId) => {
+              const target = readinessCorrectionTarget;
+              if (!target) return;
+              try {
+                await updateStatus.mutateAsync({
+                  id: target.id,
+                  status: target.status,
+                  override_id: overrideId || null,
+                });
+                setReadinessCorrectionTargets((current) => current.filter((item) => item.id !== target.id));
+              } catch {
+                // onReadinessBlocked atualiza o mesmo alvo com o preflight novo.
+              }
+            }}
+          />
+        </Suspense>
+      )}
+
       <AlertDialog open={pendingConfirm !== null} onOpenChange={(o) => { if (!o) setPendingConfirm(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -3655,22 +3255,6 @@ export default function SaleOrders() {
         </Suspense>
       )}
 
-      {consumoDialog && (
-        <Suspense fallback={null}>
-          <OrderConsumptionDialog
-            open={!!consumoDialog}
-            onOpenChange={(v) => { if (!v) setConsumoDialog(null); }}
-            saleOrderIds={consumoDialog.ids}
-            orderNumbers={consumoDialog.numbers}
-            onGerarOC={canBuy ? () => {
-              const { ids, numbers } = consumoDialog;
-              setConsumoDialog(null);
-              setPoGenTarget({ ids, numbers });
-            } : undefined}
-          />
-        </Suspense>
-      )}
-
       {/* "Ficha Montagem": seleção de OPs antes de imprimir. Sem OP vinculada,
           o próprio diálogo oferece o caminho antigo (pelos itens do pedido). */}
       {operatorFichasOpen && (
@@ -3707,6 +3291,7 @@ export default function SaleOrders() {
             onOpenChange={(v) => { if (!v) setPoGenTarget(null); }}
             pvIds={poGenTarget.ids}
             pvNumbers={poGenTarget.numbers}
+            initialNetOfStock={poGenTarget.netOfStock}
           />
         </Suspense>
       )}

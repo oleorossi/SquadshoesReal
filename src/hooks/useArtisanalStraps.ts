@@ -16,6 +16,7 @@ interface UntypedQueryResult {
 
 interface UntypedQueryBuilder extends PromiseLike<UntypedQueryResult> {
   select: (columns?: string) => UntypedQueryBuilder;
+  eq: (column: string, value: unknown) => UntypedQueryBuilder;
   order: (column: string, options?: { ascending?: boolean }) => UntypedQueryBuilder;
   limit: (count: number) => UntypedQueryBuilder;
 }
@@ -61,6 +62,9 @@ export interface ArtisanalStrapMeasure {
   display_name: string;
   finished_width_mm: number;
   active: boolean;
+  origem_padrao?: string | null;
+  preco_artesanal_per_m?: number | null;
+  preco_prestador_per_m?: number | null;
 }
 
 export interface CanonicalStrapColor {
@@ -344,6 +348,23 @@ export interface SaveArtisanalStrapConversionResult {
   measure_id: string;
   base_group_id: string;
   recipe_id: string;
+}
+
+export interface SaveArtisanalStrapMaterialConversionInput {
+  base_group_id: SaveArtisanalStrapConversionPayload['base_group_id'];
+  recipe: Omit<SaveArtisanalStrapConversionPayload['recipe'], 'id'>;
+}
+
+export interface SaveArtisanalStrapMaterialConversionsPayload {
+  type: SaveArtisanalStrapConversionPayload['type'];
+  measure: SaveArtisanalStrapConversionPayload['measure'];
+  materials: SaveArtisanalStrapMaterialConversionInput[];
+}
+
+export interface SaveArtisanalStrapMaterialConversionsResult {
+  type_id: string;
+  measure_id: string;
+  conversions: SaveArtisanalStrapConversionResult[];
 }
 
 export interface ConfirmArtisanalStrapMaterialConversionResult
@@ -1019,25 +1040,48 @@ function invalidateArtisanalStrapOperations(queryClient: ReturnType<typeof useQu
   queryClient.invalidateQueries({ queryKey: ['artisanal-strap-cost-variance'] });
 }
 
-export function useArtisanalStrapCatalog(includeArchived = false) {
+export interface ArtisanalStrapCatalogOptions {
+  /** Histórico legado (Hub). No PV é custo morto e um timeout nele derrubava o catálogo inteiro. */
+  includeLegacyHistory?: boolean;
+  enabled?: boolean;
+}
+
+export function useArtisanalStrapCatalog(
+  includeArchived = false,
+  options: ArtisanalStrapCatalogOptions = {},
+) {
+  const includeLegacyHistory = options.includeLegacyHistory === true;
+  const enabled = options.enabled !== false;
   return useQuery({
-    queryKey: ['artisanal-strap-catalog', includeArchived],
+    queryKey: ['artisanal-strap-catalog', includeArchived, includeLegacyHistory],
+    enabled,
     queryFn: async () => {
+      const catalogPromise = untypedSupabase.rpc('list_artisanal_strap_catalog', {
+        p_include_archived: includeArchived,
+      });
+      const legacyPromise = includeLegacyHistory
+        ? untypedSupabase.rpc('list_legacy_artisanal_strap_recipe_history')
+        : Promise.resolve({ data: [], error: null });
       const [catalogResult, legacyHistoryResult] = await Promise.all([
-        untypedSupabase.rpc('list_artisanal_strap_catalog', {
-          p_include_archived: includeArchived,
-        }),
-        untypedSupabase.rpc('list_legacy_artisanal_strap_recipe_history'),
+        catalogPromise,
+        legacyPromise,
       ]);
       if (catalogResult.error) throw catalogResult.error;
-      const legacyHistoryError = legacyHistoryResult.error as { code?: string } | null;
+      // Timeout/erro no histórico legado NÃO pode derrubar o catálogo canônico:
+      // o PV só precisa de measures/types/colors; o Hub degrada sem a aba antiga.
+      const legacyHistoryError = legacyHistoryResult.error as { code?: string; message?: string } | null;
       if (legacyHistoryError && legacyHistoryError.code !== 'PGRST202') {
-        throw legacyHistoryResult.error;
+        console.warn(
+          '[artisanal-strap-catalog] histórico legado indisponível:',
+          legacyHistoryError.message || legacyHistoryError.code,
+        );
       }
       const catalog = normalizeCatalog(catalogResult.data);
       return {
         ...catalog,
-        legacy_recipes: asArray<LegacyArtisanalStrapRecipe>(legacyHistoryResult.data),
+        legacy_recipes: legacyHistoryError
+          ? []
+          : asArray<LegacyArtisanalStrapRecipe>(legacyHistoryResult.data),
       };
     },
     staleTime: 2 * 60 * 1000,
@@ -1099,13 +1143,23 @@ export function useArtisanalStrapProduction(enabled = true) {
   });
 }
 
-export function useArtisanalStrapExternalOperations(enabled = true) {
+export function useArtisanalStrapExternalOperations(
+  enabled = true,
+  focusedServiceOrderNumber?: string | null,
+) {
+  const normalizedFocus = focusedServiceOrderNumber?.trim() || null;
   return useQuery({
-    queryKey: ['artisanal-strap-external-operations'],
+    queryKey: ['artisanal-strap-external-operations', normalizedFocus],
     enabled,
     queryFn: async (): Promise<ArtisanalStrapExternalOperationsData> => {
+      const serviceItemsQuery = untypedSupabase
+        .from('v_strap_service_order_items_operational')
+        .select('*')
+        .order('sent_at', { ascending: false });
       const [serviceResult, purchaseResult, claimsResult, cyclesResult, custodyResult, reworkResult] = await Promise.all([
-        untypedSupabase.from('v_strap_service_order_items_operational').select('*').order('sent_at', { ascending: false }).limit(600),
+        normalizedFocus
+          ? serviceItemsQuery.eq('service_order_number', normalizedFocus).limit(600)
+          : serviceItemsQuery.limit(600),
         untypedSupabase.from('v_strap_purchase_order_items_operational').select('*').order('purchase_by_date', { ascending: true }).limit(600),
         untypedSupabase.from('v_strap_contractor_loss_claims_operational').select('*').order('created_at', { ascending: false }).limit(300),
         untypedSupabase.from('v_strap_contractor_payment_cycles_operational').select('*').order('cycle_start', { ascending: false }).limit(300),
@@ -2453,6 +2507,45 @@ export function useConfirmArtisanalStrapMaterialConversion() {
       }
       const message = error instanceof Error ? error.message : null;
       toast.error(message || 'Não foi possível confirmar o rendimento.');
+    },
+  });
+}
+
+export function useSaveArtisanalStrapMaterialConversions() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ payload, reason, confirm }: {
+      payload: SaveArtisanalStrapMaterialConversionsPayload;
+      reason: string;
+      confirm: boolean;
+    }) => {
+      const { data, error } = await untypedSupabase.rpc(
+        'save_artisanal_strap_material_conversions',
+        {
+          p_payload: payload,
+          p_reason: reason,
+          p_confirm: confirm,
+        },
+      );
+      if (error) throw error;
+      return data as SaveArtisanalStrapMaterialConversionsResult;
+    },
+    onSuccess: (data, { confirm }) => {
+      invalidateArtisanalStraps(queryClient);
+      queryClient.invalidateQueries({ queryKey: ['strap-base-group-candidates'] });
+      const count = data.conversions.length;
+      toast.success(confirm
+        ? `${count} ${count === 1 ? 'rendimento confirmado' : 'rendimentos confirmados'} para todas as cores.`
+        : `${count} ${count === 1 ? 'conversão salva' : 'conversões salvas'} como rascunho.`);
+    },
+    onError: (error: unknown, { confirm }) => {
+      if (error && typeof error === 'object') {
+        (error as Record<string, unknown>)._handled = true;
+      }
+      const message = error instanceof Error ? error.message : null;
+      toast.error(message || (confirm
+        ? 'Não foi possível confirmar os rendimentos.'
+        : 'Não foi possível salvar as conversões.'));
     },
   });
 }

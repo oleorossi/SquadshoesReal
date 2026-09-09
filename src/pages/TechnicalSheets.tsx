@@ -8,9 +8,10 @@
  
  import { CaretRight as ChevronRight, CheckCircle } from '@phosphor-icons/react';
  
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, lazy, Suspense } from 'react';
 import { buildBulkSolePatch, evaluateTechnicalSheetReadiness } from '@/lib/technicalSheetReadiness';
-import type { TechnicalSheetAuditSignals } from '@/lib/technicalSheetReadiness';
+import type { TechnicalSheetAuditSignals, TechnicalSheetReadinessInput } from '@/lib/technicalSheetReadiness';
+import { buildTechnicalSheetPatch, cloneTechnicalSheetSnapshot } from '@/lib/technicalSheetPatch';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useSearchParams, Link } from 'react-router-dom';
 import { SignedImage } from '@/components/ui/signed-image';
@@ -32,13 +33,26 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { FichaCortePrintTab } from '@/components/technical-sheets/FichaCortePrintTab';
+import { PhotosByColorTab } from '@/components/technical-sheets/PhotosByColorTab';
+import { ProductionSectorsTab, STRAP_LABEL_OPTIONS } from '@/components/technical-sheets/ProductionSectorsTab';
+import { SheetImageUpload } from '@/components/technical-sheets/SheetImageUpload';
+import { SectionTitle, FieldInput, FieldSelect } from '@/components/technical-sheets/sheetFormFields';
+import { DeferredMount } from '@/components/technical-sheets/DeferredMount';
+import { getSizesForCategory, parseSizesFromRange, ADULT_SIZES, CHILD_SIZES } from '@/lib/technicalSheetSizes';
 import { Checkbox } from '@/components/ui/checkbox';
+
+const SheetBOM = lazy(() =>
+  import('@/components/technical-sheets/SheetBOM').then((m) => ({ default: m.SheetBOM })),
+);
+const CostsTab = lazy(() =>
+  import('@/components/technical-sheets/CostsAnalysisTab').then((m) => ({ default: m.CostsAnalysisTab })),
+);
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import {
-  useTechnicalSheets, useAddSheet, useUpdateSheet, useDeleteSheet,
+  useTechnicalSheetsCatalog, useTechnicalSheetDetail, useAddSheet, useUpdateSheet,
   useSheetMaterials, useAddSheetMaterial, useUpdateSheetMaterial, useDeleteSheetMaterial, useBulkAddSheetMaterials,
-  SheetFormData, SheetMaterialFormData, emptySheetForm, useOverheadHistory, useCloneSheet,
+  SheetFormData, emptySheetForm, useCloneSheet,
 } from '@/hooks/useTechnicalSheets';
 import { useComponentSheets } from '@/hooks/useComponentSheets';
 import ComponentSheets from '@/pages/ComponentSheets';
@@ -46,13 +60,14 @@ import ComponentSheets from '@/pages/ComponentSheets';
  import { OperationsTab } from '@/components/technical-sheets/OperationsTab';
  // ColorVariantsTab removido — cor é definida no PV, não na ficha técnica.
  import { MaterialVariantsTab } from '@/components/technical-sheets/MaterialVariantsTab';
- import { useAllActiveReferenceMaterialVariants } from '@/hooks/useReferenceMaterialVariants';
+ import { useAllActiveReferenceMaterialVariants, type ReferenceMaterialVariant } from '@/hooks/useReferenceMaterialVariants';
 import { VersionsTab } from '@/components/technical-sheets/VersionsTab';
 import { TechnicalReferencePanel } from '@/components/technical-sheets/TechnicalReferencePanel';
 import { NonFiniteDevWatcher } from '@/components/technical-sheets/NonFiniteDevWatcher';
-import { SheetsAuditButton } from '@/components/technical-sheets/SheetsAuditPanel';
+import { SheetsAuditButton, useSheetsAudit } from '@/components/technical-sheets/SheetsAuditPanel';
 import { CatalogModelsPanel } from '@/components/technical-sheets/CatalogModelsPanel';
-import { TechnicalSheetCardGrid } from '@/components/technical-sheets/TechnicalSheetCardGrid';
+import { TechnicalSheetCardGrid, type TechnicalSheetGridItem } from '@/components/technical-sheets/TechnicalSheetCardGrid';
+import { TechnicalSheetRetirementDialog } from '@/components/technical-sheets/TechnicalSheetRetirementDialog';
 import { QuickSheetSelector } from '@/components/technical-sheets/QuickSheetSelector';
 import { AviamentoRangeTab } from '@/components/technical-sheets/AviamentoRangeTab';
 import { TechnicalSheetReadinessRail } from '@/components/technical-sheets/TechnicalSheetReadinessRail';
@@ -63,7 +78,7 @@ import { useSoleColorMappings, useUpsertSoleColorMapping } from '@/hooks/useSole
  import { useComponentColorMappings, useAddComponentColorRow, useUpdateComponentColorRow, useDeleteComponentColorRow } from '@/hooks/useComponentColorMappings';
  import { useComponentColorDefaults } from '@/hooks/useComponentColorDefaults';
 import { useCostPolicies } from '@/hooks/useCostPolicies';
-import { useArtisanalStrapCatalog } from '@/hooks/useArtisanalStraps';
+import { useArtisanalStrapCatalog, useStrapBaseGroupCandidates } from '@/hooks/useArtisanalStraps';
 import { useProducts } from '@/hooks/useProducts';
 import { useReadyStock } from '@/hooks/useReadyStock';
 import { useCan } from '@/hooks/useAccessControl';
@@ -76,16 +91,28 @@ import { ReferenceTerceirizacoesPanel } from '@/components/technical-sheets/Refe
 import { cn, getSoleModelName, parseSafeNumber, formatCurrency as globalFormatCurrency, safeToFixed } from '@/lib/utils';
 import { needsWidthForConversion, effectiveConversionFactor } from '@/lib/purchaseConversion';
 import { bomMaterialCostPerPair } from '@/lib/materialConsumption';
+import {
+  isLeftoverCabedalExtra,
+  leftoverRequiresPin,
+  validateCabedalLeftovers,
+} from '@/lib/cabedalLeftover';
 import { getShoeSizeMappings } from '@/utils/shoeUtils';
 import {
-  applyCanonicalTechnicalStrapMeasure,
-  applyTechnicalStrapIdentity,
+  applyTechnicalStrapColorMode,
   ensureTechnicalStrapLineIds,
   hasCanonicalTechnicalStrapIdentity,
   newTechnicalStrapLineId,
+  replicateFirstTechnicalStrapType,
+  strapColorMode,
+  type StrapColorMode,
 } from '@/lib/technicalStrapLines';
 import { strapIdentityBasis } from '@/lib/strapIdentity';
+import { applyTechnicalStrapMeasureWithSource, isTechnicalStrapSourceAllowed, technicalStrapSourcePolicy } from '@/lib/technicalStrapSourcePolicy';
+import { normalizeStrapMaterialPolicy, strapMaterialMode, validateStrapMaterialPolicy } from '@/lib/strapMaterialPolicy';
+import TechnicalStrapMaterialPolicyEditor from '@/components/technical-sheets/TechnicalStrapMaterialPolicyEditor';
+import TechnicalStrapSourceEditor from '@/components/technical-sheets/TechnicalStrapSourceEditor';
 import { referenceStrapBaseGroups } from '@/lib/referenceStrapBaseGroups';
+import { CONSUMPTION_SECTORS, normalizeDirectComponentSectors } from '@/lib/consumptionSector';
 
 import { useShoeCategories } from '@/hooks/useShoeCategories';
 import { SHOE_CATEGORIES } from '@/lib/shoeCategories';
@@ -94,6 +121,7 @@ import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { EmptyState } from '@/components/ui/empty-state';
 import { SearchInput } from '@/components/ui/search-input';
 import { normalizeForSearch, searchMatchesAllTerms } from '@/lib/searchUtils';
+import { getTechnicalSheetAuditGaps, type TechnicalSheetAuditRow } from '@/lib/technicalSheetAudit';
 import { Link as Link2, Info } from '@phosphor-icons/react';
 import { SoleSizeConjugationsEditor } from '@/components/inventory/SoleSizeConjugationsEditor';
 import { ComponentGroupSelect, GroupMaterialSelect, SoleClassificationBadge, SoleProductSelect, DirectComponentSelect, NcmInlineEditor } from '@/components/technical-sheets/sheetSelectors';
@@ -108,26 +136,6 @@ const MATERIAIS_SOLADO = ['TR', 'EVA', 'Borracha', 'PVC', 'TPU'] as const;
 type CatalogView = 'cards' | 'list';
 const normalizeGroupName = (value?: string | null) =>
   (value || '').trim().toLocaleLowerCase('pt-BR');
-
-const COMPONENT_CATEGORIES = [
-  // === Base do Solado (padrão, independente de cor) ===
-  { key: 'Solado', label: 'Solado', icon: Footprints, color: 'text-muted-foreground', aliases: ['solado'], section: 'base' },
-  { key: 'Palmilha', label: 'Palmilha', icon: Shield, color: 'text-blue-600', aliases: ['palmilha', 'placa de palmilha'], section: 'base' },
-  { key: 'Forração', label: 'Forração', icon: Scissors, color: 'text-purple-600', aliases: ['forro', 'forração', 'forração da palmilha'], section: 'base' },
-  { key: 'Químico', label: 'Químicos', icon: Droplets, color: 'text-red-600', aliases: ['químico', 'quimico', 'cola', 'adesivo', 'hotmel', 'primer'], section: 'base' },
-  // === Depende do Modelo ===
-  { key: 'Cabedal', label: 'Cabedal', icon: Layers, color: 'text-amber-600', aliases: ['cabedal', 'napa', 'napa soft', 'couro', 'sintético', 'tecido', 'glow', 'metalic', 'velvet', 'tira', 'trança'], section: 'modelo' },
-  { key: 'Componente', label: 'Componentes', icon: Box, color: 'text-pink-600', aliases: ['componente', 'componentes', 'acessório', 'acessorios', 'aviamento'], section: 'modelo' },
-] as const;
-
-function matchCategory(productCategory: string): string {
-  const lower = productCategory.toLowerCase().trim();
-  for (const cat of COMPONENT_CATEGORIES) {
-    if (cat.key.toLowerCase() === lower) return cat.key;
-    if (cat.aliases.some(a => lower.includes(a) || a.includes(lower))) return cat.key;
-  }
-  return 'Outros';
-}
 
 /** Calculate plate area in dm² from group dimensions (stored in mm by default) */
 function calcPlateAreaDm2(group: any): number {
@@ -156,52 +164,21 @@ function YieldFromPlate({ groupName, consumptionDm2, groups }: { groupName: stri
   );
 }
 
-const ADULT_SIZES = [34, 35, 36, 37, 38, 39, 40];
-const CHILD_SIZES = [21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33];
-
-function getSizesForCategory(shoeCategory?: string): number[] {
-  return shoeCategory === 'Infantil' ? CHILD_SIZES : ADULT_SIZES;
-}
-
-function parseSizesFromRange(sizesStr?: string, shoeCategory?: string): number[] {
-  if (sizesStr && sizesStr.includes('-')) {
-    const [start, end] = sizesStr.split('-').map(Number);
-    if (!isNaN(start) && !isNaN(end) && start <= end) {
-      return Array.from({ length: end - start + 1 }, (_, i) => start + i);
-    }
-  }
-  return getSizesForCategory(shoeCategory);
-}
-
-const emptyMaterialForm: SheetMaterialFormData = {
-  product_id: '', group_id: null, quantity_per_unit: 0, consumption_per_size: {}, color: '', width: '', weight: '', supplier: '', notes: '', sizes: '', consumption_sector: '',
-};
-
-const CONSUMPTION_SECTORS = [
-  'Corte Fibra', 'Corte Forração', 'Corte Cabedal', 'Costura Palmilha',
-  'Costura Cabedal', 'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem',
-  'Acabamento',
-] as const;
-
-/** Sugestão inicial; a ficha sempre exige confirmação explícita do usuário. */
-function suggestedConsumptionSector(category?: string | null): string {
-  const normalized = normalizeForSearch(category || '');
-  if (/solado|sola/.test(normalized)) return 'Solagem';
-  if (/embal|caixa|etiqueta|papel/.test(normalized)) return 'Acabamento';
-  if (/cola|adesivo|primer|quimic/.test(normalized)) return 'Colagem';
-  if (/linha|fio/.test(normalized)) return 'Costura Palmilha';
-  if (/aviamento|acessorio|elast|ilh[oó]|fivela|rebite|fachete|contraforte|coura[cç]a|refor[cç]/.test(normalized)) return 'Aviamento';
-  return '';
-}
 
 export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {}) {
-  const { data: sheets = [], isLoading } = useTechnicalSheets();
+  const { data: sheets = [], isLoading, isError, error, refetch } = useTechnicalSheetsCatalog();
   const { data: stock = [] } = useReadyStock();
+  const sheetsAuditQuery = useSheetsAudit();
+  const auditBySheetId = useMemo(() => new Map(
+    (sheetsAuditQuery.data || []).map((row) => [row.id, row]),
+  ), [sheetsAuditQuery.data]);
+  const auditGapsBySheet = useMemo(() => new Map(
+    (sheetsAuditQuery.data || []).map((row) => [row.id, getTechnicalSheetAuditGaps(row)]),
+  ), [sheetsAuditQuery.data]);
   // Map sheet_id -> array de variantes de material ativas. Usado pra exibir
   // badge na lista de fichas indicando que tem opções de material extra.
   const { data: materialVariantsBySheet } = useAllActiveReferenceMaterialVariants();
   const addSheet = useAddSheet();
-  const deleteSheet = useDeleteSheet();
   const updateSheet = useUpdateSheet();
   const perm = useCan('/fichas-tecnicas');
 
@@ -237,6 +214,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
   const [imageDialogSheet, setImageDialogSheet] = useState<any>(null);
+  const [deleteSheetTarget, setDeleteSheetTarget] = useState<TechnicalSheetGridItem | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [soleFilter, setSoleFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
@@ -253,10 +231,20 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
    const [bulkSoleSelected, setBulkSoleSelected] = useState<string>('');
     const [bulkSoleOverwrite, setBulkSoleOverwrite] = useState(false);
 
+  // Fichas aposentadas continuam no cache global para resolver pedidos e
+  // históricos, mas não podem voltar a aparecer no catálogo nem em ações que
+  // criam/copiam configuração operacional.
+  const activeSheets = useMemo(
+    () => sheets.filter((sheet) => !(
+      sheet as typeof sheet & { retired_at?: string | null }
+    ).retired_at),
+    [sheets],
+  );
+
   // Distinct sole list from sheets (sorted, with count of reference sheets per sole)
   const soleOptions = useMemo(() => {
     const map = new Map<string, { total: number; refs: number }>();
-    (sheets as any[]).forEach((s: any) => {
+    activeSheets.forEach((s) => {
       if (!s.sole_material) return;
       const cur = map.get(s.sole_material) || { total: 0, refs: 0 };
       cur.total += 1;
@@ -266,27 +254,27 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
     return Array.from(map.entries())
       .map(([name, info]) => ({ name, ...info }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [sheets]);
+  }, [activeSheets]);
 
   const filteredSheets = useMemo(() => {
-    let result = sheets;
-    if (categoryFilter === 'Infantil') result = result.filter((s: any) => s.shoe_category === 'Infantil');
-    else if (categoryFilter === 'Feminino') result = result.filter((s: any) => s.shoe_category !== 'Infantil');
+    let result = activeSheets;
+    if (categoryFilter === 'Infantil') result = result.filter((s) => s.shoe_category === 'Infantil');
+    else if (categoryFilter === 'Feminino') result = result.filter((s) => s.shoe_category !== 'Infantil');
     if (soleFilter !== 'all') {
-      result = result.filter((s: any) => s.sole_material === soleFilter);
+      result = result.filter((s) => s.sole_material === soleFilter);
     }
     if (searchTerm.trim()) {
-      result = result.filter((s: any) =>
+      result = result.filter((s) =>
         searchMatchesAllTerms(searchTerm, s.name, s.code, s.collection, s.shoe_category, s.colors, s.description, s.status)
       );
     }
     return result;
-  }, [sheets, categoryFilter, soleFilter, searchTerm]);
+  }, [activeSheets, categoryFilter, soleFilter, searchTerm]);
 
   // Fichas candidatas do dialog de cópia (busca própria do dialog)
   const cloneFilteredSheets = useMemo(
-    () => (sheets as any[]).filter((s: any) => searchMatchesAllTerms(cloneSearchTerm, s.name, s.code)),
-    [sheets, cloneSearchTerm],
+    () => activeSheets.filter((s) => searchMatchesAllTerms(cloneSearchTerm, s.name, s.code)),
+    [activeSheets, cloneSearchTerm],
   );
 
   const handleCatalogViewChange = (view: CatalogView) => {
@@ -325,12 +313,12 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
     let failed = 0;
     try {
       const sheetsArr = filteredSheets as any[];
-      const referenceCandidates = (sheets as any[])
+      const referenceCandidates = activeSheets
         .filter((s: any) =>
           s.sole_material === soleName &&
           (s.sole_consumption > 0 || s.sole_process || s.sole_group_id)
         )
-        .sort((a: any, b: any) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+        .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
 
       if (referenceCandidates.length === 0) {
         toast.error(`Nenhuma ficha de referência encontrada para o solado "${soleName}"`);
@@ -375,6 +363,31 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
 
   if (isLoading) {
     return <><div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div></>;
+  }
+
+  if (isError) {
+    return (
+      <>
+        <div className="space-y-4 page-enter">
+          <EditorialPageHeader
+            sectionLabel="ENGENHARIA · FICHAS"
+            title="Fichas Técnicas"
+            description="Materiais, consumos e custos"
+          />
+          <EmptyState
+            icon={AlertTriangle}
+            title="Erro ao carregar fichas técnicas"
+            description={error instanceof Error ? error.message : 'Tente recarregar a lista.'}
+            action={
+              <Button variant="outline" onClick={() => refetch()} className="gap-2">
+                <RefreshCw className="h-4 w-4" />
+                Tentar novamente
+              </Button>
+            }
+          />
+        </div>
+      </>
+    );
   }
 
   return (
@@ -436,7 +449,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
 
          {!expandedId && (
            <QuickSheetSelector
-             sheets={sheets} 
+             sheets={activeSheets}
              onSelect={(id) => setExpandedId(id)} 
            />
          )}
@@ -516,7 +529,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
               onChange={setSearchTerm}
               placeholder="Buscar por nome, código, coleção, cor…"
               resultCount={filteredSheets.length}
-              totalCount={sheets.length}
+              totalCount={activeSheets.length}
             />
             <div className="flex items-center gap-2 overflow-x-auto pb-1 lg:ml-auto lg:flex-wrap lg:overflow-visible lg:pb-0">
               {[
@@ -585,134 +598,36 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
               <EmptyState
                 icon={FileText}
                 title={
-                  sheets.length === 0
+                  activeSheets.length === 0
                     ? 'Nenhuma ficha técnica cadastrada'
                     : searchTerm.trim()
                       ? `Nenhum resultado para "${searchTerm}"`
                       : 'Nenhuma ficha encontrada'
                 }
-                description={sheets.length === 0 ? undefined : 'Ajuste a busca ou os filtros de categoria.'}
-                action={sheets.length > 0 ? <Button variant="link" onClick={() => { setCategoryFilter('all'); setSoleFilter('all'); setSearchTerm(''); }}>Limpar filtros</Button> : undefined}
+                description={activeSheets.length === 0 ? undefined : 'Ajuste a busca ou os filtros de categoria.'}
+                action={activeSheets.length > 0 ? <Button variant="link" onClick={() => { setCategoryFilter('all'); setSoleFilter('all'); setSearchTerm(''); }}>Limpar filtros</Button> : undefined}
               />
             </CardContent>
           </Card>
         ) : expandedId ? (
-          /* ── Detail View ── */
-          (() => {
-             try {
-               const sheet = sheets.find(s => s.id === expandedId);
-               if (!sheet) {
-                 return (
-                   <Card className="border-dashed">
-                     <CardContent className="flex flex-col items-center justify-center py-16 text-muted-foreground space-y-4">
-                       <div className="h-12 w-12 rounded-full bg-destructive/10 flex items-center justify-center">
-                         <AlertTriangle className="h-6 w-6 text-destructive" />
-                       </div>
-                       <div className="text-center">
-                         <p className="font-semibold text-foreground">Ficha não encontrada</p>
-                         <p className="text-sm">Não foi possível carregar os dados desta referência ou ela não existe mais.</p>
-                       </div>
-                       <Button variant="outline" onClick={() => setExpandedId(null)} className="gap-2">
-                         <ArrowLeft className="h-4 w-4" />
-                         Voltar para a Lista
-                       </Button>
-                     </CardContent>
-                   </Card>
-                 );
-               }
-               return (
-                 <div className="space-y-4">
-                   <div className="flex items-center gap-3">
-                     <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground" onClick={() => setExpandedId(null)}>
-                       <ArrowLeft className="h-4 w-4" /> Voltar à lista
-                     </Button>
-                     <Separator orientation="vertical" className="h-5" />
-                     <div className="flex items-center gap-2 min-w-0">
-                       {sheet.images && Array.isArray(sheet.images) && sheet.images.length > 0 ? (
-                         <SignedImage src={String(sheet.images[0])} alt={sheet.name} className="h-8 w-8 rounded object-cover border shrink-0" />
-                       ) : (
-                         <div className="h-8 w-8 rounded bg-muted flex items-center justify-center border shrink-0">
-                           <Package className="h-4 w-4 text-muted-foreground/40" />
-                         </div>
-                       )}
-                        <div className="flex flex-col">
-                          <h3 className="font-bold text-lg truncate leading-tight">{sheet.name}</h3>
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground uppercase font-bold flex-wrap">
-                            <span>{sheet.upper_material || 'Material s/ def.'}</span>
-                            <ChevronRight className="h-2.5 w-2.5" />
-                            {/* reference_color_variants não vem no select('*') de useTechnicalSheets —
-                                cai sempre no fallback 'Sem cores' (comportamento atual preservado). */}
-                            <span className="text-primary truncate max-w-[150px]">{(sheet as any).reference_color_variants?.[0]?.color || 'Sem cores'}</span>
-                            <ChevronRight className="h-2.5 w-2.5" />
-                            <span className="bg-primary/10 text-primary px-1 rounded">{globalFormatCurrency(sheet.sale_price || 0)}</span>
-                          </div>
-                        </div>
-                        {/* SKU/code removido do header em 2026-05: a referência operacional
-                            é o Nome do Modelo. SKU continua como coluna na lista, mas não
-                            aparece mais como badge ao lado do nome. */}
-                        {/* Badge "tem variante de material" — sinaliza que essa ref pode ser
-                            cadastrada no PV em N versões de material principal (Napa, Santorini,…) */}
-                        {(materialVariantsBySheet?.get(sheet.id)?.length ?? 0) > 0 && (
-                          <Badge variant="secondary" className="px-2 py-0 h-5 text-xs bg-warning/10 text-warning border-warning/30 gap-1 shrink-0" title={materialVariantsBySheet!.get(sheet.id)!.map(v => v.material_name).join(', ')}>
-                            <Package className="h-3 w-3" /> {materialVariantsBySheet!.get(sheet.id)!.length} Materiais
-                          </Badge>
-                        )}
-                        {sheet.shoe_category && <Badge variant="outline" className="text-xs shrink-0">{sheet.shoe_category}</Badge>}
-                     </div>
-                   </div>
- 
-                   {/* ── Technical Summary & Completeness ── */}
-                    <AppErrorBoundary
-                      key={sheet.id}
-                      fallbackTitle="Não foi possível abrir esta Ficha Técnica"
-                    >
-                      <SheetCompleteness sheet={sheet} />
-                      <VariantOverviewHeader sheet={sheet} />
-                      <Card>
-                        <CardContent className="p-4 sm:p-6">
-                          <SheetDetail sheet={sheet} onSaveSuccess={() => setExpandedId(null)} />
-                        </CardContent>
-                      </Card>
-                    </AppErrorBoundary>
-                 </div>
-               );
-             } catch (error) {
-               console.error("Error rendering technical sheet detail:", error);
-               return (
-                 <Card className="border-destructive/20 bg-destructive/5">
-                   <CardContent className="flex flex-col items-center justify-center py-16 text-muted-foreground space-y-4">
-                     <div className="h-12 w-12 rounded-full bg-destructive/10 flex items-center justify-center">
-                       <AlertTriangle className="h-6 w-6 text-destructive" />
-                     </div>
-                     <div className="text-center">
-                       <p className="font-semibold text-foreground">Erro ao carregar Ficha Técnica</p>
-                       <p className="text-sm">Ocorreu um erro inesperado ao processar os dados desta referência.</p>
-                     </div>
-                     <div className="flex gap-2">
-                       <Button variant="outline" onClick={() => window.location.reload()} className="gap-2">
-                         <RefreshCw className="h-4 w-4" />
-                         Recarregar
-                       </Button>
-                       <Button onClick={() => setExpandedId(null)} className="gap-2">
-                         <ArrowLeft className="h-4 w-4" />
-                         Voltar para a Lista
-                       </Button>
-                     </div>
-                   </CardContent>
-                 </Card>
-               );
-              }
-           })()
+          <TechnicalSheetExpandedPanel
+            sheetId={expandedId}
+            onBack={() => setExpandedId(null)}
+            materialVariantsBySheet={materialVariantsBySheet}
+            auditBySheetId={auditBySheetId}
+            auditLoaded={sheetsAuditQuery.isSuccess}
+          />
         ) : (
           /* ── Catálogo · opção 05 (pranchetas) ou relação nominal ── */
           catalogView === 'cards' ? (
             <TechnicalSheetCardGrid
               sheets={filteredSheets}
               materialVariantsBySheet={materialVariantsBySheet}
-              canDelete={perm.canDelete}
+              auditGapsBySheet={auditGapsBySheet}
+              canDelete={perm.isAdmin}
               onOpenSheet={setExpandedId}
               onEditImage={setImageDialogSheet}
-              onDeleteSheet={(id) => deleteSheet.mutate(id)}
+              onDeleteSheet={setDeleteSheetTarget}
             />
           ) : (
             <div className="overflow-hidden border-2 border-foreground bg-card">
@@ -727,17 +642,39 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
               <div className="divide-y divide-border">
                 {[...filteredSheets]
                   .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR'))
-                  .map(sheet => (
-                    <button
-                      key={sheet.id}
-                      type="button"
-                      className="flex min-h-10 w-full items-center px-3 py-2 text-left text-sm font-semibold transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-4"
-                      aria-label={`Abrir ficha técnica ${sheet.name}`}
-                      onClick={() => setExpandedId(sheet.id)}
-                    >
-                      <span className="truncate" title={sheet.name}>{sheet.name}</span>
-                    </button>
-                  ))}
+                  .map(sheet => {
+                    const gaps = auditGapsBySheet.get(sheet.id) || [];
+                    const gapLabels = gaps.map((gap) => gap.label).join(', ');
+                    const hasCriticalGap = gaps.some((gap) => gap.severity === 'critical');
+                    return (
+                      <button
+                        key={sheet.id}
+                        type="button"
+                        className={cn(
+                          'flex min-h-10 w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm font-semibold transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-4',
+                          gaps.length > 0 && (hasCriticalGap ? 'bg-destructive/5' : 'bg-warning/5'),
+                        )}
+                        aria-label={`Abrir ficha técnica ${sheet.name}${gaps.length > 0 ? `. ${gaps.length} ${gaps.length === 1 ? 'pendência' : 'pendências'}: ${gapLabels}` : ''}`}
+                        onClick={() => setExpandedId(sheet.id)}
+                      >
+                        <span className="min-w-0 truncate" title={sheet.name}>{sheet.name}</span>
+                        {gaps.length > 0 && (
+                          <span className={cn(
+                            'flex min-w-0 shrink items-center justify-end gap-2',
+                            hasCriticalGap ? 'text-destructive' : 'text-warning',
+                          )}>
+                            <AlertTriangle className="h-3.5 w-3.5 shrink-0" weight="fill" />
+                            <span className="shrink-0 text-xs">
+                              {gaps.length} {gaps.length === 1 ? 'pendência' : 'pendências'}
+                            </span>
+                            <span className="hidden max-w-[360px] truncate text-xs font-normal text-muted-foreground md:inline" title={gapLabels}>
+                              {gapLabels}
+                            </span>
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
               </div>
             </div>
           )
@@ -777,7 +714,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
                 value={cloneSearchTerm}
                 onChange={setCloneSearchTerm}
                 resultCount={cloneFilteredSheets.length}
-                totalCount={sheets.length}
+                totalCount={activeSheets.length}
               />
               <div className="max-h-56 overflow-y-auto rounded-md border border-border divide-y divide-border/50">
                 {cloneFilteredSheets.length === 0 && cloneSearchTerm.trim() && (
@@ -858,6 +795,12 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
           )}
         </DialogContent>
       </Dialog>
+
+      <TechnicalSheetRetirementDialog
+        open={!!deleteSheetTarget}
+        sheet={deleteSheetTarget}
+        onOpenChange={(open) => { if (!open) setDeleteSheetTarget(null); }}
+      />
     </>
   );
 }
@@ -937,13 +880,13 @@ function QuickCreateForm({ onCreated, onCancel }: { onCreated: (id: string) => v
   const { data: shoeCategories = [] } = useShoeCategories();
   const shoeCategoryOptions = shoeCategories.length > 0 ? shoeCategories : SHOE_CATEGORIES;
   // Form reformulado em 2026-05: agora inclui campos essenciais (descrição,
-  // coleção, status da ficha) pra reduzir asymmetry com edit. Removido
+  // coleção, preço-base, status da ficha) pra reduzir asymmetry com edit. Removido
   // 'gender' — campo morto sem uso em business logic. Layout em 2 seções
   // (Identidade + Especificações) com Cancelar visível no rodapé.
   const [form, setForm] = useState({
     name: '', brand: '', model: '', code: '', shoe_category: '',
     sizes: '33-41', status: 'Ativo',
-    collection: '', description: '',
+    collection: '', description: '', sale_price: 0,
     images: [] as string[],
   });
   const [uploading, setUploading] = useState(false);
@@ -1088,6 +1031,24 @@ function QuickCreateForm({ onCreated, onCancel }: { onCreated: (id: string) => v
         </div>
 
         <div>
+          <Label htmlFor="qc-sale-price" className="text-xs">Preço-base comercial (R$/par)</Label>
+          <NumberInput
+            id="qc-sale-price"
+            value={form.sale_price}
+            onChange={v => setForm(f => ({ ...f, sale_price: v }))}
+            className="mt-1 h-9"
+            min={0}
+            step="0.01"
+            decimals={2}
+            unit="R$"
+            placeholder="0,00"
+          />
+          <p className={cn('mt-1 text-xs', form.sale_price > 0 ? 'text-muted-foreground' : 'text-warning')}>
+            Tabela do cliente ou preço próprio da variante prevalecem. Se nenhuma das três fontes tiver preço, o valor positivo informado no item será aceito sem validação de piso comercial.
+          </p>
+        </div>
+
+        <div>
           <Label className="text-xs mb-1.5 block">Grade de Numeração</Label>
           <div className="flex gap-2 mb-2 flex-wrap">
             <Button type="button" variant={form.sizes === '34-40' || form.sizes === '33-41' ? 'default' : 'outline'} size="sm" className="gap-1.5 h-8"
@@ -1151,9 +1112,152 @@ function QuickCreateForm({ onCreated, onCancel }: { onCreated: (id: string) => v
 }
 
 /* ===== Completeness Indicator ===== */
-function SheetCompleteness({ sheet }: { sheet: any }) {
+/* ===== DETAIL SHELL (catalog list stays lite; full row loads here) ===== */
+function TechnicalSheetExpandedPanel({
+  sheetId,
+  onBack,
+  materialVariantsBySheet,
+  auditBySheetId,
+  auditLoaded,
+}: {
+  sheetId: string;
+  onBack: () => void;
+  materialVariantsBySheet: Map<string, ReferenceMaterialVariant[]> | undefined;
+  auditBySheetId: Map<string, TechnicalSheetAuditRow>;
+  auditLoaded: boolean;
+}) {
+  const { data: sheet, isLoading, isError, error, refetch } = useTechnicalSheetDetail(sheetId);
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center py-16">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <Card className="border-dashed">
+        <CardContent className="flex flex-col items-center justify-center py-16 text-muted-foreground space-y-4">
+          <div className="h-12 w-12 rounded-full bg-destructive/10 flex items-center justify-center">
+            <AlertTriangle className="h-6 w-6 text-destructive" />
+          </div>
+          <div className="text-center">
+            <p className="font-semibold text-foreground">Erro ao carregar a ficha</p>
+            <p className="text-sm">
+              {error instanceof Error
+                ? error.message
+                : 'Não foi possível carregar os dados desta referência.'}
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => refetch()} className="gap-2">
+              <RefreshCw className="h-4 w-4" />
+              Tentar novamente
+            </Button>
+            <Button variant="outline" onClick={onBack} className="gap-2">
+              <ArrowLeft className="h-4 w-4" />
+              Voltar para a Lista
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!sheet) {
+    return (
+      <Card className="border-dashed">
+        <CardContent className="flex flex-col items-center justify-center py-16 text-muted-foreground space-y-4">
+          <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
+            <Package className="h-6 w-6 text-muted-foreground/50" />
+          </div>
+          <div className="text-center">
+            <p className="font-semibold text-foreground">Ficha não encontrada</p>
+            <p className="text-sm">Esta referência não existe mais ou foi removida.</p>
+          </div>
+          <Button variant="outline" onClick={onBack} className="gap-2">
+            <ArrowLeft className="h-4 w-4" />
+            Voltar para a Lista
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground" onClick={onBack}>
+          <ArrowLeft className="h-4 w-4" /> Voltar à lista
+        </Button>
+        <Separator orientation="vertical" className="h-5" />
+        <div className="flex items-center gap-2 min-w-0">
+          {sheet.images && Array.isArray(sheet.images) && sheet.images.length > 0 ? (
+            <SignedImage src={String(sheet.images[0])} alt={sheet.name} className="h-8 w-8 rounded object-cover border shrink-0" />
+          ) : (
+            <div className="h-8 w-8 rounded bg-muted flex items-center justify-center border shrink-0">
+              <Package className="h-4 w-4 text-muted-foreground/40" />
+            </div>
+          )}
+          <div className="flex flex-col">
+            <h3 className="font-bold text-lg truncate leading-tight">{sheet.name}</h3>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground uppercase font-bold flex-wrap">
+              <span>{sheet.upper_material || 'Material s/ def.'}</span>
+              <ChevronRight className="h-2.5 w-2.5" />
+              <span className="text-primary truncate max-w-[150px]">
+                {/* reference_color_variants não vem no select('*') do detail. */}
+                Sem cores
+              </span>
+              <ChevronRight className="h-2.5 w-2.5" />
+              <span className="bg-primary/10 text-primary px-1 rounded">{globalFormatCurrency(sheet.sale_price || 0)}</span>
+            </div>
+          </div>
+          {(materialVariantsBySheet?.get(sheet.id)?.length ?? 0) > 0 && (
+            <Badge
+              variant="secondary"
+              className="px-2 py-0 h-5 text-xs bg-warning/10 text-warning border-warning/30 gap-1 shrink-0"
+              title={materialVariantsBySheet!.get(sheet.id)!.map((v) => v.material_name).join(', ')}
+            >
+              <Package className="h-3 w-3" /> {materialVariantsBySheet!.get(sheet.id)!.length} Materiais
+            </Badge>
+          )}
+          {sheet.shoe_category && <Badge variant="outline" className="text-xs shrink-0">{sheet.shoe_category}</Badge>}
+        </div>
+      </div>
+
+      <AppErrorBoundary key={sheet.id} fallbackTitle="Não foi possível abrir esta Ficha Técnica">
+        <SheetCompleteness
+          sheet={sheet}
+          audit={auditBySheetId.get(sheet.id)}
+          auditLoaded={auditLoaded}
+        />
+        <VariantOverviewHeader sheet={sheet} />
+        <Card>
+          <CardContent className="p-4 sm:p-6">
+            <SheetDetail sheet={sheet} onSaveSuccess={onBack} />
+          </CardContent>
+        </Card>
+      </AppErrorBoundary>
+    </div>
+  );
+}
+
+function SheetCompleteness({
+  sheet,
+  audit,
+  auditLoaded,
+}: {
+  sheet: TechnicalSheetReadinessInput;
+  audit?: TechnicalSheetAuditSignals | null;
+  auditLoaded: boolean;
+}) {
   const stageIcons = { identity: Tag, engineering: Wrench, stock: Package, production: Factory, release: Check };
-  const checks = evaluateTechnicalSheetReadiness(sheet).map((stage) => ({
+  const checks = evaluateTechnicalSheetReadiness(
+    sheet,
+    auditLoaded ? (audit || {}) : undefined,
+  ).map((stage) => ({
     label: stage.label,
     ok: stage.ready,
     icon: stageIcons[stage.key],
@@ -1264,7 +1368,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
   const activeTabGuidance = tabGuidance[abaAtiva] ?? tabGuidance.id;
   const queryClient = useQueryClient();
   const updateSheet = useUpdateSheet();
-  const { data: sheetAudit } = useQuery({
+  const { data: sheetAudit, isSuccess: sheetAuditLoaded } = useQuery({
     queryKey: ['technical_sheet_audit', sheet.id],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -1315,11 +1419,16 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
    const addComponentColorRow = useAddComponentColorRow();
    const updateComponentColorRow = useUpdateComponentColorRow();
    const deleteComponentColorRow = useDeleteComponentColorRow();
-    const bulkAddMaterials = useBulkAddSheetMaterials();
     const [isSoleFachetado, setIsSoleFachetado] = useState(false);
  
   const { data: componentSheets = [] } = useComponentSheets();
-  const { data: allSheets = [] } = useTechnicalSheets();
+  const { data: allSheets = [] } = useTechnicalSheetsCatalog();
+  const activeAllSheets = useMemo(
+    () => allSheets.filter((candidate) => !(
+      candidate as typeof candidate & { retired_at?: string | null }
+    ).retired_at),
+    [allSheets],
+  );
   const { data: groups = [] } = useQuery({
     queryKey: ['product_groups_for_straps'],
     queryFn: async () => {
@@ -1329,6 +1438,19 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       const { data, error } = await supabase.from('product_groups').select('id, name, parent_group_id, consumption_unit, dimensions_length, dimensions_width, dimensions_unit').order('name');
       if (error) {
         console.error('[TechnicalSheets] Falha ao carregar product_groups:', error);
+        return [];
+      }
+      return data ?? [];
+    },
+  });
+  const { data: strapPeelLayers = [] } = useQuery({
+    queryKey: ['product_group_layers', 'strap-peel'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('product_group_layers')
+        .select('composite_group_id, component_group_id, is_color_source');
+      if (error) {
+        console.error('[TechnicalSheets] Falha ao carregar product_group_layers:', error);
         return [];
       }
       return data ?? [];
@@ -1374,16 +1496,11 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
     f.strap_colors = ensureTechnicalStrapLineIds(f.strap_colors);
     return f;
   });
-  const activeStrapIdentityGroups = useMemo(() => {
-    const selectedIds = new Set((form.strap_colors || [])
-      .map((line) => line.identity_group_id)
-      .filter(Boolean));
-    return (strapCatalog?.groups || [])
-      .filter((group) => selectedIds.has(group.id) || (strapCatalog?.products || []).some((product) => (
-        product.group_id === group.id && product.active !== false && product.unit === 'm'
-      )))
-      .sort((left, right) => left.name.localeCompare(right.name, 'pt-BR'));
-  }, [form.strap_colors, strapCatalog]);
+  // Baseline isolado do formulário para que o save geral mande somente as
+  // colunas realmente alteradas. Não comparar direto com `sheet`: o form
+  // hidrata defaults e normaliza identidades legadas de tiras ao abrir.
+  const persistedFormRef = React.useRef<SheetFormData>(cloneTechnicalSheetSnapshot(form));
+  const strapMaterialCandidatesQuery = useStrapBaseGroupCandidates(!!form.has_straps);
   const hasReferenceBaseStrapLine = useMemo(
     () => (form.strap_colors || []).some(line => strapIdentityBasis(line) === 'reference_base'),
     [form.strap_colors],
@@ -1415,6 +1532,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       groups,
       products,
       variants: materialVariantsBySheet?.get(sheet.id) || [],
+      layers: strapPeelLayers,
     });
   }, [
     sheet,
@@ -1430,6 +1548,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
     groups,
     products,
     materialVariantsBySheet,
+    strapPeelLayers,
   ]);
   const [dirty, setDirty] = useState(false);
 
@@ -1464,6 +1583,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       }
     }
     f.strap_colors = ensureTechnicalStrapLineIds(f.strap_colors);
+    persistedFormRef.current = cloneTechnicalSheetSnapshot(f);
     setForm(f);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sheet.id, sheet.updated_at]);
@@ -1582,7 +1702,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       : materialField === 'lining_material' ? 'lining_consumption' : 'insole_consumption';
 
     const isInfantil = form.shoe_category === 'Infantil';
-    const candidates = allSheets
+    const candidates = activeAllSheets
       .filter((s: any) =>
         s.id !== sheet.id &&
         s[materialField] === groupName &&
@@ -1611,7 +1731,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
   /** Auto-fill sole specs from last sheet that used the same sole_material, filtered by adult/infantil */
   const autoFillSole = async (soleName: string) => {
     const isInfantil = form.shoe_category === 'Infantil';
-    const candidates = allSheets
+    const candidates = activeAllSheets
       .filter((s: any) =>
         s.id !== sheet.id &&
         s.sole_material === soleName &&
@@ -1643,11 +1763,14 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
   const autoFillFromSoleSpecs = async (soleProductId: string) => {
     if (!soleProductId) return;
     try {
-      // 1. Try sole_technical_specs first (direct per-sole specs)
-      // ⚠ Forro do CABEDAL (lining_consumption) NÃO vem mais do solado — desde
-      // 2026-06-30 é cabedal a cabedal, definido aqui na ficha do modelo. Do
-      // solado só puxamos o que é padronizado por solado: placa da palmilha e
-      // forração da palmilha (napa que reveste a placa).
+      // Quantidade por numeração de placa / forração da palmilha é padrão do
+      // SOLADO (Consumo Padrão → sole_group_standard_items → mirror em
+      // sole_technical_specs). A ficha só escolhe o GRUPO do material.
+      // ⚠ NÃO gravar *_per_size na ficha: mergePerSizeConsumption deixa a ficha
+      // por cima do solado e "Puxar do Solado" congelava o mapa — editar o
+      // Consumo Padrão depois não mudava o modal/débito.
+      // Forro do CABEDAL: escalar opcional na ficha; mapa por número também é do
+      // solado (papel forro_cabedal) quando sole_drives_consumption.
       const { data: specs } = await supabase
         .from('sole_technical_specs')
         .select('size, insole_consumption_dm2, insole_lining_consumption_dm2')
@@ -1656,26 +1779,24 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       const hasDirectSpecs = specs && specs.some(s => s.insole_consumption_dm2 !== null || (s as any).insole_lining_consumption_dm2 !== null);
 
       if (hasDirectSpecs) {
-        const insoleMap: Record<string, number> = {};
-        const insoleLiningMap: Record<string, number> = {};
+        const insoleVals: number[] = [];
+        const insoleLiningVals: number[] = [];
         specs!.forEach(s => {
-          if (s.insole_consumption_dm2 !== null) insoleMap[String(s.size)] = Number(s.insole_consumption_dm2);
+          if (s.insole_consumption_dm2 !== null) insoleVals.push(Number(s.insole_consumption_dm2));
           const il = (s as any).insole_lining_consumption_dm2;
-          if (il !== null && il !== undefined) insoleLiningMap[String(s.size)] = Number(il);
+          if (il !== null && il !== undefined) insoleLiningVals.push(Number(il));
         });
-        const insoleVals = Object.values(insoleMap);
-        const insoleLiningVals = Object.values(insoleLiningMap);
         if (insoleVals.length > 0) {
           updateField('insole_consumption', Number((insoleVals.reduce((a, b) => a + b, 0) / insoleVals.length).toFixed(4)));
-          updateField('insole_consumption_per_size', insoleMap);
-          flashField('insole_consumption_per_size');
+          updateField('insole_consumption_per_size', {});
+          flashField('insole_consumption');
         }
         if (insoleLiningVals.length > 0) {
           updateField('insole_lining_consumption', Number((insoleLiningVals.reduce((a, b) => a + b, 0) / insoleLiningVals.length).toFixed(4)));
-          updateField('insole_lining_consumption_per_size', insoleLiningMap);
-          flashField('insole_lining_consumption_per_size');
+          updateField('insole_lining_consumption_per_size', {});
+          flashField('insole_lining_consumption');
         }
-        toast.success("Consumos técnicos do solado aplicados com sucesso!");
+        toast.success('Escalars sincronizados. O mapa por numeração continua no Hub → Solados → Consumo Padrão.');
         return;
       }
 
@@ -1733,9 +1854,10 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
           liningApplied = true;
         }
         if (insoleGroup && productGroupId === insoleGroup.id && !insoleApplied) {
+          // Mesma regra da placa: escalar só; mapa por número no Consumo Padrão.
           updateField('insole_consumption', Number(avg.toFixed(4)));
-          updateField('insole_consumption_per_size', sizeMap);
-          flashField('insole_consumption_per_size');
+          updateField('insole_consumption_per_size', {});
+          flashField('insole_consumption');
           insoleApplied = true;
         }
       }
@@ -1744,7 +1866,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
         const parts = [];
         if (liningApplied) parts.push('forração');
         if (insoleApplied) parts.push('palmilha');
-        toast.success(`Consumos de ${parts.join(' e ')} aplicados do grupo!`);
+        toast.success(`Escalars de ${parts.join(' e ')} aplicados. Mapa por numeração: Hub → Solados → Consumo Padrão.`);
       } else {
         toast.info("Consumo para este solado não encontrado nas fichas de componentes. Configure na edição do grupo em Estoque.");
       }
@@ -1754,153 +1876,6 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       toast.error("Erro ao puxar dados do solado: " + err.message);
     }
   };
-
-   /**
-    * Auto-fills standard sole items (glue, thread, EVA, etc) into the BOM
-    * based on the selected sole product.
-    */
-   const autoFillStandardItemsFromSole = async (soleProductId: string) => {
-     try {
-       // Resolve o solado (pra obter group_id e sole_classification)
-       const soleProd = (products as any[]).find(p => p.id === soleProductId);
-       const soleGroupId = soleProd?.group_id;
-       const soleClass = soleProd?.sole_classification as 'tradicional' | 'palmilha_pronta' | 'conjugado' | undefined;
-
-       // CAMINHO NOVO (Fase 1+ reformulação): sole_standard_materials POR GRUPO
-       // com filtro applies_to vs sole_classification. Tem prioridade sobre
-       // os caminhos legacy abaixo.
-       let standardByGroup: any[] = [];
-       if (soleGroupId) {
-         const { data } = await (supabase as any)
-           .from('sole_standard_materials')
-           .select('material_product_id, consumption_per_pair, unit_override, applies_to, notes, products!material_product_id(group_id, color, unit)')
-           .eq('sole_group_id', soleGroupId);
-         standardByGroup = (data || []).filter((row: any) => {
-           const a = row.applies_to;
-           if (a === 'any') return true;
-           if (!soleClass) return false;
-           if (a === 'palmilha_cortada') return soleClass === 'tradicional' || soleClass === 'conjugado';
-           if (a === 'palmilha_pronta') return soleClass === 'palmilha_pronta';
-           return false;
-         });
-       }
-
-       // Mantém legacy: 1) sole_standard_items_consumption (por tamanho)
-       const { data: standardCons, error: consError } = await supabase
-         .from('sole_standard_items_consumption')
-         .select('standard_item_id, size, consumption, unit')
-         .eq('sole_product_id', soleProductId);
-       if (consError) throw consError;
-
-       // 2) Items globais marcados como `is_standard_sole_item` (cola, linha,
-       // EVA, etc. que sempre entram). BUG 19/05/2026: query antiga incluía
-       // `category.eq.Solado,category.eq.Componente` no .or() — isso despejava
-       // TODOS os solados e componentes do estoque no BOM da nova ficha
-       // (centenas de produtos), o que não fazia sentido nenhum.
-       // Critério correto: só items explicitamente marcados como "padrão global".
-       // BUG 02/08/2026: a flag estava marcada em 7 SOLADOS (não em cola/linha),
-       // e o loop abaixo despejava os 7 no BOM de toda ficha nova a 1 par/par —
-       // 56 linhas em 8 fichas, inflando custeio e MRP. O solado da referência
-       // vem de `technical_sheets.sole_group_id`, nunca de linha de BOM, então
-       // filtramos a categoria aqui além do CHECK do banco
-       // (chk_standard_sole_item_not_a_sole, mig 20261102120000).
-      const { data: globalStandardItems, error: globalError } = await supabase.from('products')
-        .select('id, name, group_id, unit_price, unit, category')
-        .eq('is_standard_sole_item', true)
-        .eq('active', true)
-        .not('category', 'ilike', '%solado%')
-        .not('category', 'ilike', 'sola');
-
-       if (globalError) throw globalError;
-
-       if (
-         standardByGroup.length === 0 &&
-         (!standardCons || standardCons.length === 0) &&
-         (!globalStandardItems || globalStandardItems.length === 0)
-       ) {
-         return;
-       }
-
-       const newMaterials: any[] = [];
-       const existingProductIds = new Set(sheetMaterials.map((m: any) => m.product_id));
-
-       // NOVO CAMINHO: insere os materiais padrão do grupo (por par)
-       for (const row of standardByGroup) {
-         const pid = row.material_product_id;
-         if (existingProductIds.has(pid)) continue;
-         newMaterials.push({
-           product_id: pid,
-           group_id: row.products?.group_id,
-           quantity_per_unit: Number(row.consumption_per_pair) || 0,
-           consumption_per_size: {},
-           color: row.products?.color || '',
-           notes: row.notes || `Padrão do solado (${row.applies_to === 'any' ? 'sempre' : row.applies_to})`,
-           sizes: form.sizes,
-         });
-         existingProductIds.add(pid);
-       }
-
-       // Process specific sole standard items first
-       if (standardCons && standardCons.length > 0) {
-         const itemsMap = new Map<string, { unit: string; bySize: Record<string, number> }>();
-         standardCons.forEach(c => {
-           const entry = itemsMap.get(c.standard_item_id) || { unit: c.unit, bySize: {} };
-           entry.bySize[String(c.size)] = Number(c.consumption);
-           itemsMap.set(c.standard_item_id, entry);
-         });
-
-         for (const [productId, info] of itemsMap.entries()) {
-           if (existingProductIds.has(productId)) continue;
-           const prod = (products as any[]).find(p => p.id === productId);
-           if (!prod) continue;
-
-           const avg = Object.values(info.bySize).reduce((a, b) => a + b, 0) / Object.values(info.bySize).length;
-           newMaterials.push({
-             product_id: productId,
-             group_id: prod.group_id,
-             quantity_per_unit: Number(avg.toFixed(4)),
-             consumption_per_size: info.bySize,
-             color: prod.color || '',
-             notes: 'Item padrão do solado',
-             sizes: form.sizes
-           });
-           existingProductIds.add(productId);
-         }
-       }
-
-       // Process global standard items (fixed consumption 1 or based on category)
-       if (globalStandardItems && globalStandardItems.length > 0) {
-         globalStandardItems.forEach(item => {
-           if (existingProductIds.has(item.id)) return;
-           newMaterials.push({
-             product_id: item.id,
-             group_id: item.group_id,
-             quantity_per_unit: 1, // Default to 1 unit
-             consumption_per_size: {},
-             color: '',
-             notes: 'Item padrão global',
-             sizes: form.sizes
-           });
-           existingProductIds.add(item.id);
-         });
-       }
-
-         if (newMaterials.length > 0) {
-           bulkAddMaterials.mutate({ sheetId: sheet.id, materials: newMaterials });
-           const fromNew = standardByGroup.length;
-           const fromLegacy = newMaterials.length - fromNew;
-           if (fromNew > 0 && fromLegacy === 0) {
-             toast.success(`${fromNew} ${fromNew === 1 ? 'material padrão do solado adicionado' : 'materiais padrão do solado adicionados'} ao BOM.`);
-           } else if (fromNew > 0 && fromLegacy > 0) {
-             toast.success(`${fromNew} do cadastro do solado + ${fromLegacy} legados adicionados ao BOM.`);
-           } else {
-             toast.success(`${newMaterials.length} ${newMaterials.length === 1 ? 'item padrão adicionado' : 'itens padrão adicionados'} ao BOM.`);
-           }
-         }
-     } catch (err: any) {
-       console.error("Error auto-filling standard items:", err);
-     }
-   };
 
    /**
     * Puxa a grade do solado (yield_per_size do component_sheet do solado)
@@ -1940,6 +1915,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       // Cinto-e-suspensório: garante que production_sectors/aviamento_steps
       // jamais saem pelo save geral (escrita exclusiva do ProductionSectorsTab).
       const { production_sectors: _ps, aviamento_steps: _as, ...payload } = form as any;
+      payload.direct_components = normalizeDirectComponentSectors(payload.direct_components);
       const hasUpperMaterial = String(payload.upper_material || '').trim().length > 0;
       if (hasUpperMaterial && !upperMaterialGroup) {
         toast.error(
@@ -1975,10 +1951,35 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
         payload.upper_material_group_id = upperMaterialGroup.id;
         payload.upper_material = upperMaterialGroup.name;
       }
+      const leftoverIssues = validateCabedalLeftovers(
+        payload.components_accessories || [],
+        payload,
+      );
+      if (leftoverIssues.length > 0) {
+        toast.error(leftoverIssues[0].message, { duration: 8000 });
+        setAbaAtiva('engineering');
+        return;
+      }
       const normalizedStraps = ensureTechnicalStrapLineIds(payload.strap_colors);
       if (form.has_straps) {
         if (!strapCatalog || strapCatalogQuery.isError) {
           toast.error('Não foi possível validar as famílias e medidas de tira. Recarregue o catálogo canônico.');
+          return;
+        }
+        const needsOwnMaterial = normalizedStraps.some(line => strapMaterialMode(line) !== 'follow_reference');
+        if (needsOwnMaterial && (strapMaterialCandidatesQuery.isLoading || strapMaterialCandidatesQuery.isError || !strapMaterialCandidatesQuery.data)) {
+          toast.error('Aguarde o catálogo de materiais elegíveis ou recarregue a ficha antes de salvar.');
+          setAbaAtiva('range-aviamento');
+          return;
+        }
+        const eligibleMaterialIds = strapMaterialCandidatesQuery.data
+          ? new Set(strapMaterialCandidatesQuery.data.map(group => group.id))
+          : undefined;
+        const materialIssues = normalizedStraps.flatMap((line, index) => validateStrapMaterialPolicy(line, eligibleMaterialIds)
+          .map(issue => `${line.label || `Tira ${index + 1}`}: ${issue}`));
+        if (materialIssues.length > 0) {
+          toast.error(materialIssues[0], { duration: 8000 });
+          setAbaAtiva('range-aviamento');
           return;
         }
         const invalidLines = normalizedStraps.filter((line) => (
@@ -1989,10 +1990,36 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
           setAbaAtiva('range-aviamento');
           return;
         }
+        const unsupportedSource = normalizedStraps.find(line => !isTechnicalStrapSourceAllowed(
+          line, technicalStrapSourcePolicy(strapCatalog, line.measure_id),
+        ));
+        if (unsupportedSource) {
+          toast.error(`${unsupportedSource.label || 'Tira'}: escolha uma origem cadastrada para esta família e medida.`, { duration: 8000 });
+          setAbaAtiva('range-aviamento');
+          return;
+        }
       }
       payload.strap_colors = normalizedStraps;
-      await updateSheet.mutateAsync({ id: sheet.id, data: payload });
-      await queryClient.invalidateQueries({ queryKey: ['sheet_variant_cascade', sheet.id] });
+      const patch = buildTechnicalSheetPatch(
+        persistedFormRef.current as unknown as Record<string, unknown>,
+        payload as Record<string, unknown>,
+        ['production_sectors', 'aviamento_steps'],
+      ) as Partial<SheetFormData>;
+
+      // O usuário pode editar e voltar ao valor original. Nesse caso a UI
+      // estava dirty, mas não existe alteração persistível — não há motivo
+      // para emitir UPDATE nem acionar os gatilhos da ficha.
+      if (Object.keys(patch).length === 0) {
+        setDirty(false);
+        onSaveSuccess();
+        return;
+      }
+
+      await updateSheet.mutateAsync({ id: sheet.id, data: patch });
+      // A ficha já foi persistida; a aba de variantes pode revalidar em
+      // segundo plano sem manter a ação "Salvar" presa a outra ida à rede.
+      void queryClient.invalidateQueries({ queryKey: ['sheet_variant_cascade', sheet.id] });
+      persistedFormRef.current = cloneTechnicalSheetSnapshot(payload as SheetFormData);
       setDirty(false);
       onSaveSuccess();
     } catch (err) {
@@ -2087,6 +2114,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       <TechnicalSheetReadinessRail
         sheet={{ ...sheet, ...form, production_sectors: sheet.production_sectors }}
         audit={sheetAudit || undefined}
+        auditLoaded={sheetAuditLoaded}
         onSelectTab={setAbaAtiva}
       />
 
@@ -2509,8 +2537,11 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
 
                      // Auto-fill lining/insole specs from sole technical specs
                      autoFillFromSoleSpecs(productId);
-                     // Auto-fill standard items like glue/EVA/thread
-                     autoFillStandardItemsFromSole(productId);
+                     // Cola, linha, EVA e os demais itens padrão permanecem
+                     // vinculados ao grupo do solado em
+                     // `sole_group_standard_items`. O motor de consumo herda
+                     // esse cadastro ao vivo; copiá-lo para `sheet_materials`
+                     // congela valores e unidades no BOM da referência.
                    } else {
                      setIsSoleFachetado(false);
                    }
@@ -2630,13 +2661,6 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                     <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Cabedal</span>
                   </div>
                   {(() => {
-                    if (form.has_straps) {
-                      return (
-                        <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                          Modelo de tiras
-                        </span>
-                      );
-                    }
                     const ups = (form as any).upper_consumption_per_size || {};
                     const vals = Object.values(ups).map(Number).filter((v: number) => v > 0);
                     const avg = vals.length ? vals.reduce((a: number, b: number) => a + b, 0) / vals.length : (Number(form.upper_consumption) || 0);
@@ -2835,17 +2859,15 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                         <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/80">
                           Por numeração
                         </span>
-                        {/* Quando o modelo tem TIRAS, o consumo é número-a-número
-                            (cada tira tem seu cm/par). A "média" é enganosa nesse
-                            caso — ocultamos pra evitar leitura errada. */}
-                        {!form.has_straps && (
-                          <span className="text-xs text-muted-foreground">
-                            Média <strong className="tabular-nums text-foreground">{avg.toFixed(4)}</strong> {unit}/par
-                            {showPerFoot && avg > 0 && (
-                              <span className="ml-1.5 text-muted-foreground/70 tabular-nums">= {(avg / 2).toFixed(4)} {unit}/pé</span>
-                            )}
-                          </span>
-                        )}
+                        {/* Esta grade pertence ao material exibido no bloco atual.
+                            Tiras habilitadas têm grades próprias na aba de Aviamento
+                            e não escondem mais a média do Cabedal. */}
+                        <span className="text-xs text-muted-foreground">
+                          Média <strong className="tabular-nums text-foreground">{avg.toFixed(4)}</strong> {unit}/par
+                          {showPerFoot && avg > 0 && (
+                            <span className="ml-1.5 text-muted-foreground/70 tabular-nums">= {(avg / 2).toFixed(4)} {unit}/pé</span>
+                          )}
+                        </span>
                       </div>
                       <div className="flex flex-wrap gap-1.5">
                         {cabedalSizes.map(size => {
@@ -2920,15 +2942,6 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                           onChange={v => {
                             applyUpperMaterialGroup(v);
                             autoFillConsumption(v, 'upper_material');
-                            // MUTEX Cabedal × Tiras: selecionar cabedal significa que o modelo
-                            // NÃO é de tiras. Auto-desliga has_straps + limpa strap_colors pra
-                            // não ficar dado órfão. Reverso (ligar has_straps limpar cabedal)
-                            // tá em outro handler abaixo.
-                            if (v && form.has_straps) {
-                              updateField('has_straps', false);
-                              updateField('strap_colors' as any, []);
-                              toast.info('Modelo trocado pra Cabedal — Tiras desativadas');
-                            }
                           }}
                           // Callback estrutural opcional do seletor hierárquico. O
                           // onChange acima mantém compatibilidade pelo nome; este
@@ -3106,7 +3119,8 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                     {/* Componentes Extras do Cabedal — cada um soma ao consumo principal
                         (mandatory=true → débito independente, não substitui o cabedal).
                         Ex: Napa principal (dm²) + Elástico Traseiro 6mm (m) +
-                        Elástico Frente 8mm (m) + Tira reforço (m).
+                        Elástico Frente 8mm (m) + Tira reforço (m) + Sobra de napa
+                        de outra espessura (NAPA CONHAQUE 1.2 além da 1.0).
                         Cada componente tem label livre pra distinguir na ficha. */}
                     <div className="mt-3 pt-3 border-t border-dashed border-amber-300 dark:border-amber-800">
                       <div className="flex items-center justify-between mb-3">
@@ -3116,7 +3130,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                             Materiais do Cabedal
                           </span>
                           <span className="text-xs text-muted-foreground">
-                            · o cabedal pode ter vários materiais; cada um tem seu consumo e debita estoque
+                            · vários materiais, inclusive sobra de napa de outra espessura; cada um debita estoque
                           </span>
                         </div>
                         <Button
@@ -3125,7 +3139,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                           className="h-8 gap-1.5 text-xs"
                           onClick={() => {
                             const arr = [...(form.components_accessories || [])];
-                            arr.push({ material: '', mandatory: true, label: '', consumption: 0, consumption_per_size: {} });
+                            arr.push({ material: '', mandatory: true, leftover: false, label: '', consumption: 0, consumption_per_size: {} });
                             updateField('components_accessories', arr);
                           }}
                         >
@@ -3140,21 +3154,26 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                             <div className="flex items-start gap-2 rounded-md border border-dashed border-border bg-muted/20 px-3 py-2.5">
                               <Layers className="h-4 w-4 shrink-0 text-muted-foreground/60 mt-0.5" />
                               <p className="text-xs text-muted-foreground">
-                                Só o <strong>Material 1</strong>. Adicione Material 2, 3… quando o cabedal tiver mais de um
-                                material — cada um com seu próprio consumo e débito de estoque.
+                                Só o <strong>Material 1</strong>. Adicione Material 2 quando o cabedal tiver elástico, reforço
+                                ou <strong>sobra de napa de outra espessura</strong> (ex.: CONHAQUE 1.2 além da 1.0).
                               </p>
                             </div>
                           );
                         }
                         return mandatoryItems.map(({ extra, rawIdx }, displayIdx) => {
                           const unit = getUnitForGroupName(extra.material || '', extra.material_unit);
+                          const leftover = isLeftoverCabedalExtra(extra, form);
+                          const needsPin = leftover && leftoverRequiresPin(extra, form);
+                          const leftoverIssue = leftover
+                            ? validateCabedalLeftovers([extra], form)[0]
+                            : null;
                           return (
                             <div key={rawIdx} className="space-y-2 border-l-2 border-amber-400/60 pl-3 mb-4">
                               {/* Material (grupo) + remover. Campo de nome livre removido —
                                   o material selecionado já identifica (Material 1, 2, 3…). */}
                               <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-end">
                                 <GroupMaterialSelect
-                                label={`Material ${displayIdx + 2}`}
+                                label={`Material ${displayIdx + 2}${leftover ? ' · Sobra' : ''}`}
                                 value={extra.material || ''}
                                 onChange={v => {
                                   const arr = [...(form.components_accessories || [])];
@@ -3171,11 +3190,15 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                                   // Trocar o grupo invalida o item fixado de outro grupo.
                                   const prevGrpName = (arr[rawIdx]?.material || '').trim();
                                   const clearPin = prevGrpName !== v.trim();
-                                  arr[rawIdx] = {
+                                  const nextExtra = {
                                     ...arr[rawIdx], material: v, mandatory: true, label: v,
+                                    leftover: false,
                                     ...(material_unit ? { material_unit } : {}),
                                     ...(clearPin ? { product_id: null, product_name: null } : {}),
                                   };
+                                  nextExtra.leftover = isLeftoverCabedalExtra(nextExtra, form);
+                                  if (nextExtra.leftover) nextExtra.label = `Sobra · ${v}`;
+                                  arr[rawIdx] = nextExtra;
                                   updateField('components_accessories', arr);
                                 }}
                                 />
@@ -3188,17 +3211,25 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                                 </Button>
                               </div>
 
+                              {leftover && (
+                                <p className="text-xs text-amber-700 dark:text-amber-400">
+                                  Sobra de outra espessura — soma ao Material 1 e debita o SKU próprio. Não substitui a napa principal.
+                                </p>
+                              )}
+
                               {renderWidthWarn(extra.material)}
 
-                              {/* Linha 2b: Item específico (opcional). Fixa o produto exato
-                                  pro débito; em branco = resolve pela cor do PV (padrão). */}
+                              {/* Linha 2b: Item específico. Sobra do mesmo grupo exige pin;
+                                  em branco = resolve pela cor do PV (padrão). */}
                               {extra.material && (() => {
                                 const grp = (groups || []).find((x: any) => (x.name || '').trim() === (extra.material || '').trim());
                                 const itemsOfGroup = grp ? (products || []).filter((p: any) => p.group_id === grp.id && p.active) : [];
                                 return (
                                   <div>
                                     <Label className="text-xs text-muted-foreground">
-                                      Item específico <span className="text-muted-foreground/60">(opcional — débito exato)</span>
+                                      Item específico {needsPin
+                                        ? <span className="text-destructive">(obrigatório na sobra do mesmo grupo)</span>
+                                        : <span className="text-muted-foreground/60">(opcional — débito exato)</span>}
                                     </Label>
                                     <Select
                                       value={extra.product_id || '__none__'}
@@ -3214,10 +3245,12 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                                       }}
                                     >
                                       <SelectTrigger className="h-8 text-xs mt-1">
-                                        <SelectValue placeholder="Resolver pela cor (padrão)" />
+                                        <SelectValue placeholder={needsPin ? 'Escolher o SKU da sobra' : 'Resolver pela cor (padrão)'} />
                                       </SelectTrigger>
                                       <SelectContent>
-                                        <SelectItem value="__none__" className="text-xs">Resolver pela cor (padrão)</SelectItem>
+                                        {!needsPin && (
+                                          <SelectItem value="__none__" className="text-xs">Resolver pela cor (padrão)</SelectItem>
+                                        )}
                                         {itemsOfGroup.map((p: any) => (
                                           <SelectItem key={p.id} value={p.id} className="text-xs">
                                             {p.name}{p.color ? ` (${p.color})` : ''} [{p.unit || 'un'}]
@@ -3229,6 +3262,9 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                                       <p className="text-xs text-success mt-1">
                                         Débito fixo neste item (ignora a cor do PV).
                                       </p>
+                                    )}
+                                    {leftoverIssue && (
+                                      <p className="text-xs text-destructive mt-1">{leftoverIssue.message}</p>
                                     )}
                                   </div>
                                 );
@@ -3471,9 +3507,10 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                   )}
                 </div>
                 <div className="space-y-3">
-                  <GroupMaterialSelect label="Placa / EVA" value={form.insole_material} onChange={v => { updateField('insole_material', v); autoFillConsumption(v, 'insole_material'); }} />
-                  {/* Tipo de Placa removido — vem do cadastro do Solado (insole_plate_product
-                      duplicava o que já tá em Solados → Cadastro). */}
+                  <GroupMaterialSelect label="Fibra / placa" value={form.insole_material} onChange={v => { updateField('insole_material', v); autoFillConsumption(v, 'insole_material'); }} />
+                  {/* Tipo de Placa removido — o SKU da fibra pinado em Solados →
+                      Consumo Padrão manda no débito; a ficha só escolhe o grupo
+                      como fallback quando o solado não tem pin. */}
 
                   {(() => {
                     const soleProd = form.sole_group_id ? products.find(p => p.group_id === form.sole_group_id) : null;
@@ -3656,13 +3693,6 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                       { label: 'TIRA 3', color: '' },
                     ]));
                   }
-                  // MUTEX Tiras × Cabedal: ativar tiras significa que o modelo
-                  // NÃO tem cabedal. Limpa nome, UUID, pin e consumo juntos pra
-                  // não deixar identidade/custo fantasma (tira + cabedal somariam).
-                  if (v && (form.upper_material || storedUpperMaterialGroupId)) {
-                    clearUpperMaterial();
-                    toast.info('Modelo trocado pra Tiras — Cabedal desativado');
-                  }
                   // BUG ANTIGO: ao desmarcar 'Habilitar tiras', strap_colors
                   // ficava órfão no JSON. Resultado: PV não sabia se tinha
                   // tiras (has_straps=false mas strap_colors preenchido) e
@@ -3677,8 +3707,10 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
             </div>
             {form.has_straps && (
               <p className="text-xs text-muted-foreground">
-                {hasReferenceBaseStrapLine
-                  ? <>As tiras que seguem a referência usam o material definido em <strong className="text-foreground">Forração</strong>; tiras compradas prontas mantêm o próprio grupo.</>
+                {hasReferenceBaseStrapLine && strapsFollowLining
+                  ? <>Por padrão, esta ficha sem Cabedal usa o material de <strong className="text-foreground">Forração</strong> nas tiras. Na aba Range Aviamento, cada posição pode ter material próprio; tiras compradas prontas mantêm o grupo acabado.</>
+                  : hasReferenceBaseStrapLine
+                  ? <>Por padrão, as tiras usam o material definido em <strong className="text-foreground">Cabedal</strong>. Na aba Range Aviamento, defina um material fixo por posição ou os materiais permitidos no pedido; tiras compradas prontas mantêm o grupo acabado.</>
                   : <>Estas tiras são compradas prontas e usam o próprio grupo configurado na aba <strong className="text-foreground">Range Aviamento</strong>.</>}
               </p>
             )}
@@ -3716,59 +3748,66 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
              </div>
           </div>
 
-          {/* ═══ SECTION 3: BOM (Bill of Materials) ═══ */}
-          <div className="rounded-lg border bg-card p-4">
-            <SheetBOM sheetId={sheet.id} safetyPct={form.safety_margin_pct}
-              onSafetyChange={v => updateField('safety_margin_pct', v)} shoeCategory={form.shoe_category} />
-          </div>
-
-          {/* ═══ SECTION 4: Consumos Técnicos de Componentes ═══ */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* ═══ SECTION 4: Consumos Técnicos de Componentes ═══ */}
-            <div className="rounded-lg border bg-card p-4">
-              <div className="mb-4">
-                <h3 className="text-sm font-bold flex items-center gap-2">
-                  <Layers className="h-4 w-4 text-primary" />
-                  Consumos Técnicos
-                </h3>
+          {/* Seções pesadas (BOM / consumos / custos) só depois do idle —
+              specs da Engenharia ficam interativos no first paint (Fase 3.3). */}
+          <DeferredMount>
+            <Suspense fallback={<div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>}>
+              {/* ═══ SECTION 3: BOM (Bill of Materials) ═══ */}
+              <div className="rounded-lg border bg-card p-4">
+                <SheetBOM sheetId={sheet.id} safetyPct={form.safety_margin_pct}
+                  onSafetyChange={v => updateField('safety_margin_pct', v)} shoeCategory={form.shoe_category} />
               </div>
-              <div className="mb-4 rounded-lg border bg-muted/20 p-3">
-                <p className="text-xs font-semibold">Setor de consumo dos componentes técnicos</p>
-                <p className="mt-1 text-xs text-muted-foreground">A baixa é registrada no início do setor selecionado.</p>
-                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  {[
-                    ['fibra', 'Fibra'],
-                    ['forracao_palmilha', 'Forração da Palmilha'],
-                    ['cabedal', 'Cabedal'],
-                    ['solado', 'Solado'],
-                  ].map(([key, label]) => (
-                    <div key={key}>
-                      <Label className="text-xs text-muted-foreground">{label}</Label>
-                      <Select
-                        value={(form.component_consumption_sectors || {})[key] || ''}
-                        onValueChange={(sector) => updateField('component_consumption_sectors', {
-                          ...(form.component_consumption_sectors || {}), [key]: sector,
-                        })}
-                      >
-                        <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="Selecione" /></SelectTrigger>
-                        <SelectContent>{CONSUMPTION_SECTORS.map(sector => <SelectItem key={sector} value={sector}>{sector}</SelectItem>)}</SelectContent>
-                      </Select>
+
+              {/* ═══ SECTION 4: Consumos Técnicos de Componentes ═══ */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
+                <div className="rounded-lg border bg-card p-4">
+                  <div className="mb-4">
+                    <h3 className="text-sm font-bold flex items-center gap-2">
+                      <Layers className="h-4 w-4 text-primary" />
+                      Consumos Técnicos
+                    </h3>
+                  </div>
+                  <div className="mb-4 rounded-lg border bg-muted/20 p-3">
+                    <p className="text-xs font-semibold">Setor de consumo dos componentes técnicos</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Informe o setor físico responsável pelo consumo. O roteamento é obrigatório para liberar fichas novas.
+                    </p>
+                    <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      {[
+                        ['fibra', 'Fibra'],
+                        ['forracao_palmilha', 'Forração da Palmilha'],
+                        ['cabedal', 'Cabedal'],
+                        ['solado', 'Solado'],
+                      ].map(([key, label]) => (
+                        <div key={key}>
+                          <Label className="text-xs text-muted-foreground">{label}</Label>
+                          <Select
+                            value={(form.component_consumption_sectors || {})[key] || ''}
+                            onValueChange={(sector) => updateField('component_consumption_sectors', {
+                              ...(form.component_consumption_sectors || {}), [key]: sector,
+                            })}
+                          >
+                            <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                            <SelectContent>{CONSUMPTION_SECTORS.map(sector => <SelectItem key={sector} value={sector}>{sector}</SelectItem>)}</SelectContent>
+                          </Select>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  </div>
+                  <ComponentSheets
+                    embedded
+                    filterProductIds={sheetMaterials.map((m) => m.product_id).filter((id): id is string => Boolean(id))}
+                    hideSoles={true}
+                  />
+                </div>
+
+                {/* ═══ SECTION 5: Análise de Custos Unificada ═══ */}
+                <div className="rounded-lg border bg-card p-4 h-full">
+                  <CostsTab sheetId={sheet.id} form={form} groups={groups || []} />
                 </div>
               </div>
-              <ComponentSheets
-                embedded
-                filterProductIds={sheetMaterials.map((m: any) => m.product_id).filter(Boolean)}
-                hideSoles={true}
-              />
-            </div>
-
-            {/* ═══ SECTION 5: Análise de Custos Unificada ═══ */}
-            <div className="rounded-lg border bg-card p-4 h-full">
-              <CostsTab sheetId={sheet.id} form={form} groups={groups || []} />
-            </div>
-          </div>
+            </Suspense>
+          </DeferredMount>
         </TabsContent>
 
         {/* TAB: Range Aviamento — faixas P/M/G próprias do setor de Aviamento */}
@@ -3787,11 +3826,44 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
               <div className="space-y-3">
                 <p className="text-xs text-muted-foreground">
                   Defina quantas tiras este modelo possui, a <strong>família, medida e base de identidade</strong> de cada uma
-                  e o consumo por numeração <strong>por pé</strong> (em cm).
+                  e o consumo por numeração <strong>por pé</strong> (em cm). Cada posição pode seguir o material da referência,
+                  ter material fixo ou permitir escolher o material no pedido.
                   O sistema multiplica por <strong>2</strong> (par = 2 pés) ao calcular o consumo.
-                  As <strong>cores</strong> de cada tira são escolhidas no lançamento do Pedido
-                  de Venda; a identidade técnica fica fixa aqui por UUID.
+                  A <strong>política de cor</strong> define se cada tira segue a cor principal ou recebe
+                  uma seleção própria no Pedido de Venda; a identidade técnica fica fixa aqui por UUID.
                 </p>
+
+                {(form.strap_colors || []).length > 1 && (
+                  <div className="flex flex-col gap-2 rounded-lg border bg-muted/20 p-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium">Mesma estrutura em várias tiras</p>
+                      <p id="replicate-strap-type-help" className="text-xs text-muted-foreground">
+                        Copia família, medida, base e políticas de material e cor da primeira tira para as demais.
+                        Os nomes e consumos de cada tira são mantidos.
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0 gap-1.5"
+                      aria-describedby="replicate-strap-type-help"
+                      disabled={strapCatalogQuery.isLoading || strapCatalogQuery.isError || !hasCanonicalTechnicalStrapIdentity(
+                        form.strap_colors[0],
+                        strapCatalog?.measures || [],
+                        strapCatalog?.types || [],
+                      )}
+                      title="Configure a família, medida e base da primeira tira para aplicar às demais"
+                      onClick={() => {
+                        updateField('strap_colors', replicateFirstTechnicalStrapType(form.strap_colors));
+                        toast.success('Estrutura e políticas de material e cor aplicadas às demais. Salve a ficha para confirmar.');
+                      }}
+                    >
+                      <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+                      Replicar estrutura da 1ª tira
+                    </Button>
+                  </div>
+                )}
 
                 {/* Handling time — only for strap models */}
                 {(form.strap_colors || []).map((strap: any, idx: number) => {
@@ -3860,31 +3932,19 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                           </Button>
                         )}
                       </div>
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-semibold">
-                            Base da identidade <span className="text-destructive">*</span>
-                          </Label>
-                          <Select
-                            value={strapIdentityBasis(strap)}
-                            onValueChange={(value) => {
-                              const updated = [...(form.strap_colors || [])];
-                              updated[idx] = applyTechnicalStrapIdentity(
-                                updated[idx],
-                                value as 'reference_base' | 'finished_product_group',
-                                null,
-                              );
-                              updateField('strap_colors', updated);
-                            }}
-                          >
-                            <SelectTrigger><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="reference_base">Segue a napa da referência</SelectItem>
-                              <SelectItem value="finished_product_group">Grupo próprio · comprada pronta</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        {strapIdentityBasis(strap) === 'reference_base' && (
+                      <TechnicalStrapSourceEditor
+                        line={strap}
+                        label={strap.label || `Tira ${idx + 1}`}
+                        catalog={strapCatalog}
+                        loading={strapCatalogQuery.isLoading}
+                        failed={strapCatalogQuery.isError}
+                        onChange={nextLine => {
+                          const updated = [...(form.strap_colors || [])];
+                          updated[idx] = nextLine;
+                          updateField('strap_colors', updated);
+                        }}
+                      >
+                        {strapIdentityBasis(strap) === 'reference_base' && strapMaterialMode(strap) === 'follow_reference' && (
                           <div className="space-y-1.5">
                             <Label className="text-xs font-semibold">Napa-base definida pela referência</Label>
                             <div className={cn(
@@ -3923,36 +3983,48 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                             )}
                           </div>
                         )}
+                      </TechnicalStrapSourceEditor>
+                      {strapIdentityBasis(strap) === 'reference_base' && (
+                        <TechnicalStrapMaterialPolicyEditor
+                          line={strap}
+                          label={strap.label || `Tira ${idx + 1}`}
+                          groups={strapMaterialCandidatesQuery.data || []}
+                          knownGroups={groups}
+                          loading={strapMaterialCandidatesQuery.isLoading}
+                          failed={strapMaterialCandidatesQuery.isError}
+                          onChange={nextLine => {
+                            const updated = [...(form.strap_colors || [])];
+                            updated[idx] = nextLine;
+                            updateField('strap_colors', updated);
+                          }}
+                        />
+                      )}
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Política de cor</Label>
+                        <Select
+                          value={strapColorMode(strap)}
+                          disabled={strapIdentityBasis(strap) === 'finished_product_group'}
+                          onValueChange={(value) => {
+                            const updated = [...(form.strap_colors || [])];
+                            updated[idx] = applyTechnicalStrapColorMode(
+                              updated[idx],
+                              value as StrapColorMode,
+                            );
+                            updateField('strap_colors', updated);
+                          }}
+                        >
+                          <SelectTrigger aria-label={`Política de cor de ${strap.label || `Tira ${idx + 1}`}`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="follow_main">Segue a cor principal</SelectItem>
+                            <SelectItem value="select_on_order">Selecionar no pedido</SelectItem>
+                          </SelectContent>
+                        </Select>
                         {strapIdentityBasis(strap) === 'finished_product_group' && (
-                          <div className="space-y-1.5">
-                            <Label className="text-xs font-semibold">
-                              Grupo do produto acabado <span className="text-destructive">*</span>
-                            </Label>
-                            <Select
-                              value={strap.identity_group_id || ''}
-                              onValueChange={(groupId) => {
-                                const updated = [...(form.strap_colors || [])];
-                                updated[idx] = applyTechnicalStrapIdentity(
-                                  updated[idx],
-                                  'finished_product_group',
-                                  groupId,
-                                );
-                                updateField('strap_colors', updated);
-                              }}
-                            >
-                              <SelectTrigger className={!strap.identity_group_id ? 'border-destructive focus:ring-destructive' : ''}>
-                                <SelectValue placeholder="Selecione o grupo acabado" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {activeStrapIdentityGroups.map((group) => (
-                                  <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <p className="text-xs text-muted-foreground">
-                              Origem fixa no PV: <strong>Comprar pronta</strong>.
-                            </p>
-                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Tiras compradas prontas sempre exigem seleção de cor no pedido.
+                          </p>
                         )}
                       </div>
                       <div className="space-y-1.5">
@@ -3980,7 +4052,8 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                             const measure = activeStrapMeasures.find((entry) => entry.id === measureId);
                             if (!measure) return;
                             const updated = [...(form.strap_colors || [])];
-                            updated[idx] = applyCanonicalTechnicalStrapMeasure(updated[idx], measure);
+                            if (!strapCatalog) return;
+                            updated[idx] = applyTechnicalStrapMeasureWithSource(updated[idx], measure, strapCatalog);
                             updateField('strap_colors', updated);
                           }}
                         >
@@ -4084,7 +4157,11 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                           </Button>
                         </div>
                       </div>
-                      <span className="text-xs text-muted-foreground">Cor definida no pedido</span>
+                      <span className="text-xs text-muted-foreground">
+                        {strapColorMode(strap) === 'follow_main'
+                          ? 'A tira seguirá a cor principal no Pedido de Venda.'
+                          : 'A cor desta tira será selecionada no Pedido de Venda.'}
+                      </span>
                     </div>
                   );
                 })}
@@ -4116,6 +4193,12 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                         identity_group_id: strapIdentityBasis(last) === 'finished_product_group'
                           ? last?.identity_group_id || null
                           : null,
+                        color_mode: strapColorMode(last),
+                        material_mode: normalizeStrapMaterialPolicy(last || {}).material_mode,
+                        material_group_id: last?.material_group_id || null,
+                        allowed_material_group_ids: Array.isArray(last?.allowed_material_group_ids)
+                          ? [...last.allowed_material_group_ids]
+                          : [],
                         consumption: last?.consumption,
                         consumption_per_size: { ...(last?.consumption_per_size || {}) },
                       },
@@ -4187,7 +4270,9 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
             assemblyCapacityPerDay={Number((sheet as any).assembly_capacity_per_day ?? 0)}
             expeditionCapacityPerDay={Number((sheet as any).expedition_capacity_per_day ?? 0)}
             finishingCapacityPerDay={Number((sheet as any).finishing_capacity_per_day ?? 0)}
-            onUpdateSheet={(data) => updateSheet.mutate({ id: sheet.id, data: data as any })}
+            onUpdateSheet={async (data) => {
+              await updateSheet.mutateAsync({ id: sheet.id, data: data as Partial<SheetFormData> });
+            }}
             activeSectors={Array.isArray((sheet as any).production_sectors) ? ((sheet as any).production_sectors as string[]) : undefined}
             sheetSizes={sheet.sizes || ''}
             // Lê do FORM (não do sheet) e propaga toda edição pro form via
@@ -4204,13 +4289,61 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
           <div className="rounded-lg border bg-muted/20 px-4 py-2.5 flex items-center gap-3">
             <DollarSign className="h-4 w-4 text-primary shrink-0" />
             <div>
-              <div className="text-sm font-bold">Preço de Custo</div>
+              <div className="text-sm font-bold">Custos e preço comercial</div>
               <div className="text-xs text-muted-foreground">
-                Rollup de material (BOM) + mão de obra + overhead. Defina preço de venda e margem por canal.
+                Cadastre o preço-base da referência e acompanhe material (BOM), mão de obra e overhead.
               </div>
             </div>
           </div>
-          <CostsTab sheetId={sheet.id} form={form} groups={groups || []} />
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <DollarSign className="h-4 w-4 text-primary" /> Preço-base comercial da referência
+              </CardTitle>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Valor padrão por par usado quando o cliente não tem tabela de preço e a variante não possui preço próprio.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="max-w-sm">
+                <Label htmlFor={`sheet-sale-price-${sheet.id}`} className="text-xs text-muted-foreground">
+                  Preço-base comercial (R$/par)
+                </Label>
+                <NumberInput
+                  id={`sheet-sale-price-${sheet.id}`}
+                  value={form.sale_price || 0}
+                  onChange={v => updateField('sale_price', v)}
+                  className="mt-1 h-9"
+                  min={0}
+                  step="0.01"
+                  decimals={2}
+                  unit="R$"
+                  placeholder="0,00"
+                />
+              </div>
+              <div className={cn(
+                'rounded-md border px-3 py-2.5 text-xs leading-relaxed flex items-start gap-2',
+                Number(form.sale_price) > 0
+                  ? 'border-success/30 bg-success/10 text-success'
+                  : 'border-warning/30 bg-warning/10 text-warning',
+              )}>
+                {Number(form.sale_price) > 0
+                  ? <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  : <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />}
+                <span>
+                  {Number(form.sale_price) > 0
+                    ? 'Preço-base informado; tabela do cliente ou variante continuam tendo prioridade.'
+                    : 'Sem preço-base nesta ficha: se também não houver tabela efetiva nem preço próprio da variante, o valor positivo informado no item será aceito sem validação de piso comercial.'}
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Prioridade automática: tabela do cliente → variante de material → preço-base da referência. Na ausência das três fontes, vale o preço positivo informado no item.
+              </p>
+            </CardContent>
+          </Card>
+          <Suspense fallback={<div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>}>
+            <CostsTab sheetId={sheet.id} form={form} groups={groups || []} />
+          </Suspense>
         </TabsContent>
 
          {/* TAB: Variantes — apenas MATERIAL (cor é definida no PV)
@@ -4256,500 +4389,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
   );
 }
 
-/* ===== Photos by Color Tab ===== */
-function PhotosByColorTab({ sheetId, form, groups, products }: {
-  sheetId: string;
-  form: SheetFormData;
-  groups: any[];
-  products: any[];
-}) {
-  const qc = useQueryClient();
-  const { data: colorVariants = [], isLoading } = useQuery({
-    queryKey: ['color_variants_photos', sheetId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('reference_color_variants')
-        .select('*')
-        .eq('reference_id', sheetId)
-        .order('color');
-      if (error) throw error;
-      return data || [];
-    },
-  });
 
-  // Cores DISPONÍVEIS EM ESTOQUE (decisão 2026-06-02): só cores de produtos com
-  // quantity>0 nos materiais do modelo (cabedal + forração). Antes listava a
-  // paleta INTEIRA da forração (incl. cores sem material) → confuso. Agora só
-  // aparece o que a fábrica realmente tem em estoque, e por adição sob demanda.
-  const stockColors = useMemo(() => {
-    const groupNames = [form.upper_material, form.lining_material].filter(Boolean) as string[];
-    ((form as any).lining_accessories || []).forEach((c: any) => { if (c.material) groupNames.push(c.material); });
-    const groupIds = new Set(groups.filter((g: any) => groupNames.includes(g.name)).map((g: any) => g.id));
-    const set = new Set<string>();
-    products
-      .filter((p: any) => p.active && Number(p.quantity) > 0 && groupIds.has(p.group_id))
-      .forEach((p: any) => {
-        if (p.color?.trim()) p.color.split(',').forEach((c: string) => { const t = c.trim(); if (t) set.add(t); });
-      });
-    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
-  }, [form, groups, products]);
-
-  // Cores já engajadas: com registro de variante (com/sem foto) + as adicionadas
-  // agora pelo usuário (ainda sem upload). Só estas viram slot de foto.
-  const [addedColors, setAddedColors] = useState<string[]>([]);
-  const shownColors = useMemo(() => {
-    const set = new Set<string>();
-    colorVariants.forEach((v: any) => { if (v.color?.trim()) set.add(v.color.trim()); });
-    addedColors.forEach(c => { if (c.trim()) set.add(c.trim()); });
-    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
-  }, [colorVariants, addedColors]);
-  const pickableColors = useMemo(
-    () => stockColors.filter(c => !shownColors.includes(c)),
-    [stockColors, shownColors],
-  );
-
-  const [uploading, setUploading] = useState<string | null>(null);
-
-  const handleUpload = async (color: string, e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploading(color);
-    try {
-      const ext = file.name.split('.').pop();
-      const fileName = `color-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-      const { error } = await supabase.storage.from('reference-images').upload(fileName, file);
-      if (error) throw error;
-      const { data: { publicUrl } } = supabase.storage.from('reference-images').getPublicUrl(fileName);
-      const existing = colorVariants.find((v: any) => v.color === color);
-      if (existing) {
-        await supabase.from('reference_color_variants').update({ image_url: publicUrl }).eq('id', existing.id);
-      } else {
-        await supabase.from('reference_color_variants').insert({ reference_id: sheetId, color, image_url: publicUrl });
-      }
-      qc.invalidateQueries({ queryKey: ['color_variants_photos', sheetId] });
-      qc.invalidateQueries({ queryKey: ['color_variants', sheetId] });
-      toast.success(`Foto para ${color} salva!`);
-    } catch (err: any) {
-      toast.error(`Erro: ${err.message}`);
-    } finally {
-      setUploading(null);
-    }
-  };
-
-  const handleRemove = async (color: string) => {
-    const existing = colorVariants.find((v: any) => v.color === color);
-    if (existing) {
-      await supabase.from('reference_color_variants').update({ image_url: '' }).eq('id', existing.id);
-      qc.invalidateQueries({ queryKey: ['color_variants_photos', sheetId] });
-      qc.invalidateQueries({ queryKey: ['color_variants', sheetId] });
-      toast.success(`Foto de ${color} removida`);
-    }
-  };
-
-  if (isLoading) return <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>;
-
-  if (stockColors.length === 0 && shownColors.length === 0) {
-    return (
-      <Card className="border-dashed">
-        <CardContent className="p-0">
-          <EmptyState
-            icon={ImagePlus}
-            title="Nenhuma cor em estoque"
-            description='As cores aparecem a partir dos produtos COM estoque (qtd > 0) nos materiais de cabedal/forração deste modelo. Dê entrada de estoque ou ajuste os materiais na aba "Materiais & BOM".'
-            size="sm"
-          />
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      <div>
-        <h3 className="text-sm font-semibold flex items-center gap-2"><ImagePlus className="h-4 w-4 text-primary" /> Fotos por Cor</h3>
-        <p className="text-xs text-muted-foreground mt-1">Adicione uma cor (disponível em estoque) e suba a foto do produto naquela cor. A foto aparece no pedido e na ficha do operador ao escolher a cor.</p>
-      </div>
-
-      <div className="flex items-center gap-2 flex-wrap">
-        <Select value="" onValueChange={(c) => { if (c) setAddedColors(prev => (prev.includes(c) ? prev : [...prev, c])); }}>
-          <SelectTrigger className="h-9 w-72">
-            <SelectValue placeholder={pickableColors.length ? '+ Adicionar cor em estoque…' : 'Todas as cores em estoque já listadas'} />
-          </SelectTrigger>
-          <SelectContent>
-            {pickableColors.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <span className="text-xs text-muted-foreground">{stockColors.length} cor(es) em estoque</span>
-      </div>
-
-      {shownColors.length === 0 ? (
-        <p className="text-sm text-muted-foreground py-6 text-center">Selecione uma cor em estoque acima para subir a foto.</p>
-      ) : (
-      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
-        {shownColors.map(color => {
-          const variant = colorVariants.find((v: any) => v.color === color);
-          const hasImage = variant?.image_url;
-          return (
-            <div key={color} className="relative group flex flex-col items-center">
-              <div className="w-full aspect-square rounded-lg border-2 border-border bg-muted overflow-hidden flex items-center justify-center relative shadow-sm group-hover:border-primary/50 transition-colors">
-                {hasImage ? (
-                  <SignedImage src={variant.image_url} alt={color} className="w-full h-full object-cover" />
-                ) : (
-                  <div className="flex flex-col items-center gap-1 text-muted-foreground/40">
-                    <ImagePlus className="h-8 w-8" />
-                    <span className="text-xs">Sem foto</span>
-                  </div>
-                )}
-                {uploading === color ? (
-                  <div className="absolute inset-0 bg-background/60 flex items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
-                ) : (
-                  <label className="absolute inset-0 cursor-pointer flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 bg-black/60 transition-opacity">
-                    <input type="file" accept="image/*" className="hidden" onChange={(e) => handleUpload(color, e)} />
-                    <Plus className="h-6 w-6 text-white mb-1" />
-                    <span className="text-xs text-white font-bold">{hasImage ? 'Alterar' : 'Upload'}</span>
-                  </label>
-                )}
-                {hasImage && !uploading && (
-                  <Button variant="destructive" size="icon" aria-label="Remover foto da cor" className="h-5 w-5 absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 shadow-sm"
-                    onClick={(e) => { e.stopPropagation(); handleRemove(color); }}>
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
-                )}
-              </div>
-              <span className="text-xs font-semibold mt-1.5 truncate w-full text-center px-1" title={color}>{color}</span>
-              {hasImage && <Badge variant="default" className="text-[8px] h-3.5 px-1 mt-0.5">✓ com foto</Badge>}
-            </div>
-          );
-        })}
-      </div>
-      )}
-    </div>
-  );
-}
-
- const ALL_PRODUCTION_SECTORS = [
-   // Sub-etapas paralelas de Corte (decisão 2026-05-12):
-   //   - Corte Fibra: sempre (todo sapato tem palmilha)
-   //   - Corte Forração: quando o modelo tem forração na palmilha
-   // Costura dividida em DOIS setores independentes que trabalham lado a lado
-   // (decisão do dono 2026-10-01, migration 20261001120000):
-   //   - Costura Palmilha: costura palmilha + forração (interna)
-   //   - Costura Cabedal: costura do cabedal (é a terceirizável)
-   // ⚠ 'Corte Cabedal' NÃO é selecionável: o trigger
-   // tg_normalize_production_sectors descarta ele do array (fora da lista
-   // canônica), então o chip era salvo e sumia em silêncio. A impressão
-   // decide esse setor sozinha por has_straps (modelo sem tiras = corta
-   // cabedal) — não depende do roteiro.
-   // ⚠ A ordem aqui espelha `canonical_stage_order()` no banco. Setor que
-   // você adicionar aqui TEM que entrar na lista canônica do trigger também,
-   // senão o usuário marca, salva, e o valor desaparece sem erro.
-   { name: 'Corte Fibra',      order: 1 },
-   { name: 'Corte Forração',   order: 2 },
-   { name: 'Costura Palmilha', order: 3 },
-   { name: 'Costura Cabedal',  order: 4 },
-   { name: 'Aviamento',        order: 5 },
-   { name: 'Silk',           order: 6 },
-   { name: 'Colagem',        order: 7 },
-   { name: 'Montagem',       order: 8 },
-   { name: 'Solagem',        order: 9 },
-   { name: 'Acabamento',     order: 10 },
-   { name: 'Expedição',      order: 11 },
- ];
-
-// Setores removidos automaticamente pelo trigger do banco
-// (tg_strip_cut_sectors_when_ready_made) quando a palmilha é pronta na cor.
-// O editor desabilita os chips pra não fingir que a seleção foi salva.
-// Palmilha pronta na cor ⇒ não há palmilha pra cortar nem pra costurar. A
-// costura de CABEDAL segue valendo (é outro componente).
-const READY_MADE_STRIPPED_SECTORS = ['Corte Fibra', 'Corte Forração', 'Costura Palmilha'];
- 
-// Etapas fixas do setor Aviamento. Quando o user marca Aviamento em
-// production_sectors, abre um sub-painel pra escolher quais dessas etapas
-// se aplicam à ficha. A ficha de operador renderiza checklist por etapa.
-const AVIAMENTO_STEPS = [
-  'Frente',
-  'Traseira',
-  'Costura de tiras',
-] as const;
-
-// Rótulos disponíveis pra cada tira na "Configuração de Tiras" (onde se
-// define material + consumo por numeração). Antes o rótulo era fixo
-// "TIRA 1/2/3" (badge read-only); agora o usuário escolhe — útil pra marcar
-// uma tira única ("TIRA") ou a de trás ("TRASEIRA"). UPPERCASE pra casar com
-// os defaults antigos já gravados ('TIRA 1' etc.) sem precisar de migração.
-// O label escolhido propaga pro pedido de venda ("Cores das Tiras"), pro
-// resumo de tiras e pras fichas de operador (useOrderStraps lê strap.label).
-const STRAP_LABEL_OPTIONS = [
-  'TIRA',
-  'TIRA 1',
-  'TIRA 2',
-  'TIRA 3',
-  'FRENTE',
-  'TRASEIRA',
-  'LATERAL',
-] as const;
-
-function ProductionSectorsTab({
-  sectors, onSave,
-  aviamentoSteps,
-  insoleReadyMade = false,
-  saving = false,
-}: {
-  sectors: string[];
-  onSave: (sectors: string[], aviamentoSteps: string[]) => void;
-  aviamentoSteps: string[];
-  /** Palmilha pronta na cor: o trigger do banco remove Corte Fibra/
-   *  Corte Forração/Costura do roteiro — os chips ficam desabilitados. */
-  insoleReadyMade?: boolean;
-  saving?: boolean;
-}) {
-   const [localSectors, setLocalSectors] = useState<string[]>(sectors);
-   const [localSteps, setLocalSteps] = useState<string[]>(aviamentoSteps);
-
-   // Re-sincroniza com o valor PERSISTIDO quando a prop muda (refetch
-   // pós-save). Sem isso, o painel continuava exibindo a seleção do usuário
-   // mesmo quando um trigger do banco a revertia — e ele só descobria na
-   // impressão, quando o setor "salvo" não saía (ou saía um removido).
-   // Keyed pelo CONTEÚDO (JSON), não pela referência: o pai recria o array a
-   // cada render e um dep cru resetaria a edição em andamento.
-   const sectorsKey = JSON.stringify(sectors);
-   const stepsKey = JSON.stringify(aviamentoSteps);
-   useEffect(() => { setLocalSectors(JSON.parse(sectorsKey)); }, [sectorsKey]);
-   useEffect(() => { setLocalSteps(JSON.parse(stepsKey)); }, [stepsKey]);
-
-   const toggle = (sectorName: string) => {
-    setLocalSectors(prev => {
-      const next = prev.includes(sectorName)
-        ? prev.filter(s => s !== sectorName)
-        : [...prev, sectorName].sort((a, b) => {
-            const orderA = ALL_PRODUCTION_SECTORS.find(s => s.name === a)?.order || 99;
-            const orderB = ALL_PRODUCTION_SECTORS.find(s => s.name === b)?.order || 99;
-            return orderA - orderB;
-          });
-      return next;
-    });
-  };
-
-  const toggleStep = (step: string) => {
-    setLocalSteps(prev =>
-      prev.includes(step) ? prev.filter(s => s !== step) : [...prev, step],
-    );
-  };
-
-  const isAviamentoActive = localSectors.includes('Aviamento');
-  const hasChanges = JSON.stringify(localSectors) !== JSON.stringify(sectors)
-    || (isAviamentoActive && JSON.stringify(localSteps) !== JSON.stringify(aviamentoSteps));
-
-  return (
-    <div className="space-y-4">
-      <SectionTitle>Setores de Produção</SectionTitle>
-      <p className="text-sm text-muted-foreground">
-        Selecione quais setores esta referência passa durante a produção. Apenas os setores marcados serão criados nas Ordens de Produção.
-      </p>
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-         {ALL_PRODUCTION_SECTORS.map(sector => {
-           const isActive = localSectors.includes(sector.name);
-           // Pronta na cor: o trigger do banco remove esses setores em todo
-           // save — marcar aqui era desfeito em silêncio (toast de sucesso
-           // enganava e a ficha do setor nunca saía na impressão).
-           const lockedByReadyMade = insoleReadyMade && READY_MADE_STRIPPED_SECTORS.includes(sector.name);
-           return (
-             <button
-               key={sector.name}
-               type="button"
-               disabled={lockedByReadyMade}
-               onClick={() => toggle(sector.name)}
-               title={lockedByReadyMade
-                 ? 'Indisponível: palmilha pronta na cor — o sistema remove este setor do roteiro automaticamente. Desligue "Palmilha pronta na cor" para usá-lo.'
-                 : sector.name}
-               className={cn(
-                 'flex items-center gap-2 rounded-lg border-2 px-3 py-2.5 text-sm font-medium transition-all min-w-0',
-                 lockedByReadyMade
-                   ? 'border-border bg-muted/20 text-muted-foreground/50 cursor-not-allowed opacity-60'
-                   : isActive
-                     ? 'border-primary bg-primary/10 text-primary cursor-pointer'
-                     : 'border-border bg-muted/30 text-muted-foreground hover:border-muted-foreground/50 cursor-pointer'
-               )}
-             >
-               <Checkbox checked={isActive && !lockedByReadyMade} className="pointer-events-none shrink-0" />
-               <span className="truncate">{sector.name}</span>
-             </button>
-           );
-         })}
-      </div>
-      {insoleReadyMade && (
-        <p className="text-xs text-warning">
-          ⚠ Palmilha pronta na cor: Corte Fibra, Corte Forração e Costura são removidos do roteiro automaticamente.
-        </p>
-      )}
-
-      {/* Sub-painel Aviamento: aparece só quando Aviamento está selecionado.
-          Cada etapa marcada vira uma linha de checklist na ficha de operador
-          de Aviamento (Frente/Traseira/Costura de tiras × numerações). */}
-      {isAviamentoActive && (
-        <div className="rounded-lg border-2 border-warning/30 bg-warning/5 p-3 space-y-2">
-          <div className="flex items-center gap-2 text-warning">
-            <Factory className="h-4 w-4 shrink-0" />
-            <span className="text-sm font-bold">Etapas de Aviamento</span>
-            <span className="text-xs text-muted-foreground">
-              Marque quais aplicar nesta ficha · vira checklist na ficha de operador
-            </span>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-            {AVIAMENTO_STEPS.map(step => {
-              const isStepActive = localSteps.includes(step);
-              return (
-                <button
-                  key={step}
-                  type="button"
-                  onClick={() => toggleStep(step)}
-                  className={cn(
-                    'flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-all min-w-0',
-                    isStepActive
-                      ? 'border-warning/40 bg-warning/10 text-warning cursor-pointer'
-                      : 'border-border bg-card text-muted-foreground hover:border-warning/40 cursor-pointer'
-                  )}
-                >
-                  <Checkbox checked={isStepActive} className="pointer-events-none shrink-0" />
-                  <span className="truncate">{step}</span>
-                </button>
-              );
-            })}
-          </div>
-          {localSteps.length === 0 && (
-            <p className="text-xs text-warning">
-              ⚠ Nenhuma etapa marcada — ficha de operador vai aparecer sem checklist de Aviamento.
-            </p>
-          )}
-        </div>
-      )}
-
-      {hasChanges && (
-        <div className="flex items-center justify-between bg-primary/5 border border-primary/20 rounded-lg px-4 py-2">
-          <span className="text-sm text-primary font-medium">
-            {localSectors.length} setor(es){isAviamentoActive ? ` · ${localSteps.length} etapa(s) Aviamento` : ''}
-          </span>
-          <Button
-            size="sm"
-            onClick={() => onSave(localSectors, localSteps)}
-            disabled={saving}
-            className="gap-1"
-          >
-            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-            {saving ? 'Salvando...' : 'Salvar'}
-          </Button>
-        </div>
-      )}
-      <div className="flex flex-wrap gap-1.5 mt-2">
-        {localSectors.map(s => (
-          <Badge key={s} variant="default" className="text-xs">{s}</Badge>
-        ))}
-        {localSectors.length === 0 && (
-          <span className="text-sm text-destructive">⚠ Nenhum setor selecionado — a OP usará todos os setores padrão.</span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* ===== SHEET IMAGE UPLOAD ===== */
-function SheetImageUpload({ images, onChange }: { images: any[]; onChange: (imgs: any[]) => void }) {
-  const [uploading, setUploading] = useState(false);
-  const [lightboxOpen, setLightboxOpen] = useState(false);
-  const currentUrl = Array.isArray(images) && images.length > 0 ? (typeof images[0] === 'string' ? images[0] : null) : null;
-
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploading(true);
-    try {
-      const ext = file.name.split('.').pop();
-      const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-      const { error } = await supabase.storage.from('reference-images').upload(fileName, file);
-      if (error) throw error;
-      const { data: { publicUrl } } = supabase.storage.from('reference-images').getPublicUrl(fileName);
-      onChange([publicUrl]);
-      toast.success('Imagem enviada!');
-    } catch (err: any) {
-      toast.error(`Erro ao enviar imagem: ${err.message}`);
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  return (
-    <>
-      <div className="flex items-start gap-4">
-        {currentUrl ? (
-          <div className="relative group">
-            <div className="w-80 h-80 rounded-xl border-2 border-border overflow-hidden bg-muted cursor-zoom-in shadow-sm hover:shadow-md transition-shadow"
-              onClick={() => setLightboxOpen(true)}>
-              <img src={currentUrl} alt="Produto" className="w-full h-full object-cover" />
-            </div>
-            <div className="absolute top-2 right-2 flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
-              <label className="cursor-pointer">
-                <input type="file" accept="image/*" className="hidden" onChange={handleUpload} disabled={uploading} />
-                <div className="h-7 w-7 rounded-md bg-background/90 backdrop-blur border border-border flex items-center justify-center hover:bg-accent transition-colors">
-                  <ImagePlus className="h-3.5 w-3.5 text-foreground" />
-                </div>
-              </label>
-              <Button type="button" variant="destructive" size="icon" aria-label="Remover foto" className="h-7 w-7 rounded-md"
-                onClick={(e) => { e.stopPropagation(); onChange([]); }}>
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <label className="cursor-pointer flex flex-col items-center justify-center w-80 h-80 rounded-xl border-2 border-dashed border-muted-foreground/25 hover:border-primary/50 transition-all bg-muted/20 hover:bg-muted/40">
-            <input type="file" accept="image/*" className="hidden" onChange={handleUpload} disabled={uploading} />
-            {uploading ? <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /> : (
-              <>
-                <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center mb-3">
-                  <ImagePlus className="h-7 w-7 text-muted-foreground/60" />
-                </div>
-                <span className="text-sm font-medium text-muted-foreground">Adicionar foto</span>
-                <span className="text-xs text-muted-foreground/60 mt-1">JPG, PNG ou WebP</span>
-              </>
-            )}
-          </label>
-        )}
-      </div>
-      {lightboxOpen && currentUrl && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm cursor-zoom-out"
-          onClick={() => setLightboxOpen(false)}>
-          <img src={currentUrl} alt="Produto ampliado" className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg shadow-2xl"
-            onClick={(e) => e.stopPropagation()} />
-        </div>
-      )}
-    </>
-  );
-}
-
-/* ===== REUSABLE FIELD COMPONENTS ===== */
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return <h3 className="text-sm font-semibold text-foreground">{children}</h3>;
-}
-
-function FieldInput({ label, value, onChange, placeholder, mono }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; mono?: boolean }) {
-  return (
-    <div>
-      <Label className="text-xs text-muted-foreground">{label}</Label>
-      <Input value={value} onChange={e => onChange(e.target.value)} className={`mt-1 h-9 text-sm ${mono ? 'font-mono' : ''}`} placeholder={placeholder} />
-    </div>
-  );
-}
-
-function FieldSelect({ label, value, onChange, options, placeholder }: { label: string; value: string; onChange: (v: string) => void; options: string[]; placeholder?: string }) {
-  return (
-    <div>
-      <Label className="text-xs text-muted-foreground">{label}</Label>
-      <Select value={value} onValueChange={onChange}>
-        <SelectTrigger className="mt-1 h-9 text-sm"><SelectValue placeholder={placeholder} /></SelectTrigger>
-        <SelectContent>{options.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
-      </Select>
-    </div>
-  );
-}
 
 function ModelColorGallery({ colorPredominanteId, products, colorImages, onChange, sheetId }: {
   colorPredominanteId: string | null;
@@ -5703,1336 +5343,5 @@ function InsoleColorMappingPanel({ sheetId, soleGroupId, insoleGroupName, insole
    trancar pelo nome do grupo escondia 99% do estoque. */
 
 
-function SheetBOM({ sheetId, safetyPct, onSafetyChange, shoeCategory }: {
-  sheetId: string; safetyPct: number;
-  onSafetyChange: (v: number) => void; shoeCategory?: string;
-}) {
-  const MATERIAL_SIZES = getSizesForCategory(shoeCategory);
-  const { data: materials = [], isLoading } = useSheetMaterials(sheetId);
-  const { data: products = [] } = useProducts();
-  const { data: groups = [] } = useQuery({
-    queryKey: ['product_groups_bom'],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('product_groups').select('id, name, description, colors').order('name');
-      if (error) throw error;
-      return data;
-    },
-  });
-  const { data: sheets = [] } = useTechnicalSheets();
-  const { data: componentSheets = [] } = useComponentSheets();
-  const addMaterial = useAddSheetMaterial();
-  const updateMaterial = useUpdateSheetMaterial(sheetId);
-  const deleteMaterial = useDeleteSheetMaterial(sheetId);
-  const bulkAdd = useBulkAddSheetMaterials();
-
-  const [adding, setAdding] = useState(false);
-  const [editing, setEditing] = useState<{ id: string; data: SheetMaterialFormData } | null>(null);
-  const [form, setForm] = useState(emptyMaterialForm);
-  const [showCopyDialog, setShowCopyDialog] = useState(false);
-
-  const componentSheetMap = useMemo(() => {
-    const map: Record<string, any> = {};
-    componentSheets.forEach((cs: any) => { map[cs.product_id] = cs; });
-    return map;
-  }, [componentSheets]);
-
-  const usedProductIds = new Set(materials.map(m => m.product_id));
-  const usedGroupIds = new Set(materials.map((m: any) => m.group_id).filter(Boolean));
-  const availableProducts = products.filter(p => p.active);
-  const otherSheets = sheets.filter((s: any) => s.id !== sheetId);
-
-  const groupedMaterials = useMemo(() => {
-    const groups: Record<string, typeof materials> = {};
-    // Initialize in COMPONENT_CATEGORIES order to preserve hierarchy
-    COMPONENT_CATEGORIES.forEach(cat => { groups[cat.key] = []; });
-    groups['Outros'] = [];
-     materials.forEach(m => {
-       const rawCat = (m as any).products?.category || 'Outros';
-       const cat = matchCategory(rawCat);
-       
-       // As categorias abaixo são tratadas via Especificações Técnicas (modern specs) 
-       // na parte superior da aba. Para evitar confusão visual e duplicidade
-       // no motor de débito de estoque (BOM vs Specs), ocultamos essas categorias do BOM legado.
-       if (['Solado', 'Cabedal', 'Forração', 'Palmilha'].includes(cat)) return;
-
-       if (!groups[cat]) groups[cat] = [];
-       groups[cat].push(m);
-     });
-    // Remove empty categories
-    Object.keys(groups).forEach(k => { if (groups[k].length === 0) delete groups[k]; });
-    return groups;
-  }, [materials]);
-
-  const formatCurrency = (v: number) =>
-    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(v);
-
-  const calcAreaDm2FromComponentSheet = (cs: any): number => {
-    if (!cs?.dimensions_length || !cs?.dimensions_width) return 0;
-    const unit = (cs.dimensions_unit || 'mm').toLowerCase();
-    const length = Number(cs.dimensions_length || 0);
-    const width = Number(cs.dimensions_width || 0);
-    if (length <= 0 || width <= 0) return 0;
-    if (unit === 'mm') return (length * width) / 10000;
-    if (unit === 'cm') return (length * width) / 100;
-    if (unit === 'm') return (length * width) * 100;
-    return 0;
-  };
-
-  const isDm2ConsumptionCategory = (category?: string) => {
-    const cat = (category || '').toLowerCase();
-    return cat.includes('cabedal') || cat.includes('forro') || cat.includes('forração') || cat.includes('palmilha');
-  };
-
-  /** Get the consumption unit — always prefer the product's registered unit from inventory */
-  const getConsumptionUnit = (productId: string): string => {
-    const cs = componentSheetMap[productId];
-    const prod = cs?.products || products.find((p: any) => p.id === productId);
-    const registeredUnit = (prod?.unit || '').trim();
-    const category = (prod?.category || '').toLowerCase().trim();
-
-    // 1. If the product has a registered unit in inventory, use it
-    if (registeredUnit) {
-      const lower = registeredUnit.toLowerCase();
-      // Normalize common variants
-      if (['dm²', 'dm2', 'decímetro quadrado', 'decimetro quadrado'].includes(lower)) return 'dm²';
-      if (['m²', 'm2', 'metro quadrado'].includes(lower)) return 'm²';
-      if (['kg', 'quilo', 'quilograma'].includes(lower)) return 'kg';
-      if (['m', 'metro', 'metros'].includes(lower)) return 'm';
-      if (['un', 'unidade', 'unidades', 'pç', 'peça', 'par', 'pares'].includes(lower)) return registeredUnit;
-      if (['ml', 'litro', 'l', 'g', 'cm'].includes(lower)) return registeredUnit;
-      return registeredUnit;
-    }
-
-    // 2. Fallback by category when no unit is registered
-    if (['cola', 'adesivo', 'hotmel', 'primer', 'químico', 'quimico'].some(a => category.includes(a))) return 'kg';
-    if (['componente', 'acessório', 'acessorio', 'embalagem', 'aviamento', 'ferramentas'].some(a => category.includes(a))) return 'un';
-
-    // 3. If component sheet has plate dimensions → dm²
-    if (cs) {
-      const hasPlate = cs.dimensions_length > 0 && cs.dimensions_width > 0;
-      if (hasPlate) return 'dm²';
-    }
-
-    return 'dm²';
-  };
-
-  const handleGroupSelect = (groupId: string) => {
-    // Find a representative product from this group
-    const groupProducts = products.filter(p => p.group_id === groupId && p.active);
-    const rep = groupProducts[0];
-    if (!rep) return;
-    
-    const cs = componentSheetMap[rep.id];
-    const yieldPerSize: Record<string, number> = {};
-    
-    if (cs) {
-      const dims: string[] = [];
-      if (cs.dimensions_length) dims.push(`${cs.dimensions_length}`);
-      if (cs.dimensions_width) dims.push(`${cs.dimensions_width}`);
-      if (cs.dimensions_thickness) dims.push(`${cs.dimensions_thickness}`);
-      const dimStr = dims.length > 0 ? `${dims.join(' × ')} ${cs.dimensions_unit || 'mm'}` : '';
-
-      // Build per-size consumption from yield_per_size
-      const yieldEntries = Object.entries(cs.yield_per_size || {});
-      yieldEntries.forEach(([size, v]: [string, any]) => {
-        const numVal = Number(v);
-        if (Number.isFinite(numVal) && numVal > 0) yieldPerSize[size] = numVal;
-      });
-
-      const avgConsumption = yieldEntries.length > 0
-        ? yieldEntries.reduce((sum: number, [, v]: [string, any]) => sum + Number(v), 0) / yieldEntries.length
-        : 0;
-
-      setForm(f => ({
-        ...f,
-        product_id: rep.id,
-        group_id: groupId,
-        consumption_sector: f.consumption_sector || suggestedConsumptionSector(rep.category),
-        width: dimStr || f.width,
-        weight: f.weight,
-        quantity_per_unit: avgConsumption > 0 ? Math.round(avgConsumption * 10000) / 10000 : f.quantity_per_unit,
-        consumption_per_size: Object.keys(yieldPerSize).length > 0 ? yieldPerSize : f.consumption_per_size,
-      }));
-    } else {
-      setForm(f => ({ ...f, product_id: rep.id, group_id: groupId, consumption_sector: f.consumption_sector || suggestedConsumptionSector(rep.category) }));
-    }
-  };
-
-  const handleProductSelect = (productId: string) => {
-    const prod = products.find(p => p.id === productId);
-    const cs = componentSheetMap[productId];
-    const yieldPerSize: Record<string, number> = {};
-
-    if (cs) {
-      const yieldEntries = Object.entries(cs.yield_per_size || {});
-      yieldEntries.forEach(([size, v]: [string, any]) => {
-        const numVal = Number(v);
-        if (Number.isFinite(numVal) && numVal > 0) yieldPerSize[size] = numVal;
-      });
-      const avgConsumption = yieldEntries.length > 0
-        ? yieldEntries.reduce((sum: number, [, v]: [string, any]) => sum + Number(v), 0) / yieldEntries.length
-        : 0;
-
-      setForm(f => ({
-        ...f,
-        product_id: productId,
-        group_id: prod?.group_id || null,
-        consumption_sector: f.consumption_sector || suggestedConsumptionSector(prod?.category),
-        quantity_per_unit: avgConsumption > 0 ? Math.round(avgConsumption * 10000) / 10000 : f.quantity_per_unit,
-        consumption_per_size: Object.keys(yieldPerSize).length > 0 ? yieldPerSize : f.consumption_per_size,
-      }));
-    } else {
-      setForm(f => ({ ...f, product_id: productId, group_id: prod?.group_id || null, consumption_sector: f.consumption_sector || suggestedConsumptionSector(prod?.category) }));
-    }
-  };
-
-  /** Products within the selected group for the product picker */
-  const groupProductsForSelection = useMemo(() => {
-    if (!form.group_id) return [];
-    return products.filter(p => p.group_id === form.group_id && p.active);
-  }, [form.group_id, products]);
-
-  /** Recalculate average from per-size consumption */
-  const recalcAvgFromPerSize = (perSize: Record<string, number>) => {
-    const vals = Object.values(perSize).filter(v => v > 0);
-    return vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
-  };
-
-  const getCostPerPair = (m: any) => {
-    const prod = (m as any).products;
-    const unitPrice = Number(prod?.unit_price || 0);
-    const cs = componentSheetMap[m.product_id] || null;
-    // Regra canônica: material de área (dm²/par) com produto em unidade física
-    // (m/cm/placa) é convertido pela largura/área da ficha ANTES de × preço
-    // (senão infla ~100×). Itens diretos (cola/caixa/tira) seguem qty × preço × perda.
-    return bomMaterialCostPerPair(Number(m.quantity_per_unit), unitPrice, prod?.unit, cs).cost;
-  };
-
-  const handleAdd = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const hasPerSize = Object.values(form.consumption_per_size || {}).some(v => Number(v) > 0);
-    if (!form.product_id || !form.consumption_sector || (form.quantity_per_unit <= 0 && !hasPerSize)) return;
-
-    const prod = products.find(p => p.id === form.product_id);
-    const isSolado = normalizeForSearch(prod?.category).includes('solado') || normalizeForSearch(prod?.category).includes('sola');
-
-    if (isSolado) {
-      try {
-        const { data: structures } = await supabase
-          .from('sole_structures')
-          .select('*')
-          .eq('sole_id', form.product_id);
-        
-        const { data: specs } = await supabase
-          .from('sole_technical_specs')
-          .select('*')
-          .eq('sole_id', form.product_id);
-
-        if (structures && structures.length > 0) {
-          const toAdd: SheetMaterialFormData[] = [{ ...form }];
-          
-          for (const struct of structures) {
-            if (!struct.default_group_id) continue;
-
-            // Forro do CABEDAL não é auto-adicionado do solado (2026-06-30): é
-            // cabedal a cabedal, definido na própria ficha do modelo. Só a
-            // estrutura de Palmilha (placa) entra automaticamente do solado.
-            if (struct.component_type === 'Forro') continue;
-
-            // Check if already in materials
-            const alreadyExists = materials.some((m: any) => m.group_id === struct.default_group_id);
-            if (alreadyExists) continue;
-
-            const groupProds = products.filter(p => p.group_id === struct.default_group_id && p.active);
-            const rep = groupProds[0];
-            if (!rep) continue;
-
-            const perSize: Record<string, number> = {};
-            specs?.forEach(s => {
-              if (s.insole_consumption_dm2 && Number(s.insole_consumption_dm2) > 0) perSize[String(s.size)] = Number(s.insole_consumption_dm2);
-            });
-
-            const avg = Object.values(perSize).length > 0 
-              ? Object.values(perSize).reduce((a, b) => a + b, 0) / Object.values(perSize).length 
-              : 0;
-
-            toAdd.push({
-              product_id: rep.id,
-              group_id: struct.default_group_id,
-              quantity_per_unit: avg,
-              consumption_per_size: perSize,
-              color: '',
-              width: '',
-              weight: '',
-              supplier: '',
-              notes: `Automático via Solado ${prod?.name}`,
-              sizes: '',
-              consumption_sector: suggestedConsumptionSector(rep.category),
-            });
-          }
-
-          if (toAdd.length > 1) {
-            await bulkAdd.mutateAsync({ sheetId, materials: toAdd });
-            setAdding(false);
-            setForm(emptyMaterialForm);
-            return;
-          }
-        }
-      } catch (err) {
-        console.error('Erro ao buscar estruturas do solado:', err);
-      }
-    }
-
-    try {
-      await addMaterial.mutateAsync({ sheetId, data: form });
-      setAdding(false);
-      setForm(emptyMaterialForm);
-    } catch (err) {
-      // toast is already handled by the hook
-    }
-  };
-
-
-  const handleEdit = (m: any) => {
-    setEditing({
-      id: m.id,
-      data: {
-        product_id: m.product_id,
-        group_id: m.group_id || null,
-        quantity_per_unit: m.quantity_per_unit,
-        consumption_per_size: m.consumption_per_size || {},
-        color: m.color || '',
-        width: m.width || '',
-        weight: m.weight || '',
-        supplier: m.supplier || '',
-        notes: m.notes || '',
-        sizes: m.sizes || '',
-        consumption_sector: m.consumption_sector || '',
-      },
-    });
-  };
-
-  const handleUpdateSubmit = async () => {
-    if (!editing) return;
-    try {
-      await updateMaterial.mutateAsync({ id: editing.id, data: editing.data });
-      setEditing(null);
-    } catch (err) {
-      // toast is already handled by the hook
-    }
-  };
-
-  const handleCopyFrom = async (sourceSheetId: string) => {
-    const { data } = await supabase.from('sheet_materials')
-      .select('product_id, group_id, quantity_per_unit, color, width, weight, supplier, notes, sizes, consumption_sector')
-      .eq('sheet_id', sourceSheetId);
-    if (!data?.length) { toast.error('Ficha sem materiais'); return; }
-    const toAdd = (data as any[]).filter(m => !usedProductIds.has(m.product_id)).map(m => ({ ...m, sizes: m.sizes || '' }));
-    if (!toAdd.length) { toast.info('Todos os materiais já estão na ficha'); return; }
-    bulkAdd.mutate({ sheetId, materials: toAdd }, { onSuccess: () => setShowCopyDialog(false) });
-  };
-
-  if (isLoading) return <Loader2 className="h-4 w-4 animate-spin" />;
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <SectionTitle>Bill of Materials (BOM)</SectionTitle>
-        <div className="flex gap-1">
-          {otherSheets.length > 0 && (
-            <Button variant="outline" size="sm" onClick={() => setShowCopyDialog(!showCopyDialog)} className="gap-1 h-7 text-xs"><Copy className="h-3 w-3" /> Copiar</Button>
-          )}
-          <Button variant="outline" size="sm" onClick={() => setAdding(!adding)} className="gap-1 h-7 text-xs"><Plus className="h-3 w-3" /> Material</Button>
-        </div>
-      </div>
-
-      {showCopyDialog && (
-        <div className="p-3 rounded-md border bg-muted/30 space-y-2">
-          <p className="text-xs font-medium text-muted-foreground">Copiar materiais de outra ficha:</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto">
-            {otherSheets.map((s: any) => (
-              <Button key={s.id} variant="ghost" size="sm" className="justify-start h-auto py-2 text-left" onClick={() => handleCopyFrom(s.id)}>
-                <span className="text-sm font-medium">{s.name}</span>
-              </Button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {adding && (
-        <div className="p-4 rounded-lg border-2 border-dashed border-primary/30 bg-primary/5 space-y-3">
-          <p className="text-xs font-semibold text-primary">Adicionar Material ao BOM</p>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {/* Group selector */}
-            <div className="col-span-2 sm:col-span-3">
-              <Label className="text-xs">Grupo de Material</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" role="combobox" className="mt-1 h-9 w-full justify-between text-sm font-normal">
-                    {form.group_id ? (groups.find((g: any) => g.id === form.group_id)?.name || 'Grupo selecionado') : 'Selecionar grupo...'}
-                    <ChevronsUpDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-50" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-[min(400px,calc(100vw-2rem))] p-0" align="start">
-                  <Command shouldFilter={false}>
-                    <CommandInput placeholder="Buscar grupo..." />
-                    <CommandList>
-                      <CommandEmpty>Nenhum grupo encontrado</CommandEmpty>
-                      <CommandGroup>
-                        {groups.filter((g: any) => !usedGroupIds.has(g.id)).map((g: any) => (
-                          <CommandItem key={g.id} value={g.id} onSelect={() => handleGroupSelect(g.id)}>
-                            <Check className={cn("mr-2 h-4 w-4", form.group_id === g.id ? "opacity-100" : "opacity-0")} />
-                            <div className="flex flex-col">
-                              <span className="text-sm">{g.name}</span>
-                              {g.description && <span className="text-xs text-muted-foreground">{g.description}</span>}
-                              {g.colors && <span className="text-xs text-muted-foreground">Cores: {g.colors}</span>}
-                            </div>
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            {/* Product selector within group */}
-            {form.group_id && groupProductsForSelection.length > 1 && (
-              <div className="col-span-2 sm:col-span-3">
-                <Label className="text-xs font-semibold text-primary">Item Específico do Grupo</Label>
-                <Select value={form.product_id} onValueChange={handleProductSelect}>
-                  <SelectTrigger className="mt-1 h-9 text-sm"><SelectValue placeholder="Selecionar item..." /></SelectTrigger>
-                  <SelectContent>
-                    {groupProductsForSelection.map(p => (
-                      <SelectItem key={p.id} value={p.id}>
-                        <span className="flex items-center gap-2">
-                          <span className="font-medium">{p.name}</span>
-                          {p.color && <Badge variant="outline" className="text-xs">{p.color}</Badge>}
-                          <span className="text-xs text-muted-foreground font-mono">{p.unit}</span>
-                          <span className="text-xs text-muted-foreground font-mono">
-                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(p.unit_price || 0)}
-                          </span>
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {groupProductsForSelection.length} itens no grupo — cada item pode ter preço e consumo diferentes
-                </p>
-              </div>
-            )}
-
-            {/* Fallback: individual product for items without group */}
-            {!form.group_id && (
-              <div className="col-span-2 sm:col-span-3">
-                <Label className="text-xs text-muted-foreground">Ou selecione um produto individual (sem grupo)</Label>
-                <Select value={form.product_id} onValueChange={handleProductSelect}>
-                  <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="Produto individual..." /></SelectTrigger>
-                  <SelectContent>
-                    {availableProducts.filter(p => !p.group_id).map(p => (
-                      <SelectItem key={p.id} value={p.id} disabled={usedProductIds.has(p.id)}>
-                        <span className="flex items-center gap-2">
-                          {p.name}
-                          <span className="text-xs text-muted-foreground font-mono">{p.sku}</span>
-                          <Badge variant="outline" className="text-xs">{p.category}</Badge>
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {/* Selected product info card */}
-            {form.product_id && (() => {
-              const prod = products.find(p => p.id === form.product_id);
-              const cs = componentSheetMap[form.product_id];
-              if (!prod) return null;
-              return (
-                <div className="col-span-2 sm:col-span-3 rounded-md border border-accent bg-accent/10 p-3 space-y-1">
-                  <div className="flex items-center gap-2">
-                    <Package className="h-4 w-4 text-primary" />
-                    <span className="text-xs font-semibold">{prod.name}</span>
-                    {prod.color && <Badge variant="outline" className="text-xs">{prod.color}</Badge>}
-                    <Badge variant="secondary" className="text-xs ml-auto">{getConsumptionUnit(prod.id)}</Badge>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                    <div><span className="text-muted-foreground">Preço un.:</span> <span className="font-mono font-semibold">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(prod.unit_price || 0)}</span></div>
-                    <div><span className="text-muted-foreground">Estoque:</span> <span className="font-mono">{(prod.quantity ?? 0).toLocaleString('pt-BR')}</span></div>
-                    {cs && cs.dimensions_length > 0 && (
-                      <div><span className="text-muted-foreground">Dim.:</span> <span className="font-mono">{cs.dimensions_length}×{cs.dimensions_width} {cs.dimensions_unit}</span></div>
-                    )}
-                  </div>
-                  {!cs && (
-                    <div className="flex items-center gap-2 mt-1 text-warning">
-                      <AlertTriangle className="h-3.5 w-3.5" />
-                      <span className="text-xs">Sem Ficha de Componente — custo será Qtd/par × Preço unitário</span>
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
-
-            <div>
-              <Label className="text-xs">Fornecedor</Label>
-              <Input value={form.supplier} onChange={e => setForm(f => ({ ...f, supplier: e.target.value }))} className="mt-1 h-9 text-sm" />
-            </div>
-            <div>
-              <Label className="text-xs">Setor de consumo <span className="text-destructive">*</span></Label>
-              <Select value={form.consumption_sector} onValueChange={v => setForm(f => ({ ...f, consumption_sector: v }))}>
-                <SelectTrigger className="mt-1 h-9 text-sm"><SelectValue placeholder="Selecione o setor" /></SelectTrigger>
-                <SelectContent>
-                  {CONSUMPTION_SECTORS.map(sector => <SelectItem key={sector} value={sector}>{sector}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <p className="mt-1 text-xs text-muted-foreground">Baixa no início deste setor. A sugestão pode ser ajustada.</p>
-            </div>
-          </div>
-
-          {/* Per-size consumption grid */}
-          <div>
-            <Label className="text-xs font-semibold">Consumo por Numeração ({getConsumptionUnit(form.product_id)}/par)</Label>
-            <p className="text-xs text-muted-foreground mb-1.5">
-              Defina o consumo unitário para cada tamanho. O cálculo industrial usa exclusivamente estes valores por numeração.
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {MATERIAL_SIZES.map(size => {
-                const sizeKey = String(size);
-                const perSize = form.consumption_per_size || {};
-                return (
-                  <div key={size} className="flex flex-col items-center gap-0.5">
-                    <span className="text-xs font-mono text-muted-foreground">{size}</span>
-                    <NumberInput
-                      value={perSize[sizeKey] || 0}
-                      onChange={(val) => {
-                        const newPerSize = { ...perSize, [sizeKey]: val };
-                        const avg = recalcAvgFromPerSize(newPerSize);
-                        setForm(f => ({
-                          ...f,
-                          consumption_per_size: newPerSize,
-                          quantity_per_unit: avg > 0 ? Math.round(avg * 10000) / 10000 : f.quantity_per_unit,
-                        }));
-                      }}
-                      className="w-[78px] h-7 text-xs text-center font-mono"
-                      placeholder="0"
-                      step="0.001"
-                      unit={getConsumptionUnit(form.product_id)}
-                    />
-                  </div>
-                );
-              })}
-              <div className="flex flex-col gap-0.5 justify-end">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 text-xs"
-                  onClick={() => {
-                    const perSize = form.consumption_per_size || {};
-                    // Find the last filled value
-                    let lastVal = 0;
-                    for (let i = MATERIAL_SIZES.length - 1; i >= 0; i--) {
-                      const v = Number(perSize[String(MATERIAL_SIZES[i])] || 0);
-                      if (v > 0) { lastVal = v; break; }
-                    }
-                    if (lastVal <= 0) return;
-                    const newPerSize: Record<string, number> = {};
-                    MATERIAL_SIZES.forEach(s => {
-                      const existing = Number(perSize[String(s)] || 0);
-                      newPerSize[String(s)] = existing > 0 ? existing : lastVal;
-                    });
-                    const avg = recalcAvgFromPerSize(newPerSize);
-                    setForm(f => ({ ...f, consumption_per_size: newPerSize, quantity_per_unit: avg > 0 ? Math.round(avg * 10000) / 10000 : f.quantity_per_unit }));
-                  }}
-                >
-                  Preencher Vazios
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-2 pt-2">
-            <Button size="sm" variant="outline" onClick={() => { setAdding(false); setForm(emptyMaterialForm); }}>Cancelar</Button>
-            <Button size="sm" onClick={handleAdd} disabled={!form.product_id || !form.consumption_sector || (form.quantity_per_unit <= 0 && Object.values(form.consumption_per_size || {}).every(v => Number(v) <= 0)) || addMaterial.isPending}>
-              {addMaterial.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Adicionar'}
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Materials Table */}
-      {materials.length > 0 && (
-        <div className="rounded-lg border overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-muted/30">
-                <TableHead className="text-xs">Material / Grupo</TableHead>
-                <TableHead className="text-xs">Cat.</TableHead>
-                <TableHead className="text-xs font-mono">NCM</TableHead>
-                <TableHead className="text-xs font-mono">SKU</TableHead>
-                <TableHead className="text-xs">Dimensões</TableHead>
-                <TableHead className="text-xs">Un.</TableHead>
-                <TableHead className="text-xs text-right">Qtd/Par</TableHead>
-                <TableHead className="text-xs text-center">Rend.</TableHead>
-                <TableHead className="text-xs">Forn.</TableHead>
-                <TableHead className="text-xs">Setor</TableHead>
-                <TableHead className="text-xs text-right">Custo/Par</TableHead>
-                <TableHead className="w-16"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(() => {
-                const entries = Object.entries(groupedMaterials);
-                let lastSection = '';
-                const rows: React.ReactNode[] = [];
-                
-                entries.forEach(([cat, mats]) => {
-                  const catConfig = COMPONENT_CATEGORIES.find(c => c.key === cat);
-                  const CatIcon = catConfig?.icon || Box;
-                  const section = catConfig?.section || 'modelo';
-                  
-                  // Add section header when transitioning
-                  if (section !== lastSection) {
-                    lastSection = section;
-                    rows.push(
-                      <TableRow key={`section-${section}`} className="border-t-2 border-primary/20">
-                        <TableCell colSpan={12} className="py-2 bg-primary/5">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold uppercase tracking-wider text-primary">
-                              {section === 'base' ? '📐 Base do Solado — Consumo padrão' : '🎨 Depende do Modelo'}
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                              {section === 'base' ? '(indiferente à cor do solado)' : '(específico por referência)'}
-                            </span>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  }
-                  
-                  rows.push(
-                    <TableRow key={`cat-${cat}`} className="bg-muted/20">
-                      <TableCell colSpan={12} className="py-1.5">
-                        <div className="flex items-center gap-2">
-                          <CatIcon className={`h-3.5 w-3.5 ${catConfig?.color || 'text-muted-foreground'}`} />
-                          <span className="text-xs font-semibold">{catConfig?.label || cat}</span>
-                          <Badge variant="outline" className="text-xs">{mats.length}</Badge>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                  
-                  mats.forEach(m => {
-                    const prod = (m as any).products;
-                    const groupInfo = (m as any).product_groups;
-                    const cs = componentSheetMap[m.product_id];
-                    const costPair = getCostPerPair(m);
-                    const areaDm2 = cs ? calcAreaDm2FromComponentSheet(cs) : 0;
-                    const pairsPerPlate = areaDm2 > 0 && Number(m.quantity_per_unit) > 0 ? Math.floor(areaDm2 / Number(m.quantity_per_unit)) : 0;
-                    const displayName = groupInfo?.name || prod?.name || '—';
-                    const perSize = (m as any).consumption_per_size || {};
-                    const perSizeEntries = Object.entries(perSize).filter(([, v]: [string, any]) => Number(v) > 0);
-
-                    // Aviso de conversão incompleta: produto comprado em unidade diferente
-                    // do estoque mas sem fator/largura cadastrado → débito errado.
-                    let conversionIssue: string | null = null;
-                    if (prod) {
-                      const ctx = {
-                        unit: prod.unit || 'un',
-                        purchase_unit: prod.purchase_unit,
-                        conversion_rate: prod.conversion_rate,
-                        dimensions_width: prod.dimensions_width,
-                      };
-                      const hasDifferentUnits = ctx.purchase_unit && ctx.purchase_unit !== ctx.unit;
-                      if (hasDifferentUnits) {
-                        if (needsWidthForConversion(ctx) && (!ctx.dimensions_width || ctx.dimensions_width <= 0)) {
-                          conversionIssue = `Falta largura — ${ctx.purchase_unit} → ${ctx.unit} requer dimensions_width.`;
-                        } else if (effectiveConversionFactor(ctx) === 1 && ctx.purchase_unit !== ctx.unit) {
-                          conversionIssue = `Falta fator — informe quantos ${ctx.unit} cabem em 1 ${ctx.purchase_unit}.`;
-                        }
-                      }
-                    }
-
-                    // Consumo de ÁREA (dm²→metro) usa a largura da FICHA DE COMPONENTE.
-                    // Se a FT existe mas está SEM largura e o produto é linear (m/cm), o
-                    // consumo infla ~100× no PV/custeio (bug clássico de napa no BOM,
-                    // 2026-05-30). Alta confiança: só dispara quando a FT existe (cs) —
-                    // material linear nativo (elástico) não tem FT, então não alarma.
-                    if (!conversionIssue && cs && Number(cs.dimensions_width || 0) <= 0) {
-                      const u = (prod?.unit || '').toString().trim().toLowerCase();
-                      if (['m', 'cm', 'metro', 'metros', 'mt'].includes(u)) {
-                        conversionIssue = 'Ficha de componente sem largura — consumo de área pode inflar ~100×.';
-                      }
-                    }
-
-                    rows.push(
-                      <TableRow key={m.id}>
-                        <TableCell className="text-xs font-medium">
-                          <div className="flex flex-col gap-0.5">
-                            <div className="flex items-center gap-1">
-                              {displayName}
-                              {groupInfo && <Badge variant="outline" className="text-[8px]">Grupo</Badge>}
-                              {cs && <Badge variant="outline" className="text-[8px] bg-accent/30 border-accent">FT</Badge>}
-                              {conversionIssue && (
-                                <Badge variant="outline" className="text-[8px] border-warning text-warning gap-0.5">
-                                  <AlertTriangle className="h-2.5 w-2.5" /> Conversão
-                                </Badge>
-                              )}
-                            </div>
-                            {conversionIssue && (
-                              <span className="text-xs text-warning">{conversionIssue}</span>
-                            )}
-                            {prod?.name && groupInfo && prod.name !== groupInfo.name && (
-                              <span className="text-xs text-muted-foreground">Item: {prod.name}{prod.color ? ` (${prod.color})` : ''}</span>
-                            )}
-                            {perSizeEntries.length > 0 && (
-                              <div className="flex flex-wrap gap-0.5 mt-0.5">
-                                {perSizeEntries.map(([size, qty]: [string, any]) => (
-                                  <span key={size} className="text-xs font-mono bg-muted px-1 rounded">{size}:{safeToFixed(qty, 2)}</span>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-xs">{prod?.category ?? '—'}</TableCell>
-                        <TableCell className="text-xs font-mono p-1">
-                          <NcmInlineEditor productId={m.product_id} currentNcm={prod?.ncm || ''} />
-                        </TableCell>
-                        <TableCell className="text-xs font-mono text-muted-foreground">
-                          {prod?.sku || '—'}
-                        </TableCell>
-                        <TableCell className="text-xs font-mono">
-                          {cs && cs.dimensions_length > 0
-                            ? `${cs.dimensions_length}×${cs.dimensions_width}×${cs.dimensions_thickness} ${cs.dimensions_unit}`
-                            : m.width || '—'}
-                        </TableCell>
-                        <TableCell className="text-xs font-mono">{getConsumptionUnit(m.product_id)}</TableCell>
-                        <TableCell className="text-xs text-right font-mono">{Number(m.quantity_per_unit).toLocaleString('pt-BR', { maximumFractionDigits: 4 })}</TableCell>
-                        <TableCell className="text-xs text-center font-mono">
-                          {pairsPerPlate > 0 ? `~${pairsPerPlate}p` : '—'}
-                        </TableCell>
-                        <TableCell className="text-xs">{m.supplier || '—'}</TableCell>
-                        <TableCell className="text-xs"><Badge variant={(m as any).consumption_sector ? 'outline' : 'destructive'} className="text-[10px]">{(m as any).consumption_sector || 'Revisar'}</Badge></TableCell>
-                        <TableCell className="text-xs text-right font-mono">{formatCurrency(costPair)}</TableCell>
-                        <TableCell>
-                          <div className="flex gap-1">
-                            <Button variant="ghost" size="icon" aria-label="Editar material" className="h-6 w-6 text-primary hover:text-primary" onClick={() => handleEdit(m)}>
-                              <Pencil className="h-3 w-3" />
-                            </Button>
-                            <DeleteConfirmButton onConfirm={() => deleteMaterial.mutate(m.id)} title="Remover material?" size="h-6 w-6" iconSize="h-3 w-3" />
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  });
-                });
-                return rows;
-              })()}
-            </TableBody>
-          </Table>
-        </div>
-      )}
-
-      {/* Edit Material Dialog */}
-      {editing && (
-        <Dialog open={!!editing} onOpenChange={() => setEditing(null)}>
-          <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Editar Material no BOM</DialogTitle>
-              <DialogDescription className="sr-only">
-                Consumo por par, cor e consumo por numeração do material.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <Label className="text-xs">Material / Grupo</Label>
-                <div className="p-2 rounded bg-muted text-sm">
-                  {editing.data.group_id
-                    ? (groups.find((g: any) => g.id === editing.data.group_id)?.name || products.find(p => p.id === editing.data.product_id)?.name || '—')
-                    : (products.find(p => p.id === editing.data.product_id)?.name || 'Material não encontrado')}
-                  {(() => {
-                    const prod = products.find(p => p.id === editing.data.product_id);
-                    return prod ? <span className="text-muted-foreground ml-2 text-xs">({prod.unit || 'un'} — {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(prod.unit_price || 0)})</span> : null;
-                  })()}
-                </div>
-              </div>
-
-              {/* Product selection within group */}
-              {editing.data.group_id && (() => {
-                const groupProds = products.filter(p => p.group_id === editing.data.group_id && p.active);
-                if (groupProds.length <= 1) return null;
-                return (
-                  <div>
-                    <Label className="text-xs font-semibold text-primary">Item Específico</Label>
-                    <Select value={editing.data.product_id} onValueChange={pid => {
-                      const prod = products.find(p => p.id === pid);
-                      const cs = componentSheetMap[pid];
-                      const newPerSize: Record<string, number> = {};
-                      if (cs?.yield_per_size) {
-                        Object.entries(cs.yield_per_size).forEach(([size, v]: [string, any]) => {
-                          const numVal = Number(v);
-                          if (Number.isFinite(numVal) && numVal > 0) newPerSize[size] = numVal;
-                        });
-                      }
-                      const avg = recalcAvgFromPerSize(newPerSize);
-                      setEditing(ed => ed ? { ...ed, data: { ...ed.data, product_id: pid, consumption_per_size: Object.keys(newPerSize).length > 0 ? newPerSize : ed.data.consumption_per_size, quantity_per_unit: avg > 0 ? Math.round(avg * 10000) / 10000 : ed.data.quantity_per_unit } } : null);
-                    }}>
-                      <SelectTrigger className="mt-1 h-9 text-sm"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {groupProds.map(p => (
-                          <SelectItem key={p.id} value={p.id}>
-                            <span className="flex items-center gap-2">
-                              <span>{p.name}</span>
-                              {p.color && <Badge variant="outline" className="text-xs">{p.color}</Badge>}
-                              <span className="text-xs text-muted-foreground font-mono">{p.unit}</span>
-                            </span>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                );
-              })()}
-              
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs">Fornecedor</Label>
-                  <Input value={editing.data.supplier} onChange={e => setEditing(ed => ed ? { ...ed, data: { ...ed.data, supplier: e.target.value } } : null)} className="mt-1 h-9 text-sm" />
-                </div>
-                <div>
-                  <Label className="text-xs">Setor de consumo <span className="text-destructive">*</span></Label>
-                  <Select value={editing.data.consumption_sector} onValueChange={v => setEditing(ed => ed ? { ...ed, data: { ...ed.data, consumption_sector: v } } : null)}>
-                    <SelectTrigger className="mt-1 h-9 text-sm"><SelectValue placeholder="Selecione o setor" /></SelectTrigger>
-                    <SelectContent>{CONSUMPTION_SECTORS.map(sector => <SelectItem key={sector} value={sector}>{sector}</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
-              </div>
-              
-              {/* Per-size consumption grid */}
-              <div>
-                <Label className="text-xs font-semibold">Consumo por Numeração ({getConsumptionUnit(editing.data.product_id)}/par)</Label>
-                <div className="flex flex-wrap gap-1.5 mt-1.5">
-                  {MATERIAL_SIZES.map(size => {
-                    const sizeKey = String(size);
-                    const perSize = editing.data.consumption_per_size || {};
-                    return (
-                      <div key={size} className="flex flex-col items-center gap-0.5">
-                        <span className="text-xs font-mono text-muted-foreground">{size}</span>
-                        <NumberInput
-                          value={perSize[sizeKey] || 0}
-                          onChange={(val) => {
-                            const newPerSize = { ...perSize, [sizeKey]: val };
-                            const avg = recalcAvgFromPerSize(newPerSize);
-                            setEditing(ed => ed ? { ...ed, data: { ...ed.data, consumption_per_size: newPerSize, quantity_per_unit: avg > 0 ? Math.round(avg * 10000) / 10000 : ed.data.quantity_per_unit } } : null);
-                          }}
-                          className="w-[78px] h-7 text-xs text-center font-mono"
-                          placeholder="0"
-                          step="0.001"
-                          unit={getConsumptionUnit(editing.data.product_id)}
-                        />
-                      </div>
-                    );
-                  })}
-                  <div className="flex flex-col gap-0.5 justify-end">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 text-xs"
-                      onClick={() => {
-                        const perSize = editing.data.consumption_per_size || {};
-                        let lastVal = 0;
-                        for (let i = MATERIAL_SIZES.length - 1; i >= 0; i--) {
-                          const v = Number(perSize[String(MATERIAL_SIZES[i])] || 0);
-                          if (v > 0) { lastVal = v; break; }
-                        }
-                        if (lastVal <= 0) return;
-                        const newPerSize: Record<string, number> = {};
-                        MATERIAL_SIZES.forEach(s => {
-                          const existing = Number(perSize[String(s)] || 0);
-                          newPerSize[String(s)] = existing > 0 ? existing : lastVal;
-                        });
-                        const avg = recalcAvgFromPerSize(newPerSize);
-                        setEditing(ed => ed ? { ...ed, data: { ...ed.data, consumption_per_size: newPerSize, quantity_per_unit: avg > 0 ? Math.round(avg * 10000) / 10000 : ed.data.quantity_per_unit } } : null);
-                      }}
-                    >
-                      Preencher Vazios
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            <DialogFooter className="pt-4">
-              <Button variant="outline" onClick={() => setEditing(null)}>Cancelar</Button>
-              <Button onClick={handleUpdateSubmit} disabled={updateMaterial.isPending}>
-                {updateMaterial.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Salvar'}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      )}
-    </div>
-  );
-}
-
-
-/* ===== Costs Tab ===== */
-function CostsTab({ sheetId, form, groups }: {
-  sheetId: string;
-  form: SheetFormData; groups: { id: string; name: string }[];
-}) {
-  const { data: materials = [] } = useSheetMaterials(sheetId);
-  const { data: componentSheets = [] } = useComponentSheets();
-  const { data: operations = [] } = useBomOperations(sheetId);
-  const { data: costPolicy } = useCostPolicies();
-
-  // BOM audit: warning quando grupo tem ≥5 variantes-cor (heurística de
-  // BOM inflado por bulk insert/clone). Migration 20260531130000 criou
-  // a view v_bom_audit_issues.
-  const { data: bomIssues = [] } = useQuery({
-    queryKey: ['bom_audit_issues', sheetId],
-    enabled: !!sheetId,
-    queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from('v_bom_audit_issues')
-        .select('*')
-        .eq('sheet_id', sheetId);
-      if (error) throw error;
-      return (data || []) as Array<{
-        sheet_id: string; group_id: string | null; group_name: string;
-        variants_count: number; colors_in_bom: string;
-        issue_type: 'bom_color_variants_inflated' | 'bom_default_qty_per_unit';
-        severity: 'critical' | 'warning';
-      }>;
-    },
-  });
-
-  const { data: groupsWithPricing = [] } = useQuery({
-    queryKey: ['product_groups_pricing'],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('product_groups').select('id, name, package_price, package_weight_kg, dimensions_length, dimensions_width, dimensions_unit').order('name');
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  const { data: groupAvgPrices = [] } = useQuery({
-    queryKey: ['product_groups_avg_prices'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('products')
-        .select('group_id, unit_price')
-        .eq('active', true)
-        .not('group_id', 'is', null);
-      if (error) throw error;
-      const groupMap: Record<string, { total: number; count: number }> = {};
-      (data || []).forEach((p: any) => {
-        if (!p.group_id || !p.unit_price) return;
-        if (!groupMap[p.group_id]) groupMap[p.group_id] = { total: 0, count: 0 };
-        groupMap[p.group_id].total += Number(p.unit_price);
-        groupMap[p.group_id].count += 1;
-      });
-      return Object.entries(groupMap).map(([id, v]) => ({ id, avg_price: v.total / v.count }));
-    },
-  });
-
-  const componentSheetMap = useMemo(() => {
-    const map: Record<string, any> = {};
-    componentSheets.forEach((cs: any) => { map[cs.product_id] = cs; });
-    return map;
-  }, [componentSheets]);
-
-  // De-duplication: skip legacy sheet_materials entries whose category is already
-  // accounted for in modern Especificações (Cabedal/Forração/Palmilha/Sola/Tiras),
-  // preventing double-counting that inflates the total cost.
-  const specsCoveredCategories = useMemo(() => {
-    const set = new Set<string>();
-    const upperPerSizeFilled = Object.values(((form as any).upper_consumption_per_size || {}) as Record<string, number>)
-      .some(v => Number(v) > 0);
-    if (form.upper_material && (form.upper_consumption > 0 || upperPerSizeFilled)) set.add('Cabedal');
-    if (form.lining_material && form.lining_consumption > 0) set.add('Forração');
-    if (form.insole_material && form.insole_consumption > 0) set.add('Palmilha');
-    if (form.sole_material && form.sole_consumption > 0) { set.add('Sola'); set.add('Solado'); }
-    if (form.has_straps && form.strap_colors?.length) set.add('Tiras');
-    return set;
-  }, [form]);
-
-  const categoryCosts = useMemo(() => {
-    const costs: Record<string, number> = {};
-    let total = 0;
-    const skipped: string[] = [];
-    materials.forEach(m => {
-      const rawCat = (m as any).products?.category || 'Outros';
-      const cat = matchCategory(rawCat);
-      // Skip if this category is already covered by Especificações (avoids duplicidade)
-      if (specsCoveredCategories.has(cat)) { skipped.push(rawCat); return; }
-      const cs = componentSheetMap[m.product_id];
-      const unitPrice = Number((m as any).products?.unit_price || 0);
-      const cost = Number(m.quantity_per_unit) * unitPrice;
-      costs[cat] = (costs[cat] || 0) + cost;
-      total += cost;
-    });
-    return { costs, total, skippedLegacyCount: skipped.length };
-  }, [materials, componentSheetMap, specsCoveredCategories]);
-
-  const getGroupPlateAreaDm2 = (group: any): number => {
-    if (!group?.dimensions_length || !group?.dimensions_width) return 0;
-    const unit = (group.dimensions_unit || 'mm').toLowerCase();
-    let l = Number(group.dimensions_length);
-    let w = Number(group.dimensions_width);
-    if (unit === 'cm') { l *= 10; w *= 10; }
-    if (unit === 'm') { l *= 1000; w *= 1000; }
-    return (l * w) / 10000;
-  };
-
-  const getGroupPricePerDm2 = (groupName: string) => {
-    const group = groupsWithPricing.find(g => g.name === groupName);
-    if (!group) return 0;
-    const plateArea = getGroupPlateAreaDm2(group);
-    if (plateArea > 0 && group.package_price && group.package_price > 0) return group.package_price / plateArea;
-    if (group.package_price && group.package_weight_kg && group.package_weight_kg > 0) return group.package_price / group.package_weight_kg;
-    const avg = groupAvgPrices.find(a => a.id === group.id);
-    const avgPrice = avg?.avg_price || 0;
-    // avg_price is price per unit (plate). Convert to price per dm² if plate area is known.
-    if (avgPrice > 0 && plateArea > 0) return avgPrice / plateArea;
-    return avgPrice;
-  };
-
-  const getGroupPricePerDm2ById = (groupId: string) => {
-    const group = groupsWithPricing.find(g => g.id === groupId);
-    if (!group) return 0;
-    const plateArea = getGroupPlateAreaDm2(group);
-    if (plateArea > 0 && group.package_price && group.package_price > 0) return group.package_price / plateArea;
-    if (group.package_price && group.package_weight_kg && group.package_weight_kg > 0) return group.package_price / group.package_weight_kg;
-    const avg = groupAvgPrices.find(a => a.id === groupId);
-    const avgPrice = avg?.avg_price || 0;
-    if (avgPrice > 0 && plateArea > 0) return avgPrice / plateArea;
-    return avgPrice;
-  };
-
-  const specsCosts = useMemo(() => {
-    const items: { label: string; material: string; consumption: number; pricePerUnit: number; cost: number }[] = [];
-    // Helper: o consumo efetivo SEMPRE prioriza a grade por numeração (consumption_per_size).
-    // O campo "consumption" (média) é usado apenas como fallback quando a grade está vazia.
-    const effectiveConsumption = (perSize: Record<string, number> | null | undefined, fallbackAvg: number): number => {
-      if (perSize && typeof perSize === 'object') {
-        const vals = Object.values(perSize).map(v => Number(v)).filter(v => Number.isFinite(v) && v > 0);
-        if (vals.length > 0) return vals.reduce((a, b) => a + b, 0) / vals.length;
-      }
-      return Number(fallbackAvg) || 0;
-    };
-    const upperEff = effectiveConsumption((form as any).upper_consumption_per_size, form.upper_consumption);
-    if (form.upper_material && upperEff > 0) {
-      const price = getGroupPricePerDm2(form.upper_material);
-      items.push({ label: 'Cabedal', material: form.upper_material, consumption: upperEff, pricePerUnit: price, cost: upperEff * price });
-    }
-    (form.components_accessories || []).forEach((extra: any, idx: number) => {
-      const eff = effectiveConsumption(extra.consumption_per_size, extra.consumption);
-      if (extra.material && eff > 0 && !extra.id) {
-        const price = getGroupPricePerDm2(extra.material);
-        // Prioriza label custom (ex: "Elástico Traseiro 6mm") sobre genérico
-        const customLabel = (extra.label || '').toString().trim();
-        const label = customLabel
-          ? `${customLabel} (${extra.material})`
-          : extra.mandatory
-            ? `Componente Extra (${extra.material})`
-            : `Cabedal ${idx + 2}`;
-        items.push({ label, material: extra.material, consumption: eff, pricePerUnit: price, cost: eff * price });
-      }
-    });
-    if (form.lining_material && form.lining_consumption > 0) {
-      const price = getGroupPricePerDm2(form.lining_material);
-      items.push({ label: 'Forração', material: form.lining_material, consumption: form.lining_consumption, pricePerUnit: price, cost: form.lining_consumption * price });
-    }
-    // lining_accessories are alternative options, NOT additive — only primary forração counts for cost
-    if (form.insole_material && form.insole_consumption > 0) {
-      const price = getGroupPricePerDm2(form.insole_material);
-      items.push({ label: 'Palmilha', material: form.insole_material, consumption: form.insole_consumption, pricePerUnit: price, cost: form.insole_consumption * price });
-    }
-    if (form.sole_material && form.sole_consumption > 0) {
-      const price = getGroupPricePerDm2(form.sole_material);
-      items.push({ label: 'Sola', material: form.sole_material, consumption: form.sole_consumption, pricePerUnit: price, cost: form.sole_consumption * price });
-    }
-    // Direct components (unit-based)
-    (form.direct_components || []).forEach((comp: any, idx: number) => {
-      if (comp.product_id && comp.quantity > 0 && comp.unit_price > 0) {
-        items.push({ label: comp.product_name || `Componente ${idx + 1}`, material: (comp.unit || 'un').toString().trim() || 'un', consumption: comp.quantity, pricePerUnit: comp.unit_price, cost: comp.quantity * comp.unit_price });
-      }
-    });
-    return items;
-  }, [form, groupsWithPricing]);
-
-  const strapsCosts = useMemo(() => {
-    if (!form.has_straps || !form.strap_colors?.length) return [];
-    return (form.strap_colors || []).map((strap: any) => {
-      const groupId = strap.group_id;
-      const perSize: Record<string, number> = strap.consumption_per_size || {};
-      const filledVals = (Object.values(perSize) as any[]).map(v => Number(v)).filter(v => v > 0);
-      const consumption = filledVals.length > 0 ? filledVals.reduce((a, b) => a + b, 0) / filledVals.length : Number(strap.consumption || 0);
-      if (!groupId || consumption <= 0) return null;
-      const price = getGroupPricePerDm2ById(groupId);
-      const group = groupsWithPricing.find(g => g.id === groupId);
-      return { label: strap.label || 'Tira', material: group?.name || '—', consumption, pricePerUnit: price, cost: consumption * price };
-    }).filter(Boolean) as { label: string; material: string; consumption: number; pricePerUnit: number; cost: number }[];
-  }, [form, groupsWithPricing]);
-
-  const specsTotalCost = specsCosts.reduce((s, i) => s + i.cost, 0);
-  const strapsTotalCost = strapsCosts.reduce((s, i) => s + i.cost, 0);
-  const bomTotalCost = categoryCosts.total;
-  const modTotalCost = operations.reduce((s: number, op: any) => s + Number(op.cost_per_pair || 0), 0);
-   const overheadPerPair = (form as any).custom_overhead !== null && (form as any).custom_overhead !== undefined
-     ? Number((form as any).custom_overhead)
-     : (costPolicy?.overhead_rate_per_pair || 0);
-  const packagingPerPair = costPolicy?.packaging_cost_per_pair || 0;
-  const materialTotal = bomTotalCost + specsTotalCost + strapsTotalCost;
-  const grandTotal = materialTotal + modTotalCost + overheadPerPair + packagingPerPair;
-  const formatCurrency = (v: any) => globalFormatCurrency(v);
-
-  // IMPORTANTE: chamar TODOS os hooks antes de qualquer early return.
-  // Antes esse useOverheadHistory ficava depois do `if (!hasAnyData) return`,
-  // causando "Rendered fewer/more hooks than during the previous render"
-  // toda vez que a ficha alternava entre ter dados e não ter.
-  const { data: overheadHistory = [] } = useOverheadHistory(sheetId);
-
-  const hasAnyData = materials.length > 0 || specsCosts.length > 0 || strapsCosts.length > 0 || operations.length > 0;
-  if (!hasAnyData) {
-    return <div className="text-center py-8 text-muted-foreground"><p className="text-sm">Adicione materiais no BOM, operações ou preencha Especificações para calcular custos</p></div>;
-  }
-
-  return (
-    <div className="space-y-6">
-      {/* Warning: BOM com sintomas de bulk insert/clone errado.
-          2 padrões cobertos pela view v_bom_audit_issues:
-            - bom_color_variants_inflated: ≥5 variantes-cor do mesmo grupo
-            - bom_default_qty_per_unit: ≥80% dos itens com qty_per_unit=1
-              (default do cadastro, deveria ser fracionário) */}
-      {bomIssues.length > 0 && (
-        <div className="rounded-md border border-warning/30 bg-warning/5 p-3">
-          <div className="flex items-start gap-2.5">
-            <AlertTriangle className="h-4 w-4 text-warning mt-0.5 shrink-0" />
-            <div className="flex-1 space-y-1.5">
-              <p className="text-sm font-bold text-warning">
-                BOM possivelmente inflado — {bomIssues.length} alerta{bomIssues.length > 1 ? 's' : ''} detectado{bomIssues.length > 1 ? 's' : ''}
-              </p>
-              <p className="text-xs text-muted-foreground leading-snug">
-                Fichas saudáveis raramente têm mais de 2-3 cores do mesmo material no BOM.
-                E <strong>consumo (qty/par) deve ser FRACIONÁRIO</strong> — ex: 0.005 lata de cola,
-                não 1 lata por par. Itens com qty=1 inflam o custo em 50-100×.
-                Revise em "Especificações por Componente" ou "Materiais".
-              </p>
-              <ul className="text-xs space-y-0.5 mt-1.5">
-                {bomIssues.map((i, idx) => (
-                  <li key={`${i.issue_type}-${i.group_id || idx}`} className="font-mono">
-                    <span className={i.severity === 'critical' ? 'text-destructive font-bold' : 'text-warning'}>
-                      {i.issue_type === 'bom_default_qty_per_unit'
-                        ? `consumo default`
-                        : `${i.variants_count}× cores`}
-                    </span>
-                    {' '}
-                    <strong>{i.group_name}</strong>
-                    <span className="text-muted-foreground"> · {i.colors_in_bom || '—'}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="flex items-center justify-between">
-        <SectionTitle>Análise de Custo por Par</SectionTitle>
-        {overheadHistory.length > 0 && (
-           <Popover>
-             <PopoverTrigger asChild>
-               <Button variant="outline" size="sm" className="gap-2 h-7 text-xs">
-                 <History className="h-3 w-3" />
-                 Histórico de GGF
-               </Button>
-             </PopoverTrigger>
-             <PopoverContent className="w-80 p-0" align="end">
-               <div className="p-3 border-b bg-muted/30">
-                 <h4 className="text-xs font-semibold">Histórico de Alterações GGF</h4>
-                 <p className="text-xs text-muted-foreground">Últimas mudanças no overhead customizado</p>
-               </div>
-               <div className="max-h-60 overflow-y-auto">
-                 {overheadHistory.map((entry) => (
-                   <div key={entry.id} className="p-3 border-b last:border-0 text-xs space-y-1 hover:bg-muted/20 transition-colors">
-                     <div className="flex items-center justify-between">
-                       <span className="font-semibold text-primary">
-                         {entry.new_value !== null ? formatCurrency(entry.new_value) : "Padrão"}
-                       </span>
-                       <span className="text-xs text-muted-foreground font-mono">
-                         {new Date(entry.created_at).toLocaleDateString('pt-BR')}
-                       </span>
-                     </div>
-                     <div className="flex items-center justify-between text-muted-foreground">
-                       <span>De: {entry.old_value !== null ? formatCurrency(entry.old_value) : "Padrão"}</span>
-                       <span className="italic">{entry.profiles?.full_name || "Sistema"}</span>
-                     </div>
-                   </div>
-                 ))}
-               </div>
-             </PopoverContent>
-           </Popover>
-        )}
-      </div>
-
-      {materials.length > 0 && (
-        <div className="rounded-lg border overflow-hidden">
-          <div className="bg-muted/30 px-4 py-2 border-b">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Materiais BOM</span>
-          </div>
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-muted/10">
-                <TableHead className="text-xs">Componente</TableHead>
-                <TableHead className="text-xs text-center">Itens</TableHead>
-                <TableHead className="text-xs text-right">Custo/par</TableHead>
-                <TableHead className="text-xs text-right">%</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {COMPONENT_CATEGORIES.map(catConfig => {
-                const catCost = categoryCosts.costs[catConfig.key] || 0;
-                if (catCost === 0) return null;
-                const pct = grandTotal > 0 ? (catCost / grandTotal * 100) : 0;
-                const CatIcon = catConfig.icon;
-                const groupMats = materials.filter(m => matchCategory((m as any).products?.category || '') === catConfig.key);
-                return (
-                  <TableRow key={catConfig.key}>
-                    <TableCell className="text-sm"><div className="flex items-center gap-2"><CatIcon className={`h-4 w-4 ${catConfig.color}`} /><span className="font-medium">{catConfig.label}</span></div></TableCell>
-                    <TableCell className="text-sm text-center font-mono">{groupMats.length}</TableCell>
-                    <TableCell className="text-sm text-right font-mono">{formatCurrency(catCost)}</TableCell>
-                    <TableCell className="text-sm text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <div className="w-16 h-2 rounded-full bg-muted overflow-hidden"><div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(pct, 100)}%` }} /></div>
-                        <span className="text-xs font-mono text-muted-foreground w-12 text-right">{safeToFixed(pct, 1)}%</span>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-              <TableRow className="bg-muted/20 font-bold">
-                <TableCell className="text-sm">Subtotal BOM</TableCell>
-                <TableCell className="text-sm text-center font-mono">{materials.length}</TableCell>
-                <TableCell className="text-sm text-right font-mono">{formatCurrency(bomTotalCost)}</TableCell>
-                <TableCell></TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
-        </div>
-      )}
-
-      {specsCosts.length > 0 && (
-        <div className="rounded-lg border overflow-hidden">
-          <div className="bg-muted/30 px-4 py-2 border-b">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Especificações Técnicas</span>
-          </div>
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-muted/10">
-                <TableHead className="text-xs">Componente</TableHead>
-                <TableHead className="text-xs">Material / Grupo</TableHead>
-                <TableHead className="text-xs text-right">Consumo/par</TableHead>
-                <TableHead className="text-xs text-right">Preço/un</TableHead>
-                <TableHead className="text-xs text-right">Custo/par</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {specsCosts.map((item, idx) => (
-                <TableRow key={idx}>
-                  <TableCell className="text-sm font-medium">{item.label}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{item.material}</TableCell>
-                  <TableCell className="text-sm text-right font-mono">{item.consumption.toLocaleString('pt-BR', { maximumFractionDigits: 4 })}</TableCell>
-                  <TableCell className="text-sm text-right font-mono">{item.pricePerUnit > 0 ? formatCurrency(item.pricePerUnit) : <span className="text-destructive text-xs">Sem preço</span>}</TableCell>
-                  <TableCell className="text-sm text-right font-mono font-semibold">{formatCurrency(item.cost)}</TableCell>
-                </TableRow>
-              ))}
-              <TableRow className="bg-muted/20 font-bold">
-                <TableCell colSpan={4} className="text-sm">Subtotal Especificações</TableCell>
-                <TableCell className="text-sm text-right font-mono">{formatCurrency(specsTotalCost)}</TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
-        </div>
-      )}
-
-      {strapsCosts.length > 0 && (
-        <div className="rounded-lg border overflow-hidden">
-          <div className="bg-muted/30 px-4 py-2 border-b">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Tiras</span>
-          </div>
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-muted/10">
-                <TableHead className="text-xs">Tira</TableHead>
-                <TableHead className="text-xs">Material / Grupo</TableHead>
-                <TableHead className="text-xs text-right">Consumo (dm²/par)</TableHead>
-                <TableHead className="text-xs text-right">Preço/dm²</TableHead>
-                <TableHead className="text-xs text-right">Custo/par</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {strapsCosts.map((item, idx) => (
-                <TableRow key={idx}>
-                  <TableCell className="text-sm font-medium">{item.label}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{item.material}</TableCell>
-                  <TableCell className="text-sm text-right font-mono">{item.consumption.toLocaleString('pt-BR', { maximumFractionDigits: 4 })}</TableCell>
-                  <TableCell className="text-sm text-right font-mono">{item.pricePerUnit > 0 ? formatCurrency(item.pricePerUnit) : <span className="text-destructive text-xs">Sem preço</span>}</TableCell>
-                  <TableCell className="text-sm text-right font-mono font-semibold">{formatCurrency(item.cost)}</TableCell>
-                </TableRow>
-              ))}
-              <TableRow className="bg-muted/20 font-bold">
-                <TableCell colSpan={4} className="text-sm">Subtotal Tiras</TableCell>
-                <TableCell className="text-sm text-right font-mono">{formatCurrency(strapsTotalCost)}</TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
-        </div>
-      )}
-
-      <div className="rounded-lg border overflow-hidden">
-        <Table>
-          <TableBody>
-            <TableRow className="bg-muted/20">
-              <TableCell className="text-sm font-bold">Material (BOM + Especificações + Tiras)</TableCell>
-              <TableCell className="text-sm text-right font-mono font-bold">{formatCurrency(materialTotal)}</TableCell>
-            </TableRow>
-            {modTotalCost > 0 && (
-              <TableRow className="bg-muted/20">
-                <TableCell className="text-sm">Mão de Obra Direta (MOD)</TableCell>
-                <TableCell className="text-sm text-right font-mono">{formatCurrency(modTotalCost)}</TableCell>
-              </TableRow>
-            )}
-             {(overheadPerPair > 0 || (form as any).custom_overhead !== null) && (
-              <TableRow className="bg-muted/20">
-                <TableCell className="text-sm">
-                  Overhead Alocado
-                  {(form as any).custom_overhead !== null && (
-                    <Badge variant="outline" className="ml-2 text-[8px] bg-warning/10 text-warning border-warning/30">Customizado</Badge>
-                  )}
-                </TableCell>
-                <TableCell className="text-sm text-right font-mono">{formatCurrency(overheadPerPair)}</TableCell>
-              </TableRow>
-            )}
-            {packagingPerPair > 0 && (
-              <TableRow className="bg-muted/20">
-                <TableCell className="text-sm">Embalagem</TableCell>
-                <TableCell className="text-sm text-right font-mono">{formatCurrency(packagingPerPair)}</TableCell>
-              </TableRow>
-            )}
-            <TableRow className="bg-muted/30 font-bold">
-              <TableCell className="text-sm">Custo Padrão por Par</TableCell>
-              <TableCell className="text-sm text-right font-mono font-bold">{formatCurrency(grandTotal)}</TableCell>
-            </TableRow>
-          </TableBody>
-        </Table>
-      </div>
-    </div>
-  );
-}
 
 /* PackagingTab is now imported from src/components/technical-sheets/PackagingTab.tsx */

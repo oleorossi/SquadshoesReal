@@ -27,7 +27,7 @@ export function TaskMetaLine({ task, subtasks, showPriority = true, className }:
   const linkedNoteTitle = task.notes?.title;
 
   return (
-    <div className={cn('flex items-center gap-2.5 flex-wrap', className)}>
+    <span className={cn('flex items-center gap-2.5 flex-wrap', className)}>
       {showPriority && (
         <span className={cn('inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider', color.text)}>
           <span className={cn('h-1.5 w-1.5 rounded-full', color.dot)} />
@@ -64,7 +64,7 @@ export function TaskMetaLine({ task, subtasks, showPriority = true, className }:
           <span className="truncate max-w-[180px]">{linkedNoteTitle}</span>
         </Link>
       )}
-    </div>
+    </span>
   );
 }
 
@@ -72,10 +72,11 @@ export function TaskMetaLine({ task, subtasks, showPriority = true, className }:
  * Seletor de vencimento — botão que abre Popover com Calendar (pt-BR não
  * necessário no picker, dias numéricos) + atalhos Hoje/Amanhã e limpar.
  */
-export function DueDatePicker({ value, onChange, compact }: {
+export function DueDatePicker({ value, onChange, compact, disabled }: {
   value: string | null;
   onChange: (due: string | null) => void;
   compact?: boolean;
+  disabled?: boolean;
 }) {
   const due = dueDateInfo(value);
   const selected = fromDueDateString(value);
@@ -85,6 +86,7 @@ export function DueDatePicker({ value, onChange, compact }: {
       <PopoverTrigger asChild>
         <Button
           type="button"
+          disabled={disabled}
           variant="outline"
           size="sm"
           className={cn(

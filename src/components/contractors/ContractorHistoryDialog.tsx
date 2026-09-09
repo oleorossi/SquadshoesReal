@@ -194,9 +194,6 @@ export function ContractorHistoryDialog({ contractorId, contractorName, open, on
                   <TableRow key={o.id} className="hover:bg-muted/30">
                     <TableCell className="font-mono text-xs whitespace-nowrap">
                       {o.order_number || '—'}
-                      {o.is_artisanal && (
-                        <Badge variant="outline" className="ml-1 h-4 text-[10px] uppercase">Art.</Badge>
-                      )}
                     </TableCell>
                     <TableCell className="text-xs tabular-nums whitespace-nowrap">{formatDateBR(o.service_date)}</TableCell>
                     <TableCell className="text-xs max-w-[240px] truncate" title={o.description || ''}>

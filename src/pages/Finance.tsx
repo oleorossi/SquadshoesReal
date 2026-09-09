@@ -59,6 +59,7 @@ import BankReconciliationTab from '@/components/finance/BankReconciliationTab';
 import BoletoUploadDialog from '@/components/finance/BoletoUploadDialog';
 import FinanceAttachments from '@/components/finance/FinanceAttachments';
 import { FinanceReportsTab } from '@/components/finance/FinanceReportsTab';
+import CfoTab from '@/components/finance/cfo/CfoTab';
 import { SmartDashboard } from '@/components/finance/SmartDashboard';
 import { NetMarginChart } from '@/components/finance/NetMarginChart';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
@@ -747,7 +748,7 @@ function BudgetTab() {
  * SmartDashboard, alertas e atalhos externos apontam pra elas — e são
  * normalizadas pro canônico assim que a tela abre.
  */
-const FINANCE_TABS = ['dashboard', 'accounts', 'invoices', 'comissoes-factoring', 'reports'] as const;
+const FINANCE_TABS = ['dashboard', 'accounts', 'cfo', 'invoices', 'comissoes-factoring', 'reports'] as const;
 type FinanceTab = typeof FINANCE_TABS[number];
 
 const FINANCE_TAB_ALIASES: Record<string, FinanceTab> = {
@@ -1142,6 +1143,7 @@ export default function Finance() {
             <HubTabsList tabs={[
               { value: 'accounts',             label: 'Contas',              icon: DollarSign },
               { value: 'dashboard',            label: 'Visão Geral',         icon: BarChart3 },
+              { value: 'cfo',                  label: 'CFO',                 icon: TrendingUp },
               { value: 'invoices',             label: 'Notas Fiscais',       icon: FileText },
               { value: 'comissoes-factoring',  label: 'Comissões & Factoring', icon: UserCheck },
               { value: 'reports',              label: 'Relatórios',          icon: BarChart3 },
@@ -1669,6 +1671,7 @@ export default function Finance() {
             </TabsContent>
 
             <TabsContent value="reports"><FinanceReportsTab /></TabsContent>
+            <TabsContent value="cfo"><CfoTab /></TabsContent>
           </Tabs>
         )}
       </div>

@@ -10,12 +10,14 @@ import {
   type BoxIdentificationData,
 } from '../printLabels';
 import {
+  buildBabyNalinPdf,
   COUCHE_COLUMNS,
   COUCHE_LABEL_HEIGHT_MM,
   COUCHE_LABEL_WIDTH_MM,
   COUCHE_PAGE_HEIGHT_MM,
   COUCHE_PAGE_WIDTH_MM,
   DEFAULT_COUCHE_ROLL_PROFILE,
+  planProductionLabelPlacements,
 } from '../babyNalinLabels';
 
 const label = (barcode: string, size: string) => ({
@@ -109,7 +111,7 @@ describe('buildThermalLabelsHtml — barcode por payload distinto', () => {
     expect(html).toContain('padding:0.3mm 1mm;');
   });
 
-  it('não mistura a caixa individual 100×30 com a etiquetagem cliente 2×50×30', () => {
+  it('não mistura a caixa individual 100×30 com a produção cliente 2×50×30', async () => {
     expect(THERMAL_LABEL_WIDTH_MM).toBe(100);
     expect(THERMAL_LABEL_HEIGHT_MM).toBe(30);
     expect(COUCHE_LABEL_WIDTH_MM).toBe(50);
@@ -119,6 +121,30 @@ describe('buildThermalLabelsHtml — barcode por payload distinto', () => {
     expect(COUCHE_PAGE_WIDTH_MM).toBe(106);
     expect(COUCHE_PAGE_HEIGHT_MM).toBe(30);
     expect(THERMAL_LABEL_WIDTH_MM).not.toBe(COUCHE_PAGE_WIDTH_MM);
+
+    const cliente = [{
+      tamanho: '34',
+      cor: 'PRETO',
+      referencia: 'NL02',
+      codProduto: '905301',
+      codigoBarra: '2260000303222',
+      quantidade: 3,
+    }];
+    const placements = planProductionLabelPlacements(cliente);
+    expect(placements.map(({ pageIndex, column }) => ({ pageIndex, column }))).toEqual([
+      { pageIndex: 0, column: 0 },
+      { pageIndex: 0, column: 1 },
+      { pageIndex: 1, column: 0 },
+    ]);
+
+    const clientPdf = await buildBabyNalinPdf(cliente, { mode: 'production' });
+    expect(clientPdf.getNumberOfPages()).toBe(2);
+    const mediaBox = clientPdf.getPageInfo(1).pageContext.mediaBox;
+    expect((mediaBox.topRightX - mediaBox.bottomLeftX) * 25.4 / 72).toBeCloseTo(106, 1);
+    expect((mediaBox.topRightY - mediaBox.bottomLeftY) * 25.4 / 72).toBeCloseTo(30, 1);
+
+    const individualHtml = buildThermalLabelsHtml([label('SP130-34', '34')], 'logo.png');
+    expect(individualHtml).toContain('@page{size:100mm 30mm;margin:0;}');
   });
 
   it('amplia a numeração curta e centraliza o valor no bloco preto', () => {

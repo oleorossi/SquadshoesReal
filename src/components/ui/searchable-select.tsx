@@ -4,7 +4,12 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Check, CaretUpDown as ChevronsUpDown } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import {
+  SEARCH_RENDER_CAP,
+  capSearchResults,
+  searchMatchesAllTerms,
+  searchRefineHint,
+} from '@/lib/searchUtils';
 
 export interface SearchableOption {
   value: string;
@@ -34,6 +39,29 @@ export interface SearchableSelectProps {
   'aria-label'?: string;
 }
 
+/** Faixa mono acima do CommandInput — reusar em pickers Command custom. */
+export function SearchLocatorStrip({
+  label = 'Localizar opção',
+  matchedCount,
+  totalCount,
+  hasQuery,
+}: {
+  label?: string;
+  matchedCount: number;
+  totalCount: number;
+  hasQuery: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 border-b border-foreground/10 bg-muted-soft px-2.5 py-1.5 font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+      <span>{label}</span>
+      <span aria-live="polite" className="shrink-0 tabular-nums">
+        {hasQuery ? `${matchedCount.toLocaleString('pt-BR')} de ` : ''}
+        {totalCount.toLocaleString('pt-BR')}
+      </span>
+    </div>
+  );
+}
+
 /**
  * Seletor genérico COM BUSCA (Command + Popover), acento/caixa-insensível via
  * normalizeForSearch. Espelha o padrão do EmployeeCombobox/ColorLookupSelect pra
@@ -58,8 +86,10 @@ export function SearchableSelect({
 
   // Teto de renderização: com catálogos de centenas de itens, montar tudo de
   // uma vez trava a abertura do popover — o refino vem da busca, não do scroll.
-  const RENDER_CAP = 100;
-  const visible = filtered.length > RENDER_CAP ? filtered.slice(0, RENDER_CAP) : filtered;
+  const { visible, capped, totalMatched, cap } = useMemo(
+    () => capSearchResults(filtered, SEARCH_RENDER_CAP),
+    [filtered],
+  );
 
   return (
     <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setSearch(''); }}>
@@ -87,12 +117,12 @@ export function SearchableSelect({
       </PopoverTrigger>
       <PopoverContent className="w-[--radix-popover-trigger-width] min-w-[260px] p-0" align="start">
         <Command shouldFilter={false} label={searchPlaceholder}>
-          <div className="flex items-center justify-between gap-3 border-b border-foreground/10 bg-muted-soft px-2.5 py-1.5 font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            <span>{searchLabel}</span>
-            <span aria-live="polite" className="shrink-0 tabular-nums">
-              {search ? `${filtered.length} de ` : ''}{options.length.toLocaleString('pt-BR')}
-            </span>
-          </div>
+          <SearchLocatorStrip
+            label={searchLabel}
+            matchedCount={totalMatched}
+            totalCount={options.length}
+            hasQuery={!!search.trim()}
+          />
           <CommandInput
             placeholder={searchPlaceholder}
             aria-label={searchPlaceholder}
@@ -115,9 +145,9 @@ export function SearchableSelect({
                   </div>
                 </CommandItem>
               ))}
-              {filtered.length > RENDER_CAP && (
+              {capped && (
                 <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                  Mostrando {RENDER_CAP} de {filtered.length} — digite pra refinar
+                  {searchRefineHint(totalMatched, cap)}
                 </div>
               )}
             </CommandGroup>

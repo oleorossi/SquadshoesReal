@@ -14,9 +14,9 @@
  *
  * ⚠ Estas suítes ESCREVEM no banco (a de integração cria fixture em `products`,
  * `technical_sheets`, `sole_group_standard_items` e `sole_technical_specs`, com
- * UUIDs fixos, e limpa no fim). Por isso NÃO estão no CI: rodam sob demanda, com
- * `bun run test:db`, quando se mexe em consumo, custeio ou débito. Decisão do
- * dono em 11/08/2026.
+ * UUIDs fixos, e limpa no fim). Por isso só rodam no CI semanal contra um
+ * projeto Supabase isolado, ou sob demanda com `bun run test:db` em ambiente
+ * descartável — nunca contra produção.
  */
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 

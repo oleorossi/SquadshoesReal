@@ -51,8 +51,16 @@ type Props = {
   /** Recorte de material base; combina com o status (não é exclusivo). */
   napaOnly: boolean;
   onNapaOnlyChange: (v: boolean) => void;
-  /** Ação primária: abre a geração de OC do(s) PV(s). Omitida ⇒ botão não aparece. */
-  onGerarOC?: () => void;
+  /** Família de napa selecionada no filtro de material base. */
+  selectedBaseFamily?: string | null;
+  onSelectBaseFamily?: (name: string | null) => void;
+  /** Necessidade bruta do pedido, estoque ignorado. */
+  grossNeed?: boolean;
+  onGrossNeedChange?: (v: boolean) => void;
+  /** Ação primária: abre a geração de OC do(s) PV(s) — 1 OC por fornecedor.
+   *  Passa `grossNeed` pra o canal Compras por Pedido nascer bruto (Consumo
+   *  total) ou líquido de estoque (cobertura). Omitida ⇒ botão não aparece. */
+  onGerarOC?: (opts: { grossNeed: boolean }) => void;
   onRecalcular?: () => void;
   onPrintPdf: () => void;
   loading?: boolean;
@@ -71,6 +79,10 @@ export default function ConsumptionDecisionRail({
   onFilterChange,
   napaOnly,
   onNapaOnlyChange,
+  selectedBaseFamily = null,
+  onSelectBaseFamily,
+  grossNeed = false,
+  onGrossNeedChange,
   onGerarOC,
   onRecalcular,
   onPrintPdf,
@@ -97,12 +109,28 @@ export default function ConsumptionDecisionRail({
               <span className="ml-0.5 text-base font-semibold">m</span>
             </p>
             {baseTotal.parts.length > 0 && (
-              <p className="mt-1.5 font-mono text-[11px] leading-snug text-muted-foreground">
-                {baseTotal.parts.map((p) => `${formatQty(p.qty, 'm')} ${p.name}`).join(' + ')}
-              </p>
+              <div className="mt-1.5 flex flex-wrap gap-1">
+                {baseTotal.parts.map((part) => (
+                  <button
+                    key={part.name}
+                    type="button"
+                    aria-pressed={selectedBaseFamily === part.name}
+                    onClick={() => onSelectBaseFamily?.(selectedBaseFamily === part.name ? null : part.name)}
+                    className={`rounded-md px-1.5 py-0.5 font-mono text-[11px] leading-snug transition-colors ${
+                      selectedBaseFamily === part.name
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                    }`}
+                  >
+                    {formatQty(part.qty, 'm')} {part.name}
+                  </button>
+                ))}
+              </div>
             )}
             <p className="mt-1 text-[11px] text-muted-foreground">
-              consumo bruto · tiras convertidas + napa cortada direto
+              {grossNeed
+                ? 'consumo bruto do pedido · estoque ignorado'
+                : 'consumo bruto · tiras convertidas + napa cortada direto'}
             </p>
             {baseTotal.skipped > 0 && (
               <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
@@ -118,6 +146,7 @@ export default function ConsumptionDecisionRail({
         )}
       </div>
 
+      {!grossNeed && (
       <button
         type="button"
         onClick={() => onFilterChange(filter === 'short' ? 'all' : 'short')}
@@ -143,16 +172,35 @@ export default function ConsumptionDecisionRail({
           de {totalItems} {totalItems === 1 ? 'item' : 'itens'} · comparado ao estoque líquido
         </p>
       </button>
+      )}
 
+      {/* CTA primária = gerar OC. O modo "Consumo total" (grossNeed) decide se
+          a OC nasce com necessidade bruta ou líquida de estoque; o modal ainda
+          permite override. Agrupa por fornecedor no canal Compras por Pedido. */}
       {onGerarOC && (
-        <Button type="button" className="w-full gap-2" onClick={onGerarOC}>
+        <Button
+          type="button"
+          className="w-full gap-2"
+          onClick={() => onGerarOC({ grossNeed })}
+        >
           <ShoppingCart className="h-4 w-4" />
-          Gerar OC deste consumo
+          Gerar ordem de compra
         </Button>
       )}
 
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        aria-pressed={grossNeed}
+        className="w-full gap-1.5"
+        onClick={() => onGrossNeedChange?.(!grossNeed)}
+      >
+        {grossNeed ? 'Voltar à cobertura de estoque' : 'Consumo total'}
+      </Button>
+
       {/* ── Maiores faltas: responde "quanto pedir" sem ler a tabela ──── */}
-      {topShort.length > 0 && (
+      {!grossNeed && topShort.length > 0 && (
         <div className="rounded-lg border border-border bg-card p-3">
           <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
             Maiores faltas
@@ -281,11 +329,11 @@ export default function ConsumptionDecisionRail({
             disabled={loading}
           >
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            Recalcular
+            Atualizar simulação
           </Button>
         )}
         <Button type="button" variant="outline" size="sm" className="flex-1 gap-1.5" onClick={onPrintPdf}>
-          <FileText className="h-4 w-4" /> Gerar PDF
+          <FileText className="h-4 w-4" /> {grossNeed ? 'PDF consumo total' : 'Gerar PDF'}
         </Button>
       </div>
     </aside>

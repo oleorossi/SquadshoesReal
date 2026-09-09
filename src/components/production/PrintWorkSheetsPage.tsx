@@ -8,8 +8,16 @@ import { Button } from '@/components/ui/button';
 import { Printer, ArrowLeft, Stack as Layers, Cards, FileText, Check, ArrowsClockwise, CircleNotch as Loader2, Warning as AlertTriangle } from '@phosphor-icons/react';
 import OperatorWorkSheet from '@/components/production/OperatorWorkSheet';
 import { PalmilhaWorkSheet, type PalmilhaGroup } from '@/components/production/PalmilhaWorkSheet';
-import { CartaoLote } from '@/components/production/CartaoLote';
-import { SilkMontageWorkSheet, collectCompactThumbs, type SoleSilkGroup, type SilkColorGroup, type GroupedSector } from '@/components/production/SilkMontageWorkSheet';
+import { CartaoFisico } from '@/components/production/CartaoFisico';
+import { SilkMontageWorkSheet, type SoleSilkGroup, type SilkColorGroup, type GroupedSector } from '@/components/production/SilkMontageWorkSheet';
+import {
+  buildCartaoFisicoCards,
+  CARTAO_FISICO_EMITTERS,
+  CARTAO_FISICO_PER_PAGE,
+  isCartaoFisicoEmitter,
+  layoutCutStackPages,
+  type CartaoFisicoCard,
+} from '@/lib/cartaoFisico';
 import type { SectorAlert } from '@/components/production/worksheet/SectorAlerts';
 import { SolagemWorkSheet, type SoleColorBand } from '@/components/production/SolagemWorkSheet';
 import { ExpedicaoWorkSheet, type ExpedicaoCustomerGroup, type ExpedicaoOrder } from '@/components/production/ExpedicaoWorkSheet';
@@ -23,6 +31,7 @@ import { useSectorGroupingConfig } from '@/hooks/useSectorGroupingConfig';
 import {
   useBulkOrderConsumption,
   bulkConsumptionKey,
+  filterConsumptionForSector,
   type ConsumptionRow,
 } from '@/hooks/useBulkOrderConsumption';
 import { calcGroupPlateAreaDm2 } from '@/lib/orderConsumption';
@@ -36,6 +45,59 @@ import { facaLabelForSize, expandFacasByBoundaries } from '@/lib/knifeFacas';
 import { useKnifeFacasDefault } from '@/hooks/useKnifeFacasDefault';
 import { pmgLabelForSize } from '@/lib/aviamentoSizeRanges';
 import { useAviamentoPmgDefault } from '@/hooks/useAviamentoPmgDefault';
+import { getUpperWorkEligibility, requiresUpperCut } from '@/lib/upperCutEligibility';
+import { leftoverLabelsFromSheet } from '@/lib/cabedalLeftover';
+import {
+  effectiveOperatorStrapColor,
+  effectiveOperatorStrapMaterial,
+  operatorStrapGroupingSignature,
+  operatorStrapSequence,
+  type OperatorStrapLineLike,
+} from '@/lib/operatorStrapSequence';
+import {
+  addAllocatedPairs,
+  aggregateConsumptionByAllocatedPairs,
+  cloneAllocatedPairs,
+  lotPartitionKey,
+  mergeAllocatedPairs,
+  type AllocatedPairsByOp,
+} from '@/lib/lotConsumptionAllocation';
+
+interface PrintableOperatorStrapLine extends OperatorStrapLineLike {
+  group_name?: string | null;
+}
+
+interface PrintableOrderStrapSnapshot {
+  strap_colors?: unknown;
+  color?: string | null;
+}
+
+interface AllocatedPairsCarrier {
+  allocatedPairsByOp?: AllocatedPairsByOp;
+}
+
+function allocatedPairsOf(value: unknown): ReadonlyMap<string, number> | undefined {
+  return (value as AllocatedPairsCarrier | null | undefined)?.allocatedPairsByOp;
+}
+
+function ensureAllocatedPairs(value: object): AllocatedPairsByOp {
+  const carrier = value as AllocatedPairsCarrier;
+  carrier.allocatedPairsByOp = carrier.allocatedPairsByOp ?? new Map();
+  return carrier.allocatedPairsByOp;
+}
+
+function copyAllocatedPairs<T extends object>(target: T, source: unknown): T {
+  (target as AllocatedPairsCarrier).allocatedPairsByOp = cloneAllocatedPairs(allocatedPairsOf(source));
+  return target;
+}
+
+function printableOperatorStraps(
+  order: PrintableOrderStrapSnapshot,
+): PrintableOperatorStrapLine[] {
+  return Array.isArray(order.strap_colors)
+    ? order.strap_colors as PrintableOperatorStrapLine[]
+    : [];
+}
 
 /**
  * CSS do modo CARTÃO (aprovado pelo dono 31/07/2026 — "Opção B, 3 colunas").
@@ -50,9 +112,13 @@ import { useAviamentoPmgDefault } from '@/hooks/useAviamentoPmgDefault';
  * estava "180". 84mm e 74mm cabem mais cartões, mas com a grade truncada.
  *
  * A altura é do CONTEÚDO (o cartão não tem height fixa) e varia por setor —
- * Corte Forração tem consumo e fica mais alto que Corte Palmilha. O
- * empacotamento é do fragmentador do browser, igual à ficha reduzida:
- * `break-inside: avoid` mantém o cartão inteiro e a folha enche até o fim.
+ * Corte Forração tem consumo e fica mais alto que Corte Palmilha.
+ *
+ * Ordem do DOM = cut-stack (`layoutCutStackPages`): cada `.cartao-page` é uma
+ * folha A4 com até 12 cartões. Empilhar as folhas e cortar a mesma posição
+ * entrega a sequência k/N sem reordenar na mão. Não reordenar no CSS.
+ * Wrappers de página também fazem o "Inverter saída" inverter por FOLHA
+ * (não por cartão), preservando a geometria cut-stack na impressora face-up.
  */
 const cartaoStyles = `
   @media screen {
@@ -61,18 +127,38 @@ const cartaoStyles = `
        só sumiam no @media print, induzindo a uma conferência falsa. */
     .cartao-grid .pagi-sheet,
     .cartao-grid .page-break { display: none !important; }
+    /* Separador visual entre folhas na prévia (não imprime). */
+    .cartao-page + .cartao-page {
+      border-top: 1px dashed #ccc;
+      margin-top: 4mm;
+      padding-top: 4mm;
+    }
   }
   @media print {
     @page { size: A4 landscape; margin: 0; }
     /* O paginador explícito e os maços de ficha não participam deste modo. */
     .print-area .pagi-sheet, .print-area .page-break { display: none !important; }
     .cartao-grid {
+      display: block !important;
+      width: auto !important;
+      padding: 0 !important;
+      background: transparent !important;
+    }
+    .cartao-page {
       display: flex !important;
       flex-wrap: wrap !important;
       align-content: flex-start !important;
       gap: 2mm !important;
       padding: 3mm !important;
-      width: auto !important;
+      width: 297mm !important;
+      min-height: 210mm !important;
+      box-sizing: border-box !important;
+      break-after: page !important;
+      page-break-after: always !important;
+    }
+    .cartao-page:last-child {
+      break-after: auto !important;
+      page-break-after: auto !important;
     }
     /* Cartão inteiro ou nada — nunca parte entre duas folhas. */
     .cartao-lote {
@@ -83,13 +169,19 @@ const cartaoStyles = `
   /* Preview em TELA no mesmo empacotamento do papel (regra WYSIWYG do
      PRINT_SPEC §0.2-1: nada que mude altura pode viver só em @media print). */
   .cartao-grid {
+    display: block;
+    width: 297mm;
+    margin: 0 auto;
+    background: #fff;
+  }
+  .cartao-page {
     display: flex;
     flex-wrap: wrap;
     align-content: flex-start;
     gap: 2mm;
     padding: 3mm;
     width: 297mm;
-    margin: 0 auto;
+    box-sizing: border-box;
     background: #fff;
   }
 `;
@@ -689,6 +781,7 @@ function groupOrdersByRefColor(orders: any[]): Array<{
     }
     const orderTotal = Number(order.total_pairs ?? 0);
     g.totalPairs += orderTotal;
+    addAllocatedPairs(ensureAllocatedPairs(g), order.op_number, orderTotal);
     if (order.due_date && order.due_date > g.latestDueDate) g.latestDueDate = order.due_date;
     // order.grid ora chega como CURVA-BASE (soma 12), ora como GRADE TOTAL
     // (soma 120/360/444 — bug do 7º passe). resolveFicha deriva o CORRUGADO
@@ -784,17 +877,18 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   // Default = todos os setores marcados (equivalente ao antigo "Imprimir tudo").
   // User clica num chip pra ativar/desativar — conteúdo da tela atualiza ao vivo.
   const [activeSectors, setActiveSectors] = useState<Set<string>>(
-    () => new Set(initialSectors ?? SECTORS),
+    () => {
+      const seed = initialSectors ?? SECTORS;
+      if (initialCartao) {
+        return new Set([...seed].filter((s) => isCartaoFisicoEmitter(s)));
+      }
+      return new Set(seed);
+    },
   );
 
-  // Modo CARTÃO (31/07/2026): em vez das fichas A4, emite um cartão de 99mm por
-  // LOTE DE SETOR, 12 por folha A4 paisagem. O recorte do lote é exatamente o
-  // que `buildColorGroupedSheets` já produz (com as peculiaridades de cada
-  // setor) — o cartão não reagrupa nada por conta própria.
-  // ⚠ É modo de VISUALIZAÇÃO, não só de impressão (31/07/2026). Antes ele só
-  // ligava dentro do `printWith` e desligava logo depois, então NUNCA havia
-  // preview dos cartões — o dono mandava imprimir às cegas. Agora o preview
-  // reflete o modo e o `printWith` só imprime o que está na tela.
+  // Modo CARTÃO FÍSICO (spec cartao-fisico-corrugado): 1 cartão por corrugado
+  // cheio (12/15/18) por OP, nos 6 setores emissores. Substitui o CartaoLote
+  // de posto. É modo de VISUALIZAÇÃO (preview = o que imprime).
   const [cartao, setCartao] = useState(!!initialCartao);
 
   // ── Saída invertida (2026-07-24, pedido do dono) ──
@@ -900,7 +994,20 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       return next;
     });
   };
-  const markAllSectors = () => setActiveSectors(new Set(SECTORS));
+  const sectorChoices = cartao ? CARTAO_FISICO_EMITTERS : SECTORS;
+  const setCartaoMode = (on: boolean) => {
+    setCartao(on);
+    if (on) {
+      setActiveSectors((prev) => {
+        const next = new Set([...prev].filter((s) => isCartaoFisicoEmitter(s)));
+        return next.size > 0 ? next : new Set(CARTAO_FISICO_EMITTERS);
+      });
+    } else {
+      // Volta ao A4 com a rota completa marcada (DoD: setores completos).
+      setActiveSectors(new Set(SECTORS));
+    }
+  };
+  const markAllSectors = () => setActiveSectors(new Set(sectorChoices));
   const clearSectors = () => setActiveSectors(new Set());
   // Imprime com o layout escolhido. flushSync força o re-render (ficha completa OU
   // reduzida) ANTES do window.print(), pra o diálogo já pegar o DOM certo.
@@ -977,6 +1084,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   // OPs visíveis e indexado por (ref, cor, qtd) pra lookup nas worksheets.
   const consumptionInputs = useMemo(
     () => orders.map((o: any) => ({
+      order_id: o.id,
       reference_id: o.reference_id,
       quantity: Number(o.total_pairs ?? o.quantity ?? 0),
       color: o.color ?? null,
@@ -989,7 +1097,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     })).filter(i => i.reference_id && i.quantity > 0),
     [orders],
   );
-  const { data: consumptionByKey } = useBulkOrderConsumption(consumptionInputs);
+  const {
+    data: consumptionByKey,
+    isLoading: consumptionLoading,
+    isError: consumptionFailed,
+  } = useBulkOrderConsumption(consumptionInputs);
 
   // Índice op_number → order pra lookup ao agregar consumo por grupo.
   const ordersByOpNumber = useMemo(() => {
@@ -1006,23 +1118,36 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
    * pra anexar `consumption` a cada SilkColorGroup / PalmilhaGroup /
    * SoleColorBand antes do render.
    *
-   * `groupPairs`: pares REAIS do grupo. OPs splitadas em lote mantêm o
-   * op_number da OP-mãe, então o lookup resolve o consumo da OP INTEIRA —
-   * cada ficha de lote mostrava o consumo cheio (lote 1 e lote 2 de 360
-   * pares imprimiam ambos o consumo de 720 → operador separava material
-   * 2×). Quando groupPairs < soma cheia das OPs, rateia proporcionalmente.
+   * `allocatedPairsByOp`: pares REAIS de cada OP representados pelo grupo.
+   * OPs splitadas em lote mantêm o op_number da OP-mãe, então o lookup resolve
+   * o consumo da OP INTEIRA. O rateio precisa acontecer POR OP antes de somar:
+   * um lote pode conter 50% da OP-A e 75% da OP-B, proporções que uma razão
+   * global aplicada ao grupo não consegue representar corretamente.
    */
   const consumptionForOpNumbers = useMemo(
-    () => (opNumbers: string[] | undefined, groupPairs?: number): ConsumptionRow[] => {
+    () => (
+      opNumbers: string[] | undefined,
+      allocatedPairsByOp?: ReadonlyMap<string, number>,
+    ): ConsumptionRow[] => {
       if (!consumptionByKey || !opNumbers || opNumbers.length === 0) return [];
-      const byProduct = new Map<string, ConsumptionRow>();
-      let fullPairs = 0;
+      const slices: Array<{
+        rows: readonly ConsumptionRow[];
+        fullPairs: number;
+        allocatedPairs: number;
+      }> = [];
+      const seenOps = new Set<string>();
       for (const op of opNumbers) {
-        const o = ordersByOpNumber.get(String(op));
+        const opKey = String(op);
+        if (seenOps.has(opKey)) continue;
+        seenOps.add(opKey);
+        const o = ordersByOpNumber.get(opKey);
         if (!o?.reference_id) continue;
         const qty = Number(o.total_pairs ?? o.quantity ?? 0);
         if (qty <= 0) continue;
-        fullPairs += qty;
+        const allocatedPairs = allocatedPairsByOp
+          ? Number(allocatedPairsByOp.get(opKey) ?? 0)
+          : qty;
+        if (!(allocatedPairs > 0)) continue;
         // Mesmos campos do consumptionInputs (grade + tiras na chave) — senão
         // o lookup erra quando 2 OPs têm mesma ref+cor+qtd mas grades/tiras
         // diferentes.
@@ -1033,43 +1158,43 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           (o.grid ?? null) as Record<string, number> | null,
           Array.isArray(o.strap_colors) ? o.strap_colors : null,
           (o.material_variant_id ?? null) as string | null,
+          o.id,
         );
-        const rows = consumptionByKey.get(key) ?? [];
-        for (const r of rows) {
-          const existing = byProduct.get(r.product_id);
-          if (!existing) {
-            byProduct.set(r.product_id, { ...r });
-          } else {
-            existing.required += r.required;
-            existing.available = Math.max(existing.available, r.available);
-            existing.stock_ok = existing.available >= existing.required;
-          }
-        }
+        slices.push({ rows: consumptionByKey.get(key) ?? [], fullPairs: qty, allocatedPairs });
       }
-      const rows = Array.from(byProduct.values());
-      if (groupPairs && groupPairs > 0 && fullPairs > 0 && groupPairs < fullPairs) {
-        const ratio = groupPairs / fullPairs;
-        for (const r of rows) {
-          r.required = r.required * ratio;
-          r.stock_ok = r.available >= r.required;
-        }
-      }
-      return rows;
+      return aggregateConsumptionByAllocatedPairs(slices, (r) => [
+        r.product_id,
+        r.component || '',
+        r.color || '',
+        r.unit || '',
+        r.materialFamily || '',
+        r.consumption_sector || '',
+        r.consumption_sector_source || '',
+        r.material_source || '',
+      ].join('::'));
     },
     [consumptionByKey, ordersByOpNumber],
   );
 
-  const { data: silkRegistrations = [] } = useQuery({
-    queryKey: ['sole_silk_registrations'],
-    queryFn: async () => {
-      const { data, error } = await (supabase as any).from('sole_silk_registrations').select('*');
-      if (error) throw error;
-      return data;
-    },
-  });
+  // P1.5: IDs das OPs/PVs já carregados — escopo de clients/silk/PV/NF.
+  // Antes sale_orders/clients/silk vinham SEM filtro (catálogo inteiro).
+  const orderIds = useMemo(() => orders.map((o: any) => o.id).filter(Boolean), [orders]);
+  const saleOrderIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const o of orders as any[]) if (o.sale_order_id) ids.add(o.sale_order_id);
+    return Array.from(ids).sort();
+  }, [orders]);
 
-  const { data: saleOrders = [] } = useQuery({
-    queryKey: ['sale_orders_for_worksheets_v5'],
+  // Gates por setor — queries caras só quando o chip correspondente está ativo.
+  const needsExpedicao = activeSectors.has('Expedição');
+  const needsRelatorio = activeSectors.has('Relatório Gerencial');
+  const needsPlateArea = activeSectors.has('Corte Palmilha');
+  const needsSoleSizeConj =
+    activeSectors.has('Solagem') || activeSectors.has('Colagem');
+
+  const { data: saleOrders = [], isFetched: saleOrdersFetched } = useQuery({
+    queryKey: ['sale_orders_for_worksheets_v5', saleOrderIds],
+    enabled: saleOrderIds.length > 0,
     queryFn: async () => {
       // Bug: pedia 'economic_group_id' (não existe em sale_orders — está em
       // clients) e 'total_value' (a coluna real é 'total'). Resultado: 400
@@ -1079,16 +1204,81 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
         // ⚠ Lista EXPLÍCITA: coluna que a ficha usa e não está aqui chega
         // `undefined` e o recurso some em silêncio. `box_grouping` liga o resumo
         // de caixas por numeração na ficha de Expedição.
-        .select('id, client_id, client_name, client_cnpj, order_number, client_order_number, delivery_deadline, status, total, packaging_mode, box_grouping, representative, payment_condition, valor_frete');
+        .select('id, client_id, client_name, client_cnpj, order_number, client_order_number, delivery_deadline, status, total, packaging_mode, box_grouping, representative, payment_condition, valor_frete')
+        .in('id', saleOrderIds);
       if (error) throw error;
-      return data;
+      return data || [];
+    },
+  });
+  const saleOrdersReady = saleOrderIds.length === 0 || saleOrdersFetched;
+
+  const clientIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const so of saleOrders as any[]) if (so?.client_id) ids.add(so.client_id);
+    return Array.from(ids).sort();
+  }, [saleOrders]);
+
+  const { data: clientsInfo = [], isFetched: clientsFetched } = useQuery({
+    queryKey: ['clients_for_expedicao_v3', clientIds],
+    enabled: saleOrdersReady && clientIds.length > 0,
+    queryFn: async () => {
+      // Endereço completo necessário pra ficha de expedição (etiqueta correta).
+      // silk_url + logo_url usados como fallback de marca na ficha de Silk.
+      const { data, error } = await (supabase as any)
+        .from('clients')
+        .select('id, razao_social, cnpj, inscricao_estadual, endereco, bairro, cidade, estado, cep, telefone, economic_group_id, silk_url, logo_url')
+        .in('id', clientIds);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+  const clientsReady = clientIds.length === 0 || clientsFetched;
+
+  const economicGroupIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const c of clientsInfo as any[]) if (c?.economic_group_id) ids.add(c.economic_group_id);
+    return Array.from(ids).sort();
+  }, [clientsInfo]);
+
+  // Cascata de marca: registros do cliente + do grupo econômico + defaults
+  // (client_id/economic_group_id nulos). Sem defaults a ficha de Silk perde o
+  // fallback "Squad Shoes" cadastrado no solado.
+  const { data: silkRegistrations = [] } = useQuery({
+    queryKey: ['sole_silk_registrations', clientIds, economicGroupIds],
+    enabled: saleOrdersReady && clientsReady,
+    queryFn: async () => {
+      const parts = ['and(client_id.is.null,economic_group_id.is.null)'];
+      if (clientIds.length > 0) parts.push(`client_id.in.(${clientIds.join(',')})`);
+      if (economicGroupIds.length > 0) {
+        parts.push(`economic_group_id.in.(${economicGroupIds.join(',')})`);
+      }
+      const { data, error } = await (supabase as any)
+        .from('sole_silk_registrations')
+        .select('id, client_id, economic_group_id, sole_product_id, sole_type, silk_name, silk_url')
+        .or(parts.join(','));
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  // Grupos econômicos (silk_url/logo_url) — fallback de marca quando o cliente
+  // não tem silk própria mas pertence a um grupo que tem.
+  const { data: economicGroupsInfo = [] } = useQuery({
+    queryKey: ['economic_groups_for_silk', economicGroupIds],
+    enabled: economicGroupIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('economic_groups')
+        .select('id, silk_url, logo_url')
+        .in('id', economicGroupIds);
+      if (error) throw error;
+      return data || [];
     },
   });
 
   // Stages só carregados quando "Relatório Gerencial" está selecionado.
   // (Query de order_costs REMOVIDA em 2026-06-12 — a seção "Custos & Margem"
   //  saiu do Relatório Gerencial a pedido do dono.)
-  const orderIds = useMemo(() => orders.map((o: any) => o.id).filter(Boolean), [orders]);
 
   // Lot sizing (PR 2026-05-23): carrega lots em batch; cada OP splitada vira
   // N virtual orders. Groupings abaixo usam `expandedOrders` no lugar de `orders`
@@ -1102,7 +1292,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     queryKey: ['order_stages_for_report', orderIds],
     // Gate pelo setor: só o Relatório Gerencial consome stages — sem o gate
     // toda impressão de qualquer setor disparava a query à toa.
-    enabled: orderIds.length > 0 && activeSectors.has('Relatório Gerencial'),
+    enabled: orderIds.length > 0 && needsRelatorio,
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('order_stages')
@@ -1113,42 +1303,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     },
   });
 
-  const { data: clientsInfo = [] } = useQuery({
-    queryKey: ['clients_for_expedicao_v3'],
-    queryFn: async () => {
-      // Endereço completo necessário pra ficha de expedição (etiqueta correta).
-      // silk_url + logo_url usados como fallback de marca na ficha de Silk.
-      const { data, error } = await (supabase as any)
-        .from('clients')
-        .select('id, razao_social, cnpj, inscricao_estadual, endereco, bairro, cidade, estado, cep, telefone, economic_group_id, silk_url, logo_url');
-      if (error) throw error;
-      return data || [];
-    },
-  });
-
-  // Grupos econômicos (silk_url/logo_url) — fallback de marca quando o cliente
-  // não tem silk própria mas pertence a um grupo que tem.
-  const { data: economicGroupsInfo = [] } = useQuery({
-    queryKey: ['economic_groups_for_silk'],
-    queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from('economic_groups')
-        .select('id, silk_url, logo_url');
-      if (error) throw error;
-      return data || [];
-    },
-  });
-
   // NF-e emitidas vinculadas aos PVs (pra exibir número/chave na ficha de expedição)
-  const saleOrderIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const o of orders as any[]) if (o.sale_order_id) ids.add(o.sale_order_id);
-    return Array.from(ids);
-  }, [orders]);
-
   const { data: nfeForExpedicao = [] } = useQuery({
     queryKey: ['nfe_emitidas_for_expedicao', saleOrderIds],
-    enabled: saleOrderIds.length > 0,
+    enabled: needsExpedicao && saleOrderIds.length > 0,
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('nfe_emitidas')
@@ -1163,7 +1321,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   // Transportadora do PV (pra ficha de expedição)
   const { data: saleOrdersTransport = [] } = useQuery({
     queryKey: ['sale_orders_transport', saleOrderIds],
-    enabled: saleOrderIds.length > 0,
+    enabled: needsExpedicao && saleOrderIds.length > 0,
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('sale_orders')
@@ -1249,7 +1407,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       // upper_corte_a_fio: filtro da ficha 'Costura Cabedal' (2026-06-12).
       const { data, error } = await supabase
         .from('technical_sheets')
-        .select('id, insole_has_lining, insole_ready_made, has_straps, sole_material, sole_color, sole_group_id, primary_sole_id, production_sectors, aviamento_steps, upper_material, lining_material, insole_material, upper_corte_a_fio, knife_size_ranges, aviamento_size_ranges, shoe_category')
+        .select('id, insole_has_lining, insole_ready_made, has_straps, sole_material, sole_color, sole_group_id, primary_sole_id, production_sectors, aviamento_steps, upper_material, upper_material_group_id, upper_material_product_id, upper_consumption, upper_consumption_per_size, components_accessories, lining_material, insole_material, upper_corte_a_fio, knife_size_ranges, aviamento_size_ranges, shoe_category')
         .in('id', referenceIds);
       if (error) throw error;
       return data || [];
@@ -1306,9 +1464,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
 
   // Baldes de numeração conjugada (ex.: 23/24 = 1 par físico) por grupo de
   // solado — re-bucketiza as colunas de grade da Solagem/Colagem (C1).
+  // P1.5: só Solagem/Colagem consomem — não busca pra outros setores.
   const { data: soleSizeConjugations = [] } = useQuery({
     queryKey: ['sole_size_conjugations_for_print', allSoleGroupIds],
-    enabled: allSoleGroupIds.length > 0,
+    enabled: needsSoleSizeConj && allSoleGroupIds.length > 0,
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('sole_size_conjugations')
@@ -1380,8 +1539,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   // Área da placa (dm²) por NOME de grupo — base da conversão dm²→placas
   // (1000×1500mm = 150 dm²/placa). Usada só pra EXIBIR a base na ficha de
   // Corte de Placa; o número de placas em si já vem convertido do motor.
+  // P1.5: gate no setor — sem Corte Palmilha a query não roda.
   const { data: plateAreaByGroupName } = useQuery({
     queryKey: ['plate_area_by_group_name_v1'],
+    enabled: needsPlateArea,
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('product_groups')
@@ -1786,6 +1947,30 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orders, sizeFilter, soleFilter, resolveSoleForOrder]);
 
+  const ambiguousConsumptionMaterials = useMemo(() => {
+    if (!consumptionByKey) return [];
+    const labels = new Set<string>();
+    for (const order of printOrders) {
+      const quantity = Number(order.total_pairs ?? order.quantity ?? 0);
+      if (!order.reference_id || quantity <= 0) continue;
+      const key = bulkConsumptionKey(
+        order.reference_id,
+        order.color,
+        quantity,
+        (order.grid ?? null) as Record<string, number> | null,
+        Array.isArray(order.strap_colors) ? order.strap_colors : null,
+        (order.material_variant_id ?? null) as string | null,
+        order.id,
+      );
+      for (const row of consumptionByKey.get(key) ?? []) {
+        if (row.consumption_sector_source !== 'ambiguous') continue;
+        const color = String(row.color || '').trim();
+        labels.add(`${row.product_name}${color && color !== '—' ? ` · ${color}` : ''}`);
+      }
+    }
+    return Array.from(labels).sort((left, right) => left.localeCompare(right, 'pt-BR'));
+  }, [consumptionByKey, printOrders]);
+
   const expandedOrders = useMemo(
     () => expandOrdersByLots(printOrders as any[], lotsMap),
     [printOrders, lotsMap],
@@ -1993,6 +2178,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       const baseGrid = (order.grid || {}) as Record<string, number>;
       const baseSum = Object.values(baseGrid).reduce((s, v) => s + (Number(v) || 0), 0);
       const orderTotal = Number(order.total_pairs ?? 0);
+      addAllocatedPairs(ensureAllocatedPairs(group), order.op_number, orderTotal);
       const multiplier = baseSum > 0 ? orderTotal / baseSum : 0;
       const ficha = resolveFicha(orderTotal, baseGrid);
       group.baseGrade = foldFichaIntoGroup(group, ficha, ficha.baseCurve, group.baseGrade);
@@ -2066,7 +2252,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   // agrupamentos: por SOLADO (Corte Forração / Corte Cabedal / Costura* /
   // Silk) e por REFERÊNCIA (Aviamento — o setor monta o cabedal; o solado é
   // irrelevante pra eles, então 1 ficha por modelo com seções por cor).
-  const buildColorGroupedSheets = (groupBy: 'sole' | 'reference'): SoleSilkGroup[] => {
+  const buildColorGroupedSheets = (
+    groupBy: 'sole' | 'reference',
+    partitionUpperEligibility = false,
+  ): SoleSilkGroup[] => {
     // Map: groupKey → { displayName, colorMap }.
     //  - groupBy='sole': groupKey é a IDENTIDADE do solado (sole_product_id
     //    quando há mapping real; sheetId quando cai no fallback de
@@ -2082,22 +2271,14 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     // — antes a chave ignorava tiras e cospia 1 ficha só com as tiras da 1ª
     // OP, virando fantasma as tiras das demais (bug reportado 2026-05-18).
     // Modelos sem tiras: retorna '' (não muda nada — comportamento atual).
-    const computeStrapSignature = (order: any): string => {
-      const raw = Array.isArray(order?.strap_colors) ? order.strap_colors : [];
-      if (raw.length === 0) return '';
-      return [...raw]
-        .sort((a: any, b: any) => {
-          const ka = parseInt(a?.id, 10);
-          const kb = parseInt(b?.id, 10);
-          if (isFinite(ka) && isFinite(kb)) return ka - kb;
-          return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
-        })
-        .map((s: any) => `${(s?.label || 'TIRA').toUpperCase()}=${(s?.color || '').toUpperCase().trim()}`)
-        .join('|');
-    };
+    const computeStrapSignature = (order: PrintableOrderStrapSnapshot): string =>
+      operatorStrapGroupingSignature(printableOperatorStraps(order), order.color);
 
     for (const order of expandedOrders) {
       const sheetId = order.reference_id;
+      const upperEligibility = getUpperWorkEligibility(sheetById.get(sheetId));
+      const needsUpperCut = upperEligibility.requiresUpperCut;
+      const requiresUpperSewing = upperEligibility.requiresUpperSewing;
       const cabedelColorLower = (order.color || '').toLowerCase();
       const colorName = order.variant?.color_name || order.color || '';
       const colorHex = order.variant?.color_hex;
@@ -2109,9 +2290,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       const lotTotal = order._total_lots ?? 0;
       const lotSuffix = lotTotal > 1 ? `::lot${lotNum}` : '';
       // Chave do colorMap = cor cabedal + assinatura de tiras + lote.
-      const colorKey = strapSig
+      const baseColorKey = strapSig
         ? `${colorName}::${strapSig}${lotSuffix}`
         : `${colorName}${lotSuffix}`;
+      const colorKey = partitionUpperEligibility
+        ? `${baseColorKey}::${upperEligibility.partitionKey}`
+        : baseColorKey;
 
       // A1: solado pela resolução canônica (P0→P3 do resolve_sole_color).
       const resolvedSole = resolveSoleForOrder(sheetId, order.color);
@@ -2159,14 +2343,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       // Agregadas por OR logo abaixo.
       //  - Corte Forração: cores cuja palmilha PRECISA ser forrada
       //    (insole_has_lining=true E não pronta na cor efetiva — B2)
-      //  - Corte Cabedal: modelos SEM tiras (que têm cabedal a cortar)
+      //  - Corte Cabedal: referências com consumo de cabedal, mesmo que também
+      //    tenham tiras habilitadas.
       //  - Costura Cabedal (2026-06-12): cabedal a cortar E ficha NÃO é
       //    corte a fio (upper_corte_a_fio=false → cabedal passa por costura)
       const requiresLiningCut = (liningFlagLookup.get(sheetId) === true)
         && !isEffectiveReadyMade(sheetId, order.color);
-      const requiresUpperCut = hasStrapsLookup.get(sheetId) !== true;
-      const requiresUpperSewing = requiresUpperCut
-        && sheetById.get(sheetId)?.upper_corte_a_fio !== true;
 
       // Variantes/foto da cor exata desta OP — hoisted (2026-07-22) pra
       // alimentar refImages tanto na criação do grupo quanto na agregação das
@@ -2190,16 +2372,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
         }
         // Sequência de tiras na ordem da ficha técnica (TIRA 1, TIRA 2, ...).
         // Renderizada no Aviamento pra o operador montar na ordem certa.
-        // Stable sort por id (string) pra garantir consistência.
-        const strapColorsRaw = Array.isArray((order as any).strap_colors)
-          ? ((order as any).strap_colors as Array<any>)
-          : [];
-        const strapsOrdered = [...strapColorsRaw].sort((a: any, b: any) => {
-          const ka = parseInt(a?.id, 10);
-          const kb = parseInt(b?.id, 10);
-          if (isFinite(ka) && isFinite(kb)) return ka - kb;
-          return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
-        });
+        // A posição no array é a posição técnica. UUID identifica a linha, mas
+        // não carrega ordem; snapshots antigos inteiramente numéricos seguem
+        // ordenados pelo helper de compatibilidade.
+        const strapColorsRaw = printableOperatorStraps(order);
+        const strapsOrdered = operatorStrapSequence(strapColorsRaw);
         // Resolução de faixa P/M/G do Aviamento (mesma do grid: override por ref →
         // padrão global → sem faixa). Usada pra quebrar a MEDIDA da tira por faixa,
         // porque cada numeração tem um comprimento (consumption_per_size).
@@ -2211,12 +2388,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           if (useDefaultAviStrap) return pmgLabelForSize(size, aviamentoDefaultBoundaries!);
           return null;
         };
-        const strapsAsComponents = strapsOrdered.map((s: any) => {
+        const strapsAsComponents = strapsOrdered.map((s, strapIndex) => {
           // Medida da tira em CM por PAR (strap_colors[].consumption[_per_size] já é
           // cm/par — ver GradingCadTab "comprimento base (cm)"). Quebra por faixa
           // P/M/G (cada tamanho tem um comprimento); usa o MAIOR cm da faixa.
           const cps = (s?.consumption_per_size && typeof s.consumption_per_size === 'object')
-            ? (s.consumption_per_size as Record<string, any>) : {};
+            ? s.consumption_per_size : {};
           const bandCm: Record<string, number> = {};
           const bandOrder: string[] = [];
           for (const size of Object.keys(cps).sort((a, b) => Number(a) - Number(b))) {
@@ -2238,10 +2415,14 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             if (v > 0) cmBySize[size] = Math.round(v * 10) / 10;
           }
           return {
-            name: s?.label || 'TIRA',
-            material: s?.group_name || '',
+            position: strapIndex + 1,
+            technicalStrapLineId: s?.technical_strap_line_id || s?.id || undefined,
+            name: s?.label || `TIRA ${strapIndex + 1}`,
+            material: effectiveOperatorStrapMaterial(s),
             qty: undefined,
-            color: s?.color || '—',
+            // O snapshot por linha é autoritativo. Pedidos antigos, nos quais
+            // a tira ainda não repetia a cor no JSON, seguem a cor principal.
+            color: effectiveOperatorStrapColor(s, colorName),
             cm: Number(s?.consumption) > 0 ? Math.round(Number(s.consumption) * 10) / 10 : undefined,
             cmBands: cmBands.length >= 2 ? cmBands : undefined,
             cmBySize: Object.keys(cmBySize).length > 0 ? cmBySize : undefined,
@@ -2250,8 +2431,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
 
         colorMap.set(colorKey, {
           color: colorName,
-          // Modelo com tiras não tem cabedal — no Corte Forração esconde a
-          // referência ao cabedal (pedido user 09/06/2026).
+          // Flag exclusiva das tiras; não informa mais se existe cabedal.
           hasStraps: hasStrapsLookup.get(sheetId) === true,
           colorHex,
           combinedGrid: {},
@@ -2272,8 +2452,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           components: strapsAsComponents.length > 0 ? strapsAsComponents : undefined,
           refs: [],
           requiresLiningCut,
-          requiresUpperCut,
+          requiresUpperCut: needsUpperCut,
           requiresUpperSewing,
+          leftoverNapas: leftoverLabelsFromSheet(sheetById.get(sheetId)),
           aviamentoSteps: aviamentoStepsByRef.get(sheetId) || [],
           lotInfo: lotTotal > 1 ? { number: lotNum, total: lotTotal } : undefined,
         });
@@ -2284,8 +2465,16 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       // o corte, a ficha do setor imprime (semântica igual ao opsInRoteiro
       // de grupos mistos — não some com quantidades).
       cg.requiresLiningCut = cg.requiresLiningCut === true || requiresLiningCut;
-      cg.requiresUpperCut = cg.requiresUpperCut === true || requiresUpperCut;
+      cg.requiresUpperCut = cg.requiresUpperCut === true || needsUpperCut;
       cg.requiresUpperSewing = cg.requiresUpperSewing === true || requiresUpperSewing;
+      {
+        const leftoverNames = leftoverLabelsFromSheet(sheetById.get(sheetId));
+        if (leftoverNames.length) {
+          const existing = new Set(cg.leftoverNapas || []);
+          leftoverNames.forEach((name) => existing.add(name));
+          cg.leftoverNapas = Array.from(existing);
+        }
+      }
       // OR do alerta de fachetado entre as OPs (2026-06-12): no agrupamento
       // por REFERÊNCIA (Aviamento), solados DISTINTOS caem na mesma cor — se
       // qualquer OP resolve solado fachetado, o alerta tem que aparecer
@@ -2339,6 +2528,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       const baseGrid = (order.grid || {}) as Record<string, number>;
       const baseSum = Object.values(baseGrid).reduce((s, v) => s + (Number(v) || 0), 0);
       const orderTotal = Number(order.total_pairs ?? 0);
+      addAllocatedPairs(ensureAllocatedPairs(cg), order.op_number, orderTotal);
       const multiplier = baseSum > 0 ? orderTotal / baseSum : 0;
       const ficha = resolveFicha(orderTotal, baseGrid);
       // Fichas (corrugados) por REFERÊNCIA — mesma conta do rodapé da grade.
@@ -2418,6 +2608,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           if (scaled > 0) lb.combinedGrid[size] = (lb.combinedGrid[size] ?? 0) + scaled;
         }
         lb.totalPairs = Object.values(lb.combinedGrid).reduce((s, v) => s + v, 0);
+        addAllocatedPairs(ensureAllocatedPairs(lb), order.op_number, orderTotal);
         // Mesma folding de ficha/corrugado do grupo (baseGradeSum/fichas/mixed).
         lb.baseGrid = foldFichaIntoGroup(lb, ficha, ficha.baseCurve, lb.baseGrid);
         if (order.op_number) lb.opNumbers.push(order.op_number);
@@ -2467,6 +2658,16 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   // nas deps, o memo não recomputava quando o padrão de facas carregava async →
   // Corte Cabedal ficava número-a-número. (PV-00142, 2026-06-17.)
   }, [expandedOrders, activeSectors, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, soleMaterialByRef, sheetMaterialsByRef, resolveSoleForOrder, sheetById, clientsInfo, economicGroupsInfo, soleGroupPackaging, SOLE_COLOR_GROUPED_SECTORS, knifeDefaultBoundaries, knifeOptOutByRef, knifeRangesByRef, aviamentoDefaultBoundaries, aviamentoOptOutByRef, aviamentoRangesByRef]);
+
+  // Corte/Costura Cabedal precisam preservar a elegibilidade POR OP. Sem a
+  // partição, referências distintas com o mesmo solado/cor/tiras/lote seriam
+  // fundidas antes do filtro e a elegibilidade agregada por OR carregaria os
+  // pares de um modelo somente de tiras para esses setores.
+  const upperSectorGroups = useMemo<SoleSilkGroup[] | null>(() => {
+    if (!activeSectors.has('Corte Cabedal') && !activeSectors.has('Costura Cabedal')) return null;
+    return buildColorGroupedSheets('sole', true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expandedOrders, activeSectors, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, soleMaterialByRef, sheetMaterialsByRef, resolveSoleForOrder, sheetById, clientsInfo, economicGroupsInfo, soleGroupPackaging, knifeDefaultBoundaries, knifeOptOutByRef, knifeRangesByRef, aviamentoDefaultBoundaries, aviamentoOptOutByRef, aviamentoRangesByRef]);
 
   // ── Aviamento: por REFERÊNCIA (modelo), seções por cor ────────────────────
   // Pedido do dono (2026-06-12): o Aviamento só monta o cabedal — o solado é
@@ -2600,6 +2801,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
         const baseGrid = (order.grid || {}) as Record<string, number>;
         const baseSum = Object.values(baseGrid).reduce((s: number, v) => s + (Number(v) || 0), 0);
         const orderTotal = Number(order.total_pairs ?? 0);
+        addAllocatedPairs(ensureAllocatedPairs(band), order.op_number, orderTotal);
         const multiplier = baseSum > 0 ? orderTotal / baseSum : 0;
         const ficha = resolveFicha(orderTotal, baseGrid);
         band.baseGrade = foldFichaIntoGroup(
@@ -2899,17 +3101,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       // Materiais técnicos da ficha.
       const mats = sheetMaterialsByRef.get(order.reference_id) || { upper: null, lining: null, insole: null };
 
-      // Tiras configuradas no item de venda (ordenadas por id numérico).
+      // Tiras configuradas no item de venda, na posição técnica do snapshot.
       const strapColorsRaw = Array.isArray((order as any).strap_colors)
         ? ((order as any).strap_colors as Array<any>)
         : [];
-      const straps = [...strapColorsRaw]
-        .sort((a: any, b: any) => {
-          const ka = parseInt(a?.id, 10);
-          const kb = parseInt(b?.id, 10);
-          if (isFinite(ka) && isFinite(kb)) return ka - kb;
-          return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
-        })
+      const straps = operatorStrapSequence(strapColorsRaw)
         .map((s: any) => ({
           label: s?.label || undefined,
           color: s?.color || undefined,
@@ -2973,11 +3169,80 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [printOrders, saleOrders, clientsInfo, resolveSoleForOrder, soleGroupPackaging, orderStagesData, activeSectors, variantsByRef, tsImageByRef, sheetMaterialsByRef, silkRegistrations, economicGroupsInfo]);
 
+  // ── Cartão físico: 1 por corrugado cheio × OP × setor emissor ─────────────
+  const cartaoFisicoCards = useMemo((): CartaoFisicoCard[] => {
+    if (!cartao) return [];
+    const out: CartaoFisicoCard[] = [];
+    for (const sector of CARTAO_FISICO_EMITTERS) {
+      if (!activeSectors.has(sector)) continue;
+      const inputs = printOrders.map((order: any) => {
+        const sheetId = order.reference_id as string | undefined;
+        const sheet = sheetId ? sheetById.get(sheetId) : null;
+        const upper = getUpperWorkEligibility(sheet);
+        let eligible = true;
+        if (sector === 'Corte Cabedal') {
+          eligible = upper.requiresUpperCut;
+        } else if (sector === 'Costura Cabedal') {
+          eligible = orderInRoteiro(sheetId, sector) && upper.requiresUpperSewing;
+        } else if (sector === 'Corte Forração') {
+          const needsLining = liningFlagLookup.get(sheetId || '') === true
+            && !isEffectiveReadyMade(sheetId, order.color);
+          eligible = orderInRoteiro(sheetId, sector) && needsLining;
+        } else {
+          eligible = orderInRoteiro(sheetId, sector);
+        }
+
+        const refLabel = order.reference_code || order.reference_name || '';
+        const colorLower = (order.color || '').toLowerCase();
+        const variants = sheetId ? (variantsByRef.get(sheetId) || []) : [];
+        const exactVariant = variants.find((v: any) => (v.color || '').toLowerCase() === colorLower);
+        const imageUrl = exactVariant?.image_url
+          || variants.find((v: any) => v.image_url)?.image_url
+          || (sheetId ? tsImageByRef.get(sheetId) : null)
+          || null;
+
+        let materialLabel: string | null = null;
+        if (sector === 'Corte Palmilha') {
+          materialLabel = soleNameFor(sheetId, order.color) || null;
+        } else if (sector === 'Corte Forração') {
+          materialLabel = (sheetId && sheetMaterialsByRef.get(sheetId)?.lining) || null;
+        }
+
+        return {
+          opNumber: String(order.op_number || ''),
+          pvLabel: order.sale_order_number || null,
+          referenceLabel: refLabel || null,
+          color: order.color || null,
+          materialLabel,
+          imageUrl,
+          totalPairs: Number(order.total_pairs) || 0,
+          grid: (order.grid ?? null) as Record<string, number> | null,
+          eligible,
+        };
+      });
+      out.push(...buildCartaoFisicoCards({
+        sectorName: sector,
+        sectorDisplayLabel: sectorLabel(sector),
+        orders: inputs,
+      }));
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cartao, activeSectors, printOrders, sheetById, liningFlagLookup, variantsByRef, tsImageByRef, sheetMaterialsByRef, resolveSoleForOrder]);
+
+  // Cut-stack: reordena a lista sequencial em folhas de 12 pra empilhar e
+  // cortar a mesma posição já sair com k/N em sequência.
+  const cartaoFisicoPages = useMemo(
+    () => layoutCutStackPages(cartaoFisicoCards, CARTAO_FISICO_PER_PAGE),
+    [cartaoFisicoCards],
+  );
+
   // ── Contagem total de fichas que vão pra impressão ─────────────────────────
   // Soma as fichas de cada setor ATIVO. Cada componente memoizado já filtra
   // pelo activeSectors, então palmilhaGroups/silkMontageGroups/solagemData/
   // expedicaoGroups/reportGroups são vazios pra setores não-marcados.
   const sheetCount = useMemo(() => {
+    if (cartao) return cartaoFisicoCards.length;
     let total = 0;
     if (activeSectors.has('Corte Palmilha') && palmilhaGroups.length > 0) total += 1;
     if (activeSectors.has('Solagem') && solagemData?.solagem && solagemData.solagem.bands.length > 0) total += 1;
@@ -2985,7 +3250,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     // filtro requiresUpperCut (modelos 100% tiras → mergeColorsAcrossSoles
     // devolve null e nada renderiza; contar 1 habilitava print em branco).
     const smGroups = silkMontageGroups || [];
-    if (activeSectors.has('Corte Cabedal') && smGroups.some(g =>
+    const upperGroups = upperSectorGroups || [];
+    if (activeSectors.has('Corte Cabedal') && upperGroups.some(g =>
       g.colorGroups.some(cg => cg.requiresUpperCut === true))) total += 1;
     // Fluxo contínuo por setor (2026-06-12): Corte Forração, Costura*, Silk,
     // Aviamento, Montagem e Acabamento agora imprimem UM maço por setor
@@ -3003,7 +3269,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     // `sheetCount === 0` desabilitava os dois botões de imprimir (2921/2924).
     if (activeSectors.has('Costura Palmilha') && smGroups.some(g =>
       g.colorGroups.some(cg => opsInRoteiro(cg.opNumbers, 'Costura')))) total += 1;
-    if (activeSectors.has('Costura Cabedal') && smGroups.some(g =>
+    if (activeSectors.has('Costura Cabedal') && upperGroups.some(g =>
       g.colorGroups.some(cg => cg.requiresUpperSewing === true && opsInRoteiro(cg.opNumbers, 'Costura Cabedal')))) total += 1;
     if (activeSectors.has('Aviamento') && (aviamentoGroups || []).some(g =>
       g.colorGroups.some(cg => opsInRoteiro(cg.opNumbers, 'Aviamento')))) total += 1;
@@ -3020,13 +3286,29 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     return total;
     // opsInRoteiro/orderInRoteiro são closures recriadas a cada render — fora
     // das deps de propósito (mesmo padrão dos memos vizinhos); os dados que
-    // elas leem chegam via silkMontageGroups/groupedWorksheets.
+    // elas leem chegam via silkMontageGroups/upperSectorGroups/groupedWorksheets.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSectors, palmilhaGroups, solagemData, silkMontageGroups, aviamentoGroups, groupedWorksheets, acabamentoOrders.length, expedicaoGroups, reportGroups]);
+  }, [cartao, cartaoFisicoCards, activeSectors, palmilhaGroups, solagemData, silkMontageGroups, upperSectorGroups, aviamentoGroups, groupedWorksheets, acabamentoOrders.length, expedicaoGroups, reportGroups]);
 
   const today = new Date().toLocaleDateString('pt-BR');
   const printPairCount = printOrders.reduce((total, order) => total + (Number(order.total_pairs) || 0), 0);
-  const printBlocked = activeSectors.size === 0 || sheetCount === 0 || initialQueriesLoading || failedQueries > 0;
+  const failedPrintQueryCount = failedQueries + (consumptionFailed ? 1 : 0);
+  const hasAmbiguousConsumptionRouting = ambiguousConsumptionMaterials.length > 0;
+  // Cartão físico não usa consumo de materiais — não espera nem bloqueia por
+  // consumptionLoading / roteamento ambíguo (só queries estruturais + cartões).
+  const printBlocked = activeSectors.size === 0
+    || sheetCount === 0
+    || initialQueriesLoading
+    || (!cartao && consumptionLoading)
+    || (cartao ? failedQueries > 0 : failedPrintQueryCount > 0)
+    || (!cartao && hasAmbiguousConsumptionRouting);
+  const printBlockedTitle = (!cartao && consumptionLoading)
+    ? 'O consumo dos materiais ainda está sendo calculado'
+    : (cartao ? failedQueries > 0 : failedPrintQueryCount > 0)
+      ? 'Consultas de dados falharam — recarregue a página antes de imprimir'
+      : (!cartao && hasAmbiguousConsumptionRouting)
+        ? 'Há materiais com mais de um setor configurado — corrija a ficha técnica antes de imprimir'
+        : undefined;
 
   return (
     /* print:p-0 print:space-y-0 — sem isso o p-6 (24px) + a margem do
@@ -3051,10 +3333,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             <div className="min-w-0">
               <p className="eyebrow">ETAPA 02 · CONFERÊNCIA</p>
               <h1 className="mt-0.5 font-display text-2xl uppercase leading-none tracking-wide">
-                {cartao ? 'Cartões de lote' : 'Fichas de operador'}
+                {cartao ? 'Cartão físico' : 'Fichas de operador'}
               </h1>
               <p className="mt-1 text-xs text-muted-foreground">
-                Revise a rota e o conteúdo antes de emitir o arquivo.
+                {cartao
+                  ? 'Um cartão por corrugado cheio (12/15/18), por OP — acompanha o fardo na saída do setor.'
+                  : 'Revise a rota e o conteúdo antes de emitir o arquivo.'}
               </p>
             </div>
           </div>
@@ -3069,7 +3353,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
               <dd className="font-mono text-sm font-bold tabular-nums">{printPairCount.toLocaleString('pt-BR')}</dd>
             </div>
             <div className="px-3 text-center">
-              <dt className="eyebrow">FICHAS</dt>
+              <dt className="eyebrow">{cartao ? 'CARTÕES' : 'FICHAS'}</dt>
               <dd className="font-mono text-sm font-bold tabular-nums">{sheetCount}</dd>
             </div>
           </dl>
@@ -3078,7 +3362,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             <div className="inline-flex border border-border bg-muted/30 p-0.5" aria-label="Formato da prévia">
               <button
                 type="button"
-                onClick={() => setCartao(false)}
+                onClick={() => setCartaoMode(false)}
                 aria-pressed={!cartao}
                 className={`inline-flex h-8 items-center gap-1.5 px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${!cartao ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
               >
@@ -3086,12 +3370,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
               </button>
               <button
                 type="button"
-                onClick={() => setCartao(true)}
+                onClick={() => setCartaoMode(true)}
                 aria-pressed={cartao}
                 className={`inline-flex h-8 items-center gap-1.5 px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${cartao ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-                title="Cartões recortáveis por lote de setor, 12 por folha A4 horizontal"
+                title="Cartão físico por corrugado cheio (12/15/18), um por OP, recortável em A4 horizontal"
               >
-                <Cards className="h-3.5 w-3.5" /> Cartões
+                <Cards className="h-3.5 w-3.5" /> Cartão físico
               </button>
             </div>
 
@@ -3113,9 +3397,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
               onClick={() => { void printInBrowser(); }}
               className="gap-2"
               disabled={printBlocked || preparingNativePrint}
-              title={failedQueries > 0 ? 'Consultas de dados falharam — recarregue a página antes de imprimir' : 'Abre o diálogo do navegador. Você pode imprimir ou escolher “Salvar como PDF”.'}
+              title={printBlockedTitle || 'Abre o diálogo do navegador. Você pode imprimir ou escolher “Salvar como PDF”.'}
             >
-              {preparingNativePrint ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+              {preparingNativePrint || initialQueriesLoading || (!cartao && consumptionLoading)
+                ? <Loader2 className="h-4 w-4 animate-spin" />
+                : <Printer className="h-4 w-4" />}
               Imprimir
             </Button>
 
@@ -3123,18 +3409,37 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
               onClick={() => { printTabRef.current = openPrintTab(); void printWith(); }}
               className="gap-2"
               disabled={printBlocked || preparingNativePrint}
-              title={failedQueries > 0 ? 'Consultas de dados falharam — recarregue a página antes de imprimir' : 'Gera um PDF padronizado no servidor, indicado para celular e quando a geometria precisa ser idêntica entre impressoras.'}
+              title={printBlockedTitle || 'Gera um PDF padronizado no servidor, indicado para celular e quando a geometria precisa ser idêntica entre impressoras.'}
             >
-              {initialQueriesLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+              {initialQueriesLoading || (!cartao && consumptionLoading) ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
               PDF padronizado
             </Button>
           </div>
         </div>
 
-        {failedQueries > 0 && (
+        {(cartao ? failedQueries > 0 : failedPrintQueryCount > 0) && (
           <div className="flex items-start gap-2 border-y border-destructive/30 bg-destructive/10 px-4 py-2.5 text-xs text-destructive" role="alert">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" weight="fill" />
-            <span><strong>{failedQueries} consulta{failedQueries > 1 ? 's falharam' : ' falhou'}.</strong> Cliente, solado ou consumo podem sair incompletos. Recarregue a página antes de emitir.</span>
+            <span><strong>{(cartao ? failedQueries : failedPrintQueryCount)} consulta{(cartao ? failedQueries : failedPrintQueryCount) > 1 ? 's falharam' : ' falhou'}.</strong> Cliente, solado ou consumo podem sair incompletos. Recarregue a página antes de emitir.</span>
+          </div>
+        )}
+
+        {!cartao && consumptionLoading && (
+          <div className="flex items-center gap-2 border-y border-border bg-muted/30 px-4 py-2.5 text-xs text-muted-foreground" role="status">
+            <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+            Calculando os materiais de cada setor. A emissão será liberada quando a conferência terminar.
+          </div>
+        )}
+
+        {!cartao && hasAmbiguousConsumptionRouting && (
+          <div className="flex items-start gap-2 border-y border-destructive/30 bg-destructive/10 px-4 py-2.5 text-xs text-destructive" role="alert">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" weight="fill" />
+            <span>
+              <strong>Destino de material conflitante.</strong> Estes materiais aparecem em mais de um setor da mesma ficha: {' '}
+              {ambiguousConsumptionMaterials.slice(0, 4).join(' · ')}
+              {ambiguousConsumptionMaterials.length > 4 ? ` · +${ambiguousConsumptionMaterials.length - 4}` : ''}.
+              {' '}Corrija o setor na ficha técnica antes de emitir.
+            </span>
           </div>
         )}
 
@@ -3145,7 +3450,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             <div className="flex items-center gap-2">
               <Layers className="h-4 w-4 text-primary" />
               <p className="text-xs font-bold uppercase tracking-wide">Rota de produção</p>
-              <span className="font-mono text-[10px] text-muted-foreground">{activeSectors.size}/{SECTORS.length}</span>
+              <span className="font-mono text-[10px] text-muted-foreground">{activeSectors.size}/{sectorChoices.length}</span>
             </div>
             <div className="flex items-center gap-1 text-xs">
               <button type="button" onClick={markAllSectors} className="px-2 py-1 font-semibold text-primary hover:underline">Todos</button>
@@ -3155,14 +3460,14 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           </div>
           <div className="overflow-x-auto pb-1">
             <div className="flex min-w-max" role="group" aria-label="Setores incluídos na impressão">
-              {SECTORS.map((sector, index) => {
+              {sectorChoices.map((sector, index) => {
                 const active = activeSectors.has(sector);
                 return (
                   <button
                     key={sector}
                     type="button"
                     onClick={() => toggleSector(sector)}
-                    className={`group relative flex h-14 w-36 items-center gap-2 border-y border-r px-2.5 text-left transition-colors first:border-l focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${active ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground'} ${sector === 'Relatório Gerencial' ? 'ml-3 border-l' : ''}`}
+                    className={`group relative flex h-14 w-36 items-center gap-2 border-y border-r px-2.5 text-left transition-colors first:border-l focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${active ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground'} ${!cartao && sector === 'Relatório Gerencial' ? 'ml-3 border-l' : ''}`}
                     aria-pressed={active}
                   >
                     <span className={`flex h-7 w-7 shrink-0 items-center justify-center border font-mono text-[10px] font-bold ${active ? 'border-primary-foreground/50' : 'border-border bg-muted/40'}`}>
@@ -3236,29 +3541,54 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       {/* Saída invertida (2026-07-24): durante o print, o provider liga a
           inversão nas páginas de cada PaginatedSheet e o ReversibleStack
           inverte a ordem dos maços de setor — juntos, reversão completa do
-          documento página a página. Sem gate por modo: vale para as fichas e
-          para os cartões de lote (nestes a ordem é irrelevante, vão pra
-          tesoura, mas inverter não atrapalha). */}
+          documento página a página. No modo Cartão físico os filhos top-level
+          são wrappers `.cartao-page` (cut-stack): inverter por FOLHA preserva
+          a geometria de empilhar-e-cortar; não inverter cartão a cartão. */}
       <ReversePrintContext.Provider value={printReversing}>
       <ReversibleStack reverse={printReversing}>
+
+        {/* Cartão físico — 1 por corrugado cheio × OP × setor emissor.
+            Fora de .page-break pra o CSS do modo cartão não esconder.
+            Páginas explícitas = cut-stack (layoutCutStackPages). */}
+        {cartao && cartaoFisicoPages.map((pageCards, pageIdx) => (
+          <div key={`cartao-page-${pageIdx}`} className="cartao-page">
+            {pageCards.map((card) => (
+              <CartaoFisico
+                key={`${card.sectorName}-${card.opNumber}-${card.index}/${card.of}`}
+                sectorName={card.sectorDisplayLabel}
+                opNumber={card.opNumber}
+                pvLabel={card.pvLabel}
+                title={card.title}
+                subtitle={card.subtitle}
+                imageUrl={card.imageUrl}
+                sizes={card.sizes}
+                grade={card.grade}
+                totalPairs={card.totalPairs}
+                lotLabel={card.lotLabel}
+                lotCode={card.lotCode}
+              />
+            ))}
+          </div>
+        ))}
 
         {/* ── Corte Palmilha ──
             Decisão 24/05/2026 (v3): user prefere ficha em múltiplas A4 a
             scale comprimido. Sem chunking — page-break-after entre fichas
             distintas, conteúdo flui naturalmente. Blocos atômicos
             (.keep-together) evitam quebra no meio de uma seção. */}
-        {includesSector('Corte Palmilha') && palmilhaGroups.length > 0 && (
+        {!cartao && includesSector('Corte Palmilha') && palmilhaGroups.length > 0 && (
           <div className="page-break">
               <PalmilhaWorkSheet
                 sectorLabel="Corte de Placa de Fibra"
                 groups={palmilhaGroups.map(g => ({
                   ...g,
                   clientNames: clientNamesForPvs(g.pvNumbers),
+                  consumption: filterConsumptionForSector(consumptionForOpNumbers(g.opNumbers, allocatedPairsOf(g)), 'Corte Fibra'),
                   // Operação do setor: placas a cortar deste solado. Filtra o
                   // consumo em unidade `placa` (component Palmilha em placa);
                   // palmilha pronta-na-cor sai como `par` e não entra aqui.
-                  plateOps: consumptionForOpNumbers(g.opNumbers, g.totalPairs)
-                    .filter(r => (r.unit || '').toLowerCase() === 'placa' && (r.required || 0) > 0)
+                  plateOps: filterConsumptionForSector(consumptionForOpNumbers(g.opNumbers, allocatedPairsOf(g)), 'Corte Fibra')
+                    .filter(r => r.component === 'Palmilha' && (r.unit || '').toLowerCase() === 'placa' && (r.required || 0) > 0)
                     .map(r => ({
                       name: r.product_name,
                       qty: r.required,
@@ -3274,14 +3604,16 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
 
         {/* ── Setores agrupados (Corte Forração, Corte Cabedal, Costura Palmilha,
             Costura Cabedal, Aviamento por referência, Silk por solado) ── */}
-        {(() => {
+        {!cartao && (() => {
           const smGroups = silkMontageGroups || [];
+          const upperGroups = upperSectorGroups || [];
           const aviGroups = aviamentoGroups || [];
-          if (smGroups.length === 0 && aviGroups.length === 0) return null;
+          if (smGroups.length === 0 && upperGroups.length === 0 && aviGroups.length === 0) return null;
 
           // Filtro por setor: cada setor precisa de critérios específicos.
           // Corte Forração: só cores cuja palmilha precisa de forração.
-          // Corte Cabedal: só modelos SEM tiras (que têm cabedal a cortar).
+          // Corte Cabedal: só referências com consumo de cabedal; tiras podem
+          // coexistir e seguem seu próprio fluxo.
           // Outros setores: renderizam tudo.
           // Pedido em 15/05/2026: cada setor mostrar SÓ as quantidades que
           // se aplicam a ele — antes ambos exibiam todas as cores, inflando
@@ -3344,22 +3676,28 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           const CUTTING_AGGREGATE_BY_COLOR: ReadonlyArray<GroupedSector> = ['Corte Cabedal'];
           const mergeColorsAcrossSoles = (sector: GroupedSector): SoleSilkGroup | null => {
             const colorMap = new Map<string, SilkColorGroup>();
-            for (const soleGroup of smGroups) {
+            const sourceGroups = sector === 'Corte Cabedal' || sector === 'Costura Cabedal'
+              ? upperGroups
+              : smGroups;
+            for (const soleGroup of sourceGroups) {
               const filtered = filterGroupForSector(soleGroup, sector);
               if (!filtered) continue;
               for (const cg of filtered.colorGroups) {
-                const existing = colorMap.get(cg.color);
+                const mergeKey = `${cg.color}::${lotPartitionKey(cg.lotInfo)}`;
+                const existing = colorMap.get(mergeKey);
                 if (!existing) {
-                  colorMap.set(cg.color, {
+                  const cloned = copyAllocatedPairs({
                     ...cg,
                     refs: [],  // remove refs (pedido user 22/05/2026)
                     combinedGrid: { ...cg.combinedGrid },
                     knifeGrid: cg.knifeGrid ? { ...cg.knifeGrid } : undefined,
                     opNumbers: [...cg.opNumbers],
                     pvNumbers: cg.pvNumbers ? [...cg.pvNumbers] : [],
-                  });
+                  }, cg);
+                  colorMap.set(mergeKey, cloned);
                 } else {
                   existing.totalPairs += cg.totalPairs;
+                  mergeAllocatedPairs(ensureAllocatedPairs(existing), allocatedPairsOf(cg));
                   for (const [size, qty] of Object.entries(cg.combinedGrid)) {
                     existing.combinedGrid[size] = (existing.combinedGrid[size] || 0) + qty;
                   }
@@ -3444,7 +3782,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
                   // Mostrar as refs todas da cor erra por excesso e é visível;
                   // mostrar uma foto anônima erra por omissão e engana o cortador.
                   const matRefImages = scoped.length > 0 ? scoped : allRefImages;
-                  expanded.push({
+                  const materialGroup = copyAllocatedPairs({
                     ...cg,
                     liningMaterial: lb.material || undefined,
                     refImages: matRefImages,
@@ -3460,21 +3798,30 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
                     totalPairs: lb.totalPairs,
                     opNumbers: [...lb.opNumbers],
                     pvNumbers: [...lb.pvNumbers],
-                  });
+                  }, lb);
+                  expanded.push(materialGroup);
                 }
               } else {
                 const only = bd && bd.size === 1 ? Array.from(bd.values())[0] : null;
-                expanded.push(only ? { ...cg, liningMaterial: only.material || undefined } : cg);
+                if (only) {
+                  expanded.push(copyAllocatedPairs({
+                    ...cg,
+                    liningMaterial: only.material || undefined,
+                  }, only));
+                } else {
+                  expanded.push(cg);
+                }
               }
             }
             const byColor = new Map<string, SilkColorGroup>();
             for (const cg of expanded) {
               const colorKey = (cg.color || '').trim().toUpperCase() || '∅';
               const matKey = (cg.liningMaterial || '').trim().toUpperCase();
-              const groupKey = matKey ? `${colorKey}::${matKey}` : colorKey;
+              const materialKey = matKey ? `${colorKey}::${matKey}` : colorKey;
+              const groupKey = `${materialKey}::${lotPartitionKey(cg.lotInfo)}`;
               const existing = byColor.get(groupKey);
               if (!existing) {
-                byColor.set(groupKey, {
+                const cloned = copyAllocatedPairs({
                   ...cg,
                   combinedGrid: { ...cg.combinedGrid },
                   knifeGrid: cg.knifeGrid ? { ...cg.knifeGrid } : undefined,
@@ -3493,9 +3840,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
                   // pares no dedup abaixo); copiar os objetos evita corromper o
                   // array de origem (compartilhado com outros setores/renders).
                   refImages: (cg.refImages || []).map((ri: any) => ({ ...ri })),
-                });
+                }, cg);
+                byColor.set(groupKey, cloned);
               } else {
                 existing.totalPairs += cg.totalPairs;
+                mergeAllocatedPairs(ensureAllocatedPairs(existing), allocatedPairsOf(cg));
                 for (const [size, qty] of Object.entries(cg.combinedGrid)) {
                   existing.combinedGrid[size] = (existing.combinedGrid[size] || 0) + qty;
                 }
@@ -3589,7 +3938,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
                 .filter((g): g is SoleSilkGroup => g !== null);
             } else {
               // Costura* / Silk: grupos por solado.
-              groupsForSector = smGroups
+              const sourceGroups = sectorName === 'Costura Cabedal' ? upperGroups : smGroups;
+              groupsForSector = sourceGroups
                 .map(group => filterGroupForSector(group, sectorName))
                 .filter((g): g is SoleSilkGroup => g !== null);
             }
@@ -3608,7 +3958,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
                   const m = new Map<string, Set<string>>();
                   for (const order of expandedOrders) {
                     const sheetId = (order as any).reference_id;
-                    if (!sheetId || hasStrapsLookup.get(sheetId) === true) continue;
+                    if (!sheetId || !requiresUpperCut(sheetById.get(sheetId))) continue;
                     let ranges = knifeRangesByRef.get(sheetId);
                     if ((!ranges || ranges.length === 0)
                         && !knifeOptOutByRef.has(sheetId)
@@ -3627,70 +3977,6 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
                   return out;
                 })()
               : undefined;
-            // Modo CARTÃO (31/07/2026): 1 cartão por LOTE DE SETOR. O lote é o
-            // colorGroup que o `buildColorGroupedSheets` já montou e que o
-            // `filterGroupForSector` acima já filtrou — o cartão NÃO reagrupa
-            // nada por conta própria, então herda todas as peculiaridades de
-            // cada setor (napa do Corte Forração, requiresUpperSewing da
-            // Costura Cabedal, roteiro, assinatura de tiras, lote…).
-            if (cartao) {
-              const lotes = groupsForSector.flatMap(g =>
-                g.colorGroups.map(cg => ({ g, cg })));
-              return lotes.map(({ g, cg }, i) => {
-                const grid = (cg.combinedGrid || {}) as Record<string, number>;
-                const sizes = Object.keys(grid)
-                  .filter(s => (Number(grid[s]) || 0) > 0)
-                  .sort((a, b) => (Number(a) || 0) - (Number(b) || 0));
-                // Mesma cascata de foto do card completo: variante exata →
-                // alternativa com imagem → imagem mestre da ficha técnica.
-                const img = cg.variantImageUrl
-                  || (cg.alternateVariants || []).find(v => v.image_url)?.image_url
-                  || cg.technicalSheetImageUrl
-                  || null;
-                // Fotos POR REFERÊNCIA no Corte Forração (31/07/2026). O `img`
-                // acima é escalar e vem do spread da PRIMEIRA ref fundida — num
-                // cartão que junta 3 modelos (PV-00147: DS20 + DS22 + S-039 em
-                // OFF WHITE · NAPA SUDANI) ele mostrava um e escondia dois.
-                // `collectCompactThumbs` é a MESMA função da ficha: dedup por
-                // foto, descarte de placeholder e a cascata de resolução
-                // completa (variante da cor → alternativa → ficha técnica), que
-                // a cascata manual acima nem tem. Gate no setor porque os
-                // outros cartões não têm por que mudar — e o Corte Cabedal em
-                // particular NÃO pode: o `mergeColorsAcrossSoles` dele não
-                // acumula refImages no ramo de fusão, então sairiam fotos
-                // incompletas (só as do 1º solado). Sem thumbs, cai no `img`.
-                const cardThumbs = sectorName === 'Corte Forração'
-                  ? collectCompactThumbs(cg).map(t => ({
-                      url: t.resolvedUrl,
-                      refLabel: t.refNames.join(' · '),
-                      fichas: t.fichas,
-                      refCount: t.refNames.length,
-                    }))
-                  : [];
-                // Corte Forração separa por cor + NAPA: sem o material no
-                // título, duas napas da mesma cor viram cartões idênticos.
-                const titulo = cg.liningMaterial ? `${cg.color} · ${cg.liningMaterial}` : cg.color;
-                const refs = (cg.refs || []).map(r => r.name || r.code).filter(Boolean);
-                return (
-                  <CartaoLote
-                    key={`${sectorName}-cartao-${i}-${g.soleName}-${cg.color}`}
-                    sectorName={sectorName}
-                    pvLabel={(cg.pvNumbers || []).join(' · ') || undefined}
-                    lotLabel={`${i + 1} de ${lotes.length}`}
-                    lotCode={`${i + 1}/${lotes.length}`}
-                    imageUrl={img}
-                    images={cardThumbs.length > 0 ? cardThumbs : undefined}
-                    title={titulo}
-                    subtitle={g.groupKind === 'reference' ? undefined : g.soleName}
-                    sizes={sizes}
-                    grade={grid}
-                    totalPairs={cg.totalPairs}
-                    refs={refs.length > 0 ? refs : undefined}
-                    note={cg.fichas ? `${cg.fichas} fichas` : undefined}
-                  />
-                );
-              });
-            }
             // Enriquecimento por grupo: clientes + faixa etária (selo do
             // sub-header). Faixa agregada do setor vai no header.
             // Consumo (motor canônico = modal do PV) anexado nos setores de
@@ -3700,20 +3986,14 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             // tiras de todas as fichas somadas). A fonte é a MESMA do modal do
             // PV/débito (strap_colors → metros = cm/par ÷ 100), então bate por
             // construção com o que a fábrica separa/consome.
-            const attachConsumo = sectorName === 'Corte Forração'
-              || sectorName === 'Corte Cabedal'
-              || sectorName === 'Aviamento';
             const enriched = groupsForSector.map(g => ({
               ...withClientNames(g),
               sizeBand: bandForOps(g.colorGroups.flatMap(cg => cg.opNumbers || [])),
-              ...(attachConsumo
-                ? {
-                    colorGroups: g.colorGroups.map(cg => ({
-                      ...cg,
-                      consumption: consumptionForOpNumbers(cg.opNumbers, cg.totalPairs),
-                    })),
-                  }
-                : {}),
+              colorGroups: g.colorGroups.map(cg => ({
+                ...cg,
+                consumption: filterConsumptionForSector(
+                  consumptionForOpNumbers(cg.opNumbers, allocatedPairsOf(cg)), sectorName),
+              })),
             }));
             return [
               <div key={`${sectorName}-maco`} className="page-break">
@@ -3739,7 +4019,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             soma aviso+página cheia podia fragmentar com as metades trocadas
             na pilha). Folha própria = unidade página-alinhada que a inversão
             posiciona corretamente; custa 1 folha só quando há divergência. */}
-        {solagemData && ([['Solagem', solagemData.solagem], ['Colagem', solagemData.colagem]] as const)
+        {!cartao && solagemData && ([['Solagem', solagemData.solagem], ['Colagem', solagemData.colagem]] as const)
           .filter((entry): entry is ['Solagem' | 'Colagem', NonNullable<typeof solagemData.solagem>] =>
             !!entry[1] && entry[1].grandTotal !== entry[1].expectedTotal)
           .map(([sec, d]) => (
@@ -3762,13 +4042,15 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             SOMAR as cores de cabedal que compartilham o mesmo solado+cor do solado
             — antes dividia por ref+cor do cabedal (480 + 480), agora consolida
             (960). Reusa solagemData (bandas próprias do setor — roteiro B1). */}
-        {includesSector('Colagem') && (() => {
+        {!cartao && includesSector('Colagem') && (() => {
           const data = solagemData?.colagem;
           if (!data || data.bands.length === 0) return null;
           return <div className="page-break">
               <SolagemWorkSheet
                 sector="Colagem"
-                bands={data.bands}
+                bands={data.bands.map(band => ({ ...band,
+                  consumption: filterConsumptionForSector(consumptionForOpNumbers(band.opNumbers, allocatedPairsOf(band)), 'Colagem'),
+                }))}
                 allSizes={data.allSizes}
                 grandTotal={data.grandTotal}
                 sizeBand={bandForOps(data.bands.flatMap(b => b.opNumbers || []))}
@@ -3782,7 +4064,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             Colagem SAIU daqui em 2026-06-08 → consolida por solado (bloco acima).
             Silk SAIU em 2026-06-12 → agrupamento solado+cor compacto com a
             logomarca (silkMontageGroups, bloco de setores agrupados acima). */}
-        {groupedWorksheets && (['Montagem'] as const).flatMap((sectorName) => {
+        {!cartao && groupedWorksheets && (['Montagem'] as const).flatMap((sectorName) => {
           if (!includesSector(sectorName)) return [];
           // B1: só imprime a ficha do setor pra grupos cuja ficha técnica tem
           // o setor no roteiro (production_sectors; null/[] = sem restrição).
@@ -3832,12 +4114,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             const strapsRaw = Array.isArray((representative as any).strap_colors)
               ? ((representative as any).strap_colors as Array<any>)
               : [];
-            const strapColorsOrdered = [...strapsRaw].sort((a: any, b: any) => {
-              const ka = parseInt(a?.id, 10);
-              const kb = parseInt(b?.id, 10);
-              if (isFinite(ka) && isFinite(kb)) return ka - kb;
-              return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
-            });
+            const strapColorsOrdered = operatorStrapSequence(strapsRaw);
             return {
               order: syntheticOrder,
               silk,
@@ -3847,6 +4124,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
               hasStraps,
               strapColors: strapColorsOrdered,
               opNumbers: group.opNumbers,
+              consumption: filterConsumptionForSector(consumptionForOpNumbers(group.opNumbers, allocatedPairsOf(group)), sectorName),
               sizeBand: bandForOps(group.opNumbers),
               clientName: clientNamesForPvs(group.pvNumbers).join(' · ') || undefined,
               mixedGrades: group.mixedGrades,
@@ -3884,12 +4162,14 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             Colagem/Montagem — o maço saía com o último passo do solado na
             frente ("de trás pra frente"). Ordem canônica: SECTORS /
             CANONICAL_STAGE_ORDER / DISPLAY_SECTORS. */}
-        {includesSector('Solagem') && (() => {
+        {!cartao && includesSector('Solagem') && (() => {
           const data = solagemData?.solagem;
           if (!data || data.bands.length === 0) return null;
           return <div className="page-break">
               <SolagemWorkSheet
-                bands={data.bands}
+                bands={data.bands.map(band => ({ ...band,
+                  consumption: filterConsumptionForSector(consumptionForOpNumbers(band.opNumbers, allocatedPairsOf(band)), 'Solagem'),
+                }))}
                 allSizes={data.allSizes}
                 grandTotal={data.grandTotal}
                 sizeBand={bandForOps(data.bands.flatMap(b => b.opNumbers || []))}
@@ -3906,7 +4186,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             header gigante por OP). Lot sizing: expandedOrders → OPs splitadas
             viram N grupos (1 por lote). B1: acabamentoOrders já filtradas
             pelo roteiro (production_sectors). */}
-        {includesSector('Acabamento') && (() => {
+        {!cartao && includesSector('Acabamento') && (() => {
           if (acabamentoOrders.length === 0) return null;
           const resolveOrderImage = (order: any) => {
             const repColorLower = (order.color || '').toLowerCase();
@@ -3962,13 +4242,15 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             const strapsRaw = Array.isArray((order as any).strap_colors)
               ? ((order as any).strap_colors as Array<any>)
               : [];
-            const strapColorsOrdered = [...strapsRaw].sort((a: any, b: any) => {
-              const ka = parseInt(a?.id, 10);
-              const kb = parseInt(b?.id, 10);
-              if (isFinite(ka) && isFinite(kb)) return ka - kb;
-              return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
-            });
+            const strapColorsOrdered = operatorStrapSequence(strapsRaw);
             const acabPairsPerBox = resolveAcabPairsPerBox(order);
+            const opNumbers = [order.op_number].filter(Boolean);
+            const allocatedPairsByOp = new Map<string, number>();
+            addAllocatedPairs(
+              allocatedPairsByOp,
+              order.op_number,
+              Number(order.total_pairs ?? order.quantity ?? 0),
+            );
             return {
               order: syntheticOrder,
               silk,
@@ -3980,7 +4262,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
               // Só anexa quando o grupo do solado resolveu (senão omite e o
               // componente cai no fallback item.pairsPerBox ?? order.pairs_per_box ?? 12).
               ...(acabPairsPerBox != null ? { pairsPerBox: acabPairsPerBox } : {}),
-              opNumbers: [order.op_number].filter(Boolean),
+              consumption: filterConsumptionForSector(consumptionForOpNumbers(
+                opNumbers, allocatedPairsByOp), 'Acabamento'),
+              opNumbers,
               clientName: clientNamesForPvs([(order as any).sale_order_number]).join(' · ') || undefined,
               lotInfo:
                 (order as any)._total_lots && (order as any)._total_lots > 1
@@ -4007,7 +4291,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
         })()}
 
         {/* ── Expedição: 1 ficha por cliente/CNPJ ── */}
-        {includesSector('Expedição') && expedicaoGroups && expedicaoGroups.map((group) => (
+        {!cartao && includesSector('Expedição') && expedicaoGroups && expedicaoGroups.map((group) => (
           <div key={`exped-${group.client_id}`} className="page-break">
             <ExpedicaoWorkSheet sectorLabel={`Expedição · ${group.client_name}`} group={group} sizeBand={bandForOps(group.orders.map((o: any) => o.op_number).filter(Boolean))} />
           </div>
@@ -4018,7 +4302,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             ocupam 2-3 A4 naturalmente. .keep-together nos blocos de cada
             seção (header, tabela de OPs, tabela de custos, footer) garante
             que cada bloco fica inteiro na sua página. */}
-        {includesSector('Relatório Gerencial') && reportGroups && reportGroups.map((rg) => (
+        {!cartao && includesSector('Relatório Gerencial') && reportGroups && reportGroups.map((rg) => (
           <div key={`report-${rg.saleOrder.id}`} className="page-break">
             <ManagementReport
               sectorLabel={`Relatório Gerencial · ${rg.saleOrder.order_number || 'PV —'}`}

@@ -194,6 +194,19 @@ export function DataListPage({
         </StatGrid>
       )}
 
+      {/* Limite default = 100 sem paginação — a 101ª some sem aviso. */}
+      {!isLoading && !isError && rows.length >= limit && (
+        <div
+          role="status"
+          className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-200"
+        >
+          <WarningCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <span>
+            Exibindo as primeiras {limit} linhas. Pode haver mais registros que não aparecem nesta lista.
+          </span>
+        </div>
+      )}
+
       <Panel flush>
         {isLoading ? (
           <div className="py-10 flex items-center justify-center text-muted-foreground">

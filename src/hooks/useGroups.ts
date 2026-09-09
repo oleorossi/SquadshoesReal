@@ -83,6 +83,8 @@ export function useAddGroup() {
       dimensions_unit?: string | null;
       parent_group_id?: string | null;
       is_family?: boolean;
+      /** Palmilha (fibra/placa) e cola: cor não faz parte da identidade. */
+      is_color_agnostic?: boolean;
       pairs_per_box_individual?: number | null;
       pairs_per_box_master?: number | null;
       pairs_per_box_colmeia?: number | null;
@@ -111,7 +113,14 @@ export function useUpdateGroup() {
       const { error } = await supabase.from('product_groups').update(stripSearchNorm(data) as any).eq('id', id);
       if (error) throw error;
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['product_groups'] }); toast.success('Grupo atualizado!'); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['product_groups'] });
+      // useProducts incorpora metadados do grupo (nome, unidade técnica e
+      // múltiplo de compra). Sem invalidar este prefixo, fichas e BOMs podem
+      // continuar lendo o valor anterior até o staleTime expirar.
+      qc.invalidateQueries({ queryKey: ['products'] });
+      toast.success('Grupo atualizado!');
+    },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
   });
 }

@@ -15,6 +15,8 @@ export interface StrapSourcingSelection {
   color_id?: string | null;
   strap_variant_id?: string | null;
   recipe_id?: string | null;
+  base_group_id?: string | null;
+  base_group_name?: string | null;
   /** Napa oficial exata congelada para a produção interna. */
   base_product_id?: string | null;
   gross_required_m?: number | null;
@@ -107,6 +109,139 @@ export function isCompleteStrapSourcingSelection(
     && (selection.source_mode === 'internal' || selection.source_mode === 'buy_ready')
     && isUuid(selection.color_id)
     && isUuid(selection.strap_variant_id);
+}
+
+/** Identidade que o preview canônico já resolveu para a linha técnica. */
+export interface StrapPreviewIdentity {
+  colorId?: string | null;
+  strapVariantId?: string | null;
+  recipeId?: string | null;
+  baseGroupId?: string | null;
+  baseGroupName?: string | null;
+  baseProductId?: string | null;
+  strapRequiredM?: number | null;
+  requiredAt?: string | null;
+  mainProductionStart?: string | null;
+  scheduleRevision?: number | null;
+}
+
+export function strapPreviewIdentityFromLine(
+  line: StrapPreviewIdentity | null | undefined,
+  fallbackColorId?: string | null,
+): StrapPreviewIdentity {
+  return {
+    colorId: line?.colorId || fallbackColorId || null,
+    strapVariantId: line?.strapVariantId ?? null,
+    recipeId: line?.recipeId ?? null,
+    baseGroupId: line?.baseGroupId ?? null,
+    baseGroupName: line?.baseGroupName ?? null,
+    baseProductId: line?.baseProductId ?? null,
+    strapRequiredM: line?.strapRequiredM ?? null,
+    requiredAt: line?.requiredAt ?? null,
+    mainProductionStart: line?.mainProductionStart ?? null,
+    scheduleRevision: line?.scheduleRevision ?? null,
+  };
+}
+
+/**
+ * Origem interna com o UUID exato da variante resolvida. Sem cor/variante o
+ * preview emite `variant_identity_not_persisted` — não grave só `source_mode`.
+ */
+export function internalStrapSourcingFromPreview(
+  identity: StrapPreviewIdentity | null | undefined,
+  fallbackColorId?: string | null,
+): StrapSourcingSelection | null {
+  const resolved = strapPreviewIdentityFromLine(identity, fallbackColorId);
+  if (!isUuid(resolved.strapVariantId) || !isUuid(resolved.colorId)) return null;
+  return {
+    source_mode: 'internal',
+    color_id: resolved.colorId,
+    strap_variant_id: resolved.strapVariantId,
+    recipe_id: resolved.recipeId ?? null,
+    base_group_id: resolved.baseGroupId ?? null,
+    base_group_name: resolved.baseGroupName ?? null,
+    base_product_id: resolved.baseProductId ?? null,
+    gross_required_m: resolved.strapRequiredM ?? null,
+    required_at: resolved.requiredAt ?? null,
+    main_production_start: resolved.mainProductionStart ?? null,
+    schedule_revision: resolved.scheduleRevision ?? null,
+  };
+}
+
+export function setInternalStrapSourcing(
+  map: StrapSourcingMap | null | undefined,
+  lineId: string | null | undefined,
+  identity: StrapPreviewIdentity | null | undefined,
+  fallbackColorId?: string | null,
+): StrapSourcingMap {
+  return setStrapSourcing(
+    map,
+    lineId,
+    internalStrapSourcingFromPreview(identity, fallbackColorId) || 'internal',
+  );
+}
+
+const INTERNAL_SOURCING_COMPARE_KEYS = [
+  'source_mode',
+  'color_id',
+  'strap_variant_id',
+  'recipe_id',
+  'base_group_id',
+  'base_group_name',
+  'base_product_id',
+  'gross_required_m',
+  'required_at',
+  'main_production_start',
+  'schedule_revision',
+] as const;
+
+export function strapSourcingFieldsEqual(
+  left: StrapSourcingSelection | null | undefined,
+  right: StrapSourcingSelection | null | undefined,
+): boolean {
+  if (left === right) return true;
+  if (!left || !right) return false;
+  return INTERNAL_SOURCING_COMPARE_KEYS.every((key) => left[key] === right[key]);
+}
+
+/**
+ * Completa `source_mode: internal` que ainda não congelou cor/variante, usando
+ * o UUID que o preview já devolveu. Não troca uma variante já persistida.
+ */
+export function hydrateInternalStrapSourcingMap(
+  map: StrapSourcingMap | null | undefined,
+  identityForLine: (lineId: string) => StrapPreviewIdentity | null,
+): { map: StrapSourcingMap; changed: boolean } {
+  let next = map || {};
+  let changed = false;
+  for (const [lineId, selection] of Object.entries(next)) {
+    const valid = asSelection(selection);
+    if (!valid || valid.source_mode !== 'internal') continue;
+    const identity = identityForLine(lineId);
+    const candidate = internalStrapSourcingFromPreview(identity, valid.color_id);
+    if (!candidate) continue;
+    if (isUuid(valid.strap_variant_id) && valid.strap_variant_id !== candidate.strap_variant_id) {
+      continue;
+    }
+    const merged: StrapSourcingSelection = isUuid(valid.strap_variant_id)
+      ? {
+          ...valid,
+          color_id: valid.color_id || candidate.color_id,
+          recipe_id: valid.recipe_id || candidate.recipe_id,
+          base_group_id: valid.base_group_id || candidate.base_group_id,
+          base_group_name: valid.base_group_name || candidate.base_group_name,
+          base_product_id: valid.base_product_id || candidate.base_product_id,
+          gross_required_m: valid.gross_required_m ?? candidate.gross_required_m,
+          required_at: valid.required_at || candidate.required_at,
+          main_production_start: valid.main_production_start || candidate.main_production_start,
+          schedule_revision: valid.schedule_revision ?? candidate.schedule_revision,
+        }
+      : candidate;
+    if (strapSourcingFieldsEqual(valid, merged)) continue;
+    next = setStrapSourcing(next, lineId, merged);
+    changed = true;
+  }
+  return { map: next, changed };
 }
 
 /** Remove escolhas de linhas que já não existem na ficha/snapshot. */

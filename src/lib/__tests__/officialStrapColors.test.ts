@@ -16,8 +16,8 @@ describe('registeredBaseMaterialColorsForGroup', () => {
     ],
     aliases: [{ canonical_color_id: 'off', alias: 'OF WHITE', status: 'approved' }],
     products: [
-      { id: 'soft-preto', group_id: 'napa-soft', color: 'PRETO', active: true },
-      { id: 'soft-off', group_id: 'napa-soft', color: 'OF WHITE', active: true },
+      { id: 'soft-preto', group_id: 'napa-soft', color: 'PRETO', active: true, unit: 'm' },
+      { id: 'soft-off', group_id: 'napa-soft', color: 'OF WHITE', active: true, unit: 'm' },
       { id: 'soft-inativo', group_id: 'napa-soft', color: 'CARAMELO', active: false },
       { id: 'madrid-caramelo', group_id: 'napa-madrid', color: 'CARAMELO', active: true },
     ],
@@ -32,6 +32,43 @@ describe('registeredBaseMaterialColorsForGroup', () => {
   it('não mistura cores de outra napa-base nem produtos inativos', () => {
     expect(registeredBaseMaterialColorsForGroup(catalog, 'napa-madrid').map((color) => color.id))
       .toEqual(['caramelo']);
+  });
+
+  it('oferece no PV as cores registradas antes de materializar vínculo oficial e receita', () => {
+    expect(strapColorsForIdentity(catalog, { identity_basis: 'reference_base' }, 'napa-soft')
+      .map(color => color.id)).toEqual(['off', 'preto']);
+    expect(catalog.official_products).toEqual([]);
+  });
+
+  it('une cores registradas e fontes existentes sem repetir identidades ou misturar bases', () => {
+    const expanded = {
+      ...catalog,
+      colors: [...catalog.colors, { id: 'historica', name: 'HISTÓRICA', active: false }],
+      official_products: [{
+        base_group_id: 'napa-soft', color_id: 'preto', official_product_id: 'soft-preto', status: 'active',
+      }],
+      variants: [{
+        base_group_id: 'napa-soft', color_id: 'historica', status: 'active',
+        source_availability: { finished_available_m: 10 },
+      }],
+    };
+    expect(strapColorsForIdentity(expanded, { identity_basis: 'reference_base' }, 'napa-soft')
+      .map(color => color.id)).toEqual(['historica', 'off', 'preto']);
+    expect(strapColorsForIdentity(expanded, { identity_basis: 'reference_base' }, null)).toEqual([]);
+  });
+
+  it('não oferece como intenção um SKU acabado, não linear ou ambíguo', () => {
+    for (const products of [
+      catalog.products.map(product => ({ ...product, unit: 'un' })),
+      [...catalog.products, ...catalog.products.map(product => ({ ...product, id: `${product.id}-duplicado` }))],
+    ]) {
+      expect(strapColorsForIdentity({ ...catalog, products }, { identity_basis: 'reference_base' }, 'napa-soft')).toEqual([]);
+    }
+    const finished = { ...catalog, variants: [
+      { finished_product_id: 'soft-preto', base_group_id: 'outro', color_id: 'preto', status: 'inactive' },
+      { finished_product_id: 'soft-off', base_group_id: 'outro', color_id: 'off', status: 'inactive' },
+    ] };
+    expect(strapColorsForIdentity(finished, { identity_basis: 'reference_base' }, 'napa-soft')).toEqual([]);
   });
 });
 

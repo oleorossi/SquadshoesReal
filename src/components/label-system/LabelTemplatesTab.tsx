@@ -1,316 +1,514 @@
-import { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { LabelDesigner } from './LabelDesigner';
-import { Button } from '@/components/ui/button';
+import { useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  CheckCircle as CheckCircle2,
+  CircleNotch as Loader2,
+  Copy,
+  Cube as Box,
+  FilePdf,
+  Package,
+  Plus,
+  Printer,
+  Ruler,
+  Trash as Trash2,
+} from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Plus, PencilSimple as Pencil, Trash as Trash2, Copy, Eye, PaintBucket, Star, Checks, Warning, Stack } from '@phosphor-icons/react';
+import { Panel } from '@/components/ui/panel';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { supabase } from '@/integrations/supabase/client';
+import { createPrintJob, setPrintJobStatus } from '@/lib/printJobs';
+import {
+  MAX_STANDARD_TEXT_LABEL_COPIES_PER_SAMPLE,
+  STANDARD_TEXT_LABEL_GEOMETRY,
+  STANDARD_TEXT_LABEL_PRESETS,
+  buildStandardTextLabelsPdf,
+  countStandardTextLabels,
+  normalizeStandardTextLabelSample,
+  standardTextLabelsFilename,
+  type StandardTextLabelPreset,
+  type StandardTextLabelSample,
+} from '@/lib/standardTextLabels';
+import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import type { LabelTemplate } from '@/types/label-system';
-import { useLabelTemplates } from '@/hooks/useLabelTemplates';
-import { validateLabelTemplate } from '@/lib/templateLabels';
-import { SearchInput } from '@/components/ui/search-input';
-import { EmptyState } from '@/components/ui/empty-state';
-import { StatCard, StatGrid } from '@/components/ui/stat-card';
-import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
-const CATEGORY_LABELS: Record<string, string> = {
-  individual_box: 'Caixa Individual',
-  master_box: 'Caixa Master',
-  hangtag: 'Hangtag',
-  thermal: 'Térmica',
-  shipping: 'Expedição',
-  product: 'Produto',
+interface QueuedSample extends StandardTextLabelSample {
+  id: string;
+}
+
+interface DraftSample {
+  reference: string;
+  color: string;
+  material: string;
+  copies: number;
+}
+
+type DraftErrors = Partial<Record<keyof DraftSample, string>>;
+
+const EMPTY_DRAFT: DraftSample = {
+  reference: '',
+  color: '',
+  material: '',
+  copies: 1,
 };
 
-export function LabelTemplatesTab() {
-  const { templates, addTemplate, updateTemplate, deleteTemplate, duplicateTemplate, isBuiltinDefault } = useLabelTemplates();
-  const [filter, setFilter] = useState('all');
-  const [search, setSearch] = useState('');
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingTemplate, setEditingTemplate] = useState<LabelTemplate | null>(null);
-  const [designerTemplate, setDesignerTemplate] = useState<LabelTemplate | null>(null);
+const SAMPLE_PREVIEW: StandardTextLabelSample = {
+  reference: 'SP130',
+  color: 'OFF WHITE',
+  material: 'NAPA SOFT',
+  copies: 1,
+};
 
-  if (designerTemplate) {
-    return (
-      <LabelDesigner
-        template={designerTemplate}
-        onSave={async (updated) => {
-          await updateTemplate(updated);
-          setDesignerTemplate(null);
-        }}
-        onBack={() => setDesignerTemplate(null)}
-      />
-    );
+const PRESET_OPTIONS: Array<{
+  value: StandardTextLabelPreset;
+  icon: typeof Box;
+  eyebrow: string;
+}> = [
+  { value: 'external_box', icon: Box, eyebrow: 'IDENTIFICAÇÃO EXTERNA' },
+  { value: 'individual_package', icon: Package, eyebrow: 'IDENTIFICAÇÃO DO PRODUTO' },
+];
+
+const TEMPLATE_SYSTEM_KEYS: Record<StandardTextLabelPreset, string> = {
+  external_box: 'external_box_l42pro',
+  individual_package: 'individual_package_l42pro',
+};
+
+function newSampleId(): string {
+  return typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `sample-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function validateDraftFields(draft: DraftSample): DraftErrors {
+  const errors: DraftErrors = {};
+  if (!draft.reference.trim()) errors.reference = 'Informe a referência.';
+  if (!draft.color.trim()) errors.color = 'Informe a cor.';
+  if (!draft.material.trim()) errors.material = 'Informe o material.';
+  if (!Number.isInteger(draft.copies) || draft.copies < 1) {
+    errors.copies = 'Informe uma quantidade inteira maior que zero.';
+  } else if (draft.copies > MAX_STANDARD_TEXT_LABEL_COPIES_PER_SAMPLE) {
+    errors.copies = `O limite é ${MAX_STANDARD_TEXT_LABEL_COPIES_PER_SAMPLE.toLocaleString('pt-BR')} etiquetas por amostra.`;
   }
+  return errors;
+}
 
-  const filtered = templates.filter(template => {
-    const matchesCategory = filter === 'all' || template.category === filter;
-    return matchesCategory && searchMatchesAllTerms(
-      search,
-      template.name,
-      CATEGORY_LABELS[template.category] || template.category,
-      `${template.dimensions.width}x${template.dimensions.height}`,
-      template.is_active ? 'ativo' : 'inativo',
-    );
+function previewSamples(samples: QueuedSample[], draft: DraftSample): StandardTextLabelSample[] {
+  const expanded: StandardTextLabelSample[] = [];
+  for (const sample of samples) {
+    const copies = Math.max(1, sample.copies || 1);
+    for (let copy = 0; copy < copies && expanded.length < 2; copy++) expanded.push(sample);
+    if (expanded.length === 2) return expanded;
+  }
+  if (expanded.length === 0) {
+    expanded.push({
+      reference: draft.reference.trim() || SAMPLE_PREVIEW.reference,
+      color: draft.color.trim() || SAMPLE_PREVIEW.color,
+      material: draft.material.trim() || SAMPLE_PREVIEW.material,
+      copies: 1,
+    });
+  }
+  return expanded;
+}
+
+async function resolveStandardTemplateId(preset: StandardTextLabelPreset): Promise<string> {
+  const { data, error } = await supabase
+    .from('label_templates')
+    .select('*')
+    .eq('is_active', true);
+  if (error) throw error;
+
+  const expectedSystemKey = TEMPLATE_SYSTEM_KEYS[preset];
+  const rows = (data || []) as Array<{
+    id: string;
+    system_key?: string | null;
+    layout_config: unknown;
+  }>;
+  const match = rows.find(row => {
+    const config = row.layout_config && typeof row.layout_config === 'object' && !Array.isArray(row.layout_config)
+      ? row.layout_config as Record<string, unknown>
+      : null;
+    return row.system_key === expectedSystemKey
+      && config?.builder_key === preset
+      && config?.locked === true;
   });
-  const activeCount = templates.filter(template => template.is_active).length;
-  const builtinCount = templates.filter(template => isBuiltinDefault(template.id)).length;
-  const reviewCount = templates.filter(template => !isBuiltinDefault(template.id) && validateLabelTemplate(template).length > 0).length;
+  if (!match) {
+    throw new Error(`O padrão oficial ${expectedSystemKey} ainda não está disponível no servidor.`);
+  }
+  return match.id;
+}
 
-  const handleToggleActive = async (id: string) => {
-    const t = templates.find(x => x.id === id);
-    if (!t) return;
-    if (!t.is_active) {
-      const errors = validateLabelTemplate(t);
-      if (errors.length > 0) { toast.error(errors[0]); return; }
-    }
+export function LabelTemplatesTab() {
+  const queryClient = useQueryClient();
+  const [preset, setPreset] = useState<StandardTextLabelPreset>('individual_package');
+  const [draft, setDraft] = useState<DraftSample>(EMPTY_DRAFT);
+  const [draftErrors, setDraftErrors] = useState<DraftErrors>({});
+  const [samples, setSamples] = useState<QueuedSample[]>([]);
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  const totalLabels = useMemo(() => {
     try {
-      await updateTemplate({ ...t, is_active: !t.is_active, updated_at: new Date().toISOString() });
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Não foi possível atualizar o template.');
+      return countStandardTextLabels(samples);
+    } catch {
+      return 0;
     }
-  };
+  }, [samples]);
+  const preview = useMemo(() => previewSamples(samples, draft), [draft, samples]);
 
-  const handleDelete = async (id: string) => {
-    if (isBuiltinDefault(id)) {
-      toast.error('Templates padrão não podem ser removidos.');
+  const addDraft = () => {
+    const errors = validateDraftFields(draft);
+    const firstError = Object.values(errors)[0];
+    if (firstError) {
+      setDraftErrors(errors);
+      toast.error(firstError);
       return;
     }
     try {
-      await deleteTemplate(id);
-      toast.success('Template removido');
+      const normalized = normalizeStandardTextLabelSample(draft, samples.length);
+      setSamples(current => [...current, { ...normalized, id: newSampleId() }]);
+      setDraft(EMPTY_DRAFT);
+      setDraftErrors({});
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Não foi possível remover o template.');
+      toast.error(error instanceof Error ? error.message : 'Revise os dados da amostra.');
+    }
+  };
+
+  const duplicateSample = (sample: QueuedSample) => {
+    try {
+      countStandardTextLabels([...samples, sample]);
+      setSamples(current => [...current, { ...sample, id: newSampleId() }]);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível duplicar a amostra.');
+    }
+  };
+
+  const removeSample = (id: string) => {
+    setSamples(current => current.filter(sample => sample.id !== id));
+  };
+
+  const generatePdf = async () => {
+    if (samples.length === 0) {
+      toast.error('Adicione pelo menos uma amostra à tiragem.');
+      return;
+    }
+
+    setIsGenerating(true);
+    let jobId: string | null = null;
+    try {
+      const templateId = await resolveStandardTemplateId(preset);
+      jobId = await createPrintJob({
+        batchName: `Amostras · ${STANDARD_TEXT_LABEL_PRESETS[preset].label}`,
+        totalLabels,
+        templateId,
+      });
+      const doc = await buildStandardTextLabelsPdf(samples, preset);
+      doc.save(standardTextLabelsFilename(preset));
+      await setPrintJobStatus(jobId, 'generated');
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['print_jobs_dashboard'] }),
+        queryClient.invalidateQueries({ queryKey: ['print_history'] }),
+      ]);
+      toast.success(`${totalLabels.toLocaleString('pt-BR')} etiquetas geradas no padrão L42PRO.`);
+    } catch (error) {
+      if (jobId) {
+        try {
+          await setPrintJobStatus(jobId, 'failed');
+        } catch {
+          // A mensagem principal abaixo já orienta o operador sobre a falha.
+        }
+      }
+      toast.error(error instanceof Error ? error.message : 'Não foi possível gerar o PDF.');
+    } finally {
+      setIsGenerating(false);
     }
   };
 
   return (
     <div className="space-y-4">
-      <StatGrid>
-        <StatCard label="Modelos cadastrados" value={templates.length} icon={Stack} />
-        <StatCard label="Ativos para geração" value={activeCount} icon={Checks} tone="success" />
-        <StatCard label="Oficiais protegidos" value={builtinCount} hint="não editáveis" icon={Star} tone="primary" />
-        <StatCard label="Exigem revisão" value={reviewCount} icon={Warning} tone={reviewCount > 0 ? 'warning' : 'default'} />
-      </StatGrid>
-
-      <div className="rounded-lg border border-border bg-card p-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-          <SearchInput
-            value={search}
-            onChange={setSearch}
-            placeholder="Buscar por nome, categoria, dimensão ou status…"
-            resultCount={filtered.length}
-            totalCount={templates.length}
-            className="w-full lg:max-w-md"
-          />
-          <Select value={filter} onValueChange={setFilter}>
-            <SelectTrigger className="w-full lg:w-52">
-              <SelectValue placeholder="Filtrar categoria" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todas as categorias</SelectItem>
-              {Object.entries(CATEGORY_LABELS).map(([k, v]) => (
-                <SelectItem key={k} value={k}>{v}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button onClick={() => { setEditingTemplate(null); setDialogOpen(true); }} className="gap-2 lg:ml-auto">
-            <Plus className="h-4 w-4" /> Novo modelo
-          </Button>
-        </div>
-        <p className="mt-3 text-xs text-muted-foreground">
-          Os modelos oficiais preservam o padrão de impressão. Cópias personalizadas só entram na operação depois de validadas e ativadas.
-        </p>
+      <div className="grid overflow-hidden rounded-lg border border-border bg-card sm:grid-cols-3">
+        <FormatMetric label="Etiqueta" value="50 × 30 mm" icon={Ruler} />
+        <FormatMetric label="Carreira" value="2 etiquetas" icon={Package} />
+        <FormatMetric label="Mídia L42PRO" value="106 × 30 mm" icon={Printer} />
       </div>
 
-      {filtered.length === 0 ? (
-        <div className="rounded-lg border border-border bg-card">
-          <EmptyState icon={Stack} title="Nenhum modelo encontrado" description="Ajuste a busca ou a categoria selecionada." />
-        </div>
-      ) : <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {filtered.map(t => {
-          const isDefault = isBuiltinDefault(t.id);
-          const validationErrors = validateLabelTemplate(t);
-          return (
-            <Card key={t.id} className={`${!t.is_active ? 'opacity-60' : ''} ${isDefault ? 'ring-1 ring-primary/30' : ''}`}>
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <CardTitle className="text-sm">{t.name}</CardTitle>
-                      {isDefault && <Star className="h-3.5 w-3.5 text-primary" weight="fill" />}
-                    </div>
-                    <div className="flex gap-2 mt-1">
-                      <Badge variant="outline">{CATEGORY_LABELS[t.category] || t.category}</Badge>
-                      <Badge variant={t.is_active ? 'default' : 'secondary'}>{t.is_active ? 'Ativo' : 'Inativo'}</Badge>
-                      {isDefault && <Badge variant="outline" className="text-xs border-primary/40 text-primary">Oficial</Badge>}
-                      {!isDefault && validationErrors.length > 0 && <Badge variant="destructive" className="text-xs">Revisar</Badge>}
-                    </div>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="border rounded-md bg-muted/30 p-3 flex items-center justify-center" style={{ minHeight: 80 }}>
-                  <div
-                    className="bg-background border border-border relative"
-                    style={{
-                      width: `${Math.min(t.dimensions.width * 1.8, 180)}px`,
-                      height: `${Math.min(t.dimensions.height * 1.8, 100)}px`,
-                    }}
-                  >
-                    {t.fields.map(f => (
-                      <div
-                        key={f.id}
-                        className="absolute border border-dashed border-primary/30 text-[7px] leading-tight text-muted-foreground flex items-center justify-center overflow-hidden"
-                        style={{
-                          left: `${(f.position.x / t.dimensions.width) * 100}%`,
-                          top: `${(f.position.y / t.dimensions.height) * 100}%`,
-                          width: `${(f.position.width / t.dimensions.width) * 100}%`,
-                          height: `${(f.position.height / t.dimensions.height) * 100}%`,
-                        }}
-                      >
-                        {f.name}
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(420px,1.05fr)]">
+        <div className="space-y-4">
+          <Panel
+            eyebrow="01 · PADRÃO IMUTÁVEL"
+            title="Escolha onde a etiqueta será aplicada"
+            subtitle="A finalidade altera somente a organização do texto; a dimensão física permanece 50 × 30 mm."
+          >
+            <RadioGroup
+              value={preset}
+              onValueChange={value => setPreset(value as StandardTextLabelPreset)}
+              className="grid gap-3 sm:grid-cols-2"
+              aria-label="Finalidade da etiqueta"
+            >
+              {PRESET_OPTIONS.map(option => {
+                const active = preset === option.value;
+                const Icon = option.icon;
+                const info = STANDARD_TEXT_LABEL_PRESETS[option.value];
+                return (
+                  <div key={option.value} className="relative">
+                    <RadioGroupItem
+                      id={`standard-label-preset-${option.value}`}
+                      value={option.value}
+                      className="peer sr-only"
+                    />
+                    <Label
+                      htmlFor={`standard-label-preset-${option.value}`}
+                      className={cn(
+                        'block cursor-pointer rounded-lg border p-4 text-left transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-2',
+                        active ? 'border-primary bg-primary/5' : 'border-border bg-background hover:bg-muted/40',
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className={cn('rounded-md border p-2', active ? 'border-primary/25 bg-primary/10 text-primary' : 'border-border text-muted-foreground')}>
+                          <Icon className="h-5 w-5" weight="duotone" />
+                        </div>
+                        {active && <CheckCircle2 className="h-5 w-5 text-primary" weight="fill" />}
                       </div>
-                    ))}
+                      <p className="mt-4 font-mono text-xs font-bold tracking-wider text-muted-foreground">{option.eyebrow}</p>
+                      <p className="mt-1 text-sm font-bold text-foreground">{info.label}</p>
+                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{info.description}</p>
+                    </Label>
                   </div>
-                </div>
+                );
+              })}
+            </RadioGroup>
+          </Panel>
 
-                <div className="text-xs text-muted-foreground">
-                  {t.dimensions.width}×{t.dimensions.height}{t.dimensions.unit} · {t.fields.length} campos · {t.print_settings.dpi} DPI
-                </div>
+          <Panel
+            eyebrow="02 · CONTEÚDO"
+            title="Preencha a amostra"
+            subtitle="Somente referência, cor e material entram na etiqueta padronizada."
+          >
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="standard-label-reference">Referência <span aria-hidden="true">*</span></Label>
+                <Input
+                  id="standard-label-reference"
+                  value={draft.reference}
+                  onChange={event => {
+                    setDraft(current => ({ ...current, reference: event.target.value }));
+                    setDraftErrors(current => ({ ...current, reference: undefined }));
+                  }}
+                  placeholder="Ex.: SP130"
+                  maxLength={60}
+                  autoComplete="off"
+                  required
+                  aria-invalid={Boolean(draftErrors.reference)}
+                  aria-describedby={draftErrors.reference ? 'standard-label-reference-error' : undefined}
+                />
+                {draftErrors.reference && <p id="standard-label-reference-error" role="alert" className="text-xs text-destructive">{draftErrors.reference}</p>}
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="standard-label-color">Cor <span aria-hidden="true">*</span></Label>
+                <Input
+                  id="standard-label-color"
+                  value={draft.color}
+                  onChange={event => {
+                    setDraft(current => ({ ...current, color: event.target.value }));
+                    setDraftErrors(current => ({ ...current, color: undefined }));
+                  }}
+                  placeholder="Ex.: Off White"
+                  maxLength={80}
+                  autoComplete="off"
+                  required
+                  aria-invalid={Boolean(draftErrors.color)}
+                  aria-describedby={draftErrors.color ? 'standard-label-color-error' : undefined}
+                />
+                {draftErrors.color && <p id="standard-label-color-error" role="alert" className="text-xs text-destructive">{draftErrors.color}</p>}
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="standard-label-material">Material <span aria-hidden="true">*</span></Label>
+                <Input
+                  id="standard-label-material"
+                  value={draft.material}
+                  onChange={event => {
+                    setDraft(current => ({ ...current, material: event.target.value }));
+                    setDraftErrors(current => ({ ...current, material: undefined }));
+                  }}
+                  placeholder="Ex.: Napa Soft"
+                  maxLength={120}
+                  autoComplete="off"
+                  required
+                  aria-invalid={Boolean(draftErrors.material)}
+                  aria-describedby={draftErrors.material ? 'standard-label-material-error' : undefined}
+                  onKeyDown={event => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      addDraft();
+                    }
+                  }}
+                />
+                {draftErrors.material && <p id="standard-label-material-error" role="alert" className="text-xs text-destructive">{draftErrors.material}</p>}
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="standard-label-copies">Quantidade de etiquetas <span aria-hidden="true">*</span></Label>
+                <Input
+                  id="standard-label-copies"
+                  type="number"
+                  min={1}
+                  max={MAX_STANDARD_TEXT_LABEL_COPIES_PER_SAMPLE}
+                  step={1}
+                  value={draft.copies}
+                  onChange={event => {
+                    setDraft(current => ({ ...current, copies: Number(event.target.value) }));
+                    setDraftErrors(current => ({ ...current, copies: undefined }));
+                  }}
+                  inputMode="numeric"
+                  required
+                  aria-invalid={Boolean(draftErrors.copies)}
+                  aria-describedby={draftErrors.copies ? 'standard-label-copies-error' : undefined}
+                />
+                {draftErrors.copies && <p id="standard-label-copies-error" role="alert" className="text-xs text-destructive">{draftErrors.copies}</p>}
+              </div>
+              <div className="flex items-end">
+                <Button type="button" onClick={addDraft} className="w-full gap-2">
+                  <Plus className="h-4 w-4" /> Adicionar à tiragem
+                </Button>
+              </div>
+            </div>
+          </Panel>
 
-                <div className="flex gap-1">
-                  {!isDefault && (
-                    <>
-                      <Button size="sm" variant="ghost" onClick={() => setDesignerTemplate(t)} title="Abrir editor" aria-label={`Abrir editor do modelo ${t.name}`}>
-                        <PaintBucket className="h-3.5 w-3.5" />
+          <Panel
+            eyebrow="03 · TIRAGEM"
+            title="Amostras adicionadas"
+            subtitle={samples.length === 0 ? 'A tiragem ainda está vazia.' : `${samples.length} amostra${samples.length === 1 ? '' : 's'} · ${totalLabels.toLocaleString('pt-BR')} etiquetas`}
+            actions={samples.length > 0 ? (
+              <Button type="button" variant="ghost" size="sm" onClick={() => setSamples([])}>Limpar</Button>
+            ) : undefined}
+            flush
+          >
+            {samples.length === 0 ? (
+              <div className="flex min-h-32 flex-col items-center justify-center gap-2 px-4 py-8 text-center">
+                <FilePdf className="h-7 w-7 text-muted-foreground" />
+                <p className="text-sm font-semibold text-foreground">Adicione a primeira amostra</p>
+                <p className="max-w-sm text-xs text-muted-foreground">A prévia ao lado já mostra como o texto será organizado.</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-border">
+                {samples.map((sample, index) => (
+                  <div key={sample.id} className="grid gap-3 p-4 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-md bg-muted font-mono text-xs font-bold text-muted-foreground">
+                      {String(index + 1).padStart(2, '0')}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-bold uppercase text-foreground">{sample.reference}</p>
+                      <p className="truncate text-xs uppercase text-muted-foreground">{sample.color} · {sample.material}</p>
+                    </div>
+                    <div className="flex items-center gap-1 sm:justify-end">
+                      <Badge variant="secondary">{sample.copies}×</Badge>
+                      <Button type="button" size="icon" variant="ghost" aria-label={`Duplicar amostra ${sample.reference}`} onClick={() => duplicateSample(sample)}>
+                        <Copy className="h-4 w-4" />
                       </Button>
-                      <Button size="sm" variant="ghost" onClick={() => void handleToggleActive(t.id)} title={t.is_active ? 'Desativar' : 'Ativar'} aria-label={`${t.is_active ? 'Desativar' : 'Ativar'} modelo ${t.name}`}>
-                        <Eye className="h-3.5 w-3.5" />
+                      <Button type="button" size="icon" variant="ghost" className="text-destructive" aria-label={`Remover amostra ${sample.reference}`} onClick={() => removeSample(sample.id)}>
+                        <Trash2 className="h-4 w-4" />
                       </Button>
-                      <Button size="sm" variant="ghost" onClick={() => { setEditingTemplate(t); setDialogOpen(true); }} title="Editar propriedades" aria-label={`Editar propriedades do modelo ${t.name}`}>
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                    </>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Panel>
+        </div>
+
+        <div className="space-y-4 xl:sticky xl:top-4 xl:self-start">
+          <Panel
+            eyebrow="PRÉVIA FÍSICA · ESCALA PROPORCIONAL"
+            title={STANDARD_TEXT_LABEL_PRESETS[preset].label}
+            subtitle="Duas etiquetas de 50 × 30 mm com vão central de 6 mm."
+            actions={<Badge variant="outline">PDF vetorial</Badge>}
+          >
+            <div className="pb-2">
+              <div className="w-full sm:min-w-[540px]">
+                <div className="mb-2 grid grid-cols-[50fr_6fr_50fr] font-mono text-xs text-muted-foreground" aria-hidden="true">
+                  <div className="flex justify-between px-1"><span>0</span><span>50 mm</span></div>
+                  <div className="text-center">6</div>
+                  <div className="flex justify-between px-1"><span>56</span><span>106 mm</span></div>
+                </div>
+                <div className="grid grid-cols-[50fr_6fr_50fr] items-stretch rounded-md bg-muted p-2 shadow-inner">
+                  <ThermalLabelPreview preset={preset} sample={preview[0]} />
+                  <div className="flex items-center justify-center">
+                    <div className="h-full border-x border-dashed border-border" />
+                  </div>
+                  {preview[1] ? (
+                    <ThermalLabelPreview preset={preset} sample={preview[1]} />
+                  ) : (
+                    <div className="flex aspect-[5/3] items-center justify-center rounded-sm border border-dashed border-border bg-background text-xs text-muted-foreground">
+                      slot livre
+                    </div>
                   )}
-                  <Button size="sm" variant="ghost" aria-label={`Duplicar modelo ${t.name}`} onClick={() => void duplicateTemplate(t)
-                    .then(() => toast.success('Template duplicado'))
-                    .catch(error => toast.error(error instanceof Error ? error.message : 'Não foi possível duplicar.'))}>
-                    <Copy className="h-3.5 w-3.5" />
-                  </Button>
-                  {!isDefault && (
-                    <Button size="sm" variant="ghost" className="text-destructive" aria-label={`Excluir modelo ${t.name}`} onClick={() => void handleDelete(t.id)}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  )}
                 </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>}
+              </div>
+            </div>
+            <div className="mt-4 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+              <p><strong className="text-foreground">Área segura:</strong> {STANDARD_TEXT_LABEL_GEOMETRY.artWidthMm} × {STANDARD_TEXT_LABEL_GEOMETRY.artHeightMm} mm</p>
+              <p><strong className="text-foreground">Impressão:</strong> tamanho real · 100%</p>
+              <p><strong className="text-foreground">Margens:</strong> zero · sem cabeçalho</p>
+              <p><strong className="text-foreground">Sensor:</strong> GAP transmissivo</p>
+            </div>
+          </Panel>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>{editingTemplate ? 'Editar modelo' : 'Novo modelo'}</DialogTitle>
-          </DialogHeader>
-          <TemplateForm
-            initial={editingTemplate}
-            onSave={async (t) => {
-              if (editingTemplate) {
-                await updateTemplate(t);
-              } else {
-                await addTemplate(t);
-              }
-              setDialogOpen(false);
-              toast.success(editingTemplate ? 'Modelo atualizado' : 'Modelo criado');
-            }}
-          />
-        </DialogContent>
-      </Dialog>
+          <Button
+            type="button"
+            size="lg"
+            className="w-full gap-2"
+            disabled={samples.length === 0 || isGenerating}
+            onClick={() => void generatePdf()}
+          >
+            {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+            Gerar PDF L42PRO ({totalLabels.toLocaleString('pt-BR')})
+          </Button>
+          <p className="text-center text-xs text-muted-foreground">
+            O PDF abre no tamanho físico 106 × 30 mm. Faça uma régua de teste antes de uma tiragem grande.
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
 
-function TemplateForm({ initial, onSave }: { initial: LabelTemplate | null; onSave: (t: LabelTemplate) => void | Promise<void> }) {
-  const [name, setName] = useState(initial?.name || '');
-  const [category, setCategory] = useState<string>(initial?.category || 'thermal');
-  const [width, setWidth] = useState(initial?.dimensions.width || 100);
-  const [height, setHeight] = useState(initial?.dimensions.height || 30);
-  const [dpi, setDpi] = useState(initial?.print_settings.dpi || 203);
-
-  const CATEGORY_LABELS: Record<string, string> = {
-    thermal: 'Térmica customizada',
-    individual_box: 'Caixa individual customizada',
-  };
-
-  const handleSubmit = async () => {
-    if (!name.trim()) { toast.error('Nome é obrigatório'); return; }
-    if (!(width > 0) || !(height > 0)) { toast.error('Largura e altura precisam ser maiores que zero.'); return; }
-    const now = new Date().toISOString();
-    const template: LabelTemplate = {
-      id: initial?.id || crypto.randomUUID(),
-      name: name.trim(),
-      category: category as LabelTemplate['category'],
-      type: 'thermal',
-      dimensions: { width, height, unit: 'mm' },
-      fields: initial?.fields || [],
-      print_settings: { dpi, color_mode: 'monochrome', copies_default: 1 },
-      is_active: initial?.is_active ?? false,
-      created_at: initial?.created_at || now,
-      updated_at: now,
-    };
-    try {
-      await onSave(template);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Não foi possível salvar o template.');
-    }
-  };
-
+function FormatMetric({ label, value, icon: Icon }: { label: string; value: string; icon: typeof Ruler }) {
   return (
-    <div className="space-y-4">
+    <div className="flex min-h-20 items-center gap-3 border-border p-4 sm:border-l sm:first:border-l-0">
+      <div className="rounded-md bg-muted p-2 text-muted-foreground"><Icon className="h-4 w-4" /></div>
       <div>
-        <Label>Nome</Label>
-        <Input value={name} onChange={e => setName(e.target.value)} placeholder="Ex: Etiqueta Térmica 100x30" />
+        <p className="font-mono text-xs font-bold uppercase tracking-wider text-muted-foreground">{label}</p>
+        <p className="mt-1 text-sm font-bold text-foreground">{value}</p>
       </div>
-      <div>
-        <Label>Categoria</Label>
-        <Select value={category} onValueChange={setCategory}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
-          <SelectContent>
-            {Object.entries(CATEGORY_LABELS).map(([k, v]) => (
-              <SelectItem key={k} value={k}>{v}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="grid grid-cols-3 gap-3">
-        <div>
-          <Label>Largura (mm)</Label>
-          <Input type="number" value={width} onChange={e => setWidth(Number(e.target.value))} />
+    </div>
+  );
+}
+
+function ThermalLabelPreview({ preset, sample }: { preset: StandardTextLabelPreset; sample: StandardTextLabelSample }) {
+  const normalized = normalizeStandardTextLabelSample({ ...sample, copies: 1 });
+  if (preset === 'external_box') {
+    return (
+      <div className="aspect-[5/3] overflow-hidden rounded-sm border border-foreground/70 bg-background p-[3%] text-foreground shadow-sm">
+        <p className="font-mono text-[7px] font-bold tracking-wider">CAIXA EXTERNA · REFERÊNCIA</p>
+        <div className="mt-[2%] border-t border-foreground/70 pt-[3%]">
+          <p className="truncate text-xl font-black leading-none tracking-tight">{normalized.reference}</p>
         </div>
-        <div>
-          <Label>Altura (mm)</Label>
-          <Input type="number" value={height} onChange={e => setHeight(Number(e.target.value))} />
+        <div className="mt-[4%] border-t border-foreground/60 pt-[3%]">
+          <p className="truncate text-[10px] font-bold leading-tight">COR · {normalized.color}</p>
         </div>
-        <div>
-          <Label>DPI</Label>
-          <Select value={String(dpi)} onValueChange={v => setDpi(Number(v))}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="203">203</SelectItem>
-              <SelectItem value="300">300</SelectItem>
-              <SelectItem value="600">600</SelectItem>
-            </SelectContent>
-          </Select>
+        <div className="mt-[3%] border-t border-foreground/60 pt-[3%]">
+          <p className="truncate text-[9px] leading-tight">MATERIAL · {normalized.material}</p>
         </div>
       </div>
-      <Button onClick={handleSubmit} className="w-full">Salvar modelo</Button>
+    );
+  }
+  return (
+    <div className="aspect-[5/3] overflow-hidden rounded-sm border border-foreground/70 bg-background p-[3%] text-center text-foreground shadow-sm">
+      <p className="font-mono text-[7px] font-bold tracking-wider">EMBALAGEM INDIVIDUAL</p>
+      <div className="mx-auto mt-[2%] w-4/5 border-t border-foreground/70 pt-[4%]">
+        <p className="truncate text-lg font-black leading-none tracking-tight">REF. {normalized.reference}</p>
+      </div>
+      <p className="mt-[6%] truncate text-[10px] font-bold leading-tight">COR · {normalized.color}</p>
+      <p className="mt-[5%] truncate text-[9px] leading-tight">MATERIAL · {normalized.material}</p>
     </div>
   );
 }

@@ -10,17 +10,20 @@
  *
  * Duas regras load-bearing moram aqui:
  *
- *  1. **Item = balde de estoque** (`grupo + cor + unidade`), NÃO linha. O mesmo
- *     material aparece uma vez por APLICAÇÃO e as aplicações dividem o mesmo
- *     estoque: o consumo se soma e o estoque é avaliado UMA vez sobre o total
- *     (`available` é representante, nunca soma). Contar linha a linha
- *     inflava "N em falta".
+ *  1. **Item = balde de estoque**, NÃO linha. Quando o motor resolveu produtos
+ *     exatos, o balde é o conjunto de `productIds` + unidade; só linhas sem ID
+ *     caem no legado `grupo + cor + unidade`. O mesmo material pode aparecer
+ *     uma vez por APLICAÇÃO e essas aplicações dividem o mesmo estoque: o
+ *     consumo se soma e o estoque é avaliado UMA vez sobre o total
+ *     (`available` é representante, nunca soma). Contar linha a linha inflava
+ *     "N em falta"; colapsar produtos distintos do mesmo grupo inventava falta.
  *  2. **Solado é avaliado POR NUMERAÇÃO**, igual à matriz — não pelo total de
  *     pares. 540 pares com estoque 540 pode ter 4 números em falta e 4
  *     sobrando; o total esconderia isso.
  */
 import { buildColAvailability } from '@/lib/soleMatrixHtml';
 import type { ConsumptionRow } from '@/lib/consumptionRows';
+import { BASE_LINEAR_UNITS } from '@/lib/baseMaterialTotal';
 
 /** Disponível efetivo da linha (solado soma o `stock_grade`; demais usam `available`). */
 export const rowAvailable = (r: ConsumptionRow): number =>
@@ -29,14 +32,139 @@ export const rowAvailable = (r: ConsumptionRow): number =>
     : (r.available ?? 0);
 
 /**
+ * Tira artesanal com receita conferida: o motor reserva/baixa NAPA, nunca os
+ * metros de tira. Tratar 1.402 m de overlock como "falta" faz o PDF e o
+ * trilho mentirem — a compra real são ~20 m de napa.
+ */
+export const isConvertedInternalStrap = (r: ConsumptionRow): boolean =>
+  !!r.artisanal
+  && !r.artisanal.pending
+  && Number(r.artisanal.baseQty) > 0;
+
+/**
+ * Tira de STRASS (acabada / buy_ready). Vai em aba/seção própria no Consumo —
+ * não mistura com overlock/chata de produção interna (pedido do dono).
+ */
+export const isStrassStrapRow = (
+  r: Pick<ConsumptionRow, 'componentType' | 'groupName' | 'materialName'>,
+): boolean =>
+  r.componentType === 'Tiras'
+  && /strass/i.test(`${r.groupName || ''} ${r.materialName || ''}`);
+
+/**
+ * Tira artesanal sem rendimento/cadastro: os metros de tira NÃO entram na
+ * métrica de compra nem no strip "Necessidade total" — senão 1.044 m de tira
+ * pendente somam com 129 m de napa e o PDF mente (PV-00193).
+ */
+export const isPendingInternalStrap = (r: ConsumptionRow): boolean =>
+  !!r.artisanal?.pending;
+
+/**
+ * Tira interna (convertida OU pendente). Convertida some da tabela de compra
+ * (vira napa); pending aparece como cadastro incompleto mas NÃO soma no strip
+ * de metros compráveis — ver `unitTotals` / `pendingStrapMeters`.
+ */
+export const isInternalStrapRow = (r: ConsumptionRow): boolean =>
+  isConvertedInternalStrap(r) || isPendingInternalStrap(r);
+
+/**
+ * Linhas na métrica de COMPRA do motor: tira interna some e o equivalente em
+ * napa entra no balde da família/cor (ou vira linha nova se a napa ainda não
+ * aparecia). Solado, palmilha, químicos e tira comprada-pronta ficam iguais.
+ */
+export function toPurchaseDecisionRows(rows: ConsumptionRow[]): ConsumptionRow[] {
+  const rest: ConsumptionRow[] = [];
+  const converted: ConsumptionRow[] = [];
+  for (const row of rows) {
+    if (isConvertedInternalStrap(row)) converted.push(row);
+    else rest.push({ ...row, productIds: row.productIds ? [...row.productIds] : row.productIds });
+  }
+
+  for (const tira of converted) {
+    const qty = Number(tira.artisanal?.baseQty) || 0;
+    if (!(qty > 0)) continue;
+    const name = (tira.artisanal?.baseName || '').trim();
+    const color = tira.color;
+    const baseId = tira.baseProductId || null;
+
+    const matchIdx = rest.findIndex((candidate) => {
+      if (candidate.componentType === 'Solado') return false;
+      if (baseId && (candidate.productIds || []).includes(baseId)) return true;
+      return (
+        !!name
+        && candidate.groupName === name
+        && candidate.color === color
+        && BASE_LINEAR_UNITS.has((candidate.productUnit || '').toLowerCase())
+      );
+    });
+
+    if (matchIdx >= 0) {
+      const match = rest[matchIdx];
+      rest[matchIdx] = { ...match, totalQuantity: match.totalQuantity + qty };
+      continue;
+    }
+
+    rest.push({
+      ...tira,
+      componentType: 'Cabedal',
+      groupName: name || tira.groupName,
+      materialName: 'Conversão de tira',
+      totalQuantity: qty,
+      productUnit: 'm',
+      productIds: baseId ? [baseId] : [],
+      available: 0,
+      artisanal: undefined,
+      warning: undefined,
+      previewQuantity: undefined,
+    });
+  }
+
+  return rest;
+}
+
+/**
+ * Totais por unidade na métrica do motor: tira interna conta o metro de napa,
+ * nunca o metro de tira. Sem isso o PDF soma 6.044 m (tira+napa) e o herói
+ * mostra 247 m — os dois números não batem.
+ *
+ * Tira `pending` também fica de fora: ainda não há napa equivalente confiável,
+ * e somar os metros brutos de tira infla o strip (1.173 m vs 129 m no PV-00193).
+ */
+export function unitTotals(rows: ConsumptionRow[]): Map<string, number> {
+  const map = new Map<string, number>();
+  const add = (unit: string, qty: number) => {
+    if (!(qty > 0)) return;
+    const key = unit || '';
+    map.set(key, (map.get(key) || 0) + qty);
+  };
+  for (const row of rows) {
+    if (isPendingInternalStrap(row)) continue;
+    if (isConvertedInternalStrap(row)) add('m', Number(row.artisanal?.baseQty) || 0);
+    else add(row.productUnit, row.totalQuantity);
+  }
+  return map;
+}
+
+/** Metros de tira com cadastro/rendimento pendente — alerta, não compra. */
+export function pendingStrapMeters(rows: ConsumptionRow[]): number {
+  return rows.reduce(
+    (total, row) => total + (isPendingInternalStrap(row) ? Math.max(0, Number(row.totalQuantity) || 0) : 0),
+    0,
+  );
+}
+
+/**
  * O consumo da linha é comparável com estoque?
  *
- * `widthMissing` = dm² tratado como metro (consumo ~100× inflado) e
- * `warning` sem quantidade = consumo não calculado. Nos dois casos a comparação
- * com estoque é inválida — a linha fica NEUTRA, nunca vermelha.
+ * `widthMissing` = dm² tratado como metro (consumo ~100× inflado), solado
+ * sem `soleProductId` = texto sem identidade de estoque e `warning` sem
+ * quantidade = consumo não calculado. Nesses casos a comparação é inválida
+ * — a linha fica NEUTRA, nunca vermelha.
  */
 export const rowKnown = (r: ConsumptionRow): boolean =>
-  !r.widthMissing && !(r.warning && !(r.totalQuantity > 0));
+  !r.widthMissing
+  && !(r.componentType === 'Solado' && !r.soleProductId)
+  && !(r.warning && !(r.totalQuantity > 0));
 
 /** Falta do solado por numeração: soma do que cada número não cobre. */
 const soleShortfall = (r: ConsumptionRow): number => {
@@ -66,22 +194,25 @@ export const soleRowShort = (r: ConsumptionRow): boolean => {
 };
 
 export const rowIsShort = (r: ConsumptionRow): boolean => {
+  if (isConvertedInternalStrap(r)) return false;
   if (!rowKnown(r)) return false;
   if (r.componentType === 'Solado') return soleRowShort(r);
   return rowAvailable(r) < r.totalQuantity;
 };
 
 /**
- * QUANTO falta da linha, na unidade dela. `0` quando cobre ou quando o cadastro
- * está incompleto (não comparável — a UI mostra "—", não zero).
+ * QUANTO falta da linha, na unidade dela. `0` quando cobre, quando o cadastro
+ * está incompleto, ou quando a linha é tira interna já convertida em napa
+ * (a falta de compra mora no balde da napa, não nos metros de tira).
  */
 export const rowShortfall = (r: ConsumptionRow): number => {
+  if (isConvertedInternalStrap(r)) return 0;
   if (!rowKnown(r)) return 0;
   if (r.componentType === 'Solado') return soleShortfall(r);
   return Math.max(0, r.totalQuantity - rowAvailable(r));
 };
 
-// ── Item = BALDE de estoque (grupo + cor + unidade) ────────────────────────
+// ── Item = BALDE de estoque (produto exato; fallback grupo + cor + unidade) ─
 export type ItemGroup = {
   key: string;
   componentType: string;
@@ -95,7 +226,19 @@ export type ItemGroup = {
   known: boolean;
 };
 
-export const itemKey = (r: ConsumptionRow) => `${r.groupName}||${r.color}||${r.productUnit}`;
+export const itemKey = (r: ConsumptionRow) => {
+  const boxTypeIds = [...new Set((r.boxTypeIds || []).map((id) => id.trim()).filter(Boolean))]
+    .sort();
+  if (boxTypeIds.length > 0) {
+    return `box_types||${boxTypeIds.join(',')}||${r.productUnit}`;
+  }
+  const productIds = [...new Set((r.productIds || []).map((id) => id.trim()).filter(Boolean))]
+    .sort();
+  if (productIds.length > 0) {
+    return `products||${productIds.join(',')}||${r.productUnit}`;
+  }
+  return `fallback||${r.groupName}||${r.color}||${r.productUnit}`;
+};
 
 export const aggregateItems = (rows: ConsumptionRow[]): ItemGroup[] => {
   const map = new Map<string, ItemGroup>();
@@ -128,10 +271,12 @@ export const itemIsShort = (it: ItemGroup): boolean => it.known && it.available 
 export const itemShortfall = (it: ItemGroup): number =>
   it.known ? Math.max(0, it.total - it.available) : 0;
 
-/** Contagem "em falta" ITEM-a-item (não linha-a-linha). Solado por numeração. */
+/** Contagem "em falta" ITEM-a-item (não linha-a-linha). Solado por numeração.
+ *  Tira interna entra pelo equivalente em napa — o motor não compra tira. */
 export const countShort = (rows: ConsumptionRow[]): number => {
-  const sole = rows.filter((r) => r.componentType === 'Solado' && rowIsShort(r)).length;
-  const others = aggregateItems(rows.filter((r) => r.componentType !== 'Solado'))
+  const purchase = toPurchaseDecisionRows(rows);
+  const sole = purchase.filter((r) => r.componentType === 'Solado' && rowIsShort(r)).length;
+  const others = aggregateItems(purchase.filter((r) => r.componentType !== 'Solado'))
     .filter(itemIsShort).length;
   return sole + others;
 };
@@ -155,8 +300,9 @@ export type ShortfallEntry = {
 };
 
 export const topShortfalls = (rows: ConsumptionRow[], limit = 5): ShortfallEntry[] => {
+  const purchase = toPurchaseDecisionRows(rows);
   const out: ShortfallEntry[] = [];
-  for (const r of rows.filter((x) => x.componentType === 'Solado')) {
+  for (const r of purchase.filter((x) => x.componentType === 'Solado')) {
     const qty = rowShortfall(r);
     if (qty > 0) {
       out.push({
@@ -168,7 +314,7 @@ export const topShortfalls = (rows: ConsumptionRow[], limit = 5): ShortfallEntry
       });
     }
   }
-  for (const it of aggregateItems(rows.filter((x) => x.componentType !== 'Solado'))) {
+  for (const it of aggregateItems(purchase.filter((x) => x.componentType !== 'Solado'))) {
     const qty = itemShortfall(it);
     if (qty > 0) out.push({ label: it.groupName, color: it.color, qty, unit: it.productUnit });
   }

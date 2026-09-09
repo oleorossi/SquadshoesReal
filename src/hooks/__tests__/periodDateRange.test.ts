@@ -1,10 +1,9 @@
 /**
  * Trava o recorte de período da baixa de vales (D15, auditoria RH 2026-07-29).
  *
- * O bug: `useSettleEmployeeAdvances` marcava como `paid` TODOS os vales pendentes do
- * funcionário, sem filtro de data. Como a folha só desconta vale `pending` dentro do
- * intervalo calculado, um vale lançado para a competência seguinte era quitado antes
- * de ser descontado — e a folha do mês seguinte não o encontrava mais. Perda direta.
+ * O bug original baixava todos os vales do funcionário sem filtro de data. A
+ * baixa externa atual precisa continuar limitada à competência escolhida para
+ * não retirar da folha um vale lançado para o mês seguinte.
  *
  * O intervalo é MEIO-ABERTO de propósito: montar o último dia do mês por string
  * ('YYYY-MM-31') produziria data inválida em fevereiro e em meses de 30 dias.
@@ -12,7 +11,7 @@
 import { describe, it, expect } from 'vitest';
 import { periodDateRange } from '../useEmployees';
 
-describe('periodDateRange — recorte da baixa de vales', () => {
+describe('periodDateRange — recorte da baixa externa de vales', () => {
   it('mês comum devolve [1º do mês, 1º do mês seguinte)', () => {
     expect(periodDateRange('2026-08')).toEqual({ from: '2026-08-01', before: '2026-09-01' });
   });

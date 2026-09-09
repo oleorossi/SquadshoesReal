@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { Calculator, Warning as AlertTriangle } from '@phosphor-icons/react';
 import { calculateSeverance } from '@/lib/severanceCalculator';
+import { isQuadroPj } from '@/lib/payrollContract';
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -11,17 +12,34 @@ interface Props {
 }
 
 /**
- * Mostra estimativa de indenização (rescisão sem justa causa CLT) quando
- * operador preenche termination_date no cadastro do funcionário.
- *
- * Renderiza nada quando faltam dados ou termination_date é vazia. Não há
- * persistência — é só simulação visual baseada nos valores do form atual.
+ * Desligamento. Quadro PJ (29/08/2026): não mostra férias, 13º nem rescisão.
+ * O caminho CLT só existe se QUADRO_PJ for desligado.
  */
 export function SeveranceSimulator({ salary, admissionDate, terminationDate }: Props) {
   const result = useMemo(() => {
     if (!terminationDate || !admissionDate || !salary || salary <= 0) return null;
     return calculateSeverance({ salary, admissionDate, terminationDate });
   }, [salary, admissionDate, terminationDate]);
+
+  if (!terminationDate || !admissionDate) return null;
+
+  if (isQuadroPj() || result?.aplicavel === false) {
+    return (
+      <div className="col-span-2 rounded-lg border border-border bg-muted/30 p-4 space-y-2">
+        <div className="flex items-center gap-2">
+          <Calculator className="h-4 w-4 text-muted-foreground" />
+          <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+            Desligamento — quadro PJ
+          </span>
+        </div>
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          Férias, 13º e rescisão CLT não se aplicam. Encerrar o serviço não gera
+          indenização neste sistema. Acerta só o combinado já prestado (recibo / NF)
+          e vales em aberto.
+        </p>
+      </div>
+    );
+  }
 
   if (!result) return null;
 

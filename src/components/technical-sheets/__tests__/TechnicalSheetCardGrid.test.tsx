@@ -1,19 +1,12 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+import type { TechnicalSheetAuditGap } from '@/lib/technicalSheetAudit';
 import { TechnicalSheetCardGrid, type TechnicalSheetGridItem } from '../TechnicalSheetCardGrid';
 
 vi.mock('@/components/ui/signed-image', () => ({
   SignedImage: ({ src, alt, className, fit }: { src: string; alt: string; className?: string; fit?: string }) => (
     <img src={src} alt={alt} className={className} data-fit={fit} />
-  ),
-}));
-
-vi.mock('@/components/ui/delete-confirm-button', () => ({
-  default: ({ onConfirm, title, size }: { onConfirm: () => void; title: string; size: string }) => (
-    <button type="button" onClick={onConfirm} aria-label={title} data-size={size}>
-      {title}
-    </button>
   ),
 }));
 
@@ -78,19 +71,58 @@ describe('TechnicalSheetCardGrid', () => {
 
   it('exibe exclusão somente para quem tem permissão', () => {
     const allowed = renderGrid();
-    const deleteButton = screen.getByRole('button', { name: 'Excluir ficha NL04?' });
-    expect(deleteButton).toHaveAttribute('data-size', 'h-11 w-11 sm:h-8 sm:w-8');
+    const deleteButton = screen.getByRole('button', { name: 'Excluir ficha NL04' });
+    expect(deleteButton).toHaveClass('h-11', 'w-11', 'sm:h-8', 'sm:w-8');
     fireEvent.click(deleteButton);
-    expect(allowed.onDeleteSheet).toHaveBeenCalledWith('sheet-1');
+    expect(allowed.onDeleteSheet).toHaveBeenCalledWith(sheet);
 
     allowed.unmount();
     renderGrid({ canDelete: false });
-    expect(screen.queryByRole('button', { name: 'Excluir ficha NL04?' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Excluir ficha NL04' })).not.toBeInTheDocument();
   });
 
   it('mantém a mesma proporção compacta quando não há imagem', () => {
     renderGrid({ item: { ...sheet, images: [] } });
 
     expect(screen.getByRole('img', { name: 'Sem imagem para NL04' })).toHaveClass('aspect-video');
+  });
+
+  it('mostra as pendências da auditoria na referência correspondente', () => {
+    const secondSheet: TechnicalSheetGridItem = {
+      ...sheet,
+      id: 'sheet-2',
+      name: 'M100',
+      code: 'M100-INT',
+    };
+    const gapsBySheet = new Map<string, readonly TechnicalSheetAuditGap[]>([
+      ['sheet-1', [
+        { key: 'missing_insole_material', label: 'Grupo da palmilha', severity: 'critical' },
+        { key: 'missing_production_sectors', label: 'Setores de produção não configurados', severity: 'critical' },
+      ]],
+      ['sheet-2', [
+        { key: 'missing_sole_color_mapping', label: 'Cores do solado', severity: 'warn' },
+      ]],
+    ]);
+
+    render(
+      <TechnicalSheetCardGrid
+        sheets={[sheet, secondSheet]}
+        auditGapsBySheet={gapsBySheet}
+        canDelete={false}
+        onOpenSheet={vi.fn()}
+        onEditImage={vi.fn()}
+        onDeleteSheet={vi.fn()}
+      />,
+    );
+
+    const firstCard = screen.getByRole('button', { name: 'Abrir ficha técnica NL04' });
+    expect(within(firstCard).getByText('2 pendências')).toBeInTheDocument();
+    expect(within(firstCard).getByText('Grupo da palmilha • Setores de produção não configurados')).toBeInTheDocument();
+    expect(within(firstCard).queryByText('Cores do solado')).not.toBeInTheDocument();
+
+    const secondCard = screen.getByRole('button', { name: 'Abrir ficha técnica M100' });
+    expect(within(secondCard).getByText('1 pendência')).toBeInTheDocument();
+    expect(within(secondCard).getByText('Cores do solado')).toBeInTheDocument();
+    expect(within(secondCard).queryByText('Grupo da palmilha')).not.toBeInTheDocument();
   });
 });

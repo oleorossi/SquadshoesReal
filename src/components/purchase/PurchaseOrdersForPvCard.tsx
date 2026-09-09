@@ -49,7 +49,7 @@ export default function PurchaseOrdersForPvCard({ pvId }: { pvId: string }) {
         </div>
       ) : orders.length === 0 ? (
         <p className="px-3 py-6 text-sm text-muted-foreground text-center">
-          Nenhuma OC gerada por este pedido ainda. Use <strong>Gerar OCs</strong> no topo.
+          Nenhuma OC gerada por este pedido ainda. Use <strong>Gerar ordem de compra</strong> no topo.
         </p>
       ) : (
         <Table className="[&_td]:py-2 [&_th]:py-2">

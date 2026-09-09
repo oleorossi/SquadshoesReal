@@ -161,7 +161,6 @@ export async function createGroupColorProduct(spec: GroupColorSpec): Promise<Cre
     calculation_method: last?.calculation_method || 'weight',
     price_wholesale: last?.price_wholesale || 0,
     price_retail: last?.price_retail || 0,
-    quantity: 0,
     group_id: spec.groupId,
     active: true,
     image_url: '',

@@ -34,4 +34,39 @@ describe('ReferenceSearch', () => {
 
     expect(screen.getByRole('img', { name: 'Sem imagem: Modelo SP 10' })).toBeInTheDocument();
   });
+
+  it('oculta fichas aposentadas de novas escolhas e mantém a atualmente selecionada', () => {
+    const references = [
+      { id: 'active', code: 'ATIVA', name: 'Ficha ativa', retired_at: null },
+      { id: 'retired', code: 'ANTIGA', name: 'Ficha aposentada', retired_at: '2026-08-30T12:00:00Z' },
+    ];
+
+    const { rerender } = render(
+      <ReferenceSearch
+        references={references}
+        onSelect={vi.fn()}
+        variantsByRef={new Map()}
+        onRefresh={vi.fn()}
+        refreshing={false}
+        onCreate={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Ficha ativa')).toBeInTheDocument();
+    expect(screen.queryByText('Ficha aposentada')).not.toBeInTheDocument();
+
+    rerender(
+      <ReferenceSearch
+        references={references}
+        selectedId="retired"
+        onSelect={vi.fn()}
+        variantsByRef={new Map()}
+        onRefresh={vi.fn()}
+        refreshing={false}
+        onCreate={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Ficha aposentada')).toBeInTheDocument();
+  });
 });

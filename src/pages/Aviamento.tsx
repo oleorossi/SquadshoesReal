@@ -33,6 +33,7 @@ import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { TableSkeleton } from '@/components/layout/PageSkeleton';
 import { resolveFicha } from '@/components/production/worksheet/fichaSize';
 import { safeUrlAttr } from '@/lib/htmlUtils';
+import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
 
 const SIZES = ['17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','37','38','39','40','41','42','43','44','45'];
 
@@ -211,6 +212,9 @@ export default function Aviamento() {
     const silkHtml = `<img src="${safeUrlAttr(silkLogoUrl)}" style="width:100px;height:100px;object-fit:contain;" />`;
 
     const showScaledRow = totalPairs !== gradeSum;
+    const scaledGrade = (grade && showScaledRow && gradeSum > 0)
+      ? scaleGradeWithLargestRemainder(grade, totalPairs / gradeSum, totalPairs)
+      : {};
     let gradeHtml = '';
     if (grade && activeSizes.length > 0) {
       gradeHtml = `<table style="border-collapse:collapse;margin-top:8px;width:100%;">
@@ -227,8 +231,7 @@ export default function Aviamento() {
         ${showScaledRow ? `<tr>
           <td style="border:1px solid #999;padding:3px 6px;font-size:8px;font-weight:700;text-align:center;color:#333;background:#e8e8d8;">Total (${totalPairs}p)</td>
           ${activeSizes.map(s => {
-            const scaled = Math.round((Number(grade[s]) || 0) * (totalPairs / gradeSum));
-            return `<td style="border:1px solid #999;padding:4px 8px;font-size:14px;text-align:center;font-family:monospace;font-weight:900;">${scaled}</td>`;
+            return `<td style="border:1px solid #999;padding:4px 8px;font-size:14px;text-align:center;font-family:monospace;font-weight:900;">${scaledGrade[s] || 0}</td>`;
           }).join('')}
           <td style="border:1px solid #999;padding:4px 8px;font-size:16px;text-align:center;font-family:monospace;font-weight:900;background:#f0f0e8;">${totalPairs}</td>
         </tr>` : ''}
@@ -416,9 +419,10 @@ export default function Aviamento() {
                 group.totalPairs += tp;
                 if (!group.strapsLabel && strapsLabel) group.strapsLabel = strapsLabel;
                 if (g) {
+                  const scaled = scaleGradeWithLargestRemainder(g, multiplier, tp);
                   for (const s of SIZES) {
-                    const qty = Number(g[s]) || 0;
-                    if (qty > 0) group.sizes[s] = (group.sizes[s] || 0) + Math.round(qty * multiplier);
+                    const qty = Number(scaled[s]) || 0;
+                    if (qty > 0) group.sizes[s] = (group.sizes[s] || 0) + qty;
                   }
                 }
               }
@@ -688,6 +692,9 @@ export default function Aviamento() {
 
               const renderOPCard = (order: any) => {
                 const { ref, grade, activeSizes, gradeSum, totalPairs, totalFichas, fichas, imageUrl } = buildPrintContent(order);
+                const scaledTotal = gradeSum > 0
+                  ? scaleGradeWithLargestRemainder(grade || {}, fichas || 1, totalPairs)
+                  : {};
                 const isExpanded = expandedOrderId === order.id;
                 const isSelected = selectedOrders.has(order.id);
 
@@ -800,7 +807,7 @@ export default function Aviamento() {
                                     <TableCell className="text-xs font-bold">Total ({totalFichas} fichas)</TableCell>
                                     {activeSizes.map(s => (
                                       <TableCell key={s} className="text-sm text-center font-mono font-bold">
-                                        {Math.round((Number(grade[s]) || 0) * (fichas || 1))}
+                                        {scaledTotal[s] || 0}
                                       </TableCell>
                                     ))}
                                     <TableCell className="text-sm text-center font-mono font-bold bg-muted">{totalPairs}</TableCell>

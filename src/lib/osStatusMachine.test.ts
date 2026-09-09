@@ -77,13 +77,13 @@ describe('transições', () => {
     expect(isValidOsTransition('Em Andamento', 'Concluído')).toBe(true);
     expect(isValidOsTransition('Pendente', 'Cancelado')).toBe(true);
   });
-  it('não rebaixa Concluído sem passar por Cancelado', () => {
+  it('mantém Concluído como terminal imutável', () => {
     expect(isValidOsTransition('Concluído', 'Em Andamento')).toBe(false);
     expect(isValidOsTransition('Concluído', 'Pendente')).toBe(false);
-    expect(isValidOsTransition('Concluído', 'Cancelado')).toBe(true);
+    expect(isValidOsTransition('Concluído', 'Cancelado')).toBe(false);
   });
-  it('reativa Cancelado só voltando pra Pendente', () => {
-    expect(isValidOsTransition('Cancelado', 'Pendente')).toBe(true);
+  it('mantém Cancelado como terminal no fluxo genérico', () => {
+    expect(isValidOsTransition('Cancelado', 'Pendente')).toBe(false);
     expect(isValidOsTransition('Cancelado', 'Concluído')).toBe(false);
   });
   it('idempotente (mesmo status) é válido mesmo em terminal', () => {
@@ -91,7 +91,8 @@ describe('transições', () => {
   });
   it('getValidNextOsStatuses', () => {
     expect(getValidNextOsStatuses('Pendente')).toContain(OS_STATUS.EM_ANDAMENTO);
-    expect(getValidNextOsStatuses('Concluído')).toEqual([OS_STATUS.CANCELADO]);
+    expect(getValidNextOsStatuses('Concluído')).toEqual([]);
+    expect(getValidNextOsStatuses('Cancelado')).toEqual([]);
   });
 });
 

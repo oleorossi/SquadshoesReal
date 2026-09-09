@@ -81,6 +81,8 @@ import {
   suggestStrapReceiptAllocations,
   validateStrapReceiptAllocations,
 } from '@/lib/strapReceiptAllocations';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { cn } from '@/lib/utils';
 import { StrapStatusBadge } from './StrapStatusBadge';
 
 function meters(value: unknown) {
@@ -1425,12 +1427,18 @@ export function ArtisanalStrapExternalOperations({
   isLoading,
   isError,
   onRetry,
+  serviceOrderSearch,
+  focusedServiceOrderNumber,
+  onClearServiceOrderFocus,
 }: {
   data?: ArtisanalStrapExternalOperationsData;
   catalog: ArtisanalStrapCatalog;
   isLoading: boolean;
   isError: boolean;
   onRetry: () => void;
+  serviceOrderSearch?: string;
+  focusedServiceOrderNumber?: string | null;
+  onClearServiceOrderFocus?: () => void;
 }) {
   const resume = useResumeArtisanalStrapOperation();
   const [receiptTarget, setReceiptTarget] = useState<ReceiptTarget | null>(null);
@@ -1441,23 +1449,60 @@ export function ArtisanalStrapExternalOperations({
   const canAdmin = catalog.capabilities.administer_strap_operations;
   const serviceOrderGroups = useMemo(() => {
     const groups = new Map<string, StrapServiceOrderItemOperational[]>();
-    (data?.serviceItems || []).forEach((item) => {
-      groups.set(item.service_order_id, [...(groups.get(item.service_order_id) || []), item]);
-    });
+    const normalizedFocus = focusedServiceOrderNumber?.trim().toLocaleLowerCase('pt-BR') || '';
+    (data?.serviceItems || [])
+      .filter((item) => !normalizedFocus
+        || item.service_order_number?.trim().toLocaleLowerCase('pt-BR') === normalizedFocus)
+      .filter((item) => searchMatchesAllTerms(
+        serviceOrderSearch,
+        item.service_order_number,
+        item.service_order_status,
+        item.contractor_name,
+        item.base_product_name,
+        item.finished_product_name,
+      ))
+      .forEach((item) => {
+        groups.set(item.service_order_id, [...(groups.get(item.service_order_id) || []), item]);
+      });
     return [...groups.values()];
-  }, [data?.serviceItems]);
+  }, [data?.serviceItems, focusedServiceOrderNumber, serviceOrderSearch]);
+
+  useEffect(() => {
+    if (!focusedServiceOrderNumber || serviceOrderGroups.length === 0) return;
+    document.getElementById('focused-strap-service-order')?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'center',
+    });
+  }, [focusedServiceOrderNumber, serviceOrderGroups.length]);
 
   if (isError) return <Alert variant="destructive"><Warning className="h-4 w-4" /><AlertTitle>Operações externas indisponíveis</AlertTitle><AlertDescription><Button variant="outline" size="sm" onClick={onRetry}>Tentar novamente</Button></AlertDescription></Alert>;
   if (isLoading) return <Panel><p className="text-sm text-muted-foreground">Carregando OCs e OSs especializadas…</p></Panel>;
   return (
     <div className="space-y-4">
+      {focusedServiceOrderNumber && serviceOrderGroups.length === 0 && (
+        <Alert>
+          <Warning className="h-4 w-4" />
+          <AlertTitle>OS {focusedServiceOrderNumber} não possui linha operacional</AlertTitle>
+          <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
+            <span>Ela pode ser uma OS histórica ainda pendente de migração para o fluxo canônico de Tiras.</span>
+            {onClearServiceOrderFocus && <Button size="sm" variant="outline" onClick={onClearServiceOrderFocus}>Ver todas as operações</Button>}
+          </AlertDescription>
+        </Alert>
+      )}
       {serviceOrderGroups.length > 0 && (
-        <Panel eyebrow="TERCEIRIZAÇÃO" title="Ordens de serviço e custódia" subtitle="Remessa, retorno, perda e recebimento parcial usam RPCs idempotentes.">
+        <Panel eyebrow="PRODUÇÃO EXTERNA DE TIRAS" title="Ordens de serviço e custódia" subtitle="Remessa, retorno, perda e recebimento parcial usam RPCs idempotentes.">
           <div className="space-y-2">
             {serviceOrderGroups.map((group) => {
               const first = group[0];
               return (
-                <article key={first.service_order_id} className="rounded-lg border border-border p-3">
+                <article
+                  id={focusedServiceOrderNumber ? 'focused-strap-service-order' : undefined}
+                  key={first.service_order_id}
+                  className={cn(
+                    'rounded-lg border border-border p-3',
+                    focusedServiceOrderNumber && 'border-primary bg-primary/5 ring-2 ring-primary/20',
+                  )}
+                >
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div><p className="font-semibold">{first.service_order_number} · {first.contractor_name}</p><p className="text-xs text-muted-foreground">{group.length} linha(s) · prazo {dateLabel(group.map((item) => item.needed_at).filter(Boolean).sort()[0])}</p></div>
                     <Button size="sm" variant="outline" className="gap-1" onClick={() => printArtisanalStrapServiceOrder(serviceOrderPdfData(group, catalog))}><DownloadSimple className="h-4 w-4" /> PDF da OS</Button>

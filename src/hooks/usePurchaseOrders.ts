@@ -1,6 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import {
+  executePurchaseOrderCommand,
+  purchaseOrderLogicalKey,
+} from '@/services/purchaseOrderCommandService';
 
 export type PurchaseOrder = {
   id: string;
@@ -9,6 +13,10 @@ export type PurchaseOrder = {
   supplier_id: string | null;
   supplier_name: string;
   total_value: number;
+  freight_value?: number;
+  freight_type?: string | null;
+  payment_terms?: string | null;
+  quotation_award_snapshot_id?: string | null;
   notes: string;
   auto_generated: boolean;
   promised_date: string | null;
@@ -28,7 +36,8 @@ export type PurchaseOrder = {
 export type PurchaseOrderItem = {
   id: string;
   purchase_order_id: string;
-  product_id: string;
+  product_id: string | null;
+  box_type_id?: string | null;
   current_stock: number;
   min_stock: number;
   max_stock: number;
@@ -47,6 +56,31 @@ export type PurchaseOrderItem = {
   received_quantity?: number | null;
   product?: { name: string; sku: string; category: string; color?: string | null; stock_grade?: Record<string, any> | null };
 };
+
+export interface PurchaseOrderStockItemInput {
+  product_id?: string | null;
+  box_type_id?: string | null;
+  quantity: number;
+  unit_price: number;
+  unit: string;
+  current_stock?: number;
+  min_stock?: number;
+  max_stock?: number;
+  grade?: Record<string, number> | null;
+  color?: string | null;
+}
+
+function assertPurchaseOrderItem(item: PurchaseOrderStockItemInput): void {
+  if (Boolean(item.product_id) === Boolean(item.box_type_id)) {
+    throw new Error('Cada item da OC deve informar exatamente um produto ou uma embalagem.');
+  }
+  if (!Number.isFinite(item.quantity) || item.quantity <= 0) {
+    throw new Error('Quantidade inválida em item da OC.');
+  }
+  if (!Number.isFinite(item.unit_price) || item.unit_price < 0) {
+    throw new Error('Preço unitário inválido em item da OC.');
+  }
+}
 
 export function usePurchaseOrders() {
   return useQuery({
@@ -69,20 +103,27 @@ export function usePurchaseOrderItems(orderId: string | null) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('purchase_order_items')
-        .select('*, products(id, name, sku, category, color, stock_grade)')
+        .select('*, products(id, name, sku, category, color, stock_grade), box_types(id, nome, tipo, quantity, min_stock, unit_price, active)')
         .eq('purchase_order_id', orderId!);
       if (error) throw error;
       return (data || []).map((item: any) => ({
         ...item,
-        product: item.products || { name: '?', sku: '?', category: '?', color: null },
+        product: item.products || (item.box_types ? {
+          name: item.box_types.nome,
+          sku: '',
+          category: 'Embalagem',
+          color: null,
+          stock_grade: null,
+        } : { name: '?', sku: '?', category: '?', color: null }),
         products: undefined,
+        box_types: undefined,
       })) as PurchaseOrderItem[];
     },
   });
 }
 
 /** Tipo de conteúdo da OC, derivado das categorias dos itens. */
-export type POContentType = 'solado' | 'material' | 'palmilha' | 'misto' | 'vazio';
+export type POContentType = 'solado' | 'material' | 'palmilha' | 'embalagem' | 'misto' | 'vazio';
 
 /** Resumo dos itens de UMA OC, pra surfar especificidade na lista sem abrir o modal. */
 export type PurchaseOrderItemSummary = {
@@ -146,7 +187,7 @@ export function usePurchaseOrderItemSummaries(orderIds: string[]) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('purchase_order_items')
-        .select('purchase_order_id, product_id, quantity, unit, unit_price, color, grade, products(name, sku, category, color)')
+        .select('purchase_order_id, product_id, box_type_id, quantity, unit, unit_price, color, grade, products(name, sku, category, color), box_types(nome, tipo)')
         .in('purchase_order_id', ids);
       if (error) throw error;
 
@@ -159,24 +200,36 @@ export function usePurchaseOrderItemSummaries(orderIds: string[]) {
 
       const summaries = new Map<string, PurchaseOrderItemSummary>();
       for (const [orderId, items] of byOrder) {
-        const cats = new Set(items.map(i => ((i.products?.category || '') as string).toLowerCase()).filter(Boolean));
-        const hasSole = items.some(i => isSoleCategory(i.products?.category));
-        const allSole = items.length > 0 && items.every(i => isSoleCategory(i.products?.category));
-        const allPalmilha = items.length > 0 && items.every(i => isPalmilhaCategory(i.products?.category));
+        const normalizedItems = items.map((item) => ({
+          ...item,
+          stockIdentityId: item.product_id || item.box_type_id,
+          stockEntity: item.products || (item.box_types ? {
+            name: item.box_types.nome,
+            sku: '',
+            category: 'Embalagem',
+            color: null,
+          } : null),
+        }));
+        const cats = new Set(normalizedItems.map(i => ((i.stockEntity?.category || '') as string).toLowerCase()).filter(Boolean));
+        const hasSole = normalizedItems.some(i => isSoleCategory(i.stockEntity?.category));
+        const allSole = normalizedItems.length > 0 && normalizedItems.every(i => isSoleCategory(i.stockEntity?.category));
+        const allPalmilha = normalizedItems.length > 0 && normalizedItems.every(i => isPalmilhaCategory(i.stockEntity?.category));
+        const allPackaging = normalizedItems.length > 0 && normalizedItems.every(i => i.box_type_id != null);
 
         let contentType: POContentType = 'vazio';
         if (items.length === 0) contentType = 'vazio';
         else if (allSole) contentType = 'solado';
+        else if (allPackaging) contentType = 'embalagem';
         else if (hasSole) contentType = 'misto';
         else if (allPalmilha) contentType = 'palmilha';
         else if (cats.size > 1) contentType = 'misto';
         else contentType = 'material';
 
         // Item representativo: o solado quando houver, senão o primeiro.
-        const soleItem = items.find(i => isSoleCategory(i.products?.category)) || null;
-        const repItem = soleItem || items[0];
-        const repName = repItem?.products?.name || 'Item';
-        const repColor = repItem?.color || repItem?.products?.color || null;
+        const soleItem = normalizedItems.find(i => isSoleCategory(i.stockEntity?.category)) || null;
+        const repItem = soleItem || normalizedItems[0];
+        const repName = repItem?.stockEntity?.name || 'Item';
+        const repColor = repItem?.color || repItem?.stockEntity?.color || null;
 
         let sole: PurchaseOrderItemSummary['sole'] = null;
         if (soleItem) {
@@ -187,8 +240,8 @@ export function usePurchaseOrderItemSummaries(orderIds: string[]) {
             .filter(([k]) => !k.startsWith('_'))
             .reduce((s, [, v]) => s + (Number(v) || 0), 0);
           sole = {
-            model: soleItem.products?.name || 'Solado',
-            color: soleItem.color || soleItem.products?.color || null,
+            model: soleItem.stockEntity?.name || 'Solado',
+            color: soleItem.color || soleItem.stockEntity?.color || null,
             sizeFrom: from,
             sizeTo: to,
             totalPares: hasGrade ? totalFromGrade : (Number(soleItem.quantity) || 0),
@@ -198,17 +251,17 @@ export function usePurchaseOrderItemSummaries(orderIds: string[]) {
 
         summaries.set(orderId, {
           itemCount: items.length,
-          items: items.map(i => ({
-            productId: i.product_id,
-            name: i.products?.name || 'Item',
-            sku: i.products?.sku || '',
-            category: i.products?.category || '',
-            color: i.color || i.products?.color || null,
+          items: normalizedItems.map(i => ({
+            productId: i.stockIdentityId,
+            name: i.stockEntity?.name || 'Item',
+            sku: i.stockEntity?.sku || '',
+            category: i.stockEntity?.category || '',
+            color: i.color || i.stockEntity?.color || null,
             quantity: Number(i.quantity) || 0,
             unit: i.unit || '',
             unitPrice: Number(i.unit_price) || 0,
           })),
-          searchText: items.map(i => [i.products?.name, i.products?.sku, i.products?.category, i.color, i.products?.color].filter(Boolean).join(' ')).join(' '),
+          searchText: normalizedItems.map(i => [i.stockEntity?.name, i.stockEntity?.sku, i.stockEntity?.category, i.color, i.stockEntity?.color].filter(Boolean).join(' ')).join(' '),
           label: repName,
           color: repColor,
           contentType,
@@ -224,19 +277,27 @@ export function useUpdatePurchaseOrder() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<PurchaseOrder> }) => {
-      // Refuse updates on finalized POs (same guard as useDeletePurchaseOrder/
-      // useUpdatePurchaseOrderItem). Prevents supplier/total/dates from being
-      // mutated on received OCs and distorting supplier-spend reports.
-      const { data: updated, error } = await supabase
+      const { data: current, error } = await supabase
         .from('purchase_orders')
-        .update(data)
+        .select('updated_at')
         .eq('id', id)
-        .not('status', 'in', '("received","receiving","cancelled")')
-        .select('id');
+        .single();
       if (error) throw error;
-      if (!updated || updated.length === 0) {
-        throw new Error('OC já recebida ou cancelada — não pode ser alterada. Crie uma nova OC se necessário.');
+      const headerPatch: Record<string, unknown> = {};
+      for (const key of [
+        'supplier_id', 'supplier_name', 'notes', 'status', 'promised_date',
+        'received_date', 'purchase_by_date', 'eta_days', 'expedite',
+      ] as const) {
+        if (key in data) headerPatch[key] = data[key];
       }
+      const command = data.status === 'cancelled' ? 'cancel' : 'update';
+      await executePurchaseOrderCommand({
+        command,
+        purchaseOrderId: id,
+        expectedUpdatedAt: current.updated_at,
+        payload: command === 'cancel' ? {} : { header_patch: headerPatch },
+        logicalKey: purchaseOrderLogicalKey(command, id, JSON.stringify(headerPatch)),
+      });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['purchase_orders'] });
@@ -268,15 +329,20 @@ export function useUpdatePurchaseOrderItem() {
       if (itemFetchErr || !item) throw new Error('Item de OC não encontrado.');
       const { data: po, error: poFetchErr } = await supabase
         .from('purchase_orders')
-        .select('status')
+        .select('status, updated_at')
         .eq('id', item.purchase_order_id)
         .single();
       if (poFetchErr) throw poFetchErr;
       if (po && ['received', 'receiving', 'cancelled'].includes(po.status)) {
         throw new Error('Não é possível editar itens de uma OC já recebida, em recebimento ou cancelada.');
       }
-      const { error } = await supabase.from('purchase_order_items').update(data).eq('id', id);
-      if (error) throw error;
+      await executePurchaseOrderCommand({
+        command: 'edit',
+        purchaseOrderId: item.purchase_order_id,
+        expectedUpdatedAt: po.updated_at,
+        payload: { items: [{ item_id: id, ...data }] },
+        logicalKey: purchaseOrderLogicalKey('edit-item', id, JSON.stringify(data)),
+      });
     },
     onSuccess: (_d, vars) => {
       qc.invalidateQueries({ queryKey: ['purchase_order_items'] });
@@ -291,35 +357,19 @@ export function useDeletePurchaseOrder() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      // Soft-cancel em vez de DELETE preserva audit trail (quem cancelou, quando,
-      // valor original, fornecedor). Hard delete perdia toda a história e deixava
-      // accounts_payable órfão. O guard contra status received/receiving permanece.
-      const { data: cancelled, error } = await supabase
+      const { data: current, error } = await supabase
         .from('purchase_orders')
-        .update({
-          status: 'cancelled',
-          cancelled_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        } as any)
+        .select('updated_at')
         .eq('id', id)
-        .not('status', 'in', '("received","receiving","cancelled")')
-        .select('id');
+        .single();
       if (error) throw error;
-      if (!cancelled || cancelled.length === 0) {
-        throw new Error('OC já recebida, em recebimento ou já cancelada não pode ser cancelada novamente.');
-      }
-
-      // Cancela também qualquer accounts_payable pendente vinculado a esta OC,
-      // para que a OC cancelada não fique inflando o aging financeiro. Entries
-      // já pagas (paid) são preservadas para audit trail.
-      // Vínculo real = token [OC#id] em notes (padrão do createAPEntries) — a
-      // coluna purchase_order_id nunca existiu, este cleanup era no-op.
-      const { error: apErr } = await supabase
-        .from('accounts_payable')
-        .update({ status: 'cancelled', updated_at: new Date().toISOString() })
-        .ilike('notes', `%[OC#${id}]%`)
-        .in('status', ['pending', 'partial']);
-      if (apErr) console.error('[cancelPO] falha ao cancelar contas a pagar vinculadas:', apErr.message);
+      await executePurchaseOrderCommand({
+        command: 'cancel',
+        purchaseOrderId: id,
+        expectedUpdatedAt: current.updated_at,
+        payload: {},
+        logicalKey: purchaseOrderLogicalKey('cancel', id),
+      });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['purchase_orders'] });
@@ -332,18 +382,13 @@ export function useDeletePurchaseOrder() {
   });
 }
 
-// Anti-double-click: token computado pelo conteúdo do payload. Se a mesma
-// OC for submetida 2× rapidamente (race entre cliques antes do isPending
-// virar true, ou retry de Promise), o segundo POST é deduplicado. TTL de
-// 30s — depois disso, considera-se que o usuário realmente quer 2 POs.
-const recentPurchaseOrders = new Map<string, number>();
 function purchaseOrderIdempotencyKey(data: {
   supplier_name: string;
   supplier_id?: string | null;
-  items: { product_id: string; quantity: number; unit_price: number }[];
+  items: PurchaseOrderStockItemInput[];
 }): string {
   const itemsKey = data.items
-    .map(i => `${i.product_id}:${i.quantity}:${i.unit_price}`)
+    .map(i => `${i.product_id ? `product:${i.product_id}` : `box:${i.box_type_id}`}:${i.quantity}:${i.unit_price}:${i.unit}`)
     .sort()
     .join('|');
   return `${data.supplier_id || data.supplier_name}::${itemsKey}`;
@@ -365,24 +410,64 @@ export function useUpsertOpenPurchaseOrder() {
       supplier_name: string;
       sale_order_id: string | null;
       notes?: string;
-      items: { product_id: string; quantity: number; unit_price: number; unit: string;
-        current_stock: number; min_stock: number; max_stock: number;
-        grade?: Record<string, number> | null; color?: string | null }[];
+      items: PurchaseOrderStockItemInput[];
     }) => {
       if (!data.supplier_id) throw new Error('supplier_id é obrigatório pra agrupar OC.');
-      for (const it of data.items) {
-        if (!Number.isFinite(it.quantity) || it.quantity <= 0) throw new Error('Quantidade inválida em item da OC.');
-        if (!Number.isFinite(it.unit_price) || it.unit_price < 0) throw new Error('Preço unitário inválido em item da OC.');
-      }
-      const { data: poId, error } = await (supabase as any).rpc('upsert_open_purchase_order', {
-        p_supplier_id: data.supplier_id,
-        p_supplier_name: data.supplier_name,
-        p_sale_order_id: data.sale_order_id,
-        p_notes: data.notes || '',
-        p_items: data.items,
-      });
+      for (const it of data.items) assertPurchaseOrderItem(it);
+      const { data: open, error } = await supabase
+        .from('purchase_orders')
+        .select('id, source_type')
+        .eq('supplier_id', data.supplier_id)
+        .not('status', 'in', '(received,receiving,cancelled)')
+        .not('source_type', 'in', '(per_pv,strap_demand)')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
       if (error) throw error;
-      return poId as string;
+      const logicalKey = purchaseOrderLogicalKey(
+        'upsert-open',
+        data.supplier_id,
+        data.sale_order_id,
+        data.items.map((item) => `${item.product_id || item.box_type_id}:${item.quantity}:${item.unit}`).sort().join('|'),
+      );
+      if (open?.id) {
+        const result = await executePurchaseOrderCommand({
+          command: 'append',
+          purchaseOrderId: open.id,
+          payload: {
+            header_patch: {
+              ...(data.notes ? { notes_append: data.notes } : {}),
+              linked_sale_order_ids_add: data.sale_order_id ? [data.sale_order_id] : [],
+              source_pv_ids_add: data.sale_order_id ? [data.sale_order_id] : [],
+            },
+            items: data.items,
+            deduplicate_sale_order_id: data.sale_order_id,
+          },
+          logicalKey,
+        });
+        return result.purchase_order_id;
+      }
+      const result = await executePurchaseOrderCommand({
+        command: 'create',
+        payload: {
+          header: {
+            supplier_id: data.supplier_id,
+            supplier_name: data.supplier_name,
+            notes: data.notes || '',
+            auto_generated: true,
+            source_type: 'auto_pv',
+            linked_sale_order_ids: data.sale_order_id ? [data.sale_order_id] : [],
+            source_pv_ids: data.sale_order_id ? [data.sale_order_id] : [],
+            idempotency_key: data.sale_order_id
+              ? `auto_pv:${data.supplier_id}:${data.sale_order_id}`
+              : null,
+          },
+          items: data.items,
+          return_existing_on_idempotency: Boolean(data.sale_order_id),
+        },
+        logicalKey,
+      });
+      return result.purchase_order_id;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['purchase_orders'] });
@@ -396,52 +481,27 @@ export function useUpsertOpenPurchaseOrder() {
 export function useCreatePurchaseOrder() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (data: { supplier_name: string; supplier_id?: string | null; notes?: string; items: { product_id: string; quantity: number; unit_price: number; unit: string; current_stock: number; min_stock: number; max_stock: number; grade?: Record<string, number> | null; color?: string | null }[] }) => {
-      for (const it of data.items) {
-        if (!Number.isFinite(it.quantity) || it.quantity <= 0) throw new Error('Quantidade inválida em item da OC.');
-        if (!Number.isFinite(it.unit_price) || it.unit_price < 0) throw new Error('Preço unitário inválido em item da OC.');
-      }
+    mutationFn: async (data: { supplier_name: string; supplier_id?: string | null; notes?: string; items: PurchaseOrderStockItemInput[] }) => {
+      for (const it of data.items) assertPurchaseOrderItem(it);
       const total = data.items.reduce((s, i) => s + i.quantity * i.unit_price, 0);
       if (!Number.isFinite(total) || total > 1e12) throw new Error('Total da OC fora de limite.');
 
-      // ── Idempotência client-side ──
       const idemKey = purchaseOrderIdempotencyKey(data);
-      const lastSubmittedAt = recentPurchaseOrders.get(idemKey);
-      const now = Date.now();
-      if (lastSubmittedAt && now - lastSubmittedAt < 30_000) {
-        throw new Error(
-          'Esta OC foi submetida há menos de 30s — provavelmente já existe. ' +
-          'Verifique a aba de OCs antes de criar de novo.'
-        );
-      }
-      recentPurchaseOrders.set(idemKey, now);
-      // Cleanup tokens velhos (>30s)
-      for (const [k, t] of recentPurchaseOrders.entries()) {
-        if (now - t > 30_000) recentPurchaseOrders.delete(k);
-      }
-
-      // Uma única RPC: pai + linhas + normalização são atômicos. O caminho
-      // anterior inseria o cabeçalho e compensava um erro das linhas com DELETE,
-      // deixando uma janela para OCs órfãs e unidades fora do contrato.
-      const { data: po, error } = await (supabase as any).rpc('create_purchase_order_normalized', {
-        p_supplier_name: data.supplier_name,
-        p_supplier_id: data.supplier_id || null,
-        p_notes: data.notes || '',
-        p_idempotency_key: idemKey,
-        p_items: data.items,
+      const result = await executePurchaseOrderCommand({
+        command: 'create',
+        payload: {
+          header: {
+            supplier_name: data.supplier_name,
+            supplier_id: data.supplier_id || null,
+            notes: data.notes || '',
+            source_type: 'manual',
+            idempotency_key: idemKey,
+          },
+          items: data.items,
+        },
+        logicalKey: purchaseOrderLogicalKey('create-manual', idemKey),
       });
-      if (error) {
-        // Erro 23505 do trigger = duplicate within 30s window.
-        if (error.code === '23505' && /idempotency/.test(error.message || '')) {
-          throw new Error(
-            'Esta OC foi submetida há menos de 30s — provavelmente já existe. ' +
-            'Verifique a aba de OCs antes de criar de novo.'
-          );
-        }
-        throw error;
-      }
-
-      return po as PurchaseOrder;
+      return result.purchase_order as unknown as PurchaseOrder;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['purchase_orders'] });

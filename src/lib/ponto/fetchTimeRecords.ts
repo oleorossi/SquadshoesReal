@@ -1,5 +1,12 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { supabase } from '@/integrations/supabase/client';
+
+export interface TimeRecordRangeRow {
+  employee_id: string | null;
+  employee_external_id: string | null;
+  employee_name: string | null;
+  record_date: string;
+  punches: string[];
+}
 
 /**
  * Carrega os `time_records` (batidas) de um intervalo, PAGINADO.
@@ -15,20 +22,20 @@ import { supabase } from '@/integrations/supabase/client';
  * TINHAM ponto (funcionária aparecia faltando ~20 dias que na verdade trabalhou).
  * Centralizar aqui elimina a chance de um motor esquecer a paginação.
  */
-export async function fetchTimeRecordsInRange(from: string, to: string): Promise<any[]> {
+export async function fetchTimeRecordsInRange(from: string, to: string): Promise<TimeRecordRangeRow[]> {
   if (!from || !to) return [];
-  const out: any[] = [];
+  const out: TimeRecordRangeRow[] = [];
   const PAGE = 1000;
   for (let i = 0; ; i += PAGE) {
     const { data, error } = await supabase
       .from('time_records')
-      .select('employee_external_id, employee_name, record_date, punches')
+      .select('employee_id, employee_external_id, employee_name, record_date, punches')
       .gte('record_date', from)
       .lte('record_date', to)
       .order('record_date', { ascending: true })
       .range(i, i + PAGE - 1);
     if (error) throw error;
-    out.push(...(data || []));
+    out.push(...((data || []) as TimeRecordRangeRow[]));
     if (!data || data.length < PAGE) break;
   }
   return out;

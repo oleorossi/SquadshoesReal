@@ -307,62 +307,97 @@ Deno.serve(async (req) => {
         ? undefined
         : (saleOrderId ? `gc-sync-${saleOrderId}-${providerId}` : `gc-sync-${providerId}`);
 
-      const payload: Record<string, any> = {
+      const providerSnapshot: Record<string, unknown> = {
         provider_nfe_id: providerId,
-        status,
-        chave_acesso: chave || null,
-        protocolo: protocolo || null,
+      };
+      if (chave) providerSnapshot.chave_acesso = chave;
+      if (protocolo) providerSnapshot.protocolo = protocolo;
+      if (numero) providerSnapshot.numero = numero;
+      if (serie) providerSnapshot.serie = serie;
+      if (emissaoTs) providerSnapshot.data_emissao = emissaoTs;
+      if (d?.protocolo_cancelamento) {
+        providerSnapshot.protocolo_cancelamento = String(d.protocolo_cancelamento);
+      }
+      if (status === "rejeitada") {
+        providerSnapshot.motivo_rejeicao = motivoRejGc || "Rejeitada pela SEFAZ";
+      }
+
+      // Metadados de vínculo/cadastro podem ser enriquecidos fora do estado
+      // fiscal. Status e identidade legal de registro existente passam apenas
+      // pela RPC monotônica da migration 126.
+      const metadataPayload: Record<string, unknown> = {
         cnpj_emitente: cnpjEmit || "",
-        sale_order_id: saleOrderId,
         company_id: companyId,
         nome_destinatario: nomeDest,
         cnpj_destinatario: cnpjDest,
-        // Mantém motivo de rejeição sincronizado com o ClickNotas — antes ficava
-        // dessincronizado quando situacao_nf vinha vazia (motivo só era setado
-        // em emit-nfe local). Em status final (autorizada/cancelada) limpa.
-        motivo_rejeicao: status === "rejeitada" ? (motivoRejGc || "Rejeitada pela SEFAZ") : "",
         updated_at: new Date().toISOString(),
       };
-      if (emissaoTs) payload.data_emissao = emissaoTs;
-      if (refNfe) payload.ref_nfe = refNfe;
-      // A11/medium: numero/serie só quando não-vazios — não sobrescrever valores já
-      // corretos com '' quando o detalhe GC vier sem esses campos.
-      if (numero) payload.numero = numero;
-      if (serie) payload.serie = serie;
+      // Nunca desliga um PV já vinculado por uma corrida com observação pobre.
+      if (saleOrderId) metadataPayload.sale_order_id = saleOrderId;
       // M6 (auditoria): só grava valor_total com valor real (>0) — não rebaixar
       // um valor já correto num re-sync degradado. NF nova grava 0 só se não existir.
-      if (Number.isFinite(valor) && valor > 0) payload.valor_total = valor;
-      else if (!existing) payload.valor_total = 0;
-      // M1 (auditoria): não ressuscitar NF terminal 'erro' → 'processando' num
-      // re-sync (GC devolve situacao vazia). Preserva 'erro' só quando o novo
-      // status mapeado seria 'processando'; status terminal real do GC atualiza.
-      if (existing && (existing as { status?: string }).status === 'erro' && status === 'processando') {
-        payload.status = 'erro';
-      }
+      if (Number.isFinite(valor) && valor > 0) metadataPayload.valor_total = valor;
+
+      const reconcileExisting = async (existingId: string): Promise<string | null> => {
+        const { error: metadataErr } = await adminClient
+          .from("nfe_emitidas")
+          .update(metadataPayload)
+          .eq("id", existingId);
+        if (metadataErr) return `metadata: ${metadataErr.message}`;
+
+        const { data: observation, error: observationErr } = await adminClient.rpc(
+          "observe_nfe_provider_status_126",
+          {
+            p_nfe_id: existingId,
+            p_provider_status: status,
+            p_snapshot: providerSnapshot,
+            p_source: "sync-nfe-from-provider",
+          },
+        );
+        if (observationErr) return `observation: ${observationErr.message}`;
+        if (observation?.ok === false) {
+          return `reconciliation (${observation.cancellation_state || "pending"}): ${
+            observation.error || "estado fiscal requer nova observação"
+          }`;
+        }
+        return null;
+      };
 
       if (existing) {
-        const { error: upErr } = await adminClient
-          .from("nfe_emitidas")
-          .update(payload)
-          .eq("id", existing.id);
-        if (upErr) {
-          errors.push({ provider_id: providerId, error: `update: ${upErr.message}` });
+        const reconciliationError = await reconcileExisting(existing.id);
+        if (reconciliationError) {
+          errors.push({ provider_id: providerId, error: reconciliationError });
         } else {
           updated++;
         }
       } else {
+        const insertPayload: Record<string, unknown> = {
+          ...metadataPayload,
+          ...providerSnapshot,
+          status,
+          sale_order_id: saleOrderId,
+          ref_nfe: refNfe,
+          valor_total: Number.isFinite(valor) && valor > 0 ? valor : 0,
+        };
         const { error: insErr } = await adminClient
           .from("nfe_emitidas")
-          .insert(payload);
+          .insert(insertPayload);
         if (insErr) {
-          // 23505 = conflito (race condition): tenta update
+          // 23505 = corrida com outro sync: resolve a identidade criada e
+          // submete a observação pela mesma fronteira monotônica.
           if ((insErr as any)?.code === "23505") {
-            const { error: retryErr } = await adminClient
+            const { data: collided, error: collidedErr } = await adminClient
               .from("nfe_emitidas")
-              .update(payload)
-              .eq("provider_nfe_id", providerId);
-            if (retryErr) {
-              errors.push({ provider_id: providerId, error: `retry: ${retryErr.message}` });
+              .select("id")
+              .eq("provider_nfe_id", providerId)
+              .maybeSingle();
+            const retryError = collidedErr
+              ? `retry lookup: ${collidedErr.message}`
+              : !collided?.id
+              ? "retry lookup: identidade concorrente não encontrada"
+              : await reconcileExisting(collided.id);
+            if (retryError) {
+              errors.push({ provider_id: providerId, error: retryError });
             } else {
               updated++;
             }

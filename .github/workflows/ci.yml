@@ -32,6 +32,11 @@ jobs:
       - name: Full test suite
         run: bun run test
 
+      # Contratos do fluxo PV → ficha → estoque são estáticos e não precisam de
+      # segredo. O banco vivo é validado no workflow semanal isolado.
+      - name: PV system contracts
+        run: bunx vitest run src/__tests__/pvSystemContracts.test.ts
+
       # B6 (auditoria 2026-06-29): as suites de conversão de unidade (dm²→física,
       # cm↔m, kg…) ficavam SÓ no cron semanal. Sendo a causa nº 1 de bug 100× de
       # consumo/custo, têm que travar merge — rodam aqui também (a weekly fica de

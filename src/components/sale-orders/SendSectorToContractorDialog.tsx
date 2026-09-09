@@ -27,7 +27,9 @@ import { SERVICE_ORDER_SECTORS, serviceOrderSectorLabel } from '@/lib/serviceOrd
  * nunca pode travar a OP).
  *
  * Idempotente pelo servidor: `send_item_sector_os` reusa o índice
- * `uq_os_per_op_sector`, então reenviar não duplica — devolve `exists`.
+ * `uq_os_per_op_sector_contractor`, então reenviar ao mesmo prestador não
+ * duplica — devolve `exists`. Outro prestador na mesma atividade gera OS
+ * adicional até o teto da OP (rateio).
  */
 
 interface OpSectorRow {

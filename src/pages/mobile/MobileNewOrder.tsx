@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Check, MagnifyingGlass, Trash, WhatsappLogo, Share, ChartBar, Clock } from '@phosphor-icons/react';
 import { supabase } from '@/integrations/supabase/client';
@@ -8,12 +8,23 @@ import {
   enqueueOrder,
   loadDraft,
   loadMobileOrderCatalog,
+  MOBILE_SALE_ORDER_DRAFT_STATUS,
+  mobileCurrentDraftKey,
   saveDraft,
   saveMobileOrderCatalog,
+  type MobileSaleOrderData,
+  type PendingOrderPayload,
 } from '@/lib/mobile/offlineQueue';
 import { useOnlineStatus } from '@/lib/mobile/networkStatus';
 import { triggerSync } from '@/lib/mobile/syncEngine';
-import { fetchClientPriceList, fetchClientHistory, type PriceLookup, type ClientHistory } from '@/lib/mobile/clientContext';
+import {
+  clientCommercialBlockMessage,
+  fetchClientHistory,
+  fetchClientSalesContext,
+  type ClientCommercialDefaults,
+  type PriceLookup,
+  type ClientHistory,
+} from '@/lib/mobile/clientContext';
 import { searchMatchesAllTerms, searchNormOrFilter } from '@/lib/searchUtils';
 import { SearchInput } from '@/components/ui/search-input';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -22,20 +33,42 @@ import { Input } from '@/components/ui/input';
 import { NumberInput } from '@/components/ui/number-input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SignatureCanvas } from '@/components/mobile/SignatureCanvas';
+import {
+  SaleOrderStrapColorCreateDialog,
+  type SaleOrderStrapColorCreateContext,
+  type SaleOrderStrapColorCreated,
+} from '@/components/sale-orders/SaleOrderStrapColorCreateDialog';
 import type { SaleOrderItemFormData } from '@/hooks/useSaleOrders';
-import { ensureTechnicalStrapLineIds, isUuid, technicalStrapLineId } from '@/lib/technicalStrapLines';
+import {
+  ensureTechnicalStrapLineIds,
+  isUuid,
+  strapColorMode,
+  technicalStrapLineId,
+} from '@/lib/technicalStrapLines';
 import {
   normalizeStrapColorKey,
   setStrapSourcing,
   type StrapSourcingMap,
 } from '@/lib/strapSourcing';
 import { useStrapStockLines } from '@/hooks/useStrapStockLines';
-import { useArtisanalStrapCatalog, type ArtisanalStrapCatalog } from '@/hooks/useArtisanalStraps';
 import { isoToMonthWeek } from '@/lib/billingWeek';
 import { listMissingTechnicalStrapSnapshots } from '@/lib/strapSnapshotGuard';
-import { submitMobileSaleOrderAtomic } from '@/lib/mobile/atomicSaleOrder';
-import { strapColorsForIdentity } from '@/lib/officialStrapColors';
+import { classifyMobileOrderError, submitMobileSaleOrderAtomic } from '@/lib/mobile/atomicSaleOrder';
+import { confirmMobileSaleOrder } from '@/lib/mobile/confirmSaleOrder';
 import { strapIdentityBasis } from '@/lib/strapIdentity';
+import { strapMaterialMode, validateStrapMaterialPolicy } from '@/lib/strapMaterialPolicy';
+import { reconcileEditableStrapSnapshots } from '@/lib/reconcileStrapSnapshots';
+import {
+  fetchMobileStrapOfflineManifest,
+  findMobileStrapManifestReference,
+  loadMobileStrapOfflineManifest,
+  mobileTechnicalStrapLinesFromManifest,
+  mobileStrapMaterialOptions,
+  mobileStrapSelectedMaterial,
+  saveMobileStrapOfflineManifest,
+  type MobileStrapManifestReference,
+  type MobileStrapOfflineManifest,
+} from '@/lib/mobile/strapOfflineManifest';
 import {
   resolveSaleOrderItemPrice,
   type SaleOrderPriceSource,
@@ -43,7 +76,12 @@ import {
 import {
   activeProductColorsForGroup,
   resolveMaterialVariantColorGroup,
+  resolveSheetCommercialColorGroup,
 } from '@/lib/materialVariantColorGroup';
+import { useAuth } from '@/hooks/useAuth';
+import { useAccessControl, useCan } from '@/hooks/useAccessControl';
+import { canUseQuickGroupVariantForRoles } from '@/lib/quickGroupVariant';
+import { parseSizes } from '@/lib/labelUtils';
 
 interface ClientLite {
   id: string;
@@ -64,6 +102,11 @@ interface RefLite {
   strap_colors?: any[] | null;
   variant_drives_upper?: boolean | null;
   variant_drives_lining?: boolean | null;
+  status_ficha?: string | null;
+  sizes?: string | null;
+  upper_material_group_id?: string | null;
+  upper_material?: string | null;
+  lining_material?: string | null;
 }
 
 interface ReferenceColorVariantLite {
@@ -107,6 +150,14 @@ interface MobileOrderCatalog {
   productGroups: ProductGroupLite[];
 }
 
+interface MobileDraftData {
+  client: ClientLite | null;
+  items: DraftItem[];
+  billingDate: string;
+  priceLookup?: PriceLookup;
+  commercialDefaults?: ClientCommercialDefaults | null;
+}
+
 export interface DraftItem {
   reference_id: string;
   reference_name: string;
@@ -122,15 +173,98 @@ export interface DraftItem {
   strap_sourcing?: StrapSourcingMap;
 }
 
-type Step = 'client' | 'items' | 'review';
+export function updateMobileDraftItem(
+  items: DraftItem[],
+  expectedItem: DraftItem,
+  expectedIndex: number,
+  update: (current: DraftItem) => DraftItem,
+): DraftItem[] {
+  // Efeitos de preview podem concluir depois de uma remoção/reordenação. O
+  // índice sozinho não basta: só aplicamos a atualização se a mesma instância
+  // ainda ocupar aquela posição. Um novo render recalcula qualquer efeito
+  // descartado; um callback velho nunca sobrescreve outro item.
+  if (items[expectedIndex] !== expectedItem) return items;
+  const nextItem = update(items[expectedIndex]);
+  if (nextItem === items[expectedIndex]) return items;
+  const next = [...items];
+  next[expectedIndex] = nextItem;
+  return next;
+}
+
+/** A cor pertence ao material da posição, não a uma receita já materializada. */
+export function selectMobileStrapColor(
+  item: DraftItem,
+  lineId: string,
+  colorId: string,
+  manifestEntry: MobileStrapManifestReference | null | undefined,
+): DraftItem {
+  const strapIndex = (item.strap_colors || []).findIndex((strap) => technicalStrapLineId(strap) === lineId);
+  const strap = item.strap_colors?.[strapIndex];
+  const manifestLine = manifestEntry?.lines.find((line) => line.technical_strap_line_id === lineId);
+  if (!strap || !manifestLine || !manifestLineMatchesSnapshot(strap, manifestLine)) return item;
+  const material = mobileStrapSelectedMaterial(manifestLine, strap);
+  const color = material?.allowed_colors.find((entry) => entry.id === colorId);
+  if (!color) return item;
+  if (strapColorMode(strap) === 'follow_main'
+      && normalizeStrapColorKey(color.name) !== normalizeStrapColorKey(item.color)) return item;
+  const straps = [...item.strap_colors];
+  straps[strapIndex] = {
+    ...strap,
+    color_mode: strapColorMode(strap),
+    color_id: color.id,
+    color: strapColorMode(strap) === 'follow_main' ? item.color : color.name,
+    ...(strapIdentityBasis(strap) === 'reference_base' ? {
+      base_group_id: material.base_group_id,
+      base_group_name: material.base_group_name,
+    } : {}),
+  };
+  return { ...item, strap_colors: straps, strap_sourcing: setStrapSourcing(item.strap_sourcing, lineId, null) };
+}
+
+/** Retornos atrasados nunca mudam uma posição que trocou tipo, medida ou material. */
+export function applyCreatedMobileStrapColor(
+  item: DraftItem,
+  created: SaleOrderStrapColorCreated,
+  manifest: MobileStrapOfflineManifest,
+): DraftItem {
+  const strap = item.strap_colors?.find((line) => technicalStrapLineId(line) === created.technicalStrapLineId);
+  const entry = findMobileStrapManifestReference(manifest, item.reference_id, item.material_variant_id);
+  const manifestLine = entry?.lines.find((line) => line.technical_strap_line_id === created.technicalStrapLineId);
+  if (!strap || strapIdentityBasis(strap) !== 'reference_base'
+      || strapColorMode(strap) !== 'select_on_order'
+      || strap.strap_type_id !== created.typeId || strap.measure_id !== created.measureId
+      || mobileStrapSelectedMaterial(manifestLine, strap)?.base_group_id !== created.baseGroupId) return item;
+  return selectMobileStrapColor(item, created.technicalStrapLineId, created.colorId, entry);
+}
+
+type Step = 'client' | 'items' | 'review' | 'success';
+type CreatedOrderOutcome = 'confirmed' | 'draft' | 'unknown';
 
 // UUID gerado uma vez por draft, identificador único pro server dedup
 const newRequestId = () => crypto.randomUUID();
 
+export function mobileOwnerSessionChanged(previousOwnerId: string, nextOwnerId: string): boolean {
+  return Boolean(previousOwnerId && nextOwnerId && previousOwnerId !== nextOwnerId);
+}
+
 const SIZE_RANGE_ADULT = ['33','34','35','36','37','38','39','40'];
 const SIZE_RANGE_CHILD = ['21','22','23','24','25','26','27','28','29','30','31','32','33'];
+const SHEET_MATERIAL_OPTION = '__ficha__';
 
-export const MOBILE_TECHNICAL_SHEET_SELECT = 'id, name, sale_price, shoe_category_id, shoe_category:silk_shoe_category(name), has_straps, strap_colors, variant_drives_upper, variant_drives_lining';
+export const MOBILE_TECHNICAL_SHEET_SELECT = 'id, name, sale_price, status_ficha, sizes, upper_material_group_id, upper_material, lining_material, shoe_category_id, shoe_category:silk_shoe_category(name), has_straps, strap_colors, variant_drives_upper, variant_drives_lining';
+
+/** Espelha SaleOrderItemForm.parseSizeRange: Infantil com faixa adulta legada
+ *  (default 33-41/34-40) usa 21–33; faixa física publicada na ficha vence. */
+export function mobileReferenceSizes(reference: RefLite | null | undefined): string[] {
+  const sizes = reference?.sizes || undefined;
+  const category = reference?.shoe_category?.name || null;
+  if (category === 'Infantil' && (!sizes || sizes === '33-41' || sizes === '34-40')) {
+    return SIZE_RANGE_CHILD;
+  }
+  const publishedRange = parseSizes(sizes);
+  if (publishedRange.length > 0) return publishedRange;
+  return category === 'Infantil' ? SIZE_RANGE_CHILD : SIZE_RANGE_ADULT;
+}
 
 const draftItemQuantity = (item: DraftItem) =>
   Object.values(item.grade).reduce((sum, value) => sum + (value || 0), 0);
@@ -173,6 +307,24 @@ export function repriceMobileDraftItems(
   return changed ? repriced : items;
 }
 
+export function mobileCommercialHeaderDefaults(
+  defaults: ClientCommercialDefaults | null,
+): Pick<MobileSaleOrderData, 'payment_condition' | 'factoring_config_id' | 'modalidade_frete' | 'transport_company_id'> {
+  return {
+    payment_condition: defaults?.payment_condition?.trim() || '',
+    factoring_config_id: defaults?.factoring_config_id || null,
+    modalidade_frete: defaults?.modalidade_frete || null,
+    transport_company_id: defaults?.transport_company_id || null,
+  };
+}
+
+export function mobileConfirmationCommercialIssue(order: MobileSaleOrderData): string | null {
+  if (!order.payment_condition.trim()) {
+    return 'O cliente/grupo não possui condição de pagamento padrão. O PV foi salvo em Rascunho e precisa ser completado no desktop.';
+  }
+  return null;
+}
+
 export function referencesWithMissingStrapSnapshot(items: DraftItem[], references: RefLite[]) {
   const missingIndexes = new Set(
     listMissingTechnicalStrapSnapshots(items, references).map((entry) => entry.index),
@@ -180,34 +332,344 @@ export function referencesWithMissingStrapSnapshot(items: DraftItem[], reference
   return items.filter((_, index) => missingIndexes.has(index));
 }
 
-function alignReferenceBaseStrapsToMainColor(
+export function alignMobileStrapsToMainColor(
   straps: NonNullable<DraftItem['strap_colors']>,
   mainColor: string,
   sourcing: StrapSourcingMap | null | undefined,
 ) {
   const color = (mainColor || '').trim();
   const colorKey = normalizeStrapColorKey(color);
+  let strapSourcing = sourcing || {};
   const strapColors = straps.map((strap) => {
-    if (strapIdentityBasis(strap) === 'finished_product_group') return strap;
+    const normalized = { ...strap, color_mode: strapColorMode(strap) };
+    if (strapIdentityBasis(normalized) !== 'reference_base'
+        || strapColorMode(normalized) !== 'follow_main') return normalized;
 
-    const sameColor = !!colorKey && normalizeStrapColorKey(strap.color) === colorKey;
-    if (sameColor && strap.color === color) return strap;
+    const sameColor = !!colorKey && normalizeStrapColorKey(normalized.color) === colorKey;
+    if (sameColor && normalized.color === color) return normalized;
+    strapSourcing = setStrapSourcing(
+      strapSourcing,
+      technicalStrapLineId(normalized),
+      null,
+    );
     return {
-      ...strap,
+      ...normalized,
       color,
-      color_id: sameColor ? strap.color_id || null : null,
+      color_id: sameColor ? normalized.color_id || null : null,
     };
   });
 
-  // O wrapper atômico compara cor + variante antes de decidir se uma origem
-  // histórica ainda é válida. O cliente conserva o snapshot completo e deixa
-  // essa decisão transacional para o servidor.
-  return { strapColors, strapSourcing: sourcing || {} };
+  return { strapColors, strapSourcing };
+}
+
+export function normalizeMobileDraftStrapSnapshots(items: DraftItem[]): DraftItem[] {
+  return items.map((item) => {
+    // O rascunho volta a ser editável, mas sourcing contém disponibilidade,
+    // receita e datas do instante anterior. A intenção comercial (UUID/cor)
+    // permanece; a origem será recalculada pelo preview/writer atual.
+    const aligned = alignMobileStrapsToMainColor(
+      item.strap_colors || [],
+      item.color,
+      {},
+    );
+    return {
+      ...item,
+      strap_colors: aligned.strapColors,
+      strap_sourcing: aligned.strapSourcing,
+    };
+  });
+}
+
+export function reconcileMobileDraftItemWithManifest(
+  item: DraftItem,
+  manifest: MobileStrapOfflineManifest | null | undefined,
+): { item: DraftItem; changed: boolean; manifestEntry: MobileStrapManifestReference | null } {
+  const manifestEntry = findMobileStrapManifestReference(
+    manifest,
+    item.reference_id,
+    item.material_variant_id,
+  );
+  if (!manifestEntry) return { item, changed: false, manifestEntry: null };
+
+  const manifestByLineId = new Map(
+    manifestEntry.lines.map((line) => [line.technical_strap_line_id, line]),
+  );
+  const reconciled = reconcileEditableStrapSnapshots({
+    snapshotLines: item.strap_colors || [],
+    technicalLines: mobileTechnicalStrapLinesFromManifest(manifestEntry),
+    sourcing: item.strap_sourcing,
+    canPreserveColor: ({ snapshot, technical }) => {
+      const lineId = technicalStrapLineId(technical);
+      const manifestLine = lineId ? manifestByLineId.get(lineId) : null;
+      if (!manifestLine || !isUuid(snapshot.color_id)) return false;
+      if (manifestLine.identity_basis === 'finished_product_group'
+          && snapshot.identity_group_id !== manifestLine.identity_group_id) return false;
+      return !!mobileStrapSelectedMaterial(manifestLine, snapshot)?.allowed_colors
+        .some((color) => color.id === snapshot.color_id);
+    },
+  });
+  const aligned = alignMobileStrapsToMainColor(
+    reconciled.lines,
+    item.color,
+    reconciled.sourcing,
+  );
+  const nextItem = {
+    ...item,
+    strap_colors: aligned.strapColors,
+    strap_sourcing: aligned.strapSourcing,
+  };
+  const changed = reconciled.changed
+    || JSON.stringify(item.strap_colors || []) !== JSON.stringify(nextItem.strap_colors)
+    || JSON.stringify(item.strap_sourcing || {}) !== JSON.stringify(nextItem.strap_sourcing);
+  return { item: changed ? nextItem : item, changed, manifestEntry };
+}
+
+export function reconcileMobileDraftItemsWithManifest(
+  items: DraftItem[],
+  manifest: MobileStrapOfflineManifest | null | undefined,
+): { items: DraftItem[]; changed: boolean } {
+  let changed = false;
+  const next = items.map((item) => {
+    const result = reconcileMobileDraftItemWithManifest(item, manifest);
+    changed ||= result.changed;
+    return result.item;
+  });
+  return { items: changed ? next : items, changed };
+}
+
+export function resetMobileStrapsForMaterialChange(
+  item: DraftItem,
+  mainColor = '',
+): Pick<DraftItem, 'strap_colors' | 'strap_sourcing'> {
+  const aligned = alignMobileStrapsToMainColor(
+    item.strap_colors || [],
+    mainColor,
+    {},
+  );
+  return {
+    strap_colors: aligned.strapColors,
+    strap_sourcing: {},
+  };
+}
+
+function manifestLineMatchesSnapshot(
+  strap: NonNullable<DraftItem['strap_colors']>[number],
+  manifestLine: MobileStrapManifestReference['lines'][number],
+): boolean {
+  return technicalStrapLineId(strap) === manifestLine.technical_strap_line_id
+    && validateStrapMaterialPolicy(strap).length === 0
+    && validateStrapMaterialPolicy(manifestLine).length === 0
+    && strap.strap_type_id === manifestLine.strap_type_id
+    && strap.measure_id === manifestLine.measure_id
+    && strapIdentityBasis(strap) === manifestLine.identity_basis
+    && (manifestLine.identity_basis !== 'finished_product_group'
+      || strap.identity_group_id === manifestLine.identity_group_id)
+    && strapColorMode(strap) === manifestLine.color_mode
+    && strapMaterialMode(strap) === strapMaterialMode(manifestLine)
+    && (strap.material_group_id || null) === (manifestLine.material_group_id || null)
+    && JSON.stringify([...(strap.allowed_material_group_ids || [])].sort())
+      === JSON.stringify([...(manifestLine.allowed_material_group_ids || [])].sort());
+}
+
+export function mobileSelectableStrapManifestIssues(
+  item: DraftItem,
+  manifestEntry: MobileStrapManifestReference | null | undefined,
+): string[] {
+  if (!manifestEntry) {
+    return [`${item.reference_name}: catálogo offline de tiras indisponível para esta referência/variante. Conecte-se para atualizar antes de revisar o pedido.`];
+  }
+  const manifestByLineId = new Map(
+    manifestEntry.lines.map((line) => [line.technical_strap_line_id, line]),
+  );
+  const snapshotIds = (item.strap_colors || []).map(technicalStrapLineId);
+  const manifestIds = manifestEntry.lines.map((line) => line.technical_strap_line_id);
+  if (snapshotIds.length !== manifestIds.length
+      || snapshotIds.some((lineId, index) => lineId !== manifestIds[index])) {
+    return [`${item.reference_name}: a sequência de tiras não corresponde mais à ficha publicada. Aguarde a atualização do item e revise as cores.`];
+  }
+  return (item.strap_colors || []).flatMap((strap, index) => {
+    const label = String(strap.label || `Tira ${index + 1}`).trim();
+    const context = `${item.reference_name}: ${label}`;
+    const lineId = technicalStrapLineId(strap);
+    const manifestLine = lineId ? manifestByLineId.get(lineId) : null;
+    if (!isUuid(lineId) || !manifestLine || !manifestLineMatchesSnapshot(strap, manifestLine)) {
+      return [`${context} não corresponde mais à estrutura publicada. Reabra o item para atualizar a ficha.`];
+    }
+
+    if (!isUuid(manifestLine.strap_type_id) || !isUuid(manifestLine.measure_id)) {
+      return [`${context} está sem família/medida ativa e compatível. Corrija a linha na ficha técnica.`];
+    }
+    if (validateStrapMaterialPolicy(manifestLine).length > 0) {
+      return [`${context}: política de material inválida na ficha técnica.`];
+    }
+    const material = mobileStrapSelectedMaterial(manifestLine, strap);
+    if (!material) {
+      if (strapMaterialMode(manifestLine) === 'select_on_order') {
+        return [`${context}: selecione um material permitido para esta posição.`];
+      }
+      return [`${context} não possui grupo-base efetivo resolvido. Revise a referência ou variante de material.`];
+    }
+    if (strap.base_group_id && strap.base_group_id !== material.base_group_id) {
+      return [`${context}: o material não corresponde à ficha publicada. Reabra o item para atualizar.`];
+    }
+    if (strapColorMode(strap) !== 'select_on_order') {
+      if (strapMaterialMode(manifestLine) !== 'follow_reference'
+          && !material.allowed_colors.some((color) => normalizeStrapColorKey(color.name) === normalizeStrapColorKey(item.color))) {
+        return [`${context}: a cor principal não está disponível no material desta posição.`];
+      }
+      return [];
+    }
+    if (!String(strap.color || '').trim() || !isUuid(strap.color_id)) {
+      return [`${context} exige a seleção de uma cor canônica.`];
+    }
+    if (!material.allowed_colors.some((color) => color.id === strap.color_id)) {
+      return [`${context}: a cor selecionada não pertence ao grupo-base efetivo. Selecione outra cor.`];
+    }
+    return [];
+  });
+}
+
+export function mobileIndependentStrapReviewLines(item: DraftItem) {
+  return (item.strap_colors || []).flatMap((strap, index) => {
+    if (strapColorMode(strap) !== 'select_on_order' && strapMaterialMode(strap) === 'follow_reference') return [];
+    return [{
+      key: technicalStrapLineId(strap) || `legacy:${index}`,
+      position: `TIRA ${index + 1}`,
+      color: String(strap.color || '').trim() || 'cor não selecionada',
+      material: String(strap.base_group_name || strap.group_name || '').trim(),
+    }];
+  });
+}
+
+function mobileStrapValidationFingerprint(item: DraftItem, billingDate: string): string {
+  return JSON.stringify([
+    item.reference_id,
+    item.material_variant_id || null,
+    item.color,
+    item.grade,
+    item.strap_colors || [],
+    item.strap_sourcing || {},
+    billingDate,
+  ]);
+}
+
+interface MobileStrapValidationResult {
+  fingerprint: string;
+  issues: string[];
+}
+
+interface MobileSelectableStrapValidationOptions {
+  item: DraftItem;
+  manifestEntry?: MobileStrapManifestReference | null;
+  manifestLoading: boolean;
+  manifestError: string | null;
+}
+
+export function mobileSelectableStrapValidationIssues({
+  item,
+  manifestEntry,
+  manifestLoading,
+  manifestError,
+}: MobileSelectableStrapValidationOptions): string[] {
+  const hasTechnicalStraps = (item.strap_colors || []).length > 0
+    || !!manifestEntry?.lines.length;
+  if (!hasTechnicalStraps) return [];
+
+  if (manifestLoading && !manifestEntry) {
+    return [`${item.reference_name}: aguarde o catálogo offline de tiras terminar de carregar.`];
+  }
+  if (manifestError && !manifestEntry) {
+    return [`${item.reference_name}: catálogo offline de tiras indisponível. Conecte-se para atualizar antes de revisar o pedido.`];
+  }
+  return mobileSelectableStrapManifestIssues(item, manifestEntry);
+}
+
+export function clearIncompatibleMobileStrapSelections(
+  item: DraftItem,
+  manifestEntry: MobileStrapManifestReference | null | undefined,
+): { item: DraftItem; clearedLineIds: string[] } {
+  if (!manifestEntry) return { item, clearedLineIds: [] };
+
+  const manifestByLineId = new Map(
+    manifestEntry.lines.map((line) => [line.technical_strap_line_id, line]),
+  );
+  const clearedLineIds: string[] = [];
+  let changed = false;
+  let strapSourcing = item.strap_sourcing || {};
+  const strapColors = (item.strap_colors || []).map((strap) => {
+    const normalized = { ...strap, color_mode: strapColorMode(strap) };
+    const lineId = technicalStrapLineId(normalized);
+    const manifestLine = lineId ? manifestByLineId.get(lineId) : null;
+    if (!lineId || !manifestLine) return normalized;
+
+    const material = mobileStrapSelectedMaterial(manifestLine, normalized);
+    const hasOwnBaseSnapshot = manifestLine.identity_basis === 'reference_base';
+    const materialChanged = hasOwnBaseSnapshot && (normalized.base_group_id || null) !== (material?.base_group_id || null);
+    const materialNameChanged = hasOwnBaseSnapshot && (normalized.base_group_name || null) !== (material?.base_group_name || null);
+    const isAvailable = isUuid(normalized.color_id)
+      && manifestLineMatchesSnapshot(normalized, manifestLine)
+      && !!material?.allowed_colors.some((color) => color.id === normalized.color_id);
+    const followsMain = strapColorMode(normalized) !== 'select_on_order';
+    if (!materialChanged && !materialNameChanged && (isAvailable || followsMain)) return normalized;
+
+    if ((materialChanged || (!isAvailable && !followsMain)) && Object.prototype.hasOwnProperty.call(strapSourcing, lineId)) {
+      strapSourcing = setStrapSourcing(strapSourcing, lineId, null);
+      changed = true;
+    }
+    const clearColor = !isAvailable && !followsMain && !!(normalized.color || normalized.color_id);
+    if (clearColor) clearedLineIds.push(lineId);
+    changed ||= materialChanged || materialNameChanged || clearColor;
+    return {
+      ...normalized,
+      ...(hasOwnBaseSnapshot ? {
+        base_group_id: material?.base_group_id || null,
+        base_group_name: material?.base_group_name || null,
+      } : {}),
+      color: clearColor ? '' : normalized.color,
+      color_id: clearColor || (materialChanged && !isAvailable) ? null : normalized.color_id,
+    };
+  });
+
+  if (!changed) return { item, clearedLineIds };
+  return {
+    item: { ...item, strap_colors: strapColors, strap_sourcing: strapSourcing },
+    clearedLineIds,
+  };
+}
+
+/** Escolha comercial por UUID da posição; nunca reutiliza receita de outra base. */
+export function selectMobileStrapMaterial(
+  item: DraftItem,
+  lineId: string,
+  baseGroupId: string,
+  manifestEntry: MobileStrapManifestReference | null | undefined,
+): DraftItem {
+  const manifestLine = manifestEntry?.lines.find((line) => line.technical_strap_line_id === lineId);
+  if (!manifestLine || manifestLine.identity_basis !== 'reference_base'
+      || strapMaterialMode(manifestLine) !== 'select_on_order') return item;
+  const material = mobileStrapMaterialOptions(manifestLine).find((entry) => entry.base_group_id === baseGroupId);
+  if (!material) return item;
+  const index = (item.strap_colors || []).findIndex((line) => technicalStrapLineId(line) === lineId);
+  const strap = item.strap_colors?.[index];
+  if (!strap || !manifestLineMatchesSnapshot(strap, manifestLine)) return item;
+  const followsMain = strapColorMode(strap) === 'follow_main';
+  const color = material.allowed_colors.find((entry) => followsMain
+    ? normalizeStrapColorKey(entry.name) === normalizeStrapColorKey(item.color)
+    : entry.id === strap.color_id);
+  const straps = [...item.strap_colors];
+  straps[index] = {
+    ...strap,
+    base_group_id: material.base_group_id,
+    base_group_name: material.base_group_name,
+    color: followsMain ? item.color : color?.name || '',
+    color_id: color?.id || null,
+  };
+  return { ...item, strap_colors: straps, strap_sourcing: setStrapSourcing(item.strap_sourcing, lineId, null) };
 }
 
 export function buildMobileSaleOrderItemsPayload(items: DraftItem[]): SaleOrderItemFormData[] {
   return items.map((item) => {
-    const aligned = alignReferenceBaseStrapsToMainColor(
+    const aligned = alignMobileStrapsToMainColor(
       item.strap_colors || [],
       item.color,
       item.strap_sourcing,
@@ -226,6 +688,24 @@ export function buildMobileSaleOrderItemsPayload(items: DraftItem[]): SaleOrderI
   });
 }
 
+export function mobileIndependentStrapColorIssues(items: DraftItem[]): string[] {
+  return items.flatMap((item) => (item.strap_colors || []).flatMap((strap, index) => {
+    if (strapIdentityBasis(strap) !== 'reference_base'
+        || strapColorMode(strap) !== 'select_on_order') return [];
+    const label = String(strap.label || `Tira ${index + 1}`).trim();
+    const context = `${item.reference_name}: ${label}`;
+    if (!technicalStrapLineId(strap)
+        || !isUuid(strap.strap_type_id)
+        || !isUuid(strap.measure_id)) {
+      return [`${context} está sem identidade estrutural completa no cadastro.`];
+    }
+    if (!String(strap.color || '').trim() || !isUuid(strap.color_id)) {
+      return [`${context} exige a seleção de uma cor canônica.`];
+    }
+    return [];
+  }));
+}
+
 /**
  * `finished_product_group` conserva cor própria, mas a origem buy_ready é
  * derivada pelo writer atômico. O cliente valida somente a identidade que o
@@ -233,7 +713,6 @@ export function buildMobileSaleOrderItemsPayload(items: DraftItem[]): SaleOrderI
  */
 export function mobileFinishedStrapIdentityIssues(
   items: DraftItem[],
-  catalog?: ArtisanalStrapCatalog,
 ): string[] {
   return items.flatMap((item) => (item.strap_colors || []).flatMap((strap, index) => {
     if (strapIdentityBasis(strap) !== 'finished_product_group') return [];
@@ -247,10 +726,6 @@ export function mobileFinishedStrapIdentityIssues(
     }
     if (!String(strap.color || '').trim() || !isUuid(strap.color_id)) {
       return [`${context} exige uma cor canônica própria.`];
-    }
-    if (catalog && !strapColorsForIdentity(catalog, strap, undefined)
-      .some((color) => color.id === strap.color_id)) {
-      return [`${context} não possui produto ativo para a cor selecionada.`];
     }
     return [];
   }));
@@ -271,9 +746,24 @@ export function mobileMaterialSelectionIssues(
       return [`${item.reference_name}: a variante de material salva não está mais ativa`];
     }
     if (variants.length === 0) return [];
-    const variant = variants.find((entry) => entry.id === item.material_variant_id);
-    if (!variant) return [`${item.reference_name}: selecione o material antes da cor`];
     const reference = references.find((entry) => entry.id === item.reference_id);
+    const sheetGroup = resolveSheetCommercialColorGroup({ sheet: reference, groups: productGroups });
+    // `material_variant_id = null` significa usar o material publicado na
+    // própria ficha. Ele continua sendo uma escolha explícita mesmo se uma
+    // variante apontar para o mesmo grupo físico (preço/SKU da variante podem
+    // ser diferentes; igualdade de grupo não transforma uma opção na outra).
+    const sheetMaterialSelectable = !!sheetGroup;
+    const variant = variants.find((entry) => entry.id === item.material_variant_id);
+    if (!variant) {
+      if (!sheetMaterialSelectable || !sheetGroup) {
+        return [`${item.reference_name}: selecione o material antes da cor`];
+      }
+      const sheetColors = activeProductColorsForGroup(products, sheetGroup.id);
+      if (!item.color || !sheetColors.includes(item.color.trim().toUpperCase())) {
+        return [`${item.reference_name}: selecione uma cor ativa do material ${sheetGroup.name}`];
+      }
+      return [];
+    }
     const group = resolveMaterialVariantColorGroup({
       variant,
       sheet: reference,
@@ -312,22 +802,41 @@ function OrderProgress({ current }: { current: Step }) {
 
 function MobileStrapIdentityEditor({
   item,
+  itemIndex,
   billingDate,
-  catalog,
+  online,
+  manifest,
+  manifestLoading,
+  manifestError,
+  canCreateColor = false,
+  onCreateColor,
+  onValidationChange,
   onChange,
 }: {
   item: DraftItem;
+  itemIndex: number;
   billingDate: string;
-  catalog?: ArtisanalStrapCatalog;
+  online: boolean;
+  manifest?: MobileStrapOfflineManifest | null;
+  manifestLoading: boolean;
+  manifestError: string | null;
+  canCreateColor?: boolean;
+  onCreateColor?: (context: SaleOrderStrapColorCreateContext, initialColor: string) => void;
+  onValidationChange: (index: number, result: MobileStrapValidationResult) => void;
   onChange: (item: DraftItem) => void;
 }) {
-  const aligned = useMemo(() => alignReferenceBaseStrapsToMainColor(
+  const [invalidatedLineIds, setInvalidatedLineIds] = useState<Set<string>>(() => new Set());
+  const aligned = useMemo(() => alignMobileStrapsToMainColor(
     item.strap_colors || [],
     item.color,
     item.strap_sourcing,
   ), [item.color, item.strap_colors, item.strap_sourcing]);
   const quantity = Object.values(item.grade).reduce((sum, value) => sum + (value || 0), 0);
-  const { data: lines = [], isLoading } = useStrapStockLines({
+  const {
+    data: previewLines = [],
+    isLoading,
+    isError: strapLinesFailed,
+  } = useStrapStockLines({
     referenceId: item.reference_id,
     materialVariantId: item.material_variant_id || null,
     itemColor: item.color,
@@ -337,11 +846,56 @@ function MobileStrapIdentityEditor({
     grade: item.grade,
     requiredAt: billingDate || null,
     billingWeek: billingDate || null,
-  });
-  const lineById = useMemo(() => new Map(lines.map((line) => [line.technicalStrapLineId, line])), [lines]);
+  }, online);
+  const manifestEntry = useMemo(() => findMobileStrapManifestReference(
+    manifest,
+    item.reference_id,
+    item.material_variant_id,
+  ), [item.material_variant_id, item.reference_id, manifest]);
+  const manifestLineById = useMemo(() => new Map(
+    (manifestEntry?.lines || []).map((line) => [line.technical_strap_line_id, line]),
+  ), [manifestEntry]);
+  const lineById = useMemo(() => new Map(
+    previewLines.map((line) => [line.technicalStrapLineId, line]),
+  ), [previewLines]);
+  const validationFingerprint = mobileStrapValidationFingerprint(item, billingDate);
+  const selectableStrapCount = (item.strap_colors || []).filter(
+    (strap) => strapColorMode(strap) === 'select_on_order' || strapMaterialMode(strap) !== 'follow_reference',
+  ).length;
+  const validationIssues = useMemo(() => mobileSelectableStrapValidationIssues({
+    item,
+    manifestEntry,
+    manifestLoading,
+    manifestError,
+  }), [
+    item,
+    manifestEntry,
+    manifestError,
+    manifestLoading,
+  ]);
 
   useEffect(() => {
-    if (!billingDate) return;
+    onValidationChange(itemIndex, {
+      fingerprint: validationFingerprint,
+      issues: validationIssues,
+    });
+  }, [itemIndex, onValidationChange, validationFingerprint, validationIssues]);
+
+  useEffect(() => {
+    if (!manifestEntry) return;
+    const result = clearIncompatibleMobileStrapSelections(item, manifestEntry);
+    if (result.item === item) return;
+    if (result.clearedLineIds.length > 0) {
+      setInvalidatedLineIds((current) => new Set([
+        ...current,
+        ...result.clearedLineIds,
+      ]));
+    }
+    onChange(result.item);
+  }, [item, manifestEntry, onChange]);
+
+  useEffect(() => {
+    if (!online || !billingDate) return;
     const fixed = aligned.strapColors.filter((strap) =>
       strapIdentityBasis(strap) === 'finished_product_group'
     );
@@ -375,11 +929,31 @@ function MobileStrapIdentityEditor({
       strap_colors: aligned.strapColors,
       strap_sourcing: next,
     });
-  }, [aligned, billingDate, item, lineById, onChange]);
+  }, [aligned, billingDate, item, lineById, onChange, online]);
 
   return (
     <div className="mt-3 space-y-2 border-t pt-3">
-      <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Identidade das tiras</p>
+      <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Materiais e cores das tiras</p>
+      {manifestLoading && !manifestEntry && selectableStrapCount > 0 && (
+        <p className="rounded-md border bg-muted/30 p-2 text-xs text-muted-foreground">
+          Carregando catálogo offline de tiras…
+        </p>
+      )}
+      {!!manifestError && !manifestEntry && selectableStrapCount > 0 && (
+        <p className="rounded-md border border-destructive/40 bg-destructive/5 p-2 text-xs text-destructive">
+          Catálogo offline de tiras indisponível. Conecte-se para atualizar antes de revisar o pedido.
+        </p>
+      )}
+      {online && strapLinesFailed && selectableStrapCount > 0 && (
+        <p className="rounded-md border border-destructive/40 bg-destructive/5 p-2 text-xs text-destructive">
+          Não foi possível resolver o grupo-base das tiras. Atualize a tela antes de enviar.
+        </p>
+      )}
+      {!online && !!manifestEntry && selectableStrapCount > 0 && (
+        <p className="rounded-md border border-primary/30 bg-primary/5 p-2 text-xs text-muted-foreground">
+          Modo offline: cores disponíveis carregadas do catálogo deste usuário, conforme o material de cada posição. O servidor revalidará a ficha durante a sincronização.
+        </p>
+      )}
       {!billingDate && (
         <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-400">
           Informe a semana de faturamento acima para calcular quando as tiras serão necessárias.
@@ -388,21 +962,93 @@ function MobileStrapIdentityEditor({
       {aligned.strapColors.map((strap, strapIndex) => {
         const lineId = technicalStrapLineId(strap);
         const line = lineId ? lineById.get(lineId) : undefined;
+        const manifestLine = lineId ? manifestLineById.get(lineId) : undefined;
         const selection = lineId ? aligned.strapSourcing[lineId] : null;
         const usesFinishedGroup = strapIdentityBasis(strap) === 'finished_product_group';
-        if (!usesFinishedGroup) {
+        const followsMainColor = !usesFinishedGroup && strapColorMode(strap) === 'follow_main';
+        const materialMode = strapMaterialMode(manifestLine || strap);
+        const material = mobileStrapSelectedMaterial(manifestLine, strap);
+        const materials = mobileStrapMaterialOptions(manifestLine);
+        const measureResolved = !!manifestLine
+          && isUuid(manifestLine.strap_type_id)
+          && isUuid(manifestLine.measure_id)
+          && manifestLine.strap_type_id === strap.strap_type_id
+          && manifestLine.measure_id === strap.measure_id;
+        const registerColorControl = !usesFinishedGroup && !followsMainColor && canCreateColor ? (
+          online ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-auto min-h-11 w-full whitespace-normal text-xs"
+              disabled={!onCreateColor || !material || !measureResolved || manifestLoading || !lineId}
+              onClick={() => {
+                if (!onCreateColor || !material || !lineId || !measureResolved) return;
+                onCreateColor({
+                  referenceId: item.reference_id,
+                  materialVariantId: item.material_variant_id || null,
+                  technicalStrapLineId: lineId,
+                  label: strap.label || `Tira ${strapIndex + 1}`,
+                  typeId: manifestLine.strap_type_id,
+                  typeName: strap.strap_type_name || strap.group_name || 'Tipo definido na ficha',
+                  measureId: manifestLine.measure_id,
+                  measureName: strap.measure_name || 'Medida definida na ficha',
+                  baseGroupId: material.base_group_id,
+                  baseGroupName: material.base_group_name,
+                }, followsMainColor ? item.color : '');
+              }}
+            >
+              Não encontrou a cor? Cadastrar neste material
+            </Button>
+          ) : (
+            <p className="text-xs text-muted-foreground">Para cadastrar uma nova cor, conecte-se à internet.</p>
+          )
+        ) : null;
+        const materialControl = !usesFinishedGroup && materialMode === 'select_on_order' ? (
+          <div className="space-y-1">
+            <Select
+              value={material?.base_group_id || ''}
+              disabled={!manifestLine || manifestLoading || !lineId || materials.length === 0}
+              onValueChange={(groupId) => {
+                if (lineId) onChange(selectMobileStrapMaterial(item, lineId, groupId, manifestEntry));
+              }}
+            >
+              <SelectTrigger className={!material ? 'border-destructive/50' : ''} aria-label={`Material de ${strap.label || `Tira ${strapIndex + 1}`}`}>
+                <SelectValue placeholder="Selecione o material desta posição" />
+              </SelectTrigger>
+              <SelectContent>
+                {materials.map((entry) => (
+                  <SelectItem key={entry.base_group_id} value={entry.base_group_id}>{entry.base_group_name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {!material && <p className="text-xs text-destructive">Selecione um material permitido na ficha técnica.</p>}
+            {!manifestLoading && manifestLine && materials.length === 0 && (
+              <p className="text-xs text-destructive">Nenhum material elegível no catálogo desta posição. Atualize o catálogo ou revise a ficha.</p>
+            )}
+          </div>
+        ) : (
+          <p className="text-[11px] text-muted-foreground">
+            Material: {material?.base_group_name || strap.base_group_name || (usesFinishedGroup ? strap.group_name : null) || 'não resolvido'}
+            {!usesFinishedGroup && (materialMode === 'fixed_group' ? ' · fixo na ficha' : ' · segue a referência')}
+          </p>
+        );
+        if (followsMainColor) {
           return (
             <div key={lineId || strapIndex} className="space-y-2 rounded-md border p-2">
               <p className="text-xs font-semibold">{strap.label || `Tira ${strapIndex + 1}`}</p>
+              <p className="text-[11px] text-muted-foreground">{strap.group_name || 'Tipo e medida definidos na ficha técnica'}</p>
+              {materialControl}
               <div className={`rounded-md border px-3 py-2 text-xs ${item.color ? 'bg-muted/30' : 'border-destructive/50 text-destructive'}`}>
                 <p className="font-semibold">{item.color || 'Defina a cor principal do item'}</p>
-                <p className="mt-0.5 text-[11px] text-muted-foreground">Mesma cor e mesma napa do cabedal</p>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">Segue a cor principal no material desta posição</p>
               </div>
+              {registerColorControl}
               <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-[11px]">
                 <p className="font-semibold text-primary">
                   {selection?.source_mode === 'buy_ready'
                     ? 'Origem comprada preservada do histórico'
-                    : 'Produção interna com a napa do cabedal'}
+                    : 'Produção interna com o material desta posição'}
                 </p>
                 {!selection?.source_mode && (
                   <p className="mt-0.5 text-muted-foreground">
@@ -410,56 +1056,101 @@ function MobileStrapIdentityEditor({
                   </p>
                 )}
               </div>
-              {!isLoading && line && !line.baseGroupId && (
-                <p className="text-xs text-destructive">A referência não identifica a napa-base por UUID. Corrija o cadastro no hub.</p>
+              {!manifestLoading && manifestLine && !material && materialMode !== 'select_on_order' && (
+                <p className="text-xs text-destructive">A posição não identifica um material-base elegível. Corrija o cadastro no hub.</p>
+              )}
+              {material && materialMode !== 'follow_reference' && !material.allowed_colors.some((color) => normalizeStrapColorKey(color.name) === normalizeStrapColorKey(item.color)) && (
+                <p className="text-xs text-destructive">A cor principal não está disponível no material desta posição.</p>
               )}
             </div>
           );
         }
 
-        const identityColors = strapColorsForIdentity(catalog, strap, line?.baseGroupId);
-        const selectedColor = catalog?.colors.find((entry) => entry.id === strap.color_id);
+        const identityColors = material?.allowed_colors || [];
+        const selectedColor = strap.color_id && strap.color
+          ? { id: strap.color_id, name: String(strap.color) }
+          : null;
         const colorIsAvailable = !!strap.color_id
           && identityColors.some((entry) => entry.id === strap.color_id);
         const displayedColors = selectedColor && !colorIsAvailable
           ? [selectedColor, ...identityColors]
           : identityColors;
-        const identityGroupResolved = usesFinishedGroup ? !!strap.identity_group_id : !!line?.baseGroupId;
+        const identityGroupResolved = !!material;
+        const selectionWasInvalidated = !!lineId && invalidatedLineIds.has(lineId);
         return (
           <div key={lineId || strapIndex} className="space-y-2 rounded-md border p-2">
             <p className="text-xs font-semibold">{strap.label || `Tira ${strapIndex + 1}`}</p>
+            <p className="text-[11px] text-muted-foreground">{strap.group_name || 'Tipo e medida definidos na ficha técnica'}</p>
+            {materialControl}
+            <p className="text-[11px] text-muted-foreground">
+              {usesFinishedGroup ? 'Produto acabado comprado pronto' : 'Produção interna · escolha a cor do material desta posição'}
+            </p>
             <Select
-              value={strap.color_id || undefined}
-              disabled={!catalog || isLoading || !identityGroupResolved}
+              value={strap.color_id || ''}
+              disabled={!manifestEntry || manifestLoading || !identityGroupResolved || !measureResolved || identityColors.length === 0}
               onValueChange={(colorId) => {
-                const color = identityColors.find((entry) => entry.id === colorId);
-                if (!color) return;
-                const straps = [...(item.strap_colors || [])];
-                straps[strapIndex] = { ...strap, color_id: color.id, color: color.name };
-                onChange({
-                  ...item,
-                  strap_colors: straps,
-                  strap_sourcing: setStrapSourcing(item.strap_sourcing, lineId, null),
-                });
+                if (!lineId) return;
+                const nextItem = selectMobileStrapColor(item, lineId, colorId, manifestEntry);
+                if (nextItem === item) return;
+                if (lineId) {
+                  setInvalidatedLineIds((current) => {
+                    if (!current.has(lineId)) return current;
+                    const next = new Set(current);
+                    next.delete(lineId);
+                    return next;
+                  });
+                }
+                onChange(nextItem);
               }}
             >
-              <SelectTrigger className={!strap.color_id ? 'border-amber-500/60' : ''}>
+              <SelectTrigger className={!strap.color_id ? 'border-amber-500/60' : ''} aria-label={`Cor de ${strap.label || `Tira ${strapIndex + 1}`}`}>
                 <SelectValue placeholder={strap.color ? `${strap.color} — confirme` : 'Cor canônica'} />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent
+                searchable
+                searchPlaceholder="Buscar cor deste material…"
+                searchEmptyText={online && canCreateColor && !usesFinishedGroup
+                  ? 'Cor não encontrada. Use o cadastro abaixo do seletor.'
+                  : 'Nenhuma cor cadastrada corresponde à busca.'}
+              >
                 {displayedColors.map((entry) => (
                   <SelectItem key={entry.id} value={entry.id} disabled={!identityColors.some((color) => color.id === entry.id)}>{entry.name}{entry.id === strap.color_id && !colorIsAvailable ? ' · vínculo inválido' : ''}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            {!isLoading && !identityGroupResolved && <p className="text-xs text-destructive">A ficha não identifica o grupo do produto acabado por UUID.</p>}
-            {!!catalog && identityGroupResolved && identityColors.length === 0 && <p className="text-xs text-destructive">O grupo comprado não possui produto ativo com cor canônica.</p>}
-            {!!catalog && !!strap.color_id && !colorIsAvailable && <p className="text-xs text-destructive">A cor atual não pertence ao grupo de identidade resolvido.</p>}
-            <div className={`min-h-10 rounded-md border px-2 py-2 text-center text-[11px] font-semibold ${selection?.source_mode === 'buy_ready' ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground'}`}>
-              Comprada pronta · origem fixa
+            {registerColorControl}
+            {!manifestLoading && !!manifestEntry && !identityGroupResolved && (
+              <p className="text-xs text-destructive">
+                {usesFinishedGroup
+                  ? 'A ficha não identifica o grupo do produto acabado por UUID.'
+                  : 'Selecione um material elegível nesta posição ou revise a ficha técnica.'}
+              </p>
+            )}
+            {!manifestLoading && !!manifestEntry && !measureResolved && (
+              <p className="text-xs text-destructive">
+                A família e a medida desta posição não estão ativas ou não são compatíveis. Corrija a ficha técnica.
+              </p>
+            )}
+            {!!manifestEntry && identityGroupResolved && identityColors.length === 0 && (
+              <p className="text-xs text-destructive">
+                {usesFinishedGroup
+                  ? 'O grupo comprado não possui produto ativo com cor canônica.'
+                  : 'O grupo-base não possui cor canônica com SKU oficial ativo.'}
+              </p>
+            )}
+            {!!manifestEntry && !!strap.color_id && !colorIsAvailable && <p className="text-xs text-destructive">A cor atual não pertence ao grupo de identidade resolvido.</p>}
+            {selectionWasInvalidated && !strap.color_id && (
+              <p className="text-xs text-destructive">A seleção anterior não pertence ao novo grupo-base. Escolha outra cor.</p>
+            )}
+            <div className={`min-h-10 rounded-md border px-2 py-2 text-center text-[11px] font-semibold ${selection?.source_mode === (usesFinishedGroup ? 'buy_ready' : 'internal') ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground'}`}>
+              {usesFinishedGroup ? 'Comprada pronta · origem fixa' : 'Produção interna · origem fixa'}
             </div>
-            {!!selection?.source_mode && selection.source_mode !== 'buy_ready' && (
-              <p className="text-xs text-destructive">A origem registrada não corresponde ao grupo comprado. Selecione novamente a cor.</p>
+            {!!selection?.source_mode && selection.source_mode !== (usesFinishedGroup ? 'buy_ready' : 'internal') && (
+              <p className="text-xs text-destructive">
+                {usesFinishedGroup
+                  ? 'A origem registrada não corresponde ao grupo comprado. Selecione novamente a cor.'
+                  : 'A origem registrada não corresponde à produção interna. Selecione novamente a cor.'}
+              </p>
             )}
             {selection?.source_mode && line?.blockReason && (
               <p className="text-xs text-amber-700 dark:text-amber-400">{line.blockReason}</p>
@@ -474,6 +1165,15 @@ function MobileStrapIdentityEditor({
 export default function MobileNewOrder() {
   const navigate = useNavigate();
   const online = useOnlineStatus();
+  const { user, loading: authLoading } = useAuth();
+  const perm = useCan('/sales');
+  const stockPermission = useCan('/estoque');
+  const { canSeeFinancialValues } = useAccessControl();
+  const canCreateStrapColor = !stockPermission.loading && stockPermission.canCreate && canSeeFinancialValues
+    && canUseQuickGroupVariantForRoles(stockPermission.roles || []);
+  const ownerId = user?.id || '';
+  const currentSessionRef = useRef({ ownerId, online });
+  currentSessionRef.current = { ownerId, online };
   const [step, setStep] = useState<Step>('client');
   const [requestId, setRequestId] = useState<string>(newRequestId());
 
@@ -484,6 +1184,8 @@ export default function MobileNewOrder() {
   // F3: contexto do cliente — tabela de preço + histórico
   const [priceLookup, setPriceLookup] = useState<PriceLookup>({ byRefColor: new Map(), byRef: new Map() });
   const [priceLookupLoading, setPriceLookupLoading] = useState(false);
+  const [commercialDefaults, setCommercialDefaults] = useState<ClientCommercialDefaults | null>(null);
+  const [commercialContextError, setCommercialContextError] = useState<string | null>(null);
   const [clientHistory, setClientHistory] = useState<ClientHistory | null>(null);
 
   // Items
@@ -493,40 +1195,228 @@ export default function MobileNewOrder() {
   const [materialProducts, setMaterialProducts] = useState<ProductLite[]>([]);
   const [materialProductGroups, setMaterialProductGroups] = useState<ProductGroupLite[]>([]);
   const [items, setItems] = useState<DraftItem[]>([]);
+  const currentItemsRef = useRef(items);
+  currentItemsRef.current = items;
+  const [colorRegistration, setColorRegistration] = useState<{
+    context: SaleOrderStrapColorCreateContext;
+    initialColor: string;
+    expectedItem: DraftItem;
+    itemIndex: number;
+    ownerId: string;
+  } | null>(null);
   const [refSearch, setRefSearch] = useState('');
   const [billingDate, setBillingDate] = useState('');
-  const { data: strapCatalog } = useArtisanalStrapCatalog(false);
+  const [catalogState, setCatalogState] = useState<'idle' | 'cached' | 'ready' | 'error'>('idle');
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [strapManifest, setStrapManifest] = useState<MobileStrapOfflineManifest | null>(null);
+  const strapManifestRequestRef = useRef(0);
+  const [strapManifestOwnerId, setStrapManifestOwnerId] = useState('');
+  const [strapManifestState, setStrapManifestState] = useState<
+    'idle' | 'loading' | 'cached' | 'ready' | 'missing' | 'error'
+  >('idle');
+  const [strapManifestError, setStrapManifestError] = useState<string | null>(null);
+  const ownerScopedStrapManifest = strapManifestOwnerId === ownerId ? strapManifest : null;
+  const [strapReconciliationNotice, setStrapReconciliationNotice] = useState(false);
+  const [strapValidationByItemIndex, setStrapValidationByItemIndex] = useState<
+    Record<number, MobileStrapValidationResult>
+  >({});
+  const handleCreatedStrapColor = async (created: SaleOrderStrapColorCreated) => {
+    const registration = colorRegistration;
+    if (!registration || currentSessionRef.current.ownerId !== registration.ownerId
+        || !currentSessionRef.current.online) {
+      throw new Error('Reconecte-se à mesma conta para atualizar as cores do pedido.');
+    }
+    if (created.technicalStrapLineId !== registration.context.technicalStrapLineId
+        || created.typeId !== registration.context.typeId
+        || created.measureId !== registration.context.measureId
+        || created.baseGroupId !== registration.context.baseGroupId) {
+      throw new Error('O cadastro retornou outra identidade de tira. Reabra a posição correta para selecionar a cor.');
+    }
+    // Não acrescentar a cor manualmente ao cache: o manifesto é a validação do
+    // servidor para esta combinação de posição, material, tipo e medida.
+    const manifestRequest = ++strapManifestRequestRef.current;
+    const fresh = await fetchMobileStrapOfflineManifest();
+    if (currentSessionRef.current.ownerId !== registration.ownerId
+        || !currentSessionRef.current.online || manifestRequest !== strapManifestRequestRef.current) {
+      throw new Error('A sessão ou a conexão mudou. Reabra o pedido para selecionar a cor cadastrada.');
+    }
+    await saveMobileStrapOfflineManifest(registration.ownerId, fresh);
+    if (currentSessionRef.current.ownerId !== registration.ownerId
+        || !currentSessionRef.current.online || manifestRequest !== strapManifestRequestRef.current) return;
+    const currentItem = currentItemsRef.current[registration.itemIndex];
+    const nextItem = currentItem === registration.expectedItem
+      ? applyCreatedMobileStrapColor(currentItem, created, fresh)
+      : currentItem;
+    setStrapManifest(fresh);
+    setStrapManifestOwnerId(registration.ownerId);
+    setStrapManifestState('ready');
+    setStrapManifestError(null);
+    if (!currentItem || nextItem === currentItem) {
+      toast.warning('Cor cadastrada. A posição mudou ou o catálogo exige revisão; selecione a cor novamente no material correto.');
+      return;
+    }
+    setItems((current) => updateMobileDraftItem(
+      current,
+      registration.expectedItem,
+      registration.itemIndex,
+      () => nextItem,
+    ));
+  };
+  const handleStrapValidationChange = useCallback((index: number, result: MobileStrapValidationResult) => {
+    setStrapValidationByItemIndex((current) => {
+      const previous = current[index];
+      if (previous?.fingerprint === result.fingerprint
+          && previous.issues.length === result.issues.length
+          && previous.issues.every((issue, issueIndex) => issue === result.issues[issueIndex])) {
+        return current;
+      }
+      return { ...current, [index]: result };
+    });
+  }, []);
 
   // F3: assinatura do cliente
   const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null);
   const [showSignature, setShowSignature] = useState(false);
   // F3: PV criado pra share via WhatsApp pós-submit
   const [createdPvNumber, setCreatedPvNumber] = useState<string | null>(null);
+  const [createdOrderOutcome, setCreatedOrderOutcome] = useState<CreatedOrderOutcome>('draft');
+  const previousOwnerIdRef = useRef('');
 
   // ── Restore draft on mount ──
   useEffect(() => {
+    let cancelled = false;
+    const previousOwnerId = previousOwnerIdRef.current;
+    const ownerChanged = mobileOwnerSessionChanged(previousOwnerId, ownerId);
+    previousOwnerIdRef.current = ownerId;
+    if (ownerChanged || !ownerId) setColorRegistration(null);
+
+    if (!ownerId) {
+      // Nunca mantenha cliente/itens comerciais em memória entre sessões do
+      // mesmo navegador, mesmo que o roteador demore um render para desmontar.
+      setSelectedClient(null);
+      setItems([]);
+      setCommercialDefaults(null);
+      setPriceLookup({ byRefColor: new Map(), byRef: new Map() });
+      setStrapManifest(null);
+      setStrapManifestOwnerId('');
+      setStrapManifestState('idle');
+      setStrapManifestError(null);
+      setStrapReconciliationNotice(false);
+      setRequestId(newRequestId());
+      setStep('client');
+      return () => { cancelled = true; };
+    }
+
+    const fallbackDraftId = ownerChanged ? newRequestId() : requestId;
+    if (ownerChanged) {
+      // client_request_id é global no servidor. Reutilizar o UUID do dono
+      // anterior poderia recuperar o receipt/PV dele por idempotência.
+      setRequestId(fallbackDraftId);
+      setStep('client');
+      setClientSearch('');
+      setClients([]);
+      setSelectedClient(null);
+      setPriceLookup({ byRefColor: new Map(), byRef: new Map() });
+      setPriceLookupLoading(false);
+      setCommercialDefaults(null);
+      setCommercialContextError(null);
+      setClientHistory(null);
+      setRefs([]);
+      setReferenceColorVariants([]);
+      setMaterialVariants([]);
+      setMaterialProducts([]);
+      setMaterialProductGroups([]);
+      setItems([]);
+      setRefSearch('');
+      setBillingDate('');
+      setCatalogState('idle');
+      setCatalogError(null);
+      setStrapManifest(null);
+      setStrapManifestOwnerId('');
+      setStrapManifestState('idle');
+      setStrapManifestError(null);
+      setStrapReconciliationNotice(false);
+      setSignatureDataUrl(null);
+      setShowSignature(false);
+      setCreatedPvNumber(null);
+      setCreatedOrderOutcome('draft');
+    }
+
     (async () => {
-      // Tenta restaurar o último rascunho não-finalizado (mais recente).
-      // Simplificação: usamos uma chave fixa pra "draft em andamento".
-      const draftId = localStorage.getItem('mobile-current-draft-id');
+      const currentDraftKey = mobileCurrentDraftKey(ownerId);
+      const draftId = localStorage.getItem(currentDraftKey);
       if (draftId) {
-        const data = await loadDraft(draftId);
-        if (data) {
+        const data = await loadDraft<MobileDraftData>(ownerId, draftId);
+        if (!cancelled && data) {
           setRequestId(draftId);
           setSelectedClient(data.client);
-          setItems(data.items || []);
+          setItems(normalizeMobileDraftStrapSnapshots(data.items || []));
           setBillingDate(data.billingDate || '');
           if (data.priceLookup?.byRefColor instanceof Map && data.priceLookup?.byRef instanceof Map) {
             setPriceLookup(data.priceLookup);
           }
+          if (data.commercialDefaults) setCommercialDefaults(data.commercialDefaults);
           if (data.client) setStep('items');
         }
       } else {
-        localStorage.setItem('mobile-current-draft-id', requestId);
+        localStorage.setItem(currentDraftKey, fallbackDraftId);
       }
     })();
+    return () => { cancelled = true; };
+  // requestId nasce uma vez por montagem; mudar por edição do draft não deve
+  // reabrir o efeito. A troca de usuário, sim.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [ownerId]);
+
+  // O manifesto é um cache mínimo, versionado e separado do catálogo comercial.
+  // Sem rede, nenhuma query/RPC é disparada: somente o registro do owner atual
+  // no IndexedDB pode habilitar as escolhas independentes de cor.
+  useEffect(() => {
+    let cancelled = false;
+    const manifestRequest = ++strapManifestRequestRef.current;
+    if (!ownerId) return () => { cancelled = true; };
+
+    setStrapManifest(null);
+    setStrapManifestOwnerId('');
+    setStrapManifestState('loading');
+    setStrapManifestError(null);
+    void (async () => {
+      const cached = await loadMobileStrapOfflineManifest(ownerId).catch(() => null);
+      if (cancelled || manifestRequest !== strapManifestRequestRef.current) return;
+      if (cached) {
+        setStrapManifest(cached);
+        setStrapManifestOwnerId(ownerId);
+        setStrapManifestState('cached');
+      }
+      if (!online) {
+        if (!cached) setStrapManifestState('missing');
+        return;
+      }
+
+      try {
+        const fresh = await fetchMobileStrapOfflineManifest();
+        if (cancelled || manifestRequest !== strapManifestRequestRef.current) return;
+        setStrapManifest(fresh);
+        setStrapManifestOwnerId(ownerId);
+        setStrapManifestState('ready');
+        setStrapManifestError(null);
+        await saveMobileStrapOfflineManifest(ownerId, fresh);
+      } catch (error) {
+        if (cancelled || manifestRequest !== strapManifestRequestRef.current) return;
+        setStrapManifestError(error instanceof Error ? error.message : String(error));
+        setStrapManifestState(cached ? 'cached' : 'error');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [online, ownerId]);
+
+  useEffect(() => {
+    if (!ownerScopedStrapManifest || items.length === 0) return;
+    const reconciled = reconcileMobileDraftItemsWithManifest(items, ownerScopedStrapManifest);
+    if (!reconciled.changed) return;
+    setItems(reconciled.items);
+    setStrapReconciliationNotice(true);
+  }, [items, ownerScopedStrapManifest]);
 
   // ── F3: ao selecionar cliente, carrega price list + histórico ──
   useEffect(() => {
@@ -535,6 +1425,8 @@ export default function MobileNewOrder() {
       setPriceLookup({ byRefColor: new Map(), byRef: new Map() });
       setPriceLookupLoading(false);
       setClientHistory(null);
+      setCommercialDefaults(null);
+      setCommercialContextError(null);
       return;
     }
     if (!online) {
@@ -542,11 +1434,20 @@ export default function MobileNewOrder() {
       return;
     }
     setPriceLookupLoading(true);
-    void fetchClientPriceList(selectedClient.id)
-      .then((lookup) => {
-        if (!cancelled) setPriceLookup(lookup);
+    setCommercialContextError(null);
+    void fetchClientSalesContext(selectedClient.id)
+      .then(({ priceLookup: lookup, commercialDefaults: defaults }) => {
+        if (!cancelled) {
+          setPriceLookup(lookup);
+          setCommercialDefaults(defaults);
+        }
       })
-      .catch(() => {})
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setCommercialDefaults(null);
+          setCommercialContextError(error instanceof Error ? error.message : String(error));
+        }
+      })
       .finally(() => {
         if (!cancelled) setPriceLookupLoading(false);
       });
@@ -560,56 +1461,77 @@ export default function MobileNewOrder() {
 
   // ── Autosave draft ──
   useEffect(() => {
-    if (!selectedClient && items.length === 0) return;
+    if (!ownerId || (!selectedClient && items.length === 0)) return;
     const t = setTimeout(() => {
-      void saveDraft(requestId, { client: selectedClient, items, billingDate, priceLookup });
+      void saveDraft(ownerId, requestId, {
+        client: selectedClient,
+        items,
+        billingDate,
+        priceLookup,
+        commercialDefaults,
+      });
     }, 500);
     return () => clearTimeout(t);
-  }, [selectedClient, items, billingDate, priceLookup, requestId]);
+  }, [selectedClient, items, billingDate, priceLookup, commercialDefaults, requestId, ownerId]);
 
   // ── Carrega clientes ──
   useEffect(() => {
-    if (step !== 'client') return;
+    if (step !== 'client' || !online || !ownerId) return;
+    let cancelled = false;
     const t = setTimeout(async () => {
-      let q = supabase
-        .from('clients')
-        .select('id, razao_social, nome_fantasia, cnpj, cidade, estado')
-        .eq('active', true)
-        .limit(40);
-      if (clientSearch.length >= 2) {
-        // search_norm (banco) ignora acento/caixa/espaço — "tamara" casa "TÂMARA".
-        // searchNormOrFilter tokeniza por espaço/"/" com AND entre termos.
-        const orFilter = searchNormOrFilter(clientSearch);
-        if (orFilter) q = q.or(orFilter);
+      try {
+        let q = supabase
+          .from('clients')
+          .select('id, razao_social, nome_fantasia, cnpj, cidade, estado')
+          .eq('active', true)
+          .limit(40);
+        if (clientSearch.length >= 2) {
+          // search_norm (banco) ignora acento/caixa/espaço — "tamara" casa "TÂMARA".
+          // searchNormOrFilter tokeniza por espaço/"/" com AND entre termos.
+          const orFilter = searchNormOrFilter(clientSearch);
+          if (orFilter) q = q.or(orFilter);
+        }
+        const { data, error } = await q;
+        if (error) throw error;
+        if (!cancelled) setClients(data ?? []);
+      } catch {
+        if (!cancelled) {
+          setClients([]);
+          toast.error('Não foi possível carregar os clientes. Verifique a conexão e tente novamente.');
+        }
       }
-      const { data } = await q;
-      setClients(data ?? []);
     }, 200);
-    return () => clearTimeout(t);
-  }, [step, clientSearch]);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [step, clientSearch, online, ownerId]);
 
   // ── Carrega refs (preload no step de items) ──
   useEffect(() => {
-    if (step !== 'items') return;
+    if (step !== 'items' || !ownerId) return;
     let cancelled = false;
-    const applyCatalog = (catalog: MobileOrderCatalog) => {
+    const applyCatalog = (catalog: MobileOrderCatalog, source: 'cached' | 'ready') => {
       if (cancelled) return;
       setRefs(catalog.references);
       setReferenceColorVariants(catalog.referenceColorVariants);
       setMaterialVariants(catalog.materialVariants);
       setMaterialProducts(catalog.products);
       setMaterialProductGroups(catalog.productGroups);
+      setCatalogState(source);
     };
     (async () => {
-      const cached = await loadMobileOrderCatalog<MobileOrderCatalog>().catch(() => null);
-      if (cached) applyCatalog(cached);
+      setCatalogError(null);
+      const cached = await loadMobileOrderCatalog<MobileOrderCatalog>(ownerId).catch(() => null);
+      if (cached) applyCatalog(cached, 'cached');
       if (!online) return;
 
       const { data, error } = await supabase
         .from('technical_sheets')
         .select(MOBILE_TECHNICAL_SHEET_SELECT)
+        .eq('status_ficha', 'publicada')
         .order('name')
-        .limit(100);
+        .limit(1000);
       if (error) throw error;
       const references = (data ?? []).map((reference) => ({
         ...reference,
@@ -638,6 +1560,13 @@ export default function MobileNewOrder() {
         activeVariants = (materialResult.data || []) as MaterialVariantLite[];
       }
 
+      const { data: allGroupsData, error: allGroupsError } = await supabase
+        .from('product_groups')
+        .select('id, name')
+        .order('name');
+      if (allGroupsError) throw allGroupsError;
+      const productGroups = (allGroupsData || []) as ProductGroupLite[];
+
       const pinnedIds = Array.from(new Set(activeVariants.flatMap((variant) => [
         variant.upper_material_product_id,
         variant.lining_material_product_id,
@@ -653,28 +1582,34 @@ export default function MobileNewOrder() {
       }
 
       const pinnedGroupByProduct = new Map(pinnedProducts.map((product) => [product.id, product.group_id]));
-      const groupIds = Array.from(new Set(activeVariants.flatMap((variant) => [
+      const namedSheetGroups = references.flatMap((reference) => [
+        reference.upper_material,
+        reference.lining_material,
+      ]).map((name) => name?.trim().toLocaleLowerCase('pt-BR')).filter(Boolean);
+      const groupIds = Array.from(new Set([
+        ...activeVariants.flatMap((variant) => [
         variant.upper_material_group_id,
         variant.lining_material_group_id,
         variant.main_material_group_id,
         variant.upper_material_product_id ? pinnedGroupByProduct.get(variant.upper_material_product_id) : null,
         variant.lining_material_product_id ? pinnedGroupByProduct.get(variant.lining_material_product_id) : null,
-      ]).filter(Boolean))) as string[];
+        ]),
+        ...references.map((reference) => reference.upper_material_group_id),
+        ...productGroups
+          .filter((group) => namedSheetGroups.includes(group.name.trim().toLocaleLowerCase('pt-BR')))
+          .map((group) => group.id),
+      ].filter(Boolean))) as string[];
 
       let products = pinnedProducts;
-      let productGroups: ProductGroupLite[] = [];
       if (groupIds.length) {
-        const [productResult, groupResult] = await Promise.all([
-          supabase.from('products').select('id, group_id, color, active').in('group_id', groupIds),
-          supabase.from('product_groups').select('id, name').in('id', groupIds),
-        ]);
+        const productResult = await supabase.from('products')
+          .select('id, group_id, color, active')
+          .in('group_id', groupIds);
         if (productResult.error) throw productResult.error;
-        if (groupResult.error) throw groupResult.error;
         products = Array.from(new Map(
           [...pinnedProducts, ...((productResult.data || []) as ProductLite[])]
             .map((product) => [product.id, product]),
         ).values());
-        productGroups = (groupResult.data || []) as ProductGroupLite[];
       }
 
       const catalog: MobileOrderCatalog = {
@@ -684,13 +1619,15 @@ export default function MobileNewOrder() {
         products,
         productGroups,
       };
-      applyCatalog(catalog);
-      await saveMobileOrderCatalog(catalog);
-    })().catch(() => {
-      // O cache permanece utilizável. O submit ainda valida toda identidade.
+      applyCatalog(catalog, 'ready');
+      await saveMobileOrderCatalog(ownerId, catalog);
+    })().catch((error: unknown) => {
+      if (cancelled) return;
+      setCatalogState('error');
+      setCatalogError(error instanceof Error ? error.message : String(error));
     });
     return () => { cancelled = true; };
-  }, [step, online]);
+  }, [step, online, ownerId]);
 
   const filteredRefs = useMemo(() => {
     if (!refSearch) return refs;
@@ -728,18 +1665,60 @@ export default function MobileNewOrder() {
     ),
     [items, refs, materialVariants, materialProducts, materialProductGroups],
   );
+  const selectableStrapValidationIssues = useMemo(() => items.flatMap((item, index) => {
+    const manifestEntry = findMobileStrapManifestReference(
+      ownerScopedStrapManifest,
+      item.reference_id,
+      item.material_variant_id,
+    );
+    const hasTechnicalStraps = (item.strap_colors || []).length > 0
+      || !!manifestEntry?.lines.length;
+    if (!hasTechnicalStraps) {
+      return [];
+    }
+    const validation = strapValidationByItemIndex[index];
+    if (!validation
+        || validation.fingerprint !== mobileStrapValidationFingerprint(item, billingDate)) {
+      return mobileSelectableStrapValidationIssues({
+        item,
+        manifestEntry,
+        manifestLoading: strapManifestState === 'idle' || strapManifestState === 'loading',
+        manifestError: strapManifestError,
+      });
+    }
+    return validation.issues;
+  }), [
+    billingDate,
+    items,
+    ownerScopedStrapManifest,
+    strapManifestError,
+    strapManifestState,
+    strapValidationByItemIndex,
+  ]);
 
   const variantsForReference = (referenceId: string) => materialVariants.filter((variant) =>
     variant.reference_id === referenceId && variant.active !== false
   );
 
+  const effectiveMaterialGroup = (reference: RefLite | undefined, variant: MaterialVariantLite | undefined) => {
+    const group = variant
+      ? resolveMaterialVariantColorGroup({
+        variant,
+        sheet: reference,
+        products: materialProducts,
+        groups: materialProductGroups,
+      })
+      : resolveSheetCommercialColorGroup({ sheet: reference, groups: materialProductGroups });
+    return group;
+  };
+
+  const sheetMaterialSelectable = (reference: RefLite | undefined) => {
+    const sheetGroup = effectiveMaterialGroup(reference, undefined);
+    return !!sheetGroup;
+  };
+
   const colorsForMaterialVariant = (reference: RefLite | undefined, variant: MaterialVariantLite | undefined) => {
-    const group = resolveMaterialVariantColorGroup({
-      variant,
-      sheet: reference,
-      products: materialProducts,
-      groups: materialProductGroups,
-    });
+    const group = effectiveMaterialGroup(reference, variant);
     return group ? activeProductColorsForGroup(materialProducts, group.id) : [];
   };
 
@@ -768,15 +1747,32 @@ export default function MobileNewOrder() {
     ));
   }, [priceLookup, refs, materialVariants]);
 
-  const strapsForReference = (reference: RefLite, color: string) =>
-    alignReferenceBaseStrapsToMainColor(
-      ensureTechnicalStrapLineIds(Array.isArray(reference.strap_colors) ? reference.strap_colors : []),
+  const strapsForReference = (
+    reference: RefLite,
+    color: string,
+    materialVariantId?: string | null,
+  ) => {
+    const manifestEntry = findMobileStrapManifestReference(
+      ownerScopedStrapManifest,
+      reference.id,
+      materialVariantId,
+    );
+    const technicalLines = manifestEntry
+      ? mobileTechnicalStrapLinesFromManifest(manifestEntry)
+      : ensureTechnicalStrapLineIds(Array.isArray(reference.strap_colors) ? reference.strap_colors : []);
+    return alignMobileStrapsToMainColor(
+      technicalLines,
       color,
       {},
     ).strapColors;
+  };
 
   // ── Submit ──
   const handleSubmit = async () => {
+    if (!ownerId || !perm.canCreate) {
+      toast.error('Você não tem permissão para criar pedidos de venda.');
+      return;
+    }
     if (!selectedClient) {
       toast.error('Selecione um cliente');
       return;
@@ -788,6 +1784,22 @@ export default function MobileNewOrder() {
     if (priceLookupLoading) {
       toast.error('Aguarde a tabela de preços do cliente terminar de carregar.');
       setStep('items');
+      return;
+    }
+    if (commercialDefaults?.block_new_orders) {
+      toast.error(clientCommercialBlockMessage(commercialDefaults));
+      return;
+    }
+    if (online && commercialContextError) {
+      toast.error('Não foi possível validar a política e a tabela de preços do cliente.', {
+        description: commercialContextError,
+      });
+      return;
+    }
+    if (online && catalogState !== 'ready') {
+      toast.error('Não foi possível validar o catálogo de fichas publicadas.', {
+        description: catalogError || 'Atualize o catálogo antes de enviar.',
+      });
       return;
     }
     if (materialSelectionIssues.length > 0) {
@@ -806,10 +1818,27 @@ export default function MobileNewOrder() {
       setStep('items');
       return;
     }
+    if (hasStraps
+        && !ownerScopedStrapManifest
+        && (strapManifestState === 'idle' || strapManifestState === 'loading')) {
+      toast.error('Aguarde o catálogo offline de tiras terminar de carregar.');
+      setStep('items');
+      return;
+    }
+    if (hasStraps && !ownerScopedStrapManifest) {
+      toast.error('Catálogo offline de tiras indisponível.', {
+        description: online
+          ? strapManifestError || 'Atualize a tela e tente novamente.'
+          : 'Conecte-se para atualizar antes de revisar o pedido.',
+      });
+      setStep('items');
+      return;
+    }
     const missingMainStrapColor = items.find((item) =>
       !item.color.trim()
       && (item.strap_colors || []).some((strap) =>
         strapIdentityBasis(strap) === 'reference_base'
+        && strapColorMode(strap) === 'follow_main'
       )
     );
     if (missingMainStrapColor) {
@@ -817,19 +1846,34 @@ export default function MobileNewOrder() {
       setStep('items');
       return;
     }
-    const finishedIdentityIssues = mobileFinishedStrapIdentityIssues(items, strapCatalog);
+    const independentColorIssues = mobileIndependentStrapColorIssues(items);
+    if (independentColorIssues.length > 0) {
+      toast.error(independentColorIssues[0]);
+      setStep('items');
+      return;
+    }
+    const finishedIdentityIssues = mobileFinishedStrapIdentityIssues(items);
     if (finishedIdentityIssues.length > 0) {
       toast.error(finishedIdentityIssues[0]);
       setStep('items');
       return;
     }
+    if (selectableStrapValidationIssues.length > 0) {
+      toast.error(selectableStrapValidationIssues[0]);
+      setStep('items');
+      return;
+    }
+
+    // Esta é uma guarda de UX contra cache/preview incompleto. O writer atômico
+    // continua sendo a autoridade e revalida ficha, grupo, medida e cor sob lock.
 
     const billing = billingDate ? isoToMonthWeek(billingDate) : null;
+    const commercialHeader = mobileCommercialHeaderDefaults(commercialDefaults);
 
     // Strings vazias em colunas date/numeric quebram o PostgREST com
     // "invalid input syntax" (auditoria 24/05/2026). Campos opcionais
     // vão como null quando vazios.
-    const orderPayload: any = {
+    const orderPayload: MobileSaleOrderData = {
       client_request_id: requestId,
       client_id: selectedClient.id,
       client_name: selectedClient.razao_social,
@@ -837,16 +1881,19 @@ export default function MobileNewOrder() {
       client_contact: '',
       client_order_number: '',
       representative: '',
-      payment_condition: '',
+      payment_condition: commercialHeader.payment_condition,
       delivery_deadline: billingDate || null,
       delivery_week: billing?.week || '',
       delivery_month: billing?.month || '',
       notes: '',
-      status: 'Aprovado',
+      status: MOBILE_SALE_ORDER_DRAFT_STATUS,
       nfe: '',
       remessa: '',
       is_factoring: false,
-      factoring_config_id: null,
+      factoring_config_id: commercialHeader.factoring_config_id,
+      modalidade_frete: commercialHeader.modalidade_frete,
+      transport_company_id: commercialHeader.transport_company_id,
+      packaging_mode: 'colmeia',
       // F3 (24/05/2026): assinatura digital opcional
       client_signature_data_url: signatureDataUrl,
       client_signature_at: signatureDataUrl ? new Date().toISOString() : null,
@@ -857,55 +1904,96 @@ export default function MobileNewOrder() {
     // technical_sheets quando exibido.
     const itemsPayload = buildMobileSaleOrderItemsPayload(items);
 
-    // Se online, tenta enviar direto. Senão (ou se falhar), enfileira.
+    // Online tenta o writer direto. Só indisponibilidade transitória entra na
+    // fila; recusa de cliente/política/ficha mantém o rascunho local na tela.
     // Bug fix 24/05/2026: incluir `total` calculado no payload — sem isso,
     // sale_orders gravava total=0 (campo é populated client-side, não
     // tem default no schema).
     orderPayload.total = totalValue;
+    const pendingPayload: PendingOrderPayload = {
+      ownerId,
+      order: orderPayload,
+      items: itemsPayload,
+      client_id: selectedClient.id,
+    };
 
     let sent = false;
     let pvNumberLocal: string | null = null;
     if (online) {
       try {
-        const created = await submitMobileSaleOrderAtomic({
-          order: orderPayload,
-          items: itemsPayload,
-          client_id: selectedClient.id,
-        });
+        const created = await submitMobileSaleOrderAtomic(pendingPayload);
+        // O recibo do writer encerra a criação. Falhas posteriores jamais
+        // reenfileiram o mesmo client_request_id com outra intenção/status.
+        sent = true;
+
         const { data: createdHeader, error: headerError } = await supabase
           .from('sale_orders')
           .select('order_number')
           .eq('id', created.order_id)
           .single();
-        if (headerError) throw headerError;
-        sent = true;
-        pvNumberLocal = createdHeader?.order_number || null;
+        if (!headerError) pvNumberLocal = createdHeader?.order_number || null;
         setCreatedPvNumber(pvNumberLocal);
-        toast.success(`PV ${createdHeader?.order_number || ''} enviado!`);
-      } catch (e) {
-        // Fall through to enqueue
+
+        const commercialConfirmationIssue = mobileConfirmationCommercialIssue(orderPayload);
+        if (commercialConfirmationIssue) {
+          setCreatedOrderOutcome('draft');
+          toast.warning('Pedido salvo como rascunho; falta condição comercial.', {
+            description: commercialConfirmationIssue,
+          });
+        } else try {
+          await confirmMobileSaleOrder(created.order_id);
+          setCreatedOrderOutcome('confirmed');
+          toast.success(`${pvNumberLocal ? `PV ${pvNumberLocal}` : 'Pedido'} confirmado!`);
+        } catch (confirmationError: unknown) {
+          // A criação já foi confirmada pelo writer. Se o comando final não
+          // estiver disponível ou bloquear, o PV permanece Rascunho no servidor.
+          // Em erro de transporte, o resultado pode ser ambíguo; não afirmamos
+          // um status sem recibo.
+          const ambiguous = classifyMobileOrderError(confirmationError) === 'transient';
+          setCreatedOrderOutcome(ambiguous ? 'unknown' : 'draft');
+          toast.warning(
+            ambiguous
+              ? 'Pedido salvo; não foi possível verificar a confirmação.'
+              : 'Pedido salvo como rascunho; a confirmação foi bloqueada.',
+            { description: confirmationError instanceof Error ? confirmationError.message : String(confirmationError) },
+          );
+        }
+      } catch (error: unknown) {
+        if (classifyMobileOrderError(error) === 'permanent') {
+          toast.error('O pedido foi recusado e permaneceu como rascunho local.', {
+            description: error instanceof Error ? error.message : String(error),
+          });
+          return;
+        }
       }
     }
 
     if (!sent) {
-      await enqueueOrder({
-        order: orderPayload,
-        items: itemsPayload,
-        client_id: selectedClient.id,
-      });
-      toast.success(`Pedido salvo (${online ? 'tentando reenviar' : 'modo offline'})`);
-      if (online) void triggerSync();
+      const draftSnapshot: MobileDraftData = {
+        client: selectedClient,
+        items,
+        billingDate,
+        priceLookup,
+        commercialDefaults,
+      };
+      // Fila e snapshot editável entram no mesmo commit IndexedDB. O snapshot
+      // só some quando o servidor confirma definitivamente o CREATE.
+      await enqueueOrder(ownerId, pendingPayload, draftSnapshot);
+      toast.success(`Rascunho salvo (${online ? 'aguardando nova tentativa de rede' : 'modo offline'})`);
+      if (online) void triggerSync(ownerId);
     }
 
-    // Limpa rascunho local
-    await deleteDraft(requestId);
-    localStorage.removeItem('mobile-current-draft-id');
+    // Um CREATE com recibo definitivo já não precisa do snapshot. Enquanto a
+    // intenção estiver na fila, ele permanece no IndexedDB para uma eventual
+    // correção de falha permanente; apenas deixa de ser o editor corrente.
+    if (sent) await deleteDraft(ownerId, requestId);
+    localStorage.removeItem(mobileCurrentDraftKey(ownerId));
     // F3: se PV foi criado direto (online), mostra tela de sucesso com
     // share antes de voltar pra home. Offline volta direto pra home.
     // NOTA: usa `pvNumberLocal` (variável local) em vez de `createdPvNumber`
     // state — setState é async e o closure leria valor antigo (null).
-    if (sent && pvNumberLocal !== null) {
-      setStep('success' as any);
+    if (sent) {
+      setStep('success');
     } else {
       navigate('/m');
     }
@@ -926,6 +2014,19 @@ export default function MobileNewOrder() {
   };
 
   // ── Renderização por step ──
+  if (authLoading || perm.loading) {
+    return <div className="p-8 text-center text-sm text-muted-foreground">Validando acesso…</div>;
+  }
+  if (!ownerId || !perm.canCreate) {
+    return (
+      <div className="p-6 space-y-4 text-center">
+        <h1 className="text-xl font-bold">Criação não autorizada</h1>
+        <p className="text-sm text-muted-foreground">Seu perfil não possui permissão para criar pedidos de venda.</p>
+        <Button variant="outline" onClick={() => navigate('/m')}>Voltar ao início</Button>
+      </div>
+    );
+  }
+
   if (step === 'client') {
     return (
       <div className="p-4 space-y-4">
@@ -951,6 +2052,8 @@ export default function MobileNewOrder() {
                   setPriceLookup({ byRefColor: new Map(), byRef: new Map() });
                   setPriceLookupLoading(online);
                   setClientHistory(null);
+                  setCommercialDefaults(null);
+                  setCommercialContextError(null);
                   setSelectedClient(c);
                   setStep('items');
                 }}
@@ -1003,13 +2106,35 @@ export default function MobileNewOrder() {
                 toast.error('Aguarde a tabela de preços do cliente terminar de carregar.');
                 return;
               }
+              if (commercialDefaults?.block_new_orders) {
+                toast.error(clientCommercialBlockMessage(commercialDefaults));
+                return;
+              }
+              if (online && commercialContextError) {
+                toast.error('Não foi possível validar política e tabela de preços.');
+                return;
+              }
+              if (online && catalogState !== 'ready') {
+                toast.error('O catálogo de fichas publicadas ainda não foi validado.');
+                return;
+              }
               if (materialSelectionIssues.length > 0) {
                 toast.error(materialSelectionIssues[0]);
                 return;
               }
+              if (selectableStrapValidationIssues.length > 0) {
+                toast.error(selectableStrapValidationIssues[0]);
+                return;
+              }
               setStep('review');
             }}
-            disabled={priceLookupLoading || items.length === 0 || unresolvedStrapSnapshots.length > 0 || materialSelectionIssues.length > 0}
+            disabled={priceLookupLoading
+              || !!commercialDefaults?.block_new_orders
+              || (online && (!!commercialContextError || catalogState !== 'ready'))
+              || items.length === 0
+              || unresolvedStrapSnapshots.length > 0
+              || materialSelectionIssues.length > 0
+              || selectableStrapValidationIssues.length > 0}
             className="text-primary font-bold disabled:text-muted-foreground"
           >
             Revisar →
@@ -1021,6 +2146,14 @@ export default function MobileNewOrder() {
           <p className="font-bold text-sm">{selectedClient?.razao_social}</p>
           {priceLookupLoading && (
             <p className="mt-1 text-xs text-muted-foreground">Atualizando tabela de preços…</p>
+          )}
+          {commercialDefaults?.block_new_orders && (
+            <p className="mt-1 text-xs font-semibold text-destructive">
+              {clientCommercialBlockMessage(commercialDefaults)}
+            </p>
+          )}
+          {online && commercialContextError && (
+            <p className="mt-1 text-xs text-destructive">Política/tabela indisponível: {commercialContextError}</p>
           )}
         </div>
 
@@ -1042,6 +2175,37 @@ export default function MobileNewOrder() {
           <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
             <p className="font-bold text-amber-800 dark:text-amber-300">Identidade comercial incompleta</p>
             <p className="mt-1 text-xs text-muted-foreground">{materialSelectionIssues[0]}</p>
+          </div>
+        )}
+
+        {online && catalogState === 'error' && (
+          <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm">
+            <p className="font-bold text-destructive">Catálogo técnico não validado</p>
+            <p className="mt-1 text-xs text-muted-foreground">{catalogError || 'Falha ao carregar fichas publicadas.'}</p>
+          </div>
+        )}
+
+        {strapReconciliationNotice && (
+          <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+            <p className="font-bold text-amber-800 dark:text-amber-300">Ficha de tiras atualizada</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              A sequência foi reaplicada por UUID. Revise as linhas novas ou incompatíveis antes de continuar.
+            </p>
+          </div>
+        )}
+
+        {items.some((entry) => (entry.strap_colors || []).length > 0
+          || !!findMobileStrapManifestReference(
+            ownerScopedStrapManifest,
+            entry.reference_id,
+            entry.material_variant_id,
+          )?.lines.length)
+          && !ownerScopedStrapManifest && strapManifestState !== 'loading' && (
+          <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm">
+            <p className="font-bold text-destructive">Catálogo offline de tiras indisponível</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Conecte-se para baixar as cores válidas desta referência antes de revisar ou enfileirar o pedido.
+            </p>
           </div>
         )}
 
@@ -1068,6 +2232,8 @@ export default function MobileNewOrder() {
           const reference = refs.find((entry) => entry.id === it.reference_id);
           const itemMaterialVariants = variantsForReference(it.reference_id);
           const selectedMaterialVariant = itemMaterialVariants.find((entry) => entry.id === it.material_variant_id);
+          const hasSheetMaterialOption = sheetMaterialSelectable(reference);
+          const selectedSheetMaterial = !selectedMaterialVariant && hasSheetMaterialOption;
           const materialColors = colorsForMaterialVariant(reference, selectedMaterialVariant);
           return (
             <div key={idx} className="border-[1.5px] border-foreground/15 rounded-lg p-3 bg-card">
@@ -1103,7 +2269,7 @@ export default function MobileNewOrder() {
                     </p>
                   )}
                 </div>
-                <button aria-label={`Remover ${it.reference_name}`} onClick={() => setItems(items.filter((_, i) => i !== idx))} className="-mr-2 -mt-2 min-h-11 min-w-11 text-destructive">
+                <button aria-label={`Remover ${it.reference_name}`} onClick={() => setItems((current) => current.filter((entry) => entry !== it))} className="-mr-2 -mt-2 min-h-11 min-w-11 text-destructive">
                   <Trash className="h-5 w-5" />
                 </button>
               </div>
@@ -1114,13 +2280,34 @@ export default function MobileNewOrder() {
                       Material *
                     </label>
                     <Select
-                      value={it.material_variant_id || undefined}
+                      value={it.material_variant_id || (hasSheetMaterialOption ? SHEET_MATERIAL_OPTION : undefined)}
                       onValueChange={(variantId) => {
+                        if (variantId === SHEET_MATERIAL_OPTION && hasSheetMaterialOption) {
+                          setItems((current) => current.map((entry, currentIndex) => {
+                            if (currentIndex !== idx) return entry;
+                            const price = automaticPrice(entry.reference_id, null, undefined, entry.grade);
+                            const strapState = resetMobileStrapsForMaterialChange(entry);
+                            return {
+                              ...entry,
+                              material_variant_id: null,
+                              material_variant_name: null,
+                              material_variant_sku: null,
+                              color: '',
+                              image_url: undefined,
+                              unit_price: price.price,
+                              unit_price_source: price.source,
+                              strap_colors: strapState.strap_colors,
+                              strap_sourcing: strapState.strap_sourcing,
+                            };
+                          }));
+                          return;
+                        }
                         const variant = itemMaterialVariants.find((entry) => entry.id === variantId);
                         if (!variant) return;
                         setItems((current) => current.map((entry, currentIndex) => {
                           if (currentIndex !== idx) return entry;
                           const price = automaticPrice(entry.reference_id, null, variant, entry.grade);
+                          const strapState = resetMobileStrapsForMaterialChange(entry);
                           return {
                             ...entry,
                             material_variant_id: variant.id,
@@ -1130,16 +2317,21 @@ export default function MobileNewOrder() {
                             image_url: undefined,
                             unit_price: price.price,
                             unit_price_source: price.source,
-                            strap_colors: reference ? strapsForReference(reference, '') : [],
-                            strap_sourcing: {},
+                            strap_colors: strapState.strap_colors,
+                            strap_sourcing: strapState.strap_sourcing,
                           };
                         }));
                       }}
                     >
-                      <SelectTrigger className={!it.material_variant_id ? 'border-amber-500/60' : ''}>
+                      <SelectTrigger className={!it.material_variant_id && !hasSheetMaterialOption ? 'border-amber-500/60' : ''}>
                         <SelectValue placeholder="Selecione o material primeiro" />
                       </SelectTrigger>
                       <SelectContent>
+                        {hasSheetMaterialOption && (
+                          <SelectItem value={SHEET_MATERIAL_OPTION}>
+                            {effectiveMaterialGroup(reference, undefined)?.name || 'Material da ficha'} · da ficha
+                          </SelectItem>
+                        )}
                         {itemMaterialVariants.map((variant) => (
                           <SelectItem key={variant.id} value={variant.id}>
                             {variant.material_name}{variant.sku ? ` · SKU ${variant.sku}` : ''}
@@ -1154,9 +2346,9 @@ export default function MobileNewOrder() {
                     </label>
                     <Select
                       value={it.color || undefined}
-                      disabled={!selectedMaterialVariant || materialColors.length === 0}
+                      disabled={(!selectedMaterialVariant && !selectedSheetMaterial) || materialColors.length === 0}
                       onValueChange={(color) => {
-                        if (!selectedMaterialVariant || !materialColors.includes(color)) return;
+                        if ((!selectedMaterialVariant && !selectedSheetMaterial) || !materialColors.includes(color)) return;
                         const image = referenceColorVariants.find((variant) =>
                           variant.reference_id === it.reference_id
                           && variant.color.trim().toUpperCase() === color
@@ -1169,26 +2361,31 @@ export default function MobileNewOrder() {
                             selectedMaterialVariant,
                             entry.grade,
                           );
+                          const alignedStraps = alignMobileStrapsToMainColor(
+                            entry.strap_colors || [],
+                            color,
+                            entry.strap_sourcing,
+                          );
                           return {
                             ...entry,
                             color,
                             image_url: image || undefined,
                             unit_price: price.price,
                             unit_price_source: price.source,
-                            strap_colors: reference ? strapsForReference(reference, color) : [],
-                            strap_sourcing: {},
+                            strap_colors: alignedStraps.strapColors,
+                            strap_sourcing: alignedStraps.strapSourcing,
                           };
                         }));
                       }}
                     >
                       <SelectTrigger className={!it.color ? 'border-amber-500/60' : ''}>
-                        <SelectValue placeholder={selectedMaterialVariant ? 'Selecione a cor do grupo efetivo' : 'Escolha o material antes'} />
+                        <SelectValue placeholder={selectedMaterialVariant || selectedSheetMaterial ? 'Selecione a cor do grupo efetivo' : 'Escolha o material antes'} />
                       </SelectTrigger>
                       <SelectContent>
                         {materialColors.map((color) => <SelectItem key={color} value={color}>{color}</SelectItem>)}
                       </SelectContent>
                     </Select>
-                    {selectedMaterialVariant && materialColors.length === 0 && (
+                    {(selectedMaterialVariant || selectedSheetMaterial) && materialColors.length === 0 && (
                       <p className="mt-1 text-xs text-destructive">O grupo efetivo não possui produto ativo com cor.</p>
                     )}
                   </div>
@@ -1203,7 +2400,7 @@ export default function MobileNewOrder() {
                 <summary className="text-xs text-primary cursor-pointer">Editar grade</summary>
                 <GradeEditor
                   grade={it.grade}
-                  sizes={reference?.shoe_category?.name === 'Infantil' ? SIZE_RANGE_CHILD : SIZE_RANGE_ADULT}
+                  sizes={mobileReferenceSizes(reference)}
                   onChange={(grade) => setItems((current) => {
                     const withGrade = current.map((entry, currentIndex) =>
                       currentIndex === idx ? { ...entry, grade } : entry
@@ -1220,7 +2417,12 @@ export default function MobileNewOrder() {
                   <label className="text-xs text-muted-foreground">Preço/par:</label>
                   <NumberInput
                     value={it.unit_price}
-                    onChange={n => setItems(items.map((x, i) => i === idx ? { ...x, unit_price: n, unit_price_source: 'manual' } : x))}
+                    onChange={(n) => setItems((current) => updateMobileDraftItem(
+                      current,
+                      it,
+                      idx,
+                      (entry) => ({ ...entry, unit_price: n, unit_price_source: 'manual' }),
+                    ))}
                     className="w-24 px-2 py-1 text-sm border rounded font-mono"
                   />
                 </div>
@@ -1228,9 +2430,23 @@ export default function MobileNewOrder() {
               {(it.strap_colors || []).length > 0 && (
                 <MobileStrapIdentityEditor
                   item={it}
+                  itemIndex={idx}
                   billingDate={billingDate}
-                  catalog={strapCatalog}
-                  onChange={(next) => setItems(items.map((current, currentIndex) => currentIndex === idx ? next : current))}
+                  online={online}
+                  manifest={ownerScopedStrapManifest}
+                  manifestLoading={strapManifestState === 'idle' || strapManifestState === 'loading'}
+                  manifestError={strapManifestError}
+                  canCreateColor={canCreateStrapColor}
+                  onCreateColor={(context, initialColor) => setColorRegistration({
+                    context, initialColor, expectedItem: it, itemIndex: idx, ownerId,
+                  })}
+                  onValidationChange={handleStrapValidationChange}
+                  onChange={(next) => setItems((current) => updateMobileDraftItem(
+                    current,
+                    it,
+                    idx,
+                    () => next,
+                  ))}
                 />
               )}
             </div>
@@ -1238,6 +2454,15 @@ export default function MobileNewOrder() {
         })}
 
         {/* Adicionar novo item */}
+        {colorRegistration && online && colorRegistration.ownerId === ownerId && canCreateStrapColor && (
+          <SaleOrderStrapColorCreateDialog
+            open
+            onOpenChange={(open) => { if (!open) setColorRegistration(null); }}
+            context={colorRegistration.context}
+            initialColor={colorRegistration.initialColor}
+            onCreated={handleCreatedStrapColor}
+          />
+        )}
         <details className="border-[1.5px] border-dashed border-foreground/20 rounded-lg p-3" open={items.length === 0}>
           <summary className="font-bold text-sm cursor-pointer">+ Adicionar referência</summary>
           <SearchInput
@@ -1269,7 +2494,7 @@ export default function MobileNewOrder() {
                     {refMaterialVariants.length > 0 ? (
                       <button
                         onClick={() => {
-                          setItems([...items, {
+                          setItems((current) => [...current, {
                             reference_id: r.id,
                             reference_name: r.name,
                             material_variant_id: null,
@@ -1288,7 +2513,7 @@ export default function MobileNewOrder() {
                     ) : refColorVariants.length === 0 ? (
                       <button
                         onClick={() => {
-                          setItems([...items, {
+                          setItems((current) => [...current, {
                             reference_id: r.id,
                             reference_name: r.name,
                             color: '',
@@ -1306,7 +2531,7 @@ export default function MobileNewOrder() {
                       <button
                         key={v.color}
                         onClick={() => {
-                          setItems([...items, {
+                          setItems((current) => [...current, {
                             reference_id: r.id,
                             reference_name: r.name,
                             color: v.color,
@@ -1333,7 +2558,7 @@ export default function MobileNewOrder() {
   }
 
   // F3: Success screen pós-submit (com share WhatsApp)
-  if (step === ('success' as any)) {
+  if (step === 'success') {
     return (
       <div className="p-4 space-y-4 text-center">
         <div className="py-8">
@@ -1341,7 +2566,13 @@ export default function MobileNewOrder() {
             <Check className="h-8 w-8 text-emerald-600" weight="bold" />
           </div>
         </div>
-        <h2 className="text-2xl font-bold">Pedido enviado!</h2>
+        <h2 className="text-2xl font-bold">
+          {createdOrderOutcome === 'confirmed'
+            ? 'Pedido confirmado!'
+            : createdOrderOutcome === 'draft'
+              ? 'Pedido salvo como rascunho'
+              : 'Pedido salvo; confirmação pendente'}
+        </h2>
         {createdPvNumber && (
           <p className="text-sm font-mono uppercase tracking-widest text-muted-foreground">
             {createdPvNumber}
@@ -1350,6 +2581,13 @@ export default function MobileNewOrder() {
         <p className="text-sm text-muted-foreground">
           {totalPairs} pares · R$ {totalValue.toFixed(2)}
         </p>
+        {createdOrderOutcome !== 'confirmed' && (
+          <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-200">
+            {createdOrderOutcome === 'draft'
+              ? 'O PV está em Rascunho e ainda não gerou OPs nem reservas. Conclua a aprovação no desktop após corrigir as pendências.'
+              : 'O PV foi persistido, mas o app não recebeu o resultado da confirmação. Consulte o status antes de tentar novamente.'}
+          </p>
+        )}
         <div className="space-y-2 pt-4">
           {/* Verde WhatsApp — cor de marca, exceção deliberada aos tokens */}
           <button
@@ -1452,6 +2690,7 @@ export default function MobileNewOrder() {
         <ul className="divide-y divide-border border rounded-lg">
           {items.map((it, idx) => {
             const qty = Object.values(it.grade).reduce((a, b) => a + (b || 0), 0);
+            const independentStraps = mobileIndependentStrapReviewLines(it);
             return (
               <li key={idx} className="p-3 flex items-center gap-3">
                 {it.image_url && <img src={it.image_url} alt="" width="40" height="40" loading="lazy" decoding="async" className="h-10 w-10 object-cover rounded" />}
@@ -1462,6 +2701,15 @@ export default function MobileNewOrder() {
                     <p className="text-[11px] text-muted-foreground">
                       {it.material_variant_name}{it.material_variant_sku ? ` · SKU ${it.material_variant_sku}` : ''}
                     </p>
+                  )}
+                  {independentStraps.length > 0 && (
+                    <div className="mt-1 space-y-0.5 text-[11px] text-muted-foreground">
+                      {independentStraps.map((strap) => (
+                        <p key={strap.key}>
+                          <span className="font-semibold text-foreground">{strap.position}</span>: {strap.material ? `${strap.material} · ` : ''}{strap.color}
+                        </p>
+                      ))}
+                    </div>
                   )}
                 </div>
                 <span className="font-mono text-sm">R$ {(qty * it.unit_price).toFixed(2)}</span>
@@ -1519,7 +2767,7 @@ export default function MobileNewOrder() {
 
       {!online && (
         <div className="border border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400 rounded-lg p-3 text-sm">
-          ⚠ Você está offline. O pedido vai pra fila e será enviado quando a rede voltar.
+          ⚠ Você está offline. O pedido será enfileirado somente como Rascunho e revalidado quando a rede voltar.
         </div>
       )}
 
@@ -1528,7 +2776,7 @@ export default function MobileNewOrder() {
         className="w-full bg-primary text-primary-foreground rounded-lg py-4 font-bold uppercase tracking-wide active:opacity-80 flex items-center justify-center gap-2"
       >
         <Check className="h-5 w-5" weight="bold" />
-        {online ? 'Enviar pedido' : 'Salvar offline'}
+        {online ? 'Enviar pedido' : 'Salvar rascunho offline'}
       </button>
     </div>
   );

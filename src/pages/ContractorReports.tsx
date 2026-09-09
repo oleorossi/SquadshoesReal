@@ -419,6 +419,7 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
         quoted_deadline: o.quoted_deadline,
         quantity: o.quantity,
         target_sector: o.sector,
+        material_requirements: o.material_requirements,
         materials_sent: Array.isArray(o.materials_sent) ? o.materials_sent : [],
       },
       {
@@ -1011,11 +1012,6 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-1.5">
                       <p className="font-mono text-sm font-bold">{o.receipt_number || o.order_number || '—'}</p>
-                      {o.is_artisanal && (
-                        <Badge variant="outline" className="border-purple-500/30 bg-purple-500/10 text-xs text-purple-700 dark:text-purple-300">
-                          Artesanal
-                        </Badge>
-                      )}
                     </div>
                     <p className="mt-0.5 truncate text-sm font-medium">{o.contractor_name}</p>
                   </div>
@@ -1088,11 +1084,6 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
                   <TableRow key={o.id} className="hover:bg-muted/30">
                     <TableCell className="font-mono text-xs whitespace-nowrap">
                       {o.receipt_number || o.order_number || '—'}
-                      {o.is_artisanal && (
-                        <Badge variant="outline" className="ml-1.5 h-4 text-[10px] uppercase tracking-wide bg-purple-500/10 border-purple-500/30 text-purple-700 dark:text-purple-300">
-                          Artesanal
-                        </Badge>
-                      )}
                       {o.signed_photo_url && (
                         <a
                           href={o.signed_photo_url}

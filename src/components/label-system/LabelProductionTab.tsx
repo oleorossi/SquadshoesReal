@@ -13,7 +13,7 @@
  * - Print modes: per-OP (one at a time) or batch (all selected / by week)
  */
 /* eslint-disable @typescript-eslint/no-explicit-any -- joins JSONB/Supabase heterogêneos deste módulo legado */
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback, type SetStateAction } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { Tag, MagnifyingGlass as Search, Barcode, Gear as Settings2, Package as BoxIcon, Package, ArrowCounterClockwise as RotateCcw, Factory, Scan as ScanLine, CalendarBlank as CalendarDays, Buildings as Building2, CircleNotch as Loader2, Stack as Layers, CheckCircle as CheckCircle2, PencilSimple as Pencil, CaretLeft, CaretRight, Plus, X } from '@phosphor-icons/react';
@@ -38,22 +38,37 @@ import { resolveMaterialLabels, materialLabelKey, materialNameFromCommercialSnap
 import { buildBoxIdentificationHtml, buildThermalLabelsHtml, buildHangtagHtml, buildThermalLabelsZpl, zplPhotoBoxDots, type BoxIdentificationData, type ThermalLabelConfig, DEFAULT_THERMAL_CONFIG, THERMAL_LABEL_WIDTH_MM, THERMAL_LABEL_HEIGHT_MM, THERMAL_SAFE_EDGE_MM } from '@/lib/printLabels';
 import { loadImageAsMonochrome, type MonoBitmap } from '@/lib/zplImage';
 import ZplPreviewDialog, { type ZplPreviewLabel } from './ZplPreviewDialog';
+import { PartialPrintSelectionDialog } from './PartialPrintSelectionDialog';
 import { openPrintTab, printHtmlAsPdf } from '@/lib/printPdf';
-import { confirmPrintJob, createPrintJob, PRINT_JOB_STATUS_LABELS, setPrintJobStatus } from '@/lib/printJobs';
-import { buildTemplateLabelsHtml } from '@/lib/templateLabels';
+import {
+  confirmPrintJob,
+  createPrintJob,
+  PRINT_JOB_STATUS_LABELS,
+  setPrintJobStatus,
+  shouldPrintJobMarkOrdersAsPrinted,
+} from '@/lib/printJobs';
 import { buildHangtagBarcode } from '@/lib/labelIdentifiers';
 import { resolveLabelBoxCapacity, type SolePackagingCapacity } from '@/lib/labelBoxCapacity';
 import { DEFAULT_MANUFACTURER_NAME, DEFAULT_MANUFACTURER_CNPJ } from '@/lib/companySender';
 import { cn } from '@/lib/utils';
 import { isCancelledOrDraftOrder } from '@/lib/orderStatus';
+import { labelStrapSequence } from '@/lib/labelStrapSequence';
 import { packSaleOrderItem, packSaleOrderItemBySize } from '@/lib/boxPacking';
 import { toast } from 'sonner';
-import { useLabelTemplates, SQUAD_THERMAL_DEFAULT_ID, SQUAD_BOX_DEFAULT_ID } from '@/hooks/useLabelTemplates';
 import { useCompanies } from '@/hooks/useNfe';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { SearchInput } from '@/components/ui/search-input';
 import { EmptyState } from '@/components/ui/empty-state';
 import { findLabelGroupForScan } from '@/lib/labelOperations';
+import {
+  filterLabelSizeSequence,
+  getEffectiveLabelPrintGrade,
+  getLabelPrintGroupTotal,
+  getPrintJobOrderIds,
+  summarizePartialLabelPrintSelection,
+  type LabelPrintCoverage,
+  type PartialLabelPrintSelection,
+} from '@/lib/labelPartialPrint';
 
 
 const LABEL_SIZES = [
@@ -66,6 +81,7 @@ const LABEL_SIZES = [
 ] as const;
 
 const LABEL_QUERY_PAGE_SIZE = 1000;
+type LabelStatusTab = 'producao' | 'imprimidos' | 'finalizados';
 
 async function fetchAllLabelPages<T>(
   load: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
@@ -350,6 +366,43 @@ export function summarizeSelectionLabelTypes(selectedGroups: { packagingMode: st
 }
 
 /**
+ * Seleção inicial do deep-link vindo do detalhe do PV.
+ *
+ * A URL já restringe a Central aos pedidos escolhidos. Exigir que o operador
+ * marque de novo os mesmos cards escondia todas as ações de impressão logo após
+ * ele clicar em "Etiqueta Individual". A seleção acontece uma vez por escopo
+ * de `sale_order`: limpar manualmente continua respeitado e não dispara de novo.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function getDeepLinkSelectionKeys(
+  saleOrderFilter: string,
+  groups: { groupKey: string }[],
+  initializedSaleOrderFilter: string,
+): string[] | null {
+  if (!saleOrderFilter || initializedSaleOrderFilter === saleOrderFilter || groups.length === 0) {
+    return null;
+  }
+  return groups.map(group => group.groupKey);
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function getSaleOrderFilters(searchParams: Pick<URLSearchParams, 'getAll'>): string[] {
+  return [...new Set(searchParams.getAll('sale_order').filter(Boolean))];
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function getDeepLinkStatusTab(
+  activeCount: number,
+  printedCount: number,
+  finishedCount: number,
+): LabelStatusTab | null {
+  if (activeCount > 0) return 'producao';
+  if (printedCount > 0) return 'imprimidos';
+  if (finishedCount > 0) return 'finalizados';
+  return null;
+}
+
+/**
  * Métricas da ficha de um item do PV. Pura — não depende do componente.
  *
  * A grade da FICHA é `sale_order_items.grade` (Σ = pares por ficha), NUNCA
@@ -586,7 +639,7 @@ function PrintHistoryTable() {
 
 export function LabelProductionTab() {
   const queryClient = useQueryClient();
-  const { data: allOrders = [] } = useQuery({
+  const { data: allOrders = [], isPending: ordersPending } = useQuery({
     queryKey: ['orders_for_labels_all'],
     queryFn: () => fetchAllLabelPages((from, to) => supabase
       .from('orders')
@@ -597,7 +650,7 @@ export function LabelProductionTab() {
     staleTime: 0,
     refetchOnMount: 'always',
   });
-  const { data: saleOrders = [] } = useQuery({
+  const { data: saleOrders = [], isPending: saleOrdersPending } = useQuery({
     queryKey: ['sale_orders_for_labels_v2'],
     queryFn: async () => {
       // Endereço/cidade/UF/transportadora vêm via JOIN — usados pra preencher
@@ -756,20 +809,7 @@ export function LabelProductionTab() {
       for (const item of data || []) {
         const straps = item.strap_colors as any[];
         if (Array.isArray(straps) && straps.length > 0) {
-          // Ordena por id numérico antes de montar a label, garantindo
-          // sequência TIRA 1 → TIRA 2 → TIRA 3 mesmo se o usuário tiver
-          // reordenado/deletado tiras na ficha técnica (id pode ficar
-          // fora de ordem natural no array).
-          const ordered = [...straps].sort((a: any, b: any) => {
-            const ka = parseInt(a?.id, 10);
-            const kb = parseInt(b?.id, 10);
-            if (isFinite(ka) && isFinite(kb)) return ka - kb;
-            return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
-          });
-          const sig = ordered
-            .filter((s: any) => s.label && s.color)
-            .map((s: any) => `${s.label}:${s.color}`)
-            .join('|');
+          const sig = labelStrapSequence(straps, item.color);
           if (sig) {
             map.set(item.id, sig);
             if (item.sale_order_id && item.reference_id) {
@@ -871,6 +911,10 @@ export function LabelProductionTab() {
   // ⚠ Bug corrigido: o handler de sale_orders invalidava 'sale_orders_for_labels'
   //   mas a query é 'sale_orders_for_labels_v2' (com _v2) → edição de PV nunca
   //   refletia. Faltava ainda escutar sale_order_items (cor/grade/qtd/tiras do PV).
+  // ⚠ PERF: sem debounce, UPDATE em loop (status de OP, grade do item) dispara
+  // N refetches em rajada. Coalesce 400ms — mesmo padrão de InputCostsPage /
+  // useRealtimeOrderStages.
+  const labelRealtimeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     const labelKeys = [
       ['orders_for_labels_all'],
@@ -882,29 +926,50 @@ export function LabelProductionTab() {
     ];
     // (1) fresh ao entrar na tela
     for (const k of labelKeys) queryClient.invalidateQueries({ queryKey: k });
+
+    let pending = new Set<string>();
+    const scheduleInvalidate = (keys: string[][]) => {
+      for (const k of keys) pending.add(k[0]);
+      if (labelRealtimeTimerRef.current) clearTimeout(labelRealtimeTimerRef.current);
+      labelRealtimeTimerRef.current = setTimeout(() => {
+        const roots = pending;
+        pending = new Set();
+        for (const root of roots) {
+          queryClient.invalidateQueries({ queryKey: [root] });
+        }
+      }, 400);
+    };
+
     // (2) realtime enquanto aberta
     const channel = supabase
       .channel('labels-tab-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
-        queryClient.invalidateQueries({ queryKey: ['orders_for_labels_all'] });
         // OP entra/sai da production_queue junto com INSERT/UPDATE de status em
         // orders (o motor enfileira OP nova e remove finalizada) — invalida o
         // gate pra fila refletir sem esperar remount.
-        queryClient.invalidateQueries({ queryKey: ['sale_orders_scheduled_for_labels'] });
+        scheduleInvalidate([
+          ['orders_for_labels_all'],
+          ['sale_orders_scheduled_for_labels'],
+        ]);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sale_orders' }, () => {
-        queryClient.invalidateQueries({ queryKey: ['sale_orders_for_labels_v2'] });
+        scheduleInvalidate([['sale_orders_for_labels_v2']]);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sale_order_items' }, () => {
-        queryClient.invalidateQueries({ queryKey: ['sale_orders_for_labels_v2'] });
-        queryClient.invalidateQueries({ queryKey: ['sale_order_items_strap_lookup'] });
-        queryClient.invalidateQueries({ queryKey: ['sale_order_items_color_lookup'] });
-        queryClient.invalidateQueries({ queryKey: ['orders_for_labels_all'] });
+        scheduleInvalidate([
+          ['sale_orders_for_labels_v2'],
+          ['sale_order_items_strap_lookup'],
+          ['sale_order_items_color_lookup'],
+          ['orders_for_labels_all'],
+        ]);
       })
       .subscribe((status, err) => {
         if (status === 'CHANNEL_ERROR') { /* realtime error — subscription will retry */ }
       });
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      if (labelRealtimeTimerRef.current) clearTimeout(labelRealtimeTimerRef.current);
+      supabase.removeChannel(channel);
+    };
   }, [queryClient]);
 
   const saleOrdersMap = useMemo(() => {
@@ -915,18 +980,21 @@ export function LabelProductionTab() {
 
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const initializedDeepLinkSelection = useRef('');
   const [labelSize, setLabelSize] = useState(`${THERMAL_LABEL_WIDTH_MM}x${THERMAL_LABEL_HEIGHT_MM}`);
   const [activeTab, setActiveTab] = useState('individual');
-  const [statusTab, setStatusTab] = useState<'producao' | 'imprimidos' | 'finalizados'>('producao');
+  const [statusTab, setStatusTab] = useState<LabelStatusTab>('producao');
 
   // Track which order IDs have been printed
-  const { data: printedOrderIds = new Set<string>() } = useQuery({
+  const { data: printedOrderIds = new Set<string>(), isPending: printedOrdersPending } = useQuery({
     queryKey: ['printed_order_ids'],
     queryFn: async () => {
       const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
       const data = await fetchAllLabelPages<any>((from, to) => supabase
         .from('print_jobs')
-        .select('order_ids')
+        // O cast evita o parser profundo dos tipos gerados até a próxima
+        // regeneração; em runtime buscamos somente as duas colunas necessárias.
+        .select('order_ids, marks_orders_as_printed' as '*')
         .eq('status', 'confirmed')
         .not('order_ids', 'is', null)
         .gte('created_at', thirtyDaysAgo)
@@ -935,6 +1003,9 @@ export function LabelProductionTab() {
         .range(from, to));
       const ids = new Set<string>();
       for (const row of data || []) {
+        if (!shouldPrintJobMarkOrdersAsPrinted(
+          (row as { marks_orders_as_printed?: boolean | null }).marks_orders_as_printed,
+        )) continue;
         const arr = row.order_ids as any;
         if (Array.isArray(arr)) arr.forEach((id: string) => ids.add(id));
       }
@@ -967,15 +1038,18 @@ export function LabelProductionTab() {
   const [scannerCode, setScannerCode] = useState('');
   const [thermalMode, setThermalMode] = useState<'quantity' | 'ficha'>('quantity');
   const [printMode, setPrintMode] = useState<'batch' | 'per_op'>('batch');
-  const [selectedThermalTemplateId, setSelectedThermalTemplateId] = useState(SQUAD_THERMAL_DEFAULT_ID);
-  const [selectedBoxTemplateId, setSelectedBoxTemplateId] = useState(SQUAD_BOX_DEFAULT_ID);
+  const [printCoverage, setPrintCoverage] = useState<LabelPrintCoverage>('total');
+  const [partialPrintSelection, setPartialPrintSelection] = useState<PartialLabelPrintSelection>({});
+  const [partialPrintDialogOpen, setPartialPrintDialogOpen] = useState(false);
 
-  const { templates: allLabelTemplates } = useLabelTemplates();
-  const thermalTemplates = useMemo(() => allLabelTemplates.filter(t => (t.category === 'thermal' || t.category === 'individual_box') && t.is_active), [allLabelTemplates]);
-  // O rótulo externo tem campos fiscais/expedição que não cabem no designer
-  // genérico. Até existir um schema específico, só o layout oficial é elegível.
-  const boxTemplates = useMemo(() => allLabelTemplates.filter(t => t.id === SQUAD_BOX_DEFAULT_ID && t.is_active), [allLabelTemplates]);
-  const usesCustomThermalTemplate = selectedThermalTemplateId !== SQUAD_THERMAL_DEFAULT_ID;
+  // Uma reimpressão parcial pertence exatamente à seleção que a originou.
+  // Trocou referência/OP: volta ao total para não reaproveitar cotas antigas.
+  const updateSelected = useCallback((next: SetStateAction<Set<string>>) => {
+    setPrintCoverage('total');
+    setPartialPrintSelection({});
+    setPartialPrintDialogOpen(false);
+    setSelected(next);
+  }, []);
 
   // Strap label overrides — allows user to edit strap text per group for labels
   const [strapsLabelOverrides, setStrapsLabelOverrides] = useState<Record<string, string>>({});
@@ -1062,22 +1136,25 @@ export function LabelProductionTab() {
     !!o.sale_order_id && scheduledSaleOrderIds.has(o.sale_order_id),
   );
 
-  // Deep-link via querystring: /label-system?sale_order=<PV_ID> filtra a aba
-  // pra mostrar SÓ as OPs daquele pedido. Acionado pelo botão "Etiquetas"
-  // no detalhe do PV em /sales (19/05/2026, pedido user). Quando setado,
-  // o gating de wave é IGNORADO — operador quer ver as etiquetas do pedido
-  // mesmo que ainda não esteja em onda.
+  // Deep-link via querystring: um ou mais `sale_order=<PV_ID>` filtram a aba
+  // pra mostrar SÓ as OPs dos pedidos escolhidos. Acionado pelos atalhos de
+  // Etiqueta Individual em /sales. Quando setado, o gating de wave é IGNORADO
+  // — operador quer ver as etiquetas do pedido mesmo que ainda não esteja em
+  // onda. Parâmetro repetido mantém compatibilidade com o link singular antigo.
   const [searchParams, setSearchParams] = useSearchParams();
-  const saleOrderFilter = searchParams.get('sale_order') || '';
-  const filteredSaleOrder = saleOrderFilter
-    ? saleOrders.find((so: any) => so.id === saleOrderFilter)
-    : null;
-  if (saleOrderFilter) {
-    productionOrders = ordersWithResolvedColor.filter((o: any) => o.sale_order_id === saleOrderFilter);
+  const saleOrderFilters = getSaleOrderFilters(searchParams);
+  const saleOrderFilterKey = saleOrderFilters.join(',');
+  const filteredSaleOrders = saleOrderFilters.length > 0
+    ? saleOrders.filter((so: any) => saleOrderFilters.includes(so.id))
+    : [];
+  if (saleOrderFilters.length > 0) {
+    const filteredIds = new Set(saleOrderFilters);
+    productionOrders = ordersWithResolvedColor.filter((o: any) => filteredIds.has(o.sale_order_id));
   }
   const clearSaleOrderFilter = () => {
     const next = new URLSearchParams(searchParams);
     next.delete('sale_order');
+    updateSelected(new Set());
     setSearchParams(next, { replace: true });
   };
   const finishedSaleOrderIds = useMemo(
@@ -1102,6 +1179,21 @@ export function LabelProductionTab() {
     !isCancelledOrDraftOrder(o.status)
     && (o.status === 'Finalizado' || finishedSaleOrderIds.has(o.sale_order_id))
   );
+  const labelScopeReady = !ordersPending && !saleOrdersPending && !printedOrdersPending;
+
+  // O deep-link pode apontar também para um PV já impresso ou finalizado. Abre
+  // a aba que realmente contém trabalho; do contrário a seleção automática
+  // receberia uma lista vazia e o botão continuaria parecendo ausente.
+  useEffect(() => {
+    if (!saleOrderFilterKey || !labelScopeReady) return;
+    const targetTab = getDeepLinkStatusTab(
+      activeOrders.length,
+      printedActiveOrders.length,
+      finishedOrders.length,
+    );
+    if (targetTab) setStatusTab(current => current === targetTab ? current : targetTab);
+  }, [activeOrders.length, finishedOrders.length, labelScopeReady, printedActiveOrders.length, saleOrderFilterKey]);
+
   const currentOrders = statusTab === 'producao' ? activeOrders : statusTab === 'imprimidos' ? printedActiveOrders : finishedOrders;
 
   // Available billing_weeks for the dropdown — collected from current orders'
@@ -1143,19 +1235,54 @@ export function LabelProductionTab() {
     });
   }, [currentOrders, periodFilter, billingWeekFilter, saleOrdersMap]);
 
-  const groupedRefs = groupOrdersByReference(periodFilteredOrders, saleOrdersMap, strapLookup, printMode === 'per_op');
-  const filtered = groupedRefs.filter((g) =>
+  const groupedRefs = useMemo(
+    () => groupOrdersByReference(periodFilteredOrders, saleOrdersMap, strapLookup, printMode === 'per_op'),
+    [periodFilteredOrders, printMode, saleOrdersMap, strapLookup],
+  );
+  const filtered = useMemo(() => groupedRefs.filter((g) =>
     // espaço ou "/" = refinamento AND (ex.: "stx alcineu")
     searchMatchesAllTerms(
       search,
       g.refName, g.refCode, g.clientName, g.economicGroupName, g.saleOrderNumber,
       g.clientOrderNumber, g.colors.join(' '), g.orderNumbers.join(' '), g.strapsLabel,
     )
-  );
+  ), [groupedRefs, search]);
 
-  const visibleSelectedGroups = filtered.filter(group => selected.has(group.groupKey));
-  const selectedPairs = visibleSelectedGroups.reduce((sum, group) => sum + group.totalQty, 0);
-  const selectedOrders = new Set(visibleSelectedGroups.flatMap(group => group.orders.map((order: any) => order.id))).size;
+  // O atalho do detalhe do PV já define exatamente o escopo na URL. Seleciona
+  // os cards desse pedido assim que os dados chegam para que as ações de
+  // impressão — inclusive Etiqueta Individual — apareçam sem uma segunda
+  // seleção redundante. O ref impede que "Limpar" seja desfeito no render
+  // seguinte e é zerado ao sair do deep-link.
+  useEffect(() => {
+    if (!saleOrderFilterKey) {
+      initializedDeepLinkSelection.current = '';
+      return;
+    }
+    if (!labelScopeReady) return;
+    const keys = getDeepLinkSelectionKeys(
+      saleOrderFilterKey,
+      filtered,
+      initializedDeepLinkSelection.current,
+    );
+    if (!keys) return;
+    initializedDeepLinkSelection.current = saleOrderFilterKey;
+    updateSelected(new Set(keys));
+  }, [filtered, labelScopeReady, saleOrderFilterKey, updateSelected]);
+
+  // Busca filtra somente a lista visível. Uma referência já marcada continua
+  // na geração mesmo quando fica escondida pela busca — mesma regra da tela de
+  // Etiquetagem Cliente, onde seleção e filtro visual são estados separados.
+  const selectedGroups = useMemo(
+    () => groupedRefs.filter(group => selected.has(group.groupKey)),
+    [groupedRefs, selected],
+  );
+  const visibleSelectedGroups = useMemo(
+    () => filtered.filter(group => selected.has(group.groupKey)),
+    [filtered, selected],
+  );
+  const hiddenSelectedGroups = Math.max(0, selectedGroups.length - visibleSelectedGroups.length);
+  const selectedPairs = selectedGroups.reduce((sum, group) => sum + group.totalQty, 0);
+  const selectedOrders = new Set(selectedGroups.flatMap(group => group.orders.map((order: any) => order.id))).size;
 
   const handleScannerSubmit = () => {
     const code = scannerCode.trim();
@@ -1167,7 +1294,7 @@ export function LabelProductionTab() {
       return;
     }
 
-    setSelected(previous => {
+    updateSelected(previous => {
       const next = printMode === 'per_op' ? new Set<string>() : new Set(previous);
       next.add(group.groupKey);
       return next;
@@ -1189,9 +1316,28 @@ export function LabelProductionTab() {
 
   // Que tipos de etiqueta a seleção habilita (união + contagem elegível).
   const selectionLabelTypes = useMemo(
-    () => summarizeSelectionLabelTypes(filtered.filter(g => selected.has(g.groupKey))),
-    [filtered, selected],
+    () => summarizeSelectionLabelTypes(selectedGroups),
+    [selectedGroups],
   );
+  const partialPrintSummary = useMemo(
+    () => summarizePartialLabelPrintSelection(selectedGroups, partialPrintSelection),
+    [partialPrintSelection, selectedGroups],
+  );
+  const pairPrintGroups = useMemo(
+    () => printCoverage === 'total'
+      ? selectedGroups
+      : selectedGroups.filter(group => getLabelPrintGroupTotal(group, printCoverage, partialPrintSelection) > 0),
+    [partialPrintSelection, printCoverage, selectedGroups],
+  );
+  const pairSelectionLabelTypes = useMemo(
+    () => summarizeSelectionLabelTypes(pairPrintGroups),
+    [pairPrintGroups],
+  );
+  const pairPrintTotalLabels = pairPrintGroups.reduce((sum, group) =>
+    sum + getLabelPrintGroupTotal(group, printCoverage, partialPrintSelection), 0);
+  const thermalPrintTotalLabels = pairPrintGroups
+    .filter(group => getAllowedLabelTypes(group.packagingMode).thermal)
+    .reduce((sum, group) => sum + getLabelPrintGroupTotal(group, printCoverage, partialPrintSelection), 0);
 
 
   // ── MATERIAL das etiquetas — cascata única (labelUtils.resolveMaterialLabels):
@@ -1241,6 +1387,22 @@ export function LabelProductionTab() {
     color,
   })) || '';
 
+  const printGradeFor = (group: GroupedReference) =>
+    getEffectiveLabelPrintGrade(group, printCoverage, partialPrintSelection);
+
+  const printJobName = (labelType: string) =>
+    `${printCoverage === 'partial' ? 'Reimpressão Parcial - ' : ''}${labelType} - ${new Date().toLocaleString('pt-BR')}`;
+
+  const openPartialPrintSelection = () => {
+    setPartialPrintDialogOpen(true);
+  };
+
+  const selectTotalPrintCoverage = () => {
+    setPrintCoverage('total');
+    setPartialPrintSelection({});
+    setPartialPrintDialogOpen(false);
+  };
+
   /** Teto do job inteiro. Acima dele bloqueamos antes de montar o HTML: nunca
    * truncar silenciosamente nem registrar uma OP como parcialmente impressa. */
   const MAX_LABELS_PER_JOB = 5000;
@@ -1255,18 +1417,24 @@ export function LabelProductionTab() {
   };
 
   const handlePrintHangtags = async () => {
-    const selectedGroups = filtered.filter(g => selected.has(g.groupKey));
-    if (selectedGroups.length === 0) return;
-    const requested = selectedGroups.reduce((sum, group) =>
-      sum + Object.values(group.aggregatedGrade).reduce((a, qty) => a + (Number(qty) || 0), 0), 0);
+    const groupsToPrint = pairPrintGroups;
+    if (groupsToPrint.length === 0) {
+      toast.error(printCoverage === 'partial'
+        ? 'Selecione ao menos uma numeração para a reimpressão parcial.'
+        : 'Selecione ao menos um item para gerar os hangtags.');
+      return;
+    }
+    const requested = groupsToPrint.reduce((sum, group) =>
+      sum + getLabelPrintGroupTotal(group, printCoverage, partialPrintSelection), 0);
     if (!validateJobSize(requested)) return;
     printTabRef.current = openPrintTab();
     setIsGenerating(true);
     try {
       const { data: careData } = await supabase.from('care_instructions').select('*');
-      const materialMap = await buildMaterialMap(selectedGroups);
+      const materialMap = await buildMaterialMap(groupsToPrint);
       const labels: any[] = [];
       let currentSerial = serializationStart;
+      const shouldSerialize = printCoverage === 'total' && useSerialization;
       const logoUrl = new URL(logoImg, window.location.origin).href;
       const normalizeCareName = (value: string) => value
         .normalize('NFD')
@@ -1275,7 +1443,7 @@ export function LabelProductionTab() {
         .trim()
         .toLowerCase();
       const unmatchedMaterials = new Set<string>();
-      for (const group of selectedGroups) {
+      for (const group of groupsToPrint) {
         const mainMaterial = materialFromMap(materialMap, group.referenceId, groupVariantId(group), groupVariantSnapshot(group), group.colors[0] || '');
         const materialParts = [mainMaterial, ...mainMaterial.split(/[,|;]/)]
           .map(normalizeCareName)
@@ -1284,20 +1452,20 @@ export function LabelProductionTab() {
         if (mainMaterial && !care) unmatchedMaterials.add(mainMaterial);
         const effRefCode = getEffectiveRefCode(group);
         const effRefName = getEffectiveRefName(group);
-        for (const [size, qty] of Object.entries(group.aggregatedGrade)) {
+        for (const [size, qty] of Object.entries(printGradeFor(group))) {
           const quantity = Number(qty) || 0;
           for (let i = 0; i < quantity; i++) {
             labels.push({
               refCode: effRefCode, refName: effRefName,
               color: getEffectiveColor(group, group.colors[0] || ''), size,
-              barcode: buildHangtagBarcode(effRefCode, size, useSerialization, currentSerial, group.groupKey),
+              barcode: buildHangtagBarcode(effRefCode, size, shouldSerialize, currentSerial, group.groupKey),
               qrcode: effRefCode ? `https://squadshoes.com.br/product/${effRefCode}` : '',
               composition: mainMaterial,
               careSymbols: Array.isArray(care?.symbols) ? care.symbols as string[] : [],
               careText: care?.instruction_text_pt || undefined,
               logoUrl, brandName: 'SQUAD SHOES',
             });
-            if (useSerialization) currentSerial++;
+            if (shouldSerialize) currentSerial++;
           }
         }
       }
@@ -1308,12 +1476,13 @@ export function LabelProductionTab() {
           { duration: 12_000 },
         );
       }
-      const orderIds = selectedGroups.flatMap(g => g.orders.map((o: any) => o.id));
+      const orderIds = getPrintJobOrderIds(groupsToPrint);
       const html = buildHangtagHtml(labels);
       const jobId = await createPrintJob({
-        batchName: `Hangtags - ${new Date().toLocaleString('pt-BR')}`,
+        batchName: printJobName('Hangtags'),
         totalLabels: labels.length,
         orderIds,
+        marksOrdersAsPrinted: printCoverage === 'total',
       });
       setPrintRequest({ html, jobId });
       queryClient.invalidateQueries({ queryKey: ['print_history'] });
@@ -1334,16 +1503,19 @@ export function LabelProductionTab() {
    * — e a prévia perderia o sentido.
    */
   const handlePrintIndividual = async (output: 'html' | 'zpl' = 'html') => {
-    const selectedGroups = filtered.filter(g => selected.has(g.groupKey));
+    const selectedGroups = pairPrintGroups;
+    const effectiveThermalMode = printCoverage === 'partial' ? 'quantity' : thermalMode;
     // Filter out groups that don't allow thermal labels
     const thermalGroups = selectedGroups.filter(g => getAllowedLabelTypes(g.packagingMode).thermal);
     if (thermalGroups.length === 0) {
-      toast.error('Nenhum pedido selecionado permite etiquetas individuais (verifique o tipo de embalagem).');
+      toast.error(printCoverage === 'partial'
+        ? 'A seleção parcial não possui numerações de pedidos que aceitem etiqueta individual.'
+        : 'Nenhum pedido selecionado permite etiquetas individuais (verifique o tipo de embalagem).');
       return;
     }
-    if (thermalMode === 'quantity') {
+    if (effectiveThermalMode === 'quantity') {
       const requested = thermalGroups.reduce((sum, group) =>
-        sum + Object.values(group.aggregatedGrade).reduce((a, qty) => a + (Number(qty) || 0), 0), 0);
+        sum + getLabelPrintGroupTotal(group, printCoverage, partialPrintSelection), 0);
       if (!validateJobSize(requested)) return;
     }
     // ZPL não abre aba de impressão: o resultado é um arquivo, revisado na prévia.
@@ -1368,7 +1540,7 @@ export function LabelProductionTab() {
         const colorName = group.colors[0] || '';
         const key = `${group.referenceId}|${colorName}`;
         if (!imageKeys.has(key)) { imageKeys.add(key); imageRequests.push({ key, referenceId: group.referenceId, colorName }); }
-        if (thermalMode === 'ficha') {
+        if (effectiveThermalMode === 'ficha') {
           for (const order of group.orders) {
             const orderColor = order.color || colorName;
             const orderKey = `${group.referenceId}|${orderColor}`;
@@ -1399,11 +1571,22 @@ export function LabelProductionTab() {
         const productImageFallback = imageFallbackMap.get(`${group.referenceId}|${colorName}`) ?? false;
         const effRefCode = getEffectiveRefCode(group);
         const effRefName = getEffectiveRefName(group);
-        if (thermalMode === 'quantity') {
+        if (effectiveThermalMode === 'quantity') {
           // Ordem = grade da ficha; ver buildQuantitySizeSequence.
           const sequence = buildQuantitySizeSequence(group.orders);
           sequence.fallbackOrders.forEach(n => fichaFallbackOrders.add(n));
-          for (const size of sequence.sizes) {
+          const requestedGrade = printGradeFor(group);
+          const sizesToPrint = printCoverage === 'partial'
+            ? filterLabelSizeSequence(sequence.sizes, requestedGrade)
+            : sequence.sizes;
+          const requestedForGroup = Object.values(requestedGrade).reduce((total, quantity) => total + quantity, 0);
+          if (printCoverage === 'partial' && sizesToPrint.length !== requestedForGroup) {
+            throw new Error(
+              `A grade atual de ${group.refCode || group.refName} não contém todas as etiquetas escolhidas. ` +
+              'Feche a seleção parcial, confira as quantidades e tente novamente.',
+            );
+          }
+          for (const size of sizesToPrint) {
             labels.push({ refCode: effRefCode, refName: effRefName, mainMaterial, color: getEffectiveColor(group, colorName), size, barcode: `${effRefCode || group.orders?.[0]?.order_number || group.groupKey}-${size}`, imageUrl: productImageUrl, imageIsFallback: productImageFallback, shoeCategory: refData?.shoe_category || '', strapsLabel: getEffectiveStrapsLabel(group) });
           }
         } else {
@@ -1425,9 +1608,8 @@ export function LabelProductionTab() {
         printTabRef.current = null;
         return;
       }
-      const orderIds = thermalGroups.flatMap(g => g.orders.map((o: any) => o.id));
-      const selectedTemplate = thermalTemplates.find(t => t.id === selectedThermalTemplateId);
-      const dimensions = selectedTemplate?.dimensions || { width: currentSize.width, height: currentSize.height };
+      const orderIds = getPrintJobOrderIds(thermalGroups);
+      const dimensions = { width: currentSize.width, height: currentSize.height };
       if (output === 'zpl') {
         // Uma foto por URL DISTINTA. Em 203 dpi a moldura de 20×22 mm dá
         // 160×176 dots; repetir esse bitmap em cada etiqueta poria 7,6 MB num
@@ -1460,13 +1642,13 @@ export function LabelProductionTab() {
           .map(l => `${l.refName || l.refCode} · ${l.color}`))];
 
         const zpl = buildThermalLabelsZpl(zplLabels, { width: dimensions.width, height: dimensions.height }, graphics);
-        const jobIdZpl = await createPrintJob({
-          batchName: `Etiqueta Individual ZPL - ${new Date().toLocaleString('pt-BR')}`,
+        await createPrintJob({
+          batchName: printJobName('Etiqueta Individual ZPL'),
           totalLabels: zplLabels.length,
           orderIds,
-          templateId: selectedThermalTemplateId,
+          marksOrdersAsPrinted: printCoverage === 'total',
+          initialStatus: 'generated',
         });
-        void jobIdZpl;
         queryClient.invalidateQueries({ queryKey: ['print_history'] });
         setZplPreview({
           labels: zplLabels, graphics,
@@ -1476,7 +1658,7 @@ export function LabelProductionTab() {
           missingPhotos,
         });
         toast.success(`${zplLabels.length} etiquetas em ZPL — confira a prévia antes de baixar.`);
-        if (thermalMode === 'quantity' && fichaFallbackOrders.size > 0) {
+        if (effectiveThermalMode === 'quantity' && fichaFallbackOrders.size > 0) {
           toast.warning(
             `Sem grade de ficha em ${[...fichaFallbackOrders].join(', ')} — nessas OPs as etiquetas saíram ` +
             'na ordem por numeração, não por grade. Preencha grade e fichas no item do PV.',
@@ -1486,14 +1668,12 @@ export function LabelProductionTab() {
         return;
       }
 
-      const html = selectedTemplate && selectedTemplate.id !== SQUAD_THERMAL_DEFAULT_ID
-        ? buildTemplateLabelsHtml(selectedTemplate, labels)
-        : buildThermalLabelsHtml(labels, logoUrl, { width: dimensions.width, height: dimensions.height }, labelConfig, resolveSender().senderCnpj);
+      const html = buildThermalLabelsHtml(labels, logoUrl, { width: dimensions.width, height: dimensions.height }, labelConfig, resolveSender().senderCnpj);
       const jobId = await createPrintJob({
-        batchName: `Etiqueta Individual - ${new Date().toLocaleString('pt-BR')}`,
+        batchName: printJobName('Etiqueta Individual'),
         totalLabels: labels.length,
         orderIds,
-        templateId: selectedThermalTemplateId,
+        marksOrdersAsPrinted: printCoverage === 'total',
       });
       queryClient.invalidateQueries({ queryKey: ['print_history'] });
       setPrintRequest({
@@ -1501,7 +1681,7 @@ export function LabelProductionTab() {
         jobId,
       });
       toast.success(`${labels.length} etiquetas individuais geradas.`);
-      if (thermalMode === 'quantity' && fichaFallbackOrders.size > 0) {
+      if (effectiveThermalMode === 'quantity' && fichaFallbackOrders.size > 0) {
         toast.warning(
           `Sem grade de ficha em ${[...fichaFallbackOrders].join(', ')} — nessas OPs as etiquetas saíram ` +
           'na ordem por numeração, não por grade. Preencha grade e fichas no item do PV.',
@@ -1516,8 +1696,7 @@ export function LabelProductionTab() {
   };
 
   /** Grupos selecionados que aceitam rótulo de caixa externa. */
-  const selectedBoxGroups = () => filtered
-    .filter(g => selected.has(g.groupKey))
+  const selectedBoxGroups = () => selectedGroups
     .filter(g => {
       const allowed = getAllowedLabelTypes(g.packagingMode);
       return allowed.masterBox || allowed.boxLabel;
@@ -1976,7 +2155,7 @@ export function LabelProductionTab() {
 
     setLabelOverrides(prev => {
       const next = { ...prev };
-      for (const g of filtered.filter(g => selected.has(g.groupKey))) {
+      for (const g of selectedGroups) {
         const o: LabelOverride = { ...(next[g.groupKey] || {}) };
         if (values.refCode && values.refCode !== g.refCode) o.refCode = values.refCode;
         if (values.refName && values.refName !== g.refName) o.refName = values.refName;
@@ -1998,6 +2177,10 @@ export function LabelProductionTab() {
   };
 
   const handlePrintBoxLabels = async () => {
+    if (printCoverage === 'partial') {
+      toast.info('A reimpressão por numeração vale para Hangtags e Etiquetas Individuais. O rótulo externo é gerado por volume.');
+      return;
+    }
     const boxGroups = selectedBoxGroups();
     if (boxGroups.length === 0) {
       toast.error('Nenhum pedido selecionado permite rótulo de caixa externa.');
@@ -2018,7 +2201,6 @@ export function LabelProductionTab() {
         batchName: `Rótulos Caixa - ${new Date().toLocaleString('pt-BR')}`,
         totalLabels: boxItems.length,
         orderIds,
-        templateId: selectedBoxTemplateId,
       });
       setPrintRequest({ html, jobId });
       queryClient.invalidateQueries({ queryKey: ['print_history'] });
@@ -2072,16 +2254,21 @@ export function LabelProductionTab() {
         </div>
       </div>
 
-      {/* Badge de filtro vindo do deep-link /label-system?sale_order=ID — quando
-          ativo, a tab mostra SÓ as OPs daquele PV. Botão X limpa e volta pra
-          listagem completa. (19/05/2026, pedido user pelo botão Etiquetas em /sales) */}
-      {saleOrderFilter && (
+      {/* Badge do deep-link /label-system?sale_order=ID. O parâmetro pode ser
+          repetido para vários PVs; o X limpa todo o escopo e volta à listagem. */}
+      {saleOrderFilters.length > 0 && (
         <div className="flex items-center gap-2 px-3 py-2 rounded-md border border-primary/30 bg-primary/5 text-sm">
           <Tag className="h-4 w-4 text-primary shrink-0" />
           <span className="text-foreground">
-            Filtrado por pedido <strong className="font-mono">{filteredSaleOrder?.order_number || saleOrderFilter.slice(0, 8)}</strong>
-            {filteredSaleOrder?.client_name && (
-              <span className="text-muted-foreground"> — {filteredSaleOrder.client_name}</span>
+            {saleOrderFilters.length === 1 ? (
+              <>
+                Filtrado por pedido <strong className="font-mono">{filteredSaleOrders[0]?.order_number || saleOrderFilters[0].slice(0, 8)}</strong>
+                {filteredSaleOrders[0]?.client_name && (
+                  <span className="text-muted-foreground"> — {filteredSaleOrders[0].client_name}</span>
+                )}
+              </>
+            ) : (
+              <>Filtrado por <strong>{saleOrderFilters.length} pedidos selecionados</strong></>
             )}
             <span className="ml-2 text-muted-foreground">
               ({productionOrders.length} OP{productionOrders.length === 1 ? '' : 's'})
@@ -2136,73 +2323,50 @@ export function LabelProductionTab() {
                 <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
                   <Barcode className="h-3 w-3" /> Caixa Individual (Térmica)
                 </h4>
-                <div className="space-y-2">
-                  <Label className="text-xs font-semibold">Template Ativo</Label>
-                  <Select value={selectedThermalTemplateId} onValueChange={setSelectedThermalTemplateId}>
-                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {thermalTemplates.map(t => (
-                        <SelectItem key={t.id} value={t.id}>
-                          {t.name} ({t.dimensions.width}×{t.dimensions.height}mm)
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                {usesCustomThermalTemplate ? (
-                  <p className="text-xs text-muted-foreground rounded-md border p-3">
-                    Dimensões, campos, posições e estilos vêm do template customizado. Edite-os na aba Templates.
+                <div className="rounded-md border border-primary/20 bg-primary/5 p-3">
+                  <p className="text-xs font-semibold text-foreground">Padrão operacional Squad</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    O desenho é protegido. Somente tamanho, margem de segurança e campos previstos abaixo podem ser ajustados.
                   </p>
-                ) : (
-                  <>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label className="text-xs">Tamanho da Etiqueta</Label>
-                        <Select value={labelSize} onValueChange={setLabelSize}>
-                          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            {LABEL_SIZES.map(s => (<SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <Label className="text-xs">Margem extra (%)</Label>
-                          <span className="text-xs font-mono text-muted-foreground">{labelConfig.marginPct}%</span>
-                        </div>
-                        <Slider value={[labelConfig.marginPct]} onValueChange={([v]) => setLabelConfig({ ...labelConfig, marginPct: v })} min={0} max={20} step={1} className="py-2" />
-                        <p className="text-xs text-muted-foreground">
-                          0% usa a área segura de {currentSize.width - THERMAL_SAFE_EDGE_MM * 2} × {currentSize.height - THERMAL_SAFE_EDGE_MM * 2} mm, centralizada no papel físico de {currentSize.width} × {currentSize.height} mm. Padrão da caixa individual: {THERMAL_LABEL_WIDTH_MM} × {THERMAL_LABEL_HEIGHT_MM} mm — não usar o rolo 2 × 50 × 30 da etiquetagem cliente.
-                        </p>
-                      </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-xs">Tamanho da Etiqueta</Label>
+                    <Select value={labelSize} onValueChange={setLabelSize}>
+                      <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {LABEL_SIZES.map(s => (<SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <Label className="text-xs">Margem extra (%)</Label>
+                      <span className="text-xs font-mono text-muted-foreground">{labelConfig.marginPct}%</span>
                     </div>
-                    <div className="grid grid-cols-2 gap-x-6 gap-y-2">
-                      {Object.entries({ showImage: 'Imagem', showBarcode: 'Cód. Barras', showCode: 'Cód. Interno', showMaterial: 'Material', showCategory: 'Categoria', showPedido: 'Pedido', showSize: 'Tamanho' }).map(([key, label]) => (
-                        <div key={key} className="flex items-center gap-2">
-                          <Checkbox id={`check-${key}`} checked={(labelConfig as any)[key]} onCheckedChange={(v) => setLabelConfig({ ...labelConfig, [key]: !!v })} />
-                          <Label htmlFor={`check-${key}`} className="text-xs cursor-pointer">{label}</Label>
-                        </div>
-                      ))}
+                    <Slider value={[labelConfig.marginPct]} onValueChange={([v]) => setLabelConfig({ ...labelConfig, marginPct: v })} min={0} max={20} step={1} className="py-2" />
+                    <p className="text-xs text-muted-foreground">
+                      0% usa a área segura de {currentSize.width - THERMAL_SAFE_EDGE_MM * 2} × {currentSize.height - THERMAL_SAFE_EDGE_MM * 2} mm, centralizada no papel físico de {currentSize.width} × {currentSize.height} mm. Padrão da caixa individual: {THERMAL_LABEL_WIDTH_MM} × {THERMAL_LABEL_HEIGHT_MM} mm.
+                      Esta mídia operacional não é o rolo 2 × 50 × 30 mm usado no Gerador padrão.
+                    </p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                  {Object.entries({ showImage: 'Imagem', showBarcode: 'Cód. Barras', showCode: 'Cód. Interno', showMaterial: 'Material', showCategory: 'Categoria', showPedido: 'Pedido', showSize: 'Tamanho' }).map(([key, label]) => (
+                    <div key={key} className="flex items-center gap-2">
+                      <Checkbox id={`check-${key}`} checked={(labelConfig as any)[key]} onCheckedChange={(v) => setLabelConfig({ ...labelConfig, [key]: !!v })} />
+                      <Label htmlFor={`check-${key}`} className="text-xs cursor-pointer">{label}</Label>
                     </div>
-                  </>
-                )}
+                  ))}
+                </div>
               </div>
               <div className="space-y-4 md:border-l md:pl-8">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
                   <BoxIcon className="h-3 w-3" /> Rótulo Caixa (Master)
                 </h4>
-                <div className="space-y-2">
-                  <Label className="text-xs font-semibold">Template Ativo</Label>
-                  <Select value={selectedBoxTemplateId} onValueChange={setSelectedBoxTemplateId}>
-                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {boxTemplates.map(t => (
-                        <SelectItem key={t.id} value={t.id}>
-                          {t.name} ({t.dimensions.width}×{t.dimensions.height}mm)
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                <div className="rounded-md border border-primary/20 bg-primary/5 p-3">
+                  <p className="text-xs font-semibold text-foreground">Padrão logístico Squad · 192 × 132 mm</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Layout protegido para preservar NF, cliente, grade e volumes.</p>
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Grade e fichas vêm do item do PV; capacidade vem do grupo do solado. Esses valores não são ajustáveis na impressão.
@@ -2215,7 +2379,12 @@ export function LabelProductionTab() {
 
       {/* Print Mode + Period Filter */}
       <div className="flex flex-wrap items-center gap-4">
-        <Tabs value={statusTab} onValueChange={(v: any) => setStatusTab(v)}>
+        <Tabs value={statusTab} onValueChange={(value: LabelStatusTab) => {
+          setStatusTab(value);
+          // A mesma chave visual pode existir em mais de uma aba. Limpar aqui
+          // impede a parcial de migrar silenciosamente para outra OP/status.
+          updateSelected(new Set());
+        }}>
           <TabsList>
             <TabsTrigger value="producao" className="gap-2 h-9 px-4"><Factory className="h-4 w-4" />Em Produção ({activeOrders.length > 0 ? groupOrdersByReference(activeOrders, saleOrdersMap, strapLookup).length : 0})</TabsTrigger>
             <TabsTrigger value="imprimidos" className="gap-2 h-9 px-4"><CheckCircle2 className="h-4 w-4" />Imprimidos ({printedActiveOrders.length > 0 ? groupOrdersByReference(printedActiveOrders, saleOrdersMap, strapLookup).length : 0})</TabsTrigger>
@@ -2226,7 +2395,10 @@ export function LabelProductionTab() {
         <div className="flex items-center gap-2 border rounded-lg px-3 py-1.5 bg-muted/30">
           <Layers className="h-3.5 w-3.5 text-muted-foreground" />
           <Label className="text-xs font-medium">Modo de Impressão:</Label>
-          <RadioGroup value={printMode} onValueChange={(v: any) => setPrintMode(v)} className="flex items-center gap-3">
+          <RadioGroup value={printMode} onValueChange={(value) => {
+            setPrintMode(value as 'batch' | 'per_op');
+            updateSelected(new Set());
+          }} className="flex items-center gap-3">
             <div className="flex items-center gap-1.5">
               <RadioGroupItem value="batch" id="print-batch" className="h-3.5 w-3.5" />
               <Label htmlFor="print-batch" className="text-xs cursor-pointer">Lote (Semana)</Label>
@@ -2238,7 +2410,10 @@ export function LabelProductionTab() {
           </RadioGroup>
         </div>
 
-        <Select value={periodFilter} onValueChange={setPeriodFilter}>
+        <Select value={periodFilter} onValueChange={(value) => {
+          setPeriodFilter(value);
+          updateSelected(new Set());
+        }}>
           <SelectTrigger className="h-9 w-40 text-xs">
             <CalendarDays className="h-3.5 w-3.5 mr-1" />
             <SelectValue />
@@ -2251,7 +2426,10 @@ export function LabelProductionTab() {
         </Select>
 
         {/* Filtro por semana de faturamento — espelha como o financeiro/PV usa billing_week (formato "2026-05-S4") */}
-        <Select value={billingWeekFilter} onValueChange={setBillingWeekFilter}>
+        <Select value={billingWeekFilter} onValueChange={(value) => {
+          setBillingWeekFilter(value);
+          updateSelected(new Set());
+        }}>
           <SelectTrigger className="h-9 w-48 text-xs">
             <CalendarDays className="h-3.5 w-3.5 mr-1" />
             <SelectValue placeholder="Semana faturamento" />
@@ -2280,46 +2458,120 @@ export function LabelProductionTab() {
             <div className="flex items-center gap-2">
               {printMode === 'batch' && (
                 <>
-                  <Button variant="outline" size="sm" onClick={() => setSelected(new Set(filtered.map(g => g.groupKey)))} className="h-8 text-xs">Selecionar Tudo</Button>
-                  <Button variant="outline" size="sm" onClick={() => setSelected(new Set())} className="h-8 text-xs">Limpar</Button>
+                  <Button variant="outline" size="sm" onClick={() => updateSelected(new Set(filtered.map(g => g.groupKey)))} className="h-8 text-xs">Selecionar Tudo</Button>
+                  <Button variant="outline" size="sm" onClick={() => updateSelected(new Set())} className="h-8 text-xs">Limpar</Button>
                 </>
               )}
             </div>
           </div>
         </CardHeader>
         <CardContent className="pt-4">
-          {visibleSelectedGroups.length > 0 && (
+          {selectedGroups.length > 0 && (
             <div className="space-y-3 p-4 bg-primary/5 rounded-lg border border-primary/20 animate-in fade-in zoom-in-95">
               <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-primary/20 pb-3">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-wider text-primary">Seleção pronta</p>
                   <p className="text-xs text-muted-foreground">Confira o tipo antes de gerar o PDF.</p>
                 </div>
-                <Badge variant="secondary">{visibleSelectedGroups.length} {visibleSelectedGroups.length === 1 ? 'referência' : 'referências'}</Badge>
+                <Badge variant="secondary">{selectedGroups.length} {selectedGroups.length === 1 ? 'referência' : 'referências'}</Badge>
                 <Badge variant="outline">{selectedOrders} OP{selectedOrders === 1 ? '' : 's'}</Badge>
                 <Badge variant="outline">{selectedPairs.toLocaleString('pt-BR')} pares</Badge>
-                <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setSelected(new Set())}>Limpar seleção</Button>
+                {hiddenSelectedGroups > 0 && (
+                  <Badge variant="outline">{hiddenSelectedGroups} fora da busca</Badge>
+                )}
+                <Button variant="ghost" size="sm" className="ml-auto" onClick={() => updateSelected(new Set())}>Limpar seleção</Button>
               </div>
-              {selectionLabelTypes.notes.length > 0 && (
+              <div className="rounded-md border border-border bg-background p-3">
+                <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wider text-foreground">Escopo do arquivo</p>
+                    <p className="text-xs text-muted-foreground">Escolha se o arquivo terá todas as etiquetas ou somente as que foram perdidas.</p>
+                  </div>
+                  {printCoverage === 'partial' && (
+                    <Button type="button" variant="outline" size="sm" className="h-8" onClick={openPartialPrintSelection}>
+                      Editar seleção
+                    </Button>
+                  )}
+                </div>
+                <RadioGroup
+                  value={printCoverage}
+                  onValueChange={(value) => {
+                    if (value === 'total') selectTotalPrintCoverage();
+                    else openPartialPrintSelection();
+                  }}
+                  className="grid gap-2 sm:grid-cols-2"
+                  aria-label="Escopo do arquivo de etiquetas"
+                >
+                  <Label
+                    htmlFor="print-coverage-total"
+                    className={cn(
+                      'flex cursor-pointer items-start gap-3 rounded-md border p-3 transition-colors',
+                      printCoverage === 'total' ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/40',
+                    )}
+                  >
+                    <RadioGroupItem id="print-coverage-total" value="total" className="mt-0.5" />
+                    <span>
+                      <span className="block text-sm font-semibold text-foreground">Impressão total</span>
+                      <span className="block text-xs font-normal text-muted-foreground">Gera todas as numerações e quantidades selecionadas.</span>
+                    </span>
+                  </Label>
+                  <Label
+                    htmlFor="print-coverage-partial"
+                    className={cn(
+                      'flex cursor-pointer items-start gap-3 rounded-md border p-3 transition-colors',
+                      printCoverage === 'partial' ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/40',
+                    )}
+                  >
+                    <RadioGroupItem id="print-coverage-partial" value="partial" className="mt-0.5" />
+                    <span>
+                      <span className="block text-sm font-semibold text-foreground">Reimpressão parcial</span>
+                      <span className="block text-xs font-normal text-muted-foreground">Escolha a numeração e quantas etiquetas deseja refazer.</span>
+                    </span>
+                  </Label>
+                </RadioGroup>
+                {printCoverage === 'partial' && (
+                  <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3" aria-live="polite">
+                    <Badge variant="secondary">
+                      {partialPrintSummary.selectedRows} {partialPrintSummary.selectedRows === 1 ? 'numeração' : 'numerações'}
+                    </Badge>
+                    <strong className="text-sm tabular-nums text-foreground">
+                      {partialPrintSummary.totalLabels.toLocaleString('pt-BR')} {partialPrintSummary.totalLabels === 1 ? 'etiqueta' : 'etiquetas'} para refazer
+                    </strong>
+                    <span className="text-xs text-muted-foreground">A OP não muda de status.</span>
+                  </div>
+                )}
+              </div>
+              {pairSelectionLabelTypes.notes.length > 0 && (
                 <div className="flex items-start gap-2 p-2 rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-700">
                   <Package className="h-4 w-4 flex-shrink-0 mt-0.5" />
                   <div className="text-xs space-y-0.5">
-                    {selectionLabelTypes.notes.map(note => (
+                    {pairSelectionLabelTypes.notes.map(note => (
                       <p key={note}><strong>Atenção:</strong> {note}</p>
                     ))}
                   </div>
                 </div>
               )}
               <div className="flex flex-wrap items-center gap-2">
-                {selectionLabelTypes.hangtag && (
-                  <Button onClick={handlePrintHangtags} className="gap-2 h-9 shadow-md bg-primary hover:bg-primary/90"><Tag className="h-4 w-4" />Hangtags ({selectionLabelTypes.hangtagCount})</Button>
+                {pairSelectionLabelTypes.hangtag && (
+                  <Button onClick={handlePrintHangtags} className="gap-2 h-9 shadow-md bg-primary hover:bg-primary/90">
+                    <Tag className="h-4 w-4" />
+                    Hangtags ({printCoverage === 'partial' ? `${pairPrintTotalLabels} etq.` : pairSelectionLabelTypes.hangtagCount})
+                  </Button>
                 )}
-                {selectionLabelTypes.thermal && (
+                {pairSelectionLabelTypes.thermal && (
                   <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-1">
-                      <Button onClick={() => void handlePrintIndividual('html')} variant="secondary" className="gap-2 h-9 border shadow-sm rounded-r-none"><Barcode className="h-4 w-4" />Etiqueta Individual ({selectionLabelTypes.thermalCount})</Button>
-                      <Select value={thermalMode} onValueChange={(v: any) => setThermalMode(v)}>
-                        <SelectTrigger className="h-9 w-[130px] text-xs rounded-l-none border-l-0 bg-secondary"><SelectValue /></SelectTrigger>
+                      <Button onClick={() => void handlePrintIndividual('html')} variant="secondary" className="gap-2 h-9 border shadow-sm rounded-r-none">
+                        <Barcode className="h-4 w-4" />
+                        Etiqueta Individual ({printCoverage === 'partial' ? `${thermalPrintTotalLabels} etq.` : pairSelectionLabelTypes.thermalCount})
+                      </Button>
+                      <Select value={thermalMode} onValueChange={(v: any) => setThermalMode(v)} disabled={printCoverage === 'partial'}>
+                        <SelectTrigger
+                          className="h-9 w-[130px] text-xs rounded-l-none border-l-0 bg-secondary"
+                          title={printCoverage === 'partial' ? 'A reimpressão por numeração usa o modo 1:1.' : undefined}
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="quantity">Qtd. Total (1:1)</SelectItem>
                           <SelectItem value="ficha">Por Ficha (nº)</SelectItem>
@@ -2327,11 +2579,11 @@ export function LabelProductionTab() {
                       </Select>
                     </div>
                     <span className="text-xs text-muted-foreground truncate max-w-[200px]">
-                      Template: {thermalTemplates.find(t => t.id === selectedThermalTemplateId)?.name || 'Padrão'}
+                      {printCoverage === 'partial' ? 'Reimpressão por numeração · 1:1' : 'Padrão operacional Squad'}
                     </span>
                   </div>
                 )}
-                {selectionLabelTypes.thermal && (
+                {pairSelectionLabelTypes.thermal && (
                   <div className="flex flex-col gap-1">
                     <Button
                       onClick={() => void handlePrintIndividual('zpl')}
@@ -2341,7 +2593,7 @@ export function LabelProductionTab() {
                       disabled={isGenerating}
                     >
                       <Barcode className="h-4 w-4" />
-                      ZPL + Prévia ({selectionLabelTypes.thermalCount})
+                      ZPL + Prévia ({printCoverage === 'partial' ? `${thermalPrintTotalLabels} etq.` : pairSelectionLabelTypes.thermalCount})
                     </Button>
                     <span className="text-xs text-muted-foreground truncate max-w-[200px]">
                       Arquivo p/ Elgin · foto 1 bit
@@ -2351,13 +2603,20 @@ export function LabelProductionTab() {
                 {selectionLabelTypes.box && (
                   <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-1">
-                      <Button onClick={handlePrintBoxLabels} variant="outline" className="gap-2 h-9 shadow-sm rounded-r-none"><BoxIcon className="h-4 w-4" />Rótulo Caixa Externa ({selectionLabelTypes.boxCount})</Button>
+                      <Button
+                        onClick={handlePrintBoxLabels}
+                        variant="outline"
+                        className="gap-2 h-9 shadow-sm rounded-r-none"
+                        disabled={printCoverage === 'partial'}
+                        title={printCoverage === 'partial' ? 'O rótulo externo representa um volume completo; use Impressão total.' : undefined}
+                      >
+                        <BoxIcon className="h-4 w-4" />Rótulo Caixa Externa ({selectionLabelTypes.boxCount})
+                      </Button>
                       <Button
                         variant="outline"
                         className="h-9 px-2 rounded-l-none border-l-0"
                         title="Ajustar texto das tiras nas etiquetas"
                         onClick={() => {
-                          const selectedGroups = filtered.filter(g => selected.has(g.groupKey));
                           if (selectedGroups.length === 0) { toast.error('Selecione ao menos um item.'); return; }
                           const firstGroup = selectedGroups[0];
                           setEditingStrapsGroup(firstGroup.groupKey);
@@ -2368,7 +2627,7 @@ export function LabelProductionTab() {
                       </Button>
                     </div>
                     <span className="text-xs text-muted-foreground truncate max-w-[200px]">
-                      Template: {boxTemplates.find(t => t.id === selectedBoxTemplateId)?.name || 'Padrão'}
+                      {printCoverage === 'partial' ? 'Indisponível por numeração · usa volumes' : 'Padrão logístico Squad'}
                     </span>
                   </div>
                 )}
@@ -2397,10 +2656,21 @@ export function LabelProductionTab() {
               </div>
               <div className="border-t border-primary/20 pt-3 flex items-center gap-6">
                 <div className="flex items-center gap-2">
-                  <Switch id="serial-switch" checked={useSerialization} onCheckedChange={setUseSerialization} />
-                  <Label htmlFor="serial-switch" className="text-xs cursor-pointer font-medium">Serialização Automática</Label>
+                  <Switch
+                    id="serial-switch"
+                    checked={useSerialization}
+                    onCheckedChange={setUseSerialization}
+                    disabled={printCoverage === 'partial'}
+                  />
+                  <Label htmlFor="serial-switch" className="text-xs cursor-pointer font-medium">
+                    Serialização Automática
+                  </Label>
                 </div>
-                {useSerialization && (
+                {printCoverage === 'partial' ? (
+                  <span className="text-xs text-muted-foreground">
+                    Desativada na reimpressão para não criar um serial diferente da etiqueta perdida.
+                  </span>
+                ) : useSerialization && (
                   <div className="flex items-center gap-3 animate-in slide-in-from-left-2">
                     <span className="text-xs text-muted-foreground font-mono">Início:</span>
                     <Input type="number" className="w-24 h-8 text-xs font-mono" value={serializationStart} onChange={e => setSerializationStart(Number(e.target.value))} />
@@ -2409,7 +2679,7 @@ export function LabelProductionTab() {
               </div>
             </div>
           )}
-          {visibleSelectedGroups.length === 0 && <div className="text-center py-4 text-xs text-muted-foreground italic flex items-center justify-center gap-2"><Tag className="h-3 w-3 opacity-40" /> Selecione itens abaixo ou use o leitor para habilitar as opções de impressão</div>}
+          {selectedGroups.length === 0 && <div className="text-center py-4 text-xs text-muted-foreground italic flex items-center justify-center gap-2"><Tag className="h-3 w-3 opacity-40" /> Selecione itens abaixo ou use o leitor para habilitar as opções de impressão</div>}
         </CardContent>
       </Card>
 
@@ -2432,7 +2702,7 @@ export function LabelProductionTab() {
                       const next = new Set(selected);
                       const allSelected = refs.every(r => next.has(r.groupKey));
                       refs.forEach(r => allSelected ? next.delete(r.groupKey) : next.add(r.groupKey));
-                      setSelected(next);
+                      updateSelected(next);
                     }}>
                       {refs.every(r => selected.has(r.groupKey)) ? 'Desmarcar Grupo' : 'Selecionar Grupo'}
                     </Button>
@@ -2450,11 +2720,11 @@ export function LabelProductionTab() {
                           // In per-OP mode, only allow one selection at a time
                           const next = new Set<string>();
                           if (!selected.has(g.groupKey)) next.add(g.groupKey);
-                          setSelected(next);
+                          updateSelected(next);
                         } else {
                           const next = new Set(selected);
                           if (next.has(g.groupKey)) next.delete(g.groupKey); else next.add(g.groupKey);
-                          setSelected(next);
+                          updateSelected(next);
                         }
                       }}
                     />
@@ -2486,6 +2756,28 @@ export function LabelProductionTab() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {partialPrintDialogOpen && (
+        <PartialPrintSelectionDialog
+          groups={selectedGroups}
+          initialSelection={partialPrintSelection}
+          onClose={() => setPartialPrintDialogOpen(false)}
+          onApply={(selection) => {
+            const summary = summarizePartialLabelPrintSelection(selectedGroups, selection);
+            setPartialPrintSelection(selection);
+            setPrintCoverage('partial');
+            // "Por Ficha" representa a grade inteira; numeração parcial é 1:1.
+            setThermalMode('quantity');
+            // Um serial novo transformaria a reimpressão em outra etiqueta.
+            setUseSerialization(false);
+            setPartialPrintDialogOpen(false);
+            toast.success(
+              `Reimpressão parcial pronta: ${summary.totalLabels.toLocaleString('pt-BR')} ` +
+              `${summary.totalLabels === 1 ? 'etiqueta' : 'etiquetas'}.`,
+            );
+          }}
+        />
+      )}
 
       {/* Editor manual COMPLETO do rótulo — todos os campos, OP a OP.
           Prefill = exatamente o que o sistema imprimiria (computeBoxItems),
@@ -2760,7 +3052,6 @@ export function LabelProductionTab() {
             </Button>
             <Button size="sm" onClick={() => {
               if (editingStrapsGroup) {
-                const selectedGroups = filtered.filter(g => selected.has(g.groupKey));
                 const newOverrides = { ...strapsLabelOverrides };
                 for (const g of selectedGroups) {
                   newOverrides[g.groupKey] = editingStrapsText.replace(/ \| /g, '|').replace(/\| /g, '|').replace(/ \|/g, '|');

@@ -218,7 +218,7 @@ export default function EmployeeAbsencesPage({ embedded = false }: { embedded?: 
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos os funcionários</SelectItem>
-                {employees.map((e: any) => (
+                {employees.map((e) => (
                   <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
                 ))}
               </SelectContent>
@@ -357,7 +357,7 @@ export default function EmployeeAbsencesPage({ embedded = false }: { embedded?: 
                   <SelectValue placeholder="Selecione…" />
                 </SelectTrigger>
                 <SelectContent>
-                  {employees.map((e: any) => (
+                  {employees.map((e) => (
                     <SelectItem key={e.id} value={e.id}>
                       {e.name} {e.department && <span className="text-muted-foreground">· {e.department}</span>}
                     </SelectItem>
@@ -398,7 +398,9 @@ export default function EmployeeAbsencesPage({ embedded = false }: { embedded?: 
               <div className="text-xs text-muted-foreground flex items-center gap-1.5 px-1">
                 <Info className="h-3 w-3" />
                 <strong className="text-foreground">{previewDays}</strong>{' '}
-                {previewDays === 1 ? 'dia' : 'dias'} ficarão isentos do desconto da folha.
+                {previewDays === 1 ? 'dia' : 'dias'} {form.absence_type === 'suspensao'
+                  ? 'serão registrados sem abono na folha.'
+                  : 'ficarão isentos do desconto da folha.'}
               </div>
             )}
             <div>

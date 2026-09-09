@@ -106,6 +106,14 @@ describe('calculateStrapConsumptionCm — per-size por numeração (espelha o SQ
     );
     expect(cm).toBe(40);
   });
+
+  it('mapa per-size inteiramente zerado continua sendo explícito', () => {
+    const cm = calculateStrapConsumptionCm(
+      { consumption: 40, consumption_per_size: { '35': 0, '36': 0 } },
+      { grade: { '35': 1, '36': 1 }, quantity: 2, fichas: 1 },
+    );
+    expect(cm).toBe(0);
+  });
 });
 
 describe('calculateStrapConsumptionCm — valor por PAR (não por pé)', () => {
@@ -117,6 +125,18 @@ describe('calculateStrapConsumptionCm — valor por PAR (não por pé)', () => {
 });
 
 describe('resolveOrderStraps — merge item × ficha', () => {
+  it('snapshot canônico conserva material, ordem e zero sem injetar a ficha atual', () => {
+    const id = '0198f35c-7f4d-7000-8000-000000000001';
+    const snapshot = [{ id, label: 'Posição antiga', color: 'Preto', consumption: 0,
+      base_group_id: 'material-a', base_group_name: 'NAPA SOFT + MASSABOX' }];
+    const merged = resolveOrderStraps(snapshot, [
+      { id, label: 'Posição renomeada', consumption: 60, base_group_id: 'material-b' },
+      { id: '0198f35c-7f4d-7000-8000-000000000002', label: 'Nova posição', consumption: 40 },
+    ]);
+    expect(merged).toEqual(snapshot);
+    expect(calculateStrapConsumptionCm(merged[0], { quantity: 12 })).toBe(0);
+  });
+
   it('item sobrescreve ficha quando casa por id+label', () => {
     const merged = resolveOrderStraps(
       [{ id: 1, label: 'Tira 1', color: 'Preto', consumption: 50 }],
@@ -136,12 +156,12 @@ describe('resolveOrderStraps — merge item × ficha', () => {
     expect(merged[0].consumption).toBe(40); // ficha (item era 0)
   });
 
-  it('per-size do item só vence se tiver algum valor > 0', () => {
+  it('per-size do item vence mesmo quando todos os valores explícitos são zero', () => {
     const merged = resolveOrderStraps(
       [{ id: 1, label: 'T', color: 'X', consumption_per_size: { '35': 0 } }],
       [{ id: 1, label: 'T', color: 'X', consumption_per_size: { '35': 38 } }],
     );
-    expect(merged[0].consumption_per_size).toEqual({ '35': 38 }); // ficha (item todo 0)
+    expect(merged[0].consumption_per_size).toEqual({ '35': 0 });
   });
 
   it('tira só na ficha entra; tira extra só no item também entra (dedup por chave)', () => {

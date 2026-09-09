@@ -69,8 +69,8 @@ export default function ProducaoPlanejamento() {
   const from = toISO(weekStart);
   const to = toISO(new Date(weekStart.getTime() + 13 * 86400000)); // 2 semanas
 
-  const { data: grid = [], isLoading: gridLoading } = useProductionScheduleGrid(from, to);
-  const { data: queue = [], isLoading: queueLoading } = useProductionQueueDetail();
+  const { data: grid = [], isLoading: gridLoading, isError: gridError, refetch: refetchGrid } = useProductionScheduleGrid(from, to);
+  const { data: queue = [], isLoading: queueLoading, isError: queueError, refetch: refetchQueue } = useProductionQueueDetail();
   const { data: lastRun } = useLastEngineRun();
   const pin = usePinOrder();
   const pinAt = usePinOrderAt();
@@ -137,6 +137,24 @@ export default function ProducaoPlanejamento() {
         title="Planejamento"
         description="Fila diária do motor dinâmico: saldo não produzido rola pro dia seguinte com prioridade; produção acima do plano puxa OPs futuras."
       />
+
+      {(gridError || queueError) && (
+        <EmptyState
+          icon={AlertTriangle}
+          title="Falha ao carregar o planejamento"
+          description="A grade ou a fila do motor não respondeu. O toast some em segundos — este aviso permanece até você tentar de novo."
+          action={
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => { refetchGrid(); refetchQueue(); }}
+            >
+              Tentar novamente
+            </Button>
+          }
+          size="sm"
+        />
+      )}
 
       {lastRun && (
         <p className="text-xs text-muted-foreground flex items-center gap-1.5">

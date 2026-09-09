@@ -2,7 +2,7 @@
  * Módulo isolado "ETIQUETAGEM CLIENTE" — etiqueta no padrão do cliente.
  *
  * Lê o arquivo de exportação do pedido de compra do ERP do cliente e gera:
- *   - produção na L42PRO Full, uma etiqueta 100 × 30 mm por página;
+ *   - produção na L42PRO Full, em rolo de duas colunas 50 × 30 mm;
  *   - gráfica em duas etiquetas couchê 50 × 30 mm lado a lado.
  * A geometria e o módulo do CODE128 moram em `@/lib/babyNalinLabels`.
  */
@@ -38,8 +38,6 @@ import {
   COUCHE_LABEL_WIDTH_MM,
   MAX_PDF_LABELS,
   MODULE_MM,
-  PRODUCTION_PAGE_HEIGHT_MM,
-  PRODUCTION_PAGE_WIDTH_MM,
   analyzeClientSkus,
   buildBabyNalinPdf,
   clientSkuKey,
@@ -110,6 +108,7 @@ export function ClientLabelingWorkspace() {
   }));
   const selectedSkuAnalysis = analyzeClientSkus(selectedRows);
   const totalEtiquetas = countExpandedRows(productionRows, true);
+  const carreirasProducao = graphicPageCount(totalEtiquetas);
   const totalPares = selectedRows.reduce((t, r) => t + r.quantidade, 0);
   const totalParesParaImpressao = productionRows.reduce((total, row) => total + row.quantidade, 0);
   const totalParesNoArquivo = rows.reduce((t, r) => t + r.quantidade, 0);
@@ -184,8 +183,8 @@ export function ClientLabelingWorkspace() {
       toast.error(`${selectedSkuAnalysis.conflicts.length} SKU(s) selecionado(s) possuem dados de impressão conflitantes.`);
       return;
     }
-    if (mode === 'graphic' && !coucheProfileConfirmed) {
-      toast.info('Confirme as medidas do arquivo de duas colunas antes de gerar para a gráfica.');
+    if (!coucheProfileConfirmed) {
+      toast.info('Confirme as medidas do rolo de duas colunas antes de gerar.');
       return;
     }
     if (mode === 'production' && productionOverLimit) {
@@ -196,7 +195,7 @@ export function ClientLabelingWorkspace() {
     const generationRows = mode === 'production' ? productionRows : selectedRows;
     const generationFileName = fileName;
     const generationTotalLabels = totalEtiquetas;
-    const generationProductionPages = totalEtiquetas;
+    const generationProductionRows = carreirasProducao;
     const generationSkuCount = selectedSkuAnalysis.rows.length;
     const generationCoucheProfile = { ...coucheProfile };
     setGenerating(mode);
@@ -215,7 +214,7 @@ export function ClientLabelingWorkspace() {
         toast.success(`Arquivo para gráfica com ${generationSkuCount} SKU(s) gerado.`);
       } else {
         doc.save(pdfFilename(generationFileName));
-        toast.success(`PDF da L42PRO com ${generationTotalLabels} etiqueta(s) em ${generationProductionPages} página(s) 100 × 30 gerado.`);
+        toast.success(`PDF da L42PRO com ${generationTotalLabels} etiqueta(s) em ${generationProductionRows} carreira(s) gerado.`);
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Falha ao gerar o PDF.');
@@ -274,7 +273,7 @@ export function ClientLabelingWorkspace() {
       <Panel
         eyebrow="ETIQUETAS · CLIENTE"
         title="Importar pedido do cliente"
-        subtitle={`${BARCODE_FORMAT} com módulo de ${MODULE_MM.toFixed(4).replace('.', ',')} mm · impressão individual 100 × 30 mm`}
+        subtitle={`${BARCODE_FORMAT} com módulo de ${MODULE_MM.toFixed(4).replace('.', ',')} mm · 2 × ${COUCHE_LABEL_WIDTH_MM} × ${COUCHE_LABEL_HEIGHT_MM} mm, vão ${DEFAULT_COUCHE_ROLL_PROFILE.columnGapMm} mm`}
         actions={
           rows.length > 0 ? (
             <Button variant="ghost" size="sm" onClick={limpar} className="h-9" disabled={isBusy}>
@@ -323,7 +322,7 @@ export function ClientLabelingWorkspace() {
               <StatCard
                 label="Etiquetas de produção"
                 value={totalEtiquetas}
-                hint={`${totalEtiquetas.toLocaleString('pt-BR')} páginas individuais de 100 × 30 mm`}
+                hint={`${carreirasProducao.toLocaleString('pt-BR')} carreiras de 2 colunas`}
               />
             </StatGrid>
 
@@ -336,12 +335,10 @@ export function ClientLabelingWorkspace() {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 id="production-output-title" className="font-semibold text-foreground">PDF para L42PRO Full</h3>
-                      <Badge variant="outline">
-                        {PRODUCTION_PAGE_WIDTH_MM} × {PRODUCTION_PAGE_HEIGHT_MM} mm
-                      </Badge>
+                      <Badge variant="outline">2 × 50 × 30 mm</Badge>
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Uma etiqueta física inteira por página, sem dividir em colunas. Ajuste a quantidade de cada item na tabela.
+                      2 × 50 × 30 mm com vão de {DEFAULT_COUCHE_ROLL_PROFILE.columnGapMm} mm entre as colunas (página 106 × 30). Não é a térmica 100 × 30 da caixa individual.
                     </p>
                   </div>
                 </div>
@@ -352,8 +349,8 @@ export function ClientLabelingWorkspace() {
                     <strong className="font-mono text-foreground">{totalEtiquetas.toLocaleString('pt-BR')} etiquetas</strong>
                   </div>
                   <div className="mt-2 flex items-center justify-between gap-3">
-                    <span className="text-muted-foreground">Páginas 100 × 30</span>
-                    <strong className="font-mono text-foreground">{totalEtiquetas.toLocaleString('pt-BR')}</strong>
+                    <span className="text-muted-foreground">Avanços do rolo</span>
+                    <strong className="font-mono text-foreground">{carreirasProducao.toLocaleString('pt-BR')}</strong>
                   </div>
                 </div>
 
@@ -365,11 +362,17 @@ export function ClientLabelingWorkspace() {
                     || productionRows.length === 0
                     || selecionadasForaDoPadrao.length > 0
                     || productionOverLimit
+                    || !coucheProfileConfirmed
                   }
                 >
                   {generating === 'production' ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FilePdf className="h-4 w-4 mr-2" />}
                   {generating === 'production' ? 'Gerando…' : `Gerar L42PRO (${totalEtiquetas} etiquetas)`}
                 </Button>
+                {!coucheProfileConfirmed && (
+                  <p className="text-xs text-amber-700 dark:text-amber-400">
+                    Medidas do rolo alteradas — confirme o perfil em “Medidas do rolo de duas colunas” para liberar a geração.
+                  </p>
+                )}
               </section>
 
               <section className="rounded-lg border border-primary/25 bg-primary/5 p-4 space-y-4" aria-labelledby="graphic-output-title">
@@ -409,7 +412,7 @@ export function ClientLabelingWorkspace() {
 
                 <details className="rounded-md border border-primary/20 bg-background p-3 text-sm">
                   <summary className="cursor-pointer font-semibold text-foreground">
-                    Medidas do arquivo de duas colunas para a gráfica
+                    Medidas do rolo de duas colunas
                   </summary>
                   <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
                     O padrão é 2 × 50 × 30 mm com {DEFAULT_COUCHE_ROLL_PROFILE.columnGapMm} mm de vão (página {COUCHE_LABEL_WIDTH_MM * COUCHE_COLUMNS + DEFAULT_COUCHE_ROLL_PROFILE.columnGapMm} × {COUCHE_LABEL_HEIGHT_MM} mm). Altere só se a faca do rolo for outra.
@@ -454,7 +457,7 @@ export function ClientLabelingWorkspace() {
                       onCheckedChange={value => setCoucheProfileConfirmed(value === true)}
                     />
                     <Label htmlFor="couche-profile-confirmed" className="cursor-pointer text-xs font-normal leading-relaxed">
-                      Confirmo que estas medidas correspondem ao arquivo solicitado pela gráfica.
+                      Confirmo que estas medidas correspondem ao rolo usado na L42PRO e pela gráfica.
                     </Label>
                   </div>
                 </details>
@@ -477,7 +480,7 @@ export function ClientLabelingWorkspace() {
                 </Button>
                 {!coucheProfileConfirmed && (
                   <p className="text-xs text-amber-700 dark:text-amber-400">
-                    Medidas da gráfica alteradas — confirme o perfil de duas colunas para liberar esse arquivo.
+                    Medidas do rolo alteradas — confirme o perfil em “Medidas do rolo de duas colunas” para liberar a geração.
                   </p>
                 )}
               </section>

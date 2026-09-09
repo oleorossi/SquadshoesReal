@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   EMPTY_VARIANT_CASCADE,
+  evaluateUpperMaterialStructureCompatibility,
   hasVariantComponentPin,
   listVariantCascadeSlots,
+  nonColorSourceLayerSignature,
+  resolvePinnedMaterialGroupId,
   seedVariantCascade,
   variantDrivesNoComponent,
 } from '@/lib/materialVariantColorGroup';
@@ -79,29 +82,30 @@ describe('seedVariantCascade', () => {
 
 describe('variantDrivesNoComponent', () => {
   const cascade = EMPTY_VARIANT_CASCADE;
+  const products: never[] = [];
 
   it('acusa o no-op: material principal sem componente liberado', () => {
-    expect(variantDrivesNoComponent({ variant: {}, sheet: sr02, cascade })).toBe(true);
+    expect(variantDrivesNoComponent({ variant: {}, sheet: sr02, cascade, products })).toBe(true);
   });
 
   it('não acusa quando o componente foi liberado', () => {
     expect(variantDrivesNoComponent({
-      variant: {}, sheet: sr02, cascade: { ...cascade, lining: true },
+      variant: {}, sheet: sr02, cascade: { ...cascade, lining: true }, products,
     })).toBe(false);
   });
 
   it('trava ligada em componente que a ficha não consome continua sendo no-op', () => {
     expect(variantDrivesNoComponent({
-      variant: {}, sheet: sr02, cascade: { ...cascade, upper: true },
+      variant: {}, sheet: sr02, cascade: { ...cascade, upper: true }, products,
     })).toBe(true);
   });
 
   it('exceção por componente resolve sozinha — vence a trava da ficha', () => {
     expect(variantDrivesNoComponent({
-      variant: { lining_material_group_id: 'glow' }, sheet: sr02, cascade,
+      variant: { lining_material_group_id: 'glow' }, sheet: sr02, cascade, products,
     })).toBe(false);
     expect(variantDrivesNoComponent({
-      variant: { insole_material_group_id: 'eva' }, sheet: sr02, cascade,
+      variant: { insole_material_group_id: 'eva' }, sheet: sr02, cascade, products,
     })).toBe(false);
   });
 
@@ -110,28 +114,174 @@ describe('variantDrivesNoComponent', () => {
   // A caixa independente da aba Materiais tornava esse estado alcançável.
   it('fachete gravado na ficha NÃO libera o save por si só', () => {
     expect(variantDrivesNoComponent({
-      variant: {}, sheet: { ...sr02, variant_drives_fachete: true }, cascade,
+      variant: {}, sheet: { ...sr02, variant_drives_fachete: true }, cascade, products,
     })).toBe(true);
   });
 
   it('fachete SELECIONADO em solado fachetado libera, como qualquer slot', () => {
     expect(variantDrivesNoComponent({
-      variant: {}, sheet: sr02, sole: fachetado, cascade: { ...cascade, fachete: true },
+      variant: {}, sheet: sr02, sole: fachetado, cascade: { ...cascade, fachete: true }, products,
     })).toBe(false);
   });
 
   it('fachete selecionado sem solado fachetado não conta — o slot nem existe', () => {
     expect(variantDrivesNoComponent({
-      variant: {}, sheet: sr02, cascade: { ...cascade, fachete: true },
+      variant: {}, sheet: sr02, cascade: { ...cascade, fachete: true }, products,
+    })).toBe(true);
+  });
+
+  it('pin inativo sozinho continua sendo no-op', () => {
+    expect(variantDrivesNoComponent({
+      variant: { upper_material_product_id: 'p-inativo' },
+      sheet: sr02,
+      cascade,
+      products: [{ id: 'p-inativo', group_id: 'grupo-antigo', active: false }],
     })).toBe(true);
   });
 });
 
 describe('hasVariantComponentPin', () => {
   it('reconhece pin de produto legado e pin de grupo', () => {
-    expect(hasVariantComponentPin({ upper_material_product_id: 'p1' })).toBe(true);
-    expect(hasVariantComponentPin({ lining_material_group_id: 'g1' })).toBe(true);
-    expect(hasVariantComponentPin({ main_material_group_id: 'g1' } as never)).toBe(false);
-    expect(hasVariantComponentPin(null)).toBe(false);
+    const catalog = [{ id: 'p1', group_id: 'g-pin', active: true }];
+    expect(hasVariantComponentPin({ upper_material_product_id: 'p1' }, catalog)).toBe(true);
+    expect(hasVariantComponentPin({ lining_material_group_id: 'g1' }, catalog)).toBe(true);
+    expect(hasVariantComponentPin({ main_material_group_id: 'g1' } as never, catalog)).toBe(false);
+    expect(hasVariantComponentPin(null, catalog)).toBe(false);
+  });
+
+  it('ignora pin de produto inativo quando o catálogo foi carregado', () => {
+    const catalog = [{ id: 'p1', group_id: 'antigo', active: false }];
+    expect(hasVariantComponentPin({ upper_material_product_id: 'p1' }, catalog)).toBe(false);
+    expect(hasVariantComponentPin({
+      upper_material_product_id: 'p1',
+      upper_material_group_id: 'grupo-ativo',
+    }, catalog)).toBe(true);
+  });
+});
+
+describe('compatibilidade estrutural do Cabedal da variante', () => {
+  const baseComposto = [
+    {
+      component_group_id: 'napa-soft',
+      component_label: 'Napa Soft',
+      role: 'cabedal',
+      is_color_source: true,
+    },
+    {
+      component_group_id: 'massabox',
+      component_label: 'Massa Box',
+      role: 'estrutura',
+      is_color_source: false,
+    },
+  ];
+
+  it('aceita composto que troca a fonte de cor e preserva as camadas fixas', () => {
+    const result = evaluateUpperMaterialStructureCompatibility({
+      baseLayers: baseComposto,
+      overrideLayers: [
+        {
+          component_group_id: 'glow-metalic',
+          component_label: 'Glow Metalic',
+          role: 'cabedal',
+          is_color_source: true,
+        },
+        {
+          component_group_id: 'massabox',
+          component_label: 'outro rótulo não governa a identidade',
+          role: 'outro papel também não governa quando há UUID',
+          is_color_source: false,
+        },
+      ],
+      hasExplicitOverride: true,
+    });
+
+    expect(result).toMatchObject({ baseIsComposite: true, compatible: true });
+    expect(result.baseSignature).toEqual(['group:massabox']);
+    expect(result.overrideSignature).toEqual(['group:massabox']);
+  });
+
+  it('rejeita composto que perde ou troca uma camada fixa', () => {
+    expect(evaluateUpperMaterialStructureCompatibility({
+      baseLayers: baseComposto,
+      overrideLayers: [{
+        component_group_id: 'glow-metalic',
+        component_label: 'Glow Metalic',
+        role: 'cabedal',
+        is_color_source: true,
+      }],
+      hasExplicitOverride: true,
+    })).toMatchObject({ baseIsComposite: true, compatible: false });
+
+    expect(evaluateUpperMaterialStructureCompatibility({
+      baseLayers: baseComposto,
+      overrideLayers: [{
+        component_group_id: 'espuma',
+        component_label: 'Espuma',
+        role: 'estrutura',
+        is_color_source: false,
+      }],
+      hasExplicitOverride: true,
+    })).toMatchObject({ baseIsComposite: true, compatible: false });
+  });
+
+  it('rejeita grupo puro mesmo quando a assinatura fixa vazia pareceria coincidir', () => {
+    expect(evaluateUpperMaterialStructureCompatibility({
+      baseLayers: baseComposto,
+      overrideLayers: [],
+      hasExplicitOverride: true,
+    })).toMatchObject({
+      baseIsComposite: true,
+      overrideIsComposite: false,
+      compatible: false,
+    });
+  });
+
+  it('mantém ficha simples livre para qualquer override explícito', () => {
+    expect(evaluateUpperMaterialStructureCompatibility({
+      baseLayers: [],
+      overrideLayers: [],
+      hasExplicitOverride: true,
+    })).toMatchObject({ baseIsComposite: false, compatible: true });
+  });
+
+  it('usa label normalizado + role somente como fallback sem component_group_id', () => {
+    expect(nonColorSourceLayerSignature([{
+      component_group_id: null,
+      component_label: '  MASSA   BÓX ',
+      role: ' Estrutura ',
+      is_color_source: false,
+    }])).toEqual(['fallback:massa box|estrutura']);
+
+    expect(evaluateUpperMaterialStructureCompatibility({
+      baseLayers: [{
+        component_group_id: null,
+        component_label: 'Massa Bóx',
+        role: 'Estrutura',
+        is_color_source: false,
+      }],
+      overrideLayers: [{
+        component_group_id: null,
+        component_label: ' massa box ',
+        role: 'estrutura',
+        is_color_source: false,
+      }],
+      hasExplicitOverride: true,
+    })).toMatchObject({ baseIsComposite: true, compatible: true });
+  });
+
+  it('resolve o grupo do produto pinado antes do grupo selecionado', () => {
+    expect(resolvePinnedMaterialGroupId({
+      productId: 'produto-composto',
+      groupId: 'grupo-puro',
+      products: [{ id: 'produto-composto', group_id: 'grupo-composto', active: true }],
+    })).toBe('grupo-composto');
+  });
+
+  it('ignora produto pinado inativo e continua pelo grupo selecionado', () => {
+    expect(resolvePinnedMaterialGroupId({
+      productId: 'produto-inativo',
+      groupId: 'grupo-fallback',
+      products: [{ id: 'produto-inativo', group_id: 'grupo-antigo', active: false }],
+    })).toBe('grupo-fallback');
   });
 });

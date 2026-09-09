@@ -1,46 +1,69 @@
 import { useQuery, useMutation, useQueryClient, UseQueryResult, QueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import type { Json, Tables, TablesInsert, TablesUpdate } from '@/integrations/supabase/types';
 import { toast } from 'sonner';
-import { resyncOPsForSheet } from '@/lib/resyncOPs';
-import { ensureTechnicalStrapLineIds } from '@/lib/technicalStrapLines';
+import {
+  ensureTechnicalStrapLineIds,
+  type TechnicalStrapLineLike,
+} from '@/lib/technicalStrapLines';
+import { replaceTechnicalSheetCacheRow } from '@/lib/technicalSheetPatch';
+import { invalidateProductionCaches } from '@/hooks/useProductionTransitions';
+import {
+  autoResyncUnstartedOpsForSheet,
+  toastAutoResyncSummary,
+} from '@/lib/resyncOPs';
+import {
+  technicalSheetsKeys,
+  invalidateProducts,
+  invalidateTechnicalSheets,
+  invalidateSaleOrders,
+} from '@/lib/queryKeys';
 
 /**
- * Helper unificado: dispara resync (await) e invalida caches.
- * Substitui o padrão fire-and-forget que escondia erros nos onSuccess.
+ * Alterar uma ficha invalida o plano/snapshot por trigger do banco. Em seguida
+ * o cliente propaga o consumo automaticamente para OPs de PVs Aprovados sem
+ * fato físico (auto_resync_unstarted_ops_for_sheet). OPs já iniciadas só
+ * ficam sinalizadas — resync destrutivo continua manual/admin.
  */
-async function runResyncAndInvalidate(qc: QueryClient, sheetId: string) {
+function invalidateSheetAudit(qc: QueryClient) {
+  // A auditoria industrial alimenta os badges do catálogo e a régua da
+  // própria referência. Sem invalidar essas chaves, a pendência continuava
+  // visível por até um minuto depois de o usuário corrigi-la na ficha.
+  qc.invalidateQueries({ queryKey: ['sheets_audit'] });
+  qc.invalidateQueries({ queryKey: ['sheets_audit_summary'] });
+  qc.invalidateQueries({ queryKey: ['technical_sheet_audit'] });
+}
+
+function invalidateSheetImpact(qc: QueryClient) {
+  invalidateSaleOrders(qc);
+  qc.invalidateQueries({ queryKey: ['pv_outdated_status'] });
+  qc.invalidateQueries({ queryKey: ['sale-order-command-preflight'] });
+  qc.invalidateQueries({ queryKey: ['system-diag', 'pv-system'] });
+  qc.invalidateQueries({ queryKey: ['pv-consumption'] });
+  invalidateSheetAudit(qc);
+}
+
+/**
+ * Save da ficha já persistiu — propaga consumo para PVs Aprovados sem fato
+ * físico. Falha aqui NÃO desfaz o UPDATE.
+ */
+async function propagateSheetConsumption(
+  qc: QueryClient,
+  sheetId: string,
+  opts?: { emptyMessage?: string; saveLabel?: string },
+) {
+  invalidateSheetImpact(qc);
   try {
-    const result = await resyncOPsForSheet(sheetId);
-    if (result.totalResyncedOPs > 0) {
-      qc.invalidateQueries({ queryKey: ['orders'] });
-      qc.invalidateQueries({ queryKey: ['order_stages'] });
-      qc.invalidateQueries({ queryKey: ['products'] });
-      qc.invalidateQueries({ queryKey: ['stock_movements'] });
-      qc.invalidateQueries({ queryKey: ['material_reservations'] });
-      toast.success(`${result.totalResyncedOPs} ${result.totalResyncedOPs === 1 ? 'OP resincronizada' : 'OPs resincronizadas'} automaticamente!`);
-    }
-    // Re-reserva de material: avisa SÓ quando houve mudança real, pra o operador
-    // saber que o estoque reservado das OPs abertas foi reeditado junto com a
-    // ficha (era o furo do PV-00145 — componente novo nunca reservado, e por
-    // isso nunca debitado na finalização).
-    const r = result.reservations;
-    if (r && (r.inseridas > 0 || r.atualizadas > 0 || r.canceladas > 0)) {
-      const partes = [
-        r.inseridas > 0 ? `${r.inseridas} reservada(s)` : null,
-        r.atualizadas > 0 ? `${r.atualizadas} ajustada(s)` : null,
-        r.canceladas > 0 ? `${r.canceladas} cancelada(s)` : null,
-      ].filter(Boolean);
-      toast.success(`Material das OPs abertas reeditado: ${partes.join(' · ')}`);
-    }
-    if (result.errors.length > 0) {
-      toast.warning(`${result.errors.length} ${result.errors.length === 1 ? 'erro' : 'erros'} no resync`, {
-        description: result.errors.slice(0, 3).join('\n'),
-      });
-    }
-  } catch (err: any) {
-    toast.warning('Mudança salva, mas o resync automático falhou.', {
-      description: err?.message,
-    });
+    const summary = await autoResyncUnstartedOpsForSheet(sheetId);
+    invalidateSheetImpact(qc);
+    toastAutoResyncSummary(summary, { emptyMessage: opts?.emptyMessage });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'falha ao propagar consumo';
+    const label = opts?.saveLabel || 'Ficha salva';
+    toast.warning(
+      `${label}, mas o consumo das OPs não foi atualizado automaticamente: ${message}`,
+      { duration: 10000 },
+    );
   }
 }
 
@@ -274,7 +297,7 @@ export type SheetMaterialFormData = {
 
 export function useTechnicalSheets() {
   return useQuery({
-    queryKey: ['technical_sheets'],
+    queryKey: technicalSheetsKeys.all,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('technical_sheets')
@@ -288,9 +311,90 @@ export function useTechnicalSheets() {
   });
 }
 
+/**
+ * Colunas do catálogo `/fichas-tecnicas` (lista + filtros + autofill/BOM peer).
+ * Não inclui JSONBs pesados que só o editor abre (strap_colors, production_sectors,
+ * direct_components, size_multipliers, lead times, capacidades).
+ *
+ * ⚠ Ao ler coluna nova no catálogo/autofill/BOM copy, incluir AQUI — TS loose
+ * não acusa ausência.
+ */
+export const TECHNICAL_SHEET_CATALOG_COLUMNS = [
+  'id',
+  'code',
+  'name',
+  'collection',
+  'shoe_category',
+  'status',
+  'status_ficha',
+  'retired_at',
+  'colors',
+  'description',
+  'sale_price',
+  'images',
+  'sole_material',
+  'upper_material',
+  'lining_material',
+  'insole_material',
+  'upper_consumption',
+  'lining_consumption',
+  'insole_consumption',
+  'components_accessories',
+  'sole_consumption',
+  'sole_process',
+  'sole_group_id',
+  'primary_sole_id',
+  'updated_at',
+].join(', ');
+
+/**
+ * Lista do hub de fichas — substitui `select('*')` na abertura do catálogo.
+ * Detalhe da ficha aberta: `useTechnicalSheetDetail(id)`.
+ */
+export function useTechnicalSheetsCatalog() {
+  return useQuery({
+    queryKey: technicalSheetsKeys.catalog,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('technical_sheets')
+        // Cast: o client tipado só aceita `*` ou literais do schema; lista
+        // explícita montada em runtime vira GenericStringError sem o `as`.
+        .select(TECHNICAL_SHEET_CATALOG_COLUMNS as '*')
+        .order('updated_at', { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+    staleTime: 5 * 60 * 1000,
+    gcTime: 15 * 60 * 1000,
+  });
+}
+
+/**
+ * Row completa de uma ficha — editor. Não reusar o cache do catálogo como se
+ * fosse `*`: campos ausentes viram undefined em TS loose e o save pode gravar
+ * NULL por cima do valor real (mesmo padrão de `useProductDetail`).
+ */
+export function useTechnicalSheetDetail(id: string | null | undefined) {
+  return useQuery({
+    queryKey: technicalSheetsKeys.detail(id),
+    enabled: !!id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('technical_sheets')
+        .select('*')
+        .eq('id', id!)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    staleTime: 60 * 1000,
+    gcTime: 5 * 60 * 1000,
+  });
+}
+
 /** Colunas que a lista de PV realmente lê das fichas. Auditadas em SaleOrders.tsx
  *  (busca por sku, refById, segmento Adulto/Infantil, rótulo do item). */
-export const TECHNICAL_SHEET_LITE_COLUMNS = 'id, code, name, shoe_category';
+export const TECHNICAL_SHEET_LITE_COLUMNS = 'id, code, name, shoe_category, retired_at';
 
 /**
  * Versão enxuta de `useTechnicalSheets` para telas que só precisam identificar a
@@ -311,16 +415,63 @@ export const TECHNICAL_SHEET_LITE_COLUMNS = 'id, code, name, shoe_category';
  * armadilha já documentada em TECHNICAL_SHEET_CONSUMPTION_COLUMNS.
  *
  * A sub-key ['technical_sheets','lite'] é invalidada de graça por todo
- * `invalidateQueries({ queryKey: ['technical_sheets'] })` do projeto — o match do
+ * `invalidateQueries({ queryKey: technicalSheetsKeys.all })` do projeto — o match do
  * React Query é por prefixo.
  */
 export function useTechnicalSheetsLite() {
   return useQuery({
-    queryKey: ['technical_sheets', 'lite'],
+    queryKey: technicalSheetsKeys.lite,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('technical_sheets')
         .select(TECHNICAL_SHEET_LITE_COLUMNS)
+        .order('updated_at', { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+    staleTime: 5 * 60 * 1000,
+    gcTime: 15 * 60 * 1000,
+  });
+}
+
+/**
+ * Colunas que o editor do PV lê do array `references` (SaleOrderForm +
+ * SaleOrderItemForm + painel). Auditadas 07/09/2026 — NÃO incluir
+ * upper/lining/sole (vão em `sheet_specs_for_colors` por item) nem
+ * production_sectors / images pesadas além do que a UI mostra.
+ *
+ * ⚠ Ao passar a ler uma coluna nova via `references`/`selectedRef`, ela TEM
+ * que entrar aqui. TS loose não acusa coluna ausente.
+ */
+export const TECHNICAL_SHEET_EDITOR_COLUMNS = [
+  'id',
+  'code',
+  'name',
+  'colors',
+  'sizes',
+  'shoe_category',
+  'sale_price',
+  'images',
+  'image_url',
+  'ncm',
+  'status_ficha',
+  'retired_at',
+  'has_straps',
+  'strap_colors',
+  'updated_at',
+].join(', ');
+
+/**
+ * Catálogo de fichas do editor do PV — ~subconjunto do `select('*')` canônico.
+ * Com 53 fichas o `*` chegava a ~227 kB e BLOQUEAVA o hydrate do snapshot.
+ */
+export function useTechnicalSheetsEditor() {
+  return useQuery({
+    queryKey: technicalSheetsKeys.editor,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('technical_sheets')
+        .select(TECHNICAL_SHEET_EDITOR_COLUMNS)
         .order('updated_at', { ascending: false });
       if (error) throw error;
       return data;
@@ -365,8 +516,23 @@ import { sanitizeUuidFields } from '@/lib/utils';
  *
  * Nome vazio não é travado: quem decide se ficha sem nome pode existir é outro
  * lugar, e bloquear aqui impediria salvar as fichas legadas sem nome.
+ * Ficha aposentada também não reserva o nome operacional: o histórico segue
+ * ligado ao UUID antigo, enquanto uma ficha corrigida pode reutilizar o nome.
  */
-type SheetNameRow = { id: string; name: string | null; code: string | null };
+type SheetNameRow = {
+  id: string;
+  name: string | null;
+  code: string | null;
+  retired_at: string | null;
+};
+
+type TechnicalSheetCacheRow = {
+  id: string;
+  name?: string | null;
+  code?: string | null;
+  shoe_category?: string | null;
+  [key: string]: unknown;
+};
 
 export async function findSheetNameCollision(
   name: string,
@@ -376,7 +542,8 @@ export async function findSheetNameCollision(
   if (!alvo) return null;
   const { data, error } = await supabase
     .from('technical_sheets')
-    .select('id, name, code')
+    .select('id, name, code, retired_at')
+    .is('retired_at', null)
     .ilike('name', alvo);
   // Erro de leitura NÃO bloqueia o cadastro: a trave é uma conveniência, e
   // derrubar o save por causa de um SELECT que falhou seria pior que o
@@ -385,11 +552,56 @@ export async function findSheetNameCollision(
     console.warn('[findSheetNameCollision] checagem falhou, seguindo sem travar:', error);
     return null;
   }
-  const rows = (data || []) as SheetNameRow[];
+  const rows = (data || []) as unknown as SheetNameRow[];
   return rows.find(sheet =>
     sheet.id !== ignoreId
+    && !sheet.retired_at
     && (sheet.name || '').trim().toLowerCase() === alvo.toLowerCase()
   ) ?? null;
+}
+
+type TechnicalSheetCloneCompletionState = {
+  clone_completed_request_id?: string | null;
+  clone_cleanup_request_id?: string | null;
+};
+
+type TechnicalSheetCloneMetadata = {
+  retired_at?: string | null;
+  retired_by?: string | null;
+  retirement_reason?: string | null;
+  retirement_request_id?: string | null;
+  created_by?: string | null;
+  clone_source_id?: string | null;
+  clone_cleanup_request_id?: string | null;
+  clone_cleanup_started_at?: string | null;
+  clone_completed_request_id?: string | null;
+  clone_completed_at?: string | null;
+};
+
+type TechnicalSheetCloneSource = Tables<'technical_sheets'> & TechnicalSheetCloneMetadata;
+type TechnicalSheetCloneInsert = TablesInsert<'technical_sheets'> & TechnicalSheetCloneMetadata;
+
+export function prepareTechnicalStrapLinesForClone(value: Json | null | undefined) {
+  if (!Array.isArray(value)) return [];
+  if (value.some(line => !line || typeof line !== 'object' || Array.isArray(line))) {
+    throw new Error('A ficha de origem contém uma linha de tira inválida.');
+  }
+
+  // Fichas legadas podem ter IDs ordinais numéricos. Não descarte essas linhas:
+  // ensureTechnicalStrapLineIds substitui a identidade antiga por UUIDs novos.
+  return ensureTechnicalStrapLineIds(
+    value as unknown as TechnicalStrapLineLike[],
+    true,
+  );
+}
+
+export function isTechnicalSheetCloneCompletionConfirmed(
+  state: TechnicalSheetCloneCompletionState | null | undefined,
+  requestId: string,
+): boolean {
+  return !!state
+    && state.clone_completed_request_id === requestId
+    && state.clone_cleanup_request_id == null;
 }
 
 export function useAddSheet() {
@@ -435,7 +647,11 @@ export function useAddSheet() {
       if (error) throw error;
       return data;
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['technical_sheets'] }); toast.success('Ficha técnica criada!'); },
+    onSuccess: () => {
+      invalidateTechnicalSheets(qc);
+      invalidateSheetAudit(qc);
+      toast.success('Ficha técnica criada!');
+    },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
   });
 }
@@ -458,14 +674,15 @@ export function useUpdateSheet() {
         }
       }
       const payload = sanitizeUuidFields(data as any);
-      // .select('id') retorna as linhas afetadas. Se RLS bloquear silently
-      // (admin do client sem role admin no DB), data fica []. Antes esse caso
-      // passava por "sucesso" e o user via toast verde sem nada ter sido salvo.
+      // .select('*') retorna a linha final para atualizar só esse item no cache.
+      // Se RLS bloquear silently (admin do client sem role admin no DB), data
+      // fica []. Antes esse caso passava por "sucesso" e o user via toast verde
+      // sem nada ter sido salvo.
       const { data: updated, error } = await (supabase as any)
         .from('technical_sheets')
         .update(payload)
         .eq('id', id)
-        .select('id');
+        .select('*');
       if (error) {
         console.error('[useUpdateSheet] erro Supabase:', { id, payload, error });
         throw error;
@@ -476,12 +693,41 @@ export function useUpdateSheet() {
           'Atualização não persistiu. Verifique permissões (admin/gerente) ou se a ficha foi excluída em outra aba.'
         );
       }
-      return id;
+      return updated[0];
     },
-    onSuccess: async (sheetId) => {
-      qc.invalidateQueries({ queryKey: ['technical_sheets'] });
-      toast.success('Ficha técnica atualizada!');
-      await runResyncAndInvalidate(qc, sheetId);
+    onSuccess: (updatedSheet) => {
+      // O UPDATE já devolve a linha final (incluindo updated_at e efeitos de
+      // triggers). Substituí-la no cache evita baixar novamente todas as fichas
+      // e seus JSONBs pesados após cada pequena correção.
+      qc.setQueryData<TechnicalSheetCacheRow[]>(technicalSheetsKeys.all, (cached) => (
+        replaceTechnicalSheetCacheRow(cached, updatedSheet)
+      ));
+      qc.setQueryData(technicalSheetsKeys.detail(updatedSheet.id), updatedSheet);
+      // Catálogo / lite / editor têm chave própria — patchar campos de identidade
+      // e os que o catálogo mostra, sem forçar refetch do `*`.
+      qc.setQueryData<TechnicalSheetCacheRow[]>(technicalSheetsKeys.catalog, (cached) => (
+        replaceTechnicalSheetCacheRow(cached, updatedSheet)
+      ));
+      qc.setQueryData<TechnicalSheetCacheRow[]>(technicalSheetsKeys.lite, (cached) => {
+        if (!cached) return cached;
+        return cached.map((row) => row.id === updatedSheet.id
+          ? {
+              ...row,
+              name: updatedSheet.name,
+              code: updatedSheet.code,
+              shoe_category: updatedSheet.shoe_category,
+              retired_at: updatedSheet.retired_at,
+            }
+          : row);
+      });
+      qc.setQueryData<TechnicalSheetCacheRow[]>(technicalSheetsKeys.editor, (cached) => (
+        replaceTechnicalSheetCacheRow(cached, updatedSheet)
+      ));
+      qc.invalidateQueries({ queryKey: technicalSheetsKeys.cabedalParPeAudit });
+      void propagateSheetConsumption(qc, updatedSheet.id, {
+        emptyMessage: 'Ficha salva. Nenhum PV aprovado pendente de atualização de consumo.',
+        saveLabel: 'Ficha salva',
+      });
     },
     onError: (err: Error) => {
       console.error('[useUpdateSheet] mutationFn falhou:', err);
@@ -490,72 +736,159 @@ export function useUpdateSheet() {
   });
 }
 
-/** Vínculos que o BANCO realmente recusa na exclusão de ficha (FK NO ACTION/RESTRICT),
- *  auditado em 20/08/2026 sobre as 41 FKs que apontam pra `technical_sheets`.
- *
- *  ⚠ `sheet_materials` NÃO entra aqui de propósito: a FK é ON DELETE **CASCADE** — o
- *  banco leva os materiais junto. O guard antigo travava por material ("esvazie a ficha
- *  antes de excluir") e, com isso, impedia apagar ficha duplicada/rascunho que não tinha
- *  histórico nenhum, exigindo remover material por material à mão pra nada. */
-const SHEET_DELETE_BLOCKERS: { table: string; column: string; singular: string; plural: string }[] = [
-  { table: 'orders', column: 'reference_id', singular: 'OP', plural: 'OPs' },
-  { table: 'sale_order_items', column: 'reference_id', singular: 'item de pedido', plural: 'itens de pedido' },
-  { table: 'technical_sheet_snapshots', column: 'sheet_id', singular: 'snapshot', plural: 'snapshots' },
-  { table: 'technical_strap_line_identity_map', column: 'technical_sheet_id', singular: 'vínculo de tira', plural: 'vínculos de tira' },
-  { table: 'production_wave_items', column: 'reference_id', singular: 'item de onda', plural: 'itens de onda' },
-  { table: 'product_references', column: 'technical_sheet_id', singular: 'produto vinculado', plural: 'produtos vinculados' },
-  { table: 'ready_stock', column: 'reference_id', singular: 'saldo de pronta-entrega', plural: 'saldos de pronta-entrega' },
-  { table: 'reference_materials', column: 'reference_id', singular: 'material de referência', plural: 'materiais de referência' },
-  { table: 'sop_plan_items', column: 'reference_id', singular: 'item de plano S&OP', plural: 'itens de plano S&OP' },
-];
+export interface TechnicalSheetDeleteLinks {
+  orders: number;
+  sale_order_items: number;
+  technical_sheet_snapshots: number;
+  technical_strap_line_identity_map: number;
+  production_wave_items: number;
+  product_references: number;
+  ready_stock: number;
+  ready_stock_movements: number;
+  reference_materials: number;
+  sop_plan_items: number;
+  nfe_devolucao_item_claims: number;
+}
+
+export interface TechnicalSheetActiveOrderImpact {
+  id: string;
+  order_number: string;
+  status: string;
+  quantity: number;
+  sale_order_id: string;
+  parent_status?: string | null;
+  has_terminal_parent?: boolean;
+  has_non_reversible_facts: boolean;
+}
+
+export interface TechnicalSheetDeleteImpact {
+  sheet_id: string;
+  sheet_name: string;
+  sheet_code: string | null;
+  sheet_status: string;
+  sheet_publication_status: string;
+  updated_at: string;
+  mode: 'retire';
+  can_hard_delete: false;
+  can_retire: boolean;
+  active_orders: TechnicalSheetActiveOrderImpact[];
+  active_order_count: number;
+  blocking_active_order_count: number;
+  terminal_parent_active_order_count: number;
+  blocking_wave_count: number;
+  blocking_strap_demand_count?: number;
+  reversible_strap_demand_count?: number;
+  blocking_service_order_count?: number;
+  reversible_service_order_count?: number;
+  active_pairs: number;
+  active_sale_item_count: number;
+  active_sale_item_pairs: number;
+  historical_order_count: number;
+  links: TechnicalSheetDeleteLinks;
+}
+
+export interface TechnicalSheetDeleteResult {
+  ok: boolean;
+  mode: 'retire';
+  sheet_id: string;
+  sheet_name: string;
+  sheet_code: string | null;
+  cancelled_active_orders: number;
+  cancelled_order_ids?: string[];
+  cancelled_order_numbers?: string[];
+  excluded_sale_order_item_ids?: string[];
+  excluded_sale_order_item_count: number;
+  excluded_sale_order_item_pairs: number;
+  cancelled_strap_demand_count?: number;
+  cancelled_service_order_count?: number;
+  removed_wave_source_count?: number;
+  active_pairs_removed: number;
+  historical_orders_preserved: number;
+  total_orders_preserved: number;
+  links_preserved: TechnicalSheetDeleteLinks;
+  alert_id: string | null;
+  retired_at?: string;
+}
+
+export function useTechnicalSheetDeleteImpact(sheetId: string | null) {
+  return useQuery({
+    queryKey: ['technical_sheet_delete_impact', sheetId],
+    enabled: !!sheetId,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc(
+        'get_technical_sheet_retirement_impact' as never,
+        { p_sheet_id: sheetId } as never,
+      );
+      if (error) throw error;
+      return data as TechnicalSheetDeleteImpact;
+    },
+    staleTime: 0,
+    gcTime: 60 * 1000,
+  });
+}
 
 export function useDeleteSheet() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (id: string) => {
-      // As checagens abaixo servem pra MENSAGEM legível — a trava real é a FK do banco
-      // (tradução do 23503 mais abaixo). Por isso um erro de leitura (RLS, tabela nova)
-      // não bloqueia a exclusão: seguiria travando ficha limpa por causa de um SELECT.
-      const counts = await Promise.all(
-        SHEET_DELETE_BLOCKERS.map(async (b) => {
-          const { count, error } = await supabase
-            .from(b.table as any)
-            .select('id', { count: 'exact', head: true })
-            .eq(b.column, id);
-          if (error) {
-            console.warn('[useDeleteSheet] checagem de vínculo falhou:', b.table, error);
-            return 0;
-          }
-          return count ?? 0;
-        })
+    mutationFn: async ({
+      id,
+      expectedUpdatedAt,
+      clientRequestId,
+      reason,
+    }: {
+      id: string;
+      expectedUpdatedAt: string;
+      clientRequestId: string;
+      reason: string;
+    }) => {
+      const { data, error } = await supabase.rpc(
+        'admin_retire_technical_sheet' as never,
+        {
+          p_sheet_id: id,
+          p_expected_updated_at: expectedUpdatedAt,
+          p_client_request_id: clientRequestId,
+          p_reason: reason,
+        } as never,
       );
-      const blocking = SHEET_DELETE_BLOCKERS
-        .map((b, idx) => ({ ...b, count: counts[idx] }))
-        .filter((b) => b.count > 0);
-      if (blocking.length > 0) {
-        const lista = blocking.map((b) => `${b.count} ${b.count === 1 ? b.singular : b.plural}`).join(', ');
-        throw new Error(`Ficha em uso (${lista}) — não é possível excluir.`);
-      }
-
-      // .select('id') expõe o caso "0 linhas afetadas" (RLS bloqueando silenciosamente),
-      // que antes passava como sucesso — mesmo motivo do useUpdateSheet acima.
-      const { data: deleted, error } = await supabase
-        .from('technical_sheets')
-        .delete()
-        .eq('id', id)
-        .select('id');
-      if (error) {
-        console.error('[useDeleteSheet] erro Supabase:', { id, error });
-        if ((error as any).code === '23503') {
-          throw new Error('Ficha vinculada a registros de produção/venda — não é possível excluir.');
-        }
-        throw error;
-      }
-      if (!deleted || deleted.length === 0) {
-        throw new Error('Exclusão não persistiu. Verifique permissões (admin/gerente) ou se a ficha já foi excluída em outra aba.');
-      }
+      if (error) throw error;
+      const result = data as TechnicalSheetDeleteResult;
+      if (!result?.ok) throw new Error('O servidor não confirmou a exclusão da ficha.');
+      return result;
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['technical_sheets'] }); toast.success('Ficha técnica excluída!'); },
+    onSuccess: (result) => {
+      invalidateTechnicalSheets(qc);
+      invalidateProductionCaches(qc);
+      qc.invalidateQueries({ queryKey: ['production_waves'] });
+      qc.invalidateQueries({ queryKey: ['production_alerts_active'] });
+      invalidateProducts(qc);
+      qc.invalidateQueries({ queryKey: ['stock_movements'] });
+      qc.invalidateQueries({ queryKey: ['material_reservations'] });
+      qc.invalidateQueries({ queryKey: ['production_consumptions'] });
+      qc.invalidateQueries({ queryKey: ['sale_order_items'] });
+      qc.invalidateQueries({ queryKey: ['sale_order_items_all'] });
+      qc.invalidateQueries({ queryKey: ['mrp-needs'] });
+      qc.invalidateQueries({ queryKey: ['mrp_suggestions'] });
+      qc.invalidateQueries({ queryKey: ['materials_per_pv'] });
+      qc.invalidateQueries({ queryKey: ['pv-consumption'] });
+      qc.invalidateQueries({ queryKey: ['consumption-source'] });
+      qc.invalidateQueries({ queryKey: ['purchase_projection_for_mrp'] });
+      qc.invalidateQueries({ queryKey: ['purchase_projection_timeline'] });
+      qc.invalidateQueries({ queryKey: ['purchase_projection_timeline_for_agenda'] });
+      qc.invalidateQueries({ queryKey: ['sector-period-load'] });
+      qc.invalidateQueries({ queryKey: ['capacity_overflow'] });
+      qc.invalidateQueries({ queryKey: ['artisanal-strap-demands'] });
+      qc.invalidateQueries({ queryKey: ['artisanal-strap-production'] });
+      qc.invalidateQueries({ queryKey: ['artisanal-strap-external-operations'] });
+      qc.invalidateQueries({ queryKey: ['strap-contractor-operations'] });
+      qc.invalidateQueries({ queryKey: ['strap_stock_lines_preview'] });
+      qc.invalidateQueries({ queryKey: ['service_orders'] });
+      invalidateSheetImpact(qc);
+
+      toast.success(`Ficha ${result.sheet_name} retirada da produção.`, {
+        description: `${result.excluded_sale_order_item_count} item(ns) de PV e ${result.excluded_sale_order_item_pairs} pares retirados da produção; ${result.cancelled_active_orders} OP(s) cancelada(s) e ${result.historical_orders_preserved} histórica(s) preservada(s).`,
+        duration: 10000,
+      });
+    },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`, { duration: 8000 }),
   });
 }
@@ -569,10 +902,12 @@ export function useAddSheetMaterial() {
         .insert({ sheet_id: sheetId, ...data });
       if (error) throw error;
     },
-    onSuccess: async (_data, variables) => {
+    onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ['sheet_materials', variables.sheetId] });
-      toast.success('Material adicionado!');
-      await runResyncAndInvalidate(qc, variables.sheetId);
+      toast.success('Material adicionado.');
+      void propagateSheetConsumption(qc, variables.sheetId, {
+        saveLabel: 'Material adicionado',
+      });
     },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
   });
@@ -586,10 +921,12 @@ export function useBulkAddSheetMaterials() {
       const { error } = await supabase.from('sheet_materials').insert(rows);
       if (error) throw error;
     },
-    onSuccess: async (_data, variables) => {
+    onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ['sheet_materials', variables.sheetId] });
-      toast.success(`${variables.materials.length} materiais adicionados!`);
-      await runResyncAndInvalidate(qc, variables.sheetId);
+      toast.success(`${variables.materials.length} materiais adicionados.`);
+      void propagateSheetConsumption(qc, variables.sheetId, {
+        saveLabel: 'Materiais adicionados',
+      });
     },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
   });
@@ -605,10 +942,14 @@ export function useUpdateSheetMaterial(sheetId: string | null) {
         .eq('id', id);
       if (error) throw error;
     },
-    onSuccess: async () => {
+    onSuccess: () => {
+      if (!sheetId) {
+        invalidateSheetImpact(qc);
+        return;
+      }
       qc.invalidateQueries({ queryKey: ['sheet_materials', sheetId] });
-      toast.success('Material atualizado!');
-      if (sheetId) await runResyncAndInvalidate(qc, sheetId);
+      toast.success('Material atualizado.');
+      void propagateSheetConsumption(qc, sheetId, { saveLabel: 'Material atualizado' });
     },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
   });
@@ -624,10 +965,14 @@ export function useDeleteSheetMaterial(sheetId: string | null) {
         .eq('id', id);
       if (error) throw error;
     },
-    onSuccess: async () => {
+    onSuccess: () => {
+      if (!sheetId) {
+        invalidateSheetImpact(qc);
+        return;
+      }
       qc.invalidateQueries({ queryKey: ['sheet_materials', sheetId] });
-      toast.success('Material removido!');
-      if (sheetId) await runResyncAndInvalidate(qc, sheetId);
+      toast.success('Material removido.');
+      void propagateSheetConsumption(qc, sheetId, { saveLabel: 'Material removido' });
     },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
   });
@@ -649,75 +994,162 @@ export function useCloneSheet() {
       // a non-DEFAULT value into column search_norm"). Como copiamos via
       // select('*') + spread, precisa ser descartada explicitamente junto de
       // id/created_at/updated_at.
-      const { id: _id, created_at: _ca, updated_at: _ua, search_norm: _sn, ...fields } = source as any;
+      const cleanupRequestId = crypto.randomUUID();
+      const {
+        id: _id,
+        created_at: _ca,
+        updated_at: _ua,
+        search_norm: _sn,
+        retired_at: _retiredAt,
+        retired_by: _retiredBy,
+        retirement_reason: _retirementReason,
+        retirement_request_id: _retirementRequestId,
+        created_by: _createdBy,
+        clone_source_id: _cloneSourceId,
+        clone_cleanup_request_id: _cloneCleanupRequestId,
+        clone_cleanup_started_at: _cloneCleanupStartedAt,
+        clone_completed_request_id: _cloneCompletedRequestId,
+        clone_completed_at: _cloneCompletedAt,
+        ...fields
+      } = source as TechnicalSheetCloneSource;
+      const clonePayload: TechnicalSheetCloneInsert = {
+        ...fields,
+        name: newName,
+        status_ficha: 'rascunho',
+        clone_source_id: sourceId,
+        clone_cleanup_request_id: cleanupRequestId,
+      };
       const { data: newSheet, error: insertErr } = await supabase
         .from('technical_sheets')
-        .insert({ ...fields, name: newName, status_ficha: 'rascunho' } as any)
+        .insert(clonePayload)
         .select('id')
         .single();
       if (insertErr || !newSheet) throw new Error(insertErr?.message || 'Erro ao criar ficha');
-      const newId = (newSheet as any).id as string;
+      const newId = newSheet.id;
 
-      // Trigger sync_construction_routing roda no INSERT e sobrescreve
-      // has_straps/strap_colors baseado em construction_type. Se a ficha
-      // original tinha has_straps=true mas construction_type='corte_costura'
-      // (modelo com tiras opcionais), o trigger zera as tiras no clone.
-      // Re-aplica esses campos via UPDATE depois pra preservar a config real.
-      if (fields.has_straps || (fields.strap_colors && fields.strap_colors.length > 0)) {
-        const clonedStrapColors = ensureTechnicalStrapLineIds(fields.strap_colors, true);
-        await supabase
-          .from('technical_sheets')
-          .update({
-            has_straps: fields.has_straps,
-            strap_colors: clonedStrapColors,
-          } as any)
-          .eq('id', newId);
-      }
-
-      // Helper: rollback the new sheet if any side-effect fails, so we don't leave
-      // a half-cloned ficha técnica behind.
+      // O DELETE direto continua revogado. A compensacao so aceita o proprio
+      // criador, token exato, clone rascunho com menos de 15 minutos e nenhuma
+      // FK externa alem das tres configuracoes copiadas abaixo.
       const rollback = async (cause: string): Promise<never> => {
-        try { await supabase.from('technical_sheets').delete().eq('id', newId); } catch { /* best-effort */ }
+        try {
+          const { data, error } = await supabase.rpc(
+            'cleanup_failed_technical_sheet_clone' as never,
+            {
+              p_sheet_id: newId,
+              p_cleanup_request_id: cleanupRequestId,
+            } as never,
+          );
+          if (error || !(data as { ok?: boolean } | null)?.ok) {
+            const cleanupMessage = error?.message || 'servidor não confirmou a limpeza';
+            throw new Error(cleanupMessage);
+          }
+        } catch (cleanupError) {
+          const cleanupMessage = cleanupError instanceof Error
+            ? cleanupError.message
+            : 'erro desconhecido na limpeza';
+          throw new Error(`${cause}. O clone parcial não pôde ser limpo: ${cleanupMessage}`);
+        }
         throw new Error(cause);
       };
 
-      const { data: materials, error: matReadErr } = await supabase
-        .from('sheet_materials')
-        .select('*')
-        .eq('sheet_id', sourceId);
-      if (matReadErr) await rollback(`Falha ao ler materiais da ficha origem: ${matReadErr.message}`);
-      if (materials && materials.length > 0) {
-        const rows = materials.map(({ id: _i, created_at: _c, ...m }: any) => ({ ...m, sheet_id: newId }));
-        const { error: matInsErr } = await supabase.from('sheet_materials').insert(rows as any);
-        if (matInsErr) await rollback(`Falha ao copiar materiais: ${matInsErr.message}`);
-      }
+      try {
+        // Trigger sync_construction_routing roda no INSERT e sobrescreve
+        // has_straps/strap_colors baseado em construction_type. Reaplica a
+        // configuracao com novas identidades tecnicas e confere o retorno.
+        const sourceStrapColors = Array.isArray(fields.strap_colors)
+          ? fields.strap_colors
+          : [];
+        if (fields.has_straps || sourceStrapColors.length > 0) {
+          const clonedStrapColors = prepareTechnicalStrapLinesForClone(sourceStrapColors);
+          const strapUpdate: TablesUpdate<'technical_sheets'> = {
+            has_straps: fields.has_straps,
+            strap_colors: clonedStrapColors as unknown as Json,
+          };
+          const { error: strapUpdateError } = await supabase
+            .from('technical_sheets')
+            .update(strapUpdate)
+            .eq('id', newId);
+          if (strapUpdateError) throw new Error(`Falha ao copiar tiras: ${strapUpdateError.message}`);
+        }
 
-      const { data: soleMaps, error: soleReadErr } = await (supabase as any)
-        .from('technical_sheet_sole_colors')
-        .select('*')
-        .eq('sheet_id', sourceId);
-      if (soleReadErr) await rollback(`Falha ao ler mapeamento de cores de solado: ${soleReadErr.message}`);
-      if (soleMaps && soleMaps.length > 0) {
-        const rows = soleMaps.map(({ id: _i, created_at: _c, ...s }: any) => ({ ...s, sheet_id: newId }));
-        const { error: soleInsErr } = await (supabase as any).from('technical_sheet_sole_colors').insert(rows);
-        if (soleInsErr) await rollback(`Falha ao copiar cores de solado: ${soleInsErr.message}`);
-      }
+        const { data: materials, error: matReadErr } = await supabase
+          .from('sheet_materials')
+          .select('*')
+          .eq('sheet_id', sourceId);
+        if (matReadErr) throw new Error(`Falha ao ler materiais da ficha origem: ${matReadErr.message}`);
+        if (materials && materials.length > 0) {
+          const rows: TablesInsert<'sheet_materials'>[] = materials.map(({ id: _i, created_at: _c, ...material }) => ({
+            ...material,
+            sheet_id: newId,
+          }));
+          const { error: matInsErr } = await supabase.from('sheet_materials').insert(rows);
+          if (matInsErr) throw new Error(`Falha ao copiar materiais: ${matInsErr.message}`);
+        }
 
-      const { data: insoleMaps, error: insoleReadErr } = await (supabase as any)
-        .from('technical_sheet_insole_colors')
-        .select('*')
-        .eq('sheet_id', sourceId);
-      if (insoleReadErr) await rollback(`Falha ao ler mapeamento de cores de palmilha: ${insoleReadErr.message}`);
-      if (insoleMaps && insoleMaps.length > 0) {
-        const rows = insoleMaps.map(({ id: _i, created_at: _c, ...ins }: any) => ({ ...ins, sheet_id: newId }));
-        const { error: insoleInsErr } = await (supabase as any).from('technical_sheet_insole_colors').insert(rows);
-        if (insoleInsErr) await rollback(`Falha ao copiar cores de palmilha: ${insoleInsErr.message}`);
-      }
+        const { data: soleMaps, error: soleReadErr } = await supabase
+          .from('technical_sheet_sole_colors')
+          .select('*')
+          .eq('sheet_id', sourceId);
+        if (soleReadErr) throw new Error(`Falha ao ler mapeamento de cores de solado: ${soleReadErr.message}`);
+        if (soleMaps && soleMaps.length > 0) {
+          const rows: TablesInsert<'technical_sheet_sole_colors'>[] = soleMaps.map(({ id: _i, created_at: _c, ...soleMap }) => ({
+            ...soleMap,
+            sheet_id: newId,
+          }));
+          const { error: soleInsErr } = await supabase.from('technical_sheet_sole_colors').insert(rows);
+          if (soleInsErr) throw new Error(`Falha ao copiar cores de solado: ${soleInsErr.message}`);
+        }
 
-      return newId;
+        const { data: insoleMaps, error: insoleReadErr } = await supabase
+          .from('technical_sheet_insole_colors')
+          .select('*')
+          .eq('sheet_id', sourceId);
+        if (insoleReadErr) throw new Error(`Falha ao ler mapeamento de cores de palmilha: ${insoleReadErr.message}`);
+        if (insoleMaps && insoleMaps.length > 0) {
+          const rows: TablesInsert<'technical_sheet_insole_colors'>[] = insoleMaps.map(({ id: _i, created_at: _c, ...insoleMap }) => ({
+            ...insoleMap,
+            sheet_id: newId,
+          }));
+          const { error: insoleInsErr } = await supabase.from('technical_sheet_insole_colors').insert(rows);
+          if (insoleInsErr) throw new Error(`Falha ao copiar cores de palmilha: ${insoleInsErr.message}`);
+        }
+
+        const { data: completed, error: completeError } = await supabase.rpc(
+          'complete_technical_sheet_clone' as never,
+          {
+            p_sheet_id: newId,
+            p_cleanup_request_id: cleanupRequestId,
+          } as never,
+        );
+        if (completeError || !(completed as { ok?: boolean } | null)?.ok) {
+          // A resposta HTTP pode se perder depois do COMMIT. Antes de executar
+          // a compensacao destrutiva, reconcilia o estado gravado pelo mesmo
+          // token. Se o servidor concluiu e limpou o token de cleanup, o clone
+          // e valido mesmo que a chamada RPC tenha retornado erro/sem payload.
+          const { data: completionState, error: completionStateError } = await supabase
+            .from('technical_sheets')
+            .select('clone_completed_request_id, clone_cleanup_request_id' as never)
+            .eq('id', newId)
+            .maybeSingle();
+          const reconciled = !completionStateError
+            && isTechnicalSheetCloneCompletionConfirmed(
+              completionState as TechnicalSheetCloneCompletionState | null,
+              cleanupRequestId,
+            );
+          if (!reconciled) {
+            throw new Error(completeError?.message || 'Falha ao finalizar a cópia da ficha');
+          }
+        }
+
+        return newId;
+      } catch (error) {
+        const cause = error instanceof Error ? error.message : 'Falha desconhecida ao copiar a ficha';
+        return rollback(cause);
+      }
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['technical_sheets'] });
+      invalidateTechnicalSheets(qc);
+      invalidateSheetAudit(qc);
       toast.success('Ficha copiada com sucesso!');
     },
     onError: (err: Error) => toast.error(`Erro ao copiar ficha: ${err.message}`),

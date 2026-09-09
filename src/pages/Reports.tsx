@@ -205,9 +205,9 @@ export default function Reports() {
 
   const reportData: ReportData = { saleOrders, orders, products, clients, payables, receivables };
 
-  const handleGenerateReport = (template: typeof REPORT_TEMPLATES[0]) => {
+  const handleGenerateReport = async (template: typeof REPORT_TEMPLATES[0]) => {
     try {
-      exportTemplateExcel(template.id, reportData);
+      await exportTemplateExcel(template.id, reportData);
       toast.success(`Relatório "${template.name}" exportado!`, { description: 'Download iniciado.' });
     } catch {
       toast.error('Erro ao gerar relatório. Tente novamente.');
@@ -463,15 +463,19 @@ export default function Reports() {
           {/* Export Options */}
           <Panel eyebrow="RELATÓRIOS · GERAL" title="Opções de Exportação">
               <div className="flex flex-wrap gap-2">
-                <Button variant="outline" size="sm" className="gap-1.5" onClick={() => {
-                  try { exportDashboardPDF(reportData, { ordersToday: metrics.ordersToday, revenueToday: metrics.revenueToday, conversionRate: metrics.conversionRate }); toast.success('PDF gerado!'); }
-                  catch { toast.error('Erro ao gerar PDF.'); }
+                <Button variant="outline" size="sm" className="gap-1.5" onClick={async () => {
+                  try {
+                    await exportDashboardPDF(reportData, { ordersToday: metrics.ordersToday, revenueToday: metrics.revenueToday, conversionRate: metrics.conversionRate });
+                    toast.success('PDF gerado!');
+                  } catch { toast.error('Erro ao gerar PDF.'); }
                 }}>
                   <Download className="h-3.5 w-3.5" />PDF
                 </Button>
-                <Button variant="outline" size="sm" className="gap-1.5" onClick={() => {
-                  try { exportDashboardExcel(reportData); toast.success('Excel gerado!'); }
-                  catch { toast.error('Erro ao gerar Excel.'); }
+                <Button variant="outline" size="sm" className="gap-1.5" onClick={async () => {
+                  try {
+                    await exportDashboardExcel(reportData);
+                    toast.success('Excel gerado!');
+                  } catch { toast.error('Erro ao gerar Excel.'); }
                 }}>
                   <FileSpreadsheet className="h-3.5 w-3.5" />Excel
                 </Button>

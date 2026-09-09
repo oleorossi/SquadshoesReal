@@ -1,4 +1,4 @@
- import { useState, useMemo, type ReactNode } from 'react';
+ import { useState, useMemo, useId, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
   import { Plus, CircleNotch as Loader2, Package, Tag, Barcode, Trash as Trash2, DotsSixVertical as GripVertical, PencilSimple as Pencil, Check, X, ToggleLeft, ToggleRight, Hash, ShoppingCart, CurrencyDollar as DollarSign, Info, CaretUpDown as ChevronsUpDown, MagnifyingGlass as Search, Copy, CaretUp as ChevronUp, CaretDown as ChevronDown, Sparkle as Sparkles } from '@phosphor-icons/react';
  import { Button } from '@/components/ui/button';
@@ -34,16 +34,26 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
  import { useGroups, type ProductGroup } from '@/hooks/useGroups';
  import { sectorLabel, sectorOfGroup } from '@/lib/categoryFromGroup';
 import {
+  evaluateUpperMaterialStructureCompatibility,
+  hasVariantComponentPin,
   listVariantCascadeSlots,
+  resolvePinnedMaterialGroupId,
   resolveStrapBaseReadout,
   seedVariantCascade,
   variantDrivesNoComponent,
+  variantLeavesStrapBaseOnSheet,
+  type MaterialVariantGroupLayer,
   type VariantCascadeSelection,
 } from '@/lib/materialVariantColorGroup';
 import { strapIdentityBasis } from '@/lib/strapIdentity';
  import { getGroupPath } from '@/lib/groupHierarchy';
  import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import {
+  resolveCompositeMaterialVariant,
+  shouldVariantLiningFollowMainMaterial,
+  type CompositeMaterialLayer,
+} from '@/lib/compositeMaterialVariant';
 
 /**
  * Setores (`product_groups.sector`) cujos grupos são MATERIAL cortado por par —
@@ -87,6 +97,16 @@ function skuSlug(groupName: string): string {
     .split(/\s+/).slice(0, 2).join('')
     .toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
+
+async function loadProductGroupLayers(groupId: string): Promise<MaterialVariantGroupLayer[]> {
+  const { data, error } = await supabase
+    .from('product_group_layers')
+    .select('id,component_group_id,component_label,role,display_order,is_color_source')
+    .eq('composite_group_id', groupId)
+    .order('display_order');
+  if (error) throw error;
+  return (data || []) as MaterialVariantGroupLayer[];
+}
  
   interface MaterialVariantsTabProps {
     sheetId: string;
@@ -128,7 +148,7 @@ function HelpPopover({ label, children }: { label: string; children: ReactNode }
  */
 function GroupCombobox({
   value, onChange, groups, allGroups, describe, placeholder, allowInherit = false, ariaLabel,
-  triggerClassName, invalid = false, footerNote,
+  ariaDescribedBy, triggerClassName, invalid = false, footerNote,
 }: {
   value: string | null | undefined;
   onChange: (id: string | null) => void;
@@ -138,6 +158,7 @@ function GroupCombobox({
   placeholder: string;
   allowInherit?: boolean;
   ariaLabel?: string;
+  ariaDescribedBy?: string;
   /** Altura/tipografia do gatilho. O seletor de material principal usa um
    *  controle maior — é o campo que define o que a variante É. */
   triggerClassName?: string;
@@ -183,6 +204,7 @@ function GroupCombobox({
             role="combobox"
             aria-expanded={open}
             aria-label={ariaLabel}
+            aria-describedby={ariaDescribedBy}
             className={cn(
               'w-full justify-between font-normal h-9 text-sm',
               invalid && 'border-destructive text-destructive-foreground ring-1 ring-destructive/40',
@@ -192,7 +214,7 @@ function GroupCombobox({
             <span className={cn('truncate', !selected && !unavailableSelected && 'text-muted-foreground')}>
               {selected?.pathLabel
                 || unavailableSelected?.name
-                || (allowInherit ? 'Herda a ficha' : placeholder)}
+                || placeholder}
             </span>
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
           </Button>
@@ -257,6 +279,7 @@ function GroupCombobox({
 
   export function MaterialVariantsTab({ sheetId, sheetCode }: MaterialVariantsTabProps) {
    const qc = useQueryClient();
+   const upperStructureFeedbackId = useId();
    const { data: variants = [], isLoading } = useReferenceMaterialVariants(sheetId);
    const { data: products = [] } = useProducts();
    const { data: groups = [] } = useGroups();
@@ -437,20 +460,6 @@ function GroupCombobox({
    const [editingVariant, setEditingVariant] = useState<Partial<ReferenceMaterialVariant> | null>(null);
    const [duplicatingFromId, setDuplicatingFromId] = useState<string | null>(null);
 
-   // Componentes que seguem o material principal desta variante. O valor mora na
-   // FICHA (`technical_sheets.variant_drives_*`) e vale pra TODAS as variantes
-   // dela — por isso o estado local é só um override do que está gravado, e é
-   // limpo a cada abertura do diálogo. `null` = "ainda não mexi", e aí a tela
-   // mostra o seed (o gravado, ou o único componente possível numa ficha nunca
-   // configurada). Isso também evita travar o seed num render em que a query da
-   // ficha ainda não tinha respondido.
-   const [cascadeOverride, setCascadeOverride] = useState<VariantCascadeSelection | null>(null);
-   const cascadeSlots = useMemo(
-     () => listVariantCascadeSlots(sheetMaterials, soleContext),
-     [sheetMaterials, soleContext],
-   );
-   const cascade = cascadeOverride ?? seedVariantCascade(sheetMaterials, soleContext);
-   
    // Temporary state for the form
     const [formData, setFormData] = useState<Partial<ReferenceMaterialVariant>>({
       material_name: '',
@@ -475,17 +484,149 @@ function GroupCombobox({
     });
 
    /**
-    * O bloco de checkboxes só é renderizado com material principal escolhido
-    * (ver `formData.main_material_group_id` no diálogo). A gravação tem que
-    * obedecer à MESMA condição.
-    *
-    * ⚠ Sem esta trava: numa ficha de UM slot ainda não configurada, salvar uma
-    * variante só com exceção por componente (sem material principal) passava
-    * pelas guardas, `seedVariantCascade` ligava aquele slot sozinho, e a ficha
-    * saía com `variant_drives_*` gravado que o usuário NUNCA viu na tela — a
-    * trava vale pra todas as variantes da ficha, então isso mudava o corte de
-    * outras variantes em silêncio. Regressão do PR #146, pega na revisão
-    * adversarial em 21/08/2026.
+    * Estrutura física do Cabedal. O pin de produto vence o grupo, igual aos
+    * resolvers; a partir daí a decisão usa SOMENTE `product_group_layers`.
+    * Setor e nome do grupo não participam da compatibilidade.
+    */
+   const sheetUpperBaseGroupId = useMemo(() => resolvePinnedMaterialGroupId({
+     productId: sheetMaterials?.upper_material_product_id,
+     groupId: sheetMaterials?.upper_material_group_id,
+     products,
+   }),
+   [products, sheetMaterials?.upper_material_product_id, sheetMaterials?.upper_material_group_id]);
+   const explicitUpperOverrideGroupId = useMemo(() => resolvePinnedMaterialGroupId({
+     productId: formData.upper_material_product_id,
+     groupId: formData.upper_material_group_id,
+     products,
+   }),
+   [products, formData.upper_material_product_id, formData.upper_material_group_id]);
+   // Pin de produto inativo não é override: o SQL o ignora e continua pelo
+   // grupo/ficha. A UI precisa tomar a decisão pelo mesmo grupo efetivo.
+   const hasExplicitUpperOverride = !!explicitUpperOverrideGroupId;
+
+   const compositeCatalogQuery = useQuery({
+     queryKey: ['product_group_layers', 'variant_catalog'],
+     enabled: isDialogOpen,
+     queryFn: async () => {
+       const { data, error } = await supabase.from('product_group_layers')
+         .select('composite_group_id,component_group_id,component_label,role,display_order,is_color_source');
+       if (error) throw error;
+       return (data || []) as CompositeMaterialLayer[];
+     },
+     staleTime: 0,
+   });
+   const compositeResolution = resolveCompositeMaterialVariant({
+     baseGroupId: sheetUpperBaseGroupId,
+     mainGroupId: formData.main_material_group_id,
+     groups,
+     layers: compositeCatalogQuery.data || [],
+   });
+   const automaticUpper = !hasExplicitUpperOverride && compositeResolution.status === 'resolved'
+     ? compositeResolution : null;
+   const automaticUpperRequested = !hasExplicitUpperOverride
+     && compositeResolution.status !== 'not_applicable';
+   const liningBaseGroupId = resolvePinnedMaterialGroupId({
+     productId: sheetMaterials?.lining_material_product_id,
+     groupId: groups.find(group => group.name.trim().toLocaleLowerCase('pt-BR')
+       === sheetMaterials?.lining_material?.trim().toLocaleLowerCase('pt-BR'))?.id,
+     products,
+   });
+   const automaticLiningGroupId = formData.main_material_group_id
+     && !resolvePinnedMaterialGroupId({
+       productId: formData.lining_material_product_id,
+       groupId: formData.lining_material_group_id,
+       products,
+     })
+     && shouldVariantLiningFollowMainMaterial({
+       baseGroupId: sheetUpperBaseGroupId,
+       liningGroupId: liningBaseGroupId,
+       layers: compositeCatalogQuery.data || [],
+     }) ? formData.main_material_group_id : null;
+   const resolvedVariantData = {
+     ...formData,
+     ...(automaticUpper ? { upper_material_group_id: automaticUpper.groupId, upper_material_product_id: null } : {}),
+     ...(automaticLiningGroupId ? { lining_material_group_id: automaticLiningGroupId, lining_material_product_id: null } : {}),
+   };
+   const [preparingComposite, setPreparingComposite] = useState(false);
+   const prepareComposite = async () => {
+     setPreparingComposite(true);
+     try {
+       const { error } = await supabase.rpc('prepare_composite_upper_variant' as never, {
+         p_sheet_id: sheetId,
+         p_main_group_id: formData.main_material_group_id,
+       } as never);
+       if (error) throw error;
+       await Promise.all([
+         qc.invalidateQueries({ queryKey: ['product_groups'] }),
+         qc.invalidateQueries({ queryKey: ['product_group_layers'] }),
+       ]);
+       toast.success('Composição preparada. Cadastre as cores, dimensões e custo do material dublado em Grupos.');
+     } catch (error) {
+       toast.error((error as { message?: string })?.message || 'Não foi possível preparar a dublagem.');
+     } finally {
+       setPreparingComposite(false);
+     }
+   };
+
+   // Mesma query/key usada pelo editor da composição: além de evitar uma fonte
+   // paralela, uma alteração no grupo invalida exatamente estes dados.
+   const baseUpperLayersQuery = useQuery({
+     queryKey: ['product_group_layers', sheetUpperBaseGroupId],
+     queryFn: () => loadProductGroupLayers(sheetUpperBaseGroupId!),
+     enabled: isDialogOpen && !!sheetUpperBaseGroupId,
+     staleTime: 60_000,
+   });
+   const overrideUpperLayersQuery = useQuery({
+     queryKey: ['product_group_layers', explicitUpperOverrideGroupId],
+     queryFn: () => loadProductGroupLayers(explicitUpperOverrideGroupId!),
+     enabled: isDialogOpen && !!explicitUpperOverrideGroupId,
+     staleTime: 60_000,
+   });
+   const upperStructureCompatibility = evaluateUpperMaterialStructureCompatibility({
+     baseLayers: baseUpperLayersQuery.data || [],
+     overrideLayers: overrideUpperLayersQuery.data || [],
+     hasExplicitOverride: hasExplicitUpperOverride,
+   });
+   const upperBaseIsComposite = upperStructureCompatibility.baseIsComposite;
+   const compositeCatalogIncomplete = upperBaseIsComposite && !!formData.main_material_group_id
+     && compositeResolution.status === 'not_applicable';
+   const upperStructurePending = compositeCatalogQuery.isFetching
+     || (!!sheetUpperBaseGroupId && baseUpperLayersQuery.isLoading)
+     || (upperBaseIsComposite && hasExplicitUpperOverride
+       && !!explicitUpperOverrideGroupId && overrideUpperLayersQuery.isLoading);
+   const upperStructureLoadFailed = compositeCatalogQuery.isError
+     || (!!sheetUpperBaseGroupId && baseUpperLayersQuery.isError)
+     || (upperBaseIsComposite && hasExplicitUpperOverride
+       && !!explicitUpperOverrideGroupId && overrideUpperLayersQuery.isError);
+   const upperStructureError = upperStructureLoadFailed
+     ? 'Não foi possível carregar a composição do Cabedal. Recarregue e tente novamente.'
+     : upperBaseIsComposite && hasExplicitUpperOverride && !upperStructurePending
+         && !upperStructureCompatibility.compatible
+       ? 'Cabedal incompatível: escolha um grupo composto que preserve todas as camadas fixas do Cabedal da ficha.'
+       : '';
+
+   // Componentes que seguem o material principal desta variante. O valor mora na
+   // FICHA (`technical_sheets.variant_drives_*`) e vale pra TODAS as variantes
+   // dela — por isso o estado local é só um override do que está gravado, e é
+   // limpo a cada abertura do diálogo. `null` = "ainda não mexi", e aí a tela
+   // mostra o seed (o gravado, ou o único componente possível numa ficha nunca
+   // configurada). Cabedal composto usa o grupo dublado derivado; nunca recebe
+   // o grupo puro inteiro, porque isso descartaria as camadas fixas.
+   const [cascadeOverride, setCascadeOverride] = useState<VariantCascadeSelection | null>(null);
+   const cascadeSlots = useMemo(
+     () => listVariantCascadeSlots(sheetMaterials, soleContext),
+     [sheetMaterials, soleContext],
+   );
+   const seededCascade = cascadeOverride ?? seedVariantCascade(sheetMaterials, soleContext);
+   const cascade: VariantCascadeSelection = upperBaseIsComposite
+     ? { ...seededCascade, upper: false }
+     : seededCascade;
+
+   /**
+    * Fora da correção estrutural, o bloco de checkboxes e a gravação continuam
+    * sob o mesmo gate (`main_material_group_id`). A única exceção é o Cabedal
+    * composto: a UI mostra o bloqueio e persiste `variant_drives_upper=false`
+    * mesmo quando a variante usa apenas um override explícito.
     */
    /**
     * Base da napa da TIRA artesanal, espelhando `resolve_strap_base_group_id`.
@@ -500,39 +641,48 @@ function GroupCombobox({
      const hasReferenceBaseLine = (sheetMaterials.strap_colors || [])
        .some(line => strapIdentityBasis(line) === 'reference_base');
      if (!hasReferenceBaseLine) return null;
-     const groupFromProduct = (productId?: string | null) =>
-       products.find(product => product.id === productId)?.group_id ?? null;
-     const liningGroupId = groupFromProduct(sheetMaterials.lining_material_product_id)
-       || groups.find(group =>
+     const liningGroupByName = groups.find(group =>
          (group.name || '').trim().toLocaleLowerCase('pt-BR')
-           === (sheetMaterials.lining_material || '').trim().toLocaleLowerCase('pt-BR'))?.id
-       || null;
+           === (sheetMaterials.lining_material || '').trim().toLocaleLowerCase('pt-BR'))?.id;
+     const liningGroupId = resolvePinnedMaterialGroupId({
+       productId: sheetMaterials.lining_material_product_id,
+       groupId: liningGroupByName,
+       products,
+     });
      const readout = resolveStrapBaseReadout({
-       variant: {
-         ...formData,
-         upper_material_group_id: groupFromProduct(formData.upper_material_product_id)
-           || formData.upper_material_group_id,
-         lining_material_group_id: groupFromProduct(formData.lining_material_product_id)
-           || formData.lining_material_group_id,
-       },
+       variant: formData,
        sheet: {
          ...sheetMaterials,
-         upper_material_group_id: groupFromProduct(sheetMaterials.upper_material_product_id)
-           || sheetMaterials.upper_material_group_id,
          lining_material_group_id: liningGroupId,
        },
        cascade,
+       products,
      });
      if (!readout) return null;
+     const sheetForReadout = {
+       ...sheetMaterials,
+       lining_material_group_id: liningGroupId,
+     };
      return {
        ...readout,
        groupName: groups.find(group => group.id === readout.groupId)?.name ?? 'material da ficha',
        liningGroupName: groups.find(group => group.id === liningGroupId)?.name
          ?? sheetMaterials.lining_material ?? 'forração da ficha',
+       // I704 / sandália sem cabedal: principal Glow sem pin/cascata de forração
+       // deixa a tira na napa da ficha — consumo e débito na cor errada.
+       leavesOnSheet: variantLeavesStrapBaseOnSheet({
+         variant: formData,
+         sheet: sheetForReadout,
+         cascade,
+         products,
+       }),
      };
    }, [sheetMaterials, formData, cascade, groups, products]);
 
-   const cascadeEditable = !!formData.main_material_group_id;
+   // Com material principal, persiste o que o usuário marcou. Mesmo sem ele,
+   // uma ficha composta precisa persistir `variant_drives_upper=false` para
+   // limpar uma cascata legada estruturalmente insegura.
+   const cascadeEditable = !!formData.main_material_group_id || upperBaseIsComposite;
    const cascadeDirty = cascadeEditable && !!sheetMaterials && (
      cascade.upper !== !!sheetMaterials.variant_drives_upper
      || cascade.lining !== !!sheetMaterials.variant_drives_lining
@@ -545,6 +695,16 @@ function GroupCombobox({
    * saber onde corrigir. A marca fica até ele mexer no campo.
    */
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const upperStructureFeedback = fieldErrors.upper_material_group_id
+    || (upperStructurePending
+      ? 'Conferindo as camadas do Cabedal…'
+      : upperStructureError
+        || (upperBaseIsComposite && hasExplicitUpperOverride
+          && upperStructureCompatibility.compatible
+          ? 'Composição compatível: as camadas fixas do Cabedal foram preservadas.'
+          : ''));
+  const upperStructureFeedbackIsError = !!fieldErrors.upper_material_group_id
+    || !!upperStructureError;
   const clearFieldError = (field: string) => setFieldErrors(prev => {
     if (!prev[field]) return prev;
     const next = { ...prev };
@@ -687,6 +847,13 @@ function GroupCombobox({
      const rep = repProduct(groupId);
      setFormData(prev => ({
        ...prev,
+       ...(compositeResolution.status === 'resolved'
+         && prev.upper_material_group_id === compositeResolution.groupId
+         && !prev.upper_material_product_id
+         ? { upper_material_group_id: null } : {}),
+       ...(prev.lining_material_group_id === prev.main_material_group_id
+         && !prev.lining_material_product_id
+         ? { lining_material_group_id: null } : {}),
        main_material_group_id: groupId,
        material_name: group?.name ?? prev.material_name ?? '',
        sku: prev.sku && prev.sku.trim() ? prev.sku : (group ? `${sheetCode ? sheetCode + '-' : ''}${skuSlug(group.name)}` : prev.sku),
@@ -724,9 +891,8 @@ function GroupCombobox({
        main_material_group_id: source.main_material_group_id,
        upper_material_product_id: source.upper_material_product_id,
        upper_material_group_id: source.upper_material_group_id,
-       // O pin fica apenas no estado visual: a duplicação continua copiando-o
-       // da origem via sourceData, mas o readout precisa enxergar o mesmo grupo
-       // que será efetivamente persistido.
+       // Preserva o pin enquanto o grupo não for alterado; trocar o grupo no
+       // diálogo limpa esse pin também no payload da duplicação.
        lining_material_product_id: source.lining_material_product_id,
        lining_material_group_id: source.lining_material_group_id,
        insole_material_group_id: source.insole_material_group_id,
@@ -768,6 +934,32 @@ function GroupCombobox({
 
    const handleSave = async () => {
      setFieldErrors({});
+     if (upperStructurePending || preparingComposite) return;
+     if (upperStructureLoadFailed) {
+       failField('upper_material_group_id', 'Não foi possível conferir a composição. Recarregue e tente novamente.',
+         'Não foi possível conferir a dublagem');
+       return;
+     }
+     if (compositeCatalogIncomplete && !hasExplicitUpperOverride) {
+       failField('upper_material_group_id', 'A composição foi alterada. Reabra a variante para conferir a dublagem atual.',
+         'Atualize o cadastro da dublagem');
+       return;
+     }
+     if (automaticUpperRequested && !automaticUpper) {
+       failField('upper_material_group_id',
+         compositeResolution.status === 'missing'
+           ? `Cadastre ${compositeResolution.expectedGroupName} com suas cores antes de salvar.`
+           : compositeResolution.status === 'ambiguous'
+             ? 'Há mais de uma dublagem compatível. Escolha o Cabedal em Exceção por componente.'
+             : 'Confira a composição do Cabedal e o material principal escolhido.',
+         'A dublagem da variante precisa ser definida');
+       return;
+     }
+     if (automaticUpper && !activeProductGroupIds.has(automaticUpper.groupId)) {
+       failField('upper_material_group_id', `Cadastre as cores, dimensões e custo de ${automaticUpper.groupName} em Grupos.`,
+         'O material dublado ainda não tem cores cadastradas');
+       return;
+     }
      if (!formData.material_name?.trim()) {
        failField('material_name', 'Obrigatório.', 'O nome do material é obrigatório');
        return;
@@ -818,14 +1010,48 @@ function GroupCombobox({
        return;
      }
 
+     // Cabedal composto não pode ser substituído por um grupo inteiro via
+     // `variant_drives_upper`: isso apagaria Massa Box/forros estruturais. O
+     // override explícito só passa quando a composição mantém a assinatura das
+     // camadas que não fornecem cor.
+     if (sheetUpperBaseGroupId && baseUpperLayersQuery.isLoading) {
+       failField('upper_material_group_id', 'Aguarde a conferência da composição.',
+         'Conferindo a composição do Cabedal');
+       return;
+     }
+     if (sheetUpperBaseGroupId && baseUpperLayersQuery.isError) {
+       failField('upper_material_group_id',
+         'Não foi possível carregar a composição. Recarregue e tente novamente.',
+         'Não foi possível conferir a composição do Cabedal',
+         'A variante não foi salva para evitar substituir um Cabedal composto sem validar suas camadas fixas.');
+       return;
+     }
+     if (upperBaseIsComposite && hasExplicitUpperOverride) {
+       if (overrideUpperLayersQuery.isLoading) {
+         failField('upper_material_group_id', 'Aguarde a conferência da composição.',
+           'Conferindo a composição do Cabedal escolhido');
+         return;
+       }
+       if (overrideUpperLayersQuery.isError) {
+         failField('upper_material_group_id',
+           'Não foi possível carregar a composição. Recarregue e tente novamente.',
+           'Não foi possível conferir o Cabedal escolhido');
+         return;
+       }
+       if (!upperStructureCompatibility.compatible) {
+         failField('upper_material_group_id',
+           'Não preserva todas as camadas fixas do Cabedal da ficha.',
+           'Cabedal incompatível com a ficha',
+           'Escolha um grupo composto com as mesmas camadas não-color-source. Só a camada que fornece a cor pode mudar.');
+         return;
+       }
+     }
+
      // Sem material principal a variante não troca material nenhum — vira um
      // rótulo com SKU próprio. Foi exatamente esse no-op silencioso que fez o
      // PV-00141 (EC23) vender NAPA SOFT e debitar NAPA SUDANI.
      if (!formData.main_material_group_id
-         && !formData.upper_material_group_id
-         && !formData.lining_material_group_id
-         && !formData.insole_material_group_id
-         && !formData.upper_material_product_id) {
+         && !hasVariantComponentPin(formData, products)) {
        failField('main_material_group_id',
          'Sem ele a variante não troca material nenhum.',
          'Escolha o material principal da variante',
@@ -838,7 +1064,13 @@ function GroupCombobox({
      // principal depois de conferir `variant_drives_*`, então salvar assim
      // devolve lista de cores vazia no PV e mantém o corte no material da ficha
      // — foi o que aconteceu com SR02/GLOW METALIC em 20/08/2026.
-     if (variantDrivesNoComponent({ variant: formData, sheet: sheetMaterials, sole: soleContext, cascade })) {
+     if (variantDrivesNoComponent({
+       variant: resolvedVariantData,
+       sheet: sheetMaterials,
+       sole: soleContext,
+       cascade,
+       products,
+     })) {
        toast.error('Nenhum componente segue esta variante', {
          description: cascadeSlots.length === 0
            ? 'A ficha não tem cabedal nem forração cadastrados: sem material na ficha não há o que a variante substitua. Preencha o material na aba Materiais e volte aqui.'
@@ -871,19 +1103,20 @@ function GroupCombobox({
        if (editingVariant?.id) {
          await updateVariant.mutateAsync({
            id: editingVariant.id,
-           data: formData
+           data: resolvedVariantData
          });
        } else if (duplicatingFromId) {
          // Só sobrescrevemos os campos que o usuário REALMENTE editou no diálogo
          // de duplicação (nome/SKU/EAN/NCM/descrição/preço/ativo + cabedal). Os
-         // overrides de consumo (dm²/par) e os pins de SKU (forro/palmilha/solado)
+         // overrides de consumo (dm²/par) e os pins de SKU (palmilha/solado)
          // NÃO têm campo no diálogo de duplicação, então não vão em `overrides`:
          // assim o hook os copia da variante de origem via `...sourceData`. Se
-         // mandássemos `undefined` explícito aqui, o spread `{...sourceData,
+         // O pin de forro acompanha o seletor visível e pode ser limpo. Se
+         // mandássemos `undefined` nos demais, o spread `{...sourceData,
          // ...overrides}` zeraria (clobber → NULL) os overrides/pins da origem.
          const { material_name, sku, barcode, ncm, description_override,
                  unit_price_override, active, main_material_group_id, upper_material_product_id,
-                 upper_material_group_id, lining_material_group_id, insole_material_group_id } = formData;
+                 upper_material_group_id, lining_material_product_id, lining_material_group_id, insole_material_group_id } = resolvedVariantData;
          await duplicateVariant.mutateAsync({
            source_variant_id: duplicatingFromId,
            sheet_id: sheetId,
@@ -899,13 +1132,14 @@ function GroupCombobox({
              upper_material_product_id,
              upper_material_group_id,
              lining_material_group_id,
+             lining_material_product_id,
              insole_material_group_id,
              display_order: variants.length,
            },
          });
        } else {
          await addVariant.mutateAsync({
-           ...formData,
+           ...resolvedVariantData,
            reference_id: sheetId,
            display_order: variants.length
          });
@@ -1181,32 +1415,40 @@ function GroupCombobox({
                       <>
                         {cascadeSlots.map(slot => {
                           const pinnedGroupId = slot.key === 'upper'
-                            ? formData.upper_material_group_id
-                            : formData.lining_material_group_id;
+                            ? resolvedVariantData.upper_material_group_id
+                            : slot.key === 'lining' ? resolvedVariantData.lining_material_group_id : null;
                           const pinnedGroup = pinnedGroupId
                             ? groups.find(group => group.id === pinnedGroupId)
                             : null;
+                          const structureBlocked = slot.key === 'upper' && upperBaseIsComposite;
+                          const automaticSlot = slot.key === 'upper' ? !!automaticUpper
+                            : slot.key === 'lining' && !!automaticLiningGroupId;
+                          const disabled = !!pinnedGroup || structureBlocked;
                           const mainGroupName = groups.find(g => g.id === formData.main_material_group_id)?.name || 'material principal';
                           return (
                             <label
                               key={slot.key}
                               className={cn(
                                 'flex items-start gap-2 rounded-md border border-border/60 bg-background/60 px-2 py-1.5',
-                                pinnedGroup ? 'opacity-70' : 'cursor-pointer',
+                                disabled ? 'opacity-70' : 'cursor-pointer',
                               )}
                             >
                               <input
                                 type="checkbox"
                                 className="mt-0.5 h-3.5 w-3.5 accent-primary"
-                                checked={!pinnedGroup && cascade[slot.key]}
-                                disabled={!!pinnedGroup}
+                                checked={!disabled && cascade[slot.key]}
+                                disabled={disabled}
                                 onChange={e => setCascadeOverride({ ...cascade, [slot.key]: e.target.checked })}
                                 aria-label={`${slot.label} segue o material principal da variante`}
                               />
                               <span className="text-[11px] leading-snug text-muted-foreground">
                                 <strong className="text-foreground">{slot.label}</strong>
                                 {pinnedGroup
-                                  ? <> — exceção própria: sai de <strong className="text-foreground">{pinnedGroup.name}</strong>, não do material principal.</>
+                                  ? automaticSlot
+                                    ? <> — acompanha esta variante: <strong className="text-foreground">{pinnedGroup.name}</strong>.</>
+                                    : <> — exceção própria: sai de <strong className="text-foreground">{pinnedGroup.name}</strong>.</>
+                                  : structureBlocked
+                                    ? <> — troca a camada externa e conserva as camadas fixas da dublagem.</>
                                   : cascade[slot.key]
                                     ? <> — hoje <span className="line-through">{slot.sheetMaterial}</span> → sai de <strong className="text-foreground">{mainGroupName}</strong> ao vender esta variante.</>
                                     : <> — continua saindo de <strong className="text-foreground">{slot.sheetMaterial}</strong> mesmo vendendo esta variante.</>}
@@ -1215,20 +1457,57 @@ function GroupCombobox({
                           );
                         })}
                         <p className="text-xs text-muted-foreground">
-                          Vale para todas as variantes desta ficha. Desmarcar preserva material de
-                          identidade (ex.: cabedal de palha, que não deve virar napa porque o PV
-                          vendeu outra variante).
+                          {upperBaseIsComposite
+                            ? 'A dublagem conserva as camadas fixas. Use Exceção por componente para escolher outro material compatível.'
+                            : 'As opções de acompanhamento valem para todas as variantes desta ficha. Desmarcar mantém o material original do componente.'}
                         </p>
+                        {upperBaseIsComposite && (
+                          <div className="space-y-2 rounded-md border border-border bg-background px-3 py-2 text-xs">
+                            <p className="font-medium">Cabedal composto protegido</p>
+                            {hasExplicitUpperOverride ? (
+                              <p>Usa a exceção de Cabedal selecionada abaixo, preservando as camadas fixas.</p>
+                            ) : automaticUpper ? (
+                              <p>Cabedal: <strong>{automaticUpper.groupName}</strong>.
+                                {!activeProductGroupIds.has(automaticUpper.groupId)
+                                  && ' Cadastre as cores, dimensões e custo deste dublado em Grupos antes de salvar.'}
+                              </p>
+                            ) : compositeResolution.status === 'missing' ? (
+                              <>
+                                <p>Cabedal: <strong>{compositeResolution.expectedGroupName}</strong> ainda não cadastrado.
+                                  Prepare a composição e cadastre suas cores, dimensões e custo em Grupos.</p>
+                                <Button type="button" size="sm" variant="outline" disabled={preparingComposite}
+                                  onClick={prepareComposite}>
+                                  {preparingComposite ? 'Preparando…' : 'Preparar composição da dublagem'}
+                                </Button>
+                              </>
+                            ) : compositeResolution.status === 'ambiguous' ? (
+                              <p role="alert" className="text-warning">Há mais de uma dublagem compatível.
+                                Escolha o grupo em Exceção por componente.</p>
+                            ) : compositeResolution.status === 'invalid' ? (
+                              <p role="alert" className="text-warning">Confira se a dublagem tem uma única camada externa
+                                e se o material principal é o material puro dessa camada.</p>
+                            ) : <p>Escolha o material principal para conferir a dublagem.</p>}
+                            {automaticLiningGroupId && <p>Forração: <strong>{groups.find(g => g.id === automaticLiningGroupId)?.name}</strong>.</p>}
+                            <p className="text-muted-foreground">A área por par é a mesma da ficha. O cabedal usa o estoque do material já dublado.</p>
+                            <a href={`/grupos?q=${encodeURIComponent(automaticUpper?.groupName || (compositeResolution.status === 'missing' ? compositeResolution.expectedGroupName : ''))}`}
+                              target="_blank" rel="noopener noreferrer" className="font-medium underline">Abrir cadastro de grupos</a>
+                          </div>
+                        )}
                         {strapBaseReadout && (
                           <p className={cn(
                             'rounded-md border px-2 py-1.5 text-[11px] leading-snug',
-                            strapBaseReadout.divergesFromLining
+                            strapBaseReadout.divergesFromLining || strapBaseReadout.leavesOnSheet
                               ? 'border-warning/40 bg-warning/10 text-warning'
                               : 'border-border/60 bg-background/60 text-muted-foreground',
                           )}>
                             <strong className="text-foreground">Base da tira:</strong>{' '}
                             sai de <strong className="text-foreground">{strapBaseReadout.groupName}</strong>
-                            {strapBaseReadout.divergesFromLining
+                            {strapBaseReadout.leavesOnSheet
+                              ? <> — ⚠ o material principal desta variante <strong>não</strong> converte
+                                  as tiras. Neste modelo sem cabedal, marque <strong>Forração</strong> em
+                                  “Componentes que seguem” ou pin a Forração no Glow; senão o PV vende
+                                  Glow e o consumo/débito corta a napa da ficha.</>
+                              : strapBaseReadout.divergesFromLining
                               ? <> — ⚠ diferente da Forração (<strong>{strapBaseReadout.liningGroupName}</strong>).
                                   Revise a Forração da ficha antes de liberar esta variante.</>
                               : <> · segue a Forração. Para trocar esse material na variante, altere a
@@ -1238,6 +1517,25 @@ function GroupCombobox({
                       </>
                     )}
                   </div>
+                )}
+
+                {upperStructureFeedback && (
+                  <p
+                    id={upperStructureFeedbackId}
+                    role={upperStructureFeedbackIsError ? 'alert' : 'status'}
+                    aria-live={upperStructureFeedbackIsError ? 'assertive' : 'polite'}
+                    aria-atomic="true"
+                    className={cn(
+                      'rounded-md border px-2 py-1.5 text-xs',
+                      upperStructureFeedbackIsError
+                        ? 'border-destructive/40 bg-destructive/10 text-destructive'
+                        : upperStructurePending
+                          ? 'border-border/60 bg-muted/20 text-muted-foreground'
+                          : 'border-success/40 bg-success/10 text-success',
+                    )}
+                  >
+                    {upperStructureFeedback}
+                  </p>
                 )}
 
                 <details className="rounded-md border border-border/60 bg-muted/20 px-3 py-2">
@@ -1257,14 +1555,14 @@ function GroupCombobox({
                         groups={materialGroups}
                         allGroups={groups}
                         describe={describeGroup}
-                        placeholder="Segue o material principal"
+                        placeholder={upperBaseIsComposite
+                          ? automaticUpper?.groupName || 'Dublagem conforme o material principal'
+                          : 'Segue o material principal'}
                         allowInherit
                         ariaLabel="Grupo de cabedal"
+                        ariaDescribedBy={upperStructureFeedback ? upperStructureFeedbackId : undefined}
                         invalid={!!fieldErrors.upper_material_group_id}
                       />
-                      {fieldErrors.upper_material_group_id && (
-                        <p className="text-xs text-destructive">{fieldErrors.upper_material_group_id}</p>
-                      )}
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div className="space-y-1.5">
@@ -1275,7 +1573,7 @@ function GroupCombobox({
                           groups={materialGroups}
                           allGroups={groups}
                           describe={describeGroup}
-                          placeholder="Segue o material principal"
+                          placeholder={automaticLiningGroupId ? groups.find(g => g.id === automaticLiningGroupId)?.name || 'Segue o material principal' : 'Segue o material principal'}
                           allowInherit
                           ariaLabel="Grupo de forro"
                           invalid={!!fieldErrors.lining_material_group_id}
@@ -1454,9 +1752,16 @@ function GroupCombobox({
 
            <DialogFooter>
              <Button variant="outline" onClick={() => { setIsDialogOpen(false); setDuplicatingFromId(null); }}>Cancelar</Button>
-             <Button onClick={handleSave} disabled={addVariant.isPending || updateVariant.isPending || duplicateVariant.isPending}>
-               {(addVariant.isPending || updateVariant.isPending || duplicateVariant.isPending) && <Loader2 className="h-3 w-3 mr-2 animate-spin" />}
-               {duplicatingFromId ? 'Duplicar Variante' : 'Salvar Variante'}
+             <Button
+               onClick={handleSave}
+               disabled={upperStructurePending || preparingComposite || addVariant.isPending || updateVariant.isPending || duplicateVariant.isPending}
+             >
+               {(upperStructurePending || addVariant.isPending || updateVariant.isPending || duplicateVariant.isPending) && (
+                 <Loader2 className="h-3 w-3 mr-2 animate-spin" />
+               )}
+               {upperStructurePending
+                 ? 'Conferindo Cabedal…'
+                 : duplicatingFromId ? 'Duplicar Variante' : 'Salvar Variante'}
              </Button>
            </DialogFooter>
          </DialogContent>

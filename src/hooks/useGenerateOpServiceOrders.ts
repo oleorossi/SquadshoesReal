@@ -1,18 +1,50 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { fetchCanonicalConsumptionReport } from '@/lib/canonicalConsumptionReport';
+import { materializeCanonicalConsumptionByScope } from '@/lib/canonicalConsumptionByScope';
+import type { ConsumptionRow } from '@/lib/consumptionRows';
+import { isSchemaCacheTransientError } from '@/lib/postgrestErrors';
+import {
+  rankServiceOrderCandidates,
+  type QueuePullFilter,
+} from '@/lib/serviceOrderStageQueue';
 
 /**
  * Geração de OS de terceirização por Pedido → Serviço → OP.
  *
  * Fluxo: escolhe o PV, escolhe os serviços (setores) que vão pra rua e, em cada
- * serviço, marca as OPs enviadas. Gera UMA OS por (OP × setor) atrelada à OP
- * (`service_orders.order_id`), reusando o schema existente — a OS aparece no
- * quadro "Na Rua" e segue o fluxo de envio/retorno/pagamento normal.
+ * serviço, marca as OPs enviadas. Gera UMA OS por (OP × setor × prestador)
+ * atrelada à OP (`service_orders.order_id`). Rateio parcial deixa a sobra na
+ * fábrica; reabrir o assistente permite mandar o saldo a outro prestador.
  *
- * Backend: migration 20260703120000 (`get_pv_outsourceable_lines` +
- * `generate_op_service_orders`).
+ * Backend: `get_pv_outsourceable_lines` + `generate_op_service_orders`
+ * (rateio multi-prestador em 20270101019900).
  */
+
+export interface OutsourceableContractorOption {
+  terceirizacao_id: string;
+  contractor_id: string;
+  contractor_name: string | null;
+  value_per_pair: number | null;
+  capacity_pairs_per_day?: number | null;
+  return_before_sector?: string | null;
+  material_components?: string[] | null;
+  config_issue?: string | null;
+}
+
+export interface OutsourceableExistingAllocation {
+  os_id: string;
+  os_number?: string | null;
+  contractor_id: string;
+  contractor_name?: string | null;
+  quantity: number;
+  unit_price: number;
+  total_value: number;
+  status: string;
+  created_at?: string | null;
+  service_date?: string | null;
+}
 
 export interface OutsourceableLine {
   order_id: string;
@@ -28,8 +60,55 @@ export interface OutsourceableLine {
   default_contractor_id: string | null;
   default_contractor_name: string | null;
   default_rate: number | null;
+  /** Configuração da ficha usada pelo servidor para calcular esta prévia. */
+  default_terceirizacao_id?: string | null;
+  /** Capacidade do prestador padrão; informativa — o servidor recalcula ao gerar. */
+  capacity_pairs_per_day?: number | null;
+  /** Setor interno que depende do retorno deste serviço. */
+  return_before_sector?: string | null;
+  /** Etapa efetivamente encontrada no cronograma quando a rota pula a anterior. */
+  planning_anchor_sector?: string | null;
+  /** Componentes canônicos do motor que devem acompanhar a terceirização. */
+  material_components?: string[] | null;
+  execution_days?: number | null;
+  queue_days?: number | null;
+  /** Nome atual do RPC; `total_lead_days` fica aceito durante o rollout. */
+  lead_days?: number | null;
+  total_lead_days?: number | null;
+  recommended_send_date?: string | null;
+  required_return_date?: string | null;
+  planning_source?: string | null;
+  planning_warning?: string | null;
+  /** Configuração completa da ficha usada para autorizar a geração planejada. */
+  planning_config_ready?: boolean;
+  planning_config_issue?: string | null;
+  /** true quando o rateio já cobriu 100% da OP nesta atividade. */
   already_has_os: boolean;
   existing_os_status: string | null;
+  /** Pares já cobertos por OS ativas desta OP×atividade. */
+  allocated_quantity?: number;
+  /** Pares ainda disponíveis para nova OS ou fábrica. */
+  remaining_quantity?: number;
+  existing_allocations?: OutsourceableExistingAllocation[];
+  available_contractors?: OutsourceableContractorOption[];
+  /** Filtro que puxou esta linha na fila (prazo / estoque). */
+  queue_pull?: QueuePullFilter;
+}
+
+export function decorateOutsourceableLines(
+  rows: OutsourceableLine[],
+  kitRowsByOrder?: Map<string, ConsumptionRow[]>,
+): OutsourceableLine[] {
+  return rankServiceOrderCandidates(rows.map((line) => ({
+    id: `${line.order_id}::${line.sector}`,
+    sector: line.sector,
+    billingDate: line.required_return_date || line.recommended_send_date,
+    kitRows: kitRowsByOrder?.get(line.order_id),
+    source: line,
+  }))).map((item) => ({
+    ...item.source,
+    queue_pull: item.pull,
+  }));
 }
 
 /** Linhas terceirizáveis de um PV, uma por (OP × setor). */
@@ -42,8 +121,30 @@ export function usePvOutsourceableLines(saleOrderId: string | null) {
         p_sale_order_id: saleOrderId,
       });
       if (error) throw error;
-      return (data || []) as OutsourceableLine[];
+      const lines = (data || []) as OutsourceableLine[];
+      const orderIds = [...new Set(lines.map((line) => line.order_id).filter(Boolean))];
+      if (orderIds.length === 0) return decorateOutsourceableLines(lines);
+
+      try {
+        const report = await fetchCanonicalConsumptionReport({ orderIds });
+        const kitRowsByOrder = await materializeCanonicalConsumptionByScope(report);
+        return decorateOutsourceableLines(lines, kitRowsByOrder);
+      } catch {
+        // Consumo é anotação da fila. Falha não bloqueia o assistente:
+        // as linhas seguem e o chip cai no fallback só-prazo.
+        return decorateOutsourceableLines(lines);
+      }
     },
+    // RPC recriado em migrations de rateio — PGRST002 na janela fria do schema.
+    retry: (failureCount, error) => {
+      if (isSchemaCacheTransientError(error)) return failureCount < 4;
+      return failureCount < 2;
+    },
+    retryDelay: (attemptIndex, error) => (
+      isSchemaCacheTransientError(error)
+        ? Math.min(700 * 2 ** attemptIndex, 6000)
+        : Math.min(1000 * 2 ** attemptIndex, 10000)
+    ),
     staleTime: 30_000,
   });
 }
@@ -55,6 +156,9 @@ export interface GenerateOsLine {
   unit_price: number;
   quantity: number;
   quoted_deadline?: string | null;
+  /** Fail-closed: callers precisam declarar se usam o plano da ficha ou a
+   * contingência manual legada. O assistente normal sempre envia `true`. */
+  require_planning_config: boolean;
 }
 
 export interface GenerateOsResultLine {
@@ -84,23 +188,13 @@ export function useGenerateOpServiceOrders() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['service_orders'] });
+      qc.invalidateQueries({ queryKey: ['pv_service_orders'] });
       qc.invalidateQueries({ queryKey: ['service_order_overview'] });
       qc.invalidateQueries({ queryKey: ['service_order_generation_gaps'] });
       qc.invalidateQueries({ queryKey: ['v_contractor_metrics'] });
       qc.invalidateQueries({ queryKey: ['pv_outsourceable_lines'] });
     },
   });
-}
-
-/** Tarifa vigente (contratada × setor) — pré-preenche o R$/par ao trocar de contratada. */
-export async function fetchContractorRate(contractorId: string, sector: string): Promise<number | null> {
-  const { data, error } = await (supabase as any).rpc('get_contractor_rate', {
-    p_contractor_id: contractorId,
-    p_sector: sector,
-    p_date: new Date().toISOString().slice(0, 10),
-  });
-  if (error || data == null) return null;
-  return Number(data);
 }
 
 export interface ServiceOrderGenerationGap {
@@ -147,6 +241,7 @@ export function useRetryServiceOrderGenerationGap() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['service_order_generation_gaps'] });
       qc.invalidateQueries({ queryKey: ['service_orders'] });
+      qc.invalidateQueries({ queryKey: ['pv_service_orders'] });
       qc.invalidateQueries({ queryKey: ['service_order_overview'] });
       qc.invalidateQueries({ queryKey: ['pv_outsourceable_lines'] });
       toast.success('OS pendente gerada pelo fluxo canônico.');

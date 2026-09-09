@@ -719,7 +719,9 @@ export function evaluationDetail(emp: EmployeeTimesheetData) {
       date: d.date,
       dayOfWeek: d.day_of_week,
       punches: d.punches,
-      expected: d.expected_minutes,
+      // O detalhe precisa explicar o mesmo saldo financeiro: abono parcial reduz
+      // a meta do dia apenas pelos minutos efetivamente aplicados pelo motor.
+      expected: Math.max(0, d.expected_minutes - (d.excused_minutes || 0)),
       worked: d.worked_minutes,
       saldo: d.raw_balance_minutes,
       kind: (d.status === 'absence' ? 'falta'

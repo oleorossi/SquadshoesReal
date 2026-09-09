@@ -17,8 +17,9 @@ import { useSoleConjugations } from '@/hooks/useSoleConjugations';
 import { getSoleModelName } from '@/lib/utils';
 import { toast } from 'sonner';
 import { MagnifyingGlass, Plus, Package, Palette, Info, Link as Link2, Check } from '@phosphor-icons/react';
-import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { searchMatchesAllTerms, SEARCH_RENDER_CAP, capSearchResults, searchRefineHint } from '@/lib/searchUtils';
 import { getGradeQuantityForKey } from '@/lib/gradeDistribution';
+import { adjustProductsStock } from '@/lib/stockCommand';
 
 interface SoladoGradeDialogProps {
   open: boolean;
@@ -217,6 +218,15 @@ function AddToGroupDialog({ open, onOpenChange, groupId, groupName }: {
     };
   }, [allProducts, groupId, search]);
 
+  const availableCap = useMemo(
+    () => capSearchResults(available, SEARCH_RENDER_CAP),
+    [available],
+  );
+  const alreadyCap = useMemo(
+    () => capSearchResults(alreadyInGroup, SEARCH_RENDER_CAP),
+    [alreadyInGroup],
+  );
+
   const toggle = (id: string) => {
     setSelected(prev => {
       const next = new Set(prev);
@@ -285,12 +295,12 @@ function AddToGroupDialog({ open, onOpenChange, groupId, groupName }: {
             )
           ) : (
             <div className="space-y-3">
-              {available.length > 0 && (
+              {availableCap.totalMatched > 0 && (
                 <div className="space-y-1">
                   <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground px-1 pb-0.5">
-                    Disponíveis ({available.length})
+                    Disponíveis ({availableCap.totalMatched})
                   </p>
-                  {available.map(p => (
+                  {availableCap.visible.map(p => (
                     <label
                       key={p.id}
                       className={`flex items-center gap-3 p-2 rounded-md cursor-pointer hover:bg-accent transition-colors ${selected.has(p.id) ? 'bg-primary/5 border border-primary/20' : 'border border-transparent'}`}
@@ -310,14 +320,19 @@ function AddToGroupDialog({ open, onOpenChange, groupId, groupName }: {
                       </Badge>
                     </label>
                   ))}
+                  {availableCap.capped && (
+                    <p className="px-2 py-1.5 text-xs text-muted-foreground">
+                      {searchRefineHint(availableCap.totalMatched, availableCap.cap)}
+                    </p>
+                  )}
                 </div>
               )}
-              {alreadyInGroup.length > 0 && (
+              {alreadyCap.totalMatched > 0 && (
                 <div className="space-y-1 pt-2 border-t border-border/50">
                   <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground px-1 pb-0.5">
-                    Já no grupo ({alreadyInGroup.length})
+                    Já no grupo ({alreadyCap.totalMatched})
                   </p>
-                  {alreadyInGroup.map(p => (
+                  {alreadyCap.visible.map(p => (
                     <div
                       key={p.id}
                       className="flex items-center gap-3 p-2 rounded-md opacity-60 border border-transparent"
@@ -334,6 +349,11 @@ function AddToGroupDialog({ open, onOpenChange, groupId, groupName }: {
                       <Badge variant="secondary" className="text-xs shrink-0">no grupo</Badge>
                     </div>
                   ))}
+                  {alreadyCap.capped && (
+                    <p className="px-2 py-1.5 text-xs text-muted-foreground">
+                      {searchRefineHint(alreadyCap.totalMatched, alreadyCap.cap)}
+                    </p>
+                  )}
                 </div>
               )}
             </div>
@@ -537,27 +557,28 @@ export function SoladoGradeDialog({ open, onOpenChange, product }: SoladoGradeDi
         return;
       }
 
-      for (const { id, grade, total } of updates) {
+      const stockResult = await adjustProductsStock(updates.map(({ id, grade, total }) => {
         const variant = colorVariants.find(v => v.id === id);
         const previousQty = Number(variant?.quantity ?? 0);
-        const delta = total - previousQty;
-        const { data, error } = await supabase.rpc('adjust_stock' as any, {
-          p_product_id: id,
-          p_expected_previous_qty: previousQty,
-          p_new_qty: total,
-          p_delta: delta,
-          p_reason: `Ajuste manual de grade — ${variant?.name || id}`,
-          p_new_grade: grade,
-        });
-        if (error) throw error;
-        const result = Array.isArray(data) ? data[0] : data;
-        if (result && result.success === false) {
-          throw new Error(
-            result.error_message === 'CONCURRENCY_ERROR'
-              ? `Estoque do solado "${variant?.name || id}" foi alterado por outro usuário. Recarregue.`
-              : (result.error_message || 'Falha ao salvar grade'),
-          );
-        }
+        return {
+          product_id: id,
+          expected_previous_qty: previousQty,
+          new_qty: total,
+          expected_grade: (variant?.stock_grade as Record<string, unknown> | null) ?? null,
+          reason: `Ajuste manual de grade — ${variant?.name || id}`,
+          new_grade: grade,
+        };
+      }));
+      if (!stockResult.success) {
+        const first = stockResult.errors?.[0];
+        const variant = first?.product_id
+          ? colorVariants.find(item => item.id === first.product_id)
+          : null;
+        throw new Error(
+          first?.error === 'CONCURRENCY_ERROR'
+            ? `Estoque do solado "${variant?.name || first?.product_id || ''}" foi alterado por outro usuário. Recarregue.`
+            : (first?.error || 'Falha ao salvar as grades do solado'),
+        );
       }
 
       queryClient.invalidateQueries({ queryKey: ['products'] });

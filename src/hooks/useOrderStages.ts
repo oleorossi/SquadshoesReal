@@ -1,8 +1,11 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useEffect, useRef } from 'react';
-import { invalidateProductionCaches } from '@/hooks/useProductionTransitions';
+import {
+  invalidateAfterPointing,
+  invalidateProductionCaches,
+} from '@/hooks/useProductionTransitions';
 import { shouldLoadOrderStages } from '@/lib/productionLoading';
 
 // Default fallback stages when no BOM operations exist.
@@ -50,6 +53,110 @@ export type OrderStage = {
   actual_time_minutes: number;
   cost_per_pair: number;
 };
+
+type OrderStageCommand = 'create' | 'update' | 'delete';
+
+interface StageCommandSnapshot {
+  id: string;
+  order_id: string;
+  updated_at: string;
+  status: string;
+}
+
+interface StageCommandRpcResult {
+  data: unknown;
+  error: { message: string } | null;
+}
+
+interface StageCommandResponse extends Record<string, unknown> {
+  ok?: boolean;
+  error?: { message?: string };
+}
+
+interface ProductionPointingInput {
+  orderId: string;
+  stageName: string;
+  quantity: number;
+  operatorEmployeeId?: string | null;
+  note?: string | null;
+  finalize?: boolean;
+  confirmedWarnings?: string[];
+  /** Persistidos no próprio objeto de variables para retries do React Query e
+   * para a segunda passagem após confirmação de warnings. */
+  clientRequestId?: string;
+  expectedStageUpdatedAt?: string;
+}
+
+async function readPointingStageSnapshot(
+  orderId: string,
+  stageName: string,
+): Promise<StageCommandSnapshot> {
+  const names = stageName === 'Aviamento'
+    ? ['Aviamento', 'Mesa']
+    : stageName === 'Mesa'
+      ? ['Mesa', 'Aviamento']
+      : [stageName];
+  const { data, error } = await supabase
+    .from('order_stages')
+    .select('id, order_id, updated_at, status')
+    .eq('order_id', orderId)
+    .in('stage_name', names)
+    .order('stage_order', { ascending: true })
+    .limit(1)
+    .single();
+  if (error) throw error;
+  return data as StageCommandSnapshot;
+}
+
+async function executeOrderStageCommand(input: {
+  command: OrderStageCommand;
+  orderId: string;
+  stageId?: string | null;
+  expectedUpdatedAt?: string | null;
+  payload?: Record<string, unknown>;
+}) {
+  const requestId = crypto.randomUUID();
+  const callRpc = supabase.rpc as unknown as (
+    functionName: string,
+    args: Record<string, unknown>,
+  ) => PromiseLike<StageCommandRpcResult>;
+  const { data, error } = await callRpc('execute_order_stage_command', {
+    p_command: input.command,
+    p_order_id: input.orderId,
+    p_stage_id: input.stageId ?? null,
+    p_expected_updated_at: input.expectedUpdatedAt ?? null,
+    p_client_request_id: requestId,
+    p_payload: input.payload ?? {},
+  });
+  if (error) throw error;
+  const response = data as StageCommandResponse | null;
+  if (!response?.ok) {
+    throw new Error(response?.error?.message || 'Comando de etapa recusado pelo servidor.');
+  }
+  return response;
+}
+
+async function resolveStageCommandSnapshot(
+  qc: QueryClient,
+  stageId: string,
+): Promise<StageCommandSnapshot> {
+  // O snapshot do cache é deliberadamente usado como expected version: se o
+  // Realtime/refetch ainda não chegou, o CAS do banco recusa em vez de sobrescrever.
+  for (const [, cached] of qc.getQueriesData<OrderStage[]>({ queryKey: ['order_stages'] })) {
+    const stage = cached?.find(row => row.id === stageId);
+    if (stage) return stage;
+  }
+
+  // Callers fora das telas de produção podem não ter a query montada. A leitura
+  // só obtém o token CAS; toda escrita continua dentro do command.
+  const { data, error } = await supabase
+    .from('order_stages')
+    .select('id, order_id, updated_at, status')
+    .eq('id', stageId)
+    .single();
+  if (error) throw error;
+  return data as StageCommandSnapshot;
+}
 
 export function useOrderStages(orderId?: string) {
   return useQuery({
@@ -141,99 +248,14 @@ export function useCreateOrderStages() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ orderId, quantity, referenceId }: { orderId: string; quantity: number; referenceId?: string }) => {
-      // Idempotency: skip if stages already exist (e.g. created by useCreateOrder,
-      // or user double-clicks handleInitStages). Avoids UNIQUE constraint violations.
-      const { data: existing, error: existingErr } = await supabase
-        .from('order_stages')
-        .select('id')
-        .eq('order_id', orderId)
-        .limit(1);
-      if (existingErr) throw existingErr;
-      if (existing && existing.length > 0) {
-        return; // stages already present — nothing to do
-      }
-
-      let rows: any[] = [];
-
-      // Try to pull stages from BOM operations of the referenced sheet
-      if (referenceId) {
-        const { data: bomOps } = await supabase
-          .from('bom_operations')
-          .select('*')
-          .eq('sheet_id', referenceId)
-          .eq('active', true)
-          .order('sort_order', { ascending: true });
-
-        if (bomOps && bomOps.length > 0) {
-          rows = bomOps.map((op, idx) => ({
-            order_id: orderId,
-            stage_name: op.operation_name || op.stage,
-            stage_order: op.sort_order || idx + 1,
-            status: 'pendente',
-            quantity_total: quantity,
-            quantity_processed: 0,
-            observations: '',
-            defects: '',
-            standard_time_minutes: op.standard_time_minutes || 0,
-            cost_per_hour: op.cost_per_hour || 0,
-            cost_per_pair: op.cost_per_pair || 0,
-            actual_time_minutes: 0,
-          }));
-        }
-      }
-
-      // Fallback: use production_sectors from technical sheet, or default stages
-      if (rows.length === 0 && referenceId) {
-        const { data: sheetData } = await supabase
-          .from('technical_sheets')
-          .select('production_sectors')
-          .eq('id', referenceId)
-          .single();
-
-        const rawSectors = sheetData?.production_sectors;
-        const sectors: string[] = Array.isArray(rawSectors) && rawSectors.length > 0
-          ? rawSectors.map((s: any) => String(s))
-          : PRODUCTION_STAGES.map(s => s.name);
-
-        rows = sectors.map((name, idx) => {
-          const defaultStage = PRODUCTION_STAGES.find(s => s.name === name);
-          return {
-            order_id: orderId,
-            stage_name: name,
-            stage_order: defaultStage?.order || idx + 1,
-            status: 'pendente',
-            quantity_total: quantity,
-            quantity_processed: 0,
-            observations: '',
-            defects: '',
-            standard_time_minutes: 0,
-            cost_per_hour: 0,
-            cost_per_pair: 0,
-            actual_time_minutes: 0,
-          };
-        });
-      }
-
-      // Final fallback if no referenceId
-      if (rows.length === 0) {
-        rows = PRODUCTION_STAGES.map(s => ({
-          order_id: orderId,
-          stage_name: s.name,
-          stage_order: s.order,
-          status: 'pendente',
-          quantity_total: quantity,
-          quantity_processed: 0,
-          observations: '',
-          defects: '',
-          standard_time_minutes: 0,
-          cost_per_hour: 0,
-          cost_per_pair: 0,
-          actual_time_minutes: 0,
-        }));
-      }
-
-      const { error } = await supabase.from('order_stages').insert(rows);
-      if (error) throw error;
+      return executeOrderStageCommand({
+        command: 'create',
+        orderId,
+        payload: {
+          expected_quantity: quantity,
+          expected_reference_id: referenceId ?? null,
+        },
+      });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['order_stages'] });
@@ -257,34 +279,69 @@ export function useUpdateOrderStage() {
       defects?: string;
       actual_time_minutes?: number;
     }) => {
-      const { id, ...updates } = payload;
-      // Predecessor-status guard: prevents two operators from racing on the
-      // same stage transition (double-click iniciar, etc.).
-      let q = supabase.from('order_stages').update({ ...updates, updated_at: new Date().toISOString() }).eq('id', id);
-      if (payload.status === 'em_andamento') q = (q as any).eq('status', 'pendente');
-      else if (payload.status === 'concluido') q = (q as any).eq('status', 'em_andamento');
-      const { data: claimed, error } = await (q as any).select('id');
-      if (error) throw error;
-      if (payload.status && (!claimed || claimed.length === 0)) {
-        throw new Error('Etapa já mudou de status — recarregue e tente novamente.');
+      if (
+        payload.quantity_processed !== undefined ||
+        payload.completed_at !== undefined ||
+        payload.completed_by !== undefined ||
+        payload.status === 'concluido'
+      ) {
+        throw new Error('Quantidade e conclusão devem ser registradas pelo apontamento de produção.');
       }
+
+      const snapshot = await resolveStageCommandSnapshot(qc, payload.id);
+      const commandPayload: Record<string, unknown> = {};
+      if (payload.status !== undefined) commandPayload.status = payload.status;
+      // started_at do caller é ignorado: o command usa o relógio do servidor.
+      if (payload.operator_employee_id !== undefined) commandPayload.operator_employee_id = payload.operator_employee_id;
+      if (payload.observations !== undefined) commandPayload.observations = payload.observations;
+      if (payload.defects !== undefined) commandPayload.defects = payload.defects;
+      if (payload.actual_time_minutes !== undefined) commandPayload.actual_time_minutes = payload.actual_time_minutes;
+
+      return executeOrderStageCommand({
+        command: 'update',
+        orderId: snapshot.order_id,
+        stageId: payload.id,
+        expectedUpdatedAt: snapshot.updated_at,
+        payload: commandPayload,
+      });
     },
     onSuccess: () => {
-      // Invalidação CENTRAL: apontar/atualizar etapa precisa refletir em
-      // Setores, Quadro, Dashboard, Gargalos, Capacidade e Ondas — não só
-      // na lista de estágios (gap da auditoria 2026-07-01).
-      invalidateProductionCaches(qc);
+      // Update de etapa (status/operador/obs) — pointing+motor bastam pro
+      // quadro/setores. Delete abaixo usa full (ondas/PV podem refletir).
+      invalidateAfterPointing(qc);
       toast.success('Etapa atualizada!');
     },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
   });
 }
 
+export function useDeleteOrderStage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (stageId: string) => {
+      const snapshot = await resolveStageCommandSnapshot(qc, stageId);
+      return executeOrderStageCommand({
+        command: 'delete',
+        orderId: snapshot.order_id,
+        stageId,
+        expectedUpdatedAt: snapshot.updated_at,
+      });
+    },
+    onSuccess: () => {
+      // Delete é estrutural — lista full (ondas/capacidade/PV podem refletir).
+      invalidateProductionCaches(qc);
+      toast.success('Etapa excluída!');
+    },
+    onError: (err: Error) => toast.error(`Erro ao excluir etapa: ${err.message}`),
+  });
+}
+
 /**
- * Apontamento canônico de produção por setor (RPC apontar_producao_setor):
+ * Apontamento canônico de produção por setor
+ * (RPC execute_production_pointing_command):
  * registra quantidade no ledger (production_pointings), acumula em
  * quantity_processed, inicia o setor se pendente (guard do DAG valida) e —
- * com finalize=true — conclui o setor e libera o próximo (mesma RPC do bulk).
+ * com finalize=true — conclui o setor e libera o próximo na mesma transação.
  *
  * `quantity` é o INCREMENTO (pares apontados agora), não o acumulado.
  * Negativo = correção/estorno. 0 = só iniciar/finalizar sem apontar.
@@ -308,29 +365,30 @@ export interface ApontarResult {
 export function useApontarProducao() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (p: {
-      orderId: string;
-      stageName: string;
-      quantity: number;
-      operatorEmployeeId?: string | null;
-      note?: string | null;
-      finalize?: boolean;
-      /**
-       * Regras de transição (R6.3): a RPC nunca trava — sem confirmação ela
-       * devolve { needs_confirmation: true, warnings } SEM gravar. O caller
-       * mostra o diálogo de confirmação e re-chama com os códigos confirmados;
-       * a confirmação fica gravada com autoria no ledger.
-       */
-      confirmedWarnings?: string[];
-    }) => {
-      const { data, error } = await supabase.rpc('apontar_producao_setor', {
+    mutationFn: async (p: ProductionPointingInput) => {
+      // Mutar `variables` aqui é intencional: React Query reutiliza o mesmo
+      // objeto num retry e o diálogo reutiliza-o após o preflight de warnings.
+      // Sem isso, resposta perdida poderia somar a quantidade novamente.
+      p.clientRequestId ??= crypto.randomUUID();
+      if (!p.expectedStageUpdatedAt) {
+        const snapshot = await readPointingStageSnapshot(p.orderId, p.stageName);
+        p.expectedStageUpdatedAt = snapshot.updated_at;
+      }
+
+      const callRpc = supabase.rpc as unknown as (
+        functionName: string,
+        args: Record<string, unknown>,
+      ) => PromiseLike<StageCommandRpcResult>;
+      const { data, error } = await callRpc('execute_production_pointing_command', {
         p_order_id: p.orderId,
         p_stage_name: p.stageName,
         p_quantity: p.quantity,
-        ...(p.operatorEmployeeId ? { p_operator_employee_id: p.operatorEmployeeId } : {}),
-        ...(p.note ? { p_note: p.note } : {}),
+        p_operator_employee_id: p.operatorEmployeeId ?? null,
+        p_note: p.note ?? null,
         p_finalize: p.finalize ?? false,
-        ...(p.confirmedWarnings?.length ? { p_confirmed_warnings: p.confirmedWarnings } : {}),
+        p_confirmed_warnings: p.confirmedWarnings ?? null,
+        p_expected_stage_updated_at: p.expectedStageUpdatedAt,
+        p_client_request_id: p.clientRequestId,
       });
       if (error) throw error;
       return data as unknown as ApontarResult;
@@ -338,7 +396,8 @@ export function useApontarProducao() {
     onSuccess: (data) => {
       // Sem gravação (aguardando confirmação) = nada a invalidar
       if ((data as ApontarResult | null)?.needs_confirmation) return;
-      invalidateProductionCaches(qc);
+      // Apontamento: orders/etapas/setor/quadro + motor. Sem sale_orders/MRP/ondas.
+      invalidateAfterPointing(qc);
     },
     onError: (err: Error) => toast.error(`Erro no apontamento: ${err.message}`),
   });
@@ -348,15 +407,21 @@ export function useApontarProducao() {
 // tela de setor) não podem disputar o mesmo topic do canal realtime.
 let realtimeChannelSeq = 0;
 
+/** Debounce base do realtime; sob rajada sobe um pouco pra coalescer melhor. */
+const REALTIME_DEBOUNCE_MS = 400;
+const REALTIME_BURST_DEBOUNCE_MS = 600;
+const REALTIME_BURST_THRESHOLD = 3;
+
 /**
- * Assinatura realtime de order_stages → invalidação CENTRAL debounced.
+ * Assinatura realtime de order_stages → invalidação apontamento+motor debounced.
  * Montar uma vez por tela que exiba produção (o PCPHub já monta pra todas as
  * abas). Qualquer terminal que mover/apontar reflete aqui em ~1s, sem esperar
- * staleTime.
+ * staleTime. NÃO invalida sale_orders / ondas / capacidade (P1.2).
  */
 export function useRealtimeOrderStages() {
   const qc = useQueryClient();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const burstCountRef = useRef(0);
   /** Já assinou uma vez? Distingue adesão inicial de REconexão. */
   const assinouRef = useRef(false);
   useEffect(() => {
@@ -364,9 +429,17 @@ export function useRealtimeOrderStages() {
       .channel(`order-stages-realtime-${++realtimeChannelSeq}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'order_stages' }, () => {
         // Debounce: bulk finalize dispara N eventos em rajada — coalesce numa
-        // única invalidação pra não refetchar ~20 queries N vezes.
+        // única invalidação pra não refetchar o quadro N vezes.
+        burstCountRef.current += 1;
         if (timerRef.current) clearTimeout(timerRef.current);
-        timerRef.current = setTimeout(() => invalidateProductionCaches(qc), 400);
+        const delay =
+          burstCountRef.current >= REALTIME_BURST_THRESHOLD
+            ? REALTIME_BURST_DEBOUNCE_MS
+            : REALTIME_DEBOUNCE_MS;
+        timerRef.current = setTimeout(() => {
+          burstCountRef.current = 0;
+          invalidateAfterPointing(qc);
+        }, delay);
       })
       .subscribe((status, err) => {
         if (status === 'CHANNEL_ERROR') console.warn('[realtime] order-stages:', err?.message);
@@ -378,17 +451,17 @@ export function useRealtimeOrderStages() {
         // de tela), mostrando a fábrica de antes da queda com cara de quadro
         // vivo. Ao reassinar, buscamos o estado inteiro de novo.
         // ⚠ Só na REconexão. O callback também recebe SUBSCRIBED na adesão
-        // inicial, e invalidar ali refazia ~25 queries logo depois do
+        // inicial, e invalidar ali refazia a lista full logo depois do
         // carregamento — toda tela de produção buscava tudo duas vezes.
         if (status === 'SUBSCRIBED') {
-          if (assinouRef.current) invalidateProductionCaches(qc);
+          if (assinouRef.current) invalidateAfterPointing(qc);
           assinouRef.current = true;
         }
       });
     // Aba volta do sono / máquina reconecta: o canal pode ter morrido em
     // silêncio. O `online` do browser é o gatilho mais confiável que existe
     // sem inventar heartbeat próprio.
-    const onOnline = () => invalidateProductionCaches(qc);
+    const onOnline = () => invalidateAfterPointing(qc);
     window.addEventListener('online', onOnline);
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);

@@ -1,4 +1,12 @@
 import { supabase } from '@/integrations/supabase/client';
+import { filterOperationalOperatorItems } from '@/lib/operatorPrintEligibility';
+import { isCancelledOrDraftOrder } from '@/lib/orderStatus';
+import {
+  effectiveOperatorStrapColor,
+  effectiveOperatorStrapMaterial,
+  operatorStrapSequence,
+  type OperatorStrapLineLike,
+} from '@/lib/operatorStrapSequence';
 
 /**
  * Fichas de operador a partir do pedido (PV) ou de OPs selecionadas — pros setores
@@ -28,6 +36,10 @@ const SECTOR_THEME: Record<Sector, { bg: string; fg: string }> = {
 
 const PAPER_WARN_LIMIT = 1000;
 
+type OperatorStrapLine = OperatorStrapLineLike & {
+  group_name?: string | null;
+};
+
 interface FichaInput {
   pv: string;
   client: string;
@@ -37,6 +49,23 @@ interface FichaInput {
   grade: Record<string, number>; // grade BASE (1 ficha)
   quantity: number;              // total de pares do item/OP
   sectors: string[];             // production_sectors da ficha técnica
+  straps: OperatorStrapLine[];   // snapshot do item do PV, na posição técnica
+}
+
+interface OperatorSaleOrderItem {
+  color: string | null;
+  grade: Record<string, number> | null;
+  quantity: number | null;
+  reference_id: string | null;
+  production_excluded_at: string | null;
+  strap_colors: OperatorStrapLine[] | null;
+}
+
+interface OperatorBaseSaleOrderItem {
+  id: string;
+  grade: Record<string, number> | null;
+  production_excluded_at: string | null;
+  strap_colors: OperatorStrapLine[] | null;
 }
 
 export interface FichaPlan {
@@ -79,13 +108,50 @@ function esc(s: unknown): string {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+/**
+ * Sequência compacta usada pelo atalho de impressão. Só Aviamento recebe o
+ * quadro: Corte Forração e Montagem preservam o papel legado sem informação
+ * que não pertence ao posto. Exportada para travar o contrato em teste puro.
+ */
+export function operatorStrapsHtml(
+  sector: Sector,
+  straps: OperatorStrapLine[] | null | undefined,
+  mainColor?: string | null,
+): string {
+  if (sector !== 'Aviamento' || !straps?.length) return '';
+  const rows = operatorStrapSequence(straps).map((strap, index) => {
+    const positionLabel = `TIRA ${index + 1}`;
+    const technicalLabel = String(strap.label || '').trim();
+    const labelSuffix = technicalLabel
+      && technicalLabel.toLocaleUpperCase('pt-BR') !== positionLabel
+      ? ` · ${esc(technicalLabel)}`
+      : '';
+    return `
+      <tr data-strap-position="${index + 1}">
+        <td class="sn">${index + 1}</td>
+        <td class="sl">${positionLabel}${labelSuffix}</td>
+        <td class="sc">${esc(effectiveOperatorStrapColor(strap, mainColor))}</td>
+        <td>${esc(effectiveOperatorStrapMaterial(strap))}</td>
+      </tr>`;
+  }).join('');
+  return `
+    <div class="straps">
+      <div class="straps-title">Sequência de tiras · ordem da ficha técnica</div>
+      <table class="straps-table">
+        <thead><tr><th>#</th><th>Posição</th><th>Cor do PV</th><th>Material</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
 function fichaHtml(p: {
   sector: Sector; via: Via; pv: string; client: string; date: string;
   refCode: string; refName: string; color: string;
   sizes: string[]; base: Record<string, number>; baseSum: number;
   fornada: number; nFichas: number;
+  straps: OperatorStrapLine[];
 }): string {
-  const { sector, via, pv, client, date, refCode, refName, color, sizes, base, baseSum, fornada, nFichas } = p;
+  const { sector, via, pv, client, date, refCode, refName, color, sizes, base, baseSum, fornada, nFichas, straps } = p;
   const th = SECTOR_THEME[sector];
   const head = sizes.map(s => `<th>${esc(s)}</th>`).join('');
   const baseRow = sizes.map(s => `<td>${base[s] || 0}</td>`).join('');
@@ -93,6 +159,7 @@ function fichaHtml(p: {
   const signLeft = via === 'SUPERVISOR'
     ? 'Conferido por (supervisor): ____________________'
     : 'Executado por (operador): ____________________';
+  const strapsBlock = operatorStrapsHtml(sector, straps, color);
   return `
   <div class="ficha">
     <div class="band" style="background:${th.bg};color:${th.fg}">
@@ -111,6 +178,7 @@ function fichaHtml(p: {
       <thead><tr><th class="rh">Nº</th>${head}<th class="tc">Total</th></tr></thead>
       <tbody><tr><td class="rh">Pares</td>${baseRow}<td class="tc tot">${baseSum}</td></tr></tbody>
     </table>
+    ${strapsBlock}
     <div class="sign"><span>${signLeft}</span><span>Data: ____ / ____</span><span>Visto: __________</span></div>
   </div>`;
 }
@@ -132,7 +200,7 @@ function renderAndOpen(inputs: FichaInput[], titleHint: string): void {
         const common = {
           sector, pv: it.pv, client: it.client, date,
           refCode: it.refCode, refName: it.refName, color: it.color,
-          sizes, base, baseSum, fornada: f, nFichas,
+          sizes, base, baseSum, fornada: f, nFichas, straps: it.straps,
         };
         fichas.push(fichaHtml({ ...common, via: 'OPERADOR' }));
         fichas.push(fichaHtml({ ...common, via: 'SUPERVISOR' }));
@@ -174,6 +242,14 @@ function renderAndOpen(inputs: FichaInput[], titleHint: string): void {
   table.grade .rh{text-align:left;font-weight:700;font-size:10px;text-transform:uppercase;width:96px;background:#fafafa}
   table.grade .tc{font-weight:800}
   table.grade .tot{font-size:13px}
+  .straps{padding:7px 12px;border-top:1px solid #000}
+  .straps-title{font-size:9px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;margin-bottom:4px}
+  table.straps-table{width:100%;border-collapse:collapse}
+  table.straps-table th,table.straps-table td{border:1px solid #000;padding:4px 6px;text-align:left;font-size:10px}
+  table.straps-table th{background:#f2f2f2;font-size:9px;text-transform:uppercase;letter-spacing:.4px}
+  table.straps-table .sn{width:28px;font-weight:800;text-align:center}
+  table.straps-table .sl{font-weight:800;text-transform:uppercase}
+  table.straps-table .sc{font-size:12px;font-weight:900;text-transform:uppercase;color:#b00000}
   .sign{display:flex;gap:18px;justify-content:space-between;padding:7px 12px;border-top:1px solid #000;font-size:10px;color:#333}
   .print-bar{max-width:190mm;margin:14px auto 0;text-align:center}
   .print-bar button{font:inherit;font-size:12px;font-weight:600;padding:9px 22px;border-radius:4px;cursor:pointer;border:0}
@@ -201,20 +277,33 @@ export async function printOperatorFichas(saleOrderId: string, orderNumberHint?:
     .from('sale_orders').select('order_number, client_name').eq('id', saleOrderId).single();
   if (soErr) throw new Error(`Falha ao carregar o pedido: ${soErr.message}`);
 
-  const { data: items, error: itErr } = await supabase
-    .from('sale_order_items').select('color, grade, quantity, reference_id').eq('sale_order_id', saleOrderId);
+  const { data: rawItems, error: itErr } = await supabase
+    .from('sale_order_items')
+    .select('color, grade, quantity, reference_id, production_excluded_at, strap_colors')
+    .eq('sale_order_id', saleOrderId);
   if (itErr) throw new Error(`Falha ao carregar itens: ${itErr.message}`);
 
-  const sheets = await fetchSectorsByRef((items || []).map((i: any) => i.reference_id));
+  const items = (rawItems || []) as unknown as OperatorSaleOrderItem[];
+  const operationalItems = filterOperationalOperatorItems(items);
+  if (operationalItems.length === 0) {
+    alert('Este pedido não tem itens ativos na produção para gerar fichas de operador.');
+    return;
+  }
+
+  const sheets = await fetchSectorsByRef(operationalItems.map(i => i.reference_id));
   const pv = so?.order_number || orderNumberHint || '';
   const client = (so?.client_name || '').trim();
 
-  const inputs: FichaInput[] = (items || []).map((it: any) => {
+  const inputs: FichaInput[] = operationalItems.map((it) => {
     const sheet = sheetsByRef(sheets, it.reference_id);
+    const grade = it.grade && typeof it.grade === 'object' && !Array.isArray(it.grade)
+      ? it.grade as unknown as Record<string, number>
+      : {};
     return {
       pv, client,
       refCode: sheet.code, refName: sheet.name, color: it.color || '',
-      grade: it.grade || {}, quantity: Number(it.quantity) || 0, sectors: sheet.sectors,
+      grade, quantity: Number(it.quantity) || 0, sectors: sheet.sectors,
+      straps: Array.isArray(it.strap_colors) ? it.strap_colors : [],
     };
   });
   renderAndOpen(inputs, pv);
@@ -229,30 +318,56 @@ export async function printOperatorFichasFromRows(rows: Array<{
   reference_id: string | null; reference_name?: string; reference_code?: string;
   color?: string; total_pairs?: number | null; grid?: Record<string, number>;
   sale_order_number?: string; client_name?: string; sale_order_item_id?: string | null;
+  strap_colors?: OperatorStrapLine[] | null;
+  status?: string;
 }>): Promise<void> {
-  const valid = rows.filter(r => r.reference_id);
+  const valid = rows.filter(r => r.reference_id && !isCancelledOrDraftOrder(r.status));
   if (valid.length === 0) { alert('Selecione ao menos uma OP.'); return; }
-
-  const sheets = await fetchSectorsByRef(valid.map(r => r.reference_id));
 
   const itemIds = [...new Set(valid.map(r => r.sale_order_item_id).filter(Boolean))] as string[];
   const baseByItem = new Map<string, Record<string, number>>();
+  const strapsByItem = new Map<string, OperatorStrapLine[]>();
+  const activeItemIds = new Set<string>();
   if (itemIds.length > 0) {
-    const { data } = await supabase.from('sale_order_items').select('id, grade').in('id', itemIds);
-    (data || []).forEach((it: any) => baseByItem.set(it.id, (it.grade || {}) as Record<string, number>));
+    const { data, error } = await supabase
+      .from('sale_order_items')
+      .select('id, grade, production_excluded_at, strap_colors')
+      .in('id', itemIds);
+    if (error) throw new Error(`Falha ao validar os itens produtivos: ${error.message}`);
+    const itemRows = (data || []) as unknown as OperatorBaseSaleOrderItem[];
+    itemRows.forEach((it) => {
+      if (it.production_excluded_at != null) return;
+      activeItemIds.add(it.id);
+      baseByItem.set(it.id, (it.grade || {}) as Record<string, number>);
+      strapsByItem.set(it.id, Array.isArray(it.strap_colors) ? it.strap_colors : []);
+    });
   }
 
-  const inputs: FichaInput[] = valid.map(r => {
+  // Revalida no clique: se o admin retirou o item enquanto a tela estava
+  // aberta, a seleção antiga não pode materializar uma nova ficha fabril.
+  const operationalRows = valid.filter(r => !r.sale_order_item_id || activeItemIds.has(r.sale_order_item_id));
+  if (operationalRows.length === 0) {
+    alert('As OPs selecionadas foram canceladas ou retiradas da produção. Nenhuma ficha foi gerada.');
+    return;
+  }
+
+  const sheets = await fetchSectorsByRef(operationalRows.map(r => r.reference_id));
+
+  const inputs: FichaInput[] = operationalRows.map(r => {
     const sheet = sheetsByRef(sheets, r.reference_id);
     const base = (r.sale_order_item_id && baseByItem.get(r.sale_order_item_id)) || deriveBaseFromScaled(r.grid || {});
+    const straps = r.sale_order_item_id && strapsByItem.has(r.sale_order_item_id)
+      ? strapsByItem.get(r.sale_order_item_id)!
+      : Array.isArray(r.strap_colors) ? r.strap_colors : [];
     return {
       pv: r.sale_order_number || '', client: (r.client_name || '').trim(),
       refCode: r.reference_code || sheet.code, refName: r.reference_name || sheet.name,
       color: r.color || '', grade: base, quantity: Number(r.total_pairs) || 0, sectors: sheet.sectors,
+      straps,
     };
   });
-  const pvs = [...new Set(valid.map(r => r.sale_order_number).filter(Boolean))];
-  renderAndOpen(inputs, pvs.length === 1 ? pvs[0]! : `${valid.length} OPs`);
+  const pvs = [...new Set(operationalRows.map(r => r.sale_order_number).filter(Boolean))];
+  renderAndOpen(inputs, pvs.length === 1 ? pvs[0]! : `${operationalRows.length} OPs`);
 }
 
 type SheetInfo = { code: string; name: string; sectors: string[] };

@@ -121,22 +121,28 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
-    const { data: roles, error: rolesErr } = await adminClient
-      .from("user_roles").select("role").eq("user_id", userId);
-    if (rolesErr) {
-      return new Response(JSON.stringify({ error: "Role check failed" }), { status: 500, headers: corsHeaders });
+    const [rolesResult, profileResult] = await Promise.all([
+      adminClient.from("user_roles").select("role").eq("user_id", userId),
+      adminClient.from("profiles").select("approved").eq("id", userId).maybeSingle(),
+    ]);
+    if (rolesResult.error || profileResult.error) {
+      return new Response(JSON.stringify({ error: "Access check failed" }), { status: 500, headers: corsHeaders });
     }
-    const allowed = roles?.some((r: { role: string }) => ["admin", "gerente", "nfe_operator"].includes(r.role));
-    if (!allowed) {
+    const allowed = rolesResult.data?.some((r: { role: string }) => ["admin", "gerente", "nfe_operator"].includes(r.role));
+    if (profileResult.data?.approved !== true || !allowed) {
       return new Response(JSON.stringify({ error: "Forbidden: apenas admin, gerente ou operador NF-e podem emitir devolução" }), { status: 403, headers: corsHeaders });
     }
 
     const body = await req.json();
     const { nfe_original_id, itens, motivo, idempotency_key } = body as {
       nfe_original_id: string;
-      itens: Array<{ sale_order_item_id: string; qty: number }>;
+      itens: Array<{
+        sale_order_item_id: string;
+        qty: number;
+        grade: Record<string, number>;
+      }>;
       motivo: string;
-      idempotency_key?: string;
+      idempotency_key: string;
     };
 
     if (!nfe_original_id) {
@@ -152,34 +158,28 @@ Deno.serve(async (req) => {
     if (!UUID_RE.test(nfe_original_id)) {
       return new Response(JSON.stringify({ error: "nfe_original_id inválido" }), { status: 400, headers: corsHeaders });
     }
-    if (idempotency_key && !UUID_RE.test(idempotency_key)) {
+    if (!idempotency_key || !UUID_RE.test(idempotency_key)) {
       return new Response(JSON.stringify({ error: "idempotency_key inválido (deve ser UUID)" }), { status: 400, headers: corsHeaders });
     }
+    const seenItemIds = new Set<string>();
     for (const it of itens) {
       if (!UUID_RE.test(it.sale_order_item_id) || !Number.isFinite(Number(it.qty)) || Number(it.qty) <= 0) {
         return new Response(JSON.stringify({ error: "Item inválido na lista de devolução" }), { status: 400, headers: corsHeaders });
       }
-    }
-
-    // Auditoria A2: se idempotency_key foi passado, checa se devolução com
-    // essa chave já existe. Bloqueia retry duplicado (clique 2x, retry de
-    // network, etc) — antes criava 2 nfe_devolucoes + 2× redução de AR.
-    if (idempotency_key) {
-      const { data: existingDev } = await adminClient
-        .from("nfe_devolucoes")
-        .select("id, status, provider_nfe_id, chave_acesso, numero")
-        .eq("idempotency_key", idempotency_key)
-        .maybeSingle();
-      if (existingDev) {
-        return new Response(JSON.stringify({
-          success: existingDev.status === "autorizada",
-          devolucao: existingDev,
-          idempotent_replay: true,
-          message: "Devolução já processada anteriormente (idempotency_key idêntico). Retornando resultado existente.",
-        }), {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+      if (seenItemIds.has(it.sale_order_item_id)) {
+        return new Response(JSON.stringify({ error: "Item repetido na lista de devolução" }), { status: 400, headers: corsHeaders });
+      }
+      seenItemIds.add(it.sale_order_item_id);
+      if (!it.grade || typeof it.grade !== "object" || Array.isArray(it.grade)) {
+        return new Response(JSON.stringify({ error: "Informe a grade exata devolvida por numeração" }), { status: 400, headers: corsHeaders });
+      }
+      const gradeTotal = Object.entries(it.grade).reduce((sum, [size, qty]) => {
+        if (size.startsWith("_")) return sum;
+        const value = Number(qty);
+        return Number.isInteger(value) && value >= 0 ? sum + value : Number.NaN;
+      }, 0);
+      if (!Number.isFinite(gradeTotal) || gradeTotal !== Number(it.qty)) {
+        return new Response(JSON.stringify({ error: "A grade devolvida deve ter inteiros e somar a quantidade do item" }), { status: 400, headers: corsHeaders });
       }
     }
 
@@ -218,7 +218,7 @@ Deno.serve(async (req) => {
     const itemIds = itens.map(i => i.sale_order_item_id);
     const { data: soItems } = await adminClient
       .from("sale_order_items")
-      .select("*, technical_sheets(id, name, code, ncm, gestaoclick_id)")
+      .select("*, technical_sheets(id, name, code, ncm, gestaoclick_id), products(id, name, sku, ncm, gestaoclick_id, active)")
       .eq("sale_order_id", nfeOriginal.sale_order_id)
       .in("id", itemIds);
     if (!soItems || soItems.length !== itens.length) {
@@ -252,6 +252,12 @@ Deno.serve(async (req) => {
         ? rawSnapshot
         : null;
       const hasMaterialVariant = !!item.material_variant_id;
+      const directProduct = item.product_id ? item.products : null;
+      if (item.product_id && (!directProduct || directProduct.active !== true)) {
+        return new Response(JSON.stringify({
+          error: `Produto direto ${directProduct?.sku || item.product_id} ausente ou inativo; regularize o cadastro antes da devolução.`,
+        }), { status: 409, headers: corsHeaders });
+      }
       if (hasMaterialVariant && (
         !variant
         || String(variant.material_variant_id || '') !== String(item.material_variant_id)
@@ -271,13 +277,14 @@ Deno.serve(async (req) => {
       // o override vivo da variante nunca reprecifica a operação histórica.
       const unitPrice = Number(item.unit_price ?? 0);
       const itemColor = String((hasMaterialVariant ? variant?.color : item.color) || item.color || '').trim();
+      const baseName = item.technical_sheets?.name || directProduct?.name || '';
       const productName = String((
         hasMaterialVariant
           ? variant?.description
-          : (itemColor ? `${item.technical_sheets?.name} - ${itemColor}` : item.technical_sheets?.name)
+          : (itemColor ? `${baseName} - ${itemColor}` : baseName)
       ) || '').trim().slice(0, 120);
       const productCode = String(
-        (hasMaterialVariant ? variant?.sku : item.technical_sheets?.code) || ''
+        (hasMaterialVariant ? variant?.sku : (item.technical_sheets?.code || directProduct?.sku)) || ''
       ).trim();
       let technicalProductName = productName;
       if (hasMaterialVariant) {
@@ -313,19 +320,22 @@ Deno.serve(async (req) => {
       itensFinal.push({
         sale_order_item_id: item.id,
         reference_id: item.reference_id,
+        product_id: item.product_id || null,
         material_variant_id: item.material_variant_id || null,
+        stock_color: String(item.color || '').trim(),
         color: itemColor,
-        ts_id: item.technical_sheets?.id,
-        ts_code: item.technical_sheets?.code,
-        ts_name: item.technical_sheets?.name,
-        ts_ncm: hasMaterialVariant ? variant?.ncm : item.technical_sheets?.ncm,
+        ts_id: item.technical_sheets?.id || directProduct?.id,
+        ts_code: item.technical_sheets?.code || directProduct?.sku,
+        ts_name: item.technical_sheets?.name || directProduct?.name,
+        ts_ncm: hasMaterialVariant ? variant?.ncm : (item.technical_sheets?.ncm || directProduct?.ncm),
         gc_product_id: hasMaterialVariant
           ? originalGcProductId
-          : (originalGcProductId || item.technical_sheets?.gestaoclick_id),
+          : (originalGcProductId || directProduct?.gestaoclick_id || item.technical_sheets?.gestaoclick_id),
         product_code: productCode,
         product_name: productName,
         technical_product_name: technicalProductName,
         qty: qtyToReturn,
+        grade: req.grade,
         valor_unit: unitPrice,
         valor_total: Number((qtyToReturn * unitPrice).toFixed(2)),
       });
@@ -355,6 +365,42 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({
         error: `Itens sem NCM válido: ${itemsMissingNcm.map(i => i.ts_code).join(", ")}`,
       }), { status: 400, headers: corsHeaders });
+    }
+
+    // Reclama saldo/grade e congela o intent antes de qualquer efeito no
+    // ClickNotas. O mesmo request_id retoma exatamente o mesmo comando.
+    const { data: beginResult, error: beginError } = await adminClient.rpc(
+      "begin_nfe_devolucao_command" as never,
+      {
+        p_request_id: idempotency_key,
+        p_nfe_original_id: nfe_original_id,
+        p_items: itensFinal,
+        p_motivo: motivo.trim(),
+        p_actor_id: userId,
+      },
+    );
+    if (beginError) {
+      return new Response(JSON.stringify({ error: beginError.message }), { status: 409, headers: corsHeaders });
+    }
+    if (beginResult?.effects_applied || beginResult?.completed) {
+      return new Response(JSON.stringify({
+        success: true,
+        idempotent_replay: true,
+        devolucao: beginResult,
+      }), { status: 200, headers: corsHeaders });
+    }
+    if (beginResult?.reconciliation_required) {
+      return new Response(JSON.stringify({
+        error: beginResult.reconciliation_reason || "Devolução exige reconciliação administrativa.",
+        reconciliation_required: true,
+        devolucao: beginResult,
+      }), { status: 409, headers: corsHeaders });
+    }
+    if (beginResult?.provider_submission_state === "rejected") {
+      return new Response(JSON.stringify({
+        error: beginResult.error || "Devolução rejeitada anteriormente.",
+        devolucao: beginResult,
+      }), { status: 422, headers: corsHeaders });
     }
 
     // 6) Resolve produto ClickNotas pela identidade congelada. O nome técnico
@@ -480,11 +526,31 @@ Deno.serve(async (req) => {
           || identityError instanceof ClickNotasProductReconciliationRequiredError
           ? 409
           : 502;
+        const message = identityError instanceof Error ? identityError.message : String(identityError);
+        const { data: abortResult, error: abortError } = await adminClient.rpc(
+          "abort_nfe_devolucao_before_provider" as never,
+          {
+            p_request_id: idempotency_key,
+            p_reason: `Falha antes da criação da NF fiscal: ${message}`.slice(0, 1000),
+          },
+        );
+        if (abortError) {
+          return new Response(JSON.stringify({
+            error: `${message} A liberação da intenção fiscal falhou: ${abortError.message}`,
+            reconciliation_required: true,
+          }), { status: 409, headers: corsHeaders });
+        }
         return new Response(JSON.stringify({
-          error: identityError instanceof Error ? identityError.message : String(identityError),
+          error: message,
+          terminal_rejected: true,
+          devolucao: abortResult,
         }), { status, headers: corsHeaders });
       }
-      if (!it.material_variant_id && it.ts_id) {
+      if (!it.material_variant_id && it.product_id) {
+        await adminClient.from("products")
+          .update({ gestaoclick_id: it.gc_product_id })
+          .eq("id", it.product_id);
+      } else if (!it.material_variant_id && it.ts_id) {
         await adminClient.from("technical_sheets")
           .update({ gestaoclick_id: it.gc_product_id })
           .eq("id", it.ts_id);
@@ -553,7 +619,7 @@ Deno.serve(async (req) => {
       }],
     };
 
-    const ref = `nfe-dev-${nfe_original_id}-${Date.now()}`;
+    const ref = `nfe-dev-${idempotency_key}`;
     // Configuração explícita pedida pelo user em 15/05/2026:
     //   - Natureza: "Devolução de venda de produção do estabelecimento"
     //   - Forma de emissão (tipo_emissao): "1" = normal
@@ -595,230 +661,313 @@ Deno.serve(async (req) => {
       transporte: transporteBlockDev,
     };
 
-    // 8) Grava rascunho local com status processando.
-    // Auditoria A2: persiste idempotency_key recebido pra bloquear retries
-    // duplicados (índice unique uq_nfe_devolucoes_idempotency_key).
-    const devolucaoRecord: any = {
-      nfe_original_id,
-      sale_order_id: nfeOriginal.sale_order_id,
-      status: "processando",
-      ref_nfe: ref,
-      valor_total: valorTotal,
-      itens: itensFinal,
-      motivo: motivo.trim(),
-      cnpj_emitente: nfeOriginal.cnpj_emitente,
-      company_id: fiscal.id,
-      created_by: userId,
-      ...(idempotency_key ? { idempotency_key } : {}),
-    };
-    const { data: devLocal, error: devLocalErr } = await adminClient
-      .from("nfe_devolucoes").insert(devolucaoRecord).select().single();
-    if (devLocalErr) {
-      return new Response(JSON.stringify({ error: `Falha ao gravar devolução local: ${devLocalErr.message}` }), { status: 500, headers: corsHeaders });
+    // 8) O banco reclama de forma durável a única criação externa permitida.
+    // Em timeout de POST, não repetimos: a NF pode existir no ClickNotas mesmo
+    // sem a resposta ter chegado ao Edge.
+    const { data: claimResult, error: claimError } = await adminClient.rpc(
+      "claim_nfe_devolucao_provider_submission" as never,
+      { p_request_id: idempotency_key, p_provider_payload: nfePayload },
+    );
+    if (claimError) {
+      return new Response(JSON.stringify({ error: claimError.message }), { status: 409, headers: corsHeaders });
+    }
+    if (claimResult?.completed) {
+      return new Response(JSON.stringify({
+        success: true,
+        idempotent_replay: true,
+        devolucao: claimResult,
+      }), { status: 200, headers: corsHeaders });
+    }
+    if (claimResult?.rejected) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: claimResult.error || "Devolução rejeitada anteriormente.",
+        devolucao: claimResult,
+      }), { status: 422, headers: corsHeaders });
+    }
+    if (claimResult?.reconciliation_required) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: claimResult.reconciliation_reason || "Devolução exige reconciliação administrativa.",
+        reconciliation_required: true,
+        devolucao: claimResult,
+      }), { status: 409, headers: corsHeaders });
     }
 
-    // 9) POST cadastro NF
-    const createResp = await gcFetch("/notas_fiscais_produtos", {
-      method: "POST",
-      body: JSON.stringify(nfePayload),
-    });
-    if (!createResp.ok || createResp.json?.status === "error" || createResp.json?.data?.ok === false) {
-      const msg = createResp.json?.data?.mensagem || createResp.json?.message || JSON.stringify(createResp.json);
-      await adminClient.from("nfe_devolucoes")
-        .update({ status: "rejeitada", motivo_rejeicao: `Cadastro: ${msg}`, updated_at: new Date().toISOString() })
-        .eq("id", devLocal.id);
-      return new Response(JSON.stringify({ error: `Falha ao cadastrar devolução: ${msg}` }), { status: 422, headers: corsHeaders });
+    let gcNfeId = String(claimResult?.provider_nfe_id || "").trim();
+    let createResponseJson: unknown = null;
+    const immutableProviderPayload = claimResult?.provider_request_payload || nfePayload;
+
+    if (claimResult?.provider_call_required) {
+      let createResp: Awaited<ReturnType<typeof gcFetch>>;
+      try {
+        createResp = await gcFetch("/notas_fiscais_produtos", {
+          method: "POST",
+          body: JSON.stringify(immutableProviderPayload),
+        });
+      } catch (providerError) {
+        const reason = `Resposta do POST de criação não chegou; localizar a referência ${ref} no ClickNotas antes de repetir: ${providerError instanceof Error ? providerError.message : String(providerError)}`;
+        await adminClient.rpc("mark_nfe_devolucao_reconciliation_required" as never, {
+          p_request_id: idempotency_key,
+          p_reason: reason,
+        });
+        return new Response(JSON.stringify({
+          success: false,
+          error: reason,
+          reconciliation_required: true,
+        }), { status: 409, headers: corsHeaders });
+      }
+
+      createResponseJson = createResp.json;
+      const createData = createResp.json?.data;
+      const rawProviderId = typeof createData?.dados === "object"
+        ? createData?.dados?.id
+        : createData?.dados;
+      gcNfeId = String(rawProviderId || createData?.id || "").trim();
+      const providerReportedError = createResp.json?.status === "error"
+        || createResp.json?.data?.ok === false;
+
+      if (!createResp.ok || providerReportedError || !gcNfeId) {
+        const msg = String(
+          createResp.json?.data?.mensagem
+          || createResp.json?.message
+          || createResp.json?.mensagem
+          || JSON.stringify(createResp.json),
+        ).slice(0, 900);
+        // 408/409/429 e 5xx são ambíguos: o provedor pode ter criado a NF.
+        // Demais 4xx e erro de negócio 2xx são rejeições explícitas sem ID.
+        const definitelyRejected = !gcNfeId && (
+          providerReportedError && createResp.ok
+          || (createResp.status >= 400 && createResp.status < 500
+            && ![408, 409, 429].includes(createResp.status))
+        );
+        if (definitelyRejected) {
+          const { data: abortResult, error: abortError } = await adminClient.rpc(
+            "abort_nfe_devolucao_before_provider" as never,
+            { p_request_id: idempotency_key, p_reason: `Cadastro recusado: ${msg}` },
+          );
+          if (abortError) {
+            return new Response(JSON.stringify({ error: abortError.message }), { status: 409, headers: corsHeaders });
+          }
+          return new Response(JSON.stringify({
+            success: false,
+            error: `Falha ao cadastrar devolução: ${msg}`,
+            devolucao: abortResult,
+            provider_response: { create: createResp.json },
+          }), { status: 422, headers: corsHeaders });
+        }
+
+        const reason = `Criação externa teve resultado ambíguo (HTTP ${createResp.status}); localizar a referência ${ref} no ClickNotas antes de repetir: ${msg}`;
+        await adminClient.rpc("mark_nfe_devolucao_reconciliation_required" as never, {
+          p_request_id: idempotency_key,
+          p_reason: reason,
+        });
+        return new Response(JSON.stringify({
+          success: false,
+          error: reason,
+          reconciliation_required: true,
+          provider_response: { create: createResp.json },
+        }), { status: 409, headers: corsHeaders });
+      }
+
+      const { error: recordCreationError } = await adminClient.rpc(
+        "record_nfe_devolucao_provider_creation" as never,
+        {
+          p_request_id: idempotency_key,
+          p_provider_nfe_id: gcNfeId,
+          p_provider_response: createResp.json,
+        },
+      );
+      if (recordCreationError) {
+        const reason = `NF ${gcNfeId} foi criada no ClickNotas, mas o ID não pôde ser confirmado localmente: ${recordCreationError.message}`;
+        await adminClient.rpc("mark_nfe_devolucao_reconciliation_required" as never, {
+          p_request_id: idempotency_key,
+          p_reason: reason,
+        });
+        return new Response(JSON.stringify({
+          success: false,
+          error: reason,
+          reconciliation_required: true,
+          provider_nfe_id: gcNfeId,
+        }), { status: 409, headers: corsHeaders });
+      }
     }
-    const gcNfeId = String(createResp.json?.data?.dados || createResp.json?.data?.id);
 
-    // 10) Emite
-    const emitResp = await gcFetch(`/notas_fiscais_produtos/emitir/${gcNfeId}`, { method: "POST" });
-    const emitOk = emitResp.ok && emitResp.json?.data?.ok !== false && emitResp.json?.status !== "error";
+    if (!gcNfeId) {
+      return new Response(JSON.stringify({
+        error: "O comando não possui ID persistido da NF no ClickNotas.",
+        reconciliation_required: true,
+      }), { status: 409, headers: corsHeaders });
+    }
 
+    // 9) A partir daqui toda retomada atua sobre a MESMA NF externa. O detalhe
+    // é a fonte de verdade; /emitir é apenas um disparo best-effort desse ID.
+    let detailResponseJson: unknown = null;
+    let emitResponseJson: unknown = null;
     let chave = "";
     let protocolo = "";
     let situacao = "";
     let numero = "";
-    let dataEmissao = "";
-    if (emitOk) {
+    let serie = fiscal.serie_nfe ? String(fiscal.serie_nfe) : "1";
+    let dataEmissao: string | null = null;
+    let motivoRejeicao = "";
+
+    const readProviderDetail = async () => {
       const detail = await gcFetch(`/notas_fiscais_produtos/${gcNfeId}`);
+      if (!detail.ok || detail.json?.status === "error") {
+        throw new Error(
+          detail.json?.data?.mensagem
+          || detail.json?.message
+          || `HTTP ${detail.status} ao consultar a NF`,
+        );
+      }
+      detailResponseJson = detail.json;
       const d = detail.json?.data || {};
-      chave = d.chave || "";
-      protocolo = d.protocolo || "";
-      situacao = d.situacao_nf || "";
-      numero = d.numero_nf ? String(d.numero_nf) : "";
+      chave = String(d.chave || chave || "").trim();
+      protocolo = String(d.protocolo || protocolo || "").trim();
+      situacao = String(d.situacao_nf || situacao || "").trim();
+      numero = d.numero_nf ? String(d.numero_nf) : numero;
+      serie = d.serie ? String(d.serie) : serie;
+      motivoRejeicao = String(d.motivo_rejeicao_sefaz || d.motivo_rejeicao || motivoRejeicao || "").trim();
       if (d.data_emissao) {
-        const time = d.hora_emissao ? `${d.data_emissao}T${d.hora_emissao}-03:00` : d.data_emissao;
-        const t = new Date(time).getTime();
-        if (!Number.isNaN(t)) dataEmissao = new Date(t).toISOString();
+        const raw = d.hora_emissao
+          ? `${d.data_emissao}T${d.hora_emissao}`
+          : String(d.data_emissao);
+        const normalized = /Z$|[+-]\d{2}:\d{2}$/.test(raw) ? raw : `${raw}-03:00`;
+        const timestamp = new Date(normalized).getTime();
+        if (!Number.isNaN(timestamp) && timestamp > 0) {
+          dataEmissao = new Date(timestamp).toISOString();
+        }
       }
-    }
-    const finalStatus = emitOk
-      ? (situacao?.toLowerCase().includes("aprovada") ? "autorizada" : "processando")
-      : "rejeitada";
-
-    const emitMsg = emitResp.json?.data?.mensagem || emitResp.json?.message || "";
-
-    // 11) Atualiza registro local
-    const updatePayload: any = {
-      status: finalStatus,
-      provider_nfe_id: gcNfeId,
-      chave_acesso: chave || null,
-      protocolo: protocolo || null,
-      numero: numero || null,
-      serie: fiscal.serie_nfe ? String(fiscal.serie_nfe) : "1",
-      data_emissao: dataEmissao || null,
-      motivo_rejeicao: emitOk ? null : emitMsg,
-      updated_at: new Date().toISOString(),
     };
-    await adminClient.from("nfe_devolucoes").update(updatePayload).eq("id", devLocal.id);
+    const providerStatus = () => {
+      const normalized = situacao.toLowerCase();
+      if (
+        motivoRejeicao
+        || normalized.includes("reprovada")
+        || normalized.includes("rejeitada")
+        || normalized.includes("denegada")
+        || normalized.includes("cancelada")
+        || normalized.includes("erro")
+      ) return "rejeitada";
+      if (
+        chave.length === 44
+        || normalized.includes("aprovada")
+        || normalized.includes("autorizada")
+        || normalized.includes("corrigida")
+      ) return "autorizada";
+      return "processando";
+    };
 
-    // 12) Se autorizada: estoque + qty_devolvida + AR proporcional
-    const cleanupWarnings: string[] = [];
-    if (finalStatus === "autorizada") {
-      // 12a) Incrementa qty_devolvida em sale_order_items
-      for (const it of itensFinal) {
-        const { error: e } = await adminClient.rpc("increment_qty_devolvida" as any, {
-          p_item_id: it.sale_order_item_id,
-          p_qty: it.qty,
-        });
-        if (e) {
-          // Fallback: update direto se RPC não existe
-          const { data: cur } = await adminClient
-            .from("sale_order_items").select("qty_devolvida").eq("id", it.sale_order_item_id).single();
-          const novoTotal = Number(cur?.qty_devolvida || 0) + Number(it.qty);
-          await adminClient.from("sale_order_items")
-            .update({ qty_devolvida: novoTotal }).eq("id", it.sale_order_item_id);
-        }
-      }
+    let detailError: string | null = null;
+    try {
+      await readProviderDetail();
+    } catch (error) {
+      detailError = error instanceof Error ? error.message : String(error);
+    }
 
-      // 12b) Stock movement de entrada + restaura products.quantity
-      // FIX C3: antes só inseria stock_movement com product_id=null — mercadoria
-      // voltava fisicamente mas estoque ficava subdimensionado. Agora faz lookup
-      // por (reference_id, color) e atualiza products.quantity quando achar.
+    if (providerStatus() === "processando") {
       try {
-        for (const it of itensFinal) {
-          // Lookup do product representando (ref, color)
-          let productId: string | null = null;
-          let prevQty = 0;
-          if (it.reference_id) {
-            const { data: prodRow } = await adminClient
-              .from("products")
-              .select("id, quantity")
-              .eq("reference_id", it.reference_id)
-              .eq("color", it.color || "")
-              .eq("active", true)
-              .limit(1)
-              .maybeSingle();
-            if (prodRow) {
-              productId = prodRow.id;
-              prevQty = Number(prodRow.quantity || 0);
-              const newQty = prevQty + Number(it.qty);
-              const { error: updErr } = await adminClient.from("products")
-                .update({ quantity: newQty, updated_at: new Date().toISOString() })
-                .eq("id", productId);
-              if (updErr) cleanupWarnings.push(`products.quantity não atualizado (${it.reference_id}/${it.color}): ${updErr.message}`);
-            } else {
-              cleanupWarnings.push(`Produto (ref ${it.reference_id}, cor ${it.color || '—'}) não encontrado — devolução registrada sem update de estoque.`);
-            }
-          }
-
-          await adminClient.from("stock_movements").insert({
-            movement_type: "in",
-            type: "Devolução cliente",
-            product_id: productId,
-            reference_id: it.reference_id,
-            color: it.color,
-            quantity: it.qty,
-            previous_stock: prevQty,
-            new_stock: prevQty + Number(it.qty),
-            sale_order_id: nfeOriginal.sale_order_id,
-            description: `NF devolução ${chave || gcNfeId} — motivo: ${motivo.trim()}`,
-            notes: `NF devolução ${chave || gcNfeId} — motivo: ${motivo.trim()}`,
-            created_by: userId,
-          } as any);
-        }
-      } catch (e: any) {
-        cleanupWarnings.push(`Stock movement não criado: ${e.message}`);
+        const emitResp = await gcFetch(`/notas_fiscais_produtos/emitir/${gcNfeId}`, { method: "POST" });
+        emitResponseJson = emitResp.json;
+      } catch (error) {
+        emitResponseJson = { error: error instanceof Error ? error.message : String(error) };
       }
-
-      // 12c) Reduz accounts_receivable proporcional ao valor devolvido
-      try {
-        const { data: arList } = await adminClient
-          .from("accounts_receivable")
-          .select("id, amount, amount_received, status")
-          .eq("sale_order_id", nfeOriginal.sale_order_id)
-          .not("status", "in", "(received,cancelled)");
-        if (arList && arList.length > 0) {
-          const totalAR = arList.reduce((s, a: any) => s + Number(a.amount || 0), 0);
-          if (totalAR > 0) {
-            // Reduz proporcionalmente cada AR pelo valor devolvido total
-            for (const ar of arList as any[]) {
-              const share = Number(ar.amount) / totalAR;
-              const reducao = Number((share * valorTotal).toFixed(2));
-              const novoAmount = Math.max(0, Number(ar.amount) - reducao);
-              if (novoAmount <= 0.01) {
-                await adminClient.from("accounts_receivable")
-                  .update({ status: "cancelled", notes: `Cancelado por devolução total via NF ${chave || gcNfeId}` })
-                  .eq("id", ar.id);
-              } else {
-                await adminClient.from("accounts_receivable")
-                  .update({ amount: novoAmount, notes: `Reduzido R$ ${reducao.toFixed(2)} por devolução NF ${chave || gcNfeId}` })
-                  .eq("id", ar.id);
-              }
-            }
-          }
+      // Autorização pode levar alguns segundos; nunca inferimos sucesso pelo
+      // HTTP do disparo. Poll curto e seguro sobre o mesmo objeto externo.
+      for (let attempt = 0; attempt < 4 && providerStatus() === "processando"; attempt++) {
+        if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 2000));
+        try {
+          await readProviderDetail();
+          detailError = null;
+        } catch (error) {
+          detailError = error instanceof Error ? error.message : String(error);
         }
-      } catch (e: any) {
-        cleanupWarnings.push(`AR não ajustado: ${e.message}`);
-      }
-
-      // 12d) Se já houver financial_entry confirmado (receita já reconhecida),
-      // registra ajuste de crédito negativo pra cancelar a receita devolvida.
-      // Audit Phase 3 fix: usa nfe_devolucoes.id como reference_id pra evitar
-      // duplicar estorno em retry (mesma devolução nunca cria 2 entries).
-      try {
-        const { data: existingEntries } = await adminClient
-          .from("financial_entries")
-          .select("id, status, amount, type")
-          .eq("reference_id", nfeOriginal.sale_order_id)
-          .eq("reference_type", "sale_order")
-          .in("status", ["confirmed", "posted", "reconciled", "paid"]);
-        if (existingEntries && existingEntries.length > 0) {
-          const { data: existingEstorno } = await adminClient
-            .from("financial_entries")
-            .select("id")
-            .eq("reference_id", devLocal.id)
-            .eq("reference_type", "sale_order_devolucao")
-            .limit(1);
-          if (!existingEstorno || existingEstorno.length === 0) {
-            await adminClient.from("financial_entries").insert({
-              type: "receita",
-              category: "venda",
-              amount: -valorTotal,
-              status: "confirmed",
-              description: `Estorno por devolução NF ${chave || gcNfeId} (PV ${nfeOriginal.sale_order_id})`,
-              reference_id: devLocal.id,
-              reference_type: "sale_order_devolucao",
-              entry_date: new Date().toISOString().split("T")[0],
-              created_by: userId,
-            } as any);
-          }
-        }
-      } catch (e: any) {
-        cleanupWarnings.push(`Lançamento de estorno não criado: ${e.message}`);
       }
     }
 
+    const finalStatus = providerStatus();
+    if (detailError && !detailResponseJson) {
+      return new Response(JSON.stringify({
+        success: false,
+        pending: true,
+        error: `NF ${gcNfeId} já criada; não foi possível consultar o status agora: ${detailError}`,
+        provider_nfe_id: gcNfeId,
+      }), { status: 202, headers: corsHeaders });
+    }
+
+    const providerResultPayload = {
+      create: createResponseJson,
+      emit: emitResponseJson,
+      detail: detailResponseJson,
+    };
+    const { data: recordedResult, error: recordResultError } = await adminClient.rpc(
+      "record_nfe_devolucao_provider_result" as never,
+      {
+        p_request_id: idempotency_key,
+        p_provider_nfe_id: gcNfeId,
+        p_provider_status: finalStatus,
+        p_chave_acesso: chave || null,
+        p_protocolo: protocolo || null,
+        p_numero: numero || null,
+        p_serie: serie || null,
+        p_data_emissao: dataEmissao,
+        p_error: finalStatus === "rejeitada"
+          ? (motivoRejeicao || situacao || "Rejeitada pelo provedor")
+          : null,
+        p_provider_response: providerResultPayload,
+      },
+    );
+    if (recordResultError) {
+      return new Response(JSON.stringify({ error: recordResultError.message }), { status: 409, headers: corsHeaders });
+    }
+    if (recordedResult?.reconciliation_required) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: recordedResult.reconciliation_reason || "Devolução exige reconciliação administrativa.",
+        reconciliation_required: true,
+        devolucao: recordedResult,
+      }), { status: 409, headers: corsHeaders });
+    }
+    if (finalStatus === "rejeitada") {
+      return new Response(JSON.stringify({
+        success: false,
+        error: motivoRejeicao || situacao || "NF-e de devolução rejeitada pelo provedor.",
+        devolucao: recordedResult,
+        provider_response: providerResultPayload,
+      }), { status: 422, headers: corsHeaders });
+    }
+    if (finalStatus === "processando") {
+      return new Response(JSON.stringify({
+        success: false,
+        pending: true,
+        devolucao: recordedResult,
+        provider_response: providerResultPayload,
+      }), { status: 202, headers: corsHeaders });
+    }
+
+    // 10) Um único commit local atômico: grade/estoque, qty devolvida,
+    // contas a receber e estorno contábil. Qualquer falha reverte tudo.
+    const { data: completion, error: completionError } = await adminClient.rpc(
+      "complete_nfe_devolucao_command" as never,
+      { p_request_id: idempotency_key },
+    );
+    if (completionError) {
+      return new Response(JSON.stringify({ error: completionError.message }), { status: 409, headers: corsHeaders });
+    }
+    if (completion?.reconciliation_required) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: completion.reconciliation_reason || "NF autorizada, mas os efeitos locais exigem reconciliação.",
+        reconciliation_required: true,
+        devolucao: completion,
+      }), { status: 409, headers: corsHeaders });
+    }
     return new Response(JSON.stringify({
-      success: emitOk,
-      devolucao: { ...devLocal, ...updatePayload },
-      provider_response: { create: createResp.json, emit: emitResp.json },
-      ...(cleanupWarnings.length > 0 ? { partial_cleanup_warning: cleanupWarnings.join("; ") } : {}),
-    }), {
-      status: emitOk ? 200 : 422,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+      success: true,
+      devolucao: completion,
+      provider_response: providerResultPayload,
+    }), { status: 200, headers: corsHeaders });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Erro desconhecido";
     console.error("emit-nfe-devolucao error:", error);

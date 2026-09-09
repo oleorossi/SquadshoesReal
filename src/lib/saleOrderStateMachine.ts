@@ -19,6 +19,43 @@ export const SALE_ORDER_STATUS = {
 
 export type SaleOrderStatus = (typeof SALE_ORDER_STATUS)[keyof typeof SALE_ORDER_STATUS];
 
+function normalizeSaleOrderStatusAlias(status: unknown): string {
+  return String(status ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+const EDITABLE_STRAP_SNAPSHOT_STATUSES = new Set([
+  SALE_ORDER_STATUS.RASCUNHO,
+  SALE_ORDER_STATUS.PENDENTE,
+  'draft',
+  'pending',
+].map(normalizeSaleOrderStatusAlias));
+
+/**
+ * Depois da aprovação, as tiras já podem ter demanda, reserva, consumo ou
+ * débito. Abrir o editor nesses estados é leitura do snapshot persistido; só
+ * Rascunho/Pendente continuam prospectivos e acompanham a ficha atual.
+ */
+export function isCommittedSaleOrderStrapSnapshotStatus(status: unknown): boolean {
+  const normalized = normalizeSaleOrderStatusAlias(status);
+  // Estado desconhecido de item persistido não concede permissão para reescrever
+  // história. Ausência de status continua compatível com um formulário novo.
+  return !!normalized && !EDITABLE_STRAP_SNAPSHOT_STATUSES.has(normalized);
+}
+
+/**
+ * Factoring (`factoring_config_id`) só pode mudar em Rascunho/Pendente —
+ * espelha o gate do preflight (`factoring_after_financial_fact`).
+ * Form novo (status vazio) continua editável.
+ */
+export function canEditSaleOrderFactoring(status: unknown): boolean {
+  return !isCommittedSaleOrderStrapSnapshotStatus(status);
+}
+
 /**
  * Maps each status to the set of statuses it may transition into.
  * Terminal statuses (Concluído, Cancelado) have an empty array.

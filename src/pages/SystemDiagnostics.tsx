@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { manualVersionCheck } from '@/components/VersionChecker';
 import { CabedalParPeAuditPanel } from '@/components/technical-sheets/CabedalParPeAuditPanel';
 import OrphanDirectComponentsPanel from '@/components/technical-sheets/OrphanDirectComponentsPanel';
+import SoleSpecGapsPanel from '@/components/soles-hub/SoleSpecGapsPanel';
 import { useStockDebitHoles, summarizeStockDebitHoles, useReconcileStockDebitHole } from '@/hooks/useStockDebitHoles';
 
 type SchemaObject = {
@@ -35,6 +36,137 @@ type DiagnosticItem = {
 
 type ConsistencyRow = { check_name: string; severity: string; item_count: number; sample: string | null };
 type ParityRow = { case_name: string; ok: boolean; message: string | null };
+type PvSystemDiagnosticRow = ConsistencyRow & { category: string };
+type CapacityCheckRow = { categoria: string; severidade: string; referencia: string; detalhe: string };
+type LinkCheckRow = { check_name: string; severity: string; qtd: number; detalhe: string };
+type StaleReservationRow = {
+  order_number: string;
+  sale_order_number: string;
+  reference_name: string;
+  product_name: string;
+  required_qty: number;
+  consumption_source: string;
+};
+type SaleOrderOutboxHealth = {
+  pending?: number;
+  failed?: number;
+  dead_letter?: number;
+  attention_required?: number;
+  oldest_available_at?: string | null;
+  last_run?: { ran_at?: string; error?: string | null } | null;
+};
+
+type OpRestoreRow = {
+  order_id: string;
+  order_number: string;
+  order_status: string;
+  product_id: string;
+  product_name: string;
+  product_color: string | null;
+  qtd_sem_grade: number;
+  motivo: string;
+};
+
+type DiagnosticsRpcResults = {
+  pcp_freshness_report: ConsistencyRow[];
+  component_colors_consistency_report: ConsistencyRow[];
+  debit_consistency_report: DebitRow[];
+  run_debit_guard_tests: ParityRow[];
+  capacity_consistency_report: CapacityCheckRow[];
+  broken_sale_order_links_report: LinkCheckRow[];
+  list_ops_with_stale_reservations: StaleReservationRow[];
+  cost_consistency_report: ConsistencyRow[];
+  timeclock_identity_report: ConsistencyRow[];
+  get_sale_order_outbox_health: SaleOrderOutboxHealth;
+  run_sole_live_parity_guards: ParityRow[];
+  op_restore_consistency_report: OpRestoreRow[];
+};
+
+/** RPCs de diagnóstico criadas por migrations que podem anteceder o types.ts
+ * gerado. O recorte mantém nomes e retornos tipados sem abrir o cliente inteiro. */
+const diagnosticsRpcClient = supabase as unknown as {
+  rpc<Name extends keyof DiagnosticsRpcResults>(
+    functionName: Name,
+  ): PromiseLike<{
+    data: DiagnosticsRpcResults[Name] | null;
+    error: { message: string } | null;
+  }>;
+};
+
+function errorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (error && typeof error === 'object' && 'message' in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === 'string' && message) return message;
+  }
+  return fallback;
+}
+
+const pvSystemDiagnosticsClient = supabase as unknown as {
+  rpc(
+    functionName: 'get_sale_order_command_diagnostics',
+    args: { p_sale_order_id: null },
+  ): PromiseLike<{
+    data: PvSystemDiagnosticRow[] | null;
+    error: { message: string } | null;
+  }>;
+};
+
+const REQUIRED_PV_SYSTEM_SIGNALS = [
+  'command_receipts_in_progress_stale',
+  'material_plan_readiness_blocked',
+  'active_ops_outdated_plan',
+  'debit_delta_missing',
+  'unsafe_stock_debit_overloads',
+  'partial_promotion_enabled',
+  'sale_order_outbox_worker',
+  'sale_order_purchase_attention',
+  'consumption_parity_skipped',
+  'billing_health_aggregate_drift',
+  'authorized_nfe_unlinked_strong_match',
+  'faturado_without_authorized_nfe',
+  'faturado_ar_reconciliation_queue',
+  'faturado_op_integrity',
+  'finalized_consumption_zero_without_pending',
+  'op_stock_movement_without_reservation_trace',
+  'strap_migration_review_required',
+  'strap_napa_width_inverted',
+  'strap_executor_calendar_missing',
+  'strap_executor_capacity_missing',
+  'strap_demand_capacity_suspended',
+  'strap_identity_dead_letter',
+  'strap_batch_unscheduled_balance',
+  'strap_legacy_billed_service_order_open',
+  'strap_production_receipt_stock_ledger_gap',
+] as const;
+
+const PV_SYSTEM_SIGNAL_LABELS: Record<string, string> = {
+  command_receipts_in_progress_stale: 'Command receipts travados em processamento',
+  material_plan_readiness_blocked: 'Plano de materiais bloqueado por readiness',
+  active_ops_outdated_plan: 'OPs ativas com plano de materiais desatualizado',
+  debit_delta_missing: 'Falta de débito (esperado − debitado)',
+  unsafe_stock_debit_overloads: 'Resync/baixa: overloads inseguros com EXECUTE público',
+  partial_promotion_enabled: 'Promoção parcial habilitada',
+  sale_order_outbox_worker: 'Outbox de PV sem processamento durável',
+  sale_order_purchase_attention: 'Faltas de compra exigindo correção de cadastro',
+  consumption_parity_skipped: 'Paridade SQL sem execução comprovada',
+  billing_health_aggregate_drift: 'Agregados de NF-e e contas a receber divergentes',
+  authorized_nfe_unlinked_strong_match: 'NF-e autorizada com vínculo seguro ainda pendente',
+  faturado_without_authorized_nfe: 'PV faturado sem NF-e autorizada',
+  faturado_ar_reconciliation_queue: 'PV faturado aguardando reconciliação financeira',
+  faturado_op_integrity: 'PV faturado sem cobertura íntegra de OP',
+  finalized_consumption_zero_without_pending: 'OP finalizada com consumo zero/parcial sem pendência',
+  op_stock_movement_without_reservation_trace: 'Movimento de OP sem rastreio da reserva',
+  strap_migration_review_required: 'Tiras: item de migração aguardando revisão',
+  strap_napa_width_inverted: 'Tiras: largura da napa possivelmente invertida',
+  strap_executor_calendar_missing: 'Tiras: executor sem calendário operacional',
+  strap_executor_capacity_missing: 'Tiras: executor sem capacidade cadastrada',
+  strap_demand_capacity_suspended: 'Tiras: demanda suspensa por falta de capacidade',
+  strap_identity_dead_letter: 'Tiras: processamento bloqueado por identidade',
+  strap_batch_unscheduled_balance: 'Tiras: saldo de lote fora da programação',
+  strap_legacy_billed_service_order_open: 'Tiras: OS histórica faturada ainda aberta',
+  strap_production_receipt_stock_ledger_gap: 'Tiras: recebimento divergente do estoque',
+};
 /** Linha do debit_consistency_report() — esperado (ficha × grade) × debitado
  *  (stock_movements) por OP×produto, tolerância 1% + piso 0,01. */
 type DebitRow = {
@@ -76,7 +208,7 @@ export default function SystemDiagnostics() {
   // A aba mora na URL (contrato do lote L6): antes era <Tabs defaultValue>, então
   // F5 e o botão Voltar devolviam o usuário à primeira aba.
   const { value: abaUrl, setValue: setAbaUrl } = useUrlTabState({
-    values: ['diagnostics', 'schema', 'migrations', 'consumo'] as const,
+    values: ['diagnostics', 'schema', 'migrations', 'pedidos', 'consumo'] as const,
     defaultValue: 'diagnostics',
   });
   const [diag, setDiag] = useState<DiagnosticItem[]>([]);
@@ -99,13 +231,13 @@ export default function SystemDiagnostics() {
   // que distorcem gargalo/pares-dia/custo-par — tempo faltando, setor sem
   // equipe, divergência minutos×capacidade da ficha, taxa órfã.
   const [capacityChecks, setCapacityChecks] = useState<
-    Array<{ categoria: string; severidade: string; referencia: string; detalhe: string }> | null
+    CapacityCheckRow[] | null
   >(null);
   // Vínculos quebrados do PV (migration 20260919120000): OP ativa sem item,
   // OS sem vínculo com o item, item com 2+ OPs ativas. Nasceram do incidente
   // PV-00146 — a duplicação de OP só foi descoberta por etiqueta duplicada.
   const [linkChecks, setLinkChecks] = useState<
-    Array<{ check_name: string; severity: string; qtd: number; detalhe: string }> | null
+    LinkCheckRow[] | null
   >(null);
   // Reserva defasada (investigação PV-00147): OP ativa cuja reserva NÃO cobre o
   // que a ficha pede hoje. Nasceu do furo de baixa do PV-00145 — as OPs foram
@@ -113,7 +245,7 @@ export default function SystemDiagnostics() {
   // resync de ficha não re-reserva material. Como o débito na finalização
   // converte RESERVA em movimento, o que entrou depois sai da fábrica sem baixa.
   const [staleResRows, setStaleResRows] = useState<
-    Array<{ order_number: string; sale_order_number: string; reference_name: string; product_name: string; required_qty: number; consumption_source: string }> | null
+    StaleReservationRow[] | null
   >(null);
   // Custeio (auditoria 2026-08-03): o custo saía errado em silêncio — solado a
   // R$ 0,00 desde 11/07 e custo apoiado em snapshot já marcado desatualizado
@@ -125,6 +257,8 @@ export default function SystemDiagnostics() {
   // arquivo do equipamento só exporta IDUsuário/Nome/Dep. Sem âncora temporal, o
   // ponto de quem saiu era atribuído a quem herdou o número.
   const [clockChecks, setClockChecks] = useState<ConsistencyRow[] | null>(null);
+  const [soleParityChecks, setSoleParityChecks] = useState<ParityRow[] | null>(null);
+  const [restorePendencias, setRestorePendencias] = useState<OpRestoreRow[] | null>(null);
   const [consRunning, setConsRunning] = useState(false);
   const [consChecksError, setConsChecksError] = useState<string | null>(null);
 
@@ -156,32 +290,36 @@ export default function SystemDiagnostics() {
     setStaleResRows(null);
     setCostChecks(null);
     setClockChecks(null);
+    setSoleParityChecks(null);
+    setRestorePendencias(null);
     try {
-      const [consRes, parRes, freshRes, cpcRes, debitRes, guardRes, capRes, linkRes, staleResRes, costRes, clockRes] = await Promise.all([
+      const [consRes, parRes, freshRes, cpcRes, debitRes, guardRes, capRes, linkRes, staleResRes, costRes, clockRes, soleParRes, restoreRes] = await Promise.all([
         supabase.rpc('consumption_consistency_report'),
         supabase.rpc('run_consumption_parity_tests'),
-        // pcp_freshness_report é função nova (ainda não nos tipos gerados) → cast.
-        (supabase as any).rpc('pcp_freshness_report'),
+        // RPCs pós-types gerados usam o recorte tipado local declarado acima.
+        diagnosticsRpcClient.rpc('pcp_freshness_report'),
         // component_colors_consistency_report — auditoria componentes-por-cor
-        // (migration 20260910140000, ainda não nos tipos gerados) → cast.
-        (supabase as any).rpc('component_colors_consistency_report'),
+        // (migration 20260910140000, ainda não nos tipos gerados).
+        diagnosticsRpcClient.rpc('component_colors_consistency_report'),
         // debit_consistency_report / run_debit_guard_tests — auditoria débito
-        // ficha×grade (migration 20260915100000/110000, não nos tipos) → cast.
-        (supabase as any).rpc('debit_consistency_report'),
-        (supabase as any).rpc('run_debit_guard_tests'),
+        // ficha×grade (migration 20260915100000/110000, não nos tipos).
+        diagnosticsRpcClient.rpc('debit_consistency_report'),
+        diagnosticsRpcClient.rpc('run_debit_guard_tests'),
         // capacity_consistency_report — engine de capacidade (mig 20260719120100).
-        (supabase as any).rpc('capacity_consistency_report'),
+        diagnosticsRpcClient.rpc('capacity_consistency_report'),
         // broken_sale_order_links_report — identidade do item do PV (mig 20260919120000).
-        (supabase as any).rpc('broken_sale_order_links_report'),
+        diagnosticsRpcClient.rpc('broken_sale_order_links_report'),
         // list_ops_with_stale_reservations — reserva defasada vs ficha atual.
-        (supabase as any).rpc('list_ops_with_stale_reservations'),
+        diagnosticsRpcClient.rpc('list_ops_with_stale_reservations'),
         // cost_consistency_report — lacunas que fazem o custo sair errado (mig 20261104120200).
-        (supabase as any).rpc('cost_consistency_report'),
+        diagnosticsRpcClient.rpc('cost_consistency_report'),
         // timeclock_identity_report — saúde do casamento ponto×funcionário (mig 20261227120000).
-        (supabase as any).rpc('timeclock_identity_report'),
+        diagnosticsRpcClient.rpc('timeclock_identity_report'),
+        diagnosticsRpcClient.rpc('run_sole_live_parity_guards'),
+        diagnosticsRpcClient.rpc('op_restore_consistency_report'),
       ]);
 
-      const queryError = [consRes, parRes, freshRes, cpcRes, debitRes, guardRes, capRes, linkRes, staleResRes, costRes, clockRes]
+      const queryError = [consRes, parRes, freshRes, cpcRes, debitRes, guardRes, capRes, linkRes, staleResRes, costRes, clockRes, soleParRes, restoreRes]
         .map((result) => result.error)
         .find(Boolean);
       if (queryError) throw queryError;
@@ -197,10 +335,13 @@ export default function SystemDiagnostics() {
       setLinkChecks(linkRes.data ?? []);
       setStaleResRows(staleResRes.data ?? []);
       setParityChecks((parRes.data ?? []) as ParityRow[]);
+      setSoleParityChecks((soleParRes.data ?? []) as ParityRow[]);
+      setRestorePendencias((restoreRes.data ?? []) as OpRestoreRow[]);
       toast.success('Verificação de consumo concluída');
-    } catch (e: any) {
-      setConsChecksError(e.message || 'Falha ao consultar as verificações de consumo.');
-      toast.error('Falha na verificação de consumo: ' + e.message);
+    } catch (error: unknown) {
+      const message = errorMessage(error, 'Falha ao consultar as verificações de consumo.');
+      setConsChecksError(message);
+      toast.error('Falha na verificação de consumo: ' + message);
     } finally {
       setConsRunning(false);
     }
@@ -224,6 +365,78 @@ export default function SystemDiagnostics() {
     },
   });
 
+  const {
+    data: pvSystemChecks,
+    isLoading: pvSystemLoading,
+    isFetching: pvSystemFetching,
+    error: pvSystemError,
+    refetch: refetchPvSystem,
+  } = useQuery({
+    queryKey: ['system-diag', 'pv-system'],
+    enabled: abaUrl === 'pedidos',
+    staleTime: 30_000,
+    retry: false,
+    queryFn: async (): Promise<PvSystemDiagnosticRow[]> => {
+      const [diagRes, parityRes, outboxRes] = await Promise.all([
+        pvSystemDiagnosticsClient.rpc('get_sale_order_command_diagnostics', { p_sale_order_id: null }),
+        supabase.rpc('run_consumption_parity_tests'),
+        diagnosticsRpcClient.rpc('get_sale_order_outbox_health'),
+      ]);
+
+      if (diagRes.error) throw diagRes.error;
+      if (outboxRes.error) throw outboxRes.error;
+
+      const diagnostics = ((diagRes.data ?? []) as PvSystemDiagnosticRow[]).map((row) => ({
+        ...row,
+        item_count: Number(row.item_count ?? 0),
+      }));
+      const parityRows = (parityRes.data ?? []) as ParityRow[];
+      const parityFailures = parityRows.filter((row) => !row.ok);
+      const parityUnavailable = Boolean(parityRes.error) || parityRows.length === 0;
+
+      diagnostics.push({
+        check_name: 'consumption_parity_skipped',
+        category: 'parity',
+        severity: parityUnavailable || parityFailures.length > 0 ? 'error' : 'info',
+        item_count: parityUnavailable ? 1 : parityFailures.length,
+        sample: parityRes.error
+          ? `RPC indisponível: ${parityRes.error.message}`
+          : parityRows.length === 0
+            ? 'run_consumption_parity_tests() devolveu 0 casos; zero casos não é verde.'
+            : parityFailures.length > 0
+              ? parityFailures.map((row) => row.case_name).join(', ')
+              : `${parityRows.length} caso(s) executado(s), todos aprovados.`,
+      });
+
+      const outbox: SaleOrderOutboxHealth = outboxRes.data || {};
+      const failedEvents = Number(outbox.failed || 0) + Number(outbox.dead_letter || 0);
+      const lastRunAt = outbox.last_run?.ran_at ? Date.parse(outbox.last_run.ran_at) : Number.NaN;
+      const workerStale = !Number.isFinite(lastRunAt) || Date.now() - lastRunAt > 5 * 60_000;
+      const oldestAt = outbox.oldest_available_at ? Date.parse(outbox.oldest_available_at) : Number.NaN;
+      const backlogStale = Number(outbox.pending || 0) > 0
+        && Number.isFinite(oldestAt)
+        && Date.now() - oldestAt > 10 * 60_000;
+      diagnostics.push({
+        check_name: 'sale_order_outbox_worker',
+        category: 'integration',
+        severity: failedEvents > 0 || workerStale || backlogStale ? 'error' : 'info',
+        item_count: failedEvents + (workerStale ? 1 : 0) + (backlogStale ? 1 : 0),
+        sample: `pending=${Number(outbox.pending || 0)} · failed=${Number(outbox.failed || 0)} · dead_letter=${Number(outbox.dead_letter || 0)} · última execução=${outbox.last_run?.ran_at || 'nunca'}${outbox.last_run?.error ? ` · ${outbox.last_run.error}` : ''}`,
+      });
+      diagnostics.push({
+        check_name: 'sale_order_purchase_attention',
+        category: 'purchase',
+        severity: Number(outbox.attention_required || 0) > 0 ? 'warning' : 'info',
+        item_count: Number(outbox.attention_required || 0),
+        sample: Number(outbox.attention_required || 0) > 0
+          ? 'Corrija fornecedor/cor/conversão ou material artesanal antes de comprar.'
+          : 'Nenhuma falta bloqueada por cadastro.',
+      });
+
+      return diagnostics;
+    },
+  });
+
   const required = ['sole_size_conjugations', 'get_sole_size_key', 'get_sole_group_id_for_product'];
   const missing = (schemaObjects ?? []).filter((o) => required.includes(o.name) && !o.exists);
   const allOk = !schemaError && missing.length === 0 && (schemaObjects ?? []).length > 0;
@@ -234,7 +447,7 @@ export default function SystemDiagnostics() {
 
     // 1) Versão local vs servidor
     try {
-      const localVersion = (import.meta as any).env?.VITE_APP_VERSION ?? 'desconhecida';
+      const localVersion = import.meta.env?.VITE_APP_VERSION ?? 'desconhecida';
       const resp = await fetch(`/version.json?t=${Date.now()}`, {
         cache: 'no-cache',
         headers: { 'Cache-Control': 'no-cache' },
@@ -258,12 +471,12 @@ export default function SystemDiagnostics() {
           hint: same ? undefined : 'Sua aba está rodando uma versão antiga. Force a atualização para baixar os módulos novos.',
         });
       }
-    } catch (e: any) {
+    } catch (error: unknown) {
       results.push({
         id: 'version',
         label: 'Versão do build',
         status: 'fail',
-        detail: `Falha ao consultar version.json: ${e.message}`,
+        detail: `Falha ao consultar version.json: ${errorMessage(error, 'erro desconhecido')}`,
         hint: 'Verifique sua conexão de rede.',
       });
     }
@@ -287,8 +500,8 @@ export default function SystemDiagnostics() {
           detail: 'API não suportada neste navegador',
         });
       }
-    } catch (e: any) {
-      results.push({ id: 'sw', label: 'Service Worker', status: 'fail', detail: e.message });
+    } catch (error: unknown) {
+      results.push({ id: 'sw', label: 'Service Worker', status: 'fail', detail: errorMessage(error, 'Erro desconhecido') });
     }
 
     // 3) Cache Storage
@@ -305,8 +518,8 @@ export default function SystemDiagnostics() {
           hint: keys.length > 5 ? 'Caches em excesso podem servir módulos antigos. Use o botão "Limpar cache".' : undefined,
         });
       }
-    } catch (e: any) {
-      results.push({ id: 'caches', label: 'Cache Storage', status: 'fail', detail: e.message });
+    } catch (error: unknown) {
+      results.push({ id: 'caches', label: 'Cache Storage', status: 'fail', detail: errorMessage(error, 'Erro desconhecido') });
     }
 
     // 4) Conectividade
@@ -329,12 +542,12 @@ export default function SystemDiagnostics() {
         status: 'ok',
         detail: `Resposta em ${dt}ms`,
       });
-    } catch (e: any) {
+    } catch (error: unknown) {
       results.push({
         id: 'fetch',
         label: 'Fetch de recurso estático',
         status: 'fail',
-        detail: e.message,
+        detail: errorMessage(error, 'Erro desconhecido'),
         hint: 'Falha ao carregar recursos. Verifique CORS/CDN/cache de proxy.',
       });
     }
@@ -345,12 +558,12 @@ export default function SystemDiagnostics() {
       localStorage.setItem(k, '1');
       localStorage.removeItem(k);
       results.push({ id: 'storage', label: 'localStorage', status: 'ok', detail: 'Disponível e gravável' });
-    } catch (e: any) {
+    } catch (error: unknown) {
       results.push({
         id: 'storage',
         label: 'localStorage',
         status: 'fail',
-        detail: e.message,
+        detail: errorMessage(error, 'Erro desconhecido'),
         hint: 'Modo privado/anônimo pode bloquear o storage e quebrar o carregamento de chunks.',
       });
     }
@@ -379,8 +592,8 @@ export default function SystemDiagnostics() {
       sessionStorage.clear();
       toast.success('Cache limpo. Recarregando…');
       setTimeout(() => window.location.reload(), 600);
-    } catch (e: any) {
-      toast.error('Falha ao limpar cache: ' + e.message);
+    } catch (error: unknown) {
+      toast.error('Falha ao limpar cache: ' + errorMessage(error, 'erro desconhecido'));
     }
   };
 
@@ -389,11 +602,12 @@ export default function SystemDiagnostics() {
       timestamp: new Date().toISOString(),
       url: window.location.href,
       userAgent: navigator.userAgent,
-      version: (import.meta as any).env?.VITE_APP_VERSION,
+      version: import.meta.env?.VITE_APP_VERSION,
       diagnostics: diag,
       schema: schemaObjects,
       migrationsCount: migrations?.length ?? 0,
       latestMigration: migrations?.[0]?.version ?? null,
+      pvSystem: pvSystemChecks ?? null,
     };
     await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
     toast.success('Diagnóstico copiado para a área de transferência');
@@ -447,6 +661,7 @@ export default function SystemDiagnostics() {
             { value: 'diagnostics', label: 'Diagnóstico', icon: Stethoscope },
             { value: 'schema', label: 'Schema', icon: Database },
             { value: 'migrations', label: 'Migrations', icon: FileCode },
+            { value: 'pedidos', label: 'Pedidos', icon: Stethoscope },
             { value: 'consumo', label: 'Consumo', icon: Database },
           ]}
         />
@@ -562,10 +777,112 @@ export default function SystemDiagnostics() {
           </Panel>
         </TabsContent>
 
+        {/* PEDIDOS — sinais consolidados dos comandos PV → ficha → estoque. */}
+        <TabsContent value="pedidos" className="space-y-4">
+          {pvSystemError && (
+            <Alert variant="destructive">
+              <XCircle className="h-4 w-4" />
+              <AlertTitle>Diagnóstico dos pedidos indisponível</AlertTitle>
+              <AlertDescription>
+                {(pvSystemError as Error).message}. O painel não assume estado saudável quando o RPC não responde.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          <Panel
+            eyebrow="PV · FICHA · ESTOQUE"
+            title="Saúde dos comandos de pedido"
+            subtitle="Receipts idempotentes, plano/readiness, integridade fiscal/financeira, cobertura OP↔estoque e fluxo canônico de Tiras. Fonte: get_sale_order_command_diagnostics(NULL) + run_consumption_parity_tests()."
+            actions={
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => refetchPvSystem()}
+                disabled={pvSystemFetching}
+              >
+                {pvSystemFetching
+                  ? <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  : <RefreshCw className="h-4 w-4 mr-2" />}
+                Atualizar
+              </Button>
+            }
+            bodyClassName="space-y-2"
+          >
+            {pvSystemLoading && (
+              <p className="text-sm text-muted-foreground">Consultando contratos vivos do fluxo de pedidos…</p>
+            )}
+
+            {!pvSystemLoading && !pvSystemError && (() => {
+              const rows = pvSystemChecks ?? [];
+              const present = new Set(rows.map((row) => row.check_name));
+              const missingSignals = REQUIRED_PV_SYSTEM_SIGNALS.filter((name) => !present.has(name));
+              const issueCount = rows.reduce((sum, row) => sum + Math.max(0, Number(row.item_count) || 0), 0);
+              const hasCriticalIssue = rows.some((row) => {
+                const severity = (row.severity || '').toLowerCase();
+                return Number(row.item_count) > 0
+                  && (severity.includes('error') || severity.includes('crit') || severity.includes('alto'));
+              });
+
+              return (
+                <>
+                  {rows.length === 0 && (
+                    <Alert variant="destructive">
+                      <XCircle className="h-4 w-4" />
+                      <AlertTitle>Zero sinais retornados</AlertTitle>
+                      <AlertDescription>Zero casos não é verde: confirme a migration e os grants do RPC.</AlertDescription>
+                    </Alert>
+                  )}
+                  {missingSignals.length > 0 && (
+                    <Alert variant="destructive">
+                      <XCircle className="h-4 w-4" />
+                      <AlertTitle>{missingSignals.length} sinal(is) obrigatório(s) ausente(s)</AlertTitle>
+                      <AlertDescription className="break-all">{missingSignals.join(', ')}</AlertDescription>
+                    </Alert>
+                  )}
+                  {rows.length > 0 && missingSignals.length === 0 && issueCount === 0 && (
+                    <div className="flex items-center gap-2 text-sm text-success">
+                      <CheckCircle2 className="h-4 w-4" /> Todos os contratos operacionais estão saudáveis.
+                    </div>
+                  )}
+                  {rows.length > 0 && issueCount > 0 && (
+                    <div className={`flex items-center gap-2 text-sm ${hasCriticalIssue ? 'text-destructive' : 'text-warning'}`}>
+                      {hasCriticalIssue
+                        ? <XCircle className="h-4 w-4" />
+                        : <AlertTriangle className="h-4 w-4" />}
+                      {issueCount} ocorrência(s) exigem atenção.
+                    </div>
+                  )}
+                  {rows.map((row) => (
+                    <CheckRow
+                      key={`${row.category}:${row.check_name}`}
+                      row={{
+                        ...row,
+                        check_name: PV_SYSTEM_SIGNAL_LABELS[row.check_name] ?? row.check_name,
+                      }}
+                    />
+                  ))}
+                </>
+              );
+            })()}
+          </Panel>
+
+          <Alert>
+            <Database className="h-4 w-4" />
+            <AlertTitle>Convenção do delta</AlertTitle>
+            <AlertDescription>
+              O relatório-base usa delta = debitado − esperado. Falta operacional é esperado − debitado &gt; 0;
+              excesso de débito deve aparecer separado e nunca ser rotulado como falta.
+            </AlertDescription>
+          </Alert>
+        </TabsContent>
+
         {/* CONSUMO — guards de consistência + paridade do motor de consumo */}
         <TabsContent value="consumo" className="space-y-4">
           {/* Normalização assistida pé×par do cabedal (spec consumo-cabedal-padrao-par). */}
           <CabedalParPeAuditPanel />
+
+          {/* Spec do solado por NUMERAÇÃO — existência ≠ cobertura (PV-00151). */}
+          <SoleSpecGapsPanel />
 
           {/* Componente direto cujo produto foi apagado: jsonb sem FK, então o
               vínculo morre calado e o material some do custo e da compra.
@@ -956,7 +1273,8 @@ export default function SystemDiagnostics() {
                               </div>
                               <p className="text-xs text-muted-foreground mt-0.5">
                                 esperado {Number(r.esperado).toLocaleString('pt-BR')} {r.unit ?? ''} · debitado {Number(r.debitado).toLocaleString('pt-BR')} {r.unit ?? ''}
-                                {r.delta_pct != null ? ` · Δ ${Number(r.delta_pct).toLocaleString('pt-BR')}%` : ''}
+                                {` · Δ ${Number(r.delta).toLocaleString('pt-BR')} ${r.unit ?? ''}`}
+                                {r.delta_pct != null ? ` (${Number(r.delta_pct).toLocaleString('pt-BR')}%)` : ''}
                                 {r.obs ? ` · ${r.obs}` : ''}
                               </p>
                             </div>
@@ -1006,7 +1324,11 @@ export default function SystemDiagnostics() {
               <p className="text-sm text-muted-foreground">Rode a verificação acima para incluir os testes de paridade.</p>
             )}
             {parityChecks !== null && parityChecks.length === 0 && !consRunning && (
-              <p className="text-sm text-muted-foreground">Sem casos de paridade retornados.</p>
+              <Alert variant="destructive">
+                <XCircle className="h-4 w-4" />
+                <AlertTitle>Paridade não executada</AlertTitle>
+                <AlertDescription>run_consumption_parity_tests() devolveu 0 casos. Zero casos não é suíte verde.</AlertDescription>
+              </Alert>
             )}
             {(parityChecks ?? []).map((p, i) => (
               <div key={i} className="flex items-start gap-3 p-3 rounded-lg border border-border bg-muted/30">
@@ -1018,6 +1340,65 @@ export default function SystemDiagnostics() {
                   </div>
                   {p.message && <p className="text-xs text-muted-foreground mt-0.5 break-all">{p.message}</p>}
                 </div>
+              </div>
+            ))}
+          </Panel>
+
+          <Panel
+            eyebrow="SOLADOS · PARIDADE VIVA"
+            title="Guards vivos do solado"
+            subtitle="Lê o corpo atual no banco (pg_get_functiondef): fallback de débito+variante, COALESCE no by_grade, cobertura de spec, smoke com variante sem pin, restore sem crédito escalar cego. Fonte: run_sole_live_parity_guards()."
+            bodyClassName="space-y-2"
+          >
+            {soleParityChecks === null && !consRunning && (
+              <p className="text-sm text-muted-foreground">Rode a verificação acima pra incluir os guards vivos de solado.</p>
+            )}
+            {soleParityChecks !== null && soleParityChecks.length === 0 && !consRunning && (
+              <Alert variant="destructive">
+                <XCircle className="h-4 w-4" />
+                <AlertTitle>Guards de solado não executados</AlertTitle>
+                <AlertDescription>run_sole_live_parity_guards() devolveu 0 casos — migration 20270101019000 pode estar pendente.</AlertDescription>
+              </Alert>
+            )}
+            {(soleParityChecks ?? []).map((p, i) => (
+              <div key={i} className="flex items-start gap-3 p-3 rounded-lg border border-border bg-muted/30">
+                <div className="mt-0.5">{p.ok ? <CheckCircle2 className="h-4 w-4 text-success" /> : <XCircle className="h-4 w-4 text-destructive" />}</div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-semibold text-foreground">{p.case_name}</p>
+                    <Badge variant="outline" className={`text-xs uppercase ${p.ok ? 'text-success' : 'text-destructive'}`}>{p.ok ? 'ok' : 'falhou'}</Badge>
+                  </div>
+                  {p.message && <p className="text-xs text-muted-foreground mt-0.5 break-all">{p.message}</p>}
+                </div>
+              </div>
+            ))}
+          </Panel>
+
+          <Panel
+            eyebrow="ESTOQUE · ESTORNO"
+            title="Pendências de estorno com grade"
+            subtitle="Produto com stock_grade real e crédito sem numeração rastreável — o motor NÃO inventa balde nem credita só o escalar. Fonte: op_restore_consistency_report()."
+            bodyClassName="space-y-2"
+          >
+            {restorePendencias === null && !consRunning && (
+              <p className="text-sm text-muted-foreground">Rode a verificação acima pra listar pendências de estorno graduado.</p>
+            )}
+            {restorePendencias !== null && restorePendencias.length === 0 && !consRunning && (
+              <div className="flex items-center gap-2 text-sm text-success">
+                <CheckCircle2 className="h-4 w-4" /> Nenhuma pendência de resíduo sem grade.
+              </div>
+            )}
+            {(restorePendencias ?? []).map((row, i) => (
+              <div key={i} className="rounded-md border border-border/60 px-3 py-2 text-sm space-y-0.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-mono font-semibold">{row.order_number}</span>
+                  <Badge variant="outline" className="text-[10px]">{row.order_status}</Badge>
+                  <span className="text-muted-foreground">{row.product_name}{row.product_color ? ` · ${row.product_color}` : ''}</span>
+                  <Badge className="bg-amber-500/10 text-amber-600 border-transparent text-[10px] tabular-nums">
+                    {Number(row.qtd_sem_grade).toLocaleString('pt-BR')} sem grade
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">{row.motivo}</p>
               </div>
             ))}
           </Panel>

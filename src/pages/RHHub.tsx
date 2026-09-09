@@ -1,6 +1,15 @@
 import { lazy, Suspense, useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Users, Alarm as AlarmClock, CurrencyDollar as DollarSign, CircleNotch as Loader2, Receipt, FileText } from '@phosphor-icons/react';
+import {
+  Users,
+  Alarm as AlarmClock,
+  CurrencyDollar as DollarSign,
+  CircleNotch as Loader2,
+  Receipt,
+  FileText,
+  Archive as ArchiveBox,
+  ChartBar,
+} from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { usePendingTotal } from '@/hooks/useTimePendings';
@@ -15,6 +24,7 @@ const PayrollPaymentsHistory = lazy(() => import('@/components/hr/PayrollPayment
 // Relatórios de ponto são um chunk próprio: não carregam folha, pagamentos nem
 // produção só para mostrar crédito/débito semanal do relógio.
 const TimeBalanceReports   = lazy(() => import('./TimeBalanceReports'));
+const ImportHistoryPanel   = lazy(() => import('@/components/timesheet/ImportHistoryPanel'));
 
 const TabLoader = () => (
   <div className="flex items-center justify-center py-20">
@@ -32,7 +42,7 @@ type Tab = typeof TABS[number];
 const tabs: { value: Tab; label: string; short: string; icon: typeof Users }[] = [
   { value: 'funcionarios', label: 'Equipe', short: 'Cadastros e jornadas', icon: Users },
   { value: 'ponto', label: 'Ponto', short: 'Batidas e pendências', icon: AlarmClock },
-  { value: 'espelho', label: 'Relatórios', short: 'Horas e conferência', icon: FileText },
+  { value: 'espelho', label: 'Relatórios', short: 'Horas e arquivo original', icon: FileText },
   { value: 'folha', label: 'Folha', short: 'Cálculo e pagamentos', icon: DollarSign },
 ];
 
@@ -50,7 +60,7 @@ const TAB_HEADERS: Record<Tab, { section: string; title: string; description: st
   espelho: {
     section: 'PESSOAS · RELATÓRIOS',
     title: 'Relatórios do Ponto',
-    description: 'Confira horas extras e pendências semanais, com calendário por colaborador.',
+    description: 'Confira horas da semana e baixe o arquivo original do relógio para auditoria ou processo.',
   },
   folha: {
     section: 'PESSOAS · FOLHA',
@@ -70,6 +80,59 @@ const LEGACY_TAB_MAP: Record<string, Tab> = {
   'absenteismo':   'espelho',
   'headcount':     'funcionarios',
 };
+
+/** Relatórios = horas semanais + arquivo original do relógio (download judicial). */
+function RelatoriosTab() {
+  const { value: inner, setValue: setInner } = useUrlTabState({
+    values: ['horas', 'arquivo'] as const,
+    defaultValue: 'horas',
+    param: 'reportView',
+    aliases: {
+      balance: 'horas',
+      weekly: 'horas',
+      archive: 'arquivo',
+      arquivos: 'arquivo',
+      original: 'arquivo',
+      history: 'arquivo',
+    },
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="inline-flex max-w-full gap-1 overflow-x-auto rounded-lg border border-border/70 bg-muted/30 p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <button
+          type="button"
+          onClick={() => setInner('horas')}
+          className={cn(
+            'inline-flex min-h-9 items-center gap-2 whitespace-nowrap rounded-md px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            inner === 'horas'
+              ? 'bg-foreground text-background shadow-sm'
+              : 'text-muted-foreground hover:bg-background hover:text-foreground',
+          )}
+        >
+          <ChartBar className="h-3.5 w-3.5" /> Horas e conferência
+        </button>
+        <button
+          type="button"
+          onClick={() => setInner('arquivo')}
+          className={cn(
+            'inline-flex min-h-9 items-center gap-2 whitespace-nowrap rounded-md px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            inner === 'arquivo'
+              ? 'bg-foreground text-background shadow-sm'
+              : 'text-muted-foreground hover:bg-background hover:text-foreground',
+          )}
+        >
+          <ArchiveBox className="h-3.5 w-3.5" /> Arquivo original do relógio
+        </button>
+      </div>
+      <Suspense fallback={<TabLoader />}>
+        {inner === 'horas'
+          ? <TimeBalanceReports />
+          : <ImportHistoryPanel judicialFocus />}
+      </Suspense>
+    </div>
+  );
+}
 
 /** Folha = consolidada + histórico de pagamentos (sub-abas internas). */
 function FolhaTab() {
@@ -105,7 +168,7 @@ export default function RHHub() {
     defaultValue: 'funcionarios',
     aliases: LEGACY_TAB_MAP,
     legacyParams: ['view'],
-    clearOnChange: ['subtab'],
+    clearOnChange: ['subtab', 'reportView', 'correction'],
     migrateFrom: 'rh-active-tab',
   });
   const { data: employees = [] } = useEmployees();
@@ -173,7 +236,7 @@ export default function RHHub() {
         <Suspense fallback={<TabLoader />}>
           <TabsContent value="funcionarios" className="mt-4"><Employees /></TabsContent>
           <TabsContent value="ponto" className="mt-4"><Timesheet /></TabsContent>
-          <TabsContent value="espelho" className="mt-4"><TimeBalanceReports /></TabsContent>
+          <TabsContent value="espelho" className="mt-4"><RelatoriosTab /></TabsContent>
           <TabsContent value="folha" className="mt-4"><FolhaTab /></TabsContent>
         </Suspense>
       </Tabs>

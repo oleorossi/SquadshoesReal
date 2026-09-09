@@ -25,6 +25,14 @@ on:
         description: 'Caminho repo-relativo do arquivo .sql a executar'
         required: true
         type: string
+      validation_sql_path:
+        description: 'Opcional: teste SQL executado após o arquivo, na mesma transação (exige dry_run=true)'
+        required: false
+        type: string
+      setup_sql_path:
+        description: 'Opcional: fixtures SQL antes da migration, na mesma transação (exige dry_run=true)'
+        required: false
+        type: string
       strict:
         description: 'Falhar em qualquer HTTP != 2xx?'
         required: false
@@ -60,18 +68,36 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_ID:   ${{ secrets.SUPABASE_PROJECT_ID }}
           SQL_PATH: ${{ inputs.sql_path }}
+          VALIDATION_SQL_PATH: ${{ inputs.validation_sql_path }}
+          SETUP_SQL_PATH: ${{ inputs.setup_sql_path }}
           STRICT:   ${{ inputs.strict }}
           DRY_RUN:  ${{ inputs.dry_run }}
         run: |
           : "${SUPABASE_ACCESS_TOKEN:?SUPABASE_ACCESS_TOKEN não configurado}"
           : "${SUPABASE_PROJECT_ID:?SUPABASE_PROJECT_ID não configurado}"
           test -f "$SQL_PATH" || { echo "Arquivo não existe: $SQL_PATH"; exit 1; }
+          if [ -n "$VALIDATION_SQL_PATH" ]; then
+            test "$DRY_RUN" = "true" || { echo 'Teste complementar exige dry_run=true.'; exit 1; }
+            test -f "$VALIDATION_SQL_PATH" || { echo "Teste não existe: $VALIDATION_SQL_PATH"; exit 1; }
+          fi
+          if [ -n "$SETUP_SQL_PATH" ]; then
+            test "$DRY_RUN" = "true" || { echo 'Fixtures anteriores exigem dry_run=true.'; exit 1; }
+            test -f "$SETUP_SQL_PATH" || { echo "Fixtures não existem: $SETUP_SQL_PATH"; exit 1; }
+          fi
           QUERY_PATH="$SQL_PATH"
           if [ "$DRY_RUN" = "true" ]; then
             QUERY_PATH=/tmp/supabase-dry-run.sql
             {
               echo 'BEGIN;'
-              sed -E '/^[[:space:]]*BEGIN;[[:space:]]*$/d; /^[[:space:]]*COMMIT;[[:space:]]*$/d' "$SQL_PATH"
+              echo "SET LOCAL lock_timeout = '5s';"
+              echo "SET LOCAL statement_timeout = '90s';"
+              if [ -n "$SETUP_SQL_PATH" ]; then
+                sed -E '/^[[:space:]]*BEGIN;[[:space:]]*$/d; /^[[:space:]]*COMMIT;[[:space:]]*$/d; /^[[:space:]]*ROLLBACK;[[:space:]]*$/d' "$SETUP_SQL_PATH"
+              fi
+              sed -E '/^[[:space:]]*BEGIN;[[:space:]]*$/d; /^[[:space:]]*COMMIT;[[:space:]]*$/d; /^[[:space:]]*ROLLBACK;[[:space:]]*$/d' "$SQL_PATH"
+              if [ -n "$VALIDATION_SQL_PATH" ]; then
+                sed -E '/^[[:space:]]*BEGIN;[[:space:]]*$/d; /^[[:space:]]*COMMIT;[[:space:]]*$/d; /^[[:space:]]*ROLLBACK;[[:space:]]*$/d' "$VALIDATION_SQL_PATH"
+              fi
               echo 'ROLLBACK;'
             } > "$QUERY_PATH"
           fi

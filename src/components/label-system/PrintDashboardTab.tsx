@@ -29,6 +29,7 @@ interface JobRow {
   status: string | null;
   total_labels: number | null;
   order_ids: unknown;
+  marks_orders_as_printed: boolean | null;
   label_templates: { name: string } | null;
 }
 
@@ -51,7 +52,7 @@ export function PrintDashboardTab() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('print_jobs')
-        .select('id, batch_name, created_at, status, total_labels, order_ids, label_templates(name)')
+        .select('id, batch_name, created_at, status, total_labels, order_ids, marks_orders_as_printed, label_templates(name)')
         .order('created_at', { ascending: false })
         .limit(100);
       if (error) throw error;
@@ -154,6 +155,7 @@ export function PrintDashboardTab() {
               const config = STATUS_CONFIG[status] || STATUS_CONFIG.pending;
               const StatusIcon = config.icon;
               const orderCount = Array.isArray(job.order_ids) ? job.order_ids.length : 0;
+              const isReprint = job.marks_orders_as_printed === false;
               const changing = changingId === job.id;
               return (
                 <div key={job.id} className="grid gap-3 p-4 transition-colors hover:bg-muted/20 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-center">
@@ -166,6 +168,7 @@ export function PrintDashboardTab() {
                       <Badge variant={config.variant} className="gap-1">
                         {PRINT_JOB_STATUS_LABELS[status] || status}
                       </Badge>
+                      {isReprint && <Badge variant="outline">Reimpressão</Badge>}
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
                       {new Date(job.created_at).toLocaleString('pt-BR')} · {(job.total_labels || 0).toLocaleString('pt-BR')} etiquetas · {orderCount} OP{orderCount === 1 ? '' : 's'}

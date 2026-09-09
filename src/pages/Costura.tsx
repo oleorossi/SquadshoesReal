@@ -35,6 +35,7 @@ import { TableSkeleton } from '@/components/layout/PageSkeleton';
 import { resolveFicha } from '@/components/production/worksheet/fichaSize';
 import { RefChip } from '@/components/ui/ref-chip';
 import { safeUrlAttr } from '@/lib/htmlUtils';
+import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
 
 const SIZES = ['17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','37','38','39','40','41','42','43','44','45'];
 
@@ -234,6 +235,9 @@ export default function Costura() {
       : '';
 
     const showScaledRow = totalPairs !== gradeSum;
+    const scaledGrade = (grade && showScaledRow && gradeSum > 0)
+      ? scaleGradeWithLargestRemainder(grade, totalPairs / gradeSum, totalPairs)
+      : {};
     let gradeHtml = '';
     if (grade && activeSizes.length > 0) {
       gradeHtml = `<table style="border-collapse:collapse;margin-top:8px;width:100%;">
@@ -250,8 +254,7 @@ export default function Costura() {
         ${showScaledRow ? `<tr>
           <td style="border:1px solid #999;padding:3px 6px;font-size:8px;font-weight:700;text-align:center;color:#333;background:#e8e8d8;">Total (${totalPairs}p)</td>
           ${activeSizes.map(s => {
-            const scaled = Math.round((Number(grade[s]) || 0) * (totalPairs / gradeSum));
-            return `<td style="border:1px solid #999;padding:4px 8px;font-size:14px;text-align:center;font-family:monospace;font-weight:900;">${scaled}</td>`;
+            return `<td style="border:1px solid #999;padding:4px 8px;font-size:14px;text-align:center;font-family:monospace;font-weight:900;">${scaledGrade[s] || 0}</td>`;
           }).join('')}
           <td style="border:1px solid #999;padding:4px 8px;font-size:16px;text-align:center;font-family:monospace;font-weight:900;background:#f0f0e8;">${totalPairs}</td>
         </tr>` : ''}

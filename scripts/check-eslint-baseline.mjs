@@ -12,6 +12,11 @@ const base = process.env.LINT_BASE || 'HEAD^';
 
 const diff = spawnSync('git', ['diff', '--unified=0', base, '--'], {
   encoding: 'utf8',
+  // Regenerações legítimas de artefatos grandes (por exemplo, types.ts do
+  // Supabase) podem ultrapassar o limite padrão do spawnSync. Sem um buffer
+  // explícito o processo termina com ENOBUFS e o gate falha antes de analisar
+  // qualquer linha de lint.
+  maxBuffer: 32 * 1024 * 1024,
 });
 
 if (diff.status !== 0) {

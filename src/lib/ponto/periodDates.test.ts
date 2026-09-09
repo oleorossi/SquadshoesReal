@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { expandAbsenceDatesByEmployee, resolveHolidaysForPayrollRange } from './periodDates';
+import {
+  expandAbsenceCreditsByEmployee,
+  expandAbsenceDatesByEmployee,
+  resolveHolidaysForPayrollRange,
+} from './periodDates';
 
 describe('periodDates', () => {
   it('expande feriado recorrente no ano consultado e em todo o mês da folha', () => {
@@ -21,6 +25,52 @@ describe('periodDates', () => {
 
     expect(dates.get('ana')).toEqual(new Set(['2026-08-01', '2026-08-02']));
     expect(dates.get('bia')).toEqual(new Set(['2026-08-01']));
+  });
+
+  it('não transforma falta injustificada, suspensão ou ausência não paga em abono', () => {
+    const dates = expandAbsenceDatesByEmployee([
+      { employee_id: 'ana', start_date: '2026-08-03', end_date: '2026-08-03', absence_type: 'falta_injustificada', paid: true },
+      { employee_id: 'ana', start_date: '2026-08-04', end_date: '2026-08-04', absence_type: 'suspensao', justified: true },
+      { employee_id: 'ana', start_date: '2026-08-05', end_date: '2026-08-05', absence_type: 'atestado', paid: false, justified: true },
+      { employee_id: 'ana', start_date: '2026-08-06', end_date: '2026-08-06', absence_type: 'atestado', paid: null, justified: false },
+      { employee_id: 'ana', start_date: '2026-08-07', end_date: '2026-08-07', absence_type: 'atestado', paid: true, justified: true },
+    ], '2026-08-03', '2026-08-07');
+
+    expect(dates.get('ana')).toEqual(new Set(['2026-08-07']));
+  });
+
+  it('paid=true vence justified legado falso no cadastro moderno', () => {
+    const dates = expandAbsenceDatesByEmployee([
+      { employee_id: 'ana', start_date: '2026-08-03', end_date: '2026-08-03', absence_type: 'atestado', paid: true, justified: false },
+    ], '2026-08-03', '2026-08-03');
+
+    expect(dates.get('ana')).toEqual(new Set(['2026-08-03']));
+  });
+
+  it('separa horas parciais do abono integral e soma sobreposições remuneradas', () => {
+    const credits = expandAbsenceCreditsByEmployee([
+      { employee_id: 'ana', start_date: '2026-08-03', end_date: '2026-08-04', absence_type: 'atestado', paid: true, hours_per_day: 2.5 },
+      { employee_id: 'ana', start_date: '2026-08-04', end_date: '2026-08-04', absence_type: 'abono', paid: true, hours_per_day: 1 },
+      { employee_id: 'ana', start_date: '2026-08-05', end_date: '2026-08-05', absence_type: 'ferias', paid: true, hours_per_day: null },
+      { employee_id: 'ana', start_date: '2026-08-06', end_date: '2026-08-06', absence_type: 'atestado', paid: true, hours_per_day: 0 },
+    ], '2026-08-03', '2026-08-06');
+
+    expect(credits.fullDayDates.get('ana')).toEqual(new Set(['2026-08-05']));
+    expect(credits.partialMinutes.get('ana')).toEqual(new Map([
+      ['2026-08-03', 150],
+      ['2026-08-04', 210],
+    ]));
+  });
+
+  it('abono integral vence créditos parciais sobrepostos independentemente da ordem', () => {
+    const credits = expandAbsenceCreditsByEmployee([
+      { employee_id: 'ana', start_date: '2026-08-03', end_date: '2026-08-03', paid: true, hours_per_day: 2 },
+      { employee_id: 'ana', start_date: '2026-08-03', end_date: '2026-08-03', paid: true, hours_per_day: null },
+      { employee_id: 'ana', start_date: '2026-08-03', end_date: '2026-08-03', paid: true, hours_per_day: 1 },
+    ], '2026-08-03', '2026-08-03');
+
+    expect(credits.fullDayDates.get('ana')).toEqual(new Set(['2026-08-03']));
+    expect(credits.partialMinutes.get('ana')?.has('2026-08-03')).toBe(false);
   });
 
   it('NÃO trata dia útil excepcional da fábrica como feriado (sábado produtivo)', () => {

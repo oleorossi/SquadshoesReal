@@ -41,6 +41,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import React from 'react';
 import { SoleSizeConjugationsEditor } from './SoleSizeConjugationsEditor';
 import { useSoleConjugations } from '@/hooks/useSoleConjugations';
+import { configureProductGrades } from '@/lib/stockCommand';
 
 // Constantes vazias estáveis pra evitar loop de re-render quando hooks
 // retornam data=undefined (loading) e o default `?? []` cria array novo.
@@ -153,6 +154,31 @@ function getBaseName(name: string): string {
   return name.trim().toUpperCase();
 }
 
+/** SKU estável pra variante de cor (fluxo "cadastrar cor" no PV). Espelha o
+ *  token de QuickFamilyDialog: GRUPO-COR, com sufixo se já existir. */
+function suggestSkuForColor(
+  groupName: string,
+  color: string,
+  existing: Array<{ sku?: string | null }>,
+): string {
+  const token = (value: string, fallback: string) => {
+    const clean = (value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .toUpperCase();
+    return (clean || fallback).slice(0, 12);
+  };
+  const base = `${token(groupName, 'MAT')}-${token(color, 'COR')}`;
+  const used = new Set(
+    existing.map((p) => (p.sku || '').trim().toUpperCase()).filter(Boolean),
+  );
+  if (!used.has(base)) return base;
+  let suffix = 2;
+  while (used.has(`${base}-${suffix}`)) suffix += 1;
+  return `${base}-${suffix}`;
+}
+
 export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultiple, product, onEditProduct, defaultGroupId, defaultColor }: ProductFormDialogProps) {
   const navigate = useNavigate();
   const [form, setForm] = useState<ProductFormData>(emptyForm);
@@ -172,6 +198,8 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
   const [createComponentSheet, setCreateComponentSheet] = useState(false);
   const [itemPackageWeight, setItemPackageWeight] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  const [userEdited, setUserEdited] = useState(false);
+  const [confirmCloseOpen, setConfirmCloseOpen] = useState(false);
   const [duplicateMatch, setDuplicateMatch] = useState<{
     product: Product;
     /** Por que o sistema considerou duplicado — exibido no banner pro user
@@ -388,6 +416,27 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
   }, [isSolado, soleConjugations, currentSizes, sizeFrom, sizeTo]);
 
   useEffect(() => {
+    if (open) {
+      setUserEdited(false);
+      setConfirmCloseOpen(false);
+    }
+  }, [open, product?.id]);
+
+  const closeSilently = useCallback(() => {
+    setUserEdited(false);
+    setConfirmCloseOpen(false);
+    onOpenChange(false);
+  }, [onOpenChange]);
+
+  const requestClose = useCallback(() => {
+    if (userEdited && !submitting) {
+      setConfirmCloseOpen(true);
+      return;
+    }
+    closeSilently();
+  }, [userEdited, submitting, closeSilently]);
+
+  useEffect(() => {
     if (product) {
       const { id, created_at, updated_at, ...rest } = product;
       const cleanName = stripColorFromName(rest.name || '', rest.color);
@@ -515,12 +564,43 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
       // Fluxo "cadastrar cor" (PV): semeia a cor digitada e o nome `GRUPO: Cor`.
       const seededColor = (defaultColor || '').trim();
       const seededName = seededColor ? `${defaultGroup?.name ? defaultGroup.name + ': ' : ''}${seededColor}` : '';
+      const sibling = defaultGroupId
+        ? allProducts.find(p =>
+            p.group_id === defaultGroupId
+            && p.active
+            && (p.color || '').trim() !== ''
+            && (p.color || '').trim().toLowerCase() !== seededColor.toLowerCase())
+        : undefined;
+      const seededSku = seededColor
+        ? suggestSkuForColor(defaultGroup?.name || seededName, seededColor, allProducts)
+        : '';
       setForm({
         ...emptyForm,
         group_id: defaultGroupId || null,
-        category: defaultGroup ? sectorOfGroup(defaultGroup) : '',
+        category: defaultGroup ? sectorOfGroup(defaultGroup) : (sibling?.category || ''),
         color: seededColor,
         name: seededName,
+        sku: seededSku,
+        ...(sibling ? {
+          technical_name: sibling.technical_name || '',
+          unit: sibling.unit || 'un',
+          purchase_unit: normalizeUnit(sibling.purchase_unit || sibling.unit),
+          purchase_order_unit: normalizeUnit(sibling.purchase_unit || sibling.unit),
+          production_unit: sibling.unit || 'un',
+          conversion_rate: sibling.conversion_rate ?? (
+            normalizeUnit(sibling.purchase_unit || sibling.unit) !== normalizeUnit(sibling.unit) ? 0 : 1
+          ),
+          location: sibling.location || '',
+          min_stock: sibling.min_stock ?? 0,
+          max_stock: sibling.max_stock ?? 0,
+          dimensions_length: sibling.dimensions_length || 0,
+          dimensions_width: sibling.dimensions_width || 0,
+          dimensions_thickness: sibling.dimensions_thickness || 0,
+          dimensions_unit: sibling.dimensions_unit || (sibling.dimensions_width ? '' : 'mm'),
+          calculation_method: normalizeCalculationMethod(sibling.calculation_method),
+          supplier_id: sibling.supplier_id || null,
+          consumption_unit: (sibling as any).consumption_unit || sibling.unit || null,
+        } : {}),
       });
       setSoladoColor('');
       setSoladoGrade({});
@@ -528,22 +608,32 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
       setShoeCategory('adulto');
       setSizeFrom(null);
       setSizeTo(null);
-      setAutoFilled(false);
+      setAutoFilled(!!sibling);
       setMultiColorMode(false);
       setMultiColors([]);
       setColorInput('');
       setErrors({});
       setAttempted(false);
-      setPlateLength(0);
-      setPlateWidth(0);
-      setPlateThickness(0);
-      setPlateUnit('mm');
+      if (sibling) {
+        setPlateLength(sibling.dimensions_length || 0);
+        setPlateWidth(sibling.dimensions_width || 0);
+        setPlateThickness(sibling.dimensions_thickness || 0);
+        setPlateUnit(sibling.dimensions_unit || (sibling.dimensions_width ? '' : 'mm'));
+      } else {
+        setPlateLength(0);
+        setPlateWidth(0);
+        setPlateThickness(0);
+        setPlateUnit('mm');
+      }
       setCreateComponentSheet(false);
       setDuplicateMatch(null);
       setDuplicateConfirmed(false);
       setGroupConflict(null);
       setYieldPerSize({});
     }
+    // allProducts/defaultColor/defaultGroupId entram no seed mas ficam fora das
+    // deps: o dialog do PV desmonta ao fechar. Relê-los com o form aberto
+    // apagaria estoque/custo que o operador já digitou.
   }, [product, open, groups]);
 
   const tryAutoFill = useCallback((name: string) => {
@@ -686,6 +776,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     setAttempted(true);
     const errs = validate();
     setErrors(errs);
@@ -777,7 +868,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
       if (!isSolado || !form.group_id || sizeFrom == null || sizeTo == null) return;
       const { data: siblings } = await supabase
         .from('products')
-        .select('id, stock_grade')
+        .select('id, quantity, stock_grade')
         .eq('group_id', form.group_id)
         .eq('active', true)
         .neq('id', productId);
@@ -790,14 +881,20 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
       });
       if (!toUpdate.length) return;
 
-      await Promise.all(toUpdate.map(sib => {
+      const result = await configureProductGrades(toUpdate.map(sib => {
         const g = (sib.stock_grade && typeof sib.stock_grade === 'object' && !Array.isArray(sib.stock_grade))
           ? (sib.stock_grade as Record<string, any>) : {};
-        return supabase
-          .from('products')
-          .update({ stock_grade: { ...g, _size_from: sizeFrom, _size_to: sizeTo } })
-          .eq('id', sib.id);
+        return {
+          product_id: sib.id,
+          expected_previous_qty: Number(sib.quantity ?? 0),
+          expected_grade: g,
+          new_grade: { ...g, _size_from: sizeFrom, _size_to: sizeTo },
+          reason: 'Sincronizacao da faixa de numeracao entre variantes do solado',
+        };
       }));
+      if (!result.success) {
+        throw new Error(result.errors?.[0]?.error || 'Falha ao sincronizar a faixa do solado');
+      }
 
       queryClient.invalidateQueries({ queryKey: ['products'] });
       toast.success(
@@ -932,7 +1029,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
       }
 
       localStorage.setItem('inventory_active_tab', 'materials');
-      onOpenChange(false);
+      closeSilently();
     } catch (err: unknown) {
       if (err && typeof err === 'object' && (err as any).name === 'ZodError') {
         const msgs = (err as any).errors?.map((e: any) => e.message).join('; ') || 'Dados inválidos';
@@ -944,7 +1041,8 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
     }
   };
 
-  const update = <K extends keyof ProductFormData>(key: K, value: ProductFormData[K]) =>
+  const update = <K extends keyof ProductFormData>(key: K, value: ProductFormData[K]) => {
+    setUserEdited(true);
     setForm(prev => {
       const next = { ...prev, [key]: value };
 
@@ -1011,6 +1109,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
 
       return next;
     });
+  };
 
   /** Aplica um template de conversão (chave do CONVERSION_TEMPLATES). */
   const applyConversionTemplate = (templateKey: string) => {
@@ -1033,7 +1132,8 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
 
   /** Detecção de duplicata — cascata compartilhada em `@/lib/duplicateDetection`,
    *  a mesma que os outros 6 caminhos de cadastro usam (spec R1.1/R4.1).
-   *  `allProducts` vem de `useProducts()`: lista COMPLETA, inativos incluídos. */
+   *  `allProducts` vem de `useProducts()`: catálogo lean (colunas de lista),
+   *  inativos incluídos — basta pra casar nome/SKU/cor/grupo. */
   const checkDuplicateName = useCallback((name: string, groupId: string | null, color?: string, sku?: string) => {
     setDuplicateMatch(findDuplicate(
       { id: product?.id, name, color, sku, group_id: groupId },
@@ -1058,7 +1158,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(next) => { if (!next) requestClose(); else onOpenChange(true); }}>
       <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEditing ? 'Editar Material' : 'Novo Material'}</DialogTitle>
@@ -1122,7 +1222,12 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                 Fornecedor span 2 também. Removidos: "Item Padrão de Solado", "Cor"
                 e "Rendimento Técnico" — viram parte de outros fluxos. */}
             <div className="space-y-3 mt-4">
-            <FormSection title="Identidade" defaultOpen forceOpen={attempted && (errors.name || errors.sku || errors.color)}>
+            <FormSection
+              title="Identidade"
+              defaultOpen={!defaultColor}
+              forceOpen={attempted && (errors.name || errors.sku || errors.color)}
+              summary={[form.name, form.color, form.sku].filter(Boolean).join(' · ')}
+            >
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
              <div className="sm:col-span-2">
               <Label htmlFor="name" className={attempted && errors.name ? 'text-destructive' : ''}>Nome *</Label>
@@ -1998,7 +2103,7 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
             )}
           </Tabs>
           <div className="flex justify-end gap-3 pt-2">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>Cancelar</Button>
+            <Button type="button" variant="outline" onClick={requestClose} disabled={submitting}>Cancelar</Button>
             <Button type="submit" disabled={submitting || (attempted && !isFormValid)}>
               {submitting
                 ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Salvando...</>
@@ -2007,6 +2112,21 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
           </div>
         </form>
       </DialogContent>
+
+      <AlertDialog open={confirmCloseOpen} onOpenChange={setConfirmCloseOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Descartar alterações?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Há alterações não salvas neste material. Fechar agora descarta o que foi editado.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Continuar editando</AlertDialogCancel>
+            <AlertDialogAction onClick={closeSilently}>Descartar</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog
         open={!!propagationPrompt}

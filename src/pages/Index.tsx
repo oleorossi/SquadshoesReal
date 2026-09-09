@@ -1,21 +1,37 @@
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { useEffect, useState, useMemo, useRef, lazy, Suspense } from 'react';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Package, GridFour as LayoutGrid, Bell, ClockCounterClockwise as History, Medal as Ribbon, ArrowsLeftRight as ArrowRightLeft, Stack as Layers } from '@phosphor-icons/react';
+import { Package, GridFour as LayoutGrid, Bell, ClockCounterClockwise as History, ArrowsLeftRight as ArrowRightLeft, Stack as Layers, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useIsAdmin } from '@/hooks/useUserManagement';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 
 import { MaterialsTab } from '@/components/inventory/tabs/MaterialsTab';
-import { ReportTab } from '@/components/inventory/tabs/ReportTab';
-import { NotificationsTab } from '@/components/inventory/tabs/NotificationsTab';
-import { ConversionReportTab } from '@/components/inventory/tabs/ConversionReportTab';
-import AuditLogTab from '@/components/inventory/tabs/AuditLogTab';
- import StrapStockLogTab from '@/components/inventory/tabs/StrapStockLogTab';
- import StockHistory from './StockHistory';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
-import GroupOrganizationPanel from '@/components/groups/GroupOrganizationPanel';
+
+// Abas fora de Materiais entram sob demanda — abrir o hub não paga recharts /
+// Overview / histórico (programa otimização Fase 1.2).
+const ReportTab = lazy(() =>
+  import('@/components/inventory/tabs/ReportTab').then((m) => ({ default: m.ReportTab })),
+);
+const NotificationsTab = lazy(() =>
+  import('@/components/inventory/tabs/NotificationsTab').then((m) => ({ default: m.NotificationsTab })),
+);
+const ConversionReportTab = lazy(() =>
+  import('@/components/inventory/tabs/ConversionReportTab').then((m) => ({ default: m.ConversionReportTab })),
+);
+const AuditLogTab = lazy(() => import('@/components/inventory/tabs/AuditLogTab'));
+const StockHistory = lazy(() => import('./StockHistory'));
+const GroupOrganizationPanel = lazy(() => import('@/components/groups/GroupOrganizationPanel'));
+
+function TabFallback() {
+  return (
+    <div className="flex justify-center py-12">
+      <Loader2 className="h-6 w-6 animate-spin text-primary" />
+    </div>
+  );
+}
 
 // Categorias de material para filtro inline (chips).
 // 'Solado' REMOVIDO em 18/05/2026 — gestão de solados vive em /solados (SolesHub).
@@ -36,7 +52,7 @@ const MATERIAL_CATEGORIES = [
 const MAIN_TABS = ['materials', 'organization', 'overview', 'alerts', 'conversion'] as const;
 
 // Admin-only tabs — removidas da barra principal
-const ADMIN_TABS = new Set(['audit', 'strap-stock']);
+const ADMIN_TABS = new Set(['audit']);
 
 
 export default function Index() {
@@ -45,12 +61,13 @@ export default function Index() {
   const isAdmin = useIsAdmin();
   const requestedTab = searchParams.get('tab');
 
-  // Redireciona tabs legadas "solados" → /solados (SolesHub). Mudança 18/05/2026:
-  // gestão de solados centralizada num único lugar; bookmarks/links antigos
-  // não morrem de imediato — viram redirect.
+  // Redireciona tabs legadas para seus hubs canônicos. Bookmarks/links antigos
+  // continuam funcionando sem manter uma segunda superfície operacional.
   useEffect(() => {
     if (requestedTab === 'solados') {
       navigate('/solados', { replace: true });
+    } else if (requestedTab === 'strap-stock') {
+      navigate('/tiras-artesanais?tab=historico-estoque', { replace: true });
     }
   }, [requestedTab, navigate]);
 
@@ -160,13 +177,6 @@ export default function Index() {
                 <History className="h-3.5 w-3.5" />
                 Auditoria
               </TabsTrigger>
-              <TabsTrigger
-                value="strap-stock"
-                className="min-w-[120px] gap-1.5 border border-transparent px-3 py-2 text-xs opacity-60 data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:opacity-100"
-              >
-                <Ribbon className="h-3.5 w-3.5" />
-                Corte Tiras
-              </TabsTrigger>
             </>
           )}
         </TabsList>
@@ -174,12 +184,16 @@ export default function Index() {
         <div className="mt-4">
           {/* ── Organização industrial ── */}
           <TabsContent value="organization">
-            <GroupOrganizationPanel permPath="/estoque" />
+            <Suspense fallback={<TabFallback />}>
+              <GroupOrganizationPanel permPath="/estoque" />
+            </Suspense>
           </TabsContent>
 
           {/* ── Visão Geral ── */}
           <TabsContent value="overview">
-            <ReportTab />
+            <Suspense fallback={<TabFallback />}>
+              <ReportTab />
+            </Suspense>
           </TabsContent>
 
           {/* ── Materiais — com chips de categoria ── */}
@@ -227,27 +241,32 @@ export default function Index() {
 
           {/* ── Alertas ── */}
           <TabsContent value="alerts">
-            <NotificationsTab />
+            <Suspense fallback={<TabFallback />}>
+              <NotificationsTab />
+            </Suspense>
           </TabsContent>
 
           {/* ── Relatório de Conversão ── */}
           <TabsContent value="conversion">
-            <ConversionReportTab />
+            <Suspense fallback={<TabFallback />}>
+              <ConversionReportTab />
+            </Suspense>
           </TabsContent>
 
            {/* ── Histórico ── */}
            <TabsContent value="history">
-             <StockHistory />
+             <Suspense fallback={<TabFallback />}>
+               <StockHistory />
+             </Suspense>
            </TabsContent>
 
           {/* ── Admin: Auditoria ── */}
           {isAdmin && (
             <>
               <TabsContent value="audit">
-                <AuditLogTab />
-              </TabsContent>
-              <TabsContent value="strap-stock">
-                <StrapStockLogTab />
+                <Suspense fallback={<TabFallback />}>
+                  <AuditLogTab />
+                </Suspense>
               </TabsContent>
             </>
           )}

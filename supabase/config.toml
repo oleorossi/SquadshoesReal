@@ -1,5 +1,20 @@
 project_id = "ssvxfoybzmjlypnipqzn"
 
+# Tombstone gerenciado do antigo probe fiscal manual. A versão remota legada
+# era verify_jwt=false e fazia proxy de metadados da ClickNotas sem autenticação.
+# O handler atual não acessa provedor/segredos e responde 410; o gateway também
+# exige JWT para impedir que chamadas anônimas cheguem ao runtime.
+[functions.gc-probe-temp]
+verify_jwt = true
+
+# Tombstones gerenciados de utilitários fiscais temporários que existiam apenas
+# no projeto remoto. Ambos respondem 410 sem acessar segredos ou provedor.
+[functions.gc-diag]
+verify_jwt = true
+
+[functions.setup-nfe-certificate]
+verify_jwt = true
+
 [functions.emit-nfe]
 verify_jwt = false
 
@@ -24,4 +39,9 @@ verify_jwt = false
 # X-Cron-Secret (vault nfe_sync_cron_secret). A função valida o secret ou
 # Bearer == service role key no handler — nunca roda anônima.
 [functions.sync-ar]
+verify_jwt = false
+
+# Consumidor da outbox de PV disparado pelo pg_cron sem JWT. O handler valida
+# X-Cron-Secret (vault nfe_sync_cron_secret) ou Bearer service-role.
+[functions.process-sale-order-outbox]
 verify_jwt = false

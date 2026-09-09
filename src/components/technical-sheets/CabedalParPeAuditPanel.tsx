@@ -69,12 +69,13 @@ export function CabedalParPeAuditPanel() {
     queryFn: async (): Promise<AuditRow[]> => {
       const { data: sheets, error } = await supabase
         .from('technical_sheets')
-        .select('id, name, model, upper_material, upper_consumption, upper_consumption_per_size, has_straps')
-        .eq('has_straps', false);
+        .select('id, name, model, upper_material, upper_consumption, upper_consumption_per_size');
       if (error) throw error;
 
       const withCabedal = (sheets || []).filter((s: any) =>
-        (s.upper_material || '').trim() !== '' || Number(s.upper_consumption || 0) > 0);
+        (s.upper_material || '').trim() !== ''
+        || Number(s.upper_consumption || 0) > 0
+        || Object.values(s.upper_consumption_per_size || {}).some((value) => Number(value) > 0));
 
       // Unidade de consumo do grupo — só contexto (mesma precedência resumida do
       // editor: material de bobina/área → dm²; senão unidade do produto ativo).

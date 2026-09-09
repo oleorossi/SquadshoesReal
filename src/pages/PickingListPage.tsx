@@ -368,7 +368,25 @@ export default function PickingListPage() {
   // A Lista de Separação nomeia a linha de tira ora pelo grupo, ora pelo rótulo
   // da ficha — tenta os dois antes de desistir.
   const napaForRow = useCallback((row: ConsumptionRow): StrapPickingLine | undefined => {
-    if (row.componentType !== 'Tiras' || strapNapa.size === 0) return undefined;
+    if (row.componentType !== 'Tiras') return undefined;
+    // Linhas do BOM novo já carregam a base remanescente do MESMO snapshot de
+    // netting. Ela vence o enriquecimento legado, que subtraía consumo
+    // histórico de uma `base_required_m` já recalculada após cada parcial.
+    if (row.strapVariantId && row.baseProductId && row.recipeId
+        && row.strapBaseName && (row.strapBaseRequiredM || 0) > 0) {
+      return {
+        strapVariantId: row.strapVariantId,
+        baseProductId: row.baseProductId,
+        recipeId: row.recipeId,
+        strapName: row.groupName,
+        color: row.color,
+        strapRequiredM: row.totalQuantity,
+        napaName: row.strapBaseName,
+        napaRequired: row.strapBaseRequiredM || 0,
+        yieldPerMeter: row.strapConfirmedYieldMPerM || null,
+      };
+    }
+    if (strapNapa.size === 0) return undefined;
     if (row.strapVariantId && row.baseProductId && row.recipeId) {
       return strapNapa.get(strapPickingIdentityKey(
         row.strapVariantId,
@@ -475,8 +493,8 @@ export default function PickingListPage() {
       `;
     }
 
-    // Tiras internas: usa exclusivamente a napa-base requerida e os snapshots da
-    // receita aprovada. O rolo fixo legado não é reconstruído nesta superfície.
+    // Tiras internas: usa exclusivamente a falta líquida/napa-base persistidas e
+    // os snapshots da receita aprovada. O rolo fixo legado não é reconstruído.
     let strapCutHtml = '';
     if (strapCut.length > 0) {
       const strapRows = strapCut.map((r) => {
@@ -487,7 +505,7 @@ export default function PickingListPage() {
           ? `<span style="font-weight:700;font-size:14px">${snapshot.baseRequiredM.toLocaleString('pt-BR', { maximumFractionDigits: 6 })} m</span>`
           : `<span style="font-size:11px">⚠ ${escapeHtml(snapshot?.blockingReasons.join(' · ') || 'snapshot canônico incompleto')}</span>`;
         const details = snapshot
-          ? `Tira ${r.metros_necessarios.toLocaleString('pt-BR', { maximumFractionDigits: 4 })} m · rendimento ${snapshot.confirmedYieldMPerM.toLocaleString('pt-BR', { maximumFractionDigits: 6 })} m/m${snapshot.usableBaseWidthMm > 0 ? ` · largura útil ${snapshot.usableBaseWidthMm.toLocaleString('pt-BR')} mm` : ''}${r.largura_mm > 0 ? ` · banda ${r.largura_mm.toLocaleString('pt-BR')} mm` : ''}`
+          ? `Tira líquida a produzir ${r.metros_necessarios.toLocaleString('pt-BR', { maximumFractionDigits: 4 })} m · rendimento ${snapshot.confirmedYieldMPerM.toLocaleString('pt-BR', { maximumFractionDigits: 6 })} m/m${snapshot.usableBaseWidthMm > 0 ? ` · largura útil ${snapshot.usableBaseWidthMm.toLocaleString('pt-BR')} mm` : ''}${r.largura_mm > 0 ? ` · banda ${r.largura_mm.toLocaleString('pt-BR')} mm` : ''}`
           : 'Sem receita canônica';
         const colorTxt = r.color && r.color !== '—' ? ` · ${escapeHtml(r.color)}` : '';
         return `<tr style="color:#dc2626">
@@ -497,7 +515,7 @@ export default function PickingListPage() {
       }).join('');
       strapCutHtml = `
         <h2 style="font-size:13px;margin:18px 0 4px;color:#dc2626;text-transform:uppercase;letter-spacing:.5px">✂️ Tiras artesanais — separação da napa-base</h2>
-        <p style="font-size:11px;color:#dc2626;margin:0 0 6px">Metragem calculada por tira pronta ÷ rendimento confirmado da receita aprovada.</p>
+        <p style="font-size:11px;color:#dc2626;margin:0 0 6px">Atendimento parcial, tira pronta reservada e entradas comprometidas já estão descontados. Napa = saldo líquido a produzir ÷ rendimento confirmado.</p>
         <table style="border:1px solid #fca5a5">
           <thead><tr style="color:#dc2626">
             <th style="background:#fef2f2">Tira e snapshot da receita</th>

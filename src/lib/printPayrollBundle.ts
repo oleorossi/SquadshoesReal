@@ -12,6 +12,7 @@ export type BundleRun = {
   overtime_50_minutes?: number; absent_days?: number; absence_discount?: number;
   deductions_amount?: number; advances_total?: number; total_descontos?: number;
   total_liquido: number; worked_minutes?: number; hourly_rate?: number; period: string;
+  status?: 'rascunho' | 'aprovado' | 'pago' | 'cancelado' | string;
   payment_type?: 'mensalista' | 'remoto' | 'diarista' | 'producao';
   he_normal_minutes?: number; he_holiday_minutes?: number;
   he_normal_rate?: number; he_sunday_holiday_rate?: number;
@@ -42,6 +43,7 @@ export type BundleDay = {
   punches?: string[];
   expected_minutes?: number;
   worked_minutes?: number;
+  excused_minutes?: number;
   raw_balance_minutes?: number;
   raw_credit_minutes?: number;
   raw_delay_minutes?: number;
@@ -62,6 +64,16 @@ export type BundleEmployee = {
    *  pra casar o Espelho com o pacote do MESMO funcionário no modo 'employee'. */
   matchId?: string;
 };
+
+/**
+ * Folhas canceladas permanecem no histórico, mas são terminais e não podem
+ * voltar a compor nenhum documento ou total financeiro.
+ */
+export const isFinancialPayrollRun = (run: { status?: string | null }): boolean =>
+  String(run.status || '').trim().toLowerCase() !== 'cancelado';
+
+export const filterFinancialPayrollEmployees = (employees: BundleEmployee[]): BundleEmployee[] =>
+  employees.filter(employee => isFinancialPayrollRun(employee.run));
 
 const fmt = (v: number) =>
   (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -383,15 +395,20 @@ export function buildPayrollHtml(params: {
   groupBy?: 'employee' | 'type';
 }): string {
   const { periodTitle, docs, employees } = params;
+  // Defesa em profundidade: mesmo que um chamador passe o histórico completo,
+  // folha cancelada não chega a Folha, Setor, Calendário nem Holerite.
+  const financialEmployees = filterFinancialPayrollEmployees(employees);
   const espelhoEmps = params.espelhoEmployees ?? [];
   const wantsEspelho = !!docs.espelho && espelhoEmps.length > 0;
-  if (employees.length === 0 && !wantsEspelho) return '';
+  if (financialEmployees.length === 0 && !wantsEspelho) return '';
   const groupBy = params.groupBy ?? 'employee';
 
   const sections: string[] = [];
   // Relatórios gerais (agregados do período) saem 1× no topo nos dois modos.
-  if (docs.setor) sections.push(sectorSummarySection(employees, periodTitle));
-  if (docs.folha) sections.push(folhaSection(employees, periodTitle));
+  if (financialEmployees.length > 0) {
+    if (docs.setor) sections.push(sectorSummarySection(financialEmployees, periodTitle));
+    if (docs.folha) sections.push(folhaSection(financialEmployees, periodTitle));
+  }
   // Casa o Espelho (lista própria, por matrícula) com o funcionário da folha:
   // por matchId (id interno estampado no builder) e, em fallback, por nome
   // normalizado. Usado pra juntar o Espelho ao pacote do MESMO funcionário.
@@ -400,7 +417,7 @@ export function buildPayrollHtml(params: {
     // Pacote por pessoa: Calendário + Holerite + ESPELHO do MESMO funcionário
     // fluem JUNTOS (wrapper .emp); a quebra acontece só ENTRE funcionários.
     const usedEspelho = new Set<BundleEmployee>();
-    employees.forEach(e => {
+    financialEmployees.forEach(e => {
       const empDocs: string[] = [];
       if (docs.calendario) empDocs.push(calendarSection(e, periodTitle));
       if (docs.holerite) empDocs.push(holeriteSection(e, periodTitle));
@@ -416,8 +433,8 @@ export function buildPayrollHtml(params: {
     if (docs.espelho) espelhoEmps.filter(e => !usedEspelho.has(e)).forEach(e =>
       sections.push(`<section class="emp">${espelhoSection(e, periodTitle)}</section>`));
   } else {
-    if (docs.calendario) employees.forEach(e => sections.push(calendarSection(e, periodTitle)));
-    if (docs.holerite) employees.forEach(e => sections.push(holeriteSection(e, periodTitle)));
+    if (docs.calendario) financialEmployees.forEach(e => sections.push(calendarSection(e, periodTitle)));
+    if (docs.holerite) financialEmployees.forEach(e => sections.push(holeriteSection(e, periodTitle)));
     // 'type': todos os Espelhos juntos, no fim (bloco por tipo).
     if (docs.espelho) espelhoEmps.forEach(e => sections.push(`<section class="emp">${espelhoSection(e, periodTitle)}</section>`));
   }

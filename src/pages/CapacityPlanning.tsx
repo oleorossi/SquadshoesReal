@@ -15,7 +15,7 @@ import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import {
   computeParallelWindows, setHolidayCache, isBusinessDay,
-  fetchCategoryDefaultsMap, categoryDefaultsFor,
+  fetchCategoryDefaultsMap, categoryDefaultsFor, offsetsFromSettings,
 } from '@/lib/sectorCapacity';
 import { useHolidays } from '@/hooks/useTimesheet';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
@@ -203,6 +203,19 @@ export default function CapacityPlanning() {
     queryFn: () => fetchCategoryDefaultsMap(),
   });
 
+  const { data: sectorOffsetRows = [] } = useQuery({
+    queryKey: ['sector_settings', 'start_offset_days'],
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('sector_settings')
+        .select('sector, start_offset_days');
+      if (error) return [];
+      return (data || []) as Array<{ sector: string; start_offset_days?: number | null }>;
+    },
+  });
+  const sectorOffsets = useMemo(() => offsetsFromSettings(sectorOffsetRows), [sectorOffsetRows]);
+
   // ─── ENRICHED ORDERS ───────────────────────────────────────────────────────
 
   const stagesByOrder = useMemo(() => {
@@ -285,7 +298,7 @@ export default function CapacityPlanning() {
 
       const s = o.sheet;
       const billing = parseISO(o.planned_delivery);
-      const pw = computeParallelWindows(s, qty, billing, categoryDefaultsFor(s, categoryDefaultsMap));
+      const pw = computeParallelWindows(s, qty, billing, categoryDefaultsFor(s, categoryDefaultsMap), sectorOffsets);
 
       const windows: { key: SectorKey; start: Date; end: Date; active: boolean }[] = [
         { key: 'corte_palmilha', start: pw.corte_palmilha.start, end: pw.corte_palmilha.end, active: pw.corte_palmilha.required },
@@ -349,7 +362,7 @@ export default function CapacityPlanning() {
           values: daily,
         };
       });
-  }, [enrichedOrders, today, horizon, holidays, categoryDefaultsMap]);
+  }, [enrichedOrders, today, horizon, holidays, categoryDefaultsMap, sectorOffsets]);
 
   // ─── DERIVED (status strip + drill-down) ───────────────────────────────────
 

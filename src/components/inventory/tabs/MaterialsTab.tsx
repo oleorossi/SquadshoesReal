@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { useDebounce } from 'use-debounce';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { toast } from 'sonner';
-import { Plus, CircleNotch as Loader2, Barcode, CaretLeft as ChevronLeft, CaretRight as ChevronRight, MagnifyingGlass, FileArrowUp as FileUp, Stack as Layers, ArrowsDownUp as ArrowUpDown, X, DotsThree as MoreHorizontal, Rows as Rows3, Rows as Rows2, Eye } from '@phosphor-icons/react';
+import { Plus, CircleNotch as Loader2, Barcode, CaretLeft as ChevronLeft, CaretRight as ChevronRight, MagnifyingGlass, FileArrowUp as FileUp, Stack as Layers, ArrowsDownUp as ArrowUpDown, X, DotsThree as MoreHorizontal, Rows as Rows3, Rows as Rows2, Eye, Warning as AlertTriangle, ArrowsClockwise as RefreshCw } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
@@ -34,9 +34,9 @@ import type { ParsedNFeDuplicata } from '@/lib/nfeParser';
 import { 
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger 
 } from '@/components/ui/dialog';
-import {
+import { 
   useProducts, useAddProduct, useUpdateProduct,
-  useBatchAddProducts, ProductSchema
+  useBatchAddProducts, ProductSchema, PRODUCT_LIST_SELECT
 } from '@/hooks/useProducts';
 import { useForceDeleteProductFlow } from '@/components/inventory/ForceDeleteProductDialog';
 import { usePaginatedProducts } from '@/hooks/usePaginatedProducts';
@@ -185,14 +185,35 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
   const [page, setPage] = useState(1);
   const barcodeInputRef = useRef<HTMLInputElement>(null);
 
-  // Estoque tradicional NÃO mostra solados — eles são gerenciados na aba
-  // dedicada "Solados" (SolesHub). O filtro real vai no hook
-  // usePaginatedProducts via excludeCategory='Solado' (que alimenta a UI).
-  // `allProducts` é raw — usado em outros lugares (chips, scanner SKU)
-  // onde solados podem aparecer legitimamente (ex: bipar SKU de solado pra
-  // ver detalhe).
-  const { data: allProducts = [] } = useProducts();
-  const products = allProducts as any[];
+  // Se chip foi clicado (defaultGroupName setado), usa SÓ category — não filtra
+  // groupId. Senão (uso fora do chip), respeita o groupFilter manual.
+  const effectiveGroup = defaultGroupName ? 'all' : groupFilter;
+
+  // Lista da UI = paginado. Universo (`useProducts`) só depois da página útil —
+  // evita double-fetch bloqueando a primeira pintura (Fase 1.3). Stats de grupo
+  // / edição em massa atualizam quando o universo chega.
+  const { data: paginatedData, isLoading: isPaginatedLoading, isFetched: pageFetched, isError: isPaginatedError, error: paginatedError, refetch: refetchPaginated } = usePaginatedProducts({
+    search: debouncedSearch,
+    groupId: effectiveGroup,
+    supplierId: supplierFilter,
+    status: statusFilter,
+    category: defaultCategory,
+    // Solado vive em /solados (SolesHub). Filtra na fonte — antes o filter
+    // em allProducts era inútil porque a UI lê paginatedProducts.
+    excludeCategory: 'Solado',
+    // Chips agora filtram NO BANCO — antes o `limit: 9999` baixava a lista toda
+    // só pra o JS esconder linha, e a contagem do chip via de uma fatia.
+    hideZeradas,
+    onlyFalta,
+    // Ordenação também é server-side: com página de 50 sobre 187 materiais,
+    // ordenar na tela ordenaria só a página — "maior valor" apontaria o maior
+    // da página, não do estoque.
+    sortKey: sort?.key ?? null,
+    sortDir: sort?.dir ?? 'asc',
+    page,
+  });
+
+  const { data: allProducts = [] } = useProducts({ enabled: pageFetched });
   const { data: groups = [] } = useGroups();
   const { data: suppliers = [] } = useSuppliers();
   const addSupplier = useAddSupplier();
@@ -253,34 +274,6 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
       toast.warning(`${pendingItems.length} item(ns) ainda precisam ser vinculados ao estoque.`);
     }
   };
-
-  
-  // Se chip foi clicado (defaultGroupName setado), usa SÓ category — não filtra
-  // groupId. Senão (uso fora do chip), respeita o groupFilter manual.
-  // Sem isso o AND filter (groupId + category) eliminaria produtos como
-  // "01-CARAMELO" que pertencem a "SOLADO 01" (group) mas category='Solado'.
-  const effectiveGroup = defaultGroupName ? 'all' : groupFilter;
-
-  const { data: paginatedData, isLoading: isPaginatedLoading } = usePaginatedProducts({
-    search: debouncedSearch,
-    groupId: effectiveGroup,
-    supplierId: supplierFilter,
-    status: statusFilter,
-    category: defaultCategory,
-    // Solado vive em /solados (SolesHub). Filtra na fonte — antes o filter
-    // em allProducts era inútil porque a UI lê paginatedProducts.
-    excludeCategory: 'Solado',
-    // Chips agora filtram NO BANCO — antes o `limit: 9999` baixava a lista toda
-    // só pra o JS esconder linha, e a contagem do chip via de uma fatia.
-    hideZeradas,
-    onlyFalta,
-    // Ordenação também é server-side: com página de 50 sobre 187 materiais,
-    // ordenar na tela ordenaria só a página — "maior valor" apontaria o maior
-    // da página, não do estoque.
-    sortKey: sort?.key ?? null,
-    sortDir: sort?.dir ?? 'asc',
-    page,
-  });
 
   const paginatedProducts = useMemo(() => paginatedData?.items || [], [paginatedData]);
 
@@ -385,7 +378,7 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
             onChange={(v) => { setSearch(v); setPage(1); }}
             placeholder={`Buscar ${title.toLowerCase()}, SKU ou categoria…`}
             getSuggestions={(term) => {
-              const list: any[] = (products as any[]) || [];
+              const list: Product[] = allProducts || [];
               const seen = new Set<string>();
               const out: SmartSearchSuggestion[] = [];
               for (const p of list) {
@@ -552,16 +545,31 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
       <div className="opacity-0 absolute pointer-events-none">
         <Input
           ref={barcodeInputRef}
-          onKeyDown={(e) => {
+          onKeyDown={async (e) => {
             if (e.key === 'Enter') {
               const scannedSku = e.currentTarget.value.trim();
               if (scannedSku) {
-                const found = products.find(p => p.sku === scannedSku);
-                if (found) {
-                  openEdit(found);
-                  toast.info(`Material encontrado: ${found.name}`);
+                // Lookup direto por SKU — não depende do universo `useProducts`
+                // (que só carrega depois da página útil).
+                const cached = allProducts.find((p) => p.sku === scannedSku);
+                if (cached) {
+                  openEdit(cached);
+                  toast.info(`Material encontrado: ${cached.name}`);
                 } else {
-                  toast.error(`SKU "${scannedSku}" não encontrado no estoque`);
+                  const { data: found, error } = await supabase
+                    .from('products')
+                    .select(PRODUCT_LIST_SELECT as '*')
+                    .eq('sku', scannedSku)
+                    .maybeSingle();
+                  if (error) {
+                    toast.error(`Falha ao buscar SKU: ${error.message}`);
+                  } else if (found) {
+                    const product = found as Product;
+                    openEdit(product);
+                    toast.info(`Material encontrado: ${product.name}`);
+                  } else {
+                    toast.error(`SKU "${scannedSku}" não encontrado no estoque`);
+                  }
                 }
               }
               e.currentTarget.value = '';
@@ -574,6 +582,19 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
         <div className="flex justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin text-primary" />
         </div>
+      ) : isPaginatedError ? (
+        <EmptyState
+          size="sm"
+          icon={AlertTriangle}
+          title="Erro ao carregar materiais"
+          description={paginatedError instanceof Error ? paginatedError.message : 'Tente novamente.'}
+          action={
+            <Button variant="outline" size="sm" className="gap-2" onClick={() => refetchPaginated()}>
+              <RefreshCw className="h-4 w-4" />
+              Tentar novamente
+            </Button>
+          }
+        />
       ) : paginatedProducts.length === 0 && debouncedSearch.trim() ? (
         <EmptyState
           size="sm"

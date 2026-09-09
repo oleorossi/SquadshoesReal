@@ -92,7 +92,7 @@ const num = (v: number | string | null | undefined) => Number(v) || 0;
 /** Mensagem de erro do banco → texto que o usuário do chão de fábrica entende. */
 function traduzErro(msg: string): string {
   if (/Já existe folha desta pessoa/i.test(msg)) return msg;
-  if (/duplicate key|payroll_runs_employee_id_period_key/i.test(msg)) {
+  if (/duplicate key|payroll_runs_employee_id_period_key|uq_payroll_runs_active_employee_period/i.test(msg)) {
     return 'Já existe uma folha desta pessoa exatamente neste período.';
   }
   return msg;
@@ -124,7 +124,7 @@ export function useAbrirFolhaProducao() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: AbrirFolhaProducaoInput): Promise<FolhaProducaoAberta> => {
-      const db = supabase as any;
+      const db = supabase;
       const period = periodoDeJanela(input.from, input.to);
 
       // 1) Já existe folha desta pessoa NESTE período exato?
@@ -134,6 +134,7 @@ export function useAbrirFolhaProducao() {
         .select('id, period, status, total_proventos, total_descontos, total_liquido, notes')
         .eq('employee_id', input.employeeId)
         .eq('period', period)
+        .neq('status', 'cancelado')
         .limit(1);
       if (exErr) throw new Error(traduzErro(exErr.message));
 

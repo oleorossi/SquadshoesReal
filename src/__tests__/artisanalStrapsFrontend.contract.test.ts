@@ -25,11 +25,13 @@ const batchMatrix = read('src/components/artisanal-straps/ArtisanalStrapBatchMat
 const groupColorProducts = read('src/lib/groupColorProducts.ts');
 const contractorHooks = read('src/hooks/useContractors.ts');
 const technicalSheets = read('src/pages/TechnicalSheets.tsx');
+const technicalStrapSourcePolicy = read('src/lib/technicalStrapSourcePolicy.ts');
 const canonicalPreview = read('src/lib/canonicalStrapDemandPreview.ts');
 const strapCutBlock = read('src/components/sale-orders/ArtisanalStrapRollCutBlock.tsx');
 const pickingList = read('src/pages/PickingListPage.tsx');
 const hub = read('src/pages/ArtisanalStraps.tsx');
 const calculator = read('src/pages/StrapCalculator.tsx');
+const strapYield = read('src/lib/strapYield.ts');
 const legacyProductMigration = read('src/components/artisanal-straps/ArtisanalStrapLegacyProductMigrationDialog.tsx');
 const migrationControl = read('src/components/artisanal-straps/ArtisanalStrapMigrationControl.tsx');
 const migrationDialogs = read('src/components/artisanal-straps/ArtisanalStrapMigrationDialogs.tsx');
@@ -116,10 +118,22 @@ describe('Tiras artesanais — contrato do frontend canônico', () => {
     expect(contractors).not.toContain('Nova Receita Artesanal');
   });
 
-  it('detecta OS canônica pela identidade das linhas e remove ações legadas', () => {
-    expect(contractorHooks).toContain('v_strap_service_order_items_operational');
-    expect(contractors).toContain('isCanonicalStrapServiceOrder(o)');
-    expect(contractors).toContain('Abrir no Hub de Tiras');
+  it('retira toda OS de tira do dataset e das ações do menu genérico', () => {
+    expect(contractorHooks).toContain('v_strap_service_orders');
+    expect(contractorHooks).toContain('.filter(o => !isStrapServiceOrder(o))');
+    expect(contractors).not.toContain('isCanonicalStrapServiceOrder');
+    expect(contractors).not.toContain('Abrir no Hub de Tiras');
+    expect(contractors).not.toContain('artisanal_output_name');
+  });
+
+  it('abre a OS canônica diretamente na Central de Tiras sem confundir com lote', () => {
+    expect(hub).toContain("const focusedServiceOrderNumber = searchParams.get('q')?.trim() || null");
+    expect(hooks).toContain("queryKey: ['artisanal-strap-external-operations', normalizedFocus]");
+    expect(hooks).toContain("serviceItemsQuery.eq('service_order_number', normalizedFocus)");
+    expect(operations).toContain("document.getElementById('focused-strap-service-order')?.scrollIntoView");
+    expect(operations).toContain("id={focusedServiceOrderNumber ? 'focused-strap-service-order' : undefined}");
+    expect(operations).toContain('OS {focusedServiceOrderNumber} não possui linha operacional');
+    expect(hub).toContain("params.delete('q')");
   });
 
   it('separa RBAC administrativo e documentos/unidades operacionais', () => {
@@ -163,7 +177,8 @@ describe('Tiras artesanais — contrato do frontend canônico', () => {
   });
 
   it('grava família e medida canônicas na linha UUID da ficha técnica', () => {
-    expect(technicalSheets).toContain('applyCanonicalTechnicalStrapMeasure');
+    expect(technicalSheets).toContain('applyTechnicalStrapMeasureWithSource');
+    expect(technicalStrapSourcePolicy).toContain('applyCanonicalTechnicalStrapMeasure');
     expect(technicalSheets).toContain('hasCanonicalTechnicalStrapIdentity');
     expect(technicalSheets).toContain("setAbaAtiva('range-aviamento')");
     expect(technicalSheets).toContain('activeStrapMeasures.length === 0');
@@ -274,10 +289,15 @@ describe('Tiras artesanais — contrato do frontend canônico', () => {
     expect(strapCutBlock).not.toContain('ROLO_COMPRIMENTO_M');
     expect(pickingList).toContain('separação da napa-base');
     expect(pickingList).not.toContain('ROLO_LARGURA_MM');
-    expect(calculator).toContain("type BaseRendimento = 'teorico' | 'real' | 'perda'");
+    expect(calculator).toContain("type BaseRendimento = 'teorico' | 'real'");
     expect(calculator).toContain('rendimentoDaSimulacao');
     expect(calculator).toContain('A necessidade usa o rendimento informado apenas nesta simulação');
-    expect(calculator).not.toContain('a % de perda cobre');
+    expect(calculator).not.toContain('confirmedStrapYieldFromLossPercentage');
+    expect(calculator).not.toContain('perdaPercentual');
+    expect(conversionEditor).not.toContain('loss_percentage');
+    expect(conversionEditor).not.toContain('Perda percentual');
+    expect(strapYield).not.toContain('confirmedStrapYieldFromLossPercentage');
+    expect(strapYield).not.toContain('strapYieldLossPercentageFromConfirmed');
   });
 
   it('mantém a calculadora livre, temporária e independente das receitas persistidas', () => {
@@ -289,9 +309,15 @@ describe('Tiras artesanais — contrato do frontend canônico', () => {
     expect(hub).not.toContain('rendimentoConfirmadoInicialMPerM');
     expect(calculator).toContain('Base desta simulação');
     expect(calculator).toContain('Rendimento real medido');
-    expect(calculator).toContain('Perda estimada');
+    expect(calculator).not.toContain('Perda estimada');
     expect(calculator).toContain('nenhum valor desta aba é salvo');
     expect(calculator).not.toMatch(/from\(['"]/);
+  });
+
+  it('abre variantes de grupos no editor canônico de estoque', () => {
+    const strapEditorLinks = groupEditDialog.match(/\/tiras-artesanais\?tab=cadastro&editor=1[^`]+/g) || [];
+    expect(strapEditorLinks.length).toBeGreaterThan(0);
+    strapEditorLinks.forEach((link) => expect(link).toContain('purpose=stock_variant'));
   });
 
   it('abre em Operação e reduz a navegação principal a três áreas sem perder os links antigos', () => {
@@ -342,8 +368,13 @@ describe('Tiras artesanais — contrato do frontend canônico', () => {
 
   it('preserva o histórico anterior e oferece reaproveitamento explícito', () => {
     expect(hooks).toContain("rpc('list_legacy_artisanal_strap_recipe_history')");
+    expect(hooks).toContain('includeLegacyHistory');
     expect(hooks).toContain("rpc('reuse_legacy_artisanal_strap_recipe'");
     expect(hooks).toContain('legacy_recipes:');
+    // Timeout/erro no legado não pode derrubar o catálogo canônico (PV).
+    expect(hooks).toContain('histórico legado indisponível');
+    expect(hooks).not.toMatch(/if \(legacyHistoryError && legacyHistoryError\.code !== 'PGRST202'\) \{\s*throw legacyHistoryResult\.error;/);
+    expect(hub).toContain('includeLegacyHistory: true');
     expect(hub).toContain('Cadastros do sistema anterior');
     expect(hub).toContain('Histórico legado');
     expect(hub).toContain('Reaproveitar');

@@ -4,11 +4,18 @@ import {
   countPending,
   countShort,
   itemShortfall,
+  isConvertedInternalStrap,
+  isInternalStrapRow,
+  isPendingInternalStrap,
+  isStrassStrapRow,
+  pendingStrapMeters,
   rowIsShort,
   rowKnown,
   rowShortfall,
   soleShortSizes,
+  toPurchaseDecisionRows,
   topShortfalls,
+  unitTotals,
 } from '../consumptionAvailability';
 import type { ConsumptionRow } from '../consumptionRows';
 
@@ -49,6 +56,7 @@ describe('solado — avaliado por numeração', () => {
     componentType: 'Solado',
     groupName: 'SOLADO 01',
     productUnit: 'par',
+    soleProductId: 'p-solado-01',
     totalQuantity: 540,
     sizeBreakdown: { '35': 90, '36': 108, '37': 90 },
     soleSizeStock: { '35': 12, '36': 0, '37': 416 },
@@ -64,13 +72,34 @@ describe('solado — avaliado por numeração', () => {
   it('sem quebra por numeração cai no total', () => {
     const semGrade = row({
       componentType: 'Solado', productUnit: 'par', totalQuantity: 540,
+      soleProductId: 'p-solado-01',
       soleSizeStock: { '36': 300 },
     });
     expect(rowShortfall(semGrade)).toBe(240);
   });
+
+  it('solado textual sem produto canônico fica neutro mesmo com quantidade positiva', () => {
+    const naoResolvido = row({
+      componentType: 'Solado',
+      groupName: 'Solado Ricardo Tratorado',
+      productUnit: 'par',
+      totalQuantity: 80,
+      sizeBreakdown: { '34': 20, '35': 20, '36': 20, '37': 20 },
+      soleSizeStock: {},
+      soleProductId: null,
+      warning: 'Solado não resolve produto no estoque — não será reservado nem debitado.',
+    });
+
+    expect(rowKnown(naoResolvido)).toBe(false);
+    expect(rowIsShort(naoResolvido)).toBe(false);
+    expect(rowShortfall(naoResolvido)).toBe(0);
+    expect(soleShortSizes(naoResolvido)).toEqual(['34', '35', '36', '37']);
+    expect(countShort([naoResolvido])).toBe(0);
+    expect(topShortfalls([naoResolvido])).toEqual([]);
+  });
 });
 
-describe('item = balde de estoque (grupo + cor + unidade)', () => {
+describe('item = balde de estoque (produto exato; fallback grupo + cor + unidade)', () => {
   // Mesma napa, mesma cor, DUAS aplicações: dividem o mesmo estoque.
   const duasAplicacoes = [
     row({ materialName: 'Forração', componentType: 'Forração', totalQuantity: 2, available: 5 }),
@@ -98,6 +127,31 @@ describe('item = balde de estoque (grupo + cor + unidade)', () => {
     expect(item.known).toBe(false);
     expect(itemShortfall(item)).toBe(0);
   });
+
+  it('mantém produtos exatos distintos separados mesmo no mesmo grupo/cor/unidade', () => {
+    const produtosDistintos = [
+      row({ materialName: 'COLA FORTE', totalQuantity: 100, available: 100, productIds: ['p-cola-forte'] }),
+      row({ materialName: 'HOTMELT', totalQuantity: 100, available: 100, productIds: ['p-hotmelt'] }),
+    ];
+
+    const items = aggregateItems(produtosDistintos);
+    expect(items).toHaveLength(2);
+    expect(items.every((item) => itemShortfall(item) === 0)).toBe(true);
+    expect(countShort(produtosDistintos)).toBe(0);
+  });
+
+  it('continua compartilhando estoque entre aplicações do mesmo produto exato', () => {
+    const mesmoProduto = [
+      row({ materialName: 'Forração', totalQuantity: 2, available: 5, productIds: ['p-napa'] }),
+      row({ materialName: 'Forração Palmilha', totalQuantity: 4, available: 5, productIds: ['p-napa'] }),
+    ];
+
+    const [item] = aggregateItems(mesmoProduto);
+    expect(aggregateItems(mesmoProduto)).toHaveLength(1);
+    expect(item.total).toBe(6);
+    expect(item.available).toBe(5);
+    expect(itemShortfall(item)).toBe(1);
+  });
 });
 
 describe('countPending', () => {
@@ -120,6 +174,7 @@ describe('topShortfalls', () => {
       row({ groupName: 'NAPA SOFT', color: 'PRETO', totalQuantity: 1, available: 5.01 }),
       row({
         componentType: 'Solado', groupName: 'SOLADO 01', productUnit: 'par',
+        soleProductId: 'p-solado-01',
         totalQuantity: 198, sizeBreakdown: { '35': 90, '36': 108 }, soleSizeStock: {},
       }),
     ], 3);
@@ -129,5 +184,131 @@ describe('topShortfalls', () => {
     expect(top[0].qty).toBe(198);
     // O que está coberto não aparece.
     expect(top.some((t) => t.label === 'NAPA SOFT')).toBe(false);
+  });
+});
+
+describe('tira artesanal — o motor consome napa, não metro de tira', () => {
+  const napa = row({
+    componentType: 'Forração Palmilha',
+    groupName: 'NAPA SOFT',
+    materialName: 'Forração Palmilha',
+    color: 'NEW WHISKY',
+    productUnit: 'm',
+    totalQuantity: 20.21,
+    available: 0,
+    productIds: ['napa-new-whisky'],
+  });
+  const tira = row({
+    componentType: 'Tiras',
+    groupName: 'TIRA OVERLOCK 5 mm · NAPA SOFT · NEW WHISKY',
+    materialName: 'Produção interna',
+    color: 'NEW WHISKY',
+    productUnit: 'm',
+    totalQuantity: 1402.8,
+    available: 0,
+    productIds: ['tira-overlock-new-whisky'],
+    baseProductId: 'napa-new-whisky',
+    artisanal: { baseName: 'NAPA SOFT', baseQty: 20.04, yieldPerMeter: 70 },
+  });
+
+  it('não trata os metros de tira como falta de compra', () => {
+    expect(isConvertedInternalStrap(tira)).toBe(true);
+    expect(rowIsShort(tira)).toBe(false);
+    expect(rowShortfall(tira)).toBe(0);
+  });
+
+  it('reconhece tira Strass para aba/seção própria no Consumo', () => {
+    expect(isStrassStrapRow({
+      componentType: 'Tiras',
+      groupName: 'TIRA STRASS 6MM',
+      materialName: 'Comprada pronta',
+    })).toBe(true);
+    expect(isStrassStrapRow({
+      componentType: 'Tiras',
+      groupName: 'TIRA OVERLOCK 5MM · NAPA SOFT',
+      materialName: 'Produção interna',
+    })).toBe(false);
+    expect(isStrassStrapRow({
+      componentType: 'Forração',
+      groupName: 'NAPA STRASS FALSO',
+      materialName: 'Forração',
+    })).toBe(false);
+  });
+
+  it('soma o equivalente em napa no balde que o motor realmente baixa', () => {
+    const purchase = toPurchaseDecisionRows([napa, tira]);
+    expect(purchase.some((r) => r.componentType === 'Tiras')).toBe(false);
+    const [item] = aggregateItems(purchase);
+    expect(item.groupName).toBe('NAPA SOFT');
+    expect(item.total).toBeCloseTo(40.25, 2);
+    expect(itemShortfall(item)).toBeCloseTo(40.25, 2);
+  });
+
+  it('some da lista de maiores faltas como 1.402 m de tira', () => {
+    const top = topShortfalls([napa, tira], 5);
+    expect(top.some((entry) => entry.qty > 1000)).toBe(false);
+    expect(top[0].label).toBe('NAPA SOFT');
+    expect(top[0].qty).toBeCloseTo(40.25, 2);
+    expect(top[0].unit).toBe('m');
+  });
+
+  it('o total em metros do PDF/tela casa com o material base, não com a tira', () => {
+    const totals = unitTotals([napa, tira]);
+    expect(totals.get('m')).toBeCloseTo(40.25, 2);
+    expect(countShort([napa, tira])).toBe(1);
+  });
+
+  it('PV-00193: tira pending NÃO infla o strip de metros com 1.044 m de tira', () => {
+    // 3 cores × (28,15 forração + 14,91 tira convertida) = 129,21 m de napa.
+    // 1 linha órfã pending com 1.044 m de tira — antes virava 1.173,21 m no strip.
+    const forracao = (color: string) => row({
+      componentType: 'Forração Palmilha',
+      groupName: 'NAPA MADRID',
+      materialName: 'NAPA MADRID',
+      color,
+      productUnit: 'm',
+      totalQuantity: 28.15,
+      available: 0,
+    });
+    const tiraOk = (color: string) => row({
+      componentType: 'Tiras',
+      groupName: `TIRA CHATA 8 mm · NAPA MADRID · ${color}`,
+      materialName: 'Produção interna',
+      color,
+      productUnit: 'm',
+      totalQuantity: 1044,
+      available: 0,
+      artisanal: { baseName: 'NAPA MADRID', baseQty: 14.91, yieldPerMeter: 70 },
+    });
+    const tiraPending = row({
+      componentType: 'Tiras',
+      groupName: 'Tira sem cadastro',
+      materialName: 'Produção interna',
+      color: 'OFF WHITE',
+      productUnit: 'm',
+      totalQuantity: 1044,
+      available: 0,
+      warning: 'Variante exata ativa nao encontrada',
+      artisanal: {
+        baseName: 'NAPA MADRID',
+        baseQty: 0,
+        yieldPerMeter: 0,
+        pending: true,
+      },
+    });
+
+    const rows = [
+      forracao('CAPUCCINO'), forracao('OFF WHITE'), forracao('ROCHA'),
+      tiraOk('CAPUCCINO'), tiraOk('OFF WHITE'), tiraOk('ROCHA'),
+      tiraPending,
+    ];
+    const totals = unitTotals(rows);
+    expect(isPendingInternalStrap(tiraPending)).toBe(true);
+    expect(isInternalStrapRow(tiraPending)).toBe(true);
+    expect(pendingStrapMeters(rows)).toBeCloseTo(1044, 2);
+    // 3 × (28,15 + 14,91) = 129,18 — o PDF vivo arredonda 129,21 por precisão
+    // intermediária do motor; o strip não pode incluir os 1.044 m de tira.
+    expect(totals.get('m')).toBeCloseTo(129.18, 2);
+    expect(totals.get('m')).not.toBeCloseTo(1173.21, 2);
   });
 });

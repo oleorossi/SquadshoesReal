@@ -1,7 +1,7 @@
 import type { SalaryDayLedger, SalaryDayLedgerStatus } from '@/lib/salaryPayroll';
 import { getISOWeekKey, getWeekMonday, getWeekSunday } from '@/lib/weeklyTimeCalculation';
 
-export type TimeBalanceReportKind = 'overtime' | 'deficit';
+export type TimeBalanceReportKind = 'overtime' | 'deficit' | 'all';
 
 export interface TimeBalanceEmployeeInput {
   id: string;
@@ -68,8 +68,12 @@ export interface EmployeeTimeBalanceReport {
 function effectiveExpectedMinutes(day: SalaryDayLedger): number {
   // Dia abonado ou sem cobertura não reduz a meta semanal. A folha já os marca
   // no ledger; o relatório apenas respeita essa decisão, sem recalcular batidas.
+  // No abono parcial, reduz somente os minutos efetivamente aplicados pelo motor.
   if (day.status === 'neutral' || day.status === 'excused') return 0;
-  return Math.max(0, Number(day.expected_minutes) || 0);
+  return Math.max(
+    0,
+    (Number(day.expected_minutes) || 0) - (Number(day.excused_minutes) || 0),
+  );
 }
 
 function effectiveWorkedMinutes(day: TimeBalanceDay): number {
@@ -183,6 +187,7 @@ export function reportsForKind(
   reports: EmployeeTimeBalanceReport[],
   kind: TimeBalanceReportKind,
 ): EmployeeTimeBalanceReport[] {
+  if (kind === 'all') return reports;
   return reports.filter(report => kind === 'overtime'
     ? report.totalOvertimeMinutes > 0
     : report.totalDeficitMinutes > 0);

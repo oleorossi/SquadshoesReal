@@ -8,15 +8,28 @@ const read = (path: string) => readFileSync(resolve(ROOT, path), 'utf8');
 const migration = read(
   'supabase/migrations/20270101006200_strass_buy_ready_without_reference_base.sql',
 );
+const commandFoundation = read(
+  'supabase/migrations/20270101010200_sale_order_command_foundation.sql',
+);
+const commandExecution = read(
+  'supabase/migrations/20270101010400_atomic_sale_order_promotion_command.sql',
+);
+const commandAcl = read(
+  'supabase/migrations/20270101010500_sale_order_command_acl_hardening.sql',
+);
 const saleOrderHooks = read('src/hooks/useSaleOrders.ts');
 const saleOrderForm = read('src/pages/SaleOrderForm.tsx');
 const cancelDialog = read('src/components/sale-orders/CancelOpsAndEditDialog.tsx');
 
 function sqlFunction(name: string): string {
+  return sqlFunctionFrom(migration, name);
+}
+
+function sqlFunctionFrom(source: string, name: string): string {
   const marker = `CREATE OR REPLACE FUNCTION public.${name}`;
-  const start = migration.indexOf(marker);
+  const start = source.indexOf(marker);
   expect(start, `${name} deve existir na migration`).toBeGreaterThanOrEqual(0);
-  const tail = migration.slice(start);
+  const tail = source.slice(start);
   const end = tail.indexOf('\n$$;');
   expect(end, `${name} deve terminar com $$;`).toBeGreaterThanOrEqual(0);
   return tail.slice(0, end + 4);
@@ -31,88 +44,88 @@ function section(startMarker: string, endMarker: string): string {
 }
 
 describe('edição de PV com OP avançada — cancelamento atômico', () => {
-  it('bloqueia e trava o PV/OPs antes de cancelar, salvar e recriar na mesma função', () => {
-    const writer = sqlFunction('update_sale_order_with_atomic_op_cancel');
-    const orderedTokens = [
-      "pg_advisory_xact_lock(hashtext(\n    'promote_sale_order:' || p_order_id::text)",
-      "pg_advisory_xact_lock(hashtextextended('strap-pv-auto-intent'",
-      'FROM public.sale_orders so',
-      "'strap-demand-source:sale_order:' || p_order_id::text",
-      "'update_sale_order_with_teardown:' || p_order_id::text",
-      'PERFORM o.id\n    FROM public.orders o',
-      "SET status = 'Cancelada'",
-      'release_order_reservations(v_op.id)',
-      'update_sale_order_with_teardown(',
-      'promote_sale_order_to_production(',
-      "jsonb_array_length(v_promotion_result -> 'itens_falha') > 0",
-    ].map((token) => writer.indexOf(token));
+  it('deriva teardown e fatos sob lock no command, sem confiar na lista do browser', () => {
+    const writer = sqlFunctionFrom(commandExecution, 'execute_sale_order_command');
 
-    expect(orderedTokens.every((position) => position >= 0)).toBe(true);
-    expect([...orderedTokens].sort((left, right) => left - right)).toEqual(orderedTokens);
-    expect(writer).toContain("v_order_status NOT IN ('Aprovado', 'Em Produção')");
-    expect(writer).toContain("o.status NOT IN ('Em Produção', 'Concluída', 'Finalizado')");
-    expect(writer).toContain("AND NOT (o.id = ANY(p_cancel_op_ids))");
-    expect(writer).toContain('v_locked_count <> v_requested_count');
-    expect(writer).toMatch(
-      /PERFORM o\.id[\s\S]*?WHERE o\.sale_order_id = p_order_id[\s\S]*?ORDER BY o\.id[\s\S]*?FOR UPDATE;[\s\S]*?SELECT count\(\*\)::integer INTO v_locked_count/,
-    );
-    expect(writer).toContain(
-      "jsonb_typeof(v_promotion_result -> 'itens_falha') IS DISTINCT FROM 'array'",
-    );
-    expect(writer).toContain('cancelamento e edicao foram revertidos');
+    expect(writer).toContain("'sale-order-command:' || p_sale_order_id::text");
+    expect(writer).toMatch(/FROM public\.sale_orders so[\s\S]*?FOR UPDATE;/);
+    expect(writer).toMatch(/FROM public\.sale_order_items soi[\s\S]*?FOR UPDATE NOWAIT;/);
+    expect(writer).toMatch(/FROM public\.orders o[\s\S]*?FOR UPDATE NOWAIT;/);
+    expect(writer).toContain('v_teardown_op_ids := v_derived_teardown_op_ids');
+    expect(writer).toContain('teardown_op_ids contém OP que o payload de itens não remove');
+    expect(writer).toContain('Existem OPs avançadas fora de cancel_op_ids');
+    expect(writer).toContain('OP removida possui fato/estado não compensável pelo update');
+    expect(writer).toContain('public.update_sale_order_with_atomic_op_cancel(');
+    expect(writer).toContain('public.update_sale_order_with_teardown(');
     expect(writer).not.toContain('restore_sole_grade_for_order');
     expect(writer).not.toContain('restore_product_stocks_for_order');
-    expect(writer).not.toContain('EXCEPTION WHEN OTHERS');
   });
 
-  it('fecha a função mutável para authenticated autorizado e não expõe auxiliares', () => {
-    const writer = sqlFunction('update_sale_order_with_atomic_op_cancel');
-
+  it('fecha a fronteira mutável e mantém writers internos fora de authenticated', () => {
+    const writer = sqlFunctionFrom(commandExecution, 'execute_sale_order_command');
     expect(writer).toContain('SECURITY DEFINER');
     expect(writer).toContain('public.is_approved_user()');
-    expect(writer).toContain(
-      "public.user_has_any_role(ARRAY['admin', 'gerente', 'comercial'])",
+    expect(commandExecution).toMatch(
+      /REVOKE ALL ON FUNCTION public\.execute_sale_order_command\(uuid, text, bigint, text, jsonb, uuid\)\s+FROM PUBLIC, anon;/,
     );
-    expect(migration).toMatch(
-      /REVOKE ALL ON FUNCTION public\.update_sale_order_with_atomic_op_cancel\(uuid, jsonb, jsonb, uuid\[\], uuid\[\]\)\s+FROM PUBLIC, anon, service_role;/,
+    expect(commandExecution).toMatch(
+      /GRANT EXECUTE ON FUNCTION public\.execute_sale_order_command\(uuid, text, bigint, text, jsonb, uuid\)\s+TO authenticated, service_role;/,
     );
-    expect(migration).toMatch(
-      /GRANT EXECUTE ON FUNCTION public\.update_sale_order_with_atomic_op_cancel\(uuid, jsonb, jsonb, uuid\[\], uuid\[\]\)\s+TO authenticated;/,
+    expect(commandAcl).toMatch(
+      /REVOKE ALL ON FUNCTION public\.update_sale_order_with_atomic_op_cancel\(uuid, jsonb, jsonb, uuid\[\], uuid\[\]\)[\s\S]*?FROM PUBLIC, anon, authenticated, service_role;/,
+    );
+    expect(commandAcl).not.toMatch(
+      /GRANT EXECUTE ON FUNCTION public\.update_sale_order_with_atomic_op_cancel[\s\S]*?TO authenticated/,
     );
   });
 
-  it('faz o preflight com o mesmo writer em subtransação e só captura a sentinela', () => {
-    const preflight = sqlFunction('preflight_sale_order_atomic_op_cancel');
+  it('preflight inspeciona o mesmo payload e devolve impacto acionável sem DML', () => {
+    const preflight = sqlFunctionFrom(commandFoundation, 'preflight_sale_order_command');
 
-    expect(preflight).toContain('public.update_sale_order_with_atomic_op_cancel(');
-    expect(preflight).toContain("ERRCODE = 'PZ001'");
-    expect(preflight).toContain("EXCEPTION WHEN SQLSTATE 'PZ001' THEN");
-    expect(preflight).not.toContain('WHEN OTHERS');
+    expect(preflight).toContain("v_update_items jsonb := p_payload -> 'items'");
+    expect(preflight).toContain('v_update_payload_inspected := true');
+    expect(preflight).toContain("'payload_inspected', v_update_payload_inspected");
+    expect(preflight).toContain("'derived_teardown_op_ids', to_jsonb(v_update_derived_teardown_op_ids)");
+    expect(preflight).toContain("'required_cancel_op_ids', to_jsonb(v_update_advanced_op_ids)");
+    expect(preflight).toContain("'missing_cancel_op_ids', to_jsonb(v_update_missing_cancel_op_ids)");
+    expect(preflight).toContain("'non_reversible_removed_op_ids'");
     expect(preflight).not.toMatch(/(?:INSERT INTO|UPDATE|DELETE FROM)\s+public\./i);
-    expect(migration).toMatch(
-      /REVOKE ALL ON FUNCTION public\.preflight_sale_order_atomic_op_cancel\(uuid, jsonb, jsonb, uuid\[\], uuid\[\]\)\s+FROM PUBLIC, anon, service_role;/,
-    );
-    expect(migration).toMatch(
-      /GRANT EXECUTE ON FUNCTION public\.preflight_sale_order_atomic_op_cancel\(uuid, jsonb, jsonb, uuid\[\], uuid\[\]\)\s+TO authenticated;/,
-    );
   });
 
-  it('não cancela OP no browser e envia os mesmos argumentos ao preflight e ao writer', () => {
-    const hookPreflight = saleOrderHooks.indexOf("'preflight_sale_order_atomic_op_cancel'");
-    const hookWriter = saleOrderHooks.indexOf("'update_sale_order_with_atomic_op_cancel'");
-
-    expect(hookPreflight).toBeGreaterThanOrEqual(0);
-    expect(hookWriter).toBeGreaterThan(hookPreflight);
-    expect(saleOrderHooks).toContain('p_cancel_op_ids: atomicCancelIds');
-    expect(saleOrderHooks).toMatch(
-      /const atomicArgs = \{[\s\S]*?\.\.\.writerArgs,[\s\S]*?p_cancel_op_ids: atomicCancelIds,[\s\S]*?\};[\s\S]*?preflight_sale_order_atomic_op_cancel[\s\S]*?atomicArgs[\s\S]*?update_sale_order_with_atomic_op_cancel[\s\S]*?atomicArgs/,
+  it('não lê/cancela OP no browser e usa payload idêntico em exatamente dois comandos', () => {
+    const updateHook = saleOrderHooks.slice(
+      saleOrderHooks.indexOf('export function useUpdateSaleOrder()'),
+      saleOrderHooks.indexOf('export interface OverrideSaleOrderItemStrapSourcingResult'),
     );
+
+    expect(updateHook).toContain('const commandPayload = {');
+    expect(updateHook.match(/payload: commandPayload/g)).toHaveLength(2);
+    expect(updateHook.match(/preflightSaleOrderCommand\(/g)).toHaveLength(1);
+    expect(updateHook.match(/executeSaleOrderCommand</g)).toHaveLength(1);
+    expect(updateHook).not.toContain(".from('orders')");
+    expect(updateHook).not.toContain(".from('nfe_emitidas')");
+    expect(updateHook).not.toContain(".from('products')");
+    expect(updateHook).not.toContain(".from('sale_orders')");
+    expect(updateHook).not.toContain('teardown_op_ids');
+    expect(updateHook).not.toContain('useCancelOrdersBatch');
     expect(saleOrderHooks).toMatch(
-      /const res = atomicCancelIds\.length > 0[\s\S]*?\? atomicPromotionResult[\s\S]*?: await runPromotionEngine/,
+      /const commandPayload = \{[\s\S]*?header: headerForRpc,[\s\S]*?items: itemsPayload,[\s\S]*?cancel_op_ids: atomicCancelIds,[\s\S]*?billing_patch: billingPatch,[\s\S]*?factoring_patch: factoringPatch/,
     );
     expect(saleOrderForm).not.toContain('useCancelOrdersBatch');
     expect(saleOrderForm).not.toContain('cancelOrdersBatch.mutate');
     expect(saleOrderForm).toContain('dispatchMutation(pendingOverride, ops.map((op) => op.id))');
+  });
+
+  it('criação envia todos os itens em um único command sem preconsulta de FK', () => {
+    const createHook = saleOrderHooks.slice(
+      saleOrderHooks.indexOf('export function useCreateSaleOrder()'),
+      saleOrderHooks.indexOf('interface PromotionEngineResult'),
+    );
+
+    expect(createHook.match(/createSaleOrderCommand</g)).toHaveLength(1);
+    expect(createHook).not.toContain(".from('products')");
+    expect(createHook).toContain('items: itemPayload');
+    expect(createHook).toContain('header: insertData');
   });
 
   it('explica que só reservas pendentes são liberadas e mantém o modal aberto durante o save', () => {

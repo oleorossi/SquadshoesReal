@@ -13,6 +13,14 @@ export interface TimeControlResolvedFilters {
   dateRange: { startDate: string; endDate: string } | null;
 }
 
+export function createTimesheetImportBatchId(
+  startDate: string,
+  endDate: string,
+  timestamp = Date.now(),
+): string {
+  return `${startDate}_${endDate}_${timestamp}`;
+}
+
  export function isValidIsoDate(value?: string): value is string {
    if (!value || !ISO_DATE_PATTERN.test(value)) return false;
    const year = parseInt(value.split('-')[0], 10);

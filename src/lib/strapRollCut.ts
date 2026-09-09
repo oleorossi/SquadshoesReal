@@ -276,7 +276,10 @@ export interface ArtisanalStrapCutRow {
     confirmedYieldMPerM: number;
     usableBaseWidthMm: number;
     theoreticalYieldMPerM: number;
+    /** Custo de transformação (mão de obra) R$/m; null se indisponível. */
+    transformationCostPerM: number | null;
     blockingReasons: string[];
+    snapshotWarning?: string | null;
   };
   /**
    * Material-base do rolo (ex.: "NAPA SOFT") — `base_product_name` da receita

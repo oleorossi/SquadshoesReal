@@ -20,8 +20,9 @@ type OutdatedStatus = {
 /**
  * Hook: status de propagação ficha técnica → PV
  * Polling a cada 30s pra refletir o housekeeping do flag pelo cron
- * (process_outdated_reservations, a cada 2min — o auto-refresh foi aposentado
- * em 2026-06; reservas são atualizadas no fluxo de usuário aprovado).
+ * (process_outdated_reservations, a cada 2min). PVs Aprovados sem produção
+ * são auto-resyncados no save da ficha; o badge residual cobre OPs já
+ * iniciadas ou falhas parciais da propagação.
  *
  * D7 (audit PV 2026-06): também lê sale_orders.costs_dirty_at — a view
  * v_pv_outdated_status NÃO expõe essa coluna, então buscamos direto do PV.
@@ -70,24 +71,25 @@ const labelMap: Record<OutdatedStatus['status_label'], { text: string; tooltip: 
     text: 'Ficha/itens editados após reservar',
     tooltip:
       'A ficha técnica ou os itens deste PV foram editados depois que as reservas foram feitas. ' +
-      'As reservas são atualizadas ao salvar o PV/ficha ou via "Resync OPs". ' +
-      'Este aviso some sozinho na próxima varredura.',
+      'O sistema preservou as OPs e reservas existentes. Revise o impacto e use "Resync OPs" ' +
+      'somente se a alteração realmente deve substituir o plano atual.',
     severity: 'warn',
   },
   snapshot_outdated: {
-    text: 'Ficha técnica alterada após produção iniciar',
+    text: 'Consumo congelado desatualizado — OP já iniciada',
     tooltip:
-      'A ficha técnica foi modificada depois que esta OP entrou em produção. ' +
-      'O snapshot congelado em produção continua válido (audit trail), mas considere ' +
-      'rodar "Resync OPs" se a mudança foi corretiva.',
+      'A ficha técnica mudou depois que esta OP já tinha fato físico de produção. ' +
+      'PVs aprovados sem produção são atualizados automaticamente no save da ficha; ' +
+      'aqui o snapshot continua válido para auditoria e qualquer correção deve ser compensatória, ' +
+      'não um resync destrutivo.',
     severity: 'warn',
   },
   reservations_and_snapshot_outdated: {
     text: 'Ficha modificada — snapshot e reservas desatualizados',
     tooltip:
-      'A ficha técnica foi editada após algumas OPs entrarem em produção. ' +
-      'As reservas pré-produção são atualizadas ao salvar o PV/ficha ou via "Resync OPs". ' +
-      'Pra OPs já em produção, considere "Resync OPs" se a mudança foi corretiva.',
+      'A ficha técnica foi editada com OPs já em produção. ' +
+      'OPs aprovadas sem fato físico são atualizadas no save; as iniciadas foram preservadas. ' +
+      'Revise antes de um resync explícito; com fato físico, use movimento compensatório.',
     severity: 'warn',
   },
 };

@@ -1,8 +1,8 @@
 /**
  * Guard de harmonização TS↔SQL (lado SQL).
  *
- * Por padrão é SKIP (não roda no CI — as suítes de banco escrevem em produção).
- * Para executar: `bun run test:db` (ver src/test/dbGuards.ts).
+ * Por padrão é SKIP. No CI, roda apenas no job semanal contra o projeto
+ * Supabase isolado; localmente, use `bun run test:db` em ambiente descartável.
  *
  * Invoca `run_consumption_parity_tests()` (migration
  * 20260722120000_consumption-consistency-and-parity-guards.sql), que TRAVA o

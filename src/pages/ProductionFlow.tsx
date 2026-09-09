@@ -31,6 +31,7 @@ import { SignedImage } from '@/components/ui/signed-image';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { EmptyState } from '@/components/ui/empty-state';
+import { narrowPostgrestRelation } from '@/lib/narrowPostgrestClient';
 import {
   Package, Image as ImageIcon, Buildings, Receipt, CalendarBlank, MagnifyingGlass,
   Check, CircleNotch as Loader2, Circle, Minus,
@@ -76,6 +77,24 @@ interface FlowRow {
   prog: number;
   bySector: Map<number, OrderStage>;
 }
+
+interface ProductionFlowDetail {
+  id: string;
+  color: string | null;
+  grade: Record<string, number> | null;
+  technical_sheets: {
+    name: string | null;
+    code: string | null;
+    image_url: string | null;
+    images: string[] | null;
+    reference_color_variants: Array<{
+      color: string | null;
+      image_url: string | null;
+    }>;
+  } | null;
+}
+
+const productionFlowDetailRelation = narrowPostgrestRelation<ProductionFlowDetail>(supabase);
 
 export default function ProductionFlow({ embedded = false }: { embedded?: boolean } = {}) {
   const { data: orders = [] } = useOrders();
@@ -186,12 +205,14 @@ export default function ProductionFlow({ embedded = false }: { embedded?: boolea
     enabled: !!summary?.id,
     staleTime: 60_000,
     queryFn: async () => {
-      const { data, error } = await supabase
+      // Fachada estreita: evita o limite de instanciação do select relacional
+      // mantendo explícito o único formato consumido pelo resumo.
+      const { data, error } = await productionFlowDetailRelation
         .from('orders')
         .select('id, color, grade, technical_sheets:reference_id(name, code, image_url, images, reference_color_variants(color, image_url))')
         .eq('id', summary!.id).maybeSingle();
       if (error) throw error;
-      return data as any;
+      return data;
     },
   });
   const detailPhoto = useMemo(() => {

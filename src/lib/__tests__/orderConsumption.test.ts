@@ -19,13 +19,12 @@ import {
 } from '@/hooks/useBulkOrderConsumption';
 
 /**
- * GATE DE PARIDADE (ficha do operador ↔ modal "Consumo de Materiais").
+ * ORÁCULO TS DE PARIDADE E CONTRATO DO ADAPTADOR.
  *
- * Ambos os caminhos chamam `computeConsumptionForItems` — a ficha só adapta o
- * shape via `toBulkConsumptionRow`, preservando a QUANTIDADE 1:1. Este teste
- * trava isso com valores golden hand-computados que exercitam TODAS as regras
- * canônicas (CLAUDE.md): dm²/par → metro linear pela largura da ficha; placa
- * via área do grupo; palmilha = PLACA + FORRAÇÃO; solado por numeração.
+ * O relatório e a ficha não chamam mais `computeConsumptionForItems`: a
+ * migration 123 os alimenta pelo motor SQL operacional. Estes goldens mantêm
+ * o antigo motor como oráculo independente e travam que o adaptador visual
+ * `toBulkConsumptionRow` não altera a quantidade recebida.
  *
  * Cenário (espelha o exemplo do user — setor Corte Fibra):
  *   item: ref 'sheet-1', cor PRETO, quantity 24, grade base soma 6 (→ 4 fichas)
@@ -74,6 +73,25 @@ function buildItem(over: Partial<ConsumptionItem> = {}): ConsumptionItem {
     ...over,
   };
 }
+
+describe('material de tira por posição no oráculo TS', () => {
+  it('soma posições da mesma base e separa UUIDs distintos mesmo com nome igual', () => {
+    const positions = [
+      '11111111-1111-4111-8111-111111111111',
+      '22222222-2222-4222-8222-222222222222',
+      '33333333-3333-4333-8333-333333333333',
+    ].map((id, index) => ({ id, technical_strap_line_id: id, label: 'TIRA',
+      group_name: 'TIRA OVERLOCK 5MM', color: 'PRETO', consumption: 40,
+      identity_basis: 'reference_base', material_mode: 'select_on_order',
+      base_group_id: index === 1 ? 'base-b' : 'base-a', base_group_name: 'NAPA SOFT',
+    }));
+    const rows = computeConsumptionForItems([buildItem({ strap_colors: positions })], buildContext())
+      .filter(row => row.componentType === 'Tiras');
+    expect(rows).toHaveLength(2);
+    expect(rows.find(row => row.materialFamilyId === 'base-a')?.totalQuantity).toBeCloseTo(19.2);
+    expect(rows.find(row => row.materialFamilyId === 'base-b')?.totalQuantity).toBeCloseTo(9.6);
+  });
+});
 
 function buildContext(): ConsumptionContext {
   return {
@@ -150,6 +168,142 @@ describe('orderConsumption — motor canônico', () => {
     const cola = find('Químicos', 'COLA SUPER')!;
     expect(cola.productUnit).toBe('kg');
     expect(cola.totalQuantity).toBeCloseTo(0.24, 6);
+  });
+
+  it('consome cabedal e tiras juntos quando has_straps está habilitado', () => {
+    const item = buildItem({
+      strap_colors: [{
+        id: 'tira-1',
+        label: 'TIRA 1',
+        group_id: 'g-tira',
+        group_name: 'TIRA CHATA 8MM',
+        color: 'PRETO',
+        consumption: 10,
+        consumption_per_size: { '34': 10, '35': 10, '36': 10, '37': 10, '38': 10, '39': 10 },
+      }],
+      technical_sheets: buildSheet({ has_straps: true }),
+    });
+
+    const rows = computeConsumptionForItems([item], buildContext());
+    const cabedal = rows.find((row) => row.componentType === 'Cabedal');
+    const tira = rows.find((row) => row.componentType === 'Tiras');
+
+    expect(cabedal?.groupName).toBe('NAPA SOFT');
+    expect(cabedal?.totalQuantity).toBeCloseTo(1.44, 6);
+    expect(tira?.groupName).toBe('TIRA CHATA 8MM');
+    expect(tira?.totalQuantity).toBeCloseTo(2.4, 6);
+  });
+
+  it('unifica Material 1 + Material 2 quando ambos resolvem para o mesmo SKU', () => {
+    const item = buildItem({
+      technical_sheets: buildSheet({
+        components_accessories: [{
+          material: 'NAPA SOFT',
+          consumption: 2,
+          mandatory: true,
+        }],
+      }),
+    });
+
+    const cabedais = computeConsumptionForItems([item], buildContext())
+      .filter((row) => row.componentType === 'Cabedal');
+
+    expect(cabedais).toHaveLength(1);
+    expect(cabedais[0].productIds).toEqual(['p-napa-preto']);
+    // (6 + 2) dm²/par × 24 pares ÷ 100 dm²/m.
+    expect(cabedais[0].totalQuantity).toBeCloseTo(1.92, 6);
+  });
+
+  it('consome Material 1 + Material 2 pela grade quando os escalares são zero', () => {
+    const perSizeMain = { '34': 5, '35': 5, '36': 5, '37': 5, '38': 5, '39': 5 };
+    const perSizeAdditional = { '34': 2, '35': 2, '36': 2, '37': 2, '38': 2, '39': 2 };
+    const item = buildItem({
+      technical_sheets: buildSheet({
+        upper_consumption: 0,
+        upper_consumption_per_size: perSizeMain,
+        components_accessories: [{
+          material: 'NAPA SOFT',
+          consumption: 0,
+          consumption_per_size: perSizeAdditional,
+          mandatory: true,
+        }],
+      }),
+    });
+
+    const cabedais = computeConsumptionForItems([item], buildContext())
+      .filter((row) => row.componentType === 'Cabedal');
+
+    expect(cabedais).toHaveLength(1);
+    expect(cabedais[0].productIds).toEqual(['p-napa-preto']);
+    // (5 + 2) dm²/par × 24 pares ÷ 100 dm²/m.
+    expect(cabedais[0].totalQuantity).toBeCloseTo(1.68, 6);
+  });
+
+  it('não unifica dois SKUs pinados diferentes do mesmo grupo/cor', () => {
+    const ctx = buildContext();
+    ctx.allProducts.push({
+      id: 'p-napa-preto-b', name: 'NAPA SOFT PRETO B', color: 'PRETO',
+      group_id: 'g-napa', quantity: 0, reserved_stock: 0, stock_grade: null,
+      sole_classification: null,
+    } as any);
+    const item = buildItem({
+      technical_sheets: buildSheet({
+        upper_material_product_id: 'p-napa-preto',
+        components_accessories: [{
+          material: 'NAPA SOFT',
+          product_id: 'p-napa-preto-b',
+          consumption: 2,
+          mandatory: true,
+        }],
+      }),
+    });
+
+    const cabedais = computeConsumptionForItems([item], ctx)
+      .filter((row) => row.componentType === 'Cabedal');
+
+    expect(cabedais).toHaveLength(2);
+    expect(cabedais.map((row) => row.productIds?.[0]).sort())
+      .toEqual(['p-napa-preto', 'p-napa-preto-b']);
+    expect(cabedais.reduce((sum, row) => sum + row.totalQuantity, 0)).toBeCloseTo(1.92, 6);
+  });
+
+  it('consome sobra de napa de outra espessura como linha própria (CONHAQUE 1.2 + 1.0)', () => {
+    const ctx = buildContext();
+    ctx.productGroups.push({
+      id: 'g-napa-12', name: 'NAPA CONHAQUE 1.2',
+      dimensions_length: null, dimensions_width: 1000, dimensions_unit: 'mm',
+    } as any);
+    ctx.allProducts.push({
+      id: 'p-napa-12', name: 'NAPA CONHAQUE 1.2 PRETO', color: 'PRETO',
+      group_id: 'g-napa-12', quantity: 0, reserved_stock: 0, stock_grade: null,
+      sole_classification: null,
+    } as any);
+    ctx.componentSheets.push({
+      product_id: 'p-napa-12', group_id: 'g-napa-12',
+      dimensions_width: 1000, dimensions_unit: 'mm',
+    } as any);
+    const item = buildItem({
+      technical_sheets: buildSheet({
+        upper_material: 'NAPA CONHAQUE 1.0',
+        upper_material_product_id: 'p-napa-preto',
+        components_accessories: [{
+          material: 'NAPA CONHAQUE 1.2',
+          product_id: 'p-napa-12',
+          leftover: true,
+          mandatory: true,
+          consumption: 2,
+        }],
+      }),
+    });
+
+    const cabedais = computeConsumptionForItems([item], ctx)
+      .filter((row) => row.componentType === 'Cabedal');
+
+    expect(cabedais).toHaveLength(2);
+    const sobra = cabedais.find((row) => (row.productIds || []).includes('p-napa-12'));
+    expect(sobra?.materialName).toMatch(/^Sobra · /);
+    expect(cabedais.map((row) => row.productIds?.[0]).sort())
+      .toEqual(['p-napa-12', 'p-napa-preto']);
   });
 
   it('palmilha (placa+forração) vem da spec do SOLADO por número quando preenchida — não do escalar da ficha', () => {
@@ -428,11 +582,10 @@ describe('orderConsumption — motor canônico', () => {
     expect(rows.find(r => r.componentType === 'Solado')).toBeDefined();
   });
 
-  // ── Embalagem: filtro de caixa por packaging_mode (bug PV-00141) ───────────
-  // A ficha lista DUAS caixas no BOM como alternativas (colmeia 0.083/par +
-  // individual 1/par), ambas no grupo "EMBALAGEM". Sem filtro, addConsumptionRow
-  // funde as duas e soma a qtd; com packaging_mode, mostra só a do modo. Caixa
-  // física fecha por item/OP, então o motor faz CEIL antes de consolidar.
+  // ── Embalagem canônica por packaging_mode/slots UUID ──────────────────────
+  // As duas caixas antigas continuam no BOM para preservar histórico, mas a
+  // allow-list estrutural as remove do cálculo operacional. A linha exibida
+  // vem exclusivamente do slot box_types do grupo de solado.
   function ctxComCaixas(): ConsumptionContext {
     const ctx = buildContext();
     ctx.materials = [
@@ -440,20 +593,42 @@ describe('orderConsumption — motor canônico', () => {
       { sheet_id: 'sheet-1', product_id: 'p-cx-colmeia', group_id: 'g-embal', quantity_per_unit: 0.083, color: null, products: { name: 'CAIXA COLMEIA 11', unit: 'un', category: 'Embalagem' }, product_groups: { name: 'EMBALAGEM' } },
       { sheet_id: 'sheet-1', product_id: 'p-cx-individual', group_id: 'g-embal', quantity_per_unit: 1, color: null, products: { name: 'CAIXA INDIVIDUAL 11', unit: 'un', category: 'Embalagem' }, product_groups: { name: 'EMBALAGEM' } },
     ];
+    ctx.productGroups.push({
+      id: 'g-sole', name: 'SOLADO 11', dimensions_length: null, dimensions_width: null,
+      dimensions_unit: null, box_type_id: 'bt-individual', box_type_master_id: 'bt-master',
+      box_type_colmeia_id: 'bt-colmeia', box_type_fitilho_id: 'bt-fitilho',
+      pairs_per_box_individual: 1, pairs_per_box_master: 12,
+      pairs_per_box_colmeia: 12, pairs_per_box_fitilho: 12,
+    });
+    ctx.boxTypes = [
+      { id: 'bt-individual', nome: 'CAIXA INDIVIDUAL 11', tipo: 'individual', quantity: 100, unit_price: 1, active: true },
+      { id: 'bt-master', nome: 'CAIXA MASTER 11', tipo: 'master', quantity: 100, unit_price: 8, active: true },
+      { id: 'bt-colmeia', nome: 'CAIXA COLMEIA 11', tipo: 'colmeia', quantity: 100, unit_price: 4, active: true },
+      { id: 'bt-fitilho', nome: 'FITILHO', tipo: 'fitilho', quantity: 100, unit_price: 0.2, active: true, metros_per_amarrado_default: 1.5 },
+    ];
+    ctx.legacyPackagingProductIds = new Set(['p-cx-colmeia', 'p-cx-individual']);
     return ctx;
   }
 
   it('packaging_mode colmeia → mostra só CAIXA COLMEIA (não soma a individual)', () => {
-    const item = buildItem({ packagingMode: 'colmeia' });
+    const item = buildItem({
+      packagingMode: 'colmeia',
+      technical_sheets: buildSheet({ sole_group_id: 'g-sole' }),
+    });
     const rows = computeConsumptionForItems([item], ctxComCaixas());
     const embal = rows.filter(r => r.componentType === 'Embalagem');
     expect(embal).toHaveLength(1);
     expect(embal[0].materialName).toBe('CAIXA COLMEIA 11');
-    expect(embal[0].totalQuantity).toBe(2); // ceil(1,992), não 26
+    // Regra de sobra por numeração: a grade de 6 pares é menor que a caixa de
+    // 12; cada uma das 4 fichas viaja como uma caixa parcial.
+    expect(embal[0].totalQuantity).toBe(4);
   });
 
   it('packaging_mode individual → mostra só CAIXA INDIVIDUAL', () => {
-    const item = buildItem({ packagingMode: 'individual' });
+    const item = buildItem({
+      packagingMode: 'individual',
+      technical_sheets: buildSheet({ sole_group_id: 'g-sole' }),
+    });
     const rows = computeConsumptionForItems([item], ctxComCaixas());
     const embal = rows.filter(r => r.componentType === 'Embalagem');
     expect(embal).toHaveLength(1);
@@ -461,19 +636,31 @@ describe('orderConsumption — motor canônico', () => {
     expect(embal[0].totalQuantity).toBeCloseTo(24, 6);
   });
 
-  it('SEM packaging_mode → lista as duas caixas em linhas separadas (cada uma na sua qtd)', () => {
-    // Sem modo definido não dá pra escolher a alternativa, mas as duas caixas
-    // são PRODUTOS distintos: cada uma vira sua própria linha com a quantidade
-    // física. Antes fundiam numa linha só do grupo EMBALAGEM, somando colmeia
-    // fracionária + individual e rotulando tudo com o primeiro nome.
-    const item = buildItem(); // sem packagingMode
+  it('individual_fitilho → mostra somente individual + fitilho em metros', () => {
+    const item = buildItem({
+      packagingMode: 'individual_fitilho',
+      technical_sheets: buildSheet({ sole_group_id: 'g-sole' }),
+    });
     const rows = computeConsumptionForItems([item], ctxComCaixas());
     const embal = rows.filter(r => r.componentType === 'Embalagem');
     expect(embal).toHaveLength(2);
-    const colmeia = embal.find(r => r.materialName === 'CAIXA COLMEIA 11');
     const individual = embal.find(r => r.materialName === 'CAIXA INDIVIDUAL 11');
-    expect(colmeia?.totalQuantity).toBe(2);
+    const fitilho = embal.find(r => r.materialName === 'FITILHO');
     expect(individual?.totalQuantity).toBeCloseTo(24, 6);
+    expect(fitilho?.productUnit).toBe('m');
+    expect(fitilho?.totalQuantity).toBe(3);
+  });
+
+  it('SEM packaging_mode falha fechado e não escolhe nenhuma caixa do BOM', () => {
+    const item = buildItem({ technical_sheets: buildSheet({ sole_group_id: 'g-sole' }) });
+    const rows = computeConsumptionForItems([item], ctxComCaixas());
+    const embal = rows.filter(r => r.componentType === 'Embalagem');
+    expect(embal).toHaveLength(1);
+    expect(embal[0]).toMatchObject({
+      materialName: 'Embalagem não resolvida',
+      totalQuantity: 0,
+    });
+    expect(embal[0].warning).toContain('Modo de embalagem');
   });
 
   it('produtos distintos no mesmo grupo/cor/unidade NÃO se fundem (PV-00147: dois binóculos)', () => {
@@ -497,6 +684,28 @@ describe('orderConsumption — motor canônico', () => {
     expect(binos).toHaveLength(2);
     expect(binos.map(r => r.materialName).sort()).toEqual(['Binóculo 10mm', 'Binóculo 10mm Strass']);
     for (const r of binos) expect(r.totalQuantity).toBeCloseTo(24 * 4, 6);
+  });
+
+  it('deduplica product_id repetido no fallback de direct_components (PV-00162/NL03)', () => {
+    // A ficha viva tinha a mesma entrada ELÁSTICO 6MM, 20 cm/par, repetida 3×
+    // no JSON. O SQL usa v_dc_seen e calcula 24×20 = 480 cm; o TS somava as
+    // três cópias e mostrava 1.440 cm no relatório.
+    const ctx = buildContext();
+    ctx.allProducts.push({
+      id: 'p-elastico', name: 'ELÁSTICO 6MM', color: 'PRETO', group_id: 'g-comp',
+      quantity: 0, reserved_stock: 0, unit: 'cm', category: 'Componente',
+    } as any);
+    ctx.productGroups.push({
+      id: 'g-comp', name: 'COMPONENTES', dimensions_length: null,
+      dimensions_width: null, dimensions_unit: null,
+    } as any);
+    const duplicated = { product_id: 'p-elastico', quantity: 20, unit: 'cm' };
+    const sheet = { ...buildSheet(), direct_components: [duplicated, duplicated, duplicated] };
+
+    const rows = computeConsumptionForItems([buildItem({ technical_sheets: sheet })], ctx);
+    const elastico = rows.filter((r) => r.productIds?.includes('p-elastico'));
+    expect(elastico).toHaveLength(1);
+    expect(elastico[0].totalQuantity).toBe(24 * 20);
   });
 
   it('solado fachetado gera linha Fachete (forração extra) convertida dm²→metro', () => {
@@ -1475,10 +1684,17 @@ describe('orderConsumption — contrato de colunas do fetch', () => {
   it('fixes da auditoria de débito não regridem (BOM-1/BOM-3/TS-1)', () => {
     const bomSrc = readFileSync(resolve(process.cwd(), 'src/lib/bomConsumption.ts'), 'utf8');
     expect(bomSrc).toContain("materialName: 'Forração Palmilha'");
+    expect(bomSrc).toContain("componentType: 'Forração Palmilha'");
+    expect(bomSrc).toContain("componentType: 'Fachete'");
     expect(bomSrc).toContain('suppressCabedalForracao');
     expect(bomSrc).toContain('insoleLiningSpecBySole');
     const dialogSrc = readFileSync(resolve(process.cwd(), 'src/components/orders/OrderConsumptionDialog.tsx'), 'utf8');
     expect(dialogSrc).not.toMatch(/fichas:\s*1[,\s]/);
+    expect(dialogSrc).toContain('fetchCanonicalConsumptionReport');
+    expect(dialogSrc).not.toContain('computeConsumptionForItems');
+    const bulkSrc = readFileSync(resolve(process.cwd(), 'src/hooks/useBulkOrderConsumption.ts'), 'utf8');
+    expect(bulkSrc).toContain('fetchCanonicalConsumptionReport');
+    expect(bulkSrc).not.toContain('computeConsumptionForItems');
   });
 
   // Segmentação por cor × família de napa (2026-07-22, specs/tira-base-napa-por-
@@ -1526,6 +1742,33 @@ describe('orderConsumption — contrato de colunas do fetch', () => {
       .find(row => row.componentType === 'Tiras')!;
 
     expect(tira.materialFamily ?? null).toBeNull();
+  });
+
+  it('STRASS sem texto de cor (só color_id / finished_product_group) continua no consumo', () => {
+    const strap = [{
+      technical_strap_line_id: '11111111-1111-4111-8111-111111111111',
+      label: 'STRASS LATERAL',
+      color: '',
+      color_id: '22222222-2222-4222-8222-222222222222',
+      group_id: 'g-strass',
+      group_name: 'TIRA STRASS 6MM',
+      identity_basis: 'finished_product_group' as const,
+      consumption: 40,
+    }];
+    const item = buildItem({
+      color: 'OFF WHITE',
+      strap_colors: strap,
+      technical_sheets: buildSheet({ upper_material: 'NAPA SOFT' }),
+    });
+    const tiras = computeConsumptionForItems([item], buildContext())
+      .filter((row) => row.componentType === 'Tiras');
+
+    expect(tiras).toHaveLength(1);
+    expect(tiras[0].groupName).toMatch(/STRASS/i);
+    // Não herda a cor do cabedal — posição ainda sem texto de cor.
+    expect(tiras[0].color).toBe('—');
+    expect(tiras[0].materialFamily ?? null).toBeNull();
+    expect(tiras[0].totalQuantity).toBeGreaterThan(0);
   });
 
   it('a base estrutural da tira não muda por alternativa legada de Forração/cor', () => {

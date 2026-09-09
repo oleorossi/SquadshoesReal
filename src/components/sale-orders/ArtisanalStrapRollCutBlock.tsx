@@ -2,11 +2,12 @@ import { Badge } from '@/components/ui/badge';
 import { Link } from 'react-router-dom';
 import { Scissors, Warning } from '@phosphor-icons/react';
 import type { ArtisanalStrapCutRow } from '@/lib/strapRollCut';
+import { formatCurrency, formatMoney } from '@/lib/utils';
 
 /**
- * Orientação operacional derivada exclusivamente do snapshot da receita aprovada.
- * Mostra metros de napa a separar, rendimento e dimensões de conferência; o rolo
- * fixo legado de 40 m × 1370 mm não participa do cálculo.
+ * Orientação operacional derivada do saldo líquido persistido pelo worker e do
+ * snapshot da receita aprovada. Mostra metros de napa a separar, rendimento e
+ * dimensões de conferência; o rolo fixo legado não participa do cálculo.
  */
 /** Uma linha de tira: identidade exata + napa requerida pelo rendimento aprovado. */
 function StrapLine({ row }: { row: ArtisanalStrapCutRow }) {
@@ -14,7 +15,11 @@ function StrapLine({ row }: { row: ArtisanalStrapCutRow }) {
   const blocked = !snapshot
     || snapshot.baseRequiredM <= 0
     || snapshot.confirmedYieldMPerM <= 0
-    || snapshot.blockingReasons.length > 0;
+    || snapshot.blockingReasons.length > 0
+    || !!snapshot.snapshotWarning;
+  const laborCost = snapshot?.transformationCostPerM;
+  const hasLaborCost = laborCost != null && Number.isFinite(laborCost);
+  const laborTotal = hasLaborCost ? row.metros_necessarios * (laborCost as number) : null;
   return (
     <div className="px-3 py-2.5 hover:bg-red-500/5">
       <div className="flex items-start justify-between gap-3">
@@ -25,11 +30,13 @@ function StrapLine({ row }: { row: ArtisanalStrapCutRow }) {
           )}
           {row.baseName && <span className="text-red-600/70 dark:text-red-400/70"> · base {row.baseName}</span>}
           <div className="mt-1 text-xs text-muted-foreground">
-            Tira {row.metros_necessarios.toLocaleString('pt-BR', { maximumFractionDigits: 4 })} m
+            Tira líquida a produzir {row.metros_necessarios.toLocaleString('pt-BR', { maximumFractionDigits: 4 })} m
             {snapshot?.confirmedYieldMPerM ? ` · rendimento ${snapshot.confirmedYieldMPerM.toLocaleString('pt-BR', { maximumFractionDigits: 6 })} m/m` : ''}
             {snapshot?.usableBaseWidthMm ? ` · largura útil ${snapshot.usableBaseWidthMm.toLocaleString('pt-BR')} mm` : ''}
             {row.largura_mm > 0 ? ` · banda ${row.largura_mm.toLocaleString('pt-BR')} mm` : ''}
             {snapshot?.theoreticalYieldMPerM ? ` · teórico ${snapshot.theoreticalYieldMPerM.toLocaleString('pt-BR', { maximumFractionDigits: 6 })} m/m` : ''}
+            {hasLaborCost ? ` · mão de obra ${formatCurrency(laborCost)}/m` : ''}
+            {laborTotal != null ? ` · total ${formatMoney(laborTotal)}` : ''}
           </div>
         </div>
 
@@ -42,12 +49,12 @@ function StrapLine({ row }: { row: ArtisanalStrapCutRow }) {
             </span>
           </div>
         ) : (
-          <div className="flex shrink-0 flex-col items-end gap-0.5 text-right">
+          <div className="flex max-w-xs shrink-0 flex-col items-end gap-0.5 text-right">
             <span className="flex items-center gap-1 text-xs text-red-600 dark:text-red-400">
-              <Warning className="h-3.5 w-3.5" /> {snapshot?.blockingReasons.join(' · ') || 'Snapshot canônico incompleto'}
+              <Warning className="h-3.5 w-3.5" /> {snapshot?.snapshotWarning || snapshot?.blockingReasons.join(' · ') || 'Snapshot canônico incompleto'}
             </span>
-            <Link to="/tiras-artesanais?tab=receitas" className="text-[11px] underline text-red-600/80 dark:text-red-400/80">
-              Corrigir receita no Hub de Tiras →
+            <Link to={snapshot?.snapshotWarning ? '/tiras-artesanais' : '/tiras-artesanais?tab=receitas'} className="text-[11px] underline text-red-600/80 dark:text-red-400/80">
+              {snapshot?.snapshotWarning ? 'Acompanhar no Hub de Tiras →' : 'Corrigir receita no Hub de Tiras →'}
             </Link>
           </div>
         )}
@@ -67,13 +74,13 @@ export default function ArtisanalStrapRollCutBlock({ rows }: { rows: ArtisanalSt
           Tiras artesanais — separação da napa-base
         </h3>
         <Badge className="ml-1 bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30 text-[10px] uppercase tracking-wide hover:bg-red-500/15">
-          Receita aprovada
+          Saldo líquido
         </Badge>
       </div>
       <p className="px-3 text-xs text-red-600/80 dark:text-red-400/80">
-        A metragem é calculada por <strong>tira pronta ÷ rendimento confirmado</strong> da
-        receita exata. Largura útil, banda e rendimento teórico aparecem apenas para conferência.
-        A baixa da napa ocorre gradualmente nos recebimentos da produção.
+        Atendimento parcial, tira pronta reservada e entradas comprometidas já estão descontados.
+        A napa é calculada por <strong>saldo líquido a produzir ÷ rendimento confirmado</strong> da
+        receita exata; sua baixa ocorre gradualmente nos recebimentos da produção.
       </p>
 
       <div className="rounded-lg border border-red-500/30 divide-y divide-red-500/20 overflow-hidden keep-together">

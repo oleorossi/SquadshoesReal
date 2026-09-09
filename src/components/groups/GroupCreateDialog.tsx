@@ -7,9 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { MagnifyingGlass as Search, CircleNotch as Loader2, Check, FileText, Stack as Layers, Truck, Package } from '@phosphor-icons/react';
+import { Stack as Layers, Truck, Package } from '@phosphor-icons/react';
 import { useAddGroup, useGroups, type ProductGroup } from "@/hooks/useGroups";
 import { useProducts } from "@/hooks/useProducts";
 import { useAddGroupSupplier } from "@/hooks/useGroupSuppliers";
@@ -147,6 +145,9 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
         dimensions_unit: !isFamilyCreation && form.dimensions_width ? 'mm' : null,
         parent_group_id: form.parent_group_id || null,
         is_family: isFamilyCreation,
+        // Fibra/placa da palmilha e cola não variam por cor. A cor da palmilha
+        // entra no forro (setor Forração da Palmilha).
+        is_color_agnostic: form.sector === 'Palmilha' || form.sector === 'Cola / Químico',
         // Embalagem NÃO entra: grupo de solado nasce sem caixa e a configuração
         // dos 3 modos é feita em Embalagens → Configuração por Solado.
       });
@@ -390,9 +391,9 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
             <div>
               <p className="font-medium text-foreground">Fornecedores</p>
               <p>
-                Cadastre depois na página <strong>Grupos</strong> (botão "+ Fornecedor"
-                em cada grupo). Cada grupo aceita múltiplos fornecedores com preço, prazo e
-                condição de pagamento próprios.
+                Depois de criar, abra o grupo e use a aba <strong>Fornecedores</strong>
+                (também resumida em Geral → Compras e abastecimento). Cada grupo aceita
+                múltiplos fornecedores com preço, prazo e condição de pagamento próprios.
               </p>
             </div>
           </div>}

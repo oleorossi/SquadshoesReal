@@ -1,72 +1,143 @@
-/**
- * Sync engine: processa fila de PVs offline em ordem FIFO quando rede
- * volta. Idempotente — server dedup via `sale_orders.client_request_id`
- * UNIQUE index (mig 20260629260000).
- *
- * Disparado por:
- *   - `online` event (rede volta)
- *   - `visibilitychange` quando app vira foreground (cobre iOS quirks
- *     onde `online` demora)
- *   - chamada manual via `triggerSync()` (botão "Sincronizar agora")
- */
+/** Replay FIFO da fila mobile, sempre no namespace do usuário autenticado. */
 import {
+  completeQueuedOrderCreate,
   listPendingOrders,
-  removeFromQueue,
+  MOBILE_SALE_ORDER_DRAFT_STATUS,
   markAttemptFailed,
   type QueuedOrder,
+  type QueueFailureKind,
 } from './offlineQueue';
-import { submitMobileSaleOrderAtomic } from './atomicSaleOrder';
+import { classifyMobileOrderError, submitMobileSaleOrderAtomic } from './atomicSaleOrder';
+import { confirmMobileSaleOrder } from './confirmSaleOrder';
 
 const MAX_ATTEMPTS = 5;
-interface SyncResult {
+export interface SyncResult {
   succeeded: number;
   failed: number;
-  skipped: number; // já existia no servidor (idempotência)
-  errors: Array<{ client_request_id: string; error: string }>;
+  skipped: number;
+  createdAsDraft: number;
+  confirmationUnknown: number;
+  errors: Array<{ client_request_id: string; error: string; failureKind: QueueFailureKind }>;
+  confirmationErrors: Array<{
+    client_request_id: string;
+    order_id: string;
+    error: string;
+    outcome: 'draft' | 'unknown';
+  }>;
 }
 
 let syncInFlight = false;
 
-/**
- * Processa um item da fila. Trata 3 cenários:
- *   1. Sucesso: insert OK → remove da fila
- *   2. Duplicata (23505): server já tem esse client_request_id → remove
- *      da fila (foi enviado antes em retry anterior, server salvou)
- *   3. Erro real: incrementa attempts, mantém na fila
- */
-const processOne = async (q: QueuedOrder): Promise<'success' | 'dedup' | 'error'> => {
+const processOne = async (
+  q: QueuedOrder,
+  ownerId: string,
+): Promise<{
+  outcome: 'success' | 'dedup' | 'created_draft' | 'created_unknown' | 'error';
+  error?: string;
+  failureKind?: QueueFailureKind;
+  orderId?: string;
+}> => {
+  if (q.ownerId !== ownerId || q.payload?.ownerId !== ownerId) {
+    const error = 'owner_mismatch: a fila pertence a outro usuário';
+    // Se o envelope pertence ao usuário atual, registra a corrupção do payload.
+    // Envelope de outro usuário nunca é tocado por esta sessão.
+    if (q.ownerId === ownerId) {
+      await markAttemptFailed(ownerId, q.client_request_id, error, 'permanent');
+    }
+    return { outcome: 'error', error, failureKind: 'permanent' };
+  }
   try {
+    // O payload não pode mudar entre tentativa e replay: o hash idempotente do
+    // servidor inclui o cabeçalho. A fila já nasce Rascunho e rejeita qualquer
+    // outro status na entrada.
+    if (q.payload.order.status !== MOBILE_SALE_ORDER_DRAFT_STATUS) {
+      throw Object.assign(new Error('A fila contém pedido fora de Rascunho.'), {
+        failureKind: 'permanent' as const,
+      });
+    }
     const created = await submitMobileSaleOrderAtomic(q.payload);
-    await removeFromQueue(q.client_request_id);
-    return created.idempotent_replay ? 'dedup' : 'success';
+    // O CREATE já comitou: remova sua fila antes da confirmação. Se o comando
+    // seguinte falhar, jamais repita/mude o payload idempotente da criação.
+    await completeQueuedOrderCreate(ownerId, q.client_request_id);
+    try {
+      await confirmMobileSaleOrder(created.order_id);
+      return { outcome: created.idempotent_replay ? 'dedup' : 'success', orderId: created.order_id };
+    } catch (confirmationError: unknown) {
+      const error = confirmationError instanceof Error
+        ? confirmationError.message
+        : String(confirmationError);
+      const transient = classifyMobileOrderError(confirmationError) === 'transient';
+      return {
+        outcome: transient ? 'created_unknown' : 'created_draft',
+        error,
+        orderId: created.order_id,
+      };
+    }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    await markAttemptFailed(q.client_request_id, message);
-    return 'error';
+    const failureKind = classifyMobileOrderError(error);
+    await markAttemptFailed(ownerId, q.client_request_id, message, failureKind);
+    return { outcome: 'error', error: message, failureKind };
   }
 };
 
-export const triggerSync = async (): Promise<SyncResult | null> => {
-  if (syncInFlight) return null;
+export const triggerSync = async (ownerId: string): Promise<SyncResult | null> => {
+  if (!ownerId?.trim() || syncInFlight) return null;
   if (typeof navigator !== 'undefined' && !navigator.onLine) return null;
   syncInFlight = true;
 
-  const result: SyncResult = { succeeded: 0, failed: 0, skipped: 0, errors: [] };
+  const result: SyncResult = {
+    succeeded: 0,
+    failed: 0,
+    skipped: 0,
+    createdAsDraft: 0,
+    confirmationUnknown: 0,
+    errors: [],
+    confirmationErrors: [],
+  };
   try {
-    const pending = await listPendingOrders();
+    const pending = await listPendingOrders(ownerId);
     for (const q of pending) {
-      if (q.attempts >= MAX_ATTEMPTS) {
+      if (q.ownerId !== ownerId || q.payload?.ownerId !== ownerId) {
         result.failed++;
-        result.errors.push({ client_request_id: q.client_request_id, error: 'max_attempts_exceeded' });
+        result.errors.push({
+          client_request_id: q.client_request_id,
+          error: 'owner_mismatch',
+          failureKind: 'permanent',
+        });
         continue;
       }
-      const outcome = await processOne(q);
-      if (outcome === 'success') result.succeeded++;
-      else if (outcome === 'dedup') result.skipped++;
-      else result.failed++;
-
-      // Pequeno delay entre items pra não saturar a rede móvel
-      await new Promise(r => setTimeout(r, 200));
+      if (q.failureKind === 'permanent' || q.attempts >= MAX_ATTEMPTS) {
+        result.failed++;
+        result.errors.push({
+          client_request_id: q.client_request_id,
+          error: q.failureKind === 'permanent' ? (q.lastError || 'permanent_failure') : 'max_attempts_exceeded',
+          failureKind: 'permanent',
+        });
+        continue;
+      }
+      const processed = await processOne(q, ownerId);
+      if (processed.outcome === 'success') result.succeeded++;
+      else if (processed.outcome === 'dedup') result.skipped++;
+      else if (processed.outcome === 'created_draft' || processed.outcome === 'created_unknown') {
+        if (processed.outcome === 'created_draft') result.createdAsDraft++;
+        else result.confirmationUnknown++;
+        result.confirmationErrors.push({
+          client_request_id: q.client_request_id,
+          order_id: processed.orderId || '',
+          error: processed.error || 'Falha ao confirmar o PV criado.',
+          outcome: processed.outcome === 'created_draft' ? 'draft' : 'unknown',
+        });
+      }
+      else {
+        result.failed++;
+        result.errors.push({
+          client_request_id: q.client_request_id,
+          error: processed.error || 'unknown_error',
+          failureKind: processed.failureKind || 'permanent',
+        });
+      }
+      await new Promise((resolve) => setTimeout(resolve, 200));
     }
   } finally {
     syncInFlight = false;
@@ -74,21 +145,24 @@ export const triggerSync = async (): Promise<SyncResult | null> => {
   return result;
 };
 
-/**
- * Instala listeners globais que disparam sync automaticamente.
- * Chamar uma vez no boot do app mobile (MobileLayout.tsx).
- */
-export const installAutoSync = () => {
-  if (typeof window === 'undefined') return () => {};
-  const handler = () => { void triggerSync(); };
+export const installAutoSync = (
+  ownerId: string,
+  onResult?: (result: SyncResult) => void,
+) => {
+  if (typeof window === 'undefined' || !ownerId?.trim()) return () => {};
+  const handler = () => {
+    void triggerSync(ownerId).then((result) => {
+      if (result) onResult?.(result);
+    });
+  };
   const visibilityHandler = () => {
     if (document.visibilityState === 'visible') handler();
   };
   window.addEventListener('online', handler);
   document.addEventListener('visibilitychange', visibilityHandler);
-  // Tenta logo na inicialização caso já tenha itens pendentes de sessão anterior
-  setTimeout(handler, 1500);
+  const initialSyncTimer = window.setTimeout(handler, 1500);
   return () => {
+    window.clearTimeout(initialSyncTimer);
     window.removeEventListener('online', handler);
     document.removeEventListener('visibilitychange', visibilityHandler);
   };

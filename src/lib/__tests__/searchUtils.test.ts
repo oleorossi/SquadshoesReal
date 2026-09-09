@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { splitSearchTerms, searchMatchesAllTerms, searchMatchesAny, normalizeForSearch, searchNormOrFilter } from '../searchUtils';
+import {
+  splitSearchTerms,
+  searchMatchesAllTerms,
+  searchMatchesAny,
+  normalizeForSearch,
+  searchNormOrFilter,
+  SEARCH_RENDER_CAP,
+  capSearchResults,
+  searchRefineHint,
+} from '../searchUtils';
 
 describe('splitSearchTerms', () => {
   it('divide por "/" com trim', () => {
@@ -98,6 +107,40 @@ describe('normalizeForSearch (paridade com a função SQL normalize_search)', ()
   });
   it('"tamara" e "TÂMARA" colapsam no mesmo token', () => {
     expect(normalizeForSearch('tamara')).toBe(normalizeForSearch('TÂMARA'));
+  });
+});
+
+describe('capSearchResults / searchRefineHint', () => {
+  it('não corta quando a lista cabe no teto', () => {
+    const items = Array.from({ length: 3 }, (_, i) => i);
+    expect(capSearchResults(items, 100)).toEqual({
+      visible: items,
+      capped: false,
+      totalMatched: 3,
+      cap: 100,
+    });
+  });
+  it('corta no SEARCH_RENDER_CAP padrão e marca capped', () => {
+    const items = Array.from({ length: SEARCH_RENDER_CAP + 5 }, (_, i) => i);
+    const result = capSearchResults(items);
+    expect(result.capped).toBe(true);
+    expect(result.totalMatched).toBe(SEARCH_RENDER_CAP + 5);
+    expect(result.visible).toHaveLength(SEARCH_RENDER_CAP);
+    expect(result.visible[0]).toBe(0);
+    expect(result.visible[SEARCH_RENDER_CAP - 1]).toBe(SEARCH_RENDER_CAP - 1);
+    expect(searchRefineHint(result.totalMatched, result.cap)).toBe(
+      `Mostrando ${SEARCH_RENDER_CAP} de ${SEARCH_RENDER_CAP + 5} — digite pra refinar`,
+    );
+  });
+  it('respeita cap custom (dialogs com soft-cap menor)', () => {
+    const items = Array.from({ length: 40 }, (_, i) => `p${i}`);
+    const result = capSearchResults(items, 20);
+    expect(result).toEqual({
+      visible: items.slice(0, 20),
+      capped: true,
+      totalMatched: 40,
+      cap: 20,
+    });
   });
 });
 

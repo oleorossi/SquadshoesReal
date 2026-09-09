@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CircleNotch as Loader2, MagnifyingGlass, ArrowDownRight, ArrowUpRight, ArrowCounterClockwise as RotateCcw, ChartBar as BarChart3 } from '@phosphor-icons/react';
+import { CircleNotch as Loader2, MagnifyingGlass, ArrowDownRight, ArrowUpRight, ArrowCounterClockwise as RotateCcw, Warning } from '@phosphor-icons/react';
 import { SearchInput } from '@/components/ui/search-input';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import StrapSummaryDialog from '../StrapSummaryDialog';
 import { useIsAdmin } from '@/hooks/useUserManagement';
 import { normalizeForSearch, searchMatchesAllTerms } from '@/lib/searchUtils';
 
@@ -21,29 +20,96 @@ type StockMovement = {
   description: string | null;
   order_id: string | null;
   created_at: string;
-  products: { name: string; sku: string; unit: string } | null;
+  strap_stock_role: 'base' | 'finished';
+  products: { name: string; sku: string; unit: string; color: string | null } | null;
   orders: { order_number: string; sale_order_id: string | null; sale_orders: { order_number: string } | null } | null;
 };
+
+interface StrapVariantProductQueryResult {
+  data: Array<{ finished_product_id: string | null }> | null;
+  error: unknown;
+}
+
+interface StrapStockMovementQueryResult {
+  data: Array<Omit<StockMovement, 'strap_stock_role'>> | null;
+  error: unknown;
+}
+
+interface StrapStockMovementQueryBuilder extends PromiseLike<StrapStockMovementQueryResult> {
+  gte: (column: 'created_at', value: string) => StrapStockMovementQueryBuilder;
+  or: (filter: string) => StrapStockMovementQueryBuilder;
+  order: (column: 'created_at', options: { ascending: boolean }) => StrapStockMovementQueryBuilder;
+  limit: (count: number) => StrapStockMovementQueryBuilder;
+}
+
+const strapIdentityClient = supabase as unknown as {
+  from: (relation: 'artisanal_strap_variants') => {
+    select: (columns: 'finished_product_id') => {
+      not: (column: 'finished_product_id', operator: 'is', value: null) => PromiseLike<StrapVariantProductQueryResult>;
+    };
+  };
+};
+
+const strapStockClient = supabase as unknown as {
+  from: (relation: 'stock_movements') => {
+    select: (columns: string) => StrapStockMovementQueryBuilder;
+  };
+};
+
+const STRAP_STOCK_HISTORY_DAYS = 180;
 
 export default function StrapStockLogTab() {
   const isAdmin = useIsAdmin();
   const [search, setSearch] = useState('');
-  const [summaryOpen, setSummaryOpen] = useState(false);
 
-  const { data: movements = [], isLoading } = useQuery({
+  const { data: movements = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ['strap_stock_movements'],
     enabled: isAdmin,
     queryFn: async () => {
-      const fifteenDaysAgo = new Date(Date.now() - 15 * 86400000).toISOString();
-      const { data, error } = await supabase
+      const historyStart = new Date(
+        Date.now() - STRAP_STOCK_HISTORY_DAYS * 86400000,
+      ).toISOString();
+      const [variantsResult, legacyProductsResult] = await Promise.all([
+        strapIdentityClient
+          .from('artisanal_strap_variants')
+          .select('finished_product_id')
+          .not('finished_product_id', 'is', null),
+        supabase
+          .from('products')
+          .select('id')
+          .eq('is_artisanal', true),
+      ]);
+
+      if (variantsResult.error) throw variantsResult.error;
+      if (legacyProductsResult.error) throw legacyProductsResult.error;
+
+      const strapProductIds = Array.from(new Set([
+        ...(variantsResult.data || []).map((variant) => variant.finished_product_id),
+        ...(legacyProductsResult.data || []).map((product) => product.id),
+      ].filter((productId): productId is string => Boolean(productId))));
+
+      const identityFilters = [
+        'strap_variant_id.not.is.null',
+        'sale_order_strap_demand_id.not.is.null',
+        'strap_batch_item_id.not.is.null',
+      ];
+      if (strapProductIds.length > 0) {
+        identityFilters.unshift(`product_id.in.(${strapProductIds.join(',')})`);
+      }
+
+      const { data, error } = await strapStockClient
         .from('stock_movements')
-        .select('*, products(name, sku, unit), orders(order_number, sale_order_id, sale_orders(order_number))')
-        .gte('created_at', fifteenDaysAgo)
-        .ilike('description', '%Tira%')
+        .select('*, products(name, sku, unit, color), orders(order_number, sale_order_id, sale_orders(order_number))')
+        .gte('created_at', historyStart)
+        .or(identityFilters.join(','))
         .order('created_at', { ascending: false })
         .limit(1000);
       if (error) throw error;
-      return (data || []) as unknown as StockMovement[];
+      const finishedProductIds = new Set(strapProductIds);
+      return (data || []).map((movement) => ({
+        ...movement,
+        strap_stock_role: finishedProductIds.has(movement.product_id) ? 'finished' as const : 'base' as const,
+      }));
     },
     staleTime: 5 * 60 * 1000,
   });
@@ -53,6 +119,7 @@ export default function StrapStockLogTab() {
       search,
       m.products?.name,
       m.products?.sku,
+      m.products?.color,
       m.description,
       m.orders?.order_number,
       m.orders?.sale_orders?.order_number,
@@ -69,6 +136,21 @@ export default function StrapStockLogTab() {
     );
   }
 
+  if (isError) {
+    return (
+      <EmptyState
+        icon={Warning}
+        title="Não foi possível carregar o histórico de tiras"
+        description={error instanceof Error ? error.message : 'Tente novamente em instantes.'}
+        action={(
+          <Button variant="outline" size="sm" onClick={() => void refetch()}>
+            Tentar novamente
+          </Button>
+        )}
+      />
+    );
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
@@ -81,12 +163,8 @@ export default function StrapStockLogTab() {
           totalCount={movements.length}
         />
         <p className="text-xs text-muted-foreground">
-          Últimos 15 dias ({filtered.length} registros)
+          Últimos {STRAP_STOCK_HISTORY_DAYS} dias ({filtered.length} registros)
         </p>
-        <Button variant="outline" size="sm" className="gap-2 ml-auto" onClick={() => setSummaryOpen(true)}>
-          <BarChart3 className="h-4 w-4" />
-          Resumo Semanal
-        </Button>
       </div>
 
       {filtered.length === 0 ? (
@@ -114,6 +192,8 @@ export default function StrapStockLogTab() {
                 <TableHead className="font-semibold">Data/Hora</TableHead>
                 <TableHead className="font-semibold">Tipo</TableHead>
                 <TableHead className="font-semibold">Material</TableHead>
+                <TableHead className="font-semibold">Papel</TableHead>
+                <TableHead className="font-semibold">Cor</TableHead>
                 <TableHead className="font-semibold">Pedido</TableHead>
                 <TableHead className="font-semibold text-right">Quantidade</TableHead>
                 <TableHead className="font-semibold text-right">Est. Anterior</TableHead>
@@ -151,6 +231,12 @@ export default function StrapStockLogTab() {
                       )}
                     </TableCell>
                     <TableCell className="font-medium">{mov.products?.name ?? '—'}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="text-xs">
+                        {mov.strap_stock_role === 'finished' ? 'Tira pronta' : 'Material-base'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{mov.products?.color || '—'}</TableCell>
                     <TableCell className="font-mono text-sm">
                       {mov.orders?.sale_orders?.order_number || mov.orders?.order_number || '—'}
                     </TableCell>
@@ -174,7 +260,6 @@ export default function StrapStockLogTab() {
         </div>
       )}
 
-      <StrapSummaryDialog open={summaryOpen} onOpenChange={setSummaryOpen} movements={movements} />
     </div>
   );
 }

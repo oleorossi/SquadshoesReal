@@ -1,20 +1,17 @@
-import { useState, useMemo } from 'react';
+import { useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Calendar, Truck, Warning as AlertTriangle, ShoppingCart, CircleNotch as Loader2, Package, FileText, Shield } from '@phosphor-icons/react';
-import { SoleAvailabilityResult, SoleShortage, InsoleShortage } from '@/lib/soleAvailability';
-import { useCreatePurchaseOrder } from '@/hooks/usePurchaseOrders';
-import { toast } from 'sonner';
+import { Calendar, Truck, Warning as AlertTriangle, ShoppingCart, Package, FileText, Shield } from '@phosphor-icons/react';
+import { SoleAvailabilityResult, SoleShortage } from '@/lib/soleAvailability';
 import { SubmitFlowStepper } from './SubmitFlowStepper';
-import { rateGradeToTotal } from '@/lib/gradeDistribution';
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   result: SoleAvailabilityResult | null;
-  onConfirm: (generatedPO: boolean) => void;
+  onConfirm: () => void;
 }
 
 /** Strip color suffixes from sole name. */
@@ -86,9 +83,6 @@ function StockSummary({ required, available, incoming = 0, shortage, suggested }
 }
 
 export function SolePurchaseConfirmDialog({ open, onOpenChange, result, onConfirm }: Props) {
-  const createPO = useCreatePurchaseOrder();
-  const [generating, setGenerating] = useState(false);
-
   const grouped = useMemo(() => {
     if (!result) return [] as Array<{ type: string; colors: SoleShortage[] }>;
     const map = new Map<string, SoleShortage[]>();
@@ -108,93 +102,6 @@ export function SolePurchaseConfirmDialog({ open, onOpenChange, result, onConfir
     ? new Date(minBillingDateISO + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })
     : '—';
 
-  const bySupplierSole = shortages.reduce<Record<string, SoleShortage[]>>((acc, s) => {
-    const key = s.supplier_id || 'unknown';
-    (acc[key] = acc[key] || []).push(s);
-    return acc;
-  }, {});
-
-  const bySupplierInsole = (insoleShortages || []).reduce<Record<string, InsoleShortage[]>>((acc, s) => {
-    const key = s.supplier_id || 'unknown';
-    (acc[key] = acc[key] || []).push(s);
-    return acc;
-  }, {});
-
-  const handleGeneratePOs = async () => {
-    setGenerating(true);
-    try {
-      let count = 0;
-
-      // Sole POs
-      for (const [, group] of Object.entries(bySupplierSole)) {
-        const supplier = group[0];
-        if (!supplier.supplier_id) {
-          toast.warning(`Solado "${supplier.sole_name}" sem fornecedor padrão — defina antes de gerar a OC.`);
-          continue;
-        }
-        const noteLines = group.map((g) => {
-          const sizeStr = sortSizes(Object.keys(g.size_breakdown)).map(sz => `${sz}=${g.size_breakdown[sz]}`).join(' | ');
-          return `• ${g.sole_name}${g.sole_color ? ` (${g.sole_color})` : ''}\n   Numeração: ${sizeStr || '—'}\n   Pedidos: ${g.order_numbers.join(', ') || '—'}`;
-        });
-        const notes = [`OC gerada automaticamente. Lead time: ${supplier.lead_time_days} dias.`, '', 'Detalhamento por solado:', ...noteLines].join('\n');
-        await createPO.mutateAsync({
-          supplier_id: supplier.supplier_id,
-          supplier_name: supplier.supplier_name,
-          notes,
-          items: group.map((g) => ({
-            product_id: g.sole_product_id,
-            quantity: g.suggested_purchase_qty,
-            unit_price: g.unit_price,
-            unit: 'par',
-            current_stock: g.available,
-            min_stock: 0, max_stock: 0,
-            grade: rateGradeToTotal(g.size_breakdown, g.suggested_purchase_qty),
-            color: g.sole_color ?? null,
-          })),
-        });
-        count++;
-      }
-
-      // Insole POs
-      for (const [, group] of Object.entries(bySupplierInsole)) {
-        const supplier = group[0];
-        if (!supplier.supplier_id) {
-          toast.warning(`Palmilha "${supplier.insole_name}" sem fornecedor padrão — defina antes de gerar a OC.`);
-          continue;
-        }
-        const noteLines = group.map((g) => {
-          const sizeStr = sortSizes(Object.keys(g.size_breakdown)).map(sz => `${sz}=${g.size_breakdown[sz]}`).join(' | ');
-          const cabStr = g.cabedal_colors.length > 0 ? `Cabedal: ${g.cabedal_colors.join(', ')}` : '';
-          return `• ${g.insole_name}${g.insole_color ? ` (${g.insole_color})` : ''}\n   Numeração: ${sizeStr || '—'}\n   ${cabStr}\n   Pedidos: ${g.order_numbers.join(', ') || '—'}`;
-        });
-        const notes = [`OC Palmilha — gerada automaticamente. Lead time: ${supplier.lead_time_days} dias.`, '', 'Detalhamento por palmilha:', ...noteLines].join('\n');
-        await createPO.mutateAsync({
-          supplier_id: supplier.supplier_id,
-          supplier_name: supplier.supplier_name,
-          notes,
-          items: group.map((g) => ({
-            product_id: g.insole_product_id,
-            quantity: g.suggested_purchase_qty,
-            unit_price: g.unit_price,
-            unit: 'par',
-            current_stock: g.available,
-            min_stock: 0, max_stock: 0,
-            grade: rateGradeToTotal(g.size_breakdown, g.suggested_purchase_qty),
-            color: g.insole_color ?? null,
-          })),
-        });
-        count++;
-      }
-
-      if (count > 0) toast.success(`${count} ordem(ns) de compra gerada(s) com sucesso!`);
-      onConfirm(count > 0);
-    } catch (err: any) {
-      toast.error(`Erro ao gerar OCs: ${err.message}`);
-    } finally {
-      setGenerating(false);
-    }
-  };
-
   const hasInsoleShortages = (insoleShortages || []).length > 0;
 
   return (
@@ -204,12 +111,22 @@ export function SolePurchaseConfirmDialog({ open, onOpenChange, result, onConfir
           <SubmitFlowStepper current="sole" />
           <DialogTitle className="flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-warning" />
-            {hasInsoleShortages ? 'Solado/Palmilha insuficiente — gerar Ordens de Compra?' : 'Solado insuficiente — gerar Ordem de Compra?'}
+            {hasInsoleShortages ? 'Solado/Palmilha insuficiente' : 'Solado insuficiente'}
           </DialogTitle>
           <DialogDescription>
-            Faltam materiais para atender este pedido. As OCs serão organizadas por tipo → cor → numeração, com referência ao pedido de origem.
+            Revise a falta por tipo, cor e numeração. A OC não nasce neste diálogo:
+            o servidor recalcula e versiona a compra depois do commit do pedido.
           </DialogDescription>
         </DialogHeader>
+
+        <Alert className="border-primary/40 bg-primary/5">
+          <ShoppingCart className="h-4 w-4" />
+          <AlertTitle>Compra processada depois do pedido</AlertTitle>
+          <AlertDescription className="text-xs">
+            Em Rascunho, nenhuma OC nasce. Ao aprovar ou enviar para produção, a outbox
+            cria ou reconcilia somente sugestões ainda editáveis; divergências viram atenção operacional.
+          </AlertDescription>
+        </Alert>
 
         <Alert className="border-primary/40 bg-primary/5">
           <Calendar className="h-4 w-4" />
@@ -314,12 +231,11 @@ export function SolePurchaseConfirmDialog({ open, onOpenChange, result, onConfir
         </p>
 
         <DialogFooter className="flex flex-col-reverse sm:flex-row gap-2 sm:justify-between">
-          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={generating}>Cancelar pedido</Button>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancelar pedido</Button>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => onConfirm(false)} disabled={generating}>Salvar pedido sem OC</Button>
-            <Button onClick={handleGeneratePOs} disabled={generating} className="gap-2">
-              {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShoppingCart className="h-4 w-4" />}
-              {generating ? 'Gerando...' : 'Gerar OCs e salvar pedido'}
+            <Button onClick={onConfirm} className="gap-2">
+              <ShoppingCart className="h-4 w-4" />
+              Continuar e salvar pedido
             </Button>
           </div>
         </DialogFooter>

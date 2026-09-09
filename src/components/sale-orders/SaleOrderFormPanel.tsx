@@ -1,4 +1,4 @@
- import { useMemo, useEffect, useRef, useState, useCallback, Fragment } from 'react';
+ import { useMemo, useEffect, useRef, useState, useCallback, Fragment, memo } from 'react';
 import { Plus, CircleNotch as Loader2, User, Truck, ClipboardText as ClipboardList, Info, Percent, CaretUpDown as ChevronsUpDown, CaretDown, Check, ClockCounterClockwise as History, Warning as AlertTriangle, CheckCircle as CheckCircle2, Calculator, Money as Banknote, Receipt, Package, Phone, EnvelopeSimple, CopySimple as Copy, Trash } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,7 +7,18 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { SaleOrderFormData, SaleOrderItemFormData, PACKAGING_MODE_LABELS, PACKAGING_MODE_CANONICAL, type PackagingMode, ORDER_TYPES } from '@/hooks/useSaleOrders';
+import {
+  SaleOrderFormData,
+  SaleOrderItemFormData,
+  PACKAGING_MODE_LABELS,
+  PACKAGING_MODE_CANONICAL,
+  type PackagingMode,
+  ORDER_TYPES,
+  filterProductionSaleOrderItems,
+  isProductionExcludedSaleOrderItem,
+  saleOrderItemQuantityFromGrade,
+  withSaleOrderItemClientKey,
+} from '@/hooks/useSaleOrders';
 import { volumesForPairs, pairsPerVolumeForMode, isPairAsVolumeMode, collectiveTypeForMode } from '@/lib/packagingPairsPerBox';
 import { packSaleOrderItem, packSaleOrderItemBySize, singleSizeMisfits } from '@/lib/boxPacking';
 import { useAccessControl } from '@/hooks/useAccessControl';
@@ -27,6 +38,29 @@ import { useFactoringConfigs } from '@/components/finance/FactoringTab';
 import { useCompanies } from '@/hooks/useNfe';
 import { useAllActiveReferenceMaterialVariants } from '@/hooks/useReferenceMaterialVariants';
 import {
+  internalStrapReadinessKey,
+  useInternalStrapReadinessBatch,
+  type InternalStrapReadiness,
+  type InternalStrapReadinessInput,
+} from '@/hooks/useInternalStrapReadiness';
+import {
+  strapStockLinesItemKey,
+  useStrapStockLinesBatch,
+  type StrapStockLine,
+  type StrapStockLinesInput,
+} from '@/hooks/useStrapStockLines';
+import {
+  useActiveReferenceTerceirizacoesBatch,
+  type ReferenceTerceirizacao,
+} from '@/hooks/useReferenceTerceirizacoes';
+import {
+  canEditSaleOrderFactoring,
+  isCommittedSaleOrderStrapSnapshotStatus,
+} from '@/lib/saleOrderStateMachine';
+import { applyClientCommercialDefaultsToForm } from '@/lib/saleOrderCommercialDefaults';
+import { strapColorMode, technicalStrapLineId } from '@/lib/technicalStrapLines';
+import { strapIdentityBasis } from '@/lib/strapIdentity';
+import {
   calculateFactoringDiscount,
   parsePaymentConditionInstallments,
 } from '@/lib/factoringCalc';
@@ -35,18 +69,20 @@ import { getMaterialVariantReadinessIssue } from '@/lib/saleOrderCommercialReadi
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
- import { cn } from '@/lib/utils';
- import { toast } from 'sonner';
- import {
-   AlertDialog,
-   AlertDialogAction,
-   AlertDialogCancel,
-   AlertDialogContent,
-   AlertDialogDescription,
-   AlertDialogFooter,
-   AlertDialogHeader,
-   AlertDialogTitle,
- } from "@/components/ui/alert-dialog";
+import { SearchLocatorStrip } from '@/components/ui/searchable-select';
+import { SEARCH_RENDER_CAP, capSearchResults, searchMatchesAllTerms, searchRefineHint } from '@/lib/searchUtils';
+import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 
 interface Client {
@@ -135,11 +171,14 @@ interface Props {
   computingMinBilling?: boolean;
   /** Reporta itens com cor não cadastrada — pra o pai BLOQUEAR o salvamento. */
   onColorIssueChange?: (index: number, info: { color: string; materials: string[] } | null) => void;
+  /** Catálogo de tiras já buscado pelo SaleOrderForm — evita N× fetch por item. */
+  strapCatalog?: unknown;
+  strapCatalogLoading?: boolean;
 }
 
-const emptyItem: SaleOrderItemFormData = {
+const emptyItem = (): SaleOrderItemFormData => withSaleOrderItemClientKey({
   reference_id: '', color: '', grade: {}, unit_price: 0, quantity: 0, fichas: 1,
-};
+});
 
 /**
  * Reindexa a seleção do bulk-edit depois que o item `removedIdx` sai da lista.
@@ -175,7 +214,7 @@ export function removeItemsAtIndices(
   const remaining: SaleOrderItemFormData[] = [];
   const removed: RemovedItemSnapshot[] = [];
   items.forEach((item, i) => {
-    if (alvo.has(i)) removed.push({ item, index: i });
+    if (alvo.has(i) && !isProductionExcludedSaleOrderItem(item)) removed.push({ item, index: i });
     else remaining.push(item);
   });
   return { remaining, removed };
@@ -201,6 +240,95 @@ export function restoreItemsAt(
   return next;
 }
 
+/**
+ * Assinatura produtiva das tiras do item. A ordem do array é apenas ordem de
+ * apresentação/impressão; a identidade da combinação é o UUID imutável de cada
+ * linha técnica com sua política e cor canônica. Ordenar pelos UUIDs evita que
+ * uma simples reordenação visual impeça a mesclagem de combinações equivalentes.
+ * Se qualquer linha ainda for legada, a ordem vira parte da assinatura: é mais
+ * seguro deixar de mesclar do que permutar duas cores sem identidade estável.
+ */
+export function saleOrderItemStrapCombinationSignature(
+  item: Pick<SaleOrderItemFormData, 'strap_colors'>,
+): string {
+  const lines = Array.isArray(item.strap_colors) ? item.strap_colors : [];
+  const lineIds = lines.map((line) => technicalStrapLineId(line)?.toLowerCase() || null);
+  const allLinesHaveCanonicalIds = lineIds.every(Boolean);
+  const signatureLines = lines
+    .map((line, index) => [
+      allLinesHaveCanonicalIds
+        ? lineIds[index]!
+        : lineIds[index]
+          ? `uuid:${lineIds[index]}`
+          : `legacy:${index}`,
+      String(line.color_id || '').trim().toLowerCase(),
+      strapColorMode(line),
+      String(line.base_group_id || line.material_group_id || '').trim().toLowerCase(),
+      String(line.identity_group_id || '').trim().toLowerCase(),
+      String(line.measure_id || '').trim().toLowerCase(),
+      line.identity_basis || 'reference_base',
+    ] as const);
+  if (allLinesHaveCanonicalIds) {
+    signatureLines.sort((a, b) => (
+      a[0].localeCompare(b[0])
+      || a[1].localeCompare(b[1])
+      || a[2].localeCompare(b[2])
+    ));
+  }
+  return JSON.stringify(signatureLines);
+}
+
+/** Identidade completa usada tanto para detectar quanto para mesclar duplicatas. */
+export function saleOrderItemDuplicateKey(item: SaleOrderItemFormData): string {
+  return JSON.stringify([
+    item.reference_id,
+    item.color || '',
+    item.material_variant_id || '',
+    item.fichas ?? 1,
+    saleOrderItemStrapCombinationSignature(item),
+  ]);
+}
+
+/**
+ * O aviso imediato precisa usar a mesma identidade produtiva do submit/merge.
+ * Comparar só referência + cor principal gera falso positivo quando as cores
+ * das posições de tira são diferentes.
+ */
+export function shouldWarnSaleOrderItemDuplicate(
+  items: SaleOrderItemFormData[],
+  itemIndex: number,
+): boolean {
+  const item = items[itemIndex];
+  if (!item?.reference_id || !item.color || isProductionExcludedSaleOrderItem(item)) return false;
+  const key = saleOrderItemDuplicateKey(item);
+  return items.some((candidate, candidateIndex) => (
+    candidateIndex !== itemIndex
+    && !!candidate.reference_id
+    && !isProductionExcludedSaleOrderItem(candidate)
+    && saleOrderItemDuplicateKey(candidate) === key
+  ));
+}
+
+/**
+ * Marca somente a segunda ocorrência (e seguintes) na ordem visual. A lista
+ * pode conter X, Y, X: por isso não basta comparar com o item adjacente.
+ */
+export function saleOrderDuplicateVisualIndices(
+  items: SaleOrderItemFormData[],
+  visualOrder: number[],
+): Set<number> {
+  const seen = new Set<string>();
+  const duplicates = new Set<number>();
+  visualOrder.forEach((itemIndex) => {
+    const item = items[itemIndex];
+    if (!item?.reference_id || !item.color || isProductionExcludedSaleOrderItem(item)) return;
+    const key = saleOrderItemDuplicateKey(item);
+    if (seen.has(key)) duplicates.add(itemIndex);
+    else seen.add(key);
+  });
+  return duplicates;
+}
+
 const formatCurrency = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
@@ -210,6 +338,7 @@ function SearchableClientSelect({ clients, value, onSelect }: {
   onSelect: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
   const selected = clients.find(c => c.id === value);
   const label = selected
     ? `${selected.client_number ? `#${selected.client_number} — ` : ''}${selected.razao_social}`
@@ -237,8 +366,23 @@ function SearchableClientSelect({ clients, value, onSelect }: {
       .filter(Boolean) as typeof clients;
   }, [recentClientNames, clients]);
 
+  const filteredClients = useMemo(() => {
+    if (!search.trim()) return clients;
+    return clients.filter(c =>
+      searchMatchesAllTerms(search, c.razao_social, c.cnpj, c.client_number != null ? String(c.client_number) : null),
+    );
+  }, [clients, search]);
+
+  const { visible, capped, totalMatched, cap } = useMemo(
+    () => capSearchResults(filteredClients, SEARCH_RENDER_CAP),
+    [filteredClients],
+  );
+
+  const clientDisplay = (c: typeof clients[number], withCnpj = false) =>
+    `${c.client_number ? `#${c.client_number} — ` : ''}${c.razao_social}${withCnpj && c.cnpj ? ` (${c.cnpj})` : ''}`;
+
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setSearch(''); }}>
       <PopoverTrigger asChild>
         <Button variant="outline" role="combobox" aria-expanded={open} className="h-9 w-full justify-between font-normal text-left">
           <span className="truncate">{label}</span>
@@ -246,42 +390,61 @@ function SearchableClientSelect({ clients, value, onSelect }: {
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
-        <Command>
-          <CommandInput placeholder="Buscar por nome, CNPJ ou código..." />
+        <Command shouldFilter={false} label="Buscar por nome, CNPJ ou código...">
+          <SearchLocatorStrip
+            label="Localizar cliente"
+            matchedCount={totalMatched}
+            totalCount={clients.length}
+            hasQuery={!!search.trim()}
+          />
+          <CommandInput
+            placeholder="Buscar por nome, CNPJ ou código..."
+            aria-label="Buscar por nome, CNPJ ou código..."
+            value={search}
+            onValueChange={setSearch}
+          />
           <CommandList>
-            <CommandEmpty>Nenhum cliente encontrado.</CommandEmpty>
-            {recentClients.length > 0 && (
+            <CommandEmpty>
+              {search ? (
+                <span className="flex flex-col items-center gap-2">
+                  <span>Nenhum resultado para "{search}"</span>
+                  <Button type="button" variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button>
+                </span>
+              ) : (
+                'Nenhum cliente encontrado.'
+              )}
+            </CommandEmpty>
+            {!search.trim() && recentClients.length > 0 && (
               <CommandGroup heading="Recentes">
-                {recentClients.map(c => {
-                  const display = `${c.client_number ? `#${c.client_number} — ` : ''}${c.razao_social}`;
-                  return (
-                    <CommandItem
-                      key={`recent-${c.id}`}
-                      value={`${display} ${c.cnpj || ''}`}
-                      onSelect={() => { onSelect(c.id); setOpen(false); }}
-                    >
-                      <History className="mr-2 h-3 w-3 text-muted-foreground" />
-                      <Check className={cn('mr-2 h-3.5 w-3.5', value === c.id ? 'opacity-100' : 'opacity-0')} />
-                      <span className="truncate">{display}</span>
-                    </CommandItem>
-                  );
-                })}
+                {recentClients.map(c => (
+                  <CommandItem
+                    key={`recent-${c.id}`}
+                    value={c.id}
+                    onSelect={() => { onSelect(c.id); setOpen(false); setSearch(''); }}
+                  >
+                    <History className="mr-2 h-3 w-3 text-muted-foreground" />
+                    <Check className={cn('mr-2 h-3.5 w-3.5', value === c.id ? 'opacity-100' : 'opacity-0')} />
+                    <span className="truncate">{clientDisplay(c)}</span>
+                  </CommandItem>
+                ))}
               </CommandGroup>
             )}
-            <CommandGroup heading={recentClients.length > 0 ? 'Todos os Clientes' : undefined}>
-              {clients.map(c => {
-                const display = `${c.client_number ? `#${c.client_number} — ` : ''}${c.razao_social} ${c.cnpj ? `(${c.cnpj})` : ''}`;
-                return (
-                  <CommandItem
-                    key={c.id}
-                    value={display}
-                    onSelect={() => { onSelect(c.id); setOpen(false); }}
-                  >
-                    <Check className={cn('mr-2 h-3.5 w-3.5', value === c.id ? 'opacity-100' : 'opacity-0')} />
-                    {display}
-                  </CommandItem>
-                );
-              })}
+            <CommandGroup heading={recentClients.length > 0 && !search.trim() ? 'Todos os Clientes' : undefined}>
+              {visible.map(c => (
+                <CommandItem
+                  key={c.id}
+                  value={c.id}
+                  onSelect={() => { onSelect(c.id); setOpen(false); setSearch(''); }}
+                >
+                  <Check className={cn('mr-2 h-3.5 w-3.5', value === c.id ? 'opacity-100' : 'opacity-0')} />
+                  <span className="truncate">{clientDisplay(c, true)}</span>
+                </CommandItem>
+              ))}
+              {capped && (
+                <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                  {searchRefineHint(totalMatched, cap)}
+                </div>
+              )}
             </CommandGroup>
           </CommandList>
         </Command>
@@ -301,6 +464,7 @@ function FactoringField({ form, setForm, totalValue }: {
   const { data: configs = [] } = useFactoringConfigs();
   const activeConfigs = configs.filter(c => c.active);
   const selectedConfig = activeConfigs.find(c => c.id === form.factoring_config_id);
+  const factoringEditable = canEditSaleOrderFactoring(form.status);
 
   const simulation = (() => {
     if (!selectedConfig || totalValue <= 0) return null;
@@ -336,17 +500,27 @@ function FactoringField({ form, setForm, totalValue }: {
         <Checkbox
           id="is_factoring"
           checked={form.is_factoring}
+          disabled={!factoringEditable}
           onCheckedChange={(checked) => setForm(f => ({
             ...f,
             is_factoring: !!checked,
             factoring_config_id: checked ? (activeConfigs[0]?.id || '') : '',
           }))}
         />
-        <Label htmlFor="is_factoring" className="text-xs font-bold cursor-pointer flex items-center gap-1.5">
+        <Label
+          htmlFor="is_factoring"
+          className={`text-xs font-bold flex items-center gap-1.5 ${factoringEditable ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'}`}
+        >
           <Percent className="h-3.5 w-3.5 text-primary" />
           Pedido via Factoring
         </Label>
       </div>
+
+      {!factoringEditable && (
+        <p className="text-xs text-muted-foreground leading-snug">
+          Factoring só pode mudar antes da aprovação (Rascunho/Pendente).
+        </p>
+      )}
 
       {form.is_factoring && (
         <div className="space-y-3">
@@ -357,7 +531,11 @@ function FactoringField({ form, setForm, totalValue }: {
             {/* Audit visual: factoring marcado mas sem config selecionada gerava
                 erro silencioso no save. Agora destaca em vermelho e o handler
                 no submit bloqueia. */}
-            <Select value={form.factoring_config_id} onValueChange={v => setForm(f => ({ ...f, factoring_config_id: v }))}>
+            <Select
+              value={form.factoring_config_id}
+              disabled={!factoringEditable}
+              onValueChange={v => setForm(f => ({ ...f, factoring_config_id: v }))}
+            >
               <SelectTrigger className={`h-9 ${!form.factoring_config_id ? 'border-destructive focus:ring-destructive' : ''}`}>
                 <SelectValue placeholder="Selecione a factoring..." />
               </SelectTrigger>
@@ -465,6 +643,188 @@ function FactoringField({ form, setForm, totalValue }: {
   );
 }
 
+/** Lista de itens memoizada: tipar no header comercial (cliente/notas) não
+ *  re-reconcilia o mapa de SaleOrderItemForm — o memo do item já protege
+ *  irmãos na digitação de grade; isto protege a lista inteira na digitação
+ *  do cabeçalho. */
+interface SaleOrderItemsListProps {
+  items: SaleOrderItemFormData[];
+  sortedIndices: number[];
+  duplicateItemIndices: Set<number>;
+  references: any[];
+  saleOrderId?: string | null;
+  saleOrderStatus?: string | null;
+  billingWeek: string | null;
+  requiredAt: string | null;
+  mainProductionStart?: string | null;
+  isAdmin: boolean;
+  priceLookup?: PriceLookup;
+  maxDiscountPct: number;
+  variantsByRef: ReadonlyMap<string, readonly any[]>;
+  selectedItemIndices: Set<number>;
+  onColorIssueChange?: Props['onColorIssueChange'];
+  onSheetMaterialSelectableChange: (index: number, selectable: boolean) => void;
+  onUpdate: (idx: number, field: string, value: any) => void;
+  onUpdateFields: (idx: number, patch: Partial<SaleOrderItemFormData>) => void;
+  onRemove: (idx: number) => void;
+  onCopyGradeFromPrevious: (idx: number) => void;
+  onSaveStateAndNavigate?: () => void;
+  onToggleSelect: (idx: number) => void;
+  sharedProducts: Array<{ id: string; name: string | null; color: string | null; group_id: string | null; category: string | null; active: boolean | null }>;
+  sharedProductGroups: Array<{ id: string; name: string | null; colors: unknown; is_color_agnostic: boolean | null }>;
+  sharedStrapCatalog?: unknown;
+  sharedStrapCatalogLoading?: boolean;
+  sharedInternalStrapReadinessByKey?: ReadonlyMap<string, InternalStrapReadiness>;
+  sharedStrapStockLinesByKey?: ReadonlyMap<string, StrapStockLine[]>;
+  sharedStrapStockLinesLoading?: boolean;
+  sharedStrapStockLinesError?: boolean;
+  sharedReferenceTerceirizacoesByRef?: ReadonlyMap<string, ReferenceTerceirizacao[]>;
+  sharedReferenceTerceirizacoesLoading?: boolean;
+  sharedReferenceTerceirizacoesFailed?: boolean;
+  onRetrySharedReferenceTerceirizacoes?: () => void;
+}
+
+const SaleOrderItemsList = memo(function SaleOrderItemsList({
+  items,
+  sortedIndices,
+  duplicateItemIndices,
+  references,
+  saleOrderId,
+  saleOrderStatus,
+  billingWeek,
+  requiredAt,
+  isAdmin,
+  priceLookup,
+  maxDiscountPct,
+  variantsByRef,
+  selectedItemIndices,
+  onColorIssueChange,
+  onSheetMaterialSelectableChange,
+  onUpdate,
+  onUpdateFields,
+  onRemove,
+  onCopyGradeFromPrevious,
+  onSaveStateAndNavigate,
+  onToggleSelect,
+  sharedProducts,
+  sharedProductGroups,
+  sharedStrapCatalog,
+  sharedStrapCatalogLoading,
+  sharedInternalStrapReadinessByKey,
+  sharedStrapStockLinesByKey,
+  sharedStrapStockLinesLoading,
+  sharedStrapStockLinesError,
+  sharedReferenceTerceirizacoesByRef,
+  sharedReferenceTerceirizacoesLoading,
+  sharedReferenceTerceirizacoesFailed,
+  onRetrySharedReferenceTerceirizacoes,
+  mainProductionStart,
+}: SaleOrderItemsListProps) {
+  return (
+    <>
+      {sortedIndices.map((idx, sortPos) => {
+        const item = items[idx];
+        const prevItem = sortPos > 0 ? items[sortedIndices[sortPos - 1]] : null;
+        const isSameRef = prevItem?.reference_id === item.reference_id && !!item.reference_id;
+        const isProductiveDuplicate = duplicateItemIndices.has(idx);
+        const isNewRefGroup = !!item.reference_id && !isSameRef;
+        const groupRef = isNewRefGroup ? references.find((r) => r.id === item.reference_id) : null;
+        const groupLabel = groupRef
+          ? (groupRef.name || groupRef.code || 'Referência')
+          : 'Referência';
+        const groupColorCount = isNewRefGroup ? items.filter((i) => i.reference_id === item.reference_id).length : 0;
+        return (
+          <Fragment key={item.id || item.clientKey || `idx-${idx}`}>
+            {isNewRefGroup && (
+              <div className="flex items-center gap-3 mt-4 mb-1 first:mt-0">
+                <div className="h-px flex-1 bg-border" />
+                <span className="shrink-0 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  {groupLabel}
+                  <span className="ml-1.5 font-normal normal-case text-muted-foreground/70">· {groupColorCount} {groupColorCount === 1 ? 'cor' : 'cores'}</span>
+                </span>
+                <div className="h-px flex-1 bg-border" />
+              </div>
+            )}
+            <div
+              className={
+                isProductiveDuplicate
+                  ? 'ml-6 border-l-4 border-destructive/50 pl-3 bg-destructive/5 rounded-r-md relative'
+                  : isSameRef
+                    ? 'ml-3 border-l-2 border-primary/30 pl-2 bg-primary/5 rounded-r-md'
+                    : ''
+              }>
+              {isProductiveDuplicate && (
+                <div className="absolute -top-2 left-3 px-2 py-0.5 rounded-full bg-destructive text-destructive-foreground text-xs font-bold uppercase tracking-wider shadow-sm z-10">
+                  Duplicado · mesma configuração
+                </div>
+              )}
+              <SaleOrderItemForm
+                saleOrderId={saleOrderId}
+                saleOrderStatus={saleOrderStatus}
+                billingWeek={billingWeek}
+                requiredAt={requiredAt}
+                mainProductionStart={mainProductionStart}
+                item={item}
+                index={idx}
+                onColorIssueChange={onColorIssueChange}
+                onSheetMaterialSelectableChange={onSheetMaterialSelectableChange}
+                references={references}
+                canRemove={items.length > 1 && !isProductionExcludedSaleOrderItem(item)}
+                isAdmin={isAdmin}
+                priceLookup={priceLookup}
+                maxDiscountPct={maxDiscountPct}
+                variantsByRef={variantsByRef}
+                onUpdate={onUpdate}
+                onUpdateFields={onUpdateFields}
+                onRemove={onRemove}
+                onCopyGradeFromPrevious={onCopyGradeFromPrevious}
+                onSaveStateAndNavigate={onSaveStateAndNavigate}
+                isSelected={!isProductionExcludedSaleOrderItem(item) && selectedItemIndices.has(idx)}
+                onToggleSelect={isProductionExcludedSaleOrderItem(item) ? undefined : onToggleSelect}
+                sharedProducts={sharedProducts}
+                sharedProductGroups={sharedProductGroups}
+                sharedStrapCatalog={sharedStrapCatalog as any}
+                sharedStrapCatalogLoading={sharedStrapCatalogLoading}
+                sharedInternalStrapReadiness={
+                  sharedInternalStrapReadinessByKey?.get(internalStrapReadinessKey({
+                    referenceId: item.reference_id,
+                    materialVariantId: item.material_variant_id,
+                    color: item.color,
+                  }) || '') || undefined
+                }
+                sharedStrapStockLines={
+                  sharedStrapStockLinesByKey
+                    ? (sharedStrapStockLinesByKey.get(
+                        strapStockLinesItemKey({
+                          saleOrderItemId: item.id,
+                          clientKey: item.clientKey,
+                        }) || '',
+                      ) || [])
+                    : undefined
+                }
+                sharedStrapStockLinesLoading={sharedStrapStockLinesLoading}
+                sharedStrapStockLinesError={sharedStrapStockLinesError}
+                sharedReferenceTerceirizacoes={
+                  item.reference_id
+                    ? sharedReferenceTerceirizacoesByRef?.get(item.reference_id)
+                    : undefined
+                }
+                sharedReferenceTerceirizacoesLoading={sharedReferenceTerceirizacoesLoading}
+                sharedReferenceTerceirizacoesFailed={sharedReferenceTerceirizacoesFailed}
+                onRetrySharedReferenceTerceirizacoes={onRetrySharedReferenceTerceirizacoes}
+              />
+            </div>
+          </Fragment>
+        );
+      })}
+    </>
+  );
+});
+
+const EMPTY_STRAP_READINESS_MAP: ReadonlyMap<string, InternalStrapReadiness> = new Map();
+const EMPTY_STRAP_STOCK_LINES_MAP: ReadonlyMap<string, StrapStockLine[]> = new Map();
+const EMPTY_TERCEIRIZACOES_MAP: ReadonlyMap<string, ReferenceTerceirizacao[]> = new Map();
+
 export default function SaleOrderFormPanel({
   saleOrderId, form, setForm, items, setItems, clients, representatives, references,
    isAdmin, selectedClientId, onClientSelect, onSubmit, onCancel, onUserEdit, isPending, submitLabel,
@@ -472,6 +832,7 @@ export default function SaleOrderFormPanel({
    packagingQuantity: _packagingQuantity, onPackagingQuantityChange: _onPackagingQuantityChange,
    onSaveStateAndNavigate, onCopyToNewOrder, onDeleteSelectedItems,
    minBillingISO, computingMinBilling, onColorIssueChange,
+   strapCatalog: sharedStrapCatalog, strapCatalogLoading: sharedStrapCatalogLoading,
  }: Props) {
    // Índice do item → o material da ficha está oferecido no seletor dele?
    // Quem resolve isso é o SaleOrderItemForm (ficha × grupo efetivo de cada
@@ -505,21 +866,39 @@ export default function SaleOrderFormPanel({
   const { data: companies = [] } = useCompanies();
   const primaryCompany = companies.find(c => c.is_primary);
 
+  // Shared pelo form inteiro: 1 fetch, N itens leem via props (não N subscribers).
+  const { data: sharedProducts = [] } = useQuery({
+    queryKey: ['products_for_colors'],
+    queryFn: async () => {
+      const { data } = await supabase.from('products').select('id, name, color, group_id, category, active');
+      return data || [];
+    },
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+  });
+  const { data: sharedProductGroups = [] } = useQuery({
+    queryKey: ['product_groups_colors'],
+    queryFn: async () => {
+      const { data } = await supabase.from('product_groups').select('id, name, colors, is_color_agnostic');
+      return data || [];
+    },
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+  });
+
   // Defaults comerciais do cliente OU do grupo econômico (precedência cliente > grupo).
   // Pré-popula campos vazios quando o cliente é selecionado pela primeira vez.
+  // Em edição NÃO injeta factoring_config_id: vazio = sem factoring (intencional).
   const { data: commercialDefaults } = useClientCommercialDefaults(selectedClientId);
   const defaultsApplied = useRef<string | null>(null);
   useEffect(() => {
     if (!selectedClientId || !commercialDefaults) return;
     if (defaultsApplied.current === selectedClientId) return;
     defaultsApplied.current = selectedClientId;
-    setForm(f => ({
-      ...f,
-      // Só preenche se o campo estiver vazio — preserva o que o user já mexeu
-      payment_condition: f.payment_condition || commercialDefaults.payment_condition || '',
-      factoring_config_id: f.factoring_config_id || commercialDefaults.factoring_config_id || '',
+    setForm(f => applyClientCommercialDefaultsToForm(f, commercialDefaults, {
+      isEdit: !!saleOrderId,
     }));
-  }, [selectedClientId, commercialDefaults, setForm]);
+  }, [selectedClientId, commercialDefaults, setForm, saleOrderId]);
 
   // Credit exposure: sum of open AR for selected client
   // Tabela de preço do cliente + teto de desconto — pra auto-aplicar o preço no
@@ -552,6 +931,93 @@ export default function SaleOrderFormPanel({
   const selectedSheetIds = useMemo(() => {
     return [...new Set(items.map(i => i.reference_id).filter(Boolean))];
   }, [items]);
+
+  // Readiness de tiras: 1 RPC para todas as tuplas únicas (ref|variant|color).
+  const strapReadinessInputs = useMemo((): InternalStrapReadinessInput[] => {
+    if (isCommittedSaleOrderStrapSnapshotStatus(form.status)) return [];
+    return items.flatMap((item) => {
+      if (!item.reference_id) return [];
+      const straps = Array.isArray(item.strap_colors) ? item.strap_colors : [];
+      const hasFollowMain = straps.some((strap) =>
+        strapIdentityBasis(strap) === 'reference_base'
+        && strapColorMode(strap) === 'follow_main');
+      if (!hasFollowMain && straps.length === 0) {
+        // Ficha pode ter reference_base mesmo se o item ainda não reconciliou
+        // strap_colors — o diagnose unitário também rodava nesses casos via
+        // hasStrapsEffective. Inclui a tupla e deixa o SQL dizer se precisa.
+        const ref = references.find((r: any) => r.id === item.reference_id);
+        if (!ref?.has_straps) return [];
+      } else if (!hasFollowMain) {
+        return [];
+      }
+      return [{
+        referenceId: item.reference_id,
+        materialVariantId: item.material_variant_id,
+        color: item.color,
+      }];
+    });
+  }, [form.status, items, references]);
+
+  const { data: strapReadinessByKey = EMPTY_STRAP_READINESS_MAP } = useInternalStrapReadinessBatch(
+    strapReadinessInputs,
+    strapReadinessInputs.length > 0,
+  );
+
+  const billingWeekForStraps = form.delivery_month && form.delivery_week
+    ? `${form.delivery_month}-${form.delivery_week}`
+    : null;
+  const requiredAtForStraps = form.delivery_deadline || null;
+  const mainProductionStartForStraps = minBillingISO || null;
+
+  // Preview de estoque/consumo das tiras: 1 RPC para todos os itens com tiras.
+  const strapStockLinesInputs = useMemo((): StrapStockLinesInput[] => {
+    return items.flatMap((item) => {
+      const itemKey = strapStockLinesItemKey({
+        saleOrderItemId: item.id,
+        clientKey: item.clientKey,
+      });
+      if (!itemKey || !item.reference_id) return [];
+      const straps = Array.isArray(item.strap_colors) ? item.strap_colors : [];
+      if (!straps.some((strap) => !!technicalStrapLineId(strap))) return [];
+      return [{
+        itemKey,
+        saleOrderId: saleOrderId || null,
+        saleOrderItemId: item.id || null,
+        referenceId: item.reference_id,
+        materialVariantId: item.material_variant_id,
+        itemColor: item.color,
+        strapColors: straps,
+        strapSourcing: item.strap_sourcing || {},
+        quantity: item.quantity,
+        grade: item.grade,
+        billingWeek: billingWeekForStraps,
+        mainProductionStart: mainProductionStartForStraps,
+        requiredAt: requiredAtForStraps,
+      }];
+    });
+  }, [
+    items,
+    saleOrderId,
+    billingWeekForStraps,
+    mainProductionStartForStraps,
+    requiredAtForStraps,
+  ]);
+
+  const {
+    data: strapStockLinesByKey = EMPTY_STRAP_STOCK_LINES_MAP,
+    isLoading: strapStockLinesLoading,
+    isError: strapStockLinesFailed,
+  } = useStrapStockLinesBatch(
+    strapStockLinesInputs,
+    strapStockLinesInputs.length > 0,
+  );
+
+  const {
+    data: terceirizacoesByRef = EMPTY_TERCEIRIZACOES_MAP,
+    isLoading: terceirizacoesLoading,
+    isError: terceirizacoesFailed,
+    refetch: refetchTerceirizacoes,
+  } = useActiveReferenceTerceirizacoesBatch(selectedSheetIds);
 
   // Visão contextual SOMENTE LEITURA. A configuração canônica é sempre:
   // ficha -> tipo de solado -> slots de caixa em product_groups -> box_types.
@@ -639,7 +1105,14 @@ export default function SaleOrderFormPanel({
   const addItem = () => {
     setItems(prev => {
       const last = prev[prev.length - 1];
-      return [...prev, { ...emptyItem, grade: last ? { ...last.grade } : {}, fichas: last?.fichas || 1 }];
+      const grade = last ? { ...last.grade } : {};
+      const fichas = last?.fichas || 1;
+      return [...prev, withSaleOrderItemClientKey({
+        ...emptyItem(),
+        grade,
+        fichas,
+        quantity: saleOrderItemQuantityFromGrade(grade, fichas),
+      })];
     });
     setTimeout(() => {
       lastItemRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -648,6 +1121,12 @@ export default function SaleOrderFormPanel({
   // A seleção do bulk-edit mora aqui em cima (e não junto do resto da barra de
   // lote) porque `removeItem` PRECISA reindexá-la — ver o comentário lá.
   const [selectedItemIndices, setSelectedItemIndices] = useState<Set<number>>(new Set());
+
+  // Fonte mais recente para callbacks estáveis. Além da performance do memo,
+  // centraliza a trave dos itens retirados: nenhuma ação local ou em lote
+  // pode alterar/apagar uma linha preservada pelo comando administrativo.
+  const itemsRef = useRef(items);
+  useEffect(() => { itemsRef.current = items; }, [items]);
 
   // ⚠ PERF: identidade ESTÁVEL é obrigatória nas funções passadas ao
   // SaleOrderItemForm — ele é `memo()` e uma arrow nova a cada render fura o memo,
@@ -660,6 +1139,10 @@ export default function SaleOrderFormPanel({
   // que levaria a referência errada pro pedido novo.
   const removeItem = useCallback(
     (idx: number) => {
+      if (isProductionExcludedSaleOrderItem(itemsRef.current[idx])) {
+        toast.info('Item retirado da produção é preservado no histórico e não pode ser removido.');
+        return;
+      }
       setItems(prev => prev.filter((_, i) => i !== idx));
       setSelectedItemIndices(prev => (prev.size === 0 ? prev : remapSelectionAfterRemoval(prev, idx)));
       // Tirar item é alteração de verdade. O `onUserEdit` normalmente vem de evento
@@ -672,21 +1155,16 @@ export default function SaleOrderFormPanel({
     [setItems, onUserEdit],
   );
 
-  // `items` mais recente sem entrar na lista de dependências — é o que permite
-  // copyGradeFromPrevious (logo abaixo de updateItem) ter identidade estável
-  // apesar de precisar ler o item anterior.
-  const itemsRef = useRef(items);
-  useEffect(() => { itemsRef.current = items; }, [items]);
-
    const updateItem = useCallback((idx: number, field: string, value: any) => {
      setItems(prev => {
+       if (isProductionExcludedSaleOrderItem(prev[idx])) return prev;
        const next = prev.map((item, i) => i === idx ? { ...item, [field]: value } : item);
 
        // Real-time duplicate warning
        if (field === 'reference_id' || field === 'color') {
          const item = next[idx];
          if (item.reference_id && item.color) {
-           const isDup = next.some((it, i) => i !== idx && it.reference_id === item.reference_id && it.color === item.color);
+           const isDup = shouldWarnSaleOrderItemDuplicate(next, idx);
            if (isDup) {
              const ref = references.find(r => r.id === item.reference_id);
              toast.info(`Item duplicado: ${ref?.code || 'Ref'} (${item.color})`, {
@@ -700,15 +1178,28 @@ export default function SaleOrderFormPanel({
      });
      }, [references, setItems]);
 
+  // Patch multi-campo num único setItems — evita o double-render grade→quantity.
+  const updateItemFields = useCallback((idx: number, patch: Partial<SaleOrderItemFormData>) => {
+    setItems(prev => {
+      if (isProductionExcludedSaleOrderItem(prev[idx])) return prev;
+      return prev.map((item, i) => i === idx ? { ...item, ...patch } : item);
+    });
+  }, [setItems]);
+
   // Estável de propósito (memo do SaleOrderItemForm): lê o item anterior via
   // itemsRef, então não precisa de `items` nas dependências.
   const copyGradeFromPrevious = useCallback((i: number) => {
     if (i <= 0) return;
     const prev = itemsRef.current[i - 1];
     if (!prev) return;
-    updateItem(i, 'grade', { ...prev.grade });
-    updateItem(i, 'fichas', prev.fichas || 1);
-  }, [updateItem]);
+    const grade = { ...prev.grade };
+    const fichas = prev.fichas || 1;
+    updateItemFields(i, {
+      grade,
+      fichas,
+      quantity: saleOrderItemQuantityFromGrade(grade, fichas),
+    });
+  }, [updateItemFields]);
 
    // ── Bulk-edit de itens (pedido user 20/05/2026) ─────────────────────────
    // Seleção múltipla de itens do PV pra aplicar mudanças em lote: copiar
@@ -720,6 +1211,7 @@ export default function SaleOrderFormPanel({
    const [bulkFichasInput, setBulkFichasInput] = useState<string>('');
    const [bulkGradeInput, setBulkGradeInput] = useState<Record<string, string>>({});
    const toggleItemSelection = useCallback((idx: number) => {
+     if (isProductionExcludedSaleOrderItem(itemsRef.current[idx])) return;
      setSelectedItemIndices(prev => {
        const next = new Set(prev);
        if (next.has(idx)) next.delete(idx); else next.add(idx);
@@ -728,7 +1220,9 @@ export default function SaleOrderFormPanel({
    }, []);
    const clearItemSelection = useCallback(() => setSelectedItemIndices(new Set()), []);
    const selectAllItems = useCallback(() => {
-     setSelectedItemIndices(new Set(items.map((_, i) => i)));
+     setSelectedItemIndices(new Set(
+       items.flatMap((item, i) => isProductionExcludedSaleOrderItem(item) ? [] : [i]),
+     ));
    }, [items]);
 
    /**
@@ -740,7 +1234,9 @@ export default function SaleOrderFormPanel({
     * hover, então botão apagado sem explicação vira beco sem saída.
     */
    const deleteSelectedItems = useCallback(() => {
-     const indices = Array.from(selectedItemIndices).sort((a, b) => a - b);
+     const indices = Array.from(selectedItemIndices)
+       .filter((idx) => !isProductionExcludedSaleOrderItem(items[idx]))
+       .sort((a, b) => a - b);
      if (indices.length === 0) return;
      if (indices.length >= items.length) {
        toast.error('O pedido precisa de pelo menos um item — desmarque um deles para excluir os demais.');
@@ -750,9 +1246,11 @@ export default function SaleOrderFormPanel({
      onDeleteSelectedItems?.(indices);
      // Zera em vez de reindexar: os índices selecionados acabaram de sair da lista.
      setSelectedItemIndices(new Set());
-   }, [selectedItemIndices, items.length, onDeleteSelectedItems, onUserEdit]);
+   }, [selectedItemIndices, items, onDeleteSelectedItems, onUserEdit]);
    const applyGradeFromFirstSelected = useCallback(() => {
-     const sorted = Array.from(selectedItemIndices).sort((a, b) => a - b);
+     const sorted = Array.from(selectedItemIndices)
+       .filter((idx) => !isProductionExcludedSaleOrderItem(items[idx]))
+       .sort((a, b) => a - b);
      if (sorted.length < 2) {
        toast.error('Selecione pelo menos 2 itens — o 1º é a fonte da grade, os demais recebem.');
        return;
@@ -765,11 +1263,14 @@ export default function SaleOrderFormPanel({
        return;
      }
      setItems(prev => prev.map((item, i) => {
-       if (!others.includes(i)) return item;
+       if (!others.includes(i) || isProductionExcludedSaleOrderItem(item)) return item;
+       const fichas = sourceFichas || item.fichas || 1;
+       const grade = { ...sourceGrade };
        return {
          ...item,
-         grade: { ...sourceGrade },
-         fichas: sourceFichas || item.fichas || 1,
+         grade,
+         fichas,
+         quantity: saleOrderItemQuantityFromGrade(grade, fichas),
        };
      }));
      toast.success(`Grade copiada do item #${firstIdx + 1} pra ${others.length} ${others.length === 1 ? 'item' : 'itens'}`);
@@ -780,9 +1281,10 @@ export default function SaleOrderFormPanel({
        toast.error('Digite um preço válido (ex: 89,90).');
        return;
      }
-     const ids = Array.from(selectedItemIndices);
+     const ids = Array.from(selectedItemIndices)
+       .filter((idx) => !isProductionExcludedSaleOrderItem(itemsRef.current[idx]));
      if (ids.length === 0) return;
-     setItems(prev => prev.map((item, i) => ids.includes(i) ? { ...item, unit_price: price } : item));
+     setItems(prev => prev.map((item, i) => ids.includes(i) && !isProductionExcludedSaleOrderItem(item) ? { ...item, unit_price: price } : item));
      toast.success(`Preço R$ ${price.toFixed(2)} aplicado em ${ids.length} ${ids.length === 1 ? 'item' : 'itens'}`);
      setBulkPriceInput('');
    }, [bulkPriceInput, selectedItemIndices, setItems]);
@@ -792,9 +1294,17 @@ export default function SaleOrderFormPanel({
        toast.error('Digite um número de fichas válido (mínimo 1).');
        return;
      }
-     const ids = Array.from(selectedItemIndices);
+     const ids = Array.from(selectedItemIndices)
+       .filter((idx) => !isProductionExcludedSaleOrderItem(itemsRef.current[idx]));
      if (ids.length === 0) return;
-     setItems(prev => prev.map((item, i) => ids.includes(i) ? { ...item, fichas: n } : item));
+     setItems(prev => prev.map((item, i) => {
+       if (!ids.includes(i) || isProductionExcludedSaleOrderItem(item)) return item;
+       return {
+         ...item,
+         fichas: n,
+         quantity: saleOrderItemQuantityFromGrade(item.grade, n),
+       };
+     }));
      toast.success(`${n} ${n === 1 ? 'ficha' : 'fichas'} aplicado em ${ids.length} ${ids.length === 1 ? 'item' : 'itens'}`);
      setBulkFichasInput('');
    }, [bulkFichasInput, selectedItemIndices, setItems]);
@@ -822,7 +1332,8 @@ export default function SaleOrderFormPanel({
    }, [selectedItemIndices, items]);
 
    const applyGradeTableToSelected = useCallback(() => {
-     const ids = Array.from(selectedItemIndices);
+     const ids = Array.from(selectedItemIndices)
+       .filter((idx) => !isProductionExcludedSaleOrderItem(itemsRef.current[idx]));
      if (ids.length === 0) return;
      // Filtra zeros e converte string→number
      const cleanGrade: Record<string, number> = {};
@@ -835,7 +1346,14 @@ export default function SaleOrderFormPanel({
        return;
      }
      const totalPairs = Object.values(cleanGrade).reduce((s, v) => s + v, 0);
-     setItems(prev => prev.map((item, i) => ids.includes(i) ? { ...item, grade: { ...cleanGrade } } : item));
+     setItems(prev => prev.map((item, i) => {
+       if (!ids.includes(i) || isProductionExcludedSaleOrderItem(item)) return item;
+       return {
+         ...item,
+         grade: { ...cleanGrade },
+         quantity: saleOrderItemQuantityFromGrade(cleanGrade, item.fichas),
+       };
+     }));
      toast.success(`Grade aplicada em ${ids.length} ${ids.length === 1 ? 'item' : 'itens'} (${totalPairs} pares por ficha)`);
      setBulkGradeInput({});
    }, [bulkGradeInput, selectedItemIndices, setItems]);
@@ -966,11 +1484,15 @@ export default function SaleOrderFormPanel({
     });
     return indices;
   }, [items]);
+  const duplicateItemIndices = useMemo(
+    () => saleOrderDuplicateVisualIndices(items, sortedIndices),
+    [items, sortedIndices],
+  );
 
    /**
     * Identidade produtiva de um item para fins de duplicata.
     *
-    * Antes era só `reference_id + color`, e isso quebrava de duas formas ao
+    * Antes era só `reference_id + color`, e isso quebrava de três formas ao
     * mesclar:
     *  • `material_variant_id` fora da chave — dois itens da mesma ref/cor mas de
     *    VARIANTES diferentes eram acusados de duplicados, e o merge herdava a
@@ -983,15 +1505,26 @@ export default function SaleOrderFormPanel({
     *    com o `fichas` herdado, e a diferença sumia (ou inflava, se o primeiro
     *    item tivesse o `fichas` maior).
     *
-    * Com os dois na chave, itens que diferem por variante ou por fichas deixam
-    * de ser reportados como duplicados e nunca chegam ao merge. Itens realmente
-    * idênticos continuam mesclando como antes.
+    *  • `strap_colors` fora da chave — duas combinações independentes de tiras
+    *    eram somadas, mas o snapshot do primeiro item vencia e o consumo/débito
+    *    dos pares do segundo passava a usar as cores erradas.
+    *
+    * O helper compartilhado pela detecção e pelo merge inclui tudo isso. Itens
+    * realmente idênticos continuam mesclando mesmo se as linhas de tira vierem
+    * em outra ordem de apresentação.
     */
-   const duplicateKey = (item: SaleOrderItemFormData) =>
-     `${item.reference_id}-${item.color || ''}-${(item as any).material_variant_id || ''}-${item.fichas ?? 1}`;
+   const editableItemCount = useMemo(
+     () => items.filter((item) => !isProductionExcludedSaleOrderItem(item)).length,
+     [items],
+   );
 
    const handlePreSubmit = (e: React.FormEvent) => {
      e.preventDefault();
+     // Dialogs portais (Novo Material, tira, etc.) montam um <form> FORA do DOM
+     // do PV mas DENTRO da árvore React. O submit deles borbulha até aqui e
+     // disparava o gauntlet de save — "Selecione uma cor para todos os itens"
+     // enquanto o operador estava cadastrando justamente essa cor.
+     if (e.target !== e.currentTarget) return;
      setSubmitAttempted(true);
 
      // If user already confirmed duplicates, skip the duplicate check and submit directly.
@@ -1005,8 +1538,8 @@ export default function SaleOrderFormPanel({
      const dups: string[] = [];
 
      items.forEach(item => {
-       if (!item.reference_id) return;
-       const key = duplicateKey(item);
+       if (!item.reference_id || isProductionExcludedSaleOrderItem(item)) return;
+       const key = saleOrderItemDuplicateKey(item);
        if (seen.has(key)) {
          const ref = references.find(r => r.id === item.reference_id);
          const label = `${ref?.code || 'Ref'} (${item.color || 'Sem cor'})`;
@@ -1078,7 +1611,7 @@ export default function SaleOrderFormPanel({
       )}
       {/* Mapa do preenchimento: mantém a orientação quando o pedido tem muitas
           referências e evita rolagem longa só para voltar aos dados comerciais. */}
-      <nav aria-label="Etapas do pedido" className="sticky top-0 z-20 -mx-1 flex gap-1 overflow-x-auto border-y bg-background/95 px-1 py-2 backdrop-blur sm:static sm:mx-0 sm:rounded-lg sm:border sm:bg-muted/20 sm:px-2">
+      <nav aria-label="Etapas do pedido" className="sticky top-0 z-20 -mx-1 flex gap-1 overflow-x-auto border-y bg-background px-1 py-2 sm:static sm:mx-0 sm:rounded-lg sm:border sm:bg-muted/20 sm:px-2">
         <span className="hidden shrink-0 items-center px-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground lg:flex">Preenchimento</span>
         <Button type="button" variant="ghost" size="sm" className="min-h-10 shrink-0 gap-1.5 bg-background shadow-sm sm:bg-transparent sm:shadow-none" onClick={() => document.getElementById('pv-cliente')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
           <User className="h-4 w-4" />
@@ -1952,9 +2485,10 @@ export default function SaleOrderFormPanel({
               <label className="flex items-center gap-1.5 cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">
                 <input
                   type="checkbox"
-                  checked={selectedItemIndices.size === items.length && items.length > 0}
+                  checked={editableItemCount > 0 && selectedItemIndices.size === editableItemCount}
+                  disabled={editableItemCount === 0}
                   ref={(el) => {
-                    if (el) el.indeterminate = selectedItemIndices.size > 0 && selectedItemIndices.size < items.length;
+                    if (el) el.indeterminate = selectedItemIndices.size > 0 && selectedItemIndices.size < editableItemCount;
                   }}
                   onChange={(e) => {
                     if (e.target.checked) selectAllItems();
@@ -1963,80 +2497,50 @@ export default function SaleOrderFormPanel({
                   className="h-4 w-4 rounded border-input cursor-pointer"
                   aria-label="Selecionar todos os itens"
                 />
-                {selectedItemIndices.size === items.length && items.length > 0
+                {editableItemCount > 0 && selectedItemIndices.size === editableItemCount
                   ? 'Desmarcar todos'
-                  : `Selecionar todos${selectedItemIndices.size > 0 ? ` (${selectedItemIndices.size}/${items.length})` : ''}`}
+                  : `Selecionar todos${selectedItemIndices.size > 0 ? ` (${selectedItemIndices.size}/${editableItemCount})` : ''}`}
               </label>
             )}
             <Badge variant="outline" className="font-mono">{items.length} Referência(s)</Badge>
           </div>
         </div>
-        {sortedIndices.map((idx, sortPos) => {
-          const item = items[idx];
-          const prevItem = sortPos > 0 ? items[sortedIndices[sortPos - 1]] : null;
-          const isSameRef = prevItem?.reference_id === item.reference_id && !!item.reference_id;
-          const isSameRefAndColor = isSameRef && prevItem?.color === item.color;
-          // Cabeçalho de grupo: aparece no 1º item de cada referência, agrupando
-          // visualmente as cores da mesma ref. Pedido user 11/06/2026.
-          const isNewRefGroup = !!item.reference_id && !isSameRef;
-          const groupRef = isNewRefGroup ? references.find((r) => r.id === item.reference_id) : null;
-          const groupLabel = groupRef
-            ? (groupRef.name || groupRef.code || 'Referência')
-            : 'Referência';
-          const groupColorCount = isNewRefGroup ? items.filter((i) => i.reference_id === item.reference_id).length : 0;
-          return (
-            <Fragment key={`${idx}-${item.reference_id}`}>
-            {isNewRefGroup && (
-              <div className="flex items-center gap-3 mt-4 mb-1 first:mt-0">
-                <div className="h-px flex-1 bg-border" />
-                <span className="shrink-0 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                  {groupLabel}
-                  <span className="ml-1.5 font-normal normal-case text-muted-foreground/70">· {groupColorCount} {groupColorCount === 1 ? 'cor' : 'cores'}</span>
-                </span>
-                <div className="h-px flex-1 bg-border" />
-              </div>
-            )}
-            <div
-              className={
-                isSameRefAndColor && item.color
-                  ? 'ml-6 border-l-4 border-destructive/50 pl-3 bg-destructive/5 rounded-r-md relative'
-                  : isSameRef
-                    ? 'ml-3 border-l-2 border-primary/30 pl-2 bg-primary/5 rounded-r-md'
-                    : ''
-              }>
-              {isSameRefAndColor && item.color && (
-                <div className="absolute -top-2 left-3 px-2 py-0.5 rounded-full bg-destructive text-destructive-foreground text-xs font-bold uppercase tracking-wider shadow-sm z-10">
-                  Duplicado · mesma ref+cor
-                </div>
-              )}
-              <SaleOrderItemForm
-                saleOrderId={saleOrderId}
-                saleOrderStatus={form.status}
-                billingWeek={form.delivery_month && form.delivery_week
-                  ? `${form.delivery_month}-${form.delivery_week}`
-                  : null}
-                requiredAt={form.delivery_deadline || null}
-                item={item}
-                index={idx}
-                onColorIssueChange={onColorIssueChange}
-                onSheetMaterialSelectableChange={handleSheetMaterialSelectable}
-                references={references}
-                canRemove={items.length > 1}
-                isAdmin={isAdmin}
-                priceLookup={clientPricing?.lookup}
-                maxDiscountPct={clientPricing?.maxDiscountPct ?? 0}
-                variantsByRef={allVariantsByRef}
-                onUpdate={updateItem}
-                onRemove={removeItem}
-                onCopyGradeFromPrevious={copyGradeFromPrevious}
-                onSaveStateAndNavigate={onSaveStateAndNavigate}
-                isSelected={selectedItemIndices.has(idx)}
-                onToggleSelect={toggleItemSelection}
-              />
-            </div>
-            </Fragment>
-          );
-        })}
+        <SaleOrderItemsList
+          items={items}
+          sortedIndices={sortedIndices}
+          duplicateItemIndices={duplicateItemIndices}
+          references={references}
+          saleOrderId={saleOrderId}
+          saleOrderStatus={form.status}
+          billingWeek={billingWeekForStraps}
+          requiredAt={requiredAtForStraps}
+          mainProductionStart={mainProductionStartForStraps}
+          isAdmin={isAdmin}
+          priceLookup={clientPricing?.lookup}
+          maxDiscountPct={clientPricing?.maxDiscountPct ?? 0}
+          variantsByRef={allVariantsByRef}
+          selectedItemIndices={selectedItemIndices}
+          onColorIssueChange={onColorIssueChange}
+          onSheetMaterialSelectableChange={handleSheetMaterialSelectable}
+          onUpdate={updateItem}
+          onUpdateFields={updateItemFields}
+          onRemove={removeItem}
+          onCopyGradeFromPrevious={copyGradeFromPrevious}
+          onSaveStateAndNavigate={onSaveStateAndNavigate}
+          onToggleSelect={toggleItemSelection}
+          sharedProducts={sharedProducts}
+          sharedProductGroups={sharedProductGroups}
+          sharedStrapCatalog={sharedStrapCatalog}
+          sharedStrapCatalogLoading={sharedStrapCatalogLoading}
+          sharedInternalStrapReadinessByKey={strapReadinessByKey}
+          sharedStrapStockLinesByKey={strapStockLinesByKey}
+          sharedStrapStockLinesLoading={strapStockLinesLoading}
+          sharedStrapStockLinesError={strapStockLinesFailed}
+          sharedReferenceTerceirizacoesByRef={terceirizacoesByRef}
+          sharedReferenceTerceirizacoesLoading={terceirizacoesLoading}
+          sharedReferenceTerceirizacoesFailed={terceirizacoesFailed}
+          onRetrySharedReferenceTerceirizacoes={() => { void refetchTerceirizacoes(); }}
+        />
         <Button type="button" variant="outline" size="sm" onClick={addItem} className="gap-1.5 w-full">
           <Plus className="h-3.5 w-3.5" /> Novo Item
         </Button>
@@ -2123,7 +2627,11 @@ export default function SaleOrderFormPanel({
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => onCopyToNewOrder(Array.from(selectedItemIndices).sort((a, b) => a - b))}
+                onClick={() => onCopyToNewOrder(
+                  Array.from(selectedItemIndices)
+                    .filter((idx) => !isProductionExcludedSaleOrderItem(items[idx]))
+                    .sort((a, b) => a - b),
+                )}
                 className="h-8 text-xs gap-1"
                 title="Cria um novo PV em Rascunho com os itens selecionados, usando os dados do cliente deste pedido"
               >
@@ -2138,7 +2646,7 @@ export default function SaleOrderFormPanel({
               size="sm"
               onClick={selectAllItems}
               className="h-8 text-xs"
-              disabled={selectedItemIndices.size === items.length}
+              disabled={selectedItemIndices.size === editableItemCount}
             >
               Selecionar todos
             </Button>
@@ -2244,6 +2752,7 @@ export default function SaleOrderFormPanel({
         // Quem decide o que APARECE continua sendo `submitAttempted`, logo abaixo,
         // então o form vazio segue limpo. (auditoria PV 07/08/2026)
         const validItems = items.filter(i => i.reference_id);
+        const productionItems = filterProductionSaleOrderItems(validItems);
         const validItemsCount = validItems.length;
         const factoringInvalid = form.is_factoring && !form.factoring_config_id;
 
@@ -2253,22 +2762,23 @@ export default function SaleOrderFormPanel({
         // Factoring passa a ser ERRO listado, não só um booleano solto: antes ele
         // desabilitava o Salvar sem nunca aparecer na lista de pendências.
         if (factoringInvalid) issues.push({ type: 'error', msg: 'Selecione qual factoring está antecipando o pedido' });
-        validItems.forEach((item, i) => {
-          if (!item.color?.trim()) issues.push({ type: 'error', msg: `Item ${i + 1}: cor faltando` });
-          if (item.quantity <= 0) issues.push({ type: 'warning', msg: `Item ${i + 1}: qtd zerada` });
+        productionItems.forEach((item) => {
+          const itemNumber = items.indexOf(item) + 1;
+          if (!item.color?.trim()) issues.push({ type: 'error', msg: `Item ${itemNumber}: cor faltando` });
+          if (item.quantity <= 0) issues.push({ type: 'warning', msg: `Item ${itemNumber}: qtd zerada` });
           // Preço zero é ERROR (não warning) — bloqueia submit. Reportado
           // em 20/05/2026: PV-00122 saiu com CF 07 PRETO em R$ 0,00 e
           // 'sumiu' R$ 442,80 do total geral. Regra dura no front + trigger
           // no DB (tg_block_zero_unit_price) cobrem o fluxo.
-          if (item.unit_price <= 0) issues.push({ type: 'error', msg: `Item ${i + 1}: preço unitário não pode ser zero` });
+          if (item.unit_price <= 0) issues.push({ type: 'error', msg: `Item ${itemNumber}: preço unitário não pode ser zero` });
           const refVariants = item.reference_id ? allVariantsByRef.get(item.reference_id) : undefined;
           const materialIssue = getMaterialVariantReadinessIssue({
-            itemNumber: i + 1,
+            itemNumber,
             itemId: item.id,
             activeVariantCount: refVariants?.length ?? 0,
             materialVariantId: item.material_variant_id,
-            // O índice aqui é o de `validItems`; o report vem do índice de
-            // `items`. Casa pelo id/posição real do item na lista renderizada.
+            // O report usa o índice da lista renderizada, não o índice já
+            // filtrado de `productionItems`.
             sheetMaterialSelectable: sheetMaterialSelectableByIndex[items.indexOf(item)] === true,
           });
           if (materialIssue) {
@@ -2323,7 +2833,7 @@ export default function SaleOrderFormPanel({
         const formStarted = submitAttempted || !!form.client_name || validItemsCount > 0;
 
         return (
-          <div className="fixed bottom-0 left-0 right-0 z-30 border-t bg-background/95 backdrop-blur-md shadow-[0_-4px_12px_rgba(0,0,0,0.05)] dark:shadow-[0_-4px_12px_rgba(0,0,0,0.3)]">
+          <div className="fixed bottom-0 left-0 right-0 z-30 border-t bg-background shadow-[0_-4px_12px_rgba(0,0,0,0.05)] dark:shadow-[0_-4px_12px_rgba(0,0,0,0.3)]">
             <div className="max-w-[var(--main-max,1600px)] mx-auto px-3 sm:px-6 py-2.5 sm:py-3 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3">
               {/* Resumo de totais — grid em mobile pra evitar squeeze, inline em sm+ */}
               <div className="grid grid-cols-3 sm:flex sm:items-center sm:gap-6 sm:flex-1 sm:min-w-0">
@@ -2464,14 +2974,14 @@ export default function SaleOrderFormPanel({
            </AlertDialogTitle>
            <AlertDialogDescription asChild>
              <div className="text-sm text-muted-foreground">
-             Os seguintes itens aparecem mais de uma vez no pedido (mesma referência + mesma cor):
+             Os seguintes itens aparecem mais de uma vez no pedido (mesma configuração produtiva, inclusive cores das tiras):
              <ul className="mt-2 list-disc list-inside font-medium text-foreground">
                {duplicateList.map((item, i) => (
                  <li key={i}>{item}</li>
                ))}
              </ul>
              <p className="mt-3 font-medium">
-               Recomendado: mesclar — somamos as quantidades e a grade num único item por (ref + cor).
+               Recomendado: mesclar — somamos as quantidades e a grade num único item por combinação produtiva.
                Isso evita criar várias OPs pequenas pra uma mesma combinação na produção.
              </p>
              <p className="mt-2 text-xs text-muted-foreground">
@@ -2495,12 +3005,16 @@ export default function SaleOrderFormPanel({
            </Button>
            <AlertDialogAction onClick={() => {
              // Mescla: soma quantities + mescla grades por identidade produtiva
-             // (ref + cor + variante de material + fichas — ver duplicateKey).
+             // (ref + cor + variante + fichas + combinação de tiras — ver helper).
              // A chave TEM que ser a mesma da detecção, senão o diálogo acusa uma
              // duplicata que o merge não junta (ou junta o que não devia).
              const mergedMap = new Map<string, SaleOrderItemFormData>();
-             items.forEach(item => {
-               const key = duplicateKey(item);
+             items.forEach((item, itemIndex) => {
+               if (isProductionExcludedSaleOrderItem(item)) {
+                 mergedMap.set(`__production_excluded__${item.id || itemIndex}`, item);
+                 return;
+               }
+               const key = saleOrderItemDuplicateKey(item);
                if (!item.reference_id) {
                  mergedMap.set(`__nokey__${mergedMap.size}`, item);
                  return;

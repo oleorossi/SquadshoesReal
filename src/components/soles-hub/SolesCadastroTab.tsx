@@ -24,6 +24,7 @@ import { formatCurrency } from '@/lib/utils';
 import { updateSoleProfile } from '@/services/soleProfileService';
 import type { SoleProduct } from './types';
 import { SoleColorConjugationsEditor } from './SoleColorConjugationsEditor';
+import SoleInspectionPlanPanel from './SoleInspectionPlanPanel';
 
 type SoleClassification = 'tradicional' | 'palmilha_pronta' | 'conjugado';
 const SOLE_CLASSIFICATION_LABEL: Record<SoleClassification, string> = {
@@ -563,6 +564,10 @@ export default function SolesCadastroTab({ sole }: Props) {
           </p>
         </CardContent>
       </Card>
+
+      <SoleInspectionPlanPanel
+        soleGroupId={groupId}
+      />
 
       {/* 4 — CARACTERÍSTICAS (fachetado) */}
       <Card>

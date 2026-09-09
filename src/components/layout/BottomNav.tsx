@@ -6,6 +6,8 @@ import { menuGroups, orderGroupsForRoles, secondaryRoutes } from '@/data/navigat
 import { useAccessControl } from '@/hooks/useAccessControl';
 import { useMenuFavorites } from '@/hooks/useMenuFavorites';
 import { useCurrentUserRoles } from '@/hooks/useUserManagement';
+import { normalizeForSearch } from '@/lib/searchUtils';
+import { SearchInput } from '@/components/ui/search-input';
 
 const PRIMARY_ITEMS = [
   { icon: Home,         label: 'Painel',   path: '/dashboard' },
@@ -20,6 +22,7 @@ export function BottomNav() {
   const location = useLocation();
   const navigate = useNavigate();
   const [moreOpen, setMoreOpen] = useState(false);
+  const [maisQuery, setMaisQuery] = useState('');
   // Mesma regra de acesso da sidebar: só mostra o que o usuário pode abrir
   // (permissão por menu). Sem isso o nav mobile expunha itens não liberados.
   const { canAccessRoute } = useAccessControl();
@@ -54,7 +57,49 @@ export function BottomNav() {
     return Star;
   };
 
-  useEffect(() => { setMoreOpen(false); }, [location.pathname]);
+  const q = normalizeForSearch(maisQuery);
+  const filteredFavItems = useMemo(() => {
+    if (!q) return favItems;
+    return favItems.filter((item) => normalizeForSearch(item.name).includes(q));
+  }, [favItems, q]);
+  const filteredGroups = useMemo(() => {
+    if (!q) return visibleGroups;
+    return visibleGroups
+      .map((group) => ({
+        ...group,
+        items: group.items.filter(
+          (item) =>
+            normalizeForSearch(item.label).includes(q)
+            || normalizeForSearch(group.label).includes(q),
+        ),
+      }))
+      .filter((group) => group.items.length > 0);
+  }, [visibleGroups, q]);
+  const filteredSecondary = useMemo(() => {
+    if (!q) return secondaryItems;
+    return secondaryItems.filter(
+      (item) =>
+        normalizeForSearch(item.label).includes(q)
+        || normalizeForSearch(item.group).includes(q),
+    );
+  }, [secondaryItems, q]);
+  const hasMaisResults =
+    filteredFavItems.length > 0
+    || filteredGroups.length > 0
+    || filteredSecondary.length > 0;
+  const maisResultCount =
+    filteredFavItems.length
+    + filteredGroups.reduce((n, g) => n + g.items.length, 0)
+    + filteredSecondary.length;
+  const maisTotalCount =
+    favItems.length
+    + visibleGroups.reduce((n, g) => n + g.items.length, 0)
+    + secondaryItems.length;
+
+  useEffect(() => {
+    setMoreOpen(false);
+    setMaisQuery('');
+  }, [location.pathname]);
 
   // O sheet "Mais" é um div artesanal (não usa o primitive Dialog): prender o
   // foco, fechar no Escape e DEVOLVER o foco ao gatilho são responsabilidade
@@ -63,19 +108,24 @@ export function BottomNav() {
   //   • ao fechar, o foco caía no <body> — quem usa teclado ou leitor de tela
   //     perdia o lugar e tinha que percorrer a página inteira de novo.
   const closeBtnRef = useRef<HTMLButtonElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
   const gatilhoRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
-    if (!moreOpen) return;
+    if (!moreOpen) {
+      setMaisQuery('');
+      return;
+    }
 
     // Guarda quem abriu, pra devolver o foco na hora de fechar.
     gatilhoRef.current = document.activeElement as HTMLElement | null;
-    closeBtnRef.current?.focus();
+    // Busca primeiro: no celular achar o destino é o job #1 do sheet.
+    searchInputRef.current?.focus();
 
     const focaveis = () => Array.from(
       sheetRef.current?.querySelectorAll<HTMLElement>(
-        'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
       ) ?? [],
     ).filter((el) => el.offsetParent !== null);
 
@@ -106,6 +156,17 @@ export function BottomNav() {
     location.pathname === path ||
     (path !== '/dashboard' && location.pathname.startsWith(path + '/'));
 
+  const tileClass = (active: boolean, favorited = false) => cn(
+    'flex min-h-11 flex-col items-center justify-center gap-1 px-2 py-2.5 rounded-xl text-xs font-medium transition-all',
+    active
+      ? favorited
+        ? 'bg-primary/15 text-primary'
+        : 'bg-primary/10 text-primary'
+      : favorited
+        ? 'bg-primary/[0.06] text-foreground hover:bg-primary/10'
+        : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground',
+  );
+
   return (
     <>
       {/* Overlay */}
@@ -132,32 +193,49 @@ export function BottomNav() {
               ref={closeBtnRef}
               onClick={() => setMoreOpen(false)}
               aria-label="Fechar menu"
-              className="h-7 w-7 rounded-full bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground"
+              className="h-9 w-9 rounded-full bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground"
             >
-              <X className="h-3.5 w-3.5" aria-hidden="true" />
+              <X className="h-4 w-4" aria-hidden="true" />
             </button>
           </div>
-          <div className="px-4 pb-4 space-y-4 max-h-[70vh] overflow-y-auto">
-            {favItems.length > 0 && (
+          <div className="px-4 pb-2">
+            <SearchInput
+              ref={searchInputRef}
+              value={maisQuery}
+              onChange={setMaisQuery}
+              placeholder="Buscar tela…"
+              aria-label="Buscar tela"
+              autoFocus
+              hideHint
+              disableSlashFocus
+              enterKeyHint="search"
+              resultCount={maisResultCount}
+              totalCount={maisTotalCount}
+              className="w-full"
+              inputClassName="rounded-xl bg-muted/40"
+            />
+          </div>
+          <div className="px-4 pb-4 space-y-4 max-h-[60vh] overflow-y-auto">
+            {!hasMaisResults && (
+              <p className="py-6 text-center text-sm text-muted-foreground">
+                Nenhuma tela encontrada para “{maisQuery.trim()}”.
+              </p>
+            )}
+            {filteredFavItems.length > 0 && (
               <div>
                 <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-primary mb-1.5">
                   <Star className="h-3 w-3 fill-current" />
                   Favoritos
                 </div>
                 <div className="grid grid-cols-3 gap-1.5">
-                  {favItems.map((item) => {
+                  {filteredFavItems.map((item) => {
                     const Icon = iconForPath(item.path);
                     const active = isActive(item.path);
                     return (
                       <button
                         key={item.path}
                         onClick={() => { navigate(item.path); setMoreOpen(false); }}
-                        className={cn(
-                          "flex flex-col items-center gap-1 px-2 py-2.5 rounded-xl text-xs font-medium transition-all",
-                          active
-                            ? "bg-primary/15 text-primary"
-                            : "bg-primary/[0.06] text-foreground hover:bg-primary/10"
-                        )}
+                        className={tileClass(active, true)}
                       >
                         <Icon className="h-4 w-4" />
                         <span className="leading-none text-center">{item.name}</span>
@@ -167,7 +245,7 @@ export function BottomNav() {
                 </div>
               </div>
             )}
-            {visibleGroups.map((group) => (
+            {filteredGroups.map((group) => (
               <div key={group.label}>
                 <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
                   <group.icon className="h-3 w-3" />
@@ -180,12 +258,7 @@ export function BottomNav() {
                       <button
                         key={item.path}
                         onClick={() => { navigate(item.path); setMoreOpen(false); }}
-                        className={cn(
-                          "flex flex-col items-center gap-1 px-2 py-2.5 rounded-xl text-xs font-medium transition-all",
-                          active
-                            ? "bg-primary/10 text-primary"
-                            : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
-                        )}
+                        className={tileClass(active)}
                       >
                         <item.icon className="h-4 w-4" />
                         <span className="leading-none text-center">{item.label}</span>
@@ -195,25 +268,20 @@ export function BottomNav() {
                 </div>
               </div>
             ))}
-            {secondaryItems.length > 0 && (
+            {filteredSecondary.length > 0 && (
               <div>
                 <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
                   <MoreHorizontal className="h-3 w-3" />
                   Ferramentas
                 </div>
                 <div className="grid grid-cols-3 gap-1.5">
-                  {secondaryItems.map((item) => {
+                  {filteredSecondary.map((item) => {
                     const active = isActive(item.path);
                     return (
                       <button
                         key={item.path}
                         onClick={() => { navigate(item.path); setMoreOpen(false); }}
-                        className={cn(
-                          "flex min-h-11 flex-col items-center gap-1 px-2 py-2.5 rounded-xl text-xs font-medium transition-all",
-                          active
-                            ? "bg-primary/10 text-primary"
-                            : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground",
-                        )}
+                        className={tileClass(active)}
                       >
                         <item.icon className="h-4 w-4" />
                         <span className="leading-none text-center">{item.label}</span>
@@ -236,7 +304,7 @@ export function BottomNav() {
               <NavLink
                 key={item.path}
                 to={item.path}
-                className="flex flex-col items-center justify-center gap-1 flex-1 h-full transition-colors relative pt-2"
+                className="flex flex-col items-center justify-center gap-1 flex-1 h-full min-h-11 transition-colors relative pt-2"
               >
                 <span className={cn(
                   "absolute top-0 left-1/2 -translate-x-1/2 h-[3px] rounded-b-full bg-primary transition-all duration-300 ease-out",
@@ -255,7 +323,7 @@ export function BottomNav() {
             onClick={() => setMoreOpen(v => !v)}
             aria-expanded={moreOpen}
             aria-controls="bottom-nav-mais"
-            className="flex flex-col items-center justify-center gap-1 flex-1 h-full transition-colors relative pt-2"
+            className="flex flex-col items-center justify-center gap-1 flex-1 h-full min-h-11 transition-colors relative pt-2"
           >
             <span className={cn(
               "absolute top-0 left-1/2 -translate-x-1/2 h-[3px] rounded-b-full bg-primary transition-all duration-300 ease-out",

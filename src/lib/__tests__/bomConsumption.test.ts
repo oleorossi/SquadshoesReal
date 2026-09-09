@@ -9,8 +9,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
  *      supercontagem de 30–92× (OP-2026-00729: 60×).
  *  (b) `calculateBomForOrders` não hardcoda `fichas: 1` — o fallback exato
  *      (quantity ÷ gradeTotal) é escala-invariante (grade base OU real).
- *  (c) Embalagem filtrada por `packaging_mode` do PV (shouldShowCaixaForMode) —
- *      antes a Lista mostrava colmeia E individual juntas.
+ *  (c) Embalagem resolvida pelo `packaging_mode` + slots UUID de box_types —
+ *      antes a Lista mostrava colmeia E individual do BOM juntas.
  *  (d) Palmilha sai na unidade de ESTOQUE do produto-placa quando ela é dm²
  *      (ex.: PLACA 1.0 EVA, unit='dm²'), com equivalência em placas como info
  *      secundária — antes saía só em "placas" e a comparação com estoque
@@ -22,14 +22,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const mockDb = vi.hoisted(() => ({
   tables: {} as Record<string, unknown[]>,
   rpc: {} as Record<string, unknown>,
+  errors: {} as Record<string, { message: string }>,
 }));
 
 vi.mock('@/integrations/supabase/client', () => {
   /* eslint-disable @typescript-eslint/no-explicit-any */
-  const makeBuilder = (rows: any[]) => {
+  const makeBuilder = (rows: any[], error: { message: string } | null = null) => {
     const builder: any = {
       then: (onFulfilled: any, onRejected: any) =>
-        Promise.resolve({ data: rows, error: null }).then(onFulfilled, onRejected),
+        Promise.resolve({ data: error ? null : rows, error }).then(onFulfilled, onRejected),
     };
     for (const method of ['select', 'in', 'eq', 'gt', 'or', 'not', 'order', 'limit']) {
       builder[method] = () => builder;
@@ -38,13 +39,20 @@ vi.mock('@/integrations/supabase/client', () => {
   };
   return {
     supabase: {
-      from: (table: string) => makeBuilder((mockDb.tables[table] as any[]) ?? []),
+      from: (table: string) => makeBuilder(
+        (mockDb.tables[table] as any[]) ?? [],
+        mockDb.errors[table] ?? null,
+      ),
       rpc: (name: string) => Promise.resolve({ data: mockDb.rpc[name] ?? [], error: null }),
     },
   };
 });
 
-import { calculateBomForOrders, calculateArtisanalStrapRollCut } from '@/lib/bomConsumption';
+import {
+  calculateBomForOrders,
+  calculateArtisanalStrapRollCut,
+  calculateSoleBreakdownByGrade,
+} from '@/lib/bomConsumption';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -70,7 +78,7 @@ function buildSheet(over: Record<string, any> = {}) {
     sole_material: '',
     sole_consumption: 0,
     sole_color: '',
-    sole_group_id: null,
+    sole_group_id: 'g-packaging-sole',
     lining_accessories: [],
     components_accessories: [],
     strap_colors: [{
@@ -113,6 +121,23 @@ function buildBomTables(over: {
       { id: 'g-palm', name: 'PALMILHA', dimensions_length: null, dimensions_width: null, dimensions_unit: 'mm' },
       { id: 'g-cx-col', name: 'CAIXA COLMEIA 11', dimensions_length: null, dimensions_width: null, dimensions_unit: 'mm' },
       { id: 'g-cx-ind', name: 'CAIXA INDIVIDUAL 11', dimensions_length: null, dimensions_width: null, dimensions_unit: 'mm' },
+      {
+        id: 'g-packaging-sole', name: 'SOLADO 11', dimensions_length: null, dimensions_width: null,
+        dimensions_unit: 'mm', box_type_id: 'bt-individual', box_type_master_id: 'bt-master',
+        box_type_colmeia_id: 'bt-colmeia', box_type_fitilho_id: 'bt-fitilho',
+        pairs_per_box_individual: 1, pairs_per_box_master: 12,
+        pairs_per_box_colmeia: 12, pairs_per_box_fitilho: 12,
+      },
+    ],
+    box_types: [
+      { id: 'bt-individual', nome: 'CAIXA INDIVIDUAL 11', tipo: 'individual', quantity: 1000, unit_price: 1, active: true },
+      { id: 'bt-master', nome: 'CAIXA MASTER 11', tipo: 'master', quantity: 1000, unit_price: 8, active: true },
+      { id: 'bt-colmeia', nome: 'CAIXA COLMEIA 11', tipo: 'colmeia', quantity: 1000, unit_price: 4, active: true },
+      { id: 'bt-fitilho', nome: 'FITILHO', tipo: 'fitilho', quantity: 1000, unit_price: 0.2, active: true, metros_per_amarrado_default: 1.5 },
+    ],
+    legacy_packaging_product_bridges: [
+      { product_id: 'p-cx-col', box_type_id: 'bt-colmeia' },
+      { product_id: 'p-cx-ind', box_type_id: 'bt-individual' },
     ],
     // Placa 1000 × 1500 mm = 150 dm²/placa; produto estocado em dm².
     component_sheets: [{
@@ -145,9 +170,60 @@ function buildBomTables(over: {
 beforeEach(() => {
   mockDb.tables = {};
   mockDb.rpc = {};
+  mockDb.errors = {};
 });
 
 // ─── (b) fichas hardcoded — fallback exato escala-invariante ─────────────────
+
+describe('calculateBomForOrders — falha fechada contra BOM parcial', () => {
+  it.each([
+    'technical_sheets',
+    'sheet_materials',
+    'products',
+    'product_groups',
+    'component_sheets',
+    'sale_order_items',
+    'technical_sheet_sole_colors',
+    'sale_orders',
+    'box_types',
+    'legacy_packaging_product_bridges',
+  ])('não publica resultado quando a consulta paralela %s falha', async (table) => {
+    mockDb.tables = buildBomTables();
+    mockDb.errors[table] = { message: `falha sentinela em ${table}` };
+
+    await expect(calculateBomForOrders(['op1']))
+      .rejects.toThrow(/Nenhum BOM parcial foi gerado/);
+  });
+
+  it('também propaga erro de uma fonte complementar em vez de omitir o componente', async () => {
+    const tables = buildBomTables();
+    // Precisa de ao menos 1 candidato de solado pra a query escopada de
+    // sole_technical_specs disparar (P1.1); sem produto no grupo da ficha a
+    // consulta é pulada e o erro engolido.
+    (tables.products as any[]).push({
+      id: 'p-sole',
+      name: 'SOLADO 11 PRETO',
+      color: 'PRETO',
+      group_id: 'g-packaging-sole',
+      sole_classification: 'solado',
+      active: true,
+    });
+    mockDb.tables = tables;
+    mockDb.errors.sole_technical_specs = { message: 'specs indisponíveis' };
+
+    await expect(calculateBomForOrders(['op1']))
+      .rejects.toThrow(/consumos técnicos do solado.*specs indisponíveis/i);
+  });
+
+  it('recusa OP sem ficha técnica em vez de gerar a separação das demais fontes', async () => {
+    const tables = buildBomTables();
+    tables.technical_sheets = [];
+    mockDb.tables = tables;
+
+    await expect(calculateBomForOrders(['op1']))
+      .rejects.toThrow(/OP\(s\) sem ficha técnica.*Nenhum BOM parcial/i);
+  });
+});
 
 describe('calculateBomForOrders — tiras sem fichas hardcoded (achado b)', () => {
   it('grade BASE (Σ=12, qty=720): consumo da tira escala por quantity/gradeTotal (60×)', async () => {
@@ -168,6 +244,215 @@ describe('calculateBomForOrders — tiras sem fichas hardcoded (achado b)', () =
   });
 });
 
+describe('calculateBomForOrders — cabedal e tiras aditivos', () => {
+  const addUpperCatalog = (tables: Record<string, unknown[]>, secondProduct = false) => {
+    tables.product_groups = [...(tables.product_groups as any[]), {
+      id: 'g-napa', name: 'NAPA SOFT + MASSABOX',
+      dimensions_length: null, dimensions_width: null, dimensions_unit: 'mm',
+    }];
+    tables.products = [...(tables.products as any[]),
+      { id: 'p-napa-a', name: 'NAPA SOFT + MASSABOX PRETO', color: 'PRETO', group_id: 'g-napa', unit: 'm', quantity: 100 },
+      ...(secondProduct
+        ? [{ id: 'p-napa-b', name: 'NAPA SOFT + MASSABOX PRETO B', color: 'PRETO', group_id: 'g-napa', unit: 'm', quantity: 50 }]
+        : []),
+    ];
+    tables.component_sheets = [...(tables.component_sheets as any[]),
+      {
+        product_id: 'p-napa-a', dimensions_width: 1370, dimensions_length: 0, dimensions_unit: 'mm',
+        yield_per_size: null, yield_per_sole: null,
+        products: { group_id: 'g-napa', name: 'NAPA SOFT + MASSABOX PRETO', color: 'PRETO', unit: 'm' },
+      },
+      ...(secondProduct
+        ? [{
+          product_id: 'p-napa-b', dimensions_width: 1370, dimensions_length: 0, dimensions_unit: 'mm',
+          yield_per_size: null, yield_per_sole: null,
+          products: { group_id: 'g-napa', name: 'NAPA SOFT + MASSABOX PRETO B', color: 'PRETO', unit: 'm' },
+        }]
+        : []),
+    ];
+  };
+
+  it('mantém cabedal e tiras no mesmo modelo e unifica dois consumos do mesmo SKU', async () => {
+    const tables = buildBomTables({ grade: GRADE_REAL });
+    addUpperCatalog(tables);
+    Object.assign(tables.technical_sheets[0] as any, {
+      has_straps: true,
+      upper_material: 'NAPA SOFT + MASSABOX',
+      upper_material_product_id: 'p-napa-a',
+      upper_consumption: 2.74,
+      components_accessories: [{
+        material: 'NAPA SOFT + MASSABOX',
+        product_id: 'p-napa-a',
+        consumption: 2.28,
+        mandatory: true,
+      }],
+    });
+    mockDb.tables = tables;
+
+    const rows = await calculateBomForOrders(['op1']);
+    const cabedais = rows.filter((row) => row.componentType === 'Cabedal');
+    const tiras = rows.filter((row) => row.componentType === 'Tiras');
+
+    expect(cabedais).toHaveLength(1);
+    expect(cabedais[0].productIds).toEqual(['p-napa-a']);
+    expect(cabedais[0].totalQuantity).toBeCloseTo(((2.74 + 2.28) * 720) / 137, 6);
+    expect(tiras).toHaveLength(1);
+    expect(tiras[0].totalQuantity).toBeCloseTo(72, 6);
+  });
+
+  it('consome Material 1 + Material 2 pela grade quando os escalares são zero', async () => {
+    const tables = buildBomTables({ grade: GRADE_REAL });
+    addUpperCatalog(tables);
+    Object.assign(tables.technical_sheets[0] as any, {
+      upper_material: 'NAPA SOFT + MASSABOX',
+      upper_material_product_id: 'p-napa-a',
+      upper_consumption: 0,
+      upper_consumption_per_size: { '35': 3, '36': 3, '37': 3, '38': 3 },
+      components_accessories: [{
+        material: 'NAPA SOFT + MASSABOX',
+        product_id: 'p-napa-a',
+        consumption: 0,
+        consumption_per_size: { '35': 2, '36': 2, '37': 2, '38': 2 },
+        mandatory: true,
+      }],
+    });
+    mockDb.tables = tables;
+
+    const cabedais = (await calculateBomForOrders(['op1']))
+      .filter((row) => row.componentType === 'Cabedal');
+
+    expect(cabedais).toHaveLength(1);
+    expect(cabedais[0].productIds).toEqual(['p-napa-a']);
+    // 5 dm²/par × 720 pares ÷ 137 dm²/m.
+    expect(cabedais[0].totalQuantity).toBeCloseTo((5 * 720) / 137, 6);
+  });
+
+  it('não unifica produtos físicos diferentes mesmo no mesmo grupo/cor', async () => {
+    const tables = buildBomTables({ grade: GRADE_REAL });
+    addUpperCatalog(tables, true);
+    Object.assign(tables.technical_sheets[0] as any, {
+      has_straps: true,
+      upper_material: 'NAPA SOFT + MASSABOX',
+      upper_material_product_id: 'p-napa-a',
+      upper_consumption: 2.74,
+      components_accessories: [{
+        material: 'NAPA SOFT + MASSABOX',
+        product_id: 'p-napa-b',
+        consumption: 2.28,
+        mandatory: true,
+      }],
+    });
+    mockDb.tables = tables;
+
+    const cabedais = (await calculateBomForOrders(['op1']))
+      .filter((row) => row.componentType === 'Cabedal');
+
+    expect(cabedais).toHaveLength(2);
+    expect(cabedais.map((row) => row.productIds?.[0]).sort()).toEqual(['p-napa-a', 'p-napa-b']);
+    expect(cabedais.reduce((sum, row) => sum + row.totalQuantity, 0))
+      .toBeCloseTo(((2.74 + 2.28) * 720) / 137, 6);
+  });
+});
+
+// ─── Netting canônico de tiras na Lista de Separação ───────────────────────
+
+describe('calculateBomForOrders — usa a falta líquida persistida de tiras', () => {
+  const lineId = '11111111-1111-4111-8111-111111111111';
+  const demandId = '22222222-2222-4222-8222-222222222222';
+  const variantId = '33333333-3333-4333-8333-333333333333';
+  const recipeId = '44444444-4444-4444-8444-444444444444';
+  const baseProductId = '55555555-5555-4555-8555-555555555555';
+
+  function buildCanonicalNetTables(replenishmentRequiredM: number) {
+    const tables = buildBomTables({ grade: GRADE_REAL });
+    (tables.sale_order_items[0] as any).strap_colors = [{
+      ...buildSheet().strap_colors[0],
+      technical_strap_line_id: lineId,
+    }];
+    tables.v_strap_picking_operational = [{
+      sale_order_strap_demand_id: demandId,
+      sale_order_id: 'so1',
+      sale_order_item_id: 'si1',
+      technical_strap_line_id: lineId,
+      strap_variant_id: variantId,
+      recipe_id: recipeId,
+      base_product_id: baseProductId,
+      base_product_name: 'NAPA SOFT PRETO',
+      finished_product_id: 'p-tira-pronta',
+      finished_product_name: 'TIRA CHATA 8MM · NAPA SOFT',
+      color_name: 'PRETO',
+      source_mode: 'internal',
+      planned_finished_m: 72,
+      remaining_finished_m: 52,
+      finished_stock_reserved_m: 12,
+      base_required_m: replenishmentRequiredM / 60,
+      base_reserved_m: replenishmentRequiredM / 60,
+      base_consumed_m: 20 / 60,
+      confirmed_yield_snapshot: 60,
+      status: 'partial',
+    }];
+    tables.v_strap_demands_operational = [{
+      id: demandId,
+      origin_type: 'sale_order',
+      sale_order_id: 'so1',
+      sale_order_item_id: 'si1',
+      technical_strap_line_id: lineId,
+      strap_variant_id: variantId,
+      recipe_id: recipeId,
+      base_product_id: baseProductId,
+      source_mode: 'internal',
+      required_m: 72,
+      fulfilled_m: 20,
+      finished_stock_reserved_m: 12,
+      committed_finished_inbound_m: 10,
+      replenishment_required_m: replenishmentRequiredM,
+      base_required_m: replenishmentRequiredM / 60,
+      status: 'partial',
+    }];
+    return tables;
+  }
+
+  it('desconta parcial, tira pronta reservada e inbound — não usa planned/remaining bruto', async () => {
+    // 72 bruto - 20 atendido = 52 aberto; 12 em estoque + 10 inbound deixam
+    // somente 30 m para produzir. planned=72 e remaining=52 são sentinelas.
+    mockDb.tables = buildCanonicalNetTables(30);
+    const rows = await calculateBomForOrders(['op1']);
+    const tiras = rows.filter((row) => row.componentType === 'Tiras');
+
+    expect(tiras).toHaveLength(1);
+    expect(tiras[0].totalQuantity).toBe(30);
+    expect(tiras[0].strapVariantId).toBe(variantId);
+    expect(tiras[0].recipeId).toBe(recipeId);
+    expect(tiras[0].baseProductId).toBe(baseProductId);
+    expect(tiras[0].strapBaseRequiredM).toBeCloseTo(30 / 60, 6);
+    expect(tiras[0].strapBaseName).toBe('NAPA SOFT PRETO');
+    expect(tiras[0].strapConfirmedYieldMPerM).toBe(60);
+  });
+
+  it('remove a linha quando estoque acabado/inbound cobrem todo o saldo', async () => {
+    mockDb.tables = buildCanonicalNetTables(0);
+    const rows = await calculateBomForOrders(['op1']);
+    expect(rows.some((row) => row.componentType === 'Tiras')).toBe(false);
+  });
+
+  it('prefere a demanda canônica mesmo se o JSON legado do item estiver ausente', async () => {
+    const tables = buildCanonicalNetTables(30);
+    (tables.sale_order_items[0] as any).strap_colors = null;
+    mockDb.tables = tables;
+
+    const rows = await calculateBomForOrders(['op1']);
+    expect(rows.find((row) => row.componentType === 'Tiras')?.totalQuantity).toBe(30);
+  });
+
+  it('falha fechado se a identidade de picking não tiver o saldo líquido correspondente', async () => {
+    const tables = buildCanonicalNetTables(30);
+    tables.v_strap_demands_operational = [];
+    mockDb.tables = tables;
+
+    await expect(calculateBomForOrders(['op1'])).rejects.toThrow('sem saldo líquido canônico');
+  });
+});
+
 // ─── (c) Embalagem filtrada por packaging_mode ───────────────────────────────
 
 describe('calculateBomForOrders — filtro de caixa por packaging_mode (achado c)', () => {
@@ -177,7 +462,8 @@ describe('calculateBomForOrders — filtro de caixa por packaging_mode (achado c
     const caixas = rows.filter(r => r.componentType === 'Embalagem');
     expect(caixas).toHaveLength(1);
     expect(caixas[0].materialName).toBe('CAIXA COLMEIA 11');
-    expect(caixas[0].totalQuantity).toBe(720);
+    expect(caixas[0].totalQuantity).toBe(60);
+    expect(caixas[0].boxTypeId).toBe('bt-colmeia');
   });
 
   it('packaging_mode=individual: só a CAIXA INDIVIDUAL aparece', async () => {
@@ -186,13 +472,32 @@ describe('calculateBomForOrders — filtro de caixa por packaging_mode (achado c
     const caixas = rows.filter(r => r.componentType === 'Embalagem');
     expect(caixas).toHaveLength(1);
     expect(caixas[0].materialName).toBe('CAIXA INDIVIDUAL 11');
+    expect(caixas[0].totalQuantity).toBe(720);
+    expect(caixas[0].boxTypeId).toBe('bt-individual');
   });
 
-  it('sem packaging_mode: NÃO filtra (degrada com elegância, mostra as duas)', async () => {
+  it('packaging_mode=individual_fitilho: seleciona individual + fitilho em metros', async () => {
+    mockDb.tables = buildBomTables({ packagingMode: 'individual_fitilho' });
+    const rows = await calculateBomForOrders(['op1']);
+    const caixas = rows.filter(r => r.componentType === 'Embalagem');
+    expect(caixas.map((row) => row.boxTypeId)).toEqual(['bt-individual', 'bt-fitilho']);
+    expect(caixas.find((row) => row.boxTypeId === 'bt-fitilho')).toMatchObject({
+      productUnit: 'm',
+      totalQuantity: 90,
+    });
+  });
+
+  it('sem packaging_mode: falha fechado e não recupera as duas caixas do BOM', async () => {
     mockDb.tables = buildBomTables({ packagingMode: null });
     const rows = await calculateBomForOrders(['op1']);
     const caixas = rows.filter(r => r.componentType === 'Embalagem');
-    expect(caixas).toHaveLength(2);
+    expect(caixas).toHaveLength(1);
+    expect(caixas[0]).toMatchObject({
+      boxTypeId: null,
+      materialName: 'Embalagem não resolvida',
+      totalQuantity: 0,
+    });
+    expect(caixas[0].warning).toContain('Modo de embalagem');
   });
 });
 
@@ -219,6 +524,31 @@ describe('calculateBomForOrders — palmilha em dm² quando o produto é dm² (a
     expect(palmilha?.totalQuantity).toBeCloseTo(24, 6);
     expect(palmilha?.plateEquivalent).toBeUndefined();
   });
+
+  it('grupo heterogêneo prioriza a placa de área, não o SKU linear com mais estoque', async () => {
+    const tables = buildBomTables();
+    tables.products = [
+      ...(tables.products as any[]).map((product) => product.id === 'p-placa'
+        ? { ...product, unit: 'dm²', quantity: 0 }
+        : product),
+      {
+        id: 'p-palmilha-linear',
+        name: 'PALMILHA PRONTA OURO LIGHT',
+        color: 'OURO LIGHT',
+        unit: 'm',
+        group_id: 'g-palm',
+        quantity: 999,
+        sole_classification: null,
+      },
+    ];
+    mockDb.tables = tables;
+
+    const rows = await calculateBomForOrders(['op1']);
+    const palmilha = rows.find((row) => row.componentType === 'Palmilha');
+    expect(palmilha?.materialName).toBe('PLACA 1.0 EVA');
+    expect(palmilha?.productUnit).toBe('dm²');
+    expect(palmilha?.totalQuantity).toBeCloseTo(3600, 6);
+  });
 });
 
 // ─── (a) Corte do rolo artesanal — sem multiplicar por fichas ────────────────
@@ -226,6 +556,12 @@ describe('calculateBomForOrders — palmilha em dm² quando o produto é dm² (a
 describe('calculateArtisanalStrapRollCut — separação canônica não multiplica por fichas (achado a)', () => {
   const saleOrderId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
   const saleOrderItemId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  const technicalStrapLineId = '11111111-1111-4111-8111-111111111111';
+  const strapVariantId = '22222222-2222-4222-8222-222222222222';
+  const recipeId = '33333333-3333-4333-8333-333333333333';
+  const baseProductId = '44444444-4444-4444-8444-444444444444';
+  const finishedProductId = '55555555-5555-4555-8555-555555555555';
+  const demandId = '66666666-6666-4666-8666-666666666666';
 
   function buildRollTables(): Record<string, unknown[]> {
     // Espelha OP-2026-00729: grade REAL (Σ = quantity = 720) + fichas=60 no
@@ -252,20 +588,59 @@ describe('calculateArtisanalStrapRollCut — separação canônica não multipli
       }],
       products: [],
       artisanal_recipes: [],
+      v_strap_picking_operational: [{
+        sale_order_strap_demand_id: demandId,
+        sale_order_id: saleOrderId,
+        sale_order_item_id: saleOrderItemId,
+        technical_strap_line_id: technicalStrapLineId,
+        strap_variant_id: strapVariantId,
+        recipe_id: recipeId,
+        base_product_id: baseProductId,
+        base_product_name: 'NAPA SOFT PRETO',
+        finished_product_id: finishedProductId,
+        finished_product_name: 'TIRA CHATA 8MM',
+        color_name: 'PRETO',
+        source_mode: 'internal',
+        planned_finished_m: 86.4,
+        remaining_finished_m: 86.4,
+        finished_stock_reserved_m: 0,
+        base_required_m: 86.4 / 34,
+        base_reserved_m: 86.4 / 34,
+        base_consumed_m: 0,
+        confirmed_yield_snapshot: 34,
+        status: 'planned',
+      }],
+      v_strap_demands_operational: [{
+        id: demandId,
+        origin_type: 'sale_order',
+        sale_order_id: saleOrderId,
+        sale_order_item_id: saleOrderItemId,
+        technical_strap_line_id: technicalStrapLineId,
+        strap_variant_id: strapVariantId,
+        recipe_id: recipeId,
+        base_product_id: baseProductId,
+        source_mode: 'internal',
+        required_m: 86.4,
+        fulfilled_m: 0,
+        finished_stock_reserved_m: 0,
+        committed_finished_inbound_m: 0,
+        replenishment_required_m: 86.4,
+        base_required_m: 86.4 / 34,
+        status: 'planned',
+      }],
     };
   }
 
-  it('grade REAL + fichas=60 no item: metros = Σ(pares × cm/par), UMA vez (não ×60)', async () => {
-    mockDb.tables = buildRollTables();
-    mockDb.rpc.preview_sale_order_strap_demand = [{
+  function buildRollPreview() {
+    return [{
       sale_order_item_id: saleOrderItemId,
-      technical_strap_line_id: '11111111-1111-4111-8111-111111111111',
-      strap_variant_id: '22222222-2222-4222-8222-222222222222',
+      technical_strap_line_id: technicalStrapLineId,
+      strap_variant_id: strapVariantId,
       source_mode: 'internal',
       gross_required_m: 86.4,
-      recipe_id: '33333333-3333-4333-8333-333333333333',
-      base_product_id: '44444444-4444-4444-8444-444444444444',
-      finished_product_id: '55555555-5555-4555-8555-555555555555',
+      recipe_id: recipeId,
+      base_product_id: baseProductId,
+      finished_product_id: finishedProductId,
       blocking_reasons: [],
       resolved: {
         strap_product_name: 'TIRA CHATA 8MM',
@@ -278,6 +653,11 @@ describe('calculateArtisanalStrapRollCut — separação canônica não multipli
         theoretical_yield_m_per_m: 34,
       },
     }];
+  }
+
+  it('grade REAL + fichas=60 no item: metros = Σ(pares × cm/par), UMA vez (não ×60)', async () => {
+    mockDb.tables = buildRollTables();
+    mockDb.rpc.preview_sale_order_strap_demand = buildRollPreview();
     const rows = await calculateArtisanalStrapRollCut(['op1']);
     expect(rows).toHaveLength(1);
     // 720 pares × 12 cm/par = 8640 cm = 86,4 m (bug antigo: 86,4 × 60 = 5184 m).
@@ -290,6 +670,37 @@ describe('calculateArtisanalStrapRollCut — separação canônica não multipli
     expect(rows[0].cut.n_bandas).toBe(0);
     expect(rows[0].cut.cm_a_cortar).toBe(0);
     expect(rows[0].cut.valid).toBe(false);
+  });
+
+  it('usa falta líquida/base remanescente do worker após cobertura e parcial, nunca a preview bruta', async () => {
+    const tables = buildRollTables();
+    Object.assign((tables.v_strap_picking_operational as any[])[0], {
+      planned_finished_m: 86.4,
+      remaining_finished_m: 56.4,
+      finished_stock_reserved_m: 12,
+      // Consumo histórico pode superar a NOVA base_required remanescente; não
+      // deve ser subtraído outra vez pelo frontend.
+      base_consumed_m: 30 / 34,
+      status: 'partial',
+    });
+    Object.assign((tables.v_strap_demands_operational as any[])[0], {
+      fulfilled_m: 30,
+      finished_stock_reserved_m: 12,
+      committed_finished_inbound_m: 20.4,
+      replenishment_required_m: 24,
+      base_required_m: 24 / 34,
+      status: 'partial',
+    });
+    mockDb.tables = tables;
+    mockDb.rpc.preview_sale_order_strap_demand = buildRollPreview();
+
+    const rows = await calculateArtisanalStrapRollCut(['op1']);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].metros_necessarios).toBeCloseTo(24, 6);
+    expect(rows[0].canonical?.baseRequiredM).toBeCloseTo(24 / 34, 6);
+    expect(rows[0].metros_necessarios).not.toBeCloseTo(86.4, 6);
+    expect(rows[0].metros_necessarios).not.toBeCloseTo(56.4, 6);
   });
 });
 
@@ -359,6 +770,55 @@ describe('calculateBomForOrders — cascata canônica de solado (BOM-2/BOM-7)', 
     const solado = rows.find(r => r.componentType === 'Solado');
     expect(solado?.totalQuantity).toBe(720);
   });
+
+  it('solado textual sem identidade permanece visível, mas com aviso não operacional', async () => {
+    const tables = buildBomTables();
+    Object.assign(tables.technical_sheets[0] as any, {
+      sole_material: 'Solado Ricardo Tratorado',
+      sole_color: null,
+      sole_group_id: null,
+      primary_sole_id: null,
+    });
+    (tables.orders[0] as any).color = 'WHISKY';
+    mockDb.tables = tables;
+
+    const rows = await calculateBomForOrders(['op1']);
+    const solado = rows.find((row) => row.componentType === 'Solado');
+
+    expect(solado).toMatchObject({
+      groupName: 'Solado Ricardo Tratorado',
+      color: 'WHISKY',
+      totalQuantity: 720,
+    });
+    expect(solado?.warning).toMatch(/não resolve produto.*NÃO será reservado nem debitado/i);
+  });
+});
+
+describe('calculateSoleBreakdownByGrade — grade operacional', () => {
+  it('usa largest remainder, preserva o total e usa a cor do pedido no fallback textual', async () => {
+    const tables = buildBomTables();
+    Object.assign(tables.technical_sheets[0] as any, {
+      sole_material: 'Solado Ricardo Tratorado',
+      sole_color: null,
+      sole_group_id: null,
+      primary_sole_id: null,
+    });
+    Object.assign(tables.orders[0] as any, {
+      color: 'WHISKY',
+      quantity: 10,
+      grade: { '34': 1, '35': 1, '36': 1, _fichas: 99 },
+    });
+    mockDb.tables = tables;
+
+    const result = await calculateSoleBreakdownByGrade(['op1']);
+
+    expect(result.grandTotal).toBe(10);
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].soleColor).toBe('WHISKY');
+    expect(result.rows[0].sizes).toEqual({ '34': 4, '35': 3, '36': 3 });
+    expect(Object.values(result.rows[0].sizes).reduce((sum, value) => sum + value, 0)).toBe(10);
+    expect(result.allSizes).not.toContain('_fichas');
+  });
 });
 
 describe('calculateBomForOrders — placa da palmilha por número do solado (BOM-4)', () => {
@@ -383,6 +843,92 @@ describe('calculateBomForOrders — placa da palmilha por número do solado (BOM
   });
 });
 
+describe('calculateBomForOrders — paridade de cor e specs incompletas', () => {
+  it('trata Café e CAFE como a mesma cor ao escolher o grupo principal', async () => {
+    const t = buildBomTables();
+    (t.orders[0] as any).color = 'Café';
+    Object.assign(t.technical_sheets[0] as any, {
+      upper_material: 'NAPA CAFE',
+      upper_consumption: 10,
+      components_accessories: [{
+        material: 'NAPA ALTERNATIVA',
+        consumption: 20,
+        mandatory: false,
+      }],
+    });
+    t.product_groups = [...(t.product_groups as any[]),
+      { id: 'g-cafe', name: 'NAPA CAFE', dimensions_length: null, dimensions_width: null, dimensions_unit: 'mm' },
+      { id: 'g-alt', name: 'NAPA ALTERNATIVA', dimensions_length: null, dimensions_width: null, dimensions_unit: 'mm' },
+    ];
+    // A alternativa tem mais SKUs para tornar o fallback antigo observável: sem
+    // remover o acento, `Café` não casava `CAFE` e o ranking escolhia este grupo.
+    t.products = [...(t.products as any[]),
+      { id: 'p-cafe', name: 'NAPA CAFE', color: 'CAFE', group_id: 'g-cafe', unit: 'm', quantity: 0 },
+      { id: 'p-alt-1', name: 'NAPA ALTERNATIVA PRETO', color: 'PRETO', group_id: 'g-alt', unit: 'm', quantity: 0 },
+      { id: 'p-alt-2', name: 'NAPA ALTERNATIVA BRANCO', color: 'BRANCO', group_id: 'g-alt', unit: 'm', quantity: 0 },
+    ];
+
+    mockDb.tables = t;
+    const rows = await calculateBomForOrders(['op1']);
+    const cabedal = rows.find((row) => row.componentType === 'Cabedal');
+
+    expect(cabedal?.groupName).toBe('NAPA CAFE');
+  });
+
+  it('avisa ZERO nas três aplicações quando a grade extrapola specs e o escalar é 0', async () => {
+    const t = withSole(buildBomTables());
+    Object.assign(t.technical_sheets[0] as any, {
+      lining_material: 'FORRO TESTE',
+      lining_consumption: 0,
+      insole_consumption: 0,
+      insole_has_lining: true,
+      insole_lining_consumption: 0,
+    });
+    (t.sale_order_items[0] as any).material_variant_id = 'variant-lining';
+    t.reference_material_variants = [{
+      id: 'variant-lining',
+      reference_id: 'ts1',
+      active: true,
+      lining_material_product_id: null,
+      lining_material_group_id: 'g-forro',
+      lining_consumption_override: null,
+      insole_material_product_id: null,
+      insole_material_group_id: null,
+      insole_consumption_override: null,
+      sole_material_product_id: null,
+      sole_consumption_override: null,
+      main_material_group_id: null,
+    }];
+    t.product_groups = [...(t.product_groups as any[]), {
+      id: 'g-forro', name: 'FORRO TESTE', dimensions_length: null, dimensions_width: null, dimensions_unit: 'mm',
+    }];
+    t.products = [...(t.products as any[]), {
+      id: 'p-forro', name: 'FORRO TESTE PRETO', color: 'PRETO', group_id: 'g-forro', unit: 'm', quantity: 0,
+    }];
+    // Só o nº 35 tem engenharia cadastrada; 36–38 precisam permanecer em zero,
+    // mas nunca de forma silenciosa na Lista de Separação.
+    t.sole_technical_specs = [{
+      sole_id: 'p-sole',
+      size: 35,
+      lining_consumption_dm2: 2,
+      insole_consumption_dm2: 4,
+      insole_lining_consumption_dm2: 3,
+    }];
+
+    mockDb.tables = t;
+    const rows = await calculateBomForOrders(['op1']);
+    const lining = rows.find((row) => row.materialName === 'Forração');
+    const insole = rows.find((row) => row.componentType === 'Palmilha');
+    const insoleLining = rows.find((row) => row.materialName === 'Forração Palmilha');
+
+    expect(insoleLining?.componentType).toBe('Forração Palmilha');
+    for (const row of [lining, insole, insoleLining]) {
+      expect(row?.totalQuantity).toBeGreaterThan(0);
+      expect(row?.warning).toMatch(/contribuíram ZERO.*36, 37, 38/);
+    }
+  });
+});
+
 describe('calculateBomForOrders — componente Fachete (BOM-5)', () => {
   it('solado fachetado emite Fachete pelo grupo fachete_material_group_id', async () => {
     const t = withSole(buildBomTables(), { is_fachetado: true, fachete_material_group_id: 'g-fach' });
@@ -395,7 +941,7 @@ describe('calculateBomForOrders — componente Fachete (BOM-5)', () => {
     mockDb.tables = t;
     const rows = await calculateBomForOrders(['op1']);
     const fachete = rows.find(r => r.materialName === 'Fachete');
-    expect(fachete?.componentType).toBe('Forração');
+    expect(fachete?.componentType).toBe('Fachete');
     expect(fachete?.groupName).toBe('FORRO FACHETE');
     // 2 dm²/par × 720 = 1440; sem ficha de componente com largura → dm² + aviso.
     expect(fachete?.totalQuantity).toBeCloseTo(1440, 6);
