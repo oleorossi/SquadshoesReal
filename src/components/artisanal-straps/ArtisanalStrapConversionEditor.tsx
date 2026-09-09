@@ -637,8 +637,13 @@ export function ArtisanalStrapConversionEditor({
       if (!context.widthProfile && !canApproveWidthInline && !canConfirmImmediately) {
         return `${prefix}o material ainda não possui perfil físico aprovado e seu acesso não permite confirmá-lo neste fluxo.`;
       }
-      if (context.currentRecipe && !context.recipeIsMutable && !createRecipeVersion) {
-        return `${prefix}a conversão aprovada é imutável. Crie uma nova versão para alterar os números.`;
+      if (
+        context.currentRecipe
+        && !context.recipeIsMutable
+        && !createRecipeVersion
+        && !canSeeFinancial
+      ) {
+        return `${prefix}a conversão aprovada é imutável. Crie uma nova versão para alterar rendimento/banda (a mão de obra da medida exige acesso financeiro).`;
       }
       if (material.cutBandWidthMm <= 0) return `${prefix}a largura da banda deve ser maior que zero.`;
       if (context.theoreticalYield <= 0) return `${prefix}a largura útil não comporta uma banda completa.`;
@@ -674,6 +679,25 @@ export function ArtisanalStrapConversionEditor({
 
     const reason = form.reason.trim();
     try {
+      // MO é da medida: em conversão aprovada, grava só no Hub e propaga para todas as Napas.
+      const laborOnlySave = Boolean(
+        canSeeFinancial
+        && form.measureId
+        && immutableRecipeNeedsNewVersion
+        && !createRecipeVersion
+        && !legacyRecipe
+        && !isMultiMaterialCreate
+      );
+      if (laborOnlySave) {
+        await saveArtisanalStrapMeasureHubFields(
+          form.measureId,
+          { precoArtesanalPerM: form.laborCostPerM },
+          reason,
+        );
+        onOpenChange(false);
+        return;
+      }
+
       const typePayload = form.typeId
         ? { id: form.typeId }
         : { name: form.typeName.trim(), active: true };
@@ -1019,42 +1043,12 @@ export function ArtisanalStrapConversionEditor({
                     value={form.laborCostPerM}
                     onChange={(value) => setField('laborCostPerM', value)}
                     unit="R$/m"
-                    disabled={
-                      interactionLocked
-                      || (
-                        !createRecipeVersion
-                        && materialContexts.some((context) => (
-                          Boolean(context.currentRecipe) && !context.recipeIsMutable
-                        ))
-                      )
-                    }
+                    disabled={interactionLocked || !canWrite || isReviewMode}
                   />
-                  {!createRecipeVersion
-                    && materialContexts.some((context) => (
-                      Boolean(context.currentRecipe) && !context.recipeIsMutable
-                    )) ? (
-                      <div className="space-y-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-2">
-                        <p className="text-xs text-muted-foreground">
-                          Versão aprovada travada. Abra uma nova versão para informar ou alterar a mão de
-                          obra — o valor vale para todas as Napas desta medida.
-                        </p>
-                        {canWrite && !isReviewMode ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => startNewRecipeVersion('Cadastro do custo de mão de obra')}
-                            disabled={interactionLocked}
-                          >
-                            Informar mão de obra
-                          </Button>
-                        ) : null}
-                      </div>
-                    ) : (
-                      <p className="text-xs text-muted-foreground">
-                        Esse R$/m entra no consumo e no financeiro. Pedidos já confirmados mantêm o snapshot.
-                      </p>
-                    )}
+                  <p className="text-xs text-muted-foreground">
+                    Valor da medida — igual para todas as Napas. Pode gravar mesmo com conversão
+                    aprovada; não precisa de versão nova. Pedidos já confirmados mantêm o snapshot.
+                  </p>
                 </div>
               ) : (
                 <p className="text-xs text-muted-foreground">
@@ -1210,9 +1204,8 @@ export function ArtisanalStrapConversionEditor({
                           <div>
                             <p className="text-sm font-semibold">Versão aprovada preservada</p>
                             <p className="text-xs text-muted-foreground">
-                              {numberOrZero(form.laborCostPerM) <= 0 && canSeeFinancial
-                                ? 'Para cadastrar a mão de obra da medida (R$/m, igual para todas as Napas), abra uma nova versão. Pedidos já confirmados mantêm o snapshot antigo.'
-                                : 'Pedidos anteriores continuam usando o snapshot já registrado. Qualquer ajuste exige nova versão.'}
+                              Rendimento, banda e executor desta Napa exigem nova versão. A mão de obra
+                              da medida (acima) é compartilhada e pode ser gravada sem versionar.
                             </p>
                           </div>
                           {canWrite && !createRecipeVersion && !isReviewMode && (
@@ -1220,17 +1213,11 @@ export function ArtisanalStrapConversionEditor({
                               type="button"
                               variant="outline"
                               size="sm"
-                              onClick={() => startNewRecipeVersion(
-                                numberOrZero(form.laborCostPerM) <= 0
-                                  ? 'Cadastro do custo de mão de obra'
-                                  : 'Nova versão da conversão',
-                              )}
+                              onClick={() => startNewRecipeVersion('Nova versão da conversão')}
                               disabled={interactionLocked || !canSeeFinancial}
                               aria-describedby={!canSeeFinancial ? 'strap-conversion-version-financial-help' : undefined}
                             >
-                              {numberOrZero(form.laborCostPerM) <= 0 && canSeeFinancial
-                                ? 'Informar mão de obra'
-                                : 'Criar nova versão'}
+                              Criar nova versão
                             </Button>
                           )}
                           {createRecipeVersion && <Badge variant="secondary">Nova versão em rascunho</Badge>}
@@ -1418,7 +1405,11 @@ export function ArtisanalStrapConversionEditor({
             {!readOnly && (
               <Button
                 onClick={() => handleSave()}
-                disabled={interactionLocked || selectedWidthApprovalBlocked || immutableRecipeNeedsNewVersion}
+                disabled={
+                  interactionLocked
+                  || selectedWidthApprovalBlocked
+                  || (immutableRecipeNeedsNewVersion && !canSeeFinancial)
+                }
                 className="gap-2"
               >
                 <FloppyDisk className="h-4 w-4" />
@@ -1426,6 +1417,8 @@ export function ArtisanalStrapConversionEditor({
                   ? 'Salvando…'
                   : legacyRecipe
                     ? 'Confirmar e ativar'
+                    : immutableRecipeNeedsNewVersion && canSeeFinancial
+                      ? 'Salvar mão de obra da medida'
                     : canConfirmImmediately && (mode === 'create' || createRecipeVersion)
                       ? isMultiMaterialCreate && form.materials.length > 1
                         ? `Confirmar ${form.materials.length} rendimentos e salvar`

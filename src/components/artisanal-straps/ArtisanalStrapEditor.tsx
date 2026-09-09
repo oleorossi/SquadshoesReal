@@ -1231,13 +1231,19 @@ export function ArtisanalStrapEditor({
                     )}
                     {catalog.capabilities.can_see_financial_values !== false && (
                       <div className="space-y-1.5">
-                        <Label>Custo de transformação</Label>
+                        <Label>Mão de obra da medida</Label>
                         <NumberInput
-                          value={form.transformationCost}
-                          onChange={(value) => setField('transformationCost', value)}
+                          value={form.precoArtesanalPerM > 0
+                            ? form.precoArtesanalPerM
+                            : form.transformationCost}
+                          onChange={() => undefined}
                           unit="R$/m"
-                          disabled={readOnly || !canEditRecipeFields}
+                          disabled
                         />
+                        <p className="text-xs text-muted-foreground">
+                          Igual para todas as Napas desta medida. Altere no campo
+                          &quot;Mão de obra fábrica&quot; acima — não por material.
+                        </p>
                       </div>
                     )}
                   </div>

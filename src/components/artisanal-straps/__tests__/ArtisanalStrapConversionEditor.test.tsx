@@ -574,7 +574,7 @@ describe('ArtisanalStrapConversionEditor', () => {
     expect(screen.getByRole('heading', { name: 'Cadastrar tipo e material' })).toBeInTheDocument();
     expect(screen.getByLabelText(/Largura da banda/i)).toHaveValue('18');
     expect(screen.getByLabelText(/Rendimento real confirmado/i)).toHaveValue('68');
-    expect(screen.getAllByRole('button', { name: /Informar mão de obra|Criar nova versão/i }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('button', { name: /Criar nova versão/i }).length).toBeGreaterThan(0);
   });
 
   it('bloqueia um contexto ainda não inicializado para não sobrescrever edição transitória', () => {
@@ -816,8 +816,10 @@ describe('ArtisanalStrapConversionEditor', () => {
 
     expect(screen.getByRole('heading', { name: 'Cadastrar tipo e material' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Adicionar outro material' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Confirmar rendimento e salvar/i })).toBeDisabled();
-    await user.click(screen.getAllByRole('button', { name: /Informar mão de obra|Criar nova versão/i })[0]);
+    // Conversão aprovada: MO da medida pode ser salva; rendimento exige nova versão.
+    expect(screen.getByRole('button', { name: /Salvar mão de obra da medida/i })).toBeEnabled();
+    expect(screen.getByLabelText(/Rendimento real confirmado/i)).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: /Criar nova versão/i }));
     expect(screen.getByText('Nova versão em rascunho')).toBeInTheDocument();
     // Em create com receita já existente o motivo já vem pré-preenchido.
     expect(screen.getByLabelText(/Motivo da alteração/i)).toHaveValue('Nova versão da conversão');
@@ -859,12 +861,13 @@ describe('ArtisanalStrapConversionEditor', () => {
     expect(mutations.confirmConversion.mock.calls[0][0].payload.recipe.id).toBeUndefined();
   });
 
-  it('desbloqueia a mão de obra da medida via Informar mão de obra na conversão aprovada', async () => {
+  it('grava a mão de obra da medida no Hub sem nova versão na conversão aprovada', async () => {
     const user = userEvent.setup();
+    const onOpenChange = vi.fn();
     render(
       <ArtisanalStrapConversionEditor
         open
-        onOpenChange={vi.fn()}
+        onOpenChange={onOpenChange}
         catalog={catalogWithConfiguredMaterial}
         capabilities={capabilities}
         mode="edit"
@@ -873,29 +876,26 @@ describe('ArtisanalStrapConversionEditor', () => {
       />,
     );
 
-    expect(screen.getByLabelText(/Custo de mão de obra \(R\$\/m\)/i)).toBeDisabled();
-    expect(screen.getByRole('heading', { name: /Mão de obra da medida/i })).toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: 'Informar mão de obra' }).length).toBeGreaterThan(0);
-
-    await user.click(screen.getAllByRole('button', { name: 'Informar mão de obra' })[0]);
-
-    expect(screen.getByText('Nova versão em rascunho')).toBeInTheDocument();
     const costInput = screen.getByLabelText(/Custo de mão de obra \(R\$\/m\)/i);
     expect(costInput).not.toBeDisabled();
+    expect(screen.getByRole('heading', { name: /Mão de obra da medida/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Informar mão de obra' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Salvar mão de obra da medida/i })).toBeEnabled();
+
     await user.clear(costInput);
     await user.type(costInput, '1,25');
-    expect(screen.getByLabelText(/Motivo da alteração/i)).toHaveValue('Cadastro do custo de mão de obra');
-    await user.click(screen.getByRole('button', { name: 'Confirmar nova versão e salvar' }));
+    await user.clear(screen.getByLabelText(/Motivo da alteração/i));
+    await user.type(screen.getByLabelText(/Motivo da alteração/i), 'MO única da tira 8 mm');
+    await user.click(screen.getByRole('button', { name: /Salvar mão de obra da medida/i }));
 
-    await waitFor(() => expect(mutations.confirmConversion).toHaveBeenCalledTimes(1));
-    const recipePayload = mutations.confirmConversion.mock.calls[0][0].payload.recipe;
-    expect(recipePayload.id).toBeUndefined();
-    expect(recipePayload.transformation_cost_per_m).toBe(1.25);
     await waitFor(() => expect(saveMeasureHubFields).toHaveBeenCalledWith(
       'measure-1',
       { precoArtesanalPerM: 1.25 },
-      expect.any(String),
+      'MO única da tira 8 mm',
     ));
+    expect(mutations.confirmConversion).not.toHaveBeenCalled();
+    expect(mutations.saveConversion).not.toHaveBeenCalled();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
   it('trata review como consulta e não rebaixa uma receita pendente para rascunho', () => {
