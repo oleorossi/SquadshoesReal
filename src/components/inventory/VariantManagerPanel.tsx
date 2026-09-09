@@ -650,20 +650,25 @@ export function VariantListPanel({
     if (updates.length === 0) { toast.info('Nenhuma alteração'); return; }
     setSavingGrade(true);
     try {
-      for (const [productId, { sizeFrom, sizeTo }] of updates) {
+      const gradeUpdates = updates.map(([productId, { sizeFrom, sizeTo }]) => {
         const variant = variants.find(v => v.id === productId);
         const existingGrade = (variant?.stock_grade as StockGrade | null) || {};
         const gradeObj = {
           ...existingGrade,
           _size_from: sizeFrom,
-          _size_to: sizeTo
+          _size_to: sizeTo,
         };
-
-        const { error } = await supabase.from('products').update({
-          stock_grade: gradeObj as Record<string, number>,
-        }).eq('id', productId);
-
-        if (error) throw error;
+        return {
+          product_id: productId,
+          expected_previous_qty: Number(variant?.quantity ?? 0),
+          expected_grade: existingGrade,
+          new_grade: gradeObj,
+          reason: 'Edicao da faixa de numeracao da variante do solado',
+        };
+      });
+      const result = await configureProductGrades(gradeUpdates);
+      if (!result.success) {
+        throw new Error(result.errors?.[0]?.error || 'Falha ao atualizar a faixa das variantes');
       }
       queryClient.invalidateQueries({ queryKey: ['products'] });
       // O grid de numeração do PV (SaleOrderItemForm) cacheia o range do solado
@@ -1257,76 +1262,9 @@ export function VariantBulkEditPanel({ variants, onCancel, onOpenGroupSpecs }: V
     }
   };
 
-  const handleSaveRanges = async () => {
-    const updates = Object.entries(rangeChanges).filter(([, r]) => r.sizeFrom != null && r.sizeTo != null);
-    if (updates.length === 0) { toast.info('Nenhuma alteração'); return; }
-    setSavingGrade(true);
-    try {
-      const gradeUpdates = updates.map(([productId, { sizeFrom, sizeTo }]) => {
-        const variant = variants.find(v => v.id === productId);
-        const existingGrade = (variant?.stock_grade as Record<string, any>) || {};
-        const gradeObj = {
-          ...existingGrade,
-          _size_from: sizeFrom,
-          _size_to: sizeTo
-        };
-        return {
-          product_id: productId,
-          expected_previous_qty: Number(variant?.quantity ?? 0),
-          expected_grade: existingGrade,
-          new_grade: gradeObj,
-          reason: 'Edicao da faixa de numeracao da variante do solado',
-        };
-      });
-      const result = await configureProductGrades(gradeUpdates);
-      if (!result.success) {
-        throw new Error(result.errors?.[0]?.error || 'Falha ao atualizar a faixa das variantes');
-      }
-      queryClient.invalidateQueries({ queryKey: ['products'] });
-      // O grid de numeração do PV (SaleOrderItemForm) cacheia o range do solado
-      // por 5 min via estas queries. Sem invalidar, editar a faixa aqui deixa o
-      // PV mostrando o range antigo (mesmo gap já corrigido em SolesCadastroTab).
-      queryClient.invalidateQueries({ queryKey: ['sole_size_range_specific'] });
-      queryClient.invalidateQueries({ queryKey: ['sole_size_conjugations'] });
-      toast.success(`Faixa atualizada para ${updates.length} variante(s)!`);
-    } catch (err: any) {
-      toast.error(`Erro: ${err.message}`);
-    } finally {
-      setSavingGrade(false);
-    }
-  };
-
-  const startEditColor = (v: Product) => { setEditingColorId(v.id); setEditingColorValue(v.color || ''); };
-  const cancelEditColor = () => { setEditingColorId(null); setEditingColorValue(''); };
-  const saveColor = async (v: Product) => {
-    const newVal = editingColorValue.trim();
-    if (!newVal) { toast.error('Informe a cor'); return; }
-    if (newVal.toLowerCase() === (v.color || '').toLowerCase()) { cancelEditColor(); return; }
-    // R4.3 — mesma cascata do cadastro, contra o estoque inteiro.
-    const hit = findDuplicate(
-      { id: v.id, name: v.name, color: newVal, sku: v.sku, group_id: v.group_id },
-      todosOsProdutos,
-    );
-    if (hit) { setDupColorInline(hit); return; }
-    setSavingColorId(v.id);
-    try {
-      // Grava SÓ a cor. O rename que existia aqui ("<base> - <cor>") violava o
-      // mesmo invariante do salvar em massa: `products.name` é a pista que o
-      // `partial_name` do `resolve_material_product` usa nos itens de cor vazia,
-      // e o nome não deve mudar como efeito colateral (spec R0.1/R2.1).
-      const { error } = await supabase.from('products')
-        .update({ color: newVal })
-        .eq('id', v.id);
-      if (error) throw error;
-      queryClient.invalidateQueries({ queryKey: ['products'] });
-      toast.success('Cor atualizada');
-      cancelEditColor();
-    } catch (err: any) {
-      toast.error(`Erro ao salvar cor: ${err.message}`);
-    } finally {
-      setSavingColorId(null);
-    }
-  };
+  if (!groupForm) {
+    return <div className="text-sm text-muted-foreground p-6 text-center">Carregando…</div>;
+  }
 
   return (
     <div className="flex flex-col space-y-4">

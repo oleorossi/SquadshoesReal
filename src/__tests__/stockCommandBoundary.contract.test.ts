@@ -164,7 +164,8 @@ describe('fronteira canonica de comandos de estoque', () => {
     for (const path of [
       'src/components/inventory/ProductFormDialog.tsx',
       'src/components/inventory/SoleSizeConjugationsEditor.tsx',
-      'src/components/inventory/MasterVariantDialog.tsx',
+      // Renomeado em 22/08/2026: MasterVariantDialog → VariantManagerPanel
+      'src/components/inventory/VariantManagerPanel.tsx',
       'src/components/inventory/SoladoGradeDialog.tsx',
       'src/components/soles-hub/SoleCreateDialog.tsx',
     ]) {

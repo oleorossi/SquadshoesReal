@@ -6,7 +6,9 @@ const groupsHook = readFileSync('src/hooks/useGroups.ts', 'utf8');
 
 function saveGroupSource(): string {
   const start = source.indexOf('const handleSave = async () =>');
-  const end = source.indexOf('const handleSaveProductName = async', start);
+  // Âncora pós-save: o rename inline de produto saiu com a tabela crua
+  // (porta única = VariantListPanel). O próximo statement do componente é o return.
+  const end = source.indexOf('\n  return (', start);
   if (start < 0 || end < 0) throw new Error('handleSave do grupo não encontrado');
   return source.slice(start, end);
 }
@@ -29,7 +31,9 @@ describe('propriedade das unidades no editor de grupo', () => {
 
   it('explica que definida por item preserva as variantes', () => {
     expect(source).toContain('A unidade de cada item será preservada.');
-    expect(source).toContain('as unidades das variantes são preservadas');
+    // Cópia viva (pós alinhamento unidade de consumo): aponta a edição por
+    // variante na aba dedicada em vez da frase antiga “são preservadas”.
+    expect(source).toContain('As unidades das variantes continuam editáveis');
   });
 
   it('não permite linha de variantes sem unidade explícita', () => {
