@@ -23,6 +23,7 @@ import { GenerateServiceOrdersWizard } from '@/components/contractors/GenerateSe
 import {
   buildExtraItemColumns,
   filterProductionSaleOrderItems,
+  retainLoadedSaleOrderItemsForUpdate,
   withoutProductionExclusionMetadata,
   withSaleOrderItemClientKey,
   useCreateSaleOrder,
@@ -815,6 +816,7 @@ export default function SaleOrderForm() {
       originalItemsSigRef.current = null;
       originalDeadlineRef.current = null;
       originalItemReferenceByIdRef.current.clear();
+      originalLoadedItemsRef.current = [];
       originalStrapSourcingRef.current.clear();
       setStrapOverrideTarget(null);
       setSelectedClientId('');
@@ -899,6 +901,8 @@ export default function SaleOrderForm() {
   const originalItemsSigRef = useRef<string | null>(null);
   const originalDeadlineRef = useRef<string | null>(null);
   const originalItemReferenceByIdRef = useRef(new Map<string, string>());
+  /** Snapshot dos itens no load — reanexa no save se sumirem do editor. */
+  const originalLoadedItemsRef = useRef<SaleOrderItemFormData[]>([]);
   // Versão observada junto do cabeçalho+itens. O save envia exatamente esta
   // revisão ao command boundary; reler a versão só no clique esconderia uma
   // edição concorrente feita em outra aba entre a carga e o submit.
@@ -1152,6 +1156,9 @@ export default function SaleOrderForm() {
       originalDeadlineRef.current = nextForm.delivery_deadline || '';
       originalItemReferenceByIdRef.current = new Map(nextItems.flatMap((item) =>
         item.id ? [[item.id, item.reference_id] as const] : []));
+      originalLoadedItemsRef.current = nextItems
+        .filter((item) => !!item.id)
+        .map((item) => ({ ...item }));
       editorBaselineRevisionRef.current = buildSaleOrderEditorRevision({
         form: nextForm,
         items: nextItems,
@@ -1420,7 +1427,10 @@ export default function SaleOrderForm() {
     // anterior, mas nunca devem reenviar itens/embalagem antigos.
     const editorSnapshot = draftStateRef.current;
     const f = editorSnapshot.form;
-    const validItems = editorSnapshot.items.filter(i => i.reference_id).map(normalizeItemReference);
+    const validItems = retainLoadedSaleOrderItemsForUpdate(
+      editorSnapshot.items.filter(i => i.reference_id).map(normalizeItemReference),
+      originalLoadedItemsRef.current,
+    );
     const productionItems = filterProductionSaleOrderItems(validItems);
     const total = validItems.reduce((s, i) => s + i.unit_price * i.quantity, 0);
     const rep = representatives.find(r => r.id === f.representative);

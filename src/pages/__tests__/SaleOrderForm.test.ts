@@ -8,7 +8,11 @@ import {
   mapLoadedSaleOrderItem,
   resolveSaleOrderMutationTarget,
 } from '../SaleOrderForm';
-import type { SaleOrderFormData, SaleOrderItemFormData } from '@/hooks/useSaleOrders';
+import {
+  retainLoadedSaleOrderItemsForUpdate,
+  type SaleOrderFormData,
+  type SaleOrderItemFormData,
+} from '@/hooks/useSaleOrders';
 
 describe('contenções do estado do editor de PV', () => {
   const form = {
@@ -388,5 +392,29 @@ describe('buildCopySeedPayload', () => {
       companyIsActive: true,
     });
     expect(comEmpresaAtiva.form.company_id).toBe('empresa-ativa');
+  });
+});
+
+describe('retainLoadedSaleOrderItemsForUpdate', () => {
+  it('reanexa itens carregados que sumiram do editor (evita DELETE + FK de tira)', () => {
+    const loaded = [
+      { id: 'a', reference_id: 'r1', quantity: 10 },
+      { id: 'b', reference_id: 'r2', quantity: 20 },
+    ] as SaleOrderItemFormData[];
+    const current = [
+      { id: 'a', reference_id: 'r1', quantity: 12 },
+    ] as SaleOrderItemFormData[];
+
+    const merged = retainLoadedSaleOrderItemsForUpdate(current, loaded);
+    expect(merged.map((i) => i.id)).toEqual(['a', 'b']);
+    expect(merged[0].quantity).toBe(12);
+    expect(merged[1].quantity).toBe(20);
+  });
+
+  it('não duplica quando o editor já tem todos os ids carregados', () => {
+    const items = [
+      { id: 'a', reference_id: 'r1', quantity: 1 },
+    ] as SaleOrderItemFormData[];
+    expect(retainLoadedSaleOrderItemsForUpdate(items, items)).toHaveLength(1);
   });
 });

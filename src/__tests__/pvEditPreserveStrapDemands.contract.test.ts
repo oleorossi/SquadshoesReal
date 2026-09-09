@@ -75,3 +75,22 @@ describe('edição de PV — preserve itens com demanda de tira', () => {
     expect(guard).toContain("'admin', 'gerente', 'comercial'");
   });
 });
+
+describe('FK sale_order_strap_demands — ON DELETE SET NULL', () => {
+  const migration = readFileSync(
+    resolve(ROOT, 'supabase/migrations/20270101022100_strap_demand_item_fk_set_null_on_delete.sql'),
+    'utf8',
+  );
+
+  it('torna sale_order_item_id nullable com ON DELETE SET NULL', () => {
+    expect(migration).toContain('ALTER COLUMN sale_order_item_id DROP NOT NULL');
+    expect(migration).toContain('ON DELETE SET NULL');
+    expect(migration).toContain('strap_demand_item_fk_set_null_20270101022100');
+  });
+
+  it('BEFORE DELETE cancela demanda reversível e barra compromisso externo', () => {
+    expect(migration).toContain('tg_release_strap_demands_before_item_delete');
+    expect(migration).toContain('strap_demand_has_external_commitment');
+    expect(migration).toContain('BEFORE DELETE ON public.sale_order_items');
+  });
+});
