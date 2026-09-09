@@ -3,13 +3,13 @@ import {
   buildCopySeedPayload,
   buildItemsPurchaseSignature,
   buildSaleOrderEditorRevision,
+  buildSaleOrderUpdateItems,
   clearSaleOrderDraft,
   editorChangedDuringSave,
   mapLoadedSaleOrderItem,
   resolveSaleOrderMutationTarget,
 } from '../SaleOrderForm';
 import {
-  retainLoadedSaleOrderItemsForUpdate,
   type SaleOrderFormData,
   type SaleOrderItemFormData,
 } from '@/hooks/useSaleOrders';
@@ -395,26 +395,40 @@ describe('buildCopySeedPayload', () => {
   });
 });
 
-describe('retainLoadedSaleOrderItemsForUpdate', () => {
-  it('reanexa itens carregados que sumiram do editor (evita DELETE + FK de tira)', () => {
+describe('buildSaleOrderUpdateItems', () => {
+  it('não reanexa itens presentes no load e ausentes do editor', () => {
     const loaded = [
       { id: 'a', reference_id: 'r1', quantity: 10 },
       { id: 'b', reference_id: 'r2', quantity: 20 },
     ] as SaleOrderItemFormData[];
-    const current = [
+    const editor = [
       { id: 'a', reference_id: 'r1', quantity: 12 },
     ] as SaleOrderItemFormData[];
 
-    const merged = retainLoadedSaleOrderItemsForUpdate(current, loaded);
-    expect(merged.map((i) => i.id)).toEqual(['a', 'b']);
-    expect(merged[0].quantity).toBe(12);
-    expect(merged[1].quantity).toBe(20);
+    const payload = buildSaleOrderUpdateItems(editor);
+    const removedFromEditor = loaded
+      .map((item) => item.id)
+      .filter((id) => !editor.some((item) => item.id === id));
+
+    expect(removedFromEditor).toEqual(['b']);
+    expect(payload.map((item) => item.id)).toEqual(['a']);
+    expect(payload[0].quantity).toBe(12);
+    for (const id of removedFromEditor) {
+      expect(payload.some((item) => item.id === id)).toBe(false);
+    }
   });
 
-  it('não duplica quando o editor já tem todos os ids carregados', () => {
-    const items = [
+  it('mantém só itens com referência e aplica normalize', () => {
+    const editor = [
       { id: 'a', reference_id: 'r1', quantity: 1 },
+      { id: 'orphan', reference_id: '', quantity: 2 },
     ] as SaleOrderItemFormData[];
-    expect(retainLoadedSaleOrderItemsForUpdate(items, items)).toHaveLength(1);
+    const payload = buildSaleOrderUpdateItems(editor, (item) => ({
+      ...item,
+      reference_id: `canon:${item.reference_id}`,
+    }));
+    expect(payload).toHaveLength(1);
+    expect(payload[0].id).toBe('a');
+    expect(payload[0].reference_id).toBe('canon:r1');
   });
 });

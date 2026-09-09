@@ -145,30 +145,6 @@ export function filterProductionSaleOrderItems<
 }
 
 /**
- * O writer legado ainda faz DELETE do que sumiu do payload. Em PV Em Produção
- * isso estoura a FK `sale_order_strap_demands_sale_order_item_id_fkey` enquanto
- * a migration de soft-exclude não estiver aplicada. Reanexa itens carregados
- * que o editor removeu da lista pra o save só ATUALIZAR — nunca apagar linhas
- * com demanda de tira histórica. Remoção comercial definitiva fica a cargo do
- * soft-exclude server-side.
- */
-export function retainLoadedSaleOrderItemsForUpdate<
-  T extends { id?: string | null },
->(currentItems: readonly T[], loadedItems: readonly T[]): T[] {
-  const sentIds = new Set(
-    currentItems
-      .map((item) => item.id)
-      .filter((id): id is string => typeof id === 'string' && id.length > 0),
-  );
-  const retained = loadedItems.filter((item) => {
-    const id = item.id;
-    return typeof id === 'string' && id.length > 0 && !sentIds.has(id);
-  });
-  if (retained.length === 0) return [...currentItems];
-  return [...currentItems, ...retained];
-}
-
-/**
  * stage_order canônico pro setor; nomes legados ('Mesa', 'Expedicao') resolvem
  * pelo alias do mapa canônico. Desconhecido → fallback posicional (idx + 1).
  */
