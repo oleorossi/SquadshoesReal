@@ -1088,3 +1088,127 @@ describe('calculateBomForOrders — padrões GLOBAIS por cor (component_color_de
     expect(bin[0].warning).toMatch(/regra global/i);
   });
 });
+
+describe('calculateBomForOrders — paridade eixo A com orderConsumption', () => {
+  it('override LEGADO de consumo da variante substitui o escalar e suprime per-size', async () => {
+    const t = buildBomTables({ grade: GRADE_REAL });
+    Object.assign(t.technical_sheets[0] as any, {
+      upper_material: 'GLOW METALIC',
+      upper_consumption: 6,
+      upper_consumption_per_size: { '35': 10, '36': 10, '37': 10, '38': 10 },
+      strap_colors: [],
+    });
+    (t.sale_order_items[0] as any).material_variant_id = 'var-glow';
+    t.reference_material_variants = [{
+      id: 'var-glow',
+      reference_id: 'ts1',
+      active: true,
+      upper_material_product_id: null,
+      upper_material_group_id: 'g-glow',
+      upper_consumption_override: 3.5,
+      lining_material_product_id: null,
+      lining_material_group_id: null,
+      lining_consumption_override: null,
+      insole_material_product_id: null,
+      insole_material_group_id: null,
+      insole_consumption_override: null,
+      sole_material_product_id: null,
+      sole_consumption_override: null,
+      main_material_group_id: null,
+    }];
+    t.product_groups = [...(t.product_groups as any[]), {
+      id: 'g-glow', name: 'GLOW METALIC', dimensions_length: null, dimensions_width: null, dimensions_unit: 'mm',
+    }];
+    t.products = [...(t.products as any[]), {
+      id: 'p-glow', name: 'GLOW METALIC PRETO', color: 'PRETO', group_id: 'g-glow', unit: 'm', quantity: 0,
+    }];
+    // Largura 1400 mm → divisor 140 (dm² → m).
+    t.component_sheets = [...(t.component_sheets as any[]), {
+      product_id: 'p-glow',
+      dimensions_width: 1400,
+      dimensions_length: 0,
+      dimensions_unit: 'mm',
+      yield_per_size: {},
+      yield_per_sole: null,
+      waste_pct: 0,
+      products: { group_id: 'g-glow', name: 'GLOW METALIC PRETO', color: 'PRETO', unit: 'm' },
+    }];
+
+    mockDb.tables = t;
+    const rows = await calculateBomForOrders(['op1']);
+    const cabedal = rows.find((row) => row.componentType === 'Cabedal');
+    // 3,5 dm²/par × 720 = 2520 dm² ÷ 140 = 18 m (não 6×720/140 nem o per-size 10).
+    expect(cabedal?.groupName).toBe('GLOW METALIC');
+    expect(cabedal?.totalQuantity).toBeCloseTo(18, 6);
+  });
+
+  it('Forração usa a cor mapeada do forro, não a cor do cabedal do pedido', async () => {
+    const t = withSole(buildBomTables({ grade: GRADE_REAL }));
+    Object.assign(t.technical_sheets[0] as any, {
+      lining_material: 'FORRO TESTE',
+      lining_consumption: 4,
+      strap_colors: [],
+    });
+    t.technical_sheet_lining_colors = [{
+      sheet_id: 'ts1', cabedal_color: 'PRETO', lining_color: 'BEGE',
+    }];
+    t.product_groups = [...(t.product_groups as any[]), {
+      id: 'g-forro', name: 'FORRO TESTE', dimensions_length: null, dimensions_width: null, dimensions_unit: 'mm',
+    }];
+    t.products = [...(t.products as any[]), {
+      id: 'p-forro', name: 'FORRO TESTE BEGE', color: 'BEGE', group_id: 'g-forro', unit: 'm', quantity: 0,
+    }];
+    t.component_sheets = [...(t.component_sheets as any[]), {
+      product_id: 'p-forro',
+      dimensions_width: 1000,
+      dimensions_length: 0,
+      dimensions_unit: 'mm',
+      yield_per_size: {},
+      yield_per_sole: null,
+      waste_pct: 0,
+      products: { group_id: 'g-forro', name: 'FORRO TESTE BEGE', color: 'BEGE', unit: 'm' },
+    }];
+    t.sole_technical_specs = [35, 36, 37, 38].map((size) => ({
+      sole_id: 'p-sole', size, lining_consumption_dm2: 4,
+    }));
+
+    mockDb.tables = t;
+    const rows = await calculateBomForOrders(['op1']);
+    const forracao = rows.find((row) => row.componentType === 'Forração');
+    expect(forracao?.color).toBe('BEGE');
+    expect(forracao?.color).not.toBe('PRETO');
+  });
+
+  it('não inventa a cor do cabedal em tira sem cor; STRASS finished_product_group permanece', async () => {
+    const t = buildBomTables({ grade: GRADE_REAL });
+    (t.technical_sheets[0] as any).strap_colors = [
+      {
+        id: 1,
+        label: 'Overlock',
+        group_name: 'TIRA OVERLOCK 5MM',
+        color: '',
+        consumption: 10,
+        consumption_per_size: { '35': 10, '36': 10, '37': 10, '38': 10 },
+      },
+      {
+        id: 2,
+        label: 'STRASS LATERAL',
+        group_name: 'TIRA STRASS 6MM',
+        color: '',
+        color_id: '22222222-2222-4222-8222-222222222222',
+        identity_basis: 'finished_product_group',
+        consumption: 40,
+        consumption_per_size: { '35': 40, '36': 40, '37': 40, '38': 40 },
+      },
+    ];
+    (t.sale_order_items[0] as any).strap_colors = null;
+
+    mockDb.tables = t;
+    const rows = await calculateBomForOrders(['op1']);
+    const tiras = rows.filter((row) => row.componentType === 'Tiras');
+    expect(tiras).toHaveLength(1);
+    expect(tiras[0].groupName).toMatch(/STRASS/i);
+    expect(tiras[0].color).toBe('—');
+    expect(tiras.some((row) => /OVERLOCK/i.test(row.groupName))).toBe(false);
+  });
+});

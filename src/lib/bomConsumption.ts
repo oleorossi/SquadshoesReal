@@ -13,6 +13,7 @@ import {
   LINEAR_UNITS,
 } from '@/lib/materialConsumption';
 import { calculateStrapConsumptionCm, resolveOrderStraps } from '@/lib/strapConsumption';
+import { strapIdentityBasis } from '@/lib/strapIdentity';
 import {
   fetchActiveProductsByGroupIds,
   mergePerSizeConsumption,
@@ -518,7 +519,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     if (variantIds.length > 0) {
       const variantResult = await supabase
         .from('reference_material_variants' as never)
-        .select('id, reference_id, upper_material_product_id, upper_material_group_id, lining_material_product_id, lining_material_group_id, insole_material_product_id, insole_material_group_id, insole_consumption_override, sole_material_product_id, sole_consumption_override, main_material_group_id')
+        .select('id, reference_id, upper_material_product_id, upper_material_group_id, upper_consumption_override, lining_material_product_id, lining_material_group_id, lining_consumption_override, insole_material_product_id, insole_material_group_id, insole_consumption_override, sole_material_product_id, sole_consumption_override, main_material_group_id')
         .in('id', variantIds);
       assertQuerySucceeded('variantes de material', variantResult);
       const variantRows = variantResult.data || [];
@@ -665,8 +666,8 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     }
   }
 
-  // Cor do FORRO mapeada por cor do cabedal — usada pela linha de Fachete
-  // (paridade com o motor canônico; as demais linhas seguem com a cor do pedido).
+  // Cor do FORRO mapeada por cor do cabedal — Forração, Forração Palmilha e
+  // Fachete (paridade com o motor canônico / orderConsumption.ts).
   const liningColorMap = new Map<string, string>();
   const liningDefaultMap = new Map<string, string>();
   {
@@ -1046,8 +1047,15 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       : [];
     const upperAlts = allCabedalAccessories.filter((e) => !e.mandatory);
     const mandatoryCabedalMaterials = allCabedalAccessories.filter((e) => e.mandatory === true);
+    // Variante dirige o cabedal: grupo dela; consumo da ficha, salvo override
+    // LEGADO explícito (paridade orderConsumption / resolvers SQL).
     const upperMatch = upperVariantGroup
-      ? { group: upperVariantGroup, consumption: Number(sheet?.upper_consumption) || 0 }
+      ? {
+          group: upperVariantGroup,
+          consumption: variant?.upper_consumption_override != null
+            ? Number(variant.upper_consumption_override) || 0
+            : (Number(sheet?.upper_consumption) || 0),
+        }
       : resolveOption(
           sheet?.upper_material || '',
           Number(sheet?.upper_consumption) || 0,
@@ -1073,9 +1081,14 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       const upperColorMismatch = !!upperVariantGroup && !upperPinId && upperResolution.colorMismatch;
       const upperSheet = getConversionSheetForProduct(upperProduct?.id, upperMatch.group, { color: orderColor, mode: 'linear', preferYield: true });
       const altRecord = isPrincipal ? null : upperAlts.find((a: any) => a.material === upperMatch.group);
-      const overridePerSize = isPrincipal
-        ? (sheet?.upper_consumption_per_size && Object.keys(sheet.upper_consumption_per_size).length > 0 ? sheet.upper_consumption_per_size : null)
-        : (altRecord?.consumption_per_size && Object.keys(altRecord.consumption_per_size).length > 0 ? altRecord.consumption_per_size : null);
+      // Override LEGADO da variante substitui o escalar E suprime o per-size da
+      // ficha (consumo explícito). Sem override, o per-size da ficha segue.
+      const hasLegacyUpperOverride = !!upperVariantGroup && variant?.upper_consumption_override != null;
+      const overridePerSize = hasLegacyUpperOverride
+        ? null
+        : isPrincipal
+          ? (sheet?.upper_consumption_per_size && Object.keys(sheet.upper_consumption_per_size).length > 0 ? sheet.upper_consumption_per_size : null)
+          : (altRecord?.consumption_per_size && Object.keys(altRecord.consumption_per_size).length > 0 ? altRecord.consumption_per_size : null);
       // Tamanho sem valor por numeração cai no ESCALAR FLAT da ficha (contrato
       // SQL — F2-02); o multiplicador por tamanho saiu (era só do TS).
       const { total: upperTotal } = calculateConsumptionWithUnit(item, upperMatch.consumption, upperSheet, 'metro', overridePerSize);
@@ -1128,8 +1141,15 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
 
     // Forro
     const liningAlts = Array.isArray(sheet?.lining_accessories) ? sheet.lining_accessories as any[] : [];
+    // Variante dirige o forro: mesmo racional do cabedal (consumo da ficha,
+    // salvo override legado explícito).
     const liningMatch = liningVariantGroup
-      ? { group: liningVariantGroup, consumption: Number(sheet?.lining_consumption) || 0 }
+      ? {
+          group: liningVariantGroup,
+          consumption: variant?.lining_consumption_override != null
+            ? Number(variant.lining_consumption_override) || 0
+            : (Number(sheet?.lining_consumption) || 0),
+        }
       : resolveOption(sheet?.lining_material || '', Number(sheet?.lining_consumption) || 0, liningAlts, orderColor);
     // Anti-duplicidade FORRAÇÃO (cabedal × palmilha) — mesma condição do motor
     // canônico (orderConsumption.ts) e do SQL (mig 20260911120000): solado
@@ -1174,8 +1194,12 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
             && (allProducts || []).some((p: any) => p.id === (sheet as any).lining_material_product_id)
           ? (sheet as any).lining_material_product_id
           : null);
+    // Cor do forro mapeada pela cor do cabedal do pedido (não inventar a cor
+    // do PV na linha de Forração — paridade orderConsumption).
+    const mappedLiningColor = liningColorMap.get(`${order.reference_id}::${normalizeColorKey(orderColor)}`)
+      || liningDefaultMap.get(order.reference_id) || orderColor;
     if (liningMatch && !suppressCabedalForracao) {
-      const liningSheet = getConversionSheetForProduct(liningPinId, liningMatch.group, { color: orderColor, mode: 'linear', preferYield: true });
+      const liningSheet = getConversionSheetForProduct(liningPinId, liningMatch.group, { color: mappedLiningColor, mode: 'linear', preferYield: true });
       const soleProductId = soleIdForLiningBom;
       const liningAltRecord = isPrincipalLining ? null : liningAlts.find((a: any) => a.material === liningMatch.group);
       // Alternativa: consumo por número da própria ficha. Principal: do SOLADO.
@@ -1184,7 +1208,10 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
         : (liningAltRecord?.consumption_per_size && Object.keys(liningAltRecord.consumption_per_size).length > 0 ? liningAltRecord.consumption_per_size : null);
       // FORRO DO CABEDAL: ficha por número > mapa canônico do tipo de solado >
       // legado `lining_consumption_dm2` > escalar da ficha.
-      const liningSolePerSize = isPrincipalLining
+      // Override LEGADO da variante é consumo explícito → ignora o per-size do
+      // solado e usa o escalar já embutido em liningMatch.consumption.
+      const hasLegacyLiningOverride = !!liningVariantGroup && variant?.lining_consumption_override != null;
+      const liningSolePerSize = (isPrincipalLining && !hasLegacyLiningOverride)
         ? mergePerSizeConsumption(
             liningSpecBySole.get(soleProductId || ''),
             liningConsumptionPerSizeBySole.get(soleProductId || ''),
@@ -1204,7 +1231,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       }
       addConsumptionRow(consumptionMap, {
         componentType: 'Forração', groupName: liningMatch.group, materialName: 'Forração',
-        productUnit: 'metro', color: orderColor, totalQuantity: liningTotal,
+        productUnit: 'metro', color: mappedLiningColor, totalQuantity: liningTotal,
         warning: liningWarning,
       });
     }
@@ -1331,7 +1358,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
         // Mesma ficha de conversão do Forro do cabedal (cs do pin primeiro —
         // F2-04): o SQL converte as duas linhas pela mesma
         // get_material_conversion_info(v_lining_pid).
-        const forrSheet = getConversionSheetForProduct(liningPinId, liningGroupForPalm, { color: orderColor, mode: 'linear', preferYield: true });
+        const forrSheet = getConversionSheetForProduct(liningPinId, liningGroupForPalm, { color: mappedLiningColor, mode: 'linear', preferYield: true });
         const forrWidthMissing = isLinearWidthMissing(forrSheet, 'm');
         let forrTotal: number;
         let forrWarning: string | undefined;
@@ -1346,7 +1373,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
         // roteamento por setor (Corte Forração vs Corte Fibra / Aviamento) depende disso.
         if (forrTotal > 0 || forrWarning) addConsumptionRow(consumptionMap, {
           componentType: 'Forração Palmilha', groupName: liningGroupForPalm, materialName: 'Forração Palmilha',
-          productUnit: 'metro', color: orderColor, totalQuantity: forrTotal,
+          productUnit: 'metro', color: mappedLiningColor, totalQuantity: forrTotal,
           widthMissing: forrWidthMissing,
           warning: forrWarning,
         });
@@ -1513,15 +1540,27 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     const sheetStraps: any[] = Array.isArray(sheet?.strap_colors) ? (sheet.strap_colors as any[]) : [];
     const resolvedStraps = resolveOrderStraps(itemStraps, sheetStraps);
     for (const strap of resolvedStraps) {
+      // Tira sem cor declarada não tem SKU determinístico. O SQL a sinaliza e
+      // não reserva/debita; exibi-la como consumo inventando a cor do cabedal
+      // criava falsa demanda na Lista (paridade orderConsumption).
+      // Exceção: finished_product_group (STRASS) escolhe cor por UUID.
+      const strapColorText = (strap.color || '').toString().trim();
+      const strapColorId = (strap as { color_id?: string | null }).color_id;
+      if (!strapColorText && !strapColorId
+          && strapIdentityBasis(strap) !== 'finished_product_group') {
+        continue;
+      }
       const strapConsumptionCm = calculateStrapConsumptionCm(strap, {
         grade: (item.grade as Record<string, number>) || {},
         quantity: itemQuantity,
         fichas: item.fichas,
       });
+      const finishedGroup = strapIdentityBasis(strap) === 'finished_product_group';
       addConsumptionRow(consumptionMap, {
         componentType: 'Tiras', groupName: strap.group_name || strap.label || 'Tira',
         materialName: strap.label || strap.group_name || 'Tira',
-        productUnit: 'metro', color: strap.color || orderColor,
+        // STRASS: cor da posição, nunca a cor do cabedal do item.
+        productUnit: 'metro', color: strapColorText || (finishedGroup ? '—' : orderColor),
         totalQuantity: strapConsumptionCm / 100,
       });
     }
