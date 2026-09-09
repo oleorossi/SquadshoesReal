@@ -158,7 +158,9 @@ describe('Fase 3 — UX de fluxo', () => {
   });
 
   it('3.4 PV preserva deep-links de view', () => {
-    expect(saleOrdersPage).toContain("searchParams.get('view') === 'consumo'");
+    // Consumo memoiza o param (view/ids) pra toggle de item não recriar o array.
+    expect(saleOrdersPage).toContain("searchParams.get('view')");
+    expect(saleOrdersPage).toContain("consumptionViewParam === 'consumo'");
     expect(saleOrdersPage).toContain("searchParams.get('view') === 'pendencias'");
     expect(sheetsPage).toContain("searchParams.get('ref')");
     expect(sheetsPage).toContain('useUrlTabState');
