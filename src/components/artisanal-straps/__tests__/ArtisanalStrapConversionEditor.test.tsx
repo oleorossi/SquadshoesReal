@@ -81,6 +81,11 @@ vi.mock('@/hooks/useContractors', () => ({
   useContractors: () => ({ data: [] }),
 }));
 
+const saveMeasureHubFields = vi.hoisted(() => vi.fn());
+vi.mock('@/lib/saveArtisanalStrapMeasureHubFields', () => ({
+  saveArtisanalStrapMeasureHubFields: (...args: unknown[]) => saveMeasureHubFields(...args),
+}));
+
 const capabilities: ArtisanalStrapCapabilities = {
   manage_strap_catalog: true,
   administer_strap_operations: true,
@@ -247,15 +252,34 @@ describe('ArtisanalStrapConversionEditor', () => {
       mutationState[key as keyof typeof mutationState] = false;
     });
     mutations.approveWidth.mockReset().mockResolvedValue({});
-    mutations.confirmConversion.mockReset().mockResolvedValue({ recipe_id: 'recipe-confirmed', status: 'approved' });
-    mutations.reuseLegacy.mockReset().mockResolvedValue({ recipe_id: 'recipe-reused' });
-    mutations.saveConversion.mockReset().mockResolvedValue({ recipe_id: 'recipe-1' });
+    mutations.confirmConversion.mockReset().mockResolvedValue({
+      type_id: 'type-1',
+      measure_id: 'measure-1',
+      base_group_id: 'base-1',
+      recipe_id: 'recipe-confirmed',
+      status: 'approved',
+    });
+    mutations.reuseLegacy.mockReset().mockResolvedValue({
+      conversion: {
+        type_id: 'type-1',
+        measure_id: 'measure-1',
+        base_group_id: 'base-1',
+        recipe_id: 'recipe-reused',
+      },
+    });
+    mutations.saveConversion.mockReset().mockResolvedValue({
+      type_id: 'type-1',
+      measure_id: 'measure-1',
+      base_group_id: 'base-1',
+      recipe_id: 'recipe-1',
+    });
     mutations.saveMaterialConversions.mockReset().mockResolvedValue({
       type_id: 'type-1',
       measure_id: 'measure-1',
       conversions: [{ base_group_id: 'base-1', recipe_id: 'recipe-1' }],
     });
     mutations.saveWidth.mockReset().mockResolvedValue('width-profile-1');
+    saveMeasureHubFields.mockReset().mockResolvedValue('measure-1');
   });
 
   it('cadastra a conversão sem solicitar cor ou produto de estoque', () => {
@@ -835,7 +859,7 @@ describe('ArtisanalStrapConversionEditor', () => {
     expect(mutations.confirmConversion.mock.calls[0][0].payload.recipe.id).toBeUndefined();
   });
 
-  it('desbloqueia o custo de mão de obra via Informar mão de obra na conversão aprovada', async () => {
+  it('desbloqueia a mão de obra da medida via Informar mão de obra na conversão aprovada', async () => {
     const user = userEvent.setup();
     render(
       <ArtisanalStrapConversionEditor
@@ -849,13 +873,14 @@ describe('ArtisanalStrapConversionEditor', () => {
       />,
     );
 
-    expect(screen.getByLabelText(/Custo de transformação \(mão de obra\)/i)).toBeDisabled();
+    expect(screen.getByLabelText(/Custo de mão de obra \(R\$\/m\)/i)).toBeDisabled();
+    expect(screen.getByRole('heading', { name: /Mão de obra da medida/i })).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'Informar mão de obra' }).length).toBeGreaterThan(0);
 
     await user.click(screen.getAllByRole('button', { name: 'Informar mão de obra' })[0]);
 
     expect(screen.getByText('Nova versão em rascunho')).toBeInTheDocument();
-    const costInput = screen.getByLabelText(/Custo de transformação \(mão de obra\)/i);
+    const costInput = screen.getByLabelText(/Custo de mão de obra \(R\$\/m\)/i);
     expect(costInput).not.toBeDisabled();
     await user.clear(costInput);
     await user.type(costInput, '1,25');
@@ -866,6 +891,11 @@ describe('ArtisanalStrapConversionEditor', () => {
     const recipePayload = mutations.confirmConversion.mock.calls[0][0].payload.recipe;
     expect(recipePayload.id).toBeUndefined();
     expect(recipePayload.transformation_cost_per_m).toBe(1.25);
+    await waitFor(() => expect(saveMeasureHubFields).toHaveBeenCalledWith(
+      'measure-1',
+      { precoArtesanalPerM: 1.25 },
+      expect.any(String),
+    ));
   });
 
   it('trata review como consulta e não rebaixa uma receita pendente para rascunho', () => {

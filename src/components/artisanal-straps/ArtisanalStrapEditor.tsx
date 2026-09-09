@@ -828,12 +828,16 @@ export function ArtisanalStrapEditor({
                   <div className="grid gap-3 sm:grid-cols-2 sm:col-span-2">
                     {(form.origemPadrao === 'sempre_fabrica' || form.origemPadrao === 'escolhe_no_pv') && (
                       <div className="space-y-1.5">
-                        <Label>Preço artesanal (R$/m)</Label>
+                        <Label>Mão de obra fábrica (R$/m)</Label>
                         <NumberInput
                           value={form.precoArtesanalPerM}
                           onChange={(value) => setField('precoArtesanalPerM', value)}
                           disabled={readOnly}
                         />
+                        <p className="text-xs text-muted-foreground">
+                          Valor único da medida — igual para todas as Napas. O que muda o custo
+                          final é o preço do material de origem.
+                        </p>
                       </div>
                     )}
                     {form.origemPadrao === 'escolhe_no_pv' && (
