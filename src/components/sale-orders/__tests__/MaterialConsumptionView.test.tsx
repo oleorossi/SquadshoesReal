@@ -217,19 +217,24 @@ describe('MaterialConsumptionView — tela buy-first', () => {
     expect(onGerarOC).toHaveBeenCalledWith({ grossNeed: false });
   });
 
-  it('oferece seletor de item do PV com o valor selecionado', () => {
-    const onSelectedItemIdChange = vi.fn();
+  it('oferece multi-seleção de itens do PV com o valor selecionado', async () => {
+    const onSelectedItemIdsChange = vi.fn();
+    const user = userEvent.setup();
     const { rerender } = renderView({
       itemOptions: [
         { id: 'item-1', label: 'Item 1 · I90 · PRETO' },
         { id: 'item-2', label: 'Item 2 · I90 · OFF WHITE' },
       ],
-      selectedItemId: null,
-      onSelectedItemIdChange,
+      selectedItemIds: [],
+      onSelectedItemIdsChange,
     });
 
     expect(screen.getByRole('combobox', { name: /Filtrar consumo por item/i }))
       .toHaveTextContent('Todos os itens');
+
+    await user.click(screen.getByRole('combobox', { name: /Filtrar consumo por item/i }));
+    await user.click(screen.getByRole('button', { name: /Item 1 · I90 · PRETO/i }));
+    expect(onSelectedItemIdsChange).toHaveBeenCalledWith(['item-1']);
 
     rerender(
       <MemoryRouter>
@@ -241,14 +246,14 @@ describe('MaterialConsumptionView — tela buy-first', () => {
             { id: 'item-1', label: 'Item 1 · I90 · PRETO' },
             { id: 'item-2', label: 'Item 2 · I90 · OFF WHITE' },
           ]}
-          selectedItemId="item-2"
-          onSelectedItemIdChange={onSelectedItemIdChange}
+          selectedItemIds={['item-1', 'item-2']}
+          onSelectedItemIdsChange={onSelectedItemIdsChange}
         />
       </MemoryRouter>,
     );
 
     expect(screen.getByRole('combobox', { name: /Filtrar consumo por item/i }))
-      .toHaveTextContent('Item 2 · I90 · OFF WHITE');
+      .toHaveTextContent('2 itens selecionados');
   });
 
   it('esconde o seletor de item quando não há opções', () => {
@@ -256,20 +261,26 @@ describe('MaterialConsumptionView — tela buy-first', () => {
     expect(screen.queryByRole('combobox', { name: /Filtrar consumo por item/i })).not.toBeInTheDocument();
   });
 
-  it('mantém o seletor de item no empty state pra voltar a Todos', () => {
+  it('mantém o seletor de item no empty state pra voltar a Todos', async () => {
+    const onSelectedItemIdsChange = vi.fn();
+    const user = userEvent.setup();
     renderView({
       rows: [],
       itemOptions: [
         { id: 'item-1', label: 'Item 1 · I90 · PRETO' },
         { id: 'item-2', label: 'Item 2 · I90 · OFF WHITE' },
       ],
-      selectedItemId: 'item-2',
-      onSelectedItemIdChange: vi.fn(),
+      selectedItemIds: ['item-2'],
+      onSelectedItemIdsChange,
       emptyMessage: 'Nenhum consumo neste item.',
     });
     expect(screen.getByRole('combobox', { name: /Filtrar consumo por item/i }))
       .toHaveTextContent('Item 2 · I90 · OFF WHITE');
     expect(screen.getByText('Nenhum consumo neste item.')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('combobox', { name: /Filtrar consumo por item/i }));
+    await user.click(screen.getByRole('button', { name: /^Todos os itens$/i }));
+    expect(onSelectedItemIdsChange).toHaveBeenCalledWith([]);
   });
 
   it('mantém Gerar ordem de compra visível no modo Consumo total', async () => {

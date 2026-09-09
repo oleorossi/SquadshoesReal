@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { SearchInput } from '@/components/ui/search-input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   CircleNotch as Loader2,
   ArrowsDownUp as ArrowUpDown,
@@ -12,6 +13,8 @@ import {
   Warning as WarningIcon,
   CheckCircle,
   ListNumbers,
+  Check,
+  CaretUpDown as ChevronsUpDown,
 } from '@phosphor-icons/react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { computeBaseMaterialTotal, normalizeBaseFamilyName } from '@/lib/baseMaterialTotal';
@@ -25,7 +28,7 @@ import { formatQty, formatUnit, pluralizeItens } from '@/lib/consumptionFormat';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { buildMaterialConsumptionReportHtml, materialConsumptionReportFilename } from '@/lib/materialConsumptionReport';
 import { openPrintTab, printHtmlAsPdf } from '@/lib/printPdf';
-import { formatCurrency, formatMoney } from '@/lib/utils';
+import { cn, formatCurrency, formatMoney } from '@/lib/utils';
 import {
   aggregateItems,
   countPending,
@@ -109,11 +112,11 @@ type Props = {
   embedded?: boolean;
   /**
    * Itens do(s) PV(s) pra filtrar o consumo inteiro (solado + materiais).
-   * `selectedItemId = null` ⇒ consumo geral consolidado.
+   * `selectedItemIds = []` ⇒ consumo geral consolidado.
    */
   itemOptions?: { id: string; label: string }[];
-  selectedItemId?: string | null;
-  onSelectedItemIdChange?: (itemId: string | null) => void;
+  selectedItemIds?: string[];
+  onSelectedItemIdsChange?: (itemIds: string[]) => void;
   /** Há mais de um PV ou mais de um modelo → libera o seletor estendido. */
   canPartition?: boolean;
   partitionMode?: ConsumptionPartitionMode;
@@ -324,6 +327,125 @@ function SoleCoveragePanel({ rows, grossNeed = false }: { rows: ConsumptionRow[]
   );
 }
 
+function itemFilterTriggerLabel(
+  selectedIds: string[],
+  options: { id: string; label: string }[],
+): string {
+  if (selectedIds.length === 0) return 'Todos os itens';
+  if (selectedIds.length === 1) {
+    return options.find((opt) => opt.id === selectedIds[0])?.label ?? '1 item selecionado';
+  }
+  return `${selectedIds.length} itens selecionados`;
+}
+
+function ItemFilterMultiSelect({
+  options,
+  selectedIds,
+  onChange,
+}: {
+  options: { id: string; label: string }[];
+  selectedIds: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return options;
+    return options.filter((opt) => searchMatchesAllTerms(search, opt.label));
+  }, [options, search]);
+
+  const toggle = (id: string) => {
+    if (selectedSet.has(id)) onChange(selectedIds.filter((x) => x !== id));
+    else onChange([...selectedIds, id]);
+  };
+
+  const selectAll = () => onChange([]);
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) setSearch('');
+      }}
+    >
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          aria-label="Filtrar consumo por item do pedido"
+          className="h-9 w-[20rem] max-w-[min(20rem,75vw)] justify-between px-3 text-xs font-normal"
+        >
+          <span className="truncate">{itemFilterTriggerLabel(selectedIds, options)}</span>
+          <ChevronsUpDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-2" align="start">
+        {options.length > 6 ? (
+          <SearchInput
+            placeholder="Buscar nesta lista…"
+            value={search}
+            onChange={setSearch}
+            resultCount={filtered.length}
+            totalCount={options.length}
+            className="mb-2"
+          />
+        ) : null}
+        <div className="max-h-56 space-y-0.5 overflow-y-auto">
+          <button
+            type="button"
+            onClick={selectAll}
+            className={cn(
+              'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent',
+              selectedIds.length === 0 && 'bg-accent',
+            )}
+          >
+            <Check className={cn('h-4 w-4 shrink-0', selectedIds.length === 0 ? 'opacity-100' : 'opacity-0')} />
+            Todos os itens
+          </button>
+          {filtered.map((opt) => {
+            const selected = selectedSet.has(opt.id);
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => toggle(opt.id)}
+                className={cn(
+                  'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent',
+                  selected && 'bg-accent',
+                )}
+              >
+                <Check className={cn('h-4 w-4 shrink-0', selected ? 'opacity-100' : 'opacity-0')} />
+                <span className="truncate">{opt.label}</span>
+              </button>
+            );
+          })}
+          {filtered.length === 0 && (
+            <p className="px-2 py-1.5 text-sm text-muted-foreground">Nenhum item encontrado</p>
+          )}
+        </div>
+        {selectedIds.length > 0 ? (
+          <div className="mt-2 border-t border-border pt-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 w-full text-xs"
+              onClick={selectAll}
+            >
+              Limpar seleção
+            </Button>
+          </div>
+        ) : null}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export default function MaterialConsumptionView({
   rows,
   artisanalStrapRows,
@@ -336,8 +458,8 @@ export default function MaterialConsumptionView({
   extraSections,
   embedded = false,
   itemOptions = [],
-  selectedItemId = null,
-  onSelectedItemIdChange,
+  selectedItemIds = [],
+  onSelectedItemIdsChange,
   canPartition = false,
   partitionMode = 'none',
   onPartitionModeChange,
@@ -617,27 +739,18 @@ export default function MaterialConsumptionView({
     );
   }
 
-  const itemFilterControl = itemOptions.length > 0 && onSelectedItemIdChange ? (
+  const itemFilterControl = itemOptions.length > 0 && onSelectedItemIdsChange ? (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border bg-muted/40 px-3 py-2.5">
       <div className="flex items-center gap-1.5">
         <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Item</span>
-        <Select
-          value={selectedItemId ?? '__all__'}
-          onValueChange={(v) => onSelectedItemIdChange(v === '__all__' ? null : v)}
-        >
-          <SelectTrigger className="h-9 w-[20rem] max-w-[min(20rem,75vw)] text-xs" aria-label="Filtrar consumo por item do pedido">
-            <SelectValue placeholder="Todos os itens" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__all__">Todos os itens</SelectItem>
-            {itemOptions.map((opt) => (
-              <SelectItem key={opt.id} value={opt.id}>{opt.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <ItemFilterMultiSelect
+          options={itemOptions}
+          selectedIds={selectedItemIds}
+          onChange={onSelectedItemIdsChange}
+        />
       </div>
       <p className="text-xs text-muted-foreground">
-        Filtra solado, materiais e tiras deste item do PV (mesmo modelo, cor diferente = item separado).
+        Filtra solado, materiais e tiras dos itens marcados do PV (mesmo modelo, cor diferente = item separado).
       </p>
     </div>
   ) : null;
