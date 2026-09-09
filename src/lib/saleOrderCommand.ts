@@ -156,6 +156,43 @@ export function readFinalizeRemovedSummary(
   };
 }
 
+/**
+ * Quantos itens carregados sumiram do payload enviado.
+ * Usado pra detectar regressão em que o cliente reanexa itens apagados
+ * (PV-00169 / retainLoadedSaleOrderItemsForUpdate).
+ */
+export function countExpectedRemovedSaleOrderItems(
+  loadedItemIds: readonly string[],
+  payloadItemIds: readonly (string | null | undefined)[],
+): number {
+  const sent = new Set(
+    payloadItemIds.filter((id): id is string => typeof id === 'string' && id.length > 0),
+  );
+  let missing = 0;
+  for (const id of loadedItemIds) {
+    if (typeof id === 'string' && id.length > 0 && !sent.has(id)) missing += 1;
+  }
+  return missing;
+}
+
+/**
+ * Se o editor tirou N itens do payload mas o writer reportou 0 remoções/
+ * preservações, o save mentiu — típico de reanexo silencioso no cliente.
+ */
+export function assertFinalizeAppliedExpectedRemovals(
+  expectedRemoved: number,
+  finalize: SaleOrderFinalizeRemovedSummary | null | undefined,
+): void {
+  const expected = Math.max(0, Number(expectedRemoved) || 0);
+  if (expected <= 0) return;
+  const applied = (finalize?.removed_items || 0) + (finalize?.preserved_items || 0);
+  if (applied > 0) return;
+  throw new Error(
+    `Remoção de ${expected} modelo(s) não persistiu no servidor (finalize_removed=0/0). ` +
+    'Recarregue o PV e tente novamente — o pedido NÃO refletiu a exclusão.',
+  );
+}
+
 /** Toast de sucesso honesto: distingue hard-delete de retirada produtiva. */
 export function formatSaleOrderUpdateSuccessMessage(
   finalize: SaleOrderFinalizeRemovedSummary | null | undefined,

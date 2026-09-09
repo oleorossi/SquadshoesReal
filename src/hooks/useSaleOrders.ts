@@ -11,6 +11,7 @@ import { pruneStrapSourcing } from '@/lib/strapSourcing';
 import { resolveGroupSuppliers } from '@/lib/groupSupplierResolution';
 import { sanitizeSaleOrderHeaderDates } from '@/lib/billingWeek';
 import {
+  assertFinalizeAppliedExpectedRemovals,
   createSaleOrderCommand,
   executeSaleOrderCommand,
   formatSaleOrderUpdateSuccessMessage,
@@ -1072,7 +1073,7 @@ export function useUpdateSaleOrderStatus(options?: {
 export function useUpdateSaleOrder() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, order, items, client_id, representative_id, commission_value, packaging_product_id, packaging_quantity, cancel_op_ids, expected_order_version, idempotency_key }: { id: string; order: SaleOrderFormData; items: SaleOrderItemFormData[]; client_id?: string | null; representative_id?: string | null; commission_value?: number; packaging_product_id?: string | null; packaging_quantity?: number; cancel_op_ids?: string[]; expected_order_version?: number | null; idempotency_key?: string }) => {
+    mutationFn: async ({ id, order, items, client_id, representative_id, commission_value, packaging_product_id, packaging_quantity, cancel_op_ids, expected_order_version, idempotency_key, expected_removed_count }: { id: string; order: SaleOrderFormData; items: SaleOrderItemFormData[]; client_id?: string | null; representative_id?: string | null; commission_value?: number; packaging_product_id?: string | null; packaging_quantity?: number; cancel_op_ids?: string[]; expected_order_version?: number | null; idempotency_key?: string; expected_removed_count?: number }) => {
       const expectedOrderVersion = Number(expected_order_version);
       if (!Number.isInteger(expectedOrderVersion) || expectedOrderVersion < 1) {
         throw new Error('A revisão carregada do PV não está disponível. Recarregue antes de salvar.');
@@ -1214,6 +1215,13 @@ export function useUpdateSaleOrder() {
       // O receipt é a resposta canônica do mesmo commit; consultar o PV outra
       // vez aqui faria a UI observar outra revisão e ultrapassaria o orçamento
       // de duas chamadas (preflight + execute).
+      // Guarda PV-00169: se o editor tirou itens e o writer reportou 0/0,
+      // o payload ainda carregava as linhas (ex.: retain reanexando). Falha
+      // explícita — o commit já aconteceu, mas a UI não pode fingir sucesso.
+      assertFinalizeAppliedExpectedRemovals(
+        expected_removed_count ?? 0,
+        readFinalizeRemovedSummary(rpcOut as Record<string, unknown>),
+      );
       if (atomicPromotionResult?.itens_falha?.length > 0) {
         toast.error(`${atomicPromotionResult.itens_falha.length} item(ns) não geraram OP — veja em Pendências.`, {
           duration: 12000,

@@ -178,7 +178,13 @@ describe('submitMobileSaleOrderAtomic', () => {
     });
 
     const error = await submitMobileSaleOrderAtomic(payload).catch((caught) => caught);
-    expect(error).toMatchObject({ message: 'create command cria somente rascunho' });
+    // createSaleOrderCommand envolve ok=false em SaleOrderCommandExecutionError,
+    // cuja mensagem é formatada (prefixo "O pedido NÃO foi salvo").
+    expect(error).toMatchObject({
+      name: 'SaleOrderCommandExecutionError',
+      message: expect.stringContaining('create command cria somente rascunho'),
+    });
+    expect(String((error as Error).message)).toContain('NÃO foi salvo');
     expect(classifyMobileOrderError(error)).toBe('permanent');
   });
 

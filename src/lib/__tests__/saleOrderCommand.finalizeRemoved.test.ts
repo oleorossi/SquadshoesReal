@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  assertFinalizeAppliedExpectedRemovals,
+  countExpectedRemovedSaleOrderItems,
   formatSaleOrderCommandFailureMessage,
   formatSaleOrderUpdateSuccessMessage,
   readFinalizeRemovedSummary,
@@ -85,5 +87,29 @@ describe('saleOrderCommand — finalize_removed UX', () => {
     }));
     expect(err.message).toContain('NÃO foi salvo');
     expect(err.message.toLowerCase()).toContain('compra');
+  });
+
+  it('conta itens carregados ausentes do payload (regressão retain)', () => {
+    expect(countExpectedRemovedSaleOrderItems(
+      ['a', 'b', 'c'],
+      ['a', 'c'],
+    )).toBe(1);
+    expect(countExpectedRemovedSaleOrderItems(['a'], ['a', 'b'])).toBe(0);
+  });
+
+  it('falha se o editor removeu itens e finalize_removed ficou 0/0', () => {
+    expect(() => assertFinalizeAppliedExpectedRemovals(2, {
+      removed_items: 0,
+      preserved_items: 0,
+      cancelled_strap_demands: 0,
+      cancelled_purchase_contributions: 0,
+    })).toThrow(/não persistiu/);
+    expect(() => assertFinalizeAppliedExpectedRemovals(2, {
+      removed_items: 0,
+      preserved_items: 2,
+      cancelled_strap_demands: 1,
+      cancelled_purchase_contributions: 0,
+    })).not.toThrow();
+    expect(() => assertFinalizeAppliedExpectedRemovals(0, null)).not.toThrow();
   });
 });

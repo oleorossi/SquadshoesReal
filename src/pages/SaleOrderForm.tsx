@@ -83,6 +83,7 @@ import {
   fetchClientSalesContext,
 } from '@/lib/mobile/clientContext';
 import {
+  countExpectedRemovedSaleOrderItems,
   formatUnknownSaleOrderUpdateError,
   isStaleSaleOrderVersionError,
   SaleOrderCommandExecutionError,
@@ -1527,6 +1528,10 @@ export default function SaleOrderForm() {
           id: crypto.randomUUID(),
         };
       }
+      const expectedRemovedCount = countExpectedRemovedSaleOrderItems(
+        [...originalItemReferenceByIdRef.current.keys()],
+        validItems.map((item) => item.id),
+      );
       updateOrder.mutate({
         id: effectiveOrderId,
         order: orderData,
@@ -1539,6 +1544,7 @@ export default function SaleOrderForm() {
         cancel_op_ids: cancelOpIds,
         expected_order_version: loadedOrderVersionRef.current,
         idempotency_key: updateCommandIntentRef.current.id,
+        expected_removed_count: expectedRemovedCount,
       } as any, {
         onSuccess: (updated: { receipt?: { order_version?: number } } | undefined) => {
           updateCommandIntentRef.current = null;
