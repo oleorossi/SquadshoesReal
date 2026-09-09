@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-const MIGRATION = 'supabase/migrations/20270101022400_propagate_measure_labor_to_sibling_recipes.sql';
+const MIGRATION = 'supabase/migrations/20270101022500_propagate_measure_labor_to_sibling_recipes.sql';
 
 describe('RPC save_artisanal_strap_measure_hub_fields', () => {
   const sql = readFileSync(MIGRATION, 'utf8');
