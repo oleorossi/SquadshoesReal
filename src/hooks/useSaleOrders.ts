@@ -13,8 +13,11 @@ import { sanitizeSaleOrderHeaderDates } from '@/lib/billingWeek';
 import {
   createSaleOrderCommand,
   executeSaleOrderCommand,
+  formatSaleOrderUpdateSuccessMessage,
+  formatUnknownSaleOrderUpdateError,
   isStaleSaleOrderVersionError,
   preflightSaleOrderCommand,
+  readFinalizeRemovedSummary,
   SaleOrderReadinessBlockedError,
   type SaleOrderCommandAction,
 } from '@/lib/saleOrderCommand';
@@ -1243,7 +1246,7 @@ export function useUpdateSaleOrder() {
 
       return { id, receipt };
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       invalidateSaleOrders(qc);
       qc.invalidateQueries({ queryKey: ['orders'] });
       qc.invalidateQueries({ queryKey: ['sale_order_items'] });
@@ -1278,16 +1281,19 @@ export function useUpdateSaleOrder() {
       // Intenção/qty de terceirização pode ter mudado — atualiza o card (e a
       // divergência de qty das OS já enviadas é recalculada na leitura).
       qc.invalidateQueries({ queryKey: ['pv_terceirizacao_lines'] });
-      toast.success('Pedido atualizado e OPs sincronizadas!');
+      const finalize = readFinalizeRemovedSummary(
+        data?.receipt?.result as Record<string, unknown> | undefined,
+      );
+      const success = formatSaleOrderUpdateSuccessMessage(finalize);
+      toast.success(success.title, success.description ? { description: success.description, duration: 10000 } : undefined);
     },
     onError: (err: Error, vars) => {
-      // O formulário mantém estes erros em um diálogo com recuperação segura.
-      // Evita duplicar a mesma falha em toast.
-      if (
-        (vars.cancel_op_ids?.length ?? 0) > 0
-        || isStaleSaleOrderVersionError(err)
-      ) return;
-      toast.error(`Erro: ${err.message}`);
+      // Conflito de versão fica no dialog dedicado. Demais falhas — inclusive
+      // com cancel_op_ids — sempre toastam: fechar o dialog não pode apagar o
+      // único sinal de que a remoção de itens NÃO foi gravada.
+      if (isStaleSaleOrderVersionError(err) && (vars.cancel_op_ids?.length ?? 0) > 0) return;
+      if (isStaleSaleOrderVersionError(err)) return;
+      toast.error(formatUnknownSaleOrderUpdateError(err), { duration: 12000 });
     },
   });
 }

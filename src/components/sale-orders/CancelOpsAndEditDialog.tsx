@@ -55,7 +55,9 @@ export function CancelOpsAndEditDialog({
         <AlertDialogHeader>
           <AlertDialogTitle className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
             <AlertTriangle className="h-5 w-5" />
-            {ops.length} OP{ops.length === 1 ? '' : 's'} em produção bloqueando edição
+            {preflightError
+              ? 'Salvamento recusado — pedido não foi alterado'
+              : `${ops.length} OP${ops.length === 1 ? '' : 's'} em produção bloqueando edição`}
           </AlertDialogTitle>
           <AlertDialogDescription asChild>
             <div className="space-y-3 text-sm">
@@ -136,6 +138,8 @@ export function CancelOpsAndEditDialog({
               ? 'Validando e salvando de forma atômica...'
               : isCancelling
               ? `Cancelando ${ops.length} OP${ops.length === 1 ? '' : 's'}...`
+              : preflightError
+              ? 'Tentar novamente'
               : `Cancelar ${ops.length} OP${ops.length === 1 ? '' : 's'} e editar`}
           </AlertDialogAction>
         </AlertDialogFooter>

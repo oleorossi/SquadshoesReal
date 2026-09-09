@@ -26,6 +26,23 @@ function latestLegacyWriterMigration(): { file: string; sql: string } {
   return hit;
 }
 
+function latestFinalizeMigration(): { file: string; sql: string } {
+  const files = readdirSync(MIGRATIONS)
+    .filter((f) => f.endsWith('.sql'))
+    .sort();
+  let hit: { file: string; sql: string } | null = null;
+  for (const file of files) {
+    const sql = readFileSync(resolve(MIGRATIONS, file), 'utf8');
+    if (sql.includes('CREATE OR REPLACE FUNCTION private.finalize_removed_sale_order_items')) {
+      hit = { file, sql };
+    }
+  }
+  if (!hit) {
+    throw new Error('nenhuma migration redefine finalize_removed_sale_order_items');
+  }
+  return hit;
+}
+
 function sqlFunction(sql: string, name: string, schema = 'public'): string {
   const marker = `CREATE OR REPLACE FUNCTION ${schema}.${name}`;
   const start = sql.lastIndexOf(marker);
@@ -54,8 +71,10 @@ describe('edição de PV — preserve itens com demanda de tira', () => {
   });
 
   it('finalize soft-exclude itens com strap_demands e cancela saldo reversível', () => {
+    const finalizeMig = latestFinalizeMigration();
+    expect(finalizeMig.file).toMatch(/20270101022200_.*\.sql$/);
     const finalize = sqlFunction(
-      latest.sql,
+      finalizeMig.sql,
       'finalize_removed_sale_order_items',
       'private',
     );
@@ -65,6 +84,8 @@ describe('edição de PV — preserve itens com demanda de tira', () => {
     expect(finalize).toContain('compromisso externo');
     expect(finalize).toContain('reconcile_strap_variant');
     expect(finalize).toContain('app.sale_order_item_production_exclusion_internal');
+    expect(finalize).toContain('cancelled_purchase_contributions');
+    expect(finalize).toContain("status IN ('proposed', 'awaiting_approval', 'suspended')");
   });
 
   it('guard de exclusão libera gerente/comercial quando GUC interno está ligado', () => {
@@ -92,5 +113,18 @@ describe('FK sale_order_strap_demands — ON DELETE SET NULL', () => {
     expect(migration).toContain('tg_release_strap_demands_before_item_delete');
     expect(migration).toContain('strap_demand_has_external_commitment');
     expect(migration).toContain('BEFORE DELETE ON public.sale_order_items');
+  });
+});
+
+describe('edição de PV — cancela compra reversível ao remover item (22200)', () => {
+  const migration = readFileSync(
+    resolve(ROOT, 'supabase/migrations/20270101022200_pv_edit_cancel_reversible_purchase_on_item_remove.sql'),
+    'utf8',
+  );
+
+  it('release trigger cancela e solta FK de purchase_demand_contributions', () => {
+    expect(migration).toContain('pv_edit_cancel_reversible_purchase_20270101022200');
+    expect(migration).toContain('purchase_demand_contributions');
+    expect(migration).toContain('sale_order_item_id = NULL');
   });
 });

@@ -84,6 +84,7 @@ import {
   fetchClientSalesContext,
 } from '@/lib/mobile/clientContext';
 import {
+  formatUnknownSaleOrderUpdateError,
   isStaleSaleOrderVersionError,
   SaleOrderCommandExecutionError,
 } from '@/lib/saleOrderCommand';
@@ -1560,12 +1561,15 @@ export default function SaleOrderForm() {
           if (error instanceof SaleOrderCommandExecutionError) {
             updateCommandIntentRef.current = null;
           }
-          const message = error instanceof Error
-            ? error.message
-            : error && typeof error === 'object' && 'message' in error
-              ? String((error as { message?: unknown }).message || 'O servidor recusou a edição atômica.')
-              : 'O servidor recusou a edição atômica.';
+          const message = formatUnknownSaleOrderUpdateError(error);
           const hasVersionConflict = isStaleSaleOrderVersionError(error);
+          // Exclusão local ainda na tela: troca o toast infinito "salve para
+          // aplicar" por recusa explícita — senão parece que a remoção "pegou".
+          toast.warning('Remoção não aplicada — o servidor recusou o salvamento.', {
+            id: PV_ITEM_DELETE_TOAST_ID,
+            duration: 12000,
+            description: message,
+          });
           if (cancelOpIds.length > 0) {
             cancelOpsPreflightRunningRef.current = false;
             setCancelOpsPreflight({
@@ -2781,6 +2785,7 @@ export default function SaleOrderForm() {
         open={cancelOpsDialog.open}
         onOpenChange={(v) => {
           if (!v && !updateOrder.isPending && !cancelOpsPreflight.isRunning) {
+            const hadFailure = Boolean(cancelOpsPreflight.error);
             cancelOpsPreflightRunningRef.current = false;
             setCancelOpsDialog({ open: false, ops: [] });
             setCancelOpsPreflight({
@@ -2788,6 +2793,12 @@ export default function SaleOrderForm() {
               error: null,
               hasVersionConflict: false,
             });
+            if (hadFailure) {
+              toast.error('Pedido não salvo — remoções locais não foram aplicadas.', {
+                id: PV_ITEM_DELETE_TOAST_ID,
+                duration: 10000,
+              });
+            }
           }
         }}
         ops={cancelOpsDialog.ops}

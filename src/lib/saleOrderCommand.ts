@@ -127,11 +127,123 @@ export class SaleOrderCommandExecutionError extends Error {
   readonly receipt: SaleOrderCommandReceipt<unknown> | CreateSaleOrderCommandReceipt<unknown>;
 
   constructor(receipt: SaleOrderCommandReceipt<unknown> | CreateSaleOrderCommandReceipt<unknown>) {
-    const serverMessage = receipt.error?.message?.trim();
-    super(serverMessage || `O comando ${receipt.command} do pedido foi recusado pelo servidor.`);
+    super(formatSaleOrderCommandFailureMessage(receipt));
     this.name = 'SaleOrderCommandExecutionError';
     this.receipt = receipt;
   }
+}
+
+/** Resumo do que o writer fez com itens removidos do payload. */
+export interface SaleOrderFinalizeRemovedSummary {
+  removed_items: number;
+  preserved_items: number;
+  cancelled_strap_demands: number;
+  cancelled_purchase_contributions: number;
+}
+
+export function readFinalizeRemovedSummary(
+  result: Record<string, unknown> | null | undefined,
+): SaleOrderFinalizeRemovedSummary | null {
+  if (!result) return null;
+  const raw = result.finalize_removed;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const finalize = raw as Record<string, unknown>;
+  return {
+    removed_items: Number(finalize.removed_items) || 0,
+    preserved_items: Number(finalize.preserved_items) || 0,
+    cancelled_strap_demands: Number(finalize.cancelled_strap_demands) || 0,
+    cancelled_purchase_contributions: Number(finalize.cancelled_purchase_contributions) || 0,
+  };
+}
+
+/** Toast de sucesso honesto: distingue hard-delete de retirada produtiva. */
+export function formatSaleOrderUpdateSuccessMessage(
+  finalize: SaleOrderFinalizeRemovedSummary | null | undefined,
+): { title: string; description?: string } {
+  if (!finalize || (finalize.removed_items === 0 && finalize.preserved_items === 0)) {
+    return { title: 'Pedido atualizado e OPs sincronizadas!' };
+  }
+  const parts: string[] = [];
+  if (finalize.removed_items > 0) {
+    parts.push(
+      `${finalize.removed_items} item${finalize.removed_items === 1 ? '' : 's'} removido${finalize.removed_items === 1 ? '' : 's'}`,
+    );
+  }
+  if (finalize.preserved_items > 0) {
+    parts.push(
+      `${finalize.preserved_items} retirado${finalize.preserved_items === 1 ? '' : 's'} da produção (histórico de tira preservado)`,
+    );
+  }
+  const extras: string[] = [];
+  if (finalize.cancelled_strap_demands > 0) {
+    extras.push(`${finalize.cancelled_strap_demands} demanda(s) de tira cancelada(s)`);
+  }
+  if (finalize.cancelled_purchase_contributions > 0) {
+    extras.push(`${finalize.cancelled_purchase_contributions} contribuição(ões) de compra cancelada(s)`);
+  }
+  return {
+    title: `Pedido atualizado — ${parts.join(' · ')}`,
+    description: extras.length > 0 ? extras.join(' · ') : undefined,
+  };
+}
+
+/**
+ * Mensagem acionável a partir do receipt/erro cru (FK Postgres → pt-BR).
+ * Inclui `detail` quando o MESSAGE_TEXT sozinho é opaco.
+ */
+export function formatSaleOrderCommandFailureMessage(
+  receipt: SaleOrderCommandReceipt<unknown> | CreateSaleOrderCommandReceipt<unknown> | null | undefined,
+  fallback?: string,
+): string {
+  const err = receipt?.error;
+  const message = err?.message?.trim() || '';
+  const detail = err?.detail?.trim() || '';
+  const code = err?.code?.trim() || '';
+  const haystack = `${message}\n${detail}`.toLowerCase();
+
+  if (
+    haystack.includes('sale_order_strap_demands')
+    || haystack.includes('demanda de tira')
+    || (code === '23503' && haystack.includes('strap_demand'))
+  ) {
+    return (
+      'Não foi possível remover o(s) modelo(s): ainda há demanda de tira vinculada. ' +
+      'O pedido NÃO foi salvo. Libere o compromisso de tira ou tente novamente após o processamento.'
+    );
+  }
+  if (
+    haystack.includes('purchase_demand_contributions')
+    || haystack.includes('contribuicao de compra')
+    || haystack.includes('contribuição de compra')
+  ) {
+    return (
+      'Não foi possível remover o(s) modelo(s): há contribuição de compra de tira ativa. ' +
+      'O pedido NÃO foi salvo. Cancele a contribuição ou use a retirada produtiva.'
+    );
+  }
+  if (message) {
+    const withDetail = detail && !message.includes(detail) ? `${message} (${detail})` : message;
+    return withDetail.startsWith('O pedido NÃO')
+      ? withDetail
+      : `O pedido NÃO foi salvo. ${withDetail}`;
+  }
+  return fallback || 'O servidor recusou a edição do pedido. Nenhuma alteração foi gravada.';
+}
+
+export function formatUnknownSaleOrderUpdateError(error: unknown): string {
+  if (error instanceof SaleOrderCommandExecutionError) {
+    return error.message;
+  }
+  if (error instanceof SaleOrderReadinessBlockedError) {
+    return `O pedido NÃO foi salvo. ${error.message}`;
+  }
+  if (error instanceof Error && error.message.trim()) {
+    return formatSaleOrderCommandFailureMessage(
+      null,
+      `O pedido NÃO foi salvo. ${error.message.trim()}`,
+    );
+  }
+  return 'O pedido NÃO foi salvo. O servidor recusou a edição.';
 }
 
 /**
