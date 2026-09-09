@@ -21,7 +21,9 @@ describe('Consumo de materiais — mesma aba + filtro por item', () => {
 
   it('reescopa o report canônico por sale_order_item_id sem nova RPC', () => {
     expect(pvConsumption).toContain('materializePvConsumptionScope');
-    expect(pvConsumption).toContain('materializeCanonicalConsumptionReport(report, new Set([itemId])');
+    // Escopo por item: Set([itemId]) → scopeKeys → materialize (opts só quando presente).
+    expect(pvConsumption).toContain('new Set([itemId])');
+    expect(pvConsumption).toContain('materializeCanonicalConsumptionReport(report, scopeKeys');
     expect(panel).toContain("searchParams.get('item')");
     expect(panel).toContain('materializePvConsumptionScope');
     expect(panel).toContain('itemOptions');
