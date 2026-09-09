@@ -1240,6 +1240,10 @@ function CatalogTab({
                       </h3>
                       <p className="mt-1 text-xs text-muted-foreground">
                         Largura final {Number(measure.finished_width_mm).toLocaleString('pt-BR')} mm
+                        {catalog.capabilities.can_see_financial_values
+                          && Number(measure.preco_artesanal_per_m) > 0
+                          ? ` · MO ${formatCurrencyValue(measure.preco_artesanal_per_m)}/m (todas as Napas)`
+                          : ''}
                       </p>
                     </div>
                     <Badge variant={type?.active && measure.active ? 'default' : 'secondary'}>
@@ -1421,8 +1425,15 @@ function RecipesTab({
                         </div>
                         {catalog.capabilities.can_see_financial_values && (
                           <div>
-                            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Transformação</p>
-                            <p className="font-mono font-semibold">{formatCurrencyValue(recipe.transformation_cost_per_m)}/m</p>
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Mão de obra</p>
+                            <p className="font-mono font-semibold">
+                              {formatCurrencyValue(
+                                Number(measure?.preco_artesanal_per_m) > 0
+                                  ? measure?.preco_artesanal_per_m
+                                  : recipe.transformation_cost_per_m,
+                              )}
+                              /m
+                            </p>
                           </div>
                         )}
                       </div>

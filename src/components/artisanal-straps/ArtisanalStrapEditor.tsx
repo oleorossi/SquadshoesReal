@@ -828,12 +828,16 @@ export function ArtisanalStrapEditor({
                   <div className="grid gap-3 sm:grid-cols-2 sm:col-span-2">
                     {(form.origemPadrao === 'sempre_fabrica' || form.origemPadrao === 'escolhe_no_pv') && (
                       <div className="space-y-1.5">
-                        <Label>Preço artesanal (R$/m)</Label>
+                        <Label>Mão de obra fábrica (R$/m)</Label>
                         <NumberInput
                           value={form.precoArtesanalPerM}
                           onChange={(value) => setField('precoArtesanalPerM', value)}
                           disabled={readOnly}
                         />
+                        <p className="text-xs text-muted-foreground">
+                          Valor único da medida — igual para todas as Napas. O que muda o custo
+                          final é o preço do material de origem.
+                        </p>
                       </div>
                     )}
                     {form.origemPadrao === 'escolhe_no_pv' && (
@@ -1227,13 +1231,19 @@ export function ArtisanalStrapEditor({
                     )}
                     {catalog.capabilities.can_see_financial_values !== false && (
                       <div className="space-y-1.5">
-                        <Label>Custo de transformação</Label>
+                        <Label>Mão de obra da medida</Label>
                         <NumberInput
-                          value={form.transformationCost}
-                          onChange={(value) => setField('transformationCost', value)}
+                          value={form.precoArtesanalPerM > 0
+                            ? form.precoArtesanalPerM
+                            : form.transformationCost}
+                          onChange={() => undefined}
                           unit="R$/m"
-                          disabled={readOnly || !canEditRecipeFields}
+                          disabled
                         />
+                        <p className="text-xs text-muted-foreground">
+                          Igual para todas as Napas desta medida. Altere no campo
+                          &quot;Mão de obra fábrica&quot; acima — não por material.
+                        </p>
                       </div>
                     )}
                   </div>
