@@ -1,5 +1,6 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   ArtisanalStrapCapabilities,
@@ -11,6 +12,16 @@ HTMLElement.prototype.hasPointerCapture ??= () => false;
 HTMLElement.prototype.setPointerCapture ??= () => {};
 HTMLElement.prototype.releasePointerCapture ??= () => {};
 HTMLElement.prototype.scrollIntoView ??= () => {};
+
+function renderWithQueryClient(ui: React.ReactElement) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  const Wrapper = ({ children }: { children: React.ReactNode }) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+  return render(ui, { wrapper: Wrapper });
+}
 
 const mutations = vi.hoisted(() => ({
   approveWidth: vi.fn(),
@@ -283,7 +294,7 @@ describe('ArtisanalStrapConversionEditor', () => {
   });
 
   it('cadastra a conversão sem solicitar cor ou produto de estoque', () => {
-    render(
+    renderWithQueryClient(
       <ArtisanalStrapConversionEditor
         open
         onOpenChange={vi.fn()}
@@ -304,7 +315,7 @@ describe('ArtisanalStrapConversionEditor', () => {
   it('puxa a largura física do estoque e confirma a conversão sem digitação manual', async () => {
     const user = userEvent.setup();
     const onOpenChange = vi.fn();
-    render(
+    renderWithQueryClient(
       <ArtisanalStrapConversionEditor
         open
         onOpenChange={onOpenChange}
@@ -347,7 +358,7 @@ describe('ArtisanalStrapConversionEditor', () => {
 
   it('preserva o perfil aprovado e salva somente a conversão', async () => {
     const user = userEvent.setup();
-    render(
+    renderWithQueryClient(
       <ArtisanalStrapConversionEditor
         open
         onOpenChange={vi.fn()}
@@ -381,7 +392,7 @@ describe('ArtisanalStrapConversionEditor', () => {
 
   it('salva somente o rendimento real confirmado e não oferece entrada de perda percentual', async () => {
     const user = userEvent.setup();
-    render(
+    renderWithQueryClient(
       <ArtisanalStrapConversionEditor
         open
         onOpenChange={vi.fn()}
@@ -411,7 +422,7 @@ describe('ArtisanalStrapConversionEditor', () => {
   it('confirma vários materiais da mesma tira com rendimentos independentes', async () => {
     const user = userEvent.setup();
     const onOpenChange = vi.fn();
-    render(
+    renderWithQueryClient(
       <ArtisanalStrapConversionEditor
         open
         onOpenChange={onOpenChange}
@@ -475,7 +486,7 @@ describe('ArtisanalStrapConversionEditor', () => {
   it('valida todos os materiais antes de iniciar o salvamento do lote', async () => {
     const user = userEvent.setup();
     const onOpenChange = vi.fn();
-    render(
+    renderWithQueryClient(
       <ArtisanalStrapConversionEditor
         open
         onOpenChange={onOpenChange}
@@ -504,7 +515,7 @@ describe('ArtisanalStrapConversionEditor', () => {
 
   it('impede recadastrar material atual, mas libera associação já arquivada', async () => {
     const user = userEvent.setup();
-    render(
+    renderWithQueryClient(
       <ArtisanalStrapConversionEditor
         open
         onOpenChange={vi.fn()}
@@ -527,7 +538,7 @@ describe('ArtisanalStrapConversionEditor', () => {
   it('salva todas as linhas como rascunho quando o usuário não pode aprovar', async () => {
     const user = userEvent.setup();
     const onOpenChange = vi.fn();
-    render(
+    renderWithQueryClient(
       <ArtisanalStrapConversionEditor
         open
         onOpenChange={onOpenChange}
@@ -561,7 +572,7 @@ describe('ArtisanalStrapConversionEditor', () => {
       measureId: 'measure-1',
       baseGroupId: 'base-1',
     };
-    const { rerender } = render(
+    const { rerender } = renderWithQueryClient(
       <ArtisanalStrapConversionEditor {...props} catalog={emptyCatalog} />,
     );
 
@@ -586,7 +597,7 @@ describe('ArtisanalStrapConversionEditor', () => {
       origin: 'hub' as const,
       measureId: 'measure-1',
     };
-    const { rerender } = render(
+    const { rerender } = renderWithQueryClient(
       <ArtisanalStrapConversionEditor {...props} catalog={emptyCatalog} />,
     );
 
@@ -621,7 +632,7 @@ describe('ArtisanalStrapConversionEditor', () => {
       origin: 'hub' as const,
       measureId: 'measure-1',
     };
-    const { rerender } = render(
+    const { rerender } = renderWithQueryClient(
       <ArtisanalStrapConversionEditor {...props} catalog={catalogWithApprovedWidth} />,
     );
 
@@ -673,7 +684,7 @@ describe('ArtisanalStrapConversionEditor', () => {
         baseGroupId="base-1"
       />
     );
-    const { rerender } = render(editor());
+    const { rerender } = renderWithQueryClient(editor());
 
     await user.type(screen.getByLabelText(/Largura da banda/i), '18');
     await user.type(screen.getByLabelText(/Rendimento real confirmado/i), '68');
@@ -706,7 +717,7 @@ describe('ArtisanalStrapConversionEditor', () => {
 
   it('explica por que outra linha não pode ser adicionada e não cria linhas vazias em sequência', async () => {
     const user = userEvent.setup();
-    render(
+    renderWithQueryClient(
       <ArtisanalStrapConversionEditor
         open
         onOpenChange={vi.fn()}
@@ -736,7 +747,7 @@ describe('ArtisanalStrapConversionEditor', () => {
   });
 
   it('bloqueia um cadastro novo antes do preenchimento quando falta acesso financeiro', () => {
-    render(
+    renderWithQueryClient(
       <ArtisanalStrapConversionEditor
         open
         onOpenChange={vi.fn()}
@@ -755,7 +766,7 @@ describe('ArtisanalStrapConversionEditor', () => {
 
   it('permite editar um rascunho sem revelar ou sobrescrever o custo oculto', async () => {
     const user = userEvent.setup();
-    render(
+    renderWithQueryClient(
       <ArtisanalStrapConversionEditor
         open
         onOpenChange={vi.fn()}
@@ -781,7 +792,7 @@ describe('ArtisanalStrapConversionEditor', () => {
   });
 
   it('antecipa a necessidade de aprovar o perfil físico', async () => {
-    render(
+    renderWithQueryClient(
       <ArtisanalStrapConversionEditor
         open
         onOpenChange={vi.fn()}
@@ -801,7 +812,7 @@ describe('ArtisanalStrapConversionEditor', () => {
 
   it('usa o fluxo singular de nova versão quando medida e material já possuem receita', async () => {
     const user = userEvent.setup();
-    render(
+    renderWithQueryClient(
       <ArtisanalStrapConversionEditor
         open
         onOpenChange={vi.fn()}
@@ -834,7 +845,7 @@ describe('ArtisanalStrapConversionEditor', () => {
 
   it('mantém a sugestão de rendimento no fluxo explícito de nova versão', async () => {
     const user = userEvent.setup();
-    render(
+    renderWithQueryClient(
       <ArtisanalStrapConversionEditor
         open
         onOpenChange={vi.fn()}
@@ -864,7 +875,7 @@ describe('ArtisanalStrapConversionEditor', () => {
   it('grava a mão de obra da medida no Hub sem nova versão na conversão aprovada', async () => {
     const user = userEvent.setup();
     const onOpenChange = vi.fn();
-    render(
+    renderWithQueryClient(
       <ArtisanalStrapConversionEditor
         open
         onOpenChange={onOpenChange}
@@ -899,7 +910,7 @@ describe('ArtisanalStrapConversionEditor', () => {
   });
 
   it('trata review como consulta e não rebaixa uma receita pendente para rascunho', () => {
-    render(
+    renderWithQueryClient(
       <ArtisanalStrapConversionEditor
         open
         onOpenChange={vi.fn()}
@@ -921,7 +932,7 @@ describe('ArtisanalStrapConversionEditor', () => {
   it('reaproveita uma receita anterior com dados herdados e exige a largura útil faltante', async () => {
     const user = userEvent.setup();
     const onOpenChange = vi.fn();
-    render(
+    renderWithQueryClient(
       <ArtisanalStrapConversionEditor
         open
         onOpenChange={onOpenChange}

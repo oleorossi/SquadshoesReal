@@ -128,4 +128,16 @@ REVOKE ALL ON FUNCTION public.save_artisanal_strap_measure_hub_fields(uuid, json
 GRANT EXECUTE ON FUNCTION public.save_artisanal_strap_measure_hub_fields(uuid, jsonb, text)
   TO authenticated, service_role;
 
+-- Backfill: MO já gravada no Hub (ex.: Napa Madrid) ainda não espelhada nas irmãs
+-- porque o carimbo 20270101022400 colidiu com migration remota e esta RPC nunca
+-- chegou a rodar em produção.
+UPDATE public.artisanal_strap_recipes AS r
+   SET transformation_cost_per_m = m.preco_artesanal_per_m
+  FROM public.artisanal_strap_measures AS m
+ WHERE r.measure_id = m.id
+   AND m.preco_artesanal_per_m IS NOT NULL
+   AND r.status IN ('draft', 'pending_approval', 'approved')
+   AND r.valid_to IS NULL
+   AND r.transformation_cost_per_m IS DISTINCT FROM m.preco_artesanal_per_m;
+
 NOTIFY pgrst, 'reload schema';

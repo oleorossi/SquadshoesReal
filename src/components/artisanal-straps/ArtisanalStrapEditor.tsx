@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Factory,
   FloppyDisk,
@@ -219,6 +220,7 @@ export function ArtisanalStrapEditor({
   activateOnCreate = false,
   onSaved,
 }: ArtisanalStrapEditorProps) {
+  const queryClient = useQueryClient();
   const [form, setForm] = useState<EditorForm>(EMPTY_FORM);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [minStockConfirmed, setMinStockConfirmed] = useState(false);
@@ -650,6 +652,7 @@ export function ArtisanalStrapEditor({
           },
           'Cadastro de origem e preços no Hub de Tiras',
         );
+        void queryClient.invalidateQueries({ queryKey: ['artisanal-strap-catalog'] });
       } catch (measureError: unknown) {
         setValidationError(
           `Tira salva, mas origem/preços do Hub falharam: ${describePostgrestError(measureError)}`,

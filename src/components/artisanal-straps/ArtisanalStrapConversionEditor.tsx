@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   ClockCounterClockwise,
   Factory,
@@ -266,6 +267,7 @@ export function ArtisanalStrapConversionEditor({
   suggestedYieldMPerM,
   legacyRecipeId,
 }: ArtisanalStrapConversionEditorProps) {
+  const queryClient = useQueryClient();
   const [form, setForm] = useState<ConversionForm>(() => emptyForm());
   const [validationError, setValidationError] = useState<string | null>(null);
   const [createRecipeVersion, setCreateRecipeVersion] = useState(false);
@@ -277,6 +279,12 @@ export function ArtisanalStrapConversionEditor({
   const confirmConversion = useConfirmArtisanalStrapMaterialConversion();
   const saveMaterialConversions = useSaveArtisanalStrapMaterialConversions();
   const reuseLegacyRecipe = useReuseLegacyArtisanalStrapRecipe();
+
+  const refreshCatalogAfterMeasureLaborSave = () => {
+    // Hub save (RPC) não passa pelas mutations do catálogo — invalida na mão
+    // para a lista refletir MO replicada em todas as Napas da medida.
+    void queryClient.invalidateQueries({ queryKey: ['artisanal-strap-catalog'] });
+  };
   const baseCandidatesQuery = useStrapBaseGroupCandidates(open && !legacyRecipeId);
   const { data: contractors = [] } = useContractors();
 
@@ -694,6 +702,7 @@ export function ArtisanalStrapConversionEditor({
           { precoArtesanalPerM: form.laborCostPerM },
           reason,
         );
+        refreshCatalogAfterMeasureLaborSave();
         onOpenChange(false);
         return;
       }
@@ -741,6 +750,7 @@ export function ArtisanalStrapConversionEditor({
               { precoArtesanalPerM: form.laborCostPerM },
               reason,
             );
+            refreshCatalogAfterMeasureLaborSave();
           }
         }
         onOpenChange(false);
@@ -804,6 +814,7 @@ export function ArtisanalStrapConversionEditor({
           { precoArtesanalPerM: form.laborCostPerM },
           reason,
         );
+        refreshCatalogAfterMeasureLaborSave();
       }
       onOpenChange(false);
     } catch (saveError) {

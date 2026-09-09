@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-const MIGRATION = 'supabase/migrations/20270101022400_propagate_measure_labor_to_sibling_recipes.sql';
+const MIGRATION = 'supabase/migrations/20270101022500_propagate_measure_labor_to_sibling_recipes.sql';
 
 describe('RPC save_artisanal_strap_measure_hub_fields', () => {
   const sql = readFileSync(MIGRATION, 'utf8');
@@ -25,6 +25,12 @@ describe('RPC save_artisanal_strap_measure_hub_fields', () => {
     expect(sql).toContain('transformation_cost_per_m');
     expect(sql).toContain("status IN ('draft', 'pending_approval', 'approved')");
     expect(sql).toContain('valid_to IS NULL');
+  });
+
+  it('faz backfill das MOs já gravadas no Hub para receitas irmãs', () => {
+    expect(sql).toContain('SET transformation_cost_per_m = m.preco_artesanal_per_m');
+    expect(sql).toContain('FROM public.artisanal_strap_measures AS m');
+    expect(sql).toContain('r.transformation_cost_per_m IS DISTINCT FROM m.preco_artesanal_per_m');
   });
 
   it('não concede UPDATE da tabela; só EXECUTE da RPC', () => {
