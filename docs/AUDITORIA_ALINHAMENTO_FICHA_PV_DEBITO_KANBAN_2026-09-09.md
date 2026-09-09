@@ -199,3 +199,20 @@ Três gaps:
 
 **Planejamento inicial: FECHADO.**  
 Execução dos itens in-scope: **concluída**. Pendências restantes são pós-merge / live.
+
+---
+
+## 12. Continuação no mesmo PR — rendimento infantil 25–34
+
+Após o fechamento do planejamento, a mesma branch executou a análise de rendimento
+**separado** (traseiro → tiras/frente) da sandália infantil I701 na grade 25–34.
+
+| Peça | m / 480 pares | Rendimento |
+|---|---:|---:|
+| Traseiro candidato (2,74 dm²) | 9,600000 | 50,0000 pares/m |
+| Frente candidata (2,28 dm²) | 7,988321 | ≈ 60,0877 pares/m |
+| Total dublado | 17,588321 | ≈ 27,2908 pares/m |
+
+Números conferem a auditoria Glow viva (`docs/AUDITORIA_I701_GLOW_INTEGRACAO.md`).
+Relatório: `docs/ANALISE_RENDIMENTO_INFANTIL_TRASEIRO_TIRAS_25-34_2026-09-09.md`.
+Pendência: labels vivos + `strap_colors`/elástico linear (SQL live / secrets).

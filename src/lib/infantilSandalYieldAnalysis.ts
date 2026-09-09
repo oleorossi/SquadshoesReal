@@ -22,6 +22,104 @@ export const I701_REFERENCE_GRADE: Record<string, number> = {
   '30': 80, '31': 40, '32': 40, '33': 40, '34': 40,
 };
 
+/** Largura útil do dublado I701 (mm) → dm²/m = 137. */
+export const I701_ROLL_WIDTH_MM = 1370;
+
+/**
+ * Duas peças aditivas do cabedal I701 (auditoria Glow 05/09/2026).
+ * Sem rótulo vivo de “traseiro/frente” no fixture: a peça principal é o
+ * `upper_consumption`; a aditiva é o acessório obrigatório do mesmo material.
+ * Hipótese de mapeamento até o SQL live confirmar labels:
+ *   - traseiro candidato = peça maior (2,74)
+ *   - frente candidata   = peça menor (2,28)
+ */
+export const I701_CABEDAL_AREA_PIECES = [
+  {
+    key: 'traseiro_candidato',
+    label: 'Peça principal do cabedal (candidato a traseiro)',
+    dm2PerPair: 2.74,
+    source: 'upper_consumption',
+  },
+  {
+    key: 'frente_candidata',
+    label: 'Peça aditiva do cabedal (candidata a tiras/frente)',
+    dm2PerPair: 2.28,
+    source: 'components_accessories[mandatory]',
+  },
+] as const;
+
+export interface AreaPieceYieldResult {
+  key: string;
+  label: string;
+  dm2PerPair: number;
+  totalDm2: number;
+  totalMeters: number;
+  metersPerPair: number;
+  pairsPerMeter: number | null;
+  bySize: Array<{ size: string; pairs: number; totalDm2: number; totalMeters: number }>;
+}
+
+/** Converte área (dm²) → metros lineares pela largura útil do rolo (mm). */
+export function dm2ToLinearMeters(dm2: number, widthMm: number): number {
+  const widthDm = widthMm / 10;
+  if (!(widthDm > 0) || !(dm2 >= 0)) return 0;
+  return dm2 / widthDm;
+}
+
+export function analyzeAreaPieceYield(
+  piece: { key: string; label: string; dm2PerPair: number },
+  grade: Record<string, number> = I701_REFERENCE_GRADE,
+  sizes: readonly string[] = INFANTIL_YIELD_SIZES,
+  widthMm: number = I701_ROLL_WIDTH_MM,
+): AreaPieceYieldResult {
+  const bySize = sizes.map((size) => {
+    const pairs = Number(grade[size]) || 0;
+    const totalDm2 = piece.dm2PerPair * pairs;
+    return {
+      size,
+      pairs,
+      totalDm2,
+      totalMeters: dm2ToLinearMeters(totalDm2, widthMm),
+    };
+  });
+  const totalPairs = bySize.reduce((s, r) => s + r.pairs, 0);
+  const totalDm2 = bySize.reduce((s, r) => s + r.totalDm2, 0);
+  const totalMeters = dm2ToLinearMeters(totalDm2, widthMm);
+  return {
+    key: piece.key,
+    label: piece.label,
+    dm2PerPair: piece.dm2PerPair,
+    totalDm2,
+    totalMeters,
+    metersPerPair: totalPairs > 0 ? totalMeters / totalPairs : 0,
+    pairsPerMeter: totalMeters > 0 ? totalPairs / totalMeters : null,
+    bySize,
+  };
+}
+
+export function analyzeI701CabedalPiecesSeparated(
+  grade: Record<string, number> = I701_REFERENCE_GRADE,
+): {
+  traseiroCandidate: AreaPieceYieldResult;
+  frenteCandidate: AreaPieceYieldResult;
+  combinedMeters: number;
+  combinedPairsPerMeter: number | null;
+  totalPairs: number;
+} {
+  const [traseiroPiece, frentePiece] = I701_CABEDAL_AREA_PIECES;
+  const traseiroCandidate = analyzeAreaPieceYield(traseiroPiece, grade);
+  const frenteCandidate = analyzeAreaPieceYield(frentePiece, grade);
+  const totalPairs = INFANTIL_YIELD_SIZES.reduce((s, size) => s + (Number(grade[size]) || 0), 0);
+  const combinedMeters = traseiroCandidate.totalMeters + frenteCandidate.totalMeters;
+  return {
+    traseiroCandidate,
+    frenteCandidate,
+    combinedMeters,
+    combinedPairsPerMeter: combinedMeters > 0 ? totalPairs / combinedMeters : null,
+    totalPairs,
+  };
+}
+
 export type YieldBucket = 'traseiro' | 'tira_frente' | 'outro';
 
 export interface YieldLineInput {
