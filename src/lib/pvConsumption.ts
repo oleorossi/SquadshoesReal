@@ -157,10 +157,12 @@ export function buildPvConsumptionIdentity(
 
 export function pvConsumptionCanPartition(items: PvConsumptionItem[]): boolean {
   const orderIds = new Set(items.map((item) => item.saleOrderId));
-  const referenceIds = new Set(
-    items.map((item) => item.referenceId).filter((id): id is string => !!id),
+  const models = new Set(
+    items
+      .map((item) => item.referenceId || item.referenceCode || item.referenceName)
+      .filter((value): value is string => !!value && value.trim().length > 0),
   );
-  return orderIds.size > 1 || referenceIds.size > 1;
+  return orderIds.size > 1 || models.size > 1;
 }
 
 /**
@@ -173,9 +175,14 @@ export async function materializePvConsumptionScope(
   opts?: AdaptCanonicalOptions,
 ): Promise<{ rows: ConsumptionRow[]; artisanalStrapRows: ArtisanalStrapCutRow[] }> {
   if (!itemId) {
-    return materializeCanonicalConsumptionReport(report, undefined, opts);
+    return opts
+      ? materializeCanonicalConsumptionReport(report, undefined, opts)
+      : materializeCanonicalConsumptionReport(report);
   }
-  return materializeCanonicalConsumptionReport(report, new Set([itemId]), opts);
+  const scopeKeys = new Set([itemId]);
+  return opts
+    ? materializeCanonicalConsumptionReport(report, scopeKeys, opts)
+    : materializeCanonicalConsumptionReport(report, scopeKeys);
 }
 
 /**

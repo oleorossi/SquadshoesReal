@@ -323,4 +323,50 @@ describe('canonicalConsumptionReport', () => {
       sizeBreakdown: { '34': 8, '35': 12 },
     });
   });
+
+  it('em um único PV com 2 modelos: consolidado = soma das fatias', () => {
+    const refA = IDS.reference;
+    const refB = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    const parsed = validateCanonicalConsumptionReport(response([
+      {
+        ...materialLine(IDS.scope1, 10),
+        component: 'Cabedal',
+        product_name: 'NAPA PRETA',
+        product_group_name: 'NAPA SOFT',
+        product_unit: 'm',
+        product_category: 'Cabedal',
+        reference_id: refA,
+        reference_name: 'I90',
+        effective_grade: {},
+      },
+      {
+        ...materialLine(IDS.scope2, 4),
+        component: 'Cabedal',
+        product_name: 'NAPA PRETA',
+        product_group_name: 'NAPA SOFT',
+        product_unit: 'm',
+        product_category: 'Cabedal',
+        reference_id: refB,
+        reference_name: 'BT01',
+        effective_grade: {},
+      },
+    ]));
+
+    const consolidated = adaptCanonicalConsumptionLines(parsed.lines);
+    const partitioned = adaptCanonicalConsumptionLines(parsed.lines, undefined, {
+      partition: 'order_reference',
+      orderNumberBySaleOrderId: new Map([[IDS.saleOrder, 'PV-00194']]),
+      referenceLabelById: new Map([
+        [refA, { code: 'I90', name: 'INFANTIL 90' }],
+        [refB, { code: 'BT01', name: 'BOTINHA 01' }],
+      ]),
+    });
+
+    expect(consolidated).toHaveLength(1);
+    expect(consolidated[0].totalQuantity).toBe(14);
+    expect(partitioned).toHaveLength(2);
+    expect(partitioned.reduce((sum, row) => sum + row.totalQuantity, 0)).toBe(14);
+    expect(partitioned.map((row) => row.referenceCode).sort()).toEqual(['BT01', 'I90']);
+    expect(partitioned.every((row) => row.orderNumber === 'PV-00194')).toBe(true);
+  });
 });
