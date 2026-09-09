@@ -1,0 +1,161 @@
+name: Supabase — Disable native GitHub Preview
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Desliga o check nativo "Supabase Preview" / Deploy to production da integração
+# GitHub do Supabase. O pipeline real continua em supabase-migrate.yml +
+# vercel-deploy.yml + supabase-edge-deploy.yml.
+#
+# O check falha em todo push de main com:
+#   Remote migration versions not found in local migrations directory
+# por causa do cutover (registro remoto legado × arquivos locais). Não reconciliar
+# o schema_migrations — só desligar o sync nativo.
+#
+# O que faz (Management API, token sbp_):
+#   1. Lista branches do projeto
+#   2. Na branch is_default, PATCH git_branch=""  (= "Deploy to production" off)
+#   3. Opcional: DELETE da conexão GitHub (desconecta o app por completo)
+#
+# Disparo: Actions → este workflow → Run workflow
+# ─────────────────────────────────────────────────────────────────────────────
+
+on:
+  workflow_dispatch:
+    inputs:
+      disconnect_github:
+        description: 'Também DELETE a conexão GitHub (remove o app do repo)?'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+      dry_run:
+        description: 'Só inspecionar estado, sem PATCH/DELETE?'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+concurrency:
+  group: supabase-disable-native-preview
+  cancel-in-progress: false
+
+jobs:
+  disable:
+    name: Clear production git_branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Desligar Deploy to production (git_branch vazio)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+          DISCONNECT: ${{ inputs.disconnect_github }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          : "${SUPABASE_ACCESS_TOKEN:?SUPABASE_ACCESS_TOKEN não configurado}"
+          : "${SUPABASE_PROJECT_ID:?SUPABASE_PROJECT_ID não configurado}"
+
+          AUTH=( -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" -H "Content-Type: application/json" )
+
+          echo "── Branches do projeto ${SUPABASE_PROJECT_ID}"
+          code=$(curl -sS -o /tmp/branches.json -w '%{http_code}' \
+            "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_ID}/branches" \
+            "${AUTH[@]}")
+          echo "HTTP $code"
+          if [ "$code" = "401" ] || [ "$code" = "403" ]; then
+            echo "Token sem privilégio pra listar branches."; cat /tmp/branches.json; exit 1
+          fi
+          if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+            echo "Falha ao listar branches:"; cat /tmp/branches.json; exit 1
+          fi
+          cat /tmp/branches.json | jq .
+
+          # is_default = produção; sem branches (plano free / branching off) o array pode ser []
+          DEFAULT_ID=$(jq -r '[.[] | select(.is_default==true)][0].id // empty' /tmp/branches.json)
+          DEFAULT_GIT=$(jq -r '[.[] | select(.is_default==true)][0].git_branch // empty' /tmp/branches.json)
+          echo "── Produção: id=${DEFAULT_ID:-<nenhuma>} git_branch=${DEFAULT_GIT:-<vazio>}"
+
+          if [ -z "$DEFAULT_ID" ]; then
+            echo "Nenhuma branch default — nada a limpar em /branches."
+          elif [ -z "$DEFAULT_GIT" ]; then
+            echo "✓ git_branch já vazio — Deploy to production já está off."
+          elif [ "$DRY_RUN" = "true" ]; then
+            echo "dry_run: pularia PATCH git_branch='' em $DEFAULT_ID (hoje='$DEFAULT_GIT')"
+          else
+            echo "── PATCH /v1/branches/${DEFAULT_ID}  { git_branch: \"\" }"
+            code=$(curl -sS -o /tmp/patch.json -w '%{http_code}' -X PATCH \
+              "https://api.supabase.com/v1/branches/${DEFAULT_ID}" \
+              "${AUTH[@]}" \
+              --data '{"git_branch":""}')
+            echo "HTTP $code"
+            cat /tmp/patch.json | head -c 4000; echo
+            if [ "$code" = "401" ] || [ "$code" = "403" ]; then
+              echo "Token sem privilégio pra atualizar branch."; exit 1
+            fi
+            if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+              echo "PATCH falhou."; exit 1
+            fi
+            NEW_GIT=$(jq -r '.git_branch // empty' /tmp/patch.json)
+            if [ -n "$NEW_GIT" ]; then
+              echo "⚠ API devolveu git_branch='$NEW_GIT' — esperado vazio."
+              exit 1
+            fi
+            echo "✓ Deploy to production desligado (git_branch limpo)."
+          fi
+
+          echo "── Conexões GitHub (platform API)"
+          code=$(curl -sS -o /tmp/gh_conn.json -w '%{http_code}' \
+            "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_ID}/integrations/github/connections" \
+            "${AUTH[@]}")
+          echo "HTTP $code (list project connections)"
+          # Alguns tokens só falam /platform; tenta fallbacks
+          if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+            code=$(curl -sS -o /tmp/gh_conn.json -w '%{http_code}' \
+              "https://api.supabase.com/platform/integrations/github/connections?project_ref=${SUPABASE_PROJECT_ID}" \
+              "${AUTH[@]}")
+            echo "HTTP $code (platform list fallback)"
+          fi
+          cat /tmp/gh_conn.json | head -c 8000; echo
+
+          if [ "$DISCONNECT" != "true" ]; then
+            echo "✓ Conexão GitHub preservada (só git_branch). Use disconnect_github=true pra DELETE."
+            exit 0
+          fi
+
+          CONN_ID=$(jq -r '
+            if type=="array" then
+              [.[] | select((.project.ref // .project_ref // "") == env.SUPABASE_PROJECT_ID)][0].id // .[0].id // empty
+            elif .connections then
+              [.connections[] | select((.project.ref // "") == env.SUPABASE_PROJECT_ID)][0].id // empty
+            elif .data then
+              [.data[] | select((.attributes.project.ref // "") == env.SUPABASE_PROJECT_ID)][0].id // empty
+            else empty end
+          ' /tmp/gh_conn.json)
+          echo "── connection_id=${CONN_ID:-<não achado>}"
+          if [ -z "$CONN_ID" ]; then
+            echo "Nenhuma conexão pra deletar (já desconectada ou endpoint diferente)."
+            exit 0
+          fi
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "dry_run: pularia DELETE connection $CONN_ID"
+            exit 0
+          fi
+          for url in \
+            "https://api.supabase.com/v1/integrations/github/connections/${CONN_ID}" \
+            "https://api.supabase.com/platform/integrations/github/connections/${CONN_ID}" \
+            ; do
+            echo "── DELETE $url"
+            code=$(curl -sS -o /tmp/del.json -w '%{http_code}' -X DELETE "$url" "${AUTH[@]}")
+            echo "HTTP $code"
+            cat /tmp/del.json | head -c 2000; echo
+            if [ "$code" -ge 200 ] && [ "$code" -lt 300 ]; then
+              echo "✓ Conexão GitHub removida."
+              exit 0
+            fi
+          done
+          echo "DELETE falhou em todos os endpoints."
+          exit 1
