@@ -158,7 +158,9 @@ describe('Fase 3 — UX de fluxo', () => {
   });
 
   it('3.4 PV preserva deep-links de view', () => {
-    expect(saleOrdersPage).toContain("searchParams.get('view') === 'consumo'");
+    // Consumo: view lida uma vez e reusada (não recria ids a cada ?item=).
+    expect(saleOrdersPage).toContain("searchParams.get('view')");
+    expect(saleOrdersPage).toMatch(/consumptionViewParam\s*===\s*'consumo'|searchParams\.get\('view'\)\s*===\s*'consumo'/);
     expect(saleOrdersPage).toContain("searchParams.get('view') === 'pendencias'");
     expect(sheetsPage).toContain("searchParams.get('ref')");
     expect(sheetsPage).toContain('useUrlTabState');
