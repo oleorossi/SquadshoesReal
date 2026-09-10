@@ -43,6 +43,31 @@ describe('alinhamento Corte Cabedal · ficha × promote × kanban', () => {
     expect(ALIGN_SQL).toMatch(/flow_order\s*=\s*15/);
   });
 
+  // UPDATE em sector_settings dispara tg_sector_settings_recompute → enqueue de
+  // tiras → 42501 na Management API (e o tx inteiro volta atrás no INSERT de
+  // schema_migrations). Seed não precisa reagendar a fábrica — o DISABLE/ENABLE
+  // em volta do UPDATE é load-bearing pro Apply Migrations da 22600.
+  it('seed do Corte Cabedal desliga tg_sector_settings_recompute durante o UPDATE', () => {
+    expect(ALIGN_SQL).toContain(
+      'ALTER TABLE public.sector_settings DISABLE TRIGGER tg_sector_settings_recompute',
+    );
+    expect(ALIGN_SQL).toContain(
+      'ALTER TABLE public.sector_settings ENABLE TRIGGER tg_sector_settings_recompute',
+    );
+    const disableAt = ALIGN_SQL.indexOf(
+      'DISABLE TRIGGER tg_sector_settings_recompute',
+    );
+    const updateAt = ALIGN_SQL.indexOf(
+      "UPDATE public.sector_settings\n   SET flow_order = 15",
+    );
+    const enableAt = ALIGN_SQL.indexOf(
+      'ENABLE TRIGGER tg_sector_settings_recompute',
+    );
+    expect(disableAt).toBeGreaterThanOrEqual(0);
+    expect(updateAt).toBeGreaterThan(disableAt);
+    expect(enableAt).toBeGreaterThan(updateAt);
+  });
+
   it('promote_sale_order_item vivo usa fallback Corte Fibra…Expedição sem Mesa/Palmilha', () => {
     const body = latestPromoteBody();
     const fallback = body.match(/ARRAY\[\s*'Corte Fibra'[\s\S]*?\]/)?.[0] ?? '';
