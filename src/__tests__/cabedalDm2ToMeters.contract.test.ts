@@ -3,6 +3,7 @@ import {
   calculateConsumptionWithUnit,
   convertDm2ToLinearMeters,
   isLinearWidthMissing,
+  linearUnitOrDm2,
 } from '@/lib/materialConsumption';
 
 /**
@@ -56,6 +57,8 @@ describe('Cabedal dm² → metros lineares — contrato', () => {
     expect(isLinearWidthMissing(semLargura, 'm')).toBe(true);
     // Sem divisor, o conversor devolve o total em dm² — UI deve alertar, não tratar como m.
     expect(convertDm2ToLinearMeters(144, semLargura)).toBeCloseTo(144, 6);
+    expect(linearUnitOrDm2(true)).toBe('dm2');
+    expect(linearUnitOrDm2(false)).toBe('metro');
   });
 
   it('override dm² da ficha vence yield_per_size linear (não infla ~100×)', () => {

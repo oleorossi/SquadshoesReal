@@ -122,6 +122,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { SearchInput } from '@/components/ui/search-input';
 import { normalizeForSearch, searchMatchesAllTerms } from '@/lib/searchUtils';
 import { getTechnicalSheetAuditGaps, type TechnicalSheetAuditRow } from '@/lib/technicalSheetAudit';
+import { needsCabedalParConfirmation, CABEDAL_PAR_CONFIRM_MESSAGE } from '@/lib/cabedalParPeGuard';
 import { Link as Link2, Info } from '@phosphor-icons/react';
 import { SoleSizeConjugationsEditor } from '@/components/inventory/SoleSizeConjugationsEditor';
 import { ComponentGroupSelect, GroupMaterialSelect, SoleClassificationBadge, SoleProductSelect, DirectComponentSelect, NcmInlineEditor } from '@/components/technical-sheets/sheetSelectors';
@@ -2013,6 +2014,21 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
         setDirty(false);
         onSaveSuccess();
         return;
+      }
+
+      // Anula risco ~2× (cadastro por pé): exige confirmação explícita POR PAR
+      // antes de gravar consumo de cabedal. Heurística/peer no painel de
+      // Diagnósticos; aqui a confirmação é barata e fecha a porta do save.
+      if (needsCabedalParConfirmation({
+        hasUpperMaterial: String(payload.upper_material || '').trim().length > 0,
+        upperConsumption: Number(payload.upper_consumption) || 0,
+        upperConsumptionPerSize: (payload as any).upper_consumption_per_size || null,
+      })) {
+        const confirmed = window.confirm(CABEDAL_PAR_CONFIRM_MESSAGE);
+        if (!confirmed) {
+          setAbaAtiva('engineering');
+          return;
+        }
       }
 
       await updateSheet.mutateAsync({ id: sheet.id, data: patch });
