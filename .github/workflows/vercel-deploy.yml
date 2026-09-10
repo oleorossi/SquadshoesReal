@@ -37,9 +37,11 @@ on:
         default: false
         type: boolean
 
-# Evita 2 deploys paralelos se vários pushes chegarem em sequência
+# Evita 2 deploys paralelos se vários pushes chegarem em sequência.
+# Bypass manual (skip_migration_gate) usa grupo próprio para não ficar atrás
+# de um deploy automático preso no gate de migrations.
 concurrency:
-  group: vercel-prod
+  group: ${{ github.event_name == 'workflow_dispatch' && inputs.skip_migration_gate && 'vercel-prod-bypass' || 'vercel-prod' }}
   cancel-in-progress: false
 
 env:
