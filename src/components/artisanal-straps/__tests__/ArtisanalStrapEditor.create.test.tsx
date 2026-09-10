@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, expect, it, vi } from 'vitest';
 import type {
   ArtisanalStrapCapabilities,
@@ -21,6 +22,16 @@ vi.mock('@/hooks/useSuppliers', () => ({
 vi.mock('@/hooks/useContractors', () => ({
   useContractors: () => ({ data: [] }),
 }));
+
+function renderWithQueryClient(ui: React.ReactElement) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  const Wrapper = ({ children }: { children: React.ReactNode }) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+  return render(ui, { wrapper: Wrapper });
+}
 
 const capabilities: ArtisanalStrapCapabilities = {
   manage_strap_catalog: true,
@@ -48,7 +59,7 @@ const emptyCatalog: ArtisanalStrapCatalog = {
 
 describe('ArtisanalStrapEditor — novo cadastro', () => {
   it('abre sem medida e sem receita sugerida sem acessar uma receita inexistente', () => {
-    render(
+    renderWithQueryClient(
       <ArtisanalStrapEditor
         open
         onOpenChange={vi.fn()}
@@ -101,7 +112,7 @@ const buyReadyCatalog: ArtisanalStrapCatalog = {
  * passo executável.
  */
 describe('ArtisanalStrapEditor — tira comprada pronta com cor derivada', () => {
-  const renderBuyReady = (extra: Record<string, unknown> = {}) => render(
+  const renderBuyReady = (extra: Record<string, unknown> = {}) => renderWithQueryClient(
     <ArtisanalStrapEditor
       open
       onOpenChange={vi.fn()}
