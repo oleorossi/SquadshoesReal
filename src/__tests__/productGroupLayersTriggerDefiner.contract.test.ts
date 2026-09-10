@@ -42,7 +42,10 @@ describe('salvar grupo não depende de GRANT de escrita em product_group_layers'
   });
 
   it('o diálogo de grupo continua gravando só product_groups — camadas ficam na RPC', () => {
-    const save = dialog.split('const handleSave = async () => {')[1]?.split('const handleSaveProductName')[0] || '';
+    // mutate + toast de erro saíram do handleSave para persistGroupAndMaybeItems
+    // (unidade/custo dos itens pedem confirm antes do write).
+    const save =
+      dialog.split('const persistGroupAndMaybeItems = async')[1]?.split('\n  return (')[0] || '';
     expect(save).toContain('updateGroup.mutateAsync');
     expect(save).toContain('Erro ao salvar:');
     expect(save).not.toContain('product_group_layers');

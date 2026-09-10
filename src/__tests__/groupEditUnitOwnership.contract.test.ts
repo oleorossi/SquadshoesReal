@@ -5,11 +5,12 @@ const source = readFileSync('src/components/groups/GroupEditDialog.tsx', 'utf8')
 const groupsHook = readFileSync('src/hooks/useGroups.ts', 'utf8');
 
 function saveGroupSource(): string {
-  const start = source.indexOf('const handleSave = async () =>');
-  // Âncora pós-save: o rename inline de produto saiu com a tabela crua
-  // (porta única = VariantListPanel). O próximo statement do componente é o return.
+  // Persistência real mora em persistGroupAndMaybeItems (handleSave só valida
+  // e, se unidade/custo de item pendente, abre o confirm). Âncora no persist
+  // até o return do JSX — cobre mutate + toast de erro.
+  const start = source.indexOf('const persistGroupAndMaybeItems = async');
   const end = source.indexOf('\n  return (', start);
-  if (start < 0 || end < 0) throw new Error('handleSave do grupo não encontrado');
+  if (start < 0 || end < 0) throw new Error('persistGroupAndMaybeItems do grupo não encontrado');
   return source.slice(start, end);
 }
 
