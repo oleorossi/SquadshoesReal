@@ -224,12 +224,15 @@ export default function SaleOrders() {
         out.push({ field: 'category', value: r.name, meta: 'Representante' });
       }
 
-      // Referências (sku)
-      const refMatches = references
+      // Referências (sku). Cast estreito: o tipo gerado de useTechnicalSheetsLite
+      // chega como SelectQueryError por causa de retired_at nos types — o runtime
+      // devolve code/name. Evita `any` (lint:baseline) sem mentir a forma usada.
+      type SearchableRef = { code?: string | null; name?: string | null };
+      const refMatches = (references as SearchableRef[])
         .filter((r) => searchMatchesAllTerms(term, r.code, r.name))
         .slice(0, 5);
       for (const r of refMatches) {
-        out.push({ field: 'sku', value: r.code || r.name, meta: r.name });
+        out.push({ field: 'sku', value: r.code || r.name || '', meta: r.name || undefined });
       }
 
       return out;
