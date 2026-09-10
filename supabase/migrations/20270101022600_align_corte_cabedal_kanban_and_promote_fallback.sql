@@ -6,11 +6,11 @@
 --    (Corte Palmilha + Mesa). O promote atômico remenda fichas vazias, mas
 --    chamada direta / ficha sem rota gravava nomes mortos.
 --
--- ⚠ Apply 20270101022600 falhou em 10/09/2026 com 42501. Causa mais
---   provável: REVOKE/COMMENT em promote_sale_order_item sem ownership
---   (função pode ter ficado com dono supabase_admin após apply MCP). O CLI
---   reporta o INSERT em schema_migrations como statement do erro. CREATE OR
---   REPLACE preserva ACL — não reaplicar REVOKE aqui.
+-- ⚠ db push desta versão falha com 42501 ao INSERT em schema_migrations
+--   (reproduzido após remover REVOKE/COMMENT e trocar $function$→$$). O
+--   workflow supabase-migrate aplica este arquivo via Management API e faz
+--   `migration repair --status applied`. CREATE OR REPLACE preserva ACL —
+--   não reaplicar REVOKE/COMMENT/ALTER OWNER aqui.
 
 INSERT INTO public.sector_settings
   (sector, flow_order, enabled, parallel_group, daily_capacity_pairs, ficha_capacity_column)
@@ -34,20 +34,6 @@ UPDATE public.sector_settings
        parallel_group = 'corte',
        enabled = COALESCE(enabled, true)
  WHERE sector = 'Corte Cabedal';
-
--- Assumir ownership antes do CREATE OR REPLACE (no-op se já formos donos).
-DO $own$
-BEGIN
-  ALTER FUNCTION public.promote_sale_order_item(uuid, text, text, date, boolean, text)
-    OWNER TO postgres;
-EXCEPTION
-  WHEN undefined_function THEN
-    NULL;
-  WHEN insufficient_privilege THEN
-    RAISE NOTICE
-      'promote_sale_order_item: sem privilégio pra ALTER OWNER (seguindo com CREATE OR REPLACE)';
-END
-$own$;
 
 CREATE OR REPLACE FUNCTION public.promote_sale_order_item(
   p_item_id           uuid,

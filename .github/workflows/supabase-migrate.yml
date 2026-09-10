@@ -189,6 +189,7 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_PROJECT_ID:   ${{ secrets.SUPABASE_PROJECT_ID }}
         run: |
           echo "🟢 Aplicando migrations pendentes..."
           # O snapshot isolado contém o histórico remoto e somente as novas
@@ -197,7 +198,51 @@ jobs:
           #
           # Rateio já aplicado sob 19200 (e reestampado localmente para 19900).
           # Sem repair, o push tenta recriar índices e falha com 42P07.
-          for stamp in 20270101019200 20270101019900; do
+          #
+          # 22600: db push aplica o SQL e falha com 42501 no INSERT em
+          # schema_migrations. Bootstrap via Management API (mesmo endpoint do
+          # MCP / supabase-db-exec) + repair — padrão do stamp 19900.
+          for stamp in 20270101022600; do
+            shopt -s nullglob
+            matches=("${SUPABASE_MIGRATION_WORKDIR}/supabase/migrations/${stamp}_"*.sql)
+            shopt -u nullglob
+            if (( ${#matches[@]} != 1 )); then
+              continue
+            fi
+            sql_file="${matches[0]}"
+            check_query="SELECT EXISTS (SELECT 1 FROM supabase_migrations.schema_migrations WHERE version = '${stamp}') AS present"
+            jq -nc --arg query "$check_query" '{query: $query}' > /tmp/mig-check-query.json
+            check_code=$(curl -sS -o /tmp/mig-check-response.json -w '%{http_code}' -X POST \
+              "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_ID}/database/query" \
+              -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+              -H "Content-Type: application/json" \
+              --data @/tmp/mig-check-query.json)
+            if [ "$check_code" -lt 200 ] || [ "$check_code" -ge 300 ]; then
+              echo "Falha ao consultar schema_migrations para ${stamp}: HTTP $check_code" >&2
+              head -c 4000 /tmp/mig-check-response.json >&2 || true
+              exit 1
+            fi
+            present="$(jq -r 'if type == "array" then (.[0].present // false) else false end' /tmp/mig-check-response.json)"
+            if [ "$present" = "true" ]; then
+              echo "✓ ${stamp} já registrada em schema_migrations"
+            else
+              echo "↪ Aplicando ${stamp} via Management API ($(basename "$sql_file"))"
+              jq -Rs '{query: .}' < "$sql_file" > /tmp/mig-apply-body.json
+              apply_code=$(curl -sS -o /tmp/mig-apply-response.json -w '%{http_code}' -X POST \
+                "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_ID}/database/query" \
+                -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+                -H "Content-Type: application/json" \
+                --data @/tmp/mig-apply-body.json)
+              if [ "$apply_code" -lt 200 ] || [ "$apply_code" -ge 300 ]; then
+                echo "Falha ao aplicar ${stamp} via Management API: HTTP $apply_code" >&2
+                head -c 8000 /tmp/mig-apply-response.json >&2 || true
+                exit 1
+              fi
+              echo "✓ SQL de ${stamp} aplicado via Management API"
+            fi
+          done
+
+          for stamp in 20270101019200 20270101019900 20270101022600; do
             shopt -s nullglob
             matches=("${SUPABASE_MIGRATION_WORKDIR}/supabase/migrations/${stamp}_"*.sql)
             shopt -u nullglob
