@@ -13,13 +13,10 @@ import {
   useArtisanalStrapCatalog,
   useArtisanalStrapExternalOperations,
 } from '@/hooks/useArtisanalStraps';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 interface Props {
   mode?: 'operational' | 'approval';
-}
-
-function normalize(value: unknown) {
-  return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR');
 }
 
 export function ArtisanalStrapPurchaseOrdersSurface({ mode = 'operational' }: Props) {
@@ -56,24 +53,24 @@ export function ArtisanalStrapPurchaseOrdersSurface({ mode = 'operational' }: Pr
   const rows = useMemo(() => sourceRows.filter((row) => {
     if (mode === 'approval' && !isArtisanalStrapPurchaseOrderPendingApproval(row)) return false;
     if (status !== 'all' && purchaseOrderCanonicalStatus(row) !== status) return false;
-    if (criticality !== 'all' && normalize(row.criticality) !== normalize(criticality)) return false;
+    if (criticality !== 'all' && String(row.criticality || '').toLowerCase() !== criticality.toLowerCase()) return false;
     if (billingPeriod !== 'all' && `${row.billing_year}|${row.billing_month}` !== billingPeriod) return false;
     if (fortnight !== 'all' && String(row.billing_fortnight || '') !== fortnight) return false;
     if (!search.trim()) return true;
-    const haystack = normalize([
+    return searchMatchesAllTerms(
+      search,
       row.order_number,
       row.supplier_name,
       row.product_name,
       row.product_sku,
-      row.billing_month,
-      row.billing_year,
+      row.billing_month == null ? '' : String(row.billing_month),
+      row.billing_year == null ? '' : String(row.billing_year),
       row.latest_job_status,
       row.latest_job_error,
       row.criticality,
       ...(row.blockers || []),
       ...(row.contributions || []).map((entry) => entry.label),
-    ].join(' '));
-    return normalize(search).split(/\s+/).filter(Boolean).every((term) => haystack.includes(term));
+    );
   }), [billingPeriod, criticality, fortnight, mode, search, sourceRows, status]);
 
   if (catalogQuery.isError || operationsQuery.isError) {

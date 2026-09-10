@@ -29,7 +29,7 @@ import { useOrderStraps } from '@/hooks/useOrderStraps';
 import { useProductionTransitions } from '@/hooks/useProductionTransitions';
 import { supabase } from '@/integrations/supabase/client';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { safeUrlAttr } from '@/lib/htmlUtils';
 
 
@@ -249,7 +249,6 @@ export default function Solagem() {
 
   // Orders at Solagem stage after UI filters
   const solagemOrders = useMemo(() => {
-    const q = normalizeForSearch(searchQuery);
     const now = new Date();
 
     return baseSolagemOrders.filter(order => {
@@ -271,13 +270,15 @@ export default function Solagem() {
         }
       }
 
-      if (q) {
+      if (searchQuery.trim()) {
         const so = saleOrders.find((s: any) => s.id === order.sale_order_id);
-        const pvNumber = (so?.order_number || '').toLowerCase();
-        const clientOrderNum = (so?.client_order_number || '').toLowerCase();
-        const opNumber = (order.order_number || '').toLowerCase();
-        const clientName = (so?.client_name || '').toLowerCase();
-        if (!pvNumber.includes(q) && !clientOrderNum.includes(q) && !opNumber.includes(q) && !clientName.includes(q)) return false;
+        if (!searchMatchesAllTerms(
+          searchQuery,
+          so?.order_number,
+          so?.client_order_number,
+          order.order_number,
+          so?.client_name,
+        )) return false;
       }
 
       if (filterCategoria !== 'all') {

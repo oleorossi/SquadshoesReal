@@ -32,7 +32,7 @@ import { TableSkeleton } from '@/components/layout/PageSkeleton';
 import { resolveFicha } from '@/components/production/worksheet/fichaSize';
 
 import { useOrderStraps } from '@/hooks/useOrderStraps';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { safeUrlAttr } from '@/lib/htmlUtils';
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
 
@@ -110,7 +110,6 @@ export default function Acabamento() {
   };
 
   const acabamentoOrders = useMemo(() => {
-    const q = normalizeForSearch(searchQuery);
     const filtered = orders.filter(order => {
       const status = (order.status || '').toLowerCase().normalize('NFC');
       // Status filter - only filter if "active" is selected
@@ -121,13 +120,15 @@ export default function Acabamento() {
       if (!stage) return filterStatus === 'all';
       if (filterStatus === 'active' && stage.status !== 'pendente' && stage.status !== 'em_andamento') return false;
 
-      if (q) {
+      if (searchQuery.trim()) {
         const so = saleOrders.find((s: any) => s.id === order.sale_order_id);
-        const pvNumber = (so?.order_number || '').toLowerCase();
-        const clientOrderNum = (so?.client_order_number || '').toLowerCase();
-        const opNumber = (order.order_number || '').toLowerCase();
-        const clientName = (so?.client_name || '').toLowerCase();
-        if (!pvNumber.includes(q) && !clientOrderNum.includes(q) && !opNumber.includes(q) && !clientName.includes(q)) return false;
+        if (!searchMatchesAllTerms(
+          searchQuery,
+          so?.order_number,
+          so?.client_order_number,
+          order.order_number,
+          so?.client_name,
+        )) return false;
       }
 
       return true;

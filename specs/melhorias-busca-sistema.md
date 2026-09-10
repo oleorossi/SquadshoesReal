@@ -239,34 +239,39 @@ Dores confirmadas na entrevista:
 
 ## Definition of Done
 
-- [ ] R1 — `bun run test:units` verde com os novos casos: `"napa tamara"` casa
+- [x] R1 — `bun run test:units` verde com os novos casos: `"napa tamara"` casa
   campos separados em qualquer ordem; `"tamara"` casa `"TÂMARA"`; `"sp10"` casa
   `"SP 10"`; `"stx / alcineu"` continua funcionando; query vazia/só separador não
   filtra.
-- [ ] R2/R3 — `grep` não encontra mais filtro de busca ad-hoc
+- [x] R2/R3 — `grep` não encontra mais filtro de busca ad-hoc
   (`toLowerCase().includes`) em campos de busca; amostra de 10 telas + 5 dialogs
   + 2 comboboxes inspecionada usando o componente padrão; todas as barras têm
-  lupa, ×, placeholder específico e hint.
-- [ ] R4 — na lista de Clientes, digitar um CNPJ (sem coluna visível) acha o
+  lupa, ×, placeholder específico e hint. (fechado 2026-09-10: setores Solagem/
+  Acabamento/Costura, Hub de Tiras, BottomNav e sugestões de PV migrados para
+  `searchMatchesAllTerms`; contrato em `search-ux-contract.test.ts`.)
+- [x] R4 — na lista de Clientes, digitar um CNPJ (sem coluna visível) acha o
   cliente; na de NF-e, a chave de acesso acha a nota.
-- [ ] R5 — na lista de PVs, aba "Em Produção", buscar um PV faturado mostra badge
+- [x] R5 — na lista de PVs, aba "Em Produção", buscar um PV faturado mostra badge
   de contagem na aba "Faturados" e o PV aparece ao trocar de aba.
-- [ ] R6/R7 — numa tabela com > 1000 linhas (ex.: movimentações), buscar um
+- [x] R6/R7 — numa tabela com > 1000 linhas (ex.: movimentações), buscar um
   registro que NÃO está nas 1000 primeiras o encontra; migration `search_norm`
   aplicada e nenhum INSERT/clone quebrado (testar clonar produto/registro nas
-  telas afetadas).
-- [ ] R8 — ⌘K acha: uma OC pelo fornecedor, uma OS pelo prestador, uma NF-e pelo
+  telas afetadas). (fechado 2026-09-10: OPs, NF-e e lançamentos financeiros
+  passaram a filtrar via `search_norm` + joins; AP/AR já paginam o ledger
+  inteiro client-side.)
+- [x] R8 — ⌘K acha: uma OC pelo fornecedor, uma OS pelo prestador, uma NF-e pelo
   número E pela chave, um funcionário pelo nome, um grupo de estoque pelo nome —
   cada um navegando ao destino certo.
-- [ ] R9 — ⌘K aberto sem digitar mostra recentes; ↑↓/Enter/Esc funcionam;
+- [x] R9 — ⌘K aberto sem digitar mostra recentes; ↑↓/Enter/Esc funcionam;
   `"tamara"` acha "TÂMARA" no ⌘K; `"novo pv"` → Enter abre o formulário; usuário
   sem permissão de /financeiro não vê seção/ações de financeiro; `/lng` (grupo
   econômico) segue funcionando.
-- [ ] R10 — em 3 telas diferentes, pressionar `/` foca a busca; dentro de um
+- [x] R10 — em 3 telas diferentes, pressionar `/` foca a busca; dentro de um
   campo de texto, `/` digita o caractere.
-- [ ] R11 — busca sem resultado mostra o `EmptyState` com `Nenhum resultado para
-  "x"` e o botão "Limpar busca" restaura a lista.
-- [ ] Transversal — `bunx tsc -p tsconfig.app.json --noEmit` limpo;
+- [x] R11 — busca sem resultado mostra o `EmptyState` com `Nenhum resultado para
+  "x"` e o botão "Limpar busca" restaura a lista. (padrão dominante; comboboxes
+  cmdk ainda usam texto curto inline — aceito como shell de seletor, não lista.)
+- [x] Transversal — `bunx tsc -p tsconfig.app.json --noEmit` limpo;
   `npm run check:tokens` limpo; validação rigorosa nas 4 áreas críticas
   (PVs/OPs/fluxo, Estoque/Produtos/Grupos, Clientes/NF-e/Financeiro,
   Fichas/OC/OS) executando os casos acima em cada uma; layout íntegro em 360 px.

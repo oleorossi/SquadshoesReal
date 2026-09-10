@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { syncFinancialRecords } from '@/hooks/useSaleOrders';
 import { createSaleOrderCommand } from '@/lib/saleOrderCommand';
+import { searchNormOrFilter } from '@/lib/searchUtils';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -118,8 +119,9 @@ export function useNfeEmitidas(saleOrderId?: string, opts?: { enabled?: boolean 
 }
 
 export function useAllNfeEmitidas(filters?: { status?: string; search?: string; company_id?: string }) {
+  const search = (filters?.search ?? '').trim();
   return useQuery({
-    queryKey: ['nfe_emitidas_all', filters],
+    queryKey: ['nfe_emitidas_all', filters?.status ?? null, filters?.company_id ?? null, search],
     // staleTime=0 garante refetch ao montar — evita cache vencido depois de sync.
     staleTime: 0,
     refetchOnMount: 'always',
@@ -130,6 +132,21 @@ export function useAllNfeEmitidas(filters?: { status?: string; search?: string; 
         .order('created_at', { ascending: false });
       if (filters?.status) query = query.eq('status', filters.status);
       if (filters?.company_id) query = query.eq('company_id', filters.company_id);
+      // Busca SERVER-SIDE (R6): sem termo, teto 500 recentes; com termo, filtra
+      // via search_norm (nº/série/chave/destinatário/CNPJ) OU por PV cujo
+      // search_norm casa — senão notas além do teto sumiam da busca local.
+      const norm = searchNormOrFilter(search);
+      if (norm) {
+        const orParts = [norm];
+        const { data: soMatches } = await supabase
+          .from('sale_orders')
+          .select('id')
+          .or(norm)
+          .limit(200);
+        const soIds = (soMatches ?? []).map((row: { id: string }) => row.id);
+        if (soIds.length > 0) orParts.push(`sale_order_id.in.(${soIds.join(',')})`);
+        query = query.or(orParts.join(',')) as typeof query;
+      }
       query = query.limit(500);
       const { data, error } = await query;
       if (error) {

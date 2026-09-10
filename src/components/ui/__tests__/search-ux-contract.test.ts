@@ -68,4 +68,31 @@ describe('contrato de busca do sistema', () => {
 
     expect(violations, violations.join('\n')).toEqual([]);
   }, 30_000);
+
+  it('setores e hubs de tiras usam searchMatchesAllTerms (não includes ad-hoc)', () => {
+    const offenders = [
+      'pages/Solagem.tsx',
+      'pages/Acabamento.tsx',
+      'pages/SetorCostura.tsx',
+      'pages/ArtisanalStraps.tsx',
+      'components/artisanal-straps/ArtisanalStrapPurchaseOrdersSurface.tsx',
+      'components/layout/BottomNav.tsx',
+    ];
+    const violations: string[] = [];
+    for (const rel of offenders) {
+      const absolute = path.join(ROOT, rel);
+      const source = fs.readFileSync(absolute, 'utf8');
+      if (!source.includes('searchMatchesAllTerms')) {
+        violations.push(`${rel}: falta import/uso de searchMatchesAllTerms`);
+      }
+      // Padrões que quebravam acento / SP10 / multi-termo nestes arquivos
+      if (/\.toLowerCase\(\)\.includes\(/.test(source) && /searchQuery|searchText|maisQuery|search\b/.test(source)) {
+        // Permitir includes em status/categoria — só barra o padrão clássico de busca
+        if (/const q = normalizeForSearch\(/.test(source) || /toLocaleLowerCase\('pt-BR'\)/.test(source)) {
+          violations.push(`${rel}: ainda filtra busca com toLowerCase/includes ad-hoc`);
+        }
+      }
+    }
+    expect(violations, violations.join('\n')).toEqual([]);
+  });
 });

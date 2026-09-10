@@ -21,7 +21,7 @@ import { toast } from 'sonner';
 import OrderSearchBar from '@/components/production/OrderSearchBar';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { RefChip } from '@/components/ui/ref-chip';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 /**
  * Página GENÉRICA de um setor de costura. Desde a divisão de 2026-10-01
@@ -53,7 +53,6 @@ export default function SetorCostura({ sectorName = 'Costura Palmilha' }: { sect
   const { finalizeSectorTask } = useProductionTransitions();
 
   const costuraOrders = useMemo(() => {
-    const q = normalizeForSearch(searchQuery);
     return orders.filter(order => {
       const status = (order.status || '').toLowerCase();
       if (filterStatus === 'active' && status !== 'em produção') return false;
@@ -63,12 +62,15 @@ export default function SetorCostura({ sectorName = 'Costura Palmilha' }: { sect
       if (!stage) return filterStatus === 'all';
       if (filterStatus === 'active' && stage.status !== 'pendente' && stage.status !== 'em_andamento') return false;
 
-      if (q) {
+      if (searchQuery.trim()) {
         const so = saleOrders.find((s: any) => s.id === order.sale_order_id);
-        const text = [
-          so?.order_number, so?.client_order_number, order.order_number, so?.client_name,
-        ].filter(Boolean).join(' ').toLowerCase();
-        if (!text.includes(q)) return false;
+        if (!searchMatchesAllTerms(
+          searchQuery,
+          so?.order_number,
+          so?.client_order_number,
+          order.order_number,
+          so?.client_name,
+        )) return false;
       }
       return true;
     }).sort((a, b) => {

@@ -63,6 +63,7 @@ import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useContractors } from '@/hooks/useContractors';
 import { useIsAdmin } from '@/hooks/useUserManagement';
 import { cn } from '@/lib/utils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import {
   type ArtisanalStrapCatalog,
   type ArtisanalStrapCatalogDiagnostic,
@@ -236,11 +237,7 @@ function formatDate(value: string | null | undefined) {
 }
 
 function includesSearch(search: string, ...values: unknown[]) {
-  const normalized = search.trim().toLocaleLowerCase('pt-BR');
-  if (!normalized) return true;
-  const terms = normalized.split(/\s+/).filter(Boolean);
-  const haystack = values.filter(Boolean).join(' ').toLocaleLowerCase('pt-BR');
-  return terms.every((term) => haystack.includes(term));
+  return searchMatchesAllTerms(search, ...values.map((value) => (value == null ? '' : String(value))));
 }
 
 function mapsFor(catalog: ArtisanalStrapCatalog) {

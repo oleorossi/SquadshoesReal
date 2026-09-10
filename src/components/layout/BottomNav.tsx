@@ -6,7 +6,7 @@ import { menuGroups, orderGroupsForRoles, secondaryRoutes } from '@/data/navigat
 import { useAccessControl } from '@/hooks/useAccessControl';
 import { useMenuFavorites } from '@/hooks/useMenuFavorites';
 import { useCurrentUserRoles } from '@/hooks/useUserManagement';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { SearchInput } from '@/components/ui/search-input';
 
 const PRIMARY_ITEMS = [
@@ -57,32 +57,27 @@ export function BottomNav() {
     return Star;
   };
 
-  const q = normalizeForSearch(maisQuery);
   const filteredFavItems = useMemo(() => {
-    if (!q) return favItems;
-    return favItems.filter((item) => normalizeForSearch(item.name).includes(q));
-  }, [favItems, q]);
+    if (!maisQuery.trim()) return favItems;
+    return favItems.filter((item) => searchMatchesAllTerms(maisQuery, item.name));
+  }, [favItems, maisQuery]);
   const filteredGroups = useMemo(() => {
-    if (!q) return visibleGroups;
+    if (!maisQuery.trim()) return visibleGroups;
     return visibleGroups
       .map((group) => ({
         ...group,
         items: group.items.filter(
-          (item) =>
-            normalizeForSearch(item.label).includes(q)
-            || normalizeForSearch(group.label).includes(q),
+          (item) => searchMatchesAllTerms(maisQuery, item.label, group.label),
         ),
       }))
       .filter((group) => group.items.length > 0);
-  }, [visibleGroups, q]);
+  }, [visibleGroups, maisQuery]);
   const filteredSecondary = useMemo(() => {
-    if (!q) return secondaryItems;
+    if (!maisQuery.trim()) return secondaryItems;
     return secondaryItems.filter(
-      (item) =>
-        normalizeForSearch(item.label).includes(q)
-        || normalizeForSearch(item.group).includes(q),
+      (item) => searchMatchesAllTerms(maisQuery, item.label, item.group),
     );
-  }, [secondaryItems, q]);
+  }, [secondaryItems, maisQuery]);
   const hasMaisResults =
     filteredFavItems.length > 0
     || filteredGroups.length > 0

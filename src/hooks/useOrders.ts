@@ -61,17 +61,38 @@ async function executeProductionOrderCommand(
   return response;
 }
 
-export function useOrders() {
+export function useOrders(opts?: { search?: string }) {
+  const search = (opts?.search ?? '').trim();
   return useQuery({
-    queryKey: ['orders'],
+    queryKey: ['orders', search],
     queryFn: async () => {
-      const { data, error } = await supabase
+      // Busca SERVER-SIDE (spec melhorias-busca-sistema R6): sem termo, teto de
+      // 1000 OPs recentes; com termo, o banco filtra via search_norm (nº/cor/
+      // status) OU por PV/ficha cujo search_norm casa — senão OPs além do teto
+      // ficavam invisíveis na busca local.
+      let q = supabase
         .from('orders')
         .select('*, technical_sheets(name, code, image_url, reference_color_variants(color, image_url))')
         .order('created_at', { ascending: false })
         .limit(ORDERS_QUERY_LIMIT);
+      const norm = searchNormOrFilter(search);
+      if (norm) {
+        const orParts = [norm];
+        const [{ data: soMatches }, { data: sheetMatches }] = await Promise.all([
+          supabase.from('sale_orders').select('id').or(norm).limit(200),
+          supabase.from('technical_sheets').select('id').or(norm).limit(200),
+        ]);
+        const soIds = (soMatches ?? []).map((row: { id: string }) => row.id);
+        if (soIds.length > 0) orParts.push(`sale_order_id.in.(${soIds.join(',')})`);
+        const sheetIds = (sheetMatches ?? []).map((row: { id: string }) => row.id);
+        if (sheetIds.length > 0) orParts.push(`reference_id.in.(${sheetIds.join(',')})`);
+        q = q.or(orParts.join(',')) as typeof q;
+      }
+      const { data, error } = await q;
       if (error) throw error;
-      if (data && data.length >= ORDERS_QUERY_LIMIT && import.meta.env.DEV) console.warn(`useOrders: hit ${ORDERS_QUERY_LIMIT}-row ceiling — some orders may be missing`);
+      if (!norm && data && data.length >= ORDERS_QUERY_LIMIT && import.meta.env.DEV) {
+        console.warn(`useOrders: hit ${ORDERS_QUERY_LIMIT}-row ceiling — some orders may be missing`);
+      }
       return data;
     },
     staleTime: 2 * 60 * 1000,

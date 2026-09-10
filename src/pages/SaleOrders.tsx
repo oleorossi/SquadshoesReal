@@ -200,17 +200,17 @@ export default function SaleOrders() {
   // Sugestões para SmartSearch (PV): Cliente, Representante, Referência
   const searchSuggestions = useMemo(() => {
     return (term: string): SmartSearchSuggestion[] => {
-      const q = term.toLowerCase().trim();
-      if (!q) return [];
+      if (!term.trim()) return [];
       const out: SmartSearchSuggestion[] = [];
 
       // Clientes (name)
       const clientMatches = (clients as any[])
-        .filter((c: any) => {
-          const name = (c.razao_social || c.nome_fantasia || '').toLowerCase();
-          const cnpj = (c.cnpj || '').toLowerCase();
-          return name.includes(q) || cnpj.includes(q);
-        })
+        .filter((c: any) => searchMatchesAllTerms(
+          term,
+          c.razao_social,
+          c.nome_fantasia,
+          c.cnpj,
+        ))
         .slice(0, 5);
       for (const c of clientMatches) {
         out.push({ field: 'name', value: c.razao_social || c.nome_fantasia || '', meta: 'Cliente' });
@@ -218,7 +218,7 @@ export default function SaleOrders() {
 
       // Representantes (category — usado como agrupamento)
       const repMatches = (representatives as any[])
-        .filter((r: any) => normalizeForSearch(r.name).includes(q))
+        .filter((r: any) => searchMatchesAllTerms(term, r.name))
         .slice(0, 5);
       for (const r of repMatches) {
         out.push({ field: 'category', value: r.name, meta: 'Representante' });
@@ -226,7 +226,7 @@ export default function SaleOrders() {
 
       // Referências (sku)
       const refMatches = (references as any[])
-        .filter((r: any) => normalizeForSearch(r.code).includes(q) || normalizeForSearch(r.name).includes(q))
+        .filter((r: any) => searchMatchesAllTerms(term, r.code, r.name))
         .slice(0, 5);
       for (const r of refMatches) {
         out.push({ field: 'sku', value: r.code || r.name, meta: r.name });

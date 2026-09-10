@@ -366,7 +366,8 @@ function ReceivableFormDialog({ open, onOpenChange, editing, onSave }: {
 // ─── Financial Entries Tab ───
 function FinancialEntriesTab() {
   const [filters, setFilters] = useState({ period: currentMonthPeriod(), type: 'all', costCenterId: '' });
-  const { data: entries = [], isLoading } = useFinancialEntries(filters);
+  const [entrySearch, setEntrySearch] = useState('');
+  const { data: entries = [], isLoading } = useFinancialEntries({ ...filters, search: entrySearch });
   const { data: accounts = [] } = useChartOfAccounts();
   const { data: centers = [] } = useCostCenters();
   const { data: banks = [] } = useBankAccounts();
@@ -388,6 +389,14 @@ function FinancialEntriesTab() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-3 items-end">
+        <SearchInput
+          className="w-full sm:max-w-sm"
+          placeholder="Buscar por descrição, categoria, SKU ou notas…"
+          value={entrySearch}
+          onChange={setEntrySearch}
+          debounceMs={300}
+          resultCount={entries.length}
+        />
         <div><Label className="text-xs">Período</Label><Input type="month" value={filters.period} onChange={e => setFilters(f => ({ ...f, period: e.target.value }))} className="w-40" /></div>
         <div>
           <Label className="text-xs">Tipo</Label>
@@ -414,7 +423,17 @@ function FinancialEntriesTab() {
               </TableRow></TableHeader>
               <TableBody>
                 {entries.length === 0 ? (
-                  <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">Nenhum lançamento</TableCell></TableRow>
+                  <TableRow>
+                    <TableCell colSpan={8} className="p-0">
+                      <EmptyState
+                        title={entrySearch.trim() ? `Nenhum resultado para "${entrySearch.trim()}"` : 'Nenhum lançamento'}
+                        description={entrySearch.trim() ? 'Confira o termo ou limpe a busca.' : 'Crie um lançamento manual ou ajuste o período.'}
+                        action={entrySearch.trim() ? (
+                          <Button variant="outline" size="sm" onClick={() => setEntrySearch('')}>Limpar busca</Button>
+                        ) : undefined}
+                      />
+                    </TableCell>
+                  </TableRow>
                 ) : entries.map((e: any) => (
                   <TableRow key={e.id}>
                     <TableCell>{format(parseISO(e.entry_date), 'dd/MM/yy')}</TableCell>
@@ -1339,7 +1358,11 @@ export default function Finance() {
                                       ? `Nenhum resultado para "${payableSearch}"`
                                       : 'Nenhuma conta com os filtros atuais'}
                                     description={`${payables.length} conta(s) a pagar no total.`}
-                                    action={<Button variant="outline" size="sm" onClick={clearPayableFilters}>Limpar filtros</Button>}
+                                    action={<Button variant="outline" size="sm" onClick={clearPayableFilters}>
+                                      {payableSearch.trim() && !payableStatusFilter.length && !payableDateFrom && !payableDateTo
+                                        ? 'Limpar busca'
+                                        : 'Limpar filtros'}
+                                    </Button>}
                                   />
                                 </TableCell>
                               </TableRow>
@@ -1555,7 +1578,11 @@ export default function Finance() {
                                       ? `Nenhum resultado para "${receivableSearch}"`
                                       : 'Nenhuma conta com os filtros atuais'}
                                     description={`${receivables.length} conta(s) a receber no total.`}
-                                    action={<Button variant="outline" size="sm" onClick={clearReceivableFilters}>Limpar filtros</Button>}
+                                    action={<Button variant="outline" size="sm" onClick={clearReceivableFilters}>
+                                      {receivableSearch.trim() && !receivableStatusFilter.length && !receivableDateFrom && !receivableDateTo
+                                        ? 'Limpar busca'
+                                        : 'Limpar filtros'}
+                                    </Button>}
                                   />
                                 </TableCell>
                               </TableRow>

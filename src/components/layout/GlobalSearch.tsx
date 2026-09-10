@@ -752,13 +752,13 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
   // Páginas (atalhos) — busca local, instantânea. A superfície `command` do
   // catálogo já inclui sidebar, Sistema e rotas secundárias sem remontar listas.
   const filteredNavItems = useMemo(() => {
-    if (!q || q.length < 1 || isGroupSearch) return [];
+    if (!query.trim() || isGroupSearch) return [];
     return navigationCatalog
       .filter((item) => item.surfaces.includes('command'))
-      .filter((item) => normalizeForSearch(item.label).includes(q) || normalizeForSearch(item.group).includes(q))
+      .filter((item) => searchMatchesAllTerms(query, item.label, item.group))
       .filter((item) => canAccessRoute(item.path))
       .map((item) => ({ name: item.label, icon: item.icon, path: item.path, groupLabel: item.group }));
-  }, [q, isGroupSearch, canAccessRoute]);
+  }, [query, isGroupSearch, canAccessRoute]);
 
   const goTo = useCallback((path: string, persistTerm?: string, recentItem?: RecentItem) => {
     if (persistTerm) pushRecent(persistTerm);

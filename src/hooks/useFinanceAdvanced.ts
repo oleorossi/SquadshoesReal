@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { invalidateFinanceDerivedQueries } from '@/lib/financeQueryInvalidation';
-import { stripSearchNorm } from '@/lib/searchUtils';
+import { searchNormOrFilter, stripSearchNorm } from '@/lib/searchUtils';
 
 // ─── Chart of Accounts ───
 export function useChartOfAccounts() {
@@ -210,9 +210,10 @@ export function useUpdateBankAccount() {
 }
 
 // ─── Financial Entries ───
-export function useFinancialEntries(filters?: { period?: string; type?: string; costCenterId?: string }) {
+export function useFinancialEntries(filters?: { period?: string; type?: string; costCenterId?: string; search?: string }) {
+  const search = (filters?.search ?? '').trim();
   return useQuery({
-    queryKey: ['financial_entries', filters],
+    queryKey: ['financial_entries', filters?.period ?? null, filters?.type ?? null, filters?.costCenterId ?? null, search],
     staleTime: 60 * 1000,
     queryFn: async () => {
       let query = supabase
@@ -221,6 +222,8 @@ export function useFinancialEntries(filters?: { period?: string; type?: string; 
         .order('entry_date', { ascending: false });
       if (filters?.type && filters.type !== 'all') query = query.eq('type', filters.type);
       if (filters?.costCenterId) query = query.eq('cost_center_id', filters.costCenterId);
+      const norm = searchNormOrFilter(search);
+      if (norm) query = query.or(norm) as typeof query;
       if (!filters?.period) query = query.limit(5000);
       if (filters?.period) {
         const [y, m] = filters.period.split('-').map(Number);

@@ -444,6 +444,7 @@ export default function NfePage() {
   const { data: allNfe = [], isLoading } = useAllNfeEmitidas({
     status: statusFilter || undefined,
     company_id: companyFilter || undefined,
+    search: searchText,
   });
 
   // PVs que já tiveram NF autorizada — usadas pra ocultar tentativas rejeitadas
@@ -465,10 +466,12 @@ export default function NfePage() {
     return ids;
   })();
 
+  // Server já filtrou por search_norm + PV; client só oculta rejeições obsoletas
+  // e refina campos embutidos do join (ordem/cliente do PV) que o norm da NF
+  // pode não cobrir sozinho.
   const filtered = allNfe.filter((n: any) => {
     if (obsoleteRejectionIds.has(n.id)) return false;
-    if (!searchText) return true;
-    // "/" = refinamento AND (ex.: "stx / alcineu")
+    if (!searchText.trim()) return true;
     return searchMatchesAllTerms(
       searchText,
       n.sale_orders?.order_number,
@@ -553,6 +556,7 @@ export default function NfePage() {
               placeholder="Buscar por PV, cliente, nº da NF, CNPJ ou chave de acesso…"
               value={searchText}
               onChange={setSearchText}
+              debounceMs={300}
               resultCount={filtered.length}
               totalCount={allNfe.length}
             />
