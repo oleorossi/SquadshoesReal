@@ -29,11 +29,19 @@ WHERE NOT EXISTS (
   SELECT 1 FROM public.sector_settings WHERE sector = 'Corte Cabedal'
 );
 
+-- UPDATE em sector_settings dispara tg_sector_settings_recompute →
+-- recompute_production_schedule → production_schedule → enqueue de tiras.
+-- Na Management API isso estoura 42501; no db push o tx inteiro volta atrás
+-- no INSERT de schema_migrations. Seed não precisa reagendar a fábrica.
+ALTER TABLE public.sector_settings DISABLE TRIGGER tg_sector_settings_recompute;
+
 UPDATE public.sector_settings
    SET flow_order = 15,
        parallel_group = 'corte',
        enabled = COALESCE(enabled, true)
  WHERE sector = 'Corte Cabedal';
+
+ALTER TABLE public.sector_settings ENABLE TRIGGER tg_sector_settings_recompute;
 
 CREATE OR REPLACE FUNCTION public.promote_sale_order_item(
   p_item_id           uuid,
