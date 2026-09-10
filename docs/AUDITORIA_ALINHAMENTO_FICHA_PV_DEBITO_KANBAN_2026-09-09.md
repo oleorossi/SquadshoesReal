@@ -98,7 +98,7 @@ teste; documento + commits na branch. A7/A8 (live) ficam **fora** deste ciclo.
 
 | # | Checagem | Resultado | Evidência |
 |---|---|---|---|
-| B1 | `sector_settings` aceita Corte Cabedal no grupo corte | ✅ Corrigido | mig `20270101022300_…` |
+| B1 | `sector_settings` aceita Corte Cabedal no grupo corte | ✅ Corrigido | mig `20270101022600_…` |
 | B2 | Promote fallback canônico (Fibra…Expedição) | ✅ Corrigido | mesma mig + contrato |
 | B3 | Default de rota **sem** Cabedal (opt-in) | ✅ OK (intencional) | contrato |
 | B4 | Front: normalize/labels/DISPLAY/FLOW/PARALLEL | ✅ Corrigido | `sectors.ts`, `ProductionSectorsTab.tsx` |
