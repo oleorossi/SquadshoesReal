@@ -13,7 +13,12 @@
 --   2) relink_direct_component aceita origem inativa (além de apagada);
 --      destino precisa ser ativo
 -- Marcador: dc_inactive_blank_ui_20270101022700
+--
+-- ⚠ Postgres recusa CREATE OR REPLACE quando muda OUT/RETURNS TABLE
+-- (SQLSTATE 42P13). A coluna `reason` é nova → DROP antes de recriar.
 -- =============================================================================
+
+DROP FUNCTION IF EXISTS public.list_orphan_direct_components();
 
 CREATE OR REPLACE FUNCTION public.list_orphan_direct_components()
 RETURNS TABLE(

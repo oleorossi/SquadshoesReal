@@ -36,6 +36,10 @@ describe('dc_inactive_blank_ui_20270101022700 — inativo também', () => {
     expect(SQL_INACTIVE).toContain("THEN 'deleted'");
     expect(SQL_INACTIVE).toContain("THEN 'inactive'");
     expect(SQL_INACTIVE).toMatch(/reason text/);
+    // RETURNS TABLE mudou (coluna reason) — REPLACE sozinho estoura 42P13.
+    expect(SQL_INACTIVE).toMatch(
+      /DROP FUNCTION IF EXISTS public\.list_orphan_direct_components\(\);\s*CREATE OR REPLACE FUNCTION public\.list_orphan_direct_components/,
+    );
   });
 
   it('relink aceita origem inativa e exige destino ativo', () => {
