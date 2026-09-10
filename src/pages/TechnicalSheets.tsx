@@ -3602,12 +3602,20 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                   <DirectComponentSelect
                     label={`Componente ${idx + 1}`}
                     value={comp.product_id || ''}
+                    fallbackLabel={comp.product_name || ''}
                     onChange={(pid, pname, price, prodUnit) => {
                       const arr = [...(form.direct_components || [])];
                       arr[idx] = { ...arr[idx], product_id: pid, product_name: pname, unit_price: price, unit: prodUnit };
                       updateField('direct_components', arr);
                     }}
                   />
+                  {comp.product_id && (!liveProd || liveProd.active === false) && (
+                    <p className="text-[11px] text-amber-700 dark:text-amber-400 sm:col-span-3 -mt-2">
+                      {liveProd?.active === false
+                        ? `“${comp.product_name || liveProd?.name || 'Componente'}” está inativo no estoque — some na lista ativa do seletor, mas o consumo SQL ainda debita.`
+                        : `“${comp.product_name || 'Componente'}” não existe mais no estoque — vínculo só no JSON da ficha.`}
+                    </p>
+                  )}
                   <div>
                     <Label className="text-xs text-muted-foreground">
                       Qtd por par <span className="font-mono">({unit})</span>
@@ -4905,6 +4913,7 @@ function InsolePlateProductSelect({ label, value, onChange }: { label: string; v
                          <DirectComponentSelect
                            label=""
                            value={r.product_id || ''}
+                           fallbackLabel={prod?.name || r.product_name || ''}
                            onChange={(pid) => { if (pid && pid !== r.product_id) updateRow.mutate({ id: r.id, sheetId, productId: pid }); }}
                          />
                        </div>

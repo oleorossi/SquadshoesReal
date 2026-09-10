@@ -5,48 +5,49 @@ import { resolve } from 'node:path';
 const ROOT = resolve(__dirname, '../..');
 const read = (p: string) => readFileSync(resolve(ROOT, p), 'utf8');
 
-const SQL = read('supabase/migrations/20261028120200_list-and-relink-orphan-direct-components.sql');
+const SQL_ORIG = read('supabase/migrations/20261028120200_list-and-relink-orphan-direct-components.sql');
+const SQL_INACTIVE = read('supabase/migrations/20270101022700_direct-components-inactive-blank-ui.sql');
 const panel = read('src/components/technical-sheets/OrphanDirectComponentsPanel.tsx');
 const page = read('src/pages/SystemDiagnostics.tsx');
+const select = read('src/components/technical-sheets/sheetSelectors.tsx');
 
-describe('religamento de componente direto órfão — SQL', () => {
+describe('religamento de componente direto órfão — SQL original', () => {
   it('agrupa pelo product_id, não pelo nome gravado', () => {
-    const fn = SQL.split('CREATE OR REPLACE FUNCTION public.list_orphan_direct_components')[1] ?? '';
+    const fn = SQL_ORIG.split('CREATE OR REPLACE FUNCTION public.list_orphan_direct_components')[1] ?? '';
     expect(fn).toContain("(dc ->> 'product_id')::uuid");
     expect(fn).toContain('GROUP BY 1');
-    // names é ARRAY porque o mesmo ID aparece com nomes diferentes entre fichas.
     expect(fn).toMatch(/array_agg\(DISTINCT btrim\(COALESCE\(dc ->> 'product_name'/);
   });
 
-  it('só lista o que realmente perdeu o produto', () => {
-    const fn = SQL.split('CREATE OR REPLACE FUNCTION public.list_orphan_direct_components')[1] ?? '';
+  it('versão original só listava produto apagado', () => {
+    const fn = SQL_ORIG.split('CREATE OR REPLACE FUNCTION public.list_orphan_direct_components')[1] ?? '';
     expect(fn).toMatch(/NOT EXISTS \(\s*SELECT 1 FROM public\.products p/);
+    expect(fn).not.toContain('inactive');
   });
 
-  it('recusa religar quando o produto "morto" ainda existe', () => {
-    expect(SQL).toContain('ainda existe — isto religa apenas vínculo órfão');
+  it('versão original recusava religar quando o produto morto ainda existe', () => {
+    expect(SQL_ORIG).toContain('ainda existe — isto religa apenas vínculo órfão');
+  });
+});
+
+describe('dc_inactive_blank_ui_20270101022700 — inativo também', () => {
+  it('lista deleted e inactive com coluna reason', () => {
+    expect(SQL_INACTIVE).toContain('dc_inactive_blank_ui_20270101022700');
+    expect(SQL_INACTIVE).toContain("THEN 'deleted'");
+    expect(SQL_INACTIVE).toContain("THEN 'inactive'");
+    expect(SQL_INACTIVE).toMatch(/reason text/);
   });
 
-  it('recusa destino inexistente', () => {
-    expect(SQL).toContain('Produto destino % não existe');
+  it('relink aceita origem inativa e exige destino ativo', () => {
+    expect(SQL_INACTIVE).toContain('ainda está ativo — isto religa apenas vínculo órfão ou inativo');
+    expect(SQL_INACTIVE).toContain('não existe ou está inativo');
+    expect(SQL_INACTIVE).toMatch(/p\.active IS TRUE/);
   });
 
-  it('preserva quantidade e preço da linha — são dados da FICHA, não do produto', () => {
-    const fn = SQL.split('CREATE OR REPLACE FUNCTION public.relink_direct_component')[1] ?? '';
-    // Faz merge sobre o elemento original (dc || {...}), em vez de reconstruir
-    // o objeto do zero, que perderia quantity/unit_price.
-    expect(fn).toMatch(/dc\s*\|\|\s*jsonb_build_object\('product_id'/);
-    expect(fn).not.toMatch(/jsonb_build_object\(\s*'product_id'[^)]*'quantity'/);
-  });
-
-  it('mantém a ordem dos componentes da ficha', () => {
-    const fn = SQL.split('CREATE OR REPLACE FUNCTION public.relink_direct_component')[1] ?? '';
-    expect(fn).toContain('WITH ORDINALITY');
-    expect(fn).toContain('ORDER BY ord');
-  });
-
-  it('exige usuário aprovado', () => {
-    expect(SQL).toContain('is_approved_user()');
+  it('DirectComponentSelect inclui o value inativo na query', () => {
+    expect(select).toContain('resolveDirectComponentSelection');
+    expect(select).toContain('active.eq.true,id.eq.');
+    expect(select).toContain('fallbackLabel');
   });
 });
 
@@ -62,8 +63,9 @@ describe('painel de religamento — UI', () => {
     expect(panel).toContain('confira na bancada');
   });
 
-  it('explica a consequência de deixar órfão', () => {
+  it('explica apagado vs inativo', () => {
     expect(panel).toContain('não são reservados nem debitados');
+    expect(panel).toContain('somem no seletor da ficha mas o SQL ainda debita');
   });
 
   it('invalida a lista após religar, pra não mostrar dado velho', () => {

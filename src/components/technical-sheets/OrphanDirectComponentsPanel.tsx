@@ -11,16 +11,15 @@ import {
 import { toast } from 'sonner';
 
 /**
- * Componentes diretos cujo produto foi APAGADO do estoque.
+ * Componentes diretos cujo produto foi APAGADO ou está INATIVO no estoque.
  *
- * `technical_sheets.direct_components` é jsonb, não FK — o produto some e a
- * ficha fica apontando pro nada (ver mig 20261028120000). O modal de consumo só
- * avisa depois: "não resolve produto no estoque — NÃO será reservado nem
- * debitado", e o componente some do custo e da compra em silêncio.
+ * `technical_sheets.direct_components` é jsonb, não FK — o produto some/desativa
+ * e a ficha fica apontando pro nada (ver mig 20261028120000 + 20270101022700).
+ * O seletor da ficha só lista active=true → linha parece vazia; o motor SQL
+ * ainda debita produto inativo (JOIN sem filtro active).
  *
  * Recadastrar NÃO reata: produto novo nasce com ID novo. Este painel é o
- * caminho de volta — aponta o vínculo órfão pra um produto existente em todas
- * as fichas de uma vez.
+ * caminho de volta — aponta o vínculo pra um produto ATIVO em todas as fichas.
  */
 
 type OrphanRow = {
@@ -29,6 +28,8 @@ type OrphanRow = {
   sheets_count: number;
   sheet_names: string[];
   quantities: number[];
+  /** 'deleted' | 'inactive' — coluna nova em 20270101022700; fallback deleted. */
+  reason?: string | null;
 };
 
 type PickableProduct = { id: string; name: string; color: string | null };
@@ -111,30 +112,41 @@ export default function OrphanDirectComponentsPanel() {
     return (
       <EmptyState
         icon={Check}
-        title="Nenhum componente órfão"
-        description="Toda ficha aponta pra um produto que existe no estoque."
+        title="Nenhum componente órfão ou inativo"
+        description="Toda ficha aponta pra um produto ativo no estoque."
       />
     );
   }
+
+  const deletedCount = orphans.filter((o) => (o.reason || 'deleted') === 'deleted').length;
+  const inactiveCount = orphans.filter((o) => o.reason === 'inactive').length;
 
   return (
     <div className="space-y-3">
       <div className="flex items-start gap-2 rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
         <span>
-          <strong>{orphans.length}</strong> {orphans.length === 1 ? 'produto apagado' : 'produtos apagados'} ainda
-          {' '}{orphans.length === 1 ? 'é referenciado' : 'são referenciados'} por <strong>{totalLinhas}</strong>
-          {' '}{totalLinhas === 1 ? 'ficha' : 'fichas'}. Esses componentes <strong>não são reservados nem debitados</strong> —
-          somem do custo do par e da compra. Aponte cada um pro produto correto abaixo.
+          <strong>{orphans.length}</strong> {orphans.length === 1 ? 'produto' : 'produtos'}
+          {' '}({deletedCount} apagado{deletedCount === 1 ? '' : 's'}
+          {inactiveCount > 0 ? ` · ${inactiveCount} inativo${inactiveCount === 1 ? '' : 's'}` : ''})
+          {' '}ainda {orphans.length === 1 ? 'é referenciado' : 'são referenciados'} por <strong>{totalLinhas}</strong>
+          {' '}{totalLinhas === 1 ? 'ficha' : 'fichas'}.
+          {' '}Apagados <strong>não são reservados nem debitados</strong>; inativos
+          {' '}<strong>somem no seletor da ficha mas o SQL ainda debita</strong>.
+          {' '}Aponte cada um pro produto ativo correto abaixo.
         </span>
       </div>
 
       {orphans.map((o) => {
         const nomeConflitante = o.names.filter(Boolean).length > 1;
+        const reason = o.reason || 'deleted';
         return (
-          <div key={o.dead_product_id} className="rounded-md border border-border p-3 space-y-2.5">
+          <div key={`${o.dead_product_id}-${reason}`} className="rounded-md border border-border p-3 space-y-2.5">
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-medium text-sm">{o.names.filter(Boolean).join(' / ') || '(sem nome)'}</span>
+              <Badge variant="outline" className="text-[11px]">
+                {reason === 'inactive' ? 'inativo' : 'apagado'}
+              </Badge>
               <Badge variant="outline" className="text-[11px]">
                 {o.sheets_count} {o.sheets_count === 1 ? 'ficha' : 'fichas'}
               </Badge>

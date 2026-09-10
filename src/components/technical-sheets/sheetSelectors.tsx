@@ -17,6 +17,7 @@ import { useGroups, type ProductGroup } from '@/hooks/useGroups';
 import { useProducts } from '@/hooks/useProducts';
 import { getGroupPath } from '@/lib/groupHierarchy';
 import { sectorOfGroup } from '@/lib/categoryFromGroup';
+import { resolveDirectComponentSelection } from '@/lib/directComponentSelection';
 
 /**
  * Seletores de cadastro da Ficha Tecnica.
@@ -593,19 +594,36 @@ export function SoleProductSelect({ label, value, onChange }: { label: string; v
   );
 }
 
-export function DirectComponentSelect({ label, value, onChange }: { label: string; value: string; onChange: (productId: string, productName: string, unitPrice: number, unit: string) => void }) {
+export function DirectComponentSelect({
+  label,
+  value,
+  onChange,
+  fallbackLabel,
+}: {
+  label: string;
+  value: string;
+  onChange: (productId: string, productName: string, unitPrice: number, unit: string) => void;
+  /** Snapshot `product_name` do JSONB — usado quando o produto sumiu/está inativo. */
+  fallbackLabel?: string;
+}) {
   const { data: products = [] } = useQuery({
-    queryKey: ['products_direct_components_all'],
+    // Inclui o value atual mesmo inativo: senão a ficha mostra "Selecionar grupo…"
+    // em branco enquanto o SQL ainda debita o SKU (JOIN sem filtro active).
+    queryKey: ['products_direct_components_all', value || null],
     queryFn: async () => {
-      // Trazemos tudo que está ativo. Solados/cabedais/forrações/palmilhas/tiras
-      // têm os próprios seletores em outras seções, mas alguns usuários cadastram
-      // acessórios na mesma categoria, então NÃO filtramos por category aqui —
-      // a busca por nome já cobre.
-      const { data, error } = await supabase
+      // Trazemos tudo que está ativo (+ o product_id já pinado na ficha, mesmo
+      // inativo). Solados/cabedais/forrações/palmilhas/tiras têm os próprios
+      // seletores em outras seções, mas alguns usuários cadastram acessórios na
+      // mesma categoria, então NÃO filtramos por category aqui — a busca por
+      // nome já cobre.
+      let q = supabase
         .from('products')
-        .select('id, name, sku, unit_price, unit, color, group_id, product_groups!products_group_id_fkey(name)')
-        .eq('active', true)
+        .select('id, name, sku, unit_price, unit, color, group_id, active, product_groups!products_group_id_fkey(name)')
         .order('name');
+      q = value
+        ? q.or(`active.eq.true,id.eq.${value}`)
+        : q.eq('active', true);
+      const { data, error } = await q;
       if (error) throw error;
       return (data || []).map((p: any) => ({
         ...p,
@@ -618,6 +636,9 @@ export function DirectComponentSelect({ label, value, onChange }: { label: strin
   const groups = useMemo(() => {
     const m = new Map<string, string>();
     for (const p of products as any[]) {
+      // Só grupos com pelo menos 1 item ATIVO na lista de escolha — o inativo
+      // pinado entra via selected, não precisa poluir o dropdown de grupos.
+      if (p.active === false) continue;
       if (p.group_id && p.groupName && !m.has(p.group_id)) m.set(p.group_id, p.groupName);
     }
     return Array.from(m, ([id, name]) => ({ id, name }))
@@ -625,13 +646,19 @@ export function DirectComponentSelect({ label, value, onChange }: { label: strin
   }, [products]);
 
   const selected = (products as any[]).find((p: any) => p.id === value);
+  const resolve = resolveDirectComponentSelection({
+    value,
+    selected,
+    fallbackLabel,
+  });
   // Sem override, o grupo segue o produto já selecionado (edição de ficha existente).
   const [groupOverride, setGroupOverride] = useState<string | null>(null);
   const effectiveGroupId = groupOverride !== null ? groupOverride : (selected?.group_id || '');
-  const effectiveGroupName = groups.find(g => g.id === effectiveGroupId)?.name || '';
+  const effectiveGroupName = groups.find(g => g.id === effectiveGroupId)?.name
+    || (selected?.groupName && selected.active === false ? selected.groupName : '');
 
   const itemsOfGroup = useMemo(
-    () => (products as any[]).filter((p: any) => p.group_id === effectiveGroupId),
+    () => (products as any[]).filter((p: any) => p.group_id === effectiveGroupId && p.active !== false),
     [products, effectiveGroupId],
   );
 
@@ -658,14 +685,42 @@ export function DirectComponentSelect({ label, value, onChange }: { label: strin
     [filteredItems],
   );
 
+  const unresolved = resolve.status !== 'ok' && !!value;
+  const groupTriggerLabel = unresolved
+    ? resolve.label
+    : (effectiveGroupName || '1) Selecionar grupo...');
+  const itemTriggerLabel = unresolved
+    ? 'Troque pelo item ativo do grupo'
+    : (selected && selected.active !== false
+      ? `${selected.name}${selected.color ? ` (${selected.color})` : ''}`
+      : (effectiveGroupId ? '2) Selecionar item...' : '2) Escolha o grupo primeiro'));
+
   return (
     <div>
       <Label className="text-xs text-muted-foreground">{label}</Label>
+      {unresolved && (
+        <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-400 flex items-start gap-1">
+          <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
+          <span>
+            {resolve.status === 'inactive'
+              ? 'Produto inativo no estoque — ainda entra no consumo SQL. Reative o SKU ou troque o componente.'
+              : 'Produto apagado do estoque — a ficha ainda guarda o vínculo no JSON. Religue em Diagnósticos → Consumo ou escolha outro item.'}
+          </span>
+        </p>
+      )}
       {/* Passo 1 — Grupo */}
       <Popover open={groupOpen} onOpenChange={(o) => { setGroupOpen(o); if (!o) setGroupSearch(''); }}>
         <PopoverTrigger asChild>
-          <Button variant="outline" role="combobox" aria-expanded={groupOpen} className="mt-1 h-9 w-full justify-between text-sm font-normal">
-            <span className="truncate">{effectiveGroupName || '1) Selecionar grupo...'}</span>
+          <Button
+            variant="outline"
+            role="combobox"
+            aria-expanded={groupOpen}
+            className={cn(
+              'mt-1 h-9 w-full justify-between text-sm font-normal',
+              unresolved && 'border-amber-500/60 text-amber-800 dark:text-amber-300',
+            )}
+          >
+            <span className="truncate">{groupTriggerLabel}</span>
             <ChevronsUpDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
@@ -712,13 +767,16 @@ export function DirectComponentSelect({ label, value, onChange }: { label: strin
         </PopoverContent>
       </Popover>
       {/* Passo 2 — Item do grupo (habilita só após escolher o grupo) */}
-      <Popover open={itemOpen} onOpenChange={(o) => { if (o && !effectiveGroupId) return; setItemOpen(o); if (!o) setItemSearch(''); }}>
+      <Popover open={itemOpen} onOpenChange={(o) => { if (o && !effectiveGroupId && !unresolved) return; setItemOpen(o); if (!o) setItemSearch(''); }}>
         <PopoverTrigger asChild>
-          <Button variant="outline" role="combobox" aria-expanded={itemOpen} disabled={!effectiveGroupId}
-            className="mt-1 h-9 w-full justify-between text-sm font-normal">
-            <span className="truncate">
-              {selected ? `${selected.name}${selected.color ? ` (${selected.color})` : ''}` : (effectiveGroupId ? '2) Selecionar item...' : '2) Escolha o grupo primeiro')}
-            </span>
+          <Button variant="outline" role="combobox" aria-expanded={itemOpen}
+            disabled={!effectiveGroupId && !unresolved}
+            className={cn(
+              'mt-1 h-9 w-full justify-between text-sm font-normal',
+              unresolved && 'border-amber-500/60 text-amber-800 dark:text-amber-300',
+            )}
+          >
+            <span className="truncate">{itemTriggerLabel}</span>
             <ChevronsUpDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
