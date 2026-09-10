@@ -26,7 +26,9 @@ function latestPromoteBody(): string {
     const start = text.indexOf('CREATE OR REPLACE FUNCTION public.promote_sale_order_item(');
     if (start < 0) continue;
     const tail = text.slice(start);
-    const end = tail.indexOf('$function$;');
+    const endFn = tail.indexOf('$function$;');
+    const endDollar = tail.indexOf('$$;');
+    const end = endFn >= 0 ? endFn : endDollar;
     expect(end, `${name}: promote sem terminador`).toBeGreaterThanOrEqual(0);
     return tail.slice(0, end);
   }

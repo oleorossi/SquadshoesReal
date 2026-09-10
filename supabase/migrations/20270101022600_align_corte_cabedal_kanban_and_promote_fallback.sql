@@ -5,6 +5,12 @@
 -- 2) promote_sale_order_item ainda caía no fallback pré-Corte Fibra
 --    (Corte Palmilha + Mesa). O promote atômico remenda fichas vazias, mas
 --    chamada direta / ficha sem rota gravava nomes mortos.
+--
+-- ⚠ Apply 20270101022600 falhou em 10/09/2026 com 42501. Causa mais
+--   provável: REVOKE/COMMENT em promote_sale_order_item sem ownership
+--   (função pode ter ficado com dono supabase_admin após apply MCP). O CLI
+--   reporta o INSERT em schema_migrations como statement do erro. CREATE OR
+--   REPLACE preserva ACL — não reaplicar REVOKE aqui.
 
 INSERT INTO public.sector_settings
   (sector, flow_order, enabled, parallel_group, daily_capacity_pairs, ficha_capacity_column)
@@ -29,6 +35,20 @@ UPDATE public.sector_settings
        enabled = COALESCE(enabled, true)
  WHERE sector = 'Corte Cabedal';
 
+-- Assumir ownership antes do CREATE OR REPLACE (no-op se já formos donos).
+DO $own$
+BEGIN
+  ALTER FUNCTION public.promote_sale_order_item(uuid, text, text, date, boolean, text)
+    OWNER TO postgres;
+EXCEPTION
+  WHEN undefined_function THEN
+    NULL;
+  WHEN insufficient_privilege THEN
+    RAISE NOTICE
+      'promote_sale_order_item: sem privilégio pra ALTER OWNER (seguindo com CREATE OR REPLACE)';
+END
+$own$;
+
 CREATE OR REPLACE FUNCTION public.promote_sale_order_item(
   p_item_id           uuid,
   p_op_status         text,
@@ -41,7 +61,7 @@ RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path TO 'public'
-AS $function$
+AS $$
 DECLARE
   v_item          public.sale_order_items%ROWTYPE;
   v_so_id         uuid;
@@ -190,10 +210,7 @@ BEGIN
     'skipped', false
   );
 END;
-$function$;
+$$;
 
-REVOKE ALL ON FUNCTION public.promote_sale_order_item(uuid, text, text, date, boolean, text)
-  FROM PUBLIC, anon, authenticated;
-
-COMMENT ON FUNCTION public.promote_sale_order_item(uuid, text, text, date, boolean, text) IS
-  'Cria OP + débito soft + etapas. Fallback vivo = 11 etapas (Corte Fibra…Expedição), sem Corte Cabedal (opt-in). Grafias legadas normalizadas via canonical_stage_name.';
+-- Grants/REVOKE ficam como a 20270101010500 deixou (CREATE OR REPLACE preserva ACL).
+-- Não reaplicar REVOKE/COMMENT aqui — exigem ownership e já derrubaram o apply.
