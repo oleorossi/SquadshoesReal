@@ -439,18 +439,25 @@ export function adaptCanonicalConsumptionLines(
     }
 
     const refLabel = referenceId ? referenceLabelById?.get(referenceId) : undefined;
+    // Sem largura o SQL deixa dm2_per_unit=1 (dm² rotulado como metro ≈100×).
+    // Relabel pra dm2 — anula o risco na UI de produção (caminho canônico).
+    const widthMissing = !!line.conversion_warning
+      && /largura|dimens(?:ão|ao)/i.test(line.conversion_warning);
+    const unitLower = String(unit || '').toLowerCase();
+    const safeUnit = widthMissing && (unitLower === 'metro' || unitLower === 'm' || unitLower === 'metros')
+      ? 'dm2'
+      : unit;
     const row: MaterialConsumptionRow = {
       componentType: component,
       groupName,
       materialName,
-      productUnit: unit,
+      productUnit: safeUnit,
       color,
       totalQuantity: line.required,
       consumptionSector,
       consumptionSectorSource: line.consumption_sector_source || null,
       consumptionMaterialSource: line.source || null,
-      widthMissing: !!line.conversion_warning
-        && /largura|dimens(?:ão|ao)/i.test(line.conversion_warning),
+      widthMissing,
       warning,
       sizeBreakdown: mergeGrade(undefined, grade),
       soleProductId: component === 'Solado' ? productId : null,

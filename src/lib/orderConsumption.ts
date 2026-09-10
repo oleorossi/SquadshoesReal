@@ -3,6 +3,7 @@ import {
   calculateGradeBasedDm2,
   calculateConsumptionWithUnit,
   isLinearWidthMissing,
+  linearUnitOrDm2,
   convertDm2ToLinearMeters,
   convertDm2ToPlates,
   convertToProductUnit,
@@ -1716,14 +1717,15 @@ export function computeConsumptionForItems(
       // da ficha (Material 1). Quando fixado + ativo, o débito SQL baixa ESSE
       // produto (resolve_upper_material_for_variant → 'variant'/'sheet_pin') e
       // a conversão dm²→m usa a cs DELE (F2-04).
+      const upperWidthMissing = isLinearWidthMissing(upperSheet, 'm');
       addConsumptionRow(consumptionMap, {
         componentType: 'Cabedal',
         groupName: upperMatch.group,
         materialName: upperPin?.name || 'Cabedal',
-        productUnit: 'metro',
+        productUnit: linearUnitOrDm2(upperWidthMissing),
         color: orderColor,
         totalQuantity: upperTotal,
-        widthMissing: isLinearWidthMissing(upperSheet, 'm'),
+        widthMissing: upperWidthMissing,
         colorMismatch: upperColorMismatch,
         warning: upperColorMismatch ? `Cor ${orderColor} não cadastrada em ${upperMatch.group}. Cadastre o SKU antes de separar.` : undefined,
         productIds: !upperColorMismatch && upperProduct?.id ? [upperProduct.id] : undefined,
@@ -1759,6 +1761,7 @@ export function computeConsumptionForItems(
         ? mandMat.consumption_per_size
         : null;
       const { total: mandTotal } = calculateConsumptionWithUnit(item, mandConsumption, mandSheet, 'metro', mandOverride);
+      const mandWidthMissing = isLinearWidthMissing(mandSheet, 'm');
       const leftoverExtra = isLeftoverCabedalExtra(mandMat, sheet);
       addConsumptionRow(consumptionMap, {
         componentType: 'Cabedal',
@@ -1766,10 +1769,10 @@ export function computeConsumptionForItems(
         materialName: mandColorMismatch ? 'Cabedal' : followsVariant ? mandProduct?.name || mandGroup : leftoverExtra
           ? leftoverCabedalDisplayName({ ...mandMat, product_name: pinnedProd?.name || mandMat.product_name })
           : (pinnedProd?.name || mandMat.label || 'Material Fixo'),
-        productUnit: 'metro',
+        productUnit: linearUnitOrDm2(mandWidthMissing),
         color: orderColor,
         totalQuantity: mandTotal,
-        widthMissing: isLinearWidthMissing(mandSheet, 'm'),
+        widthMissing: mandWidthMissing,
         colorMismatch: mandColorMismatch,
         warning: mandColorMismatch ? `Cor ${orderColor} não cadastrada em ${mandGroup}. Cadastre o SKU antes de separar.` : undefined,
         productIds: !mandColorMismatch && mandProduct?.id ? [mandProduct.id] : undefined,
@@ -1866,7 +1869,7 @@ export function computeConsumptionForItems(
         componentType: 'Forração',
         groupName: liningMatch.group,
         materialName: liningPin?.name || 'Forração',
-        productUnit: 'metro',
+        productUnit: linearUnitOrDm2(liningWidthMissing),
         color: mappedLiningColor,
         totalQuantity: liningTotal,
         widthMissing: liningWidthMissing,
@@ -2133,7 +2136,7 @@ export function computeConsumptionForItems(
           componentType: 'Forração Palmilha',
           groupName: liningGroupForPalm,
           materialName: 'Forração Palmilha',
-          productUnit: 'metro',
+          productUnit: linearUnitOrDm2(forrWidthMissing),
           color: mappedLiningColor,
           totalQuantity: forrTotal,
           widthMissing: forrWidthMissing,
@@ -2268,7 +2271,7 @@ export function computeConsumptionForItems(
           componentType: 'Fachete',
           groupName: facheteMaterialName,
           materialName: 'Fachete',
-          productUnit: widthMissing ? 'dm2' : 'metro',
+          productUnit: linearUnitOrDm2(widthMissing),
           color: mappedLiningColor,
           totalQuantity: facheteTotal,
           widthMissing,

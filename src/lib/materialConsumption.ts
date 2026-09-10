@@ -402,6 +402,14 @@ export const isLinearWidthMissing = (componentSheet: ComponentSheetCandidate | n
   return getLinearWidthMm(componentSheet) <= 0;
 };
 
+/**
+ * Unidade física segura pra emitir consumo de área→linear.
+ * Sem largura o total ainda está em dm² — NUNCA rotular como metro
+ * (infla ~100× na UI/MRP). Espelha o padrão Fachete/BOM.
+ */
+export const linearUnitOrDm2 = (widthMissing: boolean): 'metro' | 'dm2' =>
+  widthMissing ? 'dm2' : 'metro';
+
 export const convertDm2ToPlates = (totalDm2: number, componentSheet: ComponentSheetCandidate | null) => {
   const plateAreaDm2 = getPlateAreaDm2(componentSheet);
   if (plateAreaDm2 <= 0) return totalDm2;

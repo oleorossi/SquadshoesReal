@@ -7,6 +7,7 @@ import {
   convertToProductUnit,
   getPreferredComponentSheet as getPreferredComponentSheetFromCandidates,
   isLinearWidthMissing,
+  linearUnitOrDm2,
   normalizeText,
   normalizeColorKey,
   pickConsumptionForSize,
@@ -1092,9 +1093,11 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       // Tamanho sem valor por numeração cai no ESCALAR FLAT da ficha (contrato
       // SQL — F2-02); o multiplicador por tamanho saiu (era só do TS).
       const { total: upperTotal } = calculateConsumptionWithUnit(item, upperMatch.consumption, upperSheet, 'metro', overridePerSize);
+      const upperWidthMissing = isLinearWidthMissing(upperSheet, 'm');
       addConsumptionRow(consumptionMap, {
         componentType: 'Cabedal', groupName: upperMatch.group, materialName: upperColorMismatch ? 'Cabedal' : upperProduct?.name || 'Cabedal',
-        productUnit: 'metro', color: orderColor, totalQuantity: upperTotal,
+        productUnit: linearUnitOrDm2(upperWidthMissing), color: orderColor, totalQuantity: upperTotal,
+        widthMissing: upperWidthMissing,
         colorMismatch: upperColorMismatch,
         warning: upperColorMismatch ? `Cor ${orderColor} não cadastrada em ${upperMatch.group}. Cadastre o SKU antes de separar.` : undefined,
         productIds: !upperColorMismatch && upperProduct?.id ? [upperProduct.id] : undefined,
@@ -1126,13 +1129,15 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       const mandSheet = getConversionSheetForProduct(mandProduct?.id, mandGroup, { color: orderColor, mode: 'linear', preferYield: true });
       const mandOverride = (mandMat.consumption_per_size && Object.keys(mandMat.consumption_per_size).length > 0) ? mandMat.consumption_per_size : null;
       const { total: mandTotal } = calculateConsumptionWithUnit(item, mandConsumption, mandSheet, 'metro', mandOverride);
+      const mandWidthMissing = isLinearWidthMissing(mandSheet, 'm');
       const leftoverExtra = isLeftoverCabedalExtra(mandMat, sheet);
       addConsumptionRow(consumptionMap, {
         componentType: 'Cabedal', groupName: mandGroup,
         materialName: mandColorMismatch ? 'Cabedal' : followsVariant ? mandProduct?.name || mandGroup : leftoverExtra
           ? leftoverCabedalDisplayName({ ...mandMat, product_name: mandProduct?.name || mandMat.product_name })
           : (mandProduct?.name || mandMat.label || 'Material Fixo'),
-        productUnit: 'metro', color: orderColor, totalQuantity: mandTotal,
+        productUnit: linearUnitOrDm2(mandWidthMissing), color: orderColor, totalQuantity: mandTotal,
+        widthMissing: mandWidthMissing,
         colorMismatch: mandColorMismatch,
         warning: mandColorMismatch ? `Cor ${orderColor} não cadastrada em ${mandGroup}. Cadastre o SKU antes de separar.` : undefined,
         productIds: !mandColorMismatch && mandProduct?.id ? [mandProduct.id] : undefined,
@@ -1231,7 +1236,8 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       }
       addConsumptionRow(consumptionMap, {
         componentType: 'Forração', groupName: liningMatch.group, materialName: 'Forração',
-        productUnit: 'metro', color: mappedLiningColor, totalQuantity: liningTotal,
+        productUnit: linearUnitOrDm2(liningWidthMissing), color: mappedLiningColor, totalQuantity: liningTotal,
+        widthMissing: liningWidthMissing,
         warning: liningWarning,
       });
     }
@@ -1373,7 +1379,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
         // roteamento por setor (Corte Forração vs Corte Fibra / Aviamento) depende disso.
         if (forrTotal > 0 || forrWarning) addConsumptionRow(consumptionMap, {
           componentType: 'Forração Palmilha', groupName: liningGroupForPalm, materialName: 'Forração Palmilha',
-          productUnit: 'metro', color: mappedLiningColor, totalQuantity: forrTotal,
+          productUnit: linearUnitOrDm2(forrWidthMissing), color: mappedLiningColor, totalQuantity: forrTotal,
           widthMissing: forrWidthMissing,
           warning: forrWarning,
         });

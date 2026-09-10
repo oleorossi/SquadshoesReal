@@ -63,3 +63,30 @@ aparecem ao gerar o consumo do PV.
 2. Contrato `cabedalDm2ToMeters.contract.test.ts` verde: fórmula, `widthMissing`,
    override dm² vence yield.
 3. Typecheck / testes de unidade do motor de consumo passam.
+
+## Neutralização dos riscos operacionais (2026-09-10)
+
+### Risco ~100× (largura ausente)
+
+**Como anular:** nunca rotular o total como `metro` quando falta largura.
+
+| Camada | Mudança |
+|---|---|
+| Emissor TS | `linearUnitOrDm2(widthMissing)` em Cabedal/Forração (`orderConsumption`, `bomConsumption`) — espelha Fachete |
+| Relatório canônico SQL | `canonicalConsumptionReport` relabela `metro`→`dm2` quando `conversion_warning` cita largura |
+| Cadastro | Trigger + UI de ficha de componente já **bloqueiam** save sem `dimensions_width` |
+| Compra/MRP | Já excluía linhas com `conversion_warning` |
+
+Resultado: a UI mostra **dm²** (âmbar) em vez de “144 m” falsos; compra não age sobre a linha.
+
+### Risco ~2× (cadastro por pé)
+
+**Como anular:** confirmação explícita POR PAR no save + auditoria assistida ×2.
+
+| Camada | Mudança |
+|---|---|
+| Save da ficha | `needsCabedalParConfirmation` + `window.confirm` em `TechnicalSheets` antes do mutate |
+| Diagnósticos | `CabedalParPeAuditPanel` + RPC `double_upper_consumption` (legado) |
+| Labels | Editor já diz “POR PAR (dm²/par, não por pé)” |
+
+Não há auto-×2 cego (spec `consumo-cabedal-padrao-par.md`): o humano confirma.
