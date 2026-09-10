@@ -492,21 +492,24 @@ describe('materialConsumptionReport', () => {
     expect(html).not.toContain('R$');
   });
 
-  it('mostra subtotal por segmento de tira (groupName) com somas de metros e valor', () => {
+  it('mostra um subtotal por segmento (tipo+base), somando todas as cores — não um subtotal por cor', () => {
     const cut = {
       largura_mm: 8, metros_uteis_por_banda: 0, n_bandas: 0, cm_a_cortar: 0,
       rolos: 0, n_rolos_completos: 0, cm_no_ultimo_rolo: 0, valid: false, widthMissing: false,
     };
+    // Em produção groupName INCLUI a cor (formatCanonicalStrapProductName).
+    // O bug era subtotalar cada cor isolada ("1 cor"); o certo é listar as
+    // cores do segmento e só então um Subtotal · tipo+base.
     const makeRow = (
       key: string,
-      groupName: string,
+      segment: string,
       color: string,
       metros: number,
       baseRequiredM: number,
       largura_mm: number,
     ) => ({
       key,
-      groupName,
+      groupName: `${segment} · ${color}`,
       color,
       baseName: 'NAPA MADRID',
       largura_mm,
@@ -539,10 +542,19 @@ describe('materialConsumptionReport', () => {
       rows: [],
     });
 
+    // Um subtotal por segmento — não seis (um por cor).
+    expect(html.match(/class="strap-subtotal"/g)).toHaveLength(2);
     expect(html).toContain(`Subtotal · ${elastico}`);
     expect(html).toContain(`Subtotal · ${chata}`);
     expect(html).toContain('3 cores');
-    expect(html).toContain('class="strap-subtotal"');
+    expect(html).not.toMatch(/strap-subtotal[\s\S]*?1 cor/);
+    // Coluna Tira nas linhas de detalhe mostra o segmento (sem cor).
+    expect(html).toContain(`<td><strong>${elastico}</strong></td>`);
+    expect(html).toContain(`<td><strong>${chata}</strong></td>`);
+    // Cores listadas na coluna Cor / base.
+    expect(html).toContain('CAPUCCINO · NAPA MADRID');
+    expect(html).toContain('OFF WHITE · NAPA MADRID');
+    expect(html).toContain('ROCHA · NAPA MADRID');
     // Somas: 3 × 386,88 = 1.160,64 m · 3 × 12,90 = 38,70 m · 3 × 386,88 × 0,32 = R$ 371,40
     expect(html).toContain('1.160,64 m');
     expect(html).toContain('38,70 m');

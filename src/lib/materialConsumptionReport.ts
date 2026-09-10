@@ -379,14 +379,33 @@ const isArtisanalStrapBlocked = (row: ArtisanalStrapCutRow): boolean => {
     || !!snapshot.snapshotWarning;
 };
 
+/**
+ * Segmento da tira = tipo + base, SEM a cor.
+ * Em produção `groupName` vem de `formatCanonicalStrapProductName` como
+ * `TIRA CHATA 8 mm · NAPA MADRID · OFF WHITE` — se agrupássemos por groupName
+ * cru, cada cor virava um "segmento" de 1 linha (bug visto no PDF).
+ */
+const artisanalStrapSegmentKey = (row: ArtisanalStrapCutRow): string => {
+  const name = (row.groupName || '').trim();
+  const color = (row.color || '').trim();
+  if (color && color !== '—') {
+    const suffix = ` · ${color}`;
+    if (name.length > suffix.length && name.toLocaleLowerCase('pt-BR').endsWith(suffix.toLocaleLowerCase('pt-BR'))) {
+      return name.slice(0, name.length - suffix.length).trim();
+    }
+  }
+  return name;
+};
+
 const renderArtisanalStrapDetailRow = (row: ArtisanalStrapCutRow): string => {
   const snapshot = row.canonical;
   const blocked = isArtisanalStrapBlocked(row);
   const laborCost = snapshot?.transformationCostPerM;
   const hasLaborCost = laborCost != null && Number.isFinite(laborCost);
   const laborTotal = hasLaborCost ? row.metros_necessarios * (laborCost as number) : null;
+  // Tira = segmento (sem cor); a cor fica só em Cor / base — estilo planilha.
   return `<tr class="${blocked ? 'is-pending' : ''}">
-          <td><strong>${escapeHtml(row.groupName)}</strong></td>
+          <td><strong>${escapeHtml(artisanalStrapSegmentKey(row))}</strong></td>
           <td>${escapeHtml(row.color || '—')}${row.baseName ? ` · ${escapeHtml(row.baseName)}` : ''}</td>
           <td class="num strong">${formatQty(row.metros_necessarios, 'm')} m</td>
           <td class="num strong">${!blocked && snapshot ? `${formatQty(snapshot.baseRequiredM, 'm')} m` : '—'}</td>
@@ -396,7 +415,7 @@ const renderArtisanalStrapDetailRow = (row: ArtisanalStrapCutRow): string => {
         </tr>`;
 };
 
-const renderArtisanalStrapSubtotalRow = (groupName: string, groupRows: ArtisanalStrapCutRow[]): string => {
+const renderArtisanalStrapSubtotalRow = (segmentKey: string, groupRows: ArtisanalStrapCutRow[]): string => {
   const strapMeters = groupRows.reduce((sum, row) => sum + (Number(row.metros_necessarios) || 0), 0);
   let napaMeters = 0;
   let laborTotal = 0;
@@ -415,7 +434,7 @@ const renderArtisanalStrapSubtotalRow = (groupName: string, groupRows: Artisanal
   const colorCount = groupRows.length;
   const colorLabel = colorCount === 1 ? '1 cor' : `${colorCount} cores`;
   return `<tr class="strap-subtotal">
-          <td><strong>Subtotal · ${escapeHtml(groupName)}</strong></td>
+          <td><strong>Subtotal · ${escapeHtml(segmentKey)}</strong></td>
           <td class="muted">${escapeHtml(colorLabel)}</td>
           <td class="num strong">${formatQty(strapMeters, 'm')} m</td>
           <td class="num strong">${napaMeters > 0 ? `${formatQty(napaMeters, 'm')} m` : '—'}</td>
@@ -425,12 +444,12 @@ const renderArtisanalStrapSubtotalRow = (groupName: string, groupRows: Artisanal
         </tr>`;
 };
 
-/** Agrupa linhas consecutivas pelo mesmo `groupName` (segmento da tira). */
+/** Agrupa linhas consecutivas pelo segmento (tipo + base, sem cor). */
 const partitionArtisanalStrapSegments = (rows: ArtisanalStrapCutRow[]): ArtisanalStrapCutRow[][] => {
   const segments: ArtisanalStrapCutRow[][] = [];
   for (const row of rows) {
     const last = segments[segments.length - 1];
-    if (last && last[0].groupName === row.groupName) last.push(row);
+    if (last && artisanalStrapSegmentKey(last[0]) === artisanalStrapSegmentKey(row)) last.push(row);
     else segments.push([row]);
   }
   return segments;
@@ -438,8 +457,15 @@ const partitionArtisanalStrapSegments = (rows: ArtisanalStrapCutRow[]): Artisana
 
 const renderArtisanalStraps = (rows: ArtisanalStrapCutRow[]): string => {
   if (!rows.length) return '';
-  const body = partitionArtisanalStrapSegments(rows)
-    .map((segment) => `${segment.map(renderArtisanalStrapDetailRow).join('')}${renderArtisanalStrapSubtotalRow(segment[0].groupName, segment)}`)
+  // Garante bloco contíguo por segmento (cores juntas) antes do subtotal.
+  const sorted = [...rows].sort((a, b) =>
+    artisanalStrapSegmentKey(a).localeCompare(artisanalStrapSegmentKey(b), 'pt-BR')
+    || (a.color || '').localeCompare(b.color || '', 'pt-BR'));
+  const body = partitionArtisanalStrapSegments(sorted)
+    .map((segment) => {
+      const segmentKey = artisanalStrapSegmentKey(segment[0]);
+      return `${segment.map(renderArtisanalStrapDetailRow).join('')}${renderArtisanalStrapSubtotalRow(segmentKey, segment)}`;
+    })
     .join('');
   return `<section class="report-section strap-section">
     <div class="section-heading">
