@@ -61,7 +61,7 @@ RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path TO 'public'
-AS $function$
+AS $$
 DECLARE
   v_item          public.sale_order_items%ROWTYPE;
   v_so_id         uuid;
@@ -210,7 +210,7 @@ BEGIN
     'skipped', false
   );
 END;
-$function$;
+$$;
 
 -- Grants/REVOKE ficam como a 20270101010500 deixou (CREATE OR REPLACE preserva ACL).
 -- Não reaplicar REVOKE/COMMENT aqui — exigem ownership e já derrubaram o apply.
