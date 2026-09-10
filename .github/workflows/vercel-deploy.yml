@@ -27,11 +27,21 @@ on:
 
   # Permite disparar manualmente em Actions tab (útil quando CI flaca por
   # razões não-relacionadas a código — ex: rede, runner indisponível).
+  # skip_migration_gate: só para frontend urgente quando o banco está travado
+  # por migration alheia (ex.: 22600). NÃO use com mudança de schema.
   workflow_dispatch:
+    inputs:
+      skip_migration_gate:
+        description: "Pular espera de migrations (só frontend; admin)"
+        required: false
+        default: false
+        type: boolean
 
-# Evita 2 deploys paralelos se vários pushes chegarem em sequência
+# Evita 2 deploys paralelos se vários pushes chegarem em sequência.
+# Bypass manual (skip_migration_gate) usa grupo próprio para não ficar atrás
+# de um deploy automático preso no gate de migrations.
 concurrency:
-  group: vercel-prod
+  group: ${{ github.event_name == 'workflow_dispatch' && inputs.skip_migration_gate && 'vercel-prod-bypass' || 'vercel-prod' }}
   cancel-in-progress: false
 
 env:
@@ -123,11 +133,20 @@ jobs:
         run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
 
       - name: Wait for database migrations from this commit
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.skip_migration_gate) }}
         timeout-minutes: 25
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
         run: bash scripts/wait-for-supabase-migrations.sh
+
+      - name: Migration gate skipped (manual bypass)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.skip_migration_gate }}
+        run: |
+          echo "⚠ Gate de migrations pulado via workflow_dispatch (skip_migration_gate=true)."
+          echo "Só use para publicar frontend quando o banco está bloqueado por migration alheia."
+          echo "## Bypass" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Gate de migrations: **pulado** (pedido manual)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Refuse a stale main commit
         if: github.event_name == 'workflow_run'
