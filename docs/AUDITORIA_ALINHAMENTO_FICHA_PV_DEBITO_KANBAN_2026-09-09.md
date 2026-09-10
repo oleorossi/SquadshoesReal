@@ -98,7 +98,7 @@ teste; documento + commits na branch. A7/A8 (live) ficam **fora** deste ciclo.
 
 | # | Checagem | Resultado | Evidência |
 |---|---|---|---|
-| B1 | `sector_settings` aceita Corte Cabedal no grupo corte | ✅ Corrigido | mig `20270101022300_…` |
+| B1 | `sector_settings` aceita Corte Cabedal no grupo corte | ✅ Corrigido | mig `20270101022600_…` |
 | B2 | Promote fallback canônico (Fibra…Expedição) | ✅ Corrigido | mesma mig + contrato |
 | B3 | Default de rota **sem** Cabedal (opt-in) | ✅ OK (intencional) | contrato |
 | B4 | Front: normalize/labels/DISPLAY/FLOW/PARALLEL | ✅ Corrigido | `sectors.ts`, `ProductionSectorsTab.tsx` |
@@ -122,7 +122,7 @@ teste; documento + commits na branch. A7/A8 (live) ficam **fora** deste ciclo.
 - **Sintoma:** ficha com Cabedal; OP/Kanban não reconheciam o setor (ou mapeavam errado).
 - **Causa:** seed ausente em `sector_settings` + fallback do promote com nomes legados +
   aliases incompletos no Kanban.
-- **Fix:** `supabase/migrations/20270101022300_align_corte_cabedal_kanban_and_promote_fallback.sql`
+- **Fix:** `supabase/migrations/20270101022600_align_corte_cabedal_kanban_and_promote_fallback.sql`
   + alinhamento front + `src/__tests__/corteCabedalKanbanAlign.contract.test.ts`.
 - **Commit:** `06b6f059`.
 
@@ -175,7 +175,7 @@ Três gaps:
 
 | Tipo | Caminho / ref |
 |---|---|
-| Migration | `supabase/migrations/20270101022300_align_corte_cabedal_kanban_and_promote_fallback.sql` |
+| Migration | `supabase/migrations/20270101022600_align_corte_cabedal_kanban_and_promote_fallback.sql` |
 | Contrato B | `src/__tests__/corteCabedalKanbanAlign.contract.test.ts` |
 | Motor Lista | `src/lib/bomConsumption.ts` |
 | Motor canônico | `src/lib/orderConsumption.ts` |

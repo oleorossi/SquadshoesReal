@@ -13,7 +13,7 @@ import {
 import { norm } from '@/components/production/kanban/kanbanDerive';
 
 const MIGRATIONS_DIR = resolve(process.cwd(), 'supabase/migrations');
-const ALIGN = '20270101022300_align_corte_cabedal_kanban_and_promote_fallback.sql';
+const ALIGN = '20270101022600_align_corte_cabedal_kanban_and_promote_fallback.sql';
 const ALIGN_SQL = readFileSync(resolve(MIGRATIONS_DIR, ALIGN), 'utf8');
 
 function latestPromoteBody(): string {
