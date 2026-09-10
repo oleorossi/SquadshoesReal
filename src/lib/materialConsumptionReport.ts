@@ -370,23 +370,22 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
     .join('');
 };
 
-const renderArtisanalStraps = (rows: ArtisanalStrapCutRow[]): string => {
-  if (!rows.length) return '';
-  return `<section class="report-section strap-section">
-    <div class="section-heading">
-      <span class="section-number">03</span>
-      <div><p class="section-kicker">Transformação interna</p><h2>Tiras artesanais</h2></div>
-      <p class="section-note">Separação da napa-base conforme o snapshot aprovado da receita.</p>
-    </div>
-    <table class="report-table">
-      <thead><tr><th>Tira</th><th>Cor / base</th><th class="num">Tira necessária</th><th class="num">Napa a separar</th><th class="num">Mão de obra/m</th><th class="num">Valor total</th><th>Situação</th></tr></thead>
-      <tbody>${rows.map((row) => {
-        const snapshot = row.canonical;
-        const blocked = !snapshot || snapshot.baseRequiredM <= 0 || snapshot.confirmedYieldMPerM <= 0 || snapshot.blockingReasons.length > 0 || !!snapshot.snapshotWarning;
-        const laborCost = snapshot?.transformationCostPerM;
-        const hasLaborCost = laborCost != null && Number.isFinite(laborCost);
-        const laborTotal = hasLaborCost ? row.metros_necessarios * (laborCost as number) : null;
-        return `<tr class="${blocked ? 'is-pending' : ''}">
+const isArtisanalStrapBlocked = (row: ArtisanalStrapCutRow): boolean => {
+  const snapshot = row.canonical;
+  return !snapshot
+    || snapshot.baseRequiredM <= 0
+    || snapshot.confirmedYieldMPerM <= 0
+    || snapshot.blockingReasons.length > 0
+    || !!snapshot.snapshotWarning;
+};
+
+const renderArtisanalStrapDetailRow = (row: ArtisanalStrapCutRow): string => {
+  const snapshot = row.canonical;
+  const blocked = isArtisanalStrapBlocked(row);
+  const laborCost = snapshot?.transformationCostPerM;
+  const hasLaborCost = laborCost != null && Number.isFinite(laborCost);
+  const laborTotal = hasLaborCost ? row.metros_necessarios * (laborCost as number) : null;
+  return `<tr class="${blocked ? 'is-pending' : ''}">
           <td><strong>${escapeHtml(row.groupName)}</strong></td>
           <td>${escapeHtml(row.color || '—')}${row.baseName ? ` · ${escapeHtml(row.baseName)}` : ''}</td>
           <td class="num strong">${formatQty(row.metros_necessarios, 'm')} m</td>
@@ -395,7 +394,62 @@ const renderArtisanalStraps = (rows: ArtisanalStrapCutRow[]): string => {
           <td class="num cost-spend">${laborTotal != null ? escapeHtml(formatMoney(laborTotal)) : '—'}</td>
           <td>${blocked ? `<span class="flag warning">${escapeHtml(snapshot?.snapshotWarning || snapshot?.blockingReasons.join(' · ') || 'snapshot incompleto')}</span>` : `<span class="flag ok">receita conferida</span>`}</td>
         </tr>`;
-      }).join('')}</tbody>
+};
+
+const renderArtisanalStrapSubtotalRow = (groupName: string, groupRows: ArtisanalStrapCutRow[]): string => {
+  const strapMeters = groupRows.reduce((sum, row) => sum + (Number(row.metros_necessarios) || 0), 0);
+  let napaMeters = 0;
+  let laborTotal = 0;
+  let hasLaborTotal = false;
+  for (const row of groupRows) {
+    const snapshot = row.canonical;
+    if (!isArtisanalStrapBlocked(row) && snapshot) {
+      napaMeters += Number(snapshot.baseRequiredM) || 0;
+    }
+    const laborCost = snapshot?.transformationCostPerM;
+    if (laborCost != null && Number.isFinite(laborCost)) {
+      laborTotal += row.metros_necessarios * (laborCost as number);
+      hasLaborTotal = true;
+    }
+  }
+  const colorCount = groupRows.length;
+  const colorLabel = colorCount === 1 ? '1 cor' : `${colorCount} cores`;
+  return `<tr class="strap-subtotal">
+          <td><strong>Subtotal · ${escapeHtml(groupName)}</strong></td>
+          <td class="muted">${escapeHtml(colorLabel)}</td>
+          <td class="num strong">${formatQty(strapMeters, 'm')} m</td>
+          <td class="num strong">${napaMeters > 0 ? `${formatQty(napaMeters, 'm')} m` : '—'}</td>
+          <td class="num cost-unit">—</td>
+          <td class="num cost-spend">${hasLaborTotal ? escapeHtml(formatMoney(laborTotal)) : '—'}</td>
+          <td></td>
+        </tr>`;
+};
+
+/** Agrupa linhas consecutivas pelo mesmo `groupName` (segmento da tira). */
+const partitionArtisanalStrapSegments = (rows: ArtisanalStrapCutRow[]): ArtisanalStrapCutRow[][] => {
+  const segments: ArtisanalStrapCutRow[][] = [];
+  for (const row of rows) {
+    const last = segments[segments.length - 1];
+    if (last && last[0].groupName === row.groupName) last.push(row);
+    else segments.push([row]);
+  }
+  return segments;
+};
+
+const renderArtisanalStraps = (rows: ArtisanalStrapCutRow[]): string => {
+  if (!rows.length) return '';
+  const body = partitionArtisanalStrapSegments(rows)
+    .map((segment) => `${segment.map(renderArtisanalStrapDetailRow).join('')}${renderArtisanalStrapSubtotalRow(segment[0].groupName, segment)}`)
+    .join('');
+  return `<section class="report-section strap-section">
+    <div class="section-heading">
+      <span class="section-number">03</span>
+      <div><p class="section-kicker">Transformação interna</p><h2>Tiras artesanais</h2></div>
+      <p class="section-note">Separação da napa-base conforme o snapshot aprovado da receita.</p>
+    </div>
+    <table class="report-table">
+      <thead><tr><th>Tira</th><th>Cor / base</th><th class="num">Tira necessária</th><th class="num">Napa a separar</th><th class="num">Mão de obra/m</th><th class="num">Valor total</th><th>Situação</th></tr></thead>
+      <tbody>${body}</tbody>
     </table>
   </section>`;
 };
@@ -533,6 +587,9 @@ export function buildMaterialConsumptionReportHtml({
     .cost-unit { color:var(--muted); font-weight:500; font-size:8.4pt; }
     .cost-spend { font-weight:700; font-size:9.4pt; background:var(--spend); }
     .report-table th.col-spend { background:var(--spend); color:var(--ink); }
+    .strap-subtotal td { background:var(--soft); border-top:1.5px solid var(--ink); border-bottom:2px solid var(--ink); font-weight:700; padding-top:6px; padding-bottom:6px; }
+    .strap-subtotal .cost-unit { font-weight:500; }
+    .strap-subtotal .muted { font-weight:500; }
     .status-cell { width:112px; }
     .flag { display:inline-block; max-width:100%; border:1px solid currentColor; padding:1px 5px; border-radius:99px; font-size:6.7pt; font-weight:700; line-height:1.25; }
     .flag.warning { color:var(--warn); background:#fff8e9; }

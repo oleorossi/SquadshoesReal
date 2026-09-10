@@ -492,6 +492,70 @@ describe('materialConsumptionReport', () => {
     expect(html).not.toContain('R$');
   });
 
+  it('mostra subtotal por segmento de tira (groupName) com somas de metros e valor', () => {
+    const cut = {
+      largura_mm: 8, metros_uteis_por_banda: 0, n_bandas: 0, cm_a_cortar: 0,
+      rolos: 0, n_rolos_completos: 0, cm_no_ultimo_rolo: 0, valid: false, widthMissing: false,
+    };
+    const makeRow = (
+      key: string,
+      groupName: string,
+      color: string,
+      metros: number,
+      baseRequiredM: number,
+      largura_mm: number,
+    ) => ({
+      key,
+      groupName,
+      color,
+      baseName: 'NAPA MADRID',
+      largura_mm,
+      metros_necessarios: metros,
+      cut: { ...cut, largura_mm },
+      canonical: {
+        recipeId: `recipe-${key}`,
+        baseRequiredM,
+        confirmedYieldMPerM: 70,
+        usableBaseWidthMm: 1370,
+        theoreticalYieldMPerM: 70,
+        transformationCostPerM: 0.32,
+        blockingReasons: [] as string[],
+      },
+    });
+
+    const elastico = 'ELÁSTICO FORRADO 7 mm · NAPA MADRID';
+    const chata = 'TIRA CHATA 8 mm · NAPA MADRID';
+    const html = buildMaterialConsumptionReportHtml({
+      title: 'Consumo total - PV-00193',
+      mode: 'total',
+      artisanalStrapRows: [
+        makeRow('e1', elastico, 'CAPUCCINO', 386.88, 12.9, 7),
+        makeRow('e2', elastico, 'OFF WHITE', 386.88, 12.9, 7),
+        makeRow('e3', elastico, 'ROCHA', 386.88, 12.9, 7),
+        makeRow('c1', chata, 'CAPUCCINO', 1294.56, 18.49, 8),
+        makeRow('c2', chata, 'OFF WHITE', 1294.56, 18.49, 8),
+        makeRow('c3', chata, 'ROCHA', 1294.56, 18.49, 8),
+      ],
+      rows: [],
+    });
+
+    expect(html).toContain(`Subtotal · ${elastico}`);
+    expect(html).toContain(`Subtotal · ${chata}`);
+    expect(html).toContain('3 cores');
+    expect(html).toContain('class="strap-subtotal"');
+    // Somas: 3 × 386,88 = 1.160,64 m · 3 × 12,90 = 38,70 m · 3 × 386,88 × 0,32 = R$ 371,40
+    expect(html).toContain('1.160,64 m');
+    expect(html).toContain('38,70 m');
+    expect(html).toContain('R$\u00a0371,40');
+    // Somas: 3 × 1.294,56 = 3.883,68 m · 3 × 18,49 = 55,47 m · 3 × 1.294,56 × 0,32 = R$ 1.242,78
+    expect(html).toContain('3.883,68 m');
+    expect(html).toContain('55,47 m');
+    expect(html).toContain('R$\u00a01.242,78');
+    // Mão de obra/m no subtotal permanece traço (taxa unitária não soma)
+    expect(html).toMatch(/strap-subtotal[\s\S]*?<td class="num cost-unit">—<\/td>/);
+  });
+
+
   it('mostra custo/un e custo total por material e cor no Consumo total', () => {
     const html = buildMaterialConsumptionReportHtml({
       title: 'Consumo total - PV-00193',
