@@ -13,7 +13,12 @@ import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { VariantListPanel, VariantBulkEditPanel } from '@/components/inventory/VariantManagerPanel';
+import { BulkApplyPreview, buildBulkImpact } from '@/components/inventory/BulkApplyPreview';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -29,13 +34,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CONSUMPTION_UNITS_BY_GROUP } from '@/lib/measurementUnits';
 import { sectorOfGroup, sectorLabel, SECTOR_OPTIONS } from '@/lib/categoryFromGroup';
-import { CurrencyInput } from '@/components/ui/currency-input';
 import { NumberInput } from '@/components/ui/number-input';
 import { SEARCH_RENDER_CAP, capSearchResults, searchMatchesAllTerms, searchRefineHint } from '@/lib/searchUtils';
 import { SearchInput } from '@/components/ui/search-input';
 import { EmptyState } from '@/components/ui/empty-state';
 import { getFootwearSectorGuide, normalizeTaxonomyName } from '@/lib/footwearMaterialTaxonomy';
 import { isHeterogeneousGroup } from '@/lib/materialIdentity';
+import { applyUnitAndPriceToGroupItems, commonProductField } from '@/lib/applyGroupItemUnitPrice';
+import { UNITS, UNIT_LABELS } from '@/types/inventory';
 
 /** Abas da janela de grupo. `bulk` e `items` chegaram aqui em 22/08/2026, quando
  *  o `MasterVariantDialog` deixou de ser um segundo diálogo e virou painel. */
@@ -550,6 +556,15 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
   const [purchaseMultiple, setPurchaseMultiple] = useState<number>((group as any).purchase_multiple || 0);
   const [isArtisanalStrap, setIsArtisanalStrap] = useState(group.is_artisanal_strap === true);
 
+  // Unidade + custo dos ITENS (products.unit / products.unit_price). Moram na
+  // aba Geral pra unificar o ajuste rápido com a confirmação "aplicar a todos"
+  // — o mesmo contrato da aba Em massa, sem exigir abrir outra aba.
+  const [itemUnit, setItemUnit] = useState<string>('');
+  const [itemUnitPrice, setItemUnitPrice] = useState<number | null>(null);
+  const [itemUnitDirty, setItemUnitDirty] = useState(false);
+  const [itemPriceDirty, setItemPriceDirty] = useState(false);
+  const [confirmApplyItemsOpen, setConfirmApplyItemsOpen] = useState(false);
+
   // Fornecedores do grupo (group_suppliers) — sumiram da UI no refactor da árvore
   // de estoque (1401c9db) e nunca voltaram ao dialog. OC automática e lead time
   // leem daqui; sem a aba, o cadastro fica órfão.
@@ -620,10 +635,31 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
     setPurchaseMultiple((group as any).purchase_multiple || 0);
     setIsArtisanalStrap(group.is_artisanal_strap === true);
     setActiveTab(initialTab ?? 'general');
+    setItemUnitDirty(false);
+    setItemPriceDirty(false);
+    setConfirmApplyItemsOpen(false);
     // A hidratação pertence à abertura/troca do cadastro. Mudanças nas queries
     // de filhos ou itens não podem apagar campos ainda não salvos.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [group.id, open, initialTab]);
+
+  /** Assinatura dos itens pra reidratar unidade/custo sem apagar edição a cada refetch. */
+  const productsSignature = useMemo(
+    () => products.map((p) => `${p.id}:${p.unit}:${Number(p.unit_price) || 0}`).join('|'),
+    [products],
+  );
+
+  useEffect(() => {
+    if (isContainer) return;
+    const commonUnit = commonProductField(products as any[], 'unit', (v) => String(v || ''));
+    const commonPrice = commonProductField(products as any[], 'unit_price', (v) => Number(v) || 0);
+    setItemUnit(commonUnit || '');
+    setItemUnitPrice(commonPrice);
+    setItemUnitDirty(false);
+    setItemPriceDirty(false);
+    // Só reidrata quando a composição/valores dos itens mudam de verdade.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [group.id, open, productsSignature, isContainer]);
 
   /** Abas que EXISTEM neste grupo. Família não tem Cores/Itens/Em massa, e
    *  Dimensões/Embalagem/Composição dependem do setor. */
@@ -669,20 +705,35 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
     return { grupo: doGrupo, itens: dosItens };
   }, [group, products]);
 
-  const handleSave = async () => {
-    if (!name.trim()) {
-      toast.error('Nome do grupo é obrigatório');
-      return;
-    }
+  const itemFieldsPending = !isContainer
+    && products.length > 0
+    && ((itemUnitDirty && !!itemUnit) || (itemPriceDirty && itemUnitPrice != null));
 
-    const finalUnit = consumptionUnit === '__none__' ? null : consumptionUnit;
-    if (sharedSpecs && !finalUnit) {
-      toast.error('Linhas com variantes precisam de uma unidade de consumo do grupo. Se as unidades forem individuais, escolha “Coleção de itens”.');
-      return;
+  const itemApplyImpact = useMemo(() => {
+    if (!itemFieldsPending) return [];
+    const diff: Record<string, unknown> = {};
+    const labels: Record<string, string> = {};
+    if (itemUnitDirty && itemUnit) {
+      diff.unit = itemUnit;
+      labels.unit = 'Unidade de medida';
     }
+    if (itemPriceDirty && itemUnitPrice != null) {
+      diff.unit_price = itemUnitPrice;
+      labels.unit_price = `Valor do material por ${itemUnit || 'unidade'} (R$)`;
+    }
+    return buildBulkImpact(
+      diff,
+      labels,
+      products,
+      (p, campo) => (p as any)[campo],
+      (p) => p.color || p.sku || p.name || p.id,
+    );
+  }, [itemFieldsPending, itemUnitDirty, itemUnit, itemPriceDirty, itemUnitPrice, products]);
+
+  const persistGroupAndMaybeItems = async (applyToItems: boolean) => {
+    const finalUnit = consumptionUnit === '__none__' ? null : consumptionUnit;
 
     setSaving(true);
-    
     try {
       await updateGroup.mutateAsync({
         id: group.id,
@@ -720,19 +771,59 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
         );
       }
 
-      // A unidade salva aqui pertence ao GRUPO. As unidades individuais das
-      // variantes vivem em products e têm porta única no editor de variantes.
-      // Não faça um segundo UPDATE em products: além de apagar configurações
-      // próprias quando o grupo volta para "Definida por item", o gatilho
-      // legado unit↔consumption_unit transformava NULL em products.unit=NULL e
-      // abortava o save pelo NOT NULL do estoque.
+      if (applyToItems && itemFieldsPending) {
+        const { count } = await applyUnitAndPriceToGroupItems({
+          productIds: products.map((p) => p.id),
+          unit: itemUnitDirty ? itemUnit : null,
+          unitPrice: itemPriceDirty ? itemUnitPrice : null,
+        });
+        queryClient.invalidateQueries({ queryKey: ['products'] });
+        queryClient.invalidateQueries({ queryKey: ['paginated_products'] });
+        queryClient.invalidateQueries({ queryKey: ['technical_sheets'] });
+        queryClient.invalidateQueries({ queryKey: ['order-consumption'] });
+        toast.success(
+          `Unidade/valor aplicados a ${count} ${count === 1 ? 'item' : 'itens'} do grupo.`,
+        );
+      }
 
+      setConfirmApplyItemsOpen(false);
       onOpenChange(false);
     } catch (err: any) {
       toast.error(`Erro ao salvar: ${err.message}`);
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleSave = async () => {
+    if (!name.trim()) {
+      toast.error('Nome do grupo é obrigatório');
+      return;
+    }
+
+    const finalUnit = consumptionUnit === '__none__' ? null : consumptionUnit;
+    if (sharedSpecs && !finalUnit) {
+      toast.error('Linhas com variantes precisam de uma unidade de consumo do grupo. Se as unidades forem individuais, escolha “Coleção de itens”.');
+      return;
+    }
+
+    if (itemUnitDirty && !itemUnit) {
+      toast.error('Escolha a unidade de medida dos itens antes de salvar.');
+      return;
+    }
+    if (itemPriceDirty && (itemUnitPrice == null || itemUnitPrice < 0)) {
+      toast.error('Informe um valor do material válido (≥ 0).');
+      return;
+    }
+
+    // Unidade/custo dos itens: pergunta antes de sobrescrever todas as cores —
+    // mesmo padrão da aba Em massa.
+    if (itemFieldsPending) {
+      setConfirmApplyItemsOpen(true);
+      return;
+    }
+
+    await persistGroupAndMaybeItems(false);
   };
 
   return (
@@ -959,9 +1050,58 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                         </div>
                       </div>
 
+                      <div className="grid gap-4 sm:grid-cols-2 border-t border-foreground/10 pt-4">
+                        <div>
+                          <Label className="text-xs font-semibold">Unidade de medida dos itens</Label>
+                          <Select
+                            value={itemUnit || undefined}
+                            onValueChange={(value) => {
+                              setItemUnit(value);
+                              setItemUnitDirty(true);
+                            }}
+                            disabled={products.length === 0}
+                          >
+                            <SelectTrigger className="mt-1 h-9">
+                              <SelectValue placeholder={products.length === 0 ? 'Sem itens' : 'Unidades divergentes — escolha para unificar'} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {UNITS.map((unit) => (
+                                <SelectItem key={unit} value={unit}>
+                                  {UNIT_LABELS[unit] || unit}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <p className="mt-1 text-[10px] text-muted-foreground">
+                            Unidade-base de estoque de todas as cores deste grupo.
+                          </p>
+                        </div>
+                        <div>
+                          <Label className="text-xs font-semibold">
+                            Valor do material por {itemUnit || 'unidade'} (R$)
+                          </Label>
+                          <NumberInput
+                            value={itemUnitPrice ?? undefined}
+                            onChange={(value) => {
+                              setItemUnitPrice(value);
+                              setItemPriceDirty(true);
+                            }}
+                            min={0}
+                            step="0.0001"
+                            placeholder={products.length === 0 ? 'Sem itens' : 'Custos divergentes — informe para unificar'}
+                            className="mt-1 h-9"
+                            disabled={products.length === 0}
+                          />
+                          <p className="mt-1 text-[10px] text-muted-foreground">
+                            Custo unitário aplicado a todos os itens ao confirmar o save.
+                          </p>
+                        </div>
+                      </div>
+
                       <div className="border-t border-foreground/10 pt-4">
                         <p className="text-xs leading-relaxed text-muted-foreground">
-                          Custo, localização, estoque mínimo e fornecedor <strong className="font-medium text-foreground">por SKU</strong> continuam próprios de cada variante. Use a edição em massa só quando quiser substituir esses valores em todas as cores.
+                          Ao alterar unidade ou valor e salvar, o sistema pergunta se aplica a todos os {products.length} item(ns).
+                          Localização, estoque mínimo e demais campos por SKU continuam na edição em massa.
                         </p>
                         <Button
                           type="button"
@@ -971,7 +1111,7 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                           onClick={() => setActiveTab('bulk')}
                           disabled={products.length === 0}
                         >
-                          <Palette className="h-4 w-4" /> Editar dados de {products.length} item(ns)
+                          <Palette className="h-4 w-4" /> Demais dados de {products.length} item(ns)
                         </Button>
                       </div>
                     </CardContent>
@@ -1564,6 +1704,33 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
         groupId={group.id}
         groupName={group.name}
       />
+
+      <AlertDialog open={confirmApplyItemsOpen} onOpenChange={setConfirmApplyItemsOpen}>
+        <AlertDialogContent className="max-w-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Aplicar unidade/valor a todos os {products.length}{' '}
+              {products.length === 1 ? 'item' : 'itens'} do grupo?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Confirme para sobrescrever a unidade de medida e/ou o valor do material em todas as cores deste grupo. Cancelar mantém o formulário aberto sem gravar.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <BulkApplyPreview impacto={itemApplyImpact} />
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={saving}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                void persistGroupAndMaybeItems(true);
+              }}
+              disabled={saving}
+            >
+              {saving ? 'Aplicando…' : 'Sim, aplicar a todos'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {forceDeleteFlow.dialog}
     </>

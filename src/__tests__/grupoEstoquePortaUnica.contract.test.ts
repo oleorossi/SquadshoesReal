@@ -98,4 +98,14 @@ describe('grupo de estoque — porta única de edição', () => {
     expect(productTable, 'ProductTable redefiniu materialIdentity localmente')
       .not.toMatch(/function materialIdentity/u);
   });
+
+  it('aba Geral unifica unidade e valor dos itens com confirmação de aplicar a todos', () => {
+    // Unidade de estoque + unit_price deixaram de ser só da Em massa: a Geral
+    // oferece o ajuste rápido do grupo inteiro, com o mesmo AlertDialog de impacto.
+    expect(groupEdit).toContain('Unidade de medida dos itens');
+    expect(groupEdit).toContain('Valor do material por');
+    expect(groupEdit).toContain('applyUnitAndPriceToGroupItems');
+    expect(groupEdit).toContain('Sim, aplicar a todos');
+    expect(groupEdit).toContain('BulkApplyPreview');
+  });
 });
