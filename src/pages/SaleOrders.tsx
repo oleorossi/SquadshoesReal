@@ -204,8 +204,8 @@ export default function SaleOrders() {
       const out: SmartSearchSuggestion[] = [];
 
       // Clientes (name)
-      const clientMatches = (clients as any[])
-        .filter((c: any) => searchMatchesAllTerms(
+      const clientMatches = clients
+        .filter((c) => searchMatchesAllTerms(
           term,
           c.razao_social,
           c.nome_fantasia,
@@ -217,16 +217,16 @@ export default function SaleOrders() {
       }
 
       // Representantes (category — usado como agrupamento)
-      const repMatches = (representatives as any[])
-        .filter((r: any) => searchMatchesAllTerms(term, r.name))
+      const repMatches = representatives
+        .filter((r) => searchMatchesAllTerms(term, r.name))
         .slice(0, 5);
       for (const r of repMatches) {
         out.push({ field: 'category', value: r.name, meta: 'Representante' });
       }
 
       // Referências (sku)
-      const refMatches = (references as any[])
-        .filter((r: any) => searchMatchesAllTerms(term, r.code, r.name))
+      const refMatches = references
+        .filter((r) => searchMatchesAllTerms(term, r.code, r.name))
         .slice(0, 5);
       for (const r of refMatches) {
         out.push({ field: 'sku', value: r.code || r.name, meta: r.name });
