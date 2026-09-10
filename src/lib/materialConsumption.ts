@@ -539,8 +539,15 @@ export const calculateConsumptionWithUnit = (
   const isLinear = LINEAR_UNITS.has(sheetUnit);
   const resolvedYield = resolveYieldMap(componentSheet, soleProductId);
   const yieldHasData = Object.entries(resolvedYield).some(([key, value]) => key !== 'unit' && Number(value) > 0);
+  // Override da ficha técnica (cabedal/forro) chega em dm²/par. Misturar com
+  // yield_per_size (já linear) no ramo abaixo trataria dm² como metro (~100×).
+  // Espelha o SQL de produção: no cabedal só faz required_dm² ÷ dm2_per_unit.
+  const hasDm2Override = Boolean(
+    overridePerSize &&
+      Object.entries(overridePerSize).some(([key, value]) => key !== 'unit' && Number(value) > 0),
+  );
 
-  if (isLinear && yieldHasData) {
+  if (isLinear && yieldHasData && !hasDm2Override) {
     // yield_per_size values are in the sheet's linear unit (cm or meters).
     // CRITICAL: fallbackConsumption is in dm²/par — convert it to match the
     // sheet's unit so sizes missing from yield_per_size use the same unit.
@@ -566,12 +573,19 @@ export const calculateConsumptionWithUnit = (
     return { total: inMeters, unit: 'metro' };
   }
 
-  // Calculate raw total in dm² (fallback is already in dm²/par)
-  const rawTotal = calculateGradeBasedDm2(item, fallbackConsumption, componentSheet, overridePerSize, soleProductId, useGradeMultipliers);
+  // Com override dm² da ficha, ignora yield_per_size (linear) pra não misturar
+  // unidades dentro de calculateGradeBasedDm2 nos tamanhos sem override.
+  const sheetForDm2 =
+    hasDm2Override && componentSheet
+      ? { ...componentSheet, yield_per_size: {}, yield_per_sole: undefined }
+      : componentSheet;
 
-  // When yield_per_size is empty, rawTotal = fallbackConsumption (dm²/par) × qty
-  // For linear sheets without yield data, convert dm² → meters using sheet width.
-  if (isLinear && !yieldHasData) {
+  // Calculate raw total in dm² (fallback is already in dm²/par)
+  const rawTotal = calculateGradeBasedDm2(item, fallbackConsumption, sheetForDm2, overridePerSize, soleProductId, useGradeMultipliers);
+
+  // When yield_per_size is empty (or ignored by dm² override), rawTotal is dm² —
+  // convert to meters using sheet width for linear products.
+  if (isLinear && (!yieldHasData || hasDm2Override)) {
     return { total: convertDm2ToLinearMeters(rawTotal, componentSheet), unit: 'metro' };
   }
 
