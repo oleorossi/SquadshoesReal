@@ -11,6 +11,13 @@ const migration218 = readFileSync(
   resolve(root, 'supabase/migrations/20270101021800_consumo-committed-draft-sheet-strap-gap.sql'),
   'utf8',
 );
+const migration231 = readFileSync(
+  resolve(
+    root,
+    'supabase/migrations/20270101023100_consumo-sheet-strap-structure-overlay-draft.sql',
+  ),
+  'utf8',
+);
 const dialog = readFileSync(
   resolve(root, 'src/components/orders/OrderConsumptionDialog.tsx'),
   'utf8',
@@ -39,6 +46,28 @@ describe('consumo: gap de tira da ficha ausente do snapshot do item', () => {
     // Dois payloads (item + OP) + lookup de v_stored_line.
     expect(migration218).toContain("esperava 2 assignments strap_colors:=v_item");
     expect(migration218).toContain('esperava >=3 chamadas ao merge');
+  });
+
+  it('23100 overlay estrutural só em PV não comprometido (NL03 TRASEIRA measure drift)', () => {
+    expect(migration231).toContain('sheet_strap_structure_overlay_consumo_231');
+    expect(migration231).toContain('consumo_sheet_structure_overlay');
+    expect(migration231).toContain('p_overlay_structure');
+    expect(migration231).toContain('v_overlay_structure');
+    expect(migration231).toContain('is_committed_sale_order_status');
+    // batch: overlay = NOT committed (Rascunho/Pendente)
+    expect(migration231).toMatch(
+      /v_overlay_structure\s*:=\s*NOT\s+private\.is_committed_sale_order_status/,
+    );
+    // 2-arg (draft comprometido / 218) continua gap-only
+    expect(migration231).toMatch(
+      /merge_consumo_strap_colors_with_sheet_gaps\(\s*p_item_straps,\s*p_reference_id,\s*false\s*\)/,
+    );
+    // mesmo technical_strap_line_id: copia measure_id da ficha
+    expect(migration231).toContain("'measure_id', v_sheet_line -> 'measure_id'");
+    expect(migration231).toContain("'strap_type_id', v_sheet_line -> 'strap_type_id'");
+    // preserva escolha comercial do PV
+    expect(migration231).toContain("'color', v_item_line -> 'color'");
+    expect(migration231).toContain('base_group_id');
   });
 
   it('dialog de OP não esconde Tiras com aviso e quantidade zero', () => {
