@@ -65,6 +65,27 @@ describe('preview canônica de tiras', () => {
     );
   });
 
+  it('não prefixa TIRA em ELÁSTICO FORRADO (overlay 232)', () => {
+    const elastico = preview({
+      strap_variant_id: null,
+      recipe_id: null,
+      base_product_id: null,
+      finished_product_id: null,
+      blocking_reasons: [],
+      resolved: {
+        strap_product_name: null,
+        measure_name: 'ELÁSTICO FORRADO 7 mm',
+        strap_color_name: 'ROSADO',
+        base_group_name: 'NAPA SOFT',
+        confirmed_yield_m_per_m: null,
+        base_required_m: null,
+      },
+    });
+    expect(formatCanonicalStrapProductName(elastico)).toBe(
+      'ELÁSTICO FORRADO 7 mm · NAPA SOFT · ROSADO',
+    );
+  });
+
   it('snapshot pré-demanda de STRASS usa group_name/color (não some como “Tira sem cadastro”)', () => {
     const strass = parseCanonicalStrapDemandPreview({
       sale_order_item_id: 'item-strass',
