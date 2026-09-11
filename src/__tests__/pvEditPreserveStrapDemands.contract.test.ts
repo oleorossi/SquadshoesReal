@@ -57,8 +57,8 @@ function sqlFunction(sql: string, name: string, schema = 'public'): string {
 describe('edição de PV — preserve itens com demanda de tira', () => {
   const latest = latestLegacyWriterMigration();
 
-  it('usa a migration 22000 como corpo vivo do writer legado', () => {
-    expect(latest.file).toMatch(/20270101022000_.*\.sql$/);
+  it('usa a migration viva do writer legado (22800 herda o soft-preserve)', () => {
+    expect(latest.file).toMatch(/20270101022800_.*\.sql$/);
   });
 
   it('writer legado chama finalize em vez de DELETE cru do payload', () => {
