@@ -37,6 +37,23 @@ interface ProductEnrichment {
   sector: string | null;
 }
 
+interface ProductEnrichRow {
+  id: string;
+  purchase_price: number | null;
+  group_id: string | null;
+  color: string | null;
+  product_groups:
+    | { id: string; name: string | null; sector: string | null }
+    | { id: string; name: string | null; sector: string | null }[]
+    | null;
+}
+
+interface ReceiptInspectRow {
+  product_id: string;
+  qty_received: number | null;
+  qty_approved: number | null;
+}
+
 async function fetchProductEnrichment(productIds: string[]): Promise<Map<string, ProductEnrichment>> {
   if (productIds.length === 0) return new Map();
   const { data, error } = await supabase
@@ -45,14 +62,14 @@ async function fetchProductEnrichment(productIds: string[]): Promise<Map<string,
     .in('id', productIds);
   if (error) throw error;
   const map = new Map<string, ProductEnrichment>();
-  for (const row of data || []) {
-    const g = (row as any).product_groups;
+  for (const row of (data || []) as unknown as ProductEnrichRow[]) {
+    const g = row.product_groups;
     const group = Array.isArray(g) ? g[0] : g;
     map.set(row.id, {
       id: row.id,
       purchase_price: row.purchase_price ?? null,
       group_id: row.group_id ?? group?.id ?? null,
-      color: (row as any).color ?? null,
+      color: row.color ?? null,
       group_name: group?.name ?? null,
       sector: group ? sectorOfGroup(group) : null,
     });
@@ -76,8 +93,8 @@ async function fetchReceivedByProduct(
   // Tabela pode não existir / RLS — falha silenciosa → received = 0
   if (error) return {};
   const out: Record<string, { qty: number; brl: number }> = {};
-  for (const row of (data as any[]) || []) {
-    const id = row.product_id as string;
+  for (const row of (data || []) as unknown as ReceiptInspectRow[]) {
+    const id = row.product_id;
     const qty = Number(row.qty_approved ?? row.qty_received) || 0;
     if (!out[id]) out[id] = { qty: 0, brl: 0 };
     out[id].qty += qty;
