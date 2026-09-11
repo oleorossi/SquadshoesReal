@@ -20,8 +20,11 @@ export const LOCAL_LEGACY_BASELINE = Object.freeze({
 // (20260828111941) e as três aplicações temporárias de variação de cor em
 // 30/08/2026. A verdade é o banco: em 09/09/2026 o fetch remoto voltou a
 // reportar 2294 carimbos (os dois MCP 20260909145907/20260909145941 não
-// estão no schema_migrations). Marcadores temporários podem ter qualquer
-// nome descritivo: o contrato do Supabase compara os timestamps.
+// estão no schema_migrations). Em 11/09/2026 quatro carimbos MCP duplicados
+// (20260911132952/33107/60336/62154) foram removidos do schema_migrations —
+// duplicavam 23000/23300/23400 e inflavam o legado para 2298; baseline 2294
+// + SHA restaurados. Marcadores temporários podem ter qualquer nome
+// descritivo: o contrato do Supabase compara os timestamps.
 export const REMOTE_LEGACY_BASELINE = Object.freeze({
   count: 2294,
   sha256: '52d44017b491f42979e636fb35985bc3993063f60299919bf0b105325811212d',
