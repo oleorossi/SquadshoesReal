@@ -407,7 +407,7 @@ describe('exclusão em lote — helpers de remoção e desfazer', () => {
     expect(removed).toHaveLength(1);
   });
 
-  it('nunca remove item retirado da produção, mesmo quando o índice é solicitado', () => {
+  it('permite remover item retirado da produção (hard-delete no save)', () => {
     const items = lista('A', 'B', 'C');
     items[1] = {
       ...items[1],
@@ -416,8 +416,8 @@ describe('exclusão em lote — helpers de remoção e desfazer', () => {
       production_exclusion_request_id: '11111111-1111-4111-8111-111111111111',
     };
     const { remaining, removed } = removeItemsAtIndices(items, [1, 2]);
-    expect(refs(remaining)).toEqual(['A', 'B']);
-    expect(removed.map((entry) => entry.item.reference_id)).toEqual(['C']);
+    expect(refs(remaining)).toEqual(['A']);
+    expect(removed.map((entry) => entry.item.reference_id)).toEqual(['B', 'C']);
   });
 
   it('Desfazer devolve cada item na posição original', () => {

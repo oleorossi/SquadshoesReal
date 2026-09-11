@@ -1704,8 +1704,16 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
               <p className="font-mono font-bold text-sm text-primary leading-tight">{formatCurrency(itemTotal)}</p>
             </div>
           )}
-          {canRemove && !productionExcluded && (
-            <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => onRemove(index)} aria-label="Remover item" title="Remover item">
+          {canRemove && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-destructive"
+              onClick={() => onRemove(index)}
+              aria-label={productionExcluded ? 'Remover linha histórica do pedido' : 'Remover item'}
+              title={productionExcluded ? 'Remover linha histórica do pedido' : 'Remover item'}
+            >
               <Trash2 className="h-4 w-4" />
             </Button>
           )}
@@ -1720,6 +1728,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
               <p className="text-sm font-semibold">Item preservado e bloqueado para edição</p>
               <p className="mt-0.5 text-xs leading-relaxed">
                 Esta linha foi retirada da carga de produção e permanece no Pedido de Venda apenas para manter o histórico comercial.
+                Para apagá-la de vez, use a lixeira e salve o pedido (só funciona se não houver compromisso externo de tira/compra).
               </p>
               <p className="mt-1 break-words text-xs font-medium">
                 Motivo: {item.production_exclusion_reason || 'Exclusão administrativa registrada sem motivo informado.'}

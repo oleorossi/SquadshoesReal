@@ -72,8 +72,8 @@ describe('edição de PV — preserve itens com demanda de tira', () => {
 
   it('finalize soft-exclude itens com strap_demands e cancela saldo reversível', () => {
     const finalizeMig = latestFinalizeMigration();
-    // 22900 introduziu o detach; 23000+ é a migration viva (apaga órfão da OC).
-    expect(finalizeMig.file >= '20270101022900_').toBe(true);
+    // 22900 introduziu o detach; 23000+ órfão OC; 23300 hard-delete de soft-excluded.
+    expect(finalizeMig.file >= '20270101023300_').toBe(true);
     const finalize = sqlFunction(
       finalizeMig.sql,
       'finalize_removed_sale_order_items',
@@ -89,11 +89,16 @@ describe('edição de PV — preserve itens com demanda de tira', () => {
     expect(finalize).toContain("status IN ('proposed', 'awaiting_approval', 'suspended')");
     expect(finalize).toContain('purchase_order_item_id = NULL');
     expect(finalize).toContain('superseded_purchase_order_item_id');
+    expect(finalize).toContain('pv_edit_hard_delete_soft_excluded_20270101023300');
+    expect(finalize).toContain('v_already_excluded');
+    expect(finalize).not.toMatch(
+      /DELETE FROM public\.sale_order_items i\s+WHERE i\.id = ANY\(v_delete\)\s+AND i\.sale_order_id = p_order_id\s+AND i\.production_excluded_at IS NULL/,
+    );
   });
 
-  it('guard de exclusão libera gerente/comercial quando GUC interno está ligado', () => {
+  it('guard de exclusão libera DELETE soft-excluded com GUC interno (23300)', () => {
     const guardMig = readFileSync(
-      resolve(MIGRATIONS, '20270101022000_pv_edit_preserve_items_with_strap_demands.sql'),
+      resolve(MIGRATIONS, '20270101023300_pv_edit_hard_delete_soft_excluded_when_safe.sql'),
       'utf8',
     );
     const guard = sqlFunction(
@@ -101,6 +106,18 @@ describe('edição de PV — preserve itens com demanda de tira', () => {
       'tg_guard_sale_order_item_production_exclusion',
     );
     expect(guard).toContain("'admin', 'gerente', 'comercial'");
+    expect(guard).toContain('pv_edit_hard_delete_soft_excluded_20270101023300');
+    expect(guard).toContain('AND NOT v_internal');
+  });
+
+  it('BEFORE DELETE limpa contribuições terminais para hard-delete (23300)', () => {
+    const mig = readFileSync(
+      resolve(MIGRATIONS, '20270101023300_pv_edit_hard_delete_soft_excluded_when_safe.sql'),
+      'utf8',
+    );
+    const release = sqlFunction(mig, 'tg_release_strap_demands_before_item_delete');
+    expect(release).toContain('DELETE FROM public.purchase_demand_contributions');
+    expect(release).toContain("status IN ('cancelled', 'superseded', 'rejected')");
   });
 });
 

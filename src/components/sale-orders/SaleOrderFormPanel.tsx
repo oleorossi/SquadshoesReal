@@ -213,8 +213,10 @@ export function removeItemsAtIndices(
   const alvo = new Set(indices);
   const remaining: SaleOrderItemFormData[] = [];
   const removed: RemovedItemSnapshot[] = [];
+  // Soft-excluded também sai: a 2ª remoção no save faz hard-delete seguro
+  // (mig 23300). Sem isso a linha morta nunca deixa o editor.
   items.forEach((item, i) => {
-    if (alvo.has(i) && !isProductionExcludedSaleOrderItem(item)) removed.push({ item, index: i });
+    if (alvo.has(i)) removed.push({ item, index: i });
     else remaining.push(item);
   });
   return { remaining, removed };
@@ -769,7 +771,7 @@ const SaleOrderItemsList = memo(function SaleOrderItemsList({
                 onColorIssueChange={onColorIssueChange}
                 onSheetMaterialSelectableChange={onSheetMaterialSelectableChange}
                 references={references}
-                canRemove={items.length > 1 && !isProductionExcludedSaleOrderItem(item)}
+                canRemove={items.length > 1}
                 isAdmin={isAdmin}
                 priceLookup={priceLookup}
                 maxDiscountPct={maxDiscountPct}
@@ -779,8 +781,8 @@ const SaleOrderItemsList = memo(function SaleOrderItemsList({
                 onRemove={onRemove}
                 onCopyGradeFromPrevious={onCopyGradeFromPrevious}
                 onSaveStateAndNavigate={onSaveStateAndNavigate}
-                isSelected={!isProductionExcludedSaleOrderItem(item) && selectedItemIndices.has(idx)}
-                onToggleSelect={isProductionExcludedSaleOrderItem(item) ? undefined : onToggleSelect}
+                isSelected={selectedItemIndices.has(idx)}
+                onToggleSelect={onToggleSelect}
                 sharedProducts={sharedProducts}
                 sharedProductGroups={sharedProductGroups}
                 sharedStrapCatalog={sharedStrapCatalog as any}
@@ -1139,10 +1141,7 @@ export default function SaleOrderFormPanel({
   // que levaria a referência errada pro pedido novo.
   const removeItem = useCallback(
     (idx: number) => {
-      if (isProductionExcludedSaleOrderItem(itemsRef.current[idx])) {
-        toast.info('Item retirado da produção é preservado no histórico e não pode ser removido.');
-        return;
-      }
+      const target = itemsRef.current[idx];
       setItems(prev => prev.filter((_, i) => i !== idx));
       setSelectedItemIndices(prev => (prev.size === 0 ? prev : remapSelectionAfterRemoval(prev, idx)));
       // Tirar item é alteração de verdade. O `onUserEdit` normalmente vem de evento
@@ -1151,6 +1150,10 @@ export default function SaleOrderFormPanel({
       // de menos" documentada no <form> vale pra sinal AMBÍGUO (Radix Select não
       // emite evento); clique na lixeira é intenção inequívoca, sem falso-positivo.
       onUserEdit?.();
+      // Soft-excluded: save dispara hard-delete seguro no servidor (mig 23300).
+      if (isProductionExcludedSaleOrderItem(target)) {
+        toast.info('Linha histórica removida do editor — salve o pedido para apagar de vez.');
+      }
     },
     [setItems, onUserEdit],
   );
@@ -1220,9 +1223,7 @@ export default function SaleOrderFormPanel({
    }, []);
    const clearItemSelection = useCallback(() => setSelectedItemIndices(new Set()), []);
    const selectAllItems = useCallback(() => {
-     setSelectedItemIndices(new Set(
-       items.flatMap((item, i) => isProductionExcludedSaleOrderItem(item) ? [] : [i]),
-     ));
+     setSelectedItemIndices(new Set(items.map((_, i) => i)));
    }, [items]);
 
    /**
@@ -1234,9 +1235,7 @@ export default function SaleOrderFormPanel({
     * hover, então botão apagado sem explicação vira beco sem saída.
     */
    const deleteSelectedItems = useCallback(() => {
-     const indices = Array.from(selectedItemIndices)
-       .filter((idx) => !isProductionExcludedSaleOrderItem(items[idx]))
-       .sort((a, b) => a - b);
+     const indices = Array.from(selectedItemIndices).sort((a, b) => a - b);
      if (indices.length === 0) return;
      if (indices.length >= items.length) {
        toast.error('O pedido precisa de pelo menos um item — desmarque um deles para excluir os demais.');
@@ -1514,7 +1513,7 @@ export default function SaleOrderFormPanel({
     * em outra ordem de apresentação.
     */
    const editableItemCount = useMemo(
-     () => items.filter((item) => !isProductionExcludedSaleOrderItem(item)).length,
+     () => items.length,
      [items],
    );
 
