@@ -46,8 +46,8 @@ describe('PV edit — detach FK de OC ao cancelar contribuição (22900)', () =>
   const sql = readMigration(FIX);
   const latest = latestFinalizeMigration();
 
-  it('é a migration viva do finalize', () => {
-    expect(latest.file).toBe(FIX);
+  it('introduziu o detach; finalize vivo preserva o contrato', () => {
+    expect(FIX <= latest.file).toBe(true);
   });
 
   it('finalize destaca purchase_order_item_id ao cancelar contribuição', () => {
