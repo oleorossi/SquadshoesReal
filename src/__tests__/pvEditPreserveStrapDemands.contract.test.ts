@@ -100,7 +100,7 @@ describe('edição de PV — preserve itens com demanda de tira', () => {
 
   it('guard de exclusão libera DELETE soft-excluded com GUC interno (23300)', () => {
     const guardMig = readFileSync(
-      resolve(MIGRATIONS, '20270101023300_pv_edit_hard_delete_soft_excluded_when_safe.sql'),
+      resolve(MIGRATIONS, '20270101023700_pv_edit_hard_delete_soft_excluded_when_safe.sql'),
       'utf8',
     );
     const guard = sqlFunction(
@@ -114,7 +114,7 @@ describe('edição de PV — preserve itens com demanda de tira', () => {
 
   it('BEFORE DELETE limpa contribuições terminais para hard-delete (23300)', () => {
     const mig = readFileSync(
-      resolve(MIGRATIONS, '20270101023300_pv_edit_hard_delete_soft_excluded_when_safe.sql'),
+      resolve(MIGRATIONS, '20270101023700_pv_edit_hard_delete_soft_excluded_when_safe.sql'),
       'utf8',
     );
     const release = sqlFunction(mig, 'tg_release_strap_demands_before_item_delete');
