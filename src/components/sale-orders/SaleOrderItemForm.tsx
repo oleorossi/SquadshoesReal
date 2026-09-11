@@ -1722,18 +1722,32 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
 
       {productionExcluded && (
         <div role="status" className="border-b border-warning/40 bg-warning/10 px-4 py-3 text-warning-foreground">
-          <div className="flex items-start gap-2">
-            <Lock className="mt-0.5 h-4 w-4 shrink-0" weight="fill" />
-            <div className="min-w-0">
-              <p className="text-sm font-semibold">Item preservado e bloqueado para edição</p>
-              <p className="mt-0.5 text-xs leading-relaxed">
-                Esta linha foi retirada da carga de produção e permanece no Pedido de Venda apenas para manter o histórico comercial.
-                Para apagá-la de vez, use a lixeira e salve o pedido (só funciona se não houver compromisso externo de tira/compra).
-              </p>
-              <p className="mt-1 break-words text-xs font-medium">
-                Motivo: {item.production_exclusion_reason || 'Exclusão administrativa registrada sem motivo informado.'}
-              </p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex min-w-0 items-start gap-2">
+              <Lock className="mt-0.5 h-4 w-4 shrink-0" weight="fill" />
+              <div className="min-w-0">
+                <p className="text-sm font-semibold">Item preservado e bloqueado para edição</p>
+                <p className="mt-0.5 text-xs leading-relaxed">
+                  Esta linha foi retirada da carga de produção e permanece no Pedido de Venda apenas para manter o histórico comercial.
+                  Para apagá-la de vez, use o botão abaixo e salve o pedido (só funciona se não houver compromisso externo de tira/compra).
+                </p>
+                <p className="mt-1 break-words text-xs font-medium">
+                  Motivo: {item.production_exclusion_reason || 'Exclusão administrativa registrada sem motivo informado.'}
+                </p>
+              </div>
             </div>
+            {canRemove && (
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                className="h-8 shrink-0 gap-1.5"
+                onClick={() => onRemove(index)}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Apagar de vez
+              </Button>
+            )}
           </div>
         </div>
       )}

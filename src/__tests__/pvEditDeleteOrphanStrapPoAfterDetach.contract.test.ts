@@ -42,8 +42,9 @@ describe('PV edit — DELETE órfão de OC após detach (23000)', () => {
   const sql = readMigration(FIX);
   const latest = latestFinalizeMigration();
 
-  it('é a migration viva do finalize', () => {
-    expect(latest.file).toBe(FIX);
+  it('introduziu o delete órfão; finalize vivo preserva o contrato', () => {
+    // 23300+ reescreve finalize por cima; o marcador 23000 tem que sobreviver.
+    expect(FIX <= latest.file).toBe(true);
   });
 
   it('finalize apaga órfãos com app.strap_po_engine após detach', () => {

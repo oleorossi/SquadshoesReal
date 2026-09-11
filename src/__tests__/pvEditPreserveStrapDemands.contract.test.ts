@@ -72,8 +72,8 @@ describe('edição de PV — preserve itens com demanda de tira', () => {
 
   it('finalize soft-exclude itens com strap_demands e cancela saldo reversível', () => {
     const finalizeMig = latestFinalizeMigration();
-    // 22900 introduziu o detach; 23000+ órfão OC; 23300 hard-delete de soft-excluded.
-    expect(finalizeMig.file >= '20270101023300_').toBe(true);
+    // 22900 detach; 23000 órfão OC; 23300 hard-delete soft-excluded; 23500 command GUC.
+    expect(finalizeMig.file >= '20270101023500_').toBe(true);
     const finalize = sqlFunction(
       finalizeMig.sql,
       'finalize_removed_sale_order_items',
@@ -85,6 +85,8 @@ describe('edição de PV — preserve itens com demanda de tira', () => {
     expect(finalize).toContain('compromisso externo');
     expect(finalize).toContain('reconcile_strap_variant');
     expect(finalize).toContain('app.sale_order_item_production_exclusion_internal');
+    expect(finalize).toContain('app.sale_order_command_internal');
+    expect(finalize).toContain('pv_edit_hard_delete_command_boundary_20270101023500');
     expect(finalize).toContain('cancelled_purchase_contributions');
     expect(finalize).toContain("status IN ('proposed', 'awaiting_approval', 'suspended')");
     expect(finalize).toContain('purchase_order_item_id = NULL');
