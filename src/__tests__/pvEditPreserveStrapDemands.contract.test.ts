@@ -72,7 +72,7 @@ describe('edição de PV — preserve itens com demanda de tira', () => {
 
   it('finalize soft-exclude itens com strap_demands e cancela saldo reversível', () => {
     const finalizeMig = latestFinalizeMigration();
-    expect(finalizeMig.file).toMatch(/20270101022200_.*\.sql$/);
+    expect(finalizeMig.file).toMatch(/20270101022900_.*\.sql$/);
     const finalize = sqlFunction(
       finalizeMig.sql,
       'finalize_removed_sale_order_items',
@@ -86,6 +86,8 @@ describe('edição de PV — preserve itens com demanda de tira', () => {
     expect(finalize).toContain('app.sale_order_item_production_exclusion_internal');
     expect(finalize).toContain('cancelled_purchase_contributions');
     expect(finalize).toContain("status IN ('proposed', 'awaiting_approval', 'suspended')");
+    expect(finalize).toContain('purchase_order_item_id = NULL');
+    expect(finalize).toContain('superseded_purchase_order_item_id');
   });
 
   it('guard de exclusão libera gerente/comercial quando GUC interno está ligado', () => {

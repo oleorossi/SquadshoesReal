@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { describePostgrestError } from '@/lib/postgrestErrors';
 
 export type SaleOrderCommandAction =
   | 'update'
@@ -236,7 +237,7 @@ export function formatSaleOrderCommandFailureMessage(
   const message = err?.message?.trim() || '';
   const detail = err?.detail?.trim() || '';
   const code = err?.code?.trim() || '';
-  const haystack = `${message}\n${detail}`.toLowerCase();
+  const haystack = `${message}\n${detail}\n${fallback || ''}`.toLowerCase();
 
   if (
     haystack.includes('sale_order_strap_demands')
@@ -246,6 +247,26 @@ export function formatSaleOrderCommandFailureMessage(
     return (
       'Não foi possível remover o(s) modelo(s): ainda há demanda de tira vinculada. ' +
       'O pedido NÃO foi salvo. Libere o compromisso de tira ou tente novamente após o processamento.'
+    );
+  }
+  // Antes do match genérico de purchase_demand_contributions: o 23503 do DELETE
+  // de purchase_order_items cita a tabela de contribuições no texto do FK.
+  if (
+    (code === '23503' && (
+      haystack.includes('purchase_order_items')
+      || haystack.includes('purchase_demand_contributions_purchase_order_item_id_fkey')
+    ))
+    || haystack.includes('purchase_order_item_id_fkey')
+  ) {
+    return (
+      'Não foi possível remover o(s) modelo(s): a OC de tira ainda referencia a contribuição. ' +
+      'O pedido NÃO foi salvo. Tente novamente após o processamento; se persistir, avise o suporte.'
+    );
+  }
+  if (haystack.includes('itens e snapshots de oc aprovada sao imutaveis')) {
+    return (
+      'Não foi possível ajustar a OC de tira vinculada ao item removido (OC já travada). ' +
+      'O pedido NÃO foi salvo.'
     );
   }
   if (
@@ -278,6 +299,15 @@ export function formatUnknownSaleOrderUpdateError(error: unknown): string {
     return formatSaleOrderCommandFailureMessage(
       null,
       `O pedido NÃO foi salvo. ${error.message.trim()}`,
+    );
+  }
+  // PostgREST devolve plain object { message, details, code } — não é Error.
+  // Sem isto o modal de cancelar OPs mostra só "O servidor recusou a edição".
+  const described = describePostgrestError(error, '').trim();
+  if (described) {
+    return formatSaleOrderCommandFailureMessage(
+      null,
+      `O pedido NÃO foi salvo. ${described}`,
     );
   }
   return 'O pedido NÃO foi salvo. O servidor recusou a edição.';
