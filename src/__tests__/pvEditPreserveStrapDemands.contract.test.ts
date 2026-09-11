@@ -72,7 +72,8 @@ describe('edição de PV — preserve itens com demanda de tira', () => {
 
   it('finalize soft-exclude itens com strap_demands e cancela saldo reversível', () => {
     const finalizeMig = latestFinalizeMigration();
-    expect(finalizeMig.file).toMatch(/20270101022900_.*\.sql$/);
+    // 22900 introduziu o detach; 23000+ é a migration viva (apaga órfão da OC).
+    expect(finalizeMig.file >= '20270101022900_').toBe(true);
     const finalize = sqlFunction(
       finalizeMig.sql,
       'finalize_removed_sale_order_items',
