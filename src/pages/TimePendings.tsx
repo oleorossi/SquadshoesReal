@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
   Warning as AlertTriangle, Clock, CheckCircle, Funnel, X, Calendar,
-  Users, Pencil, Lightning,
+  Users, Pencil, Lightning, CaretLeft, CaretRight,
 } from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -175,6 +175,52 @@ export default function TimePendingsPage() {
     setResolvableFilter('all');
   };
 
+  // ─── Modo funcionário a funcionário ─────────────────────────────
+  const employeeQueue = useMemo(() => {
+    const ids: string[] = [];
+    const seen = new Set<string>();
+    for (const p of pendings) {
+      if (!p.employee_id || seen.has(p.employee_id)) continue;
+      seen.add(p.employee_id);
+      ids.push(p.employee_id);
+    }
+    return ids;
+  }, [pendings]);
+
+  const activeEmployeeId = employeeFilter !== 'all' ? employeeFilter : null;
+  const activeEmployeeName = activeEmployeeId
+    ? (employees.find((e) => e.id === activeEmployeeId)?.name ?? 'Funcionário')
+    : null;
+  const activeEmployeePendings = useMemo(
+    () => (activeEmployeeId ? filtered.filter((p) => p.employee_id === activeEmployeeId) : []),
+    [filtered, activeEmployeeId],
+  );
+  const activeEmployeeResolvable = useMemo(
+    () => activeEmployeePendings.filter(isAutoResolvable),
+    [activeEmployeePendings],
+  );
+  const activeEmployeeIdx = activeEmployeeId ? employeeQueue.indexOf(activeEmployeeId) : -1;
+
+  const goEmployee = (dir: -1 | 1) => {
+    if (employeeQueue.length === 0) return;
+    const base = activeEmployeeIdx >= 0 ? activeEmployeeIdx : (dir > 0 ? -1 : 0);
+    const next = employeeQueue[(base + dir + employeeQueue.length) % employeeQueue.length];
+    setEmployeeFilter(next);
+    setSelectedIds(new Set());
+  };
+
+  const applyAllForActiveEmployee = () => {
+    if (activeEmployeeResolvable.length === 0) return;
+    setSelectedIds(new Set(activeEmployeeResolvable.map((p) => p.id)));
+    setConfirmOpen(true);
+  };
+
+  const openFirstForActiveEmployee = () => {
+    const first = activeEmployeePendings.find((p) => p.employee_id && !p.employee_match_ambiguous)
+      ?? activeEmployeePendings[0];
+    if (first) setEditing(first);
+  };
+
   const handleBulkApply = async () => {
     const items = selectedItems.map((p) => ({
       timeRecordId: p.id,
@@ -231,6 +277,76 @@ export default function TimePendingsPage() {
           hint="distintos com pendências"
         />
       </StatGrid>
+
+      {/* ─── Modo funcionário a funcionário ─── */}
+      <div className="rounded-md border border-border bg-card px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0 space-y-1">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            Preenchimento por funcionário
+          </p>
+          {activeEmployeeId ? (
+            <p className="text-sm text-foreground">
+              <strong>{activeEmployeeName}</strong>
+              <span className="text-muted-foreground">
+                {' '}· {activeEmployeePendings.length} dia(s)
+                {activeEmployeeResolvable.length > 0 && (
+                  <> · {activeEmployeeResolvable.length} com padrão pronto</>
+                )}
+              </span>
+            </p>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Filtre um funcionário (ou use ← →) pra resolver todos os dias dele em sequência.
+            </p>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1"
+            disabled={employeeQueue.length === 0}
+            onClick={() => goEmployee(-1)}
+            title="Funcionário anterior"
+          >
+            <CaretLeft className="h-4 w-4" /> Anterior
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1"
+            disabled={employeeQueue.length === 0}
+            onClick={() => goEmployee(1)}
+            title="Próximo funcionário"
+          >
+            Próximo <CaretRight className="h-4 w-4" />
+          </Button>
+          {activeEmployeeId && activeEmployeeResolvable.length > 0 && (
+            <Button
+              type="button"
+              size="sm"
+              className="h-8 gap-1"
+              onClick={applyAllForActiveEmployee}
+            >
+              <Lightning className="h-3.5 w-3.5" />
+              Aplicar padrão neste ({activeEmployeeResolvable.length})
+            </Button>
+          )}
+          {activeEmployeeId && activeEmployeePendings.length > 0 && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="h-8"
+              onClick={openFirstForActiveEmployee}
+            >
+              Revisar dia a dia
+            </Button>
+          )}
+        </div>
+      </div>
 
       {/* ─── Barra de seleção bulk ─── */}
       {selectedItems.length > 0 && (
@@ -477,6 +593,8 @@ export default function TimePendingsPage() {
         open={!!editing}
         onOpenChange={(o) => !o && setEditing(null)}
         pending={editing}
+        queue={filtered}
+        onPendingChange={setEditing}
       />
 
       {/* ─── Confirmação bulk apply ─── */}

@@ -21,6 +21,9 @@ export interface CompletePunchesDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   pending: TimePending | null;
+  /** Fila filtrada: após salvar, avança pro próximo dia (mesmo funcionário primeiro). */
+  queue?: TimePending[];
+  onPendingChange?: (next: TimePending | null) => void;
 }
 
 const HH_MM_RE = /^(?:[01][0-9]|2[0-3]):[0-5][0-9]$/;
@@ -53,7 +56,9 @@ function diffPairs(punches: string[]): { workedMin: number; valid: boolean; erro
 const fmtHHMM = (mins: number) =>
   `${Math.floor(mins / 60).toString().padStart(2, '0')}h${(mins % 60).toString().padStart(2, '0')}`;
 
-export function CompletePunchesDialog({ open, onOpenChange, pending }: CompletePunchesDialogProps) {
+export function CompletePunchesDialog({
+  open, onOpenChange, pending, queue = [], onPendingChange,
+}: CompletePunchesDialogProps) {
   const complete = useCompletePunches();
   const [punches, setPunches] = useState<string[]>([]);
   const [reason, setReason] = useState('');
@@ -61,7 +66,8 @@ export function CompletePunchesDialog({ open, onOpenChange, pending }: CompleteP
   useEffect(() => {
     if (open && pending) {
       setPunches(pending.punches.map(punch => punch.replace(/[*"]/g, '').slice(0, 5)));
-      setReason('');
+      // Motivo padrão — o RH só edita se quiser detalhar. Evita digitar 4+ chars a cada dia.
+      setReason('Batidas completadas pelo RH.');
     }
   }, [open, pending]);
 
@@ -91,21 +97,58 @@ export function CompletePunchesDialog({ open, onOpenChange, pending }: CompleteP
   const fillNormalDay = () => {
     if (!canFillNormalDay || !normalDay) return;
     setPunches([...normalDay]);
-    if (reason.trim().length === 0) {
+    if (reason.trim().length < 4) {
       setReason('Dia normal conforme escala — batidas completadas pelo RH.');
+    }
+  };
+
+  // Padrão observado do funcionário (quando a SQL sugere 4 batidas).
+  const observed = suggestion?.suggested ?? null;
+  const canFillObserved = hasCanonicalEmployee && !!observed
+    && observed.length === 4
+    && observed.every((p) => HH_MM_RE.test(p));
+  const fillObserved = () => {
+    if (!canFillObserved || !observed) return;
+    setPunches([...observed]);
+    if (reason.trim().length < 4) {
+      setReason('Completado com padrão observado do funcionário.');
     }
   };
 
   const canSubmit = !!pending && hasCanonicalEmployee && diff.valid && reason.trim().length >= 4;
 
-  const handleSubmit = async () => {
+  const queueIndex = pending ? queue.findIndex((item) => item.id === pending.id) : -1;
+  const nextInQueue = (() => {
+    if (!pending || queue.length === 0) return null;
+    const sameEmp = queue.filter((item) =>
+      item.id !== pending.id
+      && !!pending.employee_id
+      && item.employee_id === pending.employee_id,
+    );
+    if (sameEmp.length > 0) return sameEmp[0];
+    if (queueIndex >= 0 && queueIndex < queue.length - 1) return queue[queueIndex + 1];
+    // pending may already be gone from queue after invalidate — pick first other
+    return queue.find((item) => item.id !== pending.id) ?? null;
+  })();
+  const prevInQueue = queueIndex > 0 ? queue[queueIndex - 1] : null;
+  const remainingForEmployee = pending?.employee_id
+    ? queue.filter((item) => item.employee_id === pending.employee_id).length
+    : queue.length;
+
+  const advanceTo = (next: TimePending | null) => {
+    if (next && onPendingChange) onPendingChange(next);
+    else onOpenChange(false);
+  };
+
+  const handleSubmit = async (andNext: boolean) => {
     if (!pending || !hasCanonicalEmployee || !diff.valid) return;
     await complete.mutateAsync({
       timeRecordId: pending.id,
       punches: punches.map((p) => p.trim()),
       reason: reason.trim(),
     });
-    onOpenChange(false);
+    if (andNext) advanceTo(nextInQueue);
+    else onOpenChange(false);
   };
 
   return (
@@ -126,9 +169,39 @@ export function CompletePunchesDialog({ open, onOpenChange, pending }: CompleteP
                 {pending.days_since > 0 && (
                   <span className="text-muted-foreground"> · há {pending.days_since} dias</span>
                 )}
+                {remainingForEmployee > 0 && (
+                  <span className="text-muted-foreground">
+                    {' '}· {remainingForEmployee} dia{remainingForEmployee === 1 ? '' : 's'} na fila
+                    {pending.employee_id ? ' desta pessoa' : ''}
+                  </span>
+                )}
               </>
             )}
           </DialogDescription>
+          {(prevInQueue || nextInQueue) && (
+            <div className="flex items-center justify-between gap-2 pt-1">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs"
+                disabled={!prevInQueue || complete.isPending}
+                onClick={() => prevInQueue && onPendingChange?.(prevInQueue)}
+              >
+                ← Anterior
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs"
+                disabled={!nextInQueue || complete.isPending}
+                onClick={() => nextInQueue && onPendingChange?.(nextInQueue)}
+              >
+                Próximo →
+              </Button>
+            </div>
+          )}
         </DialogHeader>
 
         <div className="space-y-4">
@@ -211,17 +284,33 @@ export function CompletePunchesDialog({ open, onOpenChange, pending }: CompleteP
           )}
 
           {/* Atalho de 1 clique: lançamento do dia normal (escala oficial) */}
-          {canFillNormalDay && normalDay && (
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              className="w-full h-9 text-xs gap-1.5"
-              onClick={fillNormalDay}
-            >
-              <Clock className="h-3.5 w-3.5" />
-              Preencher dia normal ({normalDay[0]}–{normalDay[3]})
-            </Button>
+          {(canFillNormalDay || canFillObserved) && (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {canFillObserved && observed && (
+                <Button
+                  type="button"
+                  variant="default"
+                  size="sm"
+                  className="h-9 text-xs gap-1.5"
+                  onClick={fillObserved}
+                >
+                  <CheckCircle className="h-3.5 w-3.5" />
+                  Padrão observado ({observed[0]}–{observed[3]})
+                </Button>
+              )}
+              {canFillNormalDay && normalDay && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="h-9 text-xs gap-1.5"
+                  onClick={fillNormalDay}
+                >
+                  <Clock className="h-3.5 w-3.5" />
+                  Escala oficial ({normalDay[0]}–{normalDay[3]})
+                </Button>
+              )}
+            </div>
           )}
 
           <div className="space-y-2">
@@ -321,13 +410,29 @@ export function CompletePunchesDialog({ open, onOpenChange, pending }: CompleteP
           </div>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-between">
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={complete.isPending}>
             Cancelar
           </Button>
-          <Button onClick={handleSubmit} disabled={!canSubmit || complete.isPending}>
-            {complete.isPending ? 'Salvando...' : 'Salvar batidas'}
-          </Button>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row">
+            <Button
+              variant="secondary"
+              onClick={() => handleSubmit(false)}
+              disabled={!canSubmit || complete.isPending}
+            >
+              {complete.isPending ? 'Salvando...' : 'Salvar e fechar'}
+            </Button>
+            <Button
+              onClick={() => handleSubmit(true)}
+              disabled={!canSubmit || complete.isPending}
+            >
+              {complete.isPending
+                ? 'Salvando...'
+                : nextInQueue
+                  ? 'Salvar e próximo'
+                  : 'Salvar batidas'}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

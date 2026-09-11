@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Warning as AlertTriangle, CheckCircle as CheckCircle2, Clock, CaretDown as ChevronDown, CaretRight as ChevronRight, FloppyDisk as Save, Users as Users2, Calendar, Funnel as Filter, MagnifyingGlass as Search, Sparkle as Sparkles, ArrowSquareOut } from '@phosphor-icons/react';
@@ -328,6 +328,7 @@ function EmployeeCard({
     && !p.employee_match_ambiguous,
   );
   const [approvingAll, setApprovingAll] = useState(false);
+  const [focusRecordId, setFocusRecordId] = useState<string | null>(null);
   const approveAll = async () => {
     if (suggestibles.length === 0) return;
     setApprovingAll(true);
@@ -418,12 +419,21 @@ function EmployeeCard({
                   </Button>
                 </div>
               )}
-              {pendings.map((p) => (
+              {pendings.map((p, idx) => (
                 <PendingDayRow
                   key={p.time_record_id}
                   p={p}
                   suggestion={p.issue_type === 'batida_extra' ? undefined : suggestExitTime(pattern, p.record_date)}
-                  onSaved={onSaved}
+                  autoFocus={focusRecordId === p.time_record_id || (focusRecordId === null && idx === 0)}
+                  onSaved={() => {
+                    const next = pendings.slice(idx + 1).find((row) =>
+                      row.issue_type !== 'batida_extra'
+                      && !!row.employee_id
+                      && !row.employee_match_ambiguous,
+                    );
+                    setFocusRecordId(next?.time_record_id ?? null);
+                    onSaved();
+                  }}
                 />
               ))}
             </div>
@@ -434,15 +444,27 @@ function EmployeeCard({
   );
 }
 
-function PendingDayRow({ p, suggestion, onSaved }: { p: PendingTimeRecord; suggestion?: ExitSuggestion; onSaved: () => void }) {
+function PendingDayRow({ p, suggestion, onSaved, autoFocus = false }: {
+  p: PendingTimeRecord;
+  suggestion?: ExitSuggestion;
+  onSaved: () => void;
+  autoFocus?: boolean;
+}) {
   const [punchTime, setPunchTime] = useState('');
   const [reason, setReason] = useState('');
+  const timeInputRef = useRef<HTMLInputElement>(null);
   // Pré-preenche com a saída sugerida (padrão do funcionário) — só enquanto o campo
   // está vazio; o RH aprova (Salvar) ou ajusta. Não sobrescreve edição manual.
   useEffect(() => {
     if (suggestion?.time && punchTime === '') setPunchTime(suggestion.time);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [suggestion?.time]);
+  useEffect(() => {
+    if (autoFocus) {
+      timeInputRef.current?.focus();
+      timeInputRef.current?.select();
+    }
+  }, [autoFocus, p.time_record_id]);
   const apply = useMutation({
     mutationFn: () =>
       applyManualPunchCompletion({
@@ -505,9 +527,16 @@ function PendingDayRow({ p, suggestion, onSaved }: { p: PendingTimeRecord; sugge
           </span>
         )}
         <Input
+          ref={timeInputRef}
           type="time"
           value={punchTime}
           onChange={(e) => setPunchTime(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && isValidTime && !apply.isPending) {
+              e.preventDefault();
+              apply.mutate();
+            }
+          }}
           className="h-8 w-24 text-xs"
           placeholder="HH:MM"
           title={ISSUE_HINT[p.issue_type]}
@@ -515,9 +544,15 @@ function PendingDayRow({ p, suggestion, onSaved }: { p: PendingTimeRecord; sugge
         <Input
           value={reason}
           onChange={(e) => setReason(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && isValidTime && !apply.isPending) {
+              e.preventDefault();
+              apply.mutate();
+            }
+          }}
           className="h-8 min-w-[180px] flex-1 text-xs sm:w-48 sm:flex-none"
-          placeholder="Motivo (ex: atestado #4521)"
-          title="Justificativa do ajuste — fica registrada no histórico de auditoria"
+          placeholder="Motivo (Enter salva e vai ao próximo)"
+          title="Justificativa do ajuste — Enter salva e avança para o próximo dia"
           maxLength={120}
         />
         <Button
