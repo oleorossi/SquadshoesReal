@@ -140,11 +140,28 @@ export function formatCanonicalStrapProductName(
   const base = resolveStrapBaseFamilyName(preview);
   const color = (preview.strapColorName || '').trim();
   const parts = [
-    measure ? (measure.toUpperCase().startsWith('TIRA') ? measure : `TIRA ${measure}`) : null,
+    measure ? formatStrapMeasureLabel(measure) : null,
     base || null,
     color && color !== '—' ? color : null,
   ].filter(Boolean) as string[];
   return parts.length > 0 ? parts.join(' · ') : STRAP_LABEL_FALLBACK;
+}
+
+/** Prefixa TIRA só para medida crua/chata/strass — nunca em ELÁSTICO/MEIA CANA/etc. */
+export function formatStrapMeasureLabel(measureName: string): string {
+  const measure = measureName.trim();
+  if (!measure) return measure;
+  const upper = measure.toUpperCase();
+  if (upper.startsWith('TIRA')) return measure;
+  // Já veio como identidade de produto (overlay 232: "ELÁSTICO FORRADO 7 mm").
+  if (
+    /^(EL[ÁA]STICO|MEIA\s*CANA|COBERTO|COBERTA|VIVO|VI[EÉ]S|CADAR[CÇ]O|ELASTICO)\b/.test(
+      upper,
+    )
+  ) {
+    return measure;
+  }
+  return `TIRA ${measure}`;
 }
 
 const approxSameMeters = (a: number, b: number): boolean =>

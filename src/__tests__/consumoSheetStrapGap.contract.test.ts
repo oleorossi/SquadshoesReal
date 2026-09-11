@@ -18,6 +18,13 @@ const migration231 = readFileSync(
   ),
   'utf8',
 );
+const migration232 = readFileSync(
+  resolve(
+    root,
+    'supabase/migrations/20270101023200_consumo-sheet-strap-overlay-sourcing-sanitize.sql',
+  ),
+  'utf8',
+);
 const dialog = readFileSync(
   resolve(root, 'src/components/orders/OrderConsumptionDialog.tsx'),
   'utf8',
@@ -68,6 +75,17 @@ describe('consumo: gap de tira da ficha ausente do snapshot do item', () => {
     // preserva escolha comercial do PV
     expect(migration231).toContain("'color', v_item_line -> 'color'");
     expect(migration231).toContain('base_group_id');
+  });
+
+  it('23200 sanitiza sourcing pinado e rótulo tipo+medida no overlay', () => {
+    expect(migration232).toContain('sheet_strap_overlay_sourcing_sanitize_232');
+    expect(migration232).toContain('consumo_sheet_structure_overlay');
+    expect(migration232).toContain(" - 'strap_variant_id'");
+    expect(migration232).toContain(" - 'recipe_id'");
+    expect(migration232).toContain(" - 'finished_product_id'");
+    expect(migration232).toContain("'measure_name', v_measure_label");
+    expect(migration232).toContain('artisanal_strap_types');
+    expect(migration232).toContain("'strap_sourcing', v_strap_sourcing");
   });
 
   it('dialog de OP não esconde Tiras com aviso e quantidade zero', () => {
