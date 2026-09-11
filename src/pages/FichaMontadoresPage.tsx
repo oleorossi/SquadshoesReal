@@ -37,6 +37,9 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
 import { useEmployees } from "@/hooks/useEmployees";
 import { useAccessControl } from "@/hooks/useAccessControl";
 import { PagarProducaoDialog } from "@/components/hr/PagarProducaoDialog";
@@ -47,7 +50,7 @@ import { ratesOfRow, sumProducaoRows, type FichaMontadorRow } from "@/lib/montad
 import { adjustParesByFicha, fichasFromPares, isFichaLocked, parseParesEntry, rateForEntryCategory } from "@/lib/fichaMontadoresEntry";
 import { searchMatchesAllTerms } from "@/lib/searchUtils";
 import { toast } from "sonner";
-import { Printer, ChartBar, ClipboardText, Users, CurrencyDollar, FloppyDisk, CaretLeft, CaretRight, Warning, CheckCircle, Clock, CalendarBlank, ListBullets, Plus, Minus, LockKey, ArrowDown, X, FileArrowDown, Copy } from "@phosphor-icons/react";
+import { Printer, User, ChartBar, ClipboardText, Users, CurrencyDollar, FloppyDisk, CaretLeft, CaretRight, Warning, CheckCircle, Clock, CalendarBlank, ListBullets, Plus, Minus, LockKey, ArrowDown, X, FileArrowDown, Copy } from "@phosphor-icons/react";
 import {
   buildProducaoExportRows, downloadTextFile, producaoExportToCsv, semanaAnteriorDe,
 } from "@/lib/fichaMontadoresExport";
@@ -301,6 +304,8 @@ function imprimirRelatorio(p: {
   rows: AggRow[]; totals: AggTotals; setorLabel: string; oficioPlural: string; oficioLabel: string;
   label: string; intervalo: string; pagStatus: PagStatus;
   cal: { rows: CalRow[]; days: string[] };
+  /** Quando preenchido, o título vira relatório individual dessa pessoa. */
+  pessoaNome?: string;
 }) {
   const { rows, totals } = p;
   const nf = (n: number) => (Number(n) || 0).toLocaleString("pt-BR");
@@ -320,6 +325,10 @@ function imprimirRelatorio(p: {
     na: "Filtrado: SOMENTE quem não é regime por par (produção como medição).",
   }[p.pagStatus];
 
+  const titulo = p.pessoaNome
+    ? `Produção e pagamento — ${p.setorLabel} · ${p.pessoaNome}`
+    : `Produção e pagamento — ${p.setorLabel}`;
+
   // ── 1. Rendimento por pessoa ──────────────────────────────────────────────
   const bodyRend = rows.map((r, i) => `<tr><td>${i + 1}. ${esc(r.nome)}</td><td class="n">${r.fichas}</td>`
     + (temDificil ? `<td class="n med">${r.paresMedio}</td><td class="n dif">${r.paresDificil || "—"}</td>` : "")
@@ -334,19 +343,24 @@ function imprimirRelatorio(p: {
 
   // ── 2. Calendário pessoa × dia ────────────────────────────────────────────
   const { rows: cRows, days } = p.cal;
+  // Escala visual: períodos curtos ganham letra e padding; longos ficam compactos.
+  const calScale = days.length <= 10 ? "cal-lg" : days.length <= 20 ? "cal-md" : "cal-sm";
   const dayHead = days.map((d) => {
-    const we = dowIdx(d) >= 5;
-    return `<th class="day${we ? " we" : ""}">${WD_SHORT7[dowIdx(d)]}<br>${d.slice(8, 10)}/${d.slice(5, 7)}</th>`;
+    const di = dowIdx(d);
+    const we = di >= 5;
+    const wk = di === 0; // segunda = início de semana
+    return `<th class="day${we ? " we" : ""}${wk ? " wk" : ""}"><span class="wd">${WD_SHORT7[di]}</span><span class="dn">${d.slice(8, 10)}/${d.slice(5, 7)}</span></th>`;
   }).join("");
   const bodyCal = cRows.map((r) => {
     const cells = days.map((d) => {
-      const c = r.cells[d]; const we = dowIdx(d) >= 5;
-      if (!c || c.pares <= 0) return `<td class="c${we ? " we" : ""}">·</td>`;
+      const c = r.cells[d]; const di = dowIdx(d);
+      const we = di >= 5; const wk = di === 0;
+      if (!c || c.pares <= 0) return `<td class="c empty${we ? " we" : ""}${wk ? " wk" : ""}"></td>`;
       // Com uma dificuldade só, o split embaixo repetiria o número grande acima.
       const sp = temDificil
         ? [c.medio > 0 ? `<span class="med">${c.medio}</span>` : "", c.dificil > 0 ? `<span class="dif">${c.dificil}</span>` : ""].filter(Boolean).join("<span class='x'>·</span>")
         : "";
-      return `<td class="c has${we ? " we" : ""}${c.pago ? "" : " ab"}"><b>${c.pares}</b>${sp ? `<div class="sp">${sp}</div>` : ""}</td>`;
+      return `<td class="c has${we ? " we" : ""}${wk ? " wk" : ""}${c.pago ? "" : " ab"}"><b>${c.pares}</b>${sp ? `<div class="sp">${sp}</div>` : ""}</td>`;
     }).join("");
     return `<tr><td class="mont">${esc(r.nome)}</td>${cells}`
       + (temDificil ? `<td class="n med">${r.medio || "—"}</td><td class="n dif">${r.dificil || "—"}</td>` : "")
@@ -355,8 +369,9 @@ function imprimirRelatorio(p: {
       + `<td class="n abt">${r.valorAberto > 0 ? fmtBRL(r.valorAberto) : "—"}</td></tr>`;
   }).join("");
   const dayTot = days.map((d) => {
+    const di = dowIdx(d);
     const s = cRows.reduce((a, r) => a + (r.cells[d]?.pares || 0), 0);
-    return `<td class="c${dowIdx(d) >= 5 ? " we" : ""}">${s || ""}</td>`;
+    return `<td class="c${di >= 5 ? " we" : ""}${di === 0 ? " wk" : ""}">${s || ""}</td>`;
   }).join("");
   const tMed = cRows.reduce((s, r) => s + r.medio, 0), tDif = cRows.reduce((s, r) => s + r.dificil, 0);
   const tPar = cRows.reduce((s, r) => s + r.pares, 0), tFic = cRows.reduce((s, r) => s + r.fichas, 0);
@@ -381,25 +396,45 @@ function imprimirRelatorio(p: {
     .rend td.n{text-align:right;font-variant-numeric:tabular-nums} .rend tfoot td{font-weight:800;background:#f6f5f2}
     .rend td.na{text-align:center;color:#888;font-size:9.5px}
     /* ── calendário pessoa × dia ── */
-    .cal table{width:100%;border-collapse:collapse;font-size:8.5px;table-layout:fixed}
-    .cal th,.cal td{border:1px solid #bbb;padding:2px 3px;text-align:center;overflow:hidden}
-    .cal th{background:#f1f0ed;font-size:8px;text-transform:uppercase;color:#444}
-    .cal th.day{width:22px;line-height:1.05} .cal th.day.we,.cal td.c.we{background:#f4f2ee}
-    .cal td.mont,.cal th.mont{text-align:left;font-weight:700;white-space:nowrap;width:96px;background:#fafafa}
-    .cal td.c{color:#bbb} .cal td.c.has{color:#111} .cal td.c b{font-size:9px;font-weight:800} .cal td.c .sp{font-size:6.5px;line-height:1}
-    .cal td.c.ab{background:#fff7ed} .cal td.c.ab.we{background:#f7efe4}
+    .cal table{width:100%;border-collapse:collapse;table-layout:fixed}
+    .cal th,.cal td{border:1px solid #c8c5be;text-align:center;overflow:hidden;vertical-align:middle}
+    .cal th{background:#f1f0ed;text-transform:uppercase;color:#444}
+    .cal th.day{line-height:1.1;padding:3px 1px}
+    .cal th.day .wd{display:block;font-size:7px;font-weight:600;letter-spacing:.04em;color:#888}
+    .cal th.day .dn{display:block;font-size:9px;font-weight:800;color:#222;margin-top:1px;font-variant-numeric:tabular-nums}
+    .cal th.day.we,.cal td.c.we{background:#ebe8e2}
+    .cal th.day.wk,.cal td.c.wk{border-left:2px solid #666}
+    .cal td.mont,.cal th.mont{text-align:left;font-weight:700;white-space:nowrap;width:108px;background:#f3f2ef;border-right:2px solid #666;padding:3px 6px}
+    .cal td.c{color:transparent;padding:2px 1px} .cal td.c.empty{background:#fafaf8}
+    .cal td.c.empty.we{background:#ebe8e2}
+    .cal td.c.has{color:#111} .cal td.c.has b{font-weight:800;font-variant-numeric:tabular-nums} .cal td.c .sp{line-height:1;margin-top:1px}
+    .cal td.c.ab{background:#ffedd5} .cal td.c.ab.we{background:#f3e0c8}
     .cal td.c .med{color:#b45309;font-weight:700} .cal td.c .dif{color:#0f7a4a;font-weight:700} .cal td.c .x{color:#bbb;margin:0 1px}
-    .cal td.n{text-align:right;font-variant-numeric:tabular-nums;width:34px}
+    .cal td.n,.cal th.sum{text-align:right;font-variant-numeric:tabular-nums;border-left:2px solid #666;background:#f3f2ef;padding:3px 5px}
+    .cal th.sum{background:#e4e1da;font-size:8px}
     .cal td.n.med{color:#b45309;font-weight:700} .cal td.n.dif{color:#0f7a4a;font-weight:700}
     .cal td.n.b{font-weight:800} .cal td.n.pgo{font-weight:800;width:56px;color:#15803d} .cal td.n.abt{font-weight:800;width:56px;color:#b45309}
     .cal td.n.f{color:#1d4ed8;font-weight:700;width:28px}
-    .cal th.sum{background:#e9e7e2}
-    .cal tfoot td{font-weight:800;background:#f6f5f2} .cal tfoot td.c{color:#111}
-    .lg{font-size:8.5px;color:#555;margin:4px 0 0} .lg b.med{color:#b45309} .lg b.dif{color:#0f7a4a}
+    .cal tfoot td{font-weight:800;background:#f0eeea} .cal tfoot td.c{color:#111}
+    /* escalas por tamanho do período */
+    .cal table.cal-lg{font-size:10px}
+    .cal table.cal-lg th.day{width:34px;padding:4px 2px} .cal table.cal-lg th.day .wd{font-size:8px} .cal table.cal-lg th.day .dn{font-size:11px}
+    .cal table.cal-lg td.c{padding:4px 2px} .cal table.cal-lg td.c.has b{font-size:12px} .cal table.cal-lg td.c .sp{font-size:8px}
+    .cal table.cal-lg td.mont,.cal table.cal-lg th.mont{width:120px;font-size:11px}
+    .cal table.cal-md{font-size:9px}
+    .cal table.cal-md th.day{width:26px} .cal table.cal-md th.day .wd{font-size:7px} .cal table.cal-md th.day .dn{font-size:9.5px}
+    .cal table.cal-md td.c.has b{font-size:10px} .cal table.cal-md td.c .sp{font-size:7px}
+    .cal table.cal-sm{font-size:8px}
+    .cal table.cal-sm th.day{width:18px;padding:2px 0} .cal table.cal-sm th.day .wd{font-size:6px} .cal table.cal-sm th.day .dn{font-size:8px}
+    .cal table.cal-sm td.c{padding:1px 0} .cal table.cal-sm td.c.has b{font-size:8.5px} .cal table.cal-sm td.c .sp{font-size:6px}
+    .cal table.cal-sm td.mont,.cal table.cal-sm th.mont{width:92px;font-size:8px;padding:2px 4px}
+    .lg{font-size:8.5px;color:#555;margin:5px 0 0;line-height:1.35} .lg b.med{color:#b45309} .lg b.dif{color:#0f7a4a}
+    .lg i{display:inline-block;width:9px;height:9px;border:1px solid #bbb;vertical-align:-1px;margin-right:3px}
+    .lg i.ab{background:#ffedd5;border-color:#f0b27a} .lg i.we{background:#ebe8e2} .lg i.wk{border-left:2px solid #666}
     @page{size:A4 landscape;margin:9mm}`;
 
-  openPrint(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>Relatório — ${esc(p.setorLabel)}</title><style>${css}</style></head><body>
-    <h1>Produção e pagamento — ${esc(p.setorLabel)}</h1>
+  openPrint(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${esc(titulo)}</title><style>${css}</style></head><body>
+    <h1>${esc(titulo)}</h1>
     <div class="sub">${esc(p.label)} · ${esc(p.intervalo)} — gerado em ${fmtDia(todayISO())}</div>
     <div class="filtro">${esc(filtro)} Valores calculados pelo R$/par gravado em cada lançamento.</div>
 
@@ -429,12 +464,12 @@ function imprimirRelatorio(p: {
 
     <section class="cal">
       <h2>Calendário — o que cada ${esc(p.oficioLabel.toLowerCase())} fez em cada dia</h2>
-      <table>
+      <table class="${calScale}">
         <thead><tr><th class="mont">${esc(p.oficioLabel)}</th>${dayHead}${temDificil ? '<th class="sum">Méd</th><th class="sum">Dif</th>' : ""}<th class="sum">Pares</th><th class="sum">Fichas</th><th class="sum">Pago</th><th class="sum">A pagar</th></tr></thead>
         <tbody>${bodyCal || `<tr><td colspan="${days.length + (temDificil ? 7 : 5)}" style="text-align:center;color:#888;padding:12px">Sem lançamentos no período.</td></tr>`}</tbody>
         <tfoot><tr><td class="mont">TOTAL (${cRows.length})</td>${dayTot}${temDificil ? `<td class="n med">${nf(tMed)}</td><td class="n dif">${nf(tDif)}</td>` : ""}<td class="n b">${nf(tPar)}</td><td class="n f">${tFic}</td><td class="n pgo">${fmtBRL(tPago)}</td><td class="n abt">${fmtBRL(tAberto)}</td></tr></tfoot>
       </table>
-      <div class="lg">Cada célula = <b>pares do dia</b>${temDificil ? '; embaixo o split <b class="med">médio</b> · <b class="dif">difícil</b>' : ""}. Célula com fundo claro = dia <b>ainda não pago</b>. Colunas cinza = fim de semana.</div>
+      <div class="lg">Cada célula = <b>pares do dia</b>${temDificil ? '; embaixo o split <b class="med">médio</b> · <b class="dif">difícil</b>' : ""}. <i class="ab"></i>fundo âmbar = dia <b>ainda não pago</b>. <i class="we"></i>coluna cinza = fim de semana. <i class="wk"></i>borda esquerda = início da semana (seg).</div>
     </section>
 
     <script>window.onload=function(){window.focus();window.print();};</script></body></html>`);
@@ -1236,6 +1271,8 @@ export default function FichaMontadoresPage() {
   // pMode/cFrom/cTo e `range` ficam lá em cima (antes de `carregar`) — a busca
   // no banco depende deles. Aqui só os filtros que não afetam o intervalo.
   const [filtroMontador, setFiltroMontador] = useState<string>("__all__");
+  const [dlgIndividualAberto, setDlgIndividualAberto] = useState(false);
+  const [pessoaIndividual, setPessoaIndividual] = useState("");
   // Quitação: separa o que a folha já pagou do que ainda está em aberto.
   const [pagStatus, setPagStatus] = useState<PagStatus>("todos");
 
@@ -1445,7 +1482,7 @@ export default function FichaMontadoresPage() {
     return { rows, days };
   }
 
-  /** Um botão, um documento: rendimento por pessoa + calendário na mesma folha. */
+  /** Relatório gerencial: rendimento por pessoa + calendário na mesma folha. */
   function imprimirRelatorioCompleto() {
     const cal = montarCalendario();
     if (!cal) { toast.error("Selecione um período válido."); return; }
@@ -1456,6 +1493,39 @@ export default function FichaMontadoresPage() {
       label: periodLabel[pMode], intervalo: `${fmtDia(range.from)} a ${fmtDia(range.to)}`,
       pagStatus, cal,
     });
+  }
+
+  /** Relatório individual: mesma folha, filtrada para um montador escolhido no diálogo. */
+  function imprimirRelatorioIndividual() {
+    if (!pessoaIndividual) {
+      toast.error(`Selecione um ${cfgSetor.sing} para imprimir.`);
+      return;
+    }
+    const cal = montarCalendario();
+    if (!cal) { toast.error("Selecione um período válido."); return; }
+    const rows = agg.filter((r) => r.key === pessoaIndividual);
+    if (rows.length === 0) {
+      toast.error(`Sem produção para este ${cfgSetor.sing} no período.`);
+      return;
+    }
+    const calRows = cal.rows.filter((r) => r.key === pessoaIndividual);
+    const personTotals = rows.reduce<AggTotals>((s, r) => ({
+      fichas: s.fichas + r.fichas, pares: s.pares + r.pares,
+      medio: s.medio + r.paresMedio, dificil: s.dificil + r.paresDificil,
+      valorPago: s.valorPago + r.valorPago,
+      valorFolha: s.valorFolha + r.valorFolha,
+      valorAberto: s.valorAberto + r.valorAberto,
+      valorTotal: s.valorTotal + r.valorTotal,
+    }), { fichas: 0, pares: 0, medio: 0, dificil: 0, valorPago: 0, valorFolha: 0, valorAberto: 0, valorTotal: 0 });
+    imprimirRelatorio({
+      rows, totals: personTotals, setorLabel: cfgSetor.label,
+      oficioPlural: cfgSetor.plural,
+      oficioLabel: cfgSetor.sing.replace(/^./, (c) => c.toUpperCase()),
+      label: periodLabel[pMode], intervalo: `${fmtDia(range.from)} a ${fmtDia(range.to)}`,
+      pagStatus, cal: { rows: calRows, days: cal.days },
+      pessoaNome: rows[0].nome,
+    });
+    setDlgIndividualAberto(false);
   }
 
   const lbl = "block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1";
@@ -2163,8 +2233,15 @@ export default function FichaMontadoresPage() {
               </Button>
               <Button type="button" variant="outline" size="sm" className="h-9 w-9 gap-1.5 p-0 sm:w-auto sm:px-3" disabled={agg.length === 0}
                 title="Gera rendimento por pessoa e calendário no mesmo documento, respeitando todos os filtros."
-                aria-label="Imprimir relatório"
-                onClick={imprimirRelatorioCompleto}><Printer className="h-4 w-4" /><span className="hidden sm:inline">Imprimir relatório</span></Button>
+                aria-label="Relatório gerencial"
+                onClick={imprimirRelatorioCompleto}><Printer className="h-4 w-4" /><span className="hidden sm:inline">Relatório gerencial</span></Button>
+              <Button type="button" variant="outline" size="sm" className="h-9 w-9 gap-1.5 p-0 sm:w-auto sm:px-3" disabled={agg.length === 0}
+                title={`Imprime a produção de um ${cfgSetor.sing} só, para mostrar a ele.`}
+                aria-label="Relatório individual"
+                onClick={() => {
+                  setPessoaIndividual(agg.length === 1 ? agg[0].key : "");
+                  setDlgIndividualAberto(true);
+                }}><User className="h-4 w-4" /><span className="hidden sm:inline">Relatório individual</span></Button>
             </div>
           }
         >
@@ -2511,11 +2588,11 @@ export default function FichaMontadoresPage() {
             {loading && <span className="text-xs text-muted-foreground">carregando…</span>}
             {!loading && <span className="text-xs text-muted-foreground">{fichasFiltradas.length} lançamento(s)</span>}
             {/* O botão "Calendário em PDF" saiu daqui: o calendário virou a
-                segunda seção do "Imprimir relatório", lá em cima. Um documento
+                segunda seção do "Relatório gerencial", lá em cima. Um documento
                 só, com o mesmo período e o mesmo filtro — quem conferia a semana
                 gerava os dois e juntava no grampo. */}
             <span className="ml-auto text-[11px] text-muted-foreground">
-              O calendário sai junto em <strong className="text-foreground">Imprimir relatório</strong>.
+              O calendário sai junto em <strong className="text-foreground">Relatório gerencial</strong> ou <strong className="text-foreground">Relatório individual</strong>.
             </span>
           </div>
 
@@ -2819,6 +2896,38 @@ export default function FichaMontadoresPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={dlgIndividualAberto} onOpenChange={(open) => {
+        setDlgIndividualAberto(open);
+        if (!open) setPessoaIndividual("");
+      }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Relatório individual</DialogTitle>
+            <DialogDescription>
+              Escolha o {cfgSetor.sing} para imprimir só a produção dele no período filtrado.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-1">
+            <label className={lbl}>{cfgSetor.sing.replace(/^./, (c) => c.toUpperCase())}</label>
+            <SearchableSelect
+              value={pessoaIndividual}
+              onChange={setPessoaIndividual}
+              options={agg.map((r) => ({ value: r.key, label: r.nome }))}
+              placeholder={`Selecionar ${cfgSetor.sing}…`}
+              searchPlaceholder={`Buscar ${cfgSetor.sing}…`}
+              emptyText={`Nenhum ${cfgSetor.sing} com produção no período.`}
+            />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setDlgIndividualAberto(false)}>Cancelar</Button>
+            <Button type="button" data-dialog-primary="true" disabled={!pessoaIndividual}
+              onClick={imprimirRelatorioIndividual}>
+              <Printer className="h-4 w-4" /> Imprimir
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {pagarAlvo && (
         <PagarProducaoDialog
