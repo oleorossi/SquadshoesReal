@@ -145,7 +145,7 @@ export const navigationCatalog: NavigationResource[] = [
   { path: '/lgpd', label: 'LGPD', group: 'Sistema', icon: Lock, surfaces: ['command'], preload: () => import('@/pages/LGPD') },
   { path: '/system-monitor', label: 'Monitoramento', group: 'Sistema', icon: Monitor, surfaces: ['command'], preload: () => import('@/pages/SystemMonitor') },
   { path: '/system-diagnostics', label: 'Diagnóstico', group: 'Sistema', icon: Cpu, surfaces: ['command'], preload: () => import('@/pages/SystemDiagnostics') },
-  { path: '/unit-audit', label: 'Auditoria de Unidades', group: 'Sistema', icon: Scale, surfaces: ['command'], preload: () => import('@/pages/UnitAudit') },
+  { path: '/estoque?tab=conversion', label: 'Auditoria de Unidades', group: 'Estoque', icon: Scale, surfaces: ['command'], preload: () => import('@/components/inventory/tabs/UnitConversionAuditTab') },
 ];
 
 const resourcesByPath = new Map(navigationCatalog.map((resource) => [resource.path, resource]));
@@ -245,7 +245,7 @@ export const secondaryRoutes: NavigationResource[] = [
   resource('/lgpd'),
   resource('/system-monitor'),
   resource('/system-diagnostics'),
-  resource('/unit-audit'),
+  resource('/estoque?tab=conversion'),
 ];
 
 /** Filtra os atalhos de um hub sem promover a rota para a sidebar. */

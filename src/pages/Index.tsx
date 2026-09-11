@@ -18,8 +18,10 @@ const ReportTab = lazy(() =>
 const NotificationsTab = lazy(() =>
   import('@/components/inventory/tabs/NotificationsTab').then((m) => ({ default: m.NotificationsTab })),
 );
-const ConversionReportTab = lazy(() =>
-  import('@/components/inventory/tabs/ConversionReportTab').then((m) => ({ default: m.ConversionReportTab })),
+const UnitConversionAuditTab = lazy(() =>
+  import('@/components/inventory/tabs/UnitConversionAuditTab').then((m) => ({
+    default: m.UnitConversionAuditTab,
+  })),
 );
 const AuditLogTab = lazy(() => import('@/components/inventory/tabs/AuditLogTab'));
 const StockHistory = lazy(() => import('./StockHistory'));
@@ -95,6 +97,10 @@ export default function Index() {
       notifications: 'alerts',
       grupos: 'organization',
       organizacao: 'organization',
+      // Conversões virou Auditoria de unidades; /unit-audit redireciona pra cá.
+      'unit-audit': 'conversion',
+      conversoes: 'conversion',
+      unidades: 'conversion',
     },
   });
 
@@ -156,7 +162,7 @@ export default function Index() {
              className="min-w-[145px] justify-start gap-2 border border-transparent px-3 py-2 text-left font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm"
            >
              <ArrowRightLeft className="h-4 w-4 shrink-0" />
-             <span><span className="block text-xs font-semibold">Conversões</span><span className="block text-[9px] font-normal text-muted-foreground">compra e consumo</span></span>
+             <span><span className="block text-xs font-semibold">Auditoria de unidades</span><span className="block text-[9px] font-normal text-muted-foreground">compra, estoque e consumo</span></span>
            </TabsTrigger>
            <TabsTrigger
              value="history"
@@ -175,7 +181,7 @@ export default function Index() {
                 className="min-w-[120px] gap-1.5 border border-transparent px-3 py-2 text-xs opacity-60 data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:opacity-100"
               >
                 <History className="h-3.5 w-3.5" />
-                Auditoria
+                Log de alterações
               </TabsTrigger>
             </>
           )}
@@ -246,10 +252,10 @@ export default function Index() {
             </Suspense>
           </TabsContent>
 
-          {/* ── Relatório de Conversão ── */}
+          {/* ── Auditoria de unidades (ex-Conversões + /unit-audit) ── */}
           <TabsContent value="conversion">
             <Suspense fallback={<TabFallback />}>
-              <ConversionReportTab />
+              <UnitConversionAuditTab />
             </Suspense>
           </TabsContent>
 
