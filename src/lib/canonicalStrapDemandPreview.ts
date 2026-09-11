@@ -359,8 +359,15 @@ export function replaceWithCanonicalStrapRows(
     const presentationWarnings = [...preview.blockingReasons,
       ...(preview.snapshotWarning ? [preview.snapshotWarning] : [])];
     const gross = Math.max(0, finiteOrZero(preview.grossRequiredM));
-    const baseRequired = Math.max(0, finiteOrZero(preview.baseRequiredM));
     const yieldPerMeter = Math.max(0, finiteOrZero(preview.confirmedYieldMPerM));
+    // Lista de compra: se o Hub já tem rendimento confirmado, converte mesmo
+    // com avisos soft (variante não pinada, origem stale no rascunho). Pendente
+    // só quando NÃO há m/m conversível — senão MEIA CANA com yield 55 virava
+    // "rendimento pendente" por variant_identity_not_persisted (PV-00194).
+    const baseRequiredFromPreview = Math.max(0, finiteOrZero(preview.baseRequiredM));
+    const baseRequired = baseRequiredFromPreview > 0
+      ? baseRequiredFromPreview
+      : (yieldPerMeter > 0 ? gross / yieldPerMeter : 0);
     const sourceLabel = preview.sourceMode === 'internal'
       ? 'Produção interna'
       : preview.sourceMode === 'buy_ready'
@@ -371,8 +378,10 @@ export function replaceWithCanonicalStrapRows(
       existing.totalQuantity += gross;
       existing.technicalStrapLineIds.push(preview.technicalStrapLineId);
       if (existing.artisanal && preview.sourceMode === 'internal') {
-        existing.artisanal.baseQty += baseRequired;
-        if (presentationWarnings.length > 0) existing.artisanal.pending = true;
+        const existingPending = !(Number(existing.artisanal.yieldPerMeter) > 0);
+        existing.artisanal.baseQty += existingPending ? 0 : baseRequired;
+        if (existingPending) existing.artisanal.pending = true;
+        else delete existing.artisanal.pending;
       }
       if (presentationWarnings.length > 0) {
         existing.warning = Array.from(new Set([
@@ -396,14 +405,7 @@ export function replaceWithCanonicalStrapRows(
       strapProductName: namedPreview,
     });
     const internal = preview.sourceMode === 'internal';
-    const pendingInternal = internal && (
-      !preview.recipeId
-      || !preview.baseProductId
-      || !preview.baseProductName
-      || !(yieldPerMeter > 0)
-      || preview.blockingReasons.length > 0
-      || !!preview.snapshotWarning
-    );
+    const pendingInternal = internal && !(yieldPerMeter > 0);
     const baseFamilyName = resolveStrapBaseFamilyName(preview, ctx);
 
     grouped.set(key, {
