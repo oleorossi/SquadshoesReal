@@ -373,6 +373,22 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
 
   const finalTimeBalance = timeTotals.payableOvertime - timeTotals.payableDelay;
 
+  /** Batidas ímpares do período: o motor NÃO paga nem desconta esses dias.
+   *  Sem resolver, a aprovação fica bloqueada — banner + coluna deixam isso óbvio. */
+  const oddPunchSummary = useMemo(() => {
+    let people = 0;
+    let days = 0;
+    for (const row of reportComparativoRows) {
+      const pending = Number(row.result?.pending_days || 0);
+      if (pending > 0) {
+        people += 1;
+        days += pending;
+      }
+    }
+    return { people, days };
+  }, [reportComparativoRows]);
+
+
   /** Rascunho pode existir para conferência; aprovação só quando a mesma folha
    * está financeiramente fechável. O banco repete estas travas como proteção
    * contra chamada direta ou tela desatualizada. */
@@ -380,7 +396,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
     const emp = employeeMap.get(run.employee_id);
     const result = reportComparativoRows.find(row => row.id === run.employee_id)?.result;
     const regime = String(emp?.payment_type || 'mensalista').toLowerCase();
-    if (Number(result?.pending_days || 0) > 0) return 'Há batidas pendentes neste período.';
+    if (Number(result?.pending_days || 0) > 0) return 'Há batidas ímpares neste período — resolva em Pendências de Ponto antes de aprovar.';
     if (result?.he_rate_missing) return 'Há hora extra sem taxa financeira cadastrada.';
     if (regime === 'mensalista' || regime === 'diarista') {
       if (!emp?.work_schedule_id) return 'Cadastre a jornada própria deste funcionário.';
@@ -614,7 +630,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
     const srcPonto = src;
 
     let tSal = 0, tHe = 0, tFalta = 0, tValePonto = 0, tLiqPonto = 0;
-    let tRawDelay = 0, tRawCredit = 0, tFinalMinutes = 0;
+    let tRawDelay = 0, tRawCredit = 0, tFinalMinutes = 0, tPendingDays = 0;
     const rowsPonto = srcPonto.map((r): RhCell[] => {
       const res = r.result;
       // `base_salary` é o salário MENSAL cheio (referência p/ valor-dia/valor-hora);
@@ -626,15 +642,18 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
       const vale = Number(res.advances_total) || 0;
       const rawDelay = Number(res.raw_delay_minutes) || 0;
       const rawCredit = Number(res.raw_credit_minutes) || 0;
+      const pendingDays = Number(res.pending_days) || 0;
       const finalMinutes = (Number(res.he_minutes) || 0) - (Number(res.atraso_minutes) || 0);
       tSal += sal; tHe += he; tFalta += falta; tValePonto += vale;
       tLiqPonto += Number(res.net_value) || 0;
       tRawDelay += rawDelay; tRawCredit += rawCredit; tFinalMinutes += finalMinutes;
+      tPendingDays += pendingDays;
       return [
         { v: r.name },
         { v: r.department || '—' },
         { v: fmt(sal), align: 'r' },
         { v: rawDelay > 0 ? fmtSaldoHoras(-rawDelay) : '—', align: 'r', neg: rawDelay > 0 },
+        { v: pendingDays > 0 ? `${pendingDays}d` : '—', align: 'r', neg: pendingDays > 0 },
         { v: rawCredit > 0 ? fmtSaldoHoras(rawCredit) : '—', align: 'r' },
         { v: fmtSaldoHoras(finalMinutes), align: 'r', neg: finalMinutes < 0, strong: true },
         { v: falta > 0 ? `${res.falta_days || 0}d · − ${fmt(falta)}` : '—', align: 'r', neg: falta > 0 },
@@ -644,7 +663,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
       ];
     });
 
-    const notas = 'Pendência e horas extras são valores brutos. O saldo final é calculado depois da compensação e determina o débito de atraso ou a H.E. pagável. Faltas integrais e adiantamentos ficam separados.';
+    const notas = 'Atraso bruto e horas extras são valores brutos. Batida ímpar trava o dia até resolver em Pendências de Ponto. O saldo final é calculado depois da compensação e determina o débito de atraso ou a H.E. pagável. Faltas integrais e adiantamentos ficam separados.';
 
     printRhReport({
       title: 'Folha — Resumo Gerencial',
@@ -653,7 +672,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
       generatedAt,
       kpis: [
         { label: 'Funcionários', value: String(rowsPonto.length) },
-        { label: 'Pendências', value: fmtSaldoHoras(-tRawDelay) },
+        { label: 'Atraso bruto', value: fmtSaldoHoras(-tRawDelay) },
         { label: 'Horas extras', value: fmtSaldoHoras(tRawCredit) },
         { label: 'Saldo final', value: fmtSaldoHoras(tFinalMinutes) },
         { label: 'H.E. a pagar', value: fmt(tHe) },
@@ -665,7 +684,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
           note: 'A conta de horas explica o débito ou a H.E.; a coluna Faltas contém apenas dias integrais.',
           headers: [
             { label: 'Funcionário' }, { label: 'Setor' }, { label: 'Base', align: 'r' },
-            { label: 'Pendências', align: 'r' }, { label: 'H. extras', align: 'r' },
+            { label: 'Atraso bruto', align: 'r' }, { label: 'Bat. ímpares', align: 'r' }, { label: 'H. extras', align: 'r' },
             { label: 'Saldo final', align: 'r' }, { label: 'Faltas', align: 'r' },
             { label: 'H.E. (R$)', align: 'r' },
             { label: 'Adiant.', align: 'r' }, { label: 'Líquido', align: 'r' },
@@ -676,6 +695,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
             { v: '' },
             { v: fmt(tSal), align: 'r', strong: true },
             { v: fmtSaldoHoras(-tRawDelay), align: 'r', neg: tRawDelay > 0, strong: true },
+            { v: tPendingDays > 0 ? `${tPendingDays}d` : '—', align: 'r', neg: tPendingDays > 0 },
             { v: fmtSaldoHoras(tRawCredit), align: 'r', strong: true },
             { v: fmtSaldoHoras(tFinalMinutes), align: 'r', neg: tFinalMinutes < 0, strong: true },
             { v: `− ${fmt(tFalta)}`, align: 'r', neg: true, strong: true },
@@ -950,7 +970,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
           net_salary: result.net_value,
           calculation_rule_version: result.rule_version,
           calculation_snapshot: calculationSnapshot,
-          notes: result.pending_days > 0 ? `${result.pending_days} dia(s) pendente(s) — resolver no Ponto` : null,
+          notes: result.pending_days > 0 ? `${result.pending_days} dia(s) com batida ímpar — resolver em Pendências de Ponto` : null,
           status: 'rascunho',
         });
         calculated++;
@@ -958,7 +978,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
       toast.success(
         `Folha calculada: ${calculated} funcionário(s).` +
         (clamped ? ` Parcial: ponto importado só até ${maxCov!.split('-').reverse().join('/')}.` : '') +
-        (withIncomplete > 0 ? ` ${withIncomplete} com batida incompleta — confira no Ponto.` : '') +
+        (withIncomplete > 0 ? ` ${withIncomplete} com batida ímpar — abra Pendências de Ponto antes de aprovar.` : '') +
         (withMissingHeRate > 0 ? ` ⚠ ${withMissingHeRate} com hora extra mas SEM valor de HE cadastrado (HE saiu R$0) — preencha "Hora extra (R$/h)" no cadastro do funcionário.` : '') +
         (identity.conflicts.length > 0 ? ` ⚠ ${identity.conflicts.length} dia(s) com batidas conflitantes foram deixados como pendência.` : '') +
         (identity.unmatched.length > 0 ? ` ⚠ ${identity.unmatched.length} registro(s) sem ficha vigente ficaram fora da folha; corrija a matrícula no Ponto.` : ''),
@@ -1213,9 +1233,34 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
 
       <PayrollPendingAdvancesAlert from={appliedFrom} to={appliedTo} />
 
+      {oddPunchSummary.days > 0 && (
+        <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-xs text-destructive flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+            <span>
+              <strong>{oddPunchSummary.people}</strong> funcionário(s) com{' '}
+              <strong>{oddPunchSummary.days}</strong> dia(s) de batida ímpar.
+              Esses dias <strong>não descontam e não pagam</strong> até completar a batida —
+              aprove só depois de resolver.
+            </span>
+          </div>
+          <Button asChild variant="destructive" size="sm" className="shrink-0 gap-1.5">
+            <Link to="/rh/pendencias-ponto">
+              Resolver batidas <ArrowSquareOut className="h-4 w-4" />
+            </Link>
+          </Button>
+        </div>
+      )}
+
       <StatGrid>
         <StatCard label="Funcionários" value={financialRuns.length} hint="na folha ativa do período" />
-        <StatCard label="Pendências de horas" value={fmtSaldoHoras(-timeTotals.rawDelay)} hint="antes da compensação" tone="warning" />
+        <StatCard label="Atraso bruto" value={fmtSaldoHoras(-timeTotals.rawDelay)} hint="antes da compensação" tone="warning" />
+        <StatCard
+          label="Batidas ímpares"
+          value={oddPunchSummary.days}
+          hint={oddPunchSummary.days > 0 ? `${oddPunchSummary.people} funcionário(s) — resolver antes de pagar` : 'nenhuma no período'}
+          tone={oddPunchSummary.days > 0 ? 'warning' : undefined}
+        />
         <StatCard label="Horas extras" value={fmtSaldoHoras(timeTotals.rawCredit)} hint="antes da compensação" tone="success" />
         <StatCard
           label="Saldo final de horas"
@@ -1283,14 +1328,15 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
       <Panel
         eyebrow="CONFERÊNCIA ANTES DO PAGAMENTO"
         title={`Resumo gerencial · ${periodTitle}`}
-        subtitle="Pendência e horas extras são valores brutos. O saldo final mostra o que restou depois da compensação."
+        subtitle="Atraso bruto e horas extras são valores brutos. Batida ímpar trava o dia (não paga nem desconta) até resolver em Pendências de Ponto."
         flush
       >
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
               <TableHead>Funcionário</TableHead>
-              <TableHead className="text-right">Pendências</TableHead>
+              <TableHead className="text-right">Atraso bruto</TableHead>
+              <TableHead className="text-right">Batidas ímpares</TableHead>
               <TableHead className="text-right">Horas extras</TableHead>
               <TableHead className="text-right">Saldo final</TableHead>
               <TableHead className="text-right">Faltas</TableHead>
@@ -1302,7 +1348,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
           <TableBody>
             {runs.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="p-0">
+                <TableCell colSpan={9} className="p-0">
                   <EmptyState
                     icon={Calculator}
                     title="Nenhuma folha calculada"
@@ -1314,7 +1360,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
             <Fragment key={g.setor}>
               {/* Cabeçalho do setor + subtotais (Proventos · Descontos · Líquido) */}
               <TableRow className="bg-muted/60 hover:bg-muted/60 border-t-2 border-border">
-                <TableCell colSpan={8} className="py-2">
+                <TableCell colSpan={9} className="py-2">
                   <div className="flex items-center justify-between gap-3 flex-wrap">
                     <span className="font-bold uppercase tracking-wide text-sm">
                       {g.setor}
@@ -1365,6 +1411,19 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
                   <TableCell className="text-right font-mono tabular-nums">
                     {rawDelay > 0
                       ? <span className="font-semibold text-red-600">{fmtSaldoHoras(-rawDelay)}</span>
+                      : <span className="text-muted-foreground">—</span>}
+                  </TableCell>
+                  <TableCell className="text-right font-mono tabular-nums">
+                    {Number(result?.pending_days || 0) > 0
+                      ? (
+                        <Link
+                          to="/rh/pendencias-ponto"
+                          className="font-semibold text-amber-700 dark:text-amber-400 underline-offset-2 hover:underline"
+                          title="Abrir fila de batidas ímpares"
+                        >
+                          {Number(result?.pending_days || 0)}d
+                        </Link>
+                      )
                       : <span className="text-muted-foreground">—</span>}
                   </TableCell>
                   <TableCell className="text-right font-mono tabular-nums">

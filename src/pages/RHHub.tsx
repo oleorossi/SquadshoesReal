@@ -206,13 +206,13 @@ export default function RHHub() {
                   </span>
                   <span className="mt-0.5 block truncate text-[11px] font-normal leading-tight text-muted-foreground">{tab.short}</span>
                 </span>
-                {tab.value === 'ponto' && pendingTotal > 0 && (
+                {(tab.value === 'ponto' || tab.value === 'folha') && pendingTotal > 0 && (
                   <>
                     <span
                       className={cn('h-2 w-2 shrink-0 rounded-full sm:hidden', overdueTotal > 0 ? 'bg-destructive' : 'bg-amber-500')}
-                      title={`${pendingTotal} pendências de ponto`}
+                      title={`${pendingTotal} batidas ímpares — resolver antes de pagar`}
                     />
-                    <span className="sr-only">{pendingTotal} pendências de ponto</span>
+                    <span className="sr-only">{pendingTotal} batidas ímpares pendentes</span>
                     <Badge
                       variant="outline"
                       aria-hidden="true"
@@ -222,7 +222,7 @@ export default function RHHub() {
                           ? 'bg-red-500/10 text-red-700 border-red-500/30 dark:text-red-400'
                           : 'bg-amber-500/10 text-amber-700 border-amber-500/30 dark:text-amber-400',
                       )}
-                      title={`${pendingTotal} pendências (${overdueTotal} atrasadas +7d)`}
+                      title={`${pendingTotal} batidas ímpares (${overdueTotal} atrasadas +7d) — não descontam nem pagam até resolver`}
                     >
                       {pendingTotal}
                     </Badge>

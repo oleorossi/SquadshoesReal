@@ -127,9 +127,9 @@ export const navigationCatalog: NavigationResource[] = [
   { path: '/rh', label: 'Pessoas', group: 'RH', icon: Users, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/RHHub') },
   { path: '/fichas-montadores', label: 'Ficha Montadores', group: 'RH', icon: ClipboardCheck, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/FichaMontadoresPage') },
   { path: '/terceirizados', label: 'Terceirizados', group: 'RH', icon: Truck, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/TerceirizadosHub') },
-  // Esta fila tem filtros, sugestões por padrão e aplicação em lote; não é a
-  // mesma revisão manual embutida no Ponto do RH, então permanece no Cmd+K.
-  { path: '/rh/pendencias-ponto', label: 'Pendências de Ponto', group: 'RH', icon: Clock, surfaces: ['command'], preload: () => import('@/pages/TimePendings') },
+  // Fila de batidas ímpares: fica na sidebar porque fecha a Folha. Sem resolver,
+  // o dia não desconta nem paga — risco de pagar quem ainda deve horas.
+  { path: '/rh/pendencias-ponto', label: 'Pendências de Ponto', group: 'RH', icon: Clock, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/TimePendings') },
 
   // Sistema (admin)
   { path: '/admin/aprovacao-ordens-compra', label: 'Aprovação de Ordens de Compra', group: 'Sistema', icon: ShoppingBag, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/PurchaseOrderApprovals') },
@@ -212,7 +212,7 @@ const menuGroupsDeclarados: NavigationGroup[] = [
   },
   {
     label: 'RH', icon: Users,
-    items: [resource('/rh'), resource('/fichas-montadores'), resource('/terceirizados')],
+    items: [resource('/rh'), resource('/rh/pendencias-ponto'), resource('/fichas-montadores'), resource('/terceirizados')],
   },
 ];
 
@@ -238,7 +238,6 @@ export const secondaryRoutes: NavigationResource[] = [
   resource('/patrimonio'),
   resource('/perfis-tributarios'),
   resource('/sped/bloco-k'),
-  resource('/rh/pendencias-ponto'),
   resource('/reports'),
   resource('/cost-policies'),
   resource('/audit-logs'),

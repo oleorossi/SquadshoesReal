@@ -193,12 +193,12 @@ export default function TimePendingsPage() {
   return (
     <div className="space-y-5 page-enter">
       <EditorialPageHeader
-        sectionLabel="RH · PONTO · PENDÊNCIAS"
+        sectionLabel="RH · PONTO · BATIDAS ÍMPARES"
         title="Pendências de Ponto"
         description={
           cutoff
-            ? `Dias com batidas faltando, inconsistentes ou irregulares — a partir de ${formatCutoffBR(cutoff)} (registros anteriores ignorados). O sistema agora sugere completar baseado no padrão observado do funcionário.`
-            : 'Dias com batidas faltando, inconsistentes ou irregulares. O sistema sugere completar baseado no padrão observado do funcionário.'
+            ? `Batidas ímpares/faltando a partir de ${formatCutoffBR(cutoff)}. Enquanto não resolver, o dia NÃO desconta e NÃO paga — a Folha bloqueia a aprovação. Use o padrão sugerido ou complete manualmente.`
+            : 'Batidas ímpares ou faltando. Enquanto não resolver, o dia NÃO desconta e NÃO paga — a Folha bloqueia a aprovação. Use o padrão sugerido ou complete manualmente.'
         }
       />
 
@@ -215,7 +215,7 @@ export default function TimePendingsPage() {
           value={summary.overdue}
           icon={AlertTriangle}
           tone={summary.overdue > 0 ? 'destructive' : 'default'}
-          hint="urgente — pode virar falta"
+          hint="urgente — trava a Folha"
         />
         <StatCard
           label="Dias vazios"

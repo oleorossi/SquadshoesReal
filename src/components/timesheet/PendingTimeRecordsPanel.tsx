@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Warning as AlertTriangle, CheckCircle as CheckCircle2, Clock, CaretDown as ChevronDown, CaretRight as ChevronRight, FloppyDisk as Save, Users as Users2, Calendar, Funnel as Filter, MagnifyingGlass as Search, Sparkle as Sparkles } from '@phosphor-icons/react';
+import { Warning as AlertTriangle, CheckCircle as CheckCircle2, Clock, CaretDown as ChevronDown, CaretRight as ChevronRight, FloppyDisk as Save, Users as Users2, Calendar, Funnel as Filter, MagnifyingGlass as Search, Sparkle as Sparkles, ArrowSquareOut } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -126,17 +127,23 @@ export default function PendingTimeRecordsPanel() {
             <div>
               <h2 className="text-base font-bold">Fila de correção</h2>
               <p className="text-xs text-muted-foreground">
-                Resolva as batidas que bloqueiam o saldo. Ajustes manuais ficam marcados com <code className="rounded bg-muted px-1">*</code>.
+                Batida ímpar não desconta e não paga — resolva antes de aprovar a Folha. Ajustes manuais ficam com <code className="rounded bg-muted px-1">*</code>.
               </p>
             </div>
           </div>
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <Button asChild size="sm" variant="secondary" className="gap-1.5">
+              <Link to="/rh/pendencias-ponto">
+                Fila completa <ArrowSquareOut className="h-4 w-4" />
+              </Link>
+            </Button>
           {totalPending > 0 && (
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button
                   size="sm"
                   variant="outline"
-                  className="shrink-0 gap-1.5 border-amber-500/40 text-amber-800 hover:text-amber-900 dark:text-amber-300"
+                  className="gap-1.5 border-amber-500/40 text-amber-800 hover:text-amber-900 dark:text-amber-300"
                   disabled={bulkApplying}
                 >
                   <Clock className="h-4 w-4" />
@@ -167,6 +174,7 @@ export default function PendingTimeRecordsPanel() {
               </AlertDialogContent>
             </AlertDialog>
           )}
+          </div>
         </div>
         <div className="grid grid-cols-1 border-t border-border/60 bg-muted/20 sm:grid-cols-3 sm:divide-x sm:divide-border/60">
           <div className="flex items-center justify-between gap-3 px-4 py-2.5 sm:block">
