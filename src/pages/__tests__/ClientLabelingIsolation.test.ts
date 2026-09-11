@@ -25,6 +25,8 @@ describe('ETIQUETAGEM CLIENTE · isolamento da etiquetagem padrão', () => {
     ];
 
     expect(imports).toContain('@/lib/babyNalinLabels');
+    expect(imports).toContain('@/lib/objetivaLabels');
+    expect(imports).toContain('@/hooks/useClientLabelPattern');
     forbiddenPrefixes.forEach(prefix => {
       expect(imports.some(module => module.startsWith(prefix)), prefix).toBe(false);
     });

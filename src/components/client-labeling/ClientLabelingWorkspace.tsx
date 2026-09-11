@@ -1,12 +1,23 @@
 /**
- * Módulo isolado "ETIQUETAGEM CLIENTE" — etiqueta no padrão do cliente.
+ * Etiquetagem Cliente multi-cliente.
  *
- * Lê o arquivo de exportação do pedido de compra do ERP do cliente e gera:
- *   - produção na L42PRO Full, em rolo de duas colunas 50 × 30 mm;
- *   - gráfica em duas etiquetas couchê 50 × 30 mm lado a lado.
- * A geometria e o módulo do CODE128 moram em `@/lib/babyNalinLabels`.
+ * Fluxo: escolher cliente → carregar/salvar padrão em `clients.label_pattern`
+ * (sem histórico de arquivo) → importar 1..N CSV/XLSX → gerar PDF Nalin ou Objetiva.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  UploadSimple,
+  FilePdf,
+  FloppyDisk,
+  Factory,
+  Palette,
+  CheckCircle,
+  Warning,
+  X,
+  CircleNotch,
+} from '@phosphor-icons/react';
+import { toast } from 'sonner';
+import logoFornecedor from '@/assets/baby-nalin/marca-fornecedor.png';
 import { Panel } from '@/components/ui/panel';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -17,48 +28,90 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { SearchInput } from '@/components/ui/search-input';
 import {
-  UploadSimple as Upload,
-  FilePdf,
-  Barcode,
-  Factory,
-  Palette,
-  CheckCircle,
-  Warning,
-  X,
-  CircleNotch as Loader2,
-} from '@phosphor-icons/react';
-import { toast } from 'sonner';
-import logoFornecedor from '@/assets/baby-nalin/marca-fornecedor.png';
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
-  ART_WIDTH_MM,
+  useClientLabelPattern,
+  useClientsForLabeling,
+  useSaveClientLabelPattern,
+} from '@/hooks/useClientLabelPattern';
+import {
   BARCODE_FORMAT,
   COUCHE_COLUMNS,
-  DEFAULT_COUCHE_ROLL_PROFILE,
   COUCHE_LABEL_HEIGHT_MM,
   COUCHE_LABEL_WIDTH_MM,
+  DEFAULT_COUCHE_ROLL_PROFILE,
   MAX_PDF_LABELS,
   MODULE_MM,
   analyzeClientSkus,
   buildBabyNalinPdf,
-  clientSkuKey,
   countExpandedRows,
   graphicPageCount,
   graphicPdfFilename,
   loadLogoDataUrl,
   measureBarcode,
-  parseClientOrderFile,
   pdfFilename,
   resolveCoucheRollGeometry,
   type BabyNalinRow,
   type CoucheRollProfile,
 } from '@/lib/babyNalinLabels';
+import {
+  BABY_NALIN_DEFAULT_GEOMETRY,
+  OBJETIVA_DEFAULT_BRANDING,
+  OBJETIVA_DEFAULT_GEOMETRY,
+  clientOrderLineSkuKey,
+  coucheProfileFromGeometry,
+  defaultPatternForKey,
+  geometryFromCoucheProfile,
+  patternLabel,
+  type ClientLabelPattern,
+  type ClientLabelPatternKey,
+  type ClientOrderLine,
+} from '@/lib/clientLabelPattern';
+import {
+  ACCEPT_CLIENT_ORDER_FILES,
+  parseClientOrderFiles,
+  summarizeImport,
+} from '@/lib/clientOrderImport';
+import {
+  buildObjetivaPdf,
+  countObjetivaLabels,
+  objetivaPdfFilename,
+} from '@/lib/objetivaLabels';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { cn } from '@/lib/utils';
 
-const ACCEPT = '.csv,.txt,.xlsx,.xls';
 const MAX_PROFILE_MEASURE_MM = 50;
 
-function initialPrintQuantities(rows: BabyNalinRow[]): Record<number, number> {
-  return Object.fromEntries(rows.map((row, sourceIndex) => [sourceIndex, row.quantidade]));
+const COUCHE_PROFILE_FIELDS: Array<{ key: keyof CoucheRollProfile; label: string }> = [
+  { key: 'columnGapMm', label: 'Vão entre colunas' },
+  { key: 'leftMarginMm', label: 'Margem esquerda' },
+  { key: 'rightMarginMm', label: 'Margem direita' },
+  { key: 'topMarginMm', label: 'Margem superior' },
+  { key: 'bottomMarginMm', label: 'Margem inferior / avanço' },
+];
+
+const OBJETIVA_GEOMETRY_FIELDS: Array<{
+  key: keyof ClientLabelPattern['geometry'];
+  label: string;
+  step?: number;
+}> = [
+  { key: 'labelWidthMm', label: 'Largura (mm)' },
+  { key: 'labelHeightMm', label: 'Altura (mm)' },
+  { key: 'columns', label: 'Colunas', step: 1 },
+  { key: 'columnGapMm', label: 'Vão (mm)' },
+  { key: 'leftMarginMm', label: 'Esq. (mm)' },
+  { key: 'rightMarginMm', label: 'Dir. (mm)' },
+  { key: 'topMarginMm', label: 'Sup. (mm)' },
+  { key: 'bottomMarginMm', label: 'Inf. (mm)' },
+];
+
+function initialPrintQuantities(rows: ClientOrderLine[]): Record<string, number> {
+  return Object.fromEntries(rows.map(row => [clientOrderLineSkuKey(row), row.quantidade]));
 }
 
 function clampPrintQuantity(rawValue: string, requestedQuantity: number): number {
@@ -67,123 +120,274 @@ function clampPrintQuantity(rawValue: string, requestedQuantity: number): number
   return Math.min(requestedQuantity, Math.max(1, parsed));
 }
 
-const COUCHE_PROFILE_FIELDS: Array<{
-  key: keyof CoucheRollProfile;
-  label: string;
-}> = [
-  { key: 'columnGapMm', label: 'Vão entre colunas' },
-  { key: 'leftMarginMm', label: 'Margem esquerda' },
-  { key: 'rightMarginMm', label: 'Margem direita' },
-  { key: 'topMarginMm', label: 'Margem superior' },
-  { key: 'bottomMarginMm', label: 'Margem inferior / avanço' },
-];
+function toBabyRows(rows: ClientOrderLine[]): BabyNalinRow[] {
+  return rows.map(row => ({
+    tamanho: row.tamanho,
+    cor: row.cor,
+    referencia: row.referencia,
+    codProduto: row.codProduto,
+    codigoBarra: row.codigoBarra,
+    quantidade: row.quantidade,
+  }));
+}
 
 export function ClientLabelingWorkspace() {
-  const inputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const fileRequestIdRef = useRef(0);
-  const [rows, setRows] = useState<BabyNalinRow[]>([]);
-  const [fileName, setFileName] = useState('');
+
+  const [clientSearch, setClientSearch] = useState('');
+  const [selectedClientId, setSelectedClientId] = useState('');
+  const [draftPattern, setDraftPattern] = useState<ClientLabelPattern | null>(null);
+  const [patternDirty, setPatternDirty] = useState(false);
+
+  const [rows, setRows] = useState<ClientOrderLine[]>([]);
+  const [fileNames, setFileNames] = useState<string[]>([]);
   const [reading, setReading] = useState(false);
   const [generating, setGenerating] = useState<'production' | 'graphic' | null>(null);
   const [search, setSearch] = useState('');
   const [selectedSkuKeys, setSelectedSkuKeys] = useState<Set<string>>(new Set());
-  const [printQuantities, setPrintQuantities] = useState<Record<number, number>>({});
-  const [coucheProfile, setCoucheProfile] = useState<CoucheRollProfile>({
-    ...DEFAULT_COUCHE_ROLL_PROFILE,
-  });
-  const [coucheProfileConfirmed, setCoucheProfileConfirmed] = useState(true);
+  const [printQuantities, setPrintQuantities] = useState<Record<string, number>>({});
+  const [coucheConfirmed, setCoucheConfirmed] = useState(true);
 
-  const skuAnalysis = analyzeClientSkus(rows);
-  const rowEntries = rows.map((row, sourceIndex) => ({
-    row,
-    sourceIndex,
-    skuKey: clientSkuKey(row),
-    barcodeFit: measureBarcode(row.codigoBarra),
-  }));
-  const selectedEntries = rowEntries.filter(entry => selectedSkuKeys.has(entry.skuKey));
-  const selectedRows = selectedEntries.map(entry => entry.row);
-  const productionRows = selectedEntries.map(({ row, sourceIndex }) => ({
-    ...row,
-    quantidade: printQuantities[sourceIndex] ?? row.quantidade,
-  }));
-  const selectedSkuAnalysis = analyzeClientSkus(selectedRows);
-  const totalEtiquetas = countExpandedRows(productionRows, true);
-  const carreirasProducao = graphicPageCount(totalEtiquetas);
-  const totalPares = selectedRows.reduce((t, r) => t + r.quantidade, 0);
-  const totalParesParaImpressao = productionRows.reduce((total, row) => total + row.quantidade, 0);
-  const totalParesNoArquivo = rows.reduce((t, r) => t + r.quantidade, 0);
-  const paginasGrafica = graphicPageCount(selectedSkuAnalysis.rows.length);
-  const skuSelecionadoLabel = selectedSkuAnalysis.rows.length === 1 ? 'SKU' : 'SKUs';
-  // Código que não respeita a zona de silêncio não pode virar etiqueta — a
-  // barra sairia cortada e só se descobre no leitor da loja.
-  const foraDoPadrao = rowEntries.filter(entry => !entry.barcodeFit.fits);
-  const selecionadasForaDoPadrao = selectedEntries.filter(entry => !entry.barcodeFit.fits);
-  const visibleRows = rowEntries.filter(({ row }) => searchMatchesAllTerms(
-      search,
-      row.referencia,
-      row.cor,
-      row.tamanho,
-      row.codProduto,
-      row.codigoBarra,
-    ));
+  const { data: clients = [], isLoading: clientsLoading } = useClientsForLabeling();
+  const { data: savedPattern, isLoading: patternLoading } = useClientLabelPattern(
+    selectedClientId || undefined,
+  );
+  const savePatternMutation = useSaveClientLabelPattern();
+
+  const selectedClient = clients.find(c => c.id === selectedClientId) ?? null;
+
+  useEffect(() => {
+    if (!selectedClientId) {
+      setDraftPattern(null);
+      setPatternDirty(false);
+      return;
+    }
+    if (patternLoading) return;
+    setDraftPattern(savedPattern ?? null);
+    setPatternDirty(false);
+    setCoucheConfirmed(true);
+  }, [selectedClientId, savedPattern, patternLoading]);
+
+  const pattern = draftPattern;
+  const isObjetiva = pattern?.key === 'objetiva';
+  const isNalin = pattern?.key === 'baby_nalin';
+
+  const coucheProfile: CoucheRollProfile = useMemo(() => {
+    if (pattern?.key === 'baby_nalin') {
+      return { ...DEFAULT_COUCHE_ROLL_PROFILE, ...coucheProfileFromGeometry(pattern.geometry) };
+    }
+    return { ...DEFAULT_COUCHE_ROLL_PROFILE };
+  }, [pattern]);
+
   const coucheGeometry = resolveCoucheRollGeometry(coucheProfile);
-  const visibleSkuKeys = [...new Set(visibleRows.map(entry => entry.skuKey))];
-  const allVisibleSelected = visibleSkuKeys.length > 0 && visibleSkuKeys.every(key => selectedSkuKeys.has(key));
-  const someVisibleSelected = visibleSkuKeys.some(key => selectedSkuKeys.has(key));
-  const visibleSelectedCount = visibleSkuKeys.filter(key => selectedSkuKeys.has(key)).length;
-  const hiddenSelectedCount = Math.max(0, selectedSkuAnalysis.rows.length - visibleSelectedCount);
-  const isBusy = reading || generating !== null;
+
+  const filteredClients = useMemo(
+    () =>
+      clients.filter(c =>
+        searchMatchesAllTerms(clientSearch, c.razao_social, c.nome_fantasia ?? ''),
+      ),
+    [clients, clientSearch],
+  );
+
+  const rowEntries = useMemo(
+    () =>
+      rows.map((row, sourceIndex) => ({
+        row,
+        sourceIndex,
+        skuKey: clientOrderLineSkuKey(row),
+        barcodeFit: measureBarcode(row.codigoBarra),
+      })),
+    [rows],
+  );
+
+  const visibleEntries = useMemo(
+    () =>
+      rowEntries.filter(({ row }) =>
+        searchMatchesAllTerms(
+          search,
+          row.referencia,
+          row.cor,
+          row.tamanho,
+          row.codProduto,
+          row.codigoBarra,
+          row.descricao ?? '',
+          row.sourceFile ?? '',
+        ),
+      ),
+    [rowEntries, search],
+  );
+
+  const selectedEntries = rowEntries.filter(e => selectedSkuKeys.has(e.skuKey));
+  const selectedRows = selectedEntries.map(e => e.row);
+  const productionRows = selectedEntries.map(({ row, skuKey }) => ({
+    ...row,
+    quantidade: printQuantities[skuKey] ?? row.quantidade,
+  }));
+
+  const selectedBabyRows = toBabyRows(selectedRows);
+  const productionBabyRows = toBabyRows(productionRows);
+  const selectedSkuAnalysis = analyzeClientSkus(selectedBabyRows);
+
+  const totalEtiquetas = isObjetiva
+    ? countObjetivaLabels(productionRows, true)
+    : countExpandedRows(productionBabyRows, true);
+  const paginasGrafica = isObjetiva
+    ? countObjetivaLabels(selectedRows, false)
+    : graphicPageCount(selectedSkuAnalysis.rows.length);
+  const skuLabel = selectedSkuKeys.size === 1 ? 'SKU' : 'SKUs';
+  const foraDoPadrao = isNalin ? rowEntries.filter(e => !e.barcodeFit.fits) : [];
+  const selecionadasFora = isNalin ? selectedEntries.filter(e => !e.barcodeFit.fits) : [];
+
+  const visibleSkuKeys = [...new Set(visibleEntries.map(e => e.skuKey))];
+  const allVisibleSelected =
+    visibleSkuKeys.length > 0 && visibleSkuKeys.every(k => selectedSkuKeys.has(k));
+  const someVisibleSelected = visibleSkuKeys.some(k => selectedSkuKeys.has(k));
+  const visibleSelectedCount = visibleSkuKeys.filter(k => selectedSkuKeys.has(k)).length;
+  const hiddenSelectedCount = Math.max(0, selectedSkuKeys.size - visibleSelectedCount);
+  const isBusy = reading || generating !== null || savePatternMutation.isPending;
   const productionOverLimit = totalEtiquetas > MAX_PDF_LABELS;
+  const uniqueSkuCount = new Set(rows.map(clientOrderLineSkuKey)).size;
+  const clientLabel = selectedClient
+    ? selectedClient.nome_fantasia || selectedClient.razao_social
+    : null;
 
-  useEffect(() => () => {
+  useEffect(
+    () => () => {
+      fileRequestIdRef.current += 1;
+    },
+    [],
+  );
+
+  function clearOrder() {
     fileRequestIdRef.current += 1;
-  }, []);
+    setReading(false);
+    setRows([]);
+    setFileNames([]);
+    setSearch('');
+    setSelectedSkuKeys(new Set());
+    setPrintQuantities({});
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
 
-  async function handleFile(file: File | undefined) {
-    if (!file) return;
+  function updateDraft(next: ClientLabelPattern) {
+    setDraftPattern(next);
+    setPatternDirty(true);
+    if (next.key === 'baby_nalin') setCoucheConfirmed(false);
+  }
+
+  function handlePatternKeyChange(key: ClientLabelPatternKey) {
+    updateDraft(defaultPatternForKey(key));
+    clearOrder();
+    setCoucheConfirmed(key !== 'baby_nalin');
+  }
+
+  function setCoucheMeasure(field: keyof CoucheRollProfile, rawValue: string) {
+    if (!pattern || pattern.key !== 'baby_nalin') return;
+    const parsed = Number(rawValue);
+    const value = Number.isFinite(parsed)
+      ? Math.min(MAX_PROFILE_MEASURE_MM, Math.max(0, parsed))
+      : 0;
+    updateDraft({
+      ...pattern,
+      geometry: geometryFromCoucheProfile({ ...coucheProfile, [field]: value }),
+    });
+    setCoucheConfirmed(false);
+  }
+
+  function setObjetivaGeometry(field: keyof ClientLabelPattern['geometry'], rawValue: string) {
+    if (!pattern || pattern.key !== 'objetiva') return;
+    const parsed = Number(rawValue);
+    if (!Number.isFinite(parsed)) return;
+    const value = field === 'columns' ? Math.max(1, Math.trunc(parsed)) : Math.max(0, parsed);
+    updateDraft({ ...pattern, geometry: { ...pattern.geometry, [field]: value } });
+  }
+
+  function setBrandingField(field: keyof ClientLabelPattern['branding'], value: string) {
+    if (!pattern) return;
+    updateDraft({
+      ...pattern,
+      branding: {
+        ...pattern.branding,
+        [field]: field === 'logoUrl' ? value.trim() || null : value,
+      },
+    });
+  }
+
+  async function handleSavePattern() {
+    if (!selectedClientId || !pattern) {
+      toast.info('Escolha o cliente e o tipo de layout antes de salvar.');
+      return;
+    }
+    try {
+      await savePatternMutation.mutateAsync({ clientId: selectedClientId, pattern });
+      setPatternDirty(false);
+      setCoucheConfirmed(true);
+    } catch {
+      /* toast no hook */
+    }
+  }
+
+  async function handleFiles(fileList: FileList | null) {
+    if (!fileList?.length) return;
+    if (!pattern) {
+      toast.info('Salve (ou escolha) o padrão do cliente antes de importar.');
+      return;
+    }
+    if (patternDirty) {
+      toast.info('Salve o padrão do cliente antes de importar o pedido.');
+      return;
+    }
+
+    const files = Array.from(fileList);
     const requestId = ++fileRequestIdRef.current;
     setReading(true);
     try {
-      const lidas = await parseClientOrderFile(file);
+      const result = await parseClientOrderFiles(files, pattern.key);
       if (requestId !== fileRequestIdRef.current) return;
-      setRows(lidas);
-      setFileName(file.name);
-      // Começa vazio: marcar tudo silenciosamente fazia a busca esconder SKUs
-      // ainda selecionados. O operador clicava apenas no tamanho desejado, mas
-      // o PDF continuava incluindo quase todo o arquivo.
+      setRows(result.rows);
+      setFileNames(result.fileNames);
       setSelectedSkuKeys(new Set());
-      setPrintQuantities(initialPrintQuantities(lidas));
-      toast.success(`${lidas.length} etiqueta(s) lidas. Selecione os SKUs que deseja imprimir.`);
+      setPrintQuantities(initialPrintQuantities(result.rows));
+      const summary = summarizeImport(result);
+      if (result.errors.length > 0) {
+        toast.warning(`${summary}. Falhas: ${result.errors.map(e => e.fileName).join(', ')}`);
+      } else {
+        toast.success(`${summary}. Selecione os SKUs para imprimir.`);
+      }
     } catch (error) {
       if (requestId !== fileRequestIdRef.current) return;
-      setRows([]);
-      setFileName('');
-      setSelectedSkuKeys(new Set());
-      setPrintQuantities({});
-      toast.error(error instanceof Error ? error.message : 'Não consegui ler o arquivo.');
+      clearOrder();
+      toast.error(error instanceof Error ? error.message : 'Não consegui ler os arquivos.');
     } finally {
       if (requestId === fileRequestIdRef.current) {
         setReading(false);
-        if (inputRef.current) inputRef.current.value = '';
+        if (fileInputRef.current) fileInputRef.current.value = '';
       }
     }
   }
 
   async function handleGenerate(mode: 'production' | 'graphic') {
-    if (isBusy) return;
+    if (isBusy || !pattern) return;
     if (selectedRows.length === 0) {
       toast.info('Selecione ao menos um SKU antes de gerar.');
       return;
     }
-    if (selecionadasForaDoPadrao.length > 0) {
-      toast.error(`${selecionadasForaDoPadrao.length} código(s) selecionado(s) não cabem na etiqueta.`);
+    if (patternDirty) {
+      toast.info('Salve o padrão do cliente antes de gerar o PDF.');
       return;
     }
-    if (mode === 'graphic' && selectedSkuAnalysis.conflicts.length > 0) {
-      toast.error(`${selectedSkuAnalysis.conflicts.length} SKU(s) selecionado(s) possuem dados de impressão conflitantes.`);
+    if (selecionadasFora.length > 0) {
+      toast.error(`${selecionadasFora.length} código(s) selecionado(s) não cabem na etiqueta.`);
       return;
     }
-    if (!coucheProfileConfirmed) {
+    if (isNalin && mode === 'graphic' && selectedSkuAnalysis.conflicts.length > 0) {
+      toast.error(
+        `${selectedSkuAnalysis.conflicts.length} SKU(s) selecionado(s) possuem dados de impressão conflitantes.`,
+      );
+      return;
+    }
+    if (isNalin && !coucheConfirmed) {
       toast.info('Confirme as medidas do rolo de duas colunas antes de gerar.');
       return;
     }
@@ -192,55 +396,47 @@ export function ClientLabelingWorkspace() {
       return;
     }
 
-    const generationRows = mode === 'production' ? productionRows : selectedRows;
-    const generationFileName = fileName;
-    const generationTotalLabels = totalEtiquetas;
-    const generationProductionRows = carreirasProducao;
-    const generationSkuCount = selectedSkuAnalysis.rows.length;
-    const generationCoucheProfile = { ...coucheProfile };
+    const originName = fileNames[0] ?? 'pedido';
     setGenerating(mode);
     try {
-      const logo = await loadLogoDataUrl(logoFornecedor);
-      if (!logo) toast.warning('Não carreguei a logomarca — o PDF sai sem ela.');
-
-      const doc = await buildBabyNalinPdf(generationRows, {
-        mode,
-        repeatByQuantity: mode === 'production',
-        coucheProfile: generationCoucheProfile,
-        logo,
-      });
-      if (mode === 'graphic') {
-        doc.save(graphicPdfFilename(generationFileName));
-        toast.success(`Arquivo para gráfica com ${generationSkuCount} SKU(s) gerado.`);
+      if (pattern.key === 'objetiva') {
+        const doc = await buildObjetivaPdf(mode === 'production' ? productionRows : selectedRows, {
+          geometry: pattern.geometry,
+          branding: pattern.branding,
+          repeatByQuantity: mode === 'production',
+        });
+        doc.save(objetivaPdfFilename(originName));
+        toast.success(
+          mode === 'graphic'
+            ? `PDF Objetiva (amostra) com ${selectedRows.length} SKU(s) gerado.`
+            : `PDF Objetiva com ${totalEtiquetas} etiqueta(s) gerado.`,
+        );
       } else {
-        doc.save(pdfFilename(generationFileName));
-        toast.success(`PDF da L42PRO com ${generationTotalLabels} etiqueta(s) em ${generationProductionRows} carreira(s) gerado.`);
+        const logo = await loadLogoDataUrl(logoFornecedor);
+        if (!logo) toast.warning('Não carreguei a logomarca — o PDF sai sem ela.');
+        const doc = await buildBabyNalinPdf(
+          mode === 'production' ? productionBabyRows : selectedBabyRows,
+          {
+            mode,
+            repeatByQuantity: mode === 'production',
+            coucheProfile,
+            logo,
+          },
+        );
+        if (mode === 'graphic') {
+          doc.save(graphicPdfFilename(originName));
+          toast.success(`Arquivo para gráfica com ${selectedSkuAnalysis.rows.length} SKU(s) gerado.`);
+        } else {
+          doc.save(pdfFilename(originName));
+          toast.success(`PDF de produção com ${totalEtiquetas} etiqueta(s) gerado.`);
+        }
       }
+      clearOrder();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Falha ao gerar o PDF.');
     } finally {
       setGenerating(null);
     }
-  }
-
-  function limpar() {
-    fileRequestIdRef.current += 1;
-    setReading(false);
-    setRows([]);
-    setFileName('');
-    setSearch('');
-    setSelectedSkuKeys(new Set());
-    setPrintQuantities({});
-    setCoucheProfileConfirmed(true);
-  }
-
-  function setCoucheProfileMeasure(field: keyof CoucheRollProfile, rawValue: string) {
-    const parsed = Number(rawValue);
-    const value = Number.isFinite(parsed)
-      ? Math.min(MAX_PROFILE_MEASURE_MM, Math.max(0, parsed))
-      : 0;
-    setCoucheProfile(current => ({ ...current, [field]: value }));
-    setCoucheProfileConfirmed(false);
   }
 
   function setSkuSelected(skuKey: string, selected: boolean) {
@@ -263,20 +459,237 @@ export function ClientLabelingWorkspace() {
     });
   }
 
-  function setPrintQuantity(sourceIndex: number, requestedQuantity: number, rawValue: string) {
-    const quantity = clampPrintQuantity(rawValue, requestedQuantity);
-    setPrintQuantities(current => ({ ...current, [sourceIndex]: quantity }));
+  function setPrintQuantity(skuKey: string, requestedQuantity: number, rawValue: string) {
+    setPrintQuantities(current => ({
+      ...current,
+      [skuKey]: clampPrintQuantity(rawValue, requestedQuantity),
+    }));
   }
 
   return (
     <div className="space-y-4">
       <Panel
         eyebrow="ETIQUETAS · CLIENTE"
-        title="Importar pedido do cliente"
-        subtitle={`${BARCODE_FORMAT} com módulo de ${MODULE_MM.toFixed(4).replace('.', ',')} mm · 2 × ${COUCHE_LABEL_WIDTH_MM} × ${COUCHE_LABEL_HEIGHT_MM} mm, vão ${DEFAULT_COUCHE_ROLL_PROFILE.columnGapMm} mm`}
+        title="Cliente e padrão de etiqueta"
+        subtitle="O padrão fica gravado no cadastro do cliente. O arquivo do pedido não é guardado."
+      >
+        <div className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-[1fr_2fr]">
+            <div className="space-y-2">
+              <Label htmlFor="client-search">Buscar cliente</Label>
+              <SearchInput
+                id="client-search"
+                value={clientSearch}
+                onChange={setClientSearch}
+                placeholder="Razão social ou fantasia"
+                debounceMs={0}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Cliente</Label>
+              <Select
+                value={selectedClientId || undefined}
+                onValueChange={value => {
+                  setSelectedClientId(value);
+                  clearOrder();
+                }}
+                disabled={clientsLoading || isBusy}
+              >
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder={clientsLoading ? 'Carregando…' : 'Selecione o cliente'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {filteredClients.map(client => (
+                    <SelectItem key={client.id} value={client.id}>
+                      {client.nome_fantasia || client.razao_social}
+                      {client.label_pattern ? '' : ' · sem padrão'}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {!selectedClientId ? (
+            <EmptyState
+              title="Escolha um cliente"
+              description="Cada cliente tem o próprio layout (Nalin ou Objetiva), medidas e textos."
+            />
+          ) : patternLoading ? (
+            <p className="text-sm text-muted-foreground">Carregando padrão…</p>
+          ) : (
+            <div className="space-y-4 rounded-lg border border-border bg-muted/20 p-4">
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="space-y-2 min-w-[12rem]">
+                  <Label>Tipo de layout</Label>
+                  <Select
+                    value={pattern?.key}
+                    onValueChange={value => handlePatternKeyChange(value as ClientLabelPatternKey)}
+                    disabled={isBusy}
+                  >
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="Escolha Nalin ou Objetiva" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="baby_nalin">Nalin (couchê 50×30)</SelectItem>
+                      <SelectItem value="objetiva">Objetiva (hangtag)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {pattern && <Badge variant="outline">{patternLabel(pattern.key)}</Badge>}
+                {patternDirty && <Badge variant="secondary">Alterações não salvas</Badge>}
+                <Button
+                  size="sm"
+                  className="h-9 ml-auto"
+                  onClick={() => void handleSavePattern()}
+                  disabled={!pattern || isBusy}
+                >
+                  {savePatternMutation.isPending ? (
+                    <CircleNotch className="h-4 w-4 mr-1.5 animate-spin" />
+                  ) : (
+                    <FloppyDisk className="h-4 w-4 mr-1.5" />
+                  )}
+                  Salvar padrão do cliente
+                </Button>
+              </div>
+
+              {!pattern ? (
+                <p className="text-sm text-muted-foreground">
+                  Este cliente ainda não tem padrão. Escolha Nalin ou Objetiva e salve.
+                </p>
+              ) : isNalin ? (
+                <div className="space-y-3">
+                  <p className="text-xs text-muted-foreground">
+                    Medidas do rolo 2 × {COUCHE_LABEL_WIDTH_MM} × {COUCHE_LABEL_HEIGHT_MM} mm · módulo{' '}
+                    {MODULE_MM.toFixed(3).replace('.', ',')} mm ({BARCODE_FORMAT}).
+                  </p>
+                  <details className="rounded-md border border-border bg-background p-3 text-sm" open>
+                    <summary className="cursor-pointer font-semibold">
+                      Medidas do rolo de duas colunas
+                    </summary>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      {COUCHE_PROFILE_FIELDS.map(field => (
+                        <div key={field.key} className="space-y-1">
+                          <Label htmlFor={`couche-${field.key}`} className="text-xs">
+                            {field.label} (mm)
+                          </Label>
+                          <Input
+                            id={`couche-${field.key}`}
+                            type="number"
+                            min={0}
+                            max={MAX_PROFILE_MEASURE_MM}
+                            step={0.1}
+                            value={coucheProfile[field.key]}
+                            disabled={isBusy}
+                            onChange={event => setCoucheMeasure(field.key, event.target.value)}
+                            className="h-8 font-mono"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Página calculada: {coucheGeometry.pageWidthMm.toLocaleString('pt-BR')} ×{' '}
+                      {coucheGeometry.pageHeightMm.toLocaleString('pt-BR')} mm
+                    </p>
+                    <div className="mt-3 flex items-start gap-2">
+                      <Checkbox
+                        id="couche-confirmed"
+                        checked={coucheConfirmed}
+                        disabled={isBusy}
+                        onCheckedChange={value => setCoucheConfirmed(value === true)}
+                      />
+                      <Label
+                        htmlFor="couche-confirmed"
+                        className="cursor-pointer text-xs font-normal leading-relaxed"
+                      >
+                        Confirmo que estas medidas correspondem ao rolo usado na L42PRO e pela gráfica.
+                      </Label>
+                    </div>
+                  </details>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    {OBJETIVA_GEOMETRY_FIELDS.map(field => (
+                      <div key={field.key} className="space-y-1">
+                        <Label htmlFor={`obj-${field.key}`} className="text-xs">
+                          {field.label}
+                        </Label>
+                        <Input
+                          id={`obj-${field.key}`}
+                          type="number"
+                          min={0}
+                          step={field.step ?? 0.1}
+                          value={pattern.geometry[field.key]}
+                          disabled={isBusy}
+                          onChange={event => setObjetivaGeometry(field.key, event.target.value)}
+                          className="h-8 font-mono"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="space-y-1">
+                      <Label htmlFor="obj-motto" className="text-xs">
+                        Motto
+                      </Label>
+                      <Input
+                        id="obj-motto"
+                        value={pattern.branding.motto}
+                        disabled={isBusy}
+                        onChange={event => setBrandingField('motto', event.target.value)}
+                        className="h-8"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="obj-exchange" className="text-xs">
+                        Texto de troca
+                      </Label>
+                      <Input
+                        id="obj-exchange"
+                        value={pattern.branding.exchangeText}
+                        disabled={isBusy}
+                        onChange={event => setBrandingField('exchangeText', event.target.value)}
+                        className="h-8"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="obj-material" className="text-xs">
+                        Prefixo material
+                      </Label>
+                      <Input
+                        id="obj-material"
+                        value={pattern.branding.materialPrefix}
+                        disabled={isBusy}
+                        onChange={event => setBrandingField('materialPrefix', event.target.value)}
+                        className="h-8"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Defaults: motto “{OBJETIVA_DEFAULT_BRANDING.motto}”, troca “
+                    {OBJETIVA_DEFAULT_BRANDING.exchangeText}”, material “
+                    {OBJETIVA_DEFAULT_BRANDING.materialPrefix}”, {OBJETIVA_DEFAULT_GEOMETRY.labelWidthMm}×
+                    {OBJETIVA_DEFAULT_GEOMETRY.labelHeightMm} mm.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </Panel>
+
+      <Panel
+        eyebrow="PEDIDO"
+        title="Importar arquivos do pedido"
+        subtitle={
+          clientLabel
+            ? `${clientLabel}${pattern ? ` · ${patternLabel(pattern.key)}` : ''}`
+            : 'Selecione o cliente e salve o padrão para liberar a importação.'
+        }
         actions={
           rows.length > 0 ? (
-            <Button variant="ghost" size="sm" onClick={limpar} className="h-9" disabled={isBusy}>
+            <Button variant="ghost" size="sm" onClick={clearOrder} className="h-9" disabled={isBusy}>
               <X className="h-4 w-4 mr-1.5" />
               Limpar
             </Button>
@@ -284,24 +697,37 @@ export function ClientLabelingWorkspace() {
         }
       >
         <input
-          ref={inputRef}
+          ref={fileInputRef}
           type="file"
-          accept={ACCEPT}
+          accept={ACCEPT_CLIENT_ORDER_FILES}
+          multiple
           className="hidden"
           id="client-order-upload"
-          disabled={isBusy}
-          onChange={e => void handleFile(e.target.files?.[0])}
+          disabled={isBusy || !pattern || patternDirty}
+          onChange={event => void handleFiles(event.target.files)}
         />
 
         {rows.length === 0 ? (
           <EmptyState
-            icon={Barcode}
             title="Nenhum pedido importado"
-            description="Selecione o arquivo de exportação de etiquetas do pedido de compra (CSV ou XLSX). Uma etiqueta por linha do arquivo."
+            description={
+              !pattern
+                ? 'Defina e salve o padrão do cliente para importar CSV/XLSX.'
+                : patternDirty
+                  ? 'Salve o padrão antes de importar.'
+                  : 'Pode enviar vários arquivos de uma vez (Objetiva: 1 SKU por arquivo).'
+            }
             action={
-              <Button onClick={() => inputRef.current?.click()} disabled={isBusy}>
-                {reading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
-                {reading ? 'Lendo…' : 'Escolher arquivo'}
+              <Button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isBusy || !pattern || patternDirty}
+              >
+                {reading ? (
+                  <CircleNotch className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <UploadSimple className="h-4 w-4 mr-2" />
+                )}
+                {reading ? 'Lendo…' : 'Escolher arquivos'}
               </Button>
             }
           />
@@ -310,354 +736,233 @@ export function ClientLabelingWorkspace() {
             <StatGrid>
               <StatCard
                 label="SKUs selecionados"
-                value={selectedSkuAnalysis.rows.length}
-                hint={`${skuAnalysis.rows.length} no arquivo · ${fileName}`}
+                value={`${selectedSkuKeys.size}/${uniqueSkuCount}`}
+                hint={fileNames.join(', ')}
               />
               <StatCard
-                label="Pares para imprimir"
-                value={totalParesParaImpressao}
-                unit="pares"
-                hint={`${totalPares.toLocaleString('pt-BR')} solicitados nos SKUs selecionados · ${totalParesNoArquivo.toLocaleString('pt-BR')} no arquivo`}
+                label="Linhas no lote"
+                value={rows.length}
+                hint={`${fileNames.length} arquivo(s)`}
               />
               <StatCard
-                label="Etiquetas de produção"
+                label={isObjetiva ? 'Hangtags' : 'Etiquetas'}
                 value={totalEtiquetas}
-                hint={`${carreirasProducao.toLocaleString('pt-BR')} carreiras de 2 colunas`}
+                hint={
+                  isNalin
+                    ? `${COUCHE_COLUMNS} colunas · vão ${coucheProfile.columnGapMm} mm`
+                    : `${pattern?.geometry.labelWidthMm}×${pattern?.geometry.labelHeightMm} mm`
+                }
               />
             </StatGrid>
 
             <div className="grid gap-3 lg:grid-cols-2">
-              <section className="rounded-lg border border-border bg-muted/20 p-4 space-y-4" aria-labelledby="production-output-title">
+              <section className="rounded-lg border border-border bg-muted/20 p-4 space-y-4">
                 <div className="flex items-start gap-3">
-                  <div className="rounded-md border border-border bg-background p-2 text-foreground">
+                  <div className="rounded-md border border-border bg-background p-2">
                     <Factory className="h-5 w-5" />
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 id="production-output-title" className="font-semibold text-foreground">PDF para L42PRO Full</h3>
-                      <Badge variant="outline">2 × 50 × 30 mm</Badge>
-                    </div>
+                  <div>
+                    <h3 className="font-semibold">
+                      {isObjetiva ? 'PDF produção Objetiva' : 'PDF produção Nalin'}
+                    </h3>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      2 × 50 × 30 mm com vão de {DEFAULT_COUCHE_ROLL_PROFILE.columnGapMm} mm entre as colunas (página 106 × 30). Não é a térmica 100 × 30 da caixa individual.
+                      Repete pela quantidade do pedido
+                      {isNalin ? ' · rolo 2 colunas 50×30' : ' · uma hangtag por cópia'}.
                     </p>
                   </div>
                 </div>
-
-                <div className="rounded-md border border-border bg-background p-3 text-sm">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-muted-foreground">Tiragem selecionada</span>
-                    <strong className="font-mono text-foreground">{totalEtiquetas.toLocaleString('pt-BR')} etiquetas</strong>
-                  </div>
-                  <div className="mt-2 flex items-center justify-between gap-3">
-                    <span className="text-muted-foreground">Avanços do rolo</span>
-                    <strong className="font-mono text-foreground">{carreirasProducao.toLocaleString('pt-BR')}</strong>
-                  </div>
-                </div>
-
                 <Button
                   className="w-full"
                   onClick={() => void handleGenerate('production')}
                   disabled={
                     isBusy
-                    || productionRows.length === 0
-                    || selecionadasForaDoPadrao.length > 0
+                    || selectedRows.length === 0
+                    || selecionadasFora.length > 0
                     || productionOverLimit
-                    || !coucheProfileConfirmed
+                    || (isNalin && !coucheConfirmed)
+                    || patternDirty
                   }
                 >
-                  {generating === 'production' ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FilePdf className="h-4 w-4 mr-2" />}
-                  {generating === 'production' ? 'Gerando…' : `Gerar L42PRO (${totalEtiquetas} etiquetas)`}
+                  {generating === 'production' ? (
+                    <CircleNotch className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <FilePdf className="h-4 w-4 mr-2" />
+                  )}
+                  {generating === 'production'
+                    ? 'Gerando…'
+                    : `Gerar L42PRO (${totalEtiquetas} etiquetas)`}
                 </Button>
-                {!coucheProfileConfirmed && (
-                  <p className="text-xs text-amber-700 dark:text-amber-400">
-                    Medidas do rolo alteradas — confirme o perfil em “Medidas do rolo de duas colunas” para liberar a geração.
-                  </p>
-                )}
               </section>
 
-              <section className="rounded-lg border border-primary/25 bg-primary/5 p-4 space-y-4" aria-labelledby="graphic-output-title">
+              <section className="rounded-lg border border-primary/25 bg-primary/5 p-4 space-y-4">
                 <div className="flex items-start gap-3">
                   <div className="rounded-md border border-primary/20 bg-background p-2 text-primary">
                     <Palette className="h-5 w-5" />
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 id="graphic-output-title" className="font-semibold text-foreground">Arquivo para gráfica</h3>
-                      <Badge className="bg-primary text-primary-foreground">
-                        {COUCHE_COLUMNS} × {COUCHE_LABEL_WIDTH_MM} × {COUCHE_LABEL_HEIGHT_MM} mm
-                      </Badge>
-                    </div>
+                  <div>
+                    <h3 className="font-semibold">
+                      {isObjetiva ? 'Amostra Objetiva' : 'Arquivo para gráfica'}
+                    </h3>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Duas etiquetas couchê lado a lado por página, sem repetir a quantidade do pedido.
+                      Uma arte por SKU selecionado (sem repetir quantidade).
                     </p>
                   </div>
                 </div>
-
-                <div className="rounded-md border border-primary/20 bg-background p-3 space-y-2 text-sm">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-muted-foreground">SKUs selecionados</span>
-                    <strong className="font-mono text-foreground">{selectedSkuAnalysis.rows.length}</strong>
-                  </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-muted-foreground">Linhas de 2 colunas</span>
-                    <strong className="font-mono text-foreground">{paginasGrafica}</strong>
-                  </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-muted-foreground">Código de barras</span>
-                    <span className="inline-flex items-center gap-1.5 font-semibold text-foreground">
-                      <CheckCircle className="h-4 w-4 text-emerald-600" weight="fill" /> {BARCODE_FORMAT}
-                    </span>
-                  </div>
-                </div>
-
-                <details className="rounded-md border border-primary/20 bg-background p-3 text-sm">
-                  <summary className="cursor-pointer font-semibold text-foreground">
-                    Medidas do rolo de duas colunas
-                  </summary>
-                  <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                    O padrão é 2 × 50 × 30 mm com {DEFAULT_COUCHE_ROLL_PROFILE.columnGapMm} mm de vão (página {COUCHE_LABEL_WIDTH_MM * COUCHE_COLUMNS + DEFAULT_COUCHE_ROLL_PROFILE.columnGapMm} × {COUCHE_LABEL_HEIGHT_MM} mm). Altere só se a faca do rolo for outra.
-                  </p>
-                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                    {COUCHE_PROFILE_FIELDS.map(field => (
-                      <div key={field.key} className="space-y-1">
-                        <Label htmlFor={`couche-${field.key}`} className="text-xs font-medium">
-                          {field.label} (mm)
-                        </Label>
-                        <Input
-                          id={`couche-${field.key}`}
-                          type="number"
-                          min={0}
-                          max={MAX_PROFILE_MEASURE_MM}
-                          step={0.1}
-                          value={coucheProfile[field.key]}
-                          disabled={isBusy}
-                          onChange={event => setCoucheProfileMeasure(field.key, event.target.value)}
-                          className="h-8 bg-background font-mono"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-xs">
-                    <span className="text-muted-foreground">Mídia calculada do PDF</span>
-                    <strong className="font-mono text-foreground text-right">
-                      {COUCHE_COLUMNS} × {COUCHE_LABEL_WIDTH_MM} × {COUCHE_LABEL_HEIGHT_MM} mm
-                      <span className="block font-normal text-muted-foreground">
-                        página {coucheGeometry.pageWidthMm.toLocaleString('pt-BR')} × {coucheGeometry.pageHeightMm.toLocaleString('pt-BR')} mm
-                        {coucheGeometry.columnGapMm > 0
-                          ? ` (vão ${coucheGeometry.columnGapMm.toLocaleString('pt-BR')} mm)`
-                          : ''}
-                      </span>
-                    </strong>
-                  </div>
-                  <div className="mt-3 flex items-start gap-2 rounded-md bg-muted/40 p-2.5">
-                    <Checkbox
-                      id="couche-profile-confirmed"
-                      checked={coucheProfileConfirmed}
-                      disabled={isBusy}
-                      onCheckedChange={value => setCoucheProfileConfirmed(value === true)}
-                    />
-                    <Label htmlFor="couche-profile-confirmed" className="cursor-pointer text-xs font-normal leading-relaxed">
-                      Confirmo que estas medidas correspondem ao rolo usado na L42PRO e pela gráfica.
-                    </Label>
-                  </div>
-                </details>
-
                 <Button
                   className="w-full"
                   onClick={() => void handleGenerate('graphic')}
                   disabled={
                     isBusy
                     || selectedRows.length === 0
-                    || selecionadasForaDoPadrao.length > 0
-                    || selectedSkuAnalysis.conflicts.length > 0
-                    || !coucheProfileConfirmed
+                    || selecionadasFora.length > 0
+                    || (isNalin && selectedSkuAnalysis.conflicts.length > 0)
+                    || (isNalin && !coucheConfirmed)
+                    || patternDirty
                   }
                 >
-                  {generating === 'graphic' ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FilePdf className="h-4 w-4 mr-2" />}
+                  {generating === 'graphic' ? (
+                    <CircleNotch className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <FilePdf className="h-4 w-4 mr-2" />
+                  )}
                   {generating === 'graphic'
                     ? 'Gerando…'
-                    : `Gerar gráfica (${selectedSkuAnalysis.rows.length} ${skuSelecionadoLabel})`}
+                    : `Gerar gráfica (${selectedSkuKeys.size} ${skuLabel})`}
                 </Button>
-                {!coucheProfileConfirmed && (
-                  <p className="text-xs text-amber-700 dark:text-amber-400">
-                    Medidas do rolo alteradas — confirme o perfil em “Medidas do rolo de duas colunas” para liberar a geração.
+                {isNalin && (
+                  <p className="text-xs text-muted-foreground">
+                    {paginasGrafica} linha(s) de {COUCHE_COLUMNS} colunas ·{' '}
+                    {BABY_NALIN_DEFAULT_GEOMETRY.labelWidthMm}×{BABY_NALIN_DEFAULT_GEOMETRY.labelHeightMm}{' '}
+                    mm
                   </p>
                 )}
               </section>
             </div>
 
-            <div className="flex justify-end">
+            {(foraDoPadrao.length > 0 || (isNalin && selectedSkuAnalysis.conflicts.length > 0)) && (
+              <div className="flex gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+                <Warning className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+                <div>
+                  {foraDoPadrao.length > 0 && (
+                    <p>{foraDoPadrao.length} código(s) não cabem na etiqueta com o módulo atual.</p>
+                  )}
+                  {isNalin && selectedSkuAnalysis.conflicts.length > 0 && (
+                    <p>
+                      {selectedSkuAnalysis.conflicts.length} SKU(s) com dados conflitantes na seleção.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center gap-3">
+              <SearchInput
+                value={search}
+                onChange={setSearch}
+                placeholder="Filtrar referência, cor, tamanho, código…"
+                debounceMs={0}
+                className="max-w-md"
+              />
               <Button
                 variant="outline"
                 size="sm"
                 className="h-9"
-                onClick={() => inputRef.current?.click()}
-                disabled={isBusy}
+                disabled={visibleSkuKeys.length === 0 || isBusy}
+                onClick={() => setVisibleSelected(!allVisibleSelected)}
               >
-                {reading ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Upload className="h-4 w-4 mr-1.5" />}
-                {reading ? 'Lendo novo arquivo…' : 'Trocar arquivo'}
+                {allVisibleSelected ? 'Limpar visíveis' : 'Marcar visíveis'}
+                {someVisibleSelected && !allVisibleSelected ? ` (${visibleSelectedCount})` : ''}
               </Button>
+              {hiddenSelectedCount > 0 && (
+                <span className="text-xs text-muted-foreground">
+                  {hiddenSelectedCount} selecionado(s) fora do filtro
+                </span>
+              )}
             </div>
 
-            {foraDoPadrao.length > 0 && (
-              <div className="flex items-start gap-2 rounded-md border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-600">
-                <Warning className="h-4 w-4 mt-0.5 shrink-0" weight="fill" />
-                <span>
-                  {foraDoPadrao.length} código(s) inválidos para CODE128 ou largos demais para a etiqueta de {ART_WIDTH_MM} mm.
-                  {' '}{selecionadasForaDoPadrao.length > 0
-                    ? `${selecionadasForaDoPadrao.length} fazem parte da seleção e bloqueiam a geração.`
-                    : 'Nenhum faz parte da seleção atual.'}
-                </span>
-              </div>
-            )}
-
-            {skuAnalysis.conflicts.length > 0 && (
-              <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
-                <Warning className="h-4 w-4 mt-0.5 shrink-0" weight="fill" />
-                <span>
-                  {skuAnalysis.conflicts.length} SKU(s) possuem código de barras ou código de produto divergente. {selectedSkuAnalysis.conflicts.length > 0
-                    ? `${selectedSkuAnalysis.conflicts.length} fazem parte da seleção e bloqueiam o arquivo para a gráfica.`
-                    : 'Nenhum faz parte da seleção atual.'}
-                </span>
-              </div>
-            )}
-
-            {productionOverLimit && (
-              <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
-                <Warning className="h-4 w-4 mt-0.5 shrink-0" weight="fill" />
-                <span>
-                  A seleção produziria {totalEtiquetas.toLocaleString('pt-BR')} etiquetas. Divida o pedido em arquivos de até{' '}
-                  {MAX_PDF_LABELS.toLocaleString('pt-BR')} etiquetas para evitar travar o navegador.
-                </span>
-              </div>
-            )}
-
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <SearchInput
-                value={search}
-                onChange={setSearch}
-                placeholder="Buscar no arquivo por referência, cor, tamanho ou código…"
-                resultCount={visibleRows.length}
-                totalCount={rows.length}
-                className="w-full max-w-lg"
-              />
-              <div
-                className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-muted/20 px-3 py-2"
-                aria-live="polite"
-              >
-                <Badge variant="secondary" className="font-mono">
-                  {selectedSkuAnalysis.rows.length}/{skuAnalysis.rows.length}
-                </Badge>
-                <span className="text-xs text-muted-foreground">SKUs selecionados</span>
-                {hiddenSelectedCount > 0 && (
-                  <Badge variant="outline" className="font-mono text-xs">
-                    {hiddenSelectedCount} fora da busca
-                  </Badge>
-                )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 px-2 text-xs"
-                  onClick={() => setSelectedSkuKeys(new Set(visibleSkuKeys))}
-                  disabled={visibleSkuKeys.length === 0 || isBusy}
-                >
-                  Selecionar exibidos ({visibleSkuKeys.length})
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 px-2 text-xs"
-                  onClick={() => setSelectedSkuKeys(new Set())}
-                  disabled={selectedSkuAnalysis.rows.length === 0 || isBusy}
-                >
-                  Limpar seleção
-                </Button>
-              </div>
-            </div>
-
-            <div className="overflow-x-auto">
+            <div className="overflow-auto rounded-md border border-border">
               <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border text-left">
-                    <th className="w-10 py-2 pr-3">
-                      <Checkbox
-                        checked={allVisibleSelected ? true : someVisibleSelected ? 'indeterminate' : false}
-                        onCheckedChange={value => setVisibleSelected(value === true)}
-                        disabled={visibleSkuKeys.length === 0 || isBusy}
-                        aria-label={allVisibleSelected ? 'Desmarcar todos os SKUs exibidos' : 'Selecionar todos os SKUs exibidos'}
-                      />
+                <thead className="bg-muted/40 text-left">
+                  <tr>
+                    <th className="w-10 p-2">
+                      <span className="sr-only">Selecionar</span>
                     </th>
-                    <th className="py-2 pr-3 font-medium text-muted-foreground">Referência</th>
-                    <th className="py-2 pr-3 font-medium text-muted-foreground">Cor</th>
-                    <th className="py-2 pr-3 font-medium text-muted-foreground">Tam.</th>
-                    <th className="py-2 pr-3 font-medium text-muted-foreground">Cód. produto</th>
-                    <th className="py-2 pr-3 font-medium text-muted-foreground">Código de barras</th>
-                    <th className="py-2 pr-3 font-medium text-muted-foreground text-right">Qtd. pedido</th>
-                    <th className="w-32 py-2 pr-3 font-medium text-muted-foreground text-right">Qtd. imprimir</th>
-                    <th className="py-2 font-medium text-muted-foreground text-right">Largura</th>
+                    <th className="p-2">Ref / SKU</th>
+                    <th className="p-2">Cor</th>
+                    <th className="p-2">Tam.</th>
+                    <th className="p-2">Código</th>
+                    <th className="p-2 text-right">Qtd pedido</th>
+                    <th className="p-2 text-right">Imprimir</th>
+                    {fileNames.length > 1 && <th className="p-2">Arquivo</th>}
+                    {isNalin && <th className="p-2">OK</th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleRows.map(({ row, sourceIndex, skuKey, barcodeFit }) => {
+                  {visibleEntries.map(({ row, skuKey, barcodeFit, sourceIndex }) => {
                     const selected = selectedSkuKeys.has(skuKey);
                     return (
                       <tr
-                        key={`${skuKey}-${row.codigoBarra}-${sourceIndex}`}
-                        className={`border-b border-border/60 transition-colors last:border-0 ${selected ? 'bg-primary/5' : 'hover:bg-muted/30'}`}
-                        data-state={selected ? 'selected' : undefined}
+                        key={`${skuKey}-${sourceIndex}`}
+                        className={cn(
+                          'border-t border-border',
+                          selected && 'bg-primary/5',
+                          isNalin && !barcodeFit.fits && 'bg-amber-500/5',
+                        )}
                       >
-                        <td className="w-10 py-2 pr-3">
+                        <td className="p-2">
                           <Checkbox
                             checked={selected}
-                            onCheckedChange={value => setSkuSelected(skuKey, value === true)}
                             disabled={isBusy}
-                            aria-label={
-                              `Selecionar linha ${sourceIndex + 1}: SKU ${row.referencia || 'sem referência'}, `
-                              + `${row.cor || 'sem cor'}, tamanho ${row.tamanho || 'não informado'}, `
-                              + `produto ${row.codProduto || 'não informado'}, código ${row.codigoBarra}`
-                            }
+                            onCheckedChange={value => setSkuSelected(skuKey, value === true)}
+                            aria-label={`Selecionar linha ${sourceIndex + 1}: SKU ${row.referencia}, ${row.cor}, tamanho ${row.tamanho},`}
                           />
                         </td>
-                        <td className="py-2 pr-3 font-medium text-foreground">{row.referencia || '—'}</td>
-                        <td className="py-2 pr-3 text-muted-foreground">{row.cor || '—'}</td>
-                        <td className="py-2 pr-3 text-muted-foreground">{row.tamanho || '—'}</td>
-                        <td className="py-2 pr-3 text-muted-foreground">{row.codProduto || '—'}</td>
-                        <td className="py-2 pr-3 font-mono text-xs text-foreground">{row.codigoBarra}</td>
-                        <td className="py-2 pr-3 text-right text-muted-foreground">{row.quantidade}</td>
-                        <td className="w-32 py-2 pr-3 text-right">
+                        <td className="p-2 font-medium">
+                          {row.referencia || row.codProduto}
+                          {row.descricao ? (
+                            <span className="block max-w-[14rem] truncate text-xs text-muted-foreground">
+                              {row.descricao}
+                            </span>
+                          ) : null}
+                        </td>
+                        <td className="p-2">{row.cor}</td>
+                        <td className="p-2 font-mono">{row.tamanho}</td>
+                        <td className="p-2 font-mono text-xs">{row.codigoBarra}</td>
+                        <td className="p-2 text-right font-mono">{row.quantidade}</td>
+                        <td className="p-2 text-right">
                           <Input
                             type="number"
                             min={1}
                             max={row.quantidade}
-                            step={1}
-                            value={printQuantities[sourceIndex] ?? row.quantidade}
-                            disabled={isBusy}
-                            onFocus={event => event.currentTarget.select()}
-                            onChange={event => setPrintQuantity(sourceIndex, row.quantidade, event.target.value)}
-                            className="ml-auto h-8 w-24 bg-background text-center font-mono"
-                            aria-label={`Quantidade a imprimir do SKU ${row.referencia || 'sem referência'}, tamanho ${row.tamanho || 'não informado'}`}
+                            className="ml-auto h-8 w-20 font-mono"
+                            disabled={isBusy || !selected}
+                            value={printQuantities[skuKey] ?? row.quantidade}
+                            aria-label={`Quantidade a imprimir do SKU ${row.referencia}, tamanho ${row.tamanho}`}
+                            onChange={event =>
+                              setPrintQuantity(skuKey, row.quantidade, event.target.value)
+                            }
                           />
                         </td>
-                        <td className="py-2 text-right">
-                          {barcodeFit.fits ? (
-                            <span className="text-muted-foreground">{barcodeFit.widthMm.toFixed(1)} mm</span>
-                          ) : (
-                            <Badge variant="outline" className="bg-red-500/10 text-red-600 border-red-500/30">
-                              {barcodeFit.error ? 'inválido' : 'não cabe'}
-                            </Badge>
-                          )}
-                        </td>
+                        {fileNames.length > 1 && (
+                          <td className="max-w-[8rem] truncate p-2 text-xs text-muted-foreground">
+                            {row.sourceFile}
+                          </td>
+                        )}
+                        {isNalin && (
+                          <td className="p-2">
+                            {barcodeFit.fits ? (
+                              <CheckCircle className="h-4 w-4 text-emerald-600" />
+                            ) : (
+                              <Warning className="h-4 w-4 text-amber-600" />
+                            )}
+                          </td>
+                        )}
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
             </div>
-
-            <p className="text-xs text-muted-foreground">
-              Imprima em escala 100% (sem "ajustar à página") e passe o leitor da loja no código antes de rodar o
-              pedido inteiro.
-            </p>
           </div>
         )}
       </Panel>
