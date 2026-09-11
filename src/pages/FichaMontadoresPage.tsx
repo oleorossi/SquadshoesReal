@@ -389,7 +389,11 @@ function imprimirRelatorio(p: {
     if (!d) return `<td class="c pad"></td>`;
     const we = di >= 5;
     const c = r.cells[d];
-    if (!c || c.pares <= 0) return `<td class="c empty${we ? " we" : ""}"></td>`;
+    // Em dash visível: célula vazia = SEM lançamento (não é furo de render).
+    // Antes color:transparent fazia o dia parecer "apagado"/quebrado.
+    if (!c || c.pares <= 0) {
+      return `<td class="c empty${we ? " we" : ""}"><span class="z">—</span></td>`;
+    }
     return `<td class="c has${we ? " we" : ""}${c.pago ? "" : " ab"}"><b>${c.pares}</b>${splitDiff(c)}</td>`;
   }
 
@@ -504,8 +508,9 @@ function imprimirRelatorio(p: {
     .cal th.day.pad,.cal td.c.pad{background:#f7f6f4;border-color:#e4e2de}
     .cal td.mont,.cal th.mont{text-align:left;font-weight:700;white-space:nowrap;width:110px;background:#f3f2ef;border-right:2px solid #666;padding:3px 6px;font-size:10.5px}
     .cal td.c{padding:4px 2px;height:26px}
-    .cal td.c.empty{color:transparent;background:#fafaf8}
+    .cal td.c.empty{color:#bbb;background:#fafaf8}
     .cal td.c.empty.we{background:#ebe8e2}
+    .cal td.c.empty .z{font-size:11px;font-weight:600;line-height:1}
     .cal td.c.has{color:#111}
     .cal td.c.has b{font-size:13px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1}
     .cal td.c .sp{font-size:8px;line-height:1.1;margin-top:1px}
@@ -579,7 +584,7 @@ function imprimirRelatorio(p: {
           <tfoot><tr><td class="mont">TOTAL (${cRows.length})</td>${temDificil ? `<td class="n med">${nf(tMed)}</td><td class="n dif">${nf(tDif)}</td>` : ""}<td class="n b">${nf(tPar)}</td><td class="n f">${tFic}</td><td class="n pgo">${fmtBRL(tPago)}</td><td class="n abt">${fmtBRL(tAberto)}</td></tr></tfoot>
         </table>
       </div>
-      <div class="lg">Cada célula = <b>pares do dia</b>${temDificil ? '; embaixo o split <b class="med">médio</b> · <b class="dif">difícil</b>' : ""}. Grade em <b>semanas (seg–dom)</b>${individual ? " no formato de calendário" : ""} pra manter proporção legível. <i class="ab"></i>fundo âmbar = dia <b>ainda não pago</b>. <i class="we"></i>coluna cinza = fim de semana.</div>
+      <div class="lg">Cada célula = <b>pares do dia</b>${temDificil ? '; embaixo o split <b class="med">médio</b> · <b class="dif">difícil</b>' : ""}. Grade em <b>semanas (seg–dom)</b>${individual ? " no formato de calendário" : ""} pra manter proporção legível. <b>—</b> = <b>sem lançamento</b> naquele dia (montador cadastrado, sem produção apontada). <i class="ab"></i>fundo âmbar = dia <b>ainda não pago</b>. <i class="we"></i>coluna cinza = fim de semana.</div>
     </section>
 
     <script>window.onload=function(){window.focus();window.print();};</script></body></html>`);
@@ -903,7 +908,15 @@ export default function FichaMontadoresPage() {
       setPares({}); setOrigPares({});
       setWeek({}); setOrigWeek({});
       toast.error("Erro ao carregar: " + error.message);
-    } else setFichas((data ?? []) as unknown as Ficha[]);
+    } else {
+      // Normaliza `dia` pra YYYY-MM-DD na carga. Se vier timestamp (ou Date
+      // stringificado), a chave da célula não casa com daysInRange → dia em
+      // branco mesmo com lançamento no banco.
+      setFichas(((data ?? []) as unknown as Ficha[]).map((f) => ({
+        ...f,
+        dia: String(f.dia ?? "").slice(0, 10),
+      })));
+    }
     setLoading(false);
   }, [db, setor, dataRange.from, dataRange.to]);
   useEffect(() => { carregar(); }, [carregar]);
@@ -1468,12 +1481,13 @@ export default function FichaMontadoresPage() {
         ? paresDiffOf(f)
         : { medio: paresDaFicha(f), dificil: 0, total: paresDaFicha(f) };
       if (pd.total <= 0) continue;
-      const c = porDia.get(f.dia) || { pares: 0, medio: 0, dificil: 0, pago: true };
+      const dia = String(f.dia ?? "").slice(0, 10);
+      const c = porDia.get(dia) || { pares: 0, medio: 0, dificil: 0, pago: true };
       c.pares += pd.total; c.medio += pd.medio; c.dificil += pd.dificil;
       // Dia com QUALQUER lançamento em aberto conta como não pago — a marca
       // existe pra cobrar, então erra pro lado de sinalizar (igual ao PDF).
       c.pago = c.pago && estadoDe(f) === "pago";
-      porDia.set(f.dia, c);
+      porDia.set(dia, c);
     }
     const dias = daysInRange(range.from, range.to);
     const meses = [...new Set(dias.map((d) => d.slice(0, 7)))];
@@ -1577,12 +1591,13 @@ export default function FichaMontadoresPage() {
       const estado = estadoDe(f);
       let r = map.get(key);
       if (!r) { r = { key, nome: f.montador || "(sem montador)", cells: {}, medio: 0, dificil: 0, pares: 0, fichas: 0, valorPago: 0, valorAberto: 0, valorTotal: 0 }; map.set(key, r); }
-      const c = r.cells[f.dia] || { pares: 0, medio: 0, dificil: 0, fichas: 0, pago: true };
+      const dia = String(f.dia ?? "").slice(0, 10);
+      const c = r.cells[dia] || { pares: 0, medio: 0, dificil: 0, fichas: 0, pago: true };
       c.pares += pd.total; c.medio += pd.medio; c.dificil += pd.dificil; c.fichas += fich;
       // Dia com QUALQUER lançamento ainda não pago conta como não pago — a marca
       // do calendário existe pra cobrar, então erra pro lado de sinalizar.
       c.pago = c.pago && estado === "pago";
-      r.cells[f.dia] = c;
+      r.cells[dia] = c;
       r.pares += pd.total; r.medio += pd.medio; r.dificil += pd.dificil; r.fichas += fich;
       if (estado !== "na") {
         if (estado === "pago") r.valorPago += valor; else r.valorAberto += valor;
