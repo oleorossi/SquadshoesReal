@@ -3126,6 +3126,7 @@ export type Database = {
           suframa: string | null
           tags: string[] | null
           telefone: string | null
+          label_pattern: Json | null
           updated_at: string
         }
         Insert: {
@@ -3181,6 +3182,7 @@ export type Database = {
           suframa?: string | null
           tags?: string[] | null
           telefone?: string | null
+          label_pattern?: Json | null
           updated_at?: string
         }
         Update: {
@@ -3236,6 +3238,7 @@ export type Database = {
           suframa?: string | null
           tags?: string[] | null
           telefone?: string | null
+          label_pattern?: Json | null
           updated_at?: string
         }
         Relationships: [
