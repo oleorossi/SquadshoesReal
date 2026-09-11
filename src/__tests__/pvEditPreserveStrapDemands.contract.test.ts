@@ -89,8 +89,12 @@ describe('edição de PV — preserve itens com demanda de tira', () => {
   });
 
   it('guard de exclusão libera gerente/comercial quando GUC interno está ligado', () => {
+    const guardMig = readFileSync(
+      resolve(MIGRATIONS, '20270101022000_pv_edit_preserve_items_with_strap_demands.sql'),
+      'utf8',
+    );
     const guard = sqlFunction(
-      latest.sql,
+      guardMig,
       'tg_guard_sale_order_item_production_exclusion',
     );
     expect(guard).toContain("'admin', 'gerente', 'comercial'");
