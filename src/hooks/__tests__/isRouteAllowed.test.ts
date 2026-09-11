@@ -19,6 +19,8 @@ describe('resolveModuleForPath', () => {
     expect(resolveModuleForPath('/label-system')).toBe('expedicao');
     expect(resolveModuleForPath('/etiquetagem-cliente')).toBe('expedicao');
     expect(resolveModuleForPath('/estoque/historico')).toBe('estoque');
+    // Destino concedível da aba Auditoria de Unidades (Cmd+K / grant matrix)
+    expect(resolveModuleForPath('/estoque?tab=conversion')).toBe('estoque');
     expect(resolveModuleForPath('/sales/123')).toBe('vendas');
     // Modo Gestão é uma moldura dedicada do MESMO Kanban: herda a entrada pai,
     // não cria um módulo ou destino concedível paralelo.

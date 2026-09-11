@@ -491,8 +491,19 @@ const exemptRoutes = screens
   .filter((r) => !navPaths.has(r.path) && exemptReason(r.path))
   .map((r) => ({ path: r.path, component: r.component, reason: exemptReason(r.path) }));
 
+/**
+ * Deep-link com query (`/estoque?tab=conversion`, `/pcp?tab=setores`) não tem
+ * literal próprio no App.tsx — a rota viva é o pathname. Sem isto o Cmd+K
+ * legítimo vira "ghost-nav-entry" e o build bloqueia o deploy.
+ */
+const routeExistsForNav = (path) => {
+  if (routeByPath.has(path)) return true;
+  const q = path.indexOf('?');
+  return q > 0 && routeByPath.has(path.slice(0, q));
+};
+
 const ghostNavEntries = navEntries
-  .filter((e) => !routeByPath.has(e.path))
+  .filter((e) => !routeExistsForNav(e.path))
   .map((e) => ({ path: e.path, label: e.label, surface: e.surface }));
 
 const navPointingAtRedirect = navEntries

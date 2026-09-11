@@ -47,13 +47,20 @@ describe('Auditoria de unidades dentro do Estoque', () => {
   });
 
   it('/unit-audit redireciona para o Estoque e Cmd+K aponta pra aba', () => {
-    const page = read('src/pages/UnitAudit.tsx');
-    expect(page).toContain('Navigate');
-    expect(page).toContain('/estoque?tab=conversion');
+    const app = read('src/App.tsx');
+    expect(app).toMatch(/path:\s*["']unit-audit["']/);
+    expect(app).toContain('LegacyRouteRedirect to="/estoque?tab=conversion"');
+    expect(app).not.toMatch(/lazy\(\(\)\s*=>\s*import\(["'].*UnitAudit/);
 
     const nav = read('src/data/navigation.ts');
     expect(nav).toContain("path: '/estoque?tab=conversion'");
     expect(nav).toContain("label: 'Auditoria de Unidades'");
     expect(nav).not.toMatch(/path: '\/unit-audit'/);
+
+    // Sem esta chave exacta o check-navigation-access.mjs falha o build no CI
+    // (nav route sem ROUTE_MODULE_MAP) e o deploy Vercel de produção é pulado.
+    const access = read('src/hooks/useAccessControl.ts');
+    expect(access).toMatch(/['"]\/estoque\?tab=conversion['"]\s*:\s*['"]estoque['"]/);
+    expect(access).toMatch(/['"]\/unit-audit['"]\s*:\s*['"]estoque['"]/);
   });
 });

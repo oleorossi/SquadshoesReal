@@ -12,6 +12,8 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/estoque/historico': 'estoque',
   '/estoque/qualidade': 'estoque',
   '/estoque/inventario': 'estoque',
+  // Deep-link Cmd+K / destino concedível da aba Auditoria de Unidades
+  '/estoque?tab=conversion': 'estoque',
   '/compras/alcadas': 'financeiro',
   '/compras/inspecao': 'financeiro',
   '/references': 'produtos',
@@ -183,7 +185,8 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/reports': 'sistema',
   '/audit-logs': 'sistema',
   '/system-diagnostics': 'sistema',
-  '/unit-audit': 'sistema',
+  // Alias → /estoque?tab=conversion (mesmo módulo do destino)
+  '/unit-audit': 'estoque',
   '/navigation-audit': 'sistema',
 
   // ── Aliases legados ───────────────────────────────────────────────────

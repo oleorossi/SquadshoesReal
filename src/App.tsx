@@ -93,7 +93,6 @@ const StockAdjustmentPage = lazy(() => import("./pages/StockAdjustmentPage"));
 // OrderFlowAudit é uma view de /producao/analises; a URL standalone sobrevive
 // só como alias para não quebrar bookmarks antigos.
 const NavigationAudit = lazy(() => import("./pages/NavigationAudit"));
-const UnitAudit = lazy(() => import("./pages/UnitAudit"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const OrdersSummary = lazy(() => import("./pages/OrdersSummary"));
 const GroupedReportSummary = lazy(() => import("./pages/GroupedReportSummary"));
@@ -1002,8 +1001,9 @@ const router = createBrowserRouter([
         element: <NavigationAudit />,
       },
       {
+        // Bookmark legado — a auditoria mora na aba do hub de Estoque.
         path: "unit-audit",
-        element: <UnitAudit />,
+        element: <LegacyRouteRedirect to="/estoque?tab=conversion" />,
       },
       {
         path: "label-system",
