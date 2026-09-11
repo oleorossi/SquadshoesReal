@@ -293,9 +293,10 @@ interface CalRow {
  * (decisão do dono, 07/08/2026): o rendimento em cima, o calendário embaixo,
  * mesmo período e mesmo filtro.
  *
- * PAISAGEM porque o calendário manda: ele tem uma coluna por DIA do período —
- * 7 numa semana, até 31 num mês. A tabela de rendimento tem 9 colunas e cabe
- * folgada em paisagem; o contrário não é verdade.
+ * PAISAGEM porque o calendário manda. Períodos longos NÃO viram uma tabela
+ * com 40 colunas (código de barras): o calendário parte em semanas Seg→Dom.
+ * Relatório individual usa grade mensal (1 pessoa × dias); gerencial usa
+ * blocos de semana com uma linha por pessoa.
  *
  * ⚠ Os seletores de tabela são NAMESPACED (.rend / .cal). Os dois documentos
  * tinham CSS próprio com os mesmos seletores genéricos (table, th, td); juntar
@@ -341,97 +342,202 @@ function imprimirRelatorio(p: {
       : `<td class="n na" colspan="4">não é regime por par</td>`)
     + `</tr>`).join("");
 
-  // ── 2. Calendário pessoa × dia ────────────────────────────────────────────
+  // ── 2. Calendário — proporção por SEMANA (nunca 30+ colunas numa linha) ───
   const { rows: cRows, days } = p.cal;
-  // Escala visual: períodos curtos ganham letra e padding; longos ficam compactos.
-  const calScale = days.length <= 10 ? "cal-lg" : days.length <= 20 ? "cal-md" : "cal-sm";
-  const dayHead = days.map((d) => {
-    const di = dowIdx(d);
+  const individual = !!p.pessoaNome || cRows.length === 1;
+
+  /** Parte o período em semanas (0=Seg … 6=Dom). Placeholders "" alinham a grade. */
+  function semanasDoPeriodo(dias: string[]): string[][] {
+    if (!dias.length) return [];
+    const out: string[][] = [];
+    let cur: string[] = [];
+    for (const d of dias) {
+      const di = dowIdx(d);
+      if (cur.length && di === 0) { out.push(cur); cur = []; }
+      if (!cur.length && di > 0) {
+        for (let i = 0; i < di; i++) cur.push("");
+      }
+      cur.push(d);
+    }
+    if (cur.length) {
+      while (cur.length < 7) cur.push("");
+      out.push(cur);
+    }
+    return out;
+  }
+
+  const semanas = semanasDoPeriodo(days);
+
+  function rotuloSemana(week: string[]): string {
+    const reais = week.filter(Boolean);
+    if (!reais.length) return "";
+    const a = reais[0], b = reais[reais.length - 1];
+    return `${a.slice(8, 10)}/${a.slice(5, 7)} – ${b.slice(8, 10)}/${b.slice(5, 7)}`;
+  }
+
+  function splitDiff(c: CalCell): string {
+    if (!temDificil) return "";
+    const bits = [
+      c.medio > 0 ? `<span class="med">${c.medio}</span>` : "",
+      c.dificil > 0 ? `<span class="dif">${c.dificil}</span>` : "",
+    ].filter(Boolean);
+    return bits.length ? `<div class="sp">${bits.join("<span class='x'>·</span>")}</div>` : "";
+  }
+
+  /** Célula de dia no bloco gerencial (pessoa × dia). */
+  function celulaPessoaDia(r: CalRow, d: string, di: number): string {
+    if (!d) return `<td class="c pad"></td>`;
     const we = di >= 5;
-    const wk = di === 0; // segunda = início de semana
-    return `<th class="day${we ? " we" : ""}${wk ? " wk" : ""}"><span class="wd">${WD_SHORT7[di]}</span><span class="dn">${d.slice(8, 10)}/${d.slice(5, 7)}</span></th>`;
-  }).join("");
-  const bodyCal = cRows.map((r) => {
-    const cells = days.map((d) => {
-      const c = r.cells[d]; const di = dowIdx(d);
-      const we = di >= 5; const wk = di === 0;
-      if (!c || c.pares <= 0) return `<td class="c empty${we ? " we" : ""}${wk ? " wk" : ""}"></td>`;
-      // Com uma dificuldade só, o split embaixo repetiria o número grande acima.
-      const sp = temDificil
-        ? [c.medio > 0 ? `<span class="med">${c.medio}</span>` : "", c.dificil > 0 ? `<span class="dif">${c.dificil}</span>` : ""].filter(Boolean).join("<span class='x'>·</span>")
-        : "";
-      return `<td class="c has${we ? " we" : ""}${wk ? " wk" : ""}${c.pago ? "" : " ab"}"><b>${c.pares}</b>${sp ? `<div class="sp">${sp}</div>` : ""}</td>`;
+    const c = r.cells[d];
+    if (!c || c.pares <= 0) return `<td class="c empty${we ? " we" : ""}"></td>`;
+    return `<td class="c has${we ? " we" : ""}${c.pago ? "" : " ab"}"><b>${c.pares}</b>${splitDiff(c)}</td>`;
+  }
+
+  // Individual: grade mensal compacta (linha = semana, coluna = dia). Sem coluna
+  // de nome repetida — a pessoa já está no título. Proporção de calendário de parede.
+  let bodyCalHtml = "";
+  if (individual && cRows[0]) {
+    const r = cRows[0];
+    const head = WD_SHORT7.map((w, di) =>
+      `<th class="day${di >= 5 ? " we" : ""}">${w}</th>`).join("");
+    const body = semanas.map((week) => {
+      const cells = week.map((d, di) => {
+        if (!d) return `<td class="c pad"></td>`;
+        const we = di >= 5;
+        const c = r.cells[d];
+        const dn = `${d.slice(8, 10)}/${d.slice(5, 7)}`;
+        if (!c || c.pares <= 0) {
+          return `<td class="c empty${we ? " we" : ""}"><span class="dn">${dn}</span></td>`;
+        }
+        return `<td class="c has${we ? " we" : ""}${c.pago ? "" : " ab"}">`
+          + `<span class="dn">${dn}</span><b>${c.pares}</b>${splitDiff(c)}</td>`;
+      }).join("");
+      const paresSem = week.reduce((s, d) => s + (d ? (r.cells[d]?.pares || 0) : 0), 0);
+      return `<tr>${cells}<td class="n b">${paresSem || ""}</td></tr>`;
     }).join("");
-    return `<tr><td class="mont">${esc(r.nome)}</td>${cells}`
-      + (temDificil ? `<td class="n med">${r.medio || "—"}</td><td class="n dif">${r.dificil || "—"}</td>` : "")
-      + `<td class="n b">${nf(r.pares)}</td><td class="n f">${r.fichas}</td>`
-      + `<td class="n pgo">${r.valorPago > 0 ? fmtBRL(r.valorPago) : "—"}</td>`
-      + `<td class="n abt">${r.valorAberto > 0 ? fmtBRL(r.valorAberto) : "—"}</td></tr>`;
-  }).join("");
-  const dayTot = days.map((d) => {
-    const di = dowIdx(d);
-    const s = cRows.reduce((a, r) => a + (r.cells[d]?.pares || 0), 0);
-    return `<td class="c${di >= 5 ? " we" : ""}${di === 0 ? " wk" : ""}">${s || ""}</td>`;
-  }).join("");
+    const dayTot = [0, 1, 2, 3, 4, 5, 6].map((di) => {
+      const s = semanas.reduce((acc, week) => {
+        const d = week[di];
+        return acc + (d ? (r.cells[d]?.pares || 0) : 0);
+      }, 0);
+      return `<td class="c${di >= 5 ? " we" : ""}">${s || ""}</td>`;
+    }).join("");
+    const tot = cRows.reduce((s, row) => s + row.pares, 0);
+    bodyCalHtml = `<div class="week month">
+      <table>
+        <thead><tr>${head}<th class="sum">Pares</th></tr></thead>
+        <tbody>${body || `<tr><td colspan="8" style="text-align:center;color:#888;padding:8px">Sem lançamentos.</td></tr>`}</tbody>
+        <tfoot><tr>${dayTot}<td class="n b">${tot || ""}</td></tr></tfoot>
+      </table>
+    </div>`;
+  } else {
+    // Gerencial: um bloco por semana, linha por pessoa. No máximo 7 dias → colunas largas.
+    bodyCalHtml = semanas.map((week, wi) => {
+      const dayHead = week.map((d, di) => {
+        if (!d) return `<th class="day pad"></th>`;
+        const we = di >= 5;
+        return `<th class="day${we ? " we" : ""}"><span class="wd">${WD_SHORT7[di]}</span><span class="dn">${d.slice(8, 10)}/${d.slice(5, 7)}</span></th>`;
+      }).join("");
+      const body = cRows.map((r) => {
+        const cells = week.map((d, di) => celulaPessoaDia(r, d, di)).join("");
+        const paresSem = week.reduce((s, d) => s + (d ? (r.cells[d]?.pares || 0) : 0), 0);
+        return `<tr><td class="mont">${esc(r.nome)}</td>${cells}<td class="n b">${paresSem || ""}</td></tr>`;
+      }).join("");
+      const dayTot = week.map((d, di) => {
+        if (!d) return `<td class="c pad"></td>`;
+        const s = cRows.reduce((a, r) => a + (r.cells[d]?.pares || 0), 0);
+        return `<td class="c${di >= 5 ? " we" : ""}">${s || ""}</td>`;
+      }).join("");
+      const totSem = week.reduce((s, d) => {
+        if (!d) return s;
+        return s + cRows.reduce((a, r) => a + (r.cells[d]?.pares || 0), 0);
+      }, 0);
+      return `<div class="week">
+      <div class="week-label">Semana ${wi + 1} · ${esc(rotuloSemana(week))}</div>
+      <table>
+        <thead><tr><th class="mont">${esc(p.oficioLabel)}</th>${dayHead}<th class="sum">Pares</th></tr></thead>
+        <tbody>${body || `<tr><td colspan="9" style="text-align:center;color:#888;padding:6px">Sem lançamentos.</td></tr>`}</tbody>
+        <tfoot><tr><td class="mont">TOTAL</td>${dayTot}<td class="n b">${totSem || ""}</td></tr></tfoot>
+      </table>
+    </div>`;
+    }).join("");
+  }
+
+  // Totais do período ficam FORA da grade diária — não competem com as colunas de dia.
   const tMed = cRows.reduce((s, r) => s + r.medio, 0), tDif = cRows.reduce((s, r) => s + r.dificil, 0);
   const tPar = cRows.reduce((s, r) => s + r.pares, 0), tFic = cRows.reduce((s, r) => s + r.fichas, 0);
   const tPago = cRows.reduce((s, r) => s + r.valorPago, 0);
   const tAberto = cRows.reduce((s, r) => s + r.valorAberto, 0);
+  const bodyTotCal = cRows.map((r) => `<tr><td class="mont">${esc(r.nome)}</td>`
+    + (temDificil ? `<td class="n med">${r.medio || "—"}</td><td class="n dif">${r.dificil || "—"}</td>` : "")
+    + `<td class="n b">${nf(r.pares)}</td><td class="n f">${r.fichas}</td>`
+    + `<td class="n pgo">${r.valorPago > 0 ? fmtBRL(r.valorPago) : "—"}</td>`
+    + `<td class="n abt">${r.valorAberto > 0 ? fmtBRL(r.valorAberto) : "—"}</td></tr>`).join("");
 
   const css = `*{box-sizing:border-box}body{margin:0;font-family:'Helvetica Neue',Arial,sans-serif;color:#111;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-    h1{font-size:17px;margin:0 0 2px} .sub{font-size:10.5px;color:#555;margin-bottom:3px}
-    .filtro{font-size:9.5px;color:#555;margin-bottom:10px}
-    .kpis{display:grid;grid-template-columns:1.2fr repeat(3,1fr);border:1px solid #333;margin:8px 0 12px}
-    .kpi{padding:7px 9px;border-right:1px solid #bbb}.kpi:last-child{border-right:0}.kpi.total{background:#111;color:#fff}
-    .kpi small{display:block;font-size:7.5px;text-transform:uppercase;letter-spacing:.08em;color:#666;margin-bottom:2px}.kpi.total small{color:#bbb}
-    .kpi b{display:block;font-size:13px;font-variant-numeric:tabular-nums}.kpi span{font-size:8px;color:#777}.kpi.total span{color:#ccc}
+    h1{font-size:16px;margin:0 0 2px} .sub{font-size:10px;color:#555;margin-bottom:2px}
+    .filtro{font-size:9px;color:#555;margin-bottom:8px}
+    .kpis{display:grid;grid-template-columns:1.2fr repeat(3,1fr);border:1px solid #333;margin:6px 0 10px}
+    .kpi{padding:6px 8px;border-right:1px solid #bbb}.kpi:last-child{border-right:0}.kpi.total{background:#111;color:#fff}
+    .kpi small{display:block;font-size:7px;text-transform:uppercase;letter-spacing:.08em;color:#666;margin-bottom:1px}.kpi.total small{color:#bbb}
+    .kpi b{display:block;font-size:12px;font-variant-numeric:tabular-nums}.kpi span{font-size:7.5px;color:#777}.kpi.total span{color:#ccc}
     .kpi.open b{color:#b45309}.kpi.sheet b{color:#1d4ed8}.kpi.paid b{color:#15803d}
-    h2{font-size:12px;margin:14px 0 5px;text-transform:uppercase;letter-spacing:.06em;color:#333;border-bottom:1.5px solid #333;padding-bottom:2px}
+    h2{font-size:11px;margin:10px 0 4px;text-transform:uppercase;letter-spacing:.06em;color:#333;border-bottom:1.5px solid #333;padding-bottom:2px}
     section{break-inside:avoid}
     .med{color:#b45309} .dif{color:#0f7a4a} .pg{color:#15803d} .ab{color:#b45309} .fl{color:#1d4ed8}
-    /* ── rendimento por pessoa ── */
-    .rend table{width:100%;border-collapse:collapse;font-size:11px}
-    .rend th,.rend td{border:1px solid #333;padding:4px 7px}
-    .rend th{background:#f1f0ed;text-align:left;font-size:9px;letter-spacing:.05em;text-transform:uppercase;color:#444}
+    /* ── rendimento ── */
+    .rend table{width:100%;border-collapse:collapse;font-size:10.5px}
+    .rend th,.rend td{border:1px solid #333;padding:3px 6px}
+    .rend th{background:#f1f0ed;text-align:left;font-size:8.5px;letter-spacing:.05em;text-transform:uppercase;color:#444}
     .rend td.n{text-align:right;font-variant-numeric:tabular-nums} .rend tfoot td{font-weight:800;background:#f6f5f2}
-    .rend td.na{text-align:center;color:#888;font-size:9.5px}
-    /* ── calendário pessoa × dia ── */
-    .cal table{width:100%;border-collapse:collapse;table-layout:fixed}
+    .rend td.na{text-align:center;color:#888;font-size:9px}
+    /* ── calendário por semana — proporção legível ── */
+    .cal .week{margin:0 0 7px;break-inside:avoid}
+    .cal .week-label{font-size:9px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#555;margin:0 0 2px}
+    .cal table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:10px}
     .cal th,.cal td{border:1px solid #c8c5be;text-align:center;overflow:hidden;vertical-align:middle}
     .cal th{background:#f1f0ed;text-transform:uppercase;color:#444}
-    .cal th.day{line-height:1.1;padding:3px 1px}
-    .cal th.day .wd{display:block;font-size:7px;font-weight:600;letter-spacing:.04em;color:#888}
-    .cal th.day .dn{display:block;font-size:9px;font-weight:800;color:#222;margin-top:1px;font-variant-numeric:tabular-nums}
+    .cal th.day{width:12%;padding:4px 2px;line-height:1.15}
+    .cal th.day .wd{display:block;font-size:9px;font-weight:700;letter-spacing:.04em;color:#666}
+    .cal th.day .dn{display:block;font-size:12px;font-weight:800;color:#222;margin-top:1px;font-variant-numeric:tabular-nums}
     .cal th.day.we,.cal td.c.we{background:#ebe8e2}
-    .cal th.day.wk,.cal td.c.wk{border-left:2px solid #666}
-    .cal td.mont,.cal th.mont{text-align:left;font-weight:700;white-space:nowrap;width:108px;background:#f3f2ef;border-right:2px solid #666;padding:3px 6px}
-    .cal td.c{color:transparent;padding:2px 1px} .cal td.c.empty{background:#fafaf8}
+    .cal th.day.pad,.cal td.c.pad{background:#f7f6f4;border-color:#e4e2de}
+    .cal td.mont,.cal th.mont{text-align:left;font-weight:700;white-space:nowrap;width:110px;background:#f3f2ef;border-right:2px solid #666;padding:3px 6px;font-size:10.5px}
+    .cal td.c{padding:4px 2px;height:26px}
+    .cal td.c.empty{color:transparent;background:#fafaf8}
     .cal td.c.empty.we{background:#ebe8e2}
-    .cal td.c.has{color:#111} .cal td.c.has b{font-weight:800;font-variant-numeric:tabular-nums} .cal td.c .sp{line-height:1;margin-top:1px}
+    .cal td.c.has{color:#111}
+    .cal td.c.has b{font-size:13px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1}
+    .cal td.c .sp{font-size:8px;line-height:1.1;margin-top:1px}
     .cal td.c.ab{background:#ffedd5} .cal td.c.ab.we{background:#f3e0c8}
     .cal td.c .med{color:#b45309;font-weight:700} .cal td.c .dif{color:#0f7a4a;font-weight:700} .cal td.c .x{color:#bbb;margin:0 1px}
-    .cal td.n,.cal th.sum{text-align:right;font-variant-numeric:tabular-nums;border-left:2px solid #666;background:#f3f2ef;padding:3px 5px}
+    .cal td.n,.cal th.sum{text-align:right;font-variant-numeric:tabular-nums;border-left:2px solid #666;background:#f3f2ef;padding:3px 5px;width:52px}
     .cal th.sum{background:#e4e1da;font-size:8px}
-    .cal td.n.med{color:#b45309;font-weight:700} .cal td.n.dif{color:#0f7a4a;font-weight:700}
-    .cal td.n.b{font-weight:800} .cal td.n.pgo{font-weight:800;width:56px;color:#15803d} .cal td.n.abt{font-weight:800;width:56px;color:#b45309}
-    .cal td.n.f{color:#1d4ed8;font-weight:700;width:28px}
+    .cal td.n.b{font-weight:800;font-size:11px}
     .cal tfoot td{font-weight:800;background:#f0eeea} .cal tfoot td.c{color:#111}
-    /* escalas por tamanho do período */
-    .cal table.cal-lg{font-size:10px}
-    .cal table.cal-lg th.day{width:34px;padding:4px 2px} .cal table.cal-lg th.day .wd{font-size:8px} .cal table.cal-lg th.day .dn{font-size:11px}
-    .cal table.cal-lg td.c{padding:4px 2px} .cal table.cal-lg td.c.has b{font-size:12px} .cal table.cal-lg td.c .sp{font-size:8px}
-    .cal table.cal-lg td.mont,.cal table.cal-lg th.mont{width:120px;font-size:11px}
-    .cal table.cal-md{font-size:9px}
-    .cal table.cal-md th.day{width:26px} .cal table.cal-md th.day .wd{font-size:7px} .cal table.cal-md th.day .dn{font-size:9.5px}
-    .cal table.cal-md td.c.has b{font-size:10px} .cal table.cal-md td.c .sp{font-size:7px}
-    .cal table.cal-sm{font-size:8px}
-    .cal table.cal-sm th.day{width:18px;padding:2px 0} .cal table.cal-sm th.day .wd{font-size:6px} .cal table.cal-sm th.day .dn{font-size:8px}
-    .cal table.cal-sm td.c{padding:1px 0} .cal table.cal-sm td.c.has b{font-size:8.5px} .cal table.cal-sm td.c .sp{font-size:6px}
-    .cal table.cal-sm td.mont,.cal table.cal-sm th.mont{width:92px;font-size:8px;padding:2px 4px}
-    .lg{font-size:8.5px;color:#555;margin:5px 0 0;line-height:1.35} .lg b.med{color:#b45309} .lg b.dif{color:#0f7a4a}
-    .lg i{display:inline-block;width:9px;height:9px;border:1px solid #bbb;vertical-align:-1px;margin-right:3px}
-    .lg i.ab{background:#ffedd5;border-color:#f0b27a} .lg i.we{background:#ebe8e2} .lg i.wk{border-left:2px solid #666}
-    @page{size:A4 landscape;margin:9mm}`;
+    /* grade mensal (relatório individual) — calendário de parede em paisagem */
+    .cal .week.month table{width:100%}
+    .cal .week.month th.day{padding:7px 3px;font-size:11px;font-weight:700;letter-spacing:.05em}
+    .cal .week.month th.sum{width:64px}
+    .cal .week.month td.c{height:48px;padding:5px 4px}
+    .cal .week.month td.c .dn{display:block;font-size:9.5px;font-weight:700;color:#777;letter-spacing:.02em;margin-bottom:2px;font-variant-numeric:tabular-nums}
+    .cal .week.month td.c.empty{color:#bbb}
+    .cal .week.month td.c.empty .dn{color:#bbb}
+    .cal .week.month td.c.has b{font-size:17px;font-weight:800}
+    .cal .week.month td.c .sp{font-size:9px;margin-top:2px}
+    /* totais do período */
+    .cal-tot{margin-top:6px}
+    .cal-tot table{width:100%;border-collapse:collapse;font-size:10.5px}
+    .cal-tot th,.cal-tot td{border:1px solid #333;padding:3px 6px}
+    .cal-tot th{background:#f1f0ed;text-align:left;font-size:8.5px;letter-spacing:.05em;text-transform:uppercase;color:#444}
+    .cal-tot td.n{text-align:right;font-variant-numeric:tabular-nums} .cal-tot td.mont{font-weight:700}
+    .cal-tot td.n.med{color:#b45309;font-weight:700} .cal-tot td.n.dif{color:#0f7a4a;font-weight:700}
+    .cal-tot td.n.b{font-weight:800} .cal-tot td.n.pgo{font-weight:800;color:#15803d} .cal-tot td.n.abt{font-weight:800;color:#b45309}
+    .cal-tot td.n.f{color:#1d4ed8;font-weight:700} .cal-tot tfoot td{font-weight:800;background:#f6f5f2}
+    .lg{font-size:8px;color:#555;margin:4px 0 0;line-height:1.35} .lg b.med{color:#b45309} .lg b.dif{color:#0f7a4a}
+    .lg i{display:inline-block;width:8px;height:8px;border:1px solid #bbb;vertical-align:-1px;margin-right:3px}
+    .lg i.ab{background:#ffedd5;border-color:#f0b27a} .lg i.we{background:#ebe8e2}
+    @page{size:A4 landscape;margin:8mm}`;
 
   openPrint(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${esc(titulo)}</title><style>${css}</style></head><body>
     <h1>${esc(titulo)}</h1>
@@ -464,16 +570,21 @@ function imprimirRelatorio(p: {
 
     <section class="cal">
       <h2>Calendário — o que cada ${esc(p.oficioLabel.toLowerCase())} fez em cada dia</h2>
-      <table class="${calScale}">
-        <thead><tr><th class="mont">${esc(p.oficioLabel)}</th>${dayHead}${temDificil ? '<th class="sum">Méd</th><th class="sum">Dif</th>' : ""}<th class="sum">Pares</th><th class="sum">Fichas</th><th class="sum">Pago</th><th class="sum">A pagar</th></tr></thead>
-        <tbody>${bodyCal || `<tr><td colspan="${days.length + (temDificil ? 7 : 5)}" style="text-align:center;color:#888;padding:12px">Sem lançamentos no período.</td></tr>`}</tbody>
-        <tfoot><tr><td class="mont">TOTAL (${cRows.length})</td>${dayTot}${temDificil ? `<td class="n med">${nf(tMed)}</td><td class="n dif">${nf(tDif)}</td>` : ""}<td class="n b">${nf(tPar)}</td><td class="n f">${tFic}</td><td class="n pgo">${fmtBRL(tPago)}</td><td class="n abt">${fmtBRL(tAberto)}</td></tr></tfoot>
-      </table>
-      <div class="lg">Cada célula = <b>pares do dia</b>${temDificil ? '; embaixo o split <b class="med">médio</b> · <b class="dif">difícil</b>' : ""}. <i class="ab"></i>fundo âmbar = dia <b>ainda não pago</b>. <i class="we"></i>coluna cinza = fim de semana. <i class="wk"></i>borda esquerda = início da semana (seg).</div>
+      ${bodyCalHtml || `<p style="color:#888;font-size:11px">Sem lançamentos no período.</p>`}
+      <div class="cal-tot">
+        <h2 style="margin-top:6px">Totais do período</h2>
+        <table>
+          <thead><tr><th>${esc(p.oficioLabel)}</th>${temDificil ? '<th style="text-align:right" class="med">Méd</th><th style="text-align:right" class="dif">Dif</th>' : ""}<th style="text-align:right">Pares</th><th style="text-align:right">Fichas</th><th style="text-align:right">Pago</th><th style="text-align:right">A pagar</th></tr></thead>
+          <tbody>${bodyTotCal || `<tr><td colspan="${temDificil ? 6 : 4}" style="text-align:center;color:#888">—</td></tr>`}</tbody>
+          <tfoot><tr><td class="mont">TOTAL (${cRows.length})</td>${temDificil ? `<td class="n med">${nf(tMed)}</td><td class="n dif">${nf(tDif)}</td>` : ""}<td class="n b">${nf(tPar)}</td><td class="n f">${tFic}</td><td class="n pgo">${fmtBRL(tPago)}</td><td class="n abt">${fmtBRL(tAberto)}</td></tr></tfoot>
+        </table>
+      </div>
+      <div class="lg">Cada célula = <b>pares do dia</b>${temDificil ? '; embaixo o split <b class="med">médio</b> · <b class="dif">difícil</b>' : ""}. Grade em <b>semanas (seg–dom)</b>${individual ? " no formato de calendário" : ""} pra manter proporção legível. <i class="ab"></i>fundo âmbar = dia <b>ainda não pago</b>. <i class="we"></i>coluna cinza = fim de semana.</div>
     </section>
 
     <script>window.onload=function(){window.focus();window.print();};</script></body></html>`);
 }
+
 
 interface AggRow {
   key: string; nome: string; fichas: number;
