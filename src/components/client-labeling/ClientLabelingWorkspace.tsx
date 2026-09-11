@@ -841,7 +841,7 @@ export function ClientLabelingWorkspace() {
 
             {(foraDoPadrao.length > 0 || (isNalin && selectedSkuAnalysis.conflicts.length > 0)) && (
               <div className="flex gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
-                <Warning className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+                <Warning className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
                 <div>
                   {foraDoPadrao.length > 0 && (
                     <p>{foraDoPadrao.length} código(s) não cabem na etiqueta com o módulo atual.</p>
