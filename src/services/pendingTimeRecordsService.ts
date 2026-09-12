@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { threePunchesStayPending, shouldSuggestFinalExit } from '@/lib/ponto/interpretDayPunches';
 
 function toStringArray(value: unknown): string[] {
   return Array.isArray(value)
@@ -92,10 +93,12 @@ export async function listPendingTimeRecords(employeeId?: string): Promise<Pendi
   if (employeeId) q = q.eq('employee_id', employeeId);
   const { data, error } = await q;
   if (error) throw error;
-  return (data ?? []).map((r) => ({
-    ...r,
-    punches: toStringArray(r.punches),
-  })) as unknown as PendingTimeRecord[];
+  return (data ?? [])
+    .map((r) => ({
+      ...r,
+      punches: toStringArray(r.punches),
+    }))
+    .filter((r) => r.punches.length !== 3 || threePunchesStayPending(r.punches)) as unknown as PendingTimeRecord[];
 }
 
 /**
@@ -194,8 +197,22 @@ export async function bulkApplyDefaultExit(args: {
     const punchesToAdd: string[] = [];
     switch (rec.issue_type) {
       case 'somente_uma_batida':
-      case 'falta_saida_apos_almoco':
       case 'punches_impar':
+        punchesToAdd.push(exitTime);
+        break;
+      case 'falta_saida_apos_almoco':
+        // n=3 com saída real já saiu da fila; se ainda chegou aqui, só
+        // acrescenta 18:00 quando a última ainda não é a saída.
+        if (!shouldSuggestFinalExit(rec.punches)) {
+          skipped++;
+          results.push({
+            time_record_id: rec.time_record_id,
+            date: rec.record_date,
+            ok: false,
+            error: 'Última batida já é a saída — não acrescenta 18:00.',
+          });
+          continue;
+        }
         punchesToAdd.push(exitTime);
         break;
       case 'dia_incompleto_suspeito':
@@ -232,3 +249,5 @@ export async function bulkApplyDefaultExit(args: {
 export const DOW_LABEL: Record<number, string> = {
   1: 'Seg', 2: 'Ter', 3: 'Qua', 4: 'Qui', 5: 'Sex', 6: 'Sáb', 7: 'Dom',
 };
+
+export { shouldSuggestFinalExit };

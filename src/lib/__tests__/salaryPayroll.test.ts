@@ -59,17 +59,27 @@ describe('calculateSalaryPayroll', () => {
     expect(r.gross_value).toBeCloseTo(1850 + (423 / 60) * (1850 / 220) * 1.5, 2);
   });
 
-  it('batida ÍMPAR (pulou batida): PENDENTE — não desconta nem paga, MAS conta no esperado', () => {
+  it('n=3 com volta ~13h e saída real CONTA — não é mais pendência (decisão 2026-09-12)', () => {
     const r = calculateSalaryPayroll(2200, [work('2026-05-21', THU, ['08:21', '13:06', '18:30'])], 0);
+    expect(r.pending_days).toBe(0);
+    expect(r.falta_days).toBe(0);
+    expect(r.workdays).toBe(1);
+    expect(r.expected_minutes).toBe(540);
+    expect(r.worked_minutes).toBeGreaterThan(0);
+    // 08:21–12:00 + 13:06–18:30 = 219+324 = 543 → +3 min HE
+    expect(r.worked_minutes).toBe(543);
+    expect(r.he_minutes).toBe(3);
+  });
+
+  it('n=3 ainda no almoço (faltou a saída): PENDENTE — não desconta nem paga, MAS conta no esperado', () => {
+    const r = calculateSalaryPayroll(2200, [work('2026-05-21', THU, ['08:00', '12:00', '13:00'])], 0);
     expect(r.pending_days).toBe(1);
     expect(r.falta_days).toBe(0);
     expect(r.atraso_minutes).toBe(0);
-    // Esperado é da ESCALA: o dia útil pendente conta no esperado/workdays (senão a
-    // meta do período encolhe quando há batida ímpar). worked fica 0 até resolver.
     expect(r.workdays).toBe(1);
     expect(r.expected_minutes).toBe(540);
     expect(r.worked_minutes).toBe(0);
-    expect(r.gross_value).toBeCloseTo(2200, 2); // sem desconto enquanto não resolver
+    expect(r.gross_value).toBeCloseTo(2200, 2);
   });
 
   it('hora extra após 18h em dia útil: desconta nada, soma a 1,5×', () => {
@@ -177,6 +187,28 @@ describe('calculateSalaryPayroll — compensação de créditos e atrasos no per
     expect(r.atraso_minutes).toBe(0);
     expect(r.he_minutes).toBe(240);           // só o excedente (o sábado)
     expect(r.he_value).toBeCloseTo(60, 2);    // 4h × 10 × 1,5
+  });
+
+  it('sábado 08:01–18:25 (jornada de dia útil): HE só o excedente das 9h, não +9h24', () => {
+    // Caso do dono 22/08: trabalhou o dia normal e saiu 25 min depois das 18h.
+    const r = calculateSalaryPayroll(2200, [
+      weekend('2026-08-22', 6, ['08:01', '12:00', '13:00', '18:25']),
+    ], 0);
+    expect(r.pending_days).toBe(0);
+    expect(r.expected_minutes).toBe(540);
+    expect(r.worked_minutes).toBe(564); // 9h24
+    expect(r.he_minutes).toBe(24);
+    expect(r.atraso_minutes).toBe(0);
+    const day = r.day_ledger.find(d => d.date === '2026-08-22');
+    expect(day?.raw_credit_minutes).toBe(24);
+  });
+
+  it('sábado só de manhã continua crédito integral (folga trabalhada)', () => {
+    const r = calculateSalaryPayroll(2200, [
+      weekend('2026-08-29', 6, ['08:00', '12:00']),
+    ], 0);
+    expect(r.expected_minutes).toBe(0);
+    expect(r.he_minutes).toBe(240);
   });
 
   it('atraso num dia e saída tarde noutro se compensam integralmente', () => {

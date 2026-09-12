@@ -57,6 +57,28 @@ describe('pontoEngine — base canônica por-dia', () => {
     expect(days.find(d => d.date === '2026-06-07')!.expectedMinutes).toBe(0); // domingo
   });
 
+  it('sábado com jornada 08h–18h usa esperado de 9h (HE = excedente, não o dia inteiro)', () => {
+    const punches = new Map<string, string[]>([
+      ['2026-06-06', ['08:01', '12:00', '13:00', '18:25']],
+    ]);
+    const days = buildPontoDays({
+      from: '2026-06-06', to: '2026-06-06',
+      schedule, holidaysSet: new Set<string>(), punchesByDate: punches,
+    });
+    expect(days[0].isWorkday).toBe(true);
+    expect(days[0].expectedMinutes).toBe(540);
+    expect(days[0].workedMinutes).toBe(564);
+    const folha = computeFolha({
+      salary: 2200,
+      from: '2026-06-06', to: '2026-06-06',
+      schedule, holidaysSet: new Set<string>(), punchesByDate: punches,
+      advancesTotal: 0,
+    });
+    expect(folha.expected_minutes).toBe(540);
+    expect(folha.he_minutes).toBe(24);
+    expect(folha.pending_days).toBe(0);
+  });
+
   it('usa a jornada específica de sábado quando a escala trabalha sábado', () => {
     const saturdaySchedule = {
       ...schedule,

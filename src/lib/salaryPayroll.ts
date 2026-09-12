@@ -18,8 +18,9 @@
  *   - Falta NÃO tira o DSR (desconta só o dia).
  *   - Atraso não tem tolerância diária. Depois da compensação, saldo positivo de até
  *     10min não vira HE; acima de 10min, todo o saldo positivo é pago.
- *   - Dia com nº ÍMPAR de batidas = INCONSISTENTE → fica PENDENTE: não desconta nem
- *     paga, conta só pra alerta (resolver na aba Pendências de Ponto antes de fechar).
+ *   - Dia com 1 batida ou ímpar ≥5 = INCONSISTENTE → fica PENDENTE. n=3 com saída
+ *     real (depois do almoço) conta a jornada; só fica pendente se a última ainda
+ *     estiver na janela de almoço (decisão 2026-09-12).
  *
  *   bruto   = salário − faltas − atrasos + horas_extras
  *   líquido = bruto − adiantamentos
@@ -29,6 +30,7 @@
  * sai PARCIAL (os dias não importados não são descontados) — a tela avisa.
  */
 import { splitDayMinutes, PREMIUM_MULTIPLIER } from './hourlyPayroll';
+import { looksLikeWeekdayJourney, WEEKDAY_JOURNEY_MIN } from './ponto/interpretDayPunches';
 
 /** Versão persistida junto do snapshot da folha para auditoria histórica. */
 export const PAYROLL_RULE_VERSION = 'saldo-periodo-v2-2026-08-26';
@@ -373,13 +375,22 @@ export function calculateSalaryPayroll(
       ? splitDayMinutes(punches, d.dayOfWeek, d.isHoliday, d.swapFlex)
       : { normal: 0, premium: 0, incomplete: punches.length === 1 };
     const worked = sp.normal + sp.premium;
+    // Sábado com jornada de dia útil (entrou de manhã e saiu ≥18h): esperado = 9h,
+    // HE = só o excedente. Folga só de manhã continua crédito bruto. Domingo e
+    // feriado seguem 100% extra. Troca de dia (swapFlex) já lê como dia útil.
+    const weekdayLikeRest = !d.isHoliday && !d.swapFlex
+      && d.dayOfWeek === 6
+      && looksLikeWeekdayJourney(punches);
+    const effectiveExpected = weekdayLikeRest
+      ? WEEKDAY_JOURNEY_MIN
+      : (d.isWorkday ? d.expectedMinutes : 0);
     const ledger: SalaryDayLedger = {
       date: d.date,
       day_of_week: d.dayOfWeek,
       punches: [...punches],
       is_holiday: d.isHoliday,
-      is_workday: d.isWorkday && d.expectedMinutes > 0,
-      expected_minutes: d.isWorkday ? d.expectedMinutes : 0,
+      is_workday: effectiveExpected > 0 && (weekdayLikeRest || d.isWorkday),
+      expected_minutes: effectiveExpected,
       worked_minutes: worked,
       excused_minutes: 0,
       raw_balance_minutes: 0,
@@ -410,9 +421,11 @@ export function calculateSalaryPayroll(
     // contam pro esperado — senão a meta do período encolhe quando faltam batidas
     // (bug 2026-06-20: 6 dias com batida ímpar sumiam do esperado e a quinzena de
     // 90h aparecia como 36h). Só o WORKED/HE/atraso/falta depende de batida válida.
-    const isSchedWorkday = d.isWorkday && d.expectedMinutes > 0;
+    // Sábado/domingo com jornada de 9h (weekdayLikeRest) também entra aqui: o
+    // esperado vira 9h pra o crédito ser só o excedente, não o dia inteiro.
+    const isSchedWorkday = effectiveExpected > 0;
     if (isSchedWorkday) {
-      expectedMin += d.expectedMinutes;
+      expectedMin += effectiveExpected;
       workdays++;
     }
 
@@ -430,11 +443,11 @@ export function calculateSalaryPayroll(
       // parcial é limitado à DEFASAGEM real do dia: 2h de atestado + 8h
       // trabalhadas numa jornada de 9h quitam apenas 1h, sem fabricar 1h de HE.
       const excusedAvailable = d.excused
-        ? d.expectedMinutes
+        ? effectiveExpected
         : Math.max(0, Number(d.excusedMinutes) || 0);
       const excusedApplied = Math.min(
-        d.expectedMinutes,
-        Math.max(0, d.expectedMinutes - worked),
+        effectiveExpected,
+        Math.max(0, effectiveExpected - worked),
         excusedAvailable,
       );
       ledger.excused_minutes = excusedApplied;
@@ -442,7 +455,7 @@ export function calculateSalaryPayroll(
       if (worked === 0) {
         // Dia útil sem trabalho. Ausência JUSTIFICADA (férias/atestado/licença) é
         // abonada: não conta falta nem desconta. Senão, falta (desconta 1 valor-dia).
-        if (excusedApplied >= d.expectedMinutes) {
+        if (excusedApplied >= effectiveExpected) {
           excusedDays++;
           ledger.status = 'excused';
           dayLedger.push(ledger);
@@ -451,8 +464,8 @@ export function calculateSalaryPayroll(
         // Ausência parcial remunerada sem batida: desconta somente a parcela
         // restante como minutos de atraso. Não pode virar falta integral.
         if (excusedApplied > 0) {
-          expectedPresentMin += d.expectedMinutes - excusedApplied;
-          const late = d.expectedMinutes - excusedApplied;
+          expectedPresentMin += effectiveExpected - excusedApplied;
+          const late = effectiveExpected - excusedApplied;
           ledger.status = 'debit';
           ledger.raw_balance_minutes = -late;
           ledger.raw_delay_minutes = late;
@@ -470,8 +483,8 @@ export function calculateSalaryPayroll(
       workedMin += worked;
       normalMin += sp.normal;
       premiumMin += sp.premium;
-      expectedPresentMin += d.expectedMinutes;
-      const rawBal = worked - d.expectedMinutes + excusedApplied;
+      expectedPresentMin += effectiveExpected;
+      const rawBal = worked - effectiveExpected + excusedApplied;
       const dayBal = Math.abs(rawBal) <= toleranceMin ? 0 : rawBal;
       ledger.raw_balance_minutes = dayBal;
       if (dayBal > 0) {
@@ -484,7 +497,7 @@ export function calculateSalaryPayroll(
       // mais que uma falta limpa. Ausência integral elimina a defasagem; ausência
       // parcial elimina somente os minutos remunerados informados pelo RH.
       else if (dayBal < 0) {
-        const cap = usePolicy ? d.expectedMinutes : atrasoCap;
+        const cap = usePolicy ? effectiveExpected : atrasoCap;
         const late = Math.min(-dayBal, cap);
         ledger.status = 'debit';
         ledger.raw_balance_minutes = -late;
@@ -494,8 +507,9 @@ export function calculateSalaryPayroll(
       }
       dayLedger.push(ledger);
     } else if (worked > 0) {
-      // Dia não útil trabalhado entra como CRÉDITO BRUTO. Ele também participa da
-      // compensação antes de qualquer minuto virar HE paga.
+      // Dia não útil trabalhado (folga só de manhã, domingo curto, feriado):
+      // crédito BRUTO. Sábado/domingo com jornada de 9h já caiu no ramo de dia
+      // útil acima — senão as 9h24 viravam +9h24 de HE (22/08).
       workedMin += worked;
       normalMin += sp.normal;
       premiumMin += sp.premium;
@@ -758,17 +772,27 @@ export function computePeriodFolha(inp: PeriodFolhaInput): SalaryPayrollResult {
   if (inp.activeFrom) dates = dates.filter(d => d.date >= inp.activeFrom!);
   if (inp.activeTo) dates = dates.filter(d => d.date <= inp.activeTo!);
   const days: SalaryDayInput[] = dates.map(d => {
+    const punches = inp.punchesByDate.get(d.date) || [];
     // Troca de dia (workday_swaps): work_date E off_date são DIAS FLEX. Prevalecem
     // sobre feriado. Quando trabalhados, leem como dia útil normal; quando não, o
     // motor os neutraliza (sem falta). Tratar os dois iguais elimina a divergência
     // de precedência quando uma data é work_date de uma troca e off_date de outra.
     const isSwap = (inp.swapWorkedSet?.has(d.date) ?? false) || (inp.swapOffSet?.has(d.date) ?? false);
     const isHoliday = !isSwap && inp.holidaysSet.has(d.date);
-    const isWorkday = isSwap ? true : (worksOnDow(inp.schedule, d.dow) && !isHoliday);
+    const scheduled = isSwap ? true : (worksOnDow(inp.schedule, d.dow) && !isHoliday);
+    const weekdayLike = !isHoliday && !isSwap
+      && d.dow === 6
+      && looksLikeWeekdayJourney(punches);
+    const isWorkday = scheduled || weekdayLike;
+    const expectedMinutes = isSwap
+      ? expectedDayMinutes(inp.schedule, d.dow)
+      : weekdayLike
+        ? WEEKDAY_JOURNEY_MIN
+        : (scheduled ? expectedDayMinutes(inp.schedule, d.dow) : 0);
     return {
       date: d.date, dayOfWeek: d.dow, isHoliday, isWorkday,
-      expectedMinutes: isWorkday ? expectedDayMinutes(inp.schedule, d.dow) : 0,
-      punches: inp.punchesByDate.get(d.date) || [],
+      expectedMinutes,
+      punches,
       excused: inp.absenceDates?.has(d.date) ?? false,
       excusedMinutes: inp.absenceMinutes?.get(d.date) || 0,
       swapFlex: isSwap,

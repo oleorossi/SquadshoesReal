@@ -17,15 +17,16 @@
  */
 import { describe, it, expect } from 'vitest';
 import { splitDayMinutes } from '../hourlyPayroll';
+import { threePunchesStayPending } from '../ponto/interpretDayPunches';
 import { PUNCHES_REAIS, TODAS_AS_BATIDAS } from './fixtures/punchesReais';
 
 const QUARTA = 3;
 const SABADO = 6;
 
-/** Baseline capturado em 30/07/2026, já com a decisão do dono de ímpar → pendência. */
+/** Baseline: 30/07/2026 (ímpar → pendência) + 12/09/2026 (n=3 com saída real conta). */
 const BASELINE = [
   { bucket: 'n1',       dias: 12, utilNormal: 0,    utilPremium: 0,    pendentes: 12 },
-  { bucket: 'n3',       dias: 14, utilNormal: 0,    utilPremium: 0,    pendentes: 14 },
+  { bucket: 'n3',       dias: 14, utilNormal: 6073, utilPremium: 1005, pendentes: 0 },
   { bucket: 'impar5',   dias: 11, utilNormal: 0,    utilPremium: 0,    pendentes: 11 },
   { bucket: 'n2_cruza', dias: 13, utilNormal: 8723, utilPremium: 3039, pendentes: 0 },
   { bucket: 'n2_seco',  dias: 12, utilNormal: 3914, utilPremium: 1527, pendentes: 0 },
@@ -62,13 +63,19 @@ describe('splitDayMinutes — corpus real de produção', () => {
     });
   }
 
-  it('todo dia com nº ÍMPAR de batidas é pendência e não paga nada', () => {
-    // Trava a decisão do dono de 30/07/2026 (auditoria D1/P2) contra os dados reais:
-    // antes, ímpar ≥5 pagava o intervalo da 1ª à última batida.
+  it('ímpar ≥5 e n=3 sem saída final são pendência; n=3 com saída real conta', () => {
+    // Trava a decisão do dono de 30/07/2026 (auditoria D1/P2) contra os dados reais
+    // para n=1 e ímpar ≥5. n=3 com última batida depois do almoço passou a contar
+    // em 12/09/2026 — o corpus n3 deste arquivo tem saída após 18:00 em todos.
     const impares = TODAS_AS_BATIDAS.filter(p => p.length % 2 !== 0);
     expect(impares.length).toBe(37);
     for (const p of impares) {
       const r = splitDayMinutes(p, QUARTA, false);
+      if (p.length === 3 && !threePunchesStayPending(p)) {
+        expect(r.incomplete, `n=3 interpretado não pode ser pendência ${JSON.stringify(p)}`).toBe(false);
+        expect(r.normal + r.premium).toBeGreaterThan(0);
+        continue;
+      }
       expect(r, `esperava pendência em ${JSON.stringify(p)}`).toEqual({
         normal: 0, premium: 0, incomplete: true,
       });

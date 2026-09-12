@@ -30,6 +30,7 @@ import {
   type PeriodFolhaInput,
   type SalaryPayrollResult,
 } from '../salaryPayroll';
+import { looksLikeWeekdayJourney, WEEKDAY_JOURNEY_MIN } from './interpretDayPunches';
 import {
   calculateWeeklyPeriod,
   type WeeklyCalcDay,
@@ -81,9 +82,13 @@ export function buildPontoDays(inp: PontoEngineInput): PontoDay[] {
 
   return dates.map(({ date, dow }) => {
     const isHoliday = inp.holidaysSet.has(date);
-    const isWorkday = worksOnDow(inp.schedule, dow) && !isHoliday;
-    const expectedMinutes = isWorkday ? expectedDayMinutes(inp.schedule, dow) : 0;
     const punches = inp.punchesByDate.get(date) || [];
+    const scheduled = worksOnDow(inp.schedule, dow) && !isHoliday;
+    const weekdayLike = !isHoliday && dow === 6 && looksLikeWeekdayJourney(punches);
+    const isWorkday = scheduled || weekdayLike;
+    const expectedMinutes = weekdayLike
+      ? WEEKDAY_JOURNEY_MIN
+      : (scheduled ? expectedDayMinutes(inp.schedule, dow) : 0);
 
     const sp = punches.length >= 2
       ? splitDayMinutes(punches, dow, isHoliday)
