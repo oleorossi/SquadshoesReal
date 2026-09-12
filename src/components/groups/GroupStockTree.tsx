@@ -28,6 +28,9 @@ interface Props {
   canManageItems: boolean;
   selectedLeafIds: Set<string>;
   onToggleLeaf: (id: string) => void;
+  selectedProductIds?: Set<string>;
+  onToggleProduct?: (id: string) => void;
+  onToggleProducts?: (ids: string[]) => void;
   onEdit: (g: ProductGroup) => void;
   onManageItems: (g: ProductGroup) => void;
   onDelete: (g: ProductGroup) => void;
@@ -105,13 +108,20 @@ function ReservedBar({ m }: { m: NodeMetrics }) {
   return <ReservationRuler pct={pct} basis={`por quantidade · livre ${formatNumber(Math.max(0, m.available), 0)} ${m.unit}`} compact />;
 }
 
-function DetailPanel({ group, items, onEditItem, onAddItem, canCreate }: {
+function DetailPanel({ group, items, onEditItem, onAddItem, canCreate, selectedProductIds, onToggleProduct, onToggleProducts }: {
   group: ProductGroup;
   items: ProductLite[];
   onEditItem?: (item: ProductLite) => void;
   onAddItem?: (group: ProductGroup) => void;
   canCreate: boolean;
+  selectedProductIds?: Set<string>;
+  onToggleProduct?: (id: string) => void;
+  onToggleProducts?: (ids: string[]) => void;
 }) {
+  const selectable = Boolean(onToggleProduct);
+  const selectedCount = selectable ? items.filter(p => selectedProductIds?.has(p.id)).length : 0;
+  const allSelected = selectable && items.length > 0 && selectedCount === items.length;
+  const someSelected = selectedCount > 0 && selectedCount < items.length;
   return (
     <div className="border-t border-foreground/15 bg-muted/20 px-3 py-3 sm:px-5">
       {items.length === 0 ? (
@@ -121,6 +131,15 @@ function DetailPanel({ group, items, onEditItem, onAddItem, canCreate }: {
           <table className="w-full min-w-[600px] text-xs">
             <thead>
               <tr className="border-b border-foreground/30 font-mono text-[9px] uppercase tracking-[0.12em] text-muted-foreground [&>th]:px-2 [&>th]:py-2 [&>th]:font-semibold">
+                {selectable && (
+                  <th className="w-8 text-left">
+                    <Checkbox
+                      checked={allSelected ? true : someSelected ? 'indeterminate' : false}
+                      onCheckedChange={() => onToggleProducts?.(items.map(p => p.id))}
+                      aria-label="Selecionar todos os materiais"
+                    />
+                  </th>
+                )}
                 <th className="text-left">Material / cor</th>
                 <th className="text-right">Saldo</th>
                 <th className="text-right">Reservado</th>
@@ -137,8 +156,18 @@ function DetailPanel({ group, items, onEditItem, onAddItem, canCreate }: {
                 const min = Number(p.min_stock) || 0;
                 const low = min > 0 && disp < min;
                 const price = Number(p.unit_price) || 0;
+                const isSelected = Boolean(selectedProductIds?.has(p.id));
                 return (
-                  <tr key={p.id} className="group border-b border-foreground/10 last:border-b-0 hover:bg-background/70 focus-within:bg-background/70 [&>td]:px-2 [&>td]:py-2">
+                  <tr key={p.id} className={`group border-b border-foreground/10 last:border-b-0 hover:bg-background/70 focus-within:bg-background/70 [&>td]:px-2 [&>td]:py-2 ${isSelected ? 'bg-primary/5' : ''}`}>
+                    {selectable && (
+                      <td className="w-8" onClick={e => e.stopPropagation()}>
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={() => onToggleProduct?.(p.id)}
+                          aria-label={`Selecionar ${p.name}`}
+                        />
+                      </td>
+                    )}
                     <td className="text-left">
                       {onEditItem ? (
                         <button type="button" onClick={() => onEditItem(p)} className={`flex max-w-full items-center gap-2 text-left font-medium text-foreground hover:text-primary ${FOCUS}`}>
@@ -175,7 +204,7 @@ function DetailPanel({ group, items, onEditItem, onAddItem, canCreate }: {
 }
 
 export default function GroupStockTree(props: Props) {
-  const { groups, products, rollups, perm, canManageItems, selectedLeafIds, onToggleLeaf, onEdit, onManageItems, onDelete, onNewFamily, onNewSubgroup, onEditItem, onAddItem, filter, onClearFilter } = props;
+  const { groups, products, rollups, perm, canManageItems, selectedLeafIds, onToggleLeaf, selectedProductIds, onToggleProduct, onToggleProducts, onEdit, onManageItems, onDelete, onNewFamily, onNewSubgroup, onEditItem, onAddItem, filter, onClearFilter } = props;
 
   const { byGroup, bySector } = useMemo(() => buildGroupMetrics(groups, rollups), [groups, rollups]);
   const sectorTree = useMemo(() => buildSectorTree(groups), [groups]);
@@ -253,7 +282,18 @@ export default function GroupStockTree(props: Props) {
             {perm.canDelete && <DeleteConfirmButton onConfirm={() => onDelete(g)} title="Excluir grupo?" size="h-7 w-7" iconSize="h-3.5 w-3.5" />}
           </div>
         </div>
-        {isOpen && <DetailPanel group={g} items={itemsByGroup.get(g.id) ?? []} onEditItem={perm.canEdit ? onEditItem : undefined} onAddItem={onAddItem} canCreate={perm.canCreate} />}
+        {isOpen && (
+          <DetailPanel
+            group={g}
+            items={itemsByGroup.get(g.id) ?? []}
+            onEditItem={perm.canEdit ? onEditItem : undefined}
+            onAddItem={onAddItem}
+            canCreate={perm.canCreate}
+            selectedProductIds={selectedProductIds}
+            onToggleProduct={onToggleProduct}
+            onToggleProducts={onToggleProducts}
+          />
+        )}
       </div>
     );
   };

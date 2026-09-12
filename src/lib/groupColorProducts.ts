@@ -1,6 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 import { sanitizeUuidFields } from '@/lib/utils';
 import { sectorOfGroup } from '@/lib/categoryFromGroup';
+import { allocateUniqueSku } from '@/lib/productSku';
 
 /**
  * Criação de produtos "material × cor" — 1 grupo, N produtos, um por cor
@@ -22,13 +23,11 @@ const colorKey = (value: string) => (value || '')
 
 async function uniqueSku(preferred: string, groupName: string, color: string): Promise<string> {
   const base = `${skuToken(groupName, 'TIRA', 6)}-${skuToken(color, 'COR', 4)}`;
-  const candidates = [preferred.trim(), base, ...Array.from({ length: 6 }, (_, i) => `${base}-${i + 1}`)];
-  for (const cand of candidates) {
-    if (!cand) continue;
-    const { data } = await supabase.from('products').select('id').eq('sku', cand).limit(1).maybeSingle();
-    if (!data) return cand;
-  }
-  return `${base}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
+  return allocateUniqueSku([
+    preferred.trim(),
+    base,
+    ...Array.from({ length: 6 }, (_, i) => `${base}-${i + 1}`),
+  ]);
 }
 
 export interface GroupColorSpec {

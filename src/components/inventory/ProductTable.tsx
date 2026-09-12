@@ -6,14 +6,11 @@ import { useQuery } from '@tanstack/react-query';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import { PencilSimple as Pencil, Warning as AlertTriangle, FolderOpen, CaretDown as ChevronDown, ArrowsDownUp as ArrowUpDown, ArrowUp, ArrowDown, Stack as Layers, Package as PackageMinus, GridFour as Grid3X3, Gear as Settings2, Package, Image as ImageIcon, X, Flask as FlaskConical, WarningCircle, Plus, DotsThree, ShoppingBag } from '@phosphor-icons/react';
+import { PencilSimple as Pencil, Warning as AlertTriangle, FolderOpen, CaretDown as ChevronDown, ArrowsDownUp as ArrowUpDown, ArrowUp, ArrowDown, Stack as Layers, Package as PackageMinus, GridFour as Grid3X3, Gear as Settings2, Package, Image as ImageIcon, X, Flask as FlaskConical, WarningCircle, Plus, DotsThree, ShoppingBag, Copy } from '@phosphor-icons/react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { useMaterialsConfigIssuesByProduct, ISSUE_LABELS } from '@/hooks/useMaterialsConfigIssues';
@@ -30,14 +27,11 @@ import { SoleTechnicalEditDialog } from './SoleTechnicalEditDialog';
 import GroupDialog from '@/components/groups/GroupDialog';
 import type { GroupEditTab } from '@/components/groups/GroupEditDialog';
 import { SelectionMarquee } from '@/components/ui/selection-marquee';
-import { BulkActionsBar } from '@/components/ui/bulk-actions-bar';
+import { ProductBulkActionsBar } from '@/components/inventory/ProductBulkActionsBar';
+import { useTableSelection } from '@/hooks/useTableSelection';
 import { InlineEdit } from '@/components/ui/InlineEdit';
 import { ArtisanalProductDialog } from './ArtisanalProductDialog';
 import { useTableView, densityClasses } from './TableViewContext';
-import { useUpdateProduct, useDeleteProduct } from '@/hooks/useProducts';
-import { useForceDeleteProductFlow } from './ForceDeleteProductDialog';
-import { CheckCircle, XCircle, Trash, Download } from '@phosphor-icons/react';
-import { toast } from 'sonner';
 import { useArtisanalStrapCatalog } from '@/hooks/useArtisanalStraps';
 import { isNominalBuyReadyStrapIdentity } from '@/lib/strapIdentity';
 import { fiberStockDualDisplay } from '@/lib/insolePlateDualDisplay';
@@ -288,7 +282,7 @@ function ProductHoverPreview({ product, formatCurrency, children }: {
   );
 }
 
-function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisanal, formatCurrency, indent = false, avgConsumptionMap, selectedIds, purchasedReadyProductIds, showName = true }: {
+function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisanal, formatCurrency, indent = false, avgConsumptionMap, selectedIds, onToggleSelect, onDuplicate, purchasedReadyProductIds, showName = true }: {
   products: Product[];
   onEdit: (product: Product) => void;
   onDelete: (id: string) => void;
@@ -299,6 +293,8 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
   indent?: boolean;
   avgConsumptionMap: Record<string, number>;
   selectedIds?: Set<string>;
+  onToggleSelect?: (id: string, shiftKey: boolean) => void;
+  onDuplicate?: (id: string) => void;
   purchasedReadyProductIds: ReadonlySet<string>;
   /** false em grupo homogêneo: as N linhas repetiriam o mesmo nome, então a COR
    *  vira o rótulo da linha. true em grupo heterogêneo (R1.1a). */
@@ -325,6 +321,19 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
         const isPurchasedReadyStrap = purchasedReadyProductIds.has(product.id);
         return (
           <TableRow key={product.id} data-row-index={product.id} tabIndex={0} className={cn("group cursor-pointer hover:bg-muted/60 transition-colors focus-visible:outline-none focus-visible:bg-muted/60", isInactive && "opacity-50", isSelected && "bg-primary/10", indent && "bg-muted/20")} onClick={() => navigate(`/estoque/${product.id}`)} onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); navigate(`/estoque/${product.id}`); } }}>
+            <TableCell className={cn('w-8', dCls.cell)} onClick={e => e.stopPropagation()}>
+              {onToggleSelect && (
+                <Checkbox
+                  checked={!!isSelected}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onToggleSelect(product.id, e.shiftKey);
+                  }}
+                  aria-label={`Selecionar ${product.name}`}
+                />
+              )}
+            </TableCell>
             <TableCell className={cn("font-medium", dCls.cell)}>
               <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
                 {indent && (
@@ -638,6 +647,11 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
                 <Button variant="ghost" size="icon" aria-label="Editar material" className="h-8 w-8" onClick={() => onEdit(product)}>
                   <Pencil className="h-4 w-4" />
                 </Button>
+                {onDuplicate && (
+                  <Button variant="ghost" size="icon" aria-label="Duplicar material" className="h-8 w-8" onClick={() => onDuplicate(product.id)}>
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                )}
                 <DeleteConfirmButton onConfirm={() => onDelete(product.id)} title="Excluir material?" size="h-8 w-8" iconSize="h-4 w-4" />
               </div>
             </TableCell>
@@ -701,8 +715,8 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
     return ids;
   }, [strapCatalog?.variants, products]);
   const { density, isVisible, visibleCount } = useTableView();
-  // Material column always shown; +1 for it.
-  const colCount = visibleCount + 1;
+  // Material + checkbox; +1 for the name column that isVisible não conta.
+  const colCount = visibleCount + 2;
   // A linha do material nasce FECHADA (R1.2). Estado de sessão, não persistido:
   // ausência da chave = fechado, invertendo o `collapsed` anterior.
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
@@ -747,12 +761,34 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
     const g = groupId ? groups.find(gr => gr.id === groupId) : null;
     if (g) setEditingGroup({ group: g, tab });
   }, [groups]);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const {
+    selectedIds,
+    toggleItem,
+    toggleMany,
+    addIds,
+    clearSelection,
+  } = useTableSelection({ items: products, getId: (p) => p.id });
+  const [pendingDuplicateIds, setPendingDuplicateIds] = useState<string[] | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const handleMarqueeSelection = useCallback((_indices: number[], keys: string[]) => {
-    setSelectedIds(new Set(keys));
+    addIds(keys);
+  }, [addIds]);
+  const handleToggleSelect = useCallback((id: string, shiftKey: boolean) => {
+    toggleItem(id, shiftKey);
+  }, [toggleItem]);
+  const handleDuplicateOne = useCallback((id: string) => {
+    setPendingDuplicateIds([id]);
   }, []);
+  const bulkBar = (
+    <ProductBulkActionsBar
+      selectedIds={selectedIds}
+      onClear={clearSelection}
+      allProducts={allProducts ?? products}
+      pendingDuplicateIds={pendingDuplicateIds}
+      onPendingDuplicateConsumed={() => setPendingDuplicateIds(null)}
+    />
+  );
 
   // Fetch average consumption per product from sheet_materials
   const { data: avgConsumptionMap = {} } = useQuery({
@@ -895,9 +931,20 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
   // When ANY sort is active (header click or external preset), bypass grouping and show a flat sorted list.
   const isFlatSortMode = !!sortKey;
 
-  const tableHeader = (
+  const renderTableHeader = (scopeIds: string[]) => {
+    const all = scopeIds.length > 0 && scopeIds.every((id) => selectedIds.has(id));
+    const some = scopeIds.some((id) => selectedIds.has(id));
+    return (
     <TableHeader>
       <TableRow className="bg-muted/50 hover:bg-muted/50">
+        <TableHead className={cn('w-8', density === 'compact' && 'py-1.5')}>
+          <Checkbox
+            checked={all ? true : some ? 'indeterminate' : false}
+            onCheckedChange={() => toggleMany(scopeIds)}
+            aria-label="Selecionar todos"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </TableHead>
         <TableHead className={cn("font-semibold", density === 'compact' && 'py-1.5')} aria-sort={sortKey === 'name' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
           <button type="button" className="flex w-full items-center select-none hover:text-foreground" onClick={() => handleSort('name')}>Material <SortIcon col="name" /></button>
         </TableHead>
@@ -941,7 +988,8 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
         )}
       </TableRow>
     </TableHeader>
-  );
+    );
+  };
 
 
   // Flat sorted view — used when an external sort preset is active so the chosen order is preserved.
@@ -951,7 +999,7 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
         <SelectionMarquee containerRef={containerRef} onSelectionChange={handleMarqueeSelection}>
           <div ref={containerRef} className="rounded-lg border bg-card overflow-hidden">
             <Table>
-              {tableHeader}
+              {renderTableHeader(sortedProducts.map((p) => p.id))}
               <TableBody>
                 {sortedProducts.length === 0 ? (
                   <TableRow>
@@ -970,6 +1018,8 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
                      avgConsumptionMap={avgConsumptionMap}
                      onArtisanal={setArtisanalProducts}
                      selectedIds={selectedIds}
+                     onToggleSelect={handleToggleSelect}
+                     onDuplicate={handleDuplicateOne}
                      purchasedReadyProductIds={purchasedReadyProductIds}
                    />
                 )}
@@ -977,6 +1027,7 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
             </Table>
           </div>
         </SelectionMarquee>
+        {bulkBar}
         <ManualStockOutDialog open={!!stockOutProduct} onOpenChange={(o) => { if (!o) setStockOutProduct(null); }} product={stockOutProduct} />
         <SoladoGradeDialog open={!!gradeProduct} onOpenChange={(o) => { if (!o) setGradeProduct(null); }} product={gradeProduct} />
         <SoleTechnicalEditDialog open={!!soleEditProduct} onOpenChange={(o) => { if (!o) setSoleEditProduct(null); }} product={soleEditProduct} />
@@ -991,7 +1042,7 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
         <SelectionMarquee containerRef={containerRef} onSelectionChange={handleMarqueeSelection}>
           <div ref={containerRef} className="rounded-lg border bg-card overflow-hidden">
             <Table>
-              {tableHeader}
+              {renderTableHeader(sortedProducts.map((p) => p.id))}
               <TableBody>
                 {products.length === 0 ? (
                   <TableRow>
@@ -1000,12 +1051,13 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
                     </TableCell>
                   </TableRow>
                 ) : (
-                  <ProductRows products={sortedProducts} onEdit={handleEditIntercepted} onDelete={onDelete} onStockOut={setStockOutProduct} onGrade={setGradeProduct} onArtisanal={setArtisanalProducts} formatCurrency={formatCurrency} avgConsumptionMap={avgConsumptionMap} selectedIds={selectedIds} purchasedReadyProductIds={purchasedReadyProductIds} />
+                  <ProductRows products={sortedProducts} onEdit={handleEditIntercepted} onDelete={onDelete} onStockOut={setStockOutProduct} onGrade={setGradeProduct} onArtisanal={setArtisanalProducts} formatCurrency={formatCurrency} avgConsumptionMap={avgConsumptionMap} selectedIds={selectedIds} onToggleSelect={handleToggleSelect} onDuplicate={handleDuplicateOne} purchasedReadyProductIds={purchasedReadyProductIds} />
                 )}
               </TableBody>
             </Table>
           </div>
         </SelectionMarquee>
+        {bulkBar}
         <ManualStockOutDialog open={!!stockOutProduct} onOpenChange={(o) => { if (!o) setStockOutProduct(null); }} product={stockOutProduct} />
         <SoladoGradeDialog open={!!gradeProduct} onOpenChange={(o) => { if (!o) setGradeProduct(null); }} product={gradeProduct} /><SoleTechnicalEditDialog open={!!soleEditProduct} onOpenChange={(o) => { if (!o) setSoleEditProduct(null); }} product={soleEditProduct} />
         <ArtisanalProductDialog products={artisanalProducts || []} open={!!artisanalProducts} onOpenChange={(o) => { if (!o) setArtisanalProducts(null); }} />
@@ -1038,6 +1090,13 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
                   <span
                     className={cn('w-1 self-stretch rounded-full shrink-0 -ml-1', RAIL_CLASSES[stats.severidade])}
                     aria-hidden
+                  />
+                  <Checkbox
+                    checked={groupProds.length > 0 && groupProds.every((p) => selectedIds.has(p.id))}
+                    onCheckedChange={() => toggleMany(groupProds.map((p) => p.id))}
+                    aria-label={`Selecionar ${groupName}`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="shrink-0"
                   />
                   <button onClick={() => toggle(key)} className="shrink-0 rounded p-0.5 hover:bg-muted transition-colors" aria-label={isOpen ? "Recolher material" : "Expandir material"} aria-expanded={isOpen}>
                     <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", !isOpen && "-rotate-90")} />
@@ -1155,7 +1214,7 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
                 </div>
                 {isOpen && (
                   <Table>
-                    {tableHeader}
+                    {renderTableHeader(groupProds.map((p) => p.id))}
                     <TableBody>
                       <ProductRows
                         products={groupProds}
@@ -1167,6 +1226,8 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
                         formatCurrency={formatCurrency}
                         avgConsumptionMap={avgConsumptionMap}
                         selectedIds={selectedIds}
+                        onToggleSelect={handleToggleSelect}
+                        onDuplicate={handleDuplicateOne}
                         purchasedReadyProductIds={purchasedReadyProductIds}
                         showName={stats.heterogeneo}
                       />
@@ -1178,11 +1239,7 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
           })}
         </div>
       </SelectionMarquee>
-      <ProductBulkActionsBar
-        selectedIds={selectedIds}
-        onClear={() => setSelectedIds(new Set())}
-        allProducts={products}
-      />
+      {bulkBar}
       <ManualStockOutDialog open={!!stockOutProduct} onOpenChange={(o) => { if (!o) setStockOutProduct(null); }} product={stockOutProduct} />
       <SoladoGradeDialog open={!!gradeProduct} onOpenChange={(o) => { if (!o) setGradeProduct(null); }} product={gradeProduct} /><SoleTechnicalEditDialog open={!!soleEditProduct} onOpenChange={(o) => { if (!o) setSoleEditProduct(null); }} product={soleEditProduct} />
       {editingGroup && (
@@ -1194,181 +1251,6 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
         />
       )}
        <ArtisanalProductDialog products={artisanalProducts || []} open={!!artisanalProducts} onOpenChange={(o) => { if (!o) setArtisanalProducts(null); }} />
-    </>
-  );
-}
-
-/**
- * Barra contextual de ações em massa para produtos selecionados via marquee
- * ou checkbox. Aparece com slide-up no rodapé quando há seleção.
- *
- * Ações:
- *   - Ativar (set active=true em todos)
- *   - Inativar (set active=false)
- *   - Excluir (delete em batch; só permite se nenhum tem dependências)
- *   - Exportar CSV (SKU, Nome, Estoque, Preço, etc.)
- */
-function ProductBulkActionsBar({
-  selectedIds,
-  onClear,
-  allProducts,
-}: {
-  selectedIds: Set<string>;
-  onClear: () => void;
-  allProducts: Product[];
-}) {
-  const updateProduct = useUpdateProduct();
-  const deleteProduct = useDeleteProduct();
-  // Pra produto único selecionado: usa flow com dialog de exclusão forçada
-  // (mesmo comportamento do clique individual). Pra múltiplos, mantém o
-  // loop por mutateAsync — bloqueio "tem vínculos" trata 1 a 1.
-  const forceDeleteFlow = useForceDeleteProductFlow({ onSuccess: onClear });
-  const [busy, setBusy] = useState(false);
-
-  const selectedProducts = useMemo(
-    () => allProducts.filter((p) => selectedIds.has(p.id)),
-    [allProducts, selectedIds],
-  );
-
-  async function handleSetActive(active: boolean) {
-    if (selectedIds.size === 0) return;
-    setBusy(true);
-    try {
-      for (const id of selectedIds) {
-        await updateProduct.mutateAsync({ id, data: { active } as any });
-      }
-      toast.success(`${selectedIds.size} ${selectedIds.size === 1 ? 'produto' : 'produtos'} ${active ? 'ativados' : 'inativados'}.`);
-      onClear();
-    } catch (err: any) {
-      toast.error(`Erro: ${err.message}`);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const [confirmBulkOpen, setConfirmBulkOpen] = useState(false);
-
-  async function handleDelete() {
-    if (selectedIds.size === 0) return;
-    // Single delete: usa flow com dialog de força (mesmo comportamento da linha)
-    if (selectedIds.size === 1) {
-      const id = Array.from(selectedIds)[0];
-      forceDeleteFlow.tryDelete(id);
-      return;
-    }
-    // Bulk delete: confirmação estruturada (AlertDialog) em vez de confirm().
-    setConfirmBulkOpen(true);
-  }
-
-  async function doBulkDelete() {
-    setBusy(true);
-    let ok = 0;
-    let blocked = 0;
-    try {
-      for (const id of selectedIds) {
-        try {
-          await deleteProduct.mutateAsync(id);
-          ok++;
-        } catch (err: any) {
-          if (err?._canForce) blocked++;
-          else throw err;
-        }
-      }
-      if (blocked > 0) {
-        toast.warning(`${ok} excluído(s); ${blocked} bloqueado(s) por vínculos. Selecione 1 a 1 pra forçar exclusão.`);
-      } else {
-        toast.success(`${ok} ${ok === 1 ? 'produto excluído' : 'produtos excluídos'}.`);
-      }
-      onClear();
-    } catch (err: any) {
-      toast.error(`Erro: ${err.message}`);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function handleExportCsv() {
-    if (selectedProducts.length === 0) return;
-    const headers = ['SKU', 'Nome', 'Categoria', 'Cor', 'Estoque', 'Unidade', 'Preço Unitário', 'Localização'];
-    const rows = selectedProducts.map((p) => [
-      p.sku,
-      p.name,
-      p.category || '',
-      p.color || '',
-      String(p.quantity),
-      p.unit,
-      String(p.unit_price || 0),
-      p.location || '',
-    ]);
-    const csv = [headers, ...rows].map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
-    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `produtos-selecionados-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success(`${selectedProducts.length} produto(s) exportados.`);
-  }
-
-  return (
-    <>
-      <BulkActionsBar
-        selectedIds={selectedIds}
-        onClear={onClear}
-        itemLabel={selectedIds.size === 1 ? 'produto' : 'produtos'}
-        actions={[
-          {
-            label: 'Ativar',
-            icon: <CheckCircle className="h-3.5 w-3.5" />,
-            variant: 'outline',
-            disabled: busy,
-            onClick: () => handleSetActive(true),
-          },
-          {
-            label: 'Inativar',
-            icon: <XCircle className="h-3.5 w-3.5" />,
-            variant: 'outline',
-            disabled: busy,
-            onClick: () => handleSetActive(false),
-          },
-          {
-            label: 'Exportar CSV',
-            icon: <Download className="h-3.5 w-3.5" />,
-            variant: 'outline',
-            disabled: busy,
-            onClick: handleExportCsv,
-          },
-          {
-            label: 'Excluir',
-            icon: <Trash className="h-3.5 w-3.5" />,
-            variant: 'destructive',
-            disabled: busy,
-            onClick: handleDelete,
-          },
-        ]}
-      />
-      {forceDeleteFlow.dialog}
-
-      <AlertDialog open={confirmBulkOpen} onOpenChange={setConfirmBulkOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Excluir {selectedIds.size} produtos?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Itens com vínculos serão pulados — exclua um a um pra forçar. Esta ação não pode ser desfeita.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => { setConfirmBulkOpen(false); void doBulkDelete(); }}
-            >
-              Excluir
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </>
   );
 }

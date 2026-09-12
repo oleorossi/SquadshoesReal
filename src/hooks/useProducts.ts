@@ -12,6 +12,7 @@ import {
   createProductsWithStock,
   type CreateProductWithStockInput,
 } from '@/lib/stockCommand';
+import { duplicateProducts, type DuplicateProductResult } from '@/lib/duplicateProduct';
 
 export const ProductSchema = z.object({
   name: z.string().min(1, "Nome é obrigatório").max(255),
@@ -562,6 +563,33 @@ export function useBatchAddProducts() {
       toast.success(`${data.length} itens criados com sucesso!`);
     },
     onError: (err: Error) => toast.error(`Erro ao criar itens: ${err.message}`),
+  });
+}
+
+export function useDuplicateProduct() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (ids: string[]): Promise<DuplicateProductResult[]> => {
+      if (!ids.length) return [];
+      return duplicateProducts(ids);
+    },
+    onSuccess: (results) => {
+      invalidateProducts(queryClient);
+      queryClient.invalidateQueries({ queryKey: ['component_sheets'] });
+      const n = results.length;
+      const suffixed = results.filter(r => r.colorSuffixed).length;
+      const sheets = results.filter(r => r.copiedComponentSheet).length;
+      const extra = [
+        suffixed > 0 ? `${suffixed} com cor “CÓPIA” — ajuste a cor depois` : null,
+        sheets > 0 ? `${sheets} ficha${sheets === 1 ? '' : 's'} de componente copiada${sheets === 1 ? '' : 's'}` : null,
+      ].filter(Boolean).join('. ');
+      toast.success(
+        n === 1
+          ? `Material duplicado (SKU ${results[0].sku}, estoque zerado).${extra ? ` ${extra}.` : ''}`
+          : `${n} materiais duplicados com estoque zerado.${extra ? ` ${extra}.` : ''}`,
+      );
+    },
+    onError: (err: Error) => toast.error(`Erro ao duplicar: ${err.message}`),
   });
 }
 

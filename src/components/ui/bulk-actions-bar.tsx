@@ -64,7 +64,7 @@ export function BulkActionsBar({
       aria-label="Ações em massa"
       aria-hidden={!visible}
       className={cn(
-        'fixed bottom-4 left-1/2 -translate-x-1/2 z-toast',
+        'fixed bottom-20 left-1/2 -translate-x-1/2 z-toast',
         'transition-all duration-300 ease-out',
         visible
           ? 'opacity-100 translate-y-0 pointer-events-auto'

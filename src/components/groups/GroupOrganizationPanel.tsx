@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { SearchInput } from '@/components/ui/search-input';
 import { EmptyState } from '@/components/ui/empty-state';
 import { BulkActionsBar } from '@/components/ui/bulk-actions-bar';
+import { ProductBulkActionsBar } from '@/components/inventory/ProductBulkActionsBar';
 import { confirmAndBulkDelete } from '@/lib/bulkConfirm';
 import { useGroups, useDeleteGroup, ProductGroup } from '@/hooks/useGroups';
 import { useProducts, useAddProduct, ProductSchema } from '@/hooks/useProducts';
@@ -15,7 +16,7 @@ import { useAddComponentSheet } from '@/hooks/useComponentSheets';
 import { useGroupStockRollups } from '@/hooks/useGroupOrganization';
 import { useCan } from '@/hooks/useAccessControl';
 import { sectorLabel } from '@/lib/categoryFromGroup';
-import type { ProductFormData } from '@/types/inventory';
+import type { Product, ProductFormData } from '@/types/inventory';
 import GroupDialog from '@/components/groups/GroupDialog';
 import GroupCreateDialog from '@/components/groups/GroupCreateDialog';
 import GroupItemsManager from '@/components/groups/GroupItemsManager';
@@ -67,6 +68,7 @@ export default function GroupOrganizationPanel({ permPath, extraActions }: Props
   const [moveOpen, setMoveOpen] = useState(false);
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [selectedLeafIds, setSelectedLeafIds] = useState<Set<string>>(new Set());
+  const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
   // ?q= REATIVO: o ⌘K navega pra /grupos?q=<nome> e a tela pode já estar aberta
   // (AppLayout keia só por pathname — sem remontagem).
   const [searchParams] = useSearchParams();
@@ -79,10 +81,33 @@ export default function GroupOrganizationPanel({ permPath, extraActions }: Props
   const [strapGroup, setStrapGroup] = useState<ProductGroup | null>(null);
   const keyRef = useRef(0);
 
-  const toggleLeaf = (id: string) => setSelectedLeafIds(prev => {
-    const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n;
-  });
-  const clearSelection = () => setSelectedLeafIds(new Set());
+  const toggleLeaf = (id: string) => {
+    setSelectedProductIds(new Set());
+    setSelectedLeafIds(prev => {
+      const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n;
+    });
+  };
+  const toggleProduct = (id: string) => {
+    setSelectedLeafIds(new Set());
+    setSelectedProductIds(prev => {
+      const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n;
+    });
+  };
+  const toggleProducts = (ids: string[]) => {
+    setSelectedLeafIds(new Set());
+    setSelectedProductIds(prev => {
+      const allOn = ids.length > 0 && ids.every(id => prev.has(id));
+      const next = new Set(prev);
+      if (allOn) ids.forEach(id => next.delete(id));
+      else ids.forEach(id => next.add(id));
+      return next;
+    });
+  };
+  const clearSelection = () => {
+    setSelectedLeafIds(new Set());
+    setSelectedProductIds(new Set());
+  };
+  const canSelectProducts = perm.canEdit || perm.canCreate || perm.canDelete;
   const openCreate = (ctx: Omit<CreateCtx, 'key'>) => setCreateCtx({ key: ++keyRef.current, ...ctx });
 
   const groupsById = useMemo(() => new Map(groups.map(g => [g.id, g])), [groups]);
@@ -194,6 +219,9 @@ export default function GroupOrganizationPanel({ permPath, extraActions }: Props
             onClearFilter={() => setSearch('')}
             selectedLeafIds={selectedLeafIds}
             onToggleLeaf={toggleLeaf}
+            selectedProductIds={selectedProductIds}
+            onToggleProduct={canSelectProducts ? toggleProduct : undefined}
+            onToggleProducts={canSelectProducts ? toggleProducts : undefined}
             onEdit={setEditGroup}
             onManageItems={setItemsGroup}
             onDelete={(g) => deleteGroup.mutate(g.id)}
@@ -262,7 +290,7 @@ export default function GroupOrganizationPanel({ permPath, extraActions }: Props
         />
       )}
 
-      {perm.canEdit && selectedLeafIds.size > 0 && (
+      {perm.canEdit && selectedLeafIds.size > 0 && selectedProductIds.size === 0 && (
         <BulkActionsBar
           selectedIds={selectedLeafIds}
           onClear={clearSelection}
@@ -271,6 +299,14 @@ export default function GroupOrganizationPanel({ permPath, extraActions }: Props
             { label: 'Mover para família', variant: 'default', icon: <ArrowsLeftRight className="h-3.5 w-3.5" />, onClick: () => setMoveOpen(true) },
             ...(perm.canDelete ? [{ label: 'Excluir', variant: 'destructive' as const, icon: <Trash2 className="h-3.5 w-3.5" />, onClick: handleBulkDelete }] : []),
           ]}
+        />
+      )}
+      {canSelectProducts && selectedProductIds.size > 0 && (
+        <ProductBulkActionsBar
+          variant="simple"
+          selectedIds={selectedProductIds}
+          onClear={() => setSelectedProductIds(new Set())}
+          allProducts={products as Product[]}
         />
       )}
     </div>

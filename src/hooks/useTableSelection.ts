@@ -13,6 +13,8 @@ export interface UseTableSelectionReturn<T = unknown> {
   toggleItem: (id: string, shiftKey?: boolean) => void;
   toggleAll: () => void;
   clearSelection: () => void;
+  addIds: (ids: Iterable<string>) => void;
+  toggleMany: (ids: string[]) => void;
   selectRange: (startIndex: number, endIndex: number) => void;
   selectedCount: number;
   lastClickedIndex: React.MutableRefObject<number | null>;
@@ -76,6 +78,24 @@ export function useTableSelection<T>({
     setSelectedIds(new Set());
   }, []);
 
+  const addIds = useCallback((ids: Iterable<string>) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleMany = useCallback((ids: string[]) => {
+    setSelectedIds((prev) => {
+      const allOn = ids.length > 0 && ids.every((id) => prev.has(id));
+      const next = new Set(prev);
+      if (allOn) ids.forEach((id) => next.delete(id));
+      else ids.forEach((id) => next.add(id));
+      return next;
+    });
+  }, []);
+
   const selectRange = useCallback(
     (startIndex: number, endIndex: number) => {
       const start = Math.min(startIndex, endIndex);
@@ -105,6 +125,8 @@ export function useTableSelection<T>({
     toggleItem,
     toggleAll,
     clearSelection,
+    addIds,
+    toggleMany,
     selectRange,
     selectedCount: selectedIds.size,
     lastClickedIndex,

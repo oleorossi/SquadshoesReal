@@ -15,9 +15,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { EmptyState } from '@/components/ui/empty-state';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import {
-  MagnifyingGlass, Plus, PencilSimple, Trash, ArrowRight, CaretLeft, Package, X, Tag, Palette,
+  MagnifyingGlass, Plus, PencilSimple, Trash, ArrowRight, CaretLeft, Package, X, Tag, Palette, Copy,
 } from '@phosphor-icons/react';
-import { useProducts, useUpdateProduct, useSetProductsGroup, useBulkSetProductPrice } from '@/hooks/useProducts';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { useProducts, useUpdateProduct, useSetProductsGroup, useBulkSetProductPrice, useDuplicateProduct } from '@/hooks/useProducts';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import type { ProductGroup } from '@/hooks/useGroups';
 import type { Product } from '@/types/inventory';
@@ -50,6 +54,7 @@ export default function GroupItemsManager({ group, groups, open, onOpenChange, c
   const setGroup = useSetProductsGroup();
   const updateProduct = useUpdateProduct();
   const bulkSetPrice = useBulkSetProductPrice();
+  const duplicateProduct = useDuplicateProduct();
 
   const [mode, setMode] = useState<'list' | 'add'>('list');
   const [search, setSearch] = useState('');
@@ -60,13 +65,14 @@ export default function GroupItemsManager({ group, groups, open, onOpenChange, c
   const [addSelected, setAddSelected] = useState<Set<string>>(new Set());
   const [quickVariantOpen, setQuickVariantOpen] = useState(false);
   const [quickVariantTemplate, setQuickVariantTemplate] = useState<Product | null>(null);
+  const [confirmDupOpen, setConfirmDupOpen] = useState(false);
   const quickVariantTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   // Reset quando troca de grupo ou reabre.
   useEffect(() => {
     setMode('list'); setSearch(''); setSelected(new Set());
     setMoveTarget(''); setBulkPrice(0); setAddSearch(''); setAddSelected(new Set());
-    setQuickVariantOpen(false); setQuickVariantTemplate(null);
+    setQuickVariantOpen(false); setQuickVariantTemplate(null); setConfirmDupOpen(false);
   }, [group?.id, open]);
 
   const groupItems = useMemo(() => {
@@ -150,6 +156,16 @@ export default function GroupItemsManager({ group, groups, open, onOpenChange, c
     if (!canEdit || selected.size === 0 || !(bulkPrice > 0)) return;
     await bulkSetPrice.mutateAsync({ ids: [...selected], unit_price: bulkPrice });
     setSelected(new Set()); setBulkPrice(0);
+  };
+  const doDuplicate = async () => {
+    if (!canEdit || selected.size === 0) return;
+    try {
+      await duplicateProduct.mutateAsync([...selected]);
+      setSelected(new Set());
+      setConfirmDupOpen(false);
+    } catch {
+      // toast já sai do hook
+    }
   };
   const doAdd = async () => {
     if (!canEdit || addSelected.size === 0) return;
@@ -336,6 +352,9 @@ export default function GroupItemsManager({ group, groups, open, onOpenChange, c
                     <Button size="sm" className="h-8 gap-1.5" disabled={!moveTarget || busy} onClick={doMove}>
                       <ArrowRight className="h-3.5 w-3.5" /> Mover
                     </Button>
+                    <Button size="sm" variant="outline" className="h-8 gap-1.5" disabled={duplicateProduct.isPending} onClick={() => setConfirmDupOpen(true)}>
+                      <Copy className="h-3.5 w-3.5" /> Duplicar
+                    </Button>
                     <Button size="sm" variant="outline" className="h-8 gap-1.5" disabled={busy} onClick={doRemoveSelected}>
                       <Trash className="h-3.5 w-3.5" /> Remover do grupo
                     </Button>
@@ -403,6 +422,27 @@ export default function GroupItemsManager({ group, groups, open, onOpenChange, c
           )}
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={confirmDupOpen} onOpenChange={setConfirmDupOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {selected.size === 1 ? 'Duplicar este material?' : `Duplicar ${selected.size} materiais?`}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {selected.size === 1
+                ? 'A cópia nasce com estoque zerado e SKU novo.'
+                : 'Cópias com estoque zerado e SKU novo.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction disabled={duplicateProduct.isPending} onClick={() => { void doDuplicate(); }}>
+              Duplicar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {group && (
         <QuickColorVariantDialog
