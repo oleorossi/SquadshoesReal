@@ -282,7 +282,7 @@ function ProductHoverPreview({ product, formatCurrency, children }: {
   );
 }
 
-function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisanal, formatCurrency, indent = false, avgConsumptionMap, selectedIds, purchasedReadyProductIds, showName = true, searchTerm = '' }: {
+function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisanal, formatCurrency, indent = false, avgConsumptionMap, selectedIds, onToggleSelect, onDuplicate, purchasedReadyProductIds, showName = true, searchTerm = '' }: {
   products: Product[];
   onEdit: (product: Product) => void;
   onDelete: (id: string) => void;
