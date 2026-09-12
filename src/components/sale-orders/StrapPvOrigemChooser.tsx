@@ -3,7 +3,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button';
 import { normalizeStrapOrigemPadrao, type StrapOrigemPadrao } from '@/lib/strapBaseNapaPeel';
 
-export type StrapPvOrigemChoice = 'fabrica' | 'prestador';
+export type StrapPvOrigemChoice = 'fabrica' | 'prestador' | 'sku_acabado';
 
 interface Props {
   label: string;
@@ -35,13 +35,13 @@ export default function StrapPvOrigemChooser({
   return (
     <div className="space-y-1">
       <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-        Fábrica ou prestador · {label}
+        Origem · {label}
       </Label>
       <Select
         value={value ?? undefined}
         disabled={disabled}
         onValueChange={(next) => {
-          if (next === 'fabrica' || next === 'prestador') onChange(next);
+          if (next === 'fabrica' || next === 'prestador' || next === 'sku_acabado') onChange(next);
         }}
       >
         <SelectTrigger className="h-8 text-xs" aria-label={`Origem de ${label}`}>
@@ -49,7 +49,8 @@ export default function StrapPvOrigemChooser({
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="fabrica">Feita na fábrica</SelectItem>
-          <SelectItem value="prestador">Comprar pronto (prestador · OS + remessa)</SelectItem>
+          <SelectItem value="prestador">Prestador (OS + remessa de napa)</SelectItem>
+          <SelectItem value="sku_acabado">Tira pronta (fornecedor)</SelectItem>
         </SelectContent>
       </Select>
     </div>

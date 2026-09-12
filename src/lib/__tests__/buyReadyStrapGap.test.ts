@@ -101,6 +101,25 @@ describe('listBuyReadyStrapGaps', () => {
     expect(gaps).toEqual([]);
   });
 
+  it('aponta tira pronta escolhida no PV mesmo com identidade por napa', () => {
+    const gaps = listBuyReadyStrapGaps(
+      [buyReadyLine({
+        identity_basis: 'reference_base',
+        identity_group_id: null,
+        group_id: GROUP,
+        pv_origem: 'sku_acabado',
+      })],
+      catalog(),
+    );
+    expect(gaps).toHaveLength(1);
+    expect(gaps[0]).toMatchObject({
+      lineId: LINE,
+      identityGroupId: GROUP,
+      colorId: COLOR,
+      finishedProductId: PRODUCT,
+    });
+  });
+
   it.each([
     ['sem UUID técnico', { technical_strap_line_id: null }],
     ['sem medida', { measure_id: null }],
@@ -236,5 +255,18 @@ describe('SaleOrderItemForm — a lacuna vira um caminho clicável', () => {
     expect(saved).toContain("queryKey: ['artisanal-strap-catalog']");
     expect(saved).toContain("queryKey: ['artisanal-strap-catalog-diagnostics']");
     expect(saved).toContain("queryKey: ['strap_stock_lines_preview']");
+  });
+
+  it('trata sku_acabado do PV como tira pronta e abre o cadastro de fornecedor', () => {
+    expect(form).toContain('strapLineWantsBuyReady');
+    expect(form).toContain("next === 'sku_acabado'");
+    expect(form).toContain('Tira pronta · fornecedor');
+  });
+
+  it('não trava o seletor de origem quando o snapshot comprometido ainda não tem escolha', () => {
+    expect(form).toContain('isStrapPvOrigemChoiceLocked');
+    expect(form).not.toContain(
+      'disabled={preserveCommittedStrapSnapshot || productionExcluded}',
+    );
   });
 });

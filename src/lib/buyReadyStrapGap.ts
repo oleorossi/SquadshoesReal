@@ -21,10 +21,12 @@ export interface BuyReadyStrapGapLine {
   technical_strap_line_id?: string | null;
   identity_basis?: StrapIdentityBasis | null;
   identity_group_id?: string | null;
+  group_id?: string | null;
   measure_id?: string | null;
   color_id?: string | null;
   label?: string | null;
   group_name?: string | null;
+  pv_origem?: string | null;
 }
 
 interface GapCatalogVariant {
@@ -137,6 +139,27 @@ function reviewIdForProduct(
   return isUuid(reviewId) ? reviewId : null;
 }
 
+/** Tira pronta por identidade da ficha (STRASS) ou escolha do PV (sku_acabado). */
+export function strapLineWantsBuyReady(
+  strap: BuyReadyStrapGapLine | null | undefined,
+): boolean {
+  return strapIdentityBasis(strap) === 'finished_product_group'
+    || strap?.pv_origem === 'sku_acabado';
+}
+
+/** Grupo acabado: pin da ficha, ou group_id legado quando o PV escolheu fornecedor. */
+export function buyReadyIdentityGroupId(
+  strap: BuyReadyStrapGapLine | null | undefined,
+): string {
+  const identityGroupId = str(strap?.identity_group_id);
+  if (isUuid(identityGroupId)) return identityGroupId;
+  if (strap?.pv_origem === 'sku_acabado') {
+    const groupId = str(strap.group_id);
+    if (isUuid(groupId)) return groupId;
+  }
+  return '';
+}
+
 /**
  * Só reporta a lacuna quando a identidade já está completa (medida, grupo e cor
  * por UUID). Identidade incompleta tem mensagem própria na tela e um CTA de
@@ -149,10 +172,13 @@ export function listBuyReadyStrapGaps(
 ): BuyReadyStrapGap[] {
   if (!catalog || !Array.isArray(straps)) return [];
   return straps.flatMap((strap, position) => {
-    if (strapIdentityBasis(strap) !== 'finished_product_group') return [];
-    const lineId = technicalStrapLineId(strap);
+    if (!strapLineWantsBuyReady(strap)) return [];
+    const lineId = technicalStrapLineId({
+      id: strap.id,
+      technical_strap_line_id: strap.technical_strap_line_id,
+    });
     const measureId = str(strap.measure_id);
-    const identityGroupId = str(strap.identity_group_id);
+    const identityGroupId = buyReadyIdentityGroupId(strap);
     const colorId = str(strap.color_id);
     if (!lineId || !isUuid(measureId) || !isUuid(identityGroupId) || !isUuid(colorId)) return [];
     if (hasActiveBuyReadyVariant(catalog, measureId, identityGroupId, colorId)) return [];

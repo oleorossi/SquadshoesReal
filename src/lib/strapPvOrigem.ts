@@ -3,7 +3,7 @@ import {
 } from '@/lib/strapBaseNapaPeel';
 import type { StrapPvOrigem } from '@/lib/technicalStrapLines';
 
-export type EffectiveStrapPvOrigem = StrapPvOrigem | 'sku_acabado';
+export type EffectiveStrapPvOrigem = StrapPvOrigem;
 
 /**
  * Padrão do seletor quando Hub = escolhe_no_pv e o operador ainda não escolheu.
@@ -33,7 +33,7 @@ export function resolveEffectiveStrapPvOrigem(
   if (padrao === 'sempre_fabrica') return 'fabrica';
   if (padrao === 'sempre_sku_acabado') return 'sku_acabado';
   const choice = line?.pv_origem;
-  if (choice === 'fabrica' || choice === 'prestador') return choice;
+  if (isExplicitStrapPvOrigem(choice)) return choice;
   return null;
 }
 
@@ -51,10 +51,32 @@ function measureRequiresPvOrigemChoice(
   return normalizeStrapOrigemPadrao(measure.origem_padrao) === 'escolhe_no_pv';
 }
 
+export function isExplicitStrapPvOrigem(
+  value: unknown,
+): value is StrapPvOrigem {
+  return value === 'fabrica' || value === 'prestador' || value === 'sku_acabado';
+}
+
+/**
+ * Snapshot comprometido (Aprovado / Em Produção) só trava origem JÁ escolhida.
+ * Lacuna (escolhe_no_pv sem pv_origem) permanece editável — senão o save
+ * exige Fábrica/Prestador/Fornecedor e o seletor morto impede qualquer opção
+ * (PV-00194 / Meia Cana).
+ */
+export function isStrapPvOrigemChoiceLocked(input: {
+  committedSnapshot: boolean;
+  productionExcluded?: boolean;
+  pvOrigem: unknown;
+}): boolean {
+  if (input.productionExcluded) return true;
+  if (!input.committedSnapshot) return false;
+  return isExplicitStrapPvOrigem(input.pvOrigem);
+}
+
 function hasExplicitStrapPvOrigem(
   line: StrapPvOrigemLineLike | null | undefined,
 ): line is StrapPvOrigemLineLike & { pv_origem: StrapPvOrigem } {
-  return line?.pv_origem === 'fabrica' || line?.pv_origem === 'prestador';
+  return isExplicitStrapPvOrigem(line?.pv_origem);
 }
 
 /** Posições escolhe_no_pv sem pv_origem — bloqueiam save no desktop (spec).
@@ -75,7 +97,7 @@ export function listMissingStrapPvOrigemChoices(
       label,
       measureId: line.measure_id || null,
       code: 'origem_nao_escolhida',
-      message: `${label}: escolha Fábrica ou Prestador antes de salvar.`,
+      message: `${label}: escolha Fábrica, Prestador ou Fornecedor antes de salvar.`,
     });
   }
   return issues;

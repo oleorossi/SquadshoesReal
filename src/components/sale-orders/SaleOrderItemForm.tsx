@@ -31,6 +31,8 @@ import { ProductFormDialog } from '@/components/inventory/ProductFormDialog';
 import { normalizeStrapOrigemPadrao } from '@/lib/strapBaseNapaPeel';
 import {
   applyDefaultStrapPvOrigemChoices,
+  isExplicitStrapPvOrigem,
+  isStrapPvOrigemChoiceLocked,
   listMissingStrapPvOrigemChoices,
   resolveEffectiveStrapPvOrigem,
   sourceModeForEffectiveOrigem,
@@ -68,7 +70,11 @@ import {
 } from '@/hooks/useArtisanalStraps';
 import type { ReferenceTerceirizacao } from '@/hooks/useReferenceTerceirizacoes';
 import { ArtisanalStrapEditor } from '@/components/artisanal-straps/ArtisanalStrapEditor';
-import { listBuyReadyStrapGaps, type BuyReadyStrapGap } from '@/lib/buyReadyStrapGap';
+import {
+  listBuyReadyStrapGaps,
+  strapLineWantsBuyReady,
+  type BuyReadyStrapGap,
+} from '@/lib/buyReadyStrapGap';
 import {
   isUuid,
   strapColorMode,
@@ -706,7 +712,8 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   }, [item.strap_colors, referenceStrapDefinitions, selectedRef?.has_straps]);
   const hasFollowMainReferenceBaseStraps = strapPresentationDefinitions.some(
     (strap) => strapIdentityBasis(strap) === 'reference_base'
-      && strapColorMode(strap) === 'follow_main',
+      && strapColorMode(strap) === 'follow_main'
+      && strap.pv_origem !== 'sku_acabado',
   );
 
   // Snapshot de atendimento por UUID da linha técnica. Nas tiras artesanais a
@@ -854,11 +861,11 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
 
   // Tira comprada pronta sem variante comercial ativa: o servidor recusa o
   // salvamento inteiro do PV com "Tira comprada pronta nao possui variante
-  // comercial ativa exata". Só as linhas por grupo acabado (STRASS) exigem esse
-  // cadastro — as demais tiras seguem sendo materializadas automaticamente.
+  // comercial ativa exata". Vale para grupo acabado (STRASS) e para a escolha
+  // de tira pronta no PV (sku_acabado) em linha artesanal por napa.
   const hasPurchasedReadyStrapLine = useMemo(
     () => ((item.strap_colors as SaleOrderStrapResolutionLine[]) || [])
-      .some((strap) => strapIdentityBasis(strap) === 'finished_product_group'),
+      .some((strap) => strapLineWantsBuyReady(strap)),
     [item.strap_colors],
   );
   const { data: strapCatalogDiagnostics } = useArtisanalStrapCatalogDiagnostics(
@@ -2417,7 +2424,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                     }}
                   />
                 )}
-                {!preserveCommittedStrapSnapshot && (() => {
+                {!productionExcluded && (() => {
                   const missingOrigem = listMissingStrapPvOrigemChoices(
                     snapshotStraps,
                     strapCatalog?.measures || [],
@@ -2571,14 +2578,19 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                   const measureResolved = isUuid(strap.strap_type_id)
                     && !!canonicalMeasure
                     && canonicalMeasure.strap_type_id === strap.strap_type_id;
-                  const buyReadyCatalogIncomplete = usesFinishedGroup
-                    && identityGroupResolved
+                  const wantsPurchasedReady = strapLineWantsBuyReady(strap);
+                  const buyReadyGroupResolved = usesFinishedGroup
+                    ? identityGroupResolved
+                    : isUuid(strap.group_id);
+                  const buyReadyCatalogIncomplete = wantsPurchasedReady
+                    && buyReadyGroupResolved
                     && measureResolved
                     && isUuid(strap.color_id)
                     && !strapLinesLoading
                     && !!resolvedLine
                     && (!resolvedLine.strapVariantId || !resolvedLine.canBuyReady);
-                  const hasBuyReadyVariant = isUuid(resolvedLine?.strapVariantId);
+                  const hasBuyReadyVariant = isUuid(resolvedLine?.strapVariantId)
+                    && !!resolvedLine?.canBuyReady;
                   const buyReadyCatalogHref = hasBuyReadyVariant
                     ? `/tiras-artesanais?tab=cadastro&editor=1&mode=review&origin=pv&purpose=stock_variant&variantId=${encodeURIComponent(resolvedLine.strapVariantId)}`
                     : '/tiras-artesanais?tab=diagnostico';
@@ -2844,6 +2856,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                           (issue) => !issue.technicalStrapLineId || issue.technicalStrapLineId === lineId,
                         );
                         const readinessBlocksReferenceBase = !usesFinishedGroup
+                          && strap.pv_origem !== 'sku_acabado'
                           && colorMode === 'follow_main'
                           && internalStrapReadiness?.requiresReferenceBase === true
                           && internalStrapReadiness.ready === false
@@ -2854,6 +2867,10 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                           && (!!line?.internalBlockReason || readinessBlocksReferenceBase);
                         const fmt = (v: number | null | undefined, d = 2) =>
                           v == null ? '—' : v.toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d });
+                        const originSnap = snapshotStraps.find(
+                          (entry) => technicalStrapLineId(entry) === lineId,
+                        ) || snapshotStraps[sIdx];
+                        const originChoice = originSnap?.pv_origem ?? strap.pv_origem;
                         return (
                           <div className={cn(
                             'rounded-md border px-2 py-1.5 space-y-1',
@@ -2862,16 +2879,14 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                             <StrapPvOrigemChooser
                               label={strap.label || `Tira ${sIdx + 1}`}
                               origemPadrao={measure?.origem_padrao}
-                              value={(() => {
-                                const snap = snapshotStraps.find(
-                                  (entry) => technicalStrapLineId(entry) === lineId,
-                                ) || snapshotStraps[sIdx];
-                                const choice = snap?.pv_origem ?? strap.pv_origem;
-                                return (choice === 'fabrica' || choice === 'prestador')
-                                  ? choice as StrapPvOrigemChoice
-                                  : null;
-                              })()}
-                              disabled={preserveCommittedStrapSnapshot || productionExcluded}
+                              value={isExplicitStrapPvOrigem(originChoice)
+                                ? originChoice as StrapPvOrigemChoice
+                                : null}
+                              disabled={isStrapPvOrigemChoiceLocked({
+                                committedSnapshot: preserveCommittedStrapSnapshot,
+                                productionExcluded,
+                                pvOrigem: originChoice,
+                              })}
                               onChange={(next) => {
                                 const lineKey = technicalStrapLineId(strap);
                                 const updated = snapshotStraps.map((entry) => (
@@ -2879,9 +2894,34 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                                     ? { ...entry, pv_origem: next }
                                     : entry
                                 ));
-                                // Fábrica não gera OS de prestador — grava origem e
-                                // sourcing no mesmo setState pra o save ler pv_origem
-                                // coerente (senão o toast exige MO do prestador).
+                                if (lineKey && next === 'sku_acabado' && !isPurchasedReadyStrap(strap)) {
+                                  const preview = strapLineByKey.get(lineKey);
+                                  const colorId = preview?.colorId || strap.color_id || null;
+                                  const nextSourcing = preview?.strapVariantId && preview.canBuyReady && colorId
+                                    ? setStrapSourcing(strapSourcingMap, lineKey, {
+                                      source_mode: 'buy_ready',
+                                      color_id: colorId,
+                                      strap_variant_id: preview.strapVariantId,
+                                      recipe_id: null,
+                                      gross_required_m: preview.strapRequiredM,
+                                      required_at: preview.requiredAt,
+                                      main_production_start: preview.mainProductionStart,
+                                      schedule_revision: preview.scheduleRevision,
+                                    })
+                                    : setStrapSourcing(strapSourcingMap, lineKey, null);
+                                  if (onUpdateFields) {
+                                    onUpdateFields(index, {
+                                      strap_colors: updated,
+                                      strap_sourcing: nextSourcing,
+                                    });
+                                  } else {
+                                    onUpdate(index, 'strap_colors', updated);
+                                    onUpdate(index, 'strap_sourcing', nextSourcing);
+                                  }
+                                  return;
+                                }
+                                // Fábrica/prestador: grava origem e sourcing no mesmo
+                                // setState pra o save ler pv_origem coerente.
                                 if (lineKey && !isPurchasedReadyStrap(strap)) {
                                   const nextSourcing = setInternalStrapSourcing(
                                     strapSourcingMap,
@@ -2919,7 +2959,9 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                                       ? 'Produção interna · cadastro pendente'
                                       : effective === 'internal' && blocked
                                         ? 'Produção interna · pendência'
-                                        : strap.pv_origem === 'prestador'
+                                        : strap.pv_origem === 'sku_acabado'
+                                          ? 'Tira pronta · fornecedor'
+                                          : strap.pv_origem === 'prestador'
                                           ? 'Prestador · OS com remessa de napa'
                                           : 'Produção interna automática'}
                               </span>

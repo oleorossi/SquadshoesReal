@@ -61,15 +61,16 @@ describe('STRASS comprada pronta — correção de contexto sem napa-base', () =
     expect(drawer).toContain('/fichas-tecnicas?ref=${encodeURIComponent(referenceId)}&tab=range-aviamento');
     expect(drawer).toContain('missingFinishedGroupLines.length > 0');
 
+    expect(itemForm).toContain('const wantsPurchasedReady = strapLineWantsBuyReady(strap)');
     expect(itemForm).toMatch(
-      /const buyReadyCatalogIncomplete = usesFinishedGroup[\s\S]*!resolvedLine\.strapVariantId \|\| !resolvedLine\.canBuyReady/,
+      /const buyReadyCatalogIncomplete = wantsPurchasedReady[\s\S]*!resolvedLine\.strapVariantId \|\| !resolvedLine\.canBuyReady/,
     );
     expect(itemForm).toContain('Cadastro da compra pronta incompleto');
     expect(itemForm).toContain('Revisar variante no Hub de Tiras');
     expect(itemForm).toContain('Abrir diagnóstico no Hub de Tiras');
     const ctaSetup = sourceSection(
       itemForm,
-      'const buyReadyCatalogIncomplete = usesFinishedGroup',
+      'const wantsPurchasedReady = strapLineWantsBuyReady(strap)',
       'return (',
     );
     expect(ctaSetup).toContain('/tiras-artesanais?tab=diagnostico');

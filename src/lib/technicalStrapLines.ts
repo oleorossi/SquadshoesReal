@@ -13,7 +13,7 @@ import {
 } from '@/lib/strapMaterialPolicy';
 
 export type StrapColorMode = 'follow_main' | 'select_on_order';
-export type StrapPvOrigem = 'fabrica' | 'prestador';
+export type StrapPvOrigem = 'fabrica' | 'prestador' | 'sku_acabado';
 
 /** Identidade imutável de uma linha de tira da ficha técnica. */
 export interface TechnicalStrapLineLike extends StrapIdentityLike, StrapMaterialPolicyLike {

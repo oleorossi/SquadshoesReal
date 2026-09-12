@@ -175,6 +175,12 @@ describe('strapPresentationLines', () => {
         technicalLines: currentSheet,
       }).lines[0].pv_origem,
     ).toBe('prestador');
+    expect(
+      reconcileEditableStrapSnapshots({
+        snapshotLines: [{ ...presented, pv_origem: 'sku_acabado' }],
+        technicalLines: currentSheet,
+      }).lines[0].pv_origem,
+    ).toBe('sku_acabado');
   });
 });
 
