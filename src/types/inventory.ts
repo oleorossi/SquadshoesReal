@@ -69,6 +69,7 @@ export const CATEGORIES = [
   'Solado',
   'Palmilha',
   'Forração da Palmilha',
+  'Material Base',
   'Componente',
   'Cola / Químico',
   'Ferramentas',

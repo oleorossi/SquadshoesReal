@@ -25,6 +25,13 @@ describe('resolveStrapYield — somente receita exata', () => {
     })).toBeNull();
   });
 
+  it('Madrid sem receita própria não cai no rendimento da Soft', () => {
+    expect(resolveStrapYield({
+      baseGroupId: MADRID,
+      recipes: [{ baseName: 'NAPA SOFT', baseGroupId: SOFT, yieldPerMeter: 60 }],
+    })).toBeNull();
+  });
+
   it('rejeita rendimento inválido e alvo vazio', () => {
     expect(resolveStrapYield({ baseName: 'X', recipes: [{ baseName: 'X', yieldPerMeter: 0 }] })).toBeNull();
     expect(resolveStrapYield({ baseName: '', recipes })).toBeNull();

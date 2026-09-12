@@ -13,7 +13,7 @@ import { useProducts } from "@/hooks/useProducts";
 import { useAddGroupSupplier } from "@/hooks/useGroupSuppliers";
 import { useAddSupplier, useSuppliers, type Supplier } from "@/hooks/useSuppliers";
 import { flattenGroupTree } from "@/lib/groupHierarchy";
-import { organizationSectorOptions, sectorLabel, sectorOfGroup } from "@/lib/categoryFromGroup";
+import { organizationSectorOptions, sectorLabel, sectorOfGroup, MATERIAL_BASE_SECTOR } from "@/lib/categoryFromGroup";
 import { getFootwearSectorGuide } from "@/lib/footwearMaterialTaxonomy";
 import { cn } from "@/lib/utils";
 
@@ -47,7 +47,7 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
     // largura errada infla o consumo linear.
     dimensions_width: null as number | null,
     parent_group_id: (initialParentId ?? "") as string,
-    is_artisanal_strap: false,
+    is_artisanal_strap: !isFamilyCreation && initialSector === MATERIAL_BASE_SECTOR,
   });
    const [duplicateMatch, setDuplicateMatch] = useState<ProductGroup | null>(null);
    const [duplicateConfirmed, setDuplicateConfirmed] = useState(false);
@@ -107,7 +107,7 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
       description: "",
       sector: initialSector ?? "",
       auto_component_sheet: false,
-      is_artisanal_strap: false,
+      is_artisanal_strap: !isFamilyCreation && initialSector === MATERIAL_BASE_SECTOR,
       dimensions_width: null,
       parent_group_id: initialParentId ?? "",
     });
@@ -264,7 +264,16 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
               <Select
                 value={form.sector || undefined}
                 disabled={lockHierarchy}
-                onValueChange={(v) => setForm((f) => ({ ...f, sector: v }))}
+                onValueChange={(v) => setForm((f) => {
+                  const enteringBase = v === MATERIAL_BASE_SECTOR;
+                  const leavingBase = f.sector === MATERIAL_BASE_SECTOR && !enteringBase;
+                  return {
+                    ...f,
+                    sector: v,
+                    is_artisanal_strap: enteringBase && !isFamilyCreation ? true : leavingBase ? false : f.is_artisanal_strap,
+                    auto_component_sheet: enteringBase ? false : f.auto_component_sheet,
+                  };
+                })}
               >
                 <SelectTrigger id="group-sector" className="mt-1">
                   <SelectValue placeholder="Selecione o setor" />
@@ -278,6 +287,12 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
               <p className="text-xs text-muted-foreground mt-1">
                 {sectorGuide?.purpose ?? 'Define a aplicação principal dos produtos deste grupo.'}
               </p>
+              {form.sector === MATERIAL_BASE_SECTOR && !isFamilyCreation && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Tira cortada de napa (OVERLOCK, CHATA, meia cana). Cadastre rendimento e cores no Hub de Tiras.
+                  STRASS comprada pronta permanece em <strong>Componentes</strong> — não tem material-base.
+                </p>
+              )}
             </div>
             {requiresWidth && (
               <div>
@@ -357,6 +372,9 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
             />
             <Label htmlFor="is-artisanal-strap" className="cursor-pointer text-sm">
               Tira acabada (Hub) — não é a napa de origem. Desliga a ficha de componente automática.
+              {form.sector === MATERIAL_BASE_SECTOR
+                ? ' Obrigatória neste setor: a napa (Soft vs Madrid) é escolhida pela variante da ficha.'
+                : ' Tira comprada pronta (STRASS) fica em Componentes; tira cortada de napa vai em Material Base.'}
             </Label>
           </div>}
 

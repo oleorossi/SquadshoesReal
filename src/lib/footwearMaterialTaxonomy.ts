@@ -61,6 +61,17 @@ export const FOOTWEAR_SECTOR_GUIDE: readonly FootwearSectorGuide[] = [
     ],
   },
   {
+    value: 'Material Base',
+    label: 'Material Base',
+    purpose: 'Tiras cortadas de napa (OVERLOCK, CHATA, meia cana). A variante da ficha escolhe a napa (Soft vs Madrid); STRASS comprada pronta fica em Componentes.',
+    kind: 'material',
+    families: [
+      { name: 'TIRAS OVERLOCK', description: 'Tiras overlock cortadas da napa da referência.', examples: 'OVERLOCK 5 mm' },
+      { name: 'TIRAS CHATAS', description: 'Tiras chatas internas, com rendimento por napa.', examples: 'chata 8 mm, chata 25 mm' },
+      { name: 'TIRAS COSTURADAS', description: 'Tiras costuradas internamente a partir da napa.', examples: 'chata costurada 11 mm' },
+    ],
+  },
+  {
     value: 'Solado',
     label: 'Solados e parte inferior',
     purpose: 'Componentes inferiores que sustentam ou tocam o piso.',
@@ -80,7 +91,7 @@ export const FOOTWEAR_SECTOR_GUIDE: readonly FootwearSectorGuide[] = [
     families: [
       { name: 'REFORÇOS ESTRUTURAIS', description: 'Peças que dão forma e rigidez.', examples: 'cambrião, biqueira, alma' },
       { name: 'AVIAMENTOS E FECHOS', description: 'Itens funcionais de fechamento e montagem.', examples: 'ilhós, fivela, zíper, velcro' },
-      { name: 'TIRAS, FITAS E ELÁSTICOS', description: 'Componentes lineares e flexíveis.', examples: 'tira, elástico, fita, atacador' },
+      { name: 'TIRAS, FITAS E ELÁSTICOS', description: 'Tira comprada pronta, fitas e elásticos. Tira cortada de napa (OVERLOCK, CHATA) fica no setor Material Base.', examples: 'strass, elástico, fita, atacador' },
       { name: 'LINHAS E COSTURA', description: 'Linhas e insumos diretos de costura.', examples: 'linha, retrós, fio' },
       { name: 'ADORNOS E APLICAÇÕES', description: 'Componentes de função estética.', examples: 'metal, pedraria, hot-fix, enfeite' },
     ],

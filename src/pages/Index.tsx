@@ -44,6 +44,7 @@ const MATERIAL_CATEGORIES = [
   { value: 'Cabedal',   label: 'Cabedal' },
   { value: 'Forração da Palmilha', label: 'Forração' },
   { value: 'Palmilha',  label: 'Palmilha' },
+  { value: 'Material Base', label: 'Material Base' },
   { value: 'Cola / Químico', label: 'Químicos' },
   { value: 'Componente',label: 'Componentes' },
   // 'Embalagem' REMOVIDO em 04/07/2026 — embalagem tem módulo próprio em

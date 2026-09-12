@@ -40,6 +40,8 @@ describe('grupos elegíveis como material de variante', () => {
     expect(isVariantMaterialGroup(grupo('COLA PU', 'Cola / Químico'))).toBe(false);
     expect(isVariantMaterialGroup(grupo('NAVALHA', 'Ferramentas'))).toBe(false);
     expect(isVariantMaterialGroup(grupo('FÔRMA 34', 'Fôrma'))).toBe(false);
+    // Tira cortada de napa: setor próprio, não é material de variante da ficha.
+    expect(isVariantMaterialGroup(grupo('TIRA OVERLOCK 5MM', 'Material Base'))).toBe(false);
   });
 
   it('cai na dedução por nome quando o setor está vazio (grupo legado)', () => {
@@ -58,11 +60,13 @@ describe('grupos elegíveis como material de variante', () => {
     // Espelha SECTOR_OPTIONS (categoryFromGroup.ts) — um valor fora dessa lista
     // nunca casaria com product_groups.sector, e o seletor ficaria vazio.
     const setoresValidos = [
-      'Cabedal', 'Forração da Palmilha', 'Palmilha', 'Cola / Químico',
-      'Componente', 'Embalagem', 'Solado', 'Ferramentas', 'Fôrma',
+      'Cabedal', 'Forração da Palmilha', 'Palmilha', 'Material Base',
+      'Cola / Químico', 'Componente', 'Embalagem', 'Solado', 'Ferramentas', 'Fôrma',
     ];
     for (const setor of VARIANT_MATERIAL_SECTORS) {
       expect(setoresValidos).toContain(setor);
     }
+    // Material Base é tira cortada de napa — não é material principal da variante.
+    expect(VARIANT_MATERIAL_SECTORS).not.toContain('Material Base');
   });
 });
