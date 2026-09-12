@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Product } from '@/types/inventory';
+import { Product, ProductFormData } from '@/types/inventory';
 import { BulkActionsBar } from '@/components/ui/bulk-actions-bar';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -57,12 +57,12 @@ export function ProductBulkActionsBar({
     setBusy(true);
     try {
       for (const id of selectedIds) {
-        await updateProduct.mutateAsync({ id, data: { active } as any });
+        await updateProduct.mutateAsync({ id, data: { active } as ProductFormData });
       }
       toast.success(`${selectedIds.size} ${selectedIds.size === 1 ? 'produto' : 'produtos'} ${active ? 'ativados' : 'inativados'}.`);
       onClear();
-    } catch (err: any) {
-      toast.error(`Erro: ${err.message}`);
+    } catch (err) {
+      toast.error(`Erro: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setBusy(false);
     }
@@ -87,8 +87,8 @@ export function ProductBulkActionsBar({
         try {
           await deleteProduct.mutateAsync(id);
           ok++;
-        } catch (err: any) {
-          if (err?._canForce) blocked++;
+        } catch (err) {
+          if (err && typeof err === 'object' && '_canForce' in err && (err as { _canForce?: boolean })._canForce) blocked++;
           else throw err;
         }
       }
@@ -98,8 +98,8 @@ export function ProductBulkActionsBar({
         toast.success(`${ok} ${ok === 1 ? 'produto excluído' : 'produtos excluídos'}.`);
       }
       onClear();
-    } catch (err: any) {
-      toast.error(`Erro: ${err.message}`);
+    } catch (err) {
+      toast.error(`Erro: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setBusy(false);
     }

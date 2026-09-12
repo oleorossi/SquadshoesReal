@@ -84,13 +84,19 @@ export default function GroupOrganizationPanel({ permPath, extraActions }: Props
   const toggleLeaf = (id: string) => {
     setSelectedProductIds(new Set());
     setSelectedLeafIds(prev => {
-      const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n;
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
     });
   };
   const toggleProduct = (id: string) => {
     setSelectedLeafIds(new Set());
     setSelectedProductIds(prev => {
-      const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n;
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
     });
   };
   const toggleProducts = (ids: string[]) => {
