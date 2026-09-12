@@ -2131,14 +2131,14 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                             </CommandItem>
                             {(() => {
                               const matches = rankBySearchScore(
-                                (saleOrders as any[]).filter((so) =>
+                                (saleOrders || []).filter((so) =>
                                   searchMatchesAllTerms(pvSearch, so.order_number, so.client_order_number, so.client_name)),
                                 pvSearch,
                                 (so) => so.order_number,
                                 (so) => so.client_name,
                                 (so) => so.client_order_number,
                               );
-                              return matches.slice(0, 80).map((so: any) => (
+                              return matches.slice(0, 80).map((so) => (
                                 <CommandItem key={so.id} value={so.id} onSelect={() => { setEditingOrder(p => ({ ...p, sale_order_id: so.id })); setPvOpen(false); setPvSearch(''); }}>
                                   <Check className={cn("mr-2 h-3.5 w-3.5", editingOrder.sale_order_id === so.id ? "opacity-100" : "opacity-0")} />
                                   <span className="font-mono font-semibold mr-2"><HighlightMatch text={so.order_number} term={pvSearch} /></span>

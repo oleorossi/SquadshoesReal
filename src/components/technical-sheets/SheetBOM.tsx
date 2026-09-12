@@ -75,12 +75,12 @@ export function SheetBOM({ sheetId, safetyPct, onSafetyChange, shoeCategory }: {
   const usedProductIds = new Set(materials.map(m => m.product_id));
   const usedGroupIds = new Set(materials.map((m: any) => m.group_id).filter(Boolean));
   const unusedGroups = useMemo(() => {
-    const unused = groups.filter((g: any) => !usedGroupIds.has(g.id));
+    const unused = (groups || []).filter((g) => !usedGroupIds.has(g.id));
     if (!groupSearch.trim()) return unused;
-    const hits = unused.filter((g: any) =>
+    const hits = unused.filter((g) =>
       searchMatchesAllTerms(groupSearch, g.name, g.description, g.colors),
     );
-    return rankBySearchScore(hits, groupSearch, (g: any) => g.name, (g: any) => g.description);
+    return rankBySearchScore(hits, groupSearch, (g) => g.name, (g) => g.description);
   }, [groups, materials, groupSearch]);
   const availableProducts = products.filter(p => p.active);
   const otherSheets = sheets.filter((s) => s.id !== sheetId && !(
@@ -426,7 +426,7 @@ export function SheetBOM({ sheetId, safetyPct, onSafetyChange, shoeCategory }: {
                     <CommandList>
                       <CommandEmpty>Nenhum grupo encontrado</CommandEmpty>
                       <CommandGroup>
-                        {unusedGroups.map((g: any) => (
+                        {unusedGroups.map((g) => (
                           <CommandItem key={g.id} value={g.id} onSelect={() => handleGroupSelect(g.id)}>
                             <Check className={cn("mr-2 h-4 w-4", form.group_id === g.id ? "opacity-100" : "opacity-0")} />
                             <div className="flex flex-col">

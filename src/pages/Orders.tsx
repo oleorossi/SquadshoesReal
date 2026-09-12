@@ -336,7 +336,7 @@ function getWeekOptions() {
   }, [orders]);
 
   const filteredOpSaleOrders = useMemo(() => {
-    const active = (saleOrders as any[]).filter((s) => normalizeStatusValue(s.status) !== 'cancelado');
+    const active = (saleOrders || []).filter((s) => normalizeStatusValue(s.status) !== 'cancelado');
     if (!opPvSearch.trim()) return active;
     const hits = active.filter((s) =>
       searchMatchesAllTerms(opPvSearch, s.client_name, s.order_number, s.client_order_number),
@@ -1379,7 +1379,7 @@ function getWeekOptions() {
                                     onCheckedChange={() => toggleOrderSelection(order.id)}
                                     onClick={(e) => e.stopPropagation()}
                                   />
-                                  <span className="font-mono text-xs font-semibold"><HighlightMatch text={(order as any).order_number} term={searchTerm} /></span>
+                                  <span className="font-mono text-xs font-semibold"><HighlightMatch text={order.order_number} term={searchTerm} /></span>
                                   {segmentByRefId[(order as any).reference_id] === 'Infantil' && (
                                     <span className="inline-flex items-center gap-0.5 h-4 pl-1 pr-1.5 rounded text-xs uppercase font-bold bg-pink-500/15 text-pink-700 dark:text-pink-300 border border-pink-500/40">
                                       <Baby className="h-3 w-3" weight="fill" /> Infantil
@@ -1448,7 +1448,7 @@ function getWeekOptions() {
                               onCheckedChange={() => toggleOrderSelection(order.id)}
                               onClick={(e) => e.stopPropagation()}
                             />
-                            <span className="font-mono text-sm font-semibold tabular-nums"><HighlightMatch text={(order as any).order_number} term={searchTerm} /></span>
+                            <span className="font-mono text-sm font-semibold tabular-nums"><HighlightMatch text={order.order_number} term={searchTerm} /></span>
                             {segmentByRefId[(order as any).reference_id] === 'Infantil' && (
                               <span className="inline-flex items-center gap-0.5 h-4 pl-1 pr-1.5 rounded text-xs uppercase font-bold bg-pink-500/15 text-pink-700 dark:text-pink-300 border border-pink-500/40">
                                 <Baby className="h-3 w-3" weight="fill" /> Infantil
@@ -1536,13 +1536,13 @@ function getWeekOptions() {
                               <span className="shrink-0 cursor-pointer p-1 -m-1" onClick={(e) => { e.stopPropagation(); toggleOrderSelection(order.id); }}>
                                 {selectedOrderIds.has(order.id) ? <CheckSquare className="h-4 w-4 text-primary" /> : <Square className="h-4 w-4 text-muted-foreground" />}
                               </span>
-                              <span className="font-mono text-sm font-semibold tabular-nums"><HighlightMatch text={(order as any).order_number || '—'} term={searchTerm} /></span>
+                              <span className="font-mono text-sm font-semibold tabular-nums"><HighlightMatch text={order.order_number || '—'} term={searchTerm} /></span>
                               {segmentByRefId[(order as any).reference_id] === 'Infantil' && (
                                 <span className="inline-flex items-center gap-0.5 h-4 pl-1 pr-1.5 rounded text-xs uppercase font-bold bg-pink-500/15 text-pink-700 dark:text-pink-300 border border-pink-500/40">
                                   <Baby className="h-3 w-3" weight="fill" /> Infantil
                                 </span>
                               )}
-                              <span className="font-medium"><HighlightMatch text={(order as any).technical_sheets?.name ?? '—'} term={searchTerm} /></span>
+                              <span className="font-medium"><HighlightMatch text={order.technical_sheets?.name ?? '—'} term={searchTerm} /></span>
                               <span className="text-sm text-muted-foreground font-mono tabular-nums">{order.quantity} pares</span>
                               {(order as any).color && (
                                 <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -1650,8 +1650,8 @@ function getWeekOptions() {
                                   onCheckedChange={() => toggleOrderSelection(order.id)}
                                   onClick={(e) => e.stopPropagation()}
                                 />
-                                <span className="font-mono text-sm font-semibold tabular-nums"><HighlightMatch text={(order as any).order_number} term={searchTerm} /></span>
-                                <span className="text-sm font-medium"><HighlightMatch text={(order as any).technical_sheets?.name ?? '—'} term={searchTerm} /></span>
+                                <span className="font-mono text-sm font-semibold tabular-nums"><HighlightMatch text={order.order_number} term={searchTerm} /></span>
+                                <span className="text-sm font-medium"><HighlightMatch text={order.technical_sheets?.name ?? '—'} term={searchTerm} /></span>
                                 <span className="text-sm text-muted-foreground font-mono tabular-nums">{order.quantity} pares</span>
                                 {(order as any).color && (
                                   <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -1904,7 +1904,7 @@ function getWeekOptions() {
                       <CommandList>
                         <CommandEmpty>Nenhum pedido encontrado.</CommandEmpty>
                         <CommandGroup>
-                          {filteredOpSaleOrders.map((s: any) => (
+                          {filteredOpSaleOrders.map((s) => (
                               <CommandItem
                                 key={s.id}
                                 value={s.id}

@@ -688,8 +688,8 @@ export function DirectComponentSelect({
 
   const filteredItems = useMemo(() => {
     if (!itemSearch.trim()) return itemsOfGroup;
-    const hits = itemsOfGroup.filter((p: any) => searchMatchesAllTerms(itemSearch, p.name, p.sku, p.color));
-    return rankBySearchScore(hits, itemSearch, (p: any) => p.name, (p: any) => p.sku, (p: any) => p.color);
+    const hits = itemsOfGroup.filter((p) => searchMatchesAllTerms(itemSearch, p.name, p.sku, p.color));
+    return rankBySearchScore(hits, itemSearch, (p) => p.name, (p) => p.sku, (p) => p.color);
   }, [itemsOfGroup, itemSearch]);
   const itemCap = useMemo(
     () => capSearchResults(filteredItems, SEARCH_RENDER_CAP),

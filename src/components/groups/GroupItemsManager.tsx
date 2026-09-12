@@ -281,10 +281,10 @@ export default function GroupItemsManager({ group, groups, open, onOpenChange, c
                         <tr key={p.id} className={`border-t border-border ${selected.has(p.id) ? 'bg-primary/5' : ''}`}>
                           {canEdit && <td className="px-3 py-2"><Checkbox checked={selected.has(p.id)} onCheckedChange={() => toggle(selected, setSelected, p.id)} /></td>}
                           <td className="px-3 py-2 font-medium text-foreground">
-                            <HighlightMatch text={p.name} term={search} />{(p as any).active === false && <Badge variant="outline" className="ml-2 text-[10px]">inativo</Badge>}
+                            <HighlightMatch text={p.name} term={search} />{p.active === false && <Badge variant="outline" className="ml-2 text-[10px]">inativo</Badge>}
                           </td>
                           <td className="px-3 py-2 text-muted-foreground font-mono text-xs">{p.sku ? <HighlightMatch text={p.sku} term={search} /> : '—'}</td>
-                          <td className="px-3 py-2 text-muted-foreground">{(p as any).color ? <HighlightMatch text={(p as any).color} term={search} /> : '—'}</td>
+                          <td className="px-3 py-2 text-muted-foreground">{p.color ? <HighlightMatch text={p.color} term={search} /> : '—'}</td>
                           <td className="px-3 py-2 text-right tabular-nums">{Number((p as any).quantity ?? 0).toLocaleString('pt-BR')} <span className="text-muted-foreground text-xs">{(p as any).unit || ''}</span></td>
                           <td className="px-3 py-2 text-right whitespace-nowrap">
                             {canCreate && !quickVariantReason && p.active !== false && (

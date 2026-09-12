@@ -4738,8 +4738,8 @@ function InsolePlateProductSelect({ label, value, onChange }: { label: string; v
 
   const filtered = useMemo(() => {
     if (!search.trim()) return products;
-    const hits = products.filter((p: any) => searchMatchesAllTerms(search, p.name, p.sku, p.color, p.groupName));
-    return rankBySearchScore(hits, search, (p: any) => p.name, (p: any) => p.sku, (p: any) => p.color);
+    const hits = products.filter((p) => searchMatchesAllTerms(search, p.name, p.sku, p.color, p.groupName));
+    return rankBySearchScore(hits, search, (p) => p.name, (p) => p.sku, (p) => p.color);
   }, [products, search]);
 
   return (
