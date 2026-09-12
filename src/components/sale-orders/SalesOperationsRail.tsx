@@ -21,10 +21,10 @@ interface MetricProps {
 
 function Metric({ label, value, note, tone = 'default' }: MetricProps) {
   return (
-    <div className="min-w-0 px-3 py-3 sm:px-4">
+    <div className="min-w-0 px-2.5 py-2 sm:px-3">
       <dt className="eyebrow truncate">{label}</dt>
       <dd className={cn(
-        'mt-1 truncate font-mono text-xl font-bold leading-none tabular-nums sm:text-2xl',
+        'mt-0.5 truncate font-mono text-lg font-bold leading-none tabular-nums sm:text-xl',
         tone === 'warning' && 'text-amber-700 dark:text-amber-400',
         tone === 'critical' && 'text-destructive',
         tone === 'production' && 'text-blue-700 dark:text-blue-300',
@@ -65,11 +65,11 @@ export default function SalesOperationsRail({
       aria-label={`Carga operacional: ${scopeLabel}`}
     >
       <div className="grid lg:grid-cols-[minmax(13rem,1.15fr)_minmax(0,4fr)]">
-        <div className="flex min-h-24 items-end justify-between gap-4 bg-foreground px-4 py-3 text-background sm:px-5">
+        <div className="flex min-h-16 items-end justify-between gap-3 bg-foreground px-3 py-2 text-background sm:px-4">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-background/55">{scopeLabel}</p>
-            <p className="mt-1 flex items-baseline gap-2">
-              <span className="font-display text-4xl leading-none tabular-nums sm:text-5xl">{orderCount}</span>
+            <p className="mt-0.5 flex items-baseline gap-2">
+              <span className="font-display text-2xl leading-none tabular-nums sm:text-3xl">{orderCount}</span>
               <span className="text-xs font-semibold uppercase tracking-wider text-background/65">pedidos</span>
             </p>
           </div>
@@ -120,7 +120,7 @@ export default function SalesOperationsRail({
 
 export function SalesOperationsRailSkeleton() {
   return (
-    <div className="h-[7.75rem] animate-pulse overflow-hidden rounded-lg border bg-muted/40" aria-label="Carregando resumo dos pedidos">
+    <div className="h-[5.5rem] animate-pulse overflow-hidden rounded-lg border bg-muted/40" aria-label="Carregando resumo dos pedidos">
       <div className="h-full w-1/4 bg-muted" />
     </div>
   );

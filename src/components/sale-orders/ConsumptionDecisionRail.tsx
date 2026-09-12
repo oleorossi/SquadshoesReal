@@ -104,7 +104,7 @@ export default function ConsumptionDecisionRail({
         </p>
         {baseTotal ? (
           <>
-            <p className="font-mono text-3xl font-bold leading-none tabular-nums text-foreground">
+            <p className="font-mono text-xl font-bold leading-none tabular-nums text-foreground">
               {formatQty(baseTotal.total, 'm')}
               <span className="ml-0.5 text-base font-semibold">m</span>
             </p>
@@ -160,11 +160,11 @@ export default function ConsumptionDecisionRail({
           Itens em falta
         </p>
         {shortCount > 0 ? (
-          <p className="font-mono text-3xl font-bold leading-none tabular-nums text-red-600 dark:text-red-400">
+          <p className="font-mono text-xl font-bold leading-none tabular-nums text-red-600 dark:text-red-400">
             {shortCount}
           </p>
         ) : (
-          <p className="flex items-center gap-1.5 font-mono text-2xl font-bold leading-none tabular-nums text-green-600 dark:text-green-400">
+          <p className="flex items-center gap-1.5 font-mono text-lg font-bold leading-none tabular-nums text-green-600 dark:text-green-400">
             <CheckCircle weight="fill" className="h-5 w-5" aria-hidden="true" />0
           </p>
         )}

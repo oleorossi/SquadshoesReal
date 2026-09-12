@@ -1,0 +1,1978 @@
+# Theme — Industrial Editorial Pro (Squad Shoes)
+
+## Compact token summary (use this first for payload budget)
+
+**Product:** ERP de calçado feminino (fábrica). Densidade operacional, 13px base.
+**Fonts:** Display `Anton` (uppercase KPIs/títulos) · Body `Fira Sans` · Mono `Fira Code`.
+**Brand red:** `#D9264E` / `hsl(347 71% 50%)` = `--primary` AND `--destructive` (same color on purpose).
+**Ink / Paper:** `#0A0A0A` / `#FAFAF7`.
+**Do not invent:** Inter, Playfair, purple gradients, rounded-xl marketing cards, `bg-white`/`text-gray-*`.
+
+### Light (`:root` semantic)
+| token | HSL / note |
+|---|---|
+| --background | 45 33% 97% PAPER |
+| --foreground | 0 0% 4% INK |
+| --card | 45 33% 99% |
+| --primary | 347 71% 50% Squad red |
+| --muted | 36 14% 88% |
+| --muted-foreground | 18 6% 36% |
+| --border | 30 10% 80% |
+| --success | 148 80% 26% |
+| --warning | 28 80% 36% |
+| --radius | 0.85rem cards; controls use rounded-sm |
+
+### Dark (`.dark`)
+background 0 0% 4%; foreground 0 0% 90%; card 0 0% 7%; primary 354 78% 50%.
+
+### Type scale (base 13px)
+2xs 10px · xs 11px · sm 12px · base 13px · md 14px · lg 16px · xl 18px · 2xl 22px · 3xl 28px · 4xl 36px · 5xl 44px.
+
+### Spacing
+4px grid. Page padding: px-4 md:px-6 lg:px-8 xl:px-10 2xl:px-12 py-6.
+Control heights: h-7 toolbar, h-8 dense, h-9 size=sm, h-10 default.
+
+### Motion
+duration-fast 140ms, ease-out cubic-bezier(0.16,1,0.3,1). Dialogs fade only (no zoom). Buttons `active:scale-[0.97]`.
+
+### PV operational density (this task)
+Keep the same tokens. Shrink hero type (~85%): titles text-xl/2xl not 4xl; KPIs text-lg not 2xl; photos h-10; padding p-2/p-3; inputs stay >= h-8.
+
+## Raw sources
+
+
+### `src/index.css`
+
+```css
+/* Fontes — atualização ui-ux-pro-max (2026-05-31):
+   Fira Sans → Fira Sans (body com mais caráter editorial)
+   Fira Code → Fira Code (mono técnico unificado com Fira family)
+   Anton mantida (identidade Industrial Editorial Pro pra display/KPIs)
+
+   ⚠ O @import do Google Fonts SAIU daqui (perf, 2026-07-26) e virou um <link>
+   em index.html. Um @import dentro do CSS bundlado só é descoberto DEPOIS que o
+   browser baixa e parseia o CSS, criando a cascata HTML → CSS → CSS do Google →
+   woff2 (3 saltos antes do primeiro glifo). No HTML o preload scanner dispara
+   junto com o JS. Não reintroduzir aqui — mesma nota vale pra styles-paper.css.
+   Nota: Fraunces (serif acentos editoriais) é usada por src/styles-paper.css
+   (.p-serif) e já vem no mesmo <link>. */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ════════════════════════════════════════════════════════════
+   SQUAD SHOES · NOVIDADE EDITORIAL DESIGN SYSTEM (2026-05)
+   Paleta: Vermelho Squad (#E11D2E) + Preto + Branco
+   Display: Anton (condensed) · Body: Fira Sans · Mono: Fira Code
+   ════════════════════════════════════════════════════════════ */
+
+/* ─────────────────────────────────────────────────────────────────
+   SQUAD SHOES · DESIGN TOKENS — Novidade redesign
+   Sistema de gestão industrial — calçado feminino BR
+   Paleta: Vermelho Squad (354°) + Preto profundo + Cinzas neutros
+   Densidade: 13px base, editorial, tipografia condensed pra display
+   Compatível: shadcn/ui · Tailwind · CSS vars HSL puras
+   ───────────────────────────────────────────────────────────────── */
+
+
+:root {
+  /* ═══════════════════════════════════════════════════════════════
+     ▼ COLORS — primitives (HSL · valores brutos)
+     ═════════════════════════════════════════════════════════════ */
+
+  /* Primary — Vermelho Squad (Industrial Editorial Pro: #D9264E)
+     Atualizado 22/05/2026: base mudou de #E11D2E pra #D9264E (mockup
+     /design-preview). Hue 347 (rosado-vermelho) tem melhor harmonia com a
+     PAPER cream. Escala 50→950 recalculada mantendo proporções. */
+  --primary-50:  347 100% 96%;
+  --primary-100: 347 100% 88%;
+  --primary-200: 347 78% 78%;
+  --primary-300: 347 73% 68%;
+  --primary-400: 347 73% 58%;
+  --primary-500: 347 71% 50%;    /* ⭑ #D9264E — base Industrial Editorial Pro */
+  --primary-600: 347 75% 42%;
+  --primary-700: 347 78% 33%;
+  --primary-800: 347 80% 22%;
+  --primary-900: 347 82% 16%;
+  --primary-950: 347 85% 10%;
+
+  /* Accent — Preto absoluto / contraste editorial */
+  --accent-50:  0 0% 96%;
+  --accent-100: 0 0% 90%;
+  --accent-200: 0 0% 78%;
+  --accent-300: 0 0% 60%;
+  --accent-400: 0 0% 35%;
+  --accent-500: 0 0% 4%;          /* ⭑ #0A0A0A — preto editorial */
+  --accent-600: 0 0% 7%;
+  --accent-700: 0 0% 11%;
+  --accent-800: 0 0% 14%;
+  --accent-900: 0 0% 18%;
+
+  /* Neutros — escala fria-neutra (210° matiz, refinada) */
+  /* Industrial Editorial Pro (22/05/2026): paleta neutra é PAPER (off-white
+     creme #FAFAF7) → INK (preto puro #0A0A0A). Cinzas intermediários ganham
+     viés warm pra harmonizar com o paper-cream em vez do antigo cinza-azulado. */
+  --neutral-0:   45 33% 99%;     /* paper puro */
+  --neutral-50:  45 33% 97%;     /* #FAFAF7 — PAPER */
+  --neutral-100: 40 20% 94%;
+  --neutral-200: 36 14% 88%;
+  --neutral-300: 30 10% 80%;     /* borders sutis */
+  --neutral-400: 24 8% 62%;
+  --neutral-500: 20 6% 48%;
+  --neutral-600: 18 6% 36%;
+  --neutral-700: 15 8% 22%;
+  --neutral-800: 0 0% 11%;
+  --neutral-900: 0 0% 4%;        /* #0A0A0A — INK */
+  --neutral-950: 0 0% 2%;
+
+  /* ═══════════════════════════════════════════════════════════════
+     ▼ COLORS — semantic (alias dos primitives)
+     ═════════════════════════════════════════════════════════════ */
+
+  /* Surface */
+  --background:        var(--neutral-50);
+  --foreground:        var(--neutral-900);
+  --card:              var(--neutral-0);
+  --card-foreground:   var(--neutral-900);
+  --popover:           var(--neutral-0);
+  --popover-foreground: var(--neutral-900);
+
+  /* Brand — handoff Novidade: #E11D2E (primary-500) é o vermelho Squad oficial.
+     Antes apontava pra primary-700 (#9B0F22, "pressed"), o que deixava
+     botões/headers com tom muito escuro divergente do design system. */
+  --primary:                var(--primary-500);
+  --primary-foreground:     var(--neutral-50);
+  --primary-hover:          var(--primary-600);
+  --primary-soft:           var(--primary-100);
+  --primary-soft-foreground: var(--primary-700);
+
+  --accent:                 var(--accent-500);
+  --accent-foreground:      var(--neutral-0);
+  --accent-hover:           var(--accent-600);
+  --accent-soft:            var(--accent-100);
+  --accent-soft-foreground: var(--accent-800);
+
+  --secondary:              0 0% 95%;
+  --secondary-foreground:   var(--neutral-800);
+
+  /* Muted (texto secundário, fundos sutis) */
+  --muted:                  var(--neutral-200);
+  --muted-soft:             var(--neutral-100);
+  --muted-foreground:       var(--neutral-600);
+
+  /* Borders & inputs */
+  --border:                 var(--neutral-300);
+  --border-strong:          var(--neutral-400);
+  --input:                  var(--neutral-300);
+  --input-focus:            var(--primary-500);
+  --ring:                   354 78% 50%;
+
+  /* Semantic feedback
+     Industrial Editorial Pro (22/05/2026): tons deeper / mais editoriais
+     em vez de saturação neon. Success #0A7B2C (verde inglês), warning
+     #B45309 (amber-700), destructive alinhado com squad red. Variantes
+     soft com viés warm cream pra harmonizar com PAPER. */
+  --success:               148 80% 26%;          /* #0A7B2C verde decisive */
+  --success-foreground:    45 33% 99%;            /* paper-white */
+  --success-soft:          148 50% 92%;
+  --success-soft-foreground: 148 80% 18%;
+
+  --warning:               28 80% 36%;            /* #B45309 amber-700 */
+  --warning-foreground:    45 33% 99%;
+  --warning-soft:          38 84% 92%;
+  --warning-soft-foreground: 28 80% 22%;
+
+  --destructive:           347 71% 50%;           /* #D9264E squad red — ⚠ MESMA cor do --primary (identidade da marca = cor de perigo, decisão de design; NÃO mudar nenhum dos dois). Nunca usar primary+destructive como séries distintas de gráfico: são indistinguíveis — use --chart-* */
+  --destructive-foreground: 45 33% 99%;
+  --destructive-soft:      347 60% 94%;
+  --destructive-soft-foreground: 347 80% 30%;
+
+  --info:                  217 91% 55%;
+  --info-foreground:       217 30% 98%;
+  --info-soft:             217 91% 95%;
+  --info-soft-foreground:  217 80% 38%;
+
+  /* Stage badges (etapas de fabricação — Novidade editorial) */
+  --stage-cut-bg:    217 91% 95%;  --stage-cut-fg:    217 80% 60%;  /* azul Corte */
+  --stage-sew-bg:    269 50% 96%;  --stage-sew-fg:    269 70% 70%;  /* roxo Costura */
+  --stage-assy-bg:   38 92% 95%;   --stage-assy-fg:   38 90% 55%;   /* laranja Montagem */
+  --stage-fin-bg:    173 60% 92%;  --stage-fin-fg:    173 70% 50%;  /* teal Acabamento */
+  --stage-pack-bg:   354 80% 95%;  --stage-pack-fg:   354 78% 60%;  /* rosa Embalagem */
+  --stage-qc-bg:     354 78% 95%;  --stage-qc-fg:     354 78% 50%;  /* vermelho QC (Squad) */
+
+  /* ═══════════════════════════════════════════════════════════════
+     ▼ GRÁFICOS · paleta categórica (--chart-1..8)
+     Consumida pelo recharts via hsl(var(--chart-N)) (CostAnalyticsPanel,
+     LabelAnalyticsDashboard, ui/chart.tsx). Ordem pensada pra daltonismo:
+     séries vizinhas alternam quente/frio e NUNCA formam par verde/vermelho —
+     o verde fica no slot 7, longe do vermelho do slot 1. Os slots 2..5
+     reaproveitam os stage-*-fg: tons médios que já contrastam nos dois temas
+     (ver comentário dos stage no .dark).
+     ⚠ NUNCA montar gráfico com --primary e --destructive como séries
+     distintas: são a MESMA cor (347 71% 50% no claro; vermelhos quase
+     idênticos no escuro) — as barras e os swatches da legenda saem iguais.
+     Pra categóricas, use sempre --chart-*.
+     ═════════════════════════════════════════════════════════════ */
+  --chart-1: var(--primary);          /* vermelho Squad — série principal */
+  --chart-2: var(--stage-cut-fg);     /* azul */
+  --chart-3: var(--stage-assy-fg);    /* laranja */
+  --chart-4: var(--stage-sew-fg);     /* roxo */
+  --chart-5: var(--stage-fin-fg);     /* teal */
+  --chart-6: 45 85% 47%;              /* dourado */
+  --chart-7: 148 45% 42%;             /* verde médio (não usar --success: 26% de luz some no dark) */
+  --chart-8: var(--muted-foreground); /* cinza neutro — série "outros" */
+
+  /* ═══════════════════════════════════════════════════════════════
+     ▼ SIDEBAR (grafite editorial · destaque vermelho Squad · permanente)
+     Cinza escuro em vez de preto puro — preto chapado cansava a leitura.
+     ═════════════════════════════════════════════════════════════ */
+  --sidebar-background:           0 0% 15%;            /* #262626 */
+  --sidebar-foreground:           0 0% 92%;
+  --sidebar-muted:                0 0% 58%;            /* texto 2º plano legível */
+  --sidebar-accent:               0 0% 23%;            /* #3B3B3B hover/ativo */
+  --sidebar-accent-foreground:    0 0% 100%;
+  --sidebar-border:               0 0% 28%;            /* #474747 divisor visível */
+  --sidebar-primary:              354 78% 50%;         /* vermelho Squad */
+  --sidebar-primary-foreground:   0 0% 100%;
+  --sidebar-ring:                 354 78% 50%;
+  --sidebar-gradient-from:        0 0% 14%;
+  --sidebar-gradient-to:          0 0% 18%;
+
+  /* ═══════════════════════════════════════════════════════════════
+     ▼ RADIUS · escala (Factory OS — radius mais generoso)
+     ═════════════════════════════════════════════════════════════ */
+  --radius:      0.85rem;    /* 13.6px · padrão de cards (Factory OS) */
+  --radius-xs:   0.25rem;    /* 4px  · stage badges */
+  --radius-sm:   0.375rem;   /* 6px  · chips pequenos */
+  --radius-md:   0.55rem;    /* 8.8px · botões */
+  --radius-lg:   0.85rem;    /* 13.6px · cards de seção */
+  --radius-xl:   1.15rem;    /* 18.4px · modais */
+  --radius-full: 9999px;     /* pills */
+
+  /* ═══════════════════════════════════════════════════════════════
+     ▼ SOMBRAS · 5 níveis (style Linear · tokens semânticos)
+     ═════════════════════════════════════════════════════════════ */
+  --shadow-xs:        0 1px 2px 0 rgb(0 0 0 / 0.04);
+  --shadow-sm:        0 1px 2px 0 rgb(0 0 0 / 0.04), 0 1px 3px 0 rgb(0 0 0 / 0.04);
+  --shadow-card:      0 2px 8px -1px rgb(0 0 0 / 0.05), 0 1px 3px -1px rgb(0 0 0 / 0.03);
+  --shadow-card-hover: 0 12px 24px -4px rgb(0 0 0 / 0.08), 0 4px 12px -2px rgb(0 0 0 / 0.04);
+  --shadow-md:        0 4px 8px -2px rgb(0 0 0 / 0.06), 0 2px 4px -2px rgb(0 0 0 / 0.04);
+  --shadow-hover:     var(--shadow-card-hover);
+  --shadow-lg:        0 16px 32px -8px rgb(0 0 0 / 0.12), 0 8px 16px -4px rgb(0 0 0 / 0.06);
+  --shadow-elevated:  var(--shadow-lg);
+  --shadow-xl:        0 24px 48px -12px rgb(0 0 0 / 0.18), 0 12px 24px -6px rgb(0 0 0 / 0.08);
+
+  /* Sombras coloridas (ações com cor) */
+  --shadow-primary:   0 4px 12px -2px hsl(var(--primary-700) / 0.25);
+  --shadow-accent:    0 4px 12px -2px hsl(var(--accent-500) / 0.32);
+  --shadow-danger:    0 4px 12px -2px hsl(var(--destructive) / 0.25);
+
+  /* Focus rings */
+  --ring-offset:      0 0 0 2px hsl(var(--background));
+  --ring-focus:       0 0 0 2px hsl(var(--background)), 0 0 0 4px hsl(var(--ring) / 0.5);
+  --ring-focus-accent: 0 0 0 2px hsl(var(--background)), 0 0 0 4px hsl(var(--accent-700) / 0.5);
+
+  /* ═══════════════════════════════════════════════════════════════
+     ▼ TIPOGRAFIA — Novidade editorial (legibilidade ajustada)
+     ═════════════════════════════════════════════════════════════ */
+  --font-display:    'Anton', 'Impact', sans-serif;                       /* condensed: titles, KPIs (identidade) */
+  --font-sans:       'Fira Sans', system-ui, -apple-system, sans-serif;   /* body: humanist sans com caráter editorial */
+  --font-body:       var(--font-sans);
+  --font-editorial:  'Fira Sans', var(--font-sans);                       /* mesmo body — sem família condensed extra (Fira não tem) */
+  --font-mono:       'Fira Code', ui-monospace, 'SF Mono', monospace;     /* mono unificado com Fira family */
+
+  /* Type scale (px → rem · base 13px) */
+  --text-2xs:  0.625rem;   /* 10px · micro-labels uppercase */
+  --text-xs:   0.6875rem;  /* 11px · captions, helpers */
+  --text-sm:   0.75rem;    /* 12px · table data, chips */
+  --text-base: 0.8125rem;  /* 13px · body padrão */
+  --text-md:   0.875rem;   /* 14px · botões grandes */
+  --text-lg:   1rem;       /* 16px · h3 */
+  --text-xl:   1.125rem;   /* 18px · h2 */
+  --text-2xl:  1.375rem;   /* 22px · h1 */
+  --text-3xl:  1.75rem;    /* 28px · KPI inline */
+  --text-4xl:  2.25rem;    /* 36px · KPI grande */
+  --text-5xl:  2.75rem;    /* 44px · display */
+
+  /* Pesos */
+  --weight-light:    300;
+  --weight-regular:  400;
+  --weight-medium:   500;
+  --weight-semibold: 600;
+  --weight-bold:     700;
+  --weight-extrabold: 800;
+
+  /* Tracking */
+  --tracking-tightest: -0.025em;   /* display, h1 */
+  --tracking-tight:    -0.015em;   /* h3, body grande */
+  --tracking-normal:   0;
+  --tracking-wide:     0.04em;     /* code, tags */
+  --tracking-wider:    0.08em;     /* card-meta */
+  --tracking-widest:   0.14em;     /* eyebrow, micro-labels uppercase */
+
+  /* Line heights */
+  --leading-none:    1;
+  --leading-tight:   1.15;
+  --leading-snug:    1.3;
+  --leading-normal:  1.45;         /* body padrão */
+  --leading-relaxed: 1.55;
+  --leading-loose:   1.75;
+
+  /* ═══════════════════════════════════════════════════════════════
+     ▼ ESPAÇAMENTO · escala 4px (alias rem)
+     ═════════════════════════════════════════════════════════════ */
+  --space-0:  0;
+  --space-1:  0.25rem;   /*  4px */
+  --space-2:  0.5rem;    /*  8px */
+  --space-3:  0.75rem;   /* 12px */
+  --space-4:  1rem;      /* 16px */
+  --space-5:  1.25rem;   /* 20px */
+  --space-6:  1.5rem;    /* 24px · page padding */
+  --space-7:  1.75rem;   /* 28px */
+  --space-8:  2rem;      /* 32px */
+  --space-10: 2.5rem;    /* 40px */
+  --space-12: 3rem;      /* 48px */
+  --space-16: 4rem;      /* 64px · topbar height */
+
+  /* Layout dimensions */
+  --layout-sidebar:           240px;
+  --layout-sidebar-collapsed: 68px;
+  --layout-topbar:            56px;
+  --layout-page-padding:      var(--space-6);
+  --layout-card-padding:      18px;
+  --layout-table-row:         42px;
+  --layout-modal-max:         560px;
+
+  /* ═══════════════════════════════════════════════════════════════
+     ▼ MOTION · transitions & easing
+     ═════════════════════════════════════════════════════════════ */
+  --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --duration-instant: 80ms;
+  --duration-fast:    140ms;
+  --duration-normal:  220ms;
+  --duration-slow:    360ms;
+  --duration-slower:  600ms;
+
+  --transition-default: all var(--duration-fast) var(--ease-out);
+  --transition-colors:  background-color var(--duration-fast) var(--ease-out),
+                        border-color var(--duration-fast) var(--ease-out),
+                        color var(--duration-fast) var(--ease-out);
+
+  /* Movimento do quadro de produção (Kanban / Central de Produção).
+     Nomeados por PAPEL, não por tamanho — a Central fica aberta num monitor
+     o dia inteiro, então movimento serve pra dizer O QUE MUDOU, nunca pra
+     chamar atenção. Regra: só `transform` e `opacity`, e nada em laço
+     infinito exceto o alvo do arrasto (que some no drop). */
+  --m-tap:     90ms;    /* toque, checkbox                    */
+  --m-quick:  140ms;    /* hover, cor                         */
+  --m-base:   220ms;    /* entrada de card                    */
+  --m-flow:   340ms;    /* coluna, filtro                     */
+  --m-settle: 560ms;    /* pouso após mudar de setor          */
+  --stagger-col:  45ms; /* cascata entre colunas              */
+  --stagger-card: 22ms; /* cascata entre cards (teto: 10)     */
+
+  /* ═══════════════════════════════════════════════════════════════
+     ▼ Z-INDEX layers
+     ═════════════════════════════════════════════════════════════ */
+  --z-base:     0;
+  --z-dropdown: 100;
+  --z-sticky:   200;
+  --z-overlay:  300;
+  --z-modal:    400;
+  --z-popover:  500;
+  --z-toast:    600;
+  --z-tooltip:  700;
+
+  /* Etiqueta caixa externa: amarelo "fluor" oficial Squad.
+     Os demais tokens --p-* (paper/A4) e a Fraunces ficam em
+     src/styles-paper.css (importado depois deste arquivo via main.tsx). */
+  --label-yellow: #FFE94A;
+
+  /* ═══════════════════════════════════════════════════════════════
+     ▼ INDUSTRIAL EDITORIAL PRO · 2.0 — tokens semânticos (2026-05-29)
+     Camada de tokens "high-leverage" sobre os primitives anteriores.
+     Pensados pra opt-in via classes .hero-editorial / .surface-sharp
+     nas telas-hero (Dashboard, Hubs, Relatórios). Telas operacionais
+     densas (listas/tabelas) continuam usando os tokens originais.
+     ═════════════════════════════════════════════════════════════ */
+
+  /* Surfaces nomeadas — INK (preto editorial) / PAPER (off-white creme) */
+  --ink:                 var(--neutral-900);      /* #0A0A0A */
+  --paper:               var(--neutral-50);       /* #FAFAF7 */
+  --ink-soft:            var(--neutral-800);      /* hover de surface-ink */
+
+  /* Radius editorial — versões mais decisivas pra hero/cards-statement */
+  --radius-sharp:        2px;                     /* sharp editorial */
+  --radius-flat:         0;                       /* panels stamping */
+
+  /* Sombras editoriais — secas (drop hard sem bokeh) e stamp (deslocada) */
+  --shadow-sharp:        0 2px 0 0 hsl(var(--ink) / 0.05);
+  --shadow-stamp:        4px 4px 0 0 hsl(var(--ink) / 0.08);
+  --shadow-stamp-red:    4px 4px 0 0 hsl(var(--primary) / 0.18);
+
+  /* Rule lines — espessuras editoriais consistentes */
+  --rule-hair:           1px;
+  --rule-thick:          3px;
+  --rule-heavy:          6px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   ▼ DARK MODE
+   ═════════════════════════════════════════════════════════════════ */
+.dark {
+  /* Novidade editorial — preto profundo + vermelho Squad */
+  --background:           0 0% 4%;          /* #0A0A0A */
+  --foreground:           0 0% 90%;         /* #E6E6E6 */
+  --card:                 0 0% 7%;          /* #111111 */
+  --card-foreground:      0 0% 90%;
+  --popover:              0 0% 9%;          /* #161616 */
+  --popover-foreground:   0 0% 90%;
+
+  --primary:              354 78% 50%;      /* vermelho #E11D2E */
+  --primary-foreground:   0 0% 100%;
+  --primary-hover:        354 86% 42%;
+  --primary-soft:         354 80% 18%;
+  --primary-soft-foreground: 354 90% 80%;
+
+  --accent:               0 0% 14%;         /* #242424 */
+  --accent-foreground:    0 0% 100%;
+  --accent-hover:         0 0% 18%;
+  --accent-soft:          0 0% 11%;
+  --accent-soft-foreground: 0 0% 90%;
+
+  --secondary:            0 0% 11%;
+  --secondary-foreground: 0 0% 90%;
+  --muted:                0 0% 11%;
+  --muted-soft:           0 0% 9%;
+  --muted-foreground:     0 0% 63%;
+
+  --border:               0 0% 14%;         /* #242424 */
+  --border-strong:        0 0% 18%;         /* #2E2E2E */
+  --input:                0 0% 14%;
+  --ring:                 354 78% 50%;
+
+  /* Semantic feedback — variantes SOFT (dark). Sem estes overrides os tokens
+     herdam os valores do :root (~92% lightness, quase brancos) e ficariam
+     claros demais no dark. Espelham o padrão de --primary-soft (fundo escuro +
+     texto claro). Consumidos pelas variantes soft de badge.tsx. --info-soft
+     fica por simetria (par soft do variant `info`). */
+  --success-soft:                148 40% 16%;
+  --success-soft-foreground:     148 60% 75%;
+  --warning-soft:                32 45% 16%;
+  --warning-soft-foreground:     38 75% 72%;
+  --destructive-soft:            347 45% 17%;
+  --destructive-soft-foreground: 347 80% 80%;
+  --info-soft:                   217 45% 16%;
+  --info-soft-foreground:        217 75% 78%;
+
+  /* Stage badges (dark) — apenas o -bg ganha fundo escuro. Os -fg NÃO são
+     sobrescritos de propósito: são usados como cores de SÉRIE em gráficos
+     (recharts) em ~10 telas e seus tons médios já contrastam no dark;
+     sobrescrevê-los mudaria a aparência viva dos gráficos. Os -bg hoje não têm
+     consumidor (as .stage-* foram removidas) — ficam prontos pra um futuro
+     StageBadge orientado a token. */
+  --stage-cut-bg:    217 40% 15%;
+  --stage-sew-bg:    269 35% 16%;
+  --stage-assy-bg:   38 45% 14%;
+  --stage-fin-bg:    173 40% 13%;
+  --stage-pack-bg:   354 40% 16%;
+  --stage-qc-bg:     354 40% 15%;
+
+  /* Gráficos (dark) — 1..5 e 8 repetem os refs do :root de propósito:
+     --chart-1 e --chart-8 apontam pra tokens que já trocam com o tema
+     (--primary / --muted-foreground) e 2..5 são os stage-*-fg de tom médio
+     que contrastam nos dois fundos (mesma razão do bloco de stage acima).
+     Só 6 e 7 clareiam pra não sumir sobre o card escuro. */
+  --chart-1: var(--primary);
+  --chart-2: var(--stage-cut-fg);
+  --chart-3: var(--stage-assy-fg);
+  --chart-4: var(--stage-sew-fg);
+  --chart-5: var(--stage-fin-fg);
+  --chart-6: 45 90% 55%;
+  --chart-7: 148 50% 52%;
+  --chart-8: var(--muted-foreground);
+
+  /* Sidebar (dark — mantém o mesmo do :root pq sempre é dark) */
+  --sidebar-background:           0 0% 15%;            /* #262626 — cinza escuro, não preto */
+  --sidebar-foreground:           0 0% 92%;
+  --sidebar-muted:                0 0% 58%;
+  --sidebar-accent:               0 0% 23%;
+  --sidebar-accent-foreground:    0 0% 100%;
+  --sidebar-border:               0 0% 28%;
+  --sidebar-primary:              354 78% 50%;
+  --sidebar-primary-foreground:   0 0% 100%;
+  --sidebar-ring:                 354 78% 50%;
+  --sidebar-gradient-from:        0 0% 14%;
+  --sidebar-gradient-to:          0 0% 18%;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   ▼ BASE
+   ═════════════════════════════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+
+/* Rede de segurança mobile: um elemento que vaze (min-w, nowrap longo) não
+   pode virar scroll horizontal da página inteira. `clip` (e não `hidden`)
+   porque clip não cria scroll container — sticky headers continuam presos
+   ao viewport. Scroll lateral legítimo continua nos wrappers overflow-x-auto. */
+html, body { overflow-x: clip; }
+
+/* Mobile touch polish: remove o flash cinza de tap do WebKit e o delay de
+   double-tap-zoom em controles (o zoom por pinça continua funcionando). */
+a, button, [role="button"], input, select, textarea, label {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: var(--weight-regular);
+  line-height: var(--leading-normal);
+  color: hsl(var(--foreground));
+  background: hsl(var(--background));
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11', 'ss01';
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Mono utility (sempre tabular) */
+.font-mono, code, kbd, samp {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+.tabular-nums { font-variant-numeric: tabular-nums; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   ▼ HEADINGS
+   ═════════════════════════════════════════════════════════════════ */
+h1, h2, h3, h4, h5, h6 {
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-tightest);
+  line-height: var(--leading-tight);
+  margin: 0;
+}
+h1 { font-size: var(--text-2xl); }
+h2 { font-size: var(--text-xl);  font-weight: var(--weight-bold); }
+h3 { font-size: var(--text-lg);  font-weight: var(--weight-semibold); letter-spacing: var(--tracking-tight); }
+h4 { font-size: var(--text-md);  font-weight: var(--weight-semibold); letter-spacing: var(--tracking-tight); }
+
+/* ═══════════════════════════════════════════════════════════════════
+   ▼ TEXT UTILITIES (semantic)
+   ═════════════════════════════════════════════════════════════════ */
+.text-display     { font-size: var(--text-5xl); font-weight: var(--weight-extrabold); letter-spacing: var(--tracking-tightest); line-height: var(--leading-none); }
+.text-body        { font-size: var(--text-base); line-height: var(--leading-normal); }
+
+/* Text color helpers */
+.text-fg          { color: hsl(var(--foreground)); }
+.text-muted       { color: hsl(var(--muted-foreground)); }
+.text-primary     { color: hsl(var(--primary)); }
+.text-accent      { color: hsl(var(--accent)); }
+.text-success     { color: hsl(var(--success)); }
+.text-warning     { color: hsl(var(--warning-soft-foreground)); }
+.text-danger      { color: hsl(var(--destructive)); }
+
+/* ─────────────────────────────────────────────────────────────────
+   ▼ NOVIDADE editorial primitives (Anton + Fira Sans)
+   Use .display em h1/KPIs grandes, .eyebrow em labels micro,
+   .bignum em números massivos, .stage em badges de setor,
+   .live-dot em indicadores em tempo real.
+   ───────────────────────────────────────────────────────────────── */
+.display { font-family: var(--font-display); font-weight: 400; letter-spacing: 0.01em; text-transform: uppercase; line-height: 0.92; }
+.eyebrow { font-family: var(--font-sans); font-size: 10px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: hsl(var(--muted-foreground)); }
+.bignum  { font-family: var(--font-display); font-size: 88px; line-height: 0.86; letter-spacing: -0.01em; }
+.serif-italic { font-family: var(--font-sans); font-style: italic; font-weight: 300; letter-spacing: 0; }
+/* Mono utility (handoff): Fira Code com tabular-nums, ideal pra IDs,
+   códigos, KPIs numéricos editoriais. Evita confundir com .font-mono do
+   Tailwind (que pode mapear pra outra fonte). */
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+
+/* Stage badge (mini badge editorial pra setor de produção) */
+.stage-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  height: 18px; padding: 0 6px;
+  font-family: var(--font-mono); font-size: 9.5px; font-weight: 700;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  border-radius: var(--radius-xs);
+  border: 1px solid currentColor;
+  background: transparent;
+}
+
+/* Live pulsing dot (vermelho) — pra realtime / live data */
+.live-dot {
+  position: relative; width: 8px; height: 8px; border-radius: 50%;
+  background: hsl(var(--primary));
+  display: inline-block;
+}
+.live-dot::after {
+  content: ''; position: absolute; inset: -4px; border-radius: 50%;
+  border: 1.5px solid hsl(var(--primary));
+  animation: live-ring 1.6s ease-out infinite;
+}
+@keyframes live-ring {
+  0%   { transform: scale(0.6); opacity: 1; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+/* Decorative red slash on top of cards — editorial accent */
+.slash-top { position: relative; }
+.slash-top::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, hsl(var(--primary)) 0%, transparent 60%);
+}
+
+/* Technical grid backdrop (faint) — pra área de produção */
+.tech-grid {
+  background-image:
+    linear-gradient(hsl(var(--border)) 1px, transparent 1px),
+    linear-gradient(90deg, hsl(var(--border)) 1px, transparent 1px);
+  background-size: 40px 40px;
+  background-position: -1px -1px;
+}
+
+/* SVG noise grain overlay — premium editorial texture (handoff) */
+.grain { position: relative; }
+.grain::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.04 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  opacity: 0.5; mix-blend-mode: overlay;
+}
+
+/* Editorial buttons (handoff base — opt-in via class, não conflita com shadcn) */
+.btn-red {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 32px; padding: 0 14px;
+  border-radius: var(--radius-md);
+  font-family: var(--font-sans); font-size: 12px; font-weight: 600;
+  letter-spacing: 0.02em;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border: 1px solid hsl(var(--primary));
+  cursor: pointer; transition: all 140ms ease-out;
+}
+.btn-red:hover { background: hsl(var(--primary) / 0.9); border-color: hsl(var(--primary) / 0.9); }
+
+.btn-ghost {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 32px; padding: 0 14px;
+  border-radius: var(--radius-md);
+  font-family: var(--font-sans); font-size: 12px; font-weight: 600;
+  background: transparent; border: 1px solid transparent;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer; transition: 140ms;
+}
+.btn-ghost:hover { color: hsl(var(--foreground)); background: hsl(var(--muted)); }
+
+.btn-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border-radius: var(--radius-md);
+  border: 1px solid hsl(var(--border)); background: hsl(var(--card)); color: hsl(var(--muted-foreground));
+  cursor: pointer; transition: 140ms;
+}
+.btn-icon:hover { color: hsl(var(--foreground)); border-color: hsl(var(--border)); }
+
+/* ═══════════════════════════════════════════════════════════════════
+   ▼ SURFACES & ELEVATION
+   ═════════════════════════════════════════════════════════════════ */
+.surface-card {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+}
+.surface-panel {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+}
+.surface-muted {
+  background: hsl(var(--muted-soft));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+}
+.surface-inverse {
+  background: hsl(var(--sidebar-background));
+  color: hsl(var(--sidebar-foreground));
+  border-radius: var(--radius);
+}
+
+.shadow-card     { box-shadow: var(--shadow-card); }
+.shadow-md       { box-shadow: var(--shadow-md); }
+.shadow-hover    { box-shadow: var(--shadow-hover); }
+.shadow-elevated { box-shadow: var(--shadow-elevated); }
+.shadow-primary  { box-shadow: var(--shadow-primary); }
+.shadow-accent   { box-shadow: var(--shadow-accent); }
+
+/* Hover elevation pattern */
+.elevate-on-hover {
+  transition: box-shadow var(--duration-normal) var(--ease-out),
+              transform var(--duration-normal) var(--ease-out);
+}
+.elevate-on-hover:hover {
+  box-shadow: var(--shadow-hover);
+  transform: translateY(-2px);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   ▼ GRADIENTES OFICIAIS
+   ═════════════════════════════════════════════════════════════════ */
+.gradient-primary {
+  background: linear-gradient(135deg, hsl(var(--primary-700)) 0%, hsl(var(--primary-900)) 100%);
+}
+.gradient-accent {
+  background: linear-gradient(135deg, hsl(var(--accent-500)) 0%, hsl(var(--accent-800)) 100%);
+}
+.gradient-sidebar {
+  background: linear-gradient(180deg, hsl(var(--sidebar-gradient-from)) 0%, hsl(var(--sidebar-gradient-to)) 100%);
+}
+.gradient-hero {
+  background: linear-gradient(135deg, hsl(var(--primary-700)) 0%, hsl(var(--primary-950)) 100%);
+  position: relative;
+  overflow: hidden;
+}
+.gradient-hero::before {
+  content: '';
+  position: absolute; top: -60px; right: -60px; width: 240px; height: 240px;
+  border-radius: 50%;
+  background: radial-gradient(circle, hsl(var(--accent-500) / 0.22) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   ▼ FOCUS STATE (acessibilidade)
+   ═════════════════════════════════════════════════════════════════ */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--ring-focus);
+}
+button:focus-visible,
+a:focus-visible {
+  border-radius: var(--radius-md);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   ▼ SCROLLBAR (sutil · estilo Linear)
+   ═════════════════════════════════════════════════════════════════ */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--neutral-300));
+  border: 2px solid hsl(var(--background));
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover { background: hsl(var(--neutral-400)); }
+
+/* ═══════════════════════════════════════════════════════════════════
+   ▼ KEYFRAMES & ANIMATIONS
+   ═════════════════════════════════════════════════════════════════ */
+@keyframes pulse-slow  { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+@keyframes pulse-ring  { 0% { box-shadow: 0 0 0 0 hsl(var(--accent) / 0.5); } 70% { box-shadow: 0 0 0 8px hsl(var(--accent) / 0); } 100% { box-shadow: 0 0 0 0 hsl(var(--accent) / 0); } }
+@keyframes slide-in    { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes slide-down  { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fade-in     { from { opacity: 0; } to { opacity: 1; } }
+/* Sem filter:blur — compositing caro em árvores grandes (lista de PV, dashboards). */
+@keyframes page-enter  { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes badge-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+@keyframes shimmer     { from { background-position: -200% 0; } to { background-position: 200% 0; } }
+@keyframes spin        { to { transform: rotate(360deg); } }
+
+.animate-pulse-slow  { animation: pulse-slow 2s ease-in-out infinite; }
+.animate-pulse-ring  { animation: pulse-ring 1.8s ease-out infinite; }
+.animate-slide-in    { animation: slide-in 240ms var(--ease-out); }
+.animate-slide-down  { animation: slide-down 200ms var(--ease-out); }
+.animate-fade-in     { animation: fade-in 240ms var(--ease-out); }
+.animate-spin        { animation: spin 800ms linear infinite; }
+.page-enter          { animation: page-enter 220ms var(--ease-out) both; }
+.badge-dot-pulse     { animation: badge-pulse 2s ease-in-out infinite; }
+
+/* ── Movimento do quadro de produção ────────────────────────────────
+   Prefixo `kb-` (kanban board). Usado por ProducaoKanbanGestao,
+   ProducaoKanban e KanbanOpCard. Ver os tokens --m-* acima. */
+@keyframes kb-col-in    { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes kb-card-in   { from { opacity: 0; transform: translateX(-7px); } to { opacity: 1; transform: none; } }
+/* Halo do pouso — SÓ box-shadow. Animar `background` aqui com fill:both
+   travaria o card na cor final e apagaria o âmbar do parcial pra sempre. */
+@keyframes kb-landed    { from { box-shadow: 0 0 0 2px hsl(var(--primary)), var(--shadow-md); } to { box-shadow: var(--shadow-sm); } }
+@keyframes kb-landed-partial {
+  0%   { box-shadow: 0 0 0 3px hsl(38 92% 50% / 0.9), var(--shadow-md); }
+  72%  { box-shadow: 0 0 0 3px hsl(38 92% 50% / 0), var(--shadow-sm); }
+  100% { box-shadow: var(--shadow-sm); }
+}
+@keyframes kb-drop-breathe {
+  0%, 100% { box-shadow: inset 0 0 0 1px hsl(var(--primary) / 0.35); }
+  50%      { box-shadow: inset 0 0 0 3px hsl(var(--primary) / 0.18); }
+}
+
+/* ⚠ fill `backwards`, NUNCA `forwards`/`both`: com fill pra frente o último
+   keyframe (`transform: none`) fica grudado no elemento e passa a VENCER o
+   `hover:-translate-y-0.5` do card — o hover pararia de levantar. `backwards`
+   só segura o estado inicial durante o delay da cascata, que é o que se quer. */
+.kb-col-in         { animation: kb-col-in var(--m-settle) var(--ease-out) backwards; }
+.kb-card-in        { animation: kb-card-in var(--m-base) var(--ease-out) backwards; }
+/* Sem fill: terminado o halo, o card volta à sombra normal do Card. */
+.kb-landed         { animation: kb-landed 900ms var(--ease-out); }
+.kb-landed-partial { animation: kb-landed-partial 1400ms var(--ease-out); }
+/* Única animação em laço do quadro — e some no drop. */
+.kb-drop-target    { animation: kb-drop-breathe 1.5s var(--ease-in-out) infinite; }
+
+/* Trilho de rolagem: máscaras no topo/pé da coluna, visíveis SÓ quando há
+   mais OP naquele sentido. `data-more-*` é setado no scroll pela página. */
+.kb-fade { position: relative; }
+.kb-fade::before,
+.kb-fade::after {
+  content: ''; position: absolute; left: 1px; right: 1px; height: 24px;
+  pointer-events: none; z-index: 3; opacity: 0;
+  transition: opacity var(--m-base) var(--ease-out);
+}
+.kb-fade::before { top: 0;    background: linear-gradient(to bottom, hsl(var(--background)), transparent); }
+.kb-fade::after  { bottom: 0; background: linear-gradient(to top,    hsl(var(--background)), transparent); }
+.kb-fade[data-more-up="1"]::before  { opacity: 1; }
+.kb-fade[data-more-down="1"]::after { opacity: 1; }
+
+/* Skeleton loading */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    hsl(var(--muted)) 0%,
+    hsl(var(--muted-soft)) 50%,
+    hsl(var(--muted)) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+  border-radius: var(--radius-sm);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   ▼ COMPONENT PATTERNS · classes auxiliares
+   ═════════════════════════════════════════════════════════════════ */
+
+/* Status pills · Stage badges · KPI delta — utilitárias REMOVIDAS em 2026-05-31
+   (zero consumidores em src/, verificado por grep no repo inteiro). Os
+   componentes vivos equivalentes ficam em React, com paleta própria:
+     • StatusPill / StageBadge / DeltaBadge → src/components/ui/badges.tsx
+     • variantes soft do Badge (success-soft/warning-soft/destructive-soft)
+       → src/components/ui/badge.tsx (consomem os tokens --*-soft do :root/.dark)
+   Os tokens --*-soft e --stage-*-fg permanecem definidos: os primeiros
+   alimentam badge.tsx; os --stage-*-fg são cores de série de gráficos
+   (recharts) usadas em ~10 telas. */
+
+/* Live indicator (badge inline editorial — fundo ink + dot red squad) */
+.live-indicator {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  background: hsl(var(--sidebar-background));
+  color: hsl(var(--sidebar-foreground));
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sharp);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+/* .live-dot já está definido acima (com ring animado) — não duplica aqui. */
+
+/* Glass effect (overlays) */
+.glass {
+  background: hsl(var(--card) / 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid hsl(var(--border) / 0.6);
+  box-shadow: var(--shadow-elevated);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   ▼ SELECTION
+   ═════════════════════════════════════════════════════════════════ */
+::selection {
+  background: hsl(var(--primary) / 0.18);
+  color: hsl(var(--foreground));
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   ▼ REDUCED MOTION
+   ═════════════════════════════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ════════════════════════════════════════════════════════════
+   UTILITIES & COMPONENTES (preservadas do app original)
+   ════════════════════════════════════════════════════════════ */
+
+@layer base {
+  * {
+    @apply border-border;
+    @apply scroll-smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-display);
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    font-size: 14px;
+    line-height: 1.5;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1 { @apply text-2xl font-bold tracking-tight; }
+  h2 { @apply text-xl font-semibold tracking-tight; }
+  h3 { @apply text-lg font-semibold; }
+  h4, h5, h6 { @apply text-base font-semibold; }
+  h1, h2, h3, h4, h5, h6 { letter-spacing: -0.02em; }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring/40 ring-offset-2 ring-offset-background;
+  }
+
+  /* ── Tables ── */
+  thead tr {
+    @apply border-b-2 border-border/80 bg-muted/40;
+  }
+  thead th {
+    @apply text-[11px] font-semibold uppercase tracking-wider text-muted-foreground px-3 py-3;
+    letter-spacing: 0.06em;
+  }
+  tbody tr {
+    @apply transition-colors duration-75 border-b border-border/40 last:border-0;
+  }
+  tbody tr:hover {
+    @apply bg-primary/[0.03];
+  }
+  tbody td {
+    @apply px-3 py-2.5 text-sm;
+  }
+  /* Zebra rows opt-in */
+  .table-zebra tbody tr:nth-child(even) {
+    @apply bg-muted/20;
+  }
+  .table-zebra tbody tr:nth-child(even):hover {
+    @apply bg-primary/[0.04];
+  }
+
+  /* ── Interactive utilities ── */
+  .btn-hover-scale {
+    @apply transition-transform duration-200 ease-out;
+  }
+  .btn-hover-scale:hover:not(:disabled) {
+    transform: scale(1.05);
+  }
+
+  .card-hover-elevation {
+    @apply transition-all duration-200 ease-out;
+  }
+  .card-hover-elevation:hover {
+    box-shadow: var(--shadow-card-hover);
+    transform: translateY(-2px);
+  }
+
+  .glass-card {
+    @apply bg-card/80 backdrop-blur-md border border-border/50 shadow-card;
+  }
+
+  .modern-gradient {
+    background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.85) 100%);
+  }
+
+  /* Sidebar navigation active state */
+  .sidebar-item-active {
+    border-left: 4px solid hsl(var(--sidebar-primary));
+  }
+
+  .glass-sidebar {
+    @apply bg-sidebar/95 backdrop-blur-xl border-r border-sidebar-border;
+  }
+
+  .card-shimmer {
+    @apply relative overflow-hidden before:absolute before:inset-0 before:-translate-x-full before:animate-[shimmer_2s_infinite] before:bg-gradient-to-r before:from-transparent before:via-white/10 before:to-transparent;
+  }
+
+  @keyframes shimmer {
+    100% { transform: translateX(100%); }
+  }
+
+  /* ── Stat card accent strip ── */
+  .stat-accent {
+    @apply relative overflow-hidden;
+  }
+  .stat-accent::before {
+    content: '';
+    @apply absolute top-0 inset-x-0 h-[3px] rounded-t;
+  }
+  .stat-accent-primary::before  { @apply bg-primary; }
+  .stat-accent-success::before  { @apply bg-green-500; }
+  .stat-accent-warning::before  { @apply bg-amber-500; }
+  .stat-accent-danger::before   { @apply bg-destructive; }
+  .stat-accent-neutral::before  { @apply bg-muted-foreground/40; }
+
+  /* ── Empty state ── */
+  .empty-state {
+    @apply flex flex-col items-center justify-center py-16 px-6 text-center gap-3;
+  }
+  .empty-state-icon {
+    @apply h-12 w-12 rounded-2xl bg-muted/60 flex items-center justify-center text-muted-foreground/50 mb-1;
+  }
+  .empty-state-title {
+    @apply text-base font-semibold text-foreground;
+  }
+  .empty-state-sub {
+    @apply text-sm text-muted-foreground max-w-xs leading-relaxed;
+  }
+
+  /* ── Section header ── */
+  .section-heading {
+    @apply flex items-center gap-2.5 text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-3;
+  }
+  .section-heading::after {
+    content: '';
+    @apply flex-1 h-px bg-border/60;
+  }
+
+  /* ── Data badge / status pill ── */
+  .status-pill {
+    @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border;
+  }
+  .status-pill-dot {
+    @apply h-1.5 w-1.5 rounded-full;
+  }
+
+  /* ── Metric value (large numbers) ── */
+  .metric-value {
+    @apply font-mono text-3xl font-extrabold leading-none tracking-tight tabular-nums;
+  }
+  .metric-label {
+    @apply text-[10.5px] font-semibold uppercase tracking-[0.06em] text-muted-foreground;
+  }
+
+  /* ── Page section card ── */
+  .data-card {
+    @apply bg-card border border-border rounded-xl shadow-card overflow-hidden;
+  }
+  .data-card-header {
+    @apply flex items-center justify-between px-5 py-3.5 border-b border-border/60 bg-muted/20;
+  }
+  .data-card-title {
+    @apply text-sm font-semibold text-foreground;
+  }
+  .data-card-body {
+    @apply p-5;
+  }
+}
+
+@layer utilities {
+  .font-mono { font-family: var(--font-mono); }
+
+  /* ── Acessibilidade: tamanho mínimo de fonte ─────────────────────
+     WCAG SC 1.4.4 recomenda texto >= 12px; usamos 11px como mínimo
+     prático pra não quebrar density. Promove arbitrary values
+     `text-[9px]` e `text-[10px]` espalhados pelo app para 11px sem
+     precisar editar cada call-site individual. Texto em SVG/canvas
+     e contextos `print:` ficam intocados (a regra só atua em telas).
+     Se algum lugar PRECISA do 9–10px (eg. eixo de gráfico denso),
+     use uma classe customizada (.text-chart-axis) em vez de
+     reabrir o token. */
+  @media screen {
+    .text-\[9px\],
+    .text-\[10px\] {
+      font-size: 11px;
+      line-height: 1.35;
+    }
+  }
+
+  /* ── Z-index semantic utilities (mapeiam pros tokens --z-*) ──
+     Usar em vez de z-[100], z-[200] etc. */
+  .z-dropdown  { z-index: var(--z-dropdown); }   /* 100 */
+  .z-sticky    { z-index: var(--z-sticky); }     /* 200 */
+  .z-overlay   { z-index: var(--z-overlay); }    /* 300 */
+  .z-modal     { z-index: var(--z-modal); }      /* 400 */
+  .z-popover   { z-index: var(--z-popover); }    /* 500 */
+  .z-toast     { z-index: var(--z-toast); }      /* 600 */
+  .z-tooltip   { z-index: var(--z-tooltip); }    /* 700 */
+
+  /* ── Scrollbars ── */
+  .scrollbar-thin::-webkit-scrollbar { width: 4px; }
+  .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: hsl(var(--sidebar-muted) / 0.35);
+    border-radius: 9999px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--sidebar-primary) / 0.5);
+  }
+
+  main::-webkit-scrollbar { width: 5px; }
+  main::-webkit-scrollbar-track { background: transparent; }
+  main::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 9999px;
+  }
+  main::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.35);
+  }
+
+  /* ── Page entrance: usa @keyframes page-enter (topo do arquivo).
+     Não redefinir aqui — a cópia `pageEnter` com blur foi removida (perf). ── */
+  /* ── Staggered children entrance ── */
+  .stagger-children > * {
+    animation: page-enter 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .stagger-children > *:nth-child(1) { animation-delay: 0ms; }
+  .stagger-children > *:nth-child(2) { animation-delay: 40ms; }
+  .stagger-children > *:nth-child(3) { animation-delay: 80ms; }
+  .stagger-children > *:nth-child(4) { animation-delay: 120ms; }
+  .stagger-children > *:nth-child(5) { animation-delay: 160ms; }
+  .stagger-children > *:nth-child(6) { animation-delay: 200ms; }
+
+  /* ── Badge dot pulse ── */
+  .badge-dot-pulse {
+    animation: badgePulse 2s ease-in-out infinite;
+  }
+  @keyframes badgePulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%       { opacity: 0.6; transform: scale(0.85); }
+  }
+
+  /* ── Sticky table header ── */
+  .table-sticky-header thead th {
+    @apply sticky top-0 z-10 bg-muted/90 backdrop-blur-sm shadow-[0_1px_0_0_hsl(var(--border)/0.8)];
+  }
+
+  /* ── Card shadow utilities ── */
+  .shadow-card     { box-shadow: var(--shadow-card); }
+  .shadow-card-hover { box-shadow: var(--shadow-card-hover); }
+  .shadow-elevated { box-shadow: var(--shadow-elevated); }
+
+  /* ── Number / mono in tables ── */
+  .tabular-nums { font-variant-numeric: tabular-nums; }
+
+  /* ── Status rings ── */
+  .ring-status-active  { @apply ring-2 ring-success/30; }
+  .ring-status-warning { @apply ring-2 ring-warning/30; }
+  .ring-status-error   { @apply ring-2 ring-destructive/30; }
+
+  /* ── Sidebar transition helper ── */
+  .sidebar-transition {
+    transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* ── Subtle gradient overlay on cards ── */
+  .card-gradient-overlay {
+    background: linear-gradient(160deg, hsl(var(--card)) 0%, hsl(var(--muted)/0.3) 100%);
+  }
+
+  /* ── Focus ring for interactive elements ── */
+  .focus-ring {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background;
+  }
+
+  /* ── Divider ── */
+  .divider-x { @apply border-t border-border/60 my-4; }
+  .divider-y { @apply border-l border-border/60 mx-3 self-stretch; }
+
+  /* ────────────────────────────────────────────────────────
+     ▼ EDITORIAL PRO 2.0 — utilities opt-in (telas-hero)
+     Usar em Dashboard, Hubs, Relatórios. NÃO usar em listas
+     operacionais densas (estoque, OPs lista, PVs lista).
+     ──────────────────────────────────────────────────────── */
+
+  /* Surface sharp: card editorial com radius 2px + border foreground/10 +
+     sombra drop-hard sem bokeh. Substitui shadcn Card nos blocos hero. */
+  .surface-sharp {
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--foreground) / 0.08);
+    border-radius: var(--radius-sharp);
+    box-shadow: var(--shadow-sharp);
+  }
+  .surface-sharp-stamp {
+    background: hsl(var(--card));
+    border: 1.5px solid hsl(var(--foreground));
+    border-radius: var(--radius-sharp);
+    box-shadow: var(--shadow-stamp);
+  }
+  .surface-ink {
+    background: hsl(var(--ink));
+    color: hsl(var(--paper));
+    border-radius: var(--radius-sharp);
+  }
+  .surface-paper {
+    background: hsl(var(--paper));
+    color: hsl(var(--ink));
+    border: 1px solid hsl(var(--foreground) / 0.08);
+    border-radius: var(--radius-sharp);
+  }
+
+  /* Shadow utilities editoriais */
+  .shadow-sharp      { box-shadow: var(--shadow-sharp); }
+  .shadow-stamp      { box-shadow: var(--shadow-stamp); }
+  .shadow-stamp-red  { box-shadow: var(--shadow-stamp-red); }
+
+  /* Rule lines de espessura variável (uso em headers/footers editoriais) */
+  .rule-thick {
+    width: 100%;
+    height: var(--rule-thick);
+    background-color: hsl(var(--foreground));
+  }
+  .rule-heavy {
+    width: 100%;
+    height: var(--rule-heavy);
+    background-color: hsl(var(--foreground));
+  }
+  .rule-red-thick {
+    width: 100%;
+    height: var(--rule-thick);
+    background-color: hsl(var(--primary));
+  }
+
+  /* Hero editorial: wrapper opcional pra header de telas-hero. Aplica
+     padding + bottom rule + safe spacing pro conteúdo logo abaixo.
+     Composição esperada: eyebrow MONO + display ANTON + meta inline +
+     rule-thick + (children = KPI grid ou ação). */
+  .hero-editorial {
+    position: relative;
+    padding: 1.5rem 0 1.25rem 0;
+    border-bottom: var(--rule-thick) solid hsl(var(--foreground));
+    margin-bottom: 1.5rem;
+  }
+  .hero-editorial::before {
+    /* dot vermelho squad como marcador no canto sup esquerdo, sutil */
+    content: '';
+    position: absolute;
+    top: 1.5rem;
+    left: -0.625rem;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: hsl(var(--primary));
+  }
+  .hero-editorial-row {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+  }
+  .hero-editorial-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: hsl(var(--muted-foreground));
+    line-height: 1;
+    margin-bottom: 0.625rem;
+  }
+  .hero-editorial-title {
+    font-family: var(--font-display);
+    font-size: clamp(2.25rem, 5.5vw, 3.75rem);
+    font-weight: 400;
+    letter-spacing: -0.025em;
+    line-height: 0.92;
+    text-transform: uppercase;
+    color: hsl(var(--foreground));
+    padding-top: 0.06em;
+  }
+  .hero-editorial-meta {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    color: hsl(var(--muted-foreground));
+    letter-spacing: 0.04em;
+    font-variant-numeric: tabular-nums;
+  }
+  .hero-editorial-meta strong {
+    color: hsl(var(--foreground));
+    font-weight: 700;
+  }
+
+  /* KPI hero: número Anton ENORME pra dashboards/hubs */
+  .kpi-hero-num {
+    font-family: var(--font-display);
+    font-size: clamp(2.5rem, 6vw, 4.5rem);
+    font-weight: 400;
+    line-height: 0.9;
+    letter-spacing: -0.025em;
+    font-variant-numeric: tabular-nums;
+    color: hsl(var(--foreground));
+  }
+  .kpi-hero-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: hsl(var(--muted-foreground));
+    line-height: 1;
+    margin-bottom: 0.5rem;
+  }
+
+  /* ── Interface Cleanup (White-label) ──
+   * Oculta qualquer banner/badge externo. Os atributos abaixo usam
+   * fragmentos de substring ("ovable.app", "ovable.dev", "ptengineer.app")
+   * em vez do domínio completo: continuam casando com URLs reais da
+   * plataforma (a primeira letra é redundante na regra `*=`) mas evitam
+   * que o literal completo apareça no CSS final — o que faria o script
+   * `verify-no-branding.mjs` abortar o build.
+   */
+  a[href*="ovable.app"],
+  a[href*="ovable.dev"],
+  a[href*="ptengineer.app"],
+  iframe[src*="ovable.app"],
+  iframe[src*="ovable.dev"],
+  iframe[src*="ptengineer.app"],
+  [id^="ovable-"],
+  [id^="powered-by"],
+  [class^="ovable-badge"],
+  [class*=" ovable-badge"],
+  [data-ovable-badge],
+  [data-powered-by] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    height: 0 !important;
+    width: 0 !important;
+    max-height: 0 !important;
+    max-width: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    overflow: hidden !important;
+    position: absolute !important;
+    inset: auto !important;
+    z-index: -9999 !important;
+    clip: rect(0, 0, 0, 0) !important;
+    clip-path: inset(50%) !important;
+  }
+
+  /* Web Components: regra global propagada para shadow DOM via :host()
+   * quando a plataforma usa custom element (ex: <lovable-badge>) */
+  lovable-badge,
+  gpt-engineer-badge,
+  *[is^="lovable-"] {
+    display: none !important;
+  }
+}
+
+/* Tokens --p-*, utilitários .paper/.sheet/.p-tbl/.a4-head/.p-pill/.p-kpi/
+   .light-card e o @import do Fraunces vivem em src/styles-paper.css
+   (carregado logo após este arquivo via main.tsx). Aqui só fica o
+   --label-yellow porque é específico de etiqueta caixa externa, não
+   das fichas A4. */
+
+/* ════════════════════════════════════════════════════════════════════════════
+   FRONTEND-DESIGN · Editorial Industrial — animations + utilities (2026-05)
+   CSS-only motion (framer-motion not installed). Foundation usada em:
+   - Hero/Dashboard reveals com staggered animation-delay
+   - Relatórios print-editorial (rule lines, section labels)
+   - Fichas de operador (high contrast, big typography)
+   - Etiquetas (typography-first)
+   Print-safe: animations off em @media print.
+   ════════════════════════════════════════════════════════════════════════════ */
+
+@keyframes editorial-rise {
+  0%   { opacity: 0; transform: translateY(12px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes editorial-fade {
+  0%   { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes editorial-slide-left {
+  0%   { opacity: 0; transform: translateX(-12px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes editorial-scale-rule {
+  0%   { transform: scaleX(0); }
+  100% { transform: scaleX(1); }
+}
+
+/* Staggered reveal: filhos diretos de .editorial-stagger ganham delay
+   crescente. Pra hero/dashboard. Cada filho começa 80ms depois do anterior. */
+.editorial-stagger > * {
+  opacity: 0;
+  animation: editorial-rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.editorial-stagger > *:nth-child(1) { animation-delay: 0ms; }
+.editorial-stagger > *:nth-child(2) { animation-delay: 80ms; }
+.editorial-stagger > *:nth-child(3) { animation-delay: 160ms; }
+.editorial-stagger > *:nth-child(4) { animation-delay: 240ms; }
+.editorial-stagger > *:nth-child(5) { animation-delay: 320ms; }
+.editorial-stagger > *:nth-child(6) { animation-delay: 400ms; }
+.editorial-stagger > *:nth-child(7) { animation-delay: 480ms; }
+.editorial-stagger > *:nth-child(8) { animation-delay: 560ms; }
+.editorial-stagger > *:nth-child(n+9) { animation-delay: 640ms; }
+
+.editorial-rise   { animation: editorial-rise   0.7s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.editorial-fade   { animation: editorial-fade   0.5s ease-out both; }
+.editorial-slide  { animation: editorial-slide-left 0.6s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+/* Rule line: divisor horizontal grosso usado em relatórios print-editorial.
+   Variante .rule-line-thick = 3px, .rule-line-double = duas linhas 1px com gap. */
+.rule-line {
+  width: 100%;
+  height: 1px;
+  background-color: hsl(var(--foreground));
+  transform-origin: left;
+  animation: editorial-scale-rule 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.rule-line-thick {
+  width: 100%;
+  height: 3px;
+  background-color: hsl(var(--foreground));
+  transform-origin: left;
+}
+.rule-line-double {
+  width: 100%;
+  border-top: 1px solid hsl(var(--foreground));
+  border-bottom: 1px solid hsl(var(--foreground));
+  height: 4px;
+}
+
+/* Section label: ALL-CAPS pequenino tipográfico usado em report sections.
+   Combina com Fira Sans + tracking expandido. */
+.section-label {
+  font-family: var(--font-editorial);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+  line-height: 1;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Industrial Editorial Pro — utility classes globais (22/05/2026)
+   Espelham o stub `ed` do /design-preview mockup. Disponíveis em todo
+   o app pra dar consistência tipográfica.
+   ───────────────────────────────────────────────────────────── */
+
+/* Display: Anton uppercase letter-spacing tight. Pra hero, KPIs, títulos. */
+.ed-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+  line-height: 1;
+  padding-top: 0.06em; /* alinhamento óptico do Anton (clipping superior) */
+}
+
+/* Body: Fira Sans, base tipográfica geral pra texto rodando. */
+.ed-body {
+  font-family: var(--font-editorial);
+}
+
+/* Mono: Fira Code tabular pra códigos, OPs, datas, valores numéricos. */
+.ed-mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Eyebrow: micro-label categoria 10px tracking-widest uppercase. Marcador
+   tipográfico que precede títulos / seções (ex: "PRODUÇÃO", "FICHA TÉCNICA"). */
+.ed-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  line-height: 1;
+  color: hsl(var(--muted-foreground));
+}
+
+/* Display number: gigante pra hero/KPIs, Anton em tamanho dramático. */
+.text-display-lg {
+  font-family: var(--font-display);
+  font-size: clamp(48px, 7vw, 96px);
+  font-weight: 400;
+  letter-spacing: -0.03em;
+  line-height: 0.9;
+  color: hsl(var(--foreground));
+}
+
+/* Print-safe: anima ações desligadas em @media print pra fichas/etiquetas
+   imprimirem fielmente. */
+@media print {
+  .editorial-stagger > *,
+  .editorial-rise,
+  .editorial-fade,
+  .editorial-slide,
+  .rule-line,
+  .grid-kpi-fluid > *,
+  .page-enter {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+    filter: none !important;
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   RESPONSIVE FOUNDATION — viewport-fluid sizing (2026-05)
+   Aplicado em dashboards e páginas web para colapsar gracefully de 360px
+   até monitores 4K. Tailwind default breakpoints (sm 640, md 768, lg 1024,
+   xl 1280, 2xl 1536) mantidos. Aqui só utilitários fluidos extras.
+   ════════════════════════════════════════════════════════════════════════════ */
+
+/* Grid responsivo de KPIs — auto-fit minmax(200px). Acomoda valores
+   monetários típicos "R$ 54.920,64" (~209px de texto mono 30px) +
+   padding interno do card sem truncar. Cabe ~5 KPIs em 1280 viewport
+   (1280 - 240 sidebar = 1040 / 200 = 5), 6 KPIs em 1440+, e 3-4 em
+   viewports menores. gap-2.5 dá respiro visual. */
+.grid-kpi-fluid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.625rem;
+}
+.grid-kpi-fluid > * {
+  opacity: 0;
+  animation: editorial-rise 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.grid-kpi-fluid > *:nth-child(1) { animation-delay: 40ms; }
+.grid-kpi-fluid > *:nth-child(2) { animation-delay: 100ms; }
+.grid-kpi-fluid > *:nth-child(3) { animation-delay: 160ms; }
+.grid-kpi-fluid > *:nth-child(4) { animation-delay: 220ms; }
+.grid-kpi-fluid > *:nth-child(5) { animation-delay: 280ms; }
+.grid-kpi-fluid > *:nth-child(6) { animation-delay: 340ms; }
+.grid-kpi-fluid > *:nth-child(n+7) { animation-delay: 400ms; }
+
+/* Container constraint pra 4K / monitores muito largos.
+   Dashboard com 6 KPI cards num monitor 4K esticam absurdo; aqui limita. */
+.editorial-container {
+  max-width: 1920px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Safe area pra mobile sticky headers (notch, etc.) */
+@supports (padding: env(safe-area-inset-top)) {
+  .safe-top  { padding-top: env(safe-area-inset-top); }
+  .safe-bot  { padding-bottom: env(safe-area-inset-bottom); }
+}
+
+/* Hide-on-mobile / show-on-mobile utilities seguros */
+@media (max-width: 639px) {
+  .hide-on-mobile { display: none !important; }
+}
+@media (min-width: 640px) {
+  .only-on-mobile { display: none !important; }
+}
+
+/* Tabela responsível: cards em mobile, table em desktop */
+@media (max-width: 767px) {
+  .table-stacks-mobile thead { display: none; }
+  .table-stacks-mobile tbody tr {
+    display: block;
+    margin-bottom: 0.75rem;
+    border-bottom: 1px solid hsl(var(--border));
+    padding-bottom: 0.5rem;
+  }
+  .table-stacks-mobile tbody td {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.25rem 0.5rem;
+    border: none;
+  }
+  .table-stacks-mobile tbody td::before {
+    content: attr(data-label);
+    font-family: var(--font-editorial);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: hsl(var(--muted-foreground));
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   PRINT OVERRIDES — força tamanhos fixos em pt para imprimir A4 portrait
+   sem depender de vw (que em print = largura da página = comportamento
+   imprevisível dependendo do browser). Aplicado APENAS dentro de .print-area
+   pra não afetar telas web.
+   ════════════════════════════════════════════════════════════════════════════ */
+
+@media print {
+  /* Tipografia fluida vira fixa em pt — viewport units não funcionam bem
+     em paged media. Os valores correspondem ao mid-tier do clamp web. */
+  .print-area .text-display-lg {
+    font-size: 28pt !important;
+    line-height: 0.95 !important;
+    letter-spacing: -0.02em !important;
+  }
+
+  /* Section labels em pt fixo (10px → 7pt fica legível em A4) */
+  .print-area .section-label {
+    font-size: 7pt !important;
+    letter-spacing: 0.16em !important;
+  }
+
+  /* Numeração editorial lateral (01/02/03 em Anton) */
+  .print-area .font-display {
+    /* só ajustar se for um número grande — Anton em texto pequeno fica esquisito.
+       Não tocamos em font-display geral pra preservar uso em textos. */
+  }
+
+  /* Rule lines em print: garantir contraste preto puro mesmo se token
+     for cinza muito claro. Linha fina pra economia de tinta. */
+  .print-area .rule-line {
+    background-color: #000 !important;
+    height: 0.5pt !important;
+  }
+  .print-area .rule-line-thick {
+    background-color: #000 !important;
+    height: 1.5pt !important;
+  }
+  .print-area .rule-line-double {
+    border-top: 0.5pt solid #000 !important;
+    border-bottom: 0.5pt solid #000 !important;
+    height: 2pt !important;
+  }
+
+  /* Editorial container não deve limitar largura em print —
+     a margem do @page já controla a área. */
+  .print-area .editorial-container {
+    max-width: none !important;
+    margin: 0 !important;
+  }
+
+  /* Fluid KPI grid: em print, força grid 4-col pra A4 portrait (cabe bem) */
+  .print-area .grid-kpi-fluid {
+    grid-template-columns: repeat(4, 1fr) !important;
+  }
+
+  /* Editorial-stagger off em print (já está, mas reforça) */
+  .print-area .editorial-stagger > *,
+  .print-area .editorial-rise,
+  .print-area .editorial-fade,
+  .print-area .grid-kpi-fluid > *,
+  .print-area .page-enter {
+    opacity: 1 !important;
+    transform: none !important;
+    filter: none !important;
+    animation: none !important;
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   PRINT — ETIQUETAS térmicas/individuais via componente React
+   Quando uma página renderiza .etiqueta-100x30mm (EtiquetaProduto.tsx) e o
+   usuário imprime via browser direto (sem buildThermalLabelsHtml popup),
+   esta regra garante @page correto + reset de containers ancestrais.
+   ════════════════════════════════════════════════════════════════════════════ */
+
+@media print {
+  /* Reset universal — evita que containers ancestrais clipem a etiqueta */
+  body:has(.etiqueta-100x30mm) {
+    background: #fff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  body:has(.etiqueta-100x30mm) * {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  /* Etiqueta 100x30mm: tamanhos fixos + bordas sólidas pretas (sem cinza) */
+  .etiqueta-100x30mm {
+    width: 100mm !important;
+    height: 30mm !important;
+    border-left-color: #000 !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .etiqueta-100x30mm img {
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
+  }
+  .etiqueta-100x30mm .section-label {
+    color: rgba(0, 0, 0, 0.6) !important;
+    font-size: 6pt !important;
+  }
+
+  /* Quando há SÓ etiquetas na página, força @page no tamanho da etiqueta */
+  @page :first {
+    margin: 0;
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   PRINT — PADRÃO UNIVERSAL DE QUEBRA NATURAL (2026-05-24)
+   Aplicado a todo componente imprimível: relatórios A4, fichas de operador,
+   espelhos de ponto, folha de pagamento, listas de picking, etc.
+
+   Filosofia:
+   - Documento grande pode ocupar múltiplas A4 — não força encaixar em 1.
+   - Blocos atômicos (.keep-together) NUNCA quebram no meio.
+   - Headers de seção / footer de assinatura PERMANECEM com o conteúdo
+     subsequente (`break-after: avoid` / `break-before: avoid`).
+
+   Para opt-in, basta a página/componente ter classe .print-natural OU
+   estar dentro de .print-area. Para opt-out (ex: etiqueta que precisa
+   caber em 1 página fixa), usar classe .print-fixed-page.
+   ════════════════════════════════════════════════════════════════════════════ */
+
+@media print {
+  .print-natural,
+  .print-area {
+    /* Não impõe altura — flui em quantas A4 precisar */
+    height: auto !important;
+    max-height: none !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
+  /* Bloco atômico — não quebra no meio. Adicione .keep-together em
+     cards, tabelas (ou tbody), seções de assinatura, KPI grids etc. */
+  .print-natural .keep-together,
+  .print-area .keep-together,
+  .keep-together {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  /* Headings (h1-h6) e elementos com .keep-with-next devem ficar
+     na mesma página do conteúdo seguinte (evita "título órfão"). */
+  .print-natural h1, .print-natural h2, .print-natural h3,
+  .print-area h1, .print-area h2, .print-area h3,
+  .keep-with-next {
+    break-after: avoid !important;
+    page-break-after: avoid !important;
+  }
+
+  /* Espelho do keep-with-next — usado em elementos que devem
+     ANCORAR à seção anterior (ex: SignatureFooter precisa ficar
+     com a última cor da ficha). Quando o elemento marcado não
+     cabe na mesma página do anterior, o browser empurra AMBOS
+     pra próxima página (em vez de deixar este sozinho/órfão).
+     Indispensável pra fichas longas (Silk/Aviamento com 5+ cores)
+     onde o footer ficaria órfão na A4 seguinte. */
+  .print-natural .keep-with-previous,
+  .print-area .keep-with-previous,
+  .keep-with-previous {
+    break-before: avoid !important;
+    page-break-before: avoid !important;
+  }
+
+  /* HARD constraint — força nova pg ANTES do elemento. Usado no
+     wrapper "último bloco + SignatureFooter" pra garantir que o
+     footer nunca vire órfão (já que sempre começa numa pg dedicada
+     junto com a última cor/seção). Trade-off: sobra pequena na pg
+     anterior. Aceitável vs footer em pg separada. */
+  .print-natural .force-page-before,
+  .print-area .force-page-before,
+  .force-page-before {
+    page-break-before: always !important;
+    break-before: page !important;
+  }
+
+  /* Tabelas: header repete em cada página quando quebra. */
+  .print-natural thead, .print-area thead { display: table-header-group; }
+  .print-natural tfoot, .print-area tfoot { display: table-footer-group; }
+  .print-natural tr, .print-area tr {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  /* Barra do corte do rolo (tiras artesanais) — degrada pra P&B garantido:
+     vermelho/hachura-de-token viram hachura PRETA sobre branco, com outline
+     preto, pra sair fiel em impressora monocromática. O preenchido (a cortar)
+     fica hachurado; a sobra fica branca. Ver ArtisanalStrapRollCutBlock.tsx. */
+  .strap-roll-gauge .srg-track { border-color: #000 !important; background: #fff !important; }
+  .strap-roll-gauge .srg-fill,
+  .strap-roll-gauge .srg-roll {
+    background-color: #fff !important;
+    background-image: repeating-linear-gradient(45deg, #000 0 1.2px, transparent 1.2px 5px) !important;
+    border: 1px solid #000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  .strap-roll-gauge .srg-left { background-image: none !important; }
+  .strap-roll-gauge .srg-seam { background: #000 !important; }
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   MARQUEE SELECTION — prevenção de text-select durante drag
+   Quando useMarqueeSelection está com drag ativo, body ganha .marquee-active
+   pra desabilitar text selection (seleção de texto natural conflita com
+   o retângulo de seleção).
+   ════════════════════════════════════════════════════════════════════════════ */
+
+/* Container que tem marquee ativo desabilita user-select nos descendentes
+   enquanto o drag rola. Usar via data-marquee-container quando o hook tá
+   ativo (opcional — só liga se quiser explicitamente). */
+[data-marquee-container]:has([data-marquee-dragging="true"]) *,
+.marquee-dragging * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+/* Cursor crosshair em containers selecionáveis (espaço vazio só) */
+[data-marquee-container] {
+  cursor: default;
+}
+
+```
+
+### `tailwind.config.ts`
+
+```ts
+import type { Config } from "tailwindcss";
+
+export default {
+  darkMode: ["class"],
+  content: ["./pages/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}", "./app/**/*.{ts,tsx}", "./src/**/*.{ts,tsx}"],
+  prefix: "",
+  theme: {
+    container: {
+      center: true,
+      padding: "2rem",
+      screens: {
+        "2xl": "1400px",
+      },
+    },
+    extend: {
+      fontFamily: {
+        // Industrial Editorial Pro · atualizado 2026-05-31 via ui-ux-pro-max:
+        // display = Anton (mantido, identidade)
+        // sans/editorial = Fira Sans (era Inter Tight) — humanist com caráter
+        // mono = Fira Code (era JetBrains Mono) — unifica com Fira family
+        display: ['Anton', 'Impact', 'sans-serif'],
+        sans: ['"Fira Sans"', 'system-ui', '-apple-system', 'sans-serif'],
+        editorial: ['"Fira Sans"', 'system-ui', 'sans-serif'],
+        mono: ['"Fira Code"', 'ui-monospace', 'monospace'],
+      },
+      colors: {
+        border: "hsl(var(--border))",
+        input: "hsl(var(--input))",
+        ring: "hsl(var(--ring))",
+        background: "hsl(var(--background))",
+        foreground: "hsl(var(--foreground))",
+        primary: {
+          DEFAULT: "hsl(var(--primary))",
+          foreground: "hsl(var(--primary-foreground))",
+        },
+        secondary: {
+          DEFAULT: "hsl(var(--secondary))",
+          foreground: "hsl(var(--secondary-foreground))",
+        },
+        destructive: {
+          DEFAULT: "hsl(var(--destructive))",
+          foreground: "hsl(var(--destructive-foreground))",
+        },
+        success: {
+          DEFAULT: "hsl(var(--success))",
+          foreground: "hsl(var(--success-foreground))",
+        },
+        warning: {
+          DEFAULT: "hsl(var(--warning))",
+          foreground: "hsl(var(--warning-foreground))",
+        },
+        muted: {
+          DEFAULT: "hsl(var(--muted))",
+          foreground: "hsl(var(--muted-foreground))",
+        },
+        accent: {
+          DEFAULT: "hsl(var(--accent))",
+          foreground: "hsl(var(--accent-foreground))",
+        },
+        popover: {
+          DEFAULT: "hsl(var(--popover))",
+          foreground: "hsl(var(--popover-foreground))",
+        },
+        card: {
+          DEFAULT: "hsl(var(--card))",
+          foreground: "hsl(var(--card-foreground))",
+        },
+        sidebar: {
+          DEFAULT: "hsl(var(--sidebar-background))",
+          foreground: "hsl(var(--sidebar-foreground))",
+          primary: "hsl(var(--sidebar-primary))",
+          "primary-foreground": "hsl(var(--sidebar-primary-foreground))",
+          accent: "hsl(var(--sidebar-accent))",
+          "accent-foreground": "hsl(var(--sidebar-accent-foreground))",
+          border: "hsl(var(--sidebar-border))",
+          ring: "hsl(var(--sidebar-ring))",
+          muted: "hsl(var(--sidebar-muted))",
+        },
+      },
+      borderRadius: {
+        lg: "var(--radius)",
+        md: "calc(var(--radius) - 2px)",
+        sm: "calc(var(--radius) - 4px)",
+        // Industrial Editorial Pro 2.0 — radius sharp/flat opt-in
+        sharp: "var(--radius-sharp)",  // 2px — cards hero
+        flat: "var(--radius-flat)",    // 0 — panels stamping
+      },
+      boxShadow: {
+        sharp: "var(--shadow-sharp)",
+        stamp: "var(--shadow-stamp)",
+        "stamp-red": "var(--shadow-stamp-red)",
+      },
+      transitionDuration: {
+        'DEFAULT': '300ms',
+        'instant': '80ms',
+        'fast': '150ms',
+        'slow': '500ms',
+        '2000': '2000ms',
+      },
+      transitionTimingFunction: {
+        'DEFAULT': 'cubic-bezier(0.4, 0, 0.2, 1)',
+        'standard': 'cubic-bezier(0.4, 0, 0.2, 1)',
+        'entrance': 'cubic-bezier(0, 0, 0.2, 1)',
+        'exit': 'cubic-bezier(0.4, 0, 1, 1)',
+      },
+      keyframes: {
+        "accordion-down": {
+          from: { height: "0" },
+          to: { height: "var(--radix-accordion-content-height)" },
+        },
+        "accordion-up": {
+          from: { height: "var(--radix-accordion-content-height)" },
+          to: { height: "0" },
+        },
+        "pulse-slow": {
+          "0%, 100%": { opacity: "1" },
+          "50%": { opacity: "0.6" },
+        },
+        "slide-in": {
+          from: { opacity: "0", transform: "translateY(8px)" },
+          to: { opacity: "1", transform: "translateY(0)" },
+        },
+        "fade-in": {
+          from: { opacity: "0" },
+          to: { opacity: "1" },
+        },
+        "scale-in": {
+          from: { opacity: "0", transform: "scale(0.95)" },
+          to: { opacity: "1", transform: "scale(1)" },
+        },
+      },
+      animation: {
+        "accordion-down": "accordion-down 250ms cubic-bezier(0.4, 0, 0.2, 1)",
+        "accordion-up": "accordion-up 250ms cubic-bezier(0.4, 0, 0.2, 1)",
+        "pulse-slow": "pulse-slow 2s cubic-bezier(0.4, 0, 0.2, 1) infinite",
+        "slide-in": "slide-in 300ms cubic-bezier(0, 0, 0.2, 1)",
+        "fade-in": "fade-in 200ms cubic-bezier(0, 0, 0.2, 1)",
+        "scale-in": "scale-in 200ms cubic-bezier(0, 0, 0.2, 1)",
+      },
+    },
+  },
+  plugins: [require("tailwindcss-animate")],
+} satisfies Config;
+
+```

@@ -1,0 +1,1860 @@
+# Shared layouts
+App shell: ProtectedRoute → AppLayout (sidebar 232/68px, sticky breadcrumb, fluid main padding). EditorialPageHeader is the page-title primitive (128 call sites). SalesOperationsRail is the PV list KPI strip.
+
+## `src/components/layout/EditorialPageHeader.tsx`
+- Path: `src/components/layout/EditorialPageHeader.tsx`
+- Lines: 148
+
+```tsx
+import { ReactNode, useEffect } from 'react';
+import { cn } from '@/lib/utils';
+
+/** Atualiza document.title — restaura ao default quando desmonta. */
+function useDocumentTitle(title: string) {
+  useEffect(() => {
+    const previous = document.title;
+    document.title = title ? `${title} · Squad Shoes` : 'Squad Shoes';
+    return () => { document.title = previous; };
+  }, [title]);
+}
+
+interface EditorialPageHeaderProps {
+  /**
+   * Numeração editorial (ex: "01", "02"). Aparece em Anton grande ao lado do kicker.
+   * Opcional — se ausente, só renderiza o kicker text.
+   */
+  sectionNumber?: string;
+  /**
+   * Kicker label em ALL-CAPS small (10px tracking 0.18em). Ex: "PCP · Pedido".
+   */
+  sectionLabel: string;
+  /**
+   * Título principal — renderiza com Anton via .hero-editorial-title (clamp 36-60px).
+   */
+  title: string;
+  /**
+   * Descrição opcional (1-2 linhas) abaixo do título.
+   */
+  description?: string;
+  /**
+   * Metadados secundários renderizados em MONO ao lado do título (ex:
+   * "ATUALIZADO 14:32 · 32 FUNCIONÁRIOS ATIVOS"). Wrap automático em mobile.
+   * Use <strong> dentro pra destacar números.
+   */
+  meta?: ReactNode;
+  /**
+   * Indicador "live" inline no eyebrow — pulse vermelho squad. Pra dashboards
+   * com dados em tempo real ou hubs operacionais.
+   */
+  live?: boolean;
+  /**
+   * Slot direito — botões, filtros, etc. Empilha embaixo em mobile.
+   */
+  actions?: ReactNode;
+  /**
+   * Slot inferior — KPI grid horizontal logo abaixo do rule-line. Renderiza
+   * sem padding extra (deixa o consumer compor com .grid-kpi-fluid).
+   * Opcional — se ausente, hero termina no rule-line.
+   */
+  kpis?: ReactNode;
+  /**
+   * Esconde a rule-thick de baixo. Padrão: mostra. Útil quando o componente
+   * filho já traz seu próprio divisor.
+   */
+  noRule?: boolean;
+  /**
+   * Classes extras no wrapper.
+   */
+  className?: string;
+}
+
+/**
+ * Header editorial reutilizável — Industrial Editorial Pro 2.0.
+ *
+ * Layout (responsivo):
+ *   · KICKER · LABEL
+ *   ┌──────────────────────────────────────────────────────────┐
+ *   │  01   TÍTULO GIGANTE EM ANTON          [actions]         │
+ *   │       ATUALIZADO 14:32 · 32 FUNCIONÁRIOS                 │
+ *   │       descrição opcional · 1-2 linhas                    │
+ *   ╞══════════════════════════════════════════════════════════╡  ← rule-thick 3px
+ *   │  [kpis grid opcional]                                    │
+ *
+ * Em mobile: actions empilha embaixo do título. Tipografia colapsa via clamp.
+ */
+export function EditorialPageHeader({
+  sectionNumber,
+  sectionLabel,
+  title,
+  description,
+  meta,
+  live = false,
+  actions,
+  kpis,
+  noRule = false,
+  className,
+}: EditorialPageHeaderProps) {
+  useDocumentTitle(title);
+  return (
+    <header className={cn('relative pb-2', className)}>
+      <div className="space-y-3">
+        {/* ── Eyebrow row (kicker MONO + live indicator opcional) ── */}
+        <div className="flex items-center gap-2.5">
+          {sectionNumber && (
+            <span
+              className="ed-display text-xl sm:text-2xl text-muted-foreground leading-none shrink-0"
+              aria-hidden="true"
+            >
+              {sectionNumber}
+            </span>
+          )}
+          {live && (
+            <span className="live-dot shrink-0" aria-hidden="true" />
+          )}
+          <span className="ed-eyebrow">{sectionLabel}</span>
+        </div>
+
+        {/* ── Title row (anton clamp + actions inline em desktop) ── */}
+        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 md:gap-6">
+          <div className="min-w-0 flex-1 space-y-2">
+            <h1 className="hero-editorial-title break-words">
+              {title}
+            </h1>
+            {meta && (
+              <p className="hero-editorial-meta">
+                {meta}
+              </p>
+            )}
+            {description && (
+              <p className="text-sm text-muted-foreground max-w-xl">{description}</p>
+            )}
+          </div>
+          {actions && (
+            <div className="flex items-center gap-2 flex-wrap shrink-0">
+              {actions}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Rule-thick separator (3px foreground) ── */}
+      {!noRule && (
+        <div
+          className="rule-thick mt-5"
+          aria-hidden="true"
+        />
+      )}
+
+      {/* ── KPI slot abaixo do rule-line ── */}
+      {kpis && (
+        <div className="mt-5">
+          {kpis}
+        </div>
+      )}
+    </header>
+  );
+}
+
+```
+
+## `src/components/layout/AppLayout.tsx`
+- Path: `src/components/layout/AppLayout.tsx`
+- Lines: 1011
+
+```tsx
+import React, { useState, useEffect, createContext, useContext } from 'react';
+import { SignOut as LogOut, List as Menu, X, CaretDown as ChevronDown, SidebarSimple as PanelLeftClose, SidebarSimple as PanelLeftOpen, Gear as Settings, ArrowLeft, Plus, ShoppingCart, Package, Star, House as Home } from '@phosphor-icons/react';
+import { menuGroups, systemItems, topItem, orderGroupsForRoles } from '@/data/navigation';
+import logoImg from '@/assets/logo-squad-shoes.jpg';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '@/hooks/useAuth';
+import { useMenuFavorites } from '@/hooks/useMenuFavorites';
+import { useAccessControl } from '@/hooks/useAccessControl';
+import { useCurrentProfile, useCurrentUserRoles, ROLES } from '@/hooks/useUserManagement';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+import NotificationBell from './NotificationBell';
+import { GlobalSearch } from './GlobalSearch';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger
+} from '@/components/ui/dropdown-menu';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { ModeToggle } from './ModeToggle';
+import PageHeader, { resolveMobileNavMeta } from './PageHeader';
+import { BottomNav } from './BottomNav';
+import { usePrefetchRoute } from '@/hooks/usePrefetchRoute';
+import { useNavOrder, reorderKeys, insertKey } from '@/hooks/useNavOrder';
+import { NavigationAuditWatcher } from './NavigationAuditWatcher';
+import { DiagnosticsFab } from '@/components/DiagnosticsFab';
+import { useArtisanalStrapPurchaseOrderApprovalCount } from '@/hooks/useArtisanalStraps';
+
+const QuickActionsFAB = () => {
+  const navigate = useNavigate();
+  const { canAccessRoute } = useAccessControl();
+  const canCreateSales = canAccessRoute('/sales');
+  const canManageOrders = canAccessRoute('/orders');
+  const canManageStock = canAccessRoute('/estoque');
+
+  // O FAB não pode oferecer um atalho que o RouteGuard bloquearia ao clicar.
+  if (!canCreateSales && !canManageOrders && !canManageStock) return null;
+
+  return (
+    <div className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] right-5 md:bottom-7 md:right-7 z-50">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            size="icon"
+            aria-label="Ações rápidas: novo pedido, OP ou entrada de estoque"
+            className="h-14 w-14 rounded-full shadow-elevated bg-primary hover:bg-primary/90 text-primary-foreground transition-all duration-200 hover:scale-105 hover:shadow-[0_8px_24px_-4px_hsl(var(--primary)/0.5)]"
+          >
+            <Plus className="h-6 w-6" aria-hidden="true" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" side="top" className="w-56 mb-3 shadow-elevated rounded-xl border-border/60">
+          {canCreateSales && (
+            <DropdownMenuItem onClick={() => navigate('/sales/new')} className="gap-3 cursor-pointer py-3 text-base">
+              <div className="h-7 w-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                <ShoppingCart className="h-3.5 w-3.5" />
+              </div>
+              <div>
+                <p className="font-medium">Pedido de Venda</p>
+                <p className="text-xs text-muted-foreground">Criar novo PV</p>
+              </div>
+            </DropdownMenuItem>
+          )}
+          {canManageOrders && (
+            <DropdownMenuItem onClick={() => navigate('/orders')} className="gap-3 cursor-pointer py-3 text-base">
+              <div className="h-7 w-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                <Plus className="h-3.5 w-3.5" />
+              </div>
+              <div>
+                <p className="font-medium">Ordem de Produção</p>
+                <p className="text-xs text-muted-foreground">Ver e criar OPs</p>
+              </div>
+            </DropdownMenuItem>
+          )}
+          {canManageStock && (
+            <DropdownMenuItem onClick={() => navigate('/estoque')} className="gap-3 cursor-pointer py-3 text-base">
+              <div className="h-7 w-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                <Package className="h-3.5 w-3.5" />
+              </div>
+              <div>
+                <p className="font-medium">Entrada de Estoque</p>
+                <p className="text-xs text-muted-foreground">Abrir estoque</p>
+              </div>
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+};
+
+const AppLayoutContext = createContext<boolean>(false);
+
+export default function AppLayout({ children, printMode = false }: { children: React.ReactNode; printMode?: boolean }) {
+  const { signOut } = useAuth();
+  const { isAdmin, canAccessRoute } = useAccessControl();
+  const approvalCountQuery = useArtisanalStrapPurchaseOrderApprovalCount(isAdmin);
+  const purchaseApprovalCount = approvalCountQuery.data || 0;
+  const { data: currentProfile } = useCurrentProfile();
+  const { data: currentRoles = [] } = useCurrentUserRoles();
+  // `useCurrentUserRoles` devolve objetos; a apresentação por perfil trabalha
+  // com nomes. Memo pra não recriar o array a cada render e invalidar os memos
+  // que dependem dele.
+  const roleNames = React.useMemo(() => currentRoles.map((r) => r.role), [currentRoles]);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  // O drawer mobile é um aside artesanal (não usa o primitive Sheet): prender o
+  // foco, fechar no Escape e DEVOLVER o foco ao gatilho são responsabilidade
+  // nossa. Antes só o foco inicial e o Escape estavam feitos (achado F17): o Tab
+  // escapava e ia navegar a página ATRÁS do drawer, e ao fechar o foco caía no
+  // <body> — quem usa teclado perdia o lugar.
+  const mobileDrawerRef = React.useRef<HTMLElement>(null);
+  const gatilhoMenuRef = React.useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!mobileOpen) return;
+
+    gatilhoMenuRef.current = document.activeElement as HTMLElement | null;
+    mobileDrawerRef.current?.querySelector<HTMLElement>('button, a, [tabindex]')?.focus();
+
+    const focaveis = () => Array.from(
+      mobileDrawerRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter((el) => el.offsetParent !== null);
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setMobileOpen(false); return; }
+      if (e.key !== 'Tab') return;
+      const els = focaveis();
+      if (els.length === 0) return;
+      const primeiro = els[0];
+      const ultimo = els[els.length - 1];
+      const atual = document.activeElement;
+      if (e.shiftKey && (atual === primeiro || !mobileDrawerRef.current?.contains(atual))) {
+        e.preventDefault(); ultimo.focus();
+      } else if (!e.shiftKey && atual === ultimo) {
+        e.preventDefault(); primeiro.focus();
+      }
+    };
+
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      gatilhoMenuRef.current?.focus?.();
+    };
+  }, [mobileOpen]);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem('nav-collapsed-groups');
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch { return new Set(); }
+  });
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try { return localStorage.getItem('sidebar-collapsed') === 'true'; } catch { return false; }
+  });
+  const isInsideLayout = useContext(AppLayoutContext);
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // Favoritos persistidos NO BANCO por usuário (useMenuFavorites). Antes
+  // viviam só no localStorage e sumiam ao limpar cache / trocar de navegador /
+  // mudar de domínio — esse era o motivo de "os favoritos sumiram". O hook
+  // mantém o localStorage como cache e migra o que existir nele pro banco.
+  const { favorites, toggleFavorite: toggleFav, reorderFavorites } = useMenuFavorites();
+  // DnD dos FAVORITOS — reordena dentro da lista de favoritos (persistência
+  // própria via useMenuFavorites, separada da ordem de grupos/itens do menu).
+  const [favDrag, setFavDrag] = React.useState<string | null>(null);
+  const [favDropTarget, setFavDropTarget] = React.useState<string | null>(null);
+  const handleFavDragStart = (path: string) => (e: React.DragEvent) => { setFavDrag(path); e.dataTransfer.effectAllowed = 'move'; };
+  const handleFavDragOver = (path: string) => (e: React.DragEvent) => { if (!favDrag || favDrag === path) return; e.preventDefault(); setFavDropTarget(path); };
+  const handleFavDrop = (path: string) => (e: React.DragEvent) => { e.preventDefault(); if (favDrag && favDrag !== path) reorderFavorites(favDrag, path); setFavDrag(null); setFavDropTarget(null); };
+  const clearFavDrag = () => { setFavDrag(null); setFavDropTarget(null); };
+  const favDropStyle = (path: string): React.CSSProperties | undefined =>
+    favDropTarget === path ? { boxShadow: 'inset 0 2px 0 0 hsl(var(--primary))' } : undefined;
+
+  const filteredFavorites = React.useMemo(
+    () => favorites.filter(item => canAccessRoute(item.path)),
+    [favorites, canAccessRoute]
+  );
+
+  const toggleFavorite = (e: React.MouseEvent, name: string, path: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    toggleFav(name, path);
+  };
+
+  // Favoritos: chave de colapso dedicada (não colide com label de grupo real,
+  // reaproveita o mesmo mecanismo de `collapsedGroups`/`nav-collapsed-groups`)
+  // e helper pra recuperar o ícone original do item a partir do path.
+  const FAVORITES_KEY = '__favoritos__';
+  const iconForPath = (path: string) => {
+    for (const group of menuGroups) {
+      const found = group.items.find(i => i.path === path);
+      if (found) return found.icon;
+    }
+    return Star;
+  };
+
+  // Round-7 (30/07/2026): a ORDEM das áreas passou a ser do perfil. A ordem
+  // canônica segue o fluxo da fábrica e serve pra quem enxerga tudo; pra quem
+  // enxerga uma fatia, a área do próprio trabalho vem primeiro — o operador não
+  // deveria rolar até achar Produção. QUAIS itens ele vê continua vindo só do
+  // controle de acesso; aqui é apresentação.
+  const filteredMenuGroups = React.useMemo(() =>
+    orderGroupsForRoles(
+      menuGroups
+        .map(group => ({ ...group, items: group.items.filter(item => canAccessRoute(item.path)) }))
+        .filter(group => group.items.length > 0),
+      roleNames,
+    ),
+    [canAccessRoute, roleNames]
+  );
+
+  // Ordem customizada (arrastar-e-soltar) — aplica a preferência salva sobre
+  // os grupos já filtrados por acesso. Usado tanto no modo expandido quanto
+  // no colapsado pra a ordem ficar consistente.
+  const { applyNavOrder, setGroupOrder, setItemOrder, setItemGroup, resetOrder, hasCustomOrder } = useNavOrder();
+  const orderedGroups = React.useMemo(
+    () => applyNavOrder(filteredMenuGroups),
+    [applyNavOrder, filteredMenuGroups]
+  );
+
+  // Drag & drop state: `dragInfo` (ref, não re-renderiza no início do arraste)
+  // guarda o que está sendo arrastado; `dropTarget` (state) dirige o indicador
+  // visual de onde vai cair. `group`/`item` = linha antes/depois do alvo;
+  // `group-append` = item vai cair DENTRO do grupo (anexa no fim) — destaca o
+  // bloco inteiro, útil pra grupo recolhido ou área vazia.
+  const dragInfo = React.useRef<{ kind: 'group' | 'item'; group: string; path?: string } | null>(null);
+  const [dropTarget, setDropTarget] = React.useState<{ kind: 'group' | 'item' | 'group-append'; key: string; pos: 'before' | 'after' } | null>(null);
+
+  const filteredSystemItems = isAdmin ? systemItems : [];
+  const { prefetch, cancel: cancelPrefetch } = usePrefetchRoute();
+  const isDashboard = location.pathname === '/' || location.pathname === '/dashboard';
+  const mobileNavMeta = resolveMobileNavMeta(location.pathname, location.search);
+
+  // Fecha o drawer ao navegar — senão a pessoa troca de tela pelo BottomNav e
+  // o menu lateral continua aberto por cima.
+  useEffect(() => { setMobileOpen(false); }, [location.pathname]);
+
+  if (isInsideLayout) return <>{children}</>;
+
+  const toggleGroup = (label: string) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label); else next.add(label);
+      try { localStorage.setItem('nav-collapsed-groups', JSON.stringify([...next])); } catch {}
+      return next;
+    });
+  };
+
+  // Precise match: exact path OR path + '/' prefix to avoid false positives
+  // e.g. /estoque matches /estoque and /estoque/historico but NOT /estoque-ajuste
+  const isGroupActive = (group: typeof menuGroups[0]) =>
+    group.items.some(item =>
+      location.pathname === item.path ||
+      location.pathname.startsWith(item.path + '/')
+    );
+
+  const toggleSidebar = () => {
+    setSidebarCollapsed(prev => {
+      const next = !prev;
+      try { localStorage.setItem('sidebar-collapsed', String(next)); } catch {}
+      return next;
+    });
+  };
+
+  // ── Drag & drop: reordenar grupos e itens (desktop, mouse) ───────────────
+  // API nativa de DnD do navegador (sem dependência). Suporta: reordenar grupos
+  // entre si; reordenar itens dentro do grupo; e MOVER item de um grupo pra
+  // outro (soltando preciso sobre um item, ou no cabeçalho/área do grupo pra
+  // anexar no fim). Ordem + associação de grupo persistidas via useNavOrder.
+  const clearDrag = () => { dragInfo.current = null; setDropTarget(null); };
+
+  // antes/depois conforme o mouse cair na metade de cima ou de baixo do alvo
+  const dropPos = (e: React.DragEvent): 'before' | 'after' => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    return e.clientY - rect.top > rect.height / 2 ? 'after' : 'before';
+  };
+
+  // grupo "natural" do item na definição estática (pra limpar o override
+  // quando o item volta pra casa)
+  const originalGroupForPath = (path: string): string | null => {
+    for (const g of menuGroups) if (g.items.some(i => i.path === path)) return g.label;
+    return null;
+  };
+
+  // Move/reordena item caindo PRECISO antes/depois de `destPath`. Mesmo grupo =
+  // só reordena; grupos diferentes = muda associação + ordena no destino +
+  // limpa a entrada órfã na origem.
+  const moveItemPrecise = (srcGroup: string, srcPath: string, destGroup: string, destPath: string, pos: 'before' | 'after') => {
+    const destObj = orderedGroups.find(g => g.label === destGroup);
+    if (!destObj) return;
+    setItemOrder(destGroup, insertKey(destObj.items.map(i => i.path), srcPath, destPath, pos));
+    if (srcGroup === destGroup) return;
+    setItemGroup(srcPath, originalGroupForPath(srcPath) === destGroup ? null : destGroup);
+    const srcObj = orderedGroups.find(g => g.label === srcGroup);
+    if (srcObj) setItemOrder(srcGroup, srcObj.items.filter(i => i.path !== srcPath).map(i => i.path));
+  };
+
+  // Anexa o item no FIM de um grupo (drop no cabeçalho / área vazia / grupo
+  // recolhido). Mesmo grupo = manda pro fim; grupo diferente = muda associação.
+  const moveItemToGroupEnd = (srcGroup: string, srcPath: string, destGroup: string) => {
+    const destObj = orderedGroups.find(g => g.label === destGroup);
+    const destPaths = destObj ? destObj.items.map(i => i.path) : [];
+    setItemOrder(destGroup, [...destPaths.filter(p => p !== srcPath), srcPath]);
+    if (srcGroup === destGroup) return;
+    setItemGroup(srcPath, originalGroupForPath(srcPath) === destGroup ? null : destGroup);
+    const srcObj = orderedGroups.find(g => g.label === srcGroup);
+    if (srcObj) setItemOrder(srcGroup, srcObj.items.filter(i => i.path !== srcPath).map(i => i.path));
+  };
+
+  const handleGroupDragStart = (label: string) => (e: React.DragEvent) => {
+    dragInfo.current = { kind: 'group', group: label };
+    e.dataTransfer.effectAllowed = 'move';
+    try { e.dataTransfer.setData('text/plain', label); } catch { /* firefox precisa de algum dado */ }
+  };
+
+  // Container do grupo é zona de drop pra: arraste de GRUPO (reordenar) OU
+  // arraste de ITEM solto fora de um item específico (anexar no grupo). Itens
+  // dão stopPropagation no hover preciso, então não chegam aqui nesse caso.
+  const handleGroupDragOver = (label: string) => (e: React.DragEvent) => {
+    const drag = dragInfo.current;
+    if (drag?.kind === 'group') {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      setDropTarget({ kind: 'group', key: label, pos: dropPos(e) });
+    } else if (drag?.kind === 'item') {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      setDropTarget({ kind: 'group-append', key: label, pos: 'after' });
+    }
+  };
+
+  const handleGroupDrop = (label: string) => (e: React.DragEvent) => {
+    const drag = dragInfo.current;
+    if (drag?.kind === 'group') {
+      e.preventDefault();
+      setGroupOrder(reorderKeys(orderedGroups.map(g => g.label), drag.group, label, dropPos(e)));
+    } else if (drag?.kind === 'item' && drag.path) {
+      e.preventDefault();
+      moveItemToGroupEnd(drag.group, drag.path, label);
+    }
+    clearDrag();
+  };
+
+  const handleItemDragStart = (group: string, path: string) => (e: React.DragEvent) => {
+    dragInfo.current = { kind: 'item', group, path };
+    e.dataTransfer.effectAllowed = 'move';
+    try { e.dataTransfer.setData('text/plain', path); } catch { /* idem */ }
+  };
+
+  const handleItemDragOver = (_group: string, path: string) => (e: React.DragEvent) => {
+    // qualquer grupo (move entre grupos). stopPropagation pra o drop preciso no
+    // item ter prioridade sobre o "anexar no grupo" do container.
+    if (dragInfo.current?.kind !== 'item') return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
+    setDropTarget({ kind: 'item', key: path, pos: dropPos(e) });
+  };
+
+  const handleItemDrop = (group: string, path: string) => (e: React.DragEvent) => {
+    const drag = dragInfo.current;
+    if (drag?.kind !== 'item' || !drag.path) return;
+    e.preventDefault();
+    e.stopPropagation();
+    moveItemPrecise(drag.group, drag.path, group, path, dropPos(e));
+    clearDrag();
+  };
+
+  // Indicador visual (linha/anel vermelho inset, sem deslocar layout)
+  const groupDropStyle = (label: string): React.CSSProperties | undefined => {
+    if (dropTarget?.key !== label) return undefined;
+    if (dropTarget.kind === 'group') {
+      return { boxShadow: dropTarget.pos === 'before' ? 'inset 0 3px 0 0 hsl(var(--primary))' : 'inset 0 -3px 0 0 hsl(var(--primary))', borderRadius: '2px' };
+    }
+    if (dropTarget.kind === 'group-append') {
+      return { boxShadow: 'inset 0 0 0 2px hsl(var(--primary))', borderRadius: '4px' };
+    }
+    return undefined;
+  };
+  const itemDropStyle = (path: string): React.CSSProperties | undefined =>
+    dropTarget?.kind === 'item' && dropTarget.key === path
+      ? { boxShadow: dropTarget.pos === 'before' ? 'inset 0 2px 0 0 hsl(var(--primary))' : 'inset 0 -2px 0 0 hsl(var(--primary))' }
+      : undefined;
+
+  // ── Nav item active class ────────────────────────────────
+  // Industrial Editorial Pro: active state ganha borda esquerda 2px vermelho
+  // squad + texto foreground. Rounded-sm em vez de lg. Sem bg colorido — borda
+  // diz tudo. Hover sutil em foreground/5.
+  // 22/05/2026: fonte reduzida text-base → text-[13px] + py mais apertado
+  // (1.5 em vez de 2) pra densidade maior no menu — pedido user.
+  // Industrial Editorial Pro 2.0: border-left ativo bump 2px → 3px pra
+  // statement editorial mais decisivo. Padding interno compensado pra
+  // manter alinhamento visual com itens não-ativos.
+  /**
+   * ⚠ A estrela de favorito NÃO pode viver dentro do NavLink: `<button>` dentro
+   * de `<a>` é HTML inválido e cria uma parada de teclado ambígua — ativar a
+   * estrela podia disparar a navegação junto (achado F16 da auditoria de IA).
+   * Ela é irmã, posicionada em cima; por isso o `pr-9` reserva o espaço dela.
+   */
+  const navItemClass = (isActive: boolean) => cn(
+    "group flex items-center justify-between rounded-sm text-[13px] font-medium transition-all duration-150 relative pr-9",
+    isActive
+      ? "border-l-[3px] border-primary pl-[10px] pr-3 py-1.5 text-sidebar-foreground font-semibold bg-sidebar-foreground/[0.04]"
+      : "border-l-2 border-transparent px-3 py-1.5 text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-foreground/[0.04]"
+  );
+
+  const collapsedItemClass = (isActive: boolean) => cn(
+    "flex items-center justify-center h-9 w-9 rounded-sm mx-auto mb-0.5 transition-all duration-100",
+    isActive
+      ? "border-l-[3px] border-primary text-sidebar-foreground bg-sidebar-foreground/[0.04]"
+      : "border-l-2 border-transparent text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-foreground/[0.04]"
+  );
+
+  // ── Sidebar content ──────────────────────────────────────
+  const sidebarContent = (mobile: boolean) => {
+    const isCollapsed = !mobile && sidebarCollapsed;
+
+    return (
+      <div className={cn("flex flex-col h-full bg-sidebar text-sidebar-foreground overflow-hidden glass-sidebar", mobile && "safe-top")}>
+
+        {/* ── Brand header ── */}
+        <div className={cn(
+          "border-b border-sidebar-border shrink-0",
+          isCollapsed ? "px-2 py-2.5 flex flex-col items-center gap-2" : "px-4 py-3"
+        )}>
+          {isCollapsed ? (
+            <>
+              <div className="h-8 w-8 rounded-lg overflow-hidden ring-1 ring-sidebar-border shadow-sm bg-card shrink-0">
+                <img src={logoImg} alt="Squad Shoes" className="h-full w-full object-contain" />
+              </div>
+              <GlobalSearch compact />
+              <ModeToggle className="h-7 w-7 text-sidebar-muted hover:text-sidebar-foreground hover:bg-sidebar-accent" />
+               <NotificationBell key="desktop-notif" className="h-7 w-7" />
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-2.5">
+                <div className="h-8 w-8 rounded-sm overflow-hidden ring-1 ring-sidebar-border shrink-0 bg-card">
+                  <img src={logoImg} alt="Squad Shoes" className="h-full w-full object-contain" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  {/* Industrial Editorial Pro: nome em Anton uppercase com
+                      ponto separador vermelho squad (espelha o /design-preview). */}
+                  <p className="ed-display text-xl text-sidebar-foreground leading-none">
+                    Squad<span className="text-primary">·</span>Shoes
+                  </p>
+                  <p className="ed-eyebrow text-sidebar-muted mt-1">Gestão Industrial</p>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <ModeToggle className="h-7 w-7 text-sidebar-muted hover:text-sidebar-foreground hover:bg-sidebar-accent" />
+               <NotificationBell key="sidebar-mobile-notif" className="h-7 w-7" />
+                  {mobile && (
+                    <Button variant="ghost" size="icon" aria-label="Fechar menu lateral" className="shrink-0 md:hidden h-7 w-7 text-sidebar-muted" onClick={() => setMobileOpen(false)}>
+                      <X className="h-4 w-4" aria-hidden="true" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+              <div className="mt-2.5">
+                <GlobalSearch />
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* ── Navigation ── */}
+        <nav className="flex-1 overflow-y-auto py-2 scrollbar-thin">
+
+          {/* Dashboard — item fixo no topo, sem grupo */}
+          {isCollapsed ? (
+            <div className="px-2 pt-1 pb-2 border-b border-sidebar-border/30 mb-1">
+              <Tooltip delayDuration={0}>
+                <TooltipTrigger asChild>
+                  <NavLink
+                    to={topItem.path}
+                    className={({ isActive }) => collapsedItemClass(isActive)}
+                  >
+                    <topItem.icon className="h-4 w-4 shrink-0" />
+                  </NavLink>
+                </TooltipTrigger>
+                <TooltipContent side="right" sideOffset={8} className="text-xs font-medium">
+                  {topItem.label}
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          ) : (
+            <div className="px-2 pb-2 border-b border-sidebar-border/30 mb-1">
+              <NavLink
+                to={topItem.path}
+                className={({ isActive }) => navItemClass(isActive)}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <topItem.icon className="h-4 w-4 shrink-0" />
+                  <span className="truncate">{topItem.label}</span>
+                </div>
+              </NavLink>
+            </div>
+          )}
+
+          {/* Favoritos — grupo fixo no topo, acima dos demais. Mesmo
+              tratamento visual de grupo recolhível (cabeçalho + chevron). */}
+          {!isCollapsed && filteredFavorites.length > 0 && (() => {
+            const favActive = filteredFavorites.some(f =>
+              location.pathname === f.path || location.pathname.startsWith(f.path + '/')
+            );
+            const favCollapsed = collapsedGroups.has(FAVORITES_KEY) && !favActive;
+            return (
+              <div className="px-2 pb-1 mb-1 border-b border-sidebar-border/30">
+                <button
+                  onClick={() => toggleGroup(FAVORITES_KEY)}
+                  className={cn(
+                    "w-full flex items-center justify-between px-3 py-1.5 ed-eyebrow transition-colors",
+                    favActive ? "text-primary" : "text-sidebar-muted hover:text-sidebar-foreground"
+                  )}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <Star className="h-3 w-3 shrink-0 fill-primary text-primary" />
+                    <span>Favoritos</span>
+                  </div>
+                  <ChevronDown className={cn("h-3 w-3 transition-transform duration-200", favCollapsed && "-rotate-90")} />
+                </button>
+                {!favCollapsed && (
+                  <div className="mt-0.5 space-y-0.5">
+                    {filteredFavorites.map((item) => {
+                      const Icon = iconForPath(item.path);
+                      return (
+                        <div key={item.path} className="relative">
+                        <NavLink
+                          to={item.path}
+                          draggable={!mobile}
+                          onDragStart={!mobile ? handleFavDragStart(item.path) : undefined}
+                          onDragOver={!mobile ? handleFavDragOver(item.path) : undefined}
+                          onDrop={!mobile ? handleFavDrop(item.path) : undefined}
+                          onDragEnd={!mobile ? clearFavDrag : undefined}
+                          onClick={mobile ? () => setMobileOpen(false) : undefined}
+                          onMouseEnter={() => prefetch(item.path)}
+                          onMouseLeave={cancelPrefetch}
+                          onFocus={() => prefetch(item.path)}
+                          style={favDropStyle(item.path)}
+                          className={({ isActive }) => cn(navItemClass(isActive), !mobile && "cursor-grab active:cursor-grabbing select-none")}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <Icon className="h-4 w-4 shrink-0" />
+                            <span className="truncate">{item.name}</span>
+                          </div>
+                        </NavLink>
+                        <button
+                          onClick={(e) => toggleFavorite(e, item.name, item.path)}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-sm opacity-100 text-primary hover:text-primary/60 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          aria-label={`Remover ${item.name} dos favoritos`}
+                        >
+                          <Star className="h-3 w-3 fill-current" />
+                        </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* Menu groups */}
+          {isCollapsed ? (
+            <div className="px-2 space-y-3">
+              {/* Favoritos colapsados */}
+              {filteredFavorites.length > 0 && (
+                <div className="pb-3 border-b border-sidebar-border/40">
+                  {filteredFavorites.map((item) => {
+                    const Icon = iconForPath(item.path);
+                    return (
+                      <Tooltip key={item.path} delayDuration={0}>
+                        <TooltipTrigger asChild>
+                          <NavLink to={item.path} className={({ isActive }) => cn(collapsedItemClass(isActive), "relative")}>
+                            <Icon className="h-4 w-4 shrink-0" />
+                            <div className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-primary" />
+                          </NavLink>
+                        </TooltipTrigger>
+                        <TooltipContent side="right" sideOffset={8} className="text-xs font-medium flex items-center gap-2">
+                          <span>{item.name}</span>
+                          <Star className="h-3 w-3 fill-primary text-primary" />
+                        </TooltipContent>
+                      </Tooltip>
+                    );
+                  })}
+                </div>
+              )}
+              {/* Grupos colapsados */}
+              {orderedGroups.map((group, gi) => {
+                // Mesma regra do modo expandido: não repetir itens que já estão
+                // na faixa de Favoritos acima.
+                const groupItems = group.items.filter(
+                  (item) => !filteredFavorites.some((f) => f.path === item.path),
+                );
+                if (groupItems.length === 0) return null;
+                return (
+                <div key={group.label} className={cn(gi > 0 && "pt-2 border-t border-sidebar-border/40")}>
+                  {groupItems.map((item) => {
+                    const isFavorite = favorites.some(f => f.path === item.path);
+                    return (
+                      <Tooltip key={item.path} delayDuration={0}>
+                        <TooltipTrigger asChild>
+                          <NavLink to={item.path} className={({ isActive }) => collapsedItemClass(isActive)}>
+                            <item.icon className="h-4 w-4 shrink-0" />
+                          </NavLink>
+                        </TooltipTrigger>
+                        <TooltipContent side="right" sideOffset={8} className="text-xs font-medium flex items-center gap-2">
+                          <span>{item.label}</span>
+                          {isFavorite && <Star className="h-3 w-3 fill-primary text-primary" />}
+                        </TooltipContent>
+                      </Tooltip>
+                    );
+                  })}
+                </div>
+                );
+              })}
+              {/* Sistema colapsado (admin) */}
+              {filteredSystemItems.length > 0 && (
+                <div className="pt-2 border-t border-sidebar-border/40">
+                  {filteredSystemItems.map((item) => (
+                    <Tooltip key={item.path} delayDuration={0}>
+                      <TooltipTrigger asChild>
+                        <NavLink to={item.path} className={({ isActive }) => cn(collapsedItemClass(isActive), 'relative')}>
+                          <item.icon className="h-4 w-4 shrink-0" />
+                          {item.path === '/admin/aprovacao-ordens-compra' && purchaseApprovalCount > 0 && (
+                            <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground">
+                              {purchaseApprovalCount > 99 ? '99+' : purchaseApprovalCount}
+                            </span>
+                          )}
+                        </NavLink>
+                      </TooltipTrigger>
+                      <TooltipContent side="right" sideOffset={8} className="text-xs font-medium">
+                        {item.label}{item.path === '/admin/aprovacao-ordens-compra' && purchaseApprovalCount > 0 ? ` · ${purchaseApprovalCount} pendente(s)` : ''}
+                      </TooltipContent>
+                    </Tooltip>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="px-2 space-y-0.5">
+              {/* Perfil sem nenhuma área liberada: antes a sidebar simplesmente
+                  ficava vazia, sem dizer por quê — a pessoa achava que o sistema
+                  tinha quebrado. Agora explica e diz o que fazer. */}
+              {orderedGroups.length === 0 && (
+                <div className="mx-1 mt-2 rounded-md border border-sidebar-border/60 bg-sidebar-accent/30 p-3">
+                  <p className="text-xs font-semibold text-sidebar-foreground">Nenhuma área liberada</p>
+                  <p className="mt-1 text-[11px] leading-relaxed text-sidebar-foreground/70">
+                    Sua conta ainda não tem permissão para nenhuma área do sistema.
+                    Peça a um administrador para liberar os acessos em Configurações.
+                  </p>
+                </div>
+              )}
+              {orderedGroups.map((group) => {
+                const active = isGroupActive(group);
+                // Respeita o recolhimento manual do grupo MESMO quando a rota
+                // atual está dentro dele. Antes tinha `&& !active`, que forçava
+                // o grupo a abrir ao navegar (ex.: clicar num favorito abria o
+                // setor) — comportamento que o usuário não quer.
+                const isGroupCollapsed = collapsedGroups.has(group.label);
+                // Oculta itens já fixados nos Favoritos pra não repetir o item
+                // (ele já aparece na seção "Favoritos" no topo). Grupo que ficar
+                // sem itens visíveis some inteiro.
+                const visibleItems = group.items.filter(
+                  (item) => !filteredFavorites.some((f) => f.path === item.path),
+                );
+                if (visibleItems.length === 0) return null;
+                return (
+                  <div
+                    key={group.label}
+                    onDragOver={!mobile ? handleGroupDragOver(group.label) : undefined}
+                    onDrop={!mobile ? handleGroupDrop(group.label) : undefined}
+                    style={groupDropStyle(group.label)}
+                  >
+                    <button
+                      draggable={!mobile}
+                      onDragStart={!mobile ? handleGroupDragStart(group.label) : undefined}
+                      onDragEnd={!mobile ? clearDrag : undefined}
+                      onClick={() => toggleGroup(group.label)}
+                      aria-expanded={!isGroupCollapsed}
+                      aria-controls={`nav-group-${group.label.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-')}`}
+                      className={cn(
+                        // Industrial Editorial Pro: group label vira eyebrow
+                        // (Fira Code 10px tracking widest uppercase).
+                        "w-full flex items-center justify-between px-3 py-1.5 ed-eyebrow transition-colors mt-2",
+                        active ? "text-primary" : "text-sidebar-muted hover:text-sidebar-foreground",
+                        !mobile && "cursor-grab active:cursor-grabbing select-none"
+                      )}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <group.icon className="h-3 w-3 shrink-0 opacity-70" />
+                        <span>{group.label}</span>
+                      </div>
+                      <ChevronDown className={cn("h-3 w-3 transition-transform duration-200", isGroupCollapsed && "-rotate-90")} />
+                    </button>
+                    {!isGroupCollapsed && (
+                      <div
+                        id={`nav-group-${group.label.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-')}`}
+                        className="mt-0.5 space-y-0.5 animate-slide-down"
+                      >
+                        {visibleItems.map((item) => {
+                          const isFavorite = favorites.some(f => f.path === item.path);
+                          const isSubItem = !!(item as any).parent;
+                          return (
+                            <div key={item.path} className="relative">
+                            <NavLink
+                              to={item.path}
+                              draggable={!mobile}
+                              onDragStart={!mobile ? handleItemDragStart(group.label, item.path) : undefined}
+                              onDragOver={!mobile ? handleItemDragOver(group.label, item.path) : undefined}
+                              onDrop={!mobile ? handleItemDrop(group.label, item.path) : undefined}
+                              onDragEnd={!mobile ? clearDrag : undefined}
+                              onClick={mobile ? () => setMobileOpen(false) : undefined}
+                              onMouseEnter={() => prefetch(item.path)}
+                              onMouseLeave={cancelPrefetch}
+                              onFocus={() => prefetch(item.path)}
+                              style={itemDropStyle(item.path)}
+                              className={({ isActive }) => cn(navItemClass(isActive), isSubItem && "ml-5 border-l border-sidebar-border/40 pl-3", !mobile && "cursor-grab active:cursor-grabbing select-none")}
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <item.icon className={cn("shrink-0", isSubItem ? "h-3.5 w-3.5" : "h-4 w-4")} />
+                                <span className={cn("truncate", isSubItem && "text-sm")}>{item.label}</span>
+                              </div>
+                            </NavLink>
+                            <button
+                              onClick={(e) => toggleFavorite(e, item.label, item.path)}
+                              className={cn(
+                                // Estrela de adicionar/remover favorito. Não-favorito
+                                // ficava em opacity-40 (quase invisível, "fácil de não
+                                // achar"): subido pra opacity-70 + cor com tom de primary
+                                // pra deixar claro que é clicável. Favorito = cheio/primary.
+                                "absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-sm transition-all duration-200",
+                                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                isFavorite
+                                  ? "opacity-100 text-primary"
+                                  : "opacity-70 hover:opacity-100 text-sidebar-muted hover:text-primary"
+                              )}
+                              aria-label={isFavorite ? `Remover ${item.label} dos favoritos` : `Adicionar ${item.label} aos favoritos`}
+                            >
+                              <Star className={cn("h-3.5 w-3.5", isFavorite && "fill-current")} />
+                            </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* Restaurar ordem padrão — aparece se houver ordem customizada OU
+                  grupos recolhidos. Além de zerar a ordem/agrupamento salvos
+                  (useNavOrder), EXPANDE todos os grupos: o estado de recolhidos
+                  (`nav-collapsed-groups`) vive aqui no AppLayout, fora do
+                  useNavOrder, então o reset precisa limpá-lo explicitamente —
+                  senão um item movido pra grupo recolhido continua "sumido"
+                  mesmo após restaurar. (Pedido user 2026-06-16.) */}
+              {!mobile && (hasCustomOrder || collapsedGroups.size > 0) && (
+                <button
+                  onClick={() => {
+                    resetOrder();
+                    setCollapsedGroups(new Set());
+                    try { localStorage.removeItem('nav-collapsed-groups'); } catch { /* ignora */ }
+                  }}
+                  className="w-full text-left px-3 py-1.5 mt-1 ed-eyebrow text-sidebar-muted hover:text-sidebar-foreground transition-colors"
+                >
+                  ↺ Restaurar ordem padrão
+                </button>
+              )}
+
+              {/* Seção Sistema — visível para admins no final da sidebar */}
+              {filteredSystemItems.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-sidebar-border/40">
+                  <p className="px-3 py-1 ed-eyebrow text-sidebar-muted">Sistema</p>
+                  {filteredSystemItems.map((item) => (
+                    <NavLink
+                      key={item.path}
+                      to={item.path}
+                      onMouseEnter={() => prefetch(item.path)}
+                      onMouseLeave={cancelPrefetch}
+                      onFocus={() => prefetch(item.path)}
+                      className={({ isActive }) => navItemClass(isActive)}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <item.icon className="h-4 w-4 shrink-0" />
+                        <span className="truncate">{item.label}</span>
+                        {item.path === '/admin/aprovacao-ordens-compra' && purchaseApprovalCount > 0 && (
+                          <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground">
+                            {purchaseApprovalCount > 99 ? '99+' : purchaseApprovalCount}
+                          </span>
+                        )}
+                      </div>
+                    </NavLink>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </nav>
+
+        {/* ── Footer ── */}
+        <div className={cn(
+          "border-t border-sidebar-border shrink-0",
+          isCollapsed ? "px-2 py-3 flex flex-col items-center gap-1.5" : "px-3 py-2.5"
+        )}>
+          {isCollapsed ? (
+            <>
+              <Tooltip delayDuration={0}>
+                <TooltipTrigger asChild>
+                  <button onClick={toggleSidebar} className="flex items-center justify-center h-8 w-8 rounded-lg text-sidebar-muted hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors">
+                    <PanelLeftOpen className="h-4 w-4" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right">Expandir menu</TooltipContent>
+              </Tooltip>
+              <Tooltip delayDuration={0}>
+                <TooltipTrigger asChild>
+                  <button onClick={signOut} className="flex items-center justify-center h-8 w-8 rounded-lg text-sidebar-foreground/60 hover:text-destructive hover:bg-destructive/10 transition-all duration-150">
+                    <LogOut className="h-4 w-4" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right">Sair</TooltipContent>
+              </Tooltip>
+            </>
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              {/* User row */}
+              <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg bg-sidebar-accent/40">
+                <div className="h-7 w-7 rounded-full bg-sidebar-primary/20 ring-1 ring-sidebar-primary/30 flex items-center justify-center shrink-0 text-sidebar-primary font-bold text-xs">
+                  {currentProfile?.full_name
+                    ? currentProfile.full_name.split(' ').filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('')
+                    : '?'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-sidebar-foreground/90 truncate leading-tight">
+                    {currentProfile?.full_name || 'Usuário'}
+                  </p>
+                  <p className="text-xs text-sidebar-muted truncate leading-tight">
+                    {currentRoles.length > 0
+                      ? ROLES.find(r => r.key === currentRoles[0].role)?.label || currentRoles[0].role
+                      : (import.meta.env.VITE_APP_VERSION?.split('-')[0] || 'ERP Industrial')}
+                  </p>
+                </div>
+              </div>
+              {/* Action row */}
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={signOut}
+                  className="flex-1 flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-sm font-medium text-sidebar-foreground/60 hover:text-destructive hover:bg-destructive/10 transition-all duration-150"
+                >
+                  <LogOut className="h-3.5 w-3.5 shrink-0" />
+                  <span>Sair</span>
+                </button>
+                <Tooltip delayDuration={0}>
+                  <TooltipTrigger asChild>
+                    <button onClick={toggleSidebar} className="flex items-center justify-center h-7 w-7 rounded-lg text-sidebar-muted hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors shrink-0">
+                      <PanelLeftClose className="h-3.5 w-3.5" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">Recolher menu</TooltipContent>
+                </Tooltip>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // Mobile top bar — sistema agora via Settings icon (mantém acesso móvel)
+  const mobileSystemMenu = filteredSystemItems.length > 0 ? (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" aria-label="Menu do sistema" className="h-9 w-9 text-foreground/60 hover:text-foreground">
+          <Settings className="h-5 w-5" aria-hidden="true" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-48">
+        {filteredSystemItems.map((item) => (
+          <DropdownMenuItem key={item.path} onClick={() => navigate(item.path)} className="gap-2 cursor-pointer">
+            <item.icon className="h-4 w-4" />
+            <span>{item.label}</span>
+            {item.path === '/admin/aprovacao-ordens-compra' && purchaseApprovalCount > 0 && (
+              <span className="ml-auto rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-bold text-primary-foreground">
+                {purchaseApprovalCount > 99 ? '99+' : purchaseApprovalCount}
+              </span>
+            )}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  ) : null;
+
+  return (
+    <AppLayoutContext.Provider value={true}>
+      <TooltipProvider delayDuration={300}>
+        <NavigationAuditWatcher />
+        {/* Skip-link — fica oculto até receber foco por Tab. Permite usuários
+            de teclado/leitor pular a sidebar e ir direto ao conteúdo. */}
+        <a
+          href="#conteudo-principal"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[100] focus:bg-foreground focus:text-background focus:px-4 focus:py-2 focus:rounded-md focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+        >
+          Pular para o conteúdo
+        </a>
+        <div className={cn('min-h-screen flex bg-background overflow-x-hidden', printMode && 'print:bg-background')}>
+          {mobileOpen && (
+            <div
+              className={cn('fixed inset-0 bg-black/50 backdrop-blur-sm z-40 md:hidden transition-opacity', printMode && 'print:hidden')}
+              onClick={() => setMobileOpen(false)}
+            />
+          )}
+
+          {/* Mobile sidebar */}
+          <aside
+            ref={mobileDrawerRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Menu de navegação"
+            aria-hidden={!mobileOpen}
+            className={cn(
+            'fixed inset-y-0 left-0 z-50 w-[260px] flex flex-col transform transition-transform duration-200 ease-out md:hidden',
+            mobileOpen ? 'translate-x-0' : '-translate-x-full',
+            printMode && 'print:hidden'
+          )}
+            style={{ boxShadow: mobileOpen ? '4px 0 30px -4px rgba(0,0,0,0.5)' : 'none' }}
+          >
+            {sidebarContent(true)}
+          </aside>
+
+          {/* Desktop sidebar — dimensões do handoff: 232px expandida / 68px colapsada */}
+          <aside className={cn(
+            'hidden md:flex shrink-0 border-r border-sidebar-border flex-col sticky top-0 h-screen transition-all duration-200 ease-in-out overflow-hidden',
+            sidebarCollapsed ? 'w-[68px]' : 'w-[232px]',
+            printMode && 'print:hidden'
+          )}>
+            {sidebarContent(false)}
+          </aside>
+
+          <div className="flex-1 min-w-0 flex flex-col min-h-screen relative overflow-x-hidden">
+            {/* Mobile top bar */}
+            <header className={cn(
+              'md:hidden sticky top-0 z-30 border-b border-border/60 h-14 flex items-center px-4 gap-2 bg-background/95 backdrop-blur-sm safe-top box-content',
+              printMode && 'print:hidden'
+            )}>
+              <Button variant="ghost" size="icon" aria-label="Abrir menu lateral" className="h-9 w-9 shrink-0" onClick={() => setMobileOpen(true)}>
+                <Menu className="h-5 w-5" aria-hidden="true" />
+              </Button>
+              {!isDashboard && (
+                <Button variant="ghost" size="icon" aria-label="Voltar para a tela anterior" className="h-9 w-9 shrink-0 -ml-1" onClick={() => navigate(-1)}>
+                  <ArrowLeft className="h-5 w-5" aria-hidden="true" />
+                </Button>
+              )}
+              <div className="h-8 w-8 rounded-lg overflow-hidden ring-1 ring-border bg-card shrink-0 shadow-sm">
+                <img src={logoImg} alt="Squad Shoes" className="h-full w-full object-contain" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-base font-extrabold text-foreground leading-tight tracking-tight truncate">
+                  {isDashboard ? 'Squad Shoes' : mobileNavMeta.label}
+                </p>
+                <p className="text-xs text-muted-foreground leading-tight mt-0.5 font-semibold tracking-[0.05em] uppercase truncate">
+                  {isDashboard ? 'Gestão Industrial' : (mobileNavMeta.group || 'Squad Shoes')}
+                </p>
+              </div>
+              <div className="flex items-center gap-0.5">
+                <GlobalSearch compact />
+                <ModeToggle />
+                 <NotificationBell key="header-mobile-notif" className="text-foreground/60 hover:text-foreground hover:bg-accent" />
+                 {mobileSystemMenu}
+              </div>
+            </header>
+
+            {/* Desktop breadcrumb bar */}
+            {!isDashboard && (
+              <div className={cn(
+                "hidden md:flex border-b border-border/40 bg-background/96 backdrop-blur-md sticky top-0 z-20",
+                "shadow-[0_1px_0_0_hsl(var(--border)/0.4)]",
+                printMode && 'print:hidden'
+              )}>
+                <div className="w-full h-11 flex items-center px-4 md:px-6 lg:px-8 xl:px-10 gap-3">
+                  <PageHeader compact />
+                </div>
+              </div>
+            )}
+
+            <main id="conteudo-principal" tabIndex={-1} className={cn(
+              // Layout fluido: usa 100% da largura disponível, sem cap em 1600px.
+              // Antes em telas grandes (1080p+/4K/ultrawide) o sistema ficava com
+              // barras vazias gigantes nas laterais — pedido user 19/05/2026
+              // "sempre se adequar à resolução de quem está acessando".
+              // Padding cresce com a tela (mobile 4 → md 6 → lg 8 → xl 10 → 2xl 12).
+              'flex-1 w-full px-4 md:px-6 lg:px-8 xl:px-10 2xl:px-12 py-6 pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-6 overflow-auto',
+              printMode && 'print:px-0 print:py-0 print:overflow-visible'
+            )}>
+              <div className="md:hidden">
+                <PageHeader />
+              </div>
+              {/* Transição de página: keyed por pathname (NÃO search — senão
+                  troca de aba via ?tab=/?sub=/?modo= remontaria a página inteira)
+                  pra re-disparar o keyframe `page-enter` a cada navegação. */}
+              <div key={location.pathname} className="page-enter">
+                {children}
+              </div>
+            </main>
+            <BottomNav />
+            <QuickActionsFAB />
+            <DiagnosticsFab />
+          </div>
+        </div>
+      </TooltipProvider>
+    </AppLayoutContext.Provider>
+  );
+}
+
+```
+
+## `src/components/layout/PageHeader.tsx`
+- Path: `src/components/layout/PageHeader.tsx`
+- Lines: 196
+
+```tsx
+import { Fragment } from 'react';
+import { Link, useLocation } from 'react-router-dom';
+import { House as Home } from '@phosphor-icons/react';
+import { grantableDestinations } from '@/data/navigation';
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from '@/components/ui/breadcrumb';
+
+type BreadcrumbCrumb = { label: string; to?: string };
+
+const navigationDestinations = grantableDestinations;
+
+const destinationByPath = new Map(
+  navigationDestinations.map((destination) => [destination.path, destination]),
+);
+
+const firstDestinationByGroup = new Map<string, typeof navigationDestinations[number]>();
+for (const destination of navigationDestinations) {
+  if (!firstDestinationByGroup.has(destination.group)) {
+    firstDestinationByGroup.set(destination.group, destination);
+  }
+}
+
+const segmentLabels: Record<string, string> = {
+  new: 'Novo',
+  edit: 'Editar',
+  summary: 'Resumo',
+  consumo: 'Consumo',
+  'grouped-summary': 'Resumo Agrupado',
+};
+
+// `view` é estado interno de /producao/analises, não um destino navegável; por
+// isso seus rótulos ficam aqui, em vez de criar entradas artificiais no catálogo.
+const analysisViewLabels: Record<string, string> = {
+  dashboard: 'Dashboard',
+  gargalos: 'Gargalos',
+  'lead-time': 'Lead Time',
+  'tempos-padrao': 'Tempos-Padrão por Setor',
+  rccp: 'RCCP',
+  'pos-op': 'Pós-OP',
+  auditoria: 'Auditoria',
+  qualidade: 'Qualidade',
+  oee: 'Paradas & OEE',
+  cronoanalise: 'Cronoanálise',
+  setup: 'Tempos de Setup',
+  matriz: 'Matriz (legado)',
+  timeline: 'Timeline (legado)',
+  lote: 'Visão Lote (legado)',
+  'lot-split': 'Split de Lotes',
+  'centro-controle': 'Centro de Controle',
+};
+
+const UUID_SEGMENT_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function slugToLabel(segment: string): string {
+  const decoded = decodeURIComponent(segment).replace(/-/g, ' ');
+  return decoded.charAt(0).toUpperCase() + decoded.slice(1);
+}
+
+function labelsMatch(left: string, right: string) {
+  const normalize = (label: string) => label
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('pt-BR');
+
+  return normalize(left) === normalize(right);
+}
+
+function findDestination(pathname: string) {
+  return navigationDestinations
+    .filter((destination) => pathname === destination.path || pathname.startsWith(`${destination.path}/`))
+    .sort((left, right) => right.path.length - left.path.length)[0];
+}
+
+function labelForPath(pathname: string, segment: string) {
+  if (UUID_SEGMENT_RE.test(segment)) return 'Detalhe';
+  return destinationByPath.get(pathname)?.label
+    ?? segmentLabels[segment]
+    ?? slugToLabel(segment);
+}
+
+/**
+ * Rótulo da tela atual pra o chrome mobile (top bar). Prefere o catálogo de
+ * navegação; em rotas de detalhe com UUID cai em "Detalhe" em vez do hash.
+ */
+export function resolveMobileNavMeta(pathname: string, search = ''): { label: string; group?: string } {
+  if (pathname === '/' || pathname === '/dashboard') {
+    return { label: 'Painel', group: 'Início' };
+  }
+
+  const destination = findDestination(pathname);
+  if (pathname === '/producao/analises') {
+    const view = new URLSearchParams(search).get('view') || '';
+    const viewLabel = analysisViewLabels[view];
+    if (viewLabel) {
+      return { label: viewLabel, group: destination?.group ?? 'Produção' };
+    }
+  }
+
+  if (destination) {
+    return { label: destination.label, group: destination.group };
+  }
+
+  const segments = pathname.split('/').filter(Boolean);
+  const last = segments[segments.length - 1] || '';
+  return { label: labelForPath(pathname, last) };
+}
+
+export default function PageHeader({ title, compact }: { title?: string; subtitle?: string; compact?: boolean }) {
+  const location = useLocation();
+  const segments = location.pathname.split('/').filter(Boolean);
+
+  if (segments.length === 0 || (segments.length === 1 && segments[0] === 'dashboard')) {
+    return null;
+  }
+
+  const destination = findDestination(location.pathname);
+  const firstSegmentDestination = destinationByPath.get(`/${segments[0]}`);
+  const group = destination?.group;
+  const groupDestination = group ? firstDestinationByGroup.get(group) : undefined;
+  const showGroup = Boolean(
+    group
+    && group !== 'Início'
+    && (!firstSegmentDestination || !labelsMatch(firstSegmentDestination.label, group)),
+  );
+  const skipFirstSegment = showGroup && Boolean(group && labelsMatch(slugToLabel(segments[0]), group));
+
+  const crumbs: BreadcrumbCrumb[] = [];
+
+  if (showGroup && group && groupDestination) {
+    crumbs.push({ label: group, to: groupDestination.path });
+  }
+
+  let pathAccum = '';
+  segments.forEach((segment, index) => {
+    pathAccum += `/${segment}`;
+    if (index === 0 && skipFirstSegment) return;
+
+    // UUID no meio da trilha (ex.: /orders/:id/edit) some quando o próximo
+    // segmento já rotula a ação — evita "… › Detalhe › Editar".
+    if (UUID_SEGMENT_RE.test(segment)) {
+      const next = segments[index + 1];
+      if (next && segmentLabels[next]) return;
+    }
+
+    const isLast = index === segments.length - 1;
+    crumbs.push({
+      label: labelForPath(pathAccum, segment),
+      // Prefixos que não estão no catálogo podem ser aliases; nunca os tornamos links.
+      to: isLast || !destinationByPath.has(pathAccum) ? undefined : pathAccum,
+    });
+  });
+
+  const viewLabel = location.pathname === '/producao/analises'
+    ? analysisViewLabels[new URLSearchParams(location.search).get('view') || '']
+    : undefined;
+  if (viewLabel && crumbs.length > 0) {
+    // A página de análises continua sendo um destino real; só a visão é estado da URL.
+    crumbs[crumbs.length - 1].to = location.pathname;
+    crumbs.push({ label: viewLabel });
+  }
+
+  return (
+    <Breadcrumb className={compact ? undefined : 'mb-4 animate-in fade-in slide-in-from-left-2 duration-300'}>
+      <BreadcrumbList className={compact ? 'gap-1.5 ed-eyebrow text-muted-foreground' : 'gap-1.5 text-xs sm:gap-1.5'}>
+        <BreadcrumbItem>
+          <BreadcrumbLink asChild>
+            <Link to="/dashboard" aria-label="Painel" className="flex items-center gap-1">
+              <Home className="h-3.5 w-3.5" />
+            </Link>
+          </BreadcrumbLink>
+        </BreadcrumbItem>
+        {crumbs.map((crumb, index) => (
+          <Fragment key={`${crumb.label}-${index}`}>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              {crumb.to ? (
+                <BreadcrumbLink asChild>
+                  <Link to={crumb.to}>{crumb.label}</Link>
+                </BreadcrumbLink>
+              ) : (
+                <BreadcrumbPage>{title || crumb.label}</BreadcrumbPage>
+              )}
+            </BreadcrumbItem>
+          </Fragment>
+        ))}
+      </BreadcrumbList>
+    </Breadcrumb>
+  );
+}
+
+```
+
+## `src/components/layout/BottomNav.tsx`
+- Path: `src/components/layout/BottomNav.tsx`
+- Lines: 336
+
+```tsx
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { House as Home, Factory, Package, ShoppingCart, DotsThree as MoreHorizontal, X, Star } from '@phosphor-icons/react';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { cn } from '@/lib/utils';
+import { menuGroups, orderGroupsForRoles, secondaryRoutes } from '@/data/navigation';
+import { useAccessControl } from '@/hooks/useAccessControl';
+import { useMenuFavorites } from '@/hooks/useMenuFavorites';
+import { useCurrentUserRoles } from '@/hooks/useUserManagement';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { SearchInput } from '@/components/ui/search-input';
+
+const PRIMARY_ITEMS = [
+  { icon: Home,         label: 'Painel',   path: '/dashboard' },
+  { icon: ShoppingCart, label: 'Vendas',   path: '/sales' },
+  // O alvo precisa ser item de menu real: a allow-list granular resolve o
+  // dono por esse catálogo, e /pcp é só um redirect legado sem dono próprio.
+  { icon: Factory,      label: 'Produção', path: '/producao/planejamento' },
+  { icon: Package,      label: 'Estoque',  path: '/estoque' },
+];
+
+export function BottomNav() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [maisQuery, setMaisQuery] = useState('');
+  // Mesma regra de acesso da sidebar: só mostra o que o usuário pode abrir
+  // (permissão por menu). Sem isso o nav mobile expunha itens não liberados.
+  const { canAccessRoute } = useAccessControl();
+  const primaryItems = useMemo(() => PRIMARY_ITEMS.filter(i => canAccessRoute(i.path)), [canAccessRoute]);
+  const { data: currentRoles = [] } = useCurrentUserRoles();
+  const roleNames = useMemo(() => currentRoles.map(role => role.role), [currentRoles]);
+  const visibleGroups = useMemo(
+    () => orderGroupsForRoles(
+      menuGroups
+        .map(g => ({ ...g, items: g.items.filter(i => canAccessRoute(i.path)) }))
+        .filter(g => g.items.length > 0),
+      roleNames,
+    ),
+    [canAccessRoute, roleNames],
+  );
+  // Rotas complementares não poluem a barra principal, mas precisam ser
+  // encontráveis no celular sem depender de conhecer o atalho Cmd+K.
+  const secondaryItems = useMemo(
+    () => secondaryRoutes.filter(item => canAccessRoute(item.path)),
+    [canAccessRoute],
+  );
+
+  // Favoritos do usuário (mesmos da sidebar, via useMenuFavorites) — aparecem
+  // no topo do "Mais" pra ficarem acessíveis também no celular.
+  const { favorites } = useMenuFavorites();
+  const favItems = useMemo(() => favorites.filter(f => canAccessRoute(f.path)), [favorites, canAccessRoute]);
+  const iconForPath = (path: string) => {
+    for (const group of menuGroups) {
+      const found = group.items.find(i => i.path === path);
+      if (found) return found.icon;
+    }
+    return Star;
+  };
+
+  const filteredFavItems = useMemo(() => {
+    if (!maisQuery.trim()) return favItems;
+    return favItems.filter((item) => searchMatchesAllTerms(maisQuery, item.name));
+  }, [favItems, maisQuery]);
+  const filteredGroups = useMemo(() => {
+    if (!maisQuery.trim()) return visibleGroups;
+    return visibleGroups
+      .map((group) => ({
+        ...group,
+        items: group.items.filter(
+          (item) => searchMatchesAllTerms(maisQuery, item.label, group.label),
+        ),
+      }))
+      .filter((group) => group.items.length > 0);
+  }, [visibleGroups, maisQuery]);
+  const filteredSecondary = useMemo(() => {
+    if (!maisQuery.trim()) return secondaryItems;
+    return secondaryItems.filter(
+      (item) => searchMatchesAllTerms(maisQuery, item.label, item.group),
+    );
+  }, [secondaryItems, maisQuery]);
+  const hasMaisResults =
+    filteredFavItems.length > 0
+    || filteredGroups.length > 0
+    || filteredSecondary.length > 0;
+  const maisResultCount =
+    filteredFavItems.length
+    + filteredGroups.reduce((n, g) => n + g.items.length, 0)
+    + filteredSecondary.length;
+  const maisTotalCount =
+    favItems.length
+    + visibleGroups.reduce((n, g) => n + g.items.length, 0)
+    + secondaryItems.length;
+
+  useEffect(() => {
+    setMoreOpen(false);
+    setMaisQuery('');
+  }, [location.pathname]);
+
+  // O sheet "Mais" é um div artesanal (não usa o primitive Dialog): prender o
+  // foco, fechar no Escape e DEVOLVER o foco ao gatilho são responsabilidade
+  // nossa. Antes só o foco inicial e o Escape estavam feitos (achado F17):
+  //   • o Tab escapava do sheet e ia navegar o conteúdo ATRÁS do modal;
+  //   • ao fechar, o foco caía no <body> — quem usa teclado ou leitor de tela
+  //     perdia o lugar e tinha que percorrer a página inteira de novo.
+  const closeBtnRef = useRef<HTMLButtonElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const gatilhoRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (!moreOpen) {
+      setMaisQuery('');
+      return;
+    }
+
+    // Guarda quem abriu, pra devolver o foco na hora de fechar.
+    gatilhoRef.current = document.activeElement as HTMLElement | null;
+    // Busca primeiro: no celular achar o destino é o job #1 do sheet.
+    searchInputRef.current?.focus();
+
+    const focaveis = () => Array.from(
+      sheetRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter((el) => el.offsetParent !== null);
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setMoreOpen(false); return; }
+      if (e.key !== 'Tab') return;
+      const els = focaveis();
+      if (els.length === 0) return;
+      const primeiro = els[0];
+      const ultimo = els[els.length - 1];
+      const atual = document.activeElement;
+      // Ciclo fechado: do último volta pro primeiro e vice-versa.
+      if (e.shiftKey && (atual === primeiro || !sheetRef.current?.contains(atual))) {
+        e.preventDefault(); ultimo.focus();
+      } else if (!e.shiftKey && atual === ultimo) {
+        e.preventDefault(); primeiro.focus();
+      }
+    };
+
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      gatilhoRef.current?.focus?.();
+    };
+  }, [moreOpen]);
+
+  const isActive = (path: string) =>
+    location.pathname === path ||
+    (path !== '/dashboard' && location.pathname.startsWith(path + '/'));
+
+  const tileClass = (active: boolean, favorited = false) => cn(
+    'flex min-h-11 flex-col items-center justify-center gap-1 px-2 py-2.5 rounded-xl text-xs font-medium transition-all',
+    active
+      ? favorited
+        ? 'bg-primary/15 text-primary'
+        : 'bg-primary/10 text-primary'
+      : favorited
+        ? 'bg-primary/[0.06] text-foreground hover:bg-primary/10'
+        : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground',
+  );
+
+  return (
+    <>
+      {/* Overlay */}
+      {moreOpen && (
+        <div
+          className="md:hidden fixed inset-0 bg-black/40 backdrop-blur-sm z-40"
+          onClick={() => setMoreOpen(false)}
+        />
+      )}
+
+      {/* "Mais" bottom sheet */}
+      {moreOpen && (
+        <div
+          id="bottom-nav-mais"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Navegação"
+          ref={sheetRef}
+          className="md:hidden fixed bottom-16 inset-x-0 z-50 bg-background/98 backdrop-blur-md border-t border-border rounded-t-2xl shadow-elevated safe-bot"
+        >
+          <div className="flex items-center justify-between px-4 pt-3 pb-2">
+            <p className="text-sm font-semibold text-foreground">Navegação</p>
+            <button
+              ref={closeBtnRef}
+              onClick={() => setMoreOpen(false)}
+              aria-label="Fechar menu"
+              className="h-9 w-9 rounded-full bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </div>
+          <div className="px-4 pb-2">
+            <SearchInput
+              ref={searchInputRef}
+              value={maisQuery}
+              onChange={setMaisQuery}
+              placeholder="Buscar tela…"
+              aria-label="Buscar tela"
+              autoFocus
+              hideHint
+              disableSlashFocus
+              enterKeyHint="search"
+              resultCount={maisResultCount}
+              totalCount={maisTotalCount}
+              className="w-full"
+              inputClassName="rounded-xl bg-muted/40"
+            />
+          </div>
+          <div className="px-4 pb-4 space-y-4 max-h-[60vh] overflow-y-auto">
+            {!hasMaisResults && (
+              <p className="py-6 text-center text-sm text-muted-foreground">
+                Nenhuma tela encontrada para “{maisQuery.trim()}”.
+              </p>
+            )}
+            {filteredFavItems.length > 0 && (
+              <div>
+                <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-primary mb-1.5">
+                  <Star className="h-3 w-3 fill-current" />
+                  Favoritos
+                </div>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {filteredFavItems.map((item) => {
+                    const Icon = iconForPath(item.path);
+                    const active = isActive(item.path);
+                    return (
+                      <button
+                        key={item.path}
+                        onClick={() => { navigate(item.path); setMoreOpen(false); }}
+                        className={tileClass(active, true)}
+                      >
+                        <Icon className="h-4 w-4" />
+                        <span className="leading-none text-center">{item.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {filteredGroups.map((group) => (
+              <div key={group.label}>
+                <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
+                  <group.icon className="h-3 w-3" />
+                  {group.label}
+                </div>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {group.items.map((item) => {
+                    const active = isActive(item.path);
+                    return (
+                      <button
+                        key={item.path}
+                        onClick={() => { navigate(item.path); setMoreOpen(false); }}
+                        className={tileClass(active)}
+                      >
+                        <item.icon className="h-4 w-4" />
+                        <span className="leading-none text-center">{item.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+            {filteredSecondary.length > 0 && (
+              <div>
+                <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
+                  <MoreHorizontal className="h-3 w-3" />
+                  Ferramentas
+                </div>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {filteredSecondary.map((item) => {
+                    const active = isActive(item.path);
+                    return (
+                      <button
+                        key={item.path}
+                        onClick={() => { navigate(item.path); setMoreOpen(false); }}
+                        className={tileClass(active)}
+                      >
+                        <item.icon className="h-4 w-4" />
+                        <span className="leading-none text-center">{item.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Bottom tab bar */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur-md border-t border-border z-40 safe-bot">
+        <div className="flex justify-around items-stretch h-16 px-1">
+          {primaryItems.map((item) => {
+            const active = isActive(item.path);
+            return (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                className="flex flex-col items-center justify-center gap-1 flex-1 h-full min-h-11 transition-colors relative pt-2"
+              >
+                <span className={cn(
+                  "absolute top-0 left-1/2 -translate-x-1/2 h-[3px] rounded-b-full bg-primary transition-all duration-300 ease-out",
+                  active ? "w-8 opacity-100" : "w-0 opacity-0"
+                )} />
+                <item.icon className={cn("h-5 w-5 transition-all duration-200", active ? "text-primary scale-110" : "text-muted-foreground")} />
+                <span className={cn("text-xs font-medium transition-colors leading-none", active ? "text-primary font-semibold" : "text-muted-foreground")}>
+                  {item.label}
+                </span>
+              </NavLink>
+            );
+          })}
+
+          {/* Mais */}
+          <button
+            onClick={() => setMoreOpen(v => !v)}
+            aria-expanded={moreOpen}
+            aria-controls="bottom-nav-mais"
+            className="flex flex-col items-center justify-center gap-1 flex-1 h-full min-h-11 transition-colors relative pt-2"
+          >
+            <span className={cn(
+              "absolute top-0 left-1/2 -translate-x-1/2 h-[3px] rounded-b-full bg-primary transition-all duration-300 ease-out",
+              moreOpen ? "w-8 opacity-100" : "w-0 opacity-0"
+            )} />
+            <MoreHorizontal className={cn("h-5 w-5 transition-all duration-200", moreOpen ? "text-primary scale-110" : "text-muted-foreground")} />
+            <span className={cn("text-xs font-medium transition-colors leading-none", moreOpen ? "text-primary font-semibold" : "text-muted-foreground")}>
+              Mais
+            </span>
+          </button>
+        </div>
+      </nav>
+    </>
+  );
+}
+
+```
+
+## `src/components/sale-orders/SalesOperationsRail.tsx`
+- Path: `src/components/sale-orders/SalesOperationsRail.tsx`
+- Lines: 127
+
+```tsx
+import { cn } from '@/lib/utils';
+
+interface SalesOperationsRailProps {
+  scopeLabel: string;
+  orderCount: number;
+  pairs: number;
+  drafts: number;
+  approved: number;
+  inProduction: number;
+  deadlineRisk: number;
+  total?: string;
+  className?: string;
+}
+
+interface MetricProps {
+  label: string;
+  value: string | number;
+  note: string;
+  tone?: 'default' | 'warning' | 'critical' | 'production';
+}
+
+function Metric({ label, value, note, tone = 'default' }: MetricProps) {
+  return (
+    <div className="min-w-0 px-3 py-3 sm:px-4">
+      <dt className="eyebrow truncate">{label}</dt>
+      <dd className={cn(
+        'mt-1 truncate font-mono text-xl font-bold leading-none tabular-nums sm:text-2xl',
+        tone === 'warning' && 'text-amber-700 dark:text-amber-400',
+        tone === 'critical' && 'text-destructive',
+        tone === 'production' && 'text-blue-700 dark:text-blue-300',
+      )} title={String(value)}>
+        {value}
+      </dd>
+      <dd className="mt-1 truncate text-[10px] text-muted-foreground">{note}</dd>
+    </div>
+  );
+}
+
+/**
+ * Régua operacional dos pedidos visíveis. Substitui os cards independentes:
+ * quantidade, volume, fila e risco pertencem ao mesmo lote de trabalho.
+ */
+export default function SalesOperationsRail({
+  scopeLabel,
+  orderCount,
+  pairs,
+  drafts,
+  approved,
+  inProduction,
+  deadlineRisk,
+  total,
+  className,
+}: SalesOperationsRailProps) {
+  const other = Math.max(0, orderCount - drafts - approved - inProduction);
+  const segments = [
+    { key: 'drafts', value: drafts, className: 'bg-amber-500', label: 'Rascunhos' },
+    { key: 'approved', value: approved, className: 'bg-emerald-500', label: 'Aprovados' },
+    { key: 'production', value: inProduction, className: 'bg-blue-500', label: 'Em produção' },
+    { key: 'other', value: other, className: 'bg-muted-foreground/35', label: 'Outros status' },
+  ].filter((segment) => segment.value > 0);
+
+  return (
+    <section
+      className={cn('overflow-hidden rounded-lg border border-border bg-card shadow-sm', className)}
+      aria-label={`Carga operacional: ${scopeLabel}`}
+    >
+      <div className="grid lg:grid-cols-[minmax(13rem,1.15fr)_minmax(0,4fr)]">
+        <div className="flex min-h-24 items-end justify-between gap-4 bg-foreground px-4 py-3 text-background sm:px-5">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-background/55">{scopeLabel}</p>
+            <p className="mt-1 flex items-baseline gap-2">
+              <span className="font-display text-4xl leading-none tabular-nums sm:text-5xl">{orderCount}</span>
+              <span className="text-xs font-semibold uppercase tracking-wider text-background/65">pedidos</span>
+            </p>
+          </div>
+          <p className="pb-1 text-right font-mono text-xs text-background/65">
+            {pairs.toLocaleString('pt-BR')}<br />pares
+          </p>
+        </div>
+
+        <dl className={cn(
+          'grid grid-cols-2 divide-x divide-y divide-border lg:col-start-2 lg:row-start-1 lg:divide-y-0',
+          total ? 'sm:grid-cols-5' : 'sm:grid-cols-4',
+        )}>
+          <Metric label="Rascunhos" value={drafts} note="aguardando liberação" tone="warning" />
+          <Metric label="Aprovados" value={approved} note="prontos para produzir" />
+          <Metric label="Em produção" value={inProduction} note="no chão de fábrica" tone="production" />
+          <Metric
+            label="Prazo crítico"
+            value={deadlineRisk}
+            note={deadlineRisk === 1 ? 'pedido exige decisão' : 'pedidos exigem decisão'}
+            tone={deadlineRisk > 0 ? 'critical' : 'default'}
+          />
+          {total && <Metric label="Valor visível" value={total} note="na seleção atual" />}
+        </dl>
+      </div>
+
+      <div className="flex h-1.5 w-full bg-muted" aria-hidden="true">
+        {segments.map((segment) => (
+          <span
+            key={segment.key}
+            className={segment.className}
+            style={{ flexGrow: segment.value, flexBasis: 0 }}
+            title={`${segment.label}: ${segment.value}`}
+          />
+        ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border/60 px-4 py-1.5 text-[10px] text-muted-foreground">
+        {segments.map((segment) => (
+          <span key={segment.key} className="inline-flex items-center gap-1.5">
+            <span className={cn('h-1.5 w-3', segment.className)} aria-hidden="true" />
+            {segment.label} <strong className="font-mono text-foreground">{segment.value}</strong>
+          </span>
+        ))}
+        <span className="ml-auto hidden font-mono uppercase tracking-wider sm:inline">régua da carga visível</span>
+      </div>
+    </section>
+  );
+}
+
+export function SalesOperationsRailSkeleton() {
+  return (
+    <div className="h-[7.75rem] animate-pulse overflow-hidden rounded-lg border bg-muted/40" aria-label="Carregando resumo dos pedidos">
+      <div className="h-full w-1/4 bg-muted" />
+    </div>
+  );
+}
+
+```

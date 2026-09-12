@@ -1571,12 +1571,12 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
 
   return (
     <div
-      className={`rounded-lg border shadow-sm overflow-hidden mb-4 transition-colors hover:border-primary/30 ${isSelected ? 'bg-primary/5 border-primary/40' : 'bg-card'}`}
+      className={`rounded-lg border shadow-sm overflow-hidden mb-2 transition-colors hover:border-primary/30 ${isSelected ? 'bg-primary/5 border-primary/40' : 'bg-card'}`}
       aria-disabled={productionExcluded || undefined}
     >
       {/* Item header bar */}
-      <div className="flex items-center justify-between bg-muted/20 px-4 py-2 border-b">
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between bg-muted/20 px-3 py-1.5 border-b">
+        <div className="flex items-center gap-2">
           {/* Checkbox de seleção pra bulk-edit (grade/preço/fichas em lote) */}
           {onToggleSelect && (
             <input
@@ -1588,21 +1588,21 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
               title="Selecionar pra edição em lote"
             />
           )}
-          <div className="flex items-center gap-3">
-            <div className="h-16 w-16 rounded-md border bg-muted overflow-hidden flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <div className="h-10 w-10 rounded-md border bg-muted overflow-hidden flex-shrink-0">
               {(() => {
-                const imgSrc = resolveReferenceThumbnailUrl(selectedRef, 64);
+                const imgSrc = resolveReferenceThumbnailUrl(selectedRef, 40);
                 return imgSrc ? (
                   <SignedImage
                     src={imgSrc}
                     alt={selectedRef?.name || selectedRef?.code || 'Referência'}
-                    width={64}
-                    height={64}
+                    width={40}
+                    height={40}
                     className="h-full w-full"
                   />
                 ) : (
                   <div className="h-full w-full flex items-center justify-center text-muted-foreground">
-                    <Package className="h-7 w-7" />
+                    <Package className="h-5 w-5" />
                   </div>
                 );
               })()}
@@ -1761,7 +1761,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
 
       <fieldset
         disabled={productionExcluded}
-        className="m-0 min-w-0 border-0 p-4 space-y-4 disabled:cursor-not-allowed disabled:opacity-70"
+        className="m-0 min-w-0 border-0 p-3 space-y-2 disabled:cursor-not-allowed disabled:opacity-70"
       >
         {/* Main Selection Row
             Layout varies by whether this reference has material groups:
@@ -1769,7 +1769,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
             • Com grupos: Ref(3) | Material*(3) | Cor(3) | Preço(2) | Fichas(1) = 12
               (grade copy button moves to the grade section header)
         */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end">
           {/* Referência — narrower when material groups exist.
               Popover auto-abre quando item NÃO tem reference_id ainda
               (= item recém-criado via "+ Novo Item"). Economiza 1 clique:
@@ -2092,7 +2092,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
             completa sem reabrir campos — referência → material → produção →
             preço. Além de reduzir erro, torna explícita a origem do preço. */}
         <div className="grid grid-cols-1 divide-y rounded-md border bg-muted/10 sm:grid-cols-4 sm:divide-x sm:divide-y-0">
-          <div className="flex min-w-0 items-center gap-2 px-3 py-2">
+          <div className="flex min-w-0 items-center gap-2 px-2 py-1">
             <span className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold', selectedRef ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground')}>1</span>
             <div className="min-w-0">
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Referência</p>
@@ -2102,21 +2102,21 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
               </p>
             </div>
           </div>
-          <div className="flex min-w-0 items-center gap-2 px-3 py-2">
+          <div className="flex min-w-0 items-center gap-2 px-2 py-1">
             <span className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold', 'bg-primary text-primary-foreground')}>2</span>
             <div className="min-w-0">
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Material</p>
               <p className="truncate text-xs font-medium">{selectedMaterialVariant?.material_name || sheetBaseGroup?.name || sheetSpecs?.upper_material || 'Da ficha'}</p>
             </div>
           </div>
-          <div className="flex min-w-0 items-center gap-2 px-3 py-2">
+          <div className="flex min-w-0 items-center gap-2 px-2 py-1">
             <span className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold', item.color && totalPairs > 0 ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground')}>3</span>
             <div className="min-w-0">
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Cor e grade</p>
               <p className="truncate text-xs font-medium">{item.color || 'Sem cor'} · {totalPairs} pares</p>
             </div>
           </div>
-          <div className="flex min-w-0 items-center gap-2 px-3 py-2">
+          <div className="flex min-w-0 items-center gap-2 px-2 py-1">
             <span className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold', item.unit_price > 0 ? 'bg-primary text-primary-foreground' : 'bg-destructive/15 text-destructive')}>4</span>
             <div className="min-w-0">
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Preço</p>
@@ -2176,8 +2176,8 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
               </div>
             </div>
           </div>
-          <div className="p-3">
-            <div className="flex gap-1.5 justify-center flex-wrap">
+          <div className="p-2">
+            <div className="flex gap-1 justify-center flex-wrap">
               {SIZES.map(size => {
                 const val = grade[size] || 0;
                 const isConjugated = size.includes('/');
@@ -2186,7 +2186,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                 // claramente que é dado preservado (não vai sumir ao salvar).
                 const isOrphan = orphanSizes.has(size);
                 return (
-                  <div key={size} className="text-center relative" style={{ width: isConjugated ? '5.2rem' : (isInfantil ? '3.5rem' : '3.8rem') }}>
+                  <div key={size} className="text-center relative" style={{ width: isConjugated ? '4.6rem' : (isInfantil ? '3rem' : '3.2rem') }}>
                     {isOrphan && (
                       <span
                         className="absolute -top-1 -right-1 z-10 inline-flex items-center justify-center h-4 w-4 rounded-full bg-amber-500 text-white text-xs font-bold border border-background shadow-sm"
@@ -2217,7 +2217,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                       inputMode="numeric"
                       placeholder="–"
                       className={cn(
-                        "h-10 px-1 text-sm text-center rounded border transition-colors md:text-sm",
+                        "h-8 px-1 text-sm text-center rounded border transition-colors md:text-sm",
                         val > 0 ? 'border-primary/50 bg-primary/5 font-bold ring-1 ring-primary/10' : 'border-input hover:bg-muted/30',
                         isConjugated && 'border-primary/30',
                         isOrphan && 'border-amber-400 bg-amber-50 dark:bg-amber-950/30 ring-1 ring-amber-300/40',

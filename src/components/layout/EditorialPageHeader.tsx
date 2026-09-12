@@ -58,6 +58,12 @@ interface EditorialPageHeaderProps {
    * Classes extras no wrapper.
    */
   className?: string;
+  /**
+   * `compact` reduz o clamp do título (36–60px) para um h1 operacional
+   * (text-xl/2xl). Usar nas rotas de PV: lista, ficha, edição, consumo.
+   * O hero default permanece nas hubs (Dashboard etc.).
+   */
+  density?: 'default' | 'compact';
 }
 
 /**
@@ -85,16 +91,21 @@ export function EditorialPageHeader({
   kpis,
   noRule = false,
   className,
+  density = 'default',
 }: EditorialPageHeaderProps) {
   useDocumentTitle(title);
+  const compact = density === 'compact';
   return (
-    <header className={cn('relative pb-2', className)}>
-      <div className="space-y-3">
+    <header className={cn('relative', compact ? 'pb-1' : 'pb-2', className)}>
+      <div className={cn(compact ? 'space-y-1.5' : 'space-y-3')}>
         {/* ── Eyebrow row (kicker MONO + live indicator opcional) ── */}
         <div className="flex items-center gap-2.5">
           {sectionNumber && (
             <span
-              className="ed-display text-xl sm:text-2xl text-muted-foreground leading-none shrink-0"
+              className={cn(
+                'ed-display text-muted-foreground leading-none shrink-0',
+                compact ? 'text-base sm:text-lg' : 'text-xl sm:text-2xl',
+              )}
               aria-hidden="true"
             >
               {sectionNumber}
@@ -107,9 +118,17 @@ export function EditorialPageHeader({
         </div>
 
         {/* ── Title row (anton clamp + actions inline em desktop) ── */}
-        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 md:gap-6">
-          <div className="min-w-0 flex-1 space-y-2">
-            <h1 className="hero-editorial-title break-words">
+        <div className={cn(
+          'flex flex-col md:flex-row md:items-end md:justify-between',
+          compact ? 'gap-2 md:gap-4' : 'gap-4 md:gap-6',
+        )}>
+          <div className={cn('min-w-0 flex-1', compact ? 'space-y-1' : 'space-y-2')}>
+            <h1 className={cn(
+              'break-words',
+              compact
+                ? 'font-display text-xl sm:text-2xl uppercase leading-none tracking-tight text-foreground'
+                : 'hero-editorial-title',
+            )}>
               {title}
             </h1>
             {meta && (
@@ -118,7 +137,10 @@ export function EditorialPageHeader({
               </p>
             )}
             {description && (
-              <p className="text-sm text-muted-foreground max-w-xl">{description}</p>
+              <p className={cn(
+                'text-muted-foreground max-w-xl',
+                compact ? 'text-xs' : 'text-sm',
+              )}>{description}</p>
             )}
           </div>
           {actions && (
@@ -132,14 +154,14 @@ export function EditorialPageHeader({
       {/* ── Rule-thick separator (3px foreground) ── */}
       {!noRule && (
         <div
-          className="rule-thick mt-5"
+          className={cn('rule-thick', compact ? 'mt-2.5' : 'mt-5')}
           aria-hidden="true"
         />
       )}
 
       {/* ── KPI slot abaixo do rule-line ── */}
       {kpis && (
-        <div className="mt-5">
+        <div className={compact ? 'mt-3' : 'mt-5'}>
           {kpis}
         </div>
       )}

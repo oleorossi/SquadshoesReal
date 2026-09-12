@@ -229,10 +229,10 @@ function SoleCoveragePanel({ rows, grossNeed = false }: { rows: ConsumptionRow[]
       className="overflow-hidden rounded-lg border border-border bg-card"
       aria-label="Solados por numeração"
     >
-      <header className="flex flex-wrap items-end justify-between gap-3 border-b border-border bg-muted/40 px-4 py-3">
+      <header className="flex flex-wrap items-end justify-between gap-2 border-b border-border bg-muted/40 px-3 py-2">
         <div>
           <p className="eyebrow">{grossNeed ? 'Necessidade do pedido' : 'Prioridade de compra'}</p>
-          <h3 className="display mt-1 text-xl leading-none sm:text-2xl">Mapa de solados · grade por numeração</h3>
+          <h3 className="display mt-0.5 text-lg leading-none">Mapa de solados · grade por numeração</h3>
           <p className="mt-1 text-xs text-muted-foreground">
             {grossNeed
               ? 'Quantidade necessária em cada número, sem descontar estoque.'
@@ -254,9 +254,9 @@ function SoleCoveragePanel({ rows, grossNeed = false }: { rows: ConsumptionRow[]
           return (
             <article
               key={`${row.groupName}-${row.color}-${row.consumptionSector || ''}-${row.boxTypeIds?.join(',') || row.productIds?.join(',') || index}`}
-              className="px-4 py-3"
+              className="px-3 py-2"
             >
-              <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+              <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <h4 className="text-sm font-bold text-foreground">{row.groupName}</h4>
@@ -1031,33 +1031,33 @@ export default function MaterialConsumptionView({
         aria-label="Resumo operacional do consumo"
       >
           {!embedded && (
-            <div className="border-b border-border px-4 py-3 sm:border-b-0 sm:border-r">
+            <div className="border-b border-border px-3 py-2 sm:border-b-0 sm:border-r">
               <p className="eyebrow">Simulação atual · ficha e estoque agora</p>
-              <h2 className="display mt-1 text-2xl leading-none sm:text-3xl">{title}</h2>
-              <p className="mt-1.5 max-w-xl text-xs text-muted-foreground">
+              <h2 className="display mt-1 text-lg leading-none sm:text-xl">{title}</h2>
+              <p className="mt-1 max-w-xl text-xs text-muted-foreground">
                 Recalcula a ficha vigente. Uma OP já congelada pode manter o planejamento histórico usado na reserva e na baixa.
               </p>
             </div>
           )}
-          <dl className="border-r border-border px-3 py-3">
+          <dl className="border-r border-border px-3 py-2">
             <dt className="eyebrow">Material base</dt>
-            <dd className="mt-1 font-mono text-xl font-bold leading-none tabular-nums">
+            <dd className="mt-1 font-mono text-lg font-bold leading-none tabular-nums">
               {baseTotal ? `${formatQty(baseTotal.total, 'm')} m` : '—'}
             </dd>
             <dd className="mt-1 text-[10px] text-muted-foreground">necessidade de napa</dd>
           </dl>
-          <dl className="border-r border-border px-3 py-3">
+          <dl className="border-r border-border px-3 py-2">
             <dt className="eyebrow">Em falta</dt>
             <dd className="mt-1">
               {grossNeed ? (
-                <span className="font-mono text-xl font-bold leading-none tabular-nums text-muted-foreground">—</span>
+                <span className="font-mono text-lg font-bold leading-none tabular-nums text-muted-foreground">—</span>
               ) : (
               <button
                 type="button"
                 onClick={() => setFilter((f) => f === 'short' ? 'all' : 'short')}
                 aria-pressed={filter === 'short'}
                 aria-label={filter === 'short' ? 'Mostrar todos os itens' : `Ver ${emFaltaCount} itens em falta`}
-                className={`font-mono text-xl font-bold leading-none tabular-nums text-destructive hover:underline ${
+                className={`font-mono text-lg font-bold leading-none tabular-nums text-destructive hover:underline ${
                   filter === 'short' ? 'underline' : ''
                 }`}
               >
@@ -1067,7 +1067,7 @@ export default function MaterialConsumptionView({
             </dd>
             <dd className="mt-1 text-[10px] text-muted-foreground">{grossNeed ? 'estoque ignorado' : 'itens para repor'}</dd>
           </dl>
-          <dl className="px-3 py-3">
+          <dl className="px-3 py-2">
             <dt className="eyebrow">Pendências</dt>
             <dd className="mt-1">
               <button
@@ -1075,7 +1075,7 @@ export default function MaterialConsumptionView({
                 onClick={() => setFilter((f) => f === 'pending' ? 'all' : 'pending')}
                 aria-pressed={filter === 'pending'}
                 aria-label={filter === 'pending' ? 'Mostrar todos os itens' : `Ver ${pendingCount} cadastros a revisar`}
-                className={`font-mono text-xl font-bold leading-none tabular-nums hover:underline ${
+                className={`font-mono text-lg font-bold leading-none tabular-nums hover:underline ${
                   filter === 'pending' ? 'underline' : ''
                 }`}
               >
@@ -1148,10 +1148,10 @@ export default function MaterialConsumptionView({
         </div>
       )}
 
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
+      <div className="grid items-start gap-3 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <div className="min-w-0 space-y-3">
           {partitionMode === 'order_reference' && orderReferencePartitions.length > 0 ? (
-            <div className="space-y-6">
+            <div className="space-y-4">
               {orderReferencePartitions.map((order) => {
                 const orderVisible = order.models.flatMap((model) => model.rows).filter((r) => {
                   if (!searchMatchesAllTerms(
@@ -1185,7 +1185,7 @@ export default function MaterialConsumptionView({
                   >
                     <header className="border-b border-border pb-2">
                       <p className="eyebrow">Pedido</p>
-                      <h3 className="display mt-0.5 text-2xl leading-none text-primary">{order.orderNumber}</h3>
+                      <h3 className="display mt-0.5 text-xl leading-none text-primary">{order.orderNumber}</h3>
                     </header>
                     {order.models.map((model) => {
                       const soleRows = model.rows.filter((r) => r.componentType === 'Solado');
@@ -1222,7 +1222,7 @@ export default function MaterialConsumptionView({
                         <div key={`${sectionPrefix}-${model.referenceId || 'x'}`} className="space-y-3">
                           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                             <p className="eyebrow">Modelo</p>
-                            <h4 className="font-display text-lg uppercase tracking-wide text-foreground">
+                            <h4 className="font-display text-base uppercase tracking-wide text-foreground">
                               {model.referenceLabel}
                             </h4>
                             {model.rows[0]?.referenceName
@@ -1316,7 +1316,7 @@ export default function MaterialConsumptionView({
               <p className="eyebrow">
                 {materialsTab === 'strass' && hasStrass ? 'Compra pronta' : 'Materiais gerais'}
               </p>
-              <h3 className="display mt-1 text-xl leading-none">
+              <h3 className="display mt-0.5 text-lg leading-none">
                 {materialsTab === 'strass' && hasStrass
                   ? 'Tira Strass'
                   : 'Consumo e cobertura de estoque'}

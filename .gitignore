@@ -58,3 +58,6 @@ graphify-out/
 
 # Scratch de sessões (patches de backup, locks git movidos pra fora do .git/)
 _to_delete/
+
+# Superdesign temp HTML for component extraction
+.superdesign/tmp/

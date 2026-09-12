@@ -2483,8 +2483,9 @@ export default function SaleOrderForm() {
 
   return (
     <>
-      <div className="w-full space-y-6 pb-20">
+      <div className="w-full space-y-4 pb-16">
         <EditorialPageHeader
+          density="compact"
           sectionNumber={isEdit ? '02' : '01'}
           sectionLabel="COMERCIAL · Pedido de Venda"
           title={isEdit ? 'Editar Pedido' : 'Novo Pedido'}

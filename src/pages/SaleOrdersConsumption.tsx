@@ -18,8 +18,9 @@ export default function SaleOrdersConsumption() {
 
   return (
     <AppLayout>
-      <div className="space-y-5">
+      <div className="space-y-4">
         <EditorialPageHeader
+          density="compact"
           sectionLabel="COMERCIAL · CONSUMO"
           title="Consumo Consolidado"
           description={`${saleOrderIds.length} ${saleOrderIds.length === 1 ? 'pedido selecionado' : 'pedidos selecionados'}`}
