@@ -33,9 +33,9 @@ export default function StrapPvOrigemChooser({
     );
   }
   return (
-    <div className="space-y-1">
-      <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-        Origem · {label}
+    <div className="flex min-w-0 items-center gap-1.5">
+      <Label className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+        Origem
       </Label>
       <Select
         value={value ?? undefined}
@@ -44,7 +44,7 @@ export default function StrapPvOrigemChooser({
           if (next === 'fabrica' || next === 'prestador' || next === 'sku_acabado') onChange(next);
         }}
       >
-        <SelectTrigger className="h-8 text-xs" aria-label={`Origem de ${label}`}>
+        <SelectTrigger className="h-8 min-w-0 flex-1 text-xs" aria-label={`Origem de ${label}`}>
           <SelectValue placeholder="Escolha a origem" />
         </SelectTrigger>
         <SelectContent>
@@ -66,14 +66,14 @@ interface BulkProps {
 
 export function StrapPvOrigemBulkActions({ onAllFactory, onAllContractor, onAllBuyReady, disabled }: BulkProps) {
   return (
-    <div className="flex flex-wrap gap-2">
-      <Button type="button" variant="outline" size="sm" className="h-7 text-[10px]" disabled={disabled} onClick={onAllFactory}>
+    <div className="flex flex-wrap gap-1">
+      <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-[10px]" disabled={disabled} onClick={onAllFactory}>
         Todas na fábrica
       </Button>
-      <Button type="button" variant="outline" size="sm" className="h-7 text-[10px]" disabled={disabled} onClick={onAllContractor}>
+      <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-[10px]" disabled={disabled} onClick={onAllContractor}>
         Todas no prestador
       </Button>
-      <Button type="button" variant="outline" size="sm" className="h-7 text-[10px]" disabled={disabled} onClick={onAllBuyReady}>
+      <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-[10px]" disabled={disabled} onClick={onAllBuyReady}>
         Todas tira pronta
       </Button>
     </div>

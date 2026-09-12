@@ -1575,7 +1575,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       aria-disabled={productionExcluded || undefined}
     >
       {/* Item header bar */}
-      <div className="flex items-center justify-between bg-muted/20 px-3 py-1.5 border-b">
+      <div className="flex flex-wrap items-center justify-between gap-y-1 bg-muted/20 px-3 py-1.5 border-b">
         <div className="flex items-center gap-2">
           {/* Checkbox de seleção pra bulk-edit (grade/preço/fichas em lote) */}
           {onToggleSelect && (
@@ -1699,6 +1699,54 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
               enrichMaterialShortages em SaleOrderForm). Antes, o badge
               rodava o RPC check_stock_availability a cada mudança de
               qtd/cor — gerava ruído visual e chamadas desnecessárias. */}
+          {/* Sequência 1–4 no header (não numa faixa extra abaixo dos campos). */}
+          <div className="ml-1 flex items-center gap-0.5" aria-label="Sequência comercial do item">
+            {([
+              {
+                n: 1,
+                ok: !!selectedRef,
+                warn: false,
+                label: selectedRef
+                  ? `Referência ${selectedRef.code}${selectedRef.status_ficha ? ` · ${String(selectedRef.status_ficha).replace('_', ' ')}` : ''}`
+                  : '1. Referência pendente',
+              },
+              {
+                n: 2,
+                ok: true,
+                warn: false,
+                label: `Material: ${selectedMaterialVariant?.material_name || sheetBaseGroup?.name || sheetSpecs?.upper_material || 'Da ficha'}`,
+              },
+              {
+                n: 3,
+                ok: !!item.color && totalPairs > 0,
+                warn: false,
+                label: `Cor e grade: ${item.color || 'Sem cor'} · ${totalPairs} pares`,
+              },
+              {
+                n: 4,
+                ok: item.unit_price > 0,
+                warn: !(item.unit_price > 0),
+                label: item.unit_price > 0
+                  ? `Preço ${formatCurrency(item.unit_price)} · ${priceSourceLabel}`
+                  : `4. Preço pendente · ${priceSourceLabel}`,
+              },
+            ] as const).map((step) => (
+              <span
+                key={step.n}
+                title={step.label}
+                className={cn(
+                  'flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold',
+                  step.warn
+                    ? 'bg-destructive/15 text-destructive'
+                    : step.ok
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-muted text-muted-foreground',
+                )}
+              >
+                {step.n}
+              </span>
+            ))}
+          </div>
         </div>
         <div className="flex items-center gap-4">
           <div className="text-right">
@@ -1761,7 +1809,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
 
       <fieldset
         disabled={productionExcluded}
-        className="m-0 min-w-0 border-0 p-3 space-y-2 disabled:cursor-not-allowed disabled:opacity-70"
+        className="m-0 min-w-0 border-0 p-2 space-y-1.5 disabled:cursor-not-allowed disabled:opacity-70"
       >
         {/* Main Selection Row
             Layout varies by whether this reference has material groups:
@@ -2088,66 +2136,26 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
           </div>
         )}
 
-        {/* Linha de decisão comercial: o operador enxerga a sequência fabril
-            completa sem reabrir campos — referência → material → produção →
-            preço. Além de reduzir erro, torna explícita a origem do preço. */}
-        <div className="grid grid-cols-1 divide-y rounded-md border bg-muted/10 sm:grid-cols-4 sm:divide-x sm:divide-y-0">
-          <div className="flex min-w-0 items-center gap-2 px-2 py-1">
-            <span className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold', selectedRef ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground')}>1</span>
-            <div className="min-w-0">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Referência</p>
-              <p className="truncate text-xs font-medium">
-                {selectedRef?.code || 'Pendente'}
-                {selectedRef?.status_ficha && <span className="ml-1 font-normal text-muted-foreground">· {selectedRef.status_ficha.replace('_', ' ')}</span>}
-              </p>
-            </div>
-          </div>
-          <div className="flex min-w-0 items-center gap-2 px-2 py-1">
-            <span className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold', 'bg-primary text-primary-foreground')}>2</span>
-            <div className="min-w-0">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Material</p>
-              <p className="truncate text-xs font-medium">{selectedMaterialVariant?.material_name || sheetBaseGroup?.name || sheetSpecs?.upper_material || 'Da ficha'}</p>
-            </div>
-          </div>
-          <div className="flex min-w-0 items-center gap-2 px-2 py-1">
-            <span className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold', item.color && totalPairs > 0 ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground')}>3</span>
-            <div className="min-w-0">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Cor e grade</p>
-              <p className="truncate text-xs font-medium">{item.color || 'Sem cor'} · {totalPairs} pares</p>
-            </div>
-          </div>
-          <div className="flex min-w-0 items-center gap-2 px-2 py-1">
-            <span className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold', item.unit_price > 0 ? 'bg-primary text-primary-foreground' : 'bg-destructive/15 text-destructive')}>4</span>
-            <div className="min-w-0">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Preço</p>
-              <p className="truncate text-xs font-medium">{item.unit_price > 0 ? formatCurrency(item.unit_price) : 'Pendente'} · <span className="font-normal text-muted-foreground">{priceSourceLabel}</span></p>
-            </div>
-          </div>
-        </div>
-
-        {/* Grade Section */}
-        <div className="rounded-lg border border-border/60 overflow-hidden bg-muted/5">
-          {/* Badge contextual do tipo de solado — ajuda a entender por que a
-              grade mostra números individuais vs conjugados, e qual a regra
-              de palmilha (cortada vs pronta na cor). */}
-          {soleSizeRange?.classification && (
-            <div className={`px-3 py-1 text-xs font-bold uppercase tracking-wider flex items-center gap-2
-              ${soleSizeRange.classification === 'tradicional' ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border-b border-emerald-200 dark:border-emerald-800' : ''}
-              ${soleSizeRange.classification === 'palmilha_pronta' ? 'bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-400 border-b border-violet-200 dark:border-violet-800' : ''}
-              ${soleSizeRange.classification === 'conjugado' ? 'bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border-b border-amber-200 dark:border-amber-800' : ''}
-            `}>
-              <span>Solado</span>
-              <span className="opacity-50">·</span>
-              <span>{soleSizeRange.classification === 'tradicional' ? 'Tradicional' : soleSizeRange.classification === 'palmilha_pronta' ? 'Palmilha Pronta' : 'Conjugado'}</span>
-              {soleSizeRange.classification === 'conjugado' && soleConjugations.length > 0 && (
-                <span className="opacity-70 normal-case font-medium tracking-normal">
-                  · {soleConjugations.length} slot{soleConjugations.length !== 1 ? 's' : ''}
+        {/* Grade Section — mesma dobra dos campos; classificação do solado
+            entra no próprio header da grade, sem faixa extra. */}
+        <div className="rounded-md border border-border/60 overflow-hidden bg-muted/5">
+          <div className="bg-muted/30 px-2 py-1 border-b flex items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Grade</span>
+              {soleSizeRange?.classification && (
+                <span className={cn(
+                  'truncate text-[10px] font-bold uppercase tracking-wider',
+                  soleSizeRange.classification === 'tradicional' && 'text-emerald-700 dark:text-emerald-400',
+                  soleSizeRange.classification === 'palmilha_pronta' && 'text-violet-700 dark:text-violet-400',
+                  soleSizeRange.classification === 'conjugado' && 'text-amber-700 dark:text-amber-400',
+                )}>
+                  · {soleSizeRange.classification === 'tradicional' ? 'Tradicional' : soleSizeRange.classification === 'palmilha_pronta' ? 'Palmilha pronta' : 'Conjugado'}
+                  {soleSizeRange.classification === 'conjugado' && soleConjugations.length > 0
+                    ? ` · ${soleConjugations.length} slot${soleConjugations.length !== 1 ? 's' : ''}`
+                    : ''}
                 </span>
               )}
             </div>
-          )}
-          <div className="bg-muted/30 px-3 py-1.5 border-b flex items-center justify-between">
-            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Distribuição por Numeração</span>
             <div className="flex items-center gap-2">
               {/* Grade copy button moves here when material groups are present */}
               {activeMaterialVariants.length > 0 && index > 0 && (
@@ -2197,7 +2205,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                     )}
                     <label
                       className={cn(
-                        "text-xs font-bold block mb-1",
+                        "text-[10px] font-bold block mb-0.5",
                         isOrphan
                           ? 'text-amber-700 dark:text-amber-300'
                           : isConjugated ? 'text-primary' : 'text-muted-foreground',
@@ -2313,40 +2321,26 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
             (strap) => strapIdentityBasis(strap) === 'reference_base'
               && strapColorMode(strap) === 'select_on_order',
           ).length;
-          const followMainReferenceBaseCount = straps.filter(
-            (strap) => strapIdentityBasis(strap) === 'reference_base'
-              && strapColorMode(strap) === 'follow_main',
-          ).length;
           const hasOnlyFinishedGroups = finishedGroupCount === straps.length;
           const hasMixedStrapIdentities = finishedGroupCount > 0 && !hasOnlyFinishedGroups;
           const hasIndependentReferenceBase = independentReferenceBaseCount > 0;
 
-          return (
-            <div className="rounded-lg border border-border/60 overflow-hidden">
-              <div className="px-3 py-1.5 border-b flex items-center justify-between bg-muted/30">
-                <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                  Materiais e cores das tiras
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {hasOnlyFinishedGroups
-                    ? 'Produtos acabados mantêm cor própria e saem diretamente do estoque.'
-                    : hasIndependentReferenceBase
-                      ? `${independentReferenceBaseCount} tira${independentReferenceBaseCount === 1 ? '' : 's'} interna${independentReferenceBaseCount === 1 ? '' : 's'} recebe${independentReferenceBaseCount === 1 ? '' : 'm'} cor no pedido.${hasMixedStrapIdentities ? ' Produtos acabados mantêm cor própria.' : ''}`
-                    : hasMixedStrapIdentities
-                      ? `Tiras internas usam ${referenceBaseMaterialDirect}; produtos acabados mantêm cor própria.`
-                      : `As tiras por base da referência seguem a cor ${referenceBaseMaterialWithArticle}.`}
-                </span>
-              </div>
+          const strapToolbarHint = hasOnlyFinishedGroups
+            ? 'Produtos acabados mantêm cor própria e saem diretamente do estoque.'
+            : hasIndependentReferenceBase
+              ? `${independentReferenceBaseCount} tira${independentReferenceBaseCount === 1 ? '' : 's'} interna${independentReferenceBaseCount === 1 ? '' : 's'} recebe${independentReferenceBaseCount === 1 ? '' : 'm'} cor no pedido.${hasMixedStrapIdentities ? ' Produtos acabados mantêm cor própria.' : ''}`
+              : hasMixedStrapIdentities
+                ? `Tiras internas usam ${referenceBaseMaterialDirect}; produtos acabados mantêm cor própria.`
+                : `As tiras por base da referência seguem a cor ${referenceBaseMaterialWithArticle}.`;
 
-              <div className="px-3 py-2 border-b bg-muted/10 space-y-2">
-                <span className="text-xs text-muted-foreground">
-                  {hasOnlyFinishedGroups
-                    ? 'Estas tiras são compradas prontas: o pedido baixa o SKU acabado da cor escolhida e não movimenta napa-base.'
-                    : hasIndependentReferenceBase
-                      ? `Escolha material e cor nas posições liberadas pela ficha.${followMainReferenceBaseCount > 0 ? ` As demais seguem a cor ${referenceBaseMaterialWithArticle}.` : ''} Medida e consumo continuam definidos pela ficha.${hasMixedStrapIdentities ? ' As compradas prontas baixam o SKU acabado.' : ''}`
-                    : hasMixedStrapIdentities
-                      ? 'O pedido prepara apenas as tiras internas com napa; as compradas prontas baixam o SKU acabado.'
-                      : 'Ao salvar, o sistema resolve estas tiras pela napa-base da referência e pela origem configurada no catálogo.'}
+          return (
+            <div className="rounded-md border border-border/60 overflow-hidden">
+              <div className="px-2 py-1 border-b flex flex-wrap items-center justify-between gap-1.5 bg-muted/30">
+                <span
+                  className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider"
+                  title={strapToolbarHint}
+                >
+                  Tiras
                 </span>
                 {!productionExcluded && (
                   <StrapPvOrigemBulkActions
@@ -2466,6 +2460,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                     }}
                   />
                 )}
+              </div>
                 {!productionExcluded && (() => {
                   const missingOrigem = listMissingStrapPvOrigemChoices(
                     snapshotStraps,
@@ -2473,14 +2468,12 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                   );
                   if (missingOrigem.length === 0) return null;
                   return (
-                    <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-2 text-[11px] leading-snug text-amber-800 dark:text-amber-300">
+                    <div className="border-b border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[11px] leading-snug text-amber-800 dark:text-amber-300">
                       Escolha a origem em {missingOrigem.length} posição{missingOrigem.length === 1 ? '' : 'ões'}
                       {' '}antes de salvar ({missingOrigem.map((issue) => issue.label).join(', ')}).
-                      {' '}A origem vale para todas as cores do pedido.
                     </div>
                   );
                 })()}
-              </div>
 
               {strapStructuralContext.hasIssue && (
                 <div className="flex flex-col gap-2 border-b border-destructive/30 bg-destructive/5 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
@@ -2573,7 +2566,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                 </div>
               )}
 
-              <div className="p-3 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+              <div className="p-2 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
                 {straps.map((strap: any, sIdx: number) => {
                   const snapshotStrap = snapshotStraps[sIdx];
                   const lineId = technicalStrapLineId(strap);
@@ -2643,14 +2636,20 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                   const buyReadyGap = lineId ? buyReadyGapByLineId.get(lineId) : undefined;
                   return (
                     <div key={strap.id || sIdx} className="space-y-1">
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="text-xs font-bold text-muted-foreground uppercase truncate">{strap.label || `Tira ${sIdx + 1}`}</span>
+                      <div className="flex min-w-0 items-baseline justify-between gap-2">
+                        <span className="text-[10px] font-bold text-muted-foreground uppercase truncate">{strap.label || `Tira ${sIdx + 1}`}</span>
+                        <span
+                          className="min-w-0 truncate text-[10px] text-muted-foreground"
+                          title={`${canonicalType?.name || strap.group_name || 'Não identificado'}${canonicalMeasure?.display_name ? ` · ${canonicalMeasure.display_name}` : ''}${!usesFinishedGroup && !(materialMode === 'select_on_order' && !preserveCommittedStrapSnapshot) ? ` · Material: ${materialName || (materialMode === 'follow_reference' ? 'Segue a referência' : 'Não resolvido')}` : ''}`}
+                        >
+                          {canonicalType?.name || strap.group_name || 'Não identificado'}
+                          {canonicalMeasure?.display_name ? ` · ${canonicalMeasure.display_name}` : ''}
+                          {!usesFinishedGroup && !(materialMode === 'select_on_order' && !preserveCommittedStrapSnapshot) ? (
+                            <> · Material: {materialName || (materialMode === 'follow_reference' ? 'Segue a referência' : 'Não resolvido')}</>
+                          ) : null}
+                        </span>
                       </div>
-                      <p className="text-xs text-muted-foreground break-words">
-                        Tipo da ficha: {canonicalType?.name || strap.group_name || 'Não identificado'}
-                        {canonicalMeasure?.display_name ? ` · ${canonicalMeasure.display_name}` : ''}
-                      </p>
-                      {!usesFinishedGroup && (materialMode === 'select_on_order' && !preserveCommittedStrapSnapshot ? (
+                      {!usesFinishedGroup && materialMode === 'select_on_order' && !preserveCommittedStrapSnapshot ? (
                         <Select
                           value={baseGroupId || ''}
                           disabled={!strapCatalog || strapCatalogLoading}
@@ -2673,20 +2672,16 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                             onUpdate(index, 'strap_sourcing', setStrapSourcing(strapSourcingMap, lineId, null));
                           }}
                         >
-                          <SelectTrigger className="h-9" aria-label={`Material de ${strap.label || `Tira ${sIdx + 1}`}`}>
+                          <SelectTrigger className="h-8" aria-label={`Material de ${strap.label || `Tira ${sIdx + 1}`}`}>
                             <SelectValue placeholder="Selecione o material desta posição" />
                           </SelectTrigger>
                           <SelectContent>
                             {materialOptions.map((group) => <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>)}
                           </SelectContent>
                         </Select>
-                      ) : (
-                        <p className="text-xs text-muted-foreground">
-                          Material: {materialName || (materialMode === 'follow_reference' ? 'Segue a referência' : 'Não resolvido')}
-                        </p>
-                      ))}
+                      ) : null}
                       {selectsOnOrder ? readOnlyHistoricalColor ? (
-                        <div className="flex h-9 items-center justify-between gap-2 rounded-md border border-border/60 bg-muted/30 px-3 text-sm">
+                        <div className="flex h-8 items-center justify-between gap-2 rounded-md border border-border/60 bg-muted/30 px-2 text-xs">
                           <span className="truncate font-medium">
                             {strap.color || 'Cor histórica não informada'}
                           </span>
@@ -2721,7 +2716,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                           }}
                         >
                           <SelectTrigger
-                            className={cn('h-9', !strap.color_id && 'border-amber-500/60')}
+                            className={cn('h-8', !strap.color_id && 'border-amber-500/60')}
                             aria-label={`Cor de ${strap.label || `Tira ${sIdx + 1}`}`}
                           >
                             <SelectValue
@@ -2740,7 +2735,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                           </SelectContent>
                         </Select>
                       ) : (
-                        <div className="flex h-9 items-center justify-between gap-2 rounded-md border border-border/60 bg-muted/30 px-3 text-sm">
+                        <div className="flex h-8 items-center justify-between gap-2 rounded-md border border-border/60 bg-muted/30 px-2 text-xs">
                           <span className="truncate font-medium">{strap.color || item.color || `Aguardando cor ${referenceBaseMaterialWithArticle}`}</span>
                           <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">cor {referenceBaseMaterialWithArticle}</span>
                         </div>
@@ -2783,12 +2778,18 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                         </div>
                       )}
                       {!usesFinishedGroup && colorMode === 'follow_main' && !!strapCatalog && !strapCatalogLoading && !!item.color && !canonicalMainStrapColor && (
-                        <p className="text-xs leading-tight text-destructive">
+                        <p className="truncate text-[11px] leading-tight text-destructive" title={`A cor ${referenceBaseMaterialWithArticle} não corresponde a uma cor canônica ou alias aprovado. Corrija essa identidade no estoque antes de salvar.`}>
                           A cor {referenceBaseMaterialWithArticle} não corresponde a uma cor canônica ou alias aprovado. Corrija essa identidade no estoque antes de salvar.
                         </p>
                       )}
                       {!strapLinesLoading && (!identityGroupResolved || !measureResolved) && (
-                        <p className="text-xs leading-tight text-destructive">
+                        <p className="truncate text-[11px] leading-tight text-destructive" title={!measureResolved
+                            ? 'A linha técnica não identifica uma família e medida canônicas coerentes por UUID.'
+                            : usesFinishedGroup
+                              ? 'A linha técnica não identifica o grupo do produto acabado por UUID.'
+                              : materialMode === 'select_on_order'
+                                ? 'Selecione um dos materiais permitidos para esta posição.'
+                                : 'A ficha não identifica o material-base desta posição. Revise o cadastro técnico.'}>
                           {!measureResolved
                             ? 'A linha técnica não identifica uma família e medida canônicas coerentes por UUID.'
                             : usesFinishedGroup
@@ -2802,7 +2803,12 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                         && (!independentReferenceBase || !readOnlyHistoricalColor)
                         && identityGroupResolved
                         && identityColors.length === 0 && (
-                        <p className="text-xs leading-tight text-destructive">
+                        <p
+                          className="truncate text-[11px] leading-tight text-destructive"
+                          title={usesFinishedGroup
+                            ? 'Este grupo acabado não possui produto ativo com cor canônica. A cor atual não possui produto ativo no grupo acabado.'
+                            : 'Este material ainda não possui cores cadastradas utilizáveis. Cadastre uma cor para continuar.'}
+                        >
                           {usesFinishedGroup
                             ? 'Este grupo acabado não possui produto ativo com cor canônica.'
                             : 'Este material ainda não possui cores cadastradas utilizáveis. Cadastre uma cor para continuar.'}
@@ -2812,19 +2818,24 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                         && (!independentReferenceBase || !readOnlyHistoricalColor)
                         && !!strap.color_id
                         && !colorIsAvailable && (
-                        <p className="text-xs leading-tight text-destructive">
+                        <p
+                          className="truncate text-[11px] leading-tight text-destructive"
+                          title={usesFinishedGroup
+                            ? 'A cor atual não possui produto ativo no grupo acabado.'
+                            : 'A cor atual não possui produto ativo ou fonte válida neste material. Escolha uma opção válida.'}
+                        >
                           {usesFinishedGroup
                             ? 'A cor atual não possui produto ativo no grupo acabado.'
                             : 'A cor atual não possui produto ativo ou fonte válida neste material. Escolha uma opção válida.'}
                         </p>
                       )}
                       {selectsOnOrder && !readOnlyHistoricalColor && !strap.color_id && !strap.color && (
-                        <p className="text-xs leading-tight text-destructive">
+                        <p className="truncate text-[11px] leading-tight text-destructive" title="Selecione uma cor canônica para esta posição antes de salvar.">
                           Selecione uma cor canônica para esta posição antes de salvar.
                         </p>
                       )}
                       {selectsOnOrder && !readOnlyHistoricalColor && !strap.color_id && strap.color && (
-                        <p className="text-xs leading-tight text-amber-700 dark:text-amber-400">
+                        <p className="truncate text-[11px] leading-tight text-amber-700 dark:text-amber-400" title="A cor antiga é apenas texto. Selecione a identidade canônica para continuar.">
                           A cor antiga é apenas texto. Selecione a identidade canônica para continuar.
                         </p>
                       )}
@@ -2916,7 +2927,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                         const originChoice = originSnap?.pv_origem ?? strap.pv_origem;
                         return (
                           <div className={cn(
-                            'rounded-md border px-2 py-1.5 space-y-1',
+                            'rounded-md border px-2 py-1 space-y-0.5',
                             blocked ? 'border-amber-500/50 bg-amber-500/10' : 'border-border/60 bg-muted/20',
                           )}>
                             <StrapPvOrigemChooser
@@ -3014,11 +3025,11 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                                 {readinessIssueForLine?.message || line?.internalBlockReason || 'Complete o cadastro interno desta tira antes de salvar.'}
                               </p>
                             ) : !usesFinishedGroup && !effective ? (
-                              <p className="text-[10px] leading-snug text-muted-foreground">
-                                A identidade exata pela napa-base e a origem de estoque serão materializadas na mesma transação do salvamento.
+                              <p className="truncate text-[10px] leading-snug text-muted-foreground" title="A identidade exata pela napa-base e a origem de estoque serão materializadas na mesma transação do salvamento.">
+                                Identidade e origem de estoque fecham no salvamento.
                               </p>
                             ) : strapLinesLoading && !line ? (
-                              <p className="text-[10px] leading-tight text-muted-foreground">Resolvendo material e consumo…</p>
+                              <p className="truncate text-[10px] leading-tight text-muted-foreground">Resolvendo estoque…</p>
                             ) : strapLinesError && !line ? (
                               <p className="text-[10px] leading-snug text-amber-700 dark:text-amber-400">
                                 Não foi possível resolver estoque/consumo das tiras. Tente recarregar o pedido.

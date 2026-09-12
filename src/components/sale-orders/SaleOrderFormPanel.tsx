@@ -750,7 +750,7 @@ const SaleOrderItemsList = memo(function SaleOrderItemsList({
         return (
           <Fragment key={item.id || item.clientKey || `idx-${idx}`}>
             {isNewRefGroup && (
-              <div className="flex items-center gap-3 mt-4 mb-1 first:mt-0">
+              <div className="flex items-center gap-3 mt-2 mb-0.5 first:mt-0">
                 <div className="h-px flex-1 bg-border" />
                 <span className="shrink-0 text-xs font-bold uppercase tracking-wider text-muted-foreground">
                   {groupLabel}
@@ -2508,10 +2508,10 @@ export default function SaleOrderFormPanel({
       </div>
 
       {/* Items section */}
-      <div id="pv-itens" className="scroll-mt-20 space-y-3">
-        <div className="flex items-center justify-between border-b border-border/40 pb-2">
+      <div id="pv-itens" className="scroll-mt-20 space-y-2">
+        <div className="flex items-center justify-between border-b border-border/40 pb-1">
           <div className="flex items-center gap-2">
-            <ClipboardList className="h-5 w-5 text-primary" />
+            <ClipboardList className="h-4 w-4 text-primary" />
             <Label className="text-sm font-bold">Itens do Pedido</Label>
           </div>
           <div className="flex items-center gap-2">

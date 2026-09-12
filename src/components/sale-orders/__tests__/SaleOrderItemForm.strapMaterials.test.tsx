@@ -152,6 +152,16 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); });
 
 describe('SaleOrderItemForm — material por posição', () => {
+  it('empacota 1–4 no header e não deixa faixa extra de decisão no card', () => {
+    mount(initialItem());
+    expect(screen.getByLabelText('Sequência comercial do item')).toBeInTheDocument();
+    expect(screen.queryByText('Distribuição por Numeração')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Grade').some((el) => el.tagName === 'SPAN')).toBe(true);
+    expect(screen.queryByText('Materiais e cores das tiras')).not.toBeInTheDocument();
+    expect(screen.getByText('Tiras')).toBeInTheDocument();
+    expect(screen.queryByText('Tipo da ficha:')).not.toBeInTheDocument();
+  });
+
   it('busca e seleciona cor de produto cadastrado sem exigir vínculo oficial anterior', async () => {
     state.catalog.official_products = [];
     const user = userEvent.setup();
@@ -292,7 +302,7 @@ describe('SaleOrderItemForm — material por posição', () => {
     initial.strap_colors[0].base_group_name = 'NOME HISTÓRICO';
     const view = mount(initial, 'Em Produção');
     expect(screen.queryByRole('combobox', { name: 'Material de TIRA 1' })).not.toBeInTheDocument();
-    expect(screen.getByText('Material: NOME HISTÓRICO')).toBeInTheDocument();
+    expect(screen.getByText(/Material: NOME HISTÓRICO/)).toBeInTheDocument();
     expect(view.updates.mock.calls.filter(([field]) => field === 'strap_colors' || field === 'strap_sourcing')).toEqual([]);
     expect(view.current()).toEqual(initial);
   });
@@ -422,8 +432,8 @@ describe('SaleOrderItemForm — I703 com Overlock e Strass 6 mm', () => {
     expect(view.current().strap_sourcing).toHaveProperty(LINE_A);
     expect(view.current().strap_sourcing).not.toHaveProperty(LINE_B);
     expect(screen.queryByRole('combobox', { name: 'Cor de TIRA 1' })).not.toBeInTheDocument();
-    expect(screen.getByText('Tipo da ficha: TIRA STRASS · 6 mm')).toBeInTheDocument();
-    expect(screen.getAllByText('Material: GLOW METALIC + MASSABOX')).toHaveLength(1);
+    expect(screen.getByText(/TIRA STRASS · 6 mm/)).toBeInTheDocument();
+    expect(screen.getByText(/Material: GLOW METALIC \+ MASSABOX/)).toBeInTheDocument();
     await user.click(screen.getByRole('combobox', { name: 'Cor de TIRA 2' }));
     expect(screen.getAllByRole('option').map(option => option.textContent)).toEqual(STRASS_COLORS.map(color => color.name).sort());
     await user.click(screen.getByRole('option', { name: 'ROSADO COM FUNDO ROSADO' }));
