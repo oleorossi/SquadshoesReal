@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
   listEmployeePendingSummary, listPendingTimeRecords, applyManualPunchCompletion,
-  bulkApplyDefaultExit, listEmployeeExitHistory,
+  bulkApplyDefaultExit, listEmployeeExitHistory, shouldSuggestFinalExit,
   ISSUE_LABEL, ISSUE_HINT, DOW_LABEL,
   type EmployeePendingSummary, type PendingTimeRecord,
 } from '@/services/pendingTimeRecordsService';
@@ -324,6 +324,7 @@ function EmployeeCard({
   // batida_extra já é calculada (última batida = saída) — não precisa sugestão.
   const suggestibles = pendings.filter((p) =>
     p.issue_type !== 'batida_extra'
+    && shouldSuggestFinalExit(p.punches)
     && !!p.employee_id
     && !p.employee_match_ambiguous,
   );
@@ -423,7 +424,9 @@ function EmployeeCard({
                 <PendingDayRow
                   key={p.time_record_id}
                   p={p}
-                  suggestion={p.issue_type === 'batida_extra' ? undefined : suggestExitTime(pattern, p.record_date)}
+                  suggestion={p.issue_type === 'batida_extra' || !shouldSuggestFinalExit(p.punches)
+                    ? undefined
+                    : suggestExitTime(pattern, p.record_date)}
                   autoFocus={focusRecordId === p.time_record_id || (focusRecordId === null && idx === 0)}
                   onSaved={() => {
                     const next = pendings.slice(idx + 1).find((row) =>

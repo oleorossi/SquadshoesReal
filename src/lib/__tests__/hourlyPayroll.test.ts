@@ -13,14 +13,24 @@ describe('splitDayMinutes', () => {
     expect(r).toEqual({ normal: 540, premium: 0, incomplete: false });
   });
 
-  it('nº ímpar (08/13/18 = pulou batida): INCONSISTENTE → 0h, marca incompleto (resolve no Pendências)', () => {
+  it('n=3 com saída real (08/13/18): infere almoço e conta 9h — não é mais pendência', () => {
     const r = splitDayMinutes(['08:00', '13:00', '18:00'], WED, false);
-    expect(r.normal).toBe(0); // não "chuta" mais pelo intervalo
-    expect(r.premium).toBe(0);
-    expect(r.incomplete).toBe(true);
+    expect(r).toEqual({ normal: 540, premium: 0, incomplete: false });
   });
 
-  it('QUALQUER nº ímpar de batidas vira pendência — inclusive n=5', () => {
+  it('n=3 com saída 21:28: tarde conta e os minutos após 18:00 viram HE', () => {
+    const r = splitDayMinutes(['08:00', '13:00', '21:28'], WED, false);
+    expect(r.incomplete).toBe(false);
+    expect(r.normal).toBe(540);
+    expect(r.premium).toBe(208); // 21:28 − 18:00
+  });
+
+  it('n=3 ainda no almoço (08/12/13): falta a saída final → pendência', () => {
+    expect(splitDayMinutes(['08:00', '12:00', '13:00'], WED, false))
+      .toEqual({ normal: 0, premium: 0, incomplete: true });
+  });
+
+  it('ímpar ≥5 continua pendência — decisão 2026-07-30 intacta', () => {
     // ⚠ Decisão do dono 2026-07-30 (auditoria RH, D1/P2) SUPERSEDE a de
     // 2026-06-21, que tratava a última batida como saída quando n ≥ 5. A regra
     // antiga pagava o span 1º→último e produziu jornadas de 13h a 21h32 num
@@ -32,7 +42,7 @@ describe('splitDayMinutes', () => {
     const cincoBatidas = splitDayMinutes(['08:00', '12:00', '13:00', '18:00', '20:00'], WED, false);
     expect(cincoBatidas).toEqual({ normal: 0, premium: 0, incomplete: true });
 
-    expect(splitDayMinutes(['08:00', '13:00', '18:00'], WED, false).incomplete).toBe(true);
+    expect(splitDayMinutes(['08:00', '12:00', '13:00'], WED, false).incomplete).toBe(true);
     expect(splitDayMinutes(['08:06', '12:01', '12:59', '18:09', '20:09'], WED, false).incomplete).toBe(true);
   });
 
@@ -71,9 +81,9 @@ describe('splitDayMinutes', () => {
     expect(splitDayMinutes(['08:00', '12:00', '13:00', '18:00'], SUN, false)).toEqual({ normal: 0, premium: 540, incomplete: false });
   });
 
-  it('feriado ímpar (pulou batida): INCONSISTENTE → 0h, incompleto (mesmo em feriado)', () => {
+  it('feriado n=3 com saída real: conta a jornada (tudo 1,5×), não zera', () => {
     const r = splitDayMinutes(['08:00', '13:00', '18:00'], WED, true);
-    expect(r).toEqual({ normal: 0, premium: 0, incomplete: true });
+    expect(r).toEqual({ normal: 0, premium: 540, incomplete: false });
   });
 
   it('tolera batida assumida com * e minutos não-zero (12:37*, 18:00*)', () => {
@@ -136,10 +146,17 @@ describe('calculateHourlyPayroll', () => {
     expect(r.net_value).toBe(40);
   });
 
-  it('dia com batida ímpar NÃO entra no cálculo, só conta pro alerta (resolve no Pendências)', () => {
+  it('dia com 3 batidas e saída real entra no cálculo (almoço inferido)', () => {
     const r = calculateHourlyPayroll(2200, [day('2026-06-03', WED, ['08:00', '13:00', '18:00'])], 0);
+    expect(r.incomplete_days).toBe(0);
+    expect(r.normal_minutes).toBe(540);
+    expect(r.gross_value).toBe(90);
+  });
+
+  it('ímpar ≥5 NÃO entra no cálculo, só conta pro alerta (resolve no Pendências)', () => {
+    const r = calculateHourlyPayroll(2200, [day('2026-06-03', WED, ['08:00', '12:00', '13:00', '18:00', '20:00'])], 0);
     expect(r.incomplete_days).toBe(1);
-    expect(r.normal_minutes).toBe(0); // ímpar fica de fora; antes contava 540
+    expect(r.normal_minutes).toBe(0);
     expect(r.gross_value).toBe(0);
   });
 });

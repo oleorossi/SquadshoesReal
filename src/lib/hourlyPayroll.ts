@@ -23,6 +23,8 @@
  * salário. O salário cadastrado é sempre a referência cheia de 220h/mês.
  */
 
+import { interpretThreePunches } from './ponto/interpretDayPunches';
+
 /** 44h/semana → 220h/mês (DSR embutido). Base do valor-hora. */
 export const MONTHLY_HOURS_DIVISOR = 220;
 /** Após 18:00 em dia útil, a hora é 1,5×. */
@@ -91,9 +93,9 @@ function isPunchOutOfRange(t: string): boolean {
  * Batidas:
  * - **4+ pares** (ex.: 08:00,12:00,13:00,18:00) → soma os pares reais.
  * - **2 batidas** (entrada+saída) → span do 1º ao último (não perde a tarde).
- * - **nº ÍMPAR** (pulou uma batida) → INCONSISTENTE: 0h + `incomplete`. Não é mais
- *   "chutado" pelo intervalo (inflava/deflava a folha); fica de fora do cálculo até
- *   ser resolvido manualmente na aba Pendências de Ponto (decisão do usuário 2026-06).
+ * - **n=3 com saída real** (última depois do almoço) → infere a pausa do meio
+ *   (`interpretThreePunches`, decisão 2026-09-12). 1 batida e ímpar ≥5 continuam
+ *   pendência (auditoria 2026-07-30 — jornadas de 13h–21h).
  *
  * Almoço (decisão 2026-06-02): é **1h dentro de 12:00–14:00**. Em dia longo (>6h)
  * que cruza o meio-dia, garante **no mínimo 1h** de almoço — se a pessoa bateu uma
@@ -124,30 +126,27 @@ export function splitDayMinutes(
   // (timeValidationRules), mas o motor não — contrato silencioso. Numérico, não lexical
   // (tolera '12:37*'). Idempotente em batidas já ordenadas.
   const ps = [...punches].sort((a, b) => timeToMin(a) - timeToMin(b));
-  // Nº ÍMPAR de batidas → SEMPRE pendência (0h + incomplete), resolve manual em
-  // Pendências. Não dá pra inferir com segurança qual batida faltou nem qual sobrou.
+  // ⚠ Decisão do dono 2026-07-30 (auditoria RH, D1/P2) — ímpar ≥5 continua
+  // pendência. SUPERSEDE a de 2026-06-21, que pagava o span 1º→último e produziu
+  // jornadas de 13h a 21h32 (Thais Batista 26/02/2026).
   //
-  // ⚠ Decisão do dono 2026-07-30 (auditoria RH, D1/P2) — SUPERSEDE a de 2026-06-21,
-  // que mandava tratar a ÚLTIMA batida como saída quando n ≥ 5. A regra antiga pagava
-  // o span 1º→último e produziu, nos dados reais, jornadas de 13h a 21h32 num único
-  // dia (Thais Batista 26/02/2026: ['00:00','08:00','16:23','17:26','22:32'] → 1.292
-  // min). Pior: o motor SQL `calculate_day_summary` marca esses mesmos dias como
-  // 'irregular' e a tela de Pendências os lista — ou seja, o dia aparecia como
-  // pendência A RESOLVER e era pago integralmente ao mesmo tempo. 62 dias em produção.
-  // Alinhar aqui com o SQL é o que faz o dia cair na fila de pendências e não ser pago
-  // até alguém corrigir as batidas.
-  if (n % 2 !== 0) return { normal: 0, premium: 0, incomplete: true };
-  const allPremium = !forceNormalDay && (isHoliday || dayOfWeek === 0 || dayOfWeek === 6);
-
-  // Intervalos trabalhados: pares reais (par 4+) ou span do 1º ao último (2 batidas
-  // OU ímpar ≥5 = batida extra → última batida é a saída).
+  // ⚠ Decisão do dono 2026-09-12 — SUPERSEDE a de 2026-07-30 SÓ para n=3 quando
+  // a última batida já é saída de expediente (volta ~13h + saída 18h30 / 21h28).
+  // Aí falta a pausa do almoço, não a saída final. 1 batida e n=3 ainda no almoço
+  // continuam pendência.
   let intervals: [number, number][];
-  if (n >= 4 && n % 2 === 0) {
+  if (n % 2 !== 0) {
+    if (n !== 3) return { normal: 0, premium: 0, incomplete: true };
+    const interp = interpretThreePunches(ps.map(timeToMin));
+    if (interp.incomplete) return { normal: 0, premium: 0, incomplete: true };
+    intervals = interp.intervals;
+  } else if (n >= 4) {
     intervals = [];
     for (let i = 0; i + 1 < n; i += 2) intervals.push([timeToMin(ps[i]), timeToMin(ps[i + 1])]);
   } else {
     intervals = [[timeToMin(ps[0]), timeToMin(ps[n - 1])]];
   }
+  const allPremium = !forceNormalDay && (isHoliday || dayOfWeek === 0 || dayOfWeek === 6);
 
   // Classifica normal × 1,5× (corte às 18:00; tudo 1,5× em sáb/dom/feriado).
   let normal = 0;
@@ -183,8 +182,7 @@ export function splitDayMinutes(
     premium = Math.max(0, premium - lunch);
   }
 
-  // Aqui só chegam: par (≥2) e ímpar ≥5 (batida extra, já calculado via span). Ambos
-  // são considerados COMPLETOS — ímpar <5 (n=3) já retornou incomplete acima.
+  // Completos: par (≥2) e n=3 interpretado. Ímpar ≥5 e n=3 sem saída já retornaram.
   return { normal, premium, incomplete: false };
 }
 

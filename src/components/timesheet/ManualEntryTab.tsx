@@ -6,6 +6,7 @@ import {
 } from '@/hooks/useTimesheet';
 import { useEmployees, type Employee } from '@/hooks/useEmployees';
 import { groupTimeRecordsBySystemEmployee, listSystemTimesheetEmployees } from '@/lib/ponto/systemTimesheet';
+import { mapThreePunchesToNamedSlots } from '@/lib/ponto/interpretDayPunches';
 import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -107,6 +108,14 @@ function punchesToSlots(punches: string[]): { slots: Slots; slotManual: SlotManu
   const set = (k: SlotKey, p: string) => { slots[k] = cleanPunch(p); slotManual[k] = isManualPunch(p); };
   if (sorted.length === 2) {
     set('entrada', sorted[0]); set('saida', sorted[1]);
+  } else if (sorted.length === 3) {
+    const named = mapThreePunchesToNamedSlots(sorted);
+    const keys: SlotKey[] = ['entrada', 'saidaAlmoco', 'voltaAlmoco', 'saida'];
+    if (named) {
+      keys.forEach((k) => { if (named[k]) set(k, named[k]); });
+    } else {
+      sorted.forEach((p, i) => { if (i < 4) set(keys[i], p); });
+    }
   } else {
     const keys: SlotKey[] = ['entrada', 'saidaAlmoco', 'voltaAlmoco', 'saida'];
     sorted.forEach((p, i) => { if (i < 4) set(keys[i], p); else extras.push(p); });

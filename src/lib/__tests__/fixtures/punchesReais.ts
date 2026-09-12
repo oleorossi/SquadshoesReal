@@ -34,7 +34,10 @@ export const PUNCHES_REAIS: CorpusBucket[] = [
   },
   {
     bucket: 'n3',
-    descricao: 'Três batidas — faltou uma. Não dá pra inferir qual. Sempre pendência.',
+    descricao:
+      'Três batidas. Se a última já é saída de expediente (depois do almoço), ' +
+      'infere a pausa do meio e conta o dia (decisão 2026-09-12). Sem saída ' +
+      'final continua pendência.',
     batidas: [
       ['08:13', '12:02', '21:06'], ['08:13', '13:00', '20:39'], ['08:13', '13:03', '20:10'],
       ['08:19', '12:03', '20:11'], ['08:00', '19:19', '19:44'], ['08:00', '08:04', '19:11'],
