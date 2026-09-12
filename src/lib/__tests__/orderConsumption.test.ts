@@ -1702,6 +1702,95 @@ describe('orderConsumption — contrato de colunas do fetch', () => {
   // (upper/lining). Mesma tira+cor cortada de napas diferentes NÃO colapsa —
   // senão a napa da minoria some (PV-00148: 111,36 m de tira CAPUCCINO puxam
   // NAPA MADRID, não NAPA SOFT).
+  it('OVERLOCK na mesma ficha: variante Soft vs Madrid apontam napas diferentes e a mesma metragem', () => {
+    const ctx = buildContext();
+    ctx.productGroups.push({
+      id: 'g-madrid', name: 'NAPA MADRID',
+      dimensions_length: null, dimensions_width: null, dimensions_unit: null,
+    } as any);
+    ctx.materialVariantsById = new Map([
+      ['var-soft', {
+        id: 'var-soft', reference_id: 'sheet-1',
+        upper_material_product_id: null, upper_material_group_id: 'g-napa', upper_consumption_override: null,
+        lining_material_product_id: null, lining_material_group_id: null, lining_consumption_override: null,
+        insole_material_product_id: null, insole_material_group_id: null, insole_consumption_override: null,
+        sole_material_product_id: null, sole_consumption_override: null,
+        main_material_group_id: null,
+      }],
+      ['var-madrid', {
+        id: 'var-madrid', reference_id: 'sheet-1',
+        upper_material_product_id: null, upper_material_group_id: 'g-madrid', upper_consumption_override: null,
+        lining_material_product_id: null, lining_material_group_id: null, lining_consumption_override: null,
+        insole_material_product_id: null, insole_material_group_id: null, insole_consumption_override: null,
+        sole_material_product_id: null, sole_consumption_override: null,
+        main_material_group_id: null,
+      }],
+    ]);
+    const strap = [{
+      id: '1', label: 'OVERLOCK', color: 'PRETO',
+      group_id: 'g-overlock', group_name: 'TIRA OVERLOCK 5MM',
+      identity_basis: 'reference_base' as const,
+      consumption: 40,
+    }];
+    const sheet = buildSheet({ upper_material: 'NAPA SOFT', has_straps: true });
+    const tiraDe = (variantId: string) => computeConsumptionForItems([
+      buildItem({ material_variant_id: variantId, strap_colors: strap, technical_sheets: sheet }),
+    ], ctx).find((row) => row.componentType === 'Tiras')!;
+
+    const soft = tiraDe('var-soft');
+    const madrid = tiraDe('var-madrid');
+    expect(soft.groupName).toBe('TIRA OVERLOCK 5MM');
+    expect(madrid.groupName).toBe('TIRA OVERLOCK 5MM');
+    expect(soft.materialFamily).toBe('NAPA SOFT');
+    expect(madrid.materialFamily).toBe('NAPA MADRID');
+    expect(soft.totalQuantity).toBeCloseTo(madrid.totalQuantity, 5);
+    expect(soft.totalQuantity).toBeGreaterThan(0);
+  });
+
+  it('STRASS na mesma ficha não muda de grupo quando a variante troca a napa', () => {
+    const ctx = buildContext();
+    ctx.productGroups.push({
+      id: 'g-madrid', name: 'NAPA MADRID',
+      dimensions_length: null, dimensions_width: null, dimensions_unit: null,
+    } as any);
+    ctx.materialVariantsById = new Map([
+      ['var-soft', {
+        id: 'var-soft', reference_id: 'sheet-1',
+        upper_material_product_id: null, upper_material_group_id: 'g-napa', upper_consumption_override: null,
+        lining_material_product_id: null, lining_material_group_id: null, lining_consumption_override: null,
+        insole_material_product_id: null, insole_material_group_id: null, insole_consumption_override: null,
+        sole_material_product_id: null, sole_consumption_override: null,
+        main_material_group_id: null,
+      }],
+      ['var-madrid', {
+        id: 'var-madrid', reference_id: 'sheet-1',
+        upper_material_product_id: null, upper_material_group_id: 'g-madrid', upper_consumption_override: null,
+        lining_material_product_id: null, lining_material_group_id: null, lining_consumption_override: null,
+        insole_material_product_id: null, insole_material_group_id: null, insole_consumption_override: null,
+        sole_material_product_id: null, sole_consumption_override: null,
+        main_material_group_id: null,
+      }],
+    ]);
+    const strap = [{
+      id: '1', label: 'STRASS LATERAL', color: 'PRETO',
+      group_id: 'g-strass', group_name: 'TIRA STRASS 6MM',
+      identity_basis: 'finished_product_group' as const,
+      consumption: 40,
+    }];
+    const sheet = buildSheet({ upper_material: 'NAPA SOFT', has_straps: true });
+    const tiraDe = (variantId: string) => computeConsumptionForItems([
+      buildItem({ material_variant_id: variantId, strap_colors: strap, technical_sheets: sheet }),
+    ], ctx).find((row) => row.componentType === 'Tiras')!;
+
+    const soft = tiraDe('var-soft');
+    const madrid = tiraDe('var-madrid');
+    expect(soft.groupName).toBe('TIRA STRASS 6MM');
+    expect(madrid.groupName).toBe('TIRA STRASS 6MM');
+    expect(soft.materialFamily ?? null).toBeNull();
+    expect(madrid.materialFamily ?? null).toBeNull();
+    expect(soft.totalQuantity).toBeCloseTo(madrid.totalQuantity, 5);
+  });
+
   it('tira herda a família da ficha (napa) e NÃO colapsa entre napas diferentes', () => {
     const ctx = buildContext();
     const strap = [{

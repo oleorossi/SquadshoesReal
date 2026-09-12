@@ -14,10 +14,15 @@
  * products.category canônico (CATEGORIES em src/types/inventory.ts); `label` é
  * o rótulo amigável das abas do Estoque. Ordem espelha as abas.
  */
+/** Setor das tiras cortadas de napa (OVERLOCK, CHATA, meia cana). STRASS
+ *  comprada pronta permanece em Componente — não tem material-base. */
+export const MATERIAL_BASE_SECTOR = 'Material Base' as const;
+
 export const SECTOR_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
   { value: 'Cabedal',              label: 'Cabedal' },
   { value: 'Forração da Palmilha', label: 'Forração' },
   { value: 'Palmilha',             label: 'Palmilha' },
+  { value: MATERIAL_BASE_SECTOR,   label: 'Material Base' },
   { value: 'Cola / Químico',       label: 'Químicos' },
   { value: 'Componente',           label: 'Componentes' },
   { value: 'Embalagem',            label: 'Embalagem' },
@@ -83,6 +88,9 @@ export function deriveCategoryFromGroup(groupName: string | null | undefined): s
   if (n.includes('cola') || n.includes('quimico') || n.includes('químico') || n.includes('primer') || n.includes('halogenante')) return 'Cola / Químico';
   if (n.includes('ferramenta') || n.includes('navalha') || n.includes('faca')) return 'Ferramentas';
   if (n.includes('forma') || n.includes('fôrma')) return 'Fôrma';
+  // STRASS é tira comprada pronta — sem napa-base — e mora em Componentes.
+  if (n.includes('strass')) return 'Componente';
+  if (n.includes('tira') || n.includes('tranca') || n.includes('meia cana')) return MATERIAL_BASE_SECTOR;
 
   return 'Componente';
 }

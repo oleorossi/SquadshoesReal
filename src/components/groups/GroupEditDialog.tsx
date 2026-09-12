@@ -33,7 +33,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CONSUMPTION_UNITS_BY_GROUP } from '@/lib/measurementUnits';
-import { sectorOfGroup, sectorLabel, organizationSectorOptions } from '@/lib/categoryFromGroup';
+import { sectorOfGroup, sectorLabel, organizationSectorOptions, MATERIAL_BASE_SECTOR } from '@/lib/categoryFromGroup';
 import { NumberInput } from '@/components/ui/number-input';
 import { SEARCH_RENDER_CAP, capSearchResults, searchMatchesAllTerms, searchRefineHint, rankBySearchScore } from '@/lib/searchUtils';
 import { HighlightMatch } from '@/components/ui/highlight-match';
@@ -1243,8 +1243,13 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                           Tira acabada (Hub)
                         </Label>
                         <p className="mt-1 text-xs text-muted-foreground">
-                          Marque quando este grupo é o produto final da tira (chata, overlock, strass, meia cana), não a napa de onde ela é cortada. Desliga a ficha de componente automática. A identidade operacional continua por UUID — o nome não decide.
+                          Marque quando este grupo é o produto final da tira cortada de napa (chata, overlock, meia cana), não a napa de origem. Tira comprada pronta (STRASS) permanece em Componentes — não tem material-base. Desliga a ficha de componente automática. A identidade operacional continua por UUID — o nome não decide.
                         </p>
+                        {sector === MATERIAL_BASE_SECTOR && (
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Neste setor a flag liga sozinha: a napa (Soft vs Madrid) vem da variante da ficha, não de um grupo de tira por napa. Cadastre rendimento no Hub de Tiras.
+                          </p>
+                        )}
                       </div>
                       <Scissors className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                     </div>
@@ -1280,6 +1285,7 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                           type="button"
                           onClick={() => {
                             setSector(option.value);
+                            if (option.value === MATERIAL_BASE_SECTOR && !isContainer) setIsArtisanalStrap(true);
                             if (selectedFamily && sectorOfGroup(selectedFamily) !== option.value) setParentGroupId('');
                           }}
                           className={`min-h-[70px] border px-3 py-2.5 text-left transition-colors ${selected ? 'border-primary bg-primary/5' : 'border-foreground/15 bg-background hover:border-foreground/40'}`}

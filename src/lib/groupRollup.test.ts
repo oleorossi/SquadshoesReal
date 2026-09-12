@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { ProductGroup } from '@/hooks/useGroups';
 import type { GroupStockRollup } from '@/hooks/useGroupOrganization';
+import { organizationSectorOptions } from '@/lib/categoryFromGroup';
 import { buildGroupMetrics, buildSectorTree } from '@/lib/groupRollup';
+
+const ORG_SECTORS = organizationSectorOptions().length;
 
 const group = (value: Partial<ProductGroup> & Pick<ProductGroup, 'id' | 'name'>): ProductGroup => ({
   sector: 'Cabedal',
@@ -18,13 +21,14 @@ describe('famílias técnicas explícitas', () => {
     expect(cabedal?.families).toEqual([{ family, children: [] }]);
     expect(cabedal?.looseLeaves).toEqual([]);
     expect(tree.map((s) => s.sector)).not.toContain('Embalagem');
-    expect(tree).toHaveLength(8);
+    expect(tree.map((s) => s.sector)).toContain('Material Base');
+    expect(tree).toHaveLength(ORG_SECTORS);
   });
 
   it('não força o setor Embalagem quando não há grupos nele', () => {
     const tree = buildSectorTree([]);
     expect(tree.find((sector) => sector.sector === 'Embalagem')).toBeUndefined();
-    expect(tree).toHaveLength(8);
+    expect(tree).toHaveLength(ORG_SECTORS);
   });
 
   it('ainda mostra um grupo legado de Embalagem', () => {
@@ -32,7 +36,7 @@ describe('famílias técnicas explícitas', () => {
     const tree = buildSectorTree([leftover]);
     const embalagem = tree.find((sector) => sector.sector === 'Embalagem');
     expect(embalagem?.families).toEqual([{ family: leftover, children: [] }]);
-    expect(tree).toHaveLength(9);
+    expect(tree).toHaveLength(ORG_SECTORS + 1);
   });
 
   it('não trata família vazia como grupo-folha de estoque', () => {
