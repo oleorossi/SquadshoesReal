@@ -223,6 +223,75 @@ describe('buildPointingPlan', () => {
     expect(completedSibling.available).toBe(true);
   });
 
+  it('com allowParallelSkip, irmão aberto vira pulo e libera o destino à frente', () => {
+    const stages = [
+      stage('Corte Palmilha', 1),
+      stage('Corte Forração', 2),
+      stage('Costura', 3),
+    ];
+    const levels = new Map([
+      ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Corte Forração', 1], ['Costura', 2],
+    ]);
+    const opts = { allowParallelSkip: true as const };
+    const plan = buildPointingPlan(
+      makeCard({ stages, column: 'Corte Palmilha' }),
+      'Costura',
+      FLOW,
+      levels,
+      opts,
+    );
+    expect(plan.available).toBe(true);
+    expect(plan.skipped).toEqual(['Corte Forração']);
+    expect(plan.pointedStage?.stage_name).toBe('Corte Palmilha');
+    expect(moveOptions(
+      makeCard({ stages, column: 'Corte Palmilha' }),
+      FLOW,
+      levels,
+      opts,
+    ).fwdOptions).toEqual(['Costura']);
+  });
+
+  it('com allowParallelSkip, irmão aberto ANTES na rota também entra no pulo', () => {
+    const stages = [
+      stage('Corte Palmilha', 1),
+      stage('Corte Forração', 2),
+      stage('Costura', 3),
+    ];
+    const levels = new Map([
+      ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Corte Forração', 1], ['Costura', 2],
+    ]);
+    const plan = buildPointingPlan(
+      makeCard({ stages, column: 'Corte Forração' }),
+      'Costura',
+      FLOW,
+      levels,
+      { allowParallelSkip: true },
+    );
+    expect(plan.available).toBe(true);
+    expect(plan.skipped).toEqual(['Corte Fibra']);
+    expect(plan.pointedStage?.stage_name).toBe('Corte Forração');
+  });
+
+  it('mesmo com allowParallelSkip, recusa soltar em coluna paralela à origem', () => {
+    const stages = [
+      stage('Corte Palmilha', 1),
+      stage('Corte Forração', 2),
+      stage('Costura', 3),
+    ];
+    const levels = new Map([
+      ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Corte Forração', 1], ['Costura', 2],
+    ]);
+    const plan = buildPointingPlan(
+      makeCard({ stages, column: 'Corte Palmilha' }),
+      'Corte Forração',
+      FLOW,
+      levels,
+      { allowParallelSkip: true },
+    );
+    expect(plan.available).toBe(false);
+    expect(plan.unavailableReason).toMatch(/setor paralelo a Corte Fibra/i);
+  });
+
   it('sem destino aponta no próprio setor atual', () => {
     const stages = [stage('Corte Palmilha', 1, { quantity_processed: 40 }), stage('Costura', 3)];
     const plan = buildPointingPlan(makeCard({ stages, column: 'Corte Palmilha' }), null, FLOW);
@@ -324,6 +393,22 @@ describe('moveOptions', () => {
     );
     expect(opts.fwdOptions).toEqual([]);
     expect(opts.backOption).toBeNull();
+  });
+
+  it('com allowParallelSkip, oferece o destino à frente mesmo com irmão aberto', () => {
+    const stages = [
+      stage('Corte Palmilha', 1), stage('Corte Forração', 2), stage('Costura', 3),
+    ];
+    const levels = new Map([
+      ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Corte Forração', 1], ['Costura', 2],
+    ]);
+    const opts = moveOptions(
+      makeCard({ stages, column: 'Corte Palmilha' }),
+      FLOW,
+      levels,
+      { allowParallelSkip: true },
+    );
+    expect(opts.fwdOptions).toEqual(['Costura']);
   });
 
   it('oferece o nível anterior quando o próprio setor está parcial', () => {
@@ -461,6 +546,30 @@ describe('applyPointing — confirmação humana do pulo', () => {
 
     expect(res).toMatchObject({ status: 'blocked' });
     expect((apontar as unknown as { calls: unknown[] }).calls).toHaveLength(0);
+  });
+
+  it('com allowParallelSkip e aceite, fecha o irmão paralelo com zero', async () => {
+    const apontar = fakeApontar();
+    const parallelStages = [
+      stage('Corte Palmilha', 1), stage('Corte Forração', 2), stage('Costura', 3),
+    ];
+    const levels = new Map([
+      ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Corte Forração', 1], ['Costura', 2],
+    ]);
+    const parallelCard = makeCard({ stages: parallelStages, column: 'Corte Palmilha' });
+    const plan = buildPointingPlan(
+      parallelCard, 'Costura', FLOW, levels, { allowParallelSkip: true },
+    );
+
+    const res = await applyPointing({
+      card: parallelCard, plan, target: 'Costura', qty: 100, apontar, skipAcknowledged: true,
+    });
+
+    expect(res.status).toBe('ok');
+    const calls = (apontar as unknown as { calls: Array<{ stageName: string; quantity: number; finalize?: boolean }> }).calls;
+    expect(calls).toHaveLength(2);
+    expect(calls[0]).toMatchObject({ stageName: 'Corte Palmilha', quantity: 100 });
+    expect(calls[1]).toMatchObject({ stageName: 'Corte Forração', quantity: 0, finalize: true });
   });
 
   it('com aceite, grava a origem e fecha os pulados', async () => {

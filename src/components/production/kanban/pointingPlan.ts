@@ -24,6 +24,22 @@ export interface PointingPlan {
   unavailableReason?: string;
 }
 
+/** Admin no Modo Gestão pode pular irmão paralelo; operador continua barrado. */
+export interface PointingPlanOptions {
+  allowParallelSkip?: boolean;
+}
+
+function uniqueNames(names: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const name of names) {
+    if (seen.has(name)) continue;
+    seen.add(name);
+    out.push(name);
+  }
+  return out;
+}
+
 type StageLevel = (stageName: string, stageOrder?: number) => number;
 
 interface BackwardMove {
@@ -85,6 +101,7 @@ export function moveOptions(
   card: KanbanCardData,
   flowOrder: Map<string, number>,
   levelOf?: Map<string, number>,
+  options?: PointingPlanOptions,
 ) {
   const column = norm(card.column);
   const ordered = orderStagesByRoute(card.stages, flowOrder);
@@ -103,7 +120,7 @@ export function moveOptions(
     && norm(stage.stage_name) !== column
     && nivel(norm(stage.stage_name), stage.stage_order) === columnLevel
   ));
-  const fwdOptions = (hasOpenParallelSibling ? [] : ordered)
+  const fwdOptions = (hasOpenParallelSibling && !options?.allowParallelSkip ? [] : ordered)
     .filter(stage => stage.status !== 'concluido')
     .filter(stage => {
       const name = norm(stage.stage_name);
@@ -124,6 +141,7 @@ export function buildPointingPlan(
   target: string | null,
   flowOrder: Map<string, number>,
   levelOf?: Map<string, number>,
+  options?: PointingPlanOptions,
 ): PointingPlan {
   // Card de teste / snapshot legado pode ainda trazer "Corte Palmilha"/"Mesa"
   // na coluna; o vocabulário vivo do quadro é sempre o canônico.
@@ -228,20 +246,27 @@ export function buildPointingPlan(
       .filter(stage => norm(stage.stage_name) !== column)
       .filter(stage => nivel(norm(stage.stage_name), stage.stage_order) === nivelCol)
       .map(stage => norm(stage.stage_name));
-    if (openParallelSiblings.length > 0) {
+    if (openParallelSiblings.length > 0 && !options?.allowParallelSkip) {
       return {
         pointedStage, isBackward: false, skipped: [], remaining, stageRemaining,
         available: false,
         unavailableReason: `Conclua primeiro ${openParallelSiblings.join(', ')} — a OP ainda permanece neste nível paralelo.`,
       };
     }
-    const skipped = targetIdx > colIdx + 1
+    const sequentialSkipped = targetIdx > colIdx + 1
       ? seq.slice(colIdx + 1, targetIdx).filter(s => {
           const stage = ordered.find(item => norm(item.stage_name) === s);
           const n = nivel(s, stage?.stage_order);
           return n !== nivelCol && n !== nivelAlvo;
         })
       : [];
+    // Admin: irmão aberto (inclusive o que está ANTES na rota) entra no pulo
+    // e fecha com 0 pares — senão o motor não libera o próximo nível.
+    const skipped = uniqueNames(
+      options?.allowParallelSkip
+        ? [...openParallelSiblings, ...sequentialSkipped]
+        : sequentialSkipped,
+    );
     return {
       pointedStage, isBackward: false, skipped, remaining, stageRemaining,
       available: !!pointedStage,
