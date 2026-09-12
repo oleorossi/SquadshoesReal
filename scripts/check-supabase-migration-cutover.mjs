@@ -20,8 +20,11 @@ export const LOCAL_LEGACY_BASELINE = Object.freeze({
 // (20260828111941) e as três aplicações temporárias de variação de cor em
 // 30/08/2026. A verdade é o banco: em 09/09/2026 o fetch remoto voltou a
 // reportar 2294 carimbos (os dois MCP 20260909145907/20260909145941 não
-// estão no schema_migrations). Marcadores temporários podem ter qualquer
-// nome descritivo: o contrato do Supabase compara os timestamps.
+// estão no schema_migrations). Em 12/09/2026 o MCP gravou
+// 20260912112209_refresh_draft_strap_freeze_on_confirm (data real, abaixo do
+// corte) por cima do canônico 20270101023800; o duplicado foi dropado
+// (24500) para o fetch legado voltar a 2294. Marcadores temporários podem
+// ter qualquer nome descritivo: o contrato do Supabase compara os timestamps.
 export const REMOTE_LEGACY_BASELINE = Object.freeze({
   count: 2294,
   sha256: '52d44017b491f42979e636fb35985bc3993063f60299919bf0b105325811212d',
