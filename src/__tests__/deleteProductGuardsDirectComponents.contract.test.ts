@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { directComponentsContainsPayload } from '@/hooks/useProducts';
 
 const ROOT = resolve(__dirname, '../..');
 const read = (p: string) => readFileSync(resolve(ROOT, p), 'utf8');
@@ -15,7 +16,19 @@ const dialog = read('src/components/inventory/ForceDeleteProductDialog.tsx');
 describe('excluir produto — o vínculo de componente direto não pode passar batido', () => {
   it('conta as fichas que levam o produto como componente direto', () => {
     expect(hook).toContain("supabase.from('technical_sheets')");
-    expect(hook).toContain("contains('direct_components', [{ product_id: id }])");
+    expect(hook).toContain("contains('direct_components', directComponentsContainsPayload(id))");
+  });
+
+  it('não passa array de objeto pro contains — serializa [object Object] e o PostgREST devolve 400', () => {
+    expect(hook).not.toMatch(/contains\('direct_components',\s*\[\{\s*product_id:\s*id\s*\}\]\s*\)/);
+    expect(hook).toContain('JSON.stringify([{ product_id: productId }])');
+  });
+
+  it('o payload do cs é JSON, não o literal Postgres {[object Object]}', () => {
+    const payload = directComponentsContainsPayload('c94ec81b-c33a-4fe5-8d88-1310faa776ea');
+    expect(payload).toBe('[{"product_id":"c94ec81b-c33a-4fe5-8d88-1310faa776ea"}]');
+    expect(payload).not.toContain('[object Object]');
+    expect(JSON.parse(payload)).toEqual([{ product_id: 'c94ec81b-c33a-4fe5-8d88-1310faa776ea' }]);
   });
 
   it('inclui direct_components no hasAny — é ele que dispara a confirmação', () => {

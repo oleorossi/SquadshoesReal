@@ -421,6 +421,18 @@ interface ForceDeleteProductSummary {
   direct_components_count: number;
 }
 
+/**
+ * Payload do filtro PostgREST `cs` em `technical_sheets.direct_components`.
+ *
+ * `.contains(col, [{ product_id }])` NÃO serve: o client trata array como
+ * literal Postgres `{a,b}` e o objeto vira `[object Object]`. Medido em
+ * 12/09/2026 — HEAD 400 em `direct_components=cs.{[object Object]}` e o
+ * toast "Erro ao verificar vínculos do produto" no /estoque.
+ */
+export function directComponentsContainsPayload(productId: string): string {
+  return JSON.stringify([{ product_id: productId }]);
+}
+
 /** Conta vínculos antes de excluir — útil pra mostrar resumo no AlertDialog. */
 export async function fetchProductLinks(id: string): Promise<ProductLinksSummary> {
   const [
@@ -440,9 +452,16 @@ export async function fetchProductLinks(id: string): Promise<ProductLinksSummary
     // aviso, deixando a ficha apontando pro nada (bug 31/07/2026: 25 linhas
     // mortas em 24 fichas, 5.400 corações somem do custo e da compra do PV).
     supabase.from('technical_sheets').select('id', { count: 'exact', head: true })
-      .contains('direct_components', [{ product_id: id }]),
+      .contains('direct_components', directComponentsContainsPayload(id)),
   ]);
-  if (e1 || e2 || e3 || e4 || e5) throw new Error('Erro ao verificar vínculos do produto.');
+  const failed = [
+    e1 && `BOM: ${e1.message}`,
+    e2 && `reservas: ${e2.message}`,
+    e3 && `OC: ${e3.message}`,
+    e4 && `movimentações: ${e4.message}`,
+    e5 && `componente direto: ${e5.message}`,
+  ].filter(Boolean);
+  if (failed.length) throw new Error(`Erro ao verificar vínculos do produto. ${failed.join('; ')}`);
   const sheet_materials = smCount ?? 0;
   const reservations = resCount ?? 0;
   const purchase_items = poiCount ?? 0;
