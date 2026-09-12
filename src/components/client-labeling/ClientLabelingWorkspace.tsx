@@ -20,6 +20,7 @@ import {
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import logoFornecedor from '@/assets/baby-nalin/marca-fornecedor.png';
+import { ClientLabelLogoUpload } from '@/components/client-labeling/ClientLabelLogoUpload';
 import { Panel } from '@/components/ui/panel';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -429,10 +430,16 @@ export function ClientLabelingWorkspace() {
     setGenerating(mode);
     try {
       if (pattern.key === 'objetiva') {
+        let logo: { dataUrl: string; width: number; height: number } | null = null;
+        if (pattern.branding.logoUrl) {
+          logo = await loadLogoDataUrl(pattern.branding.logoUrl);
+          if (!logo) toast.warning('Não carreguei a logomarca — o PDF sai com o wordmark.');
+        }
         const doc = await buildObjetivaPdf(mode === 'production' ? productionRows : selectedRows, {
           geometry: pattern.geometry,
           branding: pattern.branding,
           repeatByQuantity: mode === 'production',
+          logo,
         });
         doc.save(objetivaPdfFilename(originName));
         toast.success(
@@ -664,6 +671,12 @@ export function ClientLabelingWorkspace() {
                 </div>
               ) : (
                 <div className="space-y-3">
+                  <ClientLabelLogoUpload
+                    clientId={selectedClientId}
+                    logoUrl={pattern.branding.logoUrl}
+                    disabled={isBusy}
+                    onLogoChange={url => setBrandingField('logoUrl', url ?? '')}
+                  />
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     {OBJETIVA_GEOMETRY_FIELDS.map(field => (
                       <div key={field.key} className="space-y-1">
