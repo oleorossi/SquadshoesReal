@@ -74,6 +74,18 @@ atual, URLs e os secrets exigidos pelos workflows.
 6. **Fonte em fichas/etiquetas/cartões** — sempre a **MAIOR que couber** na moldura, nunca
    abaixo dos pisos. Quando não couber, remova conteúdo antes de reduzir. Ver
    "Tamanho de fonte em print" na seção *Design Token System*.
+7. **Depois de toda alteração, um agente abre o site de produção e confere que a mudança está aplicada.**
+   Decisão do dono (12/09/2026). URL: https://squadshoes-real.vercel.app
+   - Abrir um agente de navegador (`computerUse`) contra o site **live** — não vale só
+     screenshot estático, `curl` da homepage, typecheck ou teste unitário.
+   - Exercitar o fluxo que mudou do jeito que o dono usa: clicar, escolher, salvar.
+   - Só declarar "foi para o site" depois dessa verificação. Se o login bloquear, dizer
+     isso e **não** afirmar que a tela está certa.
+   - Esperar o deploy da Vercel em `main` (CI verde + Production Deploy) antes de
+     conferir. Preview de branch **não** substitui produção quando o dono está olhando
+     o site live.
+   - Se a tela parecer a antiga, hard refresh / ignorar cache do PWA antes de concluir
+     que o deploy não chegou.
 
 ## Padrões de Código (CANÔNICO — seguir em toda sessão)
 

@@ -1,0 +1,14 @@
+---
+description: Depois de toda alteração, abrir um agente no site de produção e conferir que a mudança está aplicada
+alwaysApply: true
+---
+
+# Verificar no site após cada alteração
+
+Decisão do dono (12/09/2026). Vale para **toda** mudança que o dono possa ver no app.
+
+1. Depois do deploy em `main`, abrir um agente de navegador (`computerUse`) em https://squadshoes-real.vercel.app.
+2. Exercitar o fluxo que mudou do jeito que o dono usa: clicar, escolher, salvar. Screenshot estático, `curl` da homepage, typecheck ou teste unitário **não** substituem isso.
+3. Só declarar "foi para o site" depois dessa verificação. Se o login bloquear, dizer isso e **não** afirmar que a tela está certa.
+4. Preview de branch não substitui produção quando o dono está olhando o site live.
+5. Se a tela parecer a antiga, hard refresh / ignorar cache do PWA antes de concluir que o deploy não chegou.
