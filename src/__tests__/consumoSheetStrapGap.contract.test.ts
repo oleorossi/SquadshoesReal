@@ -88,6 +88,23 @@ describe('consumo: gap de tira da ficha ausente do snapshot do item', () => {
     expect(migration232).toContain("'strap_sourcing', v_strap_sourcing");
   });
 
+  it('23300 preenche rendimento da receita aprovada quando variante falta', () => {
+    const migration233 = readFileSync(
+      resolve(
+        root,
+        'supabase/migrations/20270101023300_consumo-recipe-yield-fallback-presentation.sql',
+      ),
+      'utf8',
+    );
+    expect(migration233).toContain('consumo_recipe_yield_fallback_presentation_233');
+    expect(migration233).toContain('enrich_consumo_strap_preview_recipe_yield');
+    expect(migration233).toContain("r.status = 'approved'");
+    expect(migration233).toContain('confirmed_yield_m_per_m');
+    expect(migration233).toContain('variant_identity_not_persisted');
+    expect(migration233).toContain('catalog_resolution_blocked');
+    expect(migration233).toContain('recipe_yield_fallback');
+  });
+
   it('dialog de OP não esconde Tiras com aviso e quantidade zero', () => {
     expect(dialog).toContain("row.componentType === 'Tiras'");
     expect(dialog).not.toMatch(

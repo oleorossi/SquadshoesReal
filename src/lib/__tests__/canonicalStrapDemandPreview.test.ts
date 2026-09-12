@@ -570,4 +570,30 @@ describe('preview canônica de tiras', () => {
     expect(row.artisanal.pending).toBe(true);
     expect(row.warning).toContain('Cadastre e aprove');
   });
+
+  it('converte napa com rendimento do Hub mesmo com blockers soft do rascunho (PV-00194)', () => {
+    const meiaCana = preview({
+      recipe_id: 'recipe-meia',
+      base_product_id: 'base-soft',
+      blocking_reasons: [
+        { code: 'variant_identity_not_persisted', message: 'persista a variante' },
+        { code: 'frozen_source_snapshot_stale', message: 'origem congelada diverge' },
+      ],
+      resolved: {
+        strap_product_name: null,
+        measure_name: 'MEIA CANA 10 mm',
+        strap_color_name: 'ROSADO',
+        base_group_name: 'NAPA SOFT',
+        base_product_name: 'NAPA SOFT · ROSADO',
+        confirmed_yield_m_per_m: 55,
+        base_required_m: null,
+      },
+      gross_required_m: 254,
+    });
+    const [row] = replaceWithCanonicalStrapRows([], ctx, [meiaCana]) as CanonicalStrapConsumptionRow[];
+    expect(row.artisanal?.pending).toBeFalsy();
+    expect(row.artisanal?.yieldPerMeter).toBe(55);
+    expect(row.artisanal?.baseQty).toBeCloseTo(254 / 55, 6);
+    expect(row.warning).toContain('origem congelada diverge');
+  });
 });
