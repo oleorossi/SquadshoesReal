@@ -92,7 +92,7 @@ describe('consumo: gap de tira da ficha ausente do snapshot do item', () => {
     const migration233 = readFileSync(
       resolve(
         root,
-        'supabase/migrations/20270101023300_consumo-recipe-yield-fallback-presentation.sql',
+        'supabase/migrations/20270101023300_consumo_recipe_yield_fallback_presentation.sql',
       ),
       'utf8',
     );
