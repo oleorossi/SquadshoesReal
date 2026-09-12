@@ -2471,6 +2471,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                     <div className="border-b border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[11px] leading-snug text-amber-800 dark:text-amber-300">
                       Escolha a origem em {missingOrigem.length} posição{missingOrigem.length === 1 ? '' : 'ões'}
                       {' '}antes de salvar ({missingOrigem.map((issue) => issue.label).join(', ')}).
+                      {' '}A origem vale para todas as cores do pedido.
                     </div>
                   );
                 })()}
