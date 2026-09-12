@@ -155,3 +155,56 @@ export function capSearchResults<T>(
 export function searchRefineHint(totalMatched: number, cap: number = SEARCH_RENDER_CAP): string {
   return `Mostrando ${cap} de ${totalMatched} — digite pra refinar`;
 }
+
+/**
+ * Pontuação de relevância pra ordenar sugestões/opções.
+ *
+ * 400 igual · 300 prefixo da string normalizada (`eva` → `EVA 3MM`, `EVA01`)
+ * · 200 começo de palavra (`Suede EVA`) · 100 contém (`CACHARREL/EVA`) · 0 sem match.
+ * Query vazia → 0 (não ranqueia).
+ */
+export function scoreSearchMatch(term: string | null | undefined, text: string | null | undefined): number {
+  const q = normalizeForSearch(term);
+  if (!q) return 0;
+  const n = normalizeForSearch(text);
+  if (!n) return 0;
+  if (n === q) return 400;
+  if (n.startsWith(q)) return 300;
+  const words = String(text ?? '')
+    .split(/[\s/+\-_,.;:()]+/)
+    .map(normalizeForSearch)
+    .filter(Boolean);
+  if (words.some((w) => w.startsWith(q))) return 200;
+  if (n.includes(q)) return 100;
+  return 0;
+}
+
+/** Maior score entre vários campos. */
+export function scoreSearchMatchAny(
+  term: string | null | undefined,
+  ...texts: Array<string | null | undefined>
+): number {
+  let best = 0;
+  for (const t of texts) {
+    const s = scoreSearchMatch(term, t);
+    if (s > best) best = s;
+  }
+  return best;
+}
+
+/**
+ * Ordena uma lista já filtrada: mais relevante primeiro, estável no empate.
+ * Query vazia devolve a lista intacta.
+ */
+export function rankBySearchScore<T>(
+  items: T[],
+  term: string | null | undefined,
+  ...getters: Array<(item: T) => string | null | undefined>
+): T[] {
+  if (!String(term ?? '').trim() || items.length < 2 || getters.length === 0) return items;
+  return [...items].sort((a, b) => {
+    const diff = scoreSearchMatchAny(term, ...getters.map((g) => g(b)))
+      - scoreSearchMatchAny(term, ...getters.map((g) => g(a)));
+    return diff;
+  });
+}

@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { PencilSimple as Pencil, Warning as AlertTriangle, FolderOpen, CaretDown as ChevronDown, ArrowsDownUp as ArrowUpDown, ArrowUp, ArrowDown, Stack as Layers, Package as PackageMinus, GridFour as Grid3X3, Gear as Settings2, Package, Image as ImageIcon, X, Flask as FlaskConical, WarningCircle, Plus, DotsThree, ShoppingBag } from '@phosphor-icons/react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { HighlightMatch } from '@/components/ui/highlight-match';
 import { useMaterialsConfigIssuesByProduct, ISSUE_LABELS } from '@/hooks/useMaterialsConfigIssues';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { cn, stripColorFromName } from '@/lib/utils';
@@ -288,7 +288,7 @@ function ProductHoverPreview({ product, formatCurrency, children }: {
   );
 }
 
-function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisanal, formatCurrency, indent = false, avgConsumptionMap, selectedIds, purchasedReadyProductIds, showName = true }: {
+function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisanal, formatCurrency, indent = false, avgConsumptionMap, selectedIds, purchasedReadyProductIds, showName = true, searchTerm = '' }: {
   products: Product[];
   onEdit: (product: Product) => void;
   onDelete: (id: string) => void;
@@ -303,6 +303,7 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
   /** false em grupo homogêneo: as N linhas repetiriam o mesmo nome, então a COR
    *  vira o rótulo da linha. true em grupo heterogêneo (R1.1a). */
   showName?: boolean;
+  searchTerm?: string;
 }) {
   const navigate = useNavigate();
   const [zoomImg, setZoomImg] = useState<{ src: string; alt: string } | null>(null);
@@ -365,8 +366,8 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
                     {/* Sem cor não pode virar linha anônima: cai pro nome. Um
                         grupo homogêneo com item sem cor renderizava só "—". */}
                     {showName || !product.color
-                      ? stripColorFromName(product.name, product.color)
-                      : product.color}
+                      ? <HighlightMatch text={stripColorFromName(product.name, product.color)} term={searchTerm} />
+                      : <HighlightMatch text={product.color} term={searchTerm} />}
                   </span>
                 </ProductHoverPreview>
                 {showName && product.color && (
@@ -460,7 +461,7 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
             </TableCell>
             {isVisible('sku') && (
               <TableCell className={cn("font-mono text-sm text-muted-foreground", dCls.cell)}>
-                {product.sku}
+                <HighlightMatch text={product.sku} term={searchTerm} />
               </TableCell>
             )}
             {isVisible('category') && (
@@ -870,19 +871,13 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
 
   const hasGroups = grouped.some(g => g.groupId !== null);
 
-  // R1.13/R1.14 — busca que casa o NOME do grupo mantém a linha fechada (todos os
-  // itens dele casariam de qualquer jeito). Busca que só casou por cor/SKU abre o
-  // grupo, porque a lista já veio filtrada e mostrar 1 linha fechada seria um
-  // clique inútil. A filtragem em si é do `usePaginatedProducts` (searchMatchesAny
-  // já cobre `color`), aqui é só a decisão de abrir.
+  // Busca ativa: abre TODOS os grupos com hit pra o dono ver os SKUs/cores
+  // encontrados — não só o cabeçalho do material (antes, grupo cujo nome
+  // casava ficava fechado).
   const autoOpen = useMemo(() => {
     const term = (searchTerm || '').trim();
     if (!term) return new Set<string>();
-    const abrir = new Set<string>();
-    for (const g of grouped) {
-      if (!searchMatchesAllTerms(term, g.groupName)) abrir.add(g.groupId || 'ungrouped');
-    }
-    return abrir;
+    return new Set(grouped.map((g) => g.groupId || 'ungrouped'));
   }, [searchTerm, grouped]);
 
   const isGroupOpen = (key: string) => openGroups[key] ?? autoOpen.has(key);
@@ -971,6 +966,7 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
                      onArtisanal={setArtisanalProducts}
                      selectedIds={selectedIds}
                      purchasedReadyProductIds={purchasedReadyProductIds}
+                     searchTerm={searchTerm}
                    />
                 )}
               </TableBody>
@@ -1000,7 +996,7 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
                     </TableCell>
                   </TableRow>
                 ) : (
-                  <ProductRows products={sortedProducts} onEdit={handleEditIntercepted} onDelete={onDelete} onStockOut={setStockOutProduct} onGrade={setGradeProduct} onArtisanal={setArtisanalProducts} formatCurrency={formatCurrency} avgConsumptionMap={avgConsumptionMap} selectedIds={selectedIds} purchasedReadyProductIds={purchasedReadyProductIds} />
+                  <ProductRows products={sortedProducts} onEdit={handleEditIntercepted} onDelete={onDelete} onStockOut={setStockOutProduct} onGrade={setGradeProduct} onArtisanal={setArtisanalProducts} formatCurrency={formatCurrency} avgConsumptionMap={avgConsumptionMap} selectedIds={selectedIds} purchasedReadyProductIds={purchasedReadyProductIds} searchTerm={searchTerm} />
                 )}
               </TableBody>
             </Table>
@@ -1052,10 +1048,10 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
                           className="font-semibold text-base text-foreground hover:text-primary transition-colors truncate"
                           onClick={() => openGroup(groupId, 'general')}
                         >
-                          {groupName}
+                          <HighlightMatch text={groupName} term={searchTerm || ''} />
                         </button>
                       ) : (
-                        <span className="font-semibold text-base text-muted-foreground italic">{groupName}</span>
+                        <span className="font-semibold text-base text-muted-foreground italic"><HighlightMatch text={groupName} term={searchTerm || ''} /></span>
                       )}
                       <Badge variant="secondary" className="text-xs font-medium">{contador}</Badge>
                       {stats.emFalta > 0 && (
@@ -1169,6 +1165,7 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
                         selectedIds={selectedIds}
                         purchasedReadyProductIds={purchasedReadyProductIds}
                         showName={stats.heterogeneo}
+                        searchTerm={searchTerm}
                       />
                     </TableBody>
                   </Table>

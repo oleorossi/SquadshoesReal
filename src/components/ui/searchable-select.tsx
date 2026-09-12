@@ -9,7 +9,9 @@ import {
   capSearchResults,
   searchMatchesAllTerms,
   searchRefineHint,
+  rankBySearchScore,
 } from '@/lib/searchUtils';
+import { HighlightMatch } from '@/components/ui/highlight-match';
 
 export interface SearchableOption {
   value: string;
@@ -80,8 +82,8 @@ export function SearchableSelect({
 
   const filtered = useMemo(() => {
     if (!search.trim()) return options;
-    // Motor padrão do sistema: espaço/"/" = termos AND, OR entre campos.
-    return options.filter(o => searchMatchesAllTerms(search, o.label, o.description, o.keywords));
+    const hits = options.filter(o => searchMatchesAllTerms(search, o.label, o.description, o.keywords));
+    return rankBySearchScore(hits, search, o => o.label, o => o.description, o => o.keywords);
   }, [options, search]);
 
   // Teto de renderização: com catálogos de centenas de itens, montar tudo de
@@ -140,8 +142,8 @@ export function SearchableSelect({
                 >
                   <Check className={cn('h-4 w-4 shrink-0', value === o.value ? 'opacity-100' : 'opacity-0')} />
                   <div className="flex min-w-0 flex-col">
-                    <span className="truncate text-sm" title={o.label}>{o.label}</span>
-                    {o.description && <span className="truncate text-xs text-muted-foreground" title={o.description}>{o.description}</span>}
+                    <span className="truncate text-sm" title={o.label}><HighlightMatch text={o.label} term={search} /></span>
+                    {o.description && <span className="truncate text-xs text-muted-foreground" title={o.description}><HighlightMatch text={o.description} term={search} /></span>}
                   </div>
                 </CommandItem>
               ))}

@@ -20,6 +20,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import GroupDialog from '@/components/groups/GroupDialog';
 import { searchMatchesAllTerms, splitSearchTerms, SEARCH_RENDER_CAP, capSearchResults, searchRefineHint } from '@/lib/searchUtils';
+import { HighlightMatch } from '@/components/ui/highlight-match';
 
 interface GroupListDialogProps {
   open: boolean;
@@ -302,7 +303,7 @@ export function GroupListDialog({ open, onOpenChange }: GroupListDialogProps) {
                             <span className="text-muted-foreground text-xs font-mono shrink-0" aria-hidden="true">└</span>
                           )}
                           <FolderOpen className="h-4 w-4 text-primary shrink-0" />
-                          <span className="font-semibold text-sm">{g.name}</span>
+                          <span className="font-semibold text-sm"><HighlightMatch text={g.name} term={search} /></span>
                           <Badge variant="secondary" className="text-xs font-mono">{g.items.length} itens</Badge>
                           {g.childCount > 0 && (
                             <Badge variant="outline" className="text-xs h-5 border-primary/40 text-primary bg-primary/5">
@@ -445,11 +446,11 @@ export function GroupListDialog({ open, onOpenChange }: GroupListDialogProps) {
                               <div className="flex items-center gap-2 min-w-0">
                                 <GripVertical className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
                                 <Package className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                                <span className="text-sm truncate">{stripColorFromName(p.name, p.color)}</span>
+                                <span className="text-sm truncate"><HighlightMatch text={stripColorFromName(p.name, p.color)} term={search} /></span>
                                 {p.color && <Badge variant="secondary" className="text-xs">{p.color}</Badge>}
                               </div>
                               <div className="flex items-center gap-2 shrink-0">
-                                <Badge variant="outline" className="text-xs font-mono">{p.sku}</Badge>
+                                <Badge variant="outline" className="text-xs font-mono"><HighlightMatch text={p.sku} term={search} /></Badge>
                                 <span className="text-xs text-muted-foreground w-16 text-right">{p.quantity} {p.unit}</span>
                               </div>
                             </div>
@@ -501,11 +502,11 @@ export function GroupListDialog({ open, onOpenChange }: GroupListDialogProps) {
                             <div className="flex items-center gap-2 min-w-0">
                               <GripVertical className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
                               <Package className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                              <span className="text-sm truncate">{stripColorFromName(p.name, p.color)}</span>
+                              <span className="text-sm truncate"><HighlightMatch text={stripColorFromName(p.name, p.color)} term={search} /></span>
                               {p.color && <Badge variant="secondary" className="text-xs">{p.color}</Badge>}
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
-                              <Badge variant="outline" className="text-xs font-mono">{p.sku}</Badge>
+                              <Badge variant="outline" className="text-xs font-mono"><HighlightMatch text={p.sku} term={search} /></Badge>
                               <span className="text-xs text-muted-foreground w-16 text-right">{p.quantity} {p.unit}</span>
                             </div>
                           </div>

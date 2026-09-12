@@ -44,10 +44,10 @@ describe('SearchableSelect — localizador de catálogo', () => {
 
     await user.type(screen.getByRole('combobox', { name: 'Buscar material…' }), 'napa preto');
     expect(screen.getByText('1 de 3')).toBeInTheDocument();
-    expect(screen.getByText('NAPA SOFT')).toBeInTheDocument();
-    expect(screen.queryByText('NAPA SANTORINE')).not.toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /NAPA SOFT/ })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /NAPA SANTORINE/ })).not.toBeInTheDocument();
 
-    await user.click(screen.getByText('NAPA SOFT'));
+    await user.click(screen.getByRole('option', { name: /NAPA SOFT/ }));
     expect(trigger).toHaveTextContent('NAPA SOFT');
     expect(trigger).toHaveTextContent('Preto');
   });

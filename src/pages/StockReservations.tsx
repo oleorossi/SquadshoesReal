@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -201,6 +201,28 @@ export default function StockReservations() {
     return sorted;
   }, [data, search, filter, sortKey, sortDir, threshold]);
 
+  const getSuggestions = useCallback((term: string): SmartSearchSuggestion[] => {
+    const list = data || [];
+    const seen = new Set<string>();
+    const out: SmartSearchSuggestion[] = [];
+    for (const r of list) {
+      const name = r.name || '';
+      if (searchMatchesAllTerms(term, name) && !seen.has(`name:${name}`)) {
+        seen.add(`name:${name}`);
+        out.push({ field: 'name', value: name });
+      }
+      if (r.sku && searchMatchesAllTerms(term, r.sku) && !seen.has(`sku:${r.sku}`)) {
+        seen.add(`sku:${r.sku}`);
+        out.push({ field: 'sku', value: r.sku, meta: name });
+      }
+      if (r.category && searchMatchesAllTerms(term, r.category) && !seen.has(`cat:${r.category}`)) {
+        seen.add(`cat:${r.category}`);
+        out.push({ field: 'category', value: r.category });
+      }
+    }
+    return out;
+  }, [data]);
+
   const totals = useMemo(() => {
     const list = data || [];
     return list.reduce(
@@ -315,27 +337,7 @@ export default function StockReservations() {
               value={search}
               onChange={setSearch}
               placeholder="Buscar por nome, SKU, categoria ou cor…"
-              getSuggestions={(term) => {
-                const list = data || [];
-                const seen = new Set<string>();
-                const out: SmartSearchSuggestion[] = [];
-                for (const r of list) {
-                  const name = r.name || '';
-                  if (searchMatchesAllTerms(term, name) && !seen.has(`name:${name}`)) {
-                    seen.add(`name:${name}`);
-                    out.push({ field: 'name', value: name });
-                  }
-                  if (r.sku && searchMatchesAllTerms(term, r.sku) && !seen.has(`sku:${r.sku}`)) {
-                    seen.add(`sku:${r.sku}`);
-                    out.push({ field: 'sku', value: r.sku, meta: name });
-                  }
-                  if (r.category && searchMatchesAllTerms(term, r.category) && !seen.has(`cat:${r.category}`)) {
-                    seen.add(`cat:${r.category}`);
-                    out.push({ field: 'category', value: r.category });
-                  }
-                }
-                return out;
-              }}
+              getSuggestions={getSuggestions}
             />
             <Select value={filter} onValueChange={(v) => setFilter(v as FilterValue)}>
               <SelectTrigger className="w-full sm:w-[200px]">

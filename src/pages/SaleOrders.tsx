@@ -110,7 +110,7 @@ import { TableSkeleton } from '@/components/layout/PageSkeleton';
 import { getValidNextStatuses } from '@/lib/saleOrderStateMachine';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
-import { normalizeForSearch, searchMatchesAllTerms, splitSearchTerms } from '@/lib/searchUtils';
+import { normalizeForSearch, searchMatchesAllTerms, splitSearchTerms, rankBySearchScore } from '@/lib/searchUtils';
 import { safeUrlAttr } from '@/lib/htmlUtils';
 import SalesOperationsRail, { SalesOperationsRailSkeleton } from '@/components/sale-orders/SalesOperationsRail';
 
@@ -204,22 +204,28 @@ export default function SaleOrders() {
       const out: SmartSearchSuggestion[] = [];
 
       // Clientes (name)
-      const clientMatches = clients
-        .filter((c) => searchMatchesAllTerms(
+      const clientMatches = rankBySearchScore(
+        clients.filter((c) => searchMatchesAllTerms(
           term,
           c.razao_social,
           c.nome_fantasia,
           c.cnpj,
-        ))
-        .slice(0, 5);
+        )),
+        term,
+        (c) => c.razao_social,
+        (c) => c.nome_fantasia,
+        (c) => c.cnpj,
+      ).slice(0, 5);
       for (const c of clientMatches) {
         out.push({ field: 'name', value: c.razao_social || c.nome_fantasia || '', meta: 'Cliente' });
       }
 
       // Representantes (category — usado como agrupamento)
-      const repMatches = representatives
-        .filter((r) => searchMatchesAllTerms(term, r.name))
-        .slice(0, 5);
+      const repMatches = rankBySearchScore(
+        representatives.filter((r) => searchMatchesAllTerms(term, r.name)),
+        term,
+        (r) => r.name,
+      ).slice(0, 5);
       for (const r of repMatches) {
         out.push({ field: 'category', value: r.name, meta: 'Representante' });
       }
@@ -228,9 +234,12 @@ export default function SaleOrders() {
       // chega como SelectQueryError por causa de retired_at nos types — o runtime
       // devolve code/name. Evita `any` (lint:baseline) sem mentir a forma usada.
       type SearchableRef = { code?: string | null; name?: string | null };
-      const refMatches = (references as SearchableRef[])
-        .filter((r) => searchMatchesAllTerms(term, r.code, r.name))
-        .slice(0, 5);
+      const refMatches = rankBySearchScore(
+        (references as SearchableRef[]).filter((r) => searchMatchesAllTerms(term, r.code, r.name)),
+        term,
+        (r) => r.code,
+        (r) => r.name,
+      ).slice(0, 5);
       for (const r of refMatches) {
         out.push({ field: 'sku', value: r.code || r.name || '', meta: r.name || undefined });
       }
@@ -1783,6 +1792,7 @@ export default function SaleOrders() {
                 value={searchTerm}
                 onChange={setSearchTerm}
                 getSuggestions={searchSuggestions}
+                fieldLabels={{ name: 'Cliente', category: 'Representante', sku: 'Referência' }}
                 placeholder="Buscar PV, cliente, ref… ou /grupo (ex: /lng)"
               />
             </div>

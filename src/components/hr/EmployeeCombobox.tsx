@@ -11,7 +11,9 @@ import {
   capSearchResults,
   searchMatchesAllTerms,
   searchRefineHint,
+  rankBySearchScore,
 } from '@/lib/searchUtils';
+import { HighlightMatch } from '@/components/ui/highlight-match';
 import type { Employee } from '@/hooks/useEmployees';
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -49,7 +51,8 @@ export function EmployeeCombobox({
 
   const filtered = useMemo(() => {
     if (!search.trim()) return active;
-    return active.filter(e => searchMatchesAllTerms(search, e.name, e.role, e.department, e.external_id));
+    const hits = active.filter(e => searchMatchesAllTerms(search, e.name, e.role, e.department, e.external_id));
+    return rankBySearchScore(hits, search, e => e.name, e => e.role, e => e.department, e => e.external_id);
   }, [active, search]);
 
   const { visible, capped, totalMatched, cap } = useMemo(
@@ -109,8 +112,8 @@ export function EmployeeCombobox({
                     <Check className={cn('h-4 w-4 shrink-0', value === e.id ? 'opacity-100' : 'opacity-0')} />
                     <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
                       <div className="flex min-w-0 flex-col">
-                        <span className="truncate text-sm">{e.name}</span>
-                        <span className="truncate text-xs text-muted-foreground">{roleLine(e)}</span>
+                        <span className="truncate text-sm"><HighlightMatch text={e.name} term={search} /></span>
+                        <span className="truncate text-xs text-muted-foreground"><HighlightMatch text={roleLine(e)} term={search} /></span>
                       </div>
                       {openBalance > 0 && (
                         <Badge

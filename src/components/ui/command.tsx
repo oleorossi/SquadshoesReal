@@ -4,7 +4,7 @@ import { Command as CommandPrimitive } from "cmdk";
 import { MagnifyingGlass as Search } from '@phosphor-icons/react';
 
 import { cn } from "@/lib/utils";
-import { searchMatchesAllTerms } from "@/lib/searchUtils";
+import { searchMatchesAllTerms, scoreSearchMatchAny } from "@/lib/searchUtils";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 
 /**
@@ -15,7 +15,10 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
  * podem sobrescrever via prop `filter` ou desligar com `shouldFilter={false}`.
  */
 const normalizedFilter: NonNullable<React.ComponentPropsWithoutRef<typeof CommandPrimitive>['filter']> =
-  (value, search, keywords) => (searchMatchesAllTerms(search, value, ...(keywords ?? [])) ? 1 : 0);
+  (value, search, keywords) => {
+    if (!searchMatchesAllTerms(search, value, ...(keywords ?? []))) return 0;
+    return scoreSearchMatchAny(search, value, ...(keywords ?? []));
+  };
 
 const Command = React.forwardRef<
   React.ElementRef<typeof CommandPrimitive>,

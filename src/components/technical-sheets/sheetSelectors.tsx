@@ -12,7 +12,8 @@ import { SearchableSelect, SearchLocatorStrip } from '@/components/ui/searchable
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn, getSoleModelName } from '@/lib/utils';
-import { normalizeForSearch, searchMatchesAllTerms, SEARCH_RENDER_CAP, capSearchResults, searchRefineHint } from '@/lib/searchUtils';
+import { normalizeForSearch, searchMatchesAllTerms, SEARCH_RENDER_CAP, capSearchResults, searchRefineHint, rankBySearchScore } from '@/lib/searchUtils';
+import { HighlightMatch } from '@/components/ui/highlight-match';
 import { useGroups, type ProductGroup } from '@/hooks/useGroups';
 import { useProducts } from '@/hooks/useProducts';
 import { getGroupPath } from '@/lib/groupHierarchy';
@@ -190,13 +191,20 @@ export function GroupMaterialSelect({
 
   const filtered = useMemo(() => {
     if (!search.trim()) return selectableGroups;
-    return selectableGroups.filter(({ group, pathLabel }) =>
+    const hits = selectableGroups.filter(({ group, pathLabel }) =>
       searchMatchesAllTerms(
         search,
         pathLabel,
         group.description,
         groupIndex[group.id]?.searchBlob,
       ));
+    return rankBySearchScore(
+      hits,
+      search,
+      ({ pathLabel }) => pathLabel,
+      ({ group }) => group.description,
+      ({ group }) => groupIndex[group.id]?.searchBlob,
+    );
   }, [selectableGroups, search, groupIndex]);
 
   const { visible: visibleOptions, capped, totalMatched, cap } = useMemo(
@@ -301,7 +309,7 @@ export function GroupMaterialSelect({
                       >
                         <Check className={cn('mr-2 mt-0.5 h-4 w-4 shrink-0', selected ? 'opacity-100' : 'opacity-0')} />
                         <div className="min-w-0 flex-1 space-y-1">
-                          <span className="block truncate text-sm font-medium">{pathLabel}</span>
+                          <span className="block truncate text-sm font-medium"><HighlightMatch text={pathLabel} term={search} /></span>
                           {summary ? (
                             <div className="space-y-1">
                               <span className="block text-xs text-muted-foreground tabular-nums">
@@ -531,7 +539,8 @@ export function SoleProductSelect({ label, value, onChange }: { label: string; v
 
   const filtered = useMemo(() => {
     if (!search.trim()) return soleModels;
-    return soleModels.filter((m) => searchMatchesAllTerms(search, m.name, m.sku, m.groupName));
+    const hits = soleModels.filter((m) => searchMatchesAllTerms(search, m.name, m.sku, m.groupName));
+    return rankBySearchScore(hits, search, (m) => m.name, (m) => m.sku, (m) => m.groupName);
   }, [soleModels, search]);
   const { visible, capped, totalMatched, cap } = useMemo(
     () => capSearchResults(filtered, SEARCH_RENDER_CAP),
@@ -573,7 +582,7 @@ export function SoleProductSelect({ label, value, onChange }: { label: string; v
                   <CommandItem key={m.id} value={m.id} onSelect={() => { onChange(m.name, m.group_id, m.id); setOpen(false); setSearch(''); }}>
                     <Check className={cn("mr-2 h-4 w-4", value === m.name ? "opacity-100" : "opacity-0")} />
                     <div className="flex flex-col">
-                      <span className="text-sm font-medium">{m.name}</span>
+                      <span className="text-sm font-medium"><HighlightMatch text={m.name} term={search} /></span>
                       <span className="text-xs text-muted-foreground">
                         {m.groupName} • {m.variantCount} cor{m.variantCount !== 1 ? 'es' : ''} • Estoque total: {m.totalStock.toLocaleString('pt-BR')}
                       </span>
@@ -669,7 +678,8 @@ export function DirectComponentSelect({
 
   const filteredGroups = useMemo(() => {
     if (!groupSearch.trim()) return groups;
-    return groups.filter(g => searchMatchesAllTerms(groupSearch, g.name));
+    const hits = groups.filter(g => searchMatchesAllTerms(groupSearch, g.name));
+    return rankBySearchScore(hits, groupSearch, g => g.name);
   }, [groups, groupSearch]);
   const groupCap = useMemo(
     () => capSearchResults(filteredGroups, SEARCH_RENDER_CAP),
@@ -678,7 +688,8 @@ export function DirectComponentSelect({
 
   const filteredItems = useMemo(() => {
     if (!itemSearch.trim()) return itemsOfGroup;
-    return itemsOfGroup.filter((p: any) => searchMatchesAllTerms(itemSearch, p.name, p.sku, p.color));
+    const hits = itemsOfGroup.filter((p: any) => searchMatchesAllTerms(itemSearch, p.name, p.sku, p.color));
+    return rankBySearchScore(hits, itemSearch, (p: any) => p.name, (p: any) => p.sku, (p: any) => p.color);
   }, [itemsOfGroup, itemSearch]);
   const itemCap = useMemo(
     () => capSearchResults(filteredItems, SEARCH_RENDER_CAP),
@@ -753,7 +764,7 @@ export function DirectComponentSelect({
                     setGroupOpen(false); setGroupSearch('');
                   }}>
                     <Check className={cn("mr-2 h-4 w-4", effectiveGroupId === g.id ? "opacity-100" : "opacity-0")} />
-                    <span className="text-sm">{g.name}</span>
+                    <span className="text-sm"><HighlightMatch text={g.name} term={groupSearch} /></span>
                   </CommandItem>
                 ))}
                 {groupCap.capped && (
@@ -806,10 +817,10 @@ export function DirectComponentSelect({
                     <Check className={cn("mr-2 h-4 w-4", value === p.id ? "opacity-100" : "opacity-0")} />
                     <div className="flex flex-col">
                       <span className="text-sm">
-                        {p.name} {p.color ? `(${p.color})` : ''}
+                        <HighlightMatch text={`${p.name}${p.color ? ` (${p.color})` : ''}`} term={itemSearch} />
                         <span className="text-xs text-muted-foreground font-mono ml-1">[{p.unit || 'un'}]</span>
                       </span>
-                      {p.sku && <span className="text-xs text-muted-foreground font-mono">{p.sku}</span>}
+                      {p.sku && <span className="text-xs text-muted-foreground font-mono"><HighlightMatch text={p.sku} term={itemSearch} /></span>}
                     </div>
                   </CommandItem>
                 ))}

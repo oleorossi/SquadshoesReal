@@ -1,11 +1,13 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useDebounce } from 'use-debounce';
-import { MagnifyingGlass as Search, Tag, Hash, Stack as Layers } from '@phosphor-icons/react';
+import { MagnifyingGlass as Search, Tag, Hash, Stack as Layers, FolderOpen } from '@phosphor-icons/react';
 import { SearchInput } from '@/components/ui/search-input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { HighlightMatch } from '@/components/ui/highlight-match';
+import { rankBySearchScore } from '@/lib/searchUtils';
 import { cn } from '@/lib/utils';
 
-export type SmartSearchField = 'name' | 'sku' | 'category' | 'custom';
+export type SmartSearchField = 'group' | 'name' | 'sku' | 'category' | 'custom';
 
 export interface SmartSearchSuggestion {
   /** Tipo da sugestão — define o ícone e o agrupamento */
@@ -21,6 +23,8 @@ interface Props {
   onChange: (v: string) => void;
   /** Callback ao selecionar uma sugestão (default: aplica como busca) */
   onSelect?: (suggestion: SmartSearchSuggestion) => void;
+  /** Enter no texto digitado (nada destacado): fecha a caixinha e confirma a busca. */
+  onCommit?: (term: string) => void;
   /** Função que gera sugestões a partir do termo digitado */
   getSuggestions: (term: string) => SmartSearchSuggestion[] | Promise<SmartSearchSuggestion[]>;
   placeholder?: string;
@@ -29,9 +33,14 @@ interface Props {
   debounceMs?: number;
   /** Limite de sugestões por grupo */
   limitPerGroup?: number;
+  /** Sobrescreve o rótulo da seção (ex.: Cliente no lugar de Nome). */
+  fieldLabels?: Partial<Record<SmartSearchField, string>>;
 }
 
+const FIELD_ORDER: SmartSearchField[] = ['group', 'sku', 'name', 'category', 'custom'];
+
 const FIELD_LABEL: Record<SmartSearchField, string> = {
+  group: 'Grupo',
   name: 'Nome',
   sku: 'SKU',
   category: 'Categoria',
@@ -39,6 +48,7 @@ const FIELD_LABEL: Record<SmartSearchField, string> = {
 };
 
 const FIELD_ICON: Record<SmartSearchField, typeof Tag> = {
+  group: FolderOpen,
   name: Tag,
   sku: Hash,
   category: Layers,
@@ -46,19 +56,22 @@ const FIELD_ICON: Record<SmartSearchField, typeof Tag> = {
 };
 
 /**
- * Campo de busca único com sugestões agrupadas por tipo (Nome, SKU, Categoria).
+ * Campo de busca único com sugestões agrupadas por tipo (Grupo, SKU, Nome, Categoria).
  * A digitação atualiza `value` em tempo real (busca livre);
  * o popover mostra sugestões debounced que o usuário pode clicar.
+ * Enter sem sugestão destacada fecha a caixinha e confirma o termo digitado.
  */
 function SmartSearchInner({
   value,
   onChange,
   onSelect,
+  onCommit,
   getSuggestions,
   placeholder = 'Buscar por nome, SKU, categoria…',
   className,
   debounceMs = 200,
   limitPerGroup = 5,
+  fieldLabels,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [debouncedValue] = useDebounce(value, debounceMs);
@@ -66,8 +79,8 @@ function SmartSearchInner({
   const [activeIdx, setActiveIdx] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
   const reqIdRef = useRef(0);
-  // Após selecionar uma sugestão, suprime a reabertura do popover pelo re-foco
-  // programático — só a próxima alteração de texto (onChange) reabre.
+  // Após selecionar uma sugestão (ou confirmar com Enter), suprime a reabertura
+  // do popover pelo re-foco programático — só a próxima alteração de texto reabre.
   const suppressOpenRef = useRef(false);
 
   useEffect(() => {
@@ -79,7 +92,6 @@ function SmartSearchInner({
     const reqId = ++reqIdRef.current;
     Promise.resolve(getSuggestions(term)).then((s) => {
       if (reqId !== reqIdRef.current) return;
-      // Deduplicação interna por field:value (segura mesmo quando o consumidor esquece)
       const seen = new Set<string>();
       const unique: SmartSearchSuggestion[] = [];
       for (const item of s || []) {
@@ -94,49 +106,68 @@ function SmartSearchInner({
     });
   }, [debouncedValue, getSuggestions]);
 
-  // Agrupa sugestões por field, mantendo ordem
   const grouped = useMemo(() => {
     const map = new Map<SmartSearchField, SmartSearchSuggestion[]>();
     for (const s of suggestions) {
       const arr = map.get(s.field) ?? [];
-      if (arr.length < limitPerGroup) arr.push(s);
+      arr.push(s);
       map.set(s.field, arr);
     }
-    return Array.from(map.entries());
-  }, [suggestions, limitPerGroup]);
+    const result: Array<[SmartSearchField, SmartSearchSuggestion[]]> = [];
+    const seen = new Set<SmartSearchField>();
+    for (const field of FIELD_ORDER) {
+      const arr = map.get(field);
+      if (!arr?.length) continue;
+      seen.add(field);
+      const ranked = rankBySearchScore(arr, debouncedValue, (item) => item.value);
+      result.push([field, ranked.slice(0, limitPerGroup)]);
+    }
+    for (const [field, arr] of map) {
+      if (seen.has(field) || !arr.length) continue;
+      const ranked = rankBySearchScore(arr, debouncedValue, (item) => item.value);
+      result.push([field, ranked.slice(0, limitPerGroup)]);
+    }
+    return result;
+  }, [suggestions, limitPerGroup, debouncedValue]);
 
   const flatList = useMemo(
     () => grouped.flatMap(([, arr]) => arr),
     [grouped],
   );
 
-  const handleSelect = (s: SmartSearchSuggestion) => {
-    if (onSelect) onSelect(s);
-    else onChange(s.value);
+  const closeAndKeepFocus = () => {
     setOpen(false);
     setActiveIdx(-1);
-    // Mantém o popover FECHADO após selecionar: o re-foco abaixo dispararia
-    // onFocus→setOpen(true) e reabriria a caixinha por cima dos resultados.
-    // Só volta a abrir quando o usuário alterar o texto (onChange). Ver
-    // specs/smart-search-fechar-ao-selecionar.md.
     suppressOpenRef.current = true;
     inputRef.current?.focus();
   };
 
+  const handleSelect = (s: SmartSearchSuggestion) => {
+    if (onSelect) onSelect(s);
+    else onChange(s.value);
+    closeAndKeepFocus();
+  };
+
+  const handleCommit = () => {
+    onCommit?.(value);
+    closeAndKeepFocus();
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (!open || flatList.length === 0) {
-      // Esc com popover fechado: o SearchInput limpa por conta própria.
+    if (e.key === 'Enter') {
+      if (!open || flatList.length === 0) return;
+      e.preventDefault();
+      if (activeIdx >= 0) handleSelect(flatList[activeIdx]);
+      else handleCommit();
       return;
     }
+    if (!open || flatList.length === 0) return;
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       setActiveIdx((i) => (i + 1) % flatList.length);
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       setActiveIdx((i) => (i <= 0 ? flatList.length - 1 : i - 1));
-    } else if (e.key === 'Enter' && activeIdx >= 0) {
-      e.preventDefault();
-      handleSelect(flatList[activeIdx]);
     } else if (e.key === 'Escape') {
       e.preventDefault();
       setOpen(false);
@@ -145,11 +176,11 @@ function SmartSearchInner({
   };
 
   const showPopover = open && value.trim().length > 0 && flatList.length > 0;
+  const labelOf = (field: SmartSearchField) => fieldLabels?.[field] || FIELD_LABEL[field];
 
   return (
     <Popover open={showPopover} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        {/* Shell visual padrão do sistema (lupa + × + hint) — spec melhorias-busca-sistema */}
         <SearchInput
           ref={inputRef}
           className={className}
@@ -166,16 +197,17 @@ function SmartSearchInner({
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
         {grouped.map(([field, items]) => {
-          const Icon = FIELD_ICON[field];
+          const Icon = FIELD_ICON[field] ?? Search;
           return (
             <div key={field}>
-              <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide bg-muted/40 sticky top-0">
-                <Icon className="h-3 w-3" />
-                {FIELD_LABEL[field]}
+              <div className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-foreground/80 uppercase tracking-wide bg-muted border-b border-border/60 sticky top-0">
+                <Icon className="h-3.5 w-3.5" />
+                {labelOf(field)}
               </div>
               {items.map((s) => {
                 const flatIdx = flatList.indexOf(s);
                 const isActive = flatIdx === activeIdx;
+                const RowIcon = FIELD_ICON[s.field] ?? Search;
                 return (
                   <button
                     key={`${s.field}:${s.value}`}
@@ -183,13 +215,19 @@ function SmartSearchInner({
                     onMouseEnter={() => setActiveIdx(flatIdx)}
                     onClick={() => handleSelect(s)}
                     className={cn(
-                      'w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-muted/60 transition-colors',
+                      'w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-muted/60 transition-colors',
                       isActive && 'bg-muted/60',
                     )}
+                    title={s.value}
                   >
-                    <span className="truncate">{s.value}</span>
+                    <RowIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    <span className="truncate min-w-0 flex-1">
+                      <HighlightMatch text={s.value} term={value} />
+                    </span>
                     {s.meta && (
-                      <span className="text-xs text-muted-foreground ml-2 shrink-0">{s.meta}</span>
+                      <span className="text-xs text-muted-foreground ml-2 shrink-0 truncate max-w-[45%]">
+                        <HighlightMatch text={s.meta} term={value} />
+                      </span>
                     )}
                   </button>
                 );

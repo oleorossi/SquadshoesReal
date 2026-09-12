@@ -16,7 +16,9 @@ import {
   capSearchResults,
   searchMatchesAllTerms,
   searchRefineHint,
+  rankBySearchScore,
 } from '@/lib/searchUtils';
+import { HighlightMatch } from '@/components/ui/highlight-match';
 
 interface ColorLookupSelectProps {
   label: string;
@@ -76,9 +78,10 @@ export function ColorLookupSelect({ label, value, onChange, required }: ColorLoo
 
   const filtered = useMemo(() => {
     if (!search.trim()) return colors;
-    return colors.filter(c =>
+    const hits = colors.filter(c =>
       searchMatchesAllTerms(search, c.nome, c.cor_id, c.referencia_hex, c.referencia_pantone)
     );
+    return rankBySearchScore(hits, search, c => c.nome, c => c.cor_id, c => c.referencia_hex, c => c.referencia_pantone);
   }, [colors, search]);
 
   const { visible, capped, totalMatched, cap } = useMemo(
@@ -153,9 +156,9 @@ export function ColorLookupSelect({ label, value, onChange, required }: ColorLoo
                           <span className="h-4 w-4 rounded-full border shrink-0" style={{ backgroundColor: c.referencia_hex }} />
                         )}
                         <div className="flex flex-col">
-                          <span className="text-sm">{c.nome}</span>
+                          <span className="text-sm"><HighlightMatch text={c.nome} term={search} /></span>
                           <span className="text-xs text-muted-foreground font-mono">
-                            {c.cor_id}
+                            <HighlightMatch text={c.cor_id} term={search} />
                             {c.referencia_hex && ` • ${c.referencia_hex}`}
                             {c.referencia_pantone && ` • ${c.referencia_pantone}`}
                           </span>

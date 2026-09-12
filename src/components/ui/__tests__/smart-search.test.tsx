@@ -13,13 +13,20 @@ const SUGGESTIONS: SmartSearchSuggestion[] = [
   { field: 'name', value: 'LNG 10 CONFECCOES LTDA', meta: 'Cliente' },
 ];
 
-function Harness({ onSelect }: { onSelect?: (s: SmartSearchSuggestion) => void }) {
+function Harness({
+  onSelect,
+  onCommit,
+}: {
+  onSelect?: (s: SmartSearchSuggestion) => void;
+  onCommit?: (term: string) => void;
+}) {
   const [v, setV] = useState('');
   return (
     <SmartSearch
       value={v}
       onChange={setV}
       onSelect={onSelect}
+      onCommit={onCommit}
       // onSelect fornecido e SEM alterar `value`: isola o comportamento do
       // popover (o texto continua casando a sugestão, então só a lógica de
       // open/suppress mantém a caixinha fechada).
@@ -30,7 +37,7 @@ function Harness({ onSelect }: { onSelect?: (s: SmartSearchSuggestion) => void }
 }
 
 const inputOf = (c: HTMLElement) => c.querySelector('input') as HTMLInputElement;
-const suggestionShown = () => screen.queryByText('LNG 10 CONFECCOES LTDA');
+const suggestionShown = () => screen.queryByRole('button', { name: /LNG 10 CONFECCOES LTDA/i });
 
 describe('SmartSearch — fechar popover ao selecionar', () => {
   it('clicar numa sugestão fecha o popover e ele NÃO reabre no re-foco', async () => {
@@ -78,6 +85,26 @@ describe('SmartSearch — fechar popover ao selecionar', () => {
     fireEvent.keyDown(input, { key: 'ArrowDown' });
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(onSelect).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(suggestionShown()).toBeNull());
+
+    fireEvent.focus(input);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(suggestionShown()).toBeNull();
+  });
+
+  it('Enter sem sugestão destacada fecha o popover e chama onCommit', async () => {
+    const onCommit = vi.fn();
+    const onSelect = vi.fn();
+    const { container } = render(<Harness onSelect={onSelect} onCommit={onCommit} />);
+    const input = inputOf(container);
+
+    fireEvent.change(input, { target: { value: 'LNG' } });
+    await waitFor(() => expect(suggestionShown()).toBeTruthy());
+
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    expect(onCommit).toHaveBeenCalledWith('LNG');
     await waitFor(() => expect(suggestionShown()).toBeNull());
 
     fireEvent.focus(input);

@@ -45,6 +45,8 @@ export interface PaginatedProductsParams {
   sortDir?: 'asc' | 'desc';
   page?: number;
   limit?: number;
+  /** SKU escolhido na sugestão — eq exato, pra `EVA01` não puxar `EVA01-OURO`. */
+  skuExact?: string | null;
 }
 
 /**
@@ -82,7 +84,7 @@ export type PaginatedProductsResult = PageResult<any> & {
 /** Aplica os filtros comuns a query de listagem e a query de contagem. */
 function applyFilters(
   query: any,
-  { search, groupId, supplierId, status, category, excludeCategory }: PaginatedProductsParams,
+  { search, groupId, supplierId, status, category, excludeCategory, skuExact }: PaginatedProductsParams,
 ) {
   let q = query;
 
@@ -103,6 +105,12 @@ function applyFilters(
   if (status === 'critical') q = q.eq('is_critical', true);
   else if (status === 'low') q = q.eq('is_low', true);
   else if (status === 'overstock') q = q.eq('is_overstock', true);
+
+  // Sugestão de SKU: igualdade exata. `search_all ilike %EVA01%` puxava EVA01-OURO.
+  if (skuExact) {
+    q = q.eq('sku', skuExact);
+    return q;
+  }
 
   // searchNormOrFilter devolve '' quando a busca normaliza pra vazio; passar
   // string vazia pro .or() vira `or=()` = 400 no PostgREST.
@@ -127,19 +135,21 @@ export function usePaginatedProducts(params: PaginatedProductsParams = {}) {
     search = '', groupId = 'all', supplierId = 'all', status = 'all',
     category = 'all', excludeCategory, hideZeradas = false, onlyFalta = false,
     sortKey = null, sortDir = 'asc', page = 1, limit = PAGE_SIZE,
+    skuExact = null,
   } = params;
 
   const sortColumn = sortKey ? SORT_COLUMNS[sortKey] : null;
 
   const filters: PaginatedProductsParams = {
     search, groupId, supplierId, status, category, excludeCategory, hideZeradas, onlyFalta,
+    skuExact,
   };
 
   return useQuery<PaginatedProductsResult>({
     queryKey: [
       'products', 'paginated', search, groupId, supplierId, status,
       category, excludeCategory || '', hideZeradas, onlyFalta,
-      sortColumn || '', sortDir, page, limit,
+      skuExact || '', sortColumn || '', sortDir, page, limit,
     ],
     // Sem isto a tabela pisca vazia a cada troca de página.
     placeholderData: keepPreviousData,
