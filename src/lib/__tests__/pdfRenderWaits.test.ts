@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { inspectPdfHtml } from '../pdfRenderWaits';
-import { inspectPdfHtml as inspectFromApi } from '../../../api/pdfRenderWaits';
 
 const FONT_ONLY = `<!doctype html><html><head>
   <link href="https://fonts.googleapis.com/css2?family=Anton&family=Fira+Sans:wght@400;700&display=swap" rel="stylesheet">
@@ -30,22 +29,26 @@ describe('inspectPdfHtml', () => {
   it('hangtag com barcode/QR espera os códigos', () => {
     expect(inspectPdfHtml(WITH_BARCODE).waitForTraceCodes).toBe(true);
   });
-
-  it('o espelho da função Vercel devolve o mesmo veredito', () => {
-    for (const html of [FONT_ONLY, WITH_PHOTO, WITH_BARCODE, '']) {
-      expect(inspectFromApi(html)).toEqual(inspectPdfHtml(html));
-    }
-  });
 });
 
-describe('pdfRenderWaits — corpos iguais (src × api)', () => {
-  it('os dois arquivos são o mesmo texto a partir de FONT_HOST', () => {
-    const slice = (file: string) => {
+describe('pdfRenderWaits — corpo igual no handler da Vercel', () => {
+  it('api/render-pdf.ts não tem import relativo (ESM derruba a função)', () => {
+    const handler = readFileSync(resolve(__dirname, '../../../api/render-pdf.ts'), 'utf8');
+    expect(handler).not.toMatch(/^import\s.+\sfrom ['"]\.\//m);
+  });
+
+  it('os dois arquivos têm as mesmas regex e o mesmo inspectPdfHtml', () => {
+    const logic = (file: string) => {
       const text = readFileSync(resolve(__dirname, file), 'utf8');
-      const start = text.indexOf('const FONT_HOST');
-      if (start < 0) throw new Error(`FONT_HOST ausente em ${file}`);
-      return text.slice(start);
+      const consts = ['FONT_HOST', 'ABSOLUTE_URL', 'TRACE_CODE'].map((name) => {
+        const m = text.match(new RegExp(`const ${name} = /[\\s\\S]*?;`));
+        if (!m) throw new Error(`${name} ausente em ${file}`);
+        return m[0];
+      });
+      const fn = text.match(/function inspectPdfHtml\(html: string\): PdfRenderWaits \{[\s\S]*?\n\}/);
+      if (!fn) throw new Error(`inspectPdfHtml ausente em ${file}`);
+      return [...consts, fn[0]].join('\n');
     };
-    expect(slice('../../../api/pdfRenderWaits.ts')).toBe(slice('../pdfRenderWaits.ts'));
+    expect(logic('../../../api/render-pdf.ts')).toBe(logic('../pdfRenderWaits.ts'));
   });
 });

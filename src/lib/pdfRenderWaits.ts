@@ -1,9 +1,10 @@
 /**
  * Decide quais esperas o Chromium de impressão precisa fazer.
  *
- * A função serverless NÃO importa este arquivo (empacotar `src/` derrubou
- * `/api/render-pdf` no passado). O espelho vivo está em `api/pdfRenderWaits.ts`.
- * O contrato em `pdfRenderWaits.test.ts` trava os dois corpos iguais.
+ * A função serverless NÃO importa este arquivo: empacotar `src/` derrubou
+ * `/api/render-pdf`, e um import relativo em `api/` também (ESM sem `.js`).
+ * O espelho vivo está inlined em `api/render-pdf.ts`. O contrato em
+ * `pdfRenderWaits.test.ts` trava os dois corpos iguais.
  */
 
 const FONT_HOST = /(?:fonts\.googleapis\.com|fonts\.gstatic\.com)/i;

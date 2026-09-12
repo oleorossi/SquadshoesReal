@@ -17,7 +17,8 @@ describe('render-pdf — aquecimento e esperas condicionais', () => {
   });
 
   it('não espera rede nem barcode quando inspectPdfHtml diz que não precisa', () => {
-    expect(handler).toContain("import { inspectPdfHtml } from './pdfRenderWaits'");
+    expect(handler).toContain('function inspectPdfHtml');
+    expect(handler).not.toMatch(/^import\s.+\sfrom ['"]\.\//m);
     expect(handler).toMatch(/if \(waits\.waitForNetworkIdle\)/);
     expect(handler).toMatch(/if \(waits\.waitForTraceCodes\)/);
   });

@@ -1,6 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
-import { inspectPdfHtml } from './pdfRenderWaits';
 
 /**
  * Renderiza HTML em PDF com Chromium headless.
@@ -60,6 +59,30 @@ function isAllowedPrintResource(raw: string, allowedHosts: Set<string>, isLocal 
     || host === 'fonts.gstatic.com'
     || host === 'cdn.jsdelivr.net'
     || host === 'cdnjs.cloudflare.com';
+}
+
+/**
+ * Espelho de `src/lib/pdfRenderWaits.ts`. Vive AQUI (não num import relativo)
+ * porque `package.json` é `"type": "module"`: `from './x'` sem `.js` derruba
+ * a função no Node da Vercel (FUNCTION_INVOCATION_FAILED). Importar `src/`
+ * também já derrubou o módulo. O contrato em pdfRenderWaits.test.ts trava
+ * os dois corpos iguais.
+ */
+const FONT_HOST = /(?:fonts\.googleapis\.com|fonts\.gstatic\.com)/i;
+const ABSOLUTE_URL = /https?:\/\/[^\s"'<>)\\]+/gi;
+const TRACE_CODE = /id\s*=\s*["'](?:bc-|bx-|qr-ht-)/i;
+
+interface PdfRenderWaits {
+  waitForNetworkIdle: boolean;
+  waitForTraceCodes: boolean;
+}
+
+function inspectPdfHtml(html: string): PdfRenderWaits {
+  const urls = html.match(ABSOLUTE_URL) || [];
+  return {
+    waitForNetworkIdle: urls.some((url) => !FONT_HOST.test(url)),
+    waitForTraceCodes: TRACE_CODE.test(html),
+  };
 }
 
 type RequestBody = {
