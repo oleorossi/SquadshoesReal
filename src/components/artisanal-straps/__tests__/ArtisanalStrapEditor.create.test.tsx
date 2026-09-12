@@ -1,19 +1,29 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   ArtisanalStrapCapabilities,
   ArtisanalStrapCatalog,
 } from '@/hooks/useArtisanalStraps';
 import { ArtisanalStrapEditor } from '../ArtisanalStrapEditor';
 
+const mutateAsync = vi.hoisted(() => vi.fn());
+
 vi.mock('@/hooks/useArtisanalStraps', () => ({
   useSaveArtisanalStrapBundle: () => ({
     isPending: false,
-    mutateAsync: vi.fn(),
+    mutateAsync,
   }),
 }));
+
+beforeAll(() => {
+  HTMLElement.prototype.scrollIntoView = vi.fn();
+});
+
+beforeEach(() => {
+  mutateAsync.mockReset();
+});
 
 vi.mock('@/hooks/useSuppliers', () => ({
   useSuppliers: () => ({ data: [] }),
@@ -157,5 +167,74 @@ describe('ArtisanalStrapEditor — tira comprada pronta com cor derivada', () =>
 
     expect(await screen.findAllByText(/CRISTAL COM FUNDO BRANCO/)).not.toHaveLength(0);
     expect(screen.queryByText('Selecione a cor canônica.')).not.toBeInTheDocument();
+  });
+});
+
+const matchingProductCatalog: ArtisanalStrapCatalog = {
+  ...buyReadyCatalog,
+  products: [{
+    ...buyReadyCatalog.products[0],
+    color: 'PRETO',
+    purchase_price: 0.1,
+    purchase_unit: 'm',
+    conversion_rate: 1,
+    min_order_quantity: 1,
+    purchase_multiple: 1,
+  }],
+  variants: [{
+    id: '66666666-6666-4666-8666-666666666666',
+    measure_id: MEASURE_ID,
+    base_group_id: GROUP_ID,
+    identity_basis: 'finished_product_group',
+    internal_production_enabled: false,
+    color_id: '77777777-7777-4777-8777-777777777777',
+    finished_product_id: PRODUCT_ID,
+    min_stock_m: 50,
+    min_stock_replenishment_mode: 'buy_ready',
+    purchase_enabled: true,
+    status: 'active',
+  }],
+};
+
+describe('ArtisanalStrapEditor — confirmação de estoque mínimo na compra pronta', () => {
+  const renderMatchingBuyReady = () => renderWithQueryClient(
+    <ArtisanalStrapEditor
+      open
+      onOpenChange={vi.fn()}
+      catalog={matchingProductCatalog}
+      capabilities={capabilities}
+      mode="create"
+      origin="pv"
+      identityBasis="finished_product_group"
+      measureId={MEASURE_ID}
+      baseGroupId={GROUP_ID}
+      colorId={COLOR_ID}
+      finishedProductId={PRODUCT_ID}
+      activateOnCreate
+    />,
+  );
+
+  it('mostra o piso de reposição ao lado do MOQ, não só acima da dobra', () => {
+    renderMatchingBuyReady();
+    expect(screen.getByText('Quantidade mínima (MOQ) *')).toBeInTheDocument();
+    expect(screen.getByText('Estoque mínimo (piso de reposição) *')).toBeInTheDocument();
+    expect(screen.getByText(/Não é a quantidade mínima de compra \(MOQ\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Sugestão das variantes irmãs/)).toBeInTheDocument();
+  });
+
+  it('permite confirmar o piso no próprio aviso, sem voltar a um checkbox fora da tela', async () => {
+    const user = userEvent.setup();
+    mutateAsync.mockResolvedValue({ variant_id: 'new-variant', measure_id: MEASURE_ID });
+    renderMatchingBuyReady();
+
+    await user.click(screen.getByRole('button', { name: /Salvar tudo/i }));
+
+    expect(await screen.findByText(/Confirme o estoque mínimo \(piso de reposição/)).toBeInTheDocument();
+    expect(mutateAsync).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('checkbox', { name: 'Confirmar estoque mínimo no aviso' }));
+    await user.click(screen.getByRole('button', { name: /Salvar tudo/i }));
+
+    expect(mutateAsync).toHaveBeenCalled();
   });
 });

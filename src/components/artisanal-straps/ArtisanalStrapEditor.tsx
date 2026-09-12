@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Factory,
@@ -225,6 +225,7 @@ export function ArtisanalStrapEditor({
   const [validationError, setValidationError] = useState<string | null>(null);
   const [minStockConfirmed, setMinStockConfirmed] = useState(false);
   const [floorModeConfirmed, setFloorModeConfirmed] = useState(false);
+  const initIdentityKeyRef = useRef<string | null>(null);
   const saveBundle = useSaveArtisanalStrapBundle();
   const { data: suppliers = [] } = useSuppliers(open);
   const { data: contractors = [] } = useContractors();
@@ -235,7 +236,13 @@ export function ArtisanalStrapEditor({
   );
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      initIdentityKeyRef.current = null;
+      setMinStockConfirmed(false);
+      setFloorModeConfirmed(false);
+      setValidationError(null);
+      return;
+    }
     const selectedVariant = catalog.variants.find((item) => item.id === variantId);
     const selectedMeasure = catalog.measures.find(
       (item) => item.id === (selectedVariant?.measure_id || measureId),
@@ -270,12 +277,27 @@ export function ArtisanalStrapEditor({
     const selectedFloorMode = selectedInternalProductionEnabled
       ? selectedVariant?.min_stock_replenishment_mode || 'internal'
       : 'buy_ready';
+    const floorGroupId = selectedIdentityBasis === 'finished_product_group'
+      ? selectedIdentityGroupId
+      : selectedBaseId;
     const suggestedFloor = mostFrequentMinStock(
       catalog,
       selectedMeasure?.id || '',
-      selectedBaseId,
+      floorGroupId,
       selectedVariant?.id,
     );
+    const identityKey = [
+      selectedVariant?.id || '',
+      selectedIdentityBasis,
+      selectedMeasure?.id || '',
+      floorGroupId,
+      selectedColorId,
+      selectedProductId || '',
+      buyReadyReviewId || '',
+      mode,
+    ].join('|');
+    const identityChanged = initIdentityKeyRef.current !== identityKey;
+    initIdentityKeyRef.current = identityKey;
 
     setForm({
       ...EMPTY_FORM,
@@ -334,8 +356,10 @@ export function ArtisanalStrapEditor({
           : mode === 'create' ? 'Cadastro inicial da variante' : '',
     });
     setValidationError(null);
-    setMinStockConfirmed(Boolean(selectedVariant));
-    setFloorModeConfirmed(Boolean(selectedVariant) || !selectedInternalProductionEnabled);
+    if (identityChanged) {
+      setMinStockConfirmed(Boolean(selectedVariant));
+      setFloorModeConfirmed(Boolean(selectedVariant) || !selectedInternalProductionEnabled);
+    }
   }, [open, variantId, identityBasis, measureId, baseGroupId, colorId, finishedProductId,
     buyReadyReviewId, suggestedRecipeId, suggestedYieldMPerM, mode, catalog]);
 
@@ -413,7 +437,7 @@ export function ArtisanalStrapEditor({
   const minStockSuggestion = mostFrequentMinStock(
     catalog,
     form.measureId,
-    form.baseGroupId,
+    form.identityBasis === 'finished_product_group' ? form.identityGroupId : form.baseGroupId,
     form.variantId,
   );
   const currentRecipe = catalog.recipes.find((item) => item.id === form.recipeId);
@@ -484,6 +508,73 @@ export function ArtisanalStrapEditor({
     setValidationError(null);
   };
 
+  const minStockFields = (
+    <>
+      <div className="space-y-1.5">
+        <Label htmlFor="strap-editor-min-stock">Estoque mínimo (piso de reposição) *</Label>
+        <NumberInput
+          id="strap-editor-min-stock"
+          value={form.minStockM}
+          onChange={(value) => {
+            setField('minStockM', value);
+            setMinStockConfirmed(false);
+          }}
+          unit="m"
+          disabled={readOnly}
+        />
+        <p className="text-xs text-muted-foreground">
+          Piso interno de reposição em metros. Não é a quantidade mínima de compra (MOQ).
+        </p>
+        {minStockSuggestion != null && !variant && (
+          <p className="text-xs text-muted-foreground">
+            Sugestão das variantes irmãs: <strong>{minStockSuggestion.toLocaleString('pt-BR')} m</strong>. Revise antes de confirmar.
+          </p>
+        )}
+        <label className="flex items-start gap-2 rounded-md border border-border p-2 text-xs">
+          <Checkbox
+            id="strap-min-stock-confirm"
+            checked={minStockConfirmed}
+            onCheckedChange={(checked) => {
+              setMinStockConfirmed(checked === true);
+              if (checked === true) setValidationError(null);
+            }}
+            disabled={readOnly}
+            aria-label="Confirmar estoque mínimo"
+          />
+          <span>Revisei e confirmo este estoque mínimo, inclusive se o valor for zero.</span>
+        </label>
+      </div>
+      <div className="space-y-1.5 sm:col-span-2">
+        <Label>Origem da reposição do estoque mínimo *</Label>
+        <Select
+          value={form.floorMode}
+          onValueChange={(value) => setFloorMode(value as ArtisanalStrapSourceMode)}
+          disabled={readOnly || purchasedReady}
+        >
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="internal">Produzir com napa própria</SelectItem>
+            <SelectItem value="buy_ready">Comprar tira pronta</SelectItem>
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          {purchasedReady
+            ? 'Origem fixa: esta tira só pode ser comprada pronta, inclusive no PV.'
+            : 'Essa escolha vale somente para recompor o piso; cada PV mantém sua própria origem.'}
+        </p>
+        <label className="flex items-start gap-2 rounded-md border border-border p-2 text-xs">
+          <Checkbox
+            checked={floorModeConfirmed}
+            onCheckedChange={(checked) => setFloorModeConfirmed(checked === true)}
+            disabled={readOnly || purchasedReady}
+            aria-label="Confirmar origem da reposição do estoque mínimo"
+          />
+          <span>Revisei e confirmo este modo de reposição do piso para a variante.</span>
+        </label>
+      </div>
+    </>
+  );
+
   const validate = (): string | null => {
     if (!form.typeId && !form.typeName.trim()) return 'Selecione uma família ou informe uma nova.';
     if (!form.measureId && (!form.measureName.trim() || form.finishedWidthMm <= 0)) {
@@ -513,7 +604,9 @@ export function ArtisanalStrapEditor({
       return 'Tira identificada pelo grupo acabado não pode habilitar produção interna.';
     }
     if (form.minStockM < 0) return 'O estoque mínimo não pode ser negativo.';
-    if (!minStockConfirmed) return 'Confirme explicitamente o estoque mínimo desta variante.';
+    if (!minStockConfirmed) {
+      return 'Confirme o estoque mínimo (piso de reposição em metros). Isso é diferente da quantidade mínima de compra (MOQ).';
+    }
     if (!form.floorMode) return 'Defina a origem da reposição do estoque mínimo.';
     if (!floorModeConfirmed) return 'Confirme explicitamente a origem da reposição do estoque mínimo.';
     if (form.identityBasis === 'finished_product_group' && !form.finishedProductId) {
@@ -566,6 +659,10 @@ export function ArtisanalStrapEditor({
     const error = validate();
     if (error) {
       setValidationError(error);
+      const confirmEl = document.getElementById(
+        minStockConfirmed ? 'strap-editor-reason' : 'strap-min-stock-confirm',
+      );
+      confirmEl?.scrollIntoView({ block: 'nearest' });
       return;
     }
 
@@ -897,6 +994,12 @@ export function ArtisanalStrapEditor({
                           sku: '',
                           supplierId: '',
                           supplierColorCode: '',
+                          minStockM: mostFrequentMinStock(
+                            catalog,
+                            current.measureId,
+                            value,
+                            current.variantId,
+                          ) ?? 0,
                         }));
                         setMinStockConfirmed(false);
                         setValidationError(null);
@@ -1056,60 +1159,7 @@ export function ArtisanalStrapEditor({
                     disabled={readOnly || Boolean(form.finishedProductId) || form.identityBasis === 'finished_product_group'}
                   />
                 </div>
-                <div className="space-y-1.5">
-                  <Label>Estoque mínimo *</Label>
-                  <NumberInput
-                    value={form.minStockM}
-                    onChange={(value) => {
-                      setField('minStockM', value);
-                      setMinStockConfirmed(false);
-                    }}
-                    unit="m"
-                    disabled={readOnly}
-                  />
-                  {minStockSuggestion != null && !variant && (
-                    <p className="text-xs text-muted-foreground">
-                      Sugestão das variantes irmãs: <strong>{minStockSuggestion.toLocaleString('pt-BR')} m</strong>. Revise antes de confirmar.
-                    </p>
-                  )}
-                  <label className="flex items-start gap-2 rounded-md border border-border p-2 text-xs">
-                    <Checkbox
-                      checked={minStockConfirmed}
-                      onCheckedChange={(checked) => setMinStockConfirmed(checked === true)}
-                      disabled={readOnly}
-                      aria-label="Confirmar estoque mínimo"
-                    />
-                    <span>Revisei e confirmo este estoque mínimo, inclusive se o valor for zero.</span>
-                  </label>
-                </div>
-                <div className="space-y-1.5 sm:col-span-2">
-                  <Label>Origem da reposição do estoque mínimo *</Label>
-                  <Select
-                    value={form.floorMode}
-                    onValueChange={(value) => setFloorMode(value as ArtisanalStrapSourceMode)}
-                    disabled={readOnly || purchasedReady}
-                  >
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="internal">Produzir com napa própria</SelectItem>
-                      <SelectItem value="buy_ready">Comprar tira pronta</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">
-                    {purchasedReady
-                      ? 'Origem fixa: esta tira só pode ser comprada pronta, inclusive no PV.'
-                      : 'Essa escolha vale somente para recompor o piso; cada PV mantém sua própria origem.'}
-                  </p>
-                  <label className="flex items-start gap-2 rounded-md border border-border p-2 text-xs">
-                    <Checkbox
-                      checked={floorModeConfirmed}
-                      onCheckedChange={(checked) => setFloorModeConfirmed(checked === true)}
-                      disabled={readOnly || purchasedReady}
-                      aria-label="Confirmar origem da reposição do estoque mínimo"
-                    />
-                    <span>Revisei e confirmo este modo de reposição do piso para a variante.</span>
-                  </label>
-                </div>
+                {!purchasedReady && minStockFields}
               </div>
             </section>
 
@@ -1347,6 +1397,7 @@ export function ArtisanalStrapEditor({
                     <Label>Dias de preparo *</Label>
                     <NumberInput value={form.preparationDays} onChange={(value) => setField('preparationDays', value)} unit="dias" decimals={0} disabled={readOnly} />
                   </div>
+                  {purchasedReady && minStockFields}
                 </div>
               ) : (
                 <p className="rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
@@ -1359,6 +1410,7 @@ export function ArtisanalStrapEditor({
               <section className="space-y-1.5" aria-labelledby="strap-editor-audit">
                 <Label id="strap-editor-audit">Motivo da alteração *</Label>
                 <Textarea
+                  id="strap-editor-reason"
                   value={form.reason}
                   onChange={(event) => setField('reason', event.target.value)}
                   placeholder="Explique o cadastro ou ajuste para a auditoria."
@@ -1371,7 +1423,27 @@ export function ArtisanalStrapEditor({
               <Alert variant="destructive">
                 <Warning className="h-4 w-4" />
                 <AlertTitle>Revise o cadastro</AlertTitle>
-                <AlertDescription>{validationError}</AlertDescription>
+                <AlertDescription className="space-y-2">
+                  <p>{validationError}</p>
+                  {!minStockConfirmed && (
+                    <label className="flex items-start gap-2 rounded-md border border-destructive/40 bg-background p-2 text-xs text-foreground">
+                      <Checkbox
+                        checked={minStockConfirmed}
+                        onCheckedChange={(checked) => {
+                          setMinStockConfirmed(checked === true);
+                          if (checked === true) setValidationError(null);
+                        }}
+                        disabled={readOnly}
+                        aria-label="Confirmar estoque mínimo no aviso"
+                      />
+                      <span>
+                        Revisei e confirmo o estoque mínimo de{' '}
+                        <strong>{Number(form.minStockM).toLocaleString('pt-BR')} m</strong>
+                        , inclusive se o valor for zero.
+                      </span>
+                    </label>
+                  )}
+                </AlertDescription>
               </Alert>
             )}
           </div>
