@@ -8,6 +8,7 @@ vi.mock('@/lib/printPdf', () => ({
   openPrintTab: vi.fn(() => null),
   printHtmlAsPdf: vi.fn(async () => undefined),
 }));
+vi.mock('@/hooks/useWarmPdfRenderer', () => ({ useWarmPdfRenderer: () => {} }));
 
 const row = (partial: Partial<ConsumptionRow> & Pick<ConsumptionRow, 'groupName' | 'materialName' | 'totalQuantity'>): ConsumptionRow => ({
   componentType: 'Cabedal',

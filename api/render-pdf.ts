@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
+import { inspectPdfHtml } from './pdfRenderWaits';
 
 /**
  * Renderiza HTML em PDF com Chromium headless.
@@ -37,7 +38,9 @@ export const config = {
 const MAX_HTML_BYTES = 4 * 1024 * 1024;
 const RATE_WINDOW_MS = 60_000;
 const RATE_LIMIT = 12;
+const WARM_RATE_LIMIT = 30;
 const rateByUser = new Map<string, number[]>();
+const warmByUser = new Map<string, number[]>();
 
 /**
  * A função serverless é empacotada sem os módulos do front-end em `src/`.
@@ -67,14 +70,19 @@ type RequestBody = {
   job_id?: string;
 };
 
-function consumeRateSlot(userId: string, now = Date.now()): boolean {
-  const valid = (rateByUser.get(userId) || []).filter(ts => now - ts < RATE_WINDOW_MS);
-  if (valid.length >= RATE_LIMIT) {
-    rateByUser.set(userId, valid);
+function consumeRateSlot(
+  store: Map<string, number[]>,
+  userId: string,
+  limit: number,
+  now = Date.now(),
+): boolean {
+  const valid = (store.get(userId) || []).filter(ts => now - ts < RATE_WINDOW_MS);
+  if (valid.length >= limit) {
+    store.set(userId, valid);
     return false;
   }
   valid.push(now);
-  rateByUser.set(userId, valid);
+  store.set(userId, valid);
   return true;
 }
 
@@ -88,10 +96,62 @@ function serverSupabase(accessToken: string) {
   });
 }
 
+function bearerToken(req: VercelRequest): string {
+  const header = String(req.headers.authorization || '');
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  return match?.[1]?.trim() || '';
+}
+
+async function authenticateApprovedUser(accessToken: string) {
+  const db = serverSupabase(accessToken);
+  const { data: authData, error: authError } = await db.auth.getUser(accessToken);
+  if (authError || !authData.user) {
+    throw Object.assign(new Error('Sessão inválida ou expirada.'), { status: 401 });
+  }
+  const userId = authData.user.id;
+  const { data: profile, error: profileError } = await db
+    .from('profiles')
+    .select('approved')
+    .eq('id', userId)
+    .maybeSingle();
+  if (profileError || !profile?.approved) {
+    throw Object.assign(new Error('Usuário sem aprovação para gerar documentos.'), { status: 403 });
+  }
+  return { db, userId };
+}
+
+/**
+ * GET aquece o Chromium da MESMA função do POST. Um arquivo `api/` irmão
+ * subiria outro isolate e o cold start do PDF continuaria intacto.
+ */
+async function warmBrowser(req: VercelRequest, res: VercelResponse) {
+  const token = bearerToken(req);
+  if (!token) return res.status(401).json({ error: 'Sessão ausente. Entre novamente no sistema.' });
+  try {
+    const { userId } = await authenticateApprovedUser(token);
+    if (!consumeRateSlot(warmByUser, userId, WARM_RATE_LIMIT)) {
+      res.setHeader('Retry-After', '60');
+      return res.status(429).json({ error: 'Muitos aquecimentos em sequência. Aguarde um minuto.' });
+    }
+    await getBrowser();
+    res.setHeader('Cache-Control', 'no-store');
+    return res.status(204).end();
+  } catch (error) {
+    const status = typeof (error as { status?: number }).status === 'number'
+      ? (error as { status: number }).status
+      : 500;
+    const message = error instanceof Error ? error.message : 'Falha de autenticação.';
+    return res.status(status).json({ error: message });
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (req.method === 'GET' || req.method === 'HEAD') {
+    return warmBrowser(req, res);
+  }
   if (req.method !== 'POST') {
-    res.setHeader('Allow', 'POST');
-    return res.status(405).json({ error: 'Use POST.' });
+    res.setHeader('Allow', 'GET, HEAD, POST');
+    return res.status(405).json({ error: 'Use POST para gerar, GET para aquecer.' });
   }
 
   // O app manda POST de FORMULÁRIO (o navegador conduz a navegação e exibe o PDF
@@ -112,21 +172,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   let userId = '';
   let db: ReturnType<typeof serverSupabase>;
   try {
-    db = serverSupabase(body.access_token);
-    const { data: authData, error: authError } = await db.auth.getUser(body.access_token);
-    if (authError || !authData.user) {
-      return fail(res, querHtml, 401, 'Sessão inválida ou expirada.');
-    }
-    userId = authData.user.id;
-    const { data: profile, error: profileError } = await db
-      .from('profiles')
-      .select('approved')
-      .eq('id', userId)
-      .maybeSingle();
-    if (profileError || !profile?.approved) {
-      return fail(res, querHtml, 403, 'Usuário sem aprovação para gerar documentos.');
-    }
-    if (!consumeRateSlot(userId)) {
+    const auth = await authenticateApprovedUser(body.access_token);
+    db = auth.db;
+    userId = auth.userId;
+    if (!consumeRateSlot(rateByUser, userId, RATE_LIMIT)) {
       res.setHeader('Retry-After', '60');
       return fail(res, querHtml, 429, 'Muitas gerações em sequência. Aguarde um minuto.');
     }
@@ -137,8 +186,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
   } catch (error) {
+    const status = typeof (error as { status?: number }).status === 'number'
+      ? (error as { status: number }).status
+      : 500;
     const message = error instanceof Error ? error.message : 'Falha de autenticação.';
-    return fail(res, querHtml, 500, message);
+    return fail(res, querHtml, status, message);
   }
 
   if (typeof html !== 'string' || html.trim().length === 0) {
@@ -170,11 +222,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       else request.abort('blockedbyclient');
     });
 
+    const waits = inspectPdfHtml(html);
+
     // Puppeteer 25 restringe `setContent.waitUntil` a load/domcontentloaded.
-    // Esperar a rede em uma etapa própria preserva a garantia de que fotos e CSS
-    // remotos terminaram antes da geração do PDF.
+    // Network idle só quando há foto/CSS/CDN — consumo de materiais só pede
+    // Google Fonts e ganhava 500ms extras em toda geração.
     await page.setContent(html, { waitUntil: 'load', timeout: 45_000 });
-    await page.waitForNetworkIdle({ idleTime: 500, timeout: 45_000 });
+    if (waits.waitForNetworkIdle) {
+      await page.waitForNetworkIdle({ idleTime: 500, timeout: 45_000 });
+    }
 
     // Sem isto o PDF sai com o CSS de TELA — e as fichas dependem do @media print
     // pra soltar a altura fixa das páginas.
@@ -184,14 +240,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // (Anton no número da OP). Melhor esperar um pouco do que imprimir errado.
     await page.evaluate(() => (document as unknown as { fonts: { ready: Promise<unknown> } }).fonts.ready);
 
-    // Builders marcam códigos por id. Se o CDN falhar, não entregamos um PDF
-    // visualmente válido porém sem rastreabilidade.
-    await page.waitForFunction(() => {
-      const barcodes = Array.from(document.querySelectorAll<SVGElement>('svg[id^="bc-"],svg[id^="bx-"]'));
-      const qrs = Array.from(document.querySelectorAll<HTMLElement>('[id^="qr-ht-"]'));
-      return barcodes.every(el => el.childElementCount > 0)
-        && qrs.every(el => el.querySelector('canvas,img') !== null);
-    }, { timeout: 12_000 });
+    // Builders marcam códigos por id. Sem esses ids o wait é no-op — pulamos.
+    if (waits.waitForTraceCodes) {
+      await page.waitForFunction(() => {
+        const barcodes = Array.from(document.querySelectorAll<SVGElement>('svg[id^="bc-"],svg[id^="bx-"]'));
+        const qrs = Array.from(document.querySelectorAll<HTMLElement>('[id^="qr-ht-"]'));
+        return barcodes.every(el => el.childElementCount > 0)
+          && qrs.every(el => el.querySelector('canvas,img') !== null);
+      }, { timeout: 12_000 });
+    }
 
     const pdf = await page.pdf({
       printBackground: true,   // faixas pretas e o vermelho #C00000 do destaque

@@ -9,8 +9,10 @@ import { PrintDashboardTab } from '@/components/label-system/PrintDashboardTab';
 import { LabelAnalyticsDashboard } from '@/components/label-system/LabelAnalyticsDashboard';
 import { LabelManualTab } from '@/components/label-system/LabelManualTab';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { useWarmPdfRenderer } from '@/hooks/useWarmPdfRenderer';
 
 export default function LabelSystem() {
+  useWarmPdfRenderer();
   // A aba mora na URL (contrato do lote L6a): o useState local não sobrevivia
   // ao F5 nem ao botão Voltar.
   const { value: activeTab, setValue: setActiveTab } = useUrlTabState({

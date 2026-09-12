@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import { openPrintTab, printHtmlAsPdf, serializeForPdf } from '@/lib/printPdf';
+import { useWarmPdfRenderer } from '@/hooks/useWarmPdfRenderer';
 import { toast } from 'sonner';
 import { useQuery, useIsFetching, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -872,6 +873,7 @@ const PRINT_OWNED_QUERY_KEY_ROOTS = new Set<string>([
 ]);
 
 const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: PrintWorkSheetsPageProps) => {
+  useWarmPdfRenderer();
   // Fluxo unificado (2026-05-18): chips toggleáveis com state interno —
   // substitui o antigo dropdown single + bool printAll + prop selectedSectors.
   // Default = todos os setores marcados (equivalente ao antigo "Imprimir tudo").
@@ -916,6 +918,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   // PaginatedSheet). afterprint (ou cancelamento do diálogo) restaura.
   const [printReversing, setPrintReversing] = useState(false);
   const [preparingNativePrint, setPreparingNativePrint] = useState(false);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
   useEffect(() => {
     if (!reverseOutput) return;
     const flip = (on: boolean) => {
@@ -1048,25 +1051,30 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   };
 
   const printWith = async () => {
-    await waitForPrintAssets();
+    setGeneratingPdf(true);
+    try {
+      await waitForPrintAssets();
 
-    // PDF do servidor em vez de window.print() (10/08/2026). A ficha tem a MESMA
-    // folga de 9mm da etiqueta (PaginatedSheet.PAGE_HEIGHT_MM = 288 num A4 de 297)
-    // e o mesmo histórico de derramar folha em branco — o próprio arquivo registra
-    // "20 páginas lógicas viraram 40 físicas". No celular, onde o Chrome ignora o
-    // @page{margin:0}, isso volta a acontecer e ainda carimba URL/data no papel.
-    // Serializamos o DOM JÁ PAGINADO (o auto-ajuste de fonte roda aqui, como
-    // sempre) e o servidor só imprime — nenhum layout mudou.
-    const area = document.querySelector<HTMLElement>('.print-area');
-    if (!area) {
-      toast.error('Não encontrei a área de impressão na tela.');
-      return;
+      // PDF do servidor em vez de window.print() (10/08/2026). A ficha tem a MESMA
+      // folga de 9mm da etiqueta (PaginatedSheet.PAGE_HEIGHT_MM = 288 num A4 de 297)
+      // e o mesmo histórico de derramar folha em branco — o próprio arquivo registra
+      // "20 páginas lógicas viraram 40 físicas". No celular, onde o Chrome ignora o
+      // @page{margin:0}, isso volta a acontecer e ainda carimba URL/data no papel.
+      // Serializamos o DOM JÁ PAGINADO (o auto-ajuste de fonte roda aqui, como
+      // sempre) e o servidor só imprime — nenhum layout mudou.
+      const area = document.querySelector<HTMLElement>('.print-area');
+      if (!area) {
+        toast.error('Não encontrei a área de impressão na tela.');
+        return;
+      }
+      await printHtmlAsPdf(serializeForPdf(area, 'Fichas de Produção'), {
+        filename: `fichas-${new Date().toISOString().slice(0, 10)}`,
+        target: printTabRef.current,
+      });
+    } finally {
+      printTabRef.current = null;
+      setGeneratingPdf(false);
     }
-    printHtmlAsPdf(serializeForPdf(area, 'Fichas de Produção'), {
-      filename: `fichas-${new Date().toISOString().slice(0, 10)}`,
-      target: printTabRef.current,
-    });
-    printTabRef.current = null;
     // Restaura o layout completo no preview — sem isso, depois do "Relatório
     // simplificado" um Ctrl+P manual sairia na versão reduzida sem pedir.
     // Vale igual pro modo cartão, que ainda troca a orientação do @page.
@@ -3408,10 +3416,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             <Button
               onClick={() => { printTabRef.current = openPrintTab(); void printWith(); }}
               className="gap-2"
-              disabled={printBlocked || preparingNativePrint}
+              disabled={printBlocked || preparingNativePrint || generatingPdf}
               title={printBlockedTitle || 'Gera um PDF padronizado no servidor, indicado para celular e quando a geometria precisa ser idêntica entre impressoras.'}
             >
-              {initialQueriesLoading || (!cartao && consumptionLoading) ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+              {generatingPdf || initialQueriesLoading || (!cartao && consumptionLoading) ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
               PDF padronizado
             </Button>
           </div>

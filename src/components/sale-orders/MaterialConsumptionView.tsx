@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, type ReactNode } from 'react';
+import { useWarmPdfRenderer } from '@/hooks/useWarmPdfRenderer';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -498,6 +499,8 @@ export default function MaterialConsumptionView({
   const [grossNeed, setGrossNeed] = useState(false);
   /** Aba Materiais gerais × Tira Strass — só aparece quando há STRASS no consumo. */
   const [materialsTab, setMaterialsTab] = useState<'materiais' | 'strass'>('materiais');
+  const [printingPdf, setPrintingPdf] = useState(false);
+  useWarmPdfRenderer();
 
   const buyList = useMemo(() => buildBuyList(rows), [rows]);
 
@@ -733,6 +736,7 @@ export default function MaterialConsumptionView({
 
   const handlePrintPdf = useCallback(() => {
     const target = openPrintTab();
+    setPrintingPdf(true);
     const reportTitle = grossNeed
       ? title.replace(/consumo de materiais/i, 'Consumo total')
       : title;
@@ -747,7 +751,7 @@ export default function MaterialConsumptionView({
     void printHtmlAsPdf(html, {
       filename: materialConsumptionReportFilename(reportTitle),
       target,
-    });
+    }).finally(() => setPrintingPdf(false));
   }, [rows, title, artisanalStrapRows, orderHeaders, grossNeed, partitionMode]);
 
   const orderReferencePartitions = useMemo(
@@ -1586,6 +1590,7 @@ export default function MaterialConsumptionView({
         onGerarOC={onGerarOC}
         onRecalcular={onRecalcular}
         onPrintPdf={handlePrintPdf}
+        printBusy={printingPdf}
         loading={loading}
         />
       </div>

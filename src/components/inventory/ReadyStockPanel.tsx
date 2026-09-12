@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useWarmPdfRenderer } from '@/hooks/useWarmPdfRenderer';
 import { escapeHtml, safeUrlAttr } from '@/lib/htmlUtils';
 import { Plus, Trash as Trash2, CircleNotch as Loader2, MagnifyingGlass, Package, ShoppingBag, PencilSimple as Pencil, MapPin, Note as StickyNote, FileArrowDown as FileDown, Tag, Package as BoxIcon, Printer, ImageSquare as ImagePlus } from '@phosphor-icons/react';
 import { buildStockBoxLabelsHtml, buildThermalLabelsHtml, THERMAL_DEFAULT_DIMENSIONS } from '@/lib/printLabels';
@@ -57,6 +58,7 @@ function parseColors(colorsStr: string | null): string[] {
 }
 
 export default function ReadyStockPanel() {
+  useWarmPdfRenderer();
   const { data: stock = [], isLoading } = useReadyStock();
   const { data: references = [] } = useTechnicalSheets();
   const { data: products = [] } = useProducts();
@@ -524,16 +526,16 @@ ${cardsHtml}
                   grouped.map(g => toLabelData(g, materialFor(g))),
                   DEFAULT_MANUFACTURER_CNPJ,
                 );
-                const jobId = await createPrintJob({
+                const jobPromise = createPrintJob({
                   batchName: `Rótulos pronta-entrega - ${new Date().toLocaleString('pt-BR')}`,
                   totalLabels: grouped.length,
                 });
                 const submitted = await printHtmlAsPdf(html, {
                   filename: `rotulos-pronta-entrega-${new Date().toISOString().slice(0, 10)}`,
                   target,
-                  jobId,
+                  jobId: jobPromise,
                 });
-                if (!submitted) await setPrintJobStatus(jobId, 'failed');
+                if (!submitted) await setPrintJobStatus(await jobPromise, 'failed');
               } catch (error) {
                 target?.close();
                 toast.error(error instanceof Error ? error.message : 'Falha ao gerar os rótulos.');
@@ -569,16 +571,16 @@ ${cardsHtml}
                   )
                 );
                 const html = buildThermalLabelsHtml(thermal, '', THERMAL_DEFAULT_DIMENSIONS, undefined, DEFAULT_MANUFACTURER_CNPJ);
-                const jobId = await createPrintJob({
+                const jobPromise = createPrintJob({
                   batchName: `Térmicas pronta-entrega - ${new Date().toLocaleString('pt-BR')}`,
                   totalLabels: thermal.length,
                 });
                 const submitted = await printHtmlAsPdf(html, {
                   filename: `etiquetas-pronta-entrega-${new Date().toISOString().slice(0, 10)}`,
                   target,
-                  jobId,
+                  jobId: jobPromise,
                 });
-                if (!submitted) await setPrintJobStatus(jobId, 'failed');
+                if (!submitted) await setPrintJobStatus(await jobPromise, 'failed');
               } catch (error) {
                 target?.close();
                 toast.error(error instanceof Error ? error.message : 'Falha ao gerar as etiquetas.');

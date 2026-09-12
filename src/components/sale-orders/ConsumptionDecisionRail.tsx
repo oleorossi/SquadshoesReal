@@ -63,6 +63,8 @@ type Props = {
   onGerarOC?: (opts: { grossNeed: boolean }) => void;
   onRecalcular?: () => void;
   onPrintPdf: () => void;
+  /** PDF do servidor em andamento — a aba de espera já abriu. */
+  printBusy?: boolean;
   loading?: boolean;
 };
 
@@ -86,6 +88,7 @@ export default function ConsumptionDecisionRail({
   onGerarOC,
   onRecalcular,
   onPrintPdf,
+  printBusy = false,
   loading = false,
 }: Props) {
   const chipClass = (active: boolean) =>
@@ -332,8 +335,16 @@ export default function ConsumptionDecisionRail({
             Atualizar simulação
           </Button>
         )}
-        <Button type="button" variant="outline" size="sm" className="flex-1 gap-1.5" onClick={onPrintPdf}>
-          <FileText className="h-4 w-4" /> {grossNeed ? 'PDF consumo total' : 'Gerar PDF'}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="flex-1 gap-1.5"
+          onClick={onPrintPdf}
+          disabled={printBusy}
+        >
+          {printBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+          {grossNeed ? 'PDF consumo total' : 'Gerar PDF'}
         </Button>
       </div>
     </aside>

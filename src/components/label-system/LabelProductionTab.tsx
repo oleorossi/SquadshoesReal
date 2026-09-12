@@ -1014,7 +1014,7 @@ export function LabelProductionTab() {
     staleTime: 30000,
   });
   const [showConfig, setShowConfig] = useState(false);
-  const [printRequest, setPrintRequest] = useState<{ html: string; jobId: string } | null>(null);
+  const [printRequest, setPrintRequest] = useState<{ html: string; jobId: string | Promise<string> } | null>(null);
   const [zplPreview, setZplPreview] = useState<{
     labels: ZplPreviewLabel[];
     graphics: { name: string; mono: MonoBitmap }[];
@@ -1429,9 +1429,17 @@ export function LabelProductionTab() {
     if (!validateJobSize(requested)) return;
     printTabRef.current = openPrintTab();
     setIsGenerating(true);
+    const jobPromise = createPrintJob({
+      batchName: printJobName('Hangtags'),
+      totalLabels: requested,
+      orderIds: getPrintJobOrderIds(groupsToPrint),
+      marksOrdersAsPrinted: printCoverage === 'total',
+    });
     try {
-      const { data: careData } = await supabase.from('care_instructions').select('*');
-      const materialMap = await buildMaterialMap(groupsToPrint);
+      const [{ data: careData }, materialMap] = await Promise.all([
+        supabase.from('care_instructions').select('*'),
+        buildMaterialMap(groupsToPrint),
+      ]);
       const labels: any[] = [];
       let currentSerial = serializationStart;
       const shouldSerialize = printCoverage === 'total' && useSerialization;
@@ -1476,18 +1484,13 @@ export function LabelProductionTab() {
           { duration: 12_000 },
         );
       }
-      const orderIds = getPrintJobOrderIds(groupsToPrint);
       const html = buildHangtagHtml(labels);
-      const jobId = await createPrintJob({
-        batchName: printJobName('Hangtags'),
-        totalLabels: labels.length,
-        orderIds,
-        marksOrdersAsPrinted: printCoverage === 'total',
-      });
+      const jobId = await jobPromise;
       setPrintRequest({ html, jobId });
       queryClient.invalidateQueries({ queryKey: ['print_history'] });
       toast.success(`${labels.length} hangtags geradas.`);
     } catch (err: any) {
+      void jobPromise.then((id) => setPrintJobStatus(id, 'failed')).catch(() => {});
       printTabRef.current?.close();
       printTabRef.current = null;
       toast.error(err.message);
@@ -1669,17 +1672,16 @@ export function LabelProductionTab() {
       }
 
       const html = buildThermalLabelsHtml(labels, logoUrl, { width: dimensions.width, height: dimensions.height }, labelConfig, resolveSender().senderCnpj);
-      const jobId = await createPrintJob({
-        batchName: printJobName('Etiqueta Individual'),
-        totalLabels: labels.length,
-        orderIds,
-        marksOrdersAsPrinted: printCoverage === 'total',
-      });
-      queryClient.invalidateQueries({ queryKey: ['print_history'] });
       setPrintRequest({
         html,
-        jobId,
+        jobId: createPrintJob({
+          batchName: printJobName('Etiqueta Individual'),
+          totalLabels: labels.length,
+          orderIds,
+          marksOrdersAsPrinted: printCoverage === 'total',
+        }),
       });
+      queryClient.invalidateQueries({ queryKey: ['print_history'] });
       toast.success(`${labels.length} etiquetas individuais geradas.`);
       if (effectiveThermalMode === 'quantity' && fichaFallbackOrders.size > 0) {
         toast.warning(
@@ -2197,12 +2199,14 @@ export function LabelProductionTab() {
       }
       const orderIds = boxGroups.flatMap(g => g.orders.map((o: any) => o.id));
       const html = buildBoxIdentificationHtml(boxItems);
-      const jobId = await createPrintJob({
-        batchName: `Rótulos Caixa - ${new Date().toLocaleString('pt-BR')}`,
-        totalLabels: boxItems.length,
-        orderIds,
+      setPrintRequest({
+        html,
+        jobId: createPrintJob({
+          batchName: `Rótulos Caixa - ${new Date().toLocaleString('pt-BR')}`,
+          totalLabels: boxItems.length,
+          orderIds,
+        }),
       });
-      setPrintRequest({ html, jobId });
       queryClient.invalidateQueries({ queryKey: ['print_history'] });
     } catch (err: any) {
       printTabRef.current?.close();
@@ -2230,7 +2234,7 @@ export function LabelProductionTab() {
       target,
       jobId: request.jobId,
     }).then(async submitted => {
-      if (!submitted) await setPrintJobStatus(request.jobId, 'failed');
+      if (!submitted) await setPrintJobStatus(await request.jobId, 'failed');
       queryClient.invalidateQueries({ queryKey: ['print_history'] });
     }).catch(error => {
       console.error('[LabelProductionTab] falha ao atualizar o lote de impressão:', error);

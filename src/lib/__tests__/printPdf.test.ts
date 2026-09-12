@@ -1,7 +1,14 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { printHtmlAsPdf, openPrintTab, MAX_DOCUMENT_BYTES } from '../printPdf';
+import { printHtmlAsPdf, openPrintTab, setPrintTabStage, printWaitHtml, MAX_DOCUMENT_BYTES } from '../printPdf';
 
-vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn(), loading: vi.fn() } }));
+vi.mock('sonner', () => {
+  const toast = Object.assign(vi.fn(), {
+    error: vi.fn(),
+    success: vi.fn(),
+    loading: vi.fn(),
+  });
+  return { toast };
+});
 vi.mock('@/integrations/supabase/client', () => ({
   supabase: {
     auth: {
@@ -13,6 +20,7 @@ vi.mock('@/integrations/supabase/client', () => ({
   },
 }));
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 
 /**
  * O envio do documento é POST de FORMULÁRIO, não `fetch`.
@@ -52,6 +60,7 @@ describe('printHtmlAsPdf — POST de formulário', () => {
     // Mira NOMEADA: o submit acontece depois do preparo, quando o gesto do
     // usuário já passou — mirar em janela existente é o que escapa do pop-up.
     expect(form.target).toBe('squad-pdf');
+    expect(toast).toHaveBeenCalledWith('O PDF abre na outra aba.', expect.any(Object));
   });
 
   it('leva o HTML, o nome do arquivo, a sessão e a orientação', async () => {
@@ -78,6 +87,20 @@ describe('printHtmlAsPdf — POST de formulário', () => {
     expect(valores.job_id).toBe('job-123');
   });
 
+  it('espera o jobId em Promise em paralelo com a sessão', async () => {
+    let resolveJob: (id: string) => void = () => {};
+    const jobId = new Promise<string>((resolve) => { resolveJob = resolve; });
+    const pending = printHtmlAsPdf('<html><body>conteudo</body></html>', {
+      filename: 'lote', jobId,
+    });
+    resolveJob('job-async');
+    await pending;
+    const valores = Object.fromEntries(
+      Array.from(campos().querySelectorAll('input')).map(i => [i.name, i.value]),
+    );
+    expect(valores.job_id).toBe('job-async');
+  });
+
   it('não manda "landscape" quando é retrato (o servidor decide pelo padrão)', async () => {
     await printHtmlAsPdf('<html><body>x</body></html>', { filename: 'fichas' });
     const nomes = Array.from(campos().querySelectorAll('input')).map(i => i.name);
@@ -100,14 +123,54 @@ describe('printHtmlAsPdf — POST de formulário', () => {
   });
 
   it('avisa na aba quando recusa — senão ela fica parada na mensagem de espera', async () => {
-    const aba = { closed: false, document: { body: { innerHTML: '' } } } as unknown as Window;
+    const wrote: string[] = [];
+    const aba = {
+      closed: false,
+      document: {
+        open: vi.fn(),
+        write: (html: string) => { wrote.push(html); },
+        close: vi.fn(),
+        getElementById: () => null,
+        body: { innerHTML: '' },
+      },
+    } as unknown as Window;
     await printHtmlAsPdf(`<html><body>${'x'.repeat(MAX_DOCUMENT_BYTES + 1)}</body></html>`,
       { filename: 'fichas', target: aba });
-    expect(aba.document.body.innerHTML).toMatch(/grande demais/i);
+    expect(wrote.join('')).toMatch(/grande demais/i);
+  });
+
+  it('marca a aba como enviando antes do POST', async () => {
+    const stage = { textContent: 'Preparando o documento…' };
+    const aba = {
+      closed: false,
+      document: {
+        getElementById: () => stage,
+        open: vi.fn(),
+        write: vi.fn(),
+        close: vi.fn(),
+      },
+    } as unknown as Window;
+    await printHtmlAsPdf('<html><body>ok</body></html>', { filename: 'lote', target: aba });
+    expect(stage.textContent).toMatch(/Enviando para o servidor/i);
   });
 
   it('o limite tem folga sobre os ~4,5MB do corpo da requisição', () => {
     expect(MAX_DOCUMENT_BYTES).toBeLessThan(4.5 * 1024 * 1024);
+  });
+});
+
+describe('printWaitHtml', () => {
+  it('pinta a espera com marca, estágio e aviso para não fechar a aba', () => {
+    const html = printWaitHtml('preparing');
+    expect(html).toMatch(/Gerando PDF/i);
+    expect(html).toMatch(/Preparando o documento/i);
+    expect(html).toMatch(/Não feche esta aba/i);
+    expect(html).toMatch(/Squad Shoes/);
+    expect(html).toMatch(/#D9264E/);
+  });
+
+  it('troca o estágio sem perder a moldura', () => {
+    expect(printWaitHtml('sending')).toMatch(/Enviando para o servidor/i);
   });
 });
 
@@ -119,6 +182,17 @@ describe('openPrintTab', () => {
     vi.stubGlobal('open', open);
     openPrintTab();
     expect(open).toHaveBeenCalledWith('', 'squad-pdf');
+    vi.unstubAllGlobals();
+  });
+
+  it('escreve a espera branded e já dispara a sessão', () => {
+    const write = vi.fn();
+    vi.stubGlobal('open', vi.fn().mockReturnValue({
+      document: { write, close: vi.fn() },
+    }));
+    openPrintTab();
+    expect(write).toHaveBeenCalledWith(expect.stringContaining('Preparando o documento'));
+    expect(supabase.auth.getSession).toHaveBeenCalled();
     vi.unstubAllGlobals();
   });
 
@@ -148,4 +222,41 @@ describe('openPrintTab', () => {
     expect(openPrintTab()).toBeNull();
     vi.unstubAllGlobals();
   });
+
+  it('reusa a sessão pré-buscada no clique, sem segundo getSession', async () => {
+    submitReady();
+    const write = vi.fn();
+    vi.stubGlobal('open', vi.fn().mockReturnValue({
+      document: { write, close: vi.fn(), getElementById: () => null, open: vi.fn() },
+    }));
+    openPrintTab();
+    const callsBefore = (supabase.auth.getSession as ReturnType<typeof vi.fn>).mock.calls.length;
+    HTMLFormElement.prototype.submit = vi.fn();
+    await printHtmlAsPdf('<html><body>x</body></html>', { filename: 'lote' });
+    expect((supabase.auth.getSession as ReturnType<typeof vi.fn>).mock.calls.length).toBe(callsBefore);
+    vi.unstubAllGlobals();
+  });
 });
+
+describe('setPrintTabStage', () => {
+  it('atualiza o estágio no elemento existente sem reescrever o documento', () => {
+    const stage = { textContent: 'Preparando o documento…' };
+    const write = vi.fn();
+    const tab = {
+      closed: false,
+      document: {
+        getElementById: () => stage,
+        write,
+        open: vi.fn(),
+        close: vi.fn(),
+      },
+    } as unknown as Window;
+    setPrintTabStage(tab, 'sending');
+    expect(stage.textContent).toMatch(/Enviando para o servidor/i);
+    expect(write).not.toHaveBeenCalled();
+  });
+});
+
+function submitReady() {
+  HTMLFormElement.prototype.submit = vi.fn();
+}
