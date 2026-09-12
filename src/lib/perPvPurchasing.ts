@@ -634,3 +634,18 @@ export function collectPerPvPackagingWithoutSupplier(
 export function isPerPvPurchaseOrder(po: { source_type?: string | null } | null | undefined): boolean {
   return !!po && po.source_type === 'per_pv';
 }
+
+/**
+ * Canal exclusivo das tiras artesanais (`source_type='strap_demand'`).
+ * Tem aba própria em /purchase-orders (Demandas automáticas) e RPCs próprias
+ * (`approve_strap_purchase_order`, `suspend_strap_operation`, …). A fronteira
+ * genérica `execute_purchase_order_command` recusa estas OCs de propósito.
+ */
+export function isArtisanalStrapPurchaseOrder(
+  po: { source_type?: string | null } | null | undefined,
+): boolean {
+  return !!po && po.source_type === 'strap_demand';
+}
+
+export const ARTISANAL_PURCHASE_ORDER_GENERIC_CHANNEL_ERROR =
+  'OC artesanal usa a aba Demandas automáticas. Aprove, suspenda ou receba por lá.';

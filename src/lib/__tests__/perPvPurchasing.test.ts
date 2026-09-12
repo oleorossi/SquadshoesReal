@@ -7,6 +7,7 @@ import {
   partitionPerPvStrapPurchaseItems,
   summarizePerPvDrafts,
   isPerPvPurchaseOrder,
+  isArtisanalStrapPurchaseOrder,
   collectPvNeedWarnings,
   collectOpenPurchaseWarnings,
   NO_SUPPLIER_LABEL,
@@ -382,6 +383,16 @@ describe('isPerPvPurchaseOrder', () => {
     expect(isPerPvPurchaseOrder({ source_type: null })).toBe(false);
     expect(isPerPvPurchaseOrder({})).toBe(false);
     expect(isPerPvPurchaseOrder(null)).toBe(false);
+  });
+
+  it('só é OC artesanal quando source_type === "strap_demand"', () => {
+    expect(isArtisanalStrapPurchaseOrder({ source_type: 'strap_demand' })).toBe(true);
+    expect(isArtisanalStrapPurchaseOrder({ source_type: 'per_pv' })).toBe(false);
+    expect(isArtisanalStrapPurchaseOrder({ source_type: 'auto_pv' })).toBe(false);
+    expect(isArtisanalStrapPurchaseOrder({ source_type: 'manual' })).toBe(false);
+    expect(isArtisanalStrapPurchaseOrder({ source_type: null })).toBe(false);
+    expect(isArtisanalStrapPurchaseOrder({})).toBe(false);
+    expect(isArtisanalStrapPurchaseOrder(null)).toBe(false);
   });
 });
 

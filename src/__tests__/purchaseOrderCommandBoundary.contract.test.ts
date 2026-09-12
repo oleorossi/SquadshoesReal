@@ -173,6 +173,16 @@ describe('fronteira transacional de OC genérica', () => {
     expect(hook).toContain('deduplicate_sale_order_id: data.sale_order_id');
   });
 
+  it('recusa OC artesanal na fronteira genérica antes da RPC e na lista Geral', () => {
+    expect(hook).toContain("select('updated_at, source_type')");
+    expect(hook).toContain('isArtisanalStrapPurchaseOrder(current)');
+    expect(hook).toContain('ARTISANAL_PURCHASE_ORDER_GENERIC_CHANNEL_ERROR');
+    expect(page).toContain('isArtisanalStrapPurchaseOrder(o)');
+    expect(page).toContain("value: 'automaticas'");
+    expect(page).toContain('strapDemandPendingCount');
+    expect(page).toContain('ARTISANAL_PURCHASE_ORDER_GENERIC_CHANNEL_ERROR');
+  });
+
   it('usa o prazo comercial congelado e valida a grade na tela antes da RPC', () => {
     expect(page).toContain('order.quotation_award_snapshot_id');
     expect(page).toContain('order.payment_terms ?? null');
