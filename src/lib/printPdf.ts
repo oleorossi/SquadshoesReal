@@ -44,6 +44,59 @@ import { supabase } from '@/integrations/supabase/client';
 /** Nome da aba de destino. O formulário mira nele — ver openPrintTab. */
 const PRINT_TAB_NAME = 'squad-pdf';
 
+export type PrintWaitStage = 'preparing' | 'sending';
+
+const WAIT_STAGE_TEXT: Record<PrintWaitStage, string> = {
+  preparing: 'Preparando o documento…',
+  sending: 'Enviando para o servidor…',
+};
+
+/**
+ * Tela de espera da aba `about:blank`. Inline de propósito: a aba não herda
+ * o CSS do app. Cores = Industrial Editorial Pro (PAPER / INK / Squad red).
+ * Sem Google Fonts — a espera tem que pintar no primeiro frame.
+ */
+export function printWaitHtml(stage: PrintWaitStage = 'preparing', error?: string): string {
+  const heading = error ? 'Não foi possível gerar o PDF' : 'Gerando PDF…';
+  const stageText = error || WAIT_STAGE_TEXT[stage];
+  const stageColor = error ? '#B00020' : '#0A0A0A';
+  const spinner = error ? '' : `
+    <div class="spin" aria-hidden="true"></div>`;
+  const hint = error
+    ? '<p class="hint">Feche esta aba e tente de novo.</p>'
+    : '<p class="hint">Não feche esta aba. O arquivo abre aqui quando ficar pronto.</p>';
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">` +
+    `<title>Gerando PDF…</title>` +
+    `<meta name="viewport" content="width=device-width,initial-scale=1">` +
+    `<style>
+      :root { color-scheme: light; }
+      html,body { height:100%; margin:0; background:#FAFAF7; color:#0A0A0A; }
+      body { font-family: "Fira Sans", "Segoe UI", system-ui, sans-serif;
+        display:flex; align-items:center; justify-content:center; padding:32px 20px; }
+      .card { width:min(420px,100%); text-align:center; }
+      .mark { width:36px; height:36px; margin:0 auto 20px; background:#D9264E;
+        display:grid; place-items:center; }
+      .mark span { font-family: Anton, Impact, sans-serif; color:#FAFAF7;
+        font-size:22px; line-height:1; letter-spacing:.02em; }
+      .kicker { font-family: "Fira Code", ui-monospace, monospace; font-size:10px;
+        letter-spacing:.16em; text-transform:uppercase; color:#6B6560; margin:0 0 8px; }
+      h1 { font-family: Anton, Impact, sans-serif; font-size:28px; line-height:1;
+        text-transform:uppercase; letter-spacing:.02em; margin:0 0 12px; font-weight:400; }
+      #pdf-wait-stage { font-size:15px; line-height:1.4; margin:0 0 8px; color:${stageColor}; }
+      .hint { font-size:13px; line-height:1.45; color:#6B6560; margin:16px 0 0; }
+      .spin { width:28px; height:28px; margin:20px auto 0; border:2.5px solid #E6E1DA;
+        border-top-color:#D9264E; border-radius:50%; animation:spin .7s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+    </style></head><body>
+    <div class="card">
+      <div class="mark" aria-hidden="true"><span>S</span></div>
+      <p class="kicker">Squad Shoes</p>
+      <h1>${heading}</h1>
+      <p id="pdf-wait-stage">${stageText}</p>
+      ${hint}${spinner}
+    </div></body></html>`;
+}
+
 /**
  * Teto de bytes do documento.
  *
@@ -61,15 +114,51 @@ export interface PrintPdfOptions {
   landscape?: boolean;
   /** Aba aberta ANTES de gerar — ver openPrintTab. */
   target?: Window | null;
-  /** Job criado antes do envio. O servidor move pending → generated/failed. */
-  jobId?: string;
+  /** Job criado antes do envio. Aceita Promise pra correr em paralelo com a sessão. */
+  jobId?: string | Promise<string>;
+}
+
+type SessionResult = Awaited<ReturnType<typeof supabase.auth.getSession>>;
+let sessionPrefetch: Promise<SessionResult> | null = null;
+
+function prefetchPrintSession() {
+  sessionPrefetch = supabase.auth.getSession();
+  return sessionPrefetch;
+}
+
+/**
+ * Atualiza o estágio da aba de espera. Só funciona enquanto ela ainda é HTML
+ * (antes do POST). Depois do submit o navegador conduz a navegação.
+ */
+export function setPrintTabStage(tab: Window | null, stage: PrintWaitStage, error?: string) {
+  if (!tab || tab.closed) return;
+  try {
+    if (error) {
+      tab.document.open();
+      tab.document.write(printWaitHtml(stage, error));
+      tab.document.close();
+      return;
+    }
+    const el = tab.document.getElementById('pdf-wait-stage');
+    if (el) {
+      el.textContent = WAIT_STAGE_TEXT[stage];
+      return;
+    }
+    tab.document.open();
+    tab.document.write(printWaitHtml(stage));
+    tab.document.close();
+  } catch { /* aba já exibindo um PDF ou navegou */ }
 }
 
 /**
  * Abre a aba de destino, JÁ NOMEADA. Tem que ser chamado DENTRO do clique, de
  * forma síncrona: abrir depois de um `await` faz o celular tratar como pop-up.
+ *
+ * Já dispara `getSession()` — o HTML ainda vai ser montado, e a sessão fica
+ * pronta quando `printHtmlAsPdf` precisar dela.
  */
 export function openPrintTab(): Window | null {
+  prefetchPrintSession();
   const w = window.open('', PRINT_TAB_NAME);
   // ⚠ O try/catch NÃO é decorativo. Na SEGUNDA geração, `window.open` com o mesmo
   // nome devolve a aba que já existe — e ela está exibindo um PDF. Escrever num
@@ -81,12 +170,7 @@ export function openPrintTab(): Window | null {
   // Quando ela já tem um PDF, o usuário vê o arquivo antigo até o novo chegar —
   // melhor que a tela travar.
   try {
-    w?.document.write(
-      '<!doctype html><meta charset="utf-8"><title>Gerando PDF…</title>' +
-      '<meta name="viewport" content="width=device-width,initial-scale=1">' +
-      '<body style="font-family:system-ui,sans-serif;padding:24px;color:#111">' +
-      '<p>Gerando o PDF… pode levar alguns segundos.</p></body>',
-    );
+    w?.document.write(printWaitHtml('preparing'));
     w?.document.close();
   } catch { /* aba já exibindo um PDF — segue com ela mesmo assim */ }
   return w;
@@ -118,11 +202,7 @@ export function serializeForPdf(el: HTMLElement, title = 'Documento'): string {
 
 /** Escreve uma mensagem legível na aba de destino (erro antes de submeter). */
 function avisarNaAba(tab: Window | null, msg: string) {
-  if (!tab || tab.closed) return;
-  try {
-    tab.document.body.innerHTML =
-      `<p style="font-family:system-ui,sans-serif;padding:24px;color:#b00;line-height:1.5">${msg}</p>`;
-  } catch { /* aba já navegou pra outro lugar */ }
+  setPrintTabStage(tab, 'preparing', msg);
 }
 
 /**
@@ -134,6 +214,9 @@ function avisarNaAba(tab: Window | null, msg: string) {
 export async function printHtmlAsPdf(html: string, opts: PrintPdfOptions): Promise<boolean> {
   const { filename, landscape = false } = opts;
   const tab = opts.target ?? null;
+  const sessionPromise = sessionPrefetch ?? supabase.auth.getSession();
+  sessionPrefetch = null;
+  const jobPromise = Promise.resolve(opts.jobId);
 
   const bytes = new Blob([html]).size;
   if (bytes > MAX_DOCUMENT_BYTES) {
@@ -146,7 +229,12 @@ export async function printHtmlAsPdf(html: string, opts: PrintPdfOptions): Promi
     return false;
   }
 
-  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  setPrintTabStage(tab, 'sending');
+
+  const [{ data: { session }, error: sessionError }, jobId] = await Promise.all([
+    sessionPromise,
+    jobPromise,
+  ]);
   if (sessionError || !session?.access_token) {
     const msg = 'Sua sessão expirou. Entre novamente antes de gerar o PDF.';
     toast.error(msg, { duration: 10_000 });
@@ -171,7 +259,7 @@ export async function printHtmlAsPdf(html: string, opts: PrintPdfOptions): Promi
   campo('html', html);
   campo('filename', filename);
   campo('access_token', session.access_token);
-  if (opts.jobId) campo('job_id', opts.jobId);
+  if (jobId) campo('job_id', jobId);
   if (landscape) campo('landscape', '1');
 
   document.body.appendChild(form);
@@ -185,5 +273,6 @@ export async function printHtmlAsPdf(html: string, opts: PrintPdfOptions): Promi
   } finally {
     form.remove();
   }
+  toast('O PDF abre na outra aba.', { duration: 4_000 });
   return true;
 }

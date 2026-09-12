@@ -71,10 +71,14 @@ const EMPTY: ManualForm = {
 function openPrint(html: string, filename: string, totalLabels: number, orderIds: string[] = []) {
   const tab = openPrintTab(); // síncrono, dentro do clique — escapa do bloqueio de pop-up
   void (async () => {
+    const jobPromise = createPrintJob({ batchName: `Manual - ${filename}`, totalLabels, orderIds });
     try {
-      const jobId = await createPrintJob({ batchName: `Manual - ${filename}`, totalLabels, orderIds });
-      const submitted = await printHtmlAsPdf(html, { filename, target: tab, jobId });
-      if (!submitted) await setPrintJobStatus(jobId, 'failed');
+      const submitted = await printHtmlAsPdf(html, {
+        filename,
+        target: tab,
+        jobId: jobPromise,
+      });
+      if (!submitted) await setPrintJobStatus(await jobPromise, 'failed');
     } catch (error) {
       tab?.close();
       toast.error(error instanceof Error ? error.message : 'Falha ao registrar a geração.');

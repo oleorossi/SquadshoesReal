@@ -72,8 +72,6 @@ export default function OrderPhotosDialog({ open, onOpenChange, orderNumber, cli
       clientName,
       items,
       target: tab,
-    }).then((ok) => {
-      if (ok) toast.success('Gerando PDF das fotos…');
     }).catch((err: unknown) => {
       tab?.close();
       const msg = err instanceof Error ? err.message : 'erro desconhecido';

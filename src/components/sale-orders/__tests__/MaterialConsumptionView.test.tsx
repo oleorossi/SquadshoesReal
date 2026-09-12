@@ -10,6 +10,7 @@ vi.mock('@/lib/printPdf', () => ({
   openPrintTab: vi.fn(() => null),
   printHtmlAsPdf: vi.fn(async () => true),
 }));
+vi.mock('@/hooks/useWarmPdfRenderer', () => ({ useWarmPdfRenderer: () => {} }));
 
 /**
  * Smoke da tela de Consumo reformulada (buy-first, 05/08/2026).
