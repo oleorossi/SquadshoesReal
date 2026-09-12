@@ -173,7 +173,10 @@ export function listBuyReadyStrapGaps(
   if (!catalog || !Array.isArray(straps)) return [];
   return straps.flatMap((strap, position) => {
     if (!strapLineWantsBuyReady(strap)) return [];
-    const lineId = technicalStrapLineId(strap);
+    const lineId = technicalStrapLineId({
+      id: strap.id,
+      technical_strap_line_id: strap.technical_strap_line_id,
+    });
     const measureId = str(strap.measure_id);
     const identityGroupId = buyReadyIdentityGroupId(strap);
     const colorId = str(strap.color_id);

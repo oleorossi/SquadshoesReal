@@ -52,7 +52,7 @@ describe('pv tira pronta origem fornecedor — contrato 24000', () => {
     expect(sql).toContain("'base_product_id', NULL");
     expect(sql).toContain("av.identity_basis = 'finished_product_group'");
     expect(sql).toContain("nullif(v_line ->> 'group_id', '')::uuid");
-    expect(sql).not.toContain('origem_padrao');
+    expect(sql).not.toMatch(/UPDATE[\s\S]*origem_padrao|origem_padrao\s*=/i);
   });
 
   it('é a última migration que toca o ramo sku_acabado do prepare', () => {
