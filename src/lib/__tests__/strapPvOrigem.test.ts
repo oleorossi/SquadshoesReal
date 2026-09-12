@@ -26,18 +26,32 @@ describe('strapPvOrigem', () => {
       [
         { label: 'Tira 1', measure_id: 'm1', pv_origem: null },
         { label: 'Tira 2', measure_id: 'm2', pv_origem: 'fabrica' },
+        { label: 'Tira 3', measure_id: 'm5', pv_origem: 'sku_acabado' },
         { label: 'Strass', measure_id: 'm3' },
         { label: 'Legado', measure_id: 'm4' },
       ],
       [
         { id: 'm1', origem_padrao: 'escolhe_no_pv' },
         { id: 'm2', origem_padrao: 'escolhe_no_pv' },
+        { id: 'm5', origem_padrao: 'escolhe_no_pv' },
         { id: 'm3', origem_padrao: 'sempre_sku_acabado' },
         { id: 'm4' },
       ],
     );
     expect(issues).toHaveLength(1);
     expect(issues[0].label).toBe('Tira 1');
+    expect(issues[0].message).toContain('Fornecedor');
+  });
+
+  it('escolhe_no_pv aceita sku_acabado como origem explícita', () => {
+    expect(resolveEffectiveStrapPvOrigem(
+      { pv_origem: 'sku_acabado' },
+      { id: 'm1', origem_padrao: 'escolhe_no_pv' },
+    )).toBe('sku_acabado');
+    expect(listMissingStrapPvOrigemChoices(
+      [{ label: 'TIRA 2', measure_id: 'm1', pv_origem: 'sku_acabado' }],
+      [{ id: 'm1', origem_padrao: 'escolhe_no_pv' }],
+    )).toEqual([]);
   });
 
   it('lista preço ausente conforme origem efetiva', () => {

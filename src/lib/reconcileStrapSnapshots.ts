@@ -271,7 +271,9 @@ function reconciledLine<T extends ReconcileStrapLineLike>(
   // e o seletor individual gravam e o próximo efeito de reconcile apaga.
   // Não escreva `null`: JSON.stringify diferencia de chave ausente e o efeito
   // de reconcile entraria em loop regravando strap_colors.
-  const preservedPvOrigem = snapshot?.pv_origem === 'fabrica' || snapshot?.pv_origem === 'prestador'
+  const preservedPvOrigem = snapshot?.pv_origem === 'fabrica'
+    || snapshot?.pv_origem === 'prestador'
+    || snapshot?.pv_origem === 'sku_acabado'
     ? snapshot.pv_origem
     : undefined;
   return {
