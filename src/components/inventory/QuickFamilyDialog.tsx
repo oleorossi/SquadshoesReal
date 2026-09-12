@@ -28,7 +28,7 @@ import { DuplicateSuggestion } from './DuplicateSuggestion';
 import { useGroups, type ProductGroup } from '@/hooks/useGroups';
 import { useSuppliers } from '@/hooks/useSuppliers';
 import { useQueryClient } from '@tanstack/react-query';
-import { sectorOfGroup, SECTOR_OPTIONS } from '@/lib/categoryFromGroup';
+import { organizationSectorOptions, sectorOfGroup } from '@/lib/categoryFromGroup';
 import { ColorsMultiSelect } from '@/components/references/ColorsMultiSelect';
 import { createProductsWithStock } from '@/lib/stockCommand';
 
@@ -457,7 +457,7 @@ export function QuickFamilyDialog({ open, onOpenChange, defaultGroupId }: Props)
                   }}>
                     <SelectTrigger className="mt-1 h-10"><SelectValue placeholder="Selecione onde o material é aplicado…" /></SelectTrigger>
                     <SelectContent>
-                      {SECTOR_OPTIONS.map((option) => (
+                      {organizationSectorOptions().map((option) => (
                         <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
                       ))}
                     </SelectContent>

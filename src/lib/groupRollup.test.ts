@@ -17,6 +17,21 @@ describe('famílias técnicas explícitas', () => {
     const cabedal = tree.find((sector) => sector.sector === 'Cabedal');
     expect(cabedal?.families).toEqual([{ family, children: [] }]);
     expect(cabedal?.looseLeaves).toEqual([]);
+    expect(tree.map((s) => s.sector)).not.toContain('Embalagem');
+    expect(tree).toHaveLength(8);
+  });
+
+  it('não força o setor Embalagem quando não há grupos nele', () => {
+    const tree = buildSectorTree([]);
+    expect(tree.find((sector) => sector.sector === 'Embalagem')).toBeUndefined();
+    expect(tree).toHaveLength(8);
+  });
+
+  it('ainda mostra um grupo legado de Embalagem', () => {
+    const leftover = group({ id: 'cx', name: 'CAIXAS', sector: 'Embalagem', is_family: true });
+    const tree = buildSectorTree([leftover]);
+    const embalagem = tree.find((sector) => sector.sector === 'Embalagem');
+    expect(embalagem?.families).toEqual([{ family: leftover, children: [] }]);
     expect(tree).toHaveLength(9);
   });
 

@@ -33,7 +33,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CONSUMPTION_UNITS_BY_GROUP } from '@/lib/measurementUnits';
-import { sectorOfGroup, sectorLabel, SECTOR_OPTIONS } from '@/lib/categoryFromGroup';
+import { sectorOfGroup, sectorLabel, organizationSectorOptions } from '@/lib/categoryFromGroup';
 import { NumberInput } from '@/components/ui/number-input';
 import { SEARCH_RENDER_CAP, capSearchResults, searchMatchesAllTerms, searchRefineHint } from '@/lib/searchUtils';
 import { SearchInput } from '@/components/ui/search-input';
@@ -1261,7 +1261,7 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                 </CardHeader>
                 <CardContent>
                   <div className="grid gap-2 sm:grid-cols-3">
-                    {SECTOR_OPTIONS.map((option) => {
+                    {organizationSectorOptions().map((option) => {
                       const guide = getFootwearSectorGuide(option.value);
                       const selected = sector === option.value;
                       return (

@@ -26,6 +26,21 @@ export const SECTOR_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
   { value: 'Fôrma',                label: 'Fôrma' },
 ] as const;
 
+/**
+ * Embalagem saiu da organização de estoque (12/09/2026): caixa não é mais
+ * família de `products`. Cadastro e estoque moram em `/embalagens` (`box_types`);
+ * o vínculo por modelo fica no grupo de Solado. O valor continua em
+ * `SECTOR_OPTIONS` porque o CHECK do banco ainda o aceita e um grupo legado
+ * precisa de rótulo — só não se oferece mais como setor de cadastro/árvore.
+ */
+export const HIDDEN_STOCK_ORGANIZATION_SECTORS = ['Embalagem'] as const;
+
+export function organizationSectorOptions() {
+  return SECTOR_OPTIONS.filter(
+    (s) => !(HIDDEN_STOCK_ORGANIZATION_SECTORS as readonly string[]).includes(s.value),
+  );
+}
+
 /** Rótulo amigável de um valor de setor (category). Fallback: o próprio valor. */
 export function sectorLabel(sector: string | null | undefined): string {
   if (!sector) return '—';

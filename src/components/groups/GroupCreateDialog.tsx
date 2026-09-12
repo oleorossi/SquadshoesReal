@@ -13,7 +13,7 @@ import { useProducts } from "@/hooks/useProducts";
 import { useAddGroupSupplier } from "@/hooks/useGroupSuppliers";
 import { useAddSupplier, useSuppliers, type Supplier } from "@/hooks/useSuppliers";
 import { flattenGroupTree } from "@/lib/groupHierarchy";
-import { SECTOR_OPTIONS, sectorOfGroup } from "@/lib/categoryFromGroup";
+import { organizationSectorOptions, sectorLabel, sectorOfGroup } from "@/lib/categoryFromGroup";
 import { getFootwearSectorGuide } from "@/lib/footwearMaterialTaxonomy";
 import { cn } from "@/lib/utils";
 
@@ -270,7 +270,7 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
                   <SelectValue placeholder="Selecione o setor" />
                 </SelectTrigger>
                 <SelectContent>
-                  {SECTOR_OPTIONS.map((o) => (
+                  {organizationSectorOptions().map((o) => (
                     <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
                   ))}
                 </SelectContent>
@@ -302,7 +302,7 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
                 </p>
                 {!(Number(form.dimensions_width) > 0) && (
                   <p className="text-xs text-destructive mt-1">
-                    Obrigatória para material de {SECTOR_OPTIONS.find(o => o.value === form.sector)?.label ?? form.sector}.
+                    Obrigatória para material de {sectorLabel(form.sector)}.
                   </p>
                 )}
               </div>

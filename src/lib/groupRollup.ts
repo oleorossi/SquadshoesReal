@@ -11,7 +11,7 @@
  */
 import type { ProductGroup } from '@/hooks/useGroups';
 import type { GroupStockRollup } from '@/hooks/useGroupOrganization';
-import { SECTOR_OPTIONS } from '@/lib/categoryFromGroup';
+import { organizationSectorOptions, SECTOR_OPTIONS } from '@/lib/categoryFromGroup';
 
 export type NodeMetrics = {
   itemCount: number;
@@ -117,10 +117,11 @@ export function buildSectorTree(groups: ProductGroup[]): SectorNode[] {
     return n;
   };
 
-  // Os nove setores fazem parte do vocabulário industrial, mesmo quando ainda
-  // não possuem cadastro. Mantê-los visíveis dá uma porta clara para criar a
-  // primeira família e evita que recursos fabris “desapareçam” da organização.
-  SECTOR_OPTIONS.forEach((option) => ensure(option.value));
+  // Setores de cadastro ficam visíveis mesmo vazios — porta clara para a
+  // primeira família. Embalagem não: caixa não é família de produto, e o
+  // bloco vazio só competia com `/embalagens`. Grupo legado com o setor
+  // ainda entra pelo loop dos roots abaixo.
+  organizationSectorOptions().forEach((option) => ensure(option.value));
 
   for (const root of roots) {
     const kids = (childrenByParent.get(root.id) ?? []).slice().sort(byName);

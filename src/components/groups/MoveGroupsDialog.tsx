@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrig
 import type { ProductGroup } from '@/hooks/useGroups';
 import type { GroupStockRollup } from '@/hooks/useGroupOrganization';
 import { useMoveGroupsToFamily } from '@/hooks/useGroupOrganization';
-import { sectorLabel, SECTOR_OPTIONS } from '@/lib/categoryFromGroup';
+import { organizationSectorOptions, sectorLabel } from '@/lib/categoryFromGroup';
 
 interface Props {
   open: boolean;
@@ -54,7 +54,7 @@ export default function MoveGroupsDialog({ open, onOpenChange, groups, rollups, 
       map.get(sec)!.push({ g: r, kids: childCount.get(r.id) ?? 0 });
     }
     for (const [, list] of map) list.sort((a, b) => a.g.name.localeCompare(b.g.name, 'pt-BR'));
-    const order = SECTOR_OPTIONS.map(o => o.value);
+    const order = organizationSectorOptions().map(o => o.value);
     return Array.from(map.entries()).sort((a, b) => {
       const ia = order.indexOf(a[0]), ib = order.indexOf(b[0]);
       return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
