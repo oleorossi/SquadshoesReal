@@ -75,8 +75,9 @@ import { supabase } from '@/integrations/supabase/client';
 import type { Json, Tables } from '@/integrations/supabase/types';
 import { adjustStockSafe } from '@/lib/stockAdjustments';
 import { toast } from 'sonner';
-import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { searchMatchesAllTerms, rankBySearchScore } from '@/lib/searchUtils';
 import { SearchInput } from '@/components/ui/search-input';
+import { HighlightMatch } from '@/components/ui/highlight-match';
 import { SelectionTotalsBar } from '@/components/ui/selection-totals-bar';
 import { generateCostReportPdf } from '@/lib/costReportPdf';
 import { type CostReportRow, type DateBasis, summarizeRows, rowDateForBasis, inDateRange } from '@/lib/costReport';
@@ -2129,14 +2130,20 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                               Nenhum (sem vínculo)
                             </CommandItem>
                             {(() => {
-                              const matches = (saleOrders as any[]).filter((so) =>
-                                searchMatchesAllTerms(pvSearch, so.order_number, so.client_order_number, so.client_name));
-                              return matches.slice(0, 80).map((so: any) => (
+                              const matches = rankBySearchScore(
+                                (saleOrders || []).filter((so) =>
+                                  searchMatchesAllTerms(pvSearch, so.order_number, so.client_order_number, so.client_name)),
+                                pvSearch,
+                                (so) => so.order_number,
+                                (so) => so.client_name,
+                                (so) => so.client_order_number,
+                              );
+                              return matches.slice(0, 80).map((so) => (
                                 <CommandItem key={so.id} value={so.id} onSelect={() => { setEditingOrder(p => ({ ...p, sale_order_id: so.id })); setPvOpen(false); setPvSearch(''); }}>
                                   <Check className={cn("mr-2 h-3.5 w-3.5", editingOrder.sale_order_id === so.id ? "opacity-100" : "opacity-0")} />
-                                  <span className="font-mono font-semibold mr-2">{so.order_number}</span>
-                                  {so.client_order_number && <span className="text-muted-foreground mr-2">({so.client_order_number})</span>}
-                                  <span className="text-sm truncate">{so.client_name || ''}</span>
+                                  <span className="font-mono font-semibold mr-2"><HighlightMatch text={so.order_number} term={pvSearch} /></span>
+                                  {so.client_order_number && <span className="text-muted-foreground mr-2">(<HighlightMatch text={so.client_order_number} term={pvSearch} />)</span>}
+                                  <span className="text-sm truncate"><HighlightMatch text={so.client_name || ''} term={pvSearch} /></span>
                                 </CommandItem>
                               ));
                             })()}

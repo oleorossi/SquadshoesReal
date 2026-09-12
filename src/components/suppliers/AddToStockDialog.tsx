@@ -18,8 +18,9 @@ import { adjustStockSafe } from '@/lib/stockAdjustments';
 import { createProductWithStock } from '@/lib/stockCommand';
 import { CATEGORIES, UNITS, LOCATIONS } from '@/types/inventory';
 import { SearchInput } from '@/components/ui/search-input';
+import { HighlightMatch } from '@/components/ui/highlight-match';
 import { NumberInput } from '@/components/ui/number-input';
-import { searchMatchesAllTerms, capSearchResults, searchRefineHint } from '@/lib/searchUtils';
+import { searchMatchesAllTerms, capSearchResults, searchRefineHint, rankBySearchScore } from '@/lib/searchUtils';
 
 type Props = {
   open: boolean;
@@ -185,7 +186,12 @@ export default function AddToStockDialog({ open, onOpenChange, items, invoiceSup
   }, [open, currentIdx, currentItem, products, invoiceSupplierId]);
 
   const filteredProducts = useMemo(
-    () => products.filter(p => searchMatchesAllTerms(productSearch, p.name, p.sku)),
+    () => rankBySearchScore(
+      products.filter(p => searchMatchesAllTerms(productSearch, p.name, p.sku)),
+      productSearch,
+      (p) => p.name,
+      (p) => p.sku,
+    ),
     [products, productSearch],
   );
   const productCap = useMemo(
@@ -573,8 +579,8 @@ export default function AddToStockDialog({ open, onOpenChange, items, invoiceSup
                         className={`w-full text-left px-3 py-2 text-sm hover:bg-muted/50 transition-colors ${selectedProductId === p.id ? 'bg-primary/10' : ''}`}
                         onClick={() => setSelectedProductId(p.id)}
                       >
-                        <span className="font-medium">{p.name}</span>
-                        <span className="text-xs text-muted-foreground ml-2">SKU: {p.sku} | Estoque: {p.quantity} {p.unit}</span>
+                        <span className="font-medium"><HighlightMatch text={p.name} term={productSearch} /></span>
+                        <span className="text-xs text-muted-foreground ml-2">SKU: <HighlightMatch text={p.sku} term={productSearch} /> | Estoque: {p.quantity} {p.unit}</span>
                       </button>
                     ))}
                     {productCap.capped && (

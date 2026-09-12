@@ -8,6 +8,8 @@ import {
   SEARCH_RENDER_CAP,
   capSearchResults,
   searchRefineHint,
+  scoreSearchMatch,
+  rankBySearchScore,
 } from '../searchUtils';
 
 describe('splitSearchTerms', () => {
@@ -173,5 +175,28 @@ describe('searchNormOrFilter (filtro .or do PostgREST sobre search_norm)', () =>
   });
   it('vírgula separa termos AND (paridade com splitSearchTerms)', () => {
     expect(searchNormOrFilter('op1,op2')).toBe('and(search_norm.ilike.%op1%,search_norm.ilike.%op2%)');
+  });
+});
+
+describe('scoreSearchMatch / rankBySearchScore', () => {
+  it('"eva" ranqueia EVA 3MM (prefixo) acima de NAPA SOFT COM CACHARREL/EVA (contém)', () => {
+    expect(scoreSearchMatch('eva', 'EVA 3MM')).toBeGreaterThan(scoreSearchMatch('eva', 'NAPA SOFT COM CACHARREL/EVA'));
+    expect(scoreSearchMatch('eva', 'EVA01')).toBeGreaterThan(scoreSearchMatch('eva', 'Suede EVA + Cacharrel'));
+  });
+  it('igual > prefixo > começo de palavra > contém', () => {
+    expect(scoreSearchMatch('eva', 'EVA')).toBe(400);
+    expect(scoreSearchMatch('eva', 'EVA 3MM')).toBe(300);
+    expect(scoreSearchMatch('eva', 'Suede EVA')).toBe(200);
+    expect(scoreSearchMatch('eva', 'CACHARREL/EVA')).toBe(200); // palavra EVA depois da barra
+    expect(scoreSearchMatch('eva', 'CACHARRELEVA')).toBe(100);
+    expect(scoreSearchMatch('eva', 'NAPA SOFT')).toBe(0);
+  });
+  it('rankBySearchScore ordena prefixo primeiro', () => {
+    const ranked = rankBySearchScore(
+      ['NAPA SOFT COM CACHARREL/EVA', 'EVA 3MM', 'PLACA 1.0 EVA 3.0'],
+      'eva',
+      (s) => s,
+    );
+    expect(ranked[0]).toBe('EVA 3MM');
   });
 });

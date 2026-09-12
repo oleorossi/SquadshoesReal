@@ -74,7 +74,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { SearchLocatorStrip } from '@/components/ui/searchable-select';
-import { SEARCH_RENDER_CAP, capSearchResults, searchMatchesAllTerms, searchRefineHint } from '@/lib/searchUtils';
+import { SEARCH_RENDER_CAP, capSearchResults, searchMatchesAllTerms, searchRefineHint, rankBySearchScore } from '@/lib/searchUtils';
+import { HighlightMatch } from '@/components/ui/highlight-match';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import {
@@ -374,8 +375,15 @@ function SearchableClientSelect({ clients, value, onSelect }: {
 
   const filteredClients = useMemo(() => {
     if (!search.trim()) return clients;
-    return clients.filter(c =>
+    const hits = clients.filter(c =>
       searchMatchesAllTerms(search, c.razao_social, c.cnpj, c.client_number != null ? String(c.client_number) : null),
+    );
+    return rankBySearchScore(
+      hits,
+      search,
+      (c) => c.razao_social,
+      (c) => c.cnpj,
+      (c) => (c.client_number != null ? String(c.client_number) : null),
     );
   }, [clients, search]);
 
@@ -430,7 +438,7 @@ function SearchableClientSelect({ clients, value, onSelect }: {
                   >
                     <History className="mr-2 h-3 w-3 text-muted-foreground" />
                     <Check className={cn('mr-2 h-3.5 w-3.5', value === c.id ? 'opacity-100' : 'opacity-0')} />
-                    <span className="truncate">{clientDisplay(c)}</span>
+                    <span className="truncate"><HighlightMatch text={clientDisplay(c)} term={search} /></span>
                   </CommandItem>
                 ))}
               </CommandGroup>
@@ -443,7 +451,7 @@ function SearchableClientSelect({ clients, value, onSelect }: {
                   onSelect={() => { onSelect(c.id); setOpen(false); setSearch(''); }}
                 >
                   <Check className={cn('mr-2 h-3.5 w-3.5', value === c.id ? 'opacity-100' : 'opacity-0')} />
-                  <span className="truncate">{clientDisplay(c, true)}</span>
+                  <span className="truncate"><HighlightMatch text={clientDisplay(c, true)} term={search} /></span>
                 </CommandItem>
               ))}
               {capped && (

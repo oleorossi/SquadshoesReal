@@ -35,6 +35,7 @@ import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { convertNfToStockUnit, toNfConversionProduct } from '@/lib/nfUnitConversion';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { SearchInput } from '@/components/ui/search-input';
+import { HighlightMatch } from '@/components/ui/highlight-match';
 import { useCan } from '@/hooks/useAccessControl';
 
 
@@ -540,7 +541,7 @@ export default function Suppliers() {
                            </div>
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
-                              <p className="font-semibold truncate">{s.name}</p>
+                              <p className="font-semibold truncate"><HighlightMatch text={s.name} term={search} /></p>
                               <div className="flex flex-wrap items-center gap-1.5">
                                 <Badge variant="outline" className={`text-xs shrink-0 ${s.active ? 'bg-success/15 text-success border-success/30' : 'bg-muted text-muted-foreground'}`}>
                                   {s.active ? 'Ativo' : 'Inativo'}
@@ -553,8 +554,8 @@ export default function Suppliers() {
                               </div>
                             </div>
                             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground mt-0.5">
-                              {s.trade_name && <span>{s.trade_name}</span>}
-                              {s.cnpj && <span className="font-mono">{s.cnpj}</span>}
+                              {s.trade_name && <span><HighlightMatch text={s.trade_name} term={search} /></span>}
+                              {s.cnpj && <span className="font-mono"><HighlightMatch text={s.cnpj} term={search} /></span>}
                               {s.city && s.state && (
                                 <span className="flex items-center gap-0.5">
                                   <MapPin className="h-3 w-3" /> {s.city}/{s.state}

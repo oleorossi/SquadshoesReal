@@ -120,7 +120,8 @@ import { AppErrorBoundary } from '@/components/ErrorBoundary';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { EmptyState } from '@/components/ui/empty-state';
 import { SearchInput } from '@/components/ui/search-input';
-import { normalizeForSearch, searchMatchesAllTerms } from '@/lib/searchUtils';
+import { HighlightMatch } from '@/components/ui/highlight-match';
+import { searchMatchesAllTerms, rankBySearchScore, scoreSearchMatchAny } from '@/lib/searchUtils';
 import { getTechnicalSheetAuditGaps, type TechnicalSheetAuditRow } from '@/lib/technicalSheetAudit';
 import { needsCabedalParConfirmation, CABEDAL_PAR_CONFIRM_MESSAGE } from '@/lib/cabedalParPeGuard';
 import { Link as Link2, Info } from '@phosphor-icons/react';
@@ -265,8 +266,13 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
       result = result.filter((s) => s.sole_material === soleFilter);
     }
     if (searchTerm.trim()) {
-      result = result.filter((s) =>
-        searchMatchesAllTerms(searchTerm, s.name, s.code, s.collection, s.shoe_category, s.colors, s.description, s.status)
+      result = rankBySearchScore(
+        result.filter((s) =>
+          searchMatchesAllTerms(searchTerm, s.name, s.code, s.collection, s.shoe_category, s.colors, s.description, s.status)
+        ),
+        searchTerm,
+        (s) => s.name,
+        (s) => s.code,
       );
     }
     return result;
@@ -274,7 +280,12 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
 
   // Fichas candidatas do dialog de cópia (busca própria do dialog)
   const cloneFilteredSheets = useMemo(
-    () => activeSheets.filter((s) => searchMatchesAllTerms(cloneSearchTerm, s.name, s.code)),
+    () => rankBySearchScore(
+      activeSheets.filter((s) => searchMatchesAllTerms(cloneSearchTerm, s.name, s.code)),
+      cloneSearchTerm,
+      (s) => s.name,
+      (s) => s.code,
+    ),
     [activeSheets, cloneSearchTerm],
   );
 
@@ -623,6 +634,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
           catalogView === 'cards' ? (
             <TechnicalSheetCardGrid
               sheets={filteredSheets}
+              searchTerm={searchTerm}
               materialVariantsBySheet={materialVariantsBySheet}
               auditGapsBySheet={auditGapsBySheet}
               canDelete={perm.isAdmin}
@@ -642,7 +654,14 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
               </div>
               <div className="divide-y divide-border">
                 {[...filteredSheets]
-                  .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR'))
+                  .sort((a, b) => {
+                    if (searchTerm.trim()) {
+                      const diff = scoreSearchMatchAny(searchTerm, b.name, b.code)
+                        - scoreSearchMatchAny(searchTerm, a.name, a.code);
+                      if (diff) return diff;
+                    }
+                    return String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR');
+                  })
                   .map(sheet => {
                     const gaps = auditGapsBySheet.get(sheet.id) || [];
                     const gapLabels = gaps.map((gap) => gap.label).join(', ');
@@ -658,7 +677,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
                         aria-label={`Abrir ficha técnica ${sheet.name}${gaps.length > 0 ? `. ${gaps.length} ${gaps.length === 1 ? 'pendência' : 'pendências'}: ${gapLabels}` : ''}`}
                         onClick={() => setExpandedId(sheet.id)}
                       >
-                        <span className="min-w-0 truncate" title={sheet.name}>{sheet.name}</span>
+                        <span className="min-w-0 truncate" title={sheet.name}><HighlightMatch text={sheet.name} term={searchTerm} /></span>
                         {gaps.length > 0 && (
                           <span className={cn(
                             'flex min-w-0 shrink items-center justify-end gap-2',
@@ -742,8 +761,8 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
                           : 'hover:bg-muted/40'
                       }`}
                     >
-                      <span className="truncate">{s.name || '(sem nome)'}</span>
-                      <span className="text-xs text-muted-foreground shrink-0 ml-2 font-mono">{s.code}</span>
+                      <span className="truncate"><HighlightMatch text={s.name || '(sem nome)'} term={cloneSearchTerm} /></span>
+                      <span className="text-xs text-muted-foreground shrink-0 ml-2 font-mono"><HighlightMatch text={s.code} term={cloneSearchTerm} /></span>
                     </button>
                   ))}
               </div>
@@ -4719,7 +4738,8 @@ function InsolePlateProductSelect({ label, value, onChange }: { label: string; v
 
   const filtered = useMemo(() => {
     if (!search.trim()) return products;
-    return products.filter((p: any) => searchMatchesAllTerms(search, p.name, p.sku, p.color, p.groupName));
+    const hits = products.filter((p) => searchMatchesAllTerms(search, p.name, p.sku, p.color, p.groupName));
+    return rankBySearchScore(hits, search, (p) => p.name, (p) => p.sku, (p) => p.color);
   }, [products, search]);
 
   return (
@@ -4742,8 +4762,8 @@ function InsolePlateProductSelect({ label, value, onChange }: { label: string; v
                   <CommandItem key={p.id} value={p.id} onSelect={() => { onChange(p.name + (p.color ? ` (${p.color})` : '')); setOpen(false); setSearch(''); }}>
                     <Check className={cn("mr-2 h-4 w-4", value === (p.name + (p.color ? ` (${p.color})` : '')) ? "opacity-100" : "opacity-0")} />
                     <div className="flex flex-col">
-                      <span className="text-sm">{p.name} {p.color ? `(${p.color})` : ''}</span>
-                      <span className="text-xs text-muted-foreground">{p.groupName} • {p.sku || 'sem SKU'} • Estoque: {Number(p.quantity || 0).toLocaleString('pt-BR')}</span>
+                      <span className="text-sm"><HighlightMatch text={`${p.name}${p.color ? ` (${p.color})` : ''}`} term={search} /></span>
+                      <span className="text-xs text-muted-foreground"><HighlightMatch text={`${p.groupName} • ${p.sku || 'sem SKU'}`} term={search} /> • Estoque: {Number(p.quantity || 0).toLocaleString('pt-BR')}</span>
                     </div>
                   </CommandItem>
                 ))}

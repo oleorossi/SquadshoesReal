@@ -18,6 +18,7 @@ import { useNavigate } from 'react-router-dom';
 import { Funnel as Filter, Plus, Warning as AlertTriangle } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { HighlightMatch } from '@/components/ui/highlight-match';
 import type { OrderStage } from '@/hooks/useOrderStages';
 import { MaterialReservationErrorBadge } from '@/components/orders/MaterialReservationErrorBadge';
 import { parseDateOnly } from '@/lib/dateOnly';
@@ -41,6 +42,7 @@ interface Props {
   orders: Order[];
   stagesByOrderId: Map<string, OrderStage[]>;
   saleOrderById: Map<string, { order_number?: string; client_name?: string }>;
+  searchTerm?: string;
   onSelectOrder: (order: Order) => void;
 }
 
@@ -166,7 +168,7 @@ function formatDeadline(order: Order): string {
 }
 
 export default function OrdersKanbanBoard({
-  orders, stagesByOrderId, saleOrderById, onSelectOrder,
+  orders, stagesByOrderId, saleOrderById, searchTerm = '', onSelectOrder,
 }: Props) {
   const navigate = useNavigate();
 
@@ -297,14 +299,14 @@ export default function OrdersKanbanBoard({
                         {/* Header: OP number + sale order */}
                         <div className="flex items-center justify-between text-xs">
                           <span className="font-mono text-muted-foreground tabular-nums">
-                            {order.order_number || '—'}
+                            <HighlightMatch text={order.order_number || '—'} term={searchTerm} />
                           </span>
                           {so && (
                             <span
                               className="font-mono text-muted-foreground/70 px-1 py-0.5 border rounded text-xs"
                               title={so.client_name}
                             >
-                              {so.order_number?.replace(/^PV-/, '') || '—'}
+                              <HighlightMatch text={so.order_number?.replace(/^PV-/, '') || '—'} term={searchTerm} />
                             </span>
                           )}
                         </div>
@@ -320,7 +322,7 @@ export default function OrdersKanbanBoard({
 
                         {/* Reference name */}
                         <div className="text-xs font-semibold mt-2 leading-tight truncate text-foreground">
-                          {order.technical_sheets?.name || '—'}
+                          <HighlightMatch text={order.technical_sheets?.name || '—'} term={searchTerm} />
                         </div>
 
                         {/* Big number of pairs */}
@@ -340,7 +342,7 @@ export default function OrdersKanbanBoard({
                               aria-hidden
                             />
                             <span className="text-xs text-muted-foreground truncate">
-                              {order.color}
+                              <HighlightMatch text={order.color} term={searchTerm} />
                             </span>
                           </div>
                         )}

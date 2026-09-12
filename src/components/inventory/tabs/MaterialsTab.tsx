@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useDebounce } from 'use-debounce';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { toast } from 'sonner';
@@ -7,9 +7,9 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { SmartSearch, SmartSearchSuggestion } from '@/components/ui/smart-search';
+import { SmartSearch } from '@/components/ui/smart-search';
 import { EmptyState } from '@/components/ui/empty-state';
-import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { buildInventorySearchSuggestions } from '@/lib/inventorySearchSuggestions';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -137,6 +137,7 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
   // genérica 'search' compartilhada entre telas escondia materiais ao abrir).
   const [search, setSearch] = useState('');
   const [debouncedSearch] = useDebounce(search, 400);
+  const [skuExact, setSkuExact] = useState<string | null>(null);
   const [groupFilter] = usePersistedState('groupFilter', 'all');
   const [supplierFilter] = usePersistedState('supplierFilter', 'all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -194,6 +195,7 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
   // / edição em massa atualizam quando o universo chega.
   const { data: paginatedData, isLoading: isPaginatedLoading, isFetched: pageFetched, isError: isPaginatedError, error: paginatedError, refetch: refetchPaginated } = usePaginatedProducts({
     search: debouncedSearch,
+    skuExact,
     groupId: effectiveGroup,
     supplierId: supplierFilter,
     status: statusFilter,
@@ -216,6 +218,17 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
   const { data: allProducts = [] } = useProducts({ enabled: pageFetched });
   const { data: groups = [] } = useGroups();
   const { data: suppliers = [] } = useSuppliers();
+
+  const getSuggestions = useCallback(
+    (term: string) => buildInventorySearchSuggestions(term, groups, allProducts),
+    [groups, allProducts],
+  );
+
+  const applySearch = (v: string) => {
+    setSkuExact(null);
+    setSearch(v);
+    setPage(1);
+  };
   const addSupplier = useAddSupplier();
   const createPayable = useCreateAccountPayable();
 
@@ -375,28 +388,14 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
           <SmartSearch
             className="flex-1 min-w-[200px]"
             value={search}
-            onChange={(v) => { setSearch(v); setPage(1); }}
-            placeholder={`Buscar ${title.toLowerCase()}, SKU ou categoria…`}
-            getSuggestions={(term) => {
-              const list: Product[] = allProducts || [];
-              const seen = new Set<string>();
-              const out: SmartSearchSuggestion[] = [];
-              for (const p of list) {
-                if (p.name && searchMatchesAllTerms(term, p.name) && !seen.has('n:' + p.name)) {
-                  seen.add('n:' + p.name);
-                  out.push({ field: 'name', value: p.name });
-                }
-                if (p.sku && searchMatchesAllTerms(term, p.sku) && !seen.has('s:' + p.sku)) {
-                  seen.add('s:' + p.sku);
-                  out.push({ field: 'sku', value: p.sku, meta: p.name });
-                }
-                if (p.category && searchMatchesAllTerms(term, p.category) && !seen.has('c:' + p.category)) {
-                  seen.add('c:' + p.category);
-                  out.push({ field: 'category', value: p.category });
-                }
-              }
-              return out;
+            onChange={applySearch}
+            onSelect={(s) => {
+              setSkuExact(s.field === 'sku' ? s.value : null);
+              setSearch(s.value);
+              setPage(1);
             }}
+            placeholder={`Buscar ${title.toLowerCase()}, SKU ou categoria…`}
+            getSuggestions={getSuggestions}
           />
 
           {/* Sort + actions */}
@@ -601,7 +600,7 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
           icon={MagnifyingGlass}
           title={`Nenhum resultado para "${debouncedSearch}"`}
           action={
-            <Button variant="outline" size="sm" onClick={() => { setSearch(''); setPage(1); }}>
+            <Button variant="outline" size="sm" onClick={() => { applySearch(''); }}>
               Limpar busca
             </Button>
           }

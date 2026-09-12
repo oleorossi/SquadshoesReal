@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { HighlightMatch } from '@/components/ui/highlight-match';
 import { ArrowLeft, Palette, Plus, Check } from '@phosphor-icons/react';
 
 /**
@@ -38,6 +39,7 @@ export default function ColorStandards() {
   // Grupos que já têm regra + grupos abertos manualmente nesta sessão.
   const [openedGroupIds, setOpenedGroupIds] = useState<string[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [groupSearch, setGroupSearch] = useState('');
 
   const groupNameById = useMemo(() => new Map(groups.map(g => [g.id, g.name])), [groups]);
   const rulesByGroup = useMemo(() => {
@@ -66,7 +68,7 @@ export default function ColorStandards() {
                 <span className="hidden sm:inline">Fichas Técnicas</span>
               </Link>
             </Button>
-            <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
+            <Popover open={pickerOpen} onOpenChange={(open) => { setPickerOpen(open); if (!open) setGroupSearch(''); }}>
               <PopoverTrigger asChild>
                 <Button className="gap-2">
                   <Plus className="h-4 w-4" />
@@ -75,7 +77,7 @@ export default function ColorStandards() {
               </PopoverTrigger>
               <PopoverContent className="w-80 p-0" align="end">
                 <Command>
-                  <CommandInput placeholder="Buscar grupo (ex: TIRA STRASS 6MM)…" />
+                  <CommandInput placeholder="Buscar grupo (ex: TIRA STRASS 6MM)…" value={groupSearch} onValueChange={setGroupSearch} />
                   <CommandList>
                     <CommandEmpty>Nenhum grupo encontrado.</CommandEmpty>
                     <CommandGroup>
@@ -90,7 +92,7 @@ export default function ColorStandards() {
                               setPickerOpen(false);
                             }}
                           >
-                            <span className="truncate">{g.name}</span>
+                            <span className="truncate"><HighlightMatch text={g.name} term={groupSearch} /></span>
                             {alreadyVisible && <Check className="h-3.5 w-3.5 ml-auto text-muted-foreground" />}
                           </CommandItem>
                         );

@@ -35,7 +35,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CONSUMPTION_UNITS_BY_GROUP } from '@/lib/measurementUnits';
 import { sectorOfGroup, sectorLabel, organizationSectorOptions } from '@/lib/categoryFromGroup';
 import { NumberInput } from '@/components/ui/number-input';
-import { SEARCH_RENDER_CAP, capSearchResults, searchMatchesAllTerms, searchRefineHint } from '@/lib/searchUtils';
+import { SEARCH_RENDER_CAP, capSearchResults, searchMatchesAllTerms, searchRefineHint, rankBySearchScore } from '@/lib/searchUtils';
+import { HighlightMatch } from '@/components/ui/highlight-match';
 import { SearchInput } from '@/components/ui/search-input';
 import { EmptyState } from '@/components/ui/empty-state';
 import { getFootwearSectorGuide, normalizeTaxonomyName } from '@/lib/footwearMaterialTaxonomy';
@@ -129,7 +130,12 @@ function AddItemsToGroupDialog({ open, onOpenChange, groupId, groupName }: {
     [allProducts, groupId],
   );
   const available = useMemo(
-    () => availableBase.filter(p => searchMatchesAllTerms(search, p.name, p.sku, p.category, p.color)),
+    () => rankBySearchScore(
+      availableBase.filter(p => searchMatchesAllTerms(search, p.name, p.sku, p.category, p.color)),
+      search,
+      (p) => p.name,
+      (p) => p.sku,
+    ),
     [availableBase, search],
   );
   const { visible, capped, totalMatched, cap } = useMemo(
@@ -209,9 +215,9 @@ function AddItemsToGroupDialog({ open, onOpenChange, groupId, groupName }: {
                 >
                   <Checkbox checked={selected.has(p.id)} onCheckedChange={() => toggle(p.id)} />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{p.name}</p>
+                    <p className="text-sm font-medium truncate"><HighlightMatch text={p.name} term={search} /></p>
                     <div className="flex gap-2 text-xs text-muted-foreground">
-                      <span>{p.sku}</span>
+                      <span><HighlightMatch text={p.sku} term={search} /></span>
                       <span>•</span>
                       <span>{p.category}</span>
                       {p.color && <><span>•</span><span>{p.color}</span></>}
@@ -597,8 +603,12 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
 
   const filteredLinkableChildren = useMemo(() => {
     if (!linkChildSearch.trim()) return linkableChildren;
-    return linkableChildren.filter((candidate) =>
-      searchMatchesAllTerms(linkChildSearch, candidate.name),
+    return rankBySearchScore(
+      linkableChildren.filter((candidate) =>
+        searchMatchesAllTerms(linkChildSearch, candidate.name),
+      ),
+      linkChildSearch,
+      (candidate) => candidate.name,
     );
   }, [linkableChildren, linkChildSearch]);
 
@@ -1427,7 +1437,7 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                                     }}
                                   >
                                     <Rows className="mr-2 h-3.5 w-3.5 text-muted-foreground" />
-                                    <span className="truncate">{candidate.name}</span>
+                                    <span className="truncate"><HighlightMatch text={candidate.name} term={linkChildSearch} /></span>
                                     <Badge variant="outline" className="ml-auto h-4 text-[8px]">{itemCountByGroup.get(candidate.id) || 0} itens</Badge>
                                   </CommandItem>
                                 ))}

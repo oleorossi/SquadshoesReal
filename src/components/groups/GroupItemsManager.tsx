@@ -9,6 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { SearchInput } from '@/components/ui/search-input';
+import { HighlightMatch } from '@/components/ui/highlight-match';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -296,10 +297,10 @@ export default function GroupItemsManager({ group, groups, open, onOpenChange, c
                         <tr key={p.id} className={`border-t border-border ${selected.has(p.id) ? 'bg-primary/5' : ''}`}>
                           {canEdit && <td className="px-3 py-2"><Checkbox checked={selected.has(p.id)} onCheckedChange={() => toggle(selected, setSelected, p.id)} /></td>}
                           <td className="px-3 py-2 font-medium text-foreground">
-                            {p.name}{(p as any).active === false && <Badge variant="outline" className="ml-2 text-[10px]">inativo</Badge>}
+                            <HighlightMatch text={p.name} term={search} />{p.active === false && <Badge variant="outline" className="ml-2 text-[10px]">inativo</Badge>}
                           </td>
-                          <td className="px-3 py-2 text-muted-foreground font-mono text-xs">{p.sku || '—'}</td>
-                          <td className="px-3 py-2 text-muted-foreground">{(p as any).color || '—'}</td>
+                          <td className="px-3 py-2 text-muted-foreground font-mono text-xs">{p.sku ? <HighlightMatch text={p.sku} term={search} /> : '—'}</td>
+                          <td className="px-3 py-2 text-muted-foreground">{p.color ? <HighlightMatch text={p.color} term={search} /> : '—'}</td>
                           <td className="px-3 py-2 text-right tabular-nums">{Number((p as any).quantity ?? 0).toLocaleString('pt-BR')} <span className="text-muted-foreground text-xs">{(p as any).unit || ''}</span></td>
                           <td className="px-3 py-2 text-right whitespace-nowrap">
                             {canCreate && !quickVariantReason && p.active !== false && (
@@ -401,8 +402,8 @@ export default function GroupItemsManager({ group, groups, open, onOpenChange, c
                         return (
                           <tr key={p.id} className={`border-t border-border cursor-pointer ${addSelected.has(p.id) ? 'bg-primary/5' : ''}`} onClick={() => toggle(addSelected, setAddSelected, p.id)}>
                             <td className="px-3 py-2"><Checkbox checked={addSelected.has(p.id)} onCheckedChange={() => toggle(addSelected, setAddSelected, p.id)} /></td>
-                            <td className="px-3 py-2 font-medium text-foreground">{p.name}</td>
-                            <td className="px-3 py-2 text-muted-foreground font-mono text-xs">{p.sku || '—'}</td>
+                            <td className="px-3 py-2 font-medium text-foreground"><HighlightMatch text={p.name} term={addSearch} /></td>
+                            <td className="px-3 py-2 text-muted-foreground font-mono text-xs">{p.sku ? <HighlightMatch text={p.sku} term={addSearch} /> : '—'}</td>
                             <td className="px-3 py-2 text-muted-foreground">{g ? g.name : <span className="italic">sem grupo</span>}</td>
                           </tr>
                         );

@@ -8,6 +8,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
   import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
   import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
   import { cn } from '@/lib/utils';
+  import { HighlightMatch } from '@/components/ui/highlight-match';
  import { Switch } from '@/components/ui/switch';
  import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
  import {
@@ -167,6 +168,7 @@ function GroupCombobox({
   footerNote?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
   const selected = value ? groups.find(g => g.id === value) : null;
   const unavailableSelected = value && !selected ? allGroups.find(g => g.id === value) : null;
   const unavailableIsContainer = !!unavailableSelected
@@ -196,7 +198,7 @@ function GroupCombobox({
 
   return (
     <div>
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover open={open} onOpenChange={(next) => { setOpen(next); if (!next) setSearch(''); }}>
         <PopoverTrigger asChild>
           <Button
             type="button"
@@ -221,7 +223,7 @@ function GroupCombobox({
         </PopoverTrigger>
         <PopoverContent className="w-[var(--radix-popover-trigger-width)] min-w-[300px] max-w-[calc(100vw-2rem)] p-0" align="start">
           <Command>
-            <CommandInput placeholder="Buscar família, grupo, SKU ou cor…" className="h-9" />
+            <CommandInput placeholder="Buscar família, grupo, SKU ou cor…" className="h-9" value={search} onValueChange={setSearch} />
             <CommandList>
               <CommandEmpty>Nenhum grupo-folha encontrado.</CommandEmpty>
               {allowInherit && (
@@ -251,8 +253,8 @@ function GroupCombobox({
                       >
                         <Check className={cn('mr-2 h-4 w-4', value === group.id ? 'opacity-100' : 'opacity-0')} />
                         <div className="flex flex-col min-w-0">
-                          <span className="font-medium truncate">{group.pathLabel}</span>
-                          {sub && <span className="text-xs text-muted-foreground font-mono truncate">{sub}</span>}
+                          <span className="font-medium truncate"><HighlightMatch text={group.pathLabel} term={search} /></span>
+                          {sub && <span className="text-xs text-muted-foreground font-mono truncate"><HighlightMatch text={sub} term={search} /></span>}
                         </div>
                       </CommandItem>
                     );

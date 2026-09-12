@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, ReactNode } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useQueries, keepPreviousData } from '@tanstack/react-query';
 import { useDebounce } from 'use-debounce';
 import { useNavigate } from 'react-router-dom';
@@ -16,6 +16,7 @@ import { Badge } from '@/components/ui/badge';
 import { cn, formatCurrency } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { normalizeForSearch, searchNormOrFilter, searchMatchesAllTerms } from '@/lib/searchUtils';
+import { HighlightMatch as Highlight } from '@/components/ui/highlight-match';
 import { isStrapServiceOrder } from '@/lib/strapServiceOrderIdentity';
 import { isMissingPostgrestRelation } from '@/lib/postgrestErrors';
 import { narrowPostgrestRelation } from '@/lib/narrowPostgrestClient';
@@ -225,24 +226,6 @@ const QUICK_ACTIONS: { label: string; path: string; permPath: string; keywords: 
   { label: 'Ajuste de estoque', path: '/ajuste-estoque', permPath: '/ajuste-estoque', keywords: 'ajuste estoque ajustar' },
   { label: 'Imprimir fichas de operador', path: '/imprimir-fichas', permPath: '/imprimir-fichas', keywords: 'imprimir fichas operador' },
 ];
-
-/** Destaca os tokens da busca dentro de um texto de resultado. */
-function Highlight({ text, term }: { text: string | null | undefined; term: string }): ReactNode {
-  if (!text) return null;
-  const tokens = (term || '')
-    .replace(/^\//, '')
-    .split(/\s+/)
-    .map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-    .filter(t => t.length >= 2);
-  if (tokens.length === 0) return text;
-  const re = new RegExp(`(${tokens.join('|')})`, 'ig');
-  const parts = text.split(re);
-  return parts.map((p, i) =>
-    i % 2 === 1
-      ? <mark key={i} className="bg-primary/20 text-foreground rounded-[2px]">{p}</mark>
-      : <span key={i}>{p}</span>
-  );
-}
 
 // Singleton guard: AppLayout renderiza o GlobalSearch em 3 lugares (sidebar
 // expanded/collapsed/mobile). Sem isso, cada instância escuta o cmd+K e o

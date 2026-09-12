@@ -2,6 +2,7 @@ import { Footprints, ImageSquare as ImagePlus, Package, Stack as Layers, Trash, 
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { HighlightMatch } from '@/components/ui/highlight-match';
 import { SignedImage } from '@/components/ui/signed-image';
 import type { TechnicalSheetAuditGap } from '@/lib/technicalSheetAudit';
 import { cn } from '@/lib/utils';
@@ -24,6 +25,7 @@ interface MaterialVariantSummary {
 
 interface Props {
   sheets: TechnicalSheetGridItem[];
+  searchTerm?: string;
   materialVariantsBySheet?: ReadonlyMap<string, readonly MaterialVariantSummary[]>;
   auditGapsBySheet?: ReadonlyMap<string, readonly TechnicalSheetAuditGap[]>;
   canDelete: boolean;
@@ -80,6 +82,7 @@ function SheetThumbnail({ sheet }: { sheet: TechnicalSheetGridItem }) {
 
 export function TechnicalSheetCardGrid({
   sheets,
+  searchTerm = '',
   materialVariantsBySheet,
   auditGapsBySheet,
   canDelete,
@@ -109,7 +112,7 @@ export function TechnicalSheetCardGrid({
             >
               <div className="flex min-w-0 items-center justify-between gap-1 border-b border-foreground px-2 py-1.5">
                 <span className="min-w-0 truncate text-xs font-bold sm:text-sm" title={sheet.name}>
-                  {sheet.name}
+                  <HighlightMatch text={sheet.name} term={searchTerm} />
                 </span>
                 <span
                   className={cn(
@@ -158,7 +161,7 @@ export function TechnicalSheetCardGrid({
                 <div className="min-h-8">
                   {sheet.code && (
                     <p className="truncate font-mono text-[9px] text-muted-foreground sm:text-[10px]" title={`Código interno: ${sheet.code}`}>
-                      Cód. interno: {sheet.code}
+                      Cód. interno: <HighlightMatch text={sheet.code} term={searchTerm} />
                     </p>
                   )}
                   {sheet.collection && (
