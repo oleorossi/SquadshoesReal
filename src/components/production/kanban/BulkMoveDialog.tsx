@@ -36,6 +36,7 @@ interface StepResult {
  */
 export function BulkMoveDialog({
   cards, target, flowOrder, levelOf, apontar, onClose, onBack,
+  allowParallelSkip = false,
 }: {
   cards: KanbanCardData[];
   target: string;
@@ -47,6 +48,8 @@ export function BulkMoveDialog({
   onBack?: () => void;
   /** Fecha um lote concluído/parcial e encerra o modo de seleção. */
   onClose: () => void;
+  /** Admin no Modo Gestão: pulo (irmão paralelo incluso) entra no lote. */
+  allowParallelSkip?: boolean;
 }) {
   const { data: profile } = useCurrentProfile();
   const backToBoard = onBack || onClose;
@@ -65,8 +68,8 @@ export function BulkMoveDialog({
   const [frozen] = useState(() => cards);
 
   const { steps, blocked, duplicateCards } = useMemo(
-    () => buildBulkMoveBatch(frozen, target, flowOrder, levelOf),
-    [frozen, target, flowOrder, levelOf],
+    () => buildBulkMoveBatch(frozen, target, flowOrder, levelOf, { allowParallelSkip }),
+    [frozen, target, flowOrder, levelOf, allowParallelSkip],
   );
   const sourceSummary = useMemo(() => {
     const counts = new Map<string, number>();

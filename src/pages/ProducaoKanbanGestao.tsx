@@ -17,6 +17,7 @@ import {
 } from '@/hooks/useProductionEngine';
 import { useAllOrderStages, useApontarProducao, useRealtimeOrderStages } from '@/hooks/useOrderStages';
 import { useCan } from '@/hooks/useAccessControl';
+import { useIsAdmin } from '@/hooks/useUserManagement';
 import { useReferenceThumbs } from '@/hooks/useReferenceThumbs';
 import { useOrdersMaterialGate } from '@/hooks/useMaterialGate';
 import { useIsCoarsePointer } from '@/hooks/use-mobile';
@@ -139,6 +140,8 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
   const { data: gateMap, isError: gateError } = useOrdersMaterialGate(orderIds);
   const apontar = useApontarProducao();
   const canEdit = useCan('/producao/kanban').canEdit;
+  const isAdmin = useIsAdmin();
+  const planOptions = useMemo(() => ({ allowParallelSkip: isAdmin }), [isAdmin]);
   // Touch (celular E iPad): sem autofocus (o teclado pularia na cara ao abrir)
   // e sem drag HTML5 confiável — o select "Mover para" do diálogo cobre.
   const coarsePointer = useIsCoarsePointer();
@@ -551,11 +554,11 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
   const dropEligibility = useCallback((card: KanbanCardData, target: string): {
     ok: boolean; kind: 'frente' | 'pulo' | 'estorno'; reason?: string;
   } => {
-    const plan = buildPointingPlan(card, target, flowOrder, levelOf);
+    const plan = buildPointingPlan(card, target, flowOrder, levelOf, planOptions);
     if (!plan.available) return { ok: false, kind: 'frente', reason: plan.unavailableReason };
     if (plan.isBackward) return { ok: true, kind: 'estorno' };
     return { ok: true, kind: plan.skipped.length > 0 ? 'pulo' : 'frente' };
-  }, [flowOrder, levelOf]);
+  }, [flowOrder, levelOf, planOptions]);
 
   /**
    * Elegibilidade do card EM ARRASTE por setor, calculada uma vez por arraste.
@@ -577,13 +580,13 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
    * diálogo, inclusive para destino igual à origem e etapas fora da rota.
    */
   const bulkDestinations = useMemo(() => columns.map(sector => {
-    const batch = buildBulkMoveBatch(selectedCards, sector, flowOrder, levelOf);
+    const batch = buildBulkMoveBatch(selectedCards, sector, flowOrder, levelOf, planOptions);
     return {
       sector,
       eligible: batch.steps.length,
       blocked: batch.blocked.length,
     };
-  }), [columns, selectedCards, flowOrder, levelOf]);
+  }), [columns, selectedCards, flowOrder, levelOf, planOptions]);
   const selectedDestination = bulkDestinations.find(item => item.sector === bulkTarget) || null;
   const canReviewBulk = selectedCards.length > 0 && !!bulkTarget && !!selectedDestination?.eligible;
 
@@ -1510,6 +1513,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
           target={dropTarget.target}
           flowOrder={flowOrder}
           levelOf={levelOf}
+          allowParallelSkip={isAdmin}
           apontar={apontar}
           photoUrl={refThumbs?.get(dropTarget.card.q.reference_id || '') || null}
           onApontado={markLanded}
@@ -1522,6 +1526,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
           target={null}
           flowOrder={flowOrder}
           levelOf={levelOf}
+          allowParallelSkip={isAdmin}
           apontar={apontar}
           photoUrl={refThumbs?.get(detailStage.card.q.reference_id || '') || null}
           onApontado={markLanded}
@@ -1535,6 +1540,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
           target={bulkRequest.target}
           flowOrder={flowOrder}
           levelOf={levelOf}
+          allowParallelSkip={isAdmin}
           apontar={apontar}
           onBack={() => setBulkRequest(null)}
           onClose={() => { setBulkRequest(null); exitSelectMode(); }}

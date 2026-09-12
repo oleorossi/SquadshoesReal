@@ -1,5 +1,5 @@
 import type { KanbanCardData } from './kanbanDerive';
-import { buildPointingPlan, type PointingPlan } from './pointingPlan';
+import { buildPointingPlan, type PointingPlan, type PointingPlanOptions } from './pointingPlan';
 
 export interface BulkMoveStep {
   card: KanbanCardData;
@@ -95,6 +95,7 @@ export function buildBulkMoveBatch(
   target: string,
   flowOrder: Map<string, number>,
   levelOf?: Map<string, number>,
+  options?: PointingPlanOptions,
 ): { steps: BulkMoveStep[]; blocked: BulkMoveBlocked[]; duplicateCards: number } {
   const unique = uniqueCardsByOrder(cards);
   const steps: BulkMoveStep[] = [];
@@ -109,8 +110,9 @@ export function buildBulkMoveBatch(
       continue;
     }
 
-    const plan = buildPointingPlan(card, target, flowOrder, levelOf);
-    if (plan.available && plan.pointedStage && plan.skipped.length === 0) {
+    const plan = buildPointingPlan(card, target, flowOrder, levelOf, options);
+    const canSkipInBatch = !!options?.allowParallelSkip && plan.skipped.length > 0;
+    if (plan.available && plan.pointedStage && (plan.skipped.length === 0 || canSkipInBatch)) {
       steps.push({ card, plan });
     } else {
       blocked.push({

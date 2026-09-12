@@ -30,6 +30,7 @@ const MOVE_ATUAL = '__atual';
  */
 export function DropApontarDialog({
   card, target, flowOrder, levelOf, apontar, onClose, photoUrl, onApontado, readOnly = false,
+  allowParallelSkip = false,
 }: {
   card: KanbanCardData;
   target: string | null;
@@ -44,21 +45,24 @@ export function DropApontarDialog({
   onApontado?: (orderId: string) => void;
   /** Consulta progresso/histórico sem expor ações de apontamento. */
   readOnly?: boolean;
+  /** Admin no Modo Gestão: irmão paralelo aberto vira pulo confirmável. */
+  allowParallelSkip?: boolean;
 }) {
   const { q, stages, column } = card;
   const { data: profile } = useCurrentProfile();
   const { data: pointings = [], isLoading: pointingsLoading } = useOrderPointings(q.order_id);
   const referencePhoto = thumbUrl(photoUrl || q.reference_photo_url, 112);
+  const planOptions = { allowParallelSkip };
 
   // Modo detalhe (target=null): o usuário pode escolher um destino no select —
   // vale como se tivesse arrastado o card até lá.
   const [moveTarget, setMoveTarget] = useState<string>('');
   const effTarget = target ?? (moveTarget || null);
 
-  const plan = buildPointingPlan(card, effTarget, flowOrder, levelOf);
+  const plan = buildPointingPlan(card, effTarget, flowOrder, levelOf, planOptions);
   const { pointedStage, isBackward, skipped, remaining, stageRemaining } = plan;
 
-  const { fwdOptions, backOption } = moveOptions(card, flowOrder, levelOf);
+  const { fwdOptions, backOption } = moveOptions(card, flowOrder, levelOf, planOptions);
   const showMove = !readOnly && target === null && (fwdOptions.length > 0 || backOption !== null);
 
   const [qty, setQty] = useState<number>(() => (isBackward ? 0 : Math.max(0, remaining)));
@@ -90,7 +94,7 @@ export function DropApontarDialog({
     // Recalcula pelo mesmo plano do submit. Usar o saldo bruto da coluna aqui
     // ignorava o limite realmente recebido do setor anterior e pré-preenchia
     // mais pares do que estavam disponíveis.
-    const nextPlan = buildPointingPlan(card, t || null, flowOrder, levelOf);
+    const nextPlan = buildPointingPlan(card, t || null, flowOrder, levelOf, planOptions);
     setQty(nextPlan.isBackward ? 0 : Math.max(0, nextPlan.remaining));
     // O aceite de pulo vale pro conjunto de setores do destino ANTERIOR: trocar
     // o destino tem que exigir novo aceite, senão confirmar o pulo de 1 setor
