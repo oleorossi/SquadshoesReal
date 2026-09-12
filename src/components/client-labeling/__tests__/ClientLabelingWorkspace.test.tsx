@@ -29,7 +29,11 @@ const {
   state,
 } = vi.hoisted(() => {
   return {
-    saveMutateAsync: vi.fn(async () => ({ key: 'objetiva' })),
+    saveMutateAsync: vi.fn(async () => ({
+      version: 2,
+      activeKey: 'objetiva',
+      patterns: { objetiva: { key: 'objetiva' } },
+    })),
     parseClientOrderFilesMock: vi.fn(),
     buildObjetivaPdfMock: vi.fn(async () => ({ save: vi.fn() })),
     buildBabyNalinPdfMock: vi.fn(async () => ({ save: vi.fn() })),
@@ -71,7 +75,13 @@ vi.mock('@/hooks/useClientLabelPattern', () => ({
     error: null,
   }),
   useClientLabelPattern: () => ({
-    data: state.selectedPattern,
+    data: state.selectedPattern
+      ? {
+          version: 2 as const,
+          activeKey: state.selectedPattern.key,
+          patterns: { [state.selectedPattern.key]: state.selectedPattern },
+        }
+      : { version: 2 as const, activeKey: null, patterns: {} },
     isLoading: false,
     isError: false,
     error: null,
@@ -190,7 +200,7 @@ describe('ClientLabelingWorkspace', () => {
   it('expõe o hook de salvar padrão mockado para o wiring', () => {
     renderWorkspace();
     expect(typeof saveMutateAsync).toBe('function');
-    expect(screen.getByText(/O padrão fica gravado no cadastro do cliente/i)).toBeTruthy();
+    expect(screen.getByText(/O mesmo cliente pode ter Nalin e Objetiva/i)).toBeTruthy();
   });
 
   it('chama toast e não parseia quando o upload dispara sem padrão', async () => {

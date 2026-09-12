@@ -1,8 +1,9 @@
 /**
  * Etiquetagem Cliente multi-cliente.
  *
- * Fluxo: escolher cliente → carregar/salvar padrão em `clients.label_pattern`
- * (sem histórico de arquivo) → importar 1..N CSV/XLSX → gerar PDF Nalin ou Objetiva.
+ * Fluxo: escolher cliente → carregar/salvar 1..N tipos em `clients.label_pattern`
+ * (Nalin e Objetiva no mesmo cadastro; sem histórico de arquivo) → importar
+ * 1..N CSV/XLSX → gerar PDF do tipo ativo.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -15,6 +16,7 @@ import {
   Warning,
   X,
   CircleNotch,
+  Trash,
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import logoFornecedor from '@/assets/baby-nalin/marca-fornecedor.png';
@@ -63,12 +65,19 @@ import {
   BABY_NALIN_DEFAULT_GEOMETRY,
   OBJETIVA_DEFAULT_BRANDING,
   OBJETIVA_DEFAULT_GEOMETRY,
+  activatePattern,
+  activePatternFromCollection,
   clientOrderLineSkuKey,
+  collectionPatternKeys,
   coucheProfileFromGeometry,
-  defaultPatternForKey,
+  emptyLabelCollection,
   geometryFromCoucheProfile,
   patternLabel,
+  removePattern,
+  savedPatternStatusLabel,
+  upsertActivePattern,
   type ClientLabelPattern,
+  type ClientLabelPatternCollection,
   type ClientLabelPatternKey,
   type ClientOrderLine,
 } from '@/lib/clientLabelPattern';
@@ -137,7 +146,7 @@ export function ClientLabelingWorkspace() {
 
   const [clientSearch, setClientSearch] = useState('');
   const [selectedClientId, setSelectedClientId] = useState('');
-  const [draftPattern, setDraftPattern] = useState<ClientLabelPattern | null>(null);
+  const [draftCollection, setDraftCollection] = useState<ClientLabelPatternCollection | null>(null);
   const [patternDirty, setPatternDirty] = useState(false);
 
   const [rows, setRows] = useState<ClientOrderLine[]>([]);
@@ -150,7 +159,7 @@ export function ClientLabelingWorkspace() {
   const [coucheConfirmed, setCoucheConfirmed] = useState(true);
 
   const { data: clients = [], isLoading: clientsLoading } = useClientsForLabeling();
-  const { data: savedPattern, isLoading: patternLoading } = useClientLabelPattern(
+  const { data: savedCollection, isLoading: patternLoading } = useClientLabelPattern(
     selectedClientId || undefined,
   );
   const savePatternMutation = useSaveClientLabelPattern();
@@ -159,17 +168,19 @@ export function ClientLabelingWorkspace() {
 
   useEffect(() => {
     if (!selectedClientId) {
-      setDraftPattern(null);
+      setDraftCollection(null);
       setPatternDirty(false);
       return;
     }
     if (patternLoading) return;
-    setDraftPattern(savedPattern ?? null);
+    setDraftCollection(savedCollection ?? emptyLabelCollection());
     setPatternDirty(false);
     setCoucheConfirmed(true);
-  }, [selectedClientId, savedPattern, patternLoading]);
+  }, [selectedClientId, savedCollection, patternLoading]);
 
-  const pattern = draftPattern;
+  const pattern = activePatternFromCollection(draftCollection);
+  const savedKeys = collectionPatternKeys(savedCollection);
+  const draftKeys = collectionPatternKeys(draftCollection);
   const isObjetiva = pattern?.key === 'objetiva';
   const isNalin = pattern?.key === 'baby_nalin';
 
@@ -271,15 +282,26 @@ export function ClientLabelingWorkspace() {
   }
 
   function updateDraft(next: ClientLabelPattern) {
-    setDraftPattern(next);
+    setDraftCollection(current => upsertActivePattern(current ?? emptyLabelCollection(), next));
     setPatternDirty(true);
     if (next.key === 'baby_nalin') setCoucheConfirmed(false);
   }
 
   function handlePatternKeyChange(key: ClientLabelPatternKey) {
-    updateDraft(defaultPatternForKey(key));
+    const base = draftCollection ?? emptyLabelCollection();
+    const adding = !base.patterns[key];
+    setDraftCollection(activatePattern(base, key));
+    if (adding) setPatternDirty(true);
     clearOrder();
     setCoucheConfirmed(key !== 'baby_nalin');
+  }
+
+  function handleRemovePattern() {
+    if (!draftCollection?.activeKey) return;
+    setDraftCollection(removePattern(draftCollection, draftCollection.activeKey));
+    setPatternDirty(true);
+    clearOrder();
+    setCoucheConfirmed(true);
   }
 
   function setCoucheMeasure(field: keyof CoucheRollProfile, rawValue: string) {
@@ -315,12 +337,19 @@ export function ClientLabelingWorkspace() {
   }
 
   async function handleSavePattern() {
-    if (!selectedClientId || !pattern) {
+    if (!selectedClientId || !draftCollection) {
+      toast.info('Escolha o cliente e o tipo de layout antes de salvar.');
+      return;
+    }
+    if (!pattern && collectionPatternKeys(draftCollection).length === 0) {
       toast.info('Escolha o cliente e o tipo de layout antes de salvar.');
       return;
     }
     try {
-      await savePatternMutation.mutateAsync({ clientId: selectedClientId, pattern });
+      await savePatternMutation.mutateAsync({
+        clientId: selectedClientId,
+        collection: draftCollection,
+      });
       setPatternDirty(false);
       setCoucheConfirmed(true);
     } catch {
@@ -470,8 +499,8 @@ export function ClientLabelingWorkspace() {
     <div className="space-y-4">
       <Panel
         eyebrow="ETIQUETAS · CLIENTE"
-        title="Cliente e padrão de etiqueta"
-        subtitle="O padrão fica gravado no cadastro do cliente. O arquivo do pedido não é guardado."
+        title="Cliente e tipos de etiqueta"
+        subtitle="O mesmo cliente pode ter Nalin e Objetiva. Trocar o tipo não apaga o outro. O arquivo do pedido não é guardado."
       >
         <div className="space-y-4">
           <div className="grid gap-3 md:grid-cols-[1fr_2fr]">
@@ -502,7 +531,8 @@ export function ClientLabelingWorkspace() {
                   {filteredClients.map(client => (
                     <SelectItem key={client.id} value={client.id}>
                       {client.nome_fantasia || client.razao_social}
-                      {client.label_pattern ? '' : ' · sem padrão'}
+                      {' · '}
+                      {savedPatternStatusLabel(client.label_pattern)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -513,7 +543,7 @@ export function ClientLabelingWorkspace() {
           {!selectedClientId ? (
             <EmptyState
               title="Escolha um cliente"
-              description="Cada cliente tem o próprio layout (Nalin ou Objetiva), medidas e textos."
+              description="Cada cliente pode gravar mais de um layout (Nalin e Objetiva), com medidas e textos próprios."
             />
           ) : patternLoading ? (
             <p className="text-sm text-muted-foreground">Carregando padrão…</p>
@@ -531,31 +561,56 @@ export function ClientLabelingWorkspace() {
                       <SelectValue placeholder="Escolha Nalin ou Objetiva" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="baby_nalin">Nalin (couchê 50×30)</SelectItem>
-                      <SelectItem value="objetiva">Objetiva (hangtag)</SelectItem>
+                      <SelectItem value="baby_nalin">
+                        Nalin (couchê 50×30)
+                        {savedKeys.includes('baby_nalin') ? ' · salvo' : ''}
+                      </SelectItem>
+                      <SelectItem value="objetiva">
+                        Objetiva (hangtag)
+                        {savedKeys.includes('objetiva') ? ' · salvo' : ''}
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-                {pattern && <Badge variant="outline">{patternLabel(pattern.key)}</Badge>}
+                {draftKeys.map(key => (
+                  <Badge key={key} variant={key === pattern?.key ? 'outline' : 'secondary'}>
+                    {patternLabel(key)}
+                    {savedKeys.includes(key) ? '' : ' · não salvo'}
+                  </Badge>
+                ))}
                 {patternDirty && <Badge variant="secondary">Alterações não salvas</Badge>}
+                {draftKeys.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-9"
+                    onClick={handleRemovePattern}
+                    disabled={!pattern || isBusy}
+                  >
+                    <Trash className="h-4 w-4 mr-1.5" />
+                    Remover este tipo
+                  </Button>
+                )}
                 <Button
                   size="sm"
                   className="h-9 ml-auto"
                   onClick={() => void handleSavePattern()}
-                  disabled={!pattern || isBusy}
+                  disabled={isBusy || (!pattern && !patternDirty)}
                 >
                   {savePatternMutation.isPending ? (
                     <CircleNotch className="h-4 w-4 mr-1.5 animate-spin" />
                   ) : (
                     <FloppyDisk className="h-4 w-4 mr-1.5" />
                   )}
-                  Salvar padrão do cliente
+                  Salvar padrões do cliente
                 </Button>
               </div>
 
               {!pattern ? (
                 <p className="text-sm text-muted-foreground">
-                  Este cliente ainda não tem padrão. Escolha Nalin ou Objetiva e salve.
+                  Este cliente ainda não tem padrão. Escolha Nalin ou Objetiva e salve. O mesmo
+                  cadastro pode guardar os dois tipos.
                 </p>
               ) : isNalin ? (
                 <div className="space-y-3">
@@ -685,7 +740,7 @@ export function ClientLabelingWorkspace() {
         subtitle={
           clientLabel
             ? `${clientLabel}${pattern ? ` · ${patternLabel(pattern.key)}` : ''}`
-            : 'Selecione o cliente e salve o padrão para liberar a importação.'
+            : 'Selecione o cliente e salve ao menos um tipo para liberar a importação.'
         }
         actions={
           rows.length > 0 ? (
@@ -712,7 +767,7 @@ export function ClientLabelingWorkspace() {
             title="Nenhum pedido importado"
             description={
               !pattern
-                ? 'Defina e salve o padrão do cliente para importar CSV/XLSX.'
+                ? 'Defina e salve ao menos um tipo de etiqueta para importar CSV/XLSX.'
                 : patternDirty
                   ? 'Salve o padrão antes de importar.'
                   : 'Pode enviar vários arquivos de uma vez (Objetiva: 1 SKU por arquivo).'
