@@ -67,14 +67,14 @@ export default function PendenciasView() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-16 text-muted-foreground">
+      <div className="flex items-center justify-center py-8 text-muted-foreground">
         <Loader2 className="h-5 w-5 animate-spin mr-2" /> Carregando pendências…
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3">
       {/* Barra de filtro — h-9, padrão de toolbar de página */}
       <div className="flex flex-wrap items-center gap-2">
         <Button

@@ -1627,50 +1627,50 @@ export default function SaleOrderFormPanel({
          if (el?.closest('button, a, [role="option"], [role="combobox"], [contenteditable="true"]')) return;
          e.preventDefault();
        }}
-       className="space-y-5 pb-40 sm:pb-24"
+       className="space-y-3 pb-40 sm:pb-24"
      >
       {/* Stepper só faz sentido em PV existente — em "Novo Pedido" o status é sempre
           Rascunho e o widget completo confunde mais do que informa. */}
       {!isNewOrder && (
         <Card className="border-border/60 bg-muted/20 shadow-sm">
-          <CardContent className="px-4 py-3 sm:px-5">
+          <CardContent className="px-3 py-2 sm:px-4">
             <OrderStatusStepper currentStatus={form.status} />
           </CardContent>
         </Card>
       )}
       {/* Mapa do preenchimento: mantém a orientação quando o pedido tem muitas
           referências e evita rolagem longa só para voltar aos dados comerciais. */}
-      <nav aria-label="Etapas do pedido" className="sticky top-0 z-20 -mx-1 flex gap-1 overflow-x-auto border-y bg-background px-1 py-2 sm:static sm:mx-0 sm:rounded-lg sm:border sm:bg-muted/20 sm:px-2">
+      <nav aria-label="Etapas do pedido" className="sticky top-0 z-20 -mx-1 flex gap-1 overflow-x-auto border-y bg-background px-1 py-1.5 sm:static sm:mx-0 sm:rounded-lg sm:border sm:bg-muted/20 sm:px-2">
         <span className="hidden shrink-0 items-center px-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground lg:flex">Preenchimento</span>
-        <Button type="button" variant="ghost" size="sm" className="min-h-10 shrink-0 gap-1.5 bg-background shadow-sm sm:bg-transparent sm:shadow-none" onClick={() => document.getElementById('pv-cliente')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+        <Button type="button" variant="ghost" size="sm" className="h-8 min-h-8 shrink-0 gap-1.5 bg-background shadow-sm sm:bg-transparent sm:shadow-none" onClick={() => document.getElementById('pv-cliente')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
           <User className="h-4 w-4" />
           <span>Cliente</span>
           {form.client_name && <Check className="h-3.5 w-3.5 text-success" weight="bold" />}
         </Button>
-        <Button type="button" variant="ghost" size="sm" className="min-h-10 shrink-0 gap-1.5" onClick={() => document.getElementById('pv-itens')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+        <Button type="button" variant="ghost" size="sm" className="h-8 min-h-8 shrink-0 gap-1.5" onClick={() => document.getElementById('pv-itens')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
           <ClipboardList className="h-4 w-4" />
           <span>Itens</span>
           <Badge variant="secondary" className="h-5 min-w-5 px-1 font-mono">{items.filter(i => i.reference_id).length}</Badge>
         </Button>
-        <Button type="button" variant="ghost" size="sm" className="min-h-10 shrink-0 gap-1.5" onClick={() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })}>
+        <Button type="button" variant="ghost" size="sm" className="h-8 min-h-8 shrink-0 gap-1.5" onClick={() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })}>
           <CheckCircle2 className="h-4 w-4" /> Revisar e salvar
         </Button>
       </nav>
       {/* Header section */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        <div className="lg:col-span-2 space-y-5">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+        <div className="lg:col-span-2 space-y-3">
 
           {/* Card 1: Cliente & Representante */}
           <Card id="pv-cliente" className="scroll-mt-20 border-border/60 shadow-sm overflow-hidden">
-            <CardHeader className="space-y-1 px-4 py-3.5 bg-muted/30 border-b">
+            <CardHeader className="space-y-1 px-3 py-2 bg-muted/30 border-b">
               <CardTitle className="text-sm font-bold flex items-center gap-2">
                 <User className="h-4 w-4 text-primary" />
                 Identificação do pedido
               </CardTitle>
               <p className="text-xs text-muted-foreground">Comece pelo cliente; as condições e a operação ficam logo abaixo.</p>
             </CardHeader>
-            <CardContent className="p-4 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <CardContent className="p-3 space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="order-2">
                   <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Representante</Label>
                   <Select value={form.representative} onValueChange={v => setForm(f => ({ ...f, representative: v }))}>
@@ -1730,7 +1730,7 @@ export default function SaleOrderFormPanel({
               {/* Tipo de Pedido — natureza comercial (carteira / programado /
                   MTO / amostra / bonificação / troca / exportação). Paridade
                   Tutor32; persiste em sale_orders.order_type. */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
                   <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Tipo de Pedido</Label>
                   <Select value={form.order_type || 'carteira'} onValueChange={v => setForm(f => ({ ...f, order_type: v }))}>
@@ -1769,7 +1769,7 @@ export default function SaleOrderFormPanel({
                   fora (prestador), de propósito, pra evitar gargalo. Ao virar OP, o
                   trigger trg_apply_pv_outsourcing_to_op marca a OP (aparece no hub
                   Terceiros "Na Rua"). Guarda a CHAVE canônica do setor. */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
                   <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Terceirizar setor (evitar gargalo)</Label>
                   <Select
@@ -1846,7 +1846,7 @@ export default function SaleOrderFormPanel({
                   </button>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   <div className="md:col-span-2">
                     <Label className="text-xs text-muted-foreground uppercase font-bold mb-1 block">
                       Razão Social / Nome Fantasia *
@@ -1889,13 +1889,13 @@ export default function SaleOrderFormPanel({
           {/* Card 2: Condições Comerciais — oculto pra produção/almoxarifado */}
           {canSeeFinancialValues && (
           <Card className="border-border/60 shadow-sm overflow-hidden">
-            <CardHeader className="py-3 px-4 bg-muted/30 border-b">
+            <CardHeader className="px-3 py-2 bg-muted/30 border-b">
               <CardTitle className="text-sm font-bold flex items-center gap-2">
                 <Banknote className="h-4 w-4 text-primary" />
                 Condições Comerciais
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-4 space-y-4">
+            <CardContent className="p-3 space-y-3">
               {/* Condição de pagamento numa linha só. Prazo de Entrega (date input)
                   foi removido: a data é derivada automaticamente de Mês + Semana
                   via monthWeekToISODate. O comercial só raciocina por
@@ -1974,7 +1974,7 @@ export default function SaleOrderFormPanel({
                 })()}
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
                   <Label className="text-xs text-muted-foreground uppercase font-bold mb-1 block">Mês de Faturamento <span className="text-destructive">*</span></Label>
                   <Select value={form.delivery_month} onValueChange={v => setForm(f => ({ ...f, delivery_month: v, delivery_week: '' }))}>
@@ -2096,14 +2096,14 @@ export default function SaleOrderFormPanel({
 
           {/* Card 3: Logística e Documentação */}
           <Card className="border-border/60 shadow-sm">
-            <CardHeader className="py-3 px-4 bg-muted/30 border-b">
+            <CardHeader className="px-3 py-2 bg-muted/30 border-b">
               <CardTitle className="text-sm font-bold flex items-center gap-2">
                 <Truck className="h-4 w-4 text-primary" />
                 Logística & Documentação
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-4 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <CardContent className="p-3 space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                 <div>
                   <Label className="text-xs text-muted-foreground uppercase font-bold mb-1 block">Nº Pedido Cliente</Label>
                   <Input value={form.client_order_number} onChange={e => setForm(f => ({ ...f, client_order_number: e.target.value }))} className="h-9" />
@@ -2448,16 +2448,16 @@ export default function SaleOrderFormPanel({
           </Card>
         </div>
 
-        <div className="space-y-5">
+        <div className="space-y-3">
           <Card className="border-border/60 shadow-sm overflow-hidden">
-            <CardHeader className="space-y-1 px-4 py-3.5 bg-muted/30 border-b">
+            <CardHeader className="space-y-1 px-3 py-2 bg-muted/30 border-b">
               <CardTitle className="text-sm font-bold flex items-center gap-2">
                 <Info className="h-4 w-4 text-primary" />
                 Contato e observações
               </CardTitle>
               <p className="text-xs text-muted-foreground">Use somente o que precisa acompanhar este pedido.</p>
             </CardHeader>
-            <CardContent className="p-4 space-y-4">
+            <CardContent className="p-3 space-y-3">
               <div>
                 <Label className="text-xs text-muted-foreground uppercase font-bold mb-1 block">Contato no Cliente</Label>
                 <Input value={form.client_contact} onChange={e => setForm(f => ({ ...f, client_contact: e.target.value }))} className="h-9" placeholder="Nome, telefone ou e-mail" />
@@ -2504,7 +2504,7 @@ export default function SaleOrderFormPanel({
         <div className="flex items-center justify-between border-b border-border/40 pb-2">
           <div className="flex items-center gap-2">
             <ClipboardList className="h-5 w-5 text-primary" />
-            <Label className="text-lg font-bold">Itens do Pedido</Label>
+            <Label className="text-sm font-bold">Itens do Pedido</Label>
           </div>
           <div className="flex items-center gap-2">
             {/* Checkbox master pra selecionar/desmarcar todos os itens (20/05/2026).
@@ -2581,11 +2581,11 @@ export default function SaleOrderFormPanel({
           preço unitário, aplicar fichas. Não-flutuante (renderiza inline antes
           dos totais) pra não cobrir o rodapé sticky de Cancelar/Salvar. */}
       {selectedItemIndices.size > 0 && (
-        <div className="rounded-lg border-2 border-primary/40 bg-primary/5 px-4 py-3 mb-3 space-y-3">
+        <div className="rounded-lg border-2 border-primary/40 bg-primary/5 px-3 py-2 mb-3 space-y-2">
           {/* Linha 1: contador + ações de preço/fichas + clear */}
           <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-baseline gap-2 pr-3 border-r border-primary/30">
-            <span className="font-display text-2xl leading-none tabular-nums text-primary">
+            <span className="font-display text-lg leading-none tabular-nums text-primary">
               {selectedItemIndices.size}
             </span>
             <span className="text-xs font-bold uppercase tracking-wider text-primary">
@@ -2863,7 +2863,7 @@ export default function SaleOrderFormPanel({
 
         return (
           <div className="fixed bottom-0 left-0 right-0 z-30 border-t bg-background shadow-[0_-4px_12px_rgba(0,0,0,0.05)] dark:shadow-[0_-4px_12px_rgba(0,0,0,0.3)]">
-            <div className="max-w-[var(--main-max,1600px)] mx-auto px-3 sm:px-6 py-2.5 sm:py-3 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3">
+            <div className="max-w-[var(--main-max,1600px)] mx-auto px-3 sm:px-6 py-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3">
               {/* Resumo de totais — grid em mobile pra evitar squeeze, inline em sm+ */}
               <div className="grid grid-cols-3 sm:flex sm:items-center sm:gap-6 sm:flex-1 sm:min-w-0">
                 <div className="flex flex-col">

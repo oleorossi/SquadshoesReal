@@ -1474,8 +1474,9 @@ export default function SaleOrders() {
 
   if (isLoading) {
     return (
-      <div className="w-full space-y-6">
+      <div className="w-full space-y-4">
         <EditorialPageHeader
+          density="compact"
           sectionLabel="COMERCIAL · PV"
           title="Pedidos de Venda"
           description="Gestão comercial e geração de ordens de produção"
@@ -1488,8 +1489,9 @@ export default function SaleOrders() {
 
   if (isError) {
     return (
-      <div className="w-full space-y-6">
+      <div className="w-full space-y-4">
         <EditorialPageHeader
+          density="compact"
           sectionLabel="COMERCIAL · PV"
           title="Pedidos de Venda"
           description="Gestão comercial e geração de ordens de produção"
@@ -1508,8 +1510,9 @@ export default function SaleOrders() {
   // sem rota nova (requisito 13 de specs/pv-producao-performance-e-pendencias.md).
   if (isPendenciasView) {
     return (
-      <div className="w-full space-y-6">
+      <div className="w-full space-y-4">
         <EditorialPageHeader
+          density="compact"
           sectionLabel="COMERCIAL · PV"
           title="Pendências de lançamento"
           description="Itens que não viraram OP, material que faltou e prazos inviáveis"
@@ -1530,8 +1533,9 @@ export default function SaleOrders() {
   if (isConsumptionView) {
     return (
       <>
-        <div className="w-full space-y-6">
+        <div className="w-full space-y-4">
           <EditorialPageHeader
+            density="compact"
             sectionLabel="COMERCIAL · PV"
             title="Consumo de Materiais"
             description={
@@ -1587,8 +1591,9 @@ export default function SaleOrders() {
 
   return (
     <>
-      <div className="w-full space-y-6">
+      <div className="w-full space-y-4">
         <EditorialPageHeader
+          density="compact"
           sectionLabel="COMERCIAL · PV"
           title="Pedidos de Venda"
           description="Gestão comercial e geração de ordens de produção"
@@ -1776,7 +1781,7 @@ export default function SaleOrders() {
         />
 
         {/* Search & Filter Bar */}
-        <div className="flex flex-col gap-3 rounded-lg border bg-card p-2.5 shadow-sm">
+        <div className="flex flex-col gap-2 rounded-lg border bg-card p-2 shadow-sm">
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative min-w-[16rem] flex-[1_1_32rem] max-w-2xl">
               <SmartSearch
@@ -2377,14 +2382,14 @@ export default function SaleOrders() {
         <DialogContent className="w-[96vw] max-w-[1440px] max-h-[94vh] gap-0 overflow-y-auto p-0">
           <DialogHeader className="sticky top-0 z-30 space-y-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/90">
             <div className={cn(
-              'border-b px-6 py-4 pr-12',
+              'border-b px-4 py-2 pr-12',
               STATUS_BAND[selectedOrder?.status || ''] || 'bg-muted/30'
             )}>
-            <div className="flex items-start justify-between gap-4 gap-y-3 flex-wrap">
+            <div className="flex items-start justify-between gap-3 gap-y-2 flex-wrap">
               <div className="min-w-0">
                 <p className="eyebrow">Comercial · Pedido de Venda</p>
-                <div className="flex items-center gap-2.5 flex-wrap mt-1">
-                  <DialogTitle className="display text-3xl sm:text-4xl m-0 leading-none">{selectedOrder?.order_number || ''}</DialogTitle>
+                <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                  <DialogTitle className="display text-xl sm:text-2xl m-0 leading-none">{selectedOrder?.order_number || ''}</DialogTitle>
                   {selectedOrder && <Badge variant="outline" className={STATUS_COLORS[selectedOrder.status] || ''}><span className={`h-1.5 w-1.5 rounded-full mr-1.5 ${STATUS_DOT[selectedOrder.status]}`} />{selectedOrder.status}</Badge>}
                   <PvOutdatedBadge saleOrderId={selectedOrder?.id || null} />
                   {/* Badge "Picking individual realizado" — exclui o PV do Picking Semanal. */}
@@ -2398,20 +2403,20 @@ export default function SaleOrders() {
               </div>
               {/* Faixa de KPIs — totais do PV em destaque editorial (Anton) */}
               {selectedOrder && (
-                <div className="flex items-center gap-5 sm:gap-7 shrink-0">
+                <div className="flex items-center gap-4 sm:gap-5 shrink-0">
                   <div>
                     <p className="eyebrow">Pares</p>
-                    <p className="font-display text-2xl leading-none tabular-nums">{loadingOrderItems ? '—' : selectedOrderItems.reduce((s, i) => s + Number(i.quantity || 0), 0).toLocaleString('pt-BR')}</p>
+                    <p className="font-display text-lg leading-none tabular-nums">{loadingOrderItems ? '—' : selectedOrderItems.reduce((s, i) => s + Number(i.quantity || 0), 0).toLocaleString('pt-BR')}</p>
                   </div>
                   {canSeeFinancialValues && (
                     <div>
                       <p className="eyebrow">Total</p>
-                      <p className="font-display text-2xl leading-none tabular-nums">{loadingOrderItems ? '—' : formatCurrency(selectedOrderItems.reduce((s, i) => s + Number(i.quantity || 0) * Number(i.unit_price || 0), 0))}</p>
+                      <p className="font-display text-lg leading-none tabular-nums">{loadingOrderItems ? '—' : formatCurrency(selectedOrderItems.reduce((s, i) => s + Number(i.quantity || 0) * Number(i.unit_price || 0), 0))}</p>
                     </div>
                   )}
                   <div>
                     <p className="eyebrow">Itens</p>
-                    <p className="font-display text-2xl leading-none tabular-nums">{loadingOrderItems ? '—' : selectedOrderItems.length}</p>
+                    <p className="font-display text-lg leading-none tabular-nums">{loadingOrderItems ? '—' : selectedOrderItems.length}</p>
                   </div>
                 </div>
               )}
@@ -2421,7 +2426,7 @@ export default function SaleOrders() {
           </DialogHeader>
 
           {selectedOrder && (
-            <div className="space-y-4 px-6 pb-6 pt-4">
+            <div className="space-y-3 px-4 pb-4 pt-2">
               {/* Mesa de liberação do PV: as ações seguem a ordem de trabalho
                   (pedido → materiais/produção → documentos/terceiros). */}
               <div className="grid overflow-hidden rounded-lg border bg-card lg:grid-cols-[0.72fr_1.55fr_0.9fr] [&_button]:h-8 [&_button]:px-2.5 [&_button]:text-xs [&_button]:gap-1.5">
@@ -2594,10 +2599,10 @@ export default function SaleOrders() {
                 'overflow-hidden rounded-lg border border-l-4 bg-card',
                 selectedDeadlineInfeasible ? 'border-l-destructive' : 'border-l-foreground',
               )}>
-                <div className="border-b bg-muted/30 px-4 py-2">
+                <div className="border-b bg-muted/30 px-3 py-1.5">
                   <p className="eyebrow">Dados comerciais e entrega</p>
                 </div>
-                <dl className="grid grid-cols-2 gap-x-6 gap-y-3 p-4 sm:grid-cols-3 xl:grid-cols-4">
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 p-3 sm:grid-cols-3 xl:grid-cols-6">
                   {([
                     { label: 'Representante', value: selectedOrder.representative || '—' },
                     { label: 'Cliente', value: selectedOrder.client_name || '—' },
@@ -2617,7 +2622,7 @@ export default function SaleOrders() {
                   ))}
                 </dl>
                 {selectedOrder.notes && (
-                  <div className="border-t px-4 py-2.5">
+                  <div className="border-t px-3 py-1.5">
                     <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Observação</span>
                     <p className="text-sm text-foreground">{selectedOrder.notes}</p>
                   </div>
@@ -2631,7 +2636,7 @@ export default function SaleOrders() {
                   <EmptyState icon={Package} title="Nenhum item neste pedido" />
                 ) : (
                   <div className="divide-y">
-                    <div className="flex flex-wrap items-center justify-between gap-2 bg-foreground px-4 py-2.5 text-background">
+                    <div className="flex flex-wrap items-center justify-between gap-2 bg-foreground px-3 py-1.5 text-background">
                       <div>
                         <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-background/55">Conteúdo do pedido</p>
                         <p className="text-sm font-semibold">Referências, cores e distribuição da grade</p>
@@ -2641,7 +2646,7 @@ export default function SaleOrders() {
                       </p>
                     </div>
                     <div className={cn(
-                      'grid items-center bg-muted/60 px-4 py-2 text-xs font-semibold text-muted-foreground',
+                      'grid items-center bg-muted/60 px-3 py-1.5 text-xs font-semibold text-muted-foreground',
                       canSeeFinancialValues
                         ? 'grid-cols-[1fr_auto_auto_auto_auto]'
                         : 'grid-cols-[1fr_auto_auto]'
@@ -2686,8 +2691,8 @@ export default function SaleOrders() {
                         return (
                           <div key={key}>
                             {/* Cabeçalho da referência (uma vez por grupo) */}
-                            <div className="flex items-center gap-3 bg-muted/40 px-4 py-2.5">
-                              {g.refImage ? <img src={g.refImage} alt={g.refName} className="h-16 w-16 rounded-md object-cover border shrink-0" /> : <div className="h-16 w-16 rounded-md bg-muted flex items-center justify-center text-muted-foreground text-[10px] shrink-0">Sem foto</div>}
+                            <div className="flex items-center gap-2.5 bg-muted/40 px-3 py-1.5">
+                              {g.refImage ? <img src={g.refImage} alt={g.refName} className="h-10 w-10 rounded-md object-cover border shrink-0" /> : <div className="h-10 w-10 rounded-md bg-muted flex items-center justify-center text-muted-foreground text-[10px] shrink-0">Sem foto</div>}
                               <div className="min-w-0 flex-1">
                                 {g.refId ? (
                                   <button type="button" onClick={() => { setDetailDialogOpen(false); navigate(`/fichas-tecnicas?ref=${g.refId}`); }} title="Abrir ficha técnica desta referência" className="group inline-flex items-center gap-1 text-sm font-bold text-primary hover:underline text-left">
@@ -2720,7 +2725,7 @@ export default function SaleOrders() {
                                   <div
                                     key={item.id}
                                     className={cn(
-                                      'grid items-start px-4 py-3 gap-2 pl-6 hover:bg-muted/20 transition-colors',
+                                      'grid items-start px-3 py-1.5 gap-2 pl-5 hover:bg-muted/20 transition-colors',
                                       canSeeFinancialValues
                                         ? 'grid-cols-[1fr_auto_auto_auto_auto]'
                                         : 'grid-cols-[1fr_auto_auto]',
@@ -2758,7 +2763,7 @@ export default function SaleOrders() {
                                         </div>
                                       )}
                                       {(item.strap_colors as any[])?.length > 0 && (
-                                        <div className="flex flex-wrap gap-2 mt-2 p-2 rounded bg-muted/30 border border-border/40">
+                                        <div className="flex flex-wrap gap-1.5 mt-1 p-1.5 rounded bg-muted/30 border border-border/40">
                                           <p className="text-xs font-bold text-muted-foreground uppercase w-full">Cores das Tiras:</p>
                                           {(item.strap_colors as any[]).map((s: any, sIdx: number) => (
                                             <div key={sIdx} className="flex items-center gap-1.5 bg-background px-2 py-0.5 rounded border text-xs">
