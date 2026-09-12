@@ -1,10 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import {
+  activatePattern,
   clientOrderLineSkuKey,
+  collectionPatternKeys,
   defaultPatternForKey,
+  emptyLabelCollection,
   isClientLabelPatternKey,
+  normalizeClientLabelCollection,
   normalizeClientLabelPattern,
   patternLabel,
+  removePattern,
+  savedPatternStatusLabel,
+  toPersistedLabelPattern,
+  upsertActivePattern,
 } from '@/lib/clientLabelPattern';
 
 describe('clientLabelPattern', () => {
@@ -62,5 +70,61 @@ describe('clientLabelPattern', () => {
         quantidade: 1,
       }),
     ).toContain('112334');
+  });
+
+  it('normalizeClientLabelCollection promove v1 sem perder o tipo', () => {
+    const objetiva = defaultPatternForKey('objetiva');
+    const collection = normalizeClientLabelCollection(objetiva);
+    expect(collection.version).toBe(2);
+    expect(collection.activeKey).toBe('objetiva');
+    expect(collection.patterns.objetiva?.branding.motto).toBe('DEUS É FIEL');
+    expect(collection.patterns.baby_nalin).toBeUndefined();
+  });
+
+  it('coleção v2 guarda Nalin e Objetiva no mesmo cliente', () => {
+    const nalin = defaultPatternForKey('baby_nalin');
+    const objetiva = defaultPatternForKey('objetiva');
+    const both = normalizeClientLabelCollection({
+      version: 2,
+      activeKey: 'objetiva',
+      patterns: { baby_nalin: nalin, objetiva },
+    });
+    expect(collectionPatternKeys(both)).toEqual(['baby_nalin', 'objetiva']);
+    expect(both.activeKey).toBe('objetiva');
+    expect(savedPatternStatusLabel(both)).toBe('Nalin + Objetiva');
+  });
+
+  it('upsert de um tipo não apaga o outro já gravado', () => {
+    const started = activatePattern(emptyLabelCollection(), 'baby_nalin');
+    const withObjetiva = upsertActivePattern(started, defaultPatternForKey('objetiva'));
+    expect(collectionPatternKeys(withObjetiva)).toEqual(['baby_nalin', 'objetiva']);
+    expect(withObjetiva.activeKey).toBe('objetiva');
+    expect(withObjetiva.patterns.baby_nalin?.geometry.columns).toBe(2);
+  });
+
+  it('trocar o tipo ativo não descarta o padrão anterior', () => {
+    const nalin = {
+      ...defaultPatternForKey('baby_nalin'),
+      geometry: { ...defaultPatternForKey('baby_nalin').geometry, columnGapMm: 8 },
+    };
+    const collection = upsertActivePattern(emptyLabelCollection(), nalin);
+    const switched = activatePattern(collection, 'objetiva');
+    expect(switched.activeKey).toBe('objetiva');
+    expect(switched.patterns.baby_nalin?.geometry.columnGapMm).toBe(8);
+    expect(switched.patterns.objetiva?.key).toBe('objetiva');
+  });
+
+  it('remover um tipo deixa o outro e persistir vazio grava null', () => {
+    const both = upsertActivePattern(
+      activatePattern(emptyLabelCollection(), 'baby_nalin'),
+      defaultPatternForKey('objetiva'),
+    );
+    const onlyNalin = removePattern(both, 'objetiva');
+    expect(collectionPatternKeys(onlyNalin)).toEqual(['baby_nalin']);
+    expect(onlyNalin.activeKey).toBe('baby_nalin');
+
+    const empty = removePattern(onlyNalin, 'baby_nalin');
+    expect(toPersistedLabelPattern(empty)).toBeNull();
+    expect(savedPatternStatusLabel(null)).toBe('sem padrão');
   });
 });

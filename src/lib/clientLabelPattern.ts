@@ -1,6 +1,9 @@
 /**
  * Contrato do padrão de etiqueta persistido em `clients.label_pattern`.
  *
+ * v1 (legado): um único `{ version, key, geometry, branding }`.
+ * v2: coleção — o mesmo cliente pode ter Nalin e Objetiva ao mesmo tempo.
+ *
  * Defaults do registry só semeiam o formulário; o que vale na emissão é o
  * jsonb gravado no cliente.
  */
@@ -31,6 +34,13 @@ export interface ClientLabelPattern {
   key: ClientLabelPatternKey;
   geometry: ClientLabelGeometry;
   branding: ClientLabelBranding;
+}
+
+/** Coleção persistida: um padrão por tipo, no mesmo cliente. */
+export interface ClientLabelPatternCollection {
+  version: 2;
+  activeKey: ClientLabelPatternKey | null;
+  patterns: Partial<Record<ClientLabelPatternKey, ClientLabelPattern>>;
 }
 
 /** Linha unificada exibida/selecionada no workspace (Nalin ou Objetiva). */
@@ -207,4 +217,144 @@ export function coucheProfileFromGeometry(geometry: ClientLabelGeometry): {
     topMarginMm: geometry.topMarginMm,
     bottomMarginMm: geometry.bottomMarginMm,
   };
+}
+
+export function emptyLabelCollection(): ClientLabelPatternCollection {
+  return { version: 2, activeKey: null, patterns: {} };
+}
+
+export function collectionPatternKeys(
+  collection: ClientLabelPatternCollection | null | undefined,
+): ClientLabelPatternKey[] {
+  if (!collection) return [];
+  return CLIENT_LABEL_PATTERN_KEYS.filter(key => collection.patterns[key]);
+}
+
+export function activePatternFromCollection(
+  collection: ClientLabelPatternCollection | null | undefined,
+): ClientLabelPattern | null {
+  if (!collection?.activeKey) return null;
+  return collection.patterns[collection.activeKey] ?? null;
+}
+
+export function serializeClientLabelCollection(
+  collection: ClientLabelPatternCollection,
+): ClientLabelPatternCollection {
+  const patterns: Partial<Record<ClientLabelPatternKey, ClientLabelPattern>> = {};
+  for (const key of CLIENT_LABEL_PATTERN_KEYS) {
+    const raw = collection.patterns[key];
+    if (!raw) continue;
+    patterns[key] = normalizeClientLabelPattern(raw, key);
+  }
+  const keys = collectionPatternKeys({ version: 2, activeKey: null, patterns });
+  const activeKey =
+    collection.activeKey && patterns[collection.activeKey]
+      ? collection.activeKey
+      : (keys[0] ?? null);
+  return { version: 2, activeKey, patterns };
+}
+
+/** jsonb a gravar: v2 com 1+ tipos, ou null quando o cliente não tem padrão. */
+export function toPersistedLabelPattern(
+  collection: ClientLabelPatternCollection,
+): ClientLabelPatternCollection | null {
+  const serialized = serializeClientLabelCollection(collection);
+  return collectionPatternKeys(serialized).length > 0 ? serialized : null;
+}
+
+function patternsFromV2Raw(
+  patternsRaw: unknown,
+): Partial<Record<ClientLabelPatternKey, ClientLabelPattern>> {
+  const patterns: Partial<Record<ClientLabelPatternKey, ClientLabelPattern>> = {};
+  if (Array.isArray(patternsRaw)) {
+    for (const item of patternsRaw) {
+      if (!item || typeof item !== 'object') continue;
+      const key = (item as { key?: unknown }).key;
+      if (!isClientLabelPatternKey(key)) continue;
+      patterns[key] = normalizeClientLabelPattern(item, key);
+    }
+    return patterns;
+  }
+  if (!patternsRaw || typeof patternsRaw !== 'object') return patterns;
+  const obj = patternsRaw as Record<string, unknown>;
+  for (const key of CLIENT_LABEL_PATTERN_KEYS) {
+    if (obj[key] == null) continue;
+    patterns[key] = normalizeClientLabelPattern(obj[key], key);
+  }
+  return patterns;
+}
+
+/** Aceita v1 (um tipo) e v2 (vários tipos) sem perder o legado. */
+export function normalizeClientLabelCollection(raw: unknown): ClientLabelPatternCollection {
+  if (!raw || typeof raw !== 'object') return emptyLabelCollection();
+  const obj = raw as Record<string, unknown>;
+
+  if (obj.version === 2) {
+    const patterns = patternsFromV2Raw(obj.patterns);
+    const keys = collectionPatternKeys({ version: 2, activeKey: null, patterns });
+    const activeKey =
+      isClientLabelPatternKey(obj.activeKey) && patterns[obj.activeKey]
+        ? obj.activeKey
+        : (keys[0] ?? null);
+    return { version: 2, activeKey, patterns };
+  }
+
+  if (isClientLabelPatternKey(obj.key)) {
+    const pattern = normalizeClientLabelPattern(obj, obj.key);
+    return {
+      version: 2,
+      activeKey: pattern.key,
+      patterns: { [pattern.key]: pattern },
+    };
+  }
+
+  return emptyLabelCollection();
+}
+
+export function activatePattern(
+  collection: ClientLabelPatternCollection,
+  key: ClientLabelPatternKey,
+): ClientLabelPatternCollection {
+  const existing = collection.patterns[key];
+  return {
+    version: 2,
+    activeKey: key,
+    patterns: {
+      ...collection.patterns,
+      [key]: existing ?? defaultPatternForKey(key),
+    },
+  };
+}
+
+export function upsertActivePattern(
+  collection: ClientLabelPatternCollection,
+  pattern: ClientLabelPattern,
+): ClientLabelPatternCollection {
+  return {
+    version: 2,
+    activeKey: pattern.key,
+    patterns: {
+      ...collection.patterns,
+      [pattern.key]: normalizeClientLabelPattern(pattern, pattern.key),
+    },
+  };
+}
+
+export function removePattern(
+  collection: ClientLabelPatternCollection,
+  key: ClientLabelPatternKey,
+): ClientLabelPatternCollection {
+  const patterns = { ...collection.patterns };
+  delete patterns[key];
+  const remaining = collectionPatternKeys({ version: 2, activeKey: null, patterns });
+  return {
+    version: 2,
+    activeKey: collection.activeKey === key ? (remaining[0] ?? null) : collection.activeKey,
+    patterns,
+  };
+}
+
+export function savedPatternStatusLabel(raw: unknown): string {
+  const labels = collectionPatternKeys(normalizeClientLabelCollection(raw)).map(patternLabel);
+  return labels.length === 0 ? 'sem padrão' : labels.join(' + ');
 }

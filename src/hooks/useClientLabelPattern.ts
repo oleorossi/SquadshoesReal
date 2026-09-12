@@ -2,8 +2,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import {
-  normalizeClientLabelPattern,
-  type ClientLabelPattern,
+  collectionPatternKeys,
+  normalizeClientLabelCollection,
+  toPersistedLabelPattern,
+  type ClientLabelPatternCollection,
 } from '@/lib/clientLabelPattern';
 
 export const clientLabelPatternQueryKey = (clientId: string | null | undefined) =>
@@ -16,7 +18,9 @@ export type ClientLabelingOption = {
   label_pattern: unknown;
 };
 
-async function fetchClientLabelPattern(clientId: string): Promise<ClientLabelPattern | null> {
+async function fetchClientLabelCollection(
+  clientId: string,
+): Promise<ClientLabelPatternCollection> {
   const { data, error } = await supabase
     .from('clients')
     .select('label_pattern')
@@ -24,15 +28,14 @@ async function fetchClientLabelPattern(clientId: string): Promise<ClientLabelPat
     .maybeSingle();
   if (error) throw error;
   const raw = (data as { label_pattern?: unknown } | null)?.label_pattern;
-  if (raw == null) return null;
-  return normalizeClientLabelPattern(raw);
+  return normalizeClientLabelCollection(raw);
 }
 
 export function useClientLabelPattern(clientId: string | null | undefined) {
   return useQuery({
     queryKey: clientLabelPatternQueryKey(clientId),
     enabled: Boolean(clientId),
-    queryFn: () => fetchClientLabelPattern(clientId!),
+    queryFn: () => fetchClientLabelCollection(clientId!),
     staleTime: 60_000,
   });
 }
@@ -42,24 +45,29 @@ export function useSaveClientLabelPattern() {
   return useMutation({
     mutationFn: async ({
       clientId,
-      pattern,
+      collection,
     }: {
       clientId: string;
-      pattern: ClientLabelPattern;
+      collection: ClientLabelPatternCollection;
     }) => {
-      const payload = normalizeClientLabelPattern(pattern, pattern.key);
+      const payload = toPersistedLabelPattern(collection);
       const { error } = await supabase
         .from('clients')
         .update({ label_pattern: payload } as never)
         .eq('id', clientId);
       if (error) throw error;
-      return payload;
+      return payload ?? normalizeClientLabelCollection(null);
     },
     onSuccess: (payload, vars) => {
       qc.setQueryData(clientLabelPatternQueryKey(vars.clientId), payload);
       void qc.invalidateQueries({ queryKey: ['clients'] });
       void qc.invalidateQueries({ queryKey: ['clients', 'for-labeling'] });
-      toast.success('Padrão de etiqueta do cliente salvo.');
+      const count = collectionPatternKeys(payload).length;
+      toast.success(
+        count > 1
+          ? 'Padrões de etiqueta do cliente salvos.'
+          : 'Padrão de etiqueta do cliente salvo.',
+      );
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Não consegui salvar o padrão de etiqueta.');
