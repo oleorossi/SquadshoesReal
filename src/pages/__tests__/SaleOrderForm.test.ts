@@ -3,11 +3,14 @@ import {
   buildCopySeedPayload,
   buildItemsPurchaseSignature,
   buildSaleOrderEditorRevision,
+  buildSaleOrderProductionSignature,
   buildSaleOrderUpdateItems,
   clearSaleOrderDraft,
+  documentaryFieldsFromSnapshot,
   editorChangedDuringSave,
   mapLoadedSaleOrderItem,
   resolveSaleOrderMutationTarget,
+  saleOrderProductionFingerprintChanged,
 } from '../SaleOrderForm';
 import {
   type SaleOrderFormData,
@@ -35,6 +38,44 @@ describe('contenções do estado do editor de PV', () => {
       .not.toBe(base);
     expect(buildItemsPurchaseSignature([item], 'individual_master'))
       .not.toBe(base);
+  });
+
+  it('assinatura fabril ignora NF/OC e reage a ficha, caixa e terceirização', () => {
+    const base = buildSaleOrderProductionSignature({
+      items: [item],
+      packagingMode: 'colmeia',
+      boxGrouping: 'grade',
+      packagingProductId: 'pack-1',
+      packagingQuantity: 12,
+    });
+    expect(buildSaleOrderProductionSignature({
+      items: [{ ...item, fichas: 2 }],
+      packagingMode: 'colmeia',
+      boxGrouping: 'grade',
+      packagingProductId: 'pack-1',
+      packagingQuantity: 12,
+    })).not.toBe(base);
+    expect(buildSaleOrderProductionSignature({
+      items: [item],
+      packagingMode: 'colmeia',
+      boxGrouping: 'numeracao_unica',
+      packagingProductId: 'pack-1',
+      packagingQuantity: 12,
+    })).not.toBe(base);
+    expect(saleOrderProductionFingerprintChanged(base, base)).toBe(false);
+    expect(saleOrderProductionFingerprintChanged(null, base)).toBe(true);
+  });
+
+  it('hidrata NF e pedido do cliente como texto mesmo quando o snapshot manda número', () => {
+    expect(documentaryFieldsFromSnapshot({
+      client_order_number: 303223,
+      nfe: 294,
+      remessa: null,
+    })).toEqual({
+      client_order_number: '303223',
+      nfe: '294',
+      remessa: '',
+    });
   });
 
   it('não recoloca item retirado da produção na assinatura de compra', () => {

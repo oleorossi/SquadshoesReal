@@ -179,6 +179,61 @@ export function buildItemsPurchaseSignature(
   });
 }
 
+/** Fingerprint fabril: se não mudou, o save não cancela/recria OPs. */
+export function buildSaleOrderProductionSignature(input: {
+  items: SaleOrderItemFormData[];
+  packagingMode: SaleOrderFormData['packaging_mode'];
+  boxGrouping?: SaleOrderFormData['box_grouping'];
+  packagingProductId?: string | null;
+  packagingQuantity?: number | null;
+  outsourceToContractorId?: string | null;
+  outsourceToSector?: string | null;
+}): string {
+  return JSON.stringify({
+    packaging_mode: input.packagingMode || null,
+    box_grouping: input.boxGrouping || 'grade',
+    packaging_product_id: input.packagingProductId || null,
+    packaging_quantity: Number(input.packagingQuantity) || 0,
+    outsource_to_contractor_id: input.outsourceToContractorId || null,
+    outsource_to_sector: input.outsourceToSector || null,
+    items: filterProductionSaleOrderItems(input.items).filter((item) => item.reference_id).map((item) => ({
+      r: item.reference_id,
+      q: item.quantity,
+      c: (item.color || '').trim().toUpperCase(),
+      g: item.grade || {},
+      f: item.fichas || 1,
+      mv: item.material_variant_id || null,
+      s: Array.isArray(item.strap_colors)
+        ? item.strap_colors.map((line) => ({ color: line?.color || '', color_id: line?.color_id || '' }))
+        : [],
+      so: item.strap_sourcing || {},
+      t: [...(item.selected_terceirizacao_ids || [])].sort(),
+      tq: item.terceirizacao_quantities || {},
+      os: item.outsourced_sectors || {},
+    })).sort((left, right) => `${left.r}${left.c}${left.mv || ''}`.localeCompare(`${right.r}${right.c}${right.mv || ''}`)),
+  });
+}
+
+export function saleOrderProductionFingerprintChanged(
+  baseline: string | null,
+  current: string,
+): boolean {
+  return baseline === null || baseline !== current;
+}
+
+export function documentaryFieldsFromSnapshot(order: {
+  client_order_number?: unknown;
+  nfe?: unknown;
+  remessa?: unknown;
+}): Pick<SaleOrderFormData, 'client_order_number' | 'nfe' | 'remessa'> {
+  const asText = (value: unknown) => (value == null ? '' : String(value));
+  return {
+    client_order_number: asText(order.client_order_number),
+    nfe: asText(order.nfe),
+    remessa: asText(order.remessa),
+  };
+}
+
 export function buildSaleOrderEditorRevision(input: {
   form: SaleOrderFormData;
   items: SaleOrderItemFormData[];
@@ -819,6 +874,7 @@ export default function SaleOrderForm() {
       setItems([emptyItem()]);
       editorBaselineReadyRef.current = false;
       originalItemsSigRef.current = null;
+      originalProductionSigRef.current = null;
       originalDeadlineRef.current = null;
       originalItemReferenceByIdRef.current.clear();
       originalStrapSourcingRef.current.clear();
@@ -903,6 +959,7 @@ export default function SaleOrderForm() {
   };
 
   const originalItemsSigRef = useRef<string | null>(null);
+  const originalProductionSigRef = useRef<string | null>(null);
   const originalDeadlineRef = useRef<string | null>(null);
   const originalItemReferenceByIdRef = useRef(new Map<string, string>());
   // Versão observada junto do cabeçalho+itens. O save envia exatamente esta
@@ -913,6 +970,15 @@ export default function SaleOrderForm() {
   useEffect(() => {
     if (isEdit && originalItemsSigRef.current === null && items.some(i => i.reference_id)) {
       originalItemsSigRef.current = buildItemsPurchaseSignature(items, form.packaging_mode);
+      originalProductionSigRef.current = buildSaleOrderProductionSignature({
+        items,
+        packagingMode: form.packaging_mode,
+        boxGrouping: form.box_grouping,
+        packagingProductId,
+        packagingQuantity,
+        outsourceToContractorId: form.outsource_to_contractor_id,
+        outsourceToSector: form.outsource_to_sector,
+      });
       originalDeadlineRef.current = form.delivery_deadline || '';
     }
   }, [isEdit, items, form.packaging_mode]);
@@ -1102,12 +1168,12 @@ export default function SaleOrderForm() {
         // padrão e um novo save sobrescrevia a coluna com null. (PV-00140, 2026-06-16)
         company_id: (order as any).company_id || null,
         client_name: order.client_name || '', client_cnpj: order.client_cnpj || '',
-        client_contact: order.client_contact || '', client_order_number: order.client_order_number || '',
+        client_contact: order.client_contact || '',
+        ...documentaryFieldsFromSnapshot(order),
         representative: rep?.id || (order as any).representative_id || '',
         payment_condition: order.payment_condition || '', delivery_deadline: order.delivery_deadline || '',
         delivery_week: (order as any).delivery_week || '', delivery_month: (order as any).delivery_month || '',
         notes: order.notes || '', status: order.status || 'Pendente',
-        nfe: order.nfe || '', remessa: order.remessa || '',
         is_factoring: (order as any).is_factoring || false,
         factoring_config_id: (order as any).factoring_config_id || '',
         packaging_mode: (order as any).packaging_mode || 'colmeia',
@@ -1155,6 +1221,15 @@ export default function SaleOrderForm() {
         nextItems = mapped;
       }
       originalItemsSigRef.current = buildItemsPurchaseSignature(nextItems, nextForm.packaging_mode);
+      originalProductionSigRef.current = buildSaleOrderProductionSignature({
+        items: nextItems,
+        packagingMode: nextForm.packaging_mode,
+        boxGrouping: nextForm.box_grouping,
+        packagingProductId: nextPackagingProductId,
+        packagingQuantity: nextPackagingQuantity,
+        outsourceToContractorId: nextForm.outsource_to_contractor_id,
+        outsourceToSector: nextForm.outsource_to_sector,
+      });
       originalDeadlineRef.current = nextForm.delivery_deadline || '';
       originalItemReferenceByIdRef.current = new Map(nextItems.flatMap((item) =>
         item.id ? [[item.id, item.reference_id] as const] : []));
@@ -1678,11 +1753,21 @@ export default function SaleOrderForm() {
       return;
     }
 
-    // Pre-check em edição: se existem OPs em produção avançada vinculadas a
-    // este PV, abre dialog de confirmação ao invés de deixar o guard do
-    // useUpdateSaleOrder falhar com toast genérico. O dialog oferece batch
-    // cancel + re-tentativa em 1 clique.
-    if (isEdit && id) {
+    // Pre-check em edição: OPs avançadas só pedem confirmação quando a
+    // demanda/embalagem/terceirização mudou. NF, OC, notas e cliente não
+    // reescrevem OP (PV-00194).
+    if (isEdit && id && saleOrderProductionFingerprintChanged(
+      originalProductionSigRef.current,
+      buildSaleOrderProductionSignature({
+        items,
+        packagingMode: f.packaging_mode,
+        boxGrouping: f.box_grouping,
+        packagingProductId,
+        packagingQuantity,
+        outsourceToContractorId: f.outsource_to_contractor_id,
+        outsourceToSector: f.outsource_to_sector,
+      }),
+    )) {
       const { data: blocking } = await supabase
         .from('orders')
         .select('id, order_number, status')
