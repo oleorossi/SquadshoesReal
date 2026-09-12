@@ -85,6 +85,8 @@ interface ProductionPointingInput {
    * para a segunda passagem após confirmação de warnings. */
   clientRequestId?: string;
   expectedStageUpdatedAt?: string;
+  /** Setores pulados (qty 0 / finalize) na mesma transação da origem. */
+  skipStageNames?: string[];
 }
 
 async function readPointingStageSnapshot(
@@ -389,6 +391,7 @@ export function useApontarProducao() {
         p_confirmed_warnings: p.confirmedWarnings ?? null,
         p_expected_stage_updated_at: p.expectedStageUpdatedAt,
         p_client_request_id: p.clientRequestId,
+        p_skip_stage_names: p.skipStageNames?.length ? p.skipStageNames : null,
       });
       if (error) throw error;
       return data as unknown as ApontarResult;

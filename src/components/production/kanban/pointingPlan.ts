@@ -344,22 +344,11 @@ export async function applyPointing(params: {
       : (skipped.length ? `${origin}, pulando: ${skipped.join(', ')}` : origin),
     finalize: willComplete,
     confirmedWarnings,
+    skipStageNames: skipped.length ? skipped : undefined,
   });
   if (res?.needs_confirmation) {
     return { status: 'needs_confirmation', warnings: res.warnings || [] };
   }
 
-  for (const skippedSector of skipped) {
-    const skipRes = await apontar.mutateAsync({
-      orderId: card.q.order_id,
-      stageName: skippedSector,
-      quantity: 0,
-      note: `Setor pulado ${origin.toLowerCase()} (confirmado)`,
-      finalize: true,
-    });
-    if (skipRes?.needs_confirmation) {
-      return { status: 'needs_confirmation', warnings: skipRes.warnings || [] };
-    }
-  }
   return { status: 'ok', quantity };
 }

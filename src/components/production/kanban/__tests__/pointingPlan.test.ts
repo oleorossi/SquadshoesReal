@@ -566,10 +566,13 @@ describe('applyPointing — confirmação humana do pulo', () => {
     });
 
     expect(res.status).toBe('ok');
-    const calls = (apontar as unknown as { calls: Array<{ stageName: string; quantity: number; finalize?: boolean }> }).calls;
-    expect(calls).toHaveLength(2);
-    expect(calls[0]).toMatchObject({ stageName: 'Corte Palmilha', quantity: 100 });
-    expect(calls[1]).toMatchObject({ stageName: 'Corte Forração', quantity: 0, finalize: true });
+    const calls = (apontar as unknown as { calls: Array<{ stageName: string; quantity: number; skipStageNames?: string[] }> }).calls;
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      stageName: 'Corte Palmilha',
+      quantity: 100,
+      skipStageNames: ['Corte Forração'],
+    });
   });
 
   it('com aceite, grava a origem e fecha os pulados', async () => {
@@ -579,8 +582,9 @@ describe('applyPointing — confirmação humana do pulo', () => {
       card, plan, target: 'Aviamento', qty: 100, apontar, skipAcknowledged: true,
     });
     expect(res.status).toBe('ok');
-    // 1 apontamento na origem + 2 setores pulados
-    expect((apontar as unknown as { calls: unknown[] }).calls).toHaveLength(3);
+    const calls = (apontar as unknown as { calls: Array<{ skipStageNames?: string[] }> }).calls;
+    expect(calls).toHaveLength(1);
+    expect(calls[0].skipStageNames).toEqual(['Corte Forração', 'Costura']);
   });
 
   it('movimento sem pulo não pede aceite nenhum', async () => {
