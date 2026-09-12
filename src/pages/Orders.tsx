@@ -47,7 +47,8 @@ import SectorStageDialog from '@/components/orders/SectorStageDialog';
 import OrderConsumptionDialog from '@/components/orders/OrderConsumptionDialog';
 import { startOfWeek, endOfWeek, format, parseISO, isWithinInterval, addWeeks } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { normalizeForSearch, searchMatchesAny, splitSearchTerms } from '@/lib/searchUtils';
+import { normalizeForSearch, searchMatchesAny, searchMatchesAllTerms, splitSearchTerms, rankBySearchScore } from '@/lib/searchUtils';
+import { HighlightMatch } from '@/components/ui/highlight-match';
 // ExcelJS is imported dynamically in handleExportExcel to avoid large bundle on page load
 
 type StockCheck = { product_id: string; product_name: string; required: number; available: number; sufficient: boolean };
@@ -320,6 +321,8 @@ function getWeekOptions() {
   const [form, setForm] = useState<OrderFormData & { color: string; planned_start: string; planned_delivery: string; production_line: string; responsible: string; sale_order_id: string }>({
     reference_id: '', quantity: 1, notes: '', color: '', planned_start: '', planned_delivery: '', production_line: '', responsible: '', sale_order_id: '',
   });
+  const [opPvSearch, setOpPvSearch] = useState('');
+  const [opRefSearch, setOpRefSearch] = useState('');
 
   const normalizedStatusFilter = statusFilter;
 
@@ -331,6 +334,21 @@ function getWeekOptions() {
     });
     return Array.from(colors).sort();
   }, [orders]);
+
+  const filteredOpSaleOrders = useMemo(() => {
+    const active = (saleOrders as any[]).filter((s) => normalizeStatusValue(s.status) !== 'cancelado');
+    if (!opPvSearch.trim()) return active;
+    const hits = active.filter((s) =>
+      searchMatchesAllTerms(opPvSearch, s.client_name, s.order_number, s.client_order_number),
+    );
+    return rankBySearchScore(hits, opPvSearch, (s) => s.client_name, (s) => s.order_number, (s) => s.client_order_number);
+  }, [saleOrders, opPvSearch]);
+
+  const filteredOpReferences = useMemo(() => {
+    if (!opRefSearch.trim()) return selectableReferences;
+    const hits = selectableReferences.filter((r) => searchMatchesAllTerms(opRefSearch, r.code, r.name));
+    return rankBySearchScore(hits, opRefSearch, (r) => r.code, (r) => r.name);
+  }, [selectableReferences, opRefSearch]);
 
   const weekOptions = useMemo(() => getWeekOptions(), []);
 
@@ -1290,6 +1308,7 @@ function getWeekOptions() {
             orders={filteredOrders as any}
             stagesByOrderId={stagesByOrderId as any}
             saleOrderById={saleOrderById as any}
+            searchTerm={searchTerm}
             onSelectOrder={(o: any) => { setDetailOrders([o]); setDetailTitle(`OP ${o.order_number || '—'}`); setDetailDialogOpen(true); }}
           />
         ) : groupByEconomic && economicGroupedOrders ? (
@@ -1360,7 +1379,7 @@ function getWeekOptions() {
                                     onCheckedChange={() => toggleOrderSelection(order.id)}
                                     onClick={(e) => e.stopPropagation()}
                                   />
-                                  <span className="font-mono text-xs font-semibold">{(order as any).order_number}</span>
+                                  <span className="font-mono text-xs font-semibold"><HighlightMatch text={(order as any).order_number} term={searchTerm} /></span>
                                   {segmentByRefId[(order as any).reference_id] === 'Infantil' && (
                                     <span className="inline-flex items-center gap-0.5 h-4 pl-1 pr-1.5 rounded text-xs uppercase font-bold bg-pink-500/15 text-pink-700 dark:text-pink-300 border border-pink-500/40">
                                       <Baby className="h-3 w-3" weight="fill" /> Infantil
@@ -1429,7 +1448,7 @@ function getWeekOptions() {
                               onCheckedChange={() => toggleOrderSelection(order.id)}
                               onClick={(e) => e.stopPropagation()}
                             />
-                            <span className="font-mono text-sm font-semibold tabular-nums">{(order as any).order_number}</span>
+                            <span className="font-mono text-sm font-semibold tabular-nums"><HighlightMatch text={(order as any).order_number} term={searchTerm} /></span>
                             {segmentByRefId[(order as any).reference_id] === 'Infantil' && (
                               <span className="inline-flex items-center gap-0.5 h-4 pl-1 pr-1.5 rounded text-xs uppercase font-bold bg-pink-500/15 text-pink-700 dark:text-pink-300 border border-pink-500/40">
                                 <Baby className="h-3 w-3" weight="fill" /> Infantil
@@ -1517,13 +1536,13 @@ function getWeekOptions() {
                               <span className="shrink-0 cursor-pointer p-1 -m-1" onClick={(e) => { e.stopPropagation(); toggleOrderSelection(order.id); }}>
                                 {selectedOrderIds.has(order.id) ? <CheckSquare className="h-4 w-4 text-primary" /> : <Square className="h-4 w-4 text-muted-foreground" />}
                               </span>
-                              <span className="font-mono text-sm font-semibold tabular-nums">{(order as any).order_number || '—'}</span>
+                              <span className="font-mono text-sm font-semibold tabular-nums"><HighlightMatch text={(order as any).order_number || '—'} term={searchTerm} /></span>
                               {segmentByRefId[(order as any).reference_id] === 'Infantil' && (
                                 <span className="inline-flex items-center gap-0.5 h-4 pl-1 pr-1.5 rounded text-xs uppercase font-bold bg-pink-500/15 text-pink-700 dark:text-pink-300 border border-pink-500/40">
                                   <Baby className="h-3 w-3" weight="fill" /> Infantil
                                 </span>
                               )}
-                              <span className="font-medium">{(order as any).technical_sheets?.name ?? '—'}</span>
+                              <span className="font-medium"><HighlightMatch text={(order as any).technical_sheets?.name ?? '—'} term={searchTerm} /></span>
                               <span className="text-sm text-muted-foreground font-mono tabular-nums">{order.quantity} pares</span>
                               {(order as any).color && (
                                 <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -1631,8 +1650,8 @@ function getWeekOptions() {
                                   onCheckedChange={() => toggleOrderSelection(order.id)}
                                   onClick={(e) => e.stopPropagation()}
                                 />
-                                <span className="font-mono text-sm font-semibold tabular-nums">{(order as any).order_number}</span>
-                                <span className="text-sm font-medium">{(order as any).technical_sheets?.name ?? '—'}</span>
+                                <span className="font-mono text-sm font-semibold tabular-nums"><HighlightMatch text={(order as any).order_number} term={searchTerm} /></span>
+                                <span className="text-sm font-medium"><HighlightMatch text={(order as any).technical_sheets?.name ?? '—'} term={searchTerm} /></span>
                                 <span className="text-sm text-muted-foreground font-mono tabular-nums">{order.quantity} pares</span>
                                 {(order as any).color && (
                                   <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -1876,21 +1895,19 @@ function getWeekOptions() {
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-[min(450px,calc(100vw-2rem))] p-0" align="start">
-                    <Command>
-                      <CommandInput placeholder="Digite o nome do cliente ou nº do pedido..." />
+                    <Command shouldFilter={false}>
+                      <CommandInput
+                        placeholder="Digite o nome do cliente ou nº do pedido..."
+                        value={opPvSearch}
+                        onValueChange={setOpPvSearch}
+                      />
                       <CommandList>
                         <CommandEmpty>Nenhum pedido encontrado.</CommandEmpty>
                         <CommandGroup>
-                          {saleOrders
-                            // Canônico do PV é 'Cancelado' (maiúsculo) — o
-                            // filtro comparava só o minúsculo, então PV
-                            // cancelado continuava selecionável. Normaliza
-                            // acento/caixa pelo helper local da página.
-                            .filter((s: any) => normalizeStatusValue(s.status) !== 'cancelado')
-                            .map((s: any) => (
+                          {filteredOpSaleOrders.map((s: any) => (
                               <CommandItem
                                 key={s.id}
-                                value={`${s.client_name} ${s.order_number} ${s.client_order_number || ''}`}
+                                value={s.id}
                                 onSelect={() => setForm(f => ({ ...f, sale_order_id: s.id }))}
                               >
                                 <Check
@@ -1900,8 +1917,11 @@ function getWeekOptions() {
                                   )}
                                 />
                                 <div className="flex flex-col">
-                                  <span className="font-medium">{s.client_name}</span>
-                                  <span className="text-xs text-muted-foreground">Ped. {s.order_number}{s.client_order_number ? ` • Ref. ${s.client_order_number}` : ''}</span>
+                                  <span className="font-medium"><HighlightMatch text={s.client_name} term={opPvSearch} /></span>
+                                  <span className="text-xs text-muted-foreground">
+                                    Ped. <HighlightMatch text={s.order_number} term={opPvSearch} />
+                                    {s.client_order_number ? <> • Ref. <HighlightMatch text={s.client_order_number} term={opPvSearch} /></> : null}
+                                  </span>
                                 </div>
                               </CommandItem>
                             ))}
@@ -1928,15 +1948,19 @@ function getWeekOptions() {
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-[min(450px,calc(100vw-2rem))] p-0" align="start">
-                    <Command>
-                      <CommandInput placeholder="Buscar referência..." />
+                    <Command shouldFilter={false}>
+                      <CommandInput
+                        placeholder="Buscar referência..."
+                        value={opRefSearch}
+                        onValueChange={setOpRefSearch}
+                      />
                       <CommandList>
                         <CommandEmpty>Nenhuma referência encontrada.</CommandEmpty>
                         <CommandGroup>
-                          {selectableReferences.map((r) => (
+                          {filteredOpReferences.map((r) => (
                             <CommandItem
                               key={r.id}
-                              value={`${r.code} ${r.name}`}
+                              value={r.id}
                               onSelect={() => setForm(f => ({ ...f, reference_id: r.id }))}
                             >
                               <Check
@@ -1945,7 +1969,7 @@ function getWeekOptions() {
                                   form.reference_id === r.id ? "opacity-100" : "opacity-0"
                                 )}
                               />
-                              {r.code} - {r.name}
+                              <HighlightMatch text={`${r.code} - ${r.name}`} term={opRefSearch} />
                             </CommandItem>
                           ))}
                         </CommandGroup>
@@ -1999,7 +2023,7 @@ function getWeekOptions() {
                                   form.color === c ? "opacity-100" : "opacity-0"
                                 )}
                               />
-                              {c}
+                              <HighlightMatch text={c} term={form.color} />
                             </CommandItem>
                           ))}
                         </CommandGroup>

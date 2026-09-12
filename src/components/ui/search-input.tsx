@@ -184,14 +184,21 @@ export const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(
           value={local}
           onChange={(e) => handleChange(e.target.value)}
           onKeyDown={(e) => {
-            // Consumidor primeiro (ex.: SmartSearch fecha o popover com Esc);
-            // se ele tratou (preventDefault), não limpamos por cima.
+            // Consumidor primeiro (ex.: SmartSearch fecha o popover com Esc/Enter);
+            // se ele tratou (preventDefault), não limpamos nem desfoca por cima.
             onKeyDown?.(e);
             if (e.defaultPrevented) return;
             if (e.key === 'Escape' && local) {
               e.preventDefault();
               e.stopPropagation();
               clear();
+              return;
+            }
+            // Enter confirma o termo já filtrado e tira o foco — sem dropdown,
+            // não há o que selecionar; evita também submit acidental de form.
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              inputRef.current?.blur();
             }
           }}
           onFocus={onFocus}

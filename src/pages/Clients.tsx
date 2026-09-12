@@ -37,6 +37,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { validateCnpj } from '@/lib/validateCnpj';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { SearchInput } from '@/components/ui/search-input';
+import { HighlightMatch } from '@/components/ui/highlight-match';
 import { ListPagination } from '@/components/ui/list-pagination';
 import { useCan } from '@/hooks/useAccessControl';
 
@@ -495,12 +496,12 @@ export default function Clients() {
                                       </button>
                                     )}
                                     <div>
-                                      <div>{c.razao_social}</div>
-                                      {c.nome_fantasia && <div className="text-xs text-muted-foreground">{c.nome_fantasia}</div>}
+                                      <div><HighlightMatch text={c.razao_social} term={search} /></div>
+                                      {c.nome_fantasia && <div className="text-xs text-muted-foreground"><HighlightMatch text={c.nome_fantasia} term={search} /></div>}
                                     </div>
                                   </div>
                                 </TableCell>
-                                <TableCell className="font-mono text-sm tabular-nums">{c.cnpj || '—'}</TableCell>
+                                <TableCell className="font-mono text-sm tabular-nums">{c.cnpj ? <HighlightMatch text={c.cnpj} term={search} /> : '—'}</TableCell>
                                 <TableCell className="text-sm">{[c.cidade, c.estado].filter(Boolean).join('/') || '—'}</TableCell>
                                 <TableCell className="text-sm tabular-nums">{c.telefone || '—'}</TableCell>
                                 <TableCell className="text-sm">{c.email || '—'}</TableCell>
@@ -768,9 +769,11 @@ export default function Clients() {
                     className={cn("w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm hover:bg-muted/50 transition-colors", selected && "bg-primary/5")}>
                     <Checkbox checked={selected} className="pointer-events-none" />
                     <div className="flex-1 min-w-0">
-                      <div className="font-medium truncate">{c.razao_social}</div>
+                      <div className="font-medium truncate"><HighlightMatch text={c.razao_social} term={storeSearch} /></div>
                       <div className="text-xs text-muted-foreground truncate">
-                        {[c.nome_fantasia, c.cnpj, c.cidade].filter(Boolean).join(' · ')}
+                        {[c.nome_fantasia, c.cnpj, c.cidade].filter(Boolean).join(' · ')
+                          ? <HighlightMatch text={[c.nome_fantasia, c.cnpj, c.cidade].filter(Boolean).join(' · ')} term={storeSearch} />
+                          : null}
                       </div>
                     </div>
                   </button>

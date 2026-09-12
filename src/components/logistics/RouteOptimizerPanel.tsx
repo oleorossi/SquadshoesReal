@@ -11,6 +11,7 @@ import { Truck, Trash as Trash2, CircleNotch as Loader2, NavigationArrow as Navi
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
+import { HighlightMatch } from '@/components/ui/highlight-match';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import {
@@ -694,7 +695,7 @@ export function RouteOptimizerPanel() {
                             >
                               <Check className={cn('h-4 w-4 mt-0.5 shrink-0', isSelected ? 'opacity-100' : 'opacity-0')} />
                               <div className="min-w-0">
-                                <p className="text-sm font-medium truncate">{client.label}</p>
+                                <p className="text-sm font-medium truncate"><HighlightMatch text={client.label} term={searchTerm} /></p>
                                 <p className="text-xs text-muted-foreground truncate">
                                   {[client.cidade, client.estado].filter(Boolean).join(' - ') || 'Cidade/UF pendente'}
                                 </p>

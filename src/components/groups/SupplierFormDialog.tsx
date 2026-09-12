@@ -12,7 +12,8 @@ import { MagnifyingGlass as Search, CircleNotch as Loader2, Check } from '@phosp
 import { useSuppliers, type Supplier } from '@/hooks/useSuppliers';
 import type { GroupSupplier } from '@/hooks/useGroupSuppliers';
 import { cn } from '@/lib/utils';
-import { SEARCH_RENDER_CAP, capSearchResults, searchMatchesAllTerms, searchRefineHint } from '@/lib/searchUtils';
+import { SEARCH_RENDER_CAP, capSearchResults, searchMatchesAllTerms, searchRefineHint, rankBySearchScore } from '@/lib/searchUtils';
+import { HighlightMatch } from '@/components/ui/highlight-match';
 
 type Props = {
   open: boolean;
@@ -89,8 +90,14 @@ export default function SupplierFormDialog({ open, onOpenChange, editing, onSubm
   const activeSuppliers = useMemo(() => suppliers.filter(s => s.active), [suppliers]);
   const filteredSuppliers = useMemo(() => {
     if (!supplierSearch.trim()) return activeSuppliers;
-    return activeSuppliers.filter(s =>
-      searchMatchesAllTerms(supplierSearch, s.name, s.trade_name, s.cnpj),
+    return rankBySearchScore(
+      activeSuppliers.filter(s =>
+        searchMatchesAllTerms(supplierSearch, s.name, s.trade_name, s.cnpj),
+      ),
+      supplierSearch,
+      (s) => s.name,
+      (s) => s.trade_name,
+      (s) => s.cnpj,
     );
   }, [activeSuppliers, supplierSearch]);
   const supplierCap = useMemo(
@@ -172,9 +179,9 @@ export default function SupplierFormDialog({ open, onOpenChange, editing, onSubm
                                   form.supplier_cnpj === supplier.cnpj ? "opacity-100" : "opacity-0"
                                 )} />
                                 <div className="flex-1 min-w-0">
-                                  <p className="font-medium truncate">{supplier.name}</p>
+                                  <p className="font-medium truncate"><HighlightMatch text={supplier.name} term={supplierSearch} /></p>
                                   {supplier.cnpj && (
-                                    <p className="text-xs text-muted-foreground">{supplier.cnpj}</p>
+                                    <p className="text-xs text-muted-foreground"><HighlightMatch text={supplier.cnpj} term={supplierSearch} /></p>
                                   )}
                                 </div>
                               </div>

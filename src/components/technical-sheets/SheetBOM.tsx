@@ -30,7 +30,8 @@ import {
 import { bomMaterialCostPerPair } from '@/lib/materialConsumption';
 import { needsWidthForConversion, effectiveConversionFactor } from '@/lib/purchaseConversion';
 import { CONSUMPTION_SECTORS } from '@/lib/consumptionSector';
-import { normalizeForSearch } from '@/lib/searchUtils';
+import { normalizeForSearch, searchMatchesAllTerms, rankBySearchScore } from '@/lib/searchUtils';
+import { HighlightMatch } from '@/components/ui/highlight-match';
 import { getSizesForCategory } from '@/lib/technicalSheetSizes';
 import { cn, safeToFixed } from '@/lib/utils';
 import { SectionTitle } from '@/components/technical-sheets/sheetFormFields';
@@ -63,6 +64,7 @@ export function SheetBOM({ sheetId, safetyPct, onSafetyChange, shoeCategory }: {
   const [editing, setEditing] = useState<{ id: string; data: SheetMaterialFormData } | null>(null);
   const [form, setForm] = useState(emptyMaterialForm);
   const [showCopyDialog, setShowCopyDialog] = useState(false);
+  const [groupSearch, setGroupSearch] = useState('');
 
   const componentSheetMap = useMemo(() => {
     const map: Record<string, (typeof componentSheets)[number]> = {};
@@ -72,6 +74,14 @@ export function SheetBOM({ sheetId, safetyPct, onSafetyChange, shoeCategory }: {
 
   const usedProductIds = new Set(materials.map(m => m.product_id));
   const usedGroupIds = new Set(materials.map((m: any) => m.group_id).filter(Boolean));
+  const unusedGroups = useMemo(() => {
+    const unused = groups.filter((g: any) => !usedGroupIds.has(g.id));
+    if (!groupSearch.trim()) return unused;
+    const hits = unused.filter((g: any) =>
+      searchMatchesAllTerms(groupSearch, g.name, g.description, g.colors),
+    );
+    return rankBySearchScore(hits, groupSearch, (g: any) => g.name, (g: any) => g.description);
+  }, [groups, materials, groupSearch]);
   const availableProducts = products.filter(p => p.active);
   const otherSheets = sheets.filter((s) => s.id !== sheetId && !(
     s as typeof s & { retired_at?: string | null }
@@ -403,7 +413,7 @@ export function SheetBOM({ sheetId, safetyPct, onSafetyChange, shoeCategory }: {
             {/* Group selector */}
             <div className="col-span-2 sm:col-span-3">
               <Label className="text-xs">Grupo de Material</Label>
-              <Popover>
+              <Popover onOpenChange={(open) => { if (!open) setGroupSearch(''); }}>
                 <PopoverTrigger asChild>
                   <Button variant="outline" role="combobox" className="mt-1 h-9 w-full justify-between text-sm font-normal">
                     {form.group_id ? (groups.find((g: any) => g.id === form.group_id)?.name || 'Grupo selecionado') : 'Selecionar grupo...'}
@@ -412,17 +422,17 @@ export function SheetBOM({ sheetId, safetyPct, onSafetyChange, shoeCategory }: {
                 </PopoverTrigger>
                 <PopoverContent className="w-[min(400px,calc(100vw-2rem))] p-0" align="start">
                   <Command shouldFilter={false}>
-                    <CommandInput placeholder="Buscar grupo..." />
+                    <CommandInput placeholder="Buscar grupo..." value={groupSearch} onValueChange={setGroupSearch} />
                     <CommandList>
                       <CommandEmpty>Nenhum grupo encontrado</CommandEmpty>
                       <CommandGroup>
-                        {groups.filter((g: any) => !usedGroupIds.has(g.id)).map((g: any) => (
+                        {unusedGroups.map((g: any) => (
                           <CommandItem key={g.id} value={g.id} onSelect={() => handleGroupSelect(g.id)}>
                             <Check className={cn("mr-2 h-4 w-4", form.group_id === g.id ? "opacity-100" : "opacity-0")} />
                             <div className="flex flex-col">
-                              <span className="text-sm">{g.name}</span>
-                              {g.description && <span className="text-xs text-muted-foreground">{g.description}</span>}
-                              {g.colors && <span className="text-xs text-muted-foreground">Cores: {g.colors}</span>}
+                              <span className="text-sm"><HighlightMatch text={g.name} term={groupSearch} /></span>
+                              {g.description && <span className="text-xs text-muted-foreground"><HighlightMatch text={g.description} term={groupSearch} /></span>}
+                              {g.colors && <span className="text-xs text-muted-foreground">Cores: <HighlightMatch text={g.colors} term={groupSearch} /></span>}
                             </div>
                           </CommandItem>
                         ))}

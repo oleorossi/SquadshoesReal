@@ -19,6 +19,7 @@ import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { HighlightMatch } from '@/components/ui/highlight-match';
 import { fetchAllPages } from '@/lib/supabasePaginate';
 
 interface StockRow {
@@ -449,18 +450,18 @@ export default function StockReservations() {
                           <div className="flex items-center gap-2">
                             {isAlert && <AlertTriangle className="h-3.5 w-3.5 text-destructive shrink-0" />}
                             <div>
-                              <div className="font-medium">{r.name}</div>
+                              <div className="font-medium"><HighlightMatch text={r.name} term={search} /></div>
                               {r.color && (
-                                <div className="text-xs text-muted-foreground">{r.color}</div>
+                                <div className="text-xs text-muted-foreground"><HighlightMatch text={r.color} term={search} /></div>
                               )}
                             </div>
                           </div>
                         </TableCell>
                         <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
-                          {r.sku || '—'}
+                          {r.sku ? <HighlightMatch text={r.sku} term={search} /> : '—'}
                         </TableCell>
                         <TableCell className="hidden lg:table-cell text-sm text-muted-foreground">
-                          {r.category || '—'}
+                          {r.category ? <HighlightMatch text={r.category} term={search} /> : '—'}
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm">
                           {fmt(r.quantity)} <span className="text-xs text-muted-foreground">{r.unit || ''}</span>

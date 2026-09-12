@@ -64,6 +64,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { SearchInput } from '@/components/ui/search-input';
 import { SmartSearch, SmartSearchSuggestion } from '@/components/ui/smart-search';
+import { HighlightMatch } from '@/components/ui/highlight-match';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -2044,7 +2045,7 @@ export default function SaleOrders() {
                               onClick={(e) => { e.stopPropagation(); openOrderDetails(order); }}
                               className="font-mono text-sm text-primary hover:underline font-bold text-left w-fit"
                             >
-                              {order.order_number || '—'}
+                              <HighlightMatch text={order.order_number || '—'} term={searchTerm} />
                             </button>
                             {hasEmittedNfe && (
                               <Badge variant="outline" className="h-4 px-1.5 text-xs uppercase font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40">
@@ -2071,12 +2072,18 @@ export default function SaleOrders() {
                         </div>
                       </TableCell>
                       <TableCell className="font-mono text-xs text-muted-foreground tabular-nums">
-                        {order.client_order_number || '—'}
+                        {order.client_order_number
+                          ? <HighlightMatch text={order.client_order_number} term={searchTerm} />
+                          : '—'}
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-col max-w-[220px]">
-                          <span className="font-semibold text-sm truncate">{order.client_name}</span>
-                          <span className="text-xs text-muted-foreground truncate">{order.client_cnpj || '—'}</span>
+                          <span className="font-semibold text-sm truncate"><HighlightMatch text={order.client_name} term={searchTerm} /></span>
+                          <span className="text-xs text-muted-foreground truncate">
+                            {order.client_cnpj
+                              ? <HighlightMatch text={order.client_cnpj} term={searchTerm} />
+                              : '—'}
+                          </span>
                         </div>
                       </TableCell>
                       <TableCell>
