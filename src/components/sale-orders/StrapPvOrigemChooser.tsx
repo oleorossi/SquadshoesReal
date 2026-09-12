@@ -60,10 +60,11 @@ export default function StrapPvOrigemChooser({
 interface BulkProps {
   onAllFactory: () => void;
   onAllContractor: () => void;
+  onAllBuyReady: () => void;
   disabled?: boolean;
 }
 
-export function StrapPvOrigemBulkActions({ onAllFactory, onAllContractor, disabled }: BulkProps) {
+export function StrapPvOrigemBulkActions({ onAllFactory, onAllContractor, onAllBuyReady, disabled }: BulkProps) {
   return (
     <div className="flex flex-wrap gap-2">
       <Button type="button" variant="outline" size="sm" className="h-7 text-[10px]" disabled={disabled} onClick={onAllFactory}>
@@ -71,6 +72,9 @@ export function StrapPvOrigemBulkActions({ onAllFactory, onAllContractor, disabl
       </Button>
       <Button type="button" variant="outline" size="sm" className="h-7 text-[10px]" disabled={disabled} onClick={onAllContractor}>
         Todas no prestador
+      </Button>
+      <Button type="button" variant="outline" size="sm" className="h-7 text-[10px]" disabled={disabled} onClick={onAllBuyReady}>
+        Todas tira pronta
       </Button>
     </div>
   );

@@ -1,6 +1,11 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
   applyDefaultStrapPvOrigemChoices,
+  applyStrapPvOrigemChangesToItems,
+  collectStrapPvOrigemChanges,
   DEFAULT_STRAP_PV_ORIGEM,
+  firstMissingStrapPvOrigemMessage,
   groupStrapHubIncompleteByMeasure,
   isStrapPvOrigemChoiceLocked,
   listMissingStrapPvOrigemChoices,
@@ -66,6 +71,53 @@ describe('strapPvOrigem', () => {
       productionExcluded: true,
       pvOrigem: null,
     })).toBe(true);
+  });
+
+  it('propaga a origem da posição para as outras cores do pedido', () => {
+    const lineId = 'e64b24f5-d567-4913-bd59-b6e74f588c58';
+    const previous = [
+      { label: 'TIRA 2', technical_strap_line_id: lineId, measure_id: 'm1', pv_origem: null },
+    ];
+    const next = [
+      { label: 'TIRA 2', technical_strap_line_id: lineId, measure_id: 'm1', pv_origem: 'sku_acabado' as const },
+    ];
+    const changes = collectStrapPvOrigemChanges(previous, next);
+    expect(changes).toEqual([{ lineId, origem: 'sku_acabado' }]);
+    const items = applyStrapPvOrigemChangesToItems(
+      [
+        { color: 'OFF WHITE', strap_colors: next },
+        { color: 'NEW WHISKY', strap_colors: previous },
+        { color: 'ROSADO', strap_colors: previous },
+      ],
+      0,
+      changes,
+    );
+    expect(items.map((item) => item.strap_colors?.[0]?.pv_origem)).toEqual([
+      'sku_acabado',
+      'sku_acabado',
+      'sku_acabado',
+    ]);
+  });
+
+  it('o toast de origem ausente nomeia as cores que ainda estão vazias', () => {
+    const measures = [{ id: 'm1', origem_padrao: 'escolhe_no_pv' }];
+    expect(firstMissingStrapPvOrigemMessage(
+      [
+        {
+          color: 'OFF WHITE',
+          strap_colors: [{ label: 'TIRA 2', measure_id: 'm1', pv_origem: 'sku_acabado' }],
+        },
+        {
+          color: 'NEW WHISKY',
+          strap_colors: [{ label: 'TIRA 2', measure_id: 'm1', pv_origem: null }],
+        },
+        {
+          color: 'ROSADO',
+          strap_colors: [{ label: 'TIRA 2', measure_id: 'm1' }],
+        },
+      ],
+      measures,
+    )).toBe('TIRA 2: escolha Fábrica, Prestador ou Fornecedor em NEW WHISKY, ROSADO antes de salvar.');
   });
 
   it('escolhe_no_pv aceita sku_acabado como origem explícita', () => {
@@ -186,5 +238,33 @@ describe('strapPvOrigem', () => {
       { id: 'm3', origem_padrao: 'sempre_sku_acabado' },
       { id: 'm4' },
     ]).changed).toBe(false);
+  });
+});
+
+describe('origem da tira no PV — uma escolha vale para todas as cores', () => {
+  it('o painel copia pv_origem para os outros itens no mesmo write', () => {
+    const panel = readFileSync(
+      resolve(__dirname, '../../components/sale-orders/SaleOrderFormPanel.tsx'),
+      'utf8',
+    );
+    expect(panel).toContain('collectStrapPvOrigemChanges');
+    expect(panel).toContain('applyStrapPvOrigemChangesToItems');
+  });
+
+  it('o save nomeia as cores que ainda estão sem origem', () => {
+    const page = readFileSync(
+      resolve(__dirname, '../../pages/SaleOrderForm.tsx'),
+      'utf8',
+    );
+    expect(page).toContain('firstMissingStrapPvOrigemMessage');
+  });
+
+  it('o item oferece tira pronta em lote e avisa que a origem vale para todas as cores', () => {
+    const form = readFileSync(
+      resolve(__dirname, '../../components/sale-orders/SaleOrderItemForm.tsx'),
+      'utf8',
+    );
+    expect(form).toContain('onAllBuyReady');
+    expect(form).toContain('A origem vale para todas as cores do pedido.');
   });
 });

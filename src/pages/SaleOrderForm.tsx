@@ -91,7 +91,7 @@ import {
 import { strapColorMode } from '@/lib/technicalStrapLines';
 import { useArtisanalStrapCatalog } from '@/hooks/useArtisanalStraps';
 import {
-  listMissingStrapPvOrigemChoices,
+  firstMissingStrapPvOrigemMessage,
   listStrapHubIncompleteForOrigem,
   type StrapHubIncompleteIssue,
 } from '@/lib/strapPvOrigem';
@@ -502,15 +502,7 @@ export default function SaleOrderForm() {
   const assertStrapOrigemChoiceReady = (
     productionItems: SaleOrderItemFormData[],
     measures = buildStrapMeasuresForGuards(),
-  ): string | null => {
-    for (const item of productionItems) {
-      const straps = Array.isArray(item.strap_colors) ? item.strap_colors : [];
-      if (straps.length === 0) continue;
-      const missing = listMissingStrapPvOrigemChoices(straps, measures);
-      if (missing[0]) return missing[0].message;
-    }
-    return null;
-  };
+  ): string | null => firstMissingStrapPvOrigemMessage(productionItems, measures);
 
   const openHubIncompleteIfNeeded = (
     productionItems: SaleOrderItemFormData[],

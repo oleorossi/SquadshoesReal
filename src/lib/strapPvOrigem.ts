@@ -1,7 +1,10 @@
 import {
   normalizeStrapOrigemPadrao,
 } from '@/lib/strapBaseNapaPeel';
-import type { StrapPvOrigem } from '@/lib/technicalStrapLines';
+import {
+  technicalStrapLineId,
+  type StrapPvOrigem,
+} from '@/lib/technicalStrapLines';
 
 export type EffectiveStrapPvOrigem = StrapPvOrigem;
 
@@ -12,9 +15,21 @@ export type EffectiveStrapPvOrigem = StrapPvOrigem;
 export const DEFAULT_STRAP_PV_ORIGEM: StrapPvOrigem = 'prestador';
 
 export interface StrapPvOrigemLineLike {
+  id?: string | null;
   label?: string | null;
   measure_id?: string | null;
   pv_origem?: StrapPvOrigem | string | null;
+  technical_strap_line_id?: string | null;
+}
+
+export interface StrapPvOrigemItemLike {
+  color?: string | null;
+  strap_colors?: StrapPvOrigemLineLike[] | null;
+}
+
+export interface StrapPvOrigemChange {
+  lineId: string;
+  origem: StrapPvOrigem;
 }
 
 export interface StrapPvOrigemMeasureLike {
@@ -77,6 +92,97 @@ function hasExplicitStrapPvOrigem(
   line: StrapPvOrigemLineLike | null | undefined,
 ): line is StrapPvOrigemLineLike & { pv_origem: StrapPvOrigem } {
   return isExplicitStrapPvOrigem(line?.pv_origem);
+}
+
+/** Diff de pv_origem por UUID da linha técnica — usado pra copiar a escolha às outras cores. */
+export function collectStrapPvOrigemChanges(
+  previous: readonly StrapPvOrigemLineLike[] | null | undefined,
+  next: readonly StrapPvOrigemLineLike[] | null | undefined,
+): StrapPvOrigemChange[] {
+  const previousById = new Map<string, unknown>();
+  for (const line of previous || []) {
+    const lineId = technicalStrapLineId({
+      id: line.id,
+      technical_strap_line_id: line.technical_strap_line_id,
+    });
+    if (lineId) previousById.set(lineId, line.pv_origem);
+  }
+  const changes: StrapPvOrigemChange[] = [];
+  const seen = new Set<string>();
+  for (const line of next || []) {
+    const lineId = technicalStrapLineId({
+      id: line.id,
+      technical_strap_line_id: line.technical_strap_line_id,
+    });
+    if (!lineId || !isExplicitStrapPvOrigem(line.pv_origem) || seen.has(lineId)) continue;
+    if (previousById.get(lineId) === line.pv_origem) continue;
+    seen.add(lineId);
+    changes.push({ lineId, origem: line.pv_origem });
+  }
+  return changes;
+}
+
+/**
+ * A origem da posição (TIRA 2, TRASEIRA…) é do pedido, não da cor.
+ * Sem isso, escolher em OFF WHITE deixa NEW WHISKY/ROSADO vazios e o save
+ * devolve o mesmo toast (PV-00194).
+ */
+export function applyStrapPvOrigemChangesToItems<T extends StrapPvOrigemItemLike>(
+  items: readonly T[],
+  sourceIndex: number,
+  changes: readonly StrapPvOrigemChange[],
+  isExcluded?: (item: T, index: number) => boolean,
+): T[] {
+  if (changes.length === 0) return [...items];
+  const byLine = new Map(changes.map((change) => [change.lineId, change.origem]));
+  return items.map((item, index) => {
+    if (index === sourceIndex) return item;
+    if (isExcluded?.(item, index)) return item;
+    const straps = Array.isArray(item.strap_colors) ? item.strap_colors : [];
+    if (straps.length === 0) return item;
+    let changed = false;
+    const nextStraps = straps.map((line) => {
+      const lineId = technicalStrapLineId({
+        id: line.id,
+        technical_strap_line_id: line.technical_strap_line_id,
+      });
+      if (!lineId) return line;
+      const origem = byLine.get(lineId);
+      if (!origem || line.pv_origem === origem) return line;
+      changed = true;
+      return { ...line, pv_origem: origem };
+    });
+    return changed ? { ...item, strap_colors: nextStraps } : item;
+  });
+}
+
+/** Primeiro gap de origem, nomeando as cores que ainda estão vazias. */
+export function firstMissingStrapPvOrigemMessage(
+  items: readonly StrapPvOrigemItemLike[] | null | undefined,
+  measures: readonly StrapPvOrigemMeasureLike[] | null | undefined,
+): string | null {
+  const colorsByLabel = new Map<string, string[]>();
+  let firstLabel: string | null = null;
+  let firstMessage: string | null = null;
+  for (const item of items || []) {
+    const straps = Array.isArray(item.strap_colors) ? item.strap_colors : [];
+    if (straps.length === 0) continue;
+    const missing = listMissingStrapPvOrigemChoices(straps, measures);
+    const color = (item.color || 'sem cor').trim() || 'sem cor';
+    for (const issue of missing) {
+      if (!firstLabel) {
+        firstLabel = issue.label;
+        firstMessage = issue.message;
+      }
+      const colors = colorsByLabel.get(issue.label) || [];
+      if (!colors.includes(color)) colors.push(color);
+      colorsByLabel.set(issue.label, colors);
+    }
+  }
+  if (!firstLabel || !firstMessage) return null;
+  const colors = colorsByLabel.get(firstLabel) || [];
+  if (colors.length === 0) return firstMessage;
+  return `${firstLabel}: escolha Fábrica, Prestador ou Fornecedor em ${colors.join(', ')} antes de salvar.`;
 }
 
 /** Posições escolhe_no_pv sem pv_origem — bloqueiam save no desktop (spec).

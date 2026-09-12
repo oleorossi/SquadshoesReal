@@ -269,4 +269,9 @@ describe('SaleOrderItemForm — a lacuna vira um caminho clicável', () => {
       'disabled={preserveCommittedStrapSnapshot || productionExcluded}',
     );
   });
+
+  it('oferece aplicar tira pronta em lote nas posições escolhe_no_pv', () => {
+    expect(form).toContain('onAllBuyReady');
+    expect(form).toContain("pv_origem: 'sku_acabado'");
+  });
 });

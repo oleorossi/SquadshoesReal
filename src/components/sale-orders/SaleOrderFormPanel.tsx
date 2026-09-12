@@ -59,6 +59,10 @@ import {
 } from '@/lib/saleOrderStateMachine';
 import { applyClientCommercialDefaultsToForm } from '@/lib/saleOrderCommercialDefaults';
 import { strapColorMode, technicalStrapLineId } from '@/lib/technicalStrapLines';
+import {
+  applyStrapPvOrigemChangesToItems,
+  collectStrapPvOrigemChanges,
+} from '@/lib/strapPvOrigem';
 import { strapIdentityBasis } from '@/lib/strapIdentity';
 import {
   calculateFactoringDiscount,
@@ -1177,6 +1181,20 @@ export default function SaleOrderFormPanel({
            }
          }
        }
+       if (field === 'strap_colors' && Array.isArray(value)) {
+         const origemChanges = collectStrapPvOrigemChanges(
+           prev[idx]?.strap_colors,
+           value,
+         );
+         if (origemChanges.length > 0) {
+           return applyStrapPvOrigemChangesToItems(
+             next,
+             idx,
+             origemChanges,
+             (item) => isProductionExcludedSaleOrderItem(item),
+           );
+         }
+       }
        return next;
      });
      }, [references, setItems]);
@@ -1185,7 +1203,19 @@ export default function SaleOrderFormPanel({
   const updateItemFields = useCallback((idx: number, patch: Partial<SaleOrderItemFormData>) => {
     setItems(prev => {
       if (isProductionExcludedSaleOrderItem(prev[idx])) return prev;
-      return prev.map((item, i) => i === idx ? { ...item, ...patch } : item);
+      const next = prev.map((item, i) => i === idx ? { ...item, ...patch } : item);
+      if (!Array.isArray(patch.strap_colors)) return next;
+      const origemChanges = collectStrapPvOrigemChanges(
+        prev[idx]?.strap_colors,
+        patch.strap_colors,
+      );
+      if (origemChanges.length === 0) return next;
+      return applyStrapPvOrigemChangesToItems(
+        next,
+        idx,
+        origemChanges,
+        (item) => isProductionExcludedSaleOrderItem(item),
+      );
     });
   }, [setItems]);
 

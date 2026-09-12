@@ -2348,9 +2348,9 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                       ? 'O pedido prepara apenas as tiras internas com napa; as compradas prontas baixam o SKU acabado.'
                       : 'Ao salvar, o sistema resolve estas tiras pela napa-base da referência e pela origem configurada no catálogo.'}
                 </span>
-                {!preserveCommittedStrapSnapshot && (
+                {!productionExcluded && (
                   <StrapPvOrigemBulkActions
-                    disabled={productionExcluded || preserveCommittedStrapSnapshot}
+                    disabled={productionExcluded}
                     onAllFactory={() => {
                       const eligible = new Set(
                         straps
@@ -2422,6 +2422,48 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                         onUpdate(index, 'strap_sourcing', nextSourcing);
                       }
                     }}
+                    onAllBuyReady={() => {
+                      const eligible = new Set(
+                        straps
+                          .filter((strap) => {
+                            const measure = strapCatalog?.measures.find((entry) => entry.id === strap.measure_id);
+                            return normalizeStrapOrigemPadrao(measure?.origem_padrao) === 'escolhe_no_pv';
+                          })
+                          .map((strap) => technicalStrapLineId(strap))
+                          .filter((id): id is string => !!id),
+                      );
+                      if (eligible.size === 0) return;
+                      const updated = snapshotStraps.map((strap) => {
+                        const lineId = technicalStrapLineId(strap);
+                        if (!lineId || !eligible.has(lineId)) return strap;
+                        return { ...strap, pv_origem: 'sku_acabado' as const };
+                      });
+                      let nextSourcing = strapSourcingMap;
+                      updated.forEach((strap) => {
+                        const lineId = technicalStrapLineId(strap);
+                        if (!lineId || isPurchasedReadyStrap(strap)) return;
+                        if (strap.pv_origem !== 'sku_acabado') return;
+                        const preview = strapLineByKey.get(lineId);
+                        const colorId = preview?.colorId || strap.color_id || null;
+                        nextSourcing = preview?.strapVariantId && preview.canBuyReady && colorId
+                          ? setStrapSourcing(nextSourcing, lineId, {
+                            source_mode: 'buy_ready',
+                            color_id: colorId,
+                            strap_variant_id: preview.strapVariantId,
+                            recipe_id: null,
+                            gross_required_m: preview.strapRequiredM,
+                            required_at: preview.requiredAt,
+                            main_production_start: preview.mainProductionStart,
+                            schedule_revision: preview.scheduleRevision,
+                          })
+                          : setStrapSourcing(nextSourcing, lineId, null);
+                      });
+                      if (onUpdateFields) onUpdateFields(index, { strap_colors: updated, strap_sourcing: nextSourcing });
+                      else {
+                        onUpdate(index, 'strap_colors', updated);
+                        onUpdate(index, 'strap_sourcing', nextSourcing);
+                      }
+                    }}
                   />
                 )}
                 {!productionExcluded && (() => {
@@ -2434,6 +2476,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                     <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-2 text-[11px] leading-snug text-amber-800 dark:text-amber-300">
                       Escolha a origem em {missingOrigem.length} posição{missingOrigem.length === 1 ? '' : 'ões'}
                       {' '}antes de salvar ({missingOrigem.map((issue) => issue.label).join(', ')}).
+                      {' '}A origem vale para todas as cores do pedido.
                     </div>
                   );
                 })()}
