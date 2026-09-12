@@ -42,7 +42,7 @@ import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { SearchInput } from '@/components/ui/search-input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SoleGradeEditorDialog } from '@/components/purchases/SoleGradeEditorDialog';
-import { isPerPvPurchaseOrder } from '@/lib/perPvPurchasing';
+import { ARTISANAL_PURCHASE_ORDER_GENERIC_CHANNEL_ERROR, isArtisanalStrapPurchaseOrder, isPerPvPurchaseOrder } from '@/lib/perPvPurchasing';
 import { useCan } from '@/hooks/useAccessControl';
 import { applyPrintSandbox } from '@/lib/htmlUtils';
 import { exportPurchaseOrdersXlsx, summarizePurchaseOrders } from '@/lib/purchaseOrderReport';
@@ -270,13 +270,43 @@ export default function PurchaseOrders() {
    const [pdfBusy, setPdfBusy] = useState(false);
    const [bulkBusy, setBulkBusy] = useState(false);
 
-  // Extract unique supplier names for filter
-  const uniqueSuppliers = useMemo(() => {
-    const names = new Set(orders.map(o => o.supplier_name).filter(Boolean));
-    return Array.from(names).sort();
-  }, [orders]);
-
   const perPvCount = useMemo(() => orders.filter(isPerPvPurchaseOrder).length, [orders]);
+  const strapDemandCount = useMemo(
+    () => orders.filter(isArtisanalStrapPurchaseOrder).length,
+    [orders],
+  );
+  const strapDemandPendingCount = useMemo(
+    () => orders.filter(o => isArtisanalStrapPurchaseOrder(o) && (o.status === 'pending' || o.status === 'Pendente')).length,
+    [orders],
+  );
+
+  // Lista Geral: tiras artesanais têm aba própria; per_pv fica atrás do toggle.
+  const geralOrders = useMemo(() => orders.filter(o => {
+    if (isArtisanalStrapPurchaseOrder(o)) return false;
+    if (!showPerPv && isPerPvPurchaseOrder(o)) return false;
+    return true;
+  }), [orders, showPerPv]);
+
+  const uniqueSuppliers = useMemo(() => {
+    const names = new Set(geralOrders.map(o => o.supplier_name).filter(Boolean));
+    return Array.from(names).sort();
+  }, [geralOrders]);
+
+  useEffect(() => {
+    const hiddenIds = new Set(
+      orders.filter(o => isArtisanalStrapPurchaseOrder(o) || (!showPerPv && isPerPvPurchaseOrder(o))).map(o => o.id),
+    );
+    if (hiddenIds.size === 0) return;
+    setSelectedIds(prev => {
+      let changed = false;
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (hiddenIds.has(id)) { changed = true; continue; }
+        next.add(id);
+      }
+      return changed ? next : prev;
+    });
+  }, [orders, showPerPv]);
 
   // OC → linha do relatório de custos (pago/vencimento vêm de accounts_payable).
   const toCostRow = useCallback((o: PurchaseOrder): CostReportRow => {
@@ -297,9 +327,7 @@ export default function PurchaseOrders() {
     };
   }, [paymentsMap]);
 
-  const filtered = useMemo(() => orders.filter(o => {
-    // Esconde OCs do canal "Compras por Pedido" por padrão (toggle showPerPv).
-    if (!showPerPv && isPerPvPurchaseOrder(o)) return false;
+  const filtered = useMemo(() => geralOrders.filter(o => {
     if (statusSet.size > 0 && !statusSet.has(o.status)) return false;
     if (supplierFilter !== 'all' && o.supplier_name !== supplierFilter) return false;
     const itemSummary = itemSummaries?.get(o.id);
@@ -317,11 +345,14 @@ export default function PurchaseOrders() {
       if (!inDateRange(rowDateForBasis(r, basis), fromDate || null, toDate || null)) return false;
     }
     return true;
-  }), [orders, statusSet, supplierFilter, search, itemFilter, contentFilter, originFilter, minValue, maxValue, itemSummaries, showPerPv, fromDate, toDate, basis, toCostRow]);
+  }), [geralOrders, statusSet, supplierFilter, search, itemFilter, contentFilter, originFilter, minValue, maxValue, itemSummaries, fromDate, toDate, basis, toCostRow]);
 
   const filteredSummary = useMemo(() => summarizePurchaseOrders(filtered, new Date().toISOString().slice(0, 10)), [filtered]);
 
-  const selectedOrders = useMemo(() => orders.filter(o => selectedIds.has(o.id)), [orders, selectedIds]);
+  const selectedOrders = useMemo(
+    () => geralOrders.filter(o => selectedIds.has(o.id)),
+    [geralOrders, selectedIds],
+  );
   const selectionSummary = useMemo(() => summarizeRows(selectedOrders.map(toCostRow)), [selectedOrders, toCostRow]);
 
   const handleGeneratePdf = useCallback(async (scope: 'filtro' | 'selecao') => {
@@ -360,10 +391,10 @@ export default function PurchaseOrders() {
     }
   }, [filtered, itemSummaries]);
 
-  const pendingCount = orders.filter(o => o.status === 'pending').length;
-  const pendingOrders = orders.filter(o => o.status === 'pending');
+  const pendingCount = geralOrders.filter(o => o.status === 'pending').length;
+  const pendingOrders = geralOrders.filter(o => o.status === 'pending');
   const todayStr = new Date().toISOString().slice(0, 10);
-  const overdueCount = orders.filter(o =>
+  const overdueCount = geralOrders.filter(o =>
     o.promised_date && o.promised_date < todayStr &&
     o.status !== 'received' && o.status !== 'cancelled'
   ).length;
@@ -387,8 +418,16 @@ export default function PurchaseOrders() {
   };
 
   const handleBulkAction = async (action: 'approved' | 'cancelled' | 'sent' | 'delete') => {
-    const ids = Array.from(selectedIds);
-    if (ids.length === 0 || bulkBusy) return;
+    const artisanalIds = new Set(orders.filter(isArtisanalStrapPurchaseOrder).map(o => o.id));
+    const ids = Array.from(selectedIds).filter(id => !artisanalIds.has(id));
+    const skippedArtisanal = selectedIds.size - ids.length;
+    if (ids.length === 0 || bulkBusy) {
+      if (skippedArtisanal > 0) {
+        toast.error(ARTISANAL_PURCHASE_ORDER_GENERIC_CHANNEL_ERROR);
+        setSelectedIds(new Set());
+      }
+      return;
+    }
     setBulkBusy(true);
     try {
       const results = action === 'delete'
@@ -397,9 +436,12 @@ export default function PurchaseOrders() {
       const failed = results.filter(r => r.status === 'rejected');
       setSelectedIds(new Set());
       if (failed.length === 0) {
+        const skippedNote = skippedArtisanal > 0
+          ? ` ${skippedArtisanal} OC(s) de tira ignorada(s) — use a aba Demandas automáticas.`
+          : '';
         toast.success(action === 'delete'
-          ? `${ids.length} OC(s) excluída(s)`
-          : `${ids.length} OC(s) atualizada(s) para "${STATUS_MAP[action]?.label}"`);
+          ? `${ids.length} OC(s) excluída(s).${skippedNote}`
+          : `${ids.length} OC(s) atualizada(s) para "${STATUS_MAP[action]?.label}".${skippedNote}`);
       } else {
         const successCount = ids.length - failed.length;
         const firstErr = (failed[0] as PromiseRejectedResult).reason?.message || 'erro desconhecido';
@@ -499,10 +541,10 @@ export default function PurchaseOrders() {
         />
 
         <Tabs value={abaAtiva} onValueChange={setAbaAtiva} className="space-y-4">
-          <HubTabsList
+            <HubTabsList
             tabs={[
               { value: 'all', label: 'Geral', icon: ShoppingCart },
-              { value: 'automaticas', label: 'Demandas automáticas', icon: Zap },
+              { value: 'automaticas', label: 'Demandas automáticas', icon: Zap, badge: strapDemandPendingCount || undefined },
               { value: 'solados', label: 'Solados', icon: Footprints },
             ]}
           />
@@ -531,7 +573,7 @@ export default function PurchaseOrders() {
                   onChange={v => setParam('q', v || null)}
                   placeholder="Buscar OC, fornecedor, item, SKU ou cor…"
                   resultCount={filtered.length}
-                  totalCount={orders.length}
+                  totalCount={geralOrders.length}
                 />
                 {/* Status multi-select (vazio = todos) */}
                 <Popover>
@@ -628,6 +670,21 @@ export default function PurchaseOrders() {
 
             {/* Toggle do canal "Compras por Pedido" (escondido por padrão pra não
                 duplicar o que o MRP/ondas planeja). */}
+            {strapDemandCount > 0 && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <span>
+                  {strapDemandCount} OC{strapDemandCount === 1 ? '' : 's'} de tira artesanal {strapDemandCount === 1 ? 'fica' : 'ficam'} na aba Demandas automáticas
+                  {strapDemandPendingCount > 0 ? ` (${strapDemandPendingCount} pendente${strapDemandPendingCount === 1 ? '' : 's'})` : ''}
+                </span>
+                <button
+                  type="button"
+                  className="text-xs text-primary hover:underline"
+                  onClick={() => setAbaAtiva('automaticas')}
+                >
+                  abrir aba →
+                </button>
+              </div>
+            )}
             {perPvCount > 0 && (
               <div className="flex items-center gap-2 text-sm">
                 <Checkbox id="show-per-pv" checked={showPerPv} onCheckedChange={(v) => setShowPerPv(!!v)} />
@@ -871,7 +928,7 @@ export default function PurchaseOrders() {
                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setSelectedId(o.id)} aria-label="Ver detalhes da ordem de compra">
                               <Eye className="h-4 w-4" />
                             </Button>
-                            {o.status === 'pending' && (
+                            {o.status === 'pending' && !isArtisanalStrapPurchaseOrder(o) && (
                               <>
                                 <Button variant="ghost" size="icon" className="h-8 w-8 text-green-600 hover:text-green-700" disabled={updateOrder.isPending} onClick={() => updateOrder.mutate({ id: o.id, data: { status: 'approved' } })} aria-label="Aprovar ordem de compra">
                                   <CheckCircle2 className="h-4 w-4" />
@@ -1012,11 +1069,12 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
 
   if (!order) return null;
 
+  const isArtisanal = isArtisanalStrapPurchaseOrder(order);
   // 'approved' segue editável enquanto NÃO houver parcela lançada — o caso
   // perigoso é só o de OC que já virou contas a pagar.
-  const isEditable = (order.status === 'pending' || order.status === 'approved') && !hasLaunchedAP;
+  const isEditable = !isArtisanal && (order.status === 'pending' || order.status === 'approved') && !hasLaunchedAP;
   // OC em estado em que dá pra receber (inclui 'parcial' p/ continuar de onde parou).
-  const isReceivable = order.status === 'sent' || order.status === 'approved' || order.status === 'parcial';
+  const isReceivable = !isArtisanal && (order.status === 'sent' || order.status === 'approved' || order.status === 'parcial');
 
   const handleItemChange = (itemId: string, field: 'quantity' | 'unit_price', value: number) => {
     setEditingItems(prev => ({
@@ -1252,10 +1310,26 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
               <Badge variant={st.variant}>{st.label}</Badge>
               {order.auto_generated && <Badge variant="outline" className="gap-1 text-xs border-amber-500/50 text-amber-600"><Zap className="h-3 w-3" />Auto</Badge>}
               {order.source_type === 'manual_avulsa' && <Badge variant="outline" className="gap-1 text-xs border-primary/40 text-primary"><Receipt className="h-3 w-3" />Avulsa</Badge>}
+              {isArtisanalStrapPurchaseOrder(order) && <Badge variant="outline" className="gap-1 text-xs border-amber-500/50 text-amber-600"><Zap className="h-3 w-3" />Tira artesanal</Badge>}
             </div>
           </DialogTitle>
           <DialogDescription className="sr-only">Detalhes, itens e recebimento da ordem de compra</DialogDescription>
         </DialogHeader>
+
+        {isArtisanal && (
+          <Panel className="border-amber-500/40 bg-amber-500/10 p-3">
+            <p className="text-sm text-foreground">
+              Esta OC é de tira artesanal e usa a aba Demandas automáticas — aprovação, suspensão e recebimento não passam por aqui.
+            </p>
+            <Link
+              to="/purchase-orders?tab=automaticas"
+              className="mt-2 inline-block text-xs text-primary hover:underline"
+              onClick={onClose}
+            >
+              Abrir Demandas automáticas →
+            </Link>
+          </Panel>
+        )}
 
         {/* Resumo — fornecedor + Valor Total (âncora) no topo; meta/datas abaixo. */}
         <div className="rounded-lg border border-border bg-muted/20 overflow-hidden">
@@ -1288,6 +1362,7 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
                 type="date"
                 className="mt-1 h-8 text-sm"
                 value={order.promised_date || ''}
+                disabled={isArtisanal}
                 onChange={e => updateOrder.mutate({ id: order.id, data: { promised_date: e.target.value || null } })}
               />
             </div>
@@ -1297,6 +1372,7 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
                 type="date"
                 className="mt-1 h-8 text-sm"
                 value={order.received_date || ''}
+                disabled={isArtisanal}
                 onChange={e => updateOrder.mutate({ id: order.id, data: { received_date: e.target.value || null } })}
               />
             </div>

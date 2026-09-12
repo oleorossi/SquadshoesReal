@@ -2,6 +2,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import {
+  ARTISANAL_PURCHASE_ORDER_GENERIC_CHANNEL_ERROR,
+  isArtisanalStrapPurchaseOrder,
+} from '@/lib/perPvPurchasing';
+import {
   executePurchaseOrderCommand,
   purchaseOrderLogicalKey,
 } from '@/services/purchaseOrderCommandService';
@@ -279,10 +283,13 @@ export function useUpdatePurchaseOrder() {
     mutationFn: async ({ id, data }: { id: string; data: Partial<PurchaseOrder> }) => {
       const { data: current, error } = await supabase
         .from('purchase_orders')
-        .select('updated_at')
+        .select('updated_at, source_type')
         .eq('id', id)
         .single();
       if (error) throw error;
+      if (isArtisanalStrapPurchaseOrder(current)) {
+        throw new Error(ARTISANAL_PURCHASE_ORDER_GENERIC_CHANNEL_ERROR);
+      }
       const headerPatch: Record<string, unknown> = {};
       for (const key of [
         'supplier_id', 'supplier_name', 'notes', 'status', 'promised_date',
@@ -329,10 +336,13 @@ export function useUpdatePurchaseOrderItem() {
       if (itemFetchErr || !item) throw new Error('Item de OC não encontrado.');
       const { data: po, error: poFetchErr } = await supabase
         .from('purchase_orders')
-        .select('status, updated_at')
+        .select('status, updated_at, source_type')
         .eq('id', item.purchase_order_id)
         .single();
       if (poFetchErr) throw poFetchErr;
+      if (isArtisanalStrapPurchaseOrder(po)) {
+        throw new Error(ARTISANAL_PURCHASE_ORDER_GENERIC_CHANNEL_ERROR);
+      }
       if (po && ['received', 'receiving', 'cancelled'].includes(po.status)) {
         throw new Error('Não é possível editar itens de uma OC já recebida, em recebimento ou cancelada.');
       }
@@ -359,10 +369,13 @@ export function useDeletePurchaseOrder() {
     mutationFn: async (id: string) => {
       const { data: current, error } = await supabase
         .from('purchase_orders')
-        .select('updated_at')
+        .select('updated_at, source_type')
         .eq('id', id)
         .single();
       if (error) throw error;
+      if (isArtisanalStrapPurchaseOrder(current)) {
+        throw new Error(ARTISANAL_PURCHASE_ORDER_GENERIC_CHANNEL_ERROR);
+      }
       await executePurchaseOrderCommand({
         command: 'cancel',
         purchaseOrderId: id,
