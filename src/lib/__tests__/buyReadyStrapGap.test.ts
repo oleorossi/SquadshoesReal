@@ -262,4 +262,11 @@ describe('SaleOrderItemForm — a lacuna vira um caminho clicável', () => {
     expect(form).toContain("next === 'sku_acabado'");
     expect(form).toContain('Tira pronta · fornecedor');
   });
+
+  it('não trava o seletor de origem quando o snapshot comprometido ainda não tem escolha', () => {
+    expect(form).toContain('isStrapPvOrigemChoiceLocked');
+    expect(form).not.toContain(
+      'disabled={preserveCommittedStrapSnapshot || productionExcluded}',
+    );
+  });
 });

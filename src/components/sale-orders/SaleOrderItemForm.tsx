@@ -31,6 +31,8 @@ import { ProductFormDialog } from '@/components/inventory/ProductFormDialog';
 import { normalizeStrapOrigemPadrao } from '@/lib/strapBaseNapaPeel';
 import {
   applyDefaultStrapPvOrigemChoices,
+  isExplicitStrapPvOrigem,
+  isStrapPvOrigemChoiceLocked,
   listMissingStrapPvOrigemChoices,
   resolveEffectiveStrapPvOrigem,
   sourceModeForEffectiveOrigem,
@@ -2422,7 +2424,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                     }}
                   />
                 )}
-                {!preserveCommittedStrapSnapshot && (() => {
+                {!productionExcluded && (() => {
                   const missingOrigem = listMissingStrapPvOrigemChoices(
                     snapshotStraps,
                     strapCatalog?.measures || [],
@@ -2865,6 +2867,10 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                           && (!!line?.internalBlockReason || readinessBlocksReferenceBase);
                         const fmt = (v: number | null | undefined, d = 2) =>
                           v == null ? '—' : v.toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d });
+                        const originSnap = snapshotStraps.find(
+                          (entry) => technicalStrapLineId(entry) === lineId,
+                        ) || snapshotStraps[sIdx];
+                        const originChoice = originSnap?.pv_origem ?? strap.pv_origem;
                         return (
                           <div className={cn(
                             'rounded-md border px-2 py-1.5 space-y-1',
@@ -2873,16 +2879,14 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                             <StrapPvOrigemChooser
                               label={strap.label || `Tira ${sIdx + 1}`}
                               origemPadrao={measure?.origem_padrao}
-                              value={(() => {
-                                const snap = snapshotStraps.find(
-                                  (entry) => technicalStrapLineId(entry) === lineId,
-                                ) || snapshotStraps[sIdx];
-                                const choice = snap?.pv_origem ?? strap.pv_origem;
-                                return (choice === 'fabrica' || choice === 'prestador' || choice === 'sku_acabado')
-                                  ? choice as StrapPvOrigemChoice
-                                  : null;
-                              })()}
-                              disabled={preserveCommittedStrapSnapshot || productionExcluded}
+                              value={isExplicitStrapPvOrigem(originChoice)
+                                ? originChoice as StrapPvOrigemChoice
+                                : null}
+                              disabled={isStrapPvOrigemChoiceLocked({
+                                committedSnapshot: preserveCommittedStrapSnapshot,
+                                productionExcluded,
+                                pvOrigem: originChoice,
+                              })}
                               onChange={(next) => {
                                 const lineKey = technicalStrapLineId(strap);
                                 const updated = snapshotStraps.map((entry) => (

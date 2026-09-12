@@ -57,6 +57,22 @@ export function isExplicitStrapPvOrigem(
   return value === 'fabrica' || value === 'prestador' || value === 'sku_acabado';
 }
 
+/**
+ * Snapshot comprometido (Aprovado / Em Produção) só trava origem JÁ escolhida.
+ * Lacuna (escolhe_no_pv sem pv_origem) permanece editável — senão o save
+ * exige Fábrica/Prestador/Fornecedor e o seletor morto impede qualquer opção
+ * (PV-00194 / Meia Cana).
+ */
+export function isStrapPvOrigemChoiceLocked(input: {
+  committedSnapshot: boolean;
+  productionExcluded?: boolean;
+  pvOrigem: unknown;
+}): boolean {
+  if (input.productionExcluded) return true;
+  if (!input.committedSnapshot) return false;
+  return isExplicitStrapPvOrigem(input.pvOrigem);
+}
+
 function hasExplicitStrapPvOrigem(
   line: StrapPvOrigemLineLike | null | undefined,
 ): line is StrapPvOrigemLineLike & { pv_origem: StrapPvOrigem } {

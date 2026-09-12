@@ -2,6 +2,7 @@ import {
   applyDefaultStrapPvOrigemChoices,
   DEFAULT_STRAP_PV_ORIGEM,
   groupStrapHubIncompleteByMeasure,
+  isStrapPvOrigemChoiceLocked,
   listMissingStrapPvOrigemChoices,
   listStrapHubIncompleteForOrigem,
   resolveEffectiveStrapPvOrigem,
@@ -41,6 +42,30 @@ describe('strapPvOrigem', () => {
     expect(issues).toHaveLength(1);
     expect(issues[0].label).toBe('Tira 1');
     expect(issues[0].message).toContain('Fornecedor');
+  });
+
+  it('snapshot comprometido trava origem já escolhida, mas lacuna continua editável', () => {
+    expect(isStrapPvOrigemChoiceLocked({
+      committedSnapshot: true,
+      pvOrigem: null,
+    })).toBe(false);
+    expect(isStrapPvOrigemChoiceLocked({
+      committedSnapshot: true,
+      pvOrigem: 'prestador',
+    })).toBe(true);
+    expect(isStrapPvOrigemChoiceLocked({
+      committedSnapshot: true,
+      pvOrigem: 'sku_acabado',
+    })).toBe(true);
+    expect(isStrapPvOrigemChoiceLocked({
+      committedSnapshot: false,
+      pvOrigem: 'fabrica',
+    })).toBe(false);
+    expect(isStrapPvOrigemChoiceLocked({
+      committedSnapshot: true,
+      productionExcluded: true,
+      pvOrigem: null,
+    })).toBe(true);
   });
 
   it('escolhe_no_pv aceita sku_acabado como origem explícita', () => {
