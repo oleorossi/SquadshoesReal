@@ -2,13 +2,17 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { defaultPatternForKey } from '@/lib/clientLabelPattern';
+import { defaultPatternForKey, OBJETIVA_DEFAULT_BRANDING } from '@/lib/clientLabelPattern';
 import {
   buildObjetivaPdf,
+  composeObjetivaLabelCopy,
   countObjetivaLabels,
   isObjetivaOrderHeader,
   objetivaPdfFilename,
+  objetivaRotatedBodyLines,
   parseObjetivaOrderCsv,
+  stripHangtagAccents,
+  wrapObjetivaDescricao,
 } from '@/lib/objetivaLabels';
 
 const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), 'fixtures/objetiva');
@@ -68,5 +72,99 @@ describe('objetivaLabels PDF', () => {
     const header = new TextDecoder().decode(bytes.slice(0, 5));
     expect(header).toBe('%PDF-');
     expect(objetivaPdfFilename('112334.csv')).toMatch(/Objetiva/i);
+  });
+
+  it('aceita logo opcional sem quebrar a geração', async () => {
+    const rows = parseObjetivaOrderCsv(loadFixture('112334.csv')).slice(0, 1);
+    const pattern = defaultPatternForKey('objetiva');
+    const doc = await buildObjetivaPdf(rows, {
+      geometry: pattern.geometry,
+      branding: pattern.branding,
+      repeatByQuantity: false,
+      logo: {
+        dataUrl:
+          'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+        width: 1,
+        height: 1,
+      },
+    });
+    const bytes = new Uint8Array(doc.output('arraybuffer'));
+    expect(new TextDecoder().decode(bytes.slice(0, 5))).toBe('%PDF-');
+  });
+});
+
+describe('composeObjetivaLabelCopy · hangtag 112334 TAM 25', () => {
+  it('espelha a etiqueta física da foto', () => {
+    const rows = parseObjetivaOrderCsv(loadFixture('112334.csv'));
+    const row = rows.find(item => item.tamanho === '25');
+    expect(row).toBeTruthy();
+    expect(row!.tipo).toBe('SANDÁLIA');
+    expect(row!.grupo).toBe('CALÇADOS');
+
+    const copy = composeObjetivaLabelCopy(row!, OBJETIVA_DEFAULT_BRANDING);
+    expect(copy.descricao).toBe('SAND INFA RAST TIRAS NO');
+    expect(copy.tipo).toBe('SANDALIA');
+    expect(copy.categoria).toBe('CALCADOS/INFANTIL');
+    expect(copy.material).toBe('PU/SO / DOURADA 420');
+    expect(copy.referencia).toBe('Ref.: I701');
+    expect(copy.tamanho).toBe('25');
+    expect(copy.priceMain).toBe('39');
+    expect(copy.priceCents).toBe('99');
+    expect(copy.semanaAno).toBe('29/26');
+    expect(copy.codigoBarra).toBe('112334');
+    expect(copy.mottoLines).toEqual(['DEUS', 'É FIEL']);
+    expect(copy.exchangeLines).toEqual(['TROCA MANTER', 'ESTA ETIQUETA']);
+  });
+
+  it('stripHangtagAccents só remove diacríticos', () => {
+    expect(stripHangtagAccents('SANDÁLIA')).toBe('SANDALIA');
+    expect(stripHangtagAccents('CALÇADOS')).toBe('CALCADOS');
+  });
+
+  it('descrição curta não quebra; PLAT TIRAS BRILHO vira 2 linhas', () => {
+    expect(wrapObjetivaDescricao('SAND INFA RAST TIRAS NO')).toEqual([
+      'SAND INFA RAST TIRAS NO',
+    ]);
+    expect(wrapObjetivaDescricao('SAND INFA PLAT TIRAS BRILHO')).toEqual([
+      'SAND INFA PLAT TIRAS',
+      'BRILHO',
+    ]);
+  });
+
+  it('miolo deitado leva CALCADOS/INFANTIL inteiro', () => {
+    const rows = parseObjetivaOrderCsv(loadFixture('112334.csv'));
+    const row = rows.find(item => item.tamanho === '25');
+    const copy = composeObjetivaLabelCopy(row!, OBJETIVA_DEFAULT_BRANDING);
+    const body = objetivaRotatedBodyLines(copy);
+    expect(body).toContain('CALCADOS/INFANTIL');
+    expect(body.some(line => line === 'CALCADOS/INFANTI')).toBe(false);
+  });
+});
+
+describe('objetivaLabels PDF · miolo sem clip', () => {
+  it('grava CALCADOS/INFANTIL completo no conteúdo do PDF', async () => {
+    const rows = parseObjetivaOrderCsv(loadFixture('112334.csv'));
+    const row = rows.find(item => item.tamanho === '25')!;
+    const pattern = defaultPatternForKey('objetiva');
+    const doc = await buildObjetivaPdf([row], {
+      geometry: pattern.geometry,
+      branding: pattern.branding,
+      repeatByQuantity: false,
+    });
+    const bytes = Buffer.from(doc.output('arraybuffer'));
+    const latin = bytes.toString('latin1');
+    const streams = [...latin.matchAll(/stream\r?\n([\s\S]*?)\nendstream/g)];
+    const { inflateSync } = await import('node:zlib');
+    const content = streams
+      .map(match => {
+        try {
+          return inflateSync(Buffer.from(match[1]!, 'latin1')).toString('latin1');
+        } catch {
+          return match[1] ?? '';
+        }
+      })
+      .join('\n');
+    expect(content).toContain('CALCADOS/INFANTIL');
+    expect(content).not.toMatch(/CALCADOS\/INFANTI[^L]/);
   });
 });

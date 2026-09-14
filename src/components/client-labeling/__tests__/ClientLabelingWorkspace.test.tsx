@@ -102,6 +102,18 @@ vi.mock('@/lib/clientOrderImport', async () => {
   };
 });
 
+vi.mock('@/integrations/supabase/client', () => ({
+  supabase: {
+    storage: {
+      from: () => ({
+        upload: vi.fn(),
+        remove: vi.fn(),
+        getPublicUrl: () => ({ data: { publicUrl: '' } }),
+      }),
+    },
+  },
+}));
+
 vi.mock('@/lib/babyNalinLabels', async () => {
   const actual = await vi.importActual<typeof import('@/lib/babyNalinLabels')>(
     '@/lib/babyNalinLabels',
@@ -109,7 +121,11 @@ vi.mock('@/lib/babyNalinLabels', async () => {
   return {
     ...actual,
     buildBabyNalinPdf: buildBabyNalinPdfMock,
-    loadLogoDataUrl: vi.fn(async () => 'data:image/png;base64,logo'),
+    loadLogoDataUrl: vi.fn(async () => ({
+      dataUrl: 'data:image/png;base64,logo',
+      width: 10,
+      height: 10,
+    })),
   };
 });
 

@@ -27,6 +27,7 @@ describe('ETIQUETAGEM CLIENTE · isolamento da etiquetagem padrão', () => {
     expect(imports).toContain('@/lib/babyNalinLabels');
     expect(imports).toContain('@/lib/objetivaLabels');
     expect(imports).toContain('@/hooks/useClientLabelPattern');
+    expect(imports).toContain('@/components/client-labeling/ClientLabelLogoUpload');
     forbiddenPrefixes.forEach(prefix => {
       expect(imports.some(module => module.startsWith(prefix)), prefix).toBe(false);
     });
@@ -36,5 +37,11 @@ describe('ETIQUETAGEM CLIENTE · isolamento da etiquetagem padrão', () => {
     expect(importedModules(factoryPage)).not.toContain('@/components/client-labeling/ClientLabelingWorkspace');
     expect(factoryPage).not.toContain('importe o arquivo do cliente');
     expect(factoryPage).toContain('<Navigate to="/etiquetagem-cliente" replace />');
+  });
+
+  it('o workspace Objetiva tem upload de logomarca e passa logo no PDF', () => {
+    expect(clientWorkspace).toContain('ClientLabelLogoUpload');
+    expect(clientWorkspace).toContain('pattern.branding.logoUrl');
+    expect(clientWorkspace).toContain('loadLogoDataUrl(pattern.branding.logoUrl)');
   });
 });

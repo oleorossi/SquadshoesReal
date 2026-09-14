@@ -170,6 +170,10 @@ export async function parseObjetivaOrderFile(file: File): Promise<ClientOrderLin
   return parseObjetivaOrderCsv(decodeOrderBytes(buffer), file.name);
 }
 
+export function stripHangtagAccents(text: string): string {
+  return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
 function formatPrice(valor: string | undefined): { main: string; cents: string } {
   const raw = (valor ?? '').replace(/[^\d,.-]/g, '').replace(/\./g, '').replace(',', '.');
   const n = Number(raw);
@@ -191,10 +195,100 @@ function categoryLine(grupo?: string, categoria?: string): string {
   return g || c || '';
 }
 
+function splitMottoLines(text: string): string[] {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  if (words.length <= 1) return words;
+  if (words.length === 2) return words;
+  return [words[0]!, words.slice(1).join(' ')];
+}
+
+function splitExchangeLines(text: string): string[] {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  if (words.length <= 1) return words;
+  const mid = Math.ceil(words.length / 2);
+  return [words.slice(0, mid).join(' '), words.slice(mid).join(' ')];
+}
+
+export interface ObjetivaLabelCopy {
+  descricao: string;
+  tipo: string;
+  categoria: string;
+  material: string;
+  referencia: string;
+  tamanho: string;
+  priceMain: string;
+  priceCents: string;
+  semanaAno: string;
+  codigoBarra: string;
+  mottoLines: string[];
+  exchangeLines: string[];
+}
+
+/** Textos da hangtag física — acentos só saem na impressão, o CSV permanece intacto. */
+export function composeObjetivaLabelCopy(
+  row: ClientOrderLine,
+  branding: ClientLabelBranding,
+): ObjetivaLabelCopy {
+  const price = formatPrice(row.valor);
+  const motto = (branding.motto || OBJETIVA_DEFAULT_BRANDING.motto).trim();
+  const exchange = (branding.exchangeText || OBJETIVA_DEFAULT_BRANDING.exchangeText).trim().toUpperCase();
+  return {
+    descricao: stripHangtagAccents((row.descricao ?? '').trim()),
+    tipo: stripHangtagAccents((row.tipo ?? '').trim()),
+    categoria: stripHangtagAccents(categoryLine(row.grupo, row.categoria)),
+    material: stripHangtagAccents(materialLine(branding.materialPrefix, row.cor)),
+    referencia: `Ref.: ${stripHangtagAccents((row.referencia || row.codProduto).trim())}`,
+    tamanho: (row.tamanho || '-').trim() || '-',
+    priceMain: price.main,
+    priceCents: price.cents,
+    semanaAno: [row.semanaFabricacao, row.anoFabricacao].filter(Boolean).join('/'),
+    codigoBarra: (row.codigoBarra || row.codProduto).trim(),
+    mottoLines: splitMottoLines(motto),
+    exchangeLines: splitExchangeLines(exchange),
+  };
+}
+
+/**
+ * Descrição da hangtag: no máximo 2 linhas, quebrando por palavra.
+ * "SAND INFA RAST TIRAS NO" cabe numa; "SAND INFA PLAT TIRAS BRILHO" vira
+ * TIRAS / BRILHO como na etiqueta física.
+ */
+export function wrapObjetivaDescricao(descricao: string, maxChars = 24): string[] {
+  const text = descricao.trim();
+  if (!text) return [];
+  if (text.length <= maxChars) return [text];
+  const words = text.split(/\s+/).filter(Boolean);
+  let first = '';
+  let index = 0;
+  for (; index < words.length; index += 1) {
+    const next = first ? `${first} ${words[index]}` : words[index]!;
+    if (first && next.length > maxChars) break;
+    first = next;
+  }
+  const second = words.slice(index).join(' ');
+  return second ? [first, second] : [first];
+}
+
+/** Linhas do miolo deitadas (ângulo 90°), na ordem da esquerda para a direita. */
+export function objetivaRotatedBodyLines(copy: ObjetivaLabelCopy): string[] {
+  return [
+    ...wrapObjetivaDescricao(copy.descricao),
+    copy.tipo,
+    copy.categoria,
+    copy.material,
+    copy.referencia,
+    copy.semanaAno,
+    copy.codigoBarra,
+  ].filter(line => line.length > 0);
+}
+
+export type ObjetivaLogo = { dataUrl: string; width: number; height: number } | null;
+
 export interface ObjetivaPdfOptions {
   geometry?: Partial<ClientLabelGeometry>;
   branding?: Partial<ClientLabelBranding>;
   repeatByQuantity?: boolean;
+  logo?: ObjetivaLogo;
 }
 
 function mergeGeometry(partial?: Partial<ClientLabelGeometry>): ClientLabelGeometry {
@@ -218,127 +312,181 @@ function expandLines(rows: ClientOrderLine[], repeatByQuantity: boolean): Client
   );
 }
 
+function imageFormat(dataUrl: string): 'PNG' | 'JPEG' {
+  return dataUrl.startsWith('data:image/jpeg') || dataUrl.startsWith('data:image/jpg') ? 'JPEG' : 'PNG';
+}
+
+function drawLogoFallback(doc: PdfDoc, x: number, y: number, boxW: number, boxH: number): void {
+  doc.setFillColor(0, 0, 0);
+  doc.rect(x, y, boxW, boxH, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(Math.max(5.5, Math.min(7.5, boxH * 0.95)));
+  doc.text('objetiva', x + 0.7, y + boxH * 0.68);
+  doc.setTextColor(0, 0, 0);
+}
+
+function drawLogo(
+  doc: PdfDoc,
+  logo: ObjetivaLogo,
+  x: number,
+  y: number,
+  boxW: number,
+  boxH: number,
+): void {
+  if (logo && logo.width > 0 && logo.height > 0) {
+    const scale = Math.min(boxW / logo.width, boxH / logo.height);
+    const drawW = logo.width * scale;
+    const drawH = logo.height * scale;
+    const ox = x;
+    const oy = y + (boxH - drawH) / 2;
+    try {
+      doc.addImage(logo.dataUrl, imageFormat(logo.dataUrl), ox, oy, drawW, drawH);
+      return;
+    } catch {
+      /* wordmark de fallback */
+    }
+  }
+  drawLogoFallback(doc, x, y, boxW, boxH);
+}
+
+function drawRotatedLine(
+  doc: PdfDoc,
+  text: string,
+  x: number,
+  baselineY: number,
+  sizePt: number,
+  style: 'normal' | 'bold' = 'normal',
+): void {
+  if (!text) return;
+  doc.setFont('helvetica', style);
+  doc.setFontSize(sizePt);
+  // Sem maxWidth: o clip horizontal (~23 mm) era o que cortava CALCADOS/INFANTI
+  // e fazia o miolo parecer distorcido. O texto deita no eixo Y da peça.
+  doc.text(text, x, baselineY, { angle: 90, align: 'left' });
+}
+
+function rotatedColumnStep(sizePt: number, extraMm = 0.55): number {
+  return sizePt * 0.352778 * 1.12 + extraMm;
+}
+
 function drawObjetivaLabel(
   doc: PdfDoc,
   row: ClientOrderLine,
   geometry: ClientLabelGeometry,
   branding: ClientLabelBranding,
+  logo: ObjetivaLogo,
 ): void {
+  const copy = composeObjetivaLabelCopy(row, branding);
   const w = geometry.labelWidthMm;
   const h = geometry.labelHeightMm;
   const padL = geometry.leftMarginMm;
   const padR = geometry.rightMarginMm;
   const padT = geometry.topMarginMm;
   const padB = geometry.bottomMarginMm;
-  const contentW = w - padL - padR;
-  const contentH = h - padT - padB;
+  const contentW = Math.max(12, w - padL - padR);
+  const contentH = Math.max(20, h - padT - padB);
 
   doc.setTextColor(0, 0, 0);
   doc.setDrawColor(0, 0, 0);
-  doc.setLineWidth(0.2);
-
-  const leftBand = Math.min(9, contentW * 0.22);
-  doc.setFillColor(0, 0, 0);
-  doc.rect(padL, padT, leftBand, 6, 'F');
-  doc.setTextColor(255, 255, 255);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7);
-  doc.text('objetiva', padL + 0.8, padT + 3.8);
-
-  doc.setTextColor(0, 0, 0);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(4.5);
-  doc.text(branding.motto || OBJETIVA_DEFAULT_BRANDING.motto, padL + leftBand + 0.6, padT + 2.8, {
-    baseline: 'top',
-  });
-
-  doc.setFontSize(4);
-  const exchange = (branding.exchangeText || OBJETIVA_DEFAULT_BRANDING.exchangeText).toUpperCase();
-  doc.text(doc.splitTextToSize(exchange, leftBand - 0.6), padL + 0.4, padT + 7.2, { baseline: 'top' });
-
-  if (row.descricao) {
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(5.5);
-    doc.text(row.descricao, padL + leftBand * 0.55, padT + contentH - 2, {
-      angle: 90,
-      align: 'left',
-    });
-  }
-
-  const mainX = padL + leftBand + 1.2;
-  const mainW = Math.max(8, contentW - leftBand - 12);
-  let y = padT + 8;
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
-  if (row.tipo) {
-    doc.text(row.tipo, mainX, y, { baseline: 'top' });
-    y += 3.4;
-  }
-  doc.setFontSize(6.5);
-  const cat = categoryLine(row.grupo, row.categoria);
-  if (cat) {
-    doc.text(cat, mainX, y, { baseline: 'top' });
-    y += 3.1;
-  }
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6);
-  doc.text(materialLine(branding.materialPrefix, row.cor), mainX, y, {
-    baseline: 'top',
-    maxWidth: mainW,
-  });
-  y += 3.1;
-  doc.setFont('helvetica', 'bold');
-  doc.text(`Ref.: ${row.referencia || row.codProduto}`, mainX, y, { baseline: 'top' });
-
   doc.setLineWidth(0.25);
-  doc.line(mainX, padT + contentH - 14, mainX + mainW, padT + contentH - 14);
 
-  const price = formatPrice(row.valor);
+  const logoBoxW = Math.min(17.5, contentW * 0.46);
+  const logoBoxH = Math.min(7.2, contentH * 0.12);
+  const footerH = Math.min(13.8, contentH * 0.23);
+
+  drawLogo(doc, logo, padL, padT, logoBoxW, logoBoxH);
+
+  const mottoX = padL + logoBoxW + 1.0;
+  const mottoMaxW = Math.max(8, contentW - logoBoxW - 1.2);
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6);
-  doc.text('TAM.:', mainX, padT + contentH - 11, { baseline: 'top' });
+  doc.setFontSize(4.2);
+  let mottoY = padT + 1.2;
+  for (const line of copy.mottoLines) {
+    doc.text(line, mottoX, mottoY, { baseline: 'top', maxWidth: mottoMaxW });
+    mottoY += 2.35;
+  }
+
+  let exchangeY = padT + logoBoxH + 1.0;
+  doc.setFontSize(4);
+  for (const line of copy.exchangeLines) {
+    doc.text(line, padL, exchangeY, { baseline: 'top' });
+    exchangeY += 2.25;
+  }
+  const headerBottom = Math.max(exchangeY, padT + logoBoxH + 1) + 0.5;
+  const footerTop = h - padB - footerH;
+  const runTop = headerBottom + 0.35;
+  const runBottom = footerTop - 0.35;
+
+  const descLines = wrapObjetivaDescricao(copy.descricao);
+  const descSize = 5.4;
+  let x = padL + 1.15;
+  for (const line of descLines) {
+    drawRotatedLine(doc, line, x, runBottom, descSize, 'bold');
+    x += rotatedColumnStep(descSize, 0.35);
+  }
+
+  const dividerX = x + 0.55;
+  doc.line(dividerX, headerBottom, dividerX, footerTop);
+  x = dividerX + 3.2;
+
+  drawRotatedLine(doc, copy.tipo, x, runBottom, 8, 'bold');
+  x += rotatedColumnStep(8, 0.7);
+  drawRotatedLine(doc, copy.categoria, x, runBottom, 6.5, 'bold');
+  x += rotatedColumnStep(6.5, 0.65);
+  drawRotatedLine(doc, copy.material, x, runBottom, 6, 'normal');
+  x += rotatedColumnStep(6, 0.65);
+  drawRotatedLine(doc, copy.referencia, x, runBottom, 6, 'bold');
+
+  const barStripW = Math.min(8.2, contentW * 0.2);
+  const barX = w - padR - barStripW;
+  const skuX = barX - 2.35;
+  const weekX = skuX - 2.7;
+  drawRotatedLine(doc, copy.semanaAno, weekX, runBottom, 5, 'normal');
+  drawRotatedLine(doc, copy.codigoBarra, skuX, runBottom, 6.2, 'bold');
+
+  if (copy.codigoBarra) {
+    try {
+      const bars = code128Bars(copy.codigoBarra);
+      const moduleCount = bars.reduce((max, b) => Math.max(max, b.start + b.width), 0);
+      const runH = Math.max(8, runBottom - runTop);
+      const module = Math.max(OBJETIVA_MODULE_MM, runH / Math.max(moduleCount, 1));
+      doc.setFillColor(0, 0, 0);
+      for (const barra of bars) {
+        const segH = barra.width * module;
+        const segY = runBottom - (barra.start + barra.width) * module;
+        doc.rect(barX, segY, barStripW, segH, 'F');
+      }
+    } catch {
+      doc.setFontSize(5);
+      doc.setFont('helvetica', 'normal');
+      doc.text('(código inválido)', barX + 1.2, runTop + 8, { angle: 90 });
+    }
+  }
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(5);
+  doc.text('TAM.:', padL, footerTop + 1.35, { baseline: 'top' });
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(16);
-  doc.text(row.tamanho || '-', mainX + 8, padT + contentH - 12, { baseline: 'top' });
+  doc.text(copy.tamanho, dividerX + 1.6, footerTop + 0.45, { baseline: 'top' });
 
-  doc.setFontSize(5);
-  doc.setFont('helvetica', 'normal');
-  doc.text('R$', mainX, h - padB - 1.2, { baseline: 'bottom' });
+  const priceRight = w - padR;
+  const centsLabel = `,${copy.priceCents}`;
+  doc.setFontSize(7.5);
+  const centsWidth = doc.getTextWidth(centsLabel);
+  doc.text(centsLabel, priceRight, footerTop + 0.3, {
+    align: 'right',
+    baseline: 'top',
+  });
+  doc.setFontSize(16);
+  doc.text(copy.priceMain, priceRight - centsWidth - 0.2, footerTop + 0.45, {
+    align: 'right',
+    baseline: 'top',
+  });
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(18);
-  doc.text(price.main, mainX + mainW - 4, h - padB - 1.5, { align: 'right', baseline: 'bottom' });
-  doc.setFontSize(8);
-  doc.text(`,${price.cents}`, mainX + mainW - 1, h - padB - 6.5, { align: 'right', baseline: 'bottom' });
-
-  const rightX = w - padR - 8;
-  const weekYear = [row.semanaFabricacao, row.anoFabricacao].filter(Boolean).join(' / ');
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(5);
-  if (weekYear) {
-    doc.text(weekYear, rightX + 2.2, padT + contentH - 18, { angle: 90 });
-  }
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(6);
-  doc.text(row.codigoBarra, rightX + 4.2, padT + contentH - 18, { angle: 90 });
-
-  try {
-    const bars = code128Bars(row.codigoBarra);
-    const moduleCount = bars.reduce((max, b) => Math.max(max, b.start + b.width), 0);
-    const barHeight = 4.2;
-    const available = Math.max(10, contentH - 6);
-    const module = Math.min(OBJETIVA_MODULE_MM, available / Math.max(moduleCount, 1));
-    doc.setFillColor(0, 0, 0);
-    const barcodeOriginY = padT + contentH - 2;
-    for (const barra of bars) {
-      const segH = barra.width * module;
-      const segY = barcodeOriginY - (barra.start + barra.width) * module;
-      doc.rect(rightX + 5.5, segY, barHeight, segH, 'F');
-    }
-  } catch {
-    doc.setFontSize(5);
-    doc.setFont('helvetica', 'normal');
-    doc.text('(código inválido)', rightX + 6, padT + 20, { angle: 90 });
-  }
+  doc.setFontSize(9);
+  doc.text('R$', padL, h - padB - 0.6, { baseline: 'bottom' });
 }
 
 export async function buildObjetivaPdf(
@@ -368,7 +516,7 @@ export async function buildObjetivaPdf(
         landscape ? 'landscape' : 'portrait',
       );
     }
-    drawObjetivaLabel(doc, row, geometry, branding);
+    drawObjetivaLabel(doc, row, geometry, branding, options.logo ?? null);
   });
 
   return doc;
