@@ -1439,7 +1439,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
                   </TableCell>
                   <TableCell className="text-right font-mono tabular-nums">
                     {(r.absent_days || 0) > 0
-                      ? <><span className="font-semibold text-red-600">{r.absent_days}d</span><div className="mt-0.5 text-[10px] text-red-600">−{fmt(r.absence_discount)}</div></>
+                      ? <><span className="font-semibold text-red-600">{r.absent_days}d</span><div className="mt-0.5 text-[10px] text-muted-foreground">em horas</div></>
                       : <span className="text-muted-foreground">—</span>}
                   </TableCell>
                   <TableCell className="text-right font-mono tabular-nums">
@@ -1797,8 +1797,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
                     value: periodBase, type: 'p' as const, always: true,
                   },
                   { label: `Horas extras — taxa individual (${fmtHoras(r.overtime_50_minutes || 0)})`, value: r.overtime_amount || 0, type: 'p' as const },
-                  { label: `Faltas (${r.absent_days || 0} dia(s))`, value: r.absence_discount || 0, type: 'd' as const, highlight: (r.absent_days || 0) > 0 },
-                  { label: 'Atrasos / saídas cedo', value: r.deductions_amount || 0, type: 'd' as const },
+                  { label: (r.absent_days || 0) > 0 ? `Atrasos / faltas integrais (${r.absent_days} dia(s) em horas)` : 'Atrasos / saídas cedo', value: r.deductions_amount || 0, type: 'd' as const },
                   { label: 'Adiantamentos do período', value: r.advances_total || 0, type: 'd' as const, highlight: true },
                 ]).filter(l => l.value > 0 || l.always);
 

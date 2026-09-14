@@ -3,9 +3,9 @@
 // vez de atrasos mostra APENAS os dias em que o funcionário FALTOU (dia útil
 // esperado, coberto por importação, SEM batida e SEM ausência justificada).
 //
-// Fonte da verdade: o MESMO motor da folha (computePeriodFolha → falta_dates), então
-// a falta aqui bate EXATAMENTE com a coluna FALTAS da Folha do Mês e com o desconto
-// aplicado no líquido (falta_desconto retornado pelo motor da folha).
+// Fonte da verdade: o MESMO motor da folha (computePeriodFolha → falta_dates).
+// Desde 2026-09-14 a falta injustificada entra na conta de HORAS (compensa HE;
+// sem desconto R$/dia). Este relatório lista os dias e a jornada em minutos.
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useEmployees } from '@/hooks/useEmployees';
@@ -57,8 +57,8 @@ interface FaltaRow {
   /** Batidas por data (do relógio) — alimenta o calendário (dias trabalhados). */
   punchesByDate: Map<string, string[]>;
   schedule: WorkSchedule | null;
-  /** Desconto já calculado pela folha para as faltas do período. */
-  faltaDiscount: number;
+  /** Minutos de jornada que entram na conta de horas (dias × jornada esperada). */
+  hoursMinutes: number;
 }
 
 function monthsBetween(from: string, to: string): { y: number; m: number }[] {
@@ -75,8 +75,8 @@ const MES_LABEL = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', '
 function FaltaCalendarDialog({ row, from, to, onClose }: { row: FaltaRow | null; from: string; to: string; onClose: () => void }) {
   if (!row) return null;
   const faltaSet = new Set(row.days);
-  const totalRS = row.faltaDiscount;
   const expMin = expectedDayMinutes(row.schedule);
+  const hoursMin = row.hoursMinutes || row.days.length * expMin;
   const expWindow = row.schedule
     ? `${hhmm(row.schedule.entry_time)}–${hhmm(row.schedule.exit_time)}${row.schedule.lunch_start ? ` · almoço ${hhmm(row.schedule.lunch_start)}–${hhmm(row.schedule.lunch_end)}` : ''}`
     : '—';
@@ -97,7 +97,7 @@ function FaltaCalendarDialog({ row, from, to, onClose }: { row: FaltaRow | null;
             <div className="text-right shrink-0">
               <span className="block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Total de faltas</span>
               <span className="text-2xl font-extrabold tabular-nums text-red-600 dark:text-red-400 leading-none">{row.days.length}</span>
-              <span className="block text-xs text-muted-foreground mt-0.5">{row.days.length} dia{row.days.length === 1 ? '' : 's'} · desconto {fmtBRL(totalRS)}</span>
+              <span className="block text-xs text-muted-foreground mt-0.5">{row.days.length} dia{row.days.length === 1 ? '' : 's'} · {fmtMin(hoursMin)} na conta de horas</span>
             </div>
           </DialogTitle>
         </DialogHeader>
@@ -159,7 +159,7 @@ function FaltaCalendarDialog({ row, from, to, onClose }: { row: FaltaRow | null;
         <div className="rounded-lg border border-border overflow-hidden">
           <div className="bg-muted/40 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
             <span>Dias de falta</span>
-            <span>Desconto total</span>
+            <span>Na conta de horas</span>
           </div>
           <div className="divide-y divide-border">
             {row.days.map((date) => (
@@ -171,7 +171,7 @@ function FaltaCalendarDialog({ row, from, to, onClose }: { row: FaltaRow | null;
                   <p className="text-xs font-mono text-muted-foreground mt-0.5 truncate">sem batidas</p>
                 </div>
                 <div className="shrink-0 text-right">
-                  <p className="text-sm font-bold tabular-nums text-red-600 dark:text-red-400 leading-none">−1 dia</p>
+                  <p className="text-sm font-bold tabular-nums text-red-600 dark:text-red-400 leading-none">−{fmtMin(expMin)}</p>
                 </div>
               </div>
             ))}
@@ -260,7 +260,7 @@ export default function RelatorioFaltas() {
         if (faltas.length > 0) {
           out.push({
             id: emp.id, name: emp.name, days: faltas,
-            punchesByDate: empPunches, schedule: sch, faltaDiscount: res.falta_desconto,
+            punchesByDate: empPunches, schedule: sch, hoursMinutes: faltas.length * expectedDayMinutes(sch),
           });
         }
       }
@@ -270,8 +270,8 @@ export default function RelatorioFaltas() {
 
   const totals = useMemo(() => {
     const dias = rows.reduce((s, r) => s + r.days.length, 0);
-    const desconto = rows.reduce((s, r) => s + r.faltaDiscount, 0);
-    return { funcionarios: rows.length, dias, desconto };
+    const horasMin = rows.reduce((s, r) => s + r.hoursMinutes, 0);
+    return { funcionarios: rows.length, dias, horasMin };
   }, [rows]);
 
   const periodBtn = (m: Mode, label: string) => (
@@ -288,29 +288,29 @@ export default function RelatorioFaltas() {
       kpis: [
         { label: 'Funcionários c/ falta', value: String(totals.funcionarios) },
         { label: 'Total de faltas', value: String(totals.dias) },
-        { label: 'Desconto da folha', value: fmtBRL(totals.desconto) },
+        { label: 'Horas na conta', value: fmtMin(totals.horasMin) },
       ],
       headers: [
         { label: 'Funcionário' },
         { label: 'Faltas', align: 'r' },
         { label: 'Datas' },
-        { label: 'Desconto', align: 'r' },
+        { label: 'Horas', align: 'r' },
       ],
       rows: rows.map((r): RhCell[] => {
         return [
           { v: r.name },
           { v: String(r.days.length), align: 'r', strong: true },
           { v: r.days.map(d => `${fmtDia(d)} ${dowShort(d)}`).join(', ') },
-          { v: `− ${fmtBRL(r.faltaDiscount)}`, align: 'r', neg: true },
+          { v: `− ${fmtMin(r.hoursMinutes)}`, align: 'r', neg: true },
         ];
       }),
       totals: [
         { v: `Total · ${totals.funcionarios} func.`, strong: true },
         { v: String(totals.dias), align: 'r', strong: true },
         { v: '' },
-        { v: `− ${fmtBRL(totals.desconto)}`, align: 'r', neg: true, strong: true },
+        { v: `− ${fmtMin(totals.horasMin)}`, align: 'r', neg: true, strong: true },
       ],
-      footNote: 'Falta = dia útil coberto pelo relógio, sem batida e sem ausência justificada. Desconto calculado pela Folha.',
+      footNote: 'Falta = dia útil coberto pelo relógio, sem batida e sem ausência justificada. Entra na conta de horas (compensa HE; sem desconto R$/dia).',
     });
   };
 
@@ -356,7 +356,7 @@ export default function RelatorioFaltas() {
         {[
           { label: 'Funcionários com falta', value: String(totals.funcionarios), icon: Users },
           { label: 'Total de faltas', value: String(totals.dias), icon: CalendarX, accent: true },
-          { label: 'Desconto da folha', value: fmtBRL(totals.desconto), icon: UserMinus },
+          { label: 'Horas na conta', value: fmtMin(totals.horasMin), icon: UserMinus },
         ].map((k) => (
           <div key={k.label} className={`rounded-lg border p-3 ${k.accent ? 'border-red-500/30 bg-red-500/5' : 'border-border bg-card'}`}>
             <p className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground font-bold">

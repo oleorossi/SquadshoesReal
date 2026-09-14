@@ -165,7 +165,7 @@ export function printAtrasoSummary(rows: AtrasoPrintRow[], from: string, to: str
   const inner =
     `<div class="eyebrow">Relatório de Atrasos</div>` +
     `<h1>Resumo por funcionário</h1>` +
-    `<div class="sub">Período <strong>${fmtDia(from)}–${fmtDia(to)}</strong>. Excesso de um dia compensa atraso parcial de outro; falta integral fica separada.</div>` +
+    `<div class="sub">Período <strong>${fmtDia(from)}–${fmtDia(to)}</strong>. Excesso de um dia compensa atraso (parcial ou falta integral) de outro no período.</div>` +
     `<div class="kpis"><div class="kpi"><div class="l">Funcionários com atraso</div><div class="v">${rows.length}</div></div>` +
     `<div class="kpi"><div class="l">Atraso bruto</div><div class="v">${fmtMin(totMin)}</div></div>` +
     `<div class="kpi"><div class="l">Compensado</div><div class="v">${fmtMin(totComp)}</div></div>` +

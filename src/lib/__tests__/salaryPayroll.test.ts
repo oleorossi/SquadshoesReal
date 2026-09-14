@@ -25,11 +25,15 @@ describe('calculateSalaryPayroll', () => {
     expect(r.gross_value).toBeCloseTo(2200, 2);
   });
 
-  it('FALTA (dia útil sem batida): desconta 1 valor-dia (sem mexer no DSR)', () => {
+  it('FALTA (dia útil sem batida): entra como atraso de 9h, sem desconto R$/dia', () => {
     const r = calculateSalaryPayroll(2200, [work('2026-05-04', MON, [])], 0);
     expect(r.falta_days).toBe(1);
-    expect(r.falta_desconto).toBeCloseTo(73.33, 1);
-    expect(r.gross_value).toBeCloseTo(2200 - 73.333, 1);
+    expect(r.falta_desconto).toBe(0);
+    expect(r.raw_delay_minutes).toBe(540);
+    expect(r.atraso_minutes).toBe(540);
+    // legado: valor-hora = salário/220 → 9h × (2200/220) = 90
+    expect(r.atraso_desconto).toBeCloseTo(90, 2);
+    expect(r.gross_value).toBeCloseTo(2200 - 90, 2);
   });
 
   it('ATRASO + saída cedo (Marcio 21/05, 08:35–17:18): desconta 77min × valor-hora', () => {
@@ -91,19 +95,20 @@ describe('calculateSalaryPayroll', () => {
     expect(r.gross_value).toBeCloseTo(2200 + 30, 2);
   });
 
-  it('mês: 2 perfeitos + 1 falta + 1 atraso + 1 vale; líquido = salário − descontos', () => {
+  it('mês: 2 perfeitos + 1 falta + 1 atraso + 1 vale; líquido = salário − atrasos (falta em horas)', () => {
     const r = calculateSalaryPayroll(2200, [
       work('2026-05-04', MON, ['08:00', '12:00', '13:00', '18:00']), // perfeito
       work('2026-05-05', 2,   ['08:00', '12:00', '13:00', '18:00']), // perfeito
-      work('2026-05-06', 3,   []),                                   // falta
+      work('2026-05-06', 3,   []),                                   // falta → 540min delay
       work('2026-05-07', THU, ['08:30', '18:00']),                   // atraso 30min
     ], 200);
     expect(r.falta_days).toBe(1);
-    expect(r.falta_desconto).toBeCloseTo(73.333, 1);
-    expect(r.atraso_minutes).toBe(30); // 08:30 span − 1h almoço = 510 normal; 540−510=30
-    expect(r.atraso_desconto).toBeCloseTo((30 / 60) * 10, 2); // 5
+    expect(r.falta_desconto).toBe(0);
+    expect(r.raw_delay_minutes).toBe(570); // 540 + 30
+    expect(r.atraso_minutes).toBe(570);
+    expect(r.atraso_desconto).toBeCloseTo((570 / 60) * 10, 2); // 95
     expect(r.advances_total).toBe(200);
-    const expectedGross = 2200 - 73.333 - 5;
+    const expectedGross = 2200 - 95;
     expect(r.gross_value).toBeCloseTo(expectedGross, 1);
     expect(r.net_value).toBeCloseTo(expectedGross - 200, 1);
   });
@@ -142,13 +147,15 @@ describe('calculateSalaryPayroll — base proporcional por quinzena (periodDays 
     expect(r.gross_value).toBeCloseTo(3000, 2);
   });
 
-  it('falta numa quinzena desconta valor-dia (salário/30) sobre a base proporcional', () => {
+  it('falta numa quinzena vira atraso de 9h (sem desconto R$/dia) sobre a base proporcional', () => {
     // 1 dia útil sem batida (falta) numa 1ª quinzena de 15 dias num mês de 31
     const r = calculateSalaryPayroll(3000, [work('2026-05-04', MON, [])], 0, 30, 220, 15, 31);
     expect(r.falta_days).toBe(1);
-    expect(r.falta_desconto).toBeCloseTo(100, 2);          // valor-dia = 3000/30 (inalterado)
+    expect(r.falta_desconto).toBe(0);
+    expect(r.atraso_minutes).toBe(540);
+    expect(r.atraso_desconto).toBeCloseTo(9 * (3000 / 220), 2); // legado ÷220
     expect(r.period_base).toBeCloseTo(45000 / 31, 2);      // 1451,61
-    expect(r.gross_value).toBeCloseTo(45000 / 31 - 100, 2); // 1351,61
+    expect(r.gross_value).toBeCloseTo(45000 / 31 - 9 * (3000 / 220), 2);
   });
 
   it('legado: sem monthDays, cai no ÷30 (salário/30 × dias)', () => {
@@ -666,12 +673,48 @@ describe('computePeriodFolha — política canônica de HE/falta/atraso (2026-07
     expect(r.he_value).toBeCloseTo(72, 2);           // 4h × 18 (fallback pra HE normal)
   });
 
-  it('FALTA = salário ÷ dias úteis do mês (não ÷30)', () => {
-    // Qua 06/05 sem batida → 1 falta. 2100 ÷ 21 = 100.
+  it('FALTA injustificada vira atraso de jornada (sem desconto R$/dia)', () => {
+    // Qua 06/05 sem batida → 1 falta = 540min de atraso. Policy: (2100/21)/9 por hora.
     const r = computePeriodFolha({ salary: 2100, from: '2026-05-06', to: '2026-05-06', ...base, punchesByDate: new Map() });
     expect(r.falta_days).toBe(1);
-    expect(r.falta_desconto).toBeCloseTo(2100 / BD, 2);   // 100
+    expect(r.falta_desconto).toBe(0);
+    expect(r.raw_delay_minutes).toBe(540);
+    expect(r.atraso_minutes).toBe(540);
+    expect(r.atraso_desconto).toBeCloseTo(2100 / BD, 2); // 9h × ((2100/21)/9) = 1 valor-dia
     expect(r.gross_value).toBeCloseTo(2100 - 2100 / BD, 2);
+  });
+
+  it('falta integral injustificada entra em raw_delay e compensa HE do período', () => {
+    // Seg falta (540 delay); Ter 08–20 → +120 crédito. Compensa 120 → atraso líquido 420, HE 0.
+    const punches = new Map<string, string[]>([
+      ['2026-05-05', ['08:00', '12:00', '13:00', '20:00']],
+    ]);
+    const r = computePeriodFolha({
+      salary: 2100, from: '2026-05-04', to: '2026-05-05', ...base,
+      punchesByDate: punches, coveredDates: new Set(['2026-05-04', '2026-05-05']),
+      heNormalRate: 20,
+    });
+    expect(r.falta_days).toBe(1);
+    expect(r.falta_desconto).toBe(0);
+    expect(r.raw_delay_minutes).toBe(540);
+    expect(r.raw_credit_minutes).toBe(120);
+    expect(r.compensated_minutes).toBe(120);
+    expect(r.atraso_minutes).toBe(420);
+    expect(r.he_minutes).toBe(0);
+    expect(r.atraso_desconto).toBeCloseTo((420 / 60) * ((2100 / BD) / 9), 2);
+  });
+
+  it('atestado/abono integral continua neutro (sem raw_delay nem falta_desconto)', () => {
+    const r = computePeriodFolha({
+      salary: 2100, from: '2026-05-06', to: '2026-05-06', ...base,
+      punchesByDate: new Map(),
+      absenceDates: new Set(['2026-05-06']),
+    });
+    expect(r.excused_days).toBe(1);
+    expect(r.falta_days).toBe(0);
+    expect(r.falta_desconto).toBe(0);
+    expect(r.raw_delay_minutes).toBe(0);
+    expect(r.atraso_minutes).toBe(0);
   });
 
   it('ATRASO = min × ((salário ÷ dias úteis) ÷ jornada)', () => {
@@ -756,15 +799,17 @@ describe('computePeriodFolha — política canônica de HE/falta/atraso (2026-07
     expect(r.he_minutes).toBe(0);
   });
 
-  it('E1: período que CRUZA meses — falta de fev usa dias úteis de FEVEREIRO (não de jan)', () => {
+  it('E1: período que CRUZA meses — falta de fev vira atraso com divisor de FEVEREIRO', () => {
     // 2026-01-29 (qui) → 2026-02-03 (ter). Dias úteis: 29,30,fev02,fev03 (31 sáb, fev01 dom).
-    // Bate ponto em 29/30/fev02; fev03 sem batida = falta em FEVEREIRO.
+    // Bate ponto em 29/30/fev02; fev03 sem batida = falta em FEVEREIRO → 540min atraso.
     const punches = new Map<string, string[]>();
     for (const d of ['2026-01-29', '2026-01-30', '2026-02-02']) punches.set(d, ['08:00', '12:00', '13:00', '18:00']);
     const r = computePeriodFolha({ salary: 2100, from: '2026-01-29', to: '2026-02-03', ...base, punchesByDate: punches });
     const bdFev = businessDaysInMonth('2026-02-01', SCHED, NO_HOL);
     expect(r.falta_dates).toEqual(['2026-02-03']);
-    expect(r.falta_desconto).toBeCloseTo(2100 / bdFev, 2);   // divisor de FEV, não do mês de início (jan)
+    expect(r.falta_desconto).toBe(0);
+    expect(r.atraso_minutes).toBe(540);
+    expect(r.atraso_desconto).toBeCloseTo(2100 / bdFev, 2); // 9h × ((2100/bdFev)/9)
   });
 
   it('DIARISTA com meia-diária: ≥6h→1, 2–6h→0,5, <2h→0', () => {

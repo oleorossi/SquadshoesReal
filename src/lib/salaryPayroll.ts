@@ -10,20 +10,24 @@
  *   - valor-dia  = salário ÷ dias úteis do mês
  *   - valor-hora de atraso = valor-dia ÷ horas da jornada diária
  *   - HE = saldo positivo do período × taxa absoluta individual
- *   - Falta (dia útil sem trabalho)        → − valor-dia (à parte, fora da conta de horas)
+ *   - Falta injustificada (dia útil sem trabalho) → entra como atraso de jornada
+ *     inteira (minutos) na conta de horas; NÃO gera desconto R$/dia à parte
+ *     (decisão do usuário 2026-09-14 — evita punição dupla e alinha o saldo de
+ *     horas ao calendário). Falta justificada/abonada continua neutra.
  *   - SALDO LÍQUIDO DO PERÍODO (decisão do usuário 2026-08-13): excedentes de um
- *     dia compensam atrasos parciais de outro dentro do intervalo calculado. Só o
- *     saldo final positivo pode virar HE; saldo negativo vira desconto de atraso.
- *     Falta integral continua à parte e não entra nessa compensação.
- *   - Falta NÃO tira o DSR (desconta só o dia).
+ *     dia compensam atrasos (parciais OU falta integral) de outro dentro do
+ *     intervalo calculado. Só o saldo final positivo pode virar HE; saldo
+ *     negativo vira desconto de atraso.
+ *   - Falta NÃO tira o DSR (o desconto, quando houver, sai só da conta de horas).
  *   - Atraso não tem tolerância diária. Depois da compensação, saldo positivo de até
  *     10min não vira HE; acima de 10min, todo o saldo positivo é pago.
  *   - Dia com 1 batida ou ímpar ≥5 = INCONSISTENTE → fica PENDENTE. n=3 com saída
  *     real (depois do almoço) conta a jornada; só fica pendente se a última ainda
  *     estiver na janela de almoço (decisão 2026-09-12).
  *
- *   bruto   = salário − faltas − atrasos + horas_extras
+ *   bruto   = salário − atrasos (inclui falta integral em minutos) + horas_extras
  *   líquido = bruto − adiantamentos
+ *   (falta_desconto R$/dia permanece no contrato = 0; faltas viram raw_delay)
  *
  * Base = salário CHEIO do mês. As duas migrações do relógio (01→20 e 21→fim) são
  * COMPLEMENTARES: juntas cobrem o mês inteiro. Se só uma estiver carregada, a folha
@@ -33,7 +37,7 @@ import { splitDayMinutes, PREMIUM_MULTIPLIER } from './hourlyPayroll';
 import { looksLikeWeekdayJourney, WEEKDAY_JOURNEY_MIN } from './ponto/interpretDayPunches';
 
 /** Versão persistida junto do snapshot da folha para auditoria histórica. */
-export const PAYROLL_RULE_VERSION = 'saldo-periodo-v2-2026-08-26';
+export const PAYROLL_RULE_VERSION = 'falta-como-horas-v3-2026-09-14';
 
 /** Divisor legado usado somente por callers diretos sem SalaryPolicy. */
 export const SALARY_DAY_DIVISOR = 30;
@@ -208,7 +212,7 @@ export interface SalaryPayrollResult {
   /** Datas (YYYY-MM-DD) dos dias úteis sem batida = FALTAS. Base do Relatório de
    *  Faltas (calendário). Vazio em remoto/diarista (não há falta). */
   falta_dates?: string[];
-  falta_desconto: number;  // R$ (faltas × valor-dia do mês de cada ocorrência)
+  falta_desconto: number;  // R$ — sempre 0 desde v3 (faltas viram raw_delay); campo mantido no contrato
   /** Dias úteis sem batida cobertos por ausência justificada (abonados, sem desconto). */
   excused_days?: number;
   /** Débito bruto antes da compensação entre dias. */
@@ -454,7 +458,9 @@ export function calculateSalaryPayroll(
 
       if (worked === 0) {
         // Dia útil sem trabalho. Ausência JUSTIFICADA (férias/atestado/licença) é
-        // abonada: não conta falta nem desconta. Senão, falta (desconta 1 valor-dia).
+        // abonada: não conta falta nem desconta. Senão, a jornada inteira entra
+        // como atraso em minutos (compensa HE do período) — sem desconto R$/dia
+        // à parte (decisão 2026-09-14).
         if (excusedApplied >= effectiveExpected) {
           excusedDays++;
           ledger.status = 'excused';
@@ -462,7 +468,7 @@ export function calculateSalaryPayroll(
           continue;
         }
         // Ausência parcial remunerada sem batida: desconta somente a parcela
-        // restante como minutos de atraso. Não pode virar falta integral.
+        // restante como minutos de atraso.
         if (excusedApplied > 0) {
           expectedPresentMin += effectiveExpected - excusedApplied;
           const late = effectiveExpected - excusedApplied;
@@ -472,10 +478,15 @@ export function calculateSalaryPayroll(
           dayLedger.push(ledger);
           continue;
         }
+        // Falta injustificada integral: rastreada pra relatório, mas o dinheiro
+        // sai só pela conta de horas (raw_delay = jornada), nunca como valor-dia.
         faltaDays++;
         faltaDates.push(d.date);
-        faltaDescontoAcc += valorDiaFor(d.date);  // divisor do MÊS da falta
+        expectedPresentMin += effectiveExpected;
+        const late = effectiveExpected;
         ledger.status = 'absence';
+        ledger.raw_balance_minutes = -late;
+        ledger.raw_delay_minutes = late;
         dayLedger.push(ledger);
         continue;
       }

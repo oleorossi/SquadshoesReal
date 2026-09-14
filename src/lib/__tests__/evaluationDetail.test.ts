@@ -4,7 +4,6 @@ import { evaluationDetail, type EmployeeTimesheetData } from '../printTimesheet'
 // Salário de referência: R$ 2.200 → valor-hora = 2200/220 = 10; valor-dia = 2200/30 = 73,333…
 const SAL = 2200;
 const VH = SAL / 220;      // 10
-const VDIA = SAL / 30;     // 73,33
 
 function emp(days: Partial<EmployeeTimesheetData['days'][number]>[]): EmployeeTimesheetData {
   return {
@@ -21,12 +20,14 @@ function emp(days: Partial<EmployeeTimesheetData['days'][number]>[]): EmployeeTi
 }
 
 describe('evaluationDetail — saldo líquido do período (mesma conta da folha)', () => {
-  it('FALTA em dia útil desconta 1 dia (salário ÷ 30), sem HE/atraso', () => {
+  it('FALTA em dia útil vira atraso de 9h (sem desconto R$/dia), sem HE', () => {
     const e = evaluationDetail(emp([{ dayOfWeek: 1, punches: [], expectedMinutes: 540 }]));
     expect(e.faltaCount).toBe(1);
-    expect(e.faltaDesconto).toBeCloseTo(VDIA, 2); // 73,33 — NÃO (540/60)*10
+    expect(e.faltaDesconto).toBe(0);
     expect(e.heMin).toBe(0);
-    expect(e.atrasoMin).toBe(0);
+    expect(e.atrasoMin).toBe(540);
+    // legado: valor-hora = salário/220 → 9h × 10 = 90 (≠ valor-dia 73,33)
+    expect(e.atrasoDesconto).toBeCloseTo(9 * VH, 2);
   });
 
   it('ATRASO (chegou 08:35, saiu 17:18) = déficit 77min × valor-hora, sem HE', () => {

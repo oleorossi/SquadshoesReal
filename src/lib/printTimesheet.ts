@@ -158,7 +158,7 @@ function employeeReportInnerHtml(emp: EmployeeTimesheetData, periodLabel: string
       <div><span class="label">Faltas:</span> <b style="color:#dc2626">${b.folhaFaltaCount > 0 ? b.folhaFaltaCount + ' = -' + formatMoney(b.folhaFalta) : '—'}</b></div>
       <div><span class="label">Líquido (HE − Desc.):</span> <b style="color:${b.folhaLiquido >= 0 ? '#16a34a' : '#dc2626'};font-size:14px">${(b.folhaLiquido >= 0 ? '+' : '-') + formatMoney(Math.abs(b.folhaLiquido))}</b></div>
     </div>
-    <p style="font-size:10px;color:#222;margin-top:4px">Pagamento pela mesma conta da Folha: créditos de horas compensam atrasos parciais dentro do período; só o saldo final vira HE paga ou atraso descontado. Faltas integrais ficam à parte.</p>
+    <p style="font-size:10px;color:#222;margin-top:4px">Pagamento pela mesma conta da Folha: créditos de horas compensam atrasos e faltas integrais dentro do período; só o saldo final vira HE paga ou atraso descontado.</p>
     ` : ''}
 
     <h2>Registro Diário</h2>
@@ -445,7 +445,7 @@ export function printAllEmployeesTimesheet(employees: EmployeeTimesheetData[], p
     </table>
 
     <div style="margin-top:6px;font-size:11px;color:#222;border:1px solid #ccc;padding:5px 8px;border-radius:4px">
-      <b>Pagamento pela mesma conta da Folha:</b> créditos de horas compensam atrasos parciais dentro do período; só o saldo final vira HE paga ou atraso descontado. Faltas integrais ficam à parte. O valor TOTAL a receber está na aba <b>Folha</b>.
+      <b>Pagamento pela mesma conta da Folha:</b> créditos de horas compensam atrasos e faltas integrais dentro do período; só o saldo final vira HE paga ou atraso descontado. O valor TOTAL a receber está na aba <b>Folha</b>.
     </div>
     <div style="margin-top:8px;font-size:10px;color:#222">
       <b>Legenda:</b> Colunas de HORAS (Trab./Normais/1,5×) = quanto cada um bateu (Valor/h = salário ÷ 220) ·
@@ -662,9 +662,9 @@ export function printCalendarReport(allData: EmployeeTimesheetData[], periodLabe
  * (salário − descontos): mesmo `splitDayMinutes`, mesma jornada esperada da escala
  * (`emp.expectedDayMin`, ex.: 540 = 9h) e mesmas regras de desconto/HE. Assim a
  * Avaliação reconcilia com a Folha centavo a centavo.
- *   - FALTA (dia útil sem trabalho)               → −1 valor-dia do mês, à parte.
- *   - LÍQUIDO do período: créditos compensam atrasos parciais. Sobrou acima de 10min
- *     → HE nas taxas individuais. Faltou → atraso × valor-hora. Faltas ficam à parte.
+ *   - FALTA (dia útil sem trabalho)               → atraso da jornada (minutos); sem R$/dia à parte.
+ *   - LÍQUIDO do período: créditos compensam atrasos e faltas. Sobrou acima de 10min
+ *     → HE nas taxas individuais. Faltou → atraso × valor-hora.
  *   - Batida ÍMPAR (inconsistente)                → fica PENDENTE: não desconta nem paga.
  *
  * Antes (bug A4): HE vinha de `d.overtimeMinutes` (sempre 0 nos relatórios), a falta
@@ -857,7 +857,7 @@ function evaluationEmployeeInnerHtml(emp: EmployeeTimesheetData, periodLabel: st
       <tr class="net"><td>= Líquido a pagar</td><td class="amt">${formatMoney(liquido - advance)}</td></tr>
     </table>
     <p class="note">Valor-dia do cálculo = ${formatMoney(e.valorDia)} · Valor-hora de atraso = ${formatMoney(e.vh)}.
-      Excesso de um dia compensa atraso parcial de outro no período; falta integral fica separada. Só o saldo positivo acima de 10min vira HE pelas taxas individuais.</p>
+      Excesso de um dia compensa atraso (parcial ou falta integral) de outro no período. Só o saldo positivo acima de 10min vira HE pelas taxas individuais.</p>
   ` : e.paymentType === 'producao'
     // Por par não tem holerite baseado em ponto: ele é pago por pares na Folha,
     // e o registro de jornada existe só como presença. O aviso genérico de
@@ -1090,7 +1090,7 @@ export function printFolhaComparativo(
   const html = `${STYLE}
     <h1>FOLHA ${escapeHtml(periodLabel)} — Comparativo (Mês × Quinzenas)</h1>
     <p class="sub">Líquido por funcionário · simulações independentes por intervalo · Impresso em ${new Date().toLocaleString('pt-BR')}</p>
-    <div class="warn"><b>Leia antes de pagar:</b> excesso de um dia compensa atraso parcial de outro dentro de cada intervalo. Só saldo positivo acima de 10min vira HE; falta integral fica separada. A fonte oficial é a folha fechada do período selecionado.</div>
+    <div class="warn"><b>Leia antes de pagar:</b> excesso de um dia compensa atraso (parcial ou falta integral) de outro dentro de cada intervalo. Só saldo positivo acima de 10min vira HE. A fonte oficial é a folha fechada do período selecionado.</div>
     ${kpi}
     <table class="cmp">
       <thead><tr>

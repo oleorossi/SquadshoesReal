@@ -70,9 +70,10 @@ Numerados, testáveis, cada um um "must".
    cadastro: **HE normal** e **HE domingo/feriado** — ambos R$/h. **Não há taxa noturna
    separada**: hora extra noturna usa a **HE normal** do funcionário (decisão do dono
    2026-07-09).
-6. Excesso de um dia **compensa atraso parcial de outro dentro do período da folha**. Só o
-   saldo positivo final que **passar de 10 minutos** vira hora extra; de 1 a 10 minutos é
-   descartado. Saldo negativo vira atraso líquido. Falta integral não entra nessa compensação.
+6. Excesso de um dia **compensa atraso (parcial ou falta integral) de outro dentro do período
+   da folha**. Só o saldo positivo final que **passar de 10 minutos** vira hora extra; de 1 a
+   10 minutos é descartado. Saldo negativo vira atraso líquido. Falta integral injustificada
+   entra nessa compensação como atraso da jornada inteira (decisão do dono 2026-09-14).
 7. Domingo/feriado usa a taxa **HE domingo/feriado** do funcionário; **todas as demais** horas
    extras (dia útil, sábado, noturna) usam a **HE normal**.
 
@@ -86,10 +87,13 @@ Numerados, testáveis, cada um um "must".
    os créditos de domingo/feriado. Dentro de cada grupo, a alocação é cronológica.
 
 **Falta**
-10. Falta **justificada** (atestado etc.) **não desconta**. Deve haver uma **tela onde o RH
-    registra** a falta ou o atraso como justificado; ao marcar ali, o desconto correspondente
-    é zerado no cálculo.
-11. Falta **injustificada** (dia inteiro) desconta `salário ÷ dias_úteis_do_mês`.
+10. Falta **justificada** (atestado etc.) **não desconta** e **não entra** na conta de horas.
+    Deve haver uma **tela onde o RH registra** a falta ou o atraso como justificado; ao marcar
+    ali, o dia fica neutro no cálculo.
+11. Falta **injustificada** (dia inteiro) entra como **atraso da jornada esperada** (minutos)
+    na conta de horas do período — compensa HE e, se sobrar, desconta pelo valor-hora
+    `(salário ÷ dias_úteis_do_mês) ÷ horas_da_jornada_diária`. **Não** gera desconto R$/dia
+    à parte (evita punição dupla; decisão do dono 2026-09-14).
 
 **Menu / navegação**
 12. O RH ("Pessoas", rota `/rh`) passa a ter exatamente **4 telas**:

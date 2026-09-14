@@ -41,7 +41,7 @@ export async function exportFolhaExcel(rows: FolhaExportRow[], periodLabel: stri
     'Funcionário': r.name,
     'Salário': r2(r.mes.base_salary),
     'Faltas (dias)': r.mes.falta_days,
-    'Faltas (R$)': r2(r.mes.falta_desconto),
+    'Faltas (R$ dia)': r2(r.mes.falta_desconto),  // sempre 0 desde v3 — valor está em atraso
     'Créditos brutos (min)': r.mes.raw_credit_minutes || 0,
     'Atrasos brutos (min)': r.mes.raw_delay_minutes || 0,
     'Compensado (min)': r.mes.compensated_minutes || 0,
@@ -102,7 +102,7 @@ export async function exportFolhaExcel(rows: FolhaExportRow[], periodLabel: stri
     [],
     ['Os valores e o detalhe vêm do MESMO ledger usado no fechamento da Folha.'],
     ['• Excesso de um dia compensa atraso parcial de outro dentro do período selecionado.'],
-    ['• Falta integral fica separada e não entra na compensação de minutos.'],
+    ['• Falta integral injustificada entra na conta de horas (compensa HE; sem desconto R$/dia à parte).'],
     ['• Ausência remunerada parcial cobre somente a defasagem do dia e nunca gera HE.'],
     ['• Primeiro calcula-se crédito bruto − atraso bruto. Saldo positivo acima de 10min vira HE;'],
     ['  saldo de 1 a 10min é descartado; saldo negativo vira atraso líquido descontável.'],
