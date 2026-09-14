@@ -248,6 +248,40 @@ export function composeObjetivaLabelCopy(
   };
 }
 
+/**
+ * Descrição da hangtag: no máximo 2 linhas, quebrando por palavra.
+ * "SAND INFA RAST TIRAS NO" cabe numa; "SAND INFA PLAT TIRAS BRILHO" vira
+ * TIRAS / BRILHO como na etiqueta física.
+ */
+export function wrapObjetivaDescricao(descricao: string, maxChars = 24): string[] {
+  const text = descricao.trim();
+  if (!text) return [];
+  if (text.length <= maxChars) return [text];
+  const words = text.split(/\s+/).filter(Boolean);
+  let first = '';
+  let index = 0;
+  for (; index < words.length; index += 1) {
+    const next = first ? `${first} ${words[index]}` : words[index]!;
+    if (first && next.length > maxChars) break;
+    first = next;
+  }
+  const second = words.slice(index).join(' ');
+  return second ? [first, second] : [first];
+}
+
+/** Linhas do miolo deitadas (ângulo 90°), na ordem da esquerda para a direita. */
+export function objetivaRotatedBodyLines(copy: ObjetivaLabelCopy): string[] {
+  return [
+    ...wrapObjetivaDescricao(copy.descricao),
+    copy.tipo,
+    copy.categoria,
+    copy.material,
+    copy.referencia,
+    copy.semanaAno,
+    copy.codigoBarra,
+  ].filter(line => line.length > 0);
+}
+
 export type ObjetivaLogo = { dataUrl: string; width: number; height: number } | null;
 
 export interface ObjetivaPdfOptions {
@@ -316,6 +350,26 @@ function drawLogo(
   drawLogoFallback(doc, x, y, boxW, boxH);
 }
 
+function drawRotatedLine(
+  doc: PdfDoc,
+  text: string,
+  x: number,
+  baselineY: number,
+  sizePt: number,
+  style: 'normal' | 'bold' = 'normal',
+): void {
+  if (!text) return;
+  doc.setFont('helvetica', style);
+  doc.setFontSize(sizePt);
+  // Sem maxWidth: o clip horizontal (~23 mm) era o que cortava CALCADOS/INFANTI
+  // e fazia o miolo parecer distorcido. O texto deita no eixo Y da peça.
+  doc.text(text, x, baselineY, { angle: 90, align: 'left' });
+}
+
+function rotatedColumnStep(sizePt: number, extraMm = 0.55): number {
+  return sizePt * 0.352778 * 1.12 + extraMm;
+}
+
 function drawObjetivaLabel(
   doc: PdfDoc,
   row: ClientOrderLine,
@@ -339,9 +393,7 @@ function drawObjetivaLabel(
 
   const logoBoxW = Math.min(17.5, contentW * 0.46);
   const logoBoxH = Math.min(7.2, contentH * 0.12);
-  const descColW = Math.min(5.8, contentW * 0.15);
-  const barcodeColW = Math.min(8.5, contentW * 0.22);
-  const footerH = Math.min(14, contentH * 0.24);
+  const footerH = Math.min(13.8, contentH * 0.23);
 
   drawLogo(doc, logo, padL, padT, logoBoxW, logoBoxH);
 
@@ -362,104 +414,79 @@ function drawObjetivaLabel(
     exchangeY += 2.25;
   }
   const headerBottom = Math.max(exchangeY, padT + logoBoxH + 1) + 0.5;
-
   const footerTop = h - padB - footerH;
-  const dividerX = padL + descColW;
-  const mainX = dividerX + 1.1;
-  const barcodeX = w - padR - barcodeColW;
-  const mainW = Math.max(8, barcodeX - mainX - 0.5);
+  const runTop = headerBottom + 0.35;
+  const runBottom = footerTop - 0.35;
 
+  const descLines = wrapObjetivaDescricao(copy.descricao);
+  const descSize = 5.4;
+  let x = padL + 1.15;
+  for (const line of descLines) {
+    drawRotatedLine(doc, line, x, runBottom, descSize, 'bold');
+    x += rotatedColumnStep(descSize, 0.35);
+  }
+
+  const dividerX = x + 0.55;
   doc.line(dividerX, headerBottom, dividerX, footerTop);
+  x = dividerX + 3.2;
 
-  if (copy.descricao) {
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(5.2);
-    doc.text(copy.descricao, padL + descColW * 0.55, footerTop - 0.6, {
-      angle: 90,
-      align: 'left',
-    });
+  drawRotatedLine(doc, copy.tipo, x, runBottom, 8, 'bold');
+  x += rotatedColumnStep(8, 0.7);
+  drawRotatedLine(doc, copy.categoria, x, runBottom, 6.5, 'bold');
+  x += rotatedColumnStep(6.5, 0.65);
+  drawRotatedLine(doc, copy.material, x, runBottom, 6, 'normal');
+  x += rotatedColumnStep(6, 0.65);
+  drawRotatedLine(doc, copy.referencia, x, runBottom, 6, 'bold');
+
+  const barStripW = Math.min(8.2, contentW * 0.2);
+  const barX = w - padR - barStripW;
+  const skuX = barX - 2.35;
+  const weekX = skuX - 2.7;
+  drawRotatedLine(doc, copy.semanaAno, weekX, runBottom, 5, 'normal');
+  drawRotatedLine(doc, copy.codigoBarra, skuX, runBottom, 6.2, 'bold');
+
+  if (copy.codigoBarra) {
+    try {
+      const bars = code128Bars(copy.codigoBarra);
+      const moduleCount = bars.reduce((max, b) => Math.max(max, b.start + b.width), 0);
+      const runH = Math.max(8, runBottom - runTop);
+      const module = Math.max(OBJETIVA_MODULE_MM, runH / Math.max(moduleCount, 1));
+      doc.setFillColor(0, 0, 0);
+      for (const barra of bars) {
+        const segH = barra.width * module;
+        const segY = runBottom - (barra.start + barra.width) * module;
+        doc.rect(barX, segY, barStripW, segH, 'F');
+      }
+    } catch {
+      doc.setFontSize(5);
+      doc.setFont('helvetica', 'normal');
+      doc.text('(código inválido)', barX + 1.2, runTop + 8, { angle: 90 });
+    }
   }
-
-  let y = headerBottom + 0.3;
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
-  if (copy.tipo) {
-    doc.text(copy.tipo, mainX, y, { baseline: 'top', maxWidth: mainW });
-    y += 3.4;
-  }
-  doc.setFontSize(6.5);
-  if (copy.categoria) {
-    doc.text(copy.categoria, mainX, y, { baseline: 'top', maxWidth: mainW });
-    y += 3.05;
-  }
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6);
-  if (copy.material) {
-    doc.text(copy.material, mainX, y, { baseline: 'top', maxWidth: mainW });
-    y += 3.05;
-  }
-  doc.setFont('helvetica', 'bold');
-  doc.text(copy.referencia, mainX, y, { baseline: 'top', maxWidth: mainW });
-
-  doc.line(mainX, footerTop, mainX + mainW, footerTop);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6);
-  doc.text('TAM.:', mainX, footerTop + 1.5, { baseline: 'top' });
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
-  doc.text(copy.tamanho, mainX + 8, footerTop + 0.5, { baseline: 'top' });
-
-  const priceRight = mainX + mainW;
-  const centsLabel = `,${copy.priceCents}`;
-  doc.setFontSize(18);
-  const mainWidth = doc.getTextWidth(copy.priceMain);
-  doc.setFontSize(8);
-  const centsWidth = doc.getTextWidth(centsLabel);
-  doc.setFontSize(18);
-  doc.text(copy.priceMain, priceRight - centsWidth, h - padB - 1.3, {
-    align: 'right',
-    baseline: 'bottom',
-  });
-  doc.setFontSize(8);
-  doc.text(centsLabel, priceRight, h - padB - 6.0, { align: 'right', baseline: 'bottom' });
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6);
-  doc.text('R$', priceRight - centsWidth - mainWidth - 1.4, h - padB - 1.3, {
-    align: 'right',
-    baseline: 'bottom',
-  });
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(5);
-  if (copy.semanaAno) {
-    doc.text(copy.semanaAno, barcodeX + 1.3, footerTop - 1.5, { angle: 90 });
-  }
+  doc.text('TAM.:', padL, footerTop + 1.35, { baseline: 'top' });
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(6);
-  if (copy.codigoBarra) {
-    doc.text(copy.codigoBarra, barcodeX + 3.3, footerTop - 1.5, { angle: 90 });
-  }
+  doc.setFontSize(16);
+  doc.text(copy.tamanho, dividerX + 1.6, footerTop + 0.45, { baseline: 'top' });
 
-  if (!copy.codigoBarra) return;
-  try {
-    const bars = code128Bars(copy.codigoBarra);
-    const moduleCount = bars.reduce((max, b) => Math.max(max, b.start + b.width), 0);
-    const barHeight = 4.2;
-    const available = Math.max(10, footerTop - headerBottom - 2);
-    const module = Math.min(OBJETIVA_MODULE_MM, available / Math.max(moduleCount, 1));
-    doc.setFillColor(0, 0, 0);
-    const barcodeOriginY = footerTop - 1.2;
-    for (const barra of bars) {
-      const segH = barra.width * module;
-      const segY = barcodeOriginY - (barra.start + barra.width) * module;
-      doc.rect(barcodeX + 4.6, segY, barHeight, segH, 'F');
-    }
-  } catch {
-    doc.setFontSize(5);
-    doc.setFont('helvetica', 'normal');
-    doc.text('(código inválido)', barcodeX + 5.5, headerBottom + 8, { angle: 90 });
-  }
+  const priceRight = w - padR;
+  const centsLabel = `,${copy.priceCents}`;
+  doc.setFontSize(7.5);
+  const centsWidth = doc.getTextWidth(centsLabel);
+  doc.text(centsLabel, priceRight, footerTop + 0.3, {
+    align: 'right',
+    baseline: 'top',
+  });
+  doc.setFontSize(16);
+  doc.text(copy.priceMain, priceRight - centsWidth - 0.2, footerTop + 0.45, {
+    align: 'right',
+    baseline: 'top',
+  });
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.text('R$', padL, h - padB - 0.6, { baseline: 'bottom' });
 }
 
 export async function buildObjetivaPdf(
