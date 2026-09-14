@@ -663,7 +663,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
       ];
     });
 
-    const notas = 'Atraso bruto e horas extras são valores brutos. Batida ímpar trava o dia até resolver em Pendências de Ponto. O saldo final é calculado depois da compensação e determina o débito de atraso ou a H.E. pagável. Faltas integrais e adiantamentos ficam separados.';
+    const notas = 'Atraso bruto e horas extras são valores brutos. Batida ímpar trava o dia até resolver em Pendências de Ponto. Falta integral injustificada entra no atraso bruto (compensa HE). O saldo final após compensação determina o débito de atraso ou a H.E. pagável. Adiantamentos ficam separados.';
 
     printRhReport({
       title: 'Folha — Resumo Gerencial',
@@ -681,7 +681,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
       sections: [
         {
           title: 'Conciliação por funcionário · relógio de ponto',
-          note: 'A conta de horas explica o débito ou a H.E.; a coluna Faltas contém apenas dias integrais.',
+          note: 'A conta de horas explica o débito ou a H.E.; a coluna Faltas lista dias integrais (já embutidos no atraso bruto).',
           headers: [
             { label: 'Funcionário' }, { label: 'Setor' }, { label: 'Base', align: 'r' },
             { label: 'Atraso bruto', align: 'r' }, { label: 'Bat. ímpares', align: 'r' }, { label: 'H. extras', align: 'r' },
@@ -1185,7 +1185,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
     <div className="space-y-4 page-enter">
       <div className="text-xs text-muted-foreground">
         <span className="font-semibold text-foreground">Fechamento gerencial da folha</span> · confira a conta de horas, os descontos e o valor final antes de aprovar o pagamento.
-        {' '}Faltas integrais e adiantamentos permanecem separados da compensação de horas.
+        {' '}Falta integral injustificada entra na conta de horas (compensa HE). Adiantamentos ficam separados.
       </div>
 
       {filtersBar}
@@ -1274,7 +1274,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
       <div className="grid gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-3">
         {[
           ['Proventos', fmt(totals.proventos), 'salário + H.E. paga'],
-          ['Descontos', fmt(totals.descontos), 'faltas + saldo devedor'],
+          ['Descontos', fmt(totals.descontos), 'atraso líquido (inclui falta em horas) + adiantamentos'],
           ['Adiantamentos', fmt(totals.advances), totals.advances > 0 ? `${totals.advancesCount} funcionário(s)` : 'nenhum no período'],
         ].map(([label, value, hint]) => (
           <div key={label} className="bg-card px-4 py-3">

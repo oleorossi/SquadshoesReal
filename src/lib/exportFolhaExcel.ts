@@ -41,7 +41,9 @@ export async function exportFolhaExcel(rows: FolhaExportRow[], periodLabel: stri
     'Funcionário': r.name,
     'Salário': r2(r.mes.base_salary),
     'Faltas (dias)': r.mes.falta_days,
-    'Faltas (R$ dia)': r2(r.mes.falta_desconto),  // sempre 0 desde v3 — valor está em atraso
+    // Coluna legada mantida p/ planilhas antigas; desde v3 o valor é sempre 0
+    // (falta integral entra em "Atrasos brutos" e compensa HE).
+    'Faltas R$ (sempre 0)': 0,
     'Créditos brutos (min)': r.mes.raw_credit_minutes || 0,
     'Atrasos brutos (min)': r.mes.raw_delay_minutes || 0,
     'Compensado (min)': r.mes.compensated_minutes || 0,
@@ -109,7 +111,7 @@ export async function exportFolhaExcel(rows: FolhaExportRow[], periodLabel: stri
     ['• A compensação consome primeiro créditos de taxa normal e preserva domingo/feriado.'],
     ['• HE normal e domingo/feriado usam as taxas individuais cadastradas no funcionário.'],
     ['• Batida ímpar = dia pendente (fica fora do cálculo até resolver em Pendências).'],
-    ['• Líquido = salário (proporcional) − faltas − atrasos + HE − adiantamentos.'],
+    ['• Líquido = salário (proporcional) − atraso líquido (inclui falta em horas) + HE − adiantamentos.'],
     ['• A coluna Situação no Resumo avisa ponto faltando / faltas demais / sem escala —'],
     ['  corrija o ponto antes de pagar.'],
   ];

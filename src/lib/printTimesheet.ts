@@ -1030,7 +1030,7 @@ export function printEmployeeEvaluationSummary(employees: EmployeeTimesheetData[
     <div style="margin-top:16px;font-size:10px;color:#222;line-height:1.5">
       <b>Como ler:</b> Mesma conta da FOLHA (salário − descontos), LÍQUIDA do período ·
       <b>Hora extra</b> = saldo positivo acima de 10min após compensação, pelas taxas individuais ·
-      <b>Atraso líq.</b> = saldo negativo após compensação · <b>Falta</b> = um valor-dia separado ·
+      <b>Atraso líq.</b> = saldo negativo após compensação (inclui falta integral em horas) · <b>Falta</b> = dias integrais (já na conta de horas; sem R$/dia) ·
       <b>Líquido</b> = Valor HE − Desconto · <b>Pend.</b> = dias com batida ímpar fora do cálculo.
     </div>
   `;
