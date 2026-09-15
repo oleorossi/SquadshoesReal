@@ -182,25 +182,24 @@ describe('objetivaLabels PDF · miolo horizontal + preço', () => {
     expect(content).not.toMatch(/CALCADOS\/INFANTI[^L]/);
   });
 
-  it('emite miolo e bloco R$+main+cents no fluxo do footer', async () => {
+  it('emite miolo horizontal e bloco R$+main+cents unificado no footer', async () => {
     const content = await pdfContentForTam25();
-    expect(content).toContain('SANDALIA');
-    expect(content).toContain('CALCADOS/INFANTIL');
-    expect(content).toContain('R$');
-    expect(content).toContain('39');
-    expect(content).toContain(',99');
+    expect(content).toContain('(SANDALIA)');
+    expect(content).toContain('(CALCADOS/INFANTIL)');
+    // Miolo horizontal: Td (sem matriz Tm de rotação 90°)
+    expect(content).toMatch(/\([\s\S]*SANDALIA[\s\S]*\)\s*Tj/);
+    expect(content).not.toMatch(
+      /0\.0000000000000001 1\. -1\. 0\.0000000000000001 [0-9.]+ [0-9.]+\s+Tm\s*\(SANDALIA\)/,
+    );
 
-    // Footer: R$ aparece depois do main no fluxo de desenho (bloco unificado à direita)
-    const rsIdx = content.lastIndexOf('R$');
+    // Footer: bloco R$ → 39 → ,99 em sequência (não R$ isolado no canto inferior)
+    const tamIdx = content.lastIndexOf('(TAM.:)');
+    const rsIdx = content.lastIndexOf('(R$)');
     const mainIdx = content.lastIndexOf('(39)');
-    const mainBare = content.lastIndexOf('39');
-    const centsIdx = content.lastIndexOf(',99');
-    expect(rsIdx).toBeGreaterThan(-1);
-    expect(centsIdx).toBeGreaterThan(-1);
-    // main pode aparecer como literal 39; R$ deve estar perto do final (footer)
-    const priceZone = content.slice(Math.max(0, content.length - 800));
-    expect(priceZone).toContain('R$');
-    expect(priceZone).toContain(',99');
-    expect(mainIdx >= 0 || mainBare >= 0).toBe(true);
+    const centsIdx = content.lastIndexOf('(,99)');
+    expect(tamIdx).toBeGreaterThan(-1);
+    expect(rsIdx).toBeGreaterThan(tamIdx);
+    expect(mainIdx).toBeGreaterThan(rsIdx);
+    expect(centsIdx).toBeGreaterThan(mainIdx);
   });
 });

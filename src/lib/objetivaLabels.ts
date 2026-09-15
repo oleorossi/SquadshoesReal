@@ -478,10 +478,9 @@ function drawObjetivaLabel(
     drawRotatedLine(doc, copy.semanaAno, weekX, runBottom, 4.8, 'normal');
   }
 
-  // Miolo horizontal (tipo → categoria → material → ref), entre divisor e faixa do SKU
+  // Miolo horizontal (tipo → categoria → material → ref), entre divisor e faixa do SKU.
+  // Sem maxWidth: o clip reintroduzia CALCADOS/INFANTI + L em duas Tj (bug do miolo deitado).
   const mioloLeft = dividerX + 1.6;
-  const mioloRight = weekX - 1.2;
-  const mioloMaxW = Math.max(8, mioloRight - mioloLeft);
   let mioloY = runTop + 0.4;
   const mioloLines: Array<{ text: string; size: number; style: 'normal' | 'bold'; gap: number }> = [
     { text: copy.tipo, size: 7.2, style: 'bold', gap: 3.55 },
@@ -493,14 +492,11 @@ function drawObjetivaLabel(
     if (!line.text) continue;
     doc.setFont('helvetica', line.style);
     doc.setFontSize(line.size);
-    doc.text(line.text, mioloLeft, mioloY, {
-      baseline: 'top',
-      maxWidth: mioloMaxW,
-    });
+    doc.text(line.text, mioloLeft, mioloY, { baseline: 'top' });
     mioloY += line.gap;
   }
 
-  // Footer: TAM à esquerda; bloco R$ + main + cents à direita
+  // Footer: TAM à esquerda; bloco R$ + main + cents à direita (R$ baseline com o main)
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(5);
   doc.text('TAM.:', padL, footerTop + 1.2, { baseline: 'top' });
@@ -515,6 +511,8 @@ function drawObjetivaLabel(
   const centsWidth = doc.getTextWidth(centsLabel);
   doc.setFontSize(15.5);
   const mainWidth = doc.getTextWidth(copy.priceMain);
+  const mainTop = footerTop + 0.35;
+  const mainBottom = mainTop + 15.5 * 0.352778;
   doc.setFontSize(8.5);
   const rsWidth = doc.getTextWidth('R$');
   const priceGap = 0.55;
@@ -522,13 +520,13 @@ function drawObjetivaLabel(
   const blockLeft = priceRight - blockWidth;
 
   doc.setFontSize(8.5);
-  doc.text('R$', blockLeft, footerTop + 5.6, { baseline: 'top' });
+  doc.text('R$', blockLeft, mainBottom, { baseline: 'bottom' });
   doc.setFontSize(15.5);
-  doc.text(copy.priceMain, blockLeft + rsWidth + priceGap, footerTop + 0.35, {
+  doc.text(copy.priceMain, blockLeft + rsWidth + priceGap, mainTop, {
     baseline: 'top',
   });
   doc.setFontSize(7.2);
-  doc.text(centsLabel, blockLeft + rsWidth + priceGap + mainWidth + 0.25, footerTop + 0.35, {
+  doc.text(centsLabel, blockLeft + rsWidth + priceGap + mainWidth + 0.25, mainTop, {
     baseline: 'top',
   });
 }
