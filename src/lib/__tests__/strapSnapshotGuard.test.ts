@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { listMissingTechnicalStrapSnapshots } from '../strapSnapshotGuard';
+import {
+  listMissingTechnicalStrapSnapshots,
+  shouldSkipCommittedStrapReconcile,
+} from '../strapSnapshotGuard';
 
 describe('listMissingTechnicalStrapSnapshots', () => {
   it('bloqueia a referência de tira quando o snapshot do item está vazio', () => {
@@ -21,5 +24,43 @@ describe('listMissingTechnicalStrapSnapshots', () => {
       [{ reference_id: 'cabedal', strap_colors: [] }],
       [{ id: 'cabedal', has_straps: true, upper_material: 'NAPA', strap_colors: [] }],
     )).toEqual([{ index: 0, referenceId: 'cabedal', label: 'item 1' }]);
+  });
+});
+
+describe('shouldSkipCommittedStrapReconcile', () => {
+  it('preserva snapshot comprometido com linhas', () => {
+    expect(shouldSkipCommittedStrapReconcile({
+      preserveCommitted: true,
+      snapshotLength: 4,
+      technicalDefinitionsLength: 4,
+      hasStraps: true,
+    })).toBe(true);
+  });
+
+  it('recupera snapshot comprometido vazio quando a ficha exige tiras', () => {
+    expect(shouldSkipCommittedStrapReconcile({
+      preserveCommitted: true,
+      snapshotLength: 0,
+      technicalDefinitionsLength: 1,
+      hasStraps: true,
+    })).toBe(false);
+  });
+
+  it('não força reconcile em rascunho (não comprometido)', () => {
+    expect(shouldSkipCommittedStrapReconcile({
+      preserveCommitted: false,
+      snapshotLength: 0,
+      technicalDefinitionsLength: 1,
+      hasStraps: true,
+    })).toBe(false);
+  });
+
+  it('preserva [] quando a ficha não exige tiras', () => {
+    expect(shouldSkipCommittedStrapReconcile({
+      preserveCommitted: true,
+      snapshotLength: 0,
+      technicalDefinitionsLength: 0,
+      hasStraps: false,
+    })).toBe(true);
   });
 });

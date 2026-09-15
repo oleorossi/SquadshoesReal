@@ -104,6 +104,7 @@ import { ItemSectorOutsourcingSection } from '@/components/sale-orders/ItemSecto
 import { SignedImage } from '@/components/ui/signed-image';
 import { resolveReferenceThumbnailUrl } from '@/lib/referenceImage';
 import { isCommittedSaleOrderStrapSnapshotStatus } from '@/lib/saleOrderStateMachine';
+import { shouldSkipCommittedStrapReconcile } from '@/lib/strapSnapshotGuard';
 import {
   reconcileEditableStrapSnapshots,
   strapPresentationLines,
@@ -1184,16 +1185,29 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       : [];
     // Ausência do campo significa catálogo ainda incompleto. Já []/null numa
     // ficha carregada é uma remoção legítima de todas as tiras do rascunho.
-    if (preserveCommittedStrapSnapshot || selectedRef?.strap_colors === undefined) {
+    // Snapshot comprometido VAZIO com ficha que exige tiras: recuperar (PV-00168).
+    const skipCommittedReconcile = shouldSkipCommittedStrapReconcile({
+      preserveCommitted: preserveCommittedStrapSnapshot,
+      snapshotLength: currentStraps.length,
+      technicalDefinitionsLength: refStrapDefs.length,
+      hasStraps: selectedRef?.has_straps,
+    });
+    if (skipCommittedReconcile || selectedRef?.strap_colors === undefined) {
       // #region agent log
       if ((Array.isArray(selectedRef?.strap_colors) ? selectedRef!.strap_colors.length : 0) > 0
         || selectedRef?.has_straps === true
         || (Array.isArray(currentStraps) && currentStraps.length === 0)) {
-        fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ba1e98'},body:JSON.stringify({sessionId:'ba1e98',runId:'pre-fix',hypothesisId:'B,C',location:'SaleOrderItemForm.tsx:reconcileSkip',message:'strap reconcile skipped',data:{itemId:item.id||null,ref:item.reference_id,preserveCommittedStrapSnapshot,saleOrderStatus,strapColorsUndefined:selectedRef?.strap_colors===undefined,has_straps:selectedRef?.has_straps??null,refDefLen:Array.isArray(selectedRef?.strap_colors)?selectedRef!.strap_colors.length:-1,itemSnapLen:Array.isArray(currentStraps)?currentStraps.length:-1},timestamp:Date.now()})}).catch(()=>{});
+        fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'78dba0'},body:JSON.stringify({sessionId:'78dba0',runId:'post-fix',hypothesisId:'B',location:'SaleOrderItemForm.tsx:reconcileSkip',message:'strap reconcile skipped',data:{itemId:item.id||null,ref:item.reference_id,preserveCommittedStrapSnapshot,skipCommittedReconcile,saleOrderStatus,strapColorsUndefined:selectedRef?.strap_colors===undefined,has_straps:selectedRef?.has_straps??null,refDefLen:refStrapDefs.length,itemSnapLen:currentStraps.length},timestamp:Date.now()})}).catch(()=>{});
       }
       // #endregion
       return;
     }
+
+    // #region agent log
+    if (preserveCommittedStrapSnapshot && currentStraps.length === 0) {
+      fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'78dba0'},body:JSON.stringify({sessionId:'78dba0',runId:'post-fix',hypothesisId:'B',location:'SaleOrderItemForm.tsx:reconcileRecover',message:'recovering empty committed strap snapshot',data:{itemId:item.id||null,ref:item.reference_id,refDefLen:refStrapDefs.length,has_straps:selectedRef?.has_straps??null,color:item.color||null},timestamp:Date.now()})}).catch(()=>{});
+    }
+    // #endregion
 
     // A ficha publicada é estruturalmente autoritativa para itens editáveis.
     // O reconciliador casa exclusivamente o UUID da posição, preserva somente
@@ -1211,15 +1225,34 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     });
     let nextLines = reconciled.lines as SaleOrderItemStrap[];
     let linesChanged = reconciled.linesChanged;
-    if (strapCatalog?.measures?.length) {
+    let nextSourcing = reconciled.sourcing;
+    let sourcingChanged = reconciled.sourcingChanged;
+    // Default prestador só em rascunho/pendente. Em snapshot comprometido vazio
+    // recuperado, não inventa pv_origem (trava o seletor); grava sourcing
+    // operacional mínimo pra o guard de origem liberar o ajuste do pedido.
+    if (strapCatalog?.measures?.length && !preserveCommittedStrapSnapshot) {
       const defaults = applyDefaultStrapPvOrigemChoices(nextLines, strapCatalog.measures);
       if (defaults.changed) {
         nextLines = defaults.lines;
         linesChanged = true;
       }
     }
+    if (preserveCommittedStrapSnapshot && currentStraps.length === 0 && nextLines.length > 0) {
+      let seeded = nextSourcing;
+      let seededChanged = false;
+      for (const line of nextLines) {
+        const lineId = technicalStrapLineId(line);
+        if (!lineId || getStrapSourcingOverride(seeded, lineId)) continue;
+        seeded = setStrapSourcing(seeded, lineId, 'internal');
+        seededChanged = true;
+      }
+      if (seededChanged) {
+        nextSourcing = seeded;
+        sourcingChanged = true;
+      }
+    }
     if (linesChanged) update(idx, 'strap_colors', nextLines);
-    if (reconciled.sourcingChanged) update(idx, 'strap_sourcing', reconciled.sourcing);
+    if (sourcingChanged) update(idx, 'strap_sourcing', nextSourcing);
   }, [
     item.reference_id,
     item.strap_colors,
@@ -2474,6 +2507,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                   const missingOrigem = listMissingStrapPvOrigemChoices(
                     snapshotStraps,
                     strapCatalog?.measures || [],
+                    strapSourcingMap,
                   );
                   if (missingOrigem.length === 0) return null;
                   return (

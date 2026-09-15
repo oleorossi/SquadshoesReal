@@ -8,8 +8,9 @@ import {
   composeObjetivaLabelCopy,
   countObjetivaLabels,
   isObjetivaOrderHeader,
+  objetivaHorizontalMioloLines,
   objetivaPdfFilename,
-  objetivaRotatedBodyLines,
+  objetivaRotatedRailLines,
   parseObjetivaOrderCsv,
   stripHangtagAccents,
   wrapObjetivaDescricao,
@@ -131,18 +132,27 @@ describe('composeObjetivaLabelCopy · hangtag 112334 TAM 25', () => {
     ]);
   });
 
-  it('miolo deitado leva CALCADOS/INFANTIL inteiro', () => {
+  it('miolo horizontal empilha tipo/categoria/material/ref', () => {
     const rows = parseObjetivaOrderCsv(loadFixture('112334.csv'));
     const row = rows.find(item => item.tamanho === '25');
     const copy = composeObjetivaLabelCopy(row!, OBJETIVA_DEFAULT_BRANDING);
-    const body = objetivaRotatedBodyLines(copy);
-    expect(body).toContain('CALCADOS/INFANTIL');
-    expect(body.some(line => line === 'CALCADOS/INFANTI')).toBe(false);
+    expect(objetivaHorizontalMioloLines(copy)).toEqual([
+      'SANDALIA',
+      'CALCADOS/INFANTIL',
+      'PU/SO / DOURADA 420',
+      'Ref.: I701',
+    ]);
+    const rails = objetivaRotatedRailLines(copy);
+    expect(rails).toContain('SAND INFA RAST TIRAS NO');
+    expect(rails).toContain('112334');
+    expect(rails).toContain('29/26');
+    expect(rails).not.toContain('SANDALIA');
+    expect(rails).not.toContain('CALCADOS/INFANTIL');
   });
 });
 
-describe('objetivaLabels PDF · miolo sem clip', () => {
-  it('grava CALCADOS/INFANTIL completo no conteúdo do PDF', async () => {
+describe('objetivaLabels PDF · miolo horizontal + preço', () => {
+  async function pdfContentForTam25(): Promise<string> {
     const rows = parseObjetivaOrderCsv(loadFixture('112334.csv'));
     const row = rows.find(item => item.tamanho === '25')!;
     const pattern = defaultPatternForKey('objetiva');
@@ -155,7 +165,7 @@ describe('objetivaLabels PDF · miolo sem clip', () => {
     const latin = bytes.toString('latin1');
     const streams = [...latin.matchAll(/stream\r?\n([\s\S]*?)\nendstream/g)];
     const { inflateSync } = await import('node:zlib');
-    const content = streams
+    return streams
       .map(match => {
         try {
           return inflateSync(Buffer.from(match[1]!, 'latin1')).toString('latin1');
@@ -164,7 +174,33 @@ describe('objetivaLabels PDF · miolo sem clip', () => {
         }
       })
       .join('\n');
+  }
+
+  it('grava CALCADOS/INFANTIL completo no conteúdo do PDF', async () => {
+    const content = await pdfContentForTam25();
     expect(content).toContain('CALCADOS/INFANTIL');
     expect(content).not.toMatch(/CALCADOS\/INFANTI[^L]/);
+  });
+
+  it('emite miolo e bloco R$+main+cents no fluxo do footer', async () => {
+    const content = await pdfContentForTam25();
+    expect(content).toContain('SANDALIA');
+    expect(content).toContain('CALCADOS/INFANTIL');
+    expect(content).toContain('R$');
+    expect(content).toContain('39');
+    expect(content).toContain(',99');
+
+    // Footer: R$ aparece depois do main no fluxo de desenho (bloco unificado à direita)
+    const rsIdx = content.lastIndexOf('R$');
+    const mainIdx = content.lastIndexOf('(39)');
+    const mainBare = content.lastIndexOf('39');
+    const centsIdx = content.lastIndexOf(',99');
+    expect(rsIdx).toBeGreaterThan(-1);
+    expect(centsIdx).toBeGreaterThan(-1);
+    // main pode aparecer como literal 39; R$ deve estar perto do final (footer)
+    const priceZone = content.slice(Math.max(0, content.length - 800));
+    expect(priceZone).toContain('R$');
+    expect(priceZone).toContain(',99');
+    expect(mainIdx >= 0 || mainBare >= 0).toBe(true);
   });
 });

@@ -2,6 +2,10 @@ import {
   normalizeStrapOrigemPadrao,
 } from '@/lib/strapBaseNapaPeel';
 import {
+  getStrapSourcingOverride,
+  type StrapSourcingMap,
+} from '@/lib/strapSourcing';
+import {
   technicalStrapLineId,
   type StrapPvOrigem,
 } from '@/lib/technicalStrapLines';
@@ -25,6 +29,8 @@ export interface StrapPvOrigemLineLike {
 export interface StrapPvOrigemItemLike {
   color?: string | null;
   strap_colors?: StrapPvOrigemLineLike[] | null;
+  /** Origem operacional já congelada — satisfaz escolhe_no_pv sem `pv_origem`. */
+  strap_sourcing?: StrapSourcingMap | null;
 }
 
 export interface StrapPvOrigemChange {
@@ -167,7 +173,7 @@ export function firstMissingStrapPvOrigemMessage(
   for (const item of items || []) {
     const straps = Array.isArray(item.strap_colors) ? item.strap_colors : [];
     if (straps.length === 0) continue;
-    const missing = listMissingStrapPvOrigemChoices(straps, measures);
+    const missing = listMissingStrapPvOrigemChoices(straps, measures, item.strap_sourcing);
     const color = (item.color || 'sem cor').trim() || 'sem cor';
     for (const issue of missing) {
       if (!firstLabel) {
@@ -185,12 +191,32 @@ export function firstMissingStrapPvOrigemMessage(
   return `${firstLabel}: escolha Fábrica, Prestador ou Fornecedor em ${colors.join(', ')} antes de salvar.`;
 }
 
+/**
+ * `strap_sourcing` com modo canônico já congela a origem operacional (PVs
+ * anteriores ao campo `pv_origem`). Sem isso, pedido Aprovado com sourcing
+ * preenchido trava no âmbar "Escolha a origem…" (PV-00168).
+ */
+export function strapSourcingSatisfiesPvOrigemChoice(
+  line: StrapPvOrigemLineLike | null | undefined,
+  sourcing: StrapSourcingMap | null | undefined,
+): boolean {
+  const lineId = technicalStrapLineId({
+    id: line?.id,
+    technical_strap_line_id: line?.technical_strap_line_id,
+  });
+  if (!lineId) return false;
+  const mode = getStrapSourcingOverride(sourcing, lineId);
+  return mode === 'internal' || mode === 'buy_ready';
+}
+
 /** Posições escolhe_no_pv sem pv_origem — bloqueiam save no desktop (spec).
  *  Se a medida ainda não traz `origem_padrao` (migration não aplicada / catálogo
- *  antigo), não bloqueia — senão o PV inteiro trava sem o Hub estar pronto. */
+ *  antigo), não bloqueia — senão o PV inteiro trava sem o Hub estar pronto.
+ *  Sourcing operacional já gravado também satisfaz (legado pré-pv_origem). */
 export function listMissingStrapPvOrigemChoices(
   lines: readonly StrapPvOrigemLineLike[] | null | undefined,
   measures: readonly StrapPvOrigemMeasureLike[] | null | undefined,
+  sourcing?: StrapSourcingMap | null,
 ): MissingStrapPvOrigemIssue[] {
   const byId = new Map((measures || []).map((measure) => [measure.id, measure]));
   const issues: MissingStrapPvOrigemIssue[] = [];
@@ -198,6 +224,7 @@ export function listMissingStrapPvOrigemChoices(
     const measure = line.measure_id ? byId.get(line.measure_id) : undefined;
     if (!measureRequiresPvOrigemChoice(measure)) continue;
     if (hasExplicitStrapPvOrigem(line)) continue;
+    if (strapSourcingSatisfiesPvOrigemChoice(line, sourcing)) continue;
     const label = (line.label || `Tira ${index + 1}`).trim() || `Tira ${index + 1}`;
     issues.push({
       label,

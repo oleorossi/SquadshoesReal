@@ -49,6 +49,29 @@ describe('strapPvOrigem', () => {
     expect(issues[0].message).toContain('Fornecedor');
   });
 
+  it('sourcing operacional legado satisfaz escolhe_no_pv sem pv_origem', () => {
+    const lineId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const line = {
+      label: 'TIRA 1',
+      measure_id: 'm1',
+      technical_strap_line_id: lineId,
+      pv_origem: null as null,
+    };
+    expect(listMissingStrapPvOrigemChoices(
+      [line],
+      [{ id: 'm1', origem_padrao: 'escolhe_no_pv' }],
+      { [lineId]: { source_mode: 'internal' as const } },
+    )).toEqual([]);
+    expect(firstMissingStrapPvOrigemMessage(
+      [{
+        color: 'OFF WHITE',
+        strap_colors: [line],
+        strap_sourcing: { [lineId]: { source_mode: 'buy_ready' as const } },
+      }],
+      [{ id: 'm1', origem_padrao: 'escolhe_no_pv' }],
+    )).toBeNull();
+  });
+
   it('snapshot comprometido trava origem já escolhida, mas lacuna continua editável', () => {
     expect(isStrapPvOrigemChoiceLocked({
       committedSnapshot: true,
