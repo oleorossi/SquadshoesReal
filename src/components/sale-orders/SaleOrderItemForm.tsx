@@ -1193,21 +1193,8 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       hasStraps: selectedRef?.has_straps,
     });
     if (skipCommittedReconcile || selectedRef?.strap_colors === undefined) {
-      // #region agent log
-      if ((Array.isArray(selectedRef?.strap_colors) ? selectedRef!.strap_colors.length : 0) > 0
-        || selectedRef?.has_straps === true
-        || (Array.isArray(currentStraps) && currentStraps.length === 0)) {
-        fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'78dba0'},body:JSON.stringify({sessionId:'78dba0',runId:'post-fix',hypothesisId:'B',location:'SaleOrderItemForm.tsx:reconcileSkip',message:'strap reconcile skipped',data:{itemId:item.id||null,ref:item.reference_id,preserveCommittedStrapSnapshot,skipCommittedReconcile,saleOrderStatus,strapColorsUndefined:selectedRef?.strap_colors===undefined,has_straps:selectedRef?.has_straps??null,refDefLen:refStrapDefs.length,itemSnapLen:currentStraps.length},timestamp:Date.now()})}).catch(()=>{});
-      }
-      // #endregion
       return;
     }
-
-    // #region agent log
-    if (preserveCommittedStrapSnapshot && currentStraps.length === 0) {
-      fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'78dba0'},body:JSON.stringify({sessionId:'78dba0',runId:'post-fix',hypothesisId:'B',location:'SaleOrderItemForm.tsx:reconcileRecover',message:'recovering empty committed strap snapshot',data:{itemId:item.id||null,ref:item.reference_id,refDefLen:refStrapDefs.length,has_straps:selectedRef?.has_straps??null,color:item.color||null},timestamp:Date.now()})}).catch(()=>{});
-    }
-    // #endregion
 
     // A ficha publicada é estruturalmente autoritativa para itens editáveis.
     // O reconciliador casa exclusivamente o UUID da posição, preserva somente

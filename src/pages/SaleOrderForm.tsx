@@ -1912,17 +1912,11 @@ export default function SaleOrderForm() {
     const productionItems = filterProductionSaleOrderItems(validItems);
     if (validItems.length === 0) { toast.error('Adicione pelo menos um item ao pedido.'); return; }
     if (productionItems.some(i => !i.color?.trim())) { toast.error('Selecione uma cor para todos os itens.'); return; }
-    // #region agent log
-    fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'78dba0'},body:JSON.stringify({sessionId:'78dba0',runId:'post-fix',hypothesisId:'A,B,C',location:'SaleOrderForm.tsx:handleSubmit',message:'submit before strap snapshot guard',data:{status:f.status||null,isEdit,itemCount:items.length,productionCount:productionItems.length,items:productionItems.map((it,i)=>({i,id:it.id||null,ref:it.reference_id,color:it.color||null,snapLen:Array.isArray(it.strap_colors)?it.strap_colors.length:-1,sourcingKeys:it.strap_sourcing&&typeof it.strap_sourcing==='object'?Object.keys(it.strap_sourcing).length:0,excluded:!!it.production_excluded_at})),canonicalRefSample:canonicalReferences.filter((r:any)=>productionItems.some(it=>it.reference_id===r.id)).map((r:any)=>({id:r.id,code:r.code,name:r.name,has_straps:r.has_straps,defLen:Array.isArray(r.strap_colors)?r.strap_colors.length:-1}))},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     const missingStrapSnapshots = listMissingTechnicalStrapSnapshots(
       productionItems,
       canonicalReferences as StrapSnapshotReferenceLike[],
     );
     if (missingStrapSnapshots.length > 0) {
-      // #region agent log
-      fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'78dba0'},body:JSON.stringify({sessionId:'78dba0',runId:'post-fix',hypothesisId:'A,B',location:'SaleOrderForm.tsx:handleSubmit:blocked',message:'blocked by missing strap snapshots',data:{missing:missingStrapSnapshots,status:f.status||null},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       toast.error(
         `Demanda de tira não resolvida em ${missingStrapSnapshots[0].label}: a ficha exige tiras, mas o item está sem linhas técnicas. ` +
         'Cadastre as tiras na ficha técnica e volte ao pedido; o sistema não infere cor ou variante.',
