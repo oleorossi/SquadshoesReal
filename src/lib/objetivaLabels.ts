@@ -328,13 +328,32 @@ function imageFormat(dataUrl: string): 'PNG' | 'JPEG' {
   return dataUrl.startsWith('data:image/jpeg') || dataUrl.startsWith('data:image/jpg') ? 'JPEG' : 'PNG';
 }
 
+/**
+ * Fallback da logomarca Objetiva: caixa preta + wordmark branca + pino,
+ * como na hangtag física. Quando o cliente envia PNG/JPG, drawLogo usa a arte.
+ */
 function drawLogoFallback(doc: PdfDoc, x: number, y: number, boxW: number, boxH: number): void {
   doc.setFillColor(0, 0, 0);
   doc.rect(x, y, boxW, boxH, 'F');
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(Math.max(5.5, Math.min(7.5, boxH * 0.95)));
-  doc.text('objetiva', x + 0.7, y + boxH * 0.68);
+  const fontPt = Math.max(6.2, Math.min(8.4, boxH * 1.15));
+  doc.setFontSize(fontPt);
+  const textX = x + boxH * 0.18;
+  const baseline = y + boxH * 0.70;
+  doc.text('objetiva', textX, baseline);
+  const textW = doc.getTextWidth('objetiva');
+  const markR = Math.min(boxH * 0.28, 1.35);
+  const cx = textX + textW + markR + 0.45;
+  const cy = y + boxH * 0.50;
+  if (cx + markR <= x + boxW - 0.35) {
+    doc.setDrawColor(255, 255, 255);
+    doc.setLineWidth(0.22);
+    doc.circle(cx, cy, markR, 'S');
+    doc.setLineWidth(0.15);
+    doc.circle(cx, cy, markR * 0.40, 'S');
+    doc.setDrawColor(0, 0, 0);
+  }
   doc.setTextColor(0, 0, 0);
 }
 
@@ -401,52 +420,58 @@ function drawObjetivaLabel(
 
   doc.setTextColor(0, 0, 0);
   doc.setDrawColor(0, 0, 0);
-  doc.setLineWidth(0.25);
+  // Divisor fino como na hangtag física (~0,15 mm).
+  doc.setLineWidth(0.15);
 
-  const logoBoxW = Math.min(16.8, contentW * 0.44);
-  const logoBoxH = Math.min(6.8, contentH * 0.115);
-  const footerH = Math.min(14.5, contentH * 0.24);
+  // Calibração contra a foto física: menos ar morto, tipografia mais justa.
+  const logoBoxW = Math.min(17.5, contentW * 0.48);
+  const logoBoxH = Math.min(5.6, contentH * 0.095);
+  const footerH = Math.min(12.0, contentH * 0.195);
 
   drawLogo(doc, logo, padL, padT, logoBoxW, logoBoxH);
 
-  const mottoX = padL + logoBoxW + 1.0;
-  const mottoMaxW = Math.max(8, contentW - logoBoxW - 1.2);
+  const mottoX = padL + logoBoxW + 0.7;
+  const mottoMaxW = Math.max(8, contentW - logoBoxW - 0.9);
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(4.0);
-  let mottoY = padT + 1.1;
+  doc.setFontSize(3.4);
+  let mottoY = padT + 0.55;
   for (const line of copy.mottoLines) {
-    doc.text(line, mottoX, mottoY, { baseline: 'top', maxWidth: mottoMaxW });
-    mottoY += 2.2;
+    doc.text(line, mottoX, mottoY, {
+      baseline: 'top',
+      maxWidth: mottoMaxW,
+      charSpace: -0.12,
+    });
+    mottoY += 1.7;
   }
 
-  let exchangeY = padT + logoBoxH + 0.85;
-  doc.setFontSize(3.9);
+  let exchangeY = padT + logoBoxH + 0.45;
+  doc.setFontSize(3.35);
   for (const line of copy.exchangeLines) {
-    doc.text(line, padL, exchangeY, { baseline: 'top' });
-    exchangeY += 2.15;
+    doc.text(line, padL, exchangeY, { baseline: 'top', charSpace: -0.1 });
+    exchangeY += 1.75;
   }
-  const headerBottom = Math.max(exchangeY, padT + logoBoxH + 1) + 0.45;
+  const headerBottom = Math.max(exchangeY, padT + logoBoxH + 0.55) + 0.25;
   const footerTop = h - padB - footerH;
-  const runTop = headerBottom + 0.3;
-  const runBottom = footerTop - 0.4;
+  const runTop = headerBottom + 0.2;
+  const runBottom = footerTop - 0.3;
 
-  // Faixa esquerda: descrição vertical + divisor
+  // Faixa esquerda: descrição vertical + divisor (colada à margem, como na foto).
   const descLines = wrapObjetivaDescricao(copy.descricao);
-  const descSize = 5.2;
-  let x = padL + 1.05;
+  const descSize = 4.6;
+  let x = padL + 0.55;
   for (const line of descLines) {
     drawRotatedLine(doc, line, x, runBottom, descSize, 'bold');
-    x += rotatedColumnStep(descSize, 0.3);
+    x += rotatedColumnStep(descSize, 0.18);
   }
 
-  const dividerX = x + 0.5;
+  const dividerX = x + 0.35;
   doc.line(dividerX, headerBottom, dividerX, footerTop);
 
   // Faixa direita: CODE128 + SKU (topo) + semana/ano (base)
-  const barStripW = Math.min(7.6, contentW * 0.185);
+  const barStripW = Math.min(7.0, contentW * 0.175);
   const barX = w - padR - barStripW;
-  const skuX = barX - 2.2;
-  const weekX = skuX - 2.55;
+  const skuX = barX - 1.85;
+  const weekX = skuX - 2.15;
 
   if (copy.codigoBarra) {
     try {
@@ -467,66 +492,76 @@ function drawObjetivaLabel(
     }
   }
 
-  // SKU junto ao topo do código; semana/ano na base (ambos deitados)
   if (copy.codigoBarra) {
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(6.0);
+    doc.setFontSize(5.4);
     const skuLen = doc.getTextWidth(copy.codigoBarra);
-    drawRotatedLine(doc, copy.codigoBarra, skuX, runTop + skuLen, 6.0, 'bold');
+    drawRotatedLine(doc, copy.codigoBarra, skuX, runTop + skuLen, 5.4, 'bold');
   }
   if (copy.semanaAno) {
-    drawRotatedLine(doc, copy.semanaAno, weekX, runBottom, 4.8, 'normal');
+    drawRotatedLine(doc, copy.semanaAno, weekX, runBottom, 4.2, 'normal');
   }
 
-  // Miolo horizontal (tipo → categoria → material → ref), entre divisor e faixa do SKU.
-  // Sem maxWidth: o clip reintroduzia CALCADOS/INFANTI + L em duas Tj (bug do miolo deitado).
-  const mioloLeft = dividerX + 1.6;
-  let mioloY = runTop + 0.4;
+  // Miolo horizontal — hierarquia da foto: SANDALIA destaca, demais linhas justas.
+  const mioloLeft = dividerX + 1.1;
+  let mioloY = runTop + 0.25;
   const mioloLines: Array<{ text: string; size: number; style: 'normal' | 'bold'; gap: number }> = [
-    { text: copy.tipo, size: 7.2, style: 'bold', gap: 3.55 },
-    { text: copy.categoria, size: 5.6, style: 'bold', gap: 3.15 },
-    { text: copy.material, size: 5.2, style: 'normal', gap: 3.0 },
-    { text: copy.referencia, size: 5.2, style: 'bold', gap: 3.0 },
+    { text: copy.tipo, size: 6.5, style: 'bold', gap: 2.55 },
+    { text: copy.categoria, size: 4.7, style: 'bold', gap: 2.25 },
+    { text: copy.material, size: 4.4, style: 'normal', gap: 2.15 },
+    { text: copy.referencia, size: 4.4, style: 'bold', gap: 2.15 },
   ];
   for (const line of mioloLines) {
     if (!line.text) continue;
     doc.setFont('helvetica', line.style);
     doc.setFontSize(line.size);
-    doc.text(line.text, mioloLeft, mioloY, { baseline: 'top' });
+    doc.text(line.text, mioloLeft, mioloY, {
+      baseline: 'top',
+      charSpace: -0.12,
+    });
     mioloY += line.gap;
   }
 
-  // Footer: TAM à esquerda; bloco R$ + main + cents à direita (R$ baseline com o main)
+  // Footer: TAM.: à meia-altura do número; preço com centavos em sobrescrito.
+  const sizePt = 12.5;
+  const sizeTop = footerTop + 0.55;
+  const sizeHeightMm = sizePt * 0.352778;
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(5);
-  doc.text('TAM.:', padL, footerTop + 1.2, { baseline: 'top' });
+  doc.setFontSize(3.8);
+  doc.text('TAM.:', padL, sizeTop + sizeHeightMm * 0.42, {
+    baseline: 'top',
+    charSpace: -0.08,
+  });
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(15.5);
-  doc.text(copy.tamanho, padL + 7.2, footerTop + 0.35, { baseline: 'top' });
+  doc.setFontSize(sizePt);
+  doc.text(copy.tamanho, padL + 5.6, sizeTop, { baseline: 'top' });
 
   const priceRight = w - padR;
   const centsLabel = `,${copy.priceCents}`;
+  const pricePt = 12.5;
+  const centsPt = 5.8;
+  const rsPt = 6.5;
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7.2);
+  doc.setFontSize(centsPt);
   const centsWidth = doc.getTextWidth(centsLabel);
-  doc.setFontSize(15.5);
+  doc.setFontSize(pricePt);
   const mainWidth = doc.getTextWidth(copy.priceMain);
-  const mainTop = footerTop + 0.35;
-  const mainBottom = mainTop + 15.5 * 0.352778;
-  doc.setFontSize(8.5);
+  const mainTop = footerTop + 0.55;
+  const mainBottom = mainTop + pricePt * 0.352778;
+  doc.setFontSize(rsPt);
   const rsWidth = doc.getTextWidth('R$');
-  const priceGap = 0.55;
-  const blockWidth = rsWidth + priceGap + mainWidth + 0.25 + centsWidth;
+  const priceGap = 0.4;
+  const blockWidth = rsWidth + priceGap + mainWidth + 0.15 + centsWidth;
   const blockLeft = priceRight - blockWidth;
 
-  doc.setFontSize(8.5);
-  doc.text('R$', blockLeft, mainBottom, { baseline: 'bottom' });
-  doc.setFontSize(15.5);
+  doc.setFontSize(rsPt);
+  doc.text('R$', blockLeft, mainBottom - 0.15, { baseline: 'bottom' });
+  doc.setFontSize(pricePt);
   doc.text(copy.priceMain, blockLeft + rsWidth + priceGap, mainTop, {
     baseline: 'top',
   });
-  doc.setFontSize(7.2);
-  doc.text(centsLabel, blockLeft + rsWidth + priceGap + mainWidth + 0.25, mainTop, {
+  doc.setFontSize(centsPt);
+  doc.text(centsLabel, blockLeft + rsWidth + priceGap + mainWidth + 0.15, mainTop, {
     baseline: 'top',
   });
 }

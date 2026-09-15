@@ -80,16 +80,16 @@ export const BABY_NALIN_DEFAULT_BRANDING: ClientLabelBranding = {
   materialPrefix: '',
 };
 
-/** Hangtag Objetiva — default editável até calibrar a faca real. */
+/** Hangtag Objetiva — margens justas como na faca física (foto de calibração). */
 export const OBJETIVA_DEFAULT_GEOMETRY: ClientLabelGeometry = {
   labelWidthMm: 42,
   labelHeightMm: 65,
   columns: 1,
   columnGapMm: 0,
-  leftMarginMm: 1.5,
-  rightMarginMm: 1.5,
-  topMarginMm: 1.5,
-  bottomMarginMm: 1.5,
+  leftMarginMm: 1.0,
+  rightMarginMm: 1.0,
+  topMarginMm: 1.0,
+  bottomMarginMm: 1.0,
 };
 
 export const OBJETIVA_DEFAULT_BRANDING: ClientLabelBranding = {

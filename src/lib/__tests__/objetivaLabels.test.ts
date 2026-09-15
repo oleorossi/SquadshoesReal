@@ -202,4 +202,16 @@ describe('objetivaLabels PDF · miolo horizontal + preço', () => {
     expect(mainIdx).toBeGreaterThan(rsIdx);
     expect(centsIdx).toBeGreaterThan(mainIdx);
   });
+
+  it('trava tipografia calibrada pela foto física (sem o 15.5pt inchado)', async () => {
+    const content = await pdfContentForTam25();
+    // Número do TAM e preço principal: 12.5pt (era 15.5 — desproporcional à faca).
+    expect(content).toMatch(/12\.5 Tf/);
+    expect(content).not.toMatch(/15\.5 Tf/);
+    // Miolo: SANDALIA destaca em 6.5; demais linhas ≤ 4.7.
+    expect(content).toMatch(/6\.5 Tf/);
+    expect(content).toMatch(/4\.7 Tf/);
+    // Centavos em sobrescrito compacto.
+    expect(content).toMatch(/5\.8 Tf/);
+  });
 });
