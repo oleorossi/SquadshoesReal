@@ -23,8 +23,10 @@ export const LOCAL_LEGACY_BASELINE = Object.freeze({
 // estão no schema_migrations). Em 12/09/2026 o MCP gravou
 // 20260912112209_refresh_draft_strap_freeze_on_confirm (data real, abaixo do
 // corte) por cima do canônico 20270101023800; o duplicado foi dropado
-// (24500) para o fetch legado voltar a 2294. Marcadores temporários podem
-// ter qualquer nome descritivo: o contrato do Supabase compara os timestamps.
+// (24500). Em 14/09/2026 o mesmo padrão repetiu com
+// 20260914210409_restaurar_cola_forte_14g_solado_01 (canônico 20270101025000);
+// dropado em 25200. Marcadores temporários podem ter qualquer nome
+// descritivo: o contrato do Supabase compara os timestamps.
 export const REMOTE_LEGACY_BASELINE = Object.freeze({
   count: 2294,
   sha256: '52d44017b491f42979e636fb35985bc3993063f60299919bf0b105325811212d',
