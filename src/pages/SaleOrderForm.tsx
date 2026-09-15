@@ -71,6 +71,7 @@ import { OverrideOutsourceCosturaDialog } from '@/components/sale-orders/Overrid
 import { monthWeekToISODate, isoToMonthWeek } from '@/lib/billingWeek';
 import {
   listMissingTechnicalStrapSnapshots,
+  recoverEmptyStrapSnapshotsForSubmit,
   type StrapSnapshotReferenceLike,
 } from '@/lib/strapSnapshotGuard';
 import {
@@ -1909,7 +1910,22 @@ export default function SaleOrderForm() {
     }
     const f = formLatestRef.current;
     const validItems = items.filter(i => i.reference_id).map(normalizeItemReference);
-    const productionItems = filterProductionSaleOrderItems(validItems);
+    // Snapshot vazio em PV comprometido + pv_origem ausente com sourcing já
+    // gravado: recupera AQUI (antes dos guards). O efeito do item form não
+    // roda pra linha fora da viewport — PV-00168 / DS20 SP124.
+    const strapRecovery = recoverEmptyStrapSnapshotsForSubmit(
+      validItems,
+      canonicalReferences as StrapSnapshotReferenceLike[],
+    );
+    const itemsForSubmit = strapRecovery.items;
+    if (strapRecovery.recoveredEmpty > 0 || strapRecovery.hydratedOrigem > 0) {
+      // #region agent log
+      fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'78dba0'},body:JSON.stringify({sessionId:'78dba0',runId:'post-fix',hypothesisId:'G',location:'SaleOrderForm.tsx:handleSubmit:recover',message:'recovered empty strap snapshots on submit',data:{recoveredEmpty:strapRecovery.recoveredEmpty,hydratedOrigem:strapRecovery.hydratedOrigem,ds20:itemsForSubmit.filter(it=>canonicalReferences.some((r:any)=>r.id===it.reference_id&&r.code==='DS20')).map(it=>({color:it.color,snapLen:Array.isArray(it.strap_colors)?it.strap_colors.length:0,sourcingKeys:it.strap_sourcing?Object.keys(it.strap_sourcing).length:0}))},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      draftStateRef.current = { ...draftStateRef.current, items: itemsForSubmit };
+      setItems(itemsForSubmit);
+    }
+    const productionItems = filterProductionSaleOrderItems(itemsForSubmit);
     if (validItems.length === 0) { toast.error('Adicione pelo menos um item ao pedido.'); return; }
     if (productionItems.some(i => !i.color?.trim())) { toast.error('Selecione uma cor para todos os itens.'); return; }
     const missingStrapSnapshots = listMissingTechnicalStrapSnapshots(
@@ -1917,6 +1933,9 @@ export default function SaleOrderForm() {
       canonicalReferences as StrapSnapshotReferenceLike[],
     );
     if (missingStrapSnapshots.length > 0) {
+      // #region agent log
+      fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'78dba0'},body:JSON.stringify({sessionId:'78dba0',runId:'post-fix',hypothesisId:'G',location:'SaleOrderForm.tsx:handleSubmit:blocked',message:'still blocked after recover',data:{missing:missingStrapSnapshots},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       toast.error(
         `Demanda de tira não resolvida em ${missingStrapSnapshots[0].label}: a ficha exige tiras, mas o item está sem linhas técnicas. ` +
         'Cadastre as tiras na ficha técnica e volte ao pedido; o sistema não infere cor ou variante.',
@@ -2080,7 +2099,7 @@ export default function SaleOrderForm() {
     // data de faturamento também não mudou → salva direto (pula a capacidade tb).
     // Só itens OU data mudando é que volta a checar. Na dúvida, checa (seguro).
     if (isEdit && originalItemsSigRef.current !== null
-        && buildItemsPurchaseSignature(items, f.packaging_mode) === originalItemsSigRef.current) {
+        && buildItemsPurchaseSignature(itemsForSubmit, f.packaging_mode) === originalItemsSigRef.current) {
       if (originalDeadlineRef.current !== null && (f.delivery_deadline || '') === originalDeadlineRef.current) {
         doSubmit();
         return;
