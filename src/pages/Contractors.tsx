@@ -40,6 +40,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { cn } from '@/lib/utils';
+import { resolveColorHex } from '@/lib/colorHex';
+import { SignedImage } from '@/components/ui/signed-image';
 import {
   useContractors, useServiceOrders, useServiceOrderOverview, useCreateContractor, useUpdateContractor, useDeleteContractor,
   useBulkReceiveServiceOrders, useArchiveServiceOrders,
@@ -189,8 +191,8 @@ function serviceOrderRequiresPhysicalReturn(
     );
 }
 
-/** Colunas de `sale_order_items` que o papel da OS precisa (grade + foto). */
-const OS_PV_ITEM_COLUMNS = 'id, color, quantity, grade, reference_id, technical_sheets(code, name, image_url)';
+/** Colunas de `sale_order_items` que o papel/dialog da OS precisam (grade + foto por cor). */
+const OS_PV_ITEM_COLUMNS = 'id, color, quantity, grade, reference_id, technical_sheets(code, name, image_url, reference_color_variants(color, image_url))';
 
 export default function Contractors({ embedded = false, activeTab, onActiveTabChange, openCreateOS, onCreateOSConsumed }: { embedded?: boolean; activeTab?: string; onActiveTabChange?: (v: string) => void; openCreateOS?: { contractorId?: string } | null; onCreateOSConsumed?: () => void } = {}) {
   const navigate = useNavigate();
@@ -2161,10 +2163,13 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                       <span className="text-[10px] font-mono font-bold uppercase tracking-[0.16em] text-muted-foreground whitespace-nowrap">Itens do pedido</span>
                       <span className="text-[11px] text-muted-foreground">{osSelItems.length} de {osPvItems.length} · <b className="text-foreground">{osSelPares.toLocaleString('pt-BR')} pares</b></span>
                     </div>
-                    <div className="space-y-1.5">
+                    <div className="space-y-2">
                       {osPvItems.map((it) => {
                         const on = osPvItemSel.has(it.id);
                         const opNo = osOpByItem.get(it.id);
+                        const colorHex = resolveColorHex(it.color);
+                        const refLabel = it.ref_code || it.ref_name || '—';
+                        const colorLabel = (it.color || '—').trim();
                         return (
                           <button
                             type="button"
@@ -2172,17 +2177,67 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                             onClick={() => toggleOsPvItem(it.id)}
                             disabled={!!editingOrder.planning_source}
                             className={cn(
-                              'w-full flex items-center gap-2.5 rounded-md border px-3 py-2 text-left transition-colors',
+                              'group relative w-full overflow-hidden rounded-md border text-left transition-colors',
                               'disabled:cursor-not-allowed disabled:opacity-70',
-                              on ? 'border-primary/40 bg-primary/10' : 'border-border bg-background hover:bg-muted/50',
+                              on
+                                ? 'border-primary/45 bg-card shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.12)]'
+                                : 'border-border bg-card hover:bg-muted/40',
                             )}
                           >
-                            <span className={cn('h-4 w-4 rounded border grid place-items-center text-[10px] leading-none text-primary-foreground', on ? 'bg-primary border-primary' : 'border-muted-foreground/40')}>{on ? '✓' : ''}</span>
-                            <span className="text-sm font-medium text-foreground flex-1 truncate">{it.label}</span>
-                            {opNo
-                              ? <span className="mono shrink-0 text-[11px] font-semibold text-primary">{opNo}</span>
-                              : <span className="shrink-0 text-[11px] text-muted-foreground">sem OP</span>}
-                            <span className="text-xs tabular-nums text-muted-foreground">{it.pairs.toLocaleString('pt-BR')} pares</span>
+                            {/* Faixa da cor — identidade visual do item na bancada */}
+                            <span
+                              aria-hidden
+                              className="absolute inset-y-0 left-0 w-1.5"
+                              style={{ backgroundColor: colorHex }}
+                            />
+                            <div className="flex items-center gap-3 py-2.5 pl-4 pr-3">
+                              <span
+                                className={cn(
+                                  'grid h-5 w-5 shrink-0 place-items-center rounded border text-[11px] leading-none text-primary-foreground',
+                                  on ? 'border-primary bg-primary' : 'border-muted-foreground/40 bg-transparent',
+                                )}
+                                aria-hidden
+                              >
+                                {on ? '✓' : ''}
+                              </span>
+
+                              <SignedImage
+                                src={it.photo_url || ''}
+                                alt={`Referência ${refLabel}${colorLabel !== '—' ? ` · ${colorLabel}` : ''}`}
+                                className="h-14 w-14 shrink-0 rounded-sm border border-border bg-muted"
+                              />
+
+                              <div className="min-w-0 flex-1 space-y-1">
+                                <div className="flex items-baseline gap-2 min-w-0">
+                                  <span className="truncate font-display text-[15px] font-bold uppercase tracking-[0.04em] text-foreground">
+                                    {refLabel}
+                                  </span>
+                                  {opNo
+                                    ? <span className="mono shrink-0 text-[11px] font-semibold text-primary">{opNo}</span>
+                                    : <span className="shrink-0 text-[11px] text-muted-foreground">sem OP</span>}
+                                </div>
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span
+                                    className="h-4 w-4 shrink-0 rounded-sm border border-foreground/25 shadow-[inset_0_0_0_1px_hsl(var(--card))]"
+                                    style={{ backgroundColor: colorHex }}
+                                    title={colorLabel}
+                                    aria-hidden
+                                  />
+                                  <span className="truncate text-sm font-semibold uppercase tracking-[0.08em] text-foreground">
+                                    {colorLabel}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="shrink-0 text-right leading-none">
+                                <div className="font-display text-lg font-bold tabular-nums text-foreground">
+                                  {it.pairs.toLocaleString('pt-BR')}
+                                </div>
+                                <div className="mt-0.5 text-[10px] font-mono uppercase tracking-[0.14em] text-muted-foreground">
+                                  pares
+                                </div>
+                              </div>
+                            </div>
                           </button>
                         );
                       })}

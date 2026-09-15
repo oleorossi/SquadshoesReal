@@ -93,6 +93,28 @@ describe('itens do papel de uma OS planejada', () => {
     expect(sum(item.size_breakdown || {})).toBe(60);
     expect(item.label).toBe('I90 · OFF WHITE');
   });
+
+  it('prefere a foto da variante de cor sobre a capa do modelo', () => {
+    const rows = [{
+      id: 'item-2',
+      color: 'ROSADO',
+      quantity: 12,
+      grade: BASE_REAL,
+      technical_sheets: {
+        code: 'I100',
+        name: 'I100',
+        image_url: 'https://cdn.example/master.jpg',
+        reference_color_variants: [
+          { color: 'PRETO', image_url: 'https://cdn.example/preto.jpg' },
+          { color: 'ROSADO', image_url: 'https://cdn.example/rosado.jpg' },
+        ],
+      },
+    }];
+
+    const [item] = mapPvItemsForReceipt(rows);
+    expect(item.photo_url).toContain('rosado.jpg');
+    expect(item.color).toBe('ROSADO');
+  });
 });
 
 describe('materiais da impressão de OS', () => {

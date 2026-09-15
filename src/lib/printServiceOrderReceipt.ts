@@ -188,7 +188,26 @@ export interface ReceiptPvItemRow {
     code?: string | null;
     name?: string | null;
     image_url?: string | null;
+    /** Foto por cor — preferida sobre a capa do modelo quando casa com o item. */
+    reference_color_variants?: Array<{
+      color?: string | null;
+      image_url?: string | null;
+    }> | null;
   } | null;
+}
+
+/** Capa do modelo; se houver variante da cor do item, ela vence. */
+export function resolveReceiptItemPhotoUrl(row: ReceiptPvItemRow): string | null {
+  const sheet = row.technical_sheets;
+  if (!sheet) return null;
+  const color = (row.color || '').trim().toLowerCase();
+  const variants = sheet.reference_color_variants || [];
+  const match = color
+    ? variants.find((variant) => (variant.color || '').trim().toLowerCase() === color)
+    : undefined;
+  const raw = match?.image_url || sheet.image_url || null;
+  if (!raw) return null;
+  return thumbUrl(raw, 160) || raw;
 }
 
 export interface ReceiptPvItem extends ReceiptItem {
@@ -413,7 +432,7 @@ export function mapPvItemsForReceipt(
         item.grade as Record<string, number> | null,
         pairs,
       ),
-      photo_url: sheet?.image_url ? thumbUrl(sheet.image_url, 80) || null : null,
+      photo_url: resolveReceiptItemPhotoUrl(item),
     };
   }).filter((item) => item.pairs > 0);
 }
