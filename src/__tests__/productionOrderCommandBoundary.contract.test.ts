@@ -8,6 +8,9 @@ const read = (path: string) => readFileSync(resolve(ROOT, path), 'utf8');
 const MIGRATION = read(
   'supabase/migrations/20270101010800_production_order_command_boundary.sql',
 );
+const STALE_REPAIR_MIGRATION = read(
+  'supabase/migrations/20270101025100_repair_stale_reservations_and_align_informal_shipment.sql',
+);
 const USE_ORDERS = read('src/hooks/useOrders.ts');
 const ORDERS_PAGE = read('src/pages/Orders.tsx');
 const PICKING_PAGE = read('src/pages/OrderPickingPage.tsx');
@@ -107,6 +110,21 @@ describe('OP command boundary — integrações de PV e logística', () => {
     expect(shipment).toContain("'register_shipment'");
   });
 
+  it('migração 251 alinha informal e expõe reparo delta de reserva stale', () => {
+    expect(STALE_REPAIR_MIGRATION).toContain(
+      'admin_repair_stale_reservations',
+    );
+    expect(STALE_REPAIR_MIGRATION).toContain(
+      'reserve_missing_materials_for_order',
+    );
+    expect(STALE_REPAIR_MIGRATION).toContain(
+      'não possui OP ativa para expedir',
+    );
+    expect(STALE_REPAIR_MIGRATION).toContain(
+      'ainda possui OP em produção',
+    );
+  });
+
   it('wrappers legados têm versão, idempotência, papel e superfície fechada', () => {
     const force = sqlFunction('force_sale_order_production_command');
     const softDelete = sqlFunction('soft_delete_sale_order_command');
@@ -174,6 +192,11 @@ describe('OP command boundary — callers do browser', () => {
     expect(PICKING_PAGE).toContain('order_version');
     expect(PICKING_PAGE).toContain(".in('status', ['Faturado', 'Em Produção'])");
     expect(PICKING_PAGE).toContain('so.nfe_required && !so.nfe_external');
+    // Path informal alinhado ao Faturado: romaneio fecha OPs — sem exigir Finalizado.
+    expect(PICKING_PAGE).toContain("!['Cancelado', 'Cancelada'].includes(op.status)");
+    expect(PICKING_PAGE).not.toContain(
+      "'Finalizado', 'FINALIZADO', 'Faturado', 'Concluída'",
+    );
     expect(PICKING_PAGE).toContain('crypto.randomUUID()');
     expect(SALE_ORDERS_PAGE).toContain("'force_sale_order_production_command'");
     expect(SALE_ORDERS_PAGE).toContain('p_expected_order_version');

@@ -116,16 +116,15 @@ export default function OrderPickingPage() {
       if (error) throw error;
 
       const rows = (data ?? []) as unknown as ReadySaleOrderRow[];
+      // Path informal (Em Produção) alinhado ao Faturado: o romaneio fecha
+      // etapas/OPs. Não exigir Finalizado antecipado — só OP ativa no PV.
       const readyCandidates = rows.filter((so) => {
         if (so.status === 'Faturado') return true;
         if (so.status !== 'Em Produção') return false;
         if (so.nfe_required && !so.nfe_external) return false;
         const productionOrders = Array.isArray(so.orders) ? so.orders : [];
-        return productionOrders.length > 0 && productionOrders.every((op) =>
-          [
-            'Finalizado', 'FINALIZADO', 'Faturado', 'Concluída',
-            'Concluído', 'Concluido', 'completed',
-          ].includes(op.status),
+        return productionOrders.some((op) =>
+          !['Cancelado', 'Cancelada'].includes(op.status),
         );
       });
       const baseOrders = readyCandidates.map((so) => {

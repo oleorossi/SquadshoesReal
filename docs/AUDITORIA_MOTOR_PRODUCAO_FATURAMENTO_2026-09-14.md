@@ -52,9 +52,9 @@ Arquivo: `sql-scripts/e2e-ficha-pv-pcp-v5-faturamento.sql`
 
 Execução: Management API / `supabase-db-exec.yml` com `strict=false` (o `RAISE` final é o rollback proposital).
 
-## Lacunas que permanecem abertas (produto)
+## Lacunas — status após correção (pontos 2–4)
 
-1. Furos históricos de débito — não mexer sem decisão do dono.  
-2. 66 OPs com reserva desatualizada vs ficha — candidatos a `resync` seguro ou revisão manual.  
-3. `InvoiceTrigger.tsx` parece código morto; caminho vivo é `/nfe` + transição manual para `Faturado`.  
-4. Path informal exige OPs já `Finalizado` na UI de conferência; path formal permite romaneio com OP aberta (romaneio fecha). Assimetria intencional — documentada, não “corrigir” por coerência.
+1. Furos históricos de débito — **aberto** (não mexer sem decisão do dono).
+2. OPs com reserva defasada vs ficha — **corrigido (tooling)**: RPC `admin_repair_stale_reservations(p_dry_run)` (delta via `reserve_missing_materials_for_order`, seguro em OP com fato físico) + botão em Diagnósticos do Sistema. Migração `20270101025100`. Aplicado em live: 24/24 OPs processadas; linhas stale remanescentes são **shortfall de estoque** (EVA 3MM, colas, aviamentos sem saldo livre) — a RPC reporta e não inventa reserva.
+3. `InvoiceTrigger.tsx` — **removido** (código morto; caminho vivo continua `/nfe` + transição manual para `Faturado`).
+4. Path informal vs formal na conferência/romaneio — **alinhado**: informal `Em Produção` deixa de exigir OP já `Finalizado` (UI + `register_order_shipment_command`); o romaneio fecha etapas/OPs como no path `Faturado`.

@@ -247,6 +247,8 @@ export default function SystemDiagnostics() {
   const [staleResRows, setStaleResRows] = useState<
     StaleReservationRow[] | null
   >(null);
+  const [staleRepairRunning, setStaleRepairRunning] = useState(false);
+  const [staleRepairSummary, setStaleRepairSummary] = useState<string | null>(null);
   // Custeio (auditoria 2026-08-03): o custo saía errado em silêncio — solado a
   // R$ 0,00 desde 11/07 e custo apoiado em snapshot já marcado desatualizado
   // (97% deles). cost_consistency_report() lista as lacunas de cadastro que
@@ -275,6 +277,46 @@ export default function SystemDiagnostics() {
   } = useStockDebitHoles(90, holesEnabled);
   const holesSummary = summarizeStockDebitHoles(holeRows);
   const reconcile = useReconcileStockDebitHole();
+
+  const repairStaleReservations = async (dryRun: boolean) => {
+    setStaleRepairRunning(true);
+    setStaleRepairSummary(null);
+    try {
+      const { data, error } = await supabase.rpc(
+        'admin_repair_stale_reservations' as never,
+        { p_dry_run: dryRun } as never,
+      );
+      if (error) throw error;
+      const payload = (data ?? {}) as {
+        ops_touched?: number;
+        ops_ok?: number;
+        ops_failed?: number;
+        ops_with_shortfall?: number;
+        stale_lines_before?: number;
+        dry_run?: boolean;
+      };
+      const summary =
+        `${payload.dry_run ? 'Simulação' : 'Aplicado'}: ` +
+        `${payload.ops_ok ?? 0}/${payload.ops_touched ?? 0} OP(s) ok` +
+        (payload.ops_failed ? `, ${payload.ops_failed} falha(s)` : '') +
+        (payload.ops_with_shortfall
+          ? `, ${payload.ops_with_shortfall} com shortfall de estoque`
+          : '') +
+        ` · ${payload.stale_lines_before ?? 0} linha(s) stale antes`;
+      setStaleRepairSummary(summary);
+      toast.success(summary);
+      if (!dryRun) {
+        const refreshed = await diagnosticsRpcClient.rpc('list_ops_with_stale_reservations');
+        setStaleResRows(refreshed.data ?? []);
+      }
+    } catch (err) {
+      const message = errorMessage(err, 'Falha ao reparar reservas defasadas');
+      setStaleRepairSummary(message);
+      toast.error(message);
+    } finally {
+      setStaleRepairRunning(false);
+    }
+  };
 
   const runConsumptionChecks = async () => {
     setConsRunning(true);
@@ -1037,11 +1079,41 @@ export default function SystemDiagnostics() {
           <Panel
             eyebrow="ESTOQUE · RESERVA"
             title="Reserva defasada vs ficha atual"
-            subtitle="Material que a ficha técnica pede HOJE mas que a OP ativa NÃO tem reservado. A reserva é feita na criação da OP; se a ficha ganhar componentes depois, o resync não re-reserva — e como a baixa na finalização converte RESERVA em movimento, esse material sai da fábrica sem débito. Foi o que abriu o furo do PV-00145 (fivela, rebite e binóculo strass consumidos e nunca debitados). Fonte: list_ops_with_stale_reservations()."
+            subtitle="Material que a ficha técnica pede HOJE mas que a OP ativa NÃO tem reservado. A reserva é feita na criação da OP; se a ficha ganhar componentes depois, o resync não re-reserva — e como a baixa na finalização converte RESERVA em movimento, esse material sai da fábrica sem débito. Foi o que abriu o furo do PV-00145 (fivela, rebite e binóculo strass consumidos e nunca debitados). Fonte: list_ops_with_stale_reservations(). Reparo: admin_repair_stale_reservations (delta only)."
             bodyClassName="space-y-1.5"
+            actions={
+              staleResRows !== null && staleResRows.length > 0 ? (
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8"
+                    disabled={staleRepairRunning}
+                    onClick={() => repairStaleReservations(true)}
+                  >
+                    {staleRepairRunning
+                      ? <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      : null}
+                    Simular delta
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8"
+                    disabled={staleRepairRunning}
+                    onClick={() => repairStaleReservations(false)}
+                  >
+                    Reservar delta
+                  </Button>
+                </div>
+              ) : undefined
+            }
           >
             {staleResRows === null && !consRunning && (
               <p className="text-sm text-muted-foreground">Rode a verificação acima pra checar as reservas das OPs ativas.</p>
+            )}
+            {staleRepairSummary && (
+              <p className="text-xs text-muted-foreground">{staleRepairSummary}</p>
             )}
             {staleResRows !== null && staleResRows.length === 0 && !consRunning && (
               <div className="flex items-center gap-2 text-sm text-success"><CheckCircle2 className="h-4 w-4" /> Toda OP ativa tem reserva pra o que a ficha pede.</div>
@@ -1055,7 +1127,7 @@ export default function SystemDiagnostics() {
                   <div className="min-w-0">
                     <p className="text-sm font-medium">materiais sem reserva em {new Set(staleResRows.map(r => r.order_number)).size} OP(s) ativa(s)</p>
                     <p className="text-xs text-muted-foreground break-words">
-                      Cancele e refaça a reserva da OP (ou ajuste o estoque na baixa) antes de finalizar, senão vira furo de estoque.
+                      Use &quot;Reservar delta&quot; (admin/gerente) pra cobrir só o que falta — seguro em OP com fato físico (não chama resync_op_atomic).
                     </p>
                   </div>
                 </div>
