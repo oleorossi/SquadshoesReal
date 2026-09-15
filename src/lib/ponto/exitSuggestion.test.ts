@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { computeExitPattern, suggestExitTime, dowOf } from './exitSuggestion';
+import {
+  computeExitPattern, suggestExitTime, suggestExitFromSchedule, dowOf,
+} from './exitSuggestion';
 
 // 2026-06-01 = segunda? Confere o dow (0=dom). 2026-06-01 é segunda → 1.
 describe('exitSuggestion', () => {
@@ -8,7 +10,22 @@ describe('exitSuggestion', () => {
     expect(dowOf('2026-06-07')).toBe(0); // domingo
   });
 
-  it('mediana da última batida por dia da semana', () => {
+  it('sugere saída da escala (fonte do relatório HE)', () => {
+    const sch = { exit_time: '18:00:00', saturday_exit: '12:00:00' };
+    expect(suggestExitFromSchedule(sch, '2026-06-04')).toEqual({ time: '18:00', source: 'schedule' }); // qui
+    expect(suggestExitFromSchedule(sch, '2026-06-06')).toEqual({ time: '12:00', source: 'schedule' }); // sáb
+  });
+
+  it('sábado sem saturday_exit cai no exit_time da escala', () => {
+    const sch = { exit_time: '18:00', saturday_exit: null };
+    expect(suggestExitFromSchedule(sch, '2026-06-06').time).toBe('18:00');
+  });
+
+  it('sem escala → padrão 18:00', () => {
+    expect(suggestExitFromSchedule(null, '2026-06-04')).toEqual({ time: '18:00', source: 'default' });
+  });
+
+  it('mediana histórica (legado/diagnóstico) por dia da semana', () => {
     const rows = [
       // 3 segundas saindo 18:00, 18:10, 18:20 → mediana 18:10
       { record_date: '2026-06-01', punches: ['08:00', '12:00', '13:00', '18:00'] },
@@ -21,7 +38,7 @@ describe('exitSuggestion', () => {
     expect(suggestExitTime(pat, '2026-06-22').source).toBe('dow');
   });
 
-  it('cai pra mediana geral quando o dia da semana não tem amostra suficiente', () => {
+  it('legado: cai pra mediana geral quando o dia da semana não tem amostra suficiente', () => {
     const rows = [
       { record_date: '2026-06-01', punches: ['08:00', '18:00'] }, // seg
       { record_date: '2026-06-02', punches: ['08:00', '17:00'] }, // ter
@@ -34,7 +51,7 @@ describe('exitSuggestion', () => {
     expect(s.source).toBe('overall');
   });
 
-  it('ignora dias incompletos (ímpar/1 batida) no padrão', () => {
+  it('legado: ignora dias incompletos (ímpar/1 batida) no padrão', () => {
     const rows = [
       { record_date: '2026-06-01', punches: ['08:00'] },              // 1 batida → ignora
       { record_date: '2026-06-02', punches: ['08:00', '12:00', '18:00'] }, // ímpar → ignora

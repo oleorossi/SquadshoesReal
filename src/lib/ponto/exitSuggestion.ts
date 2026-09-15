@@ -1,11 +1,12 @@
-// exitSuggestion.ts — sugestão de horário de SAÍDA provável a partir do PADRÃO do
-// próprio funcionário (não usa LLM): mediana da ÚLTIMA batida em dias completos,
-// por dia da semana. Alimenta o pré-preenchimento das Pendências de Ponto pra o
-// RH só aprovar (Salvar) ou ajustar — reduz o tempo de fechamento.
+// exitSuggestion.ts — sugestão de horário de SAÍDA pra Pendências de Ponto.
 //
-// Por que mediana da última batida em dia COMPLETO (par, ≥2)? A última batida de um
-// dia par é a saída confiável. Mediana é robusta a outliers (um dia que saiu 23h não
-// puxa a sugestão). Por dia da semana porque sexta/segunda podem ter padrão diferente.
+// Fonte canônica = escala contratada (`work_schedules.exit_time` / `saturday_exit`),
+// a MESMA jornada esperada que o relatório de horas extras e descontos usa via
+// `expectedDayMinutes`. Pré-preencher com a mediana histórica das batidas
+// (muitas vezes já com HE) fabricava hora extra ao "Aprovar todas".
+//
+// O padrão histórico (`computeExitPattern` / `suggestExitTime`) permanece exportado
+// só pra diagnóstico/testes — a UI de pendências não o usa mais.
 
 const DEFAULT_EXIT_MIN = 18 * 60; // 18:00 — último recurso (igual ao "padrão 18:00" já existente)
 
@@ -41,8 +42,32 @@ export interface ExitPattern {
 }
 
 export interface ExitSuggestion {
-  time: string;                          // 'HH:MM'
-  source: 'dow' | 'overall' | 'default'; // de onde veio (transparência pro RH)
+  time: string; // 'HH:MM'
+  /** de onde veio (transparência pro RH) */
+  source: 'schedule' | 'dow' | 'overall' | 'default';
+}
+
+/** Campos mínimos da escala usados pela sugestão (espelha ManualEntryTab / HE). */
+export interface ScheduleExitFields {
+  exit_time?: string | null;
+  saturday_exit?: string | null;
+}
+
+/**
+ * Saída sugerida = horário contratado do dia (escala).
+ * Sábado usa `saturday_exit` quando cadastrado; senão cai em `exit_time`.
+ */
+export function suggestExitFromSchedule(
+  schedule: ScheduleExitFields | null | undefined,
+  dateISO: string,
+  fallbackMin: number = DEFAULT_EXIT_MIN,
+): ExitSuggestion {
+  const dw = dowOf(dateISO);
+  const raw = dw === 6
+    ? (schedule?.saturday_exit || schedule?.exit_time)
+    : schedule?.exit_time;
+  const min = toMin(String(raw ?? '')) ?? fallbackMin;
+  return { time: fmt(min), source: raw ? 'schedule' : 'default' };
 }
 
 /** Constrói o padrão de saída a partir do histórico de batidas do funcionário. */
@@ -70,10 +95,8 @@ export function computeExitPattern(rows: { record_date: string; punches: string[
 }
 
 /**
- * Sugere o horário de saída pra um dia pendente:
- *  1) mediana daquele DIA DA SEMANA (≥2 amostras) → mais fiel ao ritmo dele;
- *  2) senão, mediana GERAL (≥3 dias completos no histórico);
- *  3) senão, 18:00 (último recurso).
+ * @deprecated Preferir `suggestExitFromSchedule` (alinhado ao relatório HE).
+ * Mantido pra testes/diagnóstico do padrão histórico.
  */
 export function suggestExitTime(
   pattern: ExitPattern,

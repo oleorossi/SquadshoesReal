@@ -11,11 +11,11 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
   listEmployeePendingSummary, listPendingTimeRecords, applyManualPunchCompletion,
-  bulkApplyDefaultExit, listEmployeeExitHistory, shouldSuggestFinalExit,
+  bulkApplyDefaultExit, shouldSuggestFinalExit,
   ISSUE_LABEL, ISSUE_HINT, DOW_LABEL,
   type EmployeePendingSummary, type PendingTimeRecord,
 } from '@/services/pendingTimeRecordsService';
-import { computeExitPattern, suggestExitTime, type ExitSuggestion } from '@/lib/ponto/exitSuggestion';
+import { suggestExitFromSchedule, type ExitSuggestion } from '@/lib/ponto/exitSuggestion';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader,
@@ -26,6 +26,8 @@ import { SearchInput } from '@/components/ui/search-input';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { OverrideHistoryButton } from './OverrideHistoryButton';
+import { useEmployees } from '@/hooks/useEmployees';
+import { useWorkSchedules } from '@/hooks/useTimesheet';
 
 function fmtDateBR(iso: string): string {
   const [y, m, d] = iso.split('-');
@@ -306,20 +308,15 @@ function EmployeeCard({
     staleTime: 30_000,
   });
 
-  // Padrão de saída do PRÓPRIO funcionário (histórico de batidas, últimos ~90d) →
-  // sugere a saída provável de cada pendência pra o RH só aprovar/ajustar.
-  const sinceISO = useMemo(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 90);
-    return d.toISOString().slice(0, 10);
-  }, []);
-  const { data: history = [] } = useQuery({
-    queryKey: ['exit-history', emp.employee_id, sinceISO],
-    queryFn: () => listEmployeeExitHistory(emp.employee_id, sinceISO),
-    enabled: expanded,
-    staleTime: 5 * 60_000,
-  });
-  const pattern = useMemo(() => computeExitPattern(history), [history]);
+  // Saída sugerida = escala contratada (mesma jornada do relatório HE/descontos).
+  const { data: employees = [] } = useEmployees();
+  const { data: schedules = [] } = useWorkSchedules();
+  const schedule = useMemo(() => {
+    const employee = employees.find((e) => e.id === emp.employee_id);
+    const defaultSchedule = schedules.find((s) => s.is_default) || schedules[0] || null;
+    if (!employee?.work_schedule_id) return defaultSchedule;
+    return schedules.find((s) => s.id === employee.work_schedule_id) || defaultSchedule;
+  }, [employees, schedules, emp.employee_id]);
 
   // batida_extra já é calculada (última batida = saída) — não precisa sugestão.
   const suggestibles = pendings.filter((p) =>
@@ -338,14 +335,14 @@ function EmployeeCard({
       try {
         await applyManualPunchCompletion({
           timeRecordId: p.time_record_id,
-          punchTime: suggestExitTime(pattern, p.record_date).time,
-          reason: 'sugestão-automática (padrão do funcionário)',
+          punchTime: suggestExitFromSchedule(schedule, p.record_date).time,
+          reason: 'sugestão-automática (escala contratada)',
         });
         ok++;
       } catch { /* pula o que falhar, segue os demais */ }
     }
     setApprovingAll(false);
-    toast.success(`${ok} dia(s) preenchidos com a saída sugerida.`);
+    toast.success(`${ok} dia(s) preenchidos com a saída da escala.`);
     onSaved();
   };
 
@@ -412,7 +409,7 @@ function EmployeeCard({
                 <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-primary/20 bg-primary/5 px-3 py-2">
                   <span className="text-xs text-muted-foreground flex items-center gap-1.5">
                     <Sparkles className="w-3.5 h-3.5 text-primary" />
-                    Saída sugerida pelo padrão de batidas dele — revise e ajuste se precisar.
+                    Saída sugerida pela escala contratada (mesma do relatório de HE) — revise e ajuste se precisar.
                   </span>
                   <Button size="sm" className="h-8 gap-1.5" disabled={approvingAll} onClick={approveAll}>
                     {approvingAll ? <Clock className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
@@ -426,7 +423,7 @@ function EmployeeCard({
                   p={p}
                   suggestion={p.issue_type === 'batida_extra' || !shouldSuggestFinalExit(p.punches)
                     ? undefined
-                    : suggestExitTime(pattern, p.record_date)}
+                    : suggestExitFromSchedule(schedule, p.record_date)}
                   autoFocus={focusRecordId === p.time_record_id || (focusRecordId === null && idx === 0)}
                   onSaved={() => {
                     const next = pendings.slice(idx + 1).find((row) =>
@@ -456,8 +453,8 @@ function PendingDayRow({ p, suggestion, onSaved, autoFocus = false }: {
   const [punchTime, setPunchTime] = useState('');
   const [reason, setReason] = useState('');
   const timeInputRef = useRef<HTMLInputElement>(null);
-  // Pré-preenche com a saída sugerida (padrão do funcionário) — só enquanto o campo
-  // está vazio; o RH aprova (Salvar) ou ajusta. Não sobrescreve edição manual.
+  // Pré-preenche com a saída da escala — só enquanto o campo está vazio;
+  // o RH aprova (Salvar) ou ajusta. Não sobrescreve edição manual.
   useEffect(() => {
     if (suggestion?.time && punchTime === '') setPunchTime(suggestion.time);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -521,12 +518,12 @@ function PendingDayRow({ p, suggestion, onSaved, autoFocus = false }: {
         {suggestion && (
           <span
             className="text-[10px] text-muted-foreground flex items-center gap-0.5 whitespace-nowrap"
-            title={suggestion.source === 'default'
-              ? 'Sem histórico suficiente — padrão 18:00. Ajuste se precisar.'
-              : 'Sugestão baseada no padrão de batidas do próprio funcionário. Aprove ou ajuste.'}
+            title={suggestion.source === 'schedule'
+              ? 'Saída da escala contratada (mesmo horário esperado do relatório de HE/descontos). Aprove ou ajuste.'
+              : 'Sem escala cadastrada — padrão 18:00. Ajuste se precisar.'}
           >
             <Sparkles className="w-2.5 h-2.5 text-primary" />
-            {suggestion.source === 'default' ? 'padrão' : 'sugerido'}
+            {suggestion.source === 'schedule' ? 'escala' : 'padrão'}
           </span>
         )}
         <Input
