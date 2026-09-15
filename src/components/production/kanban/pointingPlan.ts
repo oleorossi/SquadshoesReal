@@ -5,11 +5,13 @@ import { inboundAvailability } from '@/lib/production/stageFlow';
 function isBackwardMove(
   stages: OrderStage[], column: string, target: string, flowOrder: Map<string, number>,
 ): boolean {
+  const from = norm(column);
+  const to = norm(target);
   const ordOf = new Map(stages.map(s => [norm(s.stage_name), s.stage_order]));
-  const cur = ordOf.get(norm(column));
-  const tgt = ordOf.get(norm(target));
+  const cur = ordOf.get(from);
+  const tgt = ordOf.get(to);
   if (cur !== undefined && tgt !== undefined) return tgt < cur;
-  return (flowOrder.get(norm(target)) ?? 0) < (flowOrder.get(norm(column)) ?? 0);
+  return (flowOrder.get(to) ?? 0) < (flowOrder.get(from) ?? 0);
 }
 
 export interface PointingPlan {
@@ -237,6 +239,16 @@ export function buildPointingPlan(
         pointedStage, isBackward: false, skipped: [], remaining, stageRemaining,
         available: false,
         unavailableReason: `Esta OP não passa por ${targetNorm} (ou o setor já está concluído).`,
+      };
+    }
+    // Sem isto, coluna órfã (grafia que não está em `seq`) faz `colIdx = -1`
+    // e `slice(0, targetIdx)` marca TODO o restante — inclusive o setor que
+    // o diálogo diz estar apontando — como pulado até Expedição.
+    if (colIdx < 0) {
+      return {
+        pointedStage, isBackward: false, skipped: [], remaining, stageRemaining,
+        available: false,
+        unavailableReason: `O card está em ${column}, mas essa etapa não está pendente nesta OP.`,
       };
     }
     const nivelCol = nivel(column, columnStage?.stage_order);

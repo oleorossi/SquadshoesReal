@@ -20,9 +20,9 @@ type OutdatedStatus = {
 /**
  * Hook: status de propagação ficha técnica → PV
  * Polling a cada 30s pra refletir o housekeeping do flag pelo cron
- * (process_outdated_reservations, a cada 2min). PVs Aprovados sem produção
- * são auto-resyncados no save da ficha; o badge residual cobre OPs já
- * iniciadas ou falhas parciais da propagação.
+ * (process_outdated_reservations, a cada 2min). PVs Aprovado/Em Produção sem
+ * fato físico são auto-resyncados no save da ficha; OPs iniciadas ganham só
+ * reserva delta (snapshot outdated permanece no badge).
  *
  * D7 (audit PV 2026-06): também lê sale_orders.costs_dirty_at — a view
  * v_pv_outdated_status NÃO expõe essa coluna, então buscamos direto do PV.
@@ -79,16 +79,17 @@ const labelMap: Record<OutdatedStatus['status_label'], { text: string; tooltip: 
     text: 'Consumo congelado desatualizado — OP já iniciada',
     tooltip:
       'A ficha técnica mudou depois que esta OP já tinha fato físico de produção. ' +
-      'PVs aprovados sem produção são atualizados automaticamente no save da ficha; ' +
-      'aqui o snapshot continua válido para auditoria e qualquer correção deve ser compensatória, ' +
-      'não um resync destrutivo.',
+      'PVs Aprovado/Em Produção sem fato físico são atualizados no save da ficha; ' +
+      'materiais novos entram por reserva delta. O snapshot permanece para auditoria — ' +
+      'correção estrutural deve ser compensatória, não resync destrutivo.',
     severity: 'warn',
   },
   reservations_and_snapshot_outdated: {
     text: 'Ficha modificada — snapshot e reservas desatualizados',
     tooltip:
       'A ficha técnica foi editada com OPs já em produção. ' +
-      'OPs aprovadas sem fato físico são atualizadas no save; as iniciadas foram preservadas. ' +
+      'OPs Aprovado/Em Produção sem fato físico são atualizadas no save; as iniciadas ' +
+      'recebem só reserva do delta e o snapshot fica sinalizado. ' +
       'Revise antes de um resync explícito; com fato físico, use movimento compensatório.',
     severity: 'warn',
   },

@@ -277,6 +277,17 @@ export type SaleOrderCopySeed = {
   selectedClientId: string;
   form: Partial<SaleOrderFormData>;
   items: SaleOrderItemFormData[];
+  /** Ausente ou `copy` = cópia parcial. `move` tira os itens do origem após criar o PV novo. */
+  mode?: 'copy' | 'move';
+  sourceOrderId?: string;
+  /** Só ids já persistidos: item ainda sem `id` no editor não entra no detach. */
+  movedItemIds?: string[];
+};
+
+export type PendingSaleOrderMove = {
+  sourceOrderId: string;
+  sourceOrderNumber: string | null;
+  movedItemIds: string[];
 };
 
 /**
@@ -415,6 +426,35 @@ export function buildCopySeedPayload(args: {
   };
 }
 
+export function persistedSaleOrderItemIds(
+  items: readonly Pick<SaleOrderItemFormData, 'id'>[],
+): string[] {
+  return items
+    .map((item) => item.id)
+    .filter((id): id is string => typeof id === 'string' && id.length > 0);
+}
+
+export function remainingItemsAfterMove<T extends { id?: string | null }>(
+  sourceItems: readonly T[],
+  movedItemIds: readonly string[],
+): T[] {
+  const moved = new Set(movedItemIds.filter(Boolean));
+  if (moved.size === 0) return [...sourceItems];
+  return sourceItems.filter((item) => !item.id || !moved.has(item.id));
+}
+
+export function buildMoveSeedPayload(args: Parameters<typeof buildCopySeedPayload>[0] & {
+  sourceOrderId: string;
+  movedItemIds: string[];
+}): SaleOrderCopySeed {
+  return {
+    ...buildCopySeedPayload(args),
+    mode: 'move',
+    sourceOrderId: args.sourceOrderId,
+    movedItemIds: [...new Set(args.movedItemIds.filter(Boolean))],
+  };
+}
+
 interface SubmitOptions {
   skipMinBillingCheck?: boolean;
   skipCreditCheck?: boolean;
@@ -476,6 +516,38 @@ export function mapLoadedSaleOrderItem(
     // gravaria mapa vazio por cima (a edição grava o vazio de propósito, pra
     // desmarcar funcionar) e os setores marcados sumiriam em silêncio.
     outsourced_sectors: ((i as any).outsourced_sectors as Record<string, string>) ?? {},
+  };
+}
+
+export function mapLoadedSaleOrderForm(
+  order: any,
+  representatives: { id: string; name: string }[] = [],
+): SaleOrderFormData {
+  const rep = representatives.find(r => r.name === order.representative);
+  return {
+    client_id: order.client_id || null,
+    company_id: order.company_id || null,
+    client_name: order.client_name || '', client_cnpj: order.client_cnpj || '',
+    client_contact: order.client_contact || '', client_order_number: order.client_order_number || '',
+    representative: rep?.id || order.representative_id || '',
+    payment_condition: order.payment_condition || '', delivery_deadline: order.delivery_deadline || '',
+    delivery_week: order.delivery_week || '', delivery_month: order.delivery_month || '',
+    notes: order.notes || '', status: order.status || 'Pendente',
+    nfe: order.nfe || '', remessa: order.remessa || '',
+    is_factoring: order.is_factoring || false,
+    factoring_config_id: order.factoring_config_id || '',
+    packaging_mode: order.packaging_mode || 'colmeia',
+    box_grouping: order.box_grouping || 'grade',
+    shipping_rate_per_pair: Number(order.shipping_rate_per_pair) || 0,
+    nfe_required: order.nfe_required !== false,
+    own_delivery: order.own_delivery === true,
+    informacoes_complementares_nf: order.informacoes_complementares_nf || '',
+    brand: order.brand || 'Squad Shoes',
+    order_type: order.order_type || 'carteira',
+    nfe_external: order.nfe_external === true,
+    external_nfe_number: order.external_nfe_number || '',
+    outsource_to_contractor_id: order.outsource_to_contractor_id || null,
+    outsource_to_sector: order.outsource_to_sector || null,
   };
 }
 
@@ -1162,39 +1234,7 @@ export default function SaleOrderForm() {
     const persistedItems = Array.isArray(snapshotData.items) ? snapshotData.items : [];
     try {
       const rep = representatives.find(r => r.name === order.representative);
-      const nextForm: SaleOrderFormData = {
-        client_id: (order as any).client_id || null,
-        // Sem carregar company_id, reabrir o PV mostrava o emitente como matriz/
-        // padrão e um novo save sobrescrevia a coluna com null. (PV-00140, 2026-06-16)
-        company_id: (order as any).company_id || null,
-        client_name: order.client_name || '', client_cnpj: order.client_cnpj || '',
-        client_contact: order.client_contact || '',
-        ...documentaryFieldsFromSnapshot(order),
-        representative: rep?.id || (order as any).representative_id || '',
-        payment_condition: order.payment_condition || '', delivery_deadline: order.delivery_deadline || '',
-        delivery_week: (order as any).delivery_week || '', delivery_month: (order as any).delivery_month || '',
-        notes: order.notes || '', status: order.status || 'Pendente',
-        is_factoring: (order as any).is_factoring || false,
-        factoring_config_id: (order as any).factoring_config_id || '',
-        packaging_mode: (order as any).packaging_mode || 'colmeia',
-        // Sem carregar, reabrir o PV mostraria 'grade' e o save gravaria por cima
-        // da escolha — o mesmo furo que já custou company_id e nfe_external.
-        box_grouping: (order as any).box_grouping || 'grade',
-        shipping_rate_per_pair: Number((order as any).shipping_rate_per_pair) || 0,
-        nfe_required: (order as any).nfe_required !== false,
-        own_delivery: (order as any).own_delivery === true,
-        informacoes_complementares_nf: (order as any).informacoes_complementares_nf || '',
-        brand: (order as any).brand || 'Squad Shoes',
-        order_type: (order as any).order_type || 'carteira',
-        // Sem carregar estes dois, reabrir um PV "NF externa" o mostrava como
-        // interno e (com o RPC já gravando a coluna) o save resetava pra false.
-        nfe_external: (order as any).nfe_external === true,
-        external_nfe_number: (order as any).external_nfe_number || '',
-        // Terceirização planejada faz parte do mesmo agregado do PV. Sem
-        // hidratar estes campos, reabrir e salvar apagava a escolha existente.
-        outsource_to_contractor_id: order.outsource_to_contractor_id || null,
-        outsource_to_sector: order.outsource_to_sector || null,
-      };
+      const nextForm: SaleOrderFormData = mapLoadedSaleOrderForm(order, representatives);
       const nextPackagingProductId = order.packaging_product_id || '';
       const nextPackagingQuantity = Number(order.packaging_quantity) || 0;
       const nextClientId = String(order.client_id || '');
@@ -1872,11 +1912,17 @@ export default function SaleOrderForm() {
     const productionItems = filterProductionSaleOrderItems(validItems);
     if (validItems.length === 0) { toast.error('Adicione pelo menos um item ao pedido.'); return; }
     if (productionItems.some(i => !i.color?.trim())) { toast.error('Selecione uma cor para todos os itens.'); return; }
+    // #region agent log
+    fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ba1e98'},body:JSON.stringify({sessionId:'ba1e98',runId:'pre-fix',hypothesisId:'A,B,C',location:'SaleOrderForm.tsx:handleSubmit',message:'submit before strap snapshot guard',data:{status:f.status||null,isEdit,itemCount:items.length,productionCount:productionItems.length,items:productionItems.map((it,i)=>({i,id:it.id||null,ref:it.reference_id,color:it.color||null,snapLen:Array.isArray(it.strap_colors)?it.strap_colors.length:-1,snapType:Array.isArray(it.strap_colors)?'array':typeof it.strap_colors,excluded:!!it.production_excluded_at})),canonicalRefSample:canonicalReferences.filter((r:any)=>productionItems.some(it=>it.reference_id===r.id)).map((r:any)=>({id:r.id,code:r.code,name:r.name,has_straps:r.has_straps,defLen:Array.isArray(r.strap_colors)?r.strap_colors.length:-1}))},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     const missingStrapSnapshots = listMissingTechnicalStrapSnapshots(
       productionItems,
       canonicalReferences as StrapSnapshotReferenceLike[],
     );
     if (missingStrapSnapshots.length > 0) {
+      // #region agent log
+      fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ba1e98'},body:JSON.stringify({sessionId:'ba1e98',runId:'pre-fix',hypothesisId:'A,B,E',location:'SaleOrderForm.tsx:handleSubmit:blocked',message:'blocked by missing strap snapshots',data:{missing:missingStrapSnapshots,status:f.status||null},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       toast.error(
         `Demanda de tira não resolvida em ${missingStrapSnapshots[0].label}: a ficha exige tiras, mas o item está sem linhas técnicas. ` +
         'Cadastre as tiras na ficha técnica e volte ao pedido; o sistema não infere cor ou variante.',

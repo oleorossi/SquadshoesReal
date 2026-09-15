@@ -228,6 +228,52 @@ describe('SaleOrderReadinessCorrectionDialog', () => {
     expect(screen.queryByRole('button', { name: /tentar novamente/i })).not.toBeInTheDocument();
   });
 
+  it('orienta cancelar a NF-e em vez de abrir o pedido completo', async () => {
+    const nfeTarget: SaleOrderReadinessCorrectionTarget = {
+      ...target,
+      orderNumber: 'PV-00148',
+      preflight: {
+        ...target.preflight,
+        blockers: [{
+          code: 'active_nfe_blocks_cancel',
+          scope: 'fiscal',
+          message: 'PV possui NF-e ativa; cancele a NF-e antes de alterar/cancelar o pedido.',
+          item_id: null,
+          reference_id: null,
+          overrideable: false,
+          details: {},
+        }],
+      },
+    };
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={queryClient}>
+          <SaleOrderReadinessCorrectionDialog
+            target={nfeTarget}
+            isAdmin
+            statusChangePending={false}
+            onClose={vi.fn()}
+            onEditOrder={vi.fn()}
+            onRetry={mocks.onRetry}
+          />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('NF-e ativa no pedido')).toBeInTheDocument();
+    expect(screen.getByText('Fiscal')).toBeInTheDocument();
+    expect(screen.getByText('Resolva o bloqueio fiscal')).toBeInTheDocument();
+    expect(screen.getByText(/Cancelar a NF-e ativa/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Abrir NF-e do pedido/i })).toHaveAttribute(
+      'href',
+      '/nfe?q=PV-00148',
+    );
+    expect(screen.queryByRole('button', { name: 'Abrir pedido completo' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Validar e tentar novamente/i })).toBeInTheDocument();
+  });
+
   it('mostra a pendência técnica uma vez em cada referência, sem duplicar pelas cores', async () => {
     const technicalItems = [
       { id: 'item-1', reference_id: referenceId, color: 'TÂMARA', quantity: 420, unit_price: 19.9 },

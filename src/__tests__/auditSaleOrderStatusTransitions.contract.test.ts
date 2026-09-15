@@ -19,6 +19,13 @@ const CANCEL_MIG = readFileSync(
   ),
   'utf8',
 );
+const COMPENSATORY_MIG = readFileSync(
+  resolve(
+    ROOT,
+    'supabase/migrations/20270101022300_sale_order_compensatory_cancel_physical_fact.sql',
+  ),
+  'utf8',
+);
 
 function extractFunction(sql: string, name: string): string {
   const re = new RegExp(
@@ -101,5 +108,20 @@ describe('audit-sale-order-status-transitions.sql', () => {
     expect(AUDIT).toMatch(/can_cancel/i);
     expect(AUDIT).toMatch(/can_revert_aprovado_to_rascunho/i);
     expect(AUDIT).toMatch(/allowed_next_statuses/i);
+  });
+});
+
+describe('sale_order_physical_fact_blockers (mig 22300)', () => {
+  const helper = extractFunction(COMPENSATORY_MIG, 'sale_order_physical_fact_blockers');
+
+  it('espelha os predicados de fato físico do cancel / auditoria', () => {
+    expect(helper).toMatch(/order_stages[\s\S]*quantity_processed/);
+    expect(helper).toMatch(/started_at IS NOT NULL/);
+    expect(helper).toMatch(/order_lots/);
+    expect(helper).toMatch(/'consumed', 'converted', 'pending_reconciliation'/);
+    expect(helper).toMatch(/production_consumptions[\s\S]*actual_quantity/);
+    expect(helper).toContain("'physical_fact'");
+    expect(helper).toContain("'op_number'");
+    expect(helper).toContain("'fact_kinds'");
   });
 });

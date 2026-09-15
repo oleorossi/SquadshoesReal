@@ -25,6 +25,7 @@ import type { ProductFormData } from '@/types/inventory';
 import type { SaleOrderCommandPreflight } from '@/lib/saleOrderCommand';
 import {
   buildSaleOrderReadinessCorrectionModel,
+  isActiveNfeBlocker,
   type ReadinessIssueLine,
   type ReadinessMaterialProduct,
   type ReadinessProductGroup,
@@ -159,6 +160,9 @@ function issueDescription(issue: SaleOrderCommandPreflight['blockers'][number]):
     const color = detailText(issue.details?.color) || 'cor do item';
     return `${component}: o grupo de “${product}” não encontrou a cor ${color}.`;
   }
+  if (issue.code === 'active_nfe_blocks_cancel') {
+    return 'Há NF-e autorizada, em processamento ou em cancelamento. Cancele a nota na área fiscal antes de alterar ou cancelar o pedido.';
+  }
   const auditGap = getTechnicalSheetAuditGapForIssueCode(issue.code);
   if (auditGap) {
     return `Esta pendência pertence à referência. Corrija “${auditGap.label}” na ficha técnica.`;
@@ -166,20 +170,25 @@ function issueDescription(issue: SaleOrderCommandPreflight['blockers'][number]):
   return issue.message;
 }
 
-const issueScopeLabel = (line: ReadinessIssueLine) => (
-  line.issue.scope === 'technical_sheet' || line.issue.code.startsWith('technical_sheet_')
-    ? 'Ficha técnica'
-    : line.issue.code
-);
+const issueScopeLabel = (line: ReadinessIssueLine): string | null => {
+  if (line.issue.scope === 'technical_sheet' || line.issue.code.startsWith('technical_sheet_')) {
+    return 'Ficha técnica';
+  }
+  if (isActiveNfeBlocker(line.issue) || line.issue.scope === 'fiscal') return 'Fiscal';
+  if (line.issue.scope === 'financial') return 'Financeiro';
+  if (line.issue.scope === 'sale_order') return 'Pedido';
+  return null;
+};
 
 function IssueDetails({ line }: { line: ReadinessIssueLine }) {
+  const scope = issueScopeLabel(line);
   return (
     <div className="flex gap-3 px-4 py-3">
       <Warning className="mt-0.5 h-4 w-4 shrink-0 text-destructive" weight="fill" />
       <div className="min-w-0 space-y-1">
         <div className="flex flex-wrap items-center gap-2">
           <p className="text-sm font-semibold">{line.title}</p>
-          <span className="font-mono text-[10px] text-muted-foreground">{issueScopeLabel(line)}</span>
+          {scope && <span className="font-mono text-[10px] text-muted-foreground">{scope}</span>}
         </div>
         <p className="text-sm leading-relaxed text-muted-foreground">
           {issueDescription(line.issue)}
@@ -261,6 +270,15 @@ export default function SaleOrderReadinessCorrectionDialog({
   ].filter(Boolean).join(' e ');
   const requiresFullOrderEdit = !contextQuery.isLoading
     && model.unsupportedIssues.length > 0;
+  const requiresNfeCancel = model.fiscalIssues.length > 0;
+  const nfeSearchQuery = target?.orderNumber || target?.id || '';
+  const dialogDescription = requiresNfeCancel && !requiresFullOrderEdit && model.colorCorrections.length === 0
+    ? 'Este pedido tem NF-e ativa. Cancele a nota na área fiscal e volte aqui para validar de novo.'
+    : requiresFullOrderEdit && model.referenceGroups.length > 0
+      ? 'As pendências da ficha aparecem uma vez em cada referência. Abra a ficha indicada para corrigir a engenharia; problemas próprios do item continuam em “Abrir pedido completo”.'
+      : requiresFullOrderEdit
+        ? 'Veja a referência, a cor e a quantidade de cada item com problema. As pendências sem editor rápido devem ser corrigidas em “Abrir pedido completo”.'
+        : 'Veja cada referência e item afetado. Corrija à direita e valide novamente sem sair desta tela.';
 
   const handleSaveAndRetry = async () => {
     if (!target || !isAdmin || !canSaveAndRetry) return;
@@ -341,11 +359,7 @@ export default function SaleOrderReadinessCorrectionDialog({
             </div>
             <DialogTitle className="font-display text-xl sm:text-2xl">Corrigir prontidão do pedido</DialogTitle>
             <DialogDescription>
-              {requiresFullOrderEdit && model.referenceGroups.length > 0
-                ? 'As pendências da ficha aparecem uma vez em cada referência. Abra a ficha indicada para corrigir a engenharia; problemas próprios do item continuam em “Abrir pedido completo”.'
-                : requiresFullOrderEdit
-                  ? 'Veja a referência, a cor e a quantidade de cada item com problema. As pendências sem editor rápido devem ser corrigidas em “Abrir pedido completo”.'
-                  : 'Veja cada referência e item afetado. Corrija à direita e valide novamente sem sair desta tela.'}
+              {dialogDescription}
             </DialogDescription>
           </DialogHeader>
 
@@ -489,7 +503,11 @@ export default function SaleOrderReadinessCorrectionDialog({
                   <div>
                     <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Área de correção</p>
                     <h3 id="readiness-corrections-title" className="font-display text-lg">
-                      {actionableCount > 0 ? 'Preencha o que está faltando' : 'Revise as orientações'}
+                      {actionableCount > 0
+                        ? 'Preencha o que está faltando'
+                        : requiresNfeCancel
+                          ? 'Resolva o bloqueio fiscal'
+                          : 'Revise as orientações'}
                     </h3>
                   </div>
 
@@ -501,6 +519,28 @@ export default function SaleOrderReadinessCorrectionDialog({
                         Cadastros rápidos de material exigem um administrador. Preço ausente deve ser preenchido no pedido completo.
                       </AlertDescription>
                     </Alert>
+                  )}
+
+                  {model.fiscalIssues.length > 0 && (
+                    <div className="rounded-lg border border-destructive/30 bg-card p-4 shadow-sm">
+                      <div className="flex items-start gap-3">
+                        <div className="rounded-md bg-destructive/10 p-2 text-destructive">
+                          <Warning className="h-4 w-4" weight="fill" />
+                        </div>
+                        <div className="min-w-0 space-y-1">
+                          <p className="text-sm font-semibold">Cancelar a NF-e ativa</p>
+                          <p className="text-xs text-muted-foreground">
+                            Abrir pedido completo não remove o bloqueio fiscal. Vá em NF-e, cancele a nota vinculada a este PV e volte para validar.
+                          </p>
+                        </div>
+                      </div>
+                      <Button asChild variant="secondary" className="mt-3 w-full">
+                        <Link to={`/nfe?q=${encodeURIComponent(nfeSearchQuery)}`}>
+                          <ExternalLink className="h-4 w-4" />
+                          Abrir NF-e do pedido
+                        </Link>
+                      </Button>
+                    </div>
                   )}
 
                   {model.colorCorrections.map((correction) => {
@@ -601,10 +641,28 @@ export default function SaleOrderReadinessCorrectionDialog({
           )}
 
           <DialogFooter className="border-t border-border bg-card px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-            <Button type="button" variant="ghost" disabled={busy} onClick={onEditOrder}>
-              <ExternalLink className="h-4 w-4" />
-              Abrir pedido completo
-            </Button>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              {requiresNfeCancel && (
+                <Button asChild type="button" variant="ghost" disabled={busy}>
+                  <Link to={`/nfe?q=${encodeURIComponent(nfeSearchQuery)}`}>
+                    <ExternalLink className="h-4 w-4" />
+                    Abrir NF-e
+                  </Link>
+                </Button>
+              )}
+              {requiresFullOrderEdit && (
+                <Button type="button" variant="ghost" disabled={busy} onClick={onEditOrder}>
+                  <ExternalLink className="h-4 w-4" />
+                  Abrir pedido completo
+                </Button>
+              )}
+              {!requiresFullOrderEdit && !requiresNfeCancel && (
+                <Button type="button" variant="ghost" disabled={busy} onClick={onEditOrder}>
+                  <ExternalLink className="h-4 w-4" />
+                  Abrir pedido completo
+                </Button>
+              )}
+            </div>
             <div className="flex flex-col-reverse gap-2 sm:flex-row">
               <Button type="button" variant="outline" disabled={busy} onClick={onClose}>Fechar</Button>
               {isAdmin && canSaveAndRetry && (

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findBlockingStage, inboundAvailability, isStageSkipped } from '@/lib/production/stageFlow';
+import { findBlockingStage, inboundAvailability, isStageSkipped, stageNameAliases } from '@/lib/production/stageFlow';
 
 const stage = (stage_name: string, quantity_processed = 0, status = 'pendente', quantity_total = 10) => ({
   stage_name,
@@ -49,5 +49,16 @@ describe('stageFlow · pulo não entrega o total da OP', () => {
       stage('Montagem', 0, 'pendente', 288),
     ];
     expect(inboundAvailability('Montagem', stages)).toBe(180);
+  });
+});
+
+describe('stageNameAliases', () => {
+  it('Corte Palmilha e Corte Fibra resolvem um para o outro', () => {
+    expect(stageNameAliases('Corte Palmilha')).toEqual(
+      expect.arrayContaining(['Corte Palmilha', 'Corte Fibra']),
+    );
+    expect(stageNameAliases('Corte Fibra')).toEqual(
+      expect.arrayContaining(['Corte Palmilha', 'Corte Fibra']),
+    );
   });
 });

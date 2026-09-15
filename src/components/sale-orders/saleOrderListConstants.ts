@@ -78,6 +78,10 @@ export const STATUS_BAND: Record<string, string> = {
 
 export const TERMINAL_BILLED_STATUSES = ['Faturado', 'Finalizado s/ NF'];
 
+/** Fundo rosa-claro do número do PV infantil — mesmo tom das fichas impressas
+ *  (`InfantilTag` #FCE7F3). `dark:` na mesma linha pra passar o check:tokens. */
+export const INFANTIL_ORDER_NUMBER_CLASS = 'rounded-sm bg-pink-100 px-1.5 py-0.5 dark:bg-pink-900/30';
+
 const BRL_FMT = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const DATE_FMT = new Intl.DateTimeFormat('pt-BR');
 const DATE_SHORT_FMT = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit' });

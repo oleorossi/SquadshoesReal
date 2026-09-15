@@ -145,6 +145,9 @@ export const SECTOR_FLOW: string[] = [
  */
 export const SECTOR_PARALLEL_GROUP: Record<string, string | null> = {
   'Corte Fibra':      'corte',
+  // Grafia legada — o quadro normaliza pra Corte Fibra; o fallback estático
+  // precisa do mesmo grupo senão Palmilha vira nível sentinela 1e6+order.
+  'Corte Palmilha':   'corte',
   'Corte Forração':   'corte',
   'Corte Cabedal':    'corte',
   'Costura Palmilha': 'costura_aviamento',

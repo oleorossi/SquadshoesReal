@@ -4,7 +4,22 @@
 
 Relatório **somente-leitura** (opção 1 do pedido): para cada PV ativo,
 se o cancelamento automático (e Aprovado→Rascunho) passa, e o motivo
-quando não passa. Sem afrouxar a regra de fato físico e sem tela nova.
+quando não passa. Sem afrouxar a regra de fato físico no path default.
+
+## Path compensatório (2026-09-09)
+
+Migration `20270101022300_sale_order_compensatory_cancel_physical_fact`:
+
+| Peça | Papel |
+|---|---|
+| `sale_order_physical_fact_blockers(pv)` | Blockers com **nº da OP** + `fact_kinds` |
+| `preflight_sale_order_command` | Anexa blockers em `cancel` e Aprovado→Rascunho |
+| `cancel_sale_order_atomic_internal` | Default RAISE com order_number; GUC compensatório chama `cancel_production_order_internal` |
+| `execute_sale_order_command` | Gate admin + motivo ≥15 + `payload.compensatory=true` |
+| UI `AdminCompensatoryCancelDialog` | Só admin; checklist + motivo |
+
+Cancel automático **continua** recusando fato físico (PZ105). Compensatório
+ainda recusa NF-e ativa (PZ112) e OP Finalizado/Concluído.
 
 ## Ferramenta
 
@@ -14,8 +29,7 @@ quando não passa. Sem afrouxar a regra de fato físico e sem tela nova.
 | [`scripts/run-audit-sale-order-status.mjs`](../scripts/run-audit-sale-order-status.mjs) | Runner opcional com `SUPABASE_SERVICE_ROLE_KEY` |
 | [`src/__tests__/auditSaleOrderStatusTransitions.contract.test.ts`](../src/__tests__/auditSaleOrderStatusTransitions.contract.test.ts) | Trava que o SQL espelha o cancel atômico |
 
-Espelha `cancel_sale_order_atomic_internal`
-(`supabase/migrations/20270101010400_atomic_sale_order_promotion_command.sql`):
+Espelha `cancel_sale_order_atomic_internal` (+ helper de blockers na mig 22300):
 
 | Código | Significado |
 |---|---|
@@ -44,48 +58,28 @@ https://supabase.com/dashboard/project/ssvxfoybzmjlypnipqzn/sql/new
 Cole o SQL → Run. A saída traz seção `resumo` (totais por código) e
 `detalhe` (uma linha por PV).
 
-Alternativa (Actions):
+## Achado confirmado — PV-00139 / OP-2026-01146
 
-```bash
-gh workflow run "Supabase — Exec SQL file (Management API)" \
-  --ref cursor/audit-sale-order-status-1272 \
-  -f sql_path=sql-scripts/audit-sale-order-status-transitions.sql
-```
+Toast legado (UUID):
 
-## Achado já confirmado (print do usuário)
+> Erro: OP ab7e391d-… possui fato físico; cancelamento automático recusado
 
-Toast:
+Isso é **PZ105_fato_fisico** — comportamento esperado do writer default.
+Após a mig 22300, preflight/cancel usam **OP-2026-01146** + `stage`.
 
-> Erro: OP ab7e391d-d325-467e-a383-576e79311e6c possui fato físico;
-> cancelamento automático recusado
+### Probe read-only (2026-09-09)
 
-Isso é **PZ105_fato_fisico** — comportamento esperado do writer, não
-falha de UI. O PV pai dessa OP **não** cancela pelo dropdown até o fato
-físico ser resolvido (ou decisão explícita de mudar a regra — fora de
-escopo desta auditoria).
+Confirmado: `sale_order_physical_fact_blockers` / preflight `cancel` do
+**PV-00139** (Em Produção) devolvem:
 
-Na execução do SQL, a linha desse PV deve aparecer com
-`cancel_block_code = PZ105_fato_fisico` e `cancel_block_detail` listando
-a OP + o tipo (`stage` / `lot` / `reservation` / `consumption`).
+- `ready: false`
+- `OP-2026-01146` com `fact_kinds: ["stage"]`
+- mensagem: `OP OP-2026-01146 possui fato físico (stage); cancelamento automático recusado`
 
-## Censo completo
+**Não cancelar** o PV em produção só para “provar” o path; o probe de
+preflight basta.
 
-Bloqueado neste ambiente cloud: sem `SUPABASE_ACCESS_TOKEN` /
-`SUPABASE_SERVICE_ROLE_KEY` e sem permissão de `workflow_dispatch`.
-Assim que o SQL rodar, atualizar a tabela abaixo.
+## O que NÃO muda no default
 
-| cancel_block_code | qtd_pvs | pares |
-|---|---|---|
-| _pendente execução_ | — | — |
-
-PVs que **não** podem cancelar (preencher após execução):
-
-| order_number | status | código | detalhe |
-|---|---|---|---|
-| _(PV da OP ab7e391d…)_ | Em Produção? | PZ105_fato_fisico | OP ab7e391d… [tipo a confirmar no SQL] |
-
-## O que NÃO muda
-
-- Regra de cancelamento com fato físico
-- UI de Pedidos / Diagnósticos
-- Dados de produção
+- Cancel automático com fato físico continua recusado
+- NF-e ativa e OP Finalizado continuam barrados mesmo no compensatório

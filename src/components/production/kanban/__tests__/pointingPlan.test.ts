@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildPointingPlan, moveOptions, skipBlockedByPartial, applyPointing } from '../pointingPlan';
-import { deriveCard, type KanbanCardData } from '../kanbanDerive';
+import { deriveCard, deriveCards, type KanbanCardData } from '../kanbanDerive';
 import type { OrderStage } from '@/hooks/useOrderStages';
 
 /**
@@ -619,5 +619,90 @@ describe('applyPointing — estorno do setor atual parcial', () => {
     expect(result).toEqual({ status: 'ok', quantity: -10 });
     expect(calls).toHaveLength(1);
     expect(calls[0]).toMatchObject({ stageName: 'Corte Forração', quantity: -10 });
+  });
+});
+
+/**
+ * REGRESSÃO do print da Central (12/09/2026): OP de PV-00142 / BT01 PRETO
+ * ainda tem `order_stages.stage_name = 'Corte Palmilha'`, mas o quadro
+ * (sector_settings) só tem a coluna `Corte Fibra`. Sem o alias, o card
+ * ganhava nível sentinela 1e6+order, a lista de pulo ia até Expedição e o
+ * título dizia Corte Palmilha enquanto o De/Para dizia Fibra → Expedição.
+ *
+ * Dados vivos (ssvxfoybzmjlypnipqzn): OP-2026-00969, 180 pares, todas as
+ * etapas pendentes 0/180, rota completa incluindo Expedição no FIM.
+ */
+describe('alias Corte Palmilha → Corte Fibra (OP-2026-00969 / PV-00142)', () => {
+  const FLOW_PROD = new Map<string, number>([
+    ['Corte Fibra', 10], ['Corte Cabedal', 15], ['Corte Forração', 20],
+    ['Costura Palmilha', 30], ['Costura Cabedal', 40], ['Aviamento', 50],
+    ['Silk', 60], ['Colagem', 70], ['Montagem', 80], ['Solagem', 90],
+    ['Acabamento', 100], ['Expedição', 110],
+  ]);
+  const LEVEL_PROD = new Map<string, number>([
+    ['Corte Fibra', 10], ['Corte Cabedal', 10], ['Corte Forração', 10],
+    ['Costura Palmilha', 30], ['Costura Cabedal', 30], ['Aviamento', 30],
+    ['Silk', 60], ['Colagem', 70], ['Montagem', 80], ['Solagem', 90],
+    ['Acabamento', 100], ['Expedição', 110],
+  ]);
+  const rotaViva = () => [
+    stage('Corte Palmilha', 1, { quantity_total: 180 }),
+    stage('Corte Forração', 2, { quantity_total: 180 }),
+    stage('Costura Palmilha', 3, { quantity_total: 180 }),
+    stage('Costura Cabedal', 4, { quantity_total: 180 }),
+    stage('Aviamento', 5, { quantity_total: 180 }),
+    stage('Silk', 6, { quantity_total: 180 }),
+    stage('Colagem', 7, { quantity_total: 180 }),
+    stage('Montagem', 8, { quantity_total: 180 }),
+    stage('Solagem', 9, { quantity_total: 180 }),
+    stage('Acabamento', 10, { quantity_total: 180 }),
+    stage('Expedição', 11, { quantity_total: 180 }),
+  ];
+
+  it('o card nasce na coluna Corte Fibra, em paralelo com Corte Forração', () => {
+    const q = { order_id: 'op-1', order_number: 'OP-2026-00969', quantity: 180 } as KanbanCardData['q'];
+    const cards = deriveCards(q, rotaViva(), FLOW_PROD, LEVEL_PROD);
+    expect(cards.map(c => c.column).sort()).toEqual(['Corte Fibra', 'Corte Forração']);
+    const fibra = cards.find(c => c.column === 'Corte Fibra')!;
+    expect(fibra.columnStage?.stage_name).toBe('Corte Palmilha');
+    expect(fibra.parallelSiblings).toEqual(['Corte Forração']);
+  });
+
+  it('apontar o próprio Corte Fibra NÃO pula para Expedição', () => {
+    const q = { order_id: 'op-1', order_number: 'OP-2026-00969', quantity: 180 } as KanbanCardData['q'];
+    const fibra = deriveCards(q, rotaViva(), FLOW_PROD, LEVEL_PROD)
+      .find(c => c.column === 'Corte Fibra')!;
+    const plan = buildPointingPlan(fibra, null, FLOW_PROD, LEVEL_PROD);
+    expect(plan.available).toBe(true);
+    expect(plan.skipped).toEqual([]);
+    expect(plan.pointedStage?.stage_name).toBe('Corte Palmilha');
+    expect(plan.remaining).toBe(180);
+  });
+
+  it('arrastar para Expedição com Forração aberta é recusado — não é atalho', () => {
+    const q = { order_id: 'op-1', order_number: 'OP-2026-00969', quantity: 180 } as KanbanCardData['q'];
+    const fibra = deriveCards(q, rotaViva(), FLOW_PROD, LEVEL_PROD)
+      .find(c => c.column === 'Corte Fibra')!;
+    const plan = buildPointingPlan(fibra, 'Expedição', FLOW_PROD, LEVEL_PROD);
+    expect(plan.available).toBe(false);
+    expect(plan.skipped).toEqual([]);
+    expect(plan.unavailableReason).toMatch(/Conclua primeiro Corte Forração/i);
+  });
+
+  it('o select de mover não oferece Expedição enquanto o par paralelo está aberto', () => {
+    const q = { order_id: 'op-1', order_number: 'OP-2026-00969', quantity: 180 } as KanbanCardData['q'];
+    const fibra = deriveCards(q, rotaViva(), FLOW_PROD, LEVEL_PROD)
+      .find(c => c.column === 'Corte Fibra')!;
+    expect(moveOptions(fibra, FLOW_PROD, LEVEL_PROD).fwdOptions).toEqual([]);
+  });
+
+  it('coluna órfã não transforma o restante da rota em pulo até Expedição', () => {
+    const stages = rotaViva();
+    const card = makeCard({ stages, column: 'Setor Fantasma' });
+    card.columnStage = stages[0];
+    const plan = buildPointingPlan(card, 'Expedição', FLOW_PROD, LEVEL_PROD);
+    expect(plan.available).toBe(false);
+    expect(plan.skipped).toEqual([]);
+    expect(plan.unavailableReason).toMatch(/não está pendente/i);
   });
 });

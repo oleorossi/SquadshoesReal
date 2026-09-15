@@ -266,7 +266,38 @@ describe('saleOrderReadinessCorrections', () => {
     expect(model.generalIssues).toEqual([
       expect.objectContaining({ issue: expect.objectContaining({ code: 'client_missing' }) }),
     ]);
+    expect(model.fiscalIssues).toEqual([]);
     expect(model.unsupportedIssues).toHaveLength(1);
+  });
+
+  it('trata NF-e ativa como bloqueio fiscal, sem mandar para edição do PV', () => {
+    const nfeIssue: SaleOrderCommandIssue = {
+      code: 'active_nfe_blocks_cancel',
+      scope: 'fiscal',
+      message: 'PV possui NF-e ativa; cancele a NF-e antes de alterar/cancelar o pedido.',
+      item_id: null,
+      reference_id: null,
+      overrideable: false,
+      details: {},
+    };
+
+    const model = buildSaleOrderReadinessCorrectionModel({
+      issues: [nfeIssue],
+      items,
+      sheets,
+      products: [],
+      groups: [],
+    });
+
+    expect(model.generalIssues).toEqual([
+      expect.objectContaining({
+        title: 'NF-e ativa no pedido',
+        issue: expect.objectContaining({ code: 'active_nfe_blocks_cancel' }),
+      }),
+    ]);
+    expect(model.fiscalIssues).toHaveLength(1);
+    expect(model.unsupportedIssues).toEqual([]);
+    expect(model.itemGroups).toEqual([]);
   });
 });
 

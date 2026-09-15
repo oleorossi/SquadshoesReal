@@ -14,6 +14,8 @@ import {
   assertFinalizeAppliedExpectedRemovals,
   createSaleOrderCommand,
   executeSaleOrderCommand,
+  formatSaleOrderCancelError,
+  formatSaleOrderStatusError,
   formatSaleOrderUpdateSuccessMessage,
   formatUnknownSaleOrderUpdateError,
   isStaleSaleOrderVersionError,
@@ -904,6 +906,9 @@ interface UpdateSaleOrderStatusVars {
   id: string;
   status: string;
   override_id?: string | null;
+  /** Cancel / Aprovado→Rascunho compensatório (admin + motivo ≥15). */
+  compensatory?: boolean;
+  reason?: string;
 }
 
 export function useUpdateSaleOrderStatus(options?: {
@@ -914,7 +919,7 @@ export function useUpdateSaleOrderStatus(options?: {
 }) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, status, override_id }: UpdateSaleOrderStatusVars) => {
+    mutationFn: async ({ id, status, override_id, compensatory, reason }: UpdateSaleOrderStatusVars) => {
       // Validate transition before touching the DB
       const { data: rawCurrent, error: fetchError } = await supabase
         .from('sale_orders')
@@ -929,6 +934,11 @@ export function useUpdateSaleOrderStatus(options?: {
       };
 
       const currentStatus: string = current.status;
+      // Clique repetido / dialog com snapshot velho: o PV já está no destino.
+      // Não é transição — devolve sucesso idempotente em vez de assustar o usuário.
+      if (currentStatus === status) {
+        return { alreadyCurrent: true } as PromotionEngineResult & { alreadyCurrent: true };
+      }
       if (!isValidStatusTransition(currentStatus, status)) {
         throw new Error(
           `Transição de status inválida: ${currentStatus} → ${status}`
@@ -978,12 +988,24 @@ export function useUpdateSaleOrderStatus(options?: {
       // Toda transição pertence ao SaleOrderCommand. O navegador não altera
       // sale_orders/orders nem reconcilia estoque por passos separados.
       const expectedOrderVersion = Number(current.order_version) || 0;
+      const compensatoryCancel = Boolean(compensatory)
+        && (saleOrderCommand === 'cancel'
+          || (saleOrderCommand === 'transition' && status === 'Rascunho'));
+      const commandPayload: Record<string, unknown> = {
+        ...(saleOrderCommand === 'transition' ? { target_status: status } : {}),
+        ...(compensatoryCancel
+          ? { compensatory: true, reason: String(reason || '').trim() }
+          : {}),
+      };
+      // #region agent log
+      fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'06a1eb'},body:JSON.stringify({sessionId:'06a1eb',hypothesisId:'B',location:'useSaleOrders.ts:useUpdateSaleOrderStatus',message:'status mutation start',data:{command:saleOrderCommand,targetStatus:status,compensatory:Boolean(compensatory)},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       const preflight = await preflightSaleOrderCommand({
         saleOrderId: id,
         command: saleOrderCommand,
         expectedOrderVersion,
         overrideId: override_id,
-        payload: saleOrderCommand === 'transition' ? { target_status: status } : {},
+        payload: commandPayload,
       });
       if (!preflight.ready) throw new SaleOrderReadinessBlockedError(preflight);
       if (preflight.warnings.length > 0) {
@@ -998,7 +1020,7 @@ export function useUpdateSaleOrderStatus(options?: {
         command: saleOrderCommand,
         expectedOrderVersion,
         idempotencyKey: `pv:${id}:${saleOrderCommand}:${crypto.randomUUID()}`,
-        payload: saleOrderCommand === 'transition' ? { target_status: status } : {},
+        payload: commandPayload,
         overrideId: override_id,
       });
 
@@ -1014,6 +1036,10 @@ export function useUpdateSaleOrderStatus(options?: {
       return engineResult;
     },
     onSuccess: (engineResult, vars) => {
+      if ((engineResult as { alreadyCurrent?: boolean } | null)?.alreadyCurrent) {
+        invalidateSaleOrders(qc);
+        return;
+      }
       invalidateSaleOrders(qc);
       qc.invalidateQueries({ queryKey: ['orders'] });
       qc.invalidateQueries({ queryKey: ['order_stages'] });
@@ -1049,6 +1075,15 @@ export function useUpdateSaleOrderStatus(options?: {
         return;
       }
 
+      if (vars.status === 'Cancelado') {
+        toast.success(
+          vars.compensatory
+            ? 'Pedido cancelado (compensatório) — OPs canceladas e reservas liberadas.'
+            : 'Pedido cancelado — reservas liberadas e estoque reversível estornado.',
+        );
+        return;
+      }
+
       const msg = vars.status === 'Aprovado'
         ? 'Pedido aprovado — OPs criadas e estoque processado!'
         : vars.status === 'Em Produção'
@@ -1057,15 +1092,28 @@ export function useUpdateSaleOrderStatus(options?: {
             ? 'Pedido faturado e OPs finalizadas!'
             : vars.status === 'Finalizado s/ NF'
               ? 'Pedido informal finalizado (sem NF).'
-              : 'Status atualizado!';
+              : vars.status === 'Rascunho' && vars.compensatory
+                ? 'Pedido revertido para Rascunho (compensatório).'
+                : 'Status atualizado!';
       toast.success(msg);
     },
     onError: (err: Error, vars) => {
+      (err as Error & { _handled?: boolean })._handled = true;
+      // #region agent log
+      fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'06a1eb'},body:JSON.stringify({sessionId:'06a1eb',hypothesisId:'A',location:'useSaleOrders.ts:useUpdateSaleOrderStatus',message:'status mutation error',data:{targetStatus:vars.status,timeout:/timeout/i.test(err.message),err:String(err.message||'').slice(0,180)},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       if (err instanceof SaleOrderReadinessBlockedError && options?.onReadinessBlocked) {
         options.onReadinessBlocked(err, vars);
         return;
       }
-      toast.error(`Erro: ${err.message}`);
+      if (
+        vars.status === 'Cancelado'
+        || (vars.status === 'Rascunho' && err instanceof SaleOrderReadinessBlockedError)
+      ) {
+        toast.error(`Erro: ${formatSaleOrderCancelError(err)}`);
+        return;
+      }
+      toast.error(`Erro: ${formatSaleOrderStatusError(err)}`);
     },
   });
 }

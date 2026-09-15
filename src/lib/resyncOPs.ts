@@ -117,6 +117,10 @@ export interface AutoResyncSummary {
   resynced: number;
   skippedInactive: number;
   skippedStarted: number;
+  /** OPs com fato físico (PZ105) que ganharam reserva aditiva do delta. */
+  deltaReserved: number;
+  /** Linhas de material que o delta não conseguiu cobrir com estoque livre. */
+  deltaShortfalls: number;
   errors: Array<{ order_number?: string | null; message?: string }>;
 }
 
@@ -127,6 +131,8 @@ function parseAutoResyncPayload(raw: unknown): AutoResyncSummary {
     resynced: Number(data.resynced) || 0,
     skippedInactive: Number(data.skipped_inactive) || 0,
     skippedStarted: Number(data.skipped_started) || 0,
+    deltaReserved: Number(data.delta_reserved) || 0,
+    deltaShortfalls: Number(data.delta_shortfalls) || 0,
     errors: errorsRaw.map((row) => {
       const item = (row || {}) as Record<string, unknown>;
       return {
@@ -138,7 +144,8 @@ function parseAutoResyncPayload(raw: unknown): AutoResyncSummary {
 }
 
 /**
- * Propaga consumo da ficha para OPs de PVs Aprovados sem fato físico.
+ * Propaga consumo da ficha para OPs de PVs Aprovado/Em Produção sem fato
+ * físico; em OP iniciada (PZ105) reserva só o delta faltante.
  * A ficha já deve ter sido salva — falha aqui não desfaz o UPDATE.
  */
 export async function autoResyncUnstartedOpsForSheet(
@@ -175,9 +182,26 @@ export function toastAutoResyncSummary(
       `${summary.resynced} OP${summary.resynced === 1 ? '' : 's'} com consumo atualizado`,
     );
   }
-  if (summary.skippedStarted > 0) {
+  if (summary.deltaReserved > 0) {
+    parts.push(
+      `${summary.deltaReserved} OP${summary.deltaReserved === 1 ? '' : 's'} com materiais faltantes reservados`,
+    );
+  }
+  if (summary.skippedStarted > 0 && summary.deltaReserved === 0) {
     parts.push(
       `${summary.skippedStarted} já iniciada${summary.skippedStarted === 1 ? '' : 's'} (só sinalizada)`,
+    );
+  } else if (summary.skippedStarted > summary.deltaReserved && summary.deltaReserved > 0) {
+    const onlySignal = summary.skippedStarted - summary.deltaReserved;
+    if (onlySignal > 0) {
+      parts.push(
+        `${onlySignal} já iniciada${onlySignal === 1 ? '' : 's'} sem delta novo`,
+      );
+    }
+  }
+  if (summary.deltaShortfalls > 0) {
+    parts.push(
+      `${summary.deltaShortfalls} ${summary.deltaShortfalls === 1 ? 'material' : 'materiais'} sem estoque livre`,
     );
   }
   if (summary.errors.length > 0) {
@@ -190,7 +214,13 @@ export function toastAutoResyncSummary(
     return;
   }
   if (parts.length > 0) {
-    toast.success(parts.join(' · '), { duration: 6000 });
+    const useWarn = summary.deltaShortfalls > 0;
+    const msg = parts.join(' · ');
+    if (useWarn) {
+      toast.warning(msg, { duration: 8000 });
+    } else {
+      toast.success(msg, { duration: 6000 });
+    }
     return;
   }
   if (opts?.emptyMessage) {

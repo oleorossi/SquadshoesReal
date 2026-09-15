@@ -288,7 +288,25 @@ export function formatSaleOrderCommandFailureMessage(
   return fallback || 'O servidor recusou a edição do pedido. Nenhuma alteração foi gravada.';
 }
 
+export function isPostgresTimeoutError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return /statement timeout|canceling statement due to statement timeout|canceling statement due to lock timeout/i.test(message);
+}
+
+export function formatSaleOrderStatusError(error: unknown): string {
+  if (isPostgresTimeoutError(error)) {
+    return 'O banco estava ocupado com estoque ou compras de outro pedido. Tente de novo em alguns segundos.';
+  }
+  if (error instanceof Error && error.message.trim()) {
+    return error.message.trim();
+  }
+  return 'Não foi possível atualizar o status do pedido.';
+}
+
 export function formatUnknownSaleOrderUpdateError(error: unknown): string {
+  if (isPostgresTimeoutError(error)) {
+    return 'O pedido NÃO foi salvo. O banco estava ocupado com estoque ou compras de outro pedido. Tente de novo em alguns segundos.';
+  }
   if (error instanceof SaleOrderCommandExecutionError) {
     return error.message;
   }
@@ -311,6 +329,94 @@ export function formatUnknownSaleOrderUpdateError(error: unknown): string {
     );
   }
   return 'O pedido NÃO foi salvo. O servidor recusou a edição.';
+}
+
+const PHYSICAL_FACT_BLOCKER_CODES = new Set([
+  'physical_fact',
+  'physical_finalized_op',
+  'physical_nfe_active',
+]);
+
+/** Blockers de fato físico / OP finalizada no preflight de cancel. */
+export function isPhysicalFactBlocker(issue: SaleOrderCommandIssue): boolean {
+  if (PHYSICAL_FACT_BLOCKER_CODES.has(issue.code)) return true;
+  const kinds = issue.details?.fact_kinds;
+  if (Array.isArray(kinds) && kinds.length > 0) {
+    return kinds.some((kind) => (
+      kind === 'stage'
+      || kind === 'lot'
+      || kind === 'reservation'
+      || kind === 'consumption'
+      || kind === 'finalized'
+    ));
+  }
+  const message = issue.message.toLowerCase();
+  return message.includes('fato físico') || message.includes('finalizada/concluída');
+}
+
+export function listPhysicalFactBlockers(
+  preflight: Pick<SaleOrderCommandPreflight, 'blockers'> | null | undefined,
+): SaleOrderCommandIssue[] {
+  return (preflight?.blockers || []).filter(isPhysicalFactBlocker);
+}
+
+export function hasPhysicalFactBlockers(
+  preflight: Pick<SaleOrderCommandPreflight, 'blockers'> | null | undefined,
+): boolean {
+  return listPhysicalFactBlockers(preflight).length > 0;
+}
+
+export function formatPhysicalFactKinds(issue: SaleOrderCommandIssue): string {
+  const kinds = issue.details?.fact_kinds;
+  if (!Array.isArray(kinds) || kinds.length === 0) return '';
+  return kinds.map(String).join(', ');
+}
+
+/**
+ * Toast/erro legível para cancel recusado por fato físico.
+ * Prefere nº da OP em `details.op_number` — nunca UUID cru.
+ */
+export function formatSaleOrderCancelError(
+  error: unknown,
+  fallback = 'Não foi possível cancelar o pedido.',
+): string {
+  if (error instanceof SaleOrderReadinessBlockedError) {
+    const physical = listPhysicalFactBlockers(error.preflight);
+    if (physical.length > 0) {
+      const summary = physical.slice(0, 4).map((issue) => {
+        const opNumber = typeof issue.details?.op_number === 'string'
+          ? issue.details.op_number
+          : null;
+        const kinds = formatPhysicalFactKinds(issue);
+        if (opNumber && kinds) return `${opNumber} (${kinds})`;
+        if (opNumber) return opNumber;
+        return issue.message;
+      }).join('; ');
+      const remaining = Math.max(0, physical.length - 4);
+      return (
+        `Cancelamento automático recusado por fato físico: ${summary}` +
+        (remaining > 0 ? `; e mais ${remaining}.` : '.')
+      );
+    }
+    return error.message;
+  }
+  if (error instanceof SaleOrderCommandExecutionError) {
+    const message = error.message;
+    // Writer ainda pode devolver UUID em corridas antigas; preferir texto do servidor
+    // quando já trouxe order_number (padrão novo).
+    if (/fato físico/i.test(message)) return message.replace(/^O pedido NÃO foi salvo\.\s*/i, '');
+    return message;
+  }
+  if (error instanceof Error && error.message.trim()) {
+    return error.message.trim();
+  }
+  return fallback;
+}
+
+export interface SaleOrderCancelCommandPayload {
+  compensatory?: boolean;
+  reason?: string;
+  target_status?: string;
 }
 
 /**
@@ -487,6 +593,10 @@ export async function preflightSaleOrderCommand(
 export async function executeSaleOrderCommand<TResult = Record<string, unknown>>(
   input: ExecuteSaleOrderCommandInput,
 ): Promise<SaleOrderCommandReceipt<TResult>> {
+  const startedAt = Date.now();
+  // #region agent log
+  fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'06a1eb'},body:JSON.stringify({sessionId:'06a1eb',hypothesisId:'A',location:'saleOrderCommand.ts:executeSaleOrderCommand',message:'execute start',data:{command:input.command,expectedOrderVersion:input.expectedOrderVersion,hasOverride:Boolean(input.overrideId)},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   const { data, error } = await supabase.rpc('execute_sale_order_command' as never, {
     p_sale_order_id: input.saleOrderId,
     p_command: input.command,
@@ -495,8 +605,16 @@ export async function executeSaleOrderCommand<TResult = Record<string, unknown>>
     p_payload: input.payload ?? {},
     p_override_id: input.overrideId ?? null,
   } as never);
-  if (error) throw error;
+  if (error) {
+    // #region agent log
+    fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'06a1eb'},body:JSON.stringify({sessionId:'06a1eb',hypothesisId:'A',location:'saleOrderCommand.ts:executeSaleOrderCommand',message:'execute rpc error',data:{command:input.command,durationMs:Date.now()-startedAt,code:(error as {code?:string}).code||null,timeout:isPostgresTimeoutError(error),err:String(error.message||'').slice(0,180)},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    throw error;
+  }
   const receipt = normalizeSaleOrderCommandReceipt<TResult>(data);
+  // #region agent log
+  fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'06a1eb'},body:JSON.stringify({sessionId:'06a1eb',hypothesisId:'A',location:'saleOrderCommand.ts:executeSaleOrderCommand',message:'execute rpc done',data:{command:input.command,ok:receipt.ok,replayed:receipt.replayed,durationMs:Date.now()-startedAt},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   if (!receipt.ok) throw new SaleOrderCommandExecutionError(receipt);
   return receipt;
 }

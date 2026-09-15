@@ -250,12 +250,13 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
   const { data: paySummaries = {} } = usePayrollPaymentSummaries(runIds);
 
   const totals = useMemo(() => {
-    const proventos = financialRuns.reduce((s, r) => s + (r.total_proventos || 0), 0);
+    const salario = financialRuns.reduce((s, r) => s + ((r.total_proventos || 0) - (r.overtime_amount || 0)), 0);
+    const hePaga = financialRuns.reduce((s, r) => s + (r.overtime_amount || 0), 0);
     const descontos = financialRuns.reduce((s, r) => s + ((r.absence_discount || 0) + (r.deductions_amount || 0)), 0);
     const advances = financialRuns.reduce((s, r) => s + (r.advances_total || 0), 0);
     const liquido = financialRuns.reduce((s, r) => s + (r.total_liquido || 0), 0);
     const advancesCount = financialRuns.filter(r => (r.advances_total || 0) > 0).length;
-    return { proventos, descontos, advances, liquido, advancesCount };
+    return { salario, hePaga, descontos, advances, liquido, advancesCount };
   }, [financialRuns]);
 
   // Setor de uma run = department do funcionário (fallback "Sem setor").
@@ -270,7 +271,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runs, employeeMap]);
 
-  // Folha agrupada por setor + subtotais (Proventos/Descontos/Adiant./Líquido).
+  // Folha agrupada por setor + subtotais (Salário/H.E./Descontos/Adiant./Líquido).
   // Respeita o filtro de setor. Ordenada alfabeticamente.
   const folhaGroups = useMemo(() => {
     const map = new Map<string, typeof runs>();
@@ -281,14 +282,18 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
       map.get(dep)!.push(r);
     }
     return Array.from(map.entries())
-      .map(([setor, rs]) => ({
-        setor,
-        runs: rs,
-        proventos: rs.filter(isFinancialPayrollRun).reduce((s, r) => s + (r.total_proventos || 0), 0),
-        descontos: rs.filter(isFinancialPayrollRun).reduce((s, r) => s + ((r.absence_discount || 0) + (r.deductions_amount || 0)), 0),
-        advances: rs.filter(isFinancialPayrollRun).reduce((s, r) => s + (r.advances_total || 0), 0),
-        liquido: rs.filter(isFinancialPayrollRun).reduce((s, r) => s + (r.total_liquido || 0), 0),
-      }))
+      .map(([setor, rs]) => {
+        const financial = rs.filter(isFinancialPayrollRun);
+        return {
+          setor,
+          runs: rs,
+          salario: financial.reduce((s, r) => s + ((r.total_proventos || 0) - (r.overtime_amount || 0)), 0),
+          hePaga: financial.reduce((s, r) => s + (r.overtime_amount || 0), 0),
+          descontos: financial.reduce((s, r) => s + ((r.absence_discount || 0) + (r.deductions_amount || 0)), 0),
+          advances: financial.reduce((s, r) => s + (r.advances_total || 0), 0),
+          liquido: financial.reduce((s, r) => s + (r.total_liquido || 0), 0),
+        };
+      })
       .sort((a, b) => a.setor.localeCompare(b.setor, 'pt-BR'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runs, employeeMap, setorFilter]);
@@ -629,7 +634,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
 
     const srcPonto = src;
 
-    let tSal = 0, tHe = 0, tFalta = 0, tValePonto = 0, tLiqPonto = 0;
+    let tSal = 0, tHe = 0, tFalta = 0, tDebito = 0, tValePonto = 0, tLiqPonto = 0;
     let tRawDelay = 0, tRawCredit = 0, tFinalMinutes = 0, tPendingDays = 0;
     const rowsPonto = srcPonto.map((r): RhCell[] => {
       const res = r.result;
@@ -639,12 +644,13 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
       // não fechava com o Líquido. A tela já faz essa distinção (linha ~1453).
       const sal = Number(res.period_base) || 0, he = Number(res.he_value) || 0;
       const falta = Number(res.falta_desconto) || 0;
+      const debito = Number(res.atraso_desconto) || 0;
       const vale = Number(res.advances_total) || 0;
       const rawDelay = Number(res.raw_delay_minutes) || 0;
       const rawCredit = Number(res.raw_credit_minutes) || 0;
       const pendingDays = Number(res.pending_days) || 0;
       const finalMinutes = (Number(res.he_minutes) || 0) - (Number(res.atraso_minutes) || 0);
-      tSal += sal; tHe += he; tFalta += falta; tValePonto += vale;
+      tSal += sal; tHe += he; tFalta += falta; tDebito += debito; tValePonto += vale;
       tLiqPonto += Number(res.net_value) || 0;
       tRawDelay += rawDelay; tRawCredit += rawCredit; tFinalMinutes += finalMinutes;
       tPendingDays += pendingDays;
@@ -658,6 +664,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
         { v: fmtSaldoHoras(finalMinutes), align: 'r', neg: finalMinutes < 0, strong: true },
         { v: falta > 0 ? `${res.falta_days || 0}d · − ${fmt(falta)}` : '—', align: 'r', neg: falta > 0 },
         { v: he > 0 ? fmt(he) : '—', align: 'r' },
+        { v: debito > 0 ? `− ${fmt(debito)}` : '—', align: 'r', neg: debito > 0 },
         { v: vale > 0 ? `− ${fmt(vale)}` : '—', align: 'r', neg: vale > 0 },
         { v: fmt(Number(res.net_value) || 0), align: 'r', strong: true },
       ];
@@ -676,6 +683,8 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
         { label: 'Horas extras', value: fmtSaldoHoras(tRawCredit) },
         { label: 'Saldo final', value: fmtSaldoHoras(tFinalMinutes) },
         { label: 'H.E. a pagar', value: fmt(tHe) },
+        { label: 'Débito', value: tDebito > 0 ? `− ${fmt(tDebito)}` : fmt(0) },
+        { label: 'Adiantamentos', value: tValePonto > 0 ? `− ${fmt(tValePonto)}` : fmt(0) },
         { label: 'Líquido', value: fmt(tLiqPonto) },
       ],
       sections: [
@@ -686,7 +695,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
             { label: 'Funcionário' }, { label: 'Setor' }, { label: 'Base', align: 'r' },
             { label: 'Atraso bruto', align: 'r' }, { label: 'Bat. ímpares', align: 'r' }, { label: 'H. extras', align: 'r' },
             { label: 'Saldo final', align: 'r' }, { label: 'Faltas', align: 'r' },
-            { label: 'H.E. (R$)', align: 'r' },
+            { label: 'H.E. (R$)', align: 'r' }, { label: 'Débito (R$)', align: 'r' },
             { label: 'Adiant.', align: 'r' }, { label: 'Líquido', align: 'r' },
           ],
           rows: rowsPonto,
@@ -700,6 +709,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
             { v: fmtSaldoHoras(tFinalMinutes), align: 'r', neg: tFinalMinutes < 0, strong: true },
             { v: `− ${fmt(tFalta)}`, align: 'r', neg: true, strong: true },
             { v: fmt(tHe), align: 'r', strong: true },
+            { v: tDebito > 0 ? `− ${fmt(tDebito)}` : '—', align: 'r', neg: tDebito > 0, strong: true },
             { v: `− ${fmt(tValePonto)}`, align: 'r', neg: true, strong: true },
             { v: fmt(tLiqPonto), align: 'r', strong: true },
           ],
@@ -1271,9 +1281,9 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
         <StatCard label="Total líquido" value={fmt(totals.liquido)} tone="primary" />
       </StatGrid>
 
-      <div className="grid gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-3">
+      <div className="grid gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-2 lg:grid-cols-4">
         {[
-          ['Proventos', fmt(totals.proventos), 'salário + H.E. paga'],
+          ['Proventos', fmt(totals.salario + totals.hePaga), 'salário + H.E. paga'],
           ['Descontos', fmt(totals.descontos), 'atraso líquido (inclui falta em horas) + adiantamentos'],
           ['Adiantamentos', fmt(totals.advances), totals.advances > 0 ? `${totals.advancesCount} funcionário(s)` : 'nenhum no período'],
         ].map(([label, value, hint]) => (
@@ -1340,7 +1350,9 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
               <TableHead className="text-right">Horas extras</TableHead>
               <TableHead className="text-right">Saldo final</TableHead>
               <TableHead className="text-right">Faltas</TableHead>
-              <TableHead className="text-right">HE a pagar</TableHead>
+              <TableHead className="text-right">H.E. (R$)</TableHead>
+              <TableHead className="text-right">Débito (R$)</TableHead>
+              <TableHead className="text-right">Adiant.</TableHead>
               <TableHead className="text-right">Líquido</TableHead>
               <TableHead>Fechamento</TableHead>
             </TableRow>
@@ -1358,7 +1370,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
               </TableRow>
             ) : folhaGroups.map(g => (
             <Fragment key={g.setor}>
-              {/* Cabeçalho do setor + subtotais (Proventos · Descontos · Líquido) */}
+              {/* Cabeçalho do setor + subtotais (Salário · H.E. · Descontos · Adiant. · Líquido) */}
               <TableRow className="bg-muted/60 hover:bg-muted/60 border-t-2 border-border">
                 <TableCell colSpan={9} className="py-2">
                   <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -1367,7 +1379,8 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
                       <span className="ml-1.5 text-muted-foreground font-normal normal-case tracking-normal">· {g.runs.length} func.</span>
                     </span>
                     <span className="flex items-center gap-4 text-xs font-mono tabular-nums">
-                      <span className="text-muted-foreground">Proventos <b className="text-emerald-600">{fmt(g.proventos)}</b></span>
+                      <span className="text-muted-foreground">Salário <b className="text-emerald-600">{fmt(g.salario)}</b></span>
+                      <span className="text-muted-foreground">H.E. <b className="text-emerald-600">{fmt(g.hePaga)}</b></span>
                       <span className="text-muted-foreground">Descontos <b className="text-amber-600">{g.descontos > 0 ? `−${fmt(g.descontos)}` : fmt(0)}</b></span>
                       {g.advances > 0 && <span className="text-muted-foreground">Adiant. <b className="text-amber-600">−{fmt(g.advances)}</b></span>}
                       <span className="text-muted-foreground">Líquido <b className="text-foreground">{fmt(g.liquido)}</b></span>
@@ -1396,6 +1409,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
               const payableOvertime = Number(result?.he_minutes) || 0;
               const finalBalance = payableOvertime - payableDelay;
               const basePay = (r.total_proventos || 0) - (r.overtime_amount || 0);
+              const debito = r.deductions_amount || 0;
               return (
                 <TableRow key={r.id} className={hasAdvance ? 'hover:bg-muted/30 bg-amber-500/5' : 'hover:bg-muted/30'}>
                   <TableCell className="font-medium">
@@ -1403,11 +1417,8 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
                       {emp?.name || '—'}
                       {hasAdvance && <Wallet className="h-3.5 w-3.5 text-amber-600" aria-label="Possui adiantamento" />}
                     </div>
-                    <div className="mt-0.5 text-[10px] text-muted-foreground">
-                      Base do período {fmt(basePay)}
-                      {hasAdvance && <> · adiantamento −{fmt(r.advances_total || 0)}</>}
-                    </div>
                   </TableCell>
+                  <TableCell className="text-right font-mono tabular-nums font-semibold">{fmt(basePay)}</TableCell>
                   <TableCell className="text-right font-mono tabular-nums">
                     {rawDelay > 0
                       ? <span className="font-semibold text-red-600">{fmtSaldoHoras(-rawDelay)}</span>
@@ -1443,10 +1454,21 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
                       : <span className="text-muted-foreground">—</span>}
                   </TableCell>
                   <TableCell className="text-right font-mono tabular-nums">
-                    {payableOvertime > 0
-                      ? <><span className="font-semibold text-emerald-600">{fmtSaldoHoras(payableOvertime)}</span><div className="mt-0.5 text-[10px] text-emerald-600">+{fmt(r.overtime_amount || 0)}</div></>
+                    {(r.overtime_amount || 0) > 0
+                      ? <><span className="font-semibold text-emerald-600">{fmt(r.overtime_amount || 0)}</span>
+                        {payableOvertime > 0 && <div className="mt-0.5 text-[10px] text-muted-foreground">{fmtSaldoHoras(payableOvertime)}</div>}</>
                       : <span className="text-muted-foreground">—</span>}
                     {result?.he_rate_missing && <div className="mt-0.5 text-[10px] font-semibold text-amber-600">taxa não cadastrada</div>}
+                  </TableCell>
+                  <TableCell className="text-right font-mono tabular-nums">
+                    {debito > 0
+                      ? <span className="font-semibold text-amber-600">−{fmt(debito)}</span>
+                      : <span className="text-muted-foreground">—</span>}
+                  </TableCell>
+                  <TableCell className="text-right font-mono tabular-nums">
+                    {hasAdvance
+                      ? <span className="font-semibold text-amber-600">−{fmt(r.advances_total || 0)}</span>
+                      : <span className="text-muted-foreground">—</span>}
                   </TableCell>
                   <TableCell className="text-right font-mono tabular-nums font-bold">{fmt(r.total_liquido)}</TableCell>
                   <TableCell>

@@ -8,6 +8,8 @@ export interface TimeBalanceEmployeeInput {
   name: string;
   department?: string | null;
   paymentType?: string | null;
+  /** Ausência = ativo (não quebra callers/testes antigos). */
+  active?: boolean;
   ledger?: SalaryDayLedger[] | null;
   rawCreditMinutes?: number | null;
   rawDebitMinutes?: number | null;
@@ -47,6 +49,8 @@ export interface EmployeeTimeBalanceReport {
   name: string;
   department: string;
   paymentType: string;
+  /** Ausência = ativo (não quebra callers/testes antigos). */
+  active?: boolean;
   weeks: TimeBalanceWeek[];
   totalExpectedMinutes: number;
   totalWorkedMinutes: number;
@@ -154,6 +158,7 @@ export function buildEmployeeTimeBalanceReport(input: TimeBalanceEmployeeInput):
     name: input.name,
     department: input.department?.trim() || 'Sem setor',
     paymentType: input.paymentType || 'mensalista',
+    active: input.active,
     weeks,
     totalExpectedMinutes: weeks.reduce((sum, week) => sum + week.expectedMinutes, 0),
     totalWorkedMinutes: weeks.reduce((sum, week) => sum + week.workedMinutes, 0),
@@ -189,7 +194,7 @@ export function reportsForKind(
 ): EmployeeTimeBalanceReport[] {
   if (kind === 'all') return reports;
   return reports.filter(report => kind === 'overtime'
-    ? report.totalOvertimeMinutes > 0
+    ? report.active !== false && report.totalOvertimeMinutes > 0
     : report.totalDeficitMinutes > 0);
 }
 

@@ -24,7 +24,7 @@ import { useIsCoarsePointer } from '@/hooks/use-mobile';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { searchMatchesAllTerms, searchMatchesAny, splitSearchTerms, normalizeForSearch } from '@/lib/searchUtils';
 import { toast } from 'sonner';
-import { deriveCards, todayISO, KanbanCardData } from '@/components/production/kanban/kanbanDerive';
+import { deriveCards, todayISO, KanbanCardData, norm } from '@/components/production/kanban/kanbanDerive';
 import { buildPointingPlan } from '@/components/production/kanban/pointingPlan';
 import {
   addUniqueOrderCards,
@@ -599,7 +599,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
     if (!dragCard) return;
     const card = dragCard;
     setDragCard(null);
-    if (target === card.column) return;
+    if (norm(target) === norm(card.column)) return;
     // Destino impossível: avisa NA HORA em vez de abrir um diálogo só pra dizer
     // que não dá.
     const elig = dropEligibility(card, target);

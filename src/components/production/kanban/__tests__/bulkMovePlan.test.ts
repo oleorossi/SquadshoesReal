@@ -10,7 +10,8 @@ import {
 } from '../bulkMovePlan';
 
 const FLOW = new Map<string, number>([
-  ['Corte Fibra', 1], ['Corte Palmilha', 1],
+  ['Corte Fibra', 1],
+  ['Corte Palmilha', 1],
   ['Corte Forração', 1],
   ['Costura', 2],
 ]);

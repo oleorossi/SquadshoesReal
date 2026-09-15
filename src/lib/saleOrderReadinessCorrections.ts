@@ -68,9 +68,16 @@ export interface SaleOrderReadinessCorrectionModel {
   generalIssues: ReadinessIssueLine[];
   colorCorrections: ReadinessColorCorrection[];
   agnosticColorIssues: ReadinessIssueLine[];
+  /** Bloqueios fiscais (ex.: NF-e ativa) — corrigem em /nfe, não no editor do PV. */
+  fiscalIssues: ReadinessIssueLine[];
   unsupportedIssues: ReadinessIssueLine[];
   canOverrideAll: boolean;
 }
+
+export const isActiveNfeBlocker = (issue: Pick<SaleOrderCommandIssue, 'code' | 'scope'>) => (
+  issue.code === 'active_nfe_blocks_cancel'
+  || (issue.scope === 'fiscal' && issue.code.includes('nfe'))
+);
 
 const asText = (value: unknown): string | null => {
   if (typeof value !== 'string') return null;
@@ -102,6 +109,7 @@ export function isInsoleFiberColorAgnostic(
 export const readinessIssueTitle = (issue: SaleOrderCommandIssue): string => {
   if (issue.code === 'item_price_missing') return 'Preço do item ausente';
   if (issue.code === 'material_color_not_registered') return 'Cor de material não cadastrada';
+  if (issue.code === 'active_nfe_blocks_cancel') return 'NF-e ativa no pedido';
   const auditGap = getTechnicalSheetAuditGapForIssueCode(issue.code);
   if (auditGap) return auditGap.label;
   return 'Pendência obrigatória do pedido';
@@ -200,6 +208,7 @@ export function buildSaleOrderReadinessCorrectionModel(input: {
 
   const colorByGroupAndColor = new Map<string, ReadinessColorCorrection>();
   const agnosticColorIssues: ReadinessIssueLine[] = [];
+  const fiscalIssues: ReadinessIssueLine[] = [];
   const unsupportedIssues: ReadinessIssueLine[] = [];
 
   for (const line of correctionLines) {
@@ -209,6 +218,11 @@ export function buildSaleOrderReadinessCorrectionModel(input: {
       // preço do próprio item está zerado/inválido. Alterar o preço-base global
       // da ficha não corrige o item e poderia afetar outros clientes/PVs.
       unsupportedIssues.push(line);
+      continue;
+    }
+
+    if (isActiveNfeBlocker(issue)) {
+      fiscalIssues.push(line);
       continue;
     }
 
@@ -255,6 +269,7 @@ export function buildSaleOrderReadinessCorrectionModel(input: {
     generalIssues,
     colorCorrections: [...colorByGroupAndColor.values()],
     agnosticColorIssues,
+    fiscalIssues,
     unsupportedIssues,
     canOverrideAll: input.issues.length > 0
       && input.issues.every((issue) => issue.overrideable === true),

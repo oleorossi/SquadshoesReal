@@ -154,6 +154,32 @@ describe('timeBalanceReports — fechamento semanal', () => {
     expect(reportsForKind(reports, 'deficit').map(report => report.id)).toEqual(['debito']);
     expect(reportsForKind(reports, 'all').map(report => report.id)).toEqual(['debito', 'extra', 'zerado']);
   });
+
+  it('exclui mensalista inativo do relatório de HE, mas mantém no Espelho e em Pendências', () => {
+    const reports = buildTimeBalanceReports([
+      {
+        id: 'inativo-he',
+        name: 'Inativo HE',
+        paymentType: 'mensalista',
+        active: false,
+        ledger: [
+          ledgerDay('2026-06-01', 480, 540), // semana 23: +1h
+          ledgerDay('2026-06-08', 480, 420), // semana 24: −1h
+        ],
+      },
+      {
+        id: 'ativo-he',
+        name: 'Ativo HE',
+        paymentType: 'mensalista',
+        active: true,
+        ledger: [ledgerDay('2026-06-01', 480, 540)],
+      },
+    ]);
+
+    expect(reportsForKind(reports, 'overtime').map(report => report.id)).toEqual(['ativo-he']);
+    expect(reportsForKind(reports, 'all').map(report => report.id)).toEqual(['ativo-he', 'inativo-he']);
+    expect(reportsForKind(reports, 'deficit').map(report => report.id)).toEqual(['inativo-he']);
+  });
 });
 
 describe('timeBalanceReports — formatação', () => {

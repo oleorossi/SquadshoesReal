@@ -108,6 +108,16 @@ describe('mudança de status com snapshot comercial de variante', () => {
     expect(statusControl).not.toContain('toast.error(');
   });
 
+  it('Aprovar no detalhe é idempotente e não dispara a orquestração duas vezes', () => {
+    expect(saleOrderHooks).toContain('if (currentStatus === status)');
+    expect(saleOrderHooks).toContain('alreadyCurrent');
+    expect(saleOrdersPage).toContain('confirmLockRef');
+    expect(saleOrdersPage).toMatch(
+      /selectedOrder\.status === 'Rascunho'[\s\S]*?disabled=\{updateStatus\.isPending\}/,
+    );
+    expect(saleOrdersPage).not.toContain('toast.error(`Erro ao aprovar:');
+  });
+
   it('falha fechada se o produtor do snapshot ou a guarda divergirem', () => {
     expect(repairMigration).toContain('DO $preflight$');
     expect(repairMigration).toContain(

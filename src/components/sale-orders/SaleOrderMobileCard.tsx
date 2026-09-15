@@ -8,6 +8,7 @@ import {
   STATUS_COLORS,
   STATUS_DOT,
   TERMINAL_BILLED_STATUSES,
+  INFANTIL_ORDER_NUMBER_CLASS,
   formatSaleOrderCurrency,
   formatSaleOrderDate,
 } from '@/components/sale-orders/saleOrderListConstants';
@@ -17,6 +18,7 @@ interface SaleOrderMobileCardProps {
   pairs: number;
   minBilling: string | null;
   selected: boolean;
+  isInfantil?: boolean;
   canSeeFinancialValues: boolean;
   canEditPv: boolean;
   onToggleSelect: () => void;
@@ -32,6 +34,7 @@ export function SaleOrderMobileCard({
   pairs,
   minBilling,
   selected,
+  isInfantil = false,
   canSeeFinancialValues,
   canEditPv,
   onToggleSelect,
@@ -71,7 +74,7 @@ export function SaleOrderMobileCard({
         />
         <button type="button" onClick={onOpenDetails} className="min-w-0 flex-1 text-left">
           <div className="flex items-center justify-between gap-2">
-            <span className="font-mono text-sm font-bold text-primary">{order.order_number || '—'}</span>
+            <span className={cn('font-mono text-sm font-bold text-primary', isInfantil && INFANTIL_ORDER_NUMBER_CLASS)}>{order.order_number || '—'}</span>
             <Badge variant="outline" className={cn('shrink-0 text-xs', STATUS_COLORS[order.status])}>
               <span className={cn('h-1.5 w-1.5 rounded-full', STATUS_DOT[order.status])} />
               {order.status}

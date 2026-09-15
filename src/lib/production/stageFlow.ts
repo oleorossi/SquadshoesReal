@@ -23,6 +23,16 @@ export function canonicalStageName(name: string): string {
   return STAGE_ALIASES[trimmed] ?? trimmed;
 }
 
+/** Grafias que apontam pro mesmo setor (lookup de RPC / snapshot). */
+export function stageNameAliases(name: string): string[] {
+  const trimmed = (name || '').trim();
+  const canon = canonicalStageName(trimmed);
+  const fromMap = Object.entries(STAGE_ALIASES)
+    .filter(([, value]) => value === canon)
+    .map(([key]) => key);
+  return [...new Set([trimmed, canon, ...fromMap].filter(Boolean))];
+}
+
 /** Compara nomes de setor tolerando grafia legada (Mesa ⇄ Aviamento). */
 export function sameStage(a: string, b: string): boolean {
   const canonicalA = canonicalStageName(a);

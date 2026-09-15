@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  formatSaleOrderCancelError,
+  formatSaleOrderStatusError,
+  hasPhysicalFactBlockers,
+  isPostgresTimeoutError,
   isStaleSaleOrderVersionError,
   normalizeCreateSaleOrderCommandReceipt,
   normalizeSaleOrderCommandPreflight,
@@ -172,5 +176,40 @@ describe('saleOrderCommand', () => {
     expect(isStaleSaleOrderVersionError(new SaleOrderCommandExecutionError(receipt)))
       .toBe(true);
     expect(isStaleSaleOrderVersionError(new Error('falha de rede'))).toBe(false);
+  });
+
+  it('formatSaleOrderCancelError usa order_number, não UUID cru', () => {
+    const preflight = normalizeSaleOrderCommandPreflight(
+      {
+        ready: false,
+        blockers: [{
+          code: 'physical_fact',
+          message: 'OP OP-2026-01146 possui fato físico (stage); cancelamento automático recusado',
+          details: {
+            op_number: 'OP-2026-01146',
+            op_id: 'ab7e391d-d325-467e-a383-576e79311e6c',
+            fact_kinds: ['stage'],
+          },
+        }],
+        order_version: 3,
+      },
+      { saleOrderId: 'pv-139', command: 'cancel' },
+    );
+
+    expect(hasPhysicalFactBlockers(preflight)).toBe(true);
+    const message = formatSaleOrderCancelError(new SaleOrderReadinessBlockedError(preflight));
+    expect(message).toContain('OP-2026-01146');
+    expect(message).toContain('stage');
+    expect(message).not.toContain('ab7e391d');
+  });
+
+  it('timeout de statement/lock vira pedido de retry, não a string crua do Postgres', () => {
+    expect(isPostgresTimeoutError(new Error('canceling statement due to statement timeout'))).toBe(true);
+    expect(isPostgresTimeoutError(new Error('canceling statement due to lock timeout'))).toBe(true);
+    expect(isPostgresTimeoutError(new Error('Transição de status inválida'))).toBe(false);
+    expect(formatSaleOrderStatusError(new Error('canceling statement due to statement timeout')))
+      .toMatch(/Tente de novo/);
+    expect(formatSaleOrderStatusError(new Error('canceling statement due to statement timeout')))
+      .not.toMatch(/canceling statement/);
   });
 });

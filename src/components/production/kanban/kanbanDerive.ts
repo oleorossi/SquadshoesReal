@@ -2,14 +2,20 @@ import type { QueueDetailRow } from '@/hooks/useProductionEngine';
 import type { OrderStage } from '@/hooks/useOrderStages';
 
 /**
- * Normaliza grafias legadas pro nome vivo das colunas do Kanban /
- * `sector_settings`. Sem isto, OP antiga com `Corte Palmilha` abria coluna
- * fantasma ao lado de `Corte Fibra` (R1.5), e `Mesa` ao lado de `Aviamento`.
+ * Nome da COLUNA no quadro = grafia de `sector_settings`.
+ *
+ * ⚠ `Corte Palmilha` foi renomeado pra `Corte Fibra` (mig 20261231122000 /
+ * 20270101005300). Sem este alias, o card da OP cai numa coluna fantasma
+ * (flow_order 999, depois da Expedição) e o nível paralelo do corte não casa
+ * — apontar o primeiro setor parece um pulo até o fim da rota. Espelha o
+ * `canonical_stage_name` do SQL só nos RENAMES de coluna (Mesa, Palmilha);
+ * `Costura` única não entra aqui porque virou dois setores, não uma coluna.
  */
 export const norm = (s: string) => {
-  if (s === 'Mesa') return 'Aviamento';
-  if (s === 'Corte Palmilha') return 'Corte Fibra';
-  return s;
+  const trimmed = (s || '').trim();
+  if (trimmed === 'Mesa') return 'Aviamento';
+  if (trimmed === 'Corte Palmilha') return 'Corte Fibra';
+  return trimmed;
 };
 export const fmtDate = (iso: string | null) =>
   iso ? new Date(iso + 'T12:00:00').toLocaleDateString('pt-BR') : '—';

@@ -1184,7 +1184,16 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       : [];
     // Ausência do campo significa catálogo ainda incompleto. Já []/null numa
     // ficha carregada é uma remoção legítima de todas as tiras do rascunho.
-    if (preserveCommittedStrapSnapshot || selectedRef?.strap_colors === undefined) return;
+    if (preserveCommittedStrapSnapshot || selectedRef?.strap_colors === undefined) {
+      // #region agent log
+      if ((Array.isArray(selectedRef?.strap_colors) ? selectedRef!.strap_colors.length : 0) > 0
+        || selectedRef?.has_straps === true
+        || (Array.isArray(currentStraps) && currentStraps.length === 0)) {
+        fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ba1e98'},body:JSON.stringify({sessionId:'ba1e98',runId:'pre-fix',hypothesisId:'B,C',location:'SaleOrderItemForm.tsx:reconcileSkip',message:'strap reconcile skipped',data:{itemId:item.id||null,ref:item.reference_id,preserveCommittedStrapSnapshot,saleOrderStatus,strapColorsUndefined:selectedRef?.strap_colors===undefined,has_straps:selectedRef?.has_straps??null,refDefLen:Array.isArray(selectedRef?.strap_colors)?selectedRef!.strap_colors.length:-1,itemSnapLen:Array.isArray(currentStraps)?currentStraps.length:-1},timestamp:Date.now()})}).catch(()=>{});
+      }
+      // #endregion
+      return;
+    }
 
     // A ficha publicada é estruturalmente autoritativa para itens editáveis.
     // O reconciliador casa exclusivamente o UUID da posição, preserva somente

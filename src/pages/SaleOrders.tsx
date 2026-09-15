@@ -1,5 +1,5 @@
 import { parseDateOnly } from '@/lib/dateOnly';
-import { useState, useMemo, useEffect, lazy, Suspense, type ReactNode } from 'react';
+import { useState, useMemo, useEffect, useRef, lazy, Suspense, type ReactNode } from 'react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { ListPagination } from '@/components/ui/list-pagination';
 import { PAGE_SIZE, paginateInMemory } from '@/lib/pagination';
@@ -10,6 +10,7 @@ import {
   STATUS_DOT,
   STATUS_BAND,
   TERMINAL_BILLED_STATUSES,
+  INFANTIL_ORDER_NUMBER_CLASS,
   SORT_ACCESSORS,
   formatSaleOrderCurrency as formatCurrency,
   formatSaleOrderDate as formatDate,
@@ -57,6 +58,8 @@ import { RevertInvoiceButton } from '@/components/sale-orders/RevertInvoiceButto
 import SummaryConsumptionPanel from '@/components/sale-orders/SummaryConsumptionPanel';
 import type { SaleOrderReadinessCorrectionTarget } from '@/components/sale-orders/SaleOrderReadinessCorrectionDialog';
 const SaleOrderReadinessCorrectionDialog = lazy(() => import('@/components/sale-orders/SaleOrderReadinessCorrectionDialog'));
+import type { AdminCompensatoryCancelTarget } from '@/components/sale-orders/AdminCompensatoryCancelDialog';
+const AdminCompensatoryCancelDialog = lazy(() => import('@/components/sale-orders/AdminCompensatoryCancelDialog'));
 const SaleOrdersOverviewDialog = lazy(() => import('@/components/sale-orders/SaleOrdersOverviewDialog'));
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { Button } from '@/components/ui/button';
@@ -83,6 +86,7 @@ import {
 import { useSaleOrders, useSaleOrderAllItems, useCreateSaleOrder, useDeleteSaleOrder, useUpdateSaleOrderStatus, useResyncOPsFromSheets, useResyncOPsFromPV, useCommitPickingForSaleOrder, useRealtimeSaleOrders, SaleOrderFormData, SaleOrderItemFormData, PackagingMode, ORDER_TYPE_LABELS } from '@/hooks/useSaleOrders';
 import {
   executeSaleOrderCommand,
+  hasPhysicalFactBlockers,
   preflightSaleOrderCommand,
   SaleOrderReadinessBlockedError,
 } from '@/lib/saleOrderCommand';
@@ -153,8 +157,20 @@ export default function SaleOrders() {
   // todos eles em vez de deixar o último erro sobrescrever os anteriores.
   const [readinessCorrectionTargets, setReadinessCorrectionTargets] = useState<SaleOrderReadinessCorrectionTarget[]>([]);
   const readinessCorrectionTarget = readinessCorrectionTargets[0] || null;
+  const [compensatoryCancelTarget, setCompensatoryCancelTarget] = useState<AdminCompensatoryCancelTarget | null>(null);
   const updateStatus = useUpdateSaleOrderStatus({
     onReadinessBlocked: (blocked, vars) => {
+      const isCancelPath = vars.status === 'Cancelado'
+        || (vars.status === 'Rascunho' && blocked.preflight.command === 'transition');
+      if (isAdmin && isCancelPath && hasPhysicalFactBlockers(blocked.preflight)) {
+        setCompensatoryCancelTarget({
+          id: vars.id,
+          orderNumber: orders.find((order) => order.id === vars.id)?.order_number || null,
+          status: vars.status,
+          preflight: blocked.preflight,
+        });
+        return;
+      }
       const nextTarget: SaleOrderReadinessCorrectionTarget = {
         id: vars.id,
         orderNumber: orders.find((order) => order.id === vars.id)?.order_number || null,
@@ -310,6 +326,7 @@ export default function SaleOrders() {
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const [selectedOrderItems, setSelectedOrderItems] = useState<any[]>([]);
+  const confirmLockRef = useRef(false);
   const [osDialogOpen, setOsDialogOpen] = useState(false); // atalho "Gerar OS" do PV
   const [loadingOrderItems, setLoadingOrderItems] = useState(false);
   // `enabled` obrigatório: sem PV selecionado o id é undefined e a query varreria
@@ -1046,7 +1063,7 @@ export default function SaleOrders() {
   );
   const handleBulkCancel = confirmBulkStatus(
     'Cancelado', 'Cancelar',
-    'Libera as reservas de material dos pedidos cancelados.',
+    'Estorna OUTs reversíveis e libera reservas; bloqueia se houver fato físico (etapas/lotes/consumo). Admin pode usar cancelamento compensatório.',
     true,
   );
   const handleBulkExport = () => {
@@ -1244,6 +1261,19 @@ export default function SaleOrders() {
     // aqui dispararia o efeito em loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pvParam, isLoading, orders, detailDialogOpen]);
+
+  // O detalhe copia o PV da lista e não volta a ler o cache. Sem este espelho,
+  // Aprovar continua visível depois do confirm (status local = Rascunho) e o
+  // segundo clique vira "Aprovado → Aprovado".
+  useEffect(() => {
+    if (!selectedOrder?.id) return;
+    const live = orders.find((order: { id: string }) => order.id === selectedOrder.id);
+    if (!live) return;
+    if (live.status === selectedOrder.status && live.order_version === selectedOrder.order_version) return;
+    setSelectedOrder((prev: { id: string } | null) => (
+      prev && prev.id === live.id ? { ...prev, ...live } : prev
+    ));
+  }, [orders, selectedOrder?.id, selectedOrder?.status, selectedOrder?.order_version]);
 
   const prefetchPvConsumption = (id: string) => {
     void queryClient.prefetchQuery({
@@ -1954,6 +1984,7 @@ export default function SaleOrders() {
                 pairs={pairsBySaleOrder[order.id] || 0}
                 minBilling={minBillingMap.get(order.id) || null}
                 selected={sel.isSelected(order.id)}
+                isInfantil={!!segmentsBySaleOrder[order.id]?.has('Infantil')}
                 canSeeFinancialValues={canSeeFinancialValues}
                 canEditPv={canEditPv}
                 onToggleSelect={() => sel.toggle(order.id)}
@@ -2048,7 +2079,10 @@ export default function SaleOrders() {
                             <button
                               type="button"
                               onClick={(e) => { e.stopPropagation(); openOrderDetails(order); }}
-                              className="font-mono text-sm text-primary hover:underline font-bold text-left w-fit"
+                              className={cn(
+                                'font-mono text-sm text-primary hover:underline font-bold text-left w-fit',
+                                isInfantil && INFANTIL_ORDER_NUMBER_CLASS,
+                              )}
                             >
                               <HighlightMatch text={order.order_number || '—'} term={searchTerm} />
                             </button>
@@ -2462,6 +2496,7 @@ export default function SaleOrders() {
                       variant="default"
                       size="sm"
                       className="gap-2 bg-emerald-600 hover:bg-emerald-700"
+                      disabled={updateStatus.isPending}
                       onClick={() => setPendingConfirm({
                         title: `Aprovar o pedido ${selectedOrder.order_number}?`,
                         description: 'Isso permite incluir o pedido em ondas de produção.',
@@ -2469,12 +2504,12 @@ export default function SaleOrders() {
                         onConfirm: async () => {
                         try {
                           await updateStatus.mutateAsync({ id: selectedOrder.id, status: 'Aprovado' });
-                        } catch (error: any) {
-                          // O guard de prontidão já abriu a correção estruturada;
-                          // repetir a mensagem completa em toast encobre o modal.
-                          if (!(error instanceof SaleOrderReadinessBlockedError)) {
-                            toast.error(`Erro ao aprovar: ${error?.message || error}`);
-                          }
+                          setSelectedOrder((prev: { id: string } | null) => (
+                            prev && prev.id === selectedOrder.id ? { ...prev, status: 'Aprovado' } : prev
+                          ));
+                        } catch {
+                          // Prontidão abre o modal estruturado; os demais erros
+                          // já geram toast na mutation (dono único).
                           return;
                         }
                         toast.success(`Pedido ${selectedOrder.order_number} aprovado.`);
@@ -2493,7 +2528,7 @@ export default function SaleOrders() {
                         },
                       })}
                     >
-                      <CheckCircle className="h-3.5 w-3.5" /> Aprovar
+                      {updateStatus.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle className="h-3.5 w-3.5" />} Aprovar
                     </Button>
                   )}
                   </div>
@@ -3207,6 +3242,27 @@ export default function SaleOrders() {
         </Suspense>
       )}
 
+      {compensatoryCancelTarget && (
+        <Suspense fallback={null}>
+          <AdminCompensatoryCancelDialog
+            target={compensatoryCancelTarget}
+            pending={updateStatus.isPending}
+            onClose={() => setCompensatoryCancelTarget(null)}
+            onConfirm={async ({ reason }) => {
+              const target = compensatoryCancelTarget;
+              if (!target) return;
+              await updateStatus.mutateAsync({
+                id: target.id,
+                status: target.status,
+                compensatory: true,
+                reason,
+              });
+              setCompensatoryCancelTarget(null);
+            }}
+          />
+        </Suspense>
+      )}
+
       <AlertDialog open={pendingConfirm !== null} onOpenChange={(o) => { if (!o) setPendingConfirm(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -3235,9 +3291,14 @@ export default function SaleOrders() {
               // o fechamento automático; quem fecha é o setPendingConfirm(null).
               onClick={(e) => {
                 e.preventDefault();
+                if (confirmLockRef.current) return;
                 const fn = pendingConfirm?.onConfirm;
+                if (!fn) return;
+                confirmLockRef.current = true;
                 setPendingConfirm(null);
-                void fn?.();
+                void Promise.resolve(fn()).finally(() => {
+                  confirmLockRef.current = false;
+                });
               }}
             >
               {pendingConfirm?.actionLabel}

@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tansta
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useEffect, useRef } from 'react';
+import { stageNameAliases } from '@/lib/production/stageFlow';
 import {
   invalidateAfterPointing,
   invalidateProductionCaches,
@@ -93,11 +94,7 @@ async function readPointingStageSnapshot(
   orderId: string,
   stageName: string,
 ): Promise<StageCommandSnapshot> {
-  const names = stageName === 'Aviamento'
-    ? ['Aviamento', 'Mesa']
-    : stageName === 'Mesa'
-      ? ['Mesa', 'Aviamento']
-      : [stageName];
+  const names = stageNameAliases(stageName);
   const { data, error } = await supabase
     .from('order_stages')
     .select('id, order_id, updated_at, status')

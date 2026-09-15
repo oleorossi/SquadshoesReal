@@ -22,12 +22,14 @@ describe('autoResyncUnstartedOps helpers', () => {
     toastWarning.mockReset();
   });
 
-  it('parseia o payload da RPC da ficha', async () => {
+  it('parseia o payload da RPC da ficha inclusive delta', async () => {
     rpc.mockResolvedValue({
       data: {
         resynced: 2,
         skipped_inactive: 1,
         skipped_started: 3,
+        delta_reserved: 2,
+        delta_shortfalls: 1,
         errors: [{ order_number: 'OP-1', message: 'estoque' }],
       },
       error: null,
@@ -41,16 +43,20 @@ describe('autoResyncUnstartedOps helpers', () => {
       resynced: 2,
       skippedInactive: 1,
       skippedStarted: 3,
+      deltaReserved: 2,
+      deltaShortfalls: 1,
       errors: [{ order_number: 'OP-1', message: 'estoque' }],
     });
   });
 
-  it('toast prioriza falhas e resume OPs atualizadas vs já iniciadas', async () => {
+  it('toast menciona delta reservado e shortfalls; prioriza falhas', async () => {
     const { toastAutoResyncSummary } = await import('../resyncOPs');
     toastAutoResyncSummary({
       resynced: 2,
       skippedInactive: 0,
       skippedStarted: 1,
+      deltaReserved: 0,
+      deltaShortfalls: 0,
       errors: [],
     });
     expect(toastSuccess).toHaveBeenCalledWith(
@@ -59,8 +65,43 @@ describe('autoResyncUnstartedOps helpers', () => {
     );
 
     toastSuccess.mockReset();
+    toastAutoResyncSummary({
+      resynced: 0,
+      skippedInactive: 0,
+      skippedStarted: 2,
+      deltaReserved: 2,
+      deltaShortfalls: 0,
+      errors: [],
+    });
+    expect(toastSuccess).toHaveBeenCalledWith(
+      '2 OPs com materiais faltantes reservados',
+      { duration: 6000 },
+    );
+
+    toastSuccess.mockReset();
+    toastAutoResyncSummary({
+      resynced: 1,
+      skippedInactive: 0,
+      skippedStarted: 1,
+      deltaReserved: 1,
+      deltaShortfalls: 3,
+      errors: [],
+    });
+    expect(toastWarning).toHaveBeenCalledWith(
+      '1 OP com consumo atualizado · 1 OP com materiais faltantes reservados · 3 materiais sem estoque livre',
+      { duration: 8000 },
+    );
+
+    toastSuccess.mockReset();
     toastAutoResyncSummary(
-      { resynced: 0, skippedInactive: 0, skippedStarted: 0, errors: [] },
+      {
+        resynced: 0,
+        skippedInactive: 0,
+        skippedStarted: 0,
+        deltaReserved: 0,
+        deltaShortfalls: 0,
+        errors: [],
+      },
       { emptyMessage: 'nada a fazer' },
     );
     expect(toastSuccess).toHaveBeenCalledWith('nada a fazer');

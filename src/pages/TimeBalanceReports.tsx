@@ -121,6 +121,7 @@ export default function TimeBalanceReports() {
         name: row.name,
         department: employee?.department,
         paymentType: employee?.payment_type,
+        active: employee?.active !== false,
         ledger: row.result.day_ledger,
         rawCreditMinutes: row.result.raw_credit_minutes,
         rawDebitMinutes: row.result.raw_delay_minutes,

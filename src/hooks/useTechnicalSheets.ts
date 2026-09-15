@@ -21,9 +21,10 @@ import {
 
 /**
  * Alterar uma ficha invalida o plano/snapshot por trigger do banco. Em seguida
- * o cliente propaga o consumo automaticamente para OPs de PVs Aprovados sem
- * fato físico (auto_resync_unstarted_ops_for_sheet). OPs já iniciadas só
- * ficam sinalizadas — resync destrutivo continua manual/admin.
+ * o cliente propaga o consumo automaticamente para OPs de PVs Aprovado / Em
+ * Produção sem fato físico (auto_resync_unstarted_ops_for_sheet). OPs já
+ * iniciadas (PZ105) recebem só reserva aditiva do delta — resync destrutivo
+ * continua manual/admin.
  */
 function invalidateSheetAudit(qc: QueryClient) {
   // A auditoria industrial alimenta os badges do catálogo e a régua da
@@ -44,8 +45,9 @@ function invalidateSheetImpact(qc: QueryClient) {
 }
 
 /**
- * Save da ficha já persistiu — propaga consumo para PVs Aprovados sem fato
- * físico. Falha aqui NÃO desfaz o UPDATE.
+ * Save da ficha já persistiu — propaga consumo para PVs Aprovado/Em Produção
+ * sem fato físico; em OP iniciada reserva o delta faltante. Falha aqui NÃO
+ * desfaz o UPDATE.
  */
 async function propagateSheetConsumption(
   qc: QueryClient,
@@ -725,7 +727,7 @@ export function useUpdateSheet() {
       ));
       qc.invalidateQueries({ queryKey: technicalSheetsKeys.cabedalParPeAudit });
       void propagateSheetConsumption(qc, updatedSheet.id, {
-        emptyMessage: 'Ficha salva. Nenhum PV aprovado pendente de atualização de consumo.',
+        emptyMessage: 'Ficha salva. Nenhum PV Aprovado/Em Produção pendente de atualização de consumo.',
         saveLabel: 'Ficha salva',
       });
     },

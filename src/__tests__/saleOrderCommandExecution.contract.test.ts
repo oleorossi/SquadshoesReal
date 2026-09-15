@@ -242,6 +242,57 @@ describe('sale order command — execução transacional', () => {
     expect(cancel).toContain('quantity_consumed');
     expect(cancel).not.toContain('DELETE FROM public.stock_movements');
   });
+});
+
+describe('sale order command — cancel compensatório (mig 22300)', () => {
+  const COMPENSATORY = readFileSync(
+    resolve(ROOT, 'supabase/migrations/20270101022300_sale_order_compensatory_cancel_physical_fact.sql'),
+    'utf8',
+  );
+  const helper = sqlFunction(COMPENSATORY, 'sale_order_physical_fact_blockers');
+  const cancelLive = sqlFunction(COMPENSATORY, 'cancel_sale_order_atomic_internal');
+  const executeLive = sqlFunction(COMPENSATORY, 'execute_sale_order_command');
+  const preflightLive = sqlFunction(COMPENSATORY, 'preflight_sale_order_command', 'p_payload jsonb');
+
+  it('helper devolve blockers com order_number e fact_kinds', () => {
+    expect(helper).toContain("'physical_fact'");
+    expect(helper).toContain("'physical_finalized_op'");
+    expect(helper).toContain("'op_number'");
+    expect(helper).toContain("'fact_kinds'");
+    expect(helper).toContain("'stage'");
+    expect(helper).toContain("'lot'");
+    expect(helper).toContain("'reservation'");
+    expect(helper).toContain("'consumption'");
+  });
+
+  it('default ainda RAISE fato físico; mensagem usa nº da OP', () => {
+    expect(cancelLive).toContain("USING ERRCODE = 'PZ105'");
+    expect(cancelLive).toMatch(/possui fato físico \(%\)/);
+    expect(cancelLive).toContain('v_op.order_number');
+    expect(cancelLive).toContain('NOT v_compensatory');
+  });
+
+  it('compensatório set_config + cancel_production_order_internal + gate admin/reason', () => {
+    expect(executeLive).toContain("app.sale_order_command_compensatory_cancel");
+    expect(executeLive).toContain("p_payload ->> 'compensatory'");
+    expect(executeLive).toContain("user_has_any_role(ARRAY['admin'])");
+    expect(executeLive).toContain('length(v_compensatory_reason) < 15');
+    expect(cancelLive).toContain('cancel_production_order_internal(');
+    expect(cancelLive).toContain("current_setting('app.sale_order_command_compensatory_cancel'");
+  });
+
+  it('preflight anexa blockers em cancel e Aprovado→Rascunho', () => {
+    expect(preflightLive).toContain('sale_order_physical_fact_blockers(');
+    expect(preflightLive).toContain("v_command = 'cancel'");
+    expect(preflightLive).toContain("v_target_status = 'Rascunho'");
+    expect(preflightLive).toContain("p_payload ->> 'compensatory'");
+  });
+});
+
+describe('sale order command — wrappers e ACL (fundação)', () => {
+  const execute = sqlFunction(COMMAND, 'execute_sale_order_command');
+  const create = sqlFunction(COMMAND, 'create_sale_order_command');
+  const standalone = sqlFunction(COMMAND, 'create_standalone_sale_order_draft_internal');
 
   it('promoção é all-or-nothing por default e wrappers não são motores paralelos', () => {
     const wrapperTwo = sqlFunction(

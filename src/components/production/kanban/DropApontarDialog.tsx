@@ -182,7 +182,7 @@ export function DropApontarDialog({
             <DialogTitle className="text-base">
               {readOnly
                 ? `Detalhes da produção — ${q.order_number}`
-                : <>{isBackward ? 'Estornar produção' : `Apontar ${pointedStage.stage_name}`} — {q.order_number}</>}
+                : <>{isBackward ? 'Estornar produção' : `Apontar ${norm(pointedStage.stage_name)}`} — {q.order_number}</>}
             </DialogTitle>
             <DialogDescription>
               {readOnly
@@ -228,9 +228,9 @@ export function DropApontarDialog({
 
             {effTarget && !isBackward && plan.available && (
               <p className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
-                De <strong className="text-foreground">{column}</strong>{' '}
+                De <strong className="text-foreground">{norm(column)}</strong>{' '}
                 <span className="text-primary">→</span>{' '}
-                para <strong className="text-foreground">{effTarget}</strong>
+                para <strong className="text-foreground">{norm(effTarget)}</strong>
               </p>
             )}
 
@@ -362,8 +362,8 @@ export function DropApontarDialog({
                   {qty <= 0
                     ? 'Nada será apontado com 0 pares.'
                     : willBePartial
-                      ? <>Chega em <strong className="text-amber-600 dark:text-amber-400">{effTarget || pointedStage.stage_name}</strong> marcada como <strong className="text-amber-600 dark:text-amber-400">PARCIAL</strong> — faltam {pointedStage.quantity_total - pointedStage.quantity_processed - qty} pares pra fechar.</>
-                      : <>Entrega completa. O card chega em <strong className="text-foreground">{effTarget || pointedStage.stage_name}</strong> sem marcação.</>}
+                      ? <>Chega em <strong className="text-amber-600 dark:text-amber-400">{norm(effTarget || pointedStage.stage_name)}</strong> marcada como <strong className="text-amber-600 dark:text-amber-400">PARCIAL</strong> — faltam {pointedStage.quantity_total - pointedStage.quantity_processed - qty} pares pra fechar.</>
+                      : <>Entrega completa. O card chega em <strong className="text-foreground">{norm(effTarget || pointedStage.stage_name)}</strong> sem marcação.</>}
                 </span>
               </div>
             )}
