@@ -497,8 +497,11 @@ export default function NfePage() {
         sectionLabel="FISCAL · NF-e"
         title="Notas Fiscais"
         description="Centro fiscal — emissão, empresas, tributação e diagnóstico em um só lugar"
-        actions={canEmitNfe ? (
+        actions={(
           <>
+            {/* Sync é leitura do provedor — não exige papel de emissão. Antes
+                ficava atrás de canEmitNfe e sumia pra comercial/outros papéis
+                com acesso a /nfe (NF feita no painel ClickNotas não entrava). */}
             <Button
               variant="outline"
               onClick={() => syncFromProvider.mutate()}
@@ -511,13 +514,13 @@ export default function NfePage() {
                 : <RefreshCw className="h-4 w-4" />}
               Sincronizar com ClickNotas
             </Button>
-            {perm.canCreate && (
+            {canEmitNfe && perm.canCreate && (
               <Button onClick={() => setEmitOpen(true)} className="gap-2">
                 <Plus className="h-4 w-4" /> Emitir NF-e
               </Button>
             )}
           </>
-        ) : undefined}
+        )}
       />
 
       {/* Stats */}

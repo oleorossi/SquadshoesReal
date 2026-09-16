@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   formatSaleOrderCancelError,
   formatSaleOrderStatusError,
+  formatUnknownSaleOrderUpdateError,
   hasPhysicalFactBlockers,
+  isPostgresBusyError,
+  isPostgresDeadlockError,
   isPostgresTimeoutError,
   isStaleSaleOrderVersionError,
   normalizeCreateSaleOrderCommandReceipt,
@@ -211,5 +214,18 @@ describe('saleOrderCommand', () => {
       .toMatch(/Tente de novo/);
     expect(formatSaleOrderStatusError(new Error('canceling statement due to statement timeout')))
       .not.toMatch(/canceling statement/);
+  });
+
+  it('deadlock 40P01 também vira pedido de retry (não o texto cru do Postgres)', () => {
+    const deadlock = new Error(
+      'O pedido NÃO foi salvo. deadlock detected (Process 1099827 waits for ShareLock on transaction 69449655)',
+    );
+    expect(isPostgresDeadlockError(deadlock)).toBe(true);
+    expect(isPostgresBusyError(deadlock)).toBe(true);
+    expect(isPostgresDeadlockError({ code: '40P01', message: 'x' })).toBe(true);
+    expect(formatSaleOrderStatusError(deadlock)).toMatch(/Tente de novo/);
+    expect(formatSaleOrderStatusError(deadlock)).not.toMatch(/deadlock detected/);
+    expect(formatUnknownSaleOrderUpdateError(deadlock)).toMatch(/O pedido NÃO foi salvo/);
+    expect(formatUnknownSaleOrderUpdateError(deadlock)).not.toMatch(/ShareLock/);
   });
 });

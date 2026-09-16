@@ -293,9 +293,35 @@ export function isPostgresTimeoutError(error: unknown): boolean {
   return /statement timeout|canceling statement due to statement timeout|canceling statement due to lock timeout/i.test(message);
 }
 
+/** Postgres 40P01 — corrida de locks (ex.: faturar PV × drain de tiras). */
+export function isPostgresDeadlockError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  const code = (
+    error && typeof error === 'object' && 'code' in error
+      ? String((error as { code?: unknown }).code ?? '')
+      : ''
+  );
+  if (code === '40P01') return true;
+  if (
+    error instanceof SaleOrderCommandExecutionError
+    && error.receipt?.error?.code === '40P01'
+  ) {
+    return true;
+  }
+  return /deadlock detected/i.test(message);
+}
+
+/** Timeout de statement/lock ou deadlock — retry seguro (comando atômico). */
+export function isPostgresBusyError(error: unknown): boolean {
+  return isPostgresTimeoutError(error) || isPostgresDeadlockError(error);
+}
+
+const SALE_ORDER_BUSY_RETRY_MESSAGE =
+  'O banco estava ocupado com estoque ou compras de outro pedido. Tente de novo em alguns segundos.';
+
 export function formatSaleOrderStatusError(error: unknown): string {
-  if (isPostgresTimeoutError(error)) {
-    return 'O banco estava ocupado com estoque ou compras de outro pedido. Tente de novo em alguns segundos.';
+  if (isPostgresBusyError(error)) {
+    return SALE_ORDER_BUSY_RETRY_MESSAGE;
   }
   if (error instanceof Error && error.message.trim()) {
     return error.message.trim();
@@ -304,8 +330,8 @@ export function formatSaleOrderStatusError(error: unknown): string {
 }
 
 export function formatUnknownSaleOrderUpdateError(error: unknown): string {
-  if (isPostgresTimeoutError(error)) {
-    return 'O pedido NÃO foi salvo. O banco estava ocupado com estoque ou compras de outro pedido. Tente de novo em alguns segundos.';
+  if (isPostgresBusyError(error)) {
+    return `O pedido NÃO foi salvo. ${SALE_ORDER_BUSY_RETRY_MESSAGE}`;
   }
   if (error instanceof SaleOrderCommandExecutionError) {
     return error.message;
