@@ -1,4 +1,5 @@
-import React, { createContext } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { clampPageRange, isPageInRange } from '@/lib/printPageRange';
 
 /**
  * Inversão da ordem de SAÍDA na impressão (2026-07-24).
@@ -33,8 +34,9 @@ import React, { createContext } from 'react';
  * compensação.
  *
  * Cartão físico: os filhos top-level do stack são wrappers de FOLHA
- * (`.cartao-page`, até 12 cartões em cut-stack). Inverter por folha — não por
- * cartão — preserva a geometria de empilhar-e-cortar na impressora face-up.
+ * (`.cartao-page`, até 12 cartões em chunk sequencial). Inverter por folha —
+ * não por cartão. A faixa De/Até é aplicada ANTES da inversão (ordem de
+ * leitura); só as folhas restantes entram no DOM / invert.
  */
 export const ReversePrintContext = createContext(false);
 
@@ -51,3 +53,86 @@ export const ReversibleStack = ({ reverse, children }: ReversibleStackProps) => 
   const arr = React.Children.toArray(children);
   return <>{reverse ? [...arr].reverse() : arr}</>;
 };
+
+/** Faixa De/Até (1-based) + registro de maços A4 pra offset global. */
+export interface PrintPageRangeContextValue {
+  from: number;
+  to: number;
+  /** Contagem de nós `.pagi-page` do documento A4 (1 unidade = 1 nó, incl. flow). */
+  documentPageCount: number;
+  registerSheet: (sheetKey: string, pageNodeCount: number) => void;
+  sheetOffset: (sheetKey: string) => number;
+  resetSheets: () => void;
+}
+
+const PrintPageRangeContext = createContext<PrintPageRangeContextValue | null>(null);
+
+export function usePrintPageRange(): PrintPageRangeContextValue | null {
+  return useContext(PrintPageRangeContext);
+}
+
+interface PrintPageRangeProviderProps {
+  from: number;
+  to: number;
+  /** Notifica o pai quando a contagem A4 (nós `.pagi-page`) muda — toolbar fora do maço. */
+  onDocumentPageCount?: (count: number) => void;
+  children: React.ReactNode;
+}
+
+/**
+ * Provider leve: cada PaginatedSheet registra quantos nós de página emitiu;
+ * o offset global = soma dos maços anteriores na ordem de registro (= ordem
+ * do DOM / leitura). Filtrar com isPageInRange ANTES do reverse-print.
+ */
+export function PrintPageRangeProvider({
+  from, to, onDocumentPageCount, children,
+}: PrintPageRangeProviderProps) {
+  const [sheetPages, setSheetPages] = useState<Record<string, number>>({});
+  const [sheetOrder, setSheetOrder] = useState<string[]>([]);
+
+  const registerSheet = useCallback((sheetKey: string, pageNodeCount: number) => {
+    const count = Math.max(0, Math.floor(pageNodeCount) || 0);
+    setSheetOrder((prev) => (prev.includes(sheetKey) ? prev : [...prev, sheetKey]));
+    setSheetPages((prev) => (prev[sheetKey] === count ? prev : { ...prev, [sheetKey]: count }));
+  }, []);
+
+  const resetSheets = useCallback(() => {
+    setSheetOrder([]);
+    setSheetPages({});
+  }, []);
+
+  const sheetOffset = useCallback((sheetKey: string) => {
+    let offset = 0;
+    for (const key of sheetOrder) {
+      if (key === sheetKey) return offset;
+      offset += sheetPages[key] || 0;
+    }
+    return offset;
+  }, [sheetOrder, sheetPages]);
+
+  const documentPageCount = useMemo(
+    () => sheetOrder.reduce((sum, key) => sum + (sheetPages[key] || 0), 0),
+    [sheetOrder, sheetPages],
+  );
+
+  useEffect(() => {
+    onDocumentPageCount?.(documentPageCount);
+  }, [documentPageCount, onDocumentPageCount]);
+
+  const value = useMemo<PrintPageRangeContextValue>(() => ({
+    from,
+    to,
+    documentPageCount,
+    registerSheet,
+    sheetOffset,
+    resetSheets,
+  }), [from, to, documentPageCount, registerSheet, sheetOffset, resetSheets]);
+
+  return (
+    <PrintPageRangeContext.Provider value={value}>
+      {children}
+    </PrintPageRangeContext.Provider>
+  );
+}
+
+export { clampPageRange, isPageInRange };

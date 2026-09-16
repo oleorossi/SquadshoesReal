@@ -1,6 +1,6 @@
-import React, { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import { ReversePrintContext } from './printOrder';
+import { isPageInRange, ReversePrintContext, usePrintPageRange } from './printOrder';
 
 /**
  * PaginatedSheet — paginador determinístico das fichas de impressão.
@@ -347,6 +347,7 @@ interface PaginatedSheetProps {
 }
 
 export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle, minScale }: PaginatedSheetProps) => {
+  const sheetInstanceId = useId();
   const nodes = blocks.map(b => (isWrappedBlock(b) ? b.node : b));
   const keepFlags = blocks.map(b => (isWrappedBlock(b) ? !!b.keepWithPrev : false));
   const keepNextFlags = blocks.map(b => (isWrappedBlock(b) ? !!b.keepWithNext : false));
@@ -484,6 +485,26 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle, minScale }: Pag
   scaleRef.current = scale;
   const totalPages = pages.reduce((s, p) => s + p.spanned, 0);
 
+  // ── Faixa De/Até (antes da inversão) ──
+  // 1 unidade de filtro = 1 nó `.pagi-page` (flow conta 1, mesmo se o
+  // Chromium fragmentar em várias folhas físicas). Offset = soma dos
+  // maços anteriores na ordem do documento. Empacotamento/medição intactos;
+  // só a emissão omite nós fora da faixa (prévia = print = PDF).
+  const pageRange = usePrintPageRange();
+  const sheetKey = `${sectorLabel}::${sheetInstanceId}`;
+  useLayoutEffect(() => {
+    if (!pageRange || !ready) return;
+    pageRange.registerSheet(sheetKey, pages.length);
+  }, [pageRange, sheetKey, pages.length, ready]);
+
+  const pageOffset = pageRange ? pageRange.sheetOffset(sheetKey) : 0;
+  // Durante a passada de medição (!ready) emite tudo — senão os wrappers
+  // somem do DOM e o offsetHeight nunca fecha. Com ready, omite nós fora
+  // da faixa (1 unidade = 1 nó, inclusive flow).
+  const rangedPages = (ready && pageRange)
+    ? pages.filter((_, i) => isPageInRange(pageOffset + i + 1, pageRange.from, pageRange.to))
+    : pages;
+
   // ── Saída invertida (2026-07-24, ver printOrder.tsx) ──
   // Durante o print (e SÓ durante — o provider liga em beforeprint e desliga
   // em afterprint), emite as páginas da última pra primeira: impressora que
@@ -491,8 +512,9 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle, minScale }: Pag
   // numeração startPage/totalPages é LÓGICA (calculada no empacotamento) —
   // não muda com a ordem de emissão. A key é por startPage (identidade da
   // página lógica), não posicional — remount limpo quando a ordem flipa.
+  // Faixa De/Até já foi aplicada em `rangedPages` (ordem de leitura).
   const reversePages = useContext(ReversePrintContext);
-  const orderedPages = reversePages ? [...pages].reverse() : pages;
+  const orderedPages = reversePages ? [...rangedPages].reverse() : rangedPages;
 
   const registerEl = (idx: number) => (el: HTMLDivElement | null) => {
     const prev = wrapperEls.current.get(idx);
