@@ -28,13 +28,14 @@ import {
 import { useAbsences, useCancelPayrollRun, usePayrollRuns, useUpsertPayrollRun, useUpdatePayrollStatus } from '@/hooks/useRH';
 import { usePayrollPaymentSummaries } from '@/hooks/usePayrollPayments';
 import { RegistrarPagamentoDialog } from '@/components/hr/RegistrarPagamentoDialog';
-import { computePeriodFolha, getDaysInRange, type SalaryDayLedger, type SalaryPayrollResult } from '@/lib/salaryPayroll';
+import { computePeriodFolha, getDaysInRange, type SalaryPayrollResult } from '@/lib/salaryPayroll';
 import { computeComparativoRows, groupPayrollPunchesByEmployee } from '@/lib/payrollComparativo';
 import { fetchTimeRecordsInRange } from '@/lib/ponto/fetchTimeRecords';
 import { expandAbsenceCreditsByEmployee, resolveHolidaysForPayrollRange } from '@/lib/ponto/periodDates';
 import { printTimeMirror, type TimeMirrorDay } from '@/lib/printTimeMirror';
 import { exportFolhaExcel } from '@/lib/exportFolhaExcel';
-import { printPayrollBundle, buildPayrollHtml, fmtDeltaMin, isFinancialPayrollRun, type BundleEmployee, type BundleRun } from '@/lib/printPayrollBundle';
+import { printPayrollBundle, buildPayrollHtml, isFinancialPayrollRun, type BundleEmployee, type BundleRun } from '@/lib/printPayrollBundle';
+import { classifyPayrollCalendarDay } from '@/lib/ponto/payrollCalendarDay';
 import { buildPayrollSnapshot, readPayrollSnapshot } from '@/lib/payrollSnapshot';
 import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/integrations/supabase/client';
@@ -1537,23 +1538,18 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
         }
         const cur = crows.find(r => r.id === calEmp) || crows[0];
         const days = cur.result.day_ledger || [];
-        const cls = (d: SalaryDayLedger) => {
-          const paymentType = cur.result.payment_type;
-          if (paymentType && paymentType !== 'mensalista') {
-            return (d.worked_minutes || 0) > 0
-              ? { t: 'presença', c: 'bg-sky-500/10 text-sky-700 dark:text-sky-400 border-sky-500/20' }
-              : { t: '—', c: 'bg-muted/40 text-muted-foreground border-border/60' };
-          }
-          if (d.status === 'pending') return { t: 'pendente', c: 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20' };
-          if (d.status === 'excused') return { t: 'justificada', c: 'bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border-indigo-500/20' };
-          if (d.status === 'absence') return { t: 'falta', c: 'bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/20' };
-          if ((d.payable_overtime_minutes || 0) > 0) return { t: `HE +${fmtDeltaMin(d.payable_overtime_minutes)}`, c: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20' };
-          if ((d.payable_delay_minutes || 0) > 0) return { t: `−${fmtDeltaMin(d.payable_delay_minutes)}`, c: 'bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/20' };
-          if ((d.compensated_credit_minutes || 0) > 0 || (d.compensated_delay_minutes || 0) > 0) return { t: 'compensado', c: 'bg-sky-500/10 text-sky-700 dark:text-sky-400 border-sky-500/20' };
-          if ((d.discarded_tolerance_minutes || 0) > 0) return { t: 'tolerância', c: 'bg-muted/40 text-muted-foreground border-border/60' };
-          return (d.worked_minutes || 0) > 0
-            ? { t: fmtDeltaMin(d.worked_minutes), c: 'bg-card text-foreground border-border' }
-            : { t: '—', c: 'bg-muted/40 text-muted-foreground border-border/60' };
+        const toneClass: Record<string, string> = {
+          presence: 'bg-sky-500/10 text-sky-700 dark:text-sky-400 border-sky-500/20',
+          pending: 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20',
+          excused: 'bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border-indigo-500/20',
+          he: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20',
+          delay: 'bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/20',
+          compensated: 'bg-sky-500/10 text-sky-700 dark:text-sky-400 border-sky-500/20',
+          tolerance: 'bg-muted/40 text-muted-foreground border-border/60',
+          credit: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20',
+          debit: 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20',
+          worked: 'bg-card text-foreground border-border',
+          empty: 'bg-muted/40 text-muted-foreground border-border/60',
         };
         return (
           <Panel title={`Calendário de tempo · ${periodTitle}`} flush>
@@ -1571,7 +1567,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
                   {[
                     ['Créditos brutos', fmtHoras(cur.result.raw_credit_minutes || 0)],
-                    ['Atrasos brutos', fmtHoras(cur.result.raw_delay_minutes || 0)],
+                    ['Débitos brutos', fmtHoras(cur.result.raw_delay_minutes || 0)],
                     ['Compensado', fmtHoras(cur.result.compensated_minutes || 0)],
                     ['HE paga', fmtHoras(cur.result.he_minutes || 0)],
                     ['Atraso líquido', fmtHoras(cur.result.atraso_minutes || 0)],
@@ -1585,11 +1581,11 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
               )}
               <div className="grid grid-cols-7 gap-1.5">
                 {days.map((d, i) => {
-                  const s = cls(d);
+                  const tone = classifyPayrollCalendarDay(d, cur.result.payment_type);
                   return (
-                    <div key={i} className={`rounded-md border px-1 py-1.5 text-center ${s.c}`}>
+                    <div key={i} className={`rounded-md border px-1 py-1.5 text-center ${toneClass[tone.kind]}`}>
                       <div className="text-[10px] opacity-70 tabular-nums">{String(d.date || '').slice(8, 10)}/{String(d.date || '').slice(5, 7)}</div>
-                      <div className="text-xs font-semibold tabular-nums">{s.t}</div>
+                      <div className="text-xs font-semibold tabular-nums">{tone.label}</div>
                     </div>
                   );
                 })}
@@ -1597,7 +1593,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
               <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground pt-1">
                 <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-500/40 inline-block" /> HE paga</span>
                 <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-sky-500/40 inline-block" /> compensado</span>
-                <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-red-500/40 inline-block" /> atraso líquido / falta</span>
+                <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-red-500/40 inline-block" /> atraso líquido (falta em horas)</span>
                 <Button size="sm" variant="outline" className="h-7 ml-auto gap-1.5" onClick={() => printEspelho(cur.id)}><Printer className="h-3.5 w-3.5" /> Imprimir espelho</Button>
               </div>
             </div>

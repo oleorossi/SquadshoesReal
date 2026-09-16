@@ -1,4 +1,5 @@
 import type { SalaryDayLedger, SalaryDayLedgerStatus } from '@/lib/salaryPayroll';
+import { classifyPayrollCalendarDay, type PayrollCalendarDayKind } from '@/lib/ponto/payrollCalendarDay';
 import { getISOWeekKey, getWeekMonday, getWeekSunday } from '@/lib/weeklyTimeCalculation';
 
 export type TimeBalanceReportKind = 'overtime' | 'deficit' | 'all';
@@ -29,6 +30,9 @@ export interface TimeBalanceDay {
   balanceMinutes: number;
   status: SalaryDayLedgerStatus;
   isHoliday: boolean;
+  /** Rótulo da célula (HE / −Xh / compensado) — mesma regra do calendário da folha. */
+  cellKind: PayrollCalendarDayKind;
+  cellLabel: string;
 }
 
 export interface TimeBalanceWeek {
@@ -88,10 +92,11 @@ function effectiveWorkedMinutes(day: TimeBalanceDay): number {
   return day.workedMinutes;
 }
 
-function toReportDay(day: SalaryDayLedger): TimeBalanceDay {
+function toReportDay(day: SalaryDayLedger, paymentType?: string | null): TimeBalanceDay {
   const expectedMinutes = effectiveExpectedMinutes(day);
   const workedMinutes = Math.max(0, Number(day.worked_minutes) || 0);
   const ignoredInWeeklyBalance = day.status === 'neutral' || day.status === 'excused';
+  const tone = classifyPayrollCalendarDay(day, paymentType || 'mensalista');
   return {
     date: day.date,
     dayOfWeek: day.day_of_week,
@@ -101,6 +106,8 @@ function toReportDay(day: SalaryDayLedger): TimeBalanceDay {
     balanceMinutes: ignoredInWeeklyBalance ? 0 : workedMinutes - expectedMinutes,
     status: day.status,
     isHoliday: !!day.is_holiday,
+    cellKind: tone.kind,
+    cellLabel: tone.label,
   };
 }
 
@@ -117,7 +124,7 @@ export function buildEmployeeTimeBalanceReport(input: TimeBalanceEmployeeInput):
   const sortedLedger = [...(input.ledger || [])].sort((a, b) => a.date.localeCompare(b.date));
 
   for (const ledgerDay of sortedLedger) {
-    const day = toReportDay(ledgerDay);
+    const day = toReportDay(ledgerDay, input.paymentType);
     const key = getISOWeekKey(day.date);
     const list = weekMap.get(key) || [];
     list.push(day);

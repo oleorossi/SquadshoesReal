@@ -27,6 +27,8 @@ function dayBalanceLabel(day: TimeBalanceDay): string {
   if (day.status === 'pending') return 'Batida pendente';
   if (day.status === 'excused') return 'Abonado';
   if (day.status === 'neutral') return 'Folga';
+  // Falta / atraso / HE: mesma classificação da folha (horas + compensação).
+  if (day.cellLabel && day.cellKind !== 'worked' && day.cellKind !== 'empty') return day.cellLabel;
   return formatBalanceMinutes(day.balanceMinutes);
 }
 
@@ -38,17 +40,19 @@ function dayPunchesLabel(day: TimeBalanceDay): string {
 
 function BalanceDayCell({ day }: { day?: TimeBalanceDay }) {
   if (!day) return <div className="min-h-28 border-l border-t border-border/60 bg-muted/10" aria-hidden="true" />;
-  const isPending = day.status === 'pending';
-  const isPositive = !isPending && day.balanceMinutes > 0;
-  const isNegative = !isPending && day.balanceMinutes < 0;
+  const isPending = day.status === 'pending' || day.cellKind === 'pending';
+  const isPositive = !isPending && (day.cellKind === 'he' || day.cellKind === 'credit' || day.balanceMinutes > 0);
+  const isNegative = !isPending && (day.cellKind === 'delay' || day.cellKind === 'debit' || day.balanceMinutes < 0);
+  const isCompensated = day.cellKind === 'compensated';
   return (
     <div
       className={cn(
         'min-h-28 border-l border-t border-border/60 p-2.5 transition-colors',
-        isPositive && 'bg-success/5',
-        isNegative && 'bg-destructive/5',
+        isCompensated && 'bg-sky-500/5',
+        isPositive && !isCompensated && 'bg-success/5',
+        isNegative && !isCompensated && 'bg-destructive/5',
         isPending && 'bg-warning/10',
-        !isPositive && !isNegative && !isPending && 'bg-muted/20',
+        !isPositive && !isNegative && !isPending && !isCompensated && 'bg-muted/20',
       )}
       title={day.punches.join(' · ') || undefined}
     >
@@ -62,10 +66,11 @@ function BalanceDayCell({ day }: { day?: TimeBalanceDay }) {
       </p>
       <p className={cn(
         'mt-2 text-xs font-bold tabular-nums',
-        isPositive && 'text-success',
-        isNegative && 'text-destructive',
+        isCompensated && 'text-sky-700 dark:text-sky-400',
+        isPositive && !isCompensated && 'text-success',
+        isNegative && !isCompensated && 'text-destructive',
         isPending && 'text-warning',
-        !isPositive && !isNegative && !isPending && 'text-muted-foreground',
+        !isPositive && !isNegative && !isPending && !isCompensated && 'text-muted-foreground',
       )}>
         {dayBalanceLabel(day)}
       </p>
@@ -173,7 +178,7 @@ export function EmployeeBalanceCalendar({ report, kind }: { report: EmployeeTime
         </div>
       </div>
       <div className="flex flex-wrap gap-x-5 gap-y-1 border-t border-border px-4 py-3 text-[11px] text-muted-foreground">
-        <span><strong className="text-foreground">Célula:</strong> batidas · trabalhado/meta · saldo diário</span>
+        <span><strong className="text-foreground">Célula:</strong> batidas · trabalhado/meta · horas (falta integra e compensa HE)</span>
         <span><strong className="text-foreground">Semana:</strong> créditos e débitos se compensam somente dentro dela</span>
         <span><strong className="text-foreground">Resultado final:</strong> mesma compensação do período usada pela folha</span>
         {report.pendingPunchDays > 0 && <span className="font-semibold text-warning">{report.pendingPunchDays} {report.pendingPunchDays === 1 ? 'dia com batida pendente' : 'dias com batida pendente'}</span>}

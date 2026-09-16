@@ -7,6 +7,16 @@
 // impressão do projeto) — não depende de tokens/print CSS do app. Reusa os dados já
 // calculados em Payroll (runs + comparativo.printData.days), sem refazer fórmula.
 
+import {
+  classifyPayrollCalendarDay,
+  fmtDeltaMin,
+  type PayrollCalendarDayKind,
+  type PayrollCalendarDayTone,
+} from '@/lib/ponto/payrollCalendarDay';
+
+export { classifyPayrollCalendarDay, fmtDeltaMin };
+export type { PayrollCalendarDayKind, PayrollCalendarDayTone };
+
 export type BundleRun = {
   base_salary: number; total_proventos: number; overtime_amount: number;
   overtime_50_minutes?: number; absent_days?: number; absence_discount?: number;
@@ -87,20 +97,6 @@ const fmtH = (min: number) => {
 
 const esc = (s: unknown) =>
   String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-/**
- * Delta de tempo do dia (atraso / hora extra) EM MINUTOS — resolve a imprecisão
- * de exibir "0.1h" (que são 6 min). Mostra "Nmin" abaixo de 1h e "XhYY" a partir
- * de 1h (ex.: 6 → "6min", 24 → "24min", 72 → "1h12", 318 → "5h18"). Fonte única
- * usada na grade da tela (Payroll) e na impressão (calendarSection).
- */
-export const fmtDeltaMin = (mins: number): string => {
-  const m = Math.abs(Math.round(Number(mins) || 0));
-  if (m < 60) return `${m}min`;
-  const h = Math.floor(m / 60);
-  const r = m % 60;
-  return r === 0 ? `${h}h` : `${h}h${String(r).padStart(2, '0')}`;
-};
 
 // ── Consolidado por setor: 1 linha por setor (proventos/descontos/adiant./líquido)
 //    + total geral. Visão gerencial pra fechar a folha por departamento. ────────
@@ -217,29 +213,29 @@ function folhaSection(emps: BundleEmployee[], periodTitle: string): string {
   </section>`;
 }
 
+const CALENDAR_PRINT_TONE: Record<PayrollCalendarDayKind, { bg: string; color: string }> = {
+  presence: { bg: '#e0f2fe', color: '#0369a1' },
+  pending: { bg: '#fef3c7', color: '#b45309' },
+  excused: { bg: '#e0e7ff', color: '#4338ca' },
+  he: { bg: '#d1fae5', color: '#047857' },
+  delay: { bg: '#fee2e2', color: '#b91c1c' },
+  compensated: { bg: '#e0f2fe', color: '#0369a1' },
+  tolerance: { bg: '#f3f4f6', color: '#6b7280' },
+  credit: { bg: '#ecfdf5', color: '#047857' },
+  debit: { bg: '#fffbeb', color: '#b45309' },
+  worked: { bg: '#fff', color: '#111' },
+  empty: { bg: '#f3f4f6', color: '#6b7280' },
+};
+
 // ── Calendário de tempo: grade semanal por funcionário (espelha a view do app) ─
 function calendarSection(e: BundleEmployee, periodTitle: string): string {
   const cell = (d: BundleDay) => {
-    const exp = d.expected_minutes || 0, w = d.worked_minutes || 0;
-    let bg = '#fff', color = '#111', label = '—';
-    if (e.run.payment_type && e.run.payment_type !== 'mensalista') {
-      label = w > 0 ? 'presença' : '—';
-      bg = w > 0 ? '#e0f2fe' : '#f3f4f6'; color = w > 0 ? '#0369a1' : '#6b7280';
-    } else if (d.status === 'pending') { bg = '#fef3c7'; color = '#b45309'; label = 'pendente'; }
-    else if (d.status === 'excused') { bg = '#e0e7ff'; color = '#4338ca'; label = 'justificada'; }
-    else if (d.status === 'absence') { bg = '#fee2e2'; color = '#b91c1c'; label = 'falta'; }
-    else if ((d.payable_overtime_minutes || 0) > 0) { bg = '#d1fae5'; color = '#047857'; label = 'HE +' + fmtDeltaMin(d.payable_overtime_minutes || 0); }
-    else if ((d.payable_delay_minutes || 0) > 0) { bg = '#fee2e2'; color = '#b91c1c'; label = '−' + fmtDeltaMin(d.payable_delay_minutes || 0); }
-    else if ((d.compensated_credit_minutes || 0) > 0 || (d.compensated_delay_minutes || 0) > 0) { bg = '#e0f2fe'; color = '#0369a1'; label = 'compensado'; }
-    else if ((d.discarded_tolerance_minutes || 0) > 0) { bg = '#f3f4f6'; color = '#6b7280'; label = 'tolerância'; }
-    else if ((d.raw_credit_minutes || 0) > 0) { bg = '#ecfdf5'; color = '#047857'; label = 'crédito +' + fmtDeltaMin(d.raw_credit_minutes || 0); }
-    else if ((d.raw_delay_minutes || 0) > 0) { bg = '#fffbeb'; color = '#b45309'; label = 'débito −' + fmtDeltaMin(d.raw_delay_minutes || 0); }
-    else if (exp > 0 && w > 0) { label = fmtDeltaMin(w); }
-    else { bg = '#f3f4f6'; color = '#6b7280'; label = '—'; }
+    const tone = classifyPayrollCalendarDay(d, e.run.payment_type);
+    const { bg, color } = CALENDAR_PRINT_TONE[tone.kind];
     const dd = `${String(d.date).slice(8, 10)}/${String(d.date).slice(5, 7)}`;
     return `<td style="background:${bg};color:${color};border:1px solid #d1d5db;padding:4px 2px;text-align:center;width:14.28%;">
       <div style="font-size:9px;opacity:.7;">${dd}</div>
-      <div style="font-size:11px;font-weight:700;">${label}</div></td>`;
+      <div style="font-size:11px;font-weight:700;">${tone.label}</div></td>`;
   };
   const days = e.days || [];
   const weeks: BundleDay[][] = [];
@@ -253,7 +249,7 @@ function calendarSection(e: BundleEmployee, periodTitle: string): string {
     <table class="cal"><tbody>${grid}</tbody></table>
     <p class="legend"><span style="background:#d1fae5;">&nbsp;&nbsp;</span> HE paga
       &nbsp; <span style="background:#e0f2fe;">&nbsp;&nbsp;</span> compensado
-      &nbsp; <span style="background:#fee2e2;">&nbsp;&nbsp;</span> atraso líquido / falta
+      &nbsp; <span style="background:#fee2e2;">&nbsp;&nbsp;</span> atraso líquido (falta em horas)
       &nbsp; <span style="background:#fef3c7;">&nbsp;&nbsp;</span> pendência
       </p>
   </section>`;
