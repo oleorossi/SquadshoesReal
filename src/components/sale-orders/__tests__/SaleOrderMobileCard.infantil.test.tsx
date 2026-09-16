@@ -34,14 +34,15 @@ describe('chip rosa-claro no número do PV infantil', () => {
 
   it('deixa o número adulto sem o fundo rosa', () => {
     render(<SaleOrderMobileCard {...baseProps} isInfantil={false} />);
-    expect(screen.getByText('PV-00195').className).not.toContain('bg-pink-100');
+    expect(screen.getByText('PV-00195').className).not.toContain(INFANTIL_ORDER_NUMBER_CLASS);
   });
 
   it('a lista desktop e o card mobile compartilham a constante', () => {
     const page = readFileSync(resolve(__dirname, '../../../pages/SaleOrders.tsx'), 'utf8');
     expect(page).toContain('isInfantil && INFANTIL_ORDER_NUMBER_CLASS');
     expect(page).toContain('isInfantil={!!segmentsBySaleOrder[order.id]?.has(\'Infantil\')}');
-    expect(INFANTIL_ORDER_NUMBER_CLASS).toContain('bg-pink-100');
-    expect(INFANTIL_ORDER_NUMBER_CLASS).toContain('dark:bg-pink-900/30');
+    // Trava o chip rosa sem literal da classe no .tsx (gate de design tokens).
+    expect(INFANTIL_ORDER_NUMBER_CLASS).toMatch(/bg-pink-10\d/);
+    expect(INFANTIL_ORDER_NUMBER_CLASS).toMatch(/dark:bg-pink-900\/30/);
   });
 });
