@@ -619,10 +619,6 @@ export async function preflightSaleOrderCommand(
 export async function executeSaleOrderCommand<TResult = Record<string, unknown>>(
   input: ExecuteSaleOrderCommandInput,
 ): Promise<SaleOrderCommandReceipt<TResult>> {
-  const startedAt = Date.now();
-  // #region agent log
-  fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'06a1eb'},body:JSON.stringify({sessionId:'06a1eb',hypothesisId:'A',location:'saleOrderCommand.ts:executeSaleOrderCommand',message:'execute start',data:{command:input.command,expectedOrderVersion:input.expectedOrderVersion,hasOverride:Boolean(input.overrideId)},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   const { data, error } = await supabase.rpc('execute_sale_order_command' as never, {
     p_sale_order_id: input.saleOrderId,
     p_command: input.command,
@@ -631,16 +627,8 @@ export async function executeSaleOrderCommand<TResult = Record<string, unknown>>
     p_payload: input.payload ?? {},
     p_override_id: input.overrideId ?? null,
   } as never);
-  if (error) {
-    // #region agent log
-    fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'06a1eb'},body:JSON.stringify({sessionId:'06a1eb',hypothesisId:'A',location:'saleOrderCommand.ts:executeSaleOrderCommand',message:'execute rpc error',data:{command:input.command,durationMs:Date.now()-startedAt,code:(error as {code?:string}).code||null,timeout:isPostgresTimeoutError(error),err:String(error.message||'').slice(0,180)},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-    throw error;
-  }
+  if (error) throw error;
   const receipt = normalizeSaleOrderCommandReceipt<TResult>(data);
-  // #region agent log
-  fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'06a1eb'},body:JSON.stringify({sessionId:'06a1eb',hypothesisId:'A',location:'saleOrderCommand.ts:executeSaleOrderCommand',message:'execute rpc done',data:{command:input.command,ok:receipt.ok,replayed:receipt.replayed,durationMs:Date.now()-startedAt},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   if (!receipt.ok) throw new SaleOrderCommandExecutionError(receipt);
   return receipt;
 }

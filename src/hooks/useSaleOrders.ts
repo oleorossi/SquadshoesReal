@@ -999,9 +999,6 @@ export function useUpdateSaleOrderStatus(options?: {
           : {}),
       };
       const idempotencyKey = `pv:${id}:${saleOrderCommand}:${crypto.randomUUID()}`;
-      // #region agent log
-      fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ee7c3c'},body:JSON.stringify({sessionId:'ee7c3c',runId:'pre-fix',hypothesisId:'B',location:'useSaleOrders.ts:mutation-start',message:'status mutation start',data:{command:saleOrderCommand,targetStatus:status,compensatoryFlag:Boolean(compensatory),compensatoryCancel,reasonLen:String(reason||'').trim().length,payloadKeys:Object.keys(commandPayload),payloadCompensatory:commandPayload.compensatory===true},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       const preflight = await preflightSaleOrderCommand({
         saleOrderId: id,
         command: saleOrderCommand,
@@ -1009,9 +1006,6 @@ export function useUpdateSaleOrderStatus(options?: {
         overrideId: override_id,
         payload: commandPayload,
       });
-      // #region agent log
-      fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ee7c3c'},body:JSON.stringify({sessionId:'ee7c3c',runId:'pre-fix',hypothesisId:'D',location:'useSaleOrders.ts:preflight-result',message:'preflight result before execute',data:{ready:preflight.ready,blockerCodes:(preflight.blockers||[]).map((b)=>b.code),warningCodes:(preflight.warnings||[]).map((w)=>w.code),hasFinalizedWarning:(preflight.warnings||[]).some((w)=>w.code==='physical_finalized_op'||/finalizada/i.test(w.message||''))},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       if (!preflight.ready) throw new SaleOrderReadinessBlockedError(preflight);
       if (preflight.warnings.length > 0) {
         toast.warning(`${preflight.warnings.length} aviso(s) de prontidão`, {
@@ -1035,9 +1029,6 @@ export function useUpdateSaleOrderStatus(options?: {
       } catch (firstErr) {
         // Deadlock/timeout: comando é atômico — 1 retry com a mesma chave idempotente.
         if (!isPostgresBusyError(firstErr)) throw firstErr;
-        // #region agent log
-        fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ee7c3c'},body:JSON.stringify({sessionId:'ee7c3c',runId:'pre-fix',hypothesisId:'C',location:'useSaleOrders.ts:busy-retry',message:'busy error — retrying once',data:{targetStatus:status,err:String((firstErr as Error)?.message||firstErr).slice(0,160)},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         await new Promise((resolve) => setTimeout(resolve, 1500));
         receipt = await runExecute();
       }
@@ -1117,9 +1108,6 @@ export function useUpdateSaleOrderStatus(options?: {
     },
     onError: (err: Error, vars) => {
       (err as Error & { _handled?: boolean })._handled = true;
-      // #region agent log
-      fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ee7c3c'},body:JSON.stringify({sessionId:'ee7c3c',runId:'pre-fix',hypothesisId:'A',location:'useSaleOrders.ts:mutation-error',message:'status mutation error',data:{targetStatus:vars.status,compensatory:Boolean(vars.compensatory),busy:isPostgresBusyError(err),finalizedMsg:/OP concluída\/finalizada|finalizada\/concluída/i.test(String(err.message||'')),err:String(err.message||'').slice(0,220)},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       if (err instanceof SaleOrderReadinessBlockedError && options?.onReadinessBlocked) {
         options.onReadinessBlocked(err, vars);
         return;
