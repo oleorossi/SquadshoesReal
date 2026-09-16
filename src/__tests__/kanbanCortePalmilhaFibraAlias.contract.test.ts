@@ -21,7 +21,7 @@ describe('alias Corte Palmilha → Corte Fibra no kanban e na RPC', () => {
   it('o quadro trata Corte Palmilha como a coluna Corte Fibra', () => {
     expect(NORM).toContain("if (trimmed === 'Corte Palmilha') return 'Corte Fibra'");
     expect(PLAN).toContain('const column = norm(card.column)');
-    expect(PLAN).toContain('const wanted = target === null ? null : norm(target)');
+    expect(PLAN).toContain('const targetNorm = target === null ? null : norm(target)');
   });
 
   it('a migration realinha estágios, agenda, fichas e o lookup da RPC', () => {

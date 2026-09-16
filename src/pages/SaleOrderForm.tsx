@@ -525,16 +525,17 @@ export function mapLoadedSaleOrderForm(
   representatives: { id: string; name: string }[] = [],
 ): SaleOrderFormData {
   const rep = representatives.find(r => r.name === order.representative);
+  const documentary = documentaryFieldsFromSnapshot(order);
   return {
     client_id: order.client_id || null,
     company_id: order.company_id || null,
     client_name: order.client_name || '', client_cnpj: order.client_cnpj || '',
-    client_contact: order.client_contact || '', client_order_number: order.client_order_number || '',
+    client_contact: order.client_contact || '', client_order_number: documentary.client_order_number,
     representative: rep?.id || order.representative_id || '',
     payment_condition: order.payment_condition || '', delivery_deadline: order.delivery_deadline || '',
     delivery_week: order.delivery_week || '', delivery_month: order.delivery_month || '',
     notes: order.notes || '', status: order.status || 'Pendente',
-    nfe: order.nfe || '', remessa: order.remessa || '',
+    nfe: documentary.nfe, remessa: documentary.remessa,
     is_factoring: order.is_factoring || false,
     factoring_config_id: order.factoring_config_id || '',
     packaging_mode: order.packaging_mode || 'colmeia',
