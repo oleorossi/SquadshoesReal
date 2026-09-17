@@ -101,7 +101,7 @@ import {
   applyTechnicalStrapColorMode,
   ensureTechnicalStrapLineIds,
   hasCanonicalTechnicalStrapIdentity,
-  newTechnicalStrapLineId,
+  newTechnicalStrapLineFromConsumptionTemplate,
   replicateFirstTechnicalStrapType,
   strapColorMode,
   type StrapColorMode,
@@ -1545,8 +1545,10 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
         variant_drives_lining: form.variant_drives_lining,
         // O trigger persiste exatamente este UUID no save. Antecipá-lo aqui
         // faz a aba Range mostrar imediatamente a mesma identidade operacional.
+        // Antecipa a Forração, mas NÃO apaga a base já persistida se o UUID da
+        // forração ainda não resolveu (grupos carregando / nome legado).
         strap_base_group_id: strapsFollowLining && hasReferenceBaseStrapLine
-          ? liningGroupId
+          ? (liningGroupId || sheet.strap_base_group_id || null)
           : sheet.strap_base_group_id || null,
       },
       groups,
@@ -3883,6 +3885,9 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                       <p id="replicate-strap-type-help" className="text-xs text-muted-foreground">
                         Copia família, medida, base e políticas de material e cor da primeira tira para as demais.
                         Os nomes e consumos de cada tira são mantidos.
+                        {strapIdentityBasis(form.strap_colors?.[0]) === 'finished_product_group'
+                          ? ' Indisponível enquanto a 1ª tira for SKU acabado (ex.: Strass) — isso converteria as tiras de fábrica.'
+                          : ''}
                       </p>
                     </div>
                     <Button
@@ -3891,12 +3896,16 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                       size="sm"
                       className="shrink-0 gap-1.5"
                       aria-describedby="replicate-strap-type-help"
-                      disabled={strapCatalogQuery.isLoading || strapCatalogQuery.isError || !hasCanonicalTechnicalStrapIdentity(
+                      disabled={strapCatalogQuery.isLoading || strapCatalogQuery.isError
+                        || strapIdentityBasis(form.strap_colors?.[0]) === 'finished_product_group'
+                        || !hasCanonicalTechnicalStrapIdentity(
                         form.strap_colors[0],
                         strapCatalog?.measures || [],
                         strapCatalog?.types || [],
                       )}
-                      title="Configure a família, medida e base da primeira tira para aplicar às demais"
+                      title={strapIdentityBasis(form.strap_colors?.[0]) === 'finished_product_group'
+                        ? 'A 1ª tira é SKU acabado; não replicar para não converter as demais'
+                        : 'Configure a família, medida e base da primeira tira para aplicar às demais'}
                       onClick={() => {
                         updateField('strap_colors', replicateFirstTechnicalStrapType(form.strap_colors));
                         toast.success('Estrutura e políticas de material e cor aplicadas às demais. Salve a ficha para confirmar.');
@@ -4216,35 +4225,10 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                   onClick={() => {
                     const current = form.strap_colors || [];
                     const next = current.length + 1;
-                    const technicalStrapLineId = newTechnicalStrapLineId();
-                    // Pré-seleciona a mesma identidade canônica da última tira;
-                    // continua editável quando esta linha usa outra medida.
-                    // A cor permanece vazia porque é definida no pedido.
                     const last = current[current.length - 1];
                     updateField('strap_colors', [
                       ...current,
-                      {
-                        id: technicalStrapLineId,
-                        technical_strap_line_id: technicalStrapLineId,
-                        label: `TIRA ${next}`,
-                        color: '',
-                        strap_type_id: last?.strap_type_id,
-                        measure_id: last?.measure_id,
-                        group_id: last?.group_id,
-                        group_name: last?.group_name,
-                        identity_basis: strapIdentityBasis(last),
-                        identity_group_id: strapIdentityBasis(last) === 'finished_product_group'
-                          ? last?.identity_group_id || null
-                          : null,
-                        color_mode: strapColorMode(last),
-                        material_mode: normalizeStrapMaterialPolicy(last || {}).material_mode,
-                        material_group_id: last?.material_group_id || null,
-                        allowed_material_group_ids: Array.isArray(last?.allowed_material_group_ids)
-                          ? [...last.allowed_material_group_ids]
-                          : [],
-                        consumption: last?.consumption,
-                        consumption_per_size: { ...(last?.consumption_per_size || {}) },
-                      },
+                      newTechnicalStrapLineFromConsumptionTemplate(last, `TIRA ${next}`),
                     ]);
                   }}
                 >

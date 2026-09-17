@@ -6,12 +6,44 @@ import {
   ensureTechnicalStrapLineIds,
   hasCanonicalTechnicalStrapIdentity,
   isUuid,
+  newTechnicalStrapLineFromConsumptionTemplate,
   replicateFirstTechnicalStrapType,
   strapColorMode,
   technicalStrapLineId,
 } from '@/lib/technicalStrapLines';
 
 describe('technicalStrapLines', () => {
+  it('Adicionar Tira copia só consumo — nunca origem/medida de Strass', () => {
+    const strassId = crypto.randomUUID();
+    const groupId = crypto.randomUUID();
+    const measureId = crypto.randomUUID();
+    const created = newTechnicalStrapLineFromConsumptionTemplate({
+      id: strassId,
+      technical_strap_line_id: strassId,
+      label: 'TIRA 3',
+      identity_basis: 'finished_product_group',
+      identity_group_id: groupId,
+      strap_type_id: crypto.randomUUID(),
+      measure_id: measureId,
+      color_mode: 'select_on_order',
+      material_mode: 'fixed',
+      material_group_id: groupId,
+      consumption: 58,
+      consumption_per_size: { '34': 58, '35': 58 },
+    }, 'TIRA 4');
+
+    expect(created.label).toBe('TIRA 4');
+    expect(created.identity_basis).toBe('reference_base');
+    expect(created.identity_group_id).toBeNull();
+    expect(created.measure_id).toBeUndefined();
+    expect(created.strap_type_id).toBeUndefined();
+    expect(created.color_mode).toBe('follow_main');
+    expect(created.material_mode).toBe('follow_reference');
+    expect(created.consumption).toBe(58);
+    expect(created.consumption_per_size).toEqual({ '34': 58, '35': 58 });
+    expect(created.id).not.toBe(strassId);
+    expect(isUuid(created.technical_strap_line_id)).toBe(true);
+  });
   it('migra ids ordinais para UUIDs estáveis', () => {
     const [line] = ensureTechnicalStrapLineIds([{ id: '1', label: 'TIRA 1' }]);
     expect(isUuid(line.technical_strap_line_id)).toBe(true);
