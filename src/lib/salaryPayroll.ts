@@ -34,6 +34,7 @@
  * sai PARCIAL (os dias não importados não são descontados) — a tela avisa.
  */
 import { splitDayMinutes, PREMIUM_MULTIPLIER } from './hourlyPayroll';
+import { applyOvernightCarry } from './ponto/overnightPunches';
 import { looksLikeWeekdayJourney, WEEKDAY_JOURNEY_MIN } from './ponto/interpretDayPunches';
 
 /** Versão persistida junto do snapshot da folha para auditoria histórica. */
@@ -776,6 +777,10 @@ export interface PeriodFolhaInput {
 
 /** Monta os SalaryDayInput do período (escala/feriados/batidas) e calcula a folha. */
 export function computePeriodFolha(inp: PeriodFolhaInput): SalaryPayrollResult {
+  // Virada à noite: saída de madrugada gravada no dia civil seguinte volta pro
+  // dia da jornada. Sem isso, D fica pendente e D+1 vira batida órfã — Folga/
+  // Troca de Dia não são o caminho (falta-como-horas-v3 já compensa o descanso).
+  const { punchesByDate } = applyOvernightCarry(inp.punchesByDate);
   let dates = getDaysInRange(inp.from, inp.to);
   if (inp.maxCoveredDate) dates = dates.filter(d => d.date <= inp.maxCoveredDate!);
   // Recorte por vínculo: ignora dias antes da admissão / depois da demissão — senão
@@ -783,7 +788,7 @@ export function computePeriodFolha(inp: PeriodFolhaInput): SalaryPayrollResult {
   if (inp.activeFrom) dates = dates.filter(d => d.date >= inp.activeFrom!);
   if (inp.activeTo) dates = dates.filter(d => d.date <= inp.activeTo!);
   const days: SalaryDayInput[] = dates.map(d => {
-    const punches = inp.punchesByDate.get(d.date) || [];
+    const punches = punchesByDate.get(d.date) || [];
     // Troca de dia (workday_swaps): work_date E off_date são DIAS FLEX. Prevalecem
     // sobre feriado. Quando trabalhados, leem como dia útil normal; quando não, o
     // motor os neutraliza (sem falta). Tratar os dois iguais elimina a divergência

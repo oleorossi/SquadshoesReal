@@ -24,6 +24,7 @@
  */
 
 import { interpretThreePunches } from './ponto/interpretDayPunches';
+import { orderPunchMinutesForIntervals } from './ponto/overnightPunches';
 
 /** 44h/semana → 220h/mês (DSR embutido). Base do valor-hora. */
 export const MONTHLY_HOURS_DIVISOR = 220;
@@ -120,12 +121,10 @@ export function splitDayMinutes(
   if (n < 2) return { normal: 0, premium: 0, incomplete: n === 1 };
   // Hora inexistente (ex.: '29:59') → PENDÊNCIA, nunca pagamento. Ver isPunchOutOfRange.
   if (punches.some(isPunchOutOfRange)) return { normal: 0, premium: 0, incomplete: true };
-  // Ordena as batidas numericamente antes de parear: o relógio pode entregar fora de
-  // ordem e, sem ordenar, os pares saem trocados e o almoço deixa de ser deduzido
-  // (ex.: 08,18,12,13 → [08→18]+[12→13] = 11h em vez de 9h). A validação já ordena
-  // (timeValidationRules), mas o motor não — contrato silencioso. Numérico, não lexical
-  // (tolera '12:37*'). Idempotente em batidas já ordenadas.
-  const ps = [...punches].sort((a, b) => timeToMin(a) - timeToMin(b));
+  // Ordena antes de parear (relógio fora de ordem). Virada à noite: saída de
+  // madrugada na cauda da lista original ganha +1440 — senão ['08:14','03:04']
+  // vira manhã 03:04→08:14. Ver overnightPunches.ts.
+  const orderedMins = orderPunchMinutesForIntervals(punches);
   // ⚠ Decisão do dono 2026-07-30 (auditoria RH, D1/P2) — ímpar ≥5 continua
   // pendência. SUPERSEDE a de 2026-06-21, que pagava o span 1º→último e produziu
   // jornadas de 13h a 21h32 (Thais Batista 26/02/2026).
@@ -137,14 +136,14 @@ export function splitDayMinutes(
   let intervals: [number, number][];
   if (n % 2 !== 0) {
     if (n !== 3) return { normal: 0, premium: 0, incomplete: true };
-    const interp = interpretThreePunches(ps.map(timeToMin));
+    const interp = interpretThreePunches(orderedMins);
     if (interp.incomplete) return { normal: 0, premium: 0, incomplete: true };
     intervals = interp.intervals;
   } else if (n >= 4) {
     intervals = [];
-    for (let i = 0; i + 1 < n; i += 2) intervals.push([timeToMin(ps[i]), timeToMin(ps[i + 1])]);
+    for (let i = 0; i + 1 < n; i += 2) intervals.push([orderedMins[i], orderedMins[i + 1]]);
   } else {
-    intervals = [[timeToMin(ps[0]), timeToMin(ps[n - 1])]];
+    intervals = [[orderedMins[0], orderedMins[n - 1]]];
   }
   const allPremium = !forceNormalDay && (isHoliday || dayOfWeek === 0 || dayOfWeek === 6);
 
@@ -164,15 +163,22 @@ export function splitDayMinutes(
   }
 
   // Almoço mínimo de 1h dentro de 12:00–14:00, em dia longo que cruza o meio-dia.
-  const first = timeToMin(ps[0]);
-  const last = timeToMin(ps[n - 1]);
-  const spansLunch = last > first && first < 13 * 60 && last > 13 * 60 && (last - first) > LONG_DAY_MIN;
+  // Usa minutos já ajustados (+1440 na virada). A janela de almoço só olha o
+  // trecho até 24:00 — a madrugada seguinte não entra no cálculo do almoço.
+  const first = orderedMins[0];
+  const last = orderedMins[n - 1];
+  const sameDayEnd = Math.min(last, 1440);
+  const spansLunch = sameDayEnd > first
+    && first < 13 * 60
+    && sameDayEnd > 13 * 60
+    && (last - first) > LONG_DAY_MIN;
   if (spansLunch) {
-    const onShiftInWin = Math.max(0, Math.min(last, LUNCH_WINDOW_END) - Math.max(first, LUNCH_WINDOW_START));
+    const onShiftInWin = Math.max(0, Math.min(sameDayEnd, LUNCH_WINDOW_END) - Math.max(first, LUNCH_WINDOW_START));
     let workedInWin = 0;
     for (const [a, b] of intervals) {
-      if (b < a) continue; // ignora cruzamento de meia-noite p/ a janela de almoço
-      workedInWin += Math.max(0, Math.min(b, LUNCH_WINDOW_END) - Math.max(a, LUNCH_WINDOW_START));
+      const segEnd = Math.min(b, 1440);
+      if (segEnd <= a) continue;
+      workedInWin += Math.max(0, Math.min(segEnd, LUNCH_WINDOW_END) - Math.max(a, LUNCH_WINDOW_START));
     }
     const breakInWin = Math.max(0, onShiftInWin - workedInWin); // pausa já tirada em 12–14
     let lunch = Math.max(0, STANDARD_LUNCH_MIN - breakInWin);    // completa até 1h

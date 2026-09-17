@@ -2,6 +2,7 @@ import ExceptionsTab from '@/components/timesheet/ExceptionsTab';
 import ManualEntryTab from '@/components/timesheet/ManualEntryTab';
 import ImportHistoryPanel from '@/components/timesheet/ImportHistoryPanel';
 import PendingTimeRecordsPanel from '@/components/timesheet/PendingTimeRecordsPanel';
+import OvernightCarryPanel from '@/components/timesheet/OvernightCarryPanel';
 import EmployeeAbsences from './EmployeeAbsences';
 import { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -369,9 +370,9 @@ function HolidaysTab() {
 }
 
 // ── Trocas de Dia / Compensação Tab ─────────────────────
-// Cadastro de dias trabalhados em TROCA de outro (ponte/compensação). O dia
-// trabalhado é lido como dia útil NORMAL (não vira hora extra), e a folga
-// compensatória não gera falta. Vale pra todos os funcionários (igual feriados).
+// Cadastro GLOBAL (fábrica inteira) de dias trabalhados em troca de outro
+// (ponte de feriado). NÃO use pra virada à noite de um funcionário — isso vai
+// em Corrigir → Virada à noite. Aqui vale pra todos, igual feriados.
 function WorkdaySwapsTab() {
   const { data: swaps = [], isLoading } = useWorkdaySwaps();
   const addSwap = useAddWorkdaySwap();
@@ -395,10 +396,10 @@ function WorkdaySwapsTab() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-semibold">Trocas de Dia</h3>
+          <h3 className="text-lg font-semibold">Trocas de Dia (fábrica)</h3>
           <p className="text-xs text-muted-foreground">
-            Dias trabalhados em troca de outro (ponte/compensação). O dia trabalhado
-            é contado como <span className="font-medium text-foreground">normal</span>, não como hora extra.
+            Pontes e compensações que valem pra <span className="font-medium text-foreground">todos</span>.
+            Virada à noite de uma pessoa: use <span className="font-medium text-foreground">Corrigir → Virada à noite</span>.
           </p>
         </div>
         <Button size="sm" onClick={() => setAdding(!adding)} className="gap-1.5">
@@ -1607,10 +1608,10 @@ export default function Timesheet() {
     },
   });
   const { value: correctionView, setValue: setCorrectionView } = useUrlTabState({
-    values: ['queue', 'calendar', 'exceptions'] as const,
+    values: ['queue', 'overnight', 'calendar', 'exceptions'] as const,
     defaultValue: 'queue',
     param: 'correction',
-    aliases: { pendencias: 'queue', lancamento: 'calendar', excecoes: 'exceptions' },
+    aliases: { pendencias: 'queue', virada: 'overnight', lancamento: 'calendar', excecoes: 'exceptions' },
   });
   const { total: pendingTotal, overdueTotal } = usePendingTotal(30);
   const sections = [
@@ -1624,14 +1625,14 @@ export default function Timesheet() {
     {
       value: 'manual',
       label: 'Corrigir',
-      description: 'Resolva batidas pendentes.',
+      description: 'Pendências, virada e lançamento.',
       icon: ClipboardEdit,
       step: '2',
     },
     {
       value: 'ausencias',
       label: 'Justificar',
-      description: 'Abone ausências de dia inteiro.',
+      description: 'Atestado, férias e folga paga.',
       icon: FirstAid,
       step: '3',
     },
@@ -1645,7 +1646,7 @@ export default function Timesheet() {
     {
       value: 'config',
       label: 'Ajustes',
-      description: 'Feriados e trocas de dias.',
+      description: 'Feriados e pontes da fábrica.',
       icon: Settings2,
       step: undefined,
     },
@@ -1656,8 +1657,14 @@ export default function Timesheet() {
     {
       value: 'queue',
       label: 'Fila de pendências',
-      description: 'Resolva primeiro o que impede o cálculo.',
+      description: 'Resolva batidas ímpares e faltantes.',
       icon: ClipboardEdit,
+    },
+    {
+      value: 'overnight',
+      label: 'Virada à noite',
+      description: 'Una saída gravada na madrugada seguinte.',
+      icon: Moon,
     },
     {
       value: 'calendar',
@@ -1668,7 +1675,7 @@ export default function Timesheet() {
     {
       value: 'exceptions',
       label: 'Exceções',
-      description: 'Analise ocorrências fora do padrão.',
+      description: 'Ocorrências fora do padrão.',
       icon: Shield,
     },
   ] as const;
@@ -1685,7 +1692,7 @@ export default function Timesheet() {
               <AlarmClock className="h-4 w-4 text-primary" />
               <div>
                 <span className="eyebrow block text-[9px]">Fluxo do ponto</span>
-                <span className="block text-[10px] text-muted-foreground">Importe, corrija e justifique</span>
+                <span className="block text-[10px] text-muted-foreground">Importar → Corrigir → Justificar</span>
               </div>
             </div>
             <TabsList
@@ -1761,7 +1768,7 @@ export default function Timesheet() {
                 </div>
                 <TabsList
                   indicator="none"
-                  className="grid h-auto w-full grid-cols-1 gap-1 bg-muted/40 p-1 sm:grid-cols-3 lg:w-auto"
+                  className="grid h-auto w-full grid-cols-1 gap-1 bg-muted/40 p-1 sm:grid-cols-2 lg:grid-cols-4 lg:w-auto"
                   aria-label="Ferramentas de correção do ponto"
                 >
                   {correctionModes.map(mode => (
@@ -1781,6 +1788,7 @@ export default function Timesheet() {
               </div>
             </div>
             <TabsContent value="queue"><PendingTimeRecordsPanel /></TabsContent>
+            <TabsContent value="overnight"><OvernightCarryPanel /></TabsContent>
             <TabsContent value="calendar"><ManualEntryTab /></TabsContent>
             <TabsContent value="exceptions"><ExceptionsTab /></TabsContent>
           </Tabs>

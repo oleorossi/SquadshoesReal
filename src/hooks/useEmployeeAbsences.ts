@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { assertNoClosedPayrollInRange } from '@/lib/ponto/absencePayrollGuard';
 
-export type AbsenceKind = 'ferias' | 'atestado' | 'licenca' | 'folga_compensatoria' | 'suspensao' | 'outro';
+export type AbsenceKind = 'ferias' | 'atestado' | 'licenca' | 'folga' | 'suspensao' | 'outro';
 
 export interface EmployeeAbsence {
   id: string;
@@ -25,10 +25,18 @@ export const ABSENCE_LABEL: Record<string, string> = {
   ferias: 'Férias',
   atestado: 'Atestado',
   licenca: 'Licença',
-  folga_compensatoria: 'Folga compensatória',
+  // Canônico = `folga` (mesmo vocabulário de useRH / AbsenceReport).
+  // `folga_compensatoria` permanece só como alias de leitura de linhas antigas.
+  folga: 'Folga',
+  folga_compensatoria: 'Folga',
   suspensao: 'Suspensão',
   outro: 'Outro',
 };
+
+/** Opções do formulário — sem aliases duplicados. */
+export const ABSENCE_KIND_OPTIONS: AbsenceKind[] = [
+  'ferias', 'atestado', 'licenca', 'folga', 'suspensao', 'outro',
+];
 
 function errorMessage(error: unknown): string | null {
   if (error instanceof Error) return error.message;
