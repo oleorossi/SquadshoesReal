@@ -156,6 +156,10 @@ export function applyTechnicalStrapIdentity<T extends TechnicalStrapLineLike>(
  * Nova linha na ficha: copia só o molde de consumo da última tira.
  * Nunca herda família/medida/origem (SKU acabado vs fábrica) — senão Strass
  * contaminava a próxima posição (Adicionar Tira).
+ *
+ * ⚠ Não anotar o retorno como `TechnicalStrapLineLike & { identity_group_id: null; … }`:
+ * com `strictNullChecks:false` o `null` literal colide com `string` do pai e o
+ * tipo inteiro vira `never` (TS2322 em produção / CI).
  */
 export function newTechnicalStrapLineFromConsumptionTemplate(
   last: (TechnicalStrapLineLike & {
@@ -163,25 +167,43 @@ export function newTechnicalStrapLineFromConsumptionTemplate(
     consumption_per_size?: Record<string, number> | null;
   }) | null | undefined,
   label: string,
-): TechnicalStrapLineLike & {
+): {
   id: string;
   technical_strap_line_id: string;
   label: string;
   color: string;
-  identity_basis: StrapIdentityBasis;
+  identity_basis: 'reference_base';
   identity_group_id: null;
-  color_mode: StrapColorMode;
+  color_mode: 'follow_main';
   material_mode: 'follow_reference';
   material_group_id: null;
-  allowed_material_group_ids: [];
+  allowed_material_group_ids: string[];
   consumption?: number;
   consumption_per_size: Record<string, number>;
+  /** Ausentes de propósito — Adicionar Tira não herda medida/origem. */
+  measure_id?: undefined;
+  strap_type_id?: undefined;
 } {
   const technicalStrapLineId = newTechnicalStrapLineId();
-  const consumptionPerSize = last?.consumption_per_size && typeof last.consumption_per_size === 'object'
-    ? { ...last.consumption_per_size }
-    : {};
-  return {
+  const consumptionPerSize: Record<string, number> =
+    last?.consumption_per_size && typeof last.consumption_per_size === 'object'
+      ? { ...last.consumption_per_size }
+      : {};
+  const allowedMaterialGroupIds: string[] = [];
+  const created: {
+    id: string;
+    technical_strap_line_id: string;
+    label: string;
+    color: string;
+    identity_basis: 'reference_base';
+    identity_group_id: null;
+    color_mode: 'follow_main';
+    material_mode: 'follow_reference';
+    material_group_id: null;
+    allowed_material_group_ids: string[];
+    consumption?: number;
+    consumption_per_size: Record<string, number>;
+  } = {
     id: technicalStrapLineId,
     technical_strap_line_id: technicalStrapLineId,
     label,
@@ -191,10 +213,13 @@ export function newTechnicalStrapLineFromConsumptionTemplate(
     color_mode: 'follow_main',
     material_mode: 'follow_reference',
     material_group_id: null,
-    allowed_material_group_ids: [],
-    ...(typeof last?.consumption === 'number' ? { consumption: last.consumption } : {}),
+    allowed_material_group_ids: allowedMaterialGroupIds,
     consumption_per_size: consumptionPerSize,
   };
+  if (typeof last?.consumption === 'number') {
+    created.consumption = last.consumption;
+  }
+  return created;
 }
 
 /** Copia o tipo da primeira tira sem alterar identidade, rótulo ou consumo de cada linha. */
