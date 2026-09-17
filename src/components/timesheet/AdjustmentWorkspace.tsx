@@ -19,15 +19,14 @@ import {
 import DayAdjustDialog from '@/components/timesheet/DayAdjustDialog';
 import { Panel } from '@/components/ui/panel';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { SearchInput } from '@/components/ui/search-input';
 import { EmptyState } from '@/components/ui/empty-state';
 import { cn } from '@/lib/utils';
 import {
   CaretLeft as ChevronLeft,
   CaretRight as ChevronRight,
   Users as Users2,
-  MagnifyingGlass,
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 
@@ -413,15 +412,14 @@ export default function AdjustmentWorkspace() {
               </button>
             ))}
           </div>
-          <div className="relative min-w-[200px] max-w-xs flex-1">
-            <MagnifyingGlass className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Buscar funcionário ou setor..."
-              className="h-9 pl-8 text-xs"
-            />
-          </div>
+          <SearchInput
+            className="min-w-[200px] max-w-xs flex-1"
+            placeholder="Buscar funcionário ou setor..."
+            value={search}
+            onChange={setSearch}
+            resultCount={rowData.length}
+            totalCount={timesheetEmployees.length}
+          />
         </div>
       </div>
 

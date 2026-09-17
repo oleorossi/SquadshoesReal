@@ -73,7 +73,8 @@ describe('arquivo permanente das importações do relógio de ponto', () => {
   });
 
   it('expõe os arquivos em uma aba própria do módulo de ponto', () => {
-    expect(PAGE).toContain("values: ['records', 'manual', 'ausencias', 'arquivos', 'config']");
+    expect(PAGE).toContain("values: ['records', 'manual', 'arquivos', 'config']");
+    expect(PAGE).toContain("ausencias: 'manual'");
     expect(PAGE).toContain("calendario: 'records'");
     expect(PAGE).not.toContain('value="calendario"');
     expect(PAGE).toContain("value: 'arquivos'");
