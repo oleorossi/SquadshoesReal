@@ -10,9 +10,10 @@ const QUEUE = read('src/components/timesheet/PendingTimeRecordsPanel.tsx');
 
 describe('central operacional de correção do ponto', () => {
   it('não empilha fila, calendário e exceções na mesma rolagem', () => {
-    expect(PAGE).toContain("values: ['queue', 'calendar', 'exceptions']");
+    expect(PAGE).toContain("values: ['queue', 'overnight', 'calendar', 'exceptions']");
     expect(PAGE).toContain('param: \'correction\'');
     expect(PAGE).toContain('<TabsContent value="queue"><PendingTimeRecordsPanel /></TabsContent>');
+    expect(PAGE).toContain('<TabsContent value="overnight"><OvernightCarryPanel /></TabsContent>');
     expect(PAGE).toContain('<TabsContent value="calendar"><ManualEntryTab /></TabsContent>');
     expect(PAGE).toContain('<TabsContent value="exceptions"><ExceptionsTab /></TabsContent>');
     expect(PAGE).not.toMatch(/<PendingTimeRecordsPanel\s*\/>\s*<Separator\s*\/>\s*<ManualEntryTab\s*\/>/);
