@@ -95,13 +95,13 @@ function statusMark(status: DayCellStatus): { label: string; className: string }
   if (status === 'needs_fix') {
     return {
       label: '!',
-      className: 'bg-amber-500/15 text-amber-700 border-amber-500/40 dark:text-amber-400',
+      className: 'bg-amber-500/15 text-amber-600 border-amber-500/40 dark:text-amber-400',
     };
   }
   if (status === 'justified') {
     return {
       label: 'J',
-      className: 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30 dark:text-emerald-400',
+      className: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30 dark:text-emerald-400',
     };
   }
   if (status === 'ok') {
@@ -404,7 +404,7 @@ export default function AdjustmentWorkspace() {
                 {opt.value === 'needs_fix' && needsFixCount > 0 && (
                   <Badge
                     variant="outline"
-                    className="ml-1.5 h-4 px-1 text-[10px] border-amber-500/30 bg-amber-500/10 text-amber-700"
+                    className="ml-1.5 h-4 px-1 text-[10px] border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400"
                   >
                     {needsFixCount}
                   </Badge>

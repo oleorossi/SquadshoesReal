@@ -508,7 +508,7 @@ export default function DayAdjustDialog({
                               'font-mono tabular-nums h-9',
                               val
                                 ? manual
-                                  ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30'
+                                  ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30 dark:text-emerald-400'
                                   : ''
                                 : 'border-amber-500/40',
                             )}

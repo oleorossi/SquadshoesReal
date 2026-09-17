@@ -127,7 +127,7 @@ export const navigationCatalog: NavigationResource[] = [
   { path: '/rh', label: 'Pessoas', group: 'RH', icon: Users, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/RHHub') },
   { path: '/fichas-montadores', label: 'Ficha Montadores', group: 'RH', icon: ClipboardCheck, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/FichaMontadoresPage') },
   { path: '/terceirizados', label: 'Terceirizados', group: 'RH', icon: Truck, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/TerceirizadosHub') },
-  // Fila de batidas ímpares: fica na sidebar porque fecha a Folha. Sem resolver,
+  // Ajuste de batidas/ausências (workspace único do Ponto). Sem resolver,
   // o dia não desconta nem paga — risco de pagar quem ainda deve horas.
   // Destino final (não o redirect legado /rh/pendencias-ponto).
   { path: '/rh?tab=ponto&subtab=manual', label: 'Pendências de Ponto', group: 'RH', icon: Clock, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/Timesheet') },
