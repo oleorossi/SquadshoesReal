@@ -170,19 +170,31 @@ export function buildCartaoFisicoCards(args: BuildCartaoFisicoCardsArgs): Cartao
 
 /**
  * Cartões por folha A4 paisagem (3 colunas × 4 linhas).
- * Envelope canônico do modo Cartão físico — cut-stack assume esta capacidade.
+ * Envelope canônico do modo Cartão físico — chunk sequencial assume esta capacidade.
  */
 export const CARTAO_FISICO_PER_PAGE = 12;
 
 /**
+ * Fatia a lista em páginas sequenciais de até `capacity` itens.
+ * Página 0 = items[0..C), página 1 = items[C..2C), … — k/N sobe na mesma folha.
+ * Caminho vivo do print de cartão físico.
+ */
+export function chunkPages<T>(
+  items: readonly T[],
+  capacity: number = CARTAO_FISICO_PER_PAGE,
+): T[][] {
+  const n = items.length;
+  if (n === 0 || capacity <= 0) return [];
+  const pages: T[][] = [];
+  for (let i = 0; i < n; i += capacity) {
+    pages.push(items.slice(i, i + capacity) as T[]);
+  }
+  return pages;
+}
+
+/**
+ * @deprecated Legado — não usar no print. Preferir `chunkPages`.
  * Reordena a lista sequencial para layout cut-stack por folha.
- *
- * Com C slots/folha e P = ceil(N/C) páginas, o item lógico i (0-based) vai para
- * página `i % P`, slot `floor(i / P)`. Empilhar as folhas e cortar a posição k
- * entrega os cartões em sequência (k, k+1, …) sem reordenar na mão.
- *
- * Devolve as páginas já fatiadas (última pode ter < C cartões). Não inventa
- * placeholder — slot vazio no fim da última página fica implícito no flex.
  */
 export function layoutCutStackPages<T>(
   items: readonly T[],
@@ -200,7 +212,7 @@ export function layoutCutStackPages<T>(
   return pages;
 }
 
-/** Stream flat do cut-stack (páginas concatenadas). Preferir `layoutCutStackPages` no print. */
+/** @deprecated Legado — ver `layoutCutStackPages`. */
 export function layoutCutStack<T>(
   items: readonly T[],
   capacity: number = CARTAO_FISICO_PER_PAGE,
