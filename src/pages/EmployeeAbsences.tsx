@@ -25,7 +25,7 @@ import { cn } from '@/lib/utils';
 import { useEmployees } from '@/hooks/useEmployees';
 import {
   useEmployeeAbsences, useCreateAbsence, useDeleteAbsence,
-  ABSENCE_LABEL, type AbsenceKind,
+  ABSENCE_LABEL, ABSENCE_KIND_OPTIONS, type AbsenceKind,
 } from '@/hooks/useEmployeeAbsences';
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -48,6 +48,7 @@ const KIND_STYLE: Record<string, string> = {
   ferias:              'bg-emerald-500/10 text-emerald-700 border-emerald-500/30 dark:text-emerald-400',
   atestado:            'bg-red-500/10 text-red-700 border-red-500/30 dark:text-red-400',
   licenca:             'bg-blue-500/10 text-blue-700 border-blue-500/30 dark:text-blue-400',
+  folga:               'bg-amber-500/10 text-amber-700 border-amber-500/30 dark:text-amber-400',
   folga_compensatoria: 'bg-amber-500/10 text-amber-700 border-amber-500/30 dark:text-amber-400',
   suspensao:           'bg-purple-500/10 text-purple-700 border-purple-500/30 dark:text-purple-400',
   outro:               'bg-muted text-muted-foreground border-border',
@@ -83,7 +84,11 @@ export default function EmployeeAbsencesPage({ embedded = false }: { embedded?: 
   const filtered = useMemo(() => {
     return absences.filter((a) => {
       if (employeeFilter !== 'all' && a.employee_id !== employeeFilter) return false;
-      if (kindFilter !== 'all' && a.absence_type !== kindFilter) return false;
+      if (kindFilter !== 'all') {
+        if (kindFilter === 'folga') {
+          if (a.absence_type !== 'folga' && a.absence_type !== 'folga_compensatoria') return false;
+        } else if (a.absence_type !== kindFilter) return false;
+      }
       if (showActive !== 'all') {
         const today = todayISO();
         const isActive = a.start_date <= today && a.end_date >= today;
@@ -167,7 +172,9 @@ export default function EmployeeAbsencesPage({ embedded = false }: { embedded?: 
       {embedded && (
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <p className="max-w-3xl text-xs leading-relaxed text-muted-foreground">
-            Justifique ausências de <strong className="text-foreground">dia inteiro</strong>. Para completar uma batida ou corrigir um atraso parcial, use a etapa <strong className="text-foreground">Corrigir</strong>.
+            Justifique ausências <strong className="text-foreground">remuneradas</strong> (atestado, férias, folga paga).
+            Virada à noite e batida faltante: use <strong className="text-foreground">Corrigir</strong>.
+            Descanso após virada sem cadastro de folga já entra como horas e compensa HE na folha.
           </p>
           <Button size="sm" className="h-9 gap-1.5" onClick={() => setCreateOpen(true)}>
             <Plus className="h-3.5 w-3.5" />
@@ -229,8 +236,8 @@ export default function EmployeeAbsencesPage({ embedded = false }: { embedded?: 
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos os tipos</SelectItem>
-                {Object.entries(ABSENCE_LABEL).map(([k, l]) => (
-                  <SelectItem key={k} value={k}>{l}</SelectItem>
+                {ABSENCE_KIND_OPTIONS.map((k) => (
+                  <SelectItem key={k} value={k}>{ABSENCE_LABEL[k]}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -370,8 +377,8 @@ export default function EmployeeAbsencesPage({ embedded = false }: { embedded?: 
               <Select value={form.absence_type} onValueChange={(v) => setForm({ ...form, absence_type: v as AbsenceKind })}>
                 <SelectTrigger className="mt-1 h-9 text-sm"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {Object.entries(ABSENCE_LABEL).map(([k, l]) => (
-                    <SelectItem key={k} value={k}>{l}</SelectItem>
+                  {ABSENCE_KIND_OPTIONS.map((k) => (
+                    <SelectItem key={k} value={k}>{ABSENCE_LABEL[k]}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
