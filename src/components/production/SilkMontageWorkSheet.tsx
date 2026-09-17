@@ -10,7 +10,16 @@ import { GroupSubHeader } from './worksheet/GroupSubHeader';
 import { fichaModelFor, showsTrace } from './worksheet/fichaModel';
 import { ProductImageBlock, resolveImage } from './worksheet/ProductImageBlock';
 import { CompletionFooter } from './worksheet/CompletionFooter';
-import { TALLY_SIZE, HEADER_THUMB_PX, STEP_CHECKBOX_PX, canUseSlimConsumo } from './worksheet/density';
+import {
+  TALLY_SIZE,
+  HEADER_THUMB_PX,
+  STEP_CHECKBOX_PX,
+  STRAP_ROW_PAD_Y,
+  STRAP_LABEL_PAD,
+  STRAP_STACK_GAP_PX,
+  STEP_ROW_PAD_Y,
+  canUseSlimConsumo,
+} from './worksheet/density';
 import { PaginatedSheet, type SheetBlock } from './worksheet/PaginatedSheet';
 import { SectorAlerts, type SectorAlert } from './worksheet/SectorAlerts';
 import { SignedImage } from '@/components/ui/signed-image';
@@ -647,6 +656,11 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
               const material = String(c.material || '').trim();
               const showTechnicalLabel = !!technicalLabel
                 && technicalLabel.toLocaleUpperCase('pt-BR') !== positionLabel;
+              // Identidade numa linha (TIRA n · rótulo técnico) + cor/material
+              // na seguinte: corta 1–2 linhas de ar morto sem reduzir fonte.
+              const identityLine = showTechnicalLabel
+                ? `${positionLabel} · ${technicalLabel}`
+                : positionLabel;
               return (
                 <tr
                   key={c.technicalStrapLineId || `strap-row-${position}-${i}`}
@@ -654,27 +668,52 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                   data-technical-strap-line-id={c.technicalStrapLineId}
                   style={{ borderBottom: '1px solid #000', borderTop: i === 0 ? '1.5px solid #000' : undefined }}
                 >
-                  <td className="py-1 font-mono font-bold uppercase" style={{ borderRight: '1px solid #000', padding: '4px 6px', color: '#000', lineHeight: 1.05 }}>
-                    <span className="block tracking-wider" style={{ fontSize: '9px' }}>{positionLabel}</span>
-                    {showTechnicalLabel && (
-                      <span className="block mt-0.5" style={{ fontSize: '9px', fontWeight: 600 }}>{technicalLabel}</span>
-                    )}
-                    <span
-                      data-strap-color
-                      className="block mt-0.5"
-                      style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '18px', letterSpacing: '-0.01em', color: '#C00000' }}
-                    >
-                      {c.color || '—'}
+                  <td
+                    className="font-mono font-bold uppercase"
+                    style={{
+                      borderRight: '1px solid #000',
+                      padding: STRAP_LABEL_PAD,
+                      color: '#000',
+                      lineHeight: 1.05,
+                      verticalAlign: 'middle',
+                    }}
+                  >
+                    <span className="block tracking-wider" style={{ fontSize: '9px', lineHeight: 1.05 }}>
+                      {identityLine}
                     </span>
-                    {material && (
+                    <span
+                      className="flex items-baseline flex-wrap"
+                      style={{ gap: 5, marginTop: STRAP_STACK_GAP_PX }}
+                    >
                       <span
-                        data-strap-material
-                        className="block mt-0.5"
-                        style={{ fontFamily: "'Fira Sans', sans-serif", fontSize: '10px', fontWeight: 600, lineHeight: 1.15, whiteSpace: 'normal', overflowWrap: 'anywhere' }}
+                        data-strap-color
+                        style={{
+                          fontFamily: "'Anton', Impact, sans-serif",
+                          fontSize: '18px',
+                          letterSpacing: '-0.01em',
+                          color: '#C00000',
+                          lineHeight: 1,
+                        }}
                       >
-                        {material}
+                        {c.color || '—'}
                       </span>
-                    )}
+                      {material && (
+                        <span
+                          data-strap-material
+                          style={{
+                            fontFamily: "'Fira Sans', sans-serif",
+                            fontSize: '10px',
+                            fontWeight: 600,
+                            lineHeight: 1.1,
+                            whiteSpace: 'normal',
+                            overflowWrap: 'anywhere',
+                            textTransform: 'none',
+                          }}
+                        >
+                          {material}
+                        </span>
+                      )}
+                    </span>
                   </td>
                   {activeSizes.map(s => {
                     // Preenche a coluna pela numeração crua; cai pra faixa P/M/G;
@@ -682,12 +721,23 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                     const vPar = c.cmBySize?.[s] ?? c.cmBands?.find(b => b.band === s)?.cm ?? c.cm ?? null;
                     const v = vPar != null ? Math.round((vPar / 2) * 10) / 10 : null;
                     return (
-                      <td key={s} className="font-mono font-bold" style={{ fontSize: `${ft.cellPx}px`, borderRight: '1px solid #000', padding: `${ft.padY}px 1px`, color: '#C00000', lineHeight: 1.2 }}>
+                      <td
+                        key={s}
+                        className="font-mono font-bold"
+                        style={{
+                          fontSize: `${ft.cellPx}px`,
+                          borderRight: '1px solid #000',
+                          padding: `${STRAP_ROW_PAD_Y}px 1px`,
+                          color: '#C00000',
+                          lineHeight: 1.15,
+                          verticalAlign: 'middle',
+                        }}
+                      >
                         {v != null ? `${v}cm` : '—'}
                       </td>
                     );
                   })}
-                  <td className="py-1" />
+                  <td style={{ padding: `${STRAP_ROW_PAD_Y}px 1px` }} />
                 </tr>
               );
             });
@@ -703,13 +753,18 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
               : ['Frente', 'Traseira'];
             return steps.map((step, sIdx) => (
               <tr key={`avi-${step}`} style={{ borderBottom: sIdx < steps.length - 1 ? '1px solid #000' : 'none' }}>
-                <td className="py-0.5 text-[10px] font-mono font-bold text-black uppercase tracking-wider" style={{ borderRight: '1px solid #000' }}>{step}</td>
+                <td
+                  className="text-[10px] font-mono font-bold text-black uppercase tracking-wider"
+                  style={{ borderRight: '1px solid #000', padding: `${STEP_ROW_PAD_Y}px 4px` }}
+                >
+                  {step}
+                </td>
                 {activeSizes.map(s => (
-                  <td key={s} className="py-0.5" style={{ borderRight: '1px solid #000' }}>
+                  <td key={s} style={{ borderRight: '1px solid #000', padding: `${STEP_ROW_PAD_Y}px 1px` }}>
                     <span className="inline-block" style={{ width: STEP_CHECKBOX_PX, height: STEP_CHECKBOX_PX, border: '1.5px solid #000' }} />
                   </td>
                 ))}
-                <td className="py-0.5">
+                <td style={{ padding: `${STEP_ROW_PAD_Y}px 1px` }}>
                   <span className="inline-block" style={{ width: STEP_CHECKBOX_PX, height: STEP_CHECKBOX_PX, border: '1.5px solid #000' }} />
                 </td>
               </tr>
@@ -729,7 +784,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
       {sector === 'Aviamento' && (cg.components || []).some(c =>
         Boolean(c.technicalStrapLineId) || /^TIRA(\s|$)/i.test(c.name || ''),
       ) && (
-        <p className="leading-tight mt-0.5" style={{ fontSize: '9px', fontWeight: 700, color: '#C00000' }}>
+        <p className="leading-tight" style={{ fontSize: '9px', fontWeight: 700, color: '#C00000', marginTop: 1 }}>
           Linhas TIRA = sequência da ficha técnica · cor e material do PV · medida em cm "do pé" por numeração (ou faixa P/M/G).
         </p>
       )}
@@ -1707,7 +1762,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                     "Por Ficha"/"Total" nunca se separam.
                     O rótulo "Grade · Pares por Numeração" saiu na densidade
                     2026-07-23: o thead da própria tabela já abre com "Nº". */}
-                <div className="mb-1 keep-together">
+                <div className={`${sector === 'Aviamento' ? 'mb-0.5' : 'mb-1'} keep-together`}>
                   {renderGradeTable(cg)}
                 </div>
 

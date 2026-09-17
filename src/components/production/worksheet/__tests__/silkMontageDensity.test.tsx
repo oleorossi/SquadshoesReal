@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { render } from '@testing-library/react';
 import { SilkMontageWorkSheet, type SoleSilkGroup } from '../../SilkMontageWorkSheet';
-import { HEADER_THUMB_PX, STEP_CHECKBOX_PX } from '../density';
+import { HEADER_THUMB_PX, STEP_CHECKBOX_PX, STRAP_ROW_PAD_Y, STEP_ROW_PAD_Y } from '../density';
 import type { ConsumptionRow } from '@/hooks/useBulkOrderConsumption';
 
 /**
@@ -141,6 +141,11 @@ describe('Aviamento — densidade da Opção A', () => {
     );
     // 2 etapas × (3 numerações + coluna Total) = 8 caixas.
     expect(chks).toHaveLength(8);
+  });
+
+  it('linhas Frente/Traseira usam o padding denso da Opção A.2', () => {
+    expect(STEP_ROW_PAD_Y).toBeLessThanOrEqual(2);
+    expect(STRAP_ROW_PAD_Y).toBeLessThanOrEqual(2);
   });
 });
 

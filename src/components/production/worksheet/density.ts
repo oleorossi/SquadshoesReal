@@ -60,9 +60,32 @@ export const TALLY_SIZE = 'sm' as const;
 export const HEADER_THUMB_PX = 46;
 
 /** Lado do checkbox por numeração (linhas Frente/Traseira do Aviamento).
- *  20 → 16px: continua confortável de marcar à caneta e devolve ~8px por
- *  linha de etapa. */
-export const STEP_CHECKBOX_PX = 16;
+ *  20 → 16 → 14px (A.2): ainda marcável à caneta; devolve ~4px por linha
+ *  de etapa × 2 etapas = folga pra 2ª cor subir na mesma A4. */
+export const STEP_CHECKBOX_PX = 14;
+
+/**
+ * Densidade das linhas TIRA / Frente–Traseira no grid do Aviamento
+ * ("Opção A.2", 2026-09-17).
+ *
+ * Medido no maço PV-00193/194 (`111111.pdf`): após a Opção A, cards com 4 tiras
+ * + P/M/G ainda ocupavam ~61–71% da A4 — duas cores NÃO cabiam, e o Total Geral
+ * caía sozinho na última folha (~62% em branco). A causa agora é a ALTURA do
+ * rótulo da tira (4 linhas empilhadas com `mt-0.5` + padding 4px), não a foto.
+ *
+ * Esta passagem corta só o AR VERTICAL dessas linhas — fontes iguais (Anton 18
+ * na cor, mono 9/10 no resto, checkbox 16px). Objetivo: card baixo o bastante
+ * pra 2 cores na mesma folha quando o restante do maço permitir, e o trailing
+ * `keepWithPrev` do Total Geral voltar a grudar na última cor.
+ */
+/** Padding vertical das células de medida (cm) nas linhas TIRA. */
+export const STRAP_ROW_PAD_Y = 1;
+/** Padding do rótulo (coluna Nº) nas linhas TIRA. */
+export const STRAP_LABEL_PAD = '1px 4px';
+/** Respiro entre as linhas empilhadas do rótulo da tira (era `mt-0.5` ≈ 2px). */
+export const STRAP_STACK_GAP_PX = 0;
+/** Padding vertical das linhas Frente/Traseira (checkbox por numeração). */
+export const STEP_ROW_PAD_Y = 1;
 
 /** Nº máximo de linhas de consumo que cabem na faixa única (sem barra preta
  *  nem cabeçalho de tabela). Com 2+ materiais a tabela volta — a comparação

@@ -5,6 +5,10 @@ import {
   TALLY_SIZE,
   HEADER_THUMB_PX,
   STEP_CHECKBOX_PX,
+  STRAP_ROW_PAD_Y,
+  STRAP_LABEL_PAD,
+  STRAP_STACK_GAP_PX,
+  STEP_ROW_PAD_Y,
   CONSUMO_SLIM_MAX_ROWS,
   canUseSlimConsumo,
 } from '../density';
@@ -70,6 +74,16 @@ describe('density — constantes da Opção A', () => {
   it('checkbox por numeração continua marcável à caneta', () => {
     expect(STEP_CHECKBOX_PX).toBeLessThan(20);
     expect(STEP_CHECKBOX_PX).toBeGreaterThanOrEqual(14);
+  });
+
+  it('linhas TIRA / Frente–Traseira cortam só o ar vertical (Opção A.2)', () => {
+    // Padding ≤ 2px: o rótulo da tira não pode voltar aos 4px que faziam
+    // cada cor levar uma A4 sozinha no maço PV-00193/194.
+    expect(STRAP_ROW_PAD_Y).toBeLessThanOrEqual(2);
+    expect(STEP_ROW_PAD_Y).toBeLessThanOrEqual(2);
+    expect(STRAP_STACK_GAP_PX).toBe(0);
+    // Label pad: "1px 4px" — vertical curto, horizontal legível.
+    expect(STRAP_LABEL_PAD).toMatch(/^1px\s/);
   });
 });
 
@@ -142,5 +156,16 @@ describe('guard — toda ficha de operador segue a densidade', () => {
       // O thead da própria tabela já abre com "Nº".
       expect(`${name}:${src.includes('Grade · Pares por Numeração')}`).toBe(`${name}:false`);
     }
+  });
+
+  it('Aviamento usa as constantes densas nas linhas TIRA / Frente–Traseira', () => {
+    const silk = worksheetFiles().find((f) => f.name === 'SilkMontageWorkSheet.tsx');
+    expect(silk).toBeTruthy();
+    const src = silk!.src;
+    expect(src.includes('STRAP_ROW_PAD_Y')).toBe(true);
+    expect(src.includes('STRAP_LABEL_PAD')).toBe(true);
+    expect(src.includes('STEP_ROW_PAD_Y')).toBe(true);
+    // Não pode voltar o padding literal antigo nas células de medida da tira.
+    expect(src.includes("padding: `${ft.padY}px 1px`, color: '#C00000'")).toBe(false);
   });
 });
