@@ -172,11 +172,14 @@ export function newTechnicalStrapLineFromConsumptionTemplate(
   technical_strap_line_id: string;
   label: string;
   color: string;
-  identity_basis: 'reference_base';
-  identity_group_id: null;
-  color_mode: 'follow_main';
+  identity_basis: StrapIdentityBasis;
+  // string | null (não literal null) e string[] (não []): interseção com
+  // TechnicalStrapLineLike (que herda StrapIdentityLike duas vezes via
+  // StrapMaterialPolicyLike) virava `never` no tsc e derrubava o CI.
+  identity_group_id: string | null;
+  color_mode: StrapColorMode;
   material_mode: 'follow_reference';
-  material_group_id: null;
+  material_group_id: string | null;
   allowed_material_group_ids: string[];
   consumption?: number;
   consumption_per_size: Record<string, number>;
