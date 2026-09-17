@@ -100,7 +100,6 @@ const GroupedReportSummary = lazy(() => import("./pages/GroupedReportSummary"));
 // tempos-padrão. A filha /capacity-planning/distribuir segue aposentada (R9.3,
 // redireciona pro Planejamento novo) — não ressuscitar o 3º motor de PCP.
 const TerceirizadosHub = lazy(() => import("./pages/TerceirizadosHub"));
-const TimePendingsPage = lazy(() => import("./pages/TimePendings"));
 // SectorAggregatedView é a visão legada "lote" de /producao/analises.
 const PrintWorkSheets = lazy(() => import("./pages/PrintWorkSheets"));
 const LabelSystem = lazy(() => import("./pages/LabelSystem"));
@@ -636,7 +635,7 @@ const LEGACY_ALIAS_ROUTES: {
     { path: 'time-control', element: <LegacyRouteRedirect to="/rh?tab=ponto" /> },
     { path: 'ponto', element: <LegacyRouteRedirect to="/rh?tab=ponto" /> },
     { path: 'rh/fechamento-semanal', element: <LegacyRouteRedirect to="/rh" /> },
-    { path: 'rh/ausencias', element: <LegacyRouteRedirect to="/rh?tab=ponto&subtab=ausencias" /> },
+    { path: 'rh/ausencias', element: <LegacyRouteRedirect to="/rh?tab=ponto&subtab=manual" /> },
     { path: 'rh/banco-de-horas', element: <LegacyRouteRedirect to="/rh" /> },
     { path: 'rh/bank-hours', element: <LegacyRouteRedirect to="/rh" /> },
     { path: 'rh/payroll', element: <LegacyRouteRedirect to="/rh?tab=folha" /> },
@@ -991,10 +990,9 @@ const router = createBrowserRouter([
         element: <TerceirizadosHub />,
       },
       {
-        // Pendências de ponto — dias com batidas inconsistentes/irregulares
-        // que precisam ser completadas pelo RH antes de fechar a semana.
+        // Legado: fila dedicada → workspace único Ajustar.
         path: "rh/pendencias-ponto",
-        element: <TimePendingsPage />,
+        element: <LegacyRouteRedirect to="/rh?tab=ponto&subtab=manual" />,
       },
       {
         path: "navigation-audit",

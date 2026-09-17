@@ -1,12 +1,8 @@
-import ExceptionsTab from '@/components/timesheet/ExceptionsTab';
-import ManualEntryTab from '@/components/timesheet/ManualEntryTab';
+import AdjustmentWorkspace from '@/components/timesheet/AdjustmentWorkspace';
 import ImportHistoryPanel from '@/components/timesheet/ImportHistoryPanel';
-import PendingTimeRecordsPanel from '@/components/timesheet/PendingTimeRecordsPanel';
-import OvernightCarryPanel from '@/components/timesheet/OvernightCarryPanel';
-import EmployeeAbsences from './EmployeeAbsences';
 import { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Clock, Upload, Plus, Trash as Trash2, CircleNotch as Loader2, Calendar, Gear as Settings2, Warning as AlertTriangle, FileXls as FileSpreadsheet, CaretDown as ChevronDown, Sun, Moon, Coffee, CheckCircle as CheckCircle2, XCircle, MinusCircle, Printer, Users as Users2, CurrencyDollar as DollarSign, Link as Link2, Shield, FileText, Clipboard as ClipboardEdit, Alarm as AlarmClock, ClockCounterClockwise as History, Wallet, ArrowsLeftRight, FirstAid, Archive as ArchiveBox } from '@phosphor-icons/react';
+import { Clock, Upload, Plus, Trash as Trash2, CircleNotch as Loader2, Calendar, Gear as Settings2, Warning as AlertTriangle, FileXls as FileSpreadsheet, CaretDown as ChevronDown, Sun, Moon, Coffee, CheckCircle as CheckCircle2, XCircle, MinusCircle, Printer, Users as Users2, CurrencyDollar as DollarSign, Link as Link2, FileText, Clipboard as ClipboardEdit, Alarm as AlarmClock, ClockCounterClockwise as History, Wallet, ArrowsLeftRight, Archive as ArchiveBox } from '@phosphor-icons/react';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -372,7 +368,7 @@ function HolidaysTab() {
 // ── Trocas de Dia / Compensação Tab ─────────────────────
 // Cadastro GLOBAL (fábrica inteira) de dias trabalhados em troca de outro
 // (ponte de feriado). NÃO use pra virada à noite de um funcionário — isso vai
-// em Corrigir → Virada à noite. Aqui vale pra todos, igual feriados.
+// em Ajustar (atalho na janela do dia). Aqui vale pra todos, igual feriados.
 function WorkdaySwapsTab() {
   const { data: swaps = [], isLoading } = useWorkdaySwaps();
   const addSwap = useAddWorkdaySwap();
@@ -399,7 +395,7 @@ function WorkdaySwapsTab() {
           <h3 className="text-lg font-semibold">Trocas de Dia (fábrica)</h3>
           <p className="text-xs text-muted-foreground">
             Pontes e compensações que valem pra <span className="font-medium text-foreground">todos</span>.
-            Virada à noite de uma pessoa: use <span className="font-medium text-foreground">Corrigir → Virada à noite</span>.
+            Virada à noite de uma pessoa: use <span className="font-medium text-foreground">Ajustar</span> (atalho na janela do dia).
           </p>
         </div>
         <Button size="sm" onClick={() => setAdding(!adding)} className="gap-1.5">
@@ -1597,22 +1593,37 @@ function TimesheetRecordsTab() {
 
 // ── Main Page ──────────────────────────────────────────
 export default function Timesheet() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const { value: activeTab, setValue: setActiveTab } = useUrlTabState({
-    values: ['records', 'manual', 'ausencias', 'arquivos', 'config'] as const,
+    values: ['records', 'manual', 'arquivos', 'config'] as const,
     defaultValue: 'records',
     param: 'subtab',
     clearOnChange: ['correction'],
     aliases: {
-      overview: 'records', late: 'manual', occurrences: 'manual', pending: 'manual',
-      reports: 'records', overtime: 'records', calendario: 'records', history: 'arquivos', schedule: 'config', holidays: 'config',
+      overview: 'records',
+      late: 'manual',
+      occurrences: 'manual',
+      pending: 'manual',
+      ausencias: 'manual',
+      reports: 'records',
+      overtime: 'records',
+      calendario: 'records',
+      history: 'arquivos',
+      schedule: 'config',
+      holidays: 'config',
     },
   });
-  const { value: correctionView, setValue: setCorrectionView } = useUrlTabState({
-    values: ['queue', 'overnight', 'calendar', 'exceptions'] as const,
-    defaultValue: 'queue',
-    param: 'correction',
-    aliases: { pendencias: 'queue', virada: 'overnight', lancamento: 'calendar', excecoes: 'exceptions' },
-  });
+
+  // Legado: param ?correction= das ferramentas antigas — remove da URL.
+  useEffect(() => {
+    if (!searchParams.has('correction')) return;
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      next.delete('correction');
+      return next;
+    }, { replace: true });
+  }, [searchParams, setSearchParams]);
+
   const { total: pendingTotal, overdueTotal } = usePendingTotal(30);
   const sections = [
     {
@@ -1624,17 +1635,10 @@ export default function Timesheet() {
     },
     {
       value: 'manual',
-      label: 'Corrigir',
-      description: 'Pendências, virada e lançamento.',
+      label: 'Ajustar',
+      description: 'Batidas e justificativas do período.',
       icon: ClipboardEdit,
       step: '2',
-    },
-    {
-      value: 'ausencias',
-      label: 'Justificar',
-      description: 'Atestado, férias e folga paga.',
-      icon: FirstAid,
-      step: '3',
     },
     {
       value: 'arquivos',
@@ -1653,51 +1657,23 @@ export default function Timesheet() {
   ] as const;
   const processSections = sections.filter(section => section.step);
   const supportSections = sections.filter(section => !section.step);
-  const correctionModes = [
-    {
-      value: 'queue',
-      label: 'Fila de pendências',
-      description: 'Resolva batidas ímpares e faltantes.',
-      icon: ClipboardEdit,
-    },
-    {
-      value: 'overnight',
-      label: 'Virada à noite',
-      description: 'Una saída gravada na madrugada seguinte.',
-      icon: Moon,
-    },
-    {
-      value: 'calendar',
-      label: 'Lançamento manual',
-      description: 'Edite uma data específica no calendário.',
-      icon: Calendar,
-    },
-    {
-      value: 'exceptions',
-      label: 'Exceções',
-      description: 'Ocorrências fora do padrão.',
-      icon: Shield,
-    },
-  ] as const;
   return (
     <div className="space-y-4 page-enter">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        {/* Refocus 2026-06-01 (folha por hora): Ponto gira só em torno das
-            batidas + feriados. Resolução HE, divergências, atrasos, validação
-            de jornada e escala foram aposentados — o modelo por hora não usa
-            jornada esperada. */}
+        {/* Fluxo enxuto: Importar → Ajustar (grade única). Justificar/Central
+            foram fundidos na janela do dia. */}
         <div className="rounded-xl border border-border/70 bg-card p-2 shadow-sm">
           <div className="flex flex-col gap-2 xl:flex-row xl:items-center">
             <div className="flex min-w-[132px] items-center gap-2 px-2 py-1">
               <AlarmClock className="h-4 w-4 text-primary" />
               <div>
                 <span className="eyebrow block text-[9px]">Fluxo do ponto</span>
-                <span className="block text-[10px] text-muted-foreground">Importar → Corrigir → Justificar</span>
+                <span className="block text-[10px] text-muted-foreground">Importar → Ajustar</span>
               </div>
             </div>
             <TabsList
               indicator="none"
-              className="grid h-auto min-w-0 flex-1 grid-cols-3 gap-1 border-0 bg-muted/35 p-1"
+              className="grid h-auto min-w-0 flex-1 grid-cols-2 gap-1 border-0 bg-muted/35 p-1"
               aria-label="Etapas do controle de ponto"
             >
               {processSections.map(section => (
@@ -1758,45 +1734,7 @@ export default function Timesheet() {
         </div>
 
         <TabsContent value="records"><TimesheetRecordsTab /></TabsContent>
-        <TabsContent value="manual">
-          <Tabs value={correctionView} onValueChange={setCorrectionView} className="space-y-3">
-            <div className="rounded-xl border border-border/70 bg-card p-3 shadow-sm">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div>
-                  <span className="eyebrow text-[9px]">Central de correção</span>
-                  <h2 className="mt-0.5 text-base font-bold">Escolha uma ferramenta por vez</h2>
-                </div>
-                <TabsList
-                  indicator="none"
-                  className="grid h-auto w-full grid-cols-1 gap-1 bg-muted/40 p-1 sm:grid-cols-2 lg:grid-cols-4 lg:w-auto"
-                  aria-label="Ferramentas de correção do ponto"
-                >
-                  {correctionModes.map(mode => (
-                    <TabsTrigger
-                      key={mode.value}
-                      value={mode.value}
-                      className="group min-h-11 justify-start gap-2 rounded-md border-b-0 px-3 py-2 text-left font-sans normal-case tracking-normal data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
-                    >
-                      <mode.icon className="h-4 w-4 shrink-0 text-muted-foreground group-data-[state=active]:text-primary" />
-                      <span className="min-w-0">
-                        <span className="block truncate text-xs font-bold">{mode.label}</span>
-                        <span className="hidden truncate text-[10px] font-normal text-muted-foreground xl:block">{mode.description}</span>
-                      </span>
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-              </div>
-            </div>
-            <TabsContent value="queue"><PendingTimeRecordsPanel /></TabsContent>
-            <TabsContent value="overnight"><OvernightCarryPanel /></TabsContent>
-            <TabsContent value="calendar"><ManualEntryTab /></TabsContent>
-            <TabsContent value="exceptions"><ExceptionsTab /></TabsContent>
-          </Tabs>
-        </TabsContent>
-        {/* Faltas/atrasos justificados (spec req.10): registra a ausência em
-            employee_absences → o motor da folha ABONA (não desconta falta nem atraso
-            do dia). Mesma tela reaproveitada de /rh/ausencias. */}
-        <TabsContent value="ausencias"><EmployeeAbsences embedded /></TabsContent>
+        <TabsContent value="manual"><AdjustmentWorkspace /></TabsContent>
         <TabsContent value="arquivos"><ImportHistoryPanel /></TabsContent>
         <TabsContent value="config" className="space-y-6">
           <HolidaysTab />

@@ -173,7 +173,7 @@ export default function EmployeeAbsencesPage({ embedded = false }: { embedded?: 
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <p className="max-w-3xl text-xs leading-relaxed text-muted-foreground">
             Justifique ausências <strong className="text-foreground">remuneradas</strong> (atestado, férias, folga paga).
-            Virada à noite e batida faltante: use <strong className="text-foreground">Corrigir</strong>.
+            Virada à noite e batida faltante: use <strong className="text-foreground">Ajustar</strong> no fluxo do ponto.
             Descanso após virada sem cadastro de folga já entra como horas e compensa HE na folha.
           </p>
           <Button size="sm" className="h-9 gap-1.5" onClick={() => setCreateOpen(true)}>
