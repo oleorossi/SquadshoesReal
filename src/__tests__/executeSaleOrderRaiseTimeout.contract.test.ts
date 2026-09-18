@@ -24,6 +24,8 @@ describe('execute_sale_order_command eleva timeout (20270101025500)', () => {
     );
     expect(timeoutPos).toBeGreaterThanOrEqual(0);
     expect(lockPos).toBeGreaterThan(timeoutPos);
+    // O set_config sozinho NÃO reagenda o alarme armado no login do
+    // authenticator (8s). O teto efetivo do PostgREST vem da 25600.
   });
 
   it('update do PV faz 1 retry em busy/timeout (igual transição de status)', () => {
