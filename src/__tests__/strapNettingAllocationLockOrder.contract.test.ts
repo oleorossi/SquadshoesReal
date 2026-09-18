@@ -6,6 +6,7 @@ const ROOT = resolve(__dirname, '../..');
 const read = (file: string) => readFileSync(resolve(ROOT, 'supabase/migrations', file), 'utf8');
 
 const ORDER = read('20270101026000_strap_netting_takes_allocation_lock_first.sql');
+const RETIRE = read('20270101026100_admin_retire_sheet_takes_allocation_lock_first.sql');
 
 /** As três — e só elas — pegam `strap-base-netting` no banco (medido 18/09/2026). */
 const NETTING_FUNCTIONS = [
@@ -84,5 +85,58 @@ describe('netting de tira pega a alocação antes do base-netting (2027010102600
     // `tg_release_strap_demands_before_item_delete` -> `reconcile_strap_variant`,
     // já com a linha global de alocação na mão.
     expect(ORDER).toContain('tg_release_strap_demands_before_item_delete');
+  });
+});
+
+describe('aposentar ficha entra na mesma ordem global (20270101026100)', () => {
+  // Auditoria do PRÓPRIO fix 26000: pôr a alocação DENTRO do netting fez toda
+  // rota que chega ao netting passar a querer a alocação. Das 19 rotas, 18 não
+  // tocam lock de PV antes; `admin_retire_technical_sheet` toca
+  // ('sale-order-command:<pv>' + sale_orders FOR UPDATE) e só depois chama
+  // `reconcile_strap_variant` — inversão criada por nós, não regressão de
+  // terceiro.
+  it('corrige a inversão que a 26000 criou nessa rota', () => {
+    expect(RETIRE).toContain('admin_retire_technical_sheet');
+    expect(RETIRE).toContain('PERFORM public.lock_sale_order_purchase_allocation();');
+    // Alocação antes do lock por PV — a ordem dos outros 16 comandos.
+    expect(RETIRE).toContain(
+      "position('lock_sale_order_purchase_allocation' in v_new)\n     >= position('sale-order-command:' in v_new)",
+    );
+  });
+
+  it('a alocação vem DEPOIS do advisory de idempotência do recibo, não antes', () => {
+    // `operational-command-request:<client_request_id>` é por REQUISIÇÃO (duas
+    // requisições distintas nunca disputam a mesma chave) e o bloco seguinte dá
+    // RETURN quando o recibo já existe. Pegar a linha global antes disso faria
+    // todo replay idempotente serializar na alocação sem precisar.
+    expect(RETIRE).toContain('operational-command-request');
+    expect(RETIRE).toContain('replay idempotente');
+    // O ancora é o comentário do advisory de agenda, que vem depois do recibo.
+    expect(RETIRE).toContain("v_anchor constant text := '  -- Serializa com o motor de antecipacao.'");
+  });
+
+  it('trava o invariante para a base INTEIRA, não só para esta função', () => {
+    // Sem isto, o próximo caller novo de netting que segure lock de PV reabre o
+    // ciclo em silêncio — foi exatamente assim que a 26000 criou este caso.
+    const verify = RETIRE.slice(RETIRE.indexOf('DO $verify$'));
+    expect(verify).toContain('reconcile_strap_variant');
+    expect(verify).toContain('lock_strap_physical_operation_scope');
+    expect(verify).toContain('neutralize_strap_source_override_promises');
+    expect(verify).toContain('rotas de netting segurando lock de PV antes da alocacao');
+  });
+
+  it('a reescrita é provadamente mínima e idempotente', () => {
+    expect(RETIRE).toContain("IF replace(v_new, v_insert, '') <> v_old THEN");
+    expect(RETIRE).toContain('IF v_hits <> 1 THEN');
+    expect(RETIRE).toContain('ja esta na ordem canonica');
+  });
+
+  it('registra que os dois advisories globais que sobram não formam par invertido', () => {
+    // Medido: 'recompute_production_schedule' e 'outsource_service_order_generation'
+    // têm ZERO funções que os peguem depois da alocação, então podem ficar antes
+    // dela nesta rota sem criar ciclo. Sem essa medição, mover a alocação para o
+    // topo absoluto pareceria obrigatório.
+    expect(RETIRE).toContain('recompute_production_schedule');
+    expect(RETIRE).toContain('outsource_service_order_generation');
   });
 });
