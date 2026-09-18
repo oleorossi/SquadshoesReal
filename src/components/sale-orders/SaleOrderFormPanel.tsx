@@ -222,8 +222,8 @@ export function removeItemsAtIndices(
   const alvo = new Set(indices);
   const remaining: SaleOrderItemFormData[] = [];
   const removed: RemovedItemSnapshot[] = [];
-  // Soft-excluded também sai: a 2ª remoção no save faz hard-delete seguro
-  // (mig 23300). Sem isso a linha morta nunca deixa o editor.
+  // Soft-excluded legado também sai: o save faz hard-delete seguro
+  // (mig 23300/26300). Sem isso a linha morta nunca deixa o editor.
   items.forEach((item, i) => {
     if (alvo.has(i)) removed.push({ item, index: i });
     else remaining.push(item);
@@ -1166,7 +1166,7 @@ export default function SaleOrderFormPanel({
       // de menos" documentada no <form> vale pra sinal AMBÍGUO (Radix Select não
       // emite evento); clique na lixeira é intenção inequívoca, sem falso-positivo.
       onUserEdit?.();
-      // Soft-excluded: save dispara hard-delete seguro no servidor (mig 23300).
+      // Soft-excluded legado: save dispara hard-delete seguro no servidor (mig 26300).
       if (isProductionExcludedSaleOrderItem(target)) {
         toast.info('Linha histórica removida do editor — salve o pedido para apagar de vez.');
       }

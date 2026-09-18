@@ -48,9 +48,13 @@ function sqlFunction(sql: string, name: string, schema = 'public'): string {
   const start = sql.lastIndexOf(marker);
   expect(start, `${schema}.${name} deve existir`).toBeGreaterThanOrEqual(0);
   const tail = sql.slice(start);
-  const end = Math.max(tail.indexOf('\n$$;'), tail.indexOf('\n$function$;'));
+  // Preferir $function$ — um DO $$ posterior não pode entrar no extrato
+  // (Math.max com \n$$; envenenava not.toContain com o texto do guard).
+  const endFn = tail.indexOf('\n$function$;');
+  const endDollar = tail.indexOf('\n$$;');
+  const end = endFn >= 0 ? endFn : endDollar;
   expect(end, `${schema}.${name} deve terminar`).toBeGreaterThanOrEqual(0);
-  const closer = tail.indexOf('\n$$;') === end ? 4 : 12;
+  const closer = endFn >= 0 ? 12 : 4;
   return tail.slice(0, end + closer);
 }
 
@@ -70,10 +74,10 @@ describe('edição de PV — preserve itens com demanda de tira', () => {
     );
   });
 
-  it('finalize soft-exclude itens com strap_demands e cancela saldo reversível', () => {
+  it('finalize hard-delete na 1ª remoção; soft-preserve só com compra avançada', () => {
     const finalizeMig = latestFinalizeMigration();
-    // 22900 detach; 23000 órfão OC; 23300 hard-delete soft-excluded; 23500 command GUC.
-    expect(finalizeMig.file >= '20270101023500_').toBe(true);
+    // 22900 detach; 23000 órfão OC; 23300/23500 hard-delete; 26300 1ª remoção direta.
+    expect(finalizeMig.file >= '20270101026300_').toBe(true);
     const finalize = sqlFunction(
       finalizeMig.sql,
       'finalize_removed_sale_order_items',
@@ -87,12 +91,16 @@ describe('edição de PV — preserve itens com demanda de tira', () => {
     expect(finalize).toContain('app.sale_order_item_production_exclusion_internal');
     expect(finalize).toContain('app.sale_order_command_internal');
     expect(finalize).toContain('pv_edit_hard_delete_command_boundary_20270101023500');
+    expect(finalize).toContain('pv_edit_hard_delete_first_removal_20270101026300');
     expect(finalize).toContain('cancelled_purchase_contributions');
     expect(finalize).toContain("status IN ('proposed', 'awaiting_approval', 'suspended')");
     expect(finalize).toContain('purchase_order_item_id = NULL');
     expect(finalize).toContain('superseded_purchase_order_item_id');
     expect(finalize).toContain('pv_edit_hard_delete_soft_excluded_20270101023300');
-    expect(finalize).toContain('v_already_excluded');
+    expect(finalize).toContain('compra de tira avancada preservada');
+    expect(finalize).toContain("c.status IN ('approved', 'sent', 'partial', 'received')");
+    // Motivo antigo = soft-preserve por qualquer demanda. Não pode voltar.
+    expect(finalize).not.toContain('demanda de tira historica preservada');
     expect(finalize).not.toMatch(
       /DELETE FROM public\.sale_order_items i\s+WHERE i\.id = ANY\(v_delete\)\s+AND i\.sale_order_id = p_order_id\s+AND i\.production_excluded_at IS NULL/,
     );

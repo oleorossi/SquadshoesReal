@@ -1812,8 +1812,8 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
               <div className="min-w-0">
                 <p className="text-sm font-semibold">Item preservado e bloqueado para edição</p>
                 <p className="mt-0.5 text-xs leading-relaxed">
-                  Esta linha foi retirada da carga de produção e permanece no Pedido de Venda apenas para manter o histórico comercial.
-                  Para apagá-la de vez, use o botão abaixo e salve o pedido (só funciona se não houver compromisso externo de tira/compra).
+                  Esta linha ficou no Pedido de Venda porque há compra de tira avançada (ou foi retirada antes da regra atual).
+                  Para apagá-la de vez, use o botão abaixo e salve o pedido — só funciona se não houver compromisso externo de tira/compra.
                 </p>
                 <p className="mt-1 break-words text-xs font-medium">
                   Motivo: {item.production_exclusion_reason || 'Exclusão administrativa registrada sem motivo informado.'}
