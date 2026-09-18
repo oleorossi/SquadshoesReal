@@ -135,7 +135,7 @@ export default function PendingTimeRecordsPanel() {
           </div>
           <div className="flex flex-wrap items-center gap-2 shrink-0">
             <Button asChild size="sm" variant="secondary" className="gap-1.5">
-              <Link to="/rh/pendencias-ponto">
+              <Link to="/rh?tab=ponto&subtab=manual">
                 Fila completa <ArrowSquareOut className="h-4 w-4" />
               </Link>
             </Button>

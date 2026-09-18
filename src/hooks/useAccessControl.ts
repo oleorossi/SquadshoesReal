@@ -128,6 +128,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/rh/pendencias-ponto': 'rh',
   '/rh/fechamento-semanal': 'rh',
   '/rh/ausencias': 'rh',
+  '/rh?tab=ponto&subtab=manual': 'rh',
   '/producao/visao-agregada': 'producao',
   '/inventory': 'estoque',
   '/production': 'producao',

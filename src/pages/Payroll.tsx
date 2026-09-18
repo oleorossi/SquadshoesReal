@@ -1256,7 +1256,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
             </span>
           </div>
           <Button asChild variant="destructive" size="sm" className="shrink-0 gap-1.5">
-            <Link to="/rh/pendencias-ponto">
+            <Link to="/rh?tab=ponto&subtab=manual">
               Resolver batidas <ArrowSquareOut className="h-4 w-4" />
             </Link>
           </Button>
@@ -1429,7 +1429,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
                     {Number(result?.pending_days || 0) > 0
                       ? (
                         <Link
-                          to="/rh/pendencias-ponto"
+                          to="/rh?tab=ponto&subtab=manual"
                           className="font-semibold text-amber-700 dark:text-amber-400 underline-offset-2 hover:underline"
                           title="Abrir fila de batidas ímpares"
                         >

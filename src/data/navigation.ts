@@ -129,7 +129,8 @@ export const navigationCatalog: NavigationResource[] = [
   { path: '/terceirizados', label: 'Terceirizados', group: 'RH', icon: Truck, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/TerceirizadosHub') },
   // Fila de batidas ímpares: fica na sidebar porque fecha a Folha. Sem resolver,
   // o dia não desconta nem paga — risco de pagar quem ainda deve horas.
-  { path: '/rh/pendencias-ponto', label: 'Pendências de Ponto', group: 'RH', icon: Clock, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/TimePendings') },
+  // Destino final (não o redirect legado /rh/pendencias-ponto).
+  { path: '/rh?tab=ponto&subtab=manual', label: 'Pendências de Ponto', group: 'RH', icon: Clock, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/Timesheet') },
 
   // Sistema (admin)
   { path: '/admin/aprovacao-ordens-compra', label: 'Aprovação de Ordens de Compra', group: 'Sistema', icon: ShoppingBag, surfaces: ['sidebar', 'command'], preload: () => import('@/pages/PurchaseOrderApprovals') },
@@ -212,7 +213,7 @@ const menuGroupsDeclarados: NavigationGroup[] = [
   },
   {
     label: 'RH', icon: Users,
-    items: [resource('/rh'), resource('/rh/pendencias-ponto'), resource('/fichas-montadores'), resource('/terceirizados')],
+    items: [resource('/rh'), resource('/rh?tab=ponto&subtab=manual'), resource('/fichas-montadores'), resource('/terceirizados')],
   },
 ];
 
