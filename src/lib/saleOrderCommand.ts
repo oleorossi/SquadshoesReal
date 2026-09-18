@@ -323,6 +323,39 @@ export function isPostgresBusyError(error: unknown): boolean {
   return isPostgresTimeoutError(error) || isPostgresDeadlockError(error);
 }
 
+// O worker de tira (`drain_strap_demand_jobs`, cron de minuto) segura as napas do
+// componente em `products FOR UPDATE` durante a passada inteira — medido em
+// `cron.job_run_details` job 66: 5s, 5,8s, 6,4s, 9,3s, 11,4s, 12s, 17,7s, 23,1s.
+// O retry anterior era 1 tentativa depois de 1500ms fixos, ou seja, caía DENTRO
+// da mesma passada e falhava de novo; é o par de recusas coladas que o dono viu
+// no PV-00168 (12:48:35,99 e 12:48:46,62 UTC). A espera acumulada aqui precisa
+// atravessar a passada mais longa, não a média.
+const SALE_ORDER_BUSY_RETRY_DELAYS_MS = [2_000, 7_000, 16_000] as const;
+
+/**
+ * Executa um comando de PV tolerando contenção transitória de estoque/compras.
+ *
+ * Só repete em erro de banco ocupado (timeout de lock/statement ou deadlock), e
+ * o chamador precisa reusar a MESMA chave idempotente entre as tentativas — o
+ * recibo em `sale_order_command_receipts` é o que impede efeito dobrado.
+ */
+export async function runSaleOrderCommandWithBusyRetry<T>(
+  run: () => Promise<T>,
+): Promise<T> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await run();
+    } catch (error) {
+      const delay = SALE_ORDER_BUSY_RETRY_DELAYS_MS[attempt];
+      if (delay === undefined || !isPostgresBusyError(error)) throw error;
+      // Jitter para duas abas não voltarem em lockstep na mesma passada do worker.
+      await new Promise((resolve) => {
+        setTimeout(resolve, delay + Math.floor(Math.random() * 750));
+      });
+    }
+  }
+}
+
 const SALE_ORDER_BUSY_RETRY_MESSAGE =
   'O banco estava ocupado com estoque ou compras de outro pedido. Tente de novo em alguns segundos.';
 

@@ -18,10 +18,10 @@ import {
   formatSaleOrderStatusError,
   formatSaleOrderUpdateSuccessMessage,
   formatUnknownSaleOrderUpdateError,
-  isPostgresBusyError,
   isStaleSaleOrderVersionError,
   preflightSaleOrderCommand,
   readFinalizeRemovedSummary,
+  runSaleOrderCommandWithBusyRetry,
   SaleOrderReadinessBlockedError,
   type SaleOrderCommandAction,
 } from '@/lib/saleOrderCommand';
@@ -1023,15 +1023,9 @@ export function useUpdateSaleOrderStatus(options?: {
         overrideId: override_id,
       });
 
-      let receipt: Awaited<ReturnType<typeof runExecute>>;
-      try {
-        receipt = await runExecute();
-      } catch (firstErr) {
-        // Deadlock/timeout: comando é atômico — 1 retry com a mesma chave idempotente.
-        if (!isPostgresBusyError(firstErr)) throw firstErr;
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-        receipt = await runExecute();
-      }
+      // Deadlock/timeout: comando é atômico e a chave idempotente é a mesma em
+      // toda tentativa, então repetir é seguro.
+      const receipt = await runSaleOrderCommandWithBusyRetry(runExecute);
 
       const engineResult = saleOrderCommand === 'confirm' || saleOrderCommand === 'promote'
         ? receipt.result as unknown as PromotionEngineResult
@@ -1258,16 +1252,9 @@ export function useUpdateSaleOrder() {
         idempotencyKey,
         payload: commandPayload,
       });
-      let receipt: Awaited<ReturnType<typeof runExecute>>;
-      try {
-        receipt = await runExecute();
-      } catch (firstErr) {
-        // Deadlock/timeout: comando é atômico — 1 retry com a mesma chave
-        // idempotente (mesmo padrão de useUpdateSaleOrderStatus).
-        if (!isPostgresBusyError(firstErr)) throw firstErr;
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-        receipt = await runExecute();
-      }
+      // Mesmo padrão de useUpdateSaleOrderStatus: chave idempotente estável +
+      // espera que atravessa a passada do worker de tira.
+      const receipt = await runSaleOrderCommandWithBusyRetry(runExecute);
       const rpcOut = receipt.result;
       const atomicPromotionResult = rpcOut.promotion_result as PromotionEngineResult | null;
 

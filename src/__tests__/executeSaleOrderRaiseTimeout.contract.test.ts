@@ -28,12 +28,14 @@ describe('execute_sale_order_command eleva timeout (20270101025500)', () => {
     // authenticator (8s). O teto efetivo do PostgREST vem da 25600.
   });
 
-  it('update do PV faz 1 retry em busy/timeout (igual transição de status)', () => {
+  it('update do PV repete em busy/timeout (igual transição de status)', () => {
     const updateStart = HOOKS.indexOf('export function useUpdateSaleOrder()');
     const nextExport = HOOKS.indexOf('\nexport ', updateStart + 1);
     expect(updateStart).toBeGreaterThanOrEqual(0);
     const updateBody = HOOKS.slice(updateStart, nextExport > 0 ? nextExport : undefined);
-    expect(updateBody).toContain('isPostgresBusyError(firstErr)');
+    // A espera passou a ser escalonada na 25900: o retry único de 1500ms caía
+    // dentro da mesma passada do worker de tira (5–23s) e falhava de novo.
+    expect(updateBody).toContain('runSaleOrderCommandWithBusyRetry(runExecute)');
     expect(updateBody).toContain('const idempotencyKey = `pv:${id}:update:');
   });
 
