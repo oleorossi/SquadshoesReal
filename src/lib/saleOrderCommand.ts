@@ -327,27 +327,46 @@ export function isPostgresBusyError(error: unknown): boolean {
 // componente em `products FOR UPDATE` durante a passada inteira — medido em
 // `cron.job_run_details` job 66: 5s, 5,8s, 6,4s, 9,3s, 11,4s, 12s, 17,7s, 23,1s.
 // O retry anterior era 1 tentativa depois de 1500ms fixos, ou seja, caía DENTRO
-// da mesma passada e falhava de novo; é o par de recusas coladas que o dono viu
-// no PV-00168 (12:48:35,99 e 12:48:46,62 UTC). A espera acumulada aqui precisa
-// atravessar a passada mais longa, não a média.
+// da mesma passada e falhava de novo. A espera acumulada precisa atravessar a
+// passada mais longa, não a média.
 const SALE_ORDER_BUSY_RETRY_DELAYS_MS = [2_000, 7_000, 16_000] as const;
+
+/**
+ * Falha que o servidor GRAVOU em `sale_order_command_receipts` (status `failed`).
+ *
+ * É a distinção que decide se a repetição pode reusar a chave idempotente. O
+ * recibo terminal prova que a subtransação do comando rolou atrás inteira — nada
+ * foi aplicado —, e `execute_sale_order_command` devolve esse recibo VERBATIM em
+ * qualquer replay da mesma chave. Ou seja: repetir com a mesma chave depois de um
+ * recibo `failed` não tenta de novo, só reapresenta a falha.
+ */
+function isRecordedSaleOrderCommandFailure(error: unknown): boolean {
+  return error instanceof SaleOrderCommandExecutionError
+    && typeof error.receipt?.error?.code === 'string';
+}
 
 /**
  * Executa um comando de PV tolerando contenção transitória de estoque/compras.
  *
- * Só repete em erro de banco ocupado (timeout de lock/statement ou deadlock), e
- * o chamador precisa reusar a MESMA chave idempotente entre as tentativas — o
- * recibo em `sale_order_command_receipts` é o que impede efeito dobrado.
+ * Repete só em banco ocupado (timeout de lock/statement ou deadlock). A chave
+ * idempotente é renovada apenas quando existe recibo `failed` — sem recibo o
+ * comando pode ter commitado com a resposta perdida no caminho, e aí reusar a
+ * mesma chave é justamente o que evita aplicar o pedido duas vezes.
  */
 export async function runSaleOrderCommandWithBusyRetry<T>(
-  run: () => Promise<T>,
+  baseIdempotencyKey: string,
+  run: (idempotencyKey: string) => Promise<T>,
 ): Promise<T> {
+  let idempotencyKey = baseIdempotencyKey;
   for (let attempt = 0; ; attempt += 1) {
     try {
-      return await run();
+      return await run(idempotencyKey);
     } catch (error) {
       const delay = SALE_ORDER_BUSY_RETRY_DELAYS_MS[attempt];
       if (delay === undefined || !isPostgresBusyError(error)) throw error;
+      if (isRecordedSaleOrderCommandFailure(error)) {
+        idempotencyKey = `${baseIdempotencyKey}:retry${attempt + 1}`;
+      }
       // Jitter para duas abas não voltarem em lockstep na mesma passada do worker.
       await new Promise((resolve) => {
         setTimeout(resolve, delay + Math.floor(Math.random() * 750));

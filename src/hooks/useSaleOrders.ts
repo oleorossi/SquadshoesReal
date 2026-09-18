@@ -1014,18 +1014,16 @@ export function useUpdateSaleOrderStatus(options?: {
         });
       }
 
-      const runExecute = () => executeSaleOrderCommand<Record<string, unknown>>({
+      const runExecute = (key: string) => executeSaleOrderCommand<Record<string, unknown>>({
         saleOrderId: id,
         command: saleOrderCommand,
         expectedOrderVersion,
-        idempotencyKey,
+        idempotencyKey: key,
         payload: commandPayload,
         overrideId: override_id,
       });
 
-      // Deadlock/timeout: comando é atômico e a chave idempotente é a mesma em
-      // toda tentativa, então repetir é seguro.
-      const receipt = await runSaleOrderCommandWithBusyRetry(runExecute);
+      const receipt = await runSaleOrderCommandWithBusyRetry(idempotencyKey, runExecute);
 
       const engineResult = saleOrderCommand === 'confirm' || saleOrderCommand === 'promote'
         ? receipt.result as unknown as PromotionEngineResult
@@ -1245,16 +1243,14 @@ export function useUpdateSaleOrder() {
       // de OPs e rematerialização do PV ativo pertencem ao mesmo commit. O
       // navegador não chama mais nenhum writer interno em sequência.
       const idempotencyKey = `pv:${id}:update:${idempotency_key.trim()}`;
-      const runExecute = () => executeSaleOrderCommand<Record<string, unknown>>({
+      const runExecute = (key: string) => executeSaleOrderCommand<Record<string, unknown>>({
         saleOrderId: id,
         command: 'update',
         expectedOrderVersion,
-        idempotencyKey,
+        idempotencyKey: key,
         payload: commandPayload,
       });
-      // Mesmo padrão de useUpdateSaleOrderStatus: chave idempotente estável +
-      // espera que atravessa a passada do worker de tira.
-      const receipt = await runSaleOrderCommandWithBusyRetry(runExecute);
+      const receipt = await runSaleOrderCommandWithBusyRetry(idempotencyKey, runExecute);
       const rpcOut = receipt.result;
       const atomicPromotionResult = rpcOut.promotion_result as PromotionEngineResult | null;
 

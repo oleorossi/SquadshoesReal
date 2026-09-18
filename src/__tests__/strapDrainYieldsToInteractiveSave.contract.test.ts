@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   isPostgresBusyError,
   runSaleOrderCommandWithBusyRetry,
+  SaleOrderCommandExecutionError,
 } from '@/lib/saleOrderCommand';
 
 const ROOT = resolve(__dirname, '../..');
@@ -61,72 +62,102 @@ describe('worker de tira cede a vez ao save interativo (20270101025900)', () => 
   });
 });
 
+/** Passa o setTimeout adiante na hora, guardando as esperas pedidas. */
+function captureWaits(waits: number[]) {
+  return vi
+    .spyOn(globalThis, 'setTimeout')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .mockImplementation(((fn: () => void, ms?: number) => {
+      waits.push(ms ?? 0);
+      fn();
+      return 0 as unknown as ReturnType<typeof setTimeout>;
+    }) as any);
+}
+
+/** Falha COM recibo terminal — é o que o servidor grava num deadlock de tira. */
+function recordedDeadlock() {
+  return new SaleOrderCommandExecutionError({
+    ok: false,
+    command: 'update',
+    sale_order_id: 'pv',
+    result: {},
+    error: { code: '40P01', message: 'Modelo DS20 / OFF WHITE, TIRA 1: deadlock detected' },
+  } as never);
+}
+
 describe('retry do save atravessa a passada do worker', () => {
   it('espera acumulada passa da passada mais longa já medida (23,1s)', async () => {
-    vi.useFakeTimers();
-    try {
-      const busy = Object.assign(new Error('canceling statement due to lock timeout'), {
-        code: '55P03',
-      });
-      expect(isPostgresBusyError(busy)).toBe(true);
+    const busy = Object.assign(new Error('canceling statement due to lock timeout'), {
+      code: '55P03',
+    });
+    expect(isPostgresBusyError(busy)).toBe(true);
 
-      const waits: number[] = [];
-      const spy = vi
-        .spyOn(globalThis, 'setTimeout')
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .mockImplementation(((fn: () => void, ms?: number) => {
-          waits.push(ms ?? 0);
-          fn();
-          return 0 as unknown as ReturnType<typeof setTimeout>;
-        }) as any);
+    const waits: number[] = [];
+    const spy = captureWaits(waits);
+    const run = vi.fn().mockRejectedValue(busy);
+    await expect(runSaleOrderCommandWithBusyRetry('pv:1:update:k', run)).rejects.toBe(busy);
+    spy.mockRestore();
 
-      const run = vi.fn().mockRejectedValue(busy);
-      await expect(runSaleOrderCommandWithBusyRetry(run)).rejects.toBe(busy);
+    // 1 tentativa + 3 repetições: o retry fixo de 1500ms anterior caía dentro da
+    // MESMA passada do worker e falhava de novo (PV-00168, 18/09/2026).
+    expect(run).toHaveBeenCalledTimes(4);
+    expect(waits.reduce((sum, ms) => sum + ms, 0)).toBeGreaterThan(23_100);
+  });
 
-      spy.mockRestore();
-      // 1 tentativa + 3 repetições: o retry fixo de 1500ms anterior caía dentro
-      // da MESMA passada do worker e falhava de novo (PV-00168, 18/09/2026).
-      expect(run).toHaveBeenCalledTimes(4);
-      expect(waits).toHaveLength(3);
-      const floor = waits.reduce((sum, ms) => sum + ms, 0);
-      expect(floor).toBeGreaterThan(23_100);
-    } finally {
-      vi.useRealTimers();
-    }
+  it('recibo `failed` força chave NOVA — replay da mesma chave devolveria a falha', async () => {
+    // Medido no PV-00168: o update deu 40P01 às 13:05:07, gravou recibo `failed`,
+    // e a repetição às 13:05:13 voltou 200 com `idempotent_replay: true` — a
+    // MESMA falha reapresentada. Com a chave repetida o retry é decorativo.
+    const waits: number[] = [];
+    const spy = captureWaits(waits);
+    const keys: string[] = [];
+    const run = vi.fn(async (key: string) => {
+      keys.push(key);
+      if (keys.length < 3) throw recordedDeadlock();
+      return { ok: true };
+    });
+
+    await expect(
+      runSaleOrderCommandWithBusyRetry('pv:1:update:k', run),
+    ).resolves.toEqual({ ok: true });
+    spy.mockRestore();
+
+    expect(keys).toEqual(['pv:1:update:k', 'pv:1:update:k:retry1', 'pv:1:update:k:retry2']);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it('contenção SEM recibo mantém a chave — o comando pode ter commitado', async () => {
+    // Sem recibo não há prova de que nada foi aplicado: a resposta pode ter se
+    // perdido depois do commit. Chave nova aqui gravaria o pedido duas vezes.
+    const waits: number[] = [];
+    const spy = captureWaits(waits);
+    const keys: string[] = [];
+    const run = vi.fn(async (key: string) => {
+      keys.push(key);
+      if (keys.length < 2) throw new Error('canceling statement due to statement timeout');
+      return { ok: true };
+    });
+
+    await expect(
+      runSaleOrderCommandWithBusyRetry('pv:1:update:k', run),
+    ).resolves.toEqual({ ok: true });
+    spy.mockRestore();
+
+    expect(keys).toEqual(['pv:1:update:k', 'pv:1:update:k']);
   });
 
   it('erro que não é contenção sobe na primeira tentativa', async () => {
     const readiness = new Error('Readiness gate recusou o comando');
     const run = vi.fn().mockRejectedValue(readiness);
-    await expect(runSaleOrderCommandWithBusyRetry(run)).rejects.toBe(readiness);
+    await expect(
+      runSaleOrderCommandWithBusyRetry('pv:1:update:k', run),
+    ).rejects.toBe(readiness);
     expect(run).toHaveBeenCalledTimes(1);
-  });
-
-  it('sucesso na repetição devolve o recibo sem propagar o erro', async () => {
-    vi.useFakeTimers();
-    try {
-      const spy = vi
-        .spyOn(globalThis, 'setTimeout')
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .mockImplementation(((fn: () => void) => {
-          fn();
-          return 0 as unknown as ReturnType<typeof setTimeout>;
-        }) as any);
-      const run = vi
-        .fn()
-        .mockRejectedValueOnce(new Error('deadlock detected'))
-        .mockResolvedValue({ ok: true });
-      await expect(runSaleOrderCommandWithBusyRetry(run)).resolves.toEqual({ ok: true });
-      expect(run).toHaveBeenCalledTimes(2);
-      spy.mockRestore();
-    } finally {
-      vi.useRealTimers();
-    }
   });
 
   it('os dois comandos de PV usam o helper — nada de retry fixo de 1500ms', () => {
     expect(HOOK).not.toMatch(/setTimeout\(resolve, 1500\)/);
-    const uses = HOOK.match(/runSaleOrderCommandWithBusyRetry\(runExecute\)/g) ?? [];
+    const uses = HOOK.match(/runSaleOrderCommandWithBusyRetry\(idempotencyKey, runExecute\)/g) ?? [];
     expect(uses).toHaveLength(2);
   });
 });

@@ -35,7 +35,7 @@ describe('execute_sale_order_command eleva timeout (20270101025500)', () => {
     const updateBody = HOOKS.slice(updateStart, nextExport > 0 ? nextExport : undefined);
     // A espera passou a ser escalonada na 25900: o retry único de 1500ms caía
     // dentro da mesma passada do worker de tira (5–23s) e falhava de novo.
-    expect(updateBody).toContain('runSaleOrderCommandWithBusyRetry(runExecute)');
+    expect(updateBody).toContain('runSaleOrderCommandWithBusyRetry(idempotencyKey, runExecute)');
     expect(updateBody).toContain('const idempotencyKey = `pv:${id}:update:');
   });
 
