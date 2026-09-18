@@ -538,8 +538,11 @@ function PendingDayRow({ p, suggestion, onSaved, autoFocus = false }: {
             }
           }}
           className="h-8 w-24 text-xs"
-          placeholder="HH:MM"
-          title={ISSUE_HINT[p.issue_type]}
+          placeholder={suggestion ? 'Horário faltante' : 'HH:MM'}
+          title={suggestion
+            ? 'Horário faltante (em geral a saída da escala). Não precisa marcar entrada/saída — o sistema ordena por hora.'
+            : ISSUE_HINT[p.issue_type]}
+          aria-label={suggestion ? 'Horário faltante' : undefined}
         />
         <Input
           value={reason}

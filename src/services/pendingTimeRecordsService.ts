@@ -23,7 +23,7 @@ export type IssueType =
   | 'dia_incompleto_suspeito';
 
 export const ISSUE_LABEL: Record<IssueType, string> = {
-  somente_uma_batida:        'Só 1 batida (entrada ou saída)',
+  somente_uma_batida:        'Só 1 batida — falta o outro horário',
   falta_saida_apos_almoco:   'Falta saída final',
   batida_extra:              'Batida extra (5 marcações)',
   punches_impar:             'Quantidade ímpar de batidas',
@@ -31,7 +31,7 @@ export const ISSUE_LABEL: Record<IssueType, string> = {
 };
 
 export const ISSUE_HINT: Record<IssueType, string> = {
-  somente_uma_batida:        'Funcionário só bateu 1 vez. Informe entrada OU saída faltante.',
+  somente_uma_batida:        'Preencha o horário que falta (em geral a saída da escala). Não precisa marcar se é entrada ou saída: o sistema ordena por hora.',
   falta_saida_apos_almoco:   'Tem entrada, saída de almoço e volta. Falta a saída final.',
   batida_extra:              'Há uma batida a mais — provável erro de marcação. Reveja com cuidado.',
   punches_impar:             'Quantidade ímpar de batidas — falta uma marcação.',
