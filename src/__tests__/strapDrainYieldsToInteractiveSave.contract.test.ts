@@ -66,12 +66,11 @@ describe('worker de tira cede a vez ao save interativo (20270101025900)', () => 
 function captureWaits(waits: number[]) {
   return vi
     .spyOn(globalThis, 'setTimeout')
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .mockImplementation(((fn: () => void, ms?: number) => {
       waits.push(ms ?? 0);
       fn();
       return 0 as unknown as ReturnType<typeof setTimeout>;
-    }) as any);
+    }) as never);
 }
 
 /** Falha COM recibo terminal — é o que o servidor grava num deadlock de tira. */
