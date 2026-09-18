@@ -4,15 +4,15 @@ import { describe, expect, it } from 'vitest';
 
 const ROOT = resolve(__dirname, '../..');
 const SQL = readFileSync(
-  resolve(ROOT, 'supabase/migrations/20270101025400_execute_sale_order_raise_timeout.sql'),
+  resolve(ROOT, 'supabase/migrations/20270101025500_execute_sale_order_raise_timeout.sql'),
   'utf8',
 );
 const HOOKS = readFileSync(resolve(ROOT, 'src/hooks/useSaleOrders.ts'), 'utf8');
 const COMMAND = readFileSync(resolve(ROOT, 'src/lib/saleOrderCommand.ts'), 'utf8');
 
-describe('execute_sale_order_command eleva timeout (20270101025400)', () => {
+describe('execute_sale_order_command eleva timeout (20270101025500)', () => {
   it('patch injeta statement_timeout 90s e lock_timeout 30s antes do lock global', () => {
-    expect(SQL).toContain('execute_sale_order_raise_timeout_20270101025400');
+    expect(SQL).toContain('execute_sale_order_raise_timeout_20270101025500');
     expect(SQL).toContain("set_config('statement_timeout', '90s', true)");
     expect(SQL).toContain("set_config('lock_timeout', '30s', true)");
     expect(SQL).toContain('PERFORM public.lock_sale_order_purchase_allocation()');

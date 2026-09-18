@@ -19,7 +19,7 @@
 -- statement_timeout=90s e lock_timeout=30s — mesmo padrão da 24700
 -- (purchase shortages). Só vale nesta transação.
 --
--- Marcador: execute_sale_order_raise_timeout_20270101025400
+-- Marcador: execute_sale_order_raise_timeout_20270101025500
 -- =============================================================================
 
 DO $patch$
@@ -32,8 +32,16 @@ BEGIN
     'public.execute_sale_order_command(uuid,text,bigint,text,jsonb,uuid)'::regprocedure
   );
 
-  IF position($$set_config('statement_timeout', '90s', true)$$ IN v_def) > 0
-     AND position('execute_sale_order_raise_timeout_20270101025400' IN v_def) > 0 THEN
+  IF position($$set_config('statement_timeout', '90s', true)$$ IN v_def) > 0 THEN
+    -- Já aplicado (possivelmente sob carimbo MCP antigo). Só alinha o marcador.
+    IF position('execute_sale_order_raise_timeout_20270101025500' IN v_def) = 0 THEN
+      v_def := replace(
+        v_def,
+        'execute_sale_order_raise_timeout_20270101025400',
+        'execute_sale_order_raise_timeout_20270101025500'
+      );
+      EXECUTE v_def;
+    END IF;
     RAISE NOTICE 'execute_sale_order_command já eleva statement_timeout';
     RETURN;
   END IF;
@@ -42,7 +50,7 @@ BEGIN
   PERFORM public.lock_sale_order_purchase_allocation();$old$;
 
   v_new := $new$BEGIN
-  -- execute_sale_order_raise_timeout_20270101025400
+  -- execute_sale_order_raise_timeout_20270101025500
   -- authenticated herda statement_timeout=8s / lock_timeout=8s do role;
   -- rematerializar PV Aprovado com dezenas de reservas (ex.: PV-00168) estoura
   -- esses 8s. Eleva só nesta transação — mesmo padrão da 24700.
@@ -71,7 +79,7 @@ DECLARE
     'public.execute_sale_order_command(uuid,text,bigint,text,jsonb,uuid)'::regprocedure
   );
 BEGIN
-  IF position('execute_sale_order_raise_timeout_20270101025400' IN v_def) = 0 THEN
+  IF position('execute_sale_order_raise_timeout_20270101025500' IN v_def) = 0 THEN
     RAISE EXCEPTION 'marcador execute_sale_order_raise_timeout ausente';
   END IF;
   IF position($$set_config('statement_timeout', '90s', true)$$ IN v_def) = 0 THEN
