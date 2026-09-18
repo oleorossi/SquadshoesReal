@@ -420,9 +420,10 @@ const PHYSICAL_FACT_BLOCKER_CODES = new Set([
   'physical_fact',
   'physical_finalized_op',
   'physical_nfe_active',
+  'invalid_ledger',
 ]);
 
-/** Blockers de fato físico / OP finalizada no preflight de cancel. */
+/** Blockers de fato físico / OP finalizada / ledger órfão no preflight de cancel. */
 export function isPhysicalFactBlocker(issue: SaleOrderCommandIssue): boolean {
   if (PHYSICAL_FACT_BLOCKER_CODES.has(issue.code)) return true;
   const kinds = issue.details?.fact_kinds;
@@ -433,10 +434,16 @@ export function isPhysicalFactBlocker(issue: SaleOrderCommandIssue): boolean {
       || kind === 'reservation'
       || kind === 'consumption'
       || kind === 'finalized'
+      || kind === 'over_restored'
     ));
   }
   const message = issue.message.toLowerCase();
-  return message.includes('fato físico') || message.includes('finalizada/concluída');
+  return (
+    message.includes('fato físico')
+    || message.includes('finalizada/concluída')
+    || message.includes('crédito líquido')
+    || message.includes('ledger')
+  );
 }
 
 export function listPhysicalFactBlockers(
