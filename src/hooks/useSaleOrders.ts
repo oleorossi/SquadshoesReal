@@ -1250,13 +1250,24 @@ export function useUpdateSaleOrder() {
       // Cabeçalho, itens, desmontagem reversível, cancelamento administrativo
       // de OPs e rematerialização do PV ativo pertencem ao mesmo commit. O
       // navegador não chama mais nenhum writer interno em sequência.
-      const receipt = await executeSaleOrderCommand<Record<string, unknown>>({
+      const idempotencyKey = `pv:${id}:update:${idempotency_key.trim()}`;
+      const runExecute = () => executeSaleOrderCommand<Record<string, unknown>>({
         saleOrderId: id,
         command: 'update',
         expectedOrderVersion,
-        idempotencyKey: `pv:${id}:update:${idempotency_key.trim()}`,
+        idempotencyKey,
         payload: commandPayload,
       });
+      let receipt: Awaited<ReturnType<typeof runExecute>>;
+      try {
+        receipt = await runExecute();
+      } catch (firstErr) {
+        // Deadlock/timeout: comando é atômico — 1 retry com a mesma chave
+        // idempotente (mesmo padrão de useUpdateSaleOrderStatus).
+        if (!isPostgresBusyError(firstErr)) throw firstErr;
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        receipt = await runExecute();
+      }
       const rpcOut = receipt.result;
       const atomicPromotionResult = rpcOut.promotion_result as PromotionEngineResult | null;
 

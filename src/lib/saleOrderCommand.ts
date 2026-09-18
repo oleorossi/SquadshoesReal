@@ -288,14 +288,21 @@ export function formatSaleOrderCommandFailureMessage(
   return fallback || 'O servidor recusou a edição do pedido. Nenhuma alteração foi gravada.';
 }
 
+/** Mensagem legível de Error / PostgREST plain object / string. */
+function postgresErrorHaystack(error: unknown): string {
+  // PostgREST devolve { message, details, hint, code } — não sempre `Error`.
+  // String(object) vira "[object Object]" e escondia timeout/deadlock no toast.
+  return describePostgrestError(error, error instanceof Error ? error.message : '');
+}
+
 export function isPostgresTimeoutError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error ?? '');
-  return /statement timeout|canceling statement due to statement timeout|canceling statement due to lock timeout/i.test(message);
+  return /statement timeout|canceling statement due to statement timeout|canceling statement due to lock timeout/i
+    .test(postgresErrorHaystack(error));
 }
 
 /** Postgres 40P01 — corrida de locks (ex.: faturar PV × drain de tiras). */
 export function isPostgresDeadlockError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error ?? '');
+  const message = postgresErrorHaystack(error);
   const code = (
     error && typeof error === 'object' && 'code' in error
       ? String((error as { code?: unknown }).code ?? '')

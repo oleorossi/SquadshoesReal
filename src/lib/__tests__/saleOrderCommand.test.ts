@@ -216,6 +216,21 @@ describe('saleOrderCommand', () => {
       .not.toMatch(/canceling statement/);
   });
 
+  it('PostgREST plain object com statement timeout também vira retry (não [object Object])', () => {
+    const postgrest = {
+      code: '57014',
+      message: 'canceling statement due to statement timeout',
+      details: null,
+      hint: null,
+    };
+    expect(isPostgresTimeoutError(postgrest)).toBe(true);
+    expect(isPostgresBusyError(postgrest)).toBe(true);
+    expect(formatUnknownSaleOrderUpdateError(postgrest))
+      .toMatch(/banco estava ocupado|Tente de novo/);
+    expect(formatUnknownSaleOrderUpdateError(postgrest))
+      .not.toMatch(/canceling statement/);
+  });
+
   it('deadlock 40P01 também vira pedido de retry (não o texto cru do Postgres)', () => {
     const deadlock = new Error(
       'O pedido NÃO foi salvo. deadlock detected (Process 1099827 waits for ShareLock on transaction 69449655)',
