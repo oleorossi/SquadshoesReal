@@ -3,6 +3,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { executeSaleOrderCommand } from '@/lib/saleOrderCommand';
 
 export interface SheetResyncSummary {
+  /** OPs candidatas no lote (após ordenação). */
+  attempted: number;
   totalResyncedOPs: number;
   errors: string[];
   skipped: number;
@@ -24,6 +26,90 @@ interface ResyncCommandResult {
 }
 
 /**
+ * Query keys que o Resync deve invalidar para o badge/consumo refletirem
+ * o snapshot novo sem esperar o poll de 30s.
+ */
+export const RESYNC_INVALIDATION_QUERY_KEYS: ReadonlyArray<readonly string[]> = [
+  ['sale_orders'],
+  ['orders'],
+  ['order_stages'],
+  ['products'],
+  ['stock_movements'],
+  ['material_reservations'],
+  ['production_consumptions'],
+  ['sale-order-command-preflight'],
+  ['system-diag', 'pv-system'],
+  ['pv_outdated_status'],
+  ['pv-consumption'],
+];
+
+/** Ordena OPs por número para o lote ser determinístico e auditável. */
+export function sortResyncOpsByOrderNumber(
+  ops: ResyncOPRecord[],
+): ResyncOPRecord[] {
+  return [...ops].sort((a, b) => {
+    const left = (a.order_number || a.id).localeCompare(
+      b.order_number || b.id,
+      'pt-BR',
+      { numeric: true, sensitivity: 'base' },
+    );
+    return left;
+  });
+}
+
+export type ResyncToastTone = 'success' | 'warning';
+
+export interface ResyncToastMessage {
+  tone: ResyncToastTone;
+  title: string;
+  description?: string;
+}
+
+/**
+ * Toast N de M: sucesso total vira success; qualquer falha/pulo parcial
+ * prioriza warning com a lista explícita (não mascara com success sozinho).
+ */
+export function formatResyncBatchToast(
+  summary: Pick<SheetResyncSummary, 'attempted' | 'totalResyncedOPs' | 'errors' | 'skipped'>,
+  opts?: { successSuffix?: string },
+): ResyncToastMessage {
+  const attempted = summary.attempted;
+  const ok = summary.totalResyncedOPs;
+  const failed = summary.errors.length;
+  const skipped = summary.skipped;
+  const suffix = opts?.successSuffix
+    ?? 'sem apagar identidade ou histórico.';
+  const detailParts: string[] = [];
+  if (failed > 0) {
+    detailParts.push(
+      `${failed} falha${failed === 1 ? '' : 's'}:\n${summary.errors.slice(0, 5).join('\n')}`,
+    );
+  }
+  if (skipped > 0) {
+    detailParts.push(
+      `${skipped} OP${skipped === 1 ? '' : 's'} pulada${skipped === 1 ? '' : 's'} (inativa)`,
+    );
+  }
+  const description = detailParts.length > 0
+    ? detailParts.join('\n')
+    : undefined;
+
+  if (failed > 0 || (skipped > 0 && ok < attempted)) {
+    return {
+      tone: 'warning',
+      title: `${ok} de ${attempted} OP(s) resincronizada(s)`,
+      description,
+    };
+  }
+
+  return {
+    tone: 'success',
+    title: `${ok} de ${attempted} OP(s) resincronizada(s), ${suffix}`,
+    description,
+  };
+}
+
+/**
  * Executa resync somente pela fronteira canônica do agregado PV.
  *
  * A versão é lida uma vez por PV antes do lote. O resync não altera cabeçalho
@@ -34,8 +120,9 @@ interface ResyncCommandResult {
 export async function resyncOPRecords(
   ops: ResyncOPRecord[],
 ): Promise<SheetResyncSummary> {
+  const ordered = sortResyncOpsByOrderNumber(ops);
   const saleOrderIds = [...new Set(
-    ops.map((op) => op.sale_order_id).filter((id): id is string => Boolean(id)),
+    ordered.map((op) => op.sale_order_id).filter((id): id is string => Boolean(id)),
   )];
   const { data: rawSaleOrders, error: versionsError } = await supabase
     .from('sale_orders')
@@ -56,8 +143,8 @@ export async function resyncOPRecords(
 
   // Serial por desenho: OPs podem disputar os mesmos produtos e baldes de
   // grade. Cada chamada mantém sua própria transação/lock e nunca expõe um
-  // estado intermediário ao próximo comando.
-  for (const op of ops) {
+  // estado intermediário ao próximo comando. Ordem = order_number.
+  for (const op of ordered) {
     const label = op.order_number || op.id.slice(0, 8);
     const saleOrderId = op.sale_order_id || '';
     const expectedOrderVersion = versionBySaleOrder.get(saleOrderId);
@@ -87,7 +174,12 @@ export async function resyncOPRecords(
     }
   }
 
-  return { totalResyncedOPs, errors, skipped };
+  return {
+    attempted: ordered.length,
+    totalResyncedOPs,
+    errors,
+    skipped,
+  };
 }
 
 /**
@@ -103,11 +195,12 @@ export async function resyncOPsForSheet(sheetId: string): Promise<SheetResyncSum
     .from('orders')
     .select('id, order_number, sale_order_id')
     .eq('reference_id', sheetId)
-    .in('status', ['Reservado', 'Em Produção']);
+    .in('status', ['Reservado', 'Em Produção'])
+    .order('order_number', { ascending: true });
 
   if (opsError) throw opsError;
   if (!ops || ops.length === 0) {
-    return { totalResyncedOPs: 0, errors: [], skipped: 0 };
+    return { attempted: 0, totalResyncedOPs: 0, errors: [], skipped: 0 };
   }
 
   return resyncOPRecords(ops);

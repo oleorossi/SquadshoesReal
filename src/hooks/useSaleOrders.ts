@@ -25,7 +25,11 @@ import {
   SaleOrderReadinessBlockedError,
   type SaleOrderCommandAction,
 } from '@/lib/saleOrderCommand';
-import { resyncOPRecords } from '@/lib/resyncOPs';
+import {
+  formatResyncBatchToast,
+  RESYNC_INVALIDATION_QUERY_KEYS,
+  resyncOPRecords,
+} from '@/lib/resyncOPs';
 import {
   executePurchaseOrderCommand,
   purchaseOrderLogicalKey,
@@ -1402,22 +1406,28 @@ export function useResyncOPsFromSheets() {
       const { data: ops, error: opsError } = await supabase
         .from('orders')
         .select('id, order_number, sale_order_id')
-        .in('status', ['Reservado', 'Em Produção']);
+        .in('status', ['Reservado', 'Em Produção'])
+        .order('order_number', { ascending: true });
       if (opsError) throw opsError;
       if (!ops || ops.length === 0) throw new Error('Nenhuma OP ativa encontrada');
       return resyncOPRecords(ops);
     },
     onSuccess: (result) => {
-      [
-        ['sale_orders'], ['orders'], ['order_stages'], ['products'],
-        ['stock_movements'], ['material_reservations'], ['production_consumptions'],
-        ['sale-order-command-preflight'], ['system-diag', 'pv-system'],
-      ].forEach((queryKey) => qc.invalidateQueries({ queryKey }));
-      toast.success(`${result.totalResyncedOPs} OP(s) resincronizada(s) em transações isoladas.`);
-      if (result.errors.length > 0) {
-        toast.warning(`${result.errors.length} OP(s) permaneceram intactas por erro`, {
-          description: result.errors.slice(0, 3).join('\n'),
+      RESYNC_INVALIDATION_QUERY_KEYS.forEach((queryKey) => {
+        qc.invalidateQueries({ queryKey: [...queryKey] });
+      });
+      const msg = formatResyncBatchToast(result, {
+        successSuffix: 'em transações isoladas.',
+      });
+      if (msg.tone === 'warning') {
+        toast.warning(msg.title, {
+          description: msg.description,
           duration: 10000,
+        });
+      } else {
+        toast.success(msg.title, {
+          description: msg.description,
+          duration: 6000,
         });
       }
     },
@@ -1536,7 +1546,8 @@ export function useResyncOPsFromPV() {
         .from('orders')
         .select('id, order_number, sale_order_id')
         .eq('sale_order_id', saleOrderId)
-        .in('status', ['Reservado', 'Em Produção']);
+        .in('status', ['Reservado', 'Em Produção'])
+        .order('order_number', { ascending: true });
       if (opsError) throw opsError;
       if (!ops || ops.length === 0) throw new Error('Pedido sem OP ativa para resincronizar');
 
@@ -1544,24 +1555,22 @@ export function useResyncOPsFromPV() {
       if (summary.totalResyncedOPs === 0 && summary.errors.length > 0) {
         throw new Error(summary.errors.join('\n'));
       }
-      return {
-        created: summary.totalResyncedOPs,
-        deleted: 0,
-        skipped: summary.skipped,
-        errors: summary.errors,
-      };
+      return summary;
     },
     onSuccess: (result) => {
-      [
-        ['sale_orders'], ['orders'], ['order_stages'], ['products'],
-        ['stock_movements'], ['material_reservations'], ['production_consumptions'],
-        ['sale-order-command-preflight'], ['system-diag', 'pv-system'],
-      ].forEach((queryKey) => qc.invalidateQueries({ queryKey }));
-      toast.success(`${result.created} OP(s) resincronizada(s), sem apagar identidade ou histórico.`);
-      if (result.errors.length > 0) {
-        toast.warning(`${result.errors.length} OP(s) permaneceram intactas por erro`, {
-          description: result.errors.slice(0, 3).join('\n'),
+      RESYNC_INVALIDATION_QUERY_KEYS.forEach((queryKey) => {
+        qc.invalidateQueries({ queryKey: [...queryKey] });
+      });
+      const msg = formatResyncBatchToast(result);
+      if (msg.tone === 'warning') {
+        toast.warning(msg.title, {
+          description: msg.description,
           duration: 10000,
+        });
+      } else {
+        toast.success(msg.title, {
+          description: msg.description,
+          duration: 6000,
         });
       }
     },

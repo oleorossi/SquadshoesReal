@@ -21,8 +21,9 @@ type OutdatedStatus = {
  * Hook: status de propagação ficha técnica → PV
  * Polling a cada 30s pra refletir o housekeeping do flag pelo cron
  * (process_outdated_reservations, a cada 2min). PVs Aprovado/Em Produção sem
- * fato físico são auto-resyncados no save da ficha; OPs iniciadas ganham só
- * reserva delta (snapshot outdated permanece no badge).
+ * fato físico são auto-resyncados no save da ficha; OPs com fato físico
+ * ganham só reserva delta (snapshot outdated permanece no badge até
+ * compensação ou Resync OPs quando cabível).
  *
  * D7 (audit PV 2026-06): também lê sale_orders.costs_dirty_at — a view
  * v_pv_outdated_status NÃO expõe essa coluna, então buscamos direto do PV.
@@ -76,21 +77,23 @@ const labelMap: Record<OutdatedStatus['status_label'], { text: string; tooltip: 
     severity: 'warn',
   },
   snapshot_outdated: {
-    text: 'Consumo congelado desatualizado — OP já iniciada',
+    text: 'Consumo congelado desatualizado — use Resync OPs',
     tooltip:
-      'A ficha técnica mudou depois que esta OP já tinha fato físico de produção. ' +
-      'PVs Aprovado/Em Produção sem fato físico são atualizados no save da ficha; ' +
-      'materiais novos entram por reserva delta. O snapshot permanece para auditoria — ' +
-      'correção estrutural deve ser compensatória, não resync destrutivo.',
+      'A ficha técnica mudou depois que o consumo deste PV foi congelado. ' +
+      'PVs Aprovado/Em Produção sem fato físico atualizam no save da ficha; ' +
+      'se o badge permanecer, use "Resync OPs" para recalcular pela ficha atual. ' +
+      'Com fato físico de produção, correção estrutural deve ser compensatória — ' +
+      'não resync destrutivo.',
     severity: 'warn',
   },
   reservations_and_snapshot_outdated: {
     text: 'Ficha modificada — snapshot e reservas desatualizados',
     tooltip:
-      'A ficha técnica foi editada com OPs já em produção. ' +
-      'OPs Aprovado/Em Produção sem fato físico são atualizadas no save; as iniciadas ' +
-      'recebem só reserva do delta e o snapshot fica sinalizado. ' +
-      'Revise antes de um resync explícito; com fato físico, use movimento compensatório.',
+      'A ficha técnica foi editada com OPs já ligadas a este PV. ' +
+      'OPs Aprovado/Em Produção sem fato físico atualizam no save; as com fato ' +
+      'físico recebem só reserva do delta e o snapshot fica sinalizado. ' +
+      'Revise e use "Resync OPs" quando a alteração deve substituir o plano; ' +
+      'com fato físico, use movimento compensatório.',
     severity: 'warn',
   },
 };
