@@ -123,13 +123,14 @@ export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 1
     const bandSizes = solagemBandSizes(allSizes, band);
     // Fontes adaptativas pela qtd de colunas (2026-06-12) — grades densas
     // e chaves conjugadas ("33/34") cortavam com fonte fixa.
-    const ft = gradeTableFont(bandSizes);
-    return (
+    const ft = gradeTableFont(bandSizes, true);
+    // A.3: trabalho (header+sandálias+grade) + fechamento (materiais+tally).
+    const trabalho = (
       // flow-card (v6): banda pode fragmentar ENTRE seções (header/strip/
-      // grade/consumo/tally — atômicas individualmente); borda fecha em
+      // grade — atômicas individualmente); borda fecha em
       // cada fragmento via box-decoration-break: clone.
       <div key={idx} className="flow-card bg-white" style={{ border: '1.5px solid #000' }}>
-        <div className="keep-together keep-with-next px-3 py-1.5 flex items-center justify-between" style={{ borderBottom: '1.5px solid #000' }}>
+        <div className="keep-together keep-with-next px-2 py-1 flex items-center justify-between" style={{ borderBottom: '1.5px solid #000' }}>
           <div className="min-w-0 flex-1">
             <span className="section-label block" style={{ color: '#000' }}>Solado · Cor</span>
             <span
@@ -185,7 +186,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 1
             strip estourava 200mm em bandas com 6+ refs (sozinho era 73%
             da A4 útil) — strip COMO UM TODO pode quebrar entre sandálias. */}
         {band.refs && band.refs.length > 0 && (
-          <div className="px-3 py-1.5 flex items-start gap-2 flex-wrap" style={{ borderBottom: '1px solid #000' }}>
+          <div className="px-2 py-1 flex items-start gap-2 flex-wrap" style={{ borderBottom: '1px solid #000' }}>
             <span className="section-label shrink-0 self-center" style={{ color: '#000' }}>Sandálias</span>
             {band.refs.map((r) => (
               <div key={r.key} className="keep-together flex flex-col items-center gap-0.5">
@@ -303,14 +304,22 @@ export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 1
             </tr>
           </tbody>
         </table>
+      </div>
+    );
 
+    const fechamento = (
+      <div key={`f-${idx}`} className="bg-white" style={{ border: '1.5px solid #000', borderTop: 0 }}>
         <SectorMaterials rows={band.consumption} sector={sector} />
-
-        <div className="px-2 py-1.5 border-t border-black">
+        <div className="px-2 py-1 border-t border-black">
           <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={band.totalPairs} title={tallyTitle} size={TALLY_SIZE} />
         </div>
       </div>
     );
+
+    return [
+      { node: trabalho },
+      { node: fechamento, keepWithPrev: true },
+    ] as const;
   };
 
   // ── Blocos atômicos pro PaginatedSheet (2026-06-12) ──
@@ -364,7 +373,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 1
   // seção (quando há os dois grupos) entra no MESMO bloco da 1ª banda do
   // grupo — nunca vira órfão no fim de uma página.
   const orderedBands = [...pretoBands, ...outrosBands];
-  const bandBlocks = orderedBands.map((band, idx) => {
+  const bandBlocks: SheetBlock[] = orderedBands.flatMap((band, idx) => {
     const isInPreto = pretoBands.includes(band);
     const isFirstOfGroup = isInPreto ? pretoBands[0] === band : outrosBands[0] === band;
     const divider = hasBothGroups && isFirstOfGroup ? (
@@ -373,12 +382,18 @@ export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 1
         total={isInPreto ? pretoTotal : outrosTotal}
       />
     ) : null;
-    return (
-      <React.Fragment key={idx}>
-        {divider}
-        {renderBand(band, idx)}
-      </React.Fragment>
-    );
+    const [trabalho, fechamento] = renderBand(band, idx);
+    return [
+      {
+        node: (
+          <React.Fragment key={idx}>
+            {divider}
+            {trabalho.node}
+          </React.Fragment>
+        ),
+      },
+      fechamento,
+    ];
   });
 
   const trailingBlock = (
@@ -413,6 +428,6 @@ export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 1
   // Sem isto o AUTO_FIT_FLOOR global (0.80) encolhia por cima de fontes que já
   // estavam no piso. Decisão do dono 31/07/2026: legibilidade vence densidade.
   const minScale = bands.reduce((mx, b) => Math.max(mx,
-    floorSafeScale(gradeTableFont(solagemBandSizes(allSizes, b)))), 0);
+    floorSafeScale(gradeTableFont(solagemBandSizes(allSizes, b), true))), 0);
   return <PaginatedSheet sectorLabel={sectorLabel || sector} blocks={blocks} minScale={minScale} />;
 };

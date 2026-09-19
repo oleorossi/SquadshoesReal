@@ -18,6 +18,8 @@ import {
   STRAP_LABEL_PAD,
   STRAP_STACK_GAP_PX,
   STEP_ROW_PAD_Y,
+  CONSUMO_TABLE_PAD_Y,
+  CONSUMO_TABLE_PAD_X,
   canUseSlimConsumo,
 } from './worksheet/density';
 import { PaginatedSheet, type SheetBlock } from './worksheet/PaginatedSheet';
@@ -221,10 +223,16 @@ export type GroupedSector =
   | 'Montagem'
   | 'Corte Forração'
   | 'Corte Cabedal'
+  | 'Acabamento Palmilha'
   | 'Costura Palmilha'
   | 'Costura Cabedal'
   | 'Aviamento'
   | 'Acabamento';
+
+/** Setor da ficha de Acabamento Palmilha (nome vivo + alias do rename). */
+export function isAcabamentoPalmilhaSector(sector: string): boolean {
+  return sector === 'Acabamento Palmilha' || sector === 'Costura Palmilha';
+}
 
 interface Props {
   /** Grupos do SETOR INTEIRO (1 por solado/referência) — fluxo contínuo no
@@ -254,7 +262,7 @@ interface Props {
 const SECTOR_THEME: Record<GroupedSector, {
   icon: typeof Paintbrush;
   /** Layout compacto empilhado: cor → grade por ficha → total por numeração.
-   *  Sem foto, sem materiais, sem checklist (Corte Forração / Costura Palmilha). */
+   *  Sem foto, sem materiais, sem checklist (Corte Forração / Acabamento Palmilha). */
   compact: boolean;
   /** Campos fillable Frente/Traseira por numeração (Aviamento). */
   showFrenteTraseiro: boolean;
@@ -287,9 +295,12 @@ const SECTOR_THEME: Record<GroupedSector, {
   // Sem silk; foto do produto
   // pra identificação do cabedal por cor.
   'Corte Cabedal':    { icon: Scissors,   compact: false, showFrenteTraseiro: false, showSilkImage: false, showProductImage: true,  showAlerts: true,  showPiecesToSew: false },
-  // Costura Palmilha (2026-06-12, ex-'Costura'): mesmíssimo layout compacto
+  // Acabamento Palmilha (2026-06-12, ex-'Costura'): mesmíssimo layout compacto
   // do Corte Forração. Roteiro: OPs com 'Costura' em production_sectors.
-  'Costura Palmilha': { icon: Pen,        compact: true,  showFrenteTraseiro: false, showSilkImage: false, showProductImage: false, showAlerts: true,  showPiecesToSew: false },
+  // 2026-09: dois tracks de tally (forração → caixa → costura).
+  'Acabamento Palmilha': { icon: Pen,        compact: true,  showFrenteTraseiro: false, showSilkImage: false, showProductImage: false, showAlerts: true,  showPiecesToSew: false },
+  // Alias histórico do rename de display — mesma ficha enquanto residual chega.
+  'Costura Palmilha':    { icon: Pen,        compact: true,  showFrenteTraseiro: false, showSilkImage: false, showProductImage: false, showAlerts: true,  showPiecesToSew: false },
   // Costura Cabedal (2026-06-12): só pra OPs com 'Corte Cabedal' no roteiro e
   // upper_corte_a_fio=false. Foto + cor + grade + "PEÇAS A COSTURAR".
   'Costura Cabedal':  { icon: Pen,        compact: false, showFrenteTraseiro: false, showSilkImage: false, showProductImage: true,  showAlerts: false, showPiecesToSew: true  },
@@ -329,7 +340,7 @@ const sortSizes = (sizes: string[]): string[] =>
  * Layout completo (Corte Cabedal/Costura Cabedal/Aviamento/Acabamento):
  * card por cor com foto (quando aplicável), grade, alertas e tally.
  *
- * Layout compacto (Corte Forração/Costura Palmilha/Silk — pedido user
+ * Layout compacto (Corte Forração/Acabamento Palmilha/Silk — pedido user
  * 2026-06-12): por cor, apenas nome da cor + grade por ficha + total por
  * numeração + alerta fachetado em 1 linha + tally. Silk adiciona o bloco
  * da LOGOMARCA a estampar (única por grupo, ou por cor quando divergem).
@@ -513,9 +524,10 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
     const displayedSum = activeSizes.reduce((s, k) => s + (Number(sourceGrid[k]) || 0), 0);
     const knifeGridMismatch = usingBuckets && displayedSum !== (cg.totalPairs || 0);
     // Fontes adaptativas pela qtd de colunas (2026-06-12): grade mista
-    // (16+ numerações) cortava as células com fonte fixa. No layout COMPACTO
-    // a grade desce 1 bucket (dense, 7º passe) pra caberem 2 cores por página.
-    const ft = gradeTableFont(activeSizes, theme.compact);
+    // (16+ numerações) cortava as células com fonte fixa. A.3 (multi-setor):
+    // SEMPRE dense — mesmo degrau do layout compacto — **sem** ligar
+    // theme.compact (isso apagaria Frente/Traseira, silk, peças a costurar…).
+    const ft = gradeTableFont(activeSizes, true);
     // Range de numerações de cada faca (P → "34-37") sob o rótulo no cabeçalho
     // quando agrupando por faca (Corte Cabedal). Contíguo vira "34-37"; senão
     // lista "34·36". Vazio quando não há range pra a faca.
@@ -869,8 +881,8 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
         <table className="w-full" style={{ borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ borderBottom: '1.5px solid #000' }}>
-              <th className="text-left px-2 py-1 font-mono uppercase" style={{ color: '#000', fontSize: '8px', letterSpacing: '0.12em' }}>Material · cor</th>
-              <th className="text-right px-2 py-1 font-mono uppercase" style={{ color: '#000', fontSize: '8px', letterSpacing: '0.12em', width: 132 }}>{colLabel}</th>
+              <th className="text-left font-mono uppercase" style={{ color: '#000', fontSize: '8px', letterSpacing: '0.12em', padding: `${CONSUMO_TABLE_PAD_Y}px ${CONSUMO_TABLE_PAD_X}px` }}>Material · cor</th>
+              <th className="text-right font-mono uppercase" style={{ color: '#000', fontSize: '8px', letterSpacing: '0.12em', width: 132, padding: `${CONSUMO_TABLE_PAD_Y}px ${CONSUMO_TABLE_PAD_X}px` }}>{colLabel}</th>
             </tr>
           </thead>
           <tbody>
@@ -880,7 +892,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
               const showColor = !!colorStr && !(r.product_name || '').toLowerCase().includes(colorStr.toLowerCase());
               return (
                 <tr key={i} style={{ borderBottom: i < rows.length - 1 ? '1px solid #000' : 'none' }}>
-                  <td className="px-2 py-1 align-middle">
+                  <td className="align-middle" style={{ padding: `${CONSUMO_TABLE_PAD_Y}px ${CONSUMO_TABLE_PAD_X}px` }}>
                     <span className="uppercase leading-none" style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '13px', letterSpacing: '-0.01em', color: '#000' }}>
                       {r.product_name}
                     </span>
@@ -893,7 +905,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                       </div>
                     )}
                   </td>
-                  <td className="px-2 py-1 text-right align-middle" style={{ whiteSpace: 'nowrap' }}>
+                  <td className="text-right align-middle" style={{ whiteSpace: 'nowrap', padding: `${CONSUMO_TABLE_PAD_Y}px ${CONSUMO_TABLE_PAD_X}px` }}>
                     <span style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '18px', letterSpacing: '-0.02em', color: '#C00000', lineHeight: 1 }}>
                       {fmtConsumoQty(Number(r.required))}
                     </span>
@@ -1010,11 +1022,11 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
         <table className="w-full" style={{ borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ borderBottom: '1.5px solid #000' }}>
-              <th className="text-left px-2 py-1 font-mono uppercase" style={{ color: '#000', fontSize: '8px', letterSpacing: '0.12em' }}>Tira · cor</th>
+              <th className="text-left font-mono uppercase" style={{ color: '#000', fontSize: '8px', letterSpacing: '0.12em', padding: `${CONSUMO_TABLE_PAD_Y}px ${CONSUMO_TABLE_PAD_X}px` }}>Tira · cor</th>
               {showPerFicha && (
-                <th className="text-right px-2 py-1 font-mono uppercase" style={{ color: '#000', fontSize: '8px', letterSpacing: '0.12em', width: 92 }}>Por Ficha</th>
+                <th className="text-right font-mono uppercase" style={{ color: '#000', fontSize: '8px', letterSpacing: '0.12em', width: 92, padding: `${CONSUMO_TABLE_PAD_Y}px ${CONSUMO_TABLE_PAD_X}px` }}>Por Ficha</th>
               )}
-              <th className="text-right px-2 py-1 font-mono uppercase" style={{ color: '#000', fontSize: '8px', letterSpacing: '0.12em', width: 96 }}>Total</th>
+              <th className="text-right font-mono uppercase" style={{ color: '#000', fontSize: '8px', letterSpacing: '0.12em', width: 96, padding: `${CONSUMO_TABLE_PAD_Y}px ${CONSUMO_TABLE_PAD_X}px` }}>Total</th>
             </tr>
           </thead>
           <tbody>
@@ -1024,7 +1036,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
               const req = Number(r.required) || 0;
               return (
                 <tr key={i} style={{ borderBottom: i < rows.length - 1 || rows.length > 1 ? '1px solid #000' : 'none' }}>
-                  <td className="px-2 py-1 align-middle">
+                  <td className="align-middle" style={{ padding: `${CONSUMO_TABLE_PAD_Y}px ${CONSUMO_TABLE_PAD_X}px` }}>
                     <span className="uppercase leading-none" style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '13px', letterSpacing: '-0.01em', color: '#000' }}>
                       {r.product_name}
                     </span>
@@ -1033,11 +1045,11 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                     )}
                   </td>
                   {showPerFicha && (
-                    <td className="px-2 py-1 text-right align-middle" style={{ whiteSpace: 'nowrap' }}>
+                    <td className="text-right align-middle" style={{ whiteSpace: 'nowrap', padding: `${CONSUMO_TABLE_PAD_Y}px ${CONSUMO_TABLE_PAD_X}px` }}>
                       {meterCell(req / (nFichas || 1), 15, r.unit, r.source === 'width_missing')}
                     </td>
                   )}
-                  <td className="px-2 py-1 text-right align-middle" style={{ whiteSpace: 'nowrap' }}>
+                  <td className="text-right align-middle" style={{ whiteSpace: 'nowrap', padding: `${CONSUMO_TABLE_PAD_Y}px ${CONSUMO_TABLE_PAD_X}px` }}>
                     {meterCell(req, 18, r.unit, r.source === 'width_missing')}
                   </td>
                 </tr>
@@ -1045,19 +1057,19 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
             })}
             {rows.length > 1 && (
               <tr>
-                <td className="px-2 py-1 align-middle">
+                <td className="align-middle" style={{ padding: `${CONSUMO_TABLE_PAD_Y}px ${CONSUMO_TABLE_PAD_X}px` }}>
                   <span className="font-mono uppercase" style={{ fontSize: '9px', fontWeight: 700, letterSpacing: '0.08em', color: '#000' }}>
                     Total tiras · {cg.color}
                   </span>
                 </td>
                 {showPerFicha && (
-                  <td className="px-2 py-1 text-right align-middle" style={{ whiteSpace: 'nowrap' }}>
+                  <td className="text-right align-middle" style={{ whiteSpace: 'nowrap', padding: `${CONSUMO_TABLE_PAD_Y}px ${CONSUMO_TABLE_PAD_X}px` }}>
                     {strapTotalValid
                       ? meterCell(totalMeters / (nFichas || 1), 15, strapUnitUniform)
                       : <span className="font-mono" style={{ fontSize: '9px', color: '#333' }}>—</span>}
                   </td>
                 )}
-                <td className="px-2 py-1 text-right align-middle" style={{ whiteSpace: 'nowrap' }}>
+                <td className="text-right align-middle" style={{ whiteSpace: 'nowrap', padding: `${CONSUMO_TABLE_PAD_Y}px ${CONSUMO_TABLE_PAD_X}px` }}>
                   {strapTotalValid
                     ? meterCell(totalMeters, 18, strapUnitUniform)
                     : <span className="font-mono" style={{ fontSize: '8.5px', fontWeight: 700, color: '#C00000' }}>unidades mistas</span>}
@@ -1308,8 +1320,13 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
         </div>
   ) : null;
 
-  // Per-color blocks — 1 bloco atômico por cor no paginador.
-  const colorBlocks = group.colorGroups.map((cg, idx) => {
+  // Per-color blocks (A.3 multi-setor):
+  //   - compact (Corte Forração / Acabamento Palmilha / Silk): 1 bloco por cor
+  //     (já empacota 2 cores — não reestruturar);
+  //   - layout completo: 2 blocos — trabalho (header+grade+alertas) +
+  //     fechamento (consumo+materiais+tally, keepWithPrev) pra a 2ª cor
+  //     subir no resto da A4 em vez de abrir folha meia-vazia.
+  const colorBlocks: SheetBlock[] = group.colorGroups.flatMap((cg, idx) => {
           // 7º passe (2026-06-12): a tally é de CORRUGADOS (12/15/18 pares)
           // SEMPRE — 1 caixinha = 1 corrugado físico, mesmo com grades mistas
           // (fichas agora soma certo entre OPs). Corrugados divergentes entre
@@ -1321,7 +1338,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
           const cards = cgNf > 0 ? cgNf : Math.max(1, Math.ceil(cg.totalPairs / tallyPerCard));
           const tallyTitle = cg.corrugadosMistos ? 'Controle de Fichas · corrugados mistos' : undefined;
 
-          // ── Layout COMPACTO (Corte Forração / Costura Palmilha) ──
+          // ── Layout COMPACTO (Corte Forração / Acabamento Palmilha) ──
           // Pedido user 2026-06-12: por cor, apenas nome da cor (Anton),
           // grade por ficha + total por numeração, alerta fachetado em 1
           // linha e tally. Sem foto, sem materiais, sem checklist.
@@ -1420,7 +1437,8 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
               </div>
             );
             })();
-            return (
+            return [{
+              node: (
               <div key={idx} className="pt-1" style={{ borderTop: '2px solid #000' }}>
                 <div className="keep-together keep-with-next flex items-end justify-between gap-3 mb-0.5">
                   <div className="flex items-center gap-2 min-w-0">
@@ -1531,26 +1549,45 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                 {renderConsumoCorte(cg)}
                 <SectorMaterials rows={cg.consumption} sector={sector}
                   excludeComponents={CONSUMO_COMPONENTS_BY_SECTOR[sector] || []} />
-                <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={cg.totalPairs} title={tallyTitle} size={TALLY_SIZE} />
+                {isAcabamentoPalmilhaSector(sector) ? (
+                  // Dois operadores: forrador marca → caixa → costureiro marca.
+                  <>
+                    <TallyBox
+                      count={cards}
+                      pairsPerCard={tallyPerCard}
+                      totalUnits={cg.totalPairs}
+                      title={cg.corrugadosMistos
+                        ? 'Forração de palmilha · corrugados mistos'
+                        : 'Forração de palmilha'}
+                      size={TALLY_SIZE}
+                    />
+                    <TallyBox
+                      count={cards}
+                      pairsPerCard={tallyPerCard}
+                      totalUnits={cg.totalPairs}
+                      title={cg.corrugadosMistos
+                        ? 'Costura de palmilha · corrugados mistos'
+                        : 'Costura de palmilha'}
+                      size={TALLY_SIZE}
+                    />
+                  </>
+                ) : (
+                  <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={cg.totalPairs} title={tallyTitle} size={TALLY_SIZE} />
+                )}
               </div>
-            );
+              ),
+            }];
           }
 
           // ── Layout COMPLETO (Corte Cabedal / Costura Cabedal / Aviamento /
-          //    Acabamento) ──
-          const colorBlock = (
-            // flow-card (v6): o card pode fragmentar ENTRE seções internas
-            // (header/foto/grade/tally — cada uma keep-together próprio).
-            // Borda fecha em cada fragmento via box-decoration-break: clone.
-            <div className="flow-card bg-white" style={{ border: '1.5px solid #000' }}>
-              {/* Color header — editorial, no fill. Atômico + colado na
-                  seção seguinte (nunca órfão no fim da página). */}
-              <div className="keep-together keep-with-next px-3 py-1 flex items-center justify-between" style={{ borderBottom: '1.5px solid #000' }}>
+          //    Acabamento / Montagem) — A.3: 2 SheetBlocks por cor ──
+          // Meta PV/OP some no card quando o GroupSubHeader da referência já
+          // carrega o contexto (groupKind 'reference'); pares por cor ficam.
+          const hideRedundantMeta = group.groupKind === 'reference';
+
+          const colorHeader = (
+              <div className="keep-together keep-with-next px-2 py-0.5 flex items-center justify-between" style={{ borderBottom: '1.5px solid #000' }}>
                 <div className="flex items-center gap-2 min-w-0">
-                  {/* Foto do produto como MINIATURA no cabeçalho (densidade
-                      2026-07-23): era uma faixa própria de 140px que usava só
-                      27% da largura — o resto saía em branco em toda cor. Aqui
-                      ela cabe na altura que o cabeçalho já ocupava. */}
                   {theme.showProductImage && (
                     <ProductImageBlock
                       variantImageUrl={cg.variantImageUrl}
@@ -1575,11 +1612,8 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                     </span>
                   </div>
                 </div>
-                <div className="flex items-center gap-4 shrink-0">
-                  {/* Badge de ref escondida quando a FICHA INTEIRA é de uma
-                      referência (groupKind 'reference' — Aviamento): o header
-                      já identifica o modelo, repetir por card é ruído. */}
-                  {group.groupKind !== 'reference' && cg.refs && cg.refs.length > 0 && (
+                <div className="flex items-center gap-3 shrink-0">
+                  {!hideRedundantMeta && cg.refs && cg.refs.length > 0 && (
                     <div className="text-right">
                       <span className="section-label block" style={{ color: '#000' }}>Ref.</span>
                       <div className="flex items-center gap-1 mt-0.5 justify-end flex-wrap">
@@ -1595,7 +1629,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                       </div>
                     </div>
                   )}
-                  {cg.pvNumbers && cg.pvNumbers.length > 0 && (
+                  {!hideRedundantMeta && cg.pvNumbers && cg.pvNumbers.length > 0 && (
                     <div className="text-right">
                       <span className="section-label block" style={{ color: '#000' }}>Pedido</span>
                       <span className="font-mono text-[11px] font-bold text-black tracking-wider">
@@ -1603,7 +1637,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                       </span>
                     </div>
                   )}
-                  {cg.opNumbers.length > 0 && (
+                  {!hideRedundantMeta && cg.opNumbers.length > 0 && (
                     <div className="text-right">
                       <span className="section-label block" style={{ color: '#000' }}>Ordem</span>
                       <span className="font-mono text-[11px] font-bold text-black tracking-wider">
@@ -1633,48 +1667,14 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                   </div>
                 </div>
               </div>
+          );
 
-              <div className="p-1.5 bg-white">
-                {/* A foto do produto subiu pro CABEÇALHO da cor como miniatura
-                    (densidade 2026-07-23) — a faixa própria de 140px sumiu.
-                    "Peças a Costurar" (Costura Cabedal) fica: agora é uma faixa
-                    de largura inteira, que é o que aquele número merece. */}
-                {theme.showPiecesToSew && (
-                  <div className="keep-together keep-with-next flex items-baseline justify-between gap-2 px-2 py-0.5 mb-1" style={{ border: '1.5px solid #000' }}>
-                    <span className="section-label" style={{ color: '#000' }}>Peças a Costurar</span>
-                    <span
-                      className="text-black leading-none"
-                      style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em' }}
-                    >
-                      {cg.totalPairs * 2}
-                      <span className="text-[10px] font-mono tracking-widest uppercase"> peças (2 peças/par)</span>
-                    </span>
-                  </div>
-                )}
-                {(sector === 'Costura Cabedal' || sector === 'Corte Cabedal') && (cg.leftoverNapas?.length ?? 0) > 0 && (
-                  <div className="keep-together keep-with-next px-2 py-0.5 mb-1" style={{ border: '1.5px solid #000' }}>
-                    <span className="section-label block" style={{ color: '#000' }}>Sobra de napa</span>
-                    <span className="text-[11px] font-bold uppercase tracking-wide text-black">
-                      {cg.leftoverNapas!.join(' · ')}
-                    </span>
-                  </div>
-                )}
-
-                {/* Sequência de Tiras / componentes auxiliares (Aviamento /
-                    Montagem) — insumo de execução, com ordem das tiras da
-                    ficha técnica (EXCEÇÃO mantida na simplificação 2026-06-12). */}
-                {/* Aviamento: tiras foram pro grid unificado (P/M/G). Aqui só Montagem. */}
-                {sector === 'Montagem' && cg.components && cg.components.length > 0 && (() => {
+          const montagemComponents = sector === 'Montagem' && cg.components && cg.components.length > 0 ? (() => {
                   const isAllStraps = cg.components.every(c => /^TIRA(\s|$)/i.test(c.name || ''));
-                  // Colunas de medida por faixa P/M/G (cada tamanho tem um comprimento).
-                  // Sem faixas cadastradas → coluna única "Medida".
                   const strapBandCols: string[] | null = (() => {
                     const wb = cg.components!.find(c => Array.isArray(c.cmBands) && c.cmBands.length >= 2);
                     return wb?.cmBands ? wb.cmBands.map(b => b.band) : null;
                   })();
-                  // Lista curta (≤8) fica atômica; lista longa flui linha a
-                  // linha (tr é atômico, thead repete) pra não pular página
-                  // inteira deixando branco.
                   return (
                     <div className={`mb-1 ${cg.components.length <= 8 ? 'keep-together' : ''}`}>
                       <div className="flex items-baseline justify-between mb-1 keep-with-next">
@@ -1692,42 +1692,42 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                         <table className="w-full text-[10px]" style={{ borderCollapse: 'collapse', border: '1px solid #000' }}>
                           <thead>
                             <tr style={{ borderBottom: '1.5px solid #000' }}>
-                              <th className="section-label px-2 py-1 text-left" style={{ color: '#000', width: 36 }}>#</th>
-                              <th className="section-label px-2 py-1 text-left" style={{ color: '#000' }}>Tira</th>
-                              <th className="section-label px-2 py-1 text-left" style={{ color: '#000' }}>Cor</th>
-                              <th className="section-label px-2 py-1 text-left" style={{ color: '#000' }}>Material</th>
+                              <th className="section-label px-2 py-0.5 text-left" style={{ color: '#000', width: 36 }}>#</th>
+                              <th className="section-label px-2 py-0.5 text-left" style={{ color: '#000' }}>Tira</th>
+                              <th className="section-label px-2 py-0.5 text-left" style={{ color: '#000' }}>Cor</th>
+                              <th className="section-label px-2 py-0.5 text-left" style={{ color: '#000' }}>Material</th>
                               {strapBandCols
                                 ? strapBandCols.map((b) => (
-                                    <th key={b} className="section-label px-2 py-1 text-right" style={{ color: '#C00000', width: 52 }}>{b}</th>
+                                    <th key={b} className="section-label px-2 py-0.5 text-right" style={{ color: '#C00000', width: 52 }}>{b}</th>
                                   ))
-                                : <th className="section-label px-2 py-1 text-right" style={{ color: '#C00000', width: 72 }}>Medida</th>}
-                              <th className="section-label px-2 py-1 text-center" style={{ color: '#000', width: 32 }}>OK</th>
+                                : <th className="section-label px-2 py-0.5 text-right" style={{ color: '#C00000', width: 72 }}>Medida</th>}
+                              <th className="section-label px-2 py-0.5 text-center" style={{ color: '#000', width: 32 }}>OK</th>
                             </tr>
                           </thead>
                           <tbody>
                             {cg.components.map((c, i) => (
                               <tr key={i} style={{ borderBottom: '1px solid #000' }}>
-                                <td className="px-2 py-1 font-mono font-bold text-black">{i + 1}</td>
-                                <td className="px-2 py-1 font-bold text-black uppercase">{c.name}</td>
-                                <td className="px-2 py-1 text-black uppercase" style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '13px', letterSpacing: '-0.01em' }}>
+                                <td className="px-2 py-0.5 font-mono font-bold text-black">{i + 1}</td>
+                                <td className="px-2 py-0.5 font-bold text-black uppercase">{c.name}</td>
+                                <td className="px-2 py-0.5 text-black uppercase" style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '13px', letterSpacing: '-0.01em' }}>
                                   {c.color || '—'}
                                 </td>
-                                <td className="px-2 py-1 text-black">{c.material || '—'}</td>
+                                <td className="px-2 py-0.5 text-black">{c.material || '—'}</td>
                                 {strapBandCols
                                   ? strapBandCols.map((b) => {
                                       const v = c.cmBands?.find((x) => x.band === b)?.cm;
                                       return (
-                                        <td key={b} className="px-2 py-1 text-right font-mono font-bold" style={{ whiteSpace: 'nowrap', color: '#C00000' }}>
+                                        <td key={b} className="px-2 py-0.5 text-right font-mono font-bold" style={{ whiteSpace: 'nowrap', color: '#C00000' }}>
                                           {v != null ? `${v} cm` : '—'}
                                         </td>
                                       );
                                     })
                                   : (
-                                    <td className="px-2 py-1 text-right font-mono font-bold" style={{ whiteSpace: 'nowrap', color: '#C00000' }}>
+                                    <td className="px-2 py-0.5 text-right font-mono font-bold" style={{ whiteSpace: 'nowrap', color: '#C00000' }}>
                                       {c.cm != null ? `${c.cm} cm` : '—'}
                                     </td>
                                   )}
-                                <td className="px-2 py-1 text-center">
+                                <td className="px-2 py-0.5 text-center">
                                   <span className="inline-block w-4 h-4" style={{ border: '1.5px solid #000' }} />
                                 </td>
                               </tr>
@@ -1752,35 +1752,55 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                       )}
                     </div>
                   );
-                })()}
+          })() : null;
 
-                {/* Alertas operacionais (fachetado etc) — mantidos na
-                    simplificação 2026-06-12. */}
+          const trabalhoNode = (
+            <div key={`t-${idx}`} className="flow-card bg-white" style={{ border: '1.5px solid #000' }}>
+              {colorHeader}
+              <div className="p-1 bg-white">
+                {theme.showPiecesToSew && (
+                  <div className="keep-together keep-with-next flex items-baseline justify-between gap-2 px-2 py-0.5 mb-1" style={{ border: '1.5px solid #000' }}>
+                    <span className="section-label" style={{ color: '#000' }}>Peças a Costurar</span>
+                    <span
+                      className="text-black leading-none"
+                      style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em' }}
+                    >
+                      {cg.totalPairs * 2}
+                      <span className="text-[10px] font-mono tracking-widest uppercase"> peças (2 peças/par)</span>
+                    </span>
+                  </div>
+                )}
+                {(sector === 'Costura Cabedal' || sector === 'Corte Cabedal') && (cg.leftoverNapas?.length ?? 0) > 0 && (
+                  <div className="keep-together keep-with-next px-2 py-0.5 mb-1" style={{ border: '1.5px solid #000' }}>
+                    <span className="section-label block" style={{ color: '#000' }}>Sobra de napa</span>
+                    <span className="text-[11px] font-bold uppercase tracking-wide text-black">
+                      {cg.leftoverNapas!.join(' · ')}
+                    </span>
+                  </div>
+                )}
+                {montagemComponents}
                 {theme.showAlerts && cg.alerts && cg.alerts.length > 0 && <SectorAlerts alerts={cg.alerts} />}
-
-                {/* Grade de números — editorial hairline. Atômica: as linhas
-                    "Por Ficha"/"Total" nunca se separam.
-                    O rótulo "Grade · Pares por Numeração" saiu na densidade
-                    2026-07-23: o thead da própria tabela já abre com "Nº". */}
-                <div className={`${sector === 'Aviamento' ? 'mb-0.5' : 'mb-1'} keep-together`}>
+                <div className="mb-0.5 keep-together">
                   {renderGradeTable(cg)}
                 </div>
-
-                {/* Consumo · Corte do Rolo (Corte Cabedal — mesmo cálculo do PV) */}
-                {renderConsumoCorte(cg)}
-
-                {/* Consumo de Tiras · Metros (Aviamento — metros por ficha + total) */}
-                {renderConsumoTiras(cg)}
-                <SectorMaterials rows={cg.consumption} sector={sector}
-                  excludeComponents={sector === 'Aviamento' ? ['Tiras'] : CONSUMO_COMPONENTS_BY_SECTOR[sector] || []} />
-
-                {/* Tally Box */}
-                <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={cg.totalPairs} title={tallyTitle} size={TALLY_SIZE} />
               </div>
             </div>
           );
 
-          return <React.Fragment key={idx}>{colorBlock}</React.Fragment>;
+          const fechamentoNode = (
+            <div key={`f-${idx}`} className="p-1 bg-white" style={{ border: '1.5px solid #000', borderTop: 0 }}>
+              {renderConsumoCorte(cg)}
+              {renderConsumoTiras(cg)}
+              <SectorMaterials rows={cg.consumption} sector={sector}
+                excludeComponents={sector === 'Aviamento' ? ['Tiras'] : CONSUMO_COMPONENTS_BY_SECTOR[sector] || []} />
+              <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={cg.totalPairs} title={tallyTitle} size={TALLY_SIZE} />
+            </div>
+          );
+
+          return [
+            { node: trabalhoNode },
+            { node: fechamentoNode, keepWithPrev: true },
+          ];
   });
 
     return [
@@ -1850,9 +1870,9 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
   // o quanto o PaginatedSheet pode encolher sem furar os pisos tipográficos.
   // Sem isto o AUTO_FIT_FLOOR global (0.80) encolhia por cima de fontes que já
   // estavam no piso. Decisão do dono 31/07/2026: legibilidade vence densidade.
-  // `theme.compact` rebaixa um bucket — precisa entrar na conta, senão o piso
-  // sai otimista justo no layout mais denso (Corte Forração / Silk).
+  // A.3: grade sempre dense (mesmo bucket do compacto) — o piso tem que
+  // refletir isso, senão o auto-fit encolhe otimista demais.
   const minScale = groups.reduce((mx, g) => g.colorGroups.reduce((m2, cg) => Math.max(m2,
-    floorSafeScale(gradeTableFont(gradeSizesOf(cg, sector), theme.compact))), mx), 0);
+    floorSafeScale(gradeTableFont(gradeSizesOf(cg, sector), true))), mx), 0);
   return <PaginatedSheet sectorLabel={sectorLabel || sector} blocks={blocks} minScale={minScale} />;
 };

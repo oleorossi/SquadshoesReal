@@ -9,6 +9,8 @@ import {
   STRAP_LABEL_PAD,
   STRAP_STACK_GAP_PX,
   STEP_ROW_PAD_Y,
+  CONSUMO_TABLE_PAD_Y,
+  CONSUMO_TABLE_PAD_X,
   CONSUMO_SLIM_MAX_ROWS,
   canUseSlimConsumo,
 } from '../density';
@@ -84,6 +86,15 @@ describe('density — constantes da Opção A', () => {
     expect(STRAP_STACK_GAP_PX).toBe(0);
     // Label pad: "1px 4px" — vertical curto, horizontal legível.
     expect(STRAP_LABEL_PAD).toMatch(/^1px\s/);
+  });
+
+  it('A.3: tabela de consumo multi-linha aperta só o eixo vertical', () => {
+    expect(CONSUMO_TABLE_PAD_Y).toBeLessThanOrEqual(2);
+    expect(CONSUMO_TABLE_PAD_X).toBeGreaterThanOrEqual(4);
+    // Documentação multi-setor (não só Aviamento).
+    const src = readFileSync(join(__dirname, '..', 'density.ts'), 'utf8');
+    expect(src).toMatch(/multi-setor|multi-sector/i);
+    expect(src).toMatch(/≤ ~45%|<= ~45%/);
   });
 });
 
@@ -165,7 +176,22 @@ describe('guard — toda ficha de operador segue a densidade', () => {
     expect(src.includes('STRAP_ROW_PAD_Y')).toBe(true);
     expect(src.includes('STRAP_LABEL_PAD')).toBe(true);
     expect(src.includes('STEP_ROW_PAD_Y')).toBe(true);
+    expect(src.includes('CONSUMO_TABLE_PAD_Y')).toBe(true);
     // Não pode voltar o padding literal antigo nas células de medida da tira.
     expect(src.includes("padding: `${ft.padY}px 1px`, color: '#C00000'")).toBe(false);
+  });
+
+  it('layout completo emite 2 SheetBlocks por cor (trabalho + fechamento keepWithPrev)', () => {
+    // Lê o fonte CRU: o stripComments do guard come JSDoc de interface
+    // (`{ /** … */ campo }`) até o próximo `{/* … */}`, e apaga o meio do arquivo.
+    const src = readFileSync(join(PRODUCTION_DIR, 'SilkMontageWorkSheet.tsx'), 'utf8');
+    // flatMap + keepWithPrev no fechamento — sem isso cada cor volta a
+    // ocupar 1 A4 sozinha.
+    expect(src.includes('group.colorGroups.flatMap')).toBe(true);
+    expect(src.includes('fechamentoNode')).toBe(true);
+    expect(src.includes('trabalhoNode')).toBe(true);
+    expect(/gradeTableFont\(\s*activeSizes\s*,\s*true\s*\)/.test(src)).toBe(true);
+    // compact continua false no Aviamento (Frente/Traseira).
+    expect(src).toMatch(/'Aviamento':\s*\{[^}]*compact:\s*false/s);
   });
 });

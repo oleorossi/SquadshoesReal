@@ -157,7 +157,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
       />
   );
 
-  const groupBlocks = groups.map((group, idx) => {
+  const groupBlocks: SheetBlock[] = groups.flatMap((group, idx) => {
             // 7º passe (2026-06-12): tally de CORRUGADOS (12/15/18 pares)
             // SEMPRE — mesmo com grades mistas (fichas soma certo entre OPs).
             // Corrugados divergentes: título avisa "corrugados mistos".
@@ -195,7 +195,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
             const groupSizes = palmilhaGroupSizes(allSizes, group);
             // Fontes adaptativas pela qtd de colunas (2026-06-12) — grades
             // densas (mista infantil+adulto) cortavam com fonte fixa.
-            const ft = gradeTableFont(groupSizes);
+            const ft = gradeTableFont(groupSizes, true);
             // Fix 22/05/2026: tirar keep-together do groupBlock root.
             // Grupos consolidados (insoleColor === '—') agregam 6+ sandálias
             // e 213 caixinhas de tally = 380mm de altura, IMPOSSÍVEL caber
@@ -207,7 +207,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
             // (box-decoration-break: clone).
             const groupBlock = (
               <div className="flow-card bg-white" style={{ border: '1.5px solid #000' }}>
-                <div className="keep-together keep-with-next px-3 py-1.5 flex items-center justify-between" style={{ borderBottom: '1.5px solid #000' }}>
+                <div className="keep-together keep-with-next px-2 py-1 flex items-center justify-between" style={{ borderBottom: '1.5px solid #000' }}>
                   <div className="min-w-0 flex-1">
                     <span className="section-label block" style={{ color: '#000' }}>Solado</span>
                     <span
@@ -269,7 +269,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
                     'placa'). Só aparece quando há corte de placa — palmilha
                     pronta-na-cor não corta (plateOps vazio). */}
                 {plates > 0 && (
-                  <div className="keep-together flex items-center justify-between px-3 py-1.5" style={{ borderBottom: '1.5px solid #000', background: '#000' }}>
+                  <div className="keep-together flex items-center justify-between px-2 py-1" style={{ borderBottom: '1.5px solid #000', background: '#000' }}>
                     <div className="min-w-0">
                       <span className="section-label block" style={{ color: '#fff' }}>Cortar placas</span>
                       {(plateNames.length > 0 || plateArea > 0) && (
@@ -298,7 +298,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
                     (não quebra ao meio), mas o strip COMO UM TODO pode
                     quebrar entre sandálias. */}
                 {group.refs && group.refs.length > 0 && (
-                  <div className="px-3 py-1.5 flex items-start gap-2 flex-wrap" style={{ borderBottom: '1px solid #000' }}>
+                  <div className="px-2 py-1 flex items-start gap-2 flex-wrap" style={{ borderBottom: '1px solid #000' }}>
                     <span className="section-label shrink-0 self-center" style={{ color: '#000' }}>Sandálias</span>
                     {group.refs.map((r) => (
                       <div key={r.key} className="keep-together flex flex-col items-center gap-0.5">
@@ -434,19 +434,23 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
                     </span>
                   </div>
                 )}
+              </div>
+            );
 
+            // A.3: trabalho (header→grade) + fechamento (materiais+tally keepWithPrev)
+            // pra o próximo solado subir no resto da A4.
+            const fechamento = (
+              <div key={`f-${idx}`} className="bg-white" style={{ border: '1.5px solid #000', borderTop: 0 }}>
                 <SectorMaterials rows={group.consumption} sector="Corte Fibra" excludeComponents={['Palmilha']} />
-
-                {/* 6º passe (2026-06-12): tally SEMPRE — antes era suprimido
-                    quando readyMade, mas o dono exige Controle de Fichas em
-                    todos os setores (o alerta "Palmilha PRONTA" permanece). */}
-                <div className="px-2 pb-2 pt-2 border-t border-black">
+                <div className="px-2 pb-1 pt-1 border-t border-black">
                   <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={group.totalPairs} title={tallyTitle} size={TALLY_SIZE} />
                 </div>
               </div>
             );
-
-            return <React.Fragment key={idx}>{groupBlock}</React.Fragment>;
+            return [
+              { node: groupBlock },
+              { node: fechamento, keepWithPrev: true },
+            ];
   });
 
   // Trailing — só o "Total Geral" da ficha (KIT handoff + assinaturas
@@ -494,6 +498,6 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
   // Sem isto o AUTO_FIT_FLOOR global (0.80) encolhia por cima de fontes que já
   // estavam no piso. Decisão do dono 31/07/2026: legibilidade vence densidade.
   const minScale = groups.reduce((mx, g) => Math.max(mx,
-    floorSafeScale(gradeTableFont(palmilhaGroupSizes(allSizes, g)))), 0);
+    floorSafeScale(gradeTableFont(palmilhaGroupSizes(allSizes, g), true))), 0);
   return <PaginatedSheet sectorLabel={sectorLabel || 'Corte de Placa de Fibra'} blocks={blocks} minScale={minScale} />;
 };

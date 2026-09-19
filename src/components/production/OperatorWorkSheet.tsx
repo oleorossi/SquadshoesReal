@@ -370,7 +370,7 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
         <div className="flow-card" style={{ border: '1.5px solid #000' }}>
           {sizeChunks.map((chunk, ci) => {
             // Fontes adaptativas pela qtd de colunas do chunk (2026-06-12).
-            const ft = gradeTableFont(chunk);
+            const ft = gradeTableFont(chunk, true);
             return (
             <table key={ci} className="keep-together w-full text-center" style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
               <thead>
@@ -489,7 +489,7 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
     const gradeFit = fitBesideGrade({
       asideWidthPx: OPERATOR_PHOTO_PX,
       sizeKeys: activeSizes.slice(0, colsPerRow),
-      font: gradeTableFont(activeSizes.slice(0, colsPerRow)),
+      font: gradeTableFont(activeSizes.slice(0, colsPerRow), true),
       maxCellDigits: activeSizes.reduce((m, sz) => Math.max(m, String(scaledGrade[sz] ?? 0).length), 1),
       availableWidthPx: A4_CONTENT_WIDTH_PX,
     });
@@ -821,7 +821,7 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
     // lista de numerações que a tabela desenha.
     const sizes = operatorGradeSizes(it.order.grid || {});
     const cols = sizes.length <= 12 ? sizes.length : 12;
-    return Math.max(mx, floorSafeScale(gradeTableFont(sizes.slice(0, cols))));
+    return Math.max(mx, floorSafeScale(gradeTableFont(sizes.slice(0, cols), true)));
   }, 0);
   return <PaginatedSheet sectorLabel={sectorLabel || sector} blocks={blocks} minScale={minScale} />;
 };

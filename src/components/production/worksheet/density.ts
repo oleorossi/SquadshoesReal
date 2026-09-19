@@ -1,12 +1,14 @@
 /**
- * density — constantes de DENSIDADE das fichas de operador ("Opção A", 2026-07-23).
+ * density — constantes de DENSIDADE das fichas de operador ("Opção A", 2026-07-23;
+ * A.2 2026-09-17; A.3 2026-09-19 multi-setor).
  *
  * Problema medido no maço de Aviamento (`teste aviamento.pdf`, PV-00148 +
  * PV-00147, 8 referências / 19 cores): 19 folhas A4 para 11,7 folhas de tinta.
  * Ocupação média de 61% (mínimo 48%), ou seja **38% do papel saía em branco**.
  * A causa não era o paginador — era a ALTURA do card de cor: 622px contra
  * ~948px úteis por folha, então dois cards nunca cabiam juntos e cada cor
- * levava uma folha inteira.
+ * levava uma folha inteira. O mesmo padrão (card atômico alto → meia A4 em
+ * branco) vale pra **todo** setor de layout completo no `/imprimir-fichas`.
  *
  * Anatomia do card de 622px (DS20 · OFF WHITE, medido):
  *   cabeçalho 41 · **foto 146** · rótulo da grade 16 · grade 234 ·
@@ -34,13 +36,15 @@
  * ⚠ SINGULARIDADES DE SETOR — o que NÃO cai nesta regra:
  *   - **Corte Forração**: as miniaturas por referência (92px, `showCompactImages`)
  *     foram AUMENTADAS a pedido do dono em 2026-07-22 (de 54 pra 92). Não
- *     reduzir — o cortador identifica o modelo por elas.
+ *     reduzir — o cortador identifica o modelo por elas. Layout compacto já
+ *     empacota 2 cores; A.3 **não** quebra esse arranjo.
  *   - **Silk**: a logomarca a estampar (110px) é o objeto de trabalho do setor,
  *     e já renderiza com o texto AO LADO (a largura é usada). Fica como está.
  *   - **Palmilha / Solagem**: o strip de sandálias já usa 55×55 com wrap,
- *     ocupando a largura inteira. Só o tally muda.
- *   - **Operator** (Colagem/Acabamento): a foto de 192px já tem os dados do
- *     produto ao lado — a largura é usada. Só o tally muda.
+ *     ocupando a largura inteira. A.3 aplica grade dense + chrome + split
+ *     trabalho/fechamento; não reduz as miniaturas.
+ *   - **Operator** (Colagem etc.): a foto já tem os dados ao lado — a largura
+ *     é usada. Já emite vários `SheetBlock`s; A.3 só aplica grade dense.
  *   - **Reduced**: já nasceu no padrão da Opção A (foto ao lado da grade +
  *     tally `sm`). É o precedente que as outras fichas passam a seguir.
  */
@@ -86,6 +90,37 @@ export const STRAP_LABEL_PAD = '1px 4px';
 export const STRAP_STACK_GAP_PX = 0;
 /** Padding vertical das linhas Frente/Traseira (checkbox por numeração). */
 export const STEP_ROW_PAD_Y = 1;
+
+/**
+ * Densidade A.3 — multi-setor (2026-09-19).
+ *
+ * Após A/A.2, cards de layout completo (Aviamento, Corte Cabedal, Costura
+ * Cabedal, Acabamento, Montagem, e bandas de Palmilha/Solagem) ainda ocupavam
+ * ~55–70% da A4 — o PaginatedSheet fechava a página e o próximo card abria
+ * folha nova. A.3 corta o ar restante **sem** baixar fonte abaixo dos pisos e
+ * **sem** ligar `SECTOR_THEME.*.compact` onde isso apagaria conteúdo do setor
+ * (Frente/Traseira, silk, peças a costurar, etc.).
+ *
+ * Alavancas (todas WYSIWYG — tela e papel):
+ *   1. chrome/padding do card (`p-1.5`→`p-1`, cabeçalho mais baixo);
+ *   2. `gradeTableFont(…, true)` no layout completo (mesmo degrau dense do
+ *      compacto), sem flipar `theme.compact`;
+ *   3. células da tabela de consumo multi-linha apertadas no eixo vertical;
+ *   4. 2 `SheetBlock`s por cor/banda (trabalho + fechamento `keepWithPrev`)
+ *      nos setores de layout completo — ver `SilkMontageWorkSheet`,
+ *      `PalmilhaWorkSheet`, `SolagemWorkSheet`.
+ *
+ * Alvo: card típico ≤ ~45% de `PAGE_CAPACITY_PX` (após `PRINT_INFLATE`), para
+ * 2 cards + gap caberem na mesma folha quando o maço permitir.
+ *
+ * Layouts compactos (Corte Forração, Acabamento Palmilha, Silk) já empacotam 2
+ * cores — A.3 não os reestrutura.
+ */
+/** Padding vertical das células na tabela de consumo com 2+ linhas. */
+export const CONSUMO_TABLE_PAD_Y = 1;
+/** Padding horizontal das células na tabela de consumo multi-linha (mantém
+ *  leitura; o ganho de A.3 é só no eixo vertical). */
+export const CONSUMO_TABLE_PAD_X = 8;
 
 /** Nº máximo de linhas de consumo que cabem na faixa única (sem barra preta
  *  nem cabeçalho de tabela). Com 2+ materiais a tabela volta — a comparação

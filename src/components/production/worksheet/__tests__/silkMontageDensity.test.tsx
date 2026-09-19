@@ -147,6 +147,14 @@ describe('Aviamento — densidade da Opção A', () => {
     expect(STEP_ROW_PAD_Y).toBeLessThanOrEqual(2);
     expect(STRAP_ROW_PAD_Y).toBeLessThanOrEqual(2);
   });
+
+  it('A.3: body do card de layout completo usa p-1 (não p-1.5)', () => {
+    // Guard de fonte: a densificação WYSIWYG tem que viver no JSX, não só
+    // em @media print.
+    const { container } = renderAviamento();
+    const body = container.querySelector('.flow-card .p-1');
+    expect(body).not.toBeNull();
+  });
 });
 
 describe('Aviamento — consumo de tiras: faixa única vs tabela', () => {
@@ -221,5 +229,35 @@ describe('outros setores do mesmo card', () => {
     const imgs = productImages(container);
     expect(imgs).toHaveLength(1);
     expect(imgs[0].getAttribute('width')).toBe(String(HEADER_THUMB_PX));
+  });
+
+  it('Acabamento Palmilha: dois tracks de tally (forração + costura)', () => {
+    const { container } = render(
+      <SilkMontageWorkSheet
+        groups={[ds20([])]}
+        sector="Acabamento Palmilha"
+        sectorLabel="Acabamento Palmilha"
+      />,
+    );
+    const txt = container.textContent || '';
+    expect(txt).toContain('Forração de palmilha');
+    expect(txt).toContain('Costura de palmilha');
+    // 24 fichas × 2 tracks = 48 caixinhas; Corte Forração / Silk ficam em 1×.
+    const boxes = container.querySelectorAll('[data-tally-box]');
+    expect(boxes).toHaveLength(48);
+    expect((boxes[0] as HTMLElement).style.width).toBe('20px');
+  });
+
+  it('alias Costura Palmilha também renderiza os dois tracks', () => {
+    const { container } = render(
+      <SilkMontageWorkSheet
+        groups={[ds20([])]}
+        sector="Costura Palmilha"
+        sectorLabel="Costura Palmilha"
+      />,
+    );
+    expect(container.textContent).toContain('Forração de palmilha');
+    expect(container.textContent).toContain('Costura de palmilha');
+    expect(container.querySelectorAll('[data-tally-box]')).toHaveLength(48);
   });
 });

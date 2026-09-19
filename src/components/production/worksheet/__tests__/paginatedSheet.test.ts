@@ -152,6 +152,38 @@ describe('packBlocks — paginação explícita das fichas', () => {
     expect(PRINT_INFLATE).toBeLessThan(1.12); // sanidade: folga, não exagero
   });
 
+  it('A.3: dois cards típicos (~42% cada) cabem na mesma página', () => {
+    // Pós A.3 o alvo é card ≤ ~45% de PAGE_CAPACITY_PX (após PRINT_INFLATE).
+    // 0,42 + gap + 0,42 × capacity ≤ capacity → 1 página.
+    const h = PAGE_CAPACITY_PX * 0.42;
+    const pages = packBlocks([h, h], PAGE_CAPACITY_PX, BLOCK_GAP_PX);
+    expect(pages).toHaveLength(1);
+    expect(pages[0].blockIdxs).toEqual([0, 1]);
+  });
+
+  it('A.3: trabalho + fechamento keepWithPrev não deixa o tally órfão', () => {
+    // Cor 1 trabalho (0,40) + fechamento (0,12) + cor 2 trabalho (0,40):
+    // sem keepWithPrev o fechamento poderia abrir sozinho; com o flag,
+    // trabalho+fechamento da cor 1 grudam e a cor 2 sobe se couber.
+    const trabalho = PAGE_CAPACITY_PX * 0.40;
+    const fechamento = PAGE_CAPACITY_PX * 0.12;
+    const pages = packBlocks(
+      [trabalho, fechamento, trabalho],
+      PAGE_CAPACITY_PX,
+      BLOCK_GAP_PX,
+      [false, true, false],
+    );
+    // 0,40 + gap + 0,12 + gap + 0,40 ≈ 0,94 → 1 página se gap for pequeno.
+    expect(pages[0].blockIdxs).toContain(0);
+    expect(pages[0].blockIdxs).toContain(1);
+    // Fechamento nunca abre sozinho quando o anterior cabe junto.
+    for (const p of pages) {
+      if (p.blockIdxs.includes(1) && !p.blockIdxs.includes(0)) {
+        throw new Error('fechamento órfão sem o trabalho');
+      }
+    }
+  });
+
   it('constantes reais: capacidade A4 com margens internas é plausível', () => {
     // 288mm − 6 − 8 − 8 (faixa) = 266mm ≈ 1005px @96dpi (288 dá ~9mm de folga
     // contra os 296.9mm que o Chrome usa pra A4 — mata o derrame em página cheia).
