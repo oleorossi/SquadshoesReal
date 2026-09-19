@@ -80,9 +80,12 @@ describe('Montagem / Acabamento — grade ao lado da foto', () => {
     const { container } = render(<OperatorWorkSheet sector="Montagem" items={[item(ADULTO)]} />);
     const declarada = Number(linhaComGrade(container)!.dataset.rigidWidth);
     const sizes = operatorGradeSizes(ADULTO);
+    // A.3: Montagem/Acabamento usam grade densa (gradeTableFont(…, true)) —
+    // o contrato do rigid-width tem que espelhar o mesmo bucket, senão a
+    // diferença de min-width entre denso e confortável estoura a folga de 12px.
     const esperada = fitBesideGrade({
       asideWidthPx: OPERATOR_PHOTO_PX, sizeKeys: sizes,
-      font: gradeTableFont(sizes), maxCellDigits: 3,
+      font: gradeTableFont(sizes, true), maxCellDigits: 3,
     }).rigidWidthPx;
     expect(declarada).toBeGreaterThanOrEqual(OPERATOR_PHOTO_PX);
     expect(declarada).toBeLessThanOrEqual(A4_CONTENT_WIDTH_PX);
@@ -91,7 +94,7 @@ describe('Montagem / Acabamento — grade ao lado da foto', () => {
 
   it('a guarda reprova sozinha se a foto crescer demais', () => {
     const sizes = operatorGradeSizes(ADULTO);
-    const font = gradeTableFont(sizes);
+    const font = gradeTableFont(sizes, true);
     expect(fitBesideGrade({ asideWidthPx: OPERATOR_PHOTO_PX, sizeKeys: sizes, font, maxCellDigits: 4 }).fits).toBe(true);
     // uma foto de 500px não deixaria a grade acima do mínimo
     expect(fitBesideGrade({ asideWidthPx: 500, sizeKeys: sizes, font, maxCellDigits: 4 }).fits).toBe(false);
