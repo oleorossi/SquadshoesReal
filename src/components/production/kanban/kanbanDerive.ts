@@ -15,6 +15,8 @@ export const norm = (s: string) => {
   const trimmed = (s || '').trim();
   if (trimmed === 'Mesa') return 'Aviamento';
   if (trimmed === 'Corte Palmilha') return 'Corte Fibra';
+  // Display rename 2026-09: Costura Palmilha → Acabamento Palmilha.
+  if (trimmed === 'Costura Palmilha') return 'Acabamento Palmilha';
   return trimmed;
 };
 export const fmtDate = (iso: string | null) =>
@@ -181,9 +183,9 @@ function buildCard(
    * A MONTANTE deste card — quem de fato entrega pra ELE.
    *
    * ⚠ Com setores em paralelo, "a última etapa com progresso da OP inteira" NÃO
-   * serve: quando a Costura Palmilha apontava 100, os cards de Costura Cabedal e
+   * serve: quando a Acabamento Palmilha apontava 100, os cards de Costura Cabedal e
    * Aviamento (que são PARALELOS a ela, não posteriores) passavam a exibir
-   * `100/288` em âmbar e o selo vermelho "−188 em Costura Palmilha", cujo texto
+   * `100/288` em âmbar e o selo vermelho "−188 em Acabamento Palmilha", cujo texto
    * afirma que 188 pares nunca passaram por lá. Mentira dupla: elas recebem do
    * CORTE, que entregou o lote cheio, e a vizinha não é a montante de ninguém.
    *

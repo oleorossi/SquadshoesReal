@@ -29,7 +29,7 @@ export const PRODUCTION_STAGES = [
   'Corte Fibra',
   'Corte Forração',
   'Corte Cabedal',
-  'Costura Palmilha',
+  'Acabamento Palmilha',
   'Costura Cabedal',
   'Aviamento',
   'Silk',

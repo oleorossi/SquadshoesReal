@@ -17,7 +17,7 @@ import type { QueueDetailRow } from '@/hooks/useProductionEngine';
  */
 
 const FLOW = new Map<string, number>([
-  ['Corte Fibra', 10], ['Corte Palmilha', 10], ['Corte Forração', 20], ['Costura Palmilha', 30],
+  ['Corte Fibra', 10], ['Corte Palmilha', 10], ['Corte Forração', 20], ['Acabamento Palmilha', 30],
   ['Costura Cabedal', 40], ['Aviamento', 50], ['Silk', 60], ['Colagem', 70],
   ['Montagem', 80], ['Solagem', 90], ['Acabamento', 100], ['Expedição', 110],
 ]);
@@ -171,14 +171,14 @@ describe('deriveCards — setores em paralelo', () => {
   // grupo "costura_aviamento" (30,40,50) colapsa em 30; o resto é serial.
   const LEVEL = new Map<string, number>([
     ['Corte Fibra', 10], ['Corte Palmilha', 10], ['Corte Forração', 10],
-    ['Costura Palmilha', 30], ['Costura Cabedal', 30], ['Aviamento', 30],
+    ['Acabamento Palmilha', 30], ['Costura Cabedal', 30], ['Aviamento', 30],
     ['Silk', 60], ['Colagem', 70], ['Montagem', 80], ['Solagem', 90],
     ['Acabamento', 100], ['Expedição', 110],
   ]);
 
   const rota = () => [
     stage('Corte Palmilha', 1), stage('Corte Forração', 2),
-    stage('Costura Palmilha', 3), stage('Costura Cabedal', 4), stage('Aviamento', 5),
+    stage('Acabamento Palmilha', 3), stage('Costura Cabedal', 4), stage('Aviamento', 5),
     stage('Silk', 6), stage('Acabamento', 10),
   ];
 
@@ -212,7 +212,7 @@ describe('deriveCards — setores em paralelo', () => {
     stages[0] = stage('Corte Palmilha', 1, done(288));
     stages[1] = stage('Corte Forração', 2, done(288));
     const cards = deriveCards(queue(), stages, FLOW, LEVEL);
-    expect(cards.map(c => c.column)).toEqual(['Costura Palmilha', 'Costura Cabedal', 'Aviamento']);
+    expect(cards.map(c => c.column)).toEqual(['Acabamento Palmilha', 'Costura Cabedal', 'Aviamento']);
   });
 
   it('setor serial continua com UM card só', () => {
@@ -238,7 +238,7 @@ describe('deriveCards — setores em paralelo', () => {
     stages[1] = stage('Corte Forração', 2, done(0));   // pulado, fechado com zero
     const cards = deriveCards(queue(), stages, FLOW, LEVEL);
     // ...caem no grupo da costura, todos com o buraco do Corte Forração visível
-    expect(cards.map(c => c.column)).toEqual(['Costura Palmilha', 'Costura Cabedal', 'Aviamento']);
+    expect(cards.map(c => c.column)).toEqual(['Acabamento Palmilha', 'Costura Cabedal', 'Aviamento']);
     for (const c of cards) {
       expect(c.delivered).toBe(0);
       expect(c.isPartial).toBe(true);
@@ -255,12 +255,12 @@ describe('deriveCards — setores em paralelo', () => {
 describe('deriveCards — regressões do code-review', () => {
   const LEVEL = new Map<string, number>([
     ['Corte Fibra', 10], ['Corte Palmilha', 10], ['Corte Forração', 10],
-    ['Costura Palmilha', 30], ['Costura Cabedal', 30], ['Aviamento', 30],
+    ['Acabamento Palmilha', 30], ['Costura Cabedal', 30], ['Aviamento', 30],
     ['Silk', 60], ['Acabamento', 100],
   ]);
   const rota = () => [
     stage('Corte Palmilha', 1), stage('Corte Forração', 2),
-    stage('Costura Palmilha', 3), stage('Costura Cabedal', 4), stage('Aviamento', 5),
+    stage('Acabamento Palmilha', 3), stage('Costura Cabedal', 4), stage('Aviamento', 5),
     stage('Silk', 6), stage('Acabamento', 7),
   ];
 
@@ -280,15 +280,15 @@ describe('deriveCards — regressões do code-review', () => {
     const stages = rota();
     stages[0] = stage('Corte Palmilha', 1, done(288));
     stages[1] = stage('Corte Forração', 2, done(288));
-    stages[2] = stage('Costura Palmilha', 3, { status: 'em_andamento', quantity_processed: 100 });
+    stages[2] = stage('Acabamento Palmilha', 3, { status: 'em_andamento', quantity_processed: 100 });
     const cards = deriveCards(queue(), stages, FLOW, LEVEL);
     const cabedal = cards.find(c => c.column === 'Costura Cabedal')!;
     // Ela recebe do CORTE (lote cheio), não da irmã que está com 100.
     expect(cabedal.delivered).toBe(288);
     expect(cabedal.isPartial).toBe(false);
-    expect(cabedal.upstreamGap).toBeNull();       // dizia "−188 em Costura Palmilha"
+    expect(cabedal.upstreamGap).toBeNull();       // dizia "−188 em Acabamento Palmilha"
     // E a que está trabalhando mostra o PRÓPRIO progresso.
-    expect(cards.find(c => c.column === 'Costura Palmilha')!.delivered).toBe(100);
+    expect(cards.find(c => c.column === 'Acabamento Palmilha')!.delivered).toBe(100);
   });
 
   it('saldo abandonado por pulo continua apontável, em vez de sumir do quadro', () => {

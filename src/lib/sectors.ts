@@ -43,7 +43,10 @@ export const SECTOR_NORMALIZE: Record<string, SectorKey> = {
   // Costura dividida em dois setores paralelos (2026-10-01). O legado
   // 'costura' resolve pra PALMILHA: era ela que a etapa única representava em
   // toda ficha (a de cabedal é opt-in por ficha, ver a migration).
+  // Display rename 2026-09: Costura Palmilha → Acabamento Palmilha (chave intacta).
+  // 'acabamento palmilha' DEVE vir antes de 'acabamento' genérico.
   'costura palmilha': 'costura_palmilha',
+  'acabamento palmilha': 'costura_palmilha',
   'costura cabedal':  'costura_cabedal',
   'costura':          'costura_palmilha',
   'silk':           'silk',
@@ -80,7 +83,7 @@ export const SECTOR_LABELS: Record<SectorKey, string> = {
   corte_palmilha:   'Corte Fibra',
   corte_forracao:   'Corte Forração',
   corte_cabedal:    'Corte Cabedal',
-  costura_palmilha: 'Costura Palmilha',
+  costura_palmilha: 'Acabamento Palmilha',
   costura_cabedal:  'Costura Cabedal',
   mesa:             'Aviamento',   // enum interno é "mesa", label do usuário é Aviamento
   silk:             'Silk',
@@ -120,11 +123,11 @@ export const DISPLAY_SECTORS: { key: SectorKey; label: string }[] = [
  * `order_stages.stage_name`, `sector_settings.sector` e `production_schedule.sector`.
  * Use isto em vez de reescrever a lista de strings em cada hook/tela: listas locais
  * já divergiram (várias ficaram com a `Costura` única, que NÃO existe mais no banco
- * desde a migration 20261001120000 — hoje são `Costura Palmilha` e `Costura Cabedal`).
+ * desde a migration 20261001120000 — hoje são `Acabamento Palmilha` e `Costura Cabedal`).
  */
 export const SECTOR_FLOW: string[] = [
   'Corte Fibra', 'Corte Forração', 'Corte Cabedal',
-  'Costura Palmilha', 'Costura Cabedal', 'Aviamento',
+  'Acabamento Palmilha', 'Costura Cabedal', 'Aviamento',
   'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição',
 ];
 
@@ -136,7 +139,7 @@ export const SECTOR_FLOW: string[] = [
  * entrega.
  *
  *   Corte Fibra ‖ Corte Forração ‖ Corte Cabedal        → grupo 'corte'
- *   Costura Palmilha ‖ Costura Cabedal ‖ Aviamento     → grupo 'costura_aviamento'
+ *   Acabamento Palmilha ‖ Costura Cabedal ‖ Aviamento     → grupo 'costura_aviamento'
  *   Silk → Colagem → Montagem → Solagem → Acabamento → Expedição   (sequenciais)
  *
  * ⚠ Este mapa é o FALLBACK estático. Quando houver `sector_settings` em mão
@@ -150,6 +153,8 @@ export const SECTOR_PARALLEL_GROUP: Record<string, string | null> = {
   'Corte Palmilha':   'corte',
   'Corte Forração':   'corte',
   'Corte Cabedal':    'corte',
+  'Acabamento Palmilha': 'costura_aviamento',
+  // Alias histórico do rename de display (chave interna costura_palmilha intacta).
   'Costura Palmilha': 'costura_aviamento',
   'Costura Cabedal':  'costura_aviamento',
   'Aviamento':        'costura_aviamento',

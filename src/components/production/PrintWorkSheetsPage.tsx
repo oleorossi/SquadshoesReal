@@ -691,14 +691,14 @@ interface PrintWorkSheetsPageProps {
 // (ao lado de Corte Palmilha + Corte Forração). Ficha de operador específica
 // vem em Phase 2 — por ora aceita seleção mas reusa o template do SilkMontage
 // para sole+color sectors (vide SOLE_COLOR_GROUPED_SECTORS abaixo).
-// 2026-06-12: o setor de FICHA 'Costura' virou DOIS — 'Costura Palmilha'
+// 2026-06-12: o setor de FICHA 'Costura' virou DOIS — 'Acabamento Palmilha'
 // (roteiro 'Costura', layout compacto igual Corte Forração) e 'Costura
 // Cabedal' (roteiro 'Corte Cabedal' + upper_corte_a_fio=false). Camada SÓ de
 // impressão: o setor 'Costura' único continua intacto no fluxo de produção
 // (enum do banco, compute_wave_timeline, capacidades).
 // Exportado pra tela wrapper (PrintWorkSheets.tsx) validar o deep-link
 // `?sectors=` vindo das páginas de setor (6º passe, 2026-06-12).
-export const SECTORS = ['Corte Palmilha', 'Corte Forração', 'Corte Cabedal', 'Costura Palmilha', 'Costura Cabedal', 'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição', 'Relatório Gerencial'] as const;
+export const SECTORS = ['Corte Palmilha', 'Corte Forração', 'Corte Cabedal', 'Acabamento Palmilha', 'Costura Cabedal', 'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição', 'Relatório Gerencial'] as const;
 
 // Rótulos de exibição (chip do seletor + título da região na tela). A CHAVE
 // interna 'Corte Palmilha' é mantida (capacidade/roteamento/batch dependem
@@ -2350,12 +2350,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   const SOLE_COLOR_GROUPED_SECTORS = useMemo(
     () => {
       // 2026-06-12: o setor de FICHA 'Costura' (config/DB) virou dois setores
-      // de impressão — 'Costura Palmilha' + 'Costura Cabedal'. A config
+      // de impressão — 'Acabamento Palmilha' + 'Costura Cabedal'. A config
       // (sector_grouping_config) continua com a linha única 'Costura' (é o
       // setor do FLUXO de produção); expande aqui só pra camada de fichas.
       const fromConfig = groupingConfig.getSectorsByStrategy('sole_color');
       return fromConfig.flatMap(s =>
-        s === 'Costura' ? (['Costura Palmilha', 'Costura Cabedal'] as const) : [s],
+        s === 'Costura' ? (['Acabamento Palmilha', 'Costura Cabedal'] as const) : [s],
       ) as GroupedSector[];
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3504,7 +3504,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     // quando tem ao menos um grupo válido.
     if (activeSectors.has('Corte Forração') && smGroups.some(g =>
       g.colorGroups.some(cg => cg.requiresLiningCut === true && opsInRoteiro(cg.opNumbers, 'Corte Forração')))) total += 1;
-    // Mapeamento de roteiro: Costura Palmilha testa 'Costura'.
+    // Mapeamento de roteiro: Acabamento Palmilha testa 'Costura'.
     // Costura Cabedal testava 'Corte Cabedal' — resíduo da era do proxy, quando os
     // dois setores de costura ainda não existiam separados (split na migration
     // 20261001120000). O RENDER já usa a identidade (`roteiroSectorFor = s => s`);
@@ -3512,7 +3512,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     // NENHUMA tem 'Corte Cabedal' em production_sectors e 16 têm 'Costura Cabedal'
     // sem ele — o teste era FALSE pra 100% das fichas, então o setor nunca somava e
     // `sheetCount === 0` desabilitava os dois botões de imprimir (2921/2924).
-    if (activeSectors.has('Costura Palmilha') && smGroups.some(g =>
+    if (activeSectors.has('Acabamento Palmilha') && smGroups.some(g =>
       g.colorGroups.some(cg => opsInRoteiro(cg.opNumbers, 'Costura')))) total += 1;
     if (activeSectors.has('Costura Cabedal') && upperGroups.some(g =>
       g.colorGroups.some(cg => cg.requiresUpperSewing === true && opsInRoteiro(cg.opNumbers, 'Costura Cabedal')))) total += 1;
@@ -3954,7 +3954,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             </div>
         )}
 
-        {/* ── Setores agrupados (Corte Forração, Corte Cabedal, Costura Palmilha,
+        {/* ── Setores agrupados (Corte Forração, Corte Cabedal, Acabamento Palmilha,
             Costura Cabedal, Aviamento por referência, Silk por solado) ── */}
         {isA4 && (() => {
           const smGroups = silkMontageGroups || [];
@@ -4014,7 +4014,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           // Montagem continua por REF+COR via groupedWorksheets abaixo.
           // Aviamento (2026-06-12) renderiza de aviamentoGroups (1 ficha por
           // REFERÊNCIA, seções por cor) — mantém a posição no fluxo.
-          const flowOrder: GroupedSector[] = ['Corte Forração', 'Corte Cabedal', 'Costura Palmilha', 'Costura Cabedal', 'Aviamento', 'Silk'];
+          const flowOrder: GroupedSector[] = ['Corte Forração', 'Corte Cabedal', 'Acabamento Palmilha', 'Costura Cabedal', 'Aviamento', 'Silk'];
           const sectorsToRender: GroupedSector[] = flowOrder.filter(s => activeSectors.has(s));
 
           // 22/05/2026: pra Corte Cabedal, o cortador foca SÓ na cor que

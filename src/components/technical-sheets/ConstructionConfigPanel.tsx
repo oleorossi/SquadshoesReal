@@ -58,10 +58,10 @@ interface ConstructionConfigPanelProps {
 // `__tests__/constructionRouting.test.ts`.
 const SECTORS_CABEDAL              = ['Corte Fibra', 'Corte Cabedal', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
 const SECTORS_CABEDAL_SILK         = ['Corte Fibra', 'Corte Cabedal', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
-const SECTORS_CABEDAL_FORRADO      = ['Corte Fibra', 'Corte Forração', 'Corte Cabedal', 'Costura Palmilha', 'Costura Cabedal', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
-const SECTORS_CABEDAL_FORRADO_SILK = ['Corte Fibra', 'Corte Forração', 'Corte Cabedal', 'Costura Palmilha', 'Costura Cabedal', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
-const SECTORS_TIRAS                = ['Corte Fibra', 'Corte Forração', 'Costura Palmilha', 'Aviamento', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
-const SECTORS_TIRAS_SILK           = ['Corte Fibra', 'Corte Forração', 'Costura Palmilha', 'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
+const SECTORS_CABEDAL_FORRADO      = ['Corte Fibra', 'Corte Forração', 'Corte Cabedal', 'Acabamento Palmilha', 'Costura Cabedal', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
+const SECTORS_CABEDAL_FORRADO_SILK = ['Corte Fibra', 'Corte Forração', 'Corte Cabedal', 'Acabamento Palmilha', 'Costura Cabedal', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
+const SECTORS_TIRAS                = ['Corte Fibra', 'Corte Forração', 'Acabamento Palmilha', 'Aviamento', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
+const SECTORS_TIRAS_SILK           = ['Corte Fibra', 'Corte Forração', 'Acabamento Palmilha', 'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
 
 /** As 6 acima, pra o teste varrer a tabela em vez de valores fixos. */
 export const CANONICAL_ROUTINGS = [
@@ -74,7 +74,7 @@ function sectorsForModel(model: ProductionModel, hasSilk: boolean, requiresSewin
   if (model === 'cabedal')        return hasSilk ? SECTORS_CABEDAL_SILK         : SECTORS_CABEDAL;
   if (model === 'cabedal_forrado') {
     const routing = hasSilk ? SECTORS_CABEDAL_FORRADO_SILK : SECTORS_CABEDAL_FORRADO;
-    // Corte a fio não passa por Costura Cabedal. A Costura Palmilha continua,
+    // Corte a fio não passa por Costura Cabedal. A Acabamento Palmilha continua,
     // pois é outro componente físico e depende do Corte Fibra.
     return requiresSewing ? routing : routing.filter(s => s !== 'Costura Cabedal');
   }

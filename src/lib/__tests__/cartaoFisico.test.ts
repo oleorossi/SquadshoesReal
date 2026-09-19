@@ -23,7 +23,7 @@ describe('cartaoFisico', () => {
     expect(isCartaoFisicoEmitter('Montagem')).toBe(true);
     expect(isCartaoFisicoEmitter('Silk')).toBe(false);
     expect(isCartaoFisicoEmitter('Colagem')).toBe(false);
-    expect(isCartaoFisicoEmitter('Costura Palmilha')).toBe(false);
+    expect(isCartaoFisicoEmitter('Acabamento Palmilha')).toBe(false);
     expect(isCartaoFisicoEmitter('Solagem')).toBe(false);
     expect(isCartaoFisicoEmitter('Expedição')).toBe(false);
   });

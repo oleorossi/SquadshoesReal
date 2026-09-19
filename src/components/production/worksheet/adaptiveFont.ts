@@ -77,7 +77,7 @@ export function adaptiveTableFont(columns: number, longestContent = 0, bumpLevel
  * Conta +2 colunas fixas (rótulo "Nº/Por Ficha/Total" + coluna Total).
  *
  * @param dense TRUE rebaixa 1 bucket (layout compacto — Corte Forração /
- *   Costura Palmilha / Silk, 7º passe). Não afeta os demais layouts.
+ *   Acabamento Palmilha / Silk, 7º passe). Não afeta os demais layouts.
  */
 export function gradeTableFont(sizeKeys: ReadonlyArray<string>, dense = false): AdaptiveTableFont & { longestKey: number } {
   const longestKey = sizeKeys.reduce((m, s) => Math.max(m, String(s).length), 0);

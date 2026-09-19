@@ -1,6 +1,6 @@
 /**
  * Chave de agrupamento por SOLADO pros maços de impressão dos setores
- * agrupados (Corte Forração / Costura Palmilha / Costura Cabedal / Silk e
+ * agrupados (Corte Forração / Acabamento Palmilha / Costura Cabedal / Silk e
  * o pré-merge do Corte Cabedal) — `buildColorGroupedSheets('sole')` em
  * `PrintWorkSheetsPage.tsx`.
  *

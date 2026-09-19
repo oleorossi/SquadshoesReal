@@ -32,7 +32,7 @@ describe('modelo de informação da ficha de operador', () => {
   // pode mudar de aparência de carona.
   it('não mexe em setor que ficou de fora', () => {
     for (const sector of ['Acabamento', 'Colagem', 'Corte Forração', 'Corte Cabedal',
-      'Costura Palmilha', 'Costura Cabedal', 'Aviamento']) {
+      'Acabamento Palmilha', 'Costura Cabedal', 'Aviamento']) {
       expect(fichaModelFor(sector)).toBe('legacy');
     }
   });

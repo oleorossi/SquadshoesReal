@@ -358,7 +358,7 @@ export function OperationsTab({
             { key: 'forracao',  label: 'Corte Forração', capacityLabel: undefined, cap: capCostura,    setCap: setCapCostura,    lt: ltCostura,    setLt: setLtCostura },
             { key: 'costura-legado', label: 'Costura (legado)', capacityLabel: undefined, cap: capCosturaLegado, setCap: setCapCosturaLegado, lt: ltCostura, setLt: setLtCostura },
             { key: 'costura-cabedal', label: 'Costura Cabedal', capacityLabel: 'Costura Cabedal (pares/dia)', cap: capCosturaCabedal, setCap: setCapCosturaCabedal, lt: ltCostura, setLt: setLtCostura },
-            { key: 'costura-palmilha', label: 'Costura Palmilha', capacityLabel: 'Costura Palmilha (pares/dia)', cap: capCosturaPalmilha, setCap: setCapCosturaPalmilha, lt: undefined, setLt: undefined },
+            { key: 'costura-palmilha', label: 'Acabamento Palmilha', capacityLabel: 'Acabamento Palmilha (pares/dia)', cap: capCosturaPalmilha, setCap: setCapCosturaPalmilha, lt: undefined, setLt: undefined },
             { key: 'silk',      label: 'Silk',       capacityLabel: undefined, cap: capSilk,       setCap: setCapSilk,       lt: ltSilk,       setLt: setLtSilk },
             { key: 'colagem',   label: 'Colagem',    capacityLabel: undefined, cap: capColagem,    setCap: setCapColagem,    lt: ltColagem,    setLt: setLtColagem },
             {

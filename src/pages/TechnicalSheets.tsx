@@ -4255,7 +4255,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
              </div>
            </div>
            <ProductionSectorsTab
-             sectors={sheet.production_sectors || ['Corte Fibra', 'Corte Forração', 'Costura Palmilha', 'Costura Cabedal', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição']}
+             sectors={sheet.production_sectors || ['Corte Fibra', 'Corte Forração', 'Acabamento Palmilha', 'Costura Cabedal', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição']}
              insoleReadyMade={(sheet as any).insole_ready_made === true}
              aviamentoSteps={Array.isArray((sheet as any).aviamento_steps) ? ((sheet as any).aviamento_steps as string[]) : []}
              onSave={(sectors: string[], steps: string[]) => {

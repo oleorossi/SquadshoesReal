@@ -38,7 +38,7 @@ const SECTORS = [
   { key: 'corte_palmilha' as SectorKey, label: 'Corte Palmilha', short: 'Cor. Palm', icon: Scissors,   capField: 'sewing_capacity_per_day',    defaultCap: 500 },
   { key: 'corte_forracao' as SectorKey, label: 'Corte Forração', short: 'Cor. Forr', icon: Layers,     capField: 'cutting_capacity_per_day',   defaultCap: 450 },
   { key: 'mesa'           as SectorKey, label: 'Aviamento',      short: 'Aviam.',    icon: Hand,       capField: 'mesa_daily_capacity',        defaultCap: 275 },
-  { key: 'costura_palmilha' as SectorKey, label: 'Costura Palmilha', short: 'Cost. Palm', icon: Pen,   capField: 'costura_palmilha_capacity_per_day', defaultCap: 300 },
+  { key: 'costura_palmilha' as SectorKey, label: 'Acabamento Palmilha', short: 'Acab. Palm', icon: Pen,   capField: 'costura_palmilha_capacity_per_day', defaultCap: 300 },
   { key: 'costura_cabedal'  as SectorKey, label: 'Costura Cabedal',  short: 'Cost. Cab',  icon: Pen,   capField: 'costura_cabedal_capacity_per_day',  defaultCap: 300 },
   { key: 'silk'           as SectorKey, label: 'Silk',           short: 'Silk',      icon: Printer,    capField: 'silk_capacity_per_day',      defaultCap: 400 },
   { key: 'colagem'        as SectorKey, label: 'Colagem',        short: 'Colag.',    icon: Flame,      capField: 'gluing_capacity_per_day',    defaultCap: 500 },
@@ -69,6 +69,7 @@ const SECTOR_NORM: Record<string, SectorKey> = {
   'corte palmilha': 'corte_palmilha', 'corte_palmilha': 'corte_palmilha', 'palmilha': 'corte_palmilha', 'corte': 'corte_palmilha',
   'corte forração': 'corte_forracao', 'corte forracão': 'corte_forracao', 'corte_forracao': 'corte_forracao',
   'costura palmilha': 'costura_palmilha', 'costura_palmilha': 'costura_palmilha',
+  'acabamento palmilha': 'costura_palmilha',
   'costura cabedal': 'costura_cabedal',   'costura_cabedal': 'costura_cabedal',
   'costura': 'costura_palmilha',  // legado: a etapa única era a de palmilha
   'forração': 'corte_forracao', 'forracao': 'corte_forracao',
@@ -90,9 +91,10 @@ function hasSectorActive(sheet: any, key: SectorKey): boolean {
 function getSectorKey(stageName: string): SectorKey | null {
   const l = stageName.toLowerCase().trim();
   if (l.includes('forr') || l === 'corte_forracao') return 'corte_forracao';
-  // ⚠ As costuras vêm ANTES do teste de 'palmilha': "costura palmilha" contém
-  // "palmilha" e cairia em corte_palmilha se a ordem invertesse.
-  if (l.startsWith('costura')) {
+  // ⚠ As costuras / acabamento palmilha vêm ANTES do teste de 'palmilha':
+  // "costura palmilha" contém "palmilha" e cairia em corte_palmilha se a
+  // ordem invertesse. "acabamento palmilha" também NÃO pode cair em acabamento.
+  if (l.startsWith('costura') || l === 'acabamento palmilha') {
     if (l.includes('cabedal')) return 'costura_cabedal';
     return 'costura_palmilha';   // inclui a grafia legada 'costura'
   }

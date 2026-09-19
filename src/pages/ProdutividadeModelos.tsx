@@ -107,7 +107,7 @@ export default function ProdutividadeModelos() {
     currentMinutes: number | null;
   } | null>(null);
   const [capDraft, setCapDraft] = useState("");
-  // Etapas dentro de um setor (Costura Cabedal × Costura Palmilha): o fluxo trata
+  // Etapas dentro de um setor (Costura Cabedal × Acabamento Palmilha): o fluxo trata
   // o setor como bloco, mas o custo distingue as etapas.
   const [opsEdit, setOpsEdit] = useState<{ sheetId: string; sheetName: string; sector: string } | null>(null);
 

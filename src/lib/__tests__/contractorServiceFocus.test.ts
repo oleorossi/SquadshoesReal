@@ -13,7 +13,7 @@ describe('contractorServiceFocus', () => {
 
   it('reconhece os rótulos atuais sem confundir costura de palmilha', () => {
     expect(getContractorServiceFocus('costura', 'Costura Cabedal')).toBe('costura_cabedal');
-    expect(getContractorServiceFocus('costura_palmilha', 'Costura Palmilha')).toBe('other');
+    expect(getContractorServiceFocus('costura_palmilha', 'Acabamento Palmilha')).toBe('other');
     expect(getContractorServiceFocus('mesa', 'Aviamento')).toBe('aviamento');
   });
 

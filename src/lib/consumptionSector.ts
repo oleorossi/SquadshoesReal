@@ -1,6 +1,6 @@
 /** Destinos selecionáveis na ficha. O destino não altera o momento da baixa. */
 export const CONSUMPTION_SECTORS = [
-  'Corte Fibra', 'Corte Forração', 'Corte Cabedal', 'Costura Palmilha',
+  'Corte Fibra', 'Corte Forração', 'Corte Cabedal', 'Acabamento Palmilha',
   'Costura Cabedal', 'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem',
   'Acabamento',
 ] as const;
@@ -23,5 +23,5 @@ export function matchesConsumptionSector(configured: string, requested: string):
   const sector = configured.trim();
   return sector === requested
     // Compatibilidade de snapshots anteriores à divisão da costura.
-    || (sector === 'Costura' && ['Costura Palmilha', 'Costura Cabedal'].includes(requested));
+    || (sector === 'Costura' && ['Acabamento Palmilha', 'Costura Cabedal'].includes(requested));
 }

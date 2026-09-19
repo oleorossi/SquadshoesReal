@@ -13,7 +13,9 @@ const STAGE_ALIASES: Record<string, string> = {
   'Corte Palmilha': 'Corte Fibra',
   // A 'Costura' única virou dois setores (migration 20261001120000). O legado
   // resolve pra PALMILHA — era o que a etapa única representava em toda ficha.
-  Costura: 'Costura Palmilha',
+  // Display rename: Costura Palmilha → Acabamento Palmilha.
+  Costura: 'Acabamento Palmilha',
+  'Costura Palmilha': 'Acabamento Palmilha',
 };
 
 const CUTTING_STAGES = new Set(['Corte Fibra', 'Corte Forração', 'Corte Cabedal', 'Corte Palmilha']);
@@ -58,15 +60,15 @@ export const STAGE_DAG: Record<string, string[]> = {
   'Corte Fibra': [],
   'Corte Forração': [],
   'Corte Cabedal': [],
-  // Regra operacional decidida: não existe costura de palmilha sem a fibra
+  // Regra operacional decidida: não existe acabamento de palmilha sem a fibra
   // já cortada. Basta haver pares entregues; não exige fechamento total.
-  'Costura Palmilha': ['Corte Fibra'],
+  'Acabamento Palmilha': ['Corte Fibra'],
   // A etapa só é criada para modelo sem corte a fio. Quando existe, o corte
   // de cabedal precisa ter entregue pares antes da costura começar.
   'Costura Cabedal': ['Corte Cabedal'],
   'Aviamento': [],
   'Silk': [],
-  'Colagem': ['Corte Fibra', 'Costura Palmilha', 'Costura Cabedal'],
+  'Colagem': ['Corte Fibra', 'Acabamento Palmilha', 'Costura Cabedal'],
   'Montagem': ['Colagem'],
   'Solagem': ['Montagem'],
   'Acabamento': ['Solagem'],

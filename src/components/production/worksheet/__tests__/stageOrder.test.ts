@@ -10,7 +10,7 @@ describe('canonicalStageOrder', () => {
     expect(canonicalStageOrder('Corte Fibra')).toBe(1);
     expect(canonicalStageOrder('Corte Palmilha')).toBe(1);
     expect(canonicalStageOrder('Corte Forração')).toBe(2);
-    expect(canonicalStageOrder('Costura Palmilha')).toBe(3);
+    expect(canonicalStageOrder('Acabamento Palmilha')).toBe(3);
     expect(canonicalStageOrder('Costura')).toBe(3);
     expect(canonicalStageOrder('Costura Cabedal')).toBe(4);
     expect(canonicalStageOrder('Aviamento')).toBe(5);
@@ -53,7 +53,7 @@ describe('formatOpNumber', () => {
   it('matches SQL canonical_stage_order (mig 20270101005300)', () => {
     expect(CANONICAL_STAGE_ORDER['Corte Fibra']).toBe(1);
     expect(CANONICAL_STAGE_ORDER['Corte Palmilha']).toBe(1);
-    expect(CANONICAL_STAGE_ORDER['Costura Palmilha']).toBe(3);
+    expect(CANONICAL_STAGE_ORDER['Acabamento Palmilha']).toBe(3);
     expect(CANONICAL_STAGE_ORDER['Costura Cabedal']).toBe(4);
     expect(CANONICAL_STAGE_ORDER['Aviamento']).toBe(5);
     expect(CANONICAL_STAGE_ORDER['Expedição']).toBe(11);

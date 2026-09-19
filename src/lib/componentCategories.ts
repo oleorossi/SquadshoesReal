@@ -32,7 +32,7 @@ export function suggestedConsumptionSector(category?: string | null): string {
   if (/solado|sola/.test(normalized)) return 'Solagem';
   if (/embal|caixa|etiqueta|papel/.test(normalized)) return 'Acabamento';
   if (/cola|adesivo|primer|quimic/.test(normalized)) return 'Colagem';
-  if (/linha|fio/.test(normalized)) return 'Costura Palmilha';
+  if (/linha|fio/.test(normalized)) return 'Acabamento Palmilha';
   if (/aviamento|acessorio|elast|ilh[oó]|fivela|rebite|fachete|contraforte|coura[cç]a|refor[cç]/.test(normalized)) return 'Aviamento';
   return '';
 }

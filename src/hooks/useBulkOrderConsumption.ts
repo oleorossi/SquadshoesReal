@@ -266,9 +266,9 @@ export const filterConsumptionForSector = (
       return filter(r => r.component === 'Cabedal' || r.component === 'Fachete');
     case 'Costura':
     // Setores de FICHA (2026-06-12): a camada de impressão divide 'Costura'
-    // em 'Costura Palmilha' e 'Costura Cabedal' — ambos derivam do mesmo
+    // em 'Acabamento Palmilha' e 'Costura Cabedal' — ambos derivam do mesmo
     // setor único do fluxo, então roteiam os mesmos materiais.
-    case 'Costura Palmilha':
+    case 'Acabamento Palmilha':
     case 'Costura Cabedal':
       return filter(r =>
         r.component === 'Cabedal' ||

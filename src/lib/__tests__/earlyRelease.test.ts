@@ -14,7 +14,7 @@ beforeAll(() => setHolidayCache([]));
 
 const sheet = {
   production_sectors: [
-    'Corte Palmilha', 'Corte Forração', 'Costura Palmilha', 'Costura Cabedal',
+    'Corte Palmilha', 'Corte Forração', 'Acabamento Palmilha', 'Costura Cabedal',
     'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento',
   ],
   sewing_capacity_per_day: 100,
@@ -39,7 +39,7 @@ describe('offsetsFromSettings', () => {
     const out = offsetsFromSettings([
       { sector: 'Aviamento', start_offset_days: 5 },
       { sector: 'Costura Cabedal', start_offset_days: 5 },
-      { sector: 'Costura Palmilha', start_offset_days: 0 },
+      { sector: 'Acabamento Palmilha', start_offset_days: 0 },
       { sector: 'Corte Fibra', start_offset_days: null },
     ]);
     expect(out.mesa).toBe(5);
@@ -72,7 +72,7 @@ describe('early-release na cascata reversa', () => {
     expect(early.mesa.end.getTime()).toBe(addBusinessDays(natural.mesa.end, -5).getTime());
     expect(early.costura_cabedal.start.getTime()).toBe(addBusinessDays(natural.costura_cabedal.start, -5).getTime());
 
-    // Costura Palmilha (offset 0) não mexe — é a âncora do bloco 2.
+    // Acabamento Palmilha (offset 0) não mexe — é a âncora do bloco 2.
     expect(early.costura_palmilha.start.getTime()).toBe(natural.costura_palmilha.start.getTime());
     expect(early.costura_palmilha.end.getTime()).toBe(natural.costura_palmilha.end.getTime());
 

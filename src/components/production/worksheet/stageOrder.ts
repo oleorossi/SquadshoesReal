@@ -12,7 +12,8 @@ export const CANONICAL_STAGE_ORDER: Readonly<Record<string, number>> = {
   'Corte Forração': 2,
   'Corte Forracao': 2,
   'Corte Cabedal': 2,
-  'Costura Palmilha': 3,
+  'Acabamento Palmilha': 3,
+  'Costura Palmilha': 3, // alias histórico do rename de display
   'Costura': 3, // alias histórico da costura de palmilha
   'Costura Cabedal': 4,
   'Aviamento': 5,

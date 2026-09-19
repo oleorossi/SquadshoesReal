@@ -46,7 +46,7 @@ import {
 export const DEFAULT_OP_STAGES = [
   'Corte Fibra',
   'Corte Forração',
-  'Costura Palmilha',
+  'Acabamento Palmilha',
   'Costura Cabedal',
   'Aviamento',
   'Silk',

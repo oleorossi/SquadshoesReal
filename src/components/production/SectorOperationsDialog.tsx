@@ -1,4 +1,4 @@
-// Etapas que compõem um setor numa ficha (ex.: Costura Cabedal × Costura Palmilha).
+// Etapas que compõem um setor numa ficha (ex.: Costura Cabedal × Acabamento Palmilha).
 //
 // O fluxo de produção trata "Costura" como um estágio só — o Kanban, a
 // programação diária e a terceirização dependem disso. Mas o CUSTO precisa
@@ -24,7 +24,7 @@ import { getSheetSectorOperations, setSheetSectorOperation } from "@/services/ca
 
 /** Etapas sugeridas por setor — o usuário pode nomear qualquer outra. */
 const ETAPAS_SUGERIDAS: Record<string, string[]> = {
-  Costura: ["Costura Cabedal", "Costura Palmilha"],
+  Costura: ["Costura Cabedal", "Acabamento Palmilha"],
 };
 
 export interface SectorOperationsDialogProps {

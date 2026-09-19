@@ -483,15 +483,15 @@ describe('skipBlockedByPartial', () => {
 
   it('não confunde disponibilidade a montante com saldo necessário para fechar um pulo', () => {
     const limitedFlow = new Map<string, number>([
-      ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Costura Palmilha', 2], ['Silk', 3], ['Montagem', 4],
+      ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Acabamento Palmilha', 2], ['Silk', 3], ['Montagem', 4],
     ]);
     const limitedStages = [
       stage('Corte Palmilha', 1, { status: 'em_andamento', quantity_processed: 50 }),
-      stage('Costura Palmilha', 2),
+      stage('Acabamento Palmilha', 2),
       stage('Silk', 3),
       stage('Montagem', 4),
     ];
-    const limitedCard = makeCard({ stages: limitedStages, column: 'Costura Palmilha' });
+    const limitedCard = makeCard({ stages: limitedStages, column: 'Acabamento Palmilha' });
     const plan = buildPointingPlan(limitedCard, 'Montagem', limitedFlow);
 
     expect(plan.remaining).toBe(50);      // pode apontar 50 agora
@@ -635,20 +635,20 @@ describe('applyPointing — estorno do setor atual parcial', () => {
 describe('alias Corte Palmilha → Corte Fibra (OP-2026-00969 / PV-00142)', () => {
   const FLOW_PROD = new Map<string, number>([
     ['Corte Fibra', 10], ['Corte Cabedal', 15], ['Corte Forração', 20],
-    ['Costura Palmilha', 30], ['Costura Cabedal', 40], ['Aviamento', 50],
+    ['Acabamento Palmilha', 30], ['Costura Cabedal', 40], ['Aviamento', 50],
     ['Silk', 60], ['Colagem', 70], ['Montagem', 80], ['Solagem', 90],
     ['Acabamento', 100], ['Expedição', 110],
   ]);
   const LEVEL_PROD = new Map<string, number>([
     ['Corte Fibra', 10], ['Corte Cabedal', 10], ['Corte Forração', 10],
-    ['Costura Palmilha', 30], ['Costura Cabedal', 30], ['Aviamento', 30],
+    ['Acabamento Palmilha', 30], ['Costura Cabedal', 30], ['Aviamento', 30],
     ['Silk', 60], ['Colagem', 70], ['Montagem', 80], ['Solagem', 90],
     ['Acabamento', 100], ['Expedição', 110],
   ]);
   const rotaViva = () => [
     stage('Corte Palmilha', 1, { quantity_total: 180 }),
     stage('Corte Forração', 2, { quantity_total: 180 }),
-    stage('Costura Palmilha', 3, { quantity_total: 180 }),
+    stage('Acabamento Palmilha', 3, { quantity_total: 180 }),
     stage('Costura Cabedal', 4, { quantity_total: 180 }),
     stage('Aviamento', 5, { quantity_total: 180 }),
     stage('Silk', 6, { quantity_total: 180 }),

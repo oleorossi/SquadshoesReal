@@ -208,7 +208,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
    * menor `flow_order` do grupo — é exatamente o `COALESCE(g.grp_order,
    * ss.flow_order)` de `recompute_production_schedule`. Espelhar o servidor
    * aqui é o que faz o quadro concordar com a agenda: hoje Corte Palmilha +
-   * Corte Forração são um nível, e Costura Palmilha + Costura Cabedal +
+   * Corte Forração são um nível, e Acabamento Palmilha + Costura Cabedal +
    * Aviamento são outro.
    */
   const levelOf = useMemo(() => {
@@ -364,7 +364,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
    * Setores REALMENTE ociosos abaixo do gargalo.
    *
    * ⚠ Coluna vazia não é setor parado. Setores do mesmo `parallel_group` rodam
-   * no mesmo nível do motor (Corte Palmilha + Corte Forração; Costura Palmilha +
+   * no mesmo nível do motor (Corte Palmilha + Corte Forração; Acabamento Palmilha +
    * Costura Cabedal + Aviamento), mas o quadro é serial — UM card por OP, na
    * coluna mais avançada (decisão do dono, entrevista 2026-07-12) —, então o par
    * paralelo fica sem card enquanto o primeiro do grupo não fecha.

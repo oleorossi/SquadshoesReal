@@ -194,7 +194,7 @@ export interface CapacityConsistencyRow {
   detalhe: string;
 }
 
-/** Uma ETAPA dentro de um setor (ex.: Costura Cabedal × Costura Palmilha).
+/** Uma ETAPA dentro de um setor (ex.: Costura Cabedal × Acabamento Palmilha).
  *  O fluxo trata o setor como um bloco; o custo distingue as etapas. */
 export interface SectorOperation {
   id: string;

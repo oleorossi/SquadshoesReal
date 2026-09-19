@@ -40,7 +40,7 @@ export const TallyBox = ({ count, pairsPerCard = 12, totalUnits, unit = 'pares',
   // (20px). 213 caixinhas em ~30 linhas: 20px×30 = 600px (159mm) vs 720px
   // (190mm) = economia extra de ~31mm por tally grande.
   // 7º passe (2026-06-12): size 'sm' (16px, gap 2px) pros layouts COMPACTOS
-  // (Corte Forração / Costura Palmilha / Silk) — 2 cores por A4.
+  // (Corte Forração / Acabamento Palmilha / Silk) — 2 cores por A4.
   // +25% (pedido user 2026-06-17): lg 28→35, sm 16→20, md 20→25px. Em px inline
   // (componente de print) pra cair fora dos passos de 4px do Tailwind.
   const boxPx = size === 'lg' ? 35 : size === 'sm' ? 20 : 25;

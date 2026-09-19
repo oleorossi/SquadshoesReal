@@ -1,14 +1,31 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const SQL = readFileSync(
+const MIGRATIONS_DIR = resolve(process.cwd(), 'supabase/migrations');
+const RENAME_MIG = readdirSync(MIGRATIONS_DIR)
+  .filter((name) => /^\d{14}_.+\.sql$/.test(name))
+  .sort()
+  .reverse()
+  .find((name) => name.includes('rename_costura_palmilha_to_acabamento_palmilha'));
+const RENAME_SQL = RENAME_MIG
+  ? readFileSync(resolve(MIGRATIONS_DIR, RENAME_MIG), 'utf8')
+  : '';
+
+function withPalmilhaDisplayRename(sql: string): string {
+  if (!RENAME_SQL.includes("replace(v_def, 'Costura Palmilha', 'Acabamento Palmilha')")) {
+    return sql;
+  }
+  return sql.replaceAll('Costura Palmilha', 'Acabamento Palmilha');
+}
+
+const SQL = withPalmilhaDisplayRename(readFileSync(
   resolve(
     __dirname,
     '../../supabase/migrations/20270101010300_safe_resync_op_command.sql',
   ),
   'utf8',
-);
+));
 
 function sqlFunction(name: string): string {
   const start = SQL.indexOf(`CREATE OR REPLACE FUNCTION public.${name}(`);
@@ -90,7 +107,7 @@ describe('sale order command — resync seguro', () => {
     expect(names).toEqual([
       'Corte Fibra',
       'Corte Forração',
-      'Costura Palmilha',
+      'Acabamento Palmilha',
       'Costura Cabedal',
       'Aviamento',
       'Silk',

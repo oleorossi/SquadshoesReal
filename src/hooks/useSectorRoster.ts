@@ -5,7 +5,7 @@
 // Levantamento em produção: 11 de 20 funcionários ativos não casavam com padrão
 // nenhum e ficavam invisíveis na tela — sem aviso, sem jeito de lançar produção
 // deles. E a taxonomia divergia do resto do sistema (a tela tinha 'costura'; o
-// fluxo real tem Costura Palmilha e Costura Cabedal separadas).
+// fluxo real tem Acabamento Palmilha e Costura Cabedal separadas).
 //
 // Agora setor e roster vêm de duas views canônicas:
 //   v_production_sectors — os setores oficiais (sector_settings) já com a chave

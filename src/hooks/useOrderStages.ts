@@ -16,13 +16,13 @@ import { shouldLoadOrderStages } from '@/lib/productionLoading';
 // também grava 'Aviamento', e a RPC apontar_producao_setor aceita o alias
 // legado Mesa ⇄ Aviamento pra rows antigas que escaparem.
 // ⚠ Costura virou DOIS setores paralelos em 2026-10-01 (migration
-// 20261001120000): Costura Palmilha e Costura Cabedal. A ordem espelha
+// 20261001120000): Acabamento Palmilha e Costura Cabedal. A ordem espelha
 // `canonical_stage_order()` no banco — Aviamento saiu de 4 pra 5 e tudo
 // depois dele deslocou uma casa. Não reordenar sem mudar a função SQL junto.
 export const PRODUCTION_STAGES = [
   { name: 'Corte Fibra', order: 1 },
   { name: 'Corte Forração', order: 2 },
-  { name: 'Costura Palmilha', order: 3 },
+  { name: 'Acabamento Palmilha', order: 3 },
   { name: 'Costura Cabedal', order: 4 },
   { name: 'Aviamento', order: 5 },
   { name: 'Silk', order: 6 },

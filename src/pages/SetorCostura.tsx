@@ -26,7 +26,7 @@ import { searchMatchesAllTerms } from '@/lib/searchUtils';
 /**
  * Página GENÉRICA de um setor de costura. Desde a divisão de 2026-10-01
  * (migration 20261001120000) existem DOIS setores independentes e paralelos —
- * "Costura Palmilha" e "Costura Cabedal" — e esta página serve os dois via
+ * "Acabamento Palmilha" e "Costura Cabedal" — e esta página serve os dois via
  * prop `sectorName`, em vez de duplicar o arquivo.
  *
  * Layout enxuto. O nome do arquivo é SetorCostura.tsx (não Costura.tsx)
@@ -35,7 +35,7 @@ import { searchMatchesAllTerms } from '@/lib/searchUtils';
  *
  * O visual A4 da ficha de operador será polido em PR seguinte.
  */
-export default function SetorCostura({ sectorName = 'Costura Palmilha' }: { sectorName?: string } = {}) {
+export default function SetorCostura({ sectorName = 'Acabamento Palmilha' }: { sectorName?: string } = {}) {
   const SECTOR_NAME = sectorName;
   const queryClient = useQueryClient();
   const { data: orders = [] } = useOrders();

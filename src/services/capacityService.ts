@@ -272,7 +272,7 @@ export async function deleteProductivitySnapshot(id: string): Promise<void> {
   if (error) throw error;
 }
 
-/** Etapas que compõem um setor numa ficha (Costura Cabedal × Costura Palmilha).
+/** Etapas que compõem um setor numa ficha (Costura Cabedal × Acabamento Palmilha).
  *  O motor agrupa por setor porque o fluxo é por setor; aqui abrimos o detalhe. */
 export async function getSheetSectorOperations(
   sheetId: string,

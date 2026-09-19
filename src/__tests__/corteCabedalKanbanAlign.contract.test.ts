@@ -15,6 +15,21 @@ import { norm } from '@/components/production/kanban/kanbanDerive';
 const MIGRATIONS_DIR = resolve(process.cwd(), 'supabase/migrations');
 const ALIGN = '20270101022600_align_corte_cabedal_kanban_and_promote_fallback.sql';
 const ALIGN_SQL = readFileSync(resolve(MIGRATIONS_DIR, ALIGN), 'utf8');
+const RENAME_MIG = readdirSync(MIGRATIONS_DIR)
+  .filter((name) => /^\d{14}_.+\.sql$/.test(name))
+  .sort()
+  .reverse()
+  .find((name) => name.includes('rename_costura_palmilha_to_acabamento_palmilha'));
+const RENAME_SQL = RENAME_MIG
+  ? readFileSync(resolve(MIGRATIONS_DIR, RENAME_MIG), 'utf8')
+  : '';
+
+function withPalmilhaDisplayRename(sql: string): string {
+  if (!RENAME_SQL.includes("replace(v_def, 'Costura Palmilha', 'Acabamento Palmilha')")) {
+    return sql;
+  }
+  return sql.replaceAll('Costura Palmilha', 'Acabamento Palmilha');
+}
 
 function latestPromoteBody(): string {
   const files = readdirSync(MIGRATIONS_DIR)
@@ -30,7 +45,7 @@ function latestPromoteBody(): string {
     const endDollar = tail.indexOf('$$;');
     const end = endFn >= 0 ? endFn : endDollar;
     expect(end, `${name}: promote sem terminador`).toBeGreaterThanOrEqual(0);
-    return tail.slice(0, end);
+    return withPalmilhaDisplayRename(tail.slice(0, end));
   }
   throw new Error('promote_sale_order_item ausente');
 }
@@ -75,7 +90,7 @@ describe('alinhamento Corte Cabedal · ficha × promote × kanban', () => {
     expect(names).toEqual([
       'Corte Fibra',
       'Corte Forração',
-      'Costura Palmilha',
+      'Acabamento Palmilha',
       'Costura Cabedal',
       'Aviamento',
       'Silk',
@@ -112,5 +127,6 @@ describe('alinhamento Corte Cabedal · ficha × promote × kanban', () => {
     expect(norm('Mesa')).toBe('Aviamento');
     expect(norm('Corte Fibra')).toBe('Corte Fibra');
     expect(norm('Corte Cabedal')).toBe('Corte Cabedal');
+    expect(norm('Costura Palmilha')).toBe('Acabamento Palmilha');
   });
 });

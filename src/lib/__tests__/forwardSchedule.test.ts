@@ -17,7 +17,7 @@ import {
  *
  * TOPOLOGIA (fluxo do dono, 2026-10-01):
  *   bloco 1: Corte Palmilha ‖ Corte Forração
- *   bloco 2: Costura Palmilha ‖ Costura Cabedal ‖ Aviamento  (após o bloco 1)
+ *   bloco 2: Acabamento Palmilha ‖ Costura Cabedal ‖ Aviamento  (após o bloco 1)
  *   → convergem em Silk → sequencial até Acabamento
  * Antes os 4 (2 cortes + aviamento + costura) começavam JUNTOS, o que
  * adiantava a costura pra antes do corte existir.
@@ -33,7 +33,7 @@ beforeAll(() => setHolidayCache([]));
 // o round-trip fechar exatamente no deadline = fim do Acabamento).
 const sheet = {
   production_sectors: [
-    'Corte Palmilha', 'Corte Forração', 'Costura Palmilha', 'Costura Cabedal',
+    'Corte Palmilha', 'Corte Forração', 'Acabamento Palmilha', 'Costura Cabedal',
     'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento',
   ],
   sewing_capacity_per_day: 100,    // Corte Palmilha

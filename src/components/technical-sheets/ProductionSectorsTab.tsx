@@ -17,7 +17,7 @@ export const ALL_PRODUCTION_SECTORS = [
    //     visível só no Kanban via R1.5.
    // Costura dividida em DOIS setores independentes que trabalham lado a lado
    // (decisão do dono 2026-10-01, migration 20261001120000):
-   //   - Costura Palmilha: costura palmilha + forração (interna)
+   //   - Acabamento Palmilha: costura palmilha + forração (interna)
    //   - Costura Cabedal: costura do cabedal (é a terceirizável)
    // ⚠ A ordem aqui espelha `canonical_stage_order()` no banco. Setor que
    // você adicionar aqui TEM que entrar na lista canônica do trigger também,
@@ -25,7 +25,7 @@ export const ALL_PRODUCTION_SECTORS = [
    { name: 'Corte Fibra',      order: 1 },
    { name: 'Corte Forração',   order: 2 },
    { name: 'Corte Cabedal',    order: 2 },
-   { name: 'Costura Palmilha', order: 3 },
+   { name: 'Acabamento Palmilha', order: 3 },
    { name: 'Costura Cabedal',  order: 4 },
    { name: 'Aviamento',        order: 5 },
    { name: 'Silk',           order: 6 },
@@ -41,7 +41,7 @@ export const ALL_PRODUCTION_SECTORS = [
 // O editor desabilita os chips pra não fingir que a seleção foi salva.
 // Palmilha pronta na cor ⇒ não há palmilha pra cortar nem pra costurar. A
 // costura de CABEDAL segue valendo (é outro componente).
-const READY_MADE_STRIPPED_SECTORS = ['Corte Fibra', 'Corte Forração', 'Costura Palmilha'];
+const READY_MADE_STRIPPED_SECTORS = ['Corte Fibra', 'Corte Forração', 'Acabamento Palmilha'];
  
 // Etapas fixas do setor Aviamento. Quando o user marca Aviamento em
 // production_sectors, abre um sub-painel pra escolher quais dessas etapas

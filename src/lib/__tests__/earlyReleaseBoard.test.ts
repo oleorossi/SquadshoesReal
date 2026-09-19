@@ -7,7 +7,7 @@ beforeAll(() => setHolidayCache([]));
 const sheet = {
   name: '5001',
   production_sectors: [
-    'Corte Palmilha', 'Corte Forração', 'Costura Palmilha', 'Costura Cabedal',
+    'Corte Palmilha', 'Corte Forração', 'Acabamento Palmilha', 'Costura Cabedal',
     'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento',
   ],
   sewing_capacity_per_day: 100,

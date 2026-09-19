@@ -91,7 +91,7 @@ export default function Setores() {
               tabs={[
                 { value: 'corte', label: 'Corte Palmilha', icon: Scissors },
                 { value: 'forracao', label: 'Corte Forração', icon: Cloud },
-                { value: 'costura-palmilha', label: 'Costura Palmilha', icon: Pen },
+                { value: 'costura-palmilha', label: 'Acabamento Palmilha', icon: Pen },
                 { value: 'costura-cabedal', label: 'Costura Cabedal', icon: Pen },
                 { value: 'aviamento', label: 'Aviamento', icon: Paperclip },
                 { value: 'silk', label: 'Silk', icon: Palette },
@@ -118,7 +118,7 @@ export default function Setores() {
 
           <TabsContent value="costura-palmilha">
             <Suspense fallback={<TabLoader />}>
-              <SetorCostura sectorName="Costura Palmilha" />
+              <SetorCostura sectorName="Acabamento Palmilha" />
             </Suspense>
           </TabsContent>
 

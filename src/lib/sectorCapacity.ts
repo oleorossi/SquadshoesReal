@@ -422,7 +422,7 @@ export function computeParallelWindows(
   const ltMont     = computeSectorLeadTimeDays('montagem',       qty, sheet, categoryDefaults);
   const ltColagem  = hasSectorPub(sheet, 'Colagem') ? computeSectorLeadTimeDays('colagem', qty, sheet, categoryDefaults) : 0;
   const ltSilk     = hasSectorPub(sheet, 'Silk')    ? computeSectorLeadTimeDays('silk',    qty, sheet, categoryDefaults) : 0;
-  const ltCostPalm = hasSectorPub(sheet, 'Costura Palmilha')
+  const ltCostPalm = hasSectorPub(sheet, 'Acabamento Palmilha')
     ? computeSectorLeadTimeDays('costura_palmilha', qty, sheet, categoryDefaults) : 0;
   const ltCostCab  = hasSectorPub(sheet, 'Costura Cabedal')
     ? computeSectorLeadTimeDays('costura_cabedal', qty, sheet, categoryDefaults) : 0;
@@ -458,12 +458,12 @@ export function computeParallelWindows(
   const silkEnd    = colaStart;
   const silkStart  = addBusinessDays(silkEnd,    -ltSilk);
   // Prep em DOIS blocos paralelos (fluxo descrito pelo dono 2026-10-01):
-  //   bloco 2 — Costura Palmilha ‖ Costura Cabedal ‖ Aviamento
+  //   bloco 2 — Acabamento Palmilha ‖ Costura Cabedal ‖ Aviamento
   //   bloco 1 — Corte Palmilha ‖ Corte Forração   (antes do bloco 2)
   // Cada bloco termina junto; o bloco 1 termina quando o 2 começa.
   // Early-release (start_offset_days > 0, dono 2026-08-30): Aviamento e
   // Costura Cabedal saem ANTES do PV entrar em produção — a janela inteira
-  // recua N dias úteis e NÃO puxa a data dos cortes. Costura Palmilha
+  // recua N dias úteis e NÃO puxa a data dos cortes. Acabamento Palmilha
   // permanece âncora do bloco 2.
   const costPalmEnd   = silkStart;
   const costPalmStart = addBusinessDays(costPalmEnd, -ltCostPalm);
@@ -489,7 +489,7 @@ export function computeParallelWindows(
   return {
     corte_palmilha: { start: palmStart,    end: palmEnd,    cap: capPalmilha, required: hasSectorPub(sheet, 'Corte Palmilha') && sheet.requires_sewing !== false },
     corte_forracao: { start: forrStart,    end: forrEnd,    cap: capForracao, required: hasSectorPub(sheet, 'Corte Forração') && sheet.requires_cutting !== false },
-    costura_palmilha: { start: costPalmStart, end: costPalmEnd, cap: capCostPalm, required: hasSectorPub(sheet, 'Costura Palmilha') },
+    costura_palmilha: { start: costPalmStart, end: costPalmEnd, cap: capCostPalm, required: hasSectorPub(sheet, 'Acabamento Palmilha') },
     costura_cabedal:  { start: costCabStart,  end: costCabEnd,  cap: capCostCab,  required: hasSectorPub(sheet, 'Costura Cabedal') },
     mesa:           { start: mesaStart,    end: mesaEnd,    cap: capMesa,     required: (hasSectorPub(sheet, 'Mesa') || hasSectorPub(sheet, 'Aviamento')) && capMesa > 0 },
     silk:           { start: silkStart,    end: silkEnd,    cap: capSilk,     required: hasSectorPub(sheet, 'Silk') && capSilk > 0 },
@@ -582,7 +582,7 @@ export function computeForwardSchedule(
 
   // Bloco 2 — costuras ‖ aviamento. Offset > 0 (early-release) arranca
   // ANTES da data de início da produção (startDate), sem esperar os cortes.
-  // Costura Palmilha (offset 0) continua no fim dos cortes.
+  // Acabamento Palmilha (offset 0) continua no fim dos cortes.
   let convergence = new Date(cortesEnd);
   for (const k of FORWARD_COSTURA_AVIAMENTO) {
     const ld = lead(k);

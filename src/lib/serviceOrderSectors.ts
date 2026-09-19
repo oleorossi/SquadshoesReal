@@ -103,11 +103,11 @@ export const SERVICE_ORDER_ACTIVITY_DEFAULTS: Record<
     material_components: ['Cabedal', 'BOM', 'Componente Direto'],
   },
   corte_palmilha: {
-    return_before_sector: 'Costura Palmilha',
+    return_before_sector: 'Acabamento Palmilha',
     material_components: ['Palmilha', 'Forração Palmilha', 'BOM', 'Componente Direto'],
   },
   corte_forracao: {
-    return_before_sector: 'Costura Palmilha',
+    return_before_sector: 'Acabamento Palmilha',
     material_components: ['Forração', 'Forração Palmilha', 'BOM', 'Componente Direto'],
   },
   silk: {

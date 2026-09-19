@@ -50,7 +50,7 @@ export interface SectorOee {
  * Setores de produção — stage_name canônico de order_stages (ordem do fluxo).
  *
  * ⚠ Reexporta `SECTOR_FLOW` (`@/lib/sectors`) em vez de manter lista própria: a
- * cópia local ficou com a `Costura` única e sem Costura Palmilha/Cabedal depois
+ * cópia local ficou com a `Costura` única e sem Acabamento Palmilha/Cabedal depois
  * da migration 20261001120000, então parada/OEE apontada numa das costuras não
  * tinha setor pra escolher no seletor.
  */

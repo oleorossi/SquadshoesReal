@@ -43,7 +43,7 @@ describe('roteiros canônicos da ficha técnica', () => {
     // que a grafia morta 'Costura' sobreviveu em `resync_op_atomic`.
     const CONHECIDOS = new Set([
       'Corte Fibra', 'Corte Palmilha', 'Corte Forração', 'Corte Cabedal',
-      'Costura Palmilha', 'Costura Cabedal', 'Aviamento', 'Silk',
+      'Acabamento Palmilha', 'Costura Cabedal', 'Aviamento', 'Silk',
       'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição',
     ]);
     for (const rota of CANONICAL_ROUTINGS) {
