@@ -16,7 +16,7 @@ function withPalmilhaDisplayRename(sql: string): string {
   if (!RENAME_SQL.includes("replace(v_def, 'Costura Palmilha', 'Acabamento Palmilha')")) {
     return sql;
   }
-  return sql.replaceAll('Costura Palmilha', 'Acabamento Palmilha');
+  return sql.split('Costura Palmilha').join('Acabamento Palmilha');
 }
 
 const SQL = withPalmilhaDisplayRename(readFileSync(

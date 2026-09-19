@@ -161,8 +161,41 @@ export async function applyManualPunchCompletion(args: {
  * O motivo (`reason`) usa 'bulk-default-18h' pra ficar identificável no
  * histórico de overrides (time_record_manual_overrides.reason).
  */
+export interface PendingByDateSummary {
+  date: string;
+  count: number;
+  byIssue: Partial<Record<IssueType, number>>;
+}
+
+/** Agrupa pendências por `record_date` e resume contagem por `issue_type`. */
+export function groupPendingByDate(records: PendingTimeRecord[]): {
+  byDate: Map<string, PendingTimeRecord[]>;
+  summaries: PendingByDateSummary[];
+} {
+  const byDate = new Map<string, PendingTimeRecord[]>();
+  for (const rec of records) {
+    const list = byDate.get(rec.record_date);
+    if (list) list.push(rec);
+    else byDate.set(rec.record_date, [rec]);
+  }
+
+  const summaries: PendingByDateSummary[] = [...byDate.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, list]) => {
+      const byIssue: Partial<Record<IssueType, number>> = {};
+      for (const rec of list) {
+        byIssue[rec.issue_type] = (byIssue[rec.issue_type] ?? 0) + 1;
+      }
+      return { date, count: list.length, byIssue };
+    });
+
+  return { byDate, summaries };
+}
+
 export async function bulkApplyDefaultExit(args: {
   employeeId?: string;
+  /** Quando informado, só processa pendências desta data (yyyy-mm-dd). */
+  recordDate?: string;
   defaultExitTime?: string;       // default "18:00"
   defaultLunchEndTime?: string;   // default "13:00" — usado em dia_incompleto_suspeito
   reason?: string;
@@ -176,7 +209,8 @@ export async function bulkApplyDefaultExit(args: {
   const lunchEnd = args.defaultLunchEndTime || '13:00';
   const reason = args.reason || 'bulk-default-18h';
 
-  const pending = await listPendingTimeRecords(args.employeeId);
+  const pending = (await listPendingTimeRecords(args.employeeId))
+    .filter((rec) => !args.recordDate || rec.record_date === args.recordDate);
   const results: Array<{ time_record_id: string; date: string; ok: boolean; error?: string }> = [];
   let processed = 0;
   let skipped = 0;
