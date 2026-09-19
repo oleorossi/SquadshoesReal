@@ -50,6 +50,16 @@ function onlyStageFacts(preflight: SaleOrderCommandPreflight): boolean {
   });
 }
 
+function hasOrphanLedgerCredits(preflight: SaleOrderCommandPreflight): boolean {
+  return listPhysicalFactBlockers(preflight).some((blocker) => {
+    if (blocker.code === 'invalid_ledger') return true;
+    const kinds = Array.isArray(blocker.details?.fact_kinds)
+      ? blocker.details.fact_kinds.map(String)
+      : [];
+    return kinds.includes('over_restored');
+  });
+}
+
 export default function AdminCompensatoryCancelDialog({
   target,
   pending = false,
@@ -71,6 +81,7 @@ export default function AdminCompensatoryCancelDialog({
     [target],
   );
   const stageOnly = target ? onlyStageFacts(target.preflight) : false;
+  const orphanLedger = target ? hasOrphanLedgerCredits(target.preflight) : false;
   const reasonOk = reason.trim().length >= 15;
   const canSubmit = Boolean(target) && reasonOk && confirmed && !pending;
 
@@ -99,17 +110,21 @@ export default function AdminCompensatoryCancelDialog({
 
         {target && (
           <div className="space-y-4">
-            <Alert variant={stageOnly ? 'default' : 'destructive'}>
+            <Alert variant={stageOnly && !orphanLedger ? 'default' : 'destructive'}>
               <Warning className="h-4 w-4" />
               <AlertTitle>
-                {stageOnly
-                  ? 'Apontamento Kanban sem baixa dura de estoque'
-                  : 'Há fato físico com impacto de material'}
+                {orphanLedger
+                  ? 'Ledger com crédito órfão (resync antigo)'
+                  : stageOnly
+                    ? 'Apontamento Kanban sem baixa dura de estoque'
+                    : 'Há fato físico com impacto de material'}
               </AlertTitle>
               <AlertDescription>
-                {stageOnly
-                  ? 'Este PV tem apontamento Kanban sem baixa dura de estoque. Cancelamento compensatório cancela as OPs, libera reservas e não inventa crédito de material.'
-                  : 'Conferir se o material volta ao estoque ou é scrap antes de confirmar — o estorno de ledger credita o saldo contábil.'}
+                {orphanLedger
+                  ? 'Há IN de estorno de resync sem OUT correspondente. O compensatório cancela as OPs e estorna só débitos líquidos abertos; o crédito órfão permanece no histórico e não inventa estoque.'
+                  : stageOnly
+                    ? 'Este PV tem apontamento Kanban sem baixa dura de estoque. Cancelamento compensatório cancela as OPs, libera reservas e não inventa crédito de material.'
+                    : 'Conferir se o material volta ao estoque ou é scrap antes de confirmar — o estorno de ledger credita o saldo contábil.'}
               </AlertDescription>
             </Alert>
 
