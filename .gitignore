@@ -61,3 +61,7 @@ _to_delete/
 
 # Superdesign temp HTML for component extraction
 .superdesign/tmp/
+
+# Python bytecode from skill scripts
+**/__pycache__/
+*.py[cod]
