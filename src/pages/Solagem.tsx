@@ -5,8 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { addDays, endOfMonth, startOfWeek, endOfWeek, isWithinInterval, parseISO, startOfMonth } from 'date-fns';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { Printer, Funnel as Filter, Stack as Layers, ListChecks, CheckCircle as CheckCircle2, CircleNotch as Loader2, Footprints, DotsThreeVertical, Warning as AlertTriangle, Package } from '@phosphor-icons/react';
-import { TableSkeleton } from '@/components/layout/PageSkeleton';
+import { Printer, Funnel as Filter, Stack as Layers, ListChecks, CheckSquare, CircleNotch as Loader2, Footprints, DotsThreeVertical, Package } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
 import { Panel } from '@/components/ui/panel';
@@ -31,6 +30,12 @@ import { supabase } from '@/integrations/supabase/client';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { safeUrlAttr } from '@/lib/htmlUtils';
+import {
+  filterSectorQueueOrders,
+  toggleIdInSet,
+} from '@/lib/production/sectorApontamentoQueue';
+import { finalizeSelectedSectorOrders } from '@/lib/production/finalizeSelectedSectorOrders';
+import { SectorApontamentoShell } from '@/components/production/SectorApontamentoShell';
 
 
 
@@ -133,24 +138,13 @@ export default function Solagem() {
     if (selectedOrders.size === 0) return;
     setFinalizingOrders(true);
     try {
-      const orderIds = Array.from(selectedOrders);
-      const settled = await Promise.allSettled(
-        orderIds.map(orderId => finalizeSectorTask(orderId, 'Solagem'))
-      );
-      const successCount = settled.filter(
-        s => s.status === 'fulfilled' && (s.value as any)?.success
-      ).length;
-      const failedCount = orderIds.length - successCount;
-
-      if (successCount > 0) {
-        if (failedCount === 0) toast.success(`Solagem finalizada para ${successCount} OP(s)!`);
-        else toast.warning(`Solagem finalizada para ${successCount} OP(s); ${failedCount} falhou(aram).`);
-        setSelectedOrders(new Set());
-        queryClient.invalidateQueries({ queryKey: ['order_stages'] });
-        queryClient.invalidateQueries({ queryKey: ['orders'] });
-      } else if (failedCount > 0) {
-        toast.error(`Falha ao finalizar ${failedCount} OP(s).`);
-      }
+      await finalizeSelectedSectorOrders({
+        orderIds: Array.from(selectedOrders),
+        stageName: 'Solagem',
+        finalizeSectorTask,
+        queryClient,
+        onCleared: () => setSelectedOrders(new Set()),
+      });
     } catch (err: any) {
       toast.error(`Erro ao finalizar: ${err.message}`);
     } finally {
@@ -193,48 +187,20 @@ export default function Solagem() {
   };
 
   const toggleOrderSelection = (orderId: string) => {
-    setSelectedOrders(prev => {
-      const next = new Set(prev);
-      if (next.has(orderId)) next.delete(orderId);
-      else next.add(orderId);
-      return next;
-    });
+    setSelectedOrders((prev) => toggleIdInSet(prev, orderId));
   };
 
-  const baseSolagemOrders = useMemo(() => {
-    const filtered = orders.filter(order => {
-      const status = (order.status || '').toLowerCase().normalize('NFC');
-      if (status === 'finalizado' || status === 'cancelada') return false;
-      if (order.sale_order_id) {
-        const so = saleOrders.find((s: any) => s.id === order.sale_order_id);
-        if (so && (so.status === 'Faturado' || so.status === 'Finalizado s/ NF' || so.status === 'Cancelado')) return false;
-      }
-      // Status filter - only filter if "active" is selected
-      if (filterStatus === 'active' && status !== 'em produção') return false;
-
-      const solagemStage = solagemStagesByOrderId.get(order.id);
-      if (filterStatus === 'active' && solagemStage?.status === 'concluido') return false;
-      if (!solagemStage) return filterStatus === 'all';
-      if (filterStatus === 'all') return true;
-
-      return solagemStage.status === 'pendente' || solagemStage.status === 'em_andamento';
-    });
-    return filtered.sort((a, b) => {
-      // Prioridade (2026-06-02): terminar o PEDIDO inteiro por PRAZO. Ordena pela
-      // entrega do PV (mais urgente primeiro; sem prazo por último), mantém as OPs
-      // do mesmo PV juntas, e dentro do PV pela data planejada da OP.
-      const dl = (o: any) => saleOrders?.find((s: any) => s.id === o.sale_order_id)?.delivery_deadline || '';
-      const da = dl(a), db = dl(b);
-      if (da !== db) { if (!da) return 1; if (!db) return -1; return da.localeCompare(db); }
-      const sa = String(a.sale_order_id || ''), sb = String(b.sale_order_id || '');
-      if (sa !== sb) return sa.localeCompare(sb);
-      const pa = (a as any).planned_delivery || '', pb = (b as any).planned_delivery || '';
-      if (!pa && !pb) return 0;
-      if (!pa) return 1;
-      if (!pb) return -1;
-      return pa.localeCompare(pb);
-    });
-  }, [orders, solagemStagesByOrderId, filterStatus]);
+  const baseSolagemOrders = useMemo(
+    () => filterSectorQueueOrders({
+      orders,
+      stages: allStages,
+      saleOrders,
+      stageName: 'Solagem',
+      filterStatus,
+      searchQuery: '',
+    }),
+    [orders, allStages, saleOrders, filterStatus],
+  );
 
   const getDeliveryInfo = (order: any) => {
     const so = saleOrders.find((s: any) => s.id === order.sale_order_id);
@@ -432,30 +398,17 @@ export default function Solagem() {
 
   // Estados de carga/erro ANTES do EmptyState — senão "nenhuma demanda" mente
   // durante o fetch e vira permanente se a query falhar (auditoria 2026-08-01, A12).
-  if (isLoadingOrders) {
+  if (isLoadingOrders || isErrorOrders) {
     return (
-      <div className="space-y-5 page-enter">
-        <EditorialPageHeader
-          sectionLabel="PRODUÇÃO · SOLAGEM"
-          title="Setor de Solagem"
-          description="Grade de solados por cor e numeração"
-        />
-        <TableSkeleton rows={8} />
-      </div>
-    );
-  }
-
-  if (isErrorOrders) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
-        <AlertTriangle className="h-10 w-10 text-destructive" />
-        <p className="font-semibold text-foreground">Falha ao carregar as OPs do setor</p>
-        <p className="text-sm text-muted-foreground">Pode ser uma instabilidade momentânea de conexão. Tente novamente — sem precisar recarregar a página.</p>
-        <Button onClick={() => refetchOrders()} disabled={isFetchingOrders} className="mt-1 gap-1.5">
-          {isFetchingOrders ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-          {isFetchingOrders ? 'Carregando…' : 'Tentar novamente'}
-        </Button>
-      </div>
+      <SectorApontamentoShell
+        sectionLabel="PRODUÇÃO · SOLAGEM"
+        title="Setor de Solagem"
+        description="Grade de solados por cor e numeração"
+        isLoading={isLoadingOrders}
+        isError={!!isErrorOrders}
+        isFetching={isFetchingOrders}
+        onRetry={() => { void refetchOrders(); }}
+      />
     );
   }
 
@@ -474,8 +427,8 @@ export default function Solagem() {
                 onClick={handleFinishSelectedOrders}
                 disabled={finalizingOrders}
               >
-                {finalizingOrders ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                Finalizar {selectedOrders.size} OP(s)
+                {finalizingOrders ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckSquare className="h-4 w-4" />}
+                Finalizar OP's selecionadas ({selectedOrders.size})
               </Button>
             )}
             <OrderSearchBar value={searchQuery} onChange={setSearchQuery} />

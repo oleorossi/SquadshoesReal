@@ -3,17 +3,16 @@ import { useMemo, useState } from 'react';
 import { SignedImage } from '@/components/ui/signed-image';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { Printer, Funnel as Filter, CheckSquare, Stack as Layers, ClipboardText, DotsThreeVertical, CaretRight, Package, Palette, ListBullets, Warning as AlertTriangle, CircleNotch as Loader2 } from '@phosphor-icons/react';
+import { Printer, Funnel as Filter, CheckSquare, Stack as Layers, ClipboardText, DotsThreeVertical, CaretRight, Package, Palette, ListBullets, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { StatCard, StatGrid } from '@/components/ui/stat-card';
-import { EmptyState } from '@/components/ui/empty-state';
-import { Panel } from '@/components/ui/panel';
+import { StatCard } from '@/components/ui/stat-card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { SectorStageActions } from '@/components/production/SectorStageActions';
+import { SectorApontamentoShell } from '@/components/production/SectorApontamentoShell';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useOrders } from '@/hooks/useOrders';
 import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
@@ -26,12 +25,15 @@ import { printHtml } from '@/lib/printOrder';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import OrderSearchBar from '@/components/production/OrderSearchBar';
-import { normalizeForSearch, searchMatchesAllTerms } from '@/lib/searchUtils';
 import { useOrderStraps } from '@/hooks/useOrderStraps';
-import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
-import { TableSkeleton } from '@/components/layout/PageSkeleton';
 import { safeUrlAttr } from '@/lib/htmlUtils';
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
+import {
+  filterSectorQueueOrders,
+  toggleIdInSet,
+  toggleSelectAllIds,
+} from '@/lib/production/sectorApontamentoQueue';
+import { finalizeSelectedSectorOrders } from '@/lib/production/finalizeSelectedSectorOrders';
 
 const SIZES = ['17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','37','38','39','40','41','42','43','44','45'];
 
@@ -58,86 +60,37 @@ export default function Montagem() {
 
 
   const toggleOrder = (id: string) => {
-    setSelectedOrders(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
+    setSelectedOrders((prev) => toggleIdInSet(prev, id));
   };
 
-  const montagemOrders = useMemo(() => {
-    const q = normalizeForSearch(searchQuery);
-    const filtered = orders.filter(order => {
-      const status = (order.status || '').toLowerCase().normalize('NFC');
-      if (status === 'finalizado' || status === 'cancelada') return false;
-      if (order.sale_order_id) {
-        const so = saleOrders.find((s: any) => s.id === order.sale_order_id);
-        if (so && (so.status === 'Faturado' || so.status === 'Finalizado s/ NF' || so.status === 'Cancelado')) return false;
-      }
-      if (filterStatus === 'active' && status !== 'em produção') return false;
-
-      const stages = allStages.filter(s => s.order_id === order.id);
-      const stage = stages.find(s => sameStage(s.stage_name, STAGE_NAME));
-      if (!stage) return filterStatus === 'all';
-      if (filterStatus === 'active' && stage.status !== 'pendente' && stage.status !== 'em_andamento') return false;
-
-      if (q) {
-        const so = saleOrders.find((s: any) => s.id === order.sale_order_id);
-        const ref = (references as any[])?.find((r: any) => r.id === (order as any).reference_id);
-        // "/" = refinamento AND (ex.: "stx / alcineu" = ref STX E cliente Alcineu)
-        if (!searchMatchesAllTerms(searchQuery, so?.order_number, so?.client_order_number, order.order_number, so?.client_name, ref?.name, ref?.code)) return false;
-      }
-
-      return true;
-    });
-    return filtered.sort((a, b) => {
-      // Prioridade (2026-06-02): terminar o PEDIDO inteiro por PRAZO. Ordena pela
-      // entrega do PV (mais urgente primeiro; sem prazo por último), mantém as OPs
-      // do mesmo PV juntas, e dentro do PV pela data planejada da OP.
-      const dl = (o: any) => saleOrders?.find((s: any) => s.id === o.sale_order_id)?.delivery_deadline || '';
-      const da = dl(a), db = dl(b);
-      if (da !== db) { if (!da) return 1; if (!db) return -1; return da.localeCompare(db); }
-      const sa = String(a.sale_order_id || ''), sb = String(b.sale_order_id || '');
-      if (sa !== sb) return sa.localeCompare(sb);
-      const pa = (a as any).planned_delivery || '', pb = (b as any).planned_delivery || '';
-      if (!pa && !pb) return 0;
-      if (!pa) return 1;
-      if (!pb) return -1;
-      return pa.localeCompare(pb);
-    });
-  }, [orders, allStages, filterStatus, searchQuery, saleOrders]);
+  const montagemOrders = useMemo(
+    () => filterSectorQueueOrders({
+      orders,
+      stages: allStages,
+      saleOrders,
+      references: references as { id: string; name?: string | null; code?: string | null }[],
+      stageName: STAGE_NAME,
+      filterStatus,
+      searchQuery,
+    }),
+    [orders, allStages, filterStatus, searchQuery, saleOrders, references],
+  );
 
   const toggleAll = () => {
-    if (selectedOrders.size === montagemOrders.length) {
-      setSelectedOrders(new Set());
-    } else {
-      setSelectedOrders(new Set(montagemOrders.map(o => o.id)));
-    }
+    setSelectedOrders((prev) => toggleSelectAllIds(prev, montagemOrders.map((o) => o.id)));
   };
 
   const handleFinishSelectedOrders = async () => {
     if (selectedOrders.size === 0) return;
     setFinalizingOrders(true);
     try {
-      const orderIds = Array.from(selectedOrders);
-      
-      const settled = await Promise.allSettled(
-        orderIds.map(orderId => finalizeSectorTask(orderId, 'Montagem'))
-      );
-      const successCount = settled.filter(
-        s => s.status === 'fulfilled' && (s.value as any)?.success
-      ).length;
-      const failedCount = orderIds.length - successCount;
-
-      if (successCount > 0) {
-        if (failedCount === 0) toast.success(`Montagem finalizada para ${successCount} OP(s)!`);
-        else toast.warning(`Montagem finalizada para ${successCount} OP(s); ${failedCount} falhou(aram).`);
-        setSelectedOrders(new Set());
-        queryClient.invalidateQueries({ queryKey: ['order_stages'] });
-        queryClient.invalidateQueries({ queryKey: ['orders'] });
-      } else if (failedCount > 0) {
-        toast.error(`Falha ao finalizar ${failedCount} OP(s).`);
-      }
+      await finalizeSelectedSectorOrders({
+        orderIds: Array.from(selectedOrders),
+        stageName: STAGE_NAME,
+        finalizeSectorTask,
+        queryClient,
+        onCleared: () => setSelectedOrders(new Set()),
+      });
     } catch (err: any) {
       toast.error('Erro ao finalizar: ' + (err.message || 'Erro desconhecido'));
     } finally {
@@ -233,40 +186,16 @@ export default function Montagem() {
 
   // Estado de carga/erro ANTES do EmptyState: sem isto, o "nenhuma OP pendente"
   // mentia durante a carga e virava permanente no erro (auditoria 2026-08-01).
-  if (ordersLoading) {
-    return (
-      <div className="space-y-5 page-enter">
-        <EditorialPageHeader
-          sectionLabel="PRODUÇÃO · MONTAGEM"
-          title="Setor de Montagem"
-          description="Gestão e controle das ordens de produção na etapa de montagem"
-        />
-        <TableSkeleton rows={8} />
-      </div>
-    );
-  }
-
-  if (ordersError) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
-        <AlertTriangle className="h-10 w-10 text-destructive" />
-        <p className="font-semibold text-foreground">Falha ao carregar as OPs do setor</p>
-        <p className="text-sm text-muted-foreground">Pode ser uma instabilidade momentânea de conexão. Tente novamente sem recarregar a página.</p>
-        <Button onClick={() => refetchOrders()} disabled={ordersFetching} className="mt-1 gap-1.5">
-          {ordersFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-          {ordersFetching ? 'Carregando…' : 'Tentar novamente'}
-        </Button>
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-5 page-enter">
-      <EditorialPageHeader
-        sectionLabel="PRODUÇÃO · MONTAGEM"
-        title="Setor de Montagem"
-        description="Gestão e controle das ordens de produção na etapa de montagem"
-        actions={<>
+    <SectorApontamentoShell
+      sectionLabel="PRODUÇÃO · MONTAGEM"
+      title="Setor de Montagem"
+      description="Gestão e controle das ordens de produção na etapa de montagem"
+      isLoading={ordersLoading}
+      isError={ordersError}
+      isFetching={ordersFetching}
+      onRetry={() => { void refetchOrders(); }}
+      actions={<>
           {selectedOrders.size > 0 && (
             <Button
               size="sm"
@@ -275,7 +204,7 @@ export default function Montagem() {
               disabled={finalizingOrders}
               onClick={handleFinishSelectedOrders}
             >
-              <CheckSquare className="h-3.5 w-3.5 mr-1" />
+              {finalizingOrders ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <CheckSquare className="h-3.5 w-3.5 mr-1" />}
               Finalizar OP's selecionadas ({selectedOrders.size})
             </Button>
           )}
@@ -318,10 +247,7 @@ export default function Montagem() {
           </DropdownMenu>
           <OrderSearchBar value={searchQuery} onChange={setSearchQuery} />
         </>}
-      />
-
-      {/* Stats */}
-      <StatGrid>
+      stats={<>
         <StatCard
           label="OPs p/ Montagem"
           value={montagemOrders.length}
@@ -338,26 +264,19 @@ export default function Montagem() {
             return so?.client_name || '';
           }).filter(Boolean)).size}
         />
-      </StatGrid>
-
-      {/* Orders list */}
-      {montagemOrders.length === 0 ? (
-        <Panel flush>
-          <EmptyState
-            icon={ClipboardText}
-            title="Nenhuma OP com montagem pendente"
-            description="Não há ordens de produção aguardando montagem no momento."
-          />
-        </Panel>
-      ) : (
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 px-1">
-            <Checkbox
-              checked={selectedOrders.size === montagemOrders.length && montagemOrders.length > 0}
-              onCheckedChange={toggleAll}
-            />
-            <span className="text-xs text-muted-foreground font-medium">Selecionar todas ({montagemOrders.length})</span>
-          </div>
+      </>}
+      isEmpty={montagemOrders.length === 0}
+      empty={{
+        icon: ClipboardText,
+        title: 'Nenhuma OP com montagem pendente',
+        description: 'Não há ordens de produção aguardando montagem no momento.',
+      }}
+      selectAll={montagemOrders.length > 0 ? {
+        checked: selectedOrders.size === montagemOrders.length,
+        onToggle: toggleAll,
+        label: `Selecionar todas (${montagemOrders.length})`,
+      } : undefined}
+    >
           {montagemOrders.map(order => {
             const { ref, grade, activeSizes, gradeSum, totalPairs, totalFichas, fichas, imageUrl } = buildPrintContent(order);
             const scaledTotal = gradeSum > 0
@@ -502,8 +421,6 @@ export default function Montagem() {
               </Card>
             );
           })}
-        </div>
-      )}
-    </div>
+    </SectorApontamentoShell>
   );
 }

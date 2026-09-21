@@ -47,7 +47,7 @@ import { semanaDePagamento, eSemanaFechada } from "@/hooks/useFichaProducaoPagam
 import { useProductionSectors, useEmployeeSectors } from "@/hooks/useSectorRoster";
 import { useUrlTabState } from "@/hooks/useUrlTabState";
 import { ratesOfRow, sumProducaoRows, type FichaMontadorRow } from "@/lib/montadorProduction";
-import { adjustParesByFicha, fichasFromPares, isFichaLocked, parseParesEntry, rateForEntryCategory } from "@/lib/fichaMontadoresEntry";
+import { adjustParesByFicha, fichasFromPares, isFichaLocked, isWeekdayIso, missingWeekdayIsos, parseParesEntry, rateForEntryCategory } from "@/lib/fichaMontadoresEntry";
 import { searchMatchesAllTerms } from "@/lib/searchUtils";
 import { toast } from "sonner";
 import { Printer, User, ChartBar, ClipboardText, Users, CurrencyDollar, FloppyDisk, CaretLeft, CaretRight, Warning, CheckCircle, Clock, CalendarBlank, ListBullets, Plus, Minus, LockKey, ArrowDown, X, FileArrowDown, Copy } from "@phosphor-icons/react";
@@ -740,7 +740,8 @@ export default function FichaMontadoresPage() {
   );
 
   // ── chamada do dia / semana ──
-  const [chamadaView, setChamadaView] = useState<ChamadaView>("dia");
+  // Default Semana: o PCP lança no dia seguinte (spec montagem-solagem-produtividade G6).
+  const [chamadaView, setChamadaView] = useState<ChamadaView>("semana");
   const [chamadaDia, setChamadaDia] = useState(todayISO());
   // Âncora ÚNICA da semana: serve à matriz de lançamento E ao período da aba
   // Produção. Uma noção só de "a semana que estou olhando" — lançar numa semana
@@ -1054,6 +1055,23 @@ export default function FichaMontadoresPage() {
     const original = Object.values(origWeek).reduce((sum, map) => sum + paresOfDiffMap(map), 0);
     return semParesTotal - original;
   }, [origWeek, semParesTotal]);
+
+  /** Faltantes seg–sex por pessoa (R-B1/R-B2). Fins de semana vazios não entram. */
+  const faltantesSemana = useMemo(() => {
+    const porPessoa = new Map<string, string[]>();
+    for (const e of rosterFiltrado) {
+      const miss = missingWeekdayIsos(weekDays, (d) => paresOfDiffMap(weekMap(e.id, d)));
+      if (miss.length > 0) porPessoa.set(e.id, miss);
+    }
+    return porPessoa;
+  }, [rosterFiltrado, weekDays, weekMap]);
+  const pessoasComFalta = faltantesSemana.size;
+  const diasUteisFaltantes = useMemo(() => {
+    let n = 0;
+    for (const dias of faltantesSemana.values()) n += dias.length;
+    return n;
+  }, [faltantesSemana]);
+
   const existingChamada = useMemo(() => {
     const byKey = new Map<string, Ficha>();
     for (const ficha of fichas) {
@@ -2121,6 +2139,30 @@ export default function FichaMontadoresPage() {
                 </div>
               }
             >
+              {pessoasComFalta > 0 && (
+                <div
+                  role="status"
+                  className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-800 dark:text-amber-200"
+                >
+                  <Warning className="h-4 w-4 shrink-0" aria-hidden />
+                  <span>
+                    <strong className="font-semibold">{pessoasComFalta}</strong>
+                    {" "}pessoa{pessoasComFalta === 1 ? "" : "s"} com{" "}
+                    <strong className="font-semibold">{diasUteisFaltantes}</strong>
+                    {" "}dia{diasUteisFaltantes === 1 ? "" : "s"} útil{diasUteisFaltantes === 1 ? "" : "eis"} sem lançamento (seg–sex).
+                    Células âmbar = falta preencher.
+                  </span>
+                </div>
+              )}
+              {pessoasComFalta === 0 && rosterFiltrado.length > 0 && (
+                <div
+                  role="status"
+                  className="flex flex-wrap items-center gap-2 border-b border-green-600/20 bg-green-500/10 px-4 py-2 text-xs text-green-800 dark:text-green-300"
+                >
+                  <CheckCircle className="h-4 w-4 shrink-0" aria-hidden />
+                  Todos os dias úteis da semana têm lançamento no roster filtrado.
+                </div>
+              )}
               {/* No celular: um dia por vez com a mesma bancada da visão Dia.
                   A grade Seg–Dom continua no desktop. */}
               <div className="space-y-3 p-3 md:hidden">
@@ -2128,13 +2170,17 @@ export default function FichaMontadoresPage() {
                   {weekDays.map((d, i) => {
                     const ativo = d === semanaDiaFoco;
                     const paresDia = rosterFiltrado.reduce((s, e) => s + paresOfDiffMap(weekMap(e.id, d)), 0);
+                    const diaFalta = isWeekdayIso(d) && rosterFiltrado.some((e) => paresOfDiffMap(weekMap(e.id, d)) <= 0);
                     return (
                       <button key={d} type="button" role="tab" aria-selected={ativo}
                         onClick={() => setSemanaDiaFoco(d)}
-                        className={`shrink-0 rounded-lg border px-3 py-2 text-left transition-colors ${ativo ? "border-foreground bg-foreground text-background" : "border-border bg-card text-muted-foreground hover:bg-muted/40"}`}>
+                        className={`shrink-0 rounded-lg border px-3 py-2 text-left transition-colors ${ativo ? "border-foreground bg-foreground text-background" : diaFalta ? "border-amber-500/50 bg-amber-500/10 text-foreground" : "border-border bg-card text-muted-foreground hover:bg-muted/40"}`}>
                         <span className="block font-mono text-[9px] font-bold uppercase tracking-wider opacity-70">{WD_SHORT[i]}</span>
                         <span className="block text-sm font-bold tabular-nums">{d.slice(8)}</span>
                         {paresDia > 0 && <span className={`block font-mono text-[9px] ${ativo ? "text-background/70" : "text-primary"}`}>{paresDia}p</span>}
+                        {diaFalta && paresDia === 0 && !ativo && (
+                          <span className="block font-mono text-[9px] font-bold uppercase text-amber-700 dark:text-amber-400">falta</span>
+                        )}
                       </button>
                     );
                   })}
@@ -2149,8 +2195,11 @@ export default function FichaMontadoresPage() {
                     const pp = paresOfDiffMap(cel);
                     const fechado = diaFechado.get(`${e.id}|${semanaDiaFoco}`);
                     const alterado = JSON.stringify(cel) !== JSON.stringify(origWeek[`${e.id}|${semanaDiaFoco}`] || emptyDiffMap());
+                    const faltaDia = isWeekdayIso(semanaDiaFoco) && pp <= 0;
+                    const miss = faltantesSemana.get(e.id) || [];
+                    const rowPares = weekDays.reduce((s, d) => s + paresOfDiffMap(weekMap(e.id, d)), 0);
                     return (
-                      <div key={e.id} className={`space-y-3 p-3 ${alterado ? "bg-amber-500/[0.025]" : ""}`}>
+                      <div key={e.id} className={`space-y-3 p-3 ${alterado ? "bg-amber-500/[0.025]" : ""} ${faltaDia ? "bg-amber-500/5" : ""}`}>
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
                             <p className="flex items-center gap-1.5 truncate text-sm font-semibold">
@@ -2158,8 +2207,16 @@ export default function FichaMontadoresPage() {
                               {fechado && <LockKey className="h-3.5 w-3.5 text-muted-foreground" />}
                             </p>
                             {alterado && <span className="font-mono text-[9px] font-bold uppercase text-amber-600">alterado</span>}
+                            {miss.length > 0 && (
+                              <span className="block font-mono text-[9px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-400">
+                                falta {miss.length} dia{miss.length === 1 ? "" : "s"} útil{miss.length === 1 ? "" : "eis"}
+                              </span>
+                            )}
                           </div>
-                          <span className="shrink-0 font-mono text-sm font-bold tabular-nums">{pp.toLocaleString("pt-BR")} <span className="text-[9px] font-normal uppercase text-muted-foreground">pares</span></span>
+                          <div className="shrink-0 text-right">
+                            <span className="block font-mono text-sm font-bold tabular-nums">{pp.toLocaleString("pt-BR")} <span className="text-[9px] font-normal uppercase text-muted-foreground">pares no dia</span></span>
+                            <span className="block font-mono text-[10px] tabular-nums text-muted-foreground">{rowPares.toLocaleString("pt-BR")} na semana</span>
+                          </div>
                         </div>
                         <div className="flex flex-wrap gap-2">
                           {diffsAtivos.map((df) => (
@@ -2186,7 +2243,10 @@ export default function FichaMontadoresPage() {
                   const porPar = String(e.payment_type || "").toLowerCase() === "producao";
                   const v = valorSemanaDe(e.id);
                   const rowFichas = weekDays.reduce((s, d) => s + fichasOfDiffMap(weekMap(e.id, d)), 0);
-                  const nada = v.med + v.dif === 0;
+                  const rowPares = v.med + v.dif;
+                  const nada = rowPares === 0;
+                  const miss = faltantesSemana.get(e.id) || [];
+                  const diaSemPares = (d: string) => paresOfDiffMap(weekMap(e.id, d)) <= 0;
                   const linhaDiff = (df: Diff) => (
                     <>
                       <span className={`text-center font-mono text-[10px] font-bold ${df === "medio" ? "text-amber-600" : "text-green-700 dark:text-green-400"}`}
@@ -2202,6 +2262,7 @@ export default function FichaMontadoresPage() {
                         const fora = paresOfMap(cel[df]) - val;
                         const fechamento = diaFechado.get(`${e.id}|${d}`);
                         const travado = Boolean(fechamento);
+                        const faltante = !travado && isWeekdayIso(d) && diaSemPares(d);
                         return (
                           <div key={d} className="relative">
                             <input inputMode="numeric" enterKeyHint="next" readOnly={travado || loading || savingSem}
@@ -2213,15 +2274,17 @@ export default function FichaMontadoresPage() {
                               }}
                               onKeyDown={avancarEntrada}
                               data-ficha-entry={`${df}-${semSize}`}
-                              title={travado ? (fechamento === "pago" ? "Dia pago — o lançamento está congelado." : "Dia já incluído na folha — o lançamento está congelado.") : "Digite pares ou use 7f para sete fichas."}
+                              title={travado ? (fechamento === "pago" ? "Dia pago — o lançamento está congelado." : "Dia já incluído na folha — o lançamento está congelado.") : faltante ? "Dia útil sem lançamento — preencha os pares." : "Digite pares ou use 7f para sete fichas."}
                               className={`h-10 min-w-11 w-full rounded border text-center text-sm font-semibold tabular-nums outline-none transition-colors placeholder:text-muted-foreground/40 ${
                                 travado
                                   ? "cursor-not-allowed border-border bg-muted/60 text-muted-foreground"
+                                  : faltante
+                                    ? "border-amber-500 bg-amber-500/10 text-foreground focus:border-amber-600 focus:ring-1 focus:ring-amber-500/40"
                                   : df === "medio"
                                     ? "border-amber-500/40 bg-card text-foreground focus:border-amber-600"
                                     : "border-green-600/40 bg-card text-foreground focus:border-green-600"
                               } ${dowIdx(d) >= 5 ? "opacity-70" : ""}`}
-                              aria-label={`${e.name} ${fmtDia(d)} — ${DIFF_LABEL[df]}, ficha de ${semSize}${travado ? " (na folha, somente leitura)" : ""}`} />
+                              aria-label={`${e.name} ${fmtDia(d)} — ${DIFF_LABEL[df]}, ficha de ${semSize}${travado ? " (na folha, somente leitura)" : faltante ? " (faltante)" : ""}`} />
                             {travado && (
                               <LockKey className="pointer-events-none absolute -right-1 -top-1 h-3 w-3 text-muted-foreground" aria-hidden />
                             )}
@@ -2235,11 +2298,17 @@ export default function FichaMontadoresPage() {
                     </>
                   );
                   return (
-                    <div key={e.id} className={`grid grid-cols-1 items-center gap-3 px-4 py-3 sm:grid-cols-[1fr_auto] sm:gap-4 ${nada ? "opacity-60" : ""}`}>
+                    <div key={e.id} className={`grid grid-cols-1 items-center gap-3 px-4 py-3 sm:grid-cols-[1fr_auto] sm:gap-4 ${nada ? "opacity-60" : ""} ${miss.length > 0 ? "bg-amber-500/[0.03]" : ""}`}>
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-baseline gap-2">
                           <span className="text-sm font-semibold text-foreground">{e.name}</span>
-                          {nada && <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">sem lançamento na semana</span>}
+                          {miss.length > 0 ? (
+                            <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">
+                              falta {miss.map((d) => d.slice(8)).join("·")}
+                            </span>
+                          ) : nada ? (
+                            <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">só fim de semana / zerado</span>
+                          ) : null}
                           {porPar && !(Number(e.valor_par_medio) > 0) && (
                             <span className="font-mono text-[10px] uppercase tracking-wider text-amber-600" title="Sem R$/par no cadastro — a produção não vira pagamento.">sem R$/par</span>
                           )}
@@ -2248,7 +2317,7 @@ export default function FichaMontadoresPage() {
                           style={{ gridTemplateColumns: `16px repeat(${weekDays.length}, minmax(38px,1fr))` }}>
                           <span />
                           {weekDays.map((d, i) => (
-                            <span key={d} className={`text-center font-mono text-[9px] uppercase tracking-wide ${dowIdx(d) >= 5 ? "text-muted-foreground/60" : "text-muted-foreground"}`}>
+                            <span key={d} className={`text-center font-mono text-[9px] uppercase tracking-wide ${miss.includes(d) ? "font-bold text-amber-700 dark:text-amber-400" : dowIdx(d) >= 5 ? "text-muted-foreground/60" : "text-muted-foreground"}`}>
                               {WD_SHORT[i]} {d.slice(8)}
                             </span>
                           ))}
@@ -2256,9 +2325,13 @@ export default function FichaMontadoresPage() {
                         </div>
                       </div>
                       <div className="flex items-end justify-between gap-3 border-t border-border/60 pt-2 text-left font-mono tabular-nums sm:block sm:border-0 sm:pt-0 sm:text-right" style={{ minWidth: 126 }}>
+                        <span className="block text-base font-bold text-foreground" title="Pares da semana (todos os tamanhos e dificuldades).">
+                          {rowPares.toLocaleString("pt-BR")}
+                          <span className="ml-1 text-[10px] font-normal uppercase text-muted-foreground">pares</span>
+                        </span>
                         {porPar ? (
                           <>
-                            <span className="block text-base font-bold text-foreground"
+                            <span className="block text-sm font-semibold text-foreground"
                               title="Prévia pelas taxas do cadastro. O pagamento usa o valor congelado em cada lançamento.">
                               {fmtBRL(v.total)}
                             </span>
@@ -2285,6 +2358,7 @@ export default function FichaMontadoresPage() {
               </div>
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3">
                 <span className="text-[11px] text-muted-foreground" aria-live="polite">Semana {weekLabel} (todos os tamanhos): <strong className="text-foreground">{semParesTotal.toLocaleString("pt-BR")}</strong> pares · <strong className="text-primary">{semFichasTotal}</strong> fichas
+                  {pessoasComFalta > 0 && <span className="ml-2 font-semibold text-amber-700 dark:text-amber-400">· {pessoasComFalta} com falta</span>}
                   {dirtySem > 0 && <span className="ml-2 font-semibold text-amber-600">● {dirtySem} dia{dirtySem === 1 ? "" : "s"} alterado{dirtySem === 1 ? "" : "s"}</span>}
                 </span>
                 <div className="flex flex-wrap items-center gap-2">

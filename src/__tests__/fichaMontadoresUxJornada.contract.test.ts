@@ -24,5 +24,9 @@ describe('contrato UX / jornada da Ficha de Montadores (admin)', () => {
     expect(PAGE).toContain('3 · Relatórios');
     expect(PAGE).toContain('semanaDiaFoco');
     expect(PAGE).toContain('sticky top-0 z-sticky');
+    // PCP no dia seguinte: Lançar abre em Semana (spec montagem-solagem-produtividade G6).
+    expect(PAGE).toContain('useState<ChamadaView>("semana")');
+    expect(PAGE).toContain('missingWeekdayIsos');
+    expect(PAGE).toContain('pessoasComFalta');
   });
 });

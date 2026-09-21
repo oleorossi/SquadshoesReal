@@ -43,6 +43,27 @@ export function isFichaLocked(row: { payroll_run_id?: string | null; pago_em?: s
 }
 
 /**
+ * Dia útil civil (seg–sex) a partir de ISO `YYYY-MM-DD` em horário local.
+ * Sáb/dom vazios não entram no resumo de faltantes da Semana (produção de
+ * fim de semana é opcional; o PCP fecha o atraso nos dias de fábrica).
+ */
+export function isWeekdayIso(iso: string): boolean {
+  const day = new Date(`${iso}T00:00:00`).getDay();
+  return day >= 1 && day <= 5;
+}
+
+/**
+ * Dias úteis da semana ancorada em que a pessoa ainda não tem pares
+ * (qualquer tamanho/dificuldade). Usado pelo banner e pelo highlight da matriz.
+ */
+export function missingWeekdayIsos(
+  weekDays: string[],
+  pairsOnDay: (iso: string) => number,
+): string[] {
+  return weekDays.filter((iso) => isWeekdayIso(iso) && (Number(pairsOnDay(iso)) || 0) <= 0);
+}
+
+/**
  * Taxa exigida ao validar uma categoria antes do save.
  *
  * Se a linha já possuía pares nessa categoria, o valor financeiro pertence ao
