@@ -39,6 +39,7 @@ import { buildBoxIdentificationHtml, buildThermalLabelsHtml, buildHangtagHtml, b
 import { loadImageAsMonochrome, type MonoBitmap } from '@/lib/zplImage';
 import ZplPreviewDialog, { type ZplPreviewLabel } from './ZplPreviewDialog';
 import { PartialPrintSelectionDialog } from './PartialPrintSelectionDialog';
+import { PartialExternalBoxDialog } from './PartialExternalBoxDialog';
 import { openPrintTab, printHtmlAsPdf } from '@/lib/printPdf';
 import {
   confirmPrintJob,
@@ -47,6 +48,14 @@ import {
   setPrintJobStatus,
   shouldPrintJobMarkOrdersAsPrinted,
 } from '@/lib/printJobs';
+import {
+  buildExternalVolumePartialRows,
+  expandBoxGroupsForVolumeSets,
+  filterItemsByExternalVolumeSelection,
+  volumeSetKeyForGroup,
+  type ExternalVolumePartialRow,
+  type ExternalVolumePartialSelection,
+} from '@/lib/labelExternalVolumePartial';
 import { buildHangtagBarcode } from '@/lib/labelIdentifiers';
 import { resolveLabelBoxCapacity, type SolePackagingCapacity } from '@/lib/labelBoxCapacity';
 import { DEFAULT_MANUFACTURER_NAME, DEFAULT_MANUFACTURER_CNPJ } from '@/lib/companySender';
@@ -1041,6 +1050,10 @@ export function LabelProductionTab() {
   const [printCoverage, setPrintCoverage] = useState<LabelPrintCoverage>('total');
   const [partialPrintSelection, setPartialPrintSelection] = useState<PartialLabelPrintSelection>({});
   const [partialPrintDialogOpen, setPartialPrintDialogOpen] = useState(false);
+  const [partialExternalDialogOpen, setPartialExternalDialogOpen] = useState(false);
+  const [partialExternalLoading, setPartialExternalLoading] = useState(false);
+  const [partialExternalRows, setPartialExternalRows] = useState<ExternalVolumePartialRow[]>([]);
+  const [partialExternalItems, setPartialExternalItems] = useState<BoxIdentificationData[]>([]);
 
   // Uma reimpressão parcial pertence exatamente à seleção que a originou.
   // Trocou referência/OP: volta ao total para não reaproveitar cotas antigas.
@@ -1048,6 +1061,9 @@ export function LabelProductionTab() {
     setPrintCoverage('total');
     setPartialPrintSelection({});
     setPartialPrintDialogOpen(false);
+    setPartialExternalDialogOpen(false);
+    setPartialExternalRows([]);
+    setPartialExternalItems([]);
     setSelected(next);
   }, []);
 
@@ -1704,6 +1720,122 @@ export function LabelProductionTab() {
       return allowed.masterBox || allowed.boxLabel;
     });
 
+  const withVolumeSetKey = (g: GroupedReference) => ({
+    ...g,
+    volumeSetKey: volumeSetKeyForGroup({
+      groupKey: g.groupKey,
+      saleOrderNumber: g.saleOrderNumber,
+      referenceId: g.referenceId,
+      refCode: g.refCode,
+      refName: g.refName,
+      colors: g.colors,
+      orderNumbers: g.orderNumbers,
+      volumeSetKey: '',
+      orders: g.orders,
+    }),
+  });
+
+  /** Todos os grupos elegíveis à caixa na listagem atual (pra expandir o N do volume). */
+  const allBoxEligibleGroups = () => groupedRefs
+    .filter(g => {
+      const allowed = getAllowedLabelTypes(g.packagingMode);
+      return allowed.masterBox || allowed.boxLabel;
+    })
+    .map(withVolumeSetKey);
+
+  const openPartialExternalBoxDialog = async () => {
+    const selected = selectedBoxGroups().map(withVolumeSetKey);
+    if (selected.length === 0) {
+      toast.error('Nenhum item selecionado permite rótulo de caixa externa.');
+      return;
+    }
+
+    setPartialExternalLoading(true);
+    setPartialExternalDialogOpen(true);
+    setPartialExternalRows([]);
+    setPartialExternalItems([]);
+    try {
+      const expanded = expandBoxGroupsForVolumeSets(selected, allBoxEligibleGroups());
+      const items = (await computeBoxItems(expanded)).map(applyBoxOverride);
+      const maxVolumeBySet: Record<string, number> = {};
+      for (const item of items) {
+        const key = item.volumeSetKey || '';
+        if (!key) continue;
+        maxVolumeBySet[key] = Math.max(maxVolumeBySet[key] || 0, item.totalBoxes || 0);
+      }
+      const rows = buildExternalVolumePartialRows(selected, maxVolumeBySet);
+      if (rows.length === 0) {
+        setPartialExternalDialogOpen(false);
+        toast.error('Não foi possível calcular os volumes do rótulo externo para a seleção.');
+        return;
+      }
+      setPartialExternalItems(items);
+      setPartialExternalRows(rows);
+    } catch (err: any) {
+      setPartialExternalDialogOpen(false);
+      toast.error(err?.message || 'Erro ao preparar a reimpressão parcial do rótulo.');
+    } finally {
+      setPartialExternalLoading(false);
+    }
+  };
+
+  const handleGeneratePartialExternalBox = async (selection: ExternalVolumePartialSelection) => {
+    const filtered = filterItemsByExternalVolumeSelection(
+      partialExternalItems,
+      partialExternalRows,
+      selection,
+    );
+    if (filtered.length === 0) {
+      toast.error('Informe ao menos um volume válido (ex.: 20, 27 ou 50-55).');
+      return;
+    }
+
+    // Mantém n/N original; só recalcula a página global deste job.
+    const boxItems = filtered.map((item, index) => ({
+      ...item,
+      pageNumber: index + 1,
+      pageTotal: filtered.length,
+    }));
+
+    printTabRef.current = openPrintTab();
+    setIsGenerating(true);
+    setPartialExternalDialogOpen(false);
+    try {
+      if (!validateJobSize(boxItems.length)) {
+        printTabRef.current?.close();
+        printTabRef.current = null;
+        return;
+      }
+      const orderIds = [...new Set(
+        expandBoxGroupsForVolumeSets(
+          selectedBoxGroups().map(withVolumeSetKey),
+          allBoxEligibleGroups(),
+        ).flatMap(g => g.orders.map((o: any) => o.id).filter(Boolean)),
+      )];
+      const html = buildBoxIdentificationHtml(boxItems);
+      setPrintRequest({
+        html,
+        jobId: createPrintJob({
+          batchName: `Parcial Rótulo externo - ${new Date().toLocaleString('pt-BR')}`,
+          totalLabels: boxItems.length,
+          orderIds,
+          marksOrdersAsPrinted: false,
+        }),
+      });
+      queryClient.invalidateQueries({ queryKey: ['print_history'] });
+      toast.success(
+        `Parcial pronta: ${boxItems.length.toLocaleString('pt-BR')} ` +
+        `${boxItems.length === 1 ? 'rótulo' : 'rótulos'} (volumes originais preservados).`,
+      );
+    } catch (err: any) {
+      printTabRef.current?.close();
+      printTabRef.current = null;
+      toast.error(err?.message || 'Erro ao gerar o PDF parcial.');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   // Monta os rótulos de caixa externa com TODOS os campos já resolvidos
   // (remetente, cliente, marca, material, imagem, grade, volumes). Fonte ÚNICA:
   // a impressão E o editor manual leem daqui — se o editor recalculasse por
@@ -2060,6 +2192,7 @@ export function LabelProductionTab() {
         volumeSeqBySet.set(k, seq);
         it.boxNumber = seq;
         it.totalBoxes = volumeTotalBySet.get(k) || seq;
+        it.volumeSetKey = k;
       }
 
       // Preenche pageNumber/pageTotal agora que conhecemos o total de etiquetas
@@ -2612,7 +2745,7 @@ export function LabelProductionTab() {
                         variant="outline"
                         className="gap-2 h-9 shadow-sm rounded-r-none"
                         disabled={printCoverage === 'partial'}
-                        title={printCoverage === 'partial' ? 'O rótulo externo representa um volume completo; use Impressão total.' : undefined}
+                        title={printCoverage === 'partial' ? 'O rótulo externo representa um volume completo; use Impressão total ou Parcial Rótulo externo.' : undefined}
                       >
                         <BoxIcon className="h-4 w-4" />Rótulo Caixa Externa ({selectionLabelTypes.boxCount})
                       </Button>
@@ -2632,6 +2765,26 @@ export function LabelProductionTab() {
                     </div>
                     <span className="text-xs text-muted-foreground truncate max-w-[200px]">
                       {printCoverage === 'partial' ? 'Indisponível por numeração · usa volumes' : 'Padrão logístico Squad'}
+                    </span>
+                  </div>
+                )}
+
+                {selectionLabelTypes.box && (
+                  <div className="flex flex-col gap-1">
+                    <Button
+                      onClick={() => { void openPartialExternalBoxDialog(); }}
+                      variant="outline"
+                      className="gap-2 h-9 shadow-sm border-primary/40 text-primary hover:bg-primary/10"
+                      disabled={isGenerating || partialExternalLoading}
+                      title="Reimprimir volumes específicos do rótulo externo (ex.: 20, 27 ou 50-55)"
+                    >
+                      {partialExternalLoading
+                        ? <Loader2 className="h-4 w-4 animate-spin" />
+                        : <BoxIcon className="h-4 w-4" />}
+                      Parcial Rótulo externo
+                    </Button>
+                    <span className="text-xs text-muted-foreground truncate max-w-[220px]">
+                      Volumes n/N · um PDF
                     </span>
                   </div>
                 )}
@@ -2780,6 +2933,19 @@ export function LabelProductionTab() {
               `${summary.totalLabels === 1 ? 'etiqueta' : 'etiquetas'}.`,
             );
           }}
+        />
+      )}
+
+      {partialExternalDialogOpen && (
+        <PartialExternalBoxDialog
+          rows={partialExternalRows}
+          loading={partialExternalLoading}
+          onClose={() => {
+            setPartialExternalDialogOpen(false);
+            setPartialExternalRows([]);
+            setPartialExternalItems([]);
+          }}
+          onGenerate={(selection) => { void handleGeneratePartialExternalBox(selection); }}
         />
       )}
 

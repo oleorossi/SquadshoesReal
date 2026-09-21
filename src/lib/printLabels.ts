@@ -112,6 +112,12 @@ export interface BoxIdentificationData {
   /** Número da ficha/talão dentro do PV. Aparece no header como metadata
    *  secundária ("PROG.: <orderNumber> / FICHA <ficha>"). Opcional. */
   ficha?: string;
+  /**
+   * Chave interna do conjunto de VOLUME (PV|ref|COR|variant). Usada na
+   * reimpressão parcial de rótulo externo pra filtrar n/N sem renumerar.
+   * O renderizador ignora este campo.
+   */
+  volumeSetKey?: string;
 }
 
 interface LabelData {
