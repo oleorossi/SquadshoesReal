@@ -42,7 +42,7 @@ on:
 # de um deploy automático preso no gate de migrations.
 concurrency:
   group: ${{ github.event_name == 'workflow_dispatch' && inputs.skip_migration_gate && 'vercel-prod-bypass' || 'vercel-prod' }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
@@ -66,15 +66,38 @@ jobs:
           # workflow_dispatch case.
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
+      # Soft-skip cedo se o SHA do CI já não é a ponta de main.
+      # Antes: exit 1 DEPOIS do build → fila vercel-prod presa e tip atrasado.
+      # Agora: marca stale=true, job fica verde, tip pode publicar.
+      - name: Check tip of main
+        id: tip
+        if: github.event_name == 'workflow_run'
+        run: |
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          checked_out_sha=$(git rev-parse HEAD)
+          main_sha=$(git rev-parse origin/main)
+          if [ "$checked_out_sha" != "$main_sha" ]; then
+            echo "Commit obsoleto: checkout=$checked_out_sha main=$main_sha"
+            echo "stale=true" >> "$GITHUB_OUTPUT"
+            echo "## Skip" >> "$GITHUB_STEP_SUMMARY"
+            echo "- SHA obsoleto — tip já avançou; este job não publica." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "stale=false" >> "$GITHUB_OUTPUT"
+            echo "✓ SHA ainda é a ponta de main: $checked_out_sha"
+          fi
+
       - name: Setup Node
+        if: ${{ github.event_name != 'workflow_run' || steps.tip.outputs.stale != 'true' }}
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
       - name: Install Vercel CLI
+        if: ${{ github.event_name != 'workflow_run' || steps.tip.outputs.stale != 'true' }}
         run: npm install -g vercel@59.5.0
 
       - name: Diagnose secrets (sem expor valores sensíveis)
+        if: ${{ github.event_name != 'workflow_run' || steps.tip.outputs.stale != 'true' }}
         env:
           TOK: ${{ secrets.VERCEL_TOKEN }}
         run: |
@@ -112,28 +135,33 @@ jobs:
           echo "✅ Projeto encontrado: $PROJECT_NAME"
 
       - name: Setup Bun (for tsc gate)
+        if: ${{ github.event_name != 'workflow_run' || steps.tip.outputs.stale != 'true' }}
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.13
 
       - name: Install deps for tsc gate
+        if: ${{ github.event_name != 'workflow_run' || steps.tip.outputs.stale != 'true' }}
         run: bun install --frozen-lockfile
 
       # Defesa em profundidade: re-roda tsc aqui antes de qualquer build/deploy.
       # Se workflow_dispatch foi usado pra bypass do CI, ou se algum bug deixou
       # vercel-deploy.yml ser triggered sem CI, esse gate ainda bloqueia.
       - name: TypeScript gate (bloqueia deploy se houver erro)
+        if: ${{ github.event_name != 'workflow_run' || steps.tip.outputs.stale != 'true' }}
         # ⚠ -p tsconfig.app.json obrigatório: a raiz é solution file e não checa nada.
         run: bunx tsc -p tsconfig.app.json --noEmit
 
       - name: Pull Vercel config
+        if: ${{ github.event_name != 'workflow_run' || steps.tip.outputs.stale != 'true' }}
         run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
 
       - name: Build for production
+        if: ${{ github.event_name != 'workflow_run' || steps.tip.outputs.stale != 'true' }}
         run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
 
       - name: Wait for database migrations from this commit
-        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.skip_migration_gate) }}
+        if: ${{ (github.event_name != 'workflow_run' || steps.tip.outputs.stale != 'true') && !(github.event_name == 'workflow_dispatch' && inputs.skip_migration_gate) }}
         timeout-minutes: 25
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
@@ -141,26 +169,15 @@ jobs:
         run: bash scripts/wait-for-supabase-migrations.sh
 
       - name: Migration gate skipped (manual bypass)
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.skip_migration_gate }}
+        if: ${{ (github.event_name != 'workflow_run' || steps.tip.outputs.stale != 'true') && github.event_name == 'workflow_dispatch' && inputs.skip_migration_gate }}
         run: |
           echo "⚠ Gate de migrations pulado via workflow_dispatch (skip_migration_gate=true)."
           echo "Só use para publicar frontend quando o banco está bloqueado por migration alheia."
           echo "## Bypass" >> "$GITHUB_STEP_SUMMARY"
           echo "- Gate de migrations: **pulado** (pedido manual)" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Refuse a stale main commit
-        if: github.event_name == 'workflow_run'
-        run: |
-          git fetch --no-tags origin main:refs/remotes/origin/main
-          checked_out_sha=$(git rev-parse HEAD)
-          main_sha=$(git rev-parse origin/main)
-          if [ "$checked_out_sha" != "$main_sha" ]; then
-            echo "Commit obsoleto: checkout=$checked_out_sha main=$main_sha" >&2
-            exit 1
-          fi
-          echo "✓ SHA ainda é a ponta de main: $checked_out_sha"
-
       - name: Deploy to production
+        if: ${{ github.event_name != 'workflow_run' || steps.tip.outputs.stale != 'true' }}
         env:
           DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: |
