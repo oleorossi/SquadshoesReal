@@ -25,17 +25,18 @@ const nonStrapView = migration.slice(
 );
 
 describe('Tiras — fronteira própria fora de Terceirizados', () => {
-  it('mantém a Central de Tiras em um grupo principal independente', () => {
-    expect(navigation).toContain("label: 'Central de Tiras', group: 'Tiras'");
-    expect(navigation).toMatch(/label: 'Tiras', icon: Scissors,[\s\S]*items: \[resource\('\/tiras-artesanais'\)\]/);
+  it('mantém a Central de Tiras no hub Engenharia, fora de Terceirizados', () => {
+    // Hub reorg (7376022): o grupo flat "Tiras" foi absorvido por Engenharia.
+    // A fronteira que importa continua: tiras ≠ terceirizados (RH).
+    expect(navigation).toContain("label: 'Central de Tiras', group: 'Engenharia'");
+    expect(navigation).toContain("label: 'Terceirizados', group: 'RH'");
+    expect(navigation).toMatch(
+      /label: 'Engenharia',[\s\S]*?children: \[[\s\S]*?resource\('\/tiras-artesanais'\)/,
+    );
     expect(strapsHub).toContain('sectionLabel="CENTRAL DE TIRAS"');
     expect(strapsHub).not.toContain('ENGENHARIA · TIRAS');
-
-    const engineeringGroup = navigation.slice(
-      navigation.indexOf("label: 'Engenharia', icon: Ruler"),
-      navigation.indexOf("label: 'Tiras', icon: Scissors"),
-    );
-    expect(engineeringGroup).not.toContain("resource('/tiras-artesanais')");
+    expect(navigation).not.toMatch(/label: 'Tiras', icon: Scissors/);
+    expect(navigation).not.toContain("label: 'Central de Tiras', group: 'RH'");
   });
 
   it('filtra OS de tira antes de entregar o dataset ao menu genérico', () => {
