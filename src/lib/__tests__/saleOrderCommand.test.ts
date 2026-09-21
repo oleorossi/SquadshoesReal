@@ -8,6 +8,7 @@ import {
   isPostgresDeadlockError,
   isPostgresTimeoutError,
   isStaleSaleOrderVersionError,
+  listPhysicalFactBlockers,
   normalizeCreateSaleOrderCommandReceipt,
   normalizeSaleOrderCommandPreflight,
   normalizeSaleOrderCommandReceipt,
@@ -204,6 +205,34 @@ describe('saleOrderCommand', () => {
     expect(message).toContain('OP-2026-01146');
     expect(message).toContain('stage');
     expect(message).not.toContain('ab7e391d');
+  });
+
+  it('invalid_ledger / over_restored entra no modal compensatório', () => {
+    const preflight = normalizeSaleOrderCommandPreflight(
+      {
+        ready: false,
+        blockers: [{
+          code: 'invalid_ledger',
+          message: 'OP OP-2026-00783 tem crédito líquido órfão no ledger (COLA FORTE (0.0288))',
+          details: {
+            op_number: 'OP-2026-00783',
+            op_id: '172cb589-9fdb-4f1b-8992-550d03509132',
+            fact_kinds: ['over_restored'],
+            summary: 'COLA FORTE (0.0288)',
+          },
+          overridable: true,
+        }],
+        order_version: 1,
+      },
+      { saleOrderId: 'pv-97', command: 'cancel' },
+    );
+
+    expect(hasPhysicalFactBlockers(preflight)).toBe(true);
+    expect(listPhysicalFactBlockers(preflight)[0]?.code).toBe('invalid_ledger');
+    const message = formatSaleOrderCancelError(new SaleOrderReadinessBlockedError(preflight));
+    expect(message).toContain('OP-2026-00783');
+    expect(message).toContain('over_restored');
+    expect(message).not.toContain('172cb589');
   });
 
   it('timeout de statement/lock vira pedido de retry, não a string crua do Postgres', () => {
