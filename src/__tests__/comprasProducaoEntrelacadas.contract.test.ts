@@ -33,6 +33,15 @@ describe('compras↔produção dispatch slice', () => {
     expect(MIGRATION).toContain('mark_purchase_order_exported');
   });
 
+  it('outbox UPDATE também refresca datas (commercial_revision)', () => {
+    const bump = readFileSync(resolve(
+      ROOT,
+      'supabase/migrations/20270101026600_refresh_po_dispatch_on_outbox_update.sql',
+    ), 'utf8');
+    expect(bump).toContain('UPDATE OF commercial_revision');
+    expect(bump).toContain('refresh_purchase_order_dispatch_fields');
+  });
+
   it('hub de planejamento expõe a fila de envio como entrada', () => {
     expect(PLANNING).toContain("'fila-envio'");
     expect(PLANNING).toContain('PurchaseDispatchQueuePanel');
