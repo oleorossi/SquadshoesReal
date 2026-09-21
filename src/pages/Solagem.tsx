@@ -114,7 +114,8 @@ export default function Solagem() {
         map.set(`${m.sheet_id}__${(m.product_color || '').toLowerCase().trim()}`, prodName);
       }
     }
-    return (order: { reference_id: string; color?: string | null }) => {
+    return (order: { reference_id?: string | null; color?: string | null }) => {
+      if (!order.reference_id) return undefined;
       const key = `${order.reference_id}__${(order.color || '').toLowerCase().trim()}`;
       return map.get(key);
     };

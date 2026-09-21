@@ -752,7 +752,7 @@ export default function MaterialConsumptionView({
       const withPrint = html.includes('</body>')
         ? html.replace(
           '</body>',
-          '<script>window.onload=function(){setTimeout(function(){window.focus();window.print();},150);};<\/script></body>',
+          '<script>window.onload=function(){setTimeout(function(){window.focus();window.print();},150);};</script></body>',
         )
         : html;
       target.document.write(withPrint);

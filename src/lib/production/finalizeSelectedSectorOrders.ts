@@ -8,7 +8,12 @@ import type { QueryClient } from '@tanstack/react-query';
 export async function finalizeSelectedSectorOrders(input: {
   orderIds: string[];
   stageName: string;
-  finalizeSectorTask: (orderId: string, stageName: string) => Promise<{ success?: boolean } | null | undefined>;
+  /** Aceita a assinatura real de `useProductionTransitions().finalizeSectorTask`. */
+  finalizeSectorTask: (
+    orderId: string,
+    stageName: string,
+    opts?: { quantityProcessed?: number; operatorEmployeeId?: string | null },
+  ) => Promise<{ success?: unknown } | null | undefined>;
   queryClient: QueryClient;
   onCleared?: () => void;
 }): Promise<void> {
@@ -19,7 +24,7 @@ export async function finalizeSelectedSectorOrders(input: {
     orderIds.map((orderId) => finalizeSectorTask(orderId, stageName)),
   );
   const successCount = settled.filter(
-    (s) => s.status === 'fulfilled' && (s.value as { success?: boolean } | null | undefined)?.success,
+    (s) => s.status === 'fulfilled' && Boolean((s.value as { success?: unknown } | null | undefined)?.success),
   ).length;
   const failedCount = orderIds.length - successCount;
 

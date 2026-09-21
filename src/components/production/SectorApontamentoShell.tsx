@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Warning as AlertTriangle, CircleNotch as Loader2 } from '@phosphor-icons/react';
+import { Warning as AlertTriangle, CircleNotch as Loader2, Icon as LucideIcon } from '@phosphor-icons/react';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { TableSkeleton } from '@/components/layout/PageSkeleton';
 import { Button } from '@/components/ui/button';
@@ -21,7 +21,7 @@ interface SectorApontamentoShellProps {
   /** Conteúdo principal (lista / grade). Só renderiza se houver itens. */
   children?: ReactNode;
   empty?: {
-    icon: React.ComponentType<{ className?: string }>;
+    icon: LucideIcon;
     title: string;
     description: string;
   };
