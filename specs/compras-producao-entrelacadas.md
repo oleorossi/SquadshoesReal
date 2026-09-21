@@ -4,6 +4,14 @@
 > originada em PV, datas de necessidade, consolidação de OC, hub temporal em
 > `/purchase-planning` e priorização de produção por solado+cor.
 >
+> **Status implementação (21/09/2026):** slice 1 entregue —
+> `20270101026500_purchase_dispatch_setup_and_pv_labels` (labels PV+pedido
+> cliente, `purchase_by_date` com setup/fallback, hold/adiantar/export,
+> `v_purchase_dispatch_queue`), aba **Fila de envio** em `/purchase-planning`,
+> toggle Kanban atraso/setup. **Ainda aberto:** consolidação multi-PV na mesma
+> janela (idempotency hoje é 1:1 PV×fornecedor); scheduler Edge de export
+> unattended (hoje export é acionado no hub).
+>
 > **Substitui integralmente** (não complementar):
 >
 > - [`automacao-ordens-compra-demanda-pv.md`](automacao-ordens-compra-demanda-pv.md)
@@ -31,7 +39,7 @@ Otimiza, em ordem de serviço quando conflitarem: **não faltar no setor** (prim
 
 | # | Tema | Escolha |
 |---|---|---|
-| D1 | Entrega | Auditoria + spec; sem implementar nesta etapa |
+| D1 | Entrega | Auditoria + spec; implementação autorizada em seguida (slice 1) |
 | D2 | Fluxo descrito pelo dono | **Alvo** (medir gap vs as-is) |
 | D3 | Escopo | Compras **e** produção, entrelaçados |
 | D4 | Critérios de otimização | Todos: fill rate, capital, OC agrupada, fila, visibilidade — com **serviço primeiro** em conflito |
