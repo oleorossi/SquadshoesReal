@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import {
   ArrowLeft, ArrowRight, ArrowsInSimple, ArrowsOutSimple, CaretLeft, CaretRight, CheckSquare, Funnel, Highlighter,
-  Info, Kanban as KanbanIcon, Package, QrCode, Warning as AlertTriangle, X,
+  Info, Kanban as KanbanIcon, Package, QrCode, Stack as Layers, Warning as AlertTriangle, X,
 } from '@phosphor-icons/react';
 import {
   useSectorSettings, useProductionQueueDetail, useProductionScheduleGrid,
@@ -25,6 +25,12 @@ import { usePersistedState } from '@/hooks/usePersistedState';
 import { searchMatchesAllTerms, searchMatchesAny, splitSearchTerms, normalizeForSearch } from '@/lib/searchUtils';
 import { toast } from 'sonner';
 import { deriveCards, todayISO, KanbanCardData, norm } from '@/components/production/kanban/kanbanDerive';
+import {
+  readKanbanSortMode,
+  sortKanbanColumnCards,
+  writeKanbanSortMode,
+  type KanbanSortMode,
+} from '@/components/production/kanban/kanbanSort';
 import { buildPointingPlan } from '@/components/production/kanban/pointingPlan';
 import {
   addUniqueOrderCards,
@@ -37,6 +43,8 @@ import { KanbanOpCard } from '@/components/production/kanban/KanbanOpCard';
 import { DropApontarDialog } from '@/components/production/kanban/DropApontarDialog';
 import { BulkMoveDialog } from '@/components/production/kanban/BulkMoveDialog';
 import { QrScanDialog } from '@/components/production/kanban/QrScanDialog';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 
 /** Limite saudável de OPs acumuladas num setor antes de sinalizar gargalo. */
 const WIP_LIMIT = 20;
@@ -154,6 +162,32 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
   // senão no celular se navega por telas em branco. 'destacar' (anel + resto
   // esmaecido, quadro inteiro visível) fica como opção, e a escolha persiste.
   const [viewMode, setViewMode] = usePersistedState<'destacar' | 'filtrar'>('kanban-gestao-view-mode', 'filtrar');
+  const [sortMode, setSortMode] = useState<KanbanSortMode>(() => readKanbanSortMode());
+  const setSortModePersist = (mode: KanbanSortMode) => {
+    setSortMode(mode);
+    writeKanbanSortMode(mode);
+  };
+
+  const { data: soleByRefColor } = useQuery({
+    queryKey: ['kanban-sole-color-keys'],
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('technical_sheet_sole_colors')
+        .select('sheet_id, product_color, sole_product_id');
+      if (error) throw error;
+      const m = new Map<string, string>();
+      for (const row of data || []) {
+        const color = String((row as { product_color?: string }).product_color || '')
+          .trim()
+          .toLocaleUpperCase('pt-BR');
+        const sheetId = (row as { sheet_id: string }).sheet_id;
+        const soleId = (row as { sole_product_id?: string | null }).sole_product_id;
+        if (sheetId && soleId) m.set(`${sheetId}::${color}`, soleId);
+      }
+      return m;
+    },
+  });
   const [scanOpen, setScanOpen] = useState(false);
   const [dragCard, setDragCard] = useState<KanbanCardData | null>(null);
   const [dropTarget, setDropTarget] = useState<{ card: KanbanCardData; target: string } | null>(null);
@@ -831,6 +865,30 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
           <Button variant="outline" size="sm" className="h-11 md:h-9 gap-1.5" onClick={() => setScanOpen(true)}>
             <QrCode className="h-4 w-4" /> Bipar
           </Button>
+          <div className="flex rounded-md border border-border overflow-hidden" role="group" aria-label="Ordenação da coluna">
+            <button
+              type="button"
+              onClick={() => setSortModePersist('atraso')}
+              aria-pressed={sortMode === 'atraso'}
+              className={`h-11 md:h-9 px-3 text-xs font-semibold flex items-center gap-1.5 transition-colors ${
+                sortMode === 'atraso' ? 'bg-foreground text-background' : 'bg-card text-muted-foreground hover:bg-muted/40'
+              }`}
+              title="Mais atrasadas no topo (padrão)"
+            >
+              <AlertTriangle className="h-4 w-4" /> Atraso
+            </button>
+            <button
+              type="button"
+              onClick={() => setSortModePersist('setup')}
+              aria-pressed={sortMode === 'setup'}
+              className={`h-11 md:h-9 px-3 text-xs font-semibold flex items-center gap-1.5 transition-colors border-l border-border ${
+                sortMode === 'setup' ? 'bg-foreground text-background' : 'bg-card text-muted-foreground hover:bg-muted/40'
+              }`}
+              title="Agrupar por solado + cor; pin continua no topo"
+            >
+              <Layers className="h-4 w-4" /> Setup
+            </button>
+          </div>
           {/* Segmented: os dois modos visíveis (tooltip não existe no toque) */}
           <div className="flex rounded-md border border-border overflow-hidden" role="group" aria-label="Modo da busca">
             <button
@@ -1277,12 +1335,14 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
         >
           {columns.map((sector, colIdx) => {
             const colAll = allCards.filter(c => c.column === sector);
-            // Atrasadas primeiro (a mais atrasada no topo) — o que trava o prazo
-            // salta aos olhos. Sort estável: mantém a ordem entre iguais.
-            const colCards = (filtering && matchedIds
-              ? colAll.filter(c => matchedIds.has(c.q.order_id))
-              : colAll.slice()
-            ).sort((a, b) => (b.q.late_days || 0) - (a.q.late_days || 0));
+            // Pin → (setup: solado+cor) → atraso. Default = atraso.
+            const colCards = sortKanbanColumnCards(
+              filtering && matchedIds
+                ? colAll.filter(c => matchedIds.has(c.q.order_id))
+                : colAll.slice(),
+              sortMode,
+              soleByRefColor,
+            );
             // Σ pares do MESMO conjunto que a contagem do badge (`colCards`).
             // Com `colAll` o cabeçalho misturava dois universos durante a busca:
             // "3" OPs ao lado de "Σ 4.120 pares" (o setor inteiro) — quem lia

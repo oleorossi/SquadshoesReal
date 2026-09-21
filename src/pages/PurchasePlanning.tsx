@@ -6,6 +6,7 @@ import {
   CalendarBlank,
   FlowArrow as Workflow,
   Info,
+  PaperPlaneTilt,
 } from '@phosphor-icons/react';
 import { lazy, Suspense, useEffect, useMemo } from 'react';
 import { CircleNotch as Loader2 } from '@phosphor-icons/react';
@@ -20,6 +21,9 @@ const SaldoFinalTab = lazy(() => import('@/components/financial/SaldoFinalTab'))
 const ProductionScheduleTimeline = lazy(
   () => import('@/components/financial/ProductionScheduleTimeline'),
 );
+const PurchaseDispatchQueuePanel = lazy(
+  () => import('@/components/financial/PurchaseDispatchQueuePanel'),
+);
 
 const TabLoader = () => (
   <div className="flex items-center justify-center py-12">
@@ -33,8 +37,8 @@ const TabLoader = () => (
 //
 // URLs legadas (?tab=plano|projecoes|mrp|weekly|…) → projeção.
 
-type MainTab = 'projecao' | 'cronograma' | 'saldo-analytics';
-const MAIN_TABS: MainTab[] = ['projecao', 'cronograma', 'saldo-analytics'];
+type MainTab = 'fila-envio' | 'projecao' | 'cronograma' | 'saldo-analytics';
+const MAIN_TABS: MainTab[] = ['fila-envio', 'projecao', 'cronograma', 'saldo-analytics'];
 
 const LEGACY_TO_PROJECAO = new Set([
   'plano',
@@ -56,6 +60,7 @@ const LEGACY_TAB_MAP: Record<string, { tab: MainTab; view?: string }> = {
 };
 
 const DEFAULT_VIEW: Record<MainTab, string | undefined> = {
+  'fila-envio': undefined,
   projecao: undefined,
   cronograma: undefined,
   'saldo-analytics': 'saldo',
@@ -107,7 +112,7 @@ export default function PurchasePlanning() {
       };
     }
     const resolvedTab = (
-      MAIN_TABS.includes(tabParam as MainTab) ? tabParam : 'projecao'
+      MAIN_TABS.includes(tabParam as MainTab) ? tabParam : 'fila-envio'
     ) as MainTab;
     return {
       activeTab: resolvedTab,
@@ -118,7 +123,13 @@ export default function PurchasePlanning() {
   // Reescreve URL legada / default na primeira carga
   useEffect(() => {
     const tabParam = searchParams.get('tab');
-    if (!tabParam || LEGACY_TO_PROJECAO.has(tabParam)) {
+    if (!tabParam) {
+      const next = new URLSearchParams();
+      next.set('tab', 'fila-envio');
+      setSearchParams(next, { replace: true });
+      return;
+    }
+    if (LEGACY_TO_PROJECAO.has(tabParam)) {
       if (tabParam !== 'projecao') {
         const next = new URLSearchParams();
         next.set('tab', 'projecao');
@@ -156,12 +167,13 @@ export default function PurchasePlanning() {
       <EditorialPageHeader
         sectionLabel="SUPRIMENTOS · PLANEJAMENTO"
         title="Planejamento de Compras"
-        description="Projeção semanal (uso × comprar até × caixa), cronograma reverso e saldo após OCs"
+        description="Fila temporal de envio das OCs automáticas, projeção semanal, cronograma e saldo"
       />
 
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <HubTabsList
           tabs={[
+            { value: 'fila-envio', label: 'Fila de envio', icon: PaperPlaneTilt },
             { value: 'projecao', label: 'Projeção', icon: CalendarBlank },
             { value: 'cronograma', label: 'Cronograma', icon: Workflow },
             { value: 'saldo-analytics', label: 'Saldo & Custos', icon: Calculator },
@@ -172,15 +184,20 @@ export default function PurchasePlanning() {
           <CardContent className="py-2.5 px-4 flex items-start gap-2">
             <Info className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
             <p className="text-xs text-muted-foreground leading-relaxed">
-              <strong>Projeção</strong> = necessidade líquida por semana civil
-              (seg–dom), com comprar até (lead time), R$ de caixa na semana de
-              compra e geração de OC · <strong>Cronograma</strong> = quando
-              iniciar produção · <strong>Saldo & Custos</strong> = posição após
-              OCs + variação de preço. Demanda firme nas 4 primeiras semanas;
-              forecast só além disso.
+              <strong>Fila de envio</strong> = OCs pós-aprovação do PV com
+              comprar até (lead + setup), PVs/pedido cliente, adiantar/segurar/exportar
+              · <strong>Projeção</strong> = necessidade líquida por semana civil
+              · <strong>Cronograma</strong> = quando iniciar produção ·{' '}
+              <strong>Saldo & Custos</strong> = posição após OCs.
             </p>
           </CardContent>
         </Card>
+
+        <TabsContent value="fila-envio">
+          <Suspense fallback={<TabLoader />}>
+            <PurchaseDispatchQueuePanel />
+          </Suspense>
+        </TabsContent>
 
         <TabsContent value="projecao">
           <Suspense fallback={<TabLoader />}>
