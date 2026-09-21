@@ -13,6 +13,7 @@ import {
   type PayrollCalendarDayKind,
   type PayrollCalendarDayTone,
 } from '@/lib/ponto/payrollCalendarDay';
+import { isDayIndependentRule } from '@/lib/salaryPayroll';
 
 export { classifyPayrollCalendarDay, fmtDeltaMin };
 export type { PayrollCalendarDayKind, PayrollCalendarDayTone };
@@ -324,7 +325,11 @@ function holeriteSection(e: BundleEmployee, periodTitle: string): string {
       <div><span>Descontos</span><strong style="color:#b91c1c;">${fmt(r.total_descontos || 0)}</strong></div>
       <div><span>Líquido a receber</span><strong style="font-size:16px;color:#0f172a;">${fmt(r.total_liquido)}</strong></div>
     </div>
-    ${r.rule_version ? `<p class="legend">Regra: ${esc(r.rule_version)}${r.calculated_at ? ` · calculado em ${esc(new Date(r.calculated_at).toLocaleString('pt-BR'))}` : ''}. Créditos e atrasos parciais são compensados dentro do período.</p>` : ''}
+    ${r.rule_version ? `<p class="legend">Regra: ${esc(r.rule_version)}${r.calculated_at ? ` · calculado em ${esc(new Date(r.calculated_at).toLocaleString('pt-BR'))}` : ''}. ${
+      isDayIndependentRule(r.rule_version)
+        ? 'HE e atraso por dia, sem compensação cruzada (piso 10 min/dia).'
+        : 'Créditos e atrasos parciais são compensados dentro do período.'
+    }</p>` : ''}
   </section>`;
 }
 
