@@ -82,16 +82,20 @@ describe('ordem de deploy das Edge Functions', () => {
     expect(verifyStep).toBeGreaterThan(applyStep);
     expect(finalStep).toBeGreaterThan(verifyStep);
 
+    const tipStep = vercelWorkflow.indexOf('Check tip of main');
     const waitStep = vercelWorkflow.indexOf('Wait for database migrations from this commit');
     const deployStep = vercelWorkflow.indexOf('Deploy to production');
-    expect(waitStep).toBeGreaterThan(-1);
+    expect(tipStep).toBeGreaterThan(-1);
+    expect(waitStep).toBeGreaterThan(tipStep);
     expect(deployStep).toBeGreaterThan(waitStep);
     expect(vercelWorkflow).toContain('bash scripts/wait-for-supabase-migrations.sh');
     expect(vercelWorkflow).toContain('timeout-minutes: 45');
     expect(vercelWorkflow).toContain('vercel@59.5.0');
     expect(vercelWorkflow).toContain('bun-version: 1.3.13');
-    expect(vercelWorkflow).toContain('cancel-in-progress: false');
-    expect(vercelWorkflow).toContain('Refuse a stale main commit');
+    // Soft-skip + cancel: tip publica sem esperar builds de SHA obsoleto.
+    expect(vercelWorkflow).toContain('cancel-in-progress: true');
+    expect(vercelWorkflow).toContain('Check tip of main');
+    expect(vercelWorkflow).toContain("steps.tip.outputs.stale != 'true'");
     expect(vercelWorkflow).toContain('main:refs/remotes/origin/main');
     expect(vercelWorkflow).toContain('workflows: ["CI"]');
   });

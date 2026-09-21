@@ -21,13 +21,18 @@ describe('produção aguarda CI e banco do mesmo commit', () => {
     expect(workflow).toContain('vercel deploy --prebuilt --prod');
   });
 
-  it('confere banco e ponta de main antes de publicar o artefato', () => {
+  it('confere ponta de main cedo e banco antes de publicar o artefato', () => {
+    // Soft-skip de SHA obsoleto logo após checkout — não depois do build —
+    // para não prender a fila vercel-prod em merges rápidos.
+    const tipGate = workflow.indexOf('- name: Check tip of main');
     const databaseGate = workflow.indexOf('- name: Wait for database migrations from this commit');
-    const staleGate = workflow.indexOf('- name: Refuse a stale main commit');
     const publish = workflow.indexOf('- name: Deploy to production');
-    expect(databaseGate).toBeGreaterThan(-1);
-    expect(staleGate).toBeGreaterThan(databaseGate);
-    expect(publish).toBeGreaterThan(staleGate);
+    expect(tipGate).toBeGreaterThan(-1);
+    expect(databaseGate).toBeGreaterThan(tipGate);
+    expect(publish).toBeGreaterThan(databaseGate);
     expect(workflow).toContain('bash scripts/wait-for-supabase-migrations.sh');
+    expect(workflow).toContain('cancel-in-progress: true');
+    expect(workflow).toContain("stale=true");
+    expect(workflow).toContain("steps.tip.outputs.stale != 'true'");
   });
 });
