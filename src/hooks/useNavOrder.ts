@@ -15,9 +15,10 @@ import { useCallback, useMemo, useState } from 'react';
 // no código aparecem normalmente sem precisar limpar a preferência.
 // ════════════════════════════════════════════════════════════════════════
 
-const GROUP_KEY = 'nav-group-order';
-const ITEM_KEY = 'nav-item-order';
-const ITEM_GROUP_KEY = 'nav-item-group';
+// v2: modelo hub (só reordena hubs). Invalidar a ordem antiga de grupos flat.
+const GROUP_KEY = 'nav-order-v2-group';
+const ITEM_KEY = 'nav-order-v2-item';
+const ITEM_GROUP_KEY = 'nav-order-v2-item-group';
 const FAR = Number.MAX_SAFE_INTEGER;
 
 function load<T>(key: string, fallback: T): T {

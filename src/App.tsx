@@ -85,6 +85,11 @@ const RHHub = lazy(() => import("./pages/RHHub"));
 const Transport = lazy(() => import("./pages/Transport"));
 const PackagingManagement = lazy(() => import("./pages/PackagingManagement"));
 const ExpedicaoHub = lazy(() => import("./pages/ExpedicaoHub"));
+const EngenhariaHub = lazy(() => import("./pages/EngenhariaHub"));
+const MateriaisHub = lazy(() => import("./pages/MateriaisHub"));
+const ComprasHub = lazy(() => import("./pages/ComprasHub"));
+const FiscalHub = lazy(() => import("./pages/FiscalHub"));
+const ProducaoHub = lazy(() => import("./pages/ProducaoHub"));
 const OrderPickingPage = lazy(() => import("./pages/OrderPickingPage"));
 // /setores permanece somente como alias para o Apontamento canônico.
 
@@ -608,7 +613,7 @@ const LEGACY_ALIAS_ROUTES: {
     { path: 'gargalos', element: <LegacyRouteRedirect to="/producao/analises?view=gargalos" /> },
     { path: 'producao/visao-agregada', element: <LegacyRouteRedirect to="/producao/analises?view=lote" /> },
     { path: 'order-flow-audit', element: <LegacyRouteRedirect to="/producao/analises?view=auditoria" /> },
-    { path: 'producao', element: <LegacyRouteRedirect to="/producao/planejamento" /> },
+    // /producao é hub canônico (ver children do AppLayout) — não alias.
     { path: 'producao/live', element: <LegacyRouteRedirect to="/producao/kanban/gestao" /> },
     { path: 'producao/timeline', element: <LegacyRouteRedirect to="/producao/analises?view=timeline" /> },
     { path: 'production-dashboard', element: <LegacyRouteRedirect to="/producao/analises?view=dashboard" /> },
@@ -648,7 +653,7 @@ const LEGACY_ALIAS_ROUTES: {
     { path: 'mrp', element: <LegacyRouteRedirect to="/purchase-planning?tab=mrp" /> },
     { path: 'mrp-advanced', element: <LegacyRouteRedirect to="/purchase-planning?tab=mrp" /> },
     { path: 'weekly-purchasing-plan', element: <LegacyRouteRedirect to="/purchase-planning?tab=weekly" /> },
-    { path: 'compras', element: <LegacyRouteRedirect to="/purchase-orders" /> },
+    // /compras é hub canônico (ver children do AppLayout) — não alias.
     { path: 'fornecedores', element: <LegacyRouteRedirect to="/suppliers" /> },
     { path: 'clientes', element: <LegacyRouteRedirect to="/clients" /> },
     { path: 'ordens-servico', element: <LegacyRouteRedirect to="/terceirizados?tab=orders" /> },
@@ -1074,6 +1079,26 @@ const router = createBrowserRouter([
       {
         path: "comercial",
         element: <ComercialDashboard />,
+      },
+      {
+        path: "engenharia",
+        element: <EngenhariaHub />,
+      },
+      {
+        path: "producao",
+        element: <ProducaoHub />,
+      },
+      {
+        path: "materiais",
+        element: <MateriaisHub />,
+      },
+      {
+        path: "compras",
+        element: <ComprasHub />,
+      },
+      {
+        path: "fiscal",
+        element: <FiscalHub />,
       },
       {
         path: "financeiro",

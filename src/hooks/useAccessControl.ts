@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useCurrentUserRoles, useCurrentUserPermissions } from './useUserManagement';
 import { useAuth } from './useAuth';
-import { grantableDestinations } from '@/data/navigation';
+import { grantableDestinations, getNavigationHub } from '@/data/navigation';
 
 /**
  * Route-to-module mapping.
@@ -76,6 +76,10 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/pricing-calculator': 'financeiro',
   '/weekly-purchasing-plan': 'financeiro',
   '/comercial': 'vendas',
+  '/engenharia': 'produtos',
+  '/materiais': 'estoque',
+  '/compras': 'financeiro',
+  '/fiscal': 'nfe',
   '/producao': 'producao',
   '/producao/live': 'producao',
   '/producao/timeline': 'producao',
@@ -213,7 +217,6 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/montagem': 'producao',
   '/solagem': 'producao',
   '/acabamento': 'producao',
-  '/compras': 'financeiro',
   '/fornecedores': 'fornecedores',
   '/clientes': 'clientes',
   '/ponto': 'rh',
@@ -368,6 +371,14 @@ export function isRouteAllowed(path: string, input: RouteAccessInput): boolean {
   const { isAdmin, roles, perms } = input;
   const allMenuPaths = input.allMenuPaths ?? ALL_MENU_PATHS;
   if (isAdmin || roles.includes('admin')) return true;
+
+  // Hub canônico: liberado se ≥1 filho for liberado (Modo 2+3).
+  // Só a landing exata (`/rh`, não `/rh?tab=…`) entra aqui — senão o filho
+  // que compartilha o pathname reentra no hub e estoura a pilha.
+  const hub = getNavigationHub(path);
+  if (hub && path === hub.path) {
+    if (hub.children.some((child) => isRouteAllowed(child.path, input))) return true;
+  }
 
   const mod = resolveModuleForPath(path);
   // Gates admin-only valem em QUALQUER modo (não-admin chega aqui).

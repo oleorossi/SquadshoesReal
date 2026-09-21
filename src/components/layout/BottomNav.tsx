@@ -1,8 +1,15 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { House as Home, Factory, Package, ShoppingCart, DotsThree as MoreHorizontal, X, Star } from '@phosphor-icons/react';
+import { House as Home, Factory, Package, ShoppingCart, DotsThree as MoreHorizontal, X, Star, Lightning as Zap } from '@phosphor-icons/react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { menuGroups, orderGroupsForRoles, secondaryRoutes } from '@/data/navigation';
+import {
+  HUBS,
+  orderGroupsForRoles,
+  secondaryRoutes,
+  hubHasAccessibleChild,
+  getAllMenuItems,
+  systemShortcuts,
+} from '@/data/navigation';
 import { useAccessControl } from '@/hooks/useAccessControl';
 import { useMenuFavorites } from '@/hooks/useMenuFavorites';
 import { useCurrentUserRoles } from '@/hooks/useUserManagement';
@@ -12,8 +19,7 @@ import { SearchInput } from '@/components/ui/search-input';
 const PRIMARY_ITEMS = [
   { icon: Home,         label: 'Painel',   path: '/dashboard' },
   { icon: ShoppingCart, label: 'Vendas',   path: '/sales' },
-  // O alvo precisa ser item de menu real: a allow-list granular resolve o
-  // dono por esse catálogo, e /pcp é só um redirect legado sem dono próprio.
+  // Primários fixos nesta onda — path de trabalho, não o hub.
   { icon: Factory,      label: 'Produção', path: '/producao/planejamento' },
   { icon: Package,      label: 'Estoque',  path: '/estoque' },
 ];
@@ -23,72 +29,70 @@ export function BottomNav() {
   const navigate = useNavigate();
   const [moreOpen, setMoreOpen] = useState(false);
   const [maisQuery, setMaisQuery] = useState('');
-  // Mesma regra de acesso da sidebar: só mostra o que o usuário pode abrir
-  // (permissão por menu). Sem isso o nav mobile expunha itens não liberados.
   const { canAccessRoute } = useAccessControl();
   const primaryItems = useMemo(() => PRIMARY_ITEMS.filter(i => canAccessRoute(i.path)), [canAccessRoute]);
   const { data: currentRoles = [] } = useCurrentUserRoles();
   const roleNames = useMemo(() => currentRoles.map(role => role.role), [currentRoles]);
-  const visibleGroups = useMemo(
+
+  const visibleHubs = useMemo(
     () => orderGroupsForRoles(
-      menuGroups
-        .map(g => ({ ...g, items: g.items.filter(i => canAccessRoute(i.path)) }))
-        .filter(g => g.items.length > 0),
+      HUBS.filter((hub) => hubHasAccessibleChild(hub, canAccessRoute)),
       roleNames,
     ),
     [canAccessRoute, roleNames],
   );
-  // Rotas complementares não poluem a barra principal, mas precisam ser
-  // encontráveis no celular sem depender de conhecer o atalho Cmd+K.
+
   const secondaryItems = useMemo(
     () => secondaryRoutes.filter(item => canAccessRoute(item.path)),
     [canAccessRoute],
   );
 
-  // Favoritos do usuário (mesmos da sidebar, via useMenuFavorites) — aparecem
-  // no topo do "Mais" pra ficarem acessíveis também no celular.
+  const shortcutItems = useMemo(
+    () => systemShortcuts.filter(item => canAccessRoute(item.path)),
+    [canAccessRoute],
+  );
+
   const { favorites } = useMenuFavorites();
   const favItems = useMemo(() => favorites.filter(f => canAccessRoute(f.path)), [favorites, canAccessRoute]);
-  const iconForPath = (path: string) => {
-    for (const group of menuGroups) {
-      const found = group.items.find(i => i.path === path);
-      if (found) return found.icon;
-    }
-    return Star;
-  };
+  const iconForPath = (path: string) =>
+    getAllMenuItems().find(i => i.path === path)?.icon ?? Star;
 
   const filteredFavItems = useMemo(() => {
     if (!maisQuery.trim()) return favItems;
     return favItems.filter((item) => searchMatchesAllTerms(maisQuery, item.name));
   }, [favItems, maisQuery]);
-  const filteredGroups = useMemo(() => {
-    if (!maisQuery.trim()) return visibleGroups;
-    return visibleGroups
-      .map((group) => ({
-        ...group,
-        items: group.items.filter(
-          (item) => searchMatchesAllTerms(maisQuery, item.label, group.label),
-        ),
-      }))
-      .filter((group) => group.items.length > 0);
-  }, [visibleGroups, maisQuery]);
+
+  const filteredShortcuts = useMemo(() => {
+    if (!maisQuery.trim()) return shortcutItems;
+    return shortcutItems.filter((item) => searchMatchesAllTerms(maisQuery, item.label));
+  }, [shortcutItems, maisQuery]);
+
+  const filteredHubs = useMemo(() => {
+    if (!maisQuery.trim()) return visibleHubs;
+    return visibleHubs.filter((hub) => searchMatchesAllTerms(maisQuery, hub.label));
+  }, [visibleHubs, maisQuery]);
+
   const filteredSecondary = useMemo(() => {
     if (!maisQuery.trim()) return secondaryItems;
     return secondaryItems.filter(
       (item) => searchMatchesAllTerms(maisQuery, item.label, item.group),
     );
   }, [secondaryItems, maisQuery]);
+
   const hasMaisResults =
     filteredFavItems.length > 0
-    || filteredGroups.length > 0
+    || filteredShortcuts.length > 0
+    || filteredHubs.length > 0
     || filteredSecondary.length > 0;
   const maisResultCount =
     filteredFavItems.length
-    + filteredGroups.reduce((n, g) => n + g.items.length, 0)
+    + filteredShortcuts.length
+    + filteredHubs.length
     + filteredSecondary.length;
   const maisTotalCount =
     favItems.length
-    + visibleGroups.reduce((n, g) => n + g.items.length, 0)
+    + shortcutItems.length
+    + visibleHubs.length
     + secondaryItems.length;
 
   useEffect(() => {
@@ -96,12 +100,6 @@ export function BottomNav() {
     setMaisQuery('');
   }, [location.pathname]);
 
-  // O sheet "Mais" é um div artesanal (não usa o primitive Dialog): prender o
-  // foco, fechar no Escape e DEVOLVER o foco ao gatilho são responsabilidade
-  // nossa. Antes só o foco inicial e o Escape estavam feitos (achado F17):
-  //   • o Tab escapava do sheet e ia navegar o conteúdo ATRÁS do modal;
-  //   • ao fechar, o foco caía no <body> — quem usa teclado ou leitor de tela
-  //     perdia o lugar e tinha que percorrer a página inteira de novo.
   const closeBtnRef = useRef<HTMLButtonElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -113,9 +111,7 @@ export function BottomNav() {
       return;
     }
 
-    // Guarda quem abriu, pra devolver o foco na hora de fechar.
     gatilhoRef.current = document.activeElement as HTMLElement | null;
-    // Busca primeiro: no celular achar o destino é o job #1 do sheet.
     searchInputRef.current?.focus();
 
     const focaveis = () => Array.from(
@@ -132,7 +128,6 @@ export function BottomNav() {
       const primeiro = els[0];
       const ultimo = els[els.length - 1];
       const atual = document.activeElement;
-      // Ciclo fechado: do último volta pro primeiro e vice-versa.
       if (e.shiftKey && (atual === primeiro || !sheetRef.current?.contains(atual))) {
         e.preventDefault(); ultimo.focus();
       } else if (!e.shiftKey && atual === ultimo) {
@@ -164,7 +159,6 @@ export function BottomNav() {
 
   return (
     <>
-      {/* Overlay */}
       {moreOpen && (
         <div
           className="md:hidden fixed inset-0 bg-black/40 backdrop-blur-sm z-40"
@@ -172,7 +166,6 @@ export function BottomNav() {
         />
       )}
 
-      {/* "Mais" bottom sheet */}
       {moreOpen && (
         <div
           id="bottom-nav-mais"
@@ -240,14 +233,14 @@ export function BottomNav() {
                 </div>
               </div>
             )}
-            {filteredGroups.map((group) => (
-              <div key={group.label}>
+            {filteredShortcuts.length > 0 && (
+              <div>
                 <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
-                  <group.icon className="h-3 w-3" />
-                  {group.label}
+                  <Zap className="h-3 w-3" />
+                  Atalhos
                 </div>
                 <div className="grid grid-cols-3 gap-1.5">
-                  {group.items.map((item) => {
+                  {filteredShortcuts.map((item) => {
                     const active = isActive(item.path);
                     return (
                       <button
@@ -262,7 +255,30 @@ export function BottomNav() {
                   })}
                 </div>
               </div>
-            ))}
+            )}
+            {filteredHubs.length > 0 && (
+              <div>
+                <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
+                  Áreas
+                </div>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {filteredHubs.map((hub) => {
+                    const active = isActive(hub.path)
+                      || hub.children.some((c) => isActive(c.path.split('?')[0]));
+                    return (
+                      <button
+                        key={hub.path}
+                        onClick={() => { navigate(hub.path); setMoreOpen(false); }}
+                        className={tileClass(active)}
+                      >
+                        <hub.icon className="h-4 w-4" />
+                        <span className="leading-none text-center">{hub.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             {filteredSecondary.length > 0 && (
               <div>
                 <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
@@ -290,7 +306,6 @@ export function BottomNav() {
         </div>
       )}
 
-      {/* Bottom tab bar */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur-md border-t border-border z-40 safe-bot">
         <div className="flex justify-around items-stretch h-16 px-1">
           {primaryItems.map((item) => {
@@ -313,7 +328,6 @@ export function BottomNav() {
             );
           })}
 
-          {/* Mais */}
           <button
             onClick={() => setMoreOpen(v => !v)}
             aria-expanded={moreOpen}

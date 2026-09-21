@@ -52,11 +52,11 @@ describe('Navigation ↔ Access Control consistency', () => {
     }
   });
 
-  it('expõe a etiquetagem do cliente como destino próprio no grupo Etiquetagem', () => {
+  it('expõe a etiquetagem do cliente como destino próprio no hub Expedição', () => {
     expect(navigationCatalog.find((item) => item.path === '/etiquetagem-cliente')).toMatchObject({
       label: 'ETIQUETAGEM CLIENTE',
-      group: 'Etiquetagem',
-      surfaces: ['sidebar', 'command'],
+      group: 'Expedição',
+      surfaces: expect.arrayContaining(['hub-child', 'command']),
     });
   });
 
@@ -137,12 +137,13 @@ describe('Navigation ↔ Access Control consistency', () => {
     expect(dups.length, `Rotas duplicadas em menuGroups: ${dups.join('; ')}`).toBe(0);
   });
 
-  it('mantém rotas secundárias não promovidas fora do catálogo que desenha a sidebar', () => {
+  it('deriva secondaryRoutes do catálogo (sem lista paralela) e mantém /sac fora da sidebar', () => {
     const sidebarPaths = new Set(getAllMenuItems().map((item) => item.path));
     const sac = secondaryRoutes.find((route) => route.path === '/sac');
     expect(sac).toBeDefined();
     expect(sidebarPaths.has(sac!.path), '/sac não deve virar item da sidebar').toBe(false);
     expect(secondaryRoutes.some((route) => route.path === '/embalagens')).toBe(false);
+    expect(secondaryRoutes.every((r) => !r.surfaces.includes('hub') && !r.surfaces.includes('hub-child'))).toBe(true);
   });
 
   it('expõe todo destino concedível com rótulo, grupo e módulo', () => {

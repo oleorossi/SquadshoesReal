@@ -1,6 +1,16 @@
 import React, { useState, useEffect, createContext, useContext } from 'react';
-import { SignOut as LogOut, List as Menu, X, CaretDown as ChevronDown, SidebarSimple as PanelLeftClose, SidebarSimple as PanelLeftOpen, Gear as Settings, ArrowLeft, Plus, ShoppingCart, Package, Star, House as Home } from '@phosphor-icons/react';
-import { menuGroups, systemItems, topItem, orderGroupsForRoles } from '@/data/navigation';
+import { SignOut as LogOut, List as Menu, X, SidebarSimple as PanelLeftClose, SidebarSimple as PanelLeftOpen, Gear as Settings, ArrowLeft, Plus, ShoppingCart, Package, Star, Lightning as Zap } from '@phosphor-icons/react';
+import {
+  HUBS,
+  systemItems,
+  systemShortcuts,
+  topItem,
+  orderGroupsForRoles,
+  hubHasAccessibleChild,
+  getAllMenuItems,
+  getNavigationResource,
+  type NavigationHub,
+} from '@/data/navigation';
 import logoImg from '@/assets/logo-squad-shoes.jpg';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
@@ -19,7 +29,7 @@ import { ModeToggle } from './ModeToggle';
 import PageHeader, { resolveMobileNavMeta } from './PageHeader';
 import { BottomNav } from './BottomNav';
 import { usePrefetchRoute } from '@/hooks/usePrefetchRoute';
-import { useNavOrder, reorderKeys, insertKey } from '@/hooks/useNavOrder';
+import { useNavOrder, reorderKeys } from '@/hooks/useNavOrder';
 import { NavigationAuditWatcher } from './NavigationAuditWatcher';
 import { DiagnosticsFab } from '@/components/DiagnosticsFab';
 import { useArtisanalStrapPurchaseOrderApprovalCount } from '@/hooks/useArtisanalStraps';
@@ -140,12 +150,6 @@ export default function AppLayout({ children, printMode = false }: { children: R
       gatilhoMenuRef.current?.focus?.();
     };
   }, [mobileOpen]);
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
-    try {
-      const saved = localStorage.getItem('nav-collapsed-groups');
-      return saved ? new Set(JSON.parse(saved)) : new Set();
-    } catch { return new Set(); }
-  });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try { return localStorage.getItem('sidebar-collapsed') === 'true'; } catch { return false; }
   });
@@ -180,49 +184,59 @@ export default function AppLayout({ children, printMode = false }: { children: R
     toggleFav(name, path);
   };
 
-  // Favoritos: chave de colapso dedicada (não colide com label de grupo real,
-  // reaproveita o mesmo mecanismo de `collapsedGroups`/`nav-collapsed-groups`)
-  // e helper pra recuperar o ícone original do item a partir do path.
-  const FAVORITES_KEY = '__favoritos__';
-  const iconForPath = (path: string) => {
-    for (const group of menuGroups) {
-      const found = group.items.find(i => i.path === path);
-      if (found) return found.icon;
-    }
-    return Star;
-  };
+  const iconForPath = (path: string) =>
+    getNavigationResource(path)?.icon
+    ?? getAllMenuItems().find((i) => i.path === path)?.icon
+    ?? Star;
 
-  // Round-7 (30/07/2026): a ORDEM das áreas passou a ser do perfil. A ordem
-  // canônica segue o fluxo da fábrica e serve pra quem enxerga tudo; pra quem
-  // enxerga uma fatia, a área do próprio trabalho vem primeiro — o operador não
-  // deveria rolar até achar Produção. QUAIS itens ele vê continua vindo só do
-  // controle de acesso; aqui é apresentação.
-  const filteredMenuGroups = React.useMemo(() =>
-    orderGroupsForRoles(
-      menuGroups
-        .map(group => ({ ...group, items: group.items.filter(item => canAccessRoute(item.path)) }))
-        .filter(group => group.items.length > 0),
+  // Hubs visíveis: ≥1 filho liberado. Ordem por papel, depois preferência DnD.
+  const filteredHubs = React.useMemo(
+    () => orderGroupsForRoles(
+      HUBS.filter((hub) => hubHasAccessibleChild(hub, canAccessRoute)),
       roleNames,
     ),
-    [canAccessRoute, roleNames]
+    [canAccessRoute, roleNames],
   );
 
-  // Ordem customizada (arrastar-e-soltar) — aplica a preferência salva sobre
-  // os grupos já filtrados por acesso. Usado tanto no modo expandido quanto
-  // no colapsado pra a ordem ficar consistente.
-  const { applyNavOrder, setGroupOrder, setItemOrder, setItemGroup, resetOrder, hasCustomOrder } = useNavOrder();
-  const orderedGroups = React.useMemo(
-    () => applyNavOrder(filteredMenuGroups),
-    [applyNavOrder, filteredMenuGroups]
-  );
+  const { applyNavOrder, setGroupOrder, resetOrder, hasCustomOrder } = useNavOrder();
+  const orderedHubs = React.useMemo(() => {
+    const asGroups = filteredHubs.map((hub) => ({
+      label: hub.label,
+      items: [{ path: hub.path }],
+      hub,
+    }));
+    return applyNavOrder(asGroups).map((g) => (g as typeof asGroups[number]).hub);
+  }, [applyNavOrder, filteredHubs]);
 
-  // Drag & drop state: `dragInfo` (ref, não re-renderiza no início do arraste)
-  // guarda o que está sendo arrastado; `dropTarget` (state) dirige o indicador
-  // visual de onde vai cair. `group`/`item` = linha antes/depois do alvo;
-  // `group-append` = item vai cair DENTRO do grupo (anexa no fim) — destaca o
-  // bloco inteiro, útil pra grupo recolhido ou área vazia.
-  const dragInfo = React.useRef<{ kind: 'group' | 'item'; group: string; path?: string } | null>(null);
-  const [dropTarget, setDropTarget] = React.useState<{ kind: 'group' | 'item' | 'group-append'; key: string; pos: 'before' | 'after' } | null>(null);
+  // Atalhos = sistema (filtrados) + favoritos, sem duplicar path.
+  const filteredSystemShortcuts = React.useMemo(
+    () => systemShortcuts.filter((item) => canAccessRoute(item.path)),
+    [canAccessRoute],
+  );
+  const atalhoPaths = React.useMemo(() => {
+    const seen = new Set<string>();
+    const out: { name: string; path: string; icon: typeof Star; favorited: boolean }[] = [];
+    for (const item of filteredSystemShortcuts) {
+      if (seen.has(item.path)) continue;
+      seen.add(item.path);
+      out.push({
+        name: item.label,
+        path: item.path,
+        icon: item.icon,
+        favorited: filteredFavorites.some((f) => f.path === item.path),
+      });
+    }
+    for (const fav of filteredFavorites) {
+      if (seen.has(fav.path)) continue;
+      seen.add(fav.path);
+      out.push({ name: fav.name, path: fav.path, icon: iconForPath(fav.path), favorited: true });
+    }
+    return out;
+  }, [filteredSystemShortcuts, filteredFavorites]);
+
+  // DnD só entre hubs (modelo v2).
+  const dragInfo = React.useRef<{ kind: 'hub'; label: string } | null>(null);
+  const [dropTarget, setDropTarget] = React.useState<{ key: string; pos: 'before' | 'after' } | null>(null);
 
   const filteredSystemItems = isAdmin ? systemItems : [];
   const { prefetch, cancel: cancelPrefetch } = usePrefetchRoute();
@@ -235,22 +249,13 @@ export default function AppLayout({ children, printMode = false }: { children: R
 
   if (isInsideLayout) return <>{children}</>;
 
-  const toggleGroup = (label: string) => {
-    setCollapsedGroups(prev => {
-      const next = new Set(prev);
-      if (next.has(label)) next.delete(label); else next.add(label);
-      try { localStorage.setItem('nav-collapsed-groups', JSON.stringify([...next])); } catch {}
-      return next;
+  const isHubActive = (hub: NavigationHub) => {
+    if (location.pathname === hub.path || location.pathname.startsWith(hub.path + '/')) return true;
+    return hub.children.some((item) => {
+      const p = item.path.split('?')[0];
+      return location.pathname === p || location.pathname.startsWith(p + '/');
     });
   };
-
-  // Precise match: exact path OR path + '/' prefix to avoid false positives
-  // e.g. /estoque matches /estoque and /estoque/historico but NOT /estoque-ajuste
-  const isGroupActive = (group: typeof menuGroups[0]) =>
-    group.items.some(item =>
-      location.pathname === item.path ||
-      location.pathname.startsWith(item.path + '/')
-    );
 
   const toggleSidebar = () => {
     setSidebarCollapsed(prev => {
@@ -260,125 +265,43 @@ export default function AppLayout({ children, printMode = false }: { children: R
     });
   };
 
-  // ── Drag & drop: reordenar grupos e itens (desktop, mouse) ───────────────
-  // API nativa de DnD do navegador (sem dependência). Suporta: reordenar grupos
-  // entre si; reordenar itens dentro do grupo; e MOVER item de um grupo pra
-  // outro (soltando preciso sobre um item, ou no cabeçalho/área do grupo pra
-  // anexar no fim). Ordem + associação de grupo persistidas via useNavOrder.
   const clearDrag = () => { dragInfo.current = null; setDropTarget(null); };
 
-  // antes/depois conforme o mouse cair na metade de cima ou de baixo do alvo
   const dropPos = (e: React.DragEvent): 'before' | 'after' => {
     const rect = e.currentTarget.getBoundingClientRect();
     return e.clientY - rect.top > rect.height / 2 ? 'after' : 'before';
   };
 
-  // grupo "natural" do item na definição estática (pra limpar o override
-  // quando o item volta pra casa)
-  const originalGroupForPath = (path: string): string | null => {
-    for (const g of menuGroups) if (g.items.some(i => i.path === path)) return g.label;
-    return null;
-  };
-
-  // Move/reordena item caindo PRECISO antes/depois de `destPath`. Mesmo grupo =
-  // só reordena; grupos diferentes = muda associação + ordena no destino +
-  // limpa a entrada órfã na origem.
-  const moveItemPrecise = (srcGroup: string, srcPath: string, destGroup: string, destPath: string, pos: 'before' | 'after') => {
-    const destObj = orderedGroups.find(g => g.label === destGroup);
-    if (!destObj) return;
-    setItemOrder(destGroup, insertKey(destObj.items.map(i => i.path), srcPath, destPath, pos));
-    if (srcGroup === destGroup) return;
-    setItemGroup(srcPath, originalGroupForPath(srcPath) === destGroup ? null : destGroup);
-    const srcObj = orderedGroups.find(g => g.label === srcGroup);
-    if (srcObj) setItemOrder(srcGroup, srcObj.items.filter(i => i.path !== srcPath).map(i => i.path));
-  };
-
-  // Anexa o item no FIM de um grupo (drop no cabeçalho / área vazia / grupo
-  // recolhido). Mesmo grupo = manda pro fim; grupo diferente = muda associação.
-  const moveItemToGroupEnd = (srcGroup: string, srcPath: string, destGroup: string) => {
-    const destObj = orderedGroups.find(g => g.label === destGroup);
-    const destPaths = destObj ? destObj.items.map(i => i.path) : [];
-    setItemOrder(destGroup, [...destPaths.filter(p => p !== srcPath), srcPath]);
-    if (srcGroup === destGroup) return;
-    setItemGroup(srcPath, originalGroupForPath(srcPath) === destGroup ? null : destGroup);
-    const srcObj = orderedGroups.find(g => g.label === srcGroup);
-    if (srcObj) setItemOrder(srcGroup, srcObj.items.filter(i => i.path !== srcPath).map(i => i.path));
-  };
-
-  const handleGroupDragStart = (label: string) => (e: React.DragEvent) => {
-    dragInfo.current = { kind: 'group', group: label };
+  const handleHubDragStart = (label: string) => (e: React.DragEvent) => {
+    dragInfo.current = { kind: 'hub', label };
     e.dataTransfer.effectAllowed = 'move';
-    try { e.dataTransfer.setData('text/plain', label); } catch { /* firefox precisa de algum dado */ }
+    try { e.dataTransfer.setData('text/plain', label); } catch { /* firefox */ }
   };
 
-  // Container do grupo é zona de drop pra: arraste de GRUPO (reordenar) OU
-  // arraste de ITEM solto fora de um item específico (anexar no grupo). Itens
-  // dão stopPropagation no hover preciso, então não chegam aqui nesse caso.
-  const handleGroupDragOver = (label: string) => (e: React.DragEvent) => {
-    const drag = dragInfo.current;
-    if (drag?.kind === 'group') {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
-      setDropTarget({ kind: 'group', key: label, pos: dropPos(e) });
-    } else if (drag?.kind === 'item') {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
-      setDropTarget({ kind: 'group-append', key: label, pos: 'after' });
-    }
-  };
-
-  const handleGroupDrop = (label: string) => (e: React.DragEvent) => {
-    const drag = dragInfo.current;
-    if (drag?.kind === 'group') {
-      e.preventDefault();
-      setGroupOrder(reorderKeys(orderedGroups.map(g => g.label), drag.group, label, dropPos(e)));
-    } else if (drag?.kind === 'item' && drag.path) {
-      e.preventDefault();
-      moveItemToGroupEnd(drag.group, drag.path, label);
-    }
-    clearDrag();
-  };
-
-  const handleItemDragStart = (group: string, path: string) => (e: React.DragEvent) => {
-    dragInfo.current = { kind: 'item', group, path };
-    e.dataTransfer.effectAllowed = 'move';
-    try { e.dataTransfer.setData('text/plain', path); } catch { /* idem */ }
-  };
-
-  const handleItemDragOver = (_group: string, path: string) => (e: React.DragEvent) => {
-    // qualquer grupo (move entre grupos). stopPropagation pra o drop preciso no
-    // item ter prioridade sobre o "anexar no grupo" do container.
-    if (dragInfo.current?.kind !== 'item') return;
+  const handleHubDragOver = (label: string) => (e: React.DragEvent) => {
+    if (dragInfo.current?.kind !== 'hub') return;
     e.preventDefault();
-    e.stopPropagation();
     e.dataTransfer.dropEffect = 'move';
-    setDropTarget({ kind: 'item', key: path, pos: dropPos(e) });
+    setDropTarget({ key: label, pos: dropPos(e) });
   };
 
-  const handleItemDrop = (group: string, path: string) => (e: React.DragEvent) => {
+  const handleHubDrop = (label: string) => (e: React.DragEvent) => {
     const drag = dragInfo.current;
-    if (drag?.kind !== 'item' || !drag.path) return;
+    if (drag?.kind !== 'hub') return;
     e.preventDefault();
-    e.stopPropagation();
-    moveItemPrecise(drag.group, drag.path, group, path, dropPos(e));
+    setGroupOrder(reorderKeys(orderedHubs.map((h) => h.label), drag.label, label, dropPos(e)));
     clearDrag();
   };
 
-  // Indicador visual (linha/anel vermelho inset, sem deslocar layout)
-  const groupDropStyle = (label: string): React.CSSProperties | undefined => {
+  const hubDropStyle = (label: string): React.CSSProperties | undefined => {
     if (dropTarget?.key !== label) return undefined;
-    if (dropTarget.kind === 'group') {
-      return { boxShadow: dropTarget.pos === 'before' ? 'inset 0 3px 0 0 hsl(var(--primary))' : 'inset 0 -3px 0 0 hsl(var(--primary))', borderRadius: '2px' };
-    }
-    if (dropTarget.kind === 'group-append') {
-      return { boxShadow: 'inset 0 0 0 2px hsl(var(--primary))', borderRadius: '4px' };
-    }
-    return undefined;
+    return {
+      boxShadow: dropTarget.pos === 'before'
+        ? 'inset 0 3px 0 0 hsl(var(--primary))'
+        : 'inset 0 -3px 0 0 hsl(var(--primary))',
+      borderRadius: '2px',
+    };
   };
-  const itemDropStyle = (path: string): React.CSSProperties | undefined =>
-    dropTarget?.kind === 'item' && dropTarget.key === path
-      ? { boxShadow: dropTarget.pos === 'before' ? 'inset 0 2px 0 0 hsl(var(--primary))' : 'inset 0 -2px 0 0 hsl(var(--primary))' }
-      : undefined;
 
   // ── Nav item active class ────────────────────────────────
   // Industrial Editorial Pro: active state ganha borda esquerda 2px vermelho
@@ -464,7 +387,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
         {/* ── Navigation ── */}
         <nav className="flex-1 overflow-y-auto py-2 scrollbar-thin">
 
-          {/* Dashboard — item fixo no topo, sem grupo */}
+          {/* Dashboard — item fixo no topo */}
           {isCollapsed ? (
             <div className="px-2 pt-1 pb-2 border-b border-sidebar-border/30 mb-1">
               <Tooltip delayDuration={0}>
@@ -495,53 +418,57 @@ export default function AppLayout({ children, printMode = false }: { children: R
             </div>
           )}
 
-          {/* Favoritos — grupo fixo no topo, acima dos demais. Mesmo
-              tratamento visual de grupo recolhível (cabeçalho + chevron). */}
-          {!isCollapsed && filteredFavorites.length > 0 && (() => {
-            const favActive = filteredFavorites.some(f =>
-              location.pathname === f.path || location.pathname.startsWith(f.path + '/')
-            );
-            const favCollapsed = collapsedGroups.has(FAVORITES_KEY) && !favActive;
-            return (
-              <div className="px-2 pb-1 mb-1 border-b border-sidebar-border/30">
-                <button
-                  onClick={() => toggleGroup(FAVORITES_KEY)}
-                  className={cn(
-                    "w-full flex items-center justify-between px-3 py-1.5 ed-eyebrow transition-colors",
-                    favActive ? "text-primary" : "text-sidebar-muted hover:text-sidebar-foreground"
-                  )}
-                >
-                  <div className="flex items-center gap-1.5">
-                    <Star className="h-3 w-3 shrink-0 fill-primary text-primary" />
-                    <span>Favoritos</span>
-                  </div>
-                  <ChevronDown className={cn("h-3 w-3 transition-transform duration-200", favCollapsed && "-rotate-90")} />
-                </button>
-                {!favCollapsed && (
-                  <div className="mt-0.5 space-y-0.5">
-                    {filteredFavorites.map((item) => {
-                      const Icon = iconForPath(item.path);
-                      return (
-                        <div key={item.path} className="relative">
-                        <NavLink
-                          to={item.path}
-                          draggable={!mobile}
-                          onDragStart={!mobile ? handleFavDragStart(item.path) : undefined}
-                          onDragOver={!mobile ? handleFavDragOver(item.path) : undefined}
-                          onDrop={!mobile ? handleFavDrop(item.path) : undefined}
-                          onDragEnd={!mobile ? clearFavDrag : undefined}
-                          onClick={mobile ? () => setMobileOpen(false) : undefined}
-                          onMouseEnter={() => prefetch(item.path)}
-                          onMouseLeave={cancelPrefetch}
-                          onFocus={() => prefetch(item.path)}
-                          style={favDropStyle(item.path)}
-                          className={({ isActive }) => cn(navItemClass(isActive), !mobile && "cursor-grab active:cursor-grabbing select-none")}
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <Icon className="h-4 w-4 shrink-0" />
-                            <span className="truncate">{item.name}</span>
-                          </div>
-                        </NavLink>
+          {/* Atalhos — sistema + favoritos */}
+          {isCollapsed ? (
+            atalhoPaths.length > 0 && (
+              <div className="px-2 pb-2 mb-1 border-b border-sidebar-border/30 space-y-0.5">
+                {atalhoPaths.map((item) => (
+                  <Tooltip key={item.path} delayDuration={0}>
+                    <TooltipTrigger asChild>
+                      <NavLink to={item.path} className={({ isActive }) => cn(collapsedItemClass(isActive), 'relative')}>
+                        <item.icon className="h-4 w-4 shrink-0" />
+                        {item.favorited && (
+                          <div className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-primary" />
+                        )}
+                      </NavLink>
+                    </TooltipTrigger>
+                    <TooltipContent side="right" sideOffset={8} className="text-xs font-medium">
+                      {item.name}
+                    </TooltipContent>
+                  </Tooltip>
+                ))}
+              </div>
+            )
+          ) : (
+            atalhoPaths.length > 0 && (
+              <div className="px-2 pb-2 mb-1 border-b border-sidebar-border/30">
+                <p className="px-3 py-1.5 ed-eyebrow text-sidebar-muted flex items-center gap-1.5">
+                  <Zap className="h-3 w-3 shrink-0 text-primary" />
+                  Atalhos
+                </p>
+                <div className="mt-0.5 space-y-0.5">
+                  {atalhoPaths.map((item) => (
+                    <div key={item.path} className="relative">
+                      <NavLink
+                        to={item.path}
+                        draggable={!mobile && item.favorited}
+                        onDragStart={!mobile && item.favorited ? handleFavDragStart(item.path) : undefined}
+                        onDragOver={!mobile && item.favorited ? handleFavDragOver(item.path) : undefined}
+                        onDrop={!mobile && item.favorited ? handleFavDrop(item.path) : undefined}
+                        onDragEnd={!mobile ? clearFavDrag : undefined}
+                        onClick={mobile ? () => setMobileOpen(false) : undefined}
+                        onMouseEnter={() => prefetch(item.path)}
+                        onMouseLeave={cancelPrefetch}
+                        onFocus={() => prefetch(item.path)}
+                        style={item.favorited ? favDropStyle(item.path) : undefined}
+                        className={({ isActive }) => cn(navItemClass(isActive), !mobile && item.favorited && 'cursor-grab active:cursor-grabbing select-none')}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <item.icon className="h-4 w-4 shrink-0" />
+                          <span className="truncate">{item.name}</span>
+                        </div>
+                      </NavLink>
+                      {item.favorited && (
                         <button
                           onClick={(e) => toggleFavorite(e, item.name, item.path)}
                           className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-sm opacity-100 text-primary hover:text-primary/60 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -549,72 +476,36 @@ export default function AppLayout({ children, printMode = false }: { children: R
                         >
                           <Star className="h-3 w-3 fill-current" />
                         </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
-            );
-          })()}
+            )
+          )}
 
-          {/* Menu groups */}
+          {/* Hubs */}
           {isCollapsed ? (
-            <div className="px-2 space-y-3">
-              {/* Favoritos colapsados */}
-              {filteredFavorites.length > 0 && (
-                <div className="pb-3 border-b border-sidebar-border/40">
-                  {filteredFavorites.map((item) => {
-                    const Icon = iconForPath(item.path);
-                    return (
-                      <Tooltip key={item.path} delayDuration={0}>
-                        <TooltipTrigger asChild>
-                          <NavLink to={item.path} className={({ isActive }) => cn(collapsedItemClass(isActive), "relative")}>
-                            <Icon className="h-4 w-4 shrink-0" />
-                            <div className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-primary" />
-                          </NavLink>
-                        </TooltipTrigger>
-                        <TooltipContent side="right" sideOffset={8} className="text-xs font-medium flex items-center gap-2">
-                          <span>{item.name}</span>
-                          <Star className="h-3 w-3 fill-primary text-primary" />
-                        </TooltipContent>
-                      </Tooltip>
-                    );
-                  })}
-                </div>
-              )}
-              {/* Grupos colapsados */}
-              {orderedGroups.map((group, gi) => {
-                // Mesma regra do modo expandido: não repetir itens que já estão
-                // na faixa de Favoritos acima.
-                const groupItems = group.items.filter(
-                  (item) => !filteredFavorites.some((f) => f.path === item.path),
-                );
-                if (groupItems.length === 0) return null;
-                return (
-                <div key={group.label} className={cn(gi > 0 && "pt-2 border-t border-sidebar-border/40")}>
-                  {groupItems.map((item) => {
-                    const isFavorite = favorites.some(f => f.path === item.path);
-                    return (
-                      <Tooltip key={item.path} delayDuration={0}>
-                        <TooltipTrigger asChild>
-                          <NavLink to={item.path} className={({ isActive }) => collapsedItemClass(isActive)}>
-                            <item.icon className="h-4 w-4 shrink-0" />
-                          </NavLink>
-                        </TooltipTrigger>
-                        <TooltipContent side="right" sideOffset={8} className="text-xs font-medium flex items-center gap-2">
-                          <span>{item.label}</span>
-                          {isFavorite && <Star className="h-3 w-3 fill-primary text-primary" />}
-                        </TooltipContent>
-                      </Tooltip>
-                    );
-                  })}
-                </div>
-                );
-              })}
-              {/* Sistema colapsado (admin) */}
+            <div className="px-2 space-y-0.5">
+              {orderedHubs.map((hub) => (
+                <Tooltip key={hub.path} delayDuration={0}>
+                  <TooltipTrigger asChild>
+                    <NavLink
+                      to={hub.path}
+                      onMouseEnter={() => prefetch(hub.path)}
+                      onMouseLeave={cancelPrefetch}
+                      className={() => collapsedItemClass(isHubActive(hub))}
+                    >
+                      <hub.icon className="h-4 w-4 shrink-0" />
+                    </NavLink>
+                  </TooltipTrigger>
+                  <TooltipContent side="right" sideOffset={8} className="text-xs font-medium">
+                    {hub.label}
+                  </TooltipContent>
+                </Tooltip>
+              ))}
               {filteredSystemItems.length > 0 && (
-                <div className="pt-2 border-t border-sidebar-border/40">
+                <div className="pt-2 mt-2 border-t border-sidebar-border/40 space-y-0.5">
                   {filteredSystemItems.map((item) => (
                     <Tooltip key={item.path} delayDuration={0}>
                       <TooltipTrigger asChild>
@@ -628,7 +519,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
                         </NavLink>
                       </TooltipTrigger>
                       <TooltipContent side="right" sideOffset={8} className="text-xs font-medium">
-                        {item.label}{item.path === '/admin/aprovacao-ordens-compra' && purchaseApprovalCount > 0 ? ` · ${purchaseApprovalCount} pendente(s)` : ''}
+                        {item.label}
                       </TooltipContent>
                     </Tooltip>
                   ))}
@@ -637,10 +528,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
             </div>
           ) : (
             <div className="px-2 space-y-0.5">
-              {/* Perfil sem nenhuma área liberada: antes a sidebar simplesmente
-                  ficava vazia, sem dizer por quê — a pessoa achava que o sistema
-                  tinha quebrado. Agora explica e diz o que fazer. */}
-              {orderedGroups.length === 0 && (
+              {orderedHubs.length === 0 && (
                 <div className="mx-1 mt-2 rounded-md border border-sidebar-border/60 bg-sidebar-accent/30 p-3">
                   <p className="text-xs font-semibold text-sidebar-foreground">Nenhuma área liberada</p>
                   <p className="mt-1 text-[11px] leading-relaxed text-sidebar-foreground/70">
@@ -649,124 +537,47 @@ export default function AppLayout({ children, printMode = false }: { children: R
                   </p>
                 </div>
               )}
-              {orderedGroups.map((group) => {
-                const active = isGroupActive(group);
-                // Respeita o recolhimento manual do grupo MESMO quando a rota
-                // atual está dentro dele. Antes tinha `&& !active`, que forçava
-                // o grupo a abrir ao navegar (ex.: clicar num favorito abria o
-                // setor) — comportamento que o usuário não quer.
-                const isGroupCollapsed = collapsedGroups.has(group.label);
-                // Oculta itens já fixados nos Favoritos pra não repetir o item
-                // (ele já aparece na seção "Favoritos" no topo). Grupo que ficar
-                // sem itens visíveis some inteiro.
-                const visibleItems = group.items.filter(
-                  (item) => !filteredFavorites.some((f) => f.path === item.path),
-                );
-                if (visibleItems.length === 0) return null;
+              {orderedHubs.length > 0 && (
+                <p className="px-3 py-1.5 mt-1 ed-eyebrow text-sidebar-muted">Áreas</p>
+              )}
+              {orderedHubs.map((hub) => {
+                const active = isHubActive(hub);
                 return (
                   <div
-                    key={group.label}
-                    onDragOver={!mobile ? handleGroupDragOver(group.label) : undefined}
-                    onDrop={!mobile ? handleGroupDrop(group.label) : undefined}
-                    style={groupDropStyle(group.label)}
+                    key={hub.path}
+                    onDragOver={!mobile ? handleHubDragOver(hub.label) : undefined}
+                    onDrop={!mobile ? handleHubDrop(hub.label) : undefined}
+                    style={hubDropStyle(hub.label)}
                   >
-                    <button
+                    <NavLink
+                      to={hub.path}
                       draggable={!mobile}
-                      onDragStart={!mobile ? handleGroupDragStart(group.label) : undefined}
+                      onDragStart={!mobile ? handleHubDragStart(hub.label) : undefined}
                       onDragEnd={!mobile ? clearDrag : undefined}
-                      onClick={() => toggleGroup(group.label)}
-                      aria-expanded={!isGroupCollapsed}
-                      aria-controls={`nav-group-${group.label.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-')}`}
-                      className={cn(
-                        // Industrial Editorial Pro: group label vira eyebrow
-                        // (Fira Code 10px tracking widest uppercase).
-                        "w-full flex items-center justify-between px-3 py-1.5 ed-eyebrow transition-colors mt-2",
-                        active ? "text-primary" : "text-sidebar-muted hover:text-sidebar-foreground",
-                        !mobile && "cursor-grab active:cursor-grabbing select-none"
-                      )}
+                      onClick={mobile ? () => setMobileOpen(false) : undefined}
+                      onMouseEnter={() => prefetch(hub.path)}
+                      onMouseLeave={cancelPrefetch}
+                      onFocus={() => prefetch(hub.path)}
+                      className={() => cn(navItemClass(active), !mobile && 'cursor-grab active:cursor-grabbing select-none')}
                     >
-                      <div className="flex items-center gap-1.5">
-                        <group.icon className="h-3 w-3 shrink-0 opacity-70" />
-                        <span>{group.label}</span>
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <hub.icon className="h-4 w-4 shrink-0" />
+                        <span className="truncate">{hub.label}</span>
                       </div>
-                      <ChevronDown className={cn("h-3 w-3 transition-transform duration-200", isGroupCollapsed && "-rotate-90")} />
-                    </button>
-                    {!isGroupCollapsed && (
-                      <div
-                        id={`nav-group-${group.label.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-')}`}
-                        className="mt-0.5 space-y-0.5 animate-slide-down"
-                      >
-                        {visibleItems.map((item) => {
-                          const isFavorite = favorites.some(f => f.path === item.path);
-                          const isSubItem = !!(item as any).parent;
-                          return (
-                            <div key={item.path} className="relative">
-                            <NavLink
-                              to={item.path}
-                              draggable={!mobile}
-                              onDragStart={!mobile ? handleItemDragStart(group.label, item.path) : undefined}
-                              onDragOver={!mobile ? handleItemDragOver(group.label, item.path) : undefined}
-                              onDrop={!mobile ? handleItemDrop(group.label, item.path) : undefined}
-                              onDragEnd={!mobile ? clearDrag : undefined}
-                              onClick={mobile ? () => setMobileOpen(false) : undefined}
-                              onMouseEnter={() => prefetch(item.path)}
-                              onMouseLeave={cancelPrefetch}
-                              onFocus={() => prefetch(item.path)}
-                              style={itemDropStyle(item.path)}
-                              className={({ isActive }) => cn(navItemClass(isActive), isSubItem && "ml-5 border-l border-sidebar-border/40 pl-3", !mobile && "cursor-grab active:cursor-grabbing select-none")}
-                            >
-                              <div className="flex items-center gap-2.5 min-w-0">
-                                <item.icon className={cn("shrink-0", isSubItem ? "h-3.5 w-3.5" : "h-4 w-4")} />
-                                <span className={cn("truncate", isSubItem && "text-sm")}>{item.label}</span>
-                              </div>
-                            </NavLink>
-                            <button
-                              onClick={(e) => toggleFavorite(e, item.label, item.path)}
-                              className={cn(
-                                // Estrela de adicionar/remover favorito. Não-favorito
-                                // ficava em opacity-40 (quase invisível, "fácil de não
-                                // achar"): subido pra opacity-70 + cor com tom de primary
-                                // pra deixar claro que é clicável. Favorito = cheio/primary.
-                                "absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-sm transition-all duration-200",
-                                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                                isFavorite
-                                  ? "opacity-100 text-primary"
-                                  : "opacity-70 hover:opacity-100 text-sidebar-muted hover:text-primary"
-                              )}
-                              aria-label={isFavorite ? `Remover ${item.label} dos favoritos` : `Adicionar ${item.label} aos favoritos`}
-                            >
-                              <Star className={cn("h-3.5 w-3.5", isFavorite && "fill-current")} />
-                            </button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
+                    </NavLink>
                   </div>
                 );
               })}
 
-              {/* Restaurar ordem padrão — aparece se houver ordem customizada OU
-                  grupos recolhidos. Além de zerar a ordem/agrupamento salvos
-                  (useNavOrder), EXPANDE todos os grupos: o estado de recolhidos
-                  (`nav-collapsed-groups`) vive aqui no AppLayout, fora do
-                  useNavOrder, então o reset precisa limpá-lo explicitamente —
-                  senão um item movido pra grupo recolhido continua "sumido"
-                  mesmo após restaurar. (Pedido user 2026-06-16.) */}
-              {!mobile && (hasCustomOrder || collapsedGroups.size > 0) && (
+              {!mobile && hasCustomOrder && (
                 <button
-                  onClick={() => {
-                    resetOrder();
-                    setCollapsedGroups(new Set());
-                    try { localStorage.removeItem('nav-collapsed-groups'); } catch { /* ignora */ }
-                  }}
+                  onClick={() => { resetOrder(); }}
                   className="w-full text-left px-3 py-1.5 mt-1 ed-eyebrow text-sidebar-muted hover:text-sidebar-foreground transition-colors"
                 >
                   ↺ Restaurar ordem padrão
                 </button>
               )}
 
-              {/* Seção Sistema — visível para admins no final da sidebar */}
               {filteredSystemItems.length > 0 && (
                 <div className="mt-3 pt-3 border-t border-sidebar-border/40">
                   <p className="px-3 py-1 ed-eyebrow text-sidebar-muted">Sistema</p>

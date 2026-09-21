@@ -249,22 +249,26 @@ function parseNavigation(navSrc) {
   const topMatch = navSrc.match(/export const topItem\s*=\s*resource\(\s*["']([^"']+)["']\s*\)/);
   const topItem = resolveResource(topMatch?.[1] || '', 'topItem');
 
-  // A sidebar é o catálogo FILTRADO por `surfaces` desde 30/07/2026: a lista
-  // `menuGroupsDeclarados` define só agrupamento e ordem, e quem entra é
-  // `surfaces.includes('sidebar')`. Ler a lista crua contaria itens que a barra
-  // não desenha.
+  // A sidebar desenha HUBS (surface `hub`). Filhos (`hub-child`) moram no hub.
+  // Compat: `sidebar` legado ainda conta como entrada de menu se existir.
   const superficiesPorPath = new Map(
     [...navSrc.matchAll(/path:\s*'([^']+)'[^\n]*?surfaces:\s*\[([^\]]*)\]/g)]
       .map((m) => [m[1], m[2]]),
   );
-  const naSidebar = (path) => (superficiesPorPath.get(path) || '').includes("'sidebar'");
-  const groupsBlock = sliceExport(navSrc, 'menuGroupsDeclarados') || sliceExport(navSrc, 'menuGroups');
+  const naSidebar = (path) => {
+    const s = superficiesPorPath.get(path) || '';
+    return s.includes("'hub-child'") || s.includes("'sidebar'");
+  };
+  const groupsBlock = sliceExport(navSrc, 'hubsDeclarados')
+    || sliceExport(navSrc, 'HUBS')
+    || sliceExport(navSrc, 'menuGroupsDeclarados')
+    || sliceExport(navSrc, 'menuGroups');
   const groupsAbs = navSrc.indexOf(groupsBlock);
   const groups = [];
-  const groupRe = /label\s*:\s*["']([^"']+)["'][\s\S]*?items\s*:\s*\[/g;
+  // HUBS: children: [ resource(...) ]; menuGroups: items: [ resource(...) ]
+  const groupRe = /label\s*:\s*["']([^"']+)["'][\s\S]*?(?:children|items)\s*:\s*\[/g;
   let g;
   while ((g = groupRe.exec(groupsBlock)) !== null) {
-    // corpo do array `items`
     let depth = 1;
     let e = groupRe.lastIndex;
     for (; e < groupsBlock.length; e++) {
@@ -275,7 +279,6 @@ function parseNavigation(navSrc) {
     const items = pathsFromRefs(body)
       .filter(naSidebar)
       .map((path) => resolveResource(path, 'menuGroups'));
-    // Grupo que ficou sem item não é desenhado — não pode contar como grupo.
     if (items.length > 0) {
       groups.push({ label: g[1], items, count: items.length, line: lineOf(groupsAbs + g.index) });
     }
@@ -284,9 +287,15 @@ function parseNavigation(navSrc) {
 
   const sysBlock = sliceExport(navSrc, 'systemItems');
   const systemItems = pathsFromRefs(sysBlock).map((path) => resolveResource(path, 'systemItems'));
+  const systemPaths = new Set(systemItems.map((i) => i.path));
 
-  const secBlock = sliceExport(navSrc, 'secondaryRoutes');
-  const secondaryRoutes = pathsFromRefs(secBlock).map((path) => resolveResource(path, 'secondaryRoutes'));
+  // secondaryRoutes derivado: não-hub / não-hub-child / não-sistema / não-dashboard
+  const secondaryRoutes = resources.filter((r) => {
+    const surfaces = r.surfaces || [];
+    if (surfaces.includes('hub') || surfaces.includes('hub-child') || surfaces.includes('sidebar')) return false;
+    if (systemPaths.has(r.path) || r.path === '/dashboard') return false;
+    return surfaces.some((s) => s === 'command' || s === 'hub-shortcut' || s === 'quick-action');
+  }).map((r) => ({ ...r, surface: 'secondaryRoutes' }));
 
   return { topItem, groups, systemItems, secondaryRoutes, resources };
 }

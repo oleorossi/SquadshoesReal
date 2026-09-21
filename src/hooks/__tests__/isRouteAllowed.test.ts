@@ -195,8 +195,9 @@ describe('isActionAllowed — ações CRUD por área', () => {
     expect(isActionAllowed('/orders', 'view', prod)).toBe(true);
     expect(isActionAllowed('/orders', 'create', prod)).toBe(true);
     expect(isActionAllowed('/orders', 'delete', prod)).toBe(true);
-    // fora do papel (RH não pertence a produção): nem ver, nem agir
-    expect(isActionAllowed('/rh', 'edit', prod)).toBe(false);
+    // hub Pessoas abre pra produção (filho /terceirizados), mas Financeiro não
+    expect(isActionAllowed('/rh', 'edit', prod)).toBe(true);
+    expect(isActionAllowed('/financeiro', 'edit', prod)).toBe(false);
   });
 
   it('granular por path respeita cada flag de ação', () => {

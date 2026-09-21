@@ -4,15 +4,15 @@
  * em PT-BR + grupo onde aparece na sidebar.
  *
  * Os módulos espelham ROUTE_MODULE_MAP em useAccessControl.ts. Se mudar
- * lá, mudar aqui.
+ * lá, mudar aqui. Grupos alinham aos hubs canônicos (Modo 2+3).
  */
 
 export interface MenuOption {
   module: string;
   label: string;
   description: string;
-  /** Grupo da sidebar pra organizar os checkboxes visualmente. */
-  group: 'Comercial' | 'Produção' | 'Engenharia' | 'Estoque' | 'Compras' | 'Logística' | 'Financeiro' | 'RH' | 'Sistema';
+  /** Hub da sidebar pra organizar os checkboxes visualmente. */
+  group: 'Comercial' | 'Produção' | 'Engenharia' | 'Materiais' | 'Compras' | 'Expedição' | 'Financeiro' | 'Fiscal' | 'RH' | 'Sistema';
   /** True quando este módulo só pode ser acessado por admin (não dá pra liberar
    *  individualmente). Mantemos na lista pra transparência mas com checkbox
    *  desabilitado + tooltip explicativo. */
@@ -33,30 +33,28 @@ export const MENU_OPTIONS: MenuOption[] = [
   { module: 'producao', label: 'Produção (PCP)', description: 'PCP, capacidade, gargalos, imprimir fichas, centro de controle, timeline', group: 'Produção' },
   { module: 'ordens', label: 'Ordens (OPs)', description: 'Listar e editar OPs, picking, shop-floor, auditoria de fluxo', group: 'Produção' },
 
-  // ENGENHARIA
-  { module: 'produtos', label: 'Fichas Técnicas', description: 'Fichas técnicas, solados, silks, receitas artesanais, imagens', group: 'Engenharia' },
+  // ENGENHARIA (absorve Tiras)
+  { module: 'produtos', label: 'Fichas Técnicas e Tiras', description: 'Fichas técnicas, solados, silks, tiras artesanais, imagens', group: 'Engenharia' },
 
-  // ESTOQUE
-  { module: 'estoque', label: 'Estoque', description: 'Estoque, MRP, ajustes, histórico, alertas, reservas, custos de insumos', group: 'Estoque' },
+  // MATERIAIS (ex-Estoque)
+  { module: 'estoque', label: 'Materiais / Estoque', description: 'Estoque, grupos, ajustes, inventário, reservas, custos de insumos', group: 'Materiais' },
 
   // COMPRAS
   { module: 'fornecedores', label: 'Fornecedores e Compras', description: 'Cadastro de fornecedores, ordens de compra, cotações (RFQ), planejamento', group: 'Compras' },
 
-  // LOGÍSTICA
-  { module: 'expedicao', label: 'Expedição e Logística', description: 'Expedição, conferência, romaneios, entregas, transportadoras, etiquetas, embalagens', group: 'Logística' },
+  // EXPEDIÇÃO (absorve Logística + Etiquetagem)
+  { module: 'expedicao', label: 'Expedição e Etiquetagem', description: 'Expedição, conferência, romaneios, entregas, transportadoras, etiquetas, embalagens', group: 'Expedição' },
 
   // FINANCEIRO
-  { module: 'financeiro', label: 'Financeiro', description: 'Contas (AR/AP), conciliação, SPED, markup, CT-e, MDF-e, CNAB, OCs', group: 'Financeiro' },
-  { module: 'nfe', label: 'NF-e', description: 'Emissão e consulta de Notas Fiscais Eletrônicas', group: 'Financeiro' },
-  { module: 'empresas_fiscal', label: 'Empresas Fiscais', description: 'Cadastro das empresas emissoras de NF-e', group: 'Financeiro' },
+  { module: 'financeiro', label: 'Financeiro', description: 'Contas (AR/AP), conciliação, markup, CNAB, OCs', group: 'Financeiro' },
   { module: 'rh_folha', label: 'Folha de Pagamento', description: 'Cálculo de folha (gera financial_entries — restrito).', group: 'Financeiro' },
+
+  // FISCAL (hub próprio)
+  { module: 'nfe', label: 'NF-e', description: 'Emissão e consulta de Notas Fiscais Eletrônicas', group: 'Fiscal' },
+  { module: 'empresas_fiscal', label: 'Empresas Fiscais', description: 'Cadastro das empresas emissoras de NF-e', group: 'Fiscal' },
 
   // RH
   { module: 'rh', label: 'RH (Funcionários e Ponto)', description: 'Cadastro de funcionários, controle de ponto, banco de horas, escalas, faltas', group: 'RH' },
-  // Módulo de AÇÃO, não de rota: não entra em ROUTE_MODULE_MAP. Quem tem
-  // 'ficha_montadores' vê a produção e o status pago/a pagar; só quem tem ESTE
-  // consegue apertar o botão que paga. Existe separado de 'rh_folha' pra dar o
-  // pagamento da produção a um encarregado sem abrir a folha inteira do RH.
   { module: 'ficha_pagamento', label: 'Pagar produção (Ficha de Montadores)', description: 'Registrar o pagamento da semana de um montador/solador direto na Ficha. Gera folha e recibo — conceder só a quem entrega o dinheiro.', group: 'RH' },
   { module: 'terceirizados', label: 'Terceirizados', description: 'Cadastro de prestadores PJ e ordens de serviço', group: 'RH' },
 
@@ -68,7 +66,7 @@ export const MENU_OPTIONS: MenuOption[] = [
 /** Lista de módulos válidos pra validação no backend. */
 export const VALID_MODULES = MENU_OPTIONS.map(m => m.module);
 
-/** Agrupa opções pelo grupo da sidebar — pra renderizar em seções no dialog. */
+/** Agrupa opções pelo hub — pra renderizar em seções no dialog. */
 export function getMenuOptionsGrouped(): Record<MenuOption['group'], MenuOption[]> {
   const out: Record<string, MenuOption[]> = {};
   for (const opt of MENU_OPTIONS) {
