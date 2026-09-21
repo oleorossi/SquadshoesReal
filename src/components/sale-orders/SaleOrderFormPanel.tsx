@@ -27,6 +27,10 @@ import { DISPLAY_SECTORS, SECTOR_LABELS, type SectorKey } from '@/lib/sectors';
 import { useClientCommercialDefaults } from '@/hooks/useEconomicGroup360';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import SaleOrderItemForm from './SaleOrderItemForm';
+import {
+  isSaleOrderItemStructurallyIncomplete,
+  saleOrderItemUiKey,
+} from '@/lib/saleOrderItemDensity';
 import { OrderStatusStepper } from '@/components/ui/order-status-stepper';
 import { useQuery } from '@tanstack/react-query';
 import { fetchClientPriceList, type PriceLookup } from '@/lib/mobile/clientContext';
@@ -738,10 +742,50 @@ const SaleOrderItemsList = memo(function SaleOrderItemsList({
   onRetrySharedReferenceTerceirizacoes,
   mainProductionStart,
 }: SaleOrderItemsListProps) {
+  // Densidade do PV (1C/2B/4B): itens colapsados por padrão; vários podem
+  // ficar abertos; no load abre só o 1º estruturalmente incompleto.
+  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(() => new Set());
+  const didSeedExpand = useRef(false);
+  const prevItemCount = useRef(items.length);
+
+  useEffect(() => {
+    if (didSeedExpand.current || items.length === 0) return;
+    didSeedExpand.current = true;
+    const incompleteIdx = sortedIndices.find((i) => isSaleOrderItemStructurallyIncomplete(items[i]));
+    if (incompleteIdx === undefined) {
+      setExpandedKeys(new Set());
+      return;
+    }
+    setExpandedKeys(new Set([saleOrderItemUiKey(items[incompleteIdx], incompleteIdx)]));
+  }, [items, sortedIndices]);
+
+  useEffect(() => {
+    if (items.length > prevItemCount.current) {
+      const lastIdx = items.length - 1;
+      const key = saleOrderItemUiKey(items[lastIdx], lastIdx);
+      setExpandedKeys((prev) => {
+        const next = new Set(prev);
+        next.add(key);
+        return next;
+      });
+    }
+    prevItemCount.current = items.length;
+  }, [items]);
+
+  const toggleItemExpanded = useCallback((key: string) => {
+    setExpandedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
   return (
     <>
       {sortedIndices.map((idx, sortPos) => {
         const item = items[idx];
+        const itemKey = saleOrderItemUiKey(item, idx);
         const prevItem = sortPos > 0 ? items[sortedIndices[sortPos - 1]] : null;
         const isSameRef = prevItem?.reference_id === item.reference_id && !!item.reference_id;
         const isProductiveDuplicate = duplicateItemIndices.has(idx);
@@ -752,7 +796,7 @@ const SaleOrderItemsList = memo(function SaleOrderItemsList({
           : 'Referência';
         const groupColorCount = isNewRefGroup ? items.filter((i) => i.reference_id === item.reference_id).length : 0;
         return (
-          <Fragment key={item.id || item.clientKey || `idx-${idx}`}>
+          <Fragment key={itemKey}>
             {isNewRefGroup && (
               <div className="flex items-center gap-3 mt-2 mb-0.5 first:mt-0">
                 <div className="h-px flex-1 bg-border" />
@@ -784,6 +828,9 @@ const SaleOrderItemsList = memo(function SaleOrderItemsList({
                 mainProductionStart={mainProductionStart}
                 item={item}
                 index={idx}
+                isExpanded={expandedKeys.has(itemKey)}
+                itemUiKey={itemKey}
+                onToggleExpand={toggleItemExpanded}
                 onColorIssueChange={onColorIssueChange}
                 onSheetMaterialSelectableChange={onSheetMaterialSelectableChange}
                 references={references}

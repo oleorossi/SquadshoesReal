@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Handshake, Warning, X } from '@phosphor-icons/react';
+import { Handshake, Warning, X, CaretDown, CaretRight } from '@phosphor-icons/react';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
@@ -58,6 +58,8 @@ export interface ItemSectorOutsourcingSectionProps {
   sharedConfigsLoading?: boolean;
   sharedConfigsFailed?: boolean;
   onRetrySharedConfigs?: () => void;
+  /** Quando true, só o cabeçalho fica visível até o usuário expandir (densidade do PV). */
+  defaultCollapsed?: boolean;
 }
 
 export function ItemSectorOutsourcingSection({
@@ -66,6 +68,7 @@ export function ItemSectorOutsourcingSection({
   sharedConfigsLoading,
   sharedConfigsFailed,
   onRetrySharedConfigs,
+  defaultCollapsed = false,
 }: ItemSectorOutsourcingSectionProps) {
   const {
     data: contractors = [],
@@ -96,6 +99,7 @@ export function ItemSectorOutsourcingSection({
 
   // Setor clicado mas ainda sem prestador. Vive só aqui: não pode ir pro mapa.
   const [pending, setPending] = useState<string[]>([]);
+  const [collapsed, setCollapsed] = useState(defaultCollapsed);
 
   useEffect(() => {
     setPending([]);
@@ -184,21 +188,45 @@ export function ItemSectorOutsourcingSection({
   }
 
   return (
-    <div className="space-y-2 rounded-lg border border-border/60 bg-muted/20 p-3">
-      <div className="flex items-center justify-between gap-2 flex-wrap">
+    <div className={cn(
+      'rounded-lg border border-border/60 bg-muted/20',
+      collapsed ? 'p-0' : 'space-y-2 p-2.5',
+    )}>
+      <button
+        type="button"
+        className={cn(
+          'flex w-full items-center justify-between gap-2 text-left',
+          collapsed ? 'px-2.5 py-1.5 hover:bg-muted/40' : '',
+        )}
+        aria-expanded={!collapsed}
+        onClick={() => setCollapsed((c) => !c)}
+      >
         <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+          {collapsed
+            ? <CaretRight className="h-3 w-3 shrink-0" weight="bold" />
+            : <CaretDown className="h-3 w-3 shrink-0" weight="bold" />}
           <Handshake className="h-3.5 w-3.5" />
           Terceirizar setores
         </span>
-        {chosenSectors.length > 0 && (
-          <span className="text-[11px] text-muted-foreground">
-            {chosenSectors.length} pra fora · o resto fica na fábrica
-          </span>
-        )}
-      </div>
+        <span className="flex items-center gap-1.5">
+          {semConfiguracao && (
+            <span className="inline-flex h-5 items-center gap-1 rounded border border-amber-500/40 bg-amber-500/10 px-1.5 text-[10px] font-medium text-amber-800 dark:text-amber-300">
+              <Warning className="h-3 w-3" />
+              incompleto
+            </span>
+          )}
+          {chosenSectors.length > 0 && (
+            <span className="text-[11px] text-muted-foreground">
+              {chosenSectors.length} pra fora
+            </span>
+          )}
+        </span>
+      </button>
 
+      {!collapsed && (
+      <div className="space-y-2">
       {semConfiguracao && (
-        <p className="text-[11px] text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
+        <p className="text-[11px] text-amber-700 dark:text-amber-400 flex items-center gap-1.5 px-0.5">
           <Warning className="h-3.5 w-3.5 shrink-0" />
           Esta referência ainda não tem atividade externa completa. Configure
           atividade, prestador, capacidade, retorno e materiais na ficha técnica.
@@ -312,6 +340,8 @@ export function ItemSectorOutsourcingSection({
             marcação é intenção; a OS nasce quando o pedido entra em produção.
           </p>
         </>
+      )}
+      </div>
       )}
     </div>
   );

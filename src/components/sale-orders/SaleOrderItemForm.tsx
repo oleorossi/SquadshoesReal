@@ -5,7 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Trash as Trash2, Lock, CaretUpDown as ChevronsUpDown, Check, Package, ArrowSquareOut as ExternalLink, Palette, Plus, X, ChatText as MessageSquare, Warning, ArrowsClockwise as RefreshCw, Tag, CurrencyDollar, Wrench } from '@phosphor-icons/react';
+import { Trash as Trash2, Lock, CaretUpDown as ChevronsUpDown, CaretDown, CaretRight, Check, Package, ArrowSquareOut as ExternalLink, Palette, Plus, X, ChatText as MessageSquare, Warning, ArrowsClockwise as RefreshCw, Tag, CurrencyDollar, Wrench } from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
 import { ReferenceLink } from '@/components/ui/reference-link';
 import { cn } from '@/lib/utils';
@@ -192,6 +192,10 @@ interface Props {
   sharedReferenceTerceirizacoesLoading?: boolean;
   sharedReferenceTerceirizacoesFailed?: boolean;
   onRetrySharedReferenceTerceirizacoes?: () => void;
+  /** Densidade do PV: quando o pai controla, item colapsa em linha-resumo. */
+  isExpanded?: boolean;
+  itemUiKey?: string;
+  onToggleExpand?: (key: string) => void;
 }
 
 function parseSizeRange(sizes?: string | null, shoeCategory?: string | null): number[] {
@@ -225,7 +229,11 @@ function materialBaseForStrap(strap: ReconcileStrapLineLike, inheritedBase?: str
   });
 }
 
-function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, onUpdate, onUpdateFields, onRemove, onCopyGradeFromPrevious, onSaveStateAndNavigate, isSelected, onToggleSelect, priceLookup, maxDiscountPct = 0, variantsByRef = EMPTY_VARIANTS_BY_REF, onColorIssueChange, onSheetMaterialSelectableChange, saleOrderId, saleOrderStatus, billingWeek, requiredAt, mainProductionStart, sharedProducts, sharedProductGroups, sharedStrapCatalog, sharedStrapCatalogLoading, sharedInternalStrapReadiness, sharedStrapStockLines, sharedStrapStockLinesLoading, sharedStrapStockLinesError, sharedReferenceTerceirizacoes, sharedReferenceTerceirizacoesLoading, sharedReferenceTerceirizacoesFailed, onRetrySharedReferenceTerceirizacoes }: Props) {
+function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, onUpdate, onUpdateFields, onRemove, onCopyGradeFromPrevious, onSaveStateAndNavigate, isSelected, onToggleSelect, priceLookup, maxDiscountPct = 0, variantsByRef = EMPTY_VARIANTS_BY_REF, onColorIssueChange, onSheetMaterialSelectableChange, saleOrderId, saleOrderStatus, billingWeek, requiredAt, mainProductionStart, sharedProducts, sharedProductGroups, sharedStrapCatalog, sharedStrapCatalogLoading, sharedInternalStrapReadiness, sharedStrapStockLines, sharedStrapStockLinesLoading, sharedStrapStockLinesError, sharedReferenceTerceirizacoes, sharedReferenceTerceirizacoesLoading, sharedReferenceTerceirizacoesFailed, onRetrySharedReferenceTerceirizacoes, isExpanded: isExpandedProp, itemUiKey, onToggleExpand }: Props) {
+  const densityControlled = typeof onToggleExpand === 'function' && !!itemUiKey;
+  const isExpanded = densityControlled ? !!isExpandedProp : true;
+  const [coverAlertOpen, setCoverAlertOpen] = useState(false);
+  const [strapSnapAlertOpen, setStrapSnapAlertOpen] = useState(false);
   const qc = useQueryClient();
   const access = useAccessControl();
   const { canSeeFinancialValues } = access;
@@ -1598,27 +1606,78 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       : automaticPriceResolution.sourceLabel;
   const priceIsManual = item.unit_price > 0 && !priceMatchesAuto && manualPriceEdited.current;
 
+  const toggleExpand = () => {
+    if (densityControlled && itemUiKey) onToggleExpand?.(itemUiKey);
+  };
+
+  const pendingChipLabels: string[] = [];
+  if (coverColorIssues.length > 0) {
+    pendingChipLabels.push(`Cor ${item.color || '?'} sem estoque`);
+  }
+  if (strapSnapshotMissing) pendingChipLabels.push('Tiras sem snapshot');
+  if (strapCanonicalMainMissing) pendingChipLabels.push('Cor de tira sem identidade');
+  if (strapMaterialIssues.length > 0) pendingChipLabels.push('Material de tira');
+  if (selectedStrapColorIssues.length > 0) pendingChipLabels.push('Cor de tira');
+  if (!item.reference_id) pendingChipLabels.push('Sem referência');
+  else if (!(item.color || '').trim()) pendingChipLabels.push('Sem cor');
+  else if (totalPairs <= 0) pendingChipLabels.push('Grade vazia');
+
   return (
     <div
-      className={`rounded-lg border shadow-sm overflow-hidden mb-2 transition-colors hover:border-primary/30 ${isSelected ? 'bg-primary/5 border-primary/40' : 'bg-card'}`}
+      className={`rounded-lg border shadow-sm overflow-hidden mb-1.5 transition-colors hover:border-primary/30 ${isSelected ? 'bg-primary/5 border-primary/40' : 'bg-card'}`}
       aria-disabled={productionExcluded || undefined}
+      data-expanded={isExpanded ? 'true' : 'false'}
     >
-      {/* Item header bar */}
-      <div className="flex flex-wrap items-center justify-between gap-y-1 bg-muted/20 px-3 py-1.5 border-b">
-        <div className="flex items-center gap-2">
+      {/* Item header bar — linha-resumo quando colapsado (6C/7A) */}
+      <div
+        className={cn(
+          'flex flex-wrap items-center justify-between gap-y-1 bg-muted/20 px-2.5 py-1 border-b',
+          !isExpanded && densityControlled && 'cursor-pointer hover:bg-muted/35',
+        )}
+        onClick={!isExpanded && densityControlled ? toggleExpand : undefined}
+        onKeyDown={!isExpanded && densityControlled ? (e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            toggleExpand();
+          }
+        } : undefined}
+        role={!isExpanded && densityControlled ? 'button' : undefined}
+        tabIndex={!isExpanded && densityControlled ? 0 : undefined}
+        aria-expanded={densityControlled ? isExpanded : undefined}
+      >
+        <div className="flex min-w-0 flex-1 items-center gap-1.5">
+          {densityControlled && (
+            <button
+              type="button"
+              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+              aria-label={isExpanded ? `Recolher item ${index + 1}` : `Expandir item ${index + 1}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleExpand();
+              }}
+            >
+              {isExpanded
+                ? <CaretDown className="h-3.5 w-3.5" weight="bold" />
+                : <CaretRight className="h-3.5 w-3.5" weight="bold" />}
+            </button>
+          )}
           {/* Checkbox de seleção pra bulk-edit (grade/preço/fichas em lote) */}
           {onToggleSelect && (
             <input
               type="checkbox"
               checked={!!isSelected}
               onChange={() => onToggleSelect(index)}
+              onClick={(e) => e.stopPropagation()}
               className="h-4 w-4 rounded border-input cursor-pointer"
               aria-label={`Selecionar item #${index + 1}`}
               title="Selecionar pra edição em lote"
             />
           )}
-          <div className="flex items-center gap-2">
-            <div className="h-10 w-10 rounded-md border bg-muted overflow-hidden flex-shrink-0">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <div className={cn(
+              'rounded-md border bg-muted overflow-hidden flex-shrink-0',
+              isExpanded ? 'h-9 w-9' : 'h-8 w-8',
+            )}>
               {(() => {
                 const imgSrc = resolveReferenceThumbnailUrl(selectedRef, 40);
                 return imgSrc ? (
@@ -1631,29 +1690,27 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                   />
                 ) : (
                   <div className="h-full w-full flex items-center justify-center text-muted-foreground">
-                    <Package className="h-5 w-5" />
+                    <Package className="h-4 w-4" />
                   </div>
                 );
               })()}
             </div>
-            <div className="flex flex-col text-left">
-              <div className="flex items-center gap-2">
-                {/* Número do item DENTRO do pedido. Pedido do dono em 20/08/2026:
-                    com vários itens da mesma referência variando só cor/material,
-                    "o terceiro card" era a única forma de apontar um deles — na
-                    tela, no telefone e na conferência. O índice já existia no
-                    componente (só o aria-label do checkbox usava). */}
+            <div className="flex min-w-0 flex-col text-left">
+              <div className="flex flex-wrap items-center gap-1.5">
                 <span
                   className="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded border border-border bg-muted px-1 font-mono text-[11px] font-bold tabular-nums text-foreground"
                   title={`Item ${index + 1} do pedido`}
                 >
                   {index + 1}
                 </span>
-                <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Ref</span>
-                {/* Código da ref → abre a ficha técnica em NOVA ABA (não perde
-                    o que está sendo editado no pedido). Pedido user 09/06/2026. */}
+                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Ref</span>
                 <ReferenceLink referenceId={selectedRef?.id} newTab title="Abrir ficha técnica (nova aba)">
-                  <span className="font-mono font-bold text-sm">{selectedRef?.code || '—'}</span>
+                  <span
+                    className="font-mono font-bold text-sm"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {selectedRef?.code || '—'}
+                  </span>
                 </ReferenceLink>
                 {productionExcluded && (
                   <Badge variant="outline" className="h-5 gap-1 border-warning/40 bg-warning/10 text-warning-foreground">
@@ -1661,11 +1718,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                     Retirado da produção
                   </Badge>
                 )}
-                {/* Badge NCM da ficha — fica amber quando inválido (faltando ou
-                    fora do formato 8 dígitos). NF-e exige NCM válido pra emissão;
-                    mostrando aqui o usuário enxerga problema antes mesmo de
-                    tentar emitir. */}
-                {selectedRef && (() => {
+                {isExpanded && selectedRef && (() => {
                   const ncm = (selectedRef as any).ncm as string | null | undefined;
                   const valid = ncm && /^\d{8}$/.test(ncm);
                   if (!ncm) {
@@ -1689,23 +1742,25 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                   );
                 })()}
               </div>
-              <span className="text-xs font-medium text-foreground truncate max-w-[200px]">{selectedRef?.name || 'Selecione uma referência'}</span>
+              {isExpanded && (
+                <span className="text-xs font-medium text-foreground truncate max-w-[200px]">{selectedRef?.name || 'Selecione uma referência'}</span>
+              )}
             </div>
           </div>
           {item.color && (
             <>
-              <div className="h-8 w-px bg-border mx-1" />
+              <div className="h-6 w-px bg-border mx-0.5" />
               <Badge variant="outline" className="h-5 px-1.5 text-xs bg-primary/5 text-primary border-primary/20">
                 {item.color}
               </Badge>
             </>
           )}
-          {item.material_variant_id && (() => {
+          {isExpanded && item.material_variant_id && (() => {
             const sel = activeMaterialVariants.find(v => v.id === item.material_variant_id);
             if (sel) {
               return (
                 <>
-                  <div className="h-8 w-px bg-border mx-1" />
+                  <div className="h-6 w-px bg-border mx-0.5" />
                   <Badge variant="secondary" className="h-5 px-1.5 text-xs gap-1 font-normal">
                     <span className="font-medium">{sel.material_name}</span>
                     {sel.sku && <span className="font-mono text-primary opacity-70">· {sel.sku}</span>}
@@ -1713,78 +1768,117 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                 </>
               );
             }
-            // Variant was deactivated/removed since the item was saved.
             return (
               <>
-                <div className="h-8 w-px bg-border mx-1" />
+                <div className="h-6 w-px bg-border mx-0.5" />
                 <Badge variant="destructive" className="h-5 px-1.5 text-xs gap-1 font-normal">
                   Material inativo — NF-e será bloqueada
                 </Badge>
               </>
             );
           })()}
-          {/* StockAvailabilityBadge removido: a verificação de estoque/cor
-              fica APENAS no save (via checkSoleAvailability +
-              enrichMaterialShortages em SaleOrderForm). Antes, o badge
-              rodava o RPC check_stock_availability a cada mudança de
-              qtd/cor — gerava ruído visual e chamadas desnecessárias. */}
-          {/* Sequência 1–4 no header (não numa faixa extra abaixo dos campos). */}
-          <div className="ml-1 flex items-center gap-0.5" aria-label="Sequência comercial do item">
-            {([
-              {
-                n: 1,
-                ok: !!selectedRef,
-                warn: false,
-                label: selectedRef
-                  ? `Referência ${selectedRef.code}${selectedRef.status_ficha ? ` · ${String(selectedRef.status_ficha).replace('_', ' ')}` : ''}`
-                  : '1. Referência pendente',
-              },
-              {
-                n: 2,
-                ok: true,
-                warn: false,
-                label: `Material: ${selectedMaterialVariant?.material_name || sheetBaseGroup?.name || sheetSpecs?.upper_material || 'Da ficha'}`,
-              },
-              {
-                n: 3,
-                ok: !!item.color && totalPairs > 0,
-                warn: false,
-                label: `Cor e grade: ${item.color || 'Sem cor'} · ${totalPairs} pares`,
-              },
-              {
-                n: 4,
-                ok: item.unit_price > 0,
-                warn: !(item.unit_price > 0),
-                label: item.unit_price > 0
-                  ? `Preço ${formatCurrency(item.unit_price)} · ${priceSourceLabel}`
-                  : `4. Preço pendente · ${priceSourceLabel}`,
-              },
-            ] as const).map((step) => (
-              <span
-                key={step.n}
-                title={step.label}
-                className={cn(
-                  'flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold',
-                  step.warn
-                    ? 'bg-destructive/15 text-destructive'
-                    : step.ok
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted text-muted-foreground',
-                )}
-              >
-                {step.n}
-              </span>
-            ))}
-          </div>
+          {isExpanded && (
+            <div className="ml-1 flex items-center gap-0.5" aria-label="Sequência comercial do item">
+              {([
+                {
+                  n: 1,
+                  ok: !!selectedRef,
+                  warn: false,
+                  label: selectedRef
+                    ? `Referência ${selectedRef.code}${selectedRef.status_ficha ? ` · ${String(selectedRef.status_ficha).replace('_', ' ')}` : ''}`
+                    : '1. Referência pendente',
+                },
+                {
+                  n: 2,
+                  ok: true,
+                  warn: false,
+                  label: `Material: ${selectedMaterialVariant?.material_name || sheetBaseGroup?.name || sheetSpecs?.upper_material || 'Da ficha'}`,
+                },
+                {
+                  n: 3,
+                  ok: !!item.color && totalPairs > 0,
+                  warn: false,
+                  label: `Cor e grade: ${item.color || 'Sem cor'} · ${totalPairs} pares`,
+                },
+                {
+                  n: 4,
+                  ok: item.unit_price > 0,
+                  warn: !(item.unit_price > 0),
+                  label: item.unit_price > 0
+                    ? `Preço ${formatCurrency(item.unit_price)} · ${priceSourceLabel}`
+                    : `4. Preço pendente · ${priceSourceLabel}`,
+                },
+              ] as const).map((step) => (
+                <span
+                  key={step.n}
+                  title={step.label}
+                  className={cn(
+                    'flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold',
+                    step.warn
+                      ? 'bg-destructive/15 text-destructive'
+                      : step.ok
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted text-muted-foreground',
+                  )}
+                >
+                  {step.n}
+                </span>
+              ))}
+            </div>
+          )}
+          {!isExpanded && pendingChipLabels.length > 0 && (
+            <div className="flex min-w-0 flex-wrap items-center gap-1">
+              {pendingChipLabels.slice(0, 2).map((label) => (
+                <Badge
+                  key={label}
+                  variant="outline"
+                  className="h-5 max-w-[160px] truncate border-amber-500/40 bg-amber-500/10 px-1.5 text-[10px] font-medium text-amber-800 dark:text-amber-300"
+                  title={label}
+                >
+                  {label}
+                </Badge>
+              ))}
+              {pendingChipLabels.length > 2 && (
+                <Badge variant="outline" className="h-5 border-amber-500/40 bg-amber-500/10 px-1.5 text-[10px] text-amber-800 dark:text-amber-300">
+                  +{pendingChipLabels.length - 2}
+                </Badge>
+              )}
+            </div>
+          )}
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex shrink-0 items-center gap-2.5 sm:gap-3">
+          {!isExpanded && canSeeFinancialValues && !productionExcluded && (
+            <div
+              className="flex items-center gap-1"
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+            >
+              <Label className="sr-only" htmlFor={`pv-item-price-${index}`}>Preço unitário</Label>
+              <span className="text-[10px] font-bold uppercase text-muted-foreground">R$</span>
+              <NumberInput
+                id={`pv-item-price-${index}`}
+                value={item.unit_price || 0}
+                onChange={(v) => {
+                  lastAppliedAutoPrice.current = null;
+                  manualPriceEdited.current = true;
+                  onUpdate(index, 'unit_price', Math.max(0, v));
+                }}
+                className="h-7 w-[4.5rem] font-mono text-xs"
+                decimals={2}
+                disabled={(() => {
+                  const pdv = Number(selectedRef?.sale_price) || 0;
+                  return pdv > 0 && !isAdmin;
+                })()}
+              />
+            </div>
+          )}
           <div className="text-right">
-            <p className="text-xs text-muted-foreground uppercase font-bold leading-none">Pares</p>
+            <p className="text-[10px] text-muted-foreground uppercase font-bold leading-none">Pares</p>
             <p className="font-mono font-bold text-sm leading-tight">{totalPairs}</p>
           </div>
           {canSeeFinancialValues && (
             <div className="text-right">
-              <p className="text-xs text-muted-foreground uppercase font-bold leading-none">Subtotal</p>
+              <p className="text-[10px] text-muted-foreground uppercase font-bold leading-none">Subtotal</p>
               <p className="font-mono font-bold text-sm text-primary leading-tight">{formatCurrency(itemTotal)}</p>
             </div>
           )}
@@ -1794,7 +1888,10 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
               variant="ghost"
               size="icon"
               className="h-7 w-7 text-muted-foreground hover:text-destructive"
-              onClick={() => onRemove(index)}
+              onClick={(e) => {
+                e.stopPropagation();
+                onRemove(index);
+              }}
               aria-label={productionExcluded ? 'Remover linha histórica do pedido' : 'Remover item'}
               title={productionExcluded ? 'Remover linha histórica do pedido' : 'Remover item'}
             >
@@ -1804,9 +1901,9 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
         </div>
       </div>
 
-      {productionExcluded && (
-        <div role="status" className="border-b border-warning/40 bg-warning/10 px-4 py-3 text-warning-foreground">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      {isExpanded && productionExcluded && (
+        <div role="status" className="border-b border-warning/40 bg-warning/10 px-3 py-2 text-warning-foreground">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex min-w-0 items-start gap-2">
               <Lock className="mt-0.5 h-4 w-4 shrink-0" weight="fill" />
               <div className="min-w-0">
@@ -1836,9 +1933,10 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
         </div>
       )}
 
+      {isExpanded && (
       <fieldset
         disabled={productionExcluded}
-        className="m-0 min-w-0 border-0 p-2 space-y-1.5 disabled:cursor-not-allowed disabled:opacity-70"
+        className="m-0 min-w-0 border-0 p-1.5 space-y-1 disabled:cursor-not-allowed disabled:opacity-70 [&_.h-9]:!h-8"
       >
         {/* Main Selection Row
             Layout varies by whether this reference has material groups:
@@ -2274,39 +2372,71 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
             (vira ruptura) em vez de baixar a cor errada. Avisar aqui evita
             a surpresa só na produção. */}
         {coverColorIssues.length > 0 && (
-          <div className="rounded-lg border border-amber-500/50 bg-amber-500/5 px-3 py-2 text-xs text-amber-800 dark:text-amber-400 space-y-2">
-            <p>
-              <strong>⚠ Cor "{item.color}" não cadastrada</strong> no estoque {coverColorIssues.length === 1 ? 'do material' : 'dos materiais'}:{' '}
-              <strong>{coverColorIssues.map(i => i.name).join(', ')}</strong>. Sem produto nessa cor o débito é <strong>pulado</strong> (vira ruptura) — e o pedido <strong>não salva</strong> até cadastrar:
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {coverColorIssues.map(iss => (
-                <Button
-                  key={iss.groupId}
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 text-xs gap-1 border-amber-500/40 bg-card hover:bg-amber-500/10 text-amber-700 dark:text-amber-400"
-                  onClick={() => {
-                    setColorProductGroupId(iss.groupId);
-                    setColorProductColor(item.color || '');
-                    setColorProductDialogOpen(true);
-                  }}
-                  title={`Cadastrar produto "${iss.name} - ${item.color}" no estoque`}
-                >
-                  <Plus className="h-3 w-3" /> Cadastrar "{iss.name}"
-                </Button>
-              ))}
-            </div>
+          <div className="rounded-md border border-amber-500/40 bg-amber-500/5 text-xs text-amber-900 dark:text-amber-300">
+            <button
+              type="button"
+              className="flex w-full items-center gap-1.5 px-2 py-1 text-left hover:bg-amber-500/10"
+              aria-expanded={coverAlertOpen}
+              onClick={() => setCoverAlertOpen((o) => !o)}
+            >
+              {coverAlertOpen
+                ? <CaretDown className="h-3 w-3 shrink-0" weight="bold" />
+                : <CaretRight className="h-3 w-3 shrink-0" weight="bold" />}
+              <Warning className="h-3.5 w-3.5 shrink-0" weight="fill" />
+              <span className="min-w-0 flex-1 truncate font-medium">
+                Cor "{item.color}" sem estoque em {coverColorIssues.map(i => i.name).join(', ')}
+              </span>
+              <Badge variant="outline" className="h-4 shrink-0 border-amber-500/40 bg-card px-1 text-[10px]">
+                bloqueia save
+              </Badge>
+            </button>
+            {coverAlertOpen && (
+              <div className="space-y-2 border-t border-amber-500/30 px-2 py-2">
+                <p>
+                  Sem produto nessa cor o débito é <strong>pulado</strong> (vira ruptura) — e o pedido <strong>não salva</strong> até cadastrar.
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {coverColorIssues.map(iss => (
+                    <Button
+                      key={iss.groupId}
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs gap-1 border-amber-500/40 bg-card hover:bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                      onClick={() => {
+                        setColorProductGroupId(iss.groupId);
+                        setColorProductColor(item.color || '');
+                        setColorProductDialogOpen(true);
+                      }}
+                      title={`Cadastrar produto "${iss.name} - ${item.color}" no estoque`}
+                    >
+                      <Plus className="h-3 w-3" /> Cadastrar "{iss.name}"
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
         {strapSnapshotMissing && (
-          <div className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-3 text-sm">
-            <div className="flex items-start gap-2">
-              <Warning className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-              <div className="space-y-1">
-                <p className="font-semibold text-destructive">Demanda de tira não resolvida</p>
+          <div className="rounded-md border border-destructive/40 bg-destructive/5 text-sm">
+            <button
+              type="button"
+              className="flex w-full items-center gap-1.5 px-2 py-1 text-left text-xs hover:bg-destructive/10"
+              aria-expanded={strapSnapAlertOpen}
+              onClick={() => setStrapSnapAlertOpen((o) => !o)}
+            >
+              {strapSnapAlertOpen
+                ? <CaretDown className="h-3 w-3 shrink-0 text-destructive" weight="bold" />
+                : <CaretRight className="h-3 w-3 shrink-0 text-destructive" weight="bold" />}
+              <Warning className="h-3.5 w-3.5 shrink-0 text-destructive" />
+              <span className="min-w-0 flex-1 truncate font-semibold text-destructive">
+                Demanda de tira não resolvida
+              </span>
+            </button>
+            {strapSnapAlertOpen && (
+              <div className="space-y-1 border-t border-destructive/30 px-2 py-2">
                 <p className="text-xs text-muted-foreground">
                   A ficha indica que esta referência usa tiras, mas não há linhas técnicas no snapshot do item. O pedido não pode ser salvo sem identidade canônica.
                 </p>
@@ -2314,7 +2444,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                   Abrir ficha técnica e cadastrar as tiras
                 </ReferenceLink>
               </div>
-            </div>
+            )}
           </div>
         )}
 
@@ -3165,9 +3295,11 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
             sharedConfigsLoading={sharedReferenceTerceirizacoesLoading}
             sharedConfigsFailed={sharedReferenceTerceirizacoesFailed}
             onRetrySharedConfigs={onRetrySharedReferenceTerceirizacoes}
+            defaultCollapsed
           />
         )}
       </fieldset>
+      )}
 
       {strapColorCreateTarget && (
         <SaleOrderStrapColorCreateDialog
