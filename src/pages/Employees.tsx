@@ -41,6 +41,12 @@ const emptyEmployee = {
   name: '', cpf: '', external_id: '', role: '', department: '', salary: 0,
   phone: '', whatsapp: '', pix_key: '', pix_type: '', notes: '', active: true,
   admission_date: new Date().toISOString().split('T')[0], termination_date: null as string | null,
+  payment_type: 'mensalista' as Employee['payment_type'],
+  daily_rate: 0,
+  valor_par_medio: 0,
+  valor_par_dificil: 0,
+  he_normal_rate: null as number | null,
+  he_sunday_holiday_rate: null as number | null,
 };
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -637,14 +643,14 @@ export default function Employees() {
 
             {/* HE por funcionário — valor ABSOLUTO em R$/h (negociação individual).
                 Só mensalista; remoto/diarista/por par não usam. */}
-            {(form as any).payment_type !== 'diarista' && (form as any).payment_type !== 'remoto' && (form as any).payment_type !== 'producao' && (
+            {form.payment_type !== 'diarista' && form.payment_type !== 'remoto' && form.payment_type !== 'producao' && (
               <>
                 <div>
                   <Label htmlFor="employee-he-normal">Hora extra (R$/h)</Label>
                   <CurrencyInput
                     id="employee-he-normal"
-                    value={(form as any).he_normal_rate || 0}
-                    onChange={v => setForm(f => ({ ...f, he_normal_rate: v } as any))}
+                    value={Number(form.he_normal_rate) || 0}
+                    onChange={v => setForm(f => ({ ...f, he_normal_rate: v }))}
                   />
                   <p className="text-xs text-muted-foreground mt-1">
                     Dia útil, sábado e noturno. Valor absoluto negociado — Folha, Relatórios e espelho usam este campo.
@@ -654,8 +660,8 @@ export default function Employees() {
                   <Label htmlFor="employee-he-holiday">Hora extra domingo/feriado (R$/h)</Label>
                   <CurrencyInput
                     id="employee-he-holiday"
-                    value={(form as any).he_sunday_holiday_rate || 0}
-                    onChange={v => setForm(f => ({ ...f, he_sunday_holiday_rate: v } as any))}
+                    value={Number(form.he_sunday_holiday_rate) || 0}
+                    onChange={v => setForm(f => ({ ...f, he_sunday_holiday_rate: v }))}
                   />
                   <p className="text-xs text-muted-foreground mt-1">Vazio = usa o mesmo valor da HE normal. Piso: excesso ≤10 min no dia não paga HE.</p>
                 </div>
