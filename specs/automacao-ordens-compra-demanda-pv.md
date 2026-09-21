@@ -1,5 +1,8 @@
 # Automação de Ordens de Compra por Demanda de Pedidos de Venda
 
+> **SUPERSEDED (21/09/2026)** por [`compras-producao-entrelacadas.md`](compras-producao-entrelacadas.md).
+> Não usar este arquivo para build ou decisão nova — fica só como histórico.
+
 > Especificação fechada por entrevista em 15/08/2026.
 >
 > Escopo: demanda automática originada por pedidos de venda confirmados, aprovação,

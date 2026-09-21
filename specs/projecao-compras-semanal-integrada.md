@@ -1,5 +1,8 @@
 # Projeção de compras semanal integrada (avaliar + decidir)
 
+> **SUPERSEDED (21/09/2026)** por [`compras-producao-entrelacadas.md`](compras-producao-entrelacadas.md).
+> Não usar este arquivo para build ou decisão nova — fica só como histórico.
+
 ## Goal
 
 Dar ao comprador/PCP, em **uma entrada principal** em `/purchase-planning`, a

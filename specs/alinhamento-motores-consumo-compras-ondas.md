@@ -1,5 +1,8 @@
 # Alinhamento dos Motores: Consumo → Débito → Compras (Plano Semanal) → Ondas
 
+> **SUPERSEDED (21/09/2026)** por [`compras-producao-entrelacadas.md`](compras-producao-entrelacadas.md).
+> Não usar este arquivo para build ou decisão nova — fica só como histórico.
+
 > Spec gerada por entrevista em 2026-07-12. Entrega acordada: **diagnóstico + correção**
 > (causa raiz explicada antes de cada fix, conforme regra do usuário) + **duas construções
 > novas** que saíram da entrevista: o Plano de Compras Semanal unificado e a sugestão de

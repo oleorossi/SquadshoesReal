@@ -1,5 +1,8 @@
 # Remodelagem da criação de ordem de compra
 
+> **SUPERSEDED (21/09/2026)** por [`compras-producao-entrelacadas.md`](compras-producao-entrelacadas.md).
+> Não usar este arquivo para build ou decisão nova — fica só como histórico.
+
 **Data:** 05/08/2026 · **Contexto:** [`src/components/purchase/CONTEXT.md`](../src/components/purchase/CONTEXT.md)
 **ADRs:** [0002](../docs/adr/0002-necessidade-calculada-ao-vivo-com-decisoes-persistidas.md) · [0003](../docs/adr/0003-ordem-de-compra-sem-fornecedor-nasce-como-rascunho.md)
 
