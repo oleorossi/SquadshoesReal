@@ -99,8 +99,17 @@ echo -e "      ${BLUE}https://github.com/${REPO_OWNER_NAME}/settings/secrets/act
 echo -e "      Clique em ${BOLD}New repository secret${NC} e cadastre cada um."
 echo ""
 
-# ─── 5. Primeira execução (dry-run) ──────────────────────────────────────────
-echo -e "${BOLD}5) Primeira execução do workflow${NC}"
+# ─── 5. PDF render (Browserless) ─────────────────────────────────────────────
+echo -e "${BOLD}5) Vercel — BROWSERLESS_URL (PDF rápido)${NC}"
+echo -e "   A função ${BOLD}/api/render-pdf${NC} prefere Browserless quando o secret existe;"
+echo -e "   sem ele cai no fallback ${BOLD}@sparticuz/chromium${NC} (cold start ~2s)."
+echo -e "   Cadastre em Vercel → Project → Settings → Environment Variables:"
+echo -e "      ${BLUE}BROWSERLESS_URL${NC} = wss://chrome.browserless.io?token=SEU_TOKEN"
+echo -e "   (Production + Preview). Reinicie o deploy depois de salvar."
+echo ""
+
+# ─── 6. Primeira execução (dry-run) ──────────────────────────────────────────
+echo -e "${BOLD}6) Primeira execução do workflow${NC}"
 echo -e "   Após cadastrar os 3 secrets, dispare manualmente em modo dry-run:"
 echo -e "      ${BLUE}https://github.com/${REPO_OWNER_NAME}/actions/workflows/supabase-migrate.yml${NC}"
 echo -e "   Clique em ${BOLD}Run workflow${NC} → mantém ${BOLD}dry_run: true${NC} → ${BOLD}Run workflow${NC}"
@@ -110,7 +119,7 @@ echo -e "   (caso comum no histórico), execute primeiro:"
 echo -e "      ${BOLD}bash scripts/repair-applied-migrations.sh${NC}"
 echo ""
 
-# ─── 6. Fluxo completo ───────────────────────────────────────────────────────
+# ─── 7. Fluxo completo ───────────────────────────────────────────────────────
 echo -e "${BOLD}══════════════════════════════════════════════════${NC}"
 echo -e "${BOLD}  Fluxo de auto-deploy esperado${NC}"
 echo -e "${BOLD}══════════════════════════════════════════════════${NC}"

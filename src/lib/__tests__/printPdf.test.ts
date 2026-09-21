@@ -1,5 +1,14 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { printHtmlAsPdf, openPrintTab, setPrintTabStage, printWaitHtml, MAX_DOCUMENT_BYTES } from '../printPdf';
+import {
+  printHtmlAsPdf,
+  openPrintTab,
+  setPrintTabStage,
+  printWaitHtml,
+  printJobWaitHtml,
+  serializeForPdf,
+  collectWorksheetPrintCss,
+  MAX_DOCUMENT_BYTES,
+} from '../printPdf';
 
 vi.mock('sonner', () => {
   const toast = Object.assign(vi.fn(), {
@@ -34,7 +43,7 @@ import { supabase } from '@/integrations/supabase/client';
  * Estes testes travam justamente o que não pode voltar: mira na aba nomeada
  * (senão o celular bloqueia como pop-up) e nenhuma dependência de `fetch`.
  */
-describe('printHtmlAsPdf — POST de formulário', () => {
+describe('printHtmlAsPdf — POST de formulário async', () => {
   let submit: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
@@ -61,6 +70,14 @@ describe('printHtmlAsPdf — POST de formulário', () => {
     // usuário já passou — mirar em janela existente é o que escapa do pop-up.
     expect(form.target).toBe('squad-pdf');
     expect(toast).toHaveBeenCalledWith('O PDF abre na outra aba.', expect.any(Object));
+  });
+
+  it('marca async=1 pra fila com poll na aba', async () => {
+    await printHtmlAsPdf('<html><body>conteudo</body></html>', { filename: 'lote' });
+    const valores = Object.fromEntries(
+      Array.from(campos().querySelectorAll('input')).map(i => [i.name, i.value]),
+    );
+    expect(valores.async).toBe('1');
   });
 
   it('leva o HTML, o nome do arquivo, a sessão e a orientação', async () => {
@@ -171,6 +188,45 @@ describe('printWaitHtml', () => {
 
   it('troca o estágio sem perder a moldura', () => {
     expect(printWaitHtml('sending')).toMatch(/Enviando para o servidor/i);
+    expect(printWaitHtml('queued')).toMatch(/Na fila/i);
+    expect(printWaitHtml('rendering')).toMatch(/Renderizando/i);
+  });
+});
+
+describe('printJobWaitHtml', () => {
+  it('embute poll do job com token e estágios vivos', () => {
+    const html = printJobWaitHtml('job-abc', 'tok-xyz');
+    expect(html).toMatch(/Na fila/i);
+    expect(html).toContain('/api/render-pdf?job=');
+    expect(html).toContain('job-abc');
+    expect(html).toContain('tok-xyz');
+    expect(html).toMatch(/application\/json/);
+    expect(html).toMatch(/window\.location\.replace/);
+  });
+});
+
+describe('serializeForPdf — bundle mínimo', () => {
+  it('não dumpa todos os <link> do app; só fontes + CSS usado', () => {
+    document.head.innerHTML = `
+      <link rel="stylesheet" href="https://squadshoes-real.vercel.app/assets/index-abc.css">
+      <style>.print-area .gap-2{gap:0.375rem}.other-app-widget{color:red}</style>
+    `;
+    const el = document.createElement('div');
+    el.className = 'print-area gap-2';
+    el.innerHTML = '<p class="font-bold">Ficha</p>';
+    document.body.appendChild(el);
+
+    const html = serializeForPdf(el, 'Fichas');
+    expect(html).toContain('fonts.googleapis.com');
+    expect(html).toContain('Ficha');
+    expect(html).not.toContain('assets/index-abc.css');
+    expect(html).toMatch(/print-area/);
+  });
+
+  it('collectWorksheetPrintCss ignora folhas cross-origin sem estourar', () => {
+    const el = document.createElement('div');
+    el.className = 'print-area';
+    expect(() => collectWorksheetPrintCss(el)).not.toThrow();
   });
 });
 

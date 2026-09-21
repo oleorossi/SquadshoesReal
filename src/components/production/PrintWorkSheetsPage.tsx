@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { flushSync } from 'react-dom';
 import { openPrintTab, printHtmlAsPdf, serializeForPdf } from '@/lib/printPdf';
 import { useWarmPdfRenderer } from '@/hooks/useWarmPdfRenderer';
+import { useIsCoarsePointer } from '@/hooks/use-mobile';
 import { toast } from 'sonner';
 import { useQuery, useIsFetching, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -946,6 +947,7 @@ const PRINT_OWNED_QUERY_KEY_ROOTS = new Set<string>([
 
 const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: PrintWorkSheetsPageProps) => {
   useWarmPdfRenderer();
+  const coarsePointer = useIsCoarsePointer();
   // Fluxo unificado (2026-05-18): chips toggleáveis com state interno —
   // substitui o antigo dropdown single + bool printAll + prop selectedSectors.
   // Default = todos os setores marcados (equivalente ao antigo "Imprimir tudo").
@@ -3718,28 +3720,30 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
               {reverseOutput && <Check className="h-3.5 w-3.5" weight="bold" />}
             </button>
 
-            <Button
-              variant="outline"
-              onClick={() => { void printInBrowser(); }}
-              className="gap-2"
-              disabled={printBlocked || preparingNativePrint}
-              title={printBlockedTitle || 'Abre o diálogo do navegador. Você pode imprimir ou escolher “Salvar como PDF”.'}
-            >
-              {preparingNativePrint || initialQueriesLoading || (!skipConsumptionGate && consumptionLoading)
-                ? <Loader2 className="h-4 w-4 animate-spin" />
-                : <Printer className="h-4 w-4" />}
-              Imprimir
-            </Button>
-
-            <Button
-              onClick={() => { printTabRef.current = openPrintTab(); void printWith(); }}
-              className="gap-2"
-              disabled={printBlocked || preparingNativePrint || generatingPdf}
-              title={printBlockedTitle || 'Gera um PDF padronizado no servidor, indicado para celular e quando a geometria precisa ser idêntica entre impressoras.'}
-            >
-              {generatingPdf || initialQueriesLoading || (!skipConsumptionGate && consumptionLoading) ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
-              PDF padronizado
-            </Button>
+            {coarsePointer ? (
+              <Button
+                onClick={() => { printTabRef.current = openPrintTab(); void printWith(); }}
+                className="gap-2"
+                disabled={printBlocked || preparingNativePrint || generatingPdf}
+                title={printBlockedTitle || 'Gera um PDF padronizado no servidor, indicado para celular e tablet.'}
+              >
+                {generatingPdf || initialQueriesLoading || (!skipConsumptionGate && consumptionLoading) ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+                Gerar PDF
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                onClick={() => { void printInBrowser(); }}
+                className="gap-2"
+                disabled={printBlocked || preparingNativePrint}
+                title={printBlockedTitle || 'Abre o diálogo do navegador. Você pode imprimir ou escolher “Salvar como PDF”.'}
+              >
+                {preparingNativePrint || initialQueriesLoading || (!skipConsumptionGate && consumptionLoading)
+                  ? <Loader2 className="h-4 w-4 animate-spin" />
+                  : <Printer className="h-4 w-4" />}
+                Imprimir
+              </Button>
+            )}
           </div>
         </div>
 

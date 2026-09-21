@@ -4,13 +4,17 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import MaterialConsumptionView from '@/components/sale-orders/MaterialConsumptionView';
 import type { ConsumptionRow } from '@/lib/consumptionRows';
-import { openPrintTab, printHtmlAsPdf } from '@/lib/printPdf';
+import { openPrintTab } from '@/lib/printPdf';
+
+const printTab = {
+  document: { write: vi.fn(), close: vi.fn() },
+  focus: vi.fn(),
+  print: vi.fn(),
+};
 
 vi.mock('@/lib/printPdf', () => ({
-  openPrintTab: vi.fn(() => null),
-  printHtmlAsPdf: vi.fn(async () => true),
+  openPrintTab: vi.fn(() => printTab),
 }));
-vi.mock('@/hooks/useWarmPdfRenderer', () => ({ useWarmPdfRenderer: () => {} }));
 
 /**
  * Smoke da tela de Consumo reformulada (buy-first, 05/08/2026).
@@ -314,14 +318,21 @@ describe('MaterialConsumptionView — tela buy-first', () => {
     expect(onGerarOC).toHaveBeenCalledWith({ grossNeed: true });
   });
 
-  it('gera um PDF real no servidor em vez de usar a impressão solta do navegador', async () => {
+  it('abre o HTML do relatório na aba de impressão (print no cliente, sem servidor)', async () => {
+    vi.mocked(openPrintTab).mockClear();
+    printTab.document.write.mockClear();
+    printTab.document.close.mockClear();
+
     renderView();
     await userEvent.setup().click(screen.getByRole('button', { name: /Gerar PDF/i }));
     expect(openPrintTab).toHaveBeenCalledOnce();
-    expect(printHtmlAsPdf).toHaveBeenCalledWith(
+    expect(printTab.document.write).toHaveBeenCalledWith(
       expect.stringContaining('Consumo de Materiais — PV-00151'),
-      expect.objectContaining({ filename: 'consumo-de-materiais-pv-00151' }),
     );
+    expect(printTab.document.write).toHaveBeenCalledWith(
+      expect.stringContaining('window.print()'),
+    );
+    expect(printTab.document.close).toHaveBeenCalledOnce();
   });
 
   it('cadastro incompleto vira UM cartão recolhido, não três banners de prosa', () => {

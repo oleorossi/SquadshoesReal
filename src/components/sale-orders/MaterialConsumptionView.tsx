@@ -1,5 +1,4 @@
 import { useState, useMemo, useCallback, type ReactNode } from 'react';
-import { useWarmPdfRenderer } from '@/hooks/useWarmPdfRenderer';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -26,8 +25,8 @@ import { type ConsumptionRow, COMPONENT_ORDER, rowTotalCost } from '@/lib/consum
 import { buildBuyList, isBuyListRow, baseMaterialName, rowBelongsToBaseFamily, type BuyListColor } from '@/lib/buyList';
 import { formatQty, formatUnit, formatPricePerUnit, pluralizeItens } from '@/lib/consumptionFormat';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
-import { buildMaterialConsumptionReportHtml, materialConsumptionReportFilename } from '@/lib/materialConsumptionReport';
-import { openPrintTab, printHtmlAsPdf } from '@/lib/printPdf';
+import { buildMaterialConsumptionReportHtml } from '@/lib/materialConsumptionReport';
+import { openPrintTab } from '@/lib/printPdf';
 import { cn, formatCurrency, formatMoney } from '@/lib/utils';
 import {
   aggregateItems,
@@ -500,7 +499,6 @@ export default function MaterialConsumptionView({
   /** Aba Materiais gerais × Tira Strass — só aparece quando há STRASS no consumo. */
   const [materialsTab, setMaterialsTab] = useState<'materiais' | 'strass'>('materiais');
   const [printingPdf, setPrintingPdf] = useState(false);
-  useWarmPdfRenderer();
 
   const buyList = useMemo(() => buildBuyList(rows), [rows]);
 
@@ -735,23 +733,35 @@ export default function MaterialConsumptionView({
   }), [rows]);
 
   const handlePrintPdf = useCallback(() => {
+    // Relatório já é HTML autocontido — imprime no cliente (sem Chromium /api/render-pdf).
     const target = openPrintTab();
+    if (!target) return;
     setPrintingPdf(true);
-    const reportTitle = grossNeed
-      ? title.replace(/consumo de materiais/i, 'Consumo total')
-      : title;
-    const html = buildMaterialConsumptionReportHtml({
-      rows,
-      artisanalStrapRows,
-      title: reportTitle,
-      orderHeaders,
-      mode: grossNeed ? 'total' : 'coverage',
-      partitionMode,
-    });
-    void printHtmlAsPdf(html, {
-      filename: materialConsumptionReportFilename(reportTitle),
-      target,
-    }).finally(() => setPrintingPdf(false));
+    try {
+      const reportTitle = grossNeed
+        ? title.replace(/consumo de materiais/i, 'Consumo total')
+        : title;
+      const html = buildMaterialConsumptionReportHtml({
+        rows,
+        artisanalStrapRows,
+        title: reportTitle,
+        orderHeaders,
+        mode: grossNeed ? 'total' : 'coverage',
+        partitionMode,
+      });
+      const withPrint = html.includes('</body>')
+        ? html.replace(
+          '</body>',
+          '<script>window.onload=function(){setTimeout(function(){window.focus();window.print();},150);};<\/script></body>',
+        )
+        : html;
+      target.document.write(withPrint);
+      target.document.close();
+    } catch {
+      /* aba reusada exibindo PDF — write falha; usuário reabre */
+    } finally {
+      setPrintingPdf(false);
+    }
   }, [rows, title, artisanalStrapRows, orderHeaders, grossNeed, partitionMode]);
 
   const orderReferencePartitions = useMemo(
