@@ -179,7 +179,8 @@ function WorkScheduleTab() {
                   <div>Sáb: <span className="font-medium text-foreground">{satLabel}</span></div>
                 </div>
                 <div className="rounded-md border border-primary/20 bg-primary/5 px-2.5 py-2 text-xs text-muted-foreground">
-                  Na folha, excessos compensam atrasos parciais no período. Saldo positivo acima de 10min vira HE pelas taxas do funcionário.
+                  Folha com início ≥ 21/09/2026: HE e atraso por dia (sem compensar), taxas do quadro, piso 10 min/dia.
+                  Períodos anteriores: compensação no período (regra legada). Multiplicador da escala não entra no R$.
                 </div>
               </CardContent>
             </Card>

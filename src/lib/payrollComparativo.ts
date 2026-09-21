@@ -103,6 +103,8 @@ export interface ComparativoArgs {
   /** Datas abrangidas pelos protocolos de arquivo. Quando presente, é a fonte
    *  de falta; time_records sozinho não prova que uma data sem linha foi lida. */
   coveredDates?: Set<string>;
+  /** Força versão da regra (simular CLT-dia em período antigo). */
+  forceRuleVersion?: string | null;
 }
 
 export interface PayrollIdentityTimeRecord {
@@ -286,6 +288,7 @@ export function computeComparativoRows(args: ComparativoArgs): ComparativoResult
           // HE em R$/h por funcionário — comparativo/holerite bate com a Folha (spec req.15).
           heNormalRate: Number(emp.he_normal_rate) || 0,
           heSundayHolidayRate: Number(emp.he_sunday_holiday_rate) || 0,
+          forceRuleVersion: args.forceRuleVersion,
           advancesTotal: empAdvances.filter(a => a.advance_date >= from && a.advance_date <= to).reduce((s, a) => s + a.amount, 0),
         });
       };

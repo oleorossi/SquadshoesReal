@@ -1,6 +1,4 @@
 import { printHtml } from './printOrder';
-import { SALARY_HOUR_DIVISOR } from './salaryPayroll';
-import { PREMIUM_MULTIPLIER } from './hourlyPayroll';
 
 export interface TimeMirrorDay {
   date: string;          // YYYY-MM-DD
@@ -13,6 +11,10 @@ export interface TimeMirrorDay {
   // usados nas cores do calendário abaixo).
   status: 'normal' | 'overtime' | 'absent' | 'holiday' | 'weekend' | 'incomplete' | 'irregular' | 'inconsistent';
   notes?: string;
+  /** HE pagável do dia (já com piso/versão da folha). Se omitido, estima bruto do dia. */
+  payableOvertimeMinutes?: number;
+  /** Bucket de taxa: normal vs domingo/feriado. */
+  overtimeBucket?: 'normal' | 'holiday';
 }
 
 export interface TimeMirrorEmployee {
@@ -62,47 +64,67 @@ function escapeHtml(s: string): string {
 
 /**
  * Gera o "Calendário Individual" — relatório híbrido que mescla:
- *  - Visualização em CALENDÁRIO (grid semanal com batidas dia a dia,
- *    cores por status, fácil leitura visual)
- *  - Dados LEGAIS exigidos pela Portaria MTP nº 671/2021 (anexo II):
- *    identificação empregador/empregado, totais, área de assinatura
+ *  - Visualização em CALENDÁRIO (grid semanal com batidas dia a dia)
+ *  - Dados LEGAIS exigidos pela Portaria MTP nº 671/2021 (anexo II)
  *
- * Refatorado em 18/05/2026 — antes era tabela linear (espelho clássico),
- * agora é calendário visual + cabeçalho/totais/assinatura. Pedido user:
- * "preciso que você melhore a visualização pra que eu consiga enxergar
- * dia a dia da forma como calendário individual tinha visualização melhor".
+ * Valor HE R$: taxas do quadro (`heNormalRate` / `heSundayHolidayRate`) e, quando
+ * disponível, minutos/R$ já calculados pela folha — NUNCA salário÷220×1,5.
  */
 export function printTimeMirror(params: {
   employee: TimeMirrorEmployee;
   company: TimeMirrorCompany;
   period: string;          // YYYY-MM
   days: TimeMirrorDay[];
-  bankHoursBalance?: number; // saldo do banco em minutos
+  bankHoursBalance?: number;
   observations?: string;
-  /** Salário mensal — pra calcular o R$ da hora extra (salário÷220 × 1,5). */
+  /** @deprecated Preferir heNormalRate / heValueOverride. */
   monthlySalary?: number;
+  heNormalRate?: number;
+  heSundayHolidayRate?: number;
+  heValueOverride?: number;
+  heMinutesOverride?: number;
+  ruleVersionLabel?: string;
 }): void {
-  const { employee, company, period, days, bankHoursBalance, observations, monthlySalary } = params;
+  const {
+    employee, company, period, days, observations,
+    heNormalRate, heSundayHolidayRate, heValueOverride, heMinutesOverride, ruleVersionLabel,
+  } = params;
   const totalWorked = days.reduce((s, d) => s + d.workedMinutes, 0);
   const totalExpected = days.reduce((s, d) => s + d.expectedMinutes, 0);
-  // HORA EXTRA POR DIA — MESMA conta da folha (salaryPayroll): excedente do
-  // esperado em dia útil presente, ou o dia inteiro em fds/feriado; sem
-  // compensação entre dias. NÃO usa d.overtimeMinutes (legado semanal = 0 nos
-  // relatórios) — isso fazia o calendário esconder a HE que a folha paga.
+
   const dayHe = (d: TimeMirrorDay): number => {
+    if (typeof d.payableOvertimeMinutes === 'number') return Math.max(0, d.payableOvertimeMinutes);
     if (!['normal', 'overtime', 'holiday', 'weekend'].includes(d.status)) return 0;
     return d.expectedMinutes > 0 ? Math.max(0, d.workedMinutes - d.expectedMinutes) : d.workedMinutes;
   };
-  const totalOT = days.reduce((s, d) => s + dayHe(d), 0);
-  const valorHora = (Number(monthlySalary) || 0) / SALARY_HOUR_DIVISOR;
-  const heValue = (totalOT / 60) * valorHora * PREMIUM_MULTIPLIER;
-  // ATRASO/saída-cedo por dia = déficit do esperado num dia útil PRESENTE (worked>0).
-  // Espelha o ramo dayBal<0 da folha. Dia útil sem batida nenhuma = FALTA (não atraso).
+  const dayBucket = (d: TimeMirrorDay): 'normal' | 'holiday' => {
+    if (d.overtimeBucket === 'holiday' || d.overtimeBucket === 'normal') return d.overtimeBucket;
+    return d.status === 'holiday' || d.dayOfWeek === 0 ? 'holiday' : 'normal';
+  };
+
+  const totalOT = heMinutesOverride != null
+    ? Math.max(0, Number(heMinutesOverride) || 0)
+    : days.reduce((s, d) => s + dayHe(d), 0);
+
+  const rateNormal = Number(heNormalRate) || 0;
+  const rateHoliday = Number(heSundayHolidayRate) > 0 ? Number(heSundayHolidayRate) : rateNormal;
+  let heValue: number;
+  if (heValueOverride != null) {
+    heValue = Number(heValueOverride) || 0;
+  } else if (rateNormal > 0 || rateHoliday > 0) {
+    heValue = days.reduce((s, d) => {
+      const mins = dayHe(d);
+      if (mins <= 0) return s;
+      const rate = dayBucket(d) === 'holiday' ? rateHoliday : rateNormal;
+      return s + (mins / 60) * rate;
+    }, 0);
+  } else {
+    heValue = 0;
+  }
+  const hasHeMoney = heValueOverride != null || rateNormal > 0 || rateHoliday > 0;
+
   const dayAtraso = (d: TimeMirrorDay): number =>
     d.expectedMinutes > 0 && d.workedMinutes > 0 ? Math.max(0, d.expectedMinutes - d.workedMinutes) : 0;
-  // FALTA de verdade só quando NÃO houve trabalho no dia útil. Dias parciais (com
-  // batida, mas < esperado) são ATRASO — calculateDaySummary marca os dois como
-  // 'absent', então aqui separamos pra não rotular/contar parcial como falta.
   const isFalta = (d: TimeMirrorDay): boolean => d.status === 'absent' && d.workedMinutes === 0;
   const totalAbsent = days.filter(isFalta).length;
   const totalAtraso = days.reduce((s, d) => s + dayAtraso(d), 0);
@@ -111,11 +133,6 @@ export function printTimeMirror(params: {
     return `${m.padStart(2, '0')}/${y}`;
   })();
 
-  // ── BLOCO CALENDÁRIO ─────────────────────────────────────────────
-  // Agrupa dias em semanas de 7. Cada semana vira uma tabela horizontal:
-  //  - linha de header com DOW + dia/mês
-  //  - linha de dados com batidas + worked + expected + overtime + status
-  // Cores por status: falta=vermelho, HE=âmbar, feriado=azul, weekend=cinza.
   const dayMap = new Map(days.map(d => [d.date, d]));
   const allDates = days.map(d => d.date).sort();
   const weeks: string[][] = [];
@@ -171,7 +188,6 @@ export function printTimeMirror(params: {
       return `<td style="text-align:center;vertical-align:top;padding:5px 4px;background:${bgColor} !important;border:1px solid #999;">${statusLabel}${punchesStr}${workedStr}${expectedStr}${overtimeStr}${atrasoStr}</td>`;
     }).join('');
 
-    // Preenche slots vazios pra completar 7 colunas (semana parcial)
     const emptyCells = '<td style="border:1px solid #ddd;background:#fafafa;"></td>'.repeat(7 - weekDates.length);
     const emptyHeaders = '<th style="background:#9ca3af !important;"></th>'.repeat(7 - weekDates.length);
     const firstDate = weekDates[0].split('-').reverse().join('/');
@@ -209,7 +225,7 @@ export function printTimeMirror(params: {
   .legend { font-size:9px; color:#444; margin:6px 0 8px; padding:4px 8px; border-top:1px solid #ccc; border-bottom:1px solid #ccc; }
   .legend .item { display:inline-block; margin-right:14px; }
   .legend .swatch { display:inline-block; width:10px; height:10px; vertical-align:middle; margin-right:3px; border:1px solid #999; }
-  .totals { display:grid; grid-template-columns:repeat(7, 1fr); border:2px solid #111; padding:6px 10px; margin-top:6px; font-size:11px; page-break-inside:avoid; }
+  .totals { display:grid; grid-template-columns:repeat(6, 1fr); border:2px solid #111; padding:6px 10px; margin-top:6px; font-size:11px; page-break-inside:avoid; }
   .totals .cell { text-align:center; }
   .totals .label { font-size:9px; text-transform:uppercase; color:#666; font-weight:700; letter-spacing:0.3px; }
   .totals .value { font-size:16px; font-weight:900; font-family:monospace; }
@@ -227,9 +243,10 @@ export function printTimeMirror(params: {
     <div class="small">${escapeHtml(company.address || '')}</div>
   </div>
   <div style="text-align:right;">
-    <h1>📅 Calendário Individual</h1>
+    <h1>Calendário Individual</h1>
     <div class="small">Período: <strong>${periodLabel}</strong> · ${days.length} dias</div>
     <div class="small">Emitido em ${new Date().toLocaleString('pt-BR')}</div>
+    ${ruleVersionLabel ? `<div class="small">Regra: ${escapeHtml(ruleVersionLabel)}</div>` : ''}
   </div>
 </div>
 
@@ -250,7 +267,7 @@ ${calendarSections}
   <strong>Legenda:</strong>
   <span class="item"><span class="swatch" style="background:#fecaca"></span>Falta</span>
   <span class="item"><span class="swatch" style="background:#fde68a"></span>HE</span>
-  <span class="item"><span style="color:#15803d;font-weight:800">+HH:MM HE</span> = hora extra do dia (1,5×)</span>
+  <span class="item"><span style="color:#15803d;font-weight:800">+HH:MM HE</span> = hora extra (taxas do quadro)</span>
   <span class="item"><span style="color:#b45309;font-weight:800">−HH:MM atraso</span> = déficit do dia</span>
   <span class="item"><span class="swatch" style="background:#fef3c7"></span>Atraso (parcial)</span>
   <span class="item"><span class="swatch" style="background:#bfdbfe"></span>Feriado</span>
@@ -261,9 +278,8 @@ ${calendarSections}
 <div class="totals">
   <div class="cell"><div class="label">Trabalhadas</div><div class="value">${fmtMin(totalWorked)}</div></div>
   <div class="cell"><div class="label">Esperadas</div><div class="value">${fmtMin(totalExpected)}</div></div>
-  <!-- HORA EXTRA por dia (mesma conta da folha: excedente/dia, sem compensar). -->
   <div class="cell"><div class="label">Hora Extra</div><div class="value" style="color:#15803d;">${totalOT > 0 ? '+' + fmtMin(totalOT) : '—'}</div></div>
-  <div class="cell"><div class="label">Valor HE (1,5×)</div><div class="value" style="color:#15803d;font-size:14px;">${monthlySalary ? formatMoney(heValue) : '—'}</div></div>
+  <div class="cell"><div class="label">Valor HE</div><div class="value" style="color:#15803d;font-size:14px;">${hasHeMoney && heValue > 0 ? formatMoney(heValue) : (hasHeMoney ? formatMoney(0) : '—')}</div></div>
   <div class="cell"><div class="label">Atraso</div><div class="value" style="color:#b45309;">${totalAtraso > 0 ? '−' + fmtMin(totalAtraso) : '—'}</div></div>
   <div class="cell"><div class="label">Faltas</div><div class="value" style="color:#c00;">${totalAbsent}</div></div>
 </div>
@@ -276,8 +292,8 @@ ${observations ? `<div class="obs"><strong>Observações:</strong> ${escapeHtml(
 </div>
 
 <div class="footer">
-  Documento gerado conforme Portaria MTP nº 671/2021. Confira as marcações
-  e assine ao final. Em caso de divergência, comunicar ao RH em até 5 dias úteis.
+  Documento gerado conforme Portaria MTP nº 671/2021. Valor HE pelas taxas cadastradas no quadro.
+  Confira as marcações e assine ao final. Em caso de divergência, comunicar ao RH em até 5 dias úteis.
 </div>
 
 </body></html>`;

@@ -582,7 +582,7 @@ export default function Employees() {
                   ? 'Paga a diária × dias com batida no período. Sem salário mensal nem desconto de falta.'
                   : (form as any).payment_type === 'producao'
                   ? 'Paga por par produzido (Ficha de Montadores), valorado por dificuldade. Ignora salário e ponto — o relógio serve só de presença. Líquido = pares × R$/par − adiantamentos.'
-                  : 'Salário do mês − faltas/atrasos + hora extra, contados por dia (sem compensar entre dias).'}
+                  : 'Salário do mês − atrasos/faltas + hora extra. Folhas a partir de 21/09/2026: HE e atraso por dia (sem compensar). Anteriores: compensação no período.'}
               </p>
             </div>
 
@@ -591,8 +591,9 @@ export default function Employees() {
               <Label>{(form as any).payment_type === 'diarista' ? 'Salário (referência — não usado no diarista)' : 'Salário (R$)'}</Label>
               <CurrencyInput value={form.salary} onChange={v => setForm(f => ({ ...f, salary: v }))} />
               <p className="text-xs text-muted-foreground mt-1">
-                Valor-hora = salário ÷ 220 = <strong className="text-foreground">{fmt(form.salary > 0 ? form.salary / 220 : 0)}/h</strong>;
-                valor-dia = salário ÷ 30. Base do atraso/HE/falta do mensalista (e do salário cheio do remoto).
+                Base do <strong className="text-foreground">desconto de atraso/falta</strong>:
+                {' '}(salário ÷ dias úteis do mês) ÷ jornada diária da escala.
+                A <strong className="text-foreground">hora extra em R$</strong> usa os campos abaixo — não deriva do salário.
               </p>
             </div>
             )}
@@ -634,19 +635,29 @@ export default function Employees() {
               </>
             )}
 
-            {/* HE por funcionário — valor ABSOLUTO em R$/h (negociação individual, não-CLT).
-                Só mensalista faz hora extra descontada/paga; remoto, diarista e por par não usam. */}
+            {/* HE por funcionário — valor ABSOLUTO em R$/h (negociação individual).
+                Só mensalista; remoto/diarista/por par não usam. */}
             {(form as any).payment_type !== 'diarista' && (form as any).payment_type !== 'remoto' && (form as any).payment_type !== 'producao' && (
               <>
                 <div>
-                  <Label>Hora extra (R$/h)</Label>
-                  <CurrencyInput value={(form as any).he_normal_rate || 0} onChange={v => setForm(f => ({ ...f, he_normal_rate: v } as any))} />
-                  <p className="text-xs text-muted-foreground mt-1">Dia útil, sábado e noturno. Valor negociado — não sai do salário.</p>
+                  <Label htmlFor="employee-he-normal">Hora extra (R$/h)</Label>
+                  <CurrencyInput
+                    id="employee-he-normal"
+                    value={(form as any).he_normal_rate || 0}
+                    onChange={v => setForm(f => ({ ...f, he_normal_rate: v } as any))}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Dia útil, sábado e noturno. Valor absoluto negociado — Folha, Relatórios e espelho usam este campo.
+                  </p>
                 </div>
                 <div>
-                  <Label>Hora extra domingo/feriado (R$/h)</Label>
-                  <CurrencyInput value={(form as any).he_sunday_holiday_rate || 0} onChange={v => setForm(f => ({ ...f, he_sunday_holiday_rate: v } as any))} />
-                  <p className="text-xs text-muted-foreground mt-1">Vazio = usa o mesmo valor da HE normal.</p>
+                  <Label htmlFor="employee-he-holiday">Hora extra domingo/feriado (R$/h)</Label>
+                  <CurrencyInput
+                    id="employee-he-holiday"
+                    value={(form as any).he_sunday_holiday_rate || 0}
+                    onChange={v => setForm(f => ({ ...f, he_sunday_holiday_rate: v } as any))}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Vazio = usa o mesmo valor da HE normal. Piso: excesso ≤10 min no dia não paga HE.</p>
                 </div>
               </>
             )}

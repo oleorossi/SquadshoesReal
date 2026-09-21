@@ -28,7 +28,7 @@ import {
 import { useAbsences, useCancelPayrollRun, usePayrollRuns, useUpsertPayrollRun, useUpdatePayrollStatus } from '@/hooks/useRH';
 import { usePayrollPaymentSummaries } from '@/hooks/usePayrollPayments';
 import { RegistrarPagamentoDialog } from '@/components/hr/RegistrarPagamentoDialog';
-import { computePeriodFolha, getDaysInRange, type SalaryPayrollResult } from '@/lib/salaryPayroll';
+import { computePeriodFolha, getDaysInRange, type SalaryPayrollResult, PAYROLL_RULE_CUTOVER_DATE, PAYROLL_RULE_VERSION_DAY_CLT, resolvePayrollRuleVersion } from '@/lib/salaryPayroll';
 import { computeComparativoRows, groupPayrollPunchesByEmployee } from '@/lib/payrollComparativo';
 import { fetchTimeRecordsInRange } from '@/lib/ponto/fetchTimeRecords';
 import { expandAbsenceCreditsByEmployee, resolveHolidaysForPayrollRange } from '@/lib/ponto/periodDates';
@@ -38,6 +38,8 @@ import { printPayrollBundle, buildPayrollHtml, isFinancialPayrollRun, type Bundl
 import { classifyPayrollCalendarDay } from '@/lib/ponto/payrollCalendarDay';
 import { buildPayrollSnapshot, readPayrollSnapshot } from '@/lib/payrollSnapshot';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
@@ -189,6 +191,8 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
   const [reportView, setReportView] = useState<'docs' | 'faltas' | 'atrasos'>('docs');
   const [docScope, setDocScope] = useState<string>('all'); // 'all' ou employee_id
   const [previewIdx, setPreviewIdx] = useState(0); // paginador da prévia em "Todos" (calendário/holerite)
+  /** Simula regra CLT-dia sem persistir — só em períodos com início antes do cutover. */
+  const [simulateDayRule, setSimulateDayRule] = useState(false);
 
   // Intervalo APLICADO (debounced 450ms): enquanto o usuário digita a data, as queries,
   // o título e os avisos só recarregam DEPOIS que ele para de digitar — senão a página
@@ -198,6 +202,18 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
   const appliedTo = useDebouncedValue(range.to, 450);
   const appliedPeriod = useMemo(() => rangeToPeriod(appliedFrom, appliedTo), [appliedFrom, appliedTo]);
   const periodTitle = useMemo(() => periodLabel(appliedFrom, appliedTo), [appliedFrom, appliedTo]);
+  const defaultPayrollRule = resolvePayrollRuleVersion({ periodFrom: appliedFrom });
+  const canSimulateDayRule = defaultPayrollRule.balanceMode === 'period_compensation';
+  const forceRuleVersion = canSimulateDayRule && simulateDayRule
+    ? PAYROLL_RULE_VERSION_DAY_CLT
+    : null;
+  const activePayrollRule = resolvePayrollRuleVersion({
+    periodFrom: appliedFrom,
+    forceVersion: forceRuleVersion,
+  });
+  const payrollRuleLabel = activePayrollRule.balanceMode === 'day_independent'
+    ? 'HE por dia · taxas do quadro'
+    : 'Compensação no período (legado)';
 
   const { data: employees = [] } = useEmployees();
   // A folha salarial fecha somente regimes baseados em salário/diária. Quem é
@@ -347,7 +363,8 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
     range: { from: appliedFrom, to: appliedTo }, period: compPeriod,
     maxCovered: coverage?.maxCovered || null,
     coveredDates: coverage?.coveredDates,
-  }), [salaryEmployees, schedules, defaultSchedule, holidaysSet, swapWorkedSet, swapOffSet, compRecords, compAdvances, compAbsenceCredits, appliedFrom, appliedTo, compPeriod, coverage]);
+    forceRuleVersion,
+  }), [salaryEmployees, schedules, defaultSchedule, holidaysSet, swapWorkedSet, swapOffSet, compRecords, compAdvances, compAbsenceCredits, appliedFrom, appliedTo, compPeriod, coverage, forceRuleVersion]);
 
   // Rascunho = prévia viva. Aprovada/paga = resultado congelado no snapshot.
   const reportComparativoRows = useMemo(() => {
@@ -737,6 +754,17 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
       overtimeMinutes: d.overtimeMinutes, status: d.status as TimeMirrorDay['status'],
       notes: d.isHoliday ? 'FERIADO' : '',
     }));
+    const ledgerByDate = new Map(
+      (row.result.day_ledger || []).map(d => [d.date, d]),
+    );
+    const daysWithPayable: TimeMirrorDay[] = days.map(d => {
+      const led = ledgerByDate.get(d.date);
+      return {
+        ...d,
+        payableOvertimeMinutes: led?.payable_overtime_minutes,
+        overtimeBucket: led?.overtime_bucket,
+      };
+    });
     printTimeMirror({
       employee: {
         name: emp.name,
@@ -751,13 +779,14 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
           && (window as Window & { COMPANY_NAME?: string }).COMPANY_NAME) || 'Empresa',
       },
       period: compPeriod,
-      days,
-      // Por par: NÃO alimentar o espelho com o salário do cadastro. O espelho usa
-      // salário÷220×1,5 pra estimar o "Valor HE" — e quem é pago por par não
-      // recebe hora extra nenhuma. Com o salário preenchido, o documento LEGAL
-      // exibia um valor de HE que não será pago. Sem ele, o campo sai "—" e o
-      // espelho fica sendo o que deve ser aqui: registro de presença.
-      monthlySalary: porParByEmp.has(empId) ? 0 : Number(emp.salary) || 0,
+      days: daysWithPayable,
+      // HE R$ = taxas do quadro × minutos pagáveis da folha (nunca salário÷220×1,5).
+      // Por par: sem HE paga — taxas zeradas e override 0.
+      heNormalRate: porParByEmp.has(empId) ? 0 : Number(emp.he_normal_rate) || 0,
+      heSundayHolidayRate: porParByEmp.has(empId) ? 0 : Number(emp.he_sunday_holiday_rate) || 0,
+      heValueOverride: porParByEmp.has(empId) ? 0 : row.result.he_value,
+      heMinutesOverride: porParByEmp.has(empId) ? 0 : row.result.he_minutes,
+      ruleVersionLabel: row.result.rule_version,
     });
   };
 
@@ -930,6 +959,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
           // e domingo/feriado. Falta/atraso passam a usar dias úteis do mês (motor).
           heNormalRate: Number(emp.he_normal_rate) || 0,
           heSundayHolidayRate: Number(emp.he_sunday_holiday_rate) || 0,
+          forceRuleVersion,
         });
         if (result.pending_days > 0) withIncomplete++;
         if (result.he_rate_missing) withMissingHeRate++;
@@ -1016,8 +1046,25 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
   // A folha não aceita mais hoje/semana/intervalo livre. O operador escolhe o
   // TIPO de fechamento e, na quinzena, qual metade civil do mês será usada.
   const filtersBar = (
-    <div className="grid w-full gap-3 xl:grid-cols-[minmax(0,1fr)_220px]">
+    <div className="grid w-full gap-3 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_220px]">
       <PayrollClosingSelector value={range} onChange={setRange} />
+      <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-3">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Regra de HE</p>
+          <p className="text-sm font-medium text-foreground">{payrollRuleLabel}</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Cutover: início ≥ {PAYROLL_RULE_CUTOVER_DATE.split('-').reverse().join('/')}. R$ pelas taxas do quadro.
+          </p>
+        </div>
+        {canSimulateDayRule && (
+          <div className="flex items-center gap-3 pt-1 border-t border-border">
+            <Switch id="payroll-simulate-day" checked={simulateDayRule} onCheckedChange={setSimulateDayRule} />
+            <Label htmlFor="payroll-simulate-day" className="text-xs leading-snug">
+              Simular / recalcular com regra nova (HE por dia). Em rascunho, “Gerar fechamento” grava essa versão.
+            </Label>
+          </div>
+        )}
+      </div>
       <div className="flex flex-col justify-between gap-3 rounded-lg border border-foreground bg-foreground p-4 text-background">
         <div>
           <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] opacity-65">Ação do período</p>

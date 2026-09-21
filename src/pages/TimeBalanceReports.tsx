@@ -34,7 +34,14 @@ import {
 } from '@/lib/ponto/timeBalanceReports';
 import { computeComparativoRows } from '@/lib/payrollComparativo';
 import { printTimeBalanceManagementReport, printTimeBalanceReports } from '@/lib/printTimeBalanceReports';
+import {
+  PAYROLL_RULE_CUTOVER_DATE,
+  PAYROLL_RULE_VERSION_DAY_CLT,
+  resolvePayrollRuleVersion,
+} from '@/lib/salaryPayroll';
 import { cn } from '@/lib/utils';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 
 function isoDate(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -64,8 +71,23 @@ export default function TimeBalanceReports() {
   const [range, setRange] = useState(monthBounds);
   const [kind, setKind] = useState<TimeBalanceReportKind>('all');
   const [scope, setScope] = useState('all');
+  /** Simula regra CLT-dia sem persistir — só em períodos anteriores ao cutover. */
+  const [simulateDayRule, setSimulateDayRule] = useState(false);
   const appliedRange = useDebouncedValue(range, 350);
   const validRange = !!appliedRange.from && !!appliedRange.to && appliedRange.from <= appliedRange.to;
+
+  const defaultRule = resolvePayrollRuleVersion({ periodFrom: appliedRange.from });
+  const canSimulateNew = defaultRule.balanceMode === 'period_compensation';
+  const forceRuleVersion = canSimulateNew && simulateDayRule
+    ? PAYROLL_RULE_VERSION_DAY_CLT
+    : null;
+  const activeRule = resolvePayrollRuleVersion({
+    periodFrom: appliedRange.from,
+    forceVersion: forceRuleVersion,
+  });
+  const ruleLabel = activeRule.balanceMode === 'day_independent'
+    ? 'HE por dia (sem compensar) · taxas do quadro'
+    : 'Compensação no período (regra até 20/09/2026)';
 
   const { data: employees = [], isLoading: employeesLoading } = useEmployees();
   const { data: schedules = [], isLoading: schedulesLoading } = useWorkSchedules();
@@ -113,6 +135,7 @@ export default function TimeBalanceReports() {
       period,
       maxCovered: coverage?.maxCovered || null,
       coveredDates: coverage?.coveredDates,
+      forceRuleVersion,
     });
     return calculated.rows.map(row => {
       const employee = employeeMap.get(row.id);
@@ -132,7 +155,7 @@ export default function TimeBalanceReports() {
         overtimeRateMissing: row.result.he_rate_missing,
       };
     });
-  }, [validRange, appliedRange, employees, schedules, defaultSchedule, holidaysSet, swapWorkedSet, swapOffSet, timeRecords, absenceCredits, coverage?.maxCovered, coverage?.coveredDates, employeeMap]);
+  }, [validRange, appliedRange, employees, schedules, defaultSchedule, holidaysSet, swapWorkedSet, swapOffSet, timeRecords, absenceCredits, coverage?.maxCovered, coverage?.coveredDates, employeeMap, forceRuleVersion]);
 
   const reports = useMemo(() => buildTimeBalanceReports(reportInputs), [reportInputs]);
   const managementReports = useMemo(
@@ -162,6 +185,7 @@ export default function TimeBalanceReports() {
     if (kind === 'deficit') return sum + report.totalDeficitMinutes;
     return sum + report.finalPayableBalanceMinutes;
   }, 0);
+  const totalHeValue = eligibleReports.reduce((sum, report) => sum + (Number(report.overtimeValue) || 0), 0);
   const totalWeeks = eligibleReports.reduce((sum, report) => {
     if (kind === 'overtime') return sum + report.overtimeWeeks;
     if (kind === 'deficit') return sum + report.deficitWeeks;
@@ -258,6 +282,28 @@ export default function TimeBalanceReports() {
 
       <PeriodRangeFilter value={range} onChange={setRange} label="Período do ponto" />
 
+      <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Regra de HE neste período</p>
+          <p className="text-sm text-foreground">{ruleLabel}</p>
+          <p className="text-xs text-muted-foreground">
+            Totais em R$ usam as taxas do quadro. Cutover: início ≥ {PAYROLL_RULE_CUTOVER_DATE.split('-').reverse().join('/')}.
+          </p>
+        </div>
+        {canSimulateNew && (
+          <div className="flex items-center gap-3 shrink-0">
+            <Switch
+              id="simulate-day-he"
+              checked={simulateDayRule}
+              onCheckedChange={setSimulateDayRule}
+            />
+            <Label htmlFor="simulate-day-he" className="text-xs leading-snug max-w-[14rem]">
+              Simular regra nova (HE por dia, sem gravar)
+            </Label>
+          </div>
+        )}
+      </div>
+
       {coverage && coverage.count === 0 && timeRecords.length === 0 && (
         <div className="flex items-center gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs text-warning">
           <Warning className="h-4 w-4 shrink-0" />
@@ -266,13 +312,13 @@ export default function TimeBalanceReports() {
       )}
 
       <Panel
-        eyebrow="RELÓGIO DE PONTO · FECHAMENTO SEMANAL"
+        eyebrow="RELÓGIO DE PONTO · CONFERÊNCIA"
         title={kind === 'overtime' ? 'Relatório de horas extras' : kind === 'deficit' ? 'Relatório de pendências' : 'Espelho de ponto'}
         subtitle={kind === 'overtime'
-          ? 'Horas acima da jornada depois da compensação dentro de cada semana.'
+          ? `HE pagável pela folha (${ruleLabel}). Grade semanal abaixo é só visão; o R$ vem das taxas do quadro.`
           : kind === 'deficit'
-            ? 'Aparecem apenas funcionários cuja semana ficou abaixo da jornada mínima.'
-            : 'Lista o quadro mensalista importado no período, com saldo zerado, extra ou pendência.'}
+            ? 'Débito pagável (atraso/falta) pela mesma regra da Folha — sem anular com HE quando a regra for por dia.'
+            : 'Lista o quadro mensalista importado no período, com saldo da regra ativa.'}
         actions={<Badge variant="outline" className="hidden font-mono text-[10px] tabular-nums sm:inline-flex">{title}</Badge>}
       >
         <div className="grid gap-3 lg:grid-cols-[minmax(260px,1fr)_auto] lg:items-end">
@@ -310,19 +356,25 @@ export default function TimeBalanceReports() {
           </div>
         </div>
 
-        <div className="mt-4 grid gap-2 border-t border-border pt-4 sm:grid-cols-3">
+        <div className="mt-4 grid gap-2 border-t border-border pt-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="rounded-md bg-muted/35 px-3 py-2">
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Funcionários</p>
             <p className="mt-1 font-mono text-lg font-bold tabular-nums text-foreground">{eligibleReports.length}</p>
           </div>
           <div className="rounded-md bg-muted/35 px-3 py-2">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Semanas</p>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Semanas (visão)</p>
             <p className="mt-1 font-mono text-lg font-bold tabular-nums text-foreground">{totalWeeks}</p>
           </div>
           <div className={cn('rounded-md px-3 py-2', kind === 'overtime' ? 'bg-success/10' : kind === 'deficit' ? 'bg-destructive/10' : 'bg-muted/35')}>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{kind === 'overtime' ? 'Total de horas extras' : kind === 'deficit' ? 'Total em débito' : 'Saldo líquido'}</p>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{kind === 'overtime' ? 'Minutos (visão semanal)' : kind === 'deficit' ? 'Total em débito' : 'Saldo líquido'}</p>
             <p className={cn('mt-1 font-mono text-lg font-bold tabular-nums', kind === 'overtime' ? 'text-success' : kind === 'deficit' ? 'text-destructive' : 'text-foreground')}>
               {formatBalanceMinutes(kind === 'deficit' ? -totalMinutes : totalMinutes)}
+            </p>
+          </div>
+          <div className="rounded-md bg-success/10 px-3 py-2">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">HE pagável (Folha)</p>
+            <p className="mt-1 font-mono text-lg font-bold tabular-nums text-success">
+              {totalHeValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
             </p>
           </div>
         </div>

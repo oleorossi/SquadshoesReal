@@ -3,42 +3,73 @@
  *
  * Modelo do RH para o PAGAMENTO (folha): parte do salário mensal cheio e DESCONTA
  * faltas, atrasos e saídas cedo medidos contra a JORNADA ESPERADA cadastrada
- * (08:00–18:00 com 1h de almoço = 9h/dia, seg–sex, por padrão). O saldo positivo
- * do período usa as taxas individuais de HE cadastradas no funcionário.
+ * (08:00–18:00 com 1h de almoço = 9h/dia, seg–sex, por padrão). A HE usa as taxas
+ * individuais cadastradas no funcionário (`he_normal_rate` / `he_sunday_holiday_rate`).
  *
- * Regras oficiais (confirmadas pelo usuário):
+ * Duas versões de balanço (corte por início do período da folha):
+ *
+ *   LEGADA (`PAYROLL_RULE_VERSION`, períodos com início < 2026-09-21):
+ *   - Excedentes de um dia compensam atrasos de outro no período.
+ *   - Só o saldo positivo final > 10 min vira HE; ≤10 min descarta.
+ *
+ *   CLT-dia (`PAYROLL_RULE_VERSION_DAY_CLT`, início ≥ 2026-09-21):
+ *   - Sem compensação cruzada (estilo CLT sem banco de horas).
+ *   - HE e atraso pagam/descontam separados, por dia.
+ *   - Piso 10 min POR DIA: excesso diário ≤10 → 0 HE; >10 → paga o excesso do dia.
+ *   - Sem INSS/FGTS/DSR/adicional noturno separado (quadro não-CLT tributário).
+ *
+ * Comum às duas:
  *   - valor-dia  = salário ÷ dias úteis do mês
  *   - valor-hora de atraso = valor-dia ÷ horas da jornada diária
- *   - HE = saldo positivo do período × taxa absoluta individual
- *   - Falta injustificada (dia útil sem trabalho) → entra como atraso de jornada
- *     inteira (minutos) na conta de horas; NÃO gera desconto R$/dia à parte
- *     (decisão do usuário 2026-09-14 — evita punição dupla e alinha o saldo de
- *     horas ao calendário). Falta justificada/abonada continua neutra.
- *   - SALDO LÍQUIDO DO PERÍODO (decisão do usuário 2026-08-13): excedentes de um
- *     dia compensam atrasos (parciais OU falta integral) de outro dentro do
- *     intervalo calculado. Só o saldo final positivo pode virar HE; saldo
- *     negativo vira desconto de atraso.
- *   - Falta NÃO tira o DSR (o desconto, quando houver, sai só da conta de horas).
- *   - Atraso não tem tolerância diária. Depois da compensação, saldo positivo de até
- *     10min não vira HE; acima de 10min, todo o saldo positivo é pago.
- *   - Dia com 1 batida ou ímpar ≥5 = INCONSISTENTE → fica PENDENTE. n=3 com saída
- *     real (depois do almoço) conta a jornada; só fica pendente se a última ainda
- *     estiver na janela de almoço (decisão 2026-09-12).
+ *   - HE R$ = minutos × taxa absoluta do quadro
+ *   - Falta injustificada → atraso de jornada em minutos (sem R$/dia à parte)
+ *   - Batida ímpar → pendente
  *
- *   bruto   = salário − atrasos (inclui falta integral em minutos) + horas_extras
+ *   bruto   = salário − atrasos + horas_extras
  *   líquido = bruto − adiantamentos
- *   (falta_desconto R$/dia permanece no contrato = 0; faltas viram raw_delay)
- *
- * Base = salário CHEIO do mês. As duas migrações do relógio (01→20 e 21→fim) são
- * COMPLEMENTARES: juntas cobrem o mês inteiro. Se só uma estiver carregada, a folha
- * sai PARCIAL (os dias não importados não são descontados) — a tela avisa.
  */
 import { splitDayMinutes, PREMIUM_MULTIPLIER } from './hourlyPayroll';
 import { applyOvernightCarry } from './ponto/overnightPunches';
 import { looksLikeWeekdayJourney, WEEKDAY_JOURNEY_MIN } from './ponto/interpretDayPunches';
 
-/** Versão persistida junto do snapshot da folha para auditoria histórica. */
+/** Versão LEGADA: compensação de período (folhas com início < cutover). */
 export const PAYROLL_RULE_VERSION = 'falta-como-horas-v3-2026-09-14';
+
+/**
+ * Versão nova: HE/atraso por dia, sem compensação cruzada (estilo CLT sem banco).
+ * Aplicada automaticamente quando o início do período da folha ≥ CUTOVER.
+ */
+export const PAYROLL_RULE_VERSION_DAY_CLT = 'he-dia-clt-v1-2026-09-21';
+
+/** Data de corte (inclusive) no início do período da folha. */
+export const PAYROLL_RULE_CUTOVER_DATE = '2026-09-21';
+
+/** Modo de balanço HE ↔ atraso. */
+export type HeBalanceMode = 'period_compensation' | 'day_independent';
+
+/** Escolhe a versão canônica a partir do início do período (ou override explícito). */
+export function resolvePayrollRuleVersion(opts: {
+  periodFrom: string;
+  /** Força uma versão (botão “recalcular / simular”). */
+  forceVersion?: string | null;
+}): { ruleVersion: string; balanceMode: HeBalanceMode } {
+  const forced = opts.forceVersion?.trim() || null;
+  if (forced === PAYROLL_RULE_VERSION_DAY_CLT) {
+    return { ruleVersion: PAYROLL_RULE_VERSION_DAY_CLT, balanceMode: 'day_independent' };
+  }
+  if (forced === PAYROLL_RULE_VERSION) {
+    return { ruleVersion: PAYROLL_RULE_VERSION, balanceMode: 'period_compensation' };
+  }
+  const from = String(opts.periodFrom || '').slice(0, 10);
+  if (from && from >= PAYROLL_RULE_CUTOVER_DATE) {
+    return { ruleVersion: PAYROLL_RULE_VERSION_DAY_CLT, balanceMode: 'day_independent' };
+  }
+  return { ruleVersion: PAYROLL_RULE_VERSION, balanceMode: 'period_compensation' };
+}
+
+export function isDayIndependentRule(ruleVersion: string | null | undefined): boolean {
+  return ruleVersion === PAYROLL_RULE_VERSION_DAY_CLT;
+}
 
 /** Divisor legado usado somente por callers diretos sem SalaryPolicy. */
 export const SALARY_DAY_DIVISOR = 30;
@@ -107,7 +138,7 @@ export function expectedDayMinutes(sch: SalaryWorkSchedule | null | undefined, d
 }
 
 /**
- * Política CANÔNICA de folha do dono (spec: specs/gestao-de-pessoas.md, 2026-07-09).
+ * Política CANÔNICA de folha do dono.
  * Aplicada SÓ por computePeriodFolha (fonte única). Quando presente, muda vs. o
  * legado ÷30/÷220/×1,5:
  *   • falta   = salário ÷ dias_úteis_do_mês        (businessDaysDivisor)
@@ -115,7 +146,7 @@ export function expectedDayMinutes(sch: SalaryWorkSchedule | null | undefined, d
  *   • HE      = min × R$/hora ABSOLUTO por funcionário (não multiplicador):
  *               dia útil / sábado / noturno → heNormalRate
  *               domingo / feriado           → heSundayHolidayRate (fallback normal)
- *   • HE só conta se o saldo positivo DO PERÍODO passar de minOvertimeMin (10min).
+ *   • balanceMode controla se HE e atraso se compensam no período ou ficam por dia.
  */
 export interface SalaryPolicy {
   /** Dias úteis do mês do INÍCIO do período (fallback/exibição). valorDia = salário ÷ isto. */
@@ -129,8 +160,19 @@ export interface SalaryPolicy {
   heNormalRate: number;
   /** R$/hora extra domingo/feriado. undefined ⇒ usa heNormalRate. */
   heSundayHolidayRate?: number;
-  /** Mínimo de HE: saldo positivo do período ≤ este valor ⇒ 0 HE. Default 10. */
+  /**
+   * Mínimo de HE em minutos. Default 10.
+   * period_compensation: aplica ao saldo positivo FINAL do período.
+   * day_independent: aplica POR DIA (excesso diário ≤ isto → 0 HE naquele dia).
+   */
   minOvertimeMin?: number;
+  /**
+   * period_compensation (legado) | day_independent (CLT-dia, cutover).
+   * Default: period_compensation pra não mudar callers/testes antigos.
+   */
+  balanceMode?: HeBalanceMode;
+  /** Versão gravada no resultado. Se omitida, deriva do balanceMode. */
+  ruleVersion?: string;
 }
 
 export interface SalaryDayInput {
@@ -535,9 +577,10 @@ export function calculateSalaryPayroll(
     }
   }
 
-  // ── Compensação CANÔNICA do período ─────────────────────────────────────
-  // Créditos normais são consumidos primeiro; domingo/feriado fica preservado
-  // quando ainda houver saldo positivo. Dentro de cada grupo, a ordem é cronológica.
+  // ── Balanço HE ↔ atraso ─────────────────────────────────────────────────
+  // period_compensation (legado): créditos compensam débitos no período; piso 10min
+  //   no saldo positivo FINAL.
+  // day_independent (CLT-dia): sem anulação cruzada; piso 10min POR DIA de crédito.
   const creditDays = dayLedger
     .filter(d => d.raw_credit_minutes > 0)
     .sort((a, b) => {
@@ -548,28 +591,57 @@ export function calculateSalaryPayroll(
   const debitDays = dayLedger.filter(d => d.raw_delay_minutes > 0).sort((a, b) => a.date.localeCompare(b.date));
   const rawCreditMin = creditDays.reduce((s, d) => s + d.raw_credit_minutes, 0);
   const rawDelayMin = debitDays.reduce((s, d) => s + d.raw_delay_minutes, 0);
-  const compensatedMin = Math.min(rawCreditMin, rawDelayMin);
 
-  let debitToOffset = rawDelayMin;
-  for (const d of creditDays) {
-    const used = Math.min(d.raw_credit_minutes, debitToOffset);
-    d.compensated_credit_minutes = used;
-    debitToOffset -= used;
-  }
-  let creditToOffset = rawCreditMin;
-  for (const d of debitDays) {
-    const used = Math.min(d.raw_delay_minutes, creditToOffset);
-    d.compensated_delay_minutes = used;
-    d.payable_delay_minutes = d.raw_delay_minutes - used;
-    creditToOffset -= used;
-  }
+  const balanceMode: HeBalanceMode = usePolicy
+    ? (policy!.balanceMode === 'day_independent' ? 'day_independent' : 'period_compensation')
+    : 'period_compensation';
+  const ruleVersion = usePolicy
+    ? (policy!.ruleVersion
+      || (balanceMode === 'day_independent' ? PAYROLL_RULE_VERSION_DAY_CLT : PAYROLL_RULE_VERSION))
+    : PAYROLL_RULE_VERSION;
 
-  const positiveBalance = Math.max(0, rawCreditMin - rawDelayMin);
-  const discardPositive = usePolicy && positiveBalance > 0 && positiveBalance <= minOt;
-  for (const d of creditDays) {
-    const remaining = d.raw_credit_minutes - d.compensated_credit_minutes;
-    if (discardPositive) d.discarded_tolerance_minutes = remaining;
-    else d.payable_overtime_minutes = remaining;
+  let compensatedMin = 0;
+
+  if (balanceMode === 'day_independent') {
+    // Sem compensação: cada crédito e cada débito fecham sozinhos.
+    for (const d of debitDays) {
+      d.compensated_delay_minutes = 0;
+      d.payable_delay_minutes = d.raw_delay_minutes;
+    }
+    for (const d of creditDays) {
+      d.compensated_credit_minutes = 0;
+      const credit = d.raw_credit_minutes;
+      if (usePolicy && credit > 0 && credit <= minOt) {
+        d.discarded_tolerance_minutes = credit;
+        d.payable_overtime_minutes = 0;
+      } else {
+        d.payable_overtime_minutes = credit;
+      }
+    }
+  } else {
+    compensatedMin = Math.min(rawCreditMin, rawDelayMin);
+
+    let debitToOffset = rawDelayMin;
+    for (const d of creditDays) {
+      const used = Math.min(d.raw_credit_minutes, debitToOffset);
+      d.compensated_credit_minutes = used;
+      debitToOffset -= used;
+    }
+    let creditToOffset = rawCreditMin;
+    for (const d of debitDays) {
+      const used = Math.min(d.raw_delay_minutes, creditToOffset);
+      d.compensated_delay_minutes = used;
+      d.payable_delay_minutes = d.raw_delay_minutes - used;
+      creditToOffset -= used;
+    }
+
+    const positiveBalance = Math.max(0, rawCreditMin - rawDelayMin);
+    const discardPositive = usePolicy && positiveBalance > 0 && positiveBalance <= minOt;
+    for (const d of creditDays) {
+      const remaining = d.raw_credit_minutes - d.compensated_credit_minutes;
+      if (discardPositive) d.discarded_tolerance_minutes = remaining;
+      else d.payable_overtime_minutes = remaining;
+    }
   }
 
   atrasoMin = debitDays.reduce((s, d) => s + d.payable_delay_minutes, 0);
@@ -621,7 +693,7 @@ export function calculateSalaryPayroll(
   const totalDescontos = round2(faltaDesconto + atrasoDesconto + adv);
 
   return {
-    rule_version: PAYROLL_RULE_VERSION,
+    rule_version: ruleVersion,
     base_salary: round2(sal),
     valor_dia: round2(valorDia),
     valor_hora: Number(valorHora.toFixed(4)),
@@ -771,8 +843,13 @@ export interface PeriodFolhaInput {
   heNormalRate?: number;
   /** HE em R$/hora ABSOLUTO domingo/feriado. undefined/0 ⇒ usa heNormalRate. */
   heSundayHolidayRate?: number;
-  /** Mínimo de HE em minutos (saldo positivo do período ≤ isto ⇒ 0 HE). Default 10. */
+  /** Mínimo de HE em minutos. Default 10 (por período legado ou por dia na regra nova). */
   minOvertimeMin?: number;
+  /**
+   * Força a versão da regra (ex.: simular regra nova num período antigo).
+   * Sem isto, deriva de `from` vs PAYROLL_RULE_CUTOVER_DATE.
+   */
+  forceRuleVersion?: string | null;
 }
 
 /** Monta os SalaryDayInput do período (escala/feriados/batidas) e calcula a folha. */
@@ -823,12 +900,12 @@ export function computePeriodFolha(inp: PeriodFolhaInput): SalaryPayrollResult {
   // Multiplicador mantido apenas para compatibilidade do caminho legado; a folha
   // oficial usa as taxas absolutas individuais presentes na policy abaixo.
   const premiumMult = Number(inp.schedule?.overtime_multiplier ?? PREMIUM_MULTIPLIER);
-  // Política CANÔNICA da folha (spec: specs/gestao-de-pessoas.md). Fonte ÚNICA — só
-  // computePeriodFolha aplica. Falta = salário ÷ dias úteis do mês; atraso = min ×
-  // (valorDia ÷ jornada); HE = R$/h absoluto por funcionário (normal vs domingo/feriado);
-  // HE só acima de 10min. businessDays usa a escala + feriados do mês do início do período.
-  // Dias úteis POR MÊS abrangido pelo período — falta/atraso de cada dia usam o divisor
-  // do MÊS em que caem (períodos que cruzam meses ficam corretos; dentro do mês, idêntico).
+  // Política CANÔNICA da folha. Fonte ÚNICA — só computePeriodFolha aplica.
+  // Versão/modo de balanço: cutover por início do período (ou forceRuleVersion).
+  const { ruleVersion, balanceMode } = resolvePayrollRuleVersion({
+    periodFrom: inp.from,
+    forceVersion: inp.forceRuleVersion,
+  });
   const bdByMonth: Record<string, number> = {};
   for (const d of dates) {
     const ym = d.date.slice(0, 7);
@@ -842,6 +919,8 @@ export function computePeriodFolha(inp: PeriodFolhaInput): SalaryPayrollResult {
     heSundayHolidayRate: inp.heSundayHolidayRate != null && Number(inp.heSundayHolidayRate) > 0
       ? Number(inp.heSundayHolidayRate) : undefined,
     minOvertimeMin: inp.minOvertimeMin ?? 10,
+    balanceMode,
+    ruleVersion,
   };
   // Base prorateada (quinzena): se periodDays veio mas monthDays não, usa os dias corridos
   // do mês do início — senão o fallback valorDia×periodDays (com valorDia=÷dias úteis)
