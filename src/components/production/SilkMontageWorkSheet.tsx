@@ -1606,7 +1606,9 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                       ? collectCompactThumbs(cg)
                       : [];
                     if (cabedalThumbs.length > 1) {
-                      const thumbPx = compactThumbPx(cabedalThumbs.length);
+                      // Nome `IMG` é load-bearing pro guard de densidade
+                      // (density.test.ts só aceita HEADER_THUMB_PX | IMG).
+                      const IMG = compactThumbPx(cabedalThumbs.length);
                       return (
                         <div className="flex flex-wrap gap-1.5 shrink-0">
                           {cabedalThumbs.map((t, ti) => (
@@ -1616,14 +1618,14 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                                 alternateVariants={t.alternateVariants}
                                 technicalSheetImageUrl={t.technicalSheetImageUrl}
                                 orderColor={cg.color}
-                                size={thumbPx}
+                                size={IMG}
                                 showRefBadge={false}
                                 alt={`${t.refNames.join(' · ') || group.soleName} ${cg.color}`}
                               />
                               {t.refNames.length > 0 && (
                                 <span
                                   className="block truncate text-center uppercase font-bold"
-                                  style={{ fontFamily: "'Fira Code', monospace", fontSize: '8px', letterSpacing: '0.06em', color: '#C00000', maxWidth: thumbPx }}
+                                  style={{ fontFamily: "'Fira Code', monospace", fontSize: '8px', letterSpacing: '0.06em', color: '#C00000', maxWidth: IMG }}
                                   title={t.refNames.join(' · ')}
                                 >
                                   {t.refNames.join(' · ')}

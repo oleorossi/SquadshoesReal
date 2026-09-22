@@ -59,7 +59,6 @@ export function CartaoFisico({
         <div style={{ textAlign: 'right', flex: 'none', fontFamily: MONO, fontSize: 8, fontWeight: 700, lineHeight: 1.35 }}>
           <div style={{ fontFamily: DISPLAY, fontSize: 13, lineHeight: 1 }}>{opNumber}</div>
           {pvLabel && <div style={{ fontWeight: 400 }}>{pvLabel}</div>}
-          {lotLabel && <div style={{ fontWeight: 400 }}>{lotLabel}</div>}
         </div>
       </div>
 
@@ -90,6 +89,14 @@ export function CartaoFisico({
           </div>
         </div>
         <div style={{ textAlign: 'right', flex: 'none' }}>
+          {lotLabel && (
+            <div style={{
+              fontFamily: MONO, fontSize: 8, fontWeight: 700, lineHeight: 1.2,
+              letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: '0.4mm',
+            }}>
+              {lotLabel}
+            </div>
+          )}
           <span style={{ fontFamily: DISPLAY, fontSize: 25, lineHeight: 1 }}>
             {totalPairs.toLocaleString('pt-BR')}
           </span>
