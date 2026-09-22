@@ -1,6 +1,39 @@
 import type { OrderStage, PointingWarning, useApontarProducao } from '@/hooks/useOrderStages';
+import { supabase } from '@/integrations/supabase/client';
 import { norm, KanbanCardData, orderStagesByRoute } from './kanbanDerive';
 import { inboundAvailability } from '@/lib/production/stageFlow';
+import { isFilaQueueStatus } from './kanbanQueueSplit';
+
+/**
+ * 1º movimento a partir da Fila: promove OP Reservado → Em Produção.
+ * Sem isto o apontamento grava pares mas `tg_sync_production_queue` mantém
+ * `na_fila` (só flipa em status 'Em Produção'). Idempotente se já promoveu.
+ */
+export async function promoteOpFromFilaIfNeeded(card: KanbanCardData): Promise<void> {
+  const orderStatus = (card.q.order_status || '').trim();
+  if (orderStatus === 'Em Produção') return;
+  const needsPromote =
+    isFilaQueueStatus(card.q.queue_status) || orderStatus === 'Reservado';
+  if (!needsPromote) return;
+
+  const expected = orderStatus || 'Reservado';
+  const requestId = crypto.randomUUID();
+  const { data, error } = await supabase.rpc('execute_production_order_command' as never, {
+    p_command: 'transition',
+    p_order_id: card.q.order_id,
+    p_client_request_id: requestId,
+    p_payload: { target_status: 'Em Produção', expected_status: expected },
+  } as never);
+  if (error) throw error;
+  const response = data as {
+    ok?: boolean;
+    already_applied?: boolean;
+    error?: { message?: string };
+  } | null;
+  if (response && response.ok === false) {
+    throw new Error(response.error?.message || 'Falha ao liberar OP pra produção');
+  }
+}
 
 function isBackwardMove(
   stages: OrderStage[], column: string, target: string, flowOrder: Map<string, number>,
@@ -347,6 +380,22 @@ export async function applyPointing(params: {
   }
 
   const willComplete = !isBackward && pointedStage.quantity_processed + quantity >= pointedStage.quantity_total;
+
+  // Antes do apontamento: se ainda está na Fila (Reservado), promove pra Em
+  // Produção. O sync da fila só flipa `em_producao` nesse status — senão a OP
+  // aponta e continua na aba Fila. onSuccess do apontar invalida a queue depois.
+  if (!isBackward && quantity > 0) {
+    try {
+      await promoteOpFromFilaIfNeeded(card);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // Já Em Produção (race / outro gesto): segue o apontamento.
+      if (!/Status da OP mudou|already_applied|Em Produção/i.test(msg)) {
+        throw err;
+      }
+    }
+  }
+
   const res = await apontar.mutateAsync({
     orderId: card.q.order_id,
     stageName: pointedStage.stage_name,

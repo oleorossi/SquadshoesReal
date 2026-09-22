@@ -12,11 +12,14 @@ import {
   formatSaleOrderCurrency,
   formatSaleOrderDate,
 } from '@/components/sale-orders/saleOrderListConstants';
+import { SaleOrderFloorProgressSummary } from '@/components/sale-orders/SaleOrderFloorProgressSummary';
+import type { SaleOrderFloorProgress } from '@/hooks/useSaleOrdersFloorProgress';
 
 interface SaleOrderMobileCardProps {
   order: any;
   pairs: number;
   minBilling: string | null;
+  floorProgress?: SaleOrderFloorProgress;
   selected: boolean;
   isInfantil?: boolean;
   canSeeFinancialValues: boolean;
@@ -33,6 +36,7 @@ export function SaleOrderMobileCard({
   order,
   pairs,
   minBilling,
+  floorProgress,
   selected,
   isInfantil = false,
   canSeeFinancialValues,
@@ -99,6 +103,15 @@ export function SaleOrderMobileCard({
               entrega
             </span>
           </div>
+          {floorProgress && (
+            <div className="mt-2">
+              <SaleOrderFloorProgressSummary
+                status={order.status}
+                progress={floorProgress}
+                compact
+              />
+            </div>
+          )}
           {isInfeasible && minBilling && (
             <p className="mt-2 text-xs font-semibold text-destructive">
               Data mínima viável: {formatSaleOrderDate(minBilling)}

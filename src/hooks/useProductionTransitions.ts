@@ -21,6 +21,8 @@ export const ORDER_STAGES_CACHE_KEYS: readonly (readonly string[])[] = [
   ['notifications'],
   // PCP Hub — Ordens (Orders.tsx)
   ['sale_orders_for_ops'],
+  // Lista de PVs — coluna Setor (read model de order_stages em lote)
+  ['sale_orders_floor_progress'],
   // PCP Hub — Dashboard / KPIs leves (pares do dia)
   ['producao-kpis'],
   // Quadro de Produção — modo Cartões (ProductionLive.tsx)

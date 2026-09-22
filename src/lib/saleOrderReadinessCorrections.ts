@@ -1,5 +1,11 @@
-import type { SaleOrderCommandIssue } from '@/lib/saleOrderCommand';
+import {
+  isActiveNfeBlocker,
+  isPhysicalFactBlocker,
+  type SaleOrderCommandIssue,
+} from '@/lib/saleOrderCommand';
 import { getTechnicalSheetAuditGapForIssueCode } from '@/lib/technicalSheetAudit';
+
+export { isActiveNfeBlocker } from '@/lib/saleOrderCommand';
 
 export interface ReadinessSaleOrderItem {
   id: string;
@@ -70,14 +76,14 @@ export interface SaleOrderReadinessCorrectionModel {
   agnosticColorIssues: ReadinessIssueLine[];
   /** Bloqueios fiscais (ex.: NF-e ativa) — corrigem em /nfe, não no editor do PV. */
   fiscalIssues: ReadinessIssueLine[];
+  /**
+   * Fato físico / OP finalizada (PZ105): cancel automático recusado.
+   * Admin usa compensatório na lista; demais veem orientação clara aqui.
+   */
+  physicalCancelIssues: ReadinessIssueLine[];
   unsupportedIssues: ReadinessIssueLine[];
   canOverrideAll: boolean;
 }
-
-export const isActiveNfeBlocker = (issue: Pick<SaleOrderCommandIssue, 'code' | 'scope'>) => (
-  issue.code === 'active_nfe_blocks_cancel'
-  || (issue.scope === 'fiscal' && issue.code.includes('nfe'))
-);
 
 const asText = (value: unknown): string | null => {
   if (typeof value !== 'string') return null;
@@ -110,6 +116,10 @@ export const readinessIssueTitle = (issue: SaleOrderCommandIssue): string => {
   if (issue.code === 'item_price_missing') return 'Preço do item ausente';
   if (issue.code === 'material_color_not_registered') return 'Cor de material não cadastrada';
   if (issue.code === 'active_nfe_blocks_cancel') return 'NF-e ativa no pedido';
+  if (isPhysicalFactBlocker(issue)) {
+    if (issue.code === 'physical_finalized_op') return 'OP finalizada no pedido';
+    return 'Fato físico no chão';
+  }
   const auditGap = getTechnicalSheetAuditGapForIssueCode(issue.code);
   if (auditGap) return auditGap.label;
   return 'Pendência obrigatória do pedido';
@@ -209,6 +219,7 @@ export function buildSaleOrderReadinessCorrectionModel(input: {
   const colorByGroupAndColor = new Map<string, ReadinessColorCorrection>();
   const agnosticColorIssues: ReadinessIssueLine[] = [];
   const fiscalIssues: ReadinessIssueLine[] = [];
+  const physicalCancelIssues: ReadinessIssueLine[] = [];
   const unsupportedIssues: ReadinessIssueLine[] = [];
 
   for (const line of correctionLines) {
@@ -223,6 +234,11 @@ export function buildSaleOrderReadinessCorrectionModel(input: {
 
     if (isActiveNfeBlocker(issue)) {
       fiscalIssues.push(line);
+      continue;
+    }
+
+    if (isPhysicalFactBlocker(issue)) {
+      physicalCancelIssues.push(line);
       continue;
     }
 
@@ -270,6 +286,7 @@ export function buildSaleOrderReadinessCorrectionModel(input: {
     colorCorrections: [...colorByGroupAndColor.values()],
     agnosticColorIssues,
     fiscalIssues,
+    physicalCancelIssues,
     unsupportedIssues,
     canOverrideAll: input.issues.length > 0
       && input.issues.every((issue) => issue.overrideable === true),

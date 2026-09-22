@@ -6,10 +6,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { SearchInput } from '@/components/ui/search-input';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import {
   ArrowLeft, ArrowRight, ArrowsInSimple, ArrowsOutSimple, CaretLeft, CaretRight, CheckSquare, Funnel, Highlighter,
-  Info, Kanban as KanbanIcon, Package, QrCode, Stack as Layers, Warning as AlertTriangle, X,
+  Info, Kanban as KanbanIcon, ListBullets, Package, QrCode, Stack as Layers, Warning as AlertTriangle, X,
 } from '@phosphor-icons/react';
 import {
   useSectorSettings, useProductionQueueDetail, useProductionScheduleGrid,
@@ -23,8 +24,9 @@ import { useOrdersMaterialGate } from '@/hooks/useMaterialGate';
 import { useIsCoarsePointer } from '@/hooks/use-mobile';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { searchMatchesAllTerms, searchMatchesAny, splitSearchTerms, normalizeForSearch } from '@/lib/searchUtils';
+import { thumbUrl } from '@/lib/imageThumb';
 import { toast } from 'sonner';
-import { deriveCards, todayISO, KanbanCardData, norm } from '@/components/production/kanban/kanbanDerive';
+import { deriveCards, todayISO, KanbanCardData, norm, fmtDate } from '@/components/production/kanban/kanbanDerive';
 import {
   readKanbanSortMode,
   sortKanbanColumnCards,
@@ -39,6 +41,13 @@ import {
   toggleUniqueOrderCard,
   uniqueCardsByOrder,
 } from '@/components/production/kanban/bulkMovePlan';
+import {
+  cardCommercialPrimary,
+  countsForConstraint,
+  filterCardsForChao,
+  filterCardsForFila,
+  type KanbanBoardMode,
+} from '@/components/production/kanban/kanbanQueueSplit';
 import { KanbanOpCard } from '@/components/production/kanban/KanbanOpCard';
 import { DropApontarDialog } from '@/components/production/kanban/DropApontarDialog';
 import { BulkMoveDialog } from '@/components/production/kanban/BulkMoveDialog';
@@ -69,35 +78,6 @@ function capacityTone(utilization: number): { pct: number; bar: string; text: st
 }
 
 /**
- * Janela em que o faturamento conta como "chegando" (decisão do dono
- * 06/08/2026). O sistema fatura por SEMANA dentro de um mês
- * (`sale_orders.billing_week` = '2026-05-S3'), então um mês à frente é o
- * horizonte natural — e `production_queue.due_date` já é derivada desses campos
- * do PV pelo gatilho `tg_resync_queue_due_on_pv_change`.
- */
-const FATURAMENTO_PROXIMO_DIAS = 30;
-
-/**
- * Esta OP conta pro GARGALO e pro WIP?
- *
- * OP em produção sempre conta. OP apenas RESERVADA (`na_fila`) conta só quando
- * o faturamento está chegando — inclusive quando já venceu, que é o caso mais
- * urgente, não o menos (decisão do dono 06/08/2026).
- *
- * ⚠ Isto muda só a CONTAGEM de gargalo/WIP; o card continua no quadro, com o
- * selo "reservada". Antes, 12 OPs reservadas (548 pares) sem apontamento nenhum
- * caíam na primeira etapa e inflavam o gargalo declarado de 36 pra 48 — o gestor
- * dimensionava reforço de turno por um número 33% maior que o trabalho liberado.
- */
-function countsForConstraint(c: KanbanCardData): boolean {
-  if (c.q.queue_status !== 'na_fila') return true;
-  if (!c.q.due_date) return false;          // reservada sem prazo não pressiona nada
-  const limite = new Date();
-  limite.setDate(limite.getDate() + FATURAMENTO_PROXIMO_DIAS);
-  return new Date(`${c.q.due_date}T12:00:00`) <= limite;
-}
-
-/**
  * CENTRAL DE PRODUÇÃO — o quadro de OPs por setor. Uma implementação só, duas
  * molduras:
  *
@@ -107,14 +87,12 @@ function countsForConstraint(c: KanbanCardData): boolean {
  *  • `embedded` (rota `/producao/kanban`, dentro do AppLayout): mesmo quadro,
  *    sem a moldura de sala de controle.
  *
+ * Abas Chão / Fila: só `em_producao` entra nas colunas; `na_fila` (reservadas)
+ * vive na lista da Fila até o 1º apontamento promover a OP.
+ *
  * ⚠ Antes existiam DOIS componentes. O do menu (`ProducaoKanban.tsx`, 187
- * linhas) era uma versão pobre do mesmo quadro: sem rolagem por coluna (69 OPs
- * em Corte Palmilha esticavam a página sem fim), sem WIP, sem gate de material,
- * sem ordenação "atrasadas primeiro", sem realce de drop, sem lote nem QR.
- * Quem operava via menu tomava decisão com menos informação que quem abria o
- * "Modo Gestão" — mesmo motor, mesma RPC, telas diferentes. Não recriar o
- * segundo componente: adicionar feature aqui e, se precisar, esconder por
- * `embedded`.
+ * linhas) era uma versão pobre do mesmo quadro. Não recriar o segundo:
+ * adicionar feature aqui e, se precisar, esconder por `embedded`.
  */
 export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: boolean } = {}) {
   useEnsureFreshSchedule();
@@ -162,6 +140,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
   // senão no celular se navega por telas em branco. 'destacar' (anel + resto
   // esmaecido, quadro inteiro visível) fica como opção, e a escolha persiste.
   const [viewMode, setViewMode] = usePersistedState<'destacar' | 'filtrar'>('kanban-gestao-view-mode', 'filtrar');
+  const [boardMode, setBoardMode] = usePersistedState<KanbanBoardMode>('kanban-gestao-board-mode', 'chao');
   const [sortMode, setSortMode] = useState<KanbanSortMode>(() => readKanbanSortMode());
   const setSortModePersist = (mode: KanbanSortMode) => {
     setSortMode(mode);
@@ -214,6 +193,8 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
   // apontada (halo de pouso). Ambos são transitórios — nada fica piscando.
   const [dragOverSector, setDragOverSector] = useState<string | null>(null);
   const [landedId, setLandedId] = useState<string | null>(null);
+  /** Hover/foco num card → realça irmãos paralelos da mesma OP. */
+  const [hoverOrderId, setHoverOrderId] = useState<string | null>(null);
 
   // ⚠ Nada de document.title na mão aqui: o EditorialPageHeader (renderizado
   // logo abaixo, só quando `!embedded`) já grava `${title} · Squad Shoes` e
@@ -267,9 +248,8 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
     return m;
   }, [allStages]);
 
-  // TODAS as OPs do quadro (sem busca) — a busca aqui destaca/filtra depois,
-  // pra não recalcular a derivação a cada tecla.
-  const allCards = useMemo(() => {
+  // Derivação completa (chão + fila) — o filtro por aba vem depois.
+  const derivedCards = useMemo(() => {
     const out: KanbanCardData[] = [];
     for (const q of queue) {
       const stages = stagesByOrder.get(q.order_id);
@@ -278,6 +258,29 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
     }
     return out;
   }, [queue, stagesByOrder, flowOrder, levelOf]);
+
+  const boardCards = useMemo(() => filterCardsForChao(derivedCards), [derivedCards]);
+  const filaCards = useMemo(
+    () => uniqueCardsByOrder(filterCardsForFila(derivedCards)),
+    [derivedCards],
+  );
+  /** Universo ativo da aba: colunas = chão; lista = fila. */
+  const allCards = boardMode === 'chao' ? boardCards : filaCards;
+
+  const parallelGroupOf = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const s of sectors) {
+      if (s.parallel_group) m.set(s.sector, s.parallel_group);
+    }
+    return m;
+  }, [sectors]);
+  const parallelGroupSize = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const grp of parallelGroupOf.values()) {
+      counts.set(grp, (counts.get(grp) || 0) + 1);
+    }
+    return counts;
+  }, [parallelGroupOf]);
 
   const searchActive = search.trim().length > 0;
 
@@ -346,12 +349,12 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
   }, [matches]);
 
   // Colunas: setores ativos na ordem do fluxo + qualquer setor que apareça como
-  // coluna de um card (setor desligado globalmente mas presente via ficha, R1.5)
+  // coluna de um card do CHÃO (setor desligado globalmente mas presente via ficha)
   const columns = useMemo(() => {
     const active = sectors.filter(s => s.enabled).map(s => s.sector);
-    const extra = [...new Set(allCards.map(c => c.column))].filter(s => !active.includes(s));
+    const extra = [...new Set(boardCards.map(c => c.column))].filter(s => !active.includes(s));
     return [...active, ...extra].sort((a, b) => (flowOrder.get(a) ?? 999) - (flowOrder.get(b) ?? 999));
-  }, [sectors, allCards, flowOrder]);
+  }, [sectors, boardCards, flowOrder]);
 
   const gridToday = useMemo(() => new Map(todayGrid.map(g => [g.sector, g])), [todayGrid]);
 
@@ -372,23 +375,39 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
       ops: ops.length,
       pares: ops.reduce((s, c) => s + (c.q.quantity || 0), 0),
       atrasadas: ops.filter(c => c.q.late_days > 0).length,
-      // Também por OP: contar card punha 'parciais' acima do total de OPs
-      // exibido ao lado, leitura impossível que joga suspeita na faixa inteira.
       parciais: new Set(allCards.filter(c => c.isPartial).map(c => c.q.order_id)).size,
     };
   }, [allCards]);
 
-  // WIP por setor + gargalo (o setor que MAIS acumulou OP acima do limite
-  // saudável). A Central fica aberta o dia todo num monitor: guiar o olho pro
-  // ponto que trava o fluxo vale mais que qualquer número solto.
+  const filaCount = useMemo(
+    () => new Set(filaCards.map(c => c.q.order_id)).size,
+    [filaCards],
+  );
+  const chaoCount = useMemo(
+    () => new Set(boardCards.map(c => c.q.order_id)).size,
+    [boardCards],
+  );
+
+  const filaSorted = useMemo(() => {
+    return [...filaCards].sort((a, b) => {
+      const late = (b.q.late_days || 0) - (a.q.late_days || 0);
+      if (late !== 0) return late;
+      const da = a.q.due_date || '9999-99-99';
+      const db = b.q.due_date || '9999-99-99';
+      return da.localeCompare(db) || a.q.order_number.localeCompare(b.q.order_number);
+    });
+  }, [filaCards]);
+
+  // WIP por setor + gargalo — SÓ no chão (reservadas não entram no quadro).
   const wipBySector = useMemo(() => {
     const m = new Map<string, number>();
-    for (const c of allCards) {
+    if (boardMode !== 'chao') return m;
+    for (const c of boardCards) {
       if (!countsForConstraint(c)) continue;
       m.set(c.column, (m.get(c.column) || 0) + 1);
     }
     return m;
-  }, [allCards]);
+  }, [boardCards, boardMode]);
   const constraintSector = useMemo(() => {
     let best: string | null = null, max = WIP_LIMIT;
     for (const [s, n] of wipBySector) if (n > max) { max = n; best = s; }
@@ -424,19 +443,16 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
   // de "atrasado porque a matéria-prima não está aqui" — decisões diferentes.
   const travadasMaterial = useMemo(() => {
     if (!gateMap || gateMap.size === 0) return { n: 0, pior: null as string | null };
-    // ⚠ OPs DISTINTAS, não cards: com setores em paralelo a mesma OP travada
-    // aparece em 2 ou 3 colunas, e contar card fazia "10 OPs travadas" virar
-    // "30" — número que decide compra emergencial e prioridade de recebimento.
     const vistas = new Set<string>();
     let pior: string | null = null;
-    for (const c of allCards) {
+    for (const c of boardCards) {
       const g = gateMap.get(c.q.order_id);
       if (!g || vistas.has(c.q.order_id)) continue;
       vistas.add(c.q.order_id);
       if (!pior || g.ready_date > pior) pior = g.ready_date;
     }
     return { n: vistas.size, pior };
-  }, [gateMap, allCards]);
+  }, [gateMap, boardCards]);
 
   // Busca ativa em modo filtrar: dentro da coluna ficam SÓ os cards que casaram.
   const filtering = viewMode === 'filtrar' && !!matchedIds;
@@ -784,18 +800,12 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
     };
   }, [dragCard]);
 
-  /** Apontou → a OP ganha halo de pouso na coluna nova por ~1,6s. */
-  /**
-   * Halo de pouso — segue chaveado por OP, não por card.
-   *
-   * ⚠ Não "corrigir" pra `card.key` junto com a seleção e as refs: depois do
-   * apontamento a OP MUDA de coluna, então a chave de origem não casaria com
-   * card nenhum e o realce simplesmente não apareceria. Com setores em paralelo
-   * os dois cards irmãos piscam — o que é verdade, a OP recebeu apontamento.
-   */
+  /** Apontou → a OP ganha halo de pouso na coluna nova por ~1,6s.
+   *  Se veio da Fila, troca pra aba Chão pra o gestor ver o card pousar. */
   const markLanded = (orderId: string) => {
     setLandedId(orderId);
     window.setTimeout(() => setLandedId(cur => (cur === orderId ? null : cur)), 1600);
+    if (boardMode === 'fila') setBoardMode('chao');
   };
 
   // Na rota dedicada este componente É o conteúdo principal da página. Dentro
@@ -830,10 +840,8 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
           sectionLabel="PRODUÇÃO · KANBAN · GESTÃO"
           title="Central de Produção"
           live
-          className="shrink-0 px-2 md:px-3 pt-3"
+          className="shrink-0 px-2 md:px-3 pt-2 pb-0"
           actions={
-            /* h-11 no celular: o chão de fábrica opera esta tela no toque —
-               é a mesma altura dos outros botões da barra de comando. */
             <Button asChild variant="outline" size="sm" className="h-11 md:h-9 gap-1.5" title="Voltar para o Planejamento de Produção">
               <Link to="/producao/planejamento" aria-label="Voltar para o Planejamento de Produção">
                 <ArrowLeft className="h-4 w-4" /> Planejamento
@@ -843,8 +851,32 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
         />
       )}
 
+      {/* Abas Chão (kanban) × Fila (reservadas) */}
+      <div className="shrink-0 border-b border-border bg-card px-2 md:px-3">
+        <Tabs
+          value={boardMode}
+          onValueChange={v => {
+            setBoardMode(v as KanbanBoardMode);
+            if (v === 'fila') exitSelectMode();
+          }}
+        >
+          <TabsList className="h-10 w-full justify-start gap-1 bg-transparent p-0">
+            <TabsTrigger value="chao" className="h-10 gap-1.5 px-3 text-xs font-semibold uppercase tracking-wide data-[state=active]:shadow-none">
+              <KanbanIcon className="h-4 w-4" />
+              Chão
+              <span className="font-mono text-[10px] opacity-70">{chaoCount}</span>
+            </TabsTrigger>
+            <TabsTrigger value="fila" className="h-10 gap-1.5 px-3 text-xs font-semibold uppercase tracking-wide data-[state=active]:shadow-none">
+              <ListBullets className="h-4 w-4" />
+              Fila
+              <span className="font-mono text-[10px] opacity-70">{filaCount}</span>
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </div>
+
       {/* ── Barra de comando ─────────────────────────────────────────────── */}
-      <div className="shrink-0 border-b border-border bg-card px-2 md:px-3 py-2 grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_auto] 2xl:grid-cols-[minmax(20rem,1fr)_auto_auto] items-center gap-2 md:gap-3">
+      <div className="shrink-0 border-b border-border bg-card px-2 md:px-3 py-1.5 grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_auto] 2xl:grid-cols-[minmax(20rem,1fr)_auto_auto] items-center gap-2 md:gap-3">
         <SearchInput
           value={search}
           onChange={setSearch}
@@ -912,7 +944,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
               <Funnel className="h-4 w-4" /> Filtrar
             </button>
           </div>
-          {canEdit && (
+          {canEdit && boardMode === 'chao' && (
             <Button
               variant={selectMode ? 'default' : 'outline'}
               size="sm"
@@ -958,14 +990,16 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
             notebook ocupam uma segunda linha previsível; em 2XL voltam pra
             mesma linha sem disputar largura com a busca. */}
         <div className="hidden md:flex col-span-1 xl:col-span-2 2xl:col-span-1 items-center justify-end gap-4 shrink-0 font-mono text-xs border-t border-border/60 pt-1 2xl:border-0 2xl:pt-0 2xl:ml-auto">
-          <span><strong className="text-sm">{kpis.ops}</strong> <span className="text-muted-foreground">OPs</span></span>
+          <span><strong className="text-sm">{kpis.ops}</strong> <span className="text-muted-foreground">{boardMode === 'fila' ? 'reservadas' : 'OPs'}</span></span>
           <span><strong className="text-sm">{kpis.pares.toLocaleString('pt-BR')}</strong> <span className="text-muted-foreground">pares</span></span>
           <span className={kpis.atrasadas > 0 ? 'text-red-600' : ''}>
             <strong className="text-sm">{kpis.atrasadas}</strong> <span className={kpis.atrasadas > 0 ? '' : 'text-muted-foreground'}>atrasadas</span>
           </span>
-          <span className={kpis.parciais > 0 ? 'text-amber-600 dark:text-amber-400' : ''}>
-            <strong className="text-sm">{kpis.parciais}</strong> <span className={kpis.parciais > 0 ? '' : 'text-muted-foreground'}>parciais</span>
-          </span>
+          {boardMode === 'chao' && (
+            <span className={kpis.parciais > 0 ? 'text-amber-600 dark:text-amber-400' : ''}>
+              <strong className="text-sm">{kpis.parciais}</strong> <span className={kpis.parciais > 0 ? '' : 'text-muted-foreground'}>parciais</span>
+            </span>
+          )}
           <span
             className={`hidden lg:inline tabular-nums ${stale ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}
             title={stale
@@ -979,7 +1013,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
       </div>
 
       {/* ── Barra da seleção em lote ─────────────────────────────────────── */}
-      {selectMode && (
+      {selectMode && boardMode === 'chao' && (
         <div className="shrink-0 border-b border-border bg-primary/5 px-2 py-2 md:px-3">
           {/* Jornada única e explícita. No desktop vira um trilho compacto; no
               celular empilha sem comprimir o destino nem o botão principal. */}
@@ -1132,8 +1166,8 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
         </p>
       )}
 
-      {/* ── Faixa de fluxo: gargalo + atraso em primeiro plano ───────────── */}
-      {!isLoading && allCards.length > 0 && (constraintSector || kpis.atrasadas > 0 || travadasMaterial.n > 0 || gridError || gateError) && (
+      {/* ── Faixa de fluxo: gargalo + atraso — só no chão ───────────────── */}
+      {boardMode === 'chao' && !isLoading && boardCards.length > 0 && (constraintSector || kpis.atrasadas > 0 || travadasMaterial.n > 0 || gridError || gateError) && (
         <div className="shrink-0 border-b border-border px-2 md:px-3 py-1.5 flex items-stretch md:items-center gap-2 md:gap-3 flex-nowrap overflow-x-auto md:flex-wrap md:overflow-visible text-xs [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           {constraintSector && (
             <div className="flex shrink-0 max-w-[calc(100vw-1rem)] md:max-w-none items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1">
@@ -1211,7 +1245,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
           É sequência de produção de verdade (não tabs decorativas): o número
           indica a posição no fluxo, a pílula conta os cards visíveis e o
           destaque acompanha a coluna central enquanto o quadro rola. */}
-      {!isLoading && !loadError && allCards.length > 0 && navigableColumns.length > 0 && (
+      {boardMode === 'chao' && !isLoading && !loadError && boardCards.length > 0 && navigableColumns.length > 0 && (
         <nav className="shrink-0 border-b border-border bg-background px-2 md:px-3 py-1.5" aria-label="Navegar pelos setores do Kanban">
           <div className="flex min-w-0 items-center gap-1.5">
             <Button
@@ -1287,7 +1321,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
         </nav>
       )}
 
-      {/* ── Quadro: todos os setores lado a lado ─────────────────────────── */}
+      {/* ── Quadro / Fila ─────────────────────────────────────────────────── */}
       {isLoading ? (
         <div className="flex-1 flex gap-2 p-3 overflow-hidden">
           {Array.from({ length: 8 }).map((_, i) => (
@@ -1295,8 +1329,6 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
           ))}
         </div>
       ) : loadError ? (
-        /* Falha ≠ fábrica vazia. Dizer isso explicitamente, com o erro técnico
-           à mão e um botão de tentar de novo — não engolir num quadro vazio. */
         <div className="flex-1 flex items-center justify-center p-6">
           <div className="max-w-md rounded-lg border border-red-500/40 bg-red-500/5 p-4 text-center">
             <p className="font-semibold text-red-600 dark:text-red-400">
@@ -1310,31 +1342,115 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
             <Button className="mt-3 h-10" onClick={retryLoad}>Tentar de novo</Button>
           </div>
         </div>
-      ) : allCards.length === 0 ? (
+      ) : boardMode === 'fila' ? (
+        filtering && matches.length === 0 && searchActive ? (
+          <div className="flex-1 flex items-center justify-center">
+            <EmptyState
+              icon={Funnel}
+              title="Nenhuma OP encontrada"
+              description={`Nada na fila casa com "${search.trim()}".`}
+            />
+          </div>
+        ) : filaSorted.length === 0 ? (
+          <div className="flex-1 flex items-center justify-center">
+            <EmptyState
+              icon={ListBullets}
+              title="Fila vazia"
+              description="OPs reservadas (ainda não liberadas pra produção) aparecem aqui. No 1º apontamento elas sobem pro Chão."
+            />
+          </div>
+        ) : (
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-2 md:px-3 py-2">
+            <ul className="divide-y divide-border rounded-md border border-border bg-card">
+              {(filtering && matchedIds
+                ? filaSorted.filter(c => matchedIds.has(c.q.order_id))
+                : filaSorted
+              ).map(card => {
+                const { pv, client } = cardCommercialPrimary(card.q);
+                const thumb = thumbUrl(
+                  refThumbs?.get(card.q.reference_id || '') || card.q.reference_photo_url,
+                  40,
+                );
+                return (
+                  <li
+                    key={card.q.order_id}
+                    className="flex items-center gap-3 px-3 py-2.5 hover:bg-muted/40 transition-colors"
+                  >
+                    {thumb ? (
+                      <img src={thumb} alt="" className="h-10 w-10 rounded object-contain bg-muted shrink-0" loading="lazy" />
+                    ) : (
+                      <div className="h-10 w-10 rounded bg-muted shrink-0" />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline gap-2 min-w-0">
+                        <span className="font-mono text-xs font-bold shrink-0">{pv}</span>
+                        <span className="truncate text-sm font-semibold">{client}</span>
+                      </div>
+                      <p className="truncate text-[11px]">
+                        <span className="font-semibold text-primary">{card.q.reference_name || '—'}</span>
+                        {card.q.color ? <span className="text-muted-foreground"> · {card.q.color}</span> : null}
+                        <span className="text-muted-foreground"> · {card.q.order_number}</span>
+                      </p>
+                      <p className="text-[10px] text-muted-foreground font-mono mt-0.5">
+                        {card.q.quantity.toLocaleString('pt-BR')} pares · entrega {fmtDate(card.q.due_date)}
+                        {card.q.late_days > 0 ? (
+                          <span className="text-red-600"> · +{card.q.late_days}d</span>
+                        ) : null}
+                        {' · '}{card.column}
+                      </p>
+                    </div>
+                    {canEdit ? (
+                      <Button
+                        size="sm"
+                        className="h-11 md:h-9 shrink-0 min-w-[5.5rem]"
+                        onClick={() => setDetailStage({ card })}
+                      >
+                        Mover
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-11 md:h-9 shrink-0"
+                        onClick={() => setDetailStage({ card })}
+                      >
+                        Ver
+                      </Button>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )
+      ) : boardCards.length === 0 ? (
         <div className="flex-1 flex items-center justify-center">
           <EmptyState
             icon={KanbanIcon}
-            title="Nenhuma OP em produção"
-            description="OPs criadas a partir dos PVs entram aqui automaticamente."
+            title="Nenhuma OP no chão"
+            description={
+              filaCount > 0
+                ? `Há ${filaCount} OP(s) na Fila. Mova uma delas pra liberar produção neste quadro.`
+                : 'OPs em produção aparecem aqui. Reservadas ficam na aba Fila.'
+            }
           />
         </div>
       ) : filtering && matches.length === 0 ? (
-        /* Filtrando e nada casou: o quadro fica vazio de propósito */
         <div className="flex-1 flex items-center justify-center">
           <EmptyState
             icon={Funnel}
             title="Nenhuma OP encontrada"
-            description={`Nada no quadro casa com "${search.trim()}". Limpe a busca ou tente outro termo.`}
+            description={`Nada no chão casa com "${search.trim()}". Limpe a busca ou tente outro termo.`}
           />
         </div>
       ) : (
         <div
           ref={boardEl}
           onScroll={syncActiveSector}
-          className="flex-1 min-h-0 flex gap-2 overflow-x-auto overscroll-x-contain scroll-px-3 px-3 py-3 snap-x snap-mandatory md:snap-none [scrollbar-width:thin]"
+          className="flex-1 min-h-0 flex gap-2 overflow-x-auto overscroll-x-contain scroll-px-3 px-3 py-2 snap-x snap-mandatory md:snap-none [scrollbar-width:thin]"
         >
           {columns.map((sector, colIdx) => {
-            const colAll = allCards.filter(c => c.column === sector);
+            const colAll = boardCards.filter(c => c.column === sector);
             // Pin → (setup: solado+cor) → atraso. Default = atraso.
             const colCards = sortKanbanColumnCards(
               filtering && matchedIds
@@ -1343,37 +1459,21 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
               sortMode,
               soleByRefColor,
             );
-            // Σ pares do MESMO conjunto que a contagem do badge (`colCards`).
-            // Com `colAll` o cabeçalho misturava dois universos durante a busca:
-            // "3" OPs ao lado de "Σ 4.120 pares" (o setor inteiro) — quem lia
-            // dividia 4.120 por 3 e planejava com um número que não existe.
             const colPares = colCards.reduce((s, c) => s + (c.columnStage?.quantity_total || c.q.quantity), 0);
             const g = gridToday.get(sector);
             const cap = g && g.utilization > 0 ? capacityTone(g.utilization) : null;
-            // Denominador honesto: capacidade do MIX real do dia. Igual à global
-            // quando nenhuma OP do dia tem override de ficha.
             const capDenom = g ? (g.effective_capacity_pairs || g.capacity_pairs) : 0;
             const capFromFicha = !!g && g.ops_ficha_override > 0;
             const colWip = colAll.length;
-            // ⚠ Número exibido e sinal vermelho vêm do MESMO universo: o
-            // CONTÁVEL (`wipBySector`), que exclui OP reservada de faturamento
-            // distante. Exibir `colAll` ao lado de um "/20" calculado sobre
-            // outro conjunto punha "35" em cinza ao lado de "31/20" em vermelho,
-            // e o tooltip afirmava que 31 era quem passara do limite.
             const colContavel = wipBySector.get(sector) || 0;
             const overWip = colContavel > WIP_LIMIT;
             const isConstraint = sector === constraintSector;
-            // Coluna ociosa (0 OP e sem busca ativa) colapsa em faixa fina no
-            // desktop — abre no hover. No celular (swipe) mantém largura normal.
             const isIdle = colWip === 0 && !filtering;
-            // Setor com ao menos uma OP da busca. Sem busca, todos "casam".
             const hasMatch = !filtering || !!matchedColumns?.has(sector);
-            /* TRILHO FINO: setor ocioso, OU setor que tem OP mas nenhuma desta
-               busca. Nos dois casos o setor CONTINUA no quadro e continua alvo
-               de soltar — é isso que devolve o arraste entre setores durante a
-               busca. Abre ao passar o card por cima. */
             const isRail = isIdle || (filtering && !hasMatch);
             const railOpen = isRail && dragOverSector === sector;
+            const pGroup = parallelGroupOf.get(sector);
+            const isParallelPair = !!pGroup && (parallelGroupSize.get(pGroup) || 0) > 1;
             return (
               /* Celular: uma coluna por swipe (85vw + snap-center); iPad/desktop:
                  colunas fluidas lado a lado como antes. */
@@ -1433,9 +1533,16 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                   isRail && !railOpen ? 'md:hidden' : ''
                 } ${
                   isConstraint ? 'bg-amber-500/10 border-amber-500/50' : 'bg-muted border-border'
-                }`}>
+                } ${isParallelPair ? 'kb-parallel-pair' : ''}`}>
                   <div className="flex items-center justify-between gap-1">
-                    <span className="text-[11px] font-bold uppercase tracking-wider truncate">{sector}</span>
+                    <span className="min-w-0">
+                      <span className="text-[11px] font-bold uppercase tracking-wider truncate block">{sector}</span>
+                      {isParallelPair && (
+                        <span className="kb-parallel-pair-label text-[9px] font-semibold uppercase text-primary/80">
+                          em paralelo
+                        </span>
+                      )}
+                    </span>
                     {/* WIP: vermelho e com o limite quando o setor passa do saudável
                         — vira sinal de acúmulo/gargalo, não só uma contagem. */}
                     <Badge
@@ -1541,11 +1648,12 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                         draggable={canEdit && !selectMode}
                         dragging={dragCard?.key === card.key}
                         dimmed={viewMode === 'destacar' && !!matchedIds && !matchedIds.has(card.q.order_id)}
-                        // Anel só no 'destacar', onde separa o achado do resto
-                        // esmaecido. No 'filtrar' o quadro JÁ é só o que casou:
-                        // anelar todo mundo não informava nada e o quadro
-                        // inteiro parecia pré-selecionado.
                         highlighted={!selectMode && viewMode === 'destacar' && !!matchedIds && matchedIds.has(card.q.order_id)}
+                        siblingActive={
+                          !!hoverOrderId
+                          && hoverOrderId === card.q.order_id
+                          && card.parallelSiblings.length > 0
+                        }
                         selectable={selectMode}
                         selected={selectedIds.has(card.key)}
                         readOnly={!canEdit}
@@ -1556,6 +1664,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                         onDragStart={() => setDragCard(card)}
                         onDragEnd={() => { setDragCard(null); setDragOverSector(null); }}
                         onOpen={() => setDetailStage({ card })}
+                        onHoverOrder={setHoverOrderId}
                       />
                     </div>
                   ))}

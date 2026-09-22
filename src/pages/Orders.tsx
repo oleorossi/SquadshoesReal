@@ -29,6 +29,7 @@ import { Badge } from '@/components/ui/badge';
 import { StatusPill, canonicalStatusToKey } from '@/components/ui/badges';
 import { Checkbox } from '@/components/ui/checkbox';
 import { MaterialReservationErrorBadge } from '@/components/orders/MaterialReservationErrorBadge';
+import { SectorProgressDots } from '@/components/production/SectorProgressDots';
 
 import { useOrders, useCreateOrder, useDeleteOrder, useCheckStockAvailability, useUpdateOrderStatus, useCancelOrdersBatch, useEnsureOrderStages, ORDERS_QUERY_LIMIT } from '@/hooks/useOrders';
 import { isInactiveOrder } from '@/lib/orderStatus';
@@ -174,41 +175,6 @@ const ColorSwatch = ({ color, size = 12 }: { color?: string | null; size?: numbe
       title={color}
       aria-label={`Cor: ${color}`}
     />
-  );
-};
-
-/**
- * Mostra progresso de setores como mini-barra com dots coloridos.
- * Cada dot = um setor; verde = concluído, amarelo = em andamento, cinza = pendente.
- */
-const SectorProgressDots = ({
-  completed, inProgress = 0, total,
-}: { completed: number; inProgress?: number; total: number }) => {
-  if (total === 0) return null;
-  const pct = Math.round((completed / total) * 100);
-  return (
-    <span className="inline-flex items-center gap-1.5" title={`${completed} de ${total} setores concluídos (${pct}%)`}>
-      <span className="inline-flex gap-0.5">
-        {Array.from({ length: total }).map((_, i) => {
-          const isDone = i < completed;
-          const isActive = !isDone && i < completed + inProgress;
-          return (
-            <span
-              key={i}
-              className={cn(
-                'inline-block h-1.5 w-1.5 rounded-full transition-colors',
-                isDone && 'bg-success',
-                isActive && 'bg-warning ring-1 ring-warning/30',
-                !isDone && !isActive && 'bg-muted-foreground/25',
-              )}
-            />
-          );
-        })}
-      </span>
-      <span className="text-xs font-mono text-muted-foreground tabular-nums">
-        {completed}/{total}
-      </span>
-    </span>
   );
 };
 

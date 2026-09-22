@@ -1683,6 +1683,9 @@ export default function SaleOrderForm() {
           }
           const message = formatUnknownSaleOrderUpdateError(error);
           const hasVersionConflict = isStaleSaleOrderVersionError(error);
+          // #region agent log
+          fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fec31c'},body:JSON.stringify({sessionId:'fec31c',runId:'pre-fix',hypothesisId:'D,E',location:'SaleOrderForm.tsx:dispatchMutation:onError',message:'update refused by server',data:{cancelOpIdsCount:cancelOpIds.length,hasVersionConflict,errorMessage:message,errorName:error instanceof Error ? error.name : typeof error},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
           // Exclusão local ainda na tela: troca o toast infinito "salve para
           // aplicar" por recusa explícita — senão parece que a remoção "pegou".
           toast.warning('Remoção não aplicada — o servidor recusou o salvamento.', {
@@ -1798,23 +1801,57 @@ export default function SaleOrderForm() {
     // Pre-check em edição: OPs avançadas só pedem confirmação quando a
     // demanda/embalagem/terceirização mudou. NF, OC, notas e cliente não
     // reescrevem OP (PV-00194).
-    if (isEdit && id && saleOrderProductionFingerprintChanged(
+    const currentProductionSig = buildSaleOrderProductionSignature({
+      items,
+      packagingMode: f.packaging_mode,
+      boxGrouping: f.box_grouping,
+      packagingProductId,
+      packagingQuantity,
+      outsourceToContractorId: f.outsource_to_contractor_id,
+      outsourceToSector: f.outsource_to_sector,
+    });
+    const productionChanged = saleOrderProductionFingerprintChanged(
       originalProductionSigRef.current,
-      buildSaleOrderProductionSignature({
-        items,
-        packagingMode: f.packaging_mode,
-        boxGrouping: f.box_grouping,
-        packagingProductId,
-        packagingQuantity,
-        outsourceToContractorId: f.outsource_to_contractor_id,
-        outsourceToSector: f.outsource_to_sector,
-      }),
-    )) {
+      currentProductionSig,
+    );
+    // #region agent log
+    {
+      let fingerprintDiff: Record<string, unknown> = { baselineNull: originalProductionSigRef.current === null };
+      try {
+        const base = originalProductionSigRef.current ? JSON.parse(originalProductionSigRef.current) : null;
+        const cur = JSON.parse(currentProductionSig);
+        if (base && cur) {
+          fingerprintDiff = {
+            baselineNull: false,
+            packaging_mode: base.packaging_mode !== cur.packaging_mode,
+            box_grouping: base.box_grouping !== cur.box_grouping,
+            packaging_product_id: base.packaging_product_id !== cur.packaging_product_id,
+            packaging_quantity: base.packaging_quantity !== cur.packaging_quantity,
+            outsource_to_contractor_id: base.outsource_to_contractor_id !== cur.outsource_to_contractor_id,
+            outsource_to_sector: base.outsource_to_sector !== cur.outsource_to_sector,
+            itemsLen: { base: base.items?.length, cur: cur.items?.length },
+            itemsJsonEqual: JSON.stringify(base.items) === JSON.stringify(cur.items),
+            firstItemDiffKeys: (() => {
+              const bi = base.items?.[0];
+              const ci = cur.items?.[0];
+              if (!bi || !ci) return null;
+              return Object.keys(bi).filter((k) => JSON.stringify(bi[k]) !== JSON.stringify(ci[k]));
+            })(),
+          };
+        }
+      } catch { /* ignore parse */ }
+      fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fec31c'},body:JSON.stringify({sessionId:'fec31c',runId:'pre-fix',hypothesisId:'A,B,C',location:'SaleOrderForm.tsx:doSubmit',message:'production fingerprint gate',data:{saleOrderId:id,status:f.status,clientId:f.client_id||selectedClientId||null,productionChanged,fingerprintDiff},timestamp:Date.now()})}).catch(()=>{});
+    }
+    // #endregion
+    if (isEdit && id && productionChanged) {
       const { data: blocking } = await supabase
         .from('orders')
         .select('id, order_number, status')
         .eq('sale_order_id', id)
         .in('status', ['Em Produção', 'Concluída', 'Finalizado']);
+      // #region agent log
+      fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fec31c'},body:JSON.stringify({sessionId:'fec31c',runId:'pre-fix',hypothesisId:'A',location:'SaleOrderForm.tsx:doSubmit:blocking',message:'blocking ops query',data:{blockingCount:blocking?.length??0,blockingNumbers:(blocking||[]).map((o: {order_number?: string|null})=>o.order_number)},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       if (blocking && blocking.length > 0) {
         setCancelOpsPreflight({
           isRunning: false,
@@ -1837,6 +1874,9 @@ export default function SaleOrderForm() {
     if (cancelOpsPreflightRunningRef.current || updateOrder.isPending) return;
     const ops = cancelOpsDialog.ops;
     const pendingOverride = cancelOpsDialog.pendingStatusOverride;
+    // #region agent log
+    fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fec31c'},body:JSON.stringify({sessionId:'fec31c',runId:'pre-fix',hypothesisId:'D',location:'SaleOrderForm.tsx:handleConfirmCancelOps',message:'user confirmed cancel ops',data:{opCount:ops.length,opNumbers:ops.map(o=>o.order_number)},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     cancelOpsPreflightRunningRef.current = true;
     setCancelOpsPreflight({
       isRunning: true,

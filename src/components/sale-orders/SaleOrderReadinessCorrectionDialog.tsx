@@ -255,6 +255,7 @@ export default function SaleOrderReadinessCorrectionDialog({
     registeredColorKeys.has(correction.key)
   ));
   const canSaveAndRetry = model.unsupportedIssues.length === 0
+    && model.physicalCancelIssues.length === 0
     && allMaterialColorsRegistered;
   const actionableCount = model.colorCorrections.length;
   const issueCount = model.referenceGroups.reduce((total, group) => total + group.issues.length, 0)
@@ -271,10 +272,15 @@ export default function SaleOrderReadinessCorrectionDialog({
   const requiresFullOrderEdit = !contextQuery.isLoading
     && model.unsupportedIssues.length > 0;
   const requiresNfeCancel = model.fiscalIssues.length > 0;
+  const requiresPhysicalCancel = model.physicalCancelIssues.length > 0;
   const nfeSearchQuery = target?.orderNumber || target?.id || '';
   const dialogDescription = requiresNfeCancel && !requiresFullOrderEdit && model.colorCorrections.length === 0
     ? 'Este pedido tem NF-e ativa. Cancele a nota na área fiscal e volte aqui para validar de novo.'
-    : requiresFullOrderEdit && model.referenceGroups.length > 0
+    : requiresPhysicalCancel && !requiresFullOrderEdit && !requiresNfeCancel && model.colorCorrections.length === 0
+      ? (isAdmin
+        ? 'Há fato físico ou OP finalizada. Feche esta janela e use o cancelamento compensatório (admin) na lista de pedidos.'
+        : 'Há fato físico ou OP finalizada. Cancelamento automático foi recusado — peça a um administrador o cancelamento compensatório.')
+      : requiresFullOrderEdit && model.referenceGroups.length > 0
       ? 'As pendências da ficha aparecem uma vez em cada referência. Abra a ficha indicada para corrigir a engenharia; problemas próprios do item continuam em “Abrir pedido completo”.'
       : requiresFullOrderEdit
         ? 'Veja a referência, a cor e a quantidade de cada item com problema. As pendências sem editor rápido devem ser corrigidas em “Abrir pedido completo”.'
@@ -507,6 +513,8 @@ export default function SaleOrderReadinessCorrectionDialog({
                         ? 'Preencha o que está faltando'
                         : requiresNfeCancel
                           ? 'Resolva o bloqueio fiscal'
+                          : requiresPhysicalCancel
+                            ? 'Cancelamento automático recusado'
                           : 'Revise as orientações'}
                     </h3>
                   </div>
@@ -540,6 +548,40 @@ export default function SaleOrderReadinessCorrectionDialog({
                           Abrir NF-e do pedido
                         </Link>
                       </Button>
+                    </div>
+                  )}
+
+                  {model.physicalCancelIssues.length > 0 && (
+                    <div className="rounded-lg border border-amber-500/30 bg-card p-4 shadow-sm">
+                      <div className="flex items-start gap-3">
+                        <div className="rounded-md bg-amber-500/10 p-2 text-amber-700 dark:text-amber-400">
+                          <Warning className="h-4 w-4" weight="fill" />
+                        </div>
+                        <div className="min-w-0 space-y-2">
+                          <p className="text-sm font-semibold">
+                            {isAdmin
+                              ? (requiresNfeCancel
+                                ? 'Fato físico também bloqueia o cancel'
+                                : 'Use o cancelamento compensatório (admin)')
+                              : 'Peça cancelamento compensatório a um admin'}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {isAdmin
+                              ? (requiresNfeCancel
+                                ? 'Cancele a NF-e primeiro. Se depois restar só fato físico / OP finalizada, a lista abre o diálogo compensatório.'
+                                : 'Feche esta janela — a lista de pedidos abre o diálogo compensatório quando o bloqueio é só fato físico / OP finalizada.')
+                              : 'Há apontamento, reserva, consumo ou OP finalizada. Edição do pedido não libera o cancel automático.'}
+                          </p>
+                          <ul className="space-y-1.5">
+                            {model.physicalCancelIssues.map((line) => (
+                              <li key={line.key} className="text-xs text-foreground">
+                                <span className="font-medium">{line.title}</span>
+                                {line.issue.message ? ` — ${line.issue.message}` : ''}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
                     </div>
                   )}
 

@@ -292,9 +292,10 @@ const SECTOR_THEME: Record<GroupedSector, {
   // (audit E2 10/06/2026: o alerta é EXECUTADO por este setor).
   'Corte Forração':   { icon: Cloud,      compact: true,  showFrenteTraseiro: false, showSilkImage: false, showProductImage: false, showAlerts: true,  showPiecesToSew: false, showCompactImages: true },
   // Corte Cabedal — referências com consumo de cabedal, tenham tiras ou não.
-  // Sem silk; foto do produto
-  // pra identificação do cabedal por cor.
-  'Corte Cabedal':    { icon: Scissors,   compact: false, showFrenteTraseiro: false, showSilkImage: false, showProductImage: true,  showAlerts: true,  showPiecesToSew: false },
+  // Foto por REFERÊNCIA da cor (não 1 foto escalar): quando a cor agrega
+  // LA01+SP201, o cortador vê as duas sandálias e o tally separado por ref
+  // (pedido dono 22/09/2026, PV-00197).
+  'Corte Cabedal':    { icon: Scissors,   compact: false, showFrenteTraseiro: false, showSilkImage: false, showProductImage: true,  showAlerts: true,  showPiecesToSew: false, showCompactImages: true },
   // Acabamento Palmilha (2026-06-12, ex-'Costura'): mesmíssimo layout compacto
   // do Corte Forração. Roteiro: OPs com 'Costura' em production_sectors.
   // 2026-09: dois tracks de tally (forração → caixa → costura).
@@ -469,6 +470,15 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
   // serve 8 setores; só o Silk foi decidido ('mao'). Os demais seguem
   // 'legacy' e não mudam em nada.
   const model = fichaModelFor(sector);
+
+  // #region agent log
+  if (sector === 'Corte Forração' || sector === 'Corte Cabedal') {
+    const pvs = groups.flatMap(g => g.colorGroups.flatMap(cg => cg.pvNumbers || []));
+    if (pvs.some(p => String(p).includes('00197'))) {
+      fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b71199'},body:JSON.stringify({sessionId:'b71199',runId:'post-fix',hypothesisId:'H11-H13',location:'SilkMontageWorkSheet.tsx:render',message:`${sector} render input`,data:{sector,groupCount:groups.length,totalColors:groups.reduce((s,g)=>s+g.colorGroups.length,0),grandPairs:groups.reduce((s,g)=>s+g.totalPairs,0),groups:groups.map(g=>({sole:g.soleName,colors:g.colorGroups.map(cg=>({color:cg.color,pairs:cg.totalPairs,ops:cg.opNumbers,refs:(cg.refs||[]).map((r:any)=>r.code||r.name),refImages:(cg.refImages||[]).map((ri:any)=>({ref:ri.refName||ri.refCode,pairs:ri.pairs,fichas:ri.fichas,hasImg:!!(ri.variantImageUrl||ri.technicalSheetImageUrl)})),thumbs:collectCompactThumbs(cg).length}))}))},timestamp:Date.now()})}).catch(()=>{});
+    }
+  }
+  // #endregion
 
   // ── Agregados do setor (header consolidado, padrão PalmilhaWorkSheet) ──
   const grandTotal = groups.reduce((s, g) => s + g.totalPairs, 0);
@@ -1588,17 +1598,54 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
           const colorHeader = (
               <div className="keep-together keep-with-next px-2 py-0.5 flex items-center justify-between" style={{ borderBottom: '1.5px solid #000' }}>
                 <div className="flex items-center gap-2 min-w-0">
-                  {theme.showProductImage && (
-                    <ProductImageBlock
-                      variantImageUrl={cg.variantImageUrl}
-                      alternateVariants={cg.alternateVariants}
-                      technicalSheetImageUrl={cg.technicalSheetImageUrl}
-                      orderColor={cg.color}
-                      size={HEADER_THUMB_PX}
-                      showRefBadge={false}
-                      alt={`${group.soleName} ${cg.color}`}
-                    />
-                  )}
+                  {theme.showProductImage && (() => {
+                    // Corte Cabedal: faixa 1 foto/ref (mesmo contrato do Forração).
+                    // Sem isto, o merge por cor deixava só a 1ª sandália no
+                    // header escalar (PV-00197 OFF WHITE = LA01+SP201 → 1 foto).
+                    const cabedalThumbs = (sector === 'Corte Cabedal' && theme.showCompactImages)
+                      ? collectCompactThumbs(cg)
+                      : [];
+                    if (cabedalThumbs.length > 1) {
+                      const thumbPx = compactThumbPx(cabedalThumbs.length);
+                      return (
+                        <div className="flex flex-wrap gap-1.5 shrink-0">
+                          {cabedalThumbs.map((t, ti) => (
+                            <div key={t.sheetId || t.resolvedUrl || ti} className="flex flex-col items-center gap-0.5">
+                              <ProductImageBlock
+                                variantImageUrl={t.variantImageUrl}
+                                alternateVariants={t.alternateVariants}
+                                technicalSheetImageUrl={t.technicalSheetImageUrl}
+                                orderColor={cg.color}
+                                size={thumbPx}
+                                showRefBadge={false}
+                                alt={`${t.refNames.join(' · ') || group.soleName} ${cg.color}`}
+                              />
+                              {t.refNames.length > 0 && (
+                                <span
+                                  className="block truncate text-center uppercase font-bold"
+                                  style={{ fontFamily: "'Fira Code', monospace", fontSize: '8px', letterSpacing: '0.06em', color: '#C00000', maxWidth: thumbPx }}
+                                  title={t.refNames.join(' · ')}
+                                >
+                                  {t.refNames.join(' · ')}
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    }
+                    return (
+                      <ProductImageBlock
+                        variantImageUrl={cg.variantImageUrl}
+                        alternateVariants={cg.alternateVariants}
+                        technicalSheetImageUrl={cg.technicalSheetImageUrl}
+                        orderColor={cg.color}
+                        size={HEADER_THUMB_PX}
+                        showRefBadge={false}
+                        alt={`${group.soleName} ${cg.color}`}
+                      />
+                    );
+                  })()}
                   {cg.colorHex && (
                     <div className="w-5 h-5 shrink-0" style={{ backgroundColor: cg.colorHex, border: '1px solid #000' }} />
                   )}
@@ -1793,7 +1840,39 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
               {renderConsumoTiras(cg)}
               <SectorMaterials rows={cg.consumption} sector={sector}
                 excludeComponents={sector === 'Aviamento' ? ['Tiras'] : CONSUMO_COMPONENTS_BY_SECTOR[sector] || []} />
-              <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={cg.totalPairs} title={tallyTitle} size={TALLY_SIZE} />
+              {(() => {
+                // Corte Cabedal com >1 ref na cor: um TallyBox por referência
+                // (pedido dono 22/09/2026 — quadradinhos separados por modelo).
+                const perRef = sector === 'Corte Cabedal'
+                  ? collectCompactThumbs(cg).filter(t => (t.fichas || 0) > 0 || (t.pairs || 0) > 0)
+                  : [];
+                if (perRef.length > 1) {
+                  return perRef.map((t, ti) => {
+                    const refPairs = Number(t.pairs) || 0;
+                    const refFichas = Number(t.fichas) || (refPairs > 0 && tallyPerCard > 0
+                      ? Math.max(1, Math.ceil(refPairs / tallyPerCard))
+                      : 0);
+                    if (refFichas <= 0) return null;
+                    const refLabel = t.refNames.join(' · ') || t.refCode || t.refName || `Ref ${ti + 1}`;
+                    const refTitle = cg.corrugadosMistos
+                      ? `Controle de Fichas · ${refLabel} · corrugados mistos`
+                      : `Controle de Fichas · ${refLabel}`;
+                    return (
+                      <TallyBox
+                        key={t.sheetId || refLabel || ti}
+                        count={refFichas}
+                        pairsPerCard={tallyPerCard}
+                        totalUnits={refPairs > 0 ? refPairs : refFichas * tallyPerCard}
+                        title={refTitle}
+                        size={TALLY_SIZE}
+                      />
+                    );
+                  });
+                }
+                return (
+                  <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={cg.totalPairs} title={tallyTitle} size={TALLY_SIZE} />
+                );
+              })()}
             </div>
           );
 

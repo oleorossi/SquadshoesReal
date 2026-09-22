@@ -298,6 +298,31 @@ describe('saleOrderReadinessCorrections', () => {
     expect(model.fiscalIssues).toHaveLength(1);
     expect(model.unsupportedIssues).toEqual([]);
     expect(model.itemGroups).toEqual([]);
+    expect(model.physicalCancelIssues).toEqual([]);
+  });
+
+  it('trata fato físico de cancel como orientação compensatória, não edição completa', () => {
+    const physicalIssue: SaleOrderCommandIssue = {
+      code: 'physical_fact',
+      message: 'OP OP-1 possui fato físico (stage); cancelamento automático recusado',
+      item_id: null,
+      reference_id: null,
+      overrideable: false,
+      details: { op_number: 'OP-1', fact_kinds: ['stage'] },
+    };
+
+    const model = buildSaleOrderReadinessCorrectionModel({
+      issues: [physicalIssue],
+      items,
+      sheets,
+      products: [],
+      groups: [],
+    });
+
+    expect(model.physicalCancelIssues).toHaveLength(1);
+    expect(model.physicalCancelIssues[0].title).toBe('Fato físico no chão');
+    expect(model.unsupportedIssues).toEqual([]);
+    expect(model.fiscalIssues).toEqual([]);
   });
 });
 

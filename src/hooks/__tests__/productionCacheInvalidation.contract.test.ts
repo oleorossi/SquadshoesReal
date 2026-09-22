@@ -29,6 +29,7 @@ describe('invalidateProductionCaches · blast radius por superfície (P1.2)', ()
       'v_sector_workload_active',
       'sale_orders_for_corte',
       'orders-material-gate',
+      'sale_orders_floor_progress',
     ]) {
       expect(pointing).toContain(required);
     }

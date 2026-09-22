@@ -6,6 +6,7 @@ import {
 } from '@phosphor-icons/react';
 import { thumbUrl } from '@/lib/imageThumb';
 import { fmtDate, KanbanCardData } from './kanbanDerive';
+import { cardCommercialPrimary, partialRemaining } from './kanbanQueueSplit';
 
 interface Props {
   card: KanbanCardData;
@@ -18,28 +19,22 @@ interface Props {
   compact?: boolean;
   /** Busca ativa e este card NÃO casa → esmaece sem tirar do quadro. */
   dimmed?: boolean;
-  /** Busca ativa (modo 'destacar') e este card casa → anel TINTA pra achar de
-   *  longe. NÃO usa `ring-primary`: no sistema inteiro anel vermelho = item
-   *  SELECIONADO, e reaproveitá-lo aqui fazia a busca parecer que já tinha
-   *  marcado tudo sozinha (relato do dono 2026-07-28). */
+  /** Busca ativa (modo 'destacar') e este card casa → anel TINTA. */
   highlighted?: boolean;
+  /** Irmão paralelo sob hover/foco — mesmo halo nos dois cards da OP. */
+  siblingActive?: boolean;
   /** Modo seleção em lote: o clique marca/desmarca em vez de abrir o diálogo. */
   selectable?: boolean;
   selected?: boolean;
   onToggleSelect?: () => void;
   /** Usuário pode consultar o card, mas não registrar apontamentos. */
   readOnly?: boolean;
-  /** Foto da referência resolvida por `useReferenceThumbs` (a view manda
-   *  `reference_photo_url` vazio — ver o hook). Cai pro campo da view quando
-   *  ausente, então o card funciona mesmo se a view for corrigida no futuro. */
   photoUrl?: string | null;
-  /** Acabou de chegar neste setor por apontamento → halo de pouso (some em
-   *  ~1s). Âmbar quando a entrega veio incompleta, tinta quando veio inteira. */
+  /** Acabou de chegar neste setor por apontamento → halo de pouso (~1s). */
   landed?: boolean;
-  /** Gate de material (auditoria Crítico #1): a OP não tem matéria-prima pra
-   *  arrancar antes desta data. Sinaliza — não bloqueia o movimento. */
   materialGateDate?: string | null;
   materialGateReason?: string | null;
+  onHoverOrder?: (orderId: string | null) => void;
 }
 
 /**
@@ -58,26 +53,28 @@ function stageAge(stage: { started_at: string | null; created_at: string } | nul
   const ref = stage.started_at || stage.created_at;
   if (!ref) return null;
   const dias = Math.floor((Date.now() - new Date(ref).getTime()) / 86400000);
-  if (dias < 1) return null; // menos de um dia não é sinal de nada
+  if (dias < 1) return null;
   return { dias, emProcesso: !!stage.started_at };
 }
 
 export function KanbanOpCard({
   card, draggable, dragging, onDragStart, onDragEnd, onOpen,
-  compact = false, dimmed = false, highlighted = false,
+  compact = false, dimmed = false, highlighted = false, siblingActive = false,
   selectable = false, selected = false, onToggleSelect, readOnly = false, photoUrl, landed = false,
-  materialGateDate = null, materialGateReason = null,
+  materialGateDate = null, materialGateReason = null, onHoverOrder,
 }: Props) {
   const { q, front, delivered, isPartial, columnStage, upstreamGap, parallelSiblings } = card;
   const total = columnStage?.quantity_total || q.quantity;
+  const shown = front ? delivered : 0;
+  const restante = partialRemaining(shown, total);
   const idade = stageAge(columnStage);
-  // O card compacto cresce para 40px no celular; pedir a miniatura já nessa
-  // resolução evita ampliar uma imagem de 32px e borrar a referência no toque.
+  const { pv, client } = cardCommercialPrimary(q);
   const thumbSize = 40;
   const thumb = thumbUrl(photoUrl || q.reference_photo_url, thumbSize);
+
   return (
     <Card
-      className={`relative overflow-hidden ${compact ? 'p-2.5 md:p-2' : 'p-2.5'} ${isPartial ? 'pl-3' : ''} cursor-pointer select-none
+      className={`relative overflow-hidden ${compact ? 'p-2 md:p-1.5' : 'p-2.5'} ${isPartial ? 'pl-3' : ''} cursor-pointer select-none
         transition-[transform,box-shadow,border-color,opacity] duration-150 ease-out
         hover:-translate-y-0.5 hover:shadow-md active:translate-y-0
         focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground/70 focus-visible:ring-offset-1 focus-visible:ring-offset-background
@@ -85,32 +82,32 @@ export function KanbanOpCard({
         before:transition-transform before:duration-150 before:ease-out
         ${
         isPartial
-          // R5.3: ÂMBAR = parcial. Trilho permanente de 4px + fundo âmbar: é o
-          // estado que o gestor precisa enxergar do outro lado da sala.
-          ? 'border-amber-500/60 bg-amber-500/10 before:bg-amber-500 before:w-1 before:scale-x-100'
+          ? 'border-amber-500/70 bg-amber-500/15 before:bg-amber-500 before:w-1 before:scale-x-100'
           : 'bg-card before:bg-primary before:scale-x-0 hover:before:scale-x-100'
       } ${dragging ? 'opacity-40 rotate-[-1.4deg] scale-[.98]' : ''} ${dimmed ? 'opacity-25' : ''} ${
         landed ? (isPartial ? 'kb-landed-partial' : 'kb-landed') : ''
-      } ${
+      } ${siblingActive ? 'kb-sibling-pulse' : ''} ${
         selected
-          ? 'ring-2 ring-primary'                                            // VERMELHO = selecionado (só isto)
+          ? 'ring-2 ring-primary'
           : highlighted
-            ? 'ring-2 ring-foreground/70 ring-offset-1 ring-offset-background' // TINTA = achado pela busca
-            : ''
+            ? 'ring-2 ring-foreground/70 ring-offset-1 ring-offset-background'
+            : siblingActive
+              ? 'ring-2 ring-primary/40'
+              : ''
       }`}
       draggable={draggable}
       onDragStart={e => { onDragStart(); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/op-id', q.order_id); }}
       onDragEnd={onDragEnd}
       onClick={selectable ? onToggleSelect : onOpen}
-      // Teclado: o card era operável só por mouse/toque — quem usa teclado ou
-      // leitor de tela não conseguia nem abrir o apontamento. Enter/Espaço faz
-      // o mesmo que o clique, e o diálogo já tem o select "Mover OP para" como
-      // alternativa ao arraste (que não existe no teclado).
+      onMouseEnter={() => onHoverOrder?.(q.order_id)}
+      onMouseLeave={() => onHoverOrder?.(null)}
+      onFocus={() => onHoverOrder?.(q.order_id)}
+      onBlur={e => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) onHoverOrder?.(null);
+      }}
       tabIndex={0}
       onKeyDown={e => {
         if (e.key !== 'Enter' && e.key !== ' ') return;
-        // Espaço rolaria a coluna; Enter dispararia o link da OP quando focado
-        // nele — aqui o alvo é o card.
         if (e.target !== e.currentTarget) return;
         e.preventDefault();
         (selectable ? onToggleSelect : onOpen)?.();
@@ -119,11 +116,11 @@ export function KanbanOpCard({
       aria-checked={selectable ? selected : undefined}
       aria-label={
         selectable
-          ? `${selected ? 'Desmarcar' : 'Selecionar'} ${q.order_number}, setor ${card.column}, `
-            + `${q.reference_name || 'sem referência'}${q.color ? `, cor ${q.color}` : ''}.`
-          : `${q.order_number}, ${q.reference_name || 'sem referência'}${q.color ? `, cor ${q.color}` : ''}, ` +
-            `${front ? delivered : 0} de ${total} pares` +
-            `${isPartial ? ', entrega parcial' : ''}${q.late_days > 0 ? `, ${q.late_days} dias de atraso` : ''}. ` +
+          ? `${selected ? 'Desmarcar' : 'Selecionar'} ${pv}, ${client}, ${q.order_number}, setor ${card.column}.`
+          : `${pv}, ${client}, ${q.order_number}, ${q.reference_name || 'sem referência'}${q.color ? `, cor ${q.color}` : ''}, ` +
+            `${shown} de ${total} pares` +
+            `${isPartial ? `, parcial — faltam ${restante} pares neste setor` : ''}` +
+            `${q.late_days > 0 ? `, ${q.late_days} dias de atraso` : ''}. ` +
             (readOnly ? 'Abrir detalhes.' : 'Abrir apontamento.')
       }
     >
@@ -146,68 +143,50 @@ export function KanbanOpCard({
           <div className={`${compact ? 'h-10 w-10 md:h-8 md:w-8' : 'h-10 w-10'} rounded bg-muted shrink-0`} />
         )}
         <div className="min-w-0 flex-1">
+          {/* 1) PV + cliente — hierarquia comercial */}
           <div className="flex items-start justify-between gap-1.5">
-            {selectable ? (
-              // No modo seleção o card inteiro tem uma única ação. Manter o
-              // número como Link fazia o clique mais provável navegar pra fora
-              // da tarefa em vez de marcar a OP.
-              <span className={`font-mono ${compact ? 'text-xs md:text-[11px]' : 'text-xs'} truncate font-bold`}>
-                {q.order_number}
-              </span>
-            ) : (
-              <Link
-                to={`/orders/${q.order_id}/edit`}
-                onClick={e => e.stopPropagation()}
-                className={`font-mono ${compact ? 'text-xs md:text-[11px]' : 'text-xs'} font-bold hover:underline truncate`}
-              >
-                {q.order_number}
-              </Link>
-            )}
-            {/* Os estados quebram dentro do próprio card. Antes o grupo inteiro
-                era `shrink-0`: em colunas estreitas ele empurrava o número da OP
-                e os últimos selos eram cortados pelo `overflow-hidden`. */}
-            <span className="flex max-w-[72%] shrink-0 flex-wrap items-center justify-end gap-1">
-              {/* Selo do parcial: fecha a leitura de longe, junto do trilho
-                  âmbar e do "84/120" abaixo. */}
-              {isPartial && (
-                <Badge variant="outline" className="text-[9px] bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/40 shrink-0">
-                  parcial
-                </Badge>
+            <div className="min-w-0 flex-1">
+              {selectable || !q.sale_order_id ? (
+                <p className={`font-mono ${compact ? 'text-xs md:text-[11px]' : 'text-xs'} font-bold truncate leading-tight`}>
+                  {pv}
+                </p>
+              ) : (
+                <Link
+                  to={`/sales?pv=${q.sale_order_id}`}
+                  onClick={e => e.stopPropagation()}
+                  className={`font-mono ${compact ? 'text-xs md:text-[11px]' : 'text-xs'} font-bold hover:underline truncate block leading-tight`}
+                >
+                  {pv}
+                </Link>
               )}
-              {/* OP RESERVADA ainda não é trabalho liberado. Sem selo ela ficava
-                  idêntica a uma OP em produção: cai na primeira etapa (não tem
-                  apontamento), e como está atrasada há 59–94 dias, a ordenação
-                  "atrasadas primeiro" a jogava no TOPO da coluna com selo
-                  vermelho. Medido: 12 OPs / 548 pares, um quarto do gargalo. */}
-              {q.queue_status === 'na_fila' && (
+              <p className={`${compact ? 'text-[11px] md:text-[10px]' : 'text-[11px]'} truncate font-semibold text-foreground leading-tight`}>
+                {client}
+              </p>
+            </div>
+            <span className="flex max-w-[55%] shrink-0 flex-wrap items-center justify-end gap-1">
+              {isPartial && (
                 <Badge
                   variant="outline"
-                  className="text-[9px] bg-muted text-muted-foreground border-border shrink-0"
-                  title="OP reservada — ainda não liberada pra produção. Aparece aqui pra dar visibilidade, mas não é trabalho que a fábrica pode começar."
+                  className="text-[9px] bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-500/50 shrink-0 font-semibold"
+                  title={`Entrega parcial neste setor — faltam ${restante} pares. O card fica preso até fechar.`}
                 >
-                  reservada
+                  preso · −{restante}
                 </Badge>
               )}
-              {/* Buraco deixado por um pulo de setor: pares que nunca passaram
-                  por um setor lá atrás. O card mostra o que ESTE setor recebeu;
-                  sem isto, o saldo órfão não aparecia em lugar nenhum. */}
-              {/* A MESMA OP também está em outra coluna, em paralelo. Sem este
-                  selo, ver "OP-2026-01191" em dois lugares parece duplicata ou
-                  erro de sistema — e alguém "conserta" apontando duas vezes. */}
               {parallelSiblings.length > 0 && (
                 <Badge
                   variant="outline"
-                  className="text-[9px] bg-muted text-muted-foreground border-border shrink-0"
-                  title={`Esta OP roda em paralelo e também tem card em: ${parallelSiblings.join(', ')}. Cada setor aponta o SEU trabalho — não é duplicata.`}
+                  className="text-[9px] bg-primary/10 text-primary border-primary/30 shrink-0"
+                  title={`Em paralelo também em: ${parallelSiblings.join(', ')}. Cada setor aponta o SEU trabalho.`}
                 >
-                  ‖ {parallelSiblings.join(', ')}
+                  ‖ paralelo
                 </Badge>
               )}
               {upstreamGap && (
                 <Badge
                   variant="outline"
                   className="text-[9px] bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/40 shrink-0"
-                  title={`${upstreamGap.missing} pares nunca passaram por ${upstreamGap.sector} — o setor ficou aberto quando a OP foi movida pra cá.`}
+                  title={`${upstreamGap.missing} pares nunca passaram por ${upstreamGap.sector}.`}
                 >
                   −{upstreamGap.missing} em {upstreamGap.sector}
                 </Badge>
@@ -217,8 +196,6 @@ export function KanbanOpCard({
                   <AlertTriangle className="h-2.5 w-2.5" /> +{q.late_days}d
                 </Badge>
               )}
-              {/* Sem matéria-prima pra arrancar: quem move a OP pro Corte tem
-                  que ver ANTES de mover, não descobrir no chão de fábrica. */}
               {(materialGateDate || materialGateReason) && (
                 <Badge
                   variant="outline"
@@ -228,54 +205,64 @@ export function KanbanOpCard({
                   title={materialGateReason || `Material disponível a partir de ${fmtDate(materialGateDate)}`}
                 >
                   <Package className="h-2.5 w-2.5" />
-                  {materialGateDate ? fmtDate(materialGateDate) : 'Material pendente'}
+                  {materialGateDate ? fmtDate(materialGateDate) : 'Material'}
                 </Badge>
               )}
             </span>
           </div>
-          {/* Referência em VERMELHO (pedido do dono 2026-10-01): é o dado que
-              o operador procura primeiro no card. A cor fica só na referência —
-              a cor do produto segue em muted pra não competir. */}
-          <p className={`${compact ? 'text-[11px] md:text-[10px]' : 'text-[11px]'} truncate`}>
+
+          {/* 2) Ref + cor */}
+          <p className={`${compact ? 'text-[11px] md:text-[10px]' : 'text-[11px]'} truncate mt-0.5`}>
             <span className="font-semibold text-primary">{q.reference_name || '—'}</span>
             {q.color ? <span className="text-muted-foreground"> · {q.color}</span> : null}
           </p>
-          <div className="mt-1 flex items-center justify-between">
-            {/* "84/120": o que ENTROU neste setor em destaque, o total do
-                pedido logo atrás — assim se lê o que passou e o que falta. */}
-            <span className={`font-mono ${compact ? 'text-sm md:text-[11px]' : 'text-xs'} font-bold`}>
-              <span className={isPartial ? 'text-amber-600 dark:text-amber-400' : ''}>{front ? delivered : 0}</span>
+
+          {/* 3) OP + entregue/total do setor */}
+          <div className="mt-1 flex items-center justify-between gap-1">
+            {selectable ? (
+              <span className={`font-mono ${compact ? 'text-[10px]' : 'text-[10px]'} text-muted-foreground truncate`}>
+                {q.order_number}
+              </span>
+            ) : (
+              <Link
+                to={`/orders/${q.order_id}/edit`}
+                onClick={e => e.stopPropagation()}
+                className={`font-mono ${compact ? 'text-[10px]' : 'text-[10px]'} text-muted-foreground hover:underline truncate`}
+              >
+                {q.order_number}
+              </Link>
+            )}
+            <span className={`font-mono ${compact ? 'text-sm md:text-xs' : 'text-xs'} font-bold shrink-0`}>
+              <span className={isPartial ? 'text-amber-700 dark:text-amber-400' : ''}>{shown}</span>
               <span className="font-normal opacity-60">/{total}</span>
             </span>
-            <span className="flex items-center gap-1.5">
-              {/* IDADE NO SETOR: uma OP parada há 5 dias exige ação diferente de
-                  uma que chegou hoje com o mesmo saldo. Sem isto o card não
-                  distinguia as duas. Âmbar a partir de 3 dias. */}
-              {idade && (
-                <span
-                  className={`text-[10px] font-mono flex items-center gap-0.5 ${
-                    idade.dias >= 3 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'
-                  }`}
-                  title={
-                    idade.emProcesso
-                      ? `Em processo neste setor há ${idade.dias} dia(s)`
-                      : `Na fila deste setor há ${idade.dias} dia(s) — ainda não teve apontamento`
-                  }
-                >
-                  <Timer className="h-2.5 w-2.5" />{idade.dias}d
-                </span>
-              )}
-              <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
-                <CalendarBlank className="h-2.5 w-2.5" /> {fmtDate(q.due_date)}
+          </div>
+
+          {isPartial && (
+            <p className="mt-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-400 leading-tight">
+              Faltam {restante.toLocaleString('pt-BR')} pares neste setor
+            </p>
+          )}
+
+          <div className="mt-0.5 flex items-center justify-end gap-1.5">
+            {idade && (
+              <span
+                className={`text-[10px] font-mono flex items-center gap-0.5 ${
+                  idade.dias >= 3 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'
+                }`}
+                title={
+                  idade.emProcesso
+                    ? `Em processo neste setor há ${idade.dias} dia(s)`
+                    : `Na fila deste setor há ${idade.dias} dia(s)`
+                }
+              >
+                <Timer className="h-2.5 w-2.5" />{idade.dias}d
               </span>
+            )}
+            <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+              <CalendarBlank className="h-2.5 w-2.5" /> {fmtDate(q.due_date)}
             </span>
           </div>
-          {!compact && (
-            <div className="mt-1 flex flex-wrap gap-1">
-              {q.has_ficha_override && <Badge variant="outline" className="text-[9px]">ficha</Badge>}
-              {q.pinned_position !== null && <Badge variant="outline" className="text-[9px]">fixada</Badge>}
-            </div>
-          )}
         </div>
       </div>
     </Card>

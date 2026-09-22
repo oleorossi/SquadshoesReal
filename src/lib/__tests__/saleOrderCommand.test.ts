@@ -14,6 +14,7 @@ import {
   normalizeSaleOrderReadiness,
   SaleOrderCommandExecutionError,
   SaleOrderReadinessBlockedError,
+  shouldOfferAdminCompensatoryCancel,
 } from '@/lib/saleOrderCommand';
 
 describe('saleOrderCommand', () => {
@@ -204,6 +205,57 @@ describe('saleOrderCommand', () => {
     expect(message).toContain('OP-2026-01146');
     expect(message).toContain('stage');
     expect(message).not.toContain('ab7e391d');
+  });
+
+  it('shouldOfferAdminCompensatoryCancel só com fato físico puro + admin', () => {
+    const physicalOnly = normalizeSaleOrderCommandPreflight(
+      {
+        ready: false,
+        blockers: [{
+          code: 'physical_fact',
+          message: 'fato físico',
+          details: { fact_kinds: ['stage'], op_number: 'OP-1' },
+        }],
+        order_version: 1,
+      },
+      { saleOrderId: 'pv-1', command: 'cancel' },
+    );
+    const withNfe = normalizeSaleOrderCommandPreflight(
+      {
+        ready: false,
+        blockers: [
+          {
+            code: 'physical_fact',
+            message: 'fato físico',
+            details: { fact_kinds: ['stage'] },
+          },
+          {
+            code: 'active_nfe_blocks_cancel',
+            scope: 'fiscal',
+            message: 'NF-e ativa',
+          },
+        ],
+        order_version: 1,
+      },
+      { saleOrderId: 'pv-2', command: 'cancel' },
+    );
+    const nfeOnly = normalizeSaleOrderCommandPreflight(
+      {
+        ready: false,
+        blockers: [{
+          code: 'active_nfe_blocks_cancel',
+          scope: 'fiscal',
+          message: 'NF-e ativa',
+        }],
+        order_version: 1,
+      },
+      { saleOrderId: 'pv-3', command: 'cancel' },
+    );
+
+    expect(shouldOfferAdminCompensatoryCancel(physicalOnly, true)).toBe(true);
+    expect(shouldOfferAdminCompensatoryCancel(physicalOnly, false)).toBe(false);
+    expect(shouldOfferAdminCompensatoryCancel(withNfe, true)).toBe(false);
+    expect(shouldOfferAdminCompensatoryCancel(nfeOnly, true)).toBe(false);
   });
 
   it('timeout de statement/lock vira pedido de retry, não a string crua do Postgres', () => {

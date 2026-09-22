@@ -4042,9 +4042,15 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
                 const mergeKey = `${cg.color}::${lotPartitionKey(cg.lotInfo)}`;
                 const existing = colorMap.get(mergeKey);
                 if (!existing) {
+                  // Preserva refs + refImages (pedido dono 22/09/2026): no
+                  // Cabedal a cor agrega solados, mas o cortador precisa ver
+                  // a foto e o tally DE CADA referência. O `refs: []` de
+                  // 22/05/2026 sumia com as sandálias — PV-00197 OFF WHITE
+                  // (LA01+SP201) saía com 1 foto e 1 bloco de quadradinhos.
                   const cloned = copyAllocatedPairs({
                     ...cg,
-                    refs: [],  // remove refs (pedido user 22/05/2026)
+                    refs: [...(cg.refs || [])],
+                    refImages: (cg.refImages || []).map((ri: any) => ({ ...ri })),
                     combinedGrid: { ...cg.combinedGrid },
                     knifeGrid: cg.knifeGrid ? { ...cg.knifeGrid } : undefined,
                     opNumbers: [...cg.opNumbers],
@@ -4070,6 +4076,25 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
                   if (cg.pvNumbers && existing.pvNumbers) {
                     for (const pv of cg.pvNumbers) {
                       if (!existing.pvNumbers.includes(pv)) existing.pvNumbers.push(pv);
+                    }
+                  }
+                  // Junta refs + fotos por referência das cores fundidas
+                  // (mesmo contrato do mergeForracaoWithinSole).
+                  existing.refs = existing.refs || [];
+                  for (const r of (cg.refs || [])) {
+                    const key = r.code || r.name;
+                    if (key && !existing.refs.some((x: any) => (x.code || x.name) === key)) {
+                      existing.refs.push({ ...r });
+                    }
+                  }
+                  existing.refImages = existing.refImages || [];
+                  for (const ri of (cg.refImages || [])) {
+                    const found = existing.refImages.find((x: any) => x.sheetId === ri.sheetId);
+                    if (found) {
+                      (found as any).pairs = ((found as any).pairs || 0) + ((ri as any).pairs || 0);
+                      (found as any).fichas = ((found as any).fichas || 0) + ((ri as any).fichas || 0);
+                    } else {
+                      existing.refImages.push({ ...ri });
                     }
                   }
                   // Propaga flags de corrugado (7º passe): corrugados distintos
@@ -4280,6 +4305,43 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
               // Corte Cabedal: cores agregadas entre solados → 1 grupo único.
               const merged = mergeColorsAcrossSoles(sectorName);
               groupsForSector = merged ? [merged] : [];
+              // #region agent log
+              {
+                const pvHit = (expandedOrders as any[]).some(o => String(o.sale_order_number || '').includes('00197'));
+                if (pvHit && sectorName === 'Corte Cabedal') {
+                  const perOp = (expandedOrders as any[])
+                    .filter(o => String(o.sale_order_number || '').includes('00197'))
+                    .map(o => {
+                      const sheetId = o.reference_id;
+                      const elig = getUpperWorkEligibility(sheetById.get(sheetId));
+                      return {
+                        op: o.op_number,
+                        color: o.color,
+                        ref: o.reference_code || o.reference_name,
+                        sheetId,
+                        requiresUpperCut: elig.requiresUpperCut,
+                        partitionKey: elig.partitionKey,
+                        qty: o.quantity,
+                      };
+                    });
+                  const upperSnap = upperGroups.map(g => ({
+                    sole: g.soleName,
+                    colors: g.colorGroups.map(cg => ({
+                      color: cg.color,
+                      pairs: cg.totalPairs,
+                      requiresUpperCut: cg.requiresUpperCut,
+                      ops: cg.opNumbers,
+                      pvs: cg.pvNumbers,
+                      refs: (cg.refs || []).map((r: any) => r.code || r.name),
+                      consumo: (cg.consumption || []).map((r: any) => ({
+                        comp: r.component, mat: r.product_name, color: r.color, qty: r.required,
+                      })),
+                    })),
+                  }));
+                  fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b71199'},body:JSON.stringify({sessionId:'b71199',runId:'post-fix',hypothesisId:'H11-H13',location:'PrintWorkSheetsPage.tsx:CorteCabedal',message:'cabedal merge refs+photos',data:{perOp,merged:groupsForSector.map(g=>({sole:g.soleName,totalPairs:g.totalPairs,colorCount:g.colorGroups.length,colors:g.colorGroups.map(cg=>({color:cg.color,pairs:cg.totalPairs,ops:cg.opNumbers,refs:(cg.refs||[]).map((r:any)=>r.code||r.name),refImages:(cg.refImages||[]).map((ri:any)=>({sheetId:ri.sheetId,ref:ri.refName||ri.refCode,pairs:ri.pairs,fichas:ri.fichas,hasImg:!!(ri.variantImageUrl||ri.technicalSheetImageUrl)}))}))}))},timestamp:Date.now()})}).catch(()=>{});
+                }
+              }
+              // #endregion
             } else if (sectorName === 'Aviamento') {
               // Aviamento: grupos por REFERÊNCIA (sub-header por referência;
               // a foto do produto sai no 1º card de cada cor).
@@ -4292,6 +4354,35 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
               groupsForSector = smGroups
                 .map(group => mergeForracaoWithinSole(group))
                 .filter((g): g is SoleSilkGroup => g !== null);
+              // #region agent log
+              {
+                const pvHit = groupsForSector.some(g =>
+                  g.colorGroups.some(cg => (cg.pvNumbers || []).some(p => String(p).includes('00197'))));
+                const smHit = smGroups.some(g =>
+                  g.colorGroups.some(cg => (cg.pvNumbers || []).some(p => String(p).includes('00197'))));
+                if (pvHit || smHit) {
+                  const perOp = (expandedOrders as any[])
+                    .filter(o => String(o.sale_order_number || '').includes('00197'))
+                    .map(o => {
+                      const sheetId = o.reference_id;
+                      const needs = (liningFlagLookup.get(sheetId) === true) && !isEffectiveReadyMade(sheetId, o.color);
+                      return {
+                        op: o.op_number,
+                        color: o.color,
+                        ref: o.reference_code || o.reference_name,
+                        requiresLiningCut: needs,
+                        insoleHasLining: liningFlagLookup.get(sheetId),
+                        readyMade: isEffectiveReadyMade(sheetId, o.color),
+                        inRoteiro: orderInRoteiro(sheetId, 'Corte Forração'),
+                        liningMat: sheetMaterialsByRef.get(sheetId)?.lining || null,
+                        sole: resolveSoleForOrder(sheetId, o.color)?.baseName || null,
+                        soleClass: resolveSoleForOrder(sheetId, o.color)?.soleClassification || null,
+                      };
+                    });
+                  fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b71199'},body:JSON.stringify({sessionId:'b71199',runId:'pre-fix',hypothesisId:'H1-H3',location:'PrintWorkSheetsPage.tsx:CorteForracao',message:'forracao groups after merge',data:{perOp,smGroups:smGroups.map(g=>({sole:g.soleName,colors:g.colorGroups.map(cg=>({color:cg.color,pairs:cg.totalPairs,requiresLiningCut:cg.requiresLiningCut,ops:cg.opNumbers,pvs:cg.pvNumbers,liningBd:cg.liningBreakdown?Array.from(cg.liningBreakdown.entries()).map(([k,v])=>({k,pairs:v.totalPairs,mat:v.material})):null}))})),merged:groupsForSector.map(g=>({sole:g.soleName,colors:g.colorGroups.map(cg=>({color:cg.color,pairs:cg.totalPairs,liningMaterial:cg.liningMaterial,ops:cg.opNumbers,pvs:cg.pvNumbers}))}))},timestamp:Date.now()})}).catch(()=>{});
+                }
+              }
+              // #endregion
             } else {
               // Costura* / Silk: grupos por solado.
               const sourceGroups = sectorName === 'Costura Cabedal' ? upperGroups : smGroups;

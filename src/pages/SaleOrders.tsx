@@ -19,12 +19,18 @@ import {
 } from '@/components/sale-orders/saleOrderListConstants';
 import { SaleOrderSortHead as SortHead } from '@/components/sale-orders/SaleOrderSortHead';
 import { SaleOrderMobileCard } from '@/components/sale-orders/SaleOrderMobileCard';
+import { SaleOrderFloorProgressSummary } from '@/components/sale-orders/SaleOrderFloorProgressSummary';
 import {
   useMinBillingMap,
   useRefreshMinBillingInBackground,
   EMPTY_MIN_BILLING_MAP,
   EMPTY_STALE_IDS,
 } from '@/hooks/useMinBillingMap';
+import {
+  EMPTY_FLOOR_PROGRESS_MAP,
+  saleOrderShowsFloorProgress,
+  useSaleOrdersFloorProgress,
+} from '@/hooks/useSaleOrdersFloorProgress';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -86,9 +92,9 @@ import {
 import { useSaleOrders, useSaleOrderAllItems, useCreateSaleOrder, useDeleteSaleOrder, useUpdateSaleOrderStatus, useResyncOPsFromSheets, useResyncOPsFromPV, useCommitPickingForSaleOrder, useRealtimeSaleOrders, SaleOrderFormData, SaleOrderItemFormData, PackagingMode, ORDER_TYPE_LABELS } from '@/hooks/useSaleOrders';
 import {
   executeSaleOrderCommand,
-  hasPhysicalFactBlockers,
   preflightSaleOrderCommand,
   SaleOrderReadinessBlockedError,
+  shouldOfferAdminCompensatoryCancel,
 } from '@/lib/saleOrderCommand';
 import { useTechnicalSheetsLite } from '@/hooks/useTechnicalSheets';
 import { useClients, useEconomicGroups } from '@/hooks/useClients';
@@ -157,17 +163,29 @@ export default function SaleOrders() {
   // todos eles em vez de deixar o último erro sobrescrever os anteriores.
   const [readinessCorrectionTargets, setReadinessCorrectionTargets] = useState<SaleOrderReadinessCorrectionTarget[]>([]);
   const readinessCorrectionTarget = readinessCorrectionTargets[0] || null;
-  const [compensatoryCancelTarget, setCompensatoryCancelTarget] = useState<AdminCompensatoryCancelTarget | null>(null);
+  // Fila: bulk cancel com vários PVs em fato físico não pode sobrescrever o último.
+  const [compensatoryCancelTargets, setCompensatoryCancelTargets] = useState<AdminCompensatoryCancelTarget[]>([]);
+  const compensatoryCancelTarget = compensatoryCancelTargets[0] || null;
+  const [bulkStatusProgress, setBulkStatusProgress] = useState<{
+    done: number;
+    total: number;
+    status: string;
+  } | null>(null);
   const updateStatus = useUpdateSaleOrderStatus({
     onReadinessBlocked: (blocked, vars) => {
       const isCancelPath = vars.status === 'Cancelado'
         || (vars.status === 'Rascunho' && blocked.preflight.command === 'transition');
-      if (isAdmin && isCancelPath && hasPhysicalFactBlockers(blocked.preflight)) {
-        setCompensatoryCancelTarget({
+      if (isCancelPath && shouldOfferAdminCompensatoryCancel(blocked.preflight, isAdmin)) {
+        const nextTarget: AdminCompensatoryCancelTarget = {
           id: vars.id,
           orderNumber: orders.find((order) => order.id === vars.id)?.order_number || null,
           status: vars.status,
           preflight: blocked.preflight,
+        };
+        setCompensatoryCancelTargets((current) => {
+          const existingIndex = current.findIndex((target) => target.id === vars.id);
+          if (existingIndex < 0) return [...current, nextTarget];
+          return current.map((target, index) => index === existingIndex ? nextTarget : target);
         });
         return;
       }
@@ -576,6 +594,17 @@ export default function SaleOrders() {
   const visibleOrders = paged.items;
   const isMobile = useIsMobile();
 
+  // Progresso de chão (setor) — uma RPC em lote só para Aprovado/Em Produção
+  // da página visível. Cancelado/Rascunho/Faturado não pedem e não inventam dots.
+  const floorProgressIds = useMemo(
+    () => visibleOrders
+      .filter((o) => saleOrderShowsFloorProgress(o.status))
+      .map((o) => o.id),
+    [visibleOrders],
+  );
+  const { data: floorProgressById = EMPTY_FLOOR_PROGRESS_MAP } =
+    useSaleOrdersFloorProgress(floorProgressIds);
+
   // ⚠ A seleção é alimentada pelas linhas VISÍVEIS (página atual). Shift+clique
   // seleciona intervalo na tela; selectedIds persiste entre páginas.
   const sel = useMarqueeSelection(visibleOrders, (o) => o.id);
@@ -851,12 +880,27 @@ export default function SaleOrders() {
     // motivo pelo qual o motor de promoção percorre os itens em série lá dentro.
     // (requisito 2 de specs/pv-producao-performance-e-pendencias.md)
     const results: PromiseSettledResult<unknown>[] = [];
-    for (const id of ids) {
-      try {
-        results.push({ status: 'fulfilled', value: await updateStatus.mutateAsync({ id, status }) });
-      } catch (e) {
-        results.push({ status: 'rejected', reason: e });
+    const progressToastId = ids.length > 1
+      ? toast.loading(`Atualizando 0/${ids.length} para "${status}"…`)
+      : null;
+    setBulkStatusProgress(ids.length > 1 ? { done: 0, total: ids.length, status } : null);
+    try {
+      for (let index = 0; index < ids.length; index += 1) {
+        const id = ids[index];
+        try {
+          results.push({ status: 'fulfilled', value: await updateStatus.mutateAsync({ id, status }) });
+        } catch (e) {
+          results.push({ status: 'rejected', reason: e });
+        }
+        const done = index + 1;
+        if (progressToastId) {
+          toast.loading(`Atualizando ${done}/${ids.length} para "${status}"…`, { id: progressToastId });
+        }
+        if (ids.length > 1) setBulkStatusProgress({ done, total: ids.length, status });
       }
+    } finally {
+      if (progressToastId) toast.dismiss(progressToastId);
+      setBulkStatusProgress(null);
     }
     const failed = results.filter(r => r.status === 'rejected').length;
     const readinessBlocked = results.filter(
@@ -1983,6 +2027,7 @@ export default function SaleOrders() {
                 order={order}
                 pairs={pairsBySaleOrder[order.id] || 0}
                 minBilling={minBillingMap.get(order.id) || null}
+                floorProgress={floorProgressById.get(order.id)}
                 selected={sel.isSelected(order.id)}
                 isInfantil={!!segmentsBySaleOrder[order.id]?.has('Infantil')}
                 canSeeFinancialValues={canSeeFinancialValues}
@@ -2018,6 +2063,7 @@ export default function SaleOrders() {
                   <TableHead>Cidade</TableHead>
                   {canSeeFinancialValues && <SortHead sk="total" sort={sort} onSort={toggleSort} align="right">Total</SortHead>}
                   <SortHead sk="status" sort={sort} onSort={toggleSort}>Status</SortHead>
+                  <TableHead>Setor</TableHead>
                   <SortHead sk="pairs" sort={sort} onSort={toggleSort} align="right">Pares</SortHead>
                   <SortHead sk="delivery_deadline" sort={sort} onSort={toggleSort}>Entrega / Fat.</SortHead>
                   <TableHead className="text-right">Ações</TableHead>
@@ -2183,6 +2229,12 @@ export default function SaleOrders() {
                           </SelectContent>
                         </Select>
                       </TableCell>
+                      <TableCell>
+                        <SaleOrderFloorProgressSummary
+                          status={order.status}
+                          progress={floorProgressById.get(order.id)}
+                        />
+                      </TableCell>
                       <TableCell className="text-right text-xs font-mono font-semibold tabular-nums">
                         {(pairsBySaleOrder[order.id] || 0).toLocaleString('pt-BR')}
                       </TableCell>
@@ -2268,6 +2320,7 @@ export default function SaleOrders() {
                                   queryClient.invalidateQueries({ queryKey: ['sale_orders'] });
                                   queryClient.invalidateQueries({ queryKey: ['orders'] });
                                   queryClient.invalidateQueries({ queryKey: ['order_stages'] });
+                                  queryClient.invalidateQueries({ queryKey: ['sale_orders_floor_progress'] });
                                 } catch (err: any) {
                                   toast.error(`Erro ao forçar produção: ${err.message}`);
                                 }
@@ -2326,18 +2379,37 @@ export default function SaleOrders() {
       <BulkActionsBar
         selectedIds={sel.selectedIds}
         onClear={sel.clear}
-        itemLabel={sel.count === 1 ? 'PV selecionado' : 'PVs selecionados'}
+        itemLabel={bulkStatusProgress
+          ? `${bulkStatusProgress.done}/${bulkStatusProgress.total} → ${bulkStatusProgress.status}`
+          : (sel.count === 1 ? 'PV selecionado' : 'PVs selecionados')}
         className="bottom-[calc(4.5rem+env(safe-area-inset-bottom))] md:bottom-4"
         actions={[
-          ...(canEditPv ? [{ label: 'Aprovar', icon: <Check className="h-3.5 w-3.5" />, onClick: handleBulkApprove }] : []),
+          ...(canEditPv ? [{
+            label: 'Aprovar',
+            icon: <Check className="h-3.5 w-3.5" />,
+            onClick: handleBulkApprove,
+            disabled: Boolean(bulkStatusProgress),
+          }] : []),
           ...(canBuy ? [{ label: 'Gerar ordem de compra', icon: <ShoppingCart className="h-3.5 w-3.5" />, variant: 'outline' as const, onClick: handleBulkPurchaseOrders }] : []),
           { label: 'Emitir NF-e', icon: <Receipt className="h-3.5 w-3.5" />, onClick: () => openBulkNfe('emit') },
           { label: 'Etiqueta Individual', icon: <Barcode className="h-3.5 w-3.5" />, variant: 'outline' as const, onClick: handleBulkLabels },
           { label: 'Consumo', icon: <BarChart3 className="h-3.5 w-3.5" />, variant: 'outline' as const, onClick: handleBulkConsumption },
-          ...(canEditPv ? [{ label: 'Cancelar', icon: <X className="h-3.5 w-3.5" />, variant: 'destructive' as const, onClick: handleBulkCancel }] : []),
+          ...(canEditPv ? [{
+            label: 'Cancelar',
+            icon: <X className="h-3.5 w-3.5" />,
+            variant: 'destructive' as const,
+            onClick: handleBulkCancel,
+            disabled: Boolean(bulkStatusProgress),
+          }] : []),
         ]}
         secondaryActions={[
-          ...(canEditPv ? [{ label: 'Alterar Status', icon: <ListChecks className="h-3.5 w-3.5" />, variant: 'outline' as const, onClick: () => { setBulkStatusTarget(''); setBulkStatusOpen(true); } }] : []),
+          ...(canEditPv ? [{
+            label: 'Alterar Status',
+            icon: <ListChecks className="h-3.5 w-3.5" />,
+            variant: 'outline' as const,
+            onClick: () => { setBulkStatusTarget(''); setBulkStatusOpen(true); },
+            disabled: Boolean(bulkStatusProgress),
+          }] : []),
           { label: 'Pré-visualizar NF-e', icon: <Receipt className="h-3.5 w-3.5" />, variant: 'outline', onClick: () => openBulkNfe('preview') },
           { label: 'Visão Geral', icon: <LayoutDashboard className="h-3.5 w-3.5" />, variant: 'outline', onClick: () => setOverviewOpen(true) },
           { label: 'Imprimir Fichas', icon: <Printer className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkPrint },
@@ -3247,7 +3319,7 @@ export default function SaleOrders() {
           <AdminCompensatoryCancelDialog
             target={compensatoryCancelTarget}
             pending={updateStatus.isPending}
-            onClose={() => setCompensatoryCancelTarget(null)}
+            onClose={() => setCompensatoryCancelTargets((current) => current.slice(1))}
             onConfirm={async ({ reason }) => {
               const target = compensatoryCancelTarget;
               if (!target) return;
@@ -3257,7 +3329,7 @@ export default function SaleOrders() {
                 compensatory: true,
                 reason,
               });
-              setCompensatoryCancelTarget(null);
+              setCompensatoryCancelTargets((current) => current.filter((item) => item.id !== target.id));
             }}
           />
         </Suspense>

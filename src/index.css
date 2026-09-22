@@ -764,6 +764,11 @@ a:focus-visible {
   0%, 100% { box-shadow: inset 0 0 0 1px hsl(var(--primary) / 0.35); }
   50%      { box-shadow: inset 0 0 0 3px hsl(var(--primary) / 0.18); }
 }
+/* Halo compartilhado entre cards irmãos em paralelo (hover/foco). */
+@keyframes kb-sibling-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 hsl(var(--primary) / 0.0); }
+  40%      { box-shadow: 0 0 0 3px hsl(var(--primary) / 0.28); }
+}
 
 /* ⚠ fill `backwards`, NUNCA `forwards`/`both`: com fill pra frente o último
    keyframe (`transform: none`) fica grudado no elemento e passa a VENCER o
@@ -776,6 +781,15 @@ a:focus-visible {
 .kb-landed-partial { animation: kb-landed-partial 1400ms var(--ease-out); }
 /* Única animação em laço do quadro — e some no drop. */
 .kb-drop-target    { animation: kb-drop-breathe 1.5s var(--ease-in-out) infinite; }
+.kb-sibling-pulse  { animation: kb-sibling-pulse 280ms var(--ease-out); }
+
+/* Par visual de colunas no mesmo parallel_group — trilho compartilhado. */
+.kb-parallel-pair {
+  box-shadow: inset 0 3px 0 0 hsl(var(--primary) / 0.55);
+}
+.kb-parallel-pair-label {
+  letter-spacing: 0.08em;
+}
 
 /* Trilho de rolagem: máscaras no topo/pé da coluna, visíveis SÓ quando há
    mais OP naquele sentido. `data-more-*` é setado no scroll pela página. */

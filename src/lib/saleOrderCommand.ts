@@ -419,6 +419,7 @@ export function formatUnknownSaleOrderUpdateError(error: unknown): string {
 const PHYSICAL_FACT_BLOCKER_CODES = new Set([
   'physical_fact',
   'physical_finalized_op',
+  // legado / envelope raro — NF-e viva usa `active_nfe_blocks_cancel` (ver isActiveNfeBlocker)
   'physical_nfe_active',
 ]);
 
@@ -439,6 +440,15 @@ export function isPhysicalFactBlocker(issue: SaleOrderCommandIssue): boolean {
   return message.includes('fato físico') || message.includes('finalizada/concluída');
 }
 
+/** NF-e ativa (PZ112) — nunca passa por cancel compensatório. */
+export function isActiveNfeBlocker(
+  issue: Pick<SaleOrderCommandIssue, 'code' | 'scope'>,
+): boolean {
+  return issue.code === 'active_nfe_blocks_cancel'
+    || issue.code === 'physical_nfe_active'
+    || (issue.scope === 'fiscal' && String(issue.code).includes('nfe'));
+}
+
 export function listPhysicalFactBlockers(
   preflight: Pick<SaleOrderCommandPreflight, 'blockers'> | null | undefined,
 ): SaleOrderCommandIssue[] {
@@ -449,6 +459,25 @@ export function hasPhysicalFactBlockers(
   preflight: Pick<SaleOrderCommandPreflight, 'blockers'> | null | undefined,
 ): boolean {
   return listPhysicalFactBlockers(preflight).length > 0;
+}
+
+/**
+ * AdminCompensatoryCancelDialog só quando o cancel automático falhou
+ * exclusivamente por fato físico / OP finalizada (PZ105).
+ * NF-e (PZ112) ou qualquer outro blocker → readiness UI, não compensatório.
+ */
+export function shouldOfferAdminCompensatoryCancel(
+  preflight: Pick<SaleOrderCommandPreflight, 'blockers'> | null | undefined,
+  isAdmin: boolean,
+): boolean {
+  if (!isAdmin) return false;
+  const blockers = preflight?.blockers || [];
+  if (blockers.length === 0) return false;
+  if (blockers.some(isActiveNfeBlocker)) return false;
+  if (!hasPhysicalFactBlockers(preflight)) return false;
+  return blockers.every((blocker) => (
+    isPhysicalFactBlocker(blocker) && !isActiveNfeBlocker(blocker)
+  ));
 }
 
 export function formatPhysicalFactKinds(issue: SaleOrderCommandIssue): string {
