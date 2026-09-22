@@ -25,11 +25,14 @@ export const LOCAL_LEGACY_BASELINE = Object.freeze({
 // corte) por cima do canônico 20270101023800; o duplicado foi dropado
 // (24500). Em 14/09/2026 o mesmo padrão repetiu com
 // 20260914210409_restaurar_cola_forte_14g_solado_01 (canônico 20270101025000);
-// dropado em 25200. Marcadores temporários podem ter qualquer nome
+// dropado em 25200. Em 21/09/2026 o MCP gravou
+// 20260921193727_promote_op_on_first_pointing (canônico 20270101027000) —
+// o carimbo de calendário permanece no legado até remap live; baseline
+// medido 22/09/2026 = 2295. Marcadores temporários podem ter qualquer nome
 // descritivo: o contrato do Supabase compara os timestamps.
 export const REMOTE_LEGACY_BASELINE = Object.freeze({
-  count: 2294,
-  sha256: '52d44017b491f42979e636fb35985bc3993063f60299919bf0b105325811212d',
+  count: 2295,
+  sha256: 'd8339c14d496084356a322f20b826b47ee96997066d347f6ebdc7e6081db6467',
 });
 
 const MIGRATION_FILE = /^(\d{14})_(.+)\.sql$/;
