@@ -603,29 +603,38 @@ function TimesheetRecordsTab() {
           })),
         })),
       };
-      // Se a tela já está numa quinzena/mês civil, alinha o período declarado a
-      // essa janela e recorta batidas fora no save (avisadas na prévia).
+      // Preferir a quinzena/mês do PRÓPRIO arquivo quando ela é civil válida —
+      // permite importar só a 1ª quinzena com a tela ainda no mês cheio.
+      // Senão, alinha ao fechamento já selecionado na tela; por último, datas do parser.
       const todayCap = (() => {
         const now = new Date();
         return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
       })();
+      const fileClosing = identifyPayrollClosing({
+        from: datedResult.startDate,
+        to: datedResult.endDate,
+      });
       const screenClosing = identifyPayrollClosing({
         from: filterStartDate,
         to: filterEndDate > todayCap ? todayCap : filterEndDate,
       });
-      const alignedStart = screenClosing?.from || datedResult.startDate;
-      const alignedEnd = screenClosing
-        ? (screenClosing.to > todayCap ? todayCap : screenClosing.to)
+      const chosenClosing = fileClosing || screenClosing;
+      const alignedStart = chosenClosing?.from || datedResult.startDate;
+      const alignedEnd = chosenClosing
+        ? (chosenClosing.to > todayCap ? todayCap : chosenClosing.to)
         : datedResult.endDate;
-      const needsConfirm = datedResult.requiresCoverageConfirmation || !!screenClosing;
+      // Quinzena/mês civil já declarado: não exige clique extra de confirmação
+      // (batidas fora ainda são recortadas e avisadas).
+      const needsConfirm = datedResult.requiresCoverageConfirmation && !chosenClosing;
       setPreview({
         ...datedResult,
         startDate: alignedStart,
         endDate: alignedEnd,
         batchId: createTimesheetImportBatchId(alignedStart, alignedEnd),
         coverageScope: null,
-        requiresCoverageConfirmation: needsConfirm,
-        coverageConfirmed: !needsConfirm,
+        requiresCoverageConfirmation: needsConfirm || !!chosenClosing,
+        // Fechamento civil reconhecido → período já confirmado; falta só o escopo.
+        coverageConfirmed: !needsConfirm || !!chosenClosing,
         rawFile: file,
       });
       const outside = countPunchesOutsidePeriod(datedResult.employees, alignedStart, alignedEnd);
@@ -1124,7 +1133,14 @@ function TimesheetRecordsTab() {
         const gapToToday = Math.round(
           (new Date(`${todayStr}T00:00:00`).getTime() - new Date(`${lastPunch}T00:00:00`).getTime()) / 86400000,
         );
-        const staleFile = Number.isFinite(gapToToday) && gapToToday >= 3;
+        // "Arquivo atrasado" só quando a última batida é ANTERIOR ao fim declarado
+        // (export incompleto vs. o período que você confirmou). Comparar com "hoje"
+        // era erro: importar a 1ª quinzena no dia 23 acusava "~8 dias atrás" e
+        // parecia bloqueio — datas posteriores são indiferentes nesse fluxo.
+        const gapToDeclaredEnd = Math.round(
+          (new Date(`${preview.endDate}T00:00:00`).getTime() - new Date(`${lastPunch}T00:00:00`).getTime()) / 86400000,
+        );
+        const incompleteVsDeclared = Number.isFinite(gapToDeclaredEnd) && gapToDeclaredEnd >= 3;
         const coverageRangeInvalid = !/^\d{4}-\d{2}-\d{2}$/.test(preview.startDate)
           || !/^\d{4}-\d{2}-\d{2}$/.test(preview.endDate)
           || preview.startDate > preview.endDate
@@ -1135,6 +1151,10 @@ function TimesheetRecordsTab() {
           preview.endDate,
         );
         const fmtBR = (d: string) => (d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d.split('-').reverse().join('/') : '—');
+        const declaredClosing = identifyPayrollClosing({
+          from: preview.startDate,
+          to: preview.endDate,
+        });
         return (
           <Card className="border-primary/30">
             <CardHeader className="pb-2">
@@ -1144,22 +1164,28 @@ function TimesheetRecordsTab() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {/* Banner de range REAL: a 1ª coisa que o usuário vê. Mostra de quando
-                  até quando o arquivo tem batida; se o último dia está 3+ dias atrás,
-                  alerta que a exportação do relógio provavelmente ficou desatualizada. */}
-              <div className={`rounded-md border p-3 ${staleFile ? 'border-amber-500/40 bg-amber-500/5' : 'border-border bg-muted/30'}`}>
+              {/* Banner de range REAL. Alerta âmbar só se o arquivo não cobre o
+                  período declarado (última batida ≥3 dias antes do fim). Importar
+                  só a 1ª quinzena com a data de hoje depois disso é fluxo normal. */}
+              <div className={`rounded-md border p-3 ${incompleteVsDeclared ? 'border-amber-500/40 bg-amber-500/5' : 'border-border bg-muted/30'}`}>
                 <div className="flex items-center gap-2 text-sm font-medium text-foreground">
                   <Calendar className="h-4 w-4 shrink-0" />
                   <span>Ponto de <strong>{fmtBR(firstPunch)}</strong> até <strong>{fmtBR(lastPunch)}</strong> · {punchDayCount} dia{punchDayCount === 1 ? '' : 's'} com batida</span>
                 </div>
-                {staleFile && (
+                {declaredClosing && !incompleteVsDeclared && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Período declarado: {declaredClosing.cadence === 'mes' ? 'mês completo' : (declaredClosing.half === 'primeira' ? '1ª quinzena' : '2ª quinzena')}
+                    {' '}({fmtBR(preview.startDate)}–{fmtBR(preview.endDate)}). Pode importar agora e trazer o restante depois.
+                    {Number.isFinite(gapToToday) && gapToToday > 0 ? ` Hoje é ${fmtBR(todayStr)} — isso não impede o save.` : ''}
+                  </p>
+                )}
+                {incompleteVsDeclared && (
                   <div className="mt-2 flex items-start gap-2 text-xs text-amber-800 dark:text-amber-300">
                     <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
                     <span>
-                      O dia mais recente do arquivo é <strong>{fmtBR(lastPunch)}</strong> (~{gapToToday} dias atrás).
-                      Se você esperava dias mais novos, a exportação do relógio <strong>não os incluiu</strong> — refaça
-                      o download no relógio cobrindo o período correto e reimporte. Nos formatos sem cabeçalho,
-                      a folha usa o intervalo exportado que você confirmar abaixo — não presume esse intervalo pela última batida.
+                      A última batida do arquivo ({fmtBR(lastPunch)}) fica ~{gapToDeclaredEnd} dia(s) antes do fim declarado ({fmtBR(preview.endDate)}).
+                      Se a exportação deveria cobrir até essa data, refaça o download no relógio e reimporte.
+                      Se a intenção é fechar só até {fmtBR(lastPunch)}, ajuste o “Fim exportado” abaixo.
                     </span>
                   </div>
                 )}

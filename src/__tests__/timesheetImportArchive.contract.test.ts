@@ -128,12 +128,17 @@ describe('arquivo permanente das importações do relógio de ponto', () => {
     expect(PAGE).toContain('requiresCoverageConfirmation: true');
     expect(PAGE).toContain('Confirme o período coberto pela exportação');
     expect(PAGE).toContain('Confirmar período coberto');
-    expect(PAGE).toContain('coverageConfirmed: !needsConfirm');
+    // Quinzena/mês civil do arquivo (ou da tela) já confirma o período; não exige
+    // clique extra só porque a data de hoje é posterior ao fim da 1ª quinzena.
+    expect(PAGE).toContain('coverageConfirmed: !needsConfirm || !!chosenClosing');
     expect(PAGE).toContain('batchId: preview.batchId');
     expect(IMPORT_HOOK).toContain('params.batchId.startsWith');
     expect(PAGE).toContain('(preview.requiresCoverageConfirmation && preview.endDate > todayStr)');
     expect(PAGE).toContain('clipTimesheetEmployeesToPeriod');
     expect(PAGE).toContain('não serão importados');
+    expect(PAGE).toContain('incompleteVsDeclared');
+    expect(PAGE).toContain('Pode importar agora e trazer o restante depois');
+    expect(PAGE).not.toContain('(~{gapToToday} dias atrás)');
   });
 
   it('exige escopo explícito e não transforma arquivo filtrado em cobertura global', () => {
