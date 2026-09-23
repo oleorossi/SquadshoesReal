@@ -47,7 +47,7 @@ import {
   clipTimesheetEmployeesToPeriod,
   countPunchesOutsidePeriod,
 } from '@/lib/ponto/clipTimesheetImportPeriod';
-import { identifyPayrollClosing } from '@/lib/payrollClosing';
+import { identifyPayrollClosing, inferPayrollClosingFromPunchSpan } from '@/lib/payrollClosing';
 
 const DAYS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
@@ -603,13 +603,23 @@ function TimesheetRecordsTab() {
           })),
         })),
       };
-      // Preferir a quinzena/mês do PRÓPRIO arquivo quando ela é civil válida —
-      // permite importar só a 1ª quinzena com a tela ainda no mês cheio.
-      // Senão, alinha ao fechamento já selecionado na tela; por último, datas do parser.
+      // Preferir a quinzena coberta pelas BATIDAS (ex.: 01–15) — mesmo se o
+      // parser/relógio ou a tela estiverem no mês cheio. Truncar mês→hoje no
+      // meio do período inventava “fim 23” e alertava incompleto à toa.
+      // Senão: fechamento civil do arquivo → da tela → datas cruas do parser.
       const todayCap = (() => {
         const now = new Date();
         return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
       })();
+      const punchDates = datedResult.employees
+        .flatMap(emp => emp.records)
+        .filter(record => Array.isArray(record.punches) && record.punches.length > 0)
+        .map(record => record.dateStr || '')
+        .filter(Boolean)
+        .sort();
+      const punchClosing = punchDates.length > 0
+        ? inferPayrollClosingFromPunchSpan(punchDates[0], punchDates[punchDates.length - 1])
+        : null;
       const fileClosing = identifyPayrollClosing({
         from: datedResult.startDate,
         to: datedResult.endDate,
@@ -618,11 +628,17 @@ function TimesheetRecordsTab() {
         from: filterStartDate,
         to: filterEndDate > todayCap ? todayCap : filterEndDate,
       });
-      const chosenClosing = fileClosing || screenClosing;
+      const chosenClosing = punchClosing || fileClosing || screenClosing;
       const alignedStart = chosenClosing?.from || datedResult.startDate;
-      const alignedEnd = chosenClosing
-        ? (chosenClosing.to > todayCap ? todayCap : chosenClosing.to)
-        : datedResult.endDate;
+      // Quinzena civil mantém o fim canônico (15 / fim do mês). Só o fechamento
+      // MÊS no meio do período é limitado a hoje — senão o gate
+      // `endDate > today` trava o botão; batidas só na 1ª quinzena já caíram em
+      // `punchClosing` acima e não passam por esse truncamento.
+      const alignedEnd = !chosenClosing
+        ? datedResult.endDate
+        : (chosenClosing.cadence === 'mes' && chosenClosing.to > todayCap
+          ? todayCap
+          : chosenClosing.to);
       // Quinzena/mês civil já declarado: não exige clique extra de confirmação
       // (batidas fora ainda são recortadas e avisadas).
       const needsConfirm = datedResult.requiresCoverageConfirmation && !chosenClosing;
@@ -1402,10 +1418,17 @@ function TimesheetRecordsTab() {
                     || !preview.coverageScope
                     || (preview.requiresCoverageConfirmation && !preview.coverageConfirmed)}
                   className="gap-1.5"
+                  title={!preview.coverageScope
+                    ? 'Selecione se o arquivo traz o quadro todo ou só alguns funcionários'
+                    : (preview.requiresCoverageConfirmation && !preview.coverageConfirmed
+                      ? 'Confirme o período coberto pela exportação'
+                      : undefined)}
                 >
                   {importRecords.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
                   {importableRecordCount === 0
                     ? 'Sem matrícula válida para importar'
+                    : !preview.coverageScope
+                    ? 'Selecione o escopo da exportação'
                     : unmatchedRecordCount >= importableRecordCount
                     ? `Arquivar ${unmatchedRecordCount} em quarentena`
                     : unmatchedRecordCount > 0
