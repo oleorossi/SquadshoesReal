@@ -371,29 +371,10 @@ const printStyles = `
        de novo em 2026-06-12 com a paginação explícita. */
     margin: 0;
   }
-    /* Linha de corte na EMENDA entre dois maços de setor (31/07/2026).
-     FORA do @media print de propósito: a regra WYSIWYG do PRINT_SPEC §0.2-1
-     diz que nada que mude ALTURA pode viver só no print — e além disso o dono
-     precisa VER a emenda no preview antes de mandar imprimir.
-     Só a partir do 2º maço ('+'), nunca no topo da 1ª folha. */
-  .print-area .page-break + .page-break::before {
-    content: "✂  — — — — — — — —  CORTAR AQUI · MUDA DE SETOR  — — — — — — — —";
-    display: block;
-    border-top: 1.5px dashed #000;
-    margin: 4mm 0 3mm;
-    padding-top: 1.5mm;
-    font-family: 'Fira Code', monospace;
-    font-size: 8px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: #000;
-    text-align: center;
-    break-inside: avoid;
-    page-break-inside: avoid;
-    /* Não pode ficar órfã no pé da folha sem o setor que ela anuncia. */
-    break-after: avoid;
-    page-break-after: avoid;
-  }
+    /* Linha de corte entre maços: <SectorJoinCutLine /> (printContinuity),
+     in-flow na sobra da A4 ou no topo do próximo maço. O antigo
+     .page-break+.page-break::before ficava DEPOIS da caixa de 288mm e
+     lia como meia folha em branco — removido 23/09/2026. */
 
   @media print {
     /* BUG ANTIGO 1: usávamos position:absolute na print-area pra tirar o app

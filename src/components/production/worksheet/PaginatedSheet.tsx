@@ -637,8 +637,13 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle, minScale }: Pag
     )
     : 0;
 
-  const firstPagePortaled = continuesOnPriorSheet && continuationMount && orderedPages[0]?.blockIdxs.length;
+  const firstPagePortaled = !!(continuesOnPriorSheet && continuationMount && orderedPages[0]?.blockIdxs.length);
   const pagesInOwnSheet = firstPagePortaled ? orderedPages.slice(1) : orderedPages;
+  // Setor seguinte que NÃO coube na sobra: linha de corte no topo do próprio
+  // maço (a emenda in-flow fica no portal). Sem CSS ::before no .page-break —
+  // aquele marcador ficava DEPOIS da caixa A4 de 288mm e parecia meia folha vazia.
+  const joinCutBeforeOwnPages = continuity.sheetIndex > 0 && !firstPagePortaled
+    && pagesInOwnSheet.some(p => p.blockIdxs.length > 0);
 
   const portaledBlocks = firstPagePortaled && orderedPages[0]
     ? createPortal(
@@ -653,10 +658,15 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle, minScale }: Pag
   return (
     <div ref={sheetRootRef} className="pagi-sheet" style={{ width: '210mm', margin: '0 auto' }}>
       {portaledBlocks}
+      {joinCutBeforeOwnPages && <SectorJoinCutLine />}
       {pagesInOwnSheet.map((page) => {
         const packedPx = packedHeightPx(page);
-        const partialPage = !page.flow && packedPx < PAGE_CAPACITY_PX * 0.97;
-        const offerTailMount = partialPage && tailOfferPx >= MIN_CONTINUATION_PX && isLastLogicalPage(page);
+        // Última página lógica do maço NUNCA estica pra 288mm: o vazio residual
+        // é onde o próximo setor sobe (printContinuity). Páginas do meio
+        // continuam com altura de cartão A4 no preview.
+        const isTailPage = isLastLogicalPage(page);
+        const partialPage = !page.flow && (isTailPage || packedPx < PAGE_CAPACITY_PX * 0.97);
+        const offerTailMount = partialPage && isTailPage && tailOfferPx >= MIN_CONTINUATION_PX;
         return (
         <div
           key={`pg-${page.startPage}`}
