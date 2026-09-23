@@ -635,6 +635,13 @@ export function isPerPvPurchaseOrder(po: { source_type?: string | null } | null 
   return !!po && po.source_type === 'per_pv';
 }
 
+/** OC automática do motor de preparação de cabedal (`/terceirizados?tab=prep`). */
+export function isCabedalPrepPurchaseOrder(
+  po: { source_type?: string | null } | null | undefined,
+): boolean {
+  return !!po && po.source_type === 'cabedal_prep';
+}
+
 /**
  * Canal exclusivo das tiras artesanais (`source_type='strap_demand'`).
  * Tem aba própria em /purchase-orders (Demandas automáticas) e RPCs próprias

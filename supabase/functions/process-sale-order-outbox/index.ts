@@ -126,6 +126,17 @@ Deno.serve(async (req) => {
           await syncFinancialRecordsCore(admin, event.sale_order_id);
           effectResult.financial_sync = { ok: true };
 
+          // Preparação de cabedal: materializa demandas + OCs source_type=
+          // cabedal_prep ANTES do canal per_pv, que exclui esses SKUs.
+          const { data: cabedalPrep, error: cabedalPrepError } = await admin.rpc(
+            "process_cabedal_prep_purchase_shortages",
+            { p_sale_order_id: event.sale_order_id },
+          );
+          if (cabedalPrepError) {
+            throw new Error(`cabedal_prep: ${cabedalPrepError.message}`);
+          }
+          effectResult.cabedal_prep = cabedalPrep;
+
           // Idempotente por PV+fornecedor e status-aware. Em Draft/Faturado/
           // cancelado retorna skipped; em Aprovado/Em Produção recalcula pelo
           // motor canônico e cria/reusa OCs das faltas válidas.

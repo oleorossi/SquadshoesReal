@@ -17,7 +17,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { ShoppingCart, Eye, Trash as Trash2, CheckCircle as CheckCircle2, XCircle, PaperPlaneRight as Send, Lightning as Zap, MagnifyingGlass as Search, ClipboardText as ClipboardList, FileText, Warning as AlertTriangle, CalendarBlank as CalendarClock, CircleNotch as Loader2, Footprints, FileArrowDown as FileDown, Package, Funnel, X as XIcon } from '@phosphor-icons/react';
+import { ShoppingCart, Eye, Trash as Trash2, CheckCircle as CheckCircle2, XCircle, PaperPlaneRight as Send, Lightning as Zap, MagnifyingGlass as Search, ClipboardText as ClipboardList, FileText, Warning as AlertTriangle, CalendarBlank as CalendarClock, CircleNotch as Loader2, Footprints, FileArrowDown as FileDown, Package, Funnel, X as XIcon, Scissors } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { HubTabsList } from '@/components/layout/HubTabs';
@@ -42,7 +42,7 @@ import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { SearchInput } from '@/components/ui/search-input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SoleGradeEditorDialog } from '@/components/purchases/SoleGradeEditorDialog';
-import { ARTISANAL_PURCHASE_ORDER_GENERIC_CHANNEL_ERROR, isArtisanalStrapPurchaseOrder, isPerPvPurchaseOrder } from '@/lib/perPvPurchasing';
+import { ARTISANAL_PURCHASE_ORDER_GENERIC_CHANNEL_ERROR, isArtisanalStrapPurchaseOrder, isCabedalPrepPurchaseOrder, isPerPvPurchaseOrder } from '@/lib/perPvPurchasing';
 import { useCan } from '@/hooks/useAccessControl';
 import { applyPrintSandbox } from '@/lib/htmlUtils';
 import { exportPurchaseOrdersXlsx, summarizePurchaseOrders } from '@/lib/purchaseOrderReport';
@@ -915,7 +915,9 @@ export default function PurchaseOrders() {
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">{format(new Date(o.created_at), 'dd/MM/yyyy HH:mm')}</TableCell>
                         <TableCell>
-                          {o.auto_generated ? (
+                          {isCabedalPrepPurchaseOrder(o) ? (
+                            <Badge variant="outline" className="gap-1 text-xs border-teal-600/50 text-teal-700"><Scissors className="h-3 w-3" />Prep. cabedal</Badge>
+                          ) : o.auto_generated ? (
                             <Badge variant="outline" className="gap-1 text-xs border-amber-500/50 text-amber-600"><Zap className="h-3 w-3" />Auto</Badge>
                           ) : o.source_type === 'manual_avulsa' ? (
                             <Badge variant="outline" className="gap-1 text-xs border-primary/40 text-primary"><Receipt className="h-3 w-3" />Avulsa</Badge>
@@ -1308,7 +1310,8 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
             </div>
             <div className="flex items-center gap-1.5 flex-wrap">
               <Badge variant={st.variant}>{st.label}</Badge>
-              {order.auto_generated && <Badge variant="outline" className="gap-1 text-xs border-amber-500/50 text-amber-600"><Zap className="h-3 w-3" />Auto</Badge>}
+              {isCabedalPrepPurchaseOrder(order) && <Badge variant="outline" className="gap-1 text-xs border-teal-600/50 text-teal-700"><Scissors className="h-3 w-3" />Prep. cabedal</Badge>}
+              {order.auto_generated && !isCabedalPrepPurchaseOrder(order) && <Badge variant="outline" className="gap-1 text-xs border-amber-500/50 text-amber-600"><Zap className="h-3 w-3" />Auto</Badge>}
               {order.source_type === 'manual_avulsa' && <Badge variant="outline" className="gap-1 text-xs border-primary/40 text-primary"><Receipt className="h-3 w-3" />Avulsa</Badge>}
               {isArtisanalStrapPurchaseOrder(order) && <Badge variant="outline" className="gap-1 text-xs border-amber-500/50 text-amber-600"><Zap className="h-3 w-3" />Tira artesanal</Badge>}
             </div>
