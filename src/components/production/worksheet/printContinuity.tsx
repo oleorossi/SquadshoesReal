@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
-import { BLOCK_GAP_PX, MM_TO_PX, PAGE_CAPACITY_PX } from './PaginatedSheet';
+import { MM_TO_PX, PAGE_CAPACITY_PX } from './pageGeometry';
 
 /** Respiro da linha "✂ CORTAR AQUI" entre maços (margin 4+3mm + faixa). */
 export const SECTOR_JOIN_GAP_PX = 7 * MM_TO_PX;
