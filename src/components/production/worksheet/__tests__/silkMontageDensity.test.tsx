@@ -223,12 +223,23 @@ describe('outros setores do mesmo card', () => {
     );
     const txt = container.textContent || '';
     expect(txt).toContain('Peças a Costurar');
-    expect(txt).toContain('576');                 // 288 pares × 2 peças
+    expect(txt).toContain('576');                 // 288 pares × 2 peças (default)
     expect(txt).toContain('2 peças/par');
     // A foto desceu pra miniatura do cabeçalho aqui também (era 48px ao lado).
     const imgs = productImages(container);
     expect(imgs).toHaveLength(1);
     expect(imgs[0].getAttribute('width')).toBe(String(HEADER_THUMB_PX));
+  });
+
+  it('Costura Cabedal: honra piecesPerPair cadastrado na ficha (ex. 4)', () => {
+    const group = ds20([]);
+    group.colorGroups[0] = { ...group.colorGroups[0], totalPairs: 180, piecesPerPair: 4 };
+    const { container } = render(
+      <SilkMontageWorkSheet groups={[group]} sector="Costura Cabedal" sectorLabel="Costura Cabedal" />,
+    );
+    const txt = container.textContent || '';
+    expect(txt).toContain('720'); // 180 × 4
+    expect(txt).toContain('4 peças/par');
   });
 
   it('Acabamento Palmilha: dois tracks de tally (forração + costura)', () => {

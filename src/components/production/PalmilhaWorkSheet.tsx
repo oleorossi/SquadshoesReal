@@ -4,11 +4,10 @@ import { adaptiveLabelFontSize } from '@/lib/adaptiveFontSize';
 import { gradeTableFont, floorSafeScale } from './worksheet/adaptiveFont';
 import { thumbUrl } from '@/lib/imageThumb';
 import { TallyBox } from './worksheet/TallyBox';
-import { TALLY_SIZE } from './worksheet/density';
+import { TALLY_SIZE, STEP_CHECKBOX_PX, STEP_ROW_PAD_Y } from './worksheet/density';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { HeaderIdentification } from './worksheet/HeaderIdentification';
 import { SectorAlerts, type SectorAlert } from './worksheet/SectorAlerts';
-import { CompletionFooter } from './worksheet/CompletionFooter';
 import { PaginatedSheet, type SheetBlock } from './worksheet/PaginatedSheet';
 import { formatOpNumber } from './worksheet/stageOrder';
 import { fichaModelFor } from './worksheet/fichaModel';
@@ -422,6 +421,22 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
                         {group.totalPairs}
                       </td>
                     </tr>
+                    <tr>
+                      <td
+                        className="text-[10px] font-mono font-bold text-black uppercase tracking-wider"
+                        style={{ borderRight: '1px solid #000', padding: `${STEP_ROW_PAD_Y}px 4px` }}
+                      >
+                        CORTADO
+                      </td>
+                      {groupSizes.map(s => (
+                        <td key={s} style={{ borderRight: '1px solid #000', padding: `${STEP_ROW_PAD_Y}px 1px` }}>
+                          <span className="inline-block" style={{ width: STEP_CHECKBOX_PX, height: STEP_CHECKBOX_PX, border: '1.5px solid #000' }} />
+                        </td>
+                      ))}
+                      <td style={{ padding: `${STEP_ROW_PAD_Y}px 1px` }}>
+                        <span className="inline-block" style={{ width: STEP_CHECKBOX_PX, height: STEP_CHECKBOX_PX, border: '1.5px solid #000' }} />
+                      </td>
+                    </tr>
                   </tbody>
                 </table>
 
@@ -490,7 +505,6 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
         )]
       // Total Geral + rodapé com keepWithPrev: nunca abrem página sozinhos.
       : [...groupBlocks, { node: trailingBlock, keepWithPrev: true }]),
-    { node: <CompletionFooter />, keepWithPrev: true },
   ];
 
   // Piso do auto-fit vindo do CONTEÚDO: o bucket mais denso desta ficha decide

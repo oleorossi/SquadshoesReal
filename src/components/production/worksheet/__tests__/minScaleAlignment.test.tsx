@@ -105,10 +105,12 @@ describe('minScale sai da MESMA lista que a grade desenha', () => {
     expect(colunasDaGrade(container)).toBe(sizes.length);
   });
 
-  it('SilkMontage: Corte Cabedal desenha por FACA, não por numeração', () => {
+  it('SilkMontage: Corte/Costura Cabedal desenham por FACA quando há knifeGrid', () => {
     const cg = { combinedGrid: COM_ZEROS, knifeGrid: { P: 432, M: 720, G: 576 } } as never;
     expect(gradeSourceGrid(cg, 'Corte Cabedal')).toEqual({ P: 432, M: 720, G: 576 });
     expect(gradeSizesOf(cg, 'Corte Cabedal')).toEqual(['P', 'M', 'G']);
+    expect(gradeSourceGrid(cg, 'Costura Cabedal')).toEqual({ P: 432, M: 720, G: 576 });
+    expect(gradeSizesOf(cg, 'Costura Cabedal')).toEqual(['P', 'M', 'G']);
     // O mesmo grupo noutro setor volta a ser por numeração.
     expect(gradeSizesOf(cg, 'Corte Forração')).not.toContain('P');
   });

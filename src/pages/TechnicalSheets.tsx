@@ -3090,6 +3090,38 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                           onCheckedChange={v => updateField('upper_corte_a_fio' as any, !!v)}
                         />
                       </div>
+                      {/* Peças/par (2026-09-23): a costureira conta peças físicas,
+                          não pares. Default 2; SP201 e similares cadastram 4. */}
+                      <div className="space-y-1.5 p-3 rounded-lg border bg-muted/30">
+                        <Label htmlFor="upper-sewing-pieces" className="text-sm font-medium">
+                          Peças de cabedal por par
+                        </Label>
+                        <p className="text-xs text-muted-foreground">
+                          Quantas peças o operador costura em cada par. Sai na ficha
+                          "Costura Cabedal" como total = pares × este valor. Não altera
+                          consumo nem estoque.
+                        </p>
+                        <Input
+                          id="upper-sewing-pieces"
+                          type="number"
+                          min={1}
+                          max={24}
+                          step={1}
+                          className="h-9 w-24"
+                          disabled={!!(form as any).upper_corte_a_fio}
+                          value={Number((form as any).upper_sewing_pieces_per_pair) > 0
+                            ? Number((form as any).upper_sewing_pieces_per_pair)
+                            : 2}
+                          onChange={e => {
+                            const n = Math.round(Number(e.target.value));
+                            if (!Number.isFinite(n)) return;
+                            updateField(
+                              'upper_sewing_pieces_per_pair' as any,
+                              Math.min(24, Math.max(1, n)),
+                            );
+                          }}
+                        />
+                      </div>
                       <p className="text-xs text-muted-foreground">
                         Baixa de estoque: cabedal no início de <strong className="text-foreground">Corte Cabedal</strong>.
                       </p>

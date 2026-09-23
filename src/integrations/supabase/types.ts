@@ -32526,6 +32526,7 @@ export type Database = {
           upper_consumption: number | null
           upper_consumption_per_size: Json | null
           upper_corte_a_fio: boolean
+          upper_sewing_pieces_per_pair: number
           upper_material: string | null
           upper_material_group_id: string | null
           upper_material_product_id: string | null
@@ -32663,6 +32664,7 @@ export type Database = {
           upper_consumption?: number | null
           upper_consumption_per_size?: Json | null
           upper_corte_a_fio?: boolean
+          upper_sewing_pieces_per_pair?: number
           upper_material?: string | null
           upper_material_group_id?: string | null
           upper_material_product_id?: string | null
@@ -32800,6 +32802,7 @@ export type Database = {
           upper_consumption?: number | null
           upper_consumption_per_size?: Json | null
           upper_corte_a_fio?: boolean
+          upper_sewing_pieces_per_pair?: number
           upper_material?: string | null
           upper_material_group_id?: string | null
           upper_material_product_id?: string | null

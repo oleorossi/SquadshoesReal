@@ -361,7 +361,7 @@ gigante repetido na seguinte). Estrutura do maço:
 2. **`GroupSubHeader`** por grupo (`worksheet/GroupSubHeader.tsx`): faixa fina
    com hairline — eyebrow ("SOLADO 02/05"), título em Anton menor adaptativo,
    selo INFANTIL/ADULTO, lote, OPs e pares do grupo.
-3. Cards do grupo + `CompletionFooter` POR GRUPO.
+3. Cards do grupo (sem rodapé de visto/assinatura — removido 2026-09).
 
 Grupo que não cabe no resto da página vai inteiro pra próxima (paginador),
 sem header gigante — a identificação das páginas 2+ é a faixa do
@@ -643,7 +643,7 @@ src/
         PaginatedSheet.tsx    ← Paginador explícito v7 (+ packBlocks testado)
         WorksheetHeader.tsx   ← Header de ficha de operador
         SignatureFooter.tsx   ← Rodapé com assinaturas
-        CompletionFooter.tsx  ← Rodapé de conclusão (Executado/Data/Visto)
+        (CompletionFooter removido — fichas sem visto, 2026-09)
         ProductImageBlock.tsx
         SectorAlerts.tsx
         TallyBox.tsx

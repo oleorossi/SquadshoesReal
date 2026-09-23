@@ -7,7 +7,6 @@ import { TallyBox } from './worksheet/TallyBox';
 import { TALLY_SIZE } from './worksheet/density';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { HeaderIdentification } from './worksheet/HeaderIdentification';
-import { CompletionFooter } from './worksheet/CompletionFooter';
 import { PaginatedSheet, type SheetBlock } from './worksheet/PaginatedSheet';
 import { formatOpNumber } from './worksheet/stageOrder';
 import { fichaModelFor } from './worksheet/fichaModel';
@@ -420,7 +419,6 @@ export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 1
         )]
       // Total Geral + rodapé com keepWithPrev: nunca abrem página sozinhos.
       : [...bandBlocks, { node: trailingBlock, keepWithPrev: true }]),
-    { node: <CompletionFooter />, keepWithPrev: true },
   ];
 
   // Piso do auto-fit vindo do CONTEÚDO: o bucket mais denso desta ficha decide

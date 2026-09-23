@@ -1526,7 +1526,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       // upper_corte_a_fio: filtro da ficha 'Costura Cabedal' (2026-06-12).
       const { data, error } = await supabase
         .from('technical_sheets')
-        .select('id, insole_has_lining, insole_ready_made, has_straps, sole_material, sole_color, sole_group_id, primary_sole_id, production_sectors, aviamento_steps, upper_material, upper_material_group_id, upper_material_product_id, upper_consumption, upper_consumption_per_size, components_accessories, lining_material, insole_material, upper_corte_a_fio, knife_size_ranges, aviamento_size_ranges, shoe_category')
+        .select('id, insole_has_lining, insole_ready_made, has_straps, sole_material, sole_color, sole_group_id, primary_sole_id, production_sectors, aviamento_steps, upper_material, upper_material_group_id, upper_material_product_id, upper_consumption, upper_consumption_per_size, components_accessories, lining_material, insole_material, upper_corte_a_fio, upper_sewing_pieces_per_pair, knife_size_ranges, aviamento_size_ranges, shoe_category')
         .in('id', referenceIds);
       if (error) throw error;
       return data || [];
@@ -2573,6 +2573,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           requiresLiningCut,
           requiresUpperCut: needsUpperCut,
           requiresUpperSewing,
+          piecesPerPair: (() => {
+            const n = Number((sheetById.get(sheetId) as any)?.upper_sewing_pieces_per_pair);
+            return Number.isFinite(n) && n >= 1 ? Math.min(24, Math.round(n)) : 2;
+          })(),
           leftoverNapas: leftoverLabelsFromSheet(sheetById.get(sheetId)),
           aviamentoSteps: aviamentoStepsByRef.get(sheetId) || [],
           lotInfo: lotTotal > 1 ? { number: lotNum, total: lotTotal } : undefined,
@@ -2778,13 +2782,21 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   // Corte Cabedal ficava número-a-número. (PV-00142, 2026-06-17.)
   }, [expandedOrders, activeSectors, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, soleMaterialByRef, sheetMaterialsByRef, resolveSoleForOrder, sheetById, clientsInfo, economicGroupsInfo, soleGroupPackaging, SOLE_COLOR_GROUPED_SECTORS, knifeDefaultBoundaries, knifeOptOutByRef, knifeRangesByRef, aviamentoDefaultBoundaries, aviamentoOptOutByRef, aviamentoRangesByRef]);
 
-  // Corte/Costura Cabedal precisam preservar a elegibilidade POR OP. Sem a
-  // partição, referências distintas com o mesmo solado/cor/tiras/lote seriam
-  // fundidas antes do filtro e a elegibilidade agregada por OR carregaria os
-  // pares de um modelo somente de tiras para esses setores.
+  // Corte Cabedal: por SOLADO+cor (cortador foca no material). Costura Cabedal
+  // SAIU deste builder (2026-09-23, dono): não funde refs distintas — ver
+  // costuraCabedalGroups (por REFERÊNCIA, como Aviamento).
   const upperSectorGroups = useMemo<SoleSilkGroup[] | null>(() => {
-    if (!activeSectors.has('Corte Cabedal') && !activeSectors.has('Costura Cabedal')) return null;
+    if (!activeSectors.has('Corte Cabedal')) return null;
     return buildColorGroupedSheets('sole', true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expandedOrders, activeSectors, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, soleMaterialByRef, sheetMaterialsByRef, resolveSoleForOrder, sheetById, clientsInfo, economicGroupsInfo, soleGroupPackaging, knifeDefaultBoundaries, knifeOptOutByRef, knifeRangesByRef, aviamentoDefaultBoundaries, aviamentoOptOutByRef, aviamentoRangesByRef]);
+
+  // Costura Cabedal: 1 ficha por REFERÊNCIA, seções por cor (2026-09-23).
+  // Antes reaproveitava upperSectorGroups (sole+cor) e fundia LA01+SP201 no
+  // mesmo card OFF WHITE do PV-00197 — errado: a costureira trabalha por modelo.
+  const costuraCabedalGroups = useMemo<SoleSilkGroup[] | null>(() => {
+    if (!activeSectors.has('Costura Cabedal')) return null;
+    return buildColorGroupedSheets('reference', true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expandedOrders, activeSectors, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, soleMaterialByRef, sheetMaterialsByRef, resolveSoleForOrder, sheetById, clientsInfo, economicGroupsInfo, soleGroupPackaging, knifeDefaultBoundaries, knifeOptOutByRef, knifeRangesByRef, aviamentoDefaultBoundaries, aviamentoOptOutByRef, aviamentoRangesByRef]);
 
@@ -3516,7 +3528,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     // `sheetCount === 0` desabilitava os dois botões de imprimir (2921/2924).
     if (activeSectors.has('Acabamento Palmilha') && smGroups.some(g =>
       g.colorGroups.some(cg => opsInRoteiro(cg.opNumbers, 'Costura')))) total += 1;
-    if (activeSectors.has('Costura Cabedal') && upperGroups.some(g =>
+    if (activeSectors.has('Costura Cabedal') && (costuraCabedalGroups || []).some(g =>
       g.colorGroups.some(cg => cg.requiresUpperSewing === true && opsInRoteiro(cg.opNumbers, 'Costura Cabedal')))) total += 1;
     if (activeSectors.has('Aviamento') && (aviamentoGroups || []).some(g =>
       g.colorGroups.some(cg => opsInRoteiro(cg.opNumbers, 'Aviamento')))) total += 1;
@@ -3535,7 +3547,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     // das deps de propósito (mesmo padrão dos memos vizinhos); os dados que
     // elas leem chegam via silkMontageGroups/upperSectorGroups/groupedWorksheets.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isCaixa, isCartao, cartaoCaixaCards, cartaoFisicoCards, activeSectors, palmilhaGroups, solagemData, silkMontageGroups, upperSectorGroups, aviamentoGroups, groupedWorksheets, acabamentoOrders.length, expedicaoGroups, reportGroups]);
+  }, [isCaixa, isCartao, cartaoCaixaCards, cartaoFisicoCards, activeSectors, palmilhaGroups, solagemData, silkMontageGroups, upperSectorGroups, costuraCabedalGroups, aviamentoGroups, groupedWorksheets, acabamentoOrders.length, expedicaoGroups, reportGroups]);
 
   const today = new Date().toLocaleDateString('pt-BR');
   const printPairCount = printOrders.reduce((total, order) => total + (Number(order.total_pairs) || 0), 0);
@@ -3963,8 +3975,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
         {isA4 && (() => {
           const smGroups = silkMontageGroups || [];
           const upperGroups = upperSectorGroups || [];
+          const costuraGroups = costuraCabedalGroups || [];
           const aviGroups = aviamentoGroups || [];
-          if (smGroups.length === 0 && upperGroups.length === 0 && aviGroups.length === 0) return null;
+          if (smGroups.length === 0 && upperGroups.length === 0 && costuraGroups.length === 0 && aviGroups.length === 0) return null;
 
           // Filtro por setor: cada setor precisa de critérios específicos.
           // Corte Forração: só cores cuja palmilha precisa de forração.
@@ -4032,7 +4045,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           const CUTTING_AGGREGATE_BY_COLOR: ReadonlyArray<GroupedSector> = ['Corte Cabedal'];
           const mergeColorsAcrossSoles = (sector: GroupedSector): SoleSilkGroup | null => {
             const colorMap = new Map<string, SilkColorGroup>();
-            const sourceGroups = sector === 'Corte Cabedal' || sector === 'Costura Cabedal'
+            const sourceGroups = sector === 'Corte Cabedal'
               ? upperGroups
               : smGroups;
             for (const soleGroup of sourceGroups) {
@@ -4305,48 +4318,17 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
               // Corte Cabedal: cores agregadas entre solados → 1 grupo único.
               const merged = mergeColorsAcrossSoles(sectorName);
               groupsForSector = merged ? [merged] : [];
-              // #region agent log
-              {
-                const pvHit = (expandedOrders as any[]).some(o => String(o.sale_order_number || '').includes('00197'));
-                if (pvHit && sectorName === 'Corte Cabedal') {
-                  const perOp = (expandedOrders as any[])
-                    .filter(o => String(o.sale_order_number || '').includes('00197'))
-                    .map(o => {
-                      const sheetId = o.reference_id;
-                      const elig = getUpperWorkEligibility(sheetById.get(sheetId));
-                      return {
-                        op: o.op_number,
-                        color: o.color,
-                        ref: o.reference_code || o.reference_name,
-                        sheetId,
-                        requiresUpperCut: elig.requiresUpperCut,
-                        partitionKey: elig.partitionKey,
-                        qty: o.quantity,
-                      };
-                    });
-                  const upperSnap = upperGroups.map(g => ({
-                    sole: g.soleName,
-                    colors: g.colorGroups.map(cg => ({
-                      color: cg.color,
-                      pairs: cg.totalPairs,
-                      requiresUpperCut: cg.requiresUpperCut,
-                      ops: cg.opNumbers,
-                      pvs: cg.pvNumbers,
-                      refs: (cg.refs || []).map((r: any) => r.code || r.name),
-                      consumo: (cg.consumption || []).map((r: any) => ({
-                        comp: r.component, mat: r.product_name, color: r.color, qty: r.required,
-                      })),
-                    })),
-                  }));
-                  fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b71199'},body:JSON.stringify({sessionId:'b71199',runId:'post-fix',hypothesisId:'H11-H13',location:'PrintWorkSheetsPage.tsx:CorteCabedal',message:'cabedal merge refs+photos',data:{perOp,merged:groupsForSector.map(g=>({sole:g.soleName,totalPairs:g.totalPairs,colorCount:g.colorGroups.length,colors:g.colorGroups.map(cg=>({color:cg.color,pairs:cg.totalPairs,ops:cg.opNumbers,refs:(cg.refs||[]).map((r:any)=>r.code||r.name),refImages:(cg.refImages||[]).map((ri:any)=>({sheetId:ri.sheetId,ref:ri.refName||ri.refCode,pairs:ri.pairs,fichas:ri.fichas,hasImg:!!(ri.variantImageUrl||ri.technicalSheetImageUrl)}))}))}))},timestamp:Date.now()})}).catch(()=>{});
-                }
-              }
-              // #endregion
             } else if (sectorName === 'Aviamento') {
               // Aviamento: grupos por REFERÊNCIA (sub-header por referência;
               // a foto do produto sai no 1º card de cada cor).
               groupsForSector = aviGroups
                 .map(group => filterGroupForSector(group, 'Aviamento'))
+                .filter((g): g is SoleSilkGroup => g !== null);
+            } else if (sectorName === 'Costura Cabedal') {
+              // Costura Cabedal (2026-09-23): por REFERÊNCIA — não funde modelos
+              // no mesmo card de cor (PV-00197 LA01+SP201 OFF WHITE).
+              groupsForSector = costuraGroups
+                .map(group => filterGroupForSector(group, 'Costura Cabedal'))
                 .filter((g): g is SoleSilkGroup => g !== null);
             } else if (sectorName === 'Corte Forração') {
               // Corte Forração: grupos por solado, cores fundidas pela COR
@@ -4354,39 +4336,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
               groupsForSector = smGroups
                 .map(group => mergeForracaoWithinSole(group))
                 .filter((g): g is SoleSilkGroup => g !== null);
-              // #region agent log
-              {
-                const pvHit = groupsForSector.some(g =>
-                  g.colorGroups.some(cg => (cg.pvNumbers || []).some(p => String(p).includes('00197'))));
-                const smHit = smGroups.some(g =>
-                  g.colorGroups.some(cg => (cg.pvNumbers || []).some(p => String(p).includes('00197'))));
-                if (pvHit || smHit) {
-                  const perOp = (expandedOrders as any[])
-                    .filter(o => String(o.sale_order_number || '').includes('00197'))
-                    .map(o => {
-                      const sheetId = o.reference_id;
-                      const needs = (liningFlagLookup.get(sheetId) === true) && !isEffectiveReadyMade(sheetId, o.color);
-                      return {
-                        op: o.op_number,
-                        color: o.color,
-                        ref: o.reference_code || o.reference_name,
-                        requiresLiningCut: needs,
-                        insoleHasLining: liningFlagLookup.get(sheetId),
-                        readyMade: isEffectiveReadyMade(sheetId, o.color),
-                        inRoteiro: orderInRoteiro(sheetId, 'Corte Forração'),
-                        liningMat: sheetMaterialsByRef.get(sheetId)?.lining || null,
-                        sole: resolveSoleForOrder(sheetId, o.color)?.baseName || null,
-                        soleClass: resolveSoleForOrder(sheetId, o.color)?.soleClassification || null,
-                      };
-                    });
-                  fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b71199'},body:JSON.stringify({sessionId:'b71199',runId:'pre-fix',hypothesisId:'H1-H3',location:'PrintWorkSheetsPage.tsx:CorteForracao',message:'forracao groups after merge',data:{perOp,smGroups:smGroups.map(g=>({sole:g.soleName,colors:g.colorGroups.map(cg=>({color:cg.color,pairs:cg.totalPairs,requiresLiningCut:cg.requiresLiningCut,ops:cg.opNumbers,pvs:cg.pvNumbers,liningBd:cg.liningBreakdown?Array.from(cg.liningBreakdown.entries()).map(([k,v])=>({k,pairs:v.totalPairs,mat:v.material})):null}))})),merged:groupsForSector.map(g=>({sole:g.soleName,colors:g.colorGroups.map(cg=>({color:cg.color,pairs:cg.totalPairs,liningMaterial:cg.liningMaterial,ops:cg.opNumbers,pvs:cg.pvNumbers}))}))},timestamp:Date.now()})}).catch(()=>{});
-                }
-              }
-              // #endregion
             } else {
-              // Costura* / Silk: grupos por solado.
-              const sourceGroups = sectorName === 'Costura Cabedal' ? upperGroups : smGroups;
-              groupsForSector = sourceGroups
+              // Acabamento Palmilha / Silk: grupos por solado.
+              groupsForSector = smGroups
                 .map(group => filterGroupForSector(group, sectorName))
                 .filter((g): g is SoleSilkGroup => g !== null);
             }

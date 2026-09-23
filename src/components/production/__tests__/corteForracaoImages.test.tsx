@@ -198,6 +198,30 @@ describe('SilkMontageWorkSheet · faixa de fotos no Corte Forração', () => {
     expect(container.textContent).toContain('8');
   });
 
+  it('Corte Cabedal: 1 foto + tally por referência quando a cor agrega 2 modelos', () => {
+    const cg = baseCg({
+      totalPairs: 360,
+      fichas: 24,
+      baseGradeSum: 15,
+      refs: [{ code: 'LA01', name: 'LA01' }, { code: 'SP201', name: 'SP201' }],
+      refImages: [
+        { sheetId: 'la01', refName: 'LA01', pairs: 180, fichas: 12, variantImageUrl: IMG_A },
+        { sheetId: 'sp201', refName: 'SP201', pairs: 180, fichas: 12, variantImageUrl: IMG_B },
+      ],
+    });
+    const { container } = render(
+      <SilkMontageWorkSheet sector="Corte Cabedal" groups={[group(cg)]} sectorLabel="Corte Cabedal" />,
+    );
+    const imgs = Array.from(container.querySelectorAll('img'))
+      .filter(i => /ref-[ab]\.jpg/.test(i.getAttribute('src') || ''));
+    expect(imgs).toHaveLength(2);
+    expect(container.textContent).toContain('LA01');
+    expect(container.textContent).toContain('SP201');
+    // Dois controles de fichas — um por referência (não 1 bloco de 24).
+    expect(container.textContent).toMatch(/Controle de Fichas · LA01/);
+    expect(container.textContent).toMatch(/Controle de Fichas · SP201/);
+  });
+
   it('NÃO mostra foto do produto no Silk (setor sem showCompactImages)', () => {
     const cg = baseCg({
       refImages: [{ sheetId: 'a', refName: 'SUELI', variantImageUrl: IMG_A }],

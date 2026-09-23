@@ -6,7 +6,6 @@ import { TallyBox } from './worksheet/TallyBox';
 import { TALLY_SIZE } from './worksheet/density';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { HeaderIdentification } from './worksheet/HeaderIdentification';
-import { CompletionFooter } from './worksheet/CompletionFooter';
 import { PaginatedSheet, type SheetBlock } from './worksheet/PaginatedSheet';
 import { formatOpNumber } from './worksheet/stageOrder';
 
@@ -407,25 +406,6 @@ export const ExpedicaoWorkSheet = ({ group, sizeBand, sectorLabel }: Props) => {
     );
   });
 
-  // Checklist final + rodapé de conclusão (Executado por / Data / Visto).
-  // Assinaturas removidas em 2026-06-11 (pedido do user).
-  const checklistBlock = (
-      <div className="keep-together">
-        <div className="mt-2">
-          <span className="section-label block mb-1" style={{ color: '#000' }}>04 / Checklist Final</span>
-          <div className="border-t border-black pt-2 grid grid-cols-4 gap-3">
-            {['NF-e impressa', 'Etiqueta do cliente', 'Romaneio assinado', 'Conferência por par'].map(item => (
-              <label key={item} className="flex items-center gap-2 text-[10px] text-black">
-                <span className="inline-block w-4 h-4 shrink-0" style={{ border: '1.5px solid #000' }} />
-                <span className="leading-tight">{item}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-        <CompletionFooter />
-      </div>
-  );
-
   /**
    * Resumo CAIXAS POR NUMERAÇÃO — só em pedido `numeracao_unica`.
    *
@@ -553,9 +533,6 @@ export const ExpedicaoWorkSheet = ({ group, sizeBand, sectorLabel }: Props) => {
     embalagemBlock,
     tallyBlock,
     ...itemBlocks,
-    // Checklist final + rodapé de conclusão (mesmo bloco) com keepWithPrev:
-    // nunca abrem página sozinhos — puxam o último chunk de itens junto.
-    { node: checklistBlock, keepWithPrev: true },
   ];
 
   // Piso do auto-fit vindo do CONTEÚDO: o bucket mais denso desta ficha decide

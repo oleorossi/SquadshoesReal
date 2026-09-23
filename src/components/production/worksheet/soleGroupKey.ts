@@ -1,8 +1,9 @@
 /**
  * Chave de agrupamento por SOLADO pros maços de impressão dos setores
- * agrupados (Corte Forração / Acabamento Palmilha / Costura Cabedal / Silk e
+ * agrupados (Corte Forração / Acabamento Palmilha / Silk e
  * o pré-merge do Corte Cabedal) — `buildColorGroupedSheets('sole')` em
- * `PrintWorkSheetsPage.tsx`.
+ * `PrintWorkSheetsPage.tsx`. Costura Cabedal agrupa por REFERÊNCIA
+ * (`buildColorGroupedSheets('reference')`) desde 2026-09-23.
  *
  * BUG (2026-06-12, dono: "Corte de forração tá duplicado no relatório /
  * vários setores estão repetindo na hora de gerar o arquivo"): a chave usava
@@ -12,7 +13,7 @@
  * com 3 cores de cabedal resolve (via sole_color_conjugations /
  * technical_sheet_sole_colors) 3 produtos do MESMO solado → o maço imprimia
  * 3 grupos consecutivos todos intitulados "SOLADO TRATORADO" (sub-header +
- * cards + CompletionFooter cada), parecendo o setor inteiro duplicado.
+ * cards cada), parecendo o setor inteiro duplicado.
  *
  * FIX: agrupa pelo GRUPO do produto (`products.group_id` = o MODELO do
  * solado — mesma identidade do título impresso). Fallbacks, na ordem:

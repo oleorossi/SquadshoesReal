@@ -12,7 +12,6 @@ import { TallyBox } from './worksheet/TallyBox';
 import { SectorMaterials } from './worksheet/SectorMaterials';
 import type { ConsumptionRow } from '@/hooks/useBulkOrderConsumption';
 import { TALLY_SIZE } from './worksheet/density';
-import { CompletionFooter } from './worksheet/CompletionFooter';
 import { PaginatedSheet, type SheetBlock } from './worksheet/PaginatedSheet';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { HeaderIdentification } from './worksheet/HeaderIdentification';
@@ -801,8 +800,6 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
       ...(gradeAoLadoDaFoto ? [] : [gradeBlock]),
       ...(groupedOpsBlock ? [groupedOpsBlock] : []),
       operacaoBlock,
-      // Rodapé de conclusão do GRUPO — keepWithPrev: nunca abre página sozinho.
-      { node: <CompletionFooter />, keepWithPrev: true },
     ];
   };
 

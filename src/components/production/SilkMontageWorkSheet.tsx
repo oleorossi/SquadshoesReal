@@ -9,7 +9,6 @@ import { HeaderIdentification } from './worksheet/HeaderIdentification';
 import { GroupSubHeader } from './worksheet/GroupSubHeader';
 import { fichaModelFor, showsTrace } from './worksheet/fichaModel';
 import { ProductImageBlock, resolveImage } from './worksheet/ProductImageBlock';
-import { CompletionFooter } from './worksheet/CompletionFooter';
 import {
   TALLY_SIZE,
   HEADER_THUMB_PX,
@@ -174,6 +173,9 @@ export interface SilkColorGroup {
    *  (requiresUpperCut) E a ficha técnica NÃO é corte a fio
    *  (upper_corte_a_fio=false). Filtra a ficha 'Costura Cabedal'. */
   requiresUpperSewing?: boolean;
+  /** Peças físicas de cabedal por par (cadastro da ficha). Default 2.
+   *  Usado só em Costura Cabedal: total = totalPairs × piecesPerPair. */
+  piecesPerPair?: number;
   /** Sobra de napa de outra espessura (Material extra do cabedal). Exibida
    *  em Corte/Costura Cabedal — soma ao Material 1, não o substitui. */
   leftoverNapas?: string[];
@@ -333,7 +335,7 @@ const sortSizes = (sizes: string[]): string[] =>
  *
  * FLUXO CONTÍNUO POR SETOR (2026-06-12, pedido do dono): o componente recebe
  * TODOS os grupos do setor e emite UM PaginatedSheet só — header agregado do
- * setor (1×) + sub-header compacto por grupo + cards + CompletionFooter por
+ * setor (1×) + sub-header compacto por grupo + cards por
  * grupo. Grupo que não cabe no resto da página vai inteiro pra próxima, sem
  * repetir header gigante (a identificação das páginas 2+ é a faixa fina do
  * próprio PaginatedSheet).
@@ -420,14 +422,16 @@ export function compactThumbPx(count: number): number {
  * layout que só existe dentro do JSX não tem como ser travada por teste.
  */
 /**
- * Grade de origem da tabela desta cor: por FACA no Corte Cabedal (quando a ref
- * tem `knife_size_ranges`), por segmento no Aviamento, por numeração no resto.
+ * Grade de origem da tabela desta cor: por FACA no Corte/Costura Cabedal (quando
+ * a ref tem `knife_size_ranges`), por segmento no Aviamento, por numeração no resto.
  */
 export function gradeSourceGrid(
   cg: Pick<SilkColorGroup, 'knifeGrid' | 'aviamentoGrid' | 'combinedGrid'>,
   sector: GroupedSector,
 ): Record<string, number> {
-  if (sector === 'Corte Cabedal' && cg.knifeGrid && Object.keys(cg.knifeGrid).length > 0) return cg.knifeGrid;
+  if ((sector === 'Corte Cabedal' || sector === 'Costura Cabedal') && cg.knifeGrid && Object.keys(cg.knifeGrid).length > 0) {
+    return cg.knifeGrid;
+  }
   if (sector === 'Aviamento' && cg.aviamentoGrid && Object.keys(cg.aviamentoGrid).length > 0) return cg.aviamentoGrid;
   return cg.combinedGrid;
 }
@@ -471,15 +475,6 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
   // 'legacy' e não mudam em nada.
   const model = fichaModelFor(sector);
 
-  // #region agent log
-  if (sector === 'Corte Forração' || sector === 'Corte Cabedal') {
-    const pvs = groups.flatMap(g => g.colorGroups.flatMap(cg => cg.pvNumbers || []));
-    if (pvs.some(p => String(p).includes('00197'))) {
-      fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b71199'},body:JSON.stringify({sessionId:'b71199',runId:'post-fix',hypothesisId:'H11-H13',location:'SilkMontageWorkSheet.tsx:render',message:`${sector} render input`,data:{sector,groupCount:groups.length,totalColors:groups.reduce((s,g)=>s+g.colorGroups.length,0),grandPairs:groups.reduce((s,g)=>s+g.totalPairs,0),groups:groups.map(g=>({sole:g.soleName,colors:g.colorGroups.map(cg=>({color:cg.color,pairs:cg.totalPairs,ops:cg.opNumbers,refs:(cg.refs||[]).map((r:any)=>r.code||r.name),refImages:(cg.refImages||[]).map((ri:any)=>({ref:ri.refName||ri.refCode,pairs:ri.pairs,fichas:ri.fichas,hasImg:!!(ri.variantImageUrl||ri.technicalSheetImageUrl)})),thumbs:collectCompactThumbs(cg).length}))}))},timestamp:Date.now()})}).catch(()=>{});
-    }
-  }
-  // #endregion
-
   // ── Agregados do setor (header consolidado, padrão PalmilhaWorkSheet) ──
   const grandTotal = groups.reduce((s, g) => s + g.totalPairs, 0);
   const totalColors = groups.reduce((s, g) => s + g.colorGroups.length, 0);
@@ -518,7 +513,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
     // populado com labels P/M/G), exibe colunas por faca em vez de
     // numeração individual. Aviamento: idem com aviamentoGrid (segmento
     // próprio). Outros setores sempre usam combinedGrid.
-    const usingKnife = sector === 'Corte Cabedal'
+    const usingKnife = (sector === 'Corte Cabedal' || sector === 'Costura Cabedal')
       && cg.knifeGrid
       && Object.keys(cg.knifeGrid).length > 0;
     const usingAviamentoPmg = sector === 'Aviamento'
@@ -533,6 +528,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
     // visual discreto (não esconde dados, só alerta).
     const displayedSum = activeSizes.reduce((s, k) => s + (Number(sourceGrid[k]) || 0), 0);
     const knifeGridMismatch = usingBuckets && displayedSum !== (cg.totalPairs || 0);
+    const showCortadoMark = sector === 'Corte Forração' || sector === 'Corte Cabedal' || sector === 'Costura Cabedal';
     // Fontes adaptativas pela qtd de colunas (2026-06-12): grade mista
     // (16+ numerações) cortava as células com fonte fixa. A.3 (multi-setor):
     // SEMPRE dense — mesmo degrau do layout compacto — **sem** ligar
@@ -615,7 +611,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
               </tr>
             );
           })()}
-          <tr style={{ borderBottom: theme.showFrenteTraseiro ? '1px solid #000' : 'none' }}>
+          <tr style={{ borderBottom: (theme.showFrenteTraseiro || showCortadoMark) ? '1px solid #000' : 'none' }}>
             <td className="py-1 font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: '1px solid #000', minWidth: 96, whiteSpace: 'nowrap', padding: '5px 6px', letterSpacing: '0.04em', fontSize: adaptiveLabelFontSize(cg.fichas, cg.mixedGrades) }}>
               {cg.fichasAproximadas
                 ? <>Total<br />≈ {cg.fichas || 0} fichas</>
@@ -657,6 +653,25 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
               {cg.totalPairs}
             </td>
           </tr>
+
+          {showCortadoMark && (
+            <tr style={{ borderBottom: theme.showFrenteTraseiro ? '1px solid #000' : 'none' }}>
+              <td
+                className="text-[10px] font-mono font-bold text-black uppercase tracking-wider"
+                style={{ borderRight: '1px solid #000', padding: `${STEP_ROW_PAD_Y}px 4px` }}
+              >
+                CORTADO
+              </td>
+              {activeSizes.map(s => (
+                <td key={s} style={{ borderRight: '1px solid #000', padding: `${STEP_ROW_PAD_Y}px 1px` }}>
+                  <span className="inline-block" style={{ width: STEP_CHECKBOX_PX, height: STEP_CHECKBOX_PX, border: '1.5px solid #000' }} />
+                </td>
+              ))}
+              <td style={{ padding: `${STEP_ROW_PAD_Y}px 1px` }}>
+                <span className="inline-block" style={{ width: STEP_CHECKBOX_PX, height: STEP_CHECKBOX_PX, border: '1.5px solid #000' }} />
+              </td>
+            </tr>
+          )}
 
           {/* Tiras por faixa (Aviamento — layout unificado): cada tira numa linha,
               medida em cm/PÉ (÷2 do valor por par armazenado) por faixa (P/M/G) nas
@@ -1435,8 +1450,8 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                     </div>
                     {withCaption && t.refNames.length > 0 && (
                       <span
-                        className="block truncate text-center uppercase font-bold"
-                        style={{ fontFamily: "'Fira Code', monospace", fontSize: '8.5px', letterSpacing: '0.06em', color: '#C00000', maxWidth: IMG }}
+                        className="block truncate text-center uppercase leading-none"
+                        style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '12px', letterSpacing: '-0.01em', color: '#C00000', maxWidth: IMG, borderTop: '1px solid #C00000', paddingTop: 2, marginTop: 1 }}
                         title={t.refNames.join(' · ')}
                       >
                         {t.refNames.join(' · ')}
@@ -1476,19 +1491,32 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                         qual modelo aquela cor pertence (pedido user 2026-06-25).
                         Some quando a ficha inteira já é de uma referência
                         (groupKind 'reference' — Aviamento), pra não repetir. */}
-                    {group.groupKind !== 'reference' && cg.refs && cg.refs.length > 0 && (
+                    {group.groupKind !== 'reference' && cg.refs && cg.refs.length > 0 && (() => {
+                      const multiRefs = cg.refs.length > 1;
+                      return (
                       <div className="flex items-center gap-1 shrink-0 flex-wrap">
+                        {multiRefs && (
+                          <span
+                            className="inline-block uppercase whitespace-nowrap shrink-0"
+                            style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '13px', letterSpacing: '-0.01em', color: '#C00000', border: '1.5px solid #C00000', padding: '0 4px', lineHeight: '18px' }}
+                          >
+                            {cg.refs.length} REFS
+                          </span>
+                        )}
                         {cg.refs.map((r) => (
                           <span
                             key={r.code || r.name}
-                            className="inline-block bg-black text-white font-bold px-1.5 py-0.5 whitespace-nowrap uppercase"
-                            style={{ fontSize: '10px', letterSpacing: '0.04em' }}
+                            className="inline-block font-bold px-1.5 py-0.5 whitespace-nowrap uppercase"
+                            style={multiRefs
+                              ? { fontFamily: "'Anton', Impact, sans-serif", fontSize: '14px', letterSpacing: '-0.01em', color: '#C00000', border: '1.5px solid #000', background: '#fff', lineHeight: 1.1 }
+                              : { fontSize: '10px', letterSpacing: '0.04em', background: '#000', color: '#fff' }}
                           >
                             {r.name || r.code || '—'}
                           </span>
                         ))}
                       </div>
-                    )}
+                      );
+                    })()}
                   </div>
                   <div className="flex items-end gap-3 shrink-0">
                     {cg.lotInfo && cg.lotInfo.total > 1 && (
@@ -1610,7 +1638,14 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                       // (density.test.ts só aceita HEADER_THUMB_PX | IMG).
                       const IMG = compactThumbPx(cabedalThumbs.length);
                       return (
-                        <div className="flex flex-wrap gap-1.5 shrink-0">
+                        <div className="flex flex-col gap-0.5 shrink-0">
+                          <span
+                            className="uppercase whitespace-nowrap"
+                            style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '13px', letterSpacing: '-0.01em', color: '#C00000', border: '1.5px solid #C00000', padding: '0 4px', lineHeight: '16px', alignSelf: 'flex-start' }}
+                          >
+                            {cabedalThumbs.length} REFS
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
                           {cabedalThumbs.map((t, ti) => (
                             <div key={t.sheetId || t.resolvedUrl || ti} className="flex flex-col items-center gap-0.5">
                               <ProductImageBlock
@@ -1624,8 +1659,8 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                               />
                               {t.refNames.length > 0 && (
                                 <span
-                                  className="block truncate text-center uppercase font-bold"
-                                  style={{ fontFamily: "'Fira Code', monospace", fontSize: '8px', letterSpacing: '0.06em', color: '#C00000', maxWidth: IMG }}
+                                  className="block truncate text-center uppercase leading-none"
+                                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '12px', letterSpacing: '-0.01em', color: '#C00000', maxWidth: IMG, borderTop: '1px solid #C00000', paddingTop: 2 }}
                                   title={t.refNames.join(' · ')}
                                 >
                                   {t.refNames.join(' · ')}
@@ -1633,6 +1668,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                               )}
                             </div>
                           ))}
+                          </div>
                         </div>
                       );
                     }
@@ -1662,22 +1698,29 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                   </div>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
-                  {!hideRedundantMeta && cg.refs && cg.refs.length > 0 && (
+                  {!hideRedundantMeta && cg.refs && cg.refs.length > 0 && (() => {
+                    const multiRefs = cg.refs.length > 1;
+                    return (
                     <div className="text-right">
-                      <span className="section-label block" style={{ color: '#000' }}>Ref.</span>
+                      <span className="section-label block" style={{ color: '#000' }}>
+                        {multiRefs ? `${cg.refs.length} Refs` : 'Ref.'}
+                      </span>
                       <div className="flex items-center gap-1 mt-0.5 justify-end flex-wrap">
                         {cg.refs.map((r) => (
                           <span
                             key={r.code || r.name}
-                            className="inline-block bg-black text-white font-bold px-2 py-0.5 rounded-sm whitespace-nowrap uppercase"
-                            style={{ fontSize: '10px', letterSpacing: '0.04em' }}
+                            className="inline-block font-bold px-2 py-0.5 whitespace-nowrap uppercase"
+                            style={multiRefs
+                              ? { fontFamily: "'Anton', Impact, sans-serif", fontSize: '15px', letterSpacing: '-0.01em', color: '#C00000', border: '1.5px solid #000', background: '#fff', lineHeight: 1.05 }
+                              : { fontSize: '10px', letterSpacing: '0.04em', background: '#000', color: '#fff' }}
                           >
                             {r.name || r.code || '—'}
                           </span>
                         ))}
                       </div>
                     </div>
-                  )}
+                    );
+                  })()}
                   {!hideRedundantMeta && cg.pvNumbers && cg.pvNumbers.length > 0 && (
                     <div className="text-right">
                       <span className="section-label block" style={{ color: '#000' }}>Pedido</span>
@@ -1807,18 +1850,24 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
             <div key={`t-${idx}`} className="flow-card bg-white" style={{ border: '1.5px solid #000' }}>
               {colorHeader}
               <div className="p-1 bg-white">
-                {theme.showPiecesToSew && (
+                {theme.showPiecesToSew && (() => {
+                  const piecesPerPair = Math.max(1, Math.round(Number(cg.piecesPerPair) || 2));
+                  const totalPieces = cg.totalPairs * piecesPerPair;
+                  return (
                   <div className="keep-together keep-with-next flex items-baseline justify-between gap-2 px-2 py-0.5 mb-1" style={{ border: '1.5px solid #000' }}>
                     <span className="section-label" style={{ color: '#000' }}>Peças a Costurar</span>
                     <span
                       className="text-black leading-none"
                       style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em' }}
                     >
-                      {cg.totalPairs * 2}
-                      <span className="text-[10px] font-mono tracking-widest uppercase"> peças (2 peças/par)</span>
+                      {totalPieces}
+                      <span className="text-[10px] font-mono tracking-widest uppercase">
+                        {' '}peças ({piecesPerPair} peça{piecesPerPair === 1 ? '' : 's'}/par)
+                      </span>
                     </span>
                   </div>
-                )}
+                  );
+                })()}
                 {(sector === 'Costura Cabedal' || sector === 'Corte Cabedal') && (cg.leftoverNapas?.length ?? 0) > 0 && (
                   <div className="keep-together keep-with-next px-2 py-0.5 mb-1" style={{ border: '1.5px solid #000' }}>
                     <span className="section-label block" style={{ color: '#000' }}>Sobra de napa</span>
@@ -1891,9 +1940,6 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
       ...(silkSingleBlock ? [silkSingleBlock] : []),
       ...(silksGridBlock ? [silksGridBlock] : []),
       ...colorBlocks,
-      // Rodapé de conclusão do GRUPO — keepWithPrev: nunca abre página
-      // sozinho, puxa o último card do grupo junto.
-      { node: <CompletionFooter />, keepWithPrev: true },
     ];
   };
 

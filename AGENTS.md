@@ -786,8 +786,8 @@ auto-fit (`AUTO_FIT_FLOOR 0.80`) e a tabela abaixo.
 | Texto corrido (ref, material) | 9–10px | 7.5px | `textPx` (10→7.5) |
 | Rótulo mono UPPERCASE | 8–9px | 6.5px | rótulos do FlowRail (6.5px) |
 | Nº dentro do tally | 9.5–11px | 7px | `getFontSize()` do `TallyBox` (md 11/9.5/7.5 · sm 10/8/7) |
-| Campo manuscrito (nome, qtd, data) | 22px (~5,8mm) | 20px (~5,3mm) | `CompletionFooter` (campos 22px) |
-| Linha só de rubrica/visto | 15px (~4mm) | 15px | `CompletionFooter` (visto 15px) |
+| Campo manuscrito (nome, qtd, data) | 22px (~5,8mm) | 20px (~5,3mm) | *(rodapé de visto removido das fichas A4, 2026-09)* |
+| Linha só de rubrica/visto | 15px (~4mm) | 15px | *(idem — não usar em fichas de operador)* |
 | QR **acionável** (escanear → apontar) | 18–22mm | 15mm | — |
 
 ⚠ O QR atual do `WorksheetHeader` é `size={46}` (~12mm), **abaixo do piso de acionável**:

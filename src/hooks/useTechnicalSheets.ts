@@ -137,6 +137,9 @@ export type SheetFormData = {
    *  corte) — NÃO gera ficha de operador 'Costura Cabedal'; false = cabedal
    *  vai para costura. Só camada de impressão — não afeta fluxo/ondas. */
   upper_corte_a_fio: boolean;
+  /** Peças de cabedal por par na Costura Cabedal (default 2). SP201 = 4 etc.
+   *  Só imprime na ficha de operador — não multiplica consumo/débito. */
+  upper_sewing_pieces_per_pair: number;
   lining_material: string;
   /** Pin do SKU exato da Forração Material 1 (2026-06-28). Mesma precedência. */
   lining_material_product_id?: string | null;
@@ -237,6 +240,7 @@ export const emptySheetForm: SheetFormData = {
   status_ficha: 'rascunho',
   upper_material: '', upper_material_group_id: null, upper_material_product_id: null, upper_thickness: '',
   upper_corte_a_fio: false,
+  upper_sewing_pieces_per_pair: 2,
   lining_material: '', lining_material_product_id: null,
   fachete_material: '',
   insole_material: '',
