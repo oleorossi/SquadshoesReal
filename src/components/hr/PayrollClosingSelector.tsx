@@ -75,12 +75,12 @@ export function PayrollClosingSelector({ value, onChange, className }: PayrollCl
           <button type="button" className={optionClass(cadence === 'quinzena')} onClick={() => changeSelection('quinzena')}>
             <span className="flex items-start justify-between gap-3">
               <span>
-                <span className="block font-mono text-[10px] font-bold uppercase tracking-[0.18em] opacity-70">Fechamento 15 dias</span>
+                <span className="block font-mono text-[10px] font-bold uppercase tracking-[0.18em] opacity-70">Fechamento por quinzena</span>
                 <span className="mt-1 block text-lg font-bold">Fechar quinzena</span>
               </span>
               <Rows className="h-6 w-6 opacity-70" />
             </span>
-            <span className="mt-4 block text-xs opacity-75">Salário proporcional aos dias da metade selecionada.</span>
+            <span className="mt-4 block text-xs opacity-75">1ª = dias 1–15 · 2ª = dia 16 até o último do mês. Salário proporcional aos dias corridos.</span>
           </button>
 
           <button type="button" className={optionClass(cadence === 'mes')} onClick={() => changeSelection('mes')}>

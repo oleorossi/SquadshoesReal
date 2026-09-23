@@ -888,11 +888,51 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
           const names = Array.from(new Set(conflicts.map(run => calculationEmployeeMap.get(run.employee_id)?.name || 'Funcionário')));
           const preview = names.slice(0, 4).join(', ');
           const remaining = names.length > 4 ? ` e mais ${names.length - 4}` : '';
+          const conflictPeriodKeys = Array.from(new Set(conflicts.map(run => run.period)));
+          const conflictPeriodLabels = conflictPeriodKeys.map(periodKey => {
+            const range = storedPayrollPeriodRange(periodKey) || periodToRange(periodKey);
+            return range.from ? periodLabel(range.from, range.to) : periodKey;
+          });
           toast.error(
-            `Fechamento não gerado: ${preview}${remaining} já possuem folha cobrindo algum dia deste período. ` +
-            'Cancele o fechamento conflitante antes de trocar entre quinzena e mês.',
-            { duration: 9000 },
+            `Fechamento não gerado: ${preview}${remaining} já possuem folha em ${conflictPeriodLabels.join(', ')} ` +
+            'cobrindo algum dia deste período. Cancele o fechamento conflitante antes de trocar entre quinzena e mês.',
+            { duration: 12000 },
           );
+          // Se só há rascunhos conflitantes, oferece cancelar em massa com um clique.
+          const onlyDrafts = conflicts.every(run => run.status === 'rascunho');
+          if (onlyDrafts) {
+            const { data: draftRows } = await supabase
+              .from('payroll_runs')
+              .select('id, employee_id, period, status')
+              .in('employee_id', Array.from(new Set(conflicts.map(c => c.employee_id))))
+              .in('period', conflictPeriodKeys)
+              .eq('status', 'rascunho');
+            const ids = (draftRows || []).map(row => row.id).filter(Boolean);
+            if (ids.length > 0) {
+              toast.message('Rascunhos conflitantes', {
+                description: `${ids.length} rascunho(s) em ${conflictPeriodLabels.join(', ')}. Cancelar libera a quinzena/mês pra gerar de novo.`,
+                duration: 15000,
+                action: {
+                  label: 'Cancelar rascunhos',
+                  onClick: () => {
+                    void (async () => {
+                      try {
+                        for (const id of ids) {
+                          await cancelPayrollRun.mutateAsync({
+                            id,
+                            reason: `Cancelado para liberar fechamento ${cPeriod}`,
+                          });
+                        }
+                        toast.success('Rascunhos conflitantes cancelados. Gere o fechamento de novo.');
+                      } catch (error: unknown) {
+                        toast.error(`Erro ao cancelar rascunhos: ${errorMessage(error, 'falha desconhecida')}`);
+                      }
+                    })();
+                  },
+                },
+              });
+            }
+          }
           return;
         }
       }

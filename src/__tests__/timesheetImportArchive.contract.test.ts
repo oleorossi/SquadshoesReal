@@ -9,6 +9,7 @@ const MIGRATION = read('supabase/migrations/20270101003400_timesheet_import_arch
 const BATCH_TEXT_MIGRATION = read('supabase/migrations/20270101013000_corrigir_batch_importacao_ponto_texto.sql');
 const SYSTEM_SOURCE_MIGRATION = read('supabase/migrations/20270101004200_ponto_base_interna_incremental.sql');
 const INTEGRITY_MIGRATION = read('supabase/migrations/20270101013400_integridade_importacao_ponto.sql');
+const QUADRO_PARCIAL_MIGRATION = read('supabase/migrations/20270101027400_ponto-quadro-completo-sem-exigir-todas-matriculas.sql');
 const IMPORT_HOOK = read('src/hooks/useTimesheet.ts');
 const HISTORY_HOOK = read('src/hooks/useTimeImportLogs.ts');
 const HISTORY_PANEL = read('src/components/timesheet/ImportHistoryPanel.tsx');
@@ -127,10 +128,12 @@ describe('arquivo permanente das importações do relógio de ponto', () => {
     expect(PAGE).toContain('requiresCoverageConfirmation: true');
     expect(PAGE).toContain('Confirme o período coberto pela exportação');
     expect(PAGE).toContain('Confirmar período coberto');
-    expect(PAGE).toContain('coverageConfirmed: !datedResult.requiresCoverageConfirmation');
+    expect(PAGE).toContain('coverageConfirmed: !needsConfirm');
     expect(PAGE).toContain('batchId: preview.batchId');
     expect(IMPORT_HOOK).toContain('params.batchId.startsWith');
     expect(PAGE).toContain('(preview.requiresCoverageConfirmation && preview.endDate > todayStr)');
+    expect(PAGE).toContain('clipTimesheetEmployeesToPeriod');
+    expect(PAGE).toContain('não serão importados');
   });
 
   it('exige escopo explícito e não transforma arquivo filtrado em cobertura global', () => {
@@ -147,7 +150,11 @@ describe('arquivo permanente das importações do relógio de ponto', () => {
     expect(INTEGRITY_MIGRATION).toContain("coverage_scope = 'legacy_unverified'");
     expect(INTEGRITY_MIGRATION).toContain("NEW.coverage_scope NOT IN ('all_employees', 'listed_employees')");
     expect(INTEGRITY_MIGRATION).toContain('O payload contém matrícula fora do escopo imutável do protocolo');
+    // Histórico: a 13400 exigia todas as matrículas; a 27400 remove a trava
+    // (ausente no arquivo = falta via cobertura, não erro de import).
     expect(INTEGRITY_MIGRATION).toContain('não contém todas as matrículas vigentes no período');
+    expect(QUADRO_PARCIAL_MIGRATION).toContain('Sem checagem de "todas as matrículas vigentes"');
+    expect(QUADRO_PARCIAL_MIGRATION).not.toContain('não contém todas as matrículas vigentes no período');
   });
 
   it('reutiliza o protocolo da prévia quando a resposta do servidor se perde', () => {

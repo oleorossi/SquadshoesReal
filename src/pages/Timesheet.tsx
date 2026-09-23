@@ -43,6 +43,11 @@ import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { usePendingTotal } from '@/hooks/useTimePendings';
 import { cn } from '@/lib/utils';
 import { createTimesheetImportBatchId } from '@/lib/timeControlFilters';
+import {
+  clipTimesheetEmployeesToPeriod,
+  countPunchesOutsidePeriod,
+} from '@/lib/ponto/clipTimesheetImportPeriod';
+import { identifyPayrollClosing } from '@/lib/payrollClosing';
 
 const DAYS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
@@ -599,13 +604,38 @@ function TimesheetRecordsTab() {
           })),
         })),
       };
+      // Se a tela já está numa quinzena/mês civil, alinha o período declarado a
+      // essa janela e recorta batidas fora no save (avisadas na prévia).
+      const todayCap = (() => {
+        const now = new Date();
+        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      })();
+      const screenClosing = identifyPayrollClosing({
+        from: filterStartDate,
+        to: filterEndDate > todayCap ? todayCap : filterEndDate,
+      });
+      const alignedStart = screenClosing?.from || datedResult.startDate;
+      const alignedEnd = screenClosing
+        ? (screenClosing.to > todayCap ? todayCap : screenClosing.to)
+        : datedResult.endDate;
+      const needsConfirm = datedResult.requiresCoverageConfirmation || !!screenClosing;
       setPreview({
         ...datedResult,
-        batchId: createTimesheetImportBatchId(datedResult.startDate, datedResult.endDate),
+        startDate: alignedStart,
+        endDate: alignedEnd,
+        batchId: createTimesheetImportBatchId(alignedStart, alignedEnd),
         coverageScope: null,
-        coverageConfirmed: !datedResult.requiresCoverageConfirmation,
+        requiresCoverageConfirmation: needsConfirm,
+        coverageConfirmed: !needsConfirm,
         rawFile: file,
       });
+      const outside = countPunchesOutsidePeriod(datedResult.employees, alignedStart, alignedEnd);
+      if (outside.outsideDayCount > 0) {
+        toast.warning(
+          `${outside.outsideDayCount} dia(s) com batida ficam fora de ${alignedStart.split('-').reverse().join('/')}–${alignedEnd.split('-').reverse().join('/')} e não serão importados.`,
+          { duration: 12000 },
+        );
+      }
       const employeesWithPunches = datedResult.employees.filter(emp =>
         emp.records.some(record => record.punches.length > 0),
       );
@@ -643,13 +673,24 @@ function TimesheetRecordsTab() {
     }
     const importStartDate = preview.startDate;
     const importEndDate = preview.endDate;
+    const clipped = clipTimesheetEmployeesToPeriod(
+      preview.employees,
+      importStartDate,
+      importEndDate,
+    );
+    if (clipped.clippedDayCount > 0) {
+      toast.warning(
+        `${clipped.clippedDayCount} dia(s) fora do período declarado ficaram de fora da importação.`,
+        { duration: 10000 },
+      );
+    }
     importRecords.mutate({
       // Preserva exatamente o nome exportado como evidência; relatórios resolvem
       // o cadastro por ID do relógio e vigência, nunca por este rótulo.
-      employees: preview.employees,
+      employees: clipped.employees,
       startDate: importStartDate,
       endDate: importEndDate,
-      preSkipped: preview.preSkipped,
+      preSkipped: preview.preSkipped + clipped.clippedDayCount,
       batchId: preview.batchId,
       coverageScope: preview.coverageScope,
       file: preview.rawFile,
@@ -1088,9 +1129,12 @@ function TimesheetRecordsTab() {
         const coverageRangeInvalid = !/^\d{4}-\d{2}-\d{2}$/.test(preview.startDate)
           || !/^\d{4}-\d{2}-\d{2}$/.test(preview.endDate)
           || preview.startDate > preview.endDate
-          || preview.startDate > firstPunch
-          || preview.endDate < lastPunch
           || (preview.requiresCoverageConfirmation && preview.endDate > todayStr);
+        const outsidePeriod = countPunchesOutsidePeriod(
+          preview.employees,
+          preview.startDate,
+          preview.endDate,
+        );
         const fmtBR = (d: string) => (d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d.split('-').reverse().join('/') : '—');
         return (
           <Card className="border-primary/30">
@@ -1120,13 +1164,26 @@ function TimesheetRecordsTab() {
                     </span>
                   </div>
                 )}
+                {outsidePeriod.outsideDayCount > 0 && (
+                  <div className="mt-2 flex items-start gap-2 text-xs text-amber-800 dark:text-amber-300">
+                    <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                    <span>
+                      <strong>{outsidePeriod.outsideDayCount}</strong> dia(s) com batida ficam fora do período declarado
+                      ({fmtBR(preview.startDate)}–{fmtBR(preview.endDate)}) e <strong>não serão importados</strong>
+                      {outsidePeriod.outsideDates.length <= 4
+                        ? `: ${outsidePeriod.outsideDates.map(fmtBR).join(', ')}`
+                        : ''}.
+                    </span>
+                  </div>
+                )}
               </div>
-              {preview.requiresCoverageConfirmation && (
+              {(preview.requiresCoverageConfirmation || outsidePeriod.outsideDayCount > 0) && (
                 <div className="space-y-3 rounded-md border border-primary/30 bg-primary/5 p-3">
                   <div>
                     <p className="text-sm font-semibold">Confirme o período coberto pela exportação</p>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Este formato informa somente os dias que possuem batidas. Declare exatamente o intervalo escolhido no relógio — inclusive domingos e feriados — para que uma lacuna real seja diferenciada de um arquivo incompleto.
+                      Declare a quinzena ou o mês que a folha vai fechar (ex.: 01–15). Batidas fora desse intervalo
+                      ficam de fora do save — inclusive domingos e feriados dentro do intervalo contam na cobertura.
                     </p>
                   </div>
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -1163,7 +1220,7 @@ function TimesheetRecordsTab() {
                   </div>
                   {coverageRangeInvalid && (
                     <p role="alert" className="text-xs font-medium text-destructive">
-                      O período precisa conter todas as batidas do arquivo e não pode terminar no futuro.
+                      Informe um período válido (início ≤ fim) que não termine no futuro.
                     </p>
                   )}
                   <div className="flex flex-wrap justify-end gap-2">
@@ -1217,6 +1274,11 @@ function TimesheetRecordsTab() {
                     <SelectItem value="listed_employees">Somente funcionários selecionados</SelectItem>
                   </SelectContent>
                 </Select>
+                {preview.coverageScope === 'all_employees' && (
+                  <p className="text-xs text-muted-foreground">
+                    Quem for vigente no período e não aparecer no arquivo conta como falta/ausência na folha — o save não é bloqueado por matrícula faltante.
+                  </p>
+                )}
                 {preview.coverageScope === 'listed_employees' && (
                   <p className="text-xs font-medium text-warning">
                     Arquivo filtrado: as batidas serão importadas, mas ele não fecha a cobertura global nem cria faltas para quem ficou fora da exportação.

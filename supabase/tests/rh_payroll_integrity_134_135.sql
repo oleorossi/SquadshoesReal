@@ -453,6 +453,8 @@ BEGIN
   ), 'rascunho sem snapshot deixou de poder nascer';
 
   v_file_path := v_batch || '/ponto-e2e.txt';
+  -- all_employees com matrícula parcial É aceito (decisão 23/09/2026): quem
+  -- não veio no arquivo vira falta pela cobertura do período, não erro de import.
   v_rejected := false;
   BEGIN
     INSERT INTO public.time_import_logs (
@@ -460,15 +462,15 @@ BEGIN
       imported_by, archive_status, coverage_scope,
       covered_employee_external_ids
     ) VALUES (
-      'escopo-incompleto.txt', 'e2e-escopo-incompleto-' || gen_random_uuid()::text,
-      'e2e-escopo-incompleto-' || gen_random_uuid()::text,
+      'escopo-parcial-ok.txt', 'e2e-escopo-parcial-ok-' || gen_random_uuid()::text,
+      'e2e-escopo-parcial-ok-' || gen_random_uuid()::text,
       DATE '1999-01-01', DATE '1999-01-31', v_actor, 'pending',
       'all_employees', ARRAY[v_external_id]
     );
-  EXCEPTION WHEN SQLSTATE '22023' THEN
-    v_rejected := position('não contém todas as matrículas vigentes' IN SQLERRM) > 0;
+  EXCEPTION WHEN OTHERS THEN
+    v_rejected := true;
   END;
-  ASSERT v_rejected, 'protocolo global omitiu funcionário vigente e ainda poderia fabricar falta/cobertura';
+  ASSERT NOT v_rejected, 'protocolo all_employees parcial (matrícula ausente) deveria ser aceito — falta via cobertura';
 
   INSERT INTO storage.objects (
     bucket_id, name, owner, owner_id, metadata
