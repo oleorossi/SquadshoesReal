@@ -6,17 +6,17 @@
  * (08:00–18:00 com 1h de almoço = 9h/dia, seg–sex, por padrão). A HE usa as taxas
  * individuais cadastradas no funcionário (`he_normal_rate` / `he_sunday_holiday_rate`).
  *
- * Duas versões de balanço (corte por início do período da folha):
+ * Balanço canônico (decisão do dono 2026-09-23):
  *
- *   LEGADA (`PAYROLL_RULE_VERSION`, períodos com início < 2026-09-21):
- *   - Excedentes de um dia compensam atrasos de outro no período.
+ *   `PAYROLL_RULE_VERSION` / `period_compensation` (DEFAULT em qualquer data):
+ *   - Excedentes de um dia compensam atrasos de outro **dentro do período fechado**
+ *     (1ª quinzena, 2ª quinzena ou mês completo).
+ *   - HE e desconto liquidam juntos naquele fechamento (desconto por quinzena).
  *   - Só o saldo positivo final > 10 min vira HE; ≤10 min descarta.
+ *   - Relatórios de conferência usam o mês civil (dia 1 → último).
  *
- *   CLT-dia (`PAYROLL_RULE_VERSION_DAY_CLT`, início ≥ 2026-09-21):
- *   - Sem compensação cruzada (estilo CLT sem banco de horas).
- *   - HE e atraso pagam/descontam separados, por dia.
- *   - Piso 10 min POR DIA: excesso diário ≤10 → 0 HE; >10 → paga o excesso do dia.
- *   - Sem INSS/FGTS/DSR/adicional noturno separado (quadro não-CLT tributário).
+ *   `PAYROLL_RULE_VERSION_DAY_CLT` / `day_independent` (só com forceVersion):
+ *   - Sem compensação cruzada; HE e atraso por dia. Mantido pra simulação/diagnóstico.
  *
  * Comum às duas:
  *   - valor-dia  = salário ÷ dias úteis do mês
@@ -47,7 +47,10 @@ export const PAYROLL_RULE_CUTOVER_DATE = '2026-09-21';
 /** Modo de balanço HE ↔ atraso. */
 export type HeBalanceMode = 'period_compensation' | 'day_independent';
 
-/** Escolhe a versão canônica a partir do início do período (ou override explícito). */
+/**
+ * Versão canônica: compensação no período fechado, em qualquer data.
+ * `day_independent` só entra com forceVersion explícito (simulação).
+ */
 export function resolvePayrollRuleVersion(opts: {
   periodFrom: string;
   /** Força uma versão (botão “recalcular / simular”). */
@@ -57,13 +60,8 @@ export function resolvePayrollRuleVersion(opts: {
   if (forced === PAYROLL_RULE_VERSION_DAY_CLT) {
     return { ruleVersion: PAYROLL_RULE_VERSION_DAY_CLT, balanceMode: 'day_independent' };
   }
-  if (forced === PAYROLL_RULE_VERSION) {
-    return { ruleVersion: PAYROLL_RULE_VERSION, balanceMode: 'period_compensation' };
-  }
-  const from = String(opts.periodFrom || '').slice(0, 10);
-  if (from && from >= PAYROLL_RULE_CUTOVER_DATE) {
-    return { ruleVersion: PAYROLL_RULE_VERSION_DAY_CLT, balanceMode: 'day_independent' };
-  }
+  // periodFrom não escolhe mais a regra: datas antigas e novas usam compensação no período.
+  void opts.periodFrom;
   return { ruleVersion: PAYROLL_RULE_VERSION, balanceMode: 'period_compensation' };
 }
 
@@ -847,7 +845,7 @@ export interface PeriodFolhaInput {
   minOvertimeMin?: number;
   /**
    * Força a versão da regra (ex.: simular regra nova num período antigo).
-   * Sem isto, deriva de `from` vs PAYROLL_RULE_CUTOVER_DATE.
+   * Força a versão da regra (ex.: simular dia-CLT). Sem isto, usa compensação no período.
    */
   forceRuleVersion?: string | null;
 }

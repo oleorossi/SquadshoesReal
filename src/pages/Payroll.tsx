@@ -28,7 +28,14 @@ import {
 import { useAbsences, useCancelPayrollRun, usePayrollRuns, useUpsertPayrollRun, useUpdatePayrollStatus } from '@/hooks/useRH';
 import { usePayrollPaymentSummaries } from '@/hooks/usePayrollPayments';
 import { RegistrarPagamentoDialog } from '@/components/hr/RegistrarPagamentoDialog';
-import { computePeriodFolha, getDaysInRange, type SalaryPayrollResult, PAYROLL_RULE_CUTOVER_DATE, PAYROLL_RULE_VERSION_DAY_CLT, resolvePayrollRuleVersion } from '@/lib/salaryPayroll';
+import { computePeriodFolha, getDaysInRange, type SalaryPayrollResult, PAYROLL_RULE_VERSION_DAY_CLT, resolvePayrollRuleVersion } from '@/lib/salaryPayroll';
+import {
+  employeeUsesSalaryClosing,
+  heBalanceRange,
+  identifyPayrollClosing,
+  payrollRangesOverlap,
+  storedPayrollPeriodRange,
+} from '@/lib/payrollClosing';
 import { computeComparativoRows, groupPayrollPunchesByEmployee } from '@/lib/payrollComparativo';
 import { fetchTimeRecordsInRange } from '@/lib/ponto/fetchTimeRecords';
 import { expandAbsenceCreditsByEmployee, resolveHolidaysForPayrollRange } from '@/lib/ponto/periodDates';
@@ -46,12 +53,6 @@ import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PayrollClosingSelector } from '@/components/hr/PayrollClosingSelector';
-import {
-  employeeUsesSalaryClosing,
-  identifyPayrollClosing,
-  payrollRangesOverlap,
-  storedPayrollPeriodRange,
-} from '@/lib/payrollClosing';
 import RelatorioFaltas from '@/components/hr/RelatorioFaltas';
 import RelatorioAtrasos from '@/components/hr/RelatorioAtrasos';
 import { employeeOverlapsEmploymentRange } from '@/lib/employeeEmployment';
@@ -191,7 +192,7 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
   const [reportView, setReportView] = useState<'docs' | 'faltas' | 'atrasos'>('docs');
   const [docScope, setDocScope] = useState<string>('all'); // 'all' ou employee_id
   const [previewIdx, setPreviewIdx] = useState(0); // paginador da prévia em "Todos" (calendário/holerite)
-  /** Simula regra CLT-dia sem persistir — só em períodos com início antes do cutover. */
+  /** Simula regra CLT-dia sem persistir — diagnóstico; canônico = compensação no mês. */
   const [simulateDayRule, setSimulateDayRule] = useState(false);
 
   // Intervalo APLICADO (debounced 450ms): enquanto o usuário digita a data, as queries,
@@ -202,18 +203,14 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
   const appliedTo = useDebouncedValue(range.to, 450);
   const appliedPeriod = useMemo(() => rangeToPeriod(appliedFrom, appliedTo), [appliedFrom, appliedTo]);
   const periodTitle = useMemo(() => periodLabel(appliedFrom, appliedTo), [appliedFrom, appliedTo]);
-  const defaultPayrollRule = resolvePayrollRuleVersion({ periodFrom: appliedFrom });
-  const canSimulateDayRule = defaultPayrollRule.balanceMode === 'period_compensation';
-  const forceRuleVersion = canSimulateDayRule && simulateDayRule
-    ? PAYROLL_RULE_VERSION_DAY_CLT
-    : null;
+  const forceRuleVersion = simulateDayRule ? PAYROLL_RULE_VERSION_DAY_CLT : null;
   const activePayrollRule = resolvePayrollRuleVersion({
     periodFrom: appliedFrom,
     forceVersion: forceRuleVersion,
   });
   const payrollRuleLabel = activePayrollRule.balanceMode === 'day_independent'
-    ? 'HE por dia · taxas do quadro'
-    : 'Compensação no período (legado)';
+    ? 'Simulação: HE por dia'
+    : 'Compensação no período (quinzena ou mês)';
 
   const { data: employees = [] } = useEmployees();
   // A folha salarial fecha somente regimes baseados em salário/diária. Quem é
@@ -315,29 +312,31 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runs, employeeMap, setorFilter]);
 
-  // ── Comparativo Mês × 1ª × 2ª (pra IMPRIMIR / EXPORTAR a folha) ──────────────
-  // Mesma fórmula da folha (computePeriodFolha) via lib compartilhada. Antes vivia
-  // na aba Relatórios → Pagamento; consolidado aqui (2026-06-21).
+  // Comparativo Mês × 1ª × 2ª: sempre lê o MÊS CIVIL inteiro (HE liquida mês a mês).
   const compPeriod = useMemo(() => (appliedFrom || '').slice(0, 7), [appliedFrom]);
+  const compMonthBounds = useMemo(() => {
+    if (!/^\d{4}-\d{2}$/.test(compPeriod)) return { from: appliedFrom, to: appliedTo };
+    return heBalanceRange({ month: compPeriod });
+  }, [compPeriod, appliedFrom, appliedTo]);
   const { data: compRecords = [] } = useQuery({
-    queryKey: ['payroll-comp-records', appliedFrom, appliedTo],
-    enabled: !!(appliedFrom && appliedTo),
+    queryKey: ['payroll-comp-records', compMonthBounds.from, compMonthBounds.to],
+    enabled: !!(compMonthBounds.from && compMonthBounds.to),
     staleTime: 60_000,
     // PAGINADO via helper único (fetchTimeRecordsInRange) — antes esta query NÃO
     // paginava e o cap de 1000 do PostgREST cortava dias, fazendo o calendário
     // mostrar "falta" em dias que TINHAM ponto (bug 2026-07-01). Agora usa a
     // MESMA fonte da folha/atrasos → motores sincronizados.
-    queryFn: () => fetchTimeRecordsInRange(appliedFrom, appliedTo),
+    queryFn: () => fetchTimeRecordsInRange(compMonthBounds.from, compMonthBounds.to),
   });
   const { data: compAdvances = [] } = useQuery({
-    queryKey: ['payroll-comp-advances', appliedFrom, appliedTo],
-    enabled: !!(appliedFrom && appliedTo),
+    queryKey: ['payroll-comp-advances', compMonthBounds.from, compMonthBounds.to],
+    enabled: !!(compMonthBounds.from && compMonthBounds.to),
     staleTime: 60_000,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('employee_advances')
         .select('employee_id, amount, advance_date, status, payroll_run_id')
-        .gte('advance_date', appliedFrom).lte('advance_date', appliedTo)
+        .gte('advance_date', compMonthBounds.from).lte('advance_date', compMonthBounds.to)
         // Mesmo critério de calculateAll (~:565): as DUAS condições, não uma OU outra.
         // `pending` e `paid` são valores entregues ainda a descontar; ambos entram
         // apenas enquanto desvinculados. Vale já amarrado a outra folha não entra
@@ -350,21 +349,22 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
       return data || [];
     },
   });
-  const { data: compAbsences = [] } = useAbsences({ from: appliedFrom, to: appliedTo });
+  const { data: compAbsences = [] } = useAbsences({ from: compMonthBounds.from, to: compMonthBounds.to });
   const compAbsenceCredits = useMemo(
-    () => expandAbsenceCreditsByEmployee(compAbsences, appliedFrom, appliedTo),
-    [compAbsences, appliedFrom, appliedTo],
+    () => expandAbsenceCreditsByEmployee(compAbsences, compMonthBounds.from, compMonthBounds.to),
+    [compAbsences, compMonthBounds],
   );
+  const { data: compCoverage } = useTimesheetCoverage(compMonthBounds.from, compMonthBounds.to);
   const comparativo = useMemo(() => computeComparativoRows({
     employees: salaryEmployees, schedules, defaultSchedule, holidaysSet, swapWorkedSet, swapOffSet,
     timeRecords: compRecords, advancesList: compAdvances, producaoRows: [],
     absenceDatesByEmployee: compAbsenceCredits.fullDayDates,
     absenceMinutesByEmployee: compAbsenceCredits.partialMinutes,
     range: { from: appliedFrom, to: appliedTo }, period: compPeriod,
-    maxCovered: coverage?.maxCovered || null,
-    coveredDates: coverage?.coveredDates,
+    maxCovered: (compCoverage || coverage)?.maxCovered || null,
+    coveredDates: (compCoverage || coverage)?.coveredDates,
     forceRuleVersion,
-  }), [salaryEmployees, schedules, defaultSchedule, holidaysSet, swapWorkedSet, swapOffSet, compRecords, compAdvances, compAbsenceCredits, appliedFrom, appliedTo, compPeriod, coverage, forceRuleVersion]);
+  }), [salaryEmployees, schedules, defaultSchedule, holidaysSet, swapWorkedSet, swapOffSet, compRecords, compAdvances, compAbsenceCredits, appliedFrom, appliedTo, compPeriod, coverage, compCoverage, forceRuleVersion]);
 
   // Rascunho = prévia viva. Aprovada/paga = resultado congelado no snapshot.
   const reportComparativoRows = useMemo(() => {
@@ -1093,17 +1093,15 @@ export default function Payroll({ reportsOnly = false }: { reportsOnly?: boolean
           <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Regra de HE</p>
           <p className="text-sm font-medium text-foreground">{payrollRuleLabel}</p>
           <p className="text-xs text-muted-foreground mt-1">
-            Cutover: início ≥ {PAYROLL_RULE_CUTOVER_DATE.split('-').reverse().join('/')}. R$ pelas taxas do quadro.
+            HE e desconto liquidam na quinzena/mês fechado (compensam entre si no período). Relatórios: mês civil.
           </p>
         </div>
-        {canSimulateDayRule && (
-          <div className="flex items-center gap-3 pt-1 border-t border-border">
-            <Switch id="payroll-simulate-day" checked={simulateDayRule} onCheckedChange={setSimulateDayRule} />
-            <Label htmlFor="payroll-simulate-day" className="text-xs leading-snug">
-              Simular / recalcular com regra nova (HE por dia). Em rascunho, “Gerar fechamento” grava essa versão.
-            </Label>
-          </div>
-        )}
+        <div className="flex items-center gap-3 pt-1 border-t border-border">
+          <Switch id="payroll-simulate-day" checked={simulateDayRule} onCheckedChange={setSimulateDayRule} />
+          <Label htmlFor="payroll-simulate-day" className="text-xs leading-snug">
+            Simular HE por dia (sem compensar). Em rascunho, “Gerar fechamento” grava essa versão.
+          </Label>
+        </div>
       </div>
       <div className="flex flex-col justify-between gap-3 rounded-lg border border-foreground bg-foreground p-4 text-background">
         <div>

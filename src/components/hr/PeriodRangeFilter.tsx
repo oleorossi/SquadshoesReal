@@ -17,6 +17,11 @@ interface PeriodRangeFilterProps {
   className?: string;
   /** Rótulo exibido para orientar o uso fora da Folha. */
   label?: string;
+  /**
+   * Relatórios de HE/atraso: só mês civil (dia 1 → último).
+   * Esconde atalhos de dia/semana/quinzena e trava o intervalo ao mês.
+   */
+  monthOnly?: boolean;
 }
 
 function isoDate(date: Date): string {
@@ -49,8 +54,17 @@ function daysInRange(from: string, to: string): number | null {
  * datas reais — não há estado paralelo por aba — e o mês é navegável sem ter
  * de abrir os dois campos de data repetidamente.
  */
-export function PeriodRangeFilter({ value, onChange, min, max, className, label = 'Período' }: PeriodRangeFilterProps) {
+export function PeriodRangeFilter({
+  value,
+  onChange,
+  min,
+  max,
+  className,
+  label = 'Período',
+  monthOnly = false,
+}: PeriodRangeFilterProps) {
   const month = monthFromDate(value.from);
+  const bounds = monthBounds(month);
   const totalDays = daysInRange(value.from, value.to);
   const today = isoDate(new Date());
 
@@ -61,6 +75,7 @@ export function PeriodRangeFilter({ value, onChange, min, max, className, label 
     setMonth(`${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`);
   };
   const setPreset = (preset: 'today' | 'week' | 'firstHalf' | 'secondHalf' | 'month') => {
+    if (monthOnly || preset === 'month') return onChange(bounds);
     if (preset === 'today') return onChange({ from: today, to: today });
     if (preset === 'week') {
       const now = new Date(`${today}T12:00:00`);
@@ -69,7 +84,6 @@ export function PeriodRangeFilter({ value, onChange, min, max, className, label 
       const to = new Date(from); to.setDate(from.getDate() + 6);
       return onChange({ from: isoDate(from), to: isoDate(to) });
     }
-    const bounds = monthBounds(month);
     if (preset === 'firstHalf') return onChange({ from: bounds.from, to: `${month}-15` });
     if (preset === 'secondHalf') return onChange({ from: `${month}-16`, to: bounds.to });
     onChange(bounds);
@@ -92,20 +106,35 @@ export function PeriodRangeFilter({ value, onChange, min, max, className, label 
           <Button type="button" size="icon" variant="ghost" className="h-8 w-8" aria-label="Próximo mês" onClick={() => shiftMonth(1)}><CaretRight className="h-4 w-4" /></Button>
         </div>
 
-        <div className="flex flex-wrap items-center gap-1 border-l-0 border-border/70 xl:border-l xl:pl-3">
-          {quickButton('today', 'Hoje', value.from === today && value.to === today)}
-          {quickButton('week', 'Semana', false)}
-          {quickButton('firstHalf', '1ª quinz.', value.from === `${month}-01` && value.to === `${month}-15`)}
-          {quickButton('secondHalf', '2ª quinz.', value.from === `${month}-16` && value.to === monthBounds(month).to)}
-          {quickButton('month', 'Mês', value.from === monthBounds(month).from && value.to === monthBounds(month).to)}
-        </div>
+        {!monthOnly && (
+          <div className="flex flex-wrap items-center gap-1 border-l-0 border-border/70 xl:border-l xl:pl-3">
+            {quickButton('today', 'Hoje', value.from === today && value.to === today)}
+            {quickButton('week', 'Semana', false)}
+            {quickButton('firstHalf', '1ª quinz.', value.from === `${month}-01` && value.to === `${month}-15`)}
+            {quickButton('secondHalf', '2ª quinz.', value.from === `${month}-16` && value.to === bounds.to)}
+            {quickButton('month', 'Mês', value.from === bounds.from && value.to === bounds.to)}
+          </div>
+        )}
 
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 xl:justify-end">
-          <Input type="date" value={value.from} min={min} max={value.to || max} onChange={event => onChange({ from: event.target.value, to: value.to })} className="h-8 w-[142px] bg-background text-xs" aria-label="Data inicial" />
-          <span className="text-xs text-muted-foreground">até</span>
-          <Input type="date" value={value.to} min={value.from || min} max={max} onChange={event => onChange({ from: value.from, to: event.target.value })} className="h-8 w-[142px] bg-background text-xs" aria-label="Data final" />
-          {totalDays !== null && <span className="ml-1 whitespace-nowrap text-xs tabular-nums text-muted-foreground">{totalDays} {totalDays === 1 ? 'dia' : 'dias'}</span>}
-        </div>
+        {monthOnly ? (
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 xl:justify-end">
+            <span className="font-mono text-xs tabular-nums text-foreground">
+              {bounds.from.split('-').reverse().join('/')} — {bounds.to.split('-').reverse().join('/')}
+            </span>
+            {totalDays !== null && (
+              <span className="ml-1 whitespace-nowrap text-xs tabular-nums text-muted-foreground">
+                {totalDays} {totalDays === 1 ? 'dia' : 'dias'} · fechamento mês a mês
+              </span>
+            )}
+          </div>
+        ) : (
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 xl:justify-end">
+            <Input type="date" value={value.from} min={min} max={value.to || max} onChange={event => onChange({ from: event.target.value, to: value.to })} className="h-8 w-[142px] bg-background text-xs" aria-label="Data inicial" />
+            <span className="text-xs text-muted-foreground">até</span>
+            <Input type="date" value={value.to} min={value.from || min} max={max} onChange={event => onChange({ from: value.from, to: event.target.value })} className="h-8 w-[142px] bg-background text-xs" aria-label="Data final" />
+            {totalDays !== null && <span className="ml-1 whitespace-nowrap text-xs tabular-nums text-muted-foreground">{totalDays} {totalDays === 1 ? 'dia' : 'dias'}</span>}
+          </div>
+        )}
       </div>
     </section>
   );

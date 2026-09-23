@@ -53,7 +53,7 @@ export function PayrollClosingSelector({ value, onChange, className }: PayrollCl
             <CalendarBlank className="h-4 w-4 text-primary" />
             <div>
               <p className="text-xs font-bold uppercase tracking-wider text-foreground">Competência da folha</p>
-              <p className="text-[11px] text-muted-foreground">Escolha uma quinzena civil ou o mês completo.</p>
+              <p className="text-[11px] text-muted-foreground">Quinzena ou mês. HE e desconto liquidam no período fechado.</p>
             </div>
           </div>
           <Button type="button" size="icon-sm" variant="ghost" aria-label="Mês anterior" onClick={() => shiftMonth(-1)}>
@@ -80,7 +80,7 @@ export function PayrollClosingSelector({ value, onChange, className }: PayrollCl
               </span>
               <Rows className="h-6 w-6 opacity-70" />
             </span>
-            <span className="mt-4 block text-xs opacity-75">1ª = dias 1–15 · 2ª = dia 16 até o último do mês. Salário proporcional aos dias corridos.</span>
+            <span className="mt-4 block text-xs opacity-75">1ª = dias 1–15 · 2ª = dia 16 até o último. Salário, HE e desconto daquela quinzena.</span>
           </button>
 
           <button type="button" className={optionClass(cadence === 'mes')} onClick={() => changeSelection('mes')}>

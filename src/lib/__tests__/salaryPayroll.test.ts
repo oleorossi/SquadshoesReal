@@ -833,7 +833,7 @@ describe('computePeriodFolha — política canônica de HE/falta/atraso (2026-07
   });
 });
 
-describe('HE dia-CLT (sem compensação cruzada) + cutover', () => {
+describe('HE period_compensation (default) + simulação dia-CLT', () => {
   const SCHED = {
     entry_time: '08:00:00', exit_time: '18:00:00', lunch_start: '12:00:00', lunch_end: '13:00:00',
     works_sunday: false, works_monday: true, works_tuesday: true, works_wednesday: true,
@@ -841,17 +841,17 @@ describe('HE dia-CLT (sem compensação cruzada) + cutover', () => {
   };
   const NO_HOL = new Set<string>();
 
-  it('resolvePayrollRuleVersion: antes do cutover = legado; ≥ cutover = dia-CLT', () => {
+  it('resolvePayrollRuleVersion: default = compensação no período em qualquer data', () => {
     expect(resolvePayrollRuleVersion({ periodFrom: '2026-09-20' }).ruleVersion).toBe(PAYROLL_RULE_VERSION);
-    expect(resolvePayrollRuleVersion({ periodFrom: '2026-09-21' }).ruleVersion).toBe(PAYROLL_RULE_VERSION_DAY_CLT);
-    expect(resolvePayrollRuleVersion({ periodFrom: '2026-10-01' }).balanceMode).toBe('day_independent');
+    expect(resolvePayrollRuleVersion({ periodFrom: '2026-09-21' }).balanceMode).toBe('period_compensation');
+    expect(resolvePayrollRuleVersion({ periodFrom: '2026-10-01' }).balanceMode).toBe('period_compensation');
     expect(resolvePayrollRuleVersion({
       periodFrom: '2026-09-01',
       forceVersion: PAYROLL_RULE_VERSION_DAY_CLT,
     }).balanceMode).toBe('day_independent');
   });
 
-  it('legado: crédito num dia anula atraso noutro; dia-CLT paga HE e desconta atraso', () => {
+  it('default: crédito num dia anula atraso noutro; force dia-CLT paga HE e desconta atraso', () => {
     // Seg 21/09: +60 min HE; Ter 22/09: −60 min atraso (chegou 1h tarde, saiu no horário)
     const punches = new Map<string, string[]>([
       ['2026-09-21', ['08:00', '12:00', '13:00', '19:00']], // +60
@@ -859,7 +859,7 @@ describe('HE dia-CLT (sem compensação cruzada) + cutover', () => {
     ]);
     const legacy = computePeriodFolha({
       salary: 2200, from: '2026-09-01', to: '2026-09-22', schedule: SCHED, holidaysSet: NO_HOL,
-      punchesByDate: punches, heNormalRate: 30, forceRuleVersion: 'falta-como-horas-v3-2026-09-14',
+      punchesByDate: punches, heNormalRate: 30,
       coveredDates: new Set(['2026-09-21', '2026-09-22']),
     });
     expect(legacy.he_minutes).toBe(0);
@@ -869,6 +869,7 @@ describe('HE dia-CLT (sem compensação cruzada) + cutover', () => {
     const dayRule = computePeriodFolha({
       salary: 2200, from: '2026-09-21', to: '2026-09-22', schedule: SCHED, holidaysSet: NO_HOL,
       punchesByDate: punches, heNormalRate: 30,
+      forceRuleVersion: PAYROLL_RULE_VERSION_DAY_CLT,
       coveredDates: new Set(['2026-09-21', '2026-09-22']),
     });
     expect(dayRule.rule_version).toBe('he-dia-clt-v1-2026-09-21');
@@ -878,7 +879,7 @@ describe('HE dia-CLT (sem compensação cruzada) + cutover', () => {
     expect(dayRule.he_value).toBeCloseTo(30, 2); // 1h × R$30
   });
 
-  it('piso 10 min POR DIA: 8 min de excesso não paga; 15 min paga os 15', () => {
+  it('piso 10 min no saldo do período (default): 8 min de excesso não paga; 15 min paga', () => {
     const small = computePeriodFolha({
       salary: 2200, from: '2026-09-21', to: '2026-09-21', schedule: SCHED, holidaysSet: NO_HOL,
       punchesByDate: new Map([['2026-09-21', ['08:00', '12:00', '13:00', '18:08']]]),
@@ -891,6 +892,26 @@ describe('HE dia-CLT (sem compensação cruzada) + cutover', () => {
       salary: 2200, from: '2026-09-21', to: '2026-09-21', schedule: SCHED, holidaysSet: NO_HOL,
       punchesByDate: new Map([['2026-09-21', ['08:00', '12:00', '13:00', '18:15']]]),
       heNormalRate: 20,
+    });
+    expect(big.he_minutes).toBe(15);
+    expect(big.he_value).toBeCloseTo((15 / 60) * 20, 2);
+  });
+
+  it('forçando dia-CLT: piso 10 min POR DIA', () => {
+    const small = computePeriodFolha({
+      salary: 2200, from: '2026-09-21', to: '2026-09-21', schedule: SCHED, holidaysSet: NO_HOL,
+      punchesByDate: new Map([['2026-09-21', ['08:00', '12:00', '13:00', '18:08']]]),
+      heNormalRate: 20,
+      forceRuleVersion: PAYROLL_RULE_VERSION_DAY_CLT,
+    });
+    expect(small.he_minutes).toBe(0);
+    expect(small.discarded_tolerance_minutes).toBe(8);
+
+    const big = computePeriodFolha({
+      salary: 2200, from: '2026-09-21', to: '2026-09-21', schedule: SCHED, holidaysSet: NO_HOL,
+      punchesByDate: new Map([['2026-09-21', ['08:00', '12:00', '13:00', '18:15']]]),
+      heNormalRate: 20,
+      forceRuleVersion: PAYROLL_RULE_VERSION_DAY_CLT,
     });
     expect(big.he_minutes).toBe(15);
     expect(big.he_value).toBeCloseTo((15 / 60) * 20, 2);

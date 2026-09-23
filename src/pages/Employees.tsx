@@ -588,7 +588,7 @@ export default function Employees() {
                   ? 'Paga a diária × dias com batida no período. Sem salário mensal nem desconto de falta.'
                   : (form as any).payment_type === 'producao'
                   ? 'Paga por par produzido (Ficha de Montadores), valorado por dificuldade. Ignora salário e ponto — o relógio serve só de presença. Líquido = pares × R$/par − adiantamentos.'
-                  : 'Salário do mês − atrasos/faltas + hora extra. Folhas a partir de 21/09/2026: HE e atraso por dia (sem compensar). Anteriores: compensação no período.'}
+                  : 'Salário do período − atrasos/faltas + hora extra. HE e desconto liquidam na quinzena/mês fechado (compensam entre si no período).'}
               </p>
             </div>
 

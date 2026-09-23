@@ -83,3 +83,12 @@ export function employeeUsesSalaryClosing(
 ): boolean {
   return String(employee.payment_type || 'mensalista').toLowerCase() !== 'producao';
 }
+
+/**
+ * HE e horas a descontar liquidam no fechamento escolhido (quinzena ou mês).
+ * Relatórios de ponto/HE usam o mês civil (dia 1 → último) via `heBalanceRange`.
+ */
+export function heBalanceRange(closing: Pick<PayrollClosingSelection, 'month'> | string): PayrollDateRange {
+  const month = typeof closing === 'string' ? closing : closing.month;
+  return payrollMonthBounds(month);
+}

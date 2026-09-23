@@ -184,8 +184,7 @@ function WorkScheduleTab() {
                   <div>Sáb: <span className="font-medium text-foreground">{satLabel}</span></div>
                 </div>
                 <div className="rounded-md border border-primary/20 bg-primary/5 px-2.5 py-2 text-xs text-muted-foreground">
-                  Folha com início ≥ 21/09/2026: HE e atraso por dia (sem compensar), taxas do quadro, piso 10 min/dia.
-                  Períodos anteriores: compensação no período (regra legada). Multiplicador da escala não entra no R$.
+                  HE e desconto compensam entre si no período fechado (quinzena ou mês). Relatórios: mês civil (dia 1 → último). Taxas do quadro; piso 10 min no saldo.
                 </div>
               </CardContent>
             </Card>

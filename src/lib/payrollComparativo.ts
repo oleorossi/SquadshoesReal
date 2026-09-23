@@ -294,6 +294,7 @@ export function computeComparativoRows(args: ComparativoArgs): ComparativoResult
       };
 
       const result = folha(range.from, range.to, rangeDays.length);
+      // HE e desconto liquidam por quinzena (ou mês): cada coluna usa a própria janela.
       const q1 = folha(`${period}-01`, `${period}-15`, 15);
       const q2 = folha(`${period}-16`, monthTo, q2Days);
       const matchedDays = Array.from(empPunches.keys()).filter(d => d >= range.from && d <= range.to).length;

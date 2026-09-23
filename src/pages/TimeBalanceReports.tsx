@@ -35,7 +35,6 @@ import {
 import { computeComparativoRows } from '@/lib/payrollComparativo';
 import { printTimeBalanceManagementReport, printTimeBalanceReports } from '@/lib/printTimeBalanceReports';
 import {
-  PAYROLL_RULE_CUTOVER_DATE,
   PAYROLL_RULE_VERSION_DAY_CLT,
   resolvePayrollRuleVersion,
 } from '@/lib/salaryPayroll';
@@ -71,23 +70,19 @@ export default function TimeBalanceReports() {
   const [range, setRange] = useState(monthBounds);
   const [kind, setKind] = useState<TimeBalanceReportKind>('all');
   const [scope, setScope] = useState('all');
-  /** Simula regra CLT-dia sem persistir — só em períodos anteriores ao cutover. */
+  /** Simula regra CLT-dia sem persistir — diagnóstico; o canônico é compensação no mês. */
   const [simulateDayRule, setSimulateDayRule] = useState(false);
   const appliedRange = useDebouncedValue(range, 350);
   const validRange = !!appliedRange.from && !!appliedRange.to && appliedRange.from <= appliedRange.to;
 
-  const defaultRule = resolvePayrollRuleVersion({ periodFrom: appliedRange.from });
-  const canSimulateNew = defaultRule.balanceMode === 'period_compensation';
-  const forceRuleVersion = canSimulateNew && simulateDayRule
-    ? PAYROLL_RULE_VERSION_DAY_CLT
-    : null;
+  const forceRuleVersion = simulateDayRule ? PAYROLL_RULE_VERSION_DAY_CLT : null;
   const activeRule = resolvePayrollRuleVersion({
     periodFrom: appliedRange.from,
     forceVersion: forceRuleVersion,
   });
   const ruleLabel = activeRule.balanceMode === 'day_independent'
-    ? 'HE por dia (sem compensar) · taxas do quadro'
-    : 'Compensação no período (regra até 20/09/2026)';
+    ? 'Simulação: HE por dia (sem compensar)'
+    : 'Compensação no período · relatório mês civil';
 
   const { data: employees = [], isLoading: employeesLoading } = useEmployees();
   const { data: schedules = [], isLoading: schedulesLoading } = useWorkSchedules();
@@ -280,28 +275,26 @@ export default function TimeBalanceReports() {
         </button>
       </div>
 
-      <PeriodRangeFilter value={range} onChange={setRange} label="Período do ponto" />
+      <PeriodRangeFilter value={range} onChange={setRange} label="Período do ponto" monthOnly />
 
       <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Regra de HE neste período</p>
           <p className="text-sm text-foreground">{ruleLabel}</p>
           <p className="text-xs text-muted-foreground">
-            Totais em R$ usam as taxas do quadro. Cutover: início ≥ {PAYROLL_RULE_CUTOVER_DATE.split('-').reverse().join('/')}.
+            Ciclo mês a mês (dia 1 ao último). Totais em R$ usam as taxas do quadro.
           </p>
         </div>
-        {canSimulateNew && (
-          <div className="flex items-center gap-3 shrink-0">
-            <Switch
-              id="simulate-day-he"
-              checked={simulateDayRule}
-              onCheckedChange={setSimulateDayRule}
-            />
-            <Label htmlFor="simulate-day-he" className="text-xs leading-snug max-w-[14rem]">
-              Simular regra nova (HE por dia, sem gravar)
-            </Label>
-          </div>
-        )}
+        <div className="flex items-center gap-3 shrink-0">
+          <Switch
+            id="simulate-day-he"
+            checked={simulateDayRule}
+            onCheckedChange={setSimulateDayRule}
+          />
+          <Label htmlFor="simulate-day-he" className="text-xs leading-snug max-w-[14rem]">
+            Simular HE por dia (sem gravar)
+          </Label>
+        </div>
       </div>
 
       {coverage && coverage.count === 0 && timeRecords.length === 0 && (

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   employeeUsesSalaryClosing,
+  heBalanceRange,
   identifyPayrollClosing,
   payrollClosingRange,
   payrollMonthBounds,
@@ -43,5 +44,10 @@ describe('fechamento da folha salarial', () => {
     expect(month && firstHalf && payrollRangesOverlap(month, firstHalf)).toBe(true);
     expect(firstHalf && secondHalf && payrollRangesOverlap(firstHalf, secondHalf)).toBe(false);
     expect(storedPayrollPeriodRange('intervalo-invalido')).toBeNull();
+  });
+
+  it('relatórios usam mês civil (dia 1 → último), inclusive setembro/30', () => {
+    expect(heBalanceRange('2026-09')).toEqual({ from: '2026-09-01', to: '2026-09-30' });
+    expect(heBalanceRange({ month: '2026-02' })).toEqual({ from: '2026-02-01', to: '2026-02-28' });
   });
 });
