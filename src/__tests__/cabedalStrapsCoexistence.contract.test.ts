@@ -60,14 +60,19 @@ describe('Cabedal e tiras coexistem na ficha e no PV', () => {
 
   it('não funde pares somente de tiras no Corte ou na Costura Cabedal', () => {
     expect(printWorkSheetsPage).toContain("buildColorGroupedSheets('sole', true)");
+    expect(printWorkSheetsPage).toContain("buildColorGroupedSheets('reference', true)");
     expect(printWorkSheetsPage).toContain('upperEligibility.partitionKey');
-    expect(printWorkSheetsPage).toContain("sectorName === 'Costura Cabedal' ? upperGroups : smGroups");
+    expect(printWorkSheetsPage).toContain('const costuraCabedalGroups = useMemo');
+    expect(printWorkSheetsPage).toMatch(
+      /sectorName === 'Costura Cabedal'[\s\S]*?costuraGroups/,
+    );
+    expect(printWorkSheetsPage).not.toMatch(/sectorName === 'Costura Cabedal' \? upperGroups/);
     expect(printWorkSheetsPage).toContain('const upperGroups = upperSectorGroups || [];');
     expect(printWorkSheetsPage).toMatch(
       /activeSectors\.has\('Corte Cabedal'\) && upperGroups\.some/,
     );
     expect(printWorkSheetsPage).toMatch(
-      /activeSectors\.has\('Costura Cabedal'\) && upperGroups\.some/,
+      /activeSectors\.has\('Costura Cabedal'\) && \(costuraCabedalGroups \|\| \[\]\)\.some/,
     );
   });
 });
