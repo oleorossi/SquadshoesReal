@@ -1,6 +1,13 @@
 import React, { useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { flushSync } from 'react-dom';
+import { createPortal, flushSync } from 'react-dom';
 import { isPageInRange, ReversePrintContext, usePrintPageRange } from './printOrder';
+import {
+  MIN_CONTINUATION_PX,
+  SECTOR_JOIN_GAP_PX,
+  SectorJoinCutLine,
+  trailingRemainderPx,
+  usePrintContinuity,
+} from './printContinuity';
 
 /**
  * PaginatedSheet — paginador determinístico das fichas de impressão.
@@ -147,10 +154,12 @@ export function packBlocks(
   gap: number = BLOCK_GAP_PX,
   keepWithPrev?: boolean[],
   keepWithNext?: boolean[],
+  /** Conteúdo já ocupando a folha física corrente (maço anterior + linha de corte). */
+  leadingUsed: number = 0,
 ): PackedPage[] {
   const pages: PackedPage[] = [];
   let cur: number[] = [];
-  let used = 0;
+  let used = Math.max(0, Math.min(capacity, leadingUsed));
   const flush = () => {
     if (cur.length > 0) {
       pages.push({ blockIdxs: cur, flow: false, spanned: 1, startPage: 0 });
@@ -158,49 +167,61 @@ export function packBlocks(
       used = 0;
     }
   };
-  heights.forEach((h, i) => {
+  for (let i = 0; i < heights.length; i++) {
+    const h = heights[i];
     if (h > capacity) {
       // Bloco maior que a página inteira: página própria, flui no browser.
       flush();
       pages.push({ blockIdxs: [i], flow: true, spanned: Math.max(1, Math.ceil(h / capacity)), startPage: 0 });
-      return;
+      continue;
     }
-    const needed = h + (cur.length > 0 ? gap : 0);
+    let needed = h + (cur.length > 0 ? gap : 0);
     if (used + needed > capacity) {
-      // keep-with-previous: rodapé puxa o bloco anterior junto, se os dois
-      // couberem numa página. Se o anterior era o único da página atual, a
-      // página esvazia e simplesmente não é emitida (flush ignora vazia).
-      if (keepWithPrev?.[i] && cur.length > 0) {
-        const prev = cur[cur.length - 1];
-        const hPrev = heights[prev];
-        if (hPrev + gap + h <= capacity) {
-          cur.pop();
-          flush();
-          cur = [prev, i];
-          used = hPrev + gap + h;
-          return;
+      // Continuação de maço: sobra da folha anterior não comporta este bloco
+      // → zera o cursor e tenta de novo numa folha cheia (sem emitir página vazia).
+      if (cur.length === 0 && used > 0) {
+        used = 0;
+        needed = h;
+      }
+      if (used + needed > capacity) {
+        // keep-with-previous: rodapé puxa o bloco anterior junto, se os dois
+        // couberem numa página. Se o anterior era o único da página atual, a
+        // página esvazia e simplesmente não é emitida (flush ignora vazia).
+        if (keepWithPrev?.[i] && cur.length > 0) {
+          const prev = cur[cur.length - 1];
+          const hPrev = heights[prev];
+          if (hPrev + gap + h <= capacity) {
+            cur.pop();
+            flush();
+            cur = [prev, i];
+            used = hPrev + gap + h;
+            continue;
+          }
         }
+        // keep-with-next: sub-headers no fim da página atual viajam junto com
+        // o bloco que não coube (senão o título do grupo fica órfão no pé da
+        // folha). Carrega quantos couberem na página nova junto com o bloco i.
+        const carry: number[] = [];
+        let carryUsed = h;
+        while (cur.length > 0 && keepWithNext?.[cur[cur.length - 1]]) {
+          const cand = cur[cur.length - 1];
+          if (heights[cand] + gap + carryUsed > capacity) break;
+          carry.unshift(cur.pop()!);
+          carryUsed += heights[cand] + gap;
+        }
+        // Não cabe no restante → resto da página fica EM BRANCO, bloco abre a próxima.
+        flush();
+        cur = [...carry, i];
+        used = carryUsed;
+      } else {
+        cur.push(i);
+        used += needed;
       }
-      // keep-with-next: sub-headers no fim da página atual viajam junto com
-      // o bloco que não coube (senão o título do grupo fica órfão no pé da
-      // folha). Carrega quantos couberem na página nova junto com o bloco i.
-      const carry: number[] = [];
-      let carryUsed = h;
-      while (cur.length > 0 && keepWithNext?.[cur[cur.length - 1]]) {
-        const cand = cur[cur.length - 1];
-        if (heights[cand] + gap + carryUsed > capacity) break;
-        carry.unshift(cur.pop()!);
-        carryUsed += heights[cand] + gap;
-      }
-      // Não cabe no restante → resto da página fica EM BRANCO, bloco abre a próxima.
-      flush();
-      cur = [...carry, i];
-      used = carryUsed;
     } else {
       cur.push(i);
       used += needed;
     }
-  });
+  }
   flush();
   if (pages.length === 0) pages.push({ blockIdxs: [], flow: false, spanned: 1, startPage: 0 });
   let n = 1;
@@ -272,14 +293,17 @@ export function chooseAutoFitScale(
     minScale?: number;
     /** Teto vindo da LARGURA (`growCeilingFor`). */
     maxScale?: number;
+    /** Espaço já usado na folha física corrente (continuação entre maços). */
+    leadingUsed?: number;
   } = {},
 ): { scale: number; pages: PackedPage[] } {
   const capacity = opts.capacity ?? PAGE_CAPACITY_PX;
   const gap = opts.gap ?? BLOCK_GAP_PX;
+  const leading = opts.leadingUsed ?? 0;
   const pack = (s: number, safety: number) =>
     packBlocks(
       heights.map(h => h * s * PRINT_INFLATE * safety),
-      capacity, gap, opts.keepPrev, opts.keepNext,
+      capacity, gap, opts.keepPrev, opts.keepNext, leading,
     );
   const base = pack(1, 1);
   const baseTotal = base.reduce((a, p) => a + p.spanned, 0);
@@ -348,6 +372,14 @@ interface PaginatedSheetProps {
 
 export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle, minScale }: PaginatedSheetProps) => {
   const sheetInstanceId = useId();
+  const sheetKey = `${sectorLabel}::${sheetInstanceId}`;
+  const continuity = usePrintContinuity(sheetKey);
+  const sheetRootRef = useRef<HTMLDivElement | null>(null);
+  const continuesOnPriorSheet = continuity.tailRemainderPx >= MIN_CONTINUATION_PX;
+  const leadingForPack = continuesOnPriorSheet
+    ? PAGE_CAPACITY_PX - continuity.tailRemainderPx + SECTOR_JOIN_GAP_PX
+    : 0;
+  const continuationMount = continuity.continuationMountEl;
   const nodes = blocks.map(b => (isWrappedBlock(b) ? b.node : b));
   const keepFlags = blocks.map(b => (isWrappedBlock(b) ? !!b.keepWithPrev : false));
   const keepNextFlags = blocks.map(b => (isWrappedBlock(b) ? !!b.keepWithNext : false));
@@ -478,9 +510,10 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle, minScale }: Pag
       keepNext: keepNextFlags,
       minScale,
       maxScale: growCeilingFor(rigidWidths),
+      leadingUsed: leadingForPack,
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, heights, rigidWidths, blocks.length]);
+  }, [ready, heights, rigidWidths, blocks.length, leadingForPack]);
   // Propaga o zoom escolhido pra medição normalizar à escala 1 (sem loop).
   scaleRef.current = scale;
   const totalPages = pages.reduce((s, p) => s + p.spanned, 0);
@@ -491,11 +524,22 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle, minScale }: Pag
   // maços anteriores na ordem do documento. Empacotamento/medição intactos;
   // só a emissão omite nós fora da faixa (prévia = print = PDF).
   const pageRange = usePrintPageRange();
-  const sheetKey = `${sectorLabel}::${sheetInstanceId}`;
   useLayoutEffect(() => {
     if (!pageRange || !ready) return;
     pageRange.registerSheet(sheetKey, pages.length);
   }, [pageRange, sheetKey, pages.length, ready]);
+
+  useLayoutEffect(() => {
+    if (!ready || pages.length === 0) return;
+    const last = pages[pages.length - 1];
+    if (last.flow) {
+      continuity.reportTrailingRemainder(0);
+      return;
+    }
+    continuity.reportTrailingRemainder(
+      trailingRemainderPx(last.blockIdxs, heights, scale, PAGE_CAPACITY_PX, BLOCK_GAP_PX, PRINT_INFLATE),
+    );
+  }, [ready, pages, heights, scale, continuity.reportTrailingRemainder]);
 
   const pageOffset = pageRange ? pageRange.sheetOffset(sheetKey) : 0;
   // Durante a passada de medição (!ready) emite tudo — senão os wrappers
@@ -527,15 +571,99 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle, minScale }: Pag
     }
   };
 
+  const renderBlock = (bi: number, j: number, blockCount: number) => (
+    <div
+      key={`blk-${bi}`}
+      ref={registerEl(bi)}
+      className="pagi-block"
+      style={{
+        display: 'flow-root',
+        marginBottom: j < blockCount - 1 ? `${BLOCK_GAP_MM}mm` : 0,
+      }}
+    >
+      {scale !== 1
+        ? <div style={{ zoom: scale } as React.CSSProperties}>{nodes[bi]}</div>
+        : nodes[bi]}
+    </div>
+  );
+
+  const renderPageHead = (page: PackedPage) => (
+    <div
+      className="pagi-page-head"
+      style={{
+        height: `${HEADER_BAND_MM - 2}mm`,
+        marginBottom: '2mm',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 8,
+        borderBottom: '1px solid #000',
+        fontFamily: "'Fira Code', ui-monospace, monospace",
+        fontSize: '9px',
+        letterSpacing: '0.08em',
+        textTransform: 'uppercase',
+        color: '#000',
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+      }}
+    >
+      <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, overflow: 'hidden' }}>
+        <span
+          aria-hidden="true"
+          style={{ width: 6, height: 6, flex: '0 0 auto', background: '#000', display: 'inline-block' }}
+        />
+        <span style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          Ficha de operador · {sectorLabel}
+        </span>
+      </span>
+      <span style={{ fontWeight: 600, flexShrink: 0 }}>
+        Folha {page.startPage} / {totalPages}
+      </span>
+    </div>
+  );
+
+  const packedHeightPx = (page: PackedPage) => {
+    if (!ready || page.flow) return PAGE_CAPACITY_PX;
+    return page.blockIdxs.reduce((u, bi, j) => {
+      if (j > 0) u += BLOCK_GAP_PX;
+      return u + heights[bi] * scale * PRINT_INFLATE;
+    }, 0);
+  };
+
+  const isLastLogicalPage = (page: PackedPage) => page.startPage === pages[pages.length - 1]?.startPage;
+  const tailOfferPx = ready && pages.length > 0 && !pages[pages.length - 1].flow
+    ? trailingRemainderPx(
+      pages[pages.length - 1].blockIdxs, heights, scale, PAGE_CAPACITY_PX, BLOCK_GAP_PX, PRINT_INFLATE,
+    )
+    : 0;
+
+  const firstPagePortaled = continuesOnPriorSheet && continuationMount && orderedPages[0]?.blockIdxs.length;
+  const pagesInOwnSheet = firstPagePortaled ? orderedPages.slice(1) : orderedPages;
+
+  const portaledBlocks = firstPagePortaled && orderedPages[0]
+    ? createPortal(
+      <>
+        <SectorJoinCutLine />
+        {orderedPages[0].blockIdxs.map((bi, j) => renderBlock(bi, j, orderedPages[0].blockIdxs.length))}
+      </>,
+      continuationMount,
+    )
+    : null;
+
   return (
-    <div className="pagi-sheet" style={{ width: '210mm', margin: '0 auto' }}>
-      {orderedPages.map((page) => (
+    <div ref={sheetRootRef} className="pagi-sheet" style={{ width: '210mm', margin: '0 auto' }}>
+      {portaledBlocks}
+      {pagesInOwnSheet.map((page) => {
+        const packedPx = packedHeightPx(page);
+        const partialPage = !page.flow && packedPx < PAGE_CAPACITY_PX * 0.97;
+        const offerTailMount = partialPage && tailOfferPx >= MIN_CONTINUATION_PX && isLastLogicalPage(page);
+        return (
         <div
           key={`pg-${page.startPage}`}
-          className={`pagi-page${page.flow ? ' pagi-page--flow' : ''}`}
+          className={`pagi-page${page.flow ? ' pagi-page--flow' : ''}${partialPage ? ' pagi-page--partial' : ''}`}
           style={{
             width: '210mm',
-            height: page.flow ? 'auto' : `${PAGE_HEIGHT_MM}mm`,
+            height: page.flow || partialPage ? 'auto' : `${PAGE_HEIGHT_MM}mm`,
             minHeight: page.flow ? `${PAGE_HEIGHT_MM}mm` : undefined,
             boxSizing: 'border-box',
             padding: `${PAGE_PAD_TOP_MM}mm ${PAGE_PAD_X_MM}mm ${PAGE_PAD_BOTTOM_MM}mm`,
@@ -546,63 +674,18 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle, minScale }: Pag
             ...pageStyle,
           }}
         >
-          {/* Faixa de cabeçalho — TODA página, inclusive a 1ª. O marcador
-              quadrado facilita localizar o início visual da faixa quando o
-              maço está sobre a bancada, sem mudar sua altura física. */}
-          <div
-            className="pagi-page-head"
-            style={{
-              height: `${HEADER_BAND_MM - 2}mm`,
-              marginBottom: '2mm',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 8,
-              borderBottom: '1px solid #000',
-              fontFamily: "'Fira Code', ui-monospace, monospace",
-              fontSize: '9px',
-              letterSpacing: '0.08em',
-              textTransform: 'uppercase',
-              color: '#000',
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-            }}
-          >
-            <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, overflow: 'hidden' }}>
-              <span
-                aria-hidden="true"
-                style={{ width: 6, height: 6, flex: '0 0 auto', background: '#000', display: 'inline-block' }}
-              />
-              <span style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                Ficha de operador · {sectorLabel}
-              </span>
-            </span>
-            <span style={{ fontWeight: 600, flexShrink: 0 }}>
-              Folha {page.startPage} / {totalPages}
-            </span>
-          </div>
-          {page.blockIdxs.map((bi, j) => (
+          {renderPageHead(page)}
+          {page.blockIdxs.map((bi, j) => renderBlock(bi, j, page.blockIdxs.length))}
+          {offerTailMount && (
             <div
-              key={`blk-${bi}`}
-              ref={registerEl(bi)}
-              className="pagi-block"
-              // flow-root: margens internas dos blocos ficam CONTIDAS no
-              // wrapper — offsetHeight mede a altura real incluindo-as.
-              style={{
-                display: 'flow-root',
-                marginBottom: j < page.blockIdxs.length - 1 ? `${BLOCK_GAP_MM}mm` : 0,
-              }}
-            >
-              {/* Zoom do auto-fit aplicado SÓ no conteúdo (não no wrapper que
-                  carrega o gap), pra encolher fonte+tabela sem mexer no respiro
-                  entre blocos. zoom:1 é no-op. */}
-              {scale !== 1
-                ? <div style={{ zoom: scale } as React.CSSProperties}>{nodes[bi]}</div>
-                : nodes[bi]}
-            </div>
-          ))}
+              ref={continuity.registerContinuationMountForNext}
+              className="pagi-continuation-mount"
+              style={{ display: 'flow-root' }}
+            />
+          )}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 };

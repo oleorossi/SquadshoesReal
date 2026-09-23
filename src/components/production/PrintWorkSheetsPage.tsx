@@ -38,6 +38,7 @@ import { collectiveTypeForMode, pairsPerVolumeForMode } from '@/lib/packagingPai
 import { ManagementReport, type ReportSaleOrder, type ReportOrder, type ReportStage } from '@/components/production/ManagementReport';
 import { compareColors } from '@/components/production/worksheet/colorSequencing';
 import { PrintPageRangeProvider, ReversePrintContext, ReversibleStack } from '@/components/production/worksheet/printOrder';
+import { PrintContinuityProvider } from '@/components/production/worksheet/printContinuity';
 import { resolveFicha, type FichaResolution } from '@/components/production/worksheet/fichaSize';
 import { soleGroupKey } from '@/components/production/worksheet/soleGroupKey';
 import { useSectorGroupingConfig } from '@/hooks/useSectorGroupingConfig';
@@ -286,6 +287,13 @@ const printStyles = `
   .pagi-page {
     box-shadow: 0 0 0 1px hsl(var(--border)), 0 14px 32px hsl(var(--foreground) / 0.08);
     margin-bottom: 10px;
+  }
+  /* Última folha lógica parcial: altura = conteúdo (WYSIWYG com print). */
+  .pagi-page--partial {
+    margin-bottom: 0;
+  }
+  .print-area .page-break:not(:last-child) .pagi-page--partial {
+    margin-bottom: 0;
   }
 
   /* Mesa de conferência: distingue a interface do papel sem tocar nas
@@ -3889,6 +3897,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           sequencial): inverter por FOLHA. Faixa De/Até já omitiu folhas fora
           do intervalo antes desta inversão. */}
       <ReversePrintContext.Provider value={printReversing}>
+      <PrintContinuityProvider key={`cont-${formatModeKey}-${sectorsKey}`}>
       <ReversibleStack reverse={printReversing}>
 
         {/* Cartão físico — 1 por corrugado cheio × OP × setor emissor.
@@ -4712,6 +4721,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           </div>
         ))}
       </ReversibleStack>
+      </PrintContinuityProvider>
       </ReversePrintContext.Provider>
       </div>
       </div>

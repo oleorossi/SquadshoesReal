@@ -184,6 +184,20 @@ describe('packBlocks — paginação explícita das fichas', () => {
     }
   });
 
+  it('leadingUsed: continua empacotando no restante da folha física anterior', () => {
+    const half = CAP * 0.5;
+    // Maço anterior deixou metade da folha; primeiro bloco cabe no restante.
+    const pages = packBlocks([200, 200], CAP, GAP, undefined, undefined, half);
+    expect(pages).toHaveLength(1);
+    expect(pages[0].blockIdxs).toEqual([0, 1]);
+  });
+
+  it('leadingUsed: bloco que enche o restante empurra o seguinte sem página vazia', () => {
+    const leading = CAP * 0.4;
+    const pages = packBlocks([580, 100], CAP, GAP, undefined, undefined, leading);
+    expect(pages.map(p => p.blockIdxs)).toEqual([[0], [1]]);
+  });
+
   it('constantes reais: capacidade A4 com margens internas é plausível', () => {
     // 288mm − 6 − 8 − 8 (faixa) = 266mm ≈ 1005px @96dpi (288 dá ~9mm de folga
     // contra os 296.9mm que o Chrome usa pra A4 — mata o derrame em página cheia).
