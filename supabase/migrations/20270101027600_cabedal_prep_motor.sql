@@ -241,7 +241,7 @@ AS $$
   from_bom AS (
     SELECT DISTINCT sm.product_id
       FROM public.sheet_materials sm
-     WHERE sm.technical_sheet_id IN (SELECT id FROM sheets)
+     WHERE sm.sheet_id IN (SELECT id FROM sheets)
        AND sm.product_id IS NOT NULL
   )
   SELECT product_id FROM from_upper WHERE product_id IS NOT NULL
@@ -596,7 +596,6 @@ DECLARE
   v_need numeric;
   v_avail numeric;
   v_debit numeric;
-  v_sm_id uuid;
 BEGIN
   IF p_allocation_ids IS NULL OR coalesce(array_length(p_allocation_ids, 1), 0) = 0 THEN
     RAISE EXCEPTION 'Selecione ao menos uma alocação' USING ERRCODE = '22023';
@@ -692,26 +691,12 @@ BEGIN
              updated_at = now()
        WHERE id = v_prod.product_id;
 
-      INSERT INTO public.stock_movements (
-        product_id, quantity, movement_type, previous_stock, new_stock,
-        description, origin_type, movement_reason
-      ) VALUES (
-        v_prod.product_id,
-        -v_debit,
-        'saida',
-        v_avail,
-        v_avail - v_debit,
-        'Prep. cabedal OS ' || v_os_id::text,
-        'cabedal_prep',
-        'prep_os_generation'
-      ) RETURNING id INTO v_sm_id;
-
       INSERT INTO public.cabedal_prep_stock_debits (
         sale_order_id, sale_order_item_id, product_id, quantity,
-        service_order_id, stock_movement_id
+        service_order_id
       ) VALUES (
         v_demand.sale_order_id, v_demand.sale_order_item_id, v_prod.product_id,
-        v_debit, v_os_id, v_sm_id
+        v_debit, v_os_id
       )
       ON CONFLICT DO NOTHING;
     END LOOP;
