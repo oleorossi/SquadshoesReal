@@ -87,13 +87,21 @@ export function usePrintContinuity(sheetInstanceKey: string): PrintContinuitySlo
   const tailRemainderPx = registry?.leadingByIndex[sheetIndex] ?? 0;
   const continuationMountEl = registry?.continuationMountByIndex[sheetIndex] ?? null;
 
+  // Callbacks ESTÁVEIS: o value do provider muda a cada leading/mount update.
+  // Se o ref callback mudar de identidade, React chama old(null)+new(el) →
+  // registerContinuationMount alterna null↔el → setState → #185 (stack prod).
+  const registryRef = useRef(registry);
+  registryRef.current = registry;
+  const sheetIndexRef = useRef(sheetIndex);
+  sheetIndexRef.current = sheetIndex;
+
   const reportTrailingRemainder = useCallback((remainderPx: number) => {
-    registry?.reportTrailingRemainder(sheetIndex, remainderPx);
-  }, [registry, sheetIndex]);
+    registryRef.current?.reportTrailingRemainder(sheetIndexRef.current, remainderPx);
+  }, []);
 
   const registerContinuationMountForNext = useCallback((el: HTMLDivElement | null) => {
-    registry?.registerContinuationMount(sheetIndex + 1, el);
-  }, [registry, sheetIndex]);
+    registryRef.current?.registerContinuationMount(sheetIndexRef.current + 1, el);
+  }, []);
 
   return useMemo(() => ({
     sheetIndex,
