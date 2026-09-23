@@ -139,6 +139,10 @@ describe('arquivo permanente das importações do relógio de ponto', () => {
     expect(PAGE).toContain('incompleteVsDeclared');
     expect(PAGE).toContain('Pode importar agora e trazer o restante depois');
     expect(PAGE).not.toContain('(~{gapToToday} dias atrás)');
+    // Batidas só na 1ª quinzena vencem parser/tela no mês (evita fim=hoje no meio do mês).
+    expect(PAGE).toContain('inferPayrollClosingFromPunchSpan');
+    expect(PAGE).toContain('punchClosing || fileClosing || screenClosing');
+    expect(PAGE).toContain('Selecione o escopo da exportação');
   });
 
   it('exige escopo explícito e não transforma arquivo filtrado em cobertura global', () => {

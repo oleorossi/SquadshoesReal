@@ -64,6 +64,35 @@ export function identifyPayrollClosing(range: PayrollDateRange): PayrollClosingS
   return null;
 }
 
+/**
+ * Fecha o import pela faixa REAL de batidas quando ela cabe numa quinzena civil.
+ * Evita o caso em que o parser/relógio declara o mês (ou a tela está no mês) e o
+ * fim é truncado pra “hoje” no meio do mês — aí a prévia virava 01–23 com batidas
+ * só até o dia 15 e acusava arquivo incompleto ao importar a 1ª quinzena.
+ */
+export function inferPayrollClosingFromPunchSpan(
+  firstPunch: string,
+  lastPunch: string,
+): PayrollClosingSelection | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(firstPunch) || !/^\d{4}-\d{2}-\d{2}$/.test(lastPunch)) {
+    return null;
+  }
+  if (firstPunch > lastPunch) return null;
+  const exact = identifyPayrollClosing({ from: firstPunch, to: lastPunch });
+  if (exact) return exact;
+  if (firstPunch.slice(0, 7) !== lastPunch.slice(0, 7)) return null;
+  const month = firstPunch.slice(0, 7);
+  const q1 = payrollClosingRange(month, 'quinzena', 'primeira');
+  const q2 = payrollClosingRange(month, 'quinzena', 'segunda');
+  if (q1.from && firstPunch >= q1.from && lastPunch <= q1.to) {
+    return identifyPayrollClosing(q1);
+  }
+  if (q2.from && firstPunch >= q2.from && lastPunch <= q2.to) {
+    return identifyPayrollClosing(q2);
+  }
+  return null;
+}
+
 export function storedPayrollPeriodRange(period: string): PayrollDateRange | null {
   if (MONTH_RE.test(period)) {
     const bounds = payrollMonthBounds(period);
