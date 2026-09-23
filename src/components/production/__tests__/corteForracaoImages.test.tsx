@@ -221,8 +221,9 @@ describe('SilkMontageWorkSheet · Corte Forração sem foto + refs em destaque',
     expect(container.textContent).toMatch(/Controle de Fichas · SP201/);
   });
 
-  it('NÃO mostra foto do produto no Silk (setor sem showCompactImages)', () => {
+  it('Silk: mostra foto da referência (showCompactImages)', () => {
     const cg = baseCg({
+      refs: [{ code: 'SUELI', name: 'SUELI' }],
       refImages: [{ sheetId: 'a', refName: 'SUELI', variantImageUrl: IMG_A }],
     });
     const { container } = render(
@@ -230,7 +231,7 @@ describe('SilkMontageWorkSheet · Corte Forração sem foto + refs em destaque',
     );
     const imgs = Array.from(container.querySelectorAll('img'))
       .filter(i => /ref-a\.jpg/.test(i.getAttribute('src') || ''));
-    expect(imgs).toHaveLength(0);
+    expect(imgs).toHaveLength(1);
   });
 });
 

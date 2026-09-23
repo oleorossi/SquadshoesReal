@@ -2771,12 +2771,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   // Corte Cabedal ficava número-a-número. (PV-00142, 2026-06-17.)
   }, [expandedOrders, activeSectors, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, soleMaterialByRef, sheetMaterialsByRef, resolveSoleForOrder, sheetById, clientsInfo, economicGroupsInfo, soleGroupPackaging, SOLE_COLOR_GROUPED_SECTORS, knifeDefaultBoundaries, knifeOptOutByRef, knifeRangesByRef, aviamentoDefaultBoundaries, aviamentoOptOutByRef, aviamentoRangesByRef]);
 
-  // Corte Cabedal: por SOLADO+cor (cortador foca no material). Costura Cabedal
-  // SAIU deste builder (2026-09-23, dono): não funde refs distintas — ver
-  // costuraCabedalGroups (por REFERÊNCIA, como Aviamento).
+  // Corte Cabedal + Costura Cabedal: 1 ficha por REFERÊNCIA (dono 2026-09-23).
+  // Antes Cabedal agregava por solado+cor e fundia LA01+SP201 no mesmo card
+  // OFF WHITE (PV-00197) — o cortador corta por chute/modelo, não pela cor.
   const upperSectorGroups = useMemo<SoleSilkGroup[] | null>(() => {
     if (!activeSectors.has('Corte Cabedal')) return null;
-    return buildColorGroupedSheets('sole', true);
+    return buildColorGroupedSheets('reference', true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expandedOrders, activeSectors, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, soleMaterialByRef, sheetMaterialsByRef, resolveSoleForOrder, sheetById, clientsInfo, economicGroupsInfo, soleGroupPackaging, knifeDefaultBoundaries, knifeOptOutByRef, knifeRangesByRef, aviamentoDefaultBoundaries, aviamentoOptOutByRef, aviamentoRangesByRef]);
 
@@ -3494,9 +3494,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     let total = 0;
     if (activeSectors.has('Corte Palmilha') && palmilhaGroups.length > 0) total += 1;
     if (activeSectors.has('Solagem') && solagemData?.solagem && solagemData.solagem.bands.length > 0) total += 1;
-    // Corte Cabedal: 1 ficha agregada — mas SÓ se sobra alguma cor após o
-    // filtro requiresUpperCut (modelos 100% tiras → mergeColorsAcrossSoles
-    // devolve null e nada renderiza; contar 1 habilitava print em branco).
+    // Corte Cabedal: 1 maço contínuo por setor (vários grupos = 1 por referência).
+    // Conta 1 se sobra alguma cor após requiresUpperCut (modelos 100% tiras
+    // não entram; contar 1 habilitava print em branco).
     const smGroups = silkMontageGroups || [];
     const upperGroups = upperSectorGroups || [];
     if (activeSectors.has('Corte Cabedal') && upperGroups.some(g =>
@@ -4024,107 +4024,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           const flowOrder: GroupedSector[] = ['Corte Forração', 'Corte Cabedal', 'Acabamento Palmilha', 'Costura Cabedal', 'Aviamento', 'Silk'];
           const sectorsToRender: GroupedSector[] = flowOrder.filter(s => activeSectors.has(s));
 
-          // 22/05/2026: pra Corte Cabedal, o cortador foca SÓ na cor que
-          // está cortando (couro/material é o mesmo independente do solado
-          // de destino) — 1 ficha agregando todas as cores de todos os
-          // solados. Costura e Aviamento mantêm 1 ficha por solado.
-          // 29/05/2026: Corte Forração saiu do agregado a pedido do user —
-          // forração varia por solado (cor da forração ≠ cor do cabedal),
-          // então a ficha precisa quebrar por solado mostrando cores +
-          // pares por numeração de cada um.
-          const CUTTING_AGGREGATE_BY_COLOR: ReadonlyArray<GroupedSector> = ['Corte Cabedal'];
-          const mergeColorsAcrossSoles = (sector: GroupedSector): SoleSilkGroup | null => {
-            const colorMap = new Map<string, SilkColorGroup>();
-            const sourceGroups = sector === 'Corte Cabedal'
-              ? upperGroups
-              : smGroups;
-            for (const soleGroup of sourceGroups) {
-              const filtered = filterGroupForSector(soleGroup, sector);
-              if (!filtered) continue;
-              for (const cg of filtered.colorGroups) {
-                const mergeKey = `${cg.color}::${lotPartitionKey(cg.lotInfo)}`;
-                const existing = colorMap.get(mergeKey);
-                if (!existing) {
-                  // Preserva refs + refImages (pedido dono 22/09/2026): no
-                  // Cabedal a cor agrega solados, mas o cortador precisa ver
-                  // a foto e o tally DE CADA referência. O `refs: []` de
-                  // 22/05/2026 sumia com as sandálias — PV-00197 OFF WHITE
-                  // (LA01+SP201) saía com 1 foto e 1 bloco de quadradinhos.
-                  const cloned = copyAllocatedPairs({
-                    ...cg,
-                    refs: [...(cg.refs || [])],
-                    refImages: (cg.refImages || []).map((ri: any) => ({ ...ri })),
-                    combinedGrid: { ...cg.combinedGrid },
-                    knifeGrid: cg.knifeGrid ? { ...cg.knifeGrid } : undefined,
-                    opNumbers: [...cg.opNumbers],
-                    pvNumbers: cg.pvNumbers ? [...cg.pvNumbers] : [],
-                  }, cg);
-                  colorMap.set(mergeKey, cloned);
-                } else {
-                  existing.totalPairs += cg.totalPairs;
-                  mergeAllocatedPairs(ensureAllocatedPairs(existing), allocatedPairsOf(cg));
-                  for (const [size, qty] of Object.entries(cg.combinedGrid)) {
-                    existing.combinedGrid[size] = (existing.combinedGrid[size] || 0) + qty;
-                  }
-                  if (cg.knifeGrid) {
-                    existing.knifeGrid = existing.knifeGrid || {};
-                    for (const [k, v] of Object.entries(cg.knifeGrid)) {
-                      existing.knifeGrid[k] = (existing.knifeGrid[k] || 0) + v;
-                    }
-                  }
-                  existing.fichas = (existing.fichas || 0) + (cg.fichas || 0);
-                  for (const op of cg.opNumbers) {
-                    if (!existing.opNumbers.includes(op)) existing.opNumbers.push(op);
-                  }
-                  if (cg.pvNumbers && existing.pvNumbers) {
-                    for (const pv of cg.pvNumbers) {
-                      if (!existing.pvNumbers.includes(pv)) existing.pvNumbers.push(pv);
-                    }
-                  }
-                  // Junta refs + fotos por referência das cores fundidas
-                  // (mesmo contrato do mergeForracaoWithinSole).
-                  existing.refs = existing.refs || [];
-                  for (const r of (cg.refs || [])) {
-                    const key = r.code || r.name;
-                    if (key && !existing.refs.some((x: any) => (x.code || x.name) === key)) {
-                      existing.refs.push({ ...r });
-                    }
-                  }
-                  existing.refImages = existing.refImages || [];
-                  for (const ri of (cg.refImages || [])) {
-                    const found = existing.refImages.find((x: any) => x.sheetId === ri.sheetId);
-                    if (found) {
-                      (found as any).pairs = ((found as any).pairs || 0) + ((ri as any).pairs || 0);
-                      (found as any).fichas = ((found as any).fichas || 0) + ((ri as any).fichas || 0);
-                    } else {
-                      existing.refImages.push({ ...ri });
-                    }
-                  }
-                  // Propaga flags de corrugado (7º passe): corrugados distintos
-                  // entre grupos fundidos = título do tally avisa "mistos".
-                  if (cg.mixedGrades) existing.mixedGrades = true;
-                  if (cg.fichasAproximadas) existing.fichasAproximadas = true;
-                  if (cg.corrugadosMistos) existing.corrugadosMistos = true;
-                  if (existing.baseGradeSum !== cg.baseGradeSum) {
-                    existing.mixedGrades = true;
-                    existing.corrugadosMistos = true;
-                  }
-                }
-              }
-            }
-            // Bug fix 22/05/2026: usava localeCompare puro, ignorando o
-            // sequenciamento por luminosidade. Resultado: Corte Cabedal/
-            // Forração mostravam cores em ordem alfabética em vez de
-            // claras→escuras. Corrigido pra compareColors (mesmo padrão
-            // dos sectorsHomogeneous).
-            const colorGroups = Array.from(colorMap.values()).sort((a, b) => compareColors(a.color, b.color));
-            if (colorGroups.length === 0) return null;
-            return {
-              soleName: 'Todos os solados',
-              colorGroups,
-              totalPairs: colorGroups.reduce((s, g) => s + g.totalPairs, 0),
-            };
-          };
+          // Corte Cabedal (2026-09-23): por REFERÊNCIA — não funde modelos
+          // distintos mesmo com a mesma cor/material (PV-00197). O agregado
+          // "Todos os solados" / mergeColorsAcrossSoles foi REVOGADO.
 
           // Corte Forração (pedido user 09/06/2026): agrupar pela COR BASE DO
           // CALÇADO (= cor do produto = cor em que a forração é cortada) dentro
@@ -4304,10 +4206,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           return sectorsToRender.flatMap(sectorName => {
             // Monta a lista de grupos do setor (mesmos filtros de antes).
             let groupsForSector: SoleSilkGroup[];
-            if (CUTTING_AGGREGATE_BY_COLOR.includes(sectorName)) {
-              // Corte Cabedal: cores agregadas entre solados → 1 grupo único.
-              const merged = mergeColorsAcrossSoles(sectorName);
-              groupsForSector = merged ? [merged] : [];
+            if (sectorName === 'Corte Cabedal') {
+              // Corte Cabedal (2026-09-23): por REFERÊNCIA — não funde modelos
+              // no mesmo card de cor (PV-00197 LA01+SP201 OFF WHITE).
+              groupsForSector = upperGroups
+                .map(group => filterGroupForSector(group, 'Corte Cabedal'))
+                .filter((g): g is SoleSilkGroup => g !== null);
             } else if (sectorName === 'Aviamento') {
               // Aviamento: grupos por REFERÊNCIA (sub-header por referência;
               // a foto do produto sai no 1º card de cada cor).

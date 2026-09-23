@@ -282,12 +282,12 @@ const SECTOR_THEME: Record<GroupedSector, {
   showCompactImages?: boolean;
 }> = {
   // Silk (2026-06-12, pedido do dono): layout COMPACTO igual Corte Forração
-  // (agrupamento solado+cor) mostrando APENAS a logomarca a estampar (cliente
-  // quando o silk de cliente está habilitado, senão a do solado — cascata já
-  // resolvida no PrintWorkSheetsPage.getOrderSilk). Sem foto de produto, sem
-  // tabela de múltiplos silks: 1 logomarca por ficha (ou por cor, quando as
-  // cores resolvem silks diferentes).
-  'Silk':             { icon: Paintbrush, compact: true,  showFrenteTraseiro: false, showSilkImage: true,  showProductImage: false, showAlerts: false, showPiecesToSew: false },
+  // (agrupamento solado+cor) com a logomarca a estampar (cliente → grupo
+  // econômico → solado — cascata em getOrderSilk).
+  // 2026-09-23 (dono): TAMBÉM a foto da referência (sandália) por modelo da
+  // cor — o estampador identifica o chute; a logomarca continua no bloco
+  // "Logomarca a Estampar".
+  'Silk':             { icon: Paintbrush, compact: true,  showFrenteTraseiro: false, showSilkImage: true,  showProductImage: false, showAlerts: false, showPiecesToSew: false, showCompactImages: true },
   'Montagem':         { icon: Hammer,     compact: false, showFrenteTraseiro: false, showSilkImage: false, showProductImage: true,  showAlerts: false, showPiecesToSew: false },
   // Corte Forração: layout COMPACTO (pedido user 2026-06-12) — por cor, só
   // nome da cor + grade por ficha + total por numeração + alerta fachetado
