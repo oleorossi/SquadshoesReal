@@ -57,7 +57,9 @@ describe('E2E transacional de ponto, adiantamentos e folha', () => {
     expect(E2E).toContain('punches nulo sobrescreveu a batida anteriormente aplicada');
     expect(E2E).toContain("coverage_scope, covered_employee_external_ids");
     expect(E2E).toContain("'all_employees', ARRAY[v_external_id, v_other_external_id, v_orphan_external_id]");
-    expect(E2E).toContain('protocolo global omitiu funcionário vigente');
+    // all_employees parcial (matrícula ausente) é ACEITO — falta via cobertura (mig 27400).
+    expect(E2E).toContain('protocolo all_employees parcial (matrícula ausente) deveria ser aceito');
+    expect(E2E).not.toContain('protocolo global omitiu funcionário vigente');
     expect(E2E).toContain("archived_at = TIMESTAMPTZ '2000-01-01 00:00:00+00'");
     expect(E2E).toContain('complete_punches achatou array 2D');
     expect(E2E).toContain('complete_punches gravou null como batida/auditoria');
