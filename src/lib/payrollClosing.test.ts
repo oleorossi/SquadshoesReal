@@ -3,6 +3,7 @@ import {
   employeeUsesSalaryClosing,
   heBalanceRange,
   identifyPayrollClosing,
+  inferPayrollClosingFromPunchSpan,
   payrollClosingRange,
   payrollMonthBounds,
   payrollRangesOverlap,
@@ -28,6 +29,27 @@ describe('fechamento da folha salarial', () => {
     expect(identifyPayrollClosing({ from: '2026-08-01', to: '2026-08-31' })?.cadence).toBe('mes');
     expect(identifyPayrollClosing({ from: '2026-08-03', to: '2026-08-20' })).toBeNull();
     expect(identifyPayrollClosing({ from: '2026-08-16', to: '2026-09-15' })).toBeNull();
+  });
+
+  it('infere 1ª quinzena quando as batidas cabem em 01–15 (mesmo sem fechar no dia 1)', () => {
+    expect(inferPayrollClosingFromPunchSpan('2026-09-01', '2026-09-15')).toMatchObject({
+      cadence: 'quinzena',
+      half: 'primeira',
+      from: '2026-09-01',
+      to: '2026-09-15',
+    });
+    expect(inferPayrollClosingFromPunchSpan('2026-09-02', '2026-09-15')).toMatchObject({
+      cadence: 'quinzena',
+      half: 'primeira',
+      to: '2026-09-15',
+    });
+    expect(inferPayrollClosingFromPunchSpan('2026-09-01', '2026-09-14')).toMatchObject({
+      half: 'primeira',
+      to: '2026-09-15',
+    });
+    // Mistura 1ª e 2ª → não inventa mês nem quinzena
+    expect(inferPayrollClosingFromPunchSpan('2026-09-01', '2026-09-23')).toBeNull();
+    expect(inferPayrollClosingFromPunchSpan('2026-09-16', '2026-09-30')?.half).toBe('segunda');
   });
 
   it('mantém mensalistas, remotos e diaristas na folha e separa produção', () => {
