@@ -292,7 +292,10 @@ const SECTOR_THEME: Record<GroupedSector, {
   // Corte Forração: layout COMPACTO (pedido user 2026-06-12) — por cor, só
   // nome da cor + grade por ficha + total por numeração + alerta fachetado
   // (audit E2 10/06/2026: o alerta é EXECUTADO por este setor).
-  'Corte Forração':   { icon: Cloud,      compact: true,  showFrenteTraseiro: false, showSilkImage: false, showProductImage: false, showAlerts: true,  showPiecesToSew: false, showCompactImages: true },
+  // 2026-09-23 (dono): SEM foto do produto; as REFERÊNCIAS da cor são o
+  // destaque (chips Anton vermelhos). O cortador identifica o modelo pelo
+  // código, não pela sandália.
+  'Corte Forração':   { icon: Cloud,      compact: true,  showFrenteTraseiro: false, showSilkImage: false, showProductImage: false, showAlerts: true,  showPiecesToSew: false, showCompactImages: false },
   // Corte Cabedal — referências com consumo de cabedal, tenham tiras ou não.
   // Foto por REFERÊNCIA da cor (não 1 foto escalar): quando a cor agrega
   // LA01+SP201, o cortador vê as duas sandálias e o tally separado por ref
@@ -1389,7 +1392,11 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
             // mínima que ela precisa pra não cortar número — a grade manda na
             // largura (CLAUDE.md), e o corte do `table-layout: fixed` é
             // silencioso. Não cabendo, empilha como antes.
-            const compactThumbs = theme.showCompactImages ? collectCompactThumbs(cg) : [];
+            // Corte Forração: NUNCA foto (dono 2026-09-23) — trava no setor,
+            // não só no theme (evita HMR/cache servir flag antiga).
+            const compactThumbs = (theme.showCompactImages && sector !== 'Corte Forração')
+              ? collectCompactThumbs(cg)
+              : [];
             const compactThumbSize = compactThumbPx(compactThumbs.length);
             const compactGrid = cg.combinedGrid || {};
             const compactSizes = sortSizes(
@@ -1490,15 +1497,18 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                     {/* Referência(s) ao lado da cor — o operador identifica a
                         qual modelo aquela cor pertence (pedido user 2026-06-25).
                         Some quando a ficha inteira já é de uma referência
-                        (groupKind 'reference' — Aviamento), pra não repetir. */}
+                        (groupKind 'reference' — Aviamento), pra não repetir.
+                        Corte Forração (2026-09-23): chips VERMELHOS grandes —
+                        sem foto, a ref é o único sinal de identidade. */}
                     {group.groupKind !== 'reference' && cg.refs && cg.refs.length > 0 && (() => {
                       const multiRefs = cg.refs.length > 1;
+                      const emphasizeRefs = sector === 'Corte Forração';
                       return (
-                      <div className="flex items-center gap-1 shrink-0 flex-wrap">
-                        {multiRefs && (
+                      <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+                        {(multiRefs || emphasizeRefs) && multiRefs && (
                           <span
                             className="inline-block uppercase whitespace-nowrap shrink-0"
-                            style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '13px', letterSpacing: '-0.01em', color: '#C00000', border: '1.5px solid #C00000', padding: '0 4px', lineHeight: '18px' }}
+                            style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: emphasizeRefs ? '15px' : '13px', letterSpacing: '-0.01em', color: '#C00000', border: '1.5px solid #C00000', padding: emphasizeRefs ? '1px 6px' : '0 4px', lineHeight: emphasizeRefs ? '20px' : '18px' }}
                           >
                             {cg.refs.length} REFS
                           </span>
@@ -1507,7 +1517,9 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                           <span
                             key={r.code || r.name}
                             className="inline-block font-bold px-1.5 py-0.5 whitespace-nowrap uppercase"
-                            style={multiRefs
+                            style={emphasizeRefs
+                              ? { fontFamily: "'Anton', Impact, sans-serif", fontSize: '18px', letterSpacing: '-0.01em', color: '#fff', border: '1.5px solid #000', background: '#C00000', lineHeight: 1.15, padding: '2px 8px', printColorAdjust: 'exact' }
+                              : multiRefs
                               ? { fontFamily: "'Anton', Impact, sans-serif", fontSize: '14px', letterSpacing: '-0.01em', color: '#C00000', border: '1.5px solid #000', background: '#fff', lineHeight: 1.1 }
                               : { fontSize: '10px', letterSpacing: '0.04em', background: '#000', color: '#fff' }}
                           >

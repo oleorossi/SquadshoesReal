@@ -3,20 +3,12 @@ import { render } from '@testing-library/react';
 import { SilkMontageWorkSheet, type SoleSilkGroup } from '../../SilkMontageWorkSheet';
 
 /**
- * Renderiza a ficha do CORTE FORRAÇÃO com a folha 1 real do maço do PV-00167
- * (solado 01 · OFF WHITE · 1728 pares · grade 34–40 · 144 fichas de 12) e trava
- * o arranjo de 2026-08-29: a miniatura passa a sentar AO LADO da grade.
- *
- * O que este teste cobre e os unitários de `gradeWidth.test.ts` não: que a
- * ficha RENDERIZA nesse arranjo — foto e tabela como irmãs dentro da MESMA
- * linha —, e que numa grade densa ela volta a empilhar sozinha. jsdom não faz
- * layout (toda altura é 0), então o que dá para afirmar aqui é a ESTRUTURA;
- * a largura é assunto dos unitários.
+ * Corte Forração (2026-09-23, dono): SEM foto do produto; referências da cor
+ * em destaque. A grade e o consumo seguem no papel — só o arranjo
+ * foto-ao-lado-da-grade saiu.
  */
 
 beforeAll(() => {
-  // Mesmos stubs do silkMontageDensity: o PaginatedSheet re-mede com
-  // ResizeObserver/matchMedia, que o jsdom não implementa.
   const g = globalThis as unknown as { ResizeObserver?: unknown; matchMedia?: unknown };
   g.ResizeObserver ??= class {
     observe() {}
@@ -37,10 +29,6 @@ beforeAll(() => {
 
 const GRADE_PV167 = { '34': 144, '35': 288, '36': 288, '37': 432, '38': 288, '39': 144, '40': 144 };
 const BASE_PV167 = { '34': 1, '35': 2, '36': 2, '37': 3, '38': 2, '39': 1, '40': 1 };
-
-/** Grade mista infantil+adulto (18 numerações) — o caso denso da base. */
-const GRADE_DENSA: Record<string, number> = {};
-for (let n = 23; n <= 40; n++) GRADE_DENSA[String(n)] = 1152;
 
 function forracaoGroup(grid: Record<string, number>, refCount: number): SoleSilkGroup {
   const refImages = Array.from({ length: refCount }, (_, i) => ({
@@ -76,42 +64,36 @@ function forracaoGroup(grid: Record<string, number>, refCount: number): SoleSilk
   } as SoleSilkGroup;
 }
 
-/** A linha "foto + grade" é a única que declara largura rígida no card. */
-const sideBySideRow = (c: HTMLElement) =>
-  Array.from(c.querySelectorAll<HTMLElement>('[data-rigid-width]'))
-    .find(el => el.querySelector('table') && el.querySelector('img, svg'));
+const productImgs = (c: HTMLElement) =>
+  Array.from(c.querySelectorAll('img')).filter((i) => /nl0\d+\.png/.test(i.getAttribute('src') || ''));
 
-describe('Corte Forração — foto ao lado da grade', () => {
-  it('PV-00167: a miniatura e a grade ficam na MESMA linha', () => {
+describe('Corte Forração — sem foto, refs em destaque', () => {
+  it('PV-00167: NÃO renderiza miniatura do produto', () => {
     const { container } = render(
       <SilkMontageWorkSheet sector="Corte Forração" groups={[forracaoGroup(GRADE_PV167, 1)]} />,
     );
-    const row = sideBySideRow(container);
-    expect(row).toBeTruthy();
-    // A tabela da grade e a foto são irmãs dentro da linha, não empilhadas.
-    expect(row!.querySelectorAll('table').length).toBeGreaterThan(0);
-    expect(row!.querySelector('img, svg')).toBeTruthy();
+    expect(productImgs(container)).toHaveLength(0);
+    expect(container.querySelector('[data-rigid-width] img, [data-rigid-width] svg')).toBeNull();
   });
 
-  it('a linha declara a largura que exige, para o auto-fit não espremer a grade', () => {
+  it('mostra a referência em chip vermelho', () => {
     const { container } = render(
       <SilkMontageWorkSheet sector="Corte Forração" groups={[forracaoGroup(GRADE_PV167, 1)]} />,
     );
-    const declared = Number(sideBySideRow(container)!.dataset.rigidWidth);
-    expect(declared).toBeGreaterThan(0);
-    // 92px de foto + o mínimo da grade, dentro dos 733px úteis da A4.
-    expect(declared).toBeGreaterThan(92);
-    expect(declared).toBeLessThan(733);
+    const chip = Array.from(container.querySelectorAll('span')).find((s) => s.textContent === 'NL01');
+    expect(chip).toBeTruthy();
+    expect((chip as HTMLElement).style.backgroundColor.replace(/\s/g, '')).toMatch(/rgb\(192,\s*0,\s*0\)|#C00000/i);
   });
 
-  it('grade densa com várias referências volta a EMPILHAR (a grade manda)', () => {
+  it('várias refs: chip N REFS + códigos, sem fotos', () => {
     const { container } = render(
-      <SilkMontageWorkSheet sector="Corte Forração" groups={[forracaoGroup(GRADE_DENSA, 3)]} />,
+      <SilkMontageWorkSheet sector="Corte Forração" groups={[forracaoGroup(GRADE_PV167, 3)]} />,
     );
-    expect(sideBySideRow(container)).toBeUndefined();
-    // E a ficha continua inteira: grade e fotos seguem no papel, só empilhadas.
-    expect(container.querySelectorAll('table').length).toBeGreaterThan(0);
-    expect(container.querySelectorAll('img, svg').length).toBeGreaterThan(0);
+    expect(productImgs(container)).toHaveLength(0);
+    expect(container.textContent).toContain('3 REFS');
+    expect(container.textContent).toContain('NL01');
+    expect(container.textContent).toContain('NL02');
+    expect(container.textContent).toContain('NL03');
   });
 
   it('a ficha renderiza a grade e o consumo do PV-00167 sem perder conteúdo', () => {
@@ -132,7 +114,6 @@ describe('Corte Forração — foto ao lado da grade', () => {
     );
     const declared = Array.from(container.querySelectorAll<HTMLElement>('[data-rigid-width]'))
       .map(el => Number(el.dataset.rigidWidth));
-    // A linha de 30 caixinhas é a mais exigente do card: ~700px dos 733 úteis.
     expect(Math.max(...declared)).toBeGreaterThan(650);
     expect(Math.max(...declared)).toBeLessThan(733);
   });

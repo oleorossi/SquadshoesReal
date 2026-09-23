@@ -125,7 +125,7 @@ describe('compactThumbPx', () => {
   });
 });
 
-describe('SilkMontageWorkSheet · faixa de fotos no Corte Forração', () => {
+describe('SilkMontageWorkSheet · Corte Forração sem foto + refs em destaque', () => {
   const group = (cg: SilkColorGroup): SoleSilkGroup => ({
     soleName: 'SOLADO 01',
     colorGroups: [cg],
@@ -133,8 +133,17 @@ describe('SilkMontageWorkSheet · faixa de fotos no Corte Forração', () => {
     groupKind: 'sole',
   });
 
-  it('renderiza 1 <img> por referência da cor', () => {
+  const productImgs = (container: HTMLElement) =>
+    Array.from(container.querySelectorAll('img'))
+      .filter(i => /ref-[abc]\.jpg/.test(i.getAttribute('src') || ''));
+
+  it('NÃO renderiza foto do produto (mesmo com refImages)', () => {
     const cg = baseCg({
+      refs: [
+        { code: 'SUELI', name: 'SUELI' },
+        { code: 'THASSIA', name: 'THASSIA' },
+        { code: 'MALU', name: 'MALU' },
+      ],
       refImages: [
         { sheetId: 'a', refName: 'SUELI', variantImageUrl: IMG_A },
         { sheetId: 'b', refName: 'THASSIA', variantImageUrl: IMG_B },
@@ -144,58 +153,48 @@ describe('SilkMontageWorkSheet · faixa de fotos no Corte Forração', () => {
     const { container } = render(
       <SilkMontageWorkSheet sector="Corte Forração" groups={[group(cg)]} sectorLabel="Corte Forração" />,
     );
-    const imgs = Array.from(container.querySelectorAll('img'))
-      .filter(i => /ref-[abc]\.jpg/.test(i.getAttribute('src') || ''));
-    expect(imgs).toHaveLength(3);
-    // legenda (nome da ref) aparece quando há >1 foto
+    expect(productImgs(container)).toHaveLength(0);
     expect(container.textContent).toContain('SUELI');
     expect(container.textContent).toContain('THASSIA');
     expect(container.textContent).toContain('MALU');
+    expect(container.textContent).toContain('3 REFS');
   });
 
-  it('encolhe a miniatura para 52px quando o card agrupa 3 modelos', () => {
+  it('chips de referência usam vermelho #C00000 (destaque sem foto)', () => {
     const cg = baseCg({
+      refs: [{ code: 'LA01', name: 'LA01' }, { code: 'SP201', name: 'SP201' }],
       refImages: [
-        { sheetId: 'a', refName: 'NL01', variantImageUrl: IMG_A },
-        { sheetId: 'b', refName: 'NL02', variantImageUrl: IMG_B },
-        { sheetId: 'c', refName: 'NL03', variantImageUrl: IMG_C },
+        { sheetId: 'a', refName: 'LA01', variantImageUrl: IMG_A },
+        { sheetId: 'b', refName: 'SP201', variantImageUrl: IMG_B },
       ],
     });
     const { container } = render(
       <SilkMontageWorkSheet sector="Corte Forração" groups={[group(cg)]} sectorLabel="Corte Forração" />,
     );
-    const imgs = Array.from(container.querySelectorAll('img'))
-      .filter(i => /ref-[abc]\.jpg/.test(i.getAttribute('src') || ''));
-    expect(imgs).toHaveLength(3);
-    for (const img of imgs) expect(img.getAttribute('width')).toBe('52');
-  });
-
-  it('mantém 92px quando há um modelo só', () => {
-    const cg = baseCg({ refImages: [{ sheetId: 'a', refName: 'NL01', variantImageUrl: IMG_A }] });
-    const { container } = render(
-      <SilkMontageWorkSheet sector="Corte Forração" groups={[group(cg)]} sectorLabel="Corte Forração" />,
+    const chips = Array.from(container.querySelectorAll('span')).filter(
+      (s) => s.textContent === 'LA01' || s.textContent === 'SP201',
     );
-    const img = container.querySelector('img[src*="ref-a.jpg"]');
-    expect(img?.getAttribute('width')).toBe('92');
+    expect(chips.length).toBeGreaterThanOrEqual(2);
+    for (const chip of chips) {
+      const st = (chip as HTMLElement).style;
+      expect(st.backgroundColor.replace(/\s/g, '')).toMatch(/rgb\(192,\s*0,\s*0\)|#C00000/i);
+      expect(st.color.replace(/\s/g, '')).toMatch(/rgb\(255,\s*255,\s*255\)|#fff/i);
+      expect(st.fontSize).toBe('18px');
+    }
   });
 
-  it('mostra os dois códigos quando duas refs dividem a mesma foto', () => {
+  it('ref única também sai em destaque (não chip preto miúdo)', () => {
     const cg = baseCg({
-      refImages: [
-        { sheetId: 'a', refName: 'NL01', fichas: 3, variantImageUrl: IMG_A },
-        { sheetId: 'b', refName: 'NL02', fichas: 5, variantImageUrl: IMG_A },
-      ],
+      refs: [{ code: '0593', name: '0593' }],
+      refImages: [{ sheetId: 'a', refName: '0593', variantImageUrl: IMG_A }],
     });
     const { container } = render(
       <SilkMontageWorkSheet sector="Corte Forração" groups={[group(cg)]} sectorLabel="Corte Forração" />,
     );
-    // uma foto só...
-    expect(
-      Array.from(container.querySelectorAll('img')).filter(i => /ref-a\.jpg/.test(i.getAttribute('src') || '')),
-    ).toHaveLength(1);
-    // ...mas as DUAS referências identificadas, e as fichas somadas
-    expect(container.textContent).toContain('NL01 · NL02');
-    expect(container.textContent).toContain('8');
+    expect(productImgs(container)).toHaveLength(0);
+    const chip = Array.from(container.querySelectorAll('span')).find((s) => s.textContent === '0593');
+    expect(chip).toBeTruthy();
+    expect((chip as HTMLElement).style.backgroundColor.replace(/\s/g, '')).toMatch(/rgb\(192,\s*0,\s*0\)|#C00000/i);
   });
 
   it('Corte Cabedal: 1 foto + tally por referência quando a cor agrega 2 modelos', () => {
