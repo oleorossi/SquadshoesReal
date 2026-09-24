@@ -33,6 +33,18 @@ describe('cabedal prep motor — contratos', () => {
     expect(hub).toContain("'prep'");
   });
 
+  it('materialize usa ts.code (não ts.reference) e há backfill', () => {
+    const motor = readFileSync(MIGRATION, 'utf8');
+    const backfill = readFileSync(
+      'supabase/migrations/20270101027900_cabedal_prep_backfill_demands.sql',
+      'utf8',
+    );
+    expect(motor).toContain('ts.code');
+    expect(motor).not.toMatch(/ts\.reference AS reference_code/);
+    expect(backfill).toContain('backfill_cabedal_prep_demands');
+    expect(backfill).toContain('COALESCE');
+  });
+
   it('predicado de OC e lead time canônicos', () => {
     expect(CABEDAL_PREP_PO_SOURCE).toBe('cabedal_prep');
     expect(isCabedalPrepPurchaseOrder({ source_type: 'cabedal_prep' })).toBe(true);
