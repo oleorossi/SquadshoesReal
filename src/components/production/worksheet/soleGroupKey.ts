@@ -1,9 +1,9 @@
 /**
  * Chave de agrupamento por SOLADO pros maços de impressão dos setores
- * agrupados (Corte Forração / Acabamento Palmilha / Silk e
- * o pré-merge do Corte Cabedal) — `buildColorGroupedSheets('sole')` em
- * `PrintWorkSheetsPage.tsx`. Costura Cabedal agrupa por REFERÊNCIA
- * (`buildColorGroupedSheets('reference')`) desde 2026-09-23.
+ * agrupados (Corte Forração / Acabamento Palmilha / Silk) —
+ * `buildColorGroupedSheets('sole')` em `PrintWorkSheetsPage.tsx`.
+ * Corte Cabedal e Costura Cabedal agrupam por REFERÊNCIA
+ * (`buildColorGroupedSheets('reference', true)`) desde 2026-09-23.
  *
  * BUG (2026-06-12, dono: "Corte de forração tá duplicado no relatório /
  * vários setores estão repetindo na hora de gerar o arquivo"): a chave usava

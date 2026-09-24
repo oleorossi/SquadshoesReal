@@ -59,8 +59,13 @@ describe('Cabedal e tiras coexistem na ficha e no PV', () => {
   });
 
   it('não funde pares somente de tiras no Corte ou na Costura Cabedal', () => {
-    expect(printWorkSheetsPage).toContain("buildColorGroupedSheets('sole', true)");
-    expect(printWorkSheetsPage).toContain("buildColorGroupedSheets('reference', true)");
+    // Dono 2026-09-23: Corte e Costura Cabedal agrupam por REFERÊNCIA
+    // (não por solado). O 2º arg `true` liga partitionUpperEligibility —
+    // modelos só de tiras não entram nessas fichas.
+    const upperBuilders = printWorkSheetsPage.match(
+      /buildColorGroupedSheets\('reference',\s*true\)/g,
+    );
+    expect(upperBuilders?.length).toBeGreaterThanOrEqual(2);
     expect(printWorkSheetsPage).toContain('upperEligibility.partitionKey');
     expect(printWorkSheetsPage).toContain('const costuraCabedalGroups = useMemo');
     expect(printWorkSheetsPage).toMatch(
@@ -74,5 +79,8 @@ describe('Cabedal e tiras coexistem na ficha e no PV', () => {
     expect(printWorkSheetsPage).toMatch(
       /activeSectors\.has\('Costura Cabedal'\) && \(costuraCabedalGroups \|\| \[\]\)\.some/,
     );
+    // Silk/Forração seguem por solado SEM partição de elegibilidade.
+    expect(printWorkSheetsPage).toContain("buildColorGroupedSheets('sole')");
+    expect(printWorkSheetsPage).not.toContain("buildColorGroupedSheets('sole', true)");
   });
 });
