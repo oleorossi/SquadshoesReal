@@ -14,10 +14,21 @@ export type EffectiveStrapPvOrigem = StrapPvOrigem;
 
 /**
  * Padrão do seletor quando Hub = escolhe_no_pv e o operador ainda não escolheu.
- * "Comprar pronto" (= prestador + OS + remessa de napa) — specs/origem-tira-pv-hub-os.md.
+ * Decisão 24/09/2026: só Fazer × Comprar pronto — default = fazer (fábrica).
  */
-export const DEFAULT_STRAP_PV_ORIGEM: StrapPvOrigem = 'prestador';
+export const DEFAULT_STRAP_PV_ORIGEM: StrapPvOrigem = 'fabrica';
 
+/** Origens oferecidas no PV (prestador legado some da UI). */
+export type SelectableStrapPvOrigem = 'fabrica' | 'sku_acabado';
+
+/** Prestador legado conta como "fazer" (internal) — 16-B. */
+export function normalizeSelectableStrapPvOrigem(
+  value: unknown,
+): SelectableStrapPvOrigem | null {
+  if (value === 'fabrica' || value === 'prestador') return 'fabrica';
+  if (value === 'sku_acabado') return 'sku_acabado';
+  return null;
+}
 export interface StrapPvOrigemLineLike {
   id?: string | null;
   label?: string | null;
@@ -54,7 +65,10 @@ export function resolveEffectiveStrapPvOrigem(
   if (padrao === 'sempre_fabrica') return 'fabrica';
   if (padrao === 'sempre_sku_acabado') return 'sku_acabado';
   const choice = line?.pv_origem;
-  if (isExplicitStrapPvOrigem(choice)) return choice;
+  if (isExplicitStrapPvOrigem(choice)) {
+    // Prestador legado → fazer (fábrica). Wire value permanece fabrica na UI.
+    return choice === 'prestador' ? 'fabrica' : choice;
+  }
   return null;
 }
 
@@ -81,7 +95,7 @@ export function isExplicitStrapPvOrigem(
 /**
  * Snapshot comprometido (Aprovado / Em Produção) só trava origem JÁ escolhida.
  * Lacuna (escolhe_no_pv sem pv_origem) permanece editável — senão o save
- * exige Fábrica/Prestador/Fornecedor e o seletor morto impede qualquer opção
+ * exige Fazer/Comprar pronto e o seletor morto impede qualquer opção
  * (PV-00194 / Meia Cana).
  */
 export function isStrapPvOrigemChoiceLocked(input: {
@@ -188,7 +202,7 @@ export function firstMissingStrapPvOrigemMessage(
   if (!firstLabel || !firstMessage) return null;
   const colors = colorsByLabel.get(firstLabel) || [];
   if (colors.length === 0) return firstMessage;
-  return `${firstLabel}: escolha Fábrica, Prestador ou Fornecedor em ${colors.join(', ')} antes de salvar.`;
+  return `${firstLabel}: escolha Fazer ou Comprar pronto em ${colors.join(', ')} antes de salvar.`;
 }
 
 /**
@@ -230,7 +244,7 @@ export function listMissingStrapPvOrigemChoices(
       label,
       measureId: line.measure_id || null,
       code: 'origem_nao_escolhida',
-      message: `${label}: escolha Fábrica, Prestador ou Fornecedor antes de salvar.`,
+      message: `${label}: escolha Fazer ou Comprar pronto antes de salvar.`,
     });
   }
   return issues;
@@ -276,8 +290,8 @@ export interface StrapHubIncompleteMeasureGap {
  * Gaps de Hub para a origem efetiva. Frete/prestador padrão entram na fatia
  * da OS automática (RPC) — aqui só preços da medida.
  *
- * ⚠ Origem fábrica NÃO exige mão de obra do prestador. Só `prestador` cobra
- * `preco_prestador_per_m`; fábrica cobra (quando o save quiser) o artesanal.
+ * ⚠ Origem "fazer" (fábrica; prestador legado incluso) NÃO exige MO do
+ * prestador — só preço artesanal. Comprar pronto não entra neste gap.
  */
 export function listStrapHubIncompleteForOrigem(
   lines: readonly StrapPvOrigemLineLike[] | null | undefined,
@@ -290,7 +304,6 @@ export function listStrapHubIncompleteForOrigem(
     const effective = resolveEffectiveStrapPvOrigem(line, measure);
     const label = (line.label || `Tira ${index + 1}`).trim() || `Tira ${index + 1}`;
     const measureId = line.measure_id || null;
-    // Fábrica / SKU acabado / sem origem: nunca emitir gap de MO do prestador.
     if (effective === 'fabrica') {
       const price = Number(measure?.preco_artesanal_per_m);
       if (!(price > 0)) {
@@ -301,19 +314,8 @@ export function listStrapHubIncompleteForOrigem(
           message: `${label}: cadastre o preço artesanal (R$/m) no Hub de Tiras.`,
         });
       }
-      continue;
     }
-    if (effective === 'prestador') {
-      const price = Number(measure?.preco_prestador_per_m);
-      if (!(price > 0)) {
-        issues.push({
-          label,
-          measureId,
-          code: 'preco_prestador_ausente',
-          message: `${label}: cadastre a mão de obra do prestador (R$/m) no Hub de Tiras.`,
-        });
-      }
-    }
+    // sku_acabado / null: sem gap de preço de medida neste helper.
   }
   return issues;
 }

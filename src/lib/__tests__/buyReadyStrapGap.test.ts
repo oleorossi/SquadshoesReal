@@ -260,7 +260,7 @@ describe('SaleOrderItemForm — a lacuna vira um caminho clicável', () => {
   it('trata sku_acabado do PV como tira pronta e abre o cadastro de fornecedor', () => {
     expect(form).toContain('strapLineWantsBuyReady');
     expect(form).toContain("next === 'sku_acabado'");
-    expect(form).toContain('Tira pronta · fornecedor');
+    expect(form).toContain('Comprar pronto');
   });
 
   it('não trava o seletor de origem quando o snapshot comprometido ainda não tem escolha', () => {

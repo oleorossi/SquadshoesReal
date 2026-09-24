@@ -20,6 +20,7 @@ import { COMPONENT_ORDER, type ConsumptionRow, rowTotalCost } from '@/lib/consum
 import { escapeHtml } from '@/lib/htmlUtils';
 import { buildColAvailability, sizeSortKey } from '@/lib/soleMatrixHtml';
 import type { ArtisanalStrapCutRow } from '@/lib/strapRollCut';
+import { aggregateStrapNapaSector } from '@/lib/strapRollCut';
 import { formatCurrency, formatMoney } from '@/lib/utils';
 import { buildOrderReferencePartitions } from '@/lib/consumptionPartitions';
 
@@ -101,7 +102,6 @@ const renderBaseNeed = (rows: ConsumptionRow[], totalMode: boolean): string => {
           <th>Cor</th>
           <th class="num">Cabedal</th>
           <th class="num">Forração</th>
-          <th class="num">Tira</th>
           <th class="num">Total</th>
           ${totalMode ? '' : '<th>Situação</th>'}
         </tr></thead>
@@ -110,7 +110,6 @@ const renderBaseNeed = (rows: ConsumptionRow[], totalMode: boolean): string => {
             <td>${escapeHtml(color.color || '—')}</td>
             <td class="num app-qty">${mCell(color.cabedal)}</td>
             <td class="num app-qty">${mCell(color.forracao)}</td>
-            <td class="num app-qty">${color.tira > 0 ? `${formatQty(color.tira, 'm')} m<small>prod. interna</small>` : '<span class="muted">—</span>'}</td>
             <td class="num strong">${formatQty(color.qty, 'm')} m</td>
             ${totalMode ? '' : `<td class="status-cell">${color.pending > 0 ? `<span class="flag warning">${color.pending} cadastro${color.pending === 1 ? '' : 's'}</span>` : '<span class="muted">—</span>'}</td>`}
           </tr>`).join('')}
@@ -137,8 +136,8 @@ const renderBaseNeed = (rows: ConsumptionRow[], totalMode: boolean): string => {
         <span class="section-number">01</span>
         <div><p class="section-kicker">Material base</p><h2>Necessidade de napa</h2></div>
         <p class="section-note">${totalMode
-          ? 'Estoque ignorado. Cabedal, forração e tira da mesma cor somam o metro de napa do pedido.'
-          : 'Cabedal, forração e tira da mesma cor somam o metro de napa — tira artesanal já convertida.'}</p>
+          ? 'Estoque ignorado. Só Cabedal e Forração (e fachete). Napa de tiras fica no setor próprio.'
+          : 'Só Cabedal e Forração — napa de tiras artesanais no setor próprio (§03).'}</p>
       </div>
       ${familyBlocks}
       ${pendingBlock}
@@ -228,7 +227,8 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
   };
   const colCount = totalMode ? 7 : 9;
 
-  // Tira interna CONVERTIDA: napa já está em §01; metros×rendimento em §03.
+  // Tira interna CONVERTIDA: metros×rendimento só em §03 (Napa para tiras).
+  // Não entra mais no strip de napa Cabedal/Forração (dono, 24/09/2026).
   // Tira PENDING fica nesta seção como cadastro incompleto — a demanda da ficha
   // precisa aparecer na conferência (PV-00169), sem entrar no strip de napa.
   // STRASS vai em seção própria ("Tira Strass"), fora do bloco genérico Tiras.
@@ -370,112 +370,32 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
     .join('');
 };
 
-const isArtisanalStrapBlocked = (row: ArtisanalStrapCutRow): boolean => {
-  const snapshot = row.canonical;
-  return !snapshot
-    || snapshot.baseRequiredM <= 0
-    || snapshot.confirmedYieldMPerM <= 0
-    || snapshot.blockingReasons.length > 0
-    || !!snapshot.snapshotWarning;
-};
-
-/**
- * Segmento da tira = tipo + base, SEM a cor.
- * Em produção `groupName` vem de `formatCanonicalStrapProductName` como
- * `TIRA CHATA 8 mm · NAPA MADRID · OFF WHITE` — se agrupássemos por groupName
- * cru, cada cor virava um "segmento" de 1 linha (bug visto no PDF).
- */
-const artisanalStrapSegmentKey = (row: ArtisanalStrapCutRow): string => {
-  const name = (row.groupName || '').trim();
-  const color = (row.color || '').trim();
-  if (color && color !== '—') {
-    const suffix = ` · ${color}`;
-    if (name.length > suffix.length && name.toLocaleLowerCase('pt-BR').endsWith(suffix.toLocaleLowerCase('pt-BR'))) {
-      return name.slice(0, name.length - suffix.length).trim();
-    }
-  }
-  return name;
-};
-
-const renderArtisanalStrapDetailRow = (row: ArtisanalStrapCutRow): string => {
-  const snapshot = row.canonical;
-  const blocked = isArtisanalStrapBlocked(row);
-  const laborCost = snapshot?.transformationCostPerM;
-  const hasLaborCost = laborCost != null && Number.isFinite(laborCost);
-  const laborTotal = hasLaborCost ? row.metros_necessarios * (laborCost as number) : null;
-  // Tira = segmento (sem cor); a cor fica só em Cor / base — estilo planilha.
-  return `<tr class="${blocked ? 'is-pending' : ''}">
-          <td><strong>${escapeHtml(artisanalStrapSegmentKey(row))}</strong></td>
-          <td>${escapeHtml(row.color || '—')}${row.baseName ? ` · ${escapeHtml(row.baseName)}` : ''}</td>
-          <td class="num strong">${formatQty(row.metros_necessarios, 'm')} m</td>
-          <td class="num strong">${!blocked && snapshot ? `${formatQty(snapshot.baseRequiredM, 'm')} m` : '—'}</td>
-          <td class="num cost-unit">${hasLaborCost ? escapeHtml(formatCurrency(laborCost)) : '—'}</td>
-          <td class="num cost-spend">${laborTotal != null ? escapeHtml(formatMoney(laborTotal)) : '—'}</td>
-          <td>${blocked ? `<span class="flag warning">${escapeHtml(snapshot?.snapshotWarning || snapshot?.blockingReasons.join(' · ') || 'snapshot incompleto')}</span>` : `<span class="flag ok">receita conferida</span>`}</td>
-        </tr>`;
-};
-
-const renderArtisanalStrapSubtotalRow = (segmentKey: string, groupRows: ArtisanalStrapCutRow[]): string => {
-  const strapMeters = groupRows.reduce((sum, row) => sum + (Number(row.metros_necessarios) || 0), 0);
-  let napaMeters = 0;
-  let laborTotal = 0;
-  let hasLaborTotal = false;
-  for (const row of groupRows) {
-    const snapshot = row.canonical;
-    if (!isArtisanalStrapBlocked(row) && snapshot) {
-      napaMeters += Number(snapshot.baseRequiredM) || 0;
-    }
-    const laborCost = snapshot?.transformationCostPerM;
-    if (laborCost != null && Number.isFinite(laborCost)) {
-      laborTotal += row.metros_necessarios * (laborCost as number);
-      hasLaborTotal = true;
-    }
-  }
-  const colorCount = groupRows.length;
-  const colorLabel = colorCount === 1 ? '1 cor' : `${colorCount} cores`;
-  return `<tr class="strap-subtotal">
-          <td><strong>Subtotal · ${escapeHtml(segmentKey)}</strong></td>
-          <td class="muted">${escapeHtml(colorLabel)}</td>
-          <td class="num strong">${formatQty(strapMeters, 'm')} m</td>
-          <td class="num strong">${napaMeters > 0 ? `${formatQty(napaMeters, 'm')} m` : '—'}</td>
-          <td class="num cost-unit">—</td>
-          <td class="num cost-spend">${hasLaborTotal ? escapeHtml(formatMoney(laborTotal)) : '—'}</td>
-          <td></td>
-        </tr>`;
-};
-
-/** Agrupa linhas consecutivas pelo segmento (tipo + base, sem cor). */
-const partitionArtisanalStrapSegments = (rows: ArtisanalStrapCutRow[]): ArtisanalStrapCutRow[][] => {
-  const segments: ArtisanalStrapCutRow[][] = [];
-  for (const row of rows) {
-    const last = segments[segments.length - 1];
-    if (last && artisanalStrapSegmentKey(last[0]) === artisanalStrapSegmentKey(row)) last.push(row);
-    else segments.push([row]);
-  }
-  return segments;
-};
-
 const renderArtisanalStraps = (rows: ArtisanalStrapCutRow[]): string => {
   if (!rows.length) return '';
-  // Garante bloco contíguo por segmento (cores juntas) antes do subtotal.
-  const sorted = [...rows].sort((a, b) =>
-    artisanalStrapSegmentKey(a).localeCompare(artisanalStrapSegmentKey(b), 'pt-BR')
-    || (a.color || '').localeCompare(b.color || '', 'pt-BR'));
-  const body = partitionArtisanalStrapSegments(sorted)
-    .map((segment) => {
-      const segmentKey = artisanalStrapSegmentKey(segment[0]);
-      return `${segment.map(renderArtisanalStrapDetailRow).join('')}${renderArtisanalStrapSubtotalRow(segmentKey, segment)}`;
-    })
-    .join('');
+  const sector = aggregateStrapNapaSector(rows);
+  const body = sector.types.map((type) => `
+        <tr class="${type.blocked ? 'is-pending' : ''}">
+          <td><strong>${escapeHtml(type.typeName)}</strong>${type.baseName ? `<small>${escapeHtml(type.baseName)}</small>` : ''}${type.colorCount > 1 ? `<small>${type.colorCount} cores</small>` : ''}</td>
+          <td class="num strong">${formatQty(type.strapM, 'm')} m</td>
+          <td class="num strong">${type.napaM > 0 ? `${formatQty(type.napaM, 'm')} m` : '—'}</td>
+          <td>${type.blocked ? '<span class="flag warning">cadastro incompleto</span>' : '<span class="flag ok">ok</span>'}</td>
+        </tr>`).join('');
+  const footer = `
+        <tr class="strap-subtotal">
+          <td><strong>Total de napa (todas as tiras)</strong></td>
+          <td class="num muted">${formatQty(sector.totalStrapM, 'm')} m tira</td>
+          <td class="num strong">${sector.totalNapaM > 0 ? `${formatQty(sector.totalNapaM, 'm')} m` : '—'}</td>
+          <td></td>
+        </tr>`;
   return `<section class="report-section strap-section">
     <div class="section-heading">
       <span class="section-number">03</span>
-      <div><p class="section-kicker">Transformação interna</p><h2>Tiras artesanais</h2></div>
-      <p class="section-note">Separação da napa-base conforme o snapshot aprovado da receita.</p>
+      <div><p class="section-kicker">Setor próprio</p><h2>Napa para tiras</h2></div>
+      <p class="section-note">Por tipo: metros de tira e napa (÷ rendimento). Separado de Cabedal/Forração.</p>
     </div>
     <table class="report-table">
-      <thead><tr><th>Tira</th><th>Cor / base</th><th class="num">Tira necessária</th><th class="num">Napa a separar</th><th class="num">Mão de obra/m</th><th class="num">Valor total</th><th>Situação</th></tr></thead>
-      <tbody>${body}</tbody>
+      <thead><tr><th>Tipo de tira</th><th class="num">Tira necessária</th><th class="num">Napa</th><th>Situação</th></tr></thead>
+      <tbody>${body}${footer}</tbody>
     </table>
   </section>`;
 };
@@ -518,8 +438,8 @@ export function buildMaterialConsumptionReportHtml({
     ? '<p class="mode-banner" style="margin-top:4px;background:transparent;color:var(--ink);border-color:var(--ink)">Visão estendida · por PV e modelo</p>'
     : '';
   const reading = totalMode
-    ? 'Este documento ignora o estoque. Os números são o consumo bruto da ficha para realizar o pedido. Tira artesanal com receita conferida entra como metro de napa — o motor não compra metro de tira. Tira comprada pronta (STRASS) aparece em §02 “Tira Strass”, não na coluna Tira da napa.'
-    : '“Necessidade” é consumo bruto. “Falta” já desconta o estoque líquido e é o número usado para decidir reposição. Tira artesanal com receita conferida entra como metro de napa — o motor não compra metro de tira. Tira comprada pronta (STRASS) aparece em §02 “Tira Strass”, não na coluna Tira da napa.';
+    ? 'Este documento ignora o estoque. Os números são o consumo bruto da ficha. Napa de Cabedal/Forração em §01; napa de tiras no setor próprio (§03). Tira comprada pronta (STRASS) em §02.'
+    : '“Necessidade” é consumo bruto. “Falta” já desconta o estoque líquido. Napa de Cabedal/Forração em §01; napa de tiras no setor próprio (§03). Tira comprada pronta (STRASS) em §02.';
   const manifest = totalMode
     ? `<div class="manifest manifest-total" aria-label="Resumo do consumo total">
     <div><dl><dt>Necessidade de material base</dt><dd>${baseTotal ? `${formatQty(baseTotal.total, 'm')} m` : '—'}</dd></dl><small>napa direta + conversões confirmadas</small></div>

@@ -2,13 +2,15 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { normalizeStrapOrigemPadrao, type StrapOrigemPadrao } from '@/lib/strapBaseNapaPeel';
+import { normalizeSelectableStrapPvOrigem } from '@/lib/strapPvOrigem';
 
-export type StrapPvOrigemChoice = 'fabrica' | 'prestador' | 'sku_acabado';
+/** Só as duas origens do contrato 16-B (prestador legado → fazer). */
+export type StrapPvOrigemChoice = 'fabrica' | 'sku_acabado';
 
 interface Props {
   label: string;
   origemPadrao: StrapOrigemPadrao | string | null | undefined;
-  value: StrapPvOrigemChoice | null;
+  value: StrapPvOrigemChoice | 'prestador' | null;
   onChange: (value: StrapPvOrigemChoice) => void;
   disabled?: boolean;
 }
@@ -21,36 +23,36 @@ export default function StrapPvOrigemChooser({
   if (mode === 'sempre_fabrica') {
     return (
       <p className="text-[10px] text-muted-foreground">
-        Origem fixa no Hub: <strong className="text-foreground">fábrica</strong>
+        Origem fixa no Hub: <strong className="text-foreground">fazer (fábrica)</strong>
       </p>
     );
   }
   if (mode === 'sempre_sku_acabado') {
     return (
       <p className="text-[10px] text-muted-foreground">
-        Origem fixa no Hub: <strong className="text-foreground">SKU acabado</strong>
+        Origem fixa no Hub: <strong className="text-foreground">comprar pronto</strong>
       </p>
     );
   }
+  const selectable = normalizeSelectableStrapPvOrigem(value);
   return (
     <div className="flex min-w-0 items-center gap-1.5">
       <Label className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
         Origem
       </Label>
       <Select
-        value={value ?? undefined}
+        value={selectable ?? undefined}
         disabled={disabled}
         onValueChange={(next) => {
-          if (next === 'fabrica' || next === 'prestador' || next === 'sku_acabado') onChange(next);
+          if (next === 'fabrica' || next === 'sku_acabado') onChange(next);
         }}
       >
         <SelectTrigger className="h-8 min-w-0 flex-1 text-xs" aria-label={`Origem de ${label}`}>
           <SelectValue placeholder="Escolha a origem" />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="fabrica">Feita na fábrica</SelectItem>
-          <SelectItem value="prestador">Prestador (OS + remessa de napa)</SelectItem>
-          <SelectItem value="sku_acabado">Tira pronta (fornecedor)</SelectItem>
+          <SelectItem value="fabrica">Fazer (fábrica)</SelectItem>
+          <SelectItem value="sku_acabado">Comprar pronto</SelectItem>
         </SelectContent>
       </Select>
     </div>
@@ -59,22 +61,18 @@ export default function StrapPvOrigemChooser({
 
 interface BulkProps {
   onAllFactory: () => void;
-  onAllContractor: () => void;
   onAllBuyReady: () => void;
   disabled?: boolean;
 }
 
-export function StrapPvOrigemBulkActions({ onAllFactory, onAllContractor, onAllBuyReady, disabled }: BulkProps) {
+export function StrapPvOrigemBulkActions({ onAllFactory, onAllBuyReady, disabled }: BulkProps) {
   return (
     <div className="flex flex-wrap gap-1">
       <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-[10px]" disabled={disabled} onClick={onAllFactory}>
-        Todas na fábrica
-      </Button>
-      <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-[10px]" disabled={disabled} onClick={onAllContractor}>
-        Todas no prestador
+        Todas fazer
       </Button>
       <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-[10px]" disabled={disabled} onClick={onAllBuyReady}>
-        Todas tira pronta
+        Todas comprar pronto
       </Button>
     </div>
   );

@@ -371,3 +371,82 @@ export function aggregateArtisanalStrapCut(inputs: ArtisanalStrapAggInput[]): Ar
   rows.sort((a, b) => a.groupName.localeCompare(b.groupName, 'pt-BR') || a.color.localeCompare(b.color, 'pt-BR'));
   return rows;
 }
+
+/**
+ * Segmento = tipo + base, SEM a cor.
+ * Em produção `groupName` vem como `TIRA CHATA 8 mm · NAPA MADRID · OFF WHITE`.
+ */
+export function artisanalStrapTypeKey(row: ArtisanalStrapCutRow): string {
+  const name = (row.groupName || '').trim();
+  const color = (row.color || '').trim();
+  if (color && color !== '—') {
+    const suffix = ` · ${color}`;
+    if (name.length > suffix.length
+      && name.toLocaleLowerCase('pt-BR').endsWith(suffix.toLocaleLowerCase('pt-BR'))) {
+      return name.slice(0, name.length - suffix.length).trim();
+    }
+  }
+  return name || 'Tira';
+}
+
+export function isArtisanalStrapCutBlocked(row: ArtisanalStrapCutRow): boolean {
+  const snapshot = row.canonical;
+  return !snapshot
+    || snapshot.baseRequiredM <= 0
+    || snapshot.confirmedYieldMPerM <= 0
+    || snapshot.blockingReasons.length > 0
+    || !!snapshot.snapshotWarning;
+}
+
+/** Uma linha do bloco “Napa para tiras”: metros de tira + napa por tipo. */
+export type StrapTypeNapaAgg = {
+  typeKey: string;
+  typeName: string;
+  strapM: number;
+  napaM: number;
+  baseName?: string;
+  blocked: boolean;
+  colorCount: number;
+};
+
+export type StrapNapaSector = {
+  types: StrapTypeNapaAgg[];
+  totalStrapM: number;
+  totalNapaM: number;
+};
+
+/** Agrupa por tipo de tira: tira m + napa m; rodapé = total de napa (18-A). */
+export function aggregateStrapNapaSector(rows: ArtisanalStrapCutRow[]): StrapNapaSector {
+  const map = new Map<string, StrapTypeNapaAgg>();
+  for (const row of rows) {
+    const typeKey = artisanalStrapTypeKey(row);
+    const blocked = isArtisanalStrapCutBlocked(row);
+    const napaM = !blocked && row.canonical ? (Number(row.canonical.baseRequiredM) || 0) : 0;
+    const strapM = Number(row.metros_necessarios) || 0;
+    const existing = map.get(typeKey);
+    if (existing) {
+      existing.strapM += strapM;
+      existing.napaM += napaM;
+      existing.colorCount += 1;
+      if (blocked) existing.blocked = true;
+      if (!existing.baseName && row.baseName) existing.baseName = row.baseName;
+    } else {
+      map.set(typeKey, {
+        typeKey,
+        typeName: typeKey,
+        strapM,
+        napaM,
+        baseName: row.baseName,
+        blocked,
+        colorCount: 1,
+      });
+    }
+  }
+  const types = Array.from(map.values())
+    .sort((a, b) => a.typeName.localeCompare(b.typeName, 'pt-BR'));
+  return {
+    types,
+    totalStrapM: types.reduce((s, t) => s + t.strapM, 0),
+    totalNapaM: types.reduce((s, t) => s + t.napaM, 0),
+  };
+}

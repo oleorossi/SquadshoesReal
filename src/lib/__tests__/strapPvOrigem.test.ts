@@ -27,6 +27,13 @@ describe('strapPvOrigem', () => {
     )).toBe('sku_acabado');
   });
 
+  it('prestador legado resolve como fazer (fábrica) em escolhe_no_pv', () => {
+    expect(resolveEffectiveStrapPvOrigem(
+      { pv_origem: 'prestador' },
+      { id: 'm1', origem_padrao: 'escolhe_no_pv' },
+    )).toBe('fabrica');
+  });
+
   it('escolhe_no_pv exige pv_origem', () => {
     const issues = listMissingStrapPvOrigemChoices(
       [
@@ -46,7 +53,7 @@ describe('strapPvOrigem', () => {
     );
     expect(issues).toHaveLength(1);
     expect(issues[0].label).toBe('Tira 1');
-    expect(issues[0].message).toContain('Fornecedor');
+    expect(issues[0].message).toContain('Comprar pronto');
   });
 
   it('sourcing operacional legado satisfaz escolhe_no_pv sem pv_origem', () => {
@@ -140,7 +147,7 @@ describe('strapPvOrigem', () => {
         },
       ],
       measures,
-    )).toBe('TIRA 2: escolha Fábrica, Prestador ou Fornecedor em NEW WHISKY, ROSADO antes de salvar.');
+    )).toBe('TIRA 2: escolha Fazer ou Comprar pronto em NEW WHISKY, ROSADO antes de salvar.');
   });
 
   it('escolhe_no_pv aceita sku_acabado como origem explícita', () => {
@@ -154,7 +161,7 @@ describe('strapPvOrigem', () => {
     )).toEqual([]);
   });
 
-  it('lista preço ausente conforme origem efetiva', () => {
+  it('lista preço ausente conforme origem efetiva (prestador legado = fazer)', () => {
     const issues = listStrapHubIncompleteForOrigem(
       [
         { label: 'A', measure_id: 'm1', pv_origem: 'fabrica' },
@@ -162,11 +169,14 @@ describe('strapPvOrigem', () => {
       ],
       [
         { id: 'm1', origem_padrao: 'escolhe_no_pv', preco_artesanal_per_m: null },
-        { id: 'm2', origem_padrao: 'escolhe_no_pv', preco_prestador_per_m: 1.5 },
+        { id: 'm2', origem_padrao: 'escolhe_no_pv', preco_artesanal_per_m: null, preco_prestador_per_m: 1.5 },
       ],
     );
-    expect(issues.map((issue) => issue.code)).toEqual(['preco_artesanal_ausente']);
-    expect(issues[0].measureId).toBe('m1');
+    expect(issues.map((issue) => issue.code)).toEqual([
+      'preco_artesanal_ausente',
+      'preco_artesanal_ausente',
+    ]);
+    expect(issues.map((issue) => issue.measureId)).toEqual(['m1', 'm2']);
   });
 
   it('agrupa gaps de Hub por medida para o diálogo do PV', () => {
@@ -177,15 +187,16 @@ describe('strapPvOrigem', () => {
         { label: 'TIRA 3', measure_id: 'm2', pv_origem: 'fabrica' },
       ],
       [
-        { id: 'm1', origem_padrao: 'escolhe_no_pv', preco_prestador_per_m: null },
+        { id: 'm1', origem_padrao: 'escolhe_no_pv', preco_artesanal_per_m: null },
         { id: 'm2', origem_padrao: 'escolhe_no_pv', preco_artesanal_per_m: null },
       ],
     );
     const grouped = groupStrapHubIncompleteByMeasure(issues);
     expect(grouped).toHaveLength(2);
-    const prestador = grouped.find((gap) => gap.measureId === 'm1');
-    expect(prestador?.needsPrestador).toBe(true);
-    expect(prestador?.labels).toEqual(['TIRA 1', 'TIRA 2']);
+    const fazer = grouped.find((gap) => gap.measureId === 'm1');
+    expect(fazer?.needsArtesanal).toBe(true);
+    expect(fazer?.needsPrestador).toBe(false);
+    expect(fazer?.labels).toEqual(['TIRA 1', 'TIRA 2']);
     expect(grouped.find((gap) => gap.measureId === 'm2')?.needsArtesanal).toBe(true);
   });
 
@@ -234,7 +245,7 @@ describe('strapPvOrigem', () => {
     expect(sourceModeForEffectiveOrigem(null)).toBeNull();
   });
 
-  it('padrão comprar pronto (= prestador) só preenche escolhe_no_pv vazio', () => {
+  it('padrão fazer (fábrica) só preenche escolhe_no_pv vazio', () => {
     const { lines, changed } = applyDefaultStrapPvOrigemChoices(
       [
         { label: 'Tira 1', measure_id: 'm1', pv_origem: null },
@@ -251,7 +262,7 @@ describe('strapPvOrigem', () => {
     );
     expect(changed).toBe(true);
     expect(lines[0].pv_origem).toBe(DEFAULT_STRAP_PV_ORIGEM);
-    expect(DEFAULT_STRAP_PV_ORIGEM).toBe('prestador');
+    expect(DEFAULT_STRAP_PV_ORIGEM).toBe('fabrica');
     expect(lines[1].pv_origem).toBe('fabrica');
     expect(lines[2].pv_origem).toBeUndefined();
     expect(lines[3].pv_origem).toBeUndefined();

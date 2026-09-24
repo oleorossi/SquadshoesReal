@@ -1134,15 +1134,17 @@ function CalculatorTab({ catalog }: { catalog: ArtisanalStrapCatalog }) {
       <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/30 px-4 py-3">
         <Calculator className="mt-0.5 h-5 w-5 shrink-0 text-primary" weight="bold" />
         <div>
-          <p className="text-sm font-semibold text-foreground">Simulação livre de novas medidas</p>
+          <p className="text-sm font-semibold text-foreground">Calculadora e cadastro de rendimento</p>
           <p className="text-xs text-muted-foreground">
-            Preencha largura, banda e, quando necessário, o rendimento real para testar cenários. Os valores são temporários e não são salvos nem alteram receitas do sistema.
+            Simule geometria e rendimento; escolha a napa-base e a medida para gravar no catálogo.
+            Para criar tipo/medida novos, use a aba Tipos e rendimento.
           </p>
         </div>
       </div>
 
       <StrapCalculator
         embedded
+        catalog={catalog}
         canShowFinancialValues={catalog.capabilities.can_see_financial_values === true}
       />
     </div>

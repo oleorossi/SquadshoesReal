@@ -45,23 +45,21 @@ describe('normalizeBaseFamilyName', () => {
 });
 
 describe('computeBaseMaterialTotal', () => {
-  it('soma tiras convertidas + napa direta sem arredondar cada parcela', () => {
+  it('soma só napa direta — tiras convertidas ficam de fora', () => {
     const r = computeBaseMaterialTotal(COGUMELO)!;
-    expect(r.total).toBeCloseTo(36.7336065574, 8);
+    expect(r.total).toBeCloseTo(20.27, 2);
     expect(r.skipped).toBe(0);
   });
 
   it('quebra por material, maior primeiro', () => {
     const r = computeBaseMaterialTotal(COGUMELO)!;
-    expect(r.parts.map(p => p.name)).toEqual(['NAPA SUDANI', 'NAPA SOFT']);
+    expect(r.parts.map(p => p.name)).toEqual(['NAPA SUDANI']);
     expect(r.parts[0].qty).toBeCloseTo(20.27, 2);
-    expect(r.parts[1].qty).toBeCloseTo(16.4636065574, 8);
   });
 
-  it('conta o equivalente em napa da tira, nunca os metros de tira', () => {
-    // 169,20 m de tira = 2,82 m de napa. Somar os metros de tira daria 169,20.
-    const r = computeBaseMaterialTotal([COGUMELO[1]])!;
-    expect(r.total).toBeCloseTo(2.82, 2);
+  it('tira convertida sozinha não cria total de material base', () => {
+    const r = computeBaseMaterialTotal([COGUMELO[1]]);
+    expect(r).toBeNull();
   });
 
   it('ignora o que não é napa (solado em par, linha em kg, rebite em un)', () => {
@@ -82,16 +80,15 @@ describe('computeBaseMaterialTotal', () => {
     expect(r.skipped).toBe(1);
   });
 
-  it('três contribuições de 0,0049 permanecem 0,0147', () => {
+  it('contribuições só de tira convertida não entram no total', () => {
     const r = computeBaseMaterialTotal([
       ...[1, 2, 3].map(() => ({
         componentType: 'Tiras', groupName: 'TIRA TESTE', productUnit: 'm',
         totalQuantity: 0.294,
         artisanal: { baseName: 'NAPA SOFT', baseQty: 0.0049, yieldPerMeter: 60 },
       })),
-    ])!;
-    expect(r.total).toBeCloseTo(0.0147, 10);
-    expect(r.skipped).toBe(0);
+    ]);
+    expect(r).toBeNull();
   });
 
   it('tira pendente sem receita exata continua fora do total e contada em skipped', () => {

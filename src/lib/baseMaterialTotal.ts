@@ -1,21 +1,11 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// TOTAL DO MATERIAL BASE por seção (a napa que uma cor inteira consome)
+// TOTAL DO MATERIAL BASE — napa de Cabedal / Forração / Fachete (só)
 // ═══════════════════════════════════════════════════════════════════════════
-// O modal de Consumo já mostra, linha a linha, de quanta napa cada tira sai
-// ("≈ 2,82 m NAPA SOFT"), mas ninguém somava — quem compra fazia a conta no
-// papel. Duas origens entram no MESMO total, porque na prática é uma napa só:
-//   • TIRA artesanal → equivalente em base (`artisanal.baseQty`, metros já
-//     divididos pelo rendimento do rolo);
-//   • consumo DIRETO de napa (cabedal, forração, fachete, forração de palmilha)
-//     → o próprio `totalQuantity`, que já é a napa cortada.
+// Decisão do dono (24/09/2026): napa de tira artesanal NÃO entra neste total.
+// Ela aparece no bloco próprio do consumo (metros de tira + napa por tipo +
+// total de napa). Aqui só consumo DIRETO em unidade linear.
 //
-// Fica de fora o que não é napa e não se soma em metros com ela (solado em par,
-// cola em kg, rebite em un, placa de EVA) — por isso o filtro é por TIPO DE
-// COMPONENTE + unidade linear, e não "tudo que estiver em metro".
-//
-// ⚠ Por que não detectar pela receita artesanal: só NAPA SOFT é
-// `base_product_name` de receita. A NAPA SUDANI da forração ficaria de fora e o
-// total do COGUMELO daria 16,47 em vez de 36,74 (o número que o dono confere).
+// Pendência de rendimento (`artisanal.pending`) continua em `skipped`.
 
 import { stripColorFromName } from '@/lib/utils';
 
@@ -166,16 +156,9 @@ export function computeBaseMaterialTotal(rows: BaseMaterialInput[]): BaseMateria
   let skipped = 0;
 
   for (const r of rows) {
-    // Tira com família conhecida (napa da ficha) mas SEM rendimento cadastrado
-    // pra essa base → fora do total, conta como
-    // "a cadastrar" (não converte às cegas pela base errada).
-    if (r.artisanal?.pending) { skipped++; continue; }
-    // Tira artesanal: conta o equivalente em napa, NUNCA os metros de tira
-    // (169,20 m de tira = 2,82 m de napa; somar os 169,20 inflaria 60×).
-    // Família = grupo (sem cor do SKU), pra casar com cabedal/forração.
-    if (r.artisanal && r.artisanal.baseQty > 0) {
-      const name = normalizeBaseFamilyName(r.artisanal.baseName, r.color);
-      byName.set(name, (byName.get(name) || 0) + r.artisanal.baseQty);
+    // Tira (convertida ou pendente): fora deste total — bloco próprio no consumo.
+    if (r.artisanal) {
+      if (r.artisanal.pending) skipped++;
       continue;
     }
     if (!BASE_MATERIAL_COMPONENTS.has(r.componentType)) continue;

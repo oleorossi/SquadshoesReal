@@ -41,6 +41,8 @@ import {
   type StrapYieldInput,
   type StrapMaterialNeededInput,
 } from '@/lib/strapYield';
+import StrapCalculatorCatalogSave from '@/components/artisanal-straps/StrapCalculatorCatalogSave';
+import type { ArtisanalStrapCatalog } from '@/hooks/useArtisanalStraps';
 
 /** Número pt-BR com até `dec` casas, sem zeros à direita. '—' se não-finito. */
 const nf = (n: number, dec = 2): string =>
@@ -96,6 +98,8 @@ type Snapshot = StrapYieldInput & {
 interface StrapCalculatorProps {
   embedded?: boolean;
   canShowFinancialValues?: boolean;
+  /** Quando presente (aba do Hub), permite gravar rendimento no catálogo. */
+  catalog?: ArtisanalStrapCatalog | null;
 }
 
 function OperationalNeedResult({
@@ -189,6 +193,7 @@ function OperationalNeedResult({
 export default function StrapCalculator({
   embedded = false,
   canShowFinancialValues = true,
+  catalog = null,
 }: StrapCalculatorProps = {}) {
   const larguraMaterialPadraoMm = STRAP_YIELD_DEFAULTS.larguraMaterialMm;
   const [modo, setModo] = useState<Modo>('rendimento');
@@ -850,11 +855,27 @@ export default function StrapCalculator({
             </div>
           ) : null}
 
+          {/* Persistência no catálogo (Hub) */}
+          {catalog ? (
+            <StrapCalculatorCatalogSave
+              catalog={catalog}
+              usableWidthMm={larguraMaterialCm * MM_POR_CM}
+              cutBandWidthMm={larguraTiraMm}
+              confirmedYieldMPerM={
+                baseRendimento === 'real' && rendimentoRealMPerM > 0
+                  ? rendimentoRealMPerM
+                  : rendimentoTeoricoMPerM
+              }
+            />
+          ) : null}
+
           {/* Escopo do cálculo */}
           <div className="flex items-start gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
             <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             <span>
-              Simulação temporária: nenhum valor desta aba é salvo em receitas, estoque, custos ou produção.
+              {catalog
+                ? 'Simule acima e, se quiser, grave o rendimento no catálogo (napa × medida). Tipo/medida novos: aba Tipos e rendimento.'
+                : 'Simulação temporária: nenhum valor desta aba é salvo em receitas, estoque, custos ou produção.'}
               {submitted?.baseRendimento === 'teorico'
                 ? ' O resultado usa somente a capacidade geométrica.'
                 : submitted?.baseRendimento === 'real'

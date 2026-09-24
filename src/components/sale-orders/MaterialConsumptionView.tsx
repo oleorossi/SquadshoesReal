@@ -570,8 +570,8 @@ export default function MaterialConsumptionView({
   // filtrar "Coberto" desmontava o bloco inteiro e recriava o relato original
   // de que a parte de solados não aparecia.
   //
-  // Tira interna CONVERTIDA sai da tabela: a napa já está no bloco de material
-  // base e o detalhe tira×rendimento mora em ArtisanalStrapRollCutBlock.
+  // Tira interna CONVERTIDA sai da tabela: napa mora no bloco próprio
+  // “Napa para tiras” (não misturar com Cabedal/Forração).
   // Tira PENDING permanece visível como cadastro incompleto — senão a demanda
   // da ficha some da conferência (PV-00169: 184,80 m "não aparecem").
   //
@@ -1000,16 +1000,12 @@ export default function MaterialConsumptionView({
           {([
             { label: 'Cabedal', qty: split.cabedal },
             { label: 'Forração', qty: split.forracao },
-            { label: 'Tira', qty: split.tira, note: split.tira > 0 ? 'prod. interna' : undefined },
           ] as const).map((part) => (
             <span key={part.label} className="inline-flex items-baseline gap-1.5">
               <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{part.label}</span>
               <span className="font-mono text-sm font-bold tabular-nums">
                 {part.qty > 0 ? `${formatQty(part.qty, 'm')} m` : '—'}
               </span>
-              {'note' in part && part.note ? (
-                <span className="text-[10px] text-muted-foreground">{part.note}</span>
-              ) : null}
             </span>
           ))}
           <span className="ml-auto font-mono text-sm font-bold tabular-nums">
@@ -1054,11 +1050,11 @@ export default function MaterialConsumptionView({
             </div>
           )}
           <dl className="border-r border-border px-3 py-2">
-            <dt className="eyebrow">Material base</dt>
+            <dt className="eyebrow">Napa Cabedal/Forração</dt>
             <dd className="mt-1 font-mono text-lg font-bold leading-none tabular-nums">
               {baseTotal ? `${formatQty(baseTotal.total, 'm')} m` : '—'}
             </dd>
-            <dd className="mt-1 text-[10px] text-muted-foreground">necessidade de napa</dd>
+            <dd className="mt-1 text-[10px] text-muted-foreground">sem napa de tiras</dd>
           </dl>
           <dl className="border-r border-border px-3 py-2">
             <dt className="eyebrow">Em falta</dt>

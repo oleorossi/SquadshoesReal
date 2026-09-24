@@ -991,7 +991,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     strapSourcingMap,
   ]);
 
-  // Origem interna escolhida (Hub, seletor ou "Todas no prestador") sem o UUID
+  // Origem interna escolhida (Hub, seletor ou "Todas fazer") sem o UUID
   // da variante: o preview devolve `variant_identity_not_persisted`. Completa
   // com a identidade já resolvida — o mesmo contrato do buy_ready acima.
   useEffect(() => {
@@ -1209,9 +1209,9 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     // escolhas de cor ainda válidas e invalida origem/receita quando qualquer
     // entrada produtiva (inclusive família ou medida) mudou.
     //
-    // O padrão "comprar pronto" (= prestador) em escolhe_no_pv vazio entra AQUI,
+    // O padrão "fazer" (fábrica) em escolhe_no_pv vazio entra AQUI,
     // no mesmo write que o reconcile — um efeito separado perdia a corrida:
-    // default gravava prestador e o reconcile (mesmo tick, snapshot velho)
+    // default gravava origem e o reconcile (mesmo tick, snapshot velho)
     // sobrescrevia strap_colors sem pv_origem.
     const reconciled = reconcileEditableStrapSnapshots({
       snapshotLines: currentStraps,
@@ -1222,7 +1222,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     let linesChanged = reconciled.linesChanged;
     let nextSourcing = reconciled.sourcing;
     let sourcingChanged = reconciled.sourcingChanged;
-    // Default prestador só em rascunho/pendente. Em snapshot comprometido vazio
+    // Default "fazer" só em rascunho/pendente. Em snapshot comprometido vazio
     // recuperado, não inventa pv_origem (trava o seletor); grava sourcing
     // operacional mínimo pra o guard de origem liberar o ajuste do pedido.
     if (strapCatalog?.measures?.length && !preserveCommittedStrapSnapshot) {
@@ -2549,40 +2549,6 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                         onUpdate(index, 'strap_sourcing', nextSourcing);
                       }
                     }}
-                    onAllContractor={() => {
-                      const eligible = new Set(
-                        straps
-                          .filter((strap) => {
-                            const measure = strapCatalog?.measures.find((entry) => entry.id === strap.measure_id);
-                            return normalizeStrapOrigemPadrao(measure?.origem_padrao) === 'escolhe_no_pv';
-                          })
-                          .map((strap) => technicalStrapLineId(strap))
-                          .filter((id): id is string => !!id),
-                      );
-                      if (eligible.size === 0) return;
-                      const updated = snapshotStraps.map((strap) => {
-                        const lineId = technicalStrapLineId(strap);
-                        if (!lineId || !eligible.has(lineId)) return strap;
-                        return { ...strap, pv_origem: 'prestador' as const };
-                      });
-                      let nextSourcing = strapSourcingMap;
-                      updated.forEach((strap) => {
-                        const lineId = technicalStrapLineId(strap);
-                        if (!lineId || isPurchasedReadyStrap(strap)) return;
-                        if (strap.pv_origem !== 'prestador') return;
-                        nextSourcing = setInternalStrapSourcing(
-                          nextSourcing,
-                          lineId,
-                          strapPreviewIdentityFromLine(strapLineByKey.get(lineId), strap.color_id),
-                          strap.color_id,
-                        );
-                      });
-                      if (onUpdateFields) onUpdateFields(index, { strap_colors: updated, strap_sourcing: nextSourcing });
-                      else {
-                        onUpdate(index, 'strap_colors', updated);
-                        onUpdate(index, 'strap_sourcing', nextSourcing);
-                      }
-                    }}
                     onAllBuyReady={() => {
                       const eligible = new Set(
                         straps
@@ -3183,9 +3149,9 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                                       : effective === 'internal' && blocked
                                         ? 'Produção interna · pendência'
                                         : strap.pv_origem === 'sku_acabado'
-                                          ? 'Tira pronta · fornecedor'
-                                          : strap.pv_origem === 'prestador'
-                                          ? 'Prestador · OS com remessa de napa'
+                                          ? 'Comprar pronto'
+                                          : strap.pv_origem === 'prestador' || strap.pv_origem === 'fabrica'
+                                          ? 'Fazer (fábrica)'
                                           : 'Produção interna automática'}
                               </span>
                             </div>

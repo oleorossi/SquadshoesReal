@@ -1,30 +1,15 @@
 /**
- * LISTA DE COMPRA do consumo de materiais — material base (napa) por
- * **família → cor**, mais as tiras que não converteram por falta de cadastro.
+ * LISTA DE COMPRA do consumo — napa de **Cabedal / Forração / Fachete** por
+ * família → cor. Tira artesanal convertida NÃO entra aqui (decisão do dono,
+ * 24/09/2026): mora no bloco próprio “Napa para tiras”, pra não misturar com
+ * forração do cabedal.
  *
- * Extraído de `MaterialConsumptionView.handlePrintPdf` em 2026-08-05. Este
- * agrupamento existia desde sempre, mas só dentro do gerador de PDF, montando
- * string de HTML: a TELA agrupava por componente e o PAPEL por família de napa,
- * então as duas discordavam de qual era a pergunta principal. Agora as duas
- * chamam `buildBuyList` — mudar a regra de compra muda as duas juntas.
- *
- * Duas origens entram na MESMA família, porque na prática é uma napa só:
- *  - napa cortada DIRETO (cabedal, forração, fachete, forração de palmilha em
- *    unidade linear) → o próprio `totalQuantity`;
- *  - TIRA artesanal → o equivalente em napa (`artisanal.baseQty`), NUNCA os
- *    metros de tira (169,20 m de tira = 2,82 m de napa).
- *
- * Fica de fora o que não se soma em metros com napa (solado em par, cola em kg,
- * caixa em un) — sai em `otherRows`.
- *
- * A quebra por aplicação (cabedal / forração / tira) mora no mesmo balde de
- * cor: filtrar NAPA SOFT e agrupar por cor mostra de onde saem os metros, sem
- * misturar unidade de produção (metro de tira) com unidade de compra.
+ * Continua listando `pendingStraps` (tira sem rendimento) e `otherRows`.
  */
 import { BASE_MATERIAL_COMPONENTS, BASE_LINEAR_UNITS, normalizeBaseFamilyName } from '@/lib/baseMaterialTotal';
 import { normTxt, type ConsumptionRow } from '@/lib/consumptionRows';
 
-/** Aplicação da napa na ficha — tira interna conta o metro de napa. */
+/** Aplicação da napa na ficha (cabedal/forração). `tira` fica zerado — legado de UI. */
 export type BaseApplicationKind = 'cabedal' | 'forracao' | 'tira';
 
 export type BuyListColor = {
@@ -32,6 +17,7 @@ export type BuyListColor = {
   qty: number;
   cabedal: number;
   forracao: number;
+  /** Sempre 0 — napa de tira sai do bloco próprio. */
   tira: number;
   /** Tiras desta napa+cor que ficaram FORA do total por falta de rendimento. */
   pending: number;
@@ -79,10 +65,9 @@ export const isDirectNapaRow = (row: ConsumptionRow): boolean =>
   && !row.warning
   && row.totalQuantity > 0;
 
-/** A linha entra na lista de compra de material base? (napa direta OU tira convertida) */
+/** A linha entra na lista de compra de napa (cabedal/forração)? Sem tira convertida. */
 export const isBuyListRow = (row: ConsumptionRow): boolean => {
-  if (row.artisanal?.pending) return false;
-  if (row.artisanal && row.artisanal.baseQty > 0) return true;
+  if (row.artisanal) return false;
   return isDirectNapaRow(row);
 };
 
@@ -112,8 +97,8 @@ export function rowBaseQty(row: ConsumptionRow): number {
 }
 
 export function baseApplicationKind(row: ConsumptionRow): BaseApplicationKind | null {
-  if (row.artisanal?.pending) return 'tira';
-  if (row.artisanal && Number(row.artisanal.baseQty) > 0) return 'tira';
+  // Tira convertida não alimenta mais esta lista — kind só pra napa direta.
+  if (row.artisanal) return null;
   if (!isDirectNapaRow(row)) return null;
   if (row.componentType === 'Forração' || row.componentType === 'Forração Palmilha') return 'forracao';
   return 'cabedal';
@@ -152,15 +137,8 @@ export function buildBuyList(rows: ConsumptionRow[]): BuyList {
       pendCountByKey.set(k, (pendCountByKey.get(k) || 0) + 1);
       continue;
     }
-    if (row.artisanal && row.artisanal.baseQty > 0) {
-      addNapa(
-        normalizeBaseFamilyName(row.artisanal.baseName, row.color),
-        row.color,
-        row.artisanal.baseQty,
-        'tira',
-      );
-      continue;
-    }
+    // Tira convertida: bloco “Napa para tiras”, não esta família.
+    if (row.artisanal && row.artisanal.baseQty > 0) continue;
     if (isDirectNapaRow(row)) {
       addNapa(row.groupName, row.color, row.totalQuantity, baseApplicationKind(row) || 'cabedal');
       continue;

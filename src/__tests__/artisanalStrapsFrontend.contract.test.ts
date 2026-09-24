@@ -284,8 +284,9 @@ describe('Tiras artesanais — contrato do frontend canônico', () => {
   it('orienta a fábrica pela napa e rendimento canônicos, sem rolo fixo legado', () => {
     expect(canonicalPreview).toContain('baseRequiredM: baseRequired');
     expect(canonicalPreview).toContain('confirmedYieldMPerM: yieldPerMeter');
-    expect(strapCutBlock).toContain('separação da napa-base');
-    expect(strapCutBlock).toContain('snapshot.baseRequiredM');
+    expect(strapCutBlock).toContain('Napa para tiras');
+    expect(strapCutBlock).toContain('aggregateStrapNapaSector');
+    expect(strapCutBlock).toContain('Total de napa (todas as tiras)');
     expect(strapCutBlock).not.toContain('ROLO_COMPRIMENTO_M');
     expect(pickingList).toContain('separação da napa-base');
     expect(pickingList).not.toContain('ROLO_LARGURA_MM');
@@ -300,9 +301,9 @@ describe('Tiras artesanais — contrato do frontend canônico', () => {
     expect(strapYield).not.toContain('strapYieldLossPercentageFromConfirmed');
   });
 
-  it('mantém a calculadora livre, temporária e independente das receitas persistidas', () => {
-    expect(hub).toContain('Simulação livre de novas medidas');
-    expect(hub).toContain('Os valores são temporários e não são salvos');
+  it('mantém a calculadora no Hub com caminho de gravação no catálogo', () => {
+    expect(hub).toContain('Calculadora e cadastro de rendimento');
+    expect(hub).toContain('catalog={catalog}');
     expect(hub).toContain('<StrapCalculator');
     expect(hub).not.toContain('selectedRecipe');
     expect(hub).not.toContain('approvedRecipes');
@@ -310,6 +311,7 @@ describe('Tiras artesanais — contrato do frontend canônico', () => {
     expect(calculator).toContain('Base desta simulação');
     expect(calculator).toContain('Rendimento real medido');
     expect(calculator).not.toContain('Perda estimada');
+    expect(calculator).toContain('StrapCalculatorCatalogSave');
     expect(calculator).toContain('nenhum valor desta aba é salvo');
     expect(calculator).not.toMatch(/from\(['"]/);
   });
