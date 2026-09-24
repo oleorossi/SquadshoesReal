@@ -41,6 +41,7 @@ import { PrintPageRangeProvider, ReversePrintContext, ReversibleStack } from '@/
 import { PrintContinuityProvider } from '@/components/production/worksheet/printContinuity';
 import { resolveFicha, type FichaResolution } from '@/components/production/worksheet/fichaSize';
 import { soleGroupKey } from '@/components/production/worksheet/soleGroupKey';
+import { resolveReportMaterials } from '@/lib/reportMaterialResolve';
 import { useSectorGroupingConfig } from '@/hooks/useSectorGroupingConfig';
 import {
   useBulkOrderConsumption,
@@ -1515,7 +1516,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       // upper_corte_a_fio: filtro da ficha 'Costura Cabedal' (2026-06-12).
       const { data, error } = await supabase
         .from('technical_sheets')
-        .select('id, insole_has_lining, insole_ready_made, has_straps, sole_material, sole_color, sole_group_id, primary_sole_id, production_sectors, aviamento_steps, upper_material, upper_material_group_id, upper_material_product_id, upper_consumption, upper_consumption_per_size, components_accessories, lining_material, insole_material, upper_corte_a_fio, upper_sewing_pieces_per_pair, knife_size_ranges, aviamento_size_ranges, shoe_category')
+        .select('id, insole_has_lining, insole_ready_made, has_straps, sole_material, sole_color, sole_group_id, primary_sole_id, production_sectors, aviamento_steps, upper_material, upper_material_group_id, upper_material_product_id, upper_consumption, upper_consumption_per_size, components_accessories, lining_material, insole_material, upper_corte_a_fio, upper_sewing_pieces_per_pair, knife_size_ranges, aviamento_size_ranges, shoe_category, variant_drives_upper, variant_drives_lining')
         .in('id', referenceIds);
       if (error) throw error;
       return data || [];
@@ -1529,6 +1530,92 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     for (const s of sheetLiningFlags as any[]) m.set((s as any).id, s);
     return m;
   }, [sheetLiningFlags]);
+
+  // Variantes de material dos itens do PV — forração/cabedal efetivos do
+  // Relatório Gerencial (checklist). Sem isto o print lia só o texto da ficha
+  // e mostrava NAPA SOFT pra quem pinou SUDANI/MADRID no item.
+  const materialVariantIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const o of orders as any[]) {
+      const vid = o?.material_variant_id;
+      if (vid) ids.add(String(vid));
+    }
+    return Array.from(ids).sort();
+  }, [orders]);
+
+  const { data: reportMaterialVariants = [] } = useQuery({
+    queryKey: ['print_report_material_variants', materialVariantIds],
+    enabled: materialVariantIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('reference_material_variants')
+        .select('id, material_name, upper_material_product_id, upper_material_group_id, lining_material_product_id, lining_material_group_id, insole_material_product_id, insole_material_group_id, main_material_group_id')
+        .in('id', materialVariantIds);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const reportVariantById = useMemo(() => {
+    const m = new Map<string, any>();
+    for (const v of reportMaterialVariants as any[]) m.set(String(v.id), v);
+    return m;
+  }, [reportMaterialVariants]);
+
+  const reportMaterialGroupIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const v of reportMaterialVariants as any[]) {
+      for (const k of [
+        'upper_material_group_id', 'lining_material_group_id',
+        'insole_material_group_id', 'main_material_group_id',
+      ]) {
+        if (v[k]) ids.add(String(v[k]));
+      }
+    }
+    // Grupos da ficha (cabedal/forração) — material comercial do item sem variante.
+    for (const s of sheetLiningFlags as any[]) {
+      if (s?.upper_material_group_id) ids.add(String(s.upper_material_group_id));
+    }
+    return Array.from(ids).sort();
+  }, [reportMaterialVariants, sheetLiningFlags]);
+
+  const { data: reportMaterialGroups = [] } = useQuery({
+    queryKey: ['print_report_material_groups', reportMaterialGroupIds],
+    enabled: reportMaterialGroupIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('product_groups')
+        .select('id, name')
+        .in('id', reportMaterialGroupIds);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const reportGroupsById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const g of reportMaterialGroups as any[]) {
+      if (g?.id) m.set(String(g.id), String(g.name || '').trim());
+    }
+    return m;
+  }, [reportMaterialGroups]);
+
+  /** Forração efetiva do item (variante do PV vence texto da ficha). */
+  const resolveOrderLiningMaterial = (order: any, sheetId: string | null | undefined): string => {
+    const sheet = sheetId ? sheetById.get(sheetId) : null;
+    const variant = order?.material_variant_id
+      ? reportVariantById.get(String(order.material_variant_id))
+      : null;
+    const resolved = resolveReportMaterials({
+      sheet: {
+        lining_material: sheet?.lining_material ?? null,
+        variant_drives_lining: sheet?.variant_drives_lining === true,
+      },
+      variant: variant || null,
+      groupsById: reportGroupsById,
+    });
+    return (resolved.lining || '').trim();
+  };
 
   // Universo de grupos de solado relevantes pro print: sole_group_id da ficha
   // (P0), sole_group_id dos mappings sem produto explícito (P2) e group_id dos
@@ -2628,6 +2715,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             refName: order.reference_name || order.reference_code || undefined,
             refCode: order.reference_code || undefined,
             pairs: Number(order.total_pairs ?? 0),
+            liningMaterial: resolveOrderLiningMaterial(order, sheetId) || undefined,
             variantImageUrl: exactVariant?.image_url || null,
             alternateVariants: variants,
             technicalSheetImageUrl: tsImageByRef.get(sheetId) || null,
@@ -2707,8 +2795,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       // CAPUCCINO tinha Napa Soft + Napa Madrid no mesmo card). Captura aqui,
       // onde a grade escalada por OP (scaledGrade) e a ficha ainda existem;
       // Silk/Costura/Corte Cabedal ignoram este campo (agrupam como antes).
+      //
+      // 2026-09-24: usa a forração EFETIVA do item (variante do PV), não só o
+      // texto estático da ficha — DS53 GLOW METALIC ≠ NAPA SOFT da ficha.
       {
-        const liningMat = (sheetMaterialsByRef.get(sheetId)?.lining || '').trim();
+        const liningMat = resolveOrderLiningMaterial(order, sheetId);
         const liningKey = liningMat.toUpperCase() || '∅';
         cg.liningBreakdown = cg.liningBreakdown || new Map();
         let lb = cg.liningBreakdown.get(liningKey);
@@ -2769,7 +2860,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   // knifeDefaultBoundaries vem de query SEPARADA (useKnifeFacasDefault) — sem ele
   // nas deps, o memo não recomputava quando o padrão de facas carregava async →
   // Corte Cabedal ficava número-a-número. (PV-00142, 2026-06-17.)
-  }, [expandedOrders, activeSectors, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, soleMaterialByRef, sheetMaterialsByRef, resolveSoleForOrder, sheetById, clientsInfo, economicGroupsInfo, soleGroupPackaging, SOLE_COLOR_GROUPED_SECTORS, knifeDefaultBoundaries, knifeOptOutByRef, knifeRangesByRef, aviamentoDefaultBoundaries, aviamentoOptOutByRef, aviamentoRangesByRef]);
+  }, [expandedOrders, activeSectors, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, soleMaterialByRef, sheetMaterialsByRef, resolveSoleForOrder, sheetById, clientsInfo, economicGroupsInfo, soleGroupPackaging, SOLE_COLOR_GROUPED_SECTORS, knifeDefaultBoundaries, knifeOptOutByRef, knifeRangesByRef, aviamentoDefaultBoundaries, aviamentoOptOutByRef, aviamentoRangesByRef, reportVariantById, reportGroupsById]);
 
   // Corte Cabedal + Costura Cabedal: 1 ficha por REFERÊNCIA (dono 2026-09-23).
   // Antes Cabedal agregava por solado+cor e fundia LA01+SP201 no mesmo card
@@ -2778,7 +2869,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     if (!activeSectors.has('Corte Cabedal')) return null;
     return buildColorGroupedSheets('reference', true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [expandedOrders, activeSectors, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, soleMaterialByRef, sheetMaterialsByRef, resolveSoleForOrder, sheetById, clientsInfo, economicGroupsInfo, soleGroupPackaging, knifeDefaultBoundaries, knifeOptOutByRef, knifeRangesByRef, aviamentoDefaultBoundaries, aviamentoOptOutByRef, aviamentoRangesByRef]);
+  }, [expandedOrders, activeSectors, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, soleMaterialByRef, sheetMaterialsByRef, resolveSoleForOrder, sheetById, clientsInfo, economicGroupsInfo, soleGroupPackaging, knifeDefaultBoundaries, knifeOptOutByRef, knifeRangesByRef, aviamentoDefaultBoundaries, aviamentoOptOutByRef, aviamentoRangesByRef, reportVariantById, reportGroupsById]);
 
   // Costura Cabedal: 1 ficha por REFERÊNCIA, seções por cor (2026-09-23).
   // Antes reaproveitava upperSectorGroups (sole+cor) e fundia LA01+SP201 no
@@ -2787,7 +2878,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     if (!activeSectors.has('Costura Cabedal')) return null;
     return buildColorGroupedSheets('reference', true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [expandedOrders, activeSectors, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, soleMaterialByRef, sheetMaterialsByRef, resolveSoleForOrder, sheetById, clientsInfo, economicGroupsInfo, soleGroupPackaging, knifeDefaultBoundaries, knifeOptOutByRef, knifeRangesByRef, aviamentoDefaultBoundaries, aviamentoOptOutByRef, aviamentoRangesByRef]);
+  }, [expandedOrders, activeSectors, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, soleMaterialByRef, sheetMaterialsByRef, resolveSoleForOrder, sheetById, clientsInfo, economicGroupsInfo, soleGroupPackaging, knifeDefaultBoundaries, knifeOptOutByRef, knifeRangesByRef, aviamentoDefaultBoundaries, aviamentoOptOutByRef, aviamentoRangesByRef, reportVariantById, reportGroupsById]);
 
   // ── Aviamento: por REFERÊNCIA (modelo), seções por cor ────────────────────
   // Pedido do dono (2026-06-12): o Aviamento só monta o cabedal — o solado é
@@ -3218,9 +3309,6 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       // Silk via cascata padrão (cliente/grupo/solado/squad).
       const silkInfo = getOrderSilk(order);
 
-      // Materiais técnicos da ficha.
-      const mats = sheetMaterialsByRef.get(order.reference_id) || { upper: null, lining: null, insole: null };
-
       // Tiras configuradas no item de venda, na posição técnica do snapshot.
       const strapColorsRaw = Array.isArray((order as any).strap_colors)
         ? ((order as any).strap_colors as Array<any>)
@@ -3245,6 +3333,35 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       const pairsPerBox = soleGroupId
         ? ((soleGroupPackaging as any[]).find((g: any) => g.id === soleGroupId)?.pairs_per_box_individual ?? null)
         : null;
+
+      // Checklist gerencial (2026-09-24): elegibilidade por roteiro + sinais
+      // de cabedal/forração — mesmo critério do cartão físico / fichas.
+      const sheet = sheetById.get(order.reference_id);
+      const upper = getUpperWorkEligibility(sheet);
+      const requiresLiningCut = (liningFlagLookup.get(order.reference_id) === true)
+        && !isEffectiveReadyMade(order.reference_id, order.color);
+      const productionSectors = Array.isArray(sheet?.production_sectors)
+        ? (sheet!.production_sectors as string[])
+        : null;
+
+      // Materiais efetivos: variante do item do PV vence o texto da ficha
+      // (NAPA SOFT na ficha ≠ NAPA MADRID pinada no item — checklist 2026-09-24).
+      const sheetMats = sheetMaterialsByRef.get(order.reference_id) || { upper: null, lining: null, insole: null };
+      const variant = order.material_variant_id
+        ? reportVariantById.get(String(order.material_variant_id))
+        : null;
+      const resolvedMats = resolveReportMaterials({
+        sheet: {
+          upper_material: sheet?.upper_material ?? sheetMats.upper,
+          upper_material_group_id: sheet?.upper_material_group_id ?? null,
+          lining_material: sheet?.lining_material ?? sheetMats.lining,
+          insole_material: sheet?.insole_material ?? sheetMats.insole,
+          variant_drives_upper: sheet?.variant_drives_upper === true,
+          variant_drives_lining: sheet?.variant_drives_lining === true,
+        },
+        variant: variant || null,
+        groupsById: reportGroupsById,
+      });
 
       g.reportOrders.push({
         id: order.id,
@@ -3273,10 +3390,15 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           return f.fichas > 0 ? f.fichas : null;
         })(),
         straps,
-        upper_material: mats.upper,
-        lining_material: mats.lining,
-        insole_material: mats.insole,
+        item_material: resolvedMats.item,
+        upper_material: resolvedMats.upper,
+        lining_material: resolvedMats.lining,
+        insole_material: resolvedMats.insole,
         pairs_per_box: pairsPerBox,
+        production_sectors: productionSectors,
+        requires_upper_cut: upper.requiresUpperCut,
+        requires_upper_sewing: upper.requiresUpperSewing,
+        requires_lining_cut: requiresLiningCut,
       });
     }
 
@@ -3287,7 +3409,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     // os lê — sem eles, se a query resolvesse por último o memo não recomputava
     // e o relatório imprimia pra sempre a logo fallback (race em rede lenta).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [printOrders, saleOrders, clientsInfo, resolveSoleForOrder, soleGroupPackaging, orderStagesData, activeSectors, variantsByRef, tsImageByRef, sheetMaterialsByRef, silkRegistrations, economicGroupsInfo]);
+  }, [printOrders, saleOrders, clientsInfo, resolveSoleForOrder, soleGroupPackaging, orderStagesData, activeSectors, variantsByRef, tsImageByRef, sheetMaterialsByRef, silkRegistrations, economicGroupsInfo, sheetById, liningFlagLookup, reportVariantById, reportGroupsById, needsRelatorio]);
 
   // ── Cartão físico: 1 por corrugado cheio × OP × setor emissor ─────────────
   const cartaoFisicoCards = useMemo((): CartaoFisicoCard[] => {
@@ -3325,7 +3447,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
         if (sector === 'Corte Palmilha') {
           materialLabel = soleNameFor(sheetId, order.color) || null;
         } else if (sector === 'Corte Forração') {
-          materialLabel = (sheetId && sheetMaterialsByRef.get(sheetId)?.lining) || null;
+          materialLabel = resolveOrderLiningMaterial(order, sheetId) || null;
         }
 
         return {
@@ -3384,7 +3506,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
 
       let materialLabel: string | null = null;
       if (sector === 'Corte Forração') {
-        materialLabel = (sheetId && sheetMaterialsByRef.get(sheetId)?.lining) || null;
+        materialLabel = resolveOrderLiningMaterial(order, sheetId) || null;
       }
 
       return {
@@ -4057,7 +4179,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
                   const lbMatKey = (lb.material || '').trim().toUpperCase();
                   const allRefImages = cg.refImages || [];
                   const scoped = allRefImages.filter((ri: any) =>
-                    (sheetMaterialsByRef.get(ri.sheetId || '')?.lining || '').trim().toUpperCase() === lbMatKey);
+                    (ri.liningMaterial || sheetMaterialsByRef.get(ri.sheetId || '')?.lining || '').trim().toUpperCase() === lbMatKey);
                   // Rede de segurança (31/07/2026): se o escopo por napa zerar a
                   // lista — ficha sem lining_material cadastrado, id ausente do
                   // lookup —, NÃO deixar cair na lista vazia. `collectCompactThumbs`
@@ -4590,11 +4712,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           </div>
         ))}
 
-        {/* ── Relatório Gerencial: 1 relatório por PV ──
-            v3 (24/05/2026): sem chunking. Relatórios grandes (15+ OPs)
-            ocupam 2-3 A4 naturalmente. .keep-together nos blocos de cada
-            seção (header, tabela de OPs, tabela de custos, footer) garante
-            que cada bloco fica inteiro na sua página. */}
+        {/* ── Relatório Gerencial: 1 checklist por PV (2026-09-24) ──
+            Seções por setor · linhas REF+COR · grade mini · □ 8 mm.
+            Sem foto / sem R$ — visão de chão pra marcar à mão. */}
         {isA4 && includesSector('Relatório Gerencial') && reportGroups && reportGroups.map((rg) => (
           <div key={`report-${rg.saleOrder.id}`} className="page-break">
             <ManagementReport
