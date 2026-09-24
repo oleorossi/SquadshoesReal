@@ -18,8 +18,8 @@ beforeAll(() => {
   };
 });
 
-describe('aviso de transformação física ainda não congelada', () => {
-  it('mostra o aviso na tela e no PDF sem inventar napa nem pedir correção de receita', () => {
+describe('setor próprio Napa para tiras — cadastro incompleto', () => {
+  it('mostra cadastro incompleto na tela e no PDF sem inventar napa nem pedir correção de receita', () => {
     const warning = 'A transformação física será congelada na primeira demanda.';
     const pending: ArtisanalStrapCutRow = {
       key: 'pending', groupName: 'TIRA OVERLOCK 5MM', color: 'PRETO',
@@ -31,13 +31,15 @@ describe('aviso de transformação física ainda não congelada', () => {
         blockingReasons: [], snapshotWarning: warning },
     };
     render(<MemoryRouter><ArtisanalStrapRollCutBlock rows={[pending]} /></MemoryRouter>);
-    expect(screen.getByText(warning)).toBeInTheDocument();
+    expect(screen.getByText('Napa para tiras')).toBeInTheDocument();
+    expect(screen.getByText('Cadastro incompleto')).toBeInTheDocument();
     expect(screen.queryByText('Separar napa')).not.toBeInTheDocument();
     expect(screen.queryByText(/Corrigir receita/)).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Acompanhar no Hub/ })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Abrir calculadora de tiras/ })).toBeInTheDocument();
     const html = buildMaterialConsumptionReportHtml({ rows: [], artisanalStrapRows: [pending],
       title: 'Teste', mode: 'total', generatedAt: new Date('2026-09-05T12:00:00Z') });
-    expect(html).toContain(warning);
+    expect(html).toContain('Napa para tiras');
+    expect(html).toContain('cadastro incompleto');
     expect(html).not.toContain('>receita conferida<');
   });
 });

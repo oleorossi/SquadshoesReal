@@ -180,11 +180,31 @@ describe('materialConsumptionReport', () => {
     expect(html).not.toContain('<td class="num strong">59,04</td>');
   });
 
-  it('não publica metro de tira artesanal como falta de compra nem no total em m', () => {
+  it('não publica metro de tira artesanal como falta — napa de tira fica no §03', () => {
     const html = buildMaterialConsumptionReportHtml({
       title: 'Consumo de Materiais — PV-00168',
       generatedAt: new Date('2026-08-30T15:11:00-03:00'),
-      artisanalStrapRows: [],
+      artisanalStrapRows: [{
+        key: 'tira-1',
+        groupName: 'TIRA OVERLOCK 5 mm · NAPA SOFT · NEW WHISKY',
+        color: 'NEW WHISKY',
+        baseName: 'NAPA SOFT',
+        largura_mm: 5,
+        metros_necessarios: 1402.8,
+        cut: {
+          largura_mm: 5, metros_uteis_por_banda: 40, n_bandas: 36, cm_a_cortar: 18,
+          rolos: 0.13, n_rolos_completos: 0, cm_no_ultimo_rolo: 18, valid: true, widthMissing: false,
+        },
+        canonical: {
+          recipeId: 'recipe-1',
+          baseRequiredM: 20.04,
+          confirmedYieldMPerM: 70,
+          usableBaseWidthMm: 1370,
+          theoreticalYieldMPerM: 70,
+          transformationCostPerM: null,
+          blockingReasons: [],
+        },
+      }],
       rows: [
         row({
           componentType: 'Forração Palmilha',
@@ -211,29 +231,47 @@ describe('materialConsumptionReport', () => {
       ],
     });
 
-    // §01 traz a tira como metro de napa; §02 não repete 1.402 m de tira.
-    expect(html).toContain('prod. interna');
+    // §01: só Cabedal/Forração. §03: napa de tira. Strip soma napa convertida.
+    expect(html).toContain('Napa para tiras');
     expect(html).toContain('20,04 m');
     expect(html).not.toContain('class="num shortage">1.402,80');
     expect(html).not.toContain('>1.402,80<');
     const totalsStrip = html.match(/<div class="totals-strip">[\s\S]*?<\/div>/)?.[0] || '';
     expect(totalsStrip).toContain('40,25');
     expect(totalsStrip).not.toContain('1.402,80');
-    expect(html).toContain('metro de napa');
     expect(html).toContain('>Cabedal<');
     expect(html).toContain('>Forração<');
-    expect(html).toContain('>Tira<');
+    expect(html).not.toContain('>Tira<');
     expect(html).toContain('20,21 m');
-    expect(html).toContain('40,25 m');
     expect(html).not.toContain('<span>Tiras</span>');
   });
 
-  it('no modo consumo total ignora estoque e agrupa napa por família e cor', () => {
+  it('no modo consumo total ignora estoque e agrupa napa Cabedal/Forração por família', () => {
     const html = buildMaterialConsumptionReportHtml({
       title: 'Consumo total — PV-00168',
       generatedAt: new Date('2026-08-30T15:11:00-03:00'),
       mode: 'total',
-      artisanalStrapRows: [],
+      artisanalStrapRows: [{
+        key: 'tira-1',
+        groupName: 'TIRA OVERLOCK 5 mm · NAPA SOFT · NEW WHISKY',
+        color: 'NEW WHISKY',
+        baseName: 'NAPA SOFT',
+        largura_mm: 5,
+        metros_necessarios: 1402.8,
+        cut: {
+          largura_mm: 5, metros_uteis_por_banda: 40, n_bandas: 36, cm_a_cortar: 18,
+          rolos: 0.13, n_rolos_completos: 0, cm_no_ultimo_rolo: 18, valid: true, widthMissing: false,
+        },
+        canonical: {
+          recipeId: 'recipe-1',
+          baseRequiredM: 20.04,
+          confirmedYieldMPerM: 70,
+          usableBaseWidthMm: 1370,
+          theoreticalYieldMPerM: 70,
+          transformationCostPerM: null,
+          blockingReasons: [],
+        },
+      }],
       rows: [
         row({
           componentType: 'Forração Palmilha',
@@ -264,9 +302,10 @@ describe('materialConsumptionReport', () => {
     expect(html).toContain('napa-family-name');
     expect(html).toContain('NAPA SOFT');
     expect(html).toContain('NEW WHISKY');
-    expect(html).toContain('20,21 m');
+    // Família §01 = só forração; napa de tira no §03.
+    expect(html).toMatch(/napa-family-qty">20,21 m</);
+    expect(html).toContain('Napa para tiras');
     expect(html).toContain('20,04 m');
-    expect(html).toContain('40,25 m');
     expect(html).not.toContain('Itens em falta');
     expect(html).not.toContain('Maiores faltas');
     expect(html).not.toContain('>Estoque<');
@@ -275,7 +314,7 @@ describe('materialConsumptionReport', () => {
     expect(html).not.toContain('>1.402,80<');
   });
 
-  it('PV-00193: strip de metros ignora tira pending e §02 não lista metros de tira', () => {
+  it('PV-00193: strip de metros ignora tira pending e §02 lista só demanda pendente', () => {
     const forracao = (color: string) => row({
       componentType: 'Forração Palmilha',
       groupName: 'NAPA MADRID',
@@ -323,24 +362,46 @@ describe('materialConsumptionReport', () => {
     });
 
     const totalsStrip = html.match(/<div class="totals-strip">[\s\S]*?<\/div>/)?.[0] || '';
+    // 3×28,15 forração + 3×14,91 napa convertida (unitTotals) = 129,18
     expect(totalsStrip).toContain('129,18');
     expect(totalsStrip).not.toContain('1.173,21');
     expect(totalsStrip).not.toContain('1.044,00');
     expect(html).toContain('Tira com cadastro pendente');
     expect(html).toContain('pending-strip');
-    expect(html).toContain('129,18 m');
+    // Família §01 = só forração (84,45); napa de tira convertida não entra aí.
+    expect(html).toMatch(/napa-family-qty">84,45 m</);
     // Pending aparece na §02 como cadastro incompleto (demanda da ficha).
     expect(html).toContain('<span>Tiras</span>');
     expect(html).toContain('Tira sem cadastro');
     expect(html).toContain('is-pending');
   });
 
-  it('não cria bloco separado quando a tira traz SKU Massabox com cor (PV-00169)', () => {
+  it('napa de tira Massabox fica no §03 — família §01 só Cabedal (PV-00169)', () => {
     const html = buildMaterialConsumptionReportHtml({
       title: 'Consumo total - PV-00169',
       generatedAt: new Date('2026-09-07T12:00:00-03:00'),
       mode: 'total',
-      artisanalStrapRows: [],
+      artisanalStrapRows: [{
+        key: 'tira-cobre',
+        groupName: 'TIRA OVERLOCK 5MM',
+        color: 'COBRE',
+        baseName: 'GLOW METALIC + MASSABOX',
+        largura_mm: 5,
+        metros_necessarios: 160,
+        cut: {
+          largura_mm: 5, metros_uteis_por_banda: 40, n_bandas: 4, cm_a_cortar: 2,
+          rolos: 0.01, n_rolos_completos: 0, cm_no_ultimo_rolo: 2, valid: true, widthMissing: false,
+        },
+        canonical: {
+          recipeId: 'recipe-cobre',
+          baseRequiredM: 2.64,
+          confirmedYieldMPerM: 60.6,
+          usableBaseWidthMm: 1370,
+          theoreticalYieldMPerM: 60.6,
+          transformationCostPerM: null,
+          blockingReasons: [],
+        },
+      }],
       rows: [
         row({
           componentType: 'Cabedal',
@@ -381,14 +442,16 @@ describe('materialConsumptionReport', () => {
     });
 
     expect(html).toContain('GLOW METALIC + MASSABOX');
+    // baseName da tira normaliza a cor fora da família §01.
     expect(html).not.toContain('GLOW METALIC + MASSABOX - COBRE');
+    expect(html).toContain('Napa para tiras');
     expect(html).toContain('2,64 m');
-    expect(html).toContain('prod. interna');
-    // Um único bloco de família: cabedal champagne + cabedal cobre + tira cobre.
     expect((html.match(/class="napa-family-name"/g) || []).length).toBe(1);
-    expect(html).toContain('26,43 m');
-    // Cobre da tira entra na mesma linha de cor do cabedal Massabox.
-    expect(html).toMatch(/<td>COBRE<\/td>[\s\S]*?8,40 m[\s\S]*?2,64 m<small>prod\. interna<\/small>[\s\S]*?11,04 m/);
+    // Família = cabedal only (15,39 + 8,40); strip ainda soma napa convertida.
+    expect(html).toMatch(/napa-family-qty">23,79 m</);
+    const totalsStrip = html.match(/<div class="totals-strip">[\s\S]*?<\/div>/)?.[0] || '';
+    expect(totalsStrip).toContain('26,43');
+    expect(html).toMatch(/<td>COBRE<\/td>[\s\S]*?8,40 m/);
   });
 
   it('grade do solado não quebra numeração/quantidade em células', () => {
@@ -422,7 +485,7 @@ describe('materialConsumptionReport', () => {
     expect(html).not.toMatch(/<th class="grade-num">4<\/th>\s*<th class="grade-num">0<\/th>/);
   });
 
-  it('mostra mão de obra/m e valor total nas tiras artesanais', () => {
+  it('mostra metros de tira e napa no setor próprio (§03), sem coluna de mão de obra', () => {
     const html = buildMaterialConsumptionReportHtml({
       title: 'Consumo total - PV-00193',
       mode: 'total',
@@ -450,14 +513,17 @@ describe('materialConsumptionReport', () => {
       rows: [],
     });
 
-    expect(html).toContain('Mão de obra/m');
-    expect(html).toContain('Valor total');
-    expect(html).toContain('R$\u00a01,50');
-    expect(html).toContain('R$\u00a01.566,00');
-    expect(html).toContain('receita conferida');
+    expect(html).toContain('Napa para tiras');
+    expect(html).toContain('Tira necessária');
+    expect(html).toContain('1.044,00 m');
+    expect(html).toContain('14,91 m');
+    expect(html).toContain('flag ok');
+    expect(html).not.toContain('Mão de obra/m');
+    expect(html).not.toContain('Valor total');
+    expect(html).not.toContain('receita conferida');
   });
 
-  it('mostra traço quando o custo de mão de obra da tira não está disponível', () => {
+  it('marca cadastro incompleto quando o rendimento da tira não está disponível', () => {
     const html = buildMaterialConsumptionReportHtml({
       title: 'Consumo total - PV-00193',
       mode: 'total',
@@ -474,32 +540,31 @@ describe('materialConsumptionReport', () => {
         },
         canonical: {
           recipeId: 'recipe-2',
-          baseRequiredM: 10.4,
-          confirmedYieldMPerM: 30,
+          baseRequiredM: 0,
+          confirmedYieldMPerM: 0,
           usableBaseWidthMm: 1370,
           theoreticalYieldMPerM: 30,
           transformationCostPerM: null,
           blockingReasons: [],
+          snapshotWarning: 'A transformação física será congelada na primeira demanda.',
         },
       }],
       rows: [],
     });
 
-    expect(html).toContain('Mão de obra/m');
-    expect(html).toContain('Valor total');
-    // Duas células "—" para unitário e total (além de não inventar R$).
-    expect(html).toMatch(/Mão de obra\/m[\s\S]*?<td class="num cost-unit">—<\/td>\s*<td class="num cost-spend">—<\/td>/);
+    expect(html).toContain('Napa para tiras');
+    expect(html).toContain('cadastro incompleto');
+    expect(html).toContain('>312,00 m<');
+    expect(html).toMatch(/Napa<\/th>[\s\S]*?—/);
+    expect(html).not.toContain('Mão de obra/m');
     expect(html).not.toContain('R$');
   });
 
-  it('mostra um subtotal por segmento (tipo+base), somando todas as cores — não um subtotal por cor', () => {
+  it('agrupa por tipo de tira no §03 e um único total de napa no rodapé', () => {
     const cut = {
       largura_mm: 8, metros_uteis_por_banda: 0, n_bandas: 0, cm_a_cortar: 0,
       rolos: 0, n_rolos_completos: 0, cm_no_ultimo_rolo: 0, valid: false, widthMissing: false,
     };
-    // Em produção groupName INCLUI a cor (formatCanonicalStrapProductName).
-    // O bug era subtotalar cada cor isolada ("1 cor"); o certo é listar as
-    // cores do segmento e só então um Subtotal · tipo+base.
     const makeRow = (
       key: string,
       segment: string,
@@ -542,29 +607,20 @@ describe('materialConsumptionReport', () => {
       rows: [],
     });
 
-    // Um subtotal por segmento — não seis (um por cor).
-    expect(html.match(/class="strap-subtotal"/g)).toHaveLength(2);
-    expect(html).toContain(`Subtotal · ${elastico}`);
-    expect(html).toContain(`Subtotal · ${chata}`);
+    // Um rodapé de total — não um subtotal por cor nem por segmento.
+    expect(html.match(/class="strap-subtotal"/g)).toHaveLength(1);
+    expect(html).toContain('Total de napa (todas as tiras)');
+    expect(html).toContain(elastico);
+    expect(html).toContain(chata);
     expect(html).toContain('3 cores');
-    expect(html).not.toMatch(/strap-subtotal[\s\S]*?1 cor/);
-    // Coluna Tira nas linhas de detalhe mostra o segmento (sem cor).
-    expect(html).toContain(`<td><strong>${elastico}</strong></td>`);
-    expect(html).toContain(`<td><strong>${chata}</strong></td>`);
-    // Cores listadas na coluna Cor / base.
-    expect(html).toContain('CAPUCCINO · NAPA MADRID');
-    expect(html).toContain('OFF WHITE · NAPA MADRID');
-    expect(html).toContain('ROCHA · NAPA MADRID');
-    // Somas: 3 × 386,88 = 1.160,64 m · 3 × 12,90 = 38,70 m · 3 × 386,88 × 0,32 = R$ 371,40
+    // Somas de tira: 3 × 386,88 = 1.160,64 · 3 × 1.294,56 = 3.883,68
     expect(html).toContain('1.160,64 m');
-    expect(html).toContain('38,70 m');
-    expect(html).toContain('R$\u00a0371,40');
-    // Somas: 3 × 1.294,56 = 3.883,68 m · 3 × 18,49 = 55,47 m · 3 × 1.294,56 × 0,32 = R$ 1.242,78
     expect(html).toContain('3.883,68 m');
+    // Napa por tipo: 3 × 12,90 = 38,70 · 3 × 18,49 = 55,47 · total 94,17
+    expect(html).toContain('38,70 m');
     expect(html).toContain('55,47 m');
-    expect(html).toContain('R$\u00a01.242,78');
-    // Mão de obra/m no subtotal permanece traço (taxa unitária não soma)
-    expect(html).toMatch(/strap-subtotal[\s\S]*?<td class="num cost-unit">—<\/td>/);
+    expect(html).toContain('94,17 m');
+    expect(html).not.toContain('Mão de obra/m');
   });
 
 
