@@ -67,6 +67,8 @@ export interface RefImageEntry {
    *  vermelho na faixa abaixo da foto quando o card agrupa >1 modelo — é o que
    *  o cortador conta (2026-07-22). */
   fichas?: number;
+  /** Material de forração desta ref — escopo de fotos quando a cor divide por napa. */
+  liningMaterial?: string;
   variantImageUrl?: string | null;
   alternateVariants?: Array<{ color?: string; image_url?: string | null }>;
   technicalSheetImageUrl?: string | null;
