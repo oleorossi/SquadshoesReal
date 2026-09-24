@@ -916,7 +916,7 @@ export default function PurchaseOrders() {
                         <TableCell className="text-sm text-muted-foreground">{format(new Date(o.created_at), 'dd/MM/yyyy HH:mm')}</TableCell>
                         <TableCell>
                           {isCabedalPrepPurchaseOrder(o) ? (
-                            <Badge variant="outline" className="gap-1 text-xs border-teal-600/50 text-teal-700"><Scissors className="h-3 w-3" />Prep. cabedal</Badge>
+                            <Badge variant="outline" className="gap-1 text-xs border-teal-500/40 text-teal-600"><Scissors className="h-3 w-3" />Prep. cabedal</Badge>
                           ) : o.auto_generated ? (
                             <Badge variant="outline" className="gap-1 text-xs border-amber-500/50 text-amber-600"><Zap className="h-3 w-3" />Auto</Badge>
                           ) : o.source_type === 'manual_avulsa' ? (
@@ -1310,7 +1310,7 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
             </div>
             <div className="flex items-center gap-1.5 flex-wrap">
               <Badge variant={st.variant}>{st.label}</Badge>
-              {isCabedalPrepPurchaseOrder(order) && <Badge variant="outline" className="gap-1 text-xs border-teal-600/50 text-teal-700"><Scissors className="h-3 w-3" />Prep. cabedal</Badge>}
+              {isCabedalPrepPurchaseOrder(order) && <Badge variant="outline" className="gap-1 text-xs border-teal-500/40 text-teal-600"><Scissors className="h-3 w-3" />Prep. cabedal</Badge>}
               {order.auto_generated && !isCabedalPrepPurchaseOrder(order) && <Badge variant="outline" className="gap-1 text-xs border-amber-500/50 text-amber-600"><Zap className="h-3 w-3" />Auto</Badge>}
               {order.source_type === 'manual_avulsa' && <Badge variant="outline" className="gap-1 text-xs border-primary/40 text-primary"><Receipt className="h-3 w-3" />Avulsa</Badge>}
               {isArtisanalStrapPurchaseOrder(order) && <Badge variant="outline" className="gap-1 text-xs border-amber-500/50 text-amber-600"><Zap className="h-3 w-3" />Tira artesanal</Badge>}

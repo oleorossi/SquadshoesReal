@@ -70,10 +70,10 @@ interface DraftRow {
 
 function statusBadge(status: string) {
   if (status === 'stale') {
-    return <Badge variant="outline" className="border-amber-500/50 text-amber-700">Desatualizado</Badge>;
+    return <Badge variant="outline" className="border-amber-500/50 text-amber-600">Desatualizado</Badge>;
   }
   if (status === 'planned') {
-    return <Badge variant="outline" className="border-emerald-500/40 text-emerald-700">Planejado</Badge>;
+    return <Badge variant="outline" className="border-emerald-500/40 text-emerald-600">Planejado</Badge>;
   }
   if (status === 'done') {
     return <Badge variant="secondary">Concluído</Badge>;
@@ -574,7 +574,7 @@ export function CabedalPrepPanel() {
                     : ''}
                 </div>
                 {draftValidation.errors.map((e) => (
-                  <div key={e} className="text-amber-700">{e}</div>
+                  <div key={e} className="text-amber-600">{e}</div>
                 ))}
               </div>
             )}
