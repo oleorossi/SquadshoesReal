@@ -52,4 +52,15 @@ describe('cabedal prep motor — contratos', () => {
     expect(cabedalLeadDaysBeforeBilling(1200, 600)).toBe(3);
     expect(cabedalLeadDaysBeforeBilling(1200, 400)).toBe(4);
   });
+
+  it('modal Distribuir mostra resumo, término por linha e gate de travar', () => {
+    const panel = readFileSync('src/components/contractors/CabedalPrepPanel.tsx', 'utf8');
+    expect(panel).toContain('Pronto até');
+    expect(panel).toContain('Termina em');
+    expect(panel).toContain('canLockPlan');
+    expect(panel).toContain('lookupCapacity');
+    expect(panel).toContain('Alocar pendente na fábrica');
+    expect(panel).toContain('Travar plano');
+    expect(panel).toContain('useContractorModelCapacities');
+  });
 });
