@@ -10,6 +10,9 @@ import {
   ArrowsClockwise,
   Plus,
   Scissors,
+  Trash as Trash2,
+  Warning as AlertTriangle,
+  CheckCircle as CheckCircle2,
 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -42,6 +45,7 @@ import {
 import {
   CABEDAL_PREP_SECTORS,
   CABEDAL_PREP_SECTOR_LABEL,
+  scheduleAllocation,
   type CabedalPrepSector,
   validateDistribution,
 } from '@/lib/cabedalPrep';
@@ -49,6 +53,7 @@ import {
   useCabedalPrepContractors,
   useCabedalPrepDemands,
   useBackfillCabedalPrepDemands,
+  useContractorModelCapacities,
   useGenerateCabedalPrepServiceOrders,
   useReadjustCabedalPrepPlan,
   useSaveCabedalPrepAllocations,
@@ -56,6 +61,7 @@ import {
   type CabedalPrepDemandRow,
   type SaveAllocationInput,
 } from '@/hooks/useCabedalPrep';
+import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 type ViewMode = 'deadline' | 'contractor' | 'pv';
@@ -67,6 +73,41 @@ interface DraftRow {
   pairs: string;
   pairsPerDay: string;
   leaveDate: string;
+}
+
+interface CapacityRow {
+  contractor_id: string;
+  technical_sheet_id: string;
+  sector: string;
+  capacity_pairs_per_day: number;
+}
+
+function formatIsoBr(iso: string | null | undefined): string {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return '—';
+  return new Date(iso + 'T12:00:00').toLocaleDateString('pt-BR');
+}
+
+function defaultSectorForDemand(d: CabedalPrepDemandRow): CabedalPrepSector {
+  if (d.requires_cut) return 'corte_cabedal';
+  if (d.requires_sewing) return 'costura_cabedal';
+  return 'aviamento';
+}
+
+function lookupCapacity(
+  caps: CapacityRow[],
+  contractorId: string,
+  sector: CabedalPrepSector,
+  sheetId: string | null | undefined,
+): number | null {
+  if (!contractorId || !sheetId) return null;
+  const hit = caps.find(
+    (c) =>
+      c.contractor_id === contractorId
+      && c.technical_sheet_id === sheetId
+      && c.sector === sector,
+  );
+  const n = Number(hit?.capacity_pairs_per_day);
+  return Number.isFinite(n) && n > 0 ? n : null;
 }
 
 function statusBadge(status: string) {
@@ -134,6 +175,10 @@ export function CabedalPrepPanel() {
   };
   const { data: demands = [], isLoading, isError, error } = useCabedalPrepDemands(filters);
   const { data: contractors = [] } = useCabedalPrepContractors();
+  const { data: capacitiesRaw = [] } = useContractorModelCapacities(
+    editing?.technical_sheet_id ?? null,
+  );
+  const capacities = capacitiesRaw as CapacityRow[];
   const savePlan = useSaveCabedalPrepAllocations();
   const readjust = useReadjustCabedalPrepPlan();
   const generateOs = useGenerateCabedalPrepServiceOrders();
@@ -166,6 +211,7 @@ export function CabedalPrepPanel() {
   const openEdit = (d: CabedalPrepDemandRow) => {
     setEditing(d);
     const existing = d.cabedal_prep_allocations ?? [];
+    const today = new Date().toISOString().slice(0, 10);
     if (existing.length) {
       setDraftRows(existing.map((a, i) => ({
         key: `${a.id}-${i}`,
@@ -179,12 +225,39 @@ export function CabedalPrepPanel() {
       setDraftRows([{
         key: 'new-0',
         contractorId: '',
-        sector: d.requires_cut ? 'corte_cabedal' : 'aviamento',
+        sector: defaultSectorForDemand(d),
         pairs: String(d.pairs),
         pairsPerDay: '50',
-        leaveDate: new Date().toISOString().slice(0, 10),
+        leaveDate: today,
       }]);
     }
+  };
+
+  const patchRow = (idx: number, patch: Partial<DraftRow>) => {
+    setDraftRows((prev) =>
+      prev.map((r, i) => {
+        if (i !== idx) return r;
+        const next = { ...r, ...patch };
+        const contractorId = patch.contractorId ?? r.contractorId;
+        const sector = (patch.sector ?? r.sector) as CabedalPrepSector;
+        if (patch.contractorId != null || patch.sector != null) {
+          const cap = lookupCapacity(
+            capacities,
+            contractorId,
+            sector,
+            editing?.technical_sheet_id,
+          );
+          if (cap != null && (patch.pairsPerDay == null)) {
+            next.pairsPerDay = String(cap);
+          }
+        }
+        return next;
+      }),
+    );
+  };
+
+  const removeRow = (idx: number) => {
+    setDraftRows((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== idx)));
   };
 
   const draftValidation = useMemo(() => {
@@ -204,8 +277,34 @@ export function CabedalPrepPanel() {
     });
   }, [editing, draftRows]);
 
+  const rowSchedules = useMemo(
+    () =>
+      draftRows.map((r) =>
+        scheduleAllocation({
+          contractorId: r.contractorId || '_',
+          sector: r.sector,
+          pairs: Number(r.pairs),
+          pairsPerDay: Number(r.pairsPerDay),
+          leaveDate: r.leaveDate,
+        }),
+      ),
+    [draftRows],
+  );
+
+  const canLockPlan = Boolean(
+    draftValidation
+      && draftValidation.ok
+      && draftValidation.pendingPairs === 0
+      && draftValidation.fitsReadyDate !== false
+      && draftRows.some((r) => r.contractorId && Number(r.pairs) > 0),
+  );
+
   const onSave = async (lock: boolean) => {
     if (!editing) return;
+    if (lock && !canLockPlan) {
+      toast.error('Feche o saldo e o prazo antes de travar o plano');
+      return;
+    }
     const rows: SaveAllocationInput[] = draftRows
       .filter((r) => r.contractorId && Number(r.pairs) > 0)
       .map((r) => ({
@@ -238,14 +337,21 @@ export function CabedalPrepPanel() {
       toast.error('Cadastre o prestador FÁBRICA (payment_days ≥ 999)');
       return;
     }
+    const sector = defaultSectorForDemand(editing);
+    const cap = lookupCapacity(
+      capacities,
+      factory.id,
+      sector,
+      editing.technical_sheet_id,
+    );
     setDraftRows((prev) => [
       ...prev,
       {
         key: `ot-${Date.now()}`,
         contractorId: factory.id,
-        sector: 'corte_cabedal',
+        sector,
         pairs: String(pending),
-        pairsPerDay: String(pending),
+        pairsPerDay: String(cap ?? pending),
         leaveDate: new Date().toISOString().slice(0, 10),
       },
     ]);
@@ -403,9 +509,7 @@ export function CabedalPrepPanel() {
                     <TableCell className="text-right tabular-nums">{d.pairs}</TableCell>
                     <TableCell className="font-mono text-xs">{d.billing_week ?? '—'}</TableCell>
                     <TableCell className="tabular-nums text-sm">
-                      {d.ready_date
-                        ? new Date(d.ready_date + 'T12:00:00').toLocaleDateString('pt-BR')
-                        : '—'}
+                      {formatIsoBr(d.ready_date)}
                     </TableCell>
                     <TableCell>{statusBadge(d.status)}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">
@@ -462,7 +566,7 @@ export function CabedalPrepPanel() {
       </Panel>
 
       <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               Distribuir · {editing?.sale_orders?.order_number} · {editing?.reference_code}{' '}
@@ -470,101 +574,223 @@ export function CabedalPrepPanel() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 text-sm">
-            <p className="text-muted-foreground">
-              Meta pronto: <strong className="text-foreground">{editing?.ready_date ?? '—'}</strong>
-              {' · '}
-              {editing?.pairs} pares
-              {editing?.assembly_capacity_per_day
-                ? ` · montagem ${editing.assembly_capacity_per_day}/dia`
-                : ''}
-            </p>
-            {draftRows.map((row, idx) => (
-              <div key={row.key} className="grid grid-cols-2 gap-2 rounded-md border border-border/60 p-3 md:grid-cols-5">
-                <div className="space-y-1 col-span-2 md:col-span-1">
-                  <Label>Prestador</Label>
-                  <Select
-                    value={row.contractorId || undefined}
-                    onValueChange={(v) =>
-                      setDraftRows((prev) =>
-                        prev.map((r, i) => (i === idx ? { ...r, contractorId: v } : r)),
-                      )
-                    }
-                  >
-                    <SelectTrigger className="h-9"><SelectValue placeholder="Escolher" /></SelectTrigger>
-                    <SelectContent>
-                      {contractors.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+            {/* Resumo da demanda — sempre visível enquanto se edita as linhas */}
+            <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2.5 space-y-2">
+              <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+                <div>
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Pronto até
+                  </span>
+                  <div className="font-display text-base tabular-nums text-foreground">
+                    {formatIsoBr(editing?.ready_date)}
+                  </div>
                 </div>
-                <div className="space-y-1">
-                  <Label>Setor</Label>
-                  <Select
-                    value={row.sector}
-                    onValueChange={(v) =>
-                      setDraftRows((prev) =>
-                        prev.map((r, i) =>
-                          i === idx ? { ...r, sector: v as CabedalPrepSector } : r,
-                        ),
-                      )
-                    }
-                  >
-                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {CABEDAL_PREP_SECTORS.map((s) => (
-                        <SelectItem key={s} value={s}>{CABEDAL_PREP_SECTOR_LABEL[s]}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                <div>
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Demanda
+                  </span>
+                  <div className="tabular-nums font-medium">{editing?.pairs} pares</div>
                 </div>
-                <div className="space-y-1">
-                  <Label>Pares</Label>
-                  <Input
-                    className="h-9"
-                    type="number"
-                    min={0}
-                    value={row.pairs}
-                    onChange={(e) =>
-                      setDraftRows((prev) =>
-                        prev.map((r, i) => (i === idx ? { ...r, pairs: e.target.value } : r)),
-                      )
-                    }
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label>Pares/dia</Label>
-                  <Input
-                    className="h-9"
-                    type="number"
-                    min={1}
-                    value={row.pairsPerDay}
-                    onChange={(e) =>
-                      setDraftRows((prev) =>
-                        prev.map((r, i) =>
-                          i === idx ? { ...r, pairsPerDay: e.target.value } : r,
-                        ),
-                      )
-                    }
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label>Data deixar</Label>
-                  <Input
-                    className="h-9"
-                    type="date"
-                    value={row.leaveDate}
-                    onChange={(e) =>
-                      setDraftRows((prev) =>
-                        prev.map((r, i) =>
-                          i === idx ? { ...r, leaveDate: e.target.value } : r,
-                        ),
-                      )
-                    }
-                  />
-                </div>
+                {editing?.assembly_capacity_per_day ? (
+                  <div>
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      Montagem
+                    </span>
+                    <div className="tabular-nums text-muted-foreground">
+                      {editing.assembly_capacity_per_day}/dia
+                    </div>
+                  </div>
+                ) : null}
+                {draftValidation && (
+                  <>
+                    <div>
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Alocado
+                      </span>
+                      <div className="tabular-nums font-medium">
+                        {draftValidation.allocatedPairs}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Pendente
+                      </span>
+                      <div
+                        className={cn(
+                          'tabular-nums font-semibold',
+                          draftValidation.pendingPairs > 0
+                            ? 'text-amber-600'
+                            : 'text-emerald-600',
+                        )}
+                      >
+                        {draftValidation.pendingPairs}
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
-            ))}
+              {draftValidation && (
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  {draftValidation.fitsReadyDate === true && (
+                    <span className="inline-flex items-center gap-1 text-emerald-600">
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      Cabe na meta
+                      {draftValidation.latestEndDate
+                        ? ` · última etapa ${formatIsoBr(draftValidation.latestEndDate)}`
+                        : ''}
+                    </span>
+                  )}
+                  {draftValidation.fitsReadyDate === false && (
+                    <span className="inline-flex items-center gap-1 text-amber-600">
+                      <AlertTriangle className="h-3.5 w-3.5" />
+                      Estoura a meta
+                      {draftValidation.latestEndDate
+                        ? ` · termina ${formatIsoBr(draftValidation.latestEndDate)}`
+                        : ''}
+                    </span>
+                  )}
+                  {draftValidation.pendingPairs > 0 && (
+                    <span className="text-muted-foreground">
+                      Faltam {draftValidation.pendingPairs} pares — rascunho ok; travar exige 100%.
+                    </span>
+                  )}
+                </div>
+              )}
+              {(editing?.requires_cut || editing?.requires_sewing || editing?.requires_aviamento) && (
+                <div className="flex flex-wrap gap-1.5">
+                  {editing.requires_cut && (
+                    <Badge variant="outline" className="text-[10px]">Corte</Badge>
+                  )}
+                  {editing.requires_sewing && (
+                    <Badge variant="outline" className="text-[10px]">Costura</Badge>
+                  )}
+                  {editing.requires_aviamento && (
+                    <Badge variant="outline" className="text-[10px]">Aviamento</Badge>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {draftRows.map((row, idx) => {
+              const sched = rowSchedules[idx];
+              const overMeta =
+                Boolean(editing?.ready_date && sched?.endDate)
+                && sched!.endDate > editing!.ready_date!;
+              const suggestedCap = lookupCapacity(
+                capacities,
+                row.contractorId,
+                row.sector,
+                editing?.technical_sheet_id,
+              );
+              return (
+                <div
+                  key={row.key}
+                  className="rounded-md border border-border/60 p-3 space-y-2"
+                >
+                  <div className="grid grid-cols-2 gap-2 md:grid-cols-6">
+                    <div className="space-y-1 col-span-2 md:col-span-2">
+                      <Label>Prestador</Label>
+                      <Select
+                        value={row.contractorId || undefined}
+                        onValueChange={(v) => patchRow(idx, { contractorId: v })}
+                      >
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="Escolher" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {contractors.map((c) => (
+                            <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label>Setor</Label>
+                      <Select
+                        value={row.sector}
+                        onValueChange={(v) =>
+                          patchRow(idx, { sector: v as CabedalPrepSector })
+                        }
+                      >
+                        <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {CABEDAL_PREP_SECTORS.map((s) => (
+                            <SelectItem key={s} value={s}>
+                              {CABEDAL_PREP_SECTOR_LABEL[s]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label>Pares</Label>
+                      <Input
+                        className="h-9"
+                        type="number"
+                        min={0}
+                        value={row.pairs}
+                        onChange={(e) => patchRow(idx, { pairs: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label>
+                        Pares/dia
+                        {suggestedCap != null && Number(row.pairsPerDay) === suggestedCap && (
+                          <span className="ml-1 font-normal text-muted-foreground">(cadastro)</span>
+                        )}
+                      </Label>
+                      <Input
+                        className="h-9"
+                        type="number"
+                        min={1}
+                        value={row.pairsPerDay}
+                        onChange={(e) => patchRow(idx, { pairsPerDay: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label>Saída</Label>
+                      <Input
+                        className="h-9"
+                        type="date"
+                        value={row.leaveDate}
+                        onChange={(e) => patchRow(idx, { leaveDate: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <div
+                      className={cn(
+                        'tabular-nums',
+                        overMeta ? 'text-amber-600 font-medium' : 'text-muted-foreground',
+                      )}
+                    >
+                      {sched ? (
+                        <>
+                          Termina em <strong className="text-foreground">{formatIsoBr(sched.endDate)}</strong>
+                          {' · '}
+                          {sched.workDays} dia{sched.workDays === 1 ? '' : 's'} de trabalho
+                          {overMeta ? ' · depois da meta' : ''}
+                        </>
+                      ) : (
+                        <span>Informe pares/dia e saída p/ calcular o término</span>
+                      )}
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 gap-1 text-muted-foreground"
+                      disabled={draftRows.length <= 1}
+                      onClick={() => removeRow(idx)}
+                      aria-label="Remover linha"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" /> Remover
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+
             <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
@@ -577,8 +803,10 @@ export function CabedalPrepPanel() {
                     {
                       key: `new-${Date.now()}`,
                       contractorId: '',
-                      sector: 'costura_cabedal',
-                      pairs: '0',
+                      sector: editing
+                        ? defaultSectorForDemand(editing)
+                        : 'costura_cabedal',
+                      pairs: String(draftValidation?.pendingPairs ?? 0),
                       pairsPerDay: '50',
                       leaveDate: new Date().toISOString().slice(0, 10),
                     },
@@ -597,17 +825,14 @@ export function CabedalPrepPanel() {
                 <Factory className="h-3.5 w-3.5" /> Alocar pendente na fábrica
               </Button>
             </div>
-            {draftValidation && (
-              <div className="rounded-md bg-muted/40 px-3 py-2 text-xs space-y-1">
-                <div>
-                  Alocado {draftValidation.allocatedPairs} · Pendente{' '}
-                  <strong>{draftValidation.pendingPairs}</strong>
-                  {draftValidation.latestEndDate
-                    ? ` · Última etapa ${draftValidation.latestEndDate}`
-                    : ''}
-                </div>
+
+            {draftValidation && draftValidation.errors.length > 0 && (
+              <div className="rounded-md bg-amber-500/10 border border-amber-500/30 px-3 py-2 text-xs space-y-1 text-amber-700 dark:text-amber-500">
                 {draftValidation.errors.map((e) => (
-                  <div key={e} className="text-amber-600">{e}</div>
+                  <div key={e} className="flex gap-1.5">
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                    <span>{e}</span>
+                  </div>
                 ))}
               </div>
             )}
@@ -626,7 +851,12 @@ export function CabedalPrepPanel() {
             </Button>
             <Button
               type="button"
-              disabled={savePlan.isPending}
+              disabled={savePlan.isPending || !canLockPlan}
+              title={
+                canLockPlan
+                  ? undefined
+                  : 'Exige 100% alocado, sem erros e dentro da meta'
+              }
               onClick={() => onSave(true)}
             >
               Travar plano

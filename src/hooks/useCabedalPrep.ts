@@ -209,14 +209,16 @@ export function useSaveCabedalPrepAllocations() {
         .eq('id', params.demandId);
       if (updErr) throw updErr;
 
-      return validation;
+      return { validation, lockPlan: Boolean(params.lockPlan) };
     },
-    onSuccess: (validation) => {
+    onSuccess: ({ validation, lockPlan }) => {
       qc.invalidateQueries({ queryKey: cabedalPrepKeys.all });
-      if (validation.pendingPairs > 0) {
-        toast.success(`Plano salvo · ${validation.pendingPairs} pares pendentes`);
-      } else {
+      if (lockPlan) {
         toast.success('Plano de preparação travado');
+      } else if (validation.pendingPairs > 0) {
+        toast.success(`Rascunho salvo · ${validation.pendingPairs} pares pendentes`);
+      } else {
+        toast.success('Rascunho salvo');
       }
     },
     onError: (e: Error) => toast.error(e.message || 'Erro ao salvar plano'),
