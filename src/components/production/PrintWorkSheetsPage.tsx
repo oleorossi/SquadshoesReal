@@ -42,6 +42,7 @@ import { PrintContinuityProvider } from '@/components/production/worksheet/print
 import { resolveFicha, type FichaResolution } from '@/components/production/worksheet/fichaSize';
 import { soleGroupKey } from '@/components/production/worksheet/soleGroupKey';
 import { resolveReportMaterials } from '@/lib/reportMaterialResolve';
+import { reverseOutputAllowed } from '@/components/production/printReverseGate';
 import { useSectorGroupingConfig } from '@/hooks/useSectorGroupingConfig';
 import {
   useBulkOrderConsumption,
@@ -977,11 +978,19 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   // (default), o print emite tudo da última página pra primeira e a pilha sai
   // na ordem certa de leitura. Persistido por navegador (localStorage) pra
   // outra estação com impressora normal poder desligar uma vez só.
+  //
+  // ⚠ Fichas de operador (todos os setores A4 exceto Relatório Gerencial):
+  // decisão do dono 24/09/2026 — opção DESABILITADA. A inversão bagunçava o
+  // maço de setor no chão de fábrica; só o Relatório (e cartão/caixa, que
+  // não são ficha de operador) ainda podem inverter.
+  const reverseAllowed = reverseOutputAllowed({ isA4, sectors: activeSectors });
   const [reverseOutput, setReverseOutput] = useState<boolean>(() => {
     try { return (localStorage.getItem('print_reverse_output') ?? '1') === '1'; }
     catch { return true; }
   });
+  const effectiveReverseOutput = reverseAllowed && reverseOutput;
   const toggleReverseOutput = () => {
+    if (!reverseAllowed) return;
     setReverseOutput(prev => {
       const next = !prev;
       try { localStorage.setItem('print_reverse_output', next ? '1' : '0'); } catch { /* private mode */ }
@@ -998,7 +1007,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   const [preparingNativePrint, setPreparingNativePrint] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   useEffect(() => {
-    if (!reverseOutput) return;
+    if (!effectiveReverseOutput) {
+      setPrintReversing(false);
+      return;
+    }
     const flip = (on: boolean) => {
       try { flushSync(() => setPrintReversing(on)); }
       catch { setPrintReversing(on); }
@@ -1020,7 +1032,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       else mql.removeListener?.(onChange);
       setPrintReversing(false);
     };
-  }, [reverseOutput]);
+  }, [effectiveReverseOutput]);
+
   // Gate de loading: conta queries em PRIMEIRO carregamento (sem dado ainda).
   // Imprimir com soleMappings/clientsInfo/consumo em voo gera fichas
   // estruturalmente erradas (refs distintas fundidas em soleKey='none',
@@ -3327,6 +3340,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       const mult = baseSum > 0 ? orderTotal / baseSum : 0;
       // A10 (auditoria): largest-remainder p/ as células somarem o Total no Relatório Gerencial.
       const scaledGrade = scaleGradeWithLargestRemainder(baseGrid, mult, orderTotal);
+      // Curva de 1 corrugado (Por Ficha) — mesma resolução das fichas de operador.
+      const fichaRes = resolveFicha(orderTotal, baseGrid);
 
       // Pares/caixa do solado — grupo do solado RESOLVIDO (A1).
       const soleGroupId = resolveSoleForOrder(order.reference_id, order.color)?.groupId ?? null;
@@ -3378,6 +3393,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
         silk_url: silkInfo?.silk_url || null,
         silk_name: silkInfo?.silk_name || null,
         grade: Object.keys(scaledGrade).length > 0 ? scaledGrade : null,
+        corrugado_grade: fichaRes.baseCurve,
         // Fichas: MESMO motor canônico dos demais setores (resolveFicha). A conta
         // antiga (`Math.round(orderTotal / baseSum)`) assumia que a grade sempre
         // chega como CURVA-BASE — mas em 239 das 266 OPs ela chega como GRADE TOTAL
@@ -3385,10 +3401,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
         // "1 ficha" pra uma OP de 120 pares que o Corte conta como 10 corrugados.
         // É exatamente o bug que fichaSize.ts documenta no 7º passe; só este bloco
         // tinha ficado pra trás. O round também arredondava pra baixo (350/12 → 29).
-        fichas: (() => {
-          const f = resolveFicha(orderTotal, baseGrid);
-          return f.fichas > 0 ? f.fichas : null;
-        })(),
+        fichas: fichaRes.fichas > 0 ? fichaRes.fichas : null,
         straps,
         item_material: resolvedMats.item,
         upper_material: resolvedMats.upper,
@@ -3833,14 +3846,18 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             <button
               type="button"
               onClick={toggleReverseOutput}
-              aria-pressed={reverseOutput}
-              title={reverseOutput
-                ? 'Ligado: emite da última página para a primeira, adequado à impressora que empilha com a face para cima.'
-                : 'Desligado: emite na ordem normal do documento.'}
-              className={`inline-flex h-9 items-center gap-1.5 border px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${reverseOutput ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:text-foreground'}`}
+              disabled={!reverseAllowed}
+              aria-pressed={effectiveReverseOutput}
+              aria-disabled={!reverseAllowed}
+              title={!reverseAllowed
+                ? 'Desabilitado nas fichas de operador — a saída sai na ordem do documento.'
+                : effectiveReverseOutput
+                  ? 'Ligado: emite da última página para a primeira, adequado à impressora que empilha com a face para cima.'
+                  : 'Desligado: emite na ordem normal do documento.'}
+              className={`inline-flex h-9 items-center gap-1.5 border px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${!reverseAllowed ? 'cursor-not-allowed border-border/60 text-muted-foreground/50' : effectiveReverseOutput ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:text-foreground'}`}
             >
               <ArrowsClockwise className="h-3.5 w-3.5" /> Inverter saída
-              {reverseOutput && <Check className="h-3.5 w-3.5" weight="bold" />}
+              {effectiveReverseOutput && <Check className="h-3.5 w-3.5" weight="bold" />}
             </button>
 
             {coarsePointer ? (

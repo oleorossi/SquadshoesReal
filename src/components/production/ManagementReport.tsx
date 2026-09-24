@@ -37,6 +37,11 @@ export interface ReportOrder {
   silk_name?: string | null;
   /** Grade de tamanhos ESCALADA (total por numeração — soma = total_pairs). */
   grade?: Record<string, number> | null;
+  /**
+   * Curva de 1 corrugado (Σ ∈ {12,15,18}) — "grade do corrugado" / Por Ficha.
+   * NULL quando resolveFicha não deriva curva exata (última ficha parcial).
+   */
+  corrugado_grade?: Record<string, number> | null;
   /** Nº de fichas (corrugados) do item = pares ÷ corrugado base. */
   fichas?: number | null;
   straps?: ReportStrap[];
@@ -126,6 +131,10 @@ type LineGroup = {
   totalPairs: number;
   fichas: number;
   grade: Record<string, number>;
+  /** Curva de 1 ficha (corrugado). Ausente se mista ou sem curva exata. */
+  corrugadoGrade: Record<string, number> | null;
+  /** TRUE quando a linha agrega OPs com curvas de corrugado diferentes. */
+  mixedCorrugado: boolean;
   production_sectors: string[] | null;
   requires_upper_cut: boolean;
   requires_upper_sewing: boolean;
@@ -175,7 +184,38 @@ function fichasOf(o: ReportOrder): number {
   return Math.round((o.total_pairs || 0) / 12);
 }
 
-function buildLineGroups(orders: ReportOrder[]): LineGroup[] {
+/** Assinatura estável da curva (tamanhos ordenados) pra detectar misturas. */
+export function corrugadoGradeKey(grade: Record<string, number> | null | undefined): string {
+  if (!grade) return '';
+  return Object.entries(grade)
+    .filter(([, v]) => (Number(v) || 0) > 0)
+    .sort(([a], [b]) => Number(a) - Number(b))
+    .map(([s, q]) => `${s}:${Number(q) || 0}`)
+    .join('|');
+}
+
+/**
+ * Grade de numeração do primeiro ao último tamanho (preenche buracos com 0).
+ * Usado na curva do corrugado pra o gestor ver a faixa completa.
+ */
+export function fillGradeSizeRange(
+  grade: Record<string, number> | null | undefined,
+): Record<string, number> {
+  const cleaned: Record<string, number> = {};
+  for (const [k, v] of Object.entries(grade || {})) {
+    const n = Number(v) || 0;
+    if (n > 0) cleaned[k] = n;
+  }
+  const sizes = Object.keys(cleaned).map(Number).filter((n) => Number.isFinite(n)).sort((a, b) => a - b);
+  if (sizes.length === 0) return {};
+  const out: Record<string, number> = {};
+  for (let s = sizes[0]; s <= sizes[sizes.length - 1]; s++) {
+    out[String(s)] = cleaned[String(s)] || 0;
+  }
+  return out;
+}
+
+export function buildLineGroups(orders: ReportOrder[]): LineGroup[] {
   const map = new Map<string, LineGroup>();
   for (const o of orders) {
     const refName = o.reference_name || o.reference_code || '—';
@@ -203,6 +243,8 @@ function buildLineGroups(orders: ReportOrder[]): LineGroup[] {
         totalPairs: 0,
         fichas: 0,
         grade: {},
+        corrugadoGrade: null,
+        mixedCorrugado: false,
         production_sectors: Array.isArray(o.production_sectors) ? o.production_sectors : null,
         requires_upper_cut: false,
         requires_upper_sewing: false,
@@ -228,6 +270,20 @@ function buildLineGroups(orders: ReportOrder[]): LineGroup[] {
       const n = Number(qty) || 0;
       if (n > 0) gr.grade[size] = (gr.grade[size] || 0) + n;
     }
+    // Curva do corrugado NÃO se soma — é a distribuição de 1 ficha. Se outra
+    // OP da mesma linha trouxer curva diferente, omite (igual mixedGrades
+    // das fichas de operador — rateio enganoso).
+    const curve = o.corrugado_grade && Object.keys(o.corrugado_grade).length > 0
+      ? o.corrugado_grade
+      : null;
+    if (curve && !gr.mixedCorrugado) {
+      if (!gr.corrugadoGrade) {
+        gr.corrugadoGrade = { ...curve };
+      } else if (corrugadoGradeKey(gr.corrugadoGrade) !== corrugadoGradeKey(curve)) {
+        gr.mixedCorrugado = true;
+        gr.corrugadoGrade = null;
+      }
+    }
   }
   return Array.from(map.values()).sort(
     (a, b) => a.refName.localeCompare(b.refName, 'pt-BR')
@@ -236,9 +292,18 @@ function buildLineGroups(orders: ReportOrder[]): LineGroup[] {
   );
 }
 
-function GradeMiniTable({ grade }: { grade: Record<string, number> }) {
+function GradeMiniTable({
+  grade,
+  label,
+  allowZero = false,
+}: {
+  grade: Record<string, number>;
+  label?: string;
+  /** Mantém células 0 na faixa min→max (corrugado). */
+  allowZero?: boolean;
+}) {
   const entries = Object.entries(grade)
-    .filter(([, v]) => v > 0)
+    .filter(([, v]) => allowZero || v > 0)
     .sort(([a], [b]) => Number(a) - Number(b));
   if (entries.length === 0) {
     return <span style={{ fontFamily: "'Fira Code', monospace", fontSize: '8px', color: '#666' }}>—</span>;
@@ -246,48 +311,65 @@ function GradeMiniTable({ grade }: { grade: Record<string, number> }) {
   const gF = adaptiveTableFont(Math.max(5, entries.length));
   const sizePx = Math.max(8, Math.min(11, gF.cellPx));
   const qtyPx = sizePx + 2;
+  const labelPx = Math.max(7, sizePx - 1);
   return (
-    <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-      <tbody>
-        <tr>
-          {entries.map(([size]) => (
-            <td
-              key={`s-${size}`}
-              style={{
-                border: '1px solid #000',
-                textAlign: 'center',
-                fontFamily: "'Fira Code', monospace",
-                fontSize: `${sizePx}px`,
-                color: '#555',
-                padding: '2px 1px',
-                background: '#F2F0EA',
-                printColorAdjust: 'exact',
-              }}
-            >
-              {size}
-            </td>
-          ))}
-        </tr>
-        <tr>
-          {entries.map(([size, qty]) => (
-            <td
-              key={`q-${size}`}
-              style={{
-                border: '1px solid #000',
-                textAlign: 'center',
-                fontFamily: "'Fira Code', monospace",
-                fontWeight: 700,
-                fontSize: `${qtyPx}px`,
-                color: '#000',
-                padding: '4px 1px',
-              }}
-            >
-              {qty}
-            </td>
-          ))}
-        </tr>
-      </tbody>
-    </table>
+    <div>
+      {label && (
+        <div
+          style={{
+            fontFamily: "'Fira Code', monospace",
+            fontSize: `${labelPx}px`,
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+            color: '#555',
+            marginBottom: 2,
+          }}
+        >
+          {label}
+        </div>
+      )}
+      <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+        <tbody>
+          <tr>
+            {entries.map(([size]) => (
+              <td
+                key={`s-${size}`}
+                style={{
+                  border: '1px solid #000',
+                  textAlign: 'center',
+                  fontFamily: "'Fira Code', monospace",
+                  fontSize: `${sizePx}px`,
+                  color: '#555',
+                  padding: '2px 1px',
+                  background: '#F2F0EA',
+                  printColorAdjust: 'exact',
+                }}
+              >
+                {size}
+              </td>
+            ))}
+          </tr>
+          <tr>
+            {entries.map(([size, qty]) => (
+              <td
+                key={`q-${size}`}
+                style={{
+                  border: '1px solid #000',
+                  textAlign: 'center',
+                  fontFamily: "'Fira Code', monospace",
+                  fontWeight: 700,
+                  fontSize: `${qtyPx}px`,
+                  color: qty > 0 ? '#000' : '#999',
+                  padding: '4px 1px',
+                }}
+              >
+                {qty}
+              </td>
+            ))}
+          </tr>
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -491,8 +573,18 @@ export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props
               </div>
             </div>
           </div>
-          <div style={{ marginTop: 8 }}>
-            <GradeMiniTable grade={line.grade} />
+          <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {line.corrugadoGrade && !line.mixedCorrugado && (
+              <GradeMiniTable
+                grade={fillGradeSizeRange(line.corrugadoGrade)}
+                label={`Corrugado · 1 ficha (${Object.values(line.corrugadoGrade).reduce((s, v) => s + (Number(v) || 0), 0)}p)`}
+                allowZero
+              />
+            )}
+            <GradeMiniTable
+              grade={line.grade}
+              label={line.fichas > 1 ? `Total · × ${line.fichas} fichas` : 'Total · 1 ficha'}
+            />
           </div>
         </div>
       ),

@@ -1,11 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import {
   CHECKLIST_SECTOR_ORDER,
+  buildLineGroups,
+  corrugadoGradeKey,
   eligibleSectorsForLine,
+  fillGradeSizeRange,
   materialForChecklistSector,
   orderEligibleForChecklistSector,
   type ReportOrder,
 } from '@/components/production/ManagementReport';
+import {
+  isOperatorPrintSector,
+  reverseOutputAllowed,
+} from '@/components/production/printReverseGate';
 
 describe('ManagementReport checklist eligibility', () => {
   const base = (over: Partial<ReportOrder> = {}): ReportOrder => ({
@@ -96,5 +103,90 @@ describe('materialForChecklistSector', () => {
       insoleMaterial: null,
       soleName: null,
     }, 'Corte Forração')).toBe('NAPA SOFT + MASSABOX');
+  });
+});
+
+describe('grade corrugado no Relatório Gerencial', () => {
+  it('fillGradeSizeRange preenche do primeiro ao último número', () => {
+    expect(fillGradeSizeRange({ '34': 1, '36': 3, '40': 1 })).toEqual({
+      '34': 1, '35': 0, '36': 3, '37': 0, '38': 0, '39': 0, '40': 1,
+    });
+  });
+
+  it('buildLineGroups preserva curva do corrugado e soma o total', () => {
+    const curve = { '34': 1, '35': 2, '36': 3, '37': 3, '38': 3, '39': 2, '40': 1 };
+    const total = { '34': 12, '35': 24, '36': 36, '37': 36, '38': 36, '39': 24, '40': 12 };
+    const lines = buildLineGroups([
+      {
+        id: 'a',
+        total_pairs: 180,
+        reference_name: 'SP201',
+        color: 'PRETO',
+        grade: total,
+        corrugado_grade: curve,
+        fichas: 12,
+        production_sectors: ['Montagem', 'Expedição'],
+        requires_upper_cut: false,
+        requires_upper_sewing: false,
+        requires_lining_cut: false,
+      },
+    ]);
+    expect(lines).toHaveLength(1);
+    expect(lines[0].corrugadoGrade).toEqual(curve);
+    expect(lines[0].grade).toEqual(total);
+    expect(lines[0].fichas).toBe(12);
+    expect(lines[0].mixedCorrugado).toBe(false);
+  });
+
+  it('buildLineGroups omite corrugado quando curvas misturam', () => {
+    const lines = buildLineGroups([
+      {
+        id: 'a',
+        total_pairs: 15,
+        reference_name: 'SP201',
+        color: 'PRETO',
+        grade: { '34': 1, '35': 2, '36': 3, '37': 3, '38': 3, '39': 2, '40': 1 },
+        corrugado_grade: { '34': 1, '35': 2, '36': 3, '37': 3, '38': 3, '39': 2, '40': 1 },
+        fichas: 1,
+        production_sectors: ['Montagem'],
+        requires_upper_cut: false,
+        requires_upper_sewing: false,
+        requires_lining_cut: false,
+      },
+      {
+        id: 'b',
+        total_pairs: 12,
+        reference_name: 'SP201',
+        color: 'PRETO',
+        grade: { '34': 2, '35': 2, '36': 2, '37': 2, '38': 2, '39': 1, '40': 1 },
+        corrugado_grade: { '34': 2, '35': 2, '36': 2, '37': 2, '38': 2, '39': 1, '40': 1 },
+        fichas: 1,
+        production_sectors: ['Montagem'],
+        requires_upper_cut: false,
+        requires_upper_sewing: false,
+        requires_lining_cut: false,
+      },
+    ]);
+    expect(corrugadoGradeKey(lines[0].corrugadoGrade)).toBe('');
+    expect(lines[0].mixedCorrugado).toBe(true);
+    expect(lines[0].grade['34']).toBe(3);
+  });
+});
+
+describe('Inverter saída — fichas de operador', () => {
+  it('setores de fábrica são fichas de operador; Relatório não', () => {
+    expect(isOperatorPrintSector('Corte Cabedal')).toBe(true);
+    expect(isOperatorPrintSector('Expedição')).toBe(true);
+    expect(isOperatorPrintSector('Relatório Gerencial')).toBe(false);
+  });
+
+  it('desabilita inverter quando há qualquer ficha de operador no A4', () => {
+    expect(reverseOutputAllowed({ isA4: true, sectors: ['Corte Palmilha'] })).toBe(false);
+    expect(reverseOutputAllowed({ isA4: true, sectors: ['Corte Cabedal', 'Relatório Gerencial'] })).toBe(false);
+    expect(reverseOutputAllowed({ isA4: true, sectors: ['Relatório Gerencial'] })).toBe(true);
+  });
+
+  it('cartão/caixa (!isA4) ainda podem inverter', () => {
+    expect(reverseOutputAllowed({ isA4: false, sectors: ['Corte Cabedal'] })).toBe(true);
   });
 });
