@@ -50,7 +50,7 @@ const liningCandidates = (sheet: {
 }): string[] => {
   const principal = (sheet?.lining_material || '').trim();
   const alts: string[] = Array.isArray(sheet?.lining_accessories)
-    ? (sheet.lining_accessories as any[])
+    ? (sheet.lining_accessories as Array<string | { material?: string | null }>)
         .map(a => ((typeof a === 'string' ? a : a?.material) || '').trim())
         .filter(Boolean)
     : [];

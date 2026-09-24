@@ -21,7 +21,7 @@ import {
 } from '@/hooks/useSaleOrders';
 import { volumesForPairs, pairsPerVolumeForMode, isPairAsVolumeMode, collectiveTypeForMode } from '@/lib/packagingPairsPerBox';
 import { packSaleOrderItem, packSaleOrderItemBySize, singleSizeMisfits } from '@/lib/boxPacking';
-import { resolveColmeiaByGrade } from '@/lib/resolveColmeiaByGrade';
+import { resolveColmeiaByGrade, type ColmeiaCatalogBox } from '@/lib/resolveColmeiaByGrade';
 import { useAccessControl } from '@/hooks/useAccessControl';
 import { useContractors } from '@/hooks/useContractors';
 import { DISPLAY_SECTORS, SECTOR_LABELS, type SectorKey } from '@/lib/sectors';
@@ -1484,7 +1484,7 @@ export default function SaleOrderFormPanel({
    */
   const capacityForItem = useCallback((item: { reference_id?: string; grade?: Record<string, number> }, mode: string) => {
     const collectiveType = collectiveTypeForMode(mode);
-    const pin = (sheetPackagingConfigs as any[]).find(
+    const pin = sheetPackagingConfigs.find(
       (c) => c.sheet_id === item.reference_id && c.packaging_type === collectiveType,
     );
     const gradeSum = Object.values(item.grade || {}).reduce((s: number, v) => s + (Number(v) || 0), 0);
@@ -1493,7 +1493,7 @@ export default function SaleOrderFormPanel({
         gradePairsPerSheet: gradeSum,
         solePinBoxId: pin?.box_type_id ?? null,
         solePinPairs: pin?.pairs_per_box ?? null,
-        catalog: colmeiaCatalog as any[],
+        catalog: colmeiaCatalog as ColmeiaCatalogBox[],
       }).pairsPerBox;
     }
     return Number(pin?.pairs_per_box) > 0 ? Number(pin.pairs_per_box) : 12;
@@ -1546,7 +1546,7 @@ export default function SaleOrderFormPanel({
       if (!item.reference_id || item.quantity <= 0) continue;
       const gradeSum = Object.values(item.grade || {}).reduce((s: number, v) => s + (Number(v) || 0), 0);
       const capacity = capacityForItem(item, mode);
-      const pin = (sheetPackagingConfigs as any[]).find(
+      const pin = sheetPackagingConfigs.find(
         (c) => c.sheet_id === item.reference_id && c.packaging_type === collectiveTypeForMode(mode),
       );
       const resolved = mode === 'colmeia'
@@ -1554,7 +1554,7 @@ export default function SaleOrderFormPanel({
           gradePairsPerSheet: gradeSum,
           solePinBoxId: pin?.box_type_id ?? null,
           solePinPairs: pin?.pairs_per_box ?? null,
-          catalog: colmeiaCatalog as any[],
+          catalog: colmeiaCatalog as ColmeiaCatalogBox[],
         })
         : null;
       debugItems.push({
