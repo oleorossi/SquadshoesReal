@@ -295,7 +295,11 @@ BEGIN
            soi.reference_id,
            soi.color,
            soi.quantity AS pairs,
-           ts.reference AS reference_code,
+           COALESCE(
+             NULLIF(btrim(ts.code), ''),
+             NULLIF(btrim(ts.model), ''),
+             NULLIF(btrim(ts.name), '')
+           ) AS reference_code,
            ts.assembly_capacity_per_day,
            ts.upper_material,
            ts.upper_material_group_id,

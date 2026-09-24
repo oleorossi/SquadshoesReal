@@ -48,6 +48,7 @@ import {
 import {
   useCabedalPrepContractors,
   useCabedalPrepDemands,
+  useBackfillCabedalPrepDemands,
   useGenerateCabedalPrepServiceOrders,
   useReadjustCabedalPrepPlan,
   useSaveCabedalPrepAllocations,
@@ -136,6 +137,7 @@ export function CabedalPrepPanel() {
   const savePlan = useSaveCabedalPrepAllocations();
   const readjust = useReadjustCabedalPrepPlan();
   const generateOs = useGenerateCabedalPrepServiceOrders();
+  const backfill = useBackfillCabedalPrepDemands();
   const upsertCap = useUpsertContractorModelCapacity();
 
   const filtered = useMemo(() => {
@@ -274,7 +276,7 @@ export function CabedalPrepPanel() {
           <Label>Semana faturamento</Label>
           <Input
             className="h-9 w-40"
-            placeholder="2026-05-S2"
+            placeholder="Ex.: 2026-10-S1"
             value={billingWeek}
             onChange={(e) => setBillingWeek(e.target.value)}
           />
@@ -307,6 +309,21 @@ export function CabedalPrepPanel() {
           variant="outline"
           size="sm"
           className="h-9 gap-1.5"
+          disabled={backfill.isPending}
+          onClick={() => backfill.mutate()}
+        >
+          {backfill.isPending ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <ArrowsClockwise className="h-4 w-4" />
+          )}
+          Atualizar demandas
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-9 gap-1.5"
           onClick={() => exportReportCsv(filtered)}
         >
           <FileArrowDown className="h-4 w-4" /> Relatório
@@ -331,8 +348,24 @@ export function CabedalPrepPanel() {
           <EmptyState
             icon={Scissors}
             title="Nenhuma demanda de preparação"
-            description="Ao aprovar um PV com cabedal/aviamento, a demanda aparece aqui."
+            description="PVs Aprovado/Em Produção com cabedal ou aviamento entram aqui. Use «Atualizar demandas» para sincronizar os pedidos já abertos."
             size="sm"
+            action={
+              <Button
+                type="button"
+                size="sm"
+                className="gap-1.5"
+                disabled={backfill.isPending}
+                onClick={() => backfill.mutate()}
+              >
+                {backfill.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ArrowsClockwise className="h-4 w-4" />
+                )}
+                Atualizar demandas
+              </Button>
+            }
           />
         ) : (
           <Table>

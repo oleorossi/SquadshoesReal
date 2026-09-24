@@ -336,3 +336,36 @@ export function useGenerateCabedalPrepServiceOrders() {
     onError: (e: Error) => toast.error(e.message || 'Erro ao gerar OS'),
   });
 }
+
+/** Sincroniza demandas a partir dos PVs Aprovado/Em Produção (não gera OC). */
+export function useBackfillCabedalPrepDemands() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.rpc(
+        'backfill_cabedal_prep_demands' as never,
+        { p_sale_order_id: null } as never,
+      );
+      if (error) throw error;
+      return data as {
+        ok?: boolean;
+        orders_scanned?: number;
+        demands_upserted?: number;
+        orders_skipped?: number;
+      };
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: cabedalPrepKeys.all });
+      const n = data?.demands_upserted ?? 0;
+      const scanned = data?.orders_scanned ?? 0;
+      toast.success(
+        n > 0
+          ? `${n} demanda(s) sincronizada(s) em ${scanned} PV(s)`
+          : scanned > 0
+            ? 'Nenhuma demanda nova — PVs sem cabedal/aviamento'
+            : 'Nenhum PV Aprovado/Em Produção para sincronizar',
+      );
+    },
+    onError: (e: Error) => toast.error(e.message || 'Erro ao sincronizar demandas'),
+  });
+}
