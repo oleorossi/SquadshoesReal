@@ -21,6 +21,7 @@ import {
 } from '@/hooks/useSaleOrders';
 import { volumesForPairs, pairsPerVolumeForMode, isPairAsVolumeMode, collectiveTypeForMode } from '@/lib/packagingPairsPerBox';
 import { packSaleOrderItem, packSaleOrderItemBySize, singleSizeMisfits } from '@/lib/boxPacking';
+import { resolveColmeiaByGrade } from '@/lib/resolveColmeiaByGrade';
 import { useAccessControl } from '@/hooks/useAccessControl';
 import { useContractors } from '@/hooks/useContractors';
 import { DISPLAY_SECTORS, SECTOR_LABELS, type SectorKey } from '@/lib/sectors';
@@ -1088,6 +1089,21 @@ export default function SaleOrderFormPanel({
   // ficha -> tipo de solado -> slots de caixa em product_groups -> box_types.
   // `packaging_configs` deixou de ser consultada aqui porque era uma segunda
   // fonte, capaz de mostrar uma caixa diferente daquela debitada na OP.
+  // Catálogo vivo de colmeias — match por Σgrade (capacidade), não só o pin do solado.
+  const { data: colmeiaCatalog = [] } = useQuery({
+    queryKey: ['box_types_colmeia_catalog'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('box_types')
+        .select('id, nome, tipo, pairs_per_box_default, active')
+        .eq('tipo', 'colmeia')
+        .eq('active', true);
+      if (error) throw error;
+      return data || [];
+    },
+    staleTime: 60_000,
+  });
+
   const { data: sheetPackagingConfigs = [] } = useQuery({
     queryKey: ['sole_packaging_for_sale_order_refs', selectedSheetIds],
     enabled: selectedSheetIds.length > 0,
@@ -1463,28 +1479,42 @@ export default function SaleOrderFormPanel({
    }, [bulkGradeInput, selectedItemIndices, setItems]);
 
   /**
-   * Capacidade da caixa (pares por colmeia) e itens que NÃO fecham caixa cheia
-   * por numeração — alimentam o controle "Caixa fechada por numeração".
-   *
-   * A capacidade vem do cadastro da ficha, a mesma que a NF usa pra contar
-   * volumes; 12 é só o fallback de exibição quando a ficha ainda não tem caixa
-   * cadastrada. Nunca fixar 12 na regra: solado com colmeia de 10 ou 16 existe.
+   * Capacidade por item: em modo colmeia, Σgrade casa com colmeia do catálogo
+   * (match exato); senão, pin do solado. Espelha `resolve_colmeia_by_grade`.
    */
+  const capacityForItem = useCallback((item: { reference_id?: string; grade?: Record<string, number> }, mode: string) => {
+    const collectiveType = collectiveTypeForMode(mode);
+    const pin = (sheetPackagingConfigs as any[]).find(
+      (c) => c.sheet_id === item.reference_id && c.packaging_type === collectiveType,
+    );
+    const gradeSum = Object.values(item.grade || {}).reduce((s: number, v) => s + (Number(v) || 0), 0);
+    if (collectiveType === 'colmeia') {
+      return resolveColmeiaByGrade({
+        gradePairsPerSheet: gradeSum,
+        solePinBoxId: pin?.box_type_id ?? null,
+        solePinPairs: pin?.pairs_per_box ?? null,
+        catalog: colmeiaCatalog as any[],
+      }).pairsPerBox;
+    }
+    return Number(pin?.pairs_per_box) > 0 ? Number(pin.pairs_per_box) : 12;
+  }, [sheetPackagingConfigs, colmeiaCatalog]);
+
   const boxGroupingCapacity = useMemo(() => {
-    const collType = collectiveTypeForMode(form.packaging_mode || 'colmeia');
-    const caps = (sheetPackagingConfigs as any[])
-      .filter(c => c.packaging_type === collType && Number(c.pairs_per_box) > 0)
-      .map(c => Number(c.pairs_per_box));
+    const mode = form.packaging_mode || 'colmeia';
+    const caps = items
+      .filter((item) => item.reference_id && item.quantity > 0)
+      .map((item) => capacityForItem(item, mode));
     return caps.length > 0 ? Math.min(...caps) : 0;
-  }, [sheetPackagingConfigs, form.packaging_mode]);
+  }, [items, form.packaging_mode, capacityForItem]);
 
   const boxGroupingBlockers = useMemo(() => {
-    const capacity = boxGroupingCapacity || 12;
+    const mode = form.packaging_mode || 'colmeia';
     const problemas: string[] = [];
     for (const item of items) {
       if (!item.reference_id || !item.grade) continue;
       const fichas = Number(item.fichas) || 0;
       if (fichas <= 0) continue;
+      const capacity = capacityForItem(item, mode);
       const faltas = singleSizeMisfits({ grade: item.grade, fichas, capacity });
       if (faltas.length === 0) continue;
       const ref = references.find((r: any) => r.id === item.reference_id) as any;
@@ -1493,7 +1523,7 @@ export default function SaleOrderFormPanel({
       problemas.push(`${rotulo}: o nº ${f.size} dá ${f.pairs} pares`);
     }
     return problemas;
-  }, [items, boxGroupingCapacity, references]);
+  }, [items, capacityForItem, form.packaging_mode, references]);
 
   const totalPairs = items.reduce((s, i) => s + (i.quantity || 0), 0);
   const totalValue = items.reduce((s, i) => s + (i.quantity || 0) * (i.unit_price || 0), 0);
@@ -1510,17 +1540,32 @@ export default function SaleOrderFormPanel({
 
   const packagingVolumeSummary = useMemo(() => {
     const mode = form.packaging_mode || 'colmeia';
-    const configByRef = new Map<string, number>();
-    const collectiveType = collectiveTypeForMode(mode);
-    sheetPackagingConfigs.forEach((config: any) => {
-      if (config.packaging_type === collectiveType && Number(config.pairs_per_box) > 0) {
-        configByRef.set(config.sheet_id, Number(config.pairs_per_box));
-      }
-    });
     let volumes = 0;
+    const debugItems: Array<Record<string, unknown>> = [];
     for (const item of items) {
       if (!item.reference_id || item.quantity <= 0) continue;
-      const capacity = configByRef.get(item.reference_id) || 12;
+      const gradeSum = Object.values(item.grade || {}).reduce((s: number, v) => s + (Number(v) || 0), 0);
+      const capacity = capacityForItem(item, mode);
+      const pin = (sheetPackagingConfigs as any[]).find(
+        (c) => c.sheet_id === item.reference_id && c.packaging_type === collectiveTypeForMode(mode),
+      );
+      const resolved = mode === 'colmeia'
+        ? resolveColmeiaByGrade({
+          gradePairsPerSheet: gradeSum,
+          solePinBoxId: pin?.box_type_id ?? null,
+          solePinPairs: pin?.pairs_per_box ?? null,
+          catalog: colmeiaCatalog as any[],
+        })
+        : null;
+      debugItems.push({
+        ref: item.reference_id,
+        color: item.color,
+        quantity: item.quantity,
+        gradeSum,
+        capacity,
+        source: resolved?.source,
+        matchedName: resolved?.matchedName,
+      });
       if (isPairAsVolumeMode(mode)) {
         volumes += item.quantity;
         continue;
@@ -1537,12 +1582,16 @@ export default function SaleOrderFormPanel({
         ? packed.length
         : volumesForPairs(mode, item.quantity, capacity);
     }
-    return {
+    const summary = {
       pairMode: isPairAsVolumeMode(mode),
       pairsPerVolume: pairsPerVolumeForMode(mode, boxGroupingCapacity || undefined),
       volumes,
     };
-  }, [form.packaging_mode, form.box_grouping, items, sheetPackagingConfigs, boxGroupingCapacity]);
+    // #region agent log
+    fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fe546d'},body:JSON.stringify({sessionId:'fe546d',runId:'post-fix',hypothesisId:'H4',location:'SaleOrderFormPanel.tsx:packagingVolumeSummary',message:'Colmeia capacity after grade-catalog match',data:{mode,boxGroupingCapacity,pairsPerVolume:summary.pairsPerVolume,volumes:summary.volumes,items:debugItems},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    return summary;
+  }, [form.packaging_mode, form.box_grouping, items, sheetPackagingConfigs, boxGroupingCapacity, capacityForItem, colmeiaCatalog]);
 
   // Sync de volta pro form quando user digita — assim o save (handleSubmit do
   // SaleOrderForm) já manda shipping_rate_per_pair no payload. Trigger no DB
@@ -2460,22 +2509,26 @@ export default function SaleOrderFormPanel({
                               <div key={sheetId} className="p-2 rounded bg-background border border-border/40 space-y-1">
                                 <p className="text-xs font-bold text-foreground truncate">{refNames[sheetId] || sheetId}</p>
                                 {cfgs.map(cfg => {
-                                  const capacity = Math.max(1, Number(cfg.pairs_per_box) || 1);
+                                  const sampleItem = items.find(item => item.reference_id === sheetId && item.quantity > 0);
+                                  const capacity = sampleItem
+                                    ? capacityForItem(sampleItem, form.packaging_mode || 'colmeia')
+                                    : Math.max(1, Number(cfg.pairs_per_box) || 1);
                                   const packagesNeeded = items
                                     .filter(item => item.reference_id === sheetId && item.quantity > 0)
                                     .reduce((sum, item) => {
                                       if (cfg.packaging_type === 'fitilho') {
                                         return sum + Math.ceil(item.quantity / capacity) * Number(cfg.metros_per_amarrado || 1);
                                       }
+                                      const itemCap = capacityForItem(item, form.packaging_mode || 'colmeia');
                                       const pack = form.box_grouping === 'numeracao_unica'
                                         ? packSaleOrderItemBySize
                                         : packSaleOrderItem;
                                       const packed = pack({
                                         grade: item.grade,
                                         fichas: Number(item.fichas) || 1,
-                                        capacity,
+                                        capacity: itemCap,
                                       });
-                                      return sum + (packed.length > 0 ? packed.length : Math.ceil(item.quantity / capacity));
+                                      return sum + (packed.length > 0 ? packed.length : Math.ceil(item.quantity / itemCap));
                                     }, 0);
                                   const typeLabel = cfg.packaging_type === 'individual'
                                     ? 'Individual'
@@ -2492,7 +2545,7 @@ export default function SaleOrderFormPanel({
                                         <Badge variant="outline" className="text-xs mr-1">{typeLabel}</Badge>
                                         {cfg.nome || typeLabel} — {Number(cfg.comprimento_cm)}×{Number(cfg.largura_cm)}×{Number(cfg.altura_cm)} cm
                                         {Number(cfg.peso_kg) > 0 ? ` | ${Number(cfg.peso_kg)}g` : ''}
-                                        {cfg.pairs_per_box > 1 ? ` | ${cfg.pairs_per_box} pares/cx` : ''}
+                                        {capacity > 1 ? ` | ${capacity} pares/cx` : ''}
                                       </span>
                                       <span className="font-mono font-medium text-foreground ml-2 whitespace-nowrap">
                                         {packagesNeeded > 0 ? `${packagesNeeded.toLocaleString('pt-BR')} ${unit}` : '—'}

@@ -58,6 +58,7 @@ import {
 } from '@/lib/labelExternalVolumePartial';
 import { buildHangtagBarcode } from '@/lib/labelIdentifiers';
 import { resolveLabelBoxCapacity, type SolePackagingCapacity } from '@/lib/labelBoxCapacity';
+import { resolveColmeiaByGrade } from '@/lib/resolveColmeiaByGrade';
 import { DEFAULT_MANUFACTURER_NAME, DEFAULT_MANUFACTURER_CNPJ } from '@/lib/companySender';
 import { cn } from '@/lib/utils';
 import { isCancelledOrDraftOrder } from '@/lib/orderStatus';
@@ -1955,9 +1956,28 @@ export function LabelProductionTab() {
           if (Number(row.pairs_per_box_default) > 0) boxTypeCapacity.set(row.id, Number(row.pairs_per_box_default));
         }
       }
-      const capacityForReference = (referenceId: string, packagingMode: string): number => {
+      const { data: colmeiaRows, error: colmeiaErr } = await supabase
+        .from('box_types')
+        .select('id, nome, tipo, pairs_per_box_default, active')
+        .eq('tipo', 'colmeia')
+        .eq('active', true);
+      if (colmeiaErr) throw colmeiaErr;
+      const colmeiaCatalog = colmeiaRows || [];
+      const capacityForReference = (
+        referenceId: string,
+        packagingMode: string,
+        gradePairsPerSheet = 0,
+      ): number => {
         const ref = refDataMap.get(referenceId);
         const sole = ref?.sole_group_id ? solePackaging.get(ref.sole_group_id) : undefined;
+        if (packagingMode === 'colmeia') {
+          return resolveColmeiaByGrade({
+            gradePairsPerSheet,
+            solePinBoxId: sole?.box_type_colmeia_id ?? null,
+            solePinPairs: sole?.pairs_per_box_colmeia ?? null,
+            catalog: colmeiaCatalog,
+          }).pairsPerBox;
+        }
         return resolveLabelBoxCapacity(packagingMode, sole, boxTypeCapacity);
       };
       // ── GRADE DA FICHA vem do PV, não da OP ─────────────────────────────
@@ -2047,8 +2067,13 @@ export function LabelProductionTab() {
           //
           // Sem capacidade/grade resolvida, BLOQUEIA. Assumir 12 ou repetir a
           // ficha produziria um volume que não corresponde à carga física.
-          const capacity = capacityForReference(group.referenceId, so?.packaging_mode || group.packagingMode);
+          // Colmeia: Σgrade casa com colmeia do catálogo (dono 24/09/2026).
           const pairsInPlannedFicha = effGradePerFicha.reduce((s, g) => s + g.qty, 0);
+          const capacity = capacityForReference(
+            group.referenceId,
+            so?.packaging_mode || group.packagingMode,
+            pairsInPlannedFicha,
+          );
           if (capacity <= 0) {
             throw new Error(
               `Capacidade da caixa não cadastrada para ${group.refCode || group.refName}. ` +

@@ -62,6 +62,25 @@ describe('resolveCanonicalPackaging', () => {
     expect(rows[0].required).toBe(4);
   });
 
+  it('grade 15 escolhe colmeia de 15 do catálogo mesmo com pin em 12', () => {
+    const boxesWith15 = [
+      ...boxes,
+      { id: 'box-colmeia-15', nome: 'COLMEIA 11', tipo: 'colmeia', quantity: 8, unit_price: 7, active: true, pairs_per_box_default: 15 },
+    ];
+    const rows = resolveCanonicalPackaging({
+      mode: 'colmeia',
+      quantity: 180,
+      grade: { 36: 3, 37: 3, 38: 3, 39: 3, 40: 3 },
+      soleGroup: group,
+      boxTypes: boxesWith15,
+    });
+    expect(rows[0]).toMatchObject({
+      boxTypeId: 'box-colmeia-15',
+      packagingType: 'colmeia',
+      required: 12, // 180 / 15
+    });
+  });
+
   it('modo e slot ausentes falham fechado sem escolher pelo nome', () => {
     const invalid = resolveCanonicalPackaging({
       mode: null, quantity: 12, soleGroup: group, boxTypes: boxes,
