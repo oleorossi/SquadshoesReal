@@ -1,4 +1,5 @@
 import { gradeTotal, packSaleOrderItem, type GradeInput } from '@/lib/boxPacking';
+import { resolveColmeiaByGrade } from '@/lib/resolveColmeiaByGrade';
 
 export type PackagingMode =
   | 'colmeia'
@@ -131,8 +132,20 @@ export function resolveCanonicalPackaging(params: {
   const sheets = oneSheetPairs > 0 ? Math.ceil(quantity / oneSheetPairs) : 0;
 
   return types.map((type): CanonicalPackagingLine => {
-    const boxTypeId = slotForType(params.soleGroup!, type);
+    let boxTypeId = slotForType(params.soleGroup!, type);
     const unit = type === 'fitilho' ? 'm' : 'un';
+    const oneSheetPairsLocal = oneSheetPairs;
+
+    if (type === 'colmeia' && oneSheetPairsLocal > 0) {
+      const resolved = resolveColmeiaByGrade({
+        gradePairsPerSheet: oneSheetPairsLocal,
+        solePinBoxId: boxTypeId,
+        solePinPairs: groupCapacityForType(params.soleGroup!, 'colmeia') || null,
+        catalog: params.boxTypes,
+      });
+      if (resolved.boxTypeId) boxTypeId = resolved.boxTypeId;
+    }
+
     if (!boxTypeId) {
       return {
         boxTypeId: null,
@@ -176,12 +189,19 @@ export function resolveCanonicalPackaging(params: {
       };
     }
 
-    const capacity = Math.max(
-      1,
-      groupCapacityForType(params.soleGroup!, type)
-        || Number(box.pairs_per_box_default)
-        || 12,
-    );
+    const capacity = type === 'colmeia' && oneSheetPairsLocal > 0
+      ? resolveColmeiaByGrade({
+        gradePairsPerSheet: oneSheetPairsLocal,
+        solePinBoxId: slotForType(params.soleGroup!, 'colmeia'),
+        solePinPairs: groupCapacityForType(params.soleGroup!, 'colmeia') || null,
+        catalog: params.boxTypes,
+      }).pairsPerBox
+      : Math.max(
+        1,
+        groupCapacityForType(params.soleGroup!, type)
+          || Number(box.pairs_per_box_default)
+          || 12,
+      );
     const packed = type !== 'fitilho' && capacity > 1 && sheets > 0
       ? packSaleOrderItem({ grade: params.grade, fichas: sheets, capacity })
       : [];

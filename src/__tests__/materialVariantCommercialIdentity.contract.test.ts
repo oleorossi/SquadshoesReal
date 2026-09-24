@@ -1,9 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import {
-  materialLabelKey,
-  resolveMaterialLabels,
-} from '@/lib/labelUtils';
+import { materialLabelKey } from '@/lib/labelUtils';
 
 const read = (path: string) => readFileSync(path, 'utf8');
 const migration = read('supabase/migrations/20270101004300_material_variant_commercial_identity.sql');
@@ -459,7 +456,7 @@ describe('identidade comercial da variante de material', () => {
     expect(clickNotasIdentity).not.toMatch(/exactNameMatches\[0\].*exactNameMatches\.length\s*>\s*1/su);
   });
 
-  it('etiqueta usa nomes congelados e não mistura snapshots históricos', async () => {
+  it('etiqueta imprime forração da ficha — snapshot comercial não entra no MATERIAL', () => {
     const soft = {
       referenceId: 'ref-1',
       materialVariantId: 'variant-1',
@@ -470,11 +467,12 @@ describe('identidade comercial da variante de material', () => {
       ...soft,
       materialVariantCommercialSnapshot: { material_name: 'NAPA MADRI' },
     };
-    const labels = await resolveMaterialLabels([soft, madri]);
-    expect(materialLabelKey(soft)).not.toBe(materialLabelKey(madri));
-    expect(labels.get(materialLabelKey(soft))).toBe('NAPA SOFT');
-    expect(labels.get(materialLabelKey(madri))).toBe('NAPA MADRI');
-    expect(labelProduction).toContain('material_variant_commercial_snapshot');
-    expect(labelProduction).toContain('materialNameFromCommercialSnapshot');
+    // Snapshot não participa da chave nem da resolução (dono 24/09/2026).
+    expect(materialLabelKey(soft)).toBe(materialLabelKey(madri));
+    const labelUtilsSrc = read('src/lib/labelUtils.ts');
+    expect(labelUtilsSrc).toContain('lining_material');
+    expect(labelUtilsSrc).toMatch(/FORRAÇÃO|forração/i);
+    expect(labelUtilsSrc).not.toContain('main_material_group_id');
+    expect(labelProduction).toContain('resolveMaterialLabels');
   });
 });

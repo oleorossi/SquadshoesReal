@@ -72,11 +72,11 @@ describe('material principal da variante — todo consumidor enxerga', () => {
     expect(materialVariantColorGroup).toContain('activeProductColorsForGroup');
   });
 
-  it('a etiqueta resolve o MATERIAL pelo material principal', () => {
-    expect(labelUtils).toContain('main_material_group_id');
-    // Precisa entrar nos 3 pontos: select, coleta de ids e montagem dos nomes —
-    // faltando qualquer um, a variante é descartada e a etiqueta imprime a ficha.
-    const usos = labelUtils.match(/main_material_group_id/g) || [];
-    expect(usos.length).toBeGreaterThanOrEqual(3);
+  it('a etiqueta resolve o MATERIAL pela forração da ficha (não pela variante)', () => {
+    expect(labelUtils).toContain('lining_material');
+    expect(labelUtils).toContain('lining_accessories');
+    // Decisão do dono 24/09/2026: MATERIAL = forração; variante/cabedal fora.
+    expect(labelUtils).not.toContain('main_material_group_id');
+    expect(labelUtils).not.toMatch(/\.select\([^)]*upper_material/);
   });
 });
