@@ -289,6 +289,14 @@ export interface ArtisanalStrapCutRow {
    * próprio grupo.
    */
   baseName?: string;
+  /** Medida canônica (`artisanal_strap_measures.id`) — p/ modal de rendimento. */
+  measureId?: string;
+  /** Rótulo da medida (`display_name` ou "TIPO + display"). */
+  measureName?: string;
+  /** Família de tira (`artisanal_strap_types.id`). */
+  typeId?: string;
+  /** Grupo da napa-base desta linha (`product_groups.id`). */
+  baseGroupId?: string;
 }
 
 // ─── Agregação por (receita/grupo + cor): soma metros ANTES de calcular ──────
@@ -446,6 +454,11 @@ export type StrapTypeNapaAgg = {
   napaM: number;
   baseName?: string;
   blocked: boolean;
+  /** Sem rendimento conversível — abre modal de cadastro no consumo. */
+  needsYield: boolean;
+  measureId?: string;
+  measureName?: string;
+  typeId?: string;
   colorCount: number;
 };
 
@@ -461,8 +474,9 @@ export function aggregateStrapNapaSector(rows: ArtisanalStrapCutRow[]): StrapNap
   for (const row of rows) {
     const typeKey = artisanalStrapTypeKey(row);
     const blocked = isArtisanalStrapCutBlocked(row);
-    const strapM = Number(row.metros_necessarios) || 0;
     const yieldM = Number(row.canonical?.confirmedYieldMPerM) || 0;
+    const needsYield = !(yieldM > 0);
+    const strapM = Number(row.metros_necessarios) || 0;
     const baseFromSnap = Number(row.canonical?.baseRequiredM) || 0;
     // Napa = metros lineares de material-base (tira ÷ rendimento). Preferir o
     // snapshot; se só o yield veio, recalcula na hora.
@@ -475,7 +489,11 @@ export function aggregateStrapNapaSector(rows: ArtisanalStrapCutRow[]): StrapNap
       existing.napaM += napaM;
       existing.colorCount += 1;
       if (blocked) existing.blocked = true;
+      if (needsYield) existing.needsYield = true;
       if (!existing.baseName && row.baseName) existing.baseName = row.baseName;
+      if (!existing.measureId && row.measureId) existing.measureId = row.measureId;
+      if (!existing.measureName && row.measureName) existing.measureName = row.measureName;
+      if (!existing.typeId && row.typeId) existing.typeId = row.typeId;
     } else {
       map.set(typeKey, {
         typeKey,
@@ -484,6 +502,10 @@ export function aggregateStrapNapaSector(rows: ArtisanalStrapCutRow[]): StrapNap
         napaM,
         baseName: row.baseName,
         blocked,
+        needsYield,
+        measureId: row.measureId,
+        measureName: row.measureName,
+        typeId: row.typeId,
         colorCount: 1,
       });
     }

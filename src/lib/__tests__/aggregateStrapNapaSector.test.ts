@@ -145,6 +145,7 @@ describe('aggregateStrapNapaSector', () => {
     expect(sector.types).toHaveLength(1);
     const overlock = sector.types[0];
     expect(overlock.blocked).toBe(false);
+    expect(overlock.needsYield).toBe(false);
     expect(overlock.napaM).toBeCloseTo(4.240571 + 0.07542857, 5);
     expect(sector.totalNapaM).toBeCloseTo(overlock.napaM, 5);
   });
@@ -155,6 +156,8 @@ describe('aggregateStrapNapaSector', () => {
         groupName: 'TIRA OVERLOCK 5MM · PRETO',
         color: 'PRETO',
         metros_necessarios: 36,
+        measureId: 'measure-overlock-5',
+        measureName: 'TIRA OVERLOCK 5 mm',
         canonical: {
           recipeId: null,
           baseRequiredM: 0,
@@ -168,6 +171,8 @@ describe('aggregateStrapNapaSector', () => {
       }),
     ]);
     expect(sector.types[0].blocked).toBe(true);
+    expect(sector.types[0].needsYield).toBe(true);
+    expect(sector.types[0].measureId).toBe('measure-overlock-5');
     expect(sector.types[0].napaM).toBe(0);
   });
 });

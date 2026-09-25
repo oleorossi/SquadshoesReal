@@ -2533,6 +2533,7 @@ export function useSaveArtisanalStrapMaterialConversions() {
     onSuccess: (data, { confirm }) => {
       invalidateArtisanalStraps(queryClient);
       queryClient.invalidateQueries({ queryKey: ['strap-base-group-candidates'] });
+      queryClient.invalidateQueries({ queryKey: ['pv-consumption'] });
       const count = data.conversions.length;
       toast.success(confirm
         ? `${count} ${count === 1 ? 'rendimento confirmado' : 'rendimentos confirmados'} para todas as cores.`
