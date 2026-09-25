@@ -56,7 +56,11 @@ describe('pv tira pronta origem fornecedor — contrato 24000', () => {
   });
 
   it('é a última migration que toca o ramo sku_acabado do prepare', () => {
+    // 28600 reescreve o ramo (sku sem group_id → fábrica) e preserva o
+    // carimbo 24000 no corpo — por isso ela, e não a 24000, é a última hit.
     const latest = latestPatchMigration(MARKER);
-    expect(latest.file).toBe(MIGRATION_FILE);
+    expect(latest.file).toBe(
+      '20270101028600_pv-tira-pronta-sku-sem-group-id-vira-fabrica.sql',
+    );
   });
 });
