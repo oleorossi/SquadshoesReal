@@ -16,7 +16,9 @@ import { supabase } from '@/integrations/supabase/client';
 import {
   pickDuplicateItems,
   resolveSourceEconomicGroupId,
+  sortDuplicateItemsByReference,
 } from '@/lib/duplicateToStores';
+import { resolveReferenceImageUrl } from '@/lib/referenceImage';
 import { formatNumber } from '@/lib/utils';
 
 interface SourceOrder {
@@ -47,6 +49,10 @@ interface OrderItemRow {
   fichas?: number | null;
   strap_colors?: unknown;
   material_variant_id?: string | null;
+  /** Foto da cor (variante) ou da ficha — resolvida no load. */
+  image_url?: string | null;
+  ref_code?: string | null;
+  ref_name?: string | null;
 }
 
 interface DuplicateToStoresDialogProps {
@@ -117,23 +123,81 @@ export default function DuplicateToStoresDialog({
     setItemsError(null);
     const { data, error } = await supabase
       .from('sale_order_items')
-      .select('*')
+      .select('*, technical_sheets(name, code, image_url, images)')
       .eq('sale_order_id', order.id);
-    setItemsLoading(false);
     if (error) {
+      setItemsLoading(false);
       setItemsError(error.message);
       toast.error(`Erro ao ler itens do pedido original: ${error.message}`);
       return;
     }
-    const rows = (data || []) as OrderItemRow[];
-    if (rows.length === 0) {
+    const raw = (data || []) as Array<
+      OrderItemRow & {
+        technical_sheets?: {
+          name?: string | null;
+          code?: string | null;
+          image_url?: string | null;
+          images?: unknown;
+        } | null;
+      }
+    >;
+    if (raw.length === 0) {
+      setItemsLoading(false);
       setItemsError('O pedido original não possui itens.');
       toast.error('O pedido original não possui itens — duplicação cancelada.');
       return;
     }
-    setOrderItems(rows);
-    setSelectedItemIds(rows.map((r) => r.id));
-  }, [order?.id]);
+
+    const refIds = [...new Set(raw.map((r) => r.reference_id).filter(Boolean))];
+    const variantImageByKey = new Map<string, string>();
+    if (refIds.length > 0) {
+      const { data: colorVariants } = await supabase
+        .from('reference_color_variants')
+        .select('reference_id, color, image_url')
+        .in('reference_id', refIds);
+      for (const v of colorVariants || []) {
+        if (!v.image_url) continue;
+        const key = `${v.reference_id}::${String(v.color || '').trim().toUpperCase()}`;
+        variantImageByKey.set(key, v.image_url);
+      }
+    }
+
+    const withImages: OrderItemRow[] = raw.map((row) => {
+      const colorKey = `${row.reference_id}::${String(row.color || '').trim().toUpperCase()}`;
+      const variantUrl = variantImageByKey.get(colorKey) || '';
+      const masterUrl = resolveReferenceImageUrl(row.technical_sheets);
+      const fromLite = refById[row.reference_id];
+      const ts = row.technical_sheets;
+      return {
+        id: row.id,
+        reference_id: row.reference_id,
+        color: row.color,
+        grade: row.grade,
+        unit_price: row.unit_price,
+        quantity: row.quantity,
+        fichas: row.fichas,
+        strap_colors: row.strap_colors,
+        material_variant_id: row.material_variant_id,
+        image_url: variantUrl || masterUrl || null,
+        ref_code: fromLite?.code || ts?.code || null,
+        ref_name: fromLite?.name || ts?.name || null,
+      };
+    });
+
+    const sortRefs: Record<string, RefLite> = {};
+    for (const row of withImages) {
+      sortRefs[row.reference_id] = {
+        id: row.reference_id,
+        code: row.ref_code,
+        name: row.ref_name,
+      };
+    }
+
+    const sorted = sortDuplicateItemsByReference(withImages, sortRefs);
+    setItemsLoading(false);
+    setOrderItems(sorted);
+    setSelectedItemIds(sorted.map((r) => r.id));
+  }, [order?.id, refById]);
 
   useEffect(() => {
     if (open && order?.id && step === 2 && orderItems.length === 0 && !itemsLoading && !itemsError) {
@@ -172,9 +236,11 @@ export default function DuplicateToStoresDialog({
   const itemListItems = useMemo(
     () =>
       orderItems.map((i) => {
-        const ref = refById[i.reference_id];
+        const code = i.ref_code || refById[i.reference_id]?.code || '';
+        const name = i.ref_name || refById[i.reference_id]?.name || '';
+        // Código em destaque (agrupamento visual); nome só se diferir.
         const title =
-          [ref?.name, ref?.code && ref.code !== ref.name ? ref.code : null]
+          [code || name, code && name && code !== name ? name : null]
             .filter(Boolean)
             .join(' · ') || i.reference_id;
         const qty = Number(i.quantity) || 0;
@@ -185,7 +251,8 @@ export default function DuplicateToStoresDialog({
           id: i.id,
           title,
           subtitle: subtitle || undefined,
-          searchHaystack: [i.color, ref?.code, ref?.name],
+          imageUrl: i.image_url ?? null,
+          searchHaystack: [i.color, code, name],
         };
       }),
     [orderItems, refById],
@@ -298,7 +365,7 @@ export default function DuplicateToStoresDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Duplicar para lojas</DialogTitle>
           <p className="text-xs text-muted-foreground mt-1">
@@ -396,6 +463,7 @@ export default function DuplicateToStoresDialog({
                   onSelectedIdsChange={setSelectedItemIds}
                   label="Itens do pedido"
                   searchPlaceholder="Buscar item por referência ou cor…"
+                  listClassName="max-h-[min(55vh,28rem)]"
                 />
               )}
               {selectedItemIds.length === 0 && !itemsLoading && !itemsError && orderItems.length > 0 && (

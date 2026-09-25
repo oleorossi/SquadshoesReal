@@ -1,8 +1,10 @@
 import { ReactNode, useMemo, useRef, useState } from 'react';
+import { Image as ImageIcon } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { SearchInput } from '@/components/ui/search-input';
 import { Label } from '@/components/ui/label';
+import { SignedImage } from '@/components/ui/signed-image';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { cn } from '@/lib/utils';
 
@@ -10,6 +12,8 @@ export interface PaintSelectListItem {
   id: string;
   title: string;
   subtitle?: string;
+  /** Miniatura do produto (URL crua — SignedImage resolve storage). */
+  imageUrl?: string | null;
   searchHaystack?: Array<string | null | undefined>;
   disabled?: boolean;
 }
@@ -208,6 +212,7 @@ export function PaintSelectList({
         >
           {visibleItems.map((item) => {
             const selected = selectedIds.includes(item.id);
+            const showThumb = item.imageUrl !== undefined;
             return (
               <div
                 key={item.id}
@@ -235,6 +240,27 @@ export function PaintSelectList({
                   onPointerDown={(e) => e.stopPropagation()}
                   aria-label={`Selecionar ${item.title}`}
                 />
+                {showThumb && (
+                  <div className="h-14 w-14 rounded-md border border-border bg-muted overflow-hidden shrink-0">
+                    {item.imageUrl ? (
+                      <SignedImage
+                        src={item.imageUrl}
+                        alt={item.title}
+                        width={56}
+                        height={56}
+                        className="h-full w-full"
+                      />
+                    ) : (
+                      <div
+                        className="h-full w-full flex items-center justify-center text-muted-foreground/40"
+                        aria-label={`Sem foto: ${item.title}`}
+                        role="img"
+                      >
+                        <ImageIcon className="h-5 w-5" weight="thin" />
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div className="flex-1 min-w-0">
                   <div className={cn('text-sm font-medium truncate', selected && 'text-primary')}>
                     {item.title}

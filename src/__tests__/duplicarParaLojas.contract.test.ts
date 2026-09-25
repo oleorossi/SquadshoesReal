@@ -31,10 +31,23 @@ describe('duplicar para lojas — contrato SaleOrders', () => {
     expect(dialog).toContain('requireSearchToList={!groupId}');
   });
 
+  it('passo de itens agrupa referência, amplia modal e mostra foto', () => {
+    expect(dialog).toContain('sortDuplicateItemsByReference');
+    expect(dialog).toContain('sm:max-w-4xl');
+    expect(dialog).toContain('reference_color_variants');
+    expect(dialog).toContain('imageUrl:');
+    expect(dialog).toContain('listClassName="max-h-[min(55vh,28rem)]"');
+  });
+
   it('PaintSelectList só marca no arraste e seleciona só visíveis', () => {
     expect(paintList).toContain('Selecionar filtradas');
     expect(paintList).toContain('Arrastar nunca desmarca');
     expect(paintList).toContain('addIds(selectedIds, visibleIds)');
+  });
+
+  it('PaintSelectList renderiza miniatura quando imageUrl é passado', () => {
+    expect(paintList).toContain('imageUrl');
+    expect(paintList).toContain('SignedImage');
   });
 
   it('SaleOrderFormPanel reusa paint-select nos itens (Copiar p/ novo PV)', () => {

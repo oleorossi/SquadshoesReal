@@ -53,7 +53,7 @@ export function filterDupStoreCandidates(args: {
   });
 }
 
-/** Filtra itens do PV origem pelos IDs selecionados (ordem do origem preservada). */
+/** Filtra itens do PV origem pelos IDs selecionados (ordem da lista preservada). */
 export function pickDuplicateItems<T extends { id: string }>(
   orderItems: T[],
   selectedItemIds: Iterable<string>,
@@ -63,6 +63,28 @@ export function pickDuplicateItems<T extends { id: string }>(
     : new Set(selectedItemIds);
   if (wanted.size === 0) return [];
   return orderItems.filter((item) => wanted.has(item.id));
+}
+
+/**
+ * Agrupa a mesma referência uma após a outra (código/nome), depois cor.
+ * Espelha a ordenação do detalhe do PV em SaleOrders.
+ */
+export function sortDuplicateItemsByReference<T extends {
+  reference_id: string;
+  color?: string | null;
+}>(
+  items: T[],
+  refById: Record<string, { code?: string | null; name?: string | null } | undefined>,
+): T[] {
+  return [...items].sort((a, b) => {
+    const ra = refById[a.reference_id];
+    const rb = refById[b.reference_id];
+    const aKey = `${ra?.code || ''} ${ra?.name || ''}`.trim() || a.reference_id;
+    const bKey = `${rb?.code || ''} ${rb?.name || ''}`.trim() || b.reference_id;
+    const refCmp = aKey.localeCompare(bKey, 'pt-BR', { numeric: true });
+    if (refCmp !== 0) return refCmp;
+    return String(a.color || '').localeCompare(String(b.color || ''), 'pt-BR');
+  });
 }
 
 export function resolveSourceEconomicGroupId(args: {

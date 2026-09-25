@@ -3,6 +3,7 @@ import {
   filterDupStoreCandidates,
   pickDuplicateItems,
   resolveSourceEconomicGroupId,
+  sortDuplicateItemsByReference,
 } from '@/lib/duplicateToStores';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
@@ -81,5 +82,25 @@ describe('resolveSourceEconomicGroupId', () => {
 
   it('vazio sem cliente', () => {
     expect(resolveSourceEconomicGroupId({ sourceClientId: null, clients })).toBe('');
+  });
+});
+
+describe('sortDuplicateItemsByReference', () => {
+  it('agrupa mesma referência juntas e ordena cores', () => {
+    const refs = {
+      g1: { code: 'G01', name: 'G01' },
+      g2: { code: 'G02', name: 'G02' },
+      g3: { code: 'G03', name: 'G03' },
+    };
+    const items = [
+      { id: '1', reference_id: 'g1', color: 'DÁLIA' },
+      { id: '2', reference_id: 'g1', color: 'OFF WHITE' },
+      { id: '3', reference_id: 'g2', color: 'PRATA' },
+      { id: '4', reference_id: 'g3', color: 'OFF WHITE' },
+      { id: '5', reference_id: 'g2', color: 'COBRE' },
+    ];
+    expect(sortDuplicateItemsByReference(items, refs).map((i) => i.id)).toEqual([
+      '1', '2', '5', '3', '4',
+    ]);
   });
 });
