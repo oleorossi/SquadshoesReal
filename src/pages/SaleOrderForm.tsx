@@ -122,6 +122,7 @@ const emptyItem = (): SaleOrderItemFormData => withSaleOrderItemClientKey({
   selected_terceirizacao_ids: [],
   terceirizacao_quantities: {},
   outsourced_sectors: {},
+  dublagem_mode: null,
 });
 
 type SaleOrderSnapshotHeader = Database['public']['Tables']['sale_orders']['Row'] & {
@@ -518,6 +519,9 @@ export function mapLoadedSaleOrderItem(
     // gravaria mapa vazio por cima (a edição grava o vazio de propósito, pra
     // desmarcar funcionar) e os setores marcados sumiriam em silêncio.
     outsourced_sectors: ((i as any).outsourced_sectors as Record<string, string>) ?? {},
+    // Dublagem: sem copiar na carga, editar o PV gravava null e desmarcava
+    // Interna/Externa em silêncio (buildExtraItemColumns sempre manda a chave).
+    dublagem_mode: ((i as any).dublagem_mode as SaleOrderItemFormData['dublagem_mode']) ?? null,
   };
 }
 

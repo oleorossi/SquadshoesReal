@@ -11,6 +11,8 @@ interface Props {
   upperConsumptionDm2PerPair: number;
   dublagemMode: 'internal' | 'external' | null | undefined;
   onModeChange: (mode: 'internal' | 'external' | null) => void;
+  /** Cola herdada da ficha (`technical_sheets.dublagem_glue_id`) — só leitura. */
+  glueId?: string | null;
   glueName?: string | null;
   gluePricePerM?: number | null;
 }
@@ -43,6 +45,7 @@ export default function SaleOrderItemDublagemControls({
   upperConsumptionDm2PerPair,
   dublagemMode,
   onModeChange,
+  glueId,
   glueName,
   gluePricePerM,
 }: Props) {
@@ -62,6 +65,26 @@ export default function SaleOrderItemDublagemControls({
   });
 
   const isComposite = (layersQuery.data?.length || 0) >= 2;
+
+  const glueQuery = useQuery({
+    queryKey: ['product_group_dublagem_glues', glueId, 'pv-readonly'],
+    enabled: isComposite && !!glueId && glueName == null,
+    queryFn: async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any)
+        .from('product_group_dublagem_glues')
+        .select('name,price_per_m')
+        .eq('id', glueId)
+        .maybeSingle();
+      if (error) throw error;
+      return (data || null) as { name: string; price_per_m: number } | null;
+    },
+    staleTime: 60_000,
+  });
+
+  const resolvedGlueName = glueName ?? glueQuery.data?.name ?? null;
+  const resolvedGluePrice =
+    gluePricePerM ?? (glueQuery.data?.price_per_m != null ? Number(glueQuery.data.price_per_m) : null);
 
   const sheetsQuery = useQuery({
     queryKey: [
@@ -110,8 +133,8 @@ export default function SaleOrderItemDublagemControls({
           <Label className="text-xs font-bold uppercase text-muted-foreground">Dublagem</Label>
           <p className="text-[11px] text-muted-foreground">
             Faces (napa + Massa Box). Cola herdada da ficha
-            {glueName
-              ? `: ${glueName}${gluePricePerM != null ? ` · ${Number(gluePricePerM).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}/m` : ''}`
+            {resolvedGlueName
+              ? `: ${resolvedGlueName}${resolvedGluePrice != null ? ` · ${Number(resolvedGluePrice).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}/m` : ''}`
               : ' (não cadastrada)'}
             .
           </p>

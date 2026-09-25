@@ -190,6 +190,7 @@ describe('mapLoadedSaleOrderItem', () => {
         production_excluded_at: '2026-08-30T12:00:00Z',
         production_exclusion_reason: 'Ficha aposentada pelo administrador',
         production_exclusion_request_id: '11111111-1111-4111-8111-111111111111',
+        dublagem_mode: 'internal',
       },
       {
         id: 'sale-order-item-2',
@@ -214,6 +215,8 @@ describe('mapLoadedSaleOrderItem', () => {
     expect(mappedItems[0].reference_id).toBe('canonical-reference');
     expect(mappedItems[0].strap_sourcing_revision).toBe(7);
     expect(mappedItems[0].strap_sourcing).toEqual(loadedItems[0].strap_sourcing);
+    expect(mappedItems[0].dublagem_mode).toBe('internal');
+    expect(mappedItems[1].dublagem_mode).toBeNull();
     expect(mappedItems[0]).toMatchObject({
       production_excluded_at: '2026-08-30T12:00:00Z',
       production_exclusion_reason: 'Ficha aposentada pelo administrador',
