@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import type { CabedalPrepSector } from '@/lib/cabedalPrep';
 import { scheduleAllocation, validateDistribution } from '@/lib/cabedalPrep';
+import { getSignedUrl } from '@/lib/getSignedUrl';
 
 export const cabedalPrepKeys = {
   all: ['cabedal-prep'] as const,
@@ -32,6 +33,8 @@ export interface CabedalPrepDemandRow {
   status: string;
   plan_locked_at: string | null;
   stale_reason: string | null;
+  /** URL assinada da foto (variante da cor → imagem da ficha). */
+  product_image_url?: string | null;
   sale_orders?: { order_number: string; client_name: string; billing_week: string | null } | null;
   cabedal_prep_allocations?: CabedalPrepAllocationRow[] | null;
 }
@@ -61,6 +64,65 @@ export interface CabedalPrepFilters {
   view?: 'deadline' | 'contractor' | 'pv';
 }
 
+function normColor(c: string | null | undefined): string {
+  return String(c ?? '').trim().toLowerCase();
+}
+
+/** Anexa foto por (ficha, cor): variante da cor vence; senão image_url da ficha. */
+async function attachProductImages(
+  rows: CabedalPrepDemandRow[],
+): Promise<CabedalPrepDemandRow[]> {
+  const sheetIds = [
+    ...new Set(rows.map((r) => r.technical_sheet_id).filter(Boolean)),
+  ] as string[];
+  if (!sheetIds.length) return rows;
+
+  const [{ data: sheets }, { data: variants }] = await Promise.all([
+    supabase
+      .from('technical_sheets')
+      .select('id, image_url')
+      .in('id', sheetIds),
+    supabase
+      .from('reference_color_variants')
+      .select('reference_id, color, image_url')
+      .in('reference_id', sheetIds),
+  ]);
+
+  const masterById = new Map<string, string | null>();
+  for (const s of sheets ?? []) {
+    masterById.set(s.id, s.image_url ?? null);
+  }
+  const variantByKey = new Map<string, string>();
+  for (const v of variants ?? []) {
+    if (!v.image_url) continue;
+    variantByKey.set(`${v.reference_id}|${normColor(v.color)}`, v.image_url);
+  }
+
+  const rawByDemand = new Map<string, string>();
+  for (const row of rows) {
+    if (!row.technical_sheet_id) continue;
+    const fromVariant = variantByKey.get(
+      `${row.technical_sheet_id}|${normColor(row.color)}`,
+    );
+    const raw = fromVariant || masterById.get(row.technical_sheet_id) || null;
+    if (raw) rawByDemand.set(row.id, raw);
+  }
+
+  const uniqueRaws = [...new Set(rawByDemand.values())];
+  const signedEntries = await Promise.all(
+    uniqueRaws.map(async (raw) => [raw, await getSignedUrl(raw)] as const),
+  );
+  const signedByRaw = new Map(signedEntries);
+
+  return rows.map((row) => {
+    const raw = rawByDemand.get(row.id);
+    return {
+      ...row,
+      product_image_url: raw ? (signedByRaw.get(raw) || raw) : null,
+    };
+  });
+}
+
 export function useCabedalPrepDemands(filters: CabedalPrepFilters = {}) {
   return useQuery({
     queryKey: cabedalPrepKeys.demands(filters as Record<string, string | null>),
@@ -83,7 +145,8 @@ export function useCabedalPrepDemands(filters: CabedalPrepFilters = {}) {
 
       const { data, error } = await q;
       if (error) throw error;
-      return (data ?? []) as unknown as CabedalPrepDemandRow[];
+      const rows = (data ?? []) as unknown as CabedalPrepDemandRow[];
+      return attachProductImages(rows);
     },
     staleTime: 30_000,
   });

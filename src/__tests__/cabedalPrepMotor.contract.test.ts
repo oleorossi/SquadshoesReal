@@ -70,4 +70,16 @@ describe('cabedal prep motor — contratos', () => {
     expect(hook).not.toMatch(/technical_sheets\([^)]*\breference\b/);
     expect(hook).toMatch(/enabled:\s*Boolean\(sheetId\)/);
   });
+
+  it('lista visual: foto do produto, swatch de cor e KPIs', () => {
+    const panel = readFileSync('src/components/contractors/CabedalPrepPanel.tsx', 'utf8');
+    const hook = readFileSync('src/hooks/useCabedalPrep.ts', 'utf8');
+    expect(panel).toContain('ProductThumb');
+    expect(panel).toContain('ColorSwatch');
+    expect(panel).toContain('resolveColorHex');
+    expect(panel).toContain('StatGrid');
+    expect(panel).toContain('product_image_url');
+    expect(hook).toContain('attachProductImages');
+    expect(hook).toContain('reference_color_variants');
+  });
 });

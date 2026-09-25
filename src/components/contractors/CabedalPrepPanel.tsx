@@ -13,6 +13,9 @@ import {
   Trash as Trash2,
   Warning as AlertTriangle,
   CheckCircle as CheckCircle2,
+  CalendarBlank,
+  Package,
+  Clock,
 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,6 +23,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import {
   Select,
   SelectContent,
@@ -27,14 +31,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import {
   Dialog,
   DialogContent,
@@ -45,10 +41,12 @@ import {
 import {
   CABEDAL_PREP_SECTORS,
   CABEDAL_PREP_SECTOR_LABEL,
+  cabedalReadyDate,
   scheduleAllocation,
   type CabedalPrepSector,
   validateDistribution,
 } from '@/lib/cabedalPrep';
+import { resolveColorHex } from '@/lib/colorHex';
 import {
   useCabedalPrepContractors,
   useCabedalPrepDemands,
@@ -65,6 +63,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 type ViewMode = 'deadline' | 'contractor' | 'pv';
+type DeadlineTone = 'ok' | 'soon' | 'overdue' | 'missing';
 
 interface DraftRow {
   key: string;
@@ -85,6 +84,85 @@ interface CapacityRow {
 function formatIsoBr(iso: string | null | undefined): string {
   if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return '—';
   return new Date(iso + 'T12:00:00').toLocaleDateString('pt-BR');
+}
+
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function addDaysIso(iso: string, days: number): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() + days);
+  const yy = dt.getFullYear();
+  const mm = String(dt.getMonth() + 1).padStart(2, '0');
+  const dd = String(dt.getDate()).padStart(2, '0');
+  return `${yy}-${mm}-${dd}`;
+}
+
+/** Meta efetiva: coluna do banco ou cálculo da billing_week × montagem. */
+function effectiveReadyDate(d: CabedalPrepDemandRow): string | null {
+  if (d.ready_date) return d.ready_date;
+  if (!d.billing_week || !d.assembly_capacity_per_day) return null;
+  return cabedalReadyDate({
+    billingWeek: d.billing_week,
+    pairs: Number(d.pairs),
+    assemblyCapacityPerDay: Number(d.assembly_capacity_per_day),
+  });
+}
+
+function deadlineTone(ready: string | null): DeadlineTone {
+  if (!ready) return 'missing';
+  const today = todayIso();
+  if (ready < today) return 'overdue';
+  if (ready <= addDaysIso(today, 3)) return 'soon';
+  return 'ok';
+}
+
+function ColorSwatch({ color, size = 14 }: { color?: string | null; size?: number }) {
+  if (!color?.trim()) return null;
+  const hex = resolveColorHex(color);
+  return (
+    <span
+      className="inline-block shrink-0 rounded-full ring-1 ring-border/70"
+      style={{ backgroundColor: hex, width: size, height: size }}
+      title={color}
+      aria-label={`Cor: ${color}`}
+    />
+  );
+}
+
+function ProductThumb({
+  src,
+  color,
+  alt,
+  size = 56,
+}: {
+  src?: string | null;
+  color?: string | null;
+  alt: string;
+  size?: number;
+}) {
+  const hex = resolveColorHex(color);
+  return (
+    <div
+      className="relative shrink-0 overflow-hidden rounded-md bg-muted ring-2"
+      style={{ width: size, height: size, boxShadow: `0 0 0 2px ${hex}` }}
+    >
+      {src ? (
+        <img src={src} alt={alt} className="h-full w-full object-cover" loading="lazy" />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center">
+          <Scissors className="h-5 w-5 text-muted-foreground/60" aria-hidden />
+        </div>
+      )}
+      <span
+        className="absolute inset-x-0 bottom-0 h-1.5"
+        style={{ backgroundColor: hex }}
+        aria-hidden
+      />
+    </div>
+  );
 }
 
 function defaultSectorForDemand(d: CabedalPrepDemandRow): CabedalPrepSector {
@@ -121,6 +199,37 @@ function statusBadge(status: string) {
     return <Badge variant="secondary">Concluído</Badge>;
   }
   return <Badge variant="outline">Aberto</Badge>;
+}
+
+function deadlineBadge(tone: DeadlineTone, ready: string | null) {
+  const label = formatIsoBr(ready);
+  if (tone === 'overdue') {
+    return (
+      <Badge variant="outline" className="gap-1 border-destructive/40 text-destructive">
+        <AlertTriangle className="h-3 w-3" /> Atrasado · {label}
+      </Badge>
+    );
+  }
+  if (tone === 'soon') {
+    return (
+      <Badge variant="outline" className="gap-1 border-amber-500/50 text-amber-600">
+        <Clock className="h-3 w-3" /> Em {label}
+      </Badge>
+    );
+  }
+  if (tone === 'missing') {
+    return (
+      <Badge variant="outline" className="gap-1 text-muted-foreground">
+        <CalendarBlank className="h-3 w-3" /> Sem meta
+      </Badge>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 tabular-nums text-sm text-foreground">
+      <CalendarBlank className="h-3.5 w-3.5 text-muted-foreground" />
+      {label}
+    </span>
+  );
 }
 
 function exportReportCsv(rows: CabedalPrepDemandRow[]) {
@@ -207,6 +316,25 @@ export function CabedalPrepPanel() {
     }
     return rows;
   }, [demands, materialType, view]);
+
+  const kpis = useMemo(() => {
+    let open = 0;
+    let planned = 0;
+    let pairsPending = 0;
+    let urgent = 0;
+    let totalPairs = 0;
+    for (const d of filtered) {
+      totalPairs += Number(d.pairs) || 0;
+      if (d.status === 'open' || d.status === 'stale') open += 1;
+      if (d.status === 'planned') planned += 1;
+      const allocs = d.cabedal_prep_allocations ?? [];
+      const allocated = allocs.reduce((s, a) => s + Number(a.pairs), 0);
+      pairsPending += Math.max(0, Number(d.pairs) - allocated);
+      const tone = deadlineTone(effectiveReadyDate(d));
+      if (tone === 'overdue' || tone === 'soon') urgent += 1;
+    }
+    return { open, planned, pairsPending, urgent, totalPairs, count: filtered.length };
+  }, [filtered]);
 
   const openEdit = (d: CabedalPrepDemandRow) => {
     setEditing(d);
@@ -368,6 +496,35 @@ export function CabedalPrepPanel() {
 
   return (
     <div className="space-y-4">
+      <StatGrid>
+        <StatCard
+          label="Demandas"
+          value={kpis.count}
+          unit="itens"
+          hint={`${kpis.totalPairs.toLocaleString('pt-BR')} pares`}
+          icon={Package}
+        />
+        <StatCard
+          label="Abertas"
+          value={kpis.open}
+          tone={kpis.open > 0 ? 'warning' : 'default'}
+          icon={Scissors}
+        />
+        <StatCard
+          label="Pares sem plano"
+          value={kpis.pairsPending}
+          tone={kpis.pairsPending > 0 ? 'warning' : 'success'}
+          icon={Factory}
+        />
+        <StatCard
+          label="Prazo crítico"
+          value={kpis.urgent}
+          hint="atrasado ou ≤ 3 dias"
+          tone={kpis.urgent > 0 ? 'destructive' : 'default'}
+          icon={Clock}
+        />
+      </StatGrid>
+
       <div className="flex flex-wrap items-end gap-3">
         <div className="space-y-1.5">
           <Label>Cor</Label>
@@ -474,106 +631,188 @@ export function CabedalPrepPanel() {
             }
           />
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>PV</TableHead>
-                <TableHead>Ref / cor</TableHead>
-                <TableHead className="text-right">Pares</TableHead>
-                <TableHead>Faturamento</TableHead>
-                <TableHead>Pronto até</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Plano</TableHead>
-                <TableHead className="text-right">Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((d) => {
-                const allocs = d.cabedal_prep_allocations ?? [];
-                const pending = Math.max(
-                  0,
-                  Number(d.pairs) - allocs.reduce((s, a) => s + Number(a.pairs), 0),
-                );
-                return (
-                  <TableRow key={d.id}>
-                    <TableCell className="font-medium">
-                      {d.sale_orders?.order_number ?? '—'}
-                      <div className="text-xs text-muted-foreground truncate max-w-[160px]">
-                        {d.sale_orders?.client_name}
+          <ul className="divide-y divide-border/60">
+            {filtered.map((d) => {
+              const allocs = d.cabedal_prep_allocations ?? [];
+              const pending = Math.max(
+                0,
+                Number(d.pairs) - allocs.reduce((s, a) => s + Number(a.pairs), 0),
+              );
+              const ready = effectiveReadyDate(d);
+              const tone = deadlineTone(ready);
+              const colorHex = resolveColorHex(d.color);
+              return (
+                <li
+                  key={d.id}
+                  className={cn(
+                    'relative flex flex-col gap-3 px-3 py-3 transition-colors sm:flex-row sm:items-center sm:gap-4',
+                    'hover:bg-muted/30',
+                    tone === 'overdue' && 'bg-destructive/5',
+                    tone === 'soon' && 'bg-amber-500/5',
+                  )}
+                >
+                  <span
+                    className="absolute inset-y-0 left-0 w-1 rounded-r-sm"
+                    style={{ backgroundColor: colorHex }}
+                    aria-hidden
+                  />
+                  <div className="flex min-w-0 flex-1 items-start gap-3 pl-2">
+                    <ProductThumb
+                      src={d.product_image_url}
+                      color={d.color}
+                      alt={`${d.reference_code ?? 'Produto'} ${d.color ?? ''}`}
+                      size={64}
+                    />
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span className="font-mono text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          {d.sale_orders?.order_number ?? '—'}
+                        </span>
+                        {statusBadge(d.status)}
+                        {deadlineBadge(tone, ready)}
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="font-medium">{d.reference_code ?? '—'}</div>
-                      <div className="text-xs text-muted-foreground">{d.color ?? '—'}</div>
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">{d.pairs}</TableCell>
-                    <TableCell className="font-mono text-xs">{d.billing_week ?? '—'}</TableCell>
-                    <TableCell className="tabular-nums text-sm">
-                      {formatIsoBr(d.ready_date)}
-                    </TableCell>
-                    <TableCell>{statusBadge(d.status)}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {allocs.length === 0
-                        ? 'Sem distribuição'
-                        : `${allocs.length} linha(s)${pending > 0 ? ` · ${pending} pend.` : ''}`}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        {d.status === 'stale' && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 gap-1"
-                            disabled={readjust.isPending}
-                            onClick={() => readjust.mutate(d.id)}
-                          >
-                            <ArrowsClockwise className="h-3.5 w-3.5" /> Reajustar
-                          </Button>
-                        )}
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-8"
-                          onClick={() => openEdit(d)}
+                      <div className="font-display text-xl uppercase leading-none tracking-wide text-foreground">
+                        {d.reference_code ?? 'Sem referência'}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span
+                          className="inline-flex items-center gap-1.5 rounded-md border border-border/60 px-2 py-0.5 text-sm font-semibold"
+                          style={{
+                            backgroundColor: `${colorHex}22`,
+                            borderColor: `${colorHex}66`,
+                          }}
                         >
-                          Distribuir
-                        </Button>
-                        {allocs.some((a) => !a.service_order_id) && (
-                          <Button
-                            type="button"
-                            size="sm"
-                            className="h-8"
-                            disabled={generateOs.isPending}
-                            onClick={() =>
-                              generateOs.mutate(
-                                allocs.filter((a) => !a.service_order_id).map((a) => a.id),
-                              )
-                            }
-                          >
-                            Gerar OS
-                          </Button>
+                          <ColorSwatch color={d.color} size={12} />
+                          {d.color ?? 'Sem cor'}
+                        </span>
+                        <span className="tabular-nums text-sm font-medium text-foreground">
+                          {Number(d.pairs).toLocaleString('pt-BR')} pares
+                        </span>
+                        <span className="font-mono text-[11px] text-muted-foreground">
+                          {d.billing_week ?? '—'}
+                        </span>
+                      </div>
+                      <div className="truncate text-xs text-muted-foreground">
+                        {d.sale_orders?.client_name || '—'}
+                        {' · '}
+                        {allocs.length === 0
+                          ? 'Sem distribuição'
+                          : `${allocs.length} linha(s)${pending > 0 ? ` · ${pending} pend.` : ''}`}
+                      </div>
+                      <div className="flex flex-wrap gap-1 pt-0.5">
+                        {d.requires_cut && (
+                          <Badge variant="secondary" className="h-5 text-[10px]">Corte</Badge>
+                        )}
+                        {d.requires_sewing && (
+                          <Badge variant="secondary" className="h-5 text-[10px]">Costura</Badge>
+                        )}
+                        {d.requires_aviamento && (
+                          <Badge variant="secondary" className="h-5 text-[10px]">Aviamento</Badge>
                         )}
                       </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 pl-2 sm:pl-0">
+                    {d.status === 'stale' && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-9 gap-1"
+                        disabled={readjust.isPending}
+                        onClick={() => readjust.mutate(d.id)}
+                      >
+                        <ArrowsClockwise className="h-3.5 w-3.5" /> Reajustar
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-9"
+                      onClick={() => openEdit(d)}
+                    >
+                      Distribuir
+                    </Button>
+                    {allocs.some((a) => !a.service_order_id) && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-9"
+                        disabled={generateOs.isPending}
+                        onClick={() =>
+                          generateOs.mutate(
+                            allocs.filter((a) => !a.service_order_id).map((a) => a.id),
+                          )
+                        }
+                      >
+                        Gerar OS
+                      </Button>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
         )}
       </Panel>
 
       <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
+          <DialogHeader className="sr-only">
             <DialogTitle>
               Distribuir · {editing?.sale_orders?.order_number} · {editing?.reference_code}{' '}
               {editing?.color}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 text-sm">
+            {/* Identidade do produto — foto + cor em destaque */}
+            {editing && (
+              <div
+                className="relative overflow-hidden rounded-lg border border-border/60"
+                style={{
+                  background: `linear-gradient(90deg, ${resolveColorHex(editing.color)}33 0%, transparent 55%)`,
+                }}
+              >
+                <div
+                  className="absolute inset-y-0 left-0 w-1.5"
+                  style={{ backgroundColor: resolveColorHex(editing.color) }}
+                  aria-hidden
+                />
+                <div className="flex items-center gap-3 p-3 pl-4">
+                  <ProductThumb
+                    src={editing.product_image_url}
+                    color={editing.color}
+                    alt={`${editing.reference_code ?? ''} ${editing.color ?? ''}`}
+                    size={72}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="font-mono text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      {editing.sale_orders?.order_number} · Distribuir
+                    </div>
+                    <div className="font-display text-2xl uppercase leading-none tracking-wide">
+                      {editing.reference_code ?? '—'}
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                      <span
+                        className="inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-sm font-semibold"
+                        style={{
+                          backgroundColor: `${resolveColorHex(editing.color)}28`,
+                          borderColor: `${resolveColorHex(editing.color)}66`,
+                        }}
+                      >
+                        <ColorSwatch color={editing.color} size={12} />
+                        {editing.color ?? 'Sem cor'}
+                      </span>
+                      <span className="tabular-nums font-medium">
+                        {Number(editing.pairs).toLocaleString('pt-BR')} pares
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Resumo da demanda — sempre visível enquanto se edita as linhas */}
             <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2.5 space-y-2">
               <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
@@ -582,7 +821,7 @@ export function CabedalPrepPanel() {
                     Pronto até
                   </span>
                   <div className="font-display text-base tabular-nums text-foreground">
-                    {formatIsoBr(editing?.ready_date)}
+                    {formatIsoBr(editing ? effectiveReadyDate(editing) : null)}
                   </div>
                 </div>
                 <div>
