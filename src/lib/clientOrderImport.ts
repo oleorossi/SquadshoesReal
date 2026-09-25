@@ -19,14 +19,16 @@ import {
   parseObjetivaOrderFile,
 } from './objetivaLabels';
 import {
+  BARTENDER_TEMPLATE_UPLOAD_MESSAGE,
+  isBartenderTemplateFile,
   isPontoMixOrderHeader,
   parsePontoMixOrderFile,
 } from './pontoMixLabels';
 
 export type ClientOrderFormat = ClientLabelPatternKey;
 
-/** Extensões aceitas no `<input type="file" multiple>`. */
-export const ACCEPT_CLIENT_ORDER_FILES = '.csv,.txt,.xlsx,.xls';
+/** Extensões aceitas no `<input type="file" multiple>`. `.btw` entra só para mensagem clara. */
+export const ACCEPT_CLIENT_ORDER_FILES = '.csv,.txt,.xlsx,.xls,.btw';
 
 export interface ClientOrderFileError {
   fileName: string;
@@ -108,6 +110,7 @@ export function detectClientOrderFormatFromHeader(headerLine: string): ClientOrd
 }
 
 async function detectFileFormat(file: File): Promise<ClientOrderFormat | null> {
+  if (isBartenderTemplateFile(file)) return null;
   const nome = file.name.toLowerCase();
   if (nome.endsWith('.xlsx') || nome.endsWith('.xls')) {
     const buffer = await file.arrayBuffer();
@@ -122,6 +125,8 @@ async function detectFileFormat(file: File): Promise<ClientOrderFormat | null> {
     return detectClientOrderFormatFromHeader(header.join(';'));
   }
   const texto = decodeOrderBytes(await file.arrayBuffer());
+  // Padrao.txt do BarTender: nome forte + padrão Ponto Mix já escolhido no cliente.
+  if (nome === 'padrao.txt' || nome.endsWith('/padrao.txt')) return 'ponto_mix';
   return detectClientOrderFormatFromHeader(firstDataLine(texto));
 }
 
@@ -130,6 +135,10 @@ async function parseOneFile(
   expected: ClientOrderFormat,
   fileMapping?: ClientLabelFileMapping | null,
 ): Promise<ClientOrderLine[]> {
+  if (isBartenderTemplateFile(file)) {
+    throw new Error(BARTENDER_TEMPLATE_UPLOAD_MESSAGE);
+  }
+
   const detected = await detectFileFormat(file);
   if (detected && detected !== expected) {
     throw new Error(

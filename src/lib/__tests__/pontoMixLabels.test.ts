@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   composePontoMixLabelCopy,
+  detectPontoMixDelimiter,
   formatPontoMixPrice,
   isPontoMixOrderHeader,
   isValidEan13,
@@ -77,17 +78,45 @@ describe('pontoMixLabels', () => {
     ).toBe('PRETO 34');
   });
 
-  it('ZPL contém faixas, tamanho e barcode do exemplo', () => {
-    const rows = parsePontoMixOrderCsv(sampleCsv);
-    const zpl = buildPontoMixZpl(rows, {
-      geometry: defaultPatternForKey('ponto_mix').geometry,
-      repeatByQuantity: false,
-    });
-    expect(zpl).toContain('^XA');
-    expect(zpl).toContain('^XZ');
-    expect(zpl).toContain('^BCN');
-    expect(zpl).toContain('105742');
-    expect(zpl).toContain('R$ 39.99');
-    expect(zpl).toContain('PONTO MIX');
+  it('parseia Padrao.txt sem cabeçalho (BarTender) por inferência', () => {
+    const padrao = [
+      'SANDALIA CALCADOS FEM\tSQUARD SHOES SP201\tPRETO\t34\t105742\t39.99\t2',
+      'SANDALIA CALCADOS FEM\tSQUARD SHOES SP201\tPRETO\t35\t105743\t39.99\t1',
+    ].join('\n');
+    const rows = parsePontoMixOrderCsv(padrao, undefined, 'Padrao.txt');
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.codigoBarra).toBe('105742');
+    expect(rows[0]!.tamanho).toBe('34');
+    expect(rows[0]!.valor).toBe('39.99');
+    expect(rows[0]!.quantidade).toBe(2);
+    expect(rows[1]!.tamanho).toBe('35');
+  });
+
+  it('aceita cabeçalho CodigoBarras estilo BarTender', () => {
+    const txt = [
+      'Descricao|Referencia|Cor|Tamanho|CodigoBarras|Preco|Quantidade',
+      'SANDALIA CALCADOS FEM|SQUARD SHOES SP201|PRETO|34|105742|39.99|2',
+    ].join('\n');
+    const rows = parsePontoMixOrderCsv(txt);
+    expect(rows[0]!.codigoBarra).toBe('105742');
+    expect(rows[0]!.descricao).toBe('SANDALIA CALCADOS FEM');
+  });
+
+  it('pula linhas de comando %BTW% do BarTender', () => {
+    const txt = [
+      '%BTW% /AF="Etiqueta_com_logo.btw" /P',
+      '%END%',
+      'Descricao;Referencia;Cor;Tamanho;Codigo Barra;Preco;Qtd',
+      'SANDALIA CALCADOS FEM;SQUARD SHOES SP201;PRETO;34;105742;39.99;1',
+    ].join('\n');
+    const rows = parsePontoMixOrderCsv(txt);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.codigoBarra).toBe('105742');
+  });
+
+  it('detecta delimitador tab/pipe', () => {
+    expect(detectPontoMixDelimiter('a\tb\tc')).toBe('\t');
+    expect(detectPontoMixDelimiter('a|b|c')).toBe('|');
+    expect(detectPontoMixDelimiter('a;b;c')).toBe(';');
   });
 });

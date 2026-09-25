@@ -1034,10 +1034,12 @@ export function ClientLabelingWorkspace() {
             title="Nenhum pedido importado"
             description={
               !pattern
-                ? 'Defina e salve ao menos um tipo de etiqueta para importar CSV/XLSX.'
+                ? 'Defina e salve ao menos um tipo de etiqueta para importar CSV/XLSX/Padrao.txt.'
                 : patternDirty
                   ? 'Salve o padrão antes de importar.'
-                  : 'Pode enviar vários arquivos de uma vez (Objetiva: 1 SKU por arquivo).'
+                  : pattern.key === 'ponto_mix'
+                    ? 'Envie o Padrao.txt (dados). O .btw é só o modelo BarTender da arte — não serve de pedido.'
+                    : 'Pode enviar vários arquivos de uma vez (Objetiva: 1 SKU por arquivo).'
             }
             action={
               <Button

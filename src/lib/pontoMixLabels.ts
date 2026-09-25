@@ -33,15 +33,58 @@ export interface PontoMixPdfOptions {
 }
 
 const FIELD_ALIASES: Record<keyof ClientLabelFileMapping['columns'], string[]> = {
-  descricao: ['descricao', 'descricao produto', 'produto', 'nome', 'sandalia'],
-  referencia: ['referencia', 'ref', 'modelo', 'sku'],
-  cor: ['cor', 'color'],
-  tamanho: ['tamanho', 'tam', 'size', 'numeracao'],
-  codigoBarra: ['codigo barra', 'codigo de barras', 'cod barras', 'ean', 'barcode', 'codigo'],
-  preco: ['preco', 'valor', 'price', 'vlr'],
-  quantidade: ['quantidade', 'qtd', 'qty', 'qtde'],
-  codProduto: ['cod produto', 'codigo produto', 'produto id', 'id'],
+  descricao: [
+    'descricao',
+    'descricao produto',
+    'descricao completa',
+    'produto',
+    'nome',
+    'sandalia',
+    'desc',
+  ],
+  referencia: ['referencia', 'ref', 'modelo', 'sku', 'referencia produto'],
+  cor: ['cor', 'color', 'cores'],
+  tamanho: ['tamanho', 'tam', 'size', 'numeracao', 'num', 'nro', 'numero', 'nr'],
+  codigoBarra: [
+    'codigo barra',
+    'codigo de barras',
+    'codigo barras',
+    'codigobarras',
+    'cod barras',
+    'codbarra',
+    'cod barra',
+    'ean',
+    'barcode',
+    'barras',
+    'gtin',
+    'codigo',
+  ],
+  preco: [
+    'preco',
+    'preco venda',
+    'preco varejo',
+    'valor',
+    'valor unitario',
+    'vlr',
+    'vlr unit',
+    'unitario',
+    'price',
+    'rs',
+  ],
+  quantidade: ['quantidade', 'qtd', 'qty', 'qtde', 'qtde etiquetas', 'pares'],
+  codProduto: ['cod produto', 'codigo produto', 'produto id', 'id', 'cod'],
 };
+
+/** Ordem posicional usada quando Padrao.txt/BarTender vem sem cabeçalho reconhecível. */
+export const PONTO_MIX_POSITIONAL_COLUMNS: (keyof ClientLabelFileMapping['columns'])[] = [
+  'descricao',
+  'referencia',
+  'cor',
+  'tamanho',
+  'codigoBarra',
+  'preco',
+  'quantidade',
+];
 
 function normalizeHeader(raw: string): string {
   return raw
@@ -75,6 +118,120 @@ function splitDelimited(line: string, delimiter: string): string[] {
   }
   out.push(atual);
   return out.map(c => c.trim());
+}
+
+/** Escolhe o delimitador mais frequente entre tab, pipe, ponto-e-vírgula e vírgula. */
+export function detectPontoMixDelimiter(line: string): string {
+  const counts: Array<{ delim: string; n: number }> = [
+    { delim: '\t', n: (line.match(/\t/g) ?? []).length },
+    { delim: '|', n: (line.match(/\|/g) ?? []).length },
+    { delim: ';', n: (line.match(/;/g) ?? []).length },
+    { delim: ',', n: (line.match(/,/g) ?? []).length },
+  ];
+  counts.sort((a, b) => b.n - a.n);
+  return counts[0]!.n > 0 ? counts[0]!.delim : ';';
+}
+
+function isBartenderCommandLine(line: string): boolean {
+  const t = line.trim().toUpperCase();
+  return t.startsWith('%BTW%') || t.startsWith('%END%') || t.startsWith('%PAC%');
+}
+
+function looksLikeShoeSize(raw: string): boolean {
+  const n = Number(String(raw).replace(',', '.').trim());
+  return Number.isFinite(n) && n >= 15 && n <= 48 && Number.isInteger(n);
+}
+
+function looksLikePrice(raw: string): boolean {
+  const t = String(raw).trim();
+  if (!t) return false;
+  if (/r\$/i.test(t)) return true;
+  // Inteiro puro não é preço (bate com qtd/tamanho); exige decimal.
+  if (/^\d+$/.test(t)) return false;
+  const cleaned = t
+    .replace(/r\$\s*/i, '')
+    .replace(/\s/g, '')
+    .replace(/\./g, '')
+    .replace(',', '.');
+  const n = Number(cleaned);
+  return Number.isFinite(n) && n > 0 && n < 10_000;
+}
+
+function looksLikeBarcode(raw: string): boolean {
+  const t = String(raw).trim();
+  return /^\d{4,14}$/.test(t);
+}
+
+/**
+ * Infere índices de coluna a partir das linhas de dados quando o cabeçalho
+ * não casa com os aliases (caso típico do Padrao.txt do BarTender).
+ */
+export function inferPontoMixColumnIndexes(
+  dataRows: string[][],
+): Partial<Record<keyof ClientLabelFileMapping['columns'], number>> {
+  if (dataRows.length === 0) return {};
+  const width = Math.max(...dataRows.map(r => r.length));
+  const result: Partial<Record<keyof ClientLabelFileMapping['columns'], number>> = {};
+  const taken = new Set<number>();
+
+  const score = (col: number, pred: (v: string) => boolean) =>
+    dataRows.reduce((acc, row) => acc + (pred(row[col] ?? '') ? 1 : 0), 0);
+
+  const pickBest = (
+    field: keyof ClientLabelFileMapping['columns'],
+    pred: (v: string) => boolean,
+    minHits: number,
+  ) => {
+    let best = -1;
+    let bestScore = 0;
+    for (let c = 0; c < width; c++) {
+      if (taken.has(c)) continue;
+      const s = score(c, pred);
+      if (s > bestScore) {
+        bestScore = s;
+        best = c;
+      }
+    }
+    if (best >= 0 && bestScore >= minHits) {
+      result[field] = best;
+      taken.add(best);
+    }
+  };
+
+  const minHits = Math.max(1, Math.ceil(dataRows.length * 0.5));
+  pickBest('tamanho', looksLikeShoeSize, minHits);
+  pickBest('codigoBarra', looksLikeBarcode, minHits);
+  pickBest('preco', looksLikePrice, minHits);
+  pickBest('quantidade', v => {
+    const n = Number(String(v).replace(',', '.'));
+    return Number.isFinite(n) && n > 0 && n <= 50_000 && !looksLikePrice(v);
+  }, minHits);
+
+  // Texto longo → descrição; próximo texto → referência/cor.
+  const textScores = Array.from({ length: width }, (_, c) => {
+    if (taken.has(c)) return { c, avg: 0 };
+    const avg =
+      dataRows.reduce((acc, row) => acc + String(row[c] ?? '').trim().length, 0) /
+      dataRows.length;
+    return { c, avg };
+  })
+    .filter(x => x.avg >= 2)
+    .sort((a, b) => b.avg - a.avg);
+
+  if (textScores[0] && result.descricao == null) {
+    result.descricao = textScores[0].c;
+    taken.add(textScores[0].c);
+  }
+  if (textScores[1] && result.referencia == null) {
+    result.referencia = textScores[1].c;
+    taken.add(textScores[1].c);
+  }
+  if (textScores[2] && result.cor == null) {
+    result.cor = textScores[2].c;
+    taken.add(textScores[2].c);
+  }
+
+  return result;
 }
 
 function indexOfMappedOrAlias(
@@ -120,11 +277,15 @@ function buildRows(
   linhas: string[][],
   mapping: ClientLabelFileMapping | undefined,
   sourceFile?: string,
+  inferred?: Partial<Record<keyof ClientLabelFileMapping['columns'], number>>,
 ): ClientOrderLine[] {
   const normalized = header.map(normalizeHeader);
   const pick = (linha: string[], field: keyof ClientLabelFileMapping['columns']) => {
-    const i = indexOfMappedOrAlias(normalized, field, mapping);
-    return i >= 0 ? (linha[i] ?? '').trim() : '';
+    const mapped = indexOfMappedOrAlias(normalized, field, mapping);
+    if (mapped >= 0) return (linha[mapped] ?? '').trim();
+    const inferredIdx = inferred?.[field];
+    if (inferredIdx != null && inferredIdx >= 0) return (linha[inferredIdx] ?? '').trim();
+    return '';
   };
 
   const rows: ClientOrderLine[] = [];
@@ -151,33 +312,117 @@ function buildRows(
   return rows;
 }
 
+function buildRowsPositional(
+  linhas: string[][],
+  sourceFile?: string,
+): ClientOrderLine[] {
+  const inferred = inferPontoMixColumnIndexes(linhas);
+  const hasUseful =
+    inferred.codigoBarra != null || inferred.tamanho != null || inferred.preco != null;
+  if (!hasUseful) {
+    // Fallback: ordem canônica do esqueleto (arte Ponto Mix).
+    const rows: ClientOrderLine[] = [];
+    for (const linha of linhas) {
+      const get = (field: keyof ClientLabelFileMapping['columns']) => {
+        const i = PONTO_MIX_POSITIONAL_COLUMNS.indexOf(field);
+        return i >= 0 ? (linha[i] ?? '').trim() : '';
+      };
+      const codigoBarra = get('codigoBarra') || get('codProduto');
+      const tamanho = get('tamanho').toUpperCase();
+      if (!codigoBarra && !tamanho) continue;
+      rows.push({
+        tamanho,
+        cor: get('cor').toUpperCase(),
+        referencia: (get('referencia') || codigoBarra).toUpperCase(),
+        codProduto: get('codProduto') || codigoBarra,
+        codigoBarra: codigoBarra || get('referencia'),
+        quantidade: parseQuantity(get('quantidade')),
+        descricao: get('descricao').toUpperCase(),
+        valor: get('preco'),
+        sourceFile,
+      });
+    }
+    if (rows.length === 0) {
+      throw new Error(
+        'Não reconheci as colunas do Padrao.txt. Confira se há código, tamanho e preço (separados por ; , tab ou |).',
+      );
+    }
+    return rows;
+  }
+  return buildRows([], linhas, undefined, sourceFile, inferred);
+}
+
 export function parsePontoMixOrderCsv(
   texto: string,
   mapping?: ClientLabelFileMapping,
   sourceFile?: string,
 ): ClientOrderLine[] {
-  const linhas = texto.split(/\r?\n/).filter(l => l.trim().length > 0);
-  if (linhas.length < 2) throw new Error('Arquivo Ponto Mix vazio ou sem linhas de dados.');
-  const delimitador =
-    (linhas[0]!.match(/;/g) ?? []).length >= (linhas[0]!.match(/,/g) ?? []).length ? ';' : ',';
-  const header = splitDelimited(linhas[0]!, delimitador);
-  if (!isPontoMixOrderHeader(header, mapping)) {
-    throw new Error(
-      'Cabeçalho não parece pedido Ponto Mix (precisa de código de barras/código e tamanho ou preço).',
-    );
+  const linhasBrutas = texto
+    .split(/\r?\n/)
+    .map(l => l.replace(/^\uFEFF/, ''))
+    .filter(l => l.trim().length > 0 && !isBartenderCommandLine(l));
+  if (linhasBrutas.length === 0) {
+    throw new Error('Arquivo Ponto Mix vazio ou sem linhas de dados.');
   }
-  return buildRows(
-    header,
-    linhas.slice(1).map(l => splitDelimited(l, delimitador)),
-    mapping,
-    sourceFile,
+
+  const delimitador = detectPontoMixDelimiter(linhasBrutas[0]!);
+  const matriz = linhasBrutas.map(l => splitDelimited(l, delimitador));
+
+  // Procura a primeira linha que pareça cabeçalho Ponto Mix (pula título "Padrao" etc.).
+  let headerIdx = matriz.findIndex(cells => isPontoMixOrderHeader(cells, mapping));
+  if (headerIdx >= 0) {
+    return buildRows(matriz[headerIdx]!, matriz.slice(headerIdx + 1), mapping, sourceFile);
+  }
+
+  // Cabeçalho parcial (código+tamanho sem preço, ou só com mapping): ainda tenta.
+  headerIdx = matriz.findIndex(cells => {
+    const normalized = cells.map(normalizeHeader);
+    const hasCode =
+      indexOfMappedOrAlias(normalized, 'codigoBarra', mapping) >= 0 ||
+      indexOfMappedOrAlias(normalized, 'codProduto', mapping) >= 0;
+    const hasSize = indexOfMappedOrAlias(normalized, 'tamanho', mapping) >= 0;
+    return hasCode && hasSize;
+  });
+  if (headerIdx >= 0) {
+    const data = matriz.slice(headerIdx + 1);
+    const inferred = inferPontoMixColumnIndexes(data);
+    return buildRows(matriz[headerIdx]!, data, mapping, sourceFile, inferred);
+  }
+
+  // Padrao.txt / BarTender sem cabeçalho reconhecível → inferência pelas células.
+  if (matriz.length >= 1 && matriz.some(r => r.length >= 2)) {
+    const first = matriz[0]!;
+    const firstLooksLikeData =
+      first.some(looksLikeBarcode) || first.some(looksLikeShoeSize) || first.some(looksLikePrice);
+    const dataOnly = firstLooksLikeData ? matriz : matriz.slice(1);
+    if (dataOnly.length === 0) {
+      throw new Error(
+        'Arquivo Ponto Mix só tem cabeçalho — falta linha de dados (código/tamanho/preço).',
+      );
+    }
+    return buildRowsPositional(dataOnly, sourceFile);
+  }
+
+  throw new Error(
+    'Cabeçalho não parece pedido Ponto Mix (precisa de código, tamanho e preço — ou um Padrao.txt com esses dados).',
   );
 }
+
+/** Modelo BarTender (.btw) — é o layout da etiqueta, não o arquivo de pedido. */
+export function isBartenderTemplateFile(file: File): boolean {
+  return file.name.toLowerCase().endsWith('.btw');
+}
+
+export const BARTENDER_TEMPLATE_UPLOAD_MESSAGE =
+  'Etiqueta_com_logo.btw é o modelo BarTender da arte (já recriado no esqueleto Ponto Mix). Para gerar etiquetas, envie o Padrao.txt ou a planilha/CSV do pedido.';
 
 export async function parsePontoMixOrderFile(
   file: File,
   mapping?: ClientLabelFileMapping,
 ): Promise<ClientOrderLine[]> {
+  if (isBartenderTemplateFile(file)) {
+    throw new Error(BARTENDER_TEMPLATE_UPLOAD_MESSAGE);
+  }
   const nome = file.name.toLowerCase();
   if (nome.endsWith('.xlsx') || nome.endsWith('.xls')) {
     const buffer = await file.arrayBuffer();
@@ -197,12 +442,26 @@ export async function parsePontoMixOrderFile(
       .slice(matriz.indexOf(headerRow) + 1)
       .filter(l => l.some(c => String(c ?? '').trim()))
       .map(l => l.map(c => String(c ?? '')));
-    if (!isPontoMixOrderHeader(header, mapping)) {
-      throw new Error(
-        'Cabeçalho não parece pedido Ponto Mix (precisa de código de barras/código e tamanho ou preço).',
+    if (isPontoMixOrderHeader(header, mapping)) {
+      return buildRows(header, data, mapping, file.name);
+    }
+    const normalized = header.map(normalizeHeader);
+    const hasCode =
+      indexOfMappedOrAlias(normalized, 'codigoBarra', mapping) >= 0 ||
+      indexOfMappedOrAlias(normalized, 'codProduto', mapping) >= 0;
+    const hasSize = indexOfMappedOrAlias(normalized, 'tamanho', mapping) >= 0;
+    if (hasCode && hasSize) {
+      return buildRows(header, data, mapping, file.name, inferPontoMixColumnIndexes(data));
+    }
+    if (data.length > 0) {
+      return buildRowsPositional(
+        [header, ...data].filter(r => r.some(c => String(c).trim())),
+        file.name,
       );
     }
-    return buildRows(header, data, mapping, file.name);
+    throw new Error(
+      'Cabeçalho não parece pedido Ponto Mix (precisa de código, tamanho e preço).',
+    );
   }
   const texto = decodeOrderBytes(await file.arrayBuffer());
   return parsePontoMixOrderCsv(texto, mapping, file.name);

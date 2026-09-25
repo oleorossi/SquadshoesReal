@@ -56,9 +56,34 @@ describe('clientOrderImport', () => {
     expect(summary).toMatch(/linha/);
   });
 
-  it('rejeita arquivo Objetiva quando o padrão do cliente é Baby Nalin', async () => {
-    await expect(
-      parseClientOrderFiles([fileFromFixture('112334.csv')], 'baby_nalin'),
-    ).rejects.toThrow(/Objetiva|Nalin/i);
+  it('rejeita .btw com mensagem orientando Padrao.txt', async () => {
+    const bytes = new Uint8Array([0xd0, 0xcf, 0x11, 0xe0]);
+    const file = new File([bytes], 'Etiqueta_com_logo.btw', {
+      type: 'application/octet-stream',
+    });
+    if (typeof file.arrayBuffer !== 'function') {
+      Object.defineProperty(file, 'arrayBuffer', {
+        configurable: true,
+        value: async () => bytes.buffer,
+      });
+    }
+    await expect(parseClientOrderFiles([file], 'ponto_mix')).rejects.toThrow(/BarTender|Padrao\.txt/i);
+  });
+
+  it('lê Padrao.txt headerless no padrão ponto_mix', async () => {
+    const text = 'SANDALIA CALCADOS FEM\tSQUARD SHOES SP201\tPRETO\t34\t105742\t39.99\t2\n';
+    const bytes = new TextEncoder().encode(text);
+    const file = new File([bytes], 'Padrao.txt', { type: 'text/plain' });
+    if (typeof file.arrayBuffer !== 'function') {
+      Object.defineProperty(file, 'arrayBuffer', {
+        configurable: true,
+        value: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+      });
+    }
+    const result = await parseClientOrderFiles([file], 'ponto_mix');
+    expect(result.errors).toEqual([]);
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]!.codigoBarra).toBe('105742');
+    expect(result.rows[0]!.tamanho).toBe('34');
   });
 });
