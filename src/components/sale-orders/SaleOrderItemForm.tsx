@@ -46,6 +46,7 @@ import { toast } from 'sonner';
 import { type ReferenceMaterialVariant, type VariantSummary } from '@/hooks/useReferenceMaterialVariants';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { normalizeForSearch, searchMatchesAllTerms } from '@/lib/searchUtils';
+import { calculateGradeBasedDm2 } from '@/lib/materialConsumption';
 import {
   getStrapSourcingSelection,
   getStrapSourcingOverride,
@@ -380,7 +381,9 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
         // variant_drives_*: quais componentes seguem o MATERIAL PRINCIPAL da
         // variante (mig 20261027120000). Sem eles a tela não consegue espelhar a
         // cascata do motor e ofereceria as cores do grupo errado.
-        .select('upper_material, upper_material_group_id, upper_material_product_id, upper_consumption, dublagem_glue_id, lining_material, insole_material, lining_accessories, components_accessories, sole_group_id, sole_material, has_straps, variant_drives_upper, variant_drives_lining')
+        // upper_consumption + upper_consumption_per_size: preview de dublagem
+        // usa calculateGradeBasedDm2 (nunca só o escalar — ver noScalarOnlyConsumption).
+        .select('upper_material, upper_material_group_id, upper_material_product_id, upper_consumption, upper_consumption_per_size, dublagem_glue_id, lining_material, insole_material, lining_accessories, components_accessories, sole_group_id, sole_material, has_straps, variant_drives_upper, variant_drives_lining')
         .eq('id', item.reference_id!)
         .single();
       if (error) throw error;
@@ -388,6 +391,20 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     },
     staleTime: 60_000,
   });
+
+  /** dm² total de cabedal p/ preview de faces — grade × per-size, escalar só como fallback. */
+  const upperDm2TotalForDublagem = useMemo(() => {
+    if (!sheetSpecs) return 0;
+    const perSize = (sheetSpecs as { upper_consumption_per_size?: Record<string, number> | null })
+      .upper_consumption_per_size;
+    const hasPerSize = perSize && Object.keys(perSize).length > 0;
+    return calculateGradeBasedDm2(
+      { grade, fichas, quantity: totalPairs },
+      Number((sheetSpecs as { upper_consumption?: number | null }).upper_consumption) || 0,
+      null,
+      hasPerSize ? perSize : null,
+    );
+  }, [sheetSpecs, grade, fichas, totalPairs]);
 
   const { data: soleSizeRange } = useQuery({
     queryKey: ['sole_size_range_specific', sheetSpecs?.sole_group_id, sheetSpecs?.sole_material],
@@ -2286,8 +2303,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
             || null
           }
           pvColor={item.color || ''}
-          pairs={totalPairs}
-          upperConsumptionDm2PerPair={Number((sheetSpecs as { upper_consumption?: number } | null)?.upper_consumption) || 0}
+          upperDm2Total={upperDm2TotalForDublagem}
           dublagemMode={item.dublagem_mode ?? null}
           glueId={(sheetSpecs as { dublagem_glue_id?: string | null } | null)?.dublagem_glue_id ?? null}
           onModeChange={(mode) => {
