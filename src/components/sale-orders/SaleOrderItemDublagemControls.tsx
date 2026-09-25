@@ -15,6 +15,23 @@ interface Props {
   gluePricePerM?: number | null;
 }
 
+interface LayerRow {
+  component_group_id: string | null;
+  is_color_source: boolean;
+  component_label?: string | null;
+  role?: string | null;
+  display_order?: number | null;
+}
+
+interface FaceSheetRow {
+  id: string;
+  group_id: string | null;
+  product_id?: string | null;
+  dimensions_width?: number | null;
+  dimensions_length?: number | null;
+  dimensions_unit?: string | null;
+}
+
 /**
  * Toggle interna/externa + preview dm²/m das faces.
  * Visível só quando o cabedal resolvido tem product_group_layers (≥2).
@@ -40,7 +57,7 @@ export default function SaleOrderItemDublagemControls({
         .eq('composite_group_id', upperGroupId)
         .order('display_order');
       if (error) throw error;
-      return data || [];
+      return (data || []) as LayerRow[];
     },
   });
 
@@ -50,13 +67,13 @@ export default function SaleOrderItemDublagemControls({
     queryKey: [
       'dublagem-face-sheets',
       upperGroupId,
-      layersQuery.data?.map((l: any) => l.component_group_id).join(','),
+      layersQuery.data?.map((l) => l.component_group_id).join(','),
     ],
     enabled: isComposite,
     queryFn: async () => {
       const groupIds = (layersQuery.data || [])
-        .map((l: any) => l.component_group_id)
-        .filter(Boolean) as string[];
+        .map((l) => l.component_group_id)
+        .filter((id): id is string => !!id);
       if (groupIds.length === 0) return { external: null, internal: null };
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase as any)
@@ -64,10 +81,11 @@ export default function SaleOrderItemDublagemControls({
         .select('id,group_id,product_id,dimensions_width,dimensions_length,dimensions_unit')
         .in('group_id', groupIds);
       if (error) throw error;
-      const extGroup = (layersQuery.data || []).find((l: any) => l.is_color_source)?.component_group_id;
-      const intGroup = (layersQuery.data || []).find((l: any) => !l.is_color_source)?.component_group_id;
+      const sheets = (data || []) as FaceSheetRow[];
+      const extGroup = (layersQuery.data || []).find((l) => l.is_color_source)?.component_group_id;
+      const intGroup = (layersQuery.data || []).find((l) => !l.is_color_source)?.component_group_id;
       const pick = (gid: string | null | undefined) =>
-        (data || []).find((s: any) => s.group_id === gid) || null;
+        sheets.find((s) => s.group_id === gid) || null;
       return { external: pick(extGroup), internal: pick(intGroup) };
     },
   });
