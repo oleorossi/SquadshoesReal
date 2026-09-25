@@ -2214,7 +2214,7 @@ export default function SaleOrders() {
                               <div className="flex flex-col gap-1 max-w-[160px]">
                                 <Badge
                                   variant="outline"
-                                  className={`text-xs gap-1 ${isFailed ? 'bg-destructive/10 text-destructive border-destructive/30' : 'bg-amber-500/10 text-amber-700 border-amber-500/30'}`}
+                                  className={`text-xs gap-1 ${isFailed ? 'bg-destructive/10 text-destructive border-destructive/30' : 'bg-amber-500/10 text-amber-600 border-amber-500/30'}`}
                                 >
                                   {isProcessing
                                     ? <Loader2 className="h-3 w-3 animate-spin" aria-label="Processando" />
