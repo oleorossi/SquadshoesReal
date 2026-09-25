@@ -3053,7 +3053,10 @@ export default function SaleOrders() {
         order={dupOrderId ? orders.find(o => o.id === dupOrderId) || null : null}
         clients={clients}
         economicGroups={economicGroups}
-        references={references as any}
+        references={(references ?? []).flatMap((row) => {
+          const r = row as unknown as { id?: string; code?: string | null; name?: string | null };
+          return r?.id ? [{ id: r.id, code: r.code, name: r.name }] : [];
+        })}
         sourceClientId={dupSourceClientId}
         alreadyCopiedClientIds={alreadyCopiedClientIds}
         createOrder={createOrder}

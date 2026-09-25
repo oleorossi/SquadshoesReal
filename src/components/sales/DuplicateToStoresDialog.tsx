@@ -211,12 +211,15 @@ export default function DuplicateToStoresDialog({
     ] as string[];
     let activeVariantIds = new Set<string>();
     if (variantIdsInOrder.length > 0) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- types gerados sem reference_material_variants neste client
       const { data: activeVariants } = await (supabase as any)
         .from('reference_material_variants')
         .select('id')
         .in('id', variantIdsInOrder)
         .eq('active', true);
-      activeVariantIds = new Set((activeVariants || []).map((v: any) => v.id));
+      activeVariantIds = new Set(
+        ((activeVariants || []) as Array<{ id: string }>).map((v) => v.id),
+      );
       const staleCount = variantIdsInOrder.filter((id) => !activeVariantIds.has(id)).length;
       if (staleCount > 0) {
         toast.warning(
@@ -247,7 +250,7 @@ export default function DuplicateToStoresDialog({
         nfe: '',
         remessa: '',
         is_factoring: false,
-        factoring_config_id: null as any,
+        factoring_config_id: '',
         packaging_mode: (order.packaging_mode || 'individual_amarrado') as PackagingMode,
       };
       const newItems: SaleOrderItemFormData[] = picked.map((i) => {
@@ -259,7 +262,7 @@ export default function DuplicateToStoresDialog({
           unit_price: Number(i.unit_price) || 0,
           quantity: Number(i.quantity) || 0,
           fichas: i.fichas || 1,
-          strap_colors: (i.strap_colors as any[]) || [],
+          strap_colors: Array.isArray(i.strap_colors) ? i.strap_colors : [],
           material_variant_id: vid && activeVariantIds.has(vid) ? vid : null,
         };
       });
@@ -273,8 +276,9 @@ export default function DuplicateToStoresDialog({
           client_request_id: dupRequestId,
         });
         successCount++;
-      } catch (err: any) {
-        failures.push(`${client.razao_social}: ${err?.message || 'erro desconhecido'}`);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'erro desconhecido';
+        failures.push(`${client.razao_social}: ${msg}`);
       }
     }
 
