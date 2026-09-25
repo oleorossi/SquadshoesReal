@@ -1,7 +1,7 @@
 import { FormSkeleton } from '@/components/layout/PageSkeleton';
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, FileMagnifyingGlass as FileSearch, ArrowCounterClockwise as RotateCcw, Handshake, CheckCircle, Warning as AlertTriangle } from '@phosphor-icons/react';
+import { ArrowLeft, FileMagnifyingGlass as FileSearch, ArrowCounterClockwise as RotateCcw, Handshake, Warning as AlertTriangle } from '@phosphor-icons/react';
 // `newISO` é date-only: `new Date(iso)` parseia UTC e o toast confirmava o dia
 // ANTERIOR ao que era gravado em `delivery_deadline`.
 import { formatDateBR } from '@/lib/dateOnly';
@@ -67,7 +67,8 @@ import {
   type MinBillingResult,
 } from '@/lib/minBillingDate';
 import { MinBillingDateSuggestionDialog } from '@/components/sale-orders/MinBillingDateSuggestionDialog';
-import { OverrideOutsourceCosturaDialog } from '@/components/sale-orders/OverrideOutsourceCosturaDialog';
+// OverrideOutsourceCosturaDialog removido: distribuição de cabedal abre na APROVAÇÃO
+// (PostApprovalCabedalDistributeScreen), não no create.
 import { monthWeekToISODate, isoToMonthWeek } from '@/lib/billingWeek';
 import {
   listMissingTechnicalStrapSnapshots,
@@ -1093,18 +1094,11 @@ export default function SaleOrderForm() {
     minDateISO: string;
   }>(null);
   const [billingOverrideReason, setBillingOverrideReason] = useState('');
-  const [outsourceCosturaOpen, setOutsourceCosturaOpen] = useState(false);
-  const [outsourceCosturaPvId, setOutsourceCosturaPvId] = useState<string | null>(null);
-  const [outsourceCosturaPendingNav, setOutsourceCosturaPendingNav] = useState<boolean>(false);
-  // Atalho "Gerar OS por Pedido" — abre o assistente de terceirização já com este
-  // PV selecionado. genOsNavAfter=true quando aberto na finalização (fechar → /sales).
+  // Atalho "Gerar OS por Pedido" no edit — assistente manual (não pós-create).
   const queryClient = useQueryClient();
   const [genOsOpen, setGenOsOpen] = useState(false);
   const [genOsPvId, setGenOsPvId] = useState<string | null>(null);
   const [genOsNavAfter, setGenOsNavAfter] = useState(false);
-  const [postSaveOsOpen, setPostSaveOsOpen] = useState(false);
-  const [postSaveOsPvId, setPostSaveOsPvId] = useState<string | null>(null);
-  const capacityOutsourceAfterSaveRef = useRef(false);
   // Live min billing date for the persistent red badge in the form panel.
   // Edit mode → server compute_min_billing_date(id). New mode → frontend
   // computeMinBillingForNewOrder over current items. Recomputed with debounce.
@@ -1569,7 +1563,6 @@ export default function SaleOrderForm() {
     // A origem das tiras já foi escolhida por linha no formulário. Ao salvar,
     // trigger + fila canônicos fazem netting, lote e compra; não existe segundo
     // escritor de OC/OS no cliente.
-    const isOverride = !!(f as any).manual_billing_override;
     const handlePostSave = async (pvId: string | undefined, persistedVersion?: number) => {
       if (editorChangedDuringSave(submittedRevision, latestEditorRevisionRef.current)) {
         if (!isEdit && pvId) {
@@ -1592,8 +1585,7 @@ export default function SaleOrderForm() {
       }
 
       // Salvou: desarma a guarda. Sem isto o beforeunload continuaria disparando
-      // depois do save, e os diálogos de pós-save (tiras, OS, costura) navegam
-      // sozinhos — o usuário levaria um aviso de "alterações não salvas" logo
+      // depois do save — o usuário levaria um aviso de "alterações não salvas" logo
       // depois de o toast dizer que salvou.
       postSaveDivergedRef.current = false;
       createdOrderContinuationRef.current = null;
@@ -1610,28 +1602,9 @@ export default function SaleOrderForm() {
       if (productionItems.some((item) => Array.isArray(item.strap_colors) && item.strap_colors.length > 0)) {
         toast.info('Demanda de tiras enviada ao processamento canônico. Acompanhe em Central de Tiras → Operação → Demandas.');
       }
-      if (isOverride) {
-        setOutsourceCosturaPvId(pvId);
-        setOutsourceCosturaPendingNav(true);
-        setOutsourceCosturaOpen(true);
-      } else {
-        if (capacityOutsourceAfterSaveRef.current) {
-          capacityOutsourceAfterSaveRef.current = false;
-          setGenOsPvId(pvId);
-          setGenOsNavAfter(true);
-          setGenOsOpen(true);
-          return;
-        }
-        // Atalho de finalização: se o pedido tem algum serviço terceirizável pendente,
-        // oferece gerar OS por pedido antes de sair (best-effort — falha não bloqueia).
-        try {
-          const { data: outLines } = await (supabase as any).rpc('get_pv_outsourceable_lines', { p_sale_order_id: pvId });
-          const actionable = (outLines || []).some((l: any) =>
-            !l.already_has_os && String(l.sector_status || '').toLowerCase() !== 'concluido');
-          if (actionable) { setPostSaveOsPvId(pvId); setPostSaveOsOpen(true); return; }
-        } catch { /* segue pro fluxo normal */ }
-        navigate('/sales');
-      }
+      // Distribuição Prep. cabedal / OS de fábrica: só na APROVAÇÃO (lista de PVs),
+      // não no create. Spec aprovacao-distribuicao-prep-cabedal.
+      navigate('/sales');
     };
 
     const effectiveOrderId = resolveSaleOrderMutationTarget(id, createdOrderContinuationRef.current);
@@ -2472,11 +2445,8 @@ export default function SaleOrderForm() {
 
   const handleCapacityKeepDate = () => {
     setCapacityDialogOpen(false);
-    if (!capacityResult) { doSubmit(); return; }
-    // A OS precisa nascer depois do PV e das OPs. O fluxo antigo tentava criar
-    // antes do save, sem OP, sem tarifa e sem vínculo confiável. Guardamos a
-    // escolha e abrimos o assistente canônico assim que o pedido for persistido.
-    capacityOutsourceAfterSaveRef.current = true;
+    // Intenção de terceirizar na capacidade: gravada no PV; a distribuição
+    // concreta (Prep. cabedal) acontece na APROVAÇÃO, não no create.
     doSubmit();
   };
 
@@ -2910,18 +2880,6 @@ export default function SaleOrderForm() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <OverrideOutsourceCosturaDialog
-        open={outsourceCosturaOpen}
-        saleOrderId={outsourceCosturaPvId}
-        onClose={() => {
-          setOutsourceCosturaOpen(false);
-          if (outsourceCosturaPendingNav) {
-            setOutsourceCosturaPendingNav(false);
-            navigate('/sales');
-          }
-        }}
-      />
-
       <StrapSourcingAdminOverrideDialog
         target={strapOverrideTarget}
         onClose={() => setStrapOverrideTarget(null)}
@@ -3040,31 +2998,6 @@ export default function SaleOrderForm() {
           }
         }}
       />
-
-      {/* Atalho de finalização: oferece gerar OS de terceirização deste pedido */}
-      <Dialog
-        open={postSaveOsOpen}
-        onOpenChange={(o) => { if (!o) { setPostSaveOsOpen(false); navigate('/sales'); } }}
-      >
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <CheckCircle className="h-5 w-5 text-green-600" weight="fill" /> Pedido salvo
-            </DialogTitle>
-            <DialogDescription>
-              Quer colocar algum serviço deste pedido na rua agora? Ex.: forração de palmilha, solagem.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => { setPostSaveOsOpen(false); navigate('/sales'); }}>
-              Concluir
-            </Button>
-            <Button onClick={() => { setPostSaveOsOpen(false); setGenOsPvId(postSaveOsPvId); setGenOsNavAfter(true); setGenOsOpen(true); }}>
-              <Handshake className="h-4 w-4 mr-1" /> Gerar OS por Pedido
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <GenerateServiceOrdersWizard
         open={genOsOpen}

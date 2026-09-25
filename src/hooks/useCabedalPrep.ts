@@ -62,6 +62,8 @@ export interface CabedalPrepFilters {
   billingWeek?: string | null;
   materialType?: string | null;
   view?: 'deadline' | 'contractor' | 'pv';
+  /** Quando setado, restringe às demandas destes PVs (tela pós-aprovação). */
+  saleOrderIds?: string[] | null;
 }
 
 function normColor(c: string | null | undefined): string {
@@ -124,8 +126,13 @@ async function attachProductImages(
 }
 
 export function useCabedalPrepDemands(filters: CabedalPrepFilters = {}) {
+  const saleOrderIds = filters.saleOrderIds?.filter(Boolean) ?? null;
   return useQuery({
-    queryKey: cabedalPrepKeys.demands(filters as Record<string, string | null>),
+    queryKey: cabedalPrepKeys.demands({
+      ...(filters as Record<string, string | null>),
+      saleOrderIds: saleOrderIds?.join(',') ?? null,
+    }),
+    enabled: saleOrderIds == null || saleOrderIds.length > 0,
     queryFn: async () => {
       let q = supabase
         .from('cabedal_prep_demands' as never)
@@ -142,6 +149,9 @@ export function useCabedalPrepDemands(filters: CabedalPrepFilters = {}) {
 
       if (filters.color) q = q.ilike('color', filters.color);
       if (filters.billingWeek) q = q.eq('billing_week', filters.billingWeek);
+      if (saleOrderIds && saleOrderIds.length > 0) {
+        q = q.in('sale_order_id', saleOrderIds);
+      }
 
       const { data, error } = await q;
       if (error) throw error;
@@ -150,6 +160,20 @@ export function useCabedalPrepDemands(filters: CabedalPrepFilters = {}) {
     },
     staleTime: 30_000,
   });
+}
+
+/** Sincroniza demandas de um ou mais PVs já aprovados (tela pós-aprovação). */
+export async function syncCabedalPrepDemandsForSaleOrders(
+  saleOrderIds: string[],
+): Promise<void> {
+  const ids = [...new Set(saleOrderIds.filter(Boolean))];
+  for (const id of ids) {
+    const { error } = await supabase.rpc(
+      'backfill_cabedal_prep_demands' as never,
+      { p_sale_order_id: id } as never,
+    );
+    if (error) throw error;
+  }
 }
 
 export function useCabedalPrepContractors() {

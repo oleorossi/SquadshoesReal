@@ -58,6 +58,11 @@ const OrderPhotosDialog = lazy(() => import('@/components/sale-orders/OrderPhoto
 const OperatorFichasDialog = lazy(() => import('@/components/sale-orders/OperatorFichasDialog'));
 const GenerateServiceOrdersWizard = lazy(() => import('@/components/contractors/GenerateServiceOrdersWizard').then(m => ({ default: m.GenerateServiceOrdersWizard })));
 const GeneratePurchaseOrdersDialog = lazy(() => import('@/components/purchase/GeneratePurchaseOrdersDialog'));
+const PostApprovalCabedalDistributeScreen = lazy(() =>
+  import('@/components/sale-orders/PostApprovalCabedalDistributeScreen').then((m) => ({
+    default: m.PostApprovalCabedalDistributeScreen,
+  })),
+);
 import PurchaseOrdersForPvCard from '@/components/purchase/PurchaseOrdersForPvCard';
 import { PvOutdatedBadge } from '@/components/sale-orders/PvOutdatedBadge';
 import { RevertInvoiceButton } from '@/components/sale-orders/RevertInvoiceButton';
@@ -363,6 +368,27 @@ export default function SaleOrders() {
   // Canal "Compras por Pedido" — alvo do modal de geração de OCs (1 ou N PVs).
   // netOfStock: true = comprar só a falta; false = necessidade bruta (Consumo total).
   const [poGenTarget, setPoGenTarget] = useState<{ ids: string[]; numbers: string[]; netOfStock: boolean } | null>(null);
+
+  // Pós-aprovação: tela full-bleed de Prep. cabedal (costura_cabedal + aviamento).
+  const [postApprovalDistribute, setPostApprovalDistribute] = useState<{
+    saleOrderIds: string[];
+    reportOrders: Array<{ id: string; order_number: string; delivery_deadline?: string | null }>;
+  } | null>(null);
+
+  const openPostApprovalDistribute = (
+    orders: Array<{ id: string; order_number: string; delivery_deadline?: string | null }>,
+  ) => {
+    const unique = new Map<string, { id: string; order_number: string; delivery_deadline?: string | null }>();
+    for (const o of orders) {
+      if (o?.id) unique.set(o.id, o);
+    }
+    const list = [...unique.values()];
+    if (list.length === 0) return;
+    setPostApprovalDistribute({
+      saleOrderIds: list.map((o) => o.id),
+      reportOrders: list,
+    });
+  };
 
   // Busca NÃO persiste: reseta ao sair e voltar pra tela (useState remonta
   // limpo). Antes usava usePersistedState com a chave 'searchTerm' — a MESMA
@@ -898,6 +924,14 @@ export default function SaleOrders() {
       if (otherFailures > 0) toast.error(message);
       else toast.warning(message);
     }
+    if (status === 'Aprovado' && updated > 0) {
+      const okOrders = ids
+        .map((id, index) => (results[index]?.status === 'fulfilled'
+          ? filteredOrders.find((o) => o.id === id) || { id, order_number: id, delivery_deadline: null }
+          : null))
+        .filter(Boolean) as Array<{ id: string; order_number: string; delivery_deadline?: string | null }>;
+      openPostApprovalDistribute(okOrders);
+    }
   };
 
   // Generate next 6 months for bulk week/month change
@@ -1323,6 +1357,7 @@ export default function SaleOrders() {
     let opsCreated = 0;
     let readinessBlockedCount = 0;
     const errors: string[] = [];
+    const approvedOrders: Array<{ id: string; order_number: string; delivery_deadline?: string | null }> = [];
 
     // A aprovação em lote é apenas coordenação de chamadas seriais ao mesmo
     // comando canônico usado na linha individual. Status, OPs, plano material,
@@ -1336,6 +1371,11 @@ export default function SaleOrders() {
           });
           ordersProcessed++;
           opsCreated += Number(result?.ops_criadas) || 0;
+          approvedOrders.push({
+            id: order.id,
+            order_number: order.order_number,
+            delivery_deadline: order.delivery_deadline,
+          });
         } catch (error: unknown) {
           if (error instanceof SaleOrderReadinessBlockedError) {
             readinessBlockedCount += 1;
@@ -1351,6 +1391,7 @@ export default function SaleOrders() {
 
     if (ordersProcessed > 0) {
       toast.success(`${ordersProcessed} pedido(s) aprovado(s), ${opsCreated} OP(s) gerada(s) pelo comando canônico.`);
+      openPostApprovalDistribute(approvedOrders);
     }
     if (readinessBlockedCount > 0 || errors.length > 0) {
       const summary: string[] = [];
@@ -2087,8 +2128,16 @@ export default function SaleOrders() {
                             PV. Desabilita a coluna inteira, não só a linha: duas
                             promoções simultâneas disputam as mesmas linhas de estoque. */}
                         <Select value={order.status} disabled={!canEditPv || updateStatus.isPending} onValueChange={async (v) => {
+                          const prev = order.status;
                           try {
                             await updateStatus.mutateAsync({ id: order.id, status: v });
+                            if (v === 'Aprovado' && prev !== 'Aprovado') {
+                              openPostApprovalDistribute([{
+                                id: order.id,
+                                order_number: order.order_number,
+                                delivery_deadline: order.delivery_deadline,
+                              }]);
+                            }
                           } catch {
                             // A mutation é a dona única do feedback: readiness abre
                             // a janela estruturada e os demais erros geram um toast.
@@ -2489,6 +2538,11 @@ export default function SaleOrders() {
                           return next;
                         }, { replace: true });
                         setDetailDialogOpen(false);
+                        openPostApprovalDistribute([{
+                          id: selectedOrder.id,
+                          order_number: selectedOrder.order_number,
+                          delivery_deadline: selectedOrder.delivery_deadline,
+                        }]);
                         },
                       })}
                     >
@@ -3085,6 +3139,14 @@ export default function SaleOrders() {
                   override_id: overrideId || null,
                 });
                 setReadinessCorrectionTargets((current) => current.filter((item) => item.id !== target.id));
+                if (target.status === 'Aprovado') {
+                  const order = orders.find((o) => o.id === target.id);
+                  openPostApprovalDistribute([{
+                    id: target.id,
+                    order_number: order?.order_number || target.orderNumber || target.id,
+                    delivery_deadline: order?.delivery_deadline ?? null,
+                  }]);
+                }
               } catch {
                 // onReadinessBlocked atualiza o mesmo alvo com o preflight novo.
               }
@@ -3201,6 +3263,18 @@ export default function SaleOrders() {
             onOpenChange={setOperatorFichasOpen}
             saleOrderId={selectedOrder?.id || null}
             orderNumber={selectedOrder?.order_number || ''}
+          />
+        </Suspense>
+      )}
+
+      {postApprovalDistribute && (
+        <Suspense fallback={null}>
+          <PostApprovalCabedalDistributeScreen
+            open
+            saleOrderIds={postApprovalDistribute.saleOrderIds}
+            reportOrders={postApprovalDistribute.reportOrders}
+            minBillingById={minBillingMap}
+            onDone={() => setPostApprovalDistribute(null)}
           />
         </Suspense>
       )}
