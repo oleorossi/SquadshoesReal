@@ -16,17 +16,18 @@ describe('SaleOrders cancel/bulk UX (fase 2)', () => {
     );
   });
 
-  it('bulk status serializa e mostra progresso N/M', () => {
-    expect(SALE_ORDERS).toContain('for (let index = 0; index < ids.length; index += 1)');
+  it('bulk status enfileira em paralelo (worker serializa a materialização)', () => {
+    expect(SALE_ORDERS).toContain('Promise.allSettled');
     expect(SALE_ORDERS).toContain('toast.loading');
     expect(SALE_ORDERS).toContain('setBulkStatusProgress');
-    expect(SALE_ORDERS).toContain('Atualizando ${done}/${ids.length}');
-    // Anti-deadlock: não volta a Promise.allSettled no loop de status.
+    expect(SALE_ORDERS).toContain('Enfileirando');
     const bulkFn = SALE_ORDERS.slice(
       SALE_ORDERS.indexOf('const handleBulkStatusChange'),
       SALE_ORDERS.indexOf('const handleBulkUpdateDelivery'),
     );
-    expect(bulkFn).not.toContain('Promise.allSettled(ids.map');
+    // Anti-deadlock migrou pro worker: browser pode enfileirar em paralelo.
+    expect(bulkFn).toContain('Promise.allSettled');
+    expect(bulkFn).not.toContain('Atualizando ${done}/${ids.length}');
   });
 
   it('fila compensatória em bulk (não sobrescreve o último PV)', () => {

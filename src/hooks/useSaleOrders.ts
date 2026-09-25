@@ -13,18 +13,23 @@ import { sanitizeSaleOrderHeaderDates } from '@/lib/billingWeek';
 import {
   assertFinalizeAppliedExpectedRemovals,
   createSaleOrderCommand,
+  discardSaleOrderMaterialization,
+  enqueueSaleOrderMaterialization,
   executeSaleOrderCommand,
   formatSaleOrderCancelError,
   formatSaleOrderSoftDeleteError,
   formatSaleOrderStatusError,
   formatSaleOrderUpdateSuccessMessage,
   formatUnknownSaleOrderUpdateError,
+  isSaleOrderMaterializationCommand,
   isStaleSaleOrderVersionError,
   preflightSaleOrderCommand,
   readFinalizeRemovedSummary,
+  retrySaleOrderMaterialization,
   runSaleOrderCommandWithBusyRetry,
   SaleOrderReadinessBlockedError,
   type SaleOrderCommandAction,
+  type SaleOrderMaterializationEnqueueResult,
 } from '@/lib/saleOrderCommand';
 import { resyncOPRecords } from '@/lib/resyncOPs';
 import {
@@ -658,6 +663,11 @@ export const SALE_ORDER_LIST_SELECT = [
   'order_number',
   'order_version',
   'status',
+  'command_phase',
+  'command_target_status',
+  'command_error',
+  'command_job_id',
+  'command_started_at',
   'client_id',
   'client_name',
   'client_cnpj',
@@ -726,6 +736,13 @@ export function useSaleOrders() {
     },
     staleTime: 5 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
+    // Poll curto enquanto há materialização em voo — senão o badge fica preso
+    // até o staleTime de 5 min (plano: realtime ou poll enquanto processing).
+    refetchInterval: (query) => {
+      const rows = query.state.data as Array<{ command_phase?: string | null }> | undefined;
+      if (!Array.isArray(rows)) return false;
+      return rows.some((row) => row.command_phase === 'processing') ? 2500 : false;
+    },
   });
 }
 
@@ -911,6 +928,11 @@ interface PromotionEngineResult {
   sole_shortfall_order_ids: string[];
 }
 
+export type UpdateSaleOrderStatusResult =
+  | (PromotionEngineResult & { alreadyCurrent?: boolean; enqueued?: false })
+  | (SaleOrderMaterializationEnqueueResult & { alreadyCurrent?: boolean; enqueued: true })
+  | { alreadyCurrent: true; enqueued?: false };
+
 interface UpdateSaleOrderStatusVars {
   id: string;
   status: string;
@@ -918,6 +940,8 @@ interface UpdateSaleOrderStatusVars {
   /** Cancel / Aprovado→Rascunho compensatório (admin + motivo ≥15). */
   compensatory?: boolean;
   reason?: string;
+  /** Bulk/caller já mostra o toast — não duplicar "Processando…". */
+  silent?: boolean;
 }
 
 export function useUpdateSaleOrderStatus(options?: {
@@ -928,11 +952,11 @@ export function useUpdateSaleOrderStatus(options?: {
 }) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, status, override_id, compensatory, reason }: UpdateSaleOrderStatusVars) => {
+    mutationFn: async ({ id, status, override_id, compensatory, reason }: UpdateSaleOrderStatusVars): Promise<UpdateSaleOrderStatusResult> => {
       // Validate transition before touching the DB
       const { data: rawCurrent, error: fetchError } = await supabase
         .from('sale_orders')
-        .select('status, order_version, order_number')
+        .select('status, order_version, order_number, command_phase')
         .eq('id', id)
         .single();
       if (fetchError) throw fetchError;
@@ -940,13 +964,21 @@ export function useUpdateSaleOrderStatus(options?: {
         status: string;
         order_version: number | null;
         order_number: string | null;
+        command_phase: string | null;
       };
 
       const currentStatus: string = current.status;
+      if (current.command_phase === 'processing') {
+        throw new Error(
+          `Pedido ${current.order_number || ''} ainda está processando → ${status === currentStatus ? currentStatus : 'outro status'}. Aguarde.`
+            .replace(/\s+/g, ' ')
+            .trim(),
+        );
+      }
       // Clique repetido / dialog com snapshot velho: o PV já está no destino.
       // Não é transição — devolve sucesso idempotente em vez de assustar o usuário.
-      if (currentStatus === status) {
-        return { alreadyCurrent: true } as PromotionEngineResult & { alreadyCurrent: true };
+      if (currentStatus === status && (current.command_phase === 'idle' || !current.command_phase)) {
+        return { alreadyCurrent: true };
       }
       if (!isValidStatusTransition(currentStatus, status)) {
         throw new Error(
@@ -994,8 +1026,6 @@ export function useUpdateSaleOrderStatus(options?: {
         }
       }
 
-      // Toda transição pertence ao SaleOrderCommand. O navegador não altera
-      // sale_orders/orders nem reconcilia estoque por passos separados.
       const expectedOrderVersion = Number(current.order_version) || 0;
       const compensatoryCancel = Boolean(compensatory)
         && (saleOrderCommand === 'cancel'
@@ -1007,6 +1037,25 @@ export function useUpdateSaleOrderStatus(options?: {
           : {}),
       };
       const idempotencyKey = `pv:${id}:${saleOrderCommand}:${crypto.randomUUID()}`;
+
+      // Pesados: enfileira e devolve em <1s. O worker materializa OP/estoque.
+      if (isSaleOrderMaterializationCommand(saleOrderCommand, status, currentStatus)) {
+        const enqueued = await enqueueSaleOrderMaterialization({
+          saleOrderId: id,
+          command: saleOrderCommand === 'transition' ? 'transition' : saleOrderCommand,
+          targetStatus: status,
+          expectedOrderVersion,
+          idempotencyKey,
+          payload: commandPayload,
+          overrideId: override_id,
+        });
+        if (!enqueued.ok) {
+          throw new Error('Não foi possível enfileirar a alteração de status.');
+        }
+        return { ...enqueued, enqueued: true, alreadyCurrent: Boolean(enqueued.already_current) };
+      }
+
+      // Leves (Rascunho↔Pendente, Faturado, Expedido…): sync curto.
       const preflight = await preflightSaleOrderCommand({
         saleOrderId: id,
         command: saleOrderCommand,
@@ -1031,21 +1080,17 @@ export function useUpdateSaleOrderStatus(options?: {
         overrideId: override_id,
       });
 
-      const receipt = await runSaleOrderCommandWithBusyRetry(idempotencyKey, runExecute);
+      await runSaleOrderCommandWithBusyRetry(idempotencyKey, runExecute);
 
-      const engineResult = saleOrderCommand === 'confirm' || saleOrderCommand === 'promote'
-        ? receipt.result as unknown as PromotionEngineResult
-        : null;
-      try {
-        await recomputeMaterialGate([id]);
-      } catch (error) {
+      // Não bloqueia o clique — gate é best-effort (onda 1).
+      void recomputeMaterialGate([id]).catch((error) => {
         console.error('[saleOrderCommand] material gate pós-commit falhou:', error);
-        toast.warning('Comando concluído, mas o indicador de materiais precisa ser recalculado.');
-      }
-      return engineResult;
+      });
+      return { alreadyCurrent: false, enqueued: false } as UpdateSaleOrderStatusResult;
     },
     onSuccess: (engineResult, vars) => {
-      if ((engineResult as { alreadyCurrent?: boolean } | null)?.alreadyCurrent) {
+      if ((engineResult as { alreadyCurrent?: boolean } | null)?.alreadyCurrent
+        && !(engineResult as { enqueued?: boolean }).enqueued) {
         invalidateSaleOrders(qc);
         return;
       }
@@ -1068,19 +1113,12 @@ export function useUpdateSaleOrderStatus(options?: {
         qc.invalidateQueries({ queryKey: ['waves'] });
       }
 
-      // Requisito 31/32: o toast resume o que REALMENTE aconteceu — e nada do que
-      // ele diz existe só nele; tudo está registrado na aba de pendências.
-      if (engineResult && (vars.status === 'Aprovado' || vars.status === 'Em Produção')) {
-        const falhas = engineResult.itens_falha?.length ?? 0;
-        const partes = [`${engineResult.ops_criadas} OP(s) criada(s)`];
-        if (falhas > 0) partes.push(`${falhas} item(ns) com falha`);
-        if (falhas > 0) {
-          toast.error(partes.join(' · '), {
-            description: 'Veja o motivo em Pedidos de Venda → Pendências.',
-            duration: 12000,
+      if ((engineResult as { enqueued?: boolean }).enqueued) {
+        if (!vars.silent) {
+          toast.success(`Processando → ${vars.status}…`, {
+            description: 'O status final aparece quando a produção/estoque terminar.',
+            duration: 6000,
           });
-        } else {
-          toast.success(partes.join(' · '));
         }
         return;
       }
@@ -1122,6 +1160,30 @@ export function useUpdateSaleOrderStatus(options?: {
       }
       toast.error(`Erro: ${formatSaleOrderStatusError(err)}`);
     },
+  });
+}
+
+export function useRetrySaleOrderMaterialization() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (saleOrderId: string) => retrySaleOrderMaterialization(saleOrderId),
+    onSuccess: () => {
+      invalidateSaleOrders(qc);
+      toast.success('Tentando novamente…');
+    },
+    onError: (err: Error) => toast.error(`Erro: ${err.message}`),
+  });
+}
+
+export function useDiscardSaleOrderMaterialization() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (saleOrderId: string) => discardSaleOrderMaterialization(saleOrderId),
+    onSuccess: () => {
+      invalidateSaleOrders(qc);
+      toast.success('Comando descartado — pedido permanece no status anterior.');
+    },
+    onError: (err: Error) => toast.error(`Erro: ${err.message}`),
   });
 }
 

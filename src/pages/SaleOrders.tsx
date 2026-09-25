@@ -94,7 +94,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useSaleOrders, useSaleOrderAllItems, useCreateSaleOrder, useDeleteSaleOrder, softDeleteSaleOrderWithBusyRetry, useUpdateSaleOrderStatus, useResyncOPsFromSheets, useResyncOPsFromPV, useCommitPickingForSaleOrder, useRealtimeSaleOrders, ORDER_TYPE_LABELS } from '@/hooks/useSaleOrders';
+import { useSaleOrders, useSaleOrderAllItems, useCreateSaleOrder, useDeleteSaleOrder, softDeleteSaleOrderWithBusyRetry, useUpdateSaleOrderStatus, useRetrySaleOrderMaterialization, useDiscardSaleOrderMaterialization, useResyncOPsFromSheets, useResyncOPsFromPV, useCommitPickingForSaleOrder, useRealtimeSaleOrders, ORDER_TYPE_LABELS } from '@/hooks/useSaleOrders';
 import DuplicateToStoresDialog from '@/components/sales/DuplicateToStoresDialog';
 import {
   executeSaleOrderCommand,
@@ -179,6 +179,8 @@ export default function SaleOrders() {
     total: number;
     status: string;
   } | null>(null);
+  /** PVs enfileirados pra Aprovado — abre distribuição quando materializar. */
+  const [pendingDistributeIds, setPendingDistributeIds] = useState<Set<string>>(new Set());
   const updateStatus = useUpdateSaleOrderStatus({
     onReadinessBlocked: (blocked, vars) => {
       const isCancelPath = vars.status === 'Cancelado'
@@ -214,6 +216,8 @@ export default function SaleOrders() {
   const statusPendingId = updateStatus.isPending
     ? (updateStatus.variables as { id?: string } | undefined)?.id ?? null
     : null;
+  const retryMaterialization = useRetrySaleOrderMaterialization();
+  const discardMaterialization = useDiscardSaleOrderMaterialization();
   // Subscribe Realtime: outros users veem mudanças/exclusões em ~200ms via WS.
   useRealtimeSaleOrders();
   const queryClient = useQueryClient();
@@ -391,6 +395,38 @@ export default function SaleOrders() {
       reportOrders: list,
     });
   };
+
+  // Distribuição pós-aprovação só depois que o worker materializou (status=Aprovado
+  // e command_phase idle). Enfileirar não abre a tela — OPs ainda não existem.
+  useEffect(() => {
+    if (pendingDistributeIds.size === 0) return;
+    const ready: Array<{ id: string; order_number: string; delivery_deadline?: string | null }> = [];
+    const drop = new Set<string>();
+    for (const id of pendingDistributeIds) {
+      const order = orders.find((o) => o.id === id);
+      if (!order) continue;
+      const phase = (order as { command_phase?: string }).command_phase || 'idle';
+      if (phase === 'failed') {
+        drop.add(id);
+        continue;
+      }
+      if (order.status === 'Aprovado' && phase === 'idle') {
+        ready.push({
+          id: order.id,
+          order_number: order.order_number,
+          delivery_deadline: order.delivery_deadline,
+        });
+        drop.add(id);
+      }
+    }
+    if (drop.size === 0) return;
+    if (ready.length > 0) openPostApprovalDistribute(ready);
+    setPendingDistributeIds((prev) => {
+      const next = new Set(prev);
+      drop.forEach((id) => next.delete(id));
+      return next;
+    });
+  }, [orders, pendingDistributeIds]);
 
   // Busca NÃO persiste: reseta ao sair e voltar pra tela (useState remonta
   // limpo). Antes usava usePersistedState com a chave 'searchTerm' — a MESMA
@@ -925,30 +961,21 @@ export default function SaleOrders() {
         return;
       }
     }
-    // ⚠ EM SÉRIE, não Promise.allSettled. Promover N PVs em paralelo faz dois
-    // pedidos que compartilham o mesmo material (napa, solado) disputarem a MESMA
-    // linha de `products` ao mesmo tempo — deadlock ou débito perdido. É o mesmo
-    // motivo pelo qual o motor de promoção percorre os itens em série lá dentro.
-    // (requisito 2 de specs/pv-producao-performance-e-pendencias.md)
-    const results: PromiseSettledResult<unknown>[] = [];
-    const progressToastId = ids.length > 1
-      ? toast.loading(`Atualizando 0/${ids.length} para "${status}"…`)
-      : null;
+    // Enfileira em paralelo — o worker materializa em série (anti-deadlock).
+    // O toast 1/N sumiu: cada clique de enqueue é <1s.
     setBulkStatusProgress(ids.length > 1 ? { done: 0, total: ids.length, status } : null);
+    const progressToastId = ids.length > 1
+      ? toast.loading(`Enfileirando 0/${ids.length} para "${status}"…`)
+      : null;
+    let results: PromiseSettledResult<unknown>[] = [];
     try {
-      for (let index = 0; index < ids.length; index += 1) {
-        const id = ids[index];
-        try {
-          results.push({ status: 'fulfilled', value: await updateStatus.mutateAsync({ id, status }) });
-        } catch (e) {
-          results.push({ status: 'rejected', reason: e });
-        }
-        const done = index + 1;
-        if (progressToastId) {
-          toast.loading(`Atualizando ${done}/${ids.length} para "${status}"…`, { id: progressToastId });
-        }
-        if (ids.length > 1) setBulkStatusProgress({ done, total: ids.length, status });
+      results = await Promise.allSettled(
+        ids.map((id) => updateStatus.mutateAsync({ id, status, silent: ids.length > 1 })),
+      );
+      if (progressToastId) {
+        toast.loading(`Enfileirando ${ids.length}/${ids.length} para "${status}"…`, { id: progressToastId });
       }
+      if (ids.length > 1) setBulkStatusProgress({ done: ids.length, total: ids.length, status });
     } finally {
       if (progressToastId) toast.dismiss(progressToastId);
       setBulkStatusProgress(null);
@@ -963,9 +990,13 @@ export default function SaleOrders() {
     const updated = ids.length - failed;
     setSelectedIds(new Set());
     if (failed === 0) {
-      toast.success(`${ids.length} pedido(s) atualizado(s) para "${status}"`);
+      toast.success(
+        status === 'Aprovado' || status === 'Em Produção' || status === 'Cancelado'
+          ? `${ids.length} pedido(s) enfileirado(s) → "${status}"`
+          : `${ids.length} pedido(s) atualizado(s) para "${status}"`,
+      );
     } else {
-      const summary = [`${updated} atualizado(s)`];
+      const summary = [`${updated} ok`];
       if (readinessBlocked > 0) summary.push(`${readinessBlocked} aguardam correção`);
       if (otherFailures > 0) summary.push(`${otherFailures} falha(s)`);
       const message = `${summary.join(' · ')}.`;
@@ -973,12 +1004,12 @@ export default function SaleOrders() {
       else toast.warning(message);
     }
     if (status === 'Aprovado' && updated > 0) {
-      const okOrders = ids
-        .map((id, index) => (results[index]?.status === 'fulfilled'
-          ? filteredOrders.find((o) => o.id === id) || { id, order_number: id, delivery_deadline: null }
-          : null))
-        .filter(Boolean) as Array<{ id: string; order_number: string; delivery_deadline?: string | null }>;
-      openPostApprovalDistribute(okOrders);
+      const okIds = ids.filter((_, index) => results[index]?.status === 'fulfilled');
+      setPendingDistributeIds((prev) => {
+        const next = new Set(prev);
+        okIds.forEach((id) => next.add(id));
+        return next;
+      });
     }
   };
 
@@ -1402,44 +1433,46 @@ export default function SaleOrders() {
 
     setGeneratingOPs(true);
     let ordersProcessed = 0;
-    let opsCreated = 0;
     let readinessBlockedCount = 0;
     const errors: string[] = [];
-    const approvedOrders: Array<{ id: string; order_number: string; delivery_deadline?: string | null }> = [];
+    const approvedOrderIds: string[] = [];
 
-    // A aprovação em lote é apenas coordenação de chamadas seriais ao mesmo
-    // comando canônico usado na linha individual. Status, OPs, plano material,
-    // reservas, recibo e efeitos financeiros pertencem ao SaleOrderCommand.
+    // Enfileira em paralelo; worker materializa em série.
     try {
-      for (const order of pendingOrders) {
-        try {
-          const result = await updateStatus.mutateAsync({
-            id: order.id,
-            status: 'Aprovado',
-          });
-          ordersProcessed++;
-          opsCreated += Number(result?.ops_criadas) || 0;
-          approvedOrders.push({
-            id: order.id,
-            order_number: order.order_number,
-            delivery_deadline: order.delivery_deadline,
-          });
-        } catch (error: unknown) {
-          if (error instanceof SaleOrderReadinessBlockedError) {
-            readinessBlockedCount += 1;
-            continue;
-          }
-          const message = error instanceof Error ? error.message : String(error);
-          errors.push(`${order.order_number}: ${message}`);
+      const results = await Promise.allSettled(
+        pendingOrders.map((order) => updateStatus.mutateAsync({
+          id: order.id,
+          status: 'Aprovado',
+          silent: pendingOrders.length > 1,
+        })),
+      );
+      results.forEach((result, index) => {
+        const order = pendingOrders[index];
+        if (result.status === 'fulfilled') {
+          ordersProcessed += 1;
+          approvedOrderIds.push(order.id);
+          return;
         }
-      }
+        if (result.reason instanceof SaleOrderReadinessBlockedError) {
+          readinessBlockedCount += 1;
+          return;
+        }
+        const message = result.reason instanceof Error
+          ? result.reason.message
+          : String(result.reason);
+        errors.push(`${order.order_number}: ${message}`);
+      });
     } finally {
       setGeneratingOPs(false);
     }
 
     if (ordersProcessed > 0) {
-      toast.success(`${ordersProcessed} pedido(s) aprovado(s), ${opsCreated} OP(s) gerada(s) pelo comando canônico.`);
-      openPostApprovalDistribute(approvedOrders);
+      toast.success(`${ordersProcessed} pedido(s) enfileirado(s) para aprovação.`);
+      setPendingDistributeIds((prev) => {
+        const next = new Set(prev);
+        approvedOrderIds.forEach((id) => next.add(id));
+        return next;
+      });
     }
     if (readinessBlockedCount > 0 || errors.length > 0) {
       const summary: string[] = [];
@@ -2012,7 +2045,7 @@ export default function SaleOrders() {
                 selected={sel.isSelected(order.id)}
                 isInfantil={!!segmentsBySaleOrder[order.id]?.has('Infantil')}
                 canSeeFinancialValues={canSeeFinancialValues}
-                canEditPv={canEditPv}
+                canEditPv={canEditPv && (order as { command_phase?: string }).command_phase !== 'processing'}
                 onToggleSelect={() => sel.toggle(order.id)}
                 onOpenDetails={() => openOrderDetails(order)}
                 onPrefetchConsumption={() => prefetchPvConsumption(order.id)}
@@ -2170,21 +2203,73 @@ export default function SaleOrders() {
                         </TableCell>
                       )}
                       <TableCell onClick={(e) => e.stopPropagation()}>
-                        {/* Requisito 30: enquanto a promoção roda, o controle fica
-                            desabilitado com indicador. Antes um duplo-clique
-                            disparava DUAS orquestrações concorrentes sobre o mesmo
-                            PV. Desabilita a coluna inteira, não só a linha: duas
-                            promoções simultâneas disputam as mesmas linhas de estoque. */}
-                        <Select value={order.status} disabled={!canEditPv || updateStatus.isPending} onValueChange={async (v) => {
+                        {(() => {
+                          const phase = (order as { command_phase?: string }).command_phase || 'idle';
+                          const target = (order as { command_target_status?: string | null }).command_target_status;
+                          const cmdError = (order as { command_error?: string | null }).command_error;
+                          const isProcessing = phase === 'processing';
+                          const isFailed = phase === 'failed';
+                          if (isProcessing || isFailed) {
+                            return (
+                              <div className="flex flex-col gap-1 max-w-[160px]">
+                                <Badge
+                                  variant="outline"
+                                  className={`text-xs gap-1 ${isFailed ? 'bg-destructive/10 text-destructive border-destructive/30' : 'bg-amber-500/10 text-amber-700 border-amber-500/30'}`}
+                                >
+                                  {isProcessing
+                                    ? <Loader2 className="h-3 w-3 animate-spin" aria-label="Processando" />
+                                    : <span className="h-1.5 w-1.5 rounded-full bg-destructive" />}
+                                  {isProcessing
+                                    ? `Processando → ${target || '…'}`
+                                    : `Erro → ${target || '…'}`}
+                                </Badge>
+                                {isFailed && (
+                                  <div className="flex flex-wrap gap-1">
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-6 px-1.5 text-[10px]"
+                                      disabled={retryMaterialization.isPending}
+                                      onClick={() => retryMaterialization.mutate(order.id)}
+                                    >
+                                      Tentar de novo
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-6 px-1.5 text-[10px]"
+                                      disabled={discardMaterialization.isPending}
+                                      onClick={() => discardMaterialization.mutate(order.id)}
+                                    >
+                                      Descartar
+                                    </Button>
+                                  </div>
+                                )}
+                                {isFailed && cmdError && (
+                                  <span className="text-[10px] text-destructive line-clamp-2" title={cmdError}>
+                                    {cmdError}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          }
+                          return (
+                        <Select value={order.status} disabled={!canEditPv || updateStatus.isPending || isProcessing} onValueChange={async (v) => {
                           const prev = order.status;
                           try {
-                            await updateStatus.mutateAsync({ id: order.id, status: v });
+                            const result = await updateStatus.mutateAsync({ id: order.id, status: v });
                             if (v === 'Aprovado' && prev !== 'Aprovado') {
-                              openPostApprovalDistribute([{
-                                id: order.id,
-                                order_number: order.order_number,
-                                delivery_deadline: order.delivery_deadline,
-                              }]);
+                              if ((result as { enqueued?: boolean })?.enqueued) {
+                                setPendingDistributeIds((prevSet) => new Set(prevSet).add(order.id));
+                              } else {
+                                openPostApprovalDistribute([{
+                                  id: order.id,
+                                  order_number: order.order_number,
+                                  delivery_deadline: order.delivery_deadline,
+                                }]);
+                              }
                             }
                           } catch {
                             // A mutation é a dona única do feedback: readiness abre
@@ -2217,6 +2302,8 @@ export default function SaleOrders() {
                             ))}
                           </SelectContent>
                         </Select>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell>
                         <SaleOrderFloorProgressSummary
@@ -2265,7 +2352,16 @@ export default function SaleOrders() {
                           <Button variant="ghost" size="icon" className="h-7 w-7" title="Duplicar para lojas" onClick={() => openDupDialog(order.id)}>
                             <Copy className="h-3.5 w-3.5" />
                           </Button>
-                          <Button variant="ghost" size="icon" className="h-7 w-7" title="Editar" disabled={!canEditPv} onClick={() => navigate(`/sales/edit/${order.id}`)}>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            title={(order as { command_phase?: string }).command_phase === 'processing'
+                              ? 'Aguarde a materialização terminar'
+                              : 'Editar'}
+                            disabled={!canEditPv || (order as { command_phase?: string }).command_phase === 'processing'}
+                            onClick={() => navigate(`/sales/edit/${order.id}`)}
+                          >
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
                           <Button variant="ghost" size="icon" className="h-7 w-7" title="Consumo de materiais" onMouseEnter={() => prefetchPvConsumption(order.id)} onClick={() => openPvConsumption([order.id])}>
@@ -2545,7 +2641,20 @@ export default function SaleOrders() {
                 <section className="border-b border-border p-2.5 lg:border-b-0 lg:border-r" aria-labelledby="pv-actions-order">
                   <p id="pv-actions-order" className="eyebrow mb-2"><span className="mr-1 font-mono text-primary">01</span> Pedido</p>
                   <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Ações do pedido">
-                  {canEditPv && <Button variant="outline" size="sm" className="gap-2" onClick={() => { setDetailDialogOpen(false); navigate(`/sales/edit/${selectedOrder.id}`); }}><Pencil className="h-3.5 w-3.5" /> Editar</Button>}
+                  {canEditPv && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                      disabled={(selectedOrder as { command_phase?: string }).command_phase === 'processing'}
+                      title={(selectedOrder as { command_phase?: string }).command_phase === 'processing'
+                        ? 'Aguarde a materialização terminar'
+                        : undefined}
+                      onClick={() => { setDetailDialogOpen(false); navigate(`/sales/edit/${selectedOrder.id}`); }}
+                    >
+                      <Pencil className="h-3.5 w-3.5" /> Editar
+                    </Button>
+                  )}
                   <Button variant="outline" size="sm" className="gap-2" onClick={() => setMarginDialogOpen(true)}><TrendingUp className="h-3.5 w-3.5" /> Margem</Button>
                   <Button variant="outline" size="sm" className="gap-2" onClick={() => setPhotosDialogOpen(true)} disabled={loadingOrderItems || selectedOrderItems.length === 0}><Images className="h-3.5 w-3.5" /> Fotos</Button>
                   {/* Botão "Aprovar" individual — só aparece em Rascunho.
@@ -2564,16 +2673,35 @@ export default function SaleOrders() {
                         actionLabel: 'Aprovar',
                         onConfirm: async () => {
                         try {
-                          await updateStatus.mutateAsync({ id: selectedOrder.id, status: 'Aprovado' });
+                          const result = await updateStatus.mutateAsync({
+                            id: selectedOrder.id,
+                            status: 'Aprovado',
+                            silent: true,
+                          });
                           setSelectedOrder((prev: { id: string } | null) => (
-                            prev && prev.id === selectedOrder.id ? { ...prev, status: 'Aprovado' } : prev
+                            prev && prev.id === selectedOrder.id
+                              ? {
+                                ...prev,
+                                status: (result as { enqueued?: boolean })?.enqueued
+                                  ? selectedOrder.status
+                                  : 'Aprovado',
+                                command_phase: (result as { enqueued?: boolean })?.enqueued
+                                  ? 'processing'
+                                  : 'idle',
+                                command_target_status: (result as { enqueued?: boolean })?.enqueued
+                                  ? 'Aprovado'
+                                  : null,
+                              }
+                              : prev
                           ));
                         } catch {
                           // Prontidão abre o modal estruturado; os demais erros
                           // já geram toast na mutation (dono único).
                           return;
                         }
-                        toast.success(`Pedido ${selectedOrder.order_number} aprovado.`);
+                        toast.success(
+                          `Pedido ${selectedOrder.order_number} enfileirado para aprovação.`,
+                        );
                         queryClient.invalidateQueries({ queryKey: ['sale_orders'] });
                         // Fecha por setState (não passa pelo onOpenChange), então
                         // limpa o ?pv= aqui — senão o param fica preso e um F5
@@ -2586,11 +2714,7 @@ export default function SaleOrders() {
                           return next;
                         }, { replace: true });
                         setDetailDialogOpen(false);
-                        openPostApprovalDistribute([{
-                          id: selectedOrder.id,
-                          order_number: selectedOrder.order_number,
-                          delivery_deadline: selectedOrder.delivery_deadline,
-                        }]);
+                        setPendingDistributeIds((prev) => new Set(prev).add(selectedOrder.id));
                         },
                       })}
                     >
@@ -3188,12 +3312,7 @@ export default function SaleOrders() {
                 });
                 setReadinessCorrectionTargets((current) => current.filter((item) => item.id !== target.id));
                 if (target.status === 'Aprovado') {
-                  const order = orders.find((o) => o.id === target.id);
-                  openPostApprovalDistribute([{
-                    id: target.id,
-                    order_number: order?.order_number || target.orderNumber || target.id,
-                    delivery_deadline: order?.delivery_deadline ?? null,
-                  }]);
+                  setPendingDistributeIds((prev) => new Set(prev).add(target.id));
                 }
               } catch {
                 // onReadinessBlocked atualiza o mesmo alvo com o preflight novo.
