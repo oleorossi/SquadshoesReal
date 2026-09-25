@@ -103,10 +103,10 @@ import {
   buildPontoMixPdf,
   buildPontoMixZpl,
   countPontoMixLabels,
-  loadPontoMixLogoDataUrl,
   pontoMixPdfFilename,
   pontoMixZplFilename,
   renderPontoMixPreviewDataUrl,
+  resolvePontoMixLogo,
 } from '@/lib/pontoMixLabels';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { cn } from '@/lib/utils';
@@ -548,9 +548,9 @@ export function ClientLabelingWorkspace() {
             : `PDF Objetiva com ${totalEtiquetas} etiqueta(s) gerado.`,
         );
       } else if (pattern.key === 'ponto_mix') {
-        const logo = await loadPontoMixLogoDataUrl(pattern.branding.logoUrl);
+        const logo = await resolvePontoMixLogo(pattern.branding.logoUrl);
         if (pattern.branding.logoUrl && !logo) {
-          toast.warning('Não carreguei a logomarca — o PDF sai com o wordmark.');
+          toast.warning('Não carreguei a logomarca enviada — usei a marca padrão Ponto Mix.');
         }
         const sourceRows = mode === 'production' ? productionRows : selectedRows;
         const previewRow = sourceRows[0];

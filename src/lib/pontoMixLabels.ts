@@ -4,6 +4,7 @@
  * Layout (retrato): faixa preta logo → 3 linhas texto → caixa tamanho →
  * CODE128 → faixa preta preço. Dados só do arquivo do cliente.
  */
+import pontoMixLogoBundled from '@/assets/ponto-mix/logo-ponto-mix.png';
 import { code128Bars } from './code128';
 import { decodeOrderBytes } from './babyNalinLabels';
 import {
@@ -19,6 +20,9 @@ import {
 
 export const PONTO_MIX_DPI = 203;
 export const MAX_PONTO_MIX_PDF_LABELS = 20_000;
+
+/** Asset empacotado — usado quando o cliente não enviou logo no padrão. */
+export const PONTO_MIX_BUNDLED_LOGO_URL = pontoMixLogoBundled as string;
 
 type PdfDoc = import('jspdf').jsPDF;
 
@@ -534,16 +538,135 @@ export interface PontoMixLabelCopy {
   barcodeSymbology: 'ean13' | 'code128';
 }
 
+/**
+ * SKU interno (ex.: `64841968-00-0000000`) — não é a linha comercial da arte
+ * (`SQUARD SHOES SP201`). Se for parar em line2, a etiqueta diverge do PDF correto.
+ */
+export function isPontoMixInternalSku(value: string | undefined | null): boolean {
+  const t = String(value ?? '').trim();
+  if (!t) return false;
+  const digits = (t.match(/\d/g) ?? []).length;
+  const letters = (t.match(/[A-Za-zÀ-ÿ]/g) ?? []).length;
+  if (digits >= 6 && letters <= 2) return true;
+  if (/^\d{5,}[-/.\s]\d/.test(t) && letters <= 2) return true;
+  return false;
+}
+
+const PONTO_MIX_CATEGORY_BREAK = new Set([
+  'FEM',
+  'MASC',
+  'INF',
+  'UNI',
+  'FEMININO',
+  'MASCULINO',
+  'INFANTIL',
+  'UNISSEX',
+  'MENINA',
+  'MENINO',
+]);
+
+/**
+ * Parte descrição completa do pedido (muitas vezes 1 coluna com tudo) nas 3 linhas
+ * da arte: categoria · modelo comercial · cor + tamanho×2.
+ */
+export function splitPontoMixDescricaoIntoArtLines(
+  descricao: string,
+  cor: string,
+  tamanho: string,
+): { line1: string; line2: string; line3: string } | null {
+  const words = descricao
+    .trim()
+    .toUpperCase()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (words.length < 3) return null;
+
+  const corU = cor.trim().toUpperCase();
+  const tamU = tamanho.trim().toUpperCase();
+  const line3 = [corU, tamU, tamU].filter(Boolean).join(' ').trim();
+
+  const remaining = [...words];
+  // Remove cauda "COR TAM [TAM]" se a descrição já trouxe isso.
+  if (tamU && remaining[remaining.length - 1] === tamU) {
+    remaining.pop();
+    if (remaining[remaining.length - 1] === tamU) remaining.pop();
+  }
+  if (corU && remaining[remaining.length - 1] === corU) remaining.pop();
+  if (remaining.length < 2) return null;
+
+  let breakAt = -1;
+  for (let i = 0; i < remaining.length - 1; i++) {
+    if (PONTO_MIX_CATEGORY_BREAK.has(remaining[i]!)) {
+      breakAt = i;
+      break;
+    }
+  }
+  if (breakAt < 0) {
+    // "SANDALIA CALCADOS FEM …" — 3 primeiras palavras; senão metade.
+    breakAt = remaining.length >= 4 ? 2 : Math.max(0, Math.floor(remaining.length / 2) - 1);
+  }
+
+  const line1 = remaining.slice(0, breakAt + 1).join(' ').trim();
+  const line2 = remaining.slice(breakAt + 1).join(' ').trim();
+  if (!line1 || !line2) return null;
+  return { line1, line2, line3: line3 || `${corU} ${tamU}`.trim() };
+}
+
+/**
+ * Corrige o caso típico do Padrao/pedido errado: descrição completa + SKU interno
+ * na referência → 4 linhas sobrepostas. Força o layout de 3 linhas da arte.
+ */
+export function normalizePontoMixArtLines(
+  rendered: { line1: string; line2: string; line3: string },
+  row: ClientOrderLine,
+): { line1: string; line2: string; line3: string } {
+  const desc = (row.descricao ?? '').trim();
+  const cor = (row.cor ?? '').trim();
+  const tamanho = (row.tamanho ?? '').trim();
+  const refRaw = (row.referencia ?? '').trim();
+  const line2IsSku = isPontoMixInternalSku(rendered.line2) || isPontoMixInternalSku(refRaw);
+  const line1WordCount = rendered.line1.split(/\s+/).filter(Boolean).length;
+  const descWordCount = desc.split(/\s+/).filter(Boolean).length;
+  const needsArtSplit =
+    (line2IsSku && (line1WordCount >= 4 || descWordCount >= 4)) ||
+    (descWordCount >= 6 && line1WordCount >= 6 && line2IsSku);
+
+  if (needsArtSplit && desc) {
+    const split = splitPontoMixDescricaoIntoArtLines(desc, cor, tamanho);
+    if (split) {
+      return {
+        line1: split.line1,
+        line2: split.line2,
+        line3: rendered.line3 && !isPontoMixInternalSku(rendered.line3)
+          ? rendered.line3
+          : split.line3,
+      };
+    }
+  }
+
+  // SKU interno sozinho na line2 sem split possível → some (não polui a arte).
+  if (line2IsSku) {
+    return { ...rendered, line2: '' };
+  }
+  return rendered;
+}
+
 export function composePontoMixLabelCopy(
   row: ClientOrderLine,
   templates: ClientLabelLineTemplates = PONTO_MIX_DEFAULT_TEMPLATES,
   priceFormat: ClientLabelPriceFormat = PONTO_MIX_DEFAULT_PRICE_FORMAT,
 ): PontoMixLabelCopy {
   const codigoBarra = (row.codigoBarra || row.codProduto).trim();
+  const rendered = normalizePontoMixArtLines(
+    {
+      line1: renderPontoMixTemplate(templates.line1, row),
+      line2: renderPontoMixTemplate(templates.line2, row),
+      line3: renderPontoMixTemplate(templates.line3, row),
+    },
+    row,
+  );
   return {
-    line1: renderPontoMixTemplate(templates.line1, row),
-    line2: renderPontoMixTemplate(templates.line2, row),
-    line3: renderPontoMixTemplate(templates.line3, row),
+    ...rendered,
     tamanho: (row.tamanho || '-').trim() || '-',
     codigoBarra,
     priceText: formatPontoMixPrice(row.valor, priceFormat),
@@ -597,6 +720,72 @@ function zplField(text: string, maxLen: number): string {
     .trim();
 }
 
+/**
+ * Texto em UMA linha: encolhe a fonte até caber; se ainda estourar, corta com ….
+ * Nunca usa maxWidth do jsPDF — ele embrulha sem avançar Y (overlap da arte errada).
+ */
+function drawFittedSingleLine(
+  doc: PdfDoc,
+  text: string,
+  x: number,
+  y: number,
+  maxWidthMm: number,
+  fontSizePt: number,
+  minSizePt = 3.6,
+): void {
+  const clean = text.trim();
+  if (!clean) return;
+  doc.setFont('helvetica', 'bold');
+  let size = fontSizePt;
+  doc.setFontSize(size);
+  while (size > minSizePt && doc.getTextWidth(clean) > maxWidthMm) {
+    size -= 0.25;
+    doc.setFontSize(size);
+  }
+  let drawn = clean;
+  if (doc.getTextWidth(drawn) > maxWidthMm) {
+    while (drawn.length > 1 && doc.getTextWidth(`${drawn}…`) > maxWidthMm) {
+      drawn = drawn.slice(0, -1);
+    }
+    drawn = `${drawn}…`;
+  }
+  doc.text(drawn, x, y, { baseline: 'top' });
+}
+
+function drawWordmarkFallback(
+  doc: PdfDoc,
+  x: number,
+  y: number,
+  bandW: number,
+  bandH: number,
+): void {
+  // Arte correta: PONTO + alvo concêntrico + MIX.
+  const cx = x + bandW / 2;
+  const cy = y + bandH / 2;
+  const markR = Math.min(bandH * 0.28, 2.4);
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  const fontPt = Math.max(7, Math.min(11, bandH * 1.55));
+  doc.setFontSize(fontPt);
+  const ponto = 'PONTO';
+  const mix = 'MIX';
+  const gap = markR * 2.6;
+  const pontoW = doc.getTextWidth(ponto);
+  const mixW = doc.getTextWidth(mix);
+  const totalW = pontoW + gap + mixW;
+  const startX = cx - totalW / 2;
+  doc.text(ponto, startX, cy, { baseline: 'middle' });
+  const markCx = startX + pontoW + gap / 2;
+  doc.setDrawColor(255, 255, 255);
+  doc.setLineWidth(0.25);
+  doc.circle(markCx, cy, markR, 'S');
+  doc.circle(markCx, cy, markR * 0.55, 'S');
+  doc.setFillColor(255, 255, 255);
+  doc.circle(markCx, cy, markR * 0.18, 'F');
+  doc.text(mix, startX + pontoW + gap, cy, { baseline: 'middle' });
+  doc.setTextColor(0, 0, 0);
+}
+
 function drawLogoOnBlackBand(
   doc: PdfDoc,
   logo: PontoMixLogo,
@@ -621,14 +810,10 @@ function drawLogoOnBlackBand(
       doc.addImage(logo.dataUrl, imageFormat(logo.dataUrl), ox, oy, drawW, drawH);
       return;
     } catch {
-      /* fallback texto */
+      /* fallback wordmark */
     }
   }
-  doc.setTextColor(255, 255, 255);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(Math.max(7, Math.min(11, bandH * 1.6)));
-  doc.text('PONTO MIX', x + bandW / 2, y + bandH * 0.68, { align: 'center' });
-  doc.setTextColor(0, 0, 0);
+  drawWordmarkFallback(doc, x, y, bandW, bandH);
 }
 
 function drawPontoMixLabel(
@@ -655,16 +840,11 @@ function drawPontoMixLabel(
 
   let y = headerH + 2.2;
   doc.setTextColor(0, 0, 0);
-  doc.setFont('helvetica', 'bold');
   const lineSize = 5.2;
-  doc.setFontSize(lineSize);
+  const lineStep = 3.55;
   for (const line of [copy.line1, copy.line2, copy.line3]) {
-    if (!line) continue;
-    doc.text(line, contentLeft, y, {
-      baseline: 'top',
-      maxWidth: contentW,
-    });
-    y += lineSize * 0.42 + 1.15;
+    if (line) drawFittedSingleLine(doc, line, contentLeft, y, contentW, lineSize);
+    y += lineStep;
   }
 
   y += 1.2;
@@ -871,24 +1051,63 @@ export async function renderPontoMixPreviewDataUrl(
     const dh = img.height * s;
     ctx.drawImage(img, (canvas.width - dw) / 2, (headerH - dh) / 2, dw, dh);
   } else {
+    // Wordmark com alvo concêntrico (espelha o PDF).
     ctx.fillStyle = '#ffffff';
-    ctx.font = `bold ${Math.round(headerH * 0.45)}px Helvetica, Arial, sans-serif`;
-    ctx.textAlign = 'center';
+    ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.fillText('PONTO MIX', canvas.width / 2, headerH / 2);
+    const fontPxMark = Math.round(headerH * 0.42);
+    ctx.font = `bold ${fontPxMark}px Helvetica, Arial, sans-serif`;
+    const ponto = 'PONTO';
+    const mix = 'MIX';
+    const markR = headerH * 0.22;
+    const gap = markR * 2.4;
+    const pontoW = ctx.measureText(ponto).width;
+    const mixW = ctx.measureText(mix).width;
+    const totalW = pontoW + gap + mixW;
+    const startX = (canvas.width - totalW) / 2;
+    const cy = headerH / 2;
+    ctx.fillText(ponto, startX, cy);
+    const markCx = startX + pontoW + gap / 2;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = Math.max(1, scale * 0.2);
+    ctx.beginPath();
+    ctx.arc(markCx, cy, markR, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(markCx, cy, markR * 0.55, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(markCx, cy, markR * 0.18, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillText(mix, startX + pontoW + gap, cy);
   }
 
   ctx.fillStyle = '#000000';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
   const padL = geometry.leftMarginMm * scale;
+  const maxTextW = canvas.width - padL * 2;
   let y = headerH + 2.2 * scale;
-  const fontPx = 5.2 * scale * 0.85;
-  ctx.font = `bold ${Math.round(fontPx)}px Helvetica, Arial, sans-serif`;
+  const lineStep = 3.55 * scale;
   for (const line of [copy.line1, copy.line2, copy.line3]) {
-    if (!line) continue;
-    ctx.fillText(line, padL, y, canvas.width - padL * 2);
-    y += fontPx + 1.1 * scale;
+    if (line) {
+      let fontPx = 5.2 * scale * 0.85;
+      const minPx = 3.6 * scale * 0.85;
+      ctx.font = `bold ${Math.round(fontPx)}px Helvetica, Arial, sans-serif`;
+      while (fontPx > minPx && ctx.measureText(line).width > maxTextW) {
+        fontPx -= 0.5;
+        ctx.font = `bold ${Math.round(fontPx)}px Helvetica, Arial, sans-serif`;
+      }
+      let drawn = line;
+      if (ctx.measureText(drawn).width > maxTextW) {
+        while (drawn.length > 1 && ctx.measureText(`${drawn}…`).width > maxTextW) {
+          drawn = drawn.slice(0, -1);
+        }
+        drawn = `${drawn}…`;
+      }
+      ctx.fillText(drawn, padL, y);
+    }
+    y += lineStep;
   }
 
   y += 1.2 * scale;
@@ -944,6 +1163,36 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
+/** Converte logo colorida (vermelho/preto) em branco + alpha — faixa preta da arte. */
+async function whitenLogoForBlackBand(logo: NonNullable<PontoMixLogo>): Promise<PontoMixLogo> {
+  try {
+    const img = await loadImage(logo.dataUrl);
+    const canvas = document.createElement('canvas');
+    canvas.width = logo.width;
+    canvas.height = logo.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return logo;
+    ctx.drawImage(img, 0, 0);
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const d = imageData.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const a = d[i + 3]!;
+      if (a < 8) continue;
+      d[i] = 255;
+      d[i + 1] = 255;
+      d[i + 2] = 255;
+    }
+    ctx.putImageData(imageData, 0, 0);
+    return {
+      dataUrl: canvas.toDataURL('image/png'),
+      width: canvas.width,
+      height: canvas.height,
+    };
+  } catch {
+    return logo;
+  }
+}
+
 export async function loadPontoMixLogoDataUrl(url: string | null | undefined): Promise<PontoMixLogo> {
   if (!url) return null;
   try {
@@ -962,4 +1211,21 @@ export async function loadPontoMixLogoDataUrl(url: string | null | undefined): P
   } catch {
     return null;
   }
+}
+
+/**
+ * Logo do cliente, ou asset empacotado Ponto Mix, já branqueada para a faixa preta.
+ * Sem upload o PDF/preview ainda sai com a marca da arte (não o wordmark Helvetica).
+ */
+export async function resolvePontoMixLogo(url?: string | null): Promise<PontoMixLogo> {
+  const source = (url ?? '').trim() || PONTO_MIX_BUNDLED_LOGO_URL;
+  const loaded = await loadPontoMixLogoDataUrl(source);
+  if (!loaded) {
+    if (source !== PONTO_MIX_BUNDLED_LOGO_URL) {
+      const bundled = await loadPontoMixLogoDataUrl(PONTO_MIX_BUNDLED_LOGO_URL);
+      return bundled ? whitenLogoForBlackBand(bundled) : null;
+    }
+    return null;
+  }
+  return whitenLogoForBlackBand(loaded);
 }

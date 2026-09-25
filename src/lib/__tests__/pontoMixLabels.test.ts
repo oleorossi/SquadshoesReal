@@ -3,11 +3,14 @@ import {
   composePontoMixLabelCopy,
   detectPontoMixDelimiter,
   formatPontoMixPrice,
+  isPontoMixInternalSku,
   isPontoMixOrderHeader,
   isValidEan13,
+  normalizePontoMixArtLines,
   parsePontoMixOrderCsv,
   renderPontoMixTemplate,
   resolvePontoMixBarcodeSymbology,
+  splitPontoMixDescricaoIntoArtLines,
   buildPontoMixZpl,
 } from '@/lib/pontoMixLabels';
 import {
@@ -46,12 +49,46 @@ describe('pontoMixLabels', () => {
     expect(copy.barcodeSymbology).toBe('code128');
   });
 
+  it('reconstrói as 3 linhas da arte quando descrição vem completa + SKU interno', () => {
+    // Caso do PDF errado: descricao dump + referencia 64841968-00-0000000
+    const row = {
+      descricao: 'SANDALIA CALCADOS FEM SQUARD SHOES SP201 PRETO 34 34',
+      referencia: '64841968-00-0000000',
+      cor: 'PRETO',
+      tamanho: '34',
+      codigoBarra: '105742',
+      codProduto: '105742',
+      quantidade: 1,
+      valor: '39.99',
+    };
+    expect(isPontoMixInternalSku(row.referencia)).toBe(true);
+    const split = splitPontoMixDescricaoIntoArtLines(row.descricao, row.cor, row.tamanho);
+    expect(split).toEqual({
+      line1: 'SANDALIA CALCADOS FEM',
+      line2: 'SQUARD SHOES SP201',
+      line3: 'PRETO 34 34',
+    });
+    const copy = composePontoMixLabelCopy(row, PONTO_MIX_DEFAULT_TEMPLATES);
+    expect(copy.line1).toBe('SANDALIA CALCADOS FEM');
+    expect(copy.line2).toBe('SQUARD SHOES SP201');
+    expect(copy.line3).toBe('PRETO 34 34');
+    expect(copy.line2).not.toMatch(/64841968/);
+  });
+
+  it('normalizePontoMixArtLines não mexe no CSV já canônico', () => {
+    const rows = parsePontoMixOrderCsv(sampleCsv);
+    const rendered = {
+      line1: 'SANDALIA CALCADOS FEM',
+      line2: 'SQUARD SHOES SP201',
+      line3: 'PRETO 34 34',
+    };
+    expect(normalizePontoMixArtLines(rendered, rows[0]!)).toEqual(rendered);
+  });
+
   it('105742 usa Code128; EAN-13 válido troca simbologia', () => {
     expect(resolvePontoMixBarcodeSymbology('105742')).toBe('code128');
     expect(isValidEan13('105742')).toBe(false);
-    // 7891234567895 — check digit ean13 calculado
     const ean = '7891234567895';
-    // recalcula: se inválido, gera um válido
     let sum = 0;
     for (let i = 0; i < 12; i++) sum += Number(ean[i]) * (i % 2 === 0 ? 1 : 3);
     const check = (10 - (sum % 10)) % 10;
@@ -118,5 +155,25 @@ describe('pontoMixLabels', () => {
     expect(detectPontoMixDelimiter('a\tb\tc')).toBe('\t');
     expect(detectPontoMixDelimiter('a|b|c')).toBe('|');
     expect(detectPontoMixDelimiter('a;b;c')).toBe(';');
+  });
+
+  it('ZPL da arte errada não embute o SKU interno nas linhas', () => {
+    const zpl = buildPontoMixZpl([
+      {
+        descricao: 'SANDALIA CALCADOS FEM SQUARD SHOES SP201 PRETO 34 34',
+        referencia: '64841968-00-0000000',
+        cor: 'PRETO',
+        tamanho: '34',
+        codigoBarra: '105742',
+        codProduto: '105742',
+        quantidade: 1,
+        valor: '39.99',
+      },
+    ]);
+    expect(zpl).toContain('SANDALIA CALCADOS FEM');
+    expect(zpl).toContain('SQUARD SHOES SP201');
+    expect(zpl).toContain('PRETO 34 34');
+    expect(zpl).not.toContain('64841968');
+    expect(defaultPatternForKey('ponto_mix').key).toBe('ponto_mix');
   });
 });
