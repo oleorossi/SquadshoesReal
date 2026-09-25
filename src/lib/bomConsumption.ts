@@ -846,6 +846,31 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
         }
         if (arr.length > 0) soleGroupStandardItemsBySole.set(p.id, arr);
       }
+
+      // Pin placa_palmilha pode apontar SKU fora do escopo da ficha (EVA 3MM).
+      const fiberPinIds = [...new Set([...soleFiberPinBySole.values()].filter(Boolean))];
+      const missingFiberIds = fiberPinIds.filter(
+        (id) => !(allProducts || []).some((p: any) => p.id === id),
+      );
+      if (missingFiberIds.length > 0) {
+        const fiberProducts = await fetchScopedProductsOrThrow(supabase, [], missingFiberIds);
+        const seen = new Set((allProducts || []).map((p: any) => p.id));
+        for (const p of fiberProducts) {
+          if (!seen.has(p.id)) {
+            allProducts.push(p);
+            seen.add(p.id);
+          }
+        }
+        const fiberCsResult = await supabase
+          .from('component_sheets')
+          .select('product_id, dimensions_width, dimensions_length, dimensions_unit, yield_per_size, yield_per_sole, products!inner(group_id, name, color, unit)')
+          .in('product_id', missingFiberIds);
+        assertQuerySucceeded('fichas de componentes da fibra pinada', fiberCsResult);
+        const csSeen = new Set((componentSheets || []).map((cs: any) => `${cs.product_id}`));
+        for (const cs of (fiberCsResult.data || []) as any[]) {
+          if (!csSeen.has(String(cs.product_id))) componentSheets.push(cs);
+        }
+      }
     }
   }
 
