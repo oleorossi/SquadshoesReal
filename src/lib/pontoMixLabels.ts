@@ -1,9 +1,9 @@
 /**
- * Esqueleto Ponto Mix — etiqueta varejo 40×60 mm (L42PRO FULL).
+ * Esqueleto Ponto Mix — etiqueta preço varejo 40×60 mm (L42PRO FULL).
  *
- * Layout (retrato, SEM PREÇO — decisão do dono): faixa preta + logo →
- * 3 linhas → caixa tamanho (traço fino) → CODE128 + dígitos.
- * Dados só do arquivo do cliente. Fonte: Montserrat Bold (PDF + preview).
+ * Layout (retrato): faixa preta + logo → 3 linhas → caixa tamanho (traço fino) →
+ * CODE128 + dígitos → faixa preta preço. Dados só do arquivo do cliente.
+ * Fonte: Montserrat Bold embutida (PDF + preview).
  */
 import pontoMixLogoWhite from '@/assets/ponto-mix/logo-ponto-mix-white.png';
 import montserratBoldUrl from '@/assets/ponto-mix/fonts/Montserrat-Bold.ttf?url';
@@ -33,27 +33,30 @@ export const PONTO_MIX_BUNDLED_LOGO_URL = pontoMixLogoWhite as string;
 export const PONTO_MIX_PDF_FONT = 'PontoMixSans';
 
 /**
- * Geometria calibrada na arte fotográfica 40×60 (sem faixa de preço).
+ * Geometria calibrada na arte fotográfica 40×60 (com faixa de preço).
  * Unidades em mm; fontes em pt. Fonte única PDF / preview (Montserrat Bold).
  */
 export const PONTO_MIX_ART_LAYOUT = {
-  headerHMm: 8.5,
-  textTopGapMm: 1.6,
-  lineFontPt: 4.2,
+  headerHMm: 8.0,
+  textTopGapMm: 1.55,
+  lineFontPt: 4.35,
   lineMinPt: 3.2,
-  lineStepMm: 2.8,
-  sizeTopGapMm: 2.2,
-  sizeBoxWMm: 15.0,
-  sizeBoxHMm: 6.0,
+  lineStepMm: 2.85,
+  sizeTopGapMm: 1.7,
+  sizeBoxWMm: 14.5,
+  sizeBoxHMm: 6.2,
   /** ~0,2 mm — a caixa da arte é delgada, não grossa. */
   sizeStrokeMm: 0.2,
-  sizeFontPt: 13.5,
-  barcodeTopGapMm: 1.3,
-  barcodeHumanGapMm: 1.7,
-  barcodeHumanPt: 5.6,
-  bottomMarginMm: 1.8,
+  sizeFontPt: 14,
+  barcodeTopGapMm: 1.15,
+  /** Altura fixa — não “encher” o restante (empurrava o preço para fora). */
+  barcodeHMm: 7.4,
+  barcodeHumanGapMm: 1.55,
+  barcodeHumanPt: 5.5,
+  footerHMm: 8.5,
+  priceFontPt: 12,
   logoPadXMm: 2.0,
-  logoPadYMm: 1.0,
+  logoPadYMm: 0.95,
 } as const;
 
 type PdfDoc = import('jspdf').jsPDF;
@@ -917,25 +920,30 @@ function artSlots(geometry: ClientLabelGeometry) {
   const L = PONTO_MIX_ART_LAYOUT;
   const w = geometry.labelWidthMm;
   const h = geometry.labelHeightMm;
-  const headerH = Math.min(L.headerHMm, h * 0.16);
+  const headerH = Math.min(L.headerHMm, h * 0.15);
+  const footerH = Math.min(L.footerHMm, h * 0.16);
   const padL = geometry.leftMarginMm;
   const padR = geometry.rightMarginMm;
   const contentW = w - padL - padR;
   const textY0 = headerH + L.textTopGapMm;
   const sizeY = textY0 + L.lineStepMm * 3 + L.sizeTopGapMm;
   const barcodeY = sizeY + L.sizeBoxHMm + L.barcodeTopGapMm;
-  const humanReserve = L.barcodeHumanGapMm + 2.4 + L.bottomMarginMm;
-  // Sem preço: sobra espaço embaixo — não esticar o código até o rodapé.
-  const barcodeH = Math.min(12, Math.max(8, h - barcodeY - humanReserve));
+  const footerY = h - footerH;
+  // Invariante: barcode + HRI ficam acima do footer (não empurram o preço fora).
+  const humanReserve = L.barcodeHumanGapMm + 2.4;
+  const maxBarcodeH = Math.max(5.5, footerY - barcodeY - humanReserve);
+  const barcodeH = Math.min(L.barcodeHMm, maxBarcodeH);
   return {
     w,
     h,
     headerH,
+    footerH,
+    footerY,
     padL,
     contentW,
     textY0,
     sizeY,
-    sizeBoxW: Math.min(L.sizeBoxWMm, contentW * 0.5),
+    sizeBoxW: Math.min(L.sizeBoxWMm, contentW * 0.48),
     sizeBoxH: L.sizeBoxHMm,
     barcodeY,
     barcodeH,
@@ -1004,7 +1012,16 @@ function drawPontoMixLabel(
     }
   }
 
-  // Sem faixa de preço — decisão do dono ("Sem preço").
+  // Faixa preço — obrigatória (arte da direita / foto de referência).
+  doc.setFillColor(0, 0, 0);
+  doc.rect(0, slots.footerY, slots.w, slots.footerH, 'F');
+  doc.setTextColor(255, 255, 255);
+  setDocFont(doc, 'bold');
+  doc.setFontSize(Math.max(10, Math.min(L.priceFontPt, slots.footerH * 1.25)));
+  doc.text(copy.priceText, slots.w / 2, slots.footerY + slots.footerH * 0.68, {
+    align: 'center',
+  });
+  doc.setTextColor(0, 0, 0);
 }
 
 export async function buildPontoMixPdf(
@@ -1073,6 +1090,8 @@ export function buildPontoMixZpl(
   const H = mmToDots(geometry.labelHeightMm);
   const padL = mmToDots(slots.padL);
   const headerH = mmToDots(slots.headerH);
+  const footerH = mmToDots(slots.footerH);
+  const footerY = mmToDots(slots.footerY);
 
   const blocks = expanded.map(row => {
     const copy = composePontoMixLabelCopy(row, templates, priceFormat);
@@ -1080,6 +1099,7 @@ export function buildPontoMixZpl(
     const line2 = zplField(copy.line2, 40);
     const line3 = zplField(copy.line3, 40);
     const sizeVal = zplField(copy.tamanho, 6);
+    const price = zplField(copy.priceText, 24);
     const barcode = copy.codigoBarra.replace(/[^A-Za-z0-9 ._/-]/g, '').slice(0, 50);
 
     const textStartY = mmToDots(slots.textY0);
@@ -1091,6 +1111,7 @@ export function buildPontoMixZpl(
     const barcodeY = mmToDots(slots.barcodeY);
     const barcodeH = mmToDots(slots.barcodeH);
     const strokeDots = Math.max(1, mmToDots(L.sizeStrokeMm));
+    const priceFont = Math.max(28, Math.min(36, Math.round(footerH * 0.72)));
 
     const barcodeCmd =
       barcode && copy.barcodeSymbology === 'ean13'
@@ -1121,7 +1142,9 @@ export function buildPontoMixZpl(
       `^FO${sizeBoxX},${sizeBoxY}^GB${sizeBoxW},${sizeBoxH},${strokeDots},B^FS`,
       `^FO${sizeBoxX},${sizeBoxY + mmToDots(0.9)}^A0N,42,42^FD${sizeVal}^FS`,
       barcodeCmd,
-      // Sem faixa de preço — decisão do dono.
+      // Faixa preço — obrigatória (espelha o PDF / foto de referência).
+      `^FO0,${footerY}^GB${W},${footerH},${footerH},B^FS`,
+      `^FO0,${footerY + Math.round(footerH * 0.22)}^A0N,${priceFont},${priceFont}^FB${W},1,0,C^FR^FD${price}^FS`,
       '^XZ',
     ]
       .filter(Boolean)
@@ -1272,7 +1295,17 @@ export async function renderPontoMixPreviewDataUrl(
     }
   }
 
-  // Sem faixa de preço — decisão do dono ("Sem preço").
+  // Faixa preço — obrigatória.
+  const footerY = slots.footerY * scale;
+  const footerH = slots.footerH * scale;
+  ctx.fillStyle = '#000000';
+  ctx.fillRect(0, footerY, canvas.width, footerH);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = boldFont(Math.max(10, Math.min(L.priceFontPt, slots.footerH * 1.25)) * scale * 0.78);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(copy.priceText, canvas.width / 2, footerY + footerH * 0.55);
+
   return canvas.toDataURL('image/png');
 }
 

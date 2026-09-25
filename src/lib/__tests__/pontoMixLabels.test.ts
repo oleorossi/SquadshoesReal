@@ -52,6 +52,7 @@ describe('pontoMixLabels', () => {
   });
 
   it('reconstrói as 3 linhas da arte quando descrição vem completa + SKU interno', () => {
+    // Caso do PDF errado: descricao dump + referencia 64841968-00-0000000
     const row = {
       descricao: 'SANDALIA CALCADOS FEM SQUARD SHOES SP201 PRETO 34 34',
       referencia: '64841968-00-0000000',
@@ -178,7 +179,7 @@ describe('pontoMixLabels', () => {
     expect(defaultPatternForKey('ponto_mix').key).toBe('ponto_mix');
   });
 
-  it('ZPL/composição NÃO imprimem faixa de preço (Sem preço)', () => {
+  it('ZPL/composição imprimem faixa de preço obrigatória', () => {
     const row = {
       descricao: 'SANDALIA CALCADOS FEM',
       referencia: 'SQUARD SHOES SP201',
@@ -190,16 +191,17 @@ describe('pontoMixLabels', () => {
       valor: '39.99',
     };
     const copy = composePontoMixLabelCopy(row, PONTO_MIX_DEFAULT_TEMPLATES);
-    // priceText ainda existe pra conferência, mas PDF/ZPL não desenham a faixa.
     expect(copy.priceText).toBe('R$ 39.99');
     const zpl = buildPontoMixZpl([row]);
-    expect(zpl).not.toMatch(/R\$\s*39/);
-    expect(zpl).not.toContain('39.99');
-    expect(zpl).not.toMatch(/\^FR\^FD.*R\$/);
+    expect(zpl).toMatch(/R\$\s*39\.99/);
+    expect(zpl).toMatch(/\^FR\^FD.*R\$/);
+    // Header + footer = duas faixas pretas sólidas (além da caixa de tamanho).
+    const blackBands = zpl.match(/\^GB\d+,\d+,\d+,B\^FS/g) ?? [];
+    expect(blackBands.length).toBeGreaterThanOrEqual(2);
+    expect(PONTO_MIX_ART_LAYOUT.footerHMm).toBeGreaterThanOrEqual(8);
+    expect(PONTO_MIX_ART_LAYOUT.barcodeHMm).toBeLessThanOrEqual(8);
     expect(PONTO_MIX_ART_LAYOUT.sizeStrokeMm).toBeLessThanOrEqual(0.25);
     expect(PONTO_MIX_ART_LAYOUT.lineFontPt).toBeLessThan(5);
-    expect('footerHMm' in PONTO_MIX_ART_LAYOUT).toBe(false);
-    expect('bottomMarginMm' in PONTO_MIX_ART_LAYOUT).toBe(true);
   });
 
   it('SKU interno nunca vaza nas 3 linhas da arte', () => {
@@ -222,21 +224,23 @@ describe('pontoMixLabels', () => {
     expect(copy.line1).toBe('SANDALIA CALCADOS FEM');
     expect(copy.line2).toBe('SQUARD SHOES SP201');
     expect(copy.line3).toBe('PRETO 34 34');
+    expect(copy.priceText).toBe('R$ 49.90');
     expect(`${copy.line1}|${copy.line2}|${copy.line3}`).not.toMatch(/\d{5,}[-/]/);
   });
 
   it('whitenLogoPixels remove fundo claro e branqueia a marca', () => {
+    // RGBA: white, red, near-white
     const data = new Uint8ClampedArray([
       255, 255, 255, 255,
       200, 20, 20, 255,
       230, 230, 230, 255,
     ]);
     whitenLogoPixels(data);
-    expect(data[3]).toBe(0);
-    expect(data[4]).toBe(255);
+    expect(data[3]).toBe(0); // white → transparent
+    expect(data[4]).toBe(255); // red → white
     expect(data[5]).toBe(255);
     expect(data[6]).toBe(255);
     expect(data[7]).toBe(255);
-    expect(data[11]).toBe(0);
+    expect(data[11]).toBe(0); // near-white → transparent
   });
 });
