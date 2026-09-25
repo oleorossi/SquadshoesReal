@@ -47,6 +47,10 @@ describe('PV header save skips OP rewrite (20270101024100)', () => {
     expect(documentary).toContain('Chave ausente preserva o valor atual');
     expect(documentary).not.toContain('packaging_mode');
     expect(documentary).not.toContain('outsource_to_contractor_id');
+    // ⚠ A 24100 gravava NULLIF→NULL em client_order_number (NOT NULL). A
+    // correção vive em 20270101028700 — este arquivo histórico permanece
+    // como registro da introdução do caminho documental; o contrato do
+    // COALESCE está em documentaryHeaderNotNullEmpty.contract.test.ts.
   });
 
   it('caminho neutro não chama teardown nem promote', () => {
