@@ -3132,8 +3132,8 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                       {form.upper_material_group_id && (
                         <DublagemGlueSelect
                           compositeGroupId={form.upper_material_group_id}
-                          value={(form as any).dublagem_glue_id || null}
-                          onChange={(glueId) => updateField('dublagem_glue_id' as any, glueId)}
+                          value={form.dublagem_glue_id || null}
+                          onChange={(glueId) => updateField('dublagem_glue_id', glueId)}
                         />
                       )}
                     </div>
