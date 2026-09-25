@@ -23,6 +23,7 @@ import { supabase } from '@/integrations/supabase/client';
 import StrapCatalogResolutionDrawer, {
   type StrapCatalogResolutionLine,
 } from './StrapCatalogResolutionDrawer';
+import SaleOrderItemDublagemControls from './SaleOrderItemDublagemControls';
 import StrapPvOrigemChooser, {
   StrapPvOrigemBulkActions,
   type StrapPvOrigemChoice,
@@ -36,6 +37,7 @@ import {
   listMissingStrapPvOrigemChoices,
   resolveEffectiveStrapPvOrigem,
   sourceModeForEffectiveOrigem,
+  strapLineAllowsBuyReadyOrigem,
 } from '@/lib/strapPvOrigem';
 import { useAddProduct, ProductSchema } from '@/hooks/useProducts';
 import { useAddComponentSheet } from '@/hooks/useComponentSheets';
@@ -378,7 +380,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
         // variant_drives_*: quais componentes seguem o MATERIAL PRINCIPAL da
         // variante (mig 20261027120000). Sem eles a tela não consegue espelhar a
         // cascata do motor e ofereceria as cores do grupo errado.
-        .select('upper_material, upper_material_group_id, upper_material_product_id, lining_material, insole_material, lining_accessories, components_accessories, sole_group_id, sole_material, has_straps, variant_drives_upper, variant_drives_lining')
+        .select('upper_material, upper_material_group_id, upper_material_product_id, upper_consumption, dublagem_glue_id, lining_material, insole_material, lining_accessories, components_accessories, sole_group_id, sole_material, has_straps, variant_drives_upper, variant_drives_lining')
         .eq('id', item.reference_id!)
         .single();
       if (error) throw error;
@@ -2271,6 +2273,22 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
           </div>
         )}
 
+        <SaleOrderItemDublagemControls
+          upperGroupId={
+            (selectedMaterialVariant as any)?.upper_material_group_id
+            || sheetSpecs?.upper_material_group_id
+            || null
+          }
+          pvColor={item.color || ''}
+          pairs={totalPairs}
+          upperConsumptionDm2PerPair={Number((sheetSpecs as any)?.upper_consumption) || 0}
+          dublagemMode={item.dublagem_mode ?? null}
+          onModeChange={(mode) => {
+            if (onUpdateFields) onUpdateFields(index, { dublagem_mode: mode });
+            else onUpdate(index, 'dublagem_mode' as any, mode);
+          }}
+        />
+
         {/* Grade Section — mesma dobra dos campos; classificação do solado
             entra no próprio header da grade, sem faixa extra. */}
         <div className="rounded-md border border-border/60 overflow-hidden bg-muted/5">
@@ -2553,13 +2571,20 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                       const eligible = new Set(
                         straps
                           .filter((strap) => {
+                            if (!strapLineAllowsBuyReadyOrigem(strap)) return false;
                             const measure = strapCatalog?.measures.find((entry) => entry.id === strap.measure_id);
                             return normalizeStrapOrigemPadrao(measure?.origem_padrao) === 'escolhe_no_pv';
                           })
                           .map((strap) => technicalStrapLineId(strap))
                           .filter((id): id is string => !!id),
                       );
-                      if (eligible.size === 0) return;
+                      if (eligible.size === 0) {
+                        toast.error(
+                          'Nenhuma tira desta ficha tem grupo acabado cadastrado. Use «Todas fazer» — comprar pronto exige o grupo na ficha técnica.',
+                          { duration: 7000 },
+                        );
+                        return;
+                      }
                       const updated = snapshotStraps.map((strap) => {
                         const lineId = technicalStrapLineId(strap);
                         if (!lineId || !eligible.has(lineId)) return strap;
@@ -3071,6 +3096,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                               value={isExplicitStrapPvOrigem(originChoice)
                                 ? originChoice as StrapPvOrigemChoice
                                 : null}
+                              allowBuyReady={strapLineAllowsBuyReadyOrigem(strap)}
                               disabled={isStrapPvOrigemChoiceLocked({
                                 committedSnapshot: preserveCommittedStrapSnapshot,
                                 productionExcluded,

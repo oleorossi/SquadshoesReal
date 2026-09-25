@@ -92,6 +92,7 @@ import {
 import { strapColorMode } from '@/lib/technicalStrapLines';
 import { useArtisanalStrapCatalog } from '@/hooks/useArtisanalStraps';
 import {
+  coerceImpossibleBuyReadyStrapOrigem,
   firstMissingStrapPvOrigemMessage,
   listStrapHubIncompleteForOrigem,
   type StrapHubIncompleteIssue,
@@ -1958,11 +1959,16 @@ export default function SaleOrderForm() {
       validItems,
       canonicalReferences as StrapSnapshotReferenceLike[],
     );
-    const itemsForSubmit = strapRecovery.items;
-    if (strapRecovery.recoveredEmpty > 0 || strapRecovery.hydratedOrigem > 0) {
-      // #region agent log
-      fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'78dba0'},body:JSON.stringify({sessionId:'78dba0',runId:'post-fix',hypothesisId:'G',location:'SaleOrderForm.tsx:handleSubmit:recover',message:'recovered empty strap snapshots on submit',data:{recoveredEmpty:strapRecovery.recoveredEmpty,hydratedOrigem:strapRecovery.hydratedOrigem,ds20:itemsForSubmit.filter(it=>canonicalReferences.some((r:any)=>r.id===it.reference_id&&r.code==='DS20')).map(it=>({color:it.color,snapLen:Array.isArray(it.strap_colors)?it.strap_colors.length:0,sourcingKeys:it.strap_sourcing?Object.keys(it.strap_sourcing).length:0}))},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
+    // Comprar pronto sem group_id na ficha (G03 artesanal) é impossível — o
+    // prepare barra o PV inteiro. Cores colapsadas podem ainda ter sku_acabado
+    // de "Todas comprar pronto" enquanto a aba aberta já mostra Fazer.
+    const buyReadyCoerce = coerceImpossibleBuyReadyStrapOrigem(strapRecovery.items);
+    const itemsForSubmit = buyReadyCoerce.items;
+    if (
+      strapRecovery.recoveredEmpty > 0
+      || strapRecovery.hydratedOrigem > 0
+      || buyReadyCoerce.coerced.length > 0
+    ) {
       draftStateRef.current = { ...draftStateRef.current, items: itemsForSubmit };
       setItems(itemsForSubmit);
     }
@@ -1974,9 +1980,6 @@ export default function SaleOrderForm() {
       canonicalReferences as StrapSnapshotReferenceLike[],
     );
     if (missingStrapSnapshots.length > 0) {
-      // #region agent log
-      fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'78dba0'},body:JSON.stringify({sessionId:'78dba0',runId:'post-fix',hypothesisId:'G',location:'SaleOrderForm.tsx:handleSubmit:blocked',message:'still blocked after recover',data:{missing:missingStrapSnapshots},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       toast.error(
         `Demanda de tira não resolvida em ${missingStrapSnapshots[0].label}: a ficha exige tiras, mas o item está sem linhas técnicas. ` +
         'Cadastre as tiras na ficha técnica e volte ao pedido; o sistema não infere cor ou variante.',

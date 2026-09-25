@@ -3,8 +3,13 @@ import {
 } from '@/lib/strapBaseNapaPeel';
 import {
   getStrapSourcingOverride,
+  setStrapSourcing,
   type StrapSourcingMap,
 } from '@/lib/strapSourcing';
+import {
+  isPurchasedReadyStrap,
+  type StrapIdentityLike,
+} from '@/lib/strapIdentity';
 import {
   technicalStrapLineId,
   type StrapPvOrigem,
@@ -29,12 +34,14 @@ export function normalizeSelectableStrapPvOrigem(
   if (value === 'sku_acabado') return 'sku_acabado';
   return null;
 }
-export interface StrapPvOrigemLineLike {
+export interface StrapPvOrigemLineLike extends StrapIdentityLike {
   id?: string | null;
   label?: string | null;
   measure_id?: string | null;
   pv_origem?: StrapPvOrigem | string | null;
   technical_strap_line_id?: string | null;
+  /** Grupo acabado da ficha (legado / escolha fornecedor em reference_base). */
+  group_id?: string | null;
 }
 
 export interface StrapPvOrigemItemLike {
@@ -142,10 +149,35 @@ export function collectStrapPvOrigemChanges(
   return changes;
 }
 
+/** UUID do grupo acabado na linha da ficha (pin finished ou group_id legado). */
+export function strapLineFinishedGroupId(
+  line: Pick<StrapPvOrigemLineLike, 'group_id' | 'identity_group_id'> | null | undefined,
+): string | null {
+  const identity = (line?.identity_group_id || '').trim();
+  if (identity) return identity;
+  const group = (line?.group_id || '').trim();
+  return group || null;
+}
+
+/**
+ * "Comprar pronto" só é materializável quando a ficha aponta um grupo acabado.
+ * Sem isso o writer estoura `Tira pronta exige o grupo acabado (group_id) na ficha`
+ * — G03/artesanal por napa não tem group_id; a origem válida é Fazer.
+ */
+export function strapLineAllowsBuyReadyOrigem(
+  line: StrapPvOrigemLineLike | null | undefined,
+): boolean {
+  return !!strapLineFinishedGroupId(line);
+}
+
 /**
  * A origem da posição (TIRA 2, TRASEIRA…) é do pedido, não da cor.
  * Sem isso, escolher em OFF WHITE deixa NEW WHISKY/ROSADO vazios e o save
  * devolve o mesmo toast (PV-00194).
+ *
+ * Também espelha `strap_sourcing` (fábrica → internal). Sem isso, "Todas
+ * comprar pronto" numa cor + "Fazer" só no seletor visível deixava as outras
+ * cores com pv_origem=sku e o prepare barrava o PV inteiro.
  */
 export function applyStrapPvOrigemChangesToItems<T extends StrapPvOrigemItemLike>(
   items: readonly T[],
@@ -161,6 +193,7 @@ export function applyStrapPvOrigemChangesToItems<T extends StrapPvOrigemItemLike
     const straps = Array.isArray(item.strap_colors) ? item.strap_colors : [];
     if (straps.length === 0) return item;
     let changed = false;
+    let nextSourcing: StrapSourcingMap = { ...(item.strap_sourcing || {}) };
     const nextStraps = straps.map((line) => {
       const lineId = technicalStrapLineId({
         id: line.id,
@@ -170,10 +203,61 @@ export function applyStrapPvOrigemChangesToItems<T extends StrapPvOrigemItemLike
       const origem = byLine.get(lineId);
       if (!origem || line.pv_origem === origem) return line;
       changed = true;
+      if (origem === 'fabrica' || origem === 'prestador') {
+        nextSourcing = setStrapSourcing(nextSourcing, lineId, 'internal');
+      } else if (origem === 'sku_acabado') {
+        const mode = getStrapSourcingOverride(nextSourcing, lineId);
+        if (mode !== 'buy_ready') {
+          nextSourcing = setStrapSourcing(nextSourcing, lineId, null);
+        }
+      }
       return { ...line, pv_origem: origem };
     });
-    return changed ? { ...item, strap_colors: nextStraps } : item;
+    return changed
+      ? { ...item, strap_colors: nextStraps, strap_sourcing: nextSourcing }
+      : item;
   });
+}
+
+/**
+ * No submit: `sku_acabado` em linha artesanal sem grupo acabado na ficha é
+ * impossível de materializar. Converte para Fazer antes do RPC — cobre cores
+ * colapsadas que ainda carregavam "Todas comprar pronto" enquanto a aba aberta
+ * já mostrava Fazer.
+ */
+export function coerceImpossibleBuyReadyStrapOrigem<T extends StrapPvOrigemItemLike>(
+  items: readonly T[],
+): { items: T[]; coerced: Array<{ color: string; label: string }> } {
+  const coerced: Array<{ color: string; label: string }> = [];
+  const next = items.map((item) => {
+    const straps = Array.isArray(item.strap_colors) ? [...item.strap_colors] : [];
+    if (straps.length === 0) return item;
+    let changed = false;
+    let nextSourcing: StrapSourcingMap = { ...(item.strap_sourcing || {}) };
+    const nextStraps = straps.map((line) => {
+      if (line.pv_origem !== 'sku_acabado') return line;
+      // Identidade finished_product_group continua no caminho buy_ready do writer.
+      if (isPurchasedReadyStrap(line)) return line;
+      if (strapLineAllowsBuyReadyOrigem(line)) return line;
+      changed = true;
+      coerced.push({
+        color: (item.color || 'sem cor').trim() || 'sem cor',
+        label: (line.label || 'Tira').trim() || 'Tira',
+      });
+      const lineId = technicalStrapLineId({
+        id: line.id,
+        technical_strap_line_id: line.technical_strap_line_id,
+      });
+      if (lineId) {
+        nextSourcing = setStrapSourcing(nextSourcing, lineId, 'internal');
+      }
+      return { ...line, pv_origem: 'fabrica' as const };
+    });
+    return changed
+      ? { ...item, strap_colors: nextStraps, strap_sourcing: nextSourcing }
+      : item;
+  });
+  return { items: next, coerced };
 }
 
 /** Primeiro gap de origem, nomeando as cores que ainda estão vazias. */

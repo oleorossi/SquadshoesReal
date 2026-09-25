@@ -91,6 +91,8 @@ export function buildExtraItemColumns(item: SaleOrderItemFormData): Record<strin
     selected_terceirizacao_ids: Array.isArray(sel) ? sel : [],
     terceirizacao_quantities: (tq && typeof tq === 'object') ? tq : {},
     outsourced_sectors: (outs && typeof outs === 'object') ? outs : {},
+    // Sempre presente (inclusive null) pra o sync SQL gravar desmarcação.
+    dublagem_mode: item.dublagem_mode ?? null,
   };
 }
 
@@ -608,6 +610,11 @@ export type SaleOrderItemFormData = {
   strap_sourcing_revision?: number;
   observation?: string | null;
   material_variant_id?: string | null;
+  /**
+   * Dublagem por faces: `internal` (soft-reserva) | `external` (compra forçada)
+   * | null (legado — compra/debita acabado). Cola só herda da ficha (read-only).
+   */
+  dublagem_mode?: 'internal' | 'external' | null;
   /** Terceirização integrada: IDs das reference_terceirizacoes marcadas pra
    *  terceirizar este item neste PV. Default [] = faz em casa (nada terceirizado).
    *  Ao salvar o PV, o RPC sync_sale_order_service_orders gera/atualiza as OS. */

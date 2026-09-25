@@ -13,11 +13,13 @@ interface Props {
   value: StrapPvOrigemChoice | 'prestador' | null;
   onChange: (value: StrapPvOrigemChoice) => void;
   disabled?: boolean;
+  /** Sem grupo acabado na ficha, comprar pronto não materializa (G03 artesanal). */
+  allowBuyReady?: boolean;
 }
 
 /** Seletor do PV: só aparece quando o Hub marca escolhe_no_pv. */
 export default function StrapPvOrigemChooser({
-  label, origemPadrao, value, onChange, disabled,
+  label, origemPadrao, value, onChange, disabled, allowBuyReady = true,
 }: Props) {
   const mode = normalizeStrapOrigemPadrao(origemPadrao);
   if (mode === 'sempre_fabrica') {
@@ -44,7 +46,8 @@ export default function StrapPvOrigemChooser({
         value={selectable ?? undefined}
         disabled={disabled}
         onValueChange={(next) => {
-          if (next === 'fabrica' || next === 'sku_acabado') onChange(next);
+          if (next === 'fabrica') onChange(next);
+          if (next === 'sku_acabado' && allowBuyReady) onChange(next);
         }}
       >
         <SelectTrigger className="h-8 min-w-0 flex-1 text-xs" aria-label={`Origem de ${label}`}>
@@ -52,7 +55,9 @@ export default function StrapPvOrigemChooser({
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="fabrica">Fazer (fábrica)</SelectItem>
-          <SelectItem value="sku_acabado">Comprar pronto</SelectItem>
+          {allowBuyReady && (
+            <SelectItem value="sku_acabado">Comprar pronto</SelectItem>
+          )}
         </SelectContent>
       </Select>
     </div>

@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import {
   applyDefaultStrapPvOrigemChoices,
   applyStrapPvOrigemChangesToItems,
+  coerceImpossibleBuyReadyStrapOrigem,
   collectStrapPvOrigemChanges,
   DEFAULT_STRAP_PV_ORIGEM,
   firstMissingStrapPvOrigemMessage,
@@ -291,6 +292,7 @@ describe('origem da tira no PV — uma escolha vale para todas as cores', () => 
       'utf8',
     );
     expect(page).toContain('firstMissingStrapPvOrigemMessage');
+    expect(page).toContain('coerceImpossibleBuyReadyStrapOrigem');
   });
 
   it('o item oferece tira pronta em lote e avisa que a origem vale para todas as cores', () => {
@@ -299,6 +301,56 @@ describe('origem da tira no PV — uma escolha vale para todas as cores', () => 
       'utf8',
     );
     expect(form).toContain('onAllBuyReady');
+    expect(form).toContain('strapLineAllowsBuyReadyOrigem');
     expect(form).toContain('A origem vale para todas as cores do pedido.');
+  });
+
+  it('propaga fábrica com sourcing internal nas outras cores', () => {
+    const lineId = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+    const items = applyStrapPvOrigemChangesToItems(
+      [
+        {
+          color: 'OFF WHITE',
+          strap_colors: [{ label: 'TIRA 1', technical_strap_line_id: lineId, pv_origem: 'fabrica' }],
+          strap_sourcing: { [lineId]: { source_mode: 'internal' } },
+        },
+        {
+          color: 'PRATA',
+          strap_colors: [{ label: 'TIRA 1', technical_strap_line_id: lineId, pv_origem: 'sku_acabado' }],
+          strap_sourcing: {},
+        },
+      ],
+      0,
+      [{ lineId, origem: 'fabrica' }],
+    );
+    expect(items[1].strap_colors?.[0]?.pv_origem).toBe('fabrica');
+    expect(items[1].strap_sourcing?.[lineId]?.source_mode).toBe('internal');
+  });
+
+  it('coerce sku_acabado sem group_id para fábrica no submit', () => {
+    const { items, coerced } = coerceImpossibleBuyReadyStrapOrigem([
+      {
+        color: 'PRATA',
+        strap_colors: [{
+          label: 'TIRA 1',
+          technical_strap_line_id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+          identity_basis: 'reference_base',
+          pv_origem: 'sku_acabado',
+          group_id: null,
+        }],
+      },
+      {
+        color: 'OFF WHITE',
+        strap_colors: [{
+          label: 'TIRA 1',
+          technical_strap_line_id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+          identity_basis: 'reference_base',
+          pv_origem: 'fabrica',
+        }],
+      },
+    ]);
+    expect(coerced).toEqual([{ color: 'PRATA', label: 'TIRA 1' }]);
+    expect(items[0].strap_colors?.[0]?.pv_origem).toBe('fabrica');
+    expect(items[1].strap_colors?.[0]?.pv_origem).toBe('fabrica');
   });
 });
