@@ -392,7 +392,7 @@ export function CabedalPrepPanel() {
     if (!editing) return null;
     return validateDistribution({
       demandPairs: Number(editing.pairs),
-      readyDate: editing.ready_date,
+      readyDate: effectiveReadyDate(editing),
       allocations: draftRows
         .filter((r) => r.contractorId && Number(r.pairs) > 0)
         .map((r) => ({
@@ -446,7 +446,7 @@ export function CabedalPrepPanel() {
     await savePlan.mutateAsync({
       demandId: editing.id,
       demandPairs: Number(editing.pairs),
-      readyDate: editing.ready_date,
+      readyDate: effectiveReadyDate(editing),
       rows,
       lockPlan: lock,
     });
