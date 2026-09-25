@@ -68,7 +68,6 @@ import {
   OBJETIVA_DEFAULT_BRANDING,
   OBJETIVA_DEFAULT_GEOMETRY,
   PONTO_MIX_DEFAULT_GEOMETRY,
-  PONTO_MIX_DEFAULT_PRICE_FORMAT,
   PONTO_MIX_DEFAULT_TEMPLATES,
   activatePattern,
   activeFileMappingFromCollection,
@@ -391,23 +390,6 @@ export function ClientLabelingWorkspace() {
     });
   }
 
-  function setPontoMixPriceFormat(
-    field: 'prefix' | 'decimalSeparator',
-    value: string,
-  ) {
-    if (!pattern || pattern.key !== 'ponto_mix') return;
-    updateDraft({
-      ...pattern,
-      priceFormat: {
-        ...(pattern.priceFormat ?? PONTO_MIX_DEFAULT_PRICE_FORMAT),
-        [field]:
-          field === 'decimalSeparator'
-            ? value === ',' ? ',' : '.'
-            : value,
-      },
-    });
-  }
-
   function setFileMappingColumn(
     field: keyof NonNullable<ClientLabelFileMapping['columns']>,
     value: string,
@@ -548,9 +530,10 @@ export function ClientLabelingWorkspace() {
             : `PDF Objetiva com ${totalEtiquetas} etiqueta(s) gerado.`,
         );
       } else if (pattern.key === 'ponto_mix') {
-        const logo = await resolvePontoMixLogo(pattern.branding.logoUrl);
-        if (pattern.branding.logoUrl && !logo) {
-          toast.warning('Não carreguei a logomarca enviada — usei a marca padrão Ponto Mix.');
+        // Arte fixa: sempre logo empacotada branca (upload do cliente é ignorado).
+        const logo = await resolvePontoMixLogo();
+        if (!logo) {
+          toast.warning('Não carreguei a marca Ponto Mix — o PDF sai com wordmark.');
         }
         const sourceRows = mode === 'production' ? productionRows : selectedRows;
         const previewRow = sourceRows[0];
@@ -717,7 +700,7 @@ export function ClientLabelingWorkspace() {
                         {savedKeys.includes('objetiva') ? ' · salvo' : ''}
                       </SelectItem>
                       <SelectItem value="ponto_mix">
-                        Ponto Mix (40×60 preço)
+                        Ponto Mix (40×60)
                         {savedKeys.includes('ponto_mix') ? ' · salvo' : ''}
                       </SelectItem>
                     </SelectContent>
@@ -820,7 +803,7 @@ export function ClientLabelingWorkspace() {
                     logoUrl={pattern.branding.logoUrl}
                     disabled={isBusy}
                     storageKey="ponto_mix"
-                    hint="Faixa preta no topo (40×60 mm). PNG/JPG; no térmico vira preto."
+                    hint="A arte usa a logo padrão Ponto Mix (branca na faixa preta). Upload opcional não altera o PDF."
                     onLogoChange={url => setBrandingField('logoUrl', url ?? '')}
                   />
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -859,36 +842,10 @@ export function ClientLabelingWorkspace() {
                       </div>
                     ))}
                   </div>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="space-y-1">
-                      <Label htmlFor="pm-prefix" className="text-xs">
-                        Prefixo preço
-                      </Label>
-                      <Input
-                        id="pm-prefix"
-                        value={(pattern.priceFormat ?? PONTO_MIX_DEFAULT_PRICE_FORMAT).prefix}
-                        disabled={isBusy}
-                        onChange={event => setPontoMixPriceFormat('prefix', event.target.value)}
-                        className="h-8"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Separador decimal</Label>
-                      <Select
-                        value={(pattern.priceFormat ?? PONTO_MIX_DEFAULT_PRICE_FORMAT).decimalSeparator}
-                        onValueChange={value => setPontoMixPriceFormat('decimalSeparator', value)}
-                        disabled={isBusy}
-                      >
-                        <SelectTrigger className="h-8">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value=".">Ponto (R$ 39.99)</SelectItem>
-                          <SelectItem value=",">Vírgula (R$ 39,99)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
+                  <p className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                    Arte sem preço: a faixa preta inferior com <span className="font-medium text-foreground">R$</span>{' '}
+                    não é impressa. O preço do arquivo ainda pode ser lido para conferência, mas não entra no PDF/ZPL.
+                  </p>
                   <details className="rounded-md border border-border bg-background p-3 text-sm" open>
                     <summary className="cursor-pointer font-semibold">
                       Padrão de arquivo (mapeamento de colunas)

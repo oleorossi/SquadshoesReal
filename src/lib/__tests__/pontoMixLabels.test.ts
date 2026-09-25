@@ -12,6 +12,8 @@ import {
   resolvePontoMixBarcodeSymbology,
   splitPontoMixDescricaoIntoArtLines,
   buildPontoMixZpl,
+  PONTO_MIX_ART_LAYOUT,
+  whitenLogoPixels,
 } from '@/lib/pontoMixLabels';
 import {
   PONTO_MIX_DEFAULT_TEMPLATES,
@@ -175,5 +177,70 @@ describe('pontoMixLabels', () => {
     expect(zpl).toContain('PRETO 34 34');
     expect(zpl).not.toContain('64841968');
     expect(defaultPatternForKey('ponto_mix').key).toBe('ponto_mix');
+  });
+
+  it('ZPL/composição imprimem faixa de preço obrigatória', () => {
+    const row = {
+      descricao: 'SANDALIA CALCADOS FEM',
+      referencia: 'SQUARD SHOES SP201',
+      cor: 'PRETO',
+      tamanho: '34',
+      codigoBarra: '105742',
+      codProduto: '105742',
+      quantidade: 1,
+      valor: '39.99',
+    };
+    const copy = composePontoMixLabelCopy(row, PONTO_MIX_DEFAULT_TEMPLATES);
+    expect(copy.priceText).toBe('R$ 39.99');
+    const zpl = buildPontoMixZpl([row]);
+    expect(zpl).toMatch(/R\$\s*39\.99/);
+    expect(zpl).toMatch(/\^FR\^FD.*R\$/);
+    // Header + footer = duas faixas pretas sólidas (além da caixa de tamanho).
+    const blackBands = zpl.match(/\^GB\d+,\d+,\d+,B\^FS/g) ?? [];
+    expect(blackBands.length).toBeGreaterThanOrEqual(2);
+    expect(PONTO_MIX_ART_LAYOUT.footerHMm).toBeGreaterThanOrEqual(8);
+    expect(PONTO_MIX_ART_LAYOUT.barcodeHMm).toBeLessThanOrEqual(8);
+    expect(PONTO_MIX_ART_LAYOUT.sizeStrokeMm).toBeLessThanOrEqual(0.25);
+    expect(PONTO_MIX_ART_LAYOUT.lineFontPt).toBeLessThan(5);
+  });
+
+  it('SKU interno nunca vaza nas 3 linhas da arte', () => {
+    expect(isPontoMixInternalSku('64041900-00-0000000')).toBe(true);
+    expect(isPontoMixInternalSku('64841968-00-0000000')).toBe(true);
+    expect(isPontoMixInternalSku('SQUARD SHOES SP201')).toBe(false);
+    const copy = composePontoMixLabelCopy(
+      {
+        descricao: 'SANDALIA CALCADOS FEM SQUARD SHOES SP201 PRETO 34 34',
+        referencia: '64041900-00-0000000',
+        cor: 'PRETO',
+        tamanho: '34',
+        codigoBarra: '105742',
+        codProduto: '105742',
+        quantidade: 1,
+        valor: '49.90',
+      },
+      PONTO_MIX_DEFAULT_TEMPLATES,
+    );
+    expect(copy.line1).toBe('SANDALIA CALCADOS FEM');
+    expect(copy.line2).toBe('SQUARD SHOES SP201');
+    expect(copy.line3).toBe('PRETO 34 34');
+    expect(copy.priceText).toBe('R$ 49.90');
+    expect(`${copy.line1}|${copy.line2}|${copy.line3}`).not.toMatch(/\d{5,}[-/]/);
+  });
+
+  it('whitenLogoPixels remove fundo claro e branqueia a marca', () => {
+    // RGBA: white, red, near-white
+    const data = new Uint8ClampedArray([
+      255, 255, 255, 255,
+      200, 20, 20, 255,
+      230, 230, 230, 255,
+    ]);
+    whitenLogoPixels(data);
+    expect(data[3]).toBe(0); // white → transparent
+    expect(data[4]).toBe(255); // red → white
+    expect(data[5]).toBe(255);
+    expect(data[6]).toBe(255);
+    expect(data[7]).toBe(255);
+    expect(data[11]).toBe(0); // near-white → transparent
   });
 });
