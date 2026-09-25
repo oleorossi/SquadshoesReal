@@ -2,8 +2,8 @@
  * Etiquetagem Cliente multi-cliente.
  *
  * Fluxo: escolher cliente → carregar/salvar 1..N tipos em `clients.label_pattern`
- * (Nalin e Objetiva no mesmo cadastro; sem histórico de arquivo) → importar
- * 1..N CSV/XLSX → gerar PDF do tipo ativo.
+ * (Nalin, Objetiva e Ponto Mix no mesmo cadastro; sem histórico de arquivo) →
+ * importar 1..N CSV/XLSX → gerar PDF (+ ZPL no Ponto Mix).
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -17,6 +17,7 @@ import {
   X,
   CircleNotch,
   Trash,
+  Image as ImageIcon,
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import logoFornecedor from '@/assets/baby-nalin/marca-fornecedor.png';
@@ -66,7 +67,11 @@ import {
   BABY_NALIN_DEFAULT_GEOMETRY,
   OBJETIVA_DEFAULT_BRANDING,
   OBJETIVA_DEFAULT_GEOMETRY,
+  PONTO_MIX_DEFAULT_GEOMETRY,
+  PONTO_MIX_DEFAULT_PRICE_FORMAT,
+  PONTO_MIX_DEFAULT_TEMPLATES,
   activatePattern,
+  activeFileMappingFromCollection,
   activePatternFromCollection,
   clientOrderLineSkuKey,
   collectionPatternKeys,
@@ -76,7 +81,9 @@ import {
   patternLabel,
   removePattern,
   savedPatternStatusLabel,
+  upsertActiveFileMapping,
   upsertActivePattern,
+  type ClientLabelFileMapping,
   type ClientLabelPattern,
   type ClientLabelPatternCollection,
   type ClientLabelPatternKey,
@@ -92,6 +99,15 @@ import {
   countObjetivaLabels,
   objetivaPdfFilename,
 } from '@/lib/objetivaLabels';
+import {
+  buildPontoMixPdf,
+  buildPontoMixZpl,
+  countPontoMixLabels,
+  loadPontoMixLogoDataUrl,
+  pontoMixPdfFilename,
+  pontoMixZplFilename,
+  renderPontoMixPreviewDataUrl,
+} from '@/lib/pontoMixLabels';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { cn } from '@/lib/utils';
 
@@ -119,6 +135,36 @@ const OBJETIVA_GEOMETRY_FIELDS: Array<{
   { key: 'topMarginMm', label: 'Sup. (mm)' },
   { key: 'bottomMarginMm', label: 'Inf. (mm)' },
 ];
+
+const PONTO_MIX_GEOMETRY_FIELDS = OBJETIVA_GEOMETRY_FIELDS.filter(
+  f => f.key !== 'columns' && f.key !== 'columnGapMm',
+);
+
+const PONTO_MIX_FILE_FIELDS: Array<{
+  key: keyof NonNullable<ClientLabelFileMapping['columns']>;
+  label: string;
+}> = [
+  { key: 'descricao', label: 'Coluna descrição' },
+  { key: 'referencia', label: 'Coluna referência' },
+  { key: 'cor', label: 'Coluna cor' },
+  { key: 'tamanho', label: 'Coluna tamanho' },
+  { key: 'codigoBarra', label: 'Coluna código de barras' },
+  { key: 'preco', label: 'Coluna preço' },
+  { key: 'quantidade', label: 'Coluna quantidade' },
+];
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function downloadText(text: string, filename: string, mime: string) {
+  downloadBlob(new Blob([text], { type: mime }), filename);
+}
 
 function initialPrintQuantities(rows: ClientOrderLine[]): Record<string, number> {
   return Object.fromEntries(rows.map(row => [clientOrderLineSkuKey(row), row.quantidade]));
@@ -158,6 +204,7 @@ export function ClientLabelingWorkspace() {
   const [selectedSkuKeys, setSelectedSkuKeys] = useState<Set<string>>(new Set());
   const [printQuantities, setPrintQuantities] = useState<Record<string, number>>({});
   const [coucheConfirmed, setCoucheConfirmed] = useState(true);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const { data: clients = [], isLoading: clientsLoading } = useClientsForLabeling();
   const { data: savedCollection, isLoading: patternLoading } = useClientLabelPattern(
@@ -180,10 +227,12 @@ export function ClientLabelingWorkspace() {
   }, [selectedClientId, savedCollection, patternLoading]);
 
   const pattern = activePatternFromCollection(draftCollection);
+  const fileMapping = activeFileMappingFromCollection(draftCollection);
   const savedKeys = collectionPatternKeys(savedCollection);
   const draftKeys = collectionPatternKeys(draftCollection);
   const isObjetiva = pattern?.key === 'objetiva';
   const isNalin = pattern?.key === 'baby_nalin';
+  const isPontoMix = pattern?.key === 'ponto_mix';
 
   const coucheProfile: CoucheRollProfile = useMemo(() => {
     if (pattern?.key === 'baby_nalin') {
@@ -243,10 +292,14 @@ export function ClientLabelingWorkspace() {
 
   const totalEtiquetas = isObjetiva
     ? countObjetivaLabels(productionRows, true)
-    : countExpandedRows(productionBabyRows, true);
+    : isPontoMix
+      ? countPontoMixLabels(productionRows, true)
+      : countExpandedRows(productionBabyRows, true);
   const paginasGrafica = isObjetiva
     ? countObjetivaLabels(selectedRows, false)
-    : graphicPageCount(selectedSkuAnalysis.rows.length);
+    : isPontoMix
+      ? countPontoMixLabels(selectedRows, false)
+      : graphicPageCount(selectedSkuAnalysis.rows.length);
   const skuLabel = selectedSkuKeys.size === 1 ? 'SKU' : 'SKUs';
   const foraDoPadrao = isNalin ? rowEntries.filter(e => !e.barcodeFit.fits) : [];
   const selecionadasFora = isNalin ? selectedEntries.filter(e => !e.barcodeFit.fits) : [];
@@ -279,6 +332,7 @@ export function ClientLabelingWorkspace() {
     setSearch('');
     setSelectedSkuKeys(new Set());
     setPrintQuantities({});
+    setPreviewUrl(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
@@ -319,11 +373,57 @@ export function ClientLabelingWorkspace() {
   }
 
   function setObjetivaGeometry(field: keyof ClientLabelPattern['geometry'], rawValue: string) {
-    if (!pattern || pattern.key !== 'objetiva') return;
+    if (!pattern || (pattern.key !== 'objetiva' && pattern.key !== 'ponto_mix')) return;
     const parsed = Number(rawValue);
     if (!Number.isFinite(parsed)) return;
     const value = field === 'columns' ? Math.max(1, Math.trunc(parsed)) : Math.max(0, parsed);
     updateDraft({ ...pattern, geometry: { ...pattern.geometry, [field]: value } });
+  }
+
+  function setPontoMixTemplate(field: 'line1' | 'line2' | 'line3', value: string) {
+    if (!pattern || pattern.key !== 'ponto_mix') return;
+    updateDraft({
+      ...pattern,
+      templates: {
+        ...(pattern.templates ?? PONTO_MIX_DEFAULT_TEMPLATES),
+        [field]: value,
+      },
+    });
+  }
+
+  function setPontoMixPriceFormat(
+    field: 'prefix' | 'decimalSeparator',
+    value: string,
+  ) {
+    if (!pattern || pattern.key !== 'ponto_mix') return;
+    updateDraft({
+      ...pattern,
+      priceFormat: {
+        ...(pattern.priceFormat ?? PONTO_MIX_DEFAULT_PRICE_FORMAT),
+        [field]:
+          field === 'decimalSeparator'
+            ? value === ',' ? ',' : '.'
+            : value,
+      },
+    });
+  }
+
+  function setFileMappingColumn(
+    field: keyof NonNullable<ClientLabelFileMapping['columns']>,
+    value: string,
+  ) {
+    if (!pattern || pattern.key !== 'ponto_mix') return;
+    const current = fileMapping ?? {
+      version: 1 as const,
+      columns: {},
+    };
+    setDraftCollection(base =>
+      upsertActiveFileMapping(base ?? emptyLabelCollection(), 'ponto_mix', {
+        ...current,
+        columns: { ...current.columns, [field]: value },
+      }),
+    );
+    setPatternDirty(true);
   }
 
   function setBrandingField(field: keyof ClientLabelPattern['branding'], value: string) {
@@ -373,7 +473,7 @@ export function ClientLabelingWorkspace() {
     const requestId = ++fileRequestIdRef.current;
     setReading(true);
     try {
-      const result = await parseClientOrderFiles(files, pattern.key);
+      const result = await parseClientOrderFiles(files, pattern.key, fileMapping);
       if (requestId !== fileRequestIdRef.current) return;
       setRows(result.rows);
       setFileNames(result.fileNames);
@@ -447,6 +547,46 @@ export function ClientLabelingWorkspace() {
             ? `PDF Objetiva (amostra) com ${selectedRows.length} SKU(s) gerado.`
             : `PDF Objetiva com ${totalEtiquetas} etiqueta(s) gerado.`,
         );
+      } else if (pattern.key === 'ponto_mix') {
+        const logo = await loadPontoMixLogoDataUrl(pattern.branding.logoUrl);
+        if (pattern.branding.logoUrl && !logo) {
+          toast.warning('Não carreguei a logomarca — o PDF sai com o wordmark.');
+        }
+        const sourceRows = mode === 'production' ? productionRows : selectedRows;
+        const previewRow = sourceRows[0];
+        if (previewRow) {
+          try {
+            const preview = await renderPontoMixPreviewDataUrl(previewRow, {
+              geometry: pattern.geometry,
+              templates: pattern.templates,
+              priceFormat: pattern.priceFormat,
+              logo,
+            });
+            setPreviewUrl(preview);
+          } catch {
+            setPreviewUrl(null);
+          }
+        }
+        const blob = await buildPontoMixPdf(sourceRows, {
+          geometry: pattern.geometry,
+          templates: pattern.templates,
+          priceFormat: pattern.priceFormat,
+          repeatByQuantity: mode === 'production',
+          logo,
+        });
+        downloadBlob(blob, pontoMixPdfFilename(mode === 'graphic' ? 'grafico' : 'producao'));
+        const zpl = buildPontoMixZpl(sourceRows, {
+          geometry: pattern.geometry,
+          templates: pattern.templates,
+          priceFormat: pattern.priceFormat,
+          repeatByQuantity: mode === 'production',
+        });
+        downloadText(zpl, pontoMixZplFilename(), 'application/octet-stream');
+        toast.success(
+          mode === 'graphic'
+            ? `Preview + PDF/ZPL Ponto Mix (amostra) com ${selectedRows.length} SKU(s).`
+            : `Preview + PDF/ZPL Ponto Mix com ${totalEtiquetas} etiqueta(s).`,
+        );
       } else {
         const logo = await loadLogoDataUrl(logoFornecedor);
         if (!logo) toast.warning('Não carreguei a logomarca — o PDF sai sem ela.');
@@ -467,7 +607,7 @@ export function ClientLabelingWorkspace() {
           toast.success(`PDF de produção com ${totalEtiquetas} etiqueta(s) gerado.`);
         }
       }
-      clearOrder();
+      if (pattern.key !== 'ponto_mix') clearOrder();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Falha ao gerar o PDF.');
     } finally {
@@ -507,7 +647,7 @@ export function ClientLabelingWorkspace() {
       <Panel
         eyebrow="ETIQUETAS · CLIENTE"
         title="Cliente e tipos de etiqueta"
-        subtitle="O mesmo cliente pode ter Nalin e Objetiva. Trocar o tipo não apaga o outro. O arquivo do pedido não é guardado."
+        subtitle="O mesmo cliente pode ter Nalin, Objetiva e Ponto Mix. Trocar o tipo não apaga o outro. O arquivo do pedido não é guardado."
       >
         <div className="space-y-4">
           <div className="grid gap-3 md:grid-cols-[1fr_2fr]">
@@ -550,7 +690,7 @@ export function ClientLabelingWorkspace() {
           {!selectedClientId ? (
             <EmptyState
               title="Escolha um cliente"
-              description="Cada cliente pode gravar mais de um layout (Nalin e Objetiva), com medidas e textos próprios."
+              description="Cada cliente pode gravar mais de um layout (Nalin, Objetiva, Ponto Mix), com medidas e textos próprios."
             />
           ) : patternLoading ? (
             <p className="text-sm text-muted-foreground">Carregando padrão…</p>
@@ -565,7 +705,7 @@ export function ClientLabelingWorkspace() {
                     disabled={isBusy}
                   >
                     <SelectTrigger className="h-9">
-                      <SelectValue placeholder="Escolha Nalin ou Objetiva" />
+                      <SelectValue placeholder="Escolha o layout" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="baby_nalin">
@@ -575,6 +715,10 @@ export function ClientLabelingWorkspace() {
                       <SelectItem value="objetiva">
                         Objetiva (hangtag)
                         {savedKeys.includes('objetiva') ? ' · salvo' : ''}
+                      </SelectItem>
+                      <SelectItem value="ponto_mix">
+                        Ponto Mix (40×60 preço)
+                        {savedKeys.includes('ponto_mix') ? ' · salvo' : ''}
                       </SelectItem>
                     </SelectContent>
                   </Select>
@@ -616,8 +760,8 @@ export function ClientLabelingWorkspace() {
 
               {!pattern ? (
                 <p className="text-sm text-muted-foreground">
-                  Este cliente ainda não tem padrão. Escolha Nalin ou Objetiva e salve. O mesmo
-                  cadastro pode guardar os dois tipos.
+                  Este cliente ainda não tem padrão. Escolha Nalin, Objetiva ou Ponto Mix e salve. O
+                  mesmo cadastro pode guardar vários tipos.
                 </p>
               ) : isNalin ? (
                 <div className="space-y-3">
@@ -669,12 +813,122 @@ export function ClientLabelingWorkspace() {
                     </div>
                   </details>
                 </div>
+              ) : isPontoMix ? (
+                <div className="space-y-4">
+                  <ClientLabelLogoUpload
+                    clientId={selectedClientId}
+                    logoUrl={pattern.branding.logoUrl}
+                    disabled={isBusy}
+                    storageKey="ponto_mix"
+                    hint="Faixa preta no topo (40×60 mm). PNG/JPG; no térmico vira preto."
+                    onLogoChange={url => setBrandingField('logoUrl', url ?? '')}
+                  />
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {PONTO_MIX_GEOMETRY_FIELDS.map(field => (
+                      <div key={field.key} className="space-y-1">
+                        <Label htmlFor={`pm-${field.key}`} className="text-xs">
+                          {field.label}
+                        </Label>
+                        <Input
+                          id={`pm-${field.key}`}
+                          type="number"
+                          min={0}
+                          step={field.step ?? 0.1}
+                          value={pattern.geometry[field.key]}
+                          disabled={isBusy}
+                          onChange={event => setObjetivaGeometry(field.key, event.target.value)}
+                          className="h-8 font-mono"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {(['line1', 'line2', 'line3'] as const).map((field, index) => (
+                      <div key={field} className="space-y-1">
+                        <Label htmlFor={`pm-tpl-${field}`} className="text-xs">
+                          Template linha {index + 1}
+                        </Label>
+                        <Input
+                          id={`pm-tpl-${field}`}
+                          value={(pattern.templates ?? PONTO_MIX_DEFAULT_TEMPLATES)[field]}
+                          disabled={isBusy}
+                          onChange={event => setPontoMixTemplate(field, event.target.value)}
+                          className="h-8 font-mono text-xs"
+                          placeholder="{descricao}"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-1">
+                      <Label htmlFor="pm-prefix" className="text-xs">
+                        Prefixo preço
+                      </Label>
+                      <Input
+                        id="pm-prefix"
+                        value={(pattern.priceFormat ?? PONTO_MIX_DEFAULT_PRICE_FORMAT).prefix}
+                        disabled={isBusy}
+                        onChange={event => setPontoMixPriceFormat('prefix', event.target.value)}
+                        className="h-8"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Separador decimal</Label>
+                      <Select
+                        value={(pattern.priceFormat ?? PONTO_MIX_DEFAULT_PRICE_FORMAT).decimalSeparator}
+                        onValueChange={value => setPontoMixPriceFormat('decimalSeparator', value)}
+                        disabled={isBusy}
+                      >
+                        <SelectTrigger className="h-8">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value=".">Ponto (R$ 39.99)</SelectItem>
+                          <SelectItem value=",">Vírgula (R$ 39,99)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <details className="rounded-md border border-border bg-background p-3 text-sm" open>
+                    <summary className="cursor-pointer font-semibold">
+                      Padrão de arquivo (mapeamento de colunas)
+                    </summary>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Deixe em branco para usar aliases automáticos (descrição, referência, cor,
+                      tamanho, código de barras, preço, qtd). Preencha o nome exato do cabeçalho do
+                      CSV/XLSX do cliente quando diferir.
+                    </p>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      {PONTO_MIX_FILE_FIELDS.map(field => (
+                        <div key={field.key} className="space-y-1">
+                          <Label htmlFor={`pm-map-${field.key}`} className="text-xs">
+                            {field.label}
+                          </Label>
+                          <Input
+                            id={`pm-map-${field.key}`}
+                            value={fileMapping?.columns?.[field.key] ?? ''}
+                            disabled={isBusy}
+                            onChange={event => setFileMappingColumn(field.key, event.target.value)}
+                            className="h-8 font-mono text-xs"
+                            placeholder="(auto)"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                  <p className="text-xs text-muted-foreground">
+                    Defaults: {PONTO_MIX_DEFAULT_GEOMETRY.labelWidthMm}×
+                    {PONTO_MIX_DEFAULT_GEOMETRY.labelHeightMm} mm · 1 coluna · CODE128 · PDF + ZPL
+                    L42PRO.
+                  </p>
+                </div>
               ) : (
                 <div className="space-y-3">
                   <ClientLabelLogoUpload
                     clientId={selectedClientId}
                     logoUrl={pattern.branding.logoUrl}
                     disabled={isBusy}
+                    storageKey="objetiva"
                     onLogoChange={url => setBrandingField('logoUrl', url ?? '')}
                   />
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -818,10 +1072,33 @@ export function ClientLabelingWorkspace() {
                 hint={
                   isNalin
                     ? `${COUCHE_COLUMNS} colunas · vão ${coucheProfile.columnGapMm} mm`
-                    : `${pattern?.geometry.labelWidthMm}×${pattern?.geometry.labelHeightMm} mm`
+                    : isPontoMix
+                      ? '40×60 mm · 1 coluna · PDF + ZPL'
+                      : `${pattern?.geometry.labelWidthMm}×${pattern?.geometry.labelHeightMm} mm`
                 }
               />
             </StatGrid>
+
+            {previewUrl && isPontoMix && (
+              <div className="rounded-lg border border-border bg-muted/20 p-4 flex flex-col sm:flex-row gap-4 items-start">
+                <div className="rounded-md border border-border bg-background p-2">
+                  <img
+                    src={previewUrl}
+                    alt="Preview da etiqueta Ponto Mix"
+                    className="h-auto w-[160px] object-contain"
+                  />
+                </div>
+                <div className="space-y-1 text-sm">
+                  <div className="flex items-center gap-2 font-semibold">
+                    <ImageIcon className="h-4 w-4" />
+                    Preview (1ª etiqueta do lote)
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Conferência antes do rolo. PDF e ZPL já foram baixados na última geração.
+                  </p>
+                </div>
+              </div>
+            )}
 
             <div className="grid gap-3 lg:grid-cols-2">
               <section className="rounded-lg border border-border bg-muted/20 p-4 space-y-4">
@@ -831,11 +1108,20 @@ export function ClientLabelingWorkspace() {
                   </div>
                   <div>
                     <h3 className="font-semibold">
-                      {isObjetiva ? 'PDF produção Objetiva' : 'PDF produção Nalin'}
+                      {isObjetiva
+                        ? 'PDF produção Objetiva'
+                        : isPontoMix
+                          ? 'Produção Ponto Mix (PDF + ZPL)'
+                          : 'PDF produção Nalin'}
                     </h3>
                     <p className="mt-1 text-xs text-muted-foreground">
                       Repete pela quantidade do pedido
-                      {isNalin ? ' · rolo 2 colunas 50×30' : ' · uma hangtag por cópia'}.
+                      {isNalin
+                        ? ' · rolo 2 colunas 50×30'
+                        : isPontoMix
+                          ? ' · preview + PDF + ZPL L42PRO 40×60'
+                          : ' · uma hangtag por cópia'}
+                      .
                     </p>
                   </div>
                 </div>
@@ -858,7 +1144,9 @@ export function ClientLabelingWorkspace() {
                   )}
                   {generating === 'production'
                     ? 'Gerando…'
-                    : `Gerar L42PRO (${totalEtiquetas} etiquetas)`}
+                    : isPontoMix
+                      ? `Gerar PDF+ZPL (${totalEtiquetas} etiquetas)`
+                      : `Gerar L42PRO (${totalEtiquetas} etiquetas)`}
                 </Button>
               </section>
 
@@ -869,7 +1157,11 @@ export function ClientLabelingWorkspace() {
                   </div>
                   <div>
                     <h3 className="font-semibold">
-                      {isObjetiva ? 'Amostra Objetiva' : 'Arquivo para gráfica'}
+                      {isObjetiva
+                        ? 'Amostra Objetiva'
+                        : isPontoMix
+                          ? 'Amostra Ponto Mix'
+                          : 'Arquivo para gráfica'}
                     </h3>
                     <p className="mt-1 text-xs text-muted-foreground">
                       Uma arte por SKU selecionado (sem repetir quantidade).
@@ -895,7 +1187,9 @@ export function ClientLabelingWorkspace() {
                   )}
                   {generating === 'graphic'
                     ? 'Gerando…'
-                    : `Gerar gráfica (${selectedSkuKeys.size} ${skuLabel})`}
+                    : isPontoMix
+                      ? `Gerar amostra PDF+ZPL (${selectedSkuKeys.size} ${skuLabel})`
+                      : `Gerar gráfica (${selectedSkuKeys.size} ${skuLabel})`}
                 </Button>
                 {isNalin && (
                   <p className="text-xs text-muted-foreground">

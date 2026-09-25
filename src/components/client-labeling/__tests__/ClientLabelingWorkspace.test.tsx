@@ -216,7 +216,7 @@ describe('ClientLabelingWorkspace', () => {
   it('expõe o hook de salvar padrão mockado para o wiring', () => {
     renderWorkspace();
     expect(typeof saveMutateAsync).toBe('function');
-    expect(screen.getByText(/O mesmo cliente pode ter Nalin e Objetiva/i)).toBeTruthy();
+    expect(screen.getByText(/O mesmo cliente pode ter Nalin, Objetiva e Ponto Mix/i)).toBeTruthy();
   });
 
   it('chama toast e não parseia quando o upload dispara sem padrão', async () => {

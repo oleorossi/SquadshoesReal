@@ -54,9 +54,21 @@ describe('clientLabelPattern', () => {
   it('isClientLabelPatternKey e patternLabel cobrem os layouts', () => {
     expect(isClientLabelPatternKey('baby_nalin')).toBe(true);
     expect(isClientLabelPatternKey('objetiva')).toBe(true);
+    expect(isClientLabelPatternKey('ponto_mix')).toBe(true);
     expect(isClientLabelPatternKey('outro')).toBe(false);
     expect(patternLabel('baby_nalin')).toBe('Nalin');
     expect(patternLabel('objetiva')).toBe('Objetiva');
+    expect(patternLabel('ponto_mix')).toBe('Ponto Mix');
+  });
+
+  it('default Ponto Mix usa geometria 40×60 1 coluna', () => {
+    const pattern = defaultPatternForKey('ponto_mix');
+    expect(pattern.key).toBe('ponto_mix');
+    expect(pattern.geometry.labelWidthMm).toBe(40);
+    expect(pattern.geometry.labelHeightMm).toBe(60);
+    expect(pattern.geometry.columns).toBe(1);
+    expect(pattern.templates?.line3).toContain('{tamanho}');
+    expect(pattern.priceFormat?.decimalSeparator).toBe('.');
   });
 
   it('clientOrderLineSkuKey inclui ref/cor/tamanho/código', () => {

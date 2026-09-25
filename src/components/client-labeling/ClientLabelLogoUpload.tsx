@@ -12,6 +12,9 @@ interface Props {
   clientId: string;
   logoUrl: string | null;
   disabled?: boolean;
+  /** Sufixo do arquivo no storage — objetiva | ponto_mix. */
+  storageKey?: 'objetiva' | 'ponto_mix';
+  hint?: string;
   onLogoChange: (url: string | null) => void;
 }
 
@@ -30,9 +33,17 @@ function storagePathFromPublicUrl(url: string): string | null {
   return path.length > 0 ? path : null;
 }
 
-export function ClientLabelLogoUpload({ clientId, logoUrl, disabled, onLogoChange }: Props) {
+export function ClientLabelLogoUpload({
+  clientId,
+  logoUrl,
+  disabled,
+  storageKey = 'objetiva',
+  hint,
+  onLogoChange,
+}: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const inputId = `${storageKey}-logo-upload`;
 
   async function removeStored(url: string | null) {
     if (!url) return;
@@ -50,13 +61,13 @@ export function ClientLabelLogoUpload({ clientId, logoUrl, disabled, onLogoChang
     }
     const ext = extensionOf(file);
     if (!ext || (file.type && !ACCEPTED_TYPES.has(file.type))) {
-      toast.error('Envie PNG ou JPG. O PDF da hangtag não desenha SVG.');
+      toast.error('Envie PNG ou JPG. O gerador não desenha SVG.');
       return;
     }
 
     setUploading(true);
     try {
-      const path = `${clientId}/label-logo-objetiva.${ext}`;
+      const path = `${clientId}/label-logo-${storageKey}.${ext}`;
       if (logoUrl) {
         const oldPath = storagePathFromPublicUrl(logoUrl);
         if (oldPath && oldPath !== path) {
@@ -101,11 +112,12 @@ export function ClientLabelLogoUpload({ clientId, logoUrl, disabled, onLogoChang
     <div className="space-y-2">
       <Label className="text-xs">Logomarca do cliente</Label>
       <p className="text-xs text-muted-foreground">
-        Aparece no canto superior da hangtag Objetiva. PNG ou JPG, máximo 5 MB.
+        {hint ??
+          'Aparece na faixa superior da etiqueta. PNG ou JPG, máximo 5 MB. No térmico vira preto.'}
       </p>
       <input
         ref={inputRef}
-        id="objetiva-logo-upload"
+        id={inputId}
         type="file"
         accept="image/png,image/jpeg,.png,.jpg,.jpeg"
         className="hidden"
@@ -115,7 +127,7 @@ export function ClientLabelLogoUpload({ clientId, logoUrl, disabled, onLogoChang
       {logoUrl ? (
         <div className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-muted/30 p-3">
           <div className="flex h-16 w-28 items-center justify-center overflow-hidden rounded-sm border border-border bg-background">
-            <img src={logoUrl} alt="Logomarca do cliente na hangtag" className="max-h-16 max-w-28 object-contain" />
+            <img src={logoUrl} alt="Logomarca do cliente" className="max-h-16 max-w-28 object-contain" />
           </div>
           <div className="flex flex-wrap gap-2">
             <Button

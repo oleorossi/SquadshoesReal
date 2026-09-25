@@ -1,15 +1,16 @@
 /**
  * Importação multiarquivo da Etiquetagem Cliente.
- * Detecta Nalin (Codigo Barra) vs Objetiva (SKU + TAMANHOS) e concatena linhas.
+ * Detecta Nalin (Codigo Barra) vs Objetiva (SKU + TAMANHOS) vs Ponto Mix
+ * e concatena linhas.
  */
 import {
   decodeOrderBytes,
   parseClientOrderFile,
-  parseOrderCsv,
   type BabyNalinRow,
 } from './babyNalinLabels';
 import {
   clientOrderLineSkuKey,
+  type ClientLabelFileMapping,
   type ClientLabelPatternKey,
   type ClientOrderLine,
 } from './clientLabelPattern';
@@ -17,6 +18,10 @@ import {
   isObjetivaOrderHeader,
   parseObjetivaOrderFile,
 } from './objetivaLabels';
+import {
+  isPontoMixOrderHeader,
+  parsePontoMixOrderFile,
+} from './pontoMixLabels';
 
 export type ClientOrderFormat = ClientLabelPatternKey;
 
@@ -76,6 +81,12 @@ function splitHeader(line: string): string[] {
   return out.map(c => c.trim());
 }
 
+function formatLabel(format: ClientOrderFormat): string {
+  if (format === 'objetiva') return 'Objetiva';
+  if (format === 'ponto_mix') return 'Ponto Mix';
+  return 'Nalin';
+}
+
 export function detectClientOrderFormatFromHeader(headerLine: string): ClientOrderFormat | null {
   const cells = splitHeader(headerLine);
   if (isObjetivaOrderHeader(cells)) return 'objetiva';
@@ -87,7 +98,12 @@ export function detectClientOrderFormatFromHeader(headerLine: string): ClientOrd
       .replace(/[^a-z0-9]+/g, ' ')
       .trim(),
   );
-  if (normalized.some(h => h.includes('codigo barra') || h === 'ean')) return 'baby_nalin';
+  // Nalin antes de Ponto Mix: ambos podem ter "codigo barra".
+  if (normalized.some(h => h.includes('codigo barra') || h === 'ean')) {
+    if (isPontoMixOrderHeader(cells)) return 'ponto_mix';
+    return 'baby_nalin';
+  }
+  if (isPontoMixOrderHeader(cells)) return 'ponto_mix';
   return null;
 }
 
@@ -102,22 +118,30 @@ async function detectFileFormat(file: File): Promise<ClientOrderFormat | null> {
     const matriz = XLSX.utils.sheet_to_json<string[]>(aba, { header: 1, raw: false, defval: '' });
     const header = (matriz.find(l => l.some(c => String(c ?? '').trim())) ?? []).map(String);
     if (isObjetivaOrderHeader(header)) return 'objetiva';
+    if (isPontoMixOrderHeader(header)) return 'ponto_mix';
     return detectClientOrderFormatFromHeader(header.join(';'));
   }
   const texto = decodeOrderBytes(await file.arrayBuffer());
   return detectClientOrderFormatFromHeader(firstDataLine(texto));
 }
 
-async function parseOneFile(file: File, expected: ClientOrderFormat): Promise<ClientOrderLine[]> {
+async function parseOneFile(
+  file: File,
+  expected: ClientOrderFormat,
+  fileMapping?: ClientLabelFileMapping | null,
+): Promise<ClientOrderLine[]> {
   const detected = await detectFileFormat(file);
   if (detected && detected !== expected) {
     throw new Error(
-      `Arquivo parece formato ${detected === 'objetiva' ? 'Objetiva' : 'Nalin'}, mas o padrão do cliente é ${expected === 'objetiva' ? 'Objetiva' : 'Nalin'}.`,
+      `Arquivo parece formato ${formatLabel(detected)}, mas o padrão do cliente é ${formatLabel(expected)}.`,
     );
   }
 
   if (expected === 'objetiva') {
     return parseObjetivaOrderFile(file);
+  }
+  if (expected === 'ponto_mix') {
+    return parsePontoMixOrderFile(file, fileMapping ?? undefined);
   }
 
   const rows = await parseClientOrderFile(file);
@@ -131,6 +155,7 @@ async function parseOneFile(file: File, expected: ClientOrderFormat): Promise<Cl
 export async function parseClientOrderFiles(
   files: File[],
   patternKey: ClientLabelPatternKey,
+  fileMapping?: ClientLabelFileMapping | null,
 ): Promise<ClientOrderImportResult> {
   if (files.length === 0) {
     throw new Error('Selecione ao menos um arquivo.');
@@ -139,7 +164,7 @@ export async function parseClientOrderFiles(
   const settled = await Promise.all(
     files.map(async file => {
       try {
-        const rows = await parseOneFile(file, patternKey);
+        const rows = await parseOneFile(file, patternKey, fileMapping);
         return { ok: true as const, fileName: file.name, rows };
       } catch (error) {
         return {
@@ -178,8 +203,4 @@ export function summarizeImport(result: ClientOrderImportResult): string {
   const base = `${result.rows.length} linha(s) · ${skuCount} SKU(s) · ${files} arquivo(s)`;
   if (result.errors.length === 0) return base;
   return `${base} · ${result.errors.length} arquivo(s) com erro`;
-}
-
-export function parseBabyNalinCsvToLines(texto: string, sourceFile?: string): ClientOrderLine[] {
-  return parseOrderCsv(texto).map(row => babyToLine(row, sourceFile));
 }

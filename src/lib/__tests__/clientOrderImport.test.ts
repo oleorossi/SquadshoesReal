@@ -31,6 +31,11 @@ describe('clientOrderImport', () => {
     expect(
       detectClientOrderFormatFromHeader('Codigo Barra;Tamanho;Cor;Referencia;Qtd'),
     ).toBe('baby_nalin');
+    expect(
+      detectClientOrderFormatFromHeader(
+        'Descricao;Referencia;Cor;Tamanho;Codigo Barra;Preco;Qtd',
+      ),
+    ).toBe('ponto_mix');
     expect(detectClientOrderFormatFromHeader('foo;bar')).toBeNull();
   });
 
