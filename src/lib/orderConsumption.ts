@@ -1290,6 +1290,42 @@ export async function fetchConsumptionContext(
           if (arr.length > 0) soleGroupStandardItemsBySole.set(p.id, arr);
         }
       }
+
+      // Pin placa_palmilha pode apontar SKU fora dos grupos da ficha (EVA 3MM
+      // sem group_id). Sem carregar o produto + ficha de componente, o motor
+      // não converte dm²→m e cai no branch "par" / some do débito.
+      const fiberPinIds = [...new Set([...soleFiberPinBySole.values()].filter(Boolean))];
+      const missingFiberIds = fiberPinIds.filter(
+        (id) => !(allProducts || []).some((p: any) => p.id === id),
+      );
+      if (missingFiberIds.length > 0) {
+        const fiberProducts = await fetchActiveProductsByGroupIds(client, [], missingFiberIds);
+        const seen = new Set((allProducts || []).map((p: any) => p.id));
+        for (const p of fiberProducts) {
+          if (!seen.has(p.id)) {
+            allProducts.push(p);
+            seen.add(p.id);
+          }
+        }
+        const fiberCs: any[] = [];
+        for (let i = 0; i < missingFiberIds.length; i += CONSUMPTION_IN_CHUNK) {
+          const chunk = missingFiberIds.slice(i, i + CONSUMPTION_IN_CHUNK);
+          const { data, error } = await client
+            .from('component_sheets')
+            .select('product_id, dimensions_width, dimensions_length, dimensions_unit, yield_per_size, yield_per_sole, products!inner(group_id, name, color, unit)')
+            .in('product_id', chunk);
+          if (error) throw error;
+          fiberCs.push(...(data || []));
+        }
+        if (fiberCs.length > 0) {
+          const csSeen = new Set(
+            (componentSheets || []).map((cs: any) => `${cs.product_id}`),
+          );
+          for (const cs of fiberCs) {
+            if (!csSeen.has(String(cs.product_id))) componentSheets.push(cs);
+          }
+        }
+      }
     }
   }
 
