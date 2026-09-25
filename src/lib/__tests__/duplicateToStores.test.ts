@@ -1,9 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
+  createEmptyBatch,
+  expandBatchesToJobs,
   filterDupStoreCandidates,
   pickDuplicateItems,
+  removeClientsFromBatches,
   resolveSourceEconomicGroupId,
   sortDuplicateItemsByReference,
+  storesTakenByOtherBatches,
+  validateDupBatches,
+  type DupBatch,
 } from '@/lib/duplicateToStores';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
@@ -51,6 +57,19 @@ describe('filterDupStoreCandidates', () => {
       matchesSearch: searchMatchesAllTerms,
     });
     expect(rows.map((r) => r.id)).toEqual(['c']);
+  });
+
+  it('excludeClientIds remove lojas de outros lotes', () => {
+    const rows = filterDupStoreCandidates({
+      clients,
+      groupId: 'g1',
+      search: '',
+      sourceClientId: 'src',
+      alreadyCopiedClientIds: new Set(),
+      excludeClientIds: new Set(['a']),
+      matchesSearch: searchMatchesAllTerms,
+    });
+    expect(rows.map((r) => r.id)).toEqual(['b']);
   });
 });
 
@@ -102,5 +121,70 @@ describe('sortDuplicateItemsByReference', () => {
     expect(sortDuplicateItemsByReference(items, refs).map((i) => i.id)).toEqual([
       '1', '2', '5', '3', '4',
     ]);
+  });
+});
+
+describe('multi-lote helpers', () => {
+  const batch = (partial: Partial<DupBatch> & { id: string; label: string }): DupBatch => ({
+    economicGroupId: '',
+    clientIds: [],
+    itemIds: [],
+    ...partial,
+  });
+
+  it('createEmptyBatch inicia sem lojas/itens e label Lote N', () => {
+    const b = createEmptyBatch({ index: 0, id: 'b1', economicGroupId: 'g1' });
+    expect(b).toEqual({
+      id: 'b1',
+      label: 'Lote 1',
+      economicGroupId: 'g1',
+      clientIds: [],
+      itemIds: [],
+    });
+    expect(createEmptyBatch({ index: 2, id: 'b3' }).label).toBe('Lote 3');
+  });
+
+  it('storesTakenByOtherBatches ignora o lote ativo', () => {
+    const batches = [
+      batch({ id: '1', label: 'Lote 1', clientIds: ['a', 'b'] }),
+      batch({ id: '2', label: 'Lote 2', clientIds: ['c'] }),
+    ];
+    expect([...storesTakenByOtherBatches(batches, '2')].sort()).toEqual(['a', 'b']);
+    expect([...storesTakenByOtherBatches(batches, '1')]).toEqual(['c']);
+  });
+
+  it('validateDupBatches exige lojas e itens em cada lote', () => {
+    const errors = validateDupBatches([
+      batch({ id: '1', label: 'Lote 1', clientIds: ['a'], itemIds: ['i1'] }),
+      batch({ id: '2', label: 'Lote 2', clientIds: [], itemIds: [] }),
+    ]);
+    expect(errors.map((e) => e.message)).toEqual([
+      'Lote 2: sem lojas',
+      'Lote 2: sem itens',
+    ]);
+  });
+
+  it('expandBatchesToJobs gera 1 job por loja com itemIds do lote', () => {
+    const jobs = expandBatchesToJobs([
+      batch({ id: '1', label: 'Lote 1', clientIds: ['a', 'b'], itemIds: ['i1'] }),
+      batch({ id: '2', label: 'Lote 2', clientIds: ['c'], itemIds: ['i2', 'i3'] }),
+    ]);
+    expect(jobs).toEqual([
+      { clientId: 'a', itemIds: ['i1'], batchId: '1', batchLabel: 'Lote 1' },
+      { clientId: 'b', itemIds: ['i1'], batchId: '1', batchLabel: 'Lote 1' },
+      { clientId: 'c', itemIds: ['i2', 'i3'], batchId: '2', batchLabel: 'Lote 2' },
+    ]);
+  });
+
+  it('removeClientsFromBatches tira lojas ok após falha parcial', () => {
+    const next = removeClientsFromBatches(
+      [
+        batch({ id: '1', label: 'Lote 1', clientIds: ['a', 'b'], itemIds: ['i1'] }),
+        batch({ id: '2', label: 'Lote 2', clientIds: ['c'], itemIds: ['i2'] }),
+      ],
+      ['a', 'c'],
+    );
+    expect(next[0].clientIds).toEqual(['b']);
+    expect(next[1].clientIds).toEqual([]);
   });
 });

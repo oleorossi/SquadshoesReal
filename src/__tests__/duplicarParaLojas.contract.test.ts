@@ -3,9 +3,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 /**
- * Contrato: o fluxo de duplicação em /sales usa o wizard
- * DuplicateToStoresDialog (não o dialog inline legado) e o label
- * "Duplicar para lojas".
+ * Contrato: o fluxo de duplicação em /sales usa DuplicateToStoresDialog
+ * multi-lote (quadro + sheet), não o dialog inline legado.
  */
 describe('duplicar para lojas — contrato SaleOrders', () => {
   const saleOrders = readFileSync(join(process.cwd(), 'src/pages/SaleOrders.tsx'), 'utf8');
@@ -17,6 +16,7 @@ describe('duplicar para lojas — contrato SaleOrders', () => {
     join(process.cwd(), 'src/components/sales/PaintSelectList.tsx'),
     'utf8',
   );
+  const lib = readFileSync(join(process.cwd(), 'src/lib/duplicateToStores.ts'), 'utf8');
 
   it('SaleOrders monta DuplicateToStoresDialog', () => {
     expect(saleOrders).toContain("from '@/components/sales/DuplicateToStoresDialog'");
@@ -25,10 +25,23 @@ describe('duplicar para lojas — contrato SaleOrders', () => {
     expect(saleOrders).toContain('title="Duplicar para lojas"');
   });
 
-  it('wizard tem 2 passos e CTA N lojas · M itens', () => {
-    expect(dialog).toContain('Passo {step} de 2');
-    expect(dialog).toContain('Duplicar · {selectedClientIds.length}');
-    expect(dialog).toContain('requireSearchToList={!groupId}');
+  it('multi-lote: quadro + sheet Lojas→Itens + Duplicar tudo', () => {
+    expect(dialog).toContain("view === 'board'");
+    expect(dialog).toContain("view === 'sheet'");
+    expect(dialog).toContain('Duplicar tudo');
+    expect(dialog).toContain('Adicionar lote');
+    expect(dialog).toContain('createEmptyBatch');
+    expect(dialog).toContain('validateDupBatches');
+    expect(dialog).toContain('expandBatchesToJobs');
+    expect(dialog).toContain('storesTakenByOtherBatches');
+    expect(dialog).toContain('removeClientsFromBatches');
+    expect(dialog).toContain('Concluir lote');
+  });
+
+  it('lote novo começa sem itens; loja em outro lote some da lista', () => {
+    expect(lib).toContain('itemIds: []');
+    expect(dialog).toContain('takenByOthers.has(c.id)');
+    expect(dialog).toContain('ocultas');
   });
 
   it('passo de itens agrupa referência, amplia modal e mostra foto', () => {
@@ -37,6 +50,15 @@ describe('duplicar para lojas — contrato SaleOrders', () => {
     expect(dialog).toContain('reference_color_variants');
     expect(dialog).toContain('imageUrl:');
     expect(dialog).toContain('listClassName="max-h-[min(55vh,28rem)]"');
+  });
+
+  it('aviso âmbar de reserva só no quadro', () => {
+    expect(dialog).toContain("view === 'board' && (");
+    expect(dialog).toContain('A duplicação reservará insumos novamente');
+    // Não no sheet de itens (banner só no bloco board)
+    const boardIdx = dialog.indexOf("view === 'board'");
+    const amberIdx = dialog.indexOf('A duplicação reservará insumos novamente');
+    expect(amberIdx).toBeGreaterThan(boardIdx);
   });
 
   it('PaintSelectList só marca no arraste e seleciona só visíveis', () => {
