@@ -63,4 +63,11 @@ describe('cabedal prep motor — contratos', () => {
     expect(panel).toContain('Travar plano');
     expect(panel).toContain('useContractorModelCapacities');
   });
+
+  it('capacidades embutem technical_sheets.code (nunca .reference)', () => {
+    const hook = readFileSync('src/hooks/useCabedalPrep.ts', 'utf8');
+    expect(hook).toContain('technical_sheets(id, code)');
+    expect(hook).not.toMatch(/technical_sheets\([^)]*\breference\b/);
+    expect(hook).toMatch(/enabled:\s*Boolean\(sheetId\)/);
+  });
 });

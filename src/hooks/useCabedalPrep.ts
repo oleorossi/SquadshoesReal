@@ -107,11 +107,14 @@ export function useCabedalPrepContractors() {
 export function useContractorModelCapacities(sheetId?: string | null) {
   return useQuery({
     queryKey: cabedalPrepKeys.capacities(sheetId),
-    enabled: true,
+    // Só busca quando há ficha — o embed usa technical_sheets.code (não
+    // existe coluna `reference`; pedir `reference` estoura o toast global).
+    enabled: Boolean(sheetId),
     queryFn: async () => {
       let q = supabase
         .from('contractor_model_capacities' as never)
-        .select('*, contractors(id, name), technical_sheets(id, reference)')
+        // technical_sheets: identidade = `code` (mig 27600 / backfill 27900).
+        .select('*, contractors(id, name), technical_sheets(id, code)')
         .order('updated_at', { ascending: false });
       if (sheetId) q = q.eq('technical_sheet_id', sheetId);
       const { data, error } = await q;
