@@ -389,13 +389,53 @@ export function artisanalStrapTypeKey(row: ArtisanalStrapCutRow): string {
   return name || 'Tira';
 }
 
+/**
+ * Aviso/código soft de pré-baseline: a transformação ainda não congelou, mas o
+ * Hub já tem rendimento. NÃO é buraco de cadastro — zerar napa por isso foi o
+ * bug do §03 nos PV-00222…227 (OVERLOCK 70 m/m + “congelados na 1ª demanda”).
+ */
+export function isSoftStrapPrebaselineNoise(text: string | null | undefined): boolean {
+  const raw = (text || '').toString().trim();
+  if (!raw) return false;
+  const t = raw
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  if (
+    t === 'variant_identity_not_persisted'
+    || t === 'frozen_source_snapshot_stale'
+    || t === 'reference_base_intent_mismatch'
+    || t === 'catalog_resolution_blocked'
+    || t.includes('variant_identity_not_persisted')
+    || t.includes('frozen_source_snapshot_stale')
+    || t.includes('reference_base_intent_mismatch')
+    || t.includes('catalog_resolution_blocked')
+  ) {
+    return true;
+  }
+  // “serão congelados na primeira demanda” / “transformação física será congelada…”
+  return t.includes('congelad') && t.includes('primeira demanda');
+}
+
+/**
+ * Cadastro incompleto no §03 = sem rendimento conversível OU bloqueio duro.
+ * Aviso soft de pré-baseline (congelar na 1ª demanda) NÃO bloqueia quando já
+ * existe confirmed_yield — a napa é tira ÷ rendimento.
+ */
 export function isArtisanalStrapCutBlocked(row: ArtisanalStrapCutRow): boolean {
   const snapshot = row.canonical;
-  return !snapshot
-    || snapshot.baseRequiredM <= 0
-    || snapshot.confirmedYieldMPerM <= 0
-    || snapshot.blockingReasons.length > 0
-    || !!snapshot.snapshotWarning;
+  if (!snapshot) return true;
+  const yieldM = Number(snapshot.confirmedYieldMPerM) || 0;
+  const hardReasons = (snapshot.blockingReasons || [])
+    .filter((reason) => !isSoftStrapPrebaselineNoise(reason));
+  const hardWarning = snapshot.snapshotWarning
+    && !isSoftStrapPrebaselineNoise(snapshot.snapshotWarning)
+    ? snapshot.snapshotWarning
+    : null;
+  if (yieldM > 0) {
+    return hardReasons.length > 0 || !!hardWarning;
+  }
+  return true;
 }
 
 /** Uma linha do bloco “Napa para tiras”: metros de tira + napa por tipo. */
@@ -421,8 +461,14 @@ export function aggregateStrapNapaSector(rows: ArtisanalStrapCutRow[]): StrapNap
   for (const row of rows) {
     const typeKey = artisanalStrapTypeKey(row);
     const blocked = isArtisanalStrapCutBlocked(row);
-    const napaM = !blocked && row.canonical ? (Number(row.canonical.baseRequiredM) || 0) : 0;
     const strapM = Number(row.metros_necessarios) || 0;
+    const yieldM = Number(row.canonical?.confirmedYieldMPerM) || 0;
+    const baseFromSnap = Number(row.canonical?.baseRequiredM) || 0;
+    // Napa = metros lineares de material-base (tira ÷ rendimento). Preferir o
+    // snapshot; se só o yield veio, recalcula na hora.
+    const napaM = !blocked && row.canonical
+      ? (baseFromSnap > 0 ? baseFromSnap : (yieldM > 0 && strapM > 0 ? strapM / yieldM : 0))
+      : 0;
     const existing = map.get(typeKey);
     if (existing) {
       existing.strapM += strapM;
