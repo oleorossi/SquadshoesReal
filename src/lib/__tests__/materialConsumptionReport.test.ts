@@ -560,6 +560,43 @@ describe('materialConsumptionReport', () => {
     expect(html).not.toContain('R$');
   });
 
+  it('com rendimento confirmado, aviso soft de 1ª demanda mostra napa (não incompleto)', () => {
+    const html = buildMaterialConsumptionReportHtml({
+      title: 'Consumo total - PV-00222',
+      mode: 'total',
+      artisanalStrapRows: [{
+        key: 'overlock-glow',
+        groupName: 'TIRA OVERLOCK 5 mm · GLOW METALIC · CHAMPAGNE',
+        color: 'CHAMPAGNE',
+        baseName: 'GLOW METALIC',
+        largura_mm: 5,
+        metros_necessarios: 296.84,
+        cut: {
+          largura_mm: 5, metros_uteis_por_banda: 0, n_bandas: 0, cm_a_cortar: 0,
+          rolos: 0, n_rolos_completos: 0, cm_no_ultimo_rolo: 0, valid: false, widthMissing: false,
+        },
+        canonical: {
+          recipeId: 'recipe-overlock',
+          baseRequiredM: 4.240571428571429,
+          confirmedYieldMPerM: 70,
+          usableBaseWidthMm: 1370,
+          theoreticalYieldMPerM: 70,
+          transformationCostPerM: null,
+          blockingReasons: [],
+          snapshotWarning:
+            'A versao, o rendimento e a necessidade de base serao congelados na primeira demanda; antes disso, apenas os IDs e o consumo tecnico do item estao preservados.',
+        },
+      }],
+      rows: [],
+    });
+
+    expect(html).toContain('Napa para tiras');
+    expect(html).toContain('flag ok');
+    expect(html).not.toContain('cadastro incompleto');
+    expect(html).toContain('296,84 m');
+    expect(html).toContain('4,24 m');
+  });
+
   it('agrupa por tipo de tira no §03 e um único total de napa no rodapé', () => {
     const cut = {
       largura_mm: 8, metros_uteis_por_banda: 0, n_bandas: 0, cm_a_cortar: 0,

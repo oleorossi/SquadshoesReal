@@ -1306,7 +1306,7 @@ export default function MaterialConsumptionView({
                 );
               })}
               {materialsTab !== 'strass' || !hasStrass ? (
-                <ArtisanalStrapRollCutBlock rows={artisanalStrapRows} />
+                <ArtisanalStrapRollCutBlock rows={artisanalStrapRows} onYieldSaved={onRecalcular} />
               ) : null}
               {extraSections}
             </div>
@@ -1564,7 +1564,7 @@ export default function MaterialConsumptionView({
 
         {/* Bloco separado: tiras artesanais cortadas do rolo (vermelho) */}
         {materialsTab !== 'strass' || !hasStrass ? (
-          <ArtisanalStrapRollCutBlock rows={artisanalStrapRows} />
+          <ArtisanalStrapRollCutBlock rows={artisanalStrapRows} onYieldSaved={onRecalcular} />
         ) : null}
 
         {extraSections}

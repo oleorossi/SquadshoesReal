@@ -1,20 +1,64 @@
+import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
 import { Scissors, Warning } from '@phosphor-icons/react';
 import {
   aggregateStrapNapaSector,
+  artisanalStrapTypeKey,
   type ArtisanalStrapCutRow,
+  type StrapTypeNapaAgg,
 } from '@/lib/strapRollCut';
+import StrapMeasureYieldDialog from '@/components/sale-orders/StrapMeasureYieldDialog';
+
+interface YieldTarget {
+  typeLabel: string;
+  measureId?: string;
+  measureName?: string;
+  suggestedCutBandMm?: number;
+  suggestedYieldMPerM?: number;
+}
+
+function yieldTargetFromType(
+  type: StrapTypeNapaAgg,
+  rows: ArtisanalStrapCutRow[],
+): YieldTarget {
+  const matching = rows.filter((row) => artisanalStrapTypeKey(row) === type.typeKey);
+  const sample = matching.find((row) => row.measureId || row.measureName)
+    || matching[0];
+  return {
+    typeLabel: type.typeName,
+    measureId: type.measureId || sample?.measureId,
+    measureName: type.measureName || sample?.measureName,
+    suggestedCutBandMm: sample?.largura_mm && sample.largura_mm > 0
+      ? sample.largura_mm
+      : undefined,
+    suggestedYieldMPerM: Number(sample?.canonical?.theoreticalYieldMPerM) > 0
+      ? Number(sample?.canonical?.theoreticalYieldMPerM)
+      : undefined,
+  };
+}
 
 /**
  * Bloco próprio de napa para tiras (separado de Cabedal/Forração).
  * Por tipo: metros de tira + metros de napa; rodapé: total de napa (18-A).
+ * Tipos sem rendimento abrem o modal de cadastro (mesmo writer do Hub).
  */
-export default function ArtisanalStrapRollCutBlock({ rows }: { rows: ArtisanalStrapCutRow[] }) {
+export default function ArtisanalStrapRollCutBlock({
+  rows,
+  onYieldSaved,
+}: {
+  rows: ArtisanalStrapCutRow[];
+  /** Após confirmar rendimento — tipicamente refetch do consumo. */
+  onYieldSaved?: () => void;
+}) {
+  const [yieldTarget, setYieldTarget] = useState<YieldTarget | null>(null);
+
   if (!rows || rows.length === 0) return null;
 
   const sector = aggregateStrapNapaSector(rows);
   const anyBlocked = sector.types.some((t) => t.blocked);
+  const anyNeedsYield = sector.types.some((t) => t.needsYield);
 
   return (
     <div className="space-y-1">
@@ -59,8 +103,21 @@ export default function ArtisanalStrapRollCutBlock({ rows }: { rows: ArtisanalSt
                   </span>
                 ) : null}
                 {type.blocked ? (
-                  <div className="mt-0.5 flex items-center gap-1 text-[11px] text-red-600 dark:text-red-400">
-                    <Warning className="h-3 w-3" /> Cadastro incompleto
+                  <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-red-600 dark:text-red-400">
+                    <span className="inline-flex items-center gap-1">
+                      <Warning className="h-3 w-3" /> Cadastro incompleto
+                    </span>
+                    {type.needsYield ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 border-red-500/40 px-2 text-[11px] text-red-700 hover:bg-red-500/10 dark:text-red-300"
+                        onClick={() => setYieldTarget(yieldTargetFromType(type, rows))}
+                      >
+                        Informar rendimento
+                      </Button>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -99,11 +156,27 @@ export default function ArtisanalStrapRollCutBlock({ rows }: { rows: ArtisanalSt
 
       {anyBlocked ? (
         <p className="px-3 text-[11px] text-red-600/80 dark:text-red-400/80">
-          Tipos sem rendimento ficam com napa em “—”.{' '}
+          Tipos sem rendimento ficam com napa em “—”.
+          {anyNeedsYield ? ' Informe o rendimento aqui ou ' : ' '}
           <Link to="/tiras-artesanais?tab=calculadora" className="underline">
-            Abrir calculadora de tiras →
+            {anyNeedsYield ? 'abra a calculadora de tiras →' : 'Abrir calculadora de tiras →'}
           </Link>
         </p>
+      ) : null}
+
+      {yieldTarget ? (
+        <StrapMeasureYieldDialog
+          open
+          onOpenChange={(next) => {
+            if (!next) setYieldTarget(null);
+          }}
+          measureId={yieldTarget.measureId}
+          measureName={yieldTarget.measureName}
+          typeLabel={yieldTarget.typeLabel || 'Tira'}
+          suggestedCutBandMm={yieldTarget.suggestedCutBandMm}
+          suggestedYieldMPerM={yieldTarget.suggestedYieldMPerM}
+          onSaved={onYieldSaved}
+        />
       ) : null}
     </div>
   );

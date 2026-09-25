@@ -103,4 +103,76 @@ describe('aggregateStrapNapaSector', () => {
       metros_necessarios: 1,
     }))).toBe('TIRA CHATA 8 mm · NAPA MADRID');
   });
+
+  it('aviso soft de 1ª demanda com rendimento NÃO zera napa nem marca incompleto', () => {
+    const sector = aggregateStrapNapaSector([
+      row({
+        groupName: 'TIRA OVERLOCK 5 mm · GLOW METALIC · CHAMPAGNE',
+        color: 'CHAMPAGNE',
+        metros_necessarios: 296.84,
+        baseName: 'GLOW METALIC',
+        canonical: {
+          recipeId: 'r-overlock-glow',
+          baseRequiredM: 4.240571,
+          confirmedYieldMPerM: 70,
+          usableBaseWidthMm: 1370,
+          theoreticalYieldMPerM: 70,
+          transformationCostPerM: null,
+          blockingReasons: [],
+          snapshotWarning:
+            'A versao, o rendimento e a necessidade de base serao congelados na primeira demanda; antes disso, apenas os IDs e o consumo tecnico do item estao preservados.',
+        },
+      }),
+      row({
+        groupName: 'TIRA OVERLOCK 5 mm · GLOW METALIC · OURO',
+        color: 'OURO',
+        metros_necessarios: 5.28,
+        baseName: 'GLOW METALIC',
+        canonical: {
+          recipeId: 'r-overlock-glow',
+          baseRequiredM: 0.07542857,
+          confirmedYieldMPerM: 70,
+          usableBaseWidthMm: 1370,
+          theoreticalYieldMPerM: 70,
+          transformationCostPerM: null,
+          blockingReasons: [],
+          // Contágio: uma linha soft não pode zerar a napa do tipo.
+          snapshotWarning: 'A transformação física será congelada na primeira demanda.',
+        },
+      }),
+    ]);
+
+    expect(sector.types).toHaveLength(1);
+    const overlock = sector.types[0];
+    expect(overlock.blocked).toBe(false);
+    expect(overlock.needsYield).toBe(false);
+    expect(overlock.napaM).toBeCloseTo(4.240571 + 0.07542857, 5);
+    expect(sector.totalNapaM).toBeCloseTo(overlock.napaM, 5);
+  });
+
+  it('sem rendimento continua cadastro incompleto mesmo com aviso soft', () => {
+    const sector = aggregateStrapNapaSector([
+      row({
+        groupName: 'TIRA OVERLOCK 5MM · PRETO',
+        color: 'PRETO',
+        metros_necessarios: 36,
+        measureId: 'measure-overlock-5',
+        measureName: 'TIRA OVERLOCK 5 mm',
+        canonical: {
+          recipeId: null,
+          baseRequiredM: 0,
+          confirmedYieldMPerM: 0,
+          usableBaseWidthMm: 0,
+          theoreticalYieldMPerM: 0,
+          transformationCostPerM: null,
+          blockingReasons: [],
+          snapshotWarning: 'A transformação física será congelada na primeira demanda.',
+        },
+      }),
+    ]);
+    expect(sector.types[0].blocked).toBe(true);
+    expect(sector.types[0].needsYield).toBe(true);
+    expect(sector.types[0].measureId).toBe('measure-overlock-5');
+    expect(sector.types[0].napaM).toBe(0);
+  });
 });
