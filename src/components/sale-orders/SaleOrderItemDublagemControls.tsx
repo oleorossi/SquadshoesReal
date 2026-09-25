@@ -7,8 +7,8 @@ import { computeDublagemFaceQuantities } from '@/lib/dublagemDemand';
 interface Props {
   upperGroupId: string | null | undefined;
   pvColor: string;
-  pairs: number;
-  upperConsumptionDm2PerPair: number;
+  /** dm² total de cabedal (já grade × per-size via calculateGradeBasedDm2). */
+  upperDm2Total: number;
   dublagemMode: 'internal' | 'external' | null | undefined;
   onModeChange: (mode: 'internal' | 'external' | null) => void;
   /** Cola herdada da ficha (`technical_sheets.dublagem_glue_id`) — só leitura. */
@@ -41,8 +41,7 @@ interface FaceSheetRow {
 export default function SaleOrderItemDublagemControls({
   upperGroupId,
   pvColor,
-  pairs,
-  upperConsumptionDm2PerPair,
+  upperDm2Total,
   dublagemMode,
   onModeChange,
   glueId,
@@ -114,14 +113,13 @@ export default function SaleOrderItemDublagemControls({
   });
 
   const preview = useMemo(() => {
-    const dm2 = Math.max(0, Number(upperConsumptionDm2PerPair) || 0) * Math.max(0, Number(pairs) || 0);
     return computeDublagemFaceQuantities({
-      upperDm2Total: dm2,
+      upperDm2Total: Math.max(0, Number(upperDm2Total) || 0),
       pvColor,
       externalSheet: sheetsQuery.data?.external || null,
       internalSheet: sheetsQuery.data?.internal || null,
     });
-  }, [upperConsumptionDm2PerPair, pairs, pvColor, sheetsQuery.data]);
+  }, [upperDm2Total, pvColor, sheetsQuery.data]);
 
   if (!upperGroupId || layersQuery.isLoading) return null;
   if (!isComposite) return null;
