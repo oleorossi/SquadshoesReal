@@ -379,9 +379,6 @@ export default function DuplicateToStoresDialog({
       });
       return;
     }
-    if (orderItems.length === 0 && !itemsLoaded) {
-      await loadItems();
-    }
 
     const jobs = expandBatchesToJobs(batches);
     if (jobs.length === 0) {
