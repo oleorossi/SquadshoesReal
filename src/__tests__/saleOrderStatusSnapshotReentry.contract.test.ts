@@ -109,9 +109,8 @@ describe('mudança de status com snapshot comercial de variante', () => {
   });
 
   it('Aprovar no detalhe é idempotente e não dispara a orquestração duas vezes', () => {
-    // Idempotente só quando o status já bate E a fila async está idle
-    // (ou sem phase): reentrada com command_phase='processing' precisa
-    // seguir o caminho de enqueue, não o early-return alreadyCurrent.
+    // Idempotência agora exige phase idle — status igual com processing
+    // ainda em voo NÃO reabre o caminho sync.
     expect(saleOrderHooks).toContain(
       "if (currentStatus === status && (current.command_phase === 'idle' || !current.command_phase))",
     );
