@@ -129,6 +129,7 @@ export type SheetFormData = {
    *  upper_material por compatibilidade com os motores legados, mas o UUID
    *  evita perder o vínculo quando o grupo é renomeado. */
   upper_material_group_id?: string | null;
+  dublagem_glue_id?: string | null;
   /** Pin do SKU exato do Cabedal Material 1 (2026-06-28). Precedência no débito:
    *  variante > este pin > grupo+cor. null = resolve pela cor do PV. */
   upper_material_product_id?: string | null;
@@ -239,6 +240,7 @@ export const emptySheetForm: SheetFormData = {
   cor_predominante_id: null, cor_solado_id: null, box_type_id: null,
   status_ficha: 'rascunho',
   upper_material: '', upper_material_group_id: null, upper_material_product_id: null, upper_thickness: '',
+  dublagem_glue_id: null,
   upper_corte_a_fio: false,
   upper_sewing_pieces_per_pair: 2,
   lining_material: '', lining_material_product_id: null,

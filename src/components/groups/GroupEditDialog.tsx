@@ -496,9 +496,8 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
     () => (group.parent_group_id ? allGroups.find(g => g.id === group.parent_group_id) ?? null : null),
     [group.parent_group_id, allGroups],
   );
-  const isCompositeMaterial = !isContainer && (
-    /dublag/i.test(parentGroup?.name || '') || /dublad/i.test(group.name || '')
-  );
+  // Composição (camadas/colas) para todo grupo-folha; motor segue via product_group_layers.
+  const isCompositeMaterial = !isContainer;
   const productColors = useMemo(
     () => [...new Set(products
       .filter(product => product.active !== false)

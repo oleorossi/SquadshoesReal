@@ -127,6 +127,7 @@ import { needsCabedalParConfirmation, CABEDAL_PAR_CONFIRM_MESSAGE } from '@/lib/
 import { Link as Link2, Info } from '@phosphor-icons/react';
 import { SoleSizeConjugationsEditor } from '@/components/inventory/SoleSizeConjugationsEditor';
 import { ComponentGroupSelect, GroupMaterialSelect, SoleClassificationBadge, SoleProductSelect, DirectComponentSelect, NcmInlineEditor } from '@/components/technical-sheets/sheetSelectors';
+import DublagemGlueSelect from '@/components/technical-sheets/DublagemGlueSelect';
 const STATUSES = ['Ativo', 'Em desenvolvimento', 'Descontinuado'] as const;
 const STATUS_FICHA = ['rascunho', 'em_revisao', 'validada', 'publicada'] as const;
 const STATUS_FICHA_LABELS: Record<string, string> = { rascunho: 'Rascunho', em_revisao: 'Em Revisão', validada: 'Validada', publicada: 'Publicada' };
@@ -1506,6 +1507,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       // que o painel acabou de salvar — setor removido "ressuscitava" e a
       // ficha dele voltava a sair na impressão.
       'shoe_category_id', 'primary_sole_id', 'upper_material_group_id',
+      'dublagem_glue_id',
       'assembly_time_minutes', 'process_difficulty',
     ];
     for (const key of EXTRA_DB_FIELDS) {
@@ -3125,6 +3127,15 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                       <p className="text-xs text-muted-foreground">
                         Baixa de estoque: cabedal no início de <strong className="text-foreground">Corte Cabedal</strong>.
                       </p>
+
+                      {/* Cola padrão de dublagem — só quando o cabedal é composto. */}
+                      {form.upper_material_group_id && (
+                        <DublagemGlueSelect
+                          compositeGroupId={form.upper_material_group_id}
+                          value={(form as any).dublagem_glue_id || null}
+                          onChange={(glueId) => updateField('dublagem_glue_id' as any, glueId)}
+                        />
+                      )}
                     </div>
 
                     {/* Acessórios alternativos de cabedal removidos da UI conforme decisão

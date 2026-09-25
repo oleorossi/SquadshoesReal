@@ -137,6 +137,17 @@ Deno.serve(async (req) => {
           }
           effectResult.cabedal_prep = cabedalPrep;
 
+          // Dublagem (faces): materializa demandas + OCs source_type=dublagem
+          // ANTES do per_pv, que exclui o SKU acabado quando dublagem_mode ≠ null.
+          const { data: dublagem, error: dublagemError } = await admin.rpc(
+            "process_dublagem_purchase_shortages",
+            { p_sale_order_id: event.sale_order_id },
+          );
+          if (dublagemError) {
+            throw new Error(`dublagem: ${dublagemError.message}`);
+          }
+          effectResult.dublagem = dublagem;
+
           // Idempotente por PV+fornecedor e status-aware. Em Draft/Faturado/
           // cancelado retorna skipped; em Aprovado/Em Produção recalcula pelo
           // motor canônico e cria/reusa OCs das faltas válidas.

@@ -74,6 +74,16 @@ export default function GroupCompositionTab({ groupId, groupName, groups, colors
     if (layers.length === 1) return 'Uma composição precisa de pelo menos duas camadas.';
     if (layers.some(layer => !layer.component_label.trim())) return 'Informe o material de todas as camadas.';
     if (layers.filter(layer => layer.is_color_source).length > 1) return 'Escolha somente uma camada como referência visual de cor.';
+    if (layers.length >= 2) {
+      const base = layers.find(layer => !layer.is_color_source) || layers[layers.length - 1];
+      const colorSrc = layers.find(layer => layer.is_color_source);
+      if (!colorSrc?.component_group_id) {
+        return 'A camada de cor precisa apontar a um grupo de estoque (ex.: Napa Soft).';
+      }
+      if (!base?.component_group_id) {
+        return 'A base da dublagem precisa apontar a um grupo de estoque (Massa Box).';
+      }
+    }
     return '';
   }, [layers]);
 
@@ -252,6 +262,172 @@ export default function GroupCompositionTab({ groupId, groupName, groups, colors
       </div>
 
       {validationMessage && <p className="text-xs text-destructive">{validationMessage}</p>}
+
+      <DublagemGluesSection groupId={groupId} hasComposition={layers.length >= 2} />
+    </div>
+  );
+}
+
+interface DublagemGlueRow {
+  id: string;
+  name: string;
+  price_per_m: number;
+  is_active: boolean;
+  display_order: number;
+}
+
+function DublagemGluesSection({ groupId, hasComposition }: { groupId: string; hasComposition: boolean }) {
+  const queryClient = useQueryClient();
+  const [draftName, setDraftName] = useState('');
+  const [draftPrice, setDraftPrice] = useState('0');
+
+  const gluesQuery = useQuery({
+    queryKey: ['product_group_dublagem_glues', groupId],
+    enabled: !!groupId && hasComposition,
+    queryFn: async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any)
+        .from('product_group_dublagem_glues')
+        .select('id,name,price_per_m,is_active,display_order')
+        .eq('composite_group_id', groupId)
+        .order('display_order')
+        .order('name');
+      if (error) throw error;
+      return (data || []) as DublagemGlueRow[];
+    },
+  });
+
+  const saveGlue = useMutation({
+    mutationFn: async () => {
+      const name = draftName.trim();
+      const price = Number(String(draftPrice).replace(',', '.'));
+      if (!name) throw new Error('Informe o nome da cola');
+      if (!Number.isFinite(price) || price < 0) throw new Error('Preço inválido');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await (supabase as any).from('product_group_dublagem_glues').insert({
+        composite_group_id: groupId,
+        name,
+        price_per_m: price,
+        display_order: (gluesQuery.data?.length || 0),
+      });
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      setDraftName('');
+      setDraftPrice('0');
+      await queryClient.invalidateQueries({ queryKey: ['product_group_dublagem_glues', groupId] });
+      toast.success('Cola cadastrada');
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const toggleActive = useMutation({
+    mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await (supabase as any)
+        .from('product_group_dublagem_glues')
+        .update({ is_active, updated_at: new Date().toISOString() })
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['product_group_dublagem_glues', groupId] });
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const removeGlue = useMutation({
+    mutationFn: async (id: string) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await (supabase as any)
+        .from('product_group_dublagem_glues')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['product_group_dublagem_glues', groupId] });
+      toast.success('Cola removida');
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  if (!hasComposition) return null;
+
+  return (
+    <div className="space-y-3 rounded-xl border border-border/70 p-4">
+      <div>
+        <h3 className="text-sm font-semibold">Colas de dublagem</h3>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Tipo + R$/metro linear do dublado. Entra só no custeio — não gera estoque nem OC de cola.
+        </p>
+      </div>
+
+      {gluesQuery.isLoading ? (
+        <p className="text-xs text-muted-foreground">Carregando colas…</p>
+      ) : (gluesQuery.data || []).length === 0 ? (
+        <p className="text-xs text-muted-foreground">Nenhuma cola cadastrada neste composto.</p>
+      ) : (
+        <ul className="space-y-2">
+          {(gluesQuery.data || []).map((glue) => (
+            <li key={glue.id} className="flex items-center justify-between gap-3 rounded-lg border bg-card px-3 py-2">
+              <div className="min-w-0">
+                <p className={`text-sm font-medium truncate ${glue.is_active ? '' : 'text-muted-foreground line-through'}`}>
+                  {glue.name}
+                </p>
+                <p className="text-xs tabular-nums text-muted-foreground">
+                  {Number(glue.price_per_m).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}/m
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => toggleActive.mutate({ id: glue.id, is_active: !glue.is_active })}
+                >
+                  {glue.is_active ? 'Desativar' : 'Ativar'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                  aria-label={`Remover cola ${glue.name}`}
+                  onClick={() => removeGlue.mutate(glue.id)}
+                >
+                  <Trash className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="grid gap-2 sm:grid-cols-[1fr_120px_auto]">
+        <Input
+          value={draftName}
+          onChange={(e) => setDraftName(e.target.value)}
+          placeholder="Ex.: Cola simples"
+        />
+        <Input
+          value={draftPrice}
+          onChange={(e) => setDraftPrice(e.target.value)}
+          inputMode="decimal"
+          placeholder="R$/m"
+        />
+        <Button
+          type="button"
+          size="sm"
+          className="gap-1.5"
+          disabled={saveGlue.isPending}
+          onClick={() => saveGlue.mutate()}
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Adicionar
+        </Button>
+      </div>
     </div>
   );
 }

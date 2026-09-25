@@ -642,6 +642,23 @@ export function isCabedalPrepPurchaseOrder(
   return !!po && po.source_type === 'cabedal_prep';
 }
 
+export function isDublagemPurchaseOrder(
+  po: { source_type?: string | null } | null | undefined,
+): boolean {
+  return !!po && po.source_type === 'dublagem';
+}
+
+/** Compra forçada (externa) ignora saldo; interna usa shortage líquido. */
+export function dublagemPurchaseNeed(params: {
+  mode: 'internal' | 'external';
+  demandLinearM: number;
+  availableStock: number;
+}): number {
+  const demand = Math.max(0, Number(params.demandLinearM) || 0);
+  if (params.mode === 'external') return demand;
+  return Math.max(0, demand - Math.max(0, Number(params.availableStock) || 0));
+}
+
 /**
  * Canal exclusivo das tiras artesanais (`source_type='strap_demand'`).
  * Tem aba própria em /purchase-orders (Demandas automáticas) e RPCs próprias
