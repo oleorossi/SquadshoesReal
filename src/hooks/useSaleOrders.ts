@@ -15,6 +15,7 @@ import {
   createSaleOrderCommand,
   executeSaleOrderCommand,
   formatSaleOrderCancelError,
+  formatSaleOrderSoftDeleteError,
   formatSaleOrderStatusError,
   formatSaleOrderUpdateSuccessMessage,
   formatUnknownSaleOrderUpdateError,
@@ -1456,32 +1457,79 @@ interface DeletedSaleOrderRestoreContext {
   order_version?: number | null;
 }
 
-export function useDeleteSaleOrder() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (id: string) => {
-      const { data: currentData, error: currentError } = await supabase
-        .from('sale_orders')
-        .select('order_version' as never)
-        .eq('id', id)
-        .single();
-      if (currentError) throw currentError;
-      const current = currentData as unknown as { order_version?: number | null };
-      const expectedVersion = Number(current?.order_version);
-      if (!Number.isInteger(expectedVersion) || expectedVersion < 0) {
-        throw new Error('Versão do PV indisponível. Recarregue antes de excluir.');
-      }
-      const requestId = crypto.randomUUID();
+export interface SoftDeleteSaleOrderResult {
+  saleOrderId: string;
+  orderNumber: string | null;
+  result: unknown;
+}
+
+/**
+ * Soft-delete de um PV com a mesma política de busy-retry do save.
+ *
+ * A chave idempotente é o `client_request_id`: em lock timeout (sem recibo) a
+ * mesma chave é reusada; se o servidor chegou a gravar `failed`, o helper
+ * renova. Conflito de versão NÃO entra no retry — o caller precisa recarregar.
+ *
+ * O `saleOrderId` vai na mensagem de erro mesmo quando o timeout aborta antes
+ * do recibo (observabilidade do incidente PV-00198 / exclusão em massa).
+ */
+export async function softDeleteSaleOrderWithBusyRetry(
+  saleOrderId: string,
+): Promise<SoftDeleteSaleOrderResult> {
+  const { data: currentData, error: currentError } = await supabase
+    .from('sale_orders')
+    .select('order_version, order_number' as never)
+    .eq('id', saleOrderId)
+    .single();
+  if (currentError) {
+    throw Object.assign(currentError, { saleOrderId });
+  }
+  const current = currentData as unknown as {
+    order_version?: number | null;
+    order_number?: string | null;
+  };
+  const expectedVersion = Number(current?.order_version);
+  const orderNumber = current?.order_number ?? null;
+  if (!Number.isInteger(expectedVersion) || expectedVersion < 0) {
+    throw Object.assign(
+      new Error('Versão do PV indisponível. Recarregue antes de excluir.'),
+      { saleOrderId, orderNumber },
+    );
+  }
+
+  const baseRequestId = crypto.randomUUID();
+  try {
+    const result = await runSaleOrderCommandWithBusyRetry(baseRequestId, async (requestId) => {
       const { data, error } = await supabase.rpc('soft_delete_sale_order_command' as never, {
-        p_sale_order_id: id,
+        p_sale_order_id: saleOrderId,
         p_expected_order_version: expectedVersion,
         p_client_request_id: requestId,
       } as never);
       if (error) throw error;
       const response = data as unknown as SaleOrderLifecycleCommandResponse;
-      if (!response?.ok) throw new Error(response?.error?.message || 'Exclusão recusada pelo servidor.');
+      if (!response?.ok) {
+        throw Object.assign(
+          new Error(response?.error?.message || 'Exclusão recusada pelo servidor.'),
+          { saleOrderId, orderNumber },
+        );
+      }
       return response.result;
-    },
+    });
+    return { saleOrderId, orderNumber, result };
+  } catch (error) {
+    // Anexa identidade mesmo em lock timeout pré-recibo — o toast precisa
+    // nomear o PV, senão parece que a exclusão foi do pedido em edição.
+    if (error && typeof error === 'object') {
+      throw Object.assign(error, { saleOrderId, orderNumber });
+    }
+    throw Object.assign(new Error(String(error)), { saleOrderId, orderNumber });
+  }
+}
+
+export function useDeleteSaleOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => softDeleteSaleOrderWithBusyRetry(id),
     onSuccess: () => {
       invalidateSaleOrders(qc);
       qc.invalidateQueries({ queryKey: ['sale_orders_with_nfe'] });
@@ -1489,7 +1537,14 @@ export function useDeleteSaleOrder() {
       // lista de OPs pra elas sumirem na hora, sem precisar dar refresh.
       qc.invalidateQueries({ queryKey: ['orders'] });
     },
-    onError: (err: Error) => toast.error(`Erro ao excluir: ${err.message}`),
+    onError: (err: Error & { saleOrderId?: string; orderNumber?: string | null }) => {
+      // Bulk delete trata o toast sozinho (lista parcial); mutate unitário usa isto.
+      if ((err as Error & { _bulkSoftDelete?: boolean })._bulkSoftDelete) return;
+      toast.error(formatSaleOrderSoftDeleteError(err, {
+        saleOrderId: err.saleOrderId || 'PV',
+        orderNumber: err.orderNumber,
+      }), { duration: 12000 });
+    },
   });
 }
 

@@ -1664,13 +1664,16 @@ export default function SaleOrderForm() {
           // #region agent log
           fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fec31c'},body:JSON.stringify({sessionId:'fec31c',runId:'pre-fix',hypothesisId:'D,E',location:'SaleOrderForm.tsx:dispatchMutation:onError',message:'update refused by server',data:{cancelOpIdsCount:cancelOpIds.length,hasVersionConflict,errorMessage:message,errorName:error instanceof Error ? error.name : typeof error},timestamp:Date.now()})}).catch(()=>{});
           // #endregion
-          // Exclusão local ainda na tela: troca o toast infinito "salve para
-          // aplicar" por recusa explícita — senão parece que a remoção "pegou".
-          toast.warning('Remoção não aplicada — o servidor recusou o salvamento.', {
-            id: PV_ITEM_DELETE_TOAST_ID,
-            duration: 12000,
-            description: message,
-          });
+          // Só fala em "remoção" quando o payload realmente ia apagar linhas.
+          // Add/edit puro caía neste toast e parecia que a exclusão tinha falhado
+          // (incidente PV-00198: Novo Item + soft-delete paralelo na lista).
+          if (expectedRemovedCount > 0) {
+            toast.warning('Remoção não aplicada — o servidor recusou o salvamento.', {
+              id: PV_ITEM_DELETE_TOAST_ID,
+              duration: 12000,
+              description: message,
+            });
+          }
           if (cancelOpIds.length > 0) {
             cancelOpsPreflightRunningRef.current = false;
             setCancelOpsPreflight({

@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   formatSaleOrderCancelError,
+  formatSaleOrderSoftDeleteError,
   formatSaleOrderStatusError,
   formatUnknownSaleOrderUpdateError,
   hasPhysicalFactBlockers,
   isPostgresBusyError,
   isPostgresDeadlockError,
   isPostgresTimeoutError,
+  isSaleOrderSoftDeleteVersionConflict,
   isStaleSaleOrderVersionError,
   normalizeCreateSaleOrderCommandReceipt,
   normalizeSaleOrderCommandPreflight,
@@ -294,5 +296,30 @@ describe('saleOrderCommand', () => {
     expect(formatSaleOrderStatusError(deadlock)).not.toMatch(/deadlock detected/);
     expect(formatUnknownSaleOrderUpdateError(deadlock)).toMatch(/O pedido NÃO foi salvo/);
     expect(formatUnknownSaleOrderUpdateError(deadlock)).not.toMatch(/ShareLock/);
+  });
+
+  it('soft-delete: lock timeout vira mensagem amigável com o PV nomeado', () => {
+    const busy = {
+      code: '55P03',
+      message: 'canceling statement due to lock timeout',
+    };
+    const formatted = formatSaleOrderSoftDeleteError(busy, {
+      saleOrderId: 'ed5da8f0-1d49-4796-8ed1-3d4c2c5924c7',
+      orderNumber: 'PV-00216',
+    });
+    expect(formatted).toContain('PV-00216');
+    expect(formatted).toMatch(/banco estava ocupado|Tente de novo/);
+    expect(formatted).not.toMatch(/canceling statement/);
+    expect(formatted).not.toMatch(/^Erro ao excluir:/);
+  });
+
+  it('soft-delete: conflito de versão pede reload e NÃO é busy-retry', () => {
+    const race = new Error('PV mudou simultaneamente (esperado v14, atual v15)');
+    expect(isSaleOrderSoftDeleteVersionConflict(race)).toBe(true);
+    expect(isPostgresBusyError(race)).toBe(false);
+    expect(formatSaleOrderSoftDeleteError(race, {
+      saleOrderId: 'id-1',
+      orderNumber: 'PV-00217',
+    })).toMatch(/Recarregue a lista/);
   });
 });

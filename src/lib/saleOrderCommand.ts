@@ -375,7 +375,7 @@ export async function runSaleOrderCommandWithBusyRetry<T>(
   }
 }
 
-const SALE_ORDER_BUSY_RETRY_MESSAGE =
+export const SALE_ORDER_BUSY_RETRY_MESSAGE =
   'O banco estava ocupado com estoque ou compras de outro pedido. Tente de novo em alguns segundos.';
 
 export function formatSaleOrderStatusError(error: unknown): string {
@@ -386,6 +386,42 @@ export function formatSaleOrderStatusError(error: unknown): string {
     return error.message.trim();
   }
   return 'Não foi possível atualizar o status do pedido.';
+}
+
+/**
+ * Soft-delete usa ERRCODE 40001 com MESSAGE "PV mudou simultaneamente".
+ * Busy-retry não deve repetir: a versão esperada já caducou.
+ */
+export function isSaleOrderSoftDeleteVersionConflict(error: unknown): boolean {
+  if (isStaleSaleOrderVersionError(error)) return true;
+  return /PV mudou simultaneamente/i.test(postgresErrorHaystack(error));
+}
+
+export interface SoftDeleteErrorContext {
+  saleOrderId: string;
+  orderNumber?: string | null;
+}
+
+/** Toast de exclusão: nunca joga "canceling statement due to lock timeout" cru. */
+export function formatSaleOrderSoftDeleteError(
+  error: unknown,
+  ctx: SoftDeleteErrorContext,
+): string {
+  const label = (ctx.orderNumber || '').trim() || ctx.saleOrderId;
+  if (isSaleOrderSoftDeleteVersionConflict(error)) {
+    return `O pedido ${label} mudou enquanto a exclusão rodava. Recarregue a lista e tente de novo.`;
+  }
+  if (isPostgresBusyError(error)) {
+    return `Não foi possível excluir ${label}: ${SALE_ORDER_BUSY_RETRY_MESSAGE}`;
+  }
+  const described = describePostgrestError(
+    error,
+    error instanceof Error ? error.message : '',
+  ).trim();
+  if (described) {
+    return `Não foi possível excluir ${label}: ${described}`;
+  }
+  return `Não foi possível excluir ${label}.`;
 }
 
 export function formatUnknownSaleOrderUpdateError(error: unknown): string {

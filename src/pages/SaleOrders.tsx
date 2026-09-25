@@ -94,14 +94,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useSaleOrders, useSaleOrderAllItems, useCreateSaleOrder, useDeleteSaleOrder, useUpdateSaleOrderStatus, useResyncOPsFromSheets, useResyncOPsFromPV, useCommitPickingForSaleOrder, useRealtimeSaleOrders, ORDER_TYPE_LABELS } from '@/hooks/useSaleOrders';
+import { useSaleOrders, useSaleOrderAllItems, useCreateSaleOrder, useDeleteSaleOrder, softDeleteSaleOrderWithBusyRetry, useUpdateSaleOrderStatus, useResyncOPsFromSheets, useResyncOPsFromPV, useCommitPickingForSaleOrder, useRealtimeSaleOrders, ORDER_TYPE_LABELS } from '@/hooks/useSaleOrders';
 import DuplicateToStoresDialog from '@/components/sales/DuplicateToStoresDialog';
 import {
   executeSaleOrderCommand,
+  formatSaleOrderSoftDeleteError,
   preflightSaleOrderCommand,
   SaleOrderReadinessBlockedError,
   shouldOfferAdminCompensatoryCancel,
 } from '@/lib/saleOrderCommand';
+import { invalidateSaleOrders } from '@/lib/queryKeys';
 import { useTechnicalSheetsLite } from '@/hooks/useTechnicalSheets';
 import { useClients, useEconomicGroups } from '@/hooks/useClients';
 import { supabase } from '@/integrations/supabase/client';
@@ -825,14 +827,60 @@ export default function SaleOrders() {
   const doBulkDelete = async () => {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
-    const results = await Promise.allSettled(ids.map(id => deleteOrder.mutateAsync(id)));
-    const failed = results.filter(r => r.status === 'rejected').length;
-    setSelectedIds(new Set());
-    if (failed === 0) {
-      toast.success(`${ids.length} pedido(s) excluído(s) — restauráveis se preciso`);
-    } else {
-      toast.error(`${ids.length - failed} excluído(s), ${failed} falha(s). PVs com NF-e ativa não podem ser excluídos.`);
+    const labelById = new Map(
+      orders.filter((o) => ids.includes(o.id)).map((o) => [o.id, o.order_number] as const),
+    );
+    // Chama o writer direto (não mutateAsync): o onError do hook toasta por item
+    // e emburra a lista parcial. Aqui um toast resume o lote.
+    const results = await Promise.allSettled(
+      ids.map(async (id) => softDeleteSaleOrderWithBusyRetry(id)),
+    );
+    const failed: Array<{ id: string; label: string; message: string }> = [];
+    for (let i = 0; i < results.length; i += 1) {
+      const result = results[i];
+      const id = ids[i];
+      if (result.status === 'fulfilled') continue;
+      const reason = result.reason;
+      const label = (
+        reason && typeof reason === 'object' && 'orderNumber' in reason
+          ? String((reason as { orderNumber?: string | null }).orderNumber || '')
+          : ''
+      ) || labelById.get(id) || id;
+      failed.push({
+        id,
+        label,
+        message: formatSaleOrderSoftDeleteError(reason, {
+          saleOrderId: id,
+          orderNumber: label,
+        }),
+      });
     }
+    setSelectedIds(new Set());
+    invalidateSaleOrders(queryClient);
+    queryClient.invalidateQueries({ queryKey: ['sale_orders_with_nfe'] });
+    queryClient.invalidateQueries({ queryKey: ['orders'] });
+    const ok = ids.length - failed.length;
+    if (failed.length === 0) {
+      toast.success(`${ids.length} pedido(s) excluído(s) — restauráveis se preciso`);
+      return;
+    }
+    if (ok === 0) {
+      toast.error(
+        `Nenhum pedido foi excluído (${failed.length} falha${failed.length === 1 ? '' : 's'}).`,
+        {
+          duration: 14000,
+          description: failed.slice(0, 4).map((f) => f.message).join(' · '),
+        },
+      );
+      return;
+    }
+    toast.error(
+      `${ok} excluído(s), ${failed.length} falha(s): ${failed.map((f) => f.label).join(', ')}.`,
+      {
+        duration: 14000,
+        description: failed.slice(0, 3).map((f) => f.message).join(' · '),
+      },
+    );
   };
 
   const handleBulkStatusChange = async (status: string, viabilityConfirmed = false) => {
