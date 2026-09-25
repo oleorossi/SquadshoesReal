@@ -89,7 +89,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useSaleOrders, useSaleOrderAllItems, useCreateSaleOrder, useDeleteSaleOrder, useUpdateSaleOrderStatus, useResyncOPsFromSheets, useResyncOPsFromPV, useCommitPickingForSaleOrder, useRealtimeSaleOrders, SaleOrderFormData, SaleOrderItemFormData, PackagingMode, ORDER_TYPE_LABELS } from '@/hooks/useSaleOrders';
+import { useSaleOrders, useSaleOrderAllItems, useCreateSaleOrder, useDeleteSaleOrder, useUpdateSaleOrderStatus, useResyncOPsFromSheets, useResyncOPsFromPV, useCommitPickingForSaleOrder, useRealtimeSaleOrders, ORDER_TYPE_LABELS } from '@/hooks/useSaleOrders';
+import DuplicateToStoresDialog from '@/components/sales/DuplicateToStoresDialog';
 import {
   executeSaleOrderCommand,
   preflightSaleOrderCommand,
@@ -353,9 +354,6 @@ export default function SaleOrders() {
 
   const [dupDialog, setDupDialog] = useState(false);
   const [dupOrderId, setDupOrderId] = useState<string | null>(null);
-  const [dupSelectedClients, setDupSelectedClients] = useState<string[]>([]);
-  const [dupGroupId, setDupGroupId] = useState<string>('');
-  const [dupClientSearch, setDupClientSearch] = useState('');
   const [generatingOPs, setGeneratingOPs] = useState(false);
   const [overviewOpen, setOverviewOpen] = useState(false);
   const [marginDialogOpen, setMarginDialogOpen] = useState(false);
@@ -766,27 +764,6 @@ export default function SaleOrders() {
     return ids;
   }, [dupOrderId, orders]);
 
-  const dupGroupClients = useMemo(() => {
-    if (!dupGroupId) return [];
-    return clients.filter(c =>
-      c.economic_group_id === dupGroupId
-      && c.active
-      && c.id !== dupSourceClientId
-      && !alreadyCopiedClientIds.has(c.id)
-    );
-  }, [dupGroupId, clients, dupSourceClientId, alreadyCopiedClientIds]);
-
-  // Lojas do grupo que JÁ receberam cópia — pra mostrar como info contextual
-  // no dialog (não bloqueia, só informa).
-  const dupAlreadyCopiedStores = useMemo(() => {
-    if (!dupGroupId) return [];
-    return clients.filter(c =>
-      c.economic_group_id === dupGroupId
-      && c.active
-      && alreadyCopiedClientIds.has(c.id)
-    );
-  }, [dupGroupId, clients, alreadyCopiedClientIds]);
-
   // Excluir desceu de window.prompt ("digite EXCLUIR <N>") para o mesmo
   // AlertDialog de Aprovar/Cancelar (decisão do dono, 07/08/2026).
   //
@@ -1185,92 +1162,7 @@ export default function SaleOrders() {
 
   const openDupDialog = (orderId: string) => {
     setDupOrderId(orderId);
-    setDupGroupId('');
-    setDupSelectedClients([]);
-    setDupClientSearch('');
     setDupDialog(true);
-  };
-
-  const handleDuplicate = async () => {
-    if (!dupOrderId || dupSelectedClients.length === 0) return;
-    const order = orders.find(o => o.id === dupOrderId);
-    if (!order) return;
-    const { data: orderItems, error: itemsFetchError } = await supabase.from('sale_order_items').select('*').eq('sale_order_id', dupOrderId);
-    if (itemsFetchError) {
-      toast.error(`Erro ao ler itens do pedido original: ${itemsFetchError.message}`);
-      return;
-    }
-    if (!orderItems || orderItems.length === 0) {
-      toast.error('O pedido original não possui itens — duplicação cancelada.');
-      return;
-    }
-
-    // Validate material_variant_id references before copying: variants may have been
-    // deactivated or deleted since the original order was placed. Copying a stale ID
-    // would silently block NF-e emission (emit-nfe returns 400 for inactive variants).
-    const variantIdsInOrder = [...new Set(
-      orderItems.map(i => (i as any).material_variant_id).filter(Boolean)
-    )] as string[];
-    let activeVariantIds = new Set<string>();
-    if (variantIdsInOrder.length > 0) {
-      const { data: activeVariants } = await (supabase as any)
-        .from('reference_material_variants')
-        .select('id')
-        .in('id', variantIdsInOrder)
-        .eq('active', true);
-      activeVariantIds = new Set((activeVariants || []).map((v: any) => v.id));
-      const staleCount = variantIdsInOrder.filter(id => !activeVariantIds.has(id)).length;
-      if (staleCount > 0) {
-        toast.warning(`${staleCount} variação(ões) de material inativa(s) — o campo será limpo nos itens copiados. Revise antes de faturar.`);
-      }
-    }
-
-    let successCount = 0;
-    const failures: string[] = [];
-    for (const clientId of dupSelectedClients) {
-      const client = clients.find(c => c.id === clientId);
-      if (!client) continue;
-      const newOrder: SaleOrderFormData = { client_name: client.razao_social, client_cnpj: client.cnpj || '', client_contact: client.contato || '', client_order_number: '', representative: order.representative || '', payment_condition: order.payment_condition || '', delivery_deadline: order.delivery_deadline || '', delivery_week: order.delivery_week || '', delivery_month: order.delivery_month || '', notes: order.notes || '', status: 'Rascunho', nfe: '', remessa: '', is_factoring: false, factoring_config_id: null as any, packaging_mode: (order.packaging_mode || 'individual_amarrado') as PackagingMode };
-      const newItems: SaleOrderItemFormData[] = (orderItems || []).map(i => {
-        const vid = (i as any).material_variant_id;
-        return {
-          reference_id: i.reference_id,
-          color: i.color || '',
-          grade: (i.grade as Record<string, number>) || {},
-          unit_price: Number(i.unit_price) || 0,
-          quantity: Number(i.quantity) || 0,
-          fichas: (i as any).fichas || 1,
-          strap_colors: (i.strap_colors as any[]) || [],
-          material_variant_id: (vid && activeVariantIds.has(vid)) ? vid : null,
-        };
-      });
-      // Idempotência: 1 UUID por cliente/submit, gerado ANTES do mutate —
-      // se houver retry do mesmo submit, reusa o id e o UNIQUE do banco
-      // (sale_orders.client_request_id) impede duplicar o PV copiado.
-      const dupRequestId = crypto.randomUUID();
-      try {
-        // parent_order_id liga a cópia ao PV origem — permite filtrar
-        // "lojas já copiadas" no próximo dialog de duplicação (pedido user
-        // 20/05/2026: "tudo que duplicar deve desconsiderar lojas do grupo
-        // que já foi copiado daquele pedido").
-        await createOrder.mutateAsync({ order: newOrder, items: newItems, client_id: client.id, parent_order_id: dupOrderId, client_request_id: dupRequestId });
-        successCount++;
-      } catch (err: any) {
-        const msg = err?.message || 'erro desconhecido';
-        failures.push(`${client.razao_social}: ${msg}`);
-      }
-    }
-    if (successCount > 0) toast.success(`${successCount} pedido(s) duplicado(s)!`);
-    if (failures.length > 0) {
-      toast.error(`${failures.length} duplicação(ões) falharam`, { description: failures.slice(0, 3).join(' | ') });
-    }
-    if (failures.length === 0) setDupDialog(false);
-  };
-
-  const toggleDupClient = (clientId: string) => setDupSelectedClients(prev => prev.includes(clientId) ? prev.filter(id => id !== clientId) : [...prev, clientId]);
-  const toggleAllDupClients = () => {
-    if (dupSelectedClients.length === dupGroupClients.length) setDupSelectedClients([]);
-    else setDupSelectedClients(dupGroupClients.map(c => c.id));
   };
 
   // Restaura o detalhe a partir do ?pv= (F5, link colado, aba nova).
@@ -2273,7 +2165,7 @@ export default function SaleOrders() {
                           <Button variant="ghost" size="icon" className="h-7 w-7" title="Gerar pedido (PDF)" onClick={() => { void printSaleOrderPdf(order); }}>
                             <Printer className="h-3.5 w-3.5" />
                           </Button>
-                          <Button variant="ghost" size="icon" className="h-7 w-7" title="Duplicar por grupo" onClick={() => openDupDialog(order.id)}>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" title="Duplicar para lojas" onClick={() => openDupDialog(order.id)}>
                             <Copy className="h-3.5 w-3.5" />
                           </Button>
                           <Button variant="ghost" size="icon" className="h-7 w-7" title="Editar" disabled={!canEditPv} onClick={() => navigate(`/sales/edit/${order.id}`)}>
@@ -3152,136 +3044,20 @@ export default function SaleOrders() {
         </Suspense>
       )}
 
-      {/* DUPLICATE DIALOG */}
-      <Dialog open={dupDialog} onOpenChange={setDupDialog}>
-        <DialogContent className="sm:max-w-2xl">
-          <DialogHeader><DialogTitle>Duplicar por Grupo Econômico</DialogTitle></DialogHeader>
-          {/* Audit visual: aviso explícito sobre impacto de estoque/reservas.
-              Usuário não esperava que duplicar PV gerasse N reservas novas. */}
-          <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 mt-2 flex items-start gap-2">
-            <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
-            <div className="text-xs text-amber-700 dark:text-amber-300">
-              <p className="font-semibold mb-1">A duplicação reservará insumos novamente</p>
-              <p>
-                Cada cliente selecionado vira um novo PV com mesmos itens — gerando reservas
-                independentes em <span className="font-mono">products.reserved_stock</span>. Verifique
-                a disponibilidade de materiais antes de confirmar pra evitar superalocação.
-              </p>
-            </div>
-          </div>
-          <div className="space-y-4 mt-2">
-            <div>
-              <Label>Grupo Econômico</Label>
-              <Select value={dupGroupId} onValueChange={v => { setDupGroupId(v); setDupSelectedClients([]); setDupClientSearch(''); }}>
-                <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione um grupo" /></SelectTrigger>
-                <SelectContent>{economicGroups.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-
-            {/* Info contextual: lojas que JÁ receberam cópia deste PV são
-                ocultadas da lista (filtradas via parent_order_id). Pedido
-                user 20/05/2026: "duplicar deve desconsiderar lojas do grupo
-                que já foi copiado daquele pedido". */}
-            {dupGroupId && dupAlreadyCopiedStores.length > 0 && (
-              <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2.5">
-                <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">
-                  ✓ {dupAlreadyCopiedStores.length} {dupAlreadyCopiedStores.length === 1 ? 'loja já recebeu cópia' : 'lojas já receberam cópia'} (não aparecem na lista abaixo)
-                </p>
-                <p className="text-[11px] text-emerald-800/80 dark:text-emerald-300/80 mt-1">
-                  {dupAlreadyCopiedStores.slice(0, 5).map(c => c.razao_social).join(' · ')}
-                  {dupAlreadyCopiedStores.length > 5 && ` · +${dupAlreadyCopiedStores.length - 5}`}
-                </p>
-              </div>
-            )}
-
-            {/* Vazio quando todas já foram copiadas */}
-            {dupGroupId && dupGroupClients.length === 0 && dupAlreadyCopiedStores.length > 0 && (
-              <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-3 text-center">
-                <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">
-                  Todas as lojas ativas do grupo já receberam cópia deste PV
-                </p>
-                <p className="text-xs text-amber-800/80 dark:text-amber-300/80 mt-1">
-                  Nada pra duplicar — feche este dialog.
-                </p>
-              </div>
-            )}
-
-            {dupGroupId && dupGroupClients.length > 0 && (() => {
-              const filteredClients = dupClientSearch.trim()
-                ? dupGroupClients.filter(c => searchMatchesAllTerms(
-                    dupClientSearch,
-                    c.razao_social,
-                    c.nome_fantasia,
-                    c.cnpj,
-                  ))
-                : dupGroupClients;
-              return (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label className="text-sm font-semibold">Lojas do Grupo</Label>
-                  <Button type="button" variant="ghost" size="sm" onClick={toggleAllDupClients} className="text-xs">{dupSelectedClients.length === dupGroupClients.length ? 'Desmarcar todos' : 'Selecionar todos'}</Button>
-                </div>
-                <SearchInput
-                  placeholder="Buscar loja por razão social, fantasia ou CNPJ…"
-                  value={dupClientSearch}
-                  onChange={setDupClientSearch}
-                  resultCount={filteredClients.length}
-                  totalCount={dupGroupClients.length}
-                  inputClassName="h-9"
-                />
-                <div className="border rounded-md divide-y max-h-72 overflow-y-auto">
-                  {filteredClients.map(c => {
-                    const isSelected = dupSelectedClients.includes(c.id);
-                    return (
-                      // Bug fix 20/05/2026: era <label> com Checkbox dentro, mas
-                      // shadcn Checkbox é <button>, não <input> — clicar na label
-                      // não togglava o estado, parecia que multi-seleção não
-                      // funcionava. Trocado por div com onClick na linha toda.
-                      <div
-                        key={c.id}
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => toggleDupClient(c.id)}
-                        onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggleDupClient(c.id); } }}
-                        className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors ${
-                          isSelected ? 'bg-primary/10 hover:bg-primary/15' : 'hover:bg-muted/50'
-                        }`}
-                      >
-                        <Checkbox
-                          checked={isSelected}
-                          onCheckedChange={() => toggleDupClient(c.id)}
-                          onClick={(e) => e.stopPropagation()}
-                          aria-label={`Selecionar ${c.razao_social}`}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className={`text-sm font-medium truncate ${isSelected ? 'text-primary' : ''}`}>
-                            {c.razao_social}
-                          </div>
-                          {c.cnpj && <div className="text-xs text-muted-foreground font-mono">{c.cnpj}</div>}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {filteredClients.length === 0 && <p className="text-xs text-muted-foreground p-3">Nenhuma loja encontrada.</p>}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  <span className="font-bold text-primary">{dupSelectedClients.length}</span> de {dupGroupClients.length} {dupGroupClients.length === 1 ? 'loja selecionada' : 'lojas selecionadas'}
-                  {dupSelectedClients.length > 0 && ' — clique em "Duplicar" pra criar N PVs de uma vez'}
-                </p>
-              </div>
-              );
-            })()}
-            {dupGroupId && dupGroupClients.length === 0 && <p className="text-sm text-muted-foreground">Nenhum cliente ativo neste grupo.</p>}
-            <div className="flex justify-end gap-3 pt-2">
-              <Button type="button" variant="outline" onClick={() => setDupDialog(false)}>Cancelar</Button>
-              <Button onClick={handleDuplicate} disabled={dupSelectedClients.length === 0 || createOrder.isPending}>
-                {createOrder.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
-                Duplicar ({dupSelectedClients.length})
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <DuplicateToStoresDialog
+        open={dupDialog}
+        onOpenChange={(open) => {
+          setDupDialog(open);
+          if (!open) setDupOrderId(null);
+        }}
+        order={dupOrderId ? orders.find(o => o.id === dupOrderId) || null : null}
+        clients={clients}
+        economicGroups={economicGroups}
+        references={references as any}
+        sourceClientId={dupSourceClientId}
+        alreadyCopiedClientIds={alreadyCopiedClientIds}
+        createOrder={createOrder}
+      />
 
       {readinessCorrectionTarget && (
         <Suspense fallback={null}>

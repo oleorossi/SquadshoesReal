@@ -693,6 +693,8 @@ interface SaleOrderItemsListProps {
   onCopyGradeFromPrevious: (idx: number) => void;
   onSaveStateAndNavigate?: () => void;
   onToggleSelect: (idx: number) => void;
+  /** Paint-select: só marca (nunca desmarca). */
+  onPaintSelect?: (idx: number) => void;
   sharedProducts: Array<{ id: string; name: string | null; color: string | null; group_id: string | null; category: string | null; active: boolean | null }>;
   sharedProductGroups: Array<{ id: string; name: string | null; colors: unknown; is_color_agnostic: boolean | null }>;
   sharedStrapCatalog?: unknown;
@@ -729,6 +731,7 @@ const SaleOrderItemsList = memo(function SaleOrderItemsList({
   onCopyGradeFromPrevious,
   onSaveStateAndNavigate,
   onToggleSelect,
+  onPaintSelect,
   sharedProducts,
   sharedProductGroups,
   sharedStrapCatalog,
@@ -748,6 +751,11 @@ const SaleOrderItemsList = memo(function SaleOrderItemsList({
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(() => new Set());
   const didSeedExpand = useRef(false);
   const prevItemCount = useRef(items.length);
+  // Paint-select (mesmo contrato do Duplicar para lojas): arrastar só marca.
+  const paintingRef = useRef(false);
+  const paintedRef = useRef<Set<number>>(new Set());
+  const draggedRef = useRef(false);
+  const startWasSelectedRef = useRef(false);
 
   useEffect(() => {
     if (didSeedExpand.current || items.length === 0) return;
@@ -782,8 +790,47 @@ const SaleOrderItemsList = memo(function SaleOrderItemsList({
     });
   }, []);
 
+  const endPaint = useCallback(() => {
+    paintingRef.current = false;
+    paintedRef.current = new Set();
+  }, []);
+
+  const markPaint = useCallback((idx: number) => {
+    if (paintedRef.current.has(idx)) return;
+    paintedRef.current.add(idx);
+    if (onPaintSelect) onPaintSelect(idx);
+    else if (!selectedItemIndices.has(idx)) onToggleSelect(idx);
+  }, [onPaintSelect, onToggleSelect, selectedItemIndices]);
+
+  const onItemPointerDown = useCallback((idx: number, e: React.PointerEvent) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    // Não iniciar paint a partir de controles internos (checkbox, botões, inputs)
+    const target = e.target as HTMLElement | null;
+    if (target?.closest('input, button, a, textarea, select, [role="combobox"]')) return;
+    paintingRef.current = true;
+    draggedRef.current = false;
+    startWasSelectedRef.current = selectedItemIndices.has(idx);
+    paintedRef.current = new Set();
+    markPaint(idx);
+  }, [markPaint, selectedItemIndices]);
+
+  const onItemPointerEnter = useCallback((idx: number) => {
+    if (!paintingRef.current) return;
+    draggedRef.current = true;
+    markPaint(idx);
+  }, [markPaint]);
+
+  const onItemPointerUp = useCallback((idx: number) => {
+    if (!paintingRef.current) return;
+    const dragged = draggedRef.current;
+    const wasSelected = startWasSelectedRef.current;
+    endPaint();
+    // Clique sem arraste em item já marcado → desmarca (toggle).
+    if (!dragged && wasSelected) onToggleSelect(idx);
+  }, [endPaint, onToggleSelect]);
+
   return (
-    <>
+    <div onPointerUp={endPaint} onPointerCancel={endPaint}>
       {sortedIndices.map((idx, sortPos) => {
         const item = items[idx];
         const itemKey = saleOrderItemUiKey(item, idx);
@@ -809,12 +856,16 @@ const SaleOrderItemsList = memo(function SaleOrderItemsList({
               </div>
             )}
             <div
+              data-paint-item
+              onPointerDown={(e) => onItemPointerDown(idx, e)}
+              onPointerEnter={() => onItemPointerEnter(idx)}
+              onPointerUp={() => onItemPointerUp(idx)}
               className={
                 isProductiveDuplicate
-                  ? 'ml-6 border-l-4 border-destructive/50 pl-3 bg-destructive/5 rounded-r-md relative'
+                  ? 'ml-6 border-l-4 border-destructive/50 pl-3 bg-destructive/5 rounded-r-md relative select-none'
                   : isSameRef
-                    ? 'ml-3 border-l-2 border-primary/30 pl-2 bg-primary/5 rounded-r-md'
-                    : ''
+                    ? 'ml-3 border-l-2 border-primary/30 pl-2 bg-primary/5 rounded-r-md select-none'
+                    : 'select-none'
               }>
               {isProductiveDuplicate && (
                 <div className="absolute -top-2 left-3 px-2 py-0.5 rounded-full bg-destructive text-destructive-foreground text-xs font-bold uppercase tracking-wider shadow-sm z-10">
@@ -883,7 +934,7 @@ const SaleOrderItemsList = memo(function SaleOrderItemsList({
           </Fragment>
         );
       })}
-    </>
+    </div>
   );
 });
 
@@ -1326,9 +1377,22 @@ export default function SaleOrderFormPanel({
        return next;
      });
    }, []);
+   const paintSelectItem = useCallback((idx: number) => {
+     if (isProductionExcludedSaleOrderItem(itemsRef.current[idx])) return;
+     setSelectedItemIndices(prev => {
+       if (prev.has(idx)) return prev;
+       const next = new Set(prev);
+       next.add(idx);
+       return next;
+     });
+   }, []);
    const clearItemSelection = useCallback(() => setSelectedItemIndices(new Set()), []);
    const selectAllItems = useCallback(() => {
-     setSelectedItemIndices(new Set(items.map((_, i) => i)));
+     setSelectedItemIndices(new Set(
+       items
+         .map((_, i) => i)
+         .filter((i) => !isProductionExcludedSaleOrderItem(items[i])),
+     ));
    }, [items]);
 
    /**
@@ -2685,6 +2749,7 @@ export default function SaleOrderFormPanel({
           onCopyGradeFromPrevious={copyGradeFromPrevious}
           onSaveStateAndNavigate={onSaveStateAndNavigate}
           onToggleSelect={toggleItemSelection}
+          onPaintSelect={paintSelectItem}
           sharedProducts={sharedProducts}
           sharedProductGroups={sharedProductGroups}
           sharedStrapCatalog={sharedStrapCatalog}
