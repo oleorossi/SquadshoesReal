@@ -63,5 +63,9 @@ describe('dublagem — contratos SQL/UI', () => {
     const pv = readFileSync('src/components/sale-orders/SaleOrderItemDublagemControls.tsx', 'utf8');
     expect(pv).toContain('Interna');
     expect(pv).toContain('Externa');
+    const form = readFileSync('src/components/sale-orders/SaleOrderItemForm.tsx', 'utf8');
+    expect(form).toContain("from './SaleOrderItemDublagemControls'");
+    expect(form).toContain('<SaleOrderItemDublagemControls');
+    expect(form).toContain('dublagem_mode');
   });
 });

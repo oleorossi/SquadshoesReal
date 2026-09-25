@@ -23,6 +23,7 @@ import { supabase } from '@/integrations/supabase/client';
 import StrapCatalogResolutionDrawer, {
   type StrapCatalogResolutionLine,
 } from './StrapCatalogResolutionDrawer';
+import SaleOrderItemDublagemControls from './SaleOrderItemDublagemControls';
 import StrapPvOrigemChooser, {
   StrapPvOrigemBulkActions,
   type StrapPvOrigemChoice,
@@ -379,7 +380,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
         // variant_drives_*: quais componentes seguem o MATERIAL PRINCIPAL da
         // variante (mig 20261027120000). Sem eles a tela não consegue espelhar a
         // cascata do motor e ofereceria as cores do grupo errado.
-        .select('upper_material, upper_material_group_id, upper_material_product_id, lining_material, insole_material, lining_accessories, components_accessories, sole_group_id, sole_material, has_straps, variant_drives_upper, variant_drives_lining')
+        .select('upper_material, upper_material_group_id, upper_material_product_id, upper_consumption, dublagem_glue_id, lining_material, insole_material, lining_accessories, components_accessories, sole_group_id, sole_material, has_straps, variant_drives_upper, variant_drives_lining')
         .eq('id', item.reference_id!)
         .single();
       if (error) throw error;
@@ -2271,6 +2272,29 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
             </Button>
           </div>
         )}
+
+        {/* Dublagem: só renderiza quando o cabedal resolvido tem ≥2 camadas
+            (o próprio controle consulta product_group_layers e some se não for
+            composto). Cola é herdada da ficha — somente leitura no PV. */}
+        <SaleOrderItemDublagemControls
+          upperGroupId={
+            selectedMaterialVariant?.upper_material_group_id
+            || (!!(sheetSpecs as { variant_drives_upper?: boolean } | null)?.variant_drives_upper
+              ? selectedMaterialVariant?.main_material_group_id
+              : null)
+            || sheetSpecs?.upper_material_group_id
+            || null
+          }
+          pvColor={item.color || ''}
+          pairs={totalPairs}
+          upperConsumptionDm2PerPair={Number((sheetSpecs as { upper_consumption?: number } | null)?.upper_consumption) || 0}
+          dublagemMode={item.dublagem_mode ?? null}
+          glueId={(sheetSpecs as { dublagem_glue_id?: string | null } | null)?.dublagem_glue_id ?? null}
+          onModeChange={(mode) => {
+            if (onUpdateFields) onUpdateFields(index, { dublagem_mode: mode });
+            else onUpdate(index, 'dublagem_mode', mode);
+          }}
+        />
 
         {/* Grade Section — mesma dobra dos campos; classificação do solado
             entra no próprio header da grade, sem faixa extra. */}
