@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Panel } from '@/components/ui/panel';
@@ -6,7 +6,6 @@ import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { SearchInput } from '@/components/ui/search-input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -15,9 +14,18 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { getISOWeekFromString, fmtDayMonthBR } from '@/lib/isoWeek';
+import { getISOWeekFromString } from '@/lib/isoWeek';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
-import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { OrderMultiSelectToolbar } from '@/components/orders/OrderMultiSelectToolbar';
+import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
+import { MarqueeOverlay } from '@/components/ui/bulk-actions-bar';
+import {
+  findIdsMatchingOrderCodes,
+  matchesOrderSearch,
+  parseOrderCodeList,
+} from '@/lib/orderCodeSearch';
+import { matchesDeliveryWeek } from '@/lib/deliveryWeekOptions';
+import { confirmIfHiddenSelection } from '@/lib/confirmHiddenSelection';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -94,7 +102,8 @@ function gradeLabel(grade: Record<string, number> | null, total: number): string
 export default function OrderPickingPage() {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [clientFilter, setClientFilter] = useState('all');
+  const [weekFilter, setWeekFilter] = useState('all');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   // ── Fetch orders ready to ship ──────────────────────────────────────────────
@@ -160,56 +169,29 @@ export default function OrderPickingPage() {
     staleTime: 60_000,
   });
 
-  // ── Confirm shipment ────────────────────────────────────────────────────────
-  const confirmShipment = useMutation({
-    mutationFn: async (ids: string[]) => {
-      const selectedOrders = ids.map(id => orders.find(order => order.id === id));
-      if (selectedOrders.some(order => !order || !Number.isInteger(order.order_version))) {
-        throw new Error('Versão de um ou mais PVs não está disponível. Recarregue a conferência.');
-      }
-      const expectedVersions = Object.fromEntries(
-        selectedOrders.map(order => [order!.id, order!.order_version]),
-      );
-      // PV, OPs, rota e vínculo com manifesto fecham na mesma transação.
-      const requestId = crypto.randomUUID();
-      const { data, error: rpcErr } = await supabase.rpc('register_order_shipment_command' as never, {
-        p_sale_order_ids: ids,
-        p_expected_versions: expectedVersions,
-        p_manifest_id: null,
-        p_checked_by: null,
-        p_client_request_id: requestId,
-      } as never);
-      if (rpcErr) throw rpcErr;
-      const response = data as unknown as ShipmentCommandResponse;
-      if (!response?.ok) throw new Error(response?.error?.message || 'Expedição recusada pelo servidor.');
-      return Number(response.shipped_count ?? ids.length);
-    },
-    onSuccess: (count, ids) => {
-      if (count < ids.length) {
-        toast.warning(`${count} de ${ids.length} pedido(s) expedido(s) — alguns já estavam expedidos.`);
-      } else {
-        toast.success(`${count} pedido(s) registrado(s) como expedido(s).`);
-      }
-      setSelected(new Set());
-      qc.invalidateQueries({ queryKey: ['orders_ready_to_ship'] });
-      qc.invalidateQueries({ queryKey: ['expedicaoStats'] });
-      qc.invalidateQueries({ queryKey: ['sale_orders'] });
-    },
-    onError: (err: Error) => toast.error(`Erro: ${err.message}`),
-  });
+  const clientOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const o of orders) {
+      const name = (o.client_name || '').trim();
+      if (name) set.add(name);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [orders]);
 
   // ── Filtered list ───────────────────────────────────────────────────────────
   const searchFiltered = useMemo(() => {
-    if (!search.trim()) return orders;
-    // espaço/"/" = refinamento AND (ex.: "stx alcineu")
-    return orders.filter(o => searchMatchesAllTerms(
-      search,
-      o.order_number,
-      o.client_name,
-      o.packaging_mode,
-      ...o.items.flatMap(i => [i.reference_name, i.color]),
-    ));
-  }, [orders, search]);
+    return orders.filter((o) => {
+      if (clientFilter !== 'all' && (o.client_name || '').trim() !== clientFilter) return false;
+      if (weekFilter !== 'all' && !matchesDeliveryWeek(o.delivery_deadline, weekFilter)) return false;
+      if (!search.trim()) return true;
+      return matchesOrderSearch(search, {
+        saleOrderNumber: o.order_number,
+        clientName: o.client_name,
+        referenceName: o.items.map((i) => i.reference_name).join(' '),
+        color: o.items.map((i) => i.color).join(' '),
+      });
+    });
+  }, [orders, search, clientFilter, weekFilter]);
 
   // ── Agrupamento por janela de pickup (semana ISO + Ter/Sex) ────────────────
   type PickupGroup = {
@@ -267,12 +249,71 @@ export default function OrderPickingPage() {
     return grp?.orders ?? [];
   }, [activeTab, pickupGroups, searchFiltered]);
 
-  const toggleSelect = (id: string) =>
-    setSelected(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
+  const sel = useMarqueeSelection(filtered, (o) => o.id);
 
-  const toggleAll = () => {
-    const allShown = filtered.every(o => selected.has(o.id));
-    setSelected(allShown ? new Set() : new Set(filtered.map(o => o.id)));
+  const pastedCodes = useMemo(() => parseOrderCodeList(search), [search]);
+  const matchedCodeIds = useMemo(
+    () => findIdsMatchingOrderCodes(orders, pastedCodes, (o) => ({
+      id: o.id,
+      saleOrderNumber: o.order_number,
+    })),
+    [orders, pastedCodes],
+  );
+
+  const allVisibleSelected =
+    filtered.length > 0 && filtered.every((o) => sel.isSelected(o.id));
+  const toggleVisible = () => {
+    if (allVisibleSelected) sel.deselectVisible();
+    else sel.selectAll();
+  };
+
+  // ── Confirm shipment ────────────────────────────────────────────────────────
+  const confirmShipment = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const selectedOrders = ids.map(id => orders.find(order => order.id === id));
+      if (selectedOrders.some(order => !order || !Number.isInteger(order.order_version))) {
+        throw new Error('Versão de um ou mais PVs não está disponível. Recarregue a conferência.');
+      }
+      const expectedVersions = Object.fromEntries(
+        selectedOrders.map(order => [order!.id, order!.order_version]),
+      );
+      // PV, OPs, rota e vínculo com manifesto fecham na mesma transação.
+      const requestId = crypto.randomUUID();
+      const { data, error: rpcErr } = await supabase.rpc('register_order_shipment_command' as never, {
+        p_sale_order_ids: ids,
+        p_expected_versions: expectedVersions,
+        p_manifest_id: null,
+        p_checked_by: null,
+        p_client_request_id: requestId,
+      } as never);
+      if (rpcErr) throw rpcErr;
+      const response = data as unknown as ShipmentCommandResponse;
+      if (!response?.ok) throw new Error(response?.error?.message || 'Expedição recusada pelo servidor.');
+      return Number(response.shipped_count ?? ids.length);
+    },
+    onSuccess: (count, ids) => {
+      if (count < ids.length) {
+        toast.warning(`${count} de ${ids.length} pedido(s) expedido(s) — alguns já estavam expedidos.`);
+      } else {
+        toast.success(`${count} pedido(s) registrado(s) como expedido(s).`);
+      }
+      sel.clear();
+      qc.invalidateQueries({ queryKey: ['orders_ready_to_ship'] });
+      qc.invalidateQueries({ queryKey: ['expedicaoStats'] });
+      qc.invalidateQueries({ queryKey: ['sale_orders'] });
+    },
+    onError: (err: Error) => toast.error(`Erro: ${err.message}`),
+  });
+
+  const handleBulkShip = () => {
+    if (sel.count === 0) return;
+    if (!confirmIfHiddenSelection({
+      totalSelected: sel.count,
+      hiddenSelectedCount: sel.hiddenSelectedCount,
+      entityLabel: 'PV',
+      actionLabel: 'Registrar expedição de',
+    })) return;
+    confirmShipment.mutate(Array.from(sel.selectedIds));
   };
 
   const toggleExpand = (id: string) =>
@@ -291,13 +332,14 @@ export default function OrderPickingPage() {
         title="Conferência de Saída"
         description="Pedidos com produção concluída aguardando conferência e expedição"
         actions={
-          selected.size > 0 ? (
+          sel.count > 0 ? (
             <Button
-              onClick={() => confirmShipment.mutate(Array.from(selected))}
+              onClick={handleBulkShip}
               disabled={confirmShipment.isPending}
             >
               <Truck className="w-4 h-4 mr-1.5" />
-              Registrar expedição ({selected.size})
+              Registrar expedição ({sel.count}
+              {sel.hiddenSelectedCount > 0 ? ` · ${sel.hiddenSelectedCount} fora` : ''})
             </Button>
           ) : undefined
         }
@@ -360,14 +402,22 @@ export default function OrderPickingPage() {
         </Tabs>
       )}
 
-      {/* Search */}
-      <SearchInput
-        className="max-w-sm"
-        value={search}
-        onChange={setSearch}
-        placeholder="Buscar por PV, cliente, referência, cor…"
+      <OrderMultiSelectToolbar
+        search={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Buscar por PV, cliente, referência, cor…"
         resultCount={searchFiltered.length}
         totalCount={orders.length}
+        clientOptions={clientOptions}
+        clientFilter={clientFilter}
+        onClientFilterChange={setClientFilter}
+        weekFilter={weekFilter}
+        onWeekFilterChange={setWeekFilter}
+        allVisibleSelected={allVisibleSelected}
+        visibleCount={filtered.length}
+        onToggleVisible={toggleVisible}
+        matchedCodeCount={matchedCodeIds.length}
+        onSelectMatched={() => sel.selectMatchingIds(matchedCodeIds)}
       />
 
       {/* Table */}
@@ -377,14 +427,14 @@ export default function OrderPickingPage() {
         </div>
       ) : filtered.length === 0 ? (
         <Panel flush>
-          {search.trim() ? (
+          {search.trim() || clientFilter !== 'all' || weekFilter !== 'all' ? (
             <EmptyState
               size="sm"
               icon={Search}
-              title={`Nenhum resultado para "${search}"`}
+              title={`Nenhum resultado para o filtro atual`}
               action={
-                <Button variant="outline" size="sm" onClick={() => setSearch('')}>
-                  Limpar busca
+                <Button variant="outline" size="sm" onClick={() => { setSearch(''); setClientFilter('all'); setWeekFilter('all'); }}>
+                  Limpar filtros
                 </Button>
               }
             />
@@ -402,15 +452,26 @@ export default function OrderPickingPage() {
           title={
             <span className="flex items-center gap-2">
               <Checkbox
-                checked={selected.size === filtered.length && filtered.length > 0}
-                onCheckedChange={toggleAll}
+                checked={allVisibleSelected}
+                onCheckedChange={toggleVisible}
               />
-              Selecionar todos ({filtered.length})
+              Visíveis ({filtered.length})
+              {sel.count > 0 && (
+                <span className="text-xs font-normal text-muted-foreground">
+                  · {sel.count} selecionado{sel.count === 1 ? '' : 's'}
+                  {sel.hiddenSelectedCount > 0 ? ` (${sel.hiddenSelectedCount} fora)` : ''}
+                </span>
+              )}
             </span>
           }
           flush
         >
-          <div className="overflow-x-auto">
+          <div
+            ref={sel.containerRef}
+            data-marquee-container
+            onMouseDown={sel.onContainerMouseDown}
+            className="relative overflow-x-auto"
+          >
             <Table className="min-w-[640px]">
               <TableHeader>
                 <TableRow className="sticky top-0 z-sticky bg-muted/40 backdrop-blur-sm hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
@@ -431,12 +492,16 @@ export default function OrderPickingPage() {
                   const isDueToday = days === 0;
                   const isDueSoon = days !== null && days > 0 && days <= 2;
                   const isExpanded = expanded.has(order.id);
+                  const isSelected = sel.isSelected(order.id);
 
                   return (
                     <React.Fragment key={order.id}>
                       <TableRow
+                        data-marquee-item
+                        data-marquee-id={order.id}
                         className={cn(
                           'cursor-pointer hover:bg-muted/30 transition-colors',
+                          isSelected && 'bg-primary/5 ring-1 ring-inset ring-success/30',
                           isOverdue && 'bg-destructive/5 hover:bg-destructive/10',
                           isDueToday && 'bg-amber-500/5 hover:bg-amber-500/10',
                         )}
@@ -444,8 +509,8 @@ export default function OrderPickingPage() {
                       >
                         <TableCell className="pl-4" onClick={e => e.stopPropagation()}>
                           <Checkbox
-                            checked={selected.has(order.id)}
-                            onCheckedChange={() => toggleSelect(order.id)}
+                            checked={isSelected}
+                            onCheckedChange={() => sel.toggle(order.id)}
                           />
                         </TableCell>
                         <TableCell>
@@ -486,7 +551,15 @@ export default function OrderPickingPage() {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => confirmShipment.mutate([order.id])}
+                            onClick={() => {
+                              if (!confirmIfHiddenSelection({
+                                totalSelected: 1,
+                                hiddenSelectedCount: 0,
+                                entityLabel: 'PV',
+                                actionLabel: 'Expedir',
+                              })) return;
+                              confirmShipment.mutate([order.id]);
+                            }}
                             disabled={confirmShipment.isPending}
                           >
                             <Truck className="w-3 h-3 mr-1" />
@@ -523,6 +596,7 @@ export default function OrderPickingPage() {
                 })}
               </TableBody>
             </Table>
+            <MarqueeOverlay rect={sel.marqueeRect} />
           </div>
         </Panel>
       )}

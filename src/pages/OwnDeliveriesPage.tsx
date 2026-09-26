@@ -18,6 +18,17 @@ import { Link } from 'react-router-dom';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { useCan } from '@/hooks/useAccessControl';
+import { OrderMultiSelectToolbar } from '@/components/orders/OrderMultiSelectToolbar';
+import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
+import { MarqueeOverlay } from '@/components/ui/bulk-actions-bar';
+import {
+  findIdsMatchingOrderCodes,
+  matchesOrderSearch,
+  parseOrderCodeList,
+} from '@/lib/orderCodeSearch';
+import { matchesDeliveryWeek } from '@/lib/deliveryWeekOptions';
+import { confirmIfHiddenSelection } from '@/lib/confirmHiddenSelection';
+import { cn } from '@/lib/utils';
 
 const formatBrl = (n: number | null | undefined) =>
   n == null
@@ -80,45 +91,106 @@ export default function OwnDeliveriesPage() {
 function OrdersTab() {
   const perm = useCan('/entregas');
   const { data: orders = [], isLoading } = useOwnDeliveryOrders();
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [planning, setPlanning] = useState(false);
+  const [search, setSearch] = useState('');
+  const [clientFilter, setClientFilter] = useState('all');
+  const [weekFilter, setWeekFilter] = useState('all');
 
   const available = useMemo(() => orders.filter((o) => !o.current_route_id), [orders]);
   const inRoute = useMemo(() => orders.filter((o) => !!o.current_route_id), [orders]);
 
-  const toggle = (id: string) =>
-    setSelected((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
+  const clientOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const o of available) {
+      const name = (o.client?.razao_social || o.client_name || '').trim();
+      if (name) set.add(name);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [available]);
+
+  const filtered = useMemo(() => {
+    return available.filter((o) => {
+      const clientName = (o.client?.razao_social || o.client_name || '').trim();
+      if (clientFilter !== 'all' && clientName !== clientFilter) return false;
+      if (weekFilter !== 'all' && !matchesDeliveryWeek(o.delivery_deadline, weekFilter)) return false;
+      if (!search.trim()) return true;
+      return matchesOrderSearch(search, {
+        saleOrderNumber: o.order_number,
+        clientName,
+      });
     });
+  }, [available, search, clientFilter, weekFilter]);
 
-  const selectAll = () => setSelected(new Set(available.map((o) => o.id)));
-  const clearSel = () => setSelected(new Set());
+  const sel = useMarqueeSelection(filtered, (o) => o.id);
 
-  const selectedOrders = available.filter((o) => selected.has(o.id));
+  const pastedCodes = useMemo(() => parseOrderCodeList(search), [search]);
+  const matchedCodeIds = useMemo(
+    () => findIdsMatchingOrderCodes(available, pastedCodes, (o) => ({
+      id: o.id,
+      saleOrderNumber: o.order_number,
+    })),
+    [available, pastedCodes],
+  );
+
+  const allVisibleSelected =
+    filtered.length > 0 && filtered.every((o) => sel.isSelected(o.id));
+  const toggleVisible = () => {
+    if (allVisibleSelected) sel.deselectVisible();
+    else sel.selectAll();
+  };
+
+  const selectedOrders = available.filter((o) => sel.selectedIds.has(o.id));
+
+  const openPlanner = () => {
+    if (sel.count === 0) return;
+    if (!confirmIfHiddenSelection({
+      totalSelected: sel.count,
+      hiddenSelectedCount: sel.hiddenSelectedCount,
+      entityLabel: 'PV',
+      actionLabel: 'Criar rota com',
+    })) return;
+    setPlanning(true);
+  };
 
   return (
     <div className="space-y-4">
+      <OrderMultiSelectToolbar
+        search={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Buscar por PV, cliente…"
+        resultCount={filtered.length}
+        totalCount={available.length}
+        clientOptions={clientOptions}
+        clientFilter={clientFilter}
+        onClientFilterChange={setClientFilter}
+        weekFilter={weekFilter}
+        onWeekFilterChange={setWeekFilter}
+        allVisibleSelected={allVisibleSelected}
+        visibleCount={filtered.length}
+        onToggleVisible={toggleVisible}
+        matchedCodeCount={matchedCodeIds.length}
+        onSelectMatched={() => sel.selectMatchingIds(matchedCodeIds)}
+      />
+
       <Panel
         eyebrow="LOGÍSTICA · ENTREGAS PRÓPRIAS"
         title={`Disponíveis para roteirizar (${available.length})`}
         actions={
           <div className="flex items-center gap-2">
-            {selected.size > 0 && (
+            {sel.count > 0 && (
               <>
-                <span className="text-xs text-muted-foreground">{selected.size} {selected.size === 1 ? 'selecionado' : 'selecionados'}</span>
-                <Button size="sm" variant="ghost" onClick={clearSel}>Limpar</Button>
+                <span className="text-xs text-muted-foreground">
+                  {sel.count} {sel.count === 1 ? 'selecionado' : 'selecionados'}
+                  {sel.hiddenSelectedCount > 0 ? ` · ${sel.hiddenSelectedCount} fora` : ''}
+                </span>
+                <Button size="sm" variant="ghost" onClick={() => sel.clear()}>Limpar</Button>
               </>
             )}
-            <Button size="sm" variant="outline" onClick={selectAll} disabled={available.length === 0}>
-              Selecionar todos
-            </Button>
             {perm.canCreate && (
               <Button
                 size="sm"
-                onClick={() => setPlanning(true)}
-                disabled={selected.size === 0}
+                onClick={openPlanner}
+                disabled={sel.count === 0}
               >
                 <Plus className="h-3.5 w-3.5 mr-1" />Criar rota
               </Button>
@@ -136,45 +208,76 @@ function OrdersTab() {
               action={<Link to="/sales" className="text-primary underline text-sm">Ir para Pedidos de Venda</Link>}
             />
           )}
-          {available.length > 0 && (
+          {!isLoading && available.length > 0 && filtered.length === 0 && (
+            <EmptyState
+              size="sm"
+              icon={AlertCircle}
+              title="Nenhum resultado para o filtro atual"
+              action={
+                <Button variant="outline" size="sm" onClick={() => { setSearch(''); setClientFilter('all'); setWeekFilter('all'); }}>
+                  Limpar filtros
+                </Button>
+              }
+            />
+          )}
+          {filtered.length > 0 && (
             <ScrollArea className="max-h-[60vh]">
-              <ul className="divide-y border-y">
-                {available.map((o) => (
-                  <li key={o.id} className="flex items-start gap-3 px-3 py-2 hover:bg-muted/30">
-                    <Checkbox
-                      checked={selected.has(o.id)}
-                      onCheckedChange={() => toggle(o.id)}
-                      className="mt-1"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-bold text-sm">PV #{o.order_number}</span>
-                        <span className="text-sm truncate">{o.client?.razao_social || o.client_name || '—'}</span>
-                        {o.client?.branch_code && (
-                          <Badge variant="outline" className="text-xs font-mono">
-                            {o.client.branch_code}
-                            {o.client.branch_name ? ` · ${o.client.branch_name}` : ''}
-                          </Badge>
-                        )}
-                        <Badge variant="secondary" className="text-xs">{o.status}</Badge>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                        {[o.client?.endereco, o.client?.bairro, o.client?.cidade, o.client?.estado]
-                          .filter(Boolean).join(' · ') || 'Endereço não cadastrado'}
-                      </p>
-                    </div>
-                    <div className="text-right text-xs shrink-0">
-                      <div className="font-mono">{o.total_pairs ?? 0} prs</div>
-                      {o.delivery_deadline && (
-                        <div className="text-muted-foreground flex items-center gap-1 justify-end mt-0.5">
-                          <Calendar className="h-3 w-3" />
-                          {formatDate(o.delivery_deadline)}
-                        </div>
+              <div
+                ref={sel.containerRef}
+                data-marquee-container
+                onMouseDown={sel.onContainerMouseDown}
+                className="relative divide-y border-y"
+              >
+                {filtered.map((o) => {
+                  const isSelected = sel.isSelected(o.id);
+                  return (
+                    <div
+                      key={o.id}
+                      data-marquee-item
+                      data-marquee-id={o.id}
+                      className={cn(
+                        'flex items-start gap-3 px-3 py-2 hover:bg-muted/30 cursor-pointer',
+                        isSelected && 'bg-primary/5 ring-1 ring-inset ring-success/30',
                       )}
+                      onClick={(e) => sel.toggle(o.id, e)}
+                    >
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={() => sel.toggle(o.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="mt-1"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-bold text-sm">PV #{o.order_number}</span>
+                          <span className="text-sm truncate">{o.client?.razao_social || o.client_name || '—'}</span>
+                          {o.client?.branch_code && (
+                            <Badge variant="outline" className="text-xs font-mono">
+                              {o.client.branch_code}
+                              {o.client.branch_name ? ` · ${o.client.branch_name}` : ''}
+                            </Badge>
+                          )}
+                          <Badge variant="secondary" className="text-xs">{o.status}</Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                          {[o.client?.endereco, o.client?.bairro, o.client?.cidade, o.client?.estado]
+                            .filter(Boolean).join(' · ') || 'Endereço não cadastrado'}
+                        </p>
+                      </div>
+                      <div className="text-right text-xs shrink-0">
+                        <div className="font-mono">{o.total_pairs ?? 0} prs</div>
+                        {o.delivery_deadline && (
+                          <div className="text-muted-foreground flex items-center gap-1 justify-end mt-0.5">
+                            <Calendar className="h-3 w-3" />
+                            {formatDate(o.delivery_deadline)}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </li>
-                ))}
-              </ul>
+                  );
+                })}
+                <MarqueeOverlay rect={sel.marqueeRect} />
+              </div>
             </ScrollArea>
           )}
       </Panel>
@@ -203,7 +306,7 @@ function OrdersTab() {
         open={planning}
         onOpenChange={setPlanning}
         orders={selectedOrders}
-        onCreated={clearSel}
+        onCreated={() => sel.clear()}
       />
     </div>
   );
