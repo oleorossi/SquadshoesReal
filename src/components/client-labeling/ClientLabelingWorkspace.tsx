@@ -2,8 +2,8 @@
  * Etiquetagem Cliente multi-cliente.
  *
  * Fluxo: escolher cliente → carregar/salvar 1..N tipos em `clients.label_pattern`
- * (Nalin, Objetiva e Ponto Mix no mesmo cadastro; sem histórico de arquivo) →
- * importar 1..N CSV/XLSX → gerar PDF (+ ZPL no Ponto Mix).
+ * (Nalin, Objetiva · Tag, Objetiva · Adesiva e Ponto Mix no mesmo cadastro; sem histórico
+ * de arquivo) → importar 1..N CSV/XLSX → gerar PDF (+ ZPL no Ponto Mix).
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -77,6 +77,7 @@ import {
   coucheProfileFromGeometry,
   emptyLabelCollection,
   geometryFromCoucheProfile,
+  isObjetivaFamilyKey,
   patternLabel,
   removePattern,
   savedPatternStatusLabel,
@@ -93,6 +94,7 @@ import {
   parseClientOrderFiles,
   summarizeImport,
 } from '@/lib/clientOrderImport';
+import { getSignedUrl } from '@/lib/getSignedUrl';
 import {
   buildObjetivaPdf,
   countObjetivaLabels,
@@ -229,7 +231,8 @@ export function ClientLabelingWorkspace() {
   const fileMapping = activeFileMappingFromCollection(draftCollection);
   const savedKeys = collectionPatternKeys(savedCollection);
   const draftKeys = collectionPatternKeys(draftCollection);
-  const isObjetiva = pattern?.key === 'objetiva';
+  const isObjetivaAdesiva = pattern?.key === 'objetiva_adesiva';
+  const isObjetiva = isObjetivaFamilyKey(pattern?.key);
   const isNalin = pattern?.key === 'baby_nalin';
   const isPontoMix = pattern?.key === 'ponto_mix';
 
@@ -372,7 +375,7 @@ export function ClientLabelingWorkspace() {
   }
 
   function setObjetivaGeometry(field: keyof ClientLabelPattern['geometry'], rawValue: string) {
-    if (!pattern || (pattern.key !== 'objetiva' && pattern.key !== 'ponto_mix')) return;
+    if (!pattern || (!isObjetivaFamilyKey(pattern.key) && pattern.key !== 'ponto_mix')) return;
     const parsed = Number(rawValue);
     if (!Number.isFinite(parsed)) return;
     const value = field === 'columns' ? Math.max(1, Math.trunc(parsed)) : Math.max(0, parsed);
@@ -514,8 +517,18 @@ export function ClientLabelingWorkspace() {
       if (pattern.key === 'objetiva') {
         let logo: { dataUrl: string; width: number; height: number } | null = null;
         if (pattern.branding.logoUrl) {
-          logo = await loadLogoDataUrl(pattern.branding.logoUrl);
+          // Bucket client-logos é privado: URL pública 404 — assina antes do fetch.
+          const signedLogoUrl = await getSignedUrl(pattern.branding.logoUrl);
+          logo = await loadLogoDataUrl(signedLogoUrl || pattern.branding.logoUrl);
           if (!logo) toast.warning('Não carreguei a logomarca — o PDF sai com o wordmark.');
+        }
+        const incompleteMiolo = (mode === 'production' ? productionRows : selectedRows).filter(
+          row => !(row.tipo ?? '').trim() || (!(row.grupo ?? '').trim() && !(row.categoria ?? '').trim()),
+        );
+        if (incompleteMiolo.length > 0) {
+          toast.warning(
+            `${incompleteMiolo.length} linha(s) sem TIPO/CATEGORIA/GRUPO — a Tag sai sem SANDALIA / CALCADOS/….`,
+          );
         }
         const doc = await buildObjetivaPdf(mode === 'production' ? productionRows : selectedRows, {
           geometry: pattern.geometry,
@@ -526,9 +539,14 @@ export function ClientLabelingWorkspace() {
         doc.save(objetivaPdfFilename(originName));
         toast.success(
           mode === 'graphic'
-            ? `PDF Objetiva (amostra) com ${selectedRows.length} SKU(s) gerado.`
-            : `PDF Objetiva com ${totalEtiquetas} etiqueta(s) gerado.`,
+            ? `PDF Objetiva · Tag (amostra) com ${selectedRows.length} SKU(s) gerado.`
+            : `PDF Objetiva · Tag com ${totalEtiquetas} etiqueta(s) gerado.`,
         );
+      } else if (pattern.key === 'objetiva_adesiva') {
+        toast.info(
+          'A etiqueta adesiva Objetiva ainda não tem arte calibrada. Envie a foto da adesiva (como fez com a Tag) para eu montar o layout.',
+        );
+        return;
       } else if (pattern.key === 'ponto_mix') {
         // Arte fixa: sempre logo empacotada branca (upload do cliente é ignorado).
         const logo = await resolvePontoMixLogo();
@@ -630,7 +648,7 @@ export function ClientLabelingWorkspace() {
       <Panel
         eyebrow="ETIQUETAS · CLIENTE"
         title="Cliente e tipos de etiqueta"
-        subtitle="O mesmo cliente pode ter Nalin, Objetiva e Ponto Mix. Trocar o tipo não apaga o outro. O arquivo do pedido não é guardado."
+        subtitle="O mesmo cliente pode ter Nalin, Objetiva · Tag, Objetiva · Adesiva e Ponto Mix. Trocar o tipo não apaga o outro. O arquivo do pedido não é guardado."
       >
         <div className="space-y-4">
           <div className="grid gap-3 md:grid-cols-[1fr_2fr]">
@@ -673,7 +691,7 @@ export function ClientLabelingWorkspace() {
           {!selectedClientId ? (
             <EmptyState
               title="Escolha um cliente"
-              description="Cada cliente pode gravar mais de um layout (Nalin, Objetiva, Ponto Mix), com medidas e textos próprios."
+              description="Cada cliente pode gravar mais de um layout (Nalin, Objetiva · Tag, Objetiva · Adesiva, Ponto Mix), com medidas e textos próprios."
             />
           ) : patternLoading ? (
             <p className="text-sm text-muted-foreground">Carregando padrão…</p>
@@ -696,8 +714,12 @@ export function ClientLabelingWorkspace() {
                         {savedKeys.includes('baby_nalin') ? ' · salvo' : ''}
                       </SelectItem>
                       <SelectItem value="objetiva">
-                        Objetiva (hangtag)
+                        Objetiva · Tag (hangtag)
                         {savedKeys.includes('objetiva') ? ' · salvo' : ''}
+                      </SelectItem>
+                      <SelectItem value="objetiva_adesiva">
+                        Objetiva · Adesiva
+                        {savedKeys.includes('objetiva_adesiva') ? ' · salvo' : ''}
                       </SelectItem>
                       <SelectItem value="ponto_mix">
                         Ponto Mix (40×60)
@@ -743,8 +765,8 @@ export function ClientLabelingWorkspace() {
 
               {!pattern ? (
                 <p className="text-sm text-muted-foreground">
-                  Este cliente ainda não tem padrão. Escolha Nalin, Objetiva ou Ponto Mix e salve. O
-                  mesmo cadastro pode guardar vários tipos.
+                  Este cliente ainda não tem padrão. Escolha Nalin, Objetiva · Tag, Objetiva · Adesiva
+                  ou Ponto Mix e salve. O mesmo cadastro pode guardar vários tipos.
                 </p>
               ) : isNalin ? (
                 <div className="space-y-3">
@@ -879,6 +901,44 @@ export function ClientLabelingWorkspace() {
                     L42PRO.
                   </p>
                 </div>
+              ) : isObjetivaAdesiva ? (
+                <div className="space-y-3">
+                  <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-foreground">
+                    Adesiva Objetiva: o CSV é o mesmo da Tag, mas a arte ainda não foi calibrada.
+                    Envie a foto impressa da adesiva para eu montar o layout (como na Tag).
+                  </p>
+                  <ClientLabelLogoUpload
+                    clientId={selectedClientId}
+                    logoUrl={pattern.branding.logoUrl}
+                    disabled={isBusy}
+                    storageKey="objetiva_adesiva"
+                    onLogoChange={url => setBrandingField('logoUrl', url ?? '')}
+                  />
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    {OBJETIVA_GEOMETRY_FIELDS.filter(
+                      f => f.key !== 'columns' && f.key !== 'columnGapMm',
+                    ).map(field => (
+                      <div key={field.key} className="space-y-1">
+                        <Label htmlFor={`obj-ad-${field.key}`} className="text-xs">
+                          {field.label}
+                        </Label>
+                        <Input
+                          id={`obj-ad-${field.key}`}
+                          type="number"
+                          min={0}
+                          step={field.step ?? 0.1}
+                          value={pattern.geometry[field.key]}
+                          disabled={isBusy}
+                          onChange={event => setObjetivaGeometry(field.key, event.target.value)}
+                          className="h-8 font-mono"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Medidas provisórias até a foto. Gerar PDF fica bloqueado até existir arte.
+                  </p>
+                </div>
               ) : (
                 <div className="space-y-3">
                   <ClientLabelLogoUpload
@@ -946,10 +1006,10 @@ export function ClientLabelingWorkspace() {
                     </div>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Defaults: motto “{OBJETIVA_DEFAULT_BRANDING.motto}”, troca “
+                    Defaults Tag: motto “{OBJETIVA_DEFAULT_BRANDING.motto}”, troca “
                     {OBJETIVA_DEFAULT_BRANDING.exchangeText}”, material “
                     {OBJETIVA_DEFAULT_BRANDING.materialPrefix}”, {OBJETIVA_DEFAULT_GEOMETRY.labelWidthMm}×
-                    {OBJETIVA_DEFAULT_GEOMETRY.labelHeightMm} mm.
+                    {OBJETIVA_DEFAULT_GEOMETRY.labelHeightMm} mm · calibrada pela foto física.
                   </p>
                 </div>
               )}
@@ -1026,7 +1086,7 @@ export function ClientLabelingWorkspace() {
                 hint={`${fileNames.length} arquivo(s)`}
               />
               <StatCard
-                label={isObjetiva ? 'Hangtags' : 'Etiquetas'}
+                label={isObjetiva ? 'Tags / adesivas' : 'Etiquetas'}
                 value={totalEtiquetas}
                 hint={
                   isNalin
@@ -1067,11 +1127,13 @@ export function ClientLabelingWorkspace() {
                   </div>
                   <div>
                     <h3 className="font-semibold">
-                      {isObjetiva
-                        ? 'PDF produção Objetiva'
-                        : isPontoMix
-                          ? 'Produção Ponto Mix (PDF + ZPL)'
-                          : 'PDF produção Nalin'}
+                      {isObjetivaAdesiva
+                        ? 'PDF adesiva Objetiva'
+                        : isObjetiva
+                          ? 'PDF produção Tag'
+                          : isPontoMix
+                            ? 'Produção Ponto Mix (PDF + ZPL)'
+                            : 'PDF produção Nalin'}
                     </h3>
                     <p className="mt-1 text-xs text-muted-foreground">
                       Repete pela quantidade do pedido
@@ -1079,7 +1141,9 @@ export function ClientLabelingWorkspace() {
                         ? ' · rolo 2 colunas 50×30'
                         : isPontoMix
                           ? ' · preview + PDF + ZPL L42PRO 40×60'
-                          : ' · uma hangtag por cópia'}
+                          : isObjetivaAdesiva
+                            ? ' · aguarda foto da adesiva'
+                            : ' · uma Tag por cópia'}
                       .
                     </p>
                   </div>
@@ -1116,11 +1180,13 @@ export function ClientLabelingWorkspace() {
                   </div>
                   <div>
                     <h3 className="font-semibold">
-                      {isObjetiva
-                        ? 'Amostra Objetiva'
-                        : isPontoMix
-                          ? 'Amostra Ponto Mix'
-                          : 'Arquivo para gráfica'}
+                      {isObjetivaAdesiva
+                        ? 'Amostra adesiva'
+                        : isObjetiva
+                          ? 'Amostra Tag'
+                          : isPontoMix
+                            ? 'Amostra Ponto Mix'
+                            : 'Arquivo para gráfica'}
                     </h3>
                     <p className="mt-1 text-xs text-muted-foreground">
                       Uma arte por SKU selecionado (sem repetir quantidade).

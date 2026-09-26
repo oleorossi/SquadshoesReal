@@ -10,6 +10,7 @@ import {
 } from './babyNalinLabels';
 import {
   clientOrderLineSkuKey,
+  isObjetivaFamilyKey,
   type ClientLabelFileMapping,
   type ClientLabelPatternKey,
   type ClientOrderLine,
@@ -25,7 +26,8 @@ import {
   parsePontoMixOrderFile,
 } from './pontoMixLabels';
 
-export type ClientOrderFormat = ClientLabelPatternKey;
+/** Formato do arquivo (CSV). Tag e adesiva Objetiva compartilham o mesmo. */
+export type ClientOrderFormat = 'baby_nalin' | 'objetiva' | 'ponto_mix';
 
 /** Extensões aceitas no `<input type="file" multiple>`. `.btw` entra só para mensagem clara. */
 export const ACCEPT_CLIENT_ORDER_FILES = '.csv,.txt,.xlsx,.xls,.btw';
@@ -87,6 +89,13 @@ function formatLabel(format: ClientOrderFormat): string {
   if (format === 'objetiva') return 'Objetiva';
   if (format === 'ponto_mix') return 'Ponto Mix';
   return 'Nalin';
+}
+
+/** Padrão do cliente → formato de arquivo esperado. */
+export function importFormatForPattern(key: ClientLabelPatternKey): ClientOrderFormat {
+  if (isObjetivaFamilyKey(key)) return 'objetiva';
+  if (key === 'ponto_mix') return 'ponto_mix';
+  return 'baby_nalin';
 }
 
 export function detectClientOrderFormatFromHeader(headerLine: string): ClientOrderFormat | null {
@@ -170,10 +179,12 @@ export async function parseClientOrderFiles(
     throw new Error('Selecione ao menos um arquivo.');
   }
 
+  const expected = importFormatForPattern(patternKey);
+
   const settled = await Promise.all(
     files.map(async file => {
       try {
-        const rows = await parseOneFile(file, patternKey, fileMapping);
+        const rows = await parseOneFile(file, expected, fileMapping);
         return { ok: true as const, fileName: file.name, rows };
       } catch (error) {
         return {
@@ -203,7 +214,7 @@ export async function parseClientOrderFiles(
     throw new Error(detail || 'Nenhuma linha válida nos arquivos.');
   }
 
-  return { rows, fileNames, format: patternKey, errors };
+  return { rows, fileNames, format: expected, errors };
 }
 
 export function summarizeImport(result: ClientOrderImportResult): string {

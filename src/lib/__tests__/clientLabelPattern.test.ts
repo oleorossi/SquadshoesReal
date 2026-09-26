@@ -54,10 +54,12 @@ describe('clientLabelPattern', () => {
   it('isClientLabelPatternKey e patternLabel cobrem os layouts', () => {
     expect(isClientLabelPatternKey('baby_nalin')).toBe(true);
     expect(isClientLabelPatternKey('objetiva')).toBe(true);
+    expect(isClientLabelPatternKey('objetiva_adesiva')).toBe(true);
     expect(isClientLabelPatternKey('ponto_mix')).toBe(true);
     expect(isClientLabelPatternKey('outro')).toBe(false);
     expect(patternLabel('baby_nalin')).toBe('Nalin');
-    expect(patternLabel('objetiva')).toBe('Objetiva');
+    expect(patternLabel('objetiva')).toBe('Objetiva · Tag');
+    expect(patternLabel('objetiva_adesiva')).toBe('Objetiva · Adesiva');
     expect(patternLabel('ponto_mix')).toBe('Ponto Mix');
   });
 
@@ -103,7 +105,19 @@ describe('clientLabelPattern', () => {
     });
     expect(collectionPatternKeys(both)).toEqual(['baby_nalin', 'objetiva']);
     expect(both.activeKey).toBe('objetiva');
-    expect(savedPatternStatusLabel(both)).toBe('Nalin + Objetiva');
+    expect(savedPatternStatusLabel(both)).toBe('Nalin + Objetiva · Tag');
+  });
+
+  it('coleção v2 guarda Tag e Adesiva Objetiva no mesmo cliente', () => {
+    const tag = defaultPatternForKey('objetiva');
+    const adesiva = defaultPatternForKey('objetiva_adesiva');
+    const both = normalizeClientLabelCollection({
+      version: 2,
+      activeKey: 'objetiva',
+      patterns: { objetiva: tag, objetiva_adesiva: adesiva },
+    });
+    expect(collectionPatternKeys(both)).toEqual(['objetiva', 'objetiva_adesiva']);
+    expect(savedPatternStatusLabel(both)).toBe('Objetiva · Tag + Objetiva · Adesiva');
   });
 
   it('upsert de um tipo não apaga o outro já gravado', () => {
