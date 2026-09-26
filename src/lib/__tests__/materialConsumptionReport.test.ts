@@ -515,9 +515,13 @@ describe('materialConsumptionReport', () => {
 
     expect(html).toContain('Napa para tiras');
     expect(html).toContain('Tira necessária');
+    expect(html).toContain('<th>Cor</th>');
+    expect(html).toContain('>OFF WHITE<');
     expect(html).toContain('1.044,00 m');
     expect(html).toContain('14,91 m');
     expect(html).toContain('flag ok');
+    // baseName já está no typeName — não colar de novo (NAPA MADRIDNAPA MADRID).
+    expect(html).not.toMatch(/NAPA MADRID<\/strong><small>NAPA MADRID<\/small>/);
     expect(html).not.toContain('Mão de obra/m');
     expect(html).not.toContain('Valor total');
     expect(html).not.toContain('receita conferida');
@@ -597,7 +601,7 @@ describe('materialConsumptionReport', () => {
     expect(html).toContain('4,24 m');
   });
 
-  it('agrupa por tipo de tira no §03 e um único total de napa no rodapé', () => {
+  it('desagrega por tipo × cor no §03 e um único total de napa no rodapé', () => {
     const cut = {
       largura_mm: 8, metros_uteis_por_banda: 0, n_bandas: 0, cm_a_cortar: 0,
       rolos: 0, n_rolos_completos: 0, cm_no_ultimo_rolo: 0, valid: false, widthMissing: false,
@@ -644,18 +648,23 @@ describe('materialConsumptionReport', () => {
       rows: [],
     });
 
-    // Um rodapé de total — não um subtotal por cor nem por segmento.
+    // Um rodapé de total — sem subtotal por tipo; uma linha por cor.
     expect(html.match(/class="strap-subtotal"/g)).toHaveLength(1);
     expect(html).toContain('Total de napa (todas as tiras)');
+    expect(html).toContain('<th>Cor</th>');
     expect(html).toContain(elastico);
     expect(html).toContain(chata);
-    expect(html).toContain('3 cores');
-    // Somas de tira: 3 × 386,88 = 1.160,64 · 3 × 1.294,56 = 3.883,68
-    expect(html).toContain('1.160,64 m');
-    expect(html).toContain('3.883,68 m');
-    // Napa por tipo: 3 × 12,90 = 38,70 · 3 × 18,49 = 55,47 · total 94,17
-    expect(html).toContain('38,70 m');
-    expect(html).toContain('55,47 m');
+    expect(html).toContain('>CAPUCCINO<');
+    expect(html).toContain('>OFF WHITE<');
+    expect(html).toContain('>ROCHA<');
+    expect(html).not.toContain('3 cores');
+    // Quantidade por cor (não agregada por tipo)
+    expect(html).toContain('386,88 m');
+    expect(html).toContain('1.294,56 m');
+    expect(html).toContain('12,90 m');
+    expect(html).toContain('18,49 m');
+    // Totais no rodapé: 6 × cores somadas
+    expect(html).toContain('5.044,32 m tira');
     expect(html).toContain('94,17 m');
     expect(html).not.toContain('Mão de obra/m');
   });

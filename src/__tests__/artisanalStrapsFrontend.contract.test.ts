@@ -287,6 +287,10 @@ describe('Tiras artesanais — contrato do frontend canônico', () => {
     expect(strapCutBlock).toContain('Napa para tiras');
     expect(strapCutBlock).toContain('aggregateStrapNapaSector');
     expect(strapCutBlock).toContain('Total de napa (todas as tiras)');
+    expect(strapCutBlock).toContain('>Cor</');
+    expect(strapCutBlock).toContain('type.color');
+    expect(strapCutBlock).not.toContain('colorCount');
+    expect(strapCutBlock).not.toContain('} cores');
     expect(strapCutBlock).not.toContain('ROLO_COMPRIMENTO_M');
     expect(pickingList).toContain('separação da napa-base');
     expect(pickingList).not.toContain('ROLO_LARGURA_MM');

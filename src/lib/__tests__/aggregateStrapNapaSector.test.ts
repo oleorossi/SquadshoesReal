@@ -30,7 +30,7 @@ function row(partial: Partial<ArtisanalStrapCutRow> & Pick<ArtisanalStrapCutRow,
 }
 
 describe('aggregateStrapNapaSector', () => {
-  it('agrupa por tipo: tira m + napa m; rodapé = total de napa', () => {
+  it('desagrega por tipo × cor: tira m + napa m; rodapé = total de napa', () => {
     const sector = aggregateStrapNapaSector([
       row({
         groupName: 'TIRA OVERLOCK 5MM · PRETO',
@@ -79,21 +79,69 @@ describe('aggregateStrapNapaSector', () => {
       }),
     ]);
 
-    expect(sector.types.map((t) => t.typeName)).toEqual([
-      'TIRA CHATA 8MM',
-      'TIRA OVERLOCK 5MM',
+    expect(sector.types.map((t) => `${t.typeName}|${t.color}`)).toEqual([
+      'TIRA CHATA 8MM|OFF WHITE',
+      'TIRA CHATA 8MM|PRETO',
+      'TIRA OVERLOCK 5MM|PRETO',
     ]);
-    const chata = sector.types.find((t) => t.typeName === 'TIRA CHATA 8MM')!;
-    expect(chata.strapM).toBeCloseTo(10, 6);
-    expect(chata.napaM).toBeCloseTo(10, 6);
-    expect(chata.colorCount).toBe(2);
+
+    const chataOff = sector.types.find((t) => t.typeName === 'TIRA CHATA 8MM' && t.color === 'OFF WHITE')!;
+    expect(chataOff.strapM).toBeCloseTo(4, 6);
+    expect(chataOff.napaM).toBeCloseTo(5, 6);
+
+    const chataPreto = sector.types.find((t) => t.typeName === 'TIRA CHATA 8MM' && t.color === 'PRETO')!;
+    expect(chataPreto.strapM).toBeCloseTo(6, 6);
+    expect(chataPreto.napaM).toBeCloseTo(5, 6);
 
     const overlock = sector.types.find((t) => t.typeName === 'TIRA OVERLOCK 5MM')!;
+    expect(overlock.color).toBe('PRETO');
     expect(overlock.strapM).toBeCloseTo(4, 6);
     expect(overlock.napaM).toBeCloseTo(0.08, 6);
 
     expect(sector.totalStrapM).toBeCloseTo(14, 6);
     expect(sector.totalNapaM).toBeCloseTo(10.08, 6);
+  });
+
+  it('soma itens com o mesmo tipo × cor', () => {
+    const sector = aggregateStrapNapaSector([
+      row({
+        key: 'a',
+        groupName: 'TIRA CHATA 8MM · OFF WHITE',
+        color: 'OFF WHITE',
+        metros_necessarios: 10,
+        baseName: 'NAPA SOFT',
+        canonical: {
+          recipeId: 'r2',
+          baseRequiredM: 2,
+          confirmedYieldMPerM: 5,
+          usableBaseWidthMm: 1370,
+          theoreticalYieldMPerM: 5,
+          transformationCostPerM: null,
+          blockingReasons: [],
+        },
+      }),
+      row({
+        key: 'b',
+        groupName: 'TIRA CHATA 8MM · OFF WHITE',
+        color: 'OFF WHITE',
+        metros_necessarios: 4,
+        baseName: 'NAPA SOFT',
+        canonical: {
+          recipeId: 'r2',
+          baseRequiredM: 0.8,
+          confirmedYieldMPerM: 5,
+          usableBaseWidthMm: 1370,
+          theoreticalYieldMPerM: 5,
+          transformationCostPerM: null,
+          blockingReasons: [],
+        },
+      }),
+    ]);
+
+    expect(sector.types).toHaveLength(1);
+    expect(sector.types[0].color).toBe('OFF WHITE');
+    expect(sector.types[0].strapM).toBeCloseTo(14, 6);
+    expect(sector.types[0].napaM).toBeCloseTo(2.8, 6);
   });
 
   it('artisanalStrapTypeKey remove o sufixo de cor', () => {
@@ -136,18 +184,21 @@ describe('aggregateStrapNapaSector', () => {
           theoreticalYieldMPerM: 70,
           transformationCostPerM: null,
           blockingReasons: [],
-          // Contágio: uma linha soft não pode zerar a napa do tipo.
+          // Contágio: uma linha soft não pode zerar a napa da outra cor.
           snapshotWarning: 'A transformação física será congelada na primeira demanda.',
         },
       }),
     ]);
 
-    expect(sector.types).toHaveLength(1);
-    const overlock = sector.types[0];
-    expect(overlock.blocked).toBe(false);
-    expect(overlock.needsYield).toBe(false);
-    expect(overlock.napaM).toBeCloseTo(4.240571 + 0.07542857, 5);
-    expect(sector.totalNapaM).toBeCloseTo(overlock.napaM, 5);
+    expect(sector.types).toHaveLength(2);
+    const champagne = sector.types.find((t) => t.color === 'CHAMPAGNE')!;
+    const ouro = sector.types.find((t) => t.color === 'OURO')!;
+    expect(champagne.blocked).toBe(false);
+    expect(champagne.needsYield).toBe(false);
+    expect(champagne.napaM).toBeCloseTo(4.240571, 5);
+    expect(ouro.blocked).toBe(false);
+    expect(ouro.napaM).toBeCloseTo(0.07542857, 5);
+    expect(sector.totalNapaM).toBeCloseTo(4.240571 + 0.07542857, 5);
   });
 
   it('sem rendimento continua cadastro incompleto mesmo com aviso soft', () => {
@@ -172,6 +223,7 @@ describe('aggregateStrapNapaSector', () => {
     ]);
     expect(sector.types[0].blocked).toBe(true);
     expect(sector.types[0].needsYield).toBe(true);
+    expect(sector.types[0].color).toBe('PRETO');
     expect(sector.types[0].measureId).toBe('measure-overlock-5');
     expect(sector.types[0].napaM).toBe(0);
   });

@@ -370,19 +370,29 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
     .join('');
 };
 
+const baseNameAlreadyInType = (typeName: string, baseName?: string): boolean => {
+  const base = (baseName || '').trim();
+  if (!base) return true;
+  return typeName.toLocaleLowerCase('pt-BR').includes(base.toLocaleLowerCase('pt-BR'));
+};
+
 const renderArtisanalStraps = (rows: ArtisanalStrapCutRow[]): string => {
   if (!rows.length) return '';
   const sector = aggregateStrapNapaSector(rows);
-  const body = sector.types.map((type) => `
+  const body = sector.types.map((type) => {
+    const showBase = !baseNameAlreadyInType(type.typeName, type.baseName);
+    return `
         <tr class="${type.blocked ? 'is-pending' : ''}">
-          <td><strong>${escapeHtml(type.typeName)}</strong>${type.baseName ? `<small>${escapeHtml(type.baseName)}</small>` : ''}${type.colorCount > 1 ? `<small>${type.colorCount} cores</small>` : ''}</td>
+          <td><strong>${escapeHtml(type.typeName)}</strong>${showBase && type.baseName ? `<small>${escapeHtml(type.baseName)}</small>` : ''}</td>
+          <td>${escapeHtml(type.color)}</td>
           <td class="num strong">${formatQty(type.strapM, 'm')} m</td>
           <td class="num strong">${type.napaM > 0 ? `${formatQty(type.napaM, 'm')} m` : '—'}</td>
           <td>${type.blocked ? '<span class="flag warning">cadastro incompleto</span>' : '<span class="flag ok">ok</span>'}</td>
-        </tr>`).join('');
+        </tr>`;
+  }).join('');
   const footer = `
         <tr class="strap-subtotal">
-          <td><strong>Total de napa (todas as tiras)</strong></td>
+          <td colspan="2"><strong>Total de napa (todas as tiras)</strong></td>
           <td class="num muted">${formatQty(sector.totalStrapM, 'm')} m tira</td>
           <td class="num strong">${sector.totalNapaM > 0 ? `${formatQty(sector.totalNapaM, 'm')} m` : '—'}</td>
           <td></td>
@@ -391,10 +401,10 @@ const renderArtisanalStraps = (rows: ArtisanalStrapCutRow[]): string => {
     <div class="section-heading">
       <span class="section-number">03</span>
       <div><p class="section-kicker">Setor próprio</p><h2>Napa para tiras</h2></div>
-      <p class="section-note">Por tipo: metros de tira e napa (÷ rendimento). Separado de Cabedal/Forração.</p>
+      <p class="section-note">Por tipo e cor: metros de tira e napa (÷ rendimento). Separado de Cabedal/Forração.</p>
     </div>
     <table class="report-table">
-      <thead><tr><th>Tipo de tira</th><th class="num">Tira necessária</th><th class="num">Napa</th><th>Situação</th></tr></thead>
+      <thead><tr><th>Tipo de tira</th><th>Cor</th><th class="num">Tira necessária</th><th class="num">Napa</th><th>Situação</th></tr></thead>
       <tbody>${body}${footer}</tbody>
     </table>
   </section>`;

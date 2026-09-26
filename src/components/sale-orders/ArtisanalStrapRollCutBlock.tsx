@@ -39,9 +39,15 @@ function yieldTargetFromType(
   };
 }
 
+function showBaseSuffix(type: StrapTypeNapaAgg): boolean {
+  const base = (type.baseName || '').trim();
+  if (!base) return false;
+  return !type.typeName.toLocaleLowerCase('pt-BR').includes(base.toLocaleLowerCase('pt-BR'));
+}
+
 /**
  * Bloco próprio de napa para tiras (separado de Cabedal/Forração).
- * Por tipo: metros de tira + metros de napa; rodapé: total de napa (18-A).
+ * Por tipo × cor: metros de tira + metros de napa; rodapé: total de napa (18-A).
  * Tipos sem rendimento abrem o modal de cadastro (mesmo writer do Hub).
  */
 export default function ArtisanalStrapRollCutBlock({
@@ -72,34 +78,30 @@ export default function ArtisanalStrapRollCutBlock({
         </Badge>
       </div>
       <p className="px-3 text-xs text-red-600/80 dark:text-red-400/80">
-        Metros de tira (ficha × pares) e napa por tipo (÷ rendimento). Não se mistura com
+        Metros de tira (ficha × pares) e napa por tipo e cor (÷ rendimento). Não se mistura com
         Cabedal/Forração. Total de napa no rodapé.
       </p>
 
       <div className="keep-together overflow-hidden rounded-lg border border-red-500/30">
-        <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-3 border-b border-red-500/20 bg-red-500/5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-red-600/70 dark:text-red-400/70">
+        <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(4.5rem,0.7fr)_auto_auto] gap-x-3 border-b border-red-500/20 bg-red-500/5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-red-600/70 dark:text-red-400/70">
           <span>Tipo de tira</span>
+          <span>Cor</span>
           <span className="text-right">Tira</span>
           <span className="text-right">Napa</span>
         </div>
         <div className="divide-y divide-red-500/20">
           {sector.types.map((type) => (
             <div
-              key={type.typeKey}
-              className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-baseline gap-x-3 px-3 py-2.5 hover:bg-red-500/5"
+              key={`${type.typeKey}\0${type.color}`}
+              className="grid grid-cols-[minmax(0,1.4fr)_minmax(4.5rem,0.7fr)_auto_auto] items-baseline gap-x-3 px-3 py-2.5 hover:bg-red-500/5"
             >
               <div className="min-w-0">
                 <span className="text-sm font-medium text-red-700 dark:text-red-300">
                   {type.typeName}
                 </span>
-                {type.baseName ? (
+                {showBaseSuffix(type) ? (
                   <span className="text-xs text-red-600/70 dark:text-red-400/70">
                     {' '}· base {type.baseName}
-                  </span>
-                ) : null}
-                {type.colorCount > 1 ? (
-                  <span className="text-xs text-muted-foreground">
-                    {' '}· {type.colorCount} cores
                   </span>
                 ) : null}
                 {type.blocked ? (
@@ -121,6 +123,9 @@ export default function ArtisanalStrapRollCutBlock({
                   </div>
                 ) : null}
               </div>
+              <span className="truncate text-sm font-medium text-red-700 dark:text-red-300">
+                {type.color}
+              </span>
               <span className="font-mono text-sm font-bold tabular-nums text-red-700 dark:text-red-300">
                 {type.strapM.toLocaleString('pt-BR', { maximumFractionDigits: 4 })}
                 <span className="text-[10px] font-normal text-red-600/70"> m</span>
@@ -136,10 +141,11 @@ export default function ArtisanalStrapRollCutBlock({
             </div>
           ))}
         </div>
-        <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-baseline gap-x-3 border-t-2 border-red-500/40 bg-red-500/10 px-3 py-3">
+        <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(4.5rem,0.7fr)_auto_auto] items-baseline gap-x-3 border-t-2 border-red-500/40 bg-red-500/10 px-3 py-3">
           <span className="text-xs font-bold uppercase tracking-wider text-red-700 dark:text-red-300">
             Total de napa (todas as tiras)
           </span>
+          <span />
           <span className="font-mono text-xs tabular-nums text-red-600/70 dark:text-red-400/70">
             {sector.totalStrapM.toLocaleString('pt-BR', { maximumFractionDigits: 4 })} m tira
           </span>
