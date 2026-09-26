@@ -97,8 +97,10 @@ import {
 import { getSignedUrl } from '@/lib/getSignedUrl';
 import {
   buildObjetivaPdf,
+  buildObjetivaZpl,
   countObjetivaLabels,
   objetivaPdfFilename,
+  objetivaZplFilename,
 } from '@/lib/objetivaLabels';
 import {
   buildPontoMixPdf,
@@ -530,17 +532,27 @@ export function ClientLabelingWorkspace() {
             `${incompleteMiolo.length} linha(s) sem TIPO/CATEGORIA/GRUPO — a Tag sai sem SANDALIA / CALCADOS/….`,
           );
         }
-        const doc = await buildObjetivaPdf(mode === 'production' ? productionRows : selectedRows, {
+        const sourceRows = mode === 'production' ? productionRows : selectedRows;
+        const doc = await buildObjetivaPdf(sourceRows, {
           geometry: pattern.geometry,
           branding: pattern.branding,
           repeatByQuantity: mode === 'production',
           logo,
         });
         doc.save(objetivaPdfFilename(originName));
+        if (mode === 'production') {
+          // Mesma impressora/mídia da Ponto Mix: sai o ZPL junto do PDF.
+          const zpl = buildObjetivaZpl(sourceRows, {
+            geometry: pattern.geometry,
+            branding: pattern.branding,
+            repeatByQuantity: true,
+          });
+          downloadText(zpl, objetivaZplFilename(originName), 'text/plain;charset=utf-8');
+        }
         toast.success(
           mode === 'graphic'
             ? `PDF Objetiva · Tag (amostra) com ${selectedRows.length} SKU(s) gerado.`
-            : `PDF Objetiva · Tag com ${totalEtiquetas} etiqueta(s) gerado.`,
+            : `PDF + ZPL Objetiva · Tag com ${totalEtiquetas} etiqueta(s) gerado.`,
         );
       } else if (pattern.key === 'objetiva_adesiva') {
         toast.info(
@@ -1130,7 +1142,7 @@ export function ClientLabelingWorkspace() {
                       {isObjetivaAdesiva
                         ? 'PDF adesiva Objetiva'
                         : isObjetiva
-                          ? 'PDF produção Tag'
+                          ? 'Produção Tag Objetiva (PDF + ZPL)'
                           : isPontoMix
                             ? 'Produção Ponto Mix (PDF + ZPL)'
                             : 'PDF produção Nalin'}
@@ -1143,7 +1155,7 @@ export function ClientLabelingWorkspace() {
                           ? ' · preview + PDF + ZPL L42PRO 40×60'
                           : isObjetivaAdesiva
                             ? ' · aguarda foto da adesiva'
-                            : ' · uma Tag por cópia'}
+                            : ' · PDF + ZPL L42PRO 40×60'}
                       .
                     </p>
                   </div>

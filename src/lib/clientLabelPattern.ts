@@ -132,16 +132,21 @@ export const BABY_NALIN_DEFAULT_BRANDING: ClientLabelBranding = {
   materialPrefix: '',
 };
 
-/** Hangtag Objetiva (Tag) — margens justas como na faca física (foto de calibração). */
+/**
+ * Tag Objetiva — MESMA mídia da Ponto Mix (rolo 40×60 mm, L42PRO 203 dpi),
+ * porque é a impressora/etiqueta que a fábrica usa. A arte é outra: vem da foto
+ * da etiqueta física da Objetiva. As margens do formulário são informativas — a
+ * arte é posicionada pela grade de dots (`OBJETIVA_ART_DOTS`).
+ */
 export const OBJETIVA_DEFAULT_GEOMETRY: ClientLabelGeometry = {
-  labelWidthMm: 42,
-  labelHeightMm: 65,
+  labelWidthMm: 40,
+  labelHeightMm: 60,
   columns: 1,
   columnGapMm: 0,
-  leftMarginMm: 1.0,
-  rightMarginMm: 1.0,
-  topMarginMm: 1.0,
-  bottomMarginMm: 1.0,
+  leftMarginMm: 1.5,
+  rightMarginMm: 1.5,
+  topMarginMm: 1.5,
+  bottomMarginMm: 1.5,
 };
 
 export const OBJETIVA_DEFAULT_BRANDING: ClientLabelBranding = {
