@@ -8,8 +8,24 @@
  * jsonb gravado no cliente.
  */
 
-export const CLIENT_LABEL_PATTERN_KEYS = ['baby_nalin', 'objetiva', 'ponto_mix'] as const;
+/**
+ * `objetiva` = hangtag (Tag) — arte calibrada pela foto física.
+ * `objetiva_adesiva` = adesiva — mesmo CSV Objetiva; layout aguarda foto de calibração.
+ */
+export const CLIENT_LABEL_PATTERN_KEYS = [
+  'baby_nalin',
+  'objetiva',
+  'objetiva_adesiva',
+  'ponto_mix',
+] as const;
 export type ClientLabelPatternKey = (typeof CLIENT_LABEL_PATTERN_KEYS)[number];
+
+/** Tag e adesiva compartilham o CSV do ERP Objetiva (SKU + TAMANHOS). */
+export function isObjetivaFamilyKey(
+  key: string | null | undefined,
+): key is 'objetiva' | 'objetiva_adesiva' {
+  return key === 'objetiva' || key === 'objetiva_adesiva';
+}
 
 export interface ClientLabelGeometry {
   labelWidthMm: number;
@@ -116,7 +132,7 @@ export const BABY_NALIN_DEFAULT_BRANDING: ClientLabelBranding = {
   materialPrefix: '',
 };
 
-/** Hangtag Objetiva — margens justas como na faca física (foto de calibração). */
+/** Hangtag Objetiva (Tag) — margens justas como na faca física (foto de calibração). */
 export const OBJETIVA_DEFAULT_GEOMETRY: ClientLabelGeometry = {
   labelWidthMm: 42,
   labelHeightMm: 65,
@@ -132,6 +148,28 @@ export const OBJETIVA_DEFAULT_BRANDING: ClientLabelBranding = {
   logoUrl: null,
   motto: 'DEUS É FIEL',
   exchangeText: 'TROCA MANTER ESTA ETIQUETA',
+  materialPrefix: 'PU/SO',
+};
+
+/**
+ * Placeholder da adesiva Objetiva — geometria provisória até a foto de calibração.
+ * Não gerar PDF com este default: o workspace bloqueia até existir arte.
+ */
+export const OBJETIVA_ADESIVA_DEFAULT_GEOMETRY: ClientLabelGeometry = {
+  labelWidthMm: 50,
+  labelHeightMm: 30,
+  columns: 1,
+  columnGapMm: 0,
+  leftMarginMm: 1.0,
+  rightMarginMm: 1.0,
+  topMarginMm: 1.0,
+  bottomMarginMm: 1.0,
+};
+
+export const OBJETIVA_ADESIVA_DEFAULT_BRANDING: ClientLabelBranding = {
+  logoUrl: null,
+  motto: '',
+  exchangeText: '',
   materialPrefix: 'PU/SO',
 };
 
@@ -189,6 +227,14 @@ export function defaultPatternForKey(key: ClientLabelPatternKey): ClientLabelPat
       branding: { ...OBJETIVA_DEFAULT_BRANDING },
     };
   }
+  if (key === 'objetiva_adesiva') {
+    return {
+      version: 1,
+      key: 'objetiva_adesiva',
+      geometry: { ...OBJETIVA_ADESIVA_DEFAULT_GEOMETRY },
+      branding: { ...OBJETIVA_ADESIVA_DEFAULT_BRANDING },
+    };
+  }
   if (key === 'ponto_mix') {
     return {
       version: 1,
@@ -208,7 +254,8 @@ export function defaultPatternForKey(key: ClientLabelPatternKey): ClientLabelPat
 }
 
 export function patternLabel(key: ClientLabelPatternKey): string {
-  if (key === 'objetiva') return 'Objetiva';
+  if (key === 'objetiva') return 'Objetiva · Tag';
+  if (key === 'objetiva_adesiva') return 'Objetiva · Adesiva';
   if (key === 'ponto_mix') return 'Ponto Mix';
   return 'Nalin';
 }
@@ -235,7 +282,10 @@ export function normalizeClientLabelPattern(
   const rawKey =
     raw && typeof raw === 'object' ? (raw as { key?: string }).key : undefined;
   const resolvedKey: ClientLabelPatternKey =
-    rawKey === 'objetiva' || rawKey === 'baby_nalin' || rawKey === 'ponto_mix'
+    rawKey === 'objetiva' ||
+    rawKey === 'objetiva_adesiva' ||
+    rawKey === 'baby_nalin' ||
+    rawKey === 'ponto_mix'
       ? rawKey
       : fallbackKey;
   const base = defaultPatternForKey(resolvedKey);
@@ -297,7 +347,12 @@ export function normalizeClientLabelPattern(
 }
 
 export function isClientLabelPatternKey(value: unknown): value is ClientLabelPatternKey {
-  return value === 'baby_nalin' || value === 'objetiva' || value === 'ponto_mix';
+  return (
+    value === 'baby_nalin' ||
+    value === 'objetiva' ||
+    value === 'objetiva_adesiva' ||
+    value === 'ponto_mix'
+  );
 }
 
 export function normalizeClientLabelFileMapping(

@@ -43,12 +43,29 @@ describe('objetivaLabels parser', () => {
     expect(first.sourceFile).toBe('112334.csv');
   });
 
-  it('parseia os três fixtures sem erro', () => {
-    for (const name of ['112332.csv', '112334.csv', '112336.csv']) {
+  it('parseia os fixtures de pedido (completos e sem TIPO/CATEGORIA/GRUPO)', () => {
+    for (const name of [
+      '112332.csv',
+      '112334.csv',
+      '112336.csv',
+      '34669946-95755.csv',
+      '34669946-112331.csv',
+    ]) {
       const rows = parseObjetivaOrderCsv(loadFixture(name), name);
       expect(rows.length, name).toBeGreaterThan(0);
       expect(rows.every(row => row.codigoBarra.length > 0), name).toBe(true);
     }
+  });
+
+  it('CSV Dakotton sem TIPO/CATEGORIA/GRUPO ainda parseia SKU/tamanho/preço', () => {
+    const rows = parseObjetivaOrderCsv(loadFixture('34669946-112331.csv'));
+    expect(rows[0]!.codigoBarra).toBe('112331');
+    expect(rows[0]!.referencia).toBe('SP130');
+    expect(rows[0]!.tamanho).toBe('35');
+    expect(rows[0]!.valor).toMatch(/39/);
+    expect(rows[0]!.tipo).toBe('');
+    expect(rows[0]!.categoria).toBe('');
+    expect(rows[0]!.grupo).toBe('');
   });
 });
 

@@ -1,8 +1,9 @@
 /**
- * Padrão de etiqueta hangtag do cliente Objetiva.
+ * Padrão de etiqueta Tag (hangtag) do cliente Objetiva.
  *
  * Entrada: CSV do ERP (`PEDIDO;SKU;DESCRICAO;…`) — um SKU por arquivo no lote típico.
  * O CODE128 usa o SKU. Textos fixos (motto, troca, PU/SO) vêm do padrão editável.
+ * A adesiva (`objetiva_adesiva`) reusa o mesmo CSV; a arte dela é outro gerador.
  */
 import { code128Bars } from './code128';
 import { decodeOrderBytes } from './babyNalinLabels';

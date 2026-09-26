@@ -56,6 +56,16 @@ describe('clientOrderImport', () => {
     expect(summary).toMatch(/linha/);
   });
 
+  it('padrão Objetiva · Adesiva aceita o mesmo CSV da Tag', async () => {
+    const result = await parseClientOrderFiles(
+      [fileFromFixture('34669946-112331.csv')],
+      'objetiva_adesiva',
+    );
+    expect(result.errors).toEqual([]);
+    expect(result.format).toBe('objetiva');
+    expect(result.rows[0]!.codigoBarra).toBe('112331');
+  });
+
   it('rejeita .btw com mensagem orientando Padrao.txt', async () => {
     const bytes = new Uint8Array([0xd0, 0xcf, 0x11, 0xe0]);
     const file = new File([bytes], 'Etiqueta_com_logo.btw', {

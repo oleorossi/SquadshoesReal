@@ -1,8 +1,9 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CircleNotch, Image, Trash, UploadSimple } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { getSignedUrl } from '@/lib/getSignedUrl';
 import { supabase } from '@/integrations/supabase/client';
 
 const MAX_LOGO_BYTES = 5 * 1024 * 1024;
@@ -12,8 +13,8 @@ interface Props {
   clientId: string;
   logoUrl: string | null;
   disabled?: boolean;
-  /** Sufixo do arquivo no storage — objetiva | ponto_mix. */
-  storageKey?: 'objetiva' | 'ponto_mix';
+  /** Sufixo do arquivo no storage — objetiva | objetiva_adesiva | ponto_mix. */
+  storageKey?: 'objetiva' | 'objetiva_adesiva' | 'ponto_mix';
   hint?: string;
   onLogoChange: (url: string | null) => void;
 }
@@ -29,7 +30,7 @@ function storagePathFromPublicUrl(url: string): string | null {
   const marker = '/client-logos/';
   const index = url.indexOf(marker);
   if (index < 0) return null;
-  const path = url.slice(index + marker.length);
+  const path = url.slice(index + marker.length).split(/[?#]/)[0] ?? '';
   return path.length > 0 ? path : null;
 }
 
@@ -43,7 +44,22 @@ export function ClientLabelLogoUpload({
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const inputId = `${storageKey}-logo-upload`;
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!logoUrl) {
+      setPreviewUrl(null);
+      return;
+    }
+    void getSignedUrl(logoUrl).then(signed => {
+      if (!cancelled) setPreviewUrl(signed || logoUrl);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [logoUrl]);
 
   async function removeStored(url: string | null) {
     if (!url) return;
@@ -127,7 +143,11 @@ export function ClientLabelLogoUpload({
       {logoUrl ? (
         <div className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-muted/30 p-3">
           <div className="flex h-16 w-28 items-center justify-center overflow-hidden rounded-sm border border-border bg-background">
-            <img src={logoUrl} alt="Logomarca do cliente" className="max-h-16 max-w-28 object-contain" />
+            <img
+              src={previewUrl || logoUrl}
+              alt="Logomarca do cliente"
+              className="max-h-16 max-w-28 object-contain"
+            />
           </div>
           <div className="flex flex-wrap gap-2">
             <Button

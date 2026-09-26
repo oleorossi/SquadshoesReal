@@ -26,7 +26,8 @@ export async function getSignedUrl(url: string | null | undefined): Promise<stri
   if (existing) return existing;
 
   const promise = (async () => {
-    const rest = url.slice(storagePrefix.length);
+    // `?t=` de cache-bust no upload não faz parte do path do storage.
+    const rest = url.slice(storagePrefix.length).split(/[?#]/)[0] ?? '';
     const slashIdx = rest.indexOf('/');
     if (slashIdx === -1) return url;
 

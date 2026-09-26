@@ -42,6 +42,7 @@ describe('ETIQUETAGEM CLIENTE · isolamento da etiquetagem padrão', () => {
   it('o workspace Objetiva tem upload de logomarca e passa logo no PDF', () => {
     expect(clientWorkspace).toContain('ClientLabelLogoUpload');
     expect(clientWorkspace).toContain('pattern.branding.logoUrl');
-    expect(clientWorkspace).toContain('loadLogoDataUrl(pattern.branding.logoUrl)');
+    expect(clientWorkspace).toContain('getSignedUrl(pattern.branding.logoUrl)');
+    expect(clientWorkspace).toContain('loadLogoDataUrl(signedLogoUrl || pattern.branding.logoUrl)');
   });
 });
