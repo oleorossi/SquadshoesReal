@@ -891,44 +891,49 @@ export default function FichaMontadoresPage() {
 
   const carregar = useCallback(async () => {
     const requestId = ++loadRequestRef.current;
-    // Invalida imediatamente o snapshot do contexto anterior. Sem isto, ao
-    // trocar Montagem por Solagem a tela ainda podia semear por alguns frames os
-    // lançamentos antigos (ou mantê-los se a leitura nova falhasse).
-    setFichas([]);
-    setPares({}); setOrigPares({});
-    setWeek({}); setOrigWeek({});
+    // Stale-while-revalidate: NÃO zera `fichas` no início. Apagar o snapshot
+    // a cada troca de período deixava Relatórios em branco por 1 RTT inteiro
+    // (BR → us-west-2), mesmo com a query em ~2 ms no banco (~40 linhas).
+    // A bancada reidrata pares/semana pelos effects abaixo quando `fichas`
+    // chega; limpar rascunho de input é responsabilidade de `iniciarTroca…`.
     setLoading(true);
-    // Escopo por SETOR e por INTERVALO. Antes a tela baixava o histórico inteiro
-    // do setor a cada troca de aba — cresce sem teto e o PostgREST corta em 1.000
-    // linhas em silêncio, então um dia a produção antiga simplesmente sumiria dos
-    // relatórios. Agora busca só o que as três abas conseguem exibir.
+    // Escopo por INTERVALO. Antes a tela baixava o histórico inteiro do setor
+    // a cada troca de aba — cresce sem teto e o PostgREST corta em 1.000 linhas
+    // em silêncio. Agora busca só o que as abas conseguem exibir.
     // Carrega MONTAGEM + SOLAGEM no intervalo — a home Relatórios precisa dos
-    // dois pra bruto combinado e comparativo M×S. A bancada filtra por `setor`.
-    const { data, error } = await db.from("ficha_montadores").select("*")
-      .in("setor", [SETOR_MONTAGEM, SETOR_SOLAGEM])
-      .gte("dia", dataRange.from)
-      .lte("dia", dataRange.to)
-      .order("dia", { ascending: false })
-      .order("criado_em", { ascending: false });
-    // Troca rápida de setor/período pode inverter a ordem das respostas.
-    // Uma resposta velha nunca pode reidratar o rascunho do contexto novo.
-    if (requestId !== loadRequestRef.current) return;
-    if (error) {
-      setFichas([]);
-      setPares({}); setOrigPares({});
-      setWeek({}); setOrigWeek({});
-      toast.error("Erro ao carregar: " + error.message);
-    } else {
-      // Normaliza `dia` pra YYYY-MM-DD na carga. Se vier timestamp (ou Date
-      // stringificado), a chave da célula não casa com daysInRange → dia em
-      // branco mesmo com lançamento no banco.
-      setFichas(((data ?? []) as unknown as Ficha[]).map((f) => ({
-        ...f,
-        dia: String(f.dia ?? "").slice(0, 10),
-        setor: f.setor ? String(f.setor).toLowerCase() : f.setor,
-      })));
+    // dois pra bruto combinado e comparativo M×S. A bancada filtra por `setor`
+    // no client; trocar de aba NÃO precisa refetch.
+    try {
+      const { data, error } = await db.from("ficha_montadores").select("*")
+        .in("setor", [SETOR_MONTAGEM, SETOR_SOLAGEM])
+        .gte("dia", dataRange.from)
+        .lte("dia", dataRange.to)
+        .order("dia", { ascending: false })
+        .order("criado_em", { ascending: false });
+      // Troca rápida de período pode inverter a ordem das respostas.
+      // Uma resposta velha nunca pode reidratar o contexto novo.
+      if (requestId !== loadRequestRef.current) return;
+      if (error) {
+        setFichas([]);
+        setPares({}); setOrigPares({});
+        setWeek({}); setOrigWeek({});
+        toast.error("Erro ao carregar: " + error.message);
+      } else {
+        // Normaliza `dia` pra YYYY-MM-DD na carga. Se vier timestamp (ou Date
+        // stringificado), a chave da célula não casa com daysInRange → dia em
+        // branco mesmo com lançamento no banco.
+        setFichas(((data ?? []) as unknown as Ficha[]).map((f) => ({
+          ...f,
+          dia: String(f.dia ?? "").slice(0, 10),
+          setor: f.setor ? String(f.setor).toLowerCase() : f.setor,
+        })));
+      }
+    } finally {
+      // Resposta obsoleta NÃO pode deixar o spinner preso (antes o early-return
+      // pulava o setLoading(false) e a tela ficava em "carregando…" pra sempre
+      // se alguém invalidasse o requestId no meio do voo).
+      if (requestId === loadRequestRef.current) setLoading(false);
     }
-    setLoading(false);
   }, [db, dataRange.from, dataRange.to]);
   useEffect(() => { carregar(); }, [carregar]);
 
@@ -1099,17 +1104,6 @@ export default function FichaMontadoresPage() {
   const confirmarDescarte = useCallback(() => (
     !temRascunho || window.confirm("Há lançamentos não salvos. Descartar as alterações e mudar de contexto?")
   ), [temRascunho]);
-  const limparContextoCarregado = useCallback(() => {
-    // A próxima consulta é assíncrona; a interface não deve continuar exibindo
-    // nem reutilizar fichas que pertenciam ao setor/período anterior.
-    loadRequestRef.current += 1;
-    setLoading(true);
-    setFichas([]);
-    setPares({}); setOrigPares({});
-    setWeek({}); setOrigWeek({});
-    setSalvoEm(null);
-  }, []);
-
   // Protege links, Voltar e qualquer outra navegação do router. Trocas de
   // setor/data são estado local e usam confirmarDescarte diretamente.
   const navigationBlocker = useBlocker(temRascunho);
@@ -1361,11 +1355,13 @@ export default function FichaMontadoresPage() {
     setPares(origPares);
     setWeek(origWeek);
   }
-  function iniciarTrocaDeContexto(invalidarFichas = false) {
+  function iniciarTrocaDeContexto() {
     descartarTodosRascunhos();
-    // Setor sempre muda a identidade das linhas. Dia/semana podem continuar no
-    // dataRange já carregado; nesse caso limpá-lo deixaria a tela sem nova query.
-    if (invalidarFichas) limparContextoCarregado();
+    // NÃO zera `fichas` nem sobe loading. A carga já traz Montagem+Solagem no
+    // dataRange; a troca de setor só filtra no client. O caminho antigo
+    // (flag invalidar + wipe do snapshot + bump do requestId) apagava os dados
+    // SEM disparar `carregar` — Relatórios ficava em "carregando…" / vazio até
+    // o usuário mudar o período (regressão M×S).
   }
   function abrirDia(f: Ficha) {
     if (!confirmarDescarte()) return;
@@ -1805,7 +1801,7 @@ export default function FichaMontadoresPage() {
               <button key={s.key} type="button" onClick={() => {
                 if (s.key === setor) return;
                 if (!confirmarDescarte()) return;
-                iniciarTrocaDeContexto(true); setSetor(s.key);
+                iniciarTrocaDeContexto(); setSetor(s.key);
               }}
                 title={`${s.label} — ${gente} ${gente === 1 ? "pessoa recebe" : "pessoas recebem"} por produção`}
                 className={`whitespace-nowrap border-r border-border px-3.5 py-2 text-xs font-bold uppercase tracking-wide transition-colors last:border-r-0 ${setor === s.key ? "bg-foreground text-background" : "bg-card text-muted-foreground hover:bg-muted/40"}`}>
