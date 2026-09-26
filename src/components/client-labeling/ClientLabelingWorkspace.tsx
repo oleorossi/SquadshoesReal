@@ -648,7 +648,7 @@ export function ClientLabelingWorkspace() {
       <Panel
         eyebrow="ETIQUETAS · CLIENTE"
         title="Cliente e tipos de etiqueta"
-        subtitle="O mesmo cliente pode ter Nalin, Objetiva e Ponto Mix. Trocar o tipo não apaga o outro. O arquivo do pedido não é guardado."
+        subtitle="O mesmo cliente pode ter Nalin, Objetiva · Tag, Objetiva · Adesiva e Ponto Mix. Trocar o tipo não apaga o outro. O arquivo do pedido não é guardado."
       >
         <div className="space-y-4">
           <div className="grid gap-3 md:grid-cols-[1fr_2fr]">
