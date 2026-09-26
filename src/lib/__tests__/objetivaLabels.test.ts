@@ -4,13 +4,19 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { defaultPatternForKey, OBJETIVA_DEFAULT_BRANDING } from '@/lib/clientLabelPattern';
 import {
+  OBJETIVA_ART_DOTS,
+  OBJETIVA_DPI,
   buildObjetivaPdf,
+  buildObjetivaZpl,
   composeObjetivaLabelCopy,
   countObjetivaLabels,
   isObjetivaOrderHeader,
-  objetivaHorizontalMioloLines,
+  objetivaBarcodeRailLines,
+  objetivaMioloColumns,
+  objetivaMioloLines,
   objetivaPdfFilename,
   objetivaRotatedRailLines,
+  objetivaZplFilename,
   parseObjetivaOrderCsv,
   stripHangtagAccents,
   wrapObjetivaDescricao,
@@ -149,26 +155,53 @@ describe('composeObjetivaLabelCopy · hangtag 112334 TAM 25', () => {
     ]);
   });
 
-  it('miolo horizontal empilha tipo/categoria/material/ref', () => {
+  it('miolo empilha tipo/categoria/material/ref em colunas giradas', () => {
     const rows = parseObjetivaOrderCsv(loadFixture('112334.csv'));
     const row = rows.find(item => item.tamanho === '25');
     const copy = composeObjetivaLabelCopy(row!, OBJETIVA_DEFAULT_BRANDING);
-    expect(objetivaHorizontalMioloLines(copy)).toEqual([
+    expect(objetivaMioloLines(copy)).toEqual([
       'SANDALIA',
       'CALCADOS/INFANTIL',
       'PU/SO / DOURADA 420',
       'Ref.: I701',
     ]);
-    const rails = objetivaRotatedRailLines(copy);
-    expect(rails).toContain('SAND INFA RAST TIRAS NO');
-    expect(rails).toContain('112334');
-    expect(rails).toContain('29/26');
-    expect(rails).not.toContain('SANDALIA');
-    expect(rails).not.toContain('CALCADOS/INFANTIL');
+
+    // Faixa esquerda = só a descrição; SKU e semana/ano vão na coluna do código.
+    expect(objetivaRotatedRailLines(copy)).toEqual(['SAND INFA RAST TIRAS NO']);
+    expect(objetivaBarcodeRailLines(copy)).toEqual(['112334', '29/26']);
+  });
+
+  it('destaque do miolo é do TIPO, não da posição', () => {
+    const comTipo = composeObjetivaLabelCopy(
+      parseObjetivaOrderCsv(loadFixture('112334.csv')).find(r => r.tamanho === '25')!,
+      OBJETIVA_DEFAULT_BRANDING,
+    );
+    expect(objetivaMioloColumns(comTipo)[0]).toEqual({ text: 'SANDALIA', emphasis: true });
+
+    // CSV sem TIPO/CATEGORIA não pode promover o material a título.
+    const semTipo = composeObjetivaLabelCopy(
+      parseObjetivaOrderCsv(loadFixture('34669946-95755.csv'))[0]!,
+      OBJETIVA_DEFAULT_BRANDING,
+    );
+    const columns = objetivaMioloColumns(semTipo);
+    expect(columns[0]!.text).toBe('PU/SO / OFF WHITE 420');
+    expect(columns.every(column => !column.emphasis)).toBe(true);
+  });
+
+  it('grade da arte é a mídia Ponto Mix: 320×480 dots a 203 dpi (40×60 mm)', () => {
+    expect(OBJETIVA_DPI).toBe(203);
+    expect(OBJETIVA_ART_DOTS.gridW).toBe(320);
+    expect(OBJETIVA_ART_DOTS.gridH).toBe(480);
+    const pattern = defaultPatternForKey('objetiva');
+    expect(pattern.geometry.labelWidthMm).toBe(40);
+    expect(pattern.geometry.labelHeightMm).toBe(60);
+    // 40 mm / 320 dots = 0,125 mm/dot — igual à régua da Ponto Mix.
+    expect(pattern.geometry.labelWidthMm / OBJETIVA_ART_DOTS.gridW).toBeCloseTo(0.125, 6);
+    expect(pattern.geometry.labelHeightMm / OBJETIVA_ART_DOTS.gridH).toBeCloseTo(0.125, 6);
   });
 });
 
-describe('objetivaLabels PDF · miolo horizontal + preço', () => {
+describe('objetivaLabels PDF · miolo girado + preço', () => {
   async function pdfContentForTam25(): Promise<string> {
     const rows = parseObjetivaOrderCsv(loadFixture('112334.csv'));
     const row = rows.find(item => item.tamanho === '25')!;
@@ -199,36 +232,101 @@ describe('objetivaLabels PDF · miolo horizontal + preço', () => {
     expect(content).not.toMatch(/CALCADOS\/INFANTI[^L]/);
   });
 
-  it('emite miolo horizontal e bloco R$+main+cents unificado no footer', async () => {
+  /** Matriz que o jsPDF emite para `angle: 90` (texto lendo de baixo para cima). */
+  const ROTATION_TM = /0\.0+1 1\. -1\. 0\.0+1 [0-9.]+ [0-9.]+\s+Tm/;
+
+  it('gira o miolo 90°, como na etiqueta física', async () => {
     const content = await pdfContentForTam25();
     expect(content).toContain('(SANDALIA)');
     expect(content).toContain('(CALCADOS/INFANTIL)');
-    // Miolo horizontal: Td (sem matriz Tm de rotação 90°)
-    expect(content).toMatch(/\([\s\S]*SANDALIA[\s\S]*\)\s*Tj/);
-    expect(content).not.toMatch(
-      /0\.0000000000000001 1\. -1\. 0\.0000000000000001 [0-9.]+ [0-9.]+\s+Tm\s*\(SANDALIA\)/,
-    );
 
-    // Footer: bloco R$ → 39 → ,99 em sequência (não R$ isolado no canto inferior)
-    const tamIdx = content.lastIndexOf('(TAM.:)');
-    const rsIdx = content.lastIndexOf('(R$)');
-    const mainIdx = content.lastIndexOf('(39)');
-    const centsIdx = content.lastIndexOf('(,99)');
-    expect(tamIdx).toBeGreaterThan(-1);
-    expect(rsIdx).toBeGreaterThan(tamIdx);
-    expect(mainIdx).toBeGreaterThan(rsIdx);
-    expect(centsIdx).toBeGreaterThan(mainIdx);
+    // Cada coluna do miolo precisa vir depois de uma matriz de rotação.
+    for (const label of ['SANDALIA', 'CALCADOS/INFANTIL', 'Ref.: I701']) {
+      const idx = content.indexOf(`(${label})`);
+      expect(idx, label).toBeGreaterThan(-1);
+      const before = content.slice(Math.max(0, idx - 400), idx);
+      expect(ROTATION_TM.test(before), `${label} sem rotação`).toBe(true);
+    }
+
+    // A descrição da faixa esquerda também gira.
+    const descIdx = content.indexOf('(SAND INFA RAST TIRAS NO)');
+    expect(ROTATION_TM.test(content.slice(Math.max(0, descIdx - 400), descIdx))).toBe(true);
   });
 
-  it('trava tipografia calibrada pela foto física (sem o 15.5pt inchado)', async () => {
+  /** Recorta o bloco `BT … (label)` — o Tm/Td vigente para aquele texto. */
+  function textBlockFor(content: string, label: string): string {
+    const idx = content.lastIndexOf(`(${label})`);
+    expect(idx, label).toBeGreaterThan(-1);
+    const start = content.lastIndexOf('BT', idx);
+    return content.slice(start, idx);
+  }
+
+  it('cabeçalho, TAM e preço ficam na horizontal (sem rotação)', async () => {
     const content = await pdfContentForTam25();
-    // Número do TAM e preço principal: 12.5pt (era 15.5 — desproporcional à faca).
-    expect(content).toMatch(/12\.5 Tf/);
-    expect(content).not.toMatch(/15\.5 Tf/);
-    // Miolo: SANDALIA destaca em 6.5; demais linhas ≤ 4.7.
-    expect(content).toMatch(/6\.5 Tf/);
-    expect(content).toMatch(/4\.7 Tf/);
-    // Centavos em sobrescrito compacto.
-    expect(content).toMatch(/5\.8 Tf/);
+    for (const label of ['TROCA MANTER', 'TAM.:', '25', 'R$', '39', ',99']) {
+      const block = textBlockFor(content, label);
+      expect(ROTATION_TM.test(block), `${label} não deveria girar`).toBe(false);
+      expect(/[0-9.]+ [0-9.]+ Td/.test(block), `${label} sem Td`).toBe(true);
+    }
+  });
+
+  it('R$ fica na margem esquerda e o valor grande alinhado à direita', async () => {
+    const content = await pdfContentForTam25();
+    const xOf = (label: string) => {
+      const matches = [...textBlockFor(content, label).matchAll(/([0-9.]+) ([0-9.]+) Td/g)];
+      return Number(matches[matches.length - 1]![1]);
+    };
+    // Na foto: "R$" no canto inferior esquerdo, "39,99" grande à direita.
+    expect(xOf('R$')).toBeLessThan(xOf('39'));
+    expect(xOf('39')).toBeLessThan(xOf(',99'));
+    // TAM.: antes do número, na mesma faixa.
+    expect(xOf('TAM.:')).toBeLessThan(xOf('25'));
+  });
+
+  it('centavos sobem em relação ao valor cheio (sobrescrito)', async () => {
+    const content = await pdfContentForTam25();
+    const yOf = (label: string) => {
+      const matches = [...textBlockFor(content, label).matchAll(/([0-9.]+) ([0-9.]+) Td/g)];
+      return Number(matches[matches.length - 1]![2]);
+    };
+    // PDF cresce para cima: baseline dos centavos é MAIOR que a do valor.
+    expect(yOf(',99')).toBeGreaterThan(yOf('39'));
+  });
+});
+
+describe('objetivaLabels ZPL · mídia L42PRO 40×60', () => {
+  it('emite um bloco ^XA/^XZ por etiqueta com largura e altura em dots', () => {
+    const rows = parseObjetivaOrderCsv(loadFixture('112334.csv'));
+    const row = rows.find(item => item.tamanho === '25')!;
+    const zpl = buildObjetivaZpl([row], { repeatByQuantity: false });
+    expect(zpl.startsWith('^XA')).toBe(true);
+    expect(zpl.trimEnd().endsWith('^XZ')).toBe(true);
+    // 40×60 mm a 203 dpi = 320×480 dots.
+    expect(zpl).toContain('^PW320');
+    expect(zpl).toContain('^LL480');
+  });
+
+  it('bloco central usa orientação bottom-up (B) e o resto normal (N)', () => {
+    const rows = parseObjetivaOrderCsv(loadFixture('112334.csv'));
+    const zpl = buildObjetivaZpl([rows.find(r => r.tamanho === '25')!], {
+      repeatByQuantity: false,
+    });
+    // Descrição, miolo, SKU e semana/ano girados.
+    expect(zpl).toMatch(/\^A0B,[0-9]+,[0-9]+\^FDSAND INFA RAST TIRAS NO\^FS/);
+    expect(zpl).toMatch(/\^A0B,[0-9]+,[0-9]+\^FDSANDALIA\^FS/);
+    expect(zpl).toMatch(/\^A0B,[0-9]+,[0-9]+\^FD29\/26\^FS/);
+    // Código de barras girado.
+    expect(zpl).toMatch(/\^BCB,[0-9]+,N,N,N/);
+    // Cabeçalho e footer na horizontal.
+    expect(zpl).toMatch(/\^A0N,[0-9]+,[0-9]+\^FDTROCA MANTER\^FS/);
+    expect(zpl).toMatch(/\^A0N,[0-9]+,[0-9]+\^FDTAM\.:\^FS/);
+    expect(zpl).toMatch(/\^A0N,[0-9]+,[0-9]+\^FDR\$\^FS/);
+  });
+
+  it('repete por quantidade e nomeia o arquivo pela origem', () => {
+    const rows = parseObjetivaOrderCsv(loadFixture('112334.csv')).slice(0, 1);
+    const blocks = buildObjetivaZpl(rows, { repeatByQuantity: true }).match(/\^XA/g) ?? [];
+    expect(blocks.length).toBe(rows[0]!.quantidade);
+    expect(objetivaZplFilename('112334.csv')).toBe('Etiquetas_Objetiva_112334_L42PRO.zpl');
   });
 });

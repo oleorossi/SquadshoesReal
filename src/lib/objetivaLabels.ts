@@ -271,28 +271,43 @@ export function wrapObjetivaDescricao(descricao: string, maxChars = 24): string[
 }
 
 /**
- * Linhas que realmente giram 90° na hangtag física:
- * descrição (faixa esquerda) + SKU + semana/ano (faixa direita).
- * O miolo (tipo/categoria/material/ref) é horizontal.
+ * Faixa esquerda girada 90°: a descrição do produto, colada à margem, antes do
+ * fio divisor. Lê de baixo para cima na etiqueta física.
  */
 export function objetivaRotatedRailLines(copy: ObjetivaLabelCopy): string[] {
+  return wrapObjetivaDescricao(copy.descricao);
+}
+
+/**
+ * Miolo — tipo/categoria/material/referência. **Também gira 90°** na etiqueta
+ * física: são colunas lado a lado à direita do fio, na mesma orientação da
+ * descrição. Desenhar na horizontal (como ficou entre 08 e 09/2026) descola a
+ * arte da etiqueta impressa pelo cliente.
+ *
+ * `emphasis` é do TIPO (SANDALIA destaca na foto), não da posição: CSV sem
+ * TIPO/CATEGORIA não pode promover o material a título.
+ */
+export interface ObjetivaMioloColumn {
+  text: string;
+  emphasis: boolean;
+}
+
+export function objetivaMioloColumns(copy: ObjetivaLabelCopy): ObjetivaMioloColumn[] {
   return [
-    ...wrapObjetivaDescricao(copy.descricao),
-    copy.codigoBarra,
-    copy.semanaAno,
-  ].filter(line => line.length > 0);
+    { text: copy.tipo, emphasis: true },
+    { text: copy.categoria, emphasis: false },
+    { text: copy.material, emphasis: false },
+    { text: copy.referencia, emphasis: false },
+  ].filter(column => column.text.length > 0);
 }
 
-/** @deprecated Use objetivaRotatedRailLines — o miolo não gira mais. */
-export function objetivaRotatedBodyLines(copy: ObjetivaLabelCopy): string[] {
-  return objetivaRotatedRailLines(copy);
+export function objetivaMioloLines(copy: ObjetivaLabelCopy): string[] {
+  return objetivaMioloColumns(copy).map(column => column.text);
 }
 
-/** Linhas do miolo horizontal (topo → base), sem rotação. */
-export function objetivaHorizontalMioloLines(copy: ObjetivaLabelCopy): string[] {
-  return [copy.tipo, copy.categoria, copy.material, copy.referencia].filter(
-    line => line.length > 0,
-  );
+/** Coluna direita girada: SKU acima do código, semana/ano abaixo. */
+export function objetivaBarcodeRailLines(copy: ObjetivaLabelCopy): string[] {
+  return [copy.codigoBarra, copy.semanaAno].filter(line => line.length > 0);
 }
 
 export type ObjetivaLogo = { dataUrl: string; width: number; height: number } | null;
@@ -302,6 +317,144 @@ export interface ObjetivaPdfOptions {
   branding?: Partial<ClientLabelBranding>;
   repeatByQuantity?: boolean;
   logo?: ObjetivaLogo;
+}
+
+/** Mesma mídia da Ponto Mix: rolo 40×60 mm na L42PRO a 203 dpi. */
+export const OBJETIVA_DPI = 203;
+
+/** Altura de caixa-alta ÷ em da Helvetica (capHeight 718 / upem 1000). */
+const CAP_RATIO = 0.717;
+
+/**
+ * Grade da arte em DOTS a 203 dpi — 40×60 mm = 320×480 dots, igual à régua da
+ * Ponto Mix. Os valores saíram da etiqueta física da Objetiva (foto de
+ * calibração do SKU 112334 / TAM 25).
+ *
+ * Orientação: o bloco central inteiro (descrição, miolo, SKU, semana/ano e o
+ * código de barras) gira 90°; só cabeçalho, TAM e preço ficam na horizontal.
+ */
+export const OBJETIVA_ART_DOTS = {
+  gridW: 320,
+  gridH: 480,
+  /** Faixa preta da marca, no alto à esquerda. */
+  logoBand: { x: 12, y: 15, w: 150, h: 27 },
+  /** "DEUS / É FIEL" ao lado da faixa. */
+  motto: { x: 170, firstTop: 16, step: 13, capH: 8 },
+  /** "TROCA MANTER / ESTA ETIQUETA" sob a faixa. */
+  exchange: { x: 12, firstTop: 50, step: 14, capH: 9 },
+  /** Fio vertical que separa a descrição do miolo. */
+  divider: { x: 78, top: 82, bottom: 352, stroke: 2 },
+  /** Descrição girada: `baselineX` é a BORDA DIREITA (glifo cresce para -x). */
+  rail: { baselineX: 70, bottom: 350, step: 19, capH: 13 },
+  /** Colunas giradas do miolo, à direita do fio. */
+  miolo: { firstBaselineX: 106, step: 22, bottom: 350, titleCapH: 15, capH: 11 },
+  /** Dígitos do SKU, girados, acima do código. */
+  sku: { baselineX: 248, bottom: 248, capH: 12 },
+  /** Semana/ano, girado, abaixo do código. */
+  week: { baselineX: 248, bottom: 374, capH: 10 },
+  /** Código de barras girado: `w` é a espessura da faixa. */
+  barcode: { x: 258, w: 52, top: 138, bottom: 376 },
+  /** "TAM.:" + número grande. */
+  size: { labelX: 30, labelCapH: 9, valueX: 70, baseline: 408, valueCapH: 30 },
+  /** "R$" à esquerda, valor grande alinhado à direita, centavos sobrescritos. */
+  price: { currencyX: 28, currencyCapH: 14, rightX: 296, baseline: 458, mainCapH: 36, centsCapH: 17 },
+} as const;
+
+/** Corpo em pt que entrega exatamente `capMm` de altura de caixa-alta. */
+function fontPtForCapHeight(capMm: number): number {
+  return (capMm / CAP_RATIO) * (72 / 25.4);
+}
+
+function mmToDots(mm: number, dpi = OBJETIVA_DPI): number {
+  return Math.max(1, Math.round((mm / 25.4) * dpi));
+}
+
+/**
+ * Converte a grade de dots para as medidas da etiqueta configurada. Em 40×60 mm
+ * o fator é 0,125 mm/dot — a mídia da Ponto Mix.
+ */
+function artSlots(geometry: ClientLabelGeometry) {
+  const D = OBJETIVA_ART_DOTS;
+  const w = geometry.labelWidthMm;
+  const h = geometry.labelHeightMm;
+  const sx = w / D.gridW;
+  const sy = h / D.gridH;
+  return {
+    w,
+    h,
+    sx,
+    sy,
+    logoBand: {
+      x: D.logoBand.x * sx,
+      y: D.logoBand.y * sy,
+      w: D.logoBand.w * sx,
+      h: D.logoBand.h * sy,
+    },
+    motto: {
+      x: D.motto.x * sx,
+      firstBaseline: (D.motto.firstTop + D.motto.capH) * sy,
+      step: D.motto.step * sy,
+      fontPt: fontPtForCapHeight(D.motto.capH * sy),
+    },
+    exchange: {
+      x: D.exchange.x * sx,
+      firstBaseline: (D.exchange.firstTop + D.exchange.capH) * sy,
+      step: D.exchange.step * sy,
+      fontPt: fontPtForCapHeight(D.exchange.capH * sy),
+    },
+    divider: {
+      x: D.divider.x * sx,
+      top: D.divider.top * sy,
+      bottom: D.divider.bottom * sy,
+      stroke: Math.max(0.12, D.divider.stroke * sx),
+    },
+    rail: {
+      baselineX: D.rail.baselineX * sx,
+      bottom: D.rail.bottom * sy,
+      step: D.rail.step * sx,
+      fontPt: fontPtForCapHeight(D.rail.capH * sy),
+    },
+    miolo: {
+      firstBaselineX: D.miolo.firstBaselineX * sx,
+      step: D.miolo.step * sx,
+      bottom: D.miolo.bottom * sy,
+      titleFontPt: fontPtForCapHeight(D.miolo.titleCapH * sy),
+      fontPt: fontPtForCapHeight(D.miolo.capH * sy),
+    },
+    sku: {
+      baselineX: D.sku.baselineX * sx,
+      bottom: D.sku.bottom * sy,
+      fontPt: fontPtForCapHeight(D.sku.capH * sy),
+    },
+    week: {
+      baselineX: D.week.baselineX * sx,
+      bottom: D.week.bottom * sy,
+      fontPt: fontPtForCapHeight(D.week.capH * sy),
+    },
+    barcode: {
+      x: D.barcode.x * sx,
+      w: D.barcode.w * sx,
+      top: D.barcode.top * sy,
+      bottom: D.barcode.bottom * sy,
+    },
+    size: {
+      labelX: D.size.labelX * sx,
+      labelFontPt: fontPtForCapHeight(D.size.labelCapH * sy),
+      valueX: D.size.valueX * sx,
+      baseline: D.size.baseline * sy,
+      valueFontPt: fontPtForCapHeight(D.size.valueCapH * sy),
+    },
+    price: {
+      currencyX: D.price.currencyX * sx,
+      currencyFontPt: fontPtForCapHeight(D.price.currencyCapH * sy),
+      rightX: D.price.rightX * sx,
+      baseline: D.price.baseline * sy,
+      mainFontPt: fontPtForCapHeight(D.price.mainCapH * sy),
+      centsFontPt: fontPtForCapHeight(D.price.centsCapH * sy),
+      /** Centavos sobem até o topo da caixa-alta do valor cheio. */
+      centsRise: (D.price.mainCapH - D.price.centsCapH) * sy,
+    },
+  };
 }
 
 function mergeGeometry(partial?: Partial<ClientLabelGeometry>): ClientLabelGeometry {
@@ -382,6 +535,11 @@ function drawLogo(
   drawLogoFallback(doc, x, y, boxW, boxH);
 }
 
+/**
+ * Texto girado 90° (lê de baixo para cima). O jsPDF gira anti-horário em torno
+ * de `(x, baselineY)`: o texto avança para cima e os glifos crescem para -x, ou
+ * seja, `x` é a BORDA DIREITA da coluna e `baselineY` a base do primeiro glifo.
+ */
 function drawRotatedLine(
   doc: PdfDoc,
   text: string,
@@ -393,13 +551,8 @@ function drawRotatedLine(
   if (!text) return;
   doc.setFont('helvetica', style);
   doc.setFontSize(sizePt);
-  // Sem maxWidth: o clip horizontal (~23 mm) era o que cortava CALCADOS/INFANTI
-  // e fazia o miolo parecer distorcido. O texto deita no eixo Y da peça.
+  // Sem maxWidth: o clip horizontal era o que cortava CALCADOS/INFANTIL.
   doc.text(text, x, baselineY, { angle: 90, align: 'left' });
-}
-
-function rotatedColumnStep(sizePt: number, extraMm = 0.55): number {
-  return sizePt * 0.352778 * 1.12 + extraMm;
 }
 
 function drawObjetivaLabel(
@@ -410,160 +563,92 @@ function drawObjetivaLabel(
   logo: ObjetivaLogo,
 ): void {
   const copy = composeObjetivaLabelCopy(row, branding);
-  const w = geometry.labelWidthMm;
-  const h = geometry.labelHeightMm;
-  const padL = geometry.leftMarginMm;
-  const padR = geometry.rightMarginMm;
-  const padT = geometry.topMarginMm;
-  const padB = geometry.bottomMarginMm;
-  const contentW = Math.max(12, w - padL - padR);
-  const contentH = Math.max(20, h - padT - padB);
+  const s = artSlots(geometry);
 
   doc.setTextColor(0, 0, 0);
   doc.setDrawColor(0, 0, 0);
-  // Divisor fino como na hangtag física (~0,15 mm).
-  doc.setLineWidth(0.15);
 
-  // Calibração contra a foto física: menos ar morto, tipografia mais justa.
-  const logoBoxW = Math.min(17.5, contentW * 0.48);
-  const logoBoxH = Math.min(5.6, contentH * 0.095);
-  const footerH = Math.min(12.0, contentH * 0.195);
+  drawLogo(doc, logo, s.logoBand.x, s.logoBand.y, s.logoBand.w, s.logoBand.h);
 
-  drawLogo(doc, logo, padL, padT, logoBoxW, logoBoxH);
-
-  const mottoX = padL + logoBoxW + 0.7;
-  const mottoMaxW = Math.max(8, contentW - logoBoxW - 0.9);
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(3.4);
-  let mottoY = padT + 0.55;
-  for (const line of copy.mottoLines) {
-    doc.text(line, mottoX, mottoY, {
-      baseline: 'top',
-      maxWidth: mottoMaxW,
-      charSpace: -0.12,
+  doc.setFontSize(s.motto.fontPt);
+  copy.mottoLines.forEach((line, i) => {
+    doc.text(line, s.motto.x, s.motto.firstBaseline + s.motto.step * i, {
+      baseline: 'alphabetic',
     });
-    mottoY += 1.7;
+  });
+
+  doc.setFontSize(s.exchange.fontPt);
+  copy.exchangeLines.forEach((line, i) => {
+    doc.text(line, s.exchange.x, s.exchange.firstBaseline + s.exchange.step * i, {
+      baseline: 'alphabetic',
+    });
+  });
+
+  doc.setLineWidth(s.divider.stroke);
+  doc.line(s.divider.x, s.divider.top, s.divider.x, s.divider.bottom);
+
+  // Descrição girada, colada à margem esquerda (antes do fio).
+  objetivaRotatedRailLines(copy).forEach((line, i) => {
+    drawRotatedLine(doc, line, s.rail.baselineX - s.rail.step * i, s.rail.bottom, s.rail.fontPt, 'bold');
+  });
+
+  // Miolo girado: colunas lado a lado à direita do fio, na mesma leitura.
+  let mioloX = s.miolo.firstBaselineX;
+  for (const column of objetivaMioloColumns(copy)) {
+    const fontPt = column.emphasis ? s.miolo.titleFontPt : s.miolo.fontPt;
+    drawRotatedLine(doc, column.text, mioloX, s.miolo.bottom, fontPt, 'bold');
+    // Passo proporcional ao corpo: o título ocupa coluna mais larga.
+    mioloX += column.emphasis ? s.miolo.step * 1.25 : s.miolo.step;
   }
 
-  let exchangeY = padT + logoBoxH + 0.45;
-  doc.setFontSize(3.35);
-  for (const line of copy.exchangeLines) {
-    doc.text(line, padL, exchangeY, { baseline: 'top', charSpace: -0.1 });
-    exchangeY += 1.75;
-  }
-  const headerBottom = Math.max(exchangeY, padT + logoBoxH + 0.55) + 0.25;
-  const footerTop = h - padB - footerH;
-  const runTop = headerBottom + 0.2;
-  const runBottom = footerTop - 0.3;
-
-  // Faixa esquerda: descrição vertical + divisor (colada à margem, como na foto).
-  const descLines = wrapObjetivaDescricao(copy.descricao);
-  const descSize = 4.6;
-  let x = padL + 0.55;
-  for (const line of descLines) {
-    drawRotatedLine(doc, line, x, runBottom, descSize, 'bold');
-    x += rotatedColumnStep(descSize, 0.18);
-  }
-
-  const dividerX = x + 0.35;
-  doc.line(dividerX, headerBottom, dividerX, footerTop);
-
-  // Faixa direita: CODE128 + SKU (topo) + semana/ano (base)
-  const barStripW = Math.min(7.0, contentW * 0.175);
-  const barX = w - padR - barStripW;
-  const skuX = barX - 1.85;
-  const weekX = skuX - 2.15;
-
+  // Código de barras girado: barras correm no eixo Y, espessura fixa em X.
   if (copy.codigoBarra) {
+    const barH = Math.max(2, s.barcode.bottom - s.barcode.top);
     try {
       const bars = code128Bars(copy.codigoBarra);
       const moduleCount = bars.reduce((max, b) => Math.max(max, b.start + b.width), 0);
-      const runH = Math.max(8, runBottom - runTop);
-      const module = Math.max(OBJETIVA_MODULE_MM, runH / Math.max(moduleCount, 1));
+      const module = barH / Math.max(moduleCount, 1);
       doc.setFillColor(0, 0, 0);
       for (const barra of bars) {
         const segH = barra.width * module;
-        const segY = runBottom - (barra.start + barra.width) * module;
-        doc.rect(barX, segY, barStripW, segH, 'F');
+        const segY = s.barcode.bottom - (barra.start + barra.width) * module;
+        doc.rect(s.barcode.x, segY, s.barcode.w, segH, 'F');
       }
     } catch {
-      doc.setFontSize(5);
       doc.setFont('helvetica', 'normal');
-      doc.text('(código inválido)', barX + 1.2, runTop + 8, { angle: 90 });
+      doc.setFontSize(5);
+      doc.text('(codigo invalido)', s.barcode.x, s.barcode.bottom, { angle: 90 });
     }
-  }
-
-  if (copy.codigoBarra) {
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(5.4);
-    const skuLen = doc.getTextWidth(copy.codigoBarra);
-    drawRotatedLine(doc, copy.codigoBarra, skuX, runTop + skuLen, 5.4, 'bold');
+    drawRotatedLine(doc, copy.codigoBarra, s.sku.baselineX, s.sku.bottom, s.sku.fontPt, 'bold');
   }
   if (copy.semanaAno) {
-    drawRotatedLine(doc, copy.semanaAno, weekX, runBottom, 4.2, 'normal');
+    drawRotatedLine(doc, copy.semanaAno, s.week.baselineX, s.week.bottom, s.week.fontPt, 'normal');
   }
 
-  // Miolo horizontal — hierarquia da foto: SANDALIA destaca, demais linhas justas.
-  const mioloLeft = dividerX + 1.1;
-  let mioloY = runTop + 0.25;
-  const mioloLines: Array<{ text: string; size: number; style: 'normal' | 'bold'; gap: number }> = [
-    { text: copy.tipo, size: 6.5, style: 'bold', gap: 2.55 },
-    { text: copy.categoria, size: 4.7, style: 'bold', gap: 2.25 },
-    { text: copy.material, size: 4.4, style: 'normal', gap: 2.15 },
-    { text: copy.referencia, size: 4.4, style: 'bold', gap: 2.15 },
-  ];
-  for (const line of mioloLines) {
-    if (!line.text) continue;
-    doc.setFont('helvetica', line.style);
-    doc.setFontSize(line.size);
-    doc.text(line.text, mioloLeft, mioloY, {
-      baseline: 'top',
-      charSpace: -0.12,
-    });
-    mioloY += line.gap;
-  }
-
-  // Footer: TAM.: à meia-altura do número; preço com centavos em sobrescrito.
-  const sizePt = 12.5;
-  const sizeTop = footerTop + 0.55;
-  const sizeHeightMm = sizePt * 0.352778;
+  // TAM.: rótulo pequeno + número grande, ambos na horizontal.
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(3.8);
-  doc.text('TAM.:', padL, sizeTop + sizeHeightMm * 0.42, {
-    baseline: 'top',
-    charSpace: -0.08,
-  });
+  doc.setFontSize(s.size.labelFontPt);
+  doc.text('TAM.:', s.size.labelX, s.size.baseline, { baseline: 'alphabetic' });
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(sizePt);
-  doc.text(copy.tamanho, padL + 5.6, sizeTop, { baseline: 'top' });
+  doc.setFontSize(s.size.valueFontPt);
+  doc.text(copy.tamanho, s.size.valueX, s.size.baseline, { baseline: 'alphabetic' });
 
-  const priceRight = w - padR;
+  // Preço: R$ na margem esquerda, valor alinhado à direita, centavos elevados.
   const centsLabel = `,${copy.priceCents}`;
-  const pricePt = 12.5;
-  const centsPt = 5.8;
-  const rsPt = 6.5;
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(centsPt);
-  const centsWidth = doc.getTextWidth(centsLabel);
-  doc.setFontSize(pricePt);
-  const mainWidth = doc.getTextWidth(copy.priceMain);
-  const mainTop = footerTop + 0.55;
-  const mainBottom = mainTop + pricePt * 0.352778;
-  doc.setFontSize(rsPt);
-  const rsWidth = doc.getTextWidth('R$');
-  const priceGap = 0.4;
-  const blockWidth = rsWidth + priceGap + mainWidth + 0.15 + centsWidth;
-  const blockLeft = priceRight - blockWidth;
+  doc.setFontSize(s.price.currencyFontPt);
+  doc.text('R$', s.price.currencyX, s.price.baseline, { baseline: 'alphabetic' });
 
-  doc.setFontSize(rsPt);
-  doc.text('R$', blockLeft, mainBottom - 0.15, { baseline: 'bottom' });
-  doc.setFontSize(pricePt);
-  doc.text(copy.priceMain, blockLeft + rsWidth + priceGap, mainTop, {
-    baseline: 'top',
-  });
-  doc.setFontSize(centsPt);
-  doc.text(centsLabel, blockLeft + rsWidth + priceGap + mainWidth + 0.15, mainTop, {
-    baseline: 'top',
+  doc.setFontSize(s.price.centsFontPt);
+  const centsWidth = doc.getTextWidth(centsLabel);
+  doc.setFontSize(s.price.mainFontPt);
+  const mainWidth = doc.getTextWidth(copy.priceMain);
+  const mainLeft = s.price.rightX - centsWidth - mainWidth;
+  doc.text(copy.priceMain, mainLeft, s.price.baseline, { baseline: 'alphabetic' });
+  doc.setFontSize(s.price.centsFontPt);
+  doc.text(centsLabel, mainLeft + mainWidth, s.price.baseline - s.price.centsRise, {
+    baseline: 'alphabetic',
   });
 }
 
@@ -603,6 +688,154 @@ export async function buildObjetivaPdf(
 export function objetivaPdfFilename(origem: string): string {
   const base = origem.replace(/\.[^.]+$/, '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '');
   return `Etiquetas_Objetiva_${base || 'pedido'}.pdf`;
+}
+
+function zplField(text: string, maxLen: number): string {
+  return text.replace(/[\^~]/g, ' ').slice(0, maxLen).trim();
+}
+
+/**
+ * ZPL 203 dpi na mesma mídia da Ponto Mix (L42PRO, rolo 40×60 mm).
+ *
+ * O bloco central usa orientação `B` (bottom-up) — a mesma leitura de baixo
+ * para cima da etiqueta física. A marca é imagem: no ZPL textual sai o
+ * wordmark aproximado dentro da faixa preta.
+ *
+ * ⚠ Não validado em impressora física ainda — conferir com uma etiqueta de
+ * teste antes de rodar o lote.
+ */
+export function buildObjetivaZpl(
+  rows: ClientOrderLine[],
+  options: {
+    geometry?: Partial<ClientLabelGeometry>;
+    branding?: Partial<ClientLabelBranding>;
+    repeatByQuantity?: boolean;
+  } = {},
+): string {
+  const geometry = mergeGeometry(options.geometry);
+  const branding = mergeBranding(options.branding);
+  const expanded = expandLines(rows, options.repeatByQuantity ?? true);
+  const D = OBJETIVA_ART_DOTS;
+
+  const W = mmToDots(geometry.labelWidthMm);
+  const H = mmToDots(geometry.labelHeightMm);
+  const kx = W / D.gridW;
+  const ky = H / D.gridH;
+  const dx = (v: number) => Math.round(v * kx);
+  const dy = (v: number) => Math.round(v * ky);
+  // ^A0 é medido pela ALTURA do caractere; caixa-alta ≈ 0,717 do corpo.
+  const fontFor = (capDots: number, min = 8) => Math.max(min, Math.round(capDots / CAP_RATIO));
+
+  const blocks = expanded.map(row => {
+    const copy = composeObjetivaLabelCopy(row, branding);
+    const barcode = copy.codigoBarra.replace(/[^A-Za-z0-9 ._/-]/g, '').slice(0, 48);
+
+    const band = {
+      x: dx(D.logoBand.x),
+      y: dy(D.logoBand.y),
+      w: dx(D.logoBand.w),
+      h: dy(D.logoBand.h),
+    };
+    const railFont = fontFor(dy(D.rail.capH));
+    const mioloFont = fontFor(dy(D.miolo.capH));
+    const mioloTitleFont = fontFor(dy(D.miolo.titleCapH));
+
+    // Coluna girada: ^FO no canto superior-esquerdo da caixa do campo.
+    const rotated = (
+      text: string,
+      rightX: number,
+      bottomY: number,
+      capDots: number,
+      font: number,
+    ) =>
+      text
+        ? `^FO${Math.max(0, dx(rightX) - Math.round(capDots / CAP_RATIO))},${Math.max(0, dy(bottomY) - Math.round(font * text.length * 0.62))}^A0B,${font},${font}^FD${zplField(text, 48)}^FS`
+        : '';
+
+    const railCmds = objetivaRotatedRailLines(copy).map((line, i) =>
+      rotated(line, D.rail.baselineX - D.rail.step * i, D.rail.bottom, dy(D.rail.capH), railFont),
+    );
+
+    let mioloX = D.miolo.firstBaselineX;
+    const mioloCmds = objetivaMioloColumns(copy).map(column => {
+      const font = column.emphasis ? mioloTitleFont : mioloFont;
+      const capDots = column.emphasis ? dy(D.miolo.titleCapH) : dy(D.miolo.capH);
+      const cmd = rotated(column.text, mioloX, D.miolo.bottom, capDots, font);
+      mioloX += column.emphasis ? D.miolo.step * 1.25 : D.miolo.step;
+      return cmd;
+    });
+
+    let barcodeCmds: string[] = [];
+    if (barcode) {
+      const span = dy(D.barcode.bottom) - dy(D.barcode.top);
+      let moduleCount = 0;
+      try {
+        const bars = code128Bars(barcode);
+        moduleCount = bars.reduce((max, b) => Math.max(max, b.start + b.width), 0);
+      } catch {
+        moduleCount = 0;
+      }
+      const module = moduleCount > 0 ? Math.max(2, Math.floor(span / moduleCount)) : 2;
+      barcodeCmds = [
+        `^BY${module},2.0,${dx(D.barcode.w)}`,
+        `^FO${dx(D.barcode.x)},${dy(D.barcode.top)}`,
+        `^BCB,${dx(D.barcode.w)},N,N,N`,
+        `^FD${barcode}^FS`,
+        rotated(barcode, D.sku.baselineX, D.sku.bottom, dy(D.sku.capH), fontFor(dy(D.sku.capH))),
+      ];
+    }
+
+    const sizeFont = fontFor(dy(D.size.valueCapH), 14);
+    const sizeLabelFont = fontFor(dy(D.size.labelCapH));
+    const mottoFont = fontFor(dy(D.motto.capH));
+    const exchangeFont = fontFor(dy(D.exchange.capH));
+    const currencyFont = fontFor(dy(D.price.currencyCapH));
+    const mainFont = fontFor(dy(D.price.mainCapH), 16);
+    const centsFont = fontFor(dy(D.price.centsCapH));
+    const mainText = zplField(copy.priceMain, 12);
+    const centsText = zplField(`,${copy.priceCents}`, 6);
+    // ^FB à direita: largura da caixa até a margem direita da arte.
+    const priceBoxX = dx(D.price.rightX) - Math.round(mainFont * 0.62 * (mainText.length + 3));
+
+    return [
+      '^XA',
+      `^PW${W}`,
+      `^LL${H}`,
+      '^LH0,0',
+      '^CI28',
+      `^FO${band.x},${band.y}^GB${band.w},${band.h},${band.h},B^FS`,
+      `^FO${band.x + Math.round(band.w * 0.06)},${band.y + Math.round(band.h * 0.22)}^A0N,${Math.round(band.h * 0.56)},${Math.round(band.h * 0.56)}^FR^FD${zplField('objetiva', 16)}^FS`,
+      ...copy.mottoLines.map(
+        (line, i) =>
+          `^FO${dx(D.motto.x)},${dy(D.motto.firstTop + D.motto.step * i)}^A0N,${mottoFont},${mottoFont}^FD${zplField(line, 16)}^FS`,
+      ),
+      ...copy.exchangeLines.map(
+        (line, i) =>
+          `^FO${dx(D.exchange.x)},${dy(D.exchange.firstTop + D.exchange.step * i)}^A0N,${exchangeFont},${exchangeFont}^FD${zplField(line, 24)}^FS`,
+      ),
+      `^FO${dx(D.divider.x)},${dy(D.divider.top)}^GB${Math.max(1, dx(D.divider.stroke))},${dy(D.divider.bottom) - dy(D.divider.top)},${Math.max(1, dx(D.divider.stroke))},B^FS`,
+      ...railCmds,
+      ...mioloCmds,
+      ...barcodeCmds,
+      copy.semanaAno
+        ? rotated(copy.semanaAno, D.week.baselineX, D.week.bottom, dy(D.week.capH), fontFor(dy(D.week.capH)))
+        : '',
+      `^FO${dx(D.size.labelX)},${dy(D.size.baseline) - sizeLabelFont}^A0N,${sizeLabelFont},${sizeLabelFont}^FD${zplField('TAM.:', 8)}^FS`,
+      `^FO${dx(D.size.valueX)},${dy(D.size.baseline) - sizeFont}^A0N,${sizeFont},${sizeFont}^FD${zplField(copy.tamanho, 6)}^FS`,
+      `^FO${dx(D.price.currencyX)},${dy(D.price.baseline) - currencyFont}^A0N,${currencyFont},${currencyFont}^FD${zplField('R$', 4)}^FS`,
+      `^FO${priceBoxX},${dy(D.price.baseline) - mainFont}^A0N,${mainFont},${mainFont}^FB${dx(D.price.rightX) - priceBoxX},1,0,R^FD${mainText}${centsText}^FS`,
+      '^XZ',
+    ]
+      .filter(Boolean)
+      .join('\n');
+  });
+
+  return blocks.join('\n\n');
+}
+
+export function objetivaZplFilename(origem: string): string {
+  const base = origem.replace(/\.[^.]+$/, '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '');
+  return `Etiquetas_Objetiva_${base || 'pedido'}_L42PRO.zpl`;
 }
 
 export function countObjetivaLabels(rows: ClientOrderLine[], repeatByQuantity: boolean): number {
