@@ -7,9 +7,9 @@ import { cn } from '@/lib/utils';
 import { SectionTitle } from '@/components/technical-sheets/sheetFormFields';
 
 export const ALL_PRODUCTION_SECTORS = [
-   // Sub-etapas paralelas de Corte (decisão 2026-05-12):
-   //   - Corte Fibra: sempre (todo sapato tem palmilha)
-   //   - Corte Forração: quando o modelo tem forração na palmilha
+   // Sub-etapas paralelas de Corte (decisão 2026-05-12; rename Palmilha · * 2026-09):
+   //   - Palmilha · Fibra: sempre (todo sapato tem palmilha)
+   //   - Palmilha · Forração: quando o modelo tem forração na palmilha
    //   - Corte Cabedal: opt-in por modelo (cabedal / cabedal forrado) —
    //     ConstructionConfigPanel escreve; o trigger tg_normalize_production_sectors
    //     MANTÉM (mig 20270101005300). Comentário antigo dizia que o trigger
@@ -22,8 +22,8 @@ export const ALL_PRODUCTION_SECTORS = [
    // ⚠ A ordem aqui espelha `canonical_stage_order()` no banco. Setor que
    // você adicionar aqui TEM que entrar na lista canônica do trigger também,
    // senão o usuário marca, salva, e o valor desaparece sem erro.
-   { name: 'Corte Fibra',      order: 1 },
-   { name: 'Corte Forração',   order: 2 },
+   { name: 'Palmilha · Fibra',      order: 1 },
+   { name: 'Palmilha · Forração',   order: 2 },
    { name: 'Corte Cabedal',    order: 2 },
    { name: 'Acabamento Palmilha', order: 3 },
    { name: 'Costura Cabedal',  order: 4 },
@@ -41,7 +41,7 @@ export const ALL_PRODUCTION_SECTORS = [
 // O editor desabilita os chips pra não fingir que a seleção foi salva.
 // Palmilha pronta na cor ⇒ não há palmilha pra cortar nem pra costurar. A
 // costura de CABEDAL segue valendo (é outro componente).
-const READY_MADE_STRIPPED_SECTORS = ['Corte Fibra', 'Corte Forração', 'Acabamento Palmilha'];
+const READY_MADE_STRIPPED_SECTORS = ['Palmilha · Fibra', 'Palmilha · Forração', 'Corte Fibra', 'Corte Forração', 'Acabamento Palmilha'];
  
 // Etapas fixas do setor Aviamento. Quando o user marca Aviamento em
 // production_sectors, abre um sub-painel pra escolher quais dessas etapas
@@ -78,8 +78,8 @@ export function ProductionSectorsTab({
   sectors: string[];
   onSave: (sectors: string[], aviamentoSteps: string[]) => void;
   aviamentoSteps: string[];
-  /** Palmilha pronta na cor: o trigger do banco remove Corte Fibra/
-   *  Corte Forração/Costura do roteiro — os chips ficam desabilitados. */
+  /** Palmilha pronta na cor: o trigger do banco remove Palmilha · Fibra/
+   *  Palmilha · Forração/Costura do roteiro — os chips ficam desabilitados. */
   insoleReadyMade?: boolean;
   saving?: boolean;
 }) {
@@ -159,7 +159,7 @@ export function ProductionSectorsTab({
       </div>
       {insoleReadyMade && (
         <p className="text-xs text-warning">
-          ⚠ Palmilha pronta na cor: Corte Fibra, Corte Forração e Costura são removidos do roteiro automaticamente.
+          ⚠ Palmilha pronta na cor: Palmilha · Fibra, Palmilha · Forração e Costura são removidos do roteiro automaticamente.
         </p>
       )}
 

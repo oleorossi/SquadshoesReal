@@ -14,7 +14,8 @@ import type { OrderStage } from '@/hooks/useOrderStages';
 export const norm = (s: string) => {
   const trimmed = (s || '').trim();
   if (trimmed === 'Mesa') return 'Aviamento';
-  if (trimmed === 'Corte Palmilha') return 'Corte Fibra';
+  if (trimmed === 'Corte Palmilha' || trimmed === 'Corte Fibra') return 'Palmilha · Fibra';
+  if (trimmed === 'Corte Forração' || trimmed === 'Forração') return 'Palmilha · Forração';
   // Display rename 2026-09: Costura Palmilha → Acabamento Palmilha.
   if (trimmed === 'Costura Palmilha') return 'Acabamento Palmilha';
   return trimmed;

@@ -3,10 +3,12 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
   CheckSquare, Square, Warning as AlertTriangle, CalendarBlank, Package, Timer,
+  CheckCircle as CheckCircle2, Circle,
 } from '@phosphor-icons/react';
 import { thumbUrl } from '@/lib/imageThumb';
 import { fmtDate, KanbanCardData } from './kanbanDerive';
 import { cardCommercialPrimary, partialRemaining } from './kanbanQueueSplit';
+import { palmilhaCheckState } from '@/lib/palmilhaKanbanColumn';
 
 interface Props {
   card: KanbanCardData;
@@ -35,6 +37,8 @@ interface Props {
   materialGateDate?: string | null;
   materialGateReason?: string | null;
   onHoverOrder?: (orderId: string | null) => void;
+  /** Coluna visual Palmilha: até 2 checks (Fibra / Forração); N/A oculto. */
+  showPalmilhaChecks?: boolean;
 }
 
 /**
@@ -62,6 +66,7 @@ export function KanbanOpCard({
   compact = false, dimmed = false, highlighted = false, siblingActive = false,
   selectable = false, selected = false, onToggleSelect, readOnly = false, photoUrl, landed = false,
   materialGateDate = null, materialGateReason = null, onHoverOrder,
+  showPalmilhaChecks = false,
 }: Props) {
   const { q, front, delivered, isPartial, columnStage, upstreamGap, parallelSiblings } = card;
   const total = columnStage?.quantity_total || q.quantity;
@@ -71,6 +76,7 @@ export function KanbanOpCard({
   const { pv, client } = cardCommercialPrimary(q);
   const thumbSize = 40;
   const thumb = thumbUrl(photoUrl || q.reference_photo_url, thumbSize);
+  const palmilhaChecks = showPalmilhaChecks ? palmilhaCheckState(card.stages) : null;
 
   return (
     <Card
@@ -242,6 +248,42 @@ export function KanbanOpCard({
             <p className="mt-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-400 leading-tight">
               Faltam {restante.toLocaleString('pt-BR')} pares neste setor
             </p>
+          )}
+
+          {palmilhaChecks && (palmilhaChecks.showFibra || palmilhaChecks.showForracao) && (
+            <div
+              className="mt-1 flex flex-wrap items-center gap-1.5"
+              title="Passos de Palmilha nesta OP — lado N/A não aparece"
+            >
+              {palmilhaChecks.showFibra && (
+                <span
+                  className={`inline-flex items-center gap-0.5 text-[9px] font-semibold uppercase tracking-wide ${
+                    palmilhaChecks.fibraDone
+                      ? 'text-emerald-700 dark:text-emerald-400'
+                      : 'text-muted-foreground'
+                  }`}
+                >
+                  {palmilhaChecks.fibraDone
+                    ? <CheckCircle2 className="h-3 w-3" weight="fill" />
+                    : <Circle className="h-3 w-3" />}
+                  Fibra
+                </span>
+              )}
+              {palmilhaChecks.showForracao && (
+                <span
+                  className={`inline-flex items-center gap-0.5 text-[9px] font-semibold uppercase tracking-wide ${
+                    palmilhaChecks.forracaoDone
+                      ? 'text-emerald-700 dark:text-emerald-400'
+                      : 'text-muted-foreground'
+                  }`}
+                >
+                  {palmilhaChecks.forracaoDone
+                    ? <CheckCircle2 className="h-3 w-3" weight="fill" />
+                    : <Circle className="h-3 w-3" />}
+                  Forração
+                </span>
+              )}
+            </div>
           )}
 
           <div className="mt-0.5 flex items-center justify-end gap-1.5">

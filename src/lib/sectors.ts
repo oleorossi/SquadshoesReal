@@ -86,8 +86,8 @@ export function sheetHasSector(sheet: { production_sectors?: unknown } | null | 
 
 /** Rótulo de usuário por enum de setor. */
 export const SECTOR_LABELS: Record<SectorKey, string> = {
-  corte_palmilha:   'Corte Fibra',
-  corte_forracao:   'Corte Forração',
+  corte_palmilha:   'Palmilha · Fibra',
+  corte_forracao:   'Palmilha · Forração',
   corte_cabedal:    'Corte Cabedal',
   costura_palmilha: 'Acabamento Palmilha',
   costura_cabedal:  'Costura Cabedal',
@@ -132,7 +132,7 @@ export const DISPLAY_SECTORS: { key: SectorKey; label: string }[] = [
  * desde a migration 20261001120000 — hoje são `Acabamento Palmilha` e `Costura Cabedal`).
  */
 export const SECTOR_FLOW: string[] = [
-  'Corte Fibra', 'Corte Forração', 'Corte Cabedal',
+  'Palmilha · Fibra', 'Palmilha · Forração', 'Corte Cabedal',
   'Acabamento Palmilha', 'Costura Cabedal', 'Aviamento',
   'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição',
 ];
@@ -144,17 +144,22 @@ export const SECTOR_FLOW: string[] = [
  * 2026-07-29). Setor sem grupo é sequencial: só arranca quando o nível anterior
  * entrega.
  *
- *   Corte Fibra ‖ Corte Forração ‖ Corte Cabedal        → grupo 'corte'
+ *   Palmilha · Fibra ‖ Palmilha · Forração ‖ Corte Cabedal  → grupo 'corte'
  *   Acabamento Palmilha ‖ Costura Cabedal ‖ Aviamento     → grupo 'costura_aviamento'
  *   Silk → Colagem → Montagem → Solagem → Acabamento → Expedição   (sequenciais)
  *
  * ⚠ Este mapa é o FALLBACK estático. Quando houver `sector_settings` em mão
  * (`useSectorSettings()`), prefira `parallelGroupsFromSettings()` — o dono pode
  * reagrupar setores pela tela /producao/setores e o banco é quem manda.
+ *
+ * Coluna visual do Kanban agrega Fibra+Forração sob "Palmilha" (spec
+ * ficha-palmilha-unificada); os passos internos e a capacidade continuam 2.
  */
 export const SECTOR_PARALLEL_GROUP: Record<string, string | null> = {
+  'Palmilha · Fibra': 'corte',
+  'Palmilha · Forração': 'corte',
   'Corte Fibra':      'corte',
-  // Grafia legada — o quadro normaliza pra Corte Fibra; o fallback estático
+  // Grafia legada — o quadro normaliza pra Palmilha · Fibra; o fallback estático
   // precisa do mesmo grupo senão Palmilha vira nível sentinela 1e6+order.
   'Corte Palmilha':   'corte',
   'Corte Forração':   'corte',

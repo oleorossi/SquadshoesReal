@@ -10,7 +10,7 @@ import type { OrderStage } from '@/hooks/useOrderStages';
  */
 
 const FLOW = new Map<string, number>([
-  ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Corte Forração', 2], ['Costura', 3],
+  ['Palmilha · Fibra', 1], ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Palmilha · Forração', 2], ['Corte Forração', 2], ['Costura', 3],
   ['Aviamento', 4], ['Silk', 5], ['Montagem', 6],
 ]);
 
@@ -68,7 +68,7 @@ describe('buildPointingPlan', () => {
       stage('Corte Palmilha', 1), stage('Corte Forração', 2), stage('Costura', 3), stage('Aviamento', 4),
     ];
     const plan = buildPointingPlan(makeCard({ stages, column: 'Corte Palmilha' }), 'Aviamento', FLOW);
-    expect(plan.skipped).toEqual(['Corte Forração', 'Costura']);
+    expect(plan.skipped).toEqual(['Palmilha · Forração', 'Costura']);
     expect(plan.pointedStage?.stage_name).toBe('Corte Palmilha');
   });
 
@@ -132,7 +132,7 @@ describe('buildPointingPlan', () => {
       stage('Costura', 3),
     ];
     const levels = new Map([
-      ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Corte Forração', 1], ['Costura', 2],
+      ['Palmilha · Fibra', 1], ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Palmilha · Forração', 1], ['Corte Forração', 1], ['Costura', 2],
     ]);
     const plan = buildPointingPlan(
       makeCard({ stages, column: 'Corte Forração', front: stages[0] }),
@@ -156,7 +156,7 @@ describe('buildPointingPlan', () => {
       FLOW,
     );
     expect(plan.available).toBe(false);
-    expect(plan.unavailableReason).toMatch(/estornar Corte Forração.*volte para Corte Forração/i);
+    expect(plan.unavailableReason).toMatch(/estornar Palmilha · Forração.*volte para Palmilha · Forração/i);
   });
 
   it('setor final parcial estorna o próprio setor ao voltar um nível', () => {
@@ -197,7 +197,7 @@ describe('buildPointingPlan', () => {
       stage('Costura', 3),
     ];
     const levels = new Map([
-      ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Corte Forração', 1], ['Costura', 2],
+      ['Palmilha · Fibra', 1], ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Palmilha · Forração', 1], ['Corte Forração', 1], ['Costura', 2],
     ]);
     const openSibling = buildPointingPlan(
       makeCard({ stages, column: 'Corte Palmilha' }),
@@ -206,7 +206,7 @@ describe('buildPointingPlan', () => {
       levels,
     );
     expect(openSibling.available).toBe(false);
-    expect(openSibling.unavailableReason).toMatch(/conclua primeiro Corte Forração/i);
+    expect(openSibling.unavailableReason).toMatch(/conclua primeiro Palmilha · Forração/i);
     expect(moveOptions(
       makeCard({ stages, column: 'Corte Palmilha' }),
       FLOW,
@@ -230,7 +230,7 @@ describe('buildPointingPlan', () => {
       stage('Costura', 3),
     ];
     const levels = new Map([
-      ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Corte Forração', 1], ['Costura', 2],
+      ['Palmilha · Fibra', 1], ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Palmilha · Forração', 1], ['Corte Forração', 1], ['Costura', 2],
     ]);
     const opts = { allowParallelSkip: true as const };
     const plan = buildPointingPlan(
@@ -241,7 +241,7 @@ describe('buildPointingPlan', () => {
       opts,
     );
     expect(plan.available).toBe(true);
-    expect(plan.skipped).toEqual(['Corte Forração']);
+    expect(plan.skipped).toEqual(['Palmilha · Forração']);
     expect(plan.pointedStage?.stage_name).toBe('Corte Palmilha');
     expect(moveOptions(
       makeCard({ stages, column: 'Corte Palmilha' }),
@@ -258,7 +258,7 @@ describe('buildPointingPlan', () => {
       stage('Costura', 3),
     ];
     const levels = new Map([
-      ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Corte Forração', 1], ['Costura', 2],
+      ['Palmilha · Fibra', 1], ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Palmilha · Forração', 1], ['Corte Forração', 1], ['Costura', 2],
     ]);
     const plan = buildPointingPlan(
       makeCard({ stages, column: 'Corte Forração' }),
@@ -268,7 +268,7 @@ describe('buildPointingPlan', () => {
       { allowParallelSkip: true },
     );
     expect(plan.available).toBe(true);
-    expect(plan.skipped).toEqual(['Corte Fibra']);
+    expect(plan.skipped).toEqual(['Palmilha · Fibra']);
     expect(plan.pointedStage?.stage_name).toBe('Corte Forração');
   });
 
@@ -279,7 +279,7 @@ describe('buildPointingPlan', () => {
       stage('Costura', 3),
     ];
     const levels = new Map([
-      ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Corte Forração', 1], ['Costura', 2],
+      ['Palmilha · Fibra', 1], ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Palmilha · Forração', 1], ['Corte Forração', 1], ['Costura', 2],
     ]);
     const plan = buildPointingPlan(
       makeCard({ stages, column: 'Corte Palmilha' }),
@@ -289,7 +289,7 @@ describe('buildPointingPlan', () => {
       { allowParallelSkip: true },
     );
     expect(plan.available).toBe(false);
-    expect(plan.unavailableReason).toMatch(/setor paralelo a Corte Fibra/i);
+    expect(plan.unavailableReason).toMatch(/setor paralelo a Palmilha · Fibra/i);
   });
 
   it('sem destino aponta no próprio setor atual', () => {
@@ -313,12 +313,12 @@ describe('buildPointingPlan', () => {
  */
 describe('rota da OP prevalece sobre sector_settings (dados de produção)', () => {
   const FLOW_REAL = new Map<string, number>([
-    ['Corte Fibra', 10], ['Corte Palmilha', 10], ['Corte Forração', 20], ['Aviamento', 30], ['Costura', 40],
+    ['Palmilha · Fibra', 10], ['Corte Fibra', 10], ['Corte Palmilha', 10], ['Palmilha · Forração', 20], ['Corte Forração', 20], ['Aviamento', 30], ['Costura', 40],
     ['Silk', 50], ['Colagem', 60], ['Montagem', 70], ['Solagem', 80],
     ['Acabamento', 90], ['Expedição', 100],
   ]);
   const ROTA_REAL: Array<[string, number]> = [
-    ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Corte Forração', 2], ['Costura', 3], ['Aviamento', 4],
+    ['Palmilha · Fibra', 1], ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Palmilha · Forração', 2], ['Corte Forração', 2], ['Costura', 3], ['Aviamento', 4],
     ['Silk', 5], ['Colagem', 6], ['Montagem', 7], ['Solagem', 8],
     ['Acabamento', 9], ['Expedição', 10],
   ];
@@ -333,7 +333,7 @@ describe('rota da OP prevalece sobre sector_settings (dados de produção)', () 
       { order_id: 'op', order_number: 'OP-00804', quantity: 12 } as KanbanCardData['q'],
       stages, FLOW_REAL,
     )!;
-    expect(card.column).toBe('Corte Forração');
+    expect(card.column).toBe('Palmilha · Forração');
     const plan = buildPointingPlan(card, 'Costura', FLOW_REAL);
     expect(plan.skipped).toEqual([]);   // era ['Aviamento'] antes do fix
     expect(plan.isBackward).toBe(false);
@@ -369,7 +369,7 @@ describe('moveOptions', () => {
     const front = stages[0];
     const opts = moveOptions(makeCard({ stages, column: 'Corte Forração', front }), FLOW);
     expect(opts.fwdOptions).toEqual(['Costura', 'Aviamento']);
-    expect(opts.backOption).toBe('Corte Fibra');
+    expect(opts.backOption).toBe('Palmilha · Fibra');
   });
 
   it('sem progresso não oferece volta', () => {
@@ -384,7 +384,7 @@ describe('moveOptions', () => {
       stage('Corte Palmilha', 1), stage('Corte Forração', 2), stage('Costura', 3),
     ];
     const levels = new Map([
-      ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Corte Forração', 1], ['Costura', 2],
+      ['Palmilha · Fibra', 1], ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Palmilha · Forração', 1], ['Corte Forração', 1], ['Costura', 2],
     ]);
     const opts = moveOptions(
       makeCard({ stages, column: 'Corte Palmilha' }),
@@ -400,7 +400,7 @@ describe('moveOptions', () => {
       stage('Corte Palmilha', 1), stage('Corte Forração', 2), stage('Costura', 3),
     ];
     const levels = new Map([
-      ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Corte Forração', 1], ['Costura', 2],
+      ['Palmilha · Fibra', 1], ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Palmilha · Forração', 1], ['Corte Forração', 1], ['Costura', 2],
     ]);
     const opts = moveOptions(
       makeCard({ stages, column: 'Corte Palmilha' }),
@@ -420,7 +420,7 @@ describe('moveOptions', () => {
       makeCard({ stages, column: 'Corte Forração', front: stages[1] }),
       FLOW,
     );
-    expect(opts.backOption).toBe('Corte Fibra');
+    expect(opts.backOption).toBe('Palmilha · Fibra');
   });
 
   it('não oferece setor pulado com zero como origem de estorno', () => {
@@ -433,7 +433,7 @@ describe('moveOptions', () => {
       makeCard({ stages, column: 'Costura', front: stages[1] }),
       FLOW,
     );
-    expect(opts.backOption).toBe('Corte Fibra');
+    expect(opts.backOption).toBe('Palmilha · Fibra');
   });
 });
 
@@ -535,7 +535,7 @@ describe('applyPointing — confirmação humana do pulo', () => {
       stage('Corte Palmilha', 1), stage('Corte Forração', 2), stage('Costura', 3),
     ];
     const levels = new Map([
-      ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Corte Forração', 1], ['Costura', 2],
+      ['Palmilha · Fibra', 1], ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Palmilha · Forração', 1], ['Corte Forração', 1], ['Costura', 2],
     ]);
     const parallelCard = makeCard({ stages: parallelStages, column: 'Corte Palmilha' });
     const plan = buildPointingPlan(parallelCard, 'Costura', FLOW, levels);
@@ -554,7 +554,7 @@ describe('applyPointing — confirmação humana do pulo', () => {
       stage('Corte Palmilha', 1), stage('Corte Forração', 2), stage('Costura', 3),
     ];
     const levels = new Map([
-      ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Corte Forração', 1], ['Costura', 2],
+      ['Palmilha · Fibra', 1], ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Palmilha · Forração', 1], ['Corte Forração', 1], ['Costura', 2],
     ]);
     const parallelCard = makeCard({ stages: parallelStages, column: 'Corte Palmilha' });
     const plan = buildPointingPlan(
@@ -571,7 +571,7 @@ describe('applyPointing — confirmação humana do pulo', () => {
     expect(calls[0]).toMatchObject({
       stageName: 'Corte Palmilha',
       quantity: 100,
-      skipStageNames: ['Corte Forração'],
+      skipStageNames: ['Palmilha · Forração'],
     });
   });
 
@@ -584,7 +584,7 @@ describe('applyPointing — confirmação humana do pulo', () => {
     expect(res.status).toBe('ok');
     const calls = (apontar as unknown as { calls: Array<{ skipStageNames?: string[] }> }).calls;
     expect(calls).toHaveLength(1);
-    expect(calls[0].skipStageNames).toEqual(['Corte Forração', 'Costura']);
+    expect(calls[0].skipStageNames).toEqual(['Palmilha · Forração', 'Costura']);
   });
 
   it('movimento sem pulo não pede aceite nenhum', async () => {
@@ -632,15 +632,15 @@ describe('applyPointing — estorno do setor atual parcial', () => {
  * Dados vivos (ssvxfoybzmjlypnipqzn): OP-2026-00969, 180 pares, todas as
  * etapas pendentes 0/180, rota completa incluindo Expedição no FIM.
  */
-describe('alias Corte Palmilha → Corte Fibra (OP-2026-00969 / PV-00142)', () => {
+describe('alias Corte Palmilha → Palmilha · Fibra (OP-2026-00969 / PV-00142)', () => {
   const FLOW_PROD = new Map<string, number>([
-    ['Corte Fibra', 10], ['Corte Cabedal', 15], ['Corte Forração', 20],
+    ['Palmilha · Fibra', 10], ['Corte Fibra', 10], ['Corte Cabedal', 15], ['Palmilha · Forração', 20], ['Corte Forração', 20],
     ['Acabamento Palmilha', 30], ['Costura Cabedal', 40], ['Aviamento', 50],
     ['Silk', 60], ['Colagem', 70], ['Montagem', 80], ['Solagem', 90],
     ['Acabamento', 100], ['Expedição', 110],
   ]);
   const LEVEL_PROD = new Map<string, number>([
-    ['Corte Fibra', 10], ['Corte Cabedal', 10], ['Corte Forração', 10],
+    ['Palmilha · Fibra', 10], ['Corte Fibra', 10], ['Corte Cabedal', 10], ['Palmilha · Forração', 10], ['Corte Forração', 10],
     ['Acabamento Palmilha', 30], ['Costura Cabedal', 30], ['Aviamento', 30],
     ['Silk', 60], ['Colagem', 70], ['Montagem', 80], ['Solagem', 90],
     ['Acabamento', 100], ['Expedição', 110],
@@ -662,16 +662,16 @@ describe('alias Corte Palmilha → Corte Fibra (OP-2026-00969 / PV-00142)', () =
   it('o card nasce na coluna Corte Fibra, em paralelo com Corte Forração', () => {
     const q = { order_id: 'op-1', order_number: 'OP-2026-00969', quantity: 180 } as KanbanCardData['q'];
     const cards = deriveCards(q, rotaViva(), FLOW_PROD, LEVEL_PROD);
-    expect(cards.map(c => c.column).sort()).toEqual(['Corte Fibra', 'Corte Forração']);
-    const fibra = cards.find(c => c.column === 'Corte Fibra')!;
+    expect(cards.map(c => c.column).sort()).toEqual(['Palmilha · Fibra', 'Palmilha · Forração']);
+    const fibra = cards.find(c => c.column === 'Palmilha · Fibra')!;
     expect(fibra.columnStage?.stage_name).toBe('Corte Palmilha');
-    expect(fibra.parallelSiblings).toEqual(['Corte Forração']);
+    expect(fibra.parallelSiblings).toEqual(['Palmilha · Forração']);
   });
 
   it('apontar o próprio Corte Fibra NÃO pula para Expedição', () => {
     const q = { order_id: 'op-1', order_number: 'OP-2026-00969', quantity: 180 } as KanbanCardData['q'];
     const fibra = deriveCards(q, rotaViva(), FLOW_PROD, LEVEL_PROD)
-      .find(c => c.column === 'Corte Fibra')!;
+      .find(c => c.column === 'Palmilha · Fibra')!;
     const plan = buildPointingPlan(fibra, null, FLOW_PROD, LEVEL_PROD);
     expect(plan.available).toBe(true);
     expect(plan.skipped).toEqual([]);
@@ -682,17 +682,17 @@ describe('alias Corte Palmilha → Corte Fibra (OP-2026-00969 / PV-00142)', () =
   it('arrastar para Expedição com Forração aberta é recusado — não é atalho', () => {
     const q = { order_id: 'op-1', order_number: 'OP-2026-00969', quantity: 180 } as KanbanCardData['q'];
     const fibra = deriveCards(q, rotaViva(), FLOW_PROD, LEVEL_PROD)
-      .find(c => c.column === 'Corte Fibra')!;
+      .find(c => c.column === 'Palmilha · Fibra')!;
     const plan = buildPointingPlan(fibra, 'Expedição', FLOW_PROD, LEVEL_PROD);
     expect(plan.available).toBe(false);
     expect(plan.skipped).toEqual([]);
-    expect(plan.unavailableReason).toMatch(/Conclua primeiro Corte Forração/i);
+    expect(plan.unavailableReason).toMatch(/conclua primeiro Palmilha · Forração/i);
   });
 
   it('o select de mover não oferece Expedição enquanto o par paralelo está aberto', () => {
     const q = { order_id: 'op-1', order_number: 'OP-2026-00969', quantity: 180 } as KanbanCardData['q'];
     const fibra = deriveCards(q, rotaViva(), FLOW_PROD, LEVEL_PROD)
-      .find(c => c.column === 'Corte Fibra')!;
+      .find(c => c.column === 'Palmilha · Fibra')!;
     expect(moveOptions(fibra, FLOW_PROD, LEVEL_PROD).fwdOptions).toEqual([]);
   });
 

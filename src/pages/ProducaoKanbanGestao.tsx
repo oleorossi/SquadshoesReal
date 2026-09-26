@@ -52,6 +52,15 @@ import { KanbanOpCard } from '@/components/production/kanban/KanbanOpCard';
 import { DropApontarDialog } from '@/components/production/kanban/DropApontarDialog';
 import { BulkMoveDialog } from '@/components/production/kanban/BulkMoveDialog';
 import { QrScanDialog } from '@/components/production/kanban/QrScanDialog';
+import {
+  cardsBelongToPalmilhaColumn,
+  collapsePalmilhaColumns,
+  foldPalmilhaCardsForColumn,
+  PALMILHA_COLUMN,
+  palmilhaVisualFlowOrder,
+  resolvePalmilhaPointingTarget,
+  toPalmilhaVisualColumn,
+} from '@/lib/palmilhaKanbanColumn';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -217,13 +226,17 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
     else document.documentElement.requestFullscreen().catch(() => toast.error('Tela cheia indisponível neste navegador.'));
   };
 
-  const flowOrder = useMemo(() => new Map(sectors.map(s => [s.sector, s.flow_order])), [sectors]);
+  const flowOrder = useMemo(() => {
+    const m = new Map(sectors.map(s => [s.sector, s.flow_order]));
+    m.set(PALMILHA_COLUMN, palmilhaVisualFlowOrder(m));
+    return m;
+  }, [sectors]);
   /**
    * Nível do MOTOR por setor. Setores do mesmo `parallel_group` colapsam no
    * menor `flow_order` do grupo — é exatamente o `COALESCE(g.grp_order,
    * ss.flow_order)` de `recompute_production_schedule`. Espelhar o servidor
-   * aqui é o que faz o quadro concordar com a agenda: hoje Corte Palmilha +
-   * Corte Forração são um nível, e Acabamento Palmilha + Costura Cabedal +
+   * aqui é o que faz o quadro concordar com a agenda: hoje Palmilha · Fibra +
+   * Palmilha · Forração são um nível, e Acabamento Palmilha + Costura Cabedal +
    * Aviamento são outro.
    */
   const levelOf = useMemo(() => {
@@ -233,10 +246,16 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
       const cur = grpMin.get(s.parallel_group);
       if (cur === undefined || s.flow_order < cur) grpMin.set(s.parallel_group, s.flow_order);
     }
-    return new Map(sectors.map(s => [
+    const m = new Map(sectors.map(s => [
       s.sector,
       (s.parallel_group ? grpMin.get(s.parallel_group) : undefined) ?? s.flow_order,
     ]));
+    // Coluna visual Palmilha herda o nível do grupo corte
+    const corteLevel = [...m.entries()]
+      .filter(([name]) => cardsBelongToPalmilhaColumn(name) && name !== PALMILHA_COLUMN)
+      .map(([, lvl]) => lvl);
+    if (corteLevel.length) m.set(PALMILHA_COLUMN, Math.min(...corteLevel));
+    return m;
   }, [sectors]);
   const stagesByOrder = useMemo(() => {
     const m = new Map<string, typeof allStages>();
@@ -349,11 +368,13 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
   }, [matches]);
 
   // Colunas: setores ativos na ordem do fluxo + qualquer setor que apareça como
-  // coluna de um card do CHÃO (setor desligado globalmente mas presente via ficha)
+  // coluna de um card do CHÃO (setor desligado globalmente mas presente via ficha).
+  // Spec ficha-palmilha-unificada: Fibra+Forração colapsam na visual "Palmilha".
   const columns = useMemo(() => {
     const active = sectors.filter(s => s.enabled).map(s => s.sector);
     const extra = [...new Set(boardCards.map(c => c.column))].filter(s => !active.includes(s));
-    return [...active, ...extra].sort((a, b) => (flowOrder.get(a) ?? 999) - (flowOrder.get(b) ?? 999));
+    const raw = [...active, ...extra].sort((a, b) => (flowOrder.get(a) ?? 999) - (flowOrder.get(b) ?? 999));
+    return collapsePalmilhaColumns(raw);
   }, [sectors, boardCards, flowOrder]);
 
   const gridToday = useMemo(() => new Map(todayGrid.map(g => [g.sector, g])), [todayGrid]);
@@ -399,12 +420,19 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
   }, [filaCards]);
 
   // WIP por setor + gargalo — SÓ no chão (reservadas não entram no quadro).
+  // Coluna visual Palmilha agrega Fibra+Forração (um card por OP).
   const wipBySector = useMemo(() => {
     const m = new Map<string, number>();
     if (boardMode !== 'chao') return m;
+    const seenPalmilha = new Set<string>();
     for (const c of boardCards) {
       if (!countsForConstraint(c)) continue;
-      m.set(c.column, (m.get(c.column) || 0) + 1);
+      const col = toPalmilhaVisualColumn(c.column);
+      if (col === PALMILHA_COLUMN) {
+        if (seenPalmilha.has(c.q.order_id)) continue;
+        seenPalmilha.add(c.q.order_id);
+      }
+      m.set(col, (m.get(col) || 0) + 1);
     }
     return m;
   }, [boardCards, boardMode]);
@@ -417,7 +445,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
    * Setores REALMENTE ociosos abaixo do gargalo.
    *
    * ⚠ Coluna vazia não é setor parado. Setores do mesmo `parallel_group` rodam
-   * no mesmo nível do motor (Corte Palmilha + Corte Forração; Acabamento Palmilha +
+   * no mesmo nível do motor (Palmilha · Fibra + Palmilha · Forração; Acabamento Palmilha +
    * Costura Cabedal + Aviamento), mas o quadro é serial — UM card por OP, na
    * coluna mais avançada (decisão do dono, entrevista 2026-07-12) —, então o par
    * paralelo fica sem card enquanto o primeiro do grupo não fecha.
@@ -431,10 +459,19 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
   const idleBelowConstraint = useMemo(() => {
     if (!constraintSector) return 0;
     const cOrder = flowOrder.get(constraintSector) ?? 999;
+    const plannedFor = (s: string) => {
+      if (s !== PALMILHA_COLUMN) return gridToday.get(s)?.planned_pairs ?? 0;
+      return (
+        (gridToday.get('Palmilha · Fibra')?.planned_pairs ?? 0)
+        + (gridToday.get('Palmilha · Forração')?.planned_pairs ?? 0)
+        + (gridToday.get('Corte Fibra')?.planned_pairs ?? 0)
+        + (gridToday.get('Corte Forração')?.planned_pairs ?? 0)
+      );
+    };
     return columns.filter(s =>
       (flowOrder.get(s) ?? 999) > cOrder
       && !wipBySector.has(s)
-      && (gridToday.get(s)?.planned_pairs ?? 0) === 0,
+      && plannedFor(s) === 0,
     ).length;
   }, [constraintSector, columns, flowOrder, wipBySector, gridToday]);
 
@@ -474,7 +511,9 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
   const matchedColumns = useMemo(() => {
     if (!filtering || !matchedIds) return null;
     const s = new Set<string>();
-    for (const c of allCards) if (matchedIds.has(c.q.order_id)) s.add(c.column);
+    for (const c of allCards) {
+      if (matchedIds.has(c.q.order_id)) s.add(toPalmilhaVisualColumn(c.column));
+    }
     return s;
   }, [filtering, matchedIds, allCards]);
 
@@ -497,9 +536,15 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
 
   const navCountBySector = useMemo(() => {
     const counts = new Map<string, number>();
+    const seenPalmilha = new Set<string>();
     for (const card of allCards) {
       if (filtering && matchedIds && !matchedIds.has(card.q.order_id)) continue;
-      counts.set(card.column, (counts.get(card.column) || 0) + 1);
+      const col = toPalmilhaVisualColumn(card.column);
+      if (col === PALMILHA_COLUMN) {
+        if (seenPalmilha.has(card.q.order_id)) continue;
+        seenPalmilha.add(card.q.order_id);
+      }
+      counts.set(col, (counts.get(col) || 0) + 1);
     }
     return counts;
   }, [allCards, filtering, matchedIds]);
@@ -600,11 +645,20 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
    * A OP pode ir pra este setor? Reusa a MESMA regra do apontamento
    * (`buildPointingPlan`) que o diálogo aplica ao soltar — assim o realce da
    * coluna nunca promete um destino que o diálogo vai recusar.
+   *
+   * Coluna visual "Palmilha" resolve pro passo interno incompleto (Fibra/Forração).
    */
   const dropEligibility = useCallback((card: KanbanCardData, target: string): {
     ok: boolean; kind: 'frente' | 'pulo' | 'estorno'; reason?: string;
   } => {
-    const plan = buildPointingPlan(card, target, flowOrder, levelOf, planOptions);
+    // Já está na coluna visual Palmilha → soltar nela é no-op.
+    if (target === PALMILHA_COLUMN && cardsBelongToPalmilhaColumn(card.column)) {
+      return { ok: false, kind: 'frente', reason: 'OP já está em Palmilha.' };
+    }
+    const resolved = target === PALMILHA_COLUMN
+      ? (resolvePalmilhaPointingTarget(card.stages) || target)
+      : target;
+    const plan = buildPointingPlan(card, resolved, flowOrder, levelOf, planOptions);
     if (!plan.available) return { ok: false, kind: 'frente', reason: plan.unavailableReason };
     if (plan.isBackward) return { ok: true, kind: 'estorno' };
     return { ok: true, kind: plan.skipped.length > 0 ? 'pulo' : 'frente' };
@@ -630,7 +684,8 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
    * diálogo, inclusive para destino igual à origem e etapas fora da rota.
    */
   const bulkDestinations = useMemo(() => columns.map(sector => {
-    const batch = buildBulkMoveBatch(selectedCards, sector, flowOrder, levelOf, planOptions);
+    const resolved = sector === PALMILHA_COLUMN ? 'Palmilha · Fibra' : sector;
+    const batch = buildBulkMoveBatch(selectedCards, resolved, flowOrder, levelOf, planOptions);
     return {
       sector,
       eligible: batch.steps.length,
@@ -642,22 +697,29 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
 
   const openBulkReview = () => {
     if (!canReviewBulk) return;
-    setBulkRequest({ cards: selectedCards, target: bulkTarget });
+    const target = bulkTarget === PALMILHA_COLUMN ? 'Palmilha · Fibra' : bulkTarget;
+    setBulkRequest({ cards: selectedCards, target });
   };
 
   const handleDrop = (target: string) => {
     if (!dragCard) return;
     const card = dragCard;
     setDragCard(null);
+    // Mesma coluna visual (Palmilha agrega Fibra+Forração) → no-op.
+    if (toPalmilhaVisualColumn(target) === toPalmilhaVisualColumn(card.column)
+      && (target === PALMILHA_COLUMN || cardsBelongToPalmilhaColumn(target))) {
+      return;
+    }
     if (norm(target) === norm(card.column)) return;
-    // Destino impossível: avisa NA HORA em vez de abrir um diálogo só pra dizer
-    // que não dá.
     const elig = dropEligibility(card, target);
     if (!elig.ok) {
       toast.error(elig.reason || `${card.q.order_number} não pode ir pra ${target}.`);
       return;
     }
-    setDropTarget({ card, target });
+    const resolved = target === PALMILHA_COLUMN
+      ? (resolvePalmilhaPointingTarget(card.stages) || target)
+      : target;
+    setDropTarget({ card, target: resolved });
   };
 
   const handleScan = (raw: string) => {
@@ -1450,7 +1512,11 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
           className="flex-1 min-h-0 flex gap-2 overflow-x-auto overscroll-x-contain scroll-px-3 px-3 py-2 snap-x snap-mandatory md:snap-none [scrollbar-width:thin]"
         >
           {columns.map((sector, colIdx) => {
-            const colAll = boardCards.filter(c => c.column === sector);
+            const isPalmilhaCol = sector === PALMILHA_COLUMN;
+            const colRaw = isPalmilhaCol
+              ? boardCards.filter(c => cardsBelongToPalmilhaColumn(c.column))
+              : boardCards.filter(c => c.column === sector);
+            const colAll = isPalmilhaCol ? foldPalmilhaCardsForColumn(colRaw) : colRaw;
             // Pin → (setup: solado+cor) → atraso. Default = atraso.
             const colCards = sortKanbanColumnCards(
               filtering && matchedIds
@@ -1460,7 +1526,13 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
               soleByRefColor,
             );
             const colPares = colCards.reduce((s, c) => s + (c.columnStage?.quantity_total || c.q.quantity), 0);
-            const g = gridToday.get(sector);
+            const gFibra = isPalmilhaCol
+              ? (gridToday.get('Palmilha · Fibra') || gridToday.get('Corte Fibra') || null)
+              : null;
+            const gForro = isPalmilhaCol
+              ? (gridToday.get('Palmilha · Forração') || gridToday.get('Corte Forração') || null)
+              : null;
+            const g = isPalmilhaCol ? null : gridToday.get(sector);
             const cap = g && g.utilization > 0 ? capacityTone(g.utilization) : null;
             const capDenom = g ? (g.effective_capacity_pairs || g.capacity_pairs) : 0;
             const capFromFicha = !!g && g.ops_ficha_override > 0;
@@ -1472,7 +1544,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
             const hasMatch = !filtering || !!matchedColumns?.has(sector);
             const isRail = isIdle || (filtering && !hasMatch);
             const railOpen = isRail && dragOverSector === sector;
-            const pGroup = parallelGroupOf.get(sector);
+            const pGroup = isPalmilhaCol ? null : parallelGroupOf.get(sector);
             const isParallelPair = !!pGroup && (parallelGroupSize.get(pGroup) || 0) > 1;
             return (
               /* Celular: uma coluna por swipe (85vw + snap-center); iPad/desktop:
@@ -1567,7 +1639,31 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                   </div>
                   {/* R2.7: MESMO número do Planejamento (v_production_schedule_grid).
                       Denominador = capacidade EFETIVA do mix do dia; o asterisco
-                      marca quando ela veio da ficha técnica e não do global. */}
+                      marca quando ela veio da ficha técnica e não do global.
+                      Palmilha: duas linhas (Fibra + Forração) — Q12. */}
+                  {isPalmilhaCol ? (
+                    <div className="mt-0.5 space-y-0.5">
+                      <p
+                        className="text-[10px] text-muted-foreground font-mono truncate"
+                        title="Capacidade do passo Fibra (placa) — linha própria no cadastro"
+                      >
+                        Fibra: {gFibra
+                          ? `${gFibra.planned_pairs}/${gFibra.effective_capacity_pairs || gFibra.capacity_pairs}${gFibra.ops_ficha_override > 0 ? '*' : ''}`
+                          : '0'}
+                        {gFibra && gFibra.carryover_pairs > 0 ? ` +${gFibra.carryover_pairs}` : ''}
+                      </p>
+                      <p
+                        className="text-[10px] text-muted-foreground font-mono truncate"
+                        title="Capacidade do passo Forração — linha própria no cadastro"
+                      >
+                        Forração: {gForro
+                          ? `${gForro.planned_pairs}/${gForro.effective_capacity_pairs || gForro.capacity_pairs}${gForro.ops_ficha_override > 0 ? '*' : ''}`
+                          : '0'}
+                        {gForro && gForro.carryover_pairs > 0 ? ` +${gForro.carryover_pairs}` : ''}
+                        {' · '}Σ {colPares.toLocaleString('pt-BR')} pares
+                      </p>
+                    </div>
+                  ) : (
                   <p
                     className="text-[10px] text-muted-foreground font-mono mt-0.5 truncate"
                     title={`${
@@ -1585,12 +1681,33 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                     hoje: {gridError ? '—' : g ? `${g.planned_pairs}/${capDenom}${capFromFicha ? '*' : ''}` : '0'}
                     {!gridError && g && g.carryover_pairs > 0 ? ` +${g.carryover_pairs}` : ''} · Σ {colPares.toLocaleString('pt-BR')} pares
                   </p>
+                  )}
                   {/* Barra de capacidade: verde/âmbar/vermelho num relance; o traço
                       vermelho à direita marca o estouro (>100%). */}
                   {cap && (
                     <div className="mt-1 h-1.5 rounded-full bg-muted-foreground/15 overflow-hidden relative" title={`${cap.pct}% do dia consumido neste setor`}>
                       <div className={`h-full rounded-full ${cap.bar} transition-[width] duration-700`} style={{ width: `${Math.min(cap.pct, 100)}%` }} />
                       {cap.pct > 100 && <span className="absolute inset-y-0 right-0 w-0.5 bg-red-600" aria-hidden="true" />}
+                    </div>
+                  )}
+                  {isPalmilhaCol && (gFibra || gForro) && (
+                    <div className="mt-1 space-y-0.5">
+                      {gFibra && gFibra.utilization > 0 && (() => {
+                        const t = capacityTone(gFibra.utilization);
+                        return (
+                          <div className="h-1 rounded-full bg-muted-foreground/15 overflow-hidden relative" title={`Fibra ${t.pct}%`}>
+                            <div className={`h-full rounded-full ${t.bar}`} style={{ width: `${Math.min(t.pct, 100)}%` }} />
+                          </div>
+                        );
+                      })()}
+                      {gForro && gForro.utilization > 0 && (() => {
+                        const t = capacityTone(gForro.utilization);
+                        return (
+                          <div className="h-1 rounded-full bg-muted-foreground/15 overflow-hidden relative" title={`Forração ${t.pct}%`}>
+                            <div className={`h-full rounded-full ${t.bar}`} style={{ width: `${Math.min(t.pct, 100)}%` }} />
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>
@@ -1644,6 +1761,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                       <KanbanOpCard
                         card={card}
                         compact
+                        showPalmilhaChecks={isPalmilhaCol}
                         photoUrl={refThumbs?.get(card.q.reference_id || '') || null}
                         draggable={canEdit && !selectMode}
                         dragging={dragCard?.key === card.key}
@@ -1653,6 +1771,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                           !!hoverOrderId
                           && hoverOrderId === card.q.order_id
                           && card.parallelSiblings.length > 0
+                          && !isPalmilhaCol
                         }
                         selectable={selectMode}
                         selected={selectedIds.has(card.key)}

@@ -103,11 +103,12 @@ function resolveBackwardMove(
   ordered: OrderStage[],
   nivel: StageLevel,
 ): BackwardMove {
-  const columnStage = ordered.find(stage => norm(stage.stage_name) === card.column) ?? null;
+  const column = norm(card.column);
+  const columnStage = ordered.find(stage => norm(stage.stage_name) === column) ?? null;
   if (!columnStage) return { target: null, pointedStage: null };
 
   const columnIdx = ordered.indexOf(columnStage);
-  const columnLevel = nivel(card.column, columnStage.stage_order);
+  const columnLevel = nivel(column, columnStage.stage_order);
   const previousLowerStages = ordered
     .slice(0, columnIdx)
     // A fatia já garante "anterior na rota". Aqui só tiramos irmãos do mesmo
