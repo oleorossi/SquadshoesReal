@@ -25,14 +25,19 @@ import { supabase } from '@/integrations/supabase/client';
 import { printHtml } from '@/lib/printOrder';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import OrderSearchBar from '@/components/production/OrderSearchBar';
+import { OrderMultiSelectToolbar } from '@/components/orders/OrderMultiSelectToolbar';
+import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
+import { MarqueeOverlay } from '@/components/ui/bulk-actions-bar';
 import { useOrderStraps } from '@/hooks/useOrderStraps';
 import { safeUrlAttr } from '@/lib/htmlUtils';
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
 import {
+  findIdsMatchingOrderCodes,
+  parseOrderCodeList,
+} from '@/lib/orderCodeSearch';
+import { confirmIfHiddenSelection } from '@/lib/confirmHiddenSelection';
+import {
   filterSectorQueueOrders,
-  toggleIdInSet,
-  toggleSelectAllIds,
 } from '@/lib/production/sectorApontamentoQueue';
 import { finalizeSelectedSectorOrders } from '@/lib/production/finalizeSelectedSectorOrders';
 
@@ -53,16 +58,12 @@ export default function Montagem() {
   const { getStrapsLabel } = useOrderStraps();
   const [filterStatus, setFilterStatus] = usePersistedState<string>('montagem_filterStatus', 'active');
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
-  const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
   const [finalizingOrders, setFinalizingOrders] = useState(false);
   const { finalizeSectorTask } = useProductionTransitions();
   // Busca NÃO persiste: reseta ao sair e voltar pra tela (useState remonta limpo).
   const [searchQuery, setSearchQuery] = useState('');
-
-
-  const toggleOrder = (id: string) => {
-    setSelectedOrders((prev) => toggleIdInSet(prev, id));
-  };
+  const [clientFilter, setClientFilter] = useState('all');
+  const [weekFilter, setWeekFilter] = useState('all');
 
   const montagemOrders = useMemo(
     () => filterSectorQueueOrders({
@@ -73,24 +74,64 @@ export default function Montagem() {
       stageName: STAGE_NAME,
       filterStatus,
       searchQuery,
+      clientFilter,
+      weekFilter,
     }),
-    [orders, allStages, filterStatus, searchQuery, saleOrders, references],
+    [orders, allStages, filterStatus, searchQuery, clientFilter, weekFilter, saleOrders, references],
   );
 
-  const toggleAll = () => {
-    setSelectedOrders((prev) => toggleSelectAllIds(prev, montagemOrders.map((o) => o.id)));
+  const sel = useMarqueeSelection(montagemOrders, (o) => o.id);
+
+  const clientOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const order of orders) {
+      const so = saleOrders.find((s: any) => s.id === order.sale_order_id);
+      const name = (so?.client_name || '').trim();
+      if (name) set.add(name);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [orders, saleOrders]);
+
+  const pastedCodes = useMemo(() => parseOrderCodeList(searchQuery), [searchQuery]);
+  const matchedCodeIds = useMemo(
+    () => findIdsMatchingOrderCodes(orders, pastedCodes, (o) => {
+      const so = saleOrders.find((s: any) => s.id === o.sale_order_id);
+      return {
+        id: o.id,
+        orderNumber: o.order_number,
+        saleOrderNumber: so?.order_number,
+      };
+    }),
+    [orders, pastedCodes, saleOrders],
+  );
+
+  const allVisibleSelected =
+    montagemOrders.length > 0 && montagemOrders.every((o) => sel.isSelected(o.id));
+
+  const toggleVisible = () => {
+    if (allVisibleSelected) sel.deselectVisible();
+    else sel.selectAll();
   };
 
+  const confirmSelection = (actionLabel: string) =>
+    confirmIfHiddenSelection({
+      totalSelected: sel.count,
+      hiddenSelectedCount: sel.hiddenSelectedCount,
+      entityLabel: 'OP',
+      actionLabel,
+    });
+
   const handleFinishSelectedOrders = async () => {
-    if (selectedOrders.size === 0) return;
+    if (sel.count === 0) return;
+    if (!confirmSelection('Finalizar')) return;
     setFinalizingOrders(true);
     try {
       await finalizeSelectedSectorOrders({
-        orderIds: Array.from(selectedOrders),
+        orderIds: Array.from(sel.selectedIds),
         stageName: STAGE_NAME,
         finalizeSectorTask,
         queryClient,
-        onCleared: () => setSelectedOrders(new Set()),
+        onCleared: () => sel.clear(),
       });
     } catch (err: any) {
       toast.error('Erro ao finalizar: ' + (err.message || 'Erro desconhecido'));
@@ -198,7 +239,7 @@ export default function Montagem() {
       onRetry={() => { void refetchOrders(); }}
       beforeStats={<ChamadaHojeChip setor="montagem" />}
       actions={<>
-          {selectedOrders.size > 0 && (
+          {sel.count > 0 && (
             <Button
               size="sm"
               variant="default"
@@ -207,19 +248,10 @@ export default function Montagem() {
               onClick={handleFinishSelectedOrders}
             >
               {finalizingOrders ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <CheckSquare className="h-3.5 w-3.5 mr-1" />}
-              Finalizar OP's selecionadas ({selectedOrders.size})
+              Finalizar OP's selecionadas ({sel.count}
+              {sel.hiddenSelectedCount > 0 ? ` · ${sel.hiddenSelectedCount} fora do filtro` : ''})
             </Button>
           )}
-          <Select value={filterStatus} onValueChange={setFilterStatus}>
-            <SelectTrigger className="w-[140px] h-8 text-xs">
-              <Filter className="h-3.5 w-3.5 mr-1" />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="active">OPs Ativas</SelectItem>
-              <SelectItem value="all">Todas</SelectItem>
-            </SelectContent>
-          </Select>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button size="sm" variant="outline" className="gap-1">
@@ -227,28 +259,57 @@ export default function Montagem() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
-              {selectedOrders.size > 0 && (
+              {sel.count > 0 && (
                 <DropdownMenuItem onClick={() => {
-                  const ids = montagemOrders.filter(o => selectedOrders.has(o.id)).map(o => o.id).join(',');
+                  if (!confirmSelection('Agrupar')) return;
+                  const ids = Array.from(sel.selectedIds).join(',');
                   navigate(`/orders/grouped-summary?sector=montagem&ids=${ids}`);
                 }}>
-                  <Layers className="h-3.5 w-3.5 mr-2" /> Agrupar ({selectedOrders.size})
+                  <Layers className="h-3.5 w-3.5 mr-2" /> Agrupar ({sel.count})
                 </DropdownMenuItem>
               )}
               <DropdownMenuSeparator />
               <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">Impressão</DropdownMenuLabel>
-              <DropdownMenuItem disabled={selectedOrders.size === 0} onClick={() => {
-            // 6º passe (2026-06-12): popup legado de fichas por setor
-            // morto — deep-link pra tela central (modelo v7, com TallyBox).
-            const ids = montagemOrders.filter(o => selectedOrders.has(o.id)).map(o => o.id).join(',');
+              <DropdownMenuItem disabled={sel.count === 0} onClick={() => {
+            if (!confirmSelection('Imprimir fichas de')) return;
+            const ids = Array.from(sel.selectedIds).join(',');
             navigate(`/imprimir-fichas?orderIds=${ids}&sectors=${encodeURIComponent('Montagem')}`);
           }}>
-                <Printer className="h-3.5 w-3.5 mr-2" /> Fichas Operador {selectedOrders.size > 0 ? `(${selectedOrders.size})` : ''}
+                <Printer className="h-3.5 w-3.5 mr-2" /> Fichas Operador {sel.count > 0 ? `(${sel.count})` : ''}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <OrderSearchBar value={searchQuery} onChange={setSearchQuery} />
         </>}
+      afterStats={
+        <OrderMultiSelectToolbar
+          search={searchQuery}
+          onSearchChange={setSearchQuery}
+          resultCount={montagemOrders.length}
+          totalCount={orders.length}
+          clientOptions={clientOptions}
+          clientFilter={clientFilter}
+          onClientFilterChange={setClientFilter}
+          weekFilter={weekFilter}
+          onWeekFilterChange={setWeekFilter}
+          allVisibleSelected={allVisibleSelected}
+          visibleCount={montagemOrders.length}
+          onToggleVisible={toggleVisible}
+          matchedCodeCount={matchedCodeIds.length}
+          onSelectMatched={() => sel.selectMatchingIds(matchedCodeIds)}
+          extraFilters={
+            <Select value={filterStatus} onValueChange={setFilterStatus}>
+              <SelectTrigger className="h-9 w-[140px] text-xs">
+                <Filter className="h-3.5 w-3.5 mr-1" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="active">OPs Ativas</SelectItem>
+                <SelectItem value="all">Todas</SelectItem>
+              </SelectContent>
+            </Select>
+          }
+        />
+      }
       stats={<>
         <StatCard
           label="OPs p/ Montagem"
@@ -266,6 +327,14 @@ export default function Montagem() {
             return so?.client_name || '';
           }).filter(Boolean)).size}
         />
+        {sel.count > 0 && (
+          <StatCard
+            label="Selecionadas"
+            value={sel.count}
+            hint={sel.hiddenSelectedCount > 0 ? `${sel.hiddenSelectedCount} fora do filtro` : 'visíveis no recorte'}
+            tone="primary"
+          />
+        )}
       </>}
       isEmpty={montagemOrders.length === 0}
       empty={{
@@ -273,12 +342,13 @@ export default function Montagem() {
         title: 'Nenhuma OP com montagem pendente',
         description: 'Não há ordens de produção aguardando montagem no momento.',
       }}
-      selectAll={montagemOrders.length > 0 ? {
-        checked: selectedOrders.size === montagemOrders.length,
-        onToggle: toggleAll,
-        label: `Selecionar todas (${montagemOrders.length})`,
-      } : undefined}
     >
+          <div
+            ref={sel.containerRef}
+            data-marquee-container
+            onMouseDown={sel.onContainerMouseDown}
+            className="relative space-y-3"
+          >
           {montagemOrders.map(order => {
             const { ref, grade, activeSizes, gradeSum, totalPairs, totalFichas, fichas, imageUrl } = buildPrintContent(order);
             const scaledTotal = gradeSum > 0
@@ -289,9 +359,15 @@ export default function Montagem() {
 
             const montagemStage = allStages.find(s => s.order_id === order.id && sameStage(s.stage_name, STAGE_NAME));
             const stageColor = montagemStage?.status === 'concluido' ? 'border-l-emerald-500' : montagemStage?.status === 'em_andamento' ? 'border-l-amber-500' : 'border-l-red-500';
+            const isSelected = sel.isSelected(order.id);
 
             return (
-              <Card key={order.id} className={`border-l-4 transition-all ${selectedOrders.has(order.id) ? 'ring-2 ring-success' : ''} ${stageColor}`}>
+              <Card
+                key={order.id}
+                data-marquee-item
+                data-marquee-id={order.id}
+                className={`border-l-4 transition-all ${isSelected ? 'ring-2 ring-success' : ''} ${stageColor}`}
+              >
                 <CardHeader
                   className="py-3 px-4 cursor-pointer hover:bg-muted/50 transition-colors"
                   onClick={() => setExpandedOrderId(isExpanded ? null : order.id)}
@@ -299,8 +375,8 @@ export default function Montagem() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3" onClick={e => e.stopPropagation()}>
                       <Checkbox
-                        checked={selectedOrders.has(order.id)}
-                        onCheckedChange={() => toggleOrder(order.id)}
+                        checked={isSelected}
+                        onCheckedChange={() => sel.toggle(order.id)}
                       />
                     </div>
                     <div className="flex-1 ml-2">
@@ -423,6 +499,8 @@ export default function Montagem() {
               </Card>
             );
           })}
+          <MarqueeOverlay rect={sel.marqueeRect} />
+          </div>
     </SectorApontamentoShell>
   );
 }

@@ -18,6 +18,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { BulkActionsBar } from '@/components/ui/bulk-actions-bar';
 import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
 import { confirmAndBulkDelete } from '@/lib/bulkConfirm';
+import { confirmIfHiddenSelection } from '@/lib/confirmHiddenSelection';
 import {
   useEmployees, useAddEmployee, useUpdateEmployee, useDeleteEmployee,
   Employee,
@@ -132,10 +133,19 @@ export default function Employees() {
   const sel = useMarqueeSelection(filteredEmployees, (e) => e.id);
   const handleBulkDeleteEmployees = async () => {
     const ids = Array.from(sel.selectedIds);
-    const sampleLines = filteredEmployees
-      .filter(e => sel.selectedIds.has(e.id))
+    if (!confirmIfHiddenSelection({
+      totalSelected: ids.length,
+      hiddenSelectedCount: sel.hiddenSelectedCount,
+      entityLabel: 'funcionário',
+      actionLabel: 'Excluir',
+    })) return;
+    const byId = new Map(employees.map(e => [e.id, e]));
+    const sampleLines = ids
       .slice(0, 5)
-      .map(e => `• ${e.name}${e.role ? ` (${e.role})` : ''}`);
+      .map(id => {
+        const e = byId.get(id);
+        return e ? `• ${e.name}${e.role ? ` (${e.role})` : ''}` : `• ${id}`;
+      });
     await confirmAndBulkDelete({
       ids,
       entityLabel: 'funcionário',

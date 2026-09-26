@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -8,7 +8,6 @@ import { Card, CardContent } from '@/components/ui/card';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { SearchInput } from '@/components/ui/search-input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Printer, MagnifyingGlass as Search, CircleNotch as Loader2, FileText, Funnel as Filter, Baby, Warning as AlertTriangle, Cards, ArrowRight, Stack } from '@phosphor-icons/react';
@@ -17,9 +16,18 @@ import { toast } from 'sonner';
 import { printOperatorFichasFromRows } from '@/lib/printOperatorFichas';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { SALE_ORDER_STATUS } from '@/lib/saleOrderStateMachine';
 import { filterOperationalOperatorOrders } from '@/lib/operatorPrintEligibility';
+import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
+import { MarqueeOverlay } from '@/components/ui/bulk-actions-bar';
+import { OrderMultiSelectToolbar } from '@/components/orders/OrderMultiSelectToolbar';
+import {
+  findIdsMatchingOrderCodes,
+  matchesOrderSearch,
+  parseOrderCodeList,
+} from '@/lib/orderCodeSearch';
+import { matchesDeliveryWeek } from '@/lib/deliveryWeekOptions';
+import { confirmIfHiddenSelection } from '@/lib/confirmHiddenSelection';
 
 interface OrderRow {
   id: string;
@@ -108,7 +116,8 @@ export default function PrintWorkSheets() {
   const [statusFilter, setStatusFilter] = useState<string>(deepLinkIds.length > 0 ? 'todos' : 'em_fluxo');
   const [pvFilter, setPvFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set(deepLinkIds));
+  const [clientFilter, setClientFilter] = useState<string>('all');
+  const [weekFilter, setWeekFilter] = useState<string>('all');
   const [showPrintView, setShowPrintView] = useState(false);
   // Atalho "Cartão físico": entra na tela de impressão JÁ nesse modo, mas
   // ainda passando pelo preview (o dono escolheu isso em vez de imprimir direto
@@ -159,70 +168,68 @@ export default function PrintWorkSheets() {
     return Array.from(set.keys()).sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
   }, [rows]);
 
+  const clientOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of rows) {
+      const name = (r.sale_orders?.client_name || '').trim();
+      if (name) set.add(name);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [rows]);
+
   const filtered = useMemo(() => {
     let result = rows;
     if (pvFilter !== 'all') {
       result = result.filter(r => r.sale_orders?.order_number === pvFilter);
     }
+    if (clientFilter !== 'all') {
+      result = result.filter(r => (r.sale_orders?.client_name || '').trim() === clientFilter);
+    }
+    if (weekFilter !== 'all') {
+      result = result.filter(r => matchesDeliveryWeek(r.sale_orders?.delivery_deadline, weekFilter));
+    }
     if (search.trim()) {
-      // espaço/"/" = refinamento AND (ex.: "stx alcineu")
-      result = result.filter(r => searchMatchesAllTerms(
-        search,
-        r.order_number,
-        r.color,
-        r.technical_sheets?.name,
-        r.technical_sheets?.code,
-        r.sale_orders?.order_number,
-        r.sale_orders?.client_name,
-      ));
+      result = result.filter(r => matchesOrderSearch(search, {
+        orderNumber: r.order_number,
+        saleOrderNumber: r.sale_orders?.order_number,
+        clientName: r.sale_orders?.client_name,
+        referenceName: r.technical_sheets?.name,
+        referenceCode: r.technical_sheets?.code,
+        color: r.color,
+      }));
     }
     return result;
-  }, [rows, search, pvFilter]);
+  }, [rows, search, pvFilter, clientFilter, weekFilter]);
 
-  const allFilteredIds = useMemo(() => new Set(filtered.map(r => r.id)), [filtered]);
-  const allSelected = filtered.length > 0 && filtered.every(r => selectedIds.has(r.id));
+  const sel = useMarqueeSelection(filtered, (r) => r.id);
+  // Deep-link ?orderIds= pré-seleciona (hook inicia vazio).
+  useEffect(() => {
+    if (deepLinkIds.length > 0) sel.selectMatchingIds(deepLinkIds);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deepLinkIds.join(',')]);
+
+  const pastedCodes = useMemo(() => parseOrderCodeList(search), [search]);
+  const matchedCodeIds = useMemo(
+    () => findIdsMatchingOrderCodes(rows, pastedCodes, (r) => ({
+      id: r.id,
+      orderNumber: r.order_number,
+      saleOrderNumber: r.sale_orders?.order_number,
+    })),
+    [rows, pastedCodes],
+  );
+
+  const allSelected = filtered.length > 0 && filtered.every(r => sel.isSelected(r.id));
 
   const toggleAll = () => {
-    if (allSelected) {
-      setSelectedIds(prev => {
-        const next = new Set(prev);
-        for (const id of allFilteredIds) next.delete(id);
-        return next;
-      });
-    } else {
-      setSelectedIds(prev => {
-        const next = new Set(prev);
-        for (const id of allFilteredIds) next.add(id);
-        return next;
-      });
-    }
+    if (allSelected) sel.deselectVisible();
+    else sel.selectAll();
   };
 
-  const toggleOne = (id: string) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
-
-  // Mapeia rows selecionadas pro formato esperado pelo PrintWorkSheetsPage
-  // Inclui `id` (alias de op_id) pq OperatorWorkSheet e ManagementReport leem
-  // order.id; sem isso, OperatorWorkSheet quebrava com .id.split('-') no
-  // 'Imprimir tudo' e as queries de order_stages/order_costs ficavam vazias.
+  // Mapeia rows selecionadas (INCLUSIVE fora do filtro) pro formato do preview.
+  // Contrato 2026-09: seleção persiste; ação confirma se houver ocultos.
   const selectedOrders = useMemo(() => {
-    // CRÍTICO: deriva de `filtered`, NÃO de `rows`. `selectedIds` PERSISTE entre
-    // buscas — o campo de busca não limpa a seleção (só os filtros de status/PV
-    // limpam). Se derivasse de `rows` (até 500 OPs carregadas), uma OP marcada
-    // numa busca ANTERIOR e agora ESCONDIDA pela busca atual continuava entrando
-    // no lote: "Gerar fichas" puxava OPs de vários pedidos que o usuário não vê
-    // mais (bug 2026-06-24: buscou "ELIANE", 1 OP visível marcada, mas o lote
-    // saía com 3 OPs / 2388 pares — os 2208 pares extras eram seleções antigas
-    // invisíveis). Escopar à lista filtrada garante: só gera o que está VISÍVEL
-    // e marcado — coerente com o header "selecionar todas" e o toggleAll, que já
-    // operam sobre `filtered`/`allFilteredIds`.
-    return filtered
-      .filter(r => selectedIds.has(r.id))
+    return rows
+      .filter(r => sel.selectedIds.has(r.id))
       .map(r => ({
         id: r.id,
         op_id: r.id,
@@ -237,24 +244,14 @@ export default function PrintWorkSheets() {
         client_name: r.sale_orders?.client_name ?? '',
         sale_order_number: r.sale_orders?.order_number ?? '',
         sale_order_id: r.sale_order_id,
-        // Necessário pro Relatório Gerencial casar custo item-a-item: 2 itens
-        // do mesmo PV com mesma ref+cor (grade infantil + adulta) têm custos
-        // distintos em order_costs — sem o id o match por ref+cor duplicava
-        // o custo de um e zerava o do outro.
         sale_order_item_id: r.sale_order_item_id ?? null,
         status: r.status,
-        // Sequência de tiras preservando a ordem (TIRA 1, TIRA 2, ...). Vazio
-        // pra modelos sem tiras. As fichas de operador (Aviamento, Colagem)
-        // renderizam essa sequência pra cortador/aviamento saber qual tira
-        // recebe qual cor (relevante quando o cliente pede mix de cores).
         strap_colors: Array.isArray(r.sale_order_items?.strap_colors)
           ? r.sale_order_items!.strap_colors
           : [],
-        // Variante de material do item do PV — o consumo das fichas de operador
-        // resolve os materiais (cabedal/forro/palmilha/solado/BOM) pela variante.
         material_variant_id: r.sale_order_items?.material_variant_id ?? null,
       }));
-  }, [filtered, selectedIds]);
+  }, [rows, sel.selectedIds]);
 
   if (showPrintView) {
     return (
@@ -273,12 +270,22 @@ export default function PrintWorkSheets() {
     return total + Math.max(1, lots?.length ?? 1);
   }, 0);
 
+  const confirmSelection = (actionLabel: string) =>
+    confirmIfHiddenSelection({
+      totalSelected: sel.count,
+      hiddenSelectedCount: sel.hiddenSelectedCount,
+      entityLabel: 'OP',
+      actionLabel,
+    });
+
   const openPreview = (asCartao: boolean) => {
+    if (!confirmSelection(asCartao ? 'Gerar cartão físico de' : 'Revisar fichas de')) return;
     setOpenAsCartao(asCartao);
     setShowPrintView(true);
   };
 
   const printQuickOperatorSheets = async () => {
+    if (!confirmSelection('Imprimir fichas rápidas de')) return;
     try {
       await printOperatorFichasFromRows(selectedOrders);
     } catch (err: unknown) {
@@ -400,68 +407,54 @@ export default function PrintWorkSheets() {
                 <p className="text-[11px] text-muted-foreground">Refine antes de marcar</p>
               </div>
             </div>
-            <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:flex-wrap">
-            <SearchInput
-              className="min-w-[220px] flex-1"
-              inputClassName="h-9"
-              value={search}
-              onChange={setSearch}
-              placeholder="Buscar por OP, PV, cliente, referência, cor…"
+            <OrderMultiSelectToolbar
+              className="flex flex-1 flex-col gap-2 sm:flex-row sm:flex-wrap"
+              search={search}
+              onSearchChange={setSearch}
               resultCount={filtered.length}
               totalCount={rows.length}
+              clientOptions={clientOptions}
+              clientFilter={clientFilter}
+              onClientFilterChange={setClientFilter}
+              weekFilter={weekFilter}
+              onWeekFilterChange={setWeekFilter}
+              allVisibleSelected={allSelected}
+              visibleCount={filtered.length}
+              onToggleVisible={toggleAll}
+              matchedCodeCount={matchedCodeIds.length}
+              onSelectMatched={() => sel.selectMatchingIds(matchedCodeIds)}
+              extraFilters={
+                <>
+                  <Select value={statusFilter} onValueChange={setStatusFilter}>
+                    <SelectTrigger className="h-9 w-full sm:w-52">
+                      <SelectValue placeholder="Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="em_fluxo">Em fluxo (Reservado + Em Produção)</SelectItem>
+                      <SelectItem value="todos">Todos os status</SelectItem>
+                      {STATUS_OPTIONS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Select value={pvFilter} onValueChange={setPvFilter}>
+                    <SelectTrigger className="h-9 w-full sm:w-44" title="Filtra OPs por PV — evita contaminar batch com OPs de outros PVs">
+                      <SelectValue placeholder="Por PV" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos os PVs</SelectItem>
+                      {pvOptions.map(pv => <SelectItem key={pv} value={pv}>{pv}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </>
+              }
             />
-            <Select
-              value={statusFilter}
-              onValueChange={(v) => {
-                setStatusFilter(v);
-                // Auto-limpa selectedIds (mesmo motivo do pvFilter): evita
-                // OPs fantasmas de status anterior contaminarem o batch.
-                setSelectedIds(new Set());
-              }}
-            >
-              <SelectTrigger className="h-9 w-full sm:w-52">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="em_fluxo">Em fluxo (Reservado + Em Produção)</SelectItem>
-                <SelectItem value="todos">Todos os status</SelectItem>
-                {STATUS_OPTIONS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <Select
-              value={pvFilter}
-              onValueChange={(v) => {
-                setPvFilter(v);
-                // Auto-limpa seleção pra evitar carregar OPs de PV anterior
-                // que ficariam "fantasmas" no batch ao trocar de filtro.
-                setSelectedIds(new Set());
-              }}
-            >
-              <SelectTrigger className="h-9 w-full sm:w-44" title="Filtra OPs por PV — evita contaminar batch com OPs de outros PVs">
-                <SelectValue placeholder="Por PV" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos os PVs</SelectItem>
-                {pvOptions.map(pv => <SelectItem key={pv} value={pv}>{pv}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={filtered.length === 0}
-              onClick={toggleAll}
-              className="shrink-0"
-            >
-              {allSelected ? 'Desmarcar visíveis' : `Marcar visíveis (${filtered.length})`}
-            </Button>
           </div>
 
           <div className="flex items-center justify-between border-y border-border/60 py-2 text-xs text-muted-foreground">
             <span>{filtered.length} encontrada{filtered.length === 1 ? '' : 's'}</span>
             <span className="font-mono font-semibold text-foreground">
-              {selectedOrders.length} selecionada{selectedOrders.length === 1 ? '' : 's'} · {totalPairs.toLocaleString('pt-BR')} pares
+              {sel.count} selecionada{sel.count === 1 ? '' : 's'}
+              {sel.hiddenSelectedCount > 0 ? ` · ${sel.hiddenSelectedCount} fora do filtro` : ''}
+              {' · '}{totalPairs.toLocaleString('pt-BR')} pares
             </span>
           </div>
 
@@ -517,7 +510,12 @@ export default function PrintWorkSheets() {
             )
           ) : (
             <>
-            <div className="hidden overflow-hidden border md:block">
+            <div
+              ref={sel.containerRef}
+              data-marquee-container
+              onMouseDown={sel.onContainerMouseDown}
+              className="relative hidden overflow-hidden border md:block"
+            >
               <table className="w-full text-xs">
                 <thead className="bg-muted/50">
                   <tr>
@@ -539,11 +537,13 @@ export default function PrintWorkSheets() {
                 </thead>
                 <tbody>
                   {filtered.map(r => {
-                    const checked = selectedIds.has(r.id);
+                    const checked = sel.isSelected(r.id);
                     const { inf, ad } = rowSizeBands(r.grade);
                     return (
                       <tr
                         key={r.id}
+                        data-marquee-item
+                        data-marquee-id={r.id}
                         tabIndex={0}
                         aria-selected={checked}
                         className={`cursor-pointer border-t border-l-4 border-border/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
@@ -555,18 +555,18 @@ export default function PrintWorkSheets() {
                               ? 'border-l-transparent bg-pink-500/[0.06] hover:bg-pink-500/[0.11]'
                               : 'border-l-transparent hover:bg-muted/30'
                         }`}
-                        onClick={() => toggleOne(r.id)}
+                        onClick={(e) => sel.toggle(r.id, e)}
                         onKeyDown={(event) => {
                           if (event.key === 'Enter' || event.key === ' ') {
                             event.preventDefault();
-                            toggleOne(r.id);
+                            sel.toggle(r.id);
                           }
                         }}
                       >
                         <td className="p-2">
                           <Checkbox
                             checked={checked}
-                            onCheckedChange={() => toggleOne(r.id)}
+                            onCheckedChange={() => sel.toggle(r.id)}
                             onClick={e => e.stopPropagation()}
                             aria-label={`Selecionar OP ${r.order_number}`}
                           />
@@ -638,24 +638,27 @@ export default function PrintWorkSheets() {
                   })}
                 </tbody>
               </table>
+              <MarqueeOverlay rect={sel.marqueeRect} />
             </div>
 
             <div className="grid gap-2 md:hidden">
               {filtered.map(r => {
-                const checked = selectedIds.has(r.id);
+                const checked = sel.isSelected(r.id);
                 const { inf, ad } = rowSizeBands(r.grade);
                 const lots = lotsMap?.get(r.id);
                 return (
                   <div
                     key={r.id}
+                    data-marquee-item
+                    data-marquee-id={r.id}
                     role="button"
                     tabIndex={0}
                     aria-pressed={checked}
-                    onClick={() => toggleOne(r.id)}
+                    onClick={(e) => sel.toggle(r.id, e)}
                     onKeyDown={(event) => {
                       if (event.key === 'Enter' || event.key === ' ') {
                         event.preventDefault();
-                        toggleOne(r.id);
+                        sel.toggle(r.id);
                       }
                     }}
                     className={`border-l-4 p-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${checked ? 'border-primary bg-primary/5' : 'border-border bg-card'}`}
@@ -663,7 +666,7 @@ export default function PrintWorkSheets() {
                     <div className="flex items-start gap-3">
                       <Checkbox
                         checked={checked}
-                        onCheckedChange={() => toggleOne(r.id)}
+                        onCheckedChange={() => sel.toggle(r.id)}
                         onClick={event => event.stopPropagation()}
                         aria-label={`Selecionar OP ${r.order_number}`}
                         className="mt-0.5"

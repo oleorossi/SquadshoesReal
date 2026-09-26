@@ -16,6 +16,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { BulkActionsBar } from '@/components/ui/bulk-actions-bar';
 import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
 import { confirmAndBulkDelete } from '@/lib/bulkConfirm';
+import { confirmIfHiddenSelection } from '@/lib/confirmHiddenSelection';
 import { cn } from '@/lib/utils';
 import {
   useClients, usePaginatedClients, useCreateClient, useUpdateClient, useDeleteClient,
@@ -141,10 +142,19 @@ export default function Clients() {
   const sel = useMarqueeSelection(filteredClients, (c) => c.id);
   const handleBulkDeleteClients = async () => {
     const ids = Array.from(sel.selectedIds);
-    const sampleLines = filteredClients
-      .filter(c => sel.selectedIds.has(c.id))
+    if (!confirmIfHiddenSelection({
+      totalSelected: ids.length,
+      hiddenSelectedCount: sel.hiddenSelectedCount,
+      entityLabel: 'cliente',
+      actionLabel: 'Excluir',
+    })) return;
+    const byId = new Map(clients.map(c => [c.id, c]));
+    const sampleLines = ids
       .slice(0, 5)
-      .map(c => `• ${c.razao_social}${c.cnpj ? ` (${c.cnpj})` : ''}`);
+      .map(id => {
+        const c = byId.get(id);
+        return c ? `• ${c.razao_social}${c.cnpj ? ` (${c.cnpj})` : ''}` : `• ${id}`;
+      });
     await confirmAndBulkDelete({
       ids,
       entityLabel: 'cliente',

@@ -25,12 +25,20 @@ import { useClients, useEconomicGroups } from '@/hooks/useClients';
 import { useProductionTransitions } from '@/hooks/useProductionTransitions';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { printHtml, openPrintWindow, writePrintWindow } from '@/lib/printOrder';
 import { getClientLogoUrl } from '@/lib/getClientLogo';
-import { SearchInput } from '@/components/ui/search-input';
 import { useOrderStraps } from '@/hooks/useOrderStraps';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { OrderMultiSelectToolbar } from '@/components/orders/OrderMultiSelectToolbar';
+import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
+import { MarqueeOverlay } from '@/components/ui/bulk-actions-bar';
+import {
+  findIdsMatchingOrderCodes,
+  matchesOrderSearch,
+  parseOrderCodeList,
+} from '@/lib/orderCodeSearch';
+import { matchesDeliveryWeek } from '@/lib/deliveryWeekOptions';
+import { confirmIfHiddenSelection } from '@/lib/confirmHiddenSelection';
 import { TableSkeleton } from '@/components/layout/PageSkeleton';
 import { resolveFicha } from '@/components/production/worksheet/fichaSize';
 import { RefChip } from '@/components/ui/ref-chip';
@@ -57,7 +65,6 @@ export default function Costura() {
   const { getStrapsLabel } = useOrderStraps();
   const [filterStatus, setFilterStatus] = usePersistedState<string>('costura-filterStatus', 'active');
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
-  const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
   const [finalizingOrders, setFinalizingOrders] = useState(false);
   const { finalizeSectorTask } = useProductionTransitions();
 
@@ -65,6 +72,8 @@ export default function Costura() {
   const [collapsedSaleOrders, setCollapsedSaleOrders] = useState<Set<string>>(new Set());
   // Busca NÃO persiste: reseta ao sair e voltar pra tela (useState remonta limpo).
   const [searchQuery, setSearchQuery] = useState('');
+  const [clientFilter, setClientFilter] = useState('all');
+  const [weekFilter, setWeekFilter] = useState('all');
 
   const toggleCollapse = (key: string, setter: React.Dispatch<React.SetStateAction<Set<string>>>) => {
     setter(prev => {
@@ -73,51 +82,6 @@ export default function Costura() {
       else next.add(key);
       return next;
     });
-  };
-
-  const toggleOrderSelection = (orderId: string) => {
-    setSelectedOrders(prev => {
-      const next = new Set(prev);
-      if (next.has(orderId)) next.delete(orderId);
-      else next.add(orderId);
-      return next;
-    });
-  };
-
-  const toggleAllOrders = () => {
-    if (selectedOrders.size === costuraOrders.length) {
-      setSelectedOrders(new Set());
-    } else {
-      setSelectedOrders(new Set(costuraOrders.map(o => o.id)));
-    }
-  };
-
-  const handleFinishSelectedOrders = async () => {
-    if (selectedOrders.size === 0) return;
-    setFinalizingOrders(true);
-    try {
-      const orderIds = Array.from(selectedOrders);
-      const settled = await Promise.allSettled(
-        orderIds.map(orderId => finalizeSectorTask(orderId, SECTOR_NAME))
-      );
-      const successCount = settled.filter(
-        s => s.status === 'fulfilled' && (s.value as any)?.success
-      ).length;
-      const failedCount = orderIds.length - successCount;
-      if (successCount > 0) {
-        if (failedCount === 0) toast.success(`${SECTOR_NAME} finalizado para ${successCount} OP(s)!`);
-        else toast.warning(`${SECTOR_NAME} finalizado para ${successCount} OP(s); ${failedCount} falhou(aram).`);
-        setSelectedOrders(new Set());
-        queryClient.invalidateQueries({ queryKey: ['order_stages'] });
-        queryClient.invalidateQueries({ queryKey: ['orders'] });
-      } else if (failedCount > 0) {
-        toast.error(`Falha ao finalizar ${failedCount} OP(s).`);
-      }
-    } catch (err: any) {
-      toast.error(`Erro ao finalizar: ${err.message}`);
-    } finally {
-      setFinalizingOrders(false);
-    }
   };
 
   // OPs do setor (status + estágio), ANTES da busca — base do contador "N de M".
@@ -137,16 +101,24 @@ export default function Costura() {
 
   const costuraOrders = useMemo(() => {
     const filtered = sectorOrders.filter(order => {
-      if (!searchQuery.trim()) return true;
       const so = saleOrders.find((s: any) => s.id === order.sale_order_id);
+      if (clientFilter !== 'all' && (so?.client_name || '').trim() !== clientFilter) return false;
+      if (weekFilter !== 'all' && !matchesDeliveryWeek(so?.delivery_deadline || (order as any).planned_delivery, weekFilter)) {
+        return false;
+      }
+      if (!searchQuery.trim()) return true;
       const ref = (references as any[]).find(t => t.id === (order as any).reference_id);
-      // espaço/"/" = refinamento AND (ex.: "stx alcineu" = ref STX E cliente Alcineu)
-      return searchMatchesAllTerms(searchQuery, so?.order_number, so?.client_order_number, order.order_number, so?.client_name, ref?.name, ref?.code, order.color);
+      return matchesOrderSearch(searchQuery, {
+        orderNumber: order.order_number,
+        saleOrderNumber: so?.order_number,
+        clientName: so?.client_name,
+        clientOrderNumber: so?.client_order_number,
+        referenceName: ref?.name,
+        referenceCode: ref?.code,
+        color: order.color,
+      });
     });
     return filtered.sort((a, b) => {
-      // Prioridade (2026-06-02): terminar o PEDIDO inteiro por PRAZO. Ordena pela
-      // entrega do PV (mais urgente primeiro; sem prazo por último), mantém as OPs
-      // do mesmo PV juntas, e dentro do PV pela data planejada da OP.
       const dl = (o: any) => saleOrders?.find((s: any) => s.id === o.sale_order_id)?.delivery_deadline || '';
       const da = dl(a), db = dl(b);
       if (da !== db) { if (!da) return 1; if (!db) return -1; return da.localeCompare(db); }
@@ -158,7 +130,73 @@ export default function Costura() {
       if (!pb) return -1;
       return pa.localeCompare(pb);
     });
-  }, [sectorOrders, searchQuery, saleOrders, references]);
+  }, [sectorOrders, searchQuery, clientFilter, weekFilter, saleOrders, references]);
+
+  const sel = useMarqueeSelection(costuraOrders, (o) => o.id);
+
+  const clientOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const order of sectorOrders) {
+      const so = saleOrders.find((s: any) => s.id === order.sale_order_id);
+      const name = (so?.client_name || '').trim();
+      if (name) set.add(name);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [sectorOrders, saleOrders]);
+
+  const pastedCodes = useMemo(() => parseOrderCodeList(searchQuery), [searchQuery]);
+  const matchedCodeIds = useMemo(
+    () => findIdsMatchingOrderCodes(sectorOrders, pastedCodes, (o) => {
+      const so = saleOrders.find((s: any) => s.id === o.sale_order_id);
+      return { id: o.id, orderNumber: o.order_number, saleOrderNumber: so?.order_number };
+    }),
+    [sectorOrders, pastedCodes, saleOrders],
+  );
+
+  const allVisibleSelected =
+    costuraOrders.length > 0 && costuraOrders.every((o) => sel.isSelected(o.id));
+
+  const toggleVisible = () => {
+    if (allVisibleSelected) sel.deselectVisible();
+    else sel.selectAll();
+  };
+
+  const confirmSelection = (actionLabel: string) =>
+    confirmIfHiddenSelection({
+      totalSelected: sel.count,
+      hiddenSelectedCount: sel.hiddenSelectedCount,
+      entityLabel: 'OP',
+      actionLabel,
+    });
+
+  const handleFinishSelectedOrders = async () => {
+    if (sel.count === 0) return;
+    if (!confirmSelection('Finalizar')) return;
+    setFinalizingOrders(true);
+    try {
+      const orderIds = Array.from(sel.selectedIds);
+      const settled = await Promise.allSettled(
+        orderIds.map(orderId => finalizeSectorTask(orderId, SECTOR_NAME))
+      );
+      const successCount = settled.filter(
+        s => s.status === 'fulfilled' && (s.value as any)?.success
+      ).length;
+      const failedCount = orderIds.length - successCount;
+      if (successCount > 0) {
+        if (failedCount === 0) toast.success(`${SECTOR_NAME} finalizado para ${successCount} OP(s)!`);
+        else toast.warning(`${SECTOR_NAME} finalizado para ${successCount} OP(s); ${failedCount} falhou(aram).`);
+        sel.clear();
+        queryClient.invalidateQueries({ queryKey: ['order_stages'] });
+        queryClient.invalidateQueries({ queryKey: ['orders'] });
+      } else if (failedCount > 0) {
+        toast.error(`Falha ao finalizar ${failedCount} OP(s).`);
+      }
+    } catch (err: any) {
+      toast.error(`Erro ao finalizar: ${err.message}`);
+    } finally {
+      setFinalizingOrders(false);
+    }
+  };
 
   const getDeliveryInfo = (order: any) => {
     const so = saleOrders.find((s: any) => s.id === order.sale_order_id);
@@ -332,7 +370,7 @@ export default function Costura() {
         title={`Setor de ${SECTOR_NAME}`}
         description="Fichas de controle com checklist de pares para corte de forração"
         actions={<>
-          {selectedOrders.size > 0 && (
+          {sel.count > 0 && (
             <Button
               size="sm"
               className="bg-success hover:bg-success/90 text-success-foreground gap-2 shadow-sm"
@@ -340,19 +378,9 @@ export default function Costura() {
               onClick={handleFinishSelectedOrders}
             >
               <CheckCircle2 className="h-4 w-4" />
-              Finalizar {SECTOR_NAME} ({selectedOrders.size})
+              Finalizar {SECTOR_NAME} ({sel.count}{sel.hiddenSelectedCount > 0 ? ` · ${sel.hiddenSelectedCount} fora do filtro` : ''})
             </Button>
           )}
-          <Select value={filterStatus} onValueChange={setFilterStatus}>
-            <SelectTrigger className="w-32 h-8 text-xs">
-              <Filter className="h-3 w-3 mr-1" />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="active">Ativas</SelectItem>
-              <SelectItem value="all">Todas</SelectItem>
-            </SelectContent>
-          </Select>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button size="sm" variant="outline" className="gap-1">
@@ -360,12 +388,13 @@ export default function Costura() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
-              {selectedOrders.size > 0 && (
+              {sel.count > 0 && (
                 <DropdownMenuItem onClick={() => {
-                  const ids = costuraOrders.filter(o => selectedOrders.has(o.id)).map(o => o.id).join(',');
+                  if (!confirmSelection('Agrupar')) return;
+                    const ids = Array.from(sel.selectedIds).join(',');
                   navigate(`/orders/grouped-summary?sector=corte_forracao&ids=${ids}`);
                 }}>
-                  <Layers className="h-3.5 w-3.5 mr-2" /> Agrupar ({selectedOrders.size})
+                  <Layers className="h-3.5 w-3.5 mr-2" /> Agrupar ({sel.count})
                 </DropdownMenuItem>
               )}
             </DropdownMenuContent>
@@ -373,13 +402,33 @@ export default function Costura() {
         </>}
       />
 
-      <SearchInput
-        className="max-w-sm"
-        value={searchQuery}
-        onChange={setSearchQuery}
-        placeholder="Buscar por PV, OP, cliente, referência, cor…"
+      <OrderMultiSelectToolbar
+        search={searchQuery}
+        onSearchChange={setSearchQuery}
         resultCount={costuraOrders.length}
         totalCount={sectorOrders.length}
+        clientOptions={clientOptions}
+        clientFilter={clientFilter}
+        onClientFilterChange={setClientFilter}
+        weekFilter={weekFilter}
+        onWeekFilterChange={setWeekFilter}
+        allVisibleSelected={allVisibleSelected}
+        visibleCount={costuraOrders.length}
+        onToggleVisible={toggleVisible}
+        matchedCodeCount={matchedCodeIds.length}
+        onSelectMatched={() => sel.selectMatchingIds(matchedCodeIds)}
+        extraFilters={
+          <Select value={filterStatus} onValueChange={setFilterStatus}>
+            <SelectTrigger className="h-9 w-[140px] text-xs">
+              <Filter className="h-3.5 w-3.5 mr-1" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="active">Ativas</SelectItem>
+              <SelectItem value="all">Todas</SelectItem>
+            </SelectContent>
+          </Select>
+        }
       />
 
       <StatGrid>
@@ -395,12 +444,18 @@ export default function Costura() {
         />
         <StatCard
           label="Selecionadas"
-          value={selectedOrders.size.toLocaleString('pt-BR')}
-          hint="para finalizar / agrupar"
-          tone={selectedOrders.size > 0 ? 'primary' : 'default'}
+          value={sel.count.toLocaleString('pt-BR')}
+          hint={sel.hiddenSelectedCount > 0 ? `${sel.hiddenSelectedCount} fora do filtro` : 'para finalizar / agrupar'}
+          tone={sel.count > 0 ? 'primary' : 'default'}
         />
       </StatGrid>
 
+      <div
+        ref={sel.containerRef}
+        data-marquee-container
+        onMouseDown={sel.onContainerMouseDown}
+        className="relative space-y-3"
+      >
       {groupedByEconomicGroup.map((eg) => {
         const isGroupCollapsed = collapsedGroups.has(eg.name);
         const groupTotalPairs = eg.entries.reduce((s, [, g]) => s + g.orders.reduce((s2, o) => s2 + (o.quantity || 0), 0), 0);
@@ -452,12 +507,12 @@ export default function Costura() {
                         const imageUrl = images?.[0] || ref?.image_url || '';
 
                         return (
-                          <Card key={order.id} className={`border ${stageStatus === 'concluido' ? 'opacity-60 bg-muted/20' : ''}`}>
+                          <Card key={order.id} data-marquee-item data-marquee-id={order.id} className={`border ${stageStatus === 'concluido' ? 'opacity-60 bg-muted/20' : ''}${sel.isSelected(order.id) ? ' ring-2 ring-success' : ''}`}>
                             <CardContent className="p-3">
                               <div className="flex items-center gap-3">
                                 <Checkbox
-                                  checked={selectedOrders.has(order.id)}
-                                  onCheckedChange={() => toggleOrderSelection(order.id)}
+                                  checked={sel.isSelected(order.id)}
+                                  onCheckedChange={() => sel.toggle(order.id)}
                                 />
                                 {imageUrl && (
                                   <SignedImage src={imageUrl} alt={ref?.name || ''} className="w-12 h-12 rounded object-contain border" />
@@ -498,6 +553,8 @@ export default function Costura() {
           </div>
         );
       })}
+        <MarqueeOverlay rect={sel.marqueeRect} />
+      </div>
 
       {costuraOrders.length === 0 && (
         <Panel flush>
