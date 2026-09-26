@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Printer, ArrowLeft, Stack as Layers, Cards, FileText, Check, ArrowsClockwise, CircleNotch as Loader2, Warning as AlertTriangle } from '@phosphor-icons/react';
 import OperatorWorkSheet from '@/components/production/OperatorWorkSheet';
 import { PalmilhaWorkSheet, type PalmilhaGroup } from '@/components/production/PalmilhaWorkSheet';
+import { PalmilhaUnifiedWorkSheet } from '@/components/production/PalmilhaUnifiedWorkSheet';
 import { CartaoFisico } from '@/components/production/CartaoFisico';
 import { CartaoCaixaTransporte } from '@/components/production/CartaoCaixaTransporte';
 import { SilkMontageWorkSheet, type SoleSilkGroup, type SilkColorGroup, type GroupedSector } from '@/components/production/SilkMontageWorkSheet';
@@ -21,6 +22,15 @@ import {
   isCartaoFisicoEmitter,
   type CartaoFisicoCard,
 } from '@/lib/cartaoFisico';
+import {
+  buildPalmilhaUnifiedGroups,
+  normalizePalmilhaPrintSectors,
+} from '@/lib/buildPalmilhaUnifiedGroups';
+import {
+  printSectorToMode,
+  toggleExclusivePalmilhaSector,
+  type PalmilhaPrintMode,
+} from '@/lib/palmilhaUnifiedCard';
 import {
   buildCartaoCaixaCards,
   CAIXA_TRANSPORTE_PER_PAGE,
@@ -690,15 +700,18 @@ interface PrintWorkSheetsPageProps {
 // (enum do banco, compute_wave_timeline, capacidades).
 // Exportado pra tela wrapper (PrintWorkSheets.tsx) validar o deep-link
 // `?sectors=` vindo das páginas de setor (6º passe, 2026-06-12).
-export const SECTORS = ['Corte Palmilha', 'Corte Forração', 'Corte Cabedal', 'Acabamento Palmilha', 'Costura Cabedal', 'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição', 'Relatório Gerencial'] as const;
+// Spec ficha-palmilha-unificada: Corte Palmilha + Corte Forração viram o trio
+// exclusivo Palmilha | Só Fibra | Só Forração na rota A4. Cartão físico e
+// roteiro de fábrica continuam nas grafias legadas via aliases.
+export const SECTORS = ['Palmilha', 'Só Fibra', 'Só Forração', 'Corte Cabedal', 'Acabamento Palmilha', 'Costura Cabedal', 'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição', 'Relatório Gerencial'] as const;
 
-// Rótulos de exibição (chip do seletor + título da região na tela). A CHAVE
-// interna 'Corte Palmilha' é mantida (capacidade/roteamento/batch dependem
-// dela); só o texto pro usuário muda (pedido user 09/06/2026).
-const SECTOR_DISPLAY_LABELS: Partial<Record<typeof SECTORS[number], string>> = {
-  'Corte Palmilha': 'Corte de Placa de Fibra',
-};
-const sectorLabel = (s: typeof SECTORS[number]): string => SECTOR_DISPLAY_LABELS[s] || s;
+/** Rota A4 completa: Palmilha cobre fibra+forro; Só * ficam desmarcados. */
+export const DEFAULT_A4_SECTORS: readonly (typeof SECTORS[number])[] =
+  SECTORS.filter(s => s !== 'Só Fibra' && s !== 'Só Forração');
+
+const SECTOR_DISPLAY_LABELS: Partial<Record<typeof SECTORS[number], string>> = {};
+const sectorLabel = (s: typeof SECTORS[number] | string): string =>
+  SECTOR_DISPLAY_LABELS[s as typeof SECTORS[number]] || s;
 
 // ── Group orders by reference_id + color ────────────────────────────────────
 // Faixa por numeração da OP: < 33 = infantil, ≥ 33 = adulto (mesma regra do
@@ -945,9 +958,19 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   // User clica num chip pra ativar/desativar — conteúdo da tela atualiza ao vivo.
   const [activeSectors, setActiveSectors] = useState<Set<string>>(
     () => {
-      const seed = initialSectors ?? SECTORS;
+      const raw = initialSectors ?? [...DEFAULT_A4_SECTORS];
+      const seed = normalizePalmilhaPrintSectors(raw as string[]);
       if (initialCartao) {
-        return new Set([...seed].filter((s) => isCartaoFisicoEmitter(s)));
+        const mapped = new Set<string>();
+        for (const s of seed) {
+          if (s === 'Palmilha') {
+            mapped.add('Corte Palmilha');
+            mapped.add('Corte Forração');
+          } else if (s === 'Só Fibra') mapped.add('Corte Palmilha');
+          else if (s === 'Só Forração') mapped.add('Corte Forração');
+          else if (isCartaoFisicoEmitter(s)) mapped.add(s);
+        }
+        return mapped.size > 0 ? mapped : new Set(CARTAO_FISICO_EMITTERS);
       }
       return new Set(seed);
     },
@@ -1071,23 +1094,24 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
 
   const toggleSector = (s: string) => {
     setActiveSectors(prev => {
-      // Estado inicial = TODOS marcados; o usuário DESMARCA os setores que não
-      // quer no arquivo final. Toggle PURO: clicar num chip adiciona/remove só
-      // aquele setor, nunca mexe nos demais.
-      //
-      // ⚠ Vai-e-volta documentado (não reverter por engano):
-      //  - 11/06/2026: um relato ("seleciono um setor e não aparece, outro
-      //    aparece") fez o 1º clique a partir de todos-marcados ISOLAR o setor
-      //    (prev.size === N → new Set([s])).
-      //  - 16/06/2026: o dono pediu o oposto e canônico — clicar num setor
-      //    DESMARCA só ele, mantendo os outros marcados. Reintroduzido o toggle
-      //    puro. Pra imprimir UM único setor, use "Limpar" e marque o desejado
-      //    (capacidade preservada, só muda o nº de cliques).
+      // Trio Palmilha | Só Fibra | Só Forração é mutuamente exclusivo (Q19).
+      // Demais setores: toggle puro (16/06/2026).
+      if (printSectorToMode(s)) {
+        return toggleExclusivePalmilhaSector(prev, s);
+      }
       const next = new Set(prev);
       if (next.has(s)) next.delete(s); else next.add(s);
       return next;
     });
   };
+
+  const activePalmilhaMode: PalmilhaPrintMode | null = useMemo(() => {
+    for (const s of activeSectors) {
+      const m = printSectorToMode(s);
+      if (m) return m;
+    }
+    return null;
+  }, [activeSectors]);
   const sectorChoices = isCartao ? CARTAO_FISICO_EMITTERS : SECTORS;
   const sectorsKey = useMemo(
     () => [...activeSectors].sort().join('|'),
@@ -1104,12 +1128,20 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     resetPageRange();
     if (on) {
       setActiveSectors((prev) => {
-        const next = new Set([...prev].filter((s) => isCartaoFisicoEmitter(s)));
+        const next = new Set<string>();
+        for (const s of prev) {
+          if (s === 'Palmilha') {
+            next.add('Corte Palmilha');
+            next.add('Corte Forração');
+          } else if (s === 'Só Fibra') next.add('Corte Palmilha');
+          else if (s === 'Só Forração') next.add('Corte Forração');
+          else if (isCartaoFisicoEmitter(s)) next.add(s);
+        }
         return next.size > 0 ? next : new Set(CARTAO_FISICO_EMITTERS);
       });
     } else {
       // Volta ao A4 com a rota completa marcada (DoD: setores completos).
-      setActiveSectors(new Set(SECTORS));
+      setActiveSectors(new Set(DEFAULT_A4_SECTORS));
     }
   };
   const setCaixaMode = (sector: CaixaTransporteSector | null) => {
@@ -1119,10 +1151,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     if (sector) {
       setActiveSectors(new Set([sector]));
     } else {
-      setActiveSectors(new Set(SECTORS));
+      setActiveSectors(new Set(DEFAULT_A4_SECTORS));
     }
   };
-  const markAllSectors = () => setActiveSectors(new Set(sectorChoices));
+  const markAllSectors = () => setActiveSectors(new Set(
+    isCartao ? sectorChoices : DEFAULT_A4_SECTORS,
+  ));
   const clearSectors = () => setActiveSectors(new Set());
   // Imprime com o layout escolhido. flushSync força o re-render (ficha completa OU
   // reduzida) ANTES do window.print(), pra o diálogo já pegar o DOM certo.
@@ -1310,7 +1344,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   // Gates por setor — queries caras só quando o chip correspondente está ativo.
   const needsExpedicao = activeSectors.has('Expedição');
   const needsRelatorio = activeSectors.has('Relatório Gerencial');
-  const needsPlateArea = activeSectors.has('Corte Palmilha');
+  const needsPlateArea = activePalmilhaMode === 'palmilha' || activePalmilhaMode === 'so_fibra'
+    || activeSectors.has('Corte Palmilha');
   const needsSoleSizeConj =
     activeSectors.has('Solagem') || activeSectors.has('Colagem');
 
@@ -2867,13 +2902,15 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       ...SOLE_COLOR_GROUPED_SECTORS.filter(s => s !== 'Aviamento'),
       ...(SOLE_COLOR_GROUPED_SECTORS.includes('Silk') ? [] : ['Silk' as GroupedSector]),
     ];
-    if (!soleSheetSectors.some(s => activeSectors.has(s))) return null;
+    // Trio Palmilha unificado também precisa do builder solado+cor.
+    const needsPalmilhaColorSheets = activePalmilhaMode != null;
+    if (!needsPalmilhaColorSheets && !soleSheetSectors.some(s => activeSectors.has(s))) return null;
     return buildColorGroupedSheets('sole');
 
   // knifeDefaultBoundaries vem de query SEPARADA (useKnifeFacasDefault) — sem ele
   // nas deps, o memo não recomputava quando o padrão de facas carregava async →
   // Corte Cabedal ficava número-a-número. (PV-00142, 2026-06-17.)
-  }, [expandedOrders, activeSectors, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, soleMaterialByRef, sheetMaterialsByRef, resolveSoleForOrder, sheetById, clientsInfo, economicGroupsInfo, soleGroupPackaging, SOLE_COLOR_GROUPED_SECTORS, knifeDefaultBoundaries, knifeOptOutByRef, knifeRangesByRef, aviamentoDefaultBoundaries, aviamentoOptOutByRef, aviamentoRangesByRef, reportVariantById, reportGroupsById]);
+  }, [expandedOrders, activeSectors, activePalmilhaMode, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, soleMaterialByRef, sheetMaterialsByRef, resolveSoleForOrder, sheetById, clientsInfo, economicGroupsInfo, soleGroupPackaging, SOLE_COLOR_GROUPED_SECTORS, knifeDefaultBoundaries, knifeOptOutByRef, knifeRangesByRef, aviamentoDefaultBoundaries, aviamentoOptOutByRef, aviamentoRangesByRef, reportVariantById, reportGroupsById]);
 
   // Corte Cabedal + Costura Cabedal: 1 ficha por REFERÊNCIA (dono 2026-09-23).
   // Antes Cabedal agregava por solado+cor e fundia LA01+SP201 no mesmo card
@@ -3627,6 +3664,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     if (isCaixa) return cartaoCaixaCards.length;
     if (isCartao) return cartaoFisicoCards.length;
     let total = 0;
+    if (activePalmilhaMode && (silkMontageGroups || []).length > 0) total += 1;
     if (activeSectors.has('Corte Palmilha') && palmilhaGroups.length > 0) total += 1;
     if (activeSectors.has('Solagem') && solagemData?.solagem && solagemData.solagem.bands.length > 0) total += 1;
     // Corte Cabedal: 1 maço contínuo por setor (vários grupos = 1 por referência).
@@ -3640,7 +3678,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     // Aviamento, Montagem e Acabamento agora imprimem UM maço por setor
     // (header agregado + sub-header por grupo) — cada um conta 1 ficha
     // quando tem ao menos um grupo válido.
-    if (activeSectors.has('Corte Forração') && smGroups.some(g =>
+    if (!activePalmilhaMode && activeSectors.has('Corte Forração') && smGroups.some(g =>
       g.colorGroups.some(cg => cg.requiresLiningCut === true && opsInRoteiro(cg.opNumbers, 'Corte Forração')))) total += 1;
     // Mapeamento de roteiro: Acabamento Palmilha testa 'Costura'.
     // Costura Cabedal testava 'Corte Cabedal' — resíduo da era do proxy, quando os
@@ -3671,7 +3709,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     // das deps de propósito (mesmo padrão dos memos vizinhos); os dados que
     // elas leem chegam via silkMontageGroups/upperSectorGroups/groupedWorksheets.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isCaixa, isCartao, cartaoCaixaCards, cartaoFisicoCards, activeSectors, palmilhaGroups, solagemData, silkMontageGroups, upperSectorGroups, costuraCabedalGroups, aviamentoGroups, groupedWorksheets, acabamentoOrders.length, expedicaoGroups, reportGroups]);
+  }, [isCaixa, isCartao, cartaoCaixaCards, cartaoFisicoCards, activeSectors, activePalmilhaMode, palmilhaGroups, solagemData, silkMontageGroups, upperSectorGroups, costuraCabedalGroups, aviamentoGroups, groupedWorksheets, acabamentoOrders.length, expedicaoGroups, reportGroups]);
 
   const today = new Date().toLocaleDateString('pt-BR');
   const printPairCount = printOrders.reduce((total, order) => total + (Number(order.total_pairs) || 0), 0);
@@ -4068,39 +4106,75 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           </div>
         ))}
 
-        {/* ── Corte Palmilha ──
-            Decisão 24/05/2026 (v3): user prefere ficha em múltiplas A4 a
-            scale comprimido. Sem chunking — page-break-after entre fichas
-            distintas, conteúdo flui naturalmente. Blocos atômicos
-            (.keep-together) evitam quebra no meio de uma seção. */}
-        {isA4 && includesSector('Corte Palmilha') && palmilhaGroups.length > 0 && (
-          <div className="page-break">
-              <PalmilhaWorkSheet
-                sectorLabel="Corte de Placa de Fibra"
-                groups={palmilhaGroups.map(g => ({
-                  ...g,
-                  clientNames: clientNamesForPvs(g.pvNumbers),
-                  consumption: filterConsumptionForSector(consumptionForOpNumbers(g.opNumbers, allocatedPairsOf(g)), 'Corte Fibra'),
-                  // Operação do setor: placas a cortar deste solado. Filtra o
-                  // consumo em unidade `placa` (component Palmilha em placa);
-                  // palmilha pronta-na-cor sai como `par` e não entra aqui.
-                  plateOps: filterConsumptionForSector(consumptionForOpNumbers(g.opNumbers, allocatedPairsOf(g)), 'Corte Fibra')
-                    .filter(r => r.component === 'Palmilha' && (r.unit || '').toLowerCase() === 'placa' && (r.required || 0) > 0)
-                    .map(r => ({
-                      name: r.product_name,
-                      qty: r.required,
-                      unit: r.unit || 'placa',
-                      areaDm2: plateAreaByGroupName?.get((r.product_name || '').toLowerCase()) || 0,
-                    })),
-                }))}
-                allSizes={palmilhaAllSizes}
-                sizeBand={bandForOps(palmilhaGroups.flatMap(g => g.opNumbers || []))}
+        {/* ── Palmilha unificada (Fibra + Forração) ── */}
+        {isA4 && activePalmilhaMode && (() => {
+          const smGroups = silkMontageGroups || [];
+          if (smGroups.length === 0) return null;
+          const opsNeedFibra = new Set<string>();
+          const opsNeedForracao = new Set<string>();
+          for (const order of expandedOrders as any[]) {
+            const sheetId = order.reference_id;
+            const op = order.op_number;
+            if (!sheetId || !op) continue;
+            if (orderInRoteiro(sheetId, 'Corte Fibra') && !isEffectiveReadyMade(sheetId, order.color)) {
+              opsNeedFibra.add(String(op));
+            }
+            if (orderInRoteiro(sheetId, 'Corte Forração')) {
+              opsNeedForracao.add(String(op));
+            }
+          }
+          const built = buildPalmilhaUnifiedGroups({
+            mode: activePalmilhaMode,
+            soleGroups: smGroups,
+            opsNeedFibra,
+            opsNeedForracao,
+            resolvePlateGroup: (opNumbers) => {
+              for (const order of expandedOrders as any[]) {
+                if (!opNumbers.includes(String(order.op_number))) continue;
+                const mats = sheetMaterialsByRef.get(order.reference_id);
+                if (mats?.insole) return mats.insole;
+              }
+              return '';
+            },
+            consumptionForOps: (opNumbers) => {
+              const rows = consumptionForOpNumbers(opNumbers);
+              return [
+                ...filterConsumptionForSector(rows, 'Corte Fibra'),
+                ...filterConsumptionForSector(rows, 'Corte Forração'),
+              ].map(r => ({
+                ...r,
+                // Área da placa pra conversão dm²→placa no card
+                ...(r.component === 'Palmilha' ? {} : {}),
+              }));
+            },
+            clientNamesForPvs,
+          });
+          // Anexa areaDm2 nas plateOps
+          for (const g of built.groups) {
+            for (const c of g.cards) {
+              c.plateOps = (c.plateOps || []).map(p => ({
+                ...p,
+                areaDm2: plateAreaByGroupName?.get((p.name || '').toLowerCase()) || 0,
+              }));
+            }
+          }
+          if (built.groups.length === 0) return null;
+          return (
+            <div className="page-break">
+              <PalmilhaUnifiedWorkSheet
+                mode={activePalmilhaMode}
+                groups={built.groups}
+                allSizes={built.allSizes}
+                sizeBand={bandForOps(built.groups.flatMap(g => g.cards.flatMap(c => c.opNumbers || [])))}
               />
             </div>
-        )}
+          );
+        })()}
 
-        {/* ── Setores agrupados (Corte Forração, Corte Cabedal, Acabamento Palmilha,
-            Costura Cabedal, Aviamento por referência, Silk por solado) ── */}
+        {/* ── Setores agrupados (Corte Cabedal, Acabamento Palmilha,
+            Costura Cabedal, Aviamento por referência, Silk por solado) ──
+            Corte Forração SAI deste loop quando o trio Palmilha está ativo
+            (já saiu no bloco unificado acima). */}
         {isA4 && (() => {
           const smGroups = silkMontageGroups || [];
           const upperGroups = upperSectorGroups || [];
@@ -4160,7 +4234,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           // Montagem continua por REF+COR via groupedWorksheets abaixo.
           // Aviamento (2026-06-12) renderiza de aviamentoGroups (1 ficha por
           // REFERÊNCIA, seções por cor) — mantém a posição no fluxo.
-          const flowOrder: GroupedSector[] = ['Corte Forração', 'Corte Cabedal', 'Acabamento Palmilha', 'Costura Cabedal', 'Aviamento', 'Silk'];
+          const flowOrder: GroupedSector[] = activePalmilhaMode
+            ? ['Corte Cabedal', 'Acabamento Palmilha', 'Costura Cabedal', 'Aviamento', 'Silk']
+            : ['Corte Forração', 'Corte Cabedal', 'Acabamento Palmilha', 'Costura Cabedal', 'Aviamento', 'Silk'];
           const sectorsToRender: GroupedSector[] = flowOrder.filter(s => activeSectors.has(s));
 
           // Corte Cabedal (2026-09-23): por REFERÊNCIA — não funde modelos

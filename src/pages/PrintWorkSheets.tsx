@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrderLotsBatch } from '@/hooks/useOrderLots';
 import PrintWorkSheetsPage, { SECTORS } from '@/components/production/PrintWorkSheetsPage';
+import { normalizePalmilhaPrintSectors } from '@/lib/buildPalmilhaUnifiedGroups';
 import { Card, CardContent } from '@/components/ui/card';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Button } from '@/components/ui/button';
@@ -101,9 +102,10 @@ export default function PrintWorkSheets() {
   const deepLinkSectors = useMemo(() => {
     const raw = searchParams.get('sectors');
     if (!raw) return null;
-    const valid = new Set<string>(SECTORS);
+    const valid = new Set<string>([...SECTORS, 'Corte Palmilha', 'Corte Forração', 'Corte Fibra']);
     const list = raw.split(',').map(s => s.trim()).filter(s => valid.has(s));
-    return list.length > 0 ? new Set(list) : null;
+    if (list.length === 0) return null;
+    return new Set(normalizePalmilhaPrintSectors(list));
   }, [searchParams]);
   const [statusFilter, setStatusFilter] = useState<string>(deepLinkIds.length > 0 ? 'todos' : 'em_fluxo');
   const [pvFilter, setPvFilter] = useState<string>('all');

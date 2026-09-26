@@ -32,8 +32,14 @@ export const SECTOR_NORMALIZE: Record<string, SectorKey> = {
   // canônico pós PR1-PR3
   'corte palmilha': 'corte_palmilha',
   'corte fibra': 'corte_palmilha',
+  'palmilha · fibra': 'corte_palmilha',
+  'palmilha fibra': 'corte_palmilha',
   'corte forração': 'corte_forracao',
   'corte forracao': 'corte_forracao',
+  'palmilha · forração': 'corte_forracao',
+  'palmilha · forracao': 'corte_forracao',
+  'palmilha forração': 'corte_forracao',
+  'palmilha forracao': 'corte_forracao',
   // Opt-in por modelo (ConstructionConfigPanel) — order 2 no SQL, paralelo ao
   // grupo 'corte'. Sem este mapa, sheetHasSector / planejamento tratavam o
   // nome como desconhecido e o Kanban não achava parallel_group estático.
