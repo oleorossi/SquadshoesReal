@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { SectorStageActions } from '@/components/production/SectorStageActions';
 import { SectorApontamentoShell } from '@/components/production/SectorApontamentoShell';
+import { ChamadaHojeChip } from '@/components/ficha-montadores/ChamadaHojeChip';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useOrders } from '@/hooks/useOrders';
 import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
@@ -195,6 +196,7 @@ export default function Montagem() {
       isError={ordersError}
       isFetching={ordersFetching}
       onRetry={() => { void refetchOrders(); }}
+      beforeStats={<ChamadaHojeChip setor="montagem" />}
       actions={<>
           {selectedOrders.size > 0 && (
             <Button

@@ -36,6 +36,7 @@ import {
 } from '@/lib/production/sectorApontamentoQueue';
 import { finalizeSelectedSectorOrders } from '@/lib/production/finalizeSelectedSectorOrders';
 import { SectorApontamentoShell } from '@/components/production/SectorApontamentoShell';
+import { ChamadaHojeChip } from '@/components/ficha-montadores/ChamadaHojeChip';
 
 
 
@@ -421,6 +422,7 @@ export default function Solagem() {
           title="Setor de Solagem"
           description="Grade de solados por cor e numeração"
           actions={<>
+            <ChamadaHojeChip setor="solagem" />
             {selectedOrders.size > 0 && (
               <Button 
                 size="sm" 

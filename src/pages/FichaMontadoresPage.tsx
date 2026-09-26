@@ -48,12 +48,16 @@ import { useProductionSectors, useEmployeeSectors } from "@/hooks/useSectorRoste
 import { useUrlTabState } from "@/hooks/useUrlTabState";
 import { ratesOfRow, sumProducaoRows, type FichaMontadorRow } from "@/lib/montadorProduction";
 import { adjustParesByFicha, fichasFromPares, isFichaLocked, isWeekdayIso, missingWeekdayIsos, parseParesEntry, rateForEntryCategory } from "@/lib/fichaMontadoresEntry";
+import { compareMontagemSolagem, SETOR_MONTAGEM, SETOR_SOLAGEM } from "@/lib/fichaMontadoresMxS";
 import { searchMatchesAllTerms } from "@/lib/searchUtils";
 import { toast } from "sonner";
-import { Printer, User, ChartBar, ClipboardText, Users, CurrencyDollar, FloppyDisk, CaretLeft, CaretRight, Warning, CheckCircle, Clock, CalendarBlank, ListBullets, Plus, Minus, LockKey, ArrowDown, X, FileArrowDown, Copy } from "@phosphor-icons/react";
+import { Printer, User, ChartBar, ClipboardText, Users, FloppyDisk, CaretLeft, CaretRight, Warning, CheckCircle, Clock, CalendarBlank, ListBullets, Plus, Minus, LockKey, ArrowDown, X, FileArrowDown, Copy } from "@phosphor-icons/react";
 import {
   buildProducaoExportRows, downloadTextFile, producaoExportToCsv, semanaAnteriorDe,
 } from "@/lib/fichaMontadoresExport";
+import { FichaJornadaTrail } from "@/components/ficha-montadores/FichaJornadaTrail";
+import { FichaLancamentoPanel } from "@/components/ficha-montadores/FichaLancamentoPanel";
+import { FichaRelatoriosHome } from "@/components/ficha-montadores/FichaRelatoriosHome";
 
 type Grade = "adulto" | "infantil";
 /** Duas abas: LANÇAR e VER. "Produtividade" e "Relatórios" eram telas separadas
@@ -143,6 +147,8 @@ interface Ficha {
   pago_em?: string | null;
   criado_em?: string;
   atualizado_em?: string | null;
+  /** Chave canônica do setor (`montagem` | `solagem`). */
+  setor?: string | null;
 }
 
 /** R$/par gravado NA LINHA (snapshot do cadastro na hora do apontamento).
@@ -689,9 +695,10 @@ function FichaCounter({ value, tamanho, diff, pessoa, locked, onChange, onKeyDow
 /* ---------- Componente ---------- */
 export default function FichaMontadoresPage() {
   const db = supabase;
+  // Home = Relatórios (dono): abre em Conferir/Relatórios, não na bancada.
   const { value: tab, setValue: setTab } = useUrlTabState<Tab>({
     values: ["lancamento", "producao"],
-    defaultValue: "lancamento",
+    defaultValue: "producao",
     aliases: { produtividade: "producao", relatorios: "producao" },
     migrateFrom: "ficha-montadores-tab",
   });
@@ -895,8 +902,10 @@ export default function FichaMontadoresPage() {
     // do setor a cada troca de aba — cresce sem teto e o PostgREST corta em 1.000
     // linhas em silêncio, então um dia a produção antiga simplesmente sumiria dos
     // relatórios. Agora busca só o que as três abas conseguem exibir.
+    // Carrega MONTAGEM + SOLAGEM no intervalo — a home Relatórios precisa dos
+    // dois pra bruto combinado e comparativo M×S. A bancada filtra por `setor`.
     const { data, error } = await db.from("ficha_montadores").select("*")
-      .eq("setor", setor)
+      .in("setor", [SETOR_MONTAGEM, SETOR_SOLAGEM])
       .gte("dia", dataRange.from)
       .lte("dia", dataRange.to)
       .order("dia", { ascending: false })
@@ -916,32 +925,39 @@ export default function FichaMontadoresPage() {
       setFichas(((data ?? []) as unknown as Ficha[]).map((f) => ({
         ...f,
         dia: String(f.dia ?? "").slice(0, 10),
+        setor: f.setor ? String(f.setor).toLowerCase() : f.setor,
       })));
     }
     setLoading(false);
-  }, [db, setor, dataRange.from, dataRange.to]);
+  }, [db, dataRange.from, dataRange.to]);
   useEffect(() => { carregar(); }, [carregar]);
 
-  // Semeia a contagem do dia a partir do banco.
+  /** Linhas do setor ativo — bancada Lançar e ranking com drill-down. */
+  const fichasDoSetor = useMemo(
+    () => fichas.filter((f) => String(f.setor || "").toLowerCase() === setor),
+    [fichas, setor],
+  );
+
+  // Semeia a contagem do dia a partir do banco (só o setor da bancada).
   useEffect(() => {
     const p: Record<string, DiffSizeMap> = {};
-    for (const f of fichas) {
+    for (const f of fichasDoSetor) {
       if (!isChamada(f) || !f.montador_id || f.dia !== chamadaDia) continue;
       p[f.montador_id] = diffSizeMapOf(f);
     }
     setPares(p); setOrigPares(p);
-  }, [fichas, chamadaDia]);
+  }, [fichasDoSetor, chamadaDia]);
 
   // Semeia a matriz da semana.
   useEffect(() => {
     const days = weekDaysOf(semanaAnchor);
     const w: Record<string, DiffSizeMap> = {};
-    for (const f of fichas) {
+    for (const f of fichasDoSetor) {
       if (!isChamada(f) || !f.montador_id) continue;
       if (days.includes(f.dia)) w[`${f.montador_id}|${f.dia}`] = diffSizeMapOf(f);
     }
     setWeek(w); setOrigWeek(w);
-  }, [fichas, semanaAnchor]);
+  }, [fichasDoSetor, semanaAnchor]);
 
   // ── helpers Dia ──
   const mapOf = (mid: string): DiffSizeMap => pares[mid] || emptyDiffMap();
@@ -1032,12 +1048,12 @@ export default function FichaMontadoresPage() {
    *  apontamento está fechado: mudar pares quebraria o snapshot da folha. */
   const diaFechado = useMemo(() => {
     const s = new Map<string, "folha" | "pago">();
-    for (const f of fichas) {
+    for (const f of fichasDoSetor) {
       if (!f.montador_id || !isFichaLocked(f)) continue;
       s.set(`${f.montador_id}|${f.dia}`, f.pago_em ? "pago" : "folha");
     }
     return s;
-  }, [fichas]);
+  }, [fichasDoSetor]);
   const weekLabel = `${fmtDia(weekDays[0])} – ${fmtDia(weekDays[6])}`;
   const semParesTotal = useMemo(() => Object.values(week).reduce((s, m) => s + paresOfDiffMap(m), 0), [week]);
   const semFichasTotal = useMemo(() => Object.values(week).reduce((s, m) => s + fichasOfDiffMap(m), 0), [week]);
@@ -1114,8 +1130,8 @@ export default function FichaMontadoresPage() {
 
   const fichasHoje = useMemo(() => {
     const t = todayISO();
-    return fichas.filter((f) => isChamada(f) && f.dia === t).reduce((s, f) => s + fichasDiaOf(f), 0);
-  }, [fichas]);
+    return fichasDoSetor.filter((f) => isChamada(f) && f.dia === t).reduce((s, f) => s + fichasDiaOf(f), 0);
+  }, [fichasDoSetor]);
 
   // Regime de cada pessoa — decide se a produção dela é PAGAMENTO ou só medição.
   // Vem de employees (não do roster do setor) pra cobrir também quem lançou
@@ -1265,7 +1281,7 @@ export default function FichaMontadoresPage() {
     const updates: Record<string, DiffSizeMap> = {};
     for (const employee of montadores) {
       if (diaFechado.has(`${employee.id}|${chamadaDia}`)) continue;
-      const src = fichas.find((f) => isChamada(f) && f.montador_id === employee.id && f.dia === ontem);
+      const src = fichasDoSetor.find((f) => isChamada(f) && f.montador_id === employee.id && f.dia === ontem);
       if (!src) continue;
       const dm = diffSizeMapOf(src);
       if (paresOfDiffMap(dm) <= 0) continue;
@@ -1425,12 +1441,23 @@ export default function FichaMontadoresPage() {
     return "aberto";
   }, [regimePor]);
 
+  /** Filtro de pessoa/pagamento sobre TODOS os setores (home M+S). */
+  const passaFiltroPessoaPag = useCallback((f: Ficha) => (
+    f.dia >= range.from && f.dia <= range.to
+    && (filtroMontador === "__all__" || f.montador_id === filtroMontador)
+    && (pagStatus === "todos" || estadoDe(f) === pagStatus)
+  ), [range, filtroMontador, pagStatus, estadoDe]);
+
+  /** Linhas do setor ativo + filtros — ranking, CSV, print, calendário drill-down. */
   const fichasFiltradas = useMemo(
-    () => fichas.filter((f) =>
-      f.dia >= range.from && f.dia <= range.to
-      && (filtroMontador === "__all__" || f.montador_id === filtroMontador)
-      && (pagStatus === "todos" || estadoDe(f) === pagStatus)),
-    [fichas, range, filtroMontador, pagStatus, estadoDe],
+    () => fichasDoSetor.filter(passaFiltroPessoaPag),
+    [fichasDoSetor, passaFiltroPessoaPag],
+  );
+
+  /** Linhas M+S com os mesmos filtros de pessoa/pagamento — topo combinado. */
+  const fichasFiltradasMs = useMemo(
+    () => fichas.filter(passaFiltroPessoaPag),
+    [fichas, passaFiltroPessoaPag],
   );
 
   /**
@@ -1459,17 +1486,70 @@ export default function FichaMontadoresPage() {
     return { ...base, semDetalhe, legado };
   }, [fichasFiltradas]);
 
+  /** Comparativo Montagem × Solagem (período + breakdown diário). */
+  const mxSCompare = useMemo(
+    () => compareMontagemSolagem(
+      fichasFiltradasMs.map((f) => ({
+        ...f,
+        setor: f.setor,
+      })),
+      range.from,
+      range.to,
+    ),
+    [fichasFiltradasMs, range.from, range.to],
+  );
+
+  /** Totais de caixa combinados M+S (mesmo motor de agg, sem filtro de setor). */
+  const totalsCombined = useMemo(() => {
+    let valorPago = 0, valorFolha = 0, valorAberto = 0, valorTotal = 0;
+    let fichasN = 0, pares = 0, medio = 0, dificil = 0;
+    for (const f of fichasFiltradasMs) {
+      const fichasContrib = isChamada(f) ? fichasDiaOf(f) : 1;
+      const pd = isChamada(f)
+        ? paresDiffOf(f)
+        : { medio: paresDaFicha(f), dificil: 0, total: paresDaFicha(f) };
+      const { vm, vd } = ratesOf(f);
+      const valor = pd.medio * vm + pd.dificil * vd;
+      const estado = estadoDe(f);
+      fichasN += fichasContrib;
+      medio += pd.medio; dificil += pd.dificil; pares += pd.medio + pd.dificil;
+      if (estado !== "na") {
+        if (estado === "pago") valorPago += valor;
+        else if (estado === "folha") valorFolha += valor;
+        else valorAberto += valor;
+        valorTotal += valor;
+      }
+    }
+    return { fichas: fichasN, pares, medio, dificil, valorPago, valorFolha, valorAberto, valorTotal };
+  }, [fichasFiltradasMs, estadoDe]);
+
+  const brutoPorSetor = useMemo(() => {
+    const out = { montagem: 0, solagem: 0 };
+    const pares = { montagem: 0, solagem: 0 };
+    for (const f of fichasFiltradasMs) {
+      if (!isChamada(f)) continue;
+      const s = String(f.setor || "").toLowerCase();
+      if (s !== SETOR_MONTAGEM && s !== SETOR_SOLAGEM) continue;
+      const pd = paresDiffOf(f);
+      const { vm, vd } = ratesOf(f);
+      const valor = pd.medio * vm + pd.dificil * vd;
+      out[s] += valor;
+      pares[s] += pd.total;
+    }
+    return { bruto: out, pares };
+  }, [fichasFiltradasMs]);
+
   /** Comparativo só no modo semana: pares/bruto da semana imediatamente anterior
-   *  (mesmos filtros de pessoa/pagamento). */
+   *  (mesmos filtros de pessoa/pagamento, setor ativo). */
   const resumoSemanaAnterior = useMemo(() => {
     if (pMode !== "semana") return null;
     const prev = semanaAnteriorDe(range.from);
-    const rows = fichas.filter((f) =>
+    const rows = fichasDoSetor.filter((f) =>
       f.dia >= prev.from && f.dia <= prev.to
       && (filtroMontador === "__all__" || f.montador_id === filtroMontador)
       && (pagStatus === "todos" || estadoDe(f) === pagStatus));
     return { ...sumProducaoRows(rows as unknown as FichaMontadorRow[]), ...prev };
-  }, [pMode, range.from, fichas, filtroMontador, pagStatus, estadoDe]);
+  }, [pMode, range.from, fichasDoSetor, filtroMontador, pagStatus, estadoDe]);
 
   function exportarCsvPeriodo() {
     const nomePorId = new Map(montadores.map((e) => [e.id, e.name] as const));
@@ -1493,7 +1573,7 @@ export default function FichaMontadoresPage() {
    * que passaram no filtro. Semana começa na SEGUNDA (`dowIdx`), igual ao PDF.
    */
   const calendario = useMemo(() => {
-    const porDia = new Map<string, { pares: number; medio: number; dificil: number; pago: boolean }>();
+    const porDia = new Map<string, { pares: number; medio: number; dificil: number; pago: boolean; mxDelta?: number }>();
     for (const f of fichasFiltradas) {
       const pd = isChamada(f)
         ? paresDiffOf(f)
@@ -1507,10 +1587,14 @@ export default function FichaMontadoresPage() {
       c.pago = c.pago && estadoDe(f) === "pago";
       porDia.set(dia, c);
     }
+    const mxByDay = new Map(mxSCompare.byDay.map((d) => [d.dia, d.delta]));
+    for (const [dia, c] of porDia) {
+      if (mxByDay.has(dia)) c.mxDelta = mxByDay.get(dia);
+    }
     const dias = daysInRange(range.from, range.to);
     const meses = [...new Set(dias.map((d) => d.slice(0, 7)))];
     return { porDia, dias, meses, temDificil: [...porDia.values()].some((c) => c.dificil > 0) };
-  }, [fichasFiltradas, range, estadoDe]);
+  }, [fichasFiltradas, range, estadoDe, mxSCompare]);
 
   // Pares e VALOR por pessoa. O valor sai do R$/par de CADA linha (snapshot),
   // nunca de "pares do período × taxa de hoje" — senão um reajuste reescreveria
@@ -1687,33 +1771,26 @@ export default function FichaMontadoresPage() {
       <EditorialPageHeader
         sectionLabel={`PRODUÇÃO · ${cfgSetor.label.toUpperCase()}`}
         title="Ficha de produção"
-        description="Lance → confira → pague. O valor por par fica congelado em cada apontamento e segue para a folha."
+        description="Relatórios primeiro: custo M+S, ranking e comparativo de pares. Lance e pague na mesma jornada — R$/par congelado em cada apontamento."
         meta={<><span className="font-bold">{montadores.length}</span> PESSOA{montadores.length === 1 ? "" : "S"} POR PAR · <span className="font-bold">{fichasHoje}</span> FICHA{fichasHoje === 1 ? "" : "S"} HOJE</>}
       />
 
-      {/* Jornada em uma linha: o administrativo não precisa adivinhar a ordem. */}
-      <ol aria-label="Jornada da ficha" className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
-        <li className={tab === "lancamento" ? "text-foreground" : ""}>
-          <button type="button" className="hover:text-foreground" onClick={() => setTab("lancamento")}>1 · Lançar</button>
-        </li>
-        <li aria-hidden className="text-border">→</li>
-        <li className={tab === "producao" && reportView === "resumo" ? "text-foreground" : ""}>
-          <button type="button" className="hover:text-foreground" onClick={() => {
-            if (temRascunho && !confirmarDescarte()) return;
-            if (temRascunho) iniciarTrocaDeContexto();
-            if (chamadaView === "dia") setSemanaAnchor(chamadaDia);
-            setPMode("semana"); setReportView("resumo"); setTab("producao");
-          }}>2 · Conferir / pagar</button>
-        </li>
-        <li aria-hidden className="text-border">→</li>
-        <li className={tab === "producao" && reportView !== "resumo" ? "text-foreground" : ""}>
-          <button type="button" className="hover:text-foreground" onClick={() => {
-            if (temRascunho && !confirmarDescarte()) return;
-            if (temRascunho) iniciarTrocaDeContexto();
-            setTab("producao"); setReportView("calendario");
-          }}>3 · Relatórios</button>
-        </li>
-      </ol>
+      <FichaJornadaTrail
+        tab={tab}
+        reportView={reportView}
+        onLancamento={() => setTab("lancamento")}
+        onConferir={() => {
+          if (temRascunho && !confirmarDescarte()) return;
+          if (temRascunho) iniciarTrocaDeContexto();
+          if (chamadaView === "dia") setSemanaAnchor(chamadaDia);
+          setPMode("semana"); setReportView("resumo"); setTab("producao");
+        }}
+        onRelatorios={() => {
+          if (temRascunho && !confirmarDescarte()) return;
+          if (temRascunho) iniciarTrocaDeContexto();
+          setPMode("semana"); setTab("producao"); setReportView("resumo");
+        }}
+      />
 
       {/* Contexto compacto: a bancada de lançamento é o herói da tela; esta
           faixa só responde onde estou e qual trabalho vou fazer. */}
@@ -1798,7 +1875,7 @@ export default function FichaMontadoresPage() {
 
       {/* ════ CHAMADA DO DIA ════ */}
       {tab === "lancamento" && (
-        <div className={`space-y-4 ${(chamadaView === "dia" ? dirtyDia : dirtySem) > 0 ? "pb-[calc(120px+env(safe-area-inset-bottom))]" : ""}`}>
+        <FichaLancamentoPanel hasDock={(chamadaView === "dia" ? dirtyDia : dirtySem) > 0}>
           {/* controles */}
           <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-muted/20 p-3">
             {chamadaView === "dia" ? (
@@ -2413,15 +2490,15 @@ export default function FichaMontadoresPage() {
               </div>
             </aside>
           )}
-        </div>
+        </FichaLancamentoPanel>
       )}
 
       {/* ════ filtro de período (Produtividade + Fichas) ════ */}
       {tab !== "lancamento" && (
         <Panel
-          eyebrow="FECHAMENTO SEMANAL"
-          title={`Conferência de ${cfgSetor.label}`}
-          subtitle="O período, a pessoa e o status abaixo controlam todas as visões e o relatório impresso."
+          eyebrow="RELATÓRIOS · GESTÃO"
+          title={`${cfgSetor.label} · período`}
+          subtitle="Filtros valem para totais, ranking, calendário, CSV e print. O topo M+S soma Montagem e Solagem."
           actions={
             <div className="flex items-center gap-1.5">
               <Button type="button" variant="outline" size="sm" className="h-9 w-9 gap-1.5 p-0 sm:w-auto sm:px-3"
@@ -2535,7 +2612,7 @@ export default function FichaMontadoresPage() {
       {tab === "producao" && (
         <nav aria-label="Visões do relatório" className="grid grid-cols-3 gap-1 rounded-xl border border-border bg-muted/30 p-1">
           {([
-            { id: "resumo", label: "Resumo", short: "Totais e pessoas", icon: ChartBar },
+            { id: "resumo", label: "Gestão", short: "Custo, ranking, M×S", icon: ChartBar },
             { id: "calendario", label: "Calendário", short: "Ritmo por dia", icon: CalendarBlank },
             { id: "lancamentos", label: "Lançamentos", short: "Linhas e ajustes", icon: ListBullets },
           ] as { id: ReportView; label: string; short: string; icon: ComponentType<{ className?: string }> }[]).map((view) => (
@@ -2551,228 +2628,35 @@ export default function FichaMontadoresPage() {
         </nav>
       )}
 
-      {/* ════ 1. QUEM produziu e QUANTO devo — a parte acionável ════ */}
+      {/* ════ HOME RELATÓRIOS (dono) — layout C + M×S ════ */}
       {tab === "producao" && reportView === "resumo" && (
-        <div className="space-y-4">
-          {/* Faixa de fechamento: a pergunta operacional é onde o dinheiro está,
-              não quatro indicadores independentes com o mesmo peso. */}
-          <section aria-label="Situação do fechamento" className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-            <div className="grid grid-cols-3 md:grid-cols-[1.25fr_repeat(3,1fr)]">
-              <div className="col-span-3 border-b border-border bg-foreground p-4 text-background md:col-span-1 md:border-b-0 md:border-r">
-                <div className="flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-background/65">
-                  <CurrencyDollar className="h-4 w-4" /> Total do período
-                </div>
-                <p className="mt-2 font-mono text-2xl font-bold tracking-tight tabular-nums">{fmtBRL(totals.valorTotal)}</p>
-                <p className="mt-1 text-xs text-background/70">
-                  {totals.pares.toLocaleString("pt-BR")} pares · {totals.fichas.toLocaleString("pt-BR")} fichas · {agg.length} pessoa{agg.length === 1 ? "" : "s"}
-                </p>
-              </div>
-              {[
-                { label: "A pagar", value: totals.valorAberto, hint: "livre para fechar", icon: Clock, tone: "text-amber-600", bg: "bg-amber-500" },
-                { label: "Na folha", value: totals.valorFolha, hint: "aprovado, não quitado", icon: ClipboardText, tone: "text-blue-600", bg: "bg-blue-600" },
-                { label: "Pago", value: totals.valorPago, hint: "sem pendência", icon: CheckCircle, tone: "text-green-600", bg: "bg-green-600" },
-              ].map((item) => {
-                const pct = totals.valorTotal > 0 ? Math.min(100, (item.value / totals.valorTotal) * 100) : 0;
-                return (
-                  <div key={item.label} className="min-w-0 border-r border-border p-3 last:border-r-0 sm:p-4">
-                    <div className={`flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider sm:text-[11px] ${item.tone}`}>
-                      <item.icon className="hidden h-4 w-4 sm:block" /> {item.label}
-                    </div>
-                    <p className="mt-2 truncate font-mono text-xs font-bold tabular-nums text-foreground sm:text-lg" title={fmtBRL(item.value)}>{fmtBRL(item.value)}</p>
-                    <p className="mt-0.5 hidden text-[10px] text-muted-foreground sm:block">{item.hint}</p>
-                    <div className="mt-3 h-1 overflow-hidden rounded-full bg-muted" aria-hidden>
-                      <div className={`h-full rounded-full ${item.bg}`} style={{ width: `${pct}%` }} />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-
-          {resumoSemanaAnterior && (
-            <div className="space-y-3 rounded-lg border border-border bg-muted/30 p-3 text-sm">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                  vs semana anterior ({fmtDia(resumoSemanaAnterior.from)}–{fmtDia(resumoSemanaAnterior.to)})
-                </div>
-                <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5"
-                  disabled={fichasFiltradas.length === 0}
-                  onClick={exportarCsvPeriodo}>
-                  <FileArrowDown className="h-3.5 w-3.5" /> Exportar CSV
-                </Button>
-              </div>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <div>
-                <p className="text-[10px] uppercase text-muted-foreground">Pares</p>
-                <p className="font-mono tabular-nums">
-                  {resumoPeriodo.pares.toLocaleString("pt-BR")}
-                  <span className={`ml-1 text-xs ${resumoPeriodo.pares - resumoSemanaAnterior.pares >= 0 ? "text-green-600" : "text-red-600"}`}>
-                    ({resumoPeriodo.pares - resumoSemanaAnterior.pares >= 0 ? "+" : ""}
-                    {(resumoPeriodo.pares - resumoSemanaAnterior.pares).toLocaleString("pt-BR")})
-                  </span>
-                </p>
-              </div>
-              <div>
-                <p className="text-[10px] uppercase text-muted-foreground">Bruto</p>
-                <p className="font-mono tabular-nums">
-                  {fmtBRL(resumoPeriodo.bruto)}
-                  <span className={`ml-1 text-xs ${resumoPeriodo.bruto - resumoSemanaAnterior.bruto >= 0 ? "text-green-600" : "text-red-600"}`}>
-                    ({resumoPeriodo.bruto - resumoSemanaAnterior.bruto >= 0 ? "+" : ""}
-                    {fmtBRL(resumoPeriodo.bruto - resumoSemanaAnterior.bruto)})
-                  </span>
-                </p>
-              </div>
-              <div>
-                <p className="text-[10px] uppercase text-muted-foreground">Anterior · pares</p>
-                <p className="font-mono tabular-nums text-muted-foreground">{resumoSemanaAnterior.pares.toLocaleString("pt-BR")}</p>
-              </div>
-              <div>
-                <p className="text-[10px] uppercase text-muted-foreground">Anterior · bruto</p>
-                <p className="font-mono tabular-nums text-muted-foreground">{fmtBRL(resumoSemanaAnterior.bruto)}</p>
-              </div>
-              </div>
-            </div>
-          )}
-
-          {(resumoPeriodo.taxaVariou || resumoPeriodo.legado > 0 || resumoPeriodo.semDetalhe > 0) && (
-            <div className="flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-xs text-amber-700 dark:text-amber-400">
-              <Warning className="mt-0.5 h-4 w-4 shrink-0" />
-              <div className="space-y-1">
-                {resumoPeriodo.taxaVariou && <p>O R$/par mudou no período. Cada lançamento preserva a taxa vigente no dia.</p>}
-                {resumoPeriodo.legado > 0 && <p><b>{resumoPeriodo.legado}</b> lançamento(s) antigo(s) aparecem no histórico, mas não entram no total da folha.</p>}
-                {resumoPeriodo.semDetalhe > 0 && <p><b>{resumoPeriodo.semDetalhe}</b> lançamento(s) sem dificuldade detalhada entram como médio, seguindo o motor da folha.</p>}
-              </div>
-            </div>
-          )}
-
-          <Panel
-            eyebrow={`${periodLabel[pMode]} · ${fmtDia(range.from)}–${fmtDia(range.to)}${pagStatus === "todos" ? "" : ` · ${PAG_LABEL[pagStatus]}`}`}
-            title={`Rendimento por ${cfgSetor.sing}`}
-            subtitle="Valor calculado pelo R$/par gravado em cada lançamento. A taxa se cadastra em Funcionários → Remuneração e entra congelada no apontamento."
-            actions={<span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Ordenado por pares</span>}
-          >
-            {/* Cartões no celular; tabela de conferência no desktop. */}
-            <div className="divide-y divide-border/60 md:hidden">
-              {agg.length === 0 && <p className="px-4 py-8 text-center text-sm text-muted-foreground">Sem lançamentos no período.</p>}
-              {agg.map((r, i) => (
-                <article key={r.key} className="p-4">
-                  <div className="flex items-start gap-3">
-                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted font-mono text-[10px] font-bold text-muted-foreground">{i + 1}</span>
-                    <div className="min-w-0 flex-1">
-                      <h3 className="truncate text-sm font-semibold text-foreground">{r.nome}</h3>
-                      <p className="mt-0.5 text-[10px] text-muted-foreground">{r.fichas} fichas · R$/par {r.taxaMedio > 0 ? fmtBRL(r.taxaMedio) : "não cadastrado"}{r.taxaDificil > 0 ? ` / ${fmtBRL(r.taxaDificil)}` : ""}</p>
-                    </div>
-                    <div className="shrink-0 text-right font-mono tabular-nums">
-                      <span className="block text-lg font-bold text-foreground">{r.pares.toLocaleString("pt-BR")}</span>
-                      <span className="block text-[9px] uppercase tracking-wider text-muted-foreground">pares</span>
-                    </div>
-                  </div>
-                  {r.porPar ? (
-                    <div className="mt-3 grid grid-cols-3 gap-2 rounded-lg bg-muted/40 p-2.5 text-center font-mono tabular-nums">
-                      <div><span className="block text-[9px] font-bold uppercase tracking-wider text-amber-600">A pagar</span><b className="mt-1 block text-xs text-foreground">{r.valorAberto > 0 ? fmtBRL(r.valorAberto) : "—"}</b></div>
-                      <div><span className="block text-[9px] font-bold uppercase tracking-wider text-blue-600">Na folha</span><b className="mt-1 block text-xs text-foreground">{r.valorFolha > 0 ? fmtBRL(r.valorFolha) : "—"}</b></div>
-                      <div><span className="block text-[9px] font-bold uppercase tracking-wider text-green-600">Pago</span><b className="mt-1 block text-xs text-foreground">{r.valorPago > 0 ? fmtBRL(r.valorPago) : "—"}</b></div>
-                    </div>
-                  ) : (
-                    <p className="mt-3 rounded-lg bg-muted/40 px-3 py-2 text-center text-[10px] uppercase tracking-wide text-muted-foreground">Medição de produtividade · não recebe por par</p>
-                  )}
-                  <div className="mt-3 flex items-center justify-between gap-3">
-                    <span className="text-xs text-muted-foreground">
-                      <b className="text-amber-600">{r.paresMedio.toLocaleString("pt-BR")} méd</b>
-                      {r.paresDificil > 0 && <> · <b className="text-green-700 dark:text-green-400">{r.paresDificil.toLocaleString("pt-BR")} dif</b></>}
-                    </span>
-                    {podePagarProducao && r.porPar && r.valorAberto > 0 && !r.key.startsWith("txt:") && (
-                      <Button size="sm" variant="outline" className="h-8" disabled={!janelaESemanaFechada}
-                        title={janelaESemanaFechada ? undefined : "O pagamento só pode ser fechado em uma semana completa (segunda a domingo)."}
-                        onClick={() => setPagarAlvo({ id: r.key, nome: r.nome, valor: r.valorAberto })}>Pagar</Button>
-                    )}
-                  </div>
-                </article>
-              ))}
-            </div>
-            <div className="hidden overflow-x-auto md:block">
-              <table className="w-full text-left text-sm" style={{ minWidth: 760 }}>
-                <thead className="bg-muted/50 text-[11px] uppercase tracking-wider text-muted-foreground">
-                  <tr>
-                    <th className="px-3 py-2 w-8">#</th>
-                    <th className="px-3 py-2">{cfgSetor.sing.replace(/^./, (c) => c.toUpperCase())}</th>
-                    <th className="px-3 py-2 text-right text-amber-600 border-l border-border">Pares méd</th>
-                    <th className="px-3 py-2 text-right text-green-700 dark:text-green-400">Pares dif</th>
-                    <th className="px-3 py-2 text-right">Pares</th>
-                    <th className="px-3 py-2 text-right border-l border-border">R$/par cadastro</th>
-                    <th className="px-3 py-2 text-right text-amber-600 border-l border-border">A pagar</th>
-                    <th className="px-3 py-2 text-right text-blue-600">Na folha</th>
-                    <th className="px-3 py-2 text-right text-green-600">Pago</th>
-                    <th className="px-3 py-2 text-right">Total</th>
-                    {podePagarProducao && <th className="px-3 py-2 text-right">Ação</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {agg.length === 0 && <tr><td colSpan={podePagarProducao ? 11 : 10} className="px-3 py-8 text-center text-muted-foreground">Sem lançamentos no período.</td></tr>}
-                  {agg.map((r, i) => (
-                    <tr key={r.key} className="border-t border-border">
-                      <td className="px-3 py-2 text-muted-foreground tabular-nums">{i + 1}</td>
-                      <td className="px-3 py-2 font-medium text-foreground">{r.nome}</td>
-                      <td className="px-3 py-2 text-right tabular-nums font-semibold text-amber-600 border-l border-border">{r.paresMedio.toLocaleString("pt-BR")}</td>
-                      <td className="px-3 py-2 text-right tabular-nums font-semibold text-green-700 dark:text-green-400">{r.paresDificil.toLocaleString("pt-BR")}</td>
-                      <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{r.pares.toLocaleString("pt-BR")}</td>
-                      <td className="px-3 py-2 text-right tabular-nums text-[12px] text-muted-foreground border-l border-border">
-                        {r.taxaMedio > 0 || r.taxaDificil > 0
-                          ? <><span className="text-amber-600">{fmtBRL(r.taxaMedio)}</span> · <span className="text-green-700 dark:text-green-400">{fmtBRL(r.taxaDificil)}</span></>
-                          : <span className="text-amber-600" title="Sem R$/par cadastrado — a produção fica valorada em zero e a folha não a reivindica.">não cadastrado</span>}
-                      </td>
-                      {r.porPar ? (
-                        <>
-                          <td className="px-3 py-2 text-right tabular-nums font-semibold text-amber-600 border-l border-border">{r.valorAberto > 0 ? fmtBRL(r.valorAberto) : "—"}</td>
-                          <td className="px-3 py-2 text-right tabular-nums font-semibold text-blue-600">{r.valorFolha > 0 ? fmtBRL(r.valorFolha) : "—"}</td>
-                          <td className="px-3 py-2 text-right tabular-nums font-semibold text-green-600">{r.valorPago > 0 ? fmtBRL(r.valorPago) : "—"}</td>
-                          <td className="px-3 py-2 text-right tabular-nums font-bold">{fmtBRL(r.valorTotal)}</td>
-                        </>
-                      ) : (
-                        <td colSpan={4} className="px-3 py-2 text-center text-[11px] text-muted-foreground border-l border-border"
-                          title="Recebe salário — a produção aqui é medição de produtividade, não pagamento por par.">
-                          não se aplica · não é regime por par
-                        </td>
-                      )}
-                      {podePagarProducao && (
-                        <td className="px-3 py-2 text-right">
-                          {/* `key` só é employee_id quando o lançamento tem montador_id;
-                              linha de nome solto (prefixo txt:) não tem quem pagar. */}
-                          {r.porPar && r.valorAberto > 0 && !r.key.startsWith("txt:") ? (
-                            <Button size="sm" variant="outline" className="h-7"
-                              disabled={!janelaESemanaFechada}
-                              title={janelaESemanaFechada
-                                ? undefined
-                                : "O pagamento é semanal: navegue até uma semana (seg→dom) para pagar. Pagar uma janela maior tomaria os dias de todas as semanas dentro dela."}
-                              onClick={() => setPagarAlvo({ id: r.key, nome: r.nome, valor: r.valorAberto })}>
-                              Pagar
-                            </Button>
-                          ) : <span className="text-muted-foreground">—</span>}
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-                {agg.length > 0 && (
-                  <tfoot>
-                    <tr className="border-t-2 font-semibold bg-muted/30">
-                      <td className="px-3 py-2" /><td className="px-3 py-2">Total ({agg.length})</td>
-                      <td className="px-3 py-2 text-right tabular-nums text-amber-600 border-l border-border">{totals.medio.toLocaleString("pt-BR")}</td>
-                      <td className="px-3 py-2 text-right tabular-nums text-green-700 dark:text-green-400">{totals.dificil.toLocaleString("pt-BR")}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{totals.pares.toLocaleString("pt-BR")}</td>
-                      <td className="px-3 py-2 border-l border-border" />
-                      <td className="px-3 py-2 text-right tabular-nums text-amber-600 border-l border-border">{fmtBRL(totals.valorAberto)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums text-blue-600">{fmtBRL(totals.valorFolha)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums text-green-600">{fmtBRL(totals.valorPago)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{fmtBRL(totals.valorTotal)}</td>
-                      {podePagarProducao && <td className="px-3 py-2" />}
-                    </tr>
-                  </tfoot>
-                )}
-              </table>
-            </div>
-          </Panel>
-        </div>
+        <FichaRelatoriosHome
+          periodLabel={periodLabel[pMode]}
+          rangeLabel={`${fmtDia(range.from)}–${fmtDia(range.to)}${pagStatus === "todos" ? "" : ` · ${PAG_LABEL[pagStatus]}`}`}
+          fmtDia={fmtDia}
+          fmtBRL={fmtBRL}
+          wdShort7={WD_SHORT7}
+          dowIdx={dowIdx}
+          mxS={mxSCompare}
+          totalsCombined={totalsCombined}
+          resumo={resumoPeriodo}
+          brutoPorSetor={brutoPorSetor.bruto}
+          paresPorSetor={brutoPorSetor.pares}
+          agg={agg}
+          totals={totals}
+          calendario={calendario}
+          wow={resumoSemanaAnterior}
+          oficioSing={cfgSetor.sing}
+          podePagar={podePagarProducao}
+          janelaESemanaFechada={janelaESemanaFechada}
+          onExportCsv={exportarCsvPeriodo}
+          onPagar={(r) => setPagarAlvo({ id: r.key, nome: r.nome, valor: r.valorAberto })}
+          rankingActions={
+            <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+              {cfgSetor.label} · ordenado por pares
+            </span>
+          }
+        />
       )}
 
       {/* ════ 2. QUANDO foi produzido, a que taxa e em que ritmo ════
