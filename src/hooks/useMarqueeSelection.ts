@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 /**
  * Hook de seleção múltipla com 3 modos compatíveis com macOS Finder:
@@ -11,32 +11,24 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  *     - Shift+click → seleciona range entre último clicado e atual
  *  3. **Checkbox** (você renderiza separado): chama `toggle(id)` direto.
  *
+ * Contrato de persistência (2026-09): filtrar/buscar NÃO remove ids
+ * selecionados que saíram da lista visível. Limpa só Esc / clear() /
+ * desmontar a rota. `hiddenSelectedCount` expõe quantos estão fora da vista;
+ * ações em massa devem confirmar antes de agir sobre eles.
+ *
  * Uso:
  * ```tsx
- * const items = orders;
- * const sel = useMarqueeSelection(items, (o) => o.id);
- *
+ * const sel = useMarqueeSelection(visibleItems, (o) => o.id);
  * <div ref={sel.containerRef} onMouseDown={sel.onContainerMouseDown}>
- *   {items.map(o => (
- *     <div
- *       key={o.id}
- *       data-marquee-item
- *       data-marquee-id={o.id}
- *       onClick={(e) => sel.toggle(o.id, e)}
- *       className={sel.isSelected(o.id) ? 'bg-primary/5' : ''}
- *     >
+ *   {visibleItems.map(o => (
+ *     <div key={o.id} data-marquee-item data-marquee-id={o.id}
+ *       onClick={(e) => sel.toggle(o.id, e)}>
  *       <Checkbox checked={sel.isSelected(o.id)} onCheckedChange={() => sel.toggle(o.id)} />
- *       {o.name}
  *     </div>
  *   ))}
- *   {sel.marqueeRect && (
- *     <div className="marquee-overlay" style={{...sel.marqueeRect}} />
- *   )}
+ *   {sel.marqueeRect && <MarqueeOverlay rect={sel.marqueeRect} />}
  * </div>
  * ```
- *
- * Pra desabilitar marquee em mobile (touch): o hook só ativa em mousedown
- * (não em touchstart). Touch continua usando checkbox normalmente.
  */
 export function useMarqueeSelection<T>(
   items: T[],
@@ -56,29 +48,51 @@ export function useMarqueeSelection<T>(
   const lastClickedId = useRef<string | null>(null);
   const isDragging = useRef(false);
 
-  /**
-   * Limpa seleção quando lista de items muda materialmente (filtro,
-   * paginação). Comparamos contagem + primeiro item como heurística rápida.
-   */
-  const itemsKey = items.length > 0 ? `${items.length}:${getId(items[0])}` : '0';
-  useEffect(() => {
-    setSelectedIds((prev) => {
-      const validIds = new Set(items.map(getId));
-      let changed = false;
-      const next = new Set<string>();
-      prev.forEach((id) => {
-        if (validIds.has(id)) next.add(id);
-        else changed = true;
-      });
-      return changed ? next : prev;
+  const visibleIdSet = useMemo(
+    () => new Set(items.map(getId)),
+    // items identity + length; getId is stable in practice (inline arrow
+    // per render would thrash — callers pass (o) => o.id).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [items],
+  );
+
+  const visibleSelectedCount = useMemo(() => {
+    let n = 0;
+    selectedIds.forEach((id) => {
+      if (visibleIdSet.has(id)) n += 1;
     });
-  }, [itemsKey]); // eslint-disable-line react-hooks/exhaustive-deps
+    return n;
+  }, [selectedIds, visibleIdSet]);
+
+  const hiddenSelectedCount = selectedIds.size - visibleSelectedCount;
 
   const clear = useCallback(() => setSelectedIds(new Set()), []);
 
   const selectAll = useCallback(() => {
-    setSelectedIds(new Set(items.map(getId)));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const item of items) next.add(getId(item));
+      return next;
+    });
   }, [items, getId]);
+
+  /** Remove da seleção só os ids atualmente visíveis (mantém os ocultos). */
+  const deselectVisible = useCallback(() => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const item of items) next.delete(getId(item));
+      return next;
+    });
+  }, [items, getId]);
+
+  /** Soma ids à seleção sem limpar o que já estava marcado. */
+  const selectMatchingIds = useCallback((ids: Iterable<string>) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) next.add(id);
+      return next;
+    });
+  }, []);
 
   /**
    * Toggle de item com suporte a modificadores. Pode ser chamado tanto pelo
@@ -192,9 +206,6 @@ export function useMarqueeSelection<T>(
 
       // Só ativa "modo drag" depois de movimento mínimo (8px) — evita
       // tratar single-clicks acidentais ou jitter da mão como drag.
-      // Antes era 4px e isso disparava marquee acidental ao clicar no
-      // Select de status de PV (Radix dropdown abrindo + mouse movendo
-      // levemente pra dentro selecionava linhas adjacentes).
       if (!isDragging.current && (width > 8 || height > 8)) {
         isDragging.current = true;
       }
@@ -234,9 +245,6 @@ export function useMarqueeSelection<T>(
       setMarqueeRect(null);
     }
 
-    // Anexa só quando drag está iniciando — listeners globais durante
-    // toda a vida do componente seria desperdício. Aqui anexamos sempre
-    // mas só agem se startPoint.current existir.
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
     return () => {
@@ -260,10 +268,14 @@ export function useMarqueeSelection<T>(
     containerRef,
     selectedIds,
     count: selectedIds.size,
+    visibleSelectedCount,
+    hiddenSelectedCount,
     isSelected,
     toggle,
     clear,
     selectAll,
+    deselectVisible,
+    selectMatchingIds,
     onContainerMouseDown,
     marqueeRect,
   };

@@ -67,8 +67,18 @@ import { packSaleOrderItem, packSaleOrderItemBySize } from '@/lib/boxPacking';
 import { toast } from 'sonner';
 import { useCompanies } from '@/hooks/useNfe';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
-import { SearchInput } from '@/components/ui/search-input';
 import { EmptyState } from '@/components/ui/empty-state';
+import { OrderMultiSelectToolbar } from '@/components/orders/OrderMultiSelectToolbar';
+import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
+import { MarqueeOverlay } from '@/components/ui/bulk-actions-bar';
+import {
+  findIdsMatchingOrderCodes,
+  matchesOrderSearch,
+  normalizeOrderCode,
+  parseOrderCodeList,
+} from '@/lib/orderCodeSearch';
+import { matchesDeliveryWeek } from '@/lib/deliveryWeekOptions';
+import { confirmIfHiddenSelection } from '@/lib/confirmHiddenSelection';
 import { findLabelGroupForScan } from '@/lib/labelOperations';
 import {
   filterLabelSizeSequence,
@@ -989,7 +999,12 @@ export function LabelProductionTab() {
   }, [saleOrders]);
 
   const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [clientFilter, setClientFilter] = useState('all');
+  const [weekFilter, setWeekFilter] = useState('all');
+  const selectionApiRef = useRef<{
+    get: () => Set<string>;
+    set: (next: Set<string>) => void;
+  } | null>(null);
   const initializedDeepLinkSelection = useRef('');
   const [labelSize, setLabelSize] = useState(`${THERMAL_LABEL_WIDTH_MM}x${THERMAL_LABEL_HEIGHT_MM}`);
   const [activeTab, setActiveTab] = useState('individual');
@@ -1065,7 +1080,10 @@ export function LabelProductionTab() {
     setPartialExternalDialogOpen(false);
     setPartialExternalRows([]);
     setPartialExternalItems([]);
-    setSelected(next);
+    const api = selectionApiRef.current;
+    const current = api?.get() ?? new Set<string>();
+    const resolved = typeof next === 'function' ? next(current) : next;
+    api?.set(resolved);
   }, []);
 
   // Strap label overrides — allows user to edit strap text per group for labels
@@ -1256,14 +1274,73 @@ export function LabelProductionTab() {
     () => groupOrdersByReference(periodFilteredOrders, saleOrdersMap, strapLookup, printMode === 'per_op'),
     [periodFilteredOrders, printMode, saleOrdersMap, strapLookup],
   );
-  const filtered = useMemo(() => groupedRefs.filter((g) =>
-    // espaço ou "/" = refinamento AND (ex.: "stx alcineu")
-    searchMatchesAllTerms(
-      search,
-      g.refName, g.refCode, g.clientName, g.economicGroupName, g.saleOrderNumber,
-      g.clientOrderNumber, g.colors.join(' '), g.orderNumbers.join(' '), g.strapsLabel,
-    )
-  ), [groupedRefs, search]);
+
+  const clientOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const g of groupedRefs) {
+      const name = (g.clientName || '').trim();
+      if (name) set.add(name);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [groupedRefs]);
+
+  const filtered = useMemo(() => groupedRefs.filter((g) => {
+    if (clientFilter !== 'all' && (g.clientName || '').trim() !== clientFilter) return false;
+    const deadline = saleOrdersMap.get(g.saleOrderId)?.delivery_deadline;
+    if (weekFilter !== 'all' && !matchesDeliveryWeek(deadline, weekFilter)) return false;
+    if (!search.trim()) return true;
+    return matchesOrderSearch(search, {
+      orderNumber: g.orderNumbers.join(' '),
+      saleOrderNumber: g.saleOrderNumber,
+      clientName: g.clientName,
+      clientOrderNumber: g.clientOrderNumber,
+      referenceName: g.refName,
+      referenceCode: g.refCode,
+      color: g.colors.join(' '),
+    }) || searchMatchesAllTerms(search, g.economicGroupName, g.strapsLabel);
+  }), [groupedRefs, search, clientFilter, weekFilter, saleOrdersMap]);
+
+  const sel = useMarqueeSelection(filtered, (g) => g.groupKey);
+  selectionApiRef.current = {
+    get: () => sel.selectedIds,
+    set: (next) => {
+      sel.clear();
+      if (next.size > 0) sel.selectMatchingIds(next);
+    },
+  };
+  const selected = sel.selectedIds;
+
+  const pastedCodes = useMemo(() => parseOrderCodeList(search), [search]);
+  const matchedCodeIds = useMemo(() => {
+    if (pastedCodes.length === 0) return [];
+    const codeSet = new Set(pastedCodes);
+    const fromHelper = findIdsMatchingOrderCodes(
+      groupedRefs.map((g) => ({
+        id: g.groupKey,
+        orderNumber: g.orderNumbers[0] || null,
+        saleOrderNumber: g.saleOrderNumber,
+      })),
+      pastedCodes,
+      (row) => row,
+    );
+    const fromOps = groupedRefs
+      .filter((g) =>
+        g.orderNumbers.some((n) => {
+          const norm = normalizeOrderCode(n);
+          return !!norm && codeSet.has(norm);
+        }),
+      )
+      .map((g) => g.groupKey);
+    return [...new Set([...fromHelper, ...fromOps])];
+  }, [groupedRefs, pastedCodes]);
+  const matchedCodeIdsUnique = matchedCodeIds;
+
+  const allVisibleSelected =
+    filtered.length > 0 && filtered.every((g) => sel.isSelected(g.groupKey));
+  const toggleVisible = () => {
+    if (allVisibleSelected) sel.deselectVisible();
+    else sel.selectAll();
+  };
 
   // O atalho do detalhe do PV já define exatamente o escopo na URL. Seleciona
   // os cards desse pedido assim que os dados chegam para que as ações de
@@ -1433,7 +1510,16 @@ export function LabelProductionTab() {
     return false;
   };
 
+  const confirmLabelSelection = (actionLabel: string) =>
+    confirmIfHiddenSelection({
+      totalSelected: selectedGroups.length,
+      hiddenSelectedCount: hiddenSelectedGroups,
+      entityLabel: 'referência',
+      actionLabel,
+    });
+
   const handlePrintHangtags = async () => {
+    if (!confirmLabelSelection('Gerar hangtags de')) return;
     const groupsToPrint = pairPrintGroups;
     if (groupsToPrint.length === 0) {
       toast.error(printCoverage === 'partial'
@@ -1523,6 +1609,7 @@ export function LabelProductionTab() {
    * — e a prévia perderia o sentido.
    */
   const handlePrintIndividual = async (output: 'html' | 'zpl' = 'html') => {
+    if (!confirmLabelSelection(output === 'zpl' ? 'Gerar ZPL de' : 'Gerar etiquetas individuais de')) return;
     const selectedGroups = pairPrintGroups;
     const effectiveThermalMode = printCoverage === 'partial' ? 'quantity' : thermalMode;
     // Filter out groups that don't allow thermal labels
@@ -2337,6 +2424,7 @@ export function LabelProductionTab() {
   };
 
   const handlePrintBoxLabels = async () => {
+    if (!confirmLabelSelection('Gerar rótulos de caixa de')) return;
     if (printCoverage === 'partial') {
       toast.info('A reimpressão por numeração vale para Hangtags e Etiquetas Individuais. O rótulo externo é gerado por volume.');
       return;
@@ -2572,10 +2660,7 @@ export function LabelProductionTab() {
           </RadioGroup>
         </div>
 
-        <Select value={periodFilter} onValueChange={(value) => {
-          setPeriodFilter(value);
-          updateSelected(new Set());
-        }}>
+        <Select value={periodFilter} onValueChange={setPeriodFilter}>
           <SelectTrigger className="h-9 w-40 text-xs">
             <CalendarDays className="h-3.5 w-3.5 mr-1" />
             <SelectValue />
@@ -2588,10 +2673,7 @@ export function LabelProductionTab() {
         </Select>
 
         {/* Filtro por semana de faturamento — espelha como o financeiro/PV usa billing_week (formato "2026-05-S4") */}
-        <Select value={billingWeekFilter} onValueChange={(value) => {
-          setBillingWeekFilter(value);
-          updateSelected(new Set());
-        }}>
+        <Select value={billingWeekFilter} onValueChange={setBillingWeekFilter}>
           <SelectTrigger className="h-9 w-48 text-xs">
             <CalendarDays className="h-3.5 w-3.5 mr-1" />
             <SelectValue placeholder="Semana faturamento" />
@@ -2607,25 +2689,24 @@ export function LabelProductionTab() {
 
       <Card className="border-primary/10 shadow-sm overflow-hidden">
         <CardHeader className="bg-muted/30 py-4">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-            <SearchInput
-              value={search}
-              onChange={setSearch}
-              placeholder="Buscar por referência, cor, cliente, PV ou OP…"
-              resultCount={filtered.length}
-              totalCount={groupedRefs.length}
-              className="flex-1 max-w-sm"
-              inputClassName="h-9"
-            />
-            <div className="flex items-center gap-2">
-              {printMode === 'batch' && (
-                <>
-                  <Button variant="outline" size="sm" onClick={() => updateSelected(new Set(filtered.map(g => g.groupKey)))} className="h-8 text-xs">Selecionar Tudo</Button>
-                  <Button variant="outline" size="sm" onClick={() => updateSelected(new Set())} className="h-8 text-xs">Limpar</Button>
-                </>
-              )}
-            </div>
-          </div>
+          <OrderMultiSelectToolbar
+            search={search}
+            onSearchChange={setSearch}
+            searchPlaceholder="Buscar por referência, cor, cliente, PV ou OP…"
+            resultCount={filtered.length}
+            totalCount={groupedRefs.length}
+            clientOptions={clientOptions}
+            clientFilter={clientFilter}
+            onClientFilterChange={setClientFilter}
+            weekFilter={weekFilter}
+            onWeekFilterChange={setWeekFilter}
+            allVisibleSelected={allVisibleSelected}
+            visibleCount={filtered.length}
+            onToggleVisible={toggleVisible}
+            matchedCodeCount={matchedCodeIdsUnique.length}
+            onSelectMatched={() => sel.selectMatchingIds(matchedCodeIdsUnique)}
+            className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap"
+          />
         </CardHeader>
         <CardContent className="pt-4">
           {selectedGroups.length > 0 && (
@@ -2872,7 +2953,12 @@ export function LabelProductionTab() {
         </TabsList>
 
         <TabsContent value="individual">
-          <div className="grid grid-cols-1 gap-8">
+          <div
+            ref={printMode === 'batch' ? sel.containerRef : undefined}
+            data-marquee-container={printMode === 'batch' ? true : undefined}
+            onMouseDown={printMode === 'batch' ? sel.onContainerMouseDown : undefined}
+            className="relative grid grid-cols-1 gap-8"
+          >
             {groupedByEconomicGroup.map(([egName, refs]) => (
               <div key={egName} className="space-y-4">
                 <div className="flex items-center gap-3">
@@ -2892,24 +2978,29 @@ export function LabelProductionTab() {
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                   {refs.map(g => (
-                    <ReferenceCard
+                    <div
                       key={g.groupKey}
-                      group={g}
-                      selected={selected.has(g.groupKey)}
-                      hasOverride={!!labelOverrides[g.groupKey]}
-                      onToggle={() => {
-                        if (printMode === 'per_op') {
-                          // In per-OP mode, only allow one selection at a time
-                          const next = new Set<string>();
-                          if (!selected.has(g.groupKey)) next.add(g.groupKey);
-                          updateSelected(next);
-                        } else {
-                          const next = new Set(selected);
-                          if (next.has(g.groupKey)) next.delete(g.groupKey); else next.add(g.groupKey);
-                          updateSelected(next);
-                        }
-                      }}
-                    />
+                      data-marquee-item={printMode === 'batch' ? true : undefined}
+                      data-marquee-id={printMode === 'batch' ? g.groupKey : undefined}
+                    >
+                      <ReferenceCard
+                        group={g}
+                        selected={selected.has(g.groupKey)}
+                        hasOverride={!!labelOverrides[g.groupKey]}
+                        onToggle={() => {
+                          if (printMode === 'per_op') {
+                            // In per-OP mode, only allow one selection at a time
+                            const next = new Set<string>();
+                            if (!selected.has(g.groupKey)) next.add(g.groupKey);
+                            updateSelected(next);
+                          } else {
+                            const next = new Set(selected);
+                            if (next.has(g.groupKey)) next.delete(g.groupKey); else next.add(g.groupKey);
+                            updateSelected(next);
+                          }
+                        }}
+                      />
+                    </div>
                   ))}
                 </div>
               </div>
@@ -2927,6 +3018,7 @@ export function LabelProductionTab() {
                 <p className="text-sm font-medium">Nenhuma referência encontrada para os filtros atuais.</p>
               </div>
             ))}
+            {printMode === 'batch' && <MarqueeOverlay rect={sel.marqueeRect} />}
           </div>
         </TabsContent>
 

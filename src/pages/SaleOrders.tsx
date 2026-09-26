@@ -45,7 +45,7 @@ import {
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import PendenciasView from '@/components/sale-orders/PendenciasView';
-import { ArrowUp, ArrowsDownUp, Baby, Barcode, Buildings, ShoppingCart, Plus, CircleNotch as Loader2, Copy, Printer, Factory, PencilSimple as Pencil, FileText, Funnel as Filter, X, MagnifyingGlass as Search, Package, Clock, CaretDown, ChartBar as BarChart3, ClipboardText as ClipboardList, ArrowsClockwise as RefreshCw, Tag, SquaresFour as LayoutDashboard, Lightning as Zap, FileXls as FileSpreadsheet, Receipt, XCircle, CheckCircle, Check, Download, TrendUp as TrendingUp, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw, HandPalm as Hand, UploadSimple as Upload, Trash as Trash2, ListChecks, ArrowSquareOut as ExternalLink, DotsThree, Images } from '@phosphor-icons/react';
+import { ArrowUp, ArrowsDownUp, Baby, Barcode, Buildings, ShoppingCart, Plus, CircleNotch as Loader2, Copy, Printer, Factory, PencilSimple as Pencil, FileText, Funnel as Filter, X, MagnifyingGlass as Search, Package, Clock, CaretDown, ChartBar as BarChart3, ClipboardText as ClipboardList, ArrowsClockwise as RefreshCw, Tag, SquaresFour as LayoutDashboard, Lightning as Zap, FileXls as FileSpreadsheet, Receipt, XCircle, CheckCircle, Check, CheckSquare, Download, TrendUp as TrendingUp, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw, HandPalm as Hand, UploadSimple as Upload, Trash as Trash2, ListChecks, ArrowSquareOut as ExternalLink, DotsThree, Images } from '@phosphor-icons/react';
 import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
 import { BulkActionsBar, MarqueeOverlay } from '@/components/ui/bulk-actions-bar';
 import { cn } from "@/lib/utils";
@@ -130,6 +130,13 @@ import { getValidNextStatuses } from '@/lib/saleOrderStateMachine';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import { normalizeForSearch, searchMatchesAllTerms, splitSearchTerms, rankBySearchScore } from '@/lib/searchUtils';
+import {
+  findIdsMatchingOrderCodes,
+  looksLikeOrderCodeList,
+  orderCodeExactMatch,
+  parseOrderCodeList,
+} from '@/lib/orderCodeSearch';
+import { confirmIfHiddenSelection } from '@/lib/confirmHiddenSelection';
 import { safeUrlAttr } from '@/lib/htmlUtils';
 import SalesOperationsRail, { SalesOperationsRailSkeleton } from '@/components/sale-orders/SalesOperationsRail';
 
@@ -549,6 +556,12 @@ export default function SaleOrders() {
       const q = debouncedSearchTerm.toLowerCase().trim();
       if (!q) return true;
 
+      // Lista colada (≥2 códigos com ,/;/quebra) = OR exato no número do PV.
+      const codes = parseOrderCodeList(debouncedSearchTerm);
+      if (codes.length >= 2) {
+        return codes.some((code) => orderCodeExactMatch(code, order.order_number));
+      }
+
       // Atalho "/<nome>" → filtra por GRUPO ECONÔMICO do cliente (pedido
       // user 19/05/2026). Ex: "/lng" pega PVs de TODOS os clientes do grupo
       // que tenha "lng" no nome (LNG 10, LNG 30, etc). Quando só "/" foi
@@ -583,10 +596,6 @@ export default function SaleOrders() {
         client?.nome_fantasia,
       ].map(normalizeForSearch);
       const tokenArr = itemTokens ? Array.from(itemTokens).map(normalizeForSearch) : [];
-      // Espaço e "/" separam termos AND (refinamento): "stx alcineu" exige um
-      // campo com "stx" E um campo com "alcineu" (referência + cliente, em
-      // qualquer ordem). Normaliza (remove espaço/hífen/acento) por termo;
-      // tDigits cobre CNPJ.
       const terms = splitSearchTerms(q);
       const matchTerm = (term: string) => {
         const tNorm = normalizeForSearch(term);
@@ -707,10 +716,29 @@ export default function SaleOrders() {
     setSearchParams(next, { replace: true });
   };
   const toggleSelect = (id: string) => sel.toggle(id);
+  const allVisibleSelected =
+    visibleOrders.length > 0 && visibleOrders.every((o) => sel.isSelected(o.id));
   const toggleSelectAll = () => {
-    if (sel.count === filteredOrders.length) sel.clear();
+    if (allVisibleSelected) sel.deselectVisible();
     else sel.selectAll();
   };
+
+  const matchedCodeIds = useMemo(() => {
+    const codes = parseOrderCodeList(debouncedSearchTerm);
+    return findIdsMatchingOrderCodes(orders, codes, (order) => ({
+      id: order.id,
+      orderNumber: order.order_number,
+      saleOrderNumber: order.order_number,
+    }));
+  }, [orders, debouncedSearchTerm]);
+
+  const confirmHidden = (actionLabel: string) =>
+    confirmIfHiddenSelection({
+      totalSelected: sel.count,
+      hiddenSelectedCount: sel.hiddenSelectedCount,
+      entityLabel: 'PV',
+      actionLabel,
+    });
 
   // Cada badge usa o MESMO predicado do tab gating em filteredOrders.
   // Ativos = não-faturados E não-cancelados (Rascunho continua em Ativos;
@@ -1191,17 +1219,24 @@ export default function SaleOrders() {
     });
   };
 
-  const handleBulkApprove = confirmBulkStatus(
-    'Aprovado', 'Aprovar',
-    'Gera as ordens de produção, reserva/debita material e cria as contas a receber.',
-  );
-  const handleBulkCancel = confirmBulkStatus(
-    'Cancelado', 'Cancelar',
-    'Estorna OUTs reversíveis e libera reservas; bloqueia se houver fato físico (etapas/lotes/consumo). Admin pode usar cancelamento compensatório.',
-    true,
-  );
+  const handleBulkApprove = () => {
+    if (!confirmHidden('Aprovar')) return;
+    confirmBulkStatus(
+      'Aprovado', 'Aprovar',
+      'Gera as ordens de produção, reserva/debita material e cria as contas a receber.',
+    )();
+  };
+  const handleBulkCancel = () => {
+    if (!confirmHidden('Cancelar')) return;
+    confirmBulkStatus(
+      'Cancelado', 'Cancelar',
+      'Estorna OUTs reversíveis e libera reservas; bloqueia se houver fato físico (etapas/lotes/consumo). Admin pode usar cancelamento compensatório.',
+      true,
+    )();
+  };
   const handleBulkExport = () => {
-    const list = selectedIds.size > 0 ? filteredOrders.filter(o => selectedIds.has(o.id)) : filteredOrders;
+    if (selectedIds.size > 0 && !confirmHidden('Exportar')) return;
+    const list = selectedIds.size > 0 ? orders.filter(o => selectedIds.has(o.id)) : filteredOrders;
     handleExportSaleOrdersExcel(list);
   };
 
@@ -1220,12 +1255,14 @@ export default function SaleOrders() {
 
   const handleBulkConsumption = () => {
     if (selectedIds.size === 0) return;
+    if (!confirmHidden('Abrir consumo de')) return;
     openPvConsumption(Array.from(selectedIds));
   };
 
   const handleBulkPurchaseOrders = () => {
     const selected = orders.filter(o => selectedIds.has(o.id));
     if (selected.length === 0) return;
+    if (!confirmHidden('Gerar OC de')) return;
     setPoGenTarget({
       ids: selected.map(o => o.id),
       numbers: selected.map(o => o.order_number),
@@ -1235,6 +1272,7 @@ export default function SaleOrders() {
 
   const handleBulkLabels = () => {
     if (selectedIds.size === 0) return;
+    if (!confirmHidden('Abrir etiquetas de')) return;
     // A Central é a fonte canônica: exclui OPs canceladas/rascunhos, respeita
     // embalagem Colméia e separa ativas, impressas e finalizadas. O gerador
     // legado desta página consultava TODAS as OPs dos PVs e podia reimprimir
@@ -1252,6 +1290,7 @@ export default function SaleOrders() {
       toast.info('Selecione pelo menos um pedido.');
       return;
     }
+    if (!confirmHidden(mode === 'emit' ? 'Emitir NF-e de' : 'Pré-visualizar NF-e de')) return;
     setBulkNfeMode(mode);
     setBulkNfeOpen(true);
   };
@@ -1887,9 +1926,23 @@ export default function SaleOrders() {
                 onChange={setSearchTerm}
                 getSuggestions={searchSuggestions}
                 fieldLabels={{ name: 'Cliente', category: 'Representante', sku: 'Referência' }}
-                placeholder="Buscar PV, cliente, ref… ou /grupo (ex: /lng)"
+                placeholder="Buscar PV, cliente, ref… /grupo, ou cole vários PVs"
               />
             </div>
+            {looksLikeOrderCodeList(searchTerm) && (
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                className="h-9 gap-1.5"
+                disabled={matchedCodeIds.length === 0}
+                onClick={() => sel.selectMatchingIds(matchedCodeIds)}
+              >
+                <CheckSquare className="h-4 w-4" />
+                Selecionar os que bateram
+                {matchedCodeIds.length > 0 ? ` (${matchedCodeIds.length})` : ''}
+              </Button>
+            )}
             <Button
               variant={showFilters || activeFiltersCount > 0 ? 'secondary' : 'outline'}
               size="sm"
@@ -2466,7 +2519,9 @@ export default function SaleOrders() {
         onClear={sel.clear}
         itemLabel={bulkStatusProgress
           ? `${bulkStatusProgress.done}/${bulkStatusProgress.total} → ${bulkStatusProgress.status}`
-          : (sel.count === 1 ? 'PV selecionado' : 'PVs selecionados')}
+          : sel.hiddenSelectedCount > 0
+            ? `${sel.count} PV(s) · ${sel.hiddenSelectedCount} fora do filtro`
+            : (sel.count === 1 ? 'PV selecionado' : 'PVs selecionados')}
         className="bottom-[calc(4.5rem+env(safe-area-inset-bottom))] md:bottom-4"
         actions={[
           ...(canEditPv ? [{

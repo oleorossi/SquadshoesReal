@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { Link } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -26,6 +26,9 @@ import { usePersistedState } from '@/hooks/usePersistedState';
 import { searchMatchesAllTerms, searchMatchesAny, splitSearchTerms, normalizeForSearch } from '@/lib/searchUtils';
 import { thumbUrl } from '@/lib/imageThumb';
 import { toast } from 'sonner';
+import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
+import { MarqueeOverlay } from '@/components/ui/bulk-actions-bar';
+import { confirmIfHiddenSelection } from '@/lib/confirmHiddenSelection';
 import { deriveCards, todayISO, KanbanCardData, norm, fmtDate } from '@/components/production/kanban/kanbanDerive';
 import {
   readKanbanSortMode,
@@ -182,7 +185,6 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
   const [detailStage, setDetailStage] = useState<{ card: KanbanCardData } | null>(null);
   // Seleção múltipla → mover várias OPs de setor preenchendo uma por uma
   const [selectMode, setSelectMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [bulkTarget, setBulkTarget] = useState('');
   // Snapshot do lote: o primeiro apontamento muda o setor e, portanto, a chave
   // do card no realtime. Manter os cards aqui impede o wizard de desmontar no
@@ -609,9 +611,18 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
     if (target) scrollToSector(target);
   };
 
+  /** Cards visíveis no chão — universo do marquee só em modo seleção. */
+  const selectableBoardCards = useMemo(() => {
+    if (!selectMode || boardMode !== 'chao') return [];
+    if (!filtering || !matchedIds) return boardCards;
+    return boardCards.filter((c) => matchedIds.has(c.q.order_id));
+  }, [selectMode, boardMode, filtering, matchedIds, boardCards]);
+
+  const sel = useMarqueeSelection(selectableBoardCards, (c) => c.key);
+
   const selectedCards = useMemo(
-    () => uniqueCardsByOrder(allCards.filter(c => selectedIds.has(c.key))),
-    [allCards, selectedIds],
+    () => uniqueCardsByOrder(allCards.filter(c => sel.selectedIds.has(c.key))),
+    [allCards, sel.selectedIds],
   );
   const selectedPares = useMemo(
     () => selectedCards.reduce((s, c) => s + (c.q.quantity || 0), 0),
@@ -628,16 +639,28 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
   // O realtime troca `order_id::setor` assim que uma OP avança. Sem esta poda,
   // a barra mantinha uma seleção invisível e habilitava ações com payload vazio.
   useEffect(() => {
-    setSelectedIds(previous => pruneSelectedCardKeys(previous, allCards));
+    const pruned = pruneSelectedCardKeys(sel.selectedIds, allCards);
+    if (pruned.size === sel.selectedIds.size) {
+      let same = true;
+      for (const id of sel.selectedIds) {
+        if (!pruned.has(id)) { same = false; break; }
+      }
+      if (same) return;
+    }
+    sel.clear();
+    if (pruned.size > 0) sel.selectMatchingIds(pruned);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- só reage a mudança do quadro
   }, [allCards]);
 
   const toggleSelect = (card: KanbanCardData) => {
-    setSelectedIds(previous => toggleUniqueOrderCard(previous, allCards, card));
+    const next = toggleUniqueOrderCard(sel.selectedIds, allCards, card);
+    sel.clear();
+    if (next.size > 0) sel.selectMatchingIds(next);
   };
 
   const exitSelectMode = () => {
     setSelectMode(false);
-    setSelectedIds(new Set());
+    sel.clear();
     setBulkTarget('');
   };
 
@@ -697,8 +720,13 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
 
   const openBulkReview = () => {
     if (!canReviewBulk) return;
-    const target = bulkTarget === PALMILHA_COLUMN ? 'Palmilha · Fibra' : bulkTarget;
-    setBulkRequest({ cards: selectedCards, target });
+    if (!confirmIfHiddenSelection({
+      totalSelected: sel.count,
+      hiddenSelectedCount: sel.hiddenSelectedCount,
+      entityLabel: 'OP',
+      actionLabel: 'Revisar distribuição de',
+    })) return;
+    setBulkRequest({ cards: selectedCards, target: bulkTarget });
   };
 
   const handleDrop = (target: string) => {
@@ -1101,7 +1129,11 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                   variant="ghost"
                   size="sm"
                   className="h-9 shrink-0 px-2 text-xs"
-                  onClick={() => setSelectedIds(previous => addUniqueOrderCards(previous, allCards, matchedOrders))}
+                  onClick={() => {
+                    const next = addUniqueOrderCards(sel.selectedIds, allCards, matchedOrders);
+                    sel.clear();
+                    if (next.size > 0) sel.selectMatchingIds(next);
+                  }}
                   title="Selecionar uma ocorrência de cada OP encontrada"
                 >
                   + {matchedOrders.length} da busca
@@ -1112,7 +1144,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                   variant="ghost"
                   size="sm"
                   className="h-9 w-9 shrink-0 p-0"
-                  onClick={() => setSelectedIds(new Set())}
+                  onClick={() => sel.clear()}
                   aria-label="Limpar OPs selecionadas"
                   title="Limpar seleção"
                 >
@@ -1507,9 +1539,16 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
         </div>
       ) : (
         <div
-          ref={boardEl}
+          ref={(el) => {
+            boardEl.current = el;
+            if (selectMode) {
+              (sel.containerRef as MutableRefObject<HTMLDivElement | null>).current = el;
+            }
+          }}
+          data-marquee-container={selectMode ? true : undefined}
+          onMouseDown={selectMode ? sel.onContainerMouseDown : undefined}
           onScroll={syncActiveSector}
-          className="flex-1 min-h-0 flex gap-2 overflow-x-auto overscroll-x-contain scroll-px-3 px-3 py-2 snap-x snap-mandatory md:snap-none [scrollbar-width:thin]"
+          className="relative flex-1 min-h-0 flex gap-2 overflow-x-auto overscroll-x-contain scroll-px-3 px-3 py-2 snap-x snap-mandatory md:snap-none [scrollbar-width:thin]"
         >
           {columns.map((sector, colIdx) => {
             const isPalmilhaCol = sector === PALMILHA_COLUMN;
@@ -1753,6 +1792,8 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                       // uma coluna com 72 OPs levaria 1,6s pra terminar de entrar.
                       style={{ animationDelay: `${colIdx * 45 + 140 + Math.min(cardIdx, 10) * 22}ms` }}
                       className="kb-card-in"
+                      data-marquee-item={selectMode ? true : undefined}
+                      data-marquee-id={selectMode ? card.key : undefined}
                       ref={el => {
                         if (el) cardEls.current.set(card.key, el);
                         else cardEls.current.delete(card.key);
@@ -1774,7 +1815,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                           && !isPalmilhaCol
                         }
                         selectable={selectMode}
-                        selected={selectedIds.has(card.key)}
+                        selected={sel.isSelected(card.key)}
                         readOnly={!canEdit}
                         landed={landedId === card.q.order_id}
                         materialGateDate={gateMap?.get(card.q.order_id)?.ready_date ?? null}
@@ -1792,6 +1833,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
               </div>
             );
           })}
+          {selectMode && <MarqueeOverlay rect={sel.marqueeRect} />}
         </div>
       )}
 

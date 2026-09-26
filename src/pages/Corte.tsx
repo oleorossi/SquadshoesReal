@@ -25,14 +25,22 @@ import { printHtml, openPrintWindow, writePrintWindow } from '@/lib/printOrder';
 import { getClientLogoUrl } from '@/lib/getClientLogo';
 import { printGroupedReport } from '@/lib/printGroupedReport';
 import { printCuttingGroupedReport } from '@/lib/printCuttingGroupedReport';
-import OrderSearchBar from '@/components/production/OrderSearchBar';
 import { useOrderStraps } from '@/hooks/useOrderStraps';
 import { getGradeTotal, getOrderTotalPairs } from '@/lib/cuttingCounts';
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { OrderMultiSelectToolbar } from '@/components/orders/OrderMultiSelectToolbar';
+import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
+import { MarqueeOverlay } from '@/components/ui/bulk-actions-bar';
+import {
+  findIdsMatchingOrderCodes,
+  matchesOrderSearch,
+  parseOrderCodeList,
+} from '@/lib/orderCodeSearch';
+import { matchesDeliveryWeek } from '@/lib/deliveryWeekOptions';
+import { confirmIfHiddenSelection } from '@/lib/confirmHiddenSelection';
 import { TableSkeleton } from '@/components/layout/PageSkeleton';
 import { RefChip } from '@/components/ui/ref-chip';
-import { normalizeForSearch, searchMatchesAllTerms } from '@/lib/searchUtils';
 import { normalizeSector } from '@/lib/sectors';
 import { safeUrlAttr } from '@/lib/htmlUtils';
 import { requiresUpperCut } from '@/lib/upperCutEligibility';
@@ -96,47 +104,113 @@ export default function Corte() {
   const { getStrapsLabel } = useOrderStraps();
   const [filterStatus, setFilterStatus] = usePersistedState<string>('corte-filterStatus', 'active');
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
-  const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
   const [finalizingOrders, setFinalizingOrders] = useState(false);
   const { finalizeSectorTask } = useProductionTransitions();
 
   // Busca NÃO persiste: reseta ao sair e voltar pra tela (useState remonta limpo).
   const [searchQuery, setSearchQuery] = useState('');
+  const [clientFilter, setClientFilter] = useState('all');
+  const [weekFilter, setWeekFilter] = useState('all');
 
-  const toggleOrderSelection = (orderId: string) => {
-    setSelectedOrders(prev => {
-      const next = new Set(prev);
-      if (next.has(orderId)) next.delete(orderId);
-      else next.add(orderId);
-      return next;
+  const sectorBaseOrders = useMemo(() => {
+    const filtered = orders.filter(order => {
+      const status = (order.status || '').toLowerCase();
+      if (status === 'finalizado' || status === 'cancelada') return false;
+      if (order.sale_order_id) {
+        const so = saleOrders?.find((s: any) => s.id === order.sale_order_id);
+        if (so && (so.status === 'Faturado' || so.status === 'Finalizado s/ NF' || so.status === 'Cancelado')) return false;
+      }
+      if (filterStatus === 'active' && status !== 'em produção') return false;
+
+      const stages = allStages.filter(s => s.order_id === order.id);
+      const corteStage = stages.find(s => isCorteStage(s.stage_name));
+      if (!corteStage) return filterStatus === 'all';
+      if (filterStatus === 'active' && corteStage.status !== 'pendente' && corteStage.status !== 'em_andamento') return false;
+      return true;
     });
+    return filtered.sort((a: any, b: any) => {
+      const pa = a.planned_delivery || '';
+      const pb = b.planned_delivery || '';
+      if (!pa && !pb) return 0;
+      if (!pa) return 1;
+      if (!pb) return -1;
+      return pa.localeCompare(pb);
+    });
+  }, [orders, allStages, filterStatus, saleOrders]);
+
+  const cuttingOrders = useMemo(() => {
+    return sectorBaseOrders.filter(order => {
+      const so = saleOrders?.find((s: any) => s.id === order.sale_order_id);
+      if (clientFilter !== 'all' && (so?.client_name || '').trim() !== clientFilter) return false;
+      if (weekFilter !== 'all' && !matchesDeliveryWeek(so?.delivery_deadline || (order as any).planned_delivery, weekFilter)) {
+        return false;
+      }
+      if (!searchQuery.trim()) return true;
+      const ref = (references as any[])?.find((r: any) => r.id === (order as any).reference_id);
+      return matchesOrderSearch(searchQuery, {
+        orderNumber: order.order_number,
+        saleOrderNumber: so?.order_number,
+        clientName: so?.client_name,
+        clientOrderNumber: so?.client_order_number,
+        referenceName: ref?.name,
+        referenceCode: ref?.code,
+        color: order.color,
+      });
+    });
+  }, [sectorBaseOrders, searchQuery, clientFilter, weekFilter, saleOrders, references]);
+
+  const sel = useMarqueeSelection(cuttingOrders, (o) => o.id);
+
+  const clientOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const order of sectorBaseOrders) {
+      const so = saleOrders?.find((s: any) => s.id === order.sale_order_id);
+      const name = (so?.client_name || '').trim();
+      if (name) set.add(name);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [sectorBaseOrders, saleOrders]);
+
+  const pastedCodes = useMemo(() => parseOrderCodeList(searchQuery), [searchQuery]);
+  const matchedCodeIds = useMemo(
+    () => findIdsMatchingOrderCodes(sectorBaseOrders, pastedCodes, (o) => {
+      const so = saleOrders?.find((s: any) => s.id === o.sale_order_id);
+      return { id: o.id, orderNumber: o.order_number, saleOrderNumber: so?.order_number };
+    }),
+    [sectorBaseOrders, pastedCodes, saleOrders],
+  );
+
+  const allVisibleSelected =
+    cuttingOrders.length > 0 && cuttingOrders.every((o) => sel.isSelected(o.id));
+
+  const toggleVisible = () => {
+    if (allVisibleSelected) sel.deselectVisible();
+    else sel.selectAll();
   };
 
-  const toggleAllOrders = () => {
-    if (selectedOrders.size === cuttingOrders.length) {
-      setSelectedOrders(new Set());
-    } else {
-      setSelectedOrders(new Set(cuttingOrders.map(o => o.id)));
-    }
-  };
+  const confirmSelection = (actionLabel: string) =>
+    confirmIfHiddenSelection({
+      totalSelected: sel.count,
+      hiddenSelectedCount: sel.hiddenSelectedCount,
+      entityLabel: 'OP',
+      actionLabel,
+    });
 
   const handleFinishSelectedOrders = async () => {
-    if (selectedOrders.size === 0) return;
+    if (sel.count === 0) return;
+    if (!confirmSelection('Finalizar')) return;
     setFinalizingOrders(true);
     try {
-      const orderIds = Array.from(selectedOrders);
-      
-      // Use the new transition logic for each order
+      const orderIds = Array.from(sel.selectedIds);
       const results = (await Promise.all(
         orderIds.map(orderId => finalizeSectorTask(orderId, 'Corte Palmilha'))
       )) as any[];
 
       const successCount = results.filter(r => r && r.success).length;
 
-      
       if (successCount > 0) {
         toast.success(`Corte Palmilha finalizado para ${successCount} ${successCount === 1 ? 'OP' : 'OPs'}!`);
-        setSelectedOrders(new Set());
+        sel.clear();
         queryClient.invalidateQueries({ queryKey: ['order_stages'] });
         queryClient.invalidateQueries({ queryKey: ['orders'] });
       }
@@ -147,53 +221,6 @@ export default function Corte() {
     }
   };
 
-
-  // Get orders that are in cutting stage (Corte pendente or em_andamento)
-  const cuttingOrders = useMemo(() => {
-    const q = normalizeForSearch(searchQuery);
-    const filtered = orders.filter(order => {
-      const status = (order.status || '').toLowerCase();
-      // Exclude finalized/cancelled OPs
-      if (status === 'finalizado' || status === 'cancelada') return false;
-      // Exclude OPs whose sale order is already faturado or cancelled
-      if (order.sale_order_id) {
-        const so = saleOrders?.find((s: any) => s.id === order.sale_order_id);
-        if (so && (so.status === 'Faturado' || so.status === 'Finalizado s/ NF' || so.status === 'Cancelado')) return false;
-      }
-      // Status filter - only filter if "active" is selected
-      if (filterStatus === 'active' && status !== 'em produção') return false;
-
-      const stages = allStages.filter(s => s.order_id === order.id);
-      const corteStage = stages.find(s => isCorteStage(s.stage_name));
-      if (!corteStage) return filterStatus === 'all';
-      if (filterStatus === 'active' && corteStage.status !== 'pendente' && corteStage.status !== 'em_andamento') return false;
-
-      if (q) {
-        const so = saleOrders?.find((s: any) => s.id === order.sale_order_id);
-        const ref = (references as any[])?.find((r: any) => r.id === (order as any).reference_id);
-        // "/" = refinamento AND (ex.: "stx / alcineu" = ref STX E cliente Alcineu)
-        if (!searchMatchesAllTerms(searchQuery, so?.order_number, so?.client_order_number, order.order_number, so?.client_name, ref?.name, ref?.code)) return false;
-      }
-
-      return true;
-    });
-    // Sort by planned_delivery ASC (closest first, nulls last)
-    return filtered.sort((a, b) => {
-      // Prioridade (2026-06-02): terminar o PEDIDO inteiro por PRAZO. Ordena pela
-      // entrega do PV (mais urgente primeiro; sem prazo por último), mantém as OPs
-      // do mesmo PV juntas, e dentro do PV pela data planejada da OP.
-      const dl = (o: any) => saleOrders?.find((s: any) => s.id === o.sale_order_id)?.delivery_deadline || '';
-      const da = dl(a), db = dl(b);
-      if (da !== db) { if (!da) return 1; if (!db) return -1; return da.localeCompare(db); }
-      const sa = String(a.sale_order_id || ''), sb = String(b.sale_order_id || '');
-      if (sa !== sb) return sa.localeCompare(sb);
-      const pa = (a as any).planned_delivery || '', pb = (b as any).planned_delivery || '';
-      if (!pa && !pb) return 0;
-      if (!pa) return 1;
-      if (!pb) return -1;
-      return pa.localeCompare(pb);
-    });
-  }, [orders, allStages, filterStatus, searchQuery, saleOrders]);
 
   // Helper: get delivery deadline from sale order and check if ADIANTADO
   const getDeliveryInfo = (order: any) => {
@@ -526,7 +553,18 @@ if (totalPairsAll !== palmTotal) {
     });
 
     return (
-      <div className="space-y-5 page-enter">
+      <div
+        ref={sel.containerRef}
+        data-marquee-container
+        onMouseDown={sel.onContainerMouseDown}
+        className="relative space-y-5 page-enter"
+      >
+        {sel.count > 0 && (
+          <div className="text-xs text-muted-foreground px-1">
+            {sel.count} selecionada{sel.count === 1 ? '' : 's'}
+            {sel.hiddenSelectedCount > 0 ? ` · ${sel.hiddenSelectedCount} fora do filtro` : ''}
+          </div>
+        )}
         {sortedGroups.map(([groupKey, groupOrders]) => {
           const saleOrderInfo = groupKey !== '__sem_pedido__' ? saleOrders.find(so => so.id === groupKey) : null;
           const groupLabel = saleOrderInfo
@@ -534,17 +572,13 @@ if (totalPairsAll !== palmTotal) {
             : 'Sem Pedido Vinculado';
 
           // Check if all orders in group are selected
-          const allGroupSelected = groupOrders.every(o => selectedOrders.has(o.id));
+          const allGroupSelected = groupOrders.every(o => sel.isSelected(o.id));
           const toggleGroupSelection = () => {
-            setSelectedOrders(prev => {
-              const next = new Set(prev);
-              if (allGroupSelected) {
-                groupOrders.forEach(o => next.delete(o.id));
-              } else {
-                groupOrders.forEach(o => next.add(o.id));
-              }
-              return next;
-            });
+            if (allGroupSelected) {
+              groupOrders.forEach(o => { if (sel.isSelected(o.id)) sel.toggle(o.id); });
+            } else {
+              sel.selectMatchingIds(groupOrders.map(o => o.id));
+            }
           };
 
           const groupTotalPairs = groupOrders.reduce((sum, o) => sum + getOrderTotalPairs(o), 0);
@@ -575,13 +609,13 @@ if (totalPairsAll !== palmTotal) {
           const scaledTotal = gradeSum > 0
             ? scaleGradeWithLargestRemainder(grade || {}, fichas || 1, totalPairs)
             : {};
-          const isSelected = selectedOrders.has(order.id);
+          const isSelected = sel.isSelected(order.id);
 
           const corteStage = allStages.find(s => s.order_id === order.id && isCorteStage(s.stage_name));
           const stageColor = corteStage?.status === 'concluido' ? 'border-l-emerald-500' : corteStage?.status === 'em_andamento' ? 'border-l-amber-500' : 'border-l-red-500';
 
           return (
-            <Card key={order.id} className={`border-l-4 ${isSelected ? 'ring-1 ring-success/30' : ''} ${stageColor}`}>
+            <Card key={order.id} data-marquee-item data-marquee-id={order.id} className={`border-l-4 ${isSelected ? 'ring-1 ring-success/30' : ''} ${stageColor}`}>
               <CardHeader 
                 className="py-3 px-4 cursor-pointer hover:bg-muted/50 transition-colors"
                 onClick={() => setExpandedOrderId(isExpanded ? null : order.id)}
@@ -590,7 +624,7 @@ if (totalPairsAll !== palmTotal) {
                   <div className="flex items-center gap-3">
                     <Checkbox
                       checked={isSelected}
-                      onCheckedChange={() => toggleOrderSelection(order.id)}
+                      onCheckedChange={() => sel.toggle(order.id)}
                       onClick={(e) => e.stopPropagation()}
                     />
                     <div>
@@ -862,6 +896,7 @@ if (totalPairsAll !== palmTotal) {
             </div>
           );
         })}
+        <MarqueeOverlay rect={sel.marqueeRect} />
       </div>
     );
   };
@@ -963,38 +998,18 @@ if (totalPairsAll !== palmTotal) {
           title="Setor de Corte Palmilha"
           description="Demanda de corte por material, cor e numeração"
           actions={<>
-            {selectedOrders.size > 0 && (
+            {sel.count > 0 && (
               <Button
                 size="sm"
                 onClick={handleFinishSelectedOrders}
-                disabled={selectedOrders.size === 0 || finalizingOrders}
+                disabled={sel.count === 0 || finalizingOrders}
                 className="bg-success hover:bg-success/90 text-success-foreground"
               >
                 <CheckCircle2 className="h-4 w-4 mr-1" />
-                Finalizar OP's selecionadas {selectedOrders.size > 0 && `(${selectedOrders.size})`}
+                Finalizar OP's selecionadas {sel.count > 0 && `(${sel.count}${sel.hiddenSelectedCount > 0 ? ` · ${sel.hiddenSelectedCount} fora do filtro` : ''})`}
               </Button>
             )}
-            <OrderSearchBar value={searchQuery} onChange={setSearchQuery} />
             <div className="flex items-center gap-2">
-            <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger className="w-[140px] h-8 text-xs">
-                <Filter className="h-3.5 w-3.5 mr-1" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="active">OPs Ativas</SelectItem>
-                <SelectItem value="all">Todas</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button
-              size="sm"
-              variant={selectedOrders.size === cuttingOrders.length && cuttingOrders.length > 0 ? "default" : "outline"}
-              onClick={toggleAllOrders}
-              disabled={cuttingOrders.length === 0}
-            >
-              <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
-              {selectedOrders.size === cuttingOrders.length && cuttingOrders.length > 0 ? 'Desmarcar Tudo' : `Selecionar Tudo (${cuttingOrders.length})`}
-            </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button size="sm" variant="outline" className="gap-1">
@@ -1013,6 +1028,20 @@ if (totalPairsAll !== palmTotal) {
                }}>
                   <Layers className="h-3.5 w-3.5 mr-2" /> Agrupar Tudo ({cuttingOrders.length})
                 </DropdownMenuItem>
+                {sel.count > 0 && (
+                  <DropdownMenuItem onClick={() => {
+                    if (!confirmSelection('Agrupar')) return;
+                    printCuttingGroupedReport(
+                      orders.filter(o => sel.selectedIds.has(o.id)) as any,
+                      references as any,
+                      getStrapsLabel,
+                      saleOrders as any,
+                      { silkRegistrations, soleMappings }
+                    );
+                  }}>
+                    <Layers className="h-3.5 w-3.5 mr-2" /> Agrupar ({sel.count})
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">Impressão</DropdownMenuLabel>
                 <DropdownMenuItem onClick={async () => {
@@ -1256,8 +1285,9 @@ if (totalPairsAll !== palmTotal) {
             }}>
                   <Printer className="h-3.5 w-3.5 mr-2" /> Relatório PDF
                 </DropdownMenuItem>
-                <DropdownMenuItem disabled={selectedOrders.size === 0} onClick={async () => {
-              const selected = cuttingOrders.filter(o => selectedOrders.has(o.id));
+                <DropdownMenuItem disabled={sel.count === 0} onClick={async () => {
+              if (!confirmSelection('Imprimir')) return;
+              const selected = orders.filter(o => sel.selectedIds.has(o.id));
               if (selected.length === 0) return;
               const printWin = openPrintWindow('Fichas de Corte Selecionadas');
               let fullHtml = '';
@@ -1380,27 +1410,57 @@ if (totalPairsAll !== palmTotal) {
               }
               writePrintWindow(printWin, 'Fichas de Corte Selecionadas', fullHtml);
             }}>
-                  <Printer className="h-3.5 w-3.5 mr-2" /> Imprimir Selecionados {selectedOrders.size > 0 && `(${selectedOrders.size})`}
+                  <Printer className="h-3.5 w-3.5 mr-2" /> Imprimir Selecionados {sel.count > 0 && `(${sel.count})`}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={printAll} disabled={cuttingData.length === 0}>
                   <Printer className="h-3.5 w-3.5 mr-2" /> Imprimir Tudo
                 </DropdownMenuItem>
-                {selectedOrders.size > 0 && (
-                  <DropdownMenuItem disabled={selectedOrders.size === 0} onClick={() => {
+                {sel.count > 0 && (
+                  <DropdownMenuItem disabled={sel.count === 0} onClick={() => {
                 // 6º passe (2026-06-12): popup legado de fichas por setor
                 // morto — deep-link pra tela central (modelo v7, TallyBox).
                 // A ficha legada de 'Corte' englobava cabedal + forração +
                 // palmilha, então pré-seleciona as 3 sub-etapas de Corte.
-                const ids = cuttingOrders.filter(o => selectedOrders.has(o.id)).map(o => o.id).join(',');
+                if (!confirmSelection('Imprimir fichas de')) return;
+                const ids = Array.from(sel.selectedIds).join(',');
                 navigate(`/imprimir-fichas?orderIds=${ids}&sectors=${encodeURIComponent('Corte Palmilha,Corte Forração,Corte Cabedal')}`);
               }}>
-                    <Printer className="h-3.5 w-3.5 mr-2" /> Fichas Operador {selectedOrders.size > 0 ? `(${selectedOrders.size})` : ''}
+                    <Printer className="h-3.5 w-3.5 mr-2" /> Fichas Operador {sel.count > 0 ? `(${sel.count})` : ''}
                   </DropdownMenuItem>
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
             </div>
           </>}
+        />
+
+        <OrderMultiSelectToolbar
+          search={searchQuery}
+          onSearchChange={setSearchQuery}
+          resultCount={cuttingOrders.length}
+          totalCount={sectorBaseOrders.length}
+          clientOptions={clientOptions}
+          clientFilter={clientFilter}
+          onClientFilterChange={setClientFilter}
+          weekFilter={weekFilter}
+          onWeekFilterChange={setWeekFilter}
+          allVisibleSelected={allVisibleSelected}
+          visibleCount={cuttingOrders.length}
+          onToggleVisible={toggleVisible}
+          matchedCodeCount={matchedCodeIds.length}
+          onSelectMatched={() => sel.selectMatchingIds(matchedCodeIds)}
+          extraFilters={
+            <Select value={filterStatus} onValueChange={setFilterStatus}>
+              <SelectTrigger className="h-9 w-[140px] text-xs">
+                <Filter className="h-3.5 w-3.5 mr-1" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="active">OPs Ativas</SelectItem>
+                <SelectItem value="all">Todas</SelectItem>
+              </SelectContent>
+            </Select>
+          }
         />
 
         {/* Stats */}
@@ -1429,6 +1489,14 @@ if (totalPairsAll !== palmTotal) {
             value={consolidatedForro.reduce((s, r) => s + r.total, 0)}
             tone="success"
           />
+          {sel.count > 0 && (
+            <StatCard
+              label="Selecionadas"
+              value={sel.count}
+              hint={sel.hiddenSelectedCount > 0 ? `${sel.hiddenSelectedCount} fora do filtro` : 'visíveis no recorte'}
+              tone="primary"
+            />
+          )}
         </StatGrid>
 
         {/* Order list */}
