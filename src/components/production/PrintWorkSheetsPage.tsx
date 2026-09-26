@@ -4112,7 +4112,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           if (smGroups.length === 0) return null;
           const opsNeedFibra = new Set<string>();
           const opsNeedForracao = new Set<string>();
-          for (const order of expandedOrders as any[]) {
+          for (const order of expandedOrders) {
             const sheetId = order.reference_id;
             const op = order.op_number;
             if (!sheetId || !op) continue;
@@ -4129,7 +4129,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             opsNeedFibra,
             opsNeedForracao,
             resolvePlateGroup: (opNumbers) => {
-              for (const order of expandedOrders as any[]) {
+              for (const order of expandedOrders) {
                 if (!opNumbers.includes(String(order.op_number))) continue;
                 const mats = sheetMaterialsByRef.get(order.reference_id);
                 if (mats?.insole) return mats.insole;
