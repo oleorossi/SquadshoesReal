@@ -160,16 +160,17 @@ describe('pontoMixLabels', () => {
     expect(D.gridH).toBe(480);
     // Módulo do código de barras: 2 dots, como na etiqueta da cliente.
     expect(D.barcode.module).toBe(2);
-    // Faixas recuadas, não sangradas até a borda.
-    expect(D.headerBand.x).toBeGreaterThan(0);
-    expect(D.priceBand.x).toBeGreaterThan(0);
-    expect(D.headerBand.x + D.headerBand.w).toBeLessThan(D.gridW);
-    expect(D.priceBand.x + D.priceBand.w).toBeLessThan(D.gridW);
+    // Faixas recuadas, não sangradas até a borda — e centradas (sem x fixo).
+    expect('x' in D.headerBand).toBe(false);
+    expect('x' in D.priceBand).toBe(false);
+    expect(D.headerBand.w).toBeLessThan(D.gridW);
+    expect(D.priceBand.w).toBeLessThan(D.gridW);
     // Nada pode invadir a faixa de preço.
     expect(D.hri.top + D.hri.capH).toBeLessThan(D.priceBand.y);
     expect(D.barcode.y + D.barcode.h).toBeLessThan(D.hri.top);
-    // O código sai do 35 da cliente para ~8 mm (64 dots), a pedido do dono.
-    expect(D.barcode.x).toBe(64);
+    // Caixa e código não têm x fixo: são centralizados (decisão do dono).
+    expect('x' in D.sizeBox).toBe(false);
+    expect('x' in D.barcode).toBe(false);
   });
 
   it('ZPL espelha a grade: faixa, 3 linhas, caixa, código e preço', () => {

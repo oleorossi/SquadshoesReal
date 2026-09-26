@@ -45,24 +45,37 @@ const CAP_RATIO = 0.7109;
 export const PONTO_MIX_ART_DOTS = {
   gridW: 320,
   gridH: 480,
-  /** Faixa preta do topo. */
-  headerBand: { x: 35, y: 13, w: 254, h: 82 },
+  /**
+   * Faixa preta do topo. `x` é calculado para centralizar: na foto ela sai
+   * 2 dots fora do eixo e a faixa de preço 17 — distorção da foto, não projeto.
+   */
+  headerBand: { y: 13, w: 254, h: 82 },
   /** Área útil da marca dentro da faixa (tinta medida: 231×56). */
   logoBox: { x: 47, y: 27, w: 231, h: 56 },
   /** 3 linhas da descrição: topo da caixa-alta de cada uma. */
   text: { x: 31, firstTop: 131, step: 23, capH: 17, maxW: 264 },
-  /** Caixa do tamanho: traço de 3 dots, dígitos com 22 de caixa-alta. */
-  sizeBox: { x: 97, y: 250, w: 150, h: 44, stroke: 3, capH: 22 },
+  /**
+   * Caixa do tamanho: traço de 3 dots, dígitos com 22 de caixa-alta.
+   * `x` é calculado para centralizar — na etiqueta da cliente ela sai 12 dots
+   * à direita do eixo, e o dono pediu o bloco centrado.
+   */
+  sizeBox: { y: 250, w: 150, h: 44, stroke: 3, capH: 22 },
   /**
    * Código de barras: módulo de 2 dots (padrão térmico) e altura 59.
-   * `x` = 64 (8 mm) — a cliente imprime em 35, o dono pediu um pouco mais ao centro.
+   * Centralizado junto com a caixa e os dígitos (decisão do dono) — a cliente
+   * imprime encostado na margem esquerda.
    */
-  barcode: { x: 64, y: 298, h: 59, module: 2 },
+  barcode: { y: 298, h: 59, module: 2 },
   /** Dígitos legíveis, centrados sob o código. */
   hri: { top: 364, capH: 13 },
   /** Faixa preta do preço + caixa-alta dos dígitos (o "R$" transborda um pouco). */
-  priceBand: { x: 17, y: 397, w: 269, h: 57, capH: 39 },
+  priceBand: { y: 397, w: 269, h: 57, capH: 39 },
 } as const;
+
+/** Tudo que é bloco horizontal fica centrado na etiqueta. */
+function centeredX(width: number): number {
+  return (PONTO_MIX_ART_DOTS.gridW - width) / 2;
+}
 
 type PdfDoc = import('jspdf').jsPDF;
 
@@ -897,7 +910,7 @@ function artSlots(geometry: ClientLabelGeometry) {
     h,
     sx,
     sy,
-    headerBand: box(D.headerBand),
+    headerBand: box({ ...D.headerBand, x: centeredX(D.headerBand.w) }),
     logoBox: box(D.logoBox),
     text: {
       x: D.text.x * sx,
@@ -908,19 +921,27 @@ function artSlots(geometry: ClientLabelGeometry) {
       maxW: D.text.maxW * sx,
       fontPt: fontPtForCapHeight(D.text.capH * sy),
     },
-    sizeBox: { ...box(D.sizeBox), stroke: D.sizeBox.stroke * sx, fontPt: fontPtForCapHeight(D.sizeBox.capH * sy) },
+    sizeBox: {
+      ...box({ ...D.sizeBox, x: centeredX(D.sizeBox.w) }),
+      stroke: D.sizeBox.stroke * sx,
+      fontPt: fontPtForCapHeight(D.sizeBox.capH * sy),
+    },
     barcode: {
-      x: D.barcode.x * sx,
       y: D.barcode.y * sy,
       h: D.barcode.h * sy,
       module: D.barcode.module * sx,
+      /** Largura máxima antes de encolher o módulo (respeita a margem do texto). */
+      maxW: (D.gridW - D.text.x * 2) * sx,
     },
     hri: {
       top: D.hri.top * sy,
       baseline: (D.hri.top + D.hri.capH) * sy,
       fontPt: fontPtForCapHeight(D.hri.capH * sy),
     },
-    priceBand: { ...box(D.priceBand), fontPt: fontPtForCapHeight(D.priceBand.capH * sy) },
+    priceBand: {
+      ...box({ ...D.priceBand, x: centeredX(D.priceBand.w) }),
+      fontPt: fontPtForCapHeight(D.priceBand.capH * sy),
+    },
   };
 }
 
@@ -976,10 +997,9 @@ function drawPontoMixLabel(
       const bars = code128Bars(copy.codigoBarra);
       const moduleCount = bars.reduce((max, b) => Math.max(max, b.start + b.width), 0);
       // Módulo fixo de 2 dots (padrão térmico); só encolhe se o código não couber.
-      const available = slots.w - slots.barcode.x - slots.text.x;
-      const module = Math.min(slots.barcode.module, available / Math.max(moduleCount, 1));
+      const module = Math.min(slots.barcode.module, slots.barcode.maxW / Math.max(moduleCount, 1));
       const totalW = moduleCount * module;
-      const barX = slots.barcode.x;
+      const barX = (slots.w - totalW) / 2;
       doc.setFillColor(0, 0, 0);
       for (const barra of bars) {
         doc.rect(barX + barra.start * module, slots.barcode.y, barra.width * module, slots.barcode.h, 'F');
@@ -1085,7 +1105,8 @@ export function buildPontoMixZpl(
     const price = zplField(copy.priceText, 24);
     const barcode = copy.codigoBarra.replace(/[^A-Za-z0-9 ._/-]/g, '').slice(0, 50);
 
-    const band = { x: dx(D.headerBand.x), y: dy(D.headerBand.y), w: dx(D.headerBand.w), h: dy(D.headerBand.h) };
+    const bandW = dx(D.headerBand.w);
+    const band = { x: Math.round((W - bandW) / 2), y: dy(D.headerBand.y), w: bandW, h: dy(D.headerBand.h) };
     const textX = dx(D.text.x);
     const textY = dy(D.text.firstTop);
     const lineStep = dy(D.text.step);
@@ -1094,10 +1115,21 @@ export function buildPontoMixZpl(
     const sizeFont = Math.max(10, Math.round(dy(D.sizeBox.capH) / CAP_RATIO));
     const hriFont = Math.max(8, Math.round(dy(D.hri.capH) / CAP_RATIO));
     const priceFont = Math.max(12, Math.round(dy(D.priceBand.capH) / CAP_RATIO));
-    const sbox = { x: dx(D.sizeBox.x), y: dy(D.sizeBox.y), w: dx(D.sizeBox.w), h: dy(D.sizeBox.h) };
+    const sboxW = dx(D.sizeBox.w);
+    const sbox = { x: Math.round((W - sboxW) / 2), y: dy(D.sizeBox.y), w: sboxW, h: dy(D.sizeBox.h) };
     const stroke = Math.max(1, dx(D.sizeBox.stroke));
-    const bc = { x: dx(D.barcode.x), y: dy(D.barcode.y), h: dy(D.barcode.h), module: Math.max(1, dx(D.barcode.module)) };
-    const pb = { x: dx(D.priceBand.x), y: dy(D.priceBand.y), w: dx(D.priceBand.w), h: dy(D.priceBand.h) };
+    const bcModule = Math.max(1, dx(D.barcode.module));
+    // Code128 de N caracteres: start + dados + check + stop(13) ≈ 11·(n+3)+2 módulos.
+    const bcModules = 11 * (barcode.length + 3) + 2;
+    const bc = {
+      x: Math.max(dx(D.text.x), Math.round((W - bcModules * bcModule) / 2)),
+      y: dy(D.barcode.y),
+      h: dy(D.barcode.h),
+      module: bcModule,
+      w: bcModules * bcModule,
+    };
+    const pbW = dx(D.priceBand.w);
+    const pb = { x: Math.round((W - pbW) / 2), y: dy(D.priceBand.y), w: pbW, h: dy(D.priceBand.h) };
 
     const barcodeCmd = barcode
       ? [
@@ -1106,7 +1138,7 @@ export function buildPontoMixZpl(
           copy.barcodeSymbology === 'ean13' ? `^BEN,${bc.h},N,N` : `^BCN,${bc.h},N,N,N`,
           `^FD${barcode}^FS`,
           // HRI desenhado como texto para controlar fonte e centro (o ^BC embutido não deixa).
-          `^FO${bc.x},${dy(D.hri.top)}^A0N,${hriFont},${hriFont}^FB${dx(D.gridW - D.barcode.x * 2)},1,0,C^FD${barcode}^FS`,
+          `^FO${bc.x},${dy(D.hri.top)}^A0N,${hriFont},${hriFont}^FB${bc.w},1,0,C^FD${barcode}^FS`,
         ].join('\n')
       : '';
 
@@ -1229,9 +1261,8 @@ export async function renderPontoMixPreviewDataUrl(
     try {
       const bars = code128Bars(copy.codigoBarra);
       const moduleCount = bars.reduce((max, b) => Math.max(max, b.start + b.width), 0);
-      const available = px(slots.w - slots.barcode.x - slots.text.x);
-      const module = Math.min(px(slots.barcode.module), available / Math.max(moduleCount, 1));
-      const barX = px(slots.barcode.x);
+      const module = Math.min(px(slots.barcode.module), px(slots.barcode.maxW) / Math.max(moduleCount, 1));
+      const barX = (canvas.width - moduleCount * module) / 2;
       for (const barra of bars) {
         ctx.fillRect(barX + barra.start * module, px(slots.barcode.y), barra.width * module, px(slots.barcode.h));
       }
