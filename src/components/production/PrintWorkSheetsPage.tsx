@@ -38,7 +38,9 @@ import {
   type CartaoCaixaCard,
 } from '@/lib/cartaoCaixaTransporte';
 import {
+  CAIXA_TRANSPORTE_SECTORS,
   type CaixaTransporteSector,
+  isCaixaTransporteSector,
 } from '@/lib/caixaTransporteConfig';
 import { clampPageRange } from '@/lib/printPageRange';
 import type { SectorAlert } from '@/components/production/worksheet/SectorAlerts';
@@ -963,12 +965,13 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       if (initialCartao) {
         const mapped = new Set<string>();
         for (const s of seed) {
-          if (s === 'Palmilha') {
-            mapped.add('Corte Palmilha');
-            mapped.add('Corte Forração');
-          } else if (s === 'Só Fibra') mapped.add('Corte Palmilha');
-          else if (s === 'Só Forração') mapped.add('Corte Forração');
-          else if (isCartaoFisicoEmitter(s)) mapped.add(s);
+          // A4 Palmilha / Só Fibra / Só Forração → emissor unificado do fardo.
+          if (s === 'Palmilha' || s === 'Só Fibra' || s === 'Só Forração'
+            || s === 'Corte Palmilha' || s === 'Corte Forração' || s === 'Corte Fibra') {
+            mapped.add('Palmilha');
+          } else if (isCartaoFisicoEmitter(s)) {
+            mapped.add(s);
+          }
         }
         return mapped.size > 0 ? mapped : new Set(CARTAO_FISICO_EMITTERS);
       }
@@ -1093,6 +1096,13 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   const renderAllSectors = activeSectors.size === SECTORS.length;
 
   const toggleSector = (s: string) => {
+    // Caixa: seleção única (um setor por vez).
+    if (isCaixa && isCaixaTransporteSector(s)) {
+      setCaixaSector(s);
+      setActiveSectors(new Set([s]));
+      resetPageRange();
+      return;
+    }
     setActiveSectors(prev => {
       // Trio Palmilha | Só Fibra | Só Forração é mutuamente exclusivo (Q19).
       // Demais setores: toggle puro (16/06/2026).
@@ -1112,7 +1122,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     }
     return null;
   }, [activeSectors]);
-  const sectorChoices = isCartao ? CARTAO_FISICO_EMITTERS : SECTORS;
+  const sectorChoices = isCaixa
+    ? CAIXA_TRANSPORTE_SECTORS
+    : isCartao
+      ? CARTAO_FISICO_EMITTERS
+      : SECTORS;
   const sectorsKey = useMemo(
     () => [...activeSectors].sort().join('|'),
     [activeSectors],
@@ -1122,41 +1136,49 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     setPageTo(null);
     setA4PageTotal(0);
   };
-  const setCartaoMode = (on: boolean) => {
-    setCartao(on);
+  /** Formato 1º nível: Ficha A4 | Fardo | Caixa. */
+  const setFormatA4 = () => {
+    setCartao(false);
     setCaixaSector(null);
     resetPageRange();
-    if (on) {
-      setActiveSectors((prev) => {
-        const next = new Set<string>();
-        for (const s of prev) {
-          if (s === 'Palmilha') {
-            next.add('Corte Palmilha');
-            next.add('Corte Forração');
-          } else if (s === 'Só Fibra') next.add('Corte Palmilha');
-          else if (s === 'Só Forração') next.add('Corte Forração');
-          else if (isCartaoFisicoEmitter(s)) next.add(s);
-        }
-        return next.size > 0 ? next : new Set(CARTAO_FISICO_EMITTERS);
-      });
-    } else {
-      // Volta ao A4 com a rota completa marcada (DoD: setores completos).
-      setActiveSectors(new Set(DEFAULT_A4_SECTORS));
-    }
+    setActiveSectors(new Set(DEFAULT_A4_SECTORS));
   };
-  const setCaixaMode = (sector: CaixaTransporteSector | null) => {
+  const setFormatFardo = () => {
+    setCartao(true);
+    setCaixaSector(null);
+    resetPageRange();
+    setActiveSectors((prev) => {
+      const next = new Set<string>();
+      for (const s of prev) {
+        if (s === 'Palmilha' || s === 'Só Fibra' || s === 'Só Forração'
+          || s === 'Corte Palmilha' || s === 'Corte Forração' || s === 'Corte Fibra') {
+          next.add('Palmilha');
+        } else if (isCartaoFisicoEmitter(s)) {
+          next.add(s);
+        }
+      }
+      return next.size > 0 ? next : new Set(CARTAO_FISICO_EMITTERS);
+    });
+  };
+  const setFormatCaixa = (sector: CaixaTransporteSector = 'Palmilha') => {
     setCaixaSector(sector);
     setCartao(false);
     resetPageRange();
-    if (sector) {
-      setActiveSectors(new Set([sector]));
-    } else {
-      setActiveSectors(new Set(DEFAULT_A4_SECTORS));
-    }
+    setActiveSectors(new Set([sector]));
   };
-  const markAllSectors = () => setActiveSectors(new Set(
-    isCartao ? sectorChoices : DEFAULT_A4_SECTORS,
-  ));
+  // Aliases legados usados por atalhos/handlers internos.
+  const setCartaoMode = (on: boolean) => {
+    if (on) setFormatFardo();
+    else setFormatA4();
+  };
+  const setCaixaMode = (sector: CaixaTransporteSector | null) => {
+    if (sector) setFormatCaixa(sector);
+    else setFormatA4();
+  };
+  const markAllSectors = () => {
+    if (isCaixa) return; // seleção única — não aplica "Todos"
+    setActiveSectors(new Set(isCartao ? sectorChoices : DEFAULT_A4_SECTORS));
+  };
   const clearSectors = () => setActiveSectors(new Set());
   // Imprime com o layout escolhido. flushSync força o re-render (ficha completa OU
   // reduzida) ANTES do window.print(), pra o diálogo já pegar o DOM certo.
@@ -3461,7 +3483,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [printOrders, saleOrders, clientsInfo, resolveSoleForOrder, soleGroupPackaging, orderStagesData, activeSectors, variantsByRef, tsImageByRef, sheetMaterialsByRef, silkRegistrations, economicGroupsInfo, sheetById, liningFlagLookup, reportVariantById, reportGroupsById, needsRelatorio]);
 
-  // ── Cartão físico: 1 por corrugado cheio × OP × setor emissor ─────────────
+  // ── Fardo (cartão físico): 1 por corrugado cheio × OP × setor emissor ─────
   const cartaoFisicoCards = useMemo((): CartaoFisicoCard[] => {
     if (!isCartao) return [];
     const out: CartaoFisicoCard[] = [];
@@ -3476,10 +3498,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           eligible = upper.requiresUpperCut;
         } else if (sector === 'Costura Cabedal') {
           eligible = orderInRoteiro(sheetId, sector) && upper.requiresUpperSewing;
-        } else if (sector === 'Corte Forração') {
-          const needsLining = liningFlagLookup.get(sheetId || '') === true
-            && !isEffectiveReadyMade(sheetId, order.color);
-          eligible = orderInRoteiro(sheetId, sector) && needsLining;
+        } else if (sector === 'Palmilha') {
+          // Fibra OU Forração no roteiro (caixa/fardo unificados).
+          eligible = orderInRoteiro(sheetId, 'Palmilha · Fibra')
+            || orderInRoteiro(sheetId, 'Palmilha · Forração')
+            || orderInRoteiro(sheetId, 'Corte Palmilha')
+            || orderInRoteiro(sheetId, 'Corte Forração');
         } else {
           eligible = orderInRoteiro(sheetId, sector);
         }
@@ -3494,10 +3518,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           || null;
 
         let materialLabel: string | null = null;
-        if (sector === 'Corte Palmilha') {
-          materialLabel = soleNameFor(sheetId, order.color) || null;
-        } else if (sector === 'Corte Forração') {
-          materialLabel = resolveOrderLiningMaterial(order, sheetId) || null;
+        if (sector === 'Palmilha') {
+          // Prefer forração quando existir; senão solado.
+          materialLabel = resolveOrderLiningMaterial(order, sheetId)
+            || soleNameFor(sheetId, order.color)
+            || null;
         }
 
         return {
@@ -3539,10 +3564,13 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       let eligible = true;
       if (sector === 'Costura Cabedal') {
         eligible = orderInRoteiro(sheetId, sector) && upper.requiresUpperSewing;
-      } else if (sector === 'Corte Forração') {
-        const needsLining = liningFlagLookup.get(sheetId || '') === true
-          && !isEffectiveReadyMade(sheetId, order.color);
-        eligible = orderInRoteiro(sheetId, sector) && needsLining;
+      } else if (sector === 'Palmilha') {
+        eligible = orderInRoteiro(sheetId, 'Palmilha · Fibra')
+          || orderInRoteiro(sheetId, 'Palmilha · Forração')
+          || orderInRoteiro(sheetId, 'Corte Palmilha')
+          || orderInRoteiro(sheetId, 'Corte Forração');
+      } else if (sector === 'Aviamento') {
+        eligible = orderInRoteiro(sheetId, sector);
       }
 
       const refLabel = order.reference_code || order.reference_name || '';
@@ -3555,7 +3583,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
         || null;
 
       let materialLabel: string | null = null;
-      if (sector === 'Corte Forração') {
+      if (sector === 'Palmilha') {
         materialLabel = resolveOrderLiningMaterial(order, sheetId) || null;
       }
 
@@ -3573,7 +3601,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     });
     return buildCartaoCaixaCards({
       sectorName: sector,
-      sectorDisplayLabel: sectorLabel(sector),
+      // Palmilha: sem Origem no cartão (acordo Q14-B).
+      sectorDisplayLabel: sector === 'Palmilha' ? '' : sectorLabel(sector),
       orders: inputs,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3734,9 +3763,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
 
   const formatModeKey = isCaixa ? `cx-${caixaSector}` : isCartao ? 'c' : 'a4';
   const headerTitle = isCaixa
-    ? (caixaSector === 'Corte Forração' ? 'Caixa Forração' : 'Caixa Costura Cabedal')
+    ? `Caixa ${caixaSector || 'Palmilha'}`
     : isCartao
-      ? 'Cartão físico'
+      ? 'Fardo'
       : 'Fichas de operador';
   const headerSubtitle = isCaixa
     ? 'Caixa de transporte por OP — corrugados cheios agrupados (parcial incluso).'
@@ -3801,38 +3830,30 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             <div className="inline-flex flex-wrap border border-border bg-muted/30 p-0.5" aria-label="Formato da prévia">
               <button
                 type="button"
-                onClick={() => setCaixaMode(null)}
+                onClick={() => setFormatA4()}
                 aria-pressed={isA4}
                 className={`inline-flex h-8 items-center gap-1.5 px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${isA4 ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                title="Ficha de operador em A4"
               >
-                <FileText className="h-3.5 w-3.5" /> A4
+                <FileText className="h-3.5 w-3.5" /> Ficha A4
               </button>
               <button
                 type="button"
-                onClick={() => setCartaoMode(true)}
+                onClick={() => setFormatFardo()}
                 aria-pressed={isCartao}
                 className={`inline-flex h-8 items-center gap-1.5 px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${isCartao ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-                title="Cartão físico por corrugado cheio (12/15/18), um por OP, recortável em A4 horizontal"
+                title="Fardo: 1 cartão por corrugado cheio (12/15/18), recortável em A4 horizontal"
               >
-                <Cards className="h-3.5 w-3.5" /> Cartão físico
+                <Cards className="h-3.5 w-3.5" /> Fardo
               </button>
               <button
                 type="button"
-                onClick={() => setCaixaMode('Corte Forração')}
-                aria-pressed={caixaSector === 'Corte Forração'}
-                className={`inline-flex h-8 items-center gap-1.5 px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${caixaSector === 'Corte Forração' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-                title="Caixa de transporte Forração → Palmilha (10 corrugados/caixa)"
+                onClick={() => setFormatCaixa(caixaSector && isCaixaTransporteSector(caixaSector) ? caixaSector : 'Palmilha')}
+                aria-pressed={isCaixa}
+                className={`inline-flex h-8 items-center gap-1.5 px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${isCaixa ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                title="Caixa de transporte: Palmilha (8), Costura Cabedal (30→Aviamento), Aviamento (30→Colagem)"
               >
-                <Cards className="h-3.5 w-3.5" /> Caixa Forração
-              </button>
-              <button
-                type="button"
-                onClick={() => setCaixaMode('Costura Cabedal')}
-                aria-pressed={caixaSector === 'Costura Cabedal'}
-                className={`inline-flex h-8 items-center gap-1.5 px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${caixaSector === 'Costura Cabedal' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-                title="Caixa de transporte Costura Cabedal → Aviamento (30 corrugados/caixa)"
-              >
-                <Cards className="h-3.5 w-3.5" /> Caixa Costura Cabedal
+                <Cards className="h-3.5 w-3.5" /> Caixa
               </button>
             </div>
 
@@ -3951,25 +3972,32 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           </div>
         )}
 
-        {/* Trilho de produção: oculto no modo caixa (setor já escolhido no toggle). */}
-        {!isCaixa && (
+        {/* 2º nível: chips de setor (A4 multi, Fardo multi, Caixa seleção única). */}
         <div className="border-t border-border/70 px-4 py-3">
           <div className="mb-2 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <Layers className="h-4 w-4 text-primary" />
-              <p className="text-xs font-bold uppercase tracking-wide">Rota de produção</p>
-              <span className="font-mono text-[10px] text-muted-foreground">{activeSectors.size}/{sectorChoices.length}</span>
+              <p className="text-xs font-bold uppercase tracking-wide">
+                {isCaixa ? 'Setor da caixa' : isCartao ? 'Setores do fardo' : 'Rota de produção'}
+              </p>
+              <span className="font-mono text-[10px] text-muted-foreground">
+                {isCaixa ? `1/${sectorChoices.length}` : `${activeSectors.size}/${sectorChoices.length}`}
+              </span>
             </div>
-            <div className="flex items-center gap-1 text-xs">
-              <button type="button" onClick={markAllSectors} className="px-2 py-1 font-semibold text-primary hover:underline">Todos</button>
-              <span className="text-border">/</span>
-              <button type="button" onClick={clearSectors} className="px-2 py-1 text-muted-foreground hover:text-foreground hover:underline">Limpar</button>
-            </div>
+            {!isCaixa && (
+              <div className="flex items-center gap-1 text-xs">
+                <button type="button" onClick={markAllSectors} className="px-2 py-1 font-semibold text-primary hover:underline">Todos</button>
+                <span className="text-border">/</span>
+                <button type="button" onClick={clearSectors} className="px-2 py-1 text-muted-foreground hover:text-foreground hover:underline">Limpar</button>
+              </div>
+            )}
           </div>
           <div className="overflow-x-auto pb-1">
             <div className="flex min-w-max" role="group" aria-label="Setores incluídos na impressão">
               {sectorChoices.map((sector, index) => {
-                const active = activeSectors.has(sector);
+                const active = isCaixa
+                  ? caixaSector === sector
+                  : activeSectors.has(sector);
                 return (
                   <button
                     key={sector}
@@ -3989,7 +4017,6 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             </div>
           </div>
         </div>
-        )}
 
         {/* Filtros de conteúdo: secundários à rota, mas sempre visíveis. */}
         <div className="flex flex-wrap items-start gap-x-6 gap-y-2 border-t border-border/70 bg-muted/20 px-4 py-3">
@@ -4067,6 +4094,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
               <CartaoFisico
                 key={`${card.sectorName}-${card.opNumber}-${card.index}/${card.of}`}
                 sectorName={card.sectorDisplayLabel}
+                destinoLabel={card.destinoLabel}
                 opNumber={card.opNumber}
                 pvLabel={card.pvLabel}
                 title={card.title}

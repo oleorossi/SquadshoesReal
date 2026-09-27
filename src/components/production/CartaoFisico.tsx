@@ -3,13 +3,14 @@
  *
  * Spec: specs/cartao-fisico-corrugado.md
  * Envelope físico ≈ CartaoLote (~95,5 mm, A4 paisagem, vários por folha).
- * Conteúdo: origem · OP · PV · identidade · grade · total · k/N.
- * Sem destino, sem QR/barcode (v1).
+ * Conteúdo: origem · (destino opcional) · OP · PV · identidade · grade · total · k/N.
+ * Sem QR/barcode.
  */
 import React from 'react';
 
 export interface CartaoFisicoProps {
   sectorName: string;
+  destinoLabel?: string;
   opNumber: string;
   pvLabel?: string;
   title: string;
@@ -33,9 +34,11 @@ const lbl: React.CSSProperties = {
 };
 
 export function CartaoFisico({
-  sectorName, opNumber, pvLabel, title, subtitle, imageUrl,
+  sectorName, destinoLabel, opNumber, pvLabel, title, subtitle, imageUrl,
   sizes, grade, totalPairs, lotLabel, lotCode,
 }: CartaoFisicoProps) {
+  const showDestino = Boolean(String(destinoLabel || '').trim());
+
   return (
     <div
       className="cartao-lote cartao-fisico"
@@ -61,6 +64,23 @@ export function CartaoFisico({
           {pvLabel && <div style={{ fontWeight: 400 }}>{pvLabel}</div>}
         </div>
       </div>
+
+      {showDestino && (
+        <div style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+          borderBottom: '1px solid #000', paddingBottom: '0.8mm', gap: '2mm',
+        }}>
+          <div style={{ minWidth: 0 }}>
+            <span style={lbl}>Destino</span>
+            <div style={{
+              fontFamily: DISPLAY, fontSize: 18, lineHeight: 0.95, color: RED,
+              textTransform: 'uppercase',
+            }}>
+              {destinoLabel}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '2.5mm' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '2mm', minWidth: 0 }}>

@@ -2,15 +2,14 @@
  * Cartão físico por corrugado — regras da spec `specs/cartao-fisico-corrugado.md`.
  *
  * 1 cartão = 1 corrugado cheio (12/15/18) de 1 OP. Sobra sem cartão.
- * Emissores allow-list; destino/QR fora da v1.
+ * Emissores allow-list. Destino opcional (Costura→Aviamento, Aviamento→Colagem).
  */
 import { resolveFicha } from '@/components/production/worksheet/fichaSize';
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
 
-/** Setores que emitem cartão físico (nome como em `SECTORS` / activeSectors). */
+/** Setores que emitem fardo (nome como em `SECTORS` / activeSectors). */
 export const CARTAO_FISICO_EMITTERS = [
-  'Corte Palmilha',
-  'Corte Forração',
+  'Palmilha',
   'Corte Cabedal',
   'Costura Cabedal',
   'Aviamento',
@@ -19,9 +18,19 @@ export const CARTAO_FISICO_EMITTERS = [
 
 export type CartaoFisicoEmitter = (typeof CARTAO_FISICO_EMITTERS)[number];
 
+/** Destino impresso no fardo (vazio = não imprime bloco Destino). */
+export const CARTAO_FISICO_DESTINO: Partial<Record<CartaoFisicoEmitter, string>> = {
+  'Costura Cabedal': 'Aviamento',
+  Aviamento: 'Colagem',
+};
+
+export function destinoForCartaoFisico(sector: string): string {
+  return CARTAO_FISICO_DESTINO[sector as CartaoFisicoEmitter] || '';
+}
+
 const EMITTER_SET = new Set<string>(CARTAO_FISICO_EMITTERS);
 
-export function isCartaoFisicoEmitter(sector: string): boolean {
+export function isCartaoFisicoEmitter(sector: string): sector is CartaoFisicoEmitter {
   return EMITTER_SET.has(sector);
 }
 
@@ -50,6 +59,8 @@ export interface CartaoFisicoOrderInput {
 export interface CartaoFisicoCard {
   sectorName: string;
   sectorDisplayLabel: string;
+  /** Destino opcional (Costura→Aviamento, Aviamento→Colagem). */
+  destinoLabel?: string;
   opNumber: string;
   pvLabel?: string;
   /** Destaque vermelho — cor ou material+cor. */
@@ -71,8 +82,10 @@ export interface CartaoFisicoCard {
 
 export interface BuildCartaoFisicoCardsArgs {
   sectorName: string;
-  /** Rótulo impresso (ex.: "Corte de Placa de Fibra"). Default = sectorName. */
+  /** Rótulo impresso (ex.: "Palmilha"). Default = sectorName. */
   sectorDisplayLabel?: string;
+  /** Override do destino; default = mapa CARTAO_FISICO_DESTINO. */
+  destinoLabel?: string;
   orders: CartaoFisicoOrderInput[];
 }
 
@@ -126,6 +139,9 @@ export function buildCartaoFisicoCards(args: BuildCartaoFisicoCardsArgs): Cartao
   const { sectorName, orders } = args;
   if (!isCartaoFisicoEmitter(sectorName)) return [];
   const sectorDisplayLabel = args.sectorDisplayLabel || sectorName;
+  const destinoLabel = args.destinoLabel !== undefined
+    ? args.destinoLabel
+    : destinoForCartaoFisico(sectorName);
   const cards: CartaoFisicoCard[] = [];
 
   for (const order of orders) {
@@ -148,6 +164,7 @@ export function buildCartaoFisicoCards(args: BuildCartaoFisicoCardsArgs): Cartao
       cards.push({
         sectorName,
         sectorDisplayLabel,
+        destinoLabel: destinoLabel || undefined,
         opNumber,
         pvLabel,
         title,

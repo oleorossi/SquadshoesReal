@@ -121,10 +121,8 @@ export default function PrintWorkSheets() {
   const [clientFilter, setClientFilter] = useState<string>('all');
   const [weekFilter, setWeekFilter] = useState<string>('all');
   const [showPrintView, setShowPrintView] = useState(false);
-  // Atalho "Cartão físico": entra na tela de impressão JÁ nesse modo, mas
-  // ainda passando pelo preview (o dono escolheu isso em vez de imprimir direto
-  // — uma tiragem pode sair com dezenas de cartões e os setores ainda não foram
-  // escolhidos neste ponto).
+  // Atalho "Fardo" (legado: "Cartão físico"): entra na tela de impressão JÁ
+  // nesse formato, ainda passando pelo preview.
   const [openAsCartao, setOpenAsCartao] = useState(false);
 
   const { data: rows = [], isLoading, isError, refetch } = useQuery({
@@ -378,9 +376,9 @@ export default function PrintWorkSheets() {
                   disabled={selectedOrders.length === 0}
                   onClick={() => openPreview(true)}
                   className="gap-2"
-                  title="Prévia de cartão físico por corrugado cheio (12/15/18), um por OP"
+                  title="Prévia do fardo: 1 cartão por corrugado cheio (12/15/18), por OP"
                 >
-                  <Cards className="h-4 w-4" /> Cartão físico
+                  <Cards className="h-4 w-4" /> Fardo
                 </Button>
                 <Button
                   variant="ghost"

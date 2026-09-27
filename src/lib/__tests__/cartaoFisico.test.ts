@@ -11,16 +11,18 @@ import {
 } from '@/lib/cartaoFisico';
 
 describe('cartaoFisico', () => {
-  it('allow-list dos 6 emissores', () => {
+  it('allow-list dos 5 emissores (Palmilha unificada)', () => {
     expect(CARTAO_FISICO_EMITTERS).toEqual([
-      'Corte Palmilha',
-      'Corte Forração',
+      'Palmilha',
       'Corte Cabedal',
       'Costura Cabedal',
       'Aviamento',
       'Montagem',
     ]);
+    expect(isCartaoFisicoEmitter('Palmilha')).toBe(true);
     expect(isCartaoFisicoEmitter('Montagem')).toBe(true);
+    expect(isCartaoFisicoEmitter('Corte Palmilha')).toBe(false);
+    expect(isCartaoFisicoEmitter('Corte Forração')).toBe(false);
     expect(isCartaoFisicoEmitter('Silk')).toBe(false);
     expect(isCartaoFisicoEmitter('Colagem')).toBe(false);
     expect(isCartaoFisicoEmitter('Acabamento Palmilha')).toBe(false);
@@ -59,7 +61,7 @@ describe('cartaoFisico', () => {
   it('duas OPs mesma ref+cor → cartões separados, sem misturar OP', () => {
     const base = { '35': 2, '36': 2, '37': 2, '38': 2, '39': 2, '40': 2 };
     const cards = buildCartaoFisicoCards({
-      sectorName: 'Corte Forração',
+      sectorName: 'Palmilha',
       orders: [
         {
           opNumber: 'OP-01001',
@@ -83,8 +85,23 @@ describe('cartaoFisico', () => {
     expect(cards.filter((c) => c.opNumber === 'OP-01001')).toHaveLength(2);
     expect(cards.filter((c) => c.opNumber === 'OP-01002')).toHaveLength(1);
     expect(cards.every((c) => !c.opNumber.includes('·'))).toBe(true);
+    expect(cards.every((c) => !c.destinoLabel)).toBe(true);
     expect(cards[0].title).toContain('OFF WHITE');
     expect(cards[0].title).toContain('NAPA SUDANI');
+  });
+
+  it('Costura Cabedal → destino Aviamento; Aviamento → Colagem', () => {
+    const base = { '35': 2, '36': 2, '37': 2, '38': 2, '39': 2, '40': 2 };
+    const costura = buildCartaoFisicoCards({
+      sectorName: 'Costura Cabedal',
+      orders: [{ opNumber: 'OP-1', color: 'PRETO', totalPairs: 12, grid: base }],
+    });
+    expect(costura[0].destinoLabel).toBe('Aviamento');
+    const aviamento = buildCartaoFisicoCards({
+      sectorName: 'Aviamento',
+      orders: [{ opNumber: 'OP-2', color: 'BEGE', totalPairs: 12, grid: base }],
+    });
+    expect(aviamento[0].destinoLabel).toBe('Colagem');
   });
 
   it('setor não emissor → zero cartões', () => {

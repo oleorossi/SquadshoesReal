@@ -29,7 +29,9 @@ export interface CartaoCaixaOrderInput {
 
 export interface CartaoCaixaCard {
   sectorName: CaixaTransporteSector;
+  /** Rótulo de origem. Vazio = cartão sem bloco Origem (Caixa Palmilha). */
   sectorDisplayLabel: string;
+  /** Destino. Vazio = cartão sem bloco Destino. */
   destinoLabel: string;
   opNumber: string;
   pvLabel?: string;
@@ -88,7 +90,10 @@ export function buildCartaoCaixaCards(args: BuildCartaoCaixaCardsArgs): CartaoCa
   const capacity = Number(config.fichasPorCaixa) || 0;
   if (capacity <= 0) return [];
 
-  const sectorDisplayLabel = args.sectorDisplayLabel || sectorName;
+  // Default = sectorName; caller pode forçar '' (Palmilha sem Origem).
+  const sectorDisplayLabel = args.sectorDisplayLabel !== undefined
+    ? args.sectorDisplayLabel
+    : sectorName;
   const cards: CartaoCaixaCard[] = [];
 
   for (const order of orders) {
@@ -113,7 +118,7 @@ export function buildCartaoCaixaCards(args: BuildCartaoCaixaCardsArgs): CartaoCa
       cards.push({
         sectorName,
         sectorDisplayLabel,
-        destinoLabel: config.destinoLabel,
+        destinoLabel: config.destinoLabel || '',
         opNumber,
         pvLabel,
         title,

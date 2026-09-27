@@ -1,15 +1,16 @@
 /**
  * Capacidade e destino das caixas de transporte por setor emissor.
  *
- * Ponto único pra plugar settings/DB depois — não espalhar 10/30 nem
- * "Palmilha"/"Aviamento" pelos call sites. Sem UI de cadastro nesta entrega.
+ * Ponto único pra plugar settings/DB depois — não espalhar 8/30 nem
+ * "Colagem"/"Aviamento" pelos call sites. Sem UI de cadastro nesta entrega.
  *
  * Spec: specs/cartao-caixa-transporte.md
  */
 
 export const CAIXA_TRANSPORTE_SECTORS = [
-  'Corte Forração',
+  'Palmilha',
   'Costura Cabedal',
+  'Aviamento',
 ] as const;
 
 export type CaixaTransporteSector = (typeof CAIXA_TRANSPORTE_SECTORS)[number];
@@ -17,18 +18,25 @@ export type CaixaTransporteSector = (typeof CAIXA_TRANSPORTE_SECTORS)[number];
 export interface CaixaTransporteSectorConfig {
   /** Quantos corrugados cheios cabem numa caixa (default). */
   fichasPorCaixa: number;
-  /** Destino impresso no cartão (próximo posto do chão). */
+  /**
+   * Destino impresso no cartão (próximo posto do chão).
+   * Vazio = não imprimir bloco Origem/Destino (Caixa Palmilha).
+   */
   destinoLabel: string;
 }
 
 const CONFIG_BY_SECTOR: Record<CaixaTransporteSector, CaixaTransporteSectorConfig> = {
-  'Corte Forração': {
-    fichasPorCaixa: 10,
-    destinoLabel: 'Palmilha',
+  Palmilha: {
+    fichasPorCaixa: 8,
+    destinoLabel: '',
   },
   'Costura Cabedal': {
     fichasPorCaixa: 30,
     destinoLabel: 'Aviamento',
+  },
+  Aviamento: {
+    fichasPorCaixa: 30,
+    destinoLabel: 'Colagem',
   },
 };
 

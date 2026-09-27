@@ -3,15 +3,17 @@
  *
  * Spec: specs/cartao-caixa-transporte.md
  * Envelope: A4 paisagem, 2/folha (~147 × ≥100 mm).
- * Destaque: DESTINO + N fichas (Anton); parcial óbvio como 3/10.
+ * Destaque: DESTINO (quando houver) + N fichas (Anton); parcial óbvio como 3/8.
  * Sem grade, sem QR/barcode.
+ * Caixa Palmilha: sem Origem/Destino — só identidade + quantidade.
  */
 import React from 'react';
 
 export interface CartaoCaixaTransporteProps {
-  /** Origem (setor emissor). */
-  sectorName: string;
-  destinoLabel: string;
+  /** Origem (setor emissor). Vazio = não imprime bloco Origem. */
+  sectorName?: string;
+  /** Destino. Vazio = não imprime bloco Destino. */
+  destinoLabel?: string;
   opNumber: string;
   pvLabel?: string;
   title: string;
@@ -42,6 +44,8 @@ export function CartaoCaixaTransporte({
   const fichasLabel = parcial
     ? `${fichasNaCaixa}/${capacidade}`
     : String(fichasNaCaixa);
+  const showOrigem = Boolean(String(sectorName || '').trim());
+  const showDestino = Boolean(String(destinoLabel || '').trim());
 
   return (
     <div
@@ -61,53 +65,63 @@ export function CartaoCaixaTransporte({
         boxSizing: 'border-box',
       }}
     >
-      {/* Origem · OP/PV */}
+      {/* Origem (opcional) · OP/PV */}
       <div style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
         borderBottom: '2px solid #000', paddingBottom: '2mm', gap: '3mm',
       }}>
-        <div style={{ minWidth: 0 }}>
-          <span style={lbl}>Origem</span>
-          <div style={{ fontFamily: DISPLAY, fontSize: 18, lineHeight: 1, textTransform: 'uppercase' }}>
-            {sectorName}
+        {showOrigem ? (
+          <div style={{ minWidth: 0 }}>
+            <span style={lbl}>Origem</span>
+            <div style={{ fontFamily: DISPLAY, fontSize: 18, lineHeight: 1, textTransform: 'uppercase' }}>
+              {sectorName}
+            </div>
           </div>
-        </div>
+        ) : (
+          <div style={{ minWidth: 0 }} />
+        )}
         <div style={{ textAlign: 'right', flex: 'none', fontFamily: MONO, fontSize: 10, fontWeight: 700, lineHeight: 1.35 }}>
           <div style={{ fontFamily: DISPLAY, fontSize: 18, lineHeight: 1 }}>{opNumber}</div>
           {pvLabel && <div style={{ fontWeight: 400 }}>{pvLabel}</div>}
         </div>
       </div>
 
-      {/* DESTINO em destaque */}
-      <div style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        gap: '3mm', borderBottom: '1.5px solid #000', paddingBottom: '2mm',
-      }}>
-        <div style={{ minWidth: 0 }}>
-          <span style={lbl}>Destino</span>
-          <div style={{
-            fontFamily: DISPLAY, fontSize: 36, lineHeight: 0.95, color: RED,
-            textTransform: 'uppercase',
-          }}>
-            {destinoLabel}
+      {/* DESTINO (opcional) + lote */}
+      {(showDestino || lotLabel || lotCode) && (
+        <div style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          gap: '3mm', borderBottom: '1.5px solid #000', paddingBottom: '2mm',
+        }}>
+          {showDestino ? (
+            <div style={{ minWidth: 0 }}>
+              <span style={lbl}>Destino</span>
+              <div style={{
+                fontFamily: DISPLAY, fontSize: 36, lineHeight: 0.95, color: RED,
+                textTransform: 'uppercase',
+              }}>
+                {destinoLabel}
+              </div>
+            </div>
+          ) : (
+            <div style={{ minWidth: 0 }} />
+          )}
+          <div style={{ textAlign: 'right', flex: 'none' }}>
+            {lotLabel && (
+              <div style={{
+                fontFamily: DISPLAY, fontSize: 16, lineHeight: 1, color: RED,
+                textTransform: 'uppercase', marginBottom: '1mm',
+              }}>
+                Caixa {lotLabel}
+              </div>
+            )}
+            {lotCode && (
+              <div style={{ fontFamily: DISPLAY, fontSize: 20, lineHeight: 1 }}>
+                {lotCode}
+              </div>
+            )}
           </div>
         </div>
-        <div style={{ textAlign: 'right', flex: 'none' }}>
-          {lotLabel && (
-            <div style={{
-              fontFamily: DISPLAY, fontSize: 16, lineHeight: 1, color: RED,
-              textTransform: 'uppercase', marginBottom: '1mm',
-            }}>
-              Caixa {lotLabel}
-            </div>
-          )}
-          {lotCode && (
-            <div style={{ fontFamily: DISPLAY, fontSize: 20, lineHeight: 1 }}>
-              {lotCode}
-            </div>
-          )}
-        </div>
-      </div>
+      )}
 
       {/* Identidade + contagem de fichas */}
       <div style={{
