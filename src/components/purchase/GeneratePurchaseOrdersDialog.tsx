@@ -134,6 +134,8 @@ export default function GeneratePurchaseOrdersDialog({
     measureName?: string | null;
     resume: 'generate' | 'print-materials';
   } | null>(null);
+  /** Ação a retomar depois do yield + refetch (evita drafts stale no closure). */
+  const [pendingResume, setPendingResume] = useState<'generate' | 'print-materials' | null>(null);
   const productsQuery = useProducts();
   const groupsQuery = useGroups();
   const strapCatalogQuery = useArtisanalStrapCatalog(true);
@@ -423,6 +425,29 @@ export default function GeneratePurchaseOrdersDialog({
       if (!ok) toast.error('Não foi possível abrir a janela de impressão. Permita pop-ups para este site.');
     });
   };
+
+  // Depois do cadastro de rendimento + refetch, retoma com drafts já atualizados.
+  useEffect(() => {
+    if (!pendingResume || yieldTarget || consumptionQuery.isFetching || needsQuery.isFetching) return;
+    const action = pendingResume;
+    const stillPending = (consumptionQuery.data?.rows || []).some((r) => r.artisanal?.pending);
+    if (stillPending) {
+      const next = (consumptionQuery.data?.rows || []).find((r) => r.artisanal?.pending);
+      setPendingResume(null);
+      if (next) {
+        setYieldTarget({
+          typeLabel: next.groupName || 'Tira',
+          measureName: next.groupName,
+          resume: action,
+        });
+      }
+      return;
+    }
+    setPendingResume(null);
+    if (action === 'generate') void handleGenerate();
+    else handlePrintPdf();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingResume, yieldTarget, consumptionQuery.isFetching, needsQuery.isFetching, consumptionQuery.data, drafts]);
 
   // Imprimir OC: baixa 1 PDF por fornecedor (7 fornecedores → 7 arquivos), pra
   // enviar a ordem individual a cada um. Inclui o grupo "Sem Fornecedor".
@@ -928,10 +953,7 @@ export default function GeneratePurchaseOrdersDialog({
             consumptionQuery.refetch(),
             needsQuery.refetch(),
           ]);
-          // Retoma a ação após o rendimento — o próximo ensureYieldThen
-          // encontra a linha resolvida (ou abre a próxima pendente).
-          if (resume === 'generate') await handleGenerate();
-          else handlePrintPdf();
+          setPendingResume(resume);
         }}
       />
     )}
