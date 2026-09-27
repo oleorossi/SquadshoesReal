@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { render } from '@testing-library/react';
 import { SectorJoinCutLine } from '../printContinuity';
 import { SolagemWorkSheet } from '@/components/production/SolagemWorkSheet';
+import type { ReportOrder, ReportSaleOrder } from '@/components/production/ManagementReport';
 
 vi.mock('../PaginatedSheet', () => ({
   PaginatedSheet: ({
@@ -76,30 +77,27 @@ describe('órfãos de quebra de página (print)', () => {
   });
 
   it('ManagementReport: checklist de setores é UM bloco (não fatia SOLAGEM/ACABAMENTO)', () => {
+    const saleOrder: ReportSaleOrder = {
+      id: 'pv1',
+      order_number: 'PV-00225',
+      client_name: 'TESTE',
+    };
+    const orders: ReportOrder[] = [{
+      id: '1',
+      total_pairs: 12,
+      reference_name: 'G01',
+      color: 'PRATA',
+      grade: { '34': 2, '35': 4, '36': 6 },
+      production_sectors: [
+        'Corte Palmilha', 'Corte Forração', 'Aviamento', 'Silk',
+        'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição',
+      ],
+      requires_upper_cut: false,
+      requires_upper_sewing: false,
+      requires_lining_cut: true,
+    }];
     const { container } = render(
-      <ManagementReport
-        saleOrder={{
-          id: 'pv1',
-          order_number: 'PV-00225',
-          client_name: 'TESTE',
-        } as any}
-        orders={[
-          {
-            id: '1',
-            total_pairs: 12,
-            reference_name: 'G01',
-            color: 'PRATA',
-            grade: { '34': 2, '35': 4, '36': 6 },
-            production_sectors: [
-              'Corte Palmilha', 'Corte Forração', 'Aviamento', 'Silk',
-              'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição',
-            ],
-            requires_upper_cut: false,
-            requires_upper_sewing: false,
-            requires_lining_cut: true,
-          },
-        ] as any}
-      />,
+      <ManagementReport saleOrder={saleOrder} orders={orders} />,
     );
     const blocks = Array.from(container.querySelectorAll('[data-block]'));
     if (blocks.length === 0) {
