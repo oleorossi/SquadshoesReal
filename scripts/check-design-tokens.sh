@@ -18,7 +18,7 @@
 # Cores são hardcoded porque impressão A4 precisa de tons garantidos, não
 # tokens que mudam com tema/dark mode. components/production/worksheet/* são
 # blocos reusados entre os *WorkSheet.tsx — mesma regra de print aplica.
-EXEMPT_PATTERN="EtiquetaProduto|PrintWork|OperatorWorkSheet|PalmilhaUnifiedWorkSheet|PalmilhaWorkSheet|SilkMontageWorkSheet|SolagemWorkSheet|ExpedicaoWorkSheet|ReducedWorkSheet|ManagementReport|EspelhoPontoPage|production/worksheet/|RelDiarioA4|RelOpA4|RelOeeA4|RelQualidadeA4|RelRefugoA4|RelSemanalA4|reports/A4Layout|LabelManualTab|LabelCalibrationTab|label-system/|ExternalBoxLabel|PickingListPage|CartaoOP|CartaoLote|nfe/DanfeView|components/VersionChecker|ui/toast"
+EXEMPT_PATTERN="EtiquetaProduto|PrintWork|OperatorWorkSheet|PalmilhaUnifiedWorkSheet|PalmilhaWorkSheet|SilkMontageWorkSheet|SolagemWorkSheet|ExpedicaoWorkSheet|ReducedWorkSheet|ManagementReport|EspelhoPontoPage|production/worksheet/|RelDiarioA4|RelOpA4|RelOeeA4|RelQualidadeA4|RelRefugoA4|RelSemanalA4|reports/A4Layout|LabelManualTab|LabelCalibrationTab|label-system/|ExternalBoxLabel|PickingListPage|CartaoOP|CartaoLote|CartaoFisico|CartaoCaixaTransporte|nfe/DanfeView|components/VersionChecker|ui/toast"
 # Isenções extras (auditoria 2026-07-11):
 #   nfe/DanfeView          — DANFE é documento fiscal em papel (mesma regra de print)
 #   components/VersionChecker — banner de update em âmbar fixo de alto contraste,
@@ -31,6 +31,8 @@ EXEMPT_PATTERN="EtiquetaProduto|PrintWork|OperatorWorkSheet|PalmilhaUnifiedWorkS
 #                            o docblock do arquivo cita docs/PRINT_SPEC.md §0.2 e
 #                            declara "inline styles com cores hardcoded (#000)".
 #                            Mesma regra do CartaoOP, que já estava isento (31/07/2026)
+#   CartaoFisico           — cartão Fardo (print, cores hardcoded #000/#C00000)
+#   CartaoCaixaTransporte  — cartão Caixa (print, mesma regra dos demais cartões)
 
 # Patterns that indicate old visual system usage
 # Using word-boundary anchors (\b) with -E to avoid matching substrings,
