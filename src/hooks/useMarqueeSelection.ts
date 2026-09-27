@@ -1,15 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 /**
- * Hook de seleção múltipla com 3 modos compatíveis com macOS Finder:
+ * Hook de seleção múltipla para listas de OP/PV (batch industrial):
  *
  *  1. **Marquee (caixa de arrasto)**: click+drag em espaço vazio do container
  *     desenha um retângulo; itens dentro são selecionados.
  *  2. **Modificadores no click em item**:
- *     - Click normal → seleciona só esse (limpa o resto)
- *     - Ctrl/Cmd+click → toggle individual (mantém demais)
+ *     - Click normal → toggle individual (acumula; NÃO substitui a seleção)
+ *     - Ctrl/Cmd+click → idem (toggle individual)
  *     - Shift+click → seleciona range entre último clicado e atual
  *  3. **Checkbox** (você renderiza separado): chama `toggle(id)` direto.
+ *
+ * ⚠ Click normal NÃO é Finder-replace. Em Imprimir Fichas / setores o dono
+ * marca várias OPs em sequência; substituir a seleção a cada click fazia
+ * parecer que "não dá pra selecionar vários ao mesmo tempo".
  *
  * Contrato de persistência (2026-09): filtrar/buscar NÃO remove ids
  * selecionados que saíram da lista visível. Limpa só Esc / clear() /
@@ -97,8 +101,8 @@ export function useMarqueeSelection<T>(
   /**
    * Toggle de item com suporte a modificadores. Pode ser chamado tanto pelo
    * onClick da linha quanto pelo onCheckedChange do checkbox.
-   *   - Sem modificador: seleciona apenas esse item (single-select).
-   *   - Ctrl/Cmd: toggle individual.
+   *   - Sem modificador / Ctrl/Cmd / chamada sem evento: toggle individual
+   *     (acumula — nunca limpa o resto).
    *   - Shift: seleciona range entre último clicado e atual.
    */
   const toggle = useCallback(
@@ -106,7 +110,6 @@ export function useMarqueeSelection<T>(
       setSelectedIds((prev) => {
         const next = new Set(prev);
         const isShift = e?.shiftKey;
-        const isCtrlMeta = (e as React.MouseEvent)?.ctrlKey || (e as React.MouseEvent)?.metaKey;
 
         if (isShift && lastClickedId.current) {
           const allIds = items.map(getId);
@@ -118,16 +121,9 @@ export function useMarqueeSelection<T>(
           } else {
             next.add(id);
           }
-        } else if (isCtrlMeta) {
-          if (next.has(id)) next.delete(id);
-          else next.add(id);
-        } else if (e === undefined) {
-          // Chamada programática (ex.: checkbox controlado) → toggle simples
-          if (next.has(id)) next.delete(id);
-          else next.add(id);
+        } else if (next.has(id)) {
+          next.delete(id);
         } else {
-          // Click normal: substitui seleção
-          next.clear();
           next.add(id);
         }
         return next;

@@ -69,7 +69,7 @@ describe('contrato de busca do sistema', () => {
     expect(violations, violations.join('\n')).toEqual([]);
   }, 30_000);
 
-  it('setores e hubs de tiras usam searchMatchesAllTerms (não includes ad-hoc)', () => {
+  it('setores e hubs de tiras usam busca canônica (não includes ad-hoc)', () => {
     const offenders = [
       'pages/Solagem.tsx',
       'pages/Acabamento.tsx',
@@ -82,8 +82,12 @@ describe('contrato de busca do sistema', () => {
     for (const rel of offenders) {
       const absolute = path.join(ROOT, rel);
       const source = fs.readFileSync(absolute, 'utf8');
-      if (!source.includes('searchMatchesAllTerms')) {
-        violations.push(`${rel}: falta import/uso de searchMatchesAllTerms`);
+      // matchesOrderSearch encapsula searchMatchesAllTerms (lista OP/PV + AND);
+      // ambos satisfazem o contrato — o anti-padrão é includes ad-hoc.
+      const usesCanonical =
+        source.includes('searchMatchesAllTerms') || source.includes('matchesOrderSearch');
+      if (!usesCanonical) {
+        violations.push(`${rel}: falta import/uso de searchMatchesAllTerms ou matchesOrderSearch`);
       }
       // Padrões que quebravam acento / SP10 / multi-termo nestes arquivos
       if (/\.toLowerCase\(\)\.includes\(/.test(source) && /searchQuery|searchText|maisQuery|search\b/.test(source)) {

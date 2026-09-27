@@ -23,4 +23,12 @@ describe('useMarqueeSelection persistência', () => {
     expect(src).toMatch(/deselectVisible/);
     expect(src).toMatch(/visibleSelectedCount/);
   });
+
+  it('click normal acumula (não é Finder-replace)', () => {
+    // O ramo "next.clear(); next.add(id)" no click sem modificador
+    // fazia cada clique apagar a seleção anterior — sintoma do dono
+    // em Imprimir Fichas: "não consigo selecionar vários ao mesmo tempo".
+    expect(src).not.toMatch(/Click normal: substitui seleção/);
+    expect(src).not.toMatch(/next\.clear\(\);\s*next\.add\(id\)/s);
+  });
 });
