@@ -475,175 +475,177 @@ export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props
   linesWithSectors.forEach(({ line, sectors }, lineIdx) => {
     const material = materialForChecklistSector(line, sectors[0]);
 
-    // Cabeçalho da referência+cor (foto + identidade + totais + grade)
+    // Identidade + checklist = UM SheetBlock. Dois blocos (card keepWithNext +
+    // checklist keepWithPrev) ainda vazavam no print: a altura medida em tela
+    // subestimava Anton/linhas ~8%, o pagi-page "cabia" no pack e no Chrome o
+    // keep-together do maço era violado — SOLAGEM no pé, ACABAMENTO/EXPEDIÇÃO
+    // derramavam ANTES do Folha N/M seguinte (órfão 27/09/2026, ainda vivo
+    // após o wrap). data-pack-boost sobe só a altura empacotada; cada linha
+    // keep-together é cinto se o bloco precisar fluir (>1 A4).
     itemBlocks.push({
       node: (
         <div
           key={`ref-${line.key}`}
+          data-pack-boost="1.12"
           className="keep-together"
-          style={{
-            marginTop: lineIdx === 0 ? 8 : 14,
-            border: '2px solid #000',
-            padding: '8px 10px',
-            background: '#fff',
-            printColorAdjust: 'exact',
-          }}
+          style={{ marginTop: lineIdx === 0 ? 8 : 14 }}
         >
           <div
+            className="keep-together keep-with-next"
             style={{
-              display: 'grid',
-              gridTemplateColumns: `${REF_THUMB_PX}px 1fr auto`,
-              gap: 10,
-              alignItems: 'center',
+              border: '2px solid #000',
+              padding: '8px 10px',
+              background: '#fff',
+              printColorAdjust: 'exact',
             }}
           >
             <div
               style={{
-                width: REF_THUMB_PX,
-                height: REF_THUMB_PX,
-                border: '1.5px solid #000',
-                overflow: 'hidden',
-                background: '#fff',
-              }}
-            >
-              {line.imageUrl ? (
-                <SignedImage
-                  src={line.imageUrl}
-                  alt={`${line.refName} ${line.color}`}
-                  loading="eager"
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center' }}>
-                  <span className="section-label" style={{ color: '#999', fontSize: 7 }}>Sem foto</span>
-                </div>
-              )}
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', alignItems: 'baseline' }}>
-                <span
-                  style={{
-                    fontFamily: "'Anton', Impact, sans-serif",
-                    fontSize: '26px',
-                    lineHeight: 0.9,
-                    letterSpacing: '-0.02em',
-                    textTransform: 'uppercase',
-                    color: '#C00000',
-                  }}
-                >
-                  {line.refName}
-                </span>
-                <span
-                  style={{
-                    fontFamily: "'Anton', Impact, sans-serif",
-                    fontSize: '20px',
-                    lineHeight: 0.9,
-                    letterSpacing: '-0.015em',
-                    textTransform: 'uppercase',
-                    color: '#C00000',
-                  }}
-                >
-                  {line.color}
-                </span>
-              </div>
-              {material && (
-                <span
-                  style={{
-                    display: 'inline-block',
-                    marginTop: 4,
-                    fontFamily: "'Anton', Impact, sans-serif",
-                    fontSize: '13px',
-                    letterSpacing: '0.02em',
-                    textTransform: 'uppercase',
-                    color: '#000',
-                    border: '1.5px solid #000',
-                    padding: '2px 6px',
-                  }}
-                >
-                  {material}
-                </span>
-              )}
-            </div>
-            <div style={{ textAlign: 'right', fontFamily: "'Fira Code', monospace" }}>
-              <div style={{ fontWeight: 700, fontSize: '14px', color: '#000' }}>
-                {line.totalPairs} <span style={{ fontWeight: 500, fontSize: '9px', color: '#555' }}>PARES</span>
-              </div>
-              <div style={{ fontWeight: 700, fontSize: '14px', color: '#000', marginTop: 2 }}>
-                {line.fichas} <span style={{ fontWeight: 500, fontSize: '9px', color: '#555' }}>FICHAS</span>
-              </div>
-            </div>
-          </div>
-          <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {line.corrugadoGrade && !line.mixedCorrugado && (
-              <GradeMiniTable
-                grade={fillGradeSizeRange(line.corrugadoGrade)}
-                label={`Corrugado · 1 ficha (${Object.values(line.corrugadoGrade).reduce((s, v) => s + (Number(v) || 0), 0)}p)`}
-                allowZero
-              />
-            )}
-            <GradeMiniTable
-              grade={line.grade}
-              label={line.fichas > 1 ? `Total · × ${line.fichas} fichas` : 'Total · 1 ficha'}
-            />
-          </div>
-        </div>
-      ),
-      keepWithNext: true,
-    });
-
-    // Checklist de setores = UM bloco atômico. Linhas soltas (1 SheetBlock
-    // por setor) deixavam "SOLAGEM" no pé da folha e "ACABAMENTO/EXPEDIÇÃO"
-    // sozinhas no topo da seguinte (órfão 27/09/2026). keep-together no
-    // wrapper + keepWithPrev cola o maço na identidade da ref.
-    itemBlocks.push({
-      node: (
-        <div key={`sec-${line.key}`} className="keep-together">
-          {sectors.map((sector, si) => (
-            <div
-              key={`sec-${line.key}-${sector}`}
-              style={{
                 display: 'grid',
-                gridTemplateColumns: `1fr ${CHECK_BOX_MM}mm`,
+                gridTemplateColumns: `${REF_THUMB_PX}px 1fr auto`,
                 gap: 10,
                 alignItems: 'center',
-                borderLeft: '2px solid #000',
-                borderRight: '2px solid #000',
-                borderBottom: si === sectors.length - 1 ? '2px solid #000' : '1px solid #000',
-                padding: '7px 10px',
-                background: si % 2 === 0 ? '#fff' : '#F7F5F0',
-                printColorAdjust: 'exact',
               }}
             >
-              <span
+              <div
                 style={{
-                  fontFamily: "'Anton', Impact, sans-serif",
-                  fontSize: '15px',
-                  letterSpacing: '0.03em',
-                  textTransform: 'uppercase',
-                  color: '#000',
-                  lineHeight: 1,
+                  width: REF_THUMB_PX,
+                  height: REF_THUMB_PX,
+                  border: '1.5px solid #000',
+                  overflow: 'hidden',
+                  background: '#fff',
                 }}
               >
-                {sector}
-              </span>
-              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                <span
-                  aria-hidden="true"
-                  style={{
-                    width: `${CHECK_BOX_MM}mm`,
-                    height: `${CHECK_BOX_MM}mm`,
-                    border: '1.5px solid #000',
-                    boxSizing: 'border-box',
-                    background: '#fff',
-                    display: 'inline-block',
-                  }}
-                />
+                {line.imageUrl ? (
+                  <SignedImage
+                    src={line.imageUrl}
+                    alt={`${line.refName} ${line.color}`}
+                    loading="eager"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center' }}>
+                    <span className="section-label" style={{ color: '#999', fontSize: 7 }}>Sem foto</span>
+                  </div>
+                )}
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', alignItems: 'baseline' }}>
+                  <span
+                    style={{
+                      fontFamily: "'Anton', Impact, sans-serif",
+                      fontSize: '26px',
+                      lineHeight: 0.9,
+                      letterSpacing: '-0.02em',
+                      textTransform: 'uppercase',
+                      color: '#C00000',
+                    }}
+                  >
+                    {line.refName}
+                  </span>
+                  <span
+                    style={{
+                      fontFamily: "'Anton', Impact, sans-serif",
+                      fontSize: '20px',
+                      lineHeight: 0.9,
+                      letterSpacing: '-0.015em',
+                      textTransform: 'uppercase',
+                      color: '#C00000',
+                    }}
+                  >
+                    {line.color}
+                  </span>
+                </div>
+                {material && (
+                  <span
+                    style={{
+                      display: 'inline-block',
+                      marginTop: 4,
+                      fontFamily: "'Anton', Impact, sans-serif",
+                      fontSize: '13px',
+                      letterSpacing: '0.02em',
+                      textTransform: 'uppercase',
+                      color: '#000',
+                      border: '1.5px solid #000',
+                      padding: '2px 6px',
+                    }}
+                  >
+                    {material}
+                  </span>
+                )}
+              </div>
+              <div style={{ textAlign: 'right', fontFamily: "'Fira Code', monospace" }}>
+                <div style={{ fontWeight: 700, fontSize: '14px', color: '#000' }}>
+                  {line.totalPairs} <span style={{ fontWeight: 500, fontSize: '9px', color: '#555' }}>PARES</span>
+                </div>
+                <div style={{ fontWeight: 700, fontSize: '14px', color: '#000', marginTop: 2 }}>
+                  {line.fichas} <span style={{ fontWeight: 500, fontSize: '9px', color: '#555' }}>FICHAS</span>
+                </div>
               </div>
             </div>
-          ))}
+            <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {line.corrugadoGrade && !line.mixedCorrugado && (
+                <GradeMiniTable
+                  grade={fillGradeSizeRange(line.corrugadoGrade)}
+                  label={`Corrugado · 1 ficha (${Object.values(line.corrugadoGrade).reduce((s, v) => s + (Number(v) || 0), 0)}p)`}
+                  allowZero
+                />
+              )}
+              <GradeMiniTable
+                grade={line.grade}
+                label={line.fichas > 1 ? `Total · × ${line.fichas} fichas` : 'Total · 1 ficha'}
+              />
+            </div>
+          </div>
+          {sectors.map((sector, si) => {
+            const isLast = si === sectors.length - 1;
+            return (
+              <div
+                key={`sec-${line.key}-${sector}`}
+                className={isLast ? 'keep-together keep-with-previous' : 'keep-together keep-with-next'}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: `1fr ${CHECK_BOX_MM}mm`,
+                  gap: 10,
+                  alignItems: 'center',
+                  borderLeft: '2px solid #000',
+                  borderRight: '2px solid #000',
+                  borderBottom: isLast ? '2px solid #000' : '1px solid #000',
+                  padding: '7px 10px',
+                  background: si % 2 === 0 ? '#fff' : '#F7F5F0',
+                  printColorAdjust: 'exact',
+                }}
+              >
+                <span
+                  style={{
+                    fontFamily: "'Anton', Impact, sans-serif",
+                    fontSize: '15px',
+                    letterSpacing: '0.03em',
+                    textTransform: 'uppercase',
+                    color: '#000',
+                    lineHeight: 1,
+                  }}
+                >
+                  {sector}
+                </span>
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      width: `${CHECK_BOX_MM}mm`,
+                      height: `${CHECK_BOX_MM}mm`,
+                      border: '1.5px solid #000',
+                      boxSizing: 'border-box',
+                      background: '#fff',
+                      display: 'inline-block',
+                    }}
+                  />
+                </div>
+              </div>
+            );
+          })}
         </div>
       ),
-      keepWithPrev: true,
     });
   });
 

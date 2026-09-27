@@ -76,7 +76,7 @@ describe('órfãos de quebra de página (print)', () => {
     expect(container.querySelector('table.keep-with-previous')).toBeTruthy();
   });
 
-  it('ManagementReport: checklist de setores é UM bloco (não fatia SOLAGEM/ACABAMENTO)', () => {
+  it('ManagementReport: identidade+checklist é UM bloco atômico (não fatia SOLAGEM/ACABAMENTO)', () => {
     const saleOrder: ReportSaleOrder = {
       id: 'pv1',
       order_number: 'PV-00225',
@@ -100,20 +100,21 @@ describe('órfãos de quebra de página (print)', () => {
       <ManagementReport saleOrder={saleOrder} orders={orders} />,
     );
     const blocks = Array.from(container.querySelectorAll('[data-block]'));
-    if (blocks.length === 0) {
-      const keep = Array.from(container.querySelectorAll('.keep-together'));
-      const checklist = keep.find((el) =>
-        /SOLAGEM/i.test(el.textContent || '') && /ACABAMENTO/i.test(el.textContent || ''),
-      );
-      expect(checklist).toBeTruthy();
-      return;
-    }
-    expect(blocks.length).toBe(3);
-    expect(blocks[1].getAttribute('data-keep-next')).toBe('1');
-    expect(blocks[2].getAttribute('data-keep-prev')).toBe('1');
-    const checklistText = blocks[2].textContent || '';
-    expect(checklistText).toMatch(/SOLAGEM/i);
-    expect(checklistText).toMatch(/ACABAMENTO/i);
-    expect(checklistText).toMatch(/EXPEDIÇÃO/i);
+    expect(blocks.length).toBe(2); // header + 1 ref (card+checklist)
+    const refBlock = blocks[1];
+    expect(refBlock.getAttribute('data-keep-prev')).toBe('0');
+    expect(refBlock.getAttribute('data-keep-next')).toBe('0');
+    const atomic = refBlock.querySelector('[data-pack-boost="1.12"]') as HTMLElement;
+    expect(atomic).toBeTruthy();
+    expect(atomic.className).toMatch(/keep-together/);
+    const text = atomic.textContent || '';
+    expect(text).toMatch(/G01/i);
+    expect(text).toMatch(/SOLAGEM/i);
+    expect(text).toMatch(/ACABAMENTO/i);
+    expect(text).toMatch(/EXPEDIÇÃO/i);
+    // Linhas do checklist coladas entre si (cinto se o bloco fluir).
+    const rows = Array.from(atomic.querySelectorAll('.keep-with-next, .keep-with-previous'))
+      .filter((el) => /SOLAGEM|ACABAMENTO|EXPEDIÇÃO/i.test(el.textContent || ''));
+    expect(rows.length).toBeGreaterThanOrEqual(3);
   });
 });

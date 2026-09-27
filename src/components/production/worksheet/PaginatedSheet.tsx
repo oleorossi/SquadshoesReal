@@ -37,6 +37,14 @@ export {
   PRINT_INFLATE,
 };
 
+/** Aplica `data-pack-boost` à altura medida (só empacotamento — sem mudar o visual). */
+export function packBoostedHeight(measuredPx: number, boostAttr: string | null | undefined): number {
+  const h = Math.ceil(measuredPx);
+  const boost = Number(boostAttr);
+  if (!Number.isFinite(boost) || boost <= 1) return h;
+  return Math.ceil(h * boost);
+}
+
 /**
  * PaginatedSheet — paginador determinístico das fichas de impressão.
  *
@@ -398,7 +406,18 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle, minScale }: Pag
       if (!el) return; // render incompleto — espera o próximo ciclo
       // ceil do retângulo sub-pixel: offsetHeight arredonda pra BAIXO e o
       // erro acumulado de ~10 blocos chegava a vários px — derramava no print.
-      next[i] = Math.ceil(el.getBoundingClientRect().height);
+      //
+      // `data-pack-boost` (no wrapper ou num descendente) multiplica a altura
+      // EMPACOTADA sem mudar o visual — Anton/checklist do Relatório Gerencial
+      // mediam ~8% a menos que o print e o keep-together vazava 2 linhas pra
+      // folha seguinte (ACABAMENTO/EXPEDIÇÃO órfãos antes do Folha N/M).
+      const boostNode = el.matches('[data-pack-boost]')
+        ? el
+        : el.querySelector<HTMLElement>('[data-pack-boost]');
+      next[i] = packBoostedHeight(
+        el.getBoundingClientRect().height,
+        boostNode?.dataset.packBoost,
+      );
       // Largura rígida é DECLARADA pelo componente (não medida): quem tem
       // geometria de constante sabe quanto exige, e medir o DOM não distingue
       // "ocupa 660px" de "precisa de 660px".
