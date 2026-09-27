@@ -9,11 +9,9 @@ import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
 
 /** Setores que emitem fardo (nome como em `SECTORS` / activeSectors). */
 export const CARTAO_FISICO_EMITTERS = [
-  'Palmilha',
   'Corte Cabedal',
   'Costura Cabedal',
   'Aviamento',
-  'Montagem',
 ] as const;
 
 export type CartaoFisicoEmitter = (typeof CARTAO_FISICO_EMITTERS)[number];
@@ -82,7 +80,7 @@ export interface CartaoFisicoCard {
 
 export interface BuildCartaoFisicoCardsArgs {
   sectorName: string;
-  /** Rótulo impresso (ex.: "Palmilha"). Default = sectorName. */
+  /** Rótulo impresso (ex.: "Corte Cabedal"). Default = sectorName. */
   sectorDisplayLabel?: string;
   /** Override do destino; default = mapa CARTAO_FISICO_DESTINO. */
   destinoLabel?: string;

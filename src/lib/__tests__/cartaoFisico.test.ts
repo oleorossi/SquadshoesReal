@@ -11,16 +11,17 @@ import {
 } from '@/lib/cartaoFisico';
 
 describe('cartaoFisico', () => {
-  it('allow-list dos 5 emissores (Palmilha unificada)', () => {
+  it('allow-list dos 3 emissores (Cabedal · Costura · Aviamento)', () => {
     expect(CARTAO_FISICO_EMITTERS).toEqual([
-      'Palmilha',
       'Corte Cabedal',
       'Costura Cabedal',
       'Aviamento',
-      'Montagem',
     ]);
-    expect(isCartaoFisicoEmitter('Palmilha')).toBe(true);
-    expect(isCartaoFisicoEmitter('Montagem')).toBe(true);
+    expect(isCartaoFisicoEmitter('Corte Cabedal')).toBe(true);
+    expect(isCartaoFisicoEmitter('Costura Cabedal')).toBe(true);
+    expect(isCartaoFisicoEmitter('Aviamento')).toBe(true);
+    expect(isCartaoFisicoEmitter('Palmilha')).toBe(false);
+    expect(isCartaoFisicoEmitter('Montagem')).toBe(false);
     expect(isCartaoFisicoEmitter('Corte Palmilha')).toBe(false);
     expect(isCartaoFisicoEmitter('Corte Forração')).toBe(false);
     expect(isCartaoFisicoEmitter('Silk')).toBe(false);
@@ -41,7 +42,7 @@ describe('cartaoFisico', () => {
   it('OP 26 pares / curva 12 → 2 cartões (não 3)', () => {
     const base = { '35': 2, '36': 2, '37': 2, '38': 2, '39': 2, '40': 2 }; // Σ=12
     const cards = buildCartaoFisicoCards({
-      sectorName: 'Montagem',
+      sectorName: 'Corte Cabedal',
       orders: [{
         opNumber: 'OP-01001',
         pvLabel: 'PV-00160',
@@ -55,13 +56,14 @@ describe('cartaoFisico', () => {
     expect(cards.map((c) => c.lotCode)).toEqual(['1/2', '2/2']);
     expect(cards.every((c) => c.opNumber === 'OP-01001')).toBe(true);
     expect(cards.every((c) => c.totalPairs === 12)).toBe(true);
+    expect(cards.every((c) => !c.destinoLabel)).toBe(true);
     expect(cards[0].grade).toEqual(base);
   });
 
   it('duas OPs mesma ref+cor → cartões separados, sem misturar OP', () => {
     const base = { '35': 2, '36': 2, '37': 2, '38': 2, '39': 2, '40': 2 };
     const cards = buildCartaoFisicoCards({
-      sectorName: 'Palmilha',
+      sectorName: 'Corte Cabedal',
       orders: [
         {
           opNumber: 'OP-01001',

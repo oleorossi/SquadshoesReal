@@ -965,13 +965,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       if (initialCartao) {
         const mapped = new Set<string>();
         for (const s of seed) {
-          // A4 Palmilha / Só Fibra / Só Forração → emissor unificado do fardo.
-          if (s === 'Palmilha' || s === 'Só Fibra' || s === 'Só Forração'
-            || s === 'Corte Palmilha' || s === 'Corte Forração' || s === 'Corte Fibra') {
-            mapped.add('Palmilha');
-          } else if (isCartaoFisicoEmitter(s)) {
-            mapped.add(s);
-          }
+          if (isCartaoFisicoEmitter(s)) mapped.add(s);
         }
         return mapped.size > 0 ? mapped : new Set(CARTAO_FISICO_EMITTERS);
       }
@@ -979,9 +973,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     },
   );
 
-  // Modo CARTÃO FÍSICO (spec cartao-fisico-corrugado): 1 cartão por corrugado
-  // cheio (12/15/18) por OP, nos 6 setores emissores. Substitui o CartaoLote
-  // de posto. É modo de VISUALIZAÇÃO (preview = o que imprime).
+  // Modo FARDO (spec cartao-fisico-corrugado): 1 cartão por corrugado
+  // cheio (12/15/18) por OP, nos 3 setores do fluxo cabedal
+  // (Corte Cabedal · Costura Cabedal · Aviamento).
   const [cartao, setCartao] = useState(!!initialCartao);
   // Modo CAIXA DE TRANSPORTE (spec cartao-caixa-transporte): mutuamente
   // exclusivo com A4 e Cartão físico — um setor de caixa por vez.
@@ -1150,12 +1144,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     setActiveSectors((prev) => {
       const next = new Set<string>();
       for (const s of prev) {
-        if (s === 'Palmilha' || s === 'Só Fibra' || s === 'Só Forração'
-          || s === 'Corte Palmilha' || s === 'Corte Forração' || s === 'Corte Fibra') {
-          next.add('Palmilha');
-        } else if (isCartaoFisicoEmitter(s)) {
-          next.add(s);
-        }
+        if (isCartaoFisicoEmitter(s)) next.add(s);
       }
       return next.size > 0 ? next : new Set(CARTAO_FISICO_EMITTERS);
     });
@@ -3498,13 +3487,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           eligible = upper.requiresUpperCut;
         } else if (sector === 'Costura Cabedal') {
           eligible = orderInRoteiro(sheetId, sector) && upper.requiresUpperSewing;
-        } else if (sector === 'Palmilha') {
-          // Fibra OU Forração no roteiro (caixa/fardo unificados).
-          eligible = orderInRoteiro(sheetId, 'Palmilha · Fibra')
-            || orderInRoteiro(sheetId, 'Palmilha · Forração')
-            || orderInRoteiro(sheetId, 'Corte Palmilha')
-            || orderInRoteiro(sheetId, 'Corte Forração');
         } else {
+          // Aviamento (e demais emissores do fardo).
           eligible = orderInRoteiro(sheetId, sector);
         }
 
@@ -3517,20 +3501,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           || (sheetId ? tsImageByRef.get(sheetId) : null)
           || null;
 
-        let materialLabel: string | null = null;
-        if (sector === 'Palmilha') {
-          // Prefer forração quando existir; senão solado.
-          materialLabel = resolveOrderLiningMaterial(order, sheetId)
-            || soleNameFor(sheetId, order.color)
-            || null;
-        }
-
         return {
           opNumber: String(order.op_number || ''),
           pvLabel: order.sale_order_number || null,
           referenceLabel: refLabel || null,
           color: order.color || null,
-          materialLabel,
+          materialLabel: null,
           imageUrl,
           totalPairs: Number(order.total_pairs) || 0,
           grid: (order.grid ?? null) as Record<string, number> | null,
