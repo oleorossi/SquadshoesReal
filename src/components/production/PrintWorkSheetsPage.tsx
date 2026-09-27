@@ -576,6 +576,15 @@ const printStyles = `
       break-after: page !important;
       page-break-after: always !important;
     }
+    /* Página empacotada (não-flow) é atômica: se o browser tentar
+       começar no resto da folha anterior, empurra a página INTEIRA —
+       senão a faixa "Folha N/M" fica órfã no pé e o WorksheetHeader
+       abre sozinho na folha seguinte (Expedição, 27/09/2026).
+       flow continua com break-inside:auto (conteúdo > 1 A4). */
+    .print-area .pagi-page:not(.pagi-page--flow) {
+      break-inside: avoid !important;
+      page-break-inside: avoid !important;
+    }
     /* Última página da ficha não força break próprio — o .page-break pai
        já garante "mudança de setor/ficha = nova página" (evita breaks
        duplos consecutivos virarem folha em branco). */

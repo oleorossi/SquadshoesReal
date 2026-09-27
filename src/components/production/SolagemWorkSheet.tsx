@@ -183,9 +183,12 @@ export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 1
             Fix 22/05/2026: imagens reduzidas de 110×110 pra 55×55 e cada
             item vira keep-together individual. DOM audit mostrou que esse
             strip estourava 200mm em bandas com 6+ refs (sozinho era 73%
-            da A4 útil) — strip COMO UM TODO pode quebrar entre sandálias. */}
+            da A4 útil) — strip COMO UM TODO pode quebrar entre sandálias.
+            keep-with-next: o strip NÃO pode fechar a página sem a grade —
+            senão as fotos ficam no pé e a grade abre sozinha na folha
+            seguinte (órfão reportado 27/09/2026). */}
         {band.refs && band.refs.length > 0 && (
-          <div className="px-2 py-1 flex items-start gap-2 flex-wrap" style={{ borderBottom: '1px solid #000' }}>
+          <div className="keep-with-next px-2 py-1 flex items-start gap-2 flex-wrap" style={{ borderBottom: '1px solid #000' }}>
             <span className="section-label shrink-0 self-center" style={{ color: '#000' }}>Sandálias</span>
             {band.refs.map((r) => (
               <div key={r.key} className="keep-together flex flex-col items-center gap-0.5">
@@ -218,8 +221,9 @@ export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 1
           </div>
         )}
 
-        {/* keep-together: grade inteira (Por Ficha + Total) na mesma página */}
-        <table className="keep-together w-full text-center" style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+        {/* keep-together + keep-with-previous: grade inteira (Por Ficha + Total)
+            na mesma página, colada ao strip/header — nunca órfã no topo. */}
+        <table className="keep-together keep-with-previous w-full text-center" style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
           <thead>
             <tr style={{ borderBottom: '1.5px solid #000' }}>
               {/* Largura precisa caber "Total × N fichas" (≈96px); sob

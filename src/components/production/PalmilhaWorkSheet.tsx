@@ -293,9 +293,11 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
                     grupos consolidados com 6+ sandálias — sozinho era 73%
                     da A4 útil. Cada sandália é keep-together individual
                     (não quebra ao meio), mas o strip COMO UM TODO pode
-                    quebrar entre sandálias. */}
+                    quebrar entre sandálias.
+                    keep-with-next: strip não fecha página sem a grade
+                    (órfão Solagem/Palmilha, 27/09/2026). */}
                 {group.refs && group.refs.length > 0 && (
-                  <div className="px-2 py-1 flex items-start gap-2 flex-wrap" style={{ borderBottom: '1px solid #000' }}>
+                  <div className="keep-with-next px-2 py-1 flex items-start gap-2 flex-wrap" style={{ borderBottom: '1px solid #000' }}>
                     <span className="section-label shrink-0 self-center" style={{ color: '#000' }}>Sandálias</span>
                     {group.refs.map((r) => (
                       <div key={r.key} className="keep-together flex flex-col items-center gap-0.5">
@@ -329,13 +331,13 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
                 )}
 
                 {alerts.length > 0 && (
-                  <div className="px-2 pt-2">
+                  <div className="keep-with-next px-2 pt-2">
                     <SectorAlerts alerts={alerts} />
                   </div>
                 )}
 
-                {/* keep-together: grade inteira (Por Ficha + Total) na mesma página */}
-                <table className="keep-together w-full text-center" style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+                {/* keep-together + keep-with-previous: grade colada ao strip */}
+                <table className="keep-together keep-with-previous w-full text-center" style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
                   <thead>
                     <tr style={{ borderBottom: '1.5px solid #000' }}>
                       {/* Largura precisa caber "Total × N fichas" (≈96px). Sob

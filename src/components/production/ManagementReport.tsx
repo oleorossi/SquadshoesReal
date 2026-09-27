@@ -591,54 +591,59 @@ export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props
       keepWithNext: true,
     });
 
-    sectors.forEach((sector, si) => {
-      itemBlocks.push({
-        node: (
-          <div
-            key={`sec-${line.key}-${sector}`}
-            className="keep-together"
-            style={{
-              display: 'grid',
-              gridTemplateColumns: `1fr ${CHECK_BOX_MM}mm`,
-              gap: 10,
-              alignItems: 'center',
-              borderLeft: '2px solid #000',
-              borderRight: '2px solid #000',
-              borderBottom: si === sectors.length - 1 ? '2px solid #000' : '1px solid #000',
-              padding: '7px 10px',
-              background: si % 2 === 0 ? '#fff' : '#F7F5F0',
-              printColorAdjust: 'exact',
-            }}
-          >
-            <span
+    // Checklist de setores = UM bloco atômico. Linhas soltas (1 SheetBlock
+    // por setor) deixavam "SOLAGEM" no pé da folha e "ACABAMENTO/EXPEDIÇÃO"
+    // sozinhas no topo da seguinte (órfão 27/09/2026). keep-together no
+    // wrapper + keepWithPrev cola o maço na identidade da ref.
+    itemBlocks.push({
+      node: (
+        <div key={`sec-${line.key}`} className="keep-together">
+          {sectors.map((sector, si) => (
+            <div
+              key={`sec-${line.key}-${sector}`}
               style={{
-                fontFamily: "'Anton', Impact, sans-serif",
-                fontSize: '15px',
-                letterSpacing: '0.03em',
-                textTransform: 'uppercase',
-                color: '#000',
-                lineHeight: 1,
+                display: 'grid',
+                gridTemplateColumns: `1fr ${CHECK_BOX_MM}mm`,
+                gap: 10,
+                alignItems: 'center',
+                borderLeft: '2px solid #000',
+                borderRight: '2px solid #000',
+                borderBottom: si === sectors.length - 1 ? '2px solid #000' : '1px solid #000',
+                padding: '7px 10px',
+                background: si % 2 === 0 ? '#fff' : '#F7F5F0',
+                printColorAdjust: 'exact',
               }}
             >
-              {sector}
-            </span>
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
               <span
-                aria-hidden="true"
                 style={{
-                  width: `${CHECK_BOX_MM}mm`,
-                  height: `${CHECK_BOX_MM}mm`,
-                  border: '1.5px solid #000',
-                  boxSizing: 'border-box',
-                  background: '#fff',
-                  display: 'inline-block',
+                  fontFamily: "'Anton', Impact, sans-serif",
+                  fontSize: '15px',
+                  letterSpacing: '0.03em',
+                  textTransform: 'uppercase',
+                  color: '#000',
+                  lineHeight: 1,
                 }}
-              />
+              >
+                {sector}
+              </span>
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <span
+                  aria-hidden="true"
+                  style={{
+                    width: `${CHECK_BOX_MM}mm`,
+                    height: `${CHECK_BOX_MM}mm`,
+                    border: '1.5px solid #000',
+                    boxSizing: 'border-box',
+                    background: '#fff',
+                    display: 'inline-block',
+                  }}
+                />
+              </div>
             </div>
-          </div>
-        ),
-        keepWithPrev: si === 0,
-      });
+          ))}
+        </div>
+      ),
+      keepWithPrev: true,
     });
   });
 

@@ -580,7 +580,7 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle, minScale }: Pag
 
   const renderPageHead = (page: PackedPage) => (
     <div
-      className="pagi-page-head"
+      className="pagi-page-head keep-together keep-with-next"
       style={{
         height: `${HEADER_BAND_MM - 2}mm`,
         marginBottom: '2mm',
@@ -649,7 +649,7 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle, minScale }: Pag
   return (
     <div ref={sheetRootRef} className="pagi-sheet" style={{ width: '210mm', margin: '0 auto' }}>
       {portaledBlocks}
-      {joinCutBeforeOwnPages && <SectorJoinCutLine />}
+      {joinCutBeforeOwnPages && <SectorJoinCutLine forcePageBreak />}
       {pagesInOwnSheet.map((page) => {
         const packedPx = packedHeightPx(page);
         // Última página lógica do maço NUNCA estica pra 288mm: o vazio residual
