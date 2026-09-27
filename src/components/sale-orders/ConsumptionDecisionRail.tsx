@@ -10,8 +10,9 @@ import {
   CaretDown,
 } from '@phosphor-icons/react';
 import { formatQty, formatUnit } from '@/lib/consumptionFormat';
-import type { BaseMaterialTotal } from '@/lib/baseMaterialTotal';
+import type { NapaRollup } from '@/lib/napaRollup';
 import type { ShortfallEntry } from '@/lib/consumptionAvailability';
+import NapaRollupPanel from '@/components/sale-orders/NapaRollupPanel';
 
 /**
  * TRILHO DE DECISÃO do consumo de materiais.
@@ -36,8 +37,8 @@ import type { ShortfallEntry } from '@/lib/consumptionAvailability';
 export type ConsumptionFilter = 'all' | 'short' | 'pending' | 'ok';
 
 type Props = {
-  /** Total de material base (napa) — o número que decide o pedido de compra. */
-  baseTotal: BaseMaterialTotal | null;
+  /** Rollup de napa (destinos + total) — número que decide o pedido de compra. */
+  napaRollup: NapaRollup | null;
   shortCount: number;
   pendingCount: number;
   /** Quais naturezas de pendência existem — define o texto exibido. */
@@ -69,7 +70,7 @@ type Props = {
 };
 
 export default function ConsumptionDecisionRail({
-  baseTotal,
+  napaRollup,
   shortCount,
   pendingCount,
   pendingReasons,
@@ -100,54 +101,17 @@ export default function ConsumptionDecisionRail({
 
   return (
     <aside className="relative z-20 space-y-3 lg:sticky lg:top-3">
-      {/* ── Hero: material base + itens em falta ───────────────────────── */}
-      <div className="rounded-lg border border-border bg-card p-3">
-        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-          Necessidade de material base
-        </p>
-        {baseTotal ? (
-          <>
-            <p className="font-mono text-xl font-bold leading-none tabular-nums text-foreground">
-              {formatQty(baseTotal.total, 'm')}
-              <span className="ml-0.5 text-base font-semibold">m</span>
-            </p>
-            {baseTotal.parts.length > 0 && (
-              <div className="mt-1.5 flex flex-wrap gap-1">
-                {baseTotal.parts.map((part) => (
-                  <button
-                    key={part.name}
-                    type="button"
-                    aria-pressed={selectedBaseFamily === part.name}
-                    onClick={() => onSelectBaseFamily?.(selectedBaseFamily === part.name ? null : part.name)}
-                    className={`rounded-md px-1.5 py-0.5 font-mono text-[11px] leading-snug transition-colors ${
-                      selectedBaseFamily === part.name
-                        ? 'bg-primary text-primary-foreground'
-                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                    }`}
-                  >
-                    {formatQty(part.qty, 'm')} {part.name}
-                  </button>
-                ))}
-              </div>
-            )}
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              {grossNeed
-                ? 'consumo bruto do pedido · estoque ignorado'
-                : 'consumo bruto · tiras convertidas + napa cortada direto'}
-            </p>
-            {baseTotal.skipped > 0 && (
-              <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
-                {baseTotal.skipped} {baseTotal.skipped === 1 ? 'item ficou' : 'itens ficaram'} fora
-                do total — cadastro incompleto
-              </p>
-            )}
-          </>
-        ) : (
-          <p className="mt-1 text-xs text-muted-foreground">
-            Nenhuma napa neste consumo — só solado, químicos e/ou embalagem.
-          </p>
-        )}
-      </div>
+      <NapaRollupPanel
+        rollup={napaRollup}
+        selectedFamily={selectedBaseFamily}
+        onSelectFamily={onSelectBaseFamily}
+        compact
+      />
+      <p className="-mt-1 px-0.5 text-[11px] text-muted-foreground">
+        {grossNeed
+          ? 'modo consumo total · estoque ignorado'
+          : 'modo cobertura · falta = necessidade − estoque líquido'}
+      </p>
 
       {!grossNeed && (
       <button

@@ -1,15 +1,14 @@
 /**
- * LISTA DE COMPRA do consumo — napa de **Cabedal / Forração / Fachete** por
- * família → cor. Tira artesanal convertida NÃO entra aqui (decisão do dono,
- * 24/09/2026): mora no bloco próprio “Napa para tiras”, pra não misturar com
- * forração do cabedal.
+ * LISTA DE COMPRA do consumo — napa por família → cor, com destinos
+ * Cabedal / Forração / Tira. Decisão do dono (27/09/2026): napa convertida
+ * de tiras artesanais ENTRA no total da família (revoga exclusão de 24/09).
  *
  * Continua listando `pendingStraps` (tira sem rendimento) e `otherRows`.
  */
 import { BASE_MATERIAL_COMPONENTS, BASE_LINEAR_UNITS, normalizeBaseFamilyName } from '@/lib/baseMaterialTotal';
 import { normTxt, type ConsumptionRow } from '@/lib/consumptionRows';
 
-/** Aplicação da napa na ficha (cabedal/forração). `tira` fica zerado — legado de UI. */
+/** Aplicação da napa na ficha. */
 export type BaseApplicationKind = 'cabedal' | 'forracao' | 'tira';
 
 export type BuyListColor = {
@@ -17,7 +16,7 @@ export type BuyListColor = {
   qty: number;
   cabedal: number;
   forracao: number;
-  /** Sempre 0 — napa de tira sai do bloco próprio. */
+  /** Napa convertida de tiras artesanais nesta cor. */
   tira: number;
   /** Tiras desta napa+cor que ficaram FORA do total por falta de rendimento. */
   pending: number;
@@ -65,9 +64,10 @@ export const isDirectNapaRow = (row: ConsumptionRow): boolean =>
   && !row.warning
   && row.totalQuantity > 0;
 
-/** A linha entra na lista de compra de napa (cabedal/forração)? Sem tira convertida. */
+/** A linha entra na lista de compra de napa (direto ou tira convertida)? */
 export const isBuyListRow = (row: ConsumptionRow): boolean => {
-  if (row.artisanal) return false;
+  if (row.artisanal?.pending) return false;
+  if (row.artisanal && Number(row.artisanal.baseQty) > 0) return true;
   return isDirectNapaRow(row);
 };
 
@@ -84,7 +84,9 @@ export function baseMaterialName(row: ConsumptionRow): string | null {
   if (row.artisanal && Number(row.artisanal.baseQty) > 0) {
     return normalizeBaseFamilyName(row.artisanal.baseName, row.color);
   }
-  if (isDirectNapaRow(row)) return (row.groupName || '').trim() || null;
+  if (isDirectNapaRow(row)) {
+    return normalizeBaseFamilyName(row.groupName, row.color) || null;
+  }
   return null;
 }
 
@@ -97,8 +99,8 @@ export function rowBaseQty(row: ConsumptionRow): number {
 }
 
 export function baseApplicationKind(row: ConsumptionRow): BaseApplicationKind | null {
-  // Tira convertida não alimenta mais esta lista — kind só pra napa direta.
-  if (row.artisanal) return null;
+  if (row.artisanal?.pending) return null;
+  if (row.artisanal && Number(row.artisanal.baseQty) > 0) return 'tira';
   if (!isDirectNapaRow(row)) return null;
   if (row.componentType === 'Forração' || row.componentType === 'Forração Palmilha') return 'forracao';
   return 'cabedal';
@@ -137,10 +139,15 @@ export function buildBuyList(rows: ConsumptionRow[]): BuyList {
       pendCountByKey.set(k, (pendCountByKey.get(k) || 0) + 1);
       continue;
     }
-    // Tira convertida: bloco “Napa para tiras”, não esta família.
-    if (row.artisanal && row.artisanal.baseQty > 0) continue;
+    // Tira convertida: entra na família da napa-base, destino "tira".
+    if (row.artisanal && row.artisanal.baseQty > 0) {
+      const napa = normalizeBaseFamilyName(row.artisanal.baseName, row.color);
+      addNapa(napa, row.color, row.artisanal.baseQty, 'tira');
+      continue;
+    }
     if (isDirectNapaRow(row)) {
-      addNapa(row.groupName, row.color, row.totalQuantity, baseApplicationKind(row) || 'cabedal');
+      const napa = normalizeBaseFamilyName(row.groupName, row.color);
+      addNapa(napa, row.color, row.totalQuantity, baseApplicationKind(row) || 'cabedal');
       continue;
     }
     otherRows.push(row);

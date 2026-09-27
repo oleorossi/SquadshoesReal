@@ -1,6 +1,9 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { computePurchaseBaseTotal } from '@/lib/baseMaterialTotal';
+import { buildNapaRollup } from '@/lib/napaRollup';
+import { loadPvConsumption } from '@/lib/pvConsumption';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -41,7 +44,8 @@ import {
 import { printPerPvMaterials } from '@/lib/printPerPvMaterials';
 import { printPerPvOcPdf } from '@/lib/printPerPvOcPdf';
 import CreateStrapProductDialog from '@/components/sale-orders/CreateStrapProductDialog';
-import { useQueryClient } from '@tanstack/react-query';
+import StrapMeasureYieldDialog from '@/components/sale-orders/StrapMeasureYieldDialog';
+import NapaRollupPanel from '@/components/sale-orders/NapaRollupPanel';
 import { toast } from 'sonner';
 
 /** Quantidade de material base em pt-BR — mesma grafia da faixa de Material
@@ -115,6 +119,21 @@ export default function GeneratePurchaseOrdersDialog({
   const [overrideNeedWarnings, setOverrideNeedWarnings] = useState(false);
   const [overrideOpenPurchases, setOverrideOpenPurchases] = useState(false);
   const needsQuery = useMaterialsPerPv(open ? pvIds : null);
+  const consumptionQuery = useQuery({
+    queryKey: ['pv-consumption-for-po', ...(open ? pvIds : [])],
+    queryFn: () => loadPvConsumption(pvIds),
+    enabled: open && pvIds.length > 0,
+    staleTime: 30_000,
+  });
+  const napaRollup = useMemo(
+    () => buildNapaRollup(consumptionQuery.data?.rows || []),
+    [consumptionQuery.data?.rows],
+  );
+  const [yieldTarget, setYieldTarget] = useState<{
+    typeLabel: string;
+    measureName?: string | null;
+    resume: 'generate' | 'print-materials';
+  } | null>(null);
   const productsQuery = useProducts();
   const groupsQuery = useGroups();
   const strapCatalogQuery = useArtisanalStrapCatalog(true);
@@ -305,22 +324,24 @@ export default function GeneratePurchaseOrdersDialog({
     return m;
   }, [products, groups]);
 
-  // Usa a quantidade A COMPRAR (líquida de estoque e já no múltiplo de compra),
-  // não a necessidade bruta: nesta tela todo número é o que vai na OC — o
-  // "Total estimado" ao lado é o dinheiro dessa mesma quantidade. Por isso o
-  // valor acompanha o toggle "Descontar estoque" e pode ficar ABAIXO do total
-  // que o modal de Consumo mostra, que é consumo, não compra.
+  // Usa a quantidade A COMPRAR (líquida de estoque e já no múltiplo de compra)
+  // só como KPI auxiliar no modo cobertura. O rollup canônico de napa vem do
+  // mesmo motor do consumo (`loadPvConsumption` → calculate_consumption_report_batch).
   const baseInputsFor = (items: DraftPurchaseOrderItem[]) => items.map((it) => ({
     groupName: it.material_id ? (groupNameByProduct.get(it.material_id) || '') : '',
     unit: it.unit,
     qty: Number(it.quantity) || 0,
   }));
 
-  const baseTotal = useMemo(
+  const purchaseBaseTotal = useMemo(
     () => computePurchaseBaseTotal(baseInputsFor(drafts.flatMap((d) => d.items))),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [drafts, groupNameByProduct],
   );
+  // KPI "Material base" no resumo: no bruto = rollup do consumo; no líquido = a comprar.
+  const baseTotal = netOfStock ? purchaseBaseTotal : (napaRollup
+    ? { total: napaRollup.total, parts: napaRollup.parts, skipped: napaRollup.skipped }
+    : purchaseBaseTotal);
 
   // O título SEMPRE nomeia os PVs do escopo. Antes, multi-PV virava "N pedidos"
   // e a tela mostrava quantidades somadas sem dizer de quais pedidos — dava pra
@@ -333,6 +354,19 @@ export default function GeneratePurchaseOrdersDialog({
     if (nums.length <= 4) return nums.join(', ');
     return `${nums.slice(0, 4).join(', ')} +${nums.length - 4}`;
   }, [pvNumbers, pvIds.length]);
+
+  const ensureYieldThen = (resume: 'generate' | 'print-materials', proceed: () => void | Promise<void>) => {
+    const pending = (consumptionQuery.data?.rows || []).find((r) => r.artisanal?.pending);
+    if (pending) {
+      setYieldTarget({
+        typeLabel: pending.groupName || 'Tira',
+        measureName: pending.groupName,
+        resume,
+      });
+      return;
+    }
+    void proceed();
+  };
 
   const handleGenerate = async () => {
     if (isLoading || isError) {
@@ -359,24 +393,35 @@ export default function GeneratePurchaseOrdersDialog({
       toast.error('Há compras abertas para materiais deste pedido. Confira-as ou confirme que deseja comprar novamente.');
       return;
     }
-    try {
-      requestIdRef.current ||= crypto.randomUUID();
-      const res = await generate.mutateAsync({
-        pvIds,
-        requestId: requestIdRef.current,
-        allowExistingOpenPurchases: overrideOpenPurchases,
-        drafts,
-      });
-      onGenerated?.(res.createdIds);
-      onOpenChange(false);
-    } catch {
-      /* erro já exibido via toast no hook */
-    }
+    ensureYieldThen('generate', async () => {
+      try {
+        requestIdRef.current ||= crypto.randomUUID();
+        const res = await generate.mutateAsync({
+          pvIds,
+          requestId: requestIdRef.current,
+          allowExistingOpenPurchases: overrideOpenPurchases,
+          drafts,
+        });
+        onGenerated?.(res.createdIds);
+        onOpenChange(false);
+      } catch {
+        /* erro já exibido via toast no hook */
+      }
+    });
   };
 
   const handlePrintPdf = () => {
-    const ok = printPerPvMaterials({ scopeLabel: titleScope, pvNumbers: pvNumbers || [], drafts, netOfStock, summary });
-    if (!ok) toast.error('Não foi possível abrir a janela de impressão. Permita pop-ups para este site.');
+    ensureYieldThen('print-materials', () => {
+      const ok = printPerPvMaterials({
+        scopeLabel: titleScope,
+        pvNumbers: pvNumbers || [],
+        drafts,
+        netOfStock,
+        summary,
+        napaRollup,
+      });
+      if (!ok) toast.error('Não foi possível abrir a janela de impressão. Permita pop-ups para este site.');
+    });
   };
 
   // Imprimir OC: baixa 1 PDF por fornecedor (7 fornecedores → 7 arquivos), pra
@@ -501,9 +546,15 @@ export default function GeneratePurchaseOrdersDialog({
           <div className="flex items-center gap-2">
             <Checkbox id="net-of-stock" checked={netOfStock} onCheckedChange={(v) => setNetOfStock(!!v)} />
             <Label htmlFor="net-of-stock" className="text-sm font-normal cursor-pointer">
-              Descontar estoque disponível (comprar só a falta líquida)
+              {netOfStock
+                ? 'Descontar estoque disponível (comprar só a falta líquida)'
+                : 'Estoque ignorado — comprando necessidade bruta do pedido'}
             </Label>
           </div>
+        )}
+
+        {!isLoading && !isError && (
+          <NapaRollupPanel rollup={napaRollup} />
         )}
 
         {!isLoading && !isError && drafts.length === 0 && (
@@ -556,12 +607,14 @@ export default function GeneratePurchaseOrdersDialog({
               {/* Napa do pedido inteiro — mesmo número da faixa de Material base do Consumo */}
               {baseTotal && (
                 <div className="bg-card p-2.5">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-primary">Material base</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-primary">
+                    {netOfStock ? 'Napa a comprar' : 'Necessidade de napa'}
+                  </p>
                   <p className="text-xl font-bold tabular-nums leading-tight text-primary">
                     {formatBaseQty(baseTotal.total)} m
                   </p>
                   <p className="text-[10px] text-muted-foreground font-mono truncate" title={baseTotal.parts.map(p => `${formatBaseQty(p.qty)} m ${p.name}`).join(' · ')}>
-                    {netOfStock ? 'a comprar · ' : ''}{baseTotal.parts.map(p => p.name).join(' · ')}
+                    {netOfStock ? 'líquido de estoque · ' : 'bruto · '}{baseTotal.parts.map(p => p.name).join(' · ')}
                   </p>
                 </div>
               )}
@@ -856,6 +909,29 @@ export default function GeneratePurchaseOrdersDialog({
           setOverrideColorMismatch(false);
           qc.invalidateQueries({ queryKey: ['materials_per_pv'] });
           qc.invalidateQueries({ queryKey: ['products'] });
+        }}
+      />
+    )}
+
+    {yieldTarget && (
+      <StrapMeasureYieldDialog
+        open
+        onOpenChange={(o) => { if (!o) setYieldTarget(null); }}
+        typeLabel={yieldTarget.typeLabel}
+        measureName={yieldTarget.measureName}
+        onSaved={async () => {
+          const resume = yieldTarget.resume;
+          setYieldTarget(null);
+          await Promise.all([
+            qc.invalidateQueries({ queryKey: ['pv-consumption-for-po'] }),
+            qc.invalidateQueries({ queryKey: ['materials_per_pv'] }),
+            consumptionQuery.refetch(),
+            needsQuery.refetch(),
+          ]);
+          // Retoma a ação após o rendimento — o próximo ensureYieldThen
+          // encontra a linha resolvida (ou abre a próxima pendente).
+          if (resume === 'generate') await handleGenerate();
+          else handlePrintPdf();
         }}
       />
     )}

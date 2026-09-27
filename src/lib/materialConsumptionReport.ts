@@ -136,8 +136,8 @@ const renderBaseNeed = (rows: ConsumptionRow[], totalMode: boolean): string => {
         <span class="section-number">01</span>
         <div><p class="section-kicker">Material base</p><h2>Necessidade de napa</h2></div>
         <p class="section-note">${totalMode
-          ? 'Estoque ignorado. Só Cabedal e Forração (e fachete). Napa de tiras fica no setor próprio.'
-          : 'Só Cabedal e Forração — napa de tiras artesanais no setor próprio (§03).'}</p>
+          ? 'Estoque ignorado. Cabedal, Forração, Fachete e napa convertida de tiras — total por família e cor.'
+          : 'Cabedal, Forração, Fachete e napa convertida de tiras — total por família e cor. Falta já desconta estoque.'}</p>
       </div>
       ${familyBlocks}
       ${pendingBlock}
@@ -448,17 +448,17 @@ export function buildMaterialConsumptionReportHtml({
     ? '<p class="mode-banner" style="margin-top:4px;background:transparent;color:var(--ink);border-color:var(--ink)">Visão estendida · por PV e modelo</p>'
     : '';
   const reading = totalMode
-    ? 'Este documento ignora o estoque. Os números são o consumo bruto da ficha. Napa de Cabedal/Forração em §01; napa de tiras no setor próprio (§03). Tira comprada pronta (STRASS) em §02.'
-    : '“Necessidade” é consumo bruto. “Falta” já desconta o estoque líquido. Napa de Cabedal/Forração em §01; napa de tiras no setor próprio (§03). Tira comprada pronta (STRASS) em §02.';
+    ? 'Este documento ignora o estoque. Os números são o consumo bruto da ficha. Necessidade de napa (§01) soma cabedal, forração e tiras convertidas. Tira comprada pronta (STRASS) em §02.'
+    : '“Necessidade” é consumo bruto. “Falta” já desconta o estoque líquido. Necessidade de napa (§01) soma cabedal, forração e tiras convertidas. Tira comprada pronta (STRASS) em §02.';
   const manifest = totalMode
     ? `<div class="manifest manifest-total" aria-label="Resumo do consumo total">
-    <div><dl><dt>Necessidade de material base</dt><dd>${baseTotal ? `${formatQty(baseTotal.total, 'm')} m` : '—'}</dd></dl><small>napa direta + conversões confirmadas</small></div>
+    <div><dl><dt>Necessidade de material base</dt><dd>${baseTotal ? `${formatQty(baseTotal.total, 'm')} m` : '—'}</dd></dl><small>cabedal + forração + tiras convertidas</small></div>
     <div><dl><dt>Total a gastar</dt><dd class="spend">${spendTotal != null ? escapeHtml(formatMoney(spendTotal)) : '—'}</dd></dl><small>necessidade × preço cadastrado</small></div>
     <div><dl><dt>Pendências</dt><dd>${pendingCount}</dd></dl><small>cadastro a revisar</small></div>
     <div><dl><dt>Escopo calculado</dt><dd>${rows.length} linha${rows.length === 1 ? '' : 's'}</dd></dl><small>ficha técnica + grade + variante do PV</small></div>
   </div>`
     : `<div class="manifest" aria-label="Resumo da decisão">
-    <div><dl><dt>Necessidade de material base</dt><dd>${baseTotal ? `${formatQty(baseTotal.total, 'm')} m` : '—'}</dd></dl><small>napa direta + conversões confirmadas</small></div>
+    <div><dl><dt>Necessidade de material base</dt><dd>${baseTotal ? `${formatQty(baseTotal.total, 'm')} m` : '—'}</dd></dl><small>cabedal + forração + tiras convertidas</small></div>
     <div><dl><dt>Itens em falta</dt><dd class="shortage">${shortCount}</dd></dl><small>estoque líquido</small></div>
     <div><dl><dt>Total a gastar</dt><dd class="spend">${spendTotal != null ? escapeHtml(formatMoney(spendTotal)) : '—'}</dd></dl><small>necessidade × preço</small></div>
     <div><dl><dt>Pendências</dt><dd>${pendingCount}</dd></dl><small>cadastro a revisar</small></div>

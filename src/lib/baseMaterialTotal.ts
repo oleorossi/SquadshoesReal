@@ -1,11 +1,9 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// TOTAL DO MATERIAL BASE — napa de Cabedal / Forração / Fachete (só)
+// TOTAL DO MATERIAL BASE — napa (cabedal / forração / fachete + tiras)
 // ═══════════════════════════════════════════════════════════════════════════
-// Decisão do dono (24/09/2026): napa de tira artesanal NÃO entra neste total.
-// Ela aparece no bloco próprio do consumo (metros de tira + napa por tipo +
-// total de napa). Aqui só consumo DIRETO em unidade linear.
-//
-// Pendência de rendimento (`artisanal.pending`) continua em `skipped`.
+// Decisão do dono (27/09/2026): o total INCLUI napa convertida de tiras
+// artesanais (revoga a exclusão de 24/09). Detalhe por destino: `napaRollup.ts`.
+// Pendência de rendimento (`artisanal.pending`) → skipped.
 
 import { stripColorFromName } from '@/lib/utils';
 
@@ -149,23 +147,29 @@ export function isSuspectUnrolledArtisanal(
   return (artisanalCountByGroup.get(gid) || 0) > 0;
 }
 
-/** Soma o material base das linhas. Devolve null quando a seção não tem napa
- *  nenhuma (ex.: cor só de solado + linha) — a UI então não desenha a faixa. */
+/** Soma o material base das linhas (direto + tiras convertidas).
+ *  Devolve null quando não há napa nenhuma — a UI então não desenha a faixa. */
 export function computeBaseMaterialTotal(rows: BaseMaterialInput[]): BaseMaterialTotal | null {
   const byName = new Map<string, number>();
   let skipped = 0;
 
   for (const r of rows) {
-    // Tira (convertida ou pendente): fora deste total — bloco próprio no consumo.
     if (r.artisanal) {
-      if (r.artisanal.pending) skipped++;
+      if (r.artisanal.pending) {
+        skipped++;
+        continue;
+      }
+      if (!(r.artisanal.baseQty > 0)) continue;
+      const family = normalizeBaseFamilyName(r.artisanal.baseName, r.color);
+      byName.set(family, (byName.get(family) || 0) + r.artisanal.baseQty);
       continue;
     }
     if (!BASE_MATERIAL_COMPONENTS.has(r.componentType)) continue;
     if (!BASE_LINEAR_UNITS.has((r.productUnit || '').toLowerCase())) continue;
     if (r.widthMissing || r.warning) { skipped++; continue; }
     if (!(r.totalQuantity > 0)) continue;
-    byName.set(r.groupName, (byName.get(r.groupName) || 0) + r.totalQuantity);
+    const family = normalizeBaseFamilyName(r.groupName, r.color);
+    byName.set(family, (byName.get(family) || 0) + r.totalQuantity);
   }
 
   if (byName.size === 0) return null;

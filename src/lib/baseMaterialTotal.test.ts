@@ -45,21 +45,25 @@ describe('normalizeBaseFamilyName', () => {
 });
 
 describe('computeBaseMaterialTotal', () => {
-  it('soma só napa direta — tiras convertidas ficam de fora', () => {
+  it('soma napa direta + tiras convertidas', () => {
     const r = computeBaseMaterialTotal(COGUMELO)!;
-    expect(r.total).toBeCloseTo(20.27, 2);
+    const soft = 169.20 / 60 + 126.00 / 60 + 3 * (234.72 / 61);
+    expect(r.total).toBeCloseTo(20.27 + soft, 2);
     expect(r.skipped).toBe(0);
   });
 
   it('quebra por material, maior primeiro', () => {
     const r = computeBaseMaterialTotal(COGUMELO)!;
-    expect(r.parts.map(p => p.name)).toEqual(['NAPA SUDANI']);
+    // Forração SUDANI 20,27 > tiras→SOFT ~16,46
+    expect(r.parts.map(p => p.name)).toEqual(['NAPA SUDANI', 'NAPA SOFT']);
     expect(r.parts[0].qty).toBeCloseTo(20.27, 2);
+    expect(r.parts[1].qty).toBeCloseTo(169.20 / 60 + 126.00 / 60 + 3 * (234.72 / 61), 2);
   });
 
-  it('tira convertida sozinha não cria total de material base', () => {
-    const r = computeBaseMaterialTotal([COGUMELO[1]]);
-    expect(r).toBeNull();
+  it('tira convertida sozinha cria total de material base', () => {
+    const r = computeBaseMaterialTotal([COGUMELO[1]])!;
+    expect(r.total).toBeCloseTo(169.20 / 60, 2);
+    expect(r.parts[0].name).toBe('NAPA SOFT');
   });
 
   it('ignora o que não é napa (solado em par, linha em kg, rebite em un)', () => {
@@ -80,18 +84,19 @@ describe('computeBaseMaterialTotal', () => {
     expect(r.skipped).toBe(1);
   });
 
-  it('contribuições só de tira convertida não entram no total', () => {
+  it('contribuições só de tira convertida entram no total', () => {
     const r = computeBaseMaterialTotal([
       ...[1, 2, 3].map(() => ({
         componentType: 'Tiras', groupName: 'TIRA TESTE', productUnit: 'm',
         totalQuantity: 0.294,
         artisanal: { baseName: 'NAPA SOFT', baseQty: 0.0049, yieldPerMeter: 60 },
       })),
-    ]);
-    expect(r).toBeNull();
+    ])!;
+    expect(r.total).toBeCloseTo(0.0147, 4);
+    expect(r.parts[0].name).toBe('NAPA SOFT');
   });
 
-  it('tira pendente sem receita exata continua fora do total e contada em skipped', () => {
+  it('tira pendente sem receita exata fica fora do total e contada em skipped', () => {
     const r = computeBaseMaterialTotal([
       { componentType: 'Forração Palmilha', groupName: 'NAPA SUDANI', productUnit: 'm', totalQuantity: 13.51 },
       {
