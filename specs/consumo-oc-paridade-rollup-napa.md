@@ -1,6 +1,6 @@
 # Consumo × OC — paridade, rollup de napa e redesign
 
-**Status:** plano fechado com o dono (grill 27/09/2026). Aguardando execução.
+**Status:** implementado na branch `cursor/consumo-oc-paridade-rollup-a6be` (PR #438). Aguardando merge → deploy → verificação em produção.
 
 ## Problema
 
