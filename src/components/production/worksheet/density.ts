@@ -42,7 +42,10 @@
  *     e já renderiza com o texto AO LADO (a largura é usada). Fica como está.
  *   - **Palmilha / Solagem**: o strip de sandálias já usa 55×55 com wrap,
  *     ocupando a largura inteira. A.3 aplica grade dense + chrome + split
- *     trabalho/fechamento; não reduz as miniaturas.
+ *     trabalho/fechamento; não reduz as miniaturas. A unificada
+ *     (`PalmilhaUnifiedWorkSheet`) segue o mesmo split A.3 + chrome denso
+ *     e **não** repete TraceStrip no hero (PV/cliente já estão no
+ *     HeaderIdentification).
  *   - **Operator** (Colagem etc.): a foto já tem os dados ao lado — a largura
  *     é usada. Já emite vários `SheetBlock`s; A.3 só aplica grade dense.
  *   - **Reduced**: já nasceu no padrão da Opção A (foto ao lado da grade +
@@ -108,7 +111,7 @@ export const STEP_ROW_PAD_Y = 1;
  *   3. células da tabela de consumo multi-linha apertadas no eixo vertical;
  *   4. 2 `SheetBlock`s por cor/banda (trabalho + fechamento `keepWithPrev`)
  *      nos setores de layout completo — ver `SilkMontageWorkSheet`,
- *      `PalmilhaWorkSheet`, `SolagemWorkSheet`.
+ *      `PalmilhaWorkSheet`, `PalmilhaUnifiedWorkSheet`, `SolagemWorkSheet`.
  *
  * Alvo: card típico ≤ ~45% de `PAGE_CAPACITY_PX` (após `PRINT_INFLATE`), para
  * 2 cards + gap caberem na mesma folha quando o maço permitir.

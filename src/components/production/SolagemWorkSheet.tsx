@@ -361,8 +361,6 @@ export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 1
         trace={model === 'lote' ? (
           <TraceStrip
             ops={Array.from(new Set(bands.flatMap(b => b.opNumbers || []).filter(Boolean)))}
-            pvNumbers={pvs}
-            clientNames={clientNames}
           />
         ) : undefined}
       />

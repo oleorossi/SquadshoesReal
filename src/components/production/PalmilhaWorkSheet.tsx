@@ -149,8 +149,6 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
         trace={model === 'lote' ? (
           <TraceStrip
             ops={Array.from(new Set(groups.flatMap(g => g.opNumbers || []).filter(Boolean)))}
-            pvNumbers={pvs}
-            clientNames={clientNames}
           />
         ) : undefined}
       />

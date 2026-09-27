@@ -88,15 +88,23 @@ Elegibilidade espelha a de hoje:
 ### Layout do card (vertical)
 
 1. Identidade: cor (Anton `#C00000`) · chip placa · chip napa · refs · pares  
-2. Barra preta **Cortar placas** (qty placa) — some se Só Forração  
-3. Grade compartilhada (Por Ficha / Total)  
-4. Bloco **Forração** (metros / rolo) — some se Só Fibra  
-5. Tally único  
+2. Linha fina Pedido/OP/cliente do card (não TraceStrip no hero — PV/cliente
+   do maço já estão no `HeaderIdentification`)  
+3. Barra preta **Cortar placas** — só quando `qty > 0` ou área faltando; some
+   se Só Forração ou zero placas  
+4. Grade compartilhada (Ficha / Total / Cortado)  
+5. Bloco **Forração** (metros) — some se Só Fibra  
+6. Tally único  
+
+Paginação A.3 (igual Corte Cabedal / Aviamento): cada cor emite **2
+`SheetBlock`s** — trabalho (1–4) + fechamento (5–6) com `keepWithPrev` — pra
+2 cores caberem na mesma A4 quando o maço permitir. Sem perder linha.
 
 ### Header do maço
 
 - `PALMILHA` | `PALMILHA · SÓ FIBRA` | `PALMILHA · SÓ FORRAÇÃO`
 - `flowSector` no trilho: passo agregado visual `Palmilha` (ou o subpasso no modo Só *).
+- Contagem de OPs no Resumo mono; `GroupSubHeader` do solado leva as OPs.
 
 ## Kanban / roteiro
 
