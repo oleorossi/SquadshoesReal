@@ -62,6 +62,8 @@ describe('buildCartaoCaixaCards', () => {
     expect(cards[2].totalPairs).toBe(7 * 12);
     expect(cards[0].title).toContain('OFF WHITE');
     expect(cards[0].title).toContain('NAPA SUDANI');
+    expect(cards[0].sizes.length).toBeGreaterThan(0);
+    expect(Object.keys(cards[0].grade).length).toBeGreaterThan(0);
   });
 
   it('OP com 5 corrugados → 1 parcial', () => {
@@ -174,9 +176,9 @@ describe('buildCartaoCaixaCards', () => {
     spy.mockRestore();
   });
 
-  it('chunkCaixaPages: 2 por folha', () => {
-    expect(CAIXA_TRANSPORTE_PER_PAGE).toBe(2);
-    const items = [1, 2, 3, 4, 5];
-    expect(chunkCaixaPages(items)).toEqual([[1, 2], [3, 4], [5]]);
+  it('chunkCaixaPages: 6 por folha (3×2)', () => {
+    expect(CAIXA_TRANSPORTE_PER_PAGE).toBe(6);
+    const items = [1, 2, 3, 4, 5, 6, 7, 8];
+    expect(chunkCaixaPages(items)).toEqual([[1, 2, 3, 4, 5, 6], [7, 8]]);
   });
 });

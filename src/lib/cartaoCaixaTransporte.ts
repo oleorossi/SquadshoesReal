@@ -3,7 +3,8 @@
  *
  * Spec: specs/cartao-caixa-transporte.md
  * Unidade: corrugado cheio (`countFullCorrugados` / `resolveFicha` 12·15·18).
- * 1 OP por caixa; parcial gera cartão; sem grade.
+ * 1 OP por caixa; parcial gera cartão; grade da curva do corrugado no papel.
+ * Contador do maço: k/N global após `assignBatchCounters`.
  */
 import { resolveFicha } from '@/components/production/worksheet/fichaSize';
 import {
@@ -11,11 +12,19 @@ import {
   isCaixaTransporteSector,
   type CaixaTransporteSector,
 } from '@/lib/caixaTransporteConfig';
-import { countFullCorrugados, chunkPages } from '@/lib/cartaoFisico';
+import {
+  assignBatchCounters,
+  countFullCorrugados,
+  chunkPages,
+  gradeForOneCorrugado,
+} from '@/lib/cartaoFisico';
+
+export { assignBatchCounters };
 
 export interface CartaoCaixaOrderInput {
   opNumber: string;
   pvLabel?: string | null;
+  clientName?: string | null;
   referenceLabel?: string | null;
   color?: string | null;
   /** Identidade extra (napa no Forração…). */
@@ -35,11 +44,14 @@ export interface CartaoCaixaCard {
   destinoLabel: string;
   opNumber: string;
   pvLabel?: string;
+  clientName?: string;
   /** Destaque vermelho — cor ou material+cor. */
   title: string;
   /** Linha sob o título (ref…). */
   subtitle?: string;
   imageUrl?: string | null;
+  sizes: string[];
+  grade: Record<string, number>;
   /** Corrugados nesta caixa (≤ capacidade). */
   fichasNaCaixa: number;
   /** Capacidade da caixa (do config). */
@@ -47,13 +59,12 @@ export interface CartaoCaixaCard {
   /** Pares nesta caixa = fichasNaCaixa × corrugado. */
   totalPairs: number;
   corrugado: number;
-  /** k de k/N dentro da OP × setor. */
+  /** k de k/N dentro da OP × setor (antes do batch). */
   index: number;
   /** N = nº de caixas da OP neste setor. */
   of: number;
-  /** Ex.: "1/3". */
+  /** Contador do maço — `k/N` global após `assignBatchCounters`. */
   lotCode: string;
-  /** Ex.: "1 de 3". */
   lotLabel: string;
   /** true quando fichasNaCaixa < capacidade. */
   parcial: boolean;
@@ -75,6 +86,12 @@ function identityTitle(order: CartaoCaixaOrderInput): { title: string; subtitle?
   if (material) return { title: material, subtitle: ref || undefined };
   if (ref) return { title: ref };
   return { title: order.opNumber || '—' };
+}
+
+function sortSizes(grade: Record<string, number>): string[] {
+  return Object.keys(grade)
+    .filter((s) => (Number(grade[s]) || 0) > 0)
+    .sort((a, b) => (Number(a) || 0) - (Number(b) || 0));
 }
 
 /**
@@ -110,6 +127,9 @@ export function buildCartaoCaixaCards(args: BuildCartaoCaixaCardsArgs): CartaoCa
     const boxCount = Math.ceil(full / capacity);
     const { title, subtitle } = identityTitle(order);
     const pvLabel = String(order.pvLabel || '').trim() || undefined;
+    const clientName = String(order.clientName || '').trim() || undefined;
+    const grade = gradeForOneCorrugado(total, order.grid, resolution.corrugado, resolution.baseCurve);
+    const sizes = sortSizes(grade);
 
     for (let k = 1; k <= boxCount; k++) {
       const remaining = full - (k - 1) * capacity;
@@ -121,9 +141,12 @@ export function buildCartaoCaixaCards(args: BuildCartaoCaixaCardsArgs): CartaoCa
         destinoLabel: config.destinoLabel || '',
         opNumber,
         pvLabel,
+        clientName,
         title,
         subtitle,
         imageUrl: order.imageUrl ?? null,
+        sizes,
+        grade,
         fichasNaCaixa,
         capacidade: capacity,
         totalPairs: fichasNaCaixa * resolution.corrugado,
@@ -140,8 +163,8 @@ export function buildCartaoCaixaCards(args: BuildCartaoCaixaCardsArgs): CartaoCa
   return cards;
 }
 
-/** 2 cartões por A4 paisagem (envelope grande). */
-export const CAIXA_TRANSPORTE_PER_PAGE = 2;
+/** 6 cartões por A4 paisagem (3×2) — densifica sem perder grade/identidade. */
+export const CAIXA_TRANSPORTE_PER_PAGE = 6;
 
 /** Fatia cartões em páginas de até 2 (reusa `chunkPages` do cartão físico). */
 export function chunkCaixaPages<T>(

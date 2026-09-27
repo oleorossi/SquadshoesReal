@@ -15,6 +15,7 @@ import { CartaoFisico } from '@/components/production/CartaoFisico';
 import { CartaoCaixaTransporte } from '@/components/production/CartaoCaixaTransporte';
 import { SilkMontageWorkSheet, type SoleSilkGroup, type SilkColorGroup, type GroupedSector } from '@/components/production/SilkMontageWorkSheet';
 import {
+  assignBatchCounters,
   buildCartaoFisicoCards,
   CARTAO_FISICO_EMITTERS,
   CARTAO_FISICO_PER_PAGE,
@@ -137,11 +138,11 @@ function printableOperatorStraps(
  * (8 colunas com número de 3 dígitos). Abaixo disso o `table-layout: fixed`
  * do print CORTA o número — o operador lê "18" onde estava "180".
  *
- * Altura: min-height por fileira (~49mm) pra as 4 linhas ocuparem ~204mm
- * úteis; sem max-height (Forração alta não corta). break-inside: avoid.
+ * Altura: min-height por fileira (~40mm) pra as 5 linhas ocuparem ~205mm
+ * úteis; sem max-height (conteúdo alto não corta). break-inside: avoid.
  *
  * Ordem do DOM = chunk sequencial (`chunkPages`): cada `.cartao-page` é uma
- * folha A4 com até 12 cartões na ordem de leitura (k/N sobe na mesma folha).
+ * folha A4 com até 15 cartões na ordem de leitura (k/N sobe na mesma folha).
  * Wrappers de página também fazem o "Inverter saída" inverter por FOLHA
  * (não por cartão). Faixa De/Até omite `.cartao-page` fora do intervalo.
  */
@@ -172,9 +173,9 @@ const cartaoStyles = `
     .cartao-page {
       display: flex !important;
       flex-wrap: wrap !important;
-      align-content: stretch !important;
-      gap: 1mm !important;
-      padding: 1.5mm !important;
+      align-content: flex-start !important;
+      gap: 0.8mm !important;
+      padding: 1mm !important;
       width: 297mm !important;
       min-height: 210mm !important;
       box-sizing: border-box !important;
@@ -202,9 +203,9 @@ const cartaoStyles = `
   .cartao-page {
     display: flex;
     flex-wrap: wrap;
-    align-content: stretch;
-    gap: 1mm;
-    padding: 1.5mm;
+    align-content: flex-start;
+    gap: 0.8mm;
+    padding: 1mm;
     width: 297mm;
     min-height: 210mm;
     box-sizing: border-box;
@@ -213,7 +214,7 @@ const cartaoStyles = `
 `;
 
 /**
- * CSS do modo CAIXA DE TRANSPORTE — 2 cartões grandes por A4 paisagem.
+ * CSS do modo CAIXA DE TRANSPORTE — 6 cartões por A4 paisagem (3×2).
  * Mesmo padrão WYSIWYG do cartão físico (preview = print).
  */
 const caixaStyles = `
@@ -238,9 +239,9 @@ const caixaStyles = `
     .caixa-page {
       display: flex !important;
       flex-wrap: wrap !important;
-      align-content: stretch !important;
-      gap: 2mm !important;
-      padding: 2mm !important;
+      align-content: flex-start !important;
+      gap: 1mm !important;
+      padding: 1.5mm !important;
       width: 297mm !important;
       min-height: 210mm !important;
       box-sizing: border-box !important;
@@ -265,9 +266,9 @@ const caixaStyles = `
   .caixa-page {
     display: flex;
     flex-wrap: wrap;
-    align-content: stretch;
-    gap: 2mm;
-    padding: 2mm;
+    align-content: flex-start;
+    gap: 1mm;
+    padding: 1.5mm;
     width: 297mm;
     min-height: 210mm;
     box-sizing: border-box;
@@ -3487,8 +3488,13 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           eligible = upper.requiresUpperCut;
         } else if (sector === 'Costura Cabedal') {
           eligible = orderInRoteiro(sheetId, sector) && upper.requiresUpperSewing;
+        } else if (sector === 'Palmilha') {
+          eligible = orderInRoteiro(sheetId, 'Palmilha · Fibra')
+            || orderInRoteiro(sheetId, 'Palmilha · Forração')
+            || orderInRoteiro(sheetId, 'Corte Palmilha')
+            || orderInRoteiro(sheetId, 'Corte Forração');
         } else {
-          // Aviamento (e demais emissores do fardo).
+          // Aviamento
           eligible = orderInRoteiro(sheetId, sector);
         }
 
@@ -3501,12 +3507,21 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           || (sheetId ? tsImageByRef.get(sheetId) : null)
           || null;
 
+        const pv = order.sale_order_number || null;
+        let materialLabel: string | null = null;
+        if (sector === 'Palmilha') {
+          materialLabel = resolveOrderLiningMaterial(order, sheetId)
+            || soleNameFor(sheetId, order.color)
+            || null;
+        }
+
         return {
           opNumber: String(order.op_number || ''),
-          pvLabel: order.sale_order_number || null,
+          pvLabel: pv,
+          clientName: pv ? (clientNameByPv.get(pv) || null) : null,
           referenceLabel: refLabel || null,
           color: order.color || null,
-          materialLabel: null,
+          materialLabel,
           imageUrl,
           totalPairs: Number(order.total_pairs) || 0,
           grid: (order.grid ?? null) as Record<string, number> | null,
@@ -3519,9 +3534,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
         orders: inputs,
       }));
     }
-    return out;
+    return assignBatchCounters(out);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isCartao, activeSectors, printOrders, sheetById, liningFlagLookup, variantsByRef, tsImageByRef, sheetMaterialsByRef, resolveSoleForOrder]);
+  }, [isCartao, activeSectors, printOrders, sheetById, liningFlagLookup, variantsByRef, tsImageByRef, sheetMaterialsByRef, resolveSoleForOrder, clientNameByPv]);
 
   // Chunk sequencial: folhas de 12 na ordem de leitura (k/N sobe na mesma folha).
   const cartaoFisicoPages = useMemo(
@@ -3558,6 +3573,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
         || (sheetId ? tsImageByRef.get(sheetId) : null)
         || null;
 
+      const pv = order.sale_order_number || null;
       let materialLabel: string | null = null;
       if (sector === 'Palmilha') {
         materialLabel = resolveOrderLiningMaterial(order, sheetId) || null;
@@ -3565,7 +3581,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
 
       return {
         opNumber: String(order.op_number || ''),
-        pvLabel: order.sale_order_number || null,
+        pvLabel: pv,
+        clientName: pv ? (clientNameByPv.get(pv) || null) : null,
         referenceLabel: refLabel || null,
         color: order.color || null,
         materialLabel,
@@ -3575,14 +3592,14 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
         eligible,
       };
     });
-    return buildCartaoCaixaCards({
+    return assignBatchCounters(buildCartaoCaixaCards({
       sectorName: sector,
-      // Palmilha: sem Origem no cartão (acordo Q14-B).
+      // Palmilha: sem Origem no cartão.
       sectorDisplayLabel: sector === 'Palmilha' ? '' : sectorLabel(sector),
       orders: inputs,
-    });
+    }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [caixaSector, printOrders, sheetById, liningFlagLookup, variantsByRef, tsImageByRef, sheetMaterialsByRef]);
+  }, [caixaSector, printOrders, sheetById, liningFlagLookup, variantsByRef, tsImageByRef, sheetMaterialsByRef, clientNameByPv]);
 
   const cartaoCaixaPages = useMemo(
     () => chunkCaixaPages(cartaoCaixaCards, CAIXA_TRANSPORTE_PER_PAGE),
@@ -4068,11 +4085,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           <div key={`cartao-page-${pageRange.from - 1 + pageIdx}`} className="cartao-page">
             {pageCards.map((card) => (
               <CartaoFisico
-                key={`${card.sectorName}-${card.opNumber}-${card.index}/${card.of}`}
-                sectorName={card.sectorDisplayLabel}
+                key={`${card.sectorName}-${card.opNumber}-${card.lotCode}`}
                 destinoLabel={card.destinoLabel}
                 opNumber={card.opNumber}
                 pvLabel={card.pvLabel}
+                clientName={card.clientName}
                 title={card.title}
                 subtitle={card.subtitle}
                 imageUrl={card.imageUrl}
@@ -4091,14 +4108,17 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           <div key={`caixa-page-${pageRange.from - 1 + pageIdx}`} className="caixa-page">
             {pageCards.map((card) => (
               <CartaoCaixaTransporte
-                key={`${card.sectorName}-${card.opNumber}-${card.index}/${card.of}`}
+                key={`${card.sectorName}-${card.opNumber}-${card.lotCode}`}
                 sectorName={card.sectorDisplayLabel}
                 destinoLabel={card.destinoLabel}
                 opNumber={card.opNumber}
                 pvLabel={card.pvLabel}
+                clientName={card.clientName}
                 title={card.title}
                 subtitle={card.subtitle}
                 imageUrl={card.imageUrl}
+                sizes={card.sizes}
+                grade={card.grade}
                 fichasNaCaixa={card.fichasNaCaixa}
                 capacidade={card.capacidade}
                 totalPairs={card.totalPairs}

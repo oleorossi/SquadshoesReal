@@ -2,54 +2,35 @@
 
 ## Goal
 
-Dar à fábrica um **cartão por corrugado cheio** que acompanha o fardo na saída dos setores de cabedal (corte → costura → aviamento), com identidade operacional legível na bancada — separado da ficha A4 do posto e da caixa de transporte.
-
-## Background / Problem
-
-Na indústria calçadista, o papel que **viaja grudado no material** sai com o fardo físico. Sem ele, peça cortada e semi-acabado se perdem ou se misturam entre OPs.
-
-Decisão do dono: **Fardo só nos setores de fluxo do cabedal** — Corte Cabedal, Costura Cabedal e Aviamento. Palmilha e Montagem ficam fora do fardo (Palmilha usa **Caixa**; Montagem não emite cartão físico neste modo).
+Dar à fábrica um **cartão por corrugado cheio** que acompanha o fardo na saída dos setores emissores, com identidade operacional (OP · PV · cliente · grade · k/N do maço) — separado da ficha A4 e da caixa de transporte.
 
 ## Scope
 
 ### In scope
 
 - Formato **Fardo** em `/imprimir-fichas` (1º nível: Ficha A4 · Fardo · Caixa).
-- Emissão de **1 cartão por corrugado cheio (12 / 15 / 18 pares)** por **OP**.
-- Setores **emissores**: Corte Cabedal, Costura Cabedal, Aviamento.
-- Conteúdo: setor de **origem** · OP · PV · identidade · grade do corrugado · total de pares · `k/N`.
-- **Destino opcional**: Costura Cabedal → Aviamento; Aviamento → Colagem. Corte Cabedal **sem** destino.
-- Formato físico ~95,5 mm, A4 paisagem, 12/folha — sem QR/barcode.
-- Com Fardo ativo, chips listam **só** os 3 emissores.
+- Emissores: **Palmilha**, Corte Cabedal, Costura Cabedal, Aviamento.
+- **1 cartão = 1 corrugado cheio** (12/15/18) de **1 OP**.
+- Conteúdo: OP · **PV em destaque** · **nome do cliente** · destino opcional · identidade · grade · pares · contador global do maço `k/N`.
+- **Sem Origem/setor** no papel.
+- Destino: Costura Cabedal → Aviamento; Aviamento → Colagem. Palmilha e Corte Cabedal sem destino.
+- Layout: A4 paisagem, **15/folha** (3×5), envelope ~96 mm.
+- Contador do maço via `assignBatchCounters` (ex.: 42 cartões → `1/42` … `42/42`).
 
 ### Out of scope
 
-- QR, barcode ou apontamento por scan.
-- Impressão disparada pelo apontamento do setor.
-- Setores **não** emissores no fardo: Palmilha, Montagem, Acabamento Palmilha, Silk, Colagem, Solagem, Acabamento, Expedição, Relatório.
-- Persistência de “cartão emitido” no banco.
+- QR/barcode, persistência, Montagem/Silk/Colagem/Solagem/Expedição no fardo.
 
 ## Requirements
 
-1. Toggle de formato chama-se **Fardo** (atalho legado “Cartão físico” ainda abre neste modo).
-2. Com Fardo ativo, a UI lista: Corte Cabedal, Costura Cabedal, Aviamento.
-3. Corrugado via `resolveFicha` / 12·15·18; só corrugados cheios.
-4. **1 cartão = 1 corrugado de 1 OP.**
-5. Destino só quando `destinoForCartaoFisico(sector)` retorna label.
-6. Modo Ficha A4 e modo Caixa permanecem independentes (Caixa Palmilha continua no formato Caixa).
-
-## Data model / Domain
-
-Sem migration. Builder em `src/lib/cartaoFisico.ts`.
-
-| Conceito | Fonte |
-|---|---|
-| Corrugados cheios | `countFullCorrugados` + `resolveFicha` |
-| Destino | `CARTAO_FISICO_DESTINO` / `destinoForCartaoFisico` |
-| Emissores | `CARTAO_FISICO_EMITTERS` (3) |
+1. Chips do Fardo = `CARTAO_FISICO_EMITTERS` (4).
+2. Palmilha elegível se Fibra **OU** Forração no roteiro.
+3. Sem bloco Origem no `CartaoFisico`.
+4. PV e cliente sempre que existirem nos dados do print.
+5. Densidade 15/folha sem perder grade/identidade.
 
 ## Done when
 
-- Emissores = 3 (Corte Cabedal · Costura Cabedal · Aviamento).
-- Costura imprime destino Aviamento; Aviamento imprime Colagem; Corte sem destino.
-- Typecheck limpo; testes do builder verdes.
+- Emissores = 4; Palmilha de volta no seletor.
+- Contador global do maço; PV + cliente no cartão.
+- 15 cartões/folha; typecheck + testes verdes.
