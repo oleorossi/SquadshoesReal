@@ -1,9 +1,9 @@
 /**
  * Etiquetagem Cliente multi-cliente.
  *
- * Fluxo: escolher cliente → carregar/salvar 1..N tipos em `clients.label_pattern`
- * (Nalin, Objetiva · Tag, Objetiva · Adesiva e Ponto Mix no mesmo cadastro; sem histórico
- * de arquivo) → importar 1..N CSV/XLSX → gerar PDF (+ ZPL no Ponto Mix).
+ * Fluxo: escolher cliente → carregar/salvar família (Nalin / Objetiva / Ponto Mix).
+ * Nalin e Objetiva: Tag + Adesiva no mesmo CSV. Sem histórico de arquivo.
+ * Geração: PDF (+ ZPL em Objetiva Tag e Ponto Mix).
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -65,6 +65,7 @@ import {
 } from '@/lib/babyNalinLabels';
 import {
   BABY_NALIN_DEFAULT_GEOMETRY,
+  CLIENT_LABEL_FAMILIES,
   OBJETIVA_DEFAULT_BRANDING,
   OBJETIVA_DEFAULT_GEOMETRY,
   PONTO_MIX_DEFAULT_GEOMETRY,
@@ -76,13 +77,24 @@ import {
   collectionPatternKeys,
   coucheProfileFromGeometry,
   emptyLabelCollection,
+  enableFamily,
+  familyById,
+  familyIdForPatternKey,
+  familyKeysInCollection,
   geometryFromCoucheProfile,
   isObjetivaFamilyKey,
+  patternAwaitsCalibration,
   patternLabel,
+  patternMediaLabel,
+  patternVariantLabel,
   removePattern,
   savedPatternStatusLabel,
+  setActivePattern,
+  sharesOrderFileFormat,
+  toggleFamilyVariant,
   upsertActiveFileMapping,
   upsertActivePattern,
+  type ClientLabelFamilyId,
   type ClientLabelFileMapping,
   type ClientLabelPattern,
   type ClientLabelPatternCollection,
@@ -235,8 +247,11 @@ export function ClientLabelingWorkspace() {
   const draftKeys = collectionPatternKeys(draftCollection);
   const isObjetivaAdesiva = pattern?.key === 'objetiva_adesiva';
   const isObjetiva = isObjetivaFamilyKey(pattern?.key);
-  const isNalin = pattern?.key === 'baby_nalin';
+  const isNalinAdesiva = pattern?.key === 'baby_nalin';
+  const isNalinTag = pattern?.key === 'nalin_tag';
   const isPontoMix = pattern?.key === 'ponto_mix';
+  const awaitsCalibration = patternAwaitsCalibration(pattern?.key);
+  const activeFamilyId = familyIdForPatternKey(pattern?.key);
 
   const coucheProfile: CoucheRollProfile = useMemo(() => {
     if (pattern?.key === 'baby_nalin') {
@@ -305,8 +320,10 @@ export function ClientLabelingWorkspace() {
       ? countPontoMixLabels(selectedRows, false)
       : graphicPageCount(selectedSkuAnalysis.rows.length);
   const skuLabel = selectedSkuKeys.size === 1 ? 'SKU' : 'SKUs';
-  const foraDoPadrao = isNalin ? rowEntries.filter(e => !e.barcodeFit.fits) : [];
-  const selecionadasFora = isNalin ? selectedEntries.filter(e => !e.barcodeFit.fits) : [];
+  const foraDoPadrao = isNalinAdesiva ? rowEntries.filter(e => !e.barcodeFit.fits) : [];
+  const selecionadasFora = isNalinAdesiva
+    ? selectedEntries.filter(e => !e.barcodeFit.fits)
+    : [];
 
   const visibleSkuKeys = [...new Set(visibleEntries.map(e => e.skuKey))];
   const allVisibleSelected =
@@ -346,21 +363,56 @@ export function ClientLabelingWorkspace() {
     if (next.key === 'baby_nalin') setCoucheConfirmed(false);
   }
 
-  function handlePatternKeyChange(key: ClientLabelPatternKey) {
+  /** Troca o ativo; só limpa o pedido se o formato do CSV mudar (Tag↔Adesiva mantém). */
+  function selectActivePattern(key: ClientLabelPatternKey) {
     const base = draftCollection ?? emptyLabelCollection();
-    const adding = !base.patterns[key];
-    setDraftCollection(activatePattern(base, key));
-    if (adding) setPatternDirty(true);
-    clearOrder();
+    const previousKey = base.activeKey;
+    const alreadyPresent = Boolean(base.patterns[key]);
+    const next = alreadyPresent ? setActivePattern(base, key) : activatePattern(base, key);
+    setDraftCollection(next);
+    if (!alreadyPresent) setPatternDirty(true);
+    if (!sharesOrderFileFormat(previousKey, key)) clearOrder();
     setCoucheConfirmed(key !== 'baby_nalin');
+  }
+
+  function handleEnableFamily(familyId: ClientLabelFamilyId) {
+    const base = draftCollection ?? emptyLabelCollection();
+    const previousKey = base.activeKey;
+    const family = familyById(familyId);
+    const next = enableFamily(base, familyId);
+    setDraftCollection(next);
+    setPatternDirty(true);
+    if (!sharesOrderFileFormat(previousKey, next.activeKey)) clearOrder();
+    setCoucheConfirmed(next.activeKey !== 'baby_nalin');
+    toast.success(
+      family.keys.length > 1
+        ? `${family.label}: ${family.keys.map(patternVariantLabel).join(' + ')} habilitados.`
+        : `${family.label} habilitado.`,
+    );
+  }
+
+  function handleToggleVariant(key: ClientLabelPatternKey) {
+    const base = draftCollection ?? emptyLabelCollection();
+    const previousKey = base.activeKey;
+    const removing = Boolean(base.patterns[key]);
+    const next = toggleFamilyVariant(base, key);
+    setDraftCollection(next);
+    setPatternDirty(true);
+    if (!sharesOrderFileFormat(previousKey, next.activeKey)) clearOrder();
+    setCoucheConfirmed(next.activeKey !== 'baby_nalin');
+    if (removing && !next.activeKey) {
+      toast.info('Nenhum padrão restante neste cliente.');
+    }
   }
 
   function handleRemovePattern() {
     if (!draftCollection?.activeKey) return;
-    setDraftCollection(removePattern(draftCollection, draftCollection.activeKey));
+    const previousKey = draftCollection.activeKey;
+    const next = removePattern(draftCollection, previousKey);
+    setDraftCollection(next);
     setPatternDirty(true);
-    clearOrder();
-    setCoucheConfirmed(true);
+    if (!sharesOrderFileFormat(previousKey, next.activeKey)) clearOrder();
+    setCoucheConfirmed(next.activeKey !== 'baby_nalin');
   }
 
   function setCoucheMeasure(field: keyof CoucheRollProfile, rawValue: string) {
@@ -377,7 +429,14 @@ export function ClientLabelingWorkspace() {
   }
 
   function setObjetivaGeometry(field: keyof ClientLabelPattern['geometry'], rawValue: string) {
-    if (!pattern || (!isObjetivaFamilyKey(pattern.key) && pattern.key !== 'ponto_mix')) return;
+    if (
+      !pattern
+      || (!isObjetivaFamilyKey(pattern.key)
+        && pattern.key !== 'ponto_mix'
+        && pattern.key !== 'nalin_tag')
+    ) {
+      return;
+    }
     const parsed = Number(rawValue);
     if (!Number.isFinite(parsed)) return;
     const value = field === 'columns' ? Math.max(1, Math.trunc(parsed)) : Math.max(0, parsed);
@@ -498,13 +557,21 @@ export function ClientLabelingWorkspace() {
       toast.error(`${selecionadasFora.length} código(s) selecionado(s) não cabem na etiqueta.`);
       return;
     }
-    if (isNalin && mode === 'graphic' && selectedSkuAnalysis.conflicts.length > 0) {
+    if (awaitsCalibration) {
+      toast.info(
+        isNalinTag
+          ? 'A Tag Nalin (etiqueta maior) ainda não tem arte calibrada. Envie a foto impressa da Tag — a adesiva 50×30 já está pronta.'
+          : 'A etiqueta adesiva Objetiva ainda não tem arte calibrada. Envie a foto da adesiva (como fez com a Tag) para eu montar o layout.',
+      );
+      return;
+    }
+    if (isNalinAdesiva && mode === 'graphic' && selectedSkuAnalysis.conflicts.length > 0) {
       toast.error(
         `${selectedSkuAnalysis.conflicts.length} SKU(s) selecionado(s) possuem dados de impressão conflitantes.`,
       );
       return;
     }
-    if (isNalin && !coucheConfirmed) {
+    if (isNalinAdesiva && !coucheConfirmed) {
       toast.info('Confirme as medidas do rolo de duas colunas antes de gerar.');
       return;
     }
@@ -554,9 +621,12 @@ export function ClientLabelingWorkspace() {
             ? `PDF Objetiva · Tag (amostra) com ${selectedRows.length} SKU(s) gerado.`
             : `PDF + ZPL Objetiva · Tag com ${totalEtiquetas} etiqueta(s) gerado.`,
         );
-      } else if (pattern.key === 'objetiva_adesiva') {
+      } else if (pattern.key === 'objetiva_adesiva' || pattern.key === 'nalin_tag') {
+        // Já barrado em awaitsCalibration; guarda defensiva.
         toast.info(
-          'A etiqueta adesiva Objetiva ainda não tem arte calibrada. Envie a foto da adesiva (como fez com a Tag) para eu montar o layout.',
+          pattern.key === 'nalin_tag'
+            ? 'Tag Nalin aguarda foto de calibração.'
+            : 'Adesiva Objetiva aguarda foto de calibração.',
         );
         return;
       } else if (pattern.key === 'ponto_mix') {
@@ -660,7 +730,7 @@ export function ClientLabelingWorkspace() {
       <Panel
         eyebrow="ETIQUETAS · CLIENTE"
         title="Cliente e tipos de etiqueta"
-        subtitle="O mesmo cliente pode ter Nalin, Objetiva · Tag, Objetiva · Adesiva e Ponto Mix. Trocar o tipo não apaga o outro. O arquivo do pedido não é guardado."
+        subtitle="Nalin e Objetiva: Tag (maior) + Adesiva no mesmo CSV. Ponto Mix é um layout só. Trocar Tag↔Adesiva mantém o pedido carregado."
       >
         <div className="space-y-4">
           <div className="grid gap-3 md:grid-cols-[1fr_2fr]">
@@ -703,88 +773,181 @@ export function ClientLabelingWorkspace() {
           {!selectedClientId ? (
             <EmptyState
               title="Escolha um cliente"
-              description="Cada cliente pode gravar mais de um layout (Nalin, Objetiva · Tag, Objetiva · Adesiva, Ponto Mix), com medidas e textos próprios."
+              description="Cada cliente grava a família (Nalin, Objetiva ou Ponto Mix). Em Nalin e Objetiva o mesmo arquivo do pedido gera Tag e Adesiva."
             />
           ) : patternLoading ? (
             <p className="text-sm text-muted-foreground">Carregando padrão…</p>
           ) : (
             <div className="space-y-4 rounded-lg border border-border bg-muted/20 p-4">
-              <div className="flex flex-wrap items-end gap-3">
-                <div className="space-y-2 min-w-[12rem]">
-                  <Label>Tipo de layout</Label>
-                  <Select
-                    value={pattern?.key}
-                    onValueChange={value => handlePatternKeyChange(value as ClientLabelPatternKey)}
-                    disabled={isBusy}
-                  >
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="Escolha o layout" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="baby_nalin">
-                        Nalin (couchê 50×30)
-                        {savedKeys.includes('baby_nalin') ? ' · salvo' : ''}
-                      </SelectItem>
-                      <SelectItem value="objetiva">
-                        Objetiva · Tag (hangtag)
-                        {savedKeys.includes('objetiva') ? ' · salvo' : ''}
-                      </SelectItem>
-                      <SelectItem value="objetiva_adesiva">
-                        Objetiva · Adesiva
-                        {savedKeys.includes('objetiva_adesiva') ? ' · salvo' : ''}
-                      </SelectItem>
-                      <SelectItem value="ponto_mix">
-                        Ponto Mix (40×60)
-                        {savedKeys.includes('ponto_mix') ? ' · salvo' : ''}
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                {draftKeys.map(key => (
-                  <Badge key={key} variant={key === pattern?.key ? 'outline' : 'secondary'}>
-                    {patternLabel(key)}
-                    {savedKeys.includes(key) ? '' : ' · não salvo'}
-                  </Badge>
-                ))}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-medium text-muted-foreground mr-1">
+                  Ativo para imprimir
+                </span>
+                {draftKeys.length === 0 ? (
+                  <span className="text-xs text-muted-foreground">nenhum — habilite uma família abaixo</span>
+                ) : (
+                  draftKeys.map(key => (
+                    <Button
+                      key={key}
+                      type="button"
+                      size="sm"
+                      variant={key === pattern?.key ? 'default' : 'outline'}
+                      className="h-8"
+                      disabled={isBusy}
+                      onClick={() => selectActivePattern(key)}
+                    >
+                      {patternLabel(key)}
+                      {!savedKeys.includes(key) ? ' · novo' : ''}
+                    </Button>
+                  ))
+                )}
                 {patternDirty && <Badge variant="secondary">Alterações não salvas</Badge>}
-                {draftKeys.length > 0 && (
+                <div className="ml-auto flex flex-wrap gap-2">
+                  {draftKeys.length > 0 && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-9"
+                      onClick={handleRemovePattern}
+                      disabled={!pattern || isBusy}
+                    >
+                      <Trash className="h-4 w-4 mr-1.5" />
+                      Remover ativo
+                    </Button>
+                  )}
                   <Button
-                    type="button"
-                    variant="ghost"
                     size="sm"
                     className="h-9"
-                    onClick={handleRemovePattern}
-                    disabled={!pattern || isBusy}
+                    onClick={() => void handleSavePattern()}
+                    disabled={isBusy || (!pattern && !patternDirty)}
                   >
-                    <Trash className="h-4 w-4 mr-1.5" />
-                    Remover este tipo
+                    {savePatternMutation.isPending ? (
+                      <CircleNotch className="h-4 w-4 mr-1.5 animate-spin" />
+                    ) : (
+                      <FloppyDisk className="h-4 w-4 mr-1.5" />
+                    )}
+                    Salvar padrões do cliente
                   </Button>
-                )}
-                <Button
-                  size="sm"
-                  className="h-9 ml-auto"
-                  onClick={() => void handleSavePattern()}
-                  disabled={isBusy || (!pattern && !patternDirty)}
-                >
-                  {savePatternMutation.isPending ? (
-                    <CircleNotch className="h-4 w-4 mr-1.5 animate-spin" />
-                  ) : (
-                    <FloppyDisk className="h-4 w-4 mr-1.5" />
-                  )}
-                  Salvar padrões do cliente
-                </Button>
+                </div>
+              </div>
+
+              <div className="grid gap-3 lg:grid-cols-3">
+                {CLIENT_LABEL_FAMILIES.map(family => {
+                  const enabledKeys = familyKeysInCollection(draftCollection, family.id);
+                  const familyActive = activeFamilyId === family.id;
+                  const allOn = family.keys.every(key => enabledKeys.includes(key));
+                  return (
+                    <div
+                      key={family.id}
+                      className={cn(
+                        'rounded-lg border bg-background p-3 space-y-3',
+                        familyActive ? 'border-primary/40' : 'border-border',
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="font-semibold text-sm">{family.label}</div>
+                          <p className="text-xs text-muted-foreground mt-0.5">{family.mediaSummary}</p>
+                        </div>
+                        {!allOn && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            className="h-8 shrink-0"
+                            disabled={isBusy}
+                            onClick={() => handleEnableFamily(family.id)}
+                          >
+                            {family.keys.length > 1 ? 'Ativar os dois' : 'Ativar'}
+                          </Button>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {family.keys.map(key => {
+                          const on = enabledKeys.includes(key);
+                          const active = pattern?.key === key;
+                          return (
+                            <Button
+                              key={key}
+                              type="button"
+                              size="sm"
+                              variant={active ? 'default' : on ? 'outline' : 'ghost'}
+                              className={cn(
+                                'h-8',
+                                !on && 'border border-dashed border-border text-muted-foreground',
+                              )}
+                              disabled={isBusy}
+                              title={patternMediaLabel(key)}
+                              onClick={() => {
+                                if (on) selectActivePattern(key);
+                                else handleToggleVariant(key);
+                              }}
+                              onContextMenu={event => {
+                                event.preventDefault();
+                                handleToggleVariant(key);
+                              }}
+                            >
+                              {patternVariantLabel(key)}
+                              {patternAwaitsCalibration(key) ? ' · foto' : ''}
+                              {on && !savedKeys.includes(key) ? ' · novo' : ''}
+                            </Button>
+                          );
+                        })}
+                      </div>
+                      {family.keys.length > 1 && (
+                        <p className="text-[11px] text-muted-foreground leading-snug">
+                          Clique liga/ativa a variante. Botão direito remove. Mesmo CSV para Tag e
+                          Adesiva.
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
 
               {!pattern ? (
                 <p className="text-sm text-muted-foreground">
-                  Este cliente ainda não tem padrão. Escolha Nalin, Objetiva · Tag, Objetiva · Adesiva
-                  ou Ponto Mix e salve. O mesmo cadastro pode guardar vários tipos.
+                  Este cliente ainda não tem padrão. Em Nalin ou Objetiva use &quot;Ativar os dois&quot;
+                  (Tag + Adesiva) e salve.
                 </p>
-              ) : isNalin ? (
+              ) : isNalinTag ? (
+                <div className="space-y-3">
+                  <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-foreground">
+                    Tag Nalin (etiqueta maior): o CSV é o mesmo da adesiva, mas a arte ainda não foi
+                    calibrada. A adesiva 50×30 já imprime; envie a foto da Tag impressa para eu montar
+                    o layout.
+                  </p>
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    {OBJETIVA_GEOMETRY_FIELDS.filter(
+                      f => f.key !== 'columns' && f.key !== 'columnGapMm',
+                    ).map(field => (
+                      <div key={field.key} className="space-y-1">
+                        <Label htmlFor={`nalin-tag-${field.key}`} className="text-xs">
+                          {field.label}
+                        </Label>
+                        <Input
+                          id={`nalin-tag-${field.key}`}
+                          type="number"
+                          min={0}
+                          step={field.step ?? 0.1}
+                          value={pattern.geometry[field.key]}
+                          disabled={isBusy}
+                          onChange={event => setObjetivaGeometry(field.key, event.target.value)}
+                          className="h-8 font-mono"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Medidas provisórias até a foto. Gerar PDF fica bloqueado até existir arte.
+                  </p>
+                </div>
+              ) : isNalinAdesiva ? (
                 <div className="space-y-3">
                   <p className="text-xs text-muted-foreground">
-                    Medidas do rolo 2 × {COUCHE_LABEL_WIDTH_MM} × {COUCHE_LABEL_HEIGHT_MM} mm · módulo{' '}
-                    {MODULE_MM.toFixed(3).replace('.', ',')} mm ({BARCODE_FORMAT}).
+                    Adesiva Nalin · rolo 2 × {COUCHE_LABEL_WIDTH_MM} × {COUCHE_LABEL_HEIGHT_MM} mm ·
+                    módulo {MODULE_MM.toFixed(3).replace('.', ',')} mm ({BARCODE_FORMAT}).
                   </p>
                   <details className="rounded-md border border-border bg-background p-3 text-sm" open>
                     <summary className="cursor-pointer font-semibold">
@@ -1101,7 +1264,7 @@ export function ClientLabelingWorkspace() {
                 label={isObjetiva ? 'Tags / adesivas' : 'Etiquetas'}
                 value={totalEtiquetas}
                 hint={
-                  isNalin
+                  isNalinAdesiva
                     ? `${COUCHE_COLUMNS} colunas · vão ${coucheProfile.columnGapMm} mm`
                     : isPontoMix
                       ? '40×60 mm · 1 coluna · PDF + ZPL'
@@ -1139,23 +1302,29 @@ export function ClientLabelingWorkspace() {
                   </div>
                   <div>
                     <h3 className="font-semibold">
-                      {isObjetivaAdesiva
-                        ? 'PDF adesiva Objetiva'
-                        : isObjetiva
-                          ? 'Produção Tag Objetiva (PDF + ZPL)'
-                          : isPontoMix
-                            ? 'Produção Ponto Mix (PDF + ZPL)'
-                            : 'PDF produção Nalin'}
+                      {isNalinTag
+                        ? 'PDF Tag Nalin'
+                        : isNalinAdesiva
+                          ? 'PDF adesiva Nalin (L42PRO)'
+                          : isObjetivaAdesiva
+                            ? 'PDF adesiva Objetiva'
+                            : isObjetiva
+                              ? 'Produção Tag Objetiva (PDF + ZPL)'
+                              : isPontoMix
+                                ? 'Produção Ponto Mix (PDF + ZPL)'
+                                : 'PDF produção'}
                     </h3>
                     <p className="mt-1 text-xs text-muted-foreground">
                       Repete pela quantidade do pedido
-                      {isNalin
+                      {isNalinAdesiva
                         ? ' · rolo 2 colunas 50×30'
-                        : isPontoMix
-                          ? ' · preview + PDF + ZPL L42PRO 40×60'
-                          : isObjetivaAdesiva
-                            ? ' · aguarda foto da adesiva'
-                            : ' · PDF + ZPL L42PRO 40×60'}
+                        : isNalinTag
+                          ? ' · aguarda foto da Tag (maior)'
+                          : isPontoMix
+                            ? ' · preview + PDF + ZPL L42PRO 40×60'
+                            : isObjetivaAdesiva
+                              ? ' · aguarda foto da adesiva'
+                              : ' · PDF + ZPL L42PRO 40×60'}
                       .
                     </p>
                   </div>
@@ -1168,7 +1337,8 @@ export function ClientLabelingWorkspace() {
                     || selectedRows.length === 0
                     || selecionadasFora.length > 0
                     || productionOverLimit
-                    || (isNalin && !coucheConfirmed)
+                    || awaitsCalibration
+                    || (isNalinAdesiva && !coucheConfirmed)
                     || patternDirty
                   }
                 >
@@ -1192,13 +1362,17 @@ export function ClientLabelingWorkspace() {
                   </div>
                   <div>
                     <h3 className="font-semibold">
-                      {isObjetivaAdesiva
-                        ? 'Amostra adesiva'
-                        : isObjetiva
-                          ? 'Amostra Tag'
-                          : isPontoMix
-                            ? 'Amostra Ponto Mix'
-                            : 'Arquivo para gráfica'}
+                      {isNalinTag
+                        ? 'Amostra Tag Nalin'
+                        : isNalinAdesiva
+                          ? 'Arquivo adesiva para gráfica'
+                          : isObjetivaAdesiva
+                            ? 'Amostra adesiva'
+                            : isObjetiva
+                              ? 'Amostra Tag'
+                              : isPontoMix
+                                ? 'Amostra Ponto Mix'
+                                : 'Arquivo para gráfica'}
                     </h3>
                     <p className="mt-1 text-xs text-muted-foreground">
                       Uma arte por SKU selecionado (sem repetir quantidade).
@@ -1212,8 +1386,9 @@ export function ClientLabelingWorkspace() {
                     isBusy
                     || selectedRows.length === 0
                     || selecionadasFora.length > 0
-                    || (isNalin && selectedSkuAnalysis.conflicts.length > 0)
-                    || (isNalin && !coucheConfirmed)
+                    || awaitsCalibration
+                    || (isNalinAdesiva && selectedSkuAnalysis.conflicts.length > 0)
+                    || (isNalinAdesiva && !coucheConfirmed)
                     || patternDirty
                   }
                 >
@@ -1228,7 +1403,7 @@ export function ClientLabelingWorkspace() {
                       ? `Gerar amostra PDF+ZPL (${selectedSkuKeys.size} ${skuLabel})`
                       : `Gerar gráfica (${selectedSkuKeys.size} ${skuLabel})`}
                 </Button>
-                {isNalin && (
+                {isNalinAdesiva && (
                   <p className="text-xs text-muted-foreground">
                     {paginasGrafica} linha(s) de {COUCHE_COLUMNS} colunas ·{' '}
                     {BABY_NALIN_DEFAULT_GEOMETRY.labelWidthMm}×{BABY_NALIN_DEFAULT_GEOMETRY.labelHeightMm}{' '}
@@ -1238,14 +1413,15 @@ export function ClientLabelingWorkspace() {
               </section>
             </div>
 
-            {(foraDoPadrao.length > 0 || (isNalin && selectedSkuAnalysis.conflicts.length > 0)) && (
+            {(foraDoPadrao.length > 0
+              || (isNalinAdesiva && selectedSkuAnalysis.conflicts.length > 0)) && (
               <div className="flex gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
                 <Warning className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
                 <div>
                   {foraDoPadrao.length > 0 && (
                     <p>{foraDoPadrao.length} código(s) não cabem na etiqueta com o módulo atual.</p>
                   )}
-                  {isNalin && selectedSkuAnalysis.conflicts.length > 0 && (
+                  {isNalinAdesiva && selectedSkuAnalysis.conflicts.length > 0 && (
                     <p>
                       {selectedSkuAnalysis.conflicts.length} SKU(s) com dados conflitantes na seleção.
                     </p>
@@ -1293,7 +1469,7 @@ export function ClientLabelingWorkspace() {
                     <th className="p-2 text-right">Qtd pedido</th>
                     <th className="p-2 text-right">Imprimir</th>
                     {fileNames.length > 1 && <th className="p-2">Arquivo</th>}
-                    {isNalin && <th className="p-2">OK</th>}
+                    {isNalinAdesiva && <th className="p-2">OK</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -1305,7 +1481,7 @@ export function ClientLabelingWorkspace() {
                         className={cn(
                           'border-t border-border',
                           selected && 'bg-primary/5',
-                          isNalin && !barcodeFit.fits && 'bg-amber-500/5',
+                          isNalinAdesiva && !barcodeFit.fits && 'bg-amber-500/5',
                         )}
                       >
                         <td className="p-2">
@@ -1347,7 +1523,7 @@ export function ClientLabelingWorkspace() {
                             {row.sourceFile}
                           </td>
                         )}
-                        {isNalin && (
+                        {isNalinAdesiva && (
                           <td className="p-2">
                             {barcodeFit.fits ? (
                               <CheckCircle className="h-4 w-4 text-emerald-600" />

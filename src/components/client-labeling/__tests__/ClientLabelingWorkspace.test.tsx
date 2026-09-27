@@ -217,7 +217,7 @@ describe('ClientLabelingWorkspace', () => {
     renderWorkspace();
     expect(typeof saveMutateAsync).toBe('function');
     expect(
-      screen.getByText(/O mesmo cliente pode ter Nalin, Objetiva · Tag, Objetiva · Adesiva/i),
+      screen.getByText(/Nalin e Objetiva: Tag \(maior\) \+ Adesiva no mesmo CSV/i),
     ).toBeTruthy();
   });
 

@@ -9,10 +9,13 @@
  */
 
 /**
- * `objetiva` = hangtag (Tag) — arte calibrada pela foto física.
- * `objetiva_adesiva` = adesiva — mesmo CSV Objetiva; layout aguarda foto de calibração.
+ * Variantes por família (mesmo CSV do pedido → Tag maior + Adesiva):
+ * - Nalin: `nalin_tag` (maior, aguarda foto) + `baby_nalin` (adesiva 50×30 calibrada)
+ * - Objetiva: `objetiva` (Tag calibrada) + `objetiva_adesiva` (aguarda foto)
+ * - Ponto Mix: um layout só
  */
 export const CLIENT_LABEL_PATTERN_KEYS = [
+  'nalin_tag',
   'baby_nalin',
   'objetiva',
   'objetiva_adesiva',
@@ -20,11 +23,86 @@ export const CLIENT_LABEL_PATTERN_KEYS = [
 ] as const;
 export type ClientLabelPatternKey = (typeof CLIENT_LABEL_PATTERN_KEYS)[number];
 
+/** Família comercial — um cliente tipicamente habilita 1 família com 1..N variantes. */
+export const CLIENT_LABEL_FAMILY_IDS = ['nalin', 'objetiva', 'ponto_mix'] as const;
+export type ClientLabelFamilyId = (typeof CLIENT_LABEL_FAMILY_IDS)[number];
+
+export interface ClientLabelFamily {
+  id: ClientLabelFamilyId;
+  label: string;
+  /** Resumo da mídia / uso, pra tela de seleção. */
+  mediaSummary: string;
+  keys: readonly ClientLabelPatternKey[];
+}
+
+/**
+ * Catálogo por família. Nalin e Objetiva: Tag + Adesiva no mesmo arquivo de pedido.
+ */
+export const CLIENT_LABEL_FAMILIES: readonly ClientLabelFamily[] = [
+  {
+    id: 'nalin',
+    label: 'Nalin',
+    mediaSummary: 'Tag (maior) + adesiva 50×30 · mesmo CSV',
+    keys: ['nalin_tag', 'baby_nalin'],
+  },
+  {
+    id: 'objetiva',
+    label: 'Objetiva',
+    mediaSummary: 'Tag hangtag + adesiva · mesmo CSV',
+    keys: ['objetiva', 'objetiva_adesiva'],
+  },
+  {
+    id: 'ponto_mix',
+    label: 'Ponto Mix',
+    mediaSummary: '40×60 mm · 1 coluna · L42PRO',
+    keys: ['ponto_mix'],
+  },
+] as const;
+
+/** Tag e adesiva Nalin compartilham o CSV Exp_Etiquetas_PedCompra. */
+export function isNalinFamilyKey(
+  key: string | null | undefined,
+): key is 'nalin_tag' | 'baby_nalin' {
+  return key === 'nalin_tag' || key === 'baby_nalin';
+}
+
 /** Tag e adesiva compartilham o CSV do ERP Objetiva (SKU + TAMANHOS). */
 export function isObjetivaFamilyKey(
   key: string | null | undefined,
 ): key is 'objetiva' | 'objetiva_adesiva' {
   return key === 'objetiva' || key === 'objetiva_adesiva';
+}
+
+export function familyIdForPatternKey(
+  key: ClientLabelPatternKey | null | undefined,
+): ClientLabelFamilyId | null {
+  if (!key) return null;
+  for (const family of CLIENT_LABEL_FAMILIES) {
+    if (family.keys.includes(key)) return family.id;
+  }
+  return null;
+}
+
+export function familyById(id: ClientLabelFamilyId): ClientLabelFamily {
+  const found = CLIENT_LABEL_FAMILIES.find(family => family.id === id);
+  if (!found) throw new Error(`Família de etiqueta desconhecida: ${id}`);
+  return found;
+}
+
+/** Formato de arquivo do pedido — variantes da mesma família costumam compartilhar. */
+export function importFormatFamilyId(
+  key: ClientLabelPatternKey | null | undefined,
+): ClientLabelFamilyId | null {
+  return familyIdForPatternKey(key);
+}
+
+/** Trocar Tag↔Adesiva (ou variantes futuras) não exige reler o CSV. */
+export function sharesOrderFileFormat(
+  a: ClientLabelPatternKey | null | undefined,
+  b: ClientLabelPatternKey | null | undefined,
+): boolean {
+  if (!a || !b) return false;
+  return importFormatFamilyId(a) === importFormatFamilyId(b);
 }
 
 export interface ClientLabelGeometry {
@@ -114,6 +192,7 @@ export interface ClientOrderLine {
   sourceFile?: string;
 }
 
+/** Adesiva Nalin — 50×30 mm 2 colunas L42PRO (foto física calibrada). */
 export const BABY_NALIN_DEFAULT_GEOMETRY: ClientLabelGeometry = {
   labelWidthMm: 50,
   labelHeightMm: 30,
@@ -126,6 +205,28 @@ export const BABY_NALIN_DEFAULT_GEOMETRY: ClientLabelGeometry = {
 };
 
 export const BABY_NALIN_DEFAULT_BRANDING: ClientLabelBranding = {
+  logoUrl: null,
+  motto: '',
+  exchangeText: '',
+  materialPrefix: '',
+};
+
+/**
+ * Tag Nalin (maior) — geometria provisória até foto de calibração.
+ * Mesmo CSV da adesiva; gerar PDF fica bloqueado sem arte.
+ */
+export const NALIN_TAG_DEFAULT_GEOMETRY: ClientLabelGeometry = {
+  labelWidthMm: 40,
+  labelHeightMm: 60,
+  columns: 1,
+  columnGapMm: 0,
+  leftMarginMm: 1.5,
+  rightMarginMm: 1.5,
+  topMarginMm: 1.5,
+  bottomMarginMm: 1.5,
+};
+
+export const NALIN_TAG_DEFAULT_BRANDING: ClientLabelBranding = {
   logoUrl: null,
   motto: '',
   exchangeText: '',
@@ -224,6 +325,14 @@ export const PONTO_MIX_DEFAULT_FILE_MAPPING: ClientLabelFileMapping = {
 };
 
 export function defaultPatternForKey(key: ClientLabelPatternKey): ClientLabelPattern {
+  if (key === 'nalin_tag') {
+    return {
+      version: 1,
+      key: 'nalin_tag',
+      geometry: { ...NALIN_TAG_DEFAULT_GEOMETRY },
+      branding: { ...NALIN_TAG_DEFAULT_BRANDING },
+    };
+  }
   if (key === 'objetiva') {
     return {
       version: 1,
@@ -259,10 +368,34 @@ export function defaultPatternForKey(key: ClientLabelPatternKey): ClientLabelPat
 }
 
 export function patternLabel(key: ClientLabelPatternKey): string {
+  if (key === 'nalin_tag') return 'Nalin · Tag';
+  if (key === 'baby_nalin') return 'Nalin · Adesiva';
   if (key === 'objetiva') return 'Objetiva · Tag';
   if (key === 'objetiva_adesiva') return 'Objetiva · Adesiva';
   if (key === 'ponto_mix') return 'Ponto Mix';
-  return 'Nalin';
+  return 'Nalin · Adesiva';
+}
+
+/** Rótulo curto da variante dentro da família (chip / botão). */
+export function patternVariantLabel(key: ClientLabelPatternKey): string {
+  if (key === 'nalin_tag' || key === 'objetiva') return 'Tag';
+  if (key === 'baby_nalin' || key === 'objetiva_adesiva') return 'Adesiva';
+  if (key === 'ponto_mix') return '40×60';
+  return 'Adesiva';
+}
+
+export function patternMediaLabel(key: ClientLabelPatternKey): string {
+  if (key === 'nalin_tag') return 'Tag (maior) · aguarda foto';
+  if (key === 'baby_nalin') return 'Adesiva 50×30 · 2 colunas L42PRO';
+  if (key === 'objetiva') return 'Hangtag 40×60 · L42PRO';
+  if (key === 'objetiva_adesiva') return 'Adesiva · calibração';
+  if (key === 'ponto_mix') return 'Preço varejo 40×60 · L42PRO';
+  return 'Adesiva 50×30 · 2 colunas L42PRO';
+}
+
+/** Arte ainda não calibrada — UI bloqueia gerar PDF. */
+export function patternAwaitsCalibration(key: ClientLabelPatternKey | null | undefined): boolean {
+  return key === 'nalin_tag' || key === 'objetiva_adesiva';
 }
 
 export function defaultFileMappingForKey(key: ClientLabelPatternKey): ClientLabelFileMapping {
@@ -290,6 +423,7 @@ export function normalizeClientLabelPattern(
     rawKey === 'objetiva' ||
     rawKey === 'objetiva_adesiva' ||
     rawKey === 'baby_nalin' ||
+    rawKey === 'nalin_tag' ||
     rawKey === 'ponto_mix'
       ? rawKey
       : fallbackKey;
@@ -354,6 +488,7 @@ export function normalizeClientLabelPattern(
 export function isClientLabelPatternKey(value: unknown): value is ClientLabelPatternKey {
   return (
     value === 'baby_nalin' ||
+    value === 'nalin_tag' ||
     value === 'objetiva' ||
     value === 'objetiva_adesiva' ||
     value === 'ponto_mix'
@@ -591,6 +726,67 @@ export function activatePattern(
   };
 }
 
+/** Só muda o ativo — não cria padrão novo. No-op se a chave não estiver na coleção. */
+export function setActivePattern(
+  collection: ClientLabelPatternCollection,
+  key: ClientLabelPatternKey,
+): ClientLabelPatternCollection {
+  if (!collection.patterns[key]) return collection;
+  return { ...collection, version: 2, activeKey: key };
+}
+
+/** Habilita todas as variantes da família (ex.: Tag + Adesiva de uma vez). */
+export function enableFamily(
+  collection: ClientLabelPatternCollection,
+  familyId: ClientLabelFamilyId,
+  activeKey?: ClientLabelPatternKey,
+): ClientLabelPatternCollection {
+  const family = familyById(familyId);
+  const previousActive = collection.activeKey;
+  let next = collection;
+  for (const key of family.keys) {
+    next = activatePattern(next, key);
+  }
+  // Preferência: argumento → ativo anterior da família → Tag (keys[0]), nunca a
+  // última variante do loop (que seria a adesiva).
+  const preferred =
+    activeKey && family.keys.includes(activeKey)
+      ? activeKey
+      : previousActive && family.keys.includes(previousActive)
+        ? previousActive
+        : family.keys[0];
+  return { ...next, activeKey: preferred };
+}
+
+/** Liga/desliga uma variante. Ao desligar a ativa, cai na próxima da família ou da coleção. */
+export function toggleFamilyVariant(
+  collection: ClientLabelPatternCollection,
+  key: ClientLabelPatternKey,
+): ClientLabelPatternCollection {
+  if (collection.patterns[key]) {
+    return removePattern(collection, key);
+  }
+  return activatePattern(collection, key);
+}
+
+export function familyKeysInCollection(
+  collection: ClientLabelPatternCollection | null | undefined,
+  familyId: ClientLabelFamilyId,
+): ClientLabelPatternKey[] {
+  if (!collection) return [];
+  const family = familyById(familyId);
+  return family.keys.filter(key => collection.patterns[key]);
+}
+
+export function familiesInCollection(
+  collection: ClientLabelPatternCollection | null | undefined,
+): ClientLabelFamilyId[] {
+  if (!collection) return [];
+  return CLIENT_LABEL_FAMILY_IDS.filter(
+    id => familyKeysInCollection(collection, id).length > 0,
+  );
+}
+
 export function upsertActivePattern(
   collection: ClientLabelPatternCollection,
   pattern: ClientLabelPattern,
@@ -639,6 +835,28 @@ export function removePattern(
 }
 
 export function savedPatternStatusLabel(raw: unknown): string {
-  const labels = collectionPatternKeys(normalizeClientLabelCollection(raw)).map(patternLabel);
-  return labels.length === 0 ? 'sem padrão' : labels.join(' + ');
+  const collection = normalizeClientLabelCollection(raw);
+  const keys = collectionPatternKeys(collection);
+  if (keys.length === 0) return 'sem padrão';
+
+  // Agrupa por família: "Objetiva (Tag + Adesiva)" em vez de lista plana.
+  const parts: string[] = [];
+  for (const family of CLIENT_LABEL_FAMILIES) {
+    const present = family.keys.filter(key => keys.includes(key));
+    if (present.length === 0) continue;
+    if (present.length === family.keys.length && family.keys.length > 1) {
+      parts.push(
+        `${family.label} (${present.map(patternVariantLabel).join(' + ')})`,
+      );
+    } else if (present.length === 1 && family.keys.length === 1) {
+      parts.push(patternLabel(present[0]));
+    } else {
+      parts.push(
+        present.length === 1
+          ? patternLabel(present[0])
+          : `${family.label} (${present.map(patternVariantLabel).join(' + ')})`,
+      );
+    }
+  }
+  return parts.join(' · ');
 }

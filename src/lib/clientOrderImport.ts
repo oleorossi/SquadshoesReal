@@ -10,6 +10,7 @@ import {
 } from './babyNalinLabels';
 import {
   clientOrderLineSkuKey,
+  isNalinFamilyKey,
   isObjetivaFamilyKey,
   type ClientLabelFileMapping,
   type ClientLabelPatternKey,
@@ -91,10 +92,11 @@ function formatLabel(format: ClientOrderFormat): string {
   return 'Nalin';
 }
 
-/** Padrão do cliente → formato de arquivo esperado. */
+/** Padrão do cliente → formato de arquivo esperado. Tag e adesiva da mesma família compartilham. */
 export function importFormatForPattern(key: ClientLabelPatternKey): ClientOrderFormat {
   if (isObjetivaFamilyKey(key)) return 'objetiva';
   if (key === 'ponto_mix') return 'ponto_mix';
+  if (isNalinFamilyKey(key)) return 'baby_nalin';
   return 'baby_nalin';
 }
 
