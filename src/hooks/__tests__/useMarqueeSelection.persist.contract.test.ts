@@ -31,4 +31,15 @@ describe('useMarqueeSelection persistência', () => {
     expect(src).not.toMatch(/Click normal: substitui seleção/);
     expect(src).not.toMatch(/next\.clear\(\);\s*next\.add\(id\)/s);
   });
+
+  it('marquee inicia em cima das linhas e não limpa no mousedown', () => {
+    // Bug 2026-09: closest('[data-marquee-item]') + setSelectedIds(new Set())
+    // no mousedown tornava o arrasto inútil em tabela densa (Imprimir Fichas).
+    // Espelha SelectionMarquee do estoque: arrasto aditivo, nasce na linha.
+    expect(src).not.toMatch(/closest\(\s*'\[data-marquee-item\]'/);
+    expect(src).not.toMatch(/closest\(\s*"\[data-marquee-item\]"/);
+    expect(src).not.toMatch(/startSelection\.current = new Set\(\);\s*setSelectedIds\(new Set\(\)\)/s);
+    expect(src).toMatch(/startSelection\.current = new Set\(selectedIds\)/);
+    expect(src).toMatch(/suppressClickRef/);
+  });
 });

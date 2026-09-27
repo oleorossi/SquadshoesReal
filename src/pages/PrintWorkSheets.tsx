@@ -516,7 +516,7 @@ export default function PrintWorkSheets() {
               ref={sel.containerRef}
               data-marquee-container
               onMouseDown={sel.onContainerMouseDown}
-              className="relative hidden overflow-hidden border md:block"
+              className={`relative hidden overflow-hidden border md:block ${sel.marqueeRect ? 'select-none' : ''}`}
             >
               <table className="w-full text-xs">
                 <thead className="bg-muted/50">
