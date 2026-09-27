@@ -10,7 +10,7 @@
 
 /**
  * Variantes por família (mesmo CSV do pedido → Tag maior + Adesiva):
- * - Nalin: `nalin_tag` (maior, aguarda foto) + `baby_nalin` (adesiva 50×30 calibrada)
+ * - Nalin: `nalin_tag` (hangtag 40×60 calibrada) + `baby_nalin` (adesiva 50×30)
  * - Objetiva: `objetiva` (Tag calibrada) + `objetiva_adesiva` (aguarda foto)
  * - Ponto Mix: um layout só
  */
@@ -183,6 +183,8 @@ export interface ClientOrderLine {
   quantidade: number;
   descricao?: string;
   valor?: string;
+  /** Segunda linha de preço na Tag Nalin (parcela / à vista), quando o CSV trouxer. */
+  valorSecundario?: string;
   tipo?: string;
   categoria?: string;
   grupo?: string;
@@ -212,8 +214,9 @@ export const BABY_NALIN_DEFAULT_BRANDING: ClientLabelBranding = {
 };
 
 /**
- * Tag Nalin (maior) — geometria provisória até foto de calibração.
- * Mesmo CSV da adesiva; gerar PDF fica bloqueado sem arte.
+ * Tag Nalin hangtag — MESMA mídia da Objetiva/Ponto Mix (rolo 40×60 mm, L42PRO
+ * 203 dpi). Arte em `nalinTagLabels.ts` (grade `NALIN_TAG_ART_DOTS`). Mesmo CSV
+ * da adesiva.
  */
 export const NALIN_TAG_DEFAULT_GEOMETRY: ClientLabelGeometry = {
   labelWidthMm: 40,
@@ -229,7 +232,7 @@ export const NALIN_TAG_DEFAULT_GEOMETRY: ClientLabelGeometry = {
 export const NALIN_TAG_DEFAULT_BRANDING: ClientLabelBranding = {
   logoUrl: null,
   motto: '',
-  exchangeText: '',
+  exchangeText: 'TROCA EM ATÉ 10 DIAS COM ETIQUETA E CUPOM FISCAL',
   materialPrefix: '',
 };
 
@@ -385,7 +388,7 @@ export function patternVariantLabel(key: ClientLabelPatternKey): string {
 }
 
 export function patternMediaLabel(key: ClientLabelPatternKey): string {
-  if (key === 'nalin_tag') return 'Tag (maior) · aguarda foto';
+  if (key === 'nalin_tag') return 'Tag hangtag 40×60 · L42PRO';
   if (key === 'baby_nalin') return 'Adesiva 50×30 · 2 colunas L42PRO';
   if (key === 'objetiva') return 'Hangtag 40×60 · L42PRO';
   if (key === 'objetiva_adesiva') return 'Adesiva · calibração';
@@ -395,7 +398,7 @@ export function patternMediaLabel(key: ClientLabelPatternKey): string {
 
 /** Arte ainda não calibrada — UI bloqueia gerar PDF. */
 export function patternAwaitsCalibration(key: ClientLabelPatternKey | null | undefined): boolean {
-  return key === 'nalin_tag' || key === 'objetiva_adesiva';
+  return key === 'objetiva_adesiva';
 }
 
 export function defaultFileMappingForKey(key: ClientLabelPatternKey): ClientLabelFileMapping {

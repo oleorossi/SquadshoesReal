@@ -53,6 +53,12 @@ function babyToLine(row: BabyNalinRow, sourceFile?: string): ClientOrderLine {
     codProduto: row.codProduto,
     codigoBarra: row.codigoBarra,
     quantidade: row.quantidade,
+    descricao: row.descricao,
+    valor: row.valor,
+    valorSecundario: row.valorSecundario,
+    tipo: row.tipo,
+    categoria: row.categoria,
+    grupo: row.grupo,
     sourceFile,
   };
 }

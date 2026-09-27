@@ -40,10 +40,13 @@ describe('clientLabelPattern', () => {
     expect(pattern.geometry.labelHeightMm).toBe(30);
   });
 
-  it('default Nalin · Tag é placeholder até foto (mesma família da adesiva)', () => {
+  it('default Nalin · Tag usa 40×60 1 coluna (mesma família da adesiva)', () => {
     const pattern = defaultPatternForKey('nalin_tag');
     expect(pattern.key).toBe('nalin_tag');
     expect(pattern.geometry.columns).toBe(1);
+    expect(pattern.geometry.labelWidthMm).toBe(40);
+    expect(pattern.geometry.labelHeightMm).toBe(60);
+    expect(pattern.branding.exchangeText).toMatch(/TROCA/i);
     expect(familyIdForPatternKey('nalin_tag')).toBe('nalin');
     expect(sharesOrderFileFormat('nalin_tag', 'baby_nalin')).toBe(true);
   });

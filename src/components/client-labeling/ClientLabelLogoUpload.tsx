@@ -14,7 +14,7 @@ interface Props {
   logoUrl: string | null;
   disabled?: boolean;
   /** Sufixo do arquivo no storage — objetiva | objetiva_adesiva | ponto_mix. */
-  storageKey?: 'objetiva' | 'objetiva_adesiva' | 'ponto_mix';
+  storageKey?: 'objetiva' | 'objetiva_adesiva' | 'ponto_mix' | 'nalin_tag';
   hint?: string;
   onLogoChange: (url: string | null) => void;
 }

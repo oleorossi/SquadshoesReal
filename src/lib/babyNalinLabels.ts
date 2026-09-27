@@ -145,6 +145,14 @@ export interface BabyNalinRow {
   codigoBarra: string;
   /** `Qt. Solicitada` do pedido, quando o arquivo traz. Usado só se pedir cópias. */
   quantidade: number;
+  /** Opcionais — a Tag Nalin imprime quando o CSV trouxer. */
+  descricao?: string;
+  valor?: string;
+  /** Segunda linha de preço (parcela / à vista) quando existir no arquivo. */
+  valorSecundario?: string;
+  tipo?: string;
+  categoria?: string;
+  grupo?: string;
 }
 
 /** Cabeçalho do ERP vem com acento e ponto ("Cod. Produto"); comparamos sem eles. */
@@ -158,13 +166,29 @@ function normalizeHeader(raw: string): string {
     .trim();
 }
 
-const COLUMN_ALIASES: Record<keyof Omit<BabyNalinRow, 'quantidade'> | 'quantidade', string[]> = {
+const COLUMN_ALIASES: Record<
+  | keyof Omit<BabyNalinRow, 'quantidade' | 'descricao' | 'valor' | 'valorSecundario' | 'tipo' | 'categoria' | 'grupo'>
+  | 'quantidade'
+  | 'descricao'
+  | 'valor'
+  | 'valorSecundario'
+  | 'tipo'
+  | 'categoria'
+  | 'grupo',
+  string[]
+> = {
   tamanho: ['tamanho', 'tam'],
   cor: ['cor'],
   referencia: ['referencia', 'ref'],
   codProduto: ['cod produto', 'codigo produto', 'cod prod'],
   codigoBarra: ['codigo barra', 'codigo de barra', 'codigo barras', 'ean'],
   quantidade: ['qt solicitada', 'qtd solicitada', 'quantidade', 'qt', 'qtde'],
+  descricao: ['descricao', 'descricao produto', 'produto', 'nome'],
+  valor: ['valor', 'preco', 'preco venda', 'vlr'],
+  valorSecundario: ['valor parcela', 'parcela', 'preco 2', 'valor 2', 'vlr parcela'],
+  tipo: ['tipo'],
+  categoria: ['categoria'],
+  grupo: ['grupo'],
 };
 
 /**
@@ -240,12 +264,24 @@ function buildRows(header: string[], linhas: string[][]): BabyNalinRow[] {
   const iRef = indice('referencia');
   const iCod = indice('codProduto');
   const iQtd = indice('quantidade');
+  const iDesc = indice('descricao');
+  const iValor = indice('valor');
+  const iValor2 = indice('valorSecundario');
+  const iTipo = indice('tipo');
+  const iCat = indice('categoria');
+  const iGrupo = indice('grupo');
   const pega = (linha: string[], i: number) => (i >= 0 ? (linha[i] ?? '').trim() : '');
 
   return linhas
     .map(linha => {
       const qtdBruta = pega(linha, iQtd).replace(/\./g, '').replace(',', '.');
       const qtd = Number(qtdBruta);
+      const descricao = pega(linha, iDesc).toUpperCase();
+      const valor = pega(linha, iValor);
+      const valorSecundario = pega(linha, iValor2);
+      const tipo = pega(linha, iTipo).toUpperCase();
+      const categoria = pega(linha, iCat).toUpperCase();
+      const grupo = pega(linha, iGrupo).toUpperCase();
       return {
         tamanho: pega(linha, iTam).toUpperCase(),
         cor: pega(linha, iCor).toUpperCase(),
@@ -253,6 +289,12 @@ function buildRows(header: string[], linhas: string[][]): BabyNalinRow[] {
         codProduto: pega(linha, iCod),
         codigoBarra: pega(linha, iBarra),
         quantidade: Number.isFinite(qtd) && qtd > 0 ? Math.round(qtd) : 1,
+        ...(descricao ? { descricao } : {}),
+        ...(valor ? { valor } : {}),
+        ...(valorSecundario ? { valorSecundario } : {}),
+        ...(tipo ? { tipo } : {}),
+        ...(categoria ? { categoria } : {}),
+        ...(grupo ? { grupo } : {}),
       };
     })
     // Linha sem código de barras é rodapé/total da exportação — ignorar, não falhar.

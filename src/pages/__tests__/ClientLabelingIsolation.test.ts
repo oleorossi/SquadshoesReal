@@ -25,6 +25,7 @@ describe('ETIQUETAGEM CLIENTE · isolamento da etiquetagem padrão', () => {
     ];
 
     expect(imports).toContain('@/lib/babyNalinLabels');
+    expect(imports).toContain('@/lib/nalinTagLabels');
     expect(imports).toContain('@/lib/objetivaLabels');
     expect(imports).toContain('@/hooks/useClientLabelPattern');
     expect(imports).toContain('@/components/client-labeling/ClientLabelLogoUpload');

@@ -3,7 +3,7 @@
  *
  * Fluxo: escolher cliente → carregar/salvar família (Nalin / Objetiva / Ponto Mix).
  * Nalin e Objetiva: Tag + Adesiva no mesmo CSV. Sem histórico de arquivo.
- * Geração: PDF (+ ZPL em Objetiva Tag e Ponto Mix).
+ * Geração: PDF (+ ZPL em Nalin Tag, Objetiva Tag e Ponto Mix).
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -66,6 +66,8 @@ import {
 import {
   BABY_NALIN_DEFAULT_GEOMETRY,
   CLIENT_LABEL_FAMILIES,
+  NALIN_TAG_DEFAULT_BRANDING,
+  NALIN_TAG_DEFAULT_GEOMETRY,
   OBJETIVA_DEFAULT_BRANDING,
   OBJETIVA_DEFAULT_GEOMETRY,
   PONTO_MIX_DEFAULT_GEOMETRY,
@@ -107,6 +109,13 @@ import {
   summarizeImport,
 } from '@/lib/clientOrderImport';
 import { getSignedUrl } from '@/lib/getSignedUrl';
+import {
+  buildNalinTagPdf,
+  buildNalinTagZpl,
+  countNalinTagLabels,
+  nalinTagPdfFilename,
+  nalinTagZplFilename,
+} from '@/lib/nalinTagLabels';
 import {
   buildObjetivaPdf,
   buildObjetivaZpl,
@@ -199,6 +208,12 @@ function toBabyRows(rows: ClientOrderLine[]): BabyNalinRow[] {
     codProduto: row.codProduto,
     codigoBarra: row.codigoBarra,
     quantidade: row.quantidade,
+    descricao: row.descricao,
+    valor: row.valor,
+    valorSecundario: row.valorSecundario,
+    tipo: row.tipo,
+    categoria: row.categoria,
+    grupo: row.grupo,
   }));
 }
 
@@ -309,16 +324,20 @@ export function ClientLabelingWorkspace() {
   const productionBabyRows = toBabyRows(productionRows);
   const selectedSkuAnalysis = analyzeClientSkus(selectedBabyRows);
 
-  const totalEtiquetas = isObjetiva
-    ? countObjetivaLabels(productionRows, true)
-    : isPontoMix
-      ? countPontoMixLabels(productionRows, true)
-      : countExpandedRows(productionBabyRows, true);
-  const paginasGrafica = isObjetiva
-    ? countObjetivaLabels(selectedRows, false)
-    : isPontoMix
-      ? countPontoMixLabels(selectedRows, false)
-      : graphicPageCount(selectedSkuAnalysis.rows.length);
+  const totalEtiquetas = isNalinTag
+    ? countNalinTagLabels(productionRows, true)
+    : isObjetiva
+      ? countObjetivaLabels(productionRows, true)
+      : isPontoMix
+        ? countPontoMixLabels(productionRows, true)
+        : countExpandedRows(productionBabyRows, true);
+  const paginasGrafica = isNalinTag
+    ? countNalinTagLabels(selectedRows, false)
+    : isObjetiva
+      ? countObjetivaLabels(selectedRows, false)
+      : isPontoMix
+        ? countPontoMixLabels(selectedRows, false)
+        : graphicPageCount(selectedSkuAnalysis.rows.length);
   const skuLabel = selectedSkuKeys.size === 1 ? 'SKU' : 'SKUs';
   const foraDoPadrao = isNalinAdesiva ? rowEntries.filter(e => !e.barcodeFit.fits) : [];
   const selecionadasFora = isNalinAdesiva
@@ -559,9 +578,7 @@ export function ClientLabelingWorkspace() {
     }
     if (awaitsCalibration) {
       toast.info(
-        isNalinTag
-          ? 'A Tag Nalin (etiqueta maior) ainda não tem arte calibrada. Envie a foto impressa da Tag — a adesiva 50×30 já está pronta.'
-          : 'A etiqueta adesiva Objetiva ainda não tem arte calibrada. Envie a foto da adesiva (como fez com a Tag) para eu montar o layout.',
+        'A etiqueta adesiva Objetiva ainda não tem arte calibrada. Envie a foto da adesiva (como fez com a Tag) para eu montar o layout.',
       );
       return;
     }
@@ -583,7 +600,41 @@ export function ClientLabelingWorkspace() {
     const originName = fileNames[0] ?? 'pedido';
     setGenerating(mode);
     try {
-      if (pattern.key === 'objetiva') {
+      if (pattern.key === 'nalin_tag') {
+        let logo: { dataUrl: string; width: number; height: number } | null = null;
+        if (pattern.branding.logoUrl) {
+          const signedLogoUrl = await getSignedUrl(pattern.branding.logoUrl);
+          logo = await loadLogoDataUrl(signedLogoUrl || pattern.branding.logoUrl);
+          if (!logo) toast.warning('Não carreguei a logomarca — o PDF sai com o wordmark Nalin.');
+        }
+        const sourceRows = mode === 'production' ? productionRows : selectedRows;
+        const missingPrice = sourceRows.filter(row => !(row.valor ?? '').trim()).length;
+        if (missingPrice > 0) {
+          toast.warning(
+            `${missingPrice} linha(s) sem preço — a Tag imprime 0.00 nesses SKUs.`,
+          );
+        }
+        const doc = await buildNalinTagPdf(sourceRows, {
+          geometry: pattern.geometry,
+          branding: pattern.branding,
+          repeatByQuantity: mode === 'production',
+          logo,
+        });
+        doc.save(nalinTagPdfFilename(originName));
+        if (mode === 'production') {
+          const zpl = buildNalinTagZpl(sourceRows, {
+            geometry: pattern.geometry,
+            branding: pattern.branding,
+            repeatByQuantity: true,
+          });
+          downloadText(zpl, nalinTagZplFilename(originName), 'text/plain;charset=utf-8');
+        }
+        toast.success(
+          mode === 'graphic'
+            ? `PDF Nalin · Tag (amostra) com ${selectedRows.length} SKU(s) gerado.`
+            : `PDF + ZPL Nalin · Tag com ${totalEtiquetas} etiqueta(s) gerado.`,
+        );
+      } else if (pattern.key === 'objetiva') {
         let logo: { dataUrl: string; width: number; height: number } | null = null;
         if (pattern.branding.logoUrl) {
           // Bucket client-logos é privado: URL pública 404 — assina antes do fetch.
@@ -621,13 +672,9 @@ export function ClientLabelingWorkspace() {
             ? `PDF Objetiva · Tag (amostra) com ${selectedRows.length} SKU(s) gerado.`
             : `PDF + ZPL Objetiva · Tag com ${totalEtiquetas} etiqueta(s) gerado.`,
         );
-      } else if (pattern.key === 'objetiva_adesiva' || pattern.key === 'nalin_tag') {
+      } else if (pattern.key === 'objetiva_adesiva') {
         // Já barrado em awaitsCalibration; guarda defensiva.
-        toast.info(
-          pattern.key === 'nalin_tag'
-            ? 'Tag Nalin aguarda foto de calibração.'
-            : 'Adesiva Objetiva aguarda foto de calibração.',
-        );
+        toast.info('Adesiva Objetiva aguarda foto de calibração.');
         return;
       } else if (pattern.key === 'ponto_mix') {
         // Arte fixa: sempre logo empacotada branca (upload do cliente é ignorado).
@@ -913,11 +960,14 @@ export function ClientLabelingWorkspace() {
                 </p>
               ) : isNalinTag ? (
                 <div className="space-y-3">
-                  <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-foreground">
-                    Tag Nalin (etiqueta maior): o CSV é o mesmo da adesiva, mas a arte ainda não foi
-                    calibrada. A adesiva 50×30 já imprime; envie a foto da Tag impressa para eu montar
-                    o layout.
-                  </p>
+                  <ClientLabelLogoUpload
+                    clientId={selectedClientId}
+                    logoUrl={pattern.branding.logoUrl}
+                    disabled={isBusy}
+                    storageKey="nalin_tag"
+                    hint="Wordmark script Nalin. Sem upload, o PDF usa o texto itálico de fallback."
+                    onLogoChange={url => setBrandingField('logoUrl', url ?? '')}
+                  />
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     {OBJETIVA_GEOMETRY_FIELDS.filter(
                       f => f.key !== 'columns' && f.key !== 'columnGapMm',
@@ -939,8 +989,22 @@ export function ClientLabelingWorkspace() {
                       </div>
                     ))}
                   </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="nalin-tag-exchange" className="text-xs">
+                      Texto de troca
+                    </Label>
+                    <Input
+                      id="nalin-tag-exchange"
+                      value={pattern.branding.exchangeText}
+                      disabled={isBusy}
+                      onChange={event => setBrandingField('exchangeText', event.target.value)}
+                      className="h-8"
+                    />
+                  </div>
                   <p className="text-xs text-muted-foreground">
-                    Medidas provisórias até a foto. Gerar PDF fica bloqueado até existir arte.
+                    Defaults Tag: troca “{NALIN_TAG_DEFAULT_BRANDING.exchangeText}”,{' '}
+                    {NALIN_TAG_DEFAULT_GEOMETRY.labelWidthMm}×{NALIN_TAG_DEFAULT_GEOMETRY.labelHeightMm}{' '}
+                    mm · L42PRO · calibrada pela foto física. Mesmo CSV da adesiva.
                   </p>
                 </div>
               ) : isNalinAdesiva ? (
@@ -1303,7 +1367,7 @@ export function ClientLabelingWorkspace() {
                   <div>
                     <h3 className="font-semibold">
                       {isNalinTag
-                        ? 'PDF Tag Nalin'
+                        ? 'Produção Tag Nalin (PDF + ZPL)'
                         : isNalinAdesiva
                           ? 'PDF adesiva Nalin (L42PRO)'
                           : isObjetivaAdesiva
@@ -1319,7 +1383,7 @@ export function ClientLabelingWorkspace() {
                       {isNalinAdesiva
                         ? ' · rolo 2 colunas 50×30'
                         : isNalinTag
-                          ? ' · aguarda foto da Tag (maior)'
+                          ? ' · PDF + ZPL L42PRO 40×60'
                           : isPontoMix
                             ? ' · preview + PDF + ZPL L42PRO 40×60'
                             : isObjetivaAdesiva
@@ -1349,7 +1413,7 @@ export function ClientLabelingWorkspace() {
                   )}
                   {generating === 'production'
                     ? 'Gerando…'
-                    : isPontoMix
+                    : isPontoMix || isNalinTag || (isObjetiva && !isObjetivaAdesiva)
                       ? `Gerar PDF+ZPL (${totalEtiquetas} etiquetas)`
                       : `Gerar L42PRO (${totalEtiquetas} etiquetas)`}
                 </Button>
