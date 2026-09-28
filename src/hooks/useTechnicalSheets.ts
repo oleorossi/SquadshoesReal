@@ -45,9 +45,9 @@ function invalidateSheetImpact(qc: QueryClient) {
 }
 
 /**
- * Save da ficha já persistiu — propaga consumo para PVs Aprovado/Em Produção
- * sem fato físico; em OP iniciada reserva o delta faltante. Falha aqui NÃO
- * desfaz o UPDATE.
+ * Save da ficha já persistiu — realinha tiras dos itens de PV Aprovado/Em
+ * Produção sem fato físico e propaga consumo/reservas das OPs (delta em
+ * OP iniciada). Falha aqui NÃO desfaz o UPDATE.
  */
 async function propagateSheetConsumption(
   qc: QueryClient,
