@@ -62,6 +62,8 @@ export interface PointingPlan {
 /** Admin no Modo Gestão pode pular irmão paralelo; operador continua barrado. */
 export interface PointingPlanOptions {
   allowParallelSkip?: boolean;
+  /** Coluna do card está `sent_to_contractor` no Ateliê — bloqueia apontamento. */
+  atelierBlocksColumn?: boolean;
 }
 
 function uniqueNames(names: string[]): string[] {
@@ -193,6 +195,15 @@ export function buildPointingPlan(
     if (inbound != null) {
       remaining = Math.min(remaining, Math.max(0, inbound - pointedStage.quantity_processed));
     }
+  }
+
+  if (options?.atelierBlocksColumn) {
+    return {
+      pointedStage, isBackward: false, skipped: [], remaining, stageRemaining,
+      available: false,
+      unavailableReason:
+        'Material deste setor está no prestador (Ateliê). Marque recebimento no Ateliê antes de apontar.',
+    };
   }
 
   // Alvo e coluna vivem no vocabulário canônico (norm). Sem isso, dropar em

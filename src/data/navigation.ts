@@ -67,6 +67,7 @@ export const navigationCatalog: NavigationResource[] = [
   // Engenharia (absorve Tiras)
   { path: '/engenharia', label: 'Engenharia', group: 'Engenharia', icon: Ruler, surfaces: ['hub', 'command'], preload: () => import('@/pages/EngenhariaHub') },
   { path: '/fichas-tecnicas', label: 'Fichas Técnicas', group: 'Engenharia', icon: Ruler, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/TechnicalSheets') },
+  { path: '/atelie', label: 'Ateliê', group: 'Engenharia', icon: Scissors, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/Atelie') },
   { path: '/escalonamento', label: 'Escalonamento', group: 'Engenharia', icon: Calculator, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/EscalonamentoCadPage') },
   { path: '/tiras-artesanais', label: 'Central de Tiras', group: 'Engenharia', icon: Scissors, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/ArtisanalStraps') },
   { path: '/solados', label: 'Solados', group: 'Engenharia', icon: Footprints, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/SolesHub') },

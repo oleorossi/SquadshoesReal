@@ -5,6 +5,7 @@ import MaterialConsumptionView, {
   type ConsumptionPartitionMode,
 } from '@/components/sale-orders/MaterialConsumptionView';
 import UpperCutOutsourcingSection from '@/components/sale-orders/UpperCutOutsourcingSection';
+import AtelierPrepConsumptionSection from '@/components/sale-orders/AtelierPrepConsumptionSection';
 import {
   loadPvConsumption,
   materializePvConsumptionScope,
@@ -181,9 +182,12 @@ export default function SummaryConsumptionPanel({ saleOrderIds, onGerarOC, embed
             : 'Nenhum consumo de material encontrado para os pedidos selecionados.'
       }
       extraSections={
-        singlePv && singlePvNumber
-          ? <UpperCutOutsourcingSection saleOrderId={singlePv} orderNumber={singlePvNumber} />
-          : null
+        <>
+          <AtelierPrepConsumptionSection saleOrderIds={ids} />
+          {singlePv && singlePvNumber ? (
+            <UpperCutOutsourcingSection saleOrderId={singlePv} orderNumber={singlePvNumber} />
+          ) : null}
+        </>
       }
       embedded={embedded}
       itemOptions={itemOptions}

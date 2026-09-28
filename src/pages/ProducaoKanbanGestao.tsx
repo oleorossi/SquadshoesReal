@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -37,6 +38,8 @@ import {
   type KanbanSortMode,
 } from '@/components/production/kanban/kanbanSort';
 import { buildPointingPlan } from '@/components/production/kanban/pointingPlan';
+import { supabase } from '@/integrations/supabase/client';
+import { atelierBlocksKanbanPointing, atelierKanbanBadgeLabel } from '@/lib/atelier';
 import {
   addUniqueOrderCards,
   buildBulkMoveBatch,
@@ -64,8 +67,6 @@ import {
   resolvePalmilhaPointingTarget,
   toPalmilhaVisualColumn,
 } from '@/lib/palmilhaKanbanColumn';
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 
 /** Limite saudável de OPs acumuladas num setor antes de sinalizar gargalo. */
 const WIP_LIMIT = 20;
@@ -140,6 +141,44 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
   const canEdit = useCan('/producao/kanban').canEdit;
   const isAdmin = useIsAdmin();
   const planOptions = useMemo(() => ({ allowParallelSkip: isAdmin }), [isAdmin]);
+
+  /** Jobs Ateliê abertos → badge + trava de apontamento no setor. */
+  const { data: atelierJobMap } = useQuery({
+    queryKey: ['atelier', 'kanban-jobs'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('cabedal_prep_jobs' as never)
+        .select('sale_order_id, sector, pipeline_status')
+        .neq('pipeline_status', 'cancelled')
+        .limit(2000);
+      if (error) throw error;
+      const m = new Map<string, string>();
+      const rows = (data ?? []) as {
+        sale_order_id: string | null;
+        sector: string | null;
+        pipeline_status: string;
+      }[];
+      for (const row of rows) {
+        const sectorKey =
+          row.sector === 'corte_cabedal' ? 'Corte Cabedal'
+          : row.sector === 'costura_cabedal' ? 'Costura Cabedal'
+          : row.sector === 'aviamento' ? 'Aviamento'
+          : null;
+        if (!sectorKey || !row.sale_order_id) continue;
+        m.set(`${row.sale_order_id}|${norm(sectorKey)}`, row.pipeline_status);
+      }
+      return m;
+    },
+    staleTime: 30_000,
+  });
+
+  const atelierStatusForCard = useCallback((card: KanbanCardData): string | null => {
+    const so = card.q.sale_order_id;
+    if (!so || !atelierJobMap) return null;
+    return atelierJobMap.get(`${so}|${norm(card.column)}`) ?? null;
+  }, [atelierJobMap]);
+
+  const [filterAtelierRua, setFilterAtelierRua] = useState(false);
   // Touch (celular E iPad): sem autofocus (o teclado pularia na cara ao abrir)
   // e sem drag HTML5 confiável — o select "Mover para" do diálogo cobre.
   const coarsePointer = useIsCoarsePointer();
@@ -681,11 +720,15 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
     const resolved = target === PALMILHA_COLUMN
       ? (resolvePalmilhaPointingTarget(card.stages) || target)
       : target;
-    const plan = buildPointingPlan(card, resolved, flowOrder, levelOf, planOptions);
+    const atelierSt = atelierStatusForCard(card);
+    const plan = buildPointingPlan(card, resolved, flowOrder, levelOf, {
+      ...planOptions,
+      atelierBlocksColumn: atelierBlocksKanbanPointing(atelierSt),
+    });
     if (!plan.available) return { ok: false, kind: 'frente', reason: plan.unavailableReason };
     if (plan.isBackward) return { ok: true, kind: 'estorno' };
     return { ok: true, kind: plan.skipped.length > 0 ? 'pulo' : 'frente' };
-  }, [flowOrder, levelOf, planOptions]);
+  }, [flowOrder, levelOf, planOptions, atelierStatusForCard]);
 
   /**
    * Elegibilidade do card EM ARRASTE por setor, calculada uma vez por arraste.
@@ -986,6 +1029,15 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
         <div className="flex w-max items-center gap-1.5 xl:w-auto">
           <Button variant="outline" size="sm" className="h-11 md:h-9 gap-1.5" onClick={() => setScanOpen(true)}>
             <QrCode className="h-4 w-4" /> Bipar
+          </Button>
+          <Button
+            variant={filterAtelierRua ? 'default' : 'outline'}
+            size="sm"
+            className="h-11 md:h-9 gap-1.5"
+            title="Destaca OPs com material Ateliê no prestador"
+            onClick={() => setFilterAtelierRua((v) => !v)}
+          >
+            Na rua
           </Button>
           <div className="flex rounded-md border border-border overflow-hidden" role="group" aria-label="Ordenação da coluna">
             <button
@@ -1804,9 +1856,12 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                         compact
                         showPalmilhaChecks={isPalmilhaCol}
                         photoUrl={refThumbs?.get(card.q.reference_id || '') || null}
-                        draggable={canEdit && !selectMode}
+                        draggable={canEdit && !selectMode && !atelierBlocksKanbanPointing(atelierStatusForCard(card))}
                         dragging={dragCard?.key === card.key}
-                        dimmed={viewMode === 'destacar' && !!matchedIds && !matchedIds.has(card.q.order_id)}
+                        dimmed={
+                          (viewMode === 'destacar' && !!matchedIds && !matchedIds.has(card.q.order_id))
+                          || (filterAtelierRua && atelierStatusForCard(card) !== 'sent_to_contractor')
+                        }
                         highlighted={!selectMode && viewMode === 'destacar' && !!matchedIds && matchedIds.has(card.q.order_id)}
                         siblingActive={
                           !!hoverOrderId
@@ -1820,6 +1875,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                         landed={landedId === card.q.order_id}
                         materialGateDate={gateMap?.get(card.q.order_id)?.ready_date ?? null}
                         materialGateReason={gateMap?.get(card.q.order_id)?.reason ?? null}
+                        atelierBadge={atelierKanbanBadgeLabel(atelierStatusForCard(card))}
                         onToggleSelect={() => toggleSelect(card)}
                         onDragStart={() => setDragCard(card)}
                         onDragEnd={() => { setDragCard(null); setDragOverSector(null); }}

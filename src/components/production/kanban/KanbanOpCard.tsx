@@ -39,6 +39,8 @@ interface Props {
   onHoverOrder?: (orderId: string | null) => void;
   /** Coluna visual Palmilha: até 2 checks (Fibra / Forração); N/A oculto. */
   showPalmilhaChecks?: boolean;
+  /** Badge Ateliê (debitar / no prestador / recebido). */
+  atelierBadge?: string | null;
 }
 
 /**
@@ -67,6 +69,7 @@ export function KanbanOpCard({
   selectable = false, selected = false, onToggleSelect, readOnly = false, photoUrl, landed = false,
   materialGateDate = null, materialGateReason = null, onHoverOrder,
   showPalmilhaChecks = false,
+  atelierBadge = null,
 }: Props) {
   const { q, front, delivered, isPartial, columnStage, upstreamGap, parallelSiblings } = card;
   const total = columnStage?.quantity_total || q.quantity;
@@ -170,6 +173,15 @@ export function KanbanOpCard({
               </p>
             </div>
             <span className="flex max-w-[55%] shrink-0 flex-wrap items-center justify-end gap-1">
+              {atelierBadge && (
+                <Badge
+                  variant="outline"
+                  className="text-[9px] bg-primary/10 text-primary border-primary/30 shrink-0"
+                  title="Estado do cabedal no Ateliê (rua)"
+                >
+                  {atelierBadge}
+                </Badge>
+              )}
               {isPartial && (
                 <Badge
                   variant="outline"

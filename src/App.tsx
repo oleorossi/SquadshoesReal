@@ -47,6 +47,7 @@ const MobileProfile = lazy(() => import("./pages/mobile/MobileProfile"));
 // Rota /imagens-cores agora redireciona pra /fichas-tecnicas.
 const InputCostsPage = lazy(() => import("./pages/InputCostsPage"));
  const TechnicalSheets = lazy(() => import("./pages/TechnicalSheets"));
+const Atelie = lazy(() => import("./pages/Atelie"));
 // Padrões do Calçado — regras GLOBAIS de componente/tira por cor
 // (component_color_defaults): grupo + cor do pedido → SKU padrão.
 const ColorStandards = lazy(() => import("./pages/ColorStandards"));
@@ -921,6 +922,11 @@ const router = createBrowserRouter([
        {
          path: "fichas-tecnicas",
          element: <TechnicalSheets />,
+       },
+       {
+         // Ateliê — cabedal complexo (rua): cadastro × setor + fila Debitar/Enviado/Recebido.
+         path: "atelie",
+         element: <Atelie />,
        },
        {
          // Hub de padrões globais do calçado (regras de componente/tira por

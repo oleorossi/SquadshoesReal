@@ -8,6 +8,7 @@ export default function EngenhariaHub() {
       description="Fichas, solados, silks e tiras artesanais — o projeto do calçado."
       hints={{
         '/fichas-tecnicas': 'Modelo, BOM e rota de produção',
+        '/atelie': 'Cabedal complexo pra rua — cadastro e fila',
         '/escalonamento': 'Grade e conversões de numeração',
         '/tiras-artesanais': 'Receitas, rendimento e estoque de tiras',
         '/solados': 'Specs e consumo por numeração',
