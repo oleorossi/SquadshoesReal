@@ -3,29 +3,39 @@
 SET default_transaction_read_only = off;
 SET transaction_read_only = off;
 
--- 1) Matar autenticators travados no schema cache (nao mata LISTEN pgrst)
-SELECT pg_terminate_backend(pid)
-FROM pg_stat_activity
-WHERE datname = current_database()
-  AND pid <> pg_backend_pid()
-  AND usename = 'authenticator'
-  AND query NOT ILIKE 'LISTEN%'
-  AND (
-    state LIKE 'idle in transaction%'
-    OR (state = 'active' AND now() - query_start > interval '20 seconds')
-    OR (state = 'idle' AND query ~* '^(ABORT|COMMIT|SET client_encoding)')
-  );
-
--- 2) Matar clients idle ha > 2 min (libera slots sem derrubar auth/admin recentes)
-SELECT pg_terminate_backend(pid)
-FROM pg_stat_activity
-WHERE datname = current_database()
-  AND pid <> pg_backend_pid()
-  AND state = 'idle'
-  AND usename IN ('authenticator', 'supabase_admin', 'postgres')
-  AND query NOT ILIKE 'LISTEN%'
-  AND now() - state_change > interval '2 minutes'
-  AND application_name IS DISTINCT FROM 'postgrest';
+-- 1/2) Matar backends nao-superuser travados (Management API nao e SUPERUSER —
+--     terminar postgres/supabase_admin estoura 42501 e aborta o lote inteiro)
+DO $kill$
+DECLARE
+  r record;
+BEGIN
+  FOR r IN
+    SELECT a.pid
+    FROM pg_stat_activity a
+    JOIN pg_roles rol ON rol.rolname = a.usename
+    WHERE a.datname = current_database()
+      AND a.pid <> pg_backend_pid()
+      AND NOT rol.rolsuper
+      AND a.query NOT ILIKE 'LISTEN%'
+      AND a.application_name IS DISTINCT FROM 'postgrest'
+      AND (
+        (a.usename = 'authenticator' AND (
+          a.state LIKE 'idle in transaction%'
+          OR (a.state = 'active' AND now() - a.query_start > interval '20 seconds')
+          OR (a.state = 'idle' AND a.query ~* '^(ABORT|COMMIT|SET client_encoding)')
+        ))
+        OR (a.state = 'idle' AND a.usename = 'authenticator'
+            AND now() - a.state_change > interval '2 minutes')
+      )
+  LOOP
+    BEGIN
+      PERFORM pg_terminate_backend(r.pid);
+    EXCEPTION WHEN insufficient_privilege THEN
+      NULL;
+    END;
+  END LOOP;
+END;
+$kill$;
 
 ALTER ROLE authenticator SET statement_timeout = 0;
 ALTER ROLE authenticator SET lock_timeout = '60s';
