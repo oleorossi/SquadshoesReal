@@ -15,8 +15,8 @@ import {
 } from '@phosphor-icons/react';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Panel } from '@/components/ui/panel';
+import { SearchInput } from '@/components/ui/search-input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Select,
@@ -197,11 +197,12 @@ function CadastroView() {
           setor. Após o PV ir para Aprovado, elas entram na fila do Ateliê.
         </p>
         <div className="flex flex-col sm:flex-row gap-2">
-          <Input
+          <SearchInput
             placeholder="Buscar ficha…"
             value={q}
-            onChange={(e) => setQ(e.target.value)}
-            className="h-9 sm:max-w-xs"
+            onChange={setQ}
+            className="sm:max-w-xs"
+            inputClassName="h-9"
           />
           <Select value={sheetId || undefined} onValueChange={setSheetId}>
             <SelectTrigger className="h-9 sm:flex-1">
