@@ -2,7 +2,10 @@ name: Supabase — Emergency Recovery
 
 # Dispara no push de scripts/recovery/** pra main (quando o agente nao
 # consegue workflow_dispatch por 403 e o MCP SQL esta sem slot).
-# Usa o mesmo endpoint Management API do supabase-db-exec.
+# 1) restart do projeto (limpa pool)
+# 2) SQL kill leve
+# 3) SQL organize completo
+# 4) probe REST
 
 on:
   push:
@@ -13,24 +16,99 @@ on:
   workflow_dispatch:
     inputs:
       sql_path:
-        description: 'SQL de recovery'
+        description: 'SQL de recovery (apos kill)'
         required: false
         default: 'scripts/recovery/pgrst002_clear_storm.sql'
         type: string
+      skip_restart:
+        description: 'Pular restart do projeto?'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
 
 concurrency:
   group: supabase-emergency-recovery
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   recover:
     name: Clear PostgREST storm
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
 
-      - name: Executar recovery SQL
+      - name: Restart projeto (limpa pool)
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.skip_restart != 'true' }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          : "${SUPABASE_ACCESS_TOKEN:?missing}"
+          : "${SUPABASE_PROJECT_ID:?missing}"
+          echo "── POST /v1/projects/${SUPABASE_PROJECT_ID}/restart"
+          code=$(curl -sS -o /tmp/restart.json -w '%{http_code}' -X POST \
+            "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_ID}/restart" \
+            -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --max-time 60 || echo 000)
+          echo "restart HTTP $code"
+          head -c 2000 /tmp/restart.json; echo
+          # 200 = accepted; 429 = rate limit — segue tentando SQL mesmo assim
+          if [ "$code" = "401" ] || [ "$code" = "403" ]; then
+            echo "Token sem permissao de restart"; exit 1
+          fi
+          echo "── Aguardando projeto ACTIVE_HEALTHY"
+          for i in $(seq 1 36); do
+            st=$(curl -sS --max-time 30 \
+              "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_ID}" \
+              -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+              | jq -r '.status // empty' || true)
+            echo "status[$i]=$st"
+            case "$st" in
+              ACTIVE_HEALTHY) break ;;
+              COMING_UP|RESTORING|UNKNOWN|"" ) sleep 10 ;;
+              *) sleep 10 ;;
+            esac
+            if [ "$i" -eq 36 ]; then
+              echo "Timeout aguardando healthy — segue com SQL mesmo assim"
+            fi
+          done
+
+      - name: Kill connections + timeout
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+          SQL_PATH: scripts/recovery/pgrst002_kill_only.sql
+        run: |
+          set -euo pipefail
+          : "${SUPABASE_ACCESS_TOKEN:?missing}"
+          : "${SUPABASE_PROJECT_ID:?missing}"
+          test -f "$SQL_PATH"
+          echo "── Kill SQL: $SQL_PATH"
+          jq -Rs '{query: .}' < "$SQL_PATH" > /tmp/body.json
+          for attempt in 1 2 3 4 5 6 8 10; do
+            code=$(curl -sS -o /tmp/resp.json -w '%{http_code}' -X POST \
+              "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_ID}/database/query" \
+              -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+              -H "Content-Type: application/json" \
+              --max-time 90 \
+              --data @/tmp/body.json || echo 000)
+            echo "── kill attempt=$attempt HTTP $code"
+            head -c 3000 /tmp/resp.json; echo
+            if [ "$code" -ge 200 ] && [ "$code" -lt 300 ]; then
+              exit 0
+            fi
+            sleep $((attempt * 8))
+          done
+          echo "Kill SQL falhou — tentando SQL completo mesmo assim"
+          exit 0
+
+      - name: Executar recovery SQL completo
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
@@ -42,7 +120,7 @@ jobs:
           test -f "$SQL_PATH"
           echo "── Recovery: $SQL_PATH ($(wc -c < "$SQL_PATH") bytes)"
           jq -Rs '{query: .}' < "$SQL_PATH" > /tmp/body.json
-          for attempt in 1 2 3 4 5 6; do
+          for attempt in 1 2 3 4 5 6 8; do
             code=$(curl -sS -o /tmp/resp.json -w '%{http_code}' -X POST \
               "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_ID}/database/query" \
               -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
@@ -56,21 +134,20 @@ jobs:
             fi
             sleep $((attempt * 10))
           done
-          echo "Recovery falhou apos retries"; exit 1
+          echo "Recovery SQL falhou apos retries"; exit 1
 
       - name: Probe REST
         env:
           URL: https://ssvxfoybzmjlypnipqzn.supabase.co
-          # publishable key publica (DEPLOY.md) — so pra probe de saude
           PUB: sb_publishable_IByk2Kk3oIWEGCO5wAUQwQ_JLQ2zP4h
         run: |
-          for i in 1 2 3 4 5 6 8; do
+          for i in 1 2 3 4 5 6 8 10; do
             code=$(curl -sS -o /tmp/r.json -w '%{http_code}' --max-time 90 \
               "$URL/rest/v1/profiles?select=id&limit=1" \
               -H "apikey: $PUB" -H "Authorization: Bearer $PUB" || echo 000)
             echo "probe $i => $code $(head -c 160 /tmp/r.json)"
             case "$code" in 200|206|401|403) exit 0 ;; esac
-            sleep 20
+            sleep 15
           done
-          echo "REST ainda sem schema cache — recovery SQL pode ter aplicado; PostgREST ainda reconstruindo"
+          echo "REST ainda sem schema cache — PostgREST pode ainda estar reconstruindo"
           exit 0
