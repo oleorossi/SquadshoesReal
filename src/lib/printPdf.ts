@@ -1,5 +1,13 @@
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import {
+  beginPdfDelivery,
+  isIosBrowser,
+  isPdfDeliveryCancelled,
+  renderPdfBytesClient,
+  setPdfDeliveryError,
+  setPdfDeliveryReady,
+} from '@/lib/pdfDelivery';
 
 /**
  * Impressão via PDF gerado no servidor — caminho ÚNICO de etiquetas e fichas.
@@ -162,9 +170,14 @@ export const MAX_DOCUMENT_BYTES = 4 * 1024 * 1024;
 export interface PrintPdfOptions {
   /** Nome do arquivo, sem extensão (ex.: 'etiquetas-PV-00151'). */
   filename: string;
+  /**
+   * Título de contexto no overlay iOS (ex.: 'Etiquetas', 'Fichas').
+   * Se omitido, deriva do filename.
+   */
+  title?: string;
   /** Documentos em paisagem (cartões de lote 12/A4). */
   landscape?: boolean;
-  /** Aba aberta ANTES de gerar — ver openPrintTab. */
+  /** Aba aberta ANTES de gerar — ver openPrintTab. Desktop only; no iOS é ignorada. */
   target?: Window | null;
   /** Job de etiqueta (`print_jobs`) criado antes do envio. Aceita Promise. */
   jobId?: string | Promise<string>;
@@ -211,6 +224,8 @@ export function setPrintTabStage(tab: Window | null, stage: PrintWaitStage, erro
  */
 export function openPrintTab(): Window | null {
   prefetchPrintSession();
+  // No iOS o PDF vai pro overlay in-app — abrir aba só atrapalha o PWA/Safari.
+  if (isIosBrowser()) return null;
   const w = window.open('', PRINT_TAB_NAME);
   // ⚠ O try/catch NÃO é decorativo. Na SEGUNDA geração, `window.open` com o mesmo
   // nome devolve a aba que já existe — e ela está exibindo um PDF. Escrever num
@@ -339,14 +354,90 @@ function avisarNaAba(tab: Window | null, msg: string) {
   setPrintTabStage(tab, 'preparing', msg);
 }
 
+function titleFromFilename(filename: string): string {
+  const raw = String(filename || 'PDF').replace(/\.pdf$/i, '');
+  if (/etiqueta/i.test(raw)) return 'Etiquetas';
+  if (/ficha/i.test(raw)) return 'Fichas';
+  if (/cartao|cartões|cartoes/i.test(raw)) return 'Cartões';
+  if (/foto/i.test(raw)) return 'Fotos';
+  if (/estoque/i.test(raw)) return 'Estoque';
+  if (/consumo/i.test(raw)) return 'Consumo';
+  return 'PDF';
+}
+
+/**
+ * Caminho iOS: overlay in-app + fetch/poll (sem aba). A origem permanece ativa,
+ * então o fetch resolve — diferente do bug antigo em que a aba nova suspendia
+ * a origem.
+ */
+async function printHtmlAsPdfIos(html: string, opts: PrintPdfOptions): Promise<boolean> {
+  const { filename, landscape = false } = opts;
+  const title = opts.title || titleFromFilename(filename);
+  const sessionPromise = sessionPrefetch ?? supabase.auth.getSession();
+  sessionPrefetch = null;
+  const jobPromise = Promise.resolve(opts.jobId);
+
+  const size = new Blob([html]).size;
+  if (size > MAX_DOCUMENT_BYTES) {
+    const mb = (size / 1024 / 1024).toFixed(1);
+    const msg =
+      `Documento grande demais pra gerar de uma vez (${mb}MB). ` +
+      `Imprima em partes — por exemplo, menos setores ou menos OPs por vez.`;
+    toast.error(msg, { duration: 12_000 });
+    return false;
+  }
+
+  beginPdfDelivery({ title, filename });
+
+  try {
+    const [{ data: { session }, error: sessionError }, printJobId] = await Promise.all([
+      sessionPromise,
+      jobPromise,
+    ]);
+    if (sessionError || !session?.access_token) {
+      const msg = 'Sua sessão expirou. Entre novamente antes de gerar o PDF.';
+      setPdfDeliveryError(msg);
+      toast.error(msg, { duration: 10_000 });
+      return false;
+    }
+    if (isPdfDeliveryCancelled()) return false;
+
+    const result = await renderPdfBytesClient({
+      html,
+      filename,
+      title,
+      accessToken: session.access_token,
+      landscape,
+      jobId: printJobId || undefined,
+    });
+    if (isPdfDeliveryCancelled()) return false;
+    setPdfDeliveryReady({
+      bytes: result.bytes,
+      safariUrl: result.safariUrl,
+      filename: result.filename,
+    });
+    return true;
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') return false;
+    if (isPdfDeliveryCancelled()) return false;
+    const msg = err instanceof Error ? err.message : 'erro desconhecido';
+    setPdfDeliveryError(msg);
+    toast.error(`Não foi possível gerar o PDF: ${msg}`, { duration: 10_000 });
+    return false;
+  }
+}
+
 /**
  * Manda o HTML pro servidor (fila async) e deixa o NAVEGADOR exibir a espera
- * + PDF na aba.
+ * + PDF na aba (desktop). No iOS usa overlay in-app com Compartilhar/Salvar.
  *
- * Devolve `true` quando o envio foi disparado — o resultado em si aparece na
- * aba, porque quem conduz a navegação daqui em diante é o browser.
+ * Devolve `true` quando o envio foi disparado / o PDF ficou pronto no overlay.
  */
 export async function printHtmlAsPdf(html: string, opts: PrintPdfOptions): Promise<boolean> {
+  if (isIosBrowser()) {
+    return printHtmlAsPdfIos(html, opts);
+  }
+
   const { filename, landscape = false } = opts;
   const tab = opts.target ?? null;
   const sessionPromise = sessionPrefetch ?? supabase.auth.getSession();

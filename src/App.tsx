@@ -1,5 +1,6 @@
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster as Sonner } from "@/components/ui/sonner";
+import PdfDeliveryHost from "@/components/pdf/PdfDeliveryHost";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider, QueryCache, MutationCache, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -1293,6 +1294,7 @@ const App = () => (
           <TooltipProvider>
             <VersionChecker />
             <Sonner position="top-right" closeButton richColors />
+            <PdfDeliveryHost />
             <RouterProvider router={router} />
           </TooltipProvider>
         </AuthCacheBoundary>

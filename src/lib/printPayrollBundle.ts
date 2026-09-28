@@ -487,9 +487,10 @@ export function printPayrollBundle(params: {
   const html = buildPayrollHtml(params);
   if (!html) return;
 
-  const w = window.open('', '_blank');
-  if (!w) return; // popup bloqueado
-  w.document.open();
-  w.document.write(html);
-  w.document.close();
+  void import('@/lib/htmlPrintDelivery').then(({ deliverHtmlDocument }) => {
+    void deliverHtmlDocument(html, {
+      filename: 'folha-pagamento',
+      title: 'Folha',
+    });
+  });
 }

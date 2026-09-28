@@ -2477,6 +2477,7 @@ export function LabelProductionTab() {
     setPrintRequest(null);
     void printHtmlAsPdf(request.html, {
       filename: `etiquetas-${new Date().toISOString().slice(0, 10)}`,
+      title: 'Etiquetas',
       target,
       jobId: request.jobId,
     }).then(async submitted => {

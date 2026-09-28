@@ -75,6 +75,7 @@ function openPrint(html: string, filename: string, totalLabels: number, orderIds
     try {
       const submitted = await printHtmlAsPdf(html, {
         filename,
+        title: 'Etiquetas',
         target: tab,
         jobId: jobPromise,
       });

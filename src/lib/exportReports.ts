@@ -101,7 +101,8 @@ export async function exportSalesSummaryPDF(data: ReportData) {
     s.order_number || '', s.client_name || '', fmtDate(s.created_at),
     fmtDate(s.delivery_deadline), fmtBRL(Number(s.total) || 0), s.status || '',
   ]));
-  doc.save(`resumo_vendas_${ts()}.pdf`);
+  const { deliverJsPdf } = await import('@/lib/pdfDelivery');
+  deliverJsPdf(doc, `resumo_vendas_${ts()}.pdf`, 'Resumo de vendas');
 }
 
 export async function exportProductionReportExcel(data: ReportData) {
@@ -132,7 +133,8 @@ export async function exportProductionReportPDF(data: ReportData) {
     o.color || '', o.quantity || 0, o.status || '',
     fmtDate(o.due_date || o.delivery_deadline),
   ]));
-  doc.save(`relatorio_producao_${ts()}.pdf`);
+  const { deliverJsPdf } = await import('@/lib/pdfDelivery');
+  deliverJsPdf(doc, `relatorio_producao_${ts()}.pdf`, 'Relatório de produção');
 }
 
 export async function exportStockPositionExcel(data: ReportData) {
@@ -167,7 +169,8 @@ export async function exportStockPositionPDF(data: ReportData) {
       const situation = qty === 0 ? 'SEM ESTOQUE' : qty <= min ? 'CRÍTICO' : 'OK';
       return [p.sku || '', p.name || '', p.unit || '', qty, min, fmtBRL(Number(p.unit_price) || 0), fmtBRL(qty * (Number(p.unit_price) || 0)), situation];
     }));
-  doc.save(`posicao_estoque_${ts()}.pdf`);
+  const { deliverJsPdf } = await import('@/lib/pdfDelivery');
+  deliverJsPdf(doc, `posicao_estoque_${ts()}.pdf`, 'Posição de estoque');
 }
 
 export async function exportFinancialSummaryExcel(data: ReportData) {
@@ -322,7 +325,8 @@ export async function exportDashboardPDF(data: ReportData, metrics: { ordersToda
       ]));
   }
 
-  doc.save(`relatorio_analitico_${ts()}.pdf`);
+  const { deliverJsPdf } = await import('@/lib/pdfDelivery');
+  deliverJsPdf(doc, `relatorio_analitico_${ts()}.pdf`, 'Relatório analítico');
 }
 
 export async function exportTemplateExcel(templateId: string, data: ReportData) {

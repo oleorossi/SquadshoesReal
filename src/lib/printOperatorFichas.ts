@@ -264,11 +264,14 @@ function renderAndOpen(inputs: FichaInput[], titleHint: string): void {
   </div>
 </body></html>`;
 
-  const w = window.open('', '_blank');
-  if (!w) { alert('Permita pop-ups para gerar as fichas de operador.'); return; }
-  w.document.open();
-  w.document.write(html);
-  w.document.close();
+  void import('@/lib/htmlPrintDelivery').then(({ deliverHtmlDocument }) => {
+    void deliverHtmlDocument(html, {
+      filename: 'fichas-operador',
+      title: 'Fichas',
+    }).then((ok) => {
+      if (!ok) alert('Permita pop-ups para gerar as fichas de operador.');
+    });
+  });
 }
 
 /** Fichas de operador de UM pedido (PV) inteiro — usa os itens do PV (grade base). */

@@ -278,13 +278,14 @@ export function buildPerPvMaterialsHtml(input: PerPvPrintInput): string {
   return html;
 }
 
-/** @returns true se a janela de impressão foi aberta; false se bloqueada. */
+/** @returns true se a entrega foi iniciada; false se bloqueada. */
 export function printPerPvMaterials(input: PerPvPrintInput): boolean {
-  const printWindow = window.open('', '_blank');
-  if (!printWindow) return false;
-  printWindow.document.write(buildPerPvMaterialsHtml(input));
-  printWindow.document.close();
-  printWindow.focus();
-  setTimeout(() => printWindow.print(), 400);
+  const html = buildPerPvMaterialsHtml(input);
+  void import('@/lib/htmlPrintDelivery').then(({ deliverHtmlDocument }) => {
+    void deliverHtmlDocument(html, {
+      filename: 'materiais-por-pv',
+      title: 'Materiais',
+    });
+  });
   return true;
 }

@@ -28,7 +28,8 @@ import { buildBuyList, isBuyListRow, baseMaterialName, rowBelongsToBaseFamily, t
 import { formatQty, formatUnit, formatPricePerUnit, pluralizeItens } from '@/lib/consumptionFormat';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { buildMaterialConsumptionReportHtml } from '@/lib/materialConsumptionReport';
-import { openPrintTab } from '@/lib/printPdf';
+import { openPrintTab, printHtmlAsPdf } from '@/lib/printPdf';
+import { isIosBrowser } from '@/lib/iosDevice';
 import { cn, formatCurrency, formatMoney } from '@/lib/utils';
 import {
   aggregateItems,
@@ -736,22 +737,33 @@ export default function MaterialConsumptionView({
   }), [rows]);
 
   const handlePrintPdf = useCallback(() => {
-    // Relatório já é HTML autocontido — imprime no cliente (sem Chromium /api/render-pdf).
+    const reportTitle = grossNeed
+      ? title.replace(/consumo de materiais/i, 'Consumo total')
+      : title;
+    const html = buildMaterialConsumptionReportHtml({
+      rows,
+      artisanalStrapRows,
+      title: reportTitle,
+      orderHeaders,
+      mode: grossNeed ? 'total' : 'coverage',
+      partitionMode,
+    });
+
+    // iOS: vira arquivo real via servidor + overlay Compartilhar/Salvar.
+    if (isIosBrowser()) {
+      setPrintingPdf(true);
+      void printHtmlAsPdf(html, {
+        filename: 'consumo-materiais',
+        title: 'Consumo',
+      }).finally(() => setPrintingPdf(false));
+      return;
+    }
+
+    // Desktop: relatório HTML autocontido — imprime no cliente.
     const target = openPrintTab();
     if (!target) return;
     setPrintingPdf(true);
     try {
-      const reportTitle = grossNeed
-        ? title.replace(/consumo de materiais/i, 'Consumo total')
-        : title;
-      const html = buildMaterialConsumptionReportHtml({
-        rows,
-        artisanalStrapRows,
-        title: reportTitle,
-        orderHeaders,
-        mode: grossNeed ? 'total' : 'coverage',
-        partitionMode,
-      });
       const withPrint = html.includes('</body>')
         ? html.replace(
           '</body>',

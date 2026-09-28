@@ -290,6 +290,20 @@ export async function hashStrapPurchaseOrderPdf(bytes: Uint8Array) {
 }
 
 export function downloadBinaryFile(bytes: Uint8Array, fileName: string, contentType: string) {
+  // PDF no iOS: overlay Compartilhar/Salvar (viewer/download nativo não entrega arquivo).
+  if (/application\/pdf/i.test(contentType) || /\.pdf$/i.test(fileName)) {
+    // import lazy evita ciclo com pdfDelivery → (futuros) helpers de print
+    void import('@/lib/pdfDelivery').then(({ deliverPdfBytes }) => {
+      deliverPdfBytes(bytes, {
+        filename: fileName,
+        title: /\bos[-_]?tiras/i.test(fileName) ? 'Ordem de serviço'
+          : /lote[-_]?tiras/i.test(fileName) ? 'Lote de tiras'
+          : /oc/i.test(fileName) ? 'Ordem de compra'
+          : 'PDF',
+      });
+    });
+    return;
+  }
   const blob = new Blob([bytes], { type: contentType });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');

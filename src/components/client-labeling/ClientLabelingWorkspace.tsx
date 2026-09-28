@@ -178,6 +178,14 @@ const PONTO_MIX_FILE_FIELDS: Array<{
 ];
 
 function downloadBlob(blob: Blob, filename: string) {
+  if (/\.pdf$/i.test(filename) || /application\/pdf/i.test(blob.type)) {
+    void blob.arrayBuffer().then((buf) =>
+      import('@/lib/pdfDelivery').then(({ deliverPdfBytes }) => {
+        deliverPdfBytes(new Uint8Array(buf), { filename, title: 'Etiquetas' });
+      }),
+    );
+    return;
+  }
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -620,7 +628,8 @@ export function ClientLabelingWorkspace() {
           repeatByQuantity: mode === 'production',
           logo,
         });
-        doc.save(nalinTagPdfFilename(originName));
+        const { deliverJsPdf } = await import('@/lib/pdfDelivery');
+        deliverJsPdf(doc, nalinTagPdfFilename(originName), 'Etiquetas');
         if (mode === 'production') {
           const zpl = buildNalinTagZpl(sourceRows, {
             geometry: pattern.geometry,
@@ -657,7 +666,8 @@ export function ClientLabelingWorkspace() {
           repeatByQuantity: mode === 'production',
           logo,
         });
-        doc.save(objetivaPdfFilename(originName));
+        const { deliverJsPdf } = await import('@/lib/pdfDelivery');
+        deliverJsPdf(doc, objetivaPdfFilename(originName), 'Etiquetas');
         if (mode === 'production') {
           // Mesma impressora/mídia da Ponto Mix: sai o ZPL junto do PDF.
           const zpl = buildObjetivaZpl(sourceRows, {
@@ -729,11 +739,12 @@ export function ClientLabelingWorkspace() {
             logo,
           },
         );
+        const { deliverJsPdf } = await import('@/lib/pdfDelivery');
         if (mode === 'graphic') {
-          doc.save(graphicPdfFilename(originName));
+          deliverJsPdf(doc, graphicPdfFilename(originName), 'Etiquetas');
           toast.success(`Arquivo para gráfica com ${selectedSkuAnalysis.rows.length} SKU(s) gerado.`);
         } else {
-          doc.save(pdfFilename(originName));
+          deliverJsPdf(doc, pdfFilename(originName), 'Etiquetas');
           toast.success(`PDF de produção com ${totalEtiquetas} etiqueta(s) gerado.`);
         }
       }

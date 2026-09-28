@@ -218,10 +218,20 @@ async function markPrintJob(
   } catch { /* auditoria secundária */ }
 }
 
+function wantsClientPreserve(req: VercelRequest): boolean {
+  // Overlay iOS baixa os bytes e ainda pode abrir o mesmo job no Safari.
+  if (String(req.headers['x-squad-pdf-client'] || '') === '1') return true;
+  const raw = req.query.client;
+  if (raw === '1' || raw === 'true') return true;
+  if (Array.isArray(raw) && (raw[0] === '1' || raw[0] === 'true')) return true;
+  return false;
+}
+
 async function streamStoredPdf(
   db: SupabaseClient,
   job: PdfRenderJob,
   res: VercelResponse,
+  opts?: { preserve?: boolean },
 ) {
   if (!job.pdf_storage_path) {
     return res.status(500).json({ error: 'PDF pronto sem caminho no Storage.' });
@@ -236,9 +246,12 @@ async function streamStoredPdf(
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Content-Disposition', `inline; filename="${sanitizeFilename(job.filename)}.pdf"`);
   // Limpeza best-effort: HTML + PDF após servir (TTL curto).
-  void db.storage.from(PDF_QUEUE_BUCKET).remove(
-    [job.storage_path, job.pdf_storage_path].filter(Boolean),
-  );
+  // Cliente iOS pede preserve pra ainda conseguir "Abrir no Safari" no mesmo job.
+  if (!opts?.preserve) {
+    void db.storage.from(PDF_QUEUE_BUCKET).remove(
+      [job.storage_path, job.pdf_storage_path].filter(Boolean),
+    );
+  }
   return res.status(200).send(buf);
 }
 
@@ -439,7 +452,7 @@ async function pollJob(req: VercelRequest, res: VercelResponse) {
 
   if (job.status === 'ready') {
     if (wantsJson(req)) return res.status(200).json({ status: 'ready' });
-    return streamStoredPdf(db, job, res);
+    return streamStoredPdf(db, job, res, { preserve: wantsClientPreserve(req) });
   }
   if (job.status === 'failed') {
     return jsonOrHtml(req, res, 500, {
@@ -534,9 +547,11 @@ async function enqueueAsyncJob(
   printJobId: string | undefined,
   accessToken: string,
   res: VercelResponse,
+  opts?: { asJson?: boolean },
 ) {
   const jobId = randomUUID();
   const storagePath = `${userId}/${jobId}.html`;
+  const asJson = opts?.asJson === true;
 
   const { error: uploadError } = await db.storage.from(PDF_QUEUE_BUCKET).upload(
     storagePath,
@@ -544,7 +559,7 @@ async function enqueueAsyncJob(
     { contentType: 'text/html; charset=utf-8', upsert: false },
   );
   if (uploadError) {
-    return fail(res, true, 500, `Não foi possível enfileirar o documento: ${uploadError.message}`);
+    return fail(res, !asJson, 500, `Não foi possível enfileirar o documento: ${uploadError.message}`);
   }
 
   const { error: insertError } = await db.from('pdf_render_jobs').insert({
@@ -558,11 +573,14 @@ async function enqueueAsyncJob(
   });
   if (insertError) {
     void db.storage.from(PDF_QUEUE_BUCKET).remove([storagePath]);
-    return fail(res, true, 500, `Não foi possível criar o job de PDF: ${insertError.message}`);
+    return fail(res, !asJson, 500, `Não foi possível criar o job de PDF: ${insertError.message}`);
   }
 
-  res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
+  if (asJson) {
+    return res.status(200).json({ job: jobId, status: 'pending' });
+  }
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
   return res.status(200).send(enqueueWaitHtml(jobId, accessToken));
 }
 
@@ -584,9 +602,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const landscape = body.landscape === true || body.landscape === '1';
   const filename = sanitizeFilename(body.filename) || 'documento';
   const asyncMode = body.async === true || body.async === '1';
+  const asJson = wantsJson(req);
   // Requisição vinda de formulário = quem lê a resposta é uma PESSOA numa aba.
   // Erro em JSON ali é lixo na tela; devolvemos HTML legível.
-  const querHtml = String(req.headers.accept || '').includes('text/html') || asyncMode;
+  // Cliente iOS (Accept: application/json) quer JSON mesmo com async=1.
+  const querHtml = !asJson && (
+    String(req.headers.accept || '').includes('text/html') || asyncMode
+  );
 
   if (!body.access_token) {
     return fail(res, querHtml, 401, 'Sessão ausente. Entre novamente no sistema.');
@@ -634,6 +656,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       body.job_id,
       body.access_token,
       res,
+      { asJson },
     );
   }
 

@@ -1238,6 +1238,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       }
       await printHtmlAsPdf(serializeForPdf(area, 'Fichas de Produção'), {
         filename: `fichas-${new Date().toISOString().slice(0, 10)}`,
+        title: 'Fichas',
         target: printTabRef.current,
       });
     } finally {
