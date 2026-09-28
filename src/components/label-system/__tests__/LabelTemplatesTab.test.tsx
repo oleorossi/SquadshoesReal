@@ -5,7 +5,7 @@ import { LabelTemplatesTab } from '../LabelTemplatesTab';
 
 const mocks = vi.hoisted(() => ({
   buildPdf: vi.fn(),
-  savePdf: vi.fn(),
+  deliverJsPdf: vi.fn(),
   createPrintJob: vi.fn(),
   setPrintJobStatus: vi.fn(),
   eq: vi.fn(),
@@ -19,6 +19,10 @@ vi.mock('@/lib/standardTextLabels', async importOriginal => {
   const actual = await importOriginal<typeof import('@/lib/standardTextLabels')>();
   return { ...actual, buildStandardTextLabelsPdf: mocks.buildPdf };
 });
+
+vi.mock('@/lib/pdfDelivery', () => ({
+  deliverJsPdf: mocks.deliverJsPdf,
+}));
 
 vi.mock('@/lib/printJobs', () => ({
   createPrintJob: mocks.createPrintJob,
@@ -52,7 +56,7 @@ function fillDraft(copies = '3') {
 describe('LabelTemplatesTab · gerador padronizado', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.buildPdf.mockResolvedValue({ save: mocks.savePdf });
+    mocks.buildPdf.mockResolvedValue({ output: () => new ArrayBuffer(8) });
     mocks.createPrintJob.mockResolvedValue('job-1');
     mocks.setPrintJobStatus.mockResolvedValue(undefined);
     mocks.eq.mockResolvedValue({
@@ -104,7 +108,11 @@ describe('LabelTemplatesTab · gerador padronizado', () => {
       templateId: '11111111-1111-4111-8111-111111111111',
     });
     expect(mocks.createPrintJob.mock.invocationCallOrder[0]).toBeLessThan(mocks.buildPdf.mock.invocationCallOrder[0]);
-    expect(mocks.savePdf).toHaveBeenCalledWith(expect.stringMatching(/^etiquetas-caixa-externa-\d{8}\.pdf$/));
+    expect(mocks.deliverJsPdf).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.stringMatching(/^etiquetas-caixa-externa-\d{8}\.pdf$/),
+      'Etiquetas',
+    );
     expect(mocks.setPrintJobStatus).toHaveBeenCalledWith('job-1', 'generated');
     expect(mocks.toastSuccess).toHaveBeenCalledWith('3 etiquetas geradas no padrão L42PRO.');
   });
