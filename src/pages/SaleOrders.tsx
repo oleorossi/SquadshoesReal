@@ -94,7 +94,29 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useSaleOrders, useSaleOrderAllItems, useCreateSaleOrder, useDeleteSaleOrder, softDeleteSaleOrderWithBusyRetry, useUpdateSaleOrderStatus, useRetrySaleOrderMaterialization, useDiscardSaleOrderMaterialization, useResyncOPsFromSheets, useResyncOPsFromPV, useCommitPickingForSaleOrder, useRealtimeSaleOrders, ORDER_TYPE_LABELS } from '@/hooks/useSaleOrders';
+import {
+  useSaleOrders,
+  useSaleOrderAllItems,
+  useCreateSaleOrder,
+  useDeleteSaleOrder,
+  softDeleteSaleOrderWithBusyRetry,
+  useUpdateSaleOrderStatus,
+  useRetrySaleOrderMaterialization,
+  useDiscardSaleOrderMaterialization,
+  useResyncOPsFromSheets,
+  useResyncOPsFromPV,
+  useCommitPickingForSaleOrder,
+  useRealtimeSaleOrders,
+  ORDER_TYPE_LABELS,
+  PACKAGING_MODE_LABELS,
+  PACKAGING_MODE_CANONICAL,
+  type PackagingMode,
+} from '@/hooks/useSaleOrders';
+import {
+  applyBulkPackagingModeChange,
+  filterBulkPackagingEligibleIds,
+  isCanonicalPackagingMode,
+} from '@/lib/bulkPackagingMode';
 import DuplicateToStoresDialog from '@/components/sales/DuplicateToStoresDialog';
 import {
   executeSaleOrderCommand,
@@ -454,6 +476,9 @@ export default function SaleOrders() {
   const [bulkNfeMode, setBulkNfeMode] = useState<'preview' | 'emit'>('preview');
   const [bulkStatusOpen, setBulkStatusOpen] = useState(false);
   const [bulkStatusTarget, setBulkStatusTarget] = useState<string>('');
+  const [bulkPackagingOpen, setBulkPackagingOpen] = useState(false);
+  const [bulkPackagingTarget, setBulkPackagingTarget] = useState<PackagingMode>('individual_fitilho');
+  const [bulkPackagingRunning, setBulkPackagingRunning] = useState(false);
   const [mainTab, setMainTab] = usePersistedState<string>('saleOrderMainTab', 'ativos');
 
   // Derived data
@@ -1268,6 +1293,48 @@ export default function SaleOrders() {
       numbers: selected.map(o => o.order_number),
       netOfStock: true,
     });
+  };
+
+  const handleBulkPackagingChange = async (packagingMode: PackagingMode) => {
+    if (selectedIds.size === 0) return;
+    if (!isCanonicalPackagingMode(packagingMode)) {
+      toast.error('Selecione um modo de embalagem válido.');
+      return;
+    }
+
+    const { eligibleIds, skipped } = filterBulkPackagingEligibleIds(orders, selectedIds);
+    if (skipped > 0) {
+      toast.info(`${skipped} pedido(s) ignorado(s) — Faturado/Cancelado/terminais não mudam embalagem.`);
+    }
+    if (eligibleIds.length === 0) {
+      toast.info('Nenhum pedido selecionado permite alterar embalagem.');
+      return;
+    }
+
+    setBulkPackagingRunning(true);
+    try {
+      const { updatedCount, failures } = await applyBulkPackagingModeChange({
+        orderIds: eligibleIds,
+        packagingMode,
+        labelFor: (orderId) => orders.find((o) => o.id === orderId)?.order_number || orderId.slice(0, 8),
+      });
+      if (failures.length > 0) {
+        toast.warning(`${failures.length} pedido(s) não tiveram a embalagem alterada.`, {
+          description: failures.slice(0, 3).join('\n'),
+          duration: 12000,
+        });
+      }
+      queryClient.invalidateQueries({ queryKey: ['sale_orders'] });
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      if (updatedCount > 0) {
+        toast.success(
+          `${updatedCount} pedido(s) → ${PACKAGING_MODE_LABELS[packagingMode]}`,
+        );
+        setSelectedIds(new Set());
+      }
+    } finally {
+      setBulkPackagingRunning(false);
+    }
   };
 
   const handleBulkLabels = () => {
@@ -2532,6 +2599,16 @@ export default function SaleOrders() {
           }] : []),
           ...(canBuy ? [{ label: 'Gerar ordem de compra', icon: <ShoppingCart className="h-3.5 w-3.5" />, variant: 'outline' as const, onClick: handleBulkPurchaseOrders }] : []),
           { label: 'Emitir NF-e', icon: <Receipt className="h-3.5 w-3.5" />, onClick: () => openBulkNfe('emit') },
+          {
+            label: 'Embalagem',
+            icon: <Package className="h-3.5 w-3.5" />,
+            variant: 'outline' as const,
+            onClick: () => {
+              setBulkPackagingTarget('individual_fitilho');
+              setBulkPackagingOpen(true);
+            },
+            disabled: Boolean(bulkPackagingRunning || bulkStatusProgress),
+          },
           { label: 'Etiqueta Individual', icon: <Barcode className="h-3.5 w-3.5" />, variant: 'outline' as const, onClick: handleBulkLabels },
           { label: 'Consumo', icon: <BarChart3 className="h-3.5 w-3.5" />, variant: 'outline' as const, onClick: handleBulkConsumption },
           ...(canEditPv ? [{
@@ -2611,6 +2688,77 @@ export default function SaleOrders() {
               }}
             >
               Aplicar para {sel.count} PV(s)
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Alterar embalagem em LOTE — corrige Colméia vs Individual+Fitilho sem abrir cada PV */}
+      <Dialog
+        open={bulkPackagingOpen}
+        onOpenChange={(open) => {
+          if (bulkPackagingRunning) return;
+          setBulkPackagingOpen(open);
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Package className="h-4 w-4" />
+              Alterar embalagem em lote
+            </DialogTitle>
+            <DialogDescription>
+              {sel.count} pedido(s) selecionado(s). Em Produção entra; Faturado,
+              Cancelado e terminais ficam de fora. Confirmar cancela OPs avançadas
+              se o servidor exigir e pode desajustar estoque de caixa — use para
+              destravar etiqueta individual.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2.5 pt-1">
+            <Label className="text-xs uppercase tracking-wider text-muted-foreground font-bold">
+              Modo de embalagem
+            </Label>
+            <Select
+              value={bulkPackagingTarget}
+              onValueChange={(v) => {
+                if (isCanonicalPackagingMode(v)) setBulkPackagingTarget(v);
+              }}
+              disabled={bulkPackagingRunning}
+            >
+              <SelectTrigger><SelectValue placeholder="Selecione a embalagem" /></SelectTrigger>
+              <SelectContent>
+                {PACKAGING_MODE_CANONICAL.map((mode) => (
+                  <SelectItem key={mode} value={mode}>
+                    {PACKAGING_MODE_LABELS[mode]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter className="pt-3">
+            <Button
+              variant="outline"
+              disabled={bulkPackagingRunning}
+              onClick={() => setBulkPackagingOpen(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              disabled={bulkPackagingRunning || !bulkPackagingTarget}
+              onClick={async () => {
+                const mode = bulkPackagingTarget;
+                setBulkPackagingOpen(false);
+                await handleBulkPackagingChange(mode);
+              }}
+            >
+              {bulkPackagingRunning ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Aplicando…
+                </>
+              ) : (
+                `Aplicar para ${sel.count} PV(s)`
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

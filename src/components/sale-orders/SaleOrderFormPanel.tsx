@@ -1564,7 +1564,7 @@ export default function SaleOrderFormPanel({
   }, [sheetPackagingConfigs, colmeiaCatalog]);
 
   const boxGroupingCapacity = useMemo(() => {
-    const mode = form.packaging_mode || 'colmeia';
+    const mode = form.packaging_mode || 'individual_fitilho';
     const caps = items
       .filter((item) => item.reference_id && item.quantity > 0)
       .map((item) => capacityForItem(item, mode));
@@ -1572,7 +1572,7 @@ export default function SaleOrderFormPanel({
   }, [items, form.packaging_mode, capacityForItem]);
 
   const boxGroupingBlockers = useMemo(() => {
-    const mode = form.packaging_mode || 'colmeia';
+    const mode = form.packaging_mode || 'individual_fitilho';
     const problemas: string[] = [];
     for (const item of items) {
       if (!item.reference_id || !item.grade) continue;
@@ -1603,7 +1603,7 @@ export default function SaleOrderFormPanel({
   const [packagingDetailsOpen, setPackagingDetailsOpen] = useState(form.packaging_mode !== 'colmeia');
 
   const packagingVolumeSummary = useMemo(() => {
-    const mode = form.packaging_mode || 'colmeia';
+    const mode = form.packaging_mode || 'individual_fitilho';
     let volumes = 0;
     const debugItems: Array<Record<string, unknown>> = [];
     for (const item of items) {
@@ -2575,7 +2575,7 @@ export default function SaleOrderFormPanel({
                                 {cfgs.map(cfg => {
                                   const sampleItem = items.find(item => item.reference_id === sheetId && item.quantity > 0);
                                   const capacity = sampleItem
-                                    ? capacityForItem(sampleItem, form.packaging_mode || 'colmeia')
+                                    ? capacityForItem(sampleItem, form.packaging_mode || 'individual_fitilho')
                                     : Math.max(1, Number(cfg.pairs_per_box) || 1);
                                   const packagesNeeded = items
                                     .filter(item => item.reference_id === sheetId && item.quantity > 0)
@@ -2583,7 +2583,7 @@ export default function SaleOrderFormPanel({
                                       if (cfg.packaging_type === 'fitilho') {
                                         return sum + Math.ceil(item.quantity / capacity) * Number(cfg.metros_per_amarrado || 1);
                                       }
-                                      const itemCap = capacityForItem(item, form.packaging_mode || 'colmeia');
+                                      const itemCap = capacityForItem(item, form.packaging_mode || 'individual_fitilho');
                                       const pack = form.box_grouping === 'numeracao_unica'
                                         ? packSaleOrderItemBySize
                                         : packSaleOrderItem;
