@@ -4,7 +4,11 @@
 > Corte: puxar demanda futura de PV aprovado, priorizar o que fecha pedido para
 > faturar, só com material livre, e liberar OP marcada como adiantada.
 >
-> **Status:** spec apenas — implementação sob autorização explícita do dono.
+> **Status implementação (29/09/2026):** v1 entregue —
+> rota `/producao/corte-lookahead`, hook `useCorteLookahead`, RPC
+> `release_corte_lookahead_items` (flag `orders.is_ahead_of_schedule`), badge/filtro
+> Adiantadas no Kanban. Capacidade = `sector_settings.daily_capacity_pairs` por
+> tipo de corte.
 >
 > **Não substitui** [`compras-producao-entrelacadas.md`](compras-producao-entrelacadas.md)
 > (capital via janela de OC) nem [`atelie-cabedal-complexo.md`](atelie-cabedal-complexo.md)

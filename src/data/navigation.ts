@@ -78,6 +78,7 @@ export const navigationCatalog: NavigationResource[] = [
   { path: '/producao', label: 'Produção', group: 'Produção', icon: Factory, surfaces: ['hub', 'command'], preload: () => import('@/pages/ProducaoHub') },
   { path: '/producao/planejamento', label: 'Planejamento', group: 'Produção', icon: ClipboardCheck, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/ProducaoPlanejamento') },
   { path: '/producao/antecipacao', label: 'Antecipação', group: 'Produção', icon: Clock, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/ProducaoAntecipacao') },
+  { path: '/producao/corte-lookahead', label: 'Fila de Corte', group: 'Produção', icon: Scissors, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/ProducaoCorteLookahead') },
   // Mantém o path concedível histórico para não invalidar permissões por item;
   // a rota redireciona imediatamente para a Central em Modo Gestão.
   { path: '/producao/kanban', label: 'Modo Gestão', group: 'Produção', icon: Kanban, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/ProducaoKanban') },
@@ -238,6 +239,7 @@ const hubsDeclarados: NavigationHub[] = [
     children: [
       resource('/producao/planejamento'),
       resource('/producao/antecipacao'),
+      resource('/producao/corte-lookahead'),
       resource('/producao/kanban'),
       resource('/producao/estouro'),
       resource('/producao/apontamento'),

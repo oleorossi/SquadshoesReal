@@ -93,6 +93,8 @@ export interface QueueDetailRow {
   route_progress_pct: number;
   late_days: number;
   queue_position: number;
+  /** OP liberada pela Fila de Corte (orders.is_ahead_of_schedule). */
+  is_ahead_of_schedule?: boolean | null;
 }
 
 export interface OverloadRow {
@@ -275,7 +277,28 @@ export function useProductionQueueDetail() {
         .select('*')
         .order('queue_position');
       if (error) throw error;
-      return (data || []) as QueueDetailRow[];
+      const rows = (data || []) as QueueDetailRow[];
+      const orderIds = rows.map((r) => r.order_id).filter(Boolean);
+      if (orderIds.length === 0) return rows;
+
+      const aheadById = new Map<string, boolean>();
+      const CHUNK = 200;
+      for (let i = 0; i < orderIds.length; i += CHUNK) {
+        const chunk = orderIds.slice(i, i + CHUNK);
+        const { data: aheadRows, error: aheadErr } = await supabase
+          .from('orders')
+          .select('id, is_ahead_of_schedule')
+          .in('id', chunk);
+        if (aheadErr) throw aheadErr;
+        for (const row of aheadRows || []) {
+          aheadById.set(row.id, !!row.is_ahead_of_schedule);
+        }
+      }
+
+      return rows.map((r) => ({
+        ...r,
+        is_ahead_of_schedule: aheadById.get(r.order_id) ?? false,
+      }));
     },
   });
 }

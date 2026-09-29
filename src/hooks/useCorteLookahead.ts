@@ -159,7 +159,9 @@ function requiredQtyForItem(
   quantity: number,
   hasProduct: boolean,
 ): number {
-  if (sector === 'Corte Fibra') return 0;
+  // Fibra: sem consumo pinado na ficha — exige produto resolvido + saldo livre
+  // mínimo (0,01) pra não liberar linha “verde” com free=0.
+  if (sector === 'Corte Fibra') return hasProduct ? 0.01 : 0;
   const perPair = consumptionForSector(sector, sheet);
   if (perPair == null) {
     return hasProduct ? 0.01 : 0;

@@ -179,6 +179,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
   }, [atelierJobMap]);
 
   const [filterAtelierRua, setFilterAtelierRua] = useState(false);
+  const [filterAdiantadas, setFilterAdiantadas] = useState(false);
   // Touch (celular E iPad): sem autofocus (o teclado pularia na cara ao abrir)
   // e sem drag HTML5 confiável — o select "Mover para" do diálogo cobre.
   const coarsePointer = useIsCoarsePointer();
@@ -1039,6 +1040,15 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
           >
             Na rua
           </Button>
+          <Button
+            variant={filterAdiantadas ? 'default' : 'outline'}
+            size="sm"
+            className="h-11 md:h-9 gap-1.5"
+            title="Destaca OPs liberadas pela Fila de Corte"
+            onClick={() => setFilterAdiantadas((v) => !v)}
+          >
+            Adiantadas
+          </Button>
           <div className="flex rounded-md border border-border overflow-hidden" role="group" aria-label="Ordenação da coluna">
             <button
               type="button"
@@ -1861,6 +1871,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                         dimmed={
                           (viewMode === 'destacar' && !!matchedIds && !matchedIds.has(card.q.order_id))
                           || (filterAtelierRua && atelierStatusForCard(card) !== 'sent_to_contractor')
+                          || (filterAdiantadas && !card.q.is_ahead_of_schedule)
                         }
                         highlighted={!selectMode && viewMode === 'destacar' && !!matchedIds && matchedIds.has(card.q.order_id)}
                         siblingActive={
@@ -1876,6 +1887,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                         materialGateDate={gateMap?.get(card.q.order_id)?.ready_date ?? null}
                         materialGateReason={gateMap?.get(card.q.order_id)?.reason ?? null}
                         atelierBadge={atelierKanbanBadgeLabel(atelierStatusForCard(card))}
+                        earlyReleaseBadge={!!card.q.is_ahead_of_schedule}
                         onToggleSelect={() => toggleSelect(card)}
                         onDragStart={() => setDragCard(card)}
                         onDragEnd={() => { setDragCard(null); setDragOverSector(null); }}

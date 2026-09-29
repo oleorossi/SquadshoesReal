@@ -41,6 +41,8 @@ interface Props {
   showPalmilhaChecks?: boolean;
   /** Badge Ateliê (debitar / no prestador / recebido). */
   atelierBadge?: string | null;
+  /** OP adiantada pela Fila de Corte (`orders.is_ahead_of_schedule`). */
+  earlyReleaseBadge?: boolean;
 }
 
 /**
@@ -70,6 +72,7 @@ export function KanbanOpCard({
   materialGateDate = null, materialGateReason = null, onHoverOrder,
   showPalmilhaChecks = false,
   atelierBadge = null,
+  earlyReleaseBadge = false,
 }: Props) {
   const { q, front, delivered, isPartial, columnStage, upstreamGap, parallelSiblings } = card;
   const total = columnStage?.quantity_total || q.quantity;
@@ -173,6 +176,15 @@ export function KanbanOpCard({
               </p>
             </div>
             <span className="flex max-w-[55%] shrink-0 flex-wrap items-center justify-end gap-1">
+              {earlyReleaseBadge && (
+                <Badge
+                  variant="outline"
+                  className="text-[9px] bg-primary/10 text-primary border-primary/30 shrink-0"
+                  title="OP liberada pela Fila de Corte (adiantada)"
+                >
+                  Adiantada
+                </Badge>
+              )}
               {atelierBadge && (
                 <Badge
                   variant="outline"

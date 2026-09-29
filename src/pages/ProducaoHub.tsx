@@ -9,6 +9,7 @@ export default function ProducaoHub() {
       hints={{
         '/producao/planejamento': 'Ondas e liberação de OPs',
         '/producao/antecipacao': 'Adiantar demanda futura',
+        '/producao/corte-lookahead': 'Puxar Corte futuro e fechar PV',
         '/producao/kanban': 'Quadro de gestão',
         '/producao/estouro': 'OPs acima da capacidade',
         '/producao/apontamento': 'Lançar produção por setor',
