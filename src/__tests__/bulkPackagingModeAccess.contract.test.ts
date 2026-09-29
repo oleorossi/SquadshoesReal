@@ -39,7 +39,11 @@ describe('embalagem em lote na lista de Pedidos', () => {
     expect(saleOrders).toContain('Alterar embalagem em lote');
     expect(saleOrders).toContain('applyBulkPackagingModeChange');
     expect(saleOrders).toContain('PACKAGING_MODE_CANONICAL');
-    expect(bulkLib).toContain('cancel_op_ids: cancelOpIds');
+    expect(bulkLib).toContain('buildBulkPackagingUpdatePayload');
+    expect(bulkLib).toContain('stripForbiddenUpdateHeaderFields');
+    expect(bulkLib).toContain('UPDATE_HEADER_FORBIDDEN_KEYS');
+    expect(bulkLib).toContain("'factoring_config_id'");
+    expect(bulkLib).toContain("'delivery_month'");
     expect(bulkLib).toContain('BULK_PACKAGING_ADVANCED_OP_STATUSES');
   });
 

@@ -52,6 +52,57 @@ export function isCanonicalPackagingMode(value: string): value is PackagingMode 
   return (BULK_PACKAGING_MODE_OPTIONS as string[]).includes(value);
 }
 
+/**
+ * Campos que o command `update` REJEITA no header (PZ118) — vivem em
+ * `billing_patch` / `factoring_patch` / transition. Espelha a allow-list
+ * viva em `execute_sale_order_command` e o strip de `useUpdateSaleOrder`.
+ *
+ * Bug de 29/09/2026: o lote mandava `select('*')` cru no header → 7/7 PVs
+ * falhavam com "update não aceita campos de billing/factoring".
+ */
+export const UPDATE_HEADER_FORBIDDEN_KEYS = [
+  'billing_status',
+  'delivery_month',
+  'delivery_week',
+  'billing_week',
+  'delivery_deadline',
+  'manual_billing_override',
+  'original_min_billing_date',
+  'manual_override_reason',
+  'is_factoring',
+  'factoring_config_id',
+  // Status é exclusivo da máquina de estados; o writer força o valor atual.
+  'status',
+] as const;
+
+export function stripForbiddenUpdateHeaderFields<T extends Record<string, unknown>>(
+  header: T,
+): Omit<T, (typeof UPDATE_HEADER_FORBIDDEN_KEYS)[number]> {
+  const next = { ...header };
+  for (const key of UPDATE_HEADER_FORBIDDEN_KEYS) {
+    delete next[key];
+  }
+  return next as Omit<T, (typeof UPDATE_HEADER_FORBIDDEN_KEYS)[number]>;
+}
+
+/** Monta o payload do update só com embalagem mudada — sem contrabandear billing. */
+export function buildBulkPackagingUpdatePayload(input: {
+  header: Record<string, unknown>;
+  items: Record<string, unknown>[];
+  packagingMode: PackagingMode;
+  cancelOpIds: string[];
+}) {
+  return {
+    header: {
+      ...stripForbiddenUpdateHeaderFields(input.header),
+      packaging_mode: input.packagingMode,
+    },
+    items: input.items,
+    teardown_op_ids: [] as string[],
+    cancel_op_ids: input.cancelOpIds,
+  };
+}
+
 async function loadAdvancedOpIds(saleOrderId: string): Promise<string[]> {
   const { data, error } = await supabase
     .from('orders')
@@ -101,12 +152,12 @@ export async function applyBulkPackagingModeChange(input: {
         (header as { order_version?: number | null }).order_version,
       ) || 0;
       const cancelOpIds = await loadAdvancedOpIds(orderId);
-      const payload = {
-        header: { ...header, packaging_mode: input.packagingMode },
-        items,
-        teardown_op_ids: [] as string[],
-        cancel_op_ids: cancelOpIds,
-      };
+      const payload = buildBulkPackagingUpdatePayload({
+        header: header as Record<string, unknown>,
+        items: items as Record<string, unknown>[],
+        packagingMode: input.packagingMode,
+        cancelOpIds,
+      });
 
       const preflight = await preflightSaleOrderCommand({
         saleOrderId: orderId,
