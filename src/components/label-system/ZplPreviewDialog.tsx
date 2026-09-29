@@ -1,10 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { CaretLeft, CaretRight, DownloadSimple, Warning } from '@phosphor-icons/react';
-import { computeZplLayout } from '@/lib/printLabels';
+import { CaretLeft, CaretRight, DownloadSimple, FilePdf, Warning, CircleNotch as Loader2 } from '@phosphor-icons/react';
+import { buildThermalLabelsPdf, computeZplLayout } from '@/lib/printLabels';
+import {
+  openOrDownloadThermalLabelPdf,
+  pdfFileNameForThermalLabels,
+} from '@/lib/thermalLabelPdfDelivery';
 import { monoToRgba, type MonoBitmap } from '@/lib/zplImage';
+import { toast } from 'sonner';
 
 export interface ZplPreviewLabel {
   refCode: string;
@@ -14,6 +19,20 @@ export interface ZplPreviewLabel {
   size: string;
   barcode: string;
   imageName?: string;
+}
+
+/** Campos que o gerador de PDF precisa (foto por URL, não o mono do ZPL). */
+export interface ThermalPdfSourceLabel {
+  refCode: string;
+  refName: string;
+  mainMaterial: string;
+  color: string;
+  size: string;
+  barcode: string;
+  shoeCategory?: string;
+  strapsLabel?: string;
+  imageUrl?: string;
+  imageIsFallback?: boolean;
 }
 
 interface Props {
@@ -26,6 +45,11 @@ interface Props {
   fileName: string;
   /** Fotos que não carregaram — a etiqueta sai sem imagem e isso precisa aparecer. */
   missingPhotos: string[];
+  /**
+   * Mesmas etiquetas com URL de foto — habilita "Abrir PDF" para o Windows
+   * conseguir abrir o arquivo (ZPL puro não abre em leitor comum).
+   */
+  pdfSourceLabels?: ThermalPdfSourceLabel[];
 }
 
 /** Zoom de tela: 1 dot da impressora = ZOOM pixels, sem suavização. */
@@ -50,17 +74,18 @@ const ZOOM = 3;
  */
 export default function ZplPreviewDialog({
   open, onOpenChange, labels, graphics, dimensions, zpl, fileName, missingPhotos,
+  pdfSourceLabels,
 }: Props) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [index, setIndex] = useState(0);
+  const [pdfBusy, setPdfBusy] = useState(false);
 
   useEffect(() => { if (open) setIndex(0); }, [open]);
 
-  useEffect(() => {
-    if (!open) return;
+  const paintLabel = useCallback(() => {
     const canvas = canvasRef.current;
     const label = labels[index];
-    if (!canvas || !label) return;
+    if (!canvas || !label || !open) return;
 
     const L = computeZplLayout(dimensions, graphics.length > 0);
     const work = document.createElement('canvas');
@@ -106,23 +131,6 @@ export default function ZplPreviewDialog({
       ctx.fillText(label.size, L.sizeBoxX + 4, L.sizeCenterY);
     }
 
-    // ── Código de barras ───────────────────────────────────────────────────
-    if (label.barcode) {
-      const bc = document.createElement('canvas');
-      void import('jsbarcode').then(({ default: JsBarcode }) => {
-        try {
-          JsBarcode(bc, label.barcode, {
-            format: 'CODE128', displayValue: true, fontSize: Math.round(L.innerH * 0.16),
-            height: L.barcodeH - Math.round(L.innerH * 0.2), margin: 0, width: 1,
-          });
-          ctx.drawImage(bc, L.barcodeX, L.padY, L.W - L.padX - L.barcodeX, L.barcodeH);
-        } catch { /* payload inválido pro CODE128 — a prévia sai sem barras */ }
-        paint();
-      }).catch(paint);
-    } else {
-      paint();
-    }
-
     /** Limiariza tudo em 1 bit e joga no canvas visível, sem suavização. */
     function paint() {
       const data = ctx!.getImageData(0, 0, L.W, L.H);
@@ -141,9 +149,42 @@ export default function ZplPreviewDialog({
       out.imageSmoothingEnabled = false;
       out.drawImage(work, 0, 0, canvas!.width, canvas!.height);
     }
+
+    // ── Código de barras ───────────────────────────────────────────────────
+    if (label.barcode) {
+      const bc = document.createElement('canvas');
+      void import('jsbarcode').then(({ default: JsBarcode }) => {
+        try {
+          JsBarcode(bc, label.barcode, {
+            format: 'CODE128', displayValue: true, fontSize: Math.round(L.innerH * 0.16),
+            height: L.barcodeH - Math.round(L.innerH * 0.2), margin: 0, width: 1,
+          });
+          ctx.drawImage(bc, L.barcodeX, L.padY, L.W - L.padX - L.barcodeX, L.barcodeH);
+        } catch { /* payload inválido pro CODE128 — a prévia sai sem barras */ }
+        paint();
+      }).catch(paint);
+    } else {
+      paint();
+    }
   }, [open, index, labels, graphics, dimensions]);
 
-  const download = () => {
+  // O Dialog do Radix monta o conteúdo depois do open=true. Pintar só no
+  // useEffect com ref clássica deixava o canvas null na 1ª passada e a prévia
+  // ficava branca pra sempre (bug reportado 29/09/2026).
+  const setCanvasNode = useCallback((node: HTMLCanvasElement | null) => {
+    canvasRef.current = node;
+    if (node) {
+      requestAnimationFrame(() => paintLabel());
+    }
+  }, [paintLabel]);
+
+  useEffect(() => {
+    if (!open) return;
+    const id = requestAnimationFrame(() => paintLabel());
+    return () => cancelAnimationFrame(id);
+  }, [open, paintLabel]);
+
+  const downloadZpl = () => {
     const blob = new Blob([zpl], { type: 'application/octet-stream' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -155,8 +196,34 @@ export default function ZplPreviewDialog({
     URL.revokeObjectURL(url);
   };
 
+  const openPdf = async () => {
+    if (!pdfSourceLabels?.length) {
+      toast.error('PDF indisponível para este lote — use Etiqueta Individual.');
+      return;
+    }
+    setPdfBusy(true);
+    try {
+      const blob = await buildThermalLabelsPdf(
+        pdfSourceLabels,
+        { width: dimensions.width, height: dimensions.height },
+      );
+      const name = pdfFileNameForThermalLabels();
+      const how = await openOrDownloadThermalLabelPdf(blob, name);
+      toast.success(
+        how === 'opened'
+          ? 'PDF aberto — confira, ajuste na impressora e imprima pelo navegador.'
+          : `PDF baixado: ${name}`,
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Falha ao gerar o PDF');
+    } finally {
+      setPdfBusy(false);
+    }
+  };
+
   const label = labels[index];
   const sizeKb = Math.round(new Blob([zpl]).size / 1024);
+  const canPdf = (pdfSourceLabels?.length ?? 0) > 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -186,11 +253,11 @@ export default function ZplPreviewDialog({
           </div>
         )}
 
-        <div className="flex items-center justify-center bg-muted/30 border border-border rounded-md p-4 overflow-x-auto">
-          <canvas ref={canvasRef} className="border border-border shadow-sm" />
+        <div className="flex items-center justify-center bg-muted/30 border border-border rounded-md p-4 overflow-x-auto min-h-[120px]">
+          <canvas ref={setCanvasNode} className="border border-border shadow-sm bg-card" />
         </div>
 
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" className="h-8" disabled={index === 0}
               onClick={() => setIndex(i => Math.max(0, i - 1))} aria-label="Etiqueta anterior">
@@ -209,16 +276,28 @@ export default function ZplPreviewDialog({
               </span>
             )}
           </div>
-          <Button onClick={download} className="gap-2 h-9">
-            <DownloadSimple className="h-4 w-4" />
-            Baixar {fileName}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              onClick={() => void openPdf()}
+              className="gap-2 h-9"
+              disabled={!canPdf || pdfBusy}
+              title="Abre um PDF no navegador — dá pra conferir e mandar pra impressora pelo Windows"
+            >
+              {pdfBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <FilePdf className="h-4 w-4" />}
+              Abrir PDF
+            </Button>
+            <Button onClick={downloadZpl} variant="outline" className="gap-2 h-9"
+              title="Arquivo bruto só para o Gerenciador de Impressora Elgin / DirectPrint">
+              <DownloadSimple className="h-4 w-4" />
+              Baixar {fileName}
+            </Button>
+          </div>
         </div>
 
         <p className="text-xs text-muted-foreground border-t border-border/60 pt-2">
-          Envie o arquivo pela <strong>Gerenciador de Impressora Elgin</strong> (ou qualquer
-          utilitário que mande ZPL bruto). O navegador não consegue falar direto com a
-          etiquetadora.
+          <strong>Para abrir e ajustar no Windows:</strong> use <strong>Abrir PDF</strong>.
+          O arquivo <code className="font-mono">.zpl</code> não abre em leitor comum —
+          ele só serve no <strong>Gerenciador de Impressora Elgin</strong> (ou DirectPrint).
         </p>
       </DialogContent>
     </Dialog>

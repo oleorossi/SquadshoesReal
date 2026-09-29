@@ -2,19 +2,17 @@
  * Troca de embalagem em lote na lista de Pedidos.
  *
  * Decisão do dono (29/09/2026): seletor na barra de seleção para corrigir
- * PVs gravados como Colméia quando o físico é Individual + Fitilho. Em
- * Produção entra; Faturado/Cancelado/terminais ficam de fora. Um Confirmar
- * força cancel_op_ids quando há OP avançada — prioridade é destravar
- * etiqueta individual, aceitando risco de desajuste de estoque de caixa.
+ * PVs gravados como Colméia quando o físico é Individual + Fitilho.
+ *
+ * Caminho canônico: RPC `set_sale_order_packaging_mode` — grava só
+ * packaging_mode (CAS em order_version). O command `update` completo
+ * rematerializa Em Produção e rejeita billing/factoring no header (PZ118);
+ * a RPC evita os dois. O gatilho trg_reconcile_packaging_on_sale_order_mode
+ * reconcilia o débito de caixa.
  */
 import { supabase } from '@/integrations/supabase/client';
 import type { PackagingMode } from '@/hooks/useSaleOrders';
 import { PACKAGING_MODE_CANONICAL } from '@/hooks/useSaleOrders';
-import {
-  executeSaleOrderCommand,
-  preflightSaleOrderCommand,
-  SaleOrderReadinessBlockedError,
-} from '@/lib/saleOrderCommand';
 
 export const BULK_PACKAGING_PROTECTED_STATUSES = [
   'Faturado',
@@ -24,7 +22,7 @@ export const BULK_PACKAGING_PROTECTED_STATUSES = [
   'Concluído',
 ] as const;
 
-/** Status de OP que o writer exige em cancel_op_ids ao rematerializar. */
+/** Status de OP que o writer legado exigia em cancel_op_ids ao rematerializar. */
 export const BULK_PACKAGING_ADVANCED_OP_STATUSES = [
   'Em Produção',
   'Concluída',
@@ -53,12 +51,9 @@ export function isCanonicalPackagingMode(value: string): value is PackagingMode 
 }
 
 /**
- * Campos que o command `update` REJEITA no header (PZ118) — vivem em
- * `billing_patch` / `factoring_patch` / transition. Espelha a allow-list
- * viva em `execute_sale_order_command` e o strip de `useUpdateSaleOrder`.
- *
- * Bug de 29/09/2026: o lote mandava `select('*')` cru no header → 7/7 PVs
- * falhavam com "update não aceita campos de billing/factoring".
+ * Campos que o command `update` REJEITA no header (PZ118). Mantidos aqui
+ * porque o strip ainda é testado — a rota nova não manda header, mas o
+ * contrato documenta o bug de 29/09/2026.
  */
 export const UPDATE_HEADER_FORBIDDEN_KEYS = [
   'billing_status',
@@ -71,7 +66,6 @@ export const UPDATE_HEADER_FORBIDDEN_KEYS = [
   'manual_override_reason',
   'is_factoring',
   'factoring_config_id',
-  // Status é exclusivo da máquina de estados; o writer força o valor atual.
   'status',
 ] as const;
 
@@ -85,7 +79,7 @@ export function stripForbiddenUpdateHeaderFields<T extends Record<string, unknow
   return next as Omit<T, (typeof UPDATE_HEADER_FORBIDDEN_KEYS)[number]>;
 }
 
-/** Monta o payload do update só com embalagem mudada — sem contrabandear billing. */
+/** @deprecated Preferir a RPC; mantido só pro contrato de strip do header. */
 export function buildBulkPackagingUpdatePayload(input: {
   header: Record<string, unknown>;
   items: Record<string, unknown>[];
@@ -103,20 +97,13 @@ export function buildBulkPackagingUpdatePayload(input: {
   };
 }
 
-async function loadAdvancedOpIds(saleOrderId: string): Promise<string[]> {
-  const { data, error } = await supabase
-    .from('orders')
-    .select('id')
-    .eq('sale_order_id', saleOrderId)
-    .in('status', [...BULK_PACKAGING_ADVANCED_OP_STATUSES]);
-  if (error) throw error;
-  return (data || []).map((row) => row.id);
+function rpcErrorMessage(error: { message?: string; details?: string; hint?: string } | null): string {
+  if (!error) return 'erro desconhecido';
+  return error.message || error.details || error.hint || 'erro desconhecido';
 }
 
 /**
- * Aplica packaging_mode em série pelo mesmo command boundary da edição
- * individual. Já inclui cancel_op_ids das OPs avançadas (força, sem segunda
- * confirmação por PV).
+ * Aplica packaging_mode em série via RPC leve (sem rematerializar OPs).
  */
 export async function applyBulkPackagingModeChange(input: {
   orderIds: string[];
@@ -133,13 +120,12 @@ export async function applyBulkPackagingModeChange(input: {
 
   for (const orderId of input.orderIds) {
     try {
-      const [{ data: header, error: headerError }, { data: items, error: itemsError }] = await Promise.all([
-        supabase.from('sale_orders').select('*').eq('id', orderId).single(),
-        supabase.from('sale_order_items').select('*').eq('sale_order_id', orderId).order('created_at'),
-      ]);
+      const { data: header, error: headerError } = await supabase
+        .from('sale_orders')
+        .select('id, status, packaging_mode, order_version')
+        .eq('id', orderId)
+        .single();
       if (headerError || !header) throw headerError || new Error('PV não encontrado');
-      if (itemsError) throw itemsError;
-      if (!items?.length) throw new Error('PV sem itens não pode ser atualizado');
       if (!isBulkPackagingEligibleStatus(header.status)) {
         throw new Error(`status mudou para ${header.status}`);
       }
@@ -151,29 +137,18 @@ export async function applyBulkPackagingModeChange(input: {
       const expectedOrderVersion = Number(
         (header as { order_version?: number | null }).order_version,
       ) || 0;
-      const cancelOpIds = await loadAdvancedOpIds(orderId);
-      const payload = buildBulkPackagingUpdatePayload({
-        header: header as Record<string, unknown>,
-        items: items as Record<string, unknown>[],
-        packagingMode: input.packagingMode,
-        cancelOpIds,
-      });
 
-      const preflight = await preflightSaleOrderCommand({
-        saleOrderId: orderId,
-        command: 'update',
-        expectedOrderVersion,
-        payload,
+      const { data, error } = await supabase.rpc('set_sale_order_packaging_mode', {
+        p_sale_order_id: orderId,
+        p_packaging_mode: input.packagingMode,
+        p_expected_order_version: expectedOrderVersion,
       });
-      if (!preflight.ready) throw new SaleOrderReadinessBlockedError(preflight);
+      if (error) throw new Error(rpcErrorMessage(error));
 
-      await executeSaleOrderCommand({
-        saleOrderId: orderId,
-        command: 'update',
-        expectedOrderVersion,
-        idempotencyKey: `pv:${orderId}:bulk-packaging:${crypto.randomUUID()}`,
-        payload,
-      });
+      const result = data as { ok?: boolean; unchanged?: boolean } | null;
+      if (result && result.ok === false) {
+        throw new Error('RPC recusou a troca de embalagem');
+      }
       updatedCount += 1;
     } catch (error) {
       failures.push(

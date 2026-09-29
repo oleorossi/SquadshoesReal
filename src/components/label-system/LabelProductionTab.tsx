@@ -16,7 +16,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback, type SetStateAction } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { Tag, MagnifyingGlass as Search, Barcode, Gear as Settings2, Package as BoxIcon, Package, ArrowCounterClockwise as RotateCcw, Factory, Scan as ScanLine, CalendarBlank as CalendarDays, Buildings as Building2, CircleNotch as Loader2, Stack as Layers, CheckCircle as CheckCircle2, PencilSimple as Pencil, CaretLeft, CaretRight, Plus, X } from '@phosphor-icons/react';
+import { Tag, MagnifyingGlass as Search, Barcode, Gear as Settings2, Package as BoxIcon, Package, ArrowCounterClockwise as RotateCcw, Factory, Scan as ScanLine, CalendarBlank as CalendarDays, Buildings as Building2, CircleNotch as Loader2, Stack as Layers, CheckCircle as CheckCircle2, PencilSimple as Pencil, CaretLeft, CaretRight, Plus, X, FilePdf } from '@phosphor-icons/react';
 import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, parseISO } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -35,9 +35,13 @@ import logoImg from '@/assets/logo-squad-shoes.jpg';
 import { supabase } from '@/integrations/supabase/client';
 import { resolveProductImageWithSource } from '@/lib/imageFallback';
 import { resolveMaterialLabels, materialLabelKey, materialNameFromCommercialSnapshot, type MaterialLabelInput } from '@/lib/labelUtils';
-import { buildBoxIdentificationHtml, buildThermalLabelsHtml, buildHangtagHtml, buildThermalLabelsZpl, zplPhotoBoxDots, type BoxIdentificationData, type ThermalLabelConfig, DEFAULT_THERMAL_CONFIG, THERMAL_LABEL_WIDTH_MM, THERMAL_LABEL_HEIGHT_MM, THERMAL_SAFE_EDGE_MM } from '@/lib/printLabels';
+import { buildBoxIdentificationHtml, buildThermalLabelsHtml, buildHangtagHtml, buildThermalLabelsZpl, buildThermalLabelsPdf, zplPhotoBoxDots, type BoxIdentificationData, type ThermalLabelConfig, DEFAULT_THERMAL_CONFIG, THERMAL_LABEL_WIDTH_MM, THERMAL_LABEL_HEIGHT_MM, THERMAL_SAFE_EDGE_MM } from '@/lib/printLabels';
 import { loadImageAsMonochrome, type MonoBitmap } from '@/lib/zplImage';
-import ZplPreviewDialog, { type ZplPreviewLabel } from './ZplPreviewDialog';
+import {
+  openOrDownloadThermalLabelPdf,
+  pdfFileNameForThermalLabels,
+} from '@/lib/thermalLabelPdfDelivery';
+import ZplPreviewDialog, { type ThermalPdfSourceLabel, type ZplPreviewLabel } from './ZplPreviewDialog';
 import { PartialPrintSelectionDialog } from './PartialPrintSelectionDialog';
 import { PartialExternalBoxDialog } from './PartialExternalBoxDialog';
 import { openPrintTab, printHtmlAsPdf } from '@/lib/printPdf';
@@ -1047,6 +1051,7 @@ export function LabelProductionTab() {
     zpl: string;
     fileName: string;
     missingPhotos: string[];
+    pdfSourceLabels: ThermalPdfSourceLabel[];
   } | null>(null);
   // Aba de destino do PDF. Aberta DENTRO do clique (síncrono) — abrir depois do
   // await faz o celular tratar como pop-up e bloquear.
@@ -1608,8 +1613,12 @@ export function LabelProductionTab() {
    * tivesse caminho próprio, os dois botões poderiam divergir sem ninguém notar
    * — e a prévia perderia o sentido.
    */
-  const handlePrintIndividual = async (output: 'html' | 'zpl' = 'html') => {
-    if (!confirmLabelSelection(output === 'zpl' ? 'Gerar ZPL de' : 'Gerar etiquetas individuais de')) return;
+  const handlePrintIndividual = async (output: 'html' | 'zpl' | 'pdf' = 'html') => {
+    if (!confirmLabelSelection(
+      output === 'zpl' ? 'Gerar ZPL de'
+        : output === 'pdf' ? 'Gerar PDF de'
+          : 'Gerar etiquetas individuais de',
+    )) return;
     const selectedGroups = pairPrintGroups;
     const effectiveThermalMode = printCoverage === 'partial' ? 'quantity' : thermalMode;
     // Filter out groups that don't allow thermal labels
@@ -1625,7 +1634,7 @@ export function LabelProductionTab() {
         sum + getLabelPrintGroupTotal(group, printCoverage, partialPrintSelection), 0);
       if (!validateJobSize(requested)) return;
     }
-    // ZPL não abre aba de impressão: o resultado é um arquivo, revisado na prévia.
+    // HTML abre a aba do render-pdf. ZPL/PDF são arquivo local — sem aba.
     if (output === 'html') printTabRef.current = openPrintTab();
     setIsGenerating(true);
     try {
@@ -1763,8 +1772,40 @@ export function LabelProductionTab() {
           zpl,
           fileName: `etiquetas-${new Date().toISOString().slice(0, 10)}.zpl`,
           missingPhotos,
+          pdfSourceLabels: labels as ThermalPdfSourceLabel[],
         });
-        toast.success(`${zplLabels.length} etiquetas em ZPL — confira a prévia antes de baixar.`);
+        toast.success(`${zplLabels.length} etiquetas em ZPL — confira a prévia; use Abrir PDF se precisar do arquivo no Windows.`);
+        if (effectiveThermalMode === 'quantity' && fichaFallbackOrders.size > 0) {
+          toast.warning(
+            `Sem grade de ficha em ${[...fichaFallbackOrders].join(', ')} — nessas OPs as etiquetas saíram ` +
+            'na ordem por numeração, não por grade. Preencha grade e fichas no item do PV.',
+            { duration: 10000 },
+          );
+        }
+        return;
+      }
+
+      if (output === 'pdf') {
+        const fileName = pdfFileNameForThermalLabels();
+        const blob = await buildThermalLabelsPdf(
+          labels as ThermalPdfSourceLabel[],
+          { width: dimensions.width, height: dimensions.height },
+          resolveSender().senderCnpj,
+        );
+        await createPrintJob({
+          batchName: printJobName('Etiqueta Individual PDF'),
+          totalLabels: labels.length,
+          orderIds,
+          marksOrdersAsPrinted: printCoverage === 'total',
+          initialStatus: 'generated',
+        });
+        queryClient.invalidateQueries({ queryKey: ['print_history'] });
+        const how = await openOrDownloadThermalLabelPdf(blob, fileName);
+        toast.success(
+          how === 'opened'
+            ? `${labels.length} etiquetas em PDF — abertas no navegador.`
+            : `${labels.length} etiquetas baixadas: ${fileName}`,
+        );
         if (effectiveThermalMode === 'quantity' && fichaFallbackOrders.size > 0) {
           toast.warning(
             `Sem grade de ficha em ${[...fichaFallbackOrders].join(', ')} — nessas OPs as etiquetas saíram ` +
@@ -2830,17 +2871,34 @@ export function LabelProductionTab() {
                 {pairSelectionLabelTypes.thermal && (
                   <div className="flex flex-col gap-1">
                     <Button
+                      onClick={() => void handlePrintIndividual('pdf')}
+                      variant="outline"
+                      className="gap-2 h-9 shadow-sm"
+                      title="Gera PDF que abre no Windows/navegador — use para conferir e ajustar na impressora"
+                      disabled={isGenerating}
+                    >
+                      <FilePdf className="h-4 w-4" />
+                      PDF ({printCoverage === 'partial' ? `${thermalPrintTotalLabels} etq.` : pairSelectionLabelTypes.thermalCount})
+                    </Button>
+                    <span className="text-xs text-muted-foreground truncate max-w-[200px]">
+                      Abre no PC · imprime pelo driver
+                    </span>
+                  </div>
+                )}
+                {pairSelectionLabelTypes.thermal && (
+                  <div className="flex flex-col gap-1">
+                    <Button
                       onClick={() => void handlePrintIndividual('zpl')}
                       variant="outline"
                       className="gap-2 h-9 shadow-sm border-primary/40 text-primary hover:bg-primary/10"
-                      title="Gera o arquivo ZPL com a foto em 1 bit e abre a prévia fiel antes de baixar"
+                      title="Arquivo ZPL bruto + prévia 1 bit. Só abre no Gerenciador Elgin / DirectPrint — no Windows use o botão PDF"
                       disabled={isGenerating}
                     >
                       <Barcode className="h-4 w-4" />
                       ZPL + Prévia ({printCoverage === 'partial' ? `${thermalPrintTotalLabels} etq.` : pairSelectionLabelTypes.thermalCount})
                     </Button>
                     <span className="text-xs text-muted-foreground truncate max-w-[200px]">
-                      Arquivo p/ Elgin · foto 1 bit
+                      Só p/ Elgin · não abre no Windows
                     </span>
                   </div>
                 )}
@@ -3365,6 +3423,7 @@ export function LabelProductionTab() {
           zpl={zplPreview.zpl}
           fileName={zplPreview.fileName}
           missingPhotos={zplPreview.missingPhotos}
+          pdfSourceLabels={zplPreview.pdfSourceLabels}
         />
       )}
 
