@@ -193,6 +193,7 @@ export const topItem = resource('/dashboard');
 export const SYSTEM_SHORTCUT_PATHS = [
   '/sales',
   '/producao/planejamento',
+  '/producao/corte-lookahead',
   '/materiais',
   '/expedicao',
   '/nfe',
@@ -237,9 +238,9 @@ const hubsDeclarados: NavigationHub[] = [
     icon: Factory,
     groups: ['Produção'],
     children: [
+      resource('/producao/corte-lookahead'),
       resource('/producao/planejamento'),
       resource('/producao/antecipacao'),
-      resource('/producao/corte-lookahead'),
       resource('/producao/kanban'),
       resource('/producao/estouro'),
       resource('/producao/apontamento'),
