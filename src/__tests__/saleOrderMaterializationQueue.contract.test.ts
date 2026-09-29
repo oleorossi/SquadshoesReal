@@ -13,6 +13,13 @@ const MIGRATION = readFileSync(
   resolve(ROOT, 'supabase/migrations/20270101028800_sale_order_materialization_queue.sql'),
   'utf8',
 );
+const AUTH_GUARD_FIX = readFileSync(
+  resolve(
+    ROOT,
+    'supabase/migrations/20270101030000_fix_materialization_worker_service_role_guard.sql',
+  ),
+  'utf8',
+);
 const EDGE = readFileSync(
   resolve(ROOT, 'supabase/functions/process-sale-order-materialization/index.ts'),
   'utf8',
@@ -60,6 +67,68 @@ describe('sale order materialization queue (contrato)', () => {
     expect(body).toContain('p_limit NOT BETWEEN 1 AND 5');
     expect(body).toContain("j.status = 'processing'");
     expect(body).toContain('RETURN;');
+  });
+
+  it('claim/complete/fail usam is_service_role_request_128 (sb_secret_* compat)', () => {
+    // A 28800 nasceu com o guard JWT legado; a 30000 é a fonte viva.
+    expect(AUTH_GUARD_FIX).toContain('CREATE OR REPLACE FUNCTION public.claim_sale_order_materialization_jobs');
+    expect(AUTH_GUARD_FIX).toContain('CREATE OR REPLACE FUNCTION public.complete_sale_order_materialization_job');
+    expect(AUTH_GUARD_FIX).toContain('CREATE OR REPLACE FUNCTION public.fail_sale_order_materialization_job');
+
+    for (const fn of [
+      'claim_sale_order_materialization_jobs',
+      'complete_sale_order_materialization_job',
+      'fail_sale_order_materialization_job',
+    ]) {
+      const start = AUTH_GUARD_FIX.indexOf(`CREATE OR REPLACE FUNCTION public.${fn}`);
+      expect(start).toBeGreaterThanOrEqual(0);
+      const next = AUTH_GUARD_FIX.indexOf('CREATE OR REPLACE FUNCTION public.', start + 1);
+      const revoke = AUTH_GUARD_FIX.indexOf('REVOKE ALL ON FUNCTION public.', start + 1);
+      const end = Math.min(
+        next === -1 ? AUTH_GUARD_FIX.length : next,
+        revoke === -1 ? AUTH_GUARD_FIX.length : revoke,
+      );
+      const body = AUTH_GUARD_FIX.slice(start, end);
+      expect(body).toContain('is_service_role_request_128()');
+      expect(body).not.toMatch(
+        /current_setting\('request\.jwt\.claim\.role'[^)]*\)\s*<>\s*'service_role'/,
+      );
+    }
+  });
+
+  it('execute_sale_order_command e can_execute_* também usam o helper (30100)', () => {
+    const EXEC_GUARD_FIX = readFileSync(
+      resolve(
+        ROOT,
+        'supabase/migrations/20270101030100_fix_execute_sale_order_command_service_role_guard.sql',
+      ),
+      'utf8',
+    );
+    expect(EXEC_GUARD_FIX).toContain('can_execute_sale_order_command');
+    expect(EXEC_GUARD_FIX).toContain('can_execute_sale_order_finance_command');
+    expect(EXEC_GUARD_FIX).toContain('execute_sale_order_command');
+    expect(EXEC_GUARD_FIX).toContain('is_service_role_request_128()');
+    expect(EXEC_GUARD_FIX).toContain('NOT public.is_service_role_request_128()');
+    // Helpers owner-only (sem GRANT a authenticated/service_role).
+    expect(EXEC_GUARD_FIX).not.toMatch(
+      /GRANT EXECUTE ON FUNCTION public\.can_execute_sale_order_command/,
+    );
+  });
+
+  it('is_approved_user e user_has_any_role usam o helper (30200)', () => {
+    const APPROVED_FIX = readFileSync(
+      resolve(
+        ROOT,
+        'supabase/migrations/20270101030200_fix_is_approved_user_service_role_guard.sql',
+      ),
+      'utf8',
+    );
+    expect(APPROVED_FIX).toContain('CREATE OR REPLACE FUNCTION public.is_approved_user');
+    expect(APPROVED_FIX).toContain('CREATE OR REPLACE FUNCTION public.user_has_any_role');
+    expect(APPROVED_FIX).toContain('is_service_role_request_128()');
+    expect(APPROVED_FIX).not.toMatch(
+      /is_approved_user[\s\S]*current_setting\('request\.jwt\.claim\.role'/,
+    );
   });
 
   it('edge worker chama execute_sale_order_command e completa/falha o job', () => {
