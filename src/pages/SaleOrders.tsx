@@ -2709,9 +2709,8 @@ export default function SaleOrders() {
             </DialogTitle>
             <DialogDescription>
               {sel.count} pedido(s) selecionado(s). Em Produção entra; Faturado,
-              Cancelado e terminais ficam de fora. Confirmar cancela OPs avançadas
-              se o servidor exigir e pode desajustar estoque de caixa — use para
-              destravar etiqueta individual.
+              Cancelado e terminais ficam de fora. Grava só a embalagem (sem
+              rematerializar OPs); o débito de caixa é reconciliado pelo gatilho.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2.5 pt-1">

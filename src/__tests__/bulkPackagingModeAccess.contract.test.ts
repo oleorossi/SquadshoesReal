@@ -35,10 +35,12 @@ describe('embalagem em lote na lista de Pedidos', () => {
     expect(embalagemBlock).not.toContain('canEditPv');
   });
 
-  it('dialog avisa cancelamento de OP avançada e usa o helper canônico', () => {
+  it('dialog usa a RPC leve e não promete cancelar OP', () => {
     expect(saleOrders).toContain('Alterar embalagem em lote');
     expect(saleOrders).toContain('applyBulkPackagingModeChange');
     expect(saleOrders).toContain('PACKAGING_MODE_CANONICAL');
+    expect(saleOrders).toContain('sem rematerializar OPs');
+    expect(saleOrders).not.toContain('Confirmar cancela OPs avançadas');
     expect(bulkLib).toContain("rpc('set_sale_order_packaging_mode'");
     expect(bulkLib).toContain('stripForbiddenUpdateHeaderFields');
     expect(bulkLib).toContain('UPDATE_HEADER_FORBIDDEN_KEYS');
