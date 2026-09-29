@@ -13,12 +13,13 @@ const zplDialog = readFileSync(
 );
 
 describe('etiqueta individual — PDF abrível no Windows', () => {
-  it('expõe botão PDF na Central (não só ZPL)', () => {
+  it('Etiqueta Individual gera PDF no cliente (não passa pelo /api/render-pdf)', () => {
     expect(productionTab).toContain("handlePrintIndividual('pdf')");
     expect(productionTab).toContain('buildThermalLabelsPdf');
     expect(productionTab).toContain('openOrDownloadThermalLabelPdf');
-    expect(productionTab).toMatch(/PDF \(/);
-    expect(productionTab).toContain('Abre no PC · imprime pelo driver');
+    // O botão principal NÃO usa o caminho HTML→servidor (estoura Storage em lote grande).
+    expect(productionTab).not.toMatch(/handlePrintIndividual\('html'\)/);
+    expect(productionTab).toContain('PDF no navegador · sem fila do servidor');
     expect(productionTab).toContain('Só p/ Elgin · não abre no Windows');
   });
 

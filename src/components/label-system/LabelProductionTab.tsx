@@ -2846,8 +2846,14 @@ export function LabelProductionTab() {
                 {pairSelectionLabelTypes.thermal && (
                   <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-1">
-                      <Button onClick={() => void handlePrintIndividual('html')} variant="secondary" className="gap-2 h-9 border shadow-sm rounded-r-none">
-                        <Barcode className="h-4 w-4" />
+                      <Button
+                        onClick={() => void handlePrintIndividual('pdf')}
+                        variant="secondary"
+                        className="gap-2 h-9 border shadow-sm rounded-r-none"
+                        title="Gera PDF no navegador (sem /api/render-pdf) — abre no Windows para ajustar e imprimir"
+                        disabled={isGenerating}
+                      >
+                        <FilePdf className="h-4 w-4" />
                         Etiqueta Individual ({printCoverage === 'partial' ? `${thermalPrintTotalLabels} etq.` : pairSelectionLabelTypes.thermalCount})
                       </Button>
                       <Select value={thermalMode} onValueChange={(v: any) => setThermalMode(v)} disabled={printCoverage === 'partial'}>
@@ -2864,24 +2870,9 @@ export function LabelProductionTab() {
                       </Select>
                     </div>
                     <span className="text-xs text-muted-foreground truncate max-w-[200px]">
-                      {printCoverage === 'partial' ? 'Reimpressão por numeração · 1:1' : 'Padrão operacional Squad'}
-                    </span>
-                  </div>
-                )}
-                {pairSelectionLabelTypes.thermal && (
-                  <div className="flex flex-col gap-1">
-                    <Button
-                      onClick={() => void handlePrintIndividual('pdf')}
-                      variant="outline"
-                      className="gap-2 h-9 shadow-sm"
-                      title="Gera PDF que abre no Windows/navegador — use para conferir e ajustar na impressora"
-                      disabled={isGenerating}
-                    >
-                      <FilePdf className="h-4 w-4" />
-                      PDF ({printCoverage === 'partial' ? `${thermalPrintTotalLabels} etq.` : pairSelectionLabelTypes.thermalCount})
-                    </Button>
-                    <span className="text-xs text-muted-foreground truncate max-w-[200px]">
-                      Abre no PC · imprime pelo driver
+                      {printCoverage === 'partial'
+                        ? 'Reimpressão por numeração · PDF no PC'
+                        : 'PDF no navegador · sem fila do servidor'}
                     </span>
                   </div>
                 )}

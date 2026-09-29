@@ -120,12 +120,19 @@ export async function applyBulkPackagingModeChange(input: {
 
   for (const orderId of input.orderIds) {
     try {
-      const { data: header, error: headerError } = await supabase
+      const { data: headerRaw, error: headerError } = await supabase
         .from('sale_orders')
         .select('id, status, packaging_mode, order_version')
         .eq('id', orderId)
         .single();
-      if (headerError || !header) throw headerError || new Error('PV não encontrado');
+      if (headerError || !headerRaw) throw headerError || new Error('PV não encontrado');
+      // types.ts gerado ainda não lista order_version / a RPC nova — cast solto.
+      const header = headerRaw as unknown as {
+        id: string;
+        status: string;
+        packaging_mode: string | null;
+        order_version: number | null;
+      };
       if (!isBulkPackagingEligibleStatus(header.status)) {
         throw new Error(`status mudou para ${header.status}`);
       }
@@ -134,15 +141,19 @@ export async function applyBulkPackagingModeChange(input: {
         continue;
       }
 
-      const expectedOrderVersion = Number(
-        (header as { order_version?: number | null }).order_version,
-      ) || 0;
+      const expectedOrderVersion = Number(header.order_version) || 0;
 
-      const { data, error } = await supabase.rpc('set_sale_order_packaging_mode', {
-        p_sale_order_id: orderId,
-        p_packaging_mode: input.packagingMode,
-        p_expected_order_version: expectedOrderVersion,
-      });
+      const { data, error } = await (supabase.rpc as unknown as (
+        fn: string,
+        args: Record<string, unknown>,
+      ) => Promise<{ data: unknown; error: { message?: string; details?: string; hint?: string } | null }>)(
+        'set_sale_order_packaging_mode',
+        {
+          p_sale_order_id: orderId,
+          p_packaging_mode: input.packagingMode,
+          p_expected_order_version: expectedOrderVersion,
+        },
+      );
       if (error) throw new Error(rpcErrorMessage(error));
 
       const result = data as { ok?: boolean; unchanged?: boolean } | null;

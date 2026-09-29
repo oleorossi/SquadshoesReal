@@ -348,7 +348,15 @@ async function claimAndRenderJob(
       contentType: 'application/pdf',
       upsert: true,
     });
-    if (upError) throw new Error(upError.message);
+    if (upError) {
+      // Bug vivo 29/09/2026: lote de etiquetas com foto →
+      // "The object exceeded the maximum allowed size" no bucket pdf-queue.
+      const mb = (pdfBuf.length / (1024 * 1024)).toFixed(1);
+      throw new Error(
+        `${upError.message} (PDF ${mb} MB). Na Central de Etiquetagem use ` +
+          '«Etiqueta Individual» (PDF no navegador, sem fila) ou imprima em partes menores.',
+      );
+    }
 
     const { error: readyError } = await db
       .from('pdf_render_jobs')
