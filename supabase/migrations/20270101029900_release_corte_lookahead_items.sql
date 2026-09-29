@@ -1,6 +1,10 @@
 -- Fila de Corte look-ahead: liberar itens selecionados como OP adiantada.
 -- Spec: specs/fila-corte-lookahead.md
 -- Reusa promote_sale_order_item(p_is_ahead := true) — coluna orders.is_ahead_of_schedule.
+--
+-- Carimbo: apply_migration (MCP) gravou 20260929025744 (data real, zona legada).
+-- Remap live em 29/09/2026 → version=20270101029900 (restaura legacy_count=2295).
+-- Não reaplicar o SQL se a função já existir.
 
 CREATE OR REPLACE FUNCTION public.release_corte_lookahead_items(p_item_ids uuid[])
 RETURNS jsonb
