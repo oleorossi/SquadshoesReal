@@ -12,6 +12,7 @@ import { ProductImageBlock, resolveImage } from './worksheet/ProductImageBlock';
 import {
   TALLY_SIZE,
   HEADER_THUMB_PX,
+  AVIAMENTO_HERO_PHOTO_PX,
   STEP_CHECKBOX_PX,
   STRAP_ROW_PAD_Y,
   STRAP_LABEL_PAD,
@@ -21,6 +22,10 @@ import {
   CONSUMO_TABLE_PAD_X,
   canUseSlimConsumo,
 } from './worksheet/density';
+import {
+  aviamentoGroupKey,
+  pickAviamentoHeroPhotoSources,
+} from './worksheet/aviamentoHeroPhoto';
 import { PaginatedSheet, type SheetBlock } from './worksheet/PaginatedSheet';
 import { SectorAlerts, type SectorAlert } from './worksheet/SectorAlerts';
 import { SignedImage } from '@/components/ui/signed-image';
@@ -258,6 +263,9 @@ interface Props {
   /** Range de numerações de cada faca (label P/M/G → ["34","35","36","37"]) —
    *  exibido sob o rótulo no cabeçalho da grade de Corte Cabedal. (User 2026-06-17.) */
   facaRanges?: Record<string, string[]>;
+  /** Aviamento A4: chaves de referência (aviamentoGroupKey) com foto grande
+   *  sob o subtítulo. Ignorado fora do Aviamento. Default = nenhuma. */
+  heroPhotoGroupKeys?: ReadonlySet<string>;
 }
 
 // Simplificação 2026-06-12: KPIs, blocos de materiais (cabedal/forro),
@@ -472,7 +480,7 @@ export function thumbsFitBesideGrade(
   }).fits;
 }
 
-export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBand, sectorLabel, knives, facaRanges }: Props) => {
+export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBand, sectorLabel, knives, facaRanges, heroPhotoGroupKeys }: Props) => {
   const theme = SECTOR_THEME[sector];
   const Icon = theme.icon;
   // Modelo de informação da ficha (rodada 1, 20/08/2026). Este componente
@@ -1267,6 +1275,30 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
       />
     );
 
+    // Foto grande opcional (Aviamento A4): bloco sob o subtítulo da ref;
+    // quando ligado (e há imagem), some a thumb de 46px dos cards desta ref.
+    const heroSources = (sector === 'Aviamento'
+      && !!heroPhotoGroupKeys?.has(aviamentoGroupKey(group)))
+      ? pickAviamentoHeroPhotoSources(group)
+      : null;
+    const showHeroPhoto = heroSources != null;
+    const heroPhotoBlock = heroSources ? (
+      <div
+        className="keep-together keep-with-next mb-1.5 flex items-center justify-start"
+        data-aviamento-hero-photo={aviamentoGroupKey(group)}
+      >
+        <ProductImageBlock
+          variantImageUrl={heroSources.variantImageUrl}
+          alternateVariants={heroSources.alternateVariants}
+          technicalSheetImageUrl={heroSources.technicalSheetImageUrl}
+          orderColor={heroSources.orderColor}
+          size={AVIAMENTO_HERO_PHOTO_PX}
+          showRefBadge={false}
+          alt={group.soleName}
+        />
+      </div>
+    ) : null;
+
   // ── Logomarca a estampar (Silk compacto, 2026-06-12) ──
   // UMA logomarca por grupo (cascata cliente → grupo econômico → solado
   // → Squad já resolvida): bloco único em destaque. Quando cores do
@@ -1640,7 +1672,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
           const colorHeader = (
               <div className="keep-together keep-with-next px-2 py-0.5 flex items-center justify-between" style={{ borderBottom: '1.5px solid #000' }}>
                 <div className="flex items-center gap-2 min-w-0">
-                  {theme.showProductImage && (() => {
+                  {theme.showProductImage && !showHeroPhoto && (() => {
                     // Corte Cabedal: faixa 1 foto/ref (mesmo contrato do Forração).
                     // Sem isto, o merge por cor deixava só a 1ª sandália no
                     // header escalar (PV-00197 OFF WHITE = LA01+SP201 → 1 foto).
@@ -1951,6 +1983,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
       // Sub-header do grupo — keepWithNext: nunca fecha página sozinho
       // (título "Solado N/M" órfão no pé da folha, conteúdo na seguinte).
       { node: subHeaderBlock, keepWithNext: true },
+      ...(heroPhotoBlock ? [{ node: heroPhotoBlock, keepWithNext: true }] : []),
       ...(silkSingleBlock ? [silkSingleBlock] : []),
       ...(silksGridBlock ? [silksGridBlock] : []),
       ...colorBlocks,

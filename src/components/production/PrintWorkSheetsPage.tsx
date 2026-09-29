@@ -14,6 +14,7 @@ import { PalmilhaUnifiedWorkSheet } from '@/components/production/PalmilhaUnifie
 import { CartaoFisico } from '@/components/production/CartaoFisico';
 import { CartaoCaixaTransporte } from '@/components/production/CartaoCaixaTransporte';
 import { SilkMontageWorkSheet, type SoleSilkGroup, type SilkColorGroup, type GroupedSector } from '@/components/production/SilkMontageWorkSheet';
+import { listAviamentoHeroEligibleGroups } from '@/components/production/worksheet/aviamentoHeroPhoto';
 import {
   assignBatchCounters,
   buildCartaoFisicoCards,
@@ -2962,6 +2963,44 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expandedOrders, activeSectors, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, soleMaterialByRef, resolveSoleForOrder, sheetById, clientsInfo, economicGroupsInfo, soleGroupPackaging, knifeDefaultBoundaries, knifeOptOutByRef, knifeRangesByRef, aviamentoDefaultBoundaries, aviamentoOptOutByRef, aviamentoRangesByRef]);
 
+  // Foto grande por referência (Aviamento A4): sessão só, default desmarcado.
+  // Lista só inclui refs com imagem resolvível; zera chaves órfãs ao mudar o lote.
+  const aviamentoHeroEligible = useMemo(
+    () => listAviamentoHeroEligibleGroups(aviamentoGroups),
+    [aviamentoGroups],
+  );
+  const [heroPhotoRefKeys, setHeroPhotoRefKeys] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    const eligible = new Set(aviamentoHeroEligible.map((r) => r.key));
+    setHeroPhotoRefKeys((prev) => {
+      let changed = false;
+      const next = new Set<string>();
+      for (const k of prev) {
+        if (eligible.has(k)) next.add(k);
+        else changed = true;
+      }
+      if (!changed && next.size === prev.size) return prev;
+      return next;
+    });
+  }, [aviamentoHeroEligible]);
+  const showAviamentoHeroToolbar = isA4
+    && activeSectors.has('Aviamento')
+    && aviamentoHeroEligible.length > 0;
+  const toggleHeroPhotoRef = (key: string) => {
+    setHeroPhotoRefKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+  const markAllHeroPhotos = () => {
+    setHeroPhotoRefKeys(new Set(aviamentoHeroEligible.map((r) => r.key)));
+  };
+  const clearHeroPhotos = () => {
+    setHeroPhotoRefKeys(new Set());
+  };
+
   // ── Solagem / Colagem: consolidated by sole color ────────────────────────────
   // B1 (2026-06-10): as bandas passam a ser calculadas POR SETOR — uma OP só
   // entra na ficha de Solagem/Colagem se o setor está no roteiro da ficha
@@ -4021,6 +4060,56 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           </div>
         </div>
 
+        {/* Foto grande por referência — só A4 · Aviamento, refs com imagem. */}
+        {showAviamentoHeroToolbar && (
+          <div className="border-t border-border/70 px-4 py-3">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <p className="text-xs font-bold uppercase tracking-wide">Foto do produto</p>
+                <span className="font-mono text-[10px] text-muted-foreground">
+                  {heroPhotoRefKeys.size}/{aviamentoHeroEligible.length}
+                </span>
+              </div>
+              <div className="flex items-center gap-1 text-xs">
+                <button
+                  type="button"
+                  onClick={markAllHeroPhotos}
+                  className="px-2 py-1 font-semibold text-primary hover:underline"
+                >
+                  Todas
+                </button>
+                <span className="text-border">/</span>
+                <button
+                  type="button"
+                  onClick={clearHeroPhotos}
+                  className="px-2 py-1 text-muted-foreground hover:text-foreground hover:underline"
+                >
+                  Nenhuma
+                </button>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-1.5" role="group" aria-label="Referências com foto grande na ficha de Aviamento">
+              {aviamentoHeroEligible.map((ref) => {
+                const active = heroPhotoRefKeys.has(ref.key);
+                return (
+                  <label
+                    key={ref.key}
+                    className={`inline-flex h-8 cursor-pointer items-center gap-1.5 border px-2.5 text-xs transition-colors focus-within:ring-2 focus-within:ring-ring ${active ? 'border-primary bg-primary/10 text-foreground' : 'border-border bg-background text-muted-foreground hover:text-foreground'}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={active}
+                      onChange={() => toggleHeroPhotoRef(ref.key)}
+                      className="h-3.5 w-3.5 accent-primary"
+                    />
+                    <span className="font-semibold uppercase">{ref.label}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Filtros de conteúdo: secundários à rota, mas sempre visíveis. */}
         <div className="flex flex-wrap items-start gap-x-6 gap-y-2 border-t border-border/70 bg-muted/20 px-4 py-3">
           <div className="flex flex-wrap items-center gap-1.5">
@@ -4545,6 +4634,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
                   sector={sectorName}
                   facaRanges={facaRanges}
                   sizeBand={bandForOps(enriched.flatMap(g => g.colorGroups.flatMap(cg => cg.opNumbers || [])))}
+                  heroPhotoGroupKeys={sectorName === 'Aviamento' ? heroPhotoRefKeys : undefined}
                 />
               </div>,
             ];

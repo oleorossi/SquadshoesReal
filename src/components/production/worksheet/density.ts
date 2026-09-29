@@ -66,6 +66,11 @@ export const TALLY_SIZE = 'sm' as const;
  *  então a miniatura define a altura da linha sem custar quase nada. */
 export const HEADER_THUMB_PX = 46;
 
+/** Foto grande opcional do Aviamento A4 (toggle por referência na barra de
+ *  Imprimir Fichas). Mesmo tamanho default histórico do ProductImageBlock —
+ *  bloco próprio sob o subtítulo da referência, sem legenda. */
+export const AVIAMENTO_HERO_PHOTO_PX = 140;
+
 /** Lado do checkbox por numeração (linhas Frente/Traseira do Aviamento).
  *  20 → 16 → 14px (A.2): ainda marcável à caneta; devolve ~4px por linha
  *  de etapa × 2 etapas = folga pra 2ª cor subir na mesma A4. */
