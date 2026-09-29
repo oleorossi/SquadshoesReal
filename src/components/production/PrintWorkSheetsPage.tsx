@@ -2963,26 +2963,25 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expandedOrders, activeSectors, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, soleMaterialByRef, resolveSoleForOrder, sheetById, clientsInfo, economicGroupsInfo, soleGroupPackaging, knifeDefaultBoundaries, knifeOptOutByRef, knifeRangesByRef, aviamentoDefaultBoundaries, aviamentoOptOutByRef, aviamentoRangesByRef]);
 
-  // Foto grande por referência (Aviamento A4): sessão só, default desmarcado.
-  // Lista só inclui refs com imagem resolvível; zera chaves órfãs ao mudar o lote.
+  // Foto grande por referência (Aviamento A4): sessão só.
+  // Default LIGADO em todas as refs elegíveis quando o lote muda — sem isso a
+  // ficha continua com a thumb 46px e o aviador não vê diferença (feedback
+  // produção 29/09/2026). Desmarcar fica a cargo do operador nesta sessão.
   const aviamentoHeroEligible = useMemo(
     () => listAviamentoHeroEligibleGroups(aviamentoGroups),
     [aviamentoGroups],
   );
+  const aviamentoHeroEligibleSig = useMemo(
+    () => aviamentoHeroEligible.map((r) => r.key).slice().sort().join('|'),
+    [aviamentoHeroEligible],
+  );
   const [heroPhotoRefKeys, setHeroPhotoRefKeys] = useState<Set<string>>(() => new Set());
+  const heroEligibleSigRef = useRef<string>('');
   useEffect(() => {
-    const eligible = new Set(aviamentoHeroEligible.map((r) => r.key));
-    setHeroPhotoRefKeys((prev) => {
-      let changed = false;
-      const next = new Set<string>();
-      for (const k of prev) {
-        if (eligible.has(k)) next.add(k);
-        else changed = true;
-      }
-      if (!changed && next.size === prev.size) return prev;
-      return next;
-    });
-  }, [aviamentoHeroEligible]);
+    if (aviamentoHeroEligibleSig === heroEligibleSigRef.current) return;
+    heroEligibleSigRef.current = aviamentoHeroEligibleSig;
+    setHeroPhotoRefKeys(new Set(aviamentoHeroEligible.map((r) => r.key)));
+  }, [aviamentoHeroEligible, aviamentoHeroEligibleSig]);
   const showAviamentoHeroToolbar = isA4
     && activeSectors.has('Aviamento')
     && aviamentoHeroEligible.length > 0;
@@ -4062,13 +4061,18 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
 
         {/* Foto grande por referência — só A4 · Aviamento, refs com imagem. */}
         {showAviamentoHeroToolbar && (
-          <div className="border-t border-border/70 px-4 py-3">
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <p className="text-xs font-bold uppercase tracking-wide">Foto do produto</p>
-                <span className="font-mono text-[10px] text-muted-foreground">
-                  {heroPhotoRefKeys.size}/{aviamentoHeroEligible.length}
-                </span>
+          <div className="border-t border-primary/30 bg-primary/5 px-4 py-3">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="text-xs font-bold uppercase tracking-wide">Foto do produto</p>
+                  <span className="font-mono text-[10px] text-muted-foreground">
+                    {heroPhotoRefKeys.size}/{aviamentoHeroEligible.length}
+                  </span>
+                </div>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                  Marcado = foto grande na ficha de Aviamento (ajuda o operador a ver o modelo).
+                </p>
               </div>
               <div className="flex items-center gap-1 text-xs">
                 <button
@@ -4094,7 +4098,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
                 return (
                   <label
                     key={ref.key}
-                    className={`inline-flex h-8 cursor-pointer items-center gap-1.5 border px-2.5 text-xs transition-colors focus-within:ring-2 focus-within:ring-ring ${active ? 'border-primary bg-primary/10 text-foreground' : 'border-border bg-background text-muted-foreground hover:text-foreground'}`}
+                    className={`inline-flex h-8 cursor-pointer items-center gap-1.5 border px-2.5 text-xs transition-colors focus-within:ring-2 focus-within:ring-ring ${active ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background text-muted-foreground hover:text-foreground'}`}
                   >
                     <input
                       type="checkbox"
