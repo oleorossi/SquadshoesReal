@@ -312,13 +312,13 @@ async function loadCorteLookahead(sector: CorteLookaheadSector): Promise<CorteLo
   };
   const reservationRows = productIds.length
     ? await fetchInChunks<ResRow>(productIds, 100, async (chunk) => {
-        // Cast: join orders(sale_order_id) estoura a profundidade do tipagem gerada.
-        const { data, error } = await (supabase as any)
+        // Join orders(sale_order_id) estoura a profundidade do tipagem gerada.
+        const { data, error } = await supabase
           .from('material_reservations')
-          .select('product_id, quantity_reserved, quantity_consumed, status, orders(sale_order_id)')
+          .select('product_id, quantity_reserved, quantity_consumed, status, orders(sale_order_id)' as never)
           .in('product_id', chunk)
           .in('status', ['reserved', 'pending_reconciliation']);
-        return { data: (data ?? null) as ResRow[] | null, error };
+        return { data: (data as unknown as ResRow[] | null), error };
       })
     : [];
 
@@ -460,16 +460,21 @@ export function useReleaseCorteLookahead() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (itemIds: string[]) => {
-      const { data, error } = await (supabase as any).rpc('release_corte_lookahead_items', {
-        p_item_ids: itemIds,
-      });
+      const { data, error } = await supabase.rpc(
+        'release_corte_lookahead_items' as never,
+        { p_item_ids: itemIds } as never,
+      );
       if (error) throw error;
-      return data as { criadas?: number; skipped?: unknown[] } | null;
+      const raw = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>;
+      return {
+        created: Number(raw.created) || 0,
+        skipped: raw.skipped,
+      };
     },
     onSuccess: (data) => {
       void qc.invalidateQueries({ queryKey: ['production_queue_detail'] });
       void qc.invalidateQueries({ queryKey: corteLookaheadKeys.all });
-      const n = Number(data?.criadas) || 0;
+      const n = Number(data?.created) || 0;
       toast.success(
         n === 1
           ? '1 OP adiantada liberada na fila de Corte.'
