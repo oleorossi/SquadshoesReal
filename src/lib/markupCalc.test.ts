@@ -3,7 +3,8 @@ import {
   parseDaysInput,
   parseDaysInstallments,
   formatDaysLabel,
-  compoundFactoringPct,
+  averageDays,
+  simpleFactoringPct,
   computeMarkupPrice,
   deriveMarginFromTargetProfit,
   computeReverseAnalysis,
@@ -18,10 +19,10 @@ describe('parseDaysInput', () => {
     expect(parseDaysInput('abc')).toBe(0);
   });
   it('ignora parte inválida ("30//60" → média 45)', () => expect(parseDaysInput('30//60')).toBe(45));
-  it('preserva cada parcela para o factoring composto', () => {
+  it('preserva cada parcela e calcula deságio linear no prazo médio', () => {
     expect(parseDaysInstallments('30/60/90')).toEqual([30, 60, 90]);
-    expect(compoundFactoringPct(3, parseDaysInstallments('30/60/90')))
-      .toBeCloseTo((1 - ((1 / 1.03) + (1 / 1.03 ** 2) + (1 / 1.03 ** 3)) / 3) * 100, 6);
+    // 3% a.m. × (60/30) = 6%
+    expect(simpleFactoringPct(3, parseDaysInstallments('30/60/90'))).toBeCloseTo(6, 6);
   });
 });
 
@@ -29,6 +30,39 @@ describe('formatDaysLabel', () => {
   it('simples → "60d"', () => expect(formatDaysLabel('60')).toBe('60d'));
   it('vazio → "0d"', () => expect(formatDaysLabel('')).toBe('0d'));
   it('parcelas mostram a média', () => expect(formatDaysLabel('30/60/90')).toBe('30/60/90 (média 60,00d)'));
+});
+
+describe('simpleFactoringPct (deságio linear MALUPE)', () => {
+  it('CASH_DAYS = 3 (à vista)', () => {
+    expect(CASH_DAYS).toBe(3);
+  });
+
+  it('3% a.m. × 60d = 6% (simples)', () => {
+    expect(simpleFactoringPct(3, 60)).toBeCloseTo(6, 6);
+  });
+
+  it('30/60 → média 45 → 3% × 45/30 = 4,5%', () => {
+    expect(averageDays([30, 60])).toBe(45);
+    expect(simpleFactoringPct(3, [30, 60])).toBeCloseTo(4.5, 6);
+  });
+
+  it('caso ouro MALUPE op. 296: face 16.488 → líquido 15.750,50 em 42d', () => {
+    // deságio R$ 737,50 / 16.488 = 4,47295…% → taxa = 4,47295 × 30/42 ≈ 3,19496% a.m.
+    const face = 16488;
+    const net = 15750.5;
+    const days = 42;
+    const ratePct = ((face - net) / face) * (30 / days) * 100;
+    const discPct = simpleFactoringPct(ratePct, days);
+    const predictedNet = face * (1 - discPct / 100);
+    expect(predictedNet).toBeCloseTo(net, 2);
+    expect(Math.round((face - predictedNet) * 100) / 100).toBeCloseTo(737.5, 2);
+  });
+
+  it('taxa ou prazo zero → 0', () => {
+    expect(simpleFactoringPct(0, 60)).toBe(0);
+    expect(simpleFactoringPct(3, 0)).toBe(0);
+    expect(simpleFactoringPct(3, [])).toBe(0);
+  });
 });
 
 describe('computeMarkupPrice (fórmula direta)', () => {
@@ -44,14 +78,12 @@ describe('computeMarkupPrice (fórmula direta)', () => {
       .toBeCloseTo(20, 6);
   });
 
-  it('factoring composto: 3% a.m. por 60 dias usa o mesmo desconto do financeiro', () => {
+  it('factoring simples: 3% a.m. por 60 dias = 6% de deságio', () => {
     const r = computeMarkupPrice({
       totalCost: 50, taxPct: 0, profitPct: 0, factoringMonthlyPct: 3, days: 60, commissionPct: 0,
     });
-    const discountPct = compoundFactoringPct(3, 60);
-    expect(discountPct).toBeCloseTo((1 - 1 / (1.03 ** 2)) * 100, 6);
-    expect(r.factoringTotalPct).toBeCloseTo(discountPct, 6);
-    expect(r.suggestedPrice).toBeCloseTo(50 / (1 - discountPct / 100), 6);
+    expect(r.factoringTotalPct).toBeCloseTo(6, 6);
+    expect(r.suggestedPrice).toBeCloseTo(50 / 0.94, 6);
   });
 
   it('taxas ≥ 100% → inválido, preço 0', () => {
@@ -63,21 +95,21 @@ describe('computeMarkupPrice (fórmula direta)', () => {
     expect(r.cashPrice).toBe(0);
   });
 
-  it('à vista usa min(CASH_DAYS, prazo): prazo 60d → à vista com 7d de factoring', () => {
+  it('à vista usa min(CASH_DAYS, prazo): prazo 60d → à vista com 3d de factoring', () => {
     const r = computeMarkupPrice({
       totalCost: 30, taxPct: 6, profitPct: 20, factoringMonthlyPct: 3, days: 60, commissionPct: 5,
     });
-    const vistaPct = compoundFactoringPct(3, CASH_DAYS);
+    const vistaPct = simpleFactoringPct(3, CASH_DAYS); // 3% × 3/30 = 0,3%
     const expected = 30 / (1 - (6 + 20 + vistaPct + 5) / 100);
     expect(r.cashPrice).toBeCloseTo(expected, 6);
     expect(r.cashPrice).toBeLessThan(r.suggestedPrice);
   });
 
-  it('à vista NUNCA maior que a prazo quando o prazo é curto (< 7 dias)', () => {
+  it('à vista NUNCA maior que a prazo quando o prazo é curto (< 3 dias)', () => {
     const r = computeMarkupPrice({
-      totalCost: 30, taxPct: 6, profitPct: 20, factoringMonthlyPct: 3, days: 3, commissionPct: 5,
+      totalCost: 30, taxPct: 6, profitPct: 20, factoringMonthlyPct: 3, days: 2, commissionPct: 5,
     });
-    // min(7, 3) = 3 → à vista = a prazo (mesmos dias de factoring)
+    // min(3, 2) = 2 → à vista = a prazo
     expect(r.cashPrice).toBeCloseTo(r.suggestedPrice, 6);
   });
 });
@@ -96,8 +128,8 @@ describe('deriveMarginFromTargetProfit (modo inverso "quero receber")', () => {
     expect(margin).not.toBeNull();
     const direct = computeMarkupPrice({ ...p, profitPct: margin! });
     expect(direct.realProfit).toBeCloseTo(15, 6);
-    const k = 6 + compoundFactoringPct(3, 60) + 5;
-    expect(direct.suggestedPrice).toBeCloseTo(65 / (1 - k / 100), 4); // (custo+alvo)/(1−K)
+    const k = 6 + simpleFactoringPct(3, 60) + 5; // 6 + 6 + 5 = 17
+    expect(direct.suggestedPrice).toBeCloseTo(65 / (1 - k / 100), 4);
   });
 
   it('alvo ≤ 0 ou K ≥ 100% → null (caller usa a margem manual)', () => {
@@ -122,8 +154,23 @@ describe('computeReverseAnalysis (margem real de venda praticada)', () => {
     expect(rev).not.toBeNull();
     expect(rev!.realMarginPct).toBeCloseTo(25, 6);
     expect(rev!.realProfit).toBeCloseTo(direct.realProfit, 6);
-    // Preço sugerido com a margem recuperada = preço original
     expect(rev!.suggestedPrice).toBeCloseTo(direct.suggestedPrice, 6);
+  });
+
+  it('cascata: lucro da reversa = líquido na conta − custos (mesmo do simulador)', () => {
+    const direct = computeMarkupPrice({
+      totalCost: 13.49 + 1.2, taxPct: 6.5, profitPct: 15, factoringMonthlyPct: 3.2, days: [30, 60], commissionPct: 5,
+    });
+    const liquidoConta = direct.suggestedPrice - direct.taxValue - direct.commissionValue - direct.factoringValue;
+    const lucroBolso = liquidoConta - (13.49 + 1.2);
+    expect(lucroBolso).toBeCloseTo(direct.realProfit, 6);
+
+    const rev = computeReverseAnalysis({
+      soldPrice: direct.suggestedPrice, materialCost: 13.49, labor: 0, overhead: 1.2, packaging: 0, freight: 0,
+      taxPct: 6.5, factoringMonthlyPct: 3.2, days: [30, 60], commissionPct: 5,
+    });
+    expect(rev!.realProfit).toBeCloseTo(direct.realProfit, 6);
+    expect(rev!.netRevenue).toBeCloseTo(liquidoConta, 6);
   });
 
   it('entrada inválida (preço ou custo ≤ 0) → null', () => {
@@ -138,7 +185,6 @@ describe('computeReverseAnalysis (margem real de venda praticada)', () => {
       taxPct: 6, factoringMonthlyPct: 0, days: 0, commissionPct: 5,
     });
     expect(rev!.realMarginPct).toBeLessThan(0);
-    // totalCost + realProfit = netRevenue (10 × 0,89 = 8,9 > 0) → à vista pequeno mas ≥ 0
     expect(rev!.cashPrice).toBeGreaterThanOrEqual(0);
   });
 
@@ -147,7 +193,7 @@ describe('computeReverseAnalysis (margem real de venda praticada)', () => {
       soldPrice: 30, materialCost: 10, labor: 0, overhead: 3, packaging: 0, freight: 2,
       taxPct: 0, factoringMonthlyPct: 0, days: 0, commissionPct: 0,
     });
-    expect(rev!.markupPct).toBeCloseTo(100, 6); // (30 − 15) / 15
+    expect(rev!.markupPct).toBeCloseTo(100, 6);
   });
 
   it('inclui mão de obra e embalagem na margem real e mantém paridade com a direta', () => {
