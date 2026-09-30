@@ -4092,21 +4092,25 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
                 </button>
               </div>
             </div>
-            <div className="flex flex-wrap gap-1.5" role="group" aria-label="Referências com foto grande na ficha de Aviamento">
+            <div
+              className="flex max-h-48 flex-col gap-1 overflow-y-auto"
+              role="group"
+              aria-label="Referências com foto grande na ficha de Aviamento"
+            >
               {aviamentoHeroEligible.map((ref) => {
                 const active = heroPhotoRefKeys.has(ref.key);
                 return (
                   <label
                     key={ref.key}
-                    className={`inline-flex h-8 cursor-pointer items-center gap-1.5 border px-2.5 text-xs transition-colors focus-within:ring-2 focus-within:ring-ring ${active ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background text-muted-foreground hover:text-foreground'}`}
+                    className={`flex h-9 w-full cursor-pointer items-center gap-2 border px-3 text-xs transition-colors focus-within:ring-2 focus-within:ring-ring ${active ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background text-muted-foreground hover:bg-muted/40 hover:text-foreground'}`}
                   >
                     <input
                       type="checkbox"
                       checked={active}
                       onChange={() => toggleHeroPhotoRef(ref.key)}
-                      className="h-3.5 w-3.5 accent-primary"
+                      className="h-3.5 w-3.5 shrink-0 accent-primary"
                     />
-                    <span className="font-semibold uppercase">{ref.label}</span>
+                    <span className="min-w-0 truncate font-semibold uppercase">{ref.label}</span>
                   </label>
                 );
               })}
