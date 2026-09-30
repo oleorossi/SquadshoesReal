@@ -14,6 +14,8 @@ const ROOT = resolve(__dirname, '../..');
 const MIGRATIONS = resolve(ROOT, 'supabase/migrations');
 const INTRO_FILE = '20270101023800_refresh_draft_strap_freeze_on_confirm.sql';
 const LIVE_HELPER_FILE = '20270101023900_refresh_draft_strap_freeze_set_source_rpc.sql';
+/** Soft pegging injeta commit após o refresh — última patch do promote atomic. */
+const WIRE_COMMITMENTS_FILE = '20270101030700_pv_material_commitments_wire.sql';
 const INTRO_MARKER = 'strap_refresh_on_confirm_20270101023800';
 const LIVE_MARKER = 'strap_refresh_source_rpc_20270101023900';
 
@@ -136,9 +138,13 @@ describe('refresh_draft_strap_freeze_for_confirmation — corpo vivo 23900', () 
 describe('promote vivo — ainda chama o helper de refresh', () => {
   it('atomic: injecao 23800 permanece (ultima patch do promote)', () => {
     const latest = latestPromoteMigration('promote_sale_order_atomic_internal');
-    expect(latest.file).toBe(INTRO_FILE);
+    // 30700 reescreve o corpo via pg_get_functiondef + replace, preservando o PERFORM.
+    expect(latest.file).toBe(WIRE_COMMITMENTS_FILE);
     expect(latest.sql).toContain(
       'private.refresh_draft_strap_freeze_for_confirmation(p_sale_order_id)',
+    );
+    expect(latest.sql).toContain(
+      'commit_sale_order_material_demand(p_sale_order_id)',
     );
   });
 

@@ -34,6 +34,13 @@ describe('pv material commitments soft pegging (contract)', () => {
     expect(wire).toMatch(/tg_release_pv_commitments_on_cancel/);
     expect(wire).toMatch(/tg_cover_commitments_on_stock_in/);
     expect(wire).toMatch(/pv_commitment/);
+    // Injeta commit DEPOIS do refresh de freeze de tiras — não apaga o marker 23800.
+    expect(wire).toContain(
+      'PERFORM private.refresh_draft_strap_freeze_for_confirmation(p_sale_order_id);',
+    );
+    expect(wire).toContain(
+      'PERFORM public.commit_sale_order_material_demand(p_sale_order_id);',
+    );
   });
 
   it('consolidates sibling OP soft rows into one pv_commitment', () => {
