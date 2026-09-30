@@ -6,6 +6,7 @@ import MaterialConsumptionView, {
 } from '@/components/sale-orders/MaterialConsumptionView';
 import UpperCutOutsourcingSection from '@/components/sale-orders/UpperCutOutsourcingSection';
 import AtelierPrepConsumptionSection from '@/components/sale-orders/AtelierPrepConsumptionSection';
+import PvMaterialCommitmentsSection from '@/components/sale-orders/PvMaterialCommitmentsSection';
 import {
   loadPvConsumption,
   materializePvConsumptionScope,
@@ -183,6 +184,7 @@ export default function SummaryConsumptionPanel({ saleOrderIds, onGerarOC, embed
       }
       extraSections={
         <>
+          {singlePv ? <PvMaterialCommitmentsSection saleOrderId={singlePv} /> : null}
           <AtelierPrepConsumptionSection saleOrderIds={ids} />
           {singlePv && singlePvNumber ? (
             <UpperCutOutsourcingSection saleOrderId={singlePv} orderNumber={singlePvNumber} />

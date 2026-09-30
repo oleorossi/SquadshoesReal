@@ -34,13 +34,26 @@ const fmtDate = (iso: string | null | undefined) => {
 export default function ProductReservationDetailsDialog({
   productId, productName, unit, open, onOpenChange,
 }: Props) {
+  const { data: commitments, isLoading: loadingCommitments } = useQuery({
+    queryKey: ['product-material-commitments', productId],
+    enabled: !!productId && open,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).rpc(
+        'list_material_commitments_by_product',
+        { p_product_id: productId },
+      );
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
   const { data: reservations, isLoading: loadingRes } = useQuery({
     queryKey: ['product-reservations', productId],
     enabled: !!productId && open,
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('material_reservations')
-        .select('id, order_id, quantity_reserved, quantity_consumed, status, lot_number, location, created_at, source')
+        .select('id, order_id, sale_order_id, quantity_reserved, quantity_consumed, status, lot_number, location, created_at, source, metadata')
         .eq('product_id', productId)
         .in('status', ['reserved', 'partially_consumed'])
         .order('created_at', { ascending: false });
@@ -109,7 +122,7 @@ export default function ProductReservationDetailsDialog({
         <DialogHeader>
           <DialogTitle>{productName || 'Detalhes do Produto'}</DialogTitle>
           <DialogDescription>
-            Reservas ativas e movimentos de estoque ligados a OPs em produção.
+            Comprometimentos por PV, reservas ativas e movimentos em OPs.
           </DialogDescription>
         </DialogHeader>
 
@@ -140,6 +153,50 @@ export default function ProductReservationDetailsDialog({
 
         <div className="mt-6">
           <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
+            <Lock className="h-4 w-4 text-amber-600" /> Comprometido por PV
+          </h3>
+          {loadingCommitments ? (
+            <div className="flex justify-center py-6"><Loader2 className="h-4 w-4 animate-spin" /></div>
+          ) : (commitments || []).length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">Sem comprometimentos abertos.</p>
+          ) : (
+            <div className="overflow-x-auto rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>PV</TableHead>
+                    <TableHead>Tipo</TableHead>
+                    <TableHead className="text-right">Aberto</TableHead>
+                    <TableHead className="hidden md:table-cell">OP</TableHead>
+                    <TableHead className="hidden md:table-cell">Semana fat.</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(commitments || []).map((r: any) => (
+                    <TableRow key={r.reservation_id}>
+                      <TableCell className="font-medium">
+                        {r.sale_order_number || r.sale_order_id?.slice(0, 8) || '—'}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-xs">{r.kind || '—'}</Badge>
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm font-semibold">{fmt(r.open_qty)}</TableCell>
+                      <TableCell className="hidden md:table-cell text-xs text-muted-foreground">
+                        {r.order_number ? `#${r.order_number}` : '—'}
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell text-xs text-muted-foreground">
+                        {r.billing_week || '—'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-6">
+          <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
             <Lock className="h-4 w-4 text-amber-600" /> Reservas Ativas
           </h3>
           {loadingRes ? (
@@ -164,10 +221,13 @@ export default function ProductReservationDetailsDialog({
                   {(reservations || []).map((r: any) => {
                     const saldo = Math.max(0, Number(r.quantity_reserved || 0) - Number(r.quantity_consumed || 0));
                     const ord = reservationOrders?.get(r.order_id);
+                    const kind = r.metadata?.kind || r.source || '—';
                     return (
                       <TableRow key={r.id}>
                         <TableCell className="font-medium">
-                          {ord?.order_number ? `#${ord.order_number}` : (r.order_id?.slice(0, 8) ?? '—')}
+                          {ord?.order_number
+                            ? `#${ord.order_number}`
+                            : (r.order_id?.slice(0, 8) ?? (r.sale_order_id ? 'PV' : '—'))}
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline" className="text-xs">{r.status}</Badge>
@@ -175,7 +235,7 @@ export default function ProductReservationDetailsDialog({
                         <TableCell className="text-right font-mono text-sm">{fmt(r.quantity_reserved)}</TableCell>
                         <TableCell className="text-right font-mono text-sm text-muted-foreground">{fmt(r.quantity_consumed)}</TableCell>
                         <TableCell className="text-right font-mono text-sm font-semibold">{fmt(saldo)}</TableCell>
-                        <TableCell className="hidden md:table-cell text-xs text-muted-foreground">{r.source || '—'}</TableCell>
+                        <TableCell className="hidden md:table-cell text-xs text-muted-foreground">{kind}</TableCell>
                         <TableCell className="hidden md:table-cell text-xs text-muted-foreground">{fmtDate(r.created_at)}</TableCell>
                       </TableRow>
                     );
