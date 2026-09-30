@@ -1802,9 +1802,11 @@ export function LabelProductionTab() {
         queryClient.invalidateQueries({ queryKey: ['print_history'] });
         const how = await openOrDownloadThermalLabelPdf(blob, fileName);
         toast.success(
-          how === 'opened'
-            ? `${labels.length} etiquetas em PDF — abertas no navegador.`
-            : `${labels.length} etiquetas baixadas: ${fileName}`,
+          how === 'overlay'
+            ? `${labels.length} etiquetas em PDF — prontas no painel.`
+            : how === 'opened'
+              ? `${labels.length} etiquetas em PDF — abertas no navegador.`
+              : `${labels.length} etiquetas baixadas: ${fileName}`,
         );
         if (effectiveThermalMode === 'quantity' && fichaFallbackOrders.size > 0) {
           toast.warning(

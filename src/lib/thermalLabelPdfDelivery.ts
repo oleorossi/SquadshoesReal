@@ -4,7 +4,12 @@
  * O .zpl só serve no Gerenciador/DirectPrint da Elgin — o Windows não abre.
  * Este caminho devolve um PDF que o navegador abre e a impressora recebe
  * pelo driver (ajuste de posição/densidade incluso).
+ *
+ * No iOS cai no overlay canônico (`PdfDeliveryHost`); no desktop abre aba
+ * ou baixa se o pop-up bloquear.
  */
+
+import { deliverPdfBytes, isIosBrowser } from '@/lib/pdfDelivery';
 
 export function pdfFileNameForThermalLabels(date = new Date()): string {
   return `etiquetas-${date.toISOString().slice(0, 10)}.pdf`;
@@ -20,11 +25,30 @@ function triggerPdfDownload(url: string, fileName: string): void {
   link.remove();
 }
 
-/** Abre o PDF numa aba; se o pop-up bloquear, cai no download. */
+export type ThermalPdfDeliveryResult = 'opened' | 'downloaded' | 'overlay';
+
+/**
+ * Entrega o PDF térmico.
+ * - iOS: overlay (`overlay`); `openPreview` entra direto no viewer embutido
+ *   (prévia ZPL — o CTA já se chama "Abrir PDF").
+ * - demais: abre aba (`opened`) ou download (`downloaded`).
+ */
 export async function openOrDownloadThermalLabelPdf(
   blob: Blob,
   fileName = pdfFileNameForThermalLabels(),
-): Promise<'opened' | 'downloaded'> {
+  opts?: { openPreview?: boolean; title?: string },
+): Promise<ThermalPdfDeliveryResult> {
+  if (isIosBrowser()) {
+    // Response.arrayBuffer funciona onde Blob.arrayBuffer não existe (jsdom/vitest).
+    const bytes = new Uint8Array(await new Response(blob).arrayBuffer());
+    deliverPdfBytes(bytes, {
+      filename: fileName,
+      title: opts?.title || 'Etiquetas',
+      openPreview: opts?.openPreview,
+    });
+    return 'overlay';
+  }
+
   const url = URL.createObjectURL(blob);
   const opened = window.open(url, '_blank', 'noopener,noreferrer');
   if (opened) {

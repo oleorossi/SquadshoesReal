@@ -3,6 +3,8 @@ import {
   beginPdfDelivery,
   cancelPdfDelivery,
   closePdfDelivery,
+  enterPdfPreview,
+  exitPdfPreview,
   getPdfDeliveryState,
   isPdfDeliveryCancelled,
   markPdfShareFailed,
@@ -21,6 +23,7 @@ describe('pdfDeliveryStore', () => {
     expect(getPdfDeliveryState().open).toBe(true);
     expect(getPdfDeliveryState().phase).toBe('generating');
     expect(getPdfDeliveryState().filename).toBe('etiquetas-PV-1.pdf');
+    expect(getPdfDeliveryState().previewing).toBe(false);
 
     setPdfDeliveryStage('rendering');
     const bytes = new Uint8Array([1, 2, 3]);
@@ -29,6 +32,17 @@ describe('pdfDeliveryStore', () => {
     expect(st.phase).toBe('ready');
     expect(st.bytes).toBe(bytes);
     expect(st.safariUrl).toContain('job=x');
+    expect(st.previewing).toBe(false);
+  });
+
+  it('openPreview no ready entra direto no viewer', () => {
+    beginPdfDelivery({ title: 'Etiquetas', filename: 'etiquetas' });
+    setPdfDeliveryReady({ bytes: new Uint8Array([1]), openPreview: true });
+    expect(getPdfDeliveryState().previewing).toBe(true);
+    exitPdfPreview();
+    expect(getPdfDeliveryState().previewing).toBe(false);
+    enterPdfPreview();
+    expect(getPdfDeliveryState().previewing).toBe(true);
   });
 
   it('cancelar impede ready posterior', () => {

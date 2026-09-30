@@ -60,10 +60,11 @@ export function downloadPdfFile(bytes: Uint8Array, filename: string): void {
 
 /**
  * Entrega bytes de PDF: no iOS abre o overlay de ações; nos demais baixa direto.
+ * `openPreview` só vale no iOS (entra direto no viewer embutido).
  */
 export function deliverPdfBytes(
   bytes: Uint8Array,
-  opts: { filename: string; title: string },
+  opts: { filename: string; title: string; openPreview?: boolean },
 ): void {
   const filename = ensurePdfName(opts.filename);
   if (!isIosBrowser()) {
@@ -72,7 +73,13 @@ export function deliverPdfBytes(
   }
   beginPdfDelivery({ title: opts.title, filename });
   setPdfDeliveryStage('preparing');
-  setPdfDeliveryReady({ bytes, filename });
+  setPdfDeliveryReady({ bytes, filename, openPreview: opts.openPreview });
+}
+
+/** Blob URL do PDF pra viewer embutido — quem chama revoga. */
+export function createPdfBlobUrl(bytes: Uint8Array): string {
+  const blob = new Blob([toArrayBuffer(bytes)], { type: 'application/pdf' });
+  return URL.createObjectURL(blob);
 }
 
 /** jsPDF → bytes → deliverPdfBytes. */

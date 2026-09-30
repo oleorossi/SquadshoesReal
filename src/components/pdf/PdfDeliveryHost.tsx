@@ -1,5 +1,12 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { CircleNotch as Loader2, ShareNetwork, DownloadSimple, X } from '@phosphor-icons/react';
+import {
+  CircleNotch as Loader2,
+  ShareNetwork,
+  DownloadSimple,
+  FilePdf,
+  CaretLeft,
+  X,
+} from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import {
   AlertDialog,
@@ -12,6 +19,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import {
+  createPdfBlobUrl,
   downloadPdfFile,
   openPdfInSafari,
   sharePdfFile,
@@ -20,6 +28,8 @@ import {
   cancelPdfDelivery,
   clearPdfShareFailed,
   closePdfDelivery,
+  enterPdfPreview,
+  exitPdfPreview,
   getPdfDeliveryState,
   markPdfShareFailed,
   pdfDeliveryStageText,
@@ -39,10 +49,42 @@ export default function PdfDeliveryHost() {
   const state = usePdfDeliveryState();
   const [safariConfirm, setSafariConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (!state.open) setSafariConfirm(false);
   }, [state.open]);
+
+  useEffect(() => {
+    if (!state.open || !state.previewing || !state.bytes) {
+      setPreviewUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+      return;
+    }
+    let url: string;
+    try {
+      url = createPdfBlobUrl(state.bytes);
+    } catch (err) {
+      exitPdfPreview();
+      const msg = err instanceof Error ? err.message : 'Não foi possível abrir o PDF.';
+      toast.error(msg);
+      if (state.safariUrl) {
+        setSafariConfirm(true);
+      } else {
+        toast('Use Compartilhar ou salvar para guardar o arquivo.', { duration: 6_000 });
+      }
+      return;
+    }
+    setPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return url;
+    });
+    return () => {
+      URL.revokeObjectURL(url);
+    };
+  }, [state.open, state.previewing, state.bytes, state.safariUrl]);
 
   if (!state.open) return null;
 
@@ -75,7 +117,27 @@ export default function PdfDeliveryHost() {
       });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Falha ao tentar baixar.');
-      setSafariConfirm(true);
+    }
+  };
+
+  const onOpenPreview = () => {
+    if (!state.bytes) {
+      toast.error('PDF indisponível. Gere o arquivo de novo.');
+      return;
+    }
+    try {
+      // Valida que dá pra montar blob antes de entrar no viewer.
+      const probe = createPdfBlobUrl(state.bytes);
+      URL.revokeObjectURL(probe);
+      enterPdfPreview();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Não foi possível abrir o PDF.';
+      toast.error(msg);
+      if (state.safariUrl) {
+        setSafariConfirm(true);
+      } else {
+        toast('Use Compartilhar ou salvar para guardar o arquivo.', { duration: 6_000 });
+      }
     }
   };
 
@@ -106,7 +168,13 @@ export default function PdfDeliveryHost() {
           }
         }}
       >
-        <div className="w-full max-w-md rounded-lg border border-border bg-card p-5 shadow-lg">
+        <div
+          className={
+            state.previewing
+              ? 'flex h-[min(92vh,720px)] w-full max-w-lg flex-col rounded-lg border border-border bg-card p-4 shadow-lg'
+              : 'w-full max-w-md rounded-lg border border-border bg-card p-5 shadow-lg'
+          }
+        >
           <div className="mb-4 flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
@@ -153,10 +221,37 @@ export default function PdfDeliveryHost() {
             </div>
           )}
 
-          {state.phase === 'ready' && (
+          {state.phase === 'ready' && state.previewing && (
+            <div className="flex min-h-0 flex-1 flex-col gap-3">
+              <div className="min-h-0 flex-1 overflow-hidden rounded-md border border-border bg-muted/30">
+                {previewUrl ? (
+                  <iframe
+                    title={state.filename}
+                    src={previewUrl}
+                    className="h-full w-full border-0 bg-card"
+                  />
+                ) : (
+                  <div className="flex h-full items-center justify-center p-6">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-hidden />
+                  </div>
+                )}
+              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                className="w-full gap-2"
+                onClick={() => exitPdfPreview()}
+              >
+                <CaretLeft className="h-4 w-4" />
+                Voltar
+              </Button>
+            </div>
+          )}
+
+          {state.phase === 'ready' && !state.previewing && (
             <div className="space-y-3">
               <p className="text-sm text-muted-foreground">
-                O arquivo está pronto. Compartilhe ou salve pela folha do iPhone.
+                O arquivo está pronto. Abra pra conferir, ou compartilhe/salve pela folha do iPhone.
               </p>
               <Button
                 type="button"
@@ -168,27 +263,27 @@ export default function PdfDeliveryHost() {
                 <ShareNetwork className="h-4 w-4" />
                 Compartilhar ou salvar
               </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full gap-2"
+                disabled={!state.bytes}
+                onClick={onOpenPreview}
+              >
+                <FilePdf className="h-4 w-4" />
+                Abrir
+              </Button>
               {state.shareFailed && (
-                <>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="w-full gap-2"
-                    disabled={!state.bytes}
-                    onClick={onRetryDownload}
-                  >
-                    <DownloadSimple className="h-4 w-4" />
-                    Tentar baixar de novo
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="w-full"
-                    onClick={() => setSafariConfirm(true)}
-                  >
-                    Abrir no Safari…
-                  </Button>
-                </>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full gap-2"
+                  disabled={!state.bytes}
+                  onClick={onRetryDownload}
+                >
+                  <DownloadSimple className="h-4 w-4" />
+                  Tentar baixar de novo
+                </Button>
               )}
               <Button
                 type="button"
@@ -208,8 +303,8 @@ export default function PdfDeliveryHost() {
           <AlertDialogHeader>
             <AlertDialogTitle>Abrir no Safari?</AlertDialogTitle>
             <AlertDialogDescription>
-              Vamos abrir o PDF fora do app, no Safari, onde o compartilhar nativo
-              costuma funcionar. Você sai do app por um momento.
+              Não foi possível mostrar o PDF aqui. Vamos abrir fora do app, no Safari.
+              Você sai do app por um momento.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

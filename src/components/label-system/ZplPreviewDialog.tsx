@@ -208,11 +208,15 @@ export default function ZplPreviewDialog({
         { width: dimensions.width, height: dimensions.height },
       );
       const name = pdfFileNameForThermalLabels();
-      const how = await openOrDownloadThermalLabelPdf(blob, name);
+      // iOS: overlay + preview embutido (CTA já se chama Abrir PDF).
+      // Desktop: aba / download — inalterado.
+      const how = await openOrDownloadThermalLabelPdf(blob, name, { openPreview: true });
       toast.success(
-        how === 'opened'
-          ? 'PDF aberto — confira, ajuste na impressora e imprima pelo navegador.'
-          : `PDF baixado: ${name}`,
+        how === 'overlay'
+          ? 'PDF pronto — confira no painel.'
+          : how === 'opened'
+            ? 'PDF aberto — confira, ajuste na impressora e imprima pelo navegador.'
+            : `PDF baixado: ${name}`,
       );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Falha ao gerar o PDF');
