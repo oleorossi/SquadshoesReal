@@ -21,6 +21,7 @@ const {
   saveMutateAsync,
   parseClientOrderFilesMock,
   buildObjetivaPdfMock,
+  buildObjetivaAdesivaPdfMock,
   buildBabyNalinPdfMock,
   toastInfo,
   toastSuccess,
@@ -36,6 +37,7 @@ const {
     })),
     parseClientOrderFilesMock: vi.fn(),
     buildObjetivaPdfMock: vi.fn(async () => ({ save: vi.fn() })),
+    buildObjetivaAdesivaPdfMock: vi.fn(async () => ({ save: vi.fn() })),
     buildBabyNalinPdfMock: vi.fn(async () => ({ save: vi.fn() })),
     toastInfo: vi.fn(),
     toastSuccess: vi.fn(),
@@ -136,6 +138,16 @@ vi.mock('@/lib/objetivaLabels', async () => {
   return {
     ...actual,
     buildObjetivaPdf: buildObjetivaPdfMock,
+  };
+});
+
+vi.mock('@/lib/objetivaAdesivaLabels', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/objetivaAdesivaLabels')>(
+    '@/lib/objetivaAdesivaLabels',
+  );
+  return {
+    ...actual,
+    buildObjetivaAdesivaPdf: buildObjetivaAdesivaPdfMock,
   };
 });
 

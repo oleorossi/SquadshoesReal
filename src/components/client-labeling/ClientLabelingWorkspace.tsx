@@ -69,6 +69,7 @@ import {
   CLIENT_LABEL_FAMILIES,
   NALIN_TAG_DEFAULT_BRANDING,
   NALIN_TAG_DEFAULT_GEOMETRY,
+  OBJETIVA_ADESIVA_DEFAULT_GEOMETRY,
   OBJETIVA_DEFAULT_BRANDING,
   OBJETIVA_DEFAULT_GEOMETRY,
   PONTO_MIX_DEFAULT_GEOMETRY,
@@ -118,6 +119,15 @@ import {
   nalinTagPdfFilename,
   nalinTagZplFilename,
 } from '@/lib/nalinTagLabels';
+import {
+  buildObjetivaAdesivaPdf,
+  countObjetivaAdesivaLabels,
+  OBJETIVA_ADESIVA_COLUMNS,
+  OBJETIVA_ADESIVA_LABEL_HEIGHT_MM,
+  OBJETIVA_ADESIVA_LABEL_WIDTH_MM,
+  objetivaAdesivaPageCount,
+  objetivaAdesivaPdfFilename,
+} from '@/lib/objetivaAdesivaLabels';
 import {
   buildObjetivaPdf,
   buildObjetivaTagA4Pdf,
@@ -342,18 +352,22 @@ export function ClientLabelingWorkspace() {
 
   const totalEtiquetas = isNalinTag
     ? countNalinTagLabels(productionRows, true)
-    : isObjetiva
-      ? countObjetivaLabels(productionRows, true)
-      : isPontoMix
-        ? countPontoMixLabels(productionRows, true)
-        : countExpandedRows(productionBabyRows, true);
+    : isObjetivaAdesiva
+      ? countObjetivaAdesivaLabels(productionRows, true)
+      : isObjetiva
+        ? countObjetivaLabels(productionRows, true)
+        : isPontoMix
+          ? countPontoMixLabels(productionRows, true)
+          : countExpandedRows(productionBabyRows, true);
   const paginasGrafica = isNalinTag
     ? countNalinTagLabels(selectedRows, false)
-    : isObjetiva
-      ? countObjetivaLabels(selectedRows, false)
-      : isPontoMix
-        ? countPontoMixLabels(selectedRows, false)
-        : graphicPageCount(selectedSkuAnalysis.rows.length);
+    : isObjetivaAdesiva
+      ? objetivaAdesivaPageCount(countObjetivaAdesivaLabels(selectedRows, false))
+      : isObjetiva
+        ? countObjetivaLabels(selectedRows, false)
+        : isPontoMix
+          ? countPontoMixLabels(selectedRows, false)
+          : graphicPageCount(selectedSkuAnalysis.rows.length);
   const skuLabel = selectedSkuKeys.size === 1 ? 'SKU' : 'SKUs';
   const foraDoPadrao = isNalinAdesiva ? rowEntries.filter(e => !e.barcodeFit.fits) : [];
   const selecionadasFora = isNalinAdesiva
@@ -691,9 +705,18 @@ export function ClientLabelingWorkspace() {
             : `PDF + ZPL Objetiva · Tag com ${totalEtiquetas} etiqueta(s) gerado.`,
         );
       } else if (pattern.key === 'objetiva_adesiva') {
-        // Já barrado em awaitsCalibration; guarda defensiva.
-        toast.info('Adesiva Objetiva aguarda foto de calibração.');
-        return;
+        const sourceRows = mode === 'production' ? productionRows : selectedRows;
+        const doc = await buildObjetivaAdesivaPdf(sourceRows, {
+          geometry: pattern.geometry,
+          repeatByQuantity: mode === 'production',
+        });
+        const { deliverJsPdf } = await import('@/lib/pdfDelivery');
+        deliverJsPdf(doc, objetivaAdesivaPdfFilename(originName), 'Etiquetas');
+        toast.success(
+          mode === 'graphic'
+            ? `PDF Objetiva · Adesiva (amostra) com ${selectedRows.length} SKU(s) gerado.`
+            : `PDF Objetiva · Adesiva com ${totalEtiquetas} etiqueta(s) gerado.`,
+        );
       } else if (pattern.key === 'ponto_mix') {
         // Arte fixa: sempre logo empacotada branca (upload do cliente é ignorado).
         const logo = await resolvePontoMixLogo();
@@ -1243,21 +1266,12 @@ export function ClientLabelingWorkspace() {
                 </div>
               ) : isObjetivaAdesiva ? (
                 <div className="space-y-3">
-                  <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-foreground">
-                    Adesiva Objetiva: o CSV é o mesmo da Tag, mas a arte ainda não foi calibrada.
-                    Envie a foto impressa da adesiva para eu montar o layout (como na Tag).
+                  <p className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                    Adesiva Objetiva: mesmo CSV da Tag · PDF 50×30 mm · 2 colunas (25×30) · CODE128
+                    do SKU · preço. Abre no macOS e imprime na Elgin L42PRO pelo driver.
                   </p>
-                  <ClientLabelLogoUpload
-                    clientId={selectedClientId}
-                    logoUrl={pattern.branding.logoUrl}
-                    disabled={isBusy}
-                    storageKey="objetiva_adesiva"
-                    onLogoChange={url => setBrandingField('logoUrl', url ?? '')}
-                  />
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                    {OBJETIVA_GEOMETRY_FIELDS.filter(
-                      f => f.key !== 'columns' && f.key !== 'columnGapMm',
-                    ).map(field => (
+                    {OBJETIVA_GEOMETRY_FIELDS.map(field => (
                       <div key={field.key} className="space-y-1">
                         <Label htmlFor={`obj-ad-${field.key}`} className="text-xs">
                           {field.label}
@@ -1276,7 +1290,12 @@ export function ClientLabelingWorkspace() {
                     ))}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Medidas provisórias até a foto. Gerar PDF fica bloqueado até existir arte.
+                    Defaults: {OBJETIVA_ADESIVA_DEFAULT_GEOMETRY.labelWidthMm}×
+                    {OBJETIVA_ADESIVA_DEFAULT_GEOMETRY.labelHeightMm} mm ·{' '}
+                    {OBJETIVA_ADESIVA_DEFAULT_GEOMETRY.columns} colunas · página{' '}
+                    {(OBJETIVA_ADESIVA_DEFAULT_GEOMETRY.labelWidthMm
+                      * OBJETIVA_ADESIVA_DEFAULT_GEOMETRY.columns).toLocaleString('pt-BR')}
+                    ×{OBJETIVA_ADESIVA_DEFAULT_GEOMETRY.labelHeightMm} mm.
                   </p>
                 </div>
               ) : (
@@ -1488,7 +1507,7 @@ export function ClientLabelingWorkspace() {
                           : isPontoMix
                             ? ' · preview + PDF + ZPL L42PRO 40×60'
                             : isObjetivaAdesiva
-                              ? ' · aguarda foto da adesiva'
+                              ? ' · PDF 50×30 · 2 colunas L42PRO'
                               : ' · PDF + ZPL L42PRO 40×60'}
                       .
                     </p>
@@ -1602,6 +1621,12 @@ export function ClientLabelingWorkspace() {
                     {paginasGrafica} linha(s) de {COUCHE_COLUMNS} colunas ·{' '}
                     {BABY_NALIN_DEFAULT_GEOMETRY.labelWidthMm}×{BABY_NALIN_DEFAULT_GEOMETRY.labelHeightMm}{' '}
                     mm
+                  </p>
+                )}
+                {isObjetivaAdesiva && (
+                  <p className="text-xs text-muted-foreground">
+                    {paginasGrafica} linha(s) de {OBJETIVA_ADESIVA_COLUMNS} colunas ·{' '}
+                    {OBJETIVA_ADESIVA_LABEL_WIDTH_MM}×{OBJETIVA_ADESIVA_LABEL_HEIGHT_MM} mm
                   </p>
                 )}
               </section>

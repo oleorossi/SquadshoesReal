@@ -11,7 +11,7 @@
 /**
  * Variantes por família (mesmo CSV do pedido → Tag maior + Adesiva):
  * - Nalin: `nalin_tag` (hangtag 40×60 calibrada) + `baby_nalin` (adesiva 50×30)
- * - Objetiva: `objetiva` (Tag calibrada) + `objetiva_adesiva` (aguarda foto)
+ * - Objetiva: `objetiva` (Tag calibrada) + `objetiva_adesiva` (adesiva 50×30 · 2 colunas)
  * - Ponto Mix: um layout só
  */
 export const CLIENT_LABEL_PATTERN_KEYS = [
@@ -261,18 +261,18 @@ export const OBJETIVA_DEFAULT_BRANDING: ClientLabelBranding = {
 };
 
 /**
- * Placeholder da adesiva Objetiva — geometria provisória até a foto de calibração.
- * Não gerar PDF com este default: o workspace bloqueia até existir arte.
+ * Adesiva Objetiva — rolo dual L42PRO 50×30 mm (2 células 25×30, gap 0).
+ * Arte em `objetivaAdesivaLabels.ts`, calibrada pela foto física do cliente.
  */
 export const OBJETIVA_ADESIVA_DEFAULT_GEOMETRY: ClientLabelGeometry = {
-  labelWidthMm: 50,
+  labelWidthMm: 25,
   labelHeightMm: 30,
-  columns: 1,
+  columns: 2,
   columnGapMm: 0,
-  leftMarginMm: 1.0,
-  rightMarginMm: 1.0,
-  topMarginMm: 1.0,
-  bottomMarginMm: 1.0,
+  leftMarginMm: 0,
+  rightMarginMm: 0,
+  topMarginMm: 0,
+  bottomMarginMm: 0,
 };
 
 export const OBJETIVA_ADESIVA_DEFAULT_BRANDING: ClientLabelBranding = {
@@ -391,14 +391,14 @@ export function patternMediaLabel(key: ClientLabelPatternKey): string {
   if (key === 'nalin_tag') return 'Tag hangtag 40×60 · L42PRO';
   if (key === 'baby_nalin') return 'Adesiva 50×30 · 2 colunas L42PRO';
   if (key === 'objetiva') return 'Hangtag 40×60 · L42PRO';
-  if (key === 'objetiva_adesiva') return 'Adesiva · calibração';
+  if (key === 'objetiva_adesiva') return 'Adesiva 50×30 · 2 colunas L42PRO';
   if (key === 'ponto_mix') return 'Preço varejo 40×60 · L42PRO';
   return 'Adesiva 50×30 · 2 colunas L42PRO';
 }
 
-/** Arte ainda não calibrada — UI bloqueia gerar PDF. */
-export function patternAwaitsCalibration(key: ClientLabelPatternKey | null | undefined): boolean {
-  return key === 'objetiva_adesiva';
+/** Arte ainda não calibrada — UI bloqueia gerar PDF. Nenhum padrão aguarda hoje. */
+export function patternAwaitsCalibration(_key: ClientLabelPatternKey | null | undefined): boolean {
+  return false;
 }
 
 export function defaultFileMappingForKey(key: ClientLabelPatternKey): ClientLabelFileMapping {

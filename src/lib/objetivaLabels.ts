@@ -3,7 +3,8 @@
  *
  * Entrada: CSV do ERP (`PEDIDO;SKU;DESCRICAO;…`) — um SKU por arquivo no lote típico.
  * O CODE128 usa o SKU. Textos fixos (motto, troca, PU/SO) vêm do padrão editável.
- * A adesiva (`objetiva_adesiva`) reusa o mesmo CSV; a arte dela é outro gerador.
+ * A adesiva (`objetiva_adesiva`) reusa o mesmo CSV; a arte dela está em
+ * `objetivaAdesivaLabels.ts` (PDF 50×30 · 2 colunas).
  */
 import { code128Bars } from './code128';
 import { decodeOrderBytes } from './babyNalinLabels';
