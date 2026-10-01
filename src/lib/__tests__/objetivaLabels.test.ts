@@ -7,6 +7,7 @@ import {
   OBJETIVA_ART_DOTS,
   OBJETIVA_DPI,
   buildObjetivaPdf,
+  buildObjetivaTagA4Pdf,
   buildObjetivaZpl,
   composeObjetivaLabelCopy,
   countObjetivaLabels,
@@ -21,6 +22,11 @@ import {
   stripHangtagAccents,
   wrapObjetivaDescricao,
 } from '@/lib/objetivaLabels';
+import {
+  TAG_A4_CELL_HEIGHT_MM,
+  TAG_A4_CELL_WIDTH_MM,
+  tagA4CellOrigin,
+} from '@/lib/tagA4Sheet';
 
 const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), 'fixtures/objetiva');
 
@@ -291,6 +297,55 @@ describe('objetivaLabels PDF · miolo girado + preço', () => {
     };
     // PDF cresce para cima: baseline dos centavos é MAIOR que a do valor.
     expect(yOf(',99')).toBeGreaterThan(yOf('39'));
+  });
+
+  it('grade do preço deixa ≥2 mm de folga na borda direita e inferior', () => {
+    const { gridW, gridH, price } = OBJETIVA_ART_DOTS;
+    const rightMarginMm = ((gridW - price.rightX) / gridW) * 40;
+    const bottomMarginMm = ((gridH - price.baseline) / gridH) * 60;
+    expect(rightMarginMm).toBeGreaterThanOrEqual(2);
+    expect(bottomMarginMm).toBeGreaterThanOrEqual(2);
+    // Ainda abaixo do TAM.: (baseline 408) para não colidir.
+    expect(price.baseline).toBeGreaterThan(OBJETIVA_ART_DOTS.size.baseline);
+  });
+
+  it('no A4 o preço fica dentro da célula com inset ≥ 1,5 mm', async () => {
+    const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    const rows = parseObjetivaOrderCsv(loadFixture('34669946-95755.csv'));
+    const doc = await buildObjetivaTagA4Pdf([rows[0]!], {
+      branding: OBJETIVA_DEFAULT_BRANDING,
+      repeatByQuantity: false,
+    });
+    const pdf = await getDocument({
+      data: new Uint8Array(doc.output('arraybuffer')),
+      useSystemFonts: true,
+    }).promise;
+    const page = await pdf.getPage(1);
+    const vp = page.getViewport({ scale: 1 });
+    const text = await page.getTextContent();
+    const cell = tagA4CellOrigin(0);
+    const inset = 1.5;
+    const left = cell.x + inset;
+    const right = cell.x + TAG_A4_CELL_WIDTH_MM - inset;
+    const top = cell.y + inset;
+    const bottom = cell.y + TAG_A4_CELL_HEIGHT_MM - inset;
+
+    const priceItems = text.items.filter(item => {
+      const str = String((item as { str?: string }).str ?? '');
+      return str === 'R$' || str === '39' || str === ',99';
+    }) as Array<{ str: string; transform: number[]; width: number }>;
+
+    expect(priceItems.length).toBeGreaterThanOrEqual(3);
+    for (const item of priceItems) {
+      const xMm = (item.transform[4]! * 25.4) / 72;
+      const yTopMm = ((vp.height - item.transform[5]!) * 25.4) / 72;
+      const widthMm = ((item.width || 0) * 25.4) / 72;
+      // Baseline do preço fica na faixa inferior da célula; descendente ≤ ~1,3 mm.
+      expect(xMm, item.str).toBeGreaterThanOrEqual(left - 0.2);
+      expect(xMm + widthMm, item.str).toBeLessThanOrEqual(right + 0.2);
+      expect(yTopMm, item.str).toBeGreaterThanOrEqual(top);
+      expect(yTopMm, item.str).toBeLessThanOrEqual(bottom + 0.2);
+    }
   });
 });
 

@@ -357,8 +357,12 @@ export const OBJETIVA_ART_DOTS = {
   barcode: { x: 258, w: 52, top: 138, bottom: 376 },
   /** "TAM.:" + número grande. */
   size: { labelX: 30, labelCapH: 9, valueX: 70, baseline: 408, valueCapH: 30 },
-  /** "R$" à esquerda, valor grande alinhado à direita, centavos sobrescritos. */
-  price: { currencyX: 28, currencyCapH: 14, rightX: 296, baseline: 458, mainCapH: 36, centsCapH: 17 },
+  /**
+   * "R$" à esquerda, valor grande alinhado à direita, centavos sobrescritos.
+   * Folga ≥2,5 mm na borda direita/inferior — foto física e A4 colado: o valor
+   * encostava na faca/corte (baseline 458 / rightX 296).
+   */
+  price: { currencyX: 28, currencyCapH: 12, rightX: 284, baseline: 440, mainCapH: 30, centsCapH: 14 },
 } as const;
 
 /** Corpo em pt que entrega exatamente `capMm` de altura de caixa-alta. */
@@ -644,19 +648,42 @@ function drawObjetivaLabel(
   doc.text(copy.tamanho, s.size.valueX, s.size.baseline, { baseline: 'alphabetic' });
 
   // Preço: R$ na margem esquerda, valor alinhado à direita, centavos elevados.
+  // Fit-to-width: preços longos (ex.: 1.299,99) não estouram rightX.
   const centsLabel = `,${copy.priceCents}`;
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(s.price.currencyFontPt);
+  let currencyPt = s.price.currencyFontPt;
+  let mainPt = s.price.mainFontPt;
+  let centsPt = s.price.centsFontPt;
+  let centsRise = s.price.centsRise;
+  const usableWidth = Math.max(4, s.price.rightX - s.price.currencyX);
+  for (let step = 0; step < 12; step++) {
+    doc.setFontSize(currencyPt);
+    const currencyWidth = doc.getTextWidth('R$');
+    doc.setFontSize(centsPt);
+    const centsWidth = doc.getTextWidth(centsLabel);
+    doc.setFontSize(mainPt);
+    const mainWidth = doc.getTextWidth(copy.priceMain);
+    // R$ + folga mínima + valor + centavos.
+    const needed = currencyWidth + 1.2 + mainWidth + centsWidth;
+    if (needed <= usableWidth) break;
+    const scale = Math.max(0.55, (usableWidth / needed) * 0.98);
+    currencyPt *= scale;
+    mainPt *= scale;
+    centsPt *= scale;
+    centsRise *= scale;
+  }
+
+  doc.setFontSize(currencyPt);
   doc.text('R$', s.price.currencyX, s.price.baseline, { baseline: 'alphabetic' });
 
-  doc.setFontSize(s.price.centsFontPt);
+  doc.setFontSize(centsPt);
   const centsWidth = doc.getTextWidth(centsLabel);
-  doc.setFontSize(s.price.mainFontPt);
+  doc.setFontSize(mainPt);
   const mainWidth = doc.getTextWidth(copy.priceMain);
   const mainLeft = s.price.rightX - centsWidth - mainWidth;
   doc.text(copy.priceMain, mainLeft, s.price.baseline, { baseline: 'alphabetic' });
-  doc.setFontSize(s.price.centsFontPt);
-  doc.text(centsLabel, mainLeft + mainWidth, s.price.baseline - s.price.centsRise, {
+  doc.setFontSize(centsPt);
+  doc.text(centsLabel, mainLeft + mainWidth, s.price.baseline - centsRise, {
     baseline: 'alphabetic',
   });
 }
