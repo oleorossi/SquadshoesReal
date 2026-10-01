@@ -261,14 +261,14 @@ export const OBJETIVA_DEFAULT_BRANDING: ClientLabelBranding = {
 };
 
 /**
- * Adesiva Objetiva — rolo dual L42PRO 50×30 mm (2 células 25×30, gap 0).
- * Arte em `objetivaAdesivaLabels.ts`, calibrada pela foto física do cliente.
+ * Adesiva Objetiva — mesma mídia da adesiva Nalin: 2 × 50 × 30 mm, vão 6 mm
+ * (página 106 × 30). Arte em `objetivaAdesivaLabels.ts`.
  */
 export const OBJETIVA_ADESIVA_DEFAULT_GEOMETRY: ClientLabelGeometry = {
-  labelWidthMm: 25,
+  labelWidthMm: 50,
   labelHeightMm: 30,
   columns: 2,
-  columnGapMm: 0,
+  columnGapMm: 6,
   leftMarginMm: 0,
   rightMarginMm: 0,
   topMarginMm: 0,

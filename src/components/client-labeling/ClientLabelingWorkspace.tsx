@@ -125,6 +125,8 @@ import {
   OBJETIVA_ADESIVA_COLUMNS,
   OBJETIVA_ADESIVA_LABEL_HEIGHT_MM,
   OBJETIVA_ADESIVA_LABEL_WIDTH_MM,
+  OBJETIVA_ADESIVA_PAGE_HEIGHT_MM,
+  OBJETIVA_ADESIVA_PAGE_WIDTH_MM,
   objetivaAdesivaPageCount,
   objetivaAdesivaPdfFilename,
 } from '@/lib/objetivaAdesivaLabels';
@@ -1267,8 +1269,8 @@ export function ClientLabelingWorkspace() {
               ) : isObjetivaAdesiva ? (
                 <div className="space-y-3">
                   <p className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-                    Adesiva Objetiva: mesmo CSV da Tag · PDF 50×30 mm · 2 colunas (25×30) · CODE128
-                    do SKU · preço. Abre no macOS e imprime na Elgin L42PRO pelo driver.
+                    Adesiva Objetiva: mesmo CSV da Tag · PDF 2 × 50×30 mm (vão 6 mm, página 106×30) ·
+                    CODE128 do SKU · preço. Abre no macOS e imprime na Elgin L42PRO pelo driver.
                   </p>
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     {OBJETIVA_GEOMETRY_FIELDS.map(field => (
@@ -1290,12 +1292,9 @@ export function ClientLabelingWorkspace() {
                     ))}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Defaults: {OBJETIVA_ADESIVA_DEFAULT_GEOMETRY.labelWidthMm}×
-                    {OBJETIVA_ADESIVA_DEFAULT_GEOMETRY.labelHeightMm} mm ·{' '}
-                    {OBJETIVA_ADESIVA_DEFAULT_GEOMETRY.columns} colunas · página{' '}
-                    {(OBJETIVA_ADESIVA_DEFAULT_GEOMETRY.labelWidthMm
-                      * OBJETIVA_ADESIVA_DEFAULT_GEOMETRY.columns).toLocaleString('pt-BR')}
-                    ×{OBJETIVA_ADESIVA_DEFAULT_GEOMETRY.labelHeightMm} mm.
+                    Defaults: {OBJETIVA_ADESIVA_LABEL_WIDTH_MM}×{OBJETIVA_ADESIVA_LABEL_HEIGHT_MM} mm ·{' '}
+                    {OBJETIVA_ADESIVA_COLUMNS} colunas · vão {OBJETIVA_ADESIVA_DEFAULT_GEOMETRY.columnGapMm} mm ·
+                    página {OBJETIVA_ADESIVA_PAGE_WIDTH_MM}×{OBJETIVA_ADESIVA_PAGE_HEIGHT_MM} mm.
                   </p>
                 </div>
               ) : (

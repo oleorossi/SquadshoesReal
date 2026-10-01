@@ -3,6 +3,12 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
+  OBJETIVA_ADESIVA_ART_HEIGHT_MM,
+  OBJETIVA_ADESIVA_ART_WIDTH_MM,
+  OBJETIVA_ADESIVA_COLUMN_GAP_MM,
+  OBJETIVA_ADESIVA_INSET_MM,
+  OBJETIVA_ADESIVA_LABEL_HEIGHT_MM,
+  OBJETIVA_ADESIVA_LABEL_WIDTH_MM,
   OBJETIVA_ADESIVA_PAGE_HEIGHT_MM,
   OBJETIVA_ADESIVA_PAGE_WIDTH_MM,
   buildObjetivaAdesivaPdf,
@@ -54,9 +60,17 @@ describe('composeObjetivaAdesivaCopy', () => {
 });
 
 describe('planObjetivaAdesivaPlacements', () => {
-  it('página é 50×30 mm', () => {
-    expect(OBJETIVA_ADESIVA_PAGE_WIDTH_MM).toBe(50);
+  it('página é 106×30 mm (2 × 50×30 + vão 6 mm) — mídia real L42PRO', () => {
+    expect(OBJETIVA_ADESIVA_LABEL_WIDTH_MM).toBe(50);
+    expect(OBJETIVA_ADESIVA_LABEL_HEIGHT_MM).toBe(30);
+    expect(OBJETIVA_ADESIVA_COLUMN_GAP_MM).toBe(6);
+    expect(OBJETIVA_ADESIVA_PAGE_WIDTH_MM).toBe(106);
     expect(OBJETIVA_ADESIVA_PAGE_HEIGHT_MM).toBe(30);
+    // Arte cabe na célula com folga na faca.
+    expect(OBJETIVA_ADESIVA_INSET_MM * 2 + OBJETIVA_ADESIVA_ART_WIDTH_MM)
+      .toBe(OBJETIVA_ADESIVA_LABEL_WIDTH_MM);
+    expect(OBJETIVA_ADESIVA_INSET_MM * 2 + OBJETIVA_ADESIVA_ART_HEIGHT_MM)
+      .toBe(OBJETIVA_ADESIVA_LABEL_HEIGHT_MM);
   });
 
   it('2 etiquetas cabem numa carreira; 3 abrem página com direita vazia', () => {
@@ -64,9 +78,12 @@ describe('planObjetivaAdesivaPlacements', () => {
     expect(two).toHaveLength(2);
     expect(two[0]!.pageIndex).toBe(0);
     expect(two[0]!.column).toBe(0);
-    expect(two[0]!.xMm).toBe(1);
+    expect(two[0]!.xMm).toBe(OBJETIVA_ADESIVA_INSET_MM);
     expect(two[1]!.column).toBe(1);
-    expect(two[1]!.xMm).toBe(26);
+    expect(two[1]!.xMm).toBe(
+      OBJETIVA_ADESIVA_LABEL_WIDTH_MM + OBJETIVA_ADESIVA_COLUMN_GAP_MM + OBJETIVA_ADESIVA_INSET_MM,
+    );
+    expect(two[1]!.xMm - two[0]!.xMm).toBe(56);
     expect(objetivaAdesivaPageCount(2)).toBe(1);
 
     const three = planObjetivaAdesivaPlacements(
@@ -88,11 +105,11 @@ describe('planObjetivaAdesivaPlacements', () => {
 });
 
 describe('buildObjetivaAdesivaPdf', () => {
-  it('gera PDF binário válido com SKU e preço na arte', async () => {
+  it('gera PDF binário válido no tamanho do rolo 106×30', async () => {
     const rows = parseObjetivaOrderCsv(loadFixture('34669946-95755.csv')).slice(0, 2);
     const doc = await buildObjetivaAdesivaPdf(rows, { repeatByQuantity: false });
     expect(doc.getNumberOfPages()).toBe(1);
-    expect(doc.internal.pageSize.getWidth()).toBeCloseTo(50, 5);
+    expect(doc.internal.pageSize.getWidth()).toBeCloseTo(106, 5);
     expect(doc.internal.pageSize.getHeight()).toBeCloseTo(30, 5);
 
     const bytes = Buffer.from(doc.output('arraybuffer'));
@@ -123,5 +140,14 @@ describe('buildObjetivaAdesivaPdf', () => {
     ];
     const doc = await buildObjetivaAdesivaPdf(rows, { repeatByQuantity: false });
     expect(doc.getNumberOfPages()).toBe(2);
+  });
+
+  it('ignora geometry salva com célula 25 mm (não regride pra página 50)', async () => {
+    const doc = await buildObjetivaAdesivaPdf([line()], {
+      repeatByQuantity: false,
+      geometry: { labelWidthMm: 25, columnGapMm: 0 },
+    });
+    expect(doc.internal.pageSize.getWidth()).toBeCloseTo(106, 5);
+    expect(doc.internal.pageSize.getHeight()).toBeCloseTo(30, 5);
   });
 });
