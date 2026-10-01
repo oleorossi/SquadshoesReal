@@ -718,9 +718,21 @@ interface PrintWorkSheetsPageProps {
 // roteiro de fábrica continuam nas grafias legadas via aliases.
 export const SECTORS = ['Palmilha', 'Só Fibra', 'Só Forração', 'Corte Cabedal', 'Acabamento Palmilha', 'Costura Cabedal', 'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição', 'Relatório Gerencial'] as const;
 
-/** Rota A4 completa: Palmilha cobre fibra+forro; Só * ficam desmarcados. */
+/** Rota A4 do dia a dia: Palmilha cobre fibra+forro; Só *, Montagem,
+ *  Expedição e Relatório Gerencial ficam desmarcados na abertura. */
 export const DEFAULT_A4_SECTORS: readonly (typeof SECTORS[number])[] =
-  SECTORS.filter(s => s !== 'Só Fibra' && s !== 'Só Forração');
+  SECTORS.filter(s =>
+    s !== 'Só Fibra'
+    && s !== 'Só Forração'
+    && s !== 'Montagem'
+    && s !== 'Expedição'
+    && s !== 'Relatório Gerencial',
+  );
+
+/** Refs com foto grande pré-ligada na barra de Aviamento (quando elegíveis). */
+const DEFAULT_HERO_PHOTO_LABELS = new Set(['M100', 'S-039']);
+const normalizeHeroPhotoLabel = (label: string): string =>
+  label.trim().toUpperCase().replace(/\.+$/, '');
 
 const SECTOR_DISPLAY_LABELS: Partial<Record<typeof SECTORS[number], string>> = {};
 const sectorLabel = (s: typeof SECTORS[number] | string): string =>
@@ -967,8 +979,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   const coarsePointer = useIsCoarsePointer();
   // Fluxo unificado (2026-05-18): chips toggleáveis com state interno —
   // substitui o antigo dropdown single + bool printAll + prop selectedSectors.
-  // Default = todos os setores marcados (equivalente ao antigo "Imprimir tudo").
-  // User clica num chip pra ativar/desativar — conteúdo da tela atualiza ao vivo.
+  // Default = DEFAULT_A4_SECTORS (rota do dia a dia; Só */Montagem/Expedição/
+  // Relatório Gerencial ficam de fora). User clica num chip pra ativar/desativar.
   const [activeSectors, setActiveSectors] = useState<Set<string>>(
     () => {
       const raw = initialSectors ?? [...DEFAULT_A4_SECTORS];
@@ -2964,9 +2976,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   }, [expandedOrders, activeSectors, soleMappings, silkRegistrations, saleOrders, variantsByRef, tsImageByRef, liningFlagLookup, soleMaterialByRef, resolveSoleForOrder, sheetById, clientsInfo, economicGroupsInfo, soleGroupPackaging, knifeDefaultBoundaries, knifeOptOutByRef, knifeRangesByRef, aviamentoDefaultBoundaries, aviamentoOptOutByRef, aviamentoRangesByRef]);
 
   // Foto grande por referência (Aviamento A4): sessão só.
-  // Default LIGADO em todas as refs elegíveis quando o lote muda — sem isso a
-  // ficha continua com a thumb 46px e o aviador não vê diferença (feedback
-  // produção 29/09/2026). Desmarcar fica a cargo do operador nesta sessão.
+  // Default: só M100 / S-039 (quando elegíveis no lote). As demais começam
+  // desmarcadas; "Todas" / "Nenhuma" e o clique individual continuam manuais.
   const aviamentoHeroEligible = useMemo(
     () => listAviamentoHeroEligibleGroups(aviamentoGroups),
     [aviamentoGroups],
@@ -2980,7 +2991,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   useEffect(() => {
     if (aviamentoHeroEligibleSig === heroEligibleSigRef.current) return;
     heroEligibleSigRef.current = aviamentoHeroEligibleSig;
-    setHeroPhotoRefKeys(new Set(aviamentoHeroEligible.map((r) => r.key)));
+    setHeroPhotoRefKeys(new Set(
+      aviamentoHeroEligible
+        .filter((r) => DEFAULT_HERO_PHOTO_LABELS.has(normalizeHeroPhotoLabel(r.label)))
+        .map((r) => r.key),
+    ));
   }, [aviamentoHeroEligible, aviamentoHeroEligibleSig]);
   const showAviamentoHeroToolbar = isA4
     && activeSectors.has('Aviamento')
