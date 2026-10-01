@@ -1,12 +1,15 @@
 /**
- * Adesiva Objetiva — rolo dual L42PRO 2 × 50 × 30 mm (vão 6 mm, página 106 × 30).
+ * Adesiva Objetiva — 1 etiqueta por página, 50 × 30 mm.
  *
- * Mesma mídia física da adesiva Nalin. A arte anterior usava células 25×30 numa
- * página de 50 mm — o driver Elgin escalava ~2× pra largura do rolo e o conteúdo
- * atravessava DUAS carreiras (preço/código “saindo” no vão entre etiquetas).
+ * Arte (foto/original do cliente): descrição · ref/cor/TAM · CODE128 do SKU ·
+ * preço. Uma página = uma etiqueta física — o driver da térmica (Elgin/Bematech)
+ * com mídia 50×30 2 colunas avança sozinho esquerda→direita→próxima carreira.
  *
- * Arte: descrição · ref/cor/TAM · CODE128 do SKU · preço. Reusa o CSV/parse da
- * Tag (`objetivaLabels`); saída PDF only (macOS → driver Elgin). Sem ZPL.
+ * Histórico: página 2-up 50 mm (células 25×30) truncava o texto; 2-up 106 mm
+ * (células 50×30) batia na arte mas o driver em 50 mm espremia as duas colunas
+ * numa só etiqueta (código/preço “no canto”, descrição sumia).
+ *
+ * Reusa o CSV/parse da Tag (`objetivaLabels`); saída PDF only. Sem ZPL.
  */
 import { code128Bars, encodeCode128 } from './code128';
 import {
@@ -16,18 +19,16 @@ import {
 } from './clientLabelPattern';
 import { stripHangtagAccents } from './objetivaLabels';
 
-/** Cada etiqueta física do rolo dual 50×30. */
+/** Etiqueta física 50 × 30 mm — uma por página. */
 export const OBJETIVA_ADESIVA_LABEL_WIDTH_MM = 50;
 export const OBJETIVA_ADESIVA_LABEL_HEIGHT_MM = 30;
-export const OBJETIVA_ADESIVA_COLUMNS = 2;
-/** Liner entre as duas colunas — mesmo vão da adesiva Nalin / faca couchê. */
-export const OBJETIVA_ADESIVA_COLUMN_GAP_MM = 6;
-export const OBJETIVA_ADESIVA_PAGE_WIDTH_MM =
-  OBJETIVA_ADESIVA_LABEL_WIDTH_MM * OBJETIVA_ADESIVA_COLUMNS
-  + OBJETIVA_ADESIVA_COLUMN_GAP_MM * (OBJETIVA_ADESIVA_COLUMNS - 1);
+/** Compat: a mídia do rolo tem 2 colunas, mas o PDF é 1-up. */
+export const OBJETIVA_ADESIVA_COLUMNS = 1;
+export const OBJETIVA_ADESIVA_COLUMN_GAP_MM = 0;
+export const OBJETIVA_ADESIVA_PAGE_WIDTH_MM = OBJETIVA_ADESIVA_LABEL_WIDTH_MM;
 export const OBJETIVA_ADESIVA_PAGE_HEIGHT_MM = OBJETIVA_ADESIVA_LABEL_HEIGHT_MM;
 
-/** Inset da arte dentro de cada célula 50×30 (1 mm pra dentro da faca). */
+/** Inset da arte dentro da etiqueta (1 mm pra dentro da faca). */
 export const OBJETIVA_ADESIVA_INSET_MM = 1.0;
 export const OBJETIVA_ADESIVA_ART_WIDTH_MM =
   OBJETIVA_ADESIVA_LABEL_WIDTH_MM - 2 * OBJETIVA_ADESIVA_INSET_MM;
@@ -36,7 +37,7 @@ export const OBJETIVA_ADESIVA_ART_HEIGHT_MM =
 
 /** Quiet zone mínima nas laterais do CODE128. */
 export const OBJETIVA_ADESIVA_QUIET_ZONE_MM = 2.5;
-/** Módulo alvo — não esticar o código na célula inteira (fica ilegível/feio). */
+/** Módulo alvo — não esticar o código na célula inteira. */
 export const OBJETIVA_ADESIVA_MODULE_MM = 0.28;
 
 export const MAX_OBJETIVA_ADESIVA_PDF_LABELS = 20_000;
@@ -73,7 +74,7 @@ function formatPriceText(valor: string | undefined): string {
 }
 
 /**
- * Composição da foto: L1 = descrição + " -"; L2 = `{ref?} {cor} - TAM.: {tam}`.
+ * Composição da original: L1 = descrição + " -"; L2 = `{ref?} {cor} - TAM.: {tam}`.
  * Ref omitida quando vazia.
  */
 export function composeObjetivaAdesivaCopy(row: ClientOrderLine): ObjetivaAdesivaCopy {
@@ -99,7 +100,7 @@ export function composeObjetivaAdesivaCopy(row: ClientOrderLine): ObjetivaAdesiv
   };
 }
 
-/** Maior corpo que couber; no piso corta com reticências (não invade a célula vizinha). */
+/** Maior corpo que couber; no piso corta com reticências (não invade a faca). */
 export function fitObjetivaAdesivaText(
   doc: PdfDoc,
   texto: string,
@@ -126,8 +127,9 @@ export function countObjetivaAdesivaLabels(
   return rows.reduce((sum, row) => sum + Math.max(1, Math.trunc(row.quantidade) || 1), 0);
 }
 
+/** Uma etiqueta = uma página. */
 export function objetivaAdesivaPageCount(labelCount: number): number {
-  return Math.ceil(Math.max(0, Math.trunc(labelCount)) / OBJETIVA_ADESIVA_COLUMNS);
+  return Math.max(0, Math.trunc(labelCount));
 }
 
 function expandLines(
@@ -150,7 +152,7 @@ function resolveGeometry(partial?: Partial<ClientLabelGeometry>): ClientLabelGeo
   return {
     ...OBJETIVA_ADESIVA_DEFAULT_GEOMETRY,
     ...partial,
-    // Mídia física travada — perfil salvo com 25 mm não pode voltar a gerar página 50.
+    // Mídia física travada — perfil antigo (25 mm / 2-up) não pode regredir.
     labelWidthMm: OBJETIVA_ADESIVA_LABEL_WIDTH_MM,
     labelHeightMm: OBJETIVA_ADESIVA_LABEL_HEIGHT_MM,
     columns: OBJETIVA_ADESIVA_COLUMNS,
@@ -159,25 +161,20 @@ function resolveGeometry(partial?: Partial<ClientLabelGeometry>): ClientLabelGeo
 }
 
 /**
- * Imposição 2-up: esquerda, direita, próxima página.
- * Quantidade ímpar deixa a direita da última carreira vazia.
+ * Uma etiqueta por página. `column` fica 0 por compatibilidade com a UI.
  */
 export function planObjetivaAdesivaPlacements(
   rows: ClientOrderLine[],
   repeatByQuantity = true,
 ): ObjetivaAdesivaPlacement[] {
   const expanded = expandLines(rows, repeatByQuantity);
-  const cellW = OBJETIVA_ADESIVA_LABEL_WIDTH_MM + OBJETIVA_ADESIVA_COLUMN_GAP_MM;
-  return expanded.map((row, index) => {
-    const column = index % OBJETIVA_ADESIVA_COLUMNS;
-    return {
-      pageIndex: Math.floor(index / OBJETIVA_ADESIVA_COLUMNS),
-      column,
-      xMm: column * cellW + OBJETIVA_ADESIVA_INSET_MM,
-      yMm: OBJETIVA_ADESIVA_INSET_MM,
-      row,
-    };
-  });
+  return expanded.map((row, index) => ({
+    pageIndex: index,
+    column: 0,
+    xMm: OBJETIVA_ADESIVA_INSET_MM,
+    yMm: OBJETIVA_ADESIVA_INSET_MM,
+    row,
+  }));
 }
 
 function barcodeModuleMm(codigo: string, artWidthMm: number): { moduleMm: number; widthMm: number } {
@@ -202,7 +199,7 @@ function drawObjetivaAdesivaLabel(
   doc.setTextColor(0, 0, 0);
   doc.setFont('courier', 'normal');
 
-  // L1 / L2 — topo, esquerda (foto). Célula 50 mm aguenta ~7,5 pt.
+  // L1 / L2 — topo, esquerda (original).
   const l1 = fitObjetivaAdesivaText(doc, copy.line1, 7.5, artW);
   doc.setFontSize(l1.pt);
   doc.text(l1.texto, ox, oy + 1.0, { baseline: 'top' });
@@ -233,7 +230,7 @@ function drawObjetivaAdesivaLabel(
     baseline: 'top',
   });
 
-  // Preço grande no rodapé — ≥1,5 mm da faca inferior.
+  // Preço grande no rodapé — folga na faca inferior.
   doc.setFont('helvetica', 'bold');
   const price = fitObjetivaAdesivaText(doc, copy.priceText, 14, artW);
   doc.setFontSize(price.pt);
@@ -251,7 +248,7 @@ export function objetivaAdesivaPdfFilename(origem: string): string {
   return `Etiquetas_Objetiva_Adesiva_${base || 'pedido'}.pdf`;
 }
 
-/** Monta o PDF 2-up 50×30 (página 106×30) para a L42PRO — uma carreira por página. */
+/** Monta o PDF 1-up 50×30 — uma etiqueta por página, para a térmica. */
 export async function buildObjetivaAdesivaPdf(
   rows: ClientOrderLine[],
   options: ObjetivaAdesivaPdfOptions = {},
@@ -270,15 +267,15 @@ export async function buildObjetivaAdesivaPdf(
     compress: true,
   });
   doc.setProperties({
-    title: `Etiquetas Objetiva adesiva 2x${OBJETIVA_ADESIVA_LABEL_WIDTH_MM}x${OBJETIVA_ADESIVA_LABEL_HEIGHT_MM}mm CODE128`,
+    title: `Etiquetas Objetiva adesiva ${OBJETIVA_ADESIVA_LABEL_WIDTH_MM}x${OBJETIVA_ADESIVA_LABEL_HEIGHT_MM}mm CODE128`,
   });
 
   const placements = planObjetivaAdesivaPlacements(
     rows,
     options.repeatByQuantity ?? true,
   );
-  placements.forEach(placement => {
-    if (placement.pageIndex > 0 && placement.column === 0) {
+  placements.forEach((placement, index) => {
+    if (index > 0) {
       doc.addPage([pageW, pageH], 'landscape');
     }
     drawObjetivaAdesivaLabel(doc, placement.row, placement);

@@ -261,14 +261,15 @@ export const OBJETIVA_DEFAULT_BRANDING: ClientLabelBranding = {
 };
 
 /**
- * Adesiva Objetiva — mesma mídia da adesiva Nalin: 2 × 50 × 30 mm, vão 6 mm
- * (página 106 × 30). Arte em `objetivaAdesivaLabels.ts`.
+ * Adesiva Objetiva — 50 × 30 mm, 1 etiqueta por página (PDF 1-up).
+ * O rolo físico tem 2 colunas; o driver da térmica avança sozinho.
+ * Arte em `objetivaAdesivaLabels.ts`.
  */
 export const OBJETIVA_ADESIVA_DEFAULT_GEOMETRY: ClientLabelGeometry = {
   labelWidthMm: 50,
   labelHeightMm: 30,
-  columns: 2,
-  columnGapMm: 6,
+  columns: 1,
+  columnGapMm: 0,
   leftMarginMm: 0,
   rightMarginMm: 0,
   topMarginMm: 0,
@@ -391,7 +392,7 @@ export function patternMediaLabel(key: ClientLabelPatternKey): string {
   if (key === 'nalin_tag') return 'Tag hangtag 40×60 · L42PRO';
   if (key === 'baby_nalin') return 'Adesiva 50×30 · 2 colunas L42PRO';
   if (key === 'objetiva') return 'Hangtag 40×60 · L42PRO';
-  if (key === 'objetiva_adesiva') return 'Adesiva 50×30 · 2 colunas L42PRO';
+  if (key === 'objetiva_adesiva') return 'Adesiva 50×30 · 1-up (rolo 2 colunas)';
   if (key === 'ponto_mix') return 'Preço varejo 40×60 · L42PRO';
   return 'Adesiva 50×30 · 2 colunas L42PRO';
 }

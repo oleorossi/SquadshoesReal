@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
   OBJETIVA_ADESIVA_ART_HEIGHT_MM,
   OBJETIVA_ADESIVA_ART_WIDTH_MM,
-  OBJETIVA_ADESIVA_COLUMN_GAP_MM,
+  OBJETIVA_ADESIVA_COLUMNS,
   OBJETIVA_ADESIVA_INSET_MM,
   OBJETIVA_ADESIVA_LABEL_HEIGHT_MM,
   OBJETIVA_ADESIVA_LABEL_WIDTH_MM,
@@ -42,7 +42,7 @@ function line(overrides: Partial<ClientOrderLine> = {}): ClientOrderLine {
 }
 
 describe('composeObjetivaAdesivaCopy', () => {
-  it('monta L1/L2 como na foto (descrição + ref/cor/TAM + preço)', () => {
+  it('monta L1/L2 como na original (descrição + ref/cor/TAM + preço)', () => {
     const rows = parseObjetivaOrderCsv(loadFixture('34669946-95755.csv'));
     const copy = composeObjetivaAdesivaCopy(rows[0]!);
     expect(copy.line1).toBe('TAM RAST FEM METAL DEDO -');
@@ -57,43 +57,48 @@ describe('composeObjetivaAdesivaCopy', () => {
     );
     expect(copy.line2).toBe('DOURADA 420 - TAM.: 35');
   });
+
+  it('não trunca a L2 típica da original na arte 48 mm', async () => {
+    const { jsPDF } = await import('jspdf');
+    const doc = new jsPDF({ unit: 'mm', format: [50, 30], orientation: 'landscape' });
+    doc.setFont('courier', 'normal');
+    const { fitObjetivaAdesivaText, OBJETIVA_ADESIVA_ART_WIDTH_MM: artW } = await import(
+      '@/lib/objetivaAdesivaLabels'
+    );
+    const l2 = fitObjetivaAdesivaText(
+      doc,
+      'SP124 OFF WHITE 420 - TAM.: 35',
+      7.5,
+      artW,
+    );
+    expect(l2.texto).toBe('SP124 OFF WHITE 420 - TAM.: 35');
+    expect(l2.texto.endsWith('…')).toBe(false);
+  });
 });
 
 describe('planObjetivaAdesivaPlacements', () => {
-  it('página é 106×30 mm (2 × 50×30 + vão 6 mm) — mídia real L42PRO', () => {
+  it('página é 50×30 mm — uma etiqueta por página', () => {
     expect(OBJETIVA_ADESIVA_LABEL_WIDTH_MM).toBe(50);
     expect(OBJETIVA_ADESIVA_LABEL_HEIGHT_MM).toBe(30);
-    expect(OBJETIVA_ADESIVA_COLUMN_GAP_MM).toBe(6);
-    expect(OBJETIVA_ADESIVA_PAGE_WIDTH_MM).toBe(106);
+    expect(OBJETIVA_ADESIVA_COLUMNS).toBe(1);
+    expect(OBJETIVA_ADESIVA_PAGE_WIDTH_MM).toBe(50);
     expect(OBJETIVA_ADESIVA_PAGE_HEIGHT_MM).toBe(30);
-    // Arte cabe na célula com folga na faca.
     expect(OBJETIVA_ADESIVA_INSET_MM * 2 + OBJETIVA_ADESIVA_ART_WIDTH_MM)
       .toBe(OBJETIVA_ADESIVA_LABEL_WIDTH_MM);
     expect(OBJETIVA_ADESIVA_INSET_MM * 2 + OBJETIVA_ADESIVA_ART_HEIGHT_MM)
       .toBe(OBJETIVA_ADESIVA_LABEL_HEIGHT_MM);
   });
 
-  it('2 etiquetas cabem numa carreira; 3 abrem página com direita vazia', () => {
-    const two = planObjetivaAdesivaPlacements([line(), line({ codigoBarra: '2' })], false);
-    expect(two).toHaveLength(2);
-    expect(two[0]!.pageIndex).toBe(0);
-    expect(two[0]!.column).toBe(0);
-    expect(two[0]!.xMm).toBe(OBJETIVA_ADESIVA_INSET_MM);
-    expect(two[1]!.column).toBe(1);
-    expect(two[1]!.xMm).toBe(
-      OBJETIVA_ADESIVA_LABEL_WIDTH_MM + OBJETIVA_ADESIVA_COLUMN_GAP_MM + OBJETIVA_ADESIVA_INSET_MM,
-    );
-    expect(two[1]!.xMm - two[0]!.xMm).toBe(56);
-    expect(objetivaAdesivaPageCount(2)).toBe(1);
-
-    const three = planObjetivaAdesivaPlacements(
-      [line(), line({ codigoBarra: '2' }), line({ codigoBarra: '3' })],
+  it('cada etiqueta ganha a própria página', () => {
+    const two = planObjetivaAdesivaPlacements(
+      [line(), line({ codigoBarra: '112331', tamanho: '35' })],
       false,
     );
-    expect(three).toHaveLength(3);
-    expect(three[2]!.pageIndex).toBe(1);
-    expect(three[2]!.column).toBe(0);
-    expect(objetivaAdesivaPageCount(3)).toBe(2);
+    expect(two).toHaveLength(2);
+    expect(two[0]).toMatchObject({ pageIndex: 0, column: 0, xMm: 1, yMm: 1 });
+    expect(two[1]).toMatchObject({ pageIndex: 1, column: 0, xMm: 1, yMm: 1 });
+    expect(objetivaAdesivaPageCount(2)).toBe(2);
+    expect(objetivaAdesivaPageCount(3)).toBe(3);
   });
 
   it('produção repete pela quantidade', () => {
@@ -105,49 +110,56 @@ describe('planObjetivaAdesivaPlacements', () => {
 });
 
 describe('buildObjetivaAdesivaPdf', () => {
-  it('gera PDF binário válido no tamanho do rolo 106×30', async () => {
-    const rows = parseObjetivaOrderCsv(loadFixture('34669946-95755.csv')).slice(0, 2);
+  it('gera PDF 50×30 com descrição, SKU e preço (arte da original)', async () => {
+    const rows = [
+      parseObjetivaOrderCsv(loadFixture('34669946-95755.csv'))[0]!,
+      parseObjetivaOrderCsv(loadFixture('34669946-112331.csv'))[0]!,
+    ];
     const doc = await buildObjetivaAdesivaPdf(rows, { repeatByQuantity: false });
-    expect(doc.getNumberOfPages()).toBe(1);
-    expect(doc.internal.pageSize.getWidth()).toBeCloseTo(106, 5);
+    expect(doc.getNumberOfPages()).toBe(2);
+    expect(doc.internal.pageSize.getWidth()).toBeCloseTo(50, 5);
     expect(doc.internal.pageSize.getHeight()).toBeCloseTo(30, 5);
 
-    const bytes = Buffer.from(doc.output('arraybuffer'));
-    expect(bytes.subarray(0, 5).toString('latin1')).toBe('%PDF-');
+    const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    const pdf = await getDocument({
+      data: new Uint8Array(doc.output('arraybuffer')),
+      useSystemFonts: true,
+    }).promise;
+    const pageText = async (n: number) => {
+      const page = await pdf.getPage(n);
+      const text = await page.getTextContent();
+      return text.items.map(i => String((i as { str?: string }).str ?? '')).join('');
+    };
+    const page1 = await pageText(1);
+    expect(page1).toContain('TAM RAST FEM METAL DEDO');
+    expect(page1).toContain('SP124 OFF WHITE 420');
+    expect(page1).toContain('95755');
+    expect(page1).toContain('39,99');
 
-    const latin = bytes.toString('latin1');
-    const streams = [...latin.matchAll(/stream\r?\n([\s\S]*?)\nendstream/g)];
-    const { inflateSync } = await import('node:zlib');
-    const content = streams
-      .map(match => {
-        try {
-          return inflateSync(Buffer.from(match[1]!, 'latin1')).toString('latin1');
-        } catch {
-          return match[1] ?? '';
-        }
-      })
-      .join('\n');
-    expect(content).toContain('(95755)');
-    expect(content).toMatch(/39/);
+    const page2 = await pageText(2);
+    expect(page2).toContain('SAND FEM RAST TIRAS FINAS');
+    expect(page2).toContain('112331');
+
     expect(objetivaAdesivaPdfFilename('34669946-95755.csv')).toMatch(/Objetiva_Adesiva/i);
   });
 
-  it('3 SKUs geram 2 páginas', async () => {
+  it('3 SKUs geram 3 páginas', async () => {
     const rows = [
       line({ codigoBarra: '1', codProduto: '1' }),
       line({ codigoBarra: '2', codProduto: '2' }),
       line({ codigoBarra: '3', codProduto: '3' }),
     ];
     const doc = await buildObjetivaAdesivaPdf(rows, { repeatByQuantity: false });
-    expect(doc.getNumberOfPages()).toBe(2);
+    expect(doc.getNumberOfPages()).toBe(3);
   });
 
-  it('ignora geometry salva com célula 25 mm (não regride pra página 50)', async () => {
+  it('ignora geometry salva com 2-up / célula 25 mm', async () => {
     const doc = await buildObjetivaAdesivaPdf([line()], {
       repeatByQuantity: false,
-      geometry: { labelWidthMm: 25, columnGapMm: 0 },
+      geometry: { labelWidthMm: 25, columns: 2, columnGapMm: 6 },
     });
-    expect(doc.internal.pageSize.getWidth()).toBeCloseTo(106, 5);
+    expect(doc.internal.pageSize.getWidth()).toBeCloseTo(50, 5);
     expect(doc.internal.pageSize.getHeight()).toBeCloseTo(30, 5);
+    expect(doc.getNumberOfPages()).toBe(1);
   });
 });

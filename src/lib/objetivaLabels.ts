@@ -4,7 +4,7 @@
  * Entrada: CSV do ERP (`PEDIDO;SKU;DESCRICAO;…`) — um SKU por arquivo no lote típico.
  * O CODE128 usa o SKU. Textos fixos (motto, troca, PU/SO) vêm do padrão editável.
  * A adesiva (`objetiva_adesiva`) reusa o mesmo CSV; a arte dela está em
- * `objetivaAdesivaLabels.ts` (PDF 50×30 · 2 colunas).
+ * `objetivaAdesivaLabels.ts` (PDF 50×30 · 1 etiqueta/página).
  *
  * Tipografia: a Tag física usa face condensada (letras altas/estreitas). Embutimos
  * a mesma Roboto Condensed Bold da Ponto Mix — Helvetica larga descola da foto.

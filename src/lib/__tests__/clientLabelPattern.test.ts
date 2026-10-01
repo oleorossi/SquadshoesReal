@@ -42,13 +42,13 @@ describe('clientLabelPattern', () => {
     expect(pattern.geometry.labelHeightMm).toBe(30);
   });
 
-  it('default Objetiva · Adesiva usa 50×30 · 2 colunas · vão 6 mm (página 106×30)', () => {
+  it('default Objetiva · Adesiva usa 50×30 · 1 página por etiqueta', () => {
     const pattern = defaultPatternForKey('objetiva_adesiva');
     expect(pattern.key).toBe('objetiva_adesiva');
-    expect(pattern.geometry.columns).toBe(2);
+    expect(pattern.geometry.columns).toBe(1);
     expect(pattern.geometry.labelWidthMm).toBe(50);
     expect(pattern.geometry.labelHeightMm).toBe(30);
-    expect(pattern.geometry.columnGapMm).toBe(6);
+    expect(pattern.geometry.columnGapMm).toBe(0);
     expect(patternAwaitsCalibration('objetiva_adesiva')).toBe(false);
     expect(patternMediaLabel('objetiva_adesiva')).toMatch(/50×30/);
   });

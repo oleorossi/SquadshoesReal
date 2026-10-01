@@ -122,7 +122,6 @@ import {
 import {
   buildObjetivaAdesivaPdf,
   countObjetivaAdesivaLabels,
-  OBJETIVA_ADESIVA_COLUMNS,
   OBJETIVA_ADESIVA_LABEL_HEIGHT_MM,
   OBJETIVA_ADESIVA_LABEL_WIDTH_MM,
   OBJETIVA_ADESIVA_PAGE_HEIGHT_MM,
@@ -1269,8 +1268,9 @@ export function ClientLabelingWorkspace() {
               ) : isObjetivaAdesiva ? (
                 <div className="space-y-3">
                   <p className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-                    Adesiva Objetiva: mesmo CSV da Tag · PDF 2 × 50×30 mm (vão 6 mm, página 106×30) ·
-                    CODE128 do SKU · preço. Abre no macOS e imprime na Elgin L42PRO pelo driver.
+                    Adesiva Objetiva: mesmo CSV da Tag · PDF 50×30 mm (1 etiqueta por página) ·
+                    CODE128 do SKU · preço. No driver da térmica, mídia 50×30 — o rolo 2 colunas
+                    avança sozinho. Abre no macOS e imprime pelo driver.
                   </p>
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     {OBJETIVA_GEOMETRY_FIELDS.map(field => (
@@ -1292,9 +1292,8 @@ export function ClientLabelingWorkspace() {
                     ))}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Defaults: {OBJETIVA_ADESIVA_LABEL_WIDTH_MM}×{OBJETIVA_ADESIVA_LABEL_HEIGHT_MM} mm ·{' '}
-                    {OBJETIVA_ADESIVA_COLUMNS} colunas · vão {OBJETIVA_ADESIVA_DEFAULT_GEOMETRY.columnGapMm} mm ·
-                    página {OBJETIVA_ADESIVA_PAGE_WIDTH_MM}×{OBJETIVA_ADESIVA_PAGE_HEIGHT_MM} mm.
+                    Defaults: página {OBJETIVA_ADESIVA_PAGE_WIDTH_MM}×{OBJETIVA_ADESIVA_PAGE_HEIGHT_MM} mm ·{' '}
+                    1 etiqueta por página (arte {OBJETIVA_ADESIVA_LABEL_WIDTH_MM}×{OBJETIVA_ADESIVA_LABEL_HEIGHT_MM}).
                   </p>
                 </div>
               ) : (
@@ -1506,7 +1505,7 @@ export function ClientLabelingWorkspace() {
                           : isPontoMix
                             ? ' · preview + PDF + ZPL L42PRO 40×60'
                             : isObjetivaAdesiva
-                              ? ' · PDF 50×30 · 2 colunas L42PRO'
+                              ? ' · PDF 50×30 · 1 etiqueta/página'
                               : ' · PDF + ZPL L42PRO 40×60'}
                       .
                     </p>
@@ -1624,8 +1623,8 @@ export function ClientLabelingWorkspace() {
                 )}
                 {isObjetivaAdesiva && (
                   <p className="text-xs text-muted-foreground">
-                    {paginasGrafica} linha(s) de {OBJETIVA_ADESIVA_COLUMNS} colunas ·{' '}
-                    {OBJETIVA_ADESIVA_LABEL_WIDTH_MM}×{OBJETIVA_ADESIVA_LABEL_HEIGHT_MM} mm
+                    {paginasGrafica} página(s) · {OBJETIVA_ADESIVA_LABEL_WIDTH_MM}×
+                    {OBJETIVA_ADESIVA_LABEL_HEIGHT_MM} mm (1 etiqueta cada)
                   </p>
                 )}
               </section>
