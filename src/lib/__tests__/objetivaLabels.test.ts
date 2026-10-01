@@ -6,6 +6,7 @@ import { defaultPatternForKey, OBJETIVA_DEFAULT_BRANDING } from '@/lib/clientLab
 import {
   OBJETIVA_ART_DOTS,
   OBJETIVA_DPI,
+  OBJETIVA_PDF_FONT,
   buildObjetivaPdf,
   buildObjetivaTagA4Pdf,
   buildObjetivaZpl,
@@ -140,7 +141,7 @@ describe('composeObjetivaLabelCopy · hangtag 112334 TAM 25', () => {
     expect(copy.tamanho).toBe('25');
     expect(copy.priceMain).toBe('39');
     expect(copy.priceCents).toBe('99');
-    expect(copy.semanaAno).toBe('29/26');
+    expect(copy.semanaAno).toBe('29 / 26');
     expect(copy.codigoBarra).toBe('112334');
     expect(copy.mottoLines).toEqual(['DEUS', 'É FIEL']);
     expect(copy.exchangeLines).toEqual(['TROCA MANTER', 'ESTA ETIQUETA']);
@@ -174,7 +175,7 @@ describe('composeObjetivaLabelCopy · hangtag 112334 TAM 25', () => {
 
     // Faixa esquerda = só a descrição; SKU e semana/ano vão na coluna do código.
     expect(objetivaRotatedRailLines(copy)).toEqual(['SAND INFA RAST TIRAS NO']);
-    expect(objetivaBarcodeRailLines(copy)).toEqual(['112334', '29/26']);
+    expect(objetivaBarcodeRailLines(copy)).toEqual(['112334', '29 / 26']);
   });
 
   it('destaque do miolo é do TIPO, não da posição', () => {
@@ -208,7 +209,10 @@ describe('composeObjetivaLabelCopy · hangtag 112334 TAM 25', () => {
 });
 
 describe('objetivaLabels PDF · miolo girado + preço', () => {
-  async function pdfContentForTam25(): Promise<string> {
+  type PdfTextItem = { str: string; transform: number[]; width: number };
+
+  async function pdfTextForTam25(): Promise<PdfTextItem[]> {
+    const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
     const rows = parseObjetivaOrderCsv(loadFixture('112334.csv'));
     const row = rows.find(item => item.tamanho === '25')!;
     const pattern = defaultPatternForKey('objetiva');
@@ -217,71 +221,61 @@ describe('objetivaLabels PDF · miolo girado + preço', () => {
       branding: pattern.branding,
       repeatByQuantity: false,
     });
-    const bytes = Buffer.from(doc.output('arraybuffer'));
-    const latin = bytes.toString('latin1');
-    const streams = [...latin.matchAll(/stream\r?\n([\s\S]*?)\nendstream/g)];
-    const { inflateSync } = await import('node:zlib');
-    return streams
-      .map(match => {
-        try {
-          return inflateSync(Buffer.from(match[1]!, 'latin1')).toString('latin1');
-        } catch {
-          return match[1] ?? '';
-        }
+    const pdf = await getDocument({
+      data: new Uint8Array(doc.output('arraybuffer')),
+      useSystemFonts: true,
+    }).promise;
+    const page = await pdf.getPage(1);
+    const text = await page.getTextContent();
+    return text.items
+      .map(item => {
+        const t = item as { str?: string; transform?: number[]; width?: number };
+        return {
+          str: String(t.str ?? ''),
+          transform: t.transform ?? [],
+          width: t.width ?? 0,
+        };
       })
-      .join('\n');
+      .filter(item => item.str.length > 0);
+  }
+
+  function itemNamed(items: PdfTextItem[], label: string): PdfTextItem {
+    const hit = items.find(item => item.str === label);
+    expect(hit, label).toBeTruthy();
+    return hit!;
+  }
+
+  /** Matriz de rotação 90°: |b| ≈ 1 e |a| ≈ 0 no transform do pdfjs. */
+  function isRotated90(item: PdfTextItem): boolean {
+    const a = Math.abs(item.transform[0] ?? 0);
+    const b = Math.abs(item.transform[1] ?? 0);
+    return b > 0.5 && a < 0.5;
   }
 
   it('grava CALCADOS/INFANTIL completo no conteúdo do PDF', async () => {
-    const content = await pdfContentForTam25();
-    expect(content).toContain('CALCADOS/INFANTIL');
-    expect(content).not.toMatch(/CALCADOS\/INFANTI[^L]/);
+    const items = await pdfTextForTam25();
+    const joined = items.map(item => item.str).join('|');
+    expect(joined).toContain('CALCADOS/INFANTIL');
+    expect(joined).not.toMatch(/CALCADOS\/INFANTI[^L]/);
   });
-
-  /** Matriz que o jsPDF emite para `angle: 90` (texto lendo de baixo para cima). */
-  const ROTATION_TM = /0\.0+1 1\. -1\. 0\.0+1 [0-9.]+ [0-9.]+\s+Tm/;
 
   it('gira o miolo 90°, como na etiqueta física', async () => {
-    const content = await pdfContentForTam25();
-    expect(content).toContain('(SANDALIA)');
-    expect(content).toContain('(CALCADOS/INFANTIL)');
-
-    // Cada coluna do miolo precisa vir depois de uma matriz de rotação.
-    for (const label of ['SANDALIA', 'CALCADOS/INFANTIL', 'Ref.: I701']) {
-      const idx = content.indexOf(`(${label})`);
-      expect(idx, label).toBeGreaterThan(-1);
-      const before = content.slice(Math.max(0, idx - 400), idx);
-      expect(ROTATION_TM.test(before), `${label} sem rotação`).toBe(true);
+    const items = await pdfTextForTam25();
+    for (const label of ['SANDALIA', 'CALCADOS/INFANTIL', 'Ref.: I701', 'SAND INFA RAST TIRAS NO']) {
+      expect(isRotated90(itemNamed(items, label)), `${label} sem rotação`).toBe(true);
     }
-
-    // A descrição da faixa esquerda também gira.
-    const descIdx = content.indexOf('(SAND INFA RAST TIRAS NO)');
-    expect(ROTATION_TM.test(content.slice(Math.max(0, descIdx - 400), descIdx))).toBe(true);
   });
 
-  /** Recorta o bloco `BT … (label)` — o Tm/Td vigente para aquele texto. */
-  function textBlockFor(content: string, label: string): string {
-    const idx = content.lastIndexOf(`(${label})`);
-    expect(idx, label).toBeGreaterThan(-1);
-    const start = content.lastIndexOf('BT', idx);
-    return content.slice(start, idx);
-  }
-
   it('cabeçalho, TAM e preço ficam na horizontal (sem rotação)', async () => {
-    const content = await pdfContentForTam25();
+    const items = await pdfTextForTam25();
     for (const label of ['TROCA MANTER', 'TAM.:', '25', 'R$', '39', ',99']) {
-      const block = textBlockFor(content, label);
-      expect(ROTATION_TM.test(block), `${label} não deveria girar`).toBe(false);
-      expect(/[0-9.]+ [0-9.]+ Td/.test(block), `${label} sem Td`).toBe(true);
+      expect(isRotated90(itemNamed(items, label)), `${label} não deveria girar`).toBe(false);
     }
   });
 
   it('R$ fica na margem esquerda e o valor grande alinhado à direita', async () => {
-    const content = await pdfContentForTam25();
-    const xOf = (label: string) => {
-      const matches = [...textBlockFor(content, label).matchAll(/([0-9.]+) ([0-9.]+) Td/g)];
-      return Number(matches[matches.length - 1]![1]);
-    };
+    const items = await pdfTextForTam25();
+    const xOf = (label: string) => itemNamed(items, label).transform[4]!;
     // Na foto: "R$" no canto inferior esquerdo, "39,99" grande à direita.
     expect(xOf('R$')).toBeLessThan(xOf('39'));
     expect(xOf('39')).toBeLessThan(xOf(',99'));
@@ -290,11 +284,8 @@ describe('objetivaLabels PDF · miolo girado + preço', () => {
   });
 
   it('centavos sobem em relação ao valor cheio (sobrescrito)', async () => {
-    const content = await pdfContentForTam25();
-    const yOf = (label: string) => {
-      const matches = [...textBlockFor(content, label).matchAll(/([0-9.]+) ([0-9.]+) Td/g)];
-      return Number(matches[matches.length - 1]![2]);
-    };
+    const items = await pdfTextForTam25();
+    const yOf = (label: string) => itemNamed(items, label).transform[5]!;
     // PDF cresce para cima: baseline dos centavos é MAIOR que a do valor.
     expect(yOf(',99')).toBeGreaterThan(yOf('39'));
   });
@@ -305,8 +296,29 @@ describe('objetivaLabels PDF · miolo girado + preço', () => {
     const bottomMarginMm = ((gridH - price.baseline) / gridH) * 60;
     expect(rightMarginMm).toBeGreaterThanOrEqual(2);
     expect(bottomMarginMm).toBeGreaterThanOrEqual(2);
-    // Ainda abaixo do TAM.: (baseline 408) para não colidir.
+    // Ainda abaixo do TAM.: para não colidir.
     expect(price.baseline).toBeGreaterThan(OBJETIVA_ART_DOTS.size.baseline);
+  });
+
+  it('embute Roboto Condensed (face da Tag física) e formata semana com espaços', async () => {
+    const rows = parseObjetivaOrderCsv(loadFixture('112334.csv'));
+    const row = rows.find(item => item.tamanho === '25')!;
+    const doc = await buildObjetivaPdf([row], {
+      branding: OBJETIVA_DEFAULT_BRANDING,
+      repeatByQuantity: false,
+    });
+    const fonts = doc.getFontList?.() ?? {};
+    expect(fonts[OBJETIVA_PDF_FONT]).toBeTruthy();
+    expect(composeObjetivaLabelCopy(row, OBJETIVA_DEFAULT_BRANDING).semanaAno).toMatch(
+      /^\d+\s\/\s\d+$/,
+    );
+  });
+
+  it('fio do miolo fica mais curto que o vão da descrição (foto Tag)', () => {
+    const { divider, rail, exchange } = OBJETIVA_ART_DOTS;
+    expect(divider.top).toBeGreaterThan(exchange.firstTop + exchange.step);
+    expect(divider.bottom).toBeLessThanOrEqual(rail.bottom + 4);
+    expect(divider.bottom - divider.top).toBeLessThan(rail.bottom - 70);
   });
 
   it('no A4 o preço fica dentro da célula com inset ≥ 1,5 mm', async () => {
@@ -369,7 +381,7 @@ describe('objetivaLabels ZPL · mídia L42PRO 40×60', () => {
     // Descrição, miolo, SKU e semana/ano girados.
     expect(zpl).toMatch(/\^A0B,[0-9]+,[0-9]+\^FDSAND INFA RAST TIRAS NO\^FS/);
     expect(zpl).toMatch(/\^A0B,[0-9]+,[0-9]+\^FDSANDALIA\^FS/);
-    expect(zpl).toMatch(/\^A0B,[0-9]+,[0-9]+\^FD29\/26\^FS/);
+    expect(zpl).toMatch(/\^A0B,[0-9]+,[0-9]+\^FD29 \/ 26\^FS/);
     // Código de barras girado.
     expect(zpl).toMatch(/\^BCB,[0-9]+,N,N,N/);
     // Cabeçalho e footer na horizontal.

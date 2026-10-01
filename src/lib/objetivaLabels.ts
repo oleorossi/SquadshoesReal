@@ -3,9 +3,17 @@
  *
  * Entrada: CSV do ERP (`PEDIDO;SKU;DESCRICAO;…`) — um SKU por arquivo no lote típico.
  * O CODE128 usa o SKU. Textos fixos (motto, troca, PU/SO) vêm do padrão editável.
+<<<<<<< HEAD
  * A adesiva (`objetiva_adesiva`) reusa o mesmo CSV; a arte dela está em
  * `objetivaAdesivaLabels.ts` (PDF 50×30 · 2 colunas).
+=======
+ * A adesiva (`objetiva_adesiva`) reusa o mesmo CSV; a arte dela é outro gerador.
+ *
+ * Tipografia: a Tag física usa face condensada (letras altas/estreitas). Embutimos
+ * a mesma Roboto Condensed Bold da Ponto Mix — Helvetica larga descola da foto.
+>>>>>>> 9d49a126 (fix(etiquetagem): alinhar tipografia e grade da Tag Objetiva à foto)
  */
+import robotoCondensedBoldUrl from '@/assets/ponto-mix/fonts/RobotoCondensed-Bold.ttf?url';
 import { code128Bars } from './code128';
 import { decodeOrderBytes } from './babyNalinLabels';
 import {
@@ -19,7 +27,49 @@ import {
 export const OBJETIVA_MODULE_MM = 0.25;
 export const MAX_OBJETIVA_PDF_LABELS = 20_000;
 
+/** Nome registrado no jsPDF (Roboto Condensed Bold — foto Tag Objetiva). */
+export const OBJETIVA_PDF_FONT = 'ObjetivaSans';
+
 type PdfDoc = import('jspdf').jsPDF;
+
+let cachedObjetivaFontBase64: string | null = null;
+
+async function loadObjetivaFontBytes(): Promise<Uint8Array> {
+  // Browser / Vite: `?url` vira URL fetchável. Vitest devolve path relativo sem host.
+  try {
+    const res = await fetch(robotoCondensedBoldUrl);
+    if (res.ok) return new Uint8Array(await res.arrayBuffer());
+  } catch {
+    /* cai no filesystem */
+  }
+  const { readFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  return new Uint8Array(
+    readFileSync(join(process.cwd(), 'src/assets/ponto-mix/fonts/RobotoCondensed-Bold.ttf')),
+  );
+}
+
+async function loadObjetivaFontBase64(): Promise<string> {
+  if (cachedObjetivaFontBase64) return cachedObjetivaFontBase64;
+  const bytes = await loadObjetivaFontBytes();
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  cachedObjetivaFontBase64 = btoa(binary);
+  return cachedObjetivaFontBase64;
+}
+
+/** Registra Roboto Condensed Bold no doc (idempotente por instância). */
+export async function ensureObjetivaPdfFont(doc: PdfDoc): Promise<void> {
+  const fonts = doc.getFontList?.() ?? {};
+  if (fonts[OBJETIVA_PDF_FONT]) return;
+  const base64 = await loadObjetivaFontBase64();
+  doc.addFileToVFS('RobotoCondensed-Bold.ttf', base64);
+  doc.addFont('RobotoCondensed-Bold.ttf', OBJETIVA_PDF_FONT, 'normal');
+  doc.addFont('RobotoCondensed-Bold.ttf', OBJETIVA_PDF_FONT, 'bold');
+}
 
 function normalizeHeader(raw: string): string {
   return raw
@@ -243,7 +293,11 @@ export function composeObjetivaLabelCopy(
     tamanho: (row.tamanho || '-').trim() || '-',
     priceMain: price.main,
     priceCents: price.cents,
-    semanaAno: [row.semanaFabricacao, row.anoFabricacao].filter(Boolean).join('/'),
+    // Foto física: "04 / 26" com espaços em torno da barra.
+    semanaAno: [row.semanaFabricacao, row.anoFabricacao]
+      .filter(Boolean)
+      .map(part => String(part).trim())
+      .join(' / '),
     codigoBarra: (row.codigoBarra || row.codProduto).trim(),
     mottoLines: splitMottoLines(motto),
     exchangeLines: splitExchangeLines(exchange),
@@ -323,13 +377,12 @@ export interface ObjetivaPdfOptions {
 /** Mesma mídia da Ponto Mix: rolo 40×60 mm na L42PRO a 203 dpi. */
 export const OBJETIVA_DPI = 203;
 
-/** Altura de caixa-alta ÷ em da Helvetica (capHeight 718 / upem 1000). */
-const CAP_RATIO = 0.717;
+/** Altura de caixa-alta ÷ em da Roboto Condensed Bold (capHeight 1456 / upem 2048). */
+const CAP_RATIO = 0.7109;
 
 /**
  * Grade da arte em DOTS a 203 dpi — 40×60 mm = 320×480 dots, igual à régua da
- * Ponto Mix. Os valores saíram da etiqueta física da Objetiva (foto de
- * calibração do SKU 112334 / TAM 25).
+ * Ponto Mix. Recalibrada pela foto Tag (SKU 95755 / TAM 35 + calibração 112334).
  *
  * Orientação: o bloco central inteiro (descrição, miolo, SKU, semana/ano e o
  * código de barras) gira 90°; só cabeçalho, TAM e preço ficam na horizontal.
@@ -337,32 +390,34 @@ const CAP_RATIO = 0.717;
 export const OBJETIVA_ART_DOTS = {
   gridW: 320,
   gridH: 480,
-  /** Faixa preta da marca, no alto à esquerda. */
-  logoBand: { x: 12, y: 15, w: 150, h: 27 },
+  /** Faixa preta da marca — mais compacta na foto física. */
+  logoBand: { x: 12, y: 14, w: 138, h: 26 },
   /** "DEUS / É FIEL" ao lado da faixa. */
-  motto: { x: 170, firstTop: 16, step: 13, capH: 8 },
-  /** "TROCA MANTER / ESTA ETIQUETA" sob a faixa. */
-  exchange: { x: 12, firstTop: 50, step: 14, capH: 9 },
-  /** Fio vertical que separa a descrição do miolo. */
-  divider: { x: 78, top: 82, bottom: 352, stroke: 2 },
-  /** Descrição girada: `baselineX` é a BORDA DIREITA (glifo cresce para -x). */
-  rail: { baselineX: 70, bottom: 350, step: 19, capH: 13 },
-  /** Colunas giradas do miolo, à direita do fio. */
-  miolo: { firstBaselineX: 106, step: 22, bottom: 350, titleCapH: 15, capH: 11 },
-  /** Dígitos do SKU, girados, acima do código. */
-  sku: { baselineX: 248, bottom: 248, capH: 12 },
-  /** Semana/ano, girado, abaixo do código. */
-  week: { baselineX: 248, bottom: 374, capH: 10 },
-  /** Código de barras girado: `w` é a espessura da faixa. */
-  barcode: { x: 258, w: 52, top: 138, bottom: 376 },
-  /** "TAM.:" + número grande. */
-  size: { labelX: 30, labelCapH: 9, valueX: 70, baseline: 408, valueCapH: 30 },
+  motto: { x: 158, firstTop: 15, step: 11, capH: 7 },
+  /** "TROCA MANTER / ESTA ETIQUETA" sob a faixa — condensada e apertada. */
+  exchange: { x: 12, firstTop: 48, step: 12, capH: 9 },
   /**
-   * "R$" à esquerda, valor grande alinhado à direita, centavos sobrescritos.
-   * Folga ≥2,5 mm na borda direita/inferior — foto física e A4 colado: o valor
-   * encostava na faca/corte (baseline 458 / rightX 296).
+   * Fio vertical: na foto é mais curto e um pouco mais grosso — proporção ao
+   * bloco de texto, não à altura inteira do miolo.
    */
-  price: { currencyX: 28, currencyCapH: 12, rightX: 284, baseline: 440, mainCapH: 30, centsCapH: 14 },
+  divider: { x: 78, top: 96, bottom: 338, stroke: 2.5 },
+  /** Descrição girada: `baselineX` é a BORDA DIREITA (glifo cresce para -x). */
+  rail: { baselineX: 70, bottom: 336, step: 18, capH: 12, ceiling: 100 },
+  /** Colunas giradas do miolo, à direita do fio. */
+  miolo: { firstBaselineX: 104, step: 20, bottom: 336, titleCapH: 14, capH: 11, ceiling: 100 },
+  /** Dígitos do SKU, girados, acima do código. */
+  sku: { baselineX: 246, bottom: 248, capH: 11 },
+  /** Semana/ano, girado, abaixo do código. */
+  week: { baselineX: 246, bottom: 368, capH: 10 },
+  /** Código de barras girado: `w` é a espessura da faixa. */
+  barcode: { x: 256, w: 50, top: 132, bottom: 370 },
+  /** "TAM.:" + número grande. */
+  size: { labelX: 28, labelCapH: 8, valueX: 68, baseline: 404, valueCapH: 32 },
+  /**
+   * "R$" à esquerda (mais alto na foto), valor grande à direita, centavos sobrescritos.
+   * Folga ≥2,5 mm na borda — valor não pode encostar na faca/corte.
+   */
+  price: { currencyX: 26, currencyCapH: 16, rightX: 278, baseline: 436, mainCapH: 32, centsCapH: 14 },
 } as const;
 
 /** Corpo em pt que entrega exatamente `capMm` de altura de caixa-alta. */
@@ -423,6 +478,7 @@ function artSlots(
     rail: {
       baselineX: D.rail.baselineX * sx + ox,
       bottom: D.rail.bottom * sy + oy,
+      ceiling: D.rail.ceiling * sy + oy,
       step: D.rail.step * sx,
       fontPt: fontPtForCapHeight(D.rail.capH * sy),
     },
@@ -430,6 +486,7 @@ function artSlots(
       firstBaselineX: D.miolo.firstBaselineX * sx + ox,
       step: D.miolo.step * sx,
       bottom: D.miolo.bottom * sy + oy,
+      ceiling: D.miolo.ceiling * sy + oy,
       titleFontPt: fontPtForCapHeight(D.miolo.titleCapH * sy),
       fontPt: fontPtForCapHeight(D.miolo.capH * sy),
     },
@@ -502,17 +559,17 @@ function drawLogoFallback(doc: PdfDoc, x: number, y: number, boxW: number, boxH:
   doc.setFillColor(0, 0, 0);
   doc.rect(x, y, boxW, boxH, 'F');
   doc.setTextColor(255, 255, 255);
-  doc.setFont('helvetica', 'bold');
-  const fontPt = Math.max(6.2, Math.min(8.4, boxH * 1.15));
+  doc.setFont(OBJETIVA_PDF_FONT, 'bold');
+  const fontPt = Math.max(6.4, Math.min(8.8, boxH * 1.22));
   doc.setFontSize(fontPt);
-  const textX = x + boxH * 0.18;
-  const baseline = y + boxH * 0.70;
+  const textX = x + boxH * 0.16;
+  const baseline = y + boxH * 0.72;
   doc.text('objetiva', textX, baseline);
   const textW = doc.getTextWidth('objetiva');
-  const markR = Math.min(boxH * 0.28, 1.35);
-  const cx = textX + textW + markR + 0.45;
+  const markR = Math.min(boxH * 0.30, 1.4);
+  const cx = textX + textW + markR + 0.35;
   const cy = y + boxH * 0.50;
-  if (cx + markR <= x + boxW - 0.35) {
+  if (cx + markR <= x + boxW - 0.3) {
     doc.setDrawColor(255, 255, 255);
     doc.setLineWidth(0.22);
     doc.circle(cx, cy, markR, 'S');
@@ -551,6 +608,9 @@ function drawLogo(
  * Texto girado 90° (lê de baixo para cima). O jsPDF gira anti-horário em torno
  * de `(x, baselineY)`: o texto avança para cima e os glifos crescem para -x, ou
  * seja, `x` é a BORDA DIREITA da coluna e `baselineY` a base do primeiro glifo.
+ *
+ * `ceilingY` (opcional): se o texto for mais alto que o vão até o teto, reduz o
+ * corpo pra não invadir o cabeçalho (bug visto com descrições longas).
  */
 function drawRotatedLine(
   doc: PdfDoc,
@@ -558,11 +618,21 @@ function drawRotatedLine(
   x: number,
   baselineY: number,
   sizePt: number,
-  style: 'normal' | 'bold' = 'normal',
+  style: 'normal' | 'bold' = 'bold',
+  ceilingY?: number,
 ): void {
   if (!text) return;
-  doc.setFont('helvetica', style);
-  doc.setFontSize(sizePt);
+  doc.setFont(OBJETIVA_PDF_FONT, style);
+  let pt = sizePt;
+  if (ceilingY != null && ceilingY < baselineY) {
+    const maxH = baselineY - ceilingY;
+    for (let step = 0; step < 10; step++) {
+      doc.setFontSize(pt);
+      if (doc.getTextWidth(text) <= maxH) break;
+      pt *= Math.max(0.55, (maxH / Math.max(doc.getTextWidth(text), 0.01)) * 0.98);
+    }
+  }
+  doc.setFontSize(pt);
   // Sem maxWidth: o clip horizontal era o que cortava CALCADOS/INFANTIL.
   doc.text(text, x, baselineY, { angle: 90, align: 'left' });
 }
@@ -580,10 +650,11 @@ function drawObjetivaLabel(
 
   doc.setTextColor(0, 0, 0);
   doc.setDrawColor(0, 0, 0);
+  doc.setFont(OBJETIVA_PDF_FONT, 'bold');
 
   drawLogo(doc, logo, s.logoBand.x, s.logoBand.y, s.logoBand.w, s.logoBand.h);
 
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(OBJETIVA_PDF_FONT, 'bold');
   doc.setFontSize(s.motto.fontPt);
   copy.mottoLines.forEach((line, i) => {
     doc.text(line, s.motto.x, s.motto.firstBaseline + s.motto.step * i, {
@@ -603,14 +674,22 @@ function drawObjetivaLabel(
 
   // Descrição girada, colada à margem esquerda (antes do fio).
   objetivaRotatedRailLines(copy).forEach((line, i) => {
-    drawRotatedLine(doc, line, s.rail.baselineX - s.rail.step * i, s.rail.bottom, s.rail.fontPt, 'bold');
+    drawRotatedLine(
+      doc,
+      line,
+      s.rail.baselineX - s.rail.step * i,
+      s.rail.bottom,
+      s.rail.fontPt,
+      'bold',
+      s.rail.ceiling,
+    );
   });
 
   // Miolo girado: colunas lado a lado à direita do fio, na mesma leitura.
   let mioloX = s.miolo.firstBaselineX;
   for (const column of objetivaMioloColumns(copy)) {
     const fontPt = column.emphasis ? s.miolo.titleFontPt : s.miolo.fontPt;
-    drawRotatedLine(doc, column.text, mioloX, s.miolo.bottom, fontPt, 'bold');
+    drawRotatedLine(doc, column.text, mioloX, s.miolo.bottom, fontPt, 'bold', s.miolo.ceiling);
     // Passo proporcional ao corpo: o título ocupa coluna mais larga.
     mioloX += column.emphasis ? s.miolo.step * 1.25 : s.miolo.step;
   }
@@ -629,28 +708,27 @@ function drawObjetivaLabel(
         doc.rect(s.barcode.x, segY, s.barcode.w, segH, 'F');
       }
     } catch {
-      doc.setFont('helvetica', 'normal');
+      doc.setFont(OBJETIVA_PDF_FONT, 'bold');
       doc.setFontSize(5);
       doc.text('(codigo invalido)', s.barcode.x, s.barcode.bottom, { angle: 90 });
     }
     drawRotatedLine(doc, copy.codigoBarra, s.sku.baselineX, s.sku.bottom, s.sku.fontPt, 'bold');
   }
   if (copy.semanaAno) {
-    drawRotatedLine(doc, copy.semanaAno, s.week.baselineX, s.week.bottom, s.week.fontPt, 'normal');
+    drawRotatedLine(doc, copy.semanaAno, s.week.baselineX, s.week.bottom, s.week.fontPt, 'bold');
   }
 
   // TAM.: rótulo pequeno + número grande, ambos na horizontal.
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(OBJETIVA_PDF_FONT, 'bold');
   doc.setFontSize(s.size.labelFontPt);
   doc.text('TAM.:', s.size.labelX, s.size.baseline, { baseline: 'alphabetic' });
-  doc.setFont('helvetica', 'bold');
   doc.setFontSize(s.size.valueFontPt);
   doc.text(copy.tamanho, s.size.valueX, s.size.baseline, { baseline: 'alphabetic' });
 
   // Preço: R$ na margem esquerda, valor alinhado à direita, centavos elevados.
   // Fit-to-width: preços longos (ex.: 1.299,99) não estouram rightX.
   const centsLabel = `,${copy.priceCents}`;
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(OBJETIVA_PDF_FONT, 'bold');
   let currencyPt = s.price.currencyFontPt;
   let mainPt = s.price.mainFontPt;
   let centsPt = s.price.centsFontPt;
@@ -707,6 +785,7 @@ export async function buildObjetivaPdf(
     compress: true,
   });
   doc.setProperties({ title: 'Etiquetas Objetiva' });
+  await ensureObjetivaPdfFont(doc);
 
   expanded.forEach((row, index) => {
     if (index > 0) {
@@ -733,6 +812,7 @@ export async function buildObjetivaTagA4Pdf(
   return buildTagA4Pdf(rows, {
     title: 'Etiquetas Objetiva A4',
     repeatByQuantity: options.repeatByQuantity ?? true,
+    prepareDoc: doc => ensureObjetivaPdfFont(doc),
     drawCell: (doc, row, origin) => {
       drawObjetivaLabel(doc, row, geometry, branding, logo, origin);
     },
