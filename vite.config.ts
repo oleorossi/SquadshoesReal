@@ -35,6 +35,8 @@ const versionJsonPlugin = (): Plugin => ({
   server: {
     host: "::",
     port: 8080,
+    // Cloud Agent / túnel Cloudflare: Host header ≠ localhost.
+    allowedHosts: true,
     hmr: {
       overlay: false,
     },
