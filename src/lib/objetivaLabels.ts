@@ -3,15 +3,11 @@
  *
  * Entrada: CSV do ERP (`PEDIDO;SKU;DESCRICAO;…`) — um SKU por arquivo no lote típico.
  * O CODE128 usa o SKU. Textos fixos (motto, troca, PU/SO) vêm do padrão editável.
-<<<<<<< HEAD
  * A adesiva (`objetiva_adesiva`) reusa o mesmo CSV; a arte dela está em
  * `objetivaAdesivaLabels.ts` (PDF 50×30 · 2 colunas).
-=======
- * A adesiva (`objetiva_adesiva`) reusa o mesmo CSV; a arte dela é outro gerador.
  *
  * Tipografia: a Tag física usa face condensada (letras altas/estreitas). Embutimos
  * a mesma Roboto Condensed Bold da Ponto Mix — Helvetica larga descola da foto.
->>>>>>> 9d49a126 (fix(etiquetagem): alinhar tipografia e grade da Tag Objetiva à foto)
  */
 import robotoCondensedBoldUrl from '@/assets/ponto-mix/fonts/RobotoCondensed-Bold.ttf?url';
 import { code128Bars } from './code128';
