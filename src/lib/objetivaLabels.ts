@@ -402,18 +402,22 @@ export const OBJETIVA_ART_DOTS = {
   /** Colunas giradas do miolo, à direita do fio. */
   miolo: { firstBaselineX: 104, step: 20, bottom: 336, titleCapH: 14, capH: 11, ceiling: 100 },
   /** Dígitos do SKU, girados, acima do código. */
-  sku: { baselineX: 246, bottom: 248, capH: 11 },
+  sku: { baselineX: 238, bottom: 248, capH: 11 },
   /** Semana/ano, girado, abaixo do código. */
-  week: { baselineX: 246, bottom: 368, capH: 10 },
-  /** Código de barras girado: `w` é a espessura da faixa. */
-  barcode: { x: 256, w: 50, top: 132, bottom: 370 },
-  /** "TAM.:" + número grande. */
-  size: { labelX: 28, labelCapH: 8, valueX: 68, baseline: 404, valueCapH: 32 },
+  week: { baselineX: 238, bottom: 352, capH: 10 },
   /**
-   * "R$" à esquerda (mais alto na foto), valor grande à direita, centavos sobrescritos.
-   * Folga ≥2,5 mm na borda — valor não pode encostar na faca/corte.
+   * Código de barras girado. Folga ≥3,5 mm na borda direita (A4 colado: a
+   * faixa encostava na faca e “saía” pra etiqueta vizinha).
    */
-  price: { currencyX: 26, currencyCapH: 16, rightX: 278, baseline: 436, mainCapH: 32, centsCapH: 14 },
+  barcode: { x: 248, w: 40, top: 128, bottom: 348 },
+  /** "TAM.:" + número grande — acima do preço, sem empurrá-lo pra fora. */
+  size: { labelX: 28, labelCapH: 8, valueX: 68, baseline: 392, valueCapH: 28 },
+  /**
+   * "R$" à esquerda, valor à direita, centavos sobrescritos.
+   * Folga ≥4 mm embaixo e ≥3,5 mm à direita — no A4 o preço estava vazando
+   * pra linha de baixo (R$ aparecia no topo da etiqueta seguinte).
+   */
+  price: { currencyX: 26, currencyCapH: 14, rightX: 268, baseline: 418, mainCapH: 28, centsCapH: 12 },
 } as const;
 
 /** Corpo em pt que entrega exatamente `capMm` de altura de caixa-alta. */

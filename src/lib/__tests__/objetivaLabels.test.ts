@@ -290,14 +290,17 @@ describe('objetivaLabels PDF · miolo girado + preço', () => {
     expect(yOf(',99')).toBeGreaterThan(yOf('39'));
   });
 
-  it('grade do preço deixa ≥2 mm de folga na borda direita e inferior', () => {
-    const { gridW, gridH, price } = OBJETIVA_ART_DOTS;
-    const rightMarginMm = ((gridW - price.rightX) / gridW) * 40;
-    const bottomMarginMm = ((gridH - price.baseline) / gridH) * 60;
-    expect(rightMarginMm).toBeGreaterThanOrEqual(2);
-    expect(bottomMarginMm).toBeGreaterThanOrEqual(2);
-    // Ainda abaixo do TAM.: para não colidir.
-    expect(price.baseline).toBeGreaterThan(OBJETIVA_ART_DOTS.size.baseline);
+  it('grade do preço e do código deixa folga na faca (A4 colado)', () => {
+    const { gridW, gridH, price, barcode, size } = OBJETIVA_ART_DOTS;
+    const priceRightMm = ((gridW - price.rightX) / gridW) * 40;
+    const priceBottomMm = ((gridH - price.baseline) / gridH) * 60;
+    const barcodeRightMm = ((gridW - (barcode.x + barcode.w)) / gridW) * 40;
+    expect(priceRightMm).toBeGreaterThanOrEqual(3.5);
+    expect(priceBottomMm).toBeGreaterThanOrEqual(4);
+    expect(barcodeRightMm).toBeGreaterThanOrEqual(3.5);
+    // Código termina acima do TAM./preço — não invade o rodapé.
+    expect(barcode.bottom).toBeLessThan(size.baseline);
+    expect(price.baseline).toBeGreaterThan(size.baseline);
   });
 
   it('embute Roboto Condensed (face da Tag física) e formata semana com espaços', async () => {
@@ -321,7 +324,7 @@ describe('objetivaLabels PDF · miolo girado + preço', () => {
     expect(divider.bottom - divider.top).toBeLessThan(rail.bottom - 70);
   });
 
-  it('no A4 o preço fica dentro da célula com inset ≥ 1,5 mm', async () => {
+  it('no A4 preço e SKU ficam dentro da célula com inset ≥ 2,5 mm', async () => {
     const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
     const rows = parseObjetivaOrderCsv(loadFixture('34669946-95755.csv'));
     const doc = await buildObjetivaTagA4Pdf([rows[0]!], {
@@ -336,27 +339,29 @@ describe('objetivaLabels PDF · miolo girado + preço', () => {
     const vp = page.getViewport({ scale: 1 });
     const text = await page.getTextContent();
     const cell = tagA4CellOrigin(0);
-    const inset = 1.5;
+    const inset = 2.5;
     const left = cell.x + inset;
     const right = cell.x + TAG_A4_CELL_WIDTH_MM - inset;
     const top = cell.y + inset;
+    // Folga extra embaixo: descendente da fonte ~1 mm além da baseline.
     const bottom = cell.y + TAG_A4_CELL_HEIGHT_MM - inset;
 
-    const priceItems = text.items.filter(item => {
+    const watch = text.items.filter(item => {
       const str = String((item as { str?: string }).str ?? '');
-      return str === 'R$' || str === '39' || str === ',99';
-    }) as Array<{ str: string; transform: number[]; width: number }>;
+      return str === 'R$' || str === '39' || str === ',99' || str === '95755';
+    }) as Array<{ str: string; transform: number[]; width: number; height?: number }>;
 
-    expect(priceItems.length).toBeGreaterThanOrEqual(3);
-    for (const item of priceItems) {
+    expect(watch.length).toBeGreaterThanOrEqual(3);
+    for (const item of watch) {
       const xMm = (item.transform[4]! * 25.4) / 72;
       const yTopMm = ((vp.height - item.transform[5]!) * 25.4) / 72;
       const widthMm = ((item.width || 0) * 25.4) / 72;
-      // Baseline do preço fica na faixa inferior da célula; descendente ≤ ~1,3 mm.
-      expect(xMm, item.str).toBeGreaterThanOrEqual(left - 0.2);
-      expect(xMm + widthMm, item.str).toBeLessThanOrEqual(right + 0.2);
+      const fontMm = (Math.hypot(item.transform[0] ?? 0, item.transform[1] ?? 0) * 25.4) / 72;
+      // Baseline + pequena folga de descendente não pode furar a faca de baixo.
+      expect(xMm, item.str).toBeGreaterThanOrEqual(left - 0.3);
+      expect(xMm + widthMm, item.str).toBeLessThanOrEqual(right + 0.3);
       expect(yTopMm, item.str).toBeGreaterThanOrEqual(top);
-      expect(yTopMm, item.str).toBeLessThanOrEqual(bottom + 0.2);
+      expect(yTopMm + fontMm * 0.25, item.str).toBeLessThanOrEqual(bottom + 0.4);
     }
   });
 });
