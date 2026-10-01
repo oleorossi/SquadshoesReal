@@ -373,82 +373,89 @@ function mmToDots(mm: number, dpi = OBJETIVA_DPI): number {
  * Converte a grade de dots para as medidas da etiqueta configurada. Em 40×60 mm
  * o fator é 0,125 mm/dot — a mídia da Ponto Mix.
  */
-function artSlots(geometry: ClientLabelGeometry) {
+function artSlots(
+  geometry: ClientLabelGeometry,
+  origin: { x?: number; y?: number } = {},
+) {
   const D = OBJETIVA_ART_DOTS;
   const w = geometry.labelWidthMm;
   const h = geometry.labelHeightMm;
   const sx = w / D.gridW;
   const sy = h / D.gridH;
+  const ox = origin.x ?? 0;
+  const oy = origin.y ?? 0;
   return {
     w,
     h,
+    ox,
+    oy,
     sx,
     sy,
     logoBand: {
-      x: D.logoBand.x * sx,
-      y: D.logoBand.y * sy,
+      x: D.logoBand.x * sx + ox,
+      y: D.logoBand.y * sy + oy,
       w: D.logoBand.w * sx,
       h: D.logoBand.h * sy,
     },
     motto: {
-      x: D.motto.x * sx,
-      firstBaseline: (D.motto.firstTop + D.motto.capH) * sy,
+      x: D.motto.x * sx + ox,
+      firstBaseline: (D.motto.firstTop + D.motto.capH) * sy + oy,
       step: D.motto.step * sy,
       fontPt: fontPtForCapHeight(D.motto.capH * sy),
     },
     exchange: {
-      x: D.exchange.x * sx,
-      firstBaseline: (D.exchange.firstTop + D.exchange.capH) * sy,
+      x: D.exchange.x * sx + ox,
+      firstBaseline: (D.exchange.firstTop + D.exchange.capH) * sy + oy,
       step: D.exchange.step * sy,
       fontPt: fontPtForCapHeight(D.exchange.capH * sy),
     },
     divider: {
-      x: D.divider.x * sx,
-      top: D.divider.top * sy,
-      bottom: D.divider.bottom * sy,
+      x: D.divider.x * sx + ox,
+      top: D.divider.top * sy + oy,
+      bottom: D.divider.bottom * sy + oy,
       stroke: Math.max(0.12, D.divider.stroke * sx),
     },
     rail: {
-      baselineX: D.rail.baselineX * sx,
-      bottom: D.rail.bottom * sy,
+      baselineX: D.rail.baselineX * sx + ox,
+      bottom: D.rail.bottom * sy + oy,
       step: D.rail.step * sx,
       fontPt: fontPtForCapHeight(D.rail.capH * sy),
     },
     miolo: {
-      firstBaselineX: D.miolo.firstBaselineX * sx,
+      firstBaselineX: D.miolo.firstBaselineX * sx + ox,
       step: D.miolo.step * sx,
-      bottom: D.miolo.bottom * sy,
+      bottom: D.miolo.bottom * sy + oy,
       titleFontPt: fontPtForCapHeight(D.miolo.titleCapH * sy),
       fontPt: fontPtForCapHeight(D.miolo.capH * sy),
     },
     sku: {
-      baselineX: D.sku.baselineX * sx,
-      bottom: D.sku.bottom * sy,
+      baselineX: D.sku.baselineX * sx + ox,
+      bottom: D.sku.bottom * sy + oy,
       fontPt: fontPtForCapHeight(D.sku.capH * sy),
     },
     week: {
-      baselineX: D.week.baselineX * sx,
-      bottom: D.week.bottom * sy,
+      baselineX: D.week.baselineX * sx + ox,
+      bottom: D.week.bottom * sy + oy,
       fontPt: fontPtForCapHeight(D.week.capH * sy),
     },
     barcode: {
-      x: D.barcode.x * sx,
+      x: D.barcode.x * sx + ox,
       w: D.barcode.w * sx,
-      top: D.barcode.top * sy,
-      bottom: D.barcode.bottom * sy,
+      top: D.barcode.top * sy + oy,
+      bottom: D.barcode.bottom * sy + oy,
     },
     size: {
-      labelX: D.size.labelX * sx,
+      labelX: D.size.labelX * sx + ox,
       labelFontPt: fontPtForCapHeight(D.size.labelCapH * sy),
-      valueX: D.size.valueX * sx,
-      baseline: D.size.baseline * sy,
+      valueX: D.size.valueX * sx + ox,
+      baseline: D.size.baseline * sy + oy,
       valueFontPt: fontPtForCapHeight(D.size.valueCapH * sy),
     },
     price: {
-      currencyX: D.price.currencyX * sx,
+      currencyX: D.price.currencyX * sx + ox,
       currencyFontPt: fontPtForCapHeight(D.price.currencyCapH * sy),
-      rightX: D.price.rightX * sx,
-      baseline: D.price.baseline * sy,
+      rightX: D.price.rightX * sx + ox,
+      baseline: D.price.baseline * sy + oy,
       mainFontPt: fontPtForCapHeight(D.price.mainCapH * sy),
       centsFontPt: fontPtForCapHeight(D.price.centsCapH * sy),
       /** Centavos sobem até o topo da caixa-alta do valor cheio. */
@@ -561,9 +568,10 @@ function drawObjetivaLabel(
   geometry: ClientLabelGeometry,
   branding: ClientLabelBranding,
   logo: ObjetivaLogo,
+  origin: { x?: number; y?: number } = {},
 ): void {
   const copy = composeObjetivaLabelCopy(row, branding);
-  const s = artSlots(geometry);
+  const s = artSlots(geometry, origin);
 
   doc.setTextColor(0, 0, 0);
   doc.setDrawColor(0, 0, 0);
@@ -683,6 +691,24 @@ export async function buildObjetivaPdf(
   });
 
   return doc;
+}
+
+/** Tag Objetiva em folha A4 4×4 (tesoura / Epson·LaserJet). */
+export async function buildObjetivaTagA4Pdf(
+  rows: ClientOrderLine[],
+  options: ObjetivaPdfOptions = {},
+): Promise<PdfDoc> {
+  const { buildTagA4Pdf } = await import('./tagA4Sheet');
+  const geometry = mergeGeometry(options.geometry);
+  const branding = mergeBranding(options.branding);
+  const logo = options.logo ?? null;
+  return buildTagA4Pdf(rows, {
+    title: 'Etiquetas Objetiva A4',
+    repeatByQuantity: options.repeatByQuantity ?? true,
+    drawCell: (doc, row, origin) => {
+      drawObjetivaLabel(doc, row, geometry, branding, logo, origin);
+    },
+  });
 }
 
 export function objetivaPdfFilename(origem: string): string {

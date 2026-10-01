@@ -3,7 +3,7 @@
  *
  * Fluxo: escolher cliente → carregar/salvar família (Nalin / Objetiva / Ponto Mix).
  * Nalin e Objetiva: Tag + Adesiva no mesmo CSV. Sem histórico de arquivo.
- * Geração: PDF (+ ZPL em Nalin Tag, Objetiva Tag e Ponto Mix).
+ * Geração: PDF + ZPL L42PRO nas Tags; PDF A4 4×4 (tesoura) nas mesmas Tags.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -18,6 +18,7 @@ import {
   CircleNotch,
   Trash,
   Image as ImageIcon,
+  Scissors,
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import logoFornecedor from '@/assets/baby-nalin/marca-fornecedor.png';
@@ -110,6 +111,7 @@ import {
 } from '@/lib/clientOrderImport';
 import { getSignedUrl } from '@/lib/getSignedUrl';
 import {
+  buildNalinTagA4Pdf,
   buildNalinTagPdf,
   buildNalinTagZpl,
   countNalinTagLabels,
@@ -118,6 +120,7 @@ import {
 } from '@/lib/nalinTagLabels';
 import {
   buildObjetivaPdf,
+  buildObjetivaTagA4Pdf,
   buildObjetivaZpl,
   countObjetivaLabels,
   objetivaPdfFilename,
@@ -125,6 +128,7 @@ import {
 } from '@/lib/objetivaLabels';
 import {
   buildPontoMixPdf,
+  buildPontoMixTagA4Pdf,
   buildPontoMixZpl,
   countPontoMixLabels,
   pontoMixPdfFilename,
@@ -132,6 +136,7 @@ import {
   renderPontoMixPreviewDataUrl,
   resolvePontoMixLogo,
 } from '@/lib/pontoMixLabels';
+import { tagA4PdfFilename } from '@/lib/tagA4Sheet';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { cn } from '@/lib/utils';
 
@@ -237,7 +242,7 @@ export function ClientLabelingWorkspace() {
   const [rows, setRows] = useState<ClientOrderLine[]>([]);
   const [fileNames, setFileNames] = useState<string[]>([]);
   const [reading, setReading] = useState(false);
-  const [generating, setGenerating] = useState<'production' | 'graphic' | null>(null);
+  const [generating, setGenerating] = useState<'production' | 'graphic' | 'a4' | null>(null);
   const [search, setSearch] = useState('');
   const [selectedSkuKeys, setSelectedSkuKeys] = useState<Set<string>>(new Set());
   const [printQuantities, setPrintQuantities] = useState<Record<string, number>>({});
@@ -273,6 +278,9 @@ export function ClientLabelingWorkspace() {
   const isNalinAdesiva = pattern?.key === 'baby_nalin';
   const isNalinTag = pattern?.key === 'nalin_tag';
   const isPontoMix = pattern?.key === 'ponto_mix';
+  /** Tags 40×60 com saída A4 (tesoura) — adesivas 50×30 ficam de fora. */
+  const supportsTagA4 =
+    isNalinTag || isPontoMix || (isObjetiva && !isObjetivaAdesiva);
   const awaitsCalibration = patternAwaitsCalibration(pattern?.key);
   const activeFamilyId = familyIdForPatternKey(pattern?.key);
 
@@ -751,6 +759,88 @@ export function ClientLabelingWorkspace() {
       if (pattern.key !== 'ponto_mix') clearOrder();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Falha ao gerar o PDF.');
+    } finally {
+      setGenerating(null);
+    }
+  }
+
+  async function handleGenerateA4() {
+    if (isBusy || !pattern || !supportsTagA4) return;
+    if (selectedRows.length === 0) {
+      toast.info('Selecione ao menos um SKU antes de gerar.');
+      return;
+    }
+    if (patternDirty) {
+      toast.info('Salve o padrão do cliente antes de gerar o PDF.');
+      return;
+    }
+    if (selecionadasFora.length > 0) {
+      toast.error(`${selecionadasFora.length} código(s) selecionado(s) não cabem na etiqueta.`);
+      return;
+    }
+    if (productionOverLimit) {
+      toast.error(`O limite seguro é ${MAX_PDF_LABELS.toLocaleString('pt-BR')} etiquetas por PDF.`);
+      return;
+    }
+
+    const originName = fileNames[0] ?? 'pedido';
+    setGenerating('a4');
+    try {
+      const sourceRows = productionRows;
+      let doc: import('jspdf').jsPDF;
+      let clientSlug = 'Tag';
+
+      if (pattern.key === 'nalin_tag') {
+        let logo: { dataUrl: string; width: number; height: number } | null = null;
+        if (pattern.branding.logoUrl) {
+          const signedLogoUrl = await getSignedUrl(pattern.branding.logoUrl);
+          logo = await loadLogoDataUrl(signedLogoUrl || pattern.branding.logoUrl);
+          if (!logo) toast.warning('Não carreguei a logomarca — o PDF A4 sai com o wordmark Nalin.');
+        }
+        doc = await buildNalinTagA4Pdf(sourceRows, {
+          geometry: pattern.geometry,
+          branding: pattern.branding,
+          repeatByQuantity: true,
+          logo,
+        });
+        clientSlug = 'Nalin_Tag';
+      } else if (pattern.key === 'objetiva') {
+        let logo: { dataUrl: string; width: number; height: number } | null = null;
+        if (pattern.branding.logoUrl) {
+          const signedLogoUrl = await getSignedUrl(pattern.branding.logoUrl);
+          logo = await loadLogoDataUrl(signedLogoUrl || pattern.branding.logoUrl);
+          if (!logo) toast.warning('Não carreguei a logomarca — o PDF A4 sai com o wordmark.');
+        }
+        doc = await buildObjetivaTagA4Pdf(sourceRows, {
+          geometry: pattern.geometry,
+          branding: pattern.branding,
+          repeatByQuantity: true,
+          logo,
+        });
+        clientSlug = 'Objetiva';
+      } else if (pattern.key === 'ponto_mix') {
+        const logo = await resolvePontoMixLogo(pattern.branding.logoUrl);
+        doc = await buildPontoMixTagA4Pdf(sourceRows, {
+          geometry: pattern.geometry,
+          templates: pattern.templates,
+          priceFormat: pattern.priceFormat,
+          repeatByQuantity: true,
+          logo,
+        });
+        clientSlug = 'Ponto_Mix';
+      } else {
+        toast.info('PDF A4 (tesoura) só está disponível nas Tags 40×60.');
+        return;
+      }
+
+      const { deliverJsPdf } = await import('@/lib/pdfDelivery');
+      deliverJsPdf(doc, tagA4PdfFilename(clientSlug, originName), 'Etiquetas');
+      toast.success(
+        `PDF A4 (tesoura) com ${totalEtiquetas} etiqueta(s) · 16 por folha · sem misturar ref/cor.`,
+      );
+      if (pattern.key !== 'ponto_mix') clearOrder();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Falha ao gerar o PDF A4.');
     } finally {
       setGenerating(null);
     }
@@ -1428,6 +1518,35 @@ export function ClientLabelingWorkspace() {
                       ? `Gerar PDF+ZPL (${totalEtiquetas} etiquetas)`
                       : `Gerar L42PRO (${totalEtiquetas} etiquetas)`}
                 </Button>
+                {supportsTagA4 && (
+                  <Button
+                    className="w-full"
+                    variant="outline"
+                    onClick={() => void handleGenerateA4()}
+                    disabled={
+                      isBusy
+                      || selectedRows.length === 0
+                      || selecionadasFora.length > 0
+                      || productionOverLimit
+                      || patternDirty
+                    }
+                  >
+                    {generating === 'a4' ? (
+                      <CircleNotch className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Scissors className="h-4 w-4 mr-2" />
+                    )}
+                    {generating === 'a4'
+                      ? 'Gerando A4…'
+                      : `PDF A4 (tesoura) · ${totalEtiquetas} etiquetas`}
+                  </Button>
+                )}
+                {supportsTagA4 && (
+                  <p className="text-xs text-muted-foreground">
+                    Folha A4 · 4×4 células 40×60 mm · hairline de corte · quebra de página ao
+                    mudar referência/cor. Epson / LaserJet.
+                  </p>
+                )}
               </section>
 
               <section className="rounded-lg border border-primary/25 bg-primary/5 p-4 space-y-4">

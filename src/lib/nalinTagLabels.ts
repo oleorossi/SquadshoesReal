@@ -197,74 +197,81 @@ export function composeNalinTagLabelCopy(
   };
 }
 
-function artSlots(geometry: ClientLabelGeometry) {
+function artSlots(
+  geometry: ClientLabelGeometry,
+  origin: { x?: number; y?: number } = {},
+) {
   const D = NALIN_TAG_ART_DOTS;
   const w = geometry.labelWidthMm;
   const h = geometry.labelHeightMm;
   const sx = w / D.gridW;
   const sy = h / D.gridH;
+  const ox = origin.x ?? 0;
+  const oy = origin.y ?? 0;
   return {
     w,
     h,
+    ox,
+    oy,
     sx,
     sy,
     logo: {
-      x: D.logo.x * sx,
-      y: D.logo.y * sy,
+      x: D.logo.x * sx + ox,
+      y: D.logo.y * sy + oy,
       w: D.logo.w * sx,
       h: D.logo.h * sy,
     },
     left: {
-      x: D.left.x * sx,
-      firstBaseline: (D.left.firstTop + D.left.capH) * sy,
+      x: D.left.x * sx + ox,
+      firstBaseline: (D.left.firstTop + D.left.capH) * sy + oy,
       step: D.left.step * sy,
       fontPt: fontPtForCapHeight(D.left.capH * sy),
       descFontPt: fontPtForCapHeight(D.left.descCapH * sy),
     },
     rail: {
-      x: D.rail.x * sx,
-      firstBaseline: (D.rail.firstTop + D.rail.capH) * sy,
+      x: D.rail.x * sx + ox,
+      firstBaseline: (D.rail.firstTop + D.rail.capH) * sy + oy,
       step: D.rail.step * sy,
       fontPt: fontPtForCapHeight(D.rail.capH * sy),
     },
     barcode: {
-      x: D.barcode.x * sx,
+      x: D.barcode.x * sx + ox,
       w: D.barcode.w * sx,
-      top: D.barcode.top * sy,
-      bottom: D.barcode.bottom * sy,
+      top: D.barcode.top * sy + oy,
+      bottom: D.barcode.bottom * sy + oy,
     },
     barcodeDigits: {
-      baselineX: D.barcodeDigits.baselineX * sx,
-      bottom: D.barcodeDigits.bottom * sy,
+      baselineX: D.barcodeDigits.baselineX * sx + ox,
+      bottom: D.barcodeDigits.bottom * sy + oy,
       fontPt: fontPtForCapHeight(D.barcodeDigits.capH * sy),
     },
     size: {
-      labelX: D.size.labelX * sx,
+      labelX: D.size.labelX * sx + ox,
       labelFontPt: fontPtForCapHeight(D.size.labelCapH * sy),
-      valueX: D.size.valueX * sx,
-      baseline: D.size.baseline * sy,
+      valueX: D.size.valueX * sx + ox,
+      baseline: D.size.baseline * sy + oy,
       valueFontPt: fontPtForCapHeight(D.size.valueCapH * sy),
     },
     exchange: {
-      line1Y: D.exchange.line1Y * sy,
-      line2Y: D.exchange.line2Y * sy,
-      firstBaseline: (D.exchange.textFirstTop + D.exchange.capH) * sy,
+      line1Y: D.exchange.line1Y * sy + oy,
+      line2Y: D.exchange.line2Y * sy + oy,
+      firstBaseline: (D.exchange.textFirstTop + D.exchange.capH) * sy + oy,
       step: D.exchange.step * sy,
       fontPt: fontPtForCapHeight(D.exchange.capH * sy),
       stroke: Math.max(0.15, D.exchange.stroke * sy),
     },
     price: {
-      currencyX: D.price.currencyX * sx,
+      currencyX: D.price.currencyX * sx + ox,
       currencyFontPt: fontPtForCapHeight(D.price.currencyCapH * sy),
-      rightX: D.price.rightX * sx,
-      baseline: D.price.baseline * sy,
+      rightX: D.price.rightX * sx + ox,
+      baseline: D.price.baseline * sy + oy,
       mainFontPt: fontPtForCapHeight(D.price.mainCapH * sy),
-      topLineY: D.price.topLineY * sy,
-      midLineY: D.price.midLineY * sy,
+      topLineY: D.price.topLineY * sy + oy,
+      midLineY: D.price.midLineY * sy + oy,
     },
     secondary: {
-      rightX: D.secondary.rightX * sx,
-      baseline: D.secondary.baseline * sy,
+      rightX: D.secondary.rightX * sx + ox,
+      baseline: D.secondary.baseline * sy + oy,
       fontPt: fontPtForCapHeight(D.secondary.capH * sy),
     },
   };
@@ -348,9 +355,13 @@ function drawNalinTagLabel(
   geometry: ClientLabelGeometry,
   branding: ClientLabelBranding,
   logo: NalinTagLogo,
+  origin: { x?: number; y?: number } = {},
 ): void {
   const copy = composeNalinTagLabelCopy(row, branding);
-  const s = artSlots(geometry);
+  const s = artSlots(geometry, origin);
+  /** Espelho horizontal da margem esquerda (arte simétrica). */
+  const innerRight = (x: number) => 2 * s.ox + s.w - x;
+  const centerX = s.ox + s.w / 2;
 
   doc.setTextColor(0, 0, 0);
   doc.setDrawColor(0, 0, 0);
@@ -426,13 +437,13 @@ function drawNalinTagLabel(
 
   // Fios + política de troca (centralizada).
   doc.setLineWidth(s.exchange.stroke);
-  doc.line(s.left.x, s.exchange.line1Y, s.w - s.left.x, s.exchange.line1Y);
-  doc.line(s.left.x, s.exchange.line2Y, s.w - s.left.x, s.exchange.line2Y);
+  doc.line(s.left.x, s.exchange.line1Y, innerRight(s.left.x), s.exchange.line1Y);
+  doc.line(s.left.x, s.exchange.line2Y, innerRight(s.left.x), s.exchange.line2Y);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(s.exchange.fontPt);
   copy.exchangeLines.forEach((line, i) => {
-    doc.text(line, s.w / 2, s.exchange.firstBaseline + s.exchange.step * i, {
+    doc.text(line, centerX, s.exchange.firstBaseline + s.exchange.step * i, {
       align: 'center',
       baseline: 'alphabetic',
     });
@@ -440,7 +451,7 @@ function drawNalinTagLabel(
 
   // Preço principal.
   doc.setLineWidth(s.exchange.stroke);
-  doc.line(s.left.x, s.price.topLineY, s.w - s.left.x, s.price.topLineY);
+  doc.line(s.left.x, s.price.topLineY, innerRight(s.left.x), s.price.topLineY);
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(s.price.currencyFontPt);
@@ -454,7 +465,7 @@ function drawNalinTagLabel(
   });
 
   doc.setLineWidth(Math.max(0.12, s.exchange.stroke * 0.7));
-  doc.line(s.left.x, s.price.midLineY, s.w - s.left.x, s.price.midLineY);
+  doc.line(s.left.x, s.price.midLineY, innerRight(s.left.x), s.price.midLineY);
 
   if (copy.priceSecondary) {
     doc.setFont('helvetica', 'bold');
@@ -497,6 +508,24 @@ export async function buildNalinTagPdf(
   });
 
   return doc;
+}
+
+/** Tag Nalin em folha A4 4×4 (tesoura / Epson·LaserJet). */
+export async function buildNalinTagA4Pdf(
+  rows: ClientOrderLine[],
+  options: NalinTagPdfOptions = {},
+): Promise<PdfDoc> {
+  const { buildTagA4Pdf } = await import('./tagA4Sheet');
+  const geometry = mergeGeometry(options.geometry);
+  const branding = mergeBranding(options.branding);
+  const logo = options.logo ?? null;
+  return buildTagA4Pdf(rows, {
+    title: 'Etiquetas Nalin Tag A4',
+    repeatByQuantity: options.repeatByQuantity ?? true,
+    drawCell: (doc, row, origin) => {
+      drawNalinTagLabel(doc, row, geometry, branding, logo, origin);
+    },
+  });
 }
 
 export function nalinTagPdfFilename(origem: string): string {

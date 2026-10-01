@@ -893,30 +893,37 @@ function drawLogoOnBlackBand(
  * Converte a grade de dots (203 dpi) para as medidas da etiqueta configurada.
  * Em 40×60 mm o fator é exatamente 0,125 mm/dot — igual à etiqueta da cliente.
  */
-function artSlots(geometry: ClientLabelGeometry) {
+function artSlots(
+  geometry: ClientLabelGeometry,
+  origin: { x?: number; y?: number } = {},
+) {
   const D = PONTO_MIX_ART_DOTS;
   const w = geometry.labelWidthMm;
   const h = geometry.labelHeightMm;
   const sx = w / D.gridW;
   const sy = h / D.gridH;
+  const ox = origin.x ?? 0;
+  const oy = origin.y ?? 0;
   const box = (b: { x: number; y: number; w: number; h: number }) => ({
-    x: b.x * sx,
-    y: b.y * sy,
+    x: b.x * sx + ox,
+    y: b.y * sy + oy,
     w: b.w * sx,
     h: b.h * sy,
   });
   return {
     w,
     h,
+    ox,
+    oy,
     sx,
     sy,
     headerBand: box({ ...D.headerBand, x: centeredX(D.headerBand.w) }),
     logoBox: box(D.logoBox),
     text: {
-      x: D.text.x * sx,
-      firstTop: D.text.firstTop * sy,
+      x: D.text.x * sx + ox,
+      firstTop: D.text.firstTop * sy + oy,
       /** Linha de base da 1ª linha: topo da caixa-alta + a própria caixa-alta. */
-      firstBaseline: (D.text.firstTop + D.text.capH) * sy,
+      firstBaseline: (D.text.firstTop + D.text.capH) * sy + oy,
       step: D.text.step * sy,
       maxW: D.text.maxW * sx,
       fontPt: fontPtForCapHeight(D.text.capH * sy),
@@ -927,15 +934,15 @@ function artSlots(geometry: ClientLabelGeometry) {
       fontPt: fontPtForCapHeight(D.sizeBox.capH * sy),
     },
     barcode: {
-      y: D.barcode.y * sy,
+      y: D.barcode.y * sy + oy,
       h: D.barcode.h * sy,
       module: D.barcode.module * sx,
       /** Largura máxima antes de encolher o módulo (respeita a margem do texto). */
       maxW: (D.gridW - D.text.x * 2) * sx,
     },
     hri: {
-      top: D.hri.top * sy,
-      baseline: (D.hri.top + D.hri.capH) * sy,
+      top: D.hri.top * sy + oy,
+      baseline: (D.hri.top + D.hri.capH) * sy + oy,
       fontPt: fontPtForCapHeight(D.hri.capH * sy),
     },
     priceBand: {
@@ -952,9 +959,11 @@ function drawPontoMixLabel(
   templates: ClientLabelLineTemplates,
   priceFormat: ClientLabelPriceFormat,
   logo: PontoMixLogo,
+  origin: { x?: number; y?: number } = {},
 ): void {
   const copy = composePontoMixLabelCopy(row, templates, priceFormat);
-  const slots = artSlots(geometry);
+  const slots = artSlots(geometry, origin);
+  const centerX = slots.ox + slots.w / 2;
 
   const band = slots.headerBand;
   drawLogoOnBlackBand(doc, logo, band.x, band.y, band.w, band.h, slots.logoBox.w, slots.logoBox.h);
@@ -999,7 +1008,7 @@ function drawPontoMixLabel(
       // Módulo fixo de 2 dots (padrão térmico); só encolhe se o código não couber.
       const module = Math.min(slots.barcode.module, slots.barcode.maxW / Math.max(moduleCount, 1));
       const totalW = moduleCount * module;
-      const barX = (slots.w - totalW) / 2;
+      const barX = slots.ox + (slots.w - totalW) / 2;
       doc.setFillColor(0, 0, 0);
       for (const barra of bars) {
         doc.rect(barX + barra.start * module, slots.barcode.y, barra.width * module, slots.barcode.h, 'F');
@@ -1012,7 +1021,7 @@ function drawPontoMixLabel(
       });
     } catch {
       doc.setFontSize(6);
-      doc.text('(código inválido)', slots.w / 2, slots.barcode.y + 4, { align: 'center' });
+      doc.text('(código inválido)', centerX, slots.barcode.y + 4, { align: 'center' });
     }
   }
 
@@ -1057,6 +1066,32 @@ export async function buildPontoMixPdf(
   });
 
   return doc.output('blob');
+}
+
+/** Tag Ponto Mix em folha A4 4×4 (tesoura / Epson·LaserJet). */
+export async function buildPontoMixTagA4Pdf(
+  rows: ClientOrderLine[],
+  options: PontoMixPdfOptions = {},
+): Promise<PdfDoc> {
+  const { buildTagA4Pdf } = await import('./tagA4Sheet');
+  const geometry = mergeGeometry(options.geometry);
+  const templates = mergeTemplates(options.templates);
+  const priceFormat = mergePriceFormat(options.priceFormat);
+  const logo = options.logo ?? null;
+  return buildTagA4Pdf(rows, {
+    title: 'Etiquetas Ponto Mix A4',
+    repeatByQuantity: options.repeatByQuantity !== false,
+    prepareDoc: async doc => {
+      try {
+        await ensurePontoMixPdfFont(doc);
+      } catch {
+        /* Helvetica fallback */
+      }
+    },
+    drawCell: (doc, row, origin) => {
+      drawPontoMixLabel(doc, row, geometry, templates, priceFormat, logo, origin);
+    },
+  });
 }
 
 export function pontoMixPdfFilename(mode: 'producao' | 'grafico' = 'producao'): string {
