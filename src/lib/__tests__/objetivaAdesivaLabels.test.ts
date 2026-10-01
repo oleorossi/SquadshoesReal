@@ -6,16 +6,19 @@ import {
   OBJETIVA_ADESIVA_ART_HEIGHT_MM,
   OBJETIVA_ADESIVA_ART_WIDTH_MM,
   OBJETIVA_ADESIVA_COLUMNS,
+  OBJETIVA_ADESIVA_DPI,
   OBJETIVA_ADESIVA_INSET_MM,
   OBJETIVA_ADESIVA_LABEL_HEIGHT_MM,
   OBJETIVA_ADESIVA_LABEL_WIDTH_MM,
   OBJETIVA_ADESIVA_PAGE_HEIGHT_MM,
   OBJETIVA_ADESIVA_PAGE_WIDTH_MM,
   buildObjetivaAdesivaPdf,
+  buildObjetivaAdesivaZpl,
   composeObjetivaAdesivaCopy,
   countObjetivaAdesivaLabels,
   objetivaAdesivaPageCount,
   objetivaAdesivaPdfFilename,
+  objetivaAdesivaZplFilename,
   planObjetivaAdesivaPlacements,
 } from '@/lib/objetivaAdesivaLabels';
 import { parseObjetivaOrderCsv } from '@/lib/objetivaLabels';
@@ -58,10 +61,10 @@ describe('composeObjetivaAdesivaCopy', () => {
     expect(copy.line2).toBe('DOURADA 420 - TAM.: 35');
   });
 
-  it('não trunca a L2 típica da original na arte 48 mm', async () => {
+  it('não trunca a L2 típica da original na arte útil', async () => {
     const { jsPDF } = await import('jspdf');
     const doc = new jsPDF({ unit: 'mm', format: [50, 30], orientation: 'landscape' });
-    doc.setFont('courier', 'normal');
+    doc.setFont('helvetica', 'normal');
     const { fitObjetivaAdesivaText, OBJETIVA_ADESIVA_ART_WIDTH_MM: artW } = await import(
       '@/lib/objetivaAdesivaLabels'
     );
@@ -95,8 +98,18 @@ describe('planObjetivaAdesivaPlacements', () => {
       false,
     );
     expect(two).toHaveLength(2);
-    expect(two[0]).toMatchObject({ pageIndex: 0, column: 0, xMm: 1, yMm: 1 });
-    expect(two[1]).toMatchObject({ pageIndex: 1, column: 0, xMm: 1, yMm: 1 });
+    expect(two[0]).toMatchObject({
+      pageIndex: 0,
+      column: 0,
+      xMm: OBJETIVA_ADESIVA_INSET_MM,
+      yMm: OBJETIVA_ADESIVA_INSET_MM,
+    });
+    expect(two[1]).toMatchObject({
+      pageIndex: 1,
+      column: 0,
+      xMm: OBJETIVA_ADESIVA_INSET_MM,
+      yMm: OBJETIVA_ADESIVA_INSET_MM,
+    });
     expect(objetivaAdesivaPageCount(2)).toBe(2);
     expect(objetivaAdesivaPageCount(3)).toBe(3);
   });
@@ -161,5 +174,35 @@ describe('buildObjetivaAdesivaPdf', () => {
     expect(doc.internal.pageSize.getWidth()).toBeCloseTo(50, 5);
     expect(doc.internal.pageSize.getHeight()).toBeCloseTo(30, 5);
     expect(doc.getNumberOfPages()).toBe(1);
+  });
+});
+
+describe('buildObjetivaAdesivaZpl · mídia 50×30 203 dpi', () => {
+  it('emite ^PW400/^LL240 com L1, L2, CODE128, SKU e preço', () => {
+    expect(OBJETIVA_ADESIVA_DPI).toBe(203);
+    const zpl = buildObjetivaAdesivaZpl(
+      [line({ codigoBarra: '112331', valor: 'R$ 39,99' })],
+      { repeatByQuantity: false },
+    );
+    expect(zpl).toContain('^XA');
+    expect(zpl).toContain('^PW400');
+    expect(zpl).toContain('^LL240');
+    expect(zpl).toContain('^BCN,');
+    expect(zpl).toContain('^FD112331^FS');
+    expect(zpl).toMatch(/TAM RAST FEM METAL DEDO/);
+    expect(zpl).toMatch(/SP124 OFF WHITE 420/);
+    expect(zpl).toMatch(/R\$ 39,99/);
+    expect(zpl).toContain('^XZ');
+    expect(objetivaAdesivaZplFilename('112331.csv')).toMatch(/50x30\.zpl$/);
+  });
+
+  it('produção repete pela quantidade e ignora geometry 2-up', () => {
+    const zpl = buildObjetivaAdesivaZpl(
+      [line({ quantidade: 2, codigoBarra: '95755' })],
+      { repeatByQuantity: true, geometry: { labelWidthMm: 25, columns: 2 } },
+    );
+    const labels = zpl.split('^XA').filter(Boolean);
+    expect(labels).toHaveLength(2);
+    expect(zpl.match(/\^PW400/g)).toHaveLength(2);
   });
 });

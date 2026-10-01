@@ -9,7 +9,9 @@
  * (células 50×30) batia na arte mas o driver em 50 mm espremia as duas colunas
  * numa só etiqueta (código/preço “no canto”, descrição sumia).
  *
- * Reusa o CSV/parse da Tag (`objetivaLabels`); saída PDF only. Sem ZPL.
+ * PDF 1-up 50×30 ainda falha em vários drivers Bematech (corta o topo → some
+ * L1/L2). Por isso a saída de produção é PDF + ZPL 203 dpi (^PW400/^LL240):
+ * mande o .zpl no Gerenciador/DirectPrint, não o PDF pelo driver.
  */
 import { code128Bars, encodeCode128 } from './code128';
 import {
@@ -22,14 +24,21 @@ import { stripHangtagAccents } from './objetivaLabels';
 /** Etiqueta física 50 × 30 mm — uma por página. */
 export const OBJETIVA_ADESIVA_LABEL_WIDTH_MM = 50;
 export const OBJETIVA_ADESIVA_LABEL_HEIGHT_MM = 30;
-/** Compat: a mídia do rolo tem 2 colunas, mas o PDF é 1-up. */
+/** Compat: a mídia do rolo tem 2 colunas, mas o PDF/ZPL é 1-up. */
 export const OBJETIVA_ADESIVA_COLUMNS = 1;
 export const OBJETIVA_ADESIVA_COLUMN_GAP_MM = 0;
 export const OBJETIVA_ADESIVA_PAGE_WIDTH_MM = OBJETIVA_ADESIVA_LABEL_WIDTH_MM;
 export const OBJETIVA_ADESIVA_PAGE_HEIGHT_MM = OBJETIVA_ADESIVA_LABEL_HEIGHT_MM;
 
-/** Inset da arte dentro da etiqueta (1 mm pra dentro da faca). */
-export const OBJETIVA_ADESIVA_INSET_MM = 1.0;
+/** Bematech/Elgin 203 dpi — 50×30 mm = 400×240 dots. */
+export const OBJETIVA_ADESIVA_DPI = 203;
+
+/**
+ * Inset da arte dentro da etiqueta.
+ * 1,5 mm — folga na faca + zona morta do topo que o driver PDF da Bematech
+ * costuma comer (com 1,0 mm a descrição sumia e só código/preço saíam).
+ */
+export const OBJETIVA_ADESIVA_INSET_MM = 1.5;
 export const OBJETIVA_ADESIVA_ART_WIDTH_MM =
   OBJETIVA_ADESIVA_LABEL_WIDTH_MM - 2 * OBJETIVA_ADESIVA_INSET_MM;
 export const OBJETIVA_ADESIVA_ART_HEIGHT_MM =
@@ -42,6 +51,9 @@ export const OBJETIVA_ADESIVA_MODULE_MM = 0.28;
 
 export const MAX_OBJETIVA_ADESIVA_PDF_LABELS = 20_000;
 export const OBJETIVA_ADESIVA_MIN_FONT_PT = 5;
+
+/** Helvetica rasteriza de forma estável nos drivers térmicos; Courier sumia. */
+const PDF_FONT = 'helvetica';
 
 type PdfDoc = import('jspdf').jsPDF;
 
@@ -197,16 +209,18 @@ function drawObjetivaAdesivaLabel(
   const artH = OBJETIVA_ADESIVA_ART_HEIGHT_MM;
 
   doc.setTextColor(0, 0, 0);
-  doc.setFont('courier', 'normal');
+  doc.setFont(PDF_FONT, 'bold');
 
-  // L1 / L2 — topo, esquerda (original).
-  const l1 = fitObjetivaAdesivaText(doc, copy.line1, 7.5, artW);
+  // L1 / L2 — topo, esquerda (original). Helvetica bold: drivers térmicos
+  // engoliam Courier fino no topo da página.
+  const l1 = fitObjetivaAdesivaText(doc, copy.line1, 8, artW);
   doc.setFontSize(l1.pt);
-  doc.text(l1.texto, ox, oy + 1.0, { baseline: 'top' });
+  doc.text(l1.texto, ox, oy + 0.4, { baseline: 'top' });
 
+  doc.setFont(PDF_FONT, 'normal');
   const l2 = fitObjetivaAdesivaText(doc, copy.line2, 7.5, artW);
   doc.setFontSize(l2.pt);
-  doc.text(l2.texto, ox, oy + 4.6, { baseline: 'top' });
+  doc.text(l2.texto, ox, oy + 4.2, { baseline: 'top' });
 
   if (!copy.codigoBarra) {
     throw new Error('SKU/código de barras vazio — não dá para gerar a adesiva Objetiva.');
@@ -214,8 +228,8 @@ function drawObjetivaAdesivaLabel(
 
   // CODE128 centralizado + dígitos abaixo — módulo fixo, não estica na célula.
   const { moduleMm, widthMm } = barcodeModuleMm(copy.codigoBarra, artW);
-  const barcodeH = 9.0;
-  const barcodeTop = oy + 8.8;
+  const barcodeH = 8.5;
+  const barcodeTop = oy + 8.4;
   const x0 = ox + (artW - widthMm) / 2;
   doc.setFillColor(0, 0, 0);
   for (const barra of code128Bars(copy.codigoBarra)) {
@@ -223,18 +237,18 @@ function drawObjetivaAdesivaLabel(
   }
 
   const sku = fitObjetivaAdesivaText(doc, copy.codigoBarra, 8, artW);
-  doc.setFont('courier', 'normal');
+  doc.setFont(PDF_FONT, 'normal');
   doc.setFontSize(sku.pt);
-  doc.text(sku.texto, ox + artW / 2, barcodeTop + barcodeH + 0.7, {
+  doc.text(sku.texto, ox + artW / 2, barcodeTop + barcodeH + 0.6, {
     align: 'center',
     baseline: 'top',
   });
 
   // Preço grande no rodapé — folga na faca inferior.
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(PDF_FONT, 'bold');
   const price = fitObjetivaAdesivaText(doc, copy.priceText, 14, artW);
   doc.setFontSize(price.pt);
-  doc.text(price.texto, ox + artW / 2, oy + artH - 1.2, {
+  doc.text(price.texto, ox + artW / 2, oy + artH - 0.8, {
     align: 'center',
     baseline: 'bottom',
   });
@@ -248,7 +262,15 @@ export function objetivaAdesivaPdfFilename(origem: string): string {
   return `Etiquetas_Objetiva_Adesiva_${base || 'pedido'}.pdf`;
 }
 
-/** Monta o PDF 1-up 50×30 — uma etiqueta por página, para a térmica. */
+export function objetivaAdesivaZplFilename(origem: string): string {
+  const base = origem
+    .replace(/\.[^.]+$/, '')
+    .replace(/[^A-Za-z0-9]+/g, '_')
+    .replace(/^_|_$/g, '');
+  return `Etiquetas_Objetiva_Adesiva_${base || 'pedido'}_50x30.zpl`;
+}
+
+/** Monta o PDF 1-up 50×30 — uma etiqueta por página (conferência / macOS). */
 export async function buildObjetivaAdesivaPdf(
   rows: ClientOrderLine[],
   options: ObjetivaAdesivaPdfOptions = {},
@@ -282,4 +304,99 @@ export async function buildObjetivaAdesivaPdf(
   });
 
   return doc;
+}
+
+function mmToDots(mm: number, dpi = OBJETIVA_ADESIVA_DPI): number {
+  return Math.max(1, Math.round((mm / 25.4) * dpi));
+}
+
+function zplField(text: string, maxLen: number): string {
+  return text.replace(/[\^~]/g, ' ').slice(0, maxLen).trim();
+}
+
+/** Corta texto ZPL pela largura aproximada do ^A0 (sem métrica de PDF). */
+function fitZplLine(text: string, fontDots: number, maxWidthDots: number): string {
+  const charW = Math.max(4, Math.round(fontDots * 0.55));
+  const maxChars = Math.max(4, Math.floor(maxWidthDots / charW));
+  const clean = zplField(text, 80);
+  if (clean.length <= maxChars) return clean;
+  return `${zplField(clean, Math.max(1, maxChars - 1))}…`;
+}
+
+/**
+ * ZPL 203 dpi — espelho da arte PDF (L1/L2 + CODE128 + SKU + preço).
+ *
+ * Use este arquivo na Bematech/Elgin (Gerenciador ou DirectPrint). O PDF pelo
+ * driver costuma comer o topo da página e imprimir só código + preço.
+ */
+export function buildObjetivaAdesivaZpl(
+  rows: ClientOrderLine[],
+  options: ObjetivaAdesivaPdfOptions = {},
+): string {
+  if (rows.length === 0) throw new Error('Nada para gerar: nenhuma etiqueta selecionada.');
+
+  resolveGeometry(options.geometry);
+  const expanded = expandLines(rows, options.repeatByQuantity ?? true);
+
+  const W = mmToDots(OBJETIVA_ADESIVA_LABEL_WIDTH_MM);
+  const H = mmToDots(OBJETIVA_ADESIVA_LABEL_HEIGHT_MM);
+  const inset = mmToDots(OBJETIVA_ADESIVA_INSET_MM);
+  const artW = W - 2 * inset;
+  const artH = H - 2 * inset;
+
+  const l1Font = mmToDots(2.8); // ~8 pt
+  const l2Font = mmToDots(2.6); // ~7.5 pt
+  const skuFont = mmToDots(2.8);
+  const priceFont = mmToDots(4.9); // ~14 pt
+  const barcodeH = mmToDots(8.5);
+
+  const blocks = expanded.map(row => {
+    const copy = composeObjetivaAdesivaCopy(row);
+    if (!copy.codigoBarra) {
+      throw new Error('SKU/código de barras vazio — não dá para gerar a adesiva Objetiva.');
+    }
+    const barcode = copy.codigoBarra.replace(/[^A-Za-z0-9 ._/-]/g, '').slice(0, 48);
+
+    const l1 = fitZplLine(copy.line1, l1Font, artW);
+    const l2 = fitZplLine(copy.line2, l2Font, artW);
+    const sku = fitZplLine(barcode, skuFont, artW);
+    const price = fitZplLine(copy.priceText, priceFont, artW);
+
+    let moduleCount = 0;
+    try {
+      moduleCount = encodeCode128(barcode).moduleCount;
+    } catch {
+      moduleCount = Math.max(20, 11 * (barcode.length + 3) + 2);
+    }
+    const maxBcW = Math.max(20, artW - 2 * mmToDots(OBJETIVA_ADESIVA_QUIET_ZONE_MM));
+    const naturalW = moduleCount * mmToDots(OBJETIVA_ADESIVA_MODULE_MM);
+    const bcW = Math.min(naturalW, maxBcW);
+    const module = Math.max(1, Math.floor(bcW / moduleCount));
+    const bcX = inset + Math.round((artW - module * moduleCount) / 2);
+    const bcY = inset + mmToDots(8.4);
+
+    const l1Y = inset + mmToDots(0.4);
+    const l2Y = inset + mmToDots(4.2);
+    const skuY = bcY + barcodeH + mmToDots(0.6);
+    const priceY = inset + artH - priceFont - mmToDots(0.4);
+
+    return [
+      '^XA',
+      `^PW${W}`,
+      `^LL${H}`,
+      '^LH0,0',
+      '^CI28',
+      `^FO${inset},${l1Y}^A0N,${l1Font},${l1Font}^FD${l1}^FS`,
+      `^FO${inset},${l2Y}^A0N,${l2Font},${l2Font}^FD${l2}^FS`,
+      `^BY${module},2.0,${barcodeH}`,
+      `^FO${bcX},${bcY}`,
+      `^BCN,${barcodeH},N,N,N`,
+      `^FD${barcode}^FS`,
+      `^FO${inset},${skuY}^A0N,${skuFont},${skuFont}^FB${artW},1,0,C^FD${sku}^FS`,
+      `^FO${inset},${priceY}^A0N,${priceFont},${priceFont}^FB${artW},1,0,C^FD${price}^FS`,
+      '^XZ',
+    ].join('\n');
+  });
+
+  return blocks.join('\n\n');
 }

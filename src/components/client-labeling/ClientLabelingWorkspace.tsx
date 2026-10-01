@@ -3,7 +3,8 @@
  *
  * Fluxo: escolher cliente → carregar/salvar família (Nalin / Objetiva / Ponto Mix).
  * Nalin e Objetiva: Tag + Adesiva no mesmo CSV. Sem histórico de arquivo.
- * Geração: PDF + ZPL L42PRO nas Tags; PDF A4 4×4 (tesoura) nas mesmas Tags.
+ * Geração: PDF + ZPL L42PRO nas Tags; PDF + ZPL 50×30 na adesiva Objetiva;
+ * PDF A4 4×4 (tesoura) nas Tags.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -121,6 +122,7 @@ import {
 } from '@/lib/nalinTagLabels';
 import {
   buildObjetivaAdesivaPdf,
+  buildObjetivaAdesivaZpl,
   countObjetivaAdesivaLabels,
   OBJETIVA_ADESIVA_LABEL_HEIGHT_MM,
   OBJETIVA_ADESIVA_LABEL_WIDTH_MM,
@@ -128,6 +130,7 @@ import {
   OBJETIVA_ADESIVA_PAGE_WIDTH_MM,
   objetivaAdesivaPageCount,
   objetivaAdesivaPdfFilename,
+  objetivaAdesivaZplFilename,
 } from '@/lib/objetivaAdesivaLabels';
 import {
   buildObjetivaPdf,
@@ -713,10 +716,16 @@ export function ClientLabelingWorkspace() {
         });
         const { deliverJsPdf } = await import('@/lib/pdfDelivery');
         deliverJsPdf(doc, objetivaAdesivaPdfFilename(originName), 'Etiquetas');
+        // Bematech/Elgin: mande o .zpl — o PDF pelo driver corta o topo (some descrição).
+        const zpl = buildObjetivaAdesivaZpl(sourceRows, {
+          geometry: pattern.geometry,
+          repeatByQuantity: mode === 'production',
+        });
+        downloadText(zpl, objetivaAdesivaZplFilename(originName), 'text/plain;charset=utf-8');
         toast.success(
           mode === 'graphic'
-            ? `PDF Objetiva · Adesiva (amostra) com ${selectedRows.length} SKU(s) gerado.`
-            : `PDF Objetiva · Adesiva com ${totalEtiquetas} etiqueta(s) gerado.`,
+            ? `PDF + ZPL Objetiva · Adesiva (amostra) com ${selectedRows.length} SKU(s). Use o .zpl na Bematech.`
+            : `PDF + ZPL Objetiva · Adesiva com ${totalEtiquetas} etiqueta(s). Na Bematech, imprima o .zpl (não o PDF).`,
         );
       } else if (pattern.key === 'ponto_mix') {
         // Arte fixa: sempre logo empacotada branca (upload do cliente é ignorado).
@@ -1268,9 +1277,10 @@ export function ClientLabelingWorkspace() {
               ) : isObjetivaAdesiva ? (
                 <div className="space-y-3">
                   <p className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-                    Adesiva Objetiva: mesmo CSV da Tag · PDF 50×30 mm (1 etiqueta por página) ·
-                    CODE128 do SKU · preço. No driver da térmica, mídia 50×30 — o rolo 2 colunas
-                    avança sozinho. Abre no macOS e imprime pelo driver.
+                    Adesiva Objetiva: mesmo CSV da Tag · PDF + ZPL 50×30 mm (1 etiqueta) ·
+                    CODE128 do SKU · preço. Na Bematech, use o arquivo .zpl (Gerenciador /
+                    DirectPrint) — o PDF pelo driver corta a descrição. Mídia 50×30; o rolo
+                    2 colunas avança sozinho.
                   </p>
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     {OBJETIVA_GEOMETRY_FIELDS.map(field => (
@@ -1293,7 +1303,8 @@ export function ClientLabelingWorkspace() {
                   </div>
                   <p className="text-xs text-muted-foreground">
                     Defaults: página {OBJETIVA_ADESIVA_PAGE_WIDTH_MM}×{OBJETIVA_ADESIVA_PAGE_HEIGHT_MM} mm ·{' '}
-                    1 etiqueta por página (arte {OBJETIVA_ADESIVA_LABEL_WIDTH_MM}×{OBJETIVA_ADESIVA_LABEL_HEIGHT_MM}).
+                    1 etiqueta · PDF + ZPL 203 dpi (arte {OBJETIVA_ADESIVA_LABEL_WIDTH_MM}×
+                    {OBJETIVA_ADESIVA_LABEL_HEIGHT_MM}).
                   </p>
                 </div>
               ) : (
@@ -1489,7 +1500,7 @@ export function ClientLabelingWorkspace() {
                         : isNalinAdesiva
                           ? 'PDF adesiva Nalin (L42PRO)'
                           : isObjetivaAdesiva
-                            ? 'PDF adesiva Objetiva'
+                            ? 'Produção adesiva Objetiva (PDF + ZPL)'
                             : isObjetiva
                               ? 'Produção Tag Objetiva (PDF + ZPL)'
                               : isPontoMix
@@ -1505,7 +1516,7 @@ export function ClientLabelingWorkspace() {
                           : isPontoMix
                             ? ' · preview + PDF + ZPL L42PRO 40×60'
                             : isObjetivaAdesiva
-                              ? ' · PDF 50×30 · 1 etiqueta/página'
+                              ? ' · PDF + ZPL 50×30 · 1 etiqueta (use .zpl na Bematech)'
                               : ' · PDF + ZPL L42PRO 40×60'}
                       .
                     </p>
@@ -1531,7 +1542,7 @@ export function ClientLabelingWorkspace() {
                   )}
                   {generating === 'production'
                     ? 'Gerando…'
-                    : isPontoMix || isNalinTag || (isObjetiva && !isObjetivaAdesiva)
+                    : isPontoMix || isNalinTag || isObjetiva || isObjetivaAdesiva
                       ? `Gerar PDF+ZPL (${totalEtiquetas} etiquetas)`
                       : `Gerar L42PRO (${totalEtiquetas} etiquetas)`}
                 </Button>
@@ -1578,7 +1589,7 @@ export function ClientLabelingWorkspace() {
                         : isNalinAdesiva
                           ? 'Arquivo adesiva para gráfica'
                           : isObjetivaAdesiva
-                            ? 'Amostra adesiva'
+                            ? 'Amostra adesiva (PDF + ZPL)'
                             : isObjetiva
                               ? 'Amostra Tag'
                               : isPontoMix
@@ -1587,6 +1598,7 @@ export function ClientLabelingWorkspace() {
                     </h3>
                     <p className="mt-1 text-xs text-muted-foreground">
                       Uma arte por SKU selecionado (sem repetir quantidade).
+                      {isObjetivaAdesiva ? ' Na Bematech, use o .zpl.' : ''}
                     </p>
                   </div>
                 </div>
@@ -1610,7 +1622,7 @@ export function ClientLabelingWorkspace() {
                   )}
                   {generating === 'graphic'
                     ? 'Gerando…'
-                    : isPontoMix
+                    : isPontoMix || isObjetivaAdesiva
                       ? `Gerar amostra PDF+ZPL (${selectedSkuKeys.size} ${skuLabel})`
                       : `Gerar gráfica (${selectedSkuKeys.size} ${skuLabel})`}
                 </Button>
