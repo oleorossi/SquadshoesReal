@@ -382,13 +382,27 @@ function getWeekOptions() {
     [saleOrders],
   );
 
+  /** Campos de OP usados na busca — tipados pra não introduzir `any` no gate de lint. */
+  type OrderSearchRow = {
+    sale_order_id?: string | null;
+    order_number?: string | null;
+    color?: string | null;
+    notes?: string | null;
+    production_line?: string | null;
+    responsible?: string | null;
+    packaging_type?: string | null;
+    quantity?: number | null;
+    technical_sheets?: { name?: string | null; code?: string | null } | null;
+  };
+
   const knownOrderCodes = useMemo(
     () =>
       collectKnownOrderCodes(orders, (o) => {
-        const soId = (o as any).sale_order_id;
+        const row = o as OrderSearchRow;
+        const soId = row.sale_order_id;
         const so = soId ? saleOrderMetaById.get(soId) : null;
         return {
-          orderNumber: (o as any).order_number,
+          orderNumber: row.order_number,
           saleOrderNumber: so?.orderNumber,
         };
       }),
@@ -420,23 +434,24 @@ function getWeekOptions() {
     };
 
     const passesNonStatusFilters = (order: (typeof orders)[number]): boolean => {
-      const linkedSaleOrderId = (order as any).sale_order_id;
+      const row = order as OrderSearchRow;
+      const linkedSaleOrderId = row.sale_order_id;
       const linkedSaleOrder = linkedSaleOrderId ? saleOrderMetaById.get(linkedSaleOrderId) : null;
 
       // Search: lista OP/PV (heurística) | ref/cor posicional | AND livre.
       if (searchLower) {
         const cnpjDigits = (linkedSaleOrder?.clientCnpj || '').replace(/\D/g, '');
-        const ts: any = (order as any).technical_sheets || {};
+        const ts = row.technical_sheets || {};
         const candidates: (string | null | undefined)[] = [
-          (order as any).order_number,
+          row.order_number,
           ts.name,
           ts.code,
-          (order as any).color,
-          (order as any).notes,
-          (order as any).production_line,
-          (order as any).responsible,
-          (order as any).packaging_type,
-          String((order as any).quantity ?? ''),
+          row.color,
+          row.notes,
+          row.production_line,
+          row.responsible,
+          row.packaging_type,
+          String(row.quantity ?? ''),
           linkedSaleOrder?.orderNumber,
           linkedSaleOrder?.clientName,
           linkedSaleOrder?.clientOrderNumber,
@@ -455,7 +470,7 @@ function getWeekOptions() {
           const hit = classified.codes.some((code) =>
             orderCodeExactMatch(
               code,
-              (order as any).order_number,
+              row.order_number,
               linkedSaleOrder?.orderNumber,
             ),
           );
@@ -463,7 +478,7 @@ function getWeekOptions() {
         } else if (classified.mode === 'refColor') {
           const refOk =
             searchMatchesAny(classified.ref, ts.name, ts.code);
-          const colorOk = searchMatchesAny(classified.color, (order as any).color);
+          const colorOk = searchMatchesAny(classified.color, row.color);
           if (!refOk || !colorOk) return false;
           if (classified.rest.length > 0 && !classified.rest.every(matchTerm)) return false;
         } else if (!splitSearchTerms(debouncedSearchTerm).every(matchTerm)) {
@@ -535,11 +550,12 @@ function getWeekOptions() {
   const matchedCodeIds = useMemo(() => {
     const codes = parseOrderCodeList(debouncedSearchTerm, knownOrderCodes);
     return findIdsMatchingOrderCodes(orders, codes, (order) => {
-      const soId = (order as any).sale_order_id;
+      const row = order as OrderSearchRow;
+      const soId = row.sale_order_id;
       const so = soId ? saleOrderMetaById.get(soId) : null;
       return {
         id: order.id,
-        orderNumber: (order as any).order_number,
+        orderNumber: row.order_number,
         saleOrderNumber: so?.orderNumber,
       };
     });
