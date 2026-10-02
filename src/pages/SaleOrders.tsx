@@ -153,10 +153,13 @@ import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import { normalizeForSearch, searchMatchesAllTerms, splitSearchTerms, rankBySearchScore } from '@/lib/searchUtils';
 import {
+  classifyOrderSearch,
+  collectKnownOrderCodes,
   findIdsMatchingOrderCodes,
   looksLikeOrderCodeList,
   orderCodeExactMatch,
   parseOrderCodeList,
+  type OrderSearchItemFields,
 } from '@/lib/orderCodeSearch';
 import { confirmIfHiddenSelection } from '@/lib/confirmHiddenSelection';
 import { safeUrlAttr } from '@/lib/htmlUtils';
@@ -515,20 +518,31 @@ export default function SaleOrders() {
     return map;
   }, [references]);
 
-  // Index: sale_order_id -> Set of searchable strings from items (ref code, ref name, color)
+  // Index: sale_order_id -> itens (ref+cor na mesma linha) + tokens flat pra AND livre
   const itemsBySaleOrder = useMemo(() => {
-    const map: Record<string, Set<string>> = {};
+    const map: Record<string, { items: OrderSearchItemFields[]; tokens: Set<string> }> = {};
     (allSaleItems || []).forEach((it: any) => {
       const id = it.sale_order_id;
       if (!id) return;
-      if (!map[id]) map[id] = new Set();
+      if (!map[id]) map[id] = { items: [], tokens: new Set() };
       const ref = refById[it.reference_id];
-      if (ref?.code) map[id].add(ref.code);
-      if (ref?.name) map[id].add(ref.name);
-      if (it.color) map[id].add(String(it.color).toLowerCase());
+      const row: OrderSearchItemFields = {
+        referenceCode: ref?.code || null,
+        referenceName: ref?.name || null,
+        color: it.color ? String(it.color) : null,
+      };
+      map[id].items.push(row);
+      if (ref?.code) map[id].tokens.add(ref.code);
+      if (ref?.name) map[id].tokens.add(ref.name);
+      if (it.color) map[id].tokens.add(String(it.color).toLowerCase());
     });
     return map;
   }, [allSaleItems, refById]);
+
+  const knownSaleOrderCodes = useMemo(
+    () => collectKnownOrderCodes(orders, (o) => ({ saleOrderNumber: o.order_number })),
+    [orders],
+  );
 
   // Index: sale_order_id -> total pairs (sum of item.quantity)
   const pairsBySaleOrder = useMemo(() => {
@@ -581,10 +595,9 @@ export default function SaleOrders() {
       const q = debouncedSearchTerm.toLowerCase().trim();
       if (!q) return true;
 
-      // Lista colada (≥2 códigos com ,/;/quebra) = OR exato no número do PV.
-      const codes = parseOrderCodeList(debouncedSearchTerm);
-      if (codes.length >= 2) {
-        return codes.some((code) => orderCodeExactMatch(code, order.order_number));
+      const classified = classifyOrderSearch(debouncedSearchTerm, knownSaleOrderCodes);
+      if (classified.mode === 'list') {
+        return classified.codes.some((code) => orderCodeExactMatch(code, order.order_number));
       }
 
       // Atalho "/<nome>" → filtra por GRUPO ECONÔMICO do cliente (pedido
@@ -603,7 +616,7 @@ export default function SaleOrders() {
 
       const client = clientByName[(order.client_name || '').toLowerCase()];
       const cnpjDigits = (client?.cnpj || (order as any).client_cnpj || '').replace(/\D/g, '');
-      const itemTokens = itemsBySaleOrder[order.id];
+      const itemBag = itemsBySaleOrder[order.id];
       const normCandidates = [
         order.order_number,
         order.client_name,
@@ -620,8 +633,9 @@ export default function SaleOrders() {
         client?.client_number,
         client?.nome_fantasia,
       ].map(normalizeForSearch);
-      const tokenArr = itemTokens ? Array.from(itemTokens).map(normalizeForSearch) : [];
-      const terms = splitSearchTerms(q);
+      const tokenArr = itemBag
+        ? Array.from(itemBag.tokens).map(normalizeForSearch)
+        : [];
       const matchTerm = (term: string) => {
         const tNorm = normalizeForSearch(term);
         if (!tNorm) return true;
@@ -630,7 +644,24 @@ export default function SaleOrders() {
           || (tDigits.length >= 3 && cnpjDigits.includes(tDigits))
           || tokenArr.some(t => t.includes(tNorm));
       };
-      return terms.every(matchTerm);
+
+      if (classified.mode === 'refColor') {
+        const lineItems = itemBag?.items ?? [];
+        const sameItem = lineItems.some((item) => {
+          const refHay = [item.referenceCode, item.referenceName]
+            .map(normalizeForSearch)
+            .filter(Boolean);
+          const colorHay = normalizeForSearch(item.color);
+          const refQ = normalizeForSearch(classified.ref);
+          const colorQ = normalizeForSearch(classified.color);
+          return refHay.some((h) => h.includes(refQ)) && !!colorHay && colorHay.includes(colorQ);
+        });
+        if (!sameItem) return false;
+        if (classified.rest.length === 0) return true;
+        return classified.rest.every(matchTerm);
+      }
+
+      return splitSearchTerms(q).every(matchTerm);
     };
 
     const current: typeof orders = [];
@@ -652,7 +683,7 @@ export default function SaleOrders() {
       if (tab === mainTab) current.push(order);
     }
     return { filteredOrders: current, searchTabCounts: searching ? counts : null };
-  }, [orders, mainTab, filterStatus, filterRep, filterGroup, filterSegment, segmentsBySaleOrder, debouncedSearchTerm, clientGroupMap, clientByName, itemsBySaleOrder, economicGroups, filterMonth]);
+  }, [orders, mainTab, filterStatus, filterRep, filterGroup, filterSegment, segmentsBySaleOrder, debouncedSearchTerm, clientGroupMap, clientByName, itemsBySaleOrder, knownSaleOrderCodes, economicGroups, filterMonth]);
 
   // Marquee selection + range/Ctrl click + Esc-to-clear (replaces ad-hoc
   // useState<Set>). `selectedIds`/`setSelectedIds` shims abaixo mantêm
@@ -749,13 +780,13 @@ export default function SaleOrders() {
   };
 
   const matchedCodeIds = useMemo(() => {
-    const codes = parseOrderCodeList(debouncedSearchTerm);
+    const codes = parseOrderCodeList(debouncedSearchTerm, knownSaleOrderCodes);
     return findIdsMatchingOrderCodes(orders, codes, (order) => ({
       id: order.id,
       orderNumber: order.order_number,
       saleOrderNumber: order.order_number,
     }));
-  }, [orders, debouncedSearchTerm]);
+  }, [orders, debouncedSearchTerm, knownSaleOrderCodes]);
 
   const confirmHidden = (actionLabel: string) =>
     confirmIfHiddenSelection({
@@ -1993,10 +2024,10 @@ export default function SaleOrders() {
                 onChange={setSearchTerm}
                 getSuggestions={searchSuggestions}
                 fieldLabels={{ name: 'Cliente', category: 'Representante', sku: 'Referência' }}
-                placeholder="Buscar PV, cliente, ref… /grupo, ou cole vários PVs"
+                placeholder="Buscar PV, cliente, ref/cor ou ref;cor… /grupo, ou cole vários PVs"
               />
             </div>
-            {looksLikeOrderCodeList(searchTerm) && (
+            {looksLikeOrderCodeList(searchTerm, knownSaleOrderCodes) && (
               <Button
                 type="button"
                 size="sm"

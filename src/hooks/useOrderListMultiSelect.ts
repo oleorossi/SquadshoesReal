@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
 import {
+  collectKnownOrderCodes,
   findIdsMatchingOrderCodes,
   matchesOrderSearch,
   parseOrderCodeList,
@@ -13,7 +14,7 @@ export interface OrderListItemBase {
 }
 
 /**
- * Combina busca (lista colada OR + texto AND), filtros cliente/semana e
+ * Combina busca (lista colada OR + ref/cor + texto AND), filtros cliente/semana e
  * marquee persistente pra listas de OP/PV.
  */
 export function useOrderListMultiSelect<T extends OrderListItemBase>(
@@ -37,6 +38,19 @@ export function useOrderListMultiSelect<T extends OrderListItemBase>(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items]);
 
+  const knownCodes = useMemo(
+    () =>
+      collectKnownOrderCodes(items, (item) => {
+        const f = getSearchFields(item);
+        return {
+          orderNumber: f.orderNumber,
+          saleOrderNumber: f.saleOrderNumber,
+        };
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [items],
+  );
+
   const filtered = useMemo(() => {
     return items.filter((item) => {
       const f = getSearchFields(item);
@@ -46,15 +60,18 @@ export function useOrderListMultiSelect<T extends OrderListItemBase>(
       if (weekFilter !== 'all' && !matchesDeliveryWeek(f.deliveryDate, weekFilter)) {
         return false;
       }
-      if (search.trim() && !matchesOrderSearch(search, f)) return false;
+      if (search.trim() && !matchesOrderSearch(search, f, { knownCodes })) return false;
       return true;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, search, clientFilter, weekFilter]);
+  }, [items, search, clientFilter, weekFilter, knownCodes]);
 
   const sel = useMarqueeSelection(filtered, (o) => o.id);
 
-  const pastedCodes = useMemo(() => parseOrderCodeList(search), [search]);
+  const pastedCodes = useMemo(
+    () => parseOrderCodeList(search, knownCodes),
+    [search, knownCodes],
+  );
   const matchedCodeIds = useMemo(
     () => findIdsMatchingOrderCodes(items, pastedCodes, (item) => {
       const f = getSearchFields(item);
@@ -88,6 +105,7 @@ export function useOrderListMultiSelect<T extends OrderListItemBase>(
     sel,
     pastedCodes,
     matchedCodeIds,
+    knownCodes,
     allVisibleSelected,
     toggleVisible,
     selectMatched: () => sel.selectMatchingIds(matchedCodeIds),

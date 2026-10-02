@@ -405,7 +405,7 @@ export default function OrderPickingPage() {
       <OrderMultiSelectToolbar
         search={search}
         onSearchChange={setSearch}
-        searchPlaceholder="Buscar por PV, cliente, referência, cor…"
+        searchPlaceholder="Buscar PV, cliente, ref/cor ou ref;cor…"
         resultCount={searchFiltered.length}
         totalCount={orders.length}
         clientOptions={clientOptions}

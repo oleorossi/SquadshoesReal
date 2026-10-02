@@ -32,18 +32,20 @@ export interface OrderMultiSelectToolbarProps {
   /** Quantos ids a lista colada casaria (pra habilitar o botão). */
   matchedCodeCount: number;
   onSelectMatched: () => void;
+  /** OP/PV carregados — heurística pra não tratar ref/cor como lista. */
+  knownOrderCodes?: Iterable<string>;
   className?: string;
 }
 
 /**
  * Barra compartilhada de busca + seleção em listas de OP/PV.
- * Campo único: colar ≥2 códigos (quebra/`,`/`;`/`/`) ativa OR exato e o
- * botão “Selecionar os que bateram”.
+ * Campo único: `ref/cor` ou `ref;cor`; colar ≥2 códigos OP/PV (heurística)
+ * ativa OR exato e o botão “Selecionar os que bateram”.
  */
 export function OrderMultiSelectToolbar({
   search,
   onSearchChange,
-  searchPlaceholder = 'Buscar por OP, PV, cliente, referência, cor…',
+  searchPlaceholder = 'Buscar OP, PV, ref/cor ou ref;cor, cliente…',
   resultCount,
   totalCount,
   clientOptions,
@@ -57,10 +59,11 @@ export function OrderMultiSelectToolbar({
   onToggleVisible,
   matchedCodeCount,
   onSelectMatched,
+  knownOrderCodes,
   className,
 }: OrderMultiSelectToolbarProps) {
   const weekOptions = getDeliveryWeekOptions();
-  const showSelectMatched = looksLikeOrderCodeList(search);
+  const showSelectMatched = looksLikeOrderCodeList(search, knownOrderCodes);
 
   return (
     <div className={className ?? 'flex flex-wrap items-center gap-2'}>

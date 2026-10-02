@@ -745,7 +745,7 @@ export default function PickingListPage() {
           <OrderMultiSelectToolbar
             search={pvSearch}
             onSearchChange={setPvSearch}
-            searchPlaceholder="Buscar por PV, OP, cliente… ou cole vários códigos"
+            searchPlaceholder="Buscar PV, OP, ref/cor ou ref;cor, cliente… ou cole códigos"
             resultCount={filteredPvGroups.length}
             totalCount={pvGroups.length}
             clientOptions={clientOptions}

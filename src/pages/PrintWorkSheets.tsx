@@ -23,6 +23,7 @@ import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
 import { MarqueeOverlay } from '@/components/ui/bulk-actions-bar';
 import { OrderMultiSelectToolbar } from '@/components/orders/OrderMultiSelectToolbar';
 import {
+  collectKnownOrderCodes,
   findIdsMatchingOrderCodes,
   matchesOrderSearch,
   parseOrderCodeList,
@@ -177,6 +178,15 @@ export default function PrintWorkSheets() {
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }, [rows]);
 
+  const knownOrderCodes = useMemo(
+    () =>
+      collectKnownOrderCodes(rows, (r) => ({
+        orderNumber: r.order_number,
+        saleOrderNumber: r.sale_orders?.order_number,
+      })),
+    [rows],
+  );
+
   const filtered = useMemo(() => {
     let result = rows;
     if (pvFilter !== 'all') {
@@ -196,10 +206,10 @@ export default function PrintWorkSheets() {
         referenceName: r.technical_sheets?.name,
         referenceCode: r.technical_sheets?.code,
         color: r.color,
-      }));
+      }, { knownCodes: knownOrderCodes }));
     }
     return result;
-  }, [rows, search, pvFilter, clientFilter, weekFilter]);
+  }, [rows, search, pvFilter, clientFilter, weekFilter, knownOrderCodes]);
 
   const sel = useMarqueeSelection(filtered, (r) => r.id);
   // Deep-link ?orderIds= pré-seleciona (hook inicia vazio).
@@ -208,7 +218,10 @@ export default function PrintWorkSheets() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deepLinkIds.join(',')]);
 
-  const pastedCodes = useMemo(() => parseOrderCodeList(search), [search]);
+  const pastedCodes = useMemo(
+    () => parseOrderCodeList(search, knownOrderCodes),
+    [search, knownOrderCodes],
+  );
   const matchedCodeIds = useMemo(
     () => findIdsMatchingOrderCodes(rows, pastedCodes, (r) => ({
       id: r.id,
@@ -411,6 +424,7 @@ export default function PrintWorkSheets() {
               className="flex flex-1 flex-col gap-2 sm:flex-row sm:flex-wrap"
               search={search}
               onSearchChange={setSearch}
+              searchPlaceholder="Buscar OP, PV, ref/cor ou ref;cor, cliente…"
               resultCount={filtered.length}
               totalCount={rows.length}
               clientOptions={clientOptions}
@@ -423,6 +437,7 @@ export default function PrintWorkSheets() {
               onToggleVisible={toggleAll}
               matchedCodeCount={matchedCodeIds.length}
               onSelectMatched={() => sel.selectMatchingIds(matchedCodeIds)}
+              knownOrderCodes={knownOrderCodes}
               extraFilters={
                 <>
                   <Select value={statusFilter} onValueChange={setStatusFilter}>
