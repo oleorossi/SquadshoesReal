@@ -2285,18 +2285,26 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
 
   // Lookup OP → PV / pedido cliente / razão — alimenta a faixa do topo A4.
   const orderIdentityByOp = useMemo(() => {
-    const soById = new Map<string, any>();
-    for (const so of saleOrders as any[]) soById.set(so.id, so);
+    type SaleOrderLite = {
+      id: string;
+      order_number?: string | null;
+      client_order_number?: string | null;
+      client_name?: string | null;
+    };
+    const soById = new Map<string, SaleOrderLite>();
+    for (const so of saleOrders as SaleOrderLite[]) {
+      if (so?.id) soById.set(so.id, so);
+    }
     const m = new Map<string, {
       opNumber?: string | null;
       pvNumber?: string | null;
       clientOrderNumber?: string | null;
       clientName?: string | null;
     }>();
-    for (const order of printOrders as any[]) {
+    for (const order of printOrders) {
       const op = order.op_number ? String(order.op_number) : null;
       if (!op) continue;
-      const so = order.sale_order_id ? soById.get(order.sale_order_id) : null;
+      const so = order.sale_order_id ? soById.get(order.sale_order_id) : undefined;
       const pv = order.sale_order_number || so?.order_number || null;
       m.set(op, {
         opNumber: op,
