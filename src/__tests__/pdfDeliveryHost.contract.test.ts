@@ -24,7 +24,7 @@ describe('PdfDeliveryHost — Abrir no Safari (iOS)', () => {
   it('sem URL de servidor cai no Compartilhar; Safari falhou também', () => {
     expect(host).toContain('state.safariUrl');
     expect(host).toContain('sharePdfFile');
-    expect(host).toContain('Abrindo compartilhar');
+    expect(host).toContain('abrindo compartilhar');
     // Sem diálogo de confirmação antes de sair do app.
     expect(host).not.toContain('AlertDialog');
     expect(host).not.toContain('Abrir no Safari?');
