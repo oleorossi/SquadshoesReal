@@ -10,6 +10,7 @@ import {
 } from '@/lib/thermalLabelPdfDelivery';
 import { monoToRgba, type MonoBitmap } from '@/lib/zplImage';
 import { toast } from 'sonner';
+import { ThermalPdfPrintGuideDialog } from './ThermalPdfPrintGuideDialog';
 
 export interface ZplPreviewLabel {
   refCode: string;
@@ -79,6 +80,7 @@ export default function ZplPreviewDialog({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [index, setIndex] = useState(0);
   const [pdfBusy, setPdfBusy] = useState(false);
+  const [pdfGuideOpen, setPdfGuideOpen] = useState(false);
 
   useEffect(() => { if (open) setIndex(0); }, [open]);
 
@@ -230,6 +232,7 @@ export default function ZplPreviewDialog({
   const canPdf = (pdfSourceLabels?.length ?? 0) > 0;
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl">
         <DialogHeader>
@@ -282,10 +285,10 @@ export default function ZplPreviewDialog({
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button
-              onClick={() => void openPdf()}
+              onClick={() => setPdfGuideOpen(true)}
               className="gap-2 h-9"
               disabled={!canPdf || pdfBusy}
-              title="Abre um PDF no navegador — dá pra conferir e mandar pra impressora pelo Windows"
+              title="Checklist L42PRO 100×30 e abre o PDF no navegador"
             >
               {pdfBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <FilePdf className="h-4 w-4" />}
               Abrir PDF
@@ -305,5 +308,16 @@ export default function ZplPreviewDialog({
         </p>
       </DialogContent>
     </Dialog>
+
+    <ThermalPdfPrintGuideDialog
+      open={pdfGuideOpen}
+      onOpenChange={setPdfGuideOpen}
+      confirmBusy={pdfBusy}
+      onConfirm={() => {
+        setPdfGuideOpen(false);
+        void openPdf();
+      }}
+    />
+    </>
   );
 }

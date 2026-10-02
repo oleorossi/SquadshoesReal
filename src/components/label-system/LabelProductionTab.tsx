@@ -42,6 +42,7 @@ import {
   pdfFileNameForThermalLabels,
 } from '@/lib/thermalLabelPdfDelivery';
 import ZplPreviewDialog, { type ThermalPdfSourceLabel, type ZplPreviewLabel } from './ZplPreviewDialog';
+import { ThermalPdfPrintGuideDialog } from './ThermalPdfPrintGuideDialog';
 import { PartialPrintSelectionDialog } from './PartialPrintSelectionDialog';
 import { PartialExternalBoxDialog } from './PartialExternalBoxDialog';
 import { openPrintTab, printHtmlAsPdf } from '@/lib/printPdf';
@@ -1071,6 +1072,8 @@ export function LabelProductionTab() {
   const [printCoverage, setPrintCoverage] = useState<LabelPrintCoverage>('total');
   const [partialPrintSelection, setPartialPrintSelection] = useState<PartialLabelPrintSelection>({});
   const [partialPrintDialogOpen, setPartialPrintDialogOpen] = useState(false);
+  /** Checklist L42PRO antes de abrir o PDF da etiqueta individual (sempre). */
+  const [thermalPdfGuideOpen, setThermalPdfGuideOpen] = useState(false);
   const [partialExternalDialogOpen, setPartialExternalDialogOpen] = useState(false);
   const [partialExternalLoading, setPartialExternalLoading] = useState(false);
   const [partialExternalRows, setPartialExternalRows] = useState<ExternalVolumePartialRow[]>([]);
@@ -2849,10 +2852,10 @@ export function LabelProductionTab() {
                   <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-1">
                       <Button
-                        onClick={() => void handlePrintIndividual('pdf')}
+                        onClick={() => setThermalPdfGuideOpen(true)}
                         variant="secondary"
                         className="gap-2 h-9 border shadow-sm rounded-r-none"
-                        title="Gera PDF no navegador (sem /api/render-pdf) — abre no Windows para ajustar e imprimir"
+                        title="Mostra o checklist L42PRO 100×30 e gera o PDF no navegador"
                         disabled={isGenerating}
                       >
                         <FilePdf className="h-4 w-4" />
@@ -3405,6 +3408,16 @@ export function LabelProductionTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ThermalPdfPrintGuideDialog
+        open={thermalPdfGuideOpen}
+        onOpenChange={setThermalPdfGuideOpen}
+        confirmBusy={isGenerating}
+        onConfirm={() => {
+          setThermalPdfGuideOpen(false);
+          void handlePrintIndividual('pdf');
+        }}
+      />
 
       {zplPreview && (
         <ZplPreviewDialog

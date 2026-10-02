@@ -23,6 +23,14 @@ describe('etiqueta individual — PDF abrível no Windows', () => {
     expect(productionTab).toContain('Só p/ Elgin · não abre no Windows');
   });
 
+  it('checklist L42PRO é obrigatório antes do PDF (Produção e prévia ZPL)', () => {
+    expect(productionTab).toContain('ThermalPdfPrintGuideDialog');
+    expect(productionTab).toContain('setThermalPdfGuideOpen(true)');
+    expect(productionTab).toContain("handlePrintIndividual('pdf')");
+    expect(zplDialog).toContain('ThermalPdfPrintGuideDialog');
+    expect(zplDialog).toContain('setPdfGuideOpen(true)');
+  });
+
   it('na prévia ZPL oferece Abrir PDF e explica que .zpl não abre no Windows', () => {
     expect(zplDialog).toContain('Abrir PDF');
     expect(zplDialog).toContain('pdfSourceLabels');
