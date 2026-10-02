@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  formatPageIdentityBand,
   formatPageIdentityLine,
   normalizePageIdentity,
   pageIdentityEntryKey,
@@ -40,6 +41,13 @@ describe('pageIdentity', () => {
       opNumber: 'OP-2026-0001',
       clientName: 'VIA Z',
     })).toBe('PO-1 · PV-00198 · OP-2026-0001 · VIA Z');
+  });
+
+  it('formatPageIdentityBand junta lojas com ponto e vírgula numa só sequência', () => {
+    expect(formatPageIdentityBand([
+      { pvNumber: 'PV-00198', opNumber: 'OP-1', clientName: 'VIA Z' },
+      { pvNumber: 'PV-00222', opNumber: 'OP-2', clientName: 'A C DE OLIVEIRA' },
+    ])).toBe('PV-00198 · OP-1 · VIA Z; PV-00222 · OP-2 · A C DE OLIVEIRA');
   });
 
   it('pageIdentityForOps resolve meta pelo lookup', () => {

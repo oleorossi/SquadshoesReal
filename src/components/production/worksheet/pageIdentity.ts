@@ -154,7 +154,7 @@ export function pageIdentityFromLists(args: {
   return normalizePageIdentity(args.sector, entries, { includeOp: args.includeOp });
 }
 
-/** Uma linha da faixa (pedido cliente · PV · OP · razão). */
+/** Uma entrada da faixa (pedido cliente · PV · OP · razão). */
 export function formatPageIdentityLine(entry: PageIdentityEntry): string {
   const parts: string[] = [];
   const clientOrder = trimOrNull(entry.clientOrderNumber);
@@ -166,4 +166,13 @@ export function formatPageIdentityLine(entry: PageIdentityEntry): string {
   if (op) parts.push(op);
   if (client) parts.push(client);
   return parts.join(' · ');
+}
+
+/**
+ * Faixa compacta: entradas numa só sequência, separadas por `; `,
+ * pra o texto fluir e quebrar de linha em vez de empilhar uma loja por linha.
+ * Decisão do dono (2026-10): otimizar altura da página.
+ */
+export function formatPageIdentityBand(entries: PageIdentityEntry[]): string {
+  return entries.map(formatPageIdentityLine).filter(Boolean).join('; ');
 }

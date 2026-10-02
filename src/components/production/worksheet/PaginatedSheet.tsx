@@ -24,7 +24,7 @@ import {
   pageContentCapacityPx,
 } from './pageGeometry';
 import {
-  formatPageIdentityLine,
+  formatPageIdentityBand,
   type PageIdentity,
 } from './pageIdentity';
 
@@ -527,7 +527,7 @@ export const PaginatedSheet = ({ sectorLabel, pageIdentity, blocks, pageStyle, m
 
   // Identidade da faixa mudou → re-mede altura (capacidade muda com ela).
   const identitySig = pageIdentity
-    ? `${pageIdentity.sector}|${pageIdentity.entries.map(formatPageIdentityLine).join(';')}`
+    ? `${pageIdentity.sector}|${formatPageIdentityBand(pageIdentity.entries)}`
     : `legacy:${sectorLabel}`;
   const prevIdentityRef = useRef(identitySig);
   useLayoutEffect(() => {
@@ -660,7 +660,7 @@ export const PaginatedSheet = ({ sectorLabel, pageIdentity, blocks, pageStyle, m
 
   const renderPageHead = (page: PackedPage, observe: boolean) => {
     const sectorName = pageIdentity?.sector || sectorLabel;
-    const lines = pageIdentity?.entries.map(formatPageIdentityLine).filter(Boolean) ?? [];
+    const bandText = pageIdentity ? formatPageIdentityBand(pageIdentity.entries) : '';
     return (
       <div
         ref={observe ? registerHeadEl : undefined}
@@ -703,23 +703,20 @@ export const PaginatedSheet = ({ sectorLabel, pageIdentity, blocks, pageStyle, m
               {sectorName}
             </span>
           </span>
-          {lines.length > 0 ? (
-            lines.map((line, i) => (
-              <span
-                key={`id-${i}-${line}`}
-                style={{
-                  fontWeight: 600,
-                  fontSize: '8px',
-                  letterSpacing: '0.04em',
-                  lineHeight: 1.25,
-                  paddingLeft: 12,
-                  wordBreak: 'break-word',
-                  whiteSpace: 'normal',
-                }}
-              >
-                {line}
-              </span>
-            ))
+          {bandText ? (
+            <span
+              style={{
+                fontWeight: 600,
+                fontSize: '8px',
+                letterSpacing: '0.03em',
+                lineHeight: 1.3,
+                paddingLeft: 12,
+                wordBreak: 'break-word',
+                whiteSpace: 'normal',
+              }}
+            >
+              {bandText}
+            </span>
           ) : (
             !pageIdentity && (
               <span
