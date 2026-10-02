@@ -2,9 +2,11 @@ import { escapeHtml } from '@/lib/htmlUtils';
 import { printHtml } from '@/lib/printOrder';
 import {
   formatBalanceMinutes,
+  groupWeeksByCivilMonth,
   type EmployeeTimeBalanceReport,
   type TimeBalanceDay,
   type TimeBalanceReportKind,
+  type TimeBalanceWeek,
 } from '@/lib/ponto/timeBalanceReports';
 
 const DAY_LABELS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
@@ -72,7 +74,7 @@ function renderEmployee(report: EmployeeTimeBalanceReport, kind: TimeBalanceRepo
     : kind === 'deficit'
       ? report.deficitWeeks
       : report.weeks.length;
-  const weekRows = report.weeks.map(week => {
+  const renderWeekRow = (week: TimeBalanceWeek) => {
     const slots = Array.from<TimeBalanceDay | undefined>({ length: 7 });
     for (const day of week.days) slots[daySlot(day.dayOfWeek)] = day;
     const weekBalance = week.balanceMinutes === 0 ? '0h00' : formatBalanceMinutes(week.balanceMinutes);
@@ -84,7 +86,23 @@ function renderEmployee(report: EmployeeTimeBalanceReport, kind: TimeBalanceRepo
       </th>
       ${slots.map(renderDay).join('')}
     </tr>`;
+  };
+  const monthBlocks = report.monthBreakdown && report.monthBreakdown.length > 1
+    ? groupWeeksByCivilMonth(report.weeks)
+    : [{ period: 'all', label: '', weeks: report.weeks }];
+  const weekRows = monthBlocks.map(block => {
+    const heading = block.label
+      ? `<tr><th colspan="8" class="month-block">${escapeHtml(block.label)}</th></tr>`
+      : '';
+    return `${heading}${block.weeks.map(renderWeekRow).join('')}`;
   }).join('');
+  const heBreakdown = report.monthBreakdown && report.monthBreakdown.length > 1
+    ? `<p class="he-breakdown">${report.monthBreakdown.map(month => {
+      const [, m] = month.period.split('-').map(Number);
+      const labels = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+      return `${labels[(m || 1) - 1]}: ${formatBRL(month.overtimeValue)}`;
+    }).join(' · ')}</p>`
+    : '';
   const finalClass = report.finalPayableBalanceMinutes > 0
     ? 'positive-text'
     : report.finalPayableBalanceMinutes < 0 ? 'negative-text' : '';
@@ -107,7 +125,7 @@ function renderEmployee(report: EmployeeTimeBalanceReport, kind: TimeBalanceRepo
       <div><span>Pendências de horas</span><strong class="negative-text">${formatBalanceMinutes(-report.totalRawDebitMinutes)}</strong></div>
       <div><span>Horas extras</span><strong class="positive-text">${formatBalanceMinutes(report.totalRawCreditMinutes)}</strong></div>
       <div><span>Resultado final</span><strong class="${finalClass}">${formatBalanceMinutes(report.finalPayableBalanceMinutes)}</strong><small class="${finalClass}">${outcomeLabel(report.finalPayableBalanceMinutes)}</small></div>
-      <div><span>Valor de HE a pagar</span><strong>${formatBRL(report.overtimeValue)}</strong><small>${formatBalanceMinutes(report.totalPayableOvertimeMinutes, false)} após compensação</small></div>
+      <div><span>Valor de HE a pagar</span><strong>${formatBRL(report.overtimeValue)}</strong><small>${formatBalanceMinutes(report.totalPayableOvertimeMinutes, false)} após compensação</small>${heBreakdown}</div>
     </div>
     <p class="legend">Cada célula mostra: batidas · trabalhado/meta · saldo do dia. O fechamento é semanal; crédito e débito se compensam apenas dentro da mesma semana. Dias abonados e sem cobertura não geram débito.</p>
     ${report.overtimeRateMissing ? '<p class="rate-warning">Atenção: há hora extra a pagar sem taxa cadastrada.</p>' : ''}
@@ -154,6 +172,8 @@ export function buildTimeBalanceReportHtml(
     .final-summary strong { display:block; margin-top:2px; font-size:14px; }
     .final-summary small { margin-top:2px; font-weight:700; }
     .rate-warning { margin-top:4px; font-size:8px; font-weight:700; color:#b45309; }
+    .month-block { background:#e5e7eb !important; color:#111 !important; text-align:left; text-transform:uppercase; font-size:9px; letter-spacing:0.04em; padding:4px 6px !important; }
+    .he-breakdown { margin-top:3px; font-size:7px; color:#444; text-transform:none; font-weight:600; }
     @media print { .employee { break-inside:avoid; } .page-break { break-before:page; } }
   </style>${body}`;
 }

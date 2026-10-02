@@ -32,7 +32,10 @@ import {
   reportsForKind,
   type TimeBalanceReportKind,
 } from '@/lib/ponto/timeBalanceReports';
-import { computeComparativoRows } from '@/lib/payrollComparativo';
+import {
+  buildTimeBalanceReportInputsForRange,
+  isCompleteCivilMonths,
+} from '@/lib/ponto/timeBalancePeriod';
 import { printTimeBalanceManagementReport, printTimeBalanceReports } from '@/lib/printTimeBalanceReports';
 import {
   PAYROLL_RULE_VERSION_DAY_CLT,
@@ -80,9 +83,12 @@ export default function TimeBalanceReports() {
     periodFrom: appliedRange.from,
     forceVersion: forceRuleVersion,
   });
+  const completeCivilMonths = validRange && isCompleteCivilMonths(appliedRange.from, appliedRange.to);
   const ruleLabel = activeRule.balanceMode === 'day_independent'
     ? 'Simulação: HE por dia (sem compensar)'
-    : 'Compensação no período · relatório mês civil';
+    : completeCivilMonths
+      ? 'Compensação mês a mês · visão do intervalo'
+      : 'Visão parcial · não é fechamento de folha';
 
   const { data: employees = [], isLoading: employeesLoading } = useEmployees();
   const { data: schedules = [], isLoading: schedulesLoading } = useWorkSchedules();
@@ -109,12 +115,17 @@ export default function TimeBalanceReports() {
     () => expandAbsenceCreditsByEmployee(absences, appliedRange.from, appliedRange.to),
     [absences, appliedRange],
   );
-  const employeeMap = useMemo(() => new Map(employees.map(employee => [employee.id, employee])), [employees]);
+  const employeeMeta = useMemo(() => new Map(employees.map(employee => [employee.id, {
+    department: employee.department,
+    paymentType: employee.payment_type,
+    active: employee.active !== false,
+  }])), [employees]);
 
-  const reportInputs = useMemo(() => {
-    if (!validRange) return [];
-    const period = appliedRange.from.slice(0, 7);
-    const calculated = computeComparativoRows({
+  const periodBuild = useMemo(() => {
+    if (!validRange) {
+      return { inputs: [], monthBreakdown: null, isCompleteCivilMonths: false };
+    }
+    return buildTimeBalanceReportInputsForRange({
       employees,
       schedules,
       defaultSchedule,
@@ -127,30 +138,15 @@ export default function TimeBalanceReports() {
       absenceMinutesByEmployee: absenceCredits.partialMinutes,
       producaoRows: [],
       range: appliedRange,
-      period,
       maxCovered: coverage?.maxCovered || null,
       coveredDates: coverage?.coveredDates,
       forceRuleVersion,
+      employeeMeta,
     });
-    return calculated.rows.map(row => {
-      const employee = employeeMap.get(row.id);
-      return {
-        id: row.id,
-        name: row.name,
-        department: employee?.department,
-        paymentType: employee?.payment_type,
-        active: employee?.active !== false,
-        ledger: row.result.day_ledger,
-        rawCreditMinutes: row.result.raw_credit_minutes,
-        rawDebitMinutes: row.result.raw_delay_minutes,
-        compensatedMinutes: row.result.compensated_minutes,
-        payableOvertimeMinutes: row.result.he_minutes,
-        payableDebitMinutes: row.result.atraso_minutes,
-        overtimeValue: row.result.he_value,
-        overtimeRateMissing: row.result.he_rate_missing,
-      };
-    });
-  }, [validRange, appliedRange, employees, schedules, defaultSchedule, holidaysSet, swapWorkedSet, swapOffSet, timeRecords, absenceCredits, coverage?.maxCovered, coverage?.coveredDates, employeeMap, forceRuleVersion]);
+  }, [validRange, appliedRange, employees, schedules, defaultSchedule, holidaysSet, swapWorkedSet, swapOffSet, timeRecords, absenceCredits, coverage?.maxCovered, coverage?.coveredDates, employeeMeta, forceRuleVersion]);
+
+  const reportInputs = periodBuild.inputs;
+  const monthBreakdown = periodBuild.monthBreakdown;
 
   const reports = useMemo(() => buildTimeBalanceReports(reportInputs), [reportInputs]);
   const managementReports = useMemo(
@@ -275,14 +271,16 @@ export default function TimeBalanceReports() {
         </button>
       </div>
 
-      <PeriodRangeFilter value={range} onChange={setRange} label="Período do ponto" monthOnly />
+      <PeriodRangeFilter value={range} onChange={setRange} label="Período do ponto" overviewRange />
 
       <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Regra de HE neste período</p>
           <p className="text-sm text-foreground">{ruleLabel}</p>
           <p className="text-xs text-muted-foreground">
-            Ciclo mês a mês (dia 1 ao último). Totais em R$ usam as taxas do quadro.
+            {completeCivilMonths
+              ? 'Cada mês civil liquida sozinho; o total do intervalo é a soma. Totais em R$ usam as taxas do quadro.'
+              : 'Recorte parcial: números só dos dias visíveis — não use como fechamento de folha.'}
           </p>
         </div>
         <div className="flex items-center gap-3 shrink-0">
@@ -369,6 +367,22 @@ export default function TimeBalanceReports() {
             <p className="mt-1 font-mono text-lg font-bold tabular-nums text-success">
               {totalHeValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
             </p>
+            {monthBreakdown && monthBreakdown.length > 1 && (
+              <div className="mt-2 space-y-0.5 border-t border-success/20 pt-2">
+                {monthBreakdown.map(month => {
+                  const [, m] = month.period.split('-').map(Number);
+                  const labels = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+                  return (
+                    <p key={month.period} className="flex justify-between gap-2 text-[10px] tabular-nums text-muted-foreground">
+                      <span className="capitalize">{labels[(m || 1) - 1]}</span>
+                      <span className="text-success">
+                        {month.overtimeValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                      </span>
+                    </p>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       </Panel>

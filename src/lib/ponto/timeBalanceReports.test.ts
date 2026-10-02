@@ -4,6 +4,7 @@ import {
   buildEmployeeTimeBalanceReport,
   buildTimeBalanceReports,
   formatBalanceMinutes,
+  groupWeeksByCivilMonth,
   reportsForKind,
 } from './timeBalanceReports';
 
@@ -187,5 +188,46 @@ describe('timeBalanceReports — formatação', () => {
     expect(formatBalanceMinutes(40)).toBe('+0h40');
     expect(formatBalanceMinutes(-60)).toBe('−1h00');
     expect(formatBalanceMinutes(125, false)).toBe('2h05');
+  });
+});
+
+describe('timeBalanceReports — blocos por mês', () => {
+  it('agrupa semanas pela startDate civil e preserva breakdown de HE', () => {
+    const report = buildEmployeeTimeBalanceReport({
+      id: 'marcio',
+      name: 'Marcio',
+      paymentType: 'mensalista',
+      ledger: [
+        ledgerDay('2026-05-28', 480, 500),
+        ledgerDay('2026-06-01', 480, 520),
+        ledgerDay('2026-06-08', 480, 480),
+      ],
+      payableOvertimeMinutes: 90,
+      overtimeValue: 75,
+      monthBreakdown: [
+        {
+          period: '2026-05',
+          from: '2026-05-01',
+          to: '2026-05-31',
+          payableOvertimeMinutes: 60,
+          payableDebitMinutes: 0,
+          overtimeValue: 50,
+        },
+        {
+          period: '2026-06',
+          from: '2026-06-01',
+          to: '2026-06-30',
+          payableOvertimeMinutes: 30,
+          payableDebitMinutes: 0,
+          overtimeValue: 25,
+        },
+      ],
+    });
+
+    expect(report.monthBreakdown).toHaveLength(2);
+    const blocks = groupWeeksByCivilMonth(report.weeks);
+    expect(blocks.length).toBeGreaterThanOrEqual(2);
+    expect(blocks[0].label).toMatch(/de 2026/);
+    expect(blocks.every(block => block.weeks.length > 0)).toBe(true);
   });
 });
