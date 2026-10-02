@@ -9,6 +9,8 @@ import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { HeaderIdentification } from './worksheet/HeaderIdentification';
 import { SectorAlerts, type SectorAlert } from './worksheet/SectorAlerts';
 import { PaginatedSheet, type SheetBlock } from './worksheet/PaginatedSheet';
+import { usePrintOrderIdentity } from './worksheet/PrintOrderIdentityContext';
+import { pageIdentityForOps } from './worksheet/pageIdentity';
 import { formatOpNumber } from './worksheet/stageOrder';
 import { fichaModelFor } from './worksheet/fichaModel';
 import { TraceStrip } from './worksheet/TraceStrip';
@@ -105,6 +107,13 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
   // identificação E no QR escaneável do canto).
   const pvs = Array.from(new Set(groups.flatMap(g => g.pvNumbers || []).filter(Boolean)));
   const clientNames = Array.from(new Set(groups.flatMap(g => g.clientNames || []).filter(Boolean)));
+  const allOps = Array.from(new Set(groups.flatMap(g => g.opNumbers || []).filter(Boolean)));
+  const orderIdentityByOp = usePrintOrderIdentity();
+  const pageIdentity = pageIdentityForOps(
+    sectorLabel || 'Corte de Placa de Fibra',
+    allOps,
+    orderIdentityByOp,
+  );
 
   // ── Blocos atômicos pro PaginatedSheet (2026-06-12) ──
   // Header da ficha → 1 card por solado → Total Geral → rodapé de conclusão.
@@ -513,5 +522,12 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
   // estavam no piso. Decisão do dono 31/07/2026: legibilidade vence densidade.
   const minScale = groups.reduce((mx, g) => Math.max(mx,
     floorSafeScale(gradeTableFont(palmilhaGroupSizes(allSizes, g), true))), 0);
-  return <PaginatedSheet sectorLabel={sectorLabel || 'Corte de Placa de Fibra'} blocks={blocks} minScale={minScale} />;
+  return (
+    <PaginatedSheet
+      sectorLabel={sectorLabel || 'Corte de Placa de Fibra'}
+      pageIdentity={pageIdentity}
+      blocks={blocks}
+      minScale={minScale}
+    />
+  );
 };

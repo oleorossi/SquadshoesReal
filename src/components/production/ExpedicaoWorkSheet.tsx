@@ -7,6 +7,8 @@ import { TALLY_SIZE } from './worksheet/density';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { HeaderIdentification } from './worksheet/HeaderIdentification';
 import { PaginatedSheet, type SheetBlock } from './worksheet/PaginatedSheet';
+import { usePrintOrderIdentity } from './worksheet/PrintOrderIdentityContext';
+import { pageIdentityForOps } from './worksheet/pageIdentity';
 import { formatOpNumber } from './worksheet/stageOrder';
 
 export interface ExpedicaoOrder {
@@ -97,6 +99,13 @@ const celNum: React.CSSProperties = {
  */
 export const ExpedicaoWorkSheet = ({ group, sizeBand, sectorLabel }: Props) => {
   const totalPairs = group.orders.reduce((s, o) => s + (o.total_pairs || 0), 0);
+  const allOps = group.orders.map((o) => o.op_number).filter(Boolean) as string[];
+  const orderIdentityByOp = usePrintOrderIdentity();
+  const pageIdentity = pageIdentityForOps(
+    sectorLabel || `Expedição · ${group.client_name}`,
+    allOps,
+    orderIdentityByOp,
+  );
 
   // Agrega por solado + pares/caixa: a ficha é por CLIENTE e pode juntar PVs
   // com packaging_mode diferente (12/caixa vs fitilho 1/volume). Agregar só
@@ -540,5 +549,12 @@ export const ExpedicaoWorkSheet = ({ group, sizeBand, sectorLabel }: Props) => {
   // Sem isto o AUTO_FIT_FLOOR global (0.80) encolhia por cima de fontes que já
   // estavam no piso. Decisão do dono 31/07/2026: legibilidade vence densidade.
   const minScale = floorSafeScale(ft);
-  return <PaginatedSheet sectorLabel={sectorLabel || `Expedição · ${group.client_name}`} blocks={blocks} minScale={minScale} />;
+  return (
+    <PaginatedSheet
+      sectorLabel={sectorLabel || `Expedição · ${group.client_name}`}
+      pageIdentity={pageIdentity}
+      blocks={blocks}
+      minScale={minScale}
+    />
+  );
 };

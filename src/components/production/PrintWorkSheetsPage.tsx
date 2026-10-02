@@ -53,6 +53,7 @@ import { ManagementReport, type ReportSaleOrder, type ReportOrder, type ReportSt
 import { compareColors } from '@/components/production/worksheet/colorSequencing';
 import { PrintPageRangeProvider, ReversePrintContext, ReversibleStack } from '@/components/production/worksheet/printOrder';
 import { PrintContinuityProvider } from '@/components/production/worksheet/printContinuity';
+import { PrintOrderIdentityProvider } from '@/components/production/worksheet/PrintOrderIdentityContext';
 import { resolveFicha, type FichaResolution } from '@/components/production/worksheet/fichaSize';
 import { soleGroupKey } from '@/components/production/worksheet/soleGroupKey';
 import { resolveReportMaterials } from '@/lib/reportMaterialResolve';
@@ -2282,6 +2283,31 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
   };
 
+  // Lookup OP → PV / pedido cliente / razão — alimenta a faixa do topo A4.
+  const orderIdentityByOp = useMemo(() => {
+    const soById = new Map<string, any>();
+    for (const so of saleOrders as any[]) soById.set(so.id, so);
+    const m = new Map<string, {
+      opNumber?: string | null;
+      pvNumber?: string | null;
+      clientOrderNumber?: string | null;
+      clientName?: string | null;
+    }>();
+    for (const order of printOrders as any[]) {
+      const op = order.op_number ? String(order.op_number) : null;
+      if (!op) continue;
+      const so = order.sale_order_id ? soById.get(order.sale_order_id) : null;
+      const pv = order.sale_order_number || so?.order_number || null;
+      m.set(op, {
+        opNumber: op,
+        pvNumber: pv,
+        clientOrderNumber: so?.client_order_number ?? null,
+        clientName: (pv && clientNameByPv.get(pv)) || so?.client_name || null,
+      });
+    }
+    return m;
+  }, [printOrders, saleOrders, clientNameByPv]);
+
   const resolveInsoleColor = (sheetId: string, cabedelColorLower: string, cabedelColorName: string, isReadyMade: boolean) => {
     if (isReadyMade) {
       return cabedelColorName?.toLowerCase().includes('preto') ? 'Preto' : 'Caramelo';
@@ -3350,8 +3376,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     [expandedOrders, activeSectors, sheetById],
   );
 
-  // ── Relatório Gerencial: agrupa por sale_order_id, junta costs + stages ────
-  const reportGroups = useMemo<Array<{ saleOrder: ReportSaleOrder; reportOrders: ReportOrder[] }> | null>(() => {
+  // ── Relatório Gerencial: 1 documento da seleção (todos os PVs juntos) ────
+  const reportBundle = useMemo<{ saleOrders: ReportSaleOrder[]; reportOrders: ReportOrder[] } | null>(() => {
     if (!includesSector('Relatório Gerencial')) return null;
 
     const clientById = new Map<string, any>();
@@ -3493,6 +3519,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       g.reportOrders.push({
         id: order.id,
         op_number: order.op_number,
+        sale_order_number: so.order_number || null,
         reference_code: order.reference_code,
         reference_name: order.reference_name,
         color: order.color,
@@ -3527,9 +3554,15 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       });
     }
 
-    return Array.from(map.values()).sort((a, b) =>
-      (a.saleOrder.order_number || '').localeCompare(b.saleOrder.order_number || ''),
+    const groups = Array.from(map.values()).sort((a, b) =>
+      (a.saleOrder.order_number || '').localeCompare(b.saleOrder.order_number || '', 'pt-BR'),
     );
+    if (groups.length === 0) return null;
+    // 1 documento: lista de PVs ordenada + todas as OPs da seleção.
+    return {
+      saleOrders: groups.map((g) => g.saleOrder),
+      reportOrders: groups.flatMap((g) => g.reportOrders),
+    };
     // silkRegistrations/economicGroupsInfo entram nas deps porque getOrderSilk
     // os lê — sem eles, se a query resolvesse por último o memo não recomputava
     // e o relatório imprimia pra sempre a logo fallback (race em rede lenta).
@@ -3744,7 +3777,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   // ── Contagem total de fichas que vão pra impressão ─────────────────────────
   // Soma as fichas de cada setor ATIVO. Cada componente memoizado já filtra
   // pelo activeSectors, então palmilhaGroups/silkMontageGroups/solagemData/
-  // expedicaoGroups/reportGroups são vazios pra setores não-marcados.
+  // expedicaoGroups/reportBundle são vazios pra setores não-marcados.
   const sheetCount = useMemo(() => {
     if (isCaixa) return cartaoCaixaCards.length;
     if (isCartao) return cartaoFisicoCards.length;
@@ -3788,13 +3821,13 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     // Acabamento: 1 maço com sub-header por OP (B1: só OPs no roteiro).
     if (activeSectors.has('Acabamento') && acabamentoOrders.length > 0) total += 1;
     if (activeSectors.has('Expedição') && expedicaoGroups) total += expedicaoGroups.length;
-    if (activeSectors.has('Relatório Gerencial') && reportGroups) total += reportGroups.length;
+    if (activeSectors.has('Relatório Gerencial') && reportBundle) total += 1;
     return total;
     // opsInRoteiro/orderInRoteiro são closures recriadas a cada render — fora
     // das deps de propósito (mesmo padrão dos memos vizinhos); os dados que
     // elas leem chegam via silkMontageGroups/upperSectorGroups/groupedWorksheets.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isCaixa, isCartao, cartaoCaixaCards, cartaoFisicoCards, activeSectors, activePalmilhaMode, palmilhaGroups, solagemData, silkMontageGroups, upperSectorGroups, costuraCabedalGroups, aviamentoGroups, groupedWorksheets, acabamentoOrders.length, expedicaoGroups, reportGroups]);
+  }, [isCaixa, isCartao, cartaoCaixaCards, cartaoFisicoCards, activeSectors, activePalmilhaMode, palmilhaGroups, solagemData, silkMontageGroups, upperSectorGroups, costuraCabedalGroups, aviamentoGroups, groupedWorksheets, acabamentoOrders.length, expedicaoGroups, reportBundle]);
 
   const today = new Date().toLocaleDateString('pt-BR');
   const printPairCount = printOrders.reduce((total, order) => total + (Number(order.total_pairs) || 0), 0);
@@ -4197,6 +4230,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           sequencial): inverter por FOLHA. Faixa De/Até já omitiu folhas fora
           do intervalo antes desta inversão. */}
       <ReversePrintContext.Provider value={printReversing}>
+      <PrintOrderIdentityProvider value={orderIdentityByOp}>
       <PrintContinuityProvider key={`cont-${formatModeKey}-${sectorsKey}`}>
       <ReversibleStack reverse={printReversing}>
 
@@ -4952,21 +4986,22 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           </div>
         ))}
 
-        {/* ── Relatório Gerencial: 1 checklist por PV (2026-09-24) ──
-            Seções por setor · linhas REF+COR · grade mini · □ 8 mm.
-            Sem foto / sem R$ — visão de chão pra marcar à mão. */}
-        {isA4 && includesSector('Relatório Gerencial') && reportGroups && reportGroups.map((rg) => (
-          <div key={`report-${rg.saleOrder.id}`} className="page-break">
+        {/* ── Relatório Gerencial: 1 checklist da seleção (2026-10) ──
+            Cabeçalho lista PV·razão; linhas REF+COR fundidas entre PVs.
+            Sem R$ — visão de chão pra marcar à mão. */}
+        {isA4 && includesSector('Relatório Gerencial') && reportBundle && (
+          <div key="report-bundle" className="page-break">
             <ManagementReport
-              sectorLabel={`Relatório Gerencial · ${rg.saleOrder.order_number || 'PV —'}`}
-              saleOrder={rg.saleOrder}
-              orders={rg.reportOrders}
+              sectorLabel="Relatório Gerencial"
+              saleOrders={reportBundle.saleOrders}
+              orders={reportBundle.reportOrders}
               date={today}
             />
           </div>
-        ))}
+        )}
       </ReversibleStack>
       </PrintContinuityProvider>
+      </PrintOrderIdentityProvider>
       </ReversePrintContext.Provider>
       </div>
       </div>

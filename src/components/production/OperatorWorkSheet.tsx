@@ -13,6 +13,8 @@ import { SectorMaterials } from './worksheet/SectorMaterials';
 import type { ConsumptionRow } from '@/hooks/useBulkOrderConsumption';
 import { TALLY_SIZE } from './worksheet/density';
 import { PaginatedSheet, type SheetBlock } from './worksheet/PaginatedSheet';
+import { usePrintOrderIdentity } from './worksheet/PrintOrderIdentityContext';
+import { pageIdentityForOps } from './worksheet/pageIdentity';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { HeaderIdentification } from './worksheet/HeaderIdentification';
 import { GroupSubHeader } from './worksheet/GroupSubHeader';
@@ -138,6 +140,14 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
   // os demais seguem 'legacy' e nao mudam em nada.
   const model = fichaModelFor(sector);
   const isLote = model === 'lote';
+  const allOps = Array.from(new Set(
+    items.flatMap((it) => {
+      if (it.opNumbers && it.opNumbers.length > 0) return it.opNumbers;
+      return [(it.order as { op_number?: string }).op_number].filter(Boolean) as string[];
+    }),
+  ));
+  const orderIdentityByOp = usePrintOrderIdentity();
+  const pageIdentity = pageIdentityForOps(sectorLabel || sector, allOps, orderIdentityByOp);
 
   const isMontagem        = sector === 'Montagem';
   const isSolagem         = sector === 'Solagem';
@@ -820,7 +830,14 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
     const cols = sizes.length <= 12 ? sizes.length : 12;
     return Math.max(mx, floorSafeScale(gradeTableFont(sizes.slice(0, cols), true)));
   }, 0);
-  return <PaginatedSheet sectorLabel={sectorLabel || sector} blocks={blocks} minScale={minScale} />;
+  return (
+    <PaginatedSheet
+      sectorLabel={sectorLabel || sector}
+      pageIdentity={pageIdentity}
+      blocks={blocks}
+      minScale={minScale}
+    />
+  );
 };
 
 export default OperatorWorkSheet;

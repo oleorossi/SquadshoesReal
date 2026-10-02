@@ -97,7 +97,7 @@ describe('órfãos de quebra de página (print)', () => {
       requires_lining_cut: true,
     }];
     const { container } = render(
-      <ManagementReport saleOrder={saleOrder} orders={orders} />,
+      <ManagementReport saleOrders={[saleOrder]} orders={orders} />,
     );
     const blocks = Array.from(container.querySelectorAll('[data-block]'));
     expect(blocks.length).toBe(2); // header + 1 ref (card+checklist)

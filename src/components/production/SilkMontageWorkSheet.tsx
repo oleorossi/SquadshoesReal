@@ -27,6 +27,8 @@ import {
   pickAviamentoHeroPhotoSources,
 } from './worksheet/aviamentoHeroPhoto';
 import { PaginatedSheet, type SheetBlock } from './worksheet/PaginatedSheet';
+import { usePrintOrderIdentity } from './worksheet/PrintOrderIdentityContext';
+import { pageIdentityForOps } from './worksheet/pageIdentity';
 import { SectorAlerts, type SectorAlert } from './worksheet/SectorAlerts';
 import { SignedImage } from '@/components/ui/signed-image';
 import { formatOpNumber } from './worksheet/stageOrder';
@@ -497,6 +499,11 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
   const allClients = Array.from(new Set(
     groups.flatMap(g => g.clientNames || []).filter(Boolean),
   )).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  const allOps = Array.from(new Set(
+    groups.flatMap(g => g.colorGroups.flatMap(cg => cg.opNumbers || [])).filter(Boolean),
+  ));
+  const orderIdentityByOp = usePrintOrderIdentity();
+  const pageIdentity = pageIdentityForOps(sectorLabel || sector, allOps, orderIdentityByOp);
   const groupNoun = groups[0]?.groupKind === 'reference' ? 'referência' : 'solado';
 
   // ── Total de tiras do maço (SÓ Aviamento) — "todas as fichas somadas" ──
@@ -2048,5 +2055,12 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
   // refletir isso, senão o auto-fit encolhe otimista demais.
   const minScale = groups.reduce((mx, g) => g.colorGroups.reduce((m2, cg) => Math.max(m2,
     floorSafeScale(gradeTableFont(gradeSizesOf(cg, sector), true))), mx), 0);
-  return <PaginatedSheet sectorLabel={sectorLabel || sector} blocks={blocks} minScale={minScale} />;
+  return (
+    <PaginatedSheet
+      sectorLabel={sectorLabel || sector}
+      pageIdentity={pageIdentity}
+      blocks={blocks}
+      minScale={minScale}
+    />
+  );
 };

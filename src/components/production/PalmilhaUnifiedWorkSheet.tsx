@@ -12,6 +12,8 @@ import {
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { HeaderIdentification } from './worksheet/HeaderIdentification';
 import { PaginatedSheet, type SheetBlock } from './worksheet/PaginatedSheet';
+import { usePrintOrderIdentity } from './worksheet/PrintOrderIdentityContext';
+import { pageIdentityForOps } from './worksheet/pageIdentity';
 import { formatOpNumber } from './worksheet/stageOrder';
 import { fichaModelFor } from './worksheet/fichaModel';
 import { SectorMaterials } from './worksheet/SectorMaterials';
@@ -107,6 +109,8 @@ export function PalmilhaUnifiedWorkSheet({
   const allOps = Array.from(new Set(allCards.flatMap(c => c.opNumbers || []).filter(Boolean)));
   const pvs = Array.from(new Set(allCards.flatMap(c => c.pvNumbers || []).filter(Boolean)));
   const clientNames = Array.from(new Set(allCards.flatMap(c => c.clientNames || []).filter(Boolean)));
+  const orderIdentityByOp = usePrintOrderIdentity();
+  const pageIdentity = pageIdentityForOps(sectorLabel || title, allOps, orderIdentityByOp);
 
   const showFibra = mode !== 'so_forracao';
   const showForracao = mode !== 'so_fibra';
@@ -587,6 +591,7 @@ export function PalmilhaUnifiedWorkSheet({
     <PaginatedSheet
       blocks={blocks}
       sectorLabel={sectorLabel || title}
+      pageIdentity={pageIdentity}
       minScale={minScale}
     />
   );

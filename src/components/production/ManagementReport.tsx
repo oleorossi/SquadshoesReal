@@ -4,6 +4,7 @@ import { adaptiveFontSize } from '@/lib/adaptiveFontSize';
 import { sheetHasSector } from '@/lib/sectors';
 import { adaptiveTableFont } from './worksheet/adaptiveFont';
 import { PaginatedSheet, type SheetBlock } from './worksheet/PaginatedSheet';
+import { normalizePageIdentity } from './worksheet/pageIdentity';
 
 export interface ReportStage {
   stage_name: string;
@@ -21,6 +22,8 @@ export interface ReportStrap {
 export interface ReportOrder {
   id: string;
   op_number?: string;
+  /** Número do PV de origem — usado pra fundir linhas cross-PV e citar na linha. */
+  sale_order_number?: string | null;
   reference_code?: string;
   /** Nome da ficha técnica — é o que o gestor chama de "referência" (ex.: S-039,
    *  DS22). O `reference_code` (903925…) é o código interno. */
@@ -87,11 +90,11 @@ export interface ReportSaleOrder {
 }
 
 interface Props {
-  saleOrder: ReportSaleOrder;
+  /** PVs do maço, já ordenados por order_number (PrintWorkSheetsPage). */
+  saleOrders: ReportSaleOrder[];
   orders: ReportOrder[];
   date?: string;
-  /** Rótulo da faixa de cabeçalho de página (PaginatedSheet) —
-   *  ex.: "Relatório Gerencial · PV-00123". */
+  /** Rótulo legado da faixa — a identidade rica vem de pageIdentity. */
   sectorLabel?: string;
 }
 
@@ -139,6 +142,8 @@ type LineGroup = {
   requires_upper_cut: boolean;
   requires_upper_sewing: boolean;
   requires_lining_cut: boolean;
+  /** PVs que contribuíram pra esta linha (ordenado). Citar na UI só se >1. */
+  sourcePvs: string[];
 };
 
 /** Grupo de material do item do PV (mesma regra do form: variante /
@@ -249,6 +254,7 @@ export function buildLineGroups(orders: ReportOrder[]): LineGroup[] {
         requires_upper_cut: false,
         requires_upper_sewing: false,
         requires_lining_cut: false,
+        sourcePvs: [],
       };
       map.set(key, gr);
     }
@@ -258,6 +264,8 @@ export function buildLineGroups(orders: ReportOrder[]): LineGroup[] {
     if (!gr.liningMaterial && o.lining_material) gr.liningMaterial = o.lining_material;
     if (!gr.insoleMaterial && o.insole_material) gr.insoleMaterial = o.insole_material;
     if (!gr.soleName && o.sole_name) gr.soleName = o.sole_name;
+    const pv = (o.sale_order_number || '').trim();
+    if (pv && !gr.sourcePvs.includes(pv)) gr.sourcePvs.push(pv);
     gr.totalPairs += o.total_pairs || 0;
     gr.fichas += fichasOf(o);
     gr.requires_upper_cut = gr.requires_upper_cut || o.requires_upper_cut === true;
@@ -285,7 +293,10 @@ export function buildLineGroups(orders: ReportOrder[]): LineGroup[] {
       }
     }
   }
-  return Array.from(map.values()).sort(
+  return Array.from(map.values()).map((gr) => {
+    gr.sourcePvs.sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    return gr;
+  }).sort(
     (a, b) => a.refName.localeCompare(b.refName, 'pt-BR')
       || a.color.localeCompare(b.color, 'pt-BR')
       || (a.liningMaterial || '').localeCompare(b.liningMaterial || '', 'pt-BR'),
@@ -390,18 +401,32 @@ export function eligibleSectorsForLine(
 /**
  * Relatório gerencial — CHECKLIST por referência+cor (2026-09-24, dono).
  *
- * Ordem: 1ª ref+cor → todos os setores dela (marcar □) → próxima ref/cor.
- * Cabeçalho da ref traz foto, material, pares, fichas e grade; embaixo,
- * uma linha por setor elegível do roteiro. Sem R$/frete.
+ * 2026-10: 1 documento por seleção (vários PVs). Cabeçalho = lista
+ * `PV · RAZÃO SOCIAL` (uma linha por pedido). Linhas de checklist fundem
+ * a mesma ref+cor entre PVs; citam os PVs só quando a linha junta >1.
  */
-export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props) => {
+export const ManagementReport = ({ saleOrders, orders, date, sectorLabel }: Props) => {
   const today = date || new Date().toLocaleDateString('pt-BR');
   const totalPairs = orders.reduce((s, o) => s + (o.total_pairs || 0), 0);
   const lines = buildLineGroups(orders);
+  const pvList = [...saleOrders].sort((a, b) =>
+    (a.order_number || '').localeCompare(b.order_number || '', 'pt-BR'),
+  );
 
   const linesWithSectors = lines
     .map((line) => ({ line, sectors: eligibleSectorsForLine(line) }))
     .filter((x) => x.sectors.length > 0);
+
+  const pageIdentity = normalizePageIdentity(
+    sectorLabel || 'Relatório Gerencial',
+    pvList.map((so) => ({
+      pvNumber: so.order_number || null,
+      clientOrderNumber: so.client_order_number || null,
+      clientName: so.client_name || null,
+      opNumber: null,
+    })),
+    { includeOp: false },
+  );
 
   const headerBlock = (
     <header className="mb-4">
@@ -410,43 +435,61 @@ export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props
         <span className="section-label" style={{ color: '#000' }}>{today}</span>
       </div>
       <div className="rule-line-thick mb-3" style={{ backgroundColor: '#000' }} />
-      <div className="grid grid-cols-12 gap-4 items-end">
+      <div className="grid grid-cols-12 gap-4 items-start">
         <div className="col-span-8">
-          <p className="section-label mb-1" style={{ color: '#000' }}>Pedido de Venda</p>
-          {(() => {
-            const pvText = saleOrder.order_number || 'PV —';
-            const fontPx = adaptiveFontSize(pvText, {
-              maxWidthPx: 480, baseFontPx: 72, minFontPx: 36, charWidthRatio: 0.45,
-            });
-            return (
-              <h1
+          <p className="section-label mb-2" style={{ color: '#000' }}>
+            {pvList.length > 1 ? `Pedidos de Venda (${pvList.length})` : 'Pedido de Venda'}
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {pvList.map((so) => {
+              const pvText = so.order_number || 'PV —';
+              const clientText = (so.client_name || 'Sem cliente').toUpperCase();
+              const line = `${pvText} · ${clientText}`;
+              const fontPx = adaptiveFontSize(line, {
+                maxWidthPx: 480,
+                baseFontPx: pvList.length > 1 ? 22 : 36,
+                minFontPx: 14,
+                charWidthRatio: 0.48,
+              });
+              return (
+                <div key={so.id || pvText}>
+                  <p
+                    style={{
+                      fontFamily: "'Anton', Impact, sans-serif",
+                      fontSize: `${fontPx}px`,
+                      lineHeight: 0.95,
+                      letterSpacing: '-0.02em',
+                      color: '#000',
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    <span>{pvText}</span>
+                    <span style={{ color: '#C00000' }}> · {clientText}</span>
+                  </p>
+                  {so.client_order_number && (
+                    <p className="mt-0.5 text-[8pt] text-black">
+                      <span className="section-label" style={{ color: '#555' }}>Pedido cliente</span>{' '}
+                      <span className="font-mono font-semibold ml-1">{so.client_order_number}</span>
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+            {pvList.length === 0 && (
+              <p
                 style={{
                   fontFamily: "'Anton', Impact, sans-serif",
-                  fontSize: `${fontPx}px`,
-                  lineHeight: 0.85,
-                  letterSpacing: '-0.025em',
+                  fontSize: '28px',
+                  lineHeight: 0.9,
                   color: '#000',
-                  textTransform: 'uppercase',
                 }}
               >
-                {pvText}
-              </h1>
-            );
-          })()}
-          {saleOrder.client_order_number && (
-            <p className="mt-2 text-[9pt] text-black">
-              <span className="section-label" style={{ color: '#555' }}>Pedido cliente</span>{' '}
-              <span className="font-mono font-semibold ml-1">{saleOrder.client_order_number}</span>
-            </p>
-          )}
+                PV —
+              </p>
+            )}
+          </div>
         </div>
         <div className="col-span-4 border-l border-black pl-4 space-y-2">
-          <div>
-            <p className="section-label" style={{ color: '#555' }}>Cliente</p>
-            <p className="font-semibold text-[10pt] text-black leading-tight mt-0.5">
-              {saleOrder.client_name || 'Sem cliente'}
-            </p>
-          </div>
           <div>
             <p className="section-label" style={{ color: '#555' }}>Pares</p>
             <p
@@ -573,6 +616,20 @@ export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props
                     {material}
                   </span>
                 )}
+                {line.sourcePvs.length > 1 && (
+                  <p
+                    style={{
+                      marginTop: 4,
+                      fontFamily: "'Fira Code', monospace",
+                      fontSize: '8px',
+                      letterSpacing: '0.04em',
+                      textTransform: 'uppercase',
+                      color: '#555',
+                    }}
+                  >
+                    {line.sourcePvs.join(' · ')}
+                  </p>
+                )}
               </div>
               <div style={{ textAlign: 'right', fontFamily: "'Fira Code', monospace" }}>
                 <div style={{ fontWeight: 700, fontSize: '14px', color: '#000' }}>
@@ -663,7 +720,8 @@ export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props
 
   return (
     <PaginatedSheet
-      sectorLabel={sectorLabel || `Relatório Gerencial · ${saleOrder.order_number || 'PV —'}`}
+      sectorLabel={sectorLabel || 'Relatório Gerencial'}
+      pageIdentity={pageIdentity}
       blocks={blocks}
       pageStyle={{ fontFamily: "'Fira Sans', 'Inter', system-ui, sans-serif", fontSize: '10pt' }}
     />

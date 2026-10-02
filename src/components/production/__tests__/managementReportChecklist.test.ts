@@ -171,6 +171,71 @@ describe('grade corrugado no Relatório Gerencial', () => {
     expect(lines[0].mixedCorrugado).toBe(true);
     expect(lines[0].grade['34']).toBe(3);
   });
+
+  it('buildLineGroups funde mesma ref+cor entre PVs e lista sourcePvs', () => {
+    const lines = buildLineGroups([
+      {
+        id: 'a',
+        sale_order_number: 'PV-00199',
+        total_pairs: 12,
+        reference_name: 'G01',
+        color: 'DÁLIA',
+        grade: { '34': 12 },
+        fichas: 1,
+        production_sectors: ['Montagem', 'Expedição'],
+        requires_upper_cut: false,
+        requires_upper_sewing: false,
+        requires_lining_cut: false,
+      },
+      {
+        id: 'b',
+        sale_order_number: 'PV-00198',
+        total_pairs: 24,
+        reference_name: 'G01',
+        color: 'DÁLIA',
+        grade: { '34': 24 },
+        fichas: 2,
+        production_sectors: ['Montagem', 'Expedição'],
+        requires_upper_cut: false,
+        requires_upper_sewing: false,
+        requires_lining_cut: false,
+      },
+    ]);
+    expect(lines).toHaveLength(1);
+    expect(lines[0].totalPairs).toBe(36);
+    expect(lines[0].fichas).toBe(3);
+    expect(lines[0].sourcePvs).toEqual(['PV-00198', 'PV-00199']);
+  });
+
+  it('buildLineGroups NÃO funde quando material diverge', () => {
+    const lines = buildLineGroups([
+      {
+        id: 'a',
+        sale_order_number: 'PV-00198',
+        total_pairs: 12,
+        reference_name: 'G01',
+        color: 'DÁLIA',
+        lining_material: 'NAPA SOFT',
+        production_sectors: ['Montagem'],
+        requires_upper_cut: false,
+        requires_upper_sewing: false,
+        requires_lining_cut: false,
+      },
+      {
+        id: 'b',
+        sale_order_number: 'PV-00199',
+        total_pairs: 12,
+        reference_name: 'G01',
+        color: 'DÁLIA',
+        lining_material: 'NAPA MADRID',
+        production_sectors: ['Montagem'],
+        requires_upper_cut: false,
+        requires_upper_sewing: false,
+        requires_lining_cut: false,
+      },
+    ]);
+    expect(lines).toHaveLength(2);
+  });
 });
 
 describe('Inverter saída — fichas de operador', () => {

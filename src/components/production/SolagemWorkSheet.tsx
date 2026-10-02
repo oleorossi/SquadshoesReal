@@ -8,6 +8,8 @@ import { TALLY_SIZE } from './worksheet/density';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { HeaderIdentification } from './worksheet/HeaderIdentification';
 import { PaginatedSheet, type SheetBlock } from './worksheet/PaginatedSheet';
+import { usePrintOrderIdentity } from './worksheet/PrintOrderIdentityContext';
+import { pageIdentityForOps } from './worksheet/pageIdentity';
 import { formatOpNumber } from './worksheet/stageOrder';
 import { fichaModelFor } from './worksheet/fichaModel';
 import { TraceStrip } from './worksheet/TraceStrip';
@@ -330,6 +332,9 @@ export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 1
   // Total Geral → rodapé. O paginador garante "card inteiro ou nada".
   // PVs do maço — hoisted pro escopo do header (identificação + QR escaneável).
   const pvs = Array.from(new Set(bands.flatMap(b => b.pvNumbers || []).filter(Boolean)));
+  const allOps = Array.from(new Set(bands.flatMap(b => b.opNumbers || []).filter(Boolean)));
+  const orderIdentityByOp = usePrintOrderIdentity();
+  const pageIdentity = pageIdentityForOps(sectorLabel || sector, allOps, orderIdentityByOp);
   const headerBlock = (
       <WorksheetHeader
         sector={sector}
@@ -429,5 +434,12 @@ export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 1
   // estavam no piso. Decisão do dono 31/07/2026: legibilidade vence densidade.
   const minScale = bands.reduce((mx, b) => Math.max(mx,
     floorSafeScale(gradeTableFont(solagemBandSizes(allSizes, b), true))), 0);
-  return <PaginatedSheet sectorLabel={sectorLabel || sector} blocks={blocks} minScale={minScale} />;
+  return (
+    <PaginatedSheet
+      sectorLabel={sectorLabel || sector}
+      pageIdentity={pageIdentity}
+      blocks={blocks}
+      minScale={minScale}
+    />
+  );
 };
