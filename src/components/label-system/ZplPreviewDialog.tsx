@@ -208,12 +208,12 @@ export default function ZplPreviewDialog({
         { width: dimensions.width, height: dimensions.height },
       );
       const name = pdfFileNameForThermalLabels();
-      // iOS: overlay + preview embutido (CTA já se chama Abrir PDF).
+      // iOS: overlay de ações (Compartilhar / Abrir no Safari) — sem prévia embutida.
       // Desktop: aba / download — inalterado.
-      const how = await openOrDownloadThermalLabelPdf(blob, name, { openPreview: true });
+      const how = await openOrDownloadThermalLabelPdf(blob, name);
       toast.success(
         how === 'overlay'
-          ? 'PDF pronto — confira no painel.'
+          ? 'PDF pronto — compartilhe ou abra no Safari.'
           : how === 'opened'
             ? 'PDF aberto — confira, ajuste na impressora e imprima pelo navegador.'
             : `PDF baixado: ${name}`,

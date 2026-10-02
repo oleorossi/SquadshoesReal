@@ -27,7 +27,7 @@ describe('etiqueta individual — PDF abrível no Windows', () => {
     expect(zplDialog).toContain('Abrir PDF');
     expect(zplDialog).toContain('pdfSourceLabels');
     expect(zplDialog).toContain('buildThermalLabelsPdf');
-    expect(zplDialog).toContain('openPreview: true');
+    expect(zplDialog).not.toContain('openPreview');
     expect(zplDialog).toContain('não abre em leitor comum');
     expect(zplDialog).toContain('setCanvasNode');
   });

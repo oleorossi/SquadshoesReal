@@ -70,7 +70,7 @@ describe('thermalLabelPdfDelivery', () => {
     expect(append).toHaveBeenCalled();
   });
 
-  it('no iOS abre o overlay canônico', async () => {
+  it('no iOS abre o overlay canônico na tela de ações', async () => {
     vi.mocked(isIosBrowser).mockReturnValue(true);
     const blob = new Blob(['%PDF-1.4'], { type: 'application/pdf' });
     await expect(openOrDownloadThermalLabelPdf(blob, 'etiquetas-ios.pdf')).resolves.toBe(
@@ -80,16 +80,7 @@ describe('thermalLabelPdfDelivery', () => {
     expect(st.open).toBe(true);
     expect(st.phase).toBe('ready');
     expect(st.title).toBe('Etiquetas');
-    expect(st.previewing).toBe(false);
+    expect(st.safariUrl).toBeNull();
     expect(st.bytes?.byteLength).toBeGreaterThan(0);
-  });
-
-  it('no iOS com openPreview entra direto no viewer', async () => {
-    vi.mocked(isIosBrowser).mockReturnValue(true);
-    const blob = new Blob(['%PDF-1.4'], { type: 'application/pdf' });
-    await expect(
-      openOrDownloadThermalLabelPdf(blob, 'etiquetas-zpl.pdf', { openPreview: true }),
-    ).resolves.toBe('overlay');
-    expect(getPdfDeliveryState().previewing).toBe(true);
   });
 });

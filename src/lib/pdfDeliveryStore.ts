@@ -16,13 +16,11 @@ export interface PdfDeliveryState {
   title: string;
   filename: string;
   bytes: Uint8Array | null;
-  /** URL GET do job (com token) pra fallback "Abrir no Safari". */
+  /** URL GET do job (com token) pra "Abrir no Safari". */
   safariUrl: string | null;
   error: string | null;
   /** Depois que Compartilhar falha, mostra "Tentar baixar de novo". */
   shareFailed: boolean;
-  /** ready: viewer embutido do PDF (botão Abrir / auto-preview da ZPL). */
-  previewing: boolean;
   cancelled: boolean;
   /** Contador pra React re-renderizar. */
   rev: number;
@@ -47,7 +45,6 @@ let state: PdfDeliveryState = {
   safariUrl: null,
   error: null,
   shareFailed: false,
-  previewing: false,
   cancelled: false,
   rev: 0,
 };
@@ -89,7 +86,6 @@ export function beginPdfDelivery(opts: { title: string; filename: string }): voi
     safariUrl: null,
     error: null,
     shareFailed: false,
-    previewing: false,
     cancelled: false,
     rev: state.rev + 1,
   };
@@ -106,8 +102,6 @@ export function setPdfDeliveryReady(opts: {
   bytes: Uint8Array;
   safariUrl?: string | null;
   filename?: string;
-  /** Já entra no viewer embutido (ex.: "Abrir PDF" da prévia ZPL no iOS). */
-  openPreview?: boolean;
 }): void {
   if (!state.open || state.cancelled) return;
   state = {
@@ -118,20 +112,7 @@ export function setPdfDeliveryReady(opts: {
     filename: opts.filename ? ensurePdfName(opts.filename) : state.filename,
     error: null,
     shareFailed: false,
-    previewing: !!opts.openPreview,
   };
-  emit();
-}
-
-export function enterPdfPreview(): void {
-  if (!state.open || state.phase !== 'ready' || !state.bytes) return;
-  state = { ...state, previewing: true };
-  emit();
-}
-
-export function exitPdfPreview(): void {
-  if (!state.open || !state.previewing) return;
-  state = { ...state, previewing: false };
   emit();
 }
 

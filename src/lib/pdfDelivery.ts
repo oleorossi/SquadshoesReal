@@ -60,11 +60,12 @@ export function downloadPdfFile(bytes: Uint8Array, filename: string): void {
 
 /**
  * Entrega bytes de PDF: no iOS abre o overlay de ações; nos demais baixa direto.
- * `openPreview` só vale no iOS (entra direto no viewer embutido).
+ * Sem prévia embutida — no iPhone/PWA o iframe+blob fica preto; Abrir vai pro Safari
+ * (quando há `safariUrl`) ou pra folha de compartilhar.
  */
 export function deliverPdfBytes(
   bytes: Uint8Array,
-  opts: { filename: string; title: string; openPreview?: boolean },
+  opts: { filename: string; title: string },
 ): void {
   const filename = ensurePdfName(opts.filename);
   if (!isIosBrowser()) {
@@ -73,13 +74,7 @@ export function deliverPdfBytes(
   }
   beginPdfDelivery({ title: opts.title, filename });
   setPdfDeliveryStage('preparing');
-  setPdfDeliveryReady({ bytes, filename, openPreview: opts.openPreview });
-}
-
-/** Blob URL do PDF pra viewer embutido — quem chama revoga. */
-export function createPdfBlobUrl(bytes: Uint8Array): string {
-  const blob = new Blob([toArrayBuffer(bytes)], { type: 'application/pdf' });
-  return URL.createObjectURL(blob);
+  setPdfDeliveryReady({ bytes, filename });
 }
 
 /** jsPDF → bytes → deliverPdfBytes. */
@@ -95,10 +90,11 @@ export function deliverJsPdf(
 export async function openPdfInSafari(safariUrl: string): Promise<void> {
   if (!safariUrl) throw new Error('Link do PDF indisponível.');
   // `_blank` no PWA iOS costuma abrir no Safari (fora do standalone).
+  // Se o pop-up for bloqueado, falha pra o host cair no Compartilhar —
+  // não navega a própria janela do app (expulsaria o usuário do PWA).
   const opened = window.open(safariUrl, '_blank', 'noopener,noreferrer');
   if (!opened) {
-    // Último recurso: navegar a própria janela.
-    window.location.assign(safariUrl);
+    throw new Error('Não foi possível abrir no Safari.');
   }
 }
 

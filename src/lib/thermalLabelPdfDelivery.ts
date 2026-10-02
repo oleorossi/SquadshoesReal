@@ -29,14 +29,13 @@ export type ThermalPdfDeliveryResult = 'opened' | 'downloaded' | 'overlay';
 
 /**
  * Entrega o PDF térmico.
- * - iOS: overlay (`overlay`); `openPreview` entra direto no viewer embutido
- *   (prévia ZPL — o CTA já se chama "Abrir PDF").
+ * - iOS: overlay canônico (`overlay`) — tela de ações (Compartilhar / Abrir no Safari).
  * - demais: abre aba (`opened`) ou download (`downloaded`).
  */
 export async function openOrDownloadThermalLabelPdf(
   blob: Blob,
   fileName = pdfFileNameForThermalLabels(),
-  opts?: { openPreview?: boolean; title?: string },
+  opts?: { title?: string },
 ): Promise<ThermalPdfDeliveryResult> {
   if (isIosBrowser()) {
     // Response.arrayBuffer funciona onde Blob.arrayBuffer não existe (jsdom/vitest).
@@ -44,7 +43,6 @@ export async function openOrDownloadThermalLabelPdf(
     deliverPdfBytes(bytes, {
       filename: fileName,
       title: opts?.title || 'Etiquetas',
-      openPreview: opts?.openPreview,
     });
     return 'overlay';
   }
