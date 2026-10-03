@@ -107,7 +107,7 @@ Otimiza, quando conflitarem: **completar pedido para expedir/faturar** (primári
 9. **R9 — Liberação**: confirmação cria OP via caminho de promote/materialize existente (reserva/débito híbrido intacto), persiste origem/flag **adiantada**, associa ao `sale_order_item` / PV.
 10. **R10 — Kanban**: OPs adiantadas aparecem no motor normal com badge e filtro “Adiantadas”.
 11. **R11 — Motivo**: toda linha (liberável ou bloqueada) expõe chips; expand/detalhe pode repetir a frase completa — lista não fica só com ícone.
-12. **R12 — Sem reordenar global**: liberação **não** altera a regra pin/prazo/criação do schedule para as demais OPs.
+12. **R12 — Sem reordenar global**: ~~liberação não altera a regra pin/prazo/criação do schedule~~ → **SUPERSEDED** — ver ordem oficial em [`sequencia-producao.md`](sequencia-producao.md).
 
 ## Data model / Domain
 
