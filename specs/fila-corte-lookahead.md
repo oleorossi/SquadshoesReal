@@ -10,10 +10,18 @@
 > Adiantadas no Kanban. Capacidade = `sector_settings.daily_capacity_pairs` por
 > tipo de corte.
 >
+> **⚠ Atualização 03/10/2026:** a decisão **D17** (“liberação não reordena
+> Planejamento / `production_queue` por caixa”) foi **superseded** por
+> [`sequencia-producao.md`](sequencia-producao.md). Passa a existir uma **ordem
+> oficial global** (fechar PV → billing → cor → ref); o Lookahead vira **vista**
+> dessa ordem, sem score paralelo. O restante desta spec (filas por tipo de
+> corte, gate de material principal, flag adiantada, exclusão ateliê) permanece
+> válido até a migração para o sequenciador.
+>
 > **Não substitui** [`compras-producao-entrelacadas.md`](compras-producao-entrelacadas.md)
 > (capital via janela de OC) nem [`atelie-cabedal-complexo.md`](atelie-cabedal-complexo.md)
 > (cabedal complexo / rua). Complementa o motor diário de
-> [`remodelagem-producao.md`](remodelagem-producao.md) **sem** reordená-lo por caixa.
+> [`remodelagem-producao.md`](remodelagem-producao.md).
 
 ## Goal
 
@@ -54,7 +62,7 @@ Otimiza, quando conflitarem: **completar pedido para expedir/faturar** (primári
 | D14 | Ateliê | Ref cadastrada no Ateliê **não disputa** a fila interna (hoje nenhuma tem corte na rua) |
 | D15 | UI | Rota nova `/producao/corte-lookahead` (rótulo sugerido: **Fila de Corte**) |
 | D16 | Granularidade | Átomo = item de PV (ref+cor/variante) → 1 OP; **multi-select** no dia |
-| D17 | Motor global | Ao liberar, OP entra no `production_queue` **igual** às outras; **não** reordena Planejamento por caixa |
+| D17 | Motor global | ~~Ao liberar, OP entra no `production_queue` igual às outras; não reordena Planejamento por caixa~~ → **SUPERSEDED 03/10/2026** por [`sequencia-producao.md`](sequencia-producao.md) (ordem oficial global por caixa) |
 | D18 | Reserva “livre” | Dono da reserva pode continuar; **outro** PV não adianta com o mesmo SKU prometido (A+D) |
 | D19 | Lista | Só sem OP (A+C): aprovados + residual sem OP; OPs já criadas ficam no kanban |
 
