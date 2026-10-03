@@ -59,6 +59,9 @@ describe('corteLookahead', () => {
         stock: { productId: 'napa', productName: 'NAPA PRETO', freeQty: 10, requiredQty: 8 },
         score: 50,
         completionPct: 10,
+        color: 'PRETO',
+        reference: 'I90',
+        dueDate: '2026-10-01',
       },
       {
         itemId: 'b',
@@ -67,14 +70,47 @@ describe('corteLookahead', () => {
         stock: { productId: 'napa', productName: 'NAPA PRETO', freeQty: 10, requiredQty: 8 },
         score: 80,
         completionPct: 50,
+        color: 'PRETO',
+        reference: 'I90',
+        dueDate: '2026-09-30',
       },
-    ], { deadlineByItemId: { a: '2026-10-01', b: '2026-09-30' }, today: new Date('2026-09-29T12:00:00') });
+    ], { today: new Date('2026-09-29T12:00:00') });
 
+    // Sequência oficial: maior completion (% PV) primeiro — b antes de a.
     expect(ranked[0].itemId).toBe('b');
     expect(ranked[0].liberable).toBe(true);
     expect(ranked[1].itemId).toBe('a');
     expect(ranked[1].liberable).toBe(false);
     expect(ranked[0].chips.some((c) => c.key === 'estoque' && c.tone === 'ok')).toBe(true);
     expect(ranked[1].chips.some((c) => c.key === 'estoque' && c.tone === 'blocked')).toBe(true);
+  });
+
+  it('rank prioriza fechar PV sobre score legado de valor×prazo', () => {
+    const ranked = rankCorteLookaheadRows([
+      {
+        itemId: 'quase',
+        createdAt: '2026-01-02',
+        liberableBase: true,
+        stock: { productId: 'napa', productName: 'NAPA', freeQty: 100, requiredQty: 1 },
+        score: 10,
+        completionPct: 90,
+        color: 'OFF WHITE',
+        reference: 'Z',
+        dueDate: '2026-12-01',
+      },
+      {
+        itemId: 'urgente-novo',
+        createdAt: '2026-01-01',
+        liberableBase: true,
+        stock: { productId: 'napa', productName: 'NAPA', freeQty: 100, requiredQty: 1 },
+        score: 9999,
+        completionPct: 5,
+        color: 'PRETO',
+        reference: 'A',
+        dueDate: '2026-09-30',
+      },
+    ], { today: new Date('2026-09-29T12:00:00') });
+
+    expect(ranked.map((r) => r.itemId)).toEqual(['quase', 'urgente-novo']);
   });
 });

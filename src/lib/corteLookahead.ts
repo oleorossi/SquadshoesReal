@@ -1,7 +1,12 @@
 /**
  * Fila de Corte — look-ahead (specs/fila-corte-lookahead.md).
  * Regras puras: score, ordenação, alocação simulada de estoque livre.
+ *
+ * Ordenação entre liberáveis: motor oficial
+ * specs/sequencia-producao.md (fechar PV → urgência → cor → ref).
  */
+
+import { compareProductionSequence } from '@/lib/production/productionSequence';
 
 export const CORTE_LOOKAHEAD_SECTORS = [
   'Corte Cabedal',
@@ -108,6 +113,13 @@ export interface CorteLookaheadRankInput {
   stock: CorteLookaheadStockInput;
   score: number;
   completionPct: number;
+  /** Cor do item do PV — eixo 3 da sequência oficial. */
+  color?: string | null;
+  /** Código/nome da referência — eixo 4. */
+  reference?: string | null;
+  /** Due / delivery (billing); eixo 2. */
+  dueDate?: string | null;
+  daysUntilPlannedStart?: number | null;
   gapLabel?: string | null;
 }
 
@@ -124,13 +136,14 @@ export interface CorteLookaheadChip {
 }
 
 /**
- * Ordena por score ↓, % PV ↓, created_at ↑; aplica alocação simulada do saldo
- * livre nessa ordem; liberáveis ficam acima dos bloqueados.
+ * Ordena pela sequência oficial (fechar PV → urgência → cor → ref);
+ * aplica alocação simulada do saldo livre nessa ordem; liberáveis acima dos bloqueados.
  */
 export function rankCorteLookaheadRows(
   rows: CorteLookaheadRankInput[],
   opts?: { deadlineByItemId?: Record<string, string | null | undefined>; today?: Date },
 ): CorteLookaheadRanked[] {
+  const today = opts?.today ?? new Date();
   const freePool = new Map<string, number>();
   for (const row of rows) {
     if (!row.stock.productId) continue;
@@ -139,7 +152,7 @@ export function rankCorteLookaheadRows(
     }
   }
 
-  const sortedForSim = [...rows].sort(compareCorteLookahead);
+  const sortedForSim = [...rows].sort((a, b) => compareCorteLookahead(a, b, today, opts?.deadlineByItemId));
   const ranked: CorteLookaheadRanked[] = [];
 
   for (const row of sortedForSim) {
@@ -166,7 +179,7 @@ export function rankCorteLookaheadRows(
       }
     }
 
-    const deadline = opts?.deadlineByItemId?.[row.itemId];
+    const deadline = row.dueDate ?? opts?.deadlineByItemId?.[row.itemId];
     ranked.push({
       ...row,
       liberable,
@@ -181,21 +194,44 @@ export function rankCorteLookaheadRows(
         completionPct: row.completionPct,
         deadline,
         gap,
-        today: opts?.today,
+        today,
       }),
     });
   }
 
   return ranked.sort((a, b) => {
     if (a.liberable !== b.liberable) return a.liberable ? -1 : 1;
-    return compareCorteLookahead(a, b);
+    return compareCorteLookahead(a, b, today, opts?.deadlineByItemId);
   });
 }
 
-function compareCorteLookahead(a: CorteLookaheadRankInput, b: CorteLookaheadRankInput): number {
-  if (b.score !== a.score) return b.score - a.score;
-  if (b.completionPct !== a.completionPct) return b.completionPct - a.completionPct;
-  return String(a.createdAt).localeCompare(String(b.createdAt));
+function compareCorteLookahead(
+  a: CorteLookaheadRankInput,
+  b: CorteLookaheadRankInput,
+  today: Date,
+  deadlineByItemId?: Record<string, string | null | undefined>,
+): number {
+  return compareProductionSequence(
+    {
+      id: a.itemId,
+      completionPct: a.completionPct,
+      dueDate: a.dueDate ?? deadlineByItemId?.[a.itemId],
+      color: a.color,
+      reference: a.reference,
+      createdAt: a.createdAt,
+      daysUntilPlannedStart: a.daysUntilPlannedStart,
+    },
+    {
+      id: b.itemId,
+      completionPct: b.completionPct,
+      dueDate: b.dueDate ?? deadlineByItemId?.[b.itemId],
+      color: b.color,
+      reference: b.reference,
+      createdAt: b.createdAt,
+      daysUntilPlannedStart: b.daysUntilPlannedStart,
+    },
+    today,
+  );
 }
 
 function buildChips(input: {

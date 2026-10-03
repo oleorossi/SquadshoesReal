@@ -1,7 +1,8 @@
 /**
- * Fila de Corte — look-ahead (specs/fila-corte-lookahead.md).
- * Candidatos = itens de PV Aprovado/Em Produção sem OP viva, fora do Ateliê,
- * com o setor da aba no roteiro da ficha.
+ * Fila de Corte — look-ahead (specs/fila-corte-lookahead.md + sequencia-producao.md).
+ * Candidatos = itens de PV Aprovado/Em Produção sem OP viva, com o setor da aba
+ * no roteiro. Cabedal complexo só liberável após received_at_factory.
+ * Ordem = sequência oficial (fechar PV → urgência → cor → ref).
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -19,6 +20,7 @@ import {
   type CorteLookaheadChip,
   type CorteLookaheadSector,
 } from '@/lib/corteLookahead';
+import { isAtelierFactoryReady } from '@/lib/production/productionSequence';
 
 export { CORTE_LOOKAHEAD_SECTORS };
 export type { CorteLookaheadSector };
@@ -230,13 +232,36 @@ async function loadCorteLookahead(sector: CorteLookaheadSector): Promise<CorteLo
     }
   }
 
+  // Inclui refs do Ateliê — porta received_at_factory decide liberável (sequencia-producao).
   const candidates = items.filter(
-    (item) =>
-      !itemsWithLiveOp.has(item.id)
-      && item.reference_id
-      && !atelierRefs.has(item.reference_id),
+    (item) => !itemsWithLiveOp.has(item.id) && item.reference_id,
   );
   if (candidates.length === 0) return [];
+
+  const candidateItemIds = candidates.map((c) => c.id);
+  const prepJobs = await fetchInChunks<{
+    sale_order_item_id: string | null;
+    pipeline_status: string | null;
+    updated_at: string | null;
+  }>(candidateItemIds, 200, (chunk) =>
+    supabase
+      .from('cabedal_prep_jobs' as never)
+      .select('sale_order_item_id, pipeline_status, updated_at')
+      .in('sale_order_item_id', chunk)
+      .neq('pipeline_status', 'cancelled'),
+  );
+  const prepStatusByItem = new Map<string, { status: string; updatedAt: string }>();
+  for (const job of prepJobs) {
+    if (!job.sale_order_item_id) continue;
+    const updatedAt = job.updated_at || '';
+    const prev = prepStatusByItem.get(job.sale_order_item_id);
+    if (!prev || updatedAt > prev.updatedAt) {
+      prepStatusByItem.set(job.sale_order_item_id, {
+        status: String(job.pipeline_status || ''),
+        updatedAt,
+      });
+    }
+  }
 
   const refIds = [...new Set(candidates.map((c) => c.reference_id!).filter(Boolean))];
   const sheets = await fetchInChunks<SheetLite>(refIds, 150, async (chunk) => {
@@ -391,6 +416,17 @@ async function loadCorteLookahead(sector: CorteLookaheadSector): Promise<CorteLo
       gapLabel = 'Cadastro incompleto: material do setor';
     }
 
+    const isComplex = atelierRefs.has(item.reference_id!);
+    const atelierGate = isAtelierFactoryReady({
+      isComplexReference: isComplex,
+      pipelineStatus: prepStatusByItem.get(item.id)?.status ?? null,
+    });
+    let liberableBase = true;
+    if (!atelierGate.ready) {
+      liberableBase = false;
+      gapLabel = atelierGate.blockReason || gapLabel;
+    }
+
     metaById.set(item.id, {
       saleOrderId: so.id,
       orderNumber: so.order_number,
@@ -409,7 +445,7 @@ async function loadCorteLookahead(sector: CorteLookaheadSector): Promise<CorteLo
     return {
       itemId: item.id,
       createdAt: item.created_at || so.created_at,
-      liberableBase: true,
+      liberableBase,
       stock: {
         productId: product?.id ?? null,
         productName: product?.name ?? null,
@@ -418,6 +454,9 @@ async function loadCorteLookahead(sector: CorteLookaheadSector): Promise<CorteLo
       },
       score,
       completionPct,
+      color: item.color,
+      reference: sheet.code || sheet.name,
+      dueDate: so.delivery_deadline,
       gapLabel,
     };
   });

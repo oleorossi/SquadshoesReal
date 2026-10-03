@@ -4,7 +4,11 @@
 > sequenciador que senta **na frente** do motor diário de
 > [`remodelagem-producao.md`](remodelagem-producao.md).
 >
-> **Status implementação:** não iniciado — spec + plano de fases.
+> **Status implementação (03/10/2026):** Fase 1 parcial entregue —
+> lib `productionSequence.ts` + testes; Lookahead usa ordem oficial e porta
+> ateliê `received_at_factory`; mig `20270101030900` (`close_score` na fila do
+> recompute, `list_production_sequence`, release gated). Faltam hub UI (Fase 3),
+> horizonte congelado no apontamento (Fase 2) e verificação live.
 >
 > **Relação com outras specs:**
 > - Complementa e **corrige o perímetro global** de
@@ -325,21 +329,20 @@ não zerar elegibilidade.
 ### Fase 0 — Spec + âncoras (esta entrega)
 
 - [x] `specs/sequencia-producao.md`
-- [ ] Nota em `fila-corte-lookahead.md`: D17 superseded por esta spec
-- [ ] Contratos vitest esqueleto (podem red primeiro)
+- [x] Nota em `fila-corte-lookahead.md`: D17 superseded por esta spec
+- [x] Contratos vitest (`productionSequence.test.ts` + extensão Lookahead)
 
-### Fase 1 — Cérebro (SQL + TS)
+### Fase 1 — Cérebro (SQL + TS) — em andamento
 
-Arquivos-alvo prováveis:
-
-| Área | Arquivos |
-|---|---|
-| Migration | `supabase/migrations/<carimbo>_production-sequence-engine.sql` — RPC lista/ordem, frozen, integrate promote gate |
-| Paridade TS | `src/lib/production/productionSequence.ts` (+ `*.test.ts`) |
-| Lookahead | `src/lib/corteLookahead.ts`, `src/hooks/useCorteLookahead.ts` — consumir ordem oficial |
-| Queue/schedule | corpo de `recompute_production_schedule*` — ORDER BY ordem oficial |
-| Promote | `promote_sale_order_item` / release RPC — porta R2/R6 |
-| Ateliê | ler `cabedal_prep_jobs.pipeline_status` / `atelier_complex_references` |
+| Área | Arquivos | Status |
+|---|---|---|
+| Migration | `supabase/migrations/20270101030900_production_sequence_engine.sql` | ✅ aplicada |
+| Paridade TS | `src/lib/production/productionSequence.ts` (+ testes) | ✅ |
+| Lookahead | `corteLookahead.ts`, `useCorteLookahead.ts` — ordem oficial + porta ateliê | ✅ |
+| Queue/schedule | `recompute_production_schedule_impl_249` ORDER BY close_score→due→cor→ref | ✅ |
+| Release | `release_corte_lookahead_items` — complexo só `received_at_factory` | ✅ |
+| Lista | RPC `list_production_sequence()` | ✅ |
+| Frozen / promote hard-gate amplo | apontamento 1º setor | ⏳ Fase 2 |
 
 ### Fase 2 — Perímetro um número (D4)
 
