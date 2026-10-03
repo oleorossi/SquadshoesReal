@@ -704,12 +704,12 @@ window._imagesReady=waitForImages();
  */
 export type ThermalLabelConfig = {
   marginPct: number;        // margem adicional em %, além da proteção técnica (default 0)
-  fontSizeName: number;     // pt for reference name (default 18)
-  fontSizeCode: number;     // pt for code (default 6.5)
-  fontSizeColor: number;    // pt for color row (default 11)
-  fontSizeMaterial: number; // pt for material (default 10)
-  fontSizeSize: number;     // pt para numeração individual de até 2 dígitos (default 34)
-  fontSizePed: number;      // pt for pedido (default 6)
+  fontSizeName: number;     // pt for reference name (default 26)
+  fontSizeCode: number;     // pt for code (default 8)
+  fontSizeColor: number;    // pt for color row (default 16)
+  fontSizeMaterial: number; // pt for material (default 14)
+  fontSizeSize: number;     // pt para numeração individual de até 2 dígitos (default 44)
+  fontSizePed: number;      // pt for pedido (default 8)
   imgWidthMm: number;       // image width in mm (default 28)
   imgHeightMm: number;      // image height in mm (default 24)
   leftColumnMm: number;     // left column width mm (default 29)
@@ -725,12 +725,14 @@ export type ThermalLabelConfig = {
 
 export const DEFAULT_THERMAL_CONFIG: ThermalLabelConfig = {
   marginPct: 0,
-  fontSizeName: 18,
-  fontSizeCode: 5.5,
-  fontSizeColor: 11,
-  fontSizeMaterial: 10,
-  fontSizeSize: 34,
-  fontSizePed: 5.5,
+  // Pisos altos de propósito (2026-10): na L42PRO a arte saía ilegível no chão.
+  // Identidade (nome/cor/nº) cresce primeiro; metadata fica menor.
+  fontSizeName: 26,
+  fontSizeCode: 8,
+  fontSizeColor: 16,
+  fontSizeMaterial: 14,
+  fontSizeSize: 44,
+  fontSizePed: 8,
   imgWidthMm: 28,
   imgHeightMm: 24,
   leftColumnMm: 29,
@@ -921,10 +923,10 @@ export function buildThermalLabelsHtml(labels: {
   const barcodeHeightMm = Math.max(6, +(innerH - 1.5).toFixed(1));
 
   // Faixas compactas: dão hierarquia sem roubar altura da arte principal.
-  const headerFontPt   = +(6.2 * scaleH).toFixed(1);
-  const headerCatFontPt = +(5.0 * scaleH).toFixed(1);
+  const headerFontPt   = +(10 * scaleH).toFixed(1);
+  const headerCatFontPt = +(7.5 * scaleH).toFixed(1);
   // Footer strip: "FABRICADO NO BRASIL · CNPJ" — required by INMETRO 576/2014
-  const footerFontPt   = +(3.4 * scaleH).toFixed(1);
+  const footerFontPt   = +(5.2 * scaleH).toFixed(1);
 
   const labelHtml = labels.map((l, idx) => {
     // Referência = SOMENTE o nome do modelo. O SKU/refCode (ex: '3213131')
@@ -1569,14 +1571,15 @@ export async function buildThermalLabelsPdf(
       doc.rect(0, 0, W, headerH, 'F');
       doc.setTextColor(255, 255, 255);
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7 * scale);
+      const headerFontPt = 12 * scale;
+      doc.setFontSize(headerFontPt);
       const headerLeftX = padX;
-      const headerTextY = headerH / 2 + (7 * scale) * 0.35 / 2.83;
+      const headerTextY = headerH / 2 + headerFontPt * 0.35 / 2.83;
       doc.text(fitText(headerName, W * 0.55), headerLeftX, headerTextY, { baseline: 'middle' });
       const headerRight = l.shoeCategory ? l.shoeCategory.toUpperCase() : (l.qty ? `× ${l.qty} PAR` : '');
       if (headerRight) {
         doc.setFont('helvetica', 'normal');
-        doc.setFontSize(5.5 * scale);
+        doc.setFontSize(8 * scale);
         doc.text(fitText(headerRight, W * 0.4), W - padX, headerTextY, { baseline: 'middle', align: 'right' });
       }
       doc.setTextColor(0, 0, 0);
@@ -1587,40 +1590,41 @@ export async function buildThermalLabelsPdf(
     const bodyBottom = H - footerH - padY * 0.5;
     const bodyH = bodyBottom - bodyTop;
 
-    // Código de barras na direita — MENOR (largura reduzida).
-    const barcodeW = Math.min(W * 0.20, 18);
+    // Código de barras na direita — compacto pra liberar largura pra texto/nº.
+    const barcodeW = Math.min(W * 0.18, 16);
     const barcodeX = W - padX - barcodeW;
 
     // Nº ENTRE a descrição e o código de barras — número GRANDE em chip preto
     // que ocupa toda a altura útil do corpo (bodyTop/bodyBottom já reservam a
     // margem de segurança da impressora) → número cresce pra cima e pra baixo.
-    const sizeBoxW = Math.min(W * 0.16, 13);
+    const sizeBoxW = Math.min(W * 0.20, 17);
     const sizeBoxX = barcodeX - 1.2 - sizeBoxW;
     const sizeBoxH = bodyH;
     const sizeBoxY = bodyTop;
 
-    // Foto do produto na ESQUERDA — maior (ocupa mais da etiqueta). Foto
+    // Foto do produto na ESQUERDA — um pouco menor pra priorizar tipografia
+    // legível no chão (decisão 2026-10: fonte pequena demais na L42PRO).
     // fallback: usa a variante cinza quando disponível (cai pra colorida se a
     // conversão tiver falhado por canvas tainted).
     const imgData = l.imageUrl
       ? ((l.imageIsFallback && grayImageCache.get(l.imageUrl)) || imageCache.get(l.imageUrl))
       : undefined;
-    const imgFrameW = imgData ? Math.min(W * 0.22, 20) : 0;
+    const imgFrameW = imgData ? Math.min(W * 0.18, 16) : 0;
     const imgFrameX = padX;
 
     const infoX = imgFrameX + (imgData ? imgFrameW + 1.2 : 0);
     const infoW = sizeBoxX - infoX - 1.2;
 
-    // Size box (chip compacto)
+    // Size box (chip — tipografia máxima que couber no quadro)
     if (l.size) {
       doc.setFillColor(0, 0, 0);
       doc.roundedRect(sizeBoxX, sizeBoxY, sizeBoxW, sizeBoxH, 0.7, 0.7, 'F');
       doc.setTextColor(255, 255, 255);
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(2.3 * scale);
-      doc.text('Nº', sizeBoxX + sizeBoxW / 2, sizeBoxY + sizeBoxH * 0.18, { align: 'center', baseline: 'middle' });
+      doc.setFontSize(4 * scale);
+      doc.text('Nº', sizeBoxX + sizeBoxW / 2, sizeBoxY + sizeBoxH * 0.16, { align: 'center', baseline: 'middle' });
       doc.setFont('helvetica', 'bold');
-      const sizeFontPt = Math.min(sizeBoxH * 2.3, sizeBoxW * 1.6);
+      const sizeFontPt = Math.min(sizeBoxH * 2.9, sizeBoxW * 2.15);
       doc.setFontSize(sizeFontPt);
       const sizeText = (l.size || '—').slice(0, 6);
       doc.text(sizeText, sizeBoxX + sizeBoxW / 2, sizeBoxY + sizeBoxH * 0.66, { align: 'center', baseline: 'middle' });
@@ -1638,12 +1642,12 @@ export async function buildThermalLabelsPdf(
       try { doc.addImage(imgData.dataUrl, 'PNG', ix, iy, drawW, drawH, undefined, 'FAST'); } catch { /* ignora foto que falhar */ }
     }
 
-    // Info column (ref name, color, material, pedido)
+    // Info column (ref name, color, material, pedido) — tipografia grande pro chão
     const infoY = bodyTop + 0.5;
     const lineGap = bodyH / 5;
 
-    // Ref name (largest)
-    const nameFontPt = Math.max(7, 10 * scale);
+    // Ref name (largest in the text column)
+    const nameFontPt = Math.max(14, 16 * scale);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(nameFontPt);
     const refDisplay = (l.refName || l.refCode || '—').toUpperCase();
@@ -1651,15 +1655,15 @@ export async function buildThermalLabelsPdf(
 
     // Color
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(Math.max(6, 6.5 * scale));
+    doc.setFontSize(Math.max(11, 12 * scale));
     const colorText = (l.color || '—').toUpperCase() + (l.qty ? `   ×${l.qty}` : '');
     doc.text(fitText(colorText, infoW), infoX, infoY + lineGap * 1.7, { baseline: 'middle' });
 
     // Material
     if (l.mainMaterial) {
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(Math.max(5, 5.5 * scale));
-      doc.setTextColor(85, 85, 85);
+      doc.setFontSize(Math.max(9, 10 * scale));
+      doc.setTextColor(40, 40, 40);
       doc.text(fitText(l.mainMaterial.toUpperCase(), infoW), infoX, infoY + lineGap * 2.7, { baseline: 'middle' });
       doc.setTextColor(0, 0, 0);
     }
@@ -1667,8 +1671,8 @@ export async function buildThermalLabelsPdf(
     // Client order number
     if (l.clientOrderNumber) {
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(Math.max(4.5, 5 * scale));
-      doc.setTextColor(110, 110, 110);
+      doc.setFontSize(Math.max(7, 8 * scale));
+      doc.setTextColor(70, 70, 70);
       doc.text(fitText(`PED. ${l.clientOrderNumber}`, infoW), infoX, infoY + lineGap * 3.6, { baseline: 'middle' });
       doc.setTextColor(0, 0, 0);
     }
@@ -1697,7 +1701,7 @@ export async function buildThermalLabelsPdf(
     doc.line(0, H - footerH, W, H - footerH);
     doc.setTextColor(0, 0, 0);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(Math.max(3.8, 4.2 * scale));
+    doc.setFontSize(Math.max(5.5, 6 * scale));
     const footerText = senderCnpj
       ? `FABRICADO NO BRASIL  ·  CNPJ ${senderCnpj}`
       : 'FABRICADO NO BRASIL';
@@ -1773,18 +1777,19 @@ export function computeZplLayout(dimensions = THERMAL_DEFAULT_DIMENSIONS, hasPho
   const photoY = padY + Math.max(0, Math.round((innerH - photoBox.height) / 2));
   const infoX = hasPhoto ? photoX + photoBox.width + Math.round(2 * dpMm) : padX;
 
-  const barcodeW = Math.round(W * 0.24);
+  const barcodeW = Math.round(W * 0.20);
   const barcodeX = W - padX - barcodeW;
-  const sizeBoxW = Math.round(W * 0.16);
+  const sizeBoxW = Math.round(W * 0.20);
   const sizeBoxH = innerH;
   const sizeBoxX = barcodeX - Math.round(2.5 * dpMm) - sizeBoxW;
   const infoW = sizeBoxX - infoX - Math.round(2 * dpMm);
   const barcodeH = innerH - Math.round(1 * dpMm);
 
-  const sizeFont = Math.round(innerH * 0.78);
-  const refFont = Math.max(18, Math.round(innerH * 0.22));
-  const colorFont = Math.max(16, Math.round(innerH * 0.18));
-  const matFont = Math.max(14, Math.round(innerH * 0.15));
+  // Tipografia ZPL ampliada (2026-10) — espelha o PDF legível no chão.
+  const sizeFont = Math.round(innerH * 0.90);
+  const refFont = Math.max(30, Math.round(innerH * 0.34));
+  const colorFont = Math.max(26, Math.round(innerH * 0.28));
+  const matFont = Math.max(22, Math.round(innerH * 0.22));
 
   return {
     dpi, dpMm, W, H, padX, padY, innerH,

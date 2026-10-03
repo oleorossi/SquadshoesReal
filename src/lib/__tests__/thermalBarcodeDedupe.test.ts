@@ -98,16 +98,16 @@ describe('buildThermalLabelsHtml — barcode por payload distinto', () => {
     expect(DEFAULT_THERMAL_CONFIG.rightColumnMm).toBe(24);
     expect(DEFAULT_THERMAL_CONFIG.imgWidthMm).toBe(28);
     expect(DEFAULT_THERMAL_CONFIG.imgHeightMm).toBe(24);
-    expect(DEFAULT_THERMAL_CONFIG.fontSizeName).toBe(18);
-    expect(DEFAULT_THERMAL_CONFIG.fontSizeColor).toBe(11);
-    expect(DEFAULT_THERMAL_CONFIG.fontSizeMaterial).toBe(10);
+    expect(DEFAULT_THERMAL_CONFIG.fontSizeName).toBe(26);
+    expect(DEFAULT_THERMAL_CONFIG.fontSizeColor).toBe(16);
+    expect(DEFAULT_THERMAL_CONFIG.fontSizeMaterial).toBe(14);
 
     const html = buildThermalLabelsHtml([label('SP130-36', '36')], 'logo.png');
     expect(html).toContain('grid-template-columns:29mm 1fr 15mm 22mm;');
     expect(html).toContain('column-gap:0.167mm;');
-    expect(html).toContain('font-size:18pt;');
-    expect(html).toContain('font-size:11pt;');
-    expect(html).toContain('font-size:10pt;');
+    expect(html).toContain('font-size:26pt;');
+    expect(html).toContain('font-size:16pt;');
+    expect(html).toContain('font-size:14pt;');
     expect(html).toContain('padding:0.3mm 1mm;');
   });
 
@@ -150,8 +150,8 @@ describe('buildThermalLabelsHtml — barcode por payload distinto', () => {
   it('amplia a numeração curta e centraliza o valor no bloco preto', () => {
     const html = buildThermalLabelsHtml([label('SP130-34', '34')], 'logo.png');
 
-    expect(DEFAULT_THERMAL_CONFIG.fontSizeSize).toBe(34);
-    expect(html).toContain('class="sz-value" style="font-size:34pt">34</span>');
+    expect(DEFAULT_THERMAL_CONFIG.fontSizeSize).toBe(44);
+    expect(html).toContain('class="sz-value" style="font-size:44pt">34</span>');
     expect(html).toContain('align-items:center;');
     expect(html).toContain('justify-content:center;');
     expect(html).toContain('align-self:center;');
