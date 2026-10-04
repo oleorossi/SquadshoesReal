@@ -4,10 +4,9 @@
 > sequenciador que senta **na frente** do motor diário de
 > [`remodelagem-producao.md`](remodelagem-producao.md).
 >
-> **Status implementação (04/10/2026):** Fases 1–6 entregues. Cérebro
-> (`30900`) + freeze (`31000`/`31001`) + hub Sequência + gate promote Ateliê
-> (`31100`) + críticos de Corte (`31200`, Q#2 default recusa). Catálogo
-> ateliê ainda **0 linhas** (dado do dono). Override admin auditado fora da
+> **Status implementação (04/10/2026):** Fases 1–7. Porta Corte (`31200`) +
+> paridade Lookahead (dm²→estoque) + `block_reason` na lista/hub (`31300`).
+> Catálogo ateliê ainda **0 linhas** (dado do dono). Override admin fora da
 > v1. Verificação live autenticada pendente (login).
 >
 > **Relação com outras specs:**
@@ -395,6 +394,15 @@ não zerar elegibilidade.
 | Fibra / BOM inteiro | fora da v1 (sem pin dedicado; D9) |
 | Override admin auditado | fora da v1 |
 
+### Fase 7 — Paridade Lookahead + motivo no hub (R9) ✅
+
+| Área | Status |
+|---|---|
+| Lookahead dm²→estoque | ✅ `corteRequiredStockQty` + ficha de componente |
+| Grupo forro/palmilha pelo nome | ✅ `resolveGroupIdByMaterialName` |
+| `list_production_sequence.block_reason` | ✅ `20270101031300` (pin zera) |
+| Hub coluna Porta | ✅ |
+
 ## Success criteria (DoD)
 
 - [x] Uma RPC/lista é a ordem oficial; Lookahead não tem score paralelo.
@@ -412,7 +420,9 @@ não zerar elegibilidade.
 2. ~~Promote com falta de material crítico: hard-fail ou override admin.~~
    **Fechado (Fase 6):** default recusa (skip no promote; warn+confirm no
    apontamento; pin fura). Override admin auditado = fora da v1.
-3. Penalidade exata da “data planejada cedo” no score (constante vs função).
+3. ~~Penalidade exata da “data planejada cedo”.~~
+   **Fechado:** função já em `sequenceUrgency` —
+   `1 / (1 + daysUntilPlannedStart)` quando ainda cedo; não zera elegibilidade.
 4. Migração de pins antigos quando a ordem oficial nascer.
 
 ## Non-goals / anti-patterns

@@ -47,6 +47,7 @@ export default function ProducaoSequencia() {
 
   const frozenCount = rows.filter((r) => r.isFrozen).length;
   const pinnedCount = rows.filter((r) => r.isPinned).length;
+  const blockedCount = rows.filter((r) => r.blockReason).length;
   const catalogEmpty = !atelierLoading && atelierCatalog.length === 0;
 
   return (
@@ -70,6 +71,7 @@ export default function ProducaoSequencia() {
           <StatCard label="Na sequência" value={String(rows.length)} hint="OPs na ordem oficial" />
           <StatCard label="Congeladas" value={String(frozenCount)} hint="Já apontaram 1º setor" tone="warning" />
           <StatCard label="Pinadas" value={String(pinnedCount)} hint="Exceção humana" />
+          <StatCard label="Porta bloqueia" value={String(blockedCount)} hint="Ateliê ou material de corte" tone="destructive" />
         </StatGrid>
       )}
 
@@ -136,6 +138,7 @@ export default function ProducaoSequencia() {
                 <TableHead>Prazo</TableHead>
                 <TableHead className="text-right">Fecha PV</TableHead>
                 <TableHead>Flags</TableHead>
+                <TableHead>Porta</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -173,6 +176,15 @@ export default function ProducaoSequencia() {
                         </Badge>
                       )}
                     </div>
+                  </TableCell>
+                  <TableCell className="max-w-[18rem] text-xs text-muted-foreground">
+                    {r.blockReason ? (
+                      <Badge variant="destructive-soft" className="normal-case tracking-normal font-medium whitespace-normal text-left">
+                        {r.blockReason}
+                      </Badge>
+                    ) : (
+                      '—'
+                    )}
                   </TableCell>
                 </TableRow>
               ))}

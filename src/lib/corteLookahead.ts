@@ -6,6 +6,11 @@
  * specs/sequencia-producao.md (fechar PV → urgência → cor → ref).
  */
 
+import {
+  areaToStockDivisor,
+  LINEAR_UNITS,
+  type ComponentSheetCandidate,
+} from '@/lib/materialConsumption';
 import { compareProductionSequence } from '@/lib/production/productionSequence';
 
 export const CORTE_LOOKAHEAD_SECTORS = [
@@ -370,22 +375,30 @@ export function resolveCorteMaterialPins(input: {
 }
 
 export function pickProductForColor(input: {
-  products: Array<{ id: string; group_id: string | null; color: string | null; active?: boolean | null; quantity?: number | null; name?: string | null }>;
+  products: Array<{
+    id: string;
+    group_id: string | null;
+    color: string | null;
+    active?: boolean | null;
+    quantity?: number | null;
+    name?: string | null;
+    unit?: string | null;
+  }>;
   productId: string | null;
   groupId: string | null;
   color: string | null | undefined;
-}): { id: string; name: string; quantity: number; group_id: string | null } | null {
+}): { id: string; name: string; quantity: number; group_id: string | null; unit: string | null } | null {
   const active = input.products.filter((p) => p.active !== false);
+  const pack = (p: (typeof active)[number]) => ({
+    id: p.id,
+    name: p.name || 'Material',
+    quantity: Number(p.quantity) || 0,
+    group_id: p.group_id,
+    unit: p.unit ?? null,
+  });
   if (input.productId) {
     const pinned = active.find((p) => p.id === input.productId);
-    if (pinned) {
-      return {
-        id: pinned.id,
-        name: pinned.name || 'Material',
-        quantity: Number(pinned.quantity) || 0,
-        group_id: pinned.group_id,
-      };
-    }
+    if (pinned) return pack(pinned);
   }
   if (!input.groupId) return null;
   const colorNorm = normalizeColor(input.color);
@@ -393,16 +406,55 @@ export function pickProductForColor(input: {
   if (inGroup.length === 0) return null;
   if (colorNorm) {
     const byColor = inGroup.find((p) => normalizeColor(p.color) === colorNorm);
-    if (byColor) {
-      return {
-        id: byColor.id,
-        name: byColor.name || 'Material',
-        quantity: Number(byColor.quantity) || 0,
-        group_id: byColor.group_id,
-      };
-    }
+    if (byColor) return pack(byColor);
   }
   return null;
+}
+
+/** Grupo da ficha pelo nome (technical_sheets não tem lining/insole *_group_id). */
+export function resolveGroupIdByMaterialName(
+  name: string | null | undefined,
+  groups: Array<{ id: string; name: string | null }>,
+): string | null {
+  const key = String(name || '').trim().toLowerCase();
+  if (!key) return null;
+  const hit = groups.find((g) => String(g.name || '').trim().toLowerCase() === key);
+  return hit?.id ?? null;
+}
+
+/**
+ * Consumo de corte na unidade de estoque — espelho da porta SQL (31200).
+ * Linear sem largura: incomplete='largura' (não comparar dm² cru com metros).
+ */
+export function corteRequiredStockQty(input: {
+  consumptionPerPair: number | null | undefined;
+  pairs: number;
+  hasProduct: boolean;
+  productUnit?: string | null;
+  componentSheet?: ComponentSheetCandidate | null;
+}): { qty: number; incomplete: 'largura' | null } {
+  const pairs = Math.max(0, Number(input.pairs) || 0);
+  const perPair = Number(input.consumptionPerPair);
+  if (!Number.isFinite(perPair) || perPair <= 0) {
+    return { qty: input.hasProduct ? 0.01 : 0, incomplete: null };
+  }
+  const dm2 = perPair * pairs;
+  const unit = String(input.productUnit || '').trim().toLowerCase();
+  const sheet = input.componentSheet ?? null;
+  if (LINEAR_UNITS.has(unit)) {
+    const div = areaToStockDivisor(unit, sheet);
+    if (div == null || div <= 0) {
+      return { qty: dm2, incomplete: 'largura' };
+    }
+    return { qty: dm2 / div, incomplete: null };
+  }
+  if (unit === 'placa' || unit === 'placas' || unit === 'chapa') {
+    const div = areaToStockDivisor(unit, sheet);
+    if (div != null && div > 0) {
+      return { qty: dm2 / div, incomplete: null };
+    }
+  }
+  return { qty: dm2, incomplete: null };
 }
 
 function normalizeColor(color: string | null | undefined): string {

@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   corteLookaheadScore,
+  corteRequiredStockQty,
   freeQtyExcludingOtherOrders,
   rankCorteLookaheadRows,
   remainingBillableValue,
+  resolveGroupIdByMaterialName,
   sheetHasCorteSector,
 } from '@/lib/corteLookahead';
 
@@ -112,5 +114,37 @@ describe('corteLookahead', () => {
     ], { today: new Date('2026-09-29T12:00:00') });
 
     expect(ranked.map((r) => r.itemId)).toEqual(['quase', 'urgente-novo']);
+  });
+
+  it('corteRequiredStockQty converte dm² linear pela largura da bobina', () => {
+    const got = corteRequiredStockQty({
+      consumptionPerPair: 5.7,
+      pairs: 12,
+      hasProduct: true,
+      productUnit: 'm',
+      componentSheet: { dimensions_width: 1370, dimensions_unit: 'mm' },
+    });
+    expect(got.incomplete).toBeNull();
+    expect(got.qty).toBeCloseTo(5.7 * 12 / 137, 3);
+  });
+
+  it('corteRequiredStockQty marca largura faltando em material linear', () => {
+    const got = corteRequiredStockQty({
+      consumptionPerPair: 5.7,
+      pairs: 12,
+      hasProduct: true,
+      productUnit: 'm',
+      componentSheet: { dimensions_width: 0, dimensions_unit: 'mm' },
+    });
+    expect(got.incomplete).toBe('largura');
+  });
+
+  it('resolveGroupIdByMaterialName ignora caixa e espaço', () => {
+    expect(resolveGroupIdByMaterialName(' napa soft ', [
+      { id: 'g1', name: 'NAPA SOFT' },
+    ])).toBe('g1');
+    expect(resolveGroupIdByMaterialName('OUTRA', [
+      { id: 'g1', name: 'NAPA SOFT' },
+    ])).toBeNull();
   });
 });

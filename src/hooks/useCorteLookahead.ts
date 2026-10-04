@@ -16,6 +16,8 @@ import {
   rankCorteLookaheadRows,
   remainingBillableValue,
   resolveCorteMaterialPins,
+  resolveGroupIdByMaterialName,
+  corteRequiredStockQty,
   sheetHasCorteSector,
   type CorteLookaheadChip,
   type CorteLookaheadSector,
@@ -77,9 +79,11 @@ interface SheetLite {
   production_sectors: unknown;
   image_url: string | null;
   upper_consumption: number | null;
+  upper_material: string | null;
   upper_material_product_id: string | null;
   upper_material_group_id: string | null;
   lining_consumption: number | null;
+  lining_material: string | null;
   lining_material_product_id: string | null;
   lining_material_group_id?: string | null;
   insole_consumption: number | null;
@@ -106,6 +110,7 @@ interface ProductLite {
   color: string | null;
   active: boolean | null;
   quantity: number | null;
+  unit: string | null;
 }
 
 const LIVE_OP_EXCLUDED = new Set(['Cancelada', 'Cancelado', 'Rascunho']);
@@ -117,9 +122,11 @@ const SHEET_SELECT = [
   'production_sectors',
   'image_url',
   'upper_consumption',
+  'upper_material',
   'upper_material_product_id',
   'upper_material_group_id',
   'lining_consumption',
+  'lining_material',
   'lining_material_product_id',
   'insole_consumption',
   'insole_material',
@@ -155,20 +162,17 @@ function consumptionForSector(sector: CorteLookaheadSector, sheet: SheetLite): n
   }
 }
 
-function requiredQtyForItem(
-  sector: CorteLookaheadSector,
-  sheet: SheetLite,
-  quantity: number,
-  hasProduct: boolean,
-): number {
-  // Fibra: sem consumo pinado na ficha — exige produto resolvido + saldo livre
-  // mínimo (0,01) pra não liberar linha “verde” com free=0.
-  if (sector === 'Corte Fibra') return hasProduct ? 0.01 : 0;
-  const perPair = consumptionForSector(sector, sheet);
-  if (perPair == null) {
-    return hasProduct ? 0.01 : 0;
+function materialNameForSector(sector: CorteLookaheadSector, sheet: SheetLite): string | null {
+  switch (sector) {
+    case 'Corte Cabedal':
+      return sheet.upper_material;
+    case 'Corte Forração':
+      return sheet.lining_material;
+    case 'Corte Palmilha':
+      return sheet.insole_material;
+    case 'Corte Fibra':
+      return null;
   }
-  return Math.max(0, Number(perPair) || 0) * Math.max(0, Number(quantity) || 0);
 }
 
 async function loadCorteLookahead(sector: CorteLookaheadSector): Promise<CorteLookaheadRow[]> {
@@ -295,22 +299,32 @@ async function loadCorteLookahead(sector: CorteLookaheadSector): Promise<CorteLo
     : [];
   const variantById = new Map(variants.map((v) => [v.id, v]));
 
+  const { data: groupsRaw, error: groupsErr } = await supabase
+    .from('product_groups')
+    .select('id, name')
+    .limit(4000);
+  if (groupsErr) throw groupsErr;
+  const groups = (groupsRaw ?? []) as Array<{ id: string; name: string | null }>;
+
   const groupIds = new Set<string>();
   const productPinIds = new Set<string>();
   for (const item of sectorCandidates) {
     const sheet = sheetById.get(item.reference_id!)!;
     const variant = item.material_variant_id ? variantById.get(item.material_variant_id) : null;
     const pins = resolveCorteMaterialPins({ sector, sheet, variant: variant ?? null });
-    if (pins.groupId) groupIds.add(pins.groupId);
+    const groupId = pins.groupId
+      || resolveGroupIdByMaterialName(materialNameForSector(sector, sheet), groups);
+    if (groupId) groupIds.add(groupId);
     if (pins.productId) productPinIds.add(pins.productId);
   }
 
+  const PRODUCT_SELECT = 'id, name, group_id, color, active, quantity, unit';
   const products: ProductLite[] = [];
   if (groupIds.size > 0) {
     const byGroup = await fetchInChunks<ProductLite>([...groupIds], 80, (chunk) =>
       supabase
         .from('products')
-        .select('id, name, group_id, color, active, quantity')
+        .select(PRODUCT_SELECT)
         .in('group_id', chunk),
     );
     products.push(...byGroup);
@@ -321,10 +335,39 @@ async function loadCorteLookahead(sector: CorteLookaheadSector): Promise<CorteLo
     const pinned = await fetchInChunks<ProductLite>(missingPins, 150, (chunk) =>
       supabase
         .from('products')
-        .select('id, name, group_id, color, active, quantity')
+        .select(PRODUCT_SELECT)
         .in('id', chunk),
     );
     products.push(...pinned);
+  }
+
+  type CsLite = {
+    product_id: string | null;
+    group_id: string | null;
+    dimensions_width: number | null;
+    dimensions_length: number | null;
+    dimensions_unit: string | null;
+  };
+  const csProductIds = [...new Set(products.map((p) => p.id))];
+  const csGroupIds = [...new Set(products.map((p) => p.group_id).filter((id): id is string => !!id))];
+  const componentSheets: CsLite[] = [];
+  if (csProductIds.length > 0) {
+    const byPid = await fetchInChunks<CsLite>(csProductIds, 80, (chunk) =>
+      supabase
+        .from('component_sheets')
+        .select('product_id, group_id, dimensions_width, dimensions_length, dimensions_unit')
+        .in('product_id', chunk),
+    );
+    componentSheets.push(...byPid);
+  }
+  if (csGroupIds.length > 0) {
+    const byGid = await fetchInChunks<CsLite>(csGroupIds, 80, (chunk) =>
+      supabase
+        .from('component_sheets')
+        .select('product_id, group_id, dimensions_width, dimensions_length, dimensions_unit')
+        .in('group_id', chunk),
+    );
+    componentSheets.push(...byGid);
   }
 
   const productIds = [...new Set(products.map((p) => p.id))];
@@ -379,14 +422,33 @@ async function loadCorteLookahead(sector: CorteLookaheadSector): Promise<CorteLo
     const sheet = sheetById.get(item.reference_id!)!;
     const variant = item.material_variant_id ? variantById.get(item.material_variant_id) : null;
     const pins = resolveCorteMaterialPins({ sector, sheet, variant: variant ?? null });
+    const groupId = pins.groupId
+      || resolveGroupIdByMaterialName(materialNameForSector(sector, sheet), groups);
     const product = pickProductForColor({
       products,
       productId: pins.productId,
-      groupId: pins.groupId,
+      groupId,
       color: item.color,
     });
 
-    const requiredQty = requiredQtyForItem(sector, sheet, item.quantity, !!product);
+    const cs = product
+      ? (componentSheets.find((s) => s.product_id === product.id)
+        || (product.group_id
+          ? componentSheets.find((s) => s.group_id === product.group_id
+            && (Number(s.dimensions_width) > 0 || Number(s.dimensions_length) > 0))
+          : null)
+        || null)
+      : null;
+    const need = sector === 'Corte Fibra'
+      ? { qty: product ? 0.01 : 0, incomplete: null as 'largura' | null }
+      : corteRequiredStockQty({
+          consumptionPerPair: consumptionForSector(sector, sheet),
+          pairs: item.quantity,
+          hasProduct: !!product,
+          productUnit: product?.unit,
+          componentSheet: cs,
+        });
+    const requiredQty = need.qty;
     const freeQty = product
       ? freeQtyExcludingOtherOrders({
           quantity: product.quantity,
@@ -412,6 +474,9 @@ async function loadCorteLookahead(sector: CorteLookaheadSector): Promise<CorteLo
     const completionPct = pvCompletionPct({ pairsWithOp, pairsTotalOnPv: pairsTotal });
 
     let gapLabel: string | null = null;
+    if (need.incomplete === 'largura') {
+      gapLabel = 'Cadastro incompleto: largura da bobina';
+    }
     if (sector === 'Corte Fibra' && !product) {
       gapLabel = 'Cadastro incompleto: material do setor';
     }
@@ -422,6 +487,9 @@ async function loadCorteLookahead(sector: CorteLookaheadSector): Promise<CorteLo
       pipelineStatus: prepStatusByItem.get(item.id)?.status ?? null,
     });
     let liberableBase = true;
+    if (need.incomplete === 'largura') {
+      liberableBase = false;
+    }
     if (!atelierGate.ready) {
       liberableBase = false;
       gapLabel = atelierGate.blockReason || gapLabel;

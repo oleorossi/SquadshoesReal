@@ -19,6 +19,7 @@ export interface ProductionSequenceRow {
   isPinned: boolean;
   isFrozen: boolean;
   sequenceFrozenAt: string | null;
+  blockReason: string | null;
 }
 
 export const productionSequenceKeys = {
@@ -44,6 +45,9 @@ async function fetchProductionSequence(): Promise<ProductionSequenceRow[]> {
     isPinned: Boolean(r.is_pinned),
     isFrozen: Boolean(r.is_frozen),
     sequenceFrozenAt: r.sequence_frozen_at != null ? String(r.sequence_frozen_at) : null,
+    blockReason: r.block_reason != null && String(r.block_reason).trim()
+      ? String(r.block_reason)
+      : null,
   }));
 }
 
