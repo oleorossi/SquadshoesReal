@@ -4,10 +4,11 @@
 > sequenciador que senta **na frente** do motor diário de
 > [`remodelagem-producao.md`](remodelagem-producao.md).
 >
-> **Status implementação (04/10/2026):** Fases 1–5 entregues. Cérebro
+> **Status implementação (04/10/2026):** Fases 1–6 entregues. Cérebro
 > (`30900`) + freeze (`31000`/`31001`) + hub Sequência + gate promote Ateliê
-> (`31100`). Catálogo ateliê ainda **0 linhas** (dado do dono). Material
-> crítico hard-fail = Q#2. Verificação live autenticada pendente (login).
+> (`31100`) + críticos de Corte (`31200`, Q#2 default recusa). Catálogo
+> ateliê ainda **0 linhas** (dado do dono). Override admin auditado fora da
+> v1. Verificação live autenticada pendente (login).
 >
 > **Relação com outras specs:**
 > - Complementa e **corrige o perímetro global** de
@@ -343,7 +344,7 @@ não zerar elegibilidade.
 | Lista | RPC `list_production_sequence()` | ✅ |
 | Frozen / list is_frozen | apontamento 1º setor → `sequence_frozen_at` | ✅ `20270101031000` |
 | Promote hard-gate amplo (Ateliê) | `promote_sale_order_item` + `sale_order_item_factory_gate_block_reason` | ✅ `20270101031100` |
-| Material crítico hard-fail | promote com falta de estoque | ⏳ Q aberta #2 |
+| Material crítico hard-fail | promote skip + apontar `porta_sequencia` (D9, sem BOM) | ✅ `20270101031200` |
 
 ### Fase 2 — Horizonte congelado + ordem única ✅
 
@@ -379,10 +380,20 @@ não zerar elegibilidade.
 
 | Área | Status |
 |---|---|
-| `sale_order_item_factory_gate_block_reason` | ✅ porta Ateliê única |
+| `sale_order_item_factory_gate_block_reason` | ✅ porta Ateliê + Corte (`31200`) |
 | `promote_sale_order_item` (atomic/partial/lookahead) | ✅ skip com motivo |
 | `release_corte_lookahead_items` | ✅ mesma porta (RAISE) |
-| Material crítico hard-fail | ⏳ Q#2 |
+| Material crítico hard-fail | ✅ `20270101031200` |
+
+### Fase 6 — Críticos de Corte (R2.1 / R6.2 / Q#2) ✅
+
+| Área | Status |
+|---|---|
+| `sale_order_item_corte_material_gate_block_reason` | ✅ cabedal/forração/palmilha; dm²→estoque; saldo livre − outros PVs |
+| Promote | ✅ mesma porta (skip) — default recusa |
+| Apontamento 1º setor | ✅ aviso `porta_sequencia` + confirmar; pin fura |
+| Fibra / BOM inteiro | fora da v1 (sem pin dedicado; D9) |
+| Override admin auditado | fora da v1 |
 
 ## Success criteria (DoD)
 
@@ -398,8 +409,9 @@ não zerar elegibilidade.
 ## Open questions (não bloqueiam v1)
 
 1. Nome final da rota (`/producao/sequencia` vs `/producao/liberacao`).
-2. Se promote com falta de material crítico é sempre hard-fail ou override
-   admin auditado.
+2. ~~Promote com falta de material crítico: hard-fail ou override admin.~~
+   **Fechado (Fase 6):** default recusa (skip no promote; warn+confirm no
+   apontamento; pin fura). Override admin auditado = fora da v1.
 3. Penalidade exata da “data planejada cedo” no score (constante vs função).
 4. Migração de pins antigos quando a ordem oficial nascer.
 
