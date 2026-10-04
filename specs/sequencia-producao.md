@@ -6,8 +6,9 @@
 >
 > **Status implementação (04/10/2026):** Fases 1–7. Porta Corte (`31200`) +
 > paridade Lookahead (dm²→estoque) + `block_reason` na lista/hub (`31300`).
-> Catálogo ateliê ainda **0 linhas** (dado do dono). Override admin fora da
-> v1. Verificação live autenticada pendente (login).
+> Q#4 fechada: **0 pins** na fila (nada a migrar). Catálogo ateliê ainda
+> **0 linhas** (dado do dono). Override admin fora da v1. Verificação live
+> autenticada pendente (login). Q#1 (nome da rota) segue aberta.
 >
 > **Relação com outras specs:**
 > - Complementa e **corrige o perímetro global** de
@@ -423,7 +424,9 @@ não zerar elegibilidade.
 3. ~~Penalidade exata da “data planejada cedo”.~~
    **Fechado:** função já em `sequenceUrgency` —
    `1 / (1 + daysUntilPlannedStart)` quando ainda cedo; não zera elegibilidade.
-4. Migração de pins antigos quando a ordem oficial nascer.
+4. ~~Migração de pins antigos quando a ordem oficial nascer.~~
+   **Fechado (Fase 7):** medido 04/10/2026 — `production_queue` tem 62 linhas
+   e **0** `pinned_position`. Nada a migrar. Pin novo continua exceção (D17).
 
 ## Non-goals / anti-patterns
 
