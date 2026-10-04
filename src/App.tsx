@@ -118,6 +118,7 @@ const PCPHub = lazy(() => import("./pages/PCPHub"));
 // diretas no lugar do hub de 14 abas. PCPHub virou só o redirect legado.
 const ProducaoPlanejamento = lazy(() => import("./pages/ProducaoPlanejamento"));
 const ProducaoAntecipacao = lazy(() => import("./pages/ProducaoAntecipacao"));
+const ProducaoSequencia = lazy(() => import("./pages/ProducaoSequencia"));
 const ProducaoCorteLookahead = lazy(() => import("./pages/ProducaoCorteLookahead"));
 const ProducaoKanban = lazy(() => import("./pages/ProducaoKanban"));
 const ProducaoKanbanGestao = lazy(() => import("./pages/ProducaoKanbanGestao"));
@@ -866,6 +867,10 @@ const router = createBrowserRouter([
       {
         path: "producao/antecipacao",
         element: <ProducaoAntecipacao />,
+      },
+      {
+        path: "producao/sequencia",
+        element: <ProducaoSequencia />,
       },
       {
         path: "producao/corte-lookahead",

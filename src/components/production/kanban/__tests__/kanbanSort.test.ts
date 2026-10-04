@@ -31,7 +31,7 @@ function card(partial: Partial<KanbanCardData['q']> & { order_id: string }): Kan
 }
 
 describe('sortKanbanColumnCards', () => {
-  it('default atraso: mais atrasada primeiro; pin no topo', () => {
+  it('pin no topo; sem queue_position, atraso manda', () => {
     const mode: KanbanSortMode = 'atraso';
     const sorted = sortKanbanColumnCards([
       card({ order_id: '1', late_days: 2, order_number: 'OP-1' }),
@@ -41,7 +41,16 @@ describe('sortKanbanColumnCards', () => {
     expect(sorted.map((c) => c.q.order_id)).toEqual(['3', '2', '1']);
   });
 
-  it('setup: agrupa solado+cor; dentro do bloco, atraso', () => {
+  it('queue_position oficial vence atraso (mesma hierarquia da sequência)', () => {
+    const sorted = sortKanbanColumnCards([
+      card({ order_id: 'late', late_days: 9, queue_position: 3, order_number: 'OP-L' }),
+      card({ order_id: 'early', late_days: 0, queue_position: 1, order_number: 'OP-E' }),
+      card({ order_id: 'mid', late_days: 4, queue_position: 2, order_number: 'OP-M' }),
+    ], 'atraso');
+    expect(sorted.map((c) => c.q.order_id)).toEqual(['early', 'mid', 'late']);
+  });
+
+  it('setup: agrupa solado+cor; dentro do bloco, atraso (sem queue_position)', () => {
     const sole = new Map<string, string>([
       ['ref-a::PRETO', 'sole-01'],
       ['ref-b::PRETO', 'sole-01'],

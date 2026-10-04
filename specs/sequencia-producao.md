@@ -4,11 +4,12 @@
 > sequenciador que senta **na frente** do motor diário de
 > [`remodelagem-producao.md`](remodelagem-producao.md).
 >
-> **Status implementação (03/10/2026):** Fase 1 parcial entregue —
-> lib `productionSequence.ts` + testes; Lookahead usa ordem oficial e porta
-> ateliê `received_at_factory`; mig `20270101030900` (`close_score` na fila do
-> recompute, `list_production_sequence`, release gated). Faltam hub UI (Fase 3),
-> horizonte congelado no apontamento (Fase 2) e verificação live.
+> **Status implementação (04/10/2026):** Fase 1 + freeze (Fase 2) + hub
+> Sequência (Fase 3) entregues. Mig `20270101030900` (cérebro) +
+> `20270101031000`/`31001` (frozen + ordem na view/recompute). Hub
+> `/producao/sequencia`, home do papel produção, Kanban usa `queue_position`.
+> Pendente: hard-gate amplo de promote (Q aberta #2), catálogo ateliê (Fase 4),
+> verificação live pós-deploy.
 >
 > **Relação com outras specs:**
 > - Complementa e **corrige o perímetro global** de
@@ -342,25 +343,26 @@ não zerar elegibilidade.
 | Queue/schedule | `recompute_production_schedule_impl_249` ORDER BY close_score→due→cor→ref | ✅ |
 | Release | `release_corte_lookahead_items` — complexo só `received_at_factory` | ✅ |
 | Lista | RPC `list_production_sequence()` | ✅ |
-| Frozen / promote hard-gate amplo | apontamento 1º setor | ⏳ Fase 2 |
+| Frozen / list is_frozen | apontamento 1º setor → `sequence_frozen_at` | ✅ `20270101031000` |
+| Promote hard-gate amplo | `promote_sale_order_item` | ⏳ Q aberta #2 (default: porta Lookahead já gated) |
 
-### Fase 2 — Perímetro um número (D4)
+### Fase 2 — Horizonte congelado + ordem única ✅
 
-| Área | Arquivos |
-|---|---|
-| Engine hook | `src/hooks/useProductionEngine.ts` |
-| Telas | `ProducaoPlanejamento.tsx`, `ProducaoKanbanGestao.tsx`, `ProducaoEstouro.tsx`, `ProducaoSetoresConfig.tsx` |
-| Apontamento | `Setores.tsx` + shells; gate 1º setor |
-| Kanban pointing | `pointingPlan.ts` / `applyPointing` — respeitar liberação |
+| Área | Arquivos | Status |
+|---|---|---|
+| Freeze trigger | `tg_freeze_production_sequence_on_first_sector` | ✅ |
+| Recompute / view ORDER BY | `impl_249` + `v_production_queue_detail` | ✅ `31000`/`31001` |
+| Kanban sort | `kanbanSort.ts` — `queue_position` após pin | ✅ |
+| Engine / Planejamento | já lê `queue_position` da view | ✅ (herda ordem) |
 
-### Fase 3 — Hub UI
+### Fase 3 — Hub UI ✅
 
-| Área | Arquivos |
-|---|---|
-| Página | `src/pages/ProducaoSequencia.tsx` (novo) |
-| Nav | `src/data/navigation.ts`, `src/App.tsx`, `ROUTE_MODULE_MAP` |
-| Hub | `ProducaoHub.tsx` — entrada = sequência |
-| Lookahead | rebaixar a vista / redirect documentado |
+| Área | Arquivos | Status |
+|---|---|---|
+| Página | `src/pages/ProducaoSequencia.tsx` | ✅ |
+| Hook | `useProductionSequence.ts` | ✅ |
+| Nav / rota / módulo | `navigation.ts`, `App.tsx`, `ROUTE_MODULE_MAP` | ✅ |
+| Hub + home papel | `ProducaoHub.tsx`, `ROLE_MENU_PRESENTATION.producao` | ✅ |
 
 ### Fase 4 — Operação + verificação produção
 
@@ -372,13 +374,13 @@ não zerar elegibilidade.
 
 ## Success criteria (DoD)
 
-- [ ] Uma RPC/lista é a ordem oficial; Lookahead não tem score paralelo.
-- [ ] Fechar PV vence mesma cor de outro PV no teste de contrato.
-- [ ] Complexo `sent_to_contractor` não promove; `received_at_factory` promove.
-- [ ] Apontamento no 1º setor congela posição.
-- [ ] Pin fura regra sem desligar o motor.
-- [ ] Planejamento/Kanban/Estouro usam a mesma ordem + mesma capacidade Setores.
-- [ ] Hub Sequência é a entrada de Produção do perímetro D4.
+- [x] Uma RPC/lista é a ordem oficial; Lookahead não tem score paralelo.
+- [x] Fechar PV vence mesma cor de outro PV no teste de contrato.
+- [x] Complexo `sent_to_contractor` não promove; `received_at_factory` promove.
+- [x] Apontamento no 1º setor congela posição.
+- [x] Pin fura regra sem desligar o motor.
+- [x] Planejamento/Kanban usam a mesma ordem (`queue_position`); capacidade Setores intacta.
+- [x] Hub Sequência é a entrada de Produção do perímetro D4.
 - [ ] Verificado no site live após deploy.
 
 ## Open questions (não bloqueiam v1)

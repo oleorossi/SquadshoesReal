@@ -89,6 +89,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   // governadas pelo módulo 'producao', igual às demais /producao/*.
   '/producao/planejamento': 'producao',
   '/producao/antecipacao': 'producao',
+  '/producao/sequencia': 'producao',
   '/producao/corte-lookahead': 'producao',
   '/producao/kanban': 'producao',
   '/producao/estouro': 'producao',

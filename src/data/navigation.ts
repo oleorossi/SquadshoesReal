@@ -76,6 +76,7 @@ export const navigationCatalog: NavigationResource[] = [
 
   // Produção
   { path: '/producao', label: 'Produção', group: 'Produção', icon: Factory, surfaces: ['hub', 'command'], preload: () => import('@/pages/ProducaoHub') },
+  { path: '/producao/sequencia', label: 'Sequência / Liberação', group: 'Produção', icon: RouteIcon, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/ProducaoSequencia') },
   { path: '/producao/planejamento', label: 'Planejamento', group: 'Produção', icon: ClipboardCheck, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/ProducaoPlanejamento') },
   { path: '/producao/antecipacao', label: 'Antecipação', group: 'Produção', icon: Clock, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/ProducaoAntecipacao') },
   { path: '/producao/corte-lookahead', label: 'Fila de Corte', group: 'Produção', icon: Scissors, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/ProducaoCorteLookahead') },
@@ -238,6 +239,7 @@ const hubsDeclarados: NavigationHub[] = [
     icon: Factory,
     groups: ['Produção'],
     children: [
+      resource('/producao/sequencia'),
       resource('/producao/corte-lookahead'),
       resource('/producao/planejamento'),
       resource('/producao/antecipacao'),
@@ -431,8 +433,8 @@ export const ROLE_MENU_PRESENTATION: Record<string, RoleMenuPresentation> = {
   gerente: { home: '/dashboard', groupOrder: ORDEM_COMPLETA },
   consulta:{ home: '/dashboard', groupOrder: ORDEM_COMPLETA },
 
-  // Quem aponta produção não começa o dia olhando KPI: começa apontando.
-  producao:     { home: '/producao/apontamento', groupOrder: ['Produção', 'Materiais', 'Expedição', 'Engenharia', 'RH'] },
+  // Quem aponta produção começa na sequência oficial; apontamento fica no hub.
+  producao:     { home: '/producao/sequencia', groupOrder: ['Produção', 'Materiais', 'Expedição', 'Engenharia', 'RH'] },
   comercial:    { home: '/comercial',            groupOrder: ['Comercial'] },
   nfe_operator: { home: '/fiscal',               groupOrder: ['Fiscal', 'Comercial'] },
   almoxarifado: { home: '/materiais',            groupOrder: ['Materiais'] },
