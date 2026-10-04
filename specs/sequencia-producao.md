@@ -366,8 +366,11 @@ não zerar elegibilidade.
 
 ### Fase 4 — Operação + verificação produção
 
-- Popular/manter `atelier_complex_references` para refs realmente complexas.
-- Conferir críticos de corte = resolvers Lookahead.
+- [ ] Popular/manter `atelier_complex_references` para refs realmente complexas
+  (**dado do dono** — medido 04/10/2026: **0 linhas** ativas; hub Sequência
+  avisa e linka `/atelie?view=cadastro`).
+- [x] UI de operação: aviso + atalho Ateliê na Sequência (não inventar refs).
+- Conferir críticos de corte = resolvers Lookahead (já na release Fase 1).
 - Após merge em `main` + deploy: agente `computerUse` em
   https://squadshoes-real.vercel.app no fluxo sequenciar → liberar → mesma
   ordem no Kanban/Apontamento (regra do dono).

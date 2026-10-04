@@ -39,11 +39,14 @@ describe('production sequence frozen (contract)', () => {
     const app = readFileSync(resolve(__dirname, '../App.tsx'), 'utf8');
     const access = readFileSync(resolve(__dirname, '../hooks/useAccessControl.ts'), 'utf8');
     const hub = readFileSync(resolve(__dirname, '../pages/ProducaoHub.tsx'), 'utf8');
+    const page = readFileSync(resolve(__dirname, '../pages/ProducaoSequencia.tsx'), 'utf8');
     expect(nav).toContain("'/producao/sequencia'");
     expect(nav).toContain("home: '/producao/sequencia'");
     expect(app).toContain('producao/sequencia');
     expect(access).toContain("'/producao/sequencia': 'producao'");
     expect(hub).toContain("'/producao/sequencia'");
+    expect(page).toContain('/atelie?view=cadastro');
+    expect(page).toContain('useAtelierCatalog');
   });
 
   it('kanban gestão ordena por queue_position da sequência', () => {

@@ -9,6 +9,7 @@ import {
   Factory,
   Lock,
   PushPin as Pin,
+  Sparkle as Sparkles,
 } from '@phosphor-icons/react';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Badge } from '@/components/ui/badge';
@@ -16,7 +17,9 @@ import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Panel } from '@/components/ui/panel';
 import { Skeleton } from '@/components/ui/skeleton';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { useAtelierCatalog } from '@/hooks/useAtelier';
 import { useProductionSequence } from '@/hooks/useProductionSequence';
 
 const fmtDay = (iso: string | null) =>
@@ -31,6 +34,7 @@ const SHORTCUTS = [
   { to: '/producao/estouro', label: 'Estouro', icon: AlertTriangle, hint: 'Acima da capacidade' },
   { to: '/producao/apontamento', label: 'Apontamento', icon: ListChecks, hint: 'Chão por setor' },
   { to: '/producao/setores', label: 'Setores', icon: Factory, hint: 'Capacidade pares/dia' },
+  { to: '/atelie?view=cadastro', label: 'Ateliê (cadastro)', icon: Sparkles, hint: 'Refs de cabedal complexo' },
 ] as const;
 
 /**
@@ -39,6 +43,11 @@ const SHORTCUTS = [
  */
 export default function ProducaoSequencia() {
   const { data: rows = [], isLoading, isError, refetch } = useProductionSequence();
+  const { data: atelierCatalog = [], isLoading: atelierLoading } = useAtelierCatalog();
+
+  const frozenCount = rows.filter((r) => r.isFrozen).length;
+  const pinnedCount = rows.filter((r) => r.isPinned).length;
+  const catalogEmpty = !atelierLoading && atelierCatalog.length === 0;
 
   return (
     <div className="space-y-4">
@@ -55,6 +64,25 @@ export default function ProducaoSequencia() {
           </Button>
         )}
       />
+
+      {!isLoading && !isError && (
+        <StatGrid>
+          <StatCard label="Na sequência" value={String(rows.length)} hint="OPs na ordem oficial" />
+          <StatCard label="Congeladas" value={String(frozenCount)} hint="Já apontaram 1º setor" tone="warning" />
+          <StatCard label="Pinadas" value={String(pinnedCount)} hint="Exceção humana" />
+        </StatGrid>
+      )}
+
+      {catalogEmpty && (
+        <div className="flex flex-col gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-foreground">
+            Catálogo de cabedal complexo está vazio — a porta Ateliê não distingue refs complexas até cadastrar em Ateliê.
+          </p>
+          <Button asChild variant="outline" size="sm" className="h-8 shrink-0">
+            <Link to="/atelie?view=cadastro">Abrir cadastro</Link>
+          </Button>
+        </div>
+      )}
 
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {SHORTCUTS.map((s) => (
