@@ -4,12 +4,10 @@
 > sequenciador que senta **na frente** do motor diário de
 > [`remodelagem-producao.md`](remodelagem-producao.md).
 >
-> **Status implementação (04/10/2026):** Fase 1 + freeze (Fase 2) + hub
-> Sequência (Fase 3) entregues. Mig `20270101030900` (cérebro) +
-> `20270101031000`/`31001` (frozen + ordem na view/recompute). Hub
-> `/producao/sequencia`, home do papel produção, Kanban usa `queue_position`.
-> Pendente: hard-gate amplo de promote (Q aberta #2), catálogo ateliê (Fase 4),
-> verificação live pós-deploy.
+> **Status implementação (04/10/2026):** Fases 1–5 entregues. Cérebro
+> (`30900`) + freeze (`31000`/`31001`) + hub Sequência + gate promote Ateliê
+> (`31100`). Catálogo ateliê ainda **0 linhas** (dado do dono). Material
+> crítico hard-fail = Q#2. Verificação live autenticada pendente (login).
 >
 > **Relação com outras specs:**
 > - Complementa e **corrige o perímetro global** de
@@ -344,7 +342,8 @@ não zerar elegibilidade.
 | Release | `release_corte_lookahead_items` — complexo só `received_at_factory` | ✅ |
 | Lista | RPC `list_production_sequence()` | ✅ |
 | Frozen / list is_frozen | apontamento 1º setor → `sequence_frozen_at` | ✅ `20270101031000` |
-| Promote hard-gate amplo | `promote_sale_order_item` | ⏳ Q aberta #2 (default: porta Lookahead já gated) |
+| Promote hard-gate amplo (Ateliê) | `promote_sale_order_item` + `sale_order_item_factory_gate_block_reason` | ✅ `20270101031100` |
+| Material crítico hard-fail | promote com falta de estoque | ⏳ Q aberta #2 |
 
 ### Fase 2 — Horizonte congelado + ordem única ✅
 
@@ -364,7 +363,7 @@ não zerar elegibilidade.
 | Nav / rota / módulo | `navigation.ts`, `App.tsx`, `ROUTE_MODULE_MAP` | ✅ |
 | Hub + home papel | `ProducaoHub.tsx`, `ROLE_MENU_PRESENTATION.producao` | ✅ |
 
-### Fase 4 — Operação + verificação produção
+### Fase 4 — Operação + verificação produção ✅ (UI)
 
 - [ ] Popular/manter `atelier_complex_references` para refs realmente complexas
   (**dado do dono** — medido 04/10/2026: **0 linhas** ativas; hub Sequência
@@ -373,7 +372,17 @@ não zerar elegibilidade.
 - Conferir críticos de corte = resolvers Lookahead (já na release Fase 1).
 - Após merge em `main` + deploy: agente `computerUse` em
   https://squadshoes-real.vercel.app no fluxo sequenciar → liberar → mesma
-  ordem no Kanban/Apontamento (regra do dono).
+  ordem no Kanban/Apontamento (regra do dono) — **login bloqueou** verificação
+  autenticada; bundle live confirma rota.
+
+### Fase 5 — Hard-gate promote (R6.1) ✅
+
+| Área | Status |
+|---|---|
+| `sale_order_item_factory_gate_block_reason` | ✅ porta Ateliê única |
+| `promote_sale_order_item` (atomic/partial/lookahead) | ✅ skip com motivo |
+| `release_corte_lookahead_items` | ✅ mesma porta (RAISE) |
+| Material crítico hard-fail | ⏳ Q#2 |
 
 ## Success criteria (DoD)
 
