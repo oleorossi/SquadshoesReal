@@ -245,13 +245,20 @@ describe('Inverter saída — fichas de operador', () => {
     expect(isOperatorPrintSector('Relatório Gerencial')).toBe(false);
   });
 
-  it('desabilita inverter quando há qualquer ficha de operador no A4', () => {
-    expect(reverseOutputAllowed({ isA4: true, sectors: ['Corte Palmilha'] })).toBe(false);
-    expect(reverseOutputAllowed({ isA4: true, sectors: ['Corte Cabedal', 'Relatório Gerencial'] })).toBe(false);
+  // Decisão 05/10/2026: trava de 24/09 (bloquear A4 com setor de operador)
+  // supersedida — inverter liberado em qualquer combinação pra pilha
+  // face-pra-cima sair com Palmilha no topo.
+  it('libera inverter em A4 com um ou vários setores de operador', () => {
+    expect(reverseOutputAllowed({ isA4: true, sectors: ['Corte Palmilha'] })).toBe(true);
+    expect(reverseOutputAllowed({ isA4: true, sectors: ['Corte Cabedal', 'Relatório Gerencial'] })).toBe(true);
+    expect(reverseOutputAllowed({
+      isA4: true,
+      sectors: ['Palmilha', 'Corte Cabedal', 'Costura Cabedal', 'Expedição'],
+    })).toBe(true);
     expect(reverseOutputAllowed({ isA4: true, sectors: ['Relatório Gerencial'] })).toBe(true);
   });
 
-  it('cartão/caixa (!isA4) ainda podem inverter', () => {
+  it('cartão/caixa (!isA4) também podem inverter', () => {
     expect(reverseOutputAllowed({ isA4: false, sectors: ['Corte Cabedal'] })).toBe(true);
   });
 });

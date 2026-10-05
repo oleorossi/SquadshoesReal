@@ -1019,14 +1019,14 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   // ── Saída invertida (2026-07-24, pedido do dono) ──
   // A impressora da fábrica empilha com a face pra CIMA: a 1ª página emitida
   // fica no fundo e o maço sai "de trás pra frente". Com o toggle LIGADO
-  // (default), o print emite tudo da última página pra primeira e a pilha sai
-  // na ordem certa de leitura. Persistido por navegador (localStorage) pra
-  // outra estação com impressora normal poder desligar uma vez só.
+  // (default), o print/PDF emite tudo da última página pra primeira e a pilha
+  // sai na ordem certa de leitura (Palmilha no topo → … → Expedição).
+  // Persistido por navegador (localStorage) pra outra estação com impressora
+  // normal poder desligar uma vez só.
   //
-  // ⚠ Fichas de operador (todos os setores A4 exceto Relatório Gerencial):
-  // decisão do dono 24/09/2026 — opção DESABILITADA. A inversão bagunçava o
-  // maço de setor no chão de fábrica; só o Relatório (e cartão/caixa, que
-  // não são ficha de operador) ainda podem inverter.
+  // Gate 24/09/2026 (desabilitado em fichas de operador A4) SUPERSEDIDO em
+  // 05/10/2026: inverter liberado em qualquer combinação A4 — ver
+  // printReverseGate.ts. Preview em tela NUNCA inverte.
   const reverseAllowed = reverseOutputAllowed({ isA4, sectors: activeSectors });
   const [reverseOutput, setReverseOutput] = useState<boolean>(() => {
     try { return (localStorage.getItem('print_reverse_output') ?? '1') === '1'; }
@@ -1041,11 +1041,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       return next;
     });
   };
-  // Flip TRANSITÓRIO: true só entre beforeprint e afterprint. A inversão nunca
-  // aparece na pré-visualização em tela (senão pareceria o próprio bug). O
-  // beforeprint dispara síncrono dentro de window.print() — tanto no botão
-  // Imprimir quanto num Ctrl+P manual — e o flushSync garante que o snapshot
-  // do diálogo pega o DOM já invertido (mesmo padrão da re-medição do
+  // Flip TRANSITÓRIO: true só entre beforeprint/afterprint (Imprimir) ou
+  // durante a serialização do Gerar PDF. A inversão nunca aparece na
+  // pré-visualização em tela (senão pareceria o próprio bug). O beforeprint
+  // dispara síncrono dentro de window.print() — tanto no botão Imprimir
+  // quanto num Ctrl+P manual — e o flushSync garante que o snapshot do
+  // diálogo pega o DOM já invertido (mesmo padrão da re-medição do
   // PaginatedSheet). afterprint (ou cancelamento do diálogo) restaura.
   const [printReversing, setPrintReversing] = useState(false);
   const [preparingNativePrint, setPreparingNativePrint] = useState(false);
@@ -1235,6 +1236,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   const printWith = async () => {
     if (!validatePageRangeForPrint()) return;
     setGeneratingPdf(true);
+    let flippedForPdf = false;
     try {
       await waitForPrintAssets();
 
@@ -1245,6 +1247,14 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       // @page{margin:0}, isso volta a acontecer e ainda carimba URL/data no papel.
       // Serializamos o DOM JÁ PAGINADO (o auto-ajuste de fonte roda aqui, como
       // sempre) e o servidor só imprime — nenhum layout mudou.
+      //
+      // Inverter saída: o flip do beforeprint NÃO roda neste caminho. Espelhamos
+      // o mesmo flushSync pra o HTML serializado sair na ordem da pilha face-pra-cima.
+      if (effectiveReverseOutput) {
+        try { flushSync(() => setPrintReversing(true)); }
+        catch { setPrintReversing(true); }
+        flippedForPdf = true;
+      }
       const area = document.querySelector<HTMLElement>('.print-area');
       if (!area) {
         toast.error('Não encontrei a área de impressão na tela.');
@@ -1256,6 +1266,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
         target: printTabRef.current,
       });
     } finally {
+      if (flippedForPdf) {
+        try { flushSync(() => setPrintReversing(false)); }
+        catch { setPrintReversing(false); }
+      }
       printTabRef.current = null;
       setGeneratingPdf(false);
     }
@@ -4002,15 +4016,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             <button
               type="button"
               onClick={toggleReverseOutput}
-              disabled={!reverseAllowed}
               aria-pressed={effectiveReverseOutput}
-              aria-disabled={!reverseAllowed}
-              title={!reverseAllowed
-                ? 'Desabilitado nas fichas de operador — a saída sai na ordem do documento.'
-                : effectiveReverseOutput
-                  ? 'Ligado: emite da última página para a primeira, adequado à impressora que empilha com a face para cima.'
-                  : 'Desligado: emite na ordem normal do documento.'}
-              className={`inline-flex h-9 items-center gap-1.5 border px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${!reverseAllowed ? 'cursor-not-allowed border-border/60 text-muted-foreground/50' : effectiveReverseOutput ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:text-foreground'}`}
+              title={effectiveReverseOutput
+                ? 'Ligado: emite da última página para a primeira, adequado à impressora que empilha com a face para cima (Palmilha no topo da pilha).'
+                : 'Desligado: emite na ordem normal do documento.'}
+              className={`inline-flex h-9 items-center gap-1.5 border px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${effectiveReverseOutput ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:text-foreground'}`}
             >
               <ArrowsClockwise className="h-3.5 w-3.5" /> Inverter saída
               {effectiveReverseOutput && <Check className="h-3.5 w-3.5" weight="bold" />}
