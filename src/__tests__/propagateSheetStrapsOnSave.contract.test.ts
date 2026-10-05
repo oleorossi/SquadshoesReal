@@ -10,6 +10,13 @@ const MIGRATION = readFileSync(
   ),
   'utf8',
 );
+const ROLE_BYPASS = readFileSync(
+  resolve(
+    ROOT,
+    'supabase/migrations/20270101031500_strap_propagate_role_bypass_source_rpc.sql',
+  ),
+  'utf8',
+);
 const RESYNC = readFileSync(resolve(ROOT, 'src/lib/resyncOPs.ts'), 'utf8');
 const CONSUMO_GAP = readFileSync(
   resolve(ROOT, 'src/__tests__/consumoSheetStrapGap.contract.test.ts'),
@@ -84,5 +91,25 @@ describe('propagação de tipo de tira no save da ficha', () => {
     // O teste 231 trava o arquivo histórico; a 292 é quem libera o overlay.
     expect(CONSUMO_GAP).toContain('is_committed_sale_order_status');
     expect(MIGRATION).toContain('calculate_consumption_report_batch');
+  });
+
+  it('315: prepare/ensure honram strap_source_rpc sem liberar producao amplo', () => {
+    expect(ROLE_BYPASS).toContain('strap_propagate_role_bypass_315');
+    expect(ROLE_BYPASS).toContain("app.strap_source_rpc");
+    expect(ROLE_BYPASS).toContain("current_setting('app.strap_source_rpc', true) IS DISTINCT FROM '1'");
+    expect(ROLE_BYPASS).toContain('prepare_sale_order_item_internal_straps');
+    expect(ROLE_BYPASS).toContain('ensure_sale_order_internal_strap_materials');
+    // Bypass é só pela flag do propagate — não amplia a allow-list com producao.
+    expect(ROLE_BYPASS).not.toMatch(
+      /ARRAY\s*\[\s*'admin'\s*,\s*'gerente'\s*,\s*'comercial'\s*,\s*'producao'\s*\]/,
+    );
+    expect(ROLE_BYPASS).not.toMatch(
+      /ARRAY\s*\[\s*'admin'\s*,\s*'gerente'\s*,\s*'producao'\s*\]/,
+    );
+    // Repair do PV-00195 (item + fila de demanda).
+    expect(ROLE_BYPASS).toContain('auto_resync_unstarted_ops_for_sheet');
+    expect(ROLE_BYPASS).toContain('enqueue_sale_order_strap_demands');
+    expect(ROLE_BYPASS).toContain('process_strap_demand_job');
+    expect(ROLE_BYPASS).toContain('PV-00195');
   });
 });
