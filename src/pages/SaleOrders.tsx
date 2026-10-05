@@ -2317,9 +2317,9 @@ export default function SaleOrders() {
                               <Baby className="h-3 w-3" weight="fill" /> Infantil
                             </Badge>
                           )}
-                          {(order as any).order_type && (order as any).order_type !== 'carteira' && ORDER_TYPE_LABELS[(order as any).order_type] && (
+                          {order.order_type && order.order_type !== 'carteira' && ORDER_TYPE_LABELS[order.order_type] && (
                             <Badge variant="outline" className="h-4 px-1 text-[10px] uppercase font-bold bg-primary/10 text-primary border-primary/30 shrink-0">
-                              {ORDER_TYPE_LABELS[(order as any).order_type]}
+                              {ORDER_TYPE_LABELS[order.order_type]}
                             </Badge>
                           )}
                         </div>
