@@ -288,13 +288,9 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
     const dueDateLabel = order.due_date
       ? new Date(`${String(order.due_date).slice(0, 10)}T00:00:00`).toLocaleDateString('pt-BR')
       : undefined;
+    // PV e cliente já estão no HeaderIdentification da página — repetir no
+    // sub-header só gastava altura. Fica só a entrega (dado operacional).
     const noteParts = [
-      order.sale_order_number || (order as any).pv_number || null,
-      clientName || null,
-      // `orders.due_date` é coluna DATE — o PostgREST devolve 'YYYY-MM-DD' e
-      // `new Date('2026-08-03')` é meia-noite UTC, que em America/Sao_Paulo (UTC−3)
-      // volta pro dia ANTERIOR: a ficha imprimia 02/08 pra uma entrega em 03/08.
-      // O sufixo 'T00:00:00' força meia-noite LOCAL (mesmo idioma de absenteeism.ts:33).
       dueDateLabel ? `Entrega ${dueDateLabel}` : null,
     ].filter(Boolean) as string[];
     const subHeaderBlock = (
@@ -509,7 +505,7 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
     // pode crescer a ponto de espremer a tabela abaixo do mínimo dela.
     const productInfoBlock = (
       <div
-        className="flex gap-3 mb-1.5 border-b border-black pb-2"
+        className="flex gap-2 mb-1 border-b border-black pb-1"
         data-rigid-width={gradeAoLadoDaFoto ? Math.ceil(gradeFit.rigidWidthPx) : undefined}
       >
         {/* Image — hairline framed */}
@@ -529,7 +525,7 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
         </div>
 
         {/* Product details — Anton hero for ref */}
-        <div className="flex-1 flex flex-col gap-2 min-w-0">
+        <div className={`flex-1 flex flex-col min-w-0 ${gradeAoLadoDaFoto ? 'gap-1' : 'gap-1.5'}`}>
           {/* Hero: REFERÊNCIA = nome do modelo (definido pelo usuário em 2026-05).
               Sai no modelo 'lote' — ali a referência já é o título do
               sub-header do grupo, e repetir era a duplicação que a rodada 1
@@ -779,7 +775,7 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
 
       {/* Observação do PV, quando houver. */}
       {order.notes && (
-        <div className="mt-4 pt-2 keep-together">
+        <div className="mt-1.5 pt-1 keep-together">
           <div className="border-t border-black pt-1">
             <span className="section-label block mb-0.5" style={{ color: '#000' }}>Observações</span>
             <p className="text-[10px] text-black leading-tight">{order.notes}</p>
@@ -789,11 +785,10 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
       </div>
     );
 
+    // TraceStrip no lote: só OPs + entrega. PV/cliente já estão no header da página.
     const traceBlock = isLote ? (
       <TraceStrip
         ops={(opNumbers && opNumbers.length > 0 ? opNumbers : [order.op_number]).filter(Boolean) as string[]}
-        pvNumbers={[order.sale_order_number || (order as { pv_number?: string }).pv_number].filter(Boolean) as string[]}
-        clientNames={clientName ? [clientName] : []}
         dueDate={dueDateLabel}
       />
     ) : null;

@@ -302,33 +302,32 @@ export function PalmilhaUnifiedWorkSheet({
             </div>
           </div>
 
-          {/* Pedido/cliente do card — linha fina (não TraceStrip hero) */}
-          {(cardPvs.length > 0 || cardClients.length > 0 || cardOps.length > 0) && (
-            <div
-              className="keep-together keep-with-next flex items-baseline justify-between gap-2 px-1.5 py-0.5"
-              style={{ borderBottom: '1px solid #000' }}
-            >
-              <span className="font-mono text-[9px] tracking-widest uppercase text-black min-w-0 truncate">
-                {[
-                  cardPvs.length <= 3 ? cardPvs.join(' · ') : `${cardPvs.length} PVs`,
-                  cardOps.length <= 3 ? (cardOps.length ? cardOps.join(' · ') : '') : `${cardOps.length} OPs`,
-                ].filter(Boolean).join(' · ')}
-              </span>
-              {cardClients.length > 0 && (
-                <span
-                  className="uppercase leading-none truncate shrink-0 max-w-[55%]"
-                  style={{
-                    fontFamily: "'Anton', Impact, sans-serif",
-                    fontSize: '11px',
-                    letterSpacing: '-0.01em',
-                    color: '#C00000',
-                  }}
-                >
-                  {cardClients.length <= 2 ? cardClients.join(' · ') : `${cardClients.length} clientes`}
+          {/* Só OPs do card — PV/cliente já estão no HeaderIdentification.
+              Em maço multi-PV a linha volta a mostrar PVs quando o card
+              cobre um subconjunto (não o conjunto inteiro da página). */}
+          {(() => {
+            const cardPvSet = new Set(cardPvs);
+            const pageIsSinglePv = pvs.length <= 1;
+            const cardMatchesPagePvs = cardPvs.length > 0
+              && cardPvs.length === pvs.length
+              && pvs.every((pv) => cardPvSet.has(pv));
+            const showPvs = cardPvs.length > 0 && !pageIsSinglePv && !cardMatchesPagePvs;
+            const showOps = cardOps.length > 0;
+            if (!showPvs && !showOps) return null;
+            return (
+              <div
+                className="keep-together keep-with-next flex items-baseline justify-between gap-2 px-1.5 py-0.5"
+                style={{ borderBottom: '1px solid #000' }}
+              >
+                <span className="font-mono text-[9px] tracking-widest uppercase text-black min-w-0 truncate">
+                  {[
+                    showPvs ? (cardPvs.length <= 3 ? cardPvs.join(' · ') : `${cardPvs.length} PVs`) : '',
+                    showOps ? (cardOps.length <= 3 ? cardOps.join(' · ') : `${cardOps.length} OPs`) : '',
+                  ].filter(Boolean).join(' · ')}
                 </span>
-              )}
-            </div>
-          )}
+              </div>
+            );
+          })()}
 
           {showPlatesBar && (
             <div

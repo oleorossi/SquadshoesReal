@@ -205,4 +205,14 @@ describe('guard — toda ficha de operador segue a densidade', () => {
     // compact continua false no Aviamento (Frente/Traseira).
     expect(src).toMatch(/'Aviamento':\s*\{[^}]*compact:\s*false/s);
   });
+
+  it('Palmilha usa fitBesideGrade pro strip+grade; Solagem NÃO força sideBySide', () => {
+    const palmilha = worksheetFiles().find((f) => f.name === 'PalmilhaWorkSheet.tsx');
+    const solagem = worksheetFiles().find((f) => f.name === 'SolagemWorkSheet.tsx');
+    expect(palmilha).toBeTruthy();
+    expect(solagem).toBeTruthy();
+    expect(palmilha!.src.includes('fitBesideGrade')).toBe(true);
+    // Solagem: medido 30/08/2026 — sideBySide não reduziu folhas.
+    expect(solagem!.src.includes('fitBesideGrade')).toBe(false);
+  });
 });

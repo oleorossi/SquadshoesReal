@@ -233,13 +233,13 @@ export const ExpedicaoWorkSheet = ({ group, sizeBand, sectorLabel }: Props) => {
   // Resumo embalagem — bloco atômico no paginador (se exceder 1 página
   // inteira, flui linha a linha: tr atômico, thead repete).
   const embalagemBlock = (
-      <div className="mb-1.5">
+      <div className="mb-1">
         <div className="flex items-baseline justify-between mb-1">
           <div className="flex items-center gap-2">
             <Package className="h-4 w-4 text-black" weight="bold" />
             <span className="section-label" style={{ color: '#000' }}>02 / Embalagem · Caixas Coletivas</span>
           </div>
-          <div className="flex items-stretch gap-4 shrink-0">
+          <div className="flex items-stretch gap-3 shrink-0">
             <div className="text-right">
               <span className="section-label block" style={{ color: '#000' }}>Caixas</span>
               <span
@@ -395,7 +395,7 @@ export const ExpedicaoWorkSheet = ({ group, sizeBand, sectorLabel }: Props) => {
     const isFirst = ci === 0;
     const isLast = ci === itemChunks.length - 1;
     return (
-      <div key={`items-${ci}`} className="mt-2">
+      <div key={`items-${ci}`} className="mt-1">
         {isFirst && (
           <div className="flex items-baseline justify-between mb-1">
             <span className="section-label" style={{ color: '#000' }}>03 / Itens · Conferência</span>
@@ -462,7 +462,7 @@ export const ExpedicaoWorkSheet = ({ group, sizeBand, sectorLabel }: Props) => {
     const capacidades = [...new Set(linhas.map((l) => l.capacidade).filter((c) => c > 0))];
 
     return (
-      <div className="mb-2">
+      <div className="mb-1">
         <div className="flex items-baseline justify-between mb-1">
           <div className="flex items-center gap-2">
             <Package className="h-4 w-4 text-black" weight="bold" />
@@ -470,7 +470,7 @@ export const ExpedicaoWorkSheet = ({ group, sizeBand, sectorLabel }: Props) => {
               Caixas por Numeração · Conferência
             </span>
           </div>
-          <div className="flex items-end gap-4 shrink-0">
+          <div className="flex items-end gap-3 shrink-0">
             <div className="text-right">
               <span className="section-label block" style={{ color: '#000' }}>Caixas</span>
               <span className="block leading-none" style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '25px', color: '#C00000' }}>

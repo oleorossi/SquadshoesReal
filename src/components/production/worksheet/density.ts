@@ -40,14 +40,16 @@
  *     empacota 2 cores; A.3 **não** quebra esse arranjo.
  *   - **Silk**: a logomarca a estampar (110px) é o objeto de trabalho do setor,
  *     e já renderiza com o texto AO LADO (a largura é usada). Fica como está.
- *   - **Palmilha / Solagem**: o strip de sandálias já usa 55×55 com wrap,
- *     ocupando a largura inteira. A.3 aplica grade dense + chrome + split
- *     trabalho/fechamento; não reduz as miniaturas. A unificada
- *     (`PalmilhaUnifiedWorkSheet`) segue o mesmo split A.3 + chrome denso
- *     e **não** repete TraceStrip no hero (PV/cliente já estão no
- *     HeaderIdentification).
- *   - **Operator** (Colagem etc.): a foto já tem os dados ao lado — a largura
- *     é usada. Já emite vários `SheetBlock`s; A.3 só aplica grade dense.
+ *   - **Palmilha**: strip 55×55; quando `fitBesideGrade` aprova, fotos
+ *     sentam ao lado da grade (mesmo padrão do Corte Forração). Muitas refs
+ *     voltam a empilhar. A.3 + chrome denso + split trabalho/fechamento.
+ *   - **Solagem**: strip continua EMPILHADO — sideBySide foi medido em
+ *     30/08/2026 e não reduziu folhas (3→3); só aperta padding/chrome.
+ *   - **PalmilhaUnified**: split A.3 + chrome denso; sem TraceStrip hero;
+ *     linha de PV/cliente do card só quando o card não cobre o conjunto
+ *     da página (evita duplicar o HeaderIdentification).
+ *   - **Operator** (Colagem etc.): foto + dados (+ grade quando cabe) ao
+ *     lado. TraceStrip do lote não repete PV/cliente do header.
  *   - **Reduced**: já nasceu no padrão da Opção A (foto ao lado da grade +
  *     tally `sm`). É o precedente que as outras fichas passam a seguir.
  */

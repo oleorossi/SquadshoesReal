@@ -1621,7 +1621,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                   // grade não pode ser espremida abaixo do seu mínimo — nem pelo
                   // zoom do auto-fit, que aperta a largura local (growCeilingFor).
                   <div
-                    className="keep-together flex items-start gap-2 mt-1 mb-1"
+                    className="keep-together flex items-start gap-2 mt-0.5 mb-0.5"
                     data-rigid-width={
                       compactThumbs.length * compactThumbSize
                       + compactThumbs.length * COMPACT_THUMB_GAP_PX
@@ -1774,22 +1774,8 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                     </div>
                     );
                   })()}
-                  {!hideRedundantMeta && cg.pvNumbers && cg.pvNumbers.length > 0 && (
-                    <div className="text-right">
-                      <span className="section-label block" style={{ color: '#000' }}>Pedido</span>
-                      <span className="font-mono text-[11px] font-bold text-black tracking-wider">
-                        {cg.pvNumbers.length === 1 ? cg.pvNumbers[0] : `${cg.pvNumbers[0]} +${cg.pvNumbers.length - 1}`}
-                      </span>
-                    </div>
-                  )}
-                  {!hideRedundantMeta && cg.opNumbers.length > 0 && (
-                    <div className="text-right">
-                      <span className="section-label block" style={{ color: '#000' }}>Ordem</span>
-                      <span className="font-mono text-[11px] font-bold text-black tracking-wider">
-                        {cg.opNumbers.length === 1 ? cg.opNumbers[0] : `${cg.opNumbers[0]} +${cg.opNumbers.length - 1}`}
-                      </span>
-                    </div>
-                  )}
+                  {/* Pedido/Ordem saíram do cabeçalho da cor: já estão no
+                      HeaderIdentification da página. Mantém Lote/Pares/Refs. */}
                   {cg.lotInfo && cg.lotInfo.total > 1 && (
                     <div className="text-right border-r border-black pr-3">
                       <span className="section-label block" style={{ color: '#000' }}>Lote</span>

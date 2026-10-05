@@ -81,7 +81,7 @@ const isPretoColor = (c: string) => /preto|black|pb/i.test((c || '').trim());
 
 const SectionDivider = ({ label, total }: { label: string; total: number }) => (
   <div
-    className="keep-together keep-with-next flex items-baseline justify-between px-3 py-1.5 bg-white"
+    className="keep-together keep-with-next flex items-baseline justify-between px-3 py-1 bg-white"
     style={{ border: '2px solid #000', borderBottom: 'none' }}
   >
     <span
@@ -131,7 +131,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 1
       // grade — atômicas individualmente); borda fecha em
       // cada fragmento via box-decoration-break: clone.
       <div key={idx} className="flow-card bg-white" style={{ border: '1.5px solid #000' }}>
-        <div className="keep-together keep-with-next px-2 py-1 flex items-center justify-between" style={{ borderBottom: '1.5px solid #000' }}>
+        <div className="keep-together keep-with-next px-2 py-0.5 flex items-center justify-between" style={{ borderBottom: '1.5px solid #000' }}>
           <div className="min-w-0 flex-1">
             <span className="section-label block" style={{ color: '#000' }}>Solado · Cor</span>
             <span
@@ -189,8 +189,10 @@ export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 1
             keep-with-next: o strip NÃO pode fechar a página sem a grade —
             senão as fotos ficam no pé e a grade abre sozinha na folha
             seguinte (órfão reportado 27/09/2026). */}
+        {/* Strip empilhado de propósito: sideBySide foi medido em 30/08/2026
+            neste setor e NÃO reduziu folhas (3→3) — só estreita a grade. */}
         {band.refs && band.refs.length > 0 && (
-          <div className="keep-with-next px-2 py-1 flex items-start gap-2 flex-wrap" style={{ borderBottom: '1px solid #000' }}>
+          <div className="keep-with-next px-2 py-0.5 flex items-start gap-2 flex-wrap" style={{ borderBottom: '1px solid #000' }}>
             <span className="section-label shrink-0 self-center" style={{ color: '#000' }}>Sandálias</span>
             {band.refs.map((r) => (
               <div key={r.key} className="keep-together flex flex-col items-center gap-0.5">
@@ -403,7 +405,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 1
   });
 
   const trailingBlock = (
-    <div className="keep-together flex items-baseline justify-between mt-3 py-1.5" style={{ borderTop: '1px solid #000', borderBottom: '1px solid #000' }}>
+    <div className="keep-together flex items-baseline justify-between mt-1 py-1" style={{ borderTop: '1px solid #000', borderBottom: '1px solid #000' }}>
       <span className="section-label" style={{ color: '#000' }}>
         Total Geral · soma de todos os solados
       </span>

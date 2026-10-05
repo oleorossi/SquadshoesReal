@@ -429,13 +429,13 @@ export const ManagementReport = ({ saleOrders, orders, date, sectorLabel }: Prop
   );
 
   const headerBlock = (
-    <header className="mb-4">
-      <div className="flex items-baseline justify-between gap-4 mb-2">
+    <header className="mb-2">
+      <div className="flex items-baseline justify-between gap-2 mb-1.5">
         <span className="section-label" style={{ color: '#000' }}>Squad Shoes · Relatório Gerencial</span>
         <span className="section-label" style={{ color: '#000' }}>{today}</span>
       </div>
-      <div className="rule-line-thick mb-3" style={{ backgroundColor: '#000' }} />
-      <div className="grid grid-cols-12 gap-4 items-start">
+      <div className="rule-line-thick mb-2" style={{ backgroundColor: '#000' }} />
+      <div className="grid grid-cols-12 gap-2 items-start">
         <div className="col-span-8">
           <p className="section-label mb-2" style={{ color: '#000' }}>
             {pvList.length > 1 ? `Pedidos de Venda (${pvList.length})` : 'Pedido de Venda'}
@@ -531,13 +531,13 @@ export const ManagementReport = ({ saleOrders, orders, date, sectorLabel }: Prop
           key={`ref-${line.key}`}
           data-pack-boost="1.12"
           className="keep-together"
-          style={{ marginTop: lineIdx === 0 ? 8 : 14 }}
+          style={{ marginTop: lineIdx === 0 ? 4 : 8 }}
         >
           <div
             className="keep-together keep-with-next"
             style={{
               border: '2px solid #000',
-              padding: '8px 10px',
+              padding: '5px 8px',
               background: '#fff',
               printColorAdjust: 'exact',
             }}
@@ -546,7 +546,7 @@ export const ManagementReport = ({ saleOrders, orders, date, sectorLabel }: Prop
               style={{
                 display: 'grid',
                 gridTemplateColumns: `${REF_THUMB_PX}px 1fr auto`,
-                gap: 10,
+                gap: 8,
                 alignItems: 'center',
               }}
             >
@@ -663,12 +663,12 @@ export const ManagementReport = ({ saleOrders, orders, date, sectorLabel }: Prop
                 style={{
                   display: 'grid',
                   gridTemplateColumns: `1fr ${CHECK_BOX_MM}mm`,
-                  gap: 10,
+                  gap: 8,
                   alignItems: 'center',
                   borderLeft: '2px solid #000',
                   borderRight: '2px solid #000',
                   borderBottom: isLast ? '2px solid #000' : '1px solid #000',
-                  padding: '7px 10px',
+                  padding: '4px 8px',
                   background: si % 2 === 0 ? '#fff' : '#F7F5F0',
                   printColorAdjust: 'exact',
                 }}
