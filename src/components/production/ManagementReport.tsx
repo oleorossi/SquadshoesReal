@@ -507,7 +507,7 @@ export const ManagementReport = ({ saleOrders, orders, date, sectorLabel }: Prop
           </div>
         </div>
       </div>
-      <p className="section-label mt-3" style={{ color: '#555' }}>
+      <p className="section-label mt-1.5" style={{ color: '#555' }}>
         Checklist por referência · marque cada setor ao concluir
       </p>
     </header>
@@ -709,7 +709,7 @@ export const ManagementReport = ({ saleOrders, orders, date, sectorLabel }: Prop
   if (linesWithSectors.length === 0) {
     itemBlocks.push({
       node: (
-        <p className="section-label mt-4" style={{ color: '#555' }}>
+        <p className="section-label mt-2" style={{ color: '#555' }}>
           Nenhuma linha elegível no roteiro das fichas deste PV.
         </p>
       ),

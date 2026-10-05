@@ -215,4 +215,11 @@ describe('guard — toda ficha de operador segue a densidade', () => {
     // Solagem: medido 30/08/2026 — sideBySide não reduziu folhas.
     expect(solagem!.src.includes('fitBesideGrade')).toBe(false);
   });
+
+  it('Corte Cabedal completo move multi-ref ao lado da grade quando cabe', () => {
+    const silk = worksheetFiles().find((f) => f.name === 'SilkMontageWorkSheet.tsx');
+    expect(silk).toBeTruthy();
+    expect(silk!.src.includes('cabedalBesideGrade')).toBe(true);
+    expect(silk!.src.includes('thumbsFitBesideGrade')).toBe(true);
+  });
 });

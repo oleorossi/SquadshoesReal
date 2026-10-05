@@ -271,7 +271,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 1
               </tr>
             )}
             <tr>
-              <td className="py-1.5 font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: '1px solid #000', minWidth: 96, whiteSpace: 'nowrap', padding: '6px 6px', letterSpacing: '0.04em', fontSize: adaptiveLabelFontSize(band.fichas, band.mixedGrades) }}>
+              <td className="py-1 font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: '1px solid #000', minWidth: 96, whiteSpace: 'nowrap', padding: `${ft.padY + 1}px 4px`, letterSpacing: '0.04em', fontSize: adaptiveLabelFontSize(band.fichas, band.mixedGrades) }}>
                 {band.fichasAproximadas
                   ? <>Total<br />≈ {band.fichas || 0} fichas</>
                   : band.mixedGrades

@@ -369,13 +369,13 @@ export const ExpedicaoWorkSheet = ({ group, sizeBand, sectorLabel }: Props) => {
             <tr style={{ borderTop: '1.5px solid #000' }}>
               <td
                 colSpan={5 + allSizes.length}
-                className="py-1.5 px-2 text-right section-label"
+                className="py-1 px-2 text-right section-label"
                 style={{ color: '#000', borderRight: '1px solid #000' }}
               >
                 Total da Loja
               </td>
               <td
-                className="py-1.5 px-1 text-right text-black"
+                className="py-1 px-1 text-right text-black"
                 style={{
                   fontFamily: "'Anton', Impact, sans-serif",
                   fontSize: '16px',

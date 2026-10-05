@@ -1676,56 +1676,68 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
           // carrega o contexto (groupKind 'reference'); pares por cor ficam.
           const hideRedundantMeta = group.groupKind === 'reference';
 
+          // Corte Cabedal multi-ref: miniaturas ao lado da grade quando cabem
+          // (mesmo padrão do compacto). No header elas inchavam a faixa e
+          // empurravam a 2ª cor pra folha seguinte.
+          const cabedalThumbs = (sector === 'Corte Cabedal' && theme.showCompactImages && !showHeroPhoto)
+            ? collectCompactThumbs(cg)
+            : [];
+          const completeSizes = gradeSizesOf(cg, sector);
+          const completeGrid = gradeSourceGrid(cg, sector);
+          const completeDigits = completeSizes.reduce(
+            (m, sz) => Math.max(m, String(completeGrid[sz] ?? 0).length), 1,
+          );
+          // Nome `IMG` é load-bearing pro guard de densidade
+          // (density.test.ts só aceita HEADER_THUMB_PX | IMG | hero).
+          const IMG = cabedalThumbs.length > 1 ? compactThumbPx(cabedalThumbs.length) : HEADER_THUMB_PX;
+          const cabedalBesideGrade = cabedalThumbs.length > 1 && thumbsFitBesideGrade(
+            cabedalThumbs.length,
+            IMG,
+            completeSizes,
+            gradeTableFont(completeSizes, true),
+            completeDigits,
+            A4_CONTENT_WIDTH_PX - 16,
+          );
+          const cabedalThumbStrip = cabedalThumbs.length > 1 ? (
+            <div className="flex flex-col gap-0.5 shrink-0">
+              <span
+                className="uppercase whitespace-nowrap"
+                style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '13px', letterSpacing: '-0.01em', color: '#C00000', border: '1.5px solid #C00000', padding: '0 4px', lineHeight: '16px', alignSelf: 'flex-start' }}
+              >
+                {cabedalThumbs.length} REFS
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {cabedalThumbs.map((t, ti) => (
+                  <div key={t.sheetId || t.resolvedUrl || ti} className="flex flex-col items-center gap-0.5">
+                    <ProductImageBlock
+                      variantImageUrl={t.variantImageUrl}
+                      alternateVariants={t.alternateVariants}
+                      technicalSheetImageUrl={t.technicalSheetImageUrl}
+                      orderColor={cg.color}
+                      size={IMG}
+                      showRefBadge={false}
+                      alt={`${t.refNames.join(' · ') || group.soleName} ${cg.color}`}
+                    />
+                    {t.refNames.length > 0 && (
+                      <span
+                        className="block truncate text-center uppercase leading-none"
+                        style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '12px', letterSpacing: '-0.01em', color: '#C00000', maxWidth: IMG, borderTop: '1px solid #C00000', paddingTop: 2 }}
+                        title={t.refNames.join(' · ')}
+                      >
+                        {t.refNames.join(' · ')}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null;
+
           const colorHeader = (
               <div className="keep-together keep-with-next px-2 py-0.5 flex items-center justify-between" style={{ borderBottom: '1.5px solid #000' }}>
                 <div className="flex items-center gap-2 min-w-0">
-                  {theme.showProductImage && !showHeroPhoto && (() => {
-                    // Corte Cabedal: faixa 1 foto/ref (mesmo contrato do Forração).
-                    // Sem isto, o merge por cor deixava só a 1ª sandália no
-                    // header escalar (PV-00197 OFF WHITE = LA01+SP201 → 1 foto).
-                    const cabedalThumbs = (sector === 'Corte Cabedal' && theme.showCompactImages)
-                      ? collectCompactThumbs(cg)
-                      : [];
-                    if (cabedalThumbs.length > 1) {
-                      // Nome `IMG` é load-bearing pro guard de densidade
-                      // (density.test.ts só aceita HEADER_THUMB_PX | IMG).
-                      const IMG = compactThumbPx(cabedalThumbs.length);
-                      return (
-                        <div className="flex flex-col gap-0.5 shrink-0">
-                          <span
-                            className="uppercase whitespace-nowrap"
-                            style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '13px', letterSpacing: '-0.01em', color: '#C00000', border: '1.5px solid #C00000', padding: '0 4px', lineHeight: '16px', alignSelf: 'flex-start' }}
-                          >
-                            {cabedalThumbs.length} REFS
-                          </span>
-                          <div className="flex flex-wrap gap-1.5">
-                          {cabedalThumbs.map((t, ti) => (
-                            <div key={t.sheetId || t.resolvedUrl || ti} className="flex flex-col items-center gap-0.5">
-                              <ProductImageBlock
-                                variantImageUrl={t.variantImageUrl}
-                                alternateVariants={t.alternateVariants}
-                                technicalSheetImageUrl={t.technicalSheetImageUrl}
-                                orderColor={cg.color}
-                                size={IMG}
-                                showRefBadge={false}
-                                alt={`${t.refNames.join(' · ') || group.soleName} ${cg.color}`}
-                              />
-                              {t.refNames.length > 0 && (
-                                <span
-                                  className="block truncate text-center uppercase leading-none"
-                                  style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '12px', letterSpacing: '-0.01em', color: '#C00000', maxWidth: IMG, borderTop: '1px solid #C00000', paddingTop: 2 }}
-                                  title={t.refNames.join(' · ')}
-                                >
-                                  {t.refNames.join(' · ')}
-                                </span>
-                              )}
-                            </div>
-                          ))}
-                          </div>
-                        </div>
-                      );
-                    }
-                    return (
+                  {theme.showProductImage && !showHeroPhoto && !cabedalBesideGrade && (
+                    cabedalThumbStrip || (
                       <ProductImageBlock
                         variantImageUrl={cg.variantImageUrl}
                         alternateVariants={cg.alternateVariants}
@@ -1735,8 +1747,8 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                         showRefBadge={false}
                         alt={`${group.soleName} ${cg.color}`}
                       />
-                    );
-                  })()}
+                    )
+                  )}
                   {cg.colorHex && (
                     <div className="w-5 h-5 shrink-0" style={{ backgroundColor: cg.colorHex, border: '1px solid #000' }} />
                   )}
@@ -1917,9 +1929,23 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                 )}
                 {montagemComponents}
                 {theme.showAlerts && cg.alerts && cg.alerts.length > 0 && <SectorAlerts alerts={cg.alerts} />}
-                <div className="mb-0.5 keep-together">
-                  {renderGradeTable(cg)}
-                </div>
+                {cabedalBesideGrade && cabedalThumbStrip ? (
+                  <div
+                    className="mb-0.5 keep-together flex items-start gap-2"
+                    data-rigid-width={
+                      cabedalThumbs.length * IMG
+                      + Math.max(0, cabedalThumbs.length - 1) * SIDE_BY_SIDE_GAP_PX
+                      + gradeMinWidthPx(completeSizes, gradeTableFont(completeSizes, true), completeDigits)
+                    }
+                  >
+                    <div className="shrink-0">{cabedalThumbStrip}</div>
+                    <div className="min-w-0 flex-1">{renderGradeTable(cg)}</div>
+                  </div>
+                ) : (
+                  <div className="mb-0.5 keep-together">
+                    {renderGradeTable(cg)}
+                  </div>
+                )}
               </div>
             </div>
           );

@@ -38,6 +38,9 @@
  *     foram AUMENTADAS a pedido do dono em 2026-07-22 (de 54 pra 92). Não
  *     reduzir — o cortador identifica o modelo por elas. Layout compacto já
  *     empacota 2 cores; A.3 **não** quebra esse arranjo.
+ *   - **Corte Cabedal (completo) multi-ref**: miniaturas saem do header e
+ *     sentam ao lado da grade quando `fitBesideGrade` aprova — evita header
+ *     alto empurrando a 2ª cor pra folha nova.
  *   - **Silk**: a logomarca a estampar (110px) é o objeto de trabalho do setor,
  *     e já renderiza com o texto AO LADO (a largura é usada). Fica como está.
  *   - **Palmilha**: strip 55×55; quando `fitBesideGrade` aprova, fotos

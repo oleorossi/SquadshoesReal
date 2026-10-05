@@ -553,9 +553,9 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
           {/* Combo de produção em CHIPS alinhados (melhoria estética 2026-06-30,
               opção A): substitui a grade 2-col de rótulo/valor — confere
               solado/palmilha/cor num olhar, P&B, sem swatch invisível. */}
-          <div className="flex flex-wrap gap-2 content-start">
+          <div className="flex flex-wrap gap-1.5 content-start">
             {/* Cor principal do modelo; cores individuais das tiras ficam na tabela. */}
-            <div style={{ border: '1.5px solid #000', padding: '2px 9px' }}>
+            <div style={{ border: '1.5px solid #000', padding: '2px 8px' }}>
               <span className="section-label block" style={{ color: '#000' }}>Cor do Modelo</span>
               <div className="flex items-center gap-1.5 mt-0.5">
                 <div className="w-3 h-3 shrink-0" style={{ backgroundColor: resolvedColorHex, border: '1px solid #000' }} />
@@ -568,10 +568,9 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
               </div>
             </div>
 
-            {(isMontagem || isSolagem || isColagem) ? (
+            {(isMontagem || isSolagem || isColagem) && (
               <>
-                {/* Solado */}
-                <div style={{ border: '1.5px solid #000', padding: '2px 9px' }}>
+                <div style={{ border: '1.5px solid #000', padding: '2px 8px' }}>
                   <span className="section-label block" style={{ color: '#000' }}>Solado</span>
                   <span
                     className="uppercase leading-none block mt-0.5"
@@ -580,8 +579,7 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
                     {resolvedSoleColor}
                   </span>
                 </div>
-                {/* Palmilha */}
-                <div style={{ border: '1.5px solid #000', padding: '2px 9px' }}>
+                <div style={{ border: '1.5px solid #000', padding: '2px 8px' }}>
                   <span className="section-label block" style={{ color: '#000' }}>Palmilha</span>
                   <span
                     className="uppercase leading-none block mt-0.5"
@@ -594,13 +592,8 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
                   )}
                 </div>
               </>
-            ) : (
-              /* Ordem — setores sem solado/palmilha */
-              <div style={{ border: '1.5px solid #000', padding: '2px 9px' }}>
-                <span className="section-label block" style={{ color: '#000' }}>Ordem</span>
-                <p className="text-xs font-mono font-bold text-black leading-tight mt-0.5">{order.op_number || '—'}</p>
-              </div>
             )}
+            {/* Ordem NÃO repete aqui: já está no GroupSubHeader / TraceStrip. */}
           </div>
 
           {/* Silk / Estampa — bloco próprio (imagem + nome) */}
@@ -617,7 +610,7 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
           )}
 
           {/* Grade na coluna de dados — ocupa o vazio à direita da foto. */}
-          {gradeAoLadoDaFoto && <div className="mt-1.5">{renderGradeTable()}</div>}
+          {gradeAoLadoDaFoto && <div className="mt-1">{renderGradeTable()}</div>}
 
           {/* Obs. de Corte */}
           {(isCortePalmilha || isCorteForração) && order.master.technical_notes && (
@@ -710,11 +703,11 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
             Controle do operador
           </span>
         </div>
-        <div className="space-y-2">
+        <div className="space-y-1">
 
         {/* Palmilha pronta na cor: aviso operacional — MANTIDO */}
         {isInsoleSkippedSector && (
-          <div className="bg-white p-2.5" style={{ border: '1.5px solid #000' }}>
+          <div className="bg-white p-1.5" style={{ border: '1.5px solid #000' }}>
             <span className="section-label block mb-1" style={{ color: '#000' }}>Aviso · Palmilha Pronta</span>
             <p
               className="text-black uppercase leading-none mb-1"
