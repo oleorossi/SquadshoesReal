@@ -17,7 +17,10 @@ interface Props {
   onDragStart: () => void;
   onDragEnd: () => void;
   onOpen: () => void;
-  /** Modo gestão: card mais denso pra caber todos os setores numa tela. */
+  /**
+   * Densidade do card. Default `true` desde a densificação 2026-10 —
+   * o visual do modo gestão virou o padrão do quadro.
+   */
   compact?: boolean;
   /** Busca ativa e este card NÃO casa → esmaece sem tirar do quadro. */
   dimmed?: boolean;
@@ -67,7 +70,7 @@ function stageAge(stage: { started_at: string | null; created_at: string } | nul
 
 export function KanbanOpCard({
   card, draggable, dragging, onDragStart, onDragEnd, onOpen,
-  compact = false, dimmed = false, highlighted = false, siblingActive = false,
+  compact = true, dimmed = false, highlighted = false, siblingActive = false,
   selectable = false, selected = false, onToggleSelect, readOnly = false, photoUrl, landed = false,
   materialGateDate = null, materialGateReason = null, onHoverOrder,
   showPalmilhaChecks = false,
@@ -86,7 +89,7 @@ export function KanbanOpCard({
 
   return (
     <Card
-      className={`relative overflow-hidden ${compact ? 'p-2 md:p-1.5' : 'p-2.5'} ${isPartial ? 'pl-3' : ''} cursor-pointer select-none
+      className={`relative overflow-hidden ${compact ? 'p-1.5 md:p-1' : 'p-2'} ${isPartial ? 'pl-2.5' : ''} cursor-pointer select-none
         transition-[transform,box-shadow,border-color,opacity] duration-150 ease-out
         hover:-translate-y-0.5 hover:shadow-md active:translate-y-0
         focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground/70 focus-visible:ring-offset-1 focus-visible:ring-offset-background
@@ -148,11 +151,11 @@ export function KanbanOpCard({
           <img
             src={thumb}
             alt=""
-            className={`${compact ? 'h-10 w-10 md:h-8 md:w-8' : 'h-10 w-10'} rounded object-contain bg-muted shrink-0`}
+            className={`${compact ? 'h-8 w-8 md:h-7 md:w-7' : 'h-9 w-9'} rounded object-contain bg-muted shrink-0`}
             loading="lazy"
           />
         ) : (
-          <div className={`${compact ? 'h-10 w-10 md:h-8 md:w-8' : 'h-10 w-10'} rounded bg-muted shrink-0`} />
+          <div className={`${compact ? 'h-8 w-8 md:h-7 md:w-7' : 'h-9 w-9'} rounded bg-muted shrink-0`} />
         )}
         <div className="min-w-0 flex-1">
           {/* 1) PV + cliente — hierarquia comercial */}

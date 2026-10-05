@@ -53,7 +53,7 @@ const TableHead = React.forwardRef<HTMLTableCellElement, React.ThHTMLAttributes<
       // header). Sobrescrever com scope="row" em headers de linha.
       scope="col"
       className={cn(
-        "h-10 px-4 text-left align-middle text-[10px] font-bold uppercase tracking-wider text-foreground font-mono [&:has([role=checkbox])]:pr-0",
+        "h-8 px-2.5 text-left align-middle text-[10px] font-bold uppercase tracking-wider text-foreground font-mono [&:has([role=checkbox])]:pr-0",
         className,
       )}
       {...props}
@@ -74,7 +74,7 @@ const TableCell = React.forwardRef<HTMLTableCellElement, TableCellProps>(
   ({ className, numeric, ...props }, ref) => (
     <td
       ref={ref}
-      className={cn("p-4 align-middle [&:has([role=checkbox])]:pr-0", numeric && "text-right tabular-nums", className)}
+      className={cn("px-2.5 py-1.5 align-middle [&:has([role=checkbox])]:pr-0", numeric && "text-right tabular-nums", className)}
       {...props}
     />
   ),

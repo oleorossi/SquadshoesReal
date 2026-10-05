@@ -289,13 +289,15 @@
   --space-12: 3rem;      /* 48px */
   --space-16: 4rem;      /* 64px · topbar height */
 
-  /* Layout dimensions */
-  --layout-sidebar:           240px;
-  --layout-sidebar-collapsed: 68px;
-  --layout-topbar:            56px;
-  --layout-page-padding:      var(--space-6);
-  --layout-card-padding:      18px;
-  --layout-table-row:         42px;
+  /* Layout dimensions — densificação operacional (2026-10): sidebar/page/table
+     apertados pra caber ~25–35% mais informação na viewport. Print/fichas
+     não leem estes tokens. */
+  --layout-sidebar:           200px;
+  --layout-sidebar-collapsed: 56px;
+  --layout-topbar:            48px;
+  --layout-page-padding:      var(--space-4);
+  --layout-card-padding:      10px;
+  --layout-table-row:         34px;
   --layout-modal-max:         560px;
 
   /* ═══════════════════════════════════════════════════════════════
@@ -1497,15 +1499,13 @@ a:focus-visible {
    xl 1280, 2xl 1536) mantidos. Aqui só utilitários fluidos extras.
    ════════════════════════════════════════════════════════════════════════════ */
 
-/* Grid responsivo de KPIs — auto-fit minmax(200px). Acomoda valores
-   monetários típicos "R$ 54.920,64" (~209px de texto mono 30px) +
-   padding interno do card sem truncar. Cabe ~5 KPIs em 1280 viewport
-   (1280 - 240 sidebar = 1040 / 200 = 5), 6 KPIs em 1440+, e 3-4 em
-   viewports menores. gap-2.5 dá respiro visual. */
+/* Grid responsivo de KPIs — auto-fit minmax(160px). Com StatNumber base 28
+   e card p-2.5, 6 KPIs cabem em 1440 com sidebar 200px. gap-2 mantém
+   separação sem reabrir a faixa alta. */
 .grid-kpi-fluid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 0.625rem;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.5rem;
 }
 .grid-kpi-fluid > * {
   opacity: 0;

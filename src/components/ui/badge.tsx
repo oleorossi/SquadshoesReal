@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 // F6 (22/05/2026): variants semânticos success/warning/info pra padronizar
 // uso (antes cada componente usava green-500/amber-500 ad-hoc).
 const badgeVariants = cva(
-  "inline-flex items-center rounded-sm border-[1.5px] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+  "inline-flex items-center rounded-sm border-[1.5px] px-1.5 py-px text-[10px] font-bold uppercase tracking-wider leading-tight transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
   {
     variants: {
       variant: {

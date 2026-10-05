@@ -32,15 +32,17 @@ const buttonVariants = cva(
         "editorial-red": "bg-primary text-primary-foreground font-mono uppercase tracking-widest text-[11px] hover:bg-primary/90 shadow-stamp-red",
       },
       size: {
-        default: "h-10 px-5 py-2.5",
-        sm: "h-9 px-4",
-        lg: "h-12 px-10 text-base",
-        icon: "h-10 w-10",
+        // Densificação operacional (2026-10): default h-9 / sm h-8.
+        // Mobile AppLayout mantém alvos ≥h-9 via overrides locais quando preciso.
+        default: "h-9 px-4 py-2",
+        sm: "h-8 px-3",
+        lg: "h-11 px-8 text-base",
+        icon: "h-9 w-9",
         // Variantes icon por densidade — usar em vez de className="h-7 w-7" ad-hoc.
-        // Convenção (CLAUDE.md): xs=toolbar de tabela, sm=filter row, default/icon=header de página, lg=CTA modal.
+        // Convenção: xs=toolbar de tabela, sm=filter row, default/icon=header, lg=CTA modal.
         "icon-xs": "h-7 w-7",
         "icon-sm": "h-8 w-8",
-        "icon-lg": "h-12 w-12",
+        "icon-lg": "h-11 w-11",
       },
     },
     defaultVariants: {

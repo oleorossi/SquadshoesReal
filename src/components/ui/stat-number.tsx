@@ -32,15 +32,15 @@ interface StatNumberProps {
   unit?: string;
   /** Cor do número. Ignorado se `className` trouxer cor (ex.: cards tonalizados). */
   tone?: StatTone;
-  /** Tamanho base em px quando há espaço (default 38). Use menor em layouts densos. */
+  /** Tamanho base em px quando há espaço (default 28 — densificação 2026-10). */
   base?: number;
-  /** Piso do tamanho (default 18). */
+  /** Piso do tamanho (default 16). */
   min?: number;
   /** Classes extras no número (ex.: cor herdada `text-current`). */
   className?: string;
 }
 
-export function StatNumber({ value, unit, tone = 'default', base = 38, min = 18, className }: StatNumberProps) {
+export function StatNumber({ value, unit, tone = 'default', base = 28, min = 16, className }: StatNumberProps) {
   const rowRef = useRef<HTMLDivElement>(null);
   const [fontPx, setFontPx] = useState(base);
   const valueStr = typeof value === 'string' || typeof value === 'number' ? String(value) : null;

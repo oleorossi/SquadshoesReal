@@ -55,7 +55,7 @@ export function StatusPill({ status, className, ...props }: StatusPillProps) {
   const p = STATUS_PALETTE[status];
   return (
     <span
-      className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-[3px] text-xs font-semibold tracking-[0.005em]', className)}
+      className={cn('inline-flex items-center gap-1 rounded-full px-2 py-px text-[11px] font-semibold tracking-[0.005em] leading-tight', className)}
       style={{ background: p.bg, color: p.text }}
       {...props}
     >
@@ -183,7 +183,7 @@ export function StockBadge({ level, children, className, ...props }: StockBadgeP
   const p = palette[level];
   return (
     <span
-      className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-[3px] text-xs font-semibold', className)}
+      className={cn('inline-flex items-center gap-1 rounded-full px-2 py-px text-[11px] font-semibold leading-tight', className)}
       style={{ background: p.bg, color: p.text }}
       {...props}
     >
@@ -206,7 +206,7 @@ export function DefectTag({ onRemove, children, className, ...props }: DefectTag
   return (
     <span
       className={cn(
-        'inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-[10px] py-1 text-xs font-medium',
+        'inline-flex cursor-pointer items-center gap-1 rounded-full border px-2 py-px text-[11px] font-medium leading-tight',
         className,
       )}
       style={{
@@ -451,7 +451,7 @@ interface MaterialTagProps extends React.HTMLAttributes<HTMLSpanElement> {
 export function MaterialTag({ swatchColor, children, className, ...props }: MaterialTagProps) {
   return (
     <span
-      className={cn('inline-flex items-center gap-1.5 rounded-[6px] border border-border bg-card px-[10px] py-1 text-xs font-semibold text-foreground', className)}
+      className={cn('inline-flex items-center gap-1 rounded-[6px] border border-border bg-card px-2 py-px text-[11px] font-semibold text-foreground leading-tight', className)}
       {...props}
     >
       <span

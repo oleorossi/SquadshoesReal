@@ -2285,40 +2285,43 @@ export default function SaleOrders() {
                         <Checkbox checked={isSelected} onCheckedChange={() => sel.toggle(order.id)} aria-label={`Selecionar pedido ${order.order_number}`} />
                       </TableCell>
                       <TableCell>
-                        <div className="flex flex-col">
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={(e) => { e.stopPropagation(); openOrderDetails(order); }}
-                              className={cn(
-                                'font-mono text-sm text-primary hover:underline font-bold text-left w-fit',
-                                isInfantil && INFANTIL_ORDER_NUMBER_CLASS,
-                              )}
-                            >
-                              <HighlightMatch text={order.order_number || '—'} term={searchTerm} />
-                            </button>
-                            {hasEmittedNfe && (
-                              <Badge variant="outline" className="h-4 px-1.5 text-xs uppercase font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40">
-                                NF
-                              </Badge>
+                        <div className="flex items-center gap-1.5 min-w-0 max-w-[220px]">
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); openOrderDetails(order); }}
+                            className={cn(
+                              'font-mono text-sm text-primary hover:underline font-bold text-left shrink-0',
+                              isInfantil && INFANTIL_ORDER_NUMBER_CLASS,
                             )}
-                            {isInformal && (
-                              <Badge variant="outline" className="h-4 px-1.5 text-xs uppercase font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40">
-                                Sem NF
-                              </Badge>
-                            )}
-                            {isInfantil && (
-                              <Badge variant="outline" className="h-4 pl-1 pr-1.5 text-xs uppercase font-bold bg-pink-500/15 text-pink-700 dark:text-pink-300 border-pink-500/40 gap-0.5">
-                                <Baby className="h-3 w-3" weight="fill" /> Infantil
-                              </Badge>
-                            )}
-                            {(order as any).order_type && (order as any).order_type !== 'carteira' && ORDER_TYPE_LABELS[(order as any).order_type] && (
-                              <Badge variant="outline" className="h-4 px-1.5 text-xs uppercase font-bold bg-primary/10 text-primary border-primary/30">
-                                {ORDER_TYPE_LABELS[(order as any).order_type]}
-                              </Badge>
-                            )}
-                          </div>
-                          <span className="text-xs text-muted-foreground uppercase font-medium">{formatDate(order.created_at)}</span>
+                          >
+                            <HighlightMatch text={order.order_number || '—'} term={searchTerm} />
+                          </button>
+                          <span
+                            className="text-[11px] text-muted-foreground uppercase font-medium truncate"
+                            title={formatDate(order.created_at)}
+                          >
+                            {formatDate(order.created_at)}
+                          </span>
+                          {hasEmittedNfe && (
+                            <Badge variant="outline" className="h-4 px-1 text-[10px] uppercase font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40 shrink-0">
+                              NF
+                            </Badge>
+                          )}
+                          {isInformal && (
+                            <Badge variant="outline" className="h-4 px-1 text-[10px] uppercase font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40 shrink-0">
+                              Sem NF
+                            </Badge>
+                          )}
+                          {isInfantil && (
+                            <Badge variant="outline" className="h-4 pl-1 pr-1 text-[10px] uppercase font-bold bg-pink-500/15 text-pink-700 dark:text-pink-300 border-pink-500/40 gap-0.5 shrink-0">
+                              <Baby className="h-3 w-3" weight="fill" /> Infantil
+                            </Badge>
+                          )}
+                          {(order as any).order_type && (order as any).order_type !== 'carteira' && ORDER_TYPE_LABELS[(order as any).order_type] && (
+                            <Badge variant="outline" className="h-4 px-1 text-[10px] uppercase font-bold bg-primary/10 text-primary border-primary/30 shrink-0">
+                              {ORDER_TYPE_LABELS[(order as any).order_type]}
+                            </Badge>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell className="font-mono text-xs text-muted-foreground tabular-nums">
@@ -2327,24 +2330,27 @@ export default function SaleOrders() {
                           : '—'}
                       </TableCell>
                       <TableCell>
-                        <div className="flex flex-col max-w-[220px]">
-                          <span className="font-semibold text-sm truncate"><HighlightMatch text={order.client_name} term={searchTerm} /></span>
-                          <span className="text-xs text-muted-foreground truncate">
+                        <div
+                          className="flex items-baseline gap-1.5 min-w-0 max-w-[240px]"
+                          title={[order.client_name, order.client_cnpj].filter(Boolean).join(' · ')}
+                        >
+                          <span className="font-semibold text-sm truncate min-w-0">
+                            <HighlightMatch text={order.client_name} term={searchTerm} />
+                          </span>
+                          <span className="text-[11px] text-muted-foreground truncate shrink min-w-0">
                             {order.client_cnpj
                               ? <HighlightMatch text={order.client_cnpj} term={searchTerm} />
-                              : '—'}
+                              : null}
                           </span>
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="flex flex-col">
-                          <span className="text-sm truncate max-w-[120px]">
-                            {(() => {
-                              const client = clientByName[(order.client_name || '').toLowerCase()];
-                              return client ? [client.cidade, client.estado].filter(Boolean).join('/') : '—';
-                            })()}
-                          </span>
-                        </div>
+                        <span className="text-sm truncate max-w-[120px] block">
+                          {(() => {
+                            const client = clientByName[(order.client_name || '').toLowerCase()];
+                            return client ? [client.cidade, client.estado].filter(Boolean).join('/') : '—';
+                          })()}
+                        </span>
                       </TableCell>
                       {canSeeFinancialValues && (
                         <TableCell className="text-right tabular-nums">
@@ -2478,21 +2484,23 @@ export default function SaleOrders() {
                               : undefined
                         }
                       >
-                        <div className="flex flex-col">
-                          <span>
+                        <div className="flex items-baseline gap-1.5 min-w-0">
+                          <span className="shrink-0">
                             {formatDate(order.delivery_deadline)}
                             {(isOverdue || isInfeasible) && <AlertTriangle className="ml-1 inline h-3.5 w-3.5 align-text-bottom" />}
                           </span>
-                          {isInfeasible && minBilling && (
-                            <span className="text-xs font-mono text-destructive font-bold">
-                              MÍN: {formatDate(minBilling)}
+                          {isInfeasible && minBilling ? (
+                            <span className="text-[11px] font-mono text-destructive font-bold truncate" title={`Mínima: ${formatDate(minBilling)}`}>
+                              MÍN {formatDate(minBilling)}
                             </span>
-                          )}
-                          {!isInfeasible && (order.delivery_month || order.delivery_week) && (
-                            <span className="text-xs text-muted-foreground font-mono">
+                          ) : (order.delivery_month || order.delivery_week) ? (
+                            <span
+                              className="text-[11px] text-muted-foreground font-mono truncate"
+                              title={[order.delivery_month, order.delivery_week].filter(Boolean).join(' ')}
+                            >
                               {[order.delivery_month, order.delivery_week].filter(Boolean).join(' ')}
                             </span>
-                          )}
+                          ) : null}
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
