@@ -697,7 +697,8 @@ window._imagesReady=waitForImages();
  *   Direita:  Código de barras (EAN-13/CODE-128) com quiet zone
  * Rodapé:     Dados de composição / categoria
  *
- * Área segura: 1mm em cada borda (arte útil de 98×28mm no padrão 100×30)
+ * Área segura: 1 mm nas bordas + 3 mm de deslocamento à direita na L42PRO
+ * (arte útil de 96×28 mm no padrão 100×30; esquerda 4 mm, direita 0 mm)
  * Quiet zone barras: 3mm antes/depois
  * Fontes: Arial/Helvetica sem serifa para nitidez térmica
  * Cores: Preto puro 100% (#000)
@@ -754,7 +755,11 @@ export const DEFAULT_THERMAL_CONFIG: ThermalLabelConfig = {
  *
  * A arte fica 1 mm para dentro da faca em todos os lados: o avanço e o corte
  * do rolo têm pequena tolerância e elementos colados na borda saem cortados.
- * No padrão isso produz uma moldura útil centralizada de 98 × 28 mm.
+ *
+ * Offset horizontal (2026-10): na L42PRO a arte saía cortada à esquerda
+ * (header "01", foto) com branco à direita do código. Empurra 3 mm pra
+ * direita: mais margem esquerda, consome a folga da direita. Página
+ * continua 100 × 30 mm.
  */
 export const THERMAL_LABEL_WIDTH_MM = 100;
 export const THERMAL_LABEL_HEIGHT_MM = 30;
@@ -767,6 +772,17 @@ export const THERMAL_DEFAULT_DIMENSIONS: Readonly<ThermalLabelDimensions> = {
   height: THERMAL_LABEL_HEIGHT_MM,
 };
 export const THERMAL_SAFE_EDGE_MM = 1;
+/** Deslocamento fixo da arte pra direita (mm). HTML, PDF e ZPL leem daqui. */
+export const THERMAL_ART_OFFSET_X_MM = 3;
+
+/** Pads laterais assimétricos: esquerda = base + offset, direita = base − offset (≥ 0). */
+export function thermalHorizontalPads(basePadMm: number): { left: number; right: number } {
+  const base = Math.max(0, Number(basePadMm) || 0);
+  return {
+    left: +(base + THERMAL_ART_OFFSET_X_MM).toFixed(1),
+    right: +Math.max(0, base - THERMAL_ART_OFFSET_X_MM).toFixed(1),
+  };
+}
 
 export function computeThermalLabelFrame(
   dimensions = THERMAL_DEFAULT_DIMENSIONS,
@@ -777,6 +793,7 @@ export function computeThermalLabelFrame(
   const H = Math.max(1, Number(dimensions.height) || THERMAL_LABEL_HEIGHT_MM);
   const effectiveMarginPct = clamp(Number.isFinite(marginPct) ? marginPct : 0, 0, 20);
   const safePadX = +(W * effectiveMarginPct / 100 + THERMAL_SAFE_EDGE_MM).toFixed(1);
+  const { left: safePadLeft, right: safePadRight } = thermalHorizontalPads(safePadX);
   const safePadY = +(H * effectiveMarginPct / 100 + THERMAL_SAFE_EDGE_MM).toFixed(1);
   const headerHeightMm = showHeader ? +Math.max(H * 0.14, 3.8).toFixed(1) : 0;
   const footerHeightMm = +Math.max(H * 0.055, 1.6).toFixed(1);
@@ -785,13 +802,13 @@ export function computeThermalLabelFrame(
     ? +(safePadY + headerHeightMm + bandGapMm).toFixed(1)
     : safePadY;
   const shellBottomMm = +(safePadY + footerHeightMm + bandGapMm).toFixed(1);
-  const artWidthMm = Math.max(1, +(W - safePadX * 2).toFixed(1));
+  const artWidthMm = Math.max(1, +(W - safePadLeft - safePadRight).toFixed(1));
   const artHeightMm = Math.max(1, +(H - safePadY * 2).toFixed(1));
   const innerW = Math.max(24, artWidthMm);
   const innerH = Math.max(12, +(H - shellTopMm - shellBottomMm).toFixed(1));
 
   return {
-    W, H, effectiveMarginPct, safePadX, safePadY,
+    W, H, effectiveMarginPct, safePadX, safePadLeft, safePadRight, safePadY,
     artWidthMm, artHeightMm,
     headerHeightMm, footerHeightMm, bandGapMm,
     shellTopMm, shellBottomMm, innerW, innerH,
@@ -850,7 +867,7 @@ export function buildThermalLabelsHtml(labels: {
   const showHeader = c.showCode;
   const frame = computeThermalLabelFrame(dimensions, c.marginPct, showHeader);
   const {
-    safePadX, safePadY, headerHeightMm, footerHeightMm,
+    safePadLeft, safePadRight, safePadY, headerHeightMm, footerHeightMm,
     shellTopMm, shellBottomMm, innerW, innerH,
   } = frame;
 
@@ -1099,23 +1116,23 @@ ${preloadLinks}
     content:'';
     position:absolute;
     top:${safePadY}mm;
-    right:${safePadX}mm;
+    right:${safePadRight}mm;
     bottom:${safePadY}mm;
-    left:${safePadX}mm;
+    left:${safePadLeft}mm;
     border:0.25mm solid #000;
     pointer-events:none;
     z-index:5;
   }
   .lbl-hdr{
     position:absolute;
-    top:${safePadY}mm;left:${safePadX}mm;right:${safePadX}mm;
+    top:${safePadY}mm;left:${safePadLeft}mm;right:${safePadRight}mm;
     height:${headerHeightMm}mm;
     background:#000;
     color:#fff;
     display:flex;
     align-items:center;
     justify-content:space-between;
-    padding:0 ${safePadX}mm;
+    padding:0 ${THERMAL_SAFE_EDGE_MM}mm;
     overflow:hidden;
   }
   .lbl-hdr::before{
@@ -1145,9 +1162,9 @@ ${preloadLinks}
   }
   .label-shell{
     position:absolute;
-    left:${safePadX}mm;
+    left:${safePadLeft}mm;
     top:${safePadY}mm;
-    right:${safePadX}mm;
+    right:${safePadRight}mm;
     bottom:${shellBottomMm}mm;
     display:grid;
     grid-template-columns:${gridCols};
@@ -1298,12 +1315,12 @@ ${preloadLinks}
   }
   .lbl-ftr{
     position:absolute;
-    bottom:${safePadY}mm;left:${safePadX}mm;right:${safePadX}mm;
+    bottom:${safePadY}mm;left:${safePadLeft}mm;right:${safePadRight}mm;
     height:${footerHeightMm}mm;
     display:flex;
     align-items:center;
     justify-content:center;
-    padding:0 ${safePadX}mm;
+    padding:0 ${THERMAL_SAFE_EDGE_MM}mm;
     font-size:${footerFontPt}pt;
     font-weight:700;
     letter-spacing:0.6px;
@@ -1454,9 +1471,11 @@ export async function buildThermalLabelsPdf(
   const { width: W, height: H } = dimensions;
   const doc = new jsPDF({ orientation: W >= H ? 'landscape' : 'portrait', unit: 'mm', format: [W, H], compress: true });
 
-  // Layout constants (mm) — proportional to 100×30 reference
+  // Layout constants (mm) — proportional to 100×30 reference.
+  // Pads laterais assimétricos: +3 mm à esquerda, consome a folga da direita
+  // (a L42PRO cortava o header/foto à esquerda e deixava branco no código).
   const scale = H / 30;
-  const padX = 1.5;
+  const { left: padLeft, right: padRight } = thermalHorizontalPads(1.5);
   const padY = 1.0;
 
   // Header strip (black band with ref code at top)
@@ -1573,14 +1592,14 @@ export async function buildThermalLabelsPdf(
       doc.setFont('helvetica', 'bold');
       const headerFontPt = 12 * scale;
       doc.setFontSize(headerFontPt);
-      const headerLeftX = padX;
+      const headerLeftX = padLeft;
       const headerTextY = headerH / 2 + headerFontPt * 0.35 / 2.83;
       doc.text(fitText(headerName, W * 0.55), headerLeftX, headerTextY, { baseline: 'middle' });
       const headerRight = l.shoeCategory ? l.shoeCategory.toUpperCase() : (l.qty ? `× ${l.qty} PAR` : '');
       if (headerRight) {
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(8 * scale);
-        doc.text(fitText(headerRight, W * 0.4), W - padX, headerTextY, { baseline: 'middle', align: 'right' });
+        doc.text(fitText(headerRight, W * 0.4), W - padRight, headerTextY, { baseline: 'middle', align: 'right' });
       }
       doc.setTextColor(0, 0, 0);
     }
@@ -1592,7 +1611,7 @@ export async function buildThermalLabelsPdf(
 
     // Código de barras na direita — compacto pra liberar largura pra texto/nº.
     const barcodeW = Math.min(W * 0.18, 16);
-    const barcodeX = W - padX - barcodeW;
+    const barcodeX = W - padRight - barcodeW;
 
     // Nº ENTRE a descrição e o código de barras — número GRANDE em chip preto
     // que ocupa toda a altura útil do corpo (bodyTop/bodyBottom já reservam a
@@ -1610,7 +1629,7 @@ export async function buildThermalLabelsPdf(
       ? ((l.imageIsFallback && grayImageCache.get(l.imageUrl)) || imageCache.get(l.imageUrl))
       : undefined;
     const imgFrameW = imgData ? Math.min(W * 0.18, 16) : 0;
-    const imgFrameX = padX;
+    const imgFrameX = padLeft;
 
     const infoX = imgFrameX + (imgData ? imgFrameW + 1.2 : 0);
     const infoW = sizeBoxX - infoX - 1.2;
@@ -1705,7 +1724,7 @@ export async function buildThermalLabelsPdf(
     const footerText = senderCnpj
       ? `FABRICADO NO BRASIL  ·  CNPJ ${senderCnpj}`
       : 'FABRICADO NO BRASIL';
-    doc.text(fitText(footerText, W - padX * 2), W / 2, H - footerH / 2, { align: 'center', baseline: 'middle' });
+    doc.text(fitText(footerText, W - padLeft - padRight), W / 2, H - footerH / 2, { align: 'center', baseline: 'middle' });
   }
 
   return doc.output('blob');
@@ -1745,9 +1764,13 @@ function zplFrameDots(dimensions: { width: number; height: number }, dpi: number
   const dpMm = dpi / 25.4;
   const W = Math.round(dimensions.width * dpMm);
   const H = Math.round(dimensions.height * dpMm);
-  const padX = Math.round(1.5 * dpMm);
+  const { left, right } = thermalHorizontalPads(1.5);
+  const padLeft = Math.round(left * dpMm);
+  const padRight = Math.round(right * dpMm);
+  // padX = esquerda deslocada — quem lê "margem do conteúdo" continua válido.
+  const padX = padLeft;
   const padY = Math.round(1.2 * dpMm);
-  return { dpMm, W, H, padX, padY, innerH: H - padY * 2 };
+  return { dpMm, W, H, padX, padLeft, padRight, padY, innerH: H - padY * 2 };
 }
 
 /** Tamanho da foto em DOTS, já limitado pela altura útil da etiqueta. */
@@ -1768,17 +1791,17 @@ export function zplPhotoBoxDots(dimensions = THERMAL_DEFAULT_DIMENSIONS, dpi = 2
  * mudança de layout entra NESTA função, nunca só num dos dois lados.
  */
 export function computeZplLayout(dimensions = THERMAL_DEFAULT_DIMENSIONS, hasPhoto = false, dpi = 203) {
-  const { dpMm, W, H, padX, padY, innerH } = zplFrameDots(dimensions, dpi);
+  const { dpMm, W, H, padX, padLeft, padRight, padY, innerH } = zplFrameDots(dimensions, dpi);
 
   // [FOTO] | DESCRIÇÃO | Nº | CÓDIGO. A coluna da foto só existe quando há
   // gráfico no lote — etiqueta sem foto não ganha buraco à esquerda.
   const photoBox = zplPhotoBoxDots(dimensions, dpi);
-  const photoX = padX;
+  const photoX = padLeft;
   const photoY = padY + Math.max(0, Math.round((innerH - photoBox.height) / 2));
-  const infoX = hasPhoto ? photoX + photoBox.width + Math.round(2 * dpMm) : padX;
+  const infoX = hasPhoto ? photoX + photoBox.width + Math.round(2 * dpMm) : padLeft;
 
   const barcodeW = Math.round(W * 0.20);
-  const barcodeX = W - padX - barcodeW;
+  const barcodeX = W - padRight - barcodeW;
   const sizeBoxW = Math.round(W * 0.20);
   const sizeBoxH = innerH;
   const sizeBoxX = barcodeX - Math.round(2.5 * dpMm) - sizeBoxW;
@@ -1792,7 +1815,7 @@ export function computeZplLayout(dimensions = THERMAL_DEFAULT_DIMENSIONS, hasPho
   const matFont = Math.max(22, Math.round(innerH * 0.22));
 
   return {
-    dpi, dpMm, W, H, padX, padY, innerH,
+    dpi, dpMm, W, H, padX, padLeft, padRight, padY, innerH,
     hasPhoto, photoBox, photoX, photoY,
     infoX, infoW, barcodeW, barcodeX, barcodeH,
     sizeBoxX, sizeBoxW, sizeBoxH,

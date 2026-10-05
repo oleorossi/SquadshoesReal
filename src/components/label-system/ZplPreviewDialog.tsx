@@ -161,7 +161,7 @@ export default function ZplPreviewDialog({
             format: 'CODE128', displayValue: true, fontSize: Math.round(L.innerH * 0.16),
             height: L.barcodeH - Math.round(L.innerH * 0.2), margin: 0, width: 1,
           });
-          ctx.drawImage(bc, L.barcodeX, L.padY, L.W - L.padX - L.barcodeX, L.barcodeH);
+          ctx.drawImage(bc, L.barcodeX, L.padY, L.barcodeW, L.barcodeH);
         } catch { /* payload inválido pro CODE128 — a prévia sai sem barras */ }
         paint();
       }).catch(paint);

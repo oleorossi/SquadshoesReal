@@ -39,5 +39,14 @@ describe('etiqueta individual — PDF abrível no Windows', () => {
     expect(zplDialog).toContain('não abre em leitor comum');
     expect(zplDialog).toContain('setCanvasNode');
   });
+
+  it('PDF, HTML e ZPL leem o deslocamento de 3 mm da mesma constante', () => {
+    const printLabels = readFileSync(resolve(ROOT, 'lib/printLabels.ts'), 'utf8');
+    expect(printLabels).toContain('THERMAL_ART_OFFSET_X_MM = 3');
+    expect(printLabels).toContain('thermalHorizontalPads(safePadX)');
+    expect(printLabels).toContain('thermalHorizontalPads(1.5)');
+    expect(zplDialog).toContain('L.barcodeW');
+    expect(zplDialog).not.toContain('L.W - L.padX - L.barcodeX');
+  });
 });
 

@@ -3,8 +3,10 @@ import {
   buildThermalLabelsHtml,
   buildBoxIdentificationHtml,
   computeThermalLabelFrame,
+  thermalHorizontalPads,
   DEFAULT_THERMAL_CONFIG,
   THERMAL_SAFE_EDGE_MM,
+  THERMAL_ART_OFFSET_X_MM,
   THERMAL_LABEL_WIDTH_MM,
   THERMAL_LABEL_HEIGHT_MM,
   type BoxIdentificationData,
@@ -70,26 +72,30 @@ describe('buildThermalLabelsHtml — barcode por payload distinto', () => {
     expect(html).not.toContain('var _bcJobs=');
   });
 
-  it('mantém a página 100×30 mm e centraliza a arte na área segura de 98×28 mm', () => {
+  it('mantém a página 100×30 mm e desloca a arte 3 mm à direita (L42PRO)', () => {
     const frame = computeThermalLabelFrame({ width: 100, height: 30 });
 
     expect(DEFAULT_THERMAL_CONFIG.marginPct).toBe(0);
     expect(THERMAL_SAFE_EDGE_MM).toBe(1);
+    expect(THERMAL_ART_OFFSET_X_MM).toBe(3);
     expect(THERMAL_LABEL_WIDTH_MM).toBe(100);
     expect(THERMAL_LABEL_HEIGHT_MM).toBe(30);
     expect(frame.safePadX).toBe(1);
+    expect(frame.safePadLeft).toBe(4);
+    expect(frame.safePadRight).toBe(0);
     expect(frame.safePadY).toBe(1);
-    expect(frame.artWidthMm).toBe(98);
+    expect(frame.artWidthMm).toBe(96);
     expect(frame.artHeightMm).toBe(28);
-    expect(frame.innerW).toBe(98);
+    expect(frame.innerW).toBe(96);
     expect(frame.shellTopMm + frame.innerH + frame.shellBottomMm).toBeCloseTo(30, 6);
 
     const html = buildThermalLabelsHtml([label('SP130-34', '34')], 'logo.png');
     expect(html).toContain('@page{size:100mm 30mm;margin:0;}');
     expect(html).toContain('width:100mm;\n    height:30mm;');
-    expect(html).toContain('top:1mm;left:1mm;right:1mm;');
-    expect(html).toContain('bottom:1mm;left:1mm;right:1mm;');
-    expect(html).toContain('bottom:1mm;\n    left:1mm;');
+    expect(html).toContain('top:1mm;left:4mm;right:0mm;');
+    expect(html).toContain('bottom:1mm;left:4mm;right:0mm;');
+    expect(html).toContain('bottom:1mm;\n    left:4mm;');
+    expect(html).toContain('right:0mm;');
   });
 
   it('mantém configurações físicas e amplia somente a hierarquia visual', () => {
@@ -179,7 +185,15 @@ describe('buildThermalLabelsHtml — barcode por payload distinto', () => {
 
     expect(semMargem.safePadX).toBe(1);
     expect(comMargem.safePadX).toBe(4);
+    expect(comMargem.safePadLeft).toBe(7);
+    expect(comMargem.safePadRight).toBe(1);
     expect(comMargem.innerW).toBeLessThan(semMargem.innerW);
+  });
+
+  it('pads laterais: esquerda = base + 3 mm, direita = max(0, base − 3)', () => {
+    expect(thermalHorizontalPads(1)).toEqual({ left: 4, right: 0 });
+    expect(thermalHorizontalPads(1.5)).toEqual({ left: 4.5, right: 0 });
+    expect(thermalHorizontalPads(4)).toEqual({ left: 7, right: 1 });
   });
 });
 

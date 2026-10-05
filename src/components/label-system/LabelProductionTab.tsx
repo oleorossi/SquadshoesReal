@@ -35,7 +35,7 @@ import logoImg from '@/assets/logo-squad-shoes.jpg';
 import { supabase } from '@/integrations/supabase/client';
 import { resolveProductImageWithSource } from '@/lib/imageFallback';
 import { resolveMaterialLabels, materialLabelKey, materialNameFromCommercialSnapshot, type MaterialLabelInput } from '@/lib/labelUtils';
-import { buildBoxIdentificationHtml, buildThermalLabelsHtml, buildHangtagHtml, buildThermalLabelsZpl, buildThermalLabelsPdf, zplPhotoBoxDots, type BoxIdentificationData, type ThermalLabelConfig, DEFAULT_THERMAL_CONFIG, THERMAL_LABEL_WIDTH_MM, THERMAL_LABEL_HEIGHT_MM, THERMAL_SAFE_EDGE_MM } from '@/lib/printLabels';
+import { buildBoxIdentificationHtml, buildThermalLabelsHtml, buildHangtagHtml, buildThermalLabelsZpl, buildThermalLabelsPdf, zplPhotoBoxDots, type BoxIdentificationData, type ThermalLabelConfig, DEFAULT_THERMAL_CONFIG, THERMAL_LABEL_WIDTH_MM, THERMAL_LABEL_HEIGHT_MM, THERMAL_SAFE_EDGE_MM, THERMAL_ART_OFFSET_X_MM } from '@/lib/printLabels';
 import { loadImageAsMonochrome, type MonoBitmap } from '@/lib/zplImage';
 import {
   openOrDownloadThermalLabelPdf,
@@ -2643,7 +2643,7 @@ export function LabelProductionTab() {
                     </div>
                     <Slider value={[labelConfig.marginPct]} onValueChange={([v]) => setLabelConfig({ ...labelConfig, marginPct: v })} min={0} max={20} step={1} className="py-2" />
                     <p className="text-xs text-muted-foreground">
-                      0% usa a área segura de {currentSize.width - THERMAL_SAFE_EDGE_MM * 2} × {currentSize.height - THERMAL_SAFE_EDGE_MM * 2} mm, centralizada no papel físico de {currentSize.width} × {currentSize.height} mm. Padrão da caixa individual: {THERMAL_LABEL_WIDTH_MM} × {THERMAL_LABEL_HEIGHT_MM} mm.
+                      0% usa a área segura de {currentSize.width - THERMAL_SAFE_EDGE_MM * 2 - THERMAL_ART_OFFSET_X_MM} × {currentSize.height - THERMAL_SAFE_EDGE_MM * 2} mm, deslocada {THERMAL_ART_OFFSET_X_MM} mm à direita no papel físico de {currentSize.width} × {currentSize.height} mm (compensa o corte da L42PRO). Padrão da caixa individual: {THERMAL_LABEL_WIDTH_MM} × {THERMAL_LABEL_HEIGHT_MM} mm.
                       Esta mídia operacional não é o rolo 2 × 50 × 30 mm usado no Gerador padrão.
                     </p>
                   </div>
