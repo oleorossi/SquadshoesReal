@@ -82,4 +82,18 @@ describe('ui density package — preferências', () => {
     expect(src).toContain("sm: ['0.75rem");
     expect(src).toContain("base: ['0.8125rem");
   });
+
+  it('SalesOperationsRail métricas densas', () => {
+    const src = read('components/sale-orders/SalesOperationsRail.tsx');
+    expect(src).toContain('px-2 py-1.5 sm:px-2.5');
+    expect(src).toContain('text-base font-bold');
+    expect(src).toContain('h-[4.25rem]');
+  });
+
+  it('rota DEV /density-audit só em DEV', () => {
+    const app = read('App.tsx');
+    expect(app).toContain('/density-audit');
+    expect(app).toContain('import.meta.env.DEV');
+    expect(app).toContain('DensityAudit');
+  });
 });

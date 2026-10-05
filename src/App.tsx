@@ -763,6 +763,12 @@ const DESIGN_PREVIEW_ROUTES: RouteObject[] = import.meta.env.DEV
         lazy: () => import("./pages/DesignPreview").then(m => ({ Component: m.default })),
         errorElement: <RouteErrorFallback />,
       },
+      {
+        // Auditoria DEV da densificação — fixtures, sem login. Fora do bundle de prod.
+        path: "/density-audit",
+        lazy: () => import("./pages/DensityAudit").then(m => ({ Component: m.default })),
+        errorElement: <RouteErrorFallback />,
+      },
     ]
   : [];
 
