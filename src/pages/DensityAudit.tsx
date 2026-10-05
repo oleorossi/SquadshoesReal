@@ -13,6 +13,7 @@ import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import SalesOperationsRail from '@/components/sale-orders/SalesOperationsRail';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { SearchInput } from '@/components/ui/search-input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 const FIXTURE_ROWS = Array.from({ length: 16 }, (_, i) => ({
   id: `pv-${i + 1}`,
@@ -30,6 +31,7 @@ const FIXTURE_ROWS = Array.from({ length: 16 }, (_, i) => ({
 export default function DensityAudit() {
   const tableWrapRef = useRef<HTMLDivElement>(null);
   const [visibleRows, setVisibleRows] = useState(0);
+  const [search, setSearch] = useState('');
 
   useLayoutEffect(() => {
     const wrap = tableWrapRef.current;
@@ -125,10 +127,11 @@ export default function DensityAudit() {
             <div className="flex flex-col gap-2 rounded-lg border bg-card p-2 shadow-sm">
               <div className="flex flex-wrap items-center gap-2">
                 <div className="relative min-w-[16rem] flex-[1_1_32rem] max-w-2xl">
-                  <input
-                    className="flex h-9 w-full rounded-sm border-[1.5px] border-foreground/15 bg-background px-2.5 text-sm"
+                  <SearchInput
+                    value={search}
+                    onChange={setSearch}
                     placeholder="Buscar PV, cliente, ref…"
-                    readOnly
+                    totalCount={FIXTURE_ROWS.length}
                   />
                 </div>
                 <Button size="sm" variant="outline">Filtros</Button>
