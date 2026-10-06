@@ -1,6 +1,7 @@
 /**
  * Ateliê — cabedal complexo (rua).
- * ?view=cadastro | fila  — cadastro de refs × setor + pipeline Debitar → Enviado → Recebido.
+ * ?view=cadastro | fila  — cadastro de refs × setor + pipeline
+ * Aguardando corte → Debitar → Enviado → Recebido.
  */
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -15,6 +16,7 @@ import {
 } from '@phosphor-icons/react';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Panel } from '@/components/ui/panel';
 import { SearchInput } from '@/components/ui/search-input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -30,6 +32,7 @@ import {
   ATELIER_PIPELINE_LABEL,
   ATELIER_SECTOR_LABEL,
   ATELIER_SECTORS,
+  ATELIER_STREET_SECTORS,
   type AtelierPipelineStatus,
   type AtelierSector,
 } from '@/lib/atelier';
@@ -37,12 +40,14 @@ import {
   useAddAtelierReference,
   useAtelierCatalog,
   useAtelierJobs,
+  useAtelierSettings,
   useConfirmAtelierDebit,
   useMarkAtelierReceived,
   useMarkAtelierSent,
   useReapplyAtelierEligibility,
   useRemoveAtelierReference,
   useTechnicalSheetsLiteForAtelier,
+  useUpdateAtelierSettings,
   type AtelierJobRow,
 } from '@/hooks/useAtelier';
 import { useContractors } from '@/hooks/useContractors';
@@ -56,6 +61,17 @@ function sheetLabel(s: {
   name?: string | null;
 }): string {
   return [s.code, s.model || s.name].filter(Boolean).join(' · ') || 'Sem código';
+}
+
+function formatTarget(start?: string | null, end?: string | null): string | null {
+  if (!start && !end) return null;
+  const fmt = (iso: string) => {
+    const [y, m, d] = iso.slice(0, 10).split('-');
+    return `${d}/${m}`;
+  };
+  if (start && end) return `${fmt(start)} → ${fmt(end)}`;
+  if (end) return `até ${fmt(end)}`;
+  return `desde ${fmt(start!)}`;
 }
 
 function JobCard({
@@ -79,6 +95,7 @@ function JobCard({
 }) {
   const [contractorId, setContractorId] = useState<string>('');
   const st = job.pipeline_status;
+  const targetLabel = formatTarget(job.target_start, job.target_end);
 
   return (
     <div className="rounded-lg border border-border/70 bg-card p-3 space-y-2">
@@ -97,6 +114,11 @@ function JobCard({
             {job.sale_orders?.client_name || 'Cliente'} · {Number(job.pairs)} pares
             {job.ready_date ? ` · pronto ${job.ready_date}` : ''}
           </p>
+          {targetLabel ? (
+            <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">
+              Agenda {targetLabel}
+            </p>
+          ) : null}
           {job.atelier_service_number ? (
             <p className="mt-1 font-mono text-[11px] text-primary">{job.atelier_service_number}</p>
           ) : null}
@@ -104,6 +126,7 @@ function JobCard({
         <span
           className={cn(
             'shrink-0 rounded-md px-2 py-0.5 text-[10px] font-medium',
+            st === 'awaiting_cut' && 'bg-muted text-muted-foreground',
             st === 'awaiting_debit' && 'bg-amber-500/10 text-amber-700 dark:text-amber-400',
             st === 'debited' && 'bg-muted text-foreground',
             st === 'sent_to_contractor' && 'bg-primary/10 text-primary',
@@ -113,6 +136,13 @@ function JobCard({
           {ATELIER_PIPELINE_LABEL[st]}
         </span>
       </div>
+
+      {st === 'awaiting_cut' && (
+        <p className="text-xs text-muted-foreground">
+          Aparece na fila; as seleções liberam quando <strong className="font-medium text-foreground">Corte Cabedal</strong> da
+          OP for concluído no Kanban.
+        </p>
+      )}
 
       {st === 'awaiting_debit' && (
         <Button size="sm" className="w-full h-8" onClick={onDebit} disabled={debiting}>
@@ -157,6 +187,84 @@ function JobCard({
   );
 }
 
+function AgendaSettings() {
+  const { data: settings, isLoading } = useAtelierSettings();
+  const update = useUpdateAtelierSettings();
+  const [costura, setCostura] = useState<string | null>(null);
+  const [aviamento, setAviamento] = useState<string | null>(null);
+
+  const costuraVal = costura ?? String(settings?.costura_offset_days ?? 5);
+  const aviVal = aviamento ?? String(settings?.aviamento_offset_days ?? 5);
+
+  const save = (field: 'costura' | 'aviamento', raw: string) => {
+    const n = Math.max(0, Math.min(60, Math.round(Number(raw) || 0)));
+    if (field === 'costura') {
+      setCostura(String(n));
+      if (n !== (settings?.costura_offset_days ?? 5)) {
+        update.mutate({ costuraOffsetDays: n });
+      }
+    } else {
+      setAviamento(String(n));
+      if (n !== (settings?.aviamento_offset_days ?? 5)) {
+        update.mutate({ aviamentoOffsetDays: n });
+      }
+    }
+  };
+
+  return (
+    <Panel className="p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Agenda · dias úteis antes dos cortes
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Substitui a Antecipação de fábrica. Targets nas jobs usam a âncora de corte − N dias.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              Costura
+            </span>
+            <Input
+              type="number"
+              min={0}
+              max={60}
+              className="h-9 w-20 font-mono text-right"
+              disabled={isLoading || update.isPending}
+              value={costuraVal}
+              onChange={(e) => setCostura(e.target.value)}
+              onBlur={(e) => save('costura', e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+              }}
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              Aviamento
+            </span>
+            <Input
+              type="number"
+              min={0}
+              max={60}
+              className="h-9 w-20 font-mono text-right"
+              disabled={isLoading || update.isPending}
+              value={aviVal}
+              onChange={(e) => setAviamento(e.target.value)}
+              onBlur={(e) => save('aviamento', e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+              }}
+            />
+          </label>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
 function CadastroView() {
   const [sector, setSector] = useState<AtelierSector>('costura_cabedal');
   const [sheetId, setSheetId] = useState<string>('');
@@ -192,20 +300,29 @@ function CadastroView() {
       </Tabs>
 
       <Panel className="p-4 space-y-3">
-        <p className="text-sm text-muted-foreground">
-          Cadastre só as referências de cabedal <strong className="text-foreground font-medium">complexo</strong> deste
-          setor. Após o PV ir para Aprovado, elas entram na fila do Ateliê.
-        </p>
+        {sector === 'corte_cabedal' ? (
+          <p className="text-sm text-muted-foreground">
+            <strong className="text-foreground font-medium">Corte é interno</strong> (em casa). Cadastrar aqui marca a
+            referência como cabedal complexo; o corte roda no Kanban e{' '}
+            <strong className="text-foreground font-medium">destrava Costura/Aviamento</strong> na fila do Ateliê. Não
+            gera job de rua de corte.
+          </p>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Cadastre só as referências de cabedal <strong className="text-foreground font-medium">complexo</strong> deste
+            setor. Após o PV ir para Aprovado, entram na fila como “Aguardando o corte”; as seleções liberam quando
+            Corte Cabedal da OP for concluído.
+          </p>
+        )}
         <div className="flex flex-col sm:flex-row gap-2">
           <SearchInput
-            placeholder="Buscar ficha…"
             value={q}
             onChange={setQ}
-            className="sm:max-w-xs"
-            inputClassName="h-9"
+            placeholder="Buscar ficha…"
+            className="h-9 flex-1"
           />
           <Select value={sheetId || undefined} onValueChange={setSheetId}>
-            <SelectTrigger className="h-9 sm:flex-1">
+            <SelectTrigger className="h-9 sm:w-[280px]">
               <SelectValue placeholder="Escolher referência" />
             </SelectTrigger>
             <SelectContent>
@@ -217,6 +334,7 @@ function CadastroView() {
             </SelectContent>
           </Select>
           <Button
+            size="sm"
             className="h-9"
             disabled={!sheetId || addMut.isPending}
             onClick={() => {
@@ -227,8 +345,8 @@ function CadastroView() {
               );
             }}
           >
-            <Plus className="h-4 w-4" />
-            Adicionar
+            {addMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+            Cadastrar
           </Button>
         </div>
       </Panel>
@@ -242,16 +360,16 @@ function CadastroView() {
       ) : catalog.length === 0 ? (
         <EmptyState
           icon={Scissors}
-          title={`Nenhuma referência em ${ATELIER_SECTOR_LABEL[sector]}`}
-          description="Adicione os modelos que vão pra rua neste setor."
+          title="Nenhuma referência neste setor"
+          description="Só o que estiver aqui gera demanda Ateliê quando o PV for aprovado."
         />
       ) : (
-        <ul className="divide-y divide-border/60 rounded-lg border border-border/60 bg-card">
+        <ul className="divide-y divide-border/60 rounded-lg border border-border/70 bg-card">
           {catalog.map((row) => (
             <li key={row.id} className="flex items-center justify-between gap-3 px-4 py-3">
               <div className="min-w-0">
-                <p className="font-medium truncate">
-                  {row.technical_sheets ? sheetLabel(row.technical_sheets) : row.reference_id}
+                <p className="truncate font-medium text-foreground">
+                  {sheetLabel(row.technical_sheets ?? {})}
                 </p>
                 <p className="text-xs text-muted-foreground">{ATELIER_SECTOR_LABEL[row.sector]}</p>
               </div>
@@ -260,7 +378,10 @@ function CadastroView() {
                 size="sm"
                 className="h-8 text-destructive"
                 disabled={removeMut.isPending}
-                onClick={() => removeMut.mutate(row.id)}
+                onClick={() => {
+                  if (!window.confirm('Remover esta referência do Ateliê?')) return;
+                  removeMut.mutate(row.id);
+                }}
               >
                 Remover
               </Button>
@@ -305,24 +426,28 @@ function FilaView() {
   const sendMut = useMarkAtelierSent();
   const receiveMut = useMarkAtelierReceived();
 
-  const columns: { key: AtelierPipelineStatus | 'debited_pending'; title: string; statuses: AtelierPipelineStatus[] }[] =
-    [
-      {
-        key: 'awaiting_debit',
-        title: '1 · Debitar / enviar',
-        statuses: ['awaiting_debit', 'debited'],
-      },
-      {
-        key: 'sent_to_contractor',
-        title: '2 · No prestador',
-        statuses: ['sent_to_contractor'],
-      },
-      {
-        key: 'received_at_factory',
-        title: '3 · Recebido',
-        statuses: ['received_at_factory'],
-      },
-    ];
+  const columns: { key: string; title: string; statuses: AtelierPipelineStatus[] }[] = [
+    {
+      key: 'awaiting_cut',
+      title: '0 · Aguardando o corte',
+      statuses: ['awaiting_cut'],
+    },
+    {
+      key: 'awaiting_debit',
+      title: '1 · Debitar / enviar',
+      statuses: ['awaiting_debit', 'debited'],
+    },
+    {
+      key: 'sent_to_contractor',
+      title: '2 · No prestador',
+      statuses: ['sent_to_contractor'],
+    },
+    {
+      key: 'received_at_factory',
+      title: '3 · Recebido',
+      statuses: ['received_at_factory'],
+    },
+  ];
 
   const contractorOpts = (contractors as { id: string; name: string }[]).map((c) => ({
     id: c.id,
@@ -331,10 +456,12 @@ function FilaView() {
 
   return (
     <div className="space-y-4">
+      <AgendaSettings />
+
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Tabs value={sector} onValueChange={(v) => setSector(v as AtelierSector)}>
           <TabsList className="h-auto flex-wrap gap-1 bg-muted/50 p-0.5">
-            {ATELIER_SECTORS.map((s) => (
+            {ATELIER_STREET_SECTORS.map((s) => (
               <TabsTrigger key={s} value={s} className="text-xs">
                 {ATELIER_SECTOR_LABEL[s]}
               </TabsTrigger>
@@ -359,7 +486,7 @@ function FilaView() {
           description="Cadastre referências complexas e aprove PVs — só o que está no Ateliê aparece aqui."
         />
       ) : (
-        <div className="grid gap-3 lg:grid-cols-3">
+        <div className="grid gap-3 xl:grid-cols-4 lg:grid-cols-2">
           {columns.map((col) => {
             const colJobs = jobs.filter((j) => col.statuses.includes(j.pipeline_status));
             return (
@@ -421,7 +548,7 @@ export default function Atelie() {
       <EditorialPageHeader
         sectionLabel="ENGENHARIA · ATELIÊ"
         title="Ateliê"
-        description="Cabedal complexo pra rua: cadastro por setor, débito antecipado, envio ao prestador e retorno à fábrica."
+        description="Cabedal complexo: corte interno destrava a fila; Costura e Aviamento vão pra rua com agenda própria (unificou a Antecipação)."
         actions={
           <Button variant="outline" size="sm" className="h-9" asChild>
             <Link to="/terceirizados">

@@ -129,6 +129,9 @@ export function isAtelierFactoryReady(input: {
   if (status === 'sent_to_contractor') {
     return { ready: false, blockReason: 'Ateliê · aguardando retorno do cabedal' };
   }
+  if (status === 'awaiting_cut') {
+    return { ready: false, blockReason: 'Ateliê · aguardando corte interno' };
+  }
   if (status === 'awaiting_debit' || status === 'debited') {
     return { ready: false, blockReason: 'Ateliê · prep de cabedal pendente' };
   }

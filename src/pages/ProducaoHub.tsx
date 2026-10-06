@@ -9,7 +9,6 @@ export default function ProducaoHub() {
       hints={{
         '/producao/sequencia': 'Ordem oficial — fechar PV, cor e referência',
         '/producao/planejamento': 'Carga diária por setor',
-        '/producao/antecipacao': 'Adiantar demanda futura',
         '/producao/corte-lookahead': 'Liberar Corte e fechar PV',
         '/producao/kanban': 'Quadro de gestão',
         '/producao/estouro': 'OPs acima da capacidade',
