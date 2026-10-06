@@ -117,7 +117,6 @@ const PCPHub = lazy(() => import("./pages/PCPHub"));
 // Remodelagem Produção 2026-07-12 (specs/remodelagem-producao.md): rotas
 // diretas no lugar do hub de 14 abas. PCPHub virou só o redirect legado.
 const ProducaoPlanejamento = lazy(() => import("./pages/ProducaoPlanejamento"));
-const ProducaoAntecipacao = lazy(() => import("./pages/ProducaoAntecipacao"));
 const ProducaoSequencia = lazy(() => import("./pages/ProducaoSequencia"));
 const ProducaoCorteLookahead = lazy(() => import("./pages/ProducaoCorteLookahead"));
 const ProducaoKanban = lazy(() => import("./pages/ProducaoKanban"));
@@ -871,8 +870,9 @@ const router = createBrowserRouter([
         element: <ProducaoPlanejamento />,
       },
       {
+        // Antecipação unificada no Ateliê (agenda + fila Costura/Aviamento).
         path: "producao/antecipacao",
-        element: <ProducaoAntecipacao />,
+        element: <Navigate to="/atelie" replace />,
       },
       {
         path: "producao/sequencia",

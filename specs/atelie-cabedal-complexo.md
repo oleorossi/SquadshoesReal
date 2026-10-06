@@ -39,6 +39,19 @@ no Kanban/Gestão — sem consumir o mesmo material duas vezes (prep + OP).
 | Kanban | Badge + trava apontamento “no prestador” + filtro; sem colunas novas |
 | Escopo UI | Ateliê + prep fora + Relatório/OS cabedal + polish nav; sem redesign Na Rua/Contratadas |
 
+## Unificação Antecipação → Ateliê (grill 06/10/2026)
+
+| # | Decisão |
+|---|---|
+| Antecipação | `/producao/antecipacao` → redirect `/atelie`; some do hub Produção |
+| Early-release fábrica | `start_offset_days` de Costura Cabedal e Aviamento = 0; UI em Setores aponta pro Ateliê |
+| Rua | Só jobs `costura_cabedal` + `aviamento` (cadastro obrigatório); **não** cria job de corte rua |
+| Corte | Interno (Kanban `Corte Cabedal`); cadastro Corte só marca complexidade |
+| Pipeline | `awaiting_cut` → (Corte Cabedal `concluido`) → `awaiting_debit` → … ; soft já no approve |
+| Agenda | `atelier_settings` (N Costura / N Aviamento) + `target_start`/`target_end` nas jobs |
+
+Migração: `20270101031700_atelier_unificar_antecipacao.sql`.
+
 ## Scope
 
 ### In scope

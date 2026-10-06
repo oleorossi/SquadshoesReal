@@ -85,6 +85,10 @@ describe('productionSequence', () => {
     }).ready).toBe(false);
     expect(isAtelierFactoryReady({
       isComplexReference: true,
+      pipelineStatus: 'awaiting_cut',
+    }).ready).toBe(false);
+    expect(isAtelierFactoryReady({
+      isComplexReference: true,
       pipelineStatus: 'received_at_factory',
     }).ready).toBe(true);
     expect(isAtelierFactoryReady({

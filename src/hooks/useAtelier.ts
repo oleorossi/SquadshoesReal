@@ -9,10 +9,17 @@ export const atelierKeys = {
     [...atelierKeys.all, 'catalog', sector ?? 'all'] as const,
   jobs: (filters?: Record<string, string | null>) =>
     [...atelierKeys.all, 'jobs', filters ?? {}] as const,
+  settings: () => [...atelierKeys.all, 'settings'] as const,
   prepDebits: (saleOrderIds: string[]) =>
     [...atelierKeys.all, 'prep-debits', [...saleOrderIds].sort().join(',')] as const,
   sheetsLite: () => [...atelierKeys.all, 'sheets-lite'] as const,
 };
+
+export interface AtelierSettings {
+  costura_offset_days: number;
+  aviamento_offset_days: number;
+  updated_at?: string | null;
+}
 
 export interface AtelierCatalogRow {
   id: string;
@@ -46,6 +53,8 @@ export interface AtelierJobRow {
   debited_at: string | null;
   sent_at: string | null;
   received_at: string | null;
+  target_start?: string | null;
+  target_end?: string | null;
   ready_date?: string | null;
   sale_orders?: {
     order_number: string;
@@ -167,6 +176,7 @@ export function useAtelierJobs(sector?: AtelierSector | null) {
           `id, demand_id, sale_order_id, sale_order_item_id, technical_sheet_id,
            sector, pairs, color, reference_code, pipeline_status, service_order_id,
            atelier_service_number, contractor_id, debited_at, sent_at, received_at,
+           target_start, target_end,
            sale_orders(order_number, client_name, billing_week),
            contractors(id, name)`,
         )
@@ -260,6 +270,55 @@ export function useMarkAtelierReceived() {
       toast.success('Recebido na fábrica');
     },
     onError: (e: Error) => toast.error(e.message || 'Falha ao marcar recebimento'),
+  });
+}
+
+export function useAtelierSettings() {
+  return useQuery({
+    queryKey: atelierKeys.settings(),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('atelier_settings' as never)
+        .select('costura_offset_days, aviamento_offset_days, updated_at')
+        .eq('id', 1)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) {
+        return {
+          costura_offset_days: 5,
+          aviamento_offset_days: 5,
+          updated_at: null,
+        } satisfies AtelierSettings;
+      }
+      return data as unknown as AtelierSettings;
+    },
+    staleTime: 30_000,
+  });
+}
+
+export function useUpdateAtelierSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      costuraOffsetDays?: number | null;
+      aviamentoOffsetDays?: number | null;
+    }) => {
+      const { data, error } = await supabase.rpc(
+        'atelier_update_settings' as never,
+        {
+          p_costura_offset_days: input.costuraOffsetDays ?? null,
+          p_aviamento_offset_days: input.aviamentoOffsetDays ?? null,
+        } as never,
+      );
+      if (error) throw error;
+      return data as AtelierSettings & { ok?: boolean };
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: atelierKeys.settings() });
+      void qc.invalidateQueries({ queryKey: atelierKeys.all });
+      toast.success('Agenda do Ateliê atualizada');
+    },
+    onError: (e: Error) => toast.error(e.message || 'Falha ao salvar agenda'),
   });
 }
 

@@ -88,7 +88,8 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   // Rotas do menu de Produção (remodelagem do motor diário, 0747cea) — todas
   // governadas pelo módulo 'producao', igual às demais /producao/*.
   '/producao/planejamento': 'producao',
-  '/producao/antecipacao': 'producao',
+  // Bookmark legado → redirect /atelie; mesmo módulo do Ateliê.
+  '/producao/antecipacao': 'produtos',
   '/producao/sequencia': 'producao',
   '/producao/corte-lookahead': 'producao',
   '/producao/kanban': 'producao',

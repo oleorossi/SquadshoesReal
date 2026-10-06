@@ -87,9 +87,9 @@ export default function ProducaoSetoresConfig() {
         actions={
           <div className="flex items-center gap-2">
             <Button variant="outline" className="h-9 gap-2" asChild>
-              <Link to="/producao/antecipacao">
+              <Link to="/atelie">
                 <Clock className="h-4 w-4" />
-                Antecipação
+                Ateliê
               </Link>
             </Button>
             <Button
@@ -182,28 +182,39 @@ export default function ProducaoSetoresConfig() {
                     <span className="text-xs text-muted-foreground">pares/dia</span>
                   </div>
 
-                  <div className="flex items-center gap-1.5">
-                    <Input
-                      type="number"
-                      min={0}
-                      max={60}
-                      defaultValue={s.start_offset_days ?? 0}
-                      key={`${s.sector}-offset-${s.start_offset_days ?? 0}`}
-                      onBlur={e => {
-                        const value = Math.max(0, Math.min(60, Math.round(Number(e.target.value) || 0)));
-                        if (value !== (s.start_offset_days ?? 0)) {
-                          update.mutate({ sector: s.sector, start_offset_days: value });
-                        }
-                      }}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                      }}
-                      disabled={!canEdit}
-                      className="h-8 w-16 font-mono text-right"
-                      aria-label={`Dias de antecipação de ${s.sector}`}
-                    />
-                    <span className="text-xs text-muted-foreground">dias antes</span>
-                  </div>
+                  {s.sector === 'Costura Cabedal' || s.sector === 'Aviamento' ? (
+                    <div className="flex items-center gap-1.5 min-w-[9rem]">
+                      <span className="text-xs text-muted-foreground">
+                        Agenda no{' '}
+                        <Link to="/atelie" className="text-foreground underline-offset-2 hover:underline">
+                          Ateliê
+                        </Link>
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5">
+                      <Input
+                        type="number"
+                        min={0}
+                        max={60}
+                        defaultValue={s.start_offset_days ?? 0}
+                        key={`${s.sector}-offset-${s.start_offset_days ?? 0}`}
+                        onBlur={e => {
+                          const value = Math.max(0, Math.min(60, Math.round(Number(e.target.value) || 0)));
+                          if (value !== (s.start_offset_days ?? 0)) {
+                            update.mutate({ sector: s.sector, start_offset_days: value });
+                          }
+                        }}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                        }}
+                        disabled={!canEdit}
+                        className="h-8 w-16 font-mono text-right"
+                        aria-label={`Dias de antecipação de ${s.sector}`}
+                      />
+                      <span className="text-xs text-muted-foreground">dias antes</span>
+                    </div>
+                  )}
 
                   <div className="flex items-center gap-4 ml-auto">
                     {/* Regras de transição (R6.3) — avisam + pedem confirmação, nunca travam */}
