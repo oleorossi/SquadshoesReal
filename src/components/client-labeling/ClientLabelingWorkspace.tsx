@@ -20,6 +20,7 @@ import {
   Trash,
   Image as ImageIcon,
   Scissors,
+  ArrowCounterClockwise,
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import logoFornecedor from '@/assets/baby-nalin/marca-fornecedor.png';
@@ -153,6 +154,23 @@ import {
 import { tagA4PdfFilename } from '@/lib/tagA4Sheet';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { cn } from '@/lib/utils';
+import {
+  applyLotFace,
+  brandingFieldsForPattern,
+  faceFieldsForPattern,
+  isLotBrandingDirty,
+  isLotFaceDirty,
+  mergeLotBranding,
+  pontoMixLineOverrideFromFace,
+  reseedsLotTexts,
+  seedLotBranding,
+  seedLotFaceFromRow,
+  validateLotFace,
+  type LotBranding,
+  type LotBrandingFieldKey,
+  type LotFaceBySkuKey,
+  type LotFaceFieldKey,
+} from '@/lib/clientLabelLotTexts';
 
 const MAX_PROFILE_MEASURE_MM = 50;
 
@@ -244,12 +262,17 @@ function toBabyRows(rows: ClientOrderLine[]): BabyNalinRow[] {
   }));
 }
 
-export function ClientLabelingWorkspace() {
+interface ClientLabelingWorkspaceProps {
+  /** Só para testes / deep-link — pré-seleciona o cliente sem o Select do Radix. */
+  initialClientId?: string;
+}
+
+export function ClientLabelingWorkspace({ initialClientId = '' }: ClientLabelingWorkspaceProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fileRequestIdRef = useRef(0);
 
   const [clientSearch, setClientSearch] = useState('');
-  const [selectedClientId, setSelectedClientId] = useState('');
+  const [selectedClientId, setSelectedClientId] = useState(initialClientId);
   const [draftCollection, setDraftCollection] = useState<ClientLabelPatternCollection | null>(null);
   const [patternDirty, setPatternDirty] = useState(false);
 
@@ -262,6 +285,8 @@ export function ClientLabelingWorkspace() {
   const [printQuantities, setPrintQuantities] = useState<Record<string, number>>({});
   const [coucheConfirmed, setCoucheConfirmed] = useState(true);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [lotBranding, setLotBranding] = useState<LotBranding>(() => seedLotBranding(null));
+  const [lotFaceBySkuKey, setLotFaceBySkuKey] = useState<LotFaceBySkuKey>({});
 
   const { data: clients = [], isLoading: clientsLoading } = useClientsForLabeling();
   const { data: savedCollection, isLoading: patternLoading } = useClientLabelPattern(
@@ -350,6 +375,57 @@ export function ClientLabelingWorkspace() {
     quantidade: printQuantities[skuKey] ?? row.quantidade,
   }));
 
+  const lotFaceFields = faceFieldsForPattern(pattern?.key);
+  const lotBrandingFields = brandingFieldsForPattern(pattern?.key);
+  const lotTextsDirty =
+    Boolean(pattern)
+    && (isLotBrandingDirty(pattern?.branding, lotBranding, pattern?.key)
+      || rowEntries.some(({ row, skuKey }) =>
+        isLotFaceDirty(row, lotFaceBySkuKey[skuKey], pattern!.key, {
+          templates: pattern!.templates,
+          priceFormat: pattern!.priceFormat,
+        }),
+      ));
+
+  /** Linhas + branding efetivos do lote (não persistem). */
+  function buildLotGeneratePayload(mode: 'production' | 'graphic' | 'a4') {
+    if (!pattern) {
+      return {
+        rows: [] as ClientOrderLine[],
+        branding: mergeLotBranding(
+          { logoUrl: null, motto: '', exchangeText: '', materialPrefix: '' },
+          lotBranding,
+        ),
+        resolveLineOverride: (_row: ClientOrderLine) => undefined as
+          | ReturnType<typeof pontoMixLineOverrideFromFace>
+          | undefined,
+      };
+    }
+    const entries = selectedEntries;
+    const lineOverrideByRow = new WeakMap<
+      ClientOrderLine,
+      NonNullable<ReturnType<typeof pontoMixLineOverrideFromFace>>
+    >();
+    const effectiveRows = entries.map(({ row, skuKey }) => {
+      const override = lotFaceBySkuKey[skuKey];
+      const applied = applyLotFace(row, override, pattern.key);
+      const withQty =
+        mode === 'graphic'
+          ? applied
+          : { ...applied, quantidade: printQuantities[skuKey] ?? row.quantidade };
+      if (pattern.key === 'ponto_mix') {
+        const lines = pontoMixLineOverrideFromFace(override);
+        if (lines) lineOverrideByRow.set(withQty, lines);
+      }
+      return withQty;
+    });
+    return {
+      rows: effectiveRows,
+      branding: mergeLotBranding(pattern.branding, lotBranding),
+      resolveLineOverride: (row: ClientOrderLine) => lineOverrideByRow.get(row),
+    };
+  }
+
   const selectedBabyRows = toBabyRows(selectedRows);
   const productionBabyRows = toBabyRows(productionRows);
   const selectedSkuAnalysis = analyzeClientSkus(selectedBabyRows);
@@ -407,13 +483,56 @@ export function ClientLabelingWorkspace() {
     setSelectedSkuKeys(new Set());
     setPrintQuantities({});
     setPreviewUrl(null);
+    setLotBranding(seedLotBranding(null));
+    setLotFaceBySkuKey({});
     if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
+  function seedLotTextsFor(
+    nextRows: ClientOrderLine[],
+    nextPattern: ClientLabelPattern | null | undefined,
+  ) {
+    const seeded = reseedsLotTexts(nextRows, nextPattern ?? null);
+    setLotBranding(seeded.lotBranding);
+    setLotFaceBySkuKey(seeded.lotFaceBySkuKey);
+  }
+
+  function restoreLotTexts() {
+    if (!pattern) return;
+    seedLotTextsFor(rows, pattern);
+    toast.success('Textos do lote restaurados do pedido e do padrão.');
+  }
+
+  function setLotBrandingField(field: LotBrandingFieldKey, value: string) {
+    setLotBranding(current => ({ ...current, [field]: value }));
+  }
+
+  function setLotFaceField(skuKey: string, field: LotFaceFieldKey, value: string) {
+    setLotFaceBySkuKey(current => ({
+      ...current,
+      [skuKey]: { ...current[skuKey], [field]: value },
+    }));
   }
 
   function updateDraft(next: ClientLabelPattern) {
     setDraftCollection(current => upsertActivePattern(current ?? emptyLabelCollection(), next));
     setPatternDirty(true);
     if (next.key === 'baby_nalin') setCoucheConfirmed(false);
+  }
+
+  /** Troca de layout ativo: limpa pedido se o CSV muda; senão reseeda textos do lote. */
+  function applyActivePatternChange(
+    previousKey: ClientLabelPatternKey | null,
+    next: ClientLabelPatternCollection,
+  ) {
+    const nextKey = next.activeKey;
+    if (!sharesOrderFileFormat(previousKey, nextKey)) {
+      clearOrder();
+    } else if (previousKey !== nextKey) {
+      const nextPattern = nextKey ? next.patterns[nextKey] ?? null : null;
+      seedLotTextsFor(rows, nextPattern);
+    }
+    setCoucheConfirmed(nextKey !== 'baby_nalin');
   }
 
   /** Troca o ativo; só limpa o pedido se o formato do CSV mudar (Tag↔Adesiva mantém). */
@@ -424,8 +543,7 @@ export function ClientLabelingWorkspace() {
     const next = alreadyPresent ? setActivePattern(base, key) : activatePattern(base, key);
     setDraftCollection(next);
     if (!alreadyPresent) setPatternDirty(true);
-    if (!sharesOrderFileFormat(previousKey, key)) clearOrder();
-    setCoucheConfirmed(key !== 'baby_nalin');
+    applyActivePatternChange(previousKey, next);
   }
 
   function handleEnableFamily(familyId: ClientLabelFamilyId) {
@@ -435,8 +553,7 @@ export function ClientLabelingWorkspace() {
     const next = enableFamily(base, familyId);
     setDraftCollection(next);
     setPatternDirty(true);
-    if (!sharesOrderFileFormat(previousKey, next.activeKey)) clearOrder();
-    setCoucheConfirmed(next.activeKey !== 'baby_nalin');
+    applyActivePatternChange(previousKey, next);
     toast.success(
       family.keys.length > 1
         ? `${family.label}: ${family.keys.map(patternVariantLabel).join(' + ')} habilitados.`
@@ -451,8 +568,7 @@ export function ClientLabelingWorkspace() {
     const next = toggleFamilyVariant(base, key);
     setDraftCollection(next);
     setPatternDirty(true);
-    if (!sharesOrderFileFormat(previousKey, next.activeKey)) clearOrder();
-    setCoucheConfirmed(next.activeKey !== 'baby_nalin');
+    applyActivePatternChange(previousKey, next);
     if (removing && !next.activeKey) {
       toast.info('Nenhum padrão restante neste cliente.');
     }
@@ -464,8 +580,7 @@ export function ClientLabelingWorkspace() {
     const next = removePattern(draftCollection, previousKey);
     setDraftCollection(next);
     setPatternDirty(true);
-    if (!sharesOrderFileFormat(previousKey, next.activeKey)) clearOrder();
-    setCoucheConfirmed(next.activeKey !== 'baby_nalin');
+    applyActivePatternChange(previousKey, next);
   }
 
   function setCoucheMeasure(field: keyof CoucheRollProfile, rawValue: string) {
@@ -578,6 +693,7 @@ export function ClientLabelingWorkspace() {
       setFileNames(result.fileNames);
       setSelectedSkuKeys(new Set());
       setPrintQuantities(initialPrintQuantities(result.rows));
+      seedLotTextsFor(result.rows, pattern);
       const summary = summarizeImport(result);
       if (result.errors.length > 0) {
         toast.warning(`${summary}. Falhas: ${result.errors.map(e => e.fileName).join(', ')}`);
@@ -606,6 +722,16 @@ export function ClientLabelingWorkspace() {
       toast.info('Salve o padrão do cliente antes de gerar o PDF.');
       return;
     }
+    const lotIssues = validateLotFace(selectedEntries, lotFaceBySkuKey, pattern.key);
+    if (lotIssues.length > 0) {
+      const first = lotIssues[0]!;
+      toast.error(
+        lotIssues.length === 1
+          ? first.message
+          : `${first.message} (+${lotIssues.length - 1} outro(s))`,
+      );
+      return;
+    }
     if (selecionadasFora.length > 0) {
       toast.error(`${selecionadasFora.length} código(s) selecionado(s) não cabem na etiqueta.`);
       return;
@@ -632,16 +758,20 @@ export function ClientLabelingWorkspace() {
     }
 
     const originName = fileNames[0] ?? 'pedido';
+    const lotPayload = buildLotGeneratePayload(mode);
+    const sourceRows = lotPayload.rows;
+    const lotBrandingEffective = lotPayload.branding;
+    const effectiveBabyRows = toBabyRows(sourceRows);
+    const effectiveSkuAnalysis = analyzeClientSkus(effectiveBabyRows);
     setGenerating(mode);
     try {
       if (pattern.key === 'nalin_tag') {
         let logo: { dataUrl: string; width: number; height: number } | null = null;
-        if (pattern.branding.logoUrl) {
-          const signedLogoUrl = await getSignedUrl(pattern.branding.logoUrl);
-          logo = await loadLogoDataUrl(signedLogoUrl || pattern.branding.logoUrl);
+        if (lotBrandingEffective.logoUrl) {
+          const signedLogoUrl = await getSignedUrl(lotBrandingEffective.logoUrl);
+          logo = await loadLogoDataUrl(signedLogoUrl || lotBrandingEffective.logoUrl);
           if (!logo) toast.warning('Não carreguei a logomarca — o PDF sai com o wordmark Nalin.');
         }
-        const sourceRows = mode === 'production' ? productionRows : selectedRows;
         const missingPrice = sourceRows.filter(row => !(row.valor ?? '').trim()).length;
         if (missingPrice > 0) {
           toast.warning(
@@ -650,7 +780,7 @@ export function ClientLabelingWorkspace() {
         }
         const doc = await buildNalinTagPdf(sourceRows, {
           geometry: pattern.geometry,
-          branding: pattern.branding,
+          branding: lotBrandingEffective,
           repeatByQuantity: mode === 'production',
           logo,
         });
@@ -659,7 +789,7 @@ export function ClientLabelingWorkspace() {
         if (mode === 'production') {
           const zpl = buildNalinTagZpl(sourceRows, {
             geometry: pattern.geometry,
-            branding: pattern.branding,
+            branding: lotBrandingEffective,
             repeatByQuantity: true,
           });
           downloadText(zpl, nalinTagZplFilename(originName), 'text/plain;charset=utf-8');
@@ -671,13 +801,13 @@ export function ClientLabelingWorkspace() {
         );
       } else if (pattern.key === 'objetiva') {
         let logo: { dataUrl: string; width: number; height: number } | null = null;
-        if (pattern.branding.logoUrl) {
+        if (lotBrandingEffective.logoUrl) {
           // Bucket client-logos é privado: URL pública 404 — assina antes do fetch.
-          const signedLogoUrl = await getSignedUrl(pattern.branding.logoUrl);
-          logo = await loadLogoDataUrl(signedLogoUrl || pattern.branding.logoUrl);
+          const signedLogoUrl = await getSignedUrl(lotBrandingEffective.logoUrl);
+          logo = await loadLogoDataUrl(signedLogoUrl || lotBrandingEffective.logoUrl);
           if (!logo) toast.warning('Não carreguei a logomarca — o PDF sai com o wordmark.');
         }
-        const incompleteMiolo = (mode === 'production' ? productionRows : selectedRows).filter(
+        const incompleteMiolo = sourceRows.filter(
           row => !(row.tipo ?? '').trim() || (!(row.grupo ?? '').trim() && !(row.categoria ?? '').trim()),
         );
         if (incompleteMiolo.length > 0) {
@@ -685,10 +815,9 @@ export function ClientLabelingWorkspace() {
             `${incompleteMiolo.length} linha(s) sem TIPO/CATEGORIA/GRUPO — a Tag sai sem SANDALIA / CALCADOS/….`,
           );
         }
-        const sourceRows = mode === 'production' ? productionRows : selectedRows;
         const doc = await buildObjetivaPdf(sourceRows, {
           geometry: pattern.geometry,
-          branding: pattern.branding,
+          branding: lotBrandingEffective,
           repeatByQuantity: mode === 'production',
           logo,
         });
@@ -698,7 +827,7 @@ export function ClientLabelingWorkspace() {
           // Mesma impressora/mídia da Ponto Mix: sai o ZPL junto do PDF.
           const zpl = buildObjetivaZpl(sourceRows, {
             geometry: pattern.geometry,
-            branding: pattern.branding,
+            branding: lotBrandingEffective,
             repeatByQuantity: true,
           });
           downloadText(zpl, objetivaZplFilename(originName), 'text/plain;charset=utf-8');
@@ -709,7 +838,6 @@ export function ClientLabelingWorkspace() {
             : `PDF + ZPL Objetiva · Tag com ${totalEtiquetas} etiqueta(s) gerado.`,
         );
       } else if (pattern.key === 'objetiva_adesiva') {
-        const sourceRows = mode === 'production' ? productionRows : selectedRows;
         const doc = await buildObjetivaAdesivaPdf(sourceRows, {
           geometry: pattern.geometry,
           repeatByQuantity: mode === 'production',
@@ -733,7 +861,6 @@ export function ClientLabelingWorkspace() {
         if (!logo) {
           toast.warning('Não carreguei a marca Ponto Mix — o PDF sai com wordmark.');
         }
-        const sourceRows = mode === 'production' ? productionRows : selectedRows;
         const previewRow = sourceRows[0];
         if (previewRow) {
           try {
@@ -742,6 +869,7 @@ export function ClientLabelingWorkspace() {
               templates: pattern.templates,
               priceFormat: pattern.priceFormat,
               logo,
+              resolveLineOverride: lotPayload.resolveLineOverride,
             });
             setPreviewUrl(preview);
           } catch {
@@ -754,6 +882,7 @@ export function ClientLabelingWorkspace() {
           priceFormat: pattern.priceFormat,
           repeatByQuantity: mode === 'production',
           logo,
+          resolveLineOverride: lotPayload.resolveLineOverride,
         });
         downloadBlob(blob, pontoMixPdfFilename(mode === 'graphic' ? 'grafico' : 'producao'));
         const zpl = buildPontoMixZpl(sourceRows, {
@@ -761,6 +890,7 @@ export function ClientLabelingWorkspace() {
           templates: pattern.templates,
           priceFormat: pattern.priceFormat,
           repeatByQuantity: mode === 'production',
+          resolveLineOverride: lotPayload.resolveLineOverride,
         });
         downloadText(zpl, pontoMixZplFilename(), 'application/octet-stream');
         toast.success(
@@ -771,19 +901,16 @@ export function ClientLabelingWorkspace() {
       } else {
         const logo = await loadLogoDataUrl(logoFornecedor);
         if (!logo) toast.warning('Não carreguei a logomarca — o PDF sai sem ela.');
-        const doc = await buildBabyNalinPdf(
-          mode === 'production' ? productionBabyRows : selectedBabyRows,
-          {
-            mode,
-            repeatByQuantity: mode === 'production',
-            coucheProfile,
-            logo,
-          },
-        );
+        const doc = await buildBabyNalinPdf(effectiveBabyRows, {
+          mode,
+          repeatByQuantity: mode === 'production',
+          coucheProfile,
+          logo,
+        });
         const { deliverJsPdf } = await import('@/lib/pdfDelivery');
         if (mode === 'graphic') {
           deliverJsPdf(doc, graphicPdfFilename(originName), 'Etiquetas');
-          toast.success(`Arquivo para gráfica com ${selectedSkuAnalysis.rows.length} SKU(s) gerado.`);
+          toast.success(`Arquivo para gráfica com ${effectiveSkuAnalysis.rows.length} SKU(s) gerado.`);
         } else {
           deliverJsPdf(doc, pdfFilename(originName), 'Etiquetas');
           toast.success(`PDF de produção com ${totalEtiquetas} etiqueta(s) gerado.`);
@@ -807,6 +934,16 @@ export function ClientLabelingWorkspace() {
       toast.info('Salve o padrão do cliente antes de gerar o PDF.');
       return;
     }
+    const lotIssues = validateLotFace(selectedEntries, lotFaceBySkuKey, pattern.key);
+    if (lotIssues.length > 0) {
+      const first = lotIssues[0]!;
+      toast.error(
+        lotIssues.length === 1
+          ? first.message
+          : `${first.message} (+${lotIssues.length - 1} outro(s))`,
+      );
+      return;
+    }
     if (selecionadasFora.length > 0) {
       toast.error(`${selecionadasFora.length} código(s) selecionado(s) não cabem na etiqueta.`);
       return;
@@ -817,48 +954,51 @@ export function ClientLabelingWorkspace() {
     }
 
     const originName = fileNames[0] ?? 'pedido';
+    const lotPayload = buildLotGeneratePayload('a4');
+    const sourceRows = lotPayload.rows;
+    const lotBrandingEffective = lotPayload.branding;
     setGenerating('a4');
     try {
-      const sourceRows = productionRows;
       let doc: import('jspdf').jsPDF;
       let clientSlug = 'Tag';
 
       if (pattern.key === 'nalin_tag') {
         let logo: { dataUrl: string; width: number; height: number } | null = null;
-        if (pattern.branding.logoUrl) {
-          const signedLogoUrl = await getSignedUrl(pattern.branding.logoUrl);
-          logo = await loadLogoDataUrl(signedLogoUrl || pattern.branding.logoUrl);
+        if (lotBrandingEffective.logoUrl) {
+          const signedLogoUrl = await getSignedUrl(lotBrandingEffective.logoUrl);
+          logo = await loadLogoDataUrl(signedLogoUrl || lotBrandingEffective.logoUrl);
           if (!logo) toast.warning('Não carreguei a logomarca — o PDF A4 sai com o wordmark Nalin.');
         }
         doc = await buildNalinTagA4Pdf(sourceRows, {
           geometry: pattern.geometry,
-          branding: pattern.branding,
+          branding: lotBrandingEffective,
           repeatByQuantity: true,
           logo,
         });
         clientSlug = 'Nalin_Tag';
       } else if (pattern.key === 'objetiva') {
         let logo: { dataUrl: string; width: number; height: number } | null = null;
-        if (pattern.branding.logoUrl) {
-          const signedLogoUrl = await getSignedUrl(pattern.branding.logoUrl);
-          logo = await loadLogoDataUrl(signedLogoUrl || pattern.branding.logoUrl);
+        if (lotBrandingEffective.logoUrl) {
+          const signedLogoUrl = await getSignedUrl(lotBrandingEffective.logoUrl);
+          logo = await loadLogoDataUrl(signedLogoUrl || lotBrandingEffective.logoUrl);
           if (!logo) toast.warning('Não carreguei a logomarca — o PDF A4 sai com o wordmark.');
         }
         doc = await buildObjetivaTagA4Pdf(sourceRows, {
           geometry: pattern.geometry,
-          branding: pattern.branding,
+          branding: lotBrandingEffective,
           repeatByQuantity: true,
           logo,
         });
         clientSlug = 'Objetiva';
       } else if (pattern.key === 'ponto_mix') {
-        const logo = await resolvePontoMixLogo(pattern.branding.logoUrl);
+        const logo = await resolvePontoMixLogo(lotBrandingEffective.logoUrl);
         doc = await buildPontoMixTagA4Pdf(sourceRows, {
           geometry: pattern.geometry,
           templates: pattern.templates,
           priceFormat: pattern.priceFormat,
           repeatByQuantity: true,
           logo,
+          resolveLineOverride: lotPayload.resolveLineOverride,
         });
         clientSlug = 'Ponto_Mix';
       } else {
@@ -1487,6 +1627,53 @@ export function ClientLabelingWorkspace() {
               </div>
             )}
 
+            <section className="rounded-lg border border-border bg-muted/20 p-4 space-y-3">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <h3 className="font-semibold">Textos deste lote</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Valem só para esta geração — não gravam no padrão do cliente. Edite branding
+                    aqui e os textos de face na tabela abaixo.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {lotTextsDirty && <Badge variant="secondary">Alterados neste lote</Badge>}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-9"
+                    disabled={isBusy || rows.length === 0 || !pattern}
+                    onClick={restoreLotTexts}
+                  >
+                    <ArrowCounterClockwise className="h-4 w-4 mr-1.5" />
+                    Restaurar textos
+                  </Button>
+                </div>
+              </div>
+              {lotBrandingFields.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  Este layout não tem motto/troca/prefixo — edite as colunas da tabela.
+                </p>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {lotBrandingFields.map(field => (
+                    <div key={field.key} className="space-y-1.5">
+                      <Label htmlFor={`lot-${field.key}`} className="text-xs">
+                        {field.label}
+                      </Label>
+                      <Input
+                        id={`lot-${field.key}`}
+                        value={lotBranding[field.key]}
+                        disabled={isBusy}
+                        onChange={event => setLotBrandingField(field.key, event.target.value)}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
             <div className="grid gap-3 lg:grid-cols-2">
               <section className="rounded-lg border border-border bg-muted/20 p-4 space-y-4">
                 <div className="flex items-start gap-3">
@@ -1691,9 +1878,11 @@ export function ClientLabelingWorkspace() {
                     <th className="w-10 p-2">
                       <span className="sr-only">Selecionar</span>
                     </th>
-                    <th className="p-2">Ref / SKU</th>
-                    <th className="p-2">Cor</th>
-                    <th className="p-2">Tam.</th>
+                    {lotFaceFields.map(field => (
+                      <th key={field.key} className="p-2 whitespace-nowrap">
+                        {field.label}
+                      </th>
+                    ))}
                     <th className="p-2">Código</th>
                     <th className="p-2 text-right">Qtd pedido</th>
                     <th className="p-2 text-right">Imprimir</th>
@@ -1704,6 +1893,19 @@ export function ClientLabelingWorkspace() {
                 <tbody>
                   {visibleEntries.map(({ row, skuKey, barcodeFit, sourceIndex }) => {
                     const selected = selectedSkuKeys.has(skuKey);
+                    const face = lotFaceBySkuKey[skuKey] ?? {};
+                    const seededFace = pattern
+                      ? seedLotFaceFromRow(row, pattern.key, {
+                          templates: pattern.templates,
+                          priceFormat: pattern.priceFormat,
+                        })
+                      : {};
+                    const faceDirty =
+                      Boolean(pattern)
+                      && isLotFaceDirty(row, face, pattern!.key, {
+                        templates: pattern!.templates,
+                        priceFormat: pattern!.priceFormat,
+                      });
                     return (
                       <tr
                         key={`${skuKey}-${sourceIndex}`}
@@ -1711,6 +1913,7 @@ export function ClientLabelingWorkspace() {
                           'border-t border-border',
                           selected && 'bg-primary/5',
                           isNalinAdesiva && !barcodeFit.fits && 'bg-amber-500/5',
+                          faceDirty && 'bg-amber-500/[0.04]',
                         )}
                       >
                         <td className="p-2">
@@ -1721,17 +1924,34 @@ export function ClientLabelingWorkspace() {
                             aria-label={`Selecionar linha ${sourceIndex + 1}: SKU ${row.referencia}, ${row.cor}, tamanho ${row.tamanho},`}
                           />
                         </td>
-                        <td className="p-2 font-medium">
-                          {row.referencia || row.codProduto}
-                          {row.descricao ? (
-                            <span className="block max-w-[14rem] truncate text-xs text-muted-foreground">
-                              {row.descricao}
-                            </span>
-                          ) : null}
+                        {lotFaceFields.map(field => {
+                          const wide =
+                            field.key === 'descricao'
+                            || field.key === 'line1'
+                            || field.key === 'line2'
+                            || field.key === 'line3';
+                          const fieldDirty = (face[field.key] ?? '') !== (seededFace[field.key] ?? '');
+                          return (
+                            <td key={field.key} className="p-1.5 align-top">
+                              <Input
+                                className={cn(
+                                  'h-8 font-mono text-xs',
+                                  wide ? 'min-w-[10rem]' : 'min-w-[4.5rem] w-24',
+                                  fieldDirty && 'border-amber-500/50',
+                                )}
+                                disabled={isBusy}
+                                value={face[field.key] ?? ''}
+                                aria-label={`${field.label} do SKU ${row.referencia}, tamanho ${row.tamanho}`}
+                                onChange={event =>
+                                  setLotFaceField(skuKey, field.key, event.target.value)
+                                }
+                              />
+                            </td>
+                          );
+                        })}
+                        <td className="p-2 font-mono text-xs text-muted-foreground">
+                          {row.codigoBarra}
                         </td>
-                        <td className="p-2">{row.cor}</td>
-                        <td className="p-2 font-mono">{row.tamanho}</td>
-                        <td className="p-2 font-mono text-xs">{row.codigoBarra}</td>
                         <td className="p-2 text-right font-mono">{row.quantidade}</td>
                         <td className="p-2 text-right">
                           <Input

@@ -182,7 +182,8 @@ export function composeNalinTagLabelCopy(
   row: ClientOrderLine,
   branding: ClientLabelBranding,
 ): NalinTagLabelCopy {
-  const exchange = (branding.exchangeText || NALIN_TAG_DEFAULT_BRANDING.exchangeText).trim();
+  // `??` (não `||`): string vazia no lote omite a linha; só undefined/null usa default.
+  const exchange = (branding.exchangeText ?? NALIN_TAG_DEFAULT_BRANDING.exchangeText).trim();
   return {
     codProduto: (row.codProduto || '').trim(),
     referencia: stripNalinTagAccents((row.referencia || '').trim().toUpperCase()),

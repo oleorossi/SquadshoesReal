@@ -71,6 +71,20 @@ describe('pontoMixLabels', () => {
     expect(copy.tamanho).toBe('34');
   });
 
+  it('lineOverride usa o texto final e ignora a quebra por template', () => {
+    const rows = parsePontoMixOrderCsv(PADRAO_REAL, undefined, 'Padrao.txt');
+    const copy = composePontoMixLabelCopy(rows[0]!, PONTO_MIX_DEFAULT_TEMPLATES, undefined, {
+      line1: 'CUSTOM A',
+      line2: 'CUSTOM B',
+      line3: 'CUSTOM C',
+    });
+    expect(copy.line1).toBe('CUSTOM A');
+    expect(copy.line2).toBe('CUSTOM B');
+    expect(copy.line3).toBe('CUSTOM C');
+    expect(copy.textSource).toBe('CUSTOM A CUSTOM B CUSTOM C');
+    expect(copy.codigoBarra).toBe('105742');
+  });
+
   it('NCM (código fiscal) nunca entra no texto da arte', () => {
     expect(isPontoMixInternalSku('64041900-00-0000000')).toBe(true);
     expect(isPontoMixInternalSku('SQUARD SHOES SP201')).toBe(false);

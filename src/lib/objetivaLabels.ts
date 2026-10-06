@@ -231,9 +231,11 @@ function formatPrice(valor: string | undefined): { main: string; cents: string }
 }
 
 function materialLine(prefix: string, cor: string): string {
-  const p = (prefix.trim() || OBJETIVA_DEFAULT_BRANDING.materialPrefix).trim();
+  // String vazia é intencional (lote/padrão limpo) — não cair no default PU/SO.
+  const p = prefix.trim();
   const c = cor.trim();
-  return c ? `${p} / ${c}` : p;
+  if (p && c) return `${p} / ${c}`;
+  return p || c;
 }
 
 function categoryLine(grupo?: string, categoria?: string): string {
@@ -278,8 +280,11 @@ export function composeObjetivaLabelCopy(
   branding: ClientLabelBranding,
 ): ObjetivaLabelCopy {
   const price = formatPrice(row.valor);
-  const motto = (branding.motto || OBJETIVA_DEFAULT_BRANDING.motto).trim();
-  const exchange = (branding.exchangeText || OBJETIVA_DEFAULT_BRANDING.exchangeText).trim().toUpperCase();
+  // `??` (não `||`): string vazia no lote omite a linha; só undefined/null usa default.
+  const motto = (branding.motto ?? OBJETIVA_DEFAULT_BRANDING.motto).trim();
+  const exchange = (branding.exchangeText ?? OBJETIVA_DEFAULT_BRANDING.exchangeText)
+    .trim()
+    .toUpperCase();
   return {
     descricao: stripHangtagAccents((row.descricao ?? '').trim()),
     tipo: stripHangtagAccents((row.tipo ?? '').trim()),

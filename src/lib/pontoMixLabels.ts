@@ -87,6 +87,13 @@ export interface PontoMixPdfOptions {
   priceFormat?: Partial<ClientLabelPriceFormat>;
   repeatByQuantity?: boolean;
   logo?: PontoMixLogo;
+  /**
+   * Texto final das 3 linhas por linha do pedido (lote). Quando presente,
+   * ignora templates/`buildPontoMixTextSource` naquela etiqueta.
+   */
+  resolveLineOverride?: (
+    row: ClientOrderLine,
+  ) => Partial<ClientLabelLineTemplates> | undefined;
 }
 
 const FIELD_ALIASES: Record<keyof ClientLabelFileMapping['columns'], string[]> = {
@@ -693,17 +700,38 @@ export function composePontoMixLabelCopy(
   row: ClientOrderLine,
   templates: ClientLabelLineTemplates = PONTO_MIX_DEFAULT_TEMPLATES,
   priceFormat: ClientLabelPriceFormat = PONTO_MIX_DEFAULT_PRICE_FORMAT,
+  lineOverride?: Partial<ClientLabelLineTemplates> | null,
 ): PontoMixLabelCopy {
   const codigoBarra = (row.codigoBarra || row.codProduto).trim();
-  const textSource = buildPontoMixTextSource(row, templates);
-  // Sem métrica de fonte aqui: quebra por contagem de caracteres calibrada na
-  // etiqueta da cliente (22 caracteres na largura útil). Quem desenha refaz a
-  // quebra com a métrica real; isto serve para ZPL, testes e depuração.
-  const lines = wrapPontoMixText(textSource, PONTO_MIX_TEXT_CHARS, s => s.length);
+  const hasLineOverride =
+    lineOverride != null
+    && (lineOverride.line1 != null || lineOverride.line2 != null || lineOverride.line3 != null);
+
+  let line1: string;
+  let line2: string;
+  let line3: string;
+  let textSource: string;
+
+  if (hasLineOverride) {
+    line1 = String(lineOverride?.line1 ?? '').trimEnd();
+    line2 = String(lineOverride?.line2 ?? '').trimEnd();
+    line3 = String(lineOverride?.line3 ?? '').trimEnd();
+    textSource = [line1, line2, line3].filter(Boolean).join(' ').trim();
+  } else {
+    textSource = buildPontoMixTextSource(row, templates);
+    // Sem métrica de fonte aqui: quebra por contagem de caracteres calibrada na
+    // etiqueta da cliente (22 caracteres na largura útil). Quem desenha refaz a
+    // quebra com a métrica real; isto serve para ZPL, testes e depuração.
+    const lines = wrapPontoMixText(textSource, PONTO_MIX_TEXT_CHARS, s => s.length);
+    line1 = lines[0] ?? '';
+    line2 = lines[1] ?? '';
+    line3 = lines[2] ?? '';
+  }
+
   return {
-    line1: lines[0] ?? '',
-    line2: lines[1] ?? '',
-    line3: lines[2] ?? '',
+    line1,
+    line2,
+    line3,
     textSource,
     tamanho: (row.tamanho || '-').trim() || '-',
     codigoBarra,
@@ -960,8 +988,9 @@ function drawPontoMixLabel(
   priceFormat: ClientLabelPriceFormat,
   logo: PontoMixLogo,
   origin: { x?: number; y?: number } = {},
+  lineOverride?: Partial<ClientLabelLineTemplates> | null,
 ): void {
-  const copy = composePontoMixLabelCopy(row, templates, priceFormat);
+  const copy = composePontoMixLabelCopy(row, templates, priceFormat, lineOverride);
   const slots = artSlots(geometry, origin);
   const centerX = slots.ox + slots.w / 2;
 
@@ -1062,7 +1091,16 @@ export async function buildPontoMixPdf(
 
   expanded.forEach((row, index) => {
     if (index > 0) doc.addPage([geometry.labelWidthMm, geometry.labelHeightMm], 'portrait');
-    drawPontoMixLabel(doc, row, geometry, templates, priceFormat, options.logo ?? null);
+    drawPontoMixLabel(
+      doc,
+      row,
+      geometry,
+      templates,
+      priceFormat,
+      options.logo ?? null,
+      {},
+      options.resolveLineOverride?.(row),
+    );
   });
 
   return doc.output('blob');
@@ -1089,7 +1127,16 @@ export async function buildPontoMixTagA4Pdf(
       }
     },
     drawCell: (doc, row, origin) => {
-      drawPontoMixLabel(doc, row, geometry, templates, priceFormat, logo, origin);
+      drawPontoMixLabel(
+        doc,
+        row,
+        geometry,
+        templates,
+        priceFormat,
+        logo,
+        origin,
+        options.resolveLineOverride?.(row),
+      );
     },
   });
 }
@@ -1117,6 +1164,9 @@ export function buildPontoMixZpl(
     templates?: Partial<ClientLabelLineTemplates>;
     priceFormat?: Partial<ClientLabelPriceFormat>;
     repeatByQuantity?: boolean;
+    resolveLineOverride?: (
+      row: ClientOrderLine,
+    ) => Partial<ClientLabelLineTemplates> | undefined;
   } = {},
 ): string {
   const geometry = mergeGeometry(options.geometry);
@@ -1134,7 +1184,12 @@ export function buildPontoMixZpl(
   const dy = (v: number) => Math.round(v * ky);
 
   const blocks = expanded.map(row => {
-    const copy = composePontoMixLabelCopy(row, templates, priceFormat);
+    const copy = composePontoMixLabelCopy(
+      row,
+      templates,
+      priceFormat,
+      options.resolveLineOverride?.(row),
+    );
     const lines = [copy.line1, copy.line2, copy.line3].map(l => zplField(l, 40));
     const sizeVal = zplField(copy.tamanho, 6);
     const price = zplField(copy.priceText, 24);
@@ -1220,7 +1275,12 @@ export async function renderPontoMixPreviewDataUrl(
   const geometry = mergeGeometry(options.geometry);
   const templates = mergeTemplates(options.templates);
   const priceFormat = mergePriceFormat(options.priceFormat);
-  const copy = composePontoMixLabelCopy(row, templates, priceFormat);
+  const copy = composePontoMixLabelCopy(
+    row,
+    templates,
+    priceFormat,
+    options.resolveLineOverride?.(row),
+  );
   const slots = artSlots(geometry);
   const fontFamily = await ensurePontoMixCanvasFont();
   const scale = 8;

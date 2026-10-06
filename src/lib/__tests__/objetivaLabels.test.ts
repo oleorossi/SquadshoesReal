@@ -147,6 +147,20 @@ describe('composeObjetivaLabelCopy · hangtag 112334 TAM 25', () => {
     expect(copy.exchangeLines).toEqual(['TROCA MANTER', 'ESTA ETIQUETA']);
   });
 
+  it('motto/troca/prefixo vazios no branding omitem (não caem no default)', () => {
+    const rows = parseObjetivaOrderCsv(loadFixture('112334.csv'));
+    const row = rows.find(item => item.tamanho === '25')!;
+    const copy = composeObjetivaLabelCopy(row, {
+      logoUrl: null,
+      motto: '',
+      exchangeText: '',
+      materialPrefix: '',
+    });
+    expect(copy.mottoLines).toEqual([]);
+    expect(copy.exchangeLines).toEqual([]);
+    expect(copy.material).toBe('DOURADA 420');
+  });
+
   it('stripHangtagAccents só remove diacríticos', () => {
     expect(stripHangtagAccents('SANDÁLIA')).toBe('SANDALIA');
     expect(stripHangtagAccents('CALÇADOS')).toBe('CALCADOS');

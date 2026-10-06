@@ -69,6 +69,14 @@ vi.mock('sonner', () => ({
   },
 }));
 
+const emptyCollection = { version: 2 as const, activeKey: null as null, patterns: {} };
+let cachedPatternCollection: {
+  version: 2;
+  activeKey: string;
+  patterns: Record<string, unknown>;
+} | null = null;
+let cachedPatternRef: unknown = null;
+
 vi.mock('@/hooks/useClientLabelPattern', () => ({
   useClientsForLabeling: () => ({
     data: state.clients,
@@ -76,18 +84,28 @@ vi.mock('@/hooks/useClientLabelPattern', () => ({
     isError: false,
     error: null,
   }),
-  useClientLabelPattern: () => ({
-    data: state.selectedPattern
-      ? {
-          version: 2 as const,
-          activeKey: state.selectedPattern.key,
-          patterns: { [state.selectedPattern.key]: state.selectedPattern },
-        }
-      : { version: 2 as const, activeKey: null, patterns: {} },
-    isLoading: false,
-    isError: false,
-    error: null,
-  }),
+  useClientLabelPattern: () => {
+    // Referência estável — objeto novo a cada render + useEffect no workspace = loop infinito.
+    if (!state.selectedPattern) {
+      cachedPatternCollection = null;
+      cachedPatternRef = null;
+      return { data: emptyCollection, isLoading: false, isError: false, error: null };
+    }
+    if (cachedPatternRef !== state.selectedPattern || !cachedPatternCollection) {
+      cachedPatternRef = state.selectedPattern;
+      cachedPatternCollection = {
+        version: 2 as const,
+        activeKey: state.selectedPattern.key,
+        patterns: { [state.selectedPattern.key]: state.selectedPattern },
+      };
+    }
+    return {
+      data: cachedPatternCollection,
+      isLoading: false,
+      isError: false,
+      error: null,
+    };
+  },
   useSaveClientLabelPattern: () => ({
     mutateAsync: saveMutateAsync,
     isPending: false,
@@ -167,17 +185,19 @@ function createLines(overrides: Partial<ClientOrderLine> = {}): ClientOrderLine[
   ];
 }
 
-function renderWorkspace() {
+function renderWorkspace(initialClientId?: string) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
   );
-  return render(<ClientLabelingWorkspace />, { wrapper });
+  return render(<ClientLabelingWorkspace initialClientId={initialClientId} />, { wrapper });
 }
 
 describe('ClientLabelingWorkspace', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    cachedPatternCollection = null;
+    cachedPatternRef = null;
     state.selectedPattern = defaultPatternForKey('objetiva');
     state.clients = [
       {
@@ -245,5 +265,64 @@ describe('ClientLabelingWorkspace', () => {
       expect(toastInfo).toHaveBeenCalled();
     });
     expect(parseClientOrderFilesMock).not.toHaveBeenCalled();
+  });
+
+  async function importPedidoForObjetiva() {
+    renderWorkspace('cli-2');
+    const input = document.getElementById('client-order-upload') as HTMLInputElement;
+    await waitFor(() => expect(input.disabled).toBe(false));
+
+    const file = new File(['a'], '112334.csv', { type: 'text/csv' });
+    fireEvent.change(input, { target: { files: [file] } });
+    await waitFor(() => expect(parseClientOrderFilesMock).toHaveBeenCalled());
+    await screen.findByText(/Textos deste lote/i);
+  }
+
+  it('permite editar textos do lote e manda override no PDF sem gravar padrão', async () => {
+    await importPedidoForObjetiva();
+
+    // Há motto do padrão (painel de defaults) e do lote — preferir o do lote.
+    const lotMotto = document.getElementById('lot-motto') as HTMLInputElement;
+    expect(lotMotto).toBeTruthy();
+    fireEvent.change(lotMotto, { target: { value: 'MOTTO DO LOTE' } });
+
+    const descInput = screen.getByLabelText(/Descrição do SKU REF-1/i) as HTMLInputElement;
+    fireEvent.change(descInput, { target: { value: 'DESC EDITADA' } });
+
+    // Código de barras permanece só leitura (texto, sem input).
+    expect(screen.queryByLabelText(/Código do SKU REF-1/i)).toBeNull();
+    expect(screen.getByText('112334')).toBeTruthy();
+
+    const checkbox = screen.getByRole('checkbox', { name: /Selecionar linha 1/i });
+    fireEvent.click(checkbox);
+
+    fireEvent.click(screen.getByRole('button', { name: /Gerar PDF\+ZPL/i }));
+
+    await waitFor(() => expect(buildObjetivaPdfMock).toHaveBeenCalled());
+    const call = buildObjetivaPdfMock.mock.calls.at(0) as unknown as
+      | [Array<{ descricao?: string }>, { branding: { motto: string } }]
+      | undefined;
+    expect(call?.[0]?.[0]?.descricao).toBe('DESC EDITADA');
+    expect(call?.[1]?.branding.motto).toBe('MOTTO DO LOTE');
+    expect(saveMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it('Restaurar textos volta motto e face ao seed do pedido/padrão', async () => {
+    await importPedidoForObjetiva();
+    const lotMotto = document.getElementById('lot-motto') as HTMLInputElement;
+    fireEvent.change(lotMotto, { target: { value: 'X' } });
+    const descInput = screen.getByLabelText(/Descrição do SKU REF-1/i) as HTMLInputElement;
+    fireEvent.change(descInput, { target: { value: 'Y' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /Restaurar textos/i }));
+
+    await waitFor(() => {
+      expect((document.getElementById('lot-motto') as HTMLInputElement).value).toBe(
+        'DEUS É FIEL',
+      );
+    });
+    expect(
+      (screen.getByLabelText(/Descrição do SKU REF-1/i) as HTMLInputElement).value,
+    ).toBe('SANDALIA');
   });
 });
