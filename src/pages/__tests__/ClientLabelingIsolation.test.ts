@@ -44,8 +44,12 @@ describe('ETIQUETAGEM CLIENTE · isolamento da etiquetagem padrão', () => {
 
   it('o workspace Objetiva tem upload de logomarca e passa logo no PDF', () => {
     expect(clientWorkspace).toContain('ClientLabelLogoUpload');
+    // Upload UI ainda lê o logo do padrão salvo.
     expect(clientWorkspace).toContain('pattern.branding.logoUrl');
-    expect(clientWorkspace).toContain('getSignedUrl(pattern.branding.logoUrl)');
-    expect(clientWorkspace).toContain('loadLogoDataUrl(signedLogoUrl || pattern.branding.logoUrl)');
+    // Na geração, o branding efetivo do lote (pode herdar o logo do padrão).
+    expect(clientWorkspace).toContain('getSignedUrl(lotBrandingEffective.logoUrl)');
+    expect(clientWorkspace).toContain(
+      'loadLogoDataUrl(signedLogoUrl || lotBrandingEffective.logoUrl)',
+    );
   });
 });
