@@ -34,6 +34,11 @@ import {
   validateDupBatches,
   type DupBatch,
 } from '@/lib/duplicateToStores';
+import {
+  remapLegacyStrapsForDuplicate,
+  strapSnapshotNeedsSheetRemap,
+  type DuplicateStrapLineLike,
+} from '@/lib/remapLegacyStrapsForDuplicate';
 import { resolveReferenceImageUrl } from '@/lib/referenceImage';
 import { cn, formatNumber } from '@/lib/utils';
 
@@ -400,13 +405,11 @@ export default function DuplicateToStoresDialog({
       itemsForPick = data as OrderItemRow[];
     }
 
+    const allPickedForPrep = jobs.flatMap((j) =>
+      pickDuplicateItems(itemsForPick, j.itemIds),
+    );
     const variantIdsInOrder = [
-      ...new Set(
-        jobs
-          .flatMap((j) => pickDuplicateItems(itemsForPick, j.itemIds))
-          .map((i) => i.material_variant_id)
-          .filter(Boolean),
-      ),
+      ...new Set(allPickedForPrep.map((i) => i.material_variant_id).filter(Boolean)),
     ] as string[];
     let activeVariantIds = new Set<string>();
     if (variantIdsInOrder.length > 0) {
@@ -426,6 +429,74 @@ export default function DuplicateToStoresDialog({
         );
       }
     }
+
+    // PV legado grava strap_colors com id ordinal ("1","2") sem
+    // technical_strap_line_id. O writer do create exige UUID estável da ficha.
+    // Sempre carrega a ficha: legado precisa do molde; canônico valida o conjunto.
+    const refIdsNeedingSheet = [
+      ...new Set(allPickedForPrep.map((i) => i.reference_id).filter(Boolean)),
+    ] as string[];
+    const sheetStrapsByRef = new Map<string, DuplicateStrapLineLike[]>();
+    const sheetCodeByRef = new Map<string, string>();
+    if (refIdsNeedingSheet.length > 0) {
+      const { data: sheets, error: sheetsError } = await supabase
+        .from('technical_sheets')
+        .select('id, code, name, strap_colors')
+        .in('id', refIdsNeedingSheet);
+      if (sheetsError) {
+        toast.error(`Erro ao ler fichas para remapear tiras: ${sheetsError.message}`);
+        return;
+      }
+      for (const sheet of sheets || []) {
+        sheetStrapsByRef.set(
+          sheet.id,
+          Array.isArray(sheet.strap_colors)
+            ? (sheet.strap_colors as DuplicateStrapLineLike[])
+            : [],
+        );
+        sheetCodeByRef.set(
+          sheet.id,
+          String(sheet.code || sheet.name || '').trim() || sheet.id,
+        );
+      }
+    }
+
+    const colorNames = new Set<string>();
+    for (const item of allPickedForPrep) {
+      const snap = Array.isArray(item.strap_colors)
+        ? (item.strap_colors as DuplicateStrapLineLike[])
+        : [];
+      const technical = sheetStrapsByRef.get(item.reference_id) || [];
+      if (!strapSnapshotNeedsSheetRemap(snap, technical) && snap.every((l) => l.color_id)) {
+        continue;
+      }
+      for (const line of snap) {
+        const name = String(line.color || '').trim();
+        if (name) colorNames.add(name);
+      }
+    }
+    const colorIdByName = new Map<string, string>();
+    if (colorNames.size > 0) {
+      const names = [...colorNames];
+      const resolved = await Promise.all(
+        names.map(async (name) => {
+          const { data, error } = await supabase.rpc(
+            'resolve_strap_canonical_color_id',
+            { p_label: name },
+          );
+          if (error || !data) return [name, null] as const;
+          return [name, String(data)] as const;
+        }),
+      );
+      for (const [name, id] of resolved) {
+        if (id) {
+          colorIdByName.set(name, id);
+          colorIdByName.set(name.toUpperCase(), id);
+        }
+      }
+    }
+    const resolveColorId = (name: string) =>
+      colorIdByName.get(name) || colorIdByName.get(name.trim().toUpperCase()) || null;
 
     setSubmitting(true);
     let successCount = 0;
@@ -458,19 +529,38 @@ export default function DuplicateToStoresDialog({
         factoring_config_id: '',
         packaging_mode: (order.packaging_mode || 'individual_amarrado') as PackagingMode,
       };
-      const newItems: SaleOrderItemFormData[] = picked.map((i) => {
-        const vid = i.material_variant_id;
-        return {
-          reference_id: i.reference_id,
-          color: i.color || '',
-          grade: (i.grade as Record<string, number>) || {},
-          unit_price: Number(i.unit_price) || 0,
-          quantity: Number(i.quantity) || 0,
-          fichas: i.fichas || 1,
-          strap_colors: Array.isArray(i.strap_colors) ? i.strap_colors : [],
-          material_variant_id: vid && activeVariantIds.has(vid) ? vid : null,
-        };
-      });
+      let newItems: SaleOrderItemFormData[];
+      try {
+        newItems = picked.map((i) => {
+          const vid = i.material_variant_id;
+          const snap = Array.isArray(i.strap_colors)
+            ? (i.strap_colors as DuplicateStrapLineLike[])
+            : [];
+          const technical = sheetStrapsByRef.get(i.reference_id) || [];
+          const refCode = sheetCodeByRef.get(i.reference_id) || i.ref_code || '';
+          const itemLabel = [refCode, i.color].filter(Boolean).join(' / ') || 'item';
+          const remapped = remapLegacyStrapsForDuplicate({
+            snapshotLines: snap,
+            technicalLines: technical,
+            resolveColorId,
+            itemLabel,
+          });
+          return {
+            reference_id: i.reference_id,
+            color: i.color || '',
+            grade: (i.grade as Record<string, number>) || {},
+            unit_price: Number(i.unit_price) || 0,
+            quantity: Number(i.quantity) || 0,
+            fichas: i.fichas || 1,
+            strap_colors: remapped.lines as SaleOrderItemFormData['strap_colors'],
+            material_variant_id: vid && activeVariantIds.has(vid) ? vid : null,
+          };
+        });
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'erro desconhecido';
+        failures.push(`${client.razao_social}: ${msg}`);
+        continue;
+      }
       try {
         await createOrder.mutateAsync({
           order: newOrder,

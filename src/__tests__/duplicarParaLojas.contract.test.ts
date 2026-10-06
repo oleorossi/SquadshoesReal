@@ -38,6 +38,13 @@ describe('duplicar para lojas — contrato SaleOrders', () => {
     expect(dialog).toContain('Concluir lote');
   });
 
+  it('antes do create remapeia strap_colors legado contra a ficha', () => {
+    expect(dialog).toContain("from '@/lib/remapLegacyStrapsForDuplicate'");
+    expect(dialog).toContain('remapLegacyStrapsForDuplicate');
+    expect(dialog).toContain('resolve_strap_canonical_color_id');
+    expect(dialog).toContain('technical_sheets');
+  });
+
   it('lote novo começa sem itens; loja em outro lote some da lista', () => {
     expect(lib).toContain('itemIds: []');
     expect(dialog).toContain('takenByOthers.has(c.id)');
