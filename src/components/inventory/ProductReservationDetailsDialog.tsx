@@ -1,4 +1,6 @@
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
@@ -7,12 +9,29 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { CircleNotch as Loader2, Lock, Factory } from '@phosphor-icons/react';
+import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
+import {
+  CircleNotch as Loader2,
+  CaretDown as ChevronDown,
+  CaretRight as ChevronRight,
+  PencilSimple as Pencil,
+} from '@phosphor-icons/react';
+import {
+  groupCommitmentsByPv,
+  sumOpenQty,
+  type CommitmentRow,
+} from '@/lib/productReservationGroups';
+import { cn } from '@/lib/utils';
 
 interface Props {
   productId: string | null;
   productName?: string;
   unit?: string | null;
+  /** Bruto em estoque — se omitido, busca do produto. */
+  quantity?: number | null;
+  /** products.reserved_stock — se omitido, busca do produto. */
+  reservedStock?: number | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
@@ -22,19 +41,31 @@ const fmt = (n: number | null | undefined) => {
   return v.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
 };
 
-const fmtDate = (iso: string | null | undefined) => {
-  if (!iso) return '—';
-  try {
-    return new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
-  } catch {
-    return iso;
-  }
-};
-
 export default function ProductReservationDetailsDialog({
-  productId, productName, unit, open, onOpenChange,
+  productId, productName, unit, quantity, reservedStock, open, onOpenChange,
 }: Props) {
-  const { data: commitments, isLoading: loadingCommitments } = useQuery({
+  const navigate = useNavigate();
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+
+  useEffect(() => {
+    if (open) setExpanded(new Set());
+  }, [open, productId]);
+
+  const { data: productStock } = useQuery({
+    queryKey: ['product-stock-header', productId],
+    enabled: !!productId && open && (quantity == null || reservedStock == null),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('products')
+        .select('quantity, reserved_stock, unit')
+        .eq('id', productId!)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const { data: commitments, isLoading } = useQuery({
     queryKey: ['product-material-commitments', productId],
     enabled: !!productId && open,
     queryFn: async () => {
@@ -43,201 +74,137 @@ export default function ProductReservationDetailsDialog({
         { p_product_id: productId },
       );
       if (error) throw error;
-      return data || [];
+      return (data || []) as CommitmentRow[];
     },
   });
 
-  const { data: reservations, isLoading: loadingRes } = useQuery({
-    queryKey: ['product-reservations', productId],
-    enabled: !!productId && open,
-    queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from('material_reservations')
-        .select('id, order_id, sale_order_id, quantity_reserved, quantity_consumed, status, lot_number, location, created_at, source, metadata')
-        .eq('product_id', productId)
-        .in('status', ['reserved', 'partially_consumed'])
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return data || [];
-    },
-  });
-
-  const { data: movements, isLoading: loadingMov } = useQuery({
-    queryKey: ['product-in-prod-movements', productId],
-    enabled: !!productId && open,
-    queryFn: async () => {
-      const { data: sm, error } = await supabase
-        .from('stock_movements')
-        .select('id, order_id, quantity, previous_stock, new_stock, description, created_at, user_email')
-        .eq('product_id', productId!)
-        .eq('movement_type', 'out')
-        .not('order_id', 'is', null)
-        .order('created_at', { ascending: false })
-        .limit(500);
-      if (error) throw error;
-      const orderIds = Array.from(new Set((sm || []).map((m: any) => m.order_id).filter(Boolean)));
-      if (orderIds.length === 0) return [];
-      const { data: orders, error: oErr } = await supabase
-        .from('orders')
-        .select('id, order_number, status, color')
-        .in('id', orderIds)
-        .in('status', ['Reservado', 'Em Produção']);
-      if (oErr) throw oErr;
-      const byId = new Map((orders || []).map((o: any) => [o.id, o]));
-      return (sm || [])
-        .filter((m: any) => byId.has(m.order_id))
-        .map((m: any) => ({ ...m, order: byId.get(m.order_id) }));
-    },
-  });
-
-  // Pega order_numbers para reservations
-  const reservationOrderIds: string[] = Array.from(
-    new Set((reservations || []).map((r: any) => r.order_id).filter((v: unknown): v is string => typeof v === 'string'))
+  const groups = useMemo(
+    () => groupCommitmentsByPv(commitments || []),
+    [commitments],
   );
-  const { data: reservationOrders } = useQuery({
-    queryKey: ['reservation-order-numbers', reservationOrderIds.sort().join(',')],
-    enabled: reservationOrderIds.length > 0 && open,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('orders')
-        .select('id, order_number, status')
-        .in('id', reservationOrderIds);
-      if (error) throw error;
-      return new Map((data || []).map((o: any) => [o.id, o]));
-    },
-  });
+  const listedOpen = sumOpenQty(groups);
 
-  const totalReserved = (reservations || []).reduce(
-    (acc: number, r: any) => acc + Math.max(0, Number(r.quantity_reserved || 0) - Number(r.quantity_consumed || 0)),
-    0,
-  );
-  const totalInProd = (movements || []).reduce(
-    (acc: number, m: any) => acc + Number(m.quantity || 0),
-    0,
-  );
+  const bruto = Number(quantity ?? productStock?.quantity ?? 0);
+  const reservado = Number(reservedStock ?? productStock?.reserved_stock ?? listedOpen);
+  const livre = bruto - reservado;
+  const unitLabel = unit ?? productStock?.unit ?? '';
+
+  const toggle = (key: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const goEditProduct = () => {
+    if (!productId) return;
+    onOpenChange(false);
+    navigate(`/estoque/${productId}`);
+  };
+
+  const goPv = (saleOrderId: string) => {
+    onOpenChange(false);
+    navigate(`/sales/edit/${saleOrderId}`);
+  };
+
+  const goOp = (orderNumber: string) => {
+    onOpenChange(false);
+    navigate(`/orders?search=${encodeURIComponent(orderNumber)}`);
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{productName || 'Detalhes do Produto'}</DialogTitle>
+          <DialogTitle className="pr-8">{productName || 'Reservas do material'}</DialogTitle>
           <DialogDescription>
-            Comprometimentos por PV, reservas ativas e movimentos em OPs.
+            Pedidos com quantidade reservada deste item. Somente leitura.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid grid-cols-2 gap-3 mt-2">
-          <div className="rounded-lg border p-3 bg-amber-500/5">
-            <div className="flex items-center gap-2 text-xs uppercase font-medium text-amber-700">
-              <Lock className="h-3.5 w-3.5" /> Reservado
-            </div>
-            <div className="display text-2xl tabular-nums text-amber-700 mt-1">
-              {fmt(totalReserved)} <span className="text-sm font-normal text-muted-foreground">{unit || ''}</span>
-            </div>
-            <div className="text-xs text-muted-foreground mt-0.5">
-              {(reservations || []).length} reserva(s)
-            </div>
+        <div className="mt-3 flex flex-wrap items-baseline gap-x-6 gap-y-2 border-b border-border pb-3 text-sm">
+          <div>
+            <span className="text-muted-foreground">Bruto </span>
+            <span className="font-mono font-semibold tabular-nums">{fmt(bruto)}</span>
+            {unitLabel ? <span className="ml-1 text-muted-foreground">{unitLabel}</span> : null}
           </div>
-          <div className="rounded-lg border p-3 bg-blue-500/5">
-            <div className="flex items-center gap-2 text-xs uppercase font-medium text-blue-700">
-              <Factory className="h-3.5 w-3.5" /> Em Produção
-            </div>
-            <div className="display text-2xl tabular-nums text-blue-700 mt-1">
-              {fmt(totalInProd)} <span className="text-sm font-normal text-muted-foreground">{unit || ''}</span>
-            </div>
-            <div className="text-xs text-muted-foreground mt-0.5">
-              {(movements || []).length} movimento(s)
-            </div>
+          <div>
+            <span className="text-muted-foreground">Reservado </span>
+            <span className="font-mono font-semibold tabular-nums text-amber-700 dark:text-amber-400">
+              {fmt(reservado)}
+            </span>
+            {unitLabel ? <span className="ml-1 text-muted-foreground">{unitLabel}</span> : null}
           </div>
-        </div>
-
-        <div className="mt-6">
-          <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
-            <Lock className="h-4 w-4 text-amber-600" /> Comprometido por PV
-          </h3>
-          {loadingCommitments ? (
-            <div className="flex justify-center py-6"><Loader2 className="h-4 w-4 animate-spin" /></div>
-          ) : (commitments || []).length === 0 ? (
-            <p className="text-sm text-muted-foreground py-4 text-center">Sem comprometimentos abertos.</p>
-          ) : (
-            <div className="overflow-x-auto rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>PV</TableHead>
-                    <TableHead>Tipo</TableHead>
-                    <TableHead className="text-right">Aberto</TableHead>
-                    <TableHead className="hidden md:table-cell">OP</TableHead>
-                    <TableHead className="hidden md:table-cell">Semana fat.</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {(commitments || []).map((r: any) => (
-                    <TableRow key={r.reservation_id}>
-                      <TableCell className="font-medium">
-                        {r.sale_order_number || r.sale_order_id?.slice(0, 8) || '—'}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="text-xs">{r.kind || '—'}</Badge>
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-sm font-semibold">{fmt(r.open_qty)}</TableCell>
-                      <TableCell className="hidden md:table-cell text-xs text-muted-foreground">
-                        {r.order_number ? `#${r.order_number}` : '—'}
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell text-xs text-muted-foreground">
-                        {r.billing_week || '—'}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+          <div>
+            <span className="text-muted-foreground">Livre </span>
+            <span
+              className={cn(
+                'font-mono font-semibold tabular-nums',
+                livre < 0 ? 'text-destructive' : 'text-emerald-700 dark:text-emerald-400',
+              )}
+            >
+              {fmt(livre)}
+            </span>
+            {unitLabel ? <span className="ml-1 text-muted-foreground">{unitLabel}</span> : null}
+          </div>
+          {groups.length > 0 && Math.abs(listedOpen - reservado) > 0.01 && (
+            <p className="basis-full text-xs text-amber-700 dark:text-amber-400">
+              Soma das linhas ({fmt(listedOpen)}) difere do reservado do cadastro ({fmt(reservado)}).
+            </p>
           )}
         </div>
 
-        <div className="mt-6">
-          <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
-            <Lock className="h-4 w-4 text-amber-600" /> Reservas Ativas
-          </h3>
-          {loadingRes ? (
-            <div className="flex justify-center py-6"><Loader2 className="h-4 w-4 animate-spin" /></div>
-          ) : (reservations || []).length === 0 ? (
-            <p className="text-sm text-muted-foreground py-4 text-center">Sem reservas ativas.</p>
+        <div className="mt-4">
+          {isLoading ? (
+            <div className="flex justify-center py-10">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : groups.length === 0 ? (
+            <EmptyState
+              title="Nenhuma reserva aberta"
+              description="Este material não está reservado em nenhum pedido no momento."
+              action={
+                <Button variant="outline" size="sm" className="gap-2" onClick={goEditProduct}>
+                  <Pencil className="h-4 w-4" />
+                  Editar cadastro
+                </Button>
+              }
+            />
           ) : (
-            <div className="overflow-x-auto rounded-md border">
+            <div className="overflow-x-auto rounded-md border border-border">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>OP</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Reservado</TableHead>
-                    <TableHead className="text-right">Consumido</TableHead>
-                    <TableHead className="text-right">Saldo</TableHead>
-                    <TableHead className="hidden md:table-cell">Origem</TableHead>
-                    <TableHead className="hidden md:table-cell">Criado em</TableHead>
+                    <TableHead className="w-8" />
+                    <TableHead>Pedido</TableHead>
+                    <TableHead className="hidden sm:table-cell">Cliente</TableHead>
+                    <TableHead className="hidden md:table-cell">Semana fat.</TableHead>
+                    <TableHead className="text-right">Qtd aberta</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(reservations || []).map((r: any) => {
-                    const saldo = Math.max(0, Number(r.quantity_reserved || 0) - Number(r.quantity_consumed || 0));
-                    const ord = reservationOrders?.get(r.order_id);
-                    const kind = r.metadata?.kind || r.source || '—';
+                  {groups.map((g) => {
+                    const isOpen = expanded.has(g.key);
+                    const pvLabel = g.saleOrderId
+                      ? (g.saleOrderNumber || g.saleOrderId.slice(0, 8))
+                      : 'Sem PV';
                     return (
-                      <TableRow key={r.id}>
-                        <TableCell className="font-medium">
-                          {ord?.order_number
-                            ? `#${ord.order_number}`
-                            : (r.order_id?.slice(0, 8) ?? (r.sale_order_id ? 'PV' : '—'))}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="text-xs">{r.status}</Badge>
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-sm">{fmt(r.quantity_reserved)}</TableCell>
-                        <TableCell className="text-right font-mono text-sm text-muted-foreground">{fmt(r.quantity_consumed)}</TableCell>
-                        <TableCell className="text-right font-mono text-sm font-semibold">{fmt(saldo)}</TableCell>
-                        <TableCell className="hidden md:table-cell text-xs text-muted-foreground">{kind}</TableCell>
-                        <TableCell className="hidden md:table-cell text-xs text-muted-foreground">{fmtDate(r.created_at)}</TableCell>
-                      </TableRow>
+                      <FragmentGroup
+                        key={g.key}
+                        isOpen={isOpen}
+                        onToggle={() => toggle(g.key)}
+                        pvLabel={pvLabel}
+                        saleOrderId={g.saleOrderId}
+                        clientName={g.clientName}
+                        billingWeek={g.billingWeek}
+                        openQty={g.openQty}
+                        ops={g.ops}
+                        onGoPv={goPv}
+                        onGoOp={goOp}
+                        unitLabel={unitLabel}
+                      />
                     );
                   })}
                 </TableBody>
@@ -246,46 +213,116 @@ export default function ProductReservationDetailsDialog({
           )}
         </div>
 
-        <div className="mt-6">
-          <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
-            <Factory className="h-4 w-4 text-blue-600" /> Movimentos em OPs Ativas
-          </h3>
-          {loadingMov ? (
-            <div className="flex justify-center py-6"><Loader2 className="h-4 w-4 animate-spin" /></div>
-          ) : (movements || []).length === 0 ? (
-            <p className="text-sm text-muted-foreground py-4 text-center">Sem movimentos em OPs ativas.</p>
-          ) : (
-            <div className="overflow-x-auto rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>OP</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Qtde</TableHead>
-                    <TableHead className="hidden md:table-cell">Descrição</TableHead>
-                    <TableHead className="hidden md:table-cell">Data</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {(movements || []).map((m: any) => (
-                    <TableRow key={m.id}>
-                      <TableCell className="font-medium">
-                        {m.order?.order_number ? `#${m.order.order_number}` : (m.order_id?.slice(0, 8) ?? '—')}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="text-xs">{m.order?.status || '—'}</Badge>
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-sm">{fmt(m.quantity)}</TableCell>
-                      <TableCell className="hidden md:table-cell text-xs text-muted-foreground max-w-xs truncate">{m.description || '—'}</TableCell>
-                      <TableCell className="hidden md:table-cell text-xs text-muted-foreground">{fmtDate(m.created_at)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </div>
+        {groups.length > 0 && (
+          <div className="mt-3 flex justify-end">
+            <Button variant="ghost" size="sm" className="gap-2" onClick={goEditProduct}>
+              <Pencil className="h-4 w-4" />
+              Editar cadastro
+            </Button>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+function FragmentGroup({
+  isOpen,
+  onToggle,
+  pvLabel,
+  saleOrderId,
+  clientName,
+  billingWeek,
+  openQty,
+  ops,
+  onGoPv,
+  onGoOp,
+  unitLabel,
+}: {
+  isOpen: boolean;
+  onToggle: () => void;
+  pvLabel: string;
+  saleOrderId: string | null;
+  clientName: string | null;
+  billingWeek: string | null;
+  openQty: number;
+  ops: { reservationId: string; orderId: string | null; orderNumber: string | null; status: string | null; kind: string | null; openQty: number }[];
+  onGoPv: (id: string) => void;
+  onGoOp: (orderNumber: string) => void;
+  unitLabel: string;
+}) {
+  return (
+    <>
+      <TableRow
+        className="cursor-pointer hover:bg-muted/40"
+        onClick={onToggle}
+        data-testid={`reservation-pv-${saleOrderId ?? 'orphan'}`}
+      >
+        <TableCell className="w-8 px-2">
+          {isOpen
+            ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+        </TableCell>
+        <TableCell className="font-medium">
+          {saleOrderId ? (
+            <button
+              type="button"
+              className="text-left hover:text-primary hover:underline"
+              onClick={(e) => {
+                e.stopPropagation();
+                onGoPv(saleOrderId);
+              }}
+            >
+              {pvLabel}
+            </button>
+          ) : (
+            <span className="text-muted-foreground">{pvLabel}</span>
+          )}
+          <span className="ml-2 text-xs text-muted-foreground sm:hidden">
+            {clientName || '—'}
+          </span>
+        </TableCell>
+        <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
+          {clientName || '—'}
+        </TableCell>
+        <TableCell className="hidden md:table-cell text-xs text-muted-foreground">
+          {billingWeek || '—'}
+        </TableCell>
+        <TableCell className="text-right font-mono text-sm font-semibold tabular-nums">
+          {fmt(openQty)}
+          {unitLabel ? <span className="ml-1 text-xs font-normal text-muted-foreground">{unitLabel}</span> : null}
+        </TableCell>
+      </TableRow>
+      {isOpen && ops.map((op) => (
+        <TableRow key={op.reservationId} className="bg-muted/20">
+          <TableCell />
+          <TableCell colSpan={2} className="pl-6">
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              {op.orderNumber ? (
+                <button
+                  type="button"
+                  className="font-mono font-medium hover:text-primary hover:underline"
+                  onClick={() => onGoOp(op.orderNumber!)}
+                >
+                  #{op.orderNumber}
+                </button>
+              ) : (
+                <span className="text-muted-foreground">Sem OP</span>
+              )}
+              {op.status && (
+                <Badge variant="outline" className="text-xs">{op.status}</Badge>
+              )}
+              {op.kind && (
+                <Badge variant="secondary" className="text-xs font-normal">{op.kind}</Badge>
+              )}
+            </div>
+          </TableCell>
+          <TableCell className="hidden md:table-cell" />
+          <TableCell className="text-right font-mono text-sm tabular-nums">
+            {fmt(op.openQty)}
+          </TableCell>
+        </TableRow>
+      ))}
+    </>
   );
 }

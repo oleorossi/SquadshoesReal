@@ -1,5 +1,4 @@
 import React, { useMemo, useState, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Product } from '@/types/inventory';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
@@ -24,6 +23,7 @@ import { useGroups, ProductGroup } from '@/hooks/useGroups';
 import { ManualStockOutDialog } from './ManualStockOutDialog';
 import { SoladoGradeDialog } from './SoladoGradeDialog';
 import { SoleTechnicalEditDialog } from './SoleTechnicalEditDialog';
+import ProductReservationDetailsDialog from './ProductReservationDetailsDialog';
 import GroupDialog from '@/components/groups/GroupDialog';
 import type { GroupEditTab } from '@/components/groups/GroupEditDialog';
 import { SelectionMarquee } from '@/components/ui/selection-marquee';
@@ -282,9 +282,10 @@ function ProductHoverPreview({ product, formatCurrency, children }: {
   );
 }
 
-function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisanal, formatCurrency, indent = false, avgConsumptionMap, selectedIds, onToggleSelect, onDuplicate, purchasedReadyProductIds, showName = true, searchTerm = '' }: {
+function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisanal, onOpenReservations, formatCurrency, indent = false, avgConsumptionMap, selectedIds, onToggleSelect, onDuplicate, purchasedReadyProductIds, showName = true, searchTerm = '' }: {
   products: Product[];
   onEdit: (product: Product) => void;
+  onOpenReservations: (product: Product) => void;
   onDelete: (id: string) => void;
   onStockOut: (product: Product) => void;
   onGrade: (product: Product) => void;
@@ -301,7 +302,6 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
   showName?: boolean;
   searchTerm?: string;
 }) {
-  const navigate = useNavigate();
   const [zoomImg, setZoomImg] = useState<{ src: string; alt: string } | null>(null);
   const swatchOf = useColorSwatches();
   const { density, isVisible } = useTableView();
@@ -321,7 +321,7 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
         const isSelected = selectedIds?.has(product.id);
         const isPurchasedReadyStrap = purchasedReadyProductIds.has(product.id);
         return (
-          <TableRow key={product.id} data-row-index={product.id} tabIndex={0} className={cn("group cursor-pointer hover:bg-muted/60 transition-colors focus-visible:outline-none focus-visible:bg-muted/60", isInactive && "opacity-50", isSelected && "bg-primary/10", indent && "bg-muted/20")} onClick={() => navigate(`/estoque/${product.id}`)} onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); navigate(`/estoque/${product.id}`); } }}>
+          <TableRow key={product.id} data-row-index={product.id} tabIndex={0} className={cn("group cursor-pointer hover:bg-muted/60 transition-colors focus-visible:outline-none focus-visible:bg-muted/60", isInactive && "opacity-50", isSelected && "bg-primary/10", indent && "bg-muted/20")} onClick={() => onOpenReservations(product)} onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onOpenReservations(product); } }}>
             <TableCell className={cn('w-8', dCls.cell)} onClick={e => e.stopPropagation()}>
               {onToggleSelect && (
                 <Checkbox
@@ -368,7 +368,7 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
                 <ProductHoverPreview product={product} formatCurrency={formatCurrency}>
                   <span
                     className={cn("cursor-pointer hover:text-primary hover:underline transition-colors", indent && "text-muted-foreground text-sm")}
-                    onClick={() => navigate(`/estoque/${product.id}`)}
+                    onClick={() => onOpenReservations(product)}
                   >
                     {/* Grupo homogêneo: as N linhas repetiriam o mesmo nome, então a
                         COR é o rótulo. Heterogêneo: nome + selo de cor (R1.1a). */}
@@ -731,6 +731,19 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
   const [gradeProduct, setGradeProduct] = useState<Product | null>(null);
    const [soleEditProduct, setSoleEditProduct] = useState<Product | null>(null);
    const [artisanalProducts, setArtisanalProducts] = useState<Product[] | null>(null);
+  const [reservationsProduct, setReservationsProduct] = useState<Product | null>(null);
+
+  const reservationDetailsDialog = (
+    <ProductReservationDetailsDialog
+      open={!!reservationsProduct}
+      onOpenChange={(o) => { if (!o) setReservationsProduct(null); }}
+      productId={reservationsProduct?.id ?? null}
+      productName={reservationsProduct?.name}
+      unit={reservationsProduct?.unit}
+      quantity={reservationsProduct != null ? Number(reservationsProduct.quantity) || 0 : null}
+      reservedStock={reservationsProduct != null ? Number((reservationsProduct as any).reserved_stock) || 0 : null}
+    />
+  );
 
   // Intercept edit clicks: só o Solado tem editor técnico dedicado.
   //
@@ -1009,6 +1022,7 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
                     onDelete={onDelete}
                     onStockOut={setStockOutProduct}
                     onGrade={setGradeProduct}
+                    onOpenReservations={setReservationsProduct}
                      formatCurrency={formatCurrency}
                      avgConsumptionMap={avgConsumptionMap}
                      onArtisanal={setArtisanalProducts}
@@ -1027,6 +1041,7 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
         <ManualStockOutDialog open={!!stockOutProduct} onOpenChange={(o) => { if (!o) setStockOutProduct(null); }} product={stockOutProduct} />
         <SoladoGradeDialog open={!!gradeProduct} onOpenChange={(o) => { if (!o) setGradeProduct(null); }} product={gradeProduct} />
         <SoleTechnicalEditDialog open={!!soleEditProduct} onOpenChange={(o) => { if (!o) setSoleEditProduct(null); }} product={soleEditProduct} />
+        {reservationDetailsDialog}
       </>
     );
   }
@@ -1047,7 +1062,7 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
                     </TableCell>
                   </TableRow>
                 ) : (
-                  <ProductRows products={sortedProducts} onEdit={handleEditIntercepted} onDelete={onDelete} onStockOut={setStockOutProduct} onGrade={setGradeProduct} onArtisanal={setArtisanalProducts} formatCurrency={formatCurrency} avgConsumptionMap={avgConsumptionMap} selectedIds={selectedIds} purchasedReadyProductIds={purchasedReadyProductIds} searchTerm={searchTerm} />
+                  <ProductRows products={sortedProducts} onEdit={handleEditIntercepted} onDelete={onDelete} onStockOut={setStockOutProduct} onGrade={setGradeProduct} onArtisanal={setArtisanalProducts} onOpenReservations={setReservationsProduct} formatCurrency={formatCurrency} avgConsumptionMap={avgConsumptionMap} selectedIds={selectedIds} purchasedReadyProductIds={purchasedReadyProductIds} searchTerm={searchTerm} />
                 )}
               </TableBody>
             </Table>
@@ -1057,6 +1072,7 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
         <ManualStockOutDialog open={!!stockOutProduct} onOpenChange={(o) => { if (!o) setStockOutProduct(null); }} product={stockOutProduct} />
         <SoladoGradeDialog open={!!gradeProduct} onOpenChange={(o) => { if (!o) setGradeProduct(null); }} product={gradeProduct} /><SoleTechnicalEditDialog open={!!soleEditProduct} onOpenChange={(o) => { if (!o) setSoleEditProduct(null); }} product={soleEditProduct} />
         <ArtisanalProductDialog products={artisanalProducts || []} open={!!artisanalProducts} onOpenChange={(o) => { if (!o) setArtisanalProducts(null); }} />
+        {reservationDetailsDialog}
       </>
     );
   }
@@ -1219,6 +1235,7 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
                         onStockOut={setStockOutProduct}
                         onGrade={setGradeProduct}
                         onArtisanal={setArtisanalProducts}
+                        onOpenReservations={setReservationsProduct}
                         formatCurrency={formatCurrency}
                         avgConsumptionMap={avgConsumptionMap}
                         selectedIds={selectedIds}
@@ -1248,6 +1265,7 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
         />
       )}
        <ArtisanalProductDialog products={artisanalProducts || []} open={!!artisanalProducts} onOpenChange={(o) => { if (!o) setArtisanalProducts(null); }} />
+      {reservationDetailsDialog}
     </>
   );
 }

@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useDebounce } from 'use-debounce';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { useQuery } from '@tanstack/react-query';
 import { Baby, ClipboardText as ClipboardList, Trash as Trash2, CircleNotch as Loader2, Warning as AlertTriangle, CheckCircle as CheckCircle2, Printer, Factory, Funnel as Filter, MagnifyingGlass as Search, Calendar, Stack as Layers, X, CaretDown as ChevronDown, Checks as CheckCheck, PencilSimple as Pencil, FileText, Square, CheckSquare, FileXls as FileSpreadsheet, Check, CaretUpDown as ChevronsUpDown, Package, Image as ImageIcon, Plus, CaretUp as ChevronUp, DotsThree as MoreHorizontal, Download, GridFour as LayoutGrid, List, ArrowRight } from '@phosphor-icons/react';
@@ -208,10 +208,12 @@ function getWeekOptions() {
 
  export default function Orders({ hideHeader = false }: { hideHeader?: boolean }) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   // Busca NÃO persiste: reseta ao sair e voltar pra tela (useState remonta
   // limpo). Antes usava usePersistedState com a chave 'searchTerm' — a MESMA
   // de SaleOrders, então o termo vazava entre OPs e PVs.
-  const [searchTerm, setSearchTerm] = useState('');
+  // Deep link: /orders?search=OP-… (ex.: dialog de reservas do estoque).
+  const [searchTerm, setSearchTerm] = useState(() => searchParams.get('search') || '');
   // Debounce alimenta o filtro local E a query server-side (R6). Input segue
   // responsivo em searchTerm; fetch/filtro rodam 300ms após parar de digitar.
   const [debouncedSearchTerm] = useDebounce(searchTerm, 300);
