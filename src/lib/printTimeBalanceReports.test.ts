@@ -68,4 +68,49 @@ describe('printTimeBalanceReports', () => {
     expect(html).toContain('DÉBITO DE HORAS');
     expect(html).toMatch(/R\$\s0,00/);
   });
+
+  it('não mostra valor de HE a pagar quando o período fecha em débito', () => {
+    const report = buildEmployeeTimeBalanceReport({
+      id: '2',
+      name: 'Daiane Pinheiro',
+      department: 'Produção',
+      paymentType: 'mensalista',
+      ledger: [ledger],
+      rawCreditMinutes: 7195,
+      rawDebitMinutes: 8361,
+      compensatedMinutes: 7195,
+      payableOvertimeMinutes: 7195,
+      payableDebitMinutes: 8361,
+      overtimeValue: 1447.19,
+      monthBreakdown: [
+        {
+          period: '2026-05',
+          from: '2026-05-01',
+          to: '2026-05-31',
+          payableOvertimeMinutes: 2000,
+          payableDebitMinutes: 500,
+          overtimeValue: 381.31,
+        },
+        {
+          period: '2026-06',
+          from: '2026-06-01',
+          to: '2026-06-30',
+          payableOvertimeMinutes: 5195,
+          payableDebitMinutes: 7861,
+          overtimeValue: 1065.88,
+        },
+      ],
+    });
+
+    expect(report.finalPayableBalanceMinutes).toBeLessThan(0);
+    expect(report.overtimeValue).toBe(0);
+
+    const html = buildTimeBalanceReportHtml([report], 'all', '01/05/2026 a 31/10/2026');
+    expect(html).toContain('DÉBITO DE HORAS');
+    expect(html).toContain('Valor de HE a pagar');
+    expect(html).toMatch(/R\$\s0,00/);
+    expect(html).toContain('0h00 após compensação');
+    expect(html).not.toContain('<p class="he-breakdown">');
+    expect(html).not.toMatch(/R\$\s1\.447/);
+  });
 });

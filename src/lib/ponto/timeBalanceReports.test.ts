@@ -203,6 +203,7 @@ describe('timeBalanceReports — blocos por mês', () => {
         ledgerDay('2026-06-08', 480, 480),
       ],
       payableOvertimeMinutes: 90,
+      payableDebitMinutes: 0,
       overtimeValue: 75,
       monthBreakdown: [
         {
@@ -224,10 +225,79 @@ describe('timeBalanceReports — blocos por mês', () => {
       ],
     });
 
+    expect(report.finalPayableBalanceMinutes).toBe(90);
+    expect(report.overtimeValue).toBe(75);
+    expect(report.payableOvertimeForPaymentMinutes).toBe(90);
     expect(report.monthBreakdown).toHaveLength(2);
+    expect(report.monthBreakdown?.map(m => m.overtimeValue)).toEqual([50, 25]);
     const blocks = groupWeeksByCivilMonth(report.weeks);
     expect(blocks.length).toBeGreaterThanOrEqual(2);
     expect(blocks[0].label).toMatch(/de 2026/);
     expect(blocks.every(block => block.weeks.length > 0)).toBe(true);
+  });
+
+  it('zera HE a pagar quando o resultado final do período é débito', () => {
+    // Caso Daiane: meses com HE somados + atrasos maiores → débito líquido,
+    // mas o input ainda traz overtimeValue da soma mensal.
+    const report = buildEmployeeTimeBalanceReport({
+      id: 'daiane',
+      name: 'Daiane Pinheiro',
+      paymentType: 'mensalista',
+      ledger: [ledgerDay('2026-05-04', 480, 600)],
+      payableOvertimeMinutes: 7195, // ~119h55
+      payableDebitMinutes: 8361, // débito maior → final −19h26
+      overtimeValue: 1447.19,
+      monthBreakdown: [
+        {
+          period: '2026-05',
+          from: '2026-05-01',
+          to: '2026-05-31',
+          payableOvertimeMinutes: 2000,
+          payableDebitMinutes: 500,
+          overtimeValue: 381.31,
+        },
+        {
+          period: '2026-06',
+          from: '2026-06-01',
+          to: '2026-06-30',
+          payableOvertimeMinutes: 1000,
+          payableDebitMinutes: 2000,
+          overtimeValue: 211.69,
+        },
+      ],
+    });
+
+    expect(report.finalPayableBalanceMinutes).toBe(-1166);
+    expect(report.totalPayableOvertimeMinutes).toBe(7195);
+    expect(report.overtimeValue).toBe(0);
+    expect(report.payableOvertimeForPaymentMinutes).toBe(0);
+    expect(report.monthBreakdown).toHaveLength(2);
+    expect(report.monthBreakdown?.every(m => m.overtimeValue === 0)).toBe(true);
+  });
+
+  it('zera HE a pagar quando o período fecha compensado (saldo zero)', () => {
+    const report = buildEmployeeTimeBalanceReport({
+      id: 'zero',
+      name: 'Zerado',
+      paymentType: 'mensalista',
+      ledger: [],
+      payableOvertimeMinutes: 120,
+      payableDebitMinutes: 120,
+      overtimeValue: 40,
+      monthBreakdown: [
+        {
+          period: '2026-07',
+          from: '2026-07-01',
+          to: '2026-07-31',
+          payableOvertimeMinutes: 120,
+          payableDebitMinutes: 120,
+          overtimeValue: 40,
+        },
+      ],
+    });
+
+    expect(report.finalPayableBalanceMinutes).toBe(0);
+    expect(report.overtimeValue).toBe(0);
+    expect(report.payableOvertimeForPaymentMinutes).toBe(0);
   });
 });

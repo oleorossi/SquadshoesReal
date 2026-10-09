@@ -72,6 +72,12 @@ export interface EmployeeTimeBalanceReport {
   totalPayableOvertimeMinutes: number;
   totalPayableDebitMinutes: number;
   finalPayableBalanceMinutes: number;
+  /**
+   * Minutos de HE usados só no card/coluna "Valor de HE a pagar".
+   * Zera quando o período fecha em débito ou compensado — o
+   * `totalPayableOvertimeMinutes` continua intacto pra montar o resultado final.
+   */
+  payableOvertimeForPaymentMinutes: number;
   overtimeValue: number;
   overtimeRateMissing: boolean;
   /** Presente só com meses civis completos agregados. */
@@ -190,6 +196,24 @@ export function buildEmployeeTimeBalanceReport(input: TimeBalanceEmployeeInput):
     ?? sortedLedger.reduce((sum, day) => sum + (Number(day.payable_overtime_minutes) || 0), 0);
   const totalPayableDebitMinutes = input.payableDebitMinutes
     ?? sortedLedger.reduce((sum, day) => sum + (Number(day.payable_delay_minutes) || 0), 0);
+  const finalPayableBalanceMinutes = totalPayableOvertimeMinutes - totalPayableDebitMinutes;
+  // Período em débito/compensado: não há HE a pagar no relatório do intervalo,
+  // mesmo que algum mês civil isolado tenha fechado com HE (soma multi-mês).
+  const periodHasPayableHe = finalPayableBalanceMinutes > 0;
+  const overtimeValue = periodHasPayableHe
+    ? Math.max(0, Number(input.overtimeValue) || 0)
+    : 0;
+  const payableOvertimeForPaymentMinutes = periodHasPayableHe
+    ? totalPayableOvertimeMinutes
+    : 0;
+  const rawBreakdown = Array.isArray(input.monthBreakdown) && input.monthBreakdown.length > 0
+    ? input.monthBreakdown
+    : undefined;
+  const monthBreakdown = rawBreakdown
+    ? (periodHasPayableHe
+      ? rawBreakdown
+      : rawBreakdown.map(month => ({ ...month, overtimeValue: 0 })))
+    : undefined;
 
   return {
     id: input.id,
@@ -210,12 +234,11 @@ export function buildEmployeeTimeBalanceReport(input: TimeBalanceEmployeeInput):
     totalCompensatedMinutes,
     totalPayableOvertimeMinutes,
     totalPayableDebitMinutes,
-    finalPayableBalanceMinutes: totalPayableOvertimeMinutes - totalPayableDebitMinutes,
-    overtimeValue: Math.max(0, Number(input.overtimeValue) || 0),
+    finalPayableBalanceMinutes,
+    payableOvertimeForPaymentMinutes,
+    overtimeValue,
     overtimeRateMissing: input.overtimeRateMissing === true,
-    monthBreakdown: Array.isArray(input.monthBreakdown) && input.monthBreakdown.length > 0
-      ? input.monthBreakdown
-      : undefined,
+    monthBreakdown,
   };
 }
 

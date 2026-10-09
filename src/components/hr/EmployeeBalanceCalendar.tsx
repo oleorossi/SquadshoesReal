@@ -195,8 +195,8 @@ export function EmployeeBalanceCalendar({ report, kind }: { report: EmployeeTime
         <div className="px-4 py-3">
           <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Valor de HE a pagar</p>
           <p className="mt-1 font-mono text-lg font-bold tabular-nums text-foreground">{formatBRL(report.overtimeValue)}</p>
-          <p className="mt-0.5 text-[10px] text-muted-foreground">{formatBalanceMinutes(report.totalPayableOvertimeMinutes, false)} após compensação</p>
-          {report.monthBreakdown && report.monthBreakdown.length > 1 && (
+          <p className="mt-0.5 text-[10px] text-muted-foreground">{formatBalanceMinutes(report.payableOvertimeForPaymentMinutes, false)} após compensação</p>
+          {report.overtimeValue > 0 && report.monthBreakdown && report.monthBreakdown.length > 1 && (
             <div className="mt-2 space-y-0.5 border-t border-border/60 pt-2">
               {report.monthBreakdown.map(month => {
                 const [, m] = month.period.split('-').map(Number);

@@ -96,7 +96,7 @@ function renderEmployee(report: EmployeeTimeBalanceReport, kind: TimeBalanceRepo
       : '';
     return `${heading}${block.weeks.map(renderWeekRow).join('')}`;
   }).join('');
-  const heBreakdown = report.monthBreakdown && report.monthBreakdown.length > 1
+  const heBreakdown = report.overtimeValue > 0 && report.monthBreakdown && report.monthBreakdown.length > 1
     ? `<p class="he-breakdown">${report.monthBreakdown.map(month => {
       const [, m] = month.period.split('-').map(Number);
       const labels = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
@@ -125,7 +125,7 @@ function renderEmployee(report: EmployeeTimeBalanceReport, kind: TimeBalanceRepo
       <div><span>Pendências de horas</span><strong class="negative-text">${formatBalanceMinutes(-report.totalRawDebitMinutes)}</strong></div>
       <div><span>Horas extras</span><strong class="positive-text">${formatBalanceMinutes(report.totalRawCreditMinutes)}</strong></div>
       <div><span>Resultado final</span><strong class="${finalClass}">${formatBalanceMinutes(report.finalPayableBalanceMinutes)}</strong><small class="${finalClass}">${outcomeLabel(report.finalPayableBalanceMinutes)}</small></div>
-      <div><span>Valor de HE a pagar</span><strong>${formatBRL(report.overtimeValue)}</strong><small>${formatBalanceMinutes(report.totalPayableOvertimeMinutes, false)} após compensação</small>${heBreakdown}</div>
+      <div><span>Valor de HE a pagar</span><strong>${formatBRL(report.overtimeValue)}</strong><small>${formatBalanceMinutes(report.payableOvertimeForPaymentMinutes, false)} após compensação</small>${heBreakdown}</div>
     </div>
     <p class="legend">Cada célula mostra: batidas · trabalhado/meta · saldo do dia. O fechamento é semanal; crédito e débito se compensam apenas dentro da mesma semana. Dias abonados e sem cobertura não geram débito.</p>
     ${report.overtimeRateMissing ? '<p class="rate-warning">Atenção: há hora extra a pagar sem taxa cadastrada.</p>' : ''}
@@ -202,8 +202,8 @@ export function buildTimeBalanceManagementHtml(
       <td class="number">${applies ? formatBalanceMinutes(report.totalCompensatedMinutes, false) : '—'}</td>
       <td class="number ${finalClass}">${applies ? formatBalanceMinutes(report.finalPayableBalanceMinutes) : '—'}</td>
       <td class="status ${finalClass}">${situation}</td>
-      <td class="number">${applies ? formatBalanceMinutes(report.totalPayableOvertimeMinutes, false) : '—'}</td>
-      <td class="number">${applies ? formatBRL(report.overtimeValue) : '—'}${report.overtimeRateMissing ? '<small>taxa pendente</small>' : ''}</td>
+      <td class="number">${applies ? formatBalanceMinutes(report.payableOvertimeForPaymentMinutes, false) : '—'}</td>
+      <td class="number">${applies ? formatBRL(report.overtimeValue) : '—'}${report.overtimeValue > 0 && report.overtimeRateMissing ? '<small>taxa pendente</small>' : ''}</td>
     </tr>`;
   }).join('');
 
