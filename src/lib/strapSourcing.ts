@@ -14,6 +14,11 @@ export interface StrapSourcingSelection {
   /** Identidade canônica congelada no momento da escolha. */
   color_id?: string | null;
   strap_variant_id?: string | null;
+  /**
+   * SKU acabado congelado no Comprar pronto do PV (sem variante Hub).
+   * Hub/STRASS continua usando `strap_variant_id`.
+   */
+  finished_product_id?: string | null;
   recipe_id?: string | null;
   base_group_id?: string | null;
   base_group_name?: string | null;
@@ -99,16 +104,19 @@ export function setStrapSourcing(
 }
 
 /**
- * Uma origem só é confirmável quando também congela a cor e a variante que o
- * resolvedor canônico mostrou ao usuário. Texto/grupo nunca completam identidade.
+ * Origem confirmável: cor canônica + (variante Hub OU SKU acabado do PV).
+ * Texto/grupo nunca completam identidade.
  */
 export function isCompleteStrapSourcingSelection(
   selection: StrapSourcingSelection | null | undefined,
-): selection is StrapSourcingSelection & { color_id: string; strap_variant_id: string } {
-  return !!selection
-    && (selection.source_mode === 'internal' || selection.source_mode === 'buy_ready')
-    && isUuid(selection.color_id)
-    && isUuid(selection.strap_variant_id);
+): selection is StrapSourcingSelection & { color_id: string } {
+  if (!selection) return false;
+  if (selection.source_mode !== 'internal' && selection.source_mode !== 'buy_ready') return false;
+  if (!isUuid(selection.color_id)) return false;
+  if (selection.source_mode === 'buy_ready') {
+    return isUuid(selection.strap_variant_id) || isUuid(selection.finished_product_id);
+  }
+  return isUuid(selection.strap_variant_id);
 }
 
 /** Identidade que o preview canônico já resolveu para a linha técnica. */
@@ -185,6 +193,7 @@ const INTERNAL_SOURCING_COMPARE_KEYS = [
   'source_mode',
   'color_id',
   'strap_variant_id',
+  'finished_product_id',
   'recipe_id',
   'base_group_id',
   'base_group_name',

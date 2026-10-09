@@ -53,6 +53,24 @@ describe('strapSourcing — identidade por linha técnica UUID', () => {
     expect(missingStrapSourcingLineIds(map, [{ technical_strap_line_id: LINE_A }])).toEqual([]);
   });
 
+  it('buy_ready do PV completa com finished_product_id sem variante Hub', () => {
+    const productId = '55555555-6666-4777-8888-999999999999';
+    const incomplete = setStrapSourcing({}, LINE_A, {
+      source_mode: 'buy_ready',
+      color_id: COLOR_A,
+      strap_variant_id: null,
+    });
+    expect(isCompleteStrapSourcingSelection(incomplete[LINE_A])).toBe(false);
+
+    const complete = setStrapSourcing({}, LINE_A, {
+      source_mode: 'buy_ready',
+      color_id: COLOR_A,
+      strap_variant_id: null,
+      finished_product_id: productId,
+    });
+    expect(isCompleteStrapSourcingSelection(complete[LINE_A])).toBe(true);
+  });
+
   it('limpar volta ao estado pendente, sem herança', () => {
     const map = setStrapSourcing({}, LINE_A, 'internal');
     expect(getStrapSourcingOverride(setStrapSourcing(map, LINE_A, null), LINE_A)).toBeNull();
