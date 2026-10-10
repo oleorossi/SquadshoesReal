@@ -30,7 +30,7 @@ export interface PalmilhaSilkColorInput {
   fichasAproximadas?: boolean;
   opNumbers?: string[];
   pvNumbers?: string[];
-  refs?: Array<{ key?: string; code: string; name: string; color?: string; image_url?: string | null }>;
+  refs?: Array<{ key?: string; code: string; name: string; color?: string; image_url?: string | null; insolePerforated?: boolean }>;
   lotInfo?: { number: number; total: number };
   liningBreakdown?: Map<string, {
     material: string;

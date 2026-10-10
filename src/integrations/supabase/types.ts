@@ -32469,6 +32469,7 @@ export type Database = {
           insole_lining_consumption_per_size: Json
           insole_material: string | null
           insole_plate_product: string | null
+          insole_perforated: boolean
           insole_ready_made: boolean
           knife_size_ranges: Json | null
           last_id: string | null
@@ -32607,6 +32608,7 @@ export type Database = {
           insole_lining_consumption_per_size?: Json
           insole_material?: string | null
           insole_plate_product?: string | null
+          insole_perforated?: boolean
           insole_ready_made?: boolean
           knife_size_ranges?: Json | null
           last_id?: string | null
@@ -32745,6 +32747,7 @@ export type Database = {
           insole_lining_consumption_per_size?: Json
           insole_material?: string | null
           insole_plate_product?: string | null
+          insole_perforated?: boolean
           insole_ready_made?: boolean
           knife_size_ranges?: Json | null
           last_id?: string | null

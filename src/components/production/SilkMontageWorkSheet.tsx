@@ -30,6 +30,7 @@ import { PaginatedSheet, type SheetBlock } from './worksheet/PaginatedSheet';
 import { usePrintOrderIdentity } from './worksheet/PrintOrderIdentityContext';
 import { pageIdentityForOps } from './worksheet/pageIdentity';
 import { SectorAlerts, type SectorAlert } from './worksheet/SectorAlerts';
+import { PalmilhaFuradaBanner } from './worksheet/PalmilhaFuradaBanner';
 import { SignedImage } from '@/components/ui/signed-image';
 import { formatOpNumber } from './worksheet/stageOrder';
 import type { ConsumptionRow } from '@/hooks/useBulkOrderConsumption';
@@ -139,7 +140,7 @@ export interface SilkColorGroup {
   pvNumbers?: string[];
   /** Referências (sandálias) que cabem nesse grupo solado+cor. Geralmente 1
    *  ref por grupo, mas modelos diferentes podem usar mesmo solado+cor. */
-  refs?: Array<{ code: string; name: string }>;
+  refs?: Array<{ code: string; name: string; insolePerforated?: boolean }>;
   silk?: { silk_name: string; silk_url: string | null };
   /** URL da imagem da variante exata (se houver). */
   variantImageUrl?: string | null;
@@ -1585,6 +1586,11 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                     </span>
                   </div>
                 </div>
+                {/* Palmilha furada (spec da ficha, 2026-10-10) — só Silk e
+                    Acabamento Palmilha; os demais setores compactos não furam. */}
+                {(sector === 'Silk' || isAcabamentoPalmilhaSector(sector)) && (
+                  <PalmilhaFuradaBanner refs={cg.refs} />
+                )}
                 {!thumbsBesideGrade && compactThumbStrip}
                 {/* Logomarca POR COR — só quando as cores da ficha resolvem
                     silks DIFERENTES (senão o bloco único acima cobre tudo). */}

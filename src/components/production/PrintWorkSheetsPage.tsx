@@ -1614,7 +1614,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       // upper_corte_a_fio: filtro da ficha 'Costura Cabedal' (2026-06-12).
       const { data, error } = await supabase
         .from('technical_sheets')
-        .select('id, insole_has_lining, insole_ready_made, has_straps, sole_material, sole_color, sole_group_id, primary_sole_id, production_sectors, aviamento_steps, upper_material, upper_material_group_id, upper_material_product_id, upper_consumption, upper_consumption_per_size, components_accessories, lining_material, insole_material, upper_corte_a_fio, upper_sewing_pieces_per_pair, knife_size_ranges, aviamento_size_ranges, shoe_category, variant_drives_upper, variant_drives_lining')
+        .select('id, insole_has_lining, insole_ready_made, has_straps, sole_material, sole_color, sole_group_id, primary_sole_id, production_sectors, aviamento_steps, upper_material, upper_material_group_id, upper_material_product_id, upper_consumption, upper_consumption_per_size, components_accessories, lining_material, insole_material, upper_corte_a_fio, upper_sewing_pieces_per_pair, insole_perforated, knife_size_ranges, aviamento_size_ranges, shoe_category, variant_drives_upper, variant_drives_lining')
         .in('id', referenceIds);
       if (error) throw error;
       return data || [];
@@ -2827,8 +2827,15 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       const refCode = order.reference_code || '';
       const refName = order.reference_name || '';
       const refKey = refCode || refName;
+      // insolePerforated (2026-10-10): a marca de palmilha furada viaja POR
+      // referência — o card funde N refs na mesma cor e o destaque precisa
+      // saber se vale pro card inteiro ou só pra algumas (PalmilhaFuradaBanner).
       if (refKey && !cg.refs!.some((r: any) => (r.code || r.name) === refKey)) {
-        cg.refs!.push({ code: refCode, name: refName });
+        cg.refs!.push({
+          code: refCode,
+          name: refName,
+          insolePerforated: (sheetById.get(sheetId) as any)?.insole_perforated === true,
+        });
       }
       // Foto POR REFERÊNCIA (2026-07-22): uma entrada por ficha técnica distinta
       // que compartilha esta cor, pra a faixa de miniaturas do Corte Forração

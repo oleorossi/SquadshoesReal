@@ -17,6 +17,7 @@ import { pageIdentityForOps } from './worksheet/pageIdentity';
 import { formatOpNumber } from './worksheet/stageOrder';
 import { fichaModelFor } from './worksheet/fichaModel';
 import { SectorMaterials } from './worksheet/SectorMaterials';
+import { PalmilhaFuradaBanner } from './worksheet/PalmilhaFuradaBanner';
 import { GroupSubHeader } from './worksheet/GroupSubHeader';
 import type { ConsumptionRow } from '@/hooks/useBulkOrderConsumption';
 import {
@@ -42,7 +43,7 @@ export interface PalmilhaUnifiedCard {
   mixedGrades?: boolean;
   corrugadosMistos?: boolean;
   fichasAproximadas?: boolean;
-  refs?: Array<{ key?: string; code: string; name: string; color?: string; image_url?: string | null }>;
+  refs?: Array<{ key?: string; code: string; name: string; color?: string; image_url?: string | null; insolePerforated?: boolean }>;
   opNumbers?: string[];
   pvNumbers?: string[];
   clientNames?: string[];
@@ -301,6 +302,9 @@ export function PalmilhaUnifiedWorkSheet({
               </span>
             </div>
           </div>
+
+          {/* Palmilha furada (spec da ficha, 2026-10-10). */}
+          <PalmilhaFuradaBanner refs={card.refs} />
 
           {/* Só OPs do card — PV/cliente já estão no HeaderIdentification.
               Em maço multi-PV a linha volta a mostrar PVs quando o card

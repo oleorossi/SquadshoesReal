@@ -3527,6 +3527,25 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                   </>
                 );
               })()}
+              {/* Palmilha furada (2026-10-10): só camada de impressão — liga o
+                  destaque "PALMILHA FURADA" nas fichas de operador de Silk e
+                  Palmilha. Não altera consumo, débito nem roteiro. */}
+              <div className="flex items-center justify-between gap-3 p-3 rounded-lg border bg-muted/30">
+                <div className="space-y-0.5">
+                  <Label htmlFor="insole-perforated" className="text-sm font-medium">
+                    Palmilha furada
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Quando ativo, as fichas de operador de Silk e de Palmilha saem com o
+                    destaque "PALMILHA FURADA" para esta referência.
+                  </p>
+                </div>
+                <Switch
+                  id="insole-perforated"
+                  checked={!!(form as any).insole_perforated}
+                  onCheckedChange={v => updateField('insole_perforated' as any, !!v)}
+                />
+              </div>
               {/* Botões removidos: cada ref tem APENAS material principal de cabedal.
                   Variações de material (Napa, Santorini, …) → Tab "Variantes". */}
             </div>

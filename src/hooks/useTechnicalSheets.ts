@@ -141,6 +141,9 @@ export type SheetFormData = {
   /** Peças de cabedal por par na Costura Cabedal (default 2). SP201 = 4 etc.
    *  Só imprime na ficha de operador — não multiplica consumo/débito. */
   upper_sewing_pieces_per_pair: number;
+  /** Palmilha furada (2026-10-10): true = a palmilha da referência sai FURADA.
+   *  Destaque nas fichas de operador de Silk e Palmilha. Só impressão. */
+  insole_perforated: boolean;
   lining_material: string;
   /** Pin do SKU exato da Forração Material 1 (2026-06-28). Mesma precedência. */
   lining_material_product_id?: string | null;
@@ -243,6 +246,7 @@ export const emptySheetForm: SheetFormData = {
   dublagem_glue_id: null,
   upper_corte_a_fio: false,
   upper_sewing_pieces_per_pair: 2,
+  insole_perforated: false,
   lining_material: '', lining_material_product_id: null,
   fachete_material: '',
   insole_material: '',
