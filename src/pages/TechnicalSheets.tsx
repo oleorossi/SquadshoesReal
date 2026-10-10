@@ -34,6 +34,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { FichaCortePrintTab } from '@/components/technical-sheets/FichaCortePrintTab';
 import { PhotosByColorTab } from '@/components/technical-sheets/PhotosByColorTab';
+import PerPairConsumptionSummary from '@/components/technical-sheets/PerPairConsumptionSummary';
 import { ProductionSectorsTab, STRAP_LABEL_OPTIONS } from '@/components/technical-sheets/ProductionSectorsTab';
 import { SheetImageUpload } from '@/components/technical-sheets/SheetImageUpload';
 import { SectionTitle, FieldInput, FieldSelect } from '@/components/technical-sheets/sheetFormFields';
@@ -2274,6 +2275,16 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                 />
               </div>
               <FieldInput label="Coleção" value={form.collection || ''} onChange={v => updateField('collection', v)} placeholder="Ex: Verão 2026" />
+              <PerPairConsumptionSummary
+                form={form}
+                sizes={soleSizeKeys}
+                sheetMaterials={sheetMaterials}
+                componentSheets={componentSheets}
+                products={products}
+                groups={groups}
+                strapCatalog={strapCatalog}
+                onOpenMaterials={() => setAbaAtiva('engineering')}
+              />
             </div>
           </div>
 
