@@ -8,6 +8,45 @@
 > pela ficha, nunca o dublado) e `calculadora-tiras-cortes-parciais.md` (cálculo
 > de corte do rolo) **continuam valendo**.
 
+## ⚠ Revisão 2 (grill de 10/10/2026, tarde) — VENCE as decisões abaixo onde divergir
+
+Entregues e em produção antes desta revisão: E1 (cópia de PV unificada) e E2
+(consumo de tiras correto; bloco renomeado para **"Setor de Tiras"**).
+
+**A fábrica nunca corta tira.** "Fazer" deixa de existir. Toda tira tem uma de
+duas origens:
+
+| Origem | Fluxo |
+|---|---|
+| **Comprar pronto** (ex.: Strass) | OC automática |
+| **Prestador** (tiras de napa) | aba **Tiras** no Ateliê: a napa vai ao prestador o quanto antes |
+
+| # | Decisão | Substitui |
+|---|---|---|
+| R1 | Duas origens: Comprar pronto e Prestador. Sem corte na fábrica: some o seletor Fazer, a tira deixa de ser etapa da OP e o "Setor de Tiras" do Consumo mostra só as tiras de prestador, com a napa a enviar. | D2, D13, D20 |
+| R2 | A origem vem do **catálogo** (padrão por tira). O PV pode trocar na exceção. | D2, D13 |
+| R3 | Prestador: a tira entra na aba **Tiras** do Ateliê no **PV Aprovado**, sem esperar a OP. | D20 |
+| R4 | Fluxo da aba Tiras igual ao Ateliê: **Debitar napa → Enviado** (OS no hub Terceirizados + cartão da rua) **→ Recebido** (a tira entra no estoque do SKU tira × cor, reservada ao PV). | D20 |
+| R5 | **Uma OS por PV**, com o número do pedido no recibo. | — |
+| R6 | Napa a enviar = metros de tira ÷ rendimento. **O rendimento e as receitas continuam** só para tiras de prestador. Sem rendimento: o item fica parado com "informe o rendimento" e não deixa debitar. | R-Limpeza (receitas ficam) |
+| R7 | Custo do prestador: **R$ por metro de tira, por prestador**, cadastrado no Ateliê. Frete fora por enquanto. Custo do par = napa + mão de obra do prestador. | D22 |
+| R8 | No Recebido o usuário informa os metros recebidos e a napa que voltou. A napa que volta entra no estoque; a tira que falta vira pendência do PV (reenviar ou comprar). | — |
+| R9 | Comprar pronto: **OC automática em rascunho na geração da OP**, só pela falta (necessidade − estoque − compras em aberto), uma OC por fornecedor, pelo mecanismo existente de OC por PV. O dono revisa e envia. Se o PV muda antes do envio, a OC em rascunho é ajustada. | D21 |
+| R10 | Tira sem fornecedor ou preço **não bloqueia o PV**. Aviso no PV, no Consumo e em Compras, com link para cadastrar. Medido: 62 de 64 SKUs sem fornecedor e 58 sem preço. | — |
+| R11 | Fornecedor padrão no SKU, que pode ser trocado na OC em rascunho. | — |
+| R12 | A tira pronta em estoque é reservada **na geração da OP** e baixada na finalização da OP. | D15 (mantido o "estoque primeiro") |
+| R13 | As 38 OS de prestador pendentes (mai–jul/2026) **foram executadas**: viram **Concluída só como registro, sem movimentar estoque**. | D16 |
+| R14 | Prestador **não sai**: volta como origem, via Ateliê. Sai só o fluxo antigo de prestador do Hub e o "Fazer na fábrica". | D3 |
+
+### Fatias (substitui "Entregas" E3–E6)
+
+1. **Origem Comprar/Prestador.** Sai o "Fazer", origem padrão no catálogo, conversão dos PVs abertos (os que estão "Fazer/internal" viram Prestador, ou Comprar quando o catálogo mandar) e o Consumo ajustado.
+2. **Aba Tiras no Ateliê** (R3–R8, R13).
+3. **OC automática + reserva** (R9–R12).
+4. **Limpeza**: tabelas sem uso, demandas antigas, `strap_sourcing` e o fluxo antigo do Hub, com export antes (D17).
+
+Cada fatia vai para produção sozinha, com testes e conferência no site.
+
 ## Goal
 
 Trocar o subsistema de tiras atual — 37 tabelas, ~12 vocabulários para
