@@ -55,7 +55,9 @@ const SECTOR_HINT: Record<AtelierSector, string> = {
  * `trg_atelier_catalog_validate`).
  */
 export function AtelierReferencePanel({ sheet, dirty, onGoToMaterials }: Props) {
-  const { data: rows = [], isLoading } = useAtelierReferenceConfig(sheet.id);
+  const { data: config, isLoading } = useAtelierReferenceConfig(sheet.id);
+  const rows = useMemo(() => config?.rows ?? [], [config]);
+  const hasKitColumns = !!config?.hasKitColumns;
   const { data: lots = [] } = useAtelierLots();
 
   const bySector = useMemo(() => {
@@ -111,6 +113,7 @@ export function AtelierReferencePanel({ sheet, dirty, onGoToMaterials }: Props) 
             row={bySector.get(sector) ?? null}
             loading={isLoading}
             disabled={!!dirty}
+            hasKitColumns={hasKitColumns}
             onGoToMaterials={onGoToMaterials}
           />
         ))}
@@ -196,6 +199,7 @@ function SectorCard({
   row,
   loading,
   disabled,
+  hasKitColumns,
   onGoToMaterials,
 }: {
   sector: AtelierSector;
@@ -203,6 +207,7 @@ function SectorCard({
   row: AtelierReferenceSectorRow | null;
   loading: boolean;
   disabled: boolean;
+  hasKitColumns: boolean;
   onGoToMaterials?: () => void;
 }) {
   const save = useSaveAtelierReferenceSector();
@@ -254,7 +259,9 @@ function SectorCard({
           <Switch
             id={`${id}-switch`}
             checked={active}
-            disabled={loading || busy || disabled || (!support.ok && !active)}
+            // Antes da Fase 1 no banco, ligar um setor recriaria o travamento
+            // da regra antiga (OP só após retorno × job só após OP). Só desliga.
+            disabled={loading || busy || disabled || (!active && (!support.ok || !hasKitColumns))}
             onCheckedChange={toggle}
           />
         </div>
@@ -282,7 +289,15 @@ function SectorCard({
         </div>
       )}
 
-      {active && support.ok && (
+      {support.ok && !hasKitColumns && !loading && (
+        <p className="mt-3 text-xs text-muted-foreground">
+          {active
+            ? 'Valor por par e kit do lote ficam disponíveis quando o corte em lote do Ateliê for ativado.'
+            : 'Ligar este setor fica disponível quando o corte em lote do Ateliê for ativado.'}
+        </p>
+      )}
+
+      {active && support.ok && hasKitColumns && (
         <div className="mt-4 space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor={`${id}-price`} className="text-xs">Valor pago ao prestador por par</Label>

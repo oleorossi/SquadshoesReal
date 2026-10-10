@@ -33,12 +33,30 @@ export function useAtelierReferenceConfig(referenceId: string | null | undefined
     queryKey: atelierKeys.reference(referenceId ?? ''),
     enabled: !!referenceId,
     queryFn: async () => {
+      // select('*'): valor por par e kit só existem após a migration da Fase 1
+      // (Ateliê v2). Sem elas, a aba segue lendo/gravando o setor normalmente.
       const { data, error } = await supabase
         .from('atelier_complex_references' as never)
-        .select('id, reference_id, sector, active, value_per_pair, material_components, updated_at')
+        .select('*')
         .eq('reference_id', referenceId as string);
       if (error) throw error;
-      return (data ?? []) as unknown as AtelierReferenceSectorRow[];
+      const rows = (data ?? []) as unknown as Partial<AtelierReferenceSectorRow>[];
+      let hasKitColumns = rows.length > 0 && 'value_per_pair' in rows[0];
+      if (rows.length === 0) {
+        const probe = await supabase
+          .from('atelier_complex_references' as never)
+          .select('value_per_pair')
+          .limit(1);
+        hasKitColumns = !probe.error;
+      }
+      return {
+        rows: rows.map((r) => ({
+          ...r,
+          value_per_pair: r.value_per_pair ?? null,
+          material_components: r.material_components ?? null,
+        })) as AtelierReferenceSectorRow[],
+        hasKitColumns,
+      };
     },
   });
 }
