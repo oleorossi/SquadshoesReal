@@ -5,7 +5,8 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { DeleteConfirmWordField } from '@/components/ui/delete-confirm-word-field';
+import { isDeleteConfirmWord } from '@/lib/deleteConfirmWord';
 import { Trash as Trash2 } from '@phosphor-icons/react';
 
 interface DeleteConfirmButtonProps {
@@ -16,10 +17,10 @@ interface DeleteConfirmButtonProps {
   size?: string;
   /** Trash icon size class, default h-3.5 w-3.5 */
   iconSize?: string;
-  /** Anti-acidente: se setado, usuário precisa digitar este texto pra habilitar
-   *  o botão "Excluir". Recomendado pra deletes irreversíveis (ex: número do PV).
-   *  19/05/2026: adicionado depois de 7 PVs sumirem por delete acidental. */
-  confirmTypedText?: string;
+  /** Anti-acidente: usuário precisa digitar "excluir" pra habilitar o botão.
+   *  19/05/2026: adicionado depois de 7 PVs sumirem por delete acidental.
+   *  10/10/2026: a palavra passou a ser sempre "excluir" (antes era o nº do PV). */
+  requireTypedConfirm?: boolean;
 }
 
 export default function DeleteConfirmButton({
@@ -28,13 +29,13 @@ export default function DeleteConfirmButton({
   description = 'Esta ação não pode ser desfeita.',
   size = 'h-7 w-7',
   iconSize = 'h-3.5 w-3.5',
-  confirmTypedText,
+  requireTypedConfirm = false,
 }: DeleteConfirmButtonProps) {
+  const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState('');
-  const requiresType = !!confirmTypedText;
-  const typeOk = !requiresType || typed.trim() === confirmTypedText;
+  const typeOk = !requireTypedConfirm || isDeleteConfirmWord(typed);
   return (
-    <AlertDialog onOpenChange={(open) => { if (!open) setTyped(''); }}>
+    <AlertDialog open={open} onOpenChange={(next) => { setOpen(next); if (!next) setTyped(''); }}>
       <AlertDialogTrigger asChild>
         <Button variant="ghost" size="icon" aria-label={title} className={`${size} text-destructive hover:text-destructive`}>
           <Trash2 className={iconSize} aria-hidden="true" />
@@ -45,19 +46,17 @@ export default function DeleteConfirmButton({
           <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
-        {requiresType && (
-          <div className="space-y-2 pt-2">
-            <label className="text-sm font-medium">
-              Pra confirmar, digite <code className="bg-muted px-1.5 py-0.5 rounded text-xs">{confirmTypedText}</code> abaixo:
-            </label>
-            <Input
-              value={typed}
-              onChange={(e) => setTyped(e.target.value)}
-              placeholder={confirmTypedText}
-              autoFocus
-              autoComplete="off"
-            />
-          </div>
+        {requireTypedConfirm && (
+          <DeleteConfirmWordField
+            value={typed}
+            onChange={setTyped}
+            onSubmit={() => {
+              if (!typeOk) return;
+              setOpen(false);
+              setTyped('');
+              onConfirm();
+            }}
+          />
         )}
         <AlertDialogFooter>
           <AlertDialogCancel>Cancelar</AlertDialogCancel>

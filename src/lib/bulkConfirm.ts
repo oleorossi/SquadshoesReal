@@ -1,11 +1,14 @@
 import { toast } from 'sonner';
+import { requestTypedDeleteConfirm } from '@/lib/typedDeleteConfirmStore';
 
 /**
  * Helper compartilhado pra bulk delete com confirmação digitada anti-acidente.
  *
  * Padrão estabelecido em 19/05/2026 depois de 7 PVs sumirem por delete acidental
- * via window.confirm (clique no OK sem ler). Agora user precisa digitar exato
- * `EXCLUIR <N>` num window.prompt — clique acidental não passa mais.
+ * via window.confirm (clique no OK sem ler). User precisa digitar "excluir" na
+ * janela do sistema (`TypedDeleteConfirmHost`) — clique acidental não passa.
+ * 10/10/2026: saiu o window.prompt com `EXCLUIR <N>`; a quantidade fica no
+ * título, a palavra é a mesma de toda exclusão (`lib/deleteConfirmWord`).
  *
  * Uso:
  * ```ts
@@ -41,21 +44,15 @@ export async function confirmAndBulkDelete(opts: ConfirmBulkDeleteOpts): Promise
   const { ids, entityLabel, sampleLines, deleteOne, onAfter, extraWarning } = opts;
   if (ids.length === 0) return { succeeded: 0, failed: 0, cancelled: true };
 
-  const sample = sampleLines.slice(0, 5).join('\n');
-  const more = ids.length > 5 ? `\n... e mais ${ids.length - 5}` : '';
   const plural = ids.length === 1 ? entityLabel : `${entityLabel}s`;
-  const expectedText = `EXCLUIR ${ids.length}`;
 
-  const msg =
-    `Você está EXCLUINDO ${ids.length} ${plural}:\n\n${sample}${more}\n\n` +
-    (extraWarning ? `${extraWarning}\n\n` : '') +
-    `Para confirmar, digite exatamente: ${expectedText}`;
-
-  const typed = window.prompt(msg, '');
-  if (typed !== expectedText) {
-    if (typed !== null) toast.error('Texto digitado não confere. Exclusão cancelada.');
-    return { succeeded: 0, failed: 0, cancelled: true };
-  }
+  const ok = await requestTypedDeleteConfirm({
+    title: `Excluir ${ids.length} ${plural}?`,
+    lines: sampleLines.slice(0, 5),
+    moreCount: ids.length > 5 ? ids.length - 5 : 0,
+    extraWarning,
+  });
+  if (!ok) return { succeeded: 0, failed: 0, cancelled: true };
 
   const results = await Promise.allSettled(ids.map(id => deleteOne(id)));
   const failed = results.filter(r => r.status === 'rejected').length;

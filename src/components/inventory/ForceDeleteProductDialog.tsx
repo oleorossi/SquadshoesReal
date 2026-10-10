@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Warning as AlertTriangle } from '@phosphor-icons/react';
 import { toast } from 'sonner';
+import { isDeleteConfirmWord } from '@/lib/deleteConfirmWord';
 
 type State =
   | { kind: 'idle' }
@@ -55,7 +56,7 @@ export function useForceDeleteProductFlow(opts: ForceDeleteFlowOptions = {}) {
 
   const handleForce = async () => {
     if (state.kind !== 'confirm-force') return;
-    if (confirmation.trim().toUpperCase() !== 'EXCLUIR') {
+    if (!isDeleteConfirmWord(confirmation)) {
       toast.error('Digite "EXCLUIR" para confirmar.');
       return;
     }
@@ -136,7 +137,7 @@ export function useForceDeleteProductFlow(opts: ForceDeleteFlowOptions = {}) {
           </AlertDialogCancel>
           <AlertDialogAction
             onClick={handleForce}
-            disabled={confirmation.trim().toUpperCase() !== 'EXCLUIR' || deleteMut.isPending}
+            disabled={!isDeleteConfirmWord(confirmation) || deleteMut.isPending}
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
           >
             {deleteMut.isPending ? 'Excluindo...' : 'Sim, excluir tudo'}

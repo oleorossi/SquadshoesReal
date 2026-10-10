@@ -13,6 +13,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { DELETE_CONFIRM_WORD, isDeleteConfirmWord } from '@/lib/deleteConfirmWord';
 import {
   useDeleteSheet,
   useTechnicalSheetDeleteImpact,
@@ -65,7 +66,7 @@ export function TechnicalSheetRetirementDialog({ open, sheet, onOpenChange }: Pr
   }, [open, sheetId]);
 
   const data = impact.data;
-  const typedCorrectly = !!sheet && confirmation.trim() === sheet.name;
+  const typedCorrectly = !!sheet && isDeleteConfirmWord(confirmation);
   const reasonValid = reason.trim().length >= 10;
   const canConfirm = !!data
     && data.can_retire
@@ -245,7 +246,7 @@ export function TechnicalSheetRetirementDialog({ open, sheet, onOpenChange }: Pr
 
             <div className="space-y-1.5">
               <Label htmlFor="technical-sheet-delete-confirmation">
-                Digite <span className="font-mono font-semibold text-foreground">{sheet?.name}</span> para confirmar
+                Digite <span className="font-mono font-semibold text-foreground">{DELETE_CONFIRM_WORD}</span> para confirmar
               </Label>
               <Input
                 id="technical-sheet-delete-confirmation"

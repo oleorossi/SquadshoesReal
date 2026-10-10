@@ -117,8 +117,8 @@ describe('TechnicalSheetRetirementDialog', () => {
     fireEvent.change(screen.getByLabelText('Motivo da exclusão'), {
       target: { value: 'Ficha duplicada cadastrada por engano' },
     });
-    fireEvent.change(screen.getByLabelText(/Digite S-039 para confirmar/), {
-      target: { value: 'S-039' },
+    fireEvent.change(screen.getByLabelText(/Digite excluir para confirmar/), {
+      target: { value: 'Excluir' },
     });
     expect(confirmButton).toBeEnabled();
 
@@ -145,8 +145,8 @@ describe('TechnicalSheetRetirementDialog', () => {
     fireEvent.change(screen.getByLabelText('Motivo da exclusão'), {
       target: { value: 'Ficha duplicada cadastrada por engano' },
     });
-    fireEvent.change(screen.getByLabelText(/Digite S-039 para confirmar/), {
-      target: { value: 'S-039' },
+    fireEvent.change(screen.getByLabelText(/Digite excluir para confirmar/), {
+      target: { value: 'Excluir' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Excluir e retirar da produção' }));
 
