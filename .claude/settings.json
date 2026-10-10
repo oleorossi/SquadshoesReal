@@ -102,6 +102,7 @@
       "Bash(until *)",
       "Bash(while *)",
       "mcp__claude_ai_Supabase__*",
+            "mcp__Supabase__*",
       "Bash(rm src/../supabase/migrations/20260620200000_audit-view-ficha-sole-range-mismatch.sql 2>/dev/null *)"
     ],
     "deny": [
