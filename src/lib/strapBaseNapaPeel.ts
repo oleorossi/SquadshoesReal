@@ -60,3 +60,23 @@ export function normalizeStrapOrigemPadrao(value: string | null | undefined): St
   }
   return 'escolhe_no_pv';
 }
+
+/**
+ * Revisão 2 (`specs/tiras-redesenho.md`, R1/R2): o Hub só dá o PADRÃO —
+ * Prestador ou Comprar pronto. Os valores do banco não mudaram:
+ * `sempre_fabrica` e `escolhe_no_pv` (legado) significam "padrão Prestador";
+ * `sempre_sku_acabado` significa "padrão Comprar pronto". O PV troca na
+ * exceção em qualquer medida.
+ */
+export type HubOrigemPadraoChoice = 'sempre_fabrica' | 'sempre_sku_acabado';
+
+export function hubOrigemPadraoChoice(value: string | null | undefined): HubOrigemPadraoChoice {
+  return normalizeStrapOrigemPadrao(value) === 'sempre_sku_acabado'
+    ? 'sempre_sku_acabado'
+    : 'sempre_fabrica';
+}
+
+export const HUB_ORIGEM_PADRAO_LABEL: Record<HubOrigemPadraoChoice, string> = {
+  sempre_fabrica: 'Prestador',
+  sempre_sku_acabado: 'Comprar pronto',
+};

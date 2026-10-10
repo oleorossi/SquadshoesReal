@@ -112,8 +112,10 @@ export default function ArtisanalStrapRollCutBlock({
         </Badge>
       </div>
       <p className="px-3 text-xs text-red-600/80 dark:text-red-400/80">
-        Só tiras Fazer: metros de tira a fazer (depois do estoque de tira pronta) e napa por tipo e
-        cor (÷ rendimento). Não se mistura com Cabedal/Forração. Total de napa no rodapé.
+        Só tiras de Prestador: a fábrica não corta tira — a napa vai ao prestador, que devolve a
+        tira. Por tipo e cor: metros de tira pelo prestador (depois do estoque de tira pronta) e
+        napa a enviar (÷ rendimento). Não se mistura com Cabedal/Forração. Total de napa a enviar
+        no rodapé.
       </p>
 
       <div className="keep-together overflow-hidden rounded-lg border border-red-500/30">
@@ -121,7 +123,7 @@ export default function ArtisanalStrapRollCutBlock({
           <span>Tipo de tira</span>
           <span>Cor</span>
           <span className="text-right">Tira</span>
-          <span className="text-right">Napa</span>
+          <span className="text-right">Napa a enviar</span>
         </div>
         <div className="divide-y divide-red-500/20">
           {sector.types.map((type) => {
@@ -212,7 +214,7 @@ export default function ArtisanalStrapRollCutBlock({
         </div>
         <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(4.5rem,0.7fr)_auto_auto] items-baseline gap-x-3 border-t-2 border-red-500/40 bg-red-500/10 px-3 py-3">
           <span className="text-xs font-bold uppercase tracking-wider text-red-700 dark:text-red-300">
-            Total de napa (todas as tiras)
+            Total de napa a enviar ao prestador
           </span>
           <span />
           <span className="font-mono text-xs tabular-nums text-red-600/70 dark:text-red-400/70">

@@ -829,8 +829,8 @@ export default function MaterialConsumptionView({
   // ── Render de uma linha da tabela mestra ────────────────────────────────
   const renderRow = (row: ConsumptionRow, index: number, neutralStock: boolean, sectionKey: string) => {
     const converted = isConvertedInternalStrap(row);
-    // Tira Fazer não se compra: estoque/falta da linha falam de tira pronta e
-    // do que falta FAZER; a compra mora na napa (D8/D15).
+    // Tira de Prestador não se compra pronta: estoque/falta da linha falam de
+    // tira pronta e do que vai PELO PRESTADOR; a compra mora na napa (D8/D15).
     const fazer = isFazerStrapRow(row);
     const strapPairs = strapPairsText(row);
     const strapSizes = strapSizeMetersText(row);
@@ -936,7 +936,7 @@ export default function MaterialConsumptionView({
         <TableCell
           className="text-right"
           aria-label={
-            fazer ? 'tira Fazer — estoque de tira pronta'
+            fazer ? 'tira de prestador — estoque de tira pronta'
               : neutralStock ? 'total do item na faixa acima'
               : !known ? 'cadastro incompleto'
               : ok ? 'em estoque'
@@ -962,8 +962,8 @@ export default function MaterialConsumptionView({
           {fazer ? (
             <span className="text-[11px] font-medium text-muted-foreground">
               {row.strap && row.strap.toMakeM > 0
-                ? `a fazer ${formatQty(row.strap.toMakeM, 'm')} m`
-                : row.strap ? 'coberta' : 'Fazer'}
+                ? `prestador ${formatQty(row.strap.toMakeM, 'm')} m`
+                : row.strap ? 'coberta' : 'Prestador'}
             </span>
           ) : neutralStock || !known || short === 0 ? (
             <span className="text-muted-foreground">—</span>
@@ -984,7 +984,7 @@ export default function MaterialConsumptionView({
         </TableCell>
         <TableCell className="text-right font-mono font-bold tabular-nums">
           {(() => {
-            // Tira Fazer não se compra pronta: o gasto é a napa (bloco próprio).
+            // Tira de Prestador não se compra pronta: o gasto é a napa (bloco próprio).
             const total = fazer ? null : rowTotalCost(row);
             return total != null
               ? formatMoney(total)
@@ -996,7 +996,7 @@ export default function MaterialConsumptionView({
   };
 
   const renderBand = (item: ItemGroup) => {
-    // Balde só de tira Fazer: não há falta de TIRA a comprar (D8/D15).
+    // Balde só de tira de Prestador: não há falta de TIRA a comprar (D8/D15).
     const fazerBand = item.rows.length > 0 && item.rows.every(isFazerStrapRow);
     const short = fazerBand ? 0 : itemShortfall(item);
     const ok = item.known && short === 0;
@@ -1400,7 +1400,7 @@ export default function MaterialConsumptionView({
               </h3>
               {materialsTab === 'strass' && hasStrass ? (
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Separada das tiras de produção interna (overlock, chata). SKU acabado comprado pronto.
+                  Separada das tiras de prestador (overlock, chata). Tira comprada pronta.
                 </p>
               ) : null}
             </div>

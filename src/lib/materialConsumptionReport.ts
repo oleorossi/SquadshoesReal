@@ -321,10 +321,10 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
     const toMake = row.strap ? row.strap.toMakeM : row.totalQuantity;
     const coverageCells = totalMode ? '' : `
       <td class="num">${formatQty(rowAvailable(row), row.productUnit)}</td>
-      <td class="num"><span class="muted">${toMake > 0 ? `a fazer ${formatQty(toMake, 'm')}` : 'coberta'}</span></td>`;
+      <td class="num"><span class="muted">${toMake > 0 ? `prestador ${formatQty(toMake, 'm')}` : 'coberta'}</span></td>`;
     append('Tiras', `<tr class="material-row strap-row${blocked ? ' is-pending' : ''}">
       <td><strong>${escapeHtml(row.groupName)}</strong>${row.warning ? `<div class="row-warning">▲ ${escapeHtml(row.warning)}</div>` : ''}${strapDetailHtml([row])}</td>
-      <td>${escapeHtml(row.materialName || 'Fazer')}</td>
+      <td>${escapeHtml(row.materialName || 'Prestador')}</td>
       <td>${escapeHtml(row.color || '—')}</td>
       <td class="num strong">${formatQty(row.totalQuantity, row.productUnit)}<small class="qty-preview">m de tira</small></td>
       ${coverageCells}
@@ -427,7 +427,7 @@ const renderArtisanalStraps = (rows: ArtisanalStrapCutRow[]): string => {
   }).join('');
   const footer = `
         <tr class="strap-subtotal">
-          <td colspan="2"><strong>Total de napa (todas as tiras)</strong></td>
+          <td colspan="2"><strong>Total de napa a enviar ao prestador</strong></td>
           <td class="num muted">${formatQty(sector.totalStrapM, 'm')} m tira</td>
           <td class="num strong">${sector.totalNapaM > 0 ? `${formatNapaMeters(sector.totalNapaM)} m` : '—'}</td>
           <td></td>
@@ -436,7 +436,7 @@ const renderArtisanalStraps = (rows: ArtisanalStrapCutRow[]): string => {
     <div class="section-heading">
       <span class="section-number">03</span>
       <div><p class="section-kicker">Setor próprio</p><h2>Setor de Tiras</h2></div>
-      <p class="section-note">Só tiras Fazer, por tipo e cor: metros de tira a fazer (depois do estoque de tira pronta) e napa (÷ rendimento). Sem rendimento: napa “—” e fora da compra.</p>
+      <p class="section-note">Só tiras de Prestador (a fábrica não corta tira), por tipo e cor: metros de tira pelo prestador (depois do estoque de tira pronta) e napa a enviar ao prestador (÷ rendimento). Sem rendimento: napa “—” e fora da compra.</p>
     </div>
     <table class="report-table">
       <thead><tr><th>Tipo de tira</th><th>Cor</th><th class="num">Tira necessária</th><th class="num">Napa</th><th>Situação</th></tr></thead>

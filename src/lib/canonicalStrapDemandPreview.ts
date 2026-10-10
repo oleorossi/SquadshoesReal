@@ -396,12 +396,17 @@ export function parseCanonicalStrapDemandPreview(
   };
 }
 
-/** Origem da tira no vocabulário único (spec tiras-redesenho): Fazer / Comprar. */
+/**
+ * Origem da tira (spec tiras-redesenho, Revisão 2 — R1). As CHAVES internas
+ * ficaram `fazer`/`comprar` (código), mas a fábrica nunca corta tira:
+ * `fazer` = source_mode `internal` = **Prestador** (a napa vai ao prestador);
+ * `comprar` = `buy_ready` = **Comprar pronto**. Na UI, só os rótulos abaixo.
+ */
 export type StrapOrigin = 'fazer' | 'comprar';
 
 export const STRAP_ORIGIN_LABEL: Record<StrapOrigin, string> = {
-  fazer: 'Fazer',
-  comprar: 'Comprar',
+  fazer: 'Prestador',
+  comprar: 'Comprar pronto',
 };
 
 /**

@@ -617,7 +617,7 @@ describe('MaterialConsumptionView — tela buy-first', () => {
 
     const materials = screen.getByRole('table', { name: 'Materiais gerais' });
     expect(within(materials).getByText('TIRA CHATA 8 mm · NAPA SOFT · DÁLIA')).toBeInTheDocument();
-    expect(within(materials).getByText('Fazer · TIRA 1')).toBeInTheDocument();
+    expect(within(materials).getByText('Prestador · TIRA 1')).toBeInTheDocument();
     expect(within(materials).getByText('6,00')).toBeInTheDocument();
     expect(within(materials).getAllByText(/12 pares/)).toHaveLength(2);
     expect(within(materials).getByLabelText('Metros de tira por numeração'))

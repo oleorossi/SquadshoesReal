@@ -63,7 +63,7 @@ export const isStrassStrapRow = (
 export const isPendingInternalStrap = (r: ConsumptionRow): boolean =>
   !!r.artisanal?.pending;
 
-/** Tira de origem Fazer (produção interna), convertida, bloqueada ou coberta pelo estoque. */
+/** Tira de origem Prestador (`internal`; chave interna `fazer`), convertida, bloqueada ou coberta pelo estoque. */
 export const isFazerStrapRow = (r: ConsumptionRow): boolean =>
   r.componentType === 'Tiras' && (!!r.artisanal || r.strap?.origin === 'fazer');
 

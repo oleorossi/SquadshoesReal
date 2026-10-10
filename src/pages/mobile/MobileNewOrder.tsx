@@ -1047,8 +1047,8 @@ function MobileStrapIdentityEditor({
               <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-[11px]">
                 <p className="font-semibold text-primary">
                   {selection?.source_mode === 'buy_ready'
-                    ? 'Origem comprada preservada do histórico'
-                    : 'Produção interna com o material desta posição'}
+                    ? 'Origem Comprar pronto preservada do histórico'
+                    : 'Origem pelo padrão do catálogo (Prestador ou Comprar pronto)'}
                 </p>
                 {!selection?.source_mode && (
                   <p className="mt-0.5 text-muted-foreground">
@@ -1083,7 +1083,7 @@ function MobileStrapIdentityEditor({
             <p className="text-[11px] text-muted-foreground">{strap.group_name || 'Tipo e medida definidos na ficha técnica'}</p>
             {materialControl}
             <p className="text-[11px] text-muted-foreground">
-              {usesFinishedGroup ? 'Produto acabado comprado pronto' : 'Produção interna · escolha a cor do material desta posição'}
+              {usesFinishedGroup ? 'Comprar pronto · produto acabado' : 'Escolha a cor do material desta posição'}
             </p>
             <Select
               value={strap.color_id || ''}
@@ -1143,7 +1143,7 @@ function MobileStrapIdentityEditor({
               <p className="text-xs text-destructive">A seleção anterior não pertence ao novo grupo-base. Escolha outra cor.</p>
             )}
             <div className={`min-h-10 rounded-md border px-2 py-2 text-center text-[11px] font-semibold ${selection?.source_mode === (usesFinishedGroup ? 'buy_ready' : 'internal') ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground'}`}>
-              {usesFinishedGroup ? 'Comprada pronta · origem fixa' : 'Produção interna · origem fixa'}
+              {usesFinishedGroup ? 'Comprar pronto · origem fixa' : 'Origem: padrão do catálogo'}
             </div>
             {!!selection?.source_mode && selection.source_mode !== (usesFinishedGroup ? 'buy_ready' : 'internal') && (
               <p className="text-xs text-destructive">

@@ -18,15 +18,25 @@ import {
 export type EffectiveStrapPvOrigem = StrapPvOrigem;
 
 /**
- * Padrão do seletor quando Hub = escolhe_no_pv e o operador ainda não escolheu.
- * Decisão 24/09/2026: só Fazer × Comprar pronto — default = fazer (fábrica).
+ * Origem padrão quando o catálogo não manda "Comprar pronto".
+ *
+ * Revisão 2 de `specs/tiras-redesenho.md` (R1/R2/R14): a fábrica NUNCA corta
+ * tira. O valor gravado `fabrica` (e `source_mode = 'internal'`) passou a
+ * SIGNIFICAR **Prestador** — a napa vai ao prestador, que devolve a tira. O
+ * enum do banco não foi renomeado; só a semântica e os rótulos.
  */
-export const DEFAULT_STRAP_PV_ORIGEM: StrapPvOrigem = 'fabrica';
+export const DEFAULT_STRAP_PV_ORIGEM: SelectableStrapPvOrigem = 'fabrica';
 
-/** Origens oferecidas no PV (prestador legado some da UI). */
+/** Origens oferecidas no PV: Prestador (`fabrica`) × Comprar pronto. */
 export type SelectableStrapPvOrigem = 'fabrica' | 'sku_acabado';
 
-/** Prestador legado conta como "fazer" (internal) — 16-B. */
+/** Vocabulário único da UI (R1). Não usar "Fazer"/"Fábrica"/"interna". */
+export const STRAP_PV_ORIGEM_LABEL: Record<SelectableStrapPvOrigem, string> = {
+  fabrica: 'Prestador',
+  sku_acabado: 'Comprar pronto',
+};
+
+/** `prestador` legado e `fabrica` são a MESMA origem: Prestador. */
 export function normalizeSelectableStrapPvOrigem(
   value: unknown,
 ): SelectableStrapPvOrigem | null {
@@ -34,6 +44,13 @@ export function normalizeSelectableStrapPvOrigem(
   if (value === 'sku_acabado') return 'sku_acabado';
   return null;
 }
+
+/** Rótulo da origem gravada no PV ("Prestador" | "Comprar pronto"). */
+export function strapPvOrigemLabel(value: unknown): string | null {
+  const selectable = normalizeSelectableStrapPvOrigem(value);
+  return selectable ? STRAP_PV_ORIGEM_LABEL[selectable] : null;
+}
+
 export interface StrapPvOrigemLineLike extends StrapIdentityLike {
   id?: string | null;
   label?: string | null;
@@ -47,7 +64,6 @@ export interface StrapPvOrigemLineLike extends StrapIdentityLike {
 export interface StrapPvOrigemItemLike {
   color?: string | null;
   strap_colors?: StrapPvOrigemLineLike[] | null;
-  /** Origem operacional já congelada — satisfaz escolhe_no_pv sem `pv_origem`. */
   strap_sourcing?: StrapSourcingMap | null;
 }
 
@@ -63,34 +79,79 @@ export interface StrapPvOrigemMeasureLike {
   preco_prestador_per_m?: number | null;
 }
 
-/** Origem efetiva da linha: Hub fixo ganha; em escolhe_no_pv usa o snapshot do PV. */
+/**
+ * Padrão do CATÁLOGO (R2) para a medida. `sempre_sku_acabado` → Comprar
+ * pronto; `sempre_fabrica` e `escolhe_no_pv` (e vazio) → Prestador. Os três
+ * valores do banco continuam válidos — todos viraram só "padrão".
+ */
+export function catalogDefaultStrapPvOrigem(
+  measure: StrapPvOrigemMeasureLike | null | undefined,
+): SelectableStrapPvOrigem {
+  return normalizeStrapOrigemPadrao(measure?.origem_padrao) === 'sempre_sku_acabado'
+    ? 'sku_acabado'
+    : DEFAULT_STRAP_PV_ORIGEM;
+}
+
+/**
+ * Padrão materializável da LINHA: o catálogo manda, mas
+ *  - linha de identidade acabada (`finished_product_group`, ex.: Strass da
+ *    ficha) só existe comprada pronta — não há napa para mandar ao prestador;
+ *  - "Comprar pronto" exige o grupo acabado na ficha (`group_id`), senão o
+ *    writer converte para Prestador (mig 28600). O padrão já nasce coerente.
+ */
+export function defaultStrapPvOrigemForLine(
+  line: StrapPvOrigemLineLike | null | undefined,
+  measure: StrapPvOrigemMeasureLike | null | undefined,
+): SelectableStrapPvOrigem {
+  if (isPurchasedReadyStrap(line)) return 'sku_acabado';
+  const catalog = catalogDefaultStrapPvOrigem(measure);
+  if (catalog === 'sku_acabado' && !strapLineAllowsBuyReadyOrigem(line)) {
+    return DEFAULT_STRAP_PV_ORIGEM;
+  }
+  return catalog;
+}
+
+/**
+ * Origem efetiva da linha (R2): a escolha EXPLÍCITA do PV vence o catálogo,
+ * qualquer que seja o `origem_padrao` da medida; sem escolha, vale o padrão do
+ * catálogo. Linha de identidade acabada é sempre Comprar pronto (o writer
+ * congela buy_ready por identidade). Sem medida conhecida → null (catálogo
+ * ainda não carregou; não inventa).
+ */
 export function resolveEffectiveStrapPvOrigem(
   line: StrapPvOrigemLineLike | null | undefined,
   measure: StrapPvOrigemMeasureLike | null | undefined,
 ): EffectiveStrapPvOrigem | null {
-  const padrao = normalizeStrapOrigemPadrao(measure?.origem_padrao);
-  if (padrao === 'sempre_fabrica') return 'fabrica';
-  if (padrao === 'sempre_sku_acabado') return 'sku_acabado';
-  const choice = line?.pv_origem;
-  if (isExplicitStrapPvOrigem(choice)) {
-    // Prestador legado → fazer (fábrica). Wire value permanece fabrica na UI.
-    return choice === 'prestador' ? 'fabrica' : choice;
-  }
-  return null;
+  if (isPurchasedReadyStrap(line)) return 'sku_acabado';
+  const choice = normalizeSelectableStrapPvOrigem(line?.pv_origem);
+  if (choice) return choice;
+  if (!measure) return null;
+  return defaultStrapPvOrigemForLine(line, measure);
 }
 
-export interface MissingStrapPvOrigemIssue {
-  label: string;
-  measureId: string | null;
-  code: 'origem_nao_escolhida';
-  message: string;
-}
-
-function measureRequiresPvOrigemChoice(
+/**
+ * Valor exibido no seletor do PV: escolha explícita > origem operacional já
+ * congelada (`strap_sourcing`, PVs anteriores ao `pv_origem`) > padrão do
+ * catálogo. Nunca vazio quando a medida é conhecida — a origem não "falta"
+ * mais (R2: o padrão sempre se aplica).
+ */
+export function strapPvOrigemChooserValue(
+  line: StrapPvOrigemLineLike | null | undefined,
   measure: StrapPvOrigemMeasureLike | null | undefined,
-): boolean {
-  if (measure?.origem_padrao == null || measure.origem_padrao === '') return false;
-  return normalizeStrapOrigemPadrao(measure.origem_padrao) === 'escolhe_no_pv';
+  sourcing?: StrapSourcingMap | null,
+): SelectableStrapPvOrigem | null {
+  if (isPurchasedReadyStrap(line)) return 'sku_acabado';
+  const choice = normalizeSelectableStrapPvOrigem(line?.pv_origem);
+  if (choice) return choice;
+  const lineId = technicalStrapLineId({
+    id: line?.id,
+    technical_strap_line_id: line?.technical_strap_line_id,
+  });
+  const mode = lineId ? getStrapSourcingOverride(sourcing, lineId) : null;
+  if (mode === 'buy_ready') return 'sku_acabado';
+  if (mode === 'internal') return 'fabrica';
+  if (!measure) return null;
+  return defaultStrapPvOrigemForLine(line, measure);
 }
 
 export function isExplicitStrapPvOrigem(
@@ -101,9 +162,8 @@ export function isExplicitStrapPvOrigem(
 
 /**
  * Snapshot comprometido (Aprovado / Em Produção) só trava origem JÁ escolhida.
- * Lacuna (escolhe_no_pv sem pv_origem) permanece editável — senão o save
- * exige Fazer/Comprar pronto e o seletor morto impede qualquer opção
- * (PV-00194 / Meia Cana).
+ * Lacuna (sem pv_origem) permanece editável — senão o seletor morto
+ * impediria qualquer exceção ao padrão do catálogo (PV-00194 / Meia Cana).
  */
 export function isStrapPvOrigemChoiceLocked(input: {
   committedSnapshot: boolean;
@@ -162,7 +222,7 @@ export function strapLineFinishedGroupId(
 /**
  * "Comprar pronto" só é materializável quando a ficha aponta um grupo acabado.
  * Sem isso o writer estoura `Tira pronta exige o grupo acabado (group_id) na ficha`
- * — G03/artesanal por napa não tem group_id; a origem válida é Fazer.
+ * — G03/artesanal por napa não tem group_id; a origem válida é Prestador.
  */
 export function strapLineAllowsBuyReadyOrigem(
   line: StrapPvOrigemLineLike | null | undefined,
@@ -175,8 +235,8 @@ export function strapLineAllowsBuyReadyOrigem(
  * Sem isso, escolher em OFF WHITE deixa NEW WHISKY/ROSADO vazios e o save
  * devolve o mesmo toast (PV-00194).
  *
- * Também espelha `strap_sourcing` (fábrica → internal). Sem isso, "Todas
- * comprar pronto" numa cor + "Fazer" só no seletor visível deixava as outras
+ * Também espelha `strap_sourcing` (Prestador → internal). Sem isso, "Todas
+ * comprar pronto" numa cor + "Prestador" só no seletor visível deixava as outras
  * cores com pv_origem=sku e o prepare barrava o PV inteiro.
  */
 export function applyStrapPvOrigemChangesToItems<T extends StrapPvOrigemItemLike>(
@@ -221,9 +281,9 @@ export function applyStrapPvOrigemChangesToItems<T extends StrapPvOrigemItemLike
 
 /**
  * No submit: `sku_acabado` em linha artesanal sem grupo acabado na ficha é
- * impossível de materializar. Converte para Fazer antes do RPC — cobre cores
- * colapsadas que ainda carregavam "Todas comprar pronto" enquanto a aba aberta
- * já mostrava Fazer.
+ * impossível de materializar. Converte para Prestador antes do RPC — cobre
+ * cores colapsadas que ainda carregavam "Todas comprar pronto" enquanto a aba
+ * aberta já mostrava Prestador.
  */
 export function coerceImpossibleBuyReadyStrapOrigem<T extends StrapPvOrigemItemLike>(
   items: readonly T[],
@@ -260,83 +320,10 @@ export function coerceImpossibleBuyReadyStrapOrigem<T extends StrapPvOrigemItemL
   return { items: next, coerced };
 }
 
-/** Primeiro gap de origem, nomeando as cores que ainda estão vazias. */
-export function firstMissingStrapPvOrigemMessage(
-  items: readonly StrapPvOrigemItemLike[] | null | undefined,
-  measures: readonly StrapPvOrigemMeasureLike[] | null | undefined,
-): string | null {
-  const colorsByLabel = new Map<string, string[]>();
-  let firstLabel: string | null = null;
-  let firstMessage: string | null = null;
-  for (const item of items || []) {
-    const straps = Array.isArray(item.strap_colors) ? item.strap_colors : [];
-    if (straps.length === 0) continue;
-    const missing = listMissingStrapPvOrigemChoices(straps, measures, item.strap_sourcing);
-    const color = (item.color || 'sem cor').trim() || 'sem cor';
-    for (const issue of missing) {
-      if (!firstLabel) {
-        firstLabel = issue.label;
-        firstMessage = issue.message;
-      }
-      const colors = colorsByLabel.get(issue.label) || [];
-      if (!colors.includes(color)) colors.push(color);
-      colorsByLabel.set(issue.label, colors);
-    }
-  }
-  if (!firstLabel || !firstMessage) return null;
-  const colors = colorsByLabel.get(firstLabel) || [];
-  if (colors.length === 0) return firstMessage;
-  return `${firstLabel}: escolha Fazer ou Comprar pronto em ${colors.join(', ')} antes de salvar.`;
-}
-
 /**
- * `strap_sourcing` com modo canônico já congela a origem operacional (PVs
- * anteriores ao campo `pv_origem`). Sem isso, pedido Aprovado com sourcing
- * preenchido trava no âmbar "Escolha a origem…" (PV-00168).
- */
-export function strapSourcingSatisfiesPvOrigemChoice(
-  line: StrapPvOrigemLineLike | null | undefined,
-  sourcing: StrapSourcingMap | null | undefined,
-): boolean {
-  const lineId = technicalStrapLineId({
-    id: line?.id,
-    technical_strap_line_id: line?.technical_strap_line_id,
-  });
-  if (!lineId) return false;
-  const mode = getStrapSourcingOverride(sourcing, lineId);
-  return mode === 'internal' || mode === 'buy_ready';
-}
-
-/** Posições escolhe_no_pv sem pv_origem — bloqueiam save no desktop (spec).
- *  Se a medida ainda não traz `origem_padrao` (migration não aplicada / catálogo
- *  antigo), não bloqueia — senão o PV inteiro trava sem o Hub estar pronto.
- *  Sourcing operacional já gravado também satisfaz (legado pré-pv_origem). */
-export function listMissingStrapPvOrigemChoices(
-  lines: readonly StrapPvOrigemLineLike[] | null | undefined,
-  measures: readonly StrapPvOrigemMeasureLike[] | null | undefined,
-  sourcing?: StrapSourcingMap | null,
-): MissingStrapPvOrigemIssue[] {
-  const byId = new Map((measures || []).map((measure) => [measure.id, measure]));
-  const issues: MissingStrapPvOrigemIssue[] = [];
-  for (const [index, line] of (lines || []).entries()) {
-    const measure = line.measure_id ? byId.get(line.measure_id) : undefined;
-    if (!measureRequiresPvOrigemChoice(measure)) continue;
-    if (hasExplicitStrapPvOrigem(line)) continue;
-    if (strapSourcingSatisfiesPvOrigemChoice(line, sourcing)) continue;
-    const label = (line.label || `Tira ${index + 1}`).trim() || `Tira ${index + 1}`;
-    issues.push({
-      label,
-      measureId: line.measure_id || null,
-      code: 'origem_nao_escolhida',
-      message: `${label}: escolha Fazer ou Comprar pronto antes de salvar.`,
-    });
-  }
-  return issues;
-}
-
-/**
- * Preenche `pv_origem` ausente com o padrão (prestador / comprar pronto) só nas
- * posições `escolhe_no_pv`. Não sobrescreve escolha explícita do operador.
+ * Preenche `pv_origem` ausente com o padrão do CATÁLOGO (R2) em TODA linha
+ * cuja medida é conhecida — não só nas antigas `escolhe_no_pv`. Não
+ * sobrescreve escolha explícita: a exceção do PV vence o catálogo.
  */
 export function applyDefaultStrapPvOrigemChoices<T extends StrapPvOrigemLineLike>(
   lines: readonly T[] | null | undefined,
@@ -346,11 +333,11 @@ export function applyDefaultStrapPvOrigemChoices<T extends StrapPvOrigemLineLike
   const byId = new Map((measures || []).map((measure) => [measure.id, measure]));
   let changed = false;
   const next = source.map((line) => {
-    const measure = line.measure_id ? byId.get(line.measure_id) : undefined;
-    if (!measureRequiresPvOrigemChoice(measure)) return line;
     if (hasExplicitStrapPvOrigem(line)) return line;
+    const measure = line.measure_id ? byId.get(line.measure_id) : undefined;
+    if (!measure) return line;
     changed = true;
-    return { ...line, pv_origem: DEFAULT_STRAP_PV_ORIGEM };
+    return { ...line, pv_origem: defaultStrapPvOrigemForLine(line, measure) };
   });
   return { lines: changed ? next : [...source], changed };
 }
@@ -374,8 +361,8 @@ export interface StrapHubIncompleteMeasureGap {
  * Gaps de Hub para a origem efetiva. Frete/prestador padrão entram na fatia
  * da OS automática (RPC) — aqui só preços da medida.
  *
- * ⚠ Origem "fazer" (fábrica; prestador legado incluso) NÃO exige MO do
- * prestador — só preço artesanal. Comprar pronto não entra neste gap.
+ * ⚠ Origem Prestador (`fabrica`/`prestador` legado) usa o preço da medida
+ * (`preco_artesanal_per_m`, mão de obra R$/m). Comprar pronto não entra neste gap.
  */
 export function listStrapHubIncompleteForOrigem(
   lines: readonly StrapPvOrigemLineLike[] | null | undefined,
@@ -395,7 +382,7 @@ export function listStrapHubIncompleteForOrigem(
           label,
           measureId,
           code: 'preco_artesanal_ausente',
-          message: `${label}: cadastre o preço artesanal (R$/m) no Hub de Tiras.`,
+          message: `${label}: cadastre a mão de obra do prestador (R$/m) no Hub de Tiras.`,
         });
       }
     }
@@ -437,7 +424,7 @@ export function strapFreightPerMeter(
   return a / y;
 }
 
-/** Motor canônico: sku → buy_ready; fábrica/prestador → internal (OS no prestador). */
+/** Motor canônico: Comprar pronto → buy_ready; Prestador (`fabrica`/`prestador`) → internal. */
 export function sourceModeForEffectiveOrigem(
   origem: EffectiveStrapPvOrigem | null | undefined,
 ): 'internal' | 'buy_ready' | null {

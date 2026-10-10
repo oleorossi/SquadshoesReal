@@ -115,7 +115,7 @@ describe('religamento dos consumidores (débito + compras)', () => {
 describe('intenção de tira do PV e editor canônico do catálogo', () => {
   it('o PV não abre editor de catálogo para a tira reference_base', () => {
     expect(itemForm).not.toContain('CreateStrapProductDialog');
-    expect(itemForm).toContain("'Produção interna automática'");
+    expect(itemForm).toContain("'Prestador · napa enviada ao prestador'");
   });
 
   it('o adaptador abre o mesmo editor atômico do hub', () => {

@@ -125,7 +125,7 @@ describe('preview canônica de tiras', () => {
     } as any;
     const [row] = replaceWithCanonicalStrapRows([], stockCtx, [strass]) as CanonicalStrapConsumptionRow[];
     expect(row.groupName).toMatch(/STRASS/i);
-    expect(row.materialName).toBe('Comprar');
+    expect(row.materialName).toBe('Comprar pronto');
     expect(row.color).toBe('PRETO');
     expect(row.totalQuantity).toBe(508);
     expect(row.artisanal).toBeUndefined();

@@ -95,7 +95,6 @@ import { copyItemStraps, loadStrapCopyContext } from '@/lib/copySaleOrderStraps'
 import { useArtisanalStrapCatalog } from '@/hooks/useArtisanalStraps';
 import {
   coerceImpossibleBuyReadyStrapOrigem,
-  firstMissingStrapPvOrigemMessage,
   listStrapHubIncompleteForOrigem,
   type StrapHubIncompleteIssue,
 } from '@/lib/strapPvOrigem';
@@ -633,12 +632,6 @@ export default function SaleOrderForm() {
     }
     return issues;
   };
-
-  /** Só escolha de origem ausente — gaps de Hub abrem diálogo separado. */
-  const assertStrapOrigemChoiceReady = (
-    productionItems: SaleOrderItemFormData[],
-    measures = buildStrapMeasuresForGuards(),
-  ): string | null => firstMissingStrapPvOrigemMessage(productionItems, measures);
 
   const openHubIncompleteIfNeeded = (
     productionItems: SaleOrderItemFormData[],
@@ -1786,8 +1779,8 @@ export default function SaleOrderForm() {
       if (tiraSemCor) { toast.error(tiraSemCor, { duration: 8000 }); return; }
     }
     {
-      const origemGap = assertStrapOrigemChoiceReady(productionItems);
-      if (origemGap) { toast.error(origemGap, { duration: 8000 }); return; }
+      // R2 (tiras-redesenho, Revisão 2): a origem nunca "falta" — sem escolha
+      // explícita vale o padrão do catálogo (Prestador / Comprar pronto).
       if (openHubIncompleteIfNeeded(productionItems, {
         kind: 'doSubmit',
         statusOverride,
@@ -1967,7 +1960,7 @@ export default function SaleOrderForm() {
     );
     // Comprar pronto sem group_id na ficha (G03 artesanal) é impossível — o
     // prepare barra o PV inteiro. Cores colapsadas podem ainda ter sku_acabado
-    // de "Todas comprar pronto" enquanto a aba aberta já mostra Fazer.
+    // de "Todas comprar pronto" enquanto a aba aberta já mostra Prestador.
     const buyReadyCoerce = coerceImpossibleBuyReadyStrapOrigem(strapRecovery.items);
     const itemsForSubmit = buyReadyCoerce.items;
     if (
@@ -1999,8 +1992,8 @@ export default function SaleOrderForm() {
       if (tiraSemCor) { toast.error(tiraSemCor, { duration: 8000 }); return; }
     }
     {
-      const origemGap = assertStrapOrigemChoiceReady(productionItems);
-      if (origemGap) { toast.error(origemGap, { duration: 8000 }); return; }
+      // R2 (tiras-redesenho, Revisão 2): a origem nunca "falta" — sem escolha
+      // explícita vale o padrão do catálogo (Prestador / Comprar pronto).
       if (openHubIncompleteIfNeeded(productionItems, {
         kind: 'submit',
         opts,

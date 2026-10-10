@@ -537,9 +537,9 @@ describe('SaleOrderItemForm — I703 com Overlock e Strass 6 mm', () => {
 
     mount(initial, 'Rascunho', lines, options);
 
-    expect(screen.getByText('Produção interna · cadastro pendente')).toBeInTheDocument();
-    expect(screen.queryByText('Produção interna automática')).not.toBeInTheDocument();
-    expect(screen.getByText('Comprada pronta · origem fixa')).toBeInTheDocument();
+    expect(screen.getByText('Prestador · cadastro pendente')).toBeInTheDocument();
+    expect(screen.queryByText('Prestador · napa enviada ao prestador')).not.toBeInTheDocument();
+    expect(screen.getByText('Comprar pronto · origem fixa')).toBeInTheDocument();
     expect(screen.getByText('Nenhum material/cor elegível para a receita interna.')).toBeInTheDocument();
     expect(screen.queryByText(/serão materializadas na mesma transação/)).not.toBeInTheDocument();
   });
@@ -578,8 +578,8 @@ describe('SaleOrderItemForm — I703 com Overlock e Strass 6 mm', () => {
 
     mount(initial, 'Rascunho', twoInternalLines, options);
 
-    expect(screen.getAllByText('Produção interna · cadastro pendente')).toHaveLength(1);
-    expect(screen.getAllByText('Produção interna automática')).toHaveLength(1);
+    expect(screen.getAllByText('Prestador · cadastro pendente')).toHaveLength(1);
+    expect(screen.getAllByText('Prestador · napa enviada ao prestador')).toHaveLength(1);
   });
 
   it('não aplica a prontidão viva a um snapshot já comprometido', () => {
@@ -600,10 +600,10 @@ describe('SaleOrderItemForm — I703 com Overlock e Strass 6 mm', () => {
 
     mount(initial, 'Em Produção', lines, options);
 
-    expect(screen.queryByText('Produção interna · cadastro pendente')).not.toBeInTheDocument();
+    expect(screen.queryByText('Prestador · cadastro pendente')).not.toBeInTheDocument();
     expect(screen.queryByText(/Cadastro da tira interna incompleto/)).not.toBeInTheDocument();
     expect(screen.queryByText(/pedido inteiro não salva/)).not.toBeInTheDocument();
-    expect(screen.getByText('Comprada pronta · origem fixa')).toBeInTheDocument();
+    expect(screen.getByText('Comprar pronto · origem fixa')).toBeInTheDocument();
   });
 
   it('usa um rótulo genérico quando a pendência interna não é de cadastro', () => {
@@ -619,7 +619,7 @@ describe('SaleOrderItemForm — I703 com Overlock e Strass 6 mm', () => {
 
     mount(initial, 'Rascunho', lines, options);
 
-    expect(screen.getByText('Produção interna · pendência')).toBeInTheDocument();
-    expect(screen.queryByText('Produção interna · cadastro pendente')).not.toBeInTheDocument();
+    expect(screen.getByText('Prestador · pendência')).toBeInTheDocument();
+    expect(screen.queryByText('Prestador · cadastro pendente')).not.toBeInTheDocument();
   });
 });

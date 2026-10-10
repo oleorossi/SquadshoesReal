@@ -239,7 +239,7 @@ describe('materialConsumptionReport', () => {
     expect(html).toContain('20,04 m');
     expect(html).not.toContain('class="num shortage">1.402,80');
     expect(html).toContain('>1.402,80<small class="qty-preview">m de tira</small>');
-    expect(html).toContain('a fazer 1.402,80');
+    expect(html).toContain('prestador 1.402,80');
     const totalsStrip = html.match(/<div class="totals-strip">[\s\S]*?<\/div>/)?.[0] || '';
     expect(totalsStrip).toContain('40,25');
     expect(totalsStrip).not.toContain('1.402,80');
@@ -656,7 +656,7 @@ describe('materialConsumptionReport', () => {
 
     // Um rodapé de total — sem subtotal por tipo; uma linha por cor.
     expect(html.match(/class="strap-subtotal"/g)).toHaveLength(1);
-    expect(html).toContain('Total de napa (todas as tiras)');
+    expect(html).toContain('Total de napa a enviar ao prestador');
     expect(html).toContain('<th>Cor</th>');
     expect(html).toContain(elastico);
     expect(html).toContain(chata);

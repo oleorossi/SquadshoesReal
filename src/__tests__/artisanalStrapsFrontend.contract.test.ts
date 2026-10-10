@@ -294,7 +294,7 @@ describe('Tiras artesanais — contrato do frontend canônico', () => {
     expect(canonicalPreview).toContain('confirmedYieldMPerM: yieldPerMeter');
     expect(strapCutBlock).toContain('Setor de Tiras');
     expect(strapCutBlock).toContain('aggregateStrapNapaSector');
-    expect(strapCutBlock).toContain('Total de napa (todas as tiras)');
+    expect(strapCutBlock).toContain('Total de napa a enviar ao prestador');
     expect(strapCutBlock).toContain('>Cor</');
     expect(strapCutBlock).toContain('type.color');
     expect(strapCutBlock).not.toContain('colorCount');

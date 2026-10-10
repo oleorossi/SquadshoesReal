@@ -45,7 +45,7 @@ describe('TechnicalStrapSourceEditor', () => {
   it('Strass 6 mm informa SKU acabado e exige grupo do produto', async () => {
     const user = userEvent.setup();
     mount();
-    expect(screen.getByText(/SKU acabado \(Hub\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Comprar pronto \(grupo acabado\)/i)).toBeInTheDocument();
     expect(screen.queryByRole('combobox', { name: 'Base da identidade de TIRA 2' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('combobox', { name: 'Grupo acabado de TIRA 2' }));
     expect(screen.getAllByRole('option').map(option => option.textContent)).toEqual(['TIRA STRASS 6MM']);
@@ -53,7 +53,7 @@ describe('TechnicalStrapSourceEditor', () => {
 
   it('Overlock 5 mm informa fábrica sem seletor de identidade na ficha', () => {
     mount({ ...initial, measure_id: '5mm', strap_type_id: 'overlock' });
-    expect(screen.getByText(/Produção na fábrica \(Hub\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Prestador: a napa vai ao prestador/i)).toBeInTheDocument();
     expect(screen.queryByRole('combobox', { name: /Grupo acabado/i })).not.toBeInTheDocument();
   });
 
@@ -66,7 +66,7 @@ describe('TechnicalStrapSourceEditor', () => {
       ],
     };
     mount({ ...initial, measure_id: '5mm', strap_type_id: 'overlock' }, hybrid);
-    expect(screen.getByText(/escolha fábrica vs prestador fica no Pedido de Venda/i)).toBeInTheDocument();
+    expect(screen.getByText(/Pedido de Venda pode trocar na exceção/i)).toBeInTheDocument();
   });
 
   it('fica desabilitado enquanto o catálogo carrega', () => {

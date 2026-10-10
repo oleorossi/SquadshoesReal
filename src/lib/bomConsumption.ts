@@ -1811,7 +1811,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
         addConsumptionRow(consumptionMap, {
           componentType: 'Tiras',
           groupName: row.finished_product_name || 'Tira sem cadastro',
-          materialName: row.source_mode === 'buy_ready' ? 'Comprada pronta' : 'Produção interna',
+          materialName: row.source_mode === 'buy_ready' ? 'Comprar pronto' : 'Prestador',
           productUnit: 'm',
           color: row.color_name || '—',
           // Falta líquida ainda operacional: já desconta atendimento parcial,

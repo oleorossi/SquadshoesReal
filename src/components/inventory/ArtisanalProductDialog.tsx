@@ -58,7 +58,7 @@ export function ArtisanalProductDialog({ product, products, open, onOpenChange }
         <DialogContent className="sm:max-w-md">
           <DialogHeader><DialogTitle>Tira comprada pronta</DialogTitle></DialogHeader>
           <Alert>
-            <AlertTitle>Produção interna indisponível</AlertTitle>
+            <AlertTitle>Prestador indisponível</AlertTitle>
             <AlertDescription>
               Este produto pertence ao cutover nominal de compra pronta. Resolva medida, grupo e cor por UUID no Hub de Tiras; ele não pode ser marcado como artesanal.
             </AlertDescription>

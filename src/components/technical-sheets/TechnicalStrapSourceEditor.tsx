@@ -35,10 +35,10 @@ export default function TechnicalStrapSourceEditor<T extends TechnicalStrapLineL
         <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
           {loading && 'Carregando catálogo do Hub…'}
           {failed && 'Catálogo indisponível — recarregue antes de salvar.'}
-          {!loading && !failed && onlyFinished && 'SKU acabado (Hub). Sem seletor no pedido.'}
-          {!loading && !failed && onlyFactory && 'Produção na fábrica (Hub). Sem seletor no pedido.'}
+          {!loading && !failed && onlyFinished && 'Comprar pronto (grupo acabado). Origem fixa pela identidade do produto.'}
+          {!loading && !failed && onlyFactory && 'Prestador: a napa vai ao prestador. O pedido pode trocar para Comprar pronto quando houver grupo acabado.'}
           {!loading && !failed && policy.allowsReferenceBase && policy.finishedGroups.length > 0 && (
-            'Hub permite os dois caminhos — a escolha fábrica vs prestador fica no Pedido de Venda.'
+            'Prestador ou Comprar pronto — o padrão vem do catálogo (Hub) e o Pedido de Venda pode trocar na exceção.'
           )}
           {!loading && !failed && policy.loaded && !policy.allowsReferenceBase && policy.finishedGroups.length === 0 && (
             'Esta medida ainda não tem origem ativa no Hub de Tiras.'
@@ -76,7 +76,7 @@ export default function TechnicalStrapSourceEditor<T extends TechnicalStrapLineL
             </SelectContent>
           </Select>
           <p className="text-xs text-muted-foreground">
-            Origem fixa no PV: <strong>SKU acabado</strong>.
+            Origem fixa no PV: <strong>Comprar pronto</strong>.
           </p>
         </div>
       )}

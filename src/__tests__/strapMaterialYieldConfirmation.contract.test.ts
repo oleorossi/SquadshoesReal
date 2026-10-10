@@ -50,14 +50,14 @@ describe('cadastro de rendimento de tira por material', () => {
     expect(catalogTab).not.toContain('Produtos-base oficiais por cor');
   });
 
-  it('expõe no estoque as modalidades produção interna e comprada pronta', () => {
+  it('expõe no estoque as modalidades Prestador e Comprar pronto', () => {
     expect(stockEditor).toContain('Como esta tira entra no estoque? *');
-    expect(stockEditor).toContain('Produção interna (artesanal)');
-    expect(stockEditor).toContain('Comprada pronta');
+    expect(stockEditor).toContain('<SelectItem value="internal">Prestador</SelectItem>');
+    expect(stockEditor).toContain('<SelectItem value="buy_ready">Comprar pronto</SelectItem>');
     expect(stockEditor).toContain("value === 'internal' ? 'reference_base' : 'finished_product_group'");
     expect(stockEditor).toContain('internal_production_enabled: form.internalProductionEnabled');
     expect(stockEditor).toContain('identity_basis: form.identityBasis');
-    expect(hub).toContain('Produção interna (artesanal) debita o material-base');
+    expect(hub).toContain('Prestador: a napa-base vai ao prestador');
     expect(hub).toContain('como STRASS');
   });
 });

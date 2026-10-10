@@ -390,9 +390,9 @@ export default function StrapCatalogResolutionDrawer({
                 ) : (
                   <Alert className="border-primary/30 bg-primary/5">
                     <ShoppingBag className="h-4 w-4 text-primary" />
-                    <AlertTitle>Compra pronta — napa-base não se aplica</AlertTitle>
+                    <AlertTitle>Comprar pronto — napa-base não se aplica</AlertTitle>
                     <AlertDescription>
-                      O estoque baixa o SKU acabado da cor escolhida. Nenhuma napa será reservada, debitada ou enviada para produção interna.
+                      O estoque baixa o SKU acabado da cor escolhida. Nenhuma napa será reservada, debitada ou enviada ao prestador.
                     </AlertDescription>
                   </Alert>
                 )}

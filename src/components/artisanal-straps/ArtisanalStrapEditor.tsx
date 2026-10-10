@@ -37,6 +37,7 @@ import {
   useSaveArtisanalStrapBundle,
 } from '@/hooks/useArtisanalStraps';
 import {
+  hubOrigemPadraoChoice,
   normalizeStrapOrigemPadrao,
   suggestSkuAcabadoOrigemFromName,
   type StrapOrigemPadrao,
@@ -467,7 +468,7 @@ export function ArtisanalStrapEditor({
         : 'A cor selecionada não está cadastrada em um produto ativo desta napa-base.';
     }
     if (purchasedReady && form.internalProductionEnabled) {
-      return 'Tira identificada pelo grupo acabado não pode habilitar produção interna.';
+      return 'Tira identificada pelo grupo acabado não pode ter origem Prestador.';
     }
     if (form.identityBasis === 'finished_product_group' && !form.finishedProductId) {
       return 'Selecione o produto acabado comprado dentro do grupo de identidade.';
@@ -635,7 +636,7 @@ export function ArtisanalStrapEditor({
             </div>
             <SheetTitle>{mode === 'create' ? 'Cadastrar tira' : 'Editar tira'}</SheetTitle>
             <SheetDescription>
-              Defina se a tira será produzida internamente ou comprada pronta. A modalidade governa estoque, baixa e reposição.
+              Defina se a tira vem do prestador (napa enviada) ou é comprada pronta. A modalidade governa estoque, baixa e reposição.
             </SheetDescription>
           </SheetHeader>
 
@@ -690,14 +691,14 @@ export function ArtisanalStrapEditor({
                   >
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="internal">Produção interna (artesanal)</SelectItem>
-                      <SelectItem value="buy_ready">Comprada pronta</SelectItem>
+                      <SelectItem value="internal">Prestador</SelectItem>
+                      <SelectItem value="buy_ready">Comprar pronto</SelectItem>
                     </SelectContent>
                   </Select>
                   <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
                     {form.identityBasis === 'reference_base' && form.internalProductionEnabled
-                      ? 'Produção interna: debita a napa-base da cor do pedido, aplica o rendimento confirmado e gera saldo do produto final.'
-                      : 'Comprada pronta: movimenta diretamente o SKU acabado do fornecedor. Não debita napa e não exige conversão de rendimento.'}
+                      ? 'Prestador: a napa-base da cor do pedido vai ao prestador, que devolve a tira pelo rendimento confirmado. A fábrica não corta tira.'
+                      : 'Comprar pronto: movimenta diretamente o SKU acabado do fornecedor. Não debita napa e não exige conversão de rendimento.'}
                   </div>
                 </div>
                 <div className="space-y-1.5">
@@ -764,52 +765,39 @@ export function ArtisanalStrapEditor({
                 </div>
 
                 <div className="space-y-1.5 sm:col-span-2">
-                  <Label>Origem no Pedido de Venda *</Label>
+                  <Label>Origem padrão *</Label>
                   <Select
-                    value={form.origemPadrao}
+                    value={hubOrigemPadraoChoice(form.origemPadrao)}
                     onValueChange={(value) => setField('origemPadrao', normalizeStrapOrigemPadrao(value))}
                     disabled={readOnly}
                   >
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger aria-label="Origem padrão"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="sempre_fabrica">Sempre feita na fábrica</SelectItem>
-                      <SelectItem value="sempre_sku_acabado">Sempre SKU acabado (ex.: Strass)</SelectItem>
-                      <SelectItem value="escolhe_no_pv">Escolhe no pedido (fábrica ou prestador)</SelectItem>
+                      <SelectItem value="sempre_fabrica">Prestador</SelectItem>
+                      <SelectItem value="sempre_sku_acabado">Comprar pronto</SelectItem>
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
                     {suggestSkuAcabadoOrigemFromName(selectedType?.name || form.typeName)
-                      ? 'Nome com Strass: sugerimos SKU acabado. Confirme ou altere.'
-                      : 'Define se o PV mostra seletor ou já aplica a origem.'}
+                      ? 'Nome com Strass: sugerimos Comprar pronto. Confirme ou altere.'
+                      : 'Padrão do Pedido de Venda. A fábrica não corta tira: Prestador recebe a napa e devolve a tira. O pedido pode trocar na exceção.'}
                   </p>
                 </div>
 
                 {canSeeFinancial && form.origemPadrao !== 'sempre_sku_acabado' && (
                   <div className="grid gap-3 sm:grid-cols-2 sm:col-span-2">
-                    {(form.origemPadrao === 'sempre_fabrica' || form.origemPadrao === 'escolhe_no_pv') && (
-                      <div className="space-y-1.5">
-                        <Label>Mão de obra fábrica (R$/m)</Label>
-                        <NumberInput
-                          value={form.precoArtesanalPerM}
-                          onChange={(value) => setField('precoArtesanalPerM', value)}
-                          disabled={readOnly}
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          Valor único da medida — igual para todas as Napas. O que muda o custo
-                          final é o preço do material de origem.
-                        </p>
-                      </div>
-                    )}
-                    {form.origemPadrao === 'escolhe_no_pv' && (
-                      <div className="space-y-1.5">
-                        <Label>Mão de obra prestador (R$/m)</Label>
-                        <NumberInput
-                          value={form.precoPrestadorPerM}
-                          onChange={(value) => setField('precoPrestadorPerM', value)}
-                          disabled={readOnly}
-                        />
-                      </div>
-                    )}
+                    <div className="space-y-1.5">
+                      <Label>Mão de obra do prestador (R$/m)</Label>
+                      <NumberInput
+                        value={form.precoArtesanalPerM}
+                        onChange={(value) => setField('precoArtesanalPerM', value)}
+                        disabled={readOnly}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Valor único da medida — igual para todas as Napas. O que muda o custo
+                        final é o preço do material de origem.
+                      </p>
+                    </div>
                   </div>
                 )}
 
@@ -1025,7 +1013,7 @@ export function ArtisanalStrapEditor({
 
               {purchasedReady ? (
                 <div className="rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
-                  <Badge variant="secondary" className="mr-2">Comprada pronta</Badge>
+                  <Badge variant="secondary" className="mr-2">Comprar pronto</Badge>
                   Receita, rendimento, lote interno e transformação não se aplicam a esta identidade.
                 </div>
               ) : form.includeRecipe ? (
@@ -1164,7 +1152,7 @@ export function ArtisanalStrapEditor({
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <ShoppingBag className="h-4 w-4 text-primary" />
-                  <h3 id="strap-editor-purchase" className="text-sm font-bold">Comprada pronta</h3>
+                  <h3 id="strap-editor-purchase" className="text-sm font-bold">Comprar pronto</h3>
                 </div>
                 <Switch
                   checked={form.purchaseEnabled}

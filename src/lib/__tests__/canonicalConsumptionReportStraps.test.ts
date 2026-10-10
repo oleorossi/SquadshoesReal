@@ -126,7 +126,7 @@ describe('materializeCanonicalConsumptionReport · tiras (PV-00224)', () => {
       expect(row.artisanal?.baseQty).toBeCloseTo(row.totalQuantity / 70, 9);
     }
     expect(straps.map((row) => row.materialName).sort()).toEqual([
-      'Fazer · TIRA 1', 'Fazer · TIRA 2', 'Fazer · TRASEIRA', 'Fazer · TRASEIRA',
+      'Prestador · TIRA 1', 'Prestador · TIRA 2', 'Prestador · TRASEIRA', 'Prestador · TRASEIRA',
     ]);
 
     const sector = aggregateStrapNapaSector(artisanalStrapRows);

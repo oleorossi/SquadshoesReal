@@ -3,81 +3,113 @@ import { resolve } from 'node:path';
 import {
   applyDefaultStrapPvOrigemChoices,
   applyStrapPvOrigemChangesToItems,
+  catalogDefaultStrapPvOrigem,
   coerceImpossibleBuyReadyStrapOrigem,
   collectStrapPvOrigemChanges,
   DEFAULT_STRAP_PV_ORIGEM,
-  firstMissingStrapPvOrigemMessage,
+  defaultStrapPvOrigemForLine,
   groupStrapHubIncompleteByMeasure,
   isStrapPvOrigemChoiceLocked,
-  listMissingStrapPvOrigemChoices,
   listStrapHubIncompleteForOrigem,
   resolveEffectiveStrapPvOrigem,
   sourceModeForEffectiveOrigem,
+  STRAP_PV_ORIGEM_LABEL,
   strapFreightPerMeter,
+  strapPvOrigemChooserValue,
+  strapPvOrigemLabel,
 } from '@/lib/strapPvOrigem';
+import {
+  HUB_ORIGEM_PADRAO_LABEL,
+  hubOrigemPadraoChoice,
+} from '@/lib/strapBaseNapaPeel';
 
 describe('strapPvOrigem', () => {
-  it('Hub fixo ganha sobre snapshot do PV', () => {
-    expect(resolveEffectiveStrapPvOrigem(
-      { pv_origem: 'prestador' },
-      { id: 'm1', origem_padrao: 'sempre_fabrica' },
-    )).toBe('fabrica');
+  it('vocabulário: Prestador | Comprar pronto (R1) — prestador legado = Prestador', () => {
+    expect(STRAP_PV_ORIGEM_LABEL).toEqual({ fabrica: 'Prestador', sku_acabado: 'Comprar pronto' });
+    expect(strapPvOrigemLabel('fabrica')).toBe('Prestador');
+    expect(strapPvOrigemLabel('prestador')).toBe('Prestador');
+    expect(strapPvOrigemLabel('sku_acabado')).toBe('Comprar pronto');
+    expect(strapPvOrigemLabel(null)).toBeNull();
+    expect(Object.values(STRAP_PV_ORIGEM_LABEL).join(' ')).not.toMatch(/Fazer|Fábrica|interna/i);
+  });
+
+  it('catálogo dá o PADRÃO: só sempre_sku_acabado vira Comprar pronto', () => {
+    expect(catalogDefaultStrapPvOrigem({ id: 'm', origem_padrao: 'sempre_sku_acabado' })).toBe('sku_acabado');
+    expect(catalogDefaultStrapPvOrigem({ id: 'm', origem_padrao: 'sempre_fabrica' })).toBe('fabrica');
+    expect(catalogDefaultStrapPvOrigem({ id: 'm', origem_padrao: 'escolhe_no_pv' })).toBe('fabrica');
+    expect(catalogDefaultStrapPvOrigem({ id: 'm' })).toBe('fabrica');
+    expect(DEFAULT_STRAP_PV_ORIGEM).toBe('fabrica');
+  });
+
+  it('Hub mostra só Prestador | Comprar pronto (escolhe_no_pv legado = Prestador)', () => {
+    expect(hubOrigemPadraoChoice('escolhe_no_pv')).toBe('sempre_fabrica');
+    expect(hubOrigemPadraoChoice('sempre_fabrica')).toBe('sempre_fabrica');
+    expect(hubOrigemPadraoChoice(null)).toBe('sempre_fabrica');
+    expect(hubOrigemPadraoChoice('sempre_sku_acabado')).toBe('sempre_sku_acabado');
+    expect(HUB_ORIGEM_PADRAO_LABEL).toEqual({
+      sempre_fabrica: 'Prestador',
+      sempre_sku_acabado: 'Comprar pronto',
+    });
+  });
+
+  it('escolha explícita do PV VENCE o catálogo em qualquer medida (R2)', () => {
     expect(resolveEffectiveStrapPvOrigem(
       { pv_origem: 'fabrica' },
+      { id: 'strass', origem_padrao: 'sempre_sku_acabado' },
+    )).toBe('fabrica');
+    expect(resolveEffectiveStrapPvOrigem(
+      { pv_origem: 'sku_acabado', group_id: 'g1' },
+      { id: 'm1', origem_padrao: 'sempre_fabrica' },
+    )).toBe('sku_acabado');
+    expect(resolveEffectiveStrapPvOrigem(
+      { pv_origem: 'prestador' },
       { id: 'm1', origem_padrao: 'sempre_sku_acabado' },
+    )).toBe('fabrica');
+  });
+
+  it('sem escolha vale o padrão do catálogo — a origem nunca falta', () => {
+    expect(resolveEffectiveStrapPvOrigem(
+      { pv_origem: null },
+      { id: 'm1', origem_padrao: 'escolhe_no_pv' },
+    )).toBe('fabrica');
+    expect(resolveEffectiveStrapPvOrigem(
+      { pv_origem: null, group_id: 'g-strass' },
+      { id: 'strass', origem_padrao: 'sempre_sku_acabado' },
+    )).toBe('sku_acabado');
+    // Catálogo ainda não carregou: não inventa.
+    expect(resolveEffectiveStrapPvOrigem({ pv_origem: null }, null)).toBeNull();
+  });
+
+  it('padrão Comprar pronto sem grupo acabado na ficha cai em Prestador (espelha 28600)', () => {
+    expect(defaultStrapPvOrigemForLine(
+      { group_id: null },
+      { id: 'strass', origem_padrao: 'sempre_sku_acabado' },
+    )).toBe('fabrica');
+    expect(defaultStrapPvOrigemForLine(
+      { identity_group_id: 'g1' },
+      { id: 'strass', origem_padrao: 'sempre_sku_acabado' },
     )).toBe('sku_acabado');
   });
 
-  it('prestador legado resolve como fazer (fábrica) em escolhe_no_pv', () => {
-    expect(resolveEffectiveStrapPvOrigem(
-      { pv_origem: 'prestador' },
-      { id: 'm1', origem_padrao: 'escolhe_no_pv' },
-    )).toBe('fabrica');
+  it('linha de identidade acabada (Strass da ficha) é sempre Comprar pronto', () => {
+    const strass = { identity_basis: 'finished_product_group' as const, identity_group_id: 'g', pv_origem: 'fabrica' };
+    expect(resolveEffectiveStrapPvOrigem(strass, { id: 'm', origem_padrao: 'escolhe_no_pv' })).toBe('sku_acabado');
+    expect(strapPvOrigemChooserValue(strass, { id: 'm' })).toBe('sku_acabado');
   });
 
-  it('escolhe_no_pv exige pv_origem', () => {
-    const issues = listMissingStrapPvOrigemChoices(
-      [
-        { label: 'Tira 1', measure_id: 'm1', pv_origem: null },
-        { label: 'Tira 2', measure_id: 'm2', pv_origem: 'fabrica' },
-        { label: 'Tira 3', measure_id: 'm5', pv_origem: 'sku_acabado' },
-        { label: 'Strass', measure_id: 'm3' },
-        { label: 'Legado', measure_id: 'm4' },
-      ],
-      [
-        { id: 'm1', origem_padrao: 'escolhe_no_pv' },
-        { id: 'm2', origem_padrao: 'escolhe_no_pv' },
-        { id: 'm5', origem_padrao: 'escolhe_no_pv' },
-        { id: 'm3', origem_padrao: 'sempre_sku_acabado' },
-        { id: 'm4' },
-      ],
-    );
-    expect(issues).toHaveLength(1);
-    expect(issues[0].label).toBe('Tira 1');
-    expect(issues[0].message).toContain('Comprar pronto');
-  });
-
-  it('sourcing operacional legado satisfaz escolhe_no_pv sem pv_origem', () => {
+  it('seletor: explícito > sourcing congelado > padrão do catálogo', () => {
     const lineId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-    const line = {
-      label: 'TIRA 1',
-      measure_id: 'm1',
-      technical_strap_line_id: lineId,
-      pv_origem: null as null,
-    };
-    expect(listMissingStrapPvOrigemChoices(
-      [line],
-      [{ id: 'm1', origem_padrao: 'escolhe_no_pv' }],
-      { [lineId]: { source_mode: 'internal' as const } },
-    )).toEqual([]);
-    expect(firstMissingStrapPvOrigemMessage(
-      [{
-        color: 'OFF WHITE',
-        strap_colors: [line],
-        strap_sourcing: { [lineId]: { source_mode: 'buy_ready' as const } },
-      }],
-      [{ id: 'm1', origem_padrao: 'escolhe_no_pv' }],
-    )).toBeNull();
+    const measure = { id: 'm1', origem_padrao: 'escolhe_no_pv' };
+    const line = { technical_strap_line_id: lineId, measure_id: 'm1', pv_origem: null, group_id: 'g' };
+    expect(strapPvOrigemChooserValue(line, measure)).toBe('fabrica');
+    expect(strapPvOrigemChooserValue(line, measure, { [lineId]: { source_mode: 'buy_ready' as const } }))
+      .toBe('sku_acabado');
+    expect(strapPvOrigemChooserValue(
+      { ...line, pv_origem: 'fabrica' },
+      measure,
+      { [lineId]: { source_mode: 'buy_ready' as const } },
+    )).toBe('fabrica');
+    expect(strapPvOrigemChooserValue(line, null)).toBeNull();
   });
 
   it('snapshot comprometido trava origem já escolhida, mas lacuna continua editável', () => {
@@ -130,39 +162,14 @@ describe('strapPvOrigem', () => {
     ]);
   });
 
-  it('o toast de origem ausente nomeia as cores que ainda estão vazias', () => {
-    const measures = [{ id: 'm1', origem_padrao: 'escolhe_no_pv' }];
-    expect(firstMissingStrapPvOrigemMessage(
-      [
-        {
-          color: 'OFF WHITE',
-          strap_colors: [{ label: 'TIRA 2', measure_id: 'm1', pv_origem: 'sku_acabado' }],
-        },
-        {
-          color: 'NEW WHISKY',
-          strap_colors: [{ label: 'TIRA 2', measure_id: 'm1', pv_origem: null }],
-        },
-        {
-          color: 'ROSADO',
-          strap_colors: [{ label: 'TIRA 2', measure_id: 'm1' }],
-        },
-      ],
-      measures,
-    )).toBe('TIRA 2: escolha Fazer ou Comprar pronto em NEW WHISKY, ROSADO antes de salvar.');
-  });
-
-  it('escolhe_no_pv aceita sku_acabado como origem explícita', () => {
+  it('sku_acabado explícito em medida padrão Prestador continua Comprar pronto', () => {
     expect(resolveEffectiveStrapPvOrigem(
       { pv_origem: 'sku_acabado' },
       { id: 'm1', origem_padrao: 'escolhe_no_pv' },
     )).toBe('sku_acabado');
-    expect(listMissingStrapPvOrigemChoices(
-      [{ label: 'TIRA 2', measure_id: 'm1', pv_origem: 'sku_acabado' }],
-      [{ id: 'm1', origem_padrao: 'escolhe_no_pv' }],
-    )).toEqual([]);
   });
 
-  it('lista preço ausente conforme origem efetiva (prestador legado = fazer)', () => {
+  it('lista preço ausente conforme origem efetiva (prestador legado = Prestador)', () => {
     const issues = listStrapHubIncompleteForOrigem(
       [
         { label: 'A', measure_id: 'm1', pv_origem: 'fabrica' },
@@ -201,7 +208,7 @@ describe('strapPvOrigem', () => {
     expect(grouped.find((gap) => gap.measureId === 'm2')?.needsArtesanal).toBe(true);
   });
 
-  it('fábrica nunca exige mão de obra do prestador (mesmo sem preco_prestador)', () => {
+  it('Prestador usa só o preço da medida (preco_prestador_per_m legado não bloqueia)', () => {
     const issues = listStrapHubIncompleteForOrigem(
       [
         { label: 'TIRA 1', measure_id: 'm1', pv_origem: 'fabrica' },
@@ -220,17 +227,13 @@ describe('strapPvOrigem', () => {
     expect(issues.some((issue) => issue.code === 'preco_prestador_ausente')).toBe(false);
   });
 
-  it('Hub sempre_fabrica ignora pv_origem=prestador residual e não cobra MO', () => {
+  it('exceção Prestador numa medida padrão Comprar pronto passa a cobrar a MO da medida', () => {
     const issues = listStrapHubIncompleteForOrigem(
-      [{ label: 'TIRA 1', measure_id: 'm1', pv_origem: 'prestador' }],
-      [{
-        id: 'm1',
-        origem_padrao: 'sempre_fabrica',
-        preco_artesanal_per_m: 1,
-        preco_prestador_per_m: null,
-      }],
+      [{ label: 'STRASS', measure_id: 'm1', pv_origem: 'fabrica' }],
+      [{ id: 'm1', origem_padrao: 'sempre_sku_acabado', preco_artesanal_per_m: null }],
     );
-    expect(issues.map((issue) => issue.code)).toEqual([]);
+    expect(issues.map((issue) => issue.code)).toEqual(['preco_artesanal_ausente']);
+    expect(issues[0].message).toContain('mão de obra do prestador');
   });
 
   it('frete/m exige Y > 0', () => {
@@ -246,33 +249,34 @@ describe('strapPvOrigem', () => {
     expect(sourceModeForEffectiveOrigem(null)).toBeNull();
   });
 
-  it('padrão fazer (fábrica) só preenche escolhe_no_pv vazio', () => {
+  it('padrão do catálogo preenche TODA linha sem escolha; explícito nunca é tocado', () => {
+    const measures = [
+      { id: 'm1', origem_padrao: 'escolhe_no_pv' },
+      { id: 'm2', origem_padrao: 'sempre_fabrica' },
+      { id: 'm3', origem_padrao: 'sempre_sku_acabado' },
+      { id: 'm4' },
+    ];
     const { lines, changed } = applyDefaultStrapPvOrigemChoices(
       [
         { label: 'Tira 1', measure_id: 'm1', pv_origem: null },
-        { label: 'Tira 2', measure_id: 'm2', pv_origem: 'fabrica' },
-        { label: 'Strass', measure_id: 'm3' },
+        { label: 'Tira 2', measure_id: 'm2', pv_origem: 'sku_acabado', group_id: 'g' },
+        { label: 'Strass', measure_id: 'm3', group_id: 'g-strass' },
+        { label: 'Strass sem grupo', measure_id: 'm3' },
         { label: 'Legado', measure_id: 'm4' },
+        { label: 'Sem medida' },
       ],
-      [
-        { id: 'm1', origem_padrao: 'escolhe_no_pv' },
-        { id: 'm2', origem_padrao: 'escolhe_no_pv' },
-        { id: 'm3', origem_padrao: 'sempre_sku_acabado' },
-        { id: 'm4' },
-      ],
+      measures,
     );
     expect(changed).toBe(true);
-    expect(lines[0].pv_origem).toBe(DEFAULT_STRAP_PV_ORIGEM);
-    expect(DEFAULT_STRAP_PV_ORIGEM).toBe('fabrica');
-    expect(lines[1].pv_origem).toBe('fabrica');
-    expect(lines[2].pv_origem).toBeUndefined();
-    expect(lines[3].pv_origem).toBeUndefined();
-    expect(applyDefaultStrapPvOrigemChoices(lines, [
-      { id: 'm1', origem_padrao: 'escolhe_no_pv' },
-      { id: 'm2', origem_padrao: 'escolhe_no_pv' },
-      { id: 'm3', origem_padrao: 'sempre_sku_acabado' },
-      { id: 'm4' },
-    ]).changed).toBe(false);
+    expect(lines.map((line) => line.pv_origem)).toEqual([
+      'fabrica',
+      'sku_acabado',
+      'sku_acabado',
+      'fabrica',
+      'fabrica',
+      undefined,
+    ]);
+    expect(applyDefaultStrapPvOrigemChoices(lines, measures).changed).toBe(false);
   });
 });
 
@@ -286,13 +290,33 @@ describe('origem da tira no PV — uma escolha vale para todas as cores', () => 
     expect(panel).toContain('applyStrapPvOrigemChangesToItems');
   });
 
-  it('o save nomeia as cores que ainda estão sem origem', () => {
+  it('o save não bloqueia mais por "origem não escolhida" (R2: o padrão sempre se aplica)', () => {
     const page = readFileSync(
       resolve(__dirname, '../../pages/SaleOrderForm.tsx'),
       'utf8',
     );
-    expect(page).toContain('firstMissingStrapPvOrigemMessage');
+    expect(page).not.toContain('firstMissingStrapPvOrigemMessage');
+    expect(page).not.toContain('assertStrapOrigemChoiceReady');
     expect(page).toContain('coerceImpossibleBuyReadyStrapOrigem');
+  });
+
+  it('o seletor do item é sempre exibido, com padrão do catálogo e só Prestador | Comprar pronto', () => {
+    const chooser = readFileSync(
+      resolve(__dirname, '../../components/sale-orders/StrapPvOrigemChooser.tsx'),
+      'utf8',
+    );
+    expect(chooser).not.toContain('Fazer');
+    expect(chooser).not.toContain('Origem fixa no Hub');
+    expect(chooser).toContain('STRAP_PV_ORIGEM_LABEL');
+    expect(chooser).toContain('Padrão do catálogo');
+    expect(chooser).toContain('Todas prestador');
+    const form = readFileSync(
+      resolve(__dirname, '../../components/sale-orders/SaleOrderItemForm.tsx'),
+      'utf8',
+    );
+    expect(form).not.toContain('listMissingStrapPvOrigemChoices');
+    expect(form).not.toContain("'Fazer (fábrica)'");
+    expect(form).toContain('strapPvOrigemChooserValue');
   });
 
   it('o item oferece tira pronta em lote e avisa que a origem vale para todas as cores', () => {
@@ -305,7 +329,7 @@ describe('origem da tira no PV — uma escolha vale para todas as cores', () => 
     expect(form).toContain('A origem vale para todas as cores do pedido.');
   });
 
-  it('propaga fábrica com sourcing internal nas outras cores', () => {
+  it('propaga Prestador com sourcing internal nas outras cores', () => {
     const lineId = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
     const items = applyStrapPvOrigemChangesToItems(
       [
@@ -327,7 +351,7 @@ describe('origem da tira no PV — uma escolha vale para todas as cores', () => 
     expect(items[1].strap_sourcing?.[lineId]?.source_mode).toBe('internal');
   });
 
-  it('coerce sku_acabado sem group_id para fábrica no submit', () => {
+  it('coerce sku_acabado sem group_id para Prestador no submit', () => {
     const { items, coerced } = coerceImpossibleBuyReadyStrapOrigem([
       {
         color: 'PRATA',

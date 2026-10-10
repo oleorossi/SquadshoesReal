@@ -54,7 +54,7 @@ describe('STRASS comprada pronta — correção de contexto sem napa-base', () =
   });
 
   it('explica a compra pronta sem napa e leva o cadastro comercial incompleto ao catálogo', () => {
-    expect(drawer).toContain('Compra pronta');
+    expect(drawer).toContain('Comprar pronto');
     expect(drawer).toMatch(/n[aã]o usa(?:m)? napa-base/i);
     expect(drawer).toMatch(/SKU acabado[\s\S]*cor escolhida/i);
     expect(drawer).toContain('Grupo acabado ausente');

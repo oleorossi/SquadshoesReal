@@ -906,7 +906,7 @@ export default function ArtisanalStraps() {
             onChange={(value) => setActiveTab(value === 'ferramentas' ? 'receitas' : value)}
             items={[
               { value: 'cadastro', label: 'Tipos e rendimento', description: 'Material-base e conversão sem cor', icon: TreeStructure },
-              { value: 'variantes', label: 'Origem e estoque', description: 'Produção interna ou compra pronta', icon: Package, badge: reviewCount || undefined },
+              { value: 'variantes', label: 'Origem e estoque', description: 'Prestador ou comprar pronto', icon: Package, badge: reviewCount || undefined },
               { value: 'ferramentas', label: 'Histórico e simulação', description: 'Versões técnicas e calculadora', icon: Calculator, badge: pendingRecipes || undefined },
             ]}
           />
@@ -1117,7 +1117,7 @@ function ConfigurationRail({
             <span>
               <span className="block text-sm font-semibold text-foreground">Origem, cor e estoque</span>
               <span className="mt-1 block text-xs leading-5 text-muted-foreground">
-                Escolha produção interna ou compra pronta e crie a cor somente quando houver necessidade real.
+                Escolha Prestador ou Comprar pronto e crie a cor somente quando houver necessidade real.
               </span>
               <span className="mt-2 block text-xs font-semibold text-primary group-hover:underline">Abrir variante de estoque</span>
             </span>
@@ -1606,8 +1606,8 @@ function VariantsTab({
     const identity = identityForVariant(catalog, variant);
     const product = maps.products.get(variant.finished_product_id);
     const sourceLabel = variant.identity_basis === 'reference_base' && variant.internal_production_enabled
-      ? 'produção interna artesanal'
-      : 'comprada pronta';
+      ? 'prestador'
+      : 'comprar pronto';
     return includesSearch(search, identity.typeName, identity.measureName, identity.baseName, identity.colorName, product?.sku, variant.status, sourceLabel);
   });
 
@@ -1644,7 +1644,7 @@ function VariantsTab({
         <Package className="h-4 w-4" />
         <AlertTitle>Defina a modalidade da tira no estoque</AlertTitle>
         <AlertDescription>
-          Produção interna (artesanal) debita o material-base e gera a tira pronta. Comprada pronta, como STRASS, movimenta diretamente o SKU acabado e não usa rendimento de napa.
+          Prestador: a napa-base vai ao prestador, que devolve a tira pronta (a fábrica não corta tira). Comprar pronto, como STRASS, movimenta diretamente o SKU acabado e não usa rendimento de napa.
         </AlertDescription>
       </Alert>
 
@@ -1668,7 +1668,7 @@ function VariantsTab({
                   <div className="flex flex-col items-end gap-1.5">
                     <StrapStatusBadge status={variant.status} />
                     <Badge variant={internallyProduced ? 'default' : 'secondary'}>
-                      {internallyProduced ? 'Produção interna' : 'Comprada pronta'}
+                      {internallyProduced ? 'Prestador' : 'Comprar pronto'}
                     </Badge>
                   </div>
                 </div>
@@ -1790,8 +1790,8 @@ function DemandsTab({
           <SelectTrigger className="w-full sm:w-52"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todas as origens</SelectItem>
-            <SelectItem value="internal">Produção interna</SelectItem>
-            <SelectItem value="buy_ready">Compra pronta</SelectItem>
+            <SelectItem value="internal">Prestador</SelectItem>
+            <SelectItem value="buy_ready">Comprar pronto</SelectItem>
           </SelectContent>
         </Select>
       </div>

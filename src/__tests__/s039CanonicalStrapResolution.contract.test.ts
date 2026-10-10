@@ -234,7 +234,7 @@ describe('S-039 — resolução canônica das tiras', () => {
 
   it('materializa cor, variante e origem somente na transação atômica do save', () => {
     expect(itemForm).toContain('A identidade exata pela napa-base e a origem de estoque serão materializadas na mesma transação do salvamento.');
-    expect(itemForm).toContain('Produção interna automática');
+    expect(itemForm).toContain('Prestador · napa enviada ao prestador');
     expect(itemForm).not.toContain('usePrepareSaleOrderInternalStraps');
     expect(autoIntentMigration).toContain('public.prepare_sale_order_item_internal_straps(item.value - \'id\')');
     expect(autoIntentMigration).toContain('public.create_sale_order_atomic_pre_05500(');
@@ -258,7 +258,7 @@ describe('S-039 — resolução canônica das tiras', () => {
     expect(itemForm).toContain('.some((color) => color.id === canonical.id)');
     expect(itemForm).toContain('return { ...strap, color: canonical.name, color_id: canonical.id }');
     expect(itemForm).toContain('cor do cabedal');
-    expect(itemForm).toContain('Comprada pronta · origem fixa');
+    expect(itemForm).toContain('Comprar pronto · origem fixa');
     expect(itemForm).toContain('Object.entries(candidate).every(');
     expect(itemForm).not.toContain('JSON.stringify(current) === JSON.stringify(candidate)');
   });

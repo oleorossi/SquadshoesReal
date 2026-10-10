@@ -134,7 +134,7 @@ describe('R-Consumo · PV-00224 (DÁLIA, 12 pares, 4 linhas Fazer, rendimento 70
       expect(row.totalQuantity).toBeCloseTo(expectedMeters[index], 6);
       expect(row.productUnit).toBe('m');
       expect(row.color).toBe('DÁLIA');
-      expect(row.materialName).toBe(`Fazer · ${LABELS[index]}`);
+      expect(row.materialName).toBe(`Prestador · ${LABELS[index]}`);
       expect(row.strap.origin).toBe('fazer');
       expect(row.strap.pairs).toBe(12);
       expect(row.strap.toMakeM).toBeCloseTo(expectedMeters[index], 6);
@@ -188,7 +188,7 @@ describe('R-Consumo · PV-00224 (DÁLIA, 12 pares, 4 linhas Fazer, rendimento 70
       rows, artisanalStrapRows, title: 'PV-00224', generatedAt: new Date('2026-10-10T12:00:00Z'),
     });
     expect(html).toContain('TIRA CHATA 8 mm · NAPA SOFT · DÁLIA');
-    expect(html).toContain('Fazer · TIRA 1');
+    expect(html).toContain('Prestador · TIRA 1');
     expect(html).toContain('6,24');
     expect(html).toContain('5,04');
     expect(html).toContain('12 pares');
@@ -334,7 +334,7 @@ describe('Comprar (buy_ready) e estoque de tira pronta (D15)', () => {
 
   it('Comprar não tem napa; total vai em “m de tira”; falta = só o que o estoque não cobre', () => {
     const [row] = strapRows(replaceWithCanonicalStrapRows([], ctx, [strass(2)], opts));
-    expect(row.materialName).toBe('Comprar');
+    expect(row.materialName).toBe('Comprar pronto');
     expect(row.artisanal).toBeUndefined();
     expect(row.strap).toMatchObject({ origin: 'comprar', napaM: null, fromStockM: 2 });
     expect(row.strap.toMakeM).toBeCloseTo(4.96, 9);
@@ -361,7 +361,7 @@ describe('Comprar (buy_ready) e estoque de tira pronta (D15)', () => {
     expect(tira1.strap).toMatchObject({ fromStockM: 4 });
     expect(tira1.strap.toMakeM).toBeCloseTo(2, 9);
     expect(tira1.strap.napaM).toBeCloseTo(2 / 70, 9);
-    expect(strapStockSplitText(tira1)).toBe('4,00 m do estoque · 2,00 m a fazer');
+    expect(strapStockSplitText(tira1)).toBe('4,00 m do estoque · 2,00 m pelo prestador');
     expect(tira2.strap.fromStockM).toBe(0);
     expect(tira2.strap.napaM).toBeCloseTo(6 / 70, 9);
 

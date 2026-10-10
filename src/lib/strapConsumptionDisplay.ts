@@ -6,11 +6,12 @@
  *
  * Regras:
  *  - quantidade da linha = metros de TIRA (total + por numeração) + pares;
- *  - napa (só Fazer) = metros a fazer ÷ rendimento, em texto separado — nunca
- *    soma com os metros de tira;
+ *  - napa (só Prestador) = metros pelo prestador ÷ rendimento, em texto
+ *    separado — nunca soma com os metros de tira. É a napa a ENVIAR ao
+ *    prestador (a fábrica não corta tira — Revisão 2, R1);
  *  - napa bloqueada (sem receita/rendimento) = “—” + motivo (D9);
- *  - estoque de tira pronta é consumido primeiro: “X m do estoque · Y m a
- *    fazer/comprar” (D15).
+ *  - estoque de tira pronta é consumido primeiro: “X m do estoque · Y m pelo
+ *    prestador / a comprar” (D15).
  */
 import { normalizeBaseFamilyName } from '@/lib/baseMaterialTotal';
 import { formatQty } from '@/lib/consumptionFormat';
@@ -52,11 +53,11 @@ export function strapSizeMetersText(row: StrapRow): string | null {
   return entries.map((entry) => `${entry.size}: ${formatQty(entry.meters, 'm')} m`).join(' · ');
 }
 
-/** "X m do estoque · Y m a fazer|comprar" — só quando há tira pronta em estoque (D15). */
+/** "X m do estoque · Y m pelo prestador|a comprar" — só quando há tira pronta em estoque (D15). */
 export function strapStockSplitText(row: StrapRow): string | null {
   const strap = row.strap;
   if (!strap || !(strap.fromStockM > 0)) return null;
-  const verb = strap.origin === 'comprar' ? 'a comprar' : 'a fazer';
+  const verb = strap.origin === 'comprar' ? 'a comprar' : 'pelo prestador';
   return `${formatQty(strap.fromStockM, 'm')} m do estoque · ${formatQty(strap.toMakeM, 'm')} m ${verb}`;
 }
 
@@ -66,7 +67,8 @@ export type StrapNapaDisplay =
   | { kind: 'covered'; text: string };
 
 /**
- * Napa da tira Fazer. Null para Comprar/origem pendente (sem napa).
+ * Napa a enviar ao prestador (tira de origem Prestador). Null para Comprar
+ * pronto/origem pendente (sem napa).
  * Bloqueada (D9): napa “—” com o motivo — nunca um número.
  */
 export function strapNapaDisplay(row: StrapRow): StrapNapaDisplay | null {
@@ -80,11 +82,11 @@ export function strapNapaDisplay(row: StrapRow): StrapNapaDisplay | null {
   }
   const napaM = Number(artisanal.baseQty) || 0;
   if (!(napaM > 0)) {
-    return { kind: 'covered', text: 'coberta pelo estoque de tira pronta — sem napa a cortar' };
+    return { kind: 'covered', text: 'coberta pelo estoque de tira pronta — sem napa a enviar ao prestador' };
   }
   const yieldM = Number(artisanal.yieldPerMeter) || 0;
   const yieldText = yieldM > 0
     ? ` (1 m napa → ${yieldM.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} m tira)`
     : '';
-  return { kind: 'napa', text: `≈ ${formatNapaMeters(napaM)} m ${base}${yieldText}`, napaM };
+  return { kind: 'napa', text: `enviar ao prestador ≈ ${formatNapaMeters(napaM)} m ${base}${yieldText}`, napaM };
 }

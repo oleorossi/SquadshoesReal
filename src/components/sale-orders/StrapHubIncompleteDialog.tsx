@@ -122,7 +122,7 @@ export default function StrapHubIncompleteDialog({
     }
     for (const draft of drafts) {
       if (draft.needsArtesanal && !(draft.precoArtesanalPerM > 0)) {
-        setValidationError(`${draft.labels[0] || draft.displayName}: informe o preço artesanal (R$/m).`);
+        setValidationError(`${draft.labels[0] || draft.displayName}: informe a mão de obra do prestador (R$/m).`);
         return;
       }
       if (draft.needsPrestador && !(draft.precoPrestadorPerM > 0)) {
@@ -216,7 +216,7 @@ export default function StrapHubIncompleteDialog({
                 {draft.needsArtesanal && (
                   <div className="space-y-1.5">
                     <Label htmlFor={`hub-preco-artesanal-${draft.measureId}`}>
-                      Preço artesanal (R$/m) *
+                      Mão de obra do prestador (R$/m) *
                     </Label>
                     <NumberInput
                       id={`hub-preco-artesanal-${draft.measureId}`}
