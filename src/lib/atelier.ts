@@ -26,48 +26,57 @@ export const ATELIER_SECTOR_LABEL: Record<AtelierSector, string> = {
 
 export type AtelierPipelineStatus =
   | 'awaiting_cut'
-  | 'awaiting_debit'
-  | 'debited'
+  | 'cut'
   | 'sent_to_contractor'
   | 'received_at_factory'
   | 'cancelled';
 
+/** Ateliê v2: o corte é do LOTE, na fila do Ateliê, antes da OP. */
 export const ATELIER_PIPELINE_LABEL: Record<AtelierPipelineStatus, string> = {
-  awaiting_cut: 'Aguardando o corte',
-  awaiting_debit: 'Debitar',
-  debited: 'Debitado',
+  awaiting_cut: 'Aguardando corte',
+  cut: 'Cortado',
   sent_to_contractor: 'No prestador',
-  received_at_factory: 'Recebido',
+  received_at_factory: 'Voltou',
   cancelled: 'Cancelado',
 };
 
-/** Colunas da fila operacional (sem cancelled). */
+/** Colunas da fila (sem cancelled), na ordem do fluxo. */
 export const ATELIER_QUEUE_COLUMNS: AtelierPipelineStatus[] = [
   'awaiting_cut',
-  'awaiting_debit',
+  'cut',
   'sent_to_contractor',
   'received_at_factory',
 ];
 
-/** Espaço 1 da UI agrupa awaiting_debit; debitado ainda na fábrica fica no meio do fluxo de envio. */
-export function atelierQueueColumn(status: AtelierPipelineStatus): AtelierPipelineStatus {
-  if (status === 'debited') return 'awaiting_debit';
-  if (status === 'cancelled') return 'awaiting_cut';
-  return status;
+const PIPELINE_ORDER: Record<AtelierPipelineStatus, number> = {
+  awaiting_cut: 0,
+  cut: 1,
+  sent_to_contractor: 2,
+  received_at_factory: 3,
+  cancelled: 99,
+};
+
+/** Coluna do lote = etapa do job mais atrasado (o lote só avança inteiro). */
+export function atelierLotColumn(
+  lotStatus: 'open' | 'cut' | 'cancelled',
+  jobStatuses: AtelierPipelineStatus[],
+): AtelierPipelineStatus {
+  if (lotStatus === 'open') return 'awaiting_cut';
+  const live = jobStatuses.filter((s) => s !== 'cancelled');
+  if (live.length === 0) return 'cut';
+  return live.reduce((min, s) => (PIPELINE_ORDER[s] < PIPELINE_ORDER[min] ? s : min), live[0]);
 }
 
 export function atelierKanbanBadgeLabel(status: string | null | undefined): string | null {
   switch (status) {
     case 'awaiting_cut':
       return 'Ateliê · aguardando corte';
-    case 'awaiting_debit':
-      return 'Ateliê · debitar';
-    case 'debited':
-      return 'Ateliê · debitado';
+    case 'cut':
+      return 'Ateliê · cortado';
     case 'sent_to_contractor':
       return 'Ateliê · no prestador';
     case 'received_at_factory':
-      return 'Ateliê · recebido';
+      return 'Ateliê · voltou';
     default:
       return null;
   }

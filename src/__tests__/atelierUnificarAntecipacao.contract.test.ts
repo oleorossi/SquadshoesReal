@@ -47,12 +47,15 @@ describe('Ateliê unificar Antecipação — contratos', () => {
     );
   });
 
-  it('UI Ateliê tem aguardando corte e agenda', () => {
+  // Ateliê v2 (20270101032400): o corte saiu da OP e virou fila de LOTE —
+  // "Corte Cabedal da OP destrava Costura/Aviamento" deixou de existir.
+  it('UI Ateliê tem fila por lote, aguardando corte e agenda', () => {
     const page = readFileSync(PAGE, 'utf8');
-    expect(page).toContain('Aguardando o corte');
+    expect(page).toContain('Aguardando corte');
     expect(page).toContain('AgendaSettings');
-    expect(page).toContain('ATELIER_STREET_SECTORS');
-    expect(page).toContain('destrava Costura/Aviamento');
+    expect(page).toContain('useAtelierLots');
+    expect(page).toContain('Confirmar corte');
+    expect(page).not.toContain('destrava Costura/Aviamento');
   });
 
   it('helpers: street sectors, badge e factory gate de awaiting_cut', () => {

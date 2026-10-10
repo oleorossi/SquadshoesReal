@@ -1,7 +1,8 @@
 /**
- * Ateliê — cabedal complexo (rua).
- * ?view=cadastro | fila  — cadastro de refs × setor + pipeline
- * Aguardando corte → Debitar → Enviado → Recebido.
+ * Ateliê — referências complexas preparadas antes da OP (specs/atelie-corte-antecipado.md).
+ * ?view=cadastro | fila
+ * Fila por LOTE (ref × cor, vários PVs): Aguardando corte → Cortado →
+ * No prestador → Voltou. O corte é aqui; a OP só nasce depois do retorno.
  */
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -30,25 +31,27 @@ import {
 import { EmptyState } from '@/components/ui/empty-state';
 import {
   ATELIER_PIPELINE_LABEL,
+  ATELIER_QUEUE_COLUMNS,
   ATELIER_SECTOR_LABEL,
   ATELIER_SECTORS,
-  ATELIER_STREET_SECTORS,
-  type AtelierPipelineStatus,
+  atelierLotColumn,
   type AtelierSector,
 } from '@/lib/atelier';
 import {
   useAddAtelierReference,
   useAtelierCatalog,
-  useAtelierJobs,
+  useAtelierLotKitPreview,
+  useAtelierLots,
   useAtelierSettings,
-  useConfirmAtelierDebit,
+  useConfirmAtelierLotCut,
   useMarkAtelierReceived,
   useMarkAtelierSent,
   useReapplyAtelierEligibility,
   useRemoveAtelierReference,
   useTechnicalSheetsLiteForAtelier,
   useUpdateAtelierSettings,
-  type AtelierJobRow,
+  type AtelierLotJob,
+  type AtelierLotRow,
 } from '@/hooks/useAtelier';
 import { useContractors } from '@/hooks/useContractors';
 import { cn } from '@/lib/utils';
@@ -63,99 +66,98 @@ function sheetLabel(s: {
   return [s.code, s.model || s.name].filter(Boolean).join(' · ') || 'Sem código';
 }
 
-function formatTarget(start?: string | null, end?: string | null): string | null {
-  if (!start && !end) return null;
-  const fmt = (iso: string) => {
-    const [y, m, d] = iso.slice(0, 10).split('-');
-    return `${d}/${m}`;
-  };
-  if (start && end) return `${fmt(start)} → ${fmt(end)}`;
-  if (end) return `até ${fmt(end)}`;
-  return `desde ${fmt(start!)}`;
+function formatQty(n: number) {
+  return new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 }).format(n);
 }
 
-function JobCard({
+function formatDay(iso: string) {
+  const [, m, d] = iso.slice(0, 10).split('-');
+  return `${d}/${m}`;
+}
+
+function GradeStrip({ grade }: { grade: Record<string, number> }) {
+  const sizes = Object.keys(grade)
+    .filter((k) => Number(grade[k]) > 0)
+    .sort((a, b) => parseFloat(a) - parseFloat(b));
+  if (sizes.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-1" aria-label="Grade do lote">
+      {sizes.map((size) => (
+        <span
+          key={size}
+          className="inline-flex items-baseline gap-1 rounded border border-border/70 px-1.5 py-0.5 font-mono text-[11px]"
+        >
+          <span className="text-muted-foreground">{size}</span>
+          <span className="font-semibold tabular-nums text-foreground">{formatQty(Number(grade[size]))}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/** Kit antes do corte: o que vai sair do estoque e onde falta. */
+function KitPreview({ lotId }: { lotId: string }) {
+  const { data: kit = [], isLoading, isError } = useAtelierLotKitPreview(lotId);
+  if (isLoading) return <p className="text-xs text-muted-foreground">Calculando o kit…</p>;
+  if (isError) return <p className="text-xs text-destructive">Não foi possível calcular o kit.</p>;
+  if (kit.length === 0) {
+    return <p className="text-xs text-muted-foreground">Sem material no kit — o corte só registra a etapa.</p>;
+  }
+  return (
+    <ul className="space-y-0.5 text-xs">
+      {kit.map((k) => {
+        const short = Number(k.available) < Number(k.required);
+        return (
+          <li key={k.product_id} className="flex items-baseline justify-between gap-2">
+            <span className="min-w-0 truncate text-foreground">
+              {k.product_name}
+              <span className="ml-1 text-muted-foreground">· {k.component}</span>
+            </span>
+            <span
+              className={cn(
+                'shrink-0 font-mono tabular-nums',
+                short ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground',
+              )}
+            >
+              {formatQty(Number(k.required))} {k.unit ?? ''}
+              {short ? ` (tem ${formatQty(Number(k.available))})` : ''}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function JobRow({
   job,
-  onDebit,
+  contractors,
   onSend,
   onReceive,
-  debiting,
-  sending,
-  receiving,
-  contractors,
+  busy,
 }: {
-  job: AtelierJobRow;
-  onDebit: () => void;
-  onSend: (contractorId?: string) => void;
-  onReceive: () => void;
-  debiting?: boolean;
-  sending?: boolean;
-  receiving?: boolean;
+  job: AtelierLotJob;
   contractors: { id: string; name: string }[];
+  onSend: (contractorId: string) => void;
+  onReceive: () => void;
+  busy: boolean;
 }) {
   const [contractorId, setContractorId] = useState<string>('');
-  const st = job.pipeline_status;
-  const targetLabel = formatTarget(job.target_start, job.target_end);
-
   return (
-    <div className="rounded-lg border border-border/70 bg-card p-3 space-y-2">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-            {job.sale_orders?.order_number ?? 'PV'} · {ATELIER_SECTOR_LABEL[job.sector]}
-          </p>
-          <p className="font-display text-base leading-tight text-foreground truncate">
-            {job.reference_code ?? '—'}
-            {job.color ? (
-              <span className="ml-1.5 text-sm font-sans text-muted-foreground">{job.color}</span>
-            ) : null}
-          </p>
-          <p className="text-xs text-muted-foreground truncate">
-            {job.sale_orders?.client_name || 'Cliente'} · {Number(job.pairs)} pares
-            {job.ready_date ? ` · pronto ${job.ready_date}` : ''}
-          </p>
-          {targetLabel ? (
-            <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">
-              Agenda {targetLabel}
-            </p>
-          ) : null}
-          {job.atelier_service_number ? (
-            <p className="mt-1 font-mono text-[11px] text-primary">{job.atelier_service_number}</p>
-          ) : null}
-        </div>
-        <span
-          className={cn(
-            'shrink-0 rounded-md px-2 py-0.5 text-[10px] font-medium',
-            st === 'awaiting_cut' && 'bg-muted text-muted-foreground',
-            st === 'awaiting_debit' && 'bg-amber-500/10 text-amber-700 dark:text-amber-400',
-            st === 'debited' && 'bg-muted text-foreground',
-            st === 'sent_to_contractor' && 'bg-primary/10 text-primary',
-            st === 'received_at_factory' && 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
-          )}
-        >
-          {ATELIER_PIPELINE_LABEL[st]}
+    <div className="space-y-1.5 border-t border-border/60 pt-2">
+      <div className="flex items-baseline justify-between gap-2 text-xs">
+        <span className="font-medium text-foreground">
+          {ATELIER_SECTOR_LABEL[job.sector]} · {job.order_number}
+        </span>
+        <span className="text-muted-foreground">
+          {Number(job.pairs)} pares · {ATELIER_PIPELINE_LABEL[job.pipeline_status]}
         </span>
       </div>
-
-      {st === 'awaiting_cut' && (
-        <p className="text-xs text-muted-foreground">
-          Aparece na fila; as seleções liberam quando <strong className="font-medium text-foreground">Corte Cabedal</strong> da
-          OP for concluído no Kanban.
-        </p>
-      )}
-
-      {st === 'awaiting_debit' && (
-        <Button size="sm" className="w-full h-8" onClick={onDebit} disabled={debiting}>
-          {debiting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Scissors className="h-3.5 w-3.5" />}
-          Confirmar débito
-        </Button>
-      )}
-
-      {st === 'debited' && (
-        <div className="flex flex-col gap-1.5">
+      {job.pipeline_status === 'cut' && (
+        <div className="flex gap-1.5">
           <Select value={contractorId || undefined} onValueChange={setContractorId}>
-            <SelectTrigger className="h-8 text-xs">
-              <SelectValue placeholder="Prestador (opcional)" />
+            <SelectTrigger className="h-8 flex-1 text-xs" aria-label="Prestador">
+              <SelectValue placeholder="Prestador" />
             </SelectTrigger>
             <SelectContent>
               {contractors.map((c) => (
@@ -165,25 +167,106 @@ function JobCard({
               ))}
             </SelectContent>
           </Select>
+          <Button size="sm" className="h-8" disabled={busy || !contractorId} onClick={() => onSend(contractorId)}>
+            <Truck className="h-3.5 w-3.5" />
+            Enviar
+          </Button>
+        </div>
+      )}
+      {job.pipeline_status === 'sent_to_contractor' && (
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[11px] text-muted-foreground">
+            {job.contractor_name ?? 'Prestador'}
+            {job.atelier_service_number ? ` · ${job.atelier_service_number}` : ''}
+          </span>
+          <Button size="sm" variant="outline" className="h-8" disabled={busy} onClick={onReceive}>
+            <Warehouse className="h-3.5 w-3.5" />
+            Voltou
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LotCard({ lot, contractors }: { lot: AtelierLotRow; contractors: { id: string; name: string }[] }) {
+  const cutMut = useConfirmAtelierLotCut();
+  const sendMut = useMarkAtelierSent();
+  const receiveMut = useMarkAtelierReceived();
+  const [showKit, setShowKit] = useState(false);
+  const pending = lot.debits.filter((d) => Number(d.pending_qty) > 0);
+  const clients = [...new Set(lot.orders.map((o) => o.client_name).filter(Boolean))];
+
+  return (
+    <article className="space-y-2 rounded-lg border border-border/70 bg-card p-3">
+      <header className="space-y-0.5">
+        <div className="flex items-baseline justify-between gap-2">
+          <h3 className="font-display text-base leading-tight text-foreground">
+            {lot.reference_code ?? '—'}
+            <span className="ml-1.5 font-sans text-sm text-muted-foreground">{lot.color ?? 'Sem cor'}</span>
+          </h3>
+          <span className="font-mono text-[11px] text-muted-foreground">{lot.lot_number}</span>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          <span className="font-semibold tabular-nums text-foreground">{Number(lot.pairs)} pares</span>
+          {' · '}
+          {lot.orders.map((o) => o.order_number).join(', ')}
+          {lot.min_ready_date ? ` · pronto até ${formatDay(lot.min_ready_date)}` : ''}
+        </p>
+        {clients.length > 0 && <p className="truncate text-[11px] text-muted-foreground">{clients.join(', ')}</p>}
+      </header>
+
+      <GradeStrip grade={lot.grade} />
+
+      {lot.status === 'open' && (
+        <div className="space-y-2">
+          {showKit ? (
+            <KitPreview lotId={lot.id} />
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowKit(true)}
+              className="text-xs font-medium text-foreground underline underline-offset-2 hover:text-primary"
+            >
+              Ver o kit de material
+            </button>
+          )}
           <Button
             size="sm"
-            className="w-full h-8"
-            onClick={() => onSend(contractorId || undefined)}
-            disabled={sending}
+            className="h-8 w-full"
+            disabled={cutMut.isPending}
+            onClick={() => {
+              if (!window.confirm(`Confirmar o corte do ${lot.lot_number}? O material do kit sai do estoque agora.`)) {
+                return;
+              }
+              cutMut.mutate(lot.id);
+            }}
           >
-            {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Truck className="h-3.5 w-3.5" />}
-            Marcar enviado
+            {cutMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Scissors className="h-3.5 w-3.5" />}
+            Confirmar corte
           </Button>
         </div>
       )}
 
-      {st === 'sent_to_contractor' && (
-        <Button size="sm" className="w-full h-8" onClick={onReceive} disabled={receiving}>
-          {receiving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Warehouse className="h-3.5 w-3.5" />}
-          Recebido na fábrica
-        </Button>
+      {lot.status === 'cut' && pending.length > 0 && (
+        <p className="rounded-md bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-700 dark:text-amber-400">
+          Faltou no corte: {pending.map((d) => `${d.product_name} ${formatQty(Number(d.pending_qty))}`).join(', ')}.
+          A OP completa o que faltou.
+        </p>
       )}
-    </div>
+
+      {lot.status === 'cut' &&
+        lot.jobs.map((job) => (
+          <JobRow
+            key={job.id}
+            job={job}
+            contractors={contractors}
+            busy={sendMut.isPending || receiveMut.isPending}
+            onSend={(cid) => sendMut.mutate({ jobId: job.id, contractorId: cid })}
+            onReceive={() => receiveMut.mutate(job.id)}
+          />
+        ))}
+    </article>
   );
 }
 
@@ -219,7 +302,7 @@ function AgendaSettings() {
             Agenda · dias úteis antes dos cortes
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
-            Substitui a Antecipação de fábrica. Targets nas jobs usam a âncora de corte − N dias.
+            Quantos dias úteis antes da data do pedido o lote deve voltar do prestador.
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -302,16 +385,14 @@ function CadastroView() {
       <Panel className="p-4 space-y-3">
         {sector === 'corte_cabedal' ? (
           <p className="text-sm text-muted-foreground">
-            <strong className="text-foreground font-medium">Corte é interno</strong> (em casa). Cadastrar aqui marca a
-            referência como cabedal complexo; o corte roda no Kanban e{' '}
-            <strong className="text-foreground font-medium">destrava Costura/Aviamento</strong> na fila do Ateliê. Não
-            gera job de rua de corte.
+            O corte das referências do Ateliê já acontece na fila do Ateliê, por lote. Cadastrar aqui só marca a
+            referência — o que manda para o prestador é Costura ou Aviamento.
           </p>
         ) : (
           <p className="text-sm text-muted-foreground">
-            Cadastre só as referências de cabedal <strong className="text-foreground font-medium">complexo</strong> deste
-            setor. Após o PV ir para Aprovado, entram na fila como “Aguardando o corte”; as seleções liberam quando
-            Corte Cabedal da OP for concluído.
+            Cadastre as referências que fazem {ATELIER_SECTOR_LABEL[sector].toLowerCase()} no prestador. Quando o pedido
+            é aprovado, cada cor entra num lote da fila: corte aqui, envio, e a OP só nasce quando voltar. A ficha precisa
+            ter esse setor — o cadastro recusa se não tiver.
           </p>
         )}
         <div className="flex flex-col sm:flex-row gap-2">
@@ -399,7 +480,7 @@ function CadastroView() {
           onClick={() => {
             if (
               !window.confirm(
-                'Reaplicar Ateliê? Demandas abertas fora do cadastro serão canceladas e PVs Aprovado rematerializados.',
+                'Reaplicar Ateliê? Lotes ainda não cortados de referências que saíram do cadastro são cancelados, e pedidos Aprovados ou Em Produção sem OP entram na fila.',
               )
             ) {
               return;
@@ -418,56 +499,40 @@ function CadastroView() {
   );
 }
 
-function FilaView() {
-  const [sector, setSector] = useState<AtelierSector>('costura_cabedal');
-  const { data: jobs = [], isLoading, isError, refetch } = useAtelierJobs(sector);
-  const { data: contractors = [] } = useContractors();
-  const debitMut = useConfirmAtelierDebit();
-  const sendMut = useMarkAtelierSent();
-  const receiveMut = useMarkAtelierReceived();
+const COLUMN_TITLE: Record<string, string> = {
+  awaiting_cut: 'Aguardando corte',
+  cut: 'Cortado · enviar',
+  sent_to_contractor: 'No prestador',
+  received_at_factory: 'Voltou · libera a OP',
+};
 
-  const columns: { key: string; title: string; statuses: AtelierPipelineStatus[] }[] = [
-    {
-      key: 'awaiting_cut',
-      title: '0 · Aguardando o corte',
-      statuses: ['awaiting_cut'],
-    },
-    {
-      key: 'awaiting_debit',
-      title: '1 · Debitar / enviar',
-      statuses: ['awaiting_debit', 'debited'],
-    },
-    {
-      key: 'sent_to_contractor',
-      title: '2 · No prestador',
-      statuses: ['sent_to_contractor'],
-    },
-    {
-      key: 'received_at_factory',
-      title: '3 · Recebido',
-      statuses: ['received_at_factory'],
-    },
-  ];
+function FilaView() {
+  const { data: lots = [], isLoading, isError, refetch } = useAtelierLots();
+  const { data: contractors = [] } = useContractors();
 
   const contractorOpts = (contractors as { id: string; name: string }[]).map((c) => ({
     id: c.id,
     name: c.name,
   }));
 
+  const byColumn = useMemo(() => {
+    const m = new Map<string, AtelierLotRow[]>();
+    for (const lot of lots) {
+      const col = atelierLotColumn(lot.status, lot.jobs.map((j) => j.pipeline_status));
+      m.set(col, [...(m.get(col) ?? []), lot]);
+    }
+    return m;
+  }, [lots]);
+
   return (
     <div className="space-y-4">
       <AgendaSettings />
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <Tabs value={sector} onValueChange={(v) => setSector(v as AtelierSector)}>
-          <TabsList className="h-auto flex-wrap gap-1 bg-muted/50 p-0.5">
-            {ATELIER_STREET_SECTORS.map((s) => (
-              <TabsTrigger key={s} value={s} className="text-xs">
-                {ATELIER_SECTOR_LABEL[s]}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+        <p className="max-w-3xl text-sm text-muted-foreground">
+          Cada lote junta a mesma referência e cor de vários pedidos. Corte aqui, envie ao prestador e, quando voltar,
+          a OP nasce com essas etapas prontas.
+        </p>
         <Button variant="outline" size="sm" className="h-8" onClick={() => void refetch()}>
           Atualizar
         </Button>
@@ -479,43 +544,29 @@ function FilaView() {
         <div className="flex justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
-      ) : jobs.length === 0 ? (
+      ) : lots.length === 0 ? (
         <EmptyState
           icon={CheckCircle}
-          title="Fila vazia neste setor"
-          description="Cadastre referências complexas e aprove PVs — só o que está no Ateliê aparece aqui."
+          title="Nenhum lote no Ateliê"
+          description="Quando um pedido com referência do Ateliê for aprovado, cada cor entra num lote aqui."
         />
       ) : (
-        <div className="grid gap-3 xl:grid-cols-4 lg:grid-cols-2">
-          {columns.map((col) => {
-            const colJobs = jobs.filter((j) => col.statuses.includes(j.pipeline_status));
+        <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-4">
+          {ATELIER_QUEUE_COLUMNS.map((col) => {
+            const colLots = byColumn.get(col) ?? [];
             return (
-              <section key={col.key} className="space-y-2">
+              <section key={col} className="space-y-2" aria-labelledby={`col-${col}`}>
                 <header className="flex items-baseline justify-between px-0.5">
-                  <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    {col.title}
+                  <h2 id={`col-${col}`} className="text-sm font-semibold text-foreground">
+                    {COLUMN_TITLE[col]}
                   </h2>
-                  <span className="font-mono text-[11px] text-muted-foreground">{colJobs.length}</span>
+                  <span className="font-mono text-[11px] text-muted-foreground">{colLots.length}</span>
                 </header>
-                <div className="space-y-2 min-h-[120px] rounded-lg border border-dashed border-border/50 bg-muted/20 p-2">
-                  {colJobs.length === 0 ? (
+                <div className="min-h-[120px] space-y-2 rounded-lg border border-dashed border-border/50 bg-muted/20 p-2">
+                  {colLots.length === 0 ? (
                     <p className="py-6 text-center text-xs text-muted-foreground">Nada aqui</p>
                   ) : (
-                    colJobs.map((job) => (
-                      <JobCard
-                        key={job.id}
-                        job={job}
-                        contractors={contractorOpts}
-                        debiting={debitMut.isPending}
-                        sending={sendMut.isPending}
-                        receiving={receiveMut.isPending}
-                        onDebit={() => debitMut.mutate(job.id)}
-                        onSend={(cid) =>
-                          sendMut.mutate({ jobId: job.id, contractorId: cid })
-                        }
-                        onReceive={() => receiveMut.mutate(job.id)}
-                      />
-                    ))
+                    colLots.map((lot) => <LotCard key={lot.id} lot={lot} contractors={contractorOpts} />)
                   )}
                 </div>
               </section>
@@ -548,7 +599,7 @@ export default function Atelie() {
       <EditorialPageHeader
         sectionLabel="ENGENHARIA · ATELIÊ"
         title="Ateliê"
-        description="Cabedal complexo: corte interno destrava a fila; Costura e Aviamento vão pra rua com agenda própria (unificou a Antecipação)."
+        description="Referências complexas preparadas antes da produção: corte em lote por cor, envio ao prestador e retorno antes da OP."
         actions={
           <Button variant="outline" size="sm" className="h-9" asChild>
             <Link to="/terceirizados">
