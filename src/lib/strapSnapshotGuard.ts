@@ -142,9 +142,6 @@ export function listMissingTechnicalStrapSnapshots(
     const definitions = Array.isArray(reference.strap_colors) ? reference.strap_colors : [];
     const requiresStraps = reference.has_straps === true || definitions.length > 0;
     const snapshot = Array.isArray(item.strap_colors) ? item.strap_colors : [];
-    // #region agent log
-    fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'78dba0'},body:JSON.stringify({sessionId:'78dba0',runId:'post-fix',hypothesisId:'G',location:'strapSnapshotGuard.ts:listMissing',message:'strap snapshot guard eval',data:{index,referenceId:item.reference_id,has_straps:reference.has_straps,defLen:definitions.length,snapLen:snapshot.length,code:reference.code,name:reference.name,willBlock:requiresStraps&&snapshot.length===0},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     // Cabedal e tiras podem coexistir. A presença de cabedal não transforma
     // mais uma configuração real de tiras em dado órfão nem libera o PV sem o
     // snapshot técnico necessário pra reservar/produzir essas tiras.

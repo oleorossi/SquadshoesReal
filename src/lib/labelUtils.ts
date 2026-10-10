@@ -101,9 +101,6 @@ export async function resolveMaterialLabels(
     const candidates = liningCandidates(sheet);
     if (candidates.length === 0) {
       out.set(key, '');
-      // #region agent log
-      fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fe546d'},body:JSON.stringify({sessionId:'fe546d',runId:'post-fix',hypothesisId:'H3',location:'labelUtils.ts:emptyLining',message:'MATERIAL empty — no lining on sheet',data:{ref:c.referenceId,color:c.color},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       continue;
     }
     const color = (c.color || '').trim();
@@ -111,9 +108,6 @@ export async function resolveMaterialLabels(
       ? candidates[0]
       : (candidates.find(g => covers.get(`${g}|${color}`)) || candidates[0]);
     out.set(key, winner);
-    // #region agent log
-    fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fe546d'},body:JSON.stringify({sessionId:'fe546d',runId:'post-fix',hypothesisId:'H3',location:'labelUtils.ts:lining',message:'MATERIAL won by lining (forração)',data:{ref:c.referenceId,color,winner,candidates},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
   }
   return out;
 }

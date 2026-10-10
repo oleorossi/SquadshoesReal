@@ -1605,31 +1605,9 @@ export default function SaleOrderFormPanel({
   const packagingVolumeSummary = useMemo(() => {
     const mode = form.packaging_mode || 'individual_fitilho';
     let volumes = 0;
-    const debugItems: Array<Record<string, unknown>> = [];
     for (const item of items) {
       if (!item.reference_id || item.quantity <= 0) continue;
-      const gradeSum = Object.values(item.grade || {}).reduce((s: number, v) => s + (Number(v) || 0), 0);
       const capacity = capacityForItem(item, mode);
-      const pin = sheetPackagingConfigs.find(
-        (c) => c.sheet_id === item.reference_id && c.packaging_type === collectiveTypeForMode(mode),
-      );
-      const resolved = mode === 'colmeia'
-        ? resolveColmeiaByGrade({
-          gradePairsPerSheet: gradeSum,
-          solePinBoxId: pin?.box_type_id ?? null,
-          solePinPairs: pin?.pairs_per_box ?? null,
-          catalog: colmeiaCatalog as ColmeiaCatalogBox[],
-        })
-        : null;
-      debugItems.push({
-        ref: item.reference_id,
-        color: item.color,
-        quantity: item.quantity,
-        gradeSum,
-        capacity,
-        source: resolved?.source,
-        matchedName: resolved?.matchedName,
-      });
       if (isPairAsVolumeMode(mode)) {
         volumes += item.quantity;
         continue;
@@ -1651,11 +1629,8 @@ export default function SaleOrderFormPanel({
       pairsPerVolume: pairsPerVolumeForMode(mode, boxGroupingCapacity || undefined),
       volumes,
     };
-    // #region agent log
-    fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fe546d'},body:JSON.stringify({sessionId:'fe546d',runId:'post-fix',hypothesisId:'H4',location:'SaleOrderFormPanel.tsx:packagingVolumeSummary',message:'Colmeia capacity after grade-catalog match',data:{mode,boxGroupingCapacity,pairsPerVolume:summary.pairsPerVolume,volumes:summary.volumes,items:debugItems},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     return summary;
-  }, [form.packaging_mode, form.box_grouping, items, sheetPackagingConfigs, boxGroupingCapacity, capacityForItem, colmeiaCatalog]);
+  }, [form.packaging_mode, form.box_grouping, items, boxGroupingCapacity, capacityForItem]);
 
   // Sync de volta pro form quando user digita — assim o save (handleSubmit do
   // SaleOrderForm) já manda shipping_rate_per_pair no payload. Trigger no DB
