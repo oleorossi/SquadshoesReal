@@ -130,10 +130,10 @@ export function isAtelierFactoryReady(input: {
     return { ready: false, blockReason: 'Ateliê · aguardando retorno do cabedal' };
   }
   if (status === 'awaiting_cut') {
-    return { ready: false, blockReason: 'Ateliê · aguardando corte interno' };
+    return { ready: false, blockReason: 'Ateliê · aguardando corte do lote' };
   }
-  if (status === 'awaiting_debit' || status === 'debited') {
-    return { ready: false, blockReason: 'Ateliê · prep de cabedal pendente' };
+  if (status === 'cut') {
+    return { ready: false, blockReason: 'Ateliê · cortado, falta enviar ao prestador' };
   }
   if (!status) {
     return { ready: false, blockReason: 'Ateliê · sem job de prep' };

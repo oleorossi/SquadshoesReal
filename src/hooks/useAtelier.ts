@@ -7,8 +7,6 @@ export const atelierKeys = {
   all: ['atelier'] as const,
   catalog: (sector?: string | null) =>
     [...atelierKeys.all, 'catalog', sector ?? 'all'] as const,
-  jobs: (filters?: Record<string, string | null>) =>
-    [...atelierKeys.all, 'jobs', filters ?? {}] as const,
   settings: () => [...atelierKeys.all, 'settings'] as const,
   prepDebits: (saleOrderIds: string[]) =>
     [...atelierKeys.all, 'prep-debits', [...saleOrderIds].sort().join(',')] as const,
@@ -167,34 +165,6 @@ export interface AtelierCatalogRow {
   } | null;
 }
 
-export interface AtelierJobRow {
-  id: string;
-  demand_id: string;
-  sale_order_id: string;
-  sale_order_item_id: string | null;
-  technical_sheet_id: string | null;
-  sector: AtelierSector;
-  pairs: number;
-  color: string | null;
-  reference_code: string | null;
-  pipeline_status: AtelierPipelineStatus;
-  service_order_id: string | null;
-  atelier_service_number: string | null;
-  contractor_id: string | null;
-  debited_at: string | null;
-  sent_at: string | null;
-  received_at: string | null;
-  target_start?: string | null;
-  target_end?: string | null;
-  ready_date?: string | null;
-  sale_orders?: {
-    order_number: string;
-    client_name: string | null;
-    billing_week: string | null;
-  } | null;
-  contractors?: { id: string; name: string } | null;
-}
-
 export interface AtelierPrepDebitRow {
   id: string;
   sale_order_id: string;
@@ -204,6 +174,9 @@ export interface AtelierPrepDebitRow {
   sector: string | null;
   job_id: string | null;
   created_at: string;
+  lot_id?: string | null;
+  pending_qty?: number | null;
+  component?: string | null;
   products?: { id: string; name: string; unit: string | null } | null;
   cabedal_prep_jobs?: {
     id: string;
@@ -297,65 +270,55 @@ export function useRemoveAtelierReference() {
   });
 }
 
-export function useAtelierJobs(sector?: AtelierSector | null) {
-  return useQuery({
-    queryKey: atelierKeys.jobs({ sector: sector ?? null }),
-    queryFn: async () => {
-      let q = supabase
-        .from('cabedal_prep_jobs' as never)
-        .select(
-          `id, demand_id, sale_order_id, sale_order_item_id, technical_sheet_id,
-           sector, pairs, color, reference_code, pipeline_status, service_order_id,
-           atelier_service_number, contractor_id, debited_at, sent_at, received_at,
-           target_start, target_end,
-           sale_orders(order_number, client_name, billing_week),
-           contractors(id, name)`,
-        )
-        .neq('pipeline_status', 'cancelled')
-        .order('updated_at', { ascending: false })
-        .limit(400);
-      if (sector) q = q.eq('sector', sector);
-      const { data, error } = await q;
+/** Confirma o corte do LOTE: debita o kit de cada item (pendência se faltar). */
+export function useConfirmAtelierLotCut() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (lotId: string) => {
+      const { data, error } = await supabase.rpc(
+        'atelier_confirm_lot_cut' as never,
+        { p_lot_id: lotId } as never,
+      );
       if (error) throw error;
-      const jobs = (data ?? []) as unknown as AtelierJobRow[];
-      const demandIds = [...new Set(jobs.map((j) => j.demand_id).filter(Boolean))];
-      let readyByDemand = new Map<string, string | null>();
-      if (demandIds.length) {
-        const { data: demands } = await supabase
-          .from('cabedal_prep_demands' as never)
-          .select('id, ready_date')
-          .in('id', demandIds);
-        readyByDemand = new Map(
-          ((demands ?? []) as { id: string; ready_date: string | null }[]).map((d) => [
-            d.id,
-            d.ready_date,
-          ]),
-        );
-      }
-      return jobs.map((row) => ({
-        ...row,
-        ready_date: readyByDemand.get(row.demand_id) ?? null,
-      }));
+      return data as { lot_number?: string; items?: number; pending_lines?: number } | null;
     },
+    onSuccess: (data) => {
+      void qc.invalidateQueries({ queryKey: atelierKeys.all });
+      const pend = data?.pending_lines ?? 0;
+      if (pend > 0) {
+        toast.warning(
+          `${data?.lot_number ?? 'Lote'} cortado · ${pend} material(is) com falta — a OP completa o que faltou`,
+        );
+      } else {
+        toast.success(`${data?.lot_number ?? 'Lote'} cortado · material debitado`);
+      }
+    },
+    onError: (e: Error) => toast.error(e.message || 'Falha ao confirmar o corte'),
   });
 }
 
-export function useConfirmAtelierDebit() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (jobId: string) => {
+export interface AtelierKitLine {
+  product_id: string;
+  product_name: string;
+  unit: string | null;
+  component: string;
+  required: number;
+  available: number;
+}
+
+/** Kit do lote antes do corte: necessidade × estoque. */
+export function useAtelierLotKitPreview(lotId: string | null) {
+  return useQuery({
+    queryKey: [...atelierKeys.all, 'kit', lotId ?? ''] as const,
+    enabled: !!lotId,
+    queryFn: async () => {
       const { data, error } = await supabase.rpc(
-        'atelier_confirm_job_debit' as never,
-        { p_job_id: jobId } as never,
+        'atelier_lot_kit_preview' as never,
+        { p_lot_id: lotId } as never,
       );
       if (error) throw error;
-      return data;
+      return (data ?? []) as unknown as AtelierKitLine[];
     },
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: atelierKeys.all });
-      toast.success('Material debitado — prep de cabedal');
-    },
-    onError: (e: Error) => toast.error(e.message || 'Falha ao debitar'),
   });
 }
 
@@ -472,7 +435,7 @@ export function useReapplyAtelierEligibility() {
   });
 }
 
-/** Débitos Ateliê + jobs com status ≥ debited — para o bloco Consumo do PV. */
+/** Débitos do Ateliê (corte do lote) — para o bloco Consumo do PV. */
 export function useAtelierPrepConsumption(saleOrderIds: string[]) {
   const ids = saleOrderIds.filter(Boolean);
   return useQuery({
@@ -483,6 +446,7 @@ export function useAtelierPrepConsumption(saleOrderIds: string[]) {
         .from('cabedal_prep_stock_debits' as never)
         .select(
           `id, sale_order_id, sale_order_item_id, product_id, quantity, sector, job_id, created_at,
+           lot_id, pending_qty, component,
            products(id, name, unit),
            cabedal_prep_jobs(id, pipeline_status, sector, atelier_service_number, reference_code, color)`,
         )
@@ -490,10 +454,11 @@ export function useAtelierPrepConsumption(saleOrderIds: string[]) {
         .order('created_at', { ascending: false });
       if (error) throw error;
       const rows = (data ?? []) as unknown as AtelierPrepDebitRow[];
-      // Só exibe no Consumo após débito confirmado (job ≥ debited)
+      // Só o que saiu de fato: corte do lote (Ateliê v2) ou job legado já debitado.
       return rows.filter((r) => {
+        if (r.lot_id) return true;
         const st = r.cabedal_prep_jobs?.pipeline_status;
-        return st === 'debited' || st === 'sent_to_contractor' || st === 'received_at_factory';
+        return st === 'cut' || st === 'sent_to_contractor' || st === 'received_at_factory';
       });
     },
   });

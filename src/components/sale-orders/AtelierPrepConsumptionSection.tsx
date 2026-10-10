@@ -25,7 +25,7 @@ export default function AtelierPrepConsumptionSection({ saleOrderIds }: Props) {
             <Scissors className="h-4 w-4" />
           </div>
           <div className="min-w-0">
-            <h3 className="text-sm font-semibold text-foreground">Preparação de cabedal (rua)</h3>
+            <h3 className="text-sm font-semibold text-foreground">Ateliê · já debitado no corte</h3>
             <p className="text-xs text-muted-foreground">
               Já debitado no Ateliê — não entra de novo no consumo da produção.
             </p>
@@ -43,7 +43,7 @@ export default function AtelierPrepConsumptionSection({ saleOrderIds }: Props) {
         {rows.map((row) => {
           const job = row.cabedal_prep_jobs;
           const sector = (job?.sector || row.sector || 'corte_cabedal') as AtelierSector;
-          const status = job?.pipeline_status ?? 'debited';
+          const status = job?.pipeline_status ?? 'cut';
           return (
             <li key={row.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5">
               <div className="min-w-0">
@@ -51,7 +51,7 @@ export default function AtelierPrepConsumptionSection({ saleOrderIds }: Props) {
                   {row.products?.name ?? row.product_id}
                 </p>
                 <p className="text-[11px] text-muted-foreground">
-                  {ATELIER_SECTOR_LABEL[sector] ?? sector}
+                  {row.lot_id ? (row.component ?? 'Corte do lote') : (ATELIER_SECTOR_LABEL[sector] ?? sector)}
                   {job?.reference_code ? ` · ${job.reference_code}` : ''}
                   {job?.color ? ` · ${job.color}` : ''}
                   {job?.atelier_service_number ? ` · ${job.atelier_service_number}` : ''}
@@ -65,6 +65,11 @@ export default function AtelierPrepConsumptionSection({ saleOrderIds }: Props) {
                 <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
                   {ATELIER_PIPELINE_LABEL[status] ?? status}
                 </p>
+                {Number(row.pending_qty) > 0 && (
+                  <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                    faltou {formatNumber(Number(row.pending_qty))} — a OP completa
+                  </p>
+                )}
               </div>
             </li>
           );

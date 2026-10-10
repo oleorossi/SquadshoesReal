@@ -216,13 +216,15 @@ async function loadCorteLookahead(sector: CorteLookaheadSector): Promise<CorteLo
       .map((o) => o.sale_order_item_id as string),
   );
 
-  const { data: atelierRaw, error: atelierErr } = await supabase
-    .from('atelier_complex_references' as never)
-    .select('reference_id')
-    .eq('active', true);
+  // Só refs com setor de rua que a ficha sustenta (mesma regra do gate no banco).
+  const { data: atelierRaw, error: atelierErr } = await supabase.rpc(
+    'list_atelier_gated_reference_ids' as never,
+  );
   if (atelierErr) throw atelierErr;
   const atelierRefs = new Set(
-    ((atelierRaw ?? []) as { reference_id: string }[]).map((r) => r.reference_id).filter(Boolean),
+    ((atelierRaw ?? []) as unknown as (string | { list_atelier_gated_reference_ids: string })[])
+      .map((r) => (typeof r === 'string' ? r : r?.list_atelier_gated_reference_ids))
+      .filter(Boolean) as string[],
   );
 
   // Pares do PV inteiro (todos os itens) — score / % completo.
