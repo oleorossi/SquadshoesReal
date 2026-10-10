@@ -77,6 +77,55 @@ export function applyTechnicalStrapColorMode<T extends TechnicalStrapLineLike>(
 }
 
 /**
+ * "Tiras com cores combinadas" (multicolor) — grill 10/10/2026, Q23.
+ *
+ * DERIVADO, não coluna: o modelo é multicolor quando alguma tira interna
+ * (`reference_base`) está em `select_on_order`. Uma segunda fonte (flag no
+ * modelo) poderia divergir das políticas por linha, que são o que o PV e o
+ * writer realmente leem. Tira comprada pronta (`finished_product_group`, ex.:
+ * Strass) sempre escolhe cor no pedido e por isso NÃO conta: ela não torna o
+ * modelo multicolor nem é afetada pelo interruptor.
+ */
+export interface TechnicalStrapMulticolorSummary {
+  /** Tiras internas (as únicas cuja política o interruptor controla). */
+  configurable: number;
+  /** Quantas delas têm cor escolhida no pedido. */
+  selectOnOrder: number;
+  /** Interruptor ligado = ao menos uma tira interna com cor no pedido. */
+  multicolor: boolean;
+  /** Ligado, mas nem todas as tiras internas com cor no pedido. */
+  mixed: boolean;
+}
+
+export function technicalStrapMulticolorSummary(
+  lines: TechnicalStrapLineLike[] | null | undefined,
+): TechnicalStrapMulticolorSummary {
+  const internal = (lines || []).filter((line) => strapIdentityBasis(line) !== 'finished_product_group');
+  const selectOnOrder = internal.filter((line) => strapColorMode(line) === 'select_on_order').length;
+  return {
+    configurable: internal.length,
+    selectOnOrder,
+    multicolor: selectOnOrder > 0,
+    mixed: selectOnOrder > 0 && selectOnOrder < internal.length,
+  };
+}
+
+/**
+ * Liga = todas as tiras com cor no pedido; desliga = todas seguem a cor
+ * principal. Tira comprada pronta continua `select_on_order` (invariante de
+ * `applyTechnicalStrapColorMode`). Não mexe em UUID, rótulo, medida ou consumo.
+ */
+export function applyTechnicalStrapMulticolor<T extends TechnicalStrapLineLike>(
+  lines: T[] | null | undefined,
+  multicolor: boolean,
+): Array<T & { color_mode: StrapColorMode }> {
+  return (lines || []).map((line) => applyTechnicalStrapColorMode(
+    line,
+    multicolor ? 'select_on_order' : 'follow_main',
+  ));
+}
+
+/**
  * IDs ordinais legados (`"1"`, `"2"`...) não podem identificar uma contribuição
  * depois que a ficha é reordenada. Esta função preserva UUIDs existentes e atribui um
  * UUID novo apenas a linhas legadas/novas. O `id` visual acompanha o mesmo UUID para que

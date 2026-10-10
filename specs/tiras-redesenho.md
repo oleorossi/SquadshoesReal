@@ -227,3 +227,29 @@ no corte, não estendido.
 - [ ] Tabelas/telas removidas, export feito, 38 OS canceladas com confirmação.
 - [ ] `bunx tsc -p tsconfig.app.json --noEmit`, `bun run lint`, `bun run test` verdes.
 - [ ] Verificado no site de produção por agente de navegador (regra 7 do CLAUDE.md).
+
+## Cores combinadas por tira (grill 10/10/2026)
+
+| # | Decisão |
+|---|---|
+| Q20 | Linha da ficha marcada como produto acabado (`identity_basis = finished_product_group`, ex.: Strass) só oferece **Comprar pronto**; Prestador fica oculto. Já estava assim (`isPurchasedReadyStrap` → `allowPrestador=false`). |
+| Q21 | No Consumo, bloco **Setor de Tiras**: a ação "Planejar corte" passa a se chamar **"Planejar napa do prestador"**. A calculadora continua igual — ajuda a separar a napa a enviar. |
+| Q22 | Modelo multicolor no item do PV, em dois passos: (1) a cor principal (forração), como hoje; (2) a lista **"Cores das tiras"**, uma linha por tira com cor no pedido. |
+| Q23 | Ficha técnica ganha o interruptor **"Tiras com cores combinadas"** e o selo **Multicolor**. **Derivado, sem coluna nova:** ligado = alguma tira interna em `select_on_order`. Ligar põe todas em `select_on_order`; desligar, todas em `follow_main`; estado misto mostra "N de M tiras com cor no pedido". Tira comprada pronta sempre escolhe cor no pedido e não conta para o interruptor. |
+| Q24 | Cada tira com cor no pedido vem **pré-preenchida com a cor principal** quando essa cor existe para a tira; o usuário troca só as diferentes. Sem cor, o item não salva (guarda existente, nomeia a tira). |
+| Q25 | Trocar a cor principal depois: tiras ainda na cor **antiga** acompanham a nova (ou ficam vazias se a nova não existir para a tira); as trocadas à mão ficam, com aviso "N tiras mantiveram a cor escolhida". |
+| Q26 | Opções de cor de cada tira = só as cores existentes para aquela tira no catálogo, com "Cadastrar cor" em vez de bloquear (comportamento existente). |
+| Q27 | Copiar/duplicar PV leva a cor de cada tira (`copySaleOrderStraps.ts`), sem mudança — travado por teste multicolor. |
+
+Implementação: `technicalStrapMulticolorSummary` / `applyTechnicalStrapMulticolor`
+(`src/lib/technicalStrapLines.ts`) e `syncMulticolorStrapColors`
+(`src/lib/multicolorStrapColors.ts`), usado pelo PV desktop e pelo mobile.
+Tiras compradas prontas (Strass) **não** são pré-preenchidas: a cor delas é do
+grupo acabado, não da forração.
+
+⚠ Servidor: tira interna (Prestador) com cor no pedido aceita qualquer cor
+canônica, inclusive a principal. Mas uma linha `reference_base` com origem
+**Comprar pronto** (`pv_origem = sku_acabado`) ainda exige a **cor principal**
+(`tg_validate_sale_order_item_strap_color_alignment`, mig `20270101031900`) —
+num modelo multicolor, trocar a cor dessa tira faz o save falhar. Decisão
+pendente.

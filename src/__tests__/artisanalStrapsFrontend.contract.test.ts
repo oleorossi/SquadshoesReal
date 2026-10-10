@@ -301,7 +301,8 @@ describe('Tiras artesanais — contrato do frontend canônico', () => {
     expect(strapCutBlock).not.toContain('} cores');
     // Planejador de corte (só tela): default de rolo na sessão; a napa oficial
     // continua tira ÷ rendimento via aggregateStrapNapaSector — sem computeStrapRollCut.
-    expect(strapCutBlock).toContain('Planejar corte');
+    expect(strapCutBlock).toContain('Planejar napa do prestador');
+    expect(strapCutBlock).not.toContain('Planejar corte');
     expect(strapCutBlock).toContain('StrapCutPlannerPanel');
     expect(strapCutBlock).not.toContain('computeStrapRollCut');
     expect(pickingList).toContain('separação da napa-base');

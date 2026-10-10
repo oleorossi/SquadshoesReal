@@ -56,6 +56,7 @@ import { listMissingTechnicalStrapSnapshots } from '@/lib/strapSnapshotGuard';
 import { classifyMobileOrderError, submitMobileSaleOrderAtomic } from '@/lib/mobile/atomicSaleOrder';
 import { confirmMobileSaleOrder } from '@/lib/mobile/confirmSaleOrder';
 import { strapIdentityBasis } from '@/lib/strapIdentity';
+import { keptStrapColorsMessage, syncMulticolorStrapColors } from '@/lib/multicolorStrapColors';
 import { strapMaterialMode, validateStrapMaterialPolicy } from '@/lib/strapMaterialPolicy';
 import { reconcileEditableStrapSnapshots } from '@/lib/reconcileStrapSnapshots';
 import {
@@ -219,6 +220,53 @@ export function selectMobileStrapColor(
     } : {}),
   };
   return { ...item, strap_colors: straps, strap_sourcing: setStrapSourcing(item.strap_sourcing, lineId, null) };
+}
+
+/**
+ * Tiras com cores combinadas (grill 10/10/2026, Q24/Q25) — mesma regra do
+ * desktop (`syncMulticolorStrapColors`): tira interna `select_on_order` vazia
+ * vem com a cor principal quando ela existe para a tira; na troca da
+ * principal (`previousMainColor` informado), só as tiras ainda na cor antiga
+ * acompanham. As escolhidas à mão ficam e são contadas em `kept`.
+ */
+export function syncMobileMulticolorStraps(
+  item: DraftItem,
+  manifestEntry: MobileStrapManifestReference | null | undefined,
+  previousMainColor?: string,
+): { item: DraftItem; kept: number } {
+  const straps = item.strap_colors || [];
+  if (!manifestEntry || straps.length === 0) return { item, kept: 0 };
+  const manifestLineFor = (strap: (typeof straps)[number]) => {
+    const lineId = technicalStrapLineId(strap);
+    const manifestLine = lineId
+      ? manifestEntry.lines.find((line) => line.technical_strap_line_id === lineId)
+      : undefined;
+    return manifestLine && manifestLineMatchesSnapshot(strap, manifestLine) ? manifestLine : null;
+  };
+  const sync = syncMulticolorStrapColors(straps, {
+    isEligible: (strap) => strapIdentityBasis(strap) === 'reference_base'
+      && strapColorMode(strap) === 'select_on_order'
+      && !!manifestLineFor(strap),
+    allowedColors: (strap) => mobileStrapSelectedMaterial(manifestLineFor(strap), strap)?.allowed_colors || null,
+    nextMainColor: item.color,
+    ...(previousMainColor !== undefined ? { previousMainColor } : {}),
+  });
+  let next = item;
+  sync.changedIndexes.forEach((index) => {
+    const decided = sync.straps[index];
+    const lineId = technicalStrapLineId(decided);
+    if (!lineId) return;
+    if (decided.color_id) {
+      next = selectMobileStrapColor(next, lineId, decided.color_id, manifestEntry);
+      return;
+    }
+    const position = (next.strap_colors || []).findIndex((line) => technicalStrapLineId(line) === lineId);
+    if (position < 0) return;
+    const cleared = [...(next.strap_colors || [])];
+    cleared[position] = { ...cleared[position], color: '', color_id: null };
+    next = { ...next, strap_colors: cleared, strap_sourcing: setStrapSourcing(next.strap_sourcing, lineId, null) };
+  });
+  return { item: next, kept: sync.kept };
 }
 
 /** Retornos atrasados nunca mudam uma posição que trocou tipo, medida ou material. */
@@ -1760,11 +1808,24 @@ export default function MobileNewOrder() {
     const technicalLines = manifestEntry
       ? mobileTechnicalStrapLinesFromManifest(manifestEntry)
       : ensureTechnicalStrapLineIds(Array.isArray(reference.strap_colors) ? reference.strap_colors : []);
-    return alignMobileStrapsToMainColor(
+    const strapColors = alignMobileStrapsToMainColor(
       technicalLines,
       color,
       {},
     ).strapColors;
+    // Q24: tiras multicolor já nascem com a cor principal quando ela existe.
+    return syncMobileMulticolorStraps(
+      {
+        reference_id: reference.id,
+        reference_name: reference.name,
+        color,
+        grade: {},
+        unit_price: 0,
+        strap_colors: strapColors,
+        strap_sourcing: {},
+      } as DraftItem,
+      manifestEntry,
+    ).item.strap_colors || strapColors;
   };
 
   // ── Submit ──
@@ -2366,7 +2427,7 @@ export default function MobileNewOrder() {
                             color,
                             entry.strap_sourcing,
                           );
-                          return {
+                          const aligned: DraftItem = {
                             ...entry,
                             color,
                             image_url: image || undefined,
@@ -2375,6 +2436,19 @@ export default function MobileNewOrder() {
                             strap_colors: alignedStraps.strapColors,
                             strap_sourcing: alignedStraps.strapSourcing,
                           };
+                          // Q24/Q25: tiras multicolor na cor antiga acompanham a nova.
+                          const multicolor = syncMobileMulticolorStraps(
+                            aligned,
+                            findMobileStrapManifestReference(
+                              ownerScopedStrapManifest,
+                              entry.reference_id,
+                              entry.material_variant_id,
+                            ),
+                            entry.color || '',
+                          );
+                          const keptMessage = keptStrapColorsMessage(multicolor.kept);
+                          if (keptMessage) toast.info(keptMessage);
+                          return multicolor.item;
                         }));
                       }}
                     >

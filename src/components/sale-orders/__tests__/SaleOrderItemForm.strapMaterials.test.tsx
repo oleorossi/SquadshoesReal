@@ -158,7 +158,9 @@ describe('SaleOrderItemForm — material por posição', () => {
     expect(screen.queryByText('Distribuição por Numeração')).not.toBeInTheDocument();
     expect(screen.getAllByText('Grade').some((el) => el.tagName === 'SPAN')).toBe(true);
     expect(screen.queryByText('Materiais e cores das tiras')).not.toBeInTheDocument();
-    expect(screen.getByText('Tiras')).toBeInTheDocument();
+    // Tiras com cor no pedido = modelo multicolor (grill 10/10/2026, Q22).
+    expect(screen.getByText('Cores das tiras')).toBeInTheDocument();
+    expect(screen.getByText('Multicolor')).toBeInTheDocument();
     expect(screen.queryByText('Tipo da ficha:')).not.toBeInTheDocument();
   });
 
@@ -281,15 +283,17 @@ describe('SaleOrderItemForm — material por posição', () => {
     expect(view.current().strap_colors[0].base_group_id).toBe(COMPOSITE);
   });
 
-  it('limpa cor incompatível apenas da posição cujo material mudou', async () => {
+  it('troca cor incompatível pela cor principal só na posição cujo material mudou', async () => {
     const warnings = vi.spyOn(console, 'warn');
     const user = userEvent.setup();
     const view = mount(initialItem(GOLD));
     await user.click(screen.getByRole('combobox', { name: 'Material de TIRA 1' }));
     await user.click(screen.getByRole('option', { name: 'NAPA SOFT + MASSABOX' }));
     await waitFor(() => expect(view.current().strap_colors[0].base_group_id).toBe(COMPOSITE));
-    expect(view.current().strap_colors[0]).toMatchObject({ color_id: null, color: '' });
-    expect(screen.getByRole('combobox', { name: 'Cor de TIRA 1' })).toHaveTextContent('Selecione a cor canônica');
+    // OURO não existe no material novo: sai, e a tira volta pré-preenchida com
+    // a cor principal (PRETO existe no composto) — Q24 do grill 10/10/2026.
+    await waitFor(() => expect(view.current().strap_colors[0]).toMatchObject({ color_id: BLACK, color: 'PRETO' }));
+    expect(screen.getByRole('combobox', { name: 'Cor de TIRA 1' })).toHaveTextContent('PRETO');
     expect(screen.getByRole('combobox', { name: 'Cor de TIRA 1' })).not.toHaveTextContent('OURO');
     expect(view.current().strap_colors[1]).toMatchObject({ color_id: BLACK, base_group_id: SOFT });
     expect(view.current().strap_sourcing).not.toHaveProperty(LINE_A);
@@ -621,5 +625,46 @@ describe('SaleOrderItemForm — I703 com Overlock e Strass 6 mm', () => {
 
     expect(screen.getByText('Prestador · pendência')).toBeInTheDocument();
     expect(screen.queryByText('Prestador · cadastro pendente')).not.toBeInTheDocument();
+  });
+});
+
+describe('SaleOrderItemForm — tiras com cores combinadas (grill 10/10/2026)', () => {
+  function multicolorItem(): SaleOrderItemFormData {
+    const item = initialItem();
+    item.strap_colors = item.strap_colors.map((line, index) => (index === 0
+      ? { ...line, color: '', color_id: null }
+      : { ...line, color: 'OURO', color_id: GOLD }));
+    item.strap_sourcing = {};
+    return item;
+  }
+
+  it('pré-preenche a tira vazia com a cor principal e mantém a escolhida', async () => {
+    const view = mount(multicolorItem());
+    await waitFor(() => expect(view.current().strap_colors[0]).toMatchObject({ color_id: BLACK, color: 'PRETO' }));
+    expect(view.current().strap_colors[1]).toMatchObject({ color_id: GOLD, color: 'OURO' });
+    expect(screen.getByText(/Cada tira vem com a cor principal/)).toBeInTheDocument();
+  });
+
+  it('trocar a cor principal leva só as tiras que estavam na cor antiga', async () => {
+    const view = mount(multicolorItem());
+    await waitFor(() => expect(view.current().strap_colors[0].color_id).toBe(BLACK));
+    // PRETO → OURO: TIRA 1 (na cor antiga) acompanha. OURO → PRETO: as duas
+    // estão na cor antiga (OURO) e acompanham.
+    act(() => view.replace({ ...view.current(), color: 'OURO' }));
+    await waitFor(() => expect(view.current().strap_colors[0]).toMatchObject({ color_id: GOLD, color: 'OURO' }));
+    act(() => view.replace({ ...view.current(), color: 'PRETO' }));
+    await waitFor(() => expect(view.current().strap_colors[0]).toMatchObject({ color_id: BLACK, color: 'PRETO' }));
+    // TIRA 2 estava em OURO = cor antiga → também acompanha para PRETO.
+    expect(view.current().strap_colors[1]).toMatchObject({ color_id: BLACK, color: 'PRETO' });
+  });
+
+  it('avisa quantas tiras mantiveram a cor escolhida', async () => {
+    const view = mount(multicolorItem());
+    await waitFor(() => expect(view.current().strap_colors[0].color_id).toBe(BLACK));
+    act(() => view.replace({ ...view.current(), color: 'OURO' }));
+    await waitFor(() => expect(view.current().strap_colors[0].color_id).toBe(GOLD));
+    // TIRA 2 já era OURO e não estava na cor antiga (PRETO): conta como mantida.
+    expect(await screen.findByText('1 tira manteve a cor escolhida.')).toBeInTheDocument();
+    expect(view.current().strap_colors[1]).toMatchObject({ color_id: GOLD, color: 'OURO' });
   });
 });
