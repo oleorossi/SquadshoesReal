@@ -87,7 +87,7 @@ import { toast } from 'sonner';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Check, CaretUpDown as ChevronsUpDown, Paperclip, Handshake } from '@phosphor-icons/react';
-import { ReferenceTerceirizacoesPanel } from '@/components/technical-sheets/ReferenceTerceirizacoesPanel';
+import { AtelierReferencePanel } from '@/components/technical-sheets/AtelierReferencePanel';
 import { cn, getSoleModelName, parseSafeNumber, formatCurrency as globalFormatCurrency, safeToFixed } from '@/lib/utils';
 import { needsWidthForConversion, effectiveConversionFactor } from '@/lib/purchaseConversion';
 import { bomMaterialCostPerPair } from '@/lib/materialConsumption';
@@ -1381,9 +1381,9 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       description: 'Registre evidências do modelo e acompanhe as alterações que orientam a produção.',
     },
     terceirizados: {
-      eyebrow: 'COMPLEMENTO · TERCEIROS',
-      title: 'Defina os serviços terceirizáveis',
-      description: 'Indique quais etapas desta referência podem ser enviadas a prestadores quando necessário.',
+      eyebrow: 'COMPLEMENTO · ATELIÊ',
+      title: 'Decida o que esta referência faz fora da fábrica',
+      description: 'Marque os setores que vão para o prestador. O corte sai em lote por cor antes da OP.',
     },
   };
   const activeTabGuidance = tabGuidance[abaAtiva] ?? tabGuidance.id;
@@ -2234,7 +2234,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
             <History className="h-3.5 w-3.5" /> Documentação
           </TabsTrigger>
           <TabsTrigger value="terceirizados" className="gap-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-3 py-1.5">
-            <Handshake className="h-3.5 w-3.5" /> Terceirizados
+            <Handshake className="h-3.5 w-3.5" /> Ateliê
           </TabsTrigger>
         </TabsList>
 
@@ -4446,9 +4446,14 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
           <TechnicalReferencePanel sheetId={sheet.id} sheetName={sheet.name || ''} />
         </TabsContent>
 
-        {/* TAB: Terceirizados — serviços terceirizáveis desta referência */}
+        {/* TAB: Ateliê — setores que esta referência faz fora da fábrica.
+            Value 'terceirizados' mantido: links antigos (?tab=terceirizados) seguem válidos. */}
         <TabsContent value="terceirizados" className="mt-4 space-y-4">
-          <ReferenceTerceirizacoesPanel sheetId={sheet.id} />
+          <AtelierReferencePanel
+            sheet={sheet}
+            dirty={dirty}
+            onGoToMaterials={() => setAbaAtiva('engineering')}
+          />
         </TabsContent>
 
         <TabsContent value="ficha-corte" className="mt-0">
