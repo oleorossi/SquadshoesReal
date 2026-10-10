@@ -21,7 +21,6 @@ interface SolePOContext {
   soleProductColor: string;
   soleProductGroupId: string | null;
   currentStock: number;
-  minStock: number;
   unitPrice: number;
   unit: string;
   /** Déficit por numeração (chaves já no formato do stock_grade, ex. "33/34"). */
@@ -99,7 +98,7 @@ export async function autoCreateSolePO(params: {
 
   const { data: p } = await supabase
     .from('products')
-    .select('id, name, color, quantity, stock_grade, min_stock, unit_price, unit, group_id')
+    .select('id, name, color, quantity, stock_grade, unit_price, unit, group_id')
     .eq('id', soleProductId)
     .eq('active', true)
     .maybeSingle();
@@ -119,7 +118,6 @@ export async function autoCreateSolePO(params: {
   );
   const gradeSum = Object.values(stockGrade).reduce((s, v) => s + v, 0);
   const currentStock = gradeSum > 0 ? gradeSum : (Number(p.quantity) || 0);
-  const minStock = Number(p.min_stock) || 0;
   const unitPrice = Number(p.unit_price) || 0;
   const unit = p.unit || 'par';
 
@@ -149,7 +147,6 @@ export async function autoCreateSolePO(params: {
     soleProductColor,
     soleProductGroupId,
     currentStock,
-    minStock,
     unitPrice,
     unit,
     perSizeShortage,
@@ -200,7 +197,7 @@ export async function autoCreateSolePOFromShortfall(params: {
     // ── Step 2: produto que o DÉBITO resolveu (não re-resolve a cascata) ────
     const { data: p } = await supabase
       .from('products')
-      .select('id, name, color, group_id, quantity, stock_grade, min_stock, unit_price, unit')
+      .select('id, name, color, group_id, quantity, stock_grade, unit_price, unit')
       .eq('id', rsv.product_id)
       .maybeSingle();
     if (!p) continue;
@@ -235,7 +232,6 @@ export async function autoCreateSolePOFromShortfall(params: {
       soleProductColor: (p as any).color || '',
       soleProductGroupId: (p as any).group_id || null,
       currentStock: gradeSum > 0 ? gradeSum : (Number((p as any).quantity) || 0),
-      minStock: Number((p as any).min_stock) || 0,
       unitPrice: Number((p as any).unit_price) || 0,
       unit: (p as any).unit || 'par',
       perSizeShortage,
@@ -250,7 +246,7 @@ export async function autoCreateSolePOFromShortfall(params: {
 async function criarOuAcumularOCDeSolado(ctx: SolePOContext): Promise<SoleAutoPOResult | null> {
   const {
     orderId, orderRef, color, soleProductId, soleProductColor, soleProductGroupId,
-    currentStock, minStock, unitPrice, unit, perSizeShortage, poItemGrade,
+    currentStock, unitPrice, unit, perSizeShortage, poItemGrade,
   } = ctx;
 
   const orderQty = Object.values(perSizeShortage).reduce((s, v) => s + v, 0);
@@ -305,8 +301,9 @@ async function criarOuAcumularOCDeSolado(ctx: SolePOContext): Promise<SoleAutoPO
     unit_price: unitPrice,
     unit,
     current_stock: currentStock,
-    min_stock: minStock,
-    max_stock: minStock + orderQty,
+    // Estoque mínimo foi removido (specs/remover-estoque-minimo.md): o teto
+    // registrado no item é só o déficit do pedido.
+    max_stock: orderQty,
     grade: poItemGrade,
     color: soleProductColor || color || null,
   };

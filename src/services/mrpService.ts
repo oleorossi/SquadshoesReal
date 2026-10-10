@@ -16,7 +16,6 @@ export interface MrpNeed {
   lead_time_days: number;
   preferred_supplier_id: string | null;
   supplier_name: string | null;
-  min_stock: number;
   on_hand: number;
   reserved: number;
   available_now: number;

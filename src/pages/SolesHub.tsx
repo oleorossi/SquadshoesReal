@@ -68,7 +68,7 @@ function useSoleProducts() {
         // O detalhe edita todos estes campos. Uma projeção menor fazia o save
         // parecer perdido: a mutation gravava unit_price/fornecedor/fachete,
         // invalidava a query e o refetch devolvia esses valores como undefined.
-        .select('id, name, sku, category, color, quantity, unit, unit_price, min_stock, stock_grade, group_id, active, sole_classification, supplier_id, supplier_lead_time_days, lead_time_days, sole_moq, sole_material, heel_height, sole_technical_notes, is_fachetado, fachete_material_group_id, is_standard_sole_item, insole_mode')
+        .select('id, name, sku, category, color, quantity, unit, unit_price, stock_grade, group_id, active, sole_classification, supplier_id, supplier_lead_time_days, lead_time_days, sole_moq, sole_material, heel_height, sole_technical_notes, is_fachetado, fachete_material_group_id, is_standard_sole_item, insole_mode')
         .eq('active', true)
         .order('name');
       if (error) throw error;
@@ -155,7 +155,7 @@ export default function SolesHub() {
   // Prontidão de embalagem por MODELO de solado. Um modo sem caixa significa
   // que um PV naquele modo entra e NÃO debita caixa nenhuma — pendência que era
   // invisível até 02/08/2026 (zero movimentos 'Débito embalagem' na história do
-  // banco). Aqui ela aparece na própria lista, ao lado do "abaixo do mínimo".
+  // banco). Aqui ela aparece na própria lista.
   const { data: packagingGaps = new Map<string, string[]>() } = useQuery({
     queryKey: ['soles_without_packaging'],
     queryFn: async () => {
@@ -228,9 +228,8 @@ export default function SolesHub() {
   // Stats agregados pra header
   const stats = useMemo(() => {
     const totalPairs = soles.reduce((s, p) => s + gradeTotal(p.stock_grade), 0);
-    const lowStock = soles.filter(p => gradeTotal(p.stock_grade) < (p.min_stock || 0)).length;
     const pendingRegistration = soles.filter((p) => registrationGaps(p).length > 0).length;
-    return { totalSoles: soles.length, totalPairs, lowStock, pendingRegistration };
+    return { totalSoles: soles.length, totalPairs, pendingRegistration };
   }, [soles]);
 
   return (
@@ -250,14 +249,6 @@ export default function SolesHub() {
                 <p className="text-xs uppercase tracking-wider text-muted-foreground">Pares em estoque</p>
                 <p className="text-lg font-bold font-mono">{stats.totalPairs.toLocaleString('pt-BR')}</p>
               </Card>
-              {stats.lowStock > 0 && (
-                <Card className="px-3 py-2 border-amber-300/60 bg-amber-50/30 dark:bg-amber-950/20">
-                  <p className="text-xs uppercase tracking-wider text-amber-700 dark:text-amber-400 flex items-center gap-1">
-                    <AlertTriangle className="h-3 w-3" /> Abaixo do mínimo
-                  </p>
-                  <p className="text-lg font-bold font-mono text-amber-700 dark:text-amber-400">{stats.lowStock}</p>
-                </Card>
-              )}
               {stats.pendingRegistration > 0 && (
                 <Card className="px-3 py-2 border-border bg-muted/30">
                   <p className="text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-1">
@@ -509,7 +500,6 @@ function SoleListItem({ sole, selected, onSelect }: {
   onSelect: () => void;
 }) {
   const total = gradeTotal(sole.stock_grade);
-  const isLow = total < (sole.min_stock || 0);
   const isZero = total === 0;
   const colorLabel = sole.color?.trim() || '— sem cor';
   const gaps = registrationGaps(sole);
@@ -534,7 +524,7 @@ function SoleListItem({ sole, selected, onSelect }: {
           )}
           <span className={cn(
             'text-xs font-mono',
-            isZero ? 'text-rose-600' : isLow ? 'text-amber-600' : 'text-muted-foreground'
+            isZero ? 'text-rose-600' : 'text-muted-foreground'
           )}>
             {total} {total === 1 ? 'par' : 'pares'}
           </span>

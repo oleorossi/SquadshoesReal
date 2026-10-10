@@ -151,7 +151,6 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/silk-registrations': 'produtos',
   '/silks': 'produtos',
   '/consumo-base': 'produtos',
-  '/alertas-estoque': 'estoque',
   '/reservas-estoque': 'estoque',
   '/custos-insumos': 'estoque',
   '/imagens-cores': 'produtos',

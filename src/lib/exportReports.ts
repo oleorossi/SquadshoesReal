@@ -139,19 +139,20 @@ export async function exportProductionReportPDF(data: ReportData) {
 
 export async function exportStockPositionExcel(data: ReportData) {
   const XLSX = await loadXlsx();
-  const header = ['SKU', 'Nome', 'Grupo', 'Unidade', 'Estoque Atual', 'Estoque Mín.', 'Preço Unit. (R$)', 'Valor Total (R$)', 'Situação'];
+  // Estoque mínimo foi removido (specs/remover-estoque-minimo.md): sem coluna
+  // de mínimo e sem situação "CRÍTICO/BAIXO" derivada dele.
+  const header = ['SKU', 'Nome', 'Grupo', 'Unidade', 'Estoque Atual', 'Preço Unit. (R$)', 'Valor Total (R$)', 'Situação'];
   const rows = data.products
     .filter(p => p.active !== false)
     .map(p => {
       const qty = Number(p.quantity) || 0;
-      const min = Number(p.min_stock) || 0;
       const price = Number(p.unit_price) || 0;
-      const situation = qty === 0 ? 'SEM ESTOQUE' : qty <= min ? 'CRÍTICO' : qty <= min * 1.5 ? 'BAIXO' : 'OK';
-      return [p.sku || '', p.name || '', (p as any).group_name || '', p.unit || '', qty, min, price, qty * price, situation];
+      const situation = qty <= 0 ? 'SEM ESTOQUE' : 'OK';
+      return [p.sku || '', p.name || '', (p as any).group_name || '', p.unit || '', qty, price, qty * price, situation];
     });
-  const totalValue = rows.reduce((s, r) => s + (r[7] as number), 0);
-  const totalRow = ['', '', '', 'TOTAL', '', '', '', totalValue, ''];
-  const ws = sheet(XLSX, [header, ...rows, totalRow], [14, 30, 20, 8, 14, 14, 16, 16, 12]);
+  const totalValue = rows.reduce((s, r) => s + (r[6] as number), 0);
+  const totalRow = ['', '', '', 'TOTAL', '', '', totalValue, ''];
+  const ws = sheet(XLSX, [header, ...rows, totalRow], [14, 30, 20, 8, 14, 16, 16, 12]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Posição Estoque');
   downloadXlsx(XLSX, wb, `posicao_estoque_${ts()}.xlsx`);
@@ -162,12 +163,11 @@ export async function exportStockPositionPDF(data: ReportData) {
   const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
   const activeProducts = data.products.filter(p => p.active !== false);
   const y = pdfHeader(doc, 'Posição de Estoque', `${activeProducts.length} itens ativos  •  Gerado em ${new Date().toLocaleString('pt-BR')}`);
-  pdfTable(autoTable, doc, y, ['SKU', 'Nome', 'Unidade', 'Estoque', 'Mínimo', 'Preço Unit.', 'Valor Total', 'Situação'],
+  pdfTable(autoTable, doc, y, ['SKU', 'Nome', 'Unidade', 'Estoque', 'Preço Unit.', 'Valor Total', 'Situação'],
     activeProducts.map(p => {
       const qty = Number(p.quantity) || 0;
-      const min = Number(p.min_stock) || 0;
-      const situation = qty === 0 ? 'SEM ESTOQUE' : qty <= min ? 'CRÍTICO' : 'OK';
-      return [p.sku || '', p.name || '', p.unit || '', qty, min, fmtBRL(Number(p.unit_price) || 0), fmtBRL(qty * (Number(p.unit_price) || 0)), situation];
+      const situation = qty <= 0 ? 'SEM ESTOQUE' : 'OK';
+      return [p.sku || '', p.name || '', p.unit || '', qty, fmtBRL(Number(p.unit_price) || 0), fmtBRL(qty * (Number(p.unit_price) || 0)), situation];
     }));
   const { deliverJsPdf } = await import('@/lib/pdfDelivery');
   deliverJsPdf(doc, `posicao_estoque_${ts()}.pdf`, 'Posição de estoque');
@@ -267,11 +267,11 @@ export async function exportDashboardExcel(data: ReportData) {
 
   const stockRows = data.products.filter(p => p.active !== false).map(p => [
     p.sku || '', p.name || '', p.unit || '',
-    Number(p.quantity) || 0, Number(p.min_stock) || 0,
+    Number(p.quantity) || 0,
     Number(p.unit_price) || 0,
     (Number(p.quantity) || 0) * (Number(p.unit_price) || 0),
   ]);
-  XLSX.utils.book_append_sheet(wb, sheet(XLSX, [['SKU', 'Nome', 'Unidade', 'Estoque', 'Mínimo', 'Preço Unit. (R$)', 'Valor Total (R$)'], ...stockRows], [14, 30, 8, 12, 12, 16, 16]), 'Estoque');
+  XLSX.utils.book_append_sheet(wb, sheet(XLSX, [['SKU', 'Nome', 'Unidade', 'Estoque', 'Preço Unit. (R$)', 'Valor Total (R$)'], ...stockRows], [14, 30, 8, 12, 16, 16]), 'Estoque');
 
   downloadXlsx(XLSX, wb, `dashboard_completo_${ts()}.xlsx`);
 }
@@ -311,17 +311,18 @@ export async function exportDashboardPDF(data: ReportData, metrics: { ordersToda
       fmtBRL(Number(s.total) || 0), s.status || '',
     ]));
 
-  const lowStock = data.products.filter(p => p.active !== false && Number(p.quantity) <= Number(p.min_stock));
-  if (lowStock.length > 0) {
+  // Sem estoque mínimo (specs/remover-estoque-minimo.md) o único alerta
+  // objetivo de estoque é saldo zerado.
+  const zeroStock = data.products.filter(p => p.active !== false && (Number(p.quantity) || 0) <= 0);
+  if (zeroStock.length > 0) {
     doc.addPage();
     doc.setFontSize(11);
     doc.setTextColor(30, 41, 59);
-    doc.text('Alertas de Estoque Crítico', 40, 40);
-    pdfTable(autoTable, doc, 55, ['SKU', 'Nome', 'Unidade', 'Estoque', 'Mínimo', 'Situação'],
-      lowStock.slice(0, 30).map(p => [
+    doc.text('Itens sem Estoque', 40, 40);
+    pdfTable(autoTable, doc, 55, ['SKU', 'Nome', 'Unidade', 'Estoque'],
+      zeroStock.slice(0, 30).map(p => [
         p.sku || '', p.name || '', p.unit || '',
-        Number(p.quantity) || 0, Number(p.min_stock) || 0,
-        Number(p.quantity) === 0 ? 'SEM ESTOQUE' : 'CRÍTICO',
+        Number(p.quantity) || 0,
       ]));
   }
 

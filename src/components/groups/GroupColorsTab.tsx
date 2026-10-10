@@ -422,7 +422,7 @@ export default function GroupColorsTab({ groupId, groupName, products, groupWidt
               <TableHead className="text-right text-xs">Bruto</TableHead>
               <TableHead className="text-right text-xs">Reservado</TableHead>
               <TableHead className="text-right text-xs">Disponível</TableHead>
-              <TableHead className="text-right text-xs">Mínimo / status</TableHead>
+              <TableHead className="text-right text-xs">Status</TableHead>
               <TableHead className="text-right text-xs">Custo</TableHead>
               <TableHead className="text-xs text-right">Largura</TableHead>
             </TableRow>
@@ -440,8 +440,6 @@ export default function GroupColorsTab({ groupId, groupName, products, groupWidt
               const quantity = Number(p.quantity || 0);
               const reserved = Number(p.reserved_stock || 0);
               const available = quantity - reserved;
-              const minimum = Number(p.min_stock || 0);
-              const belowMinimum = minimum > 0 && available < minimum;
               const hex = colorHexByName.get(norm(p.color || ''));
               return (
                 <TableRow key={p.id}>
@@ -460,9 +458,8 @@ export default function GroupColorsTab({ groupId, groupName, products, groupWidt
                   <TableCell className="text-right font-mono text-xs text-primary">{reserved.toLocaleString('pt-BR')}</TableCell>
                   <TableCell className={`text-right font-mono text-xs font-semibold ${available < 0 ? 'text-destructive' : ''}`}>{available.toLocaleString('pt-BR')}</TableCell>
                   <TableCell className="text-right text-xs">
-                    <span className="mr-2 font-mono text-muted-foreground">{minimum.toLocaleString('pt-BR')}</span>
-                    <Badge variant={!p.active ? 'outline' : belowMinimum ? 'warning-soft' : 'success-soft'} className="h-4 px-1 text-[8px]">
-                      {!p.active ? 'inativa' : belowMinimum ? 'repor' : 'normal'}
+                    <Badge variant={!p.active ? 'outline' : 'success-soft'} className="h-4 px-1 text-[8px]">
+                      {!p.active ? 'inativa' : 'ativa'}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right font-mono text-xs">{Number(p.unit_price || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 4 })}</TableCell>

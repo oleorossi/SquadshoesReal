@@ -336,7 +336,6 @@ export default function AddToStockDialog({ open, onOpenChange, items, invoiceSup
             location: newLocation || 'Almoxarifado A',
             quantity: createQty,
             unit_price: createPrice,
-            min_stock: 0,
             max_stock: 0,
             group_id: newGroupId || null,
             supplier_id: newSupplierId || null,

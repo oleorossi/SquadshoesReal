@@ -29,11 +29,11 @@ interface SoladoGradeDialogProps {
 
 /**
  * Resolve the saved size range for a sole variant.
- * Priority: stock_grade._size_from/_size_to → min_stock_grade._size_from/_size_to → infer from grade keys.
+ * Priority: stock_grade._size_from/_size_to → infer from grade keys.
  * Returns null if no range was ever saved.
  */
 function resolveSizeRange(product: Product): { from: number; to: number } | null {
-  const candidates = [product.stock_grade, product.min_stock_grade];
+  const candidates = [product.stock_grade];
   for (const data of candidates) {
     if (!data || typeof data !== 'object' || Array.isArray(data)) continue;
     const obj = data as Record<string, any>;

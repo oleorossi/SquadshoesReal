@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Factory,
@@ -12,7 +12,6 @@ import {
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { NumberInput } from '@/components/ui/number-input';
@@ -107,8 +106,6 @@ interface EditorForm {
   finishedProductId: string;
   productName: string;
   sku: string;
-  minStockM: number;
-  floorMode: ArtisanalStrapSourceMode;
   purchaseEnabled: boolean;
   supplierId: string;
   supplierColorCode: string;
@@ -146,8 +143,6 @@ const EMPTY_FORM: EditorForm = {
   finishedProductId: '',
   productName: '',
   sku: '',
-  minStockM: 0,
-  floorMode: 'internal',
   purchaseEnabled: false,
   supplierId: '',
   supplierColorCode: '',
@@ -181,24 +176,17 @@ function numberOrZero(value: unknown) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function mostFrequentMinStock(
-  catalog: ArtisanalStrapCatalog,
-  selectedMeasureId: string,
-  selectedBaseGroupId: string,
-  excludedVariantId?: string | null,
-): number | null {
-  if (!selectedMeasureId || !selectedBaseGroupId) return null;
-  const values = catalog.variants
-    .filter((item) => item.id !== excludedVariantId
-      && item.measure_id === selectedMeasureId
-      && item.base_group_id === selectedBaseGroupId)
-    .map((item) => Number(item.min_stock_m))
-    .filter(Number.isFinite);
-  if (values.length === 0) return null;
-  const counts = new Map<number, number>();
-  values.forEach((value) => counts.set(value, (counts.get(value) || 0) + 1));
-  return [...counts.entries()]
-    .sort(([valueA, countA], [valueB, countB]) => countB - countA || valueA - valueB)[0][0];
+/**
+ * `artisanal_strap_variants.min_stock_replenishment_mode` continua NOT NULL e
+ * guarda a ativação da variante (internal exige base/cor/receita vigentes;
+ * buy_ready exige cadastro comercial). Estoque mínimo foi removido
+ * (specs/remover-estoque-minimo.md), então o operador não escolhe mais a
+ * "origem da reposição do piso": o modo é derivado do que a variante sabe fazer.
+ */
+function deriveReplenishmentMode(form: Pick<EditorForm, 'internalProductionEnabled' | 'recipeId' | 'purchaseEnabled'>): ArtisanalStrapSourceMode {
+  if (!form.internalProductionEnabled) return 'buy_ready';
+  if (form.recipeId) return 'internal';
+  return form.purchaseEnabled ? 'buy_ready' : 'internal';
 }
 
 export function ArtisanalStrapEditor({
@@ -223,9 +211,6 @@ export function ArtisanalStrapEditor({
   const queryClient = useQueryClient();
   const [form, setForm] = useState<EditorForm>(EMPTY_FORM);
   const [validationError, setValidationError] = useState<string | null>(null);
-  const [minStockConfirmed, setMinStockConfirmed] = useState(false);
-  const [floorModeConfirmed, setFloorModeConfirmed] = useState(false);
-  const initIdentityKeyRef = useRef<string | null>(null);
   const saveBundle = useSaveArtisanalStrapBundle();
   const { data: suppliers = [] } = useSuppliers(open);
   const { data: contractors = [] } = useContractors();
@@ -234,12 +219,14 @@ export function ArtisanalStrapEditor({
     () => catalog.variants.find((item) => item.id === variantId),
     [catalog.variants, variantId],
   );
+  // Variante existente mantém o modo gravado: re-derivar ao editar poderia
+  // trocar internal↔buy_ready e esbarrar nas checagens de ativação.
+  const effectiveReplenishmentMode: ArtisanalStrapSourceMode =
+    (variant?.min_stock_replenishment_mode as ArtisanalStrapSourceMode | null | undefined)
+      || deriveReplenishmentMode(form);
 
   useEffect(() => {
     if (!open) {
-      initIdentityKeyRef.current = null;
-      setMinStockConfirmed(false);
-      setFloorModeConfirmed(false);
       setValidationError(null);
       return;
     }
@@ -274,30 +261,6 @@ export function ArtisanalStrapEditor({
       : latestRecipe;
     const hasYieldSuggestion = Number.isFinite(Number(suggestedYieldMPerM))
       && Number(suggestedYieldMPerM) > 0;
-    const selectedFloorMode = selectedInternalProductionEnabled
-      ? selectedVariant?.min_stock_replenishment_mode || 'internal'
-      : 'buy_ready';
-    const floorGroupId = selectedIdentityBasis === 'finished_product_group'
-      ? selectedIdentityGroupId
-      : selectedBaseId;
-    const suggestedFloor = mostFrequentMinStock(
-      catalog,
-      selectedMeasure?.id || '',
-      floorGroupId,
-      selectedVariant?.id,
-    );
-    const identityKey = [
-      selectedVariant?.id || '',
-      selectedIdentityBasis,
-      selectedMeasure?.id || '',
-      floorGroupId,
-      selectedColorId,
-      selectedProductId || '',
-      buyReadyReviewId || '',
-      mode,
-    ].join('|');
-    const identityChanged = initIdentityKeyRef.current !== identityKey;
-    initIdentityKeyRef.current = identityKey;
 
     setForm({
       ...EMPTY_FORM,
@@ -323,12 +286,7 @@ export function ArtisanalStrapEditor({
       finishedProductId: selectedProductId || '',
       productName: product?.name || '',
       sku: product?.sku || '',
-      minStockM: selectedVariant
-        ? numberOrZero(selectedVariant.min_stock_m)
-        : suggestedFloor ?? 0,
-      floorMode: selectedFloorMode,
       purchaseEnabled: !selectedInternalProductionEnabled
-        || selectedFloorMode === 'buy_ready'
         || Boolean(selectedVariant?.purchase_enabled),
       supplierId: product?.supplier_id || '',
       supplierColorCode: product?.supplier_color_code || '',
@@ -356,10 +314,6 @@ export function ArtisanalStrapEditor({
           : mode === 'create' ? 'Cadastro inicial da variante' : '',
     });
     setValidationError(null);
-    if (identityChanged) {
-      setMinStockConfirmed(Boolean(selectedVariant));
-      setFloorModeConfirmed(Boolean(selectedVariant) || !selectedInternalProductionEnabled);
-    }
   }, [open, variantId, identityBasis, measureId, baseGroupId, colorId, finishedProductId,
     buyReadyReviewId, suggestedRecipeId, suggestedYieldMPerM, mode, catalog]);
 
@@ -434,12 +388,6 @@ export function ArtisanalStrapEditor({
       product.group_id === group.id && product.active !== false && product.unit === 'm'
     )))
     .sort((left, right) => left.name.localeCompare(right.name, 'pt-BR'));
-  const minStockSuggestion = mostFrequentMinStock(
-    catalog,
-    form.measureId,
-    form.identityBasis === 'finished_product_group' ? form.identityGroupId : form.baseGroupId,
-    form.variantId,
-  );
   const currentRecipe = catalog.recipes.find((item) => item.id === form.recipeId);
   const widthProfile = catalog.width_profiles
     .filter((item) => item.base_group_id === form.baseGroupId && item.status === 'approved')
@@ -472,18 +420,6 @@ export function ArtisanalStrapEditor({
     setValidationError(null);
   };
 
-  const setFloorMode = (value: ArtisanalStrapSourceMode) => {
-    if (purchasedReady) return;
-    setForm((current) => ({
-      ...current,
-      floorMode: value,
-      purchaseEnabled: value === 'buy_ready' ? true : current.purchaseEnabled,
-      includeRecipe: value === 'internal' ? Boolean(current.recipeId) : current.includeRecipe,
-    }));
-    setFloorModeConfirmed(false);
-    setValidationError(null);
-  };
-
   const setIdentityBasis = (identityBasis: ArtisanalStrapIdentityBasis) => {
     const isFinishedProduct = identityBasis === 'finished_product_group';
     setForm((current) => ({
@@ -498,82 +434,12 @@ export function ArtisanalStrapEditor({
       sku: isFinishedProduct ? '' : current.sku,
       supplierId: isFinishedProduct ? '' : current.supplierId,
       supplierColorCode: '',
-      floorMode: isFinishedProduct ? 'buy_ready' : current.floorMode,
       purchaseEnabled: isFinishedProduct || current.purchaseEnabled,
       includeRecipe: isFinishedProduct ? false : current.includeRecipe,
       recipeId: isFinishedProduct ? '' : current.recipeId,
     }));
-    setFloorModeConfirmed(isFinishedProduct);
-    setMinStockConfirmed(false);
     setValidationError(null);
   };
-
-  const minStockFields = (
-    <>
-      <div className="space-y-1.5">
-        <Label htmlFor="strap-editor-min-stock">Estoque mínimo (piso de reposição) *</Label>
-        <NumberInput
-          id="strap-editor-min-stock"
-          value={form.minStockM}
-          onChange={(value) => {
-            setField('minStockM', value);
-            setMinStockConfirmed(false);
-          }}
-          unit="m"
-          disabled={readOnly}
-        />
-        <p className="text-xs text-muted-foreground">
-          Piso interno de reposição em metros. Não é a quantidade mínima de compra (MOQ).
-        </p>
-        {minStockSuggestion != null && !variant && (
-          <p className="text-xs text-muted-foreground">
-            Sugestão das variantes irmãs: <strong>{minStockSuggestion.toLocaleString('pt-BR')} m</strong>. Revise antes de confirmar.
-          </p>
-        )}
-        <label className="flex items-start gap-2 rounded-md border border-border p-2 text-xs">
-          <Checkbox
-            id="strap-min-stock-confirm"
-            checked={minStockConfirmed}
-            onCheckedChange={(checked) => {
-              setMinStockConfirmed(checked === true);
-              if (checked === true) setValidationError(null);
-            }}
-            disabled={readOnly}
-            aria-label="Confirmar estoque mínimo"
-          />
-          <span>Revisei e confirmo este estoque mínimo, inclusive se o valor for zero.</span>
-        </label>
-      </div>
-      <div className="space-y-1.5 sm:col-span-2">
-        <Label>Origem da reposição do estoque mínimo *</Label>
-        <Select
-          value={form.floorMode}
-          onValueChange={(value) => setFloorMode(value as ArtisanalStrapSourceMode)}
-          disabled={readOnly || purchasedReady}
-        >
-          <SelectTrigger><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="internal">Produzir com napa própria</SelectItem>
-            <SelectItem value="buy_ready">Comprar tira pronta</SelectItem>
-          </SelectContent>
-        </Select>
-        <p className="text-xs text-muted-foreground">
-          {purchasedReady
-            ? 'Origem fixa: esta tira só pode ser comprada pronta, inclusive no PV.'
-            : 'Essa escolha vale somente para recompor o piso; cada PV mantém sua própria origem.'}
-        </p>
-        <label className="flex items-start gap-2 rounded-md border border-border p-2 text-xs">
-          <Checkbox
-            checked={floorModeConfirmed}
-            onCheckedChange={(checked) => setFloorModeConfirmed(checked === true)}
-            disabled={readOnly || purchasedReady}
-            aria-label="Confirmar origem da reposição do estoque mínimo"
-          />
-          <span>Revisei e confirmo este modo de reposição do piso para a variante.</span>
-        </label>
-      </div>
-    </>
-  );
 
   const validate = (): string | null => {
     if (!form.typeId && !form.typeName.trim()) return 'Selecione uma família ou informe uma nova.';
@@ -603,12 +469,6 @@ export function ArtisanalStrapEditor({
     if (purchasedReady && form.internalProductionEnabled) {
       return 'Tira identificada pelo grupo acabado não pode habilitar produção interna.';
     }
-    if (form.minStockM < 0) return 'O estoque mínimo não pode ser negativo.';
-    if (!minStockConfirmed) {
-      return 'Confirme o estoque mínimo (piso de reposição em metros). Isso é diferente da quantidade mínima de compra (MOQ).';
-    }
-    if (!form.floorMode) return 'Defina a origem da reposição do estoque mínimo.';
-    if (!floorModeConfirmed) return 'Confirme explicitamente a origem da reposição do estoque mínimo.';
     if (form.identityBasis === 'finished_product_group' && !form.finishedProductId) {
       return 'Selecione o produto acabado comprado dentro do grupo de identidade.';
     }
@@ -630,11 +490,11 @@ export function ArtisanalStrapEditor({
       && canonicalStrapColorForProduct(catalog, form.finishedProductId)?.id !== form.colorId) {
       return 'A cor canônica deve ser a cor exata do produto acabado selecionado.';
     }
-    if (purchasedReady && (form.floorMode !== 'buy_ready' || !form.purchaseEnabled || form.includeRecipe)) {
-      return 'Tira comprada pronta exige piso por compra, compra habilitada e nenhuma receita interna.';
+    if (purchasedReady && (!form.purchaseEnabled || form.includeRecipe)) {
+      return 'Tira comprada pronta exige compra habilitada e nenhuma receita interna.';
     }
-    if (form.floorMode === 'internal' && !form.recipeId) {
-      return 'Reposição interna exige uma conversão cadastrada na aba Receitas.';
+    if (effectiveReplenishmentMode === 'internal' && !form.recipeId) {
+      return 'Sem conversão cadastrada (aba Receitas) nem compra pronta habilitada, a tira não tem como ser abastecida.';
     }
     if (form.purchaseEnabled) {
       if (!canSeeFinancial && !form.finishedProductId) {
@@ -659,10 +519,7 @@ export function ArtisanalStrapEditor({
     const error = validate();
     if (error) {
       setValidationError(error);
-      const confirmEl = document.getElementById(
-        minStockConfirmed ? 'strap-editor-reason' : 'strap-min-stock-confirm',
-      );
-      confirmEl?.scrollIntoView({ block: 'nearest' });
+      document.getElementById('strap-editor-reason')?.scrollIntoView({ block: 'nearest' });
       return;
     }
 
@@ -698,8 +555,11 @@ export function ArtisanalStrapEditor({
           internal_production_enabled: form.internalProductionEnabled,
           color_id: form.colorId,
           finished_product_id: form.finishedProductId || undefined,
-          min_stock_m: form.minStockM,
-          min_stock_replenishment_mode: form.floorMode,
+          // Estoque mínimo foi removido (specs/remover-estoque-minimo.md): o
+          // catálogo ainda exige as duas colunas (NOT NULL), então vai piso 0
+          // e o modo derivado — nenhum dos dois gera demanda.
+          min_stock_m: 0,
+          min_stock_replenishment_mode: effectiveReplenishmentMode,
           purchase_enabled: form.purchaseEnabled,
           status: (mode === 'review' && variant) || exactBuyReadyProductPrefill
             || (mode === 'create' && activateOnCreate)
@@ -964,9 +824,7 @@ export function ArtisanalStrapEditor({
                           baseGroupId: value,
                           colorId: '',
                           supplierColorCode: '',
-                          minStockM: mostFrequentMinStock(catalog, current.measureId, value, current.variantId) ?? 0,
                         }));
-                        setMinStockConfirmed(false);
                         setValidationError(null);
                       }}
                       disabled={readOnly || identityLocked || exactBuyReadyProductPrefill}
@@ -994,14 +852,7 @@ export function ArtisanalStrapEditor({
                           sku: '',
                           supplierId: '',
                           supplierColorCode: '',
-                          minStockM: mostFrequentMinStock(
-                            catalog,
-                            current.measureId,
-                            value,
-                            current.variantId,
-                          ) ?? 0,
                         }));
-                        setMinStockConfirmed(false);
                         setValidationError(null);
                       }}
                       disabled={readOnly || identityLocked || exactBuyReadyProductPrefill}
@@ -1159,7 +1010,6 @@ export function ArtisanalStrapEditor({
                     disabled={readOnly || Boolean(form.finishedProductId) || form.identityBasis === 'finished_product_group'}
                   />
                 </div>
-                {!purchasedReady && minStockFields}
               </div>
             </section>
 
@@ -1319,7 +1169,7 @@ export function ArtisanalStrapEditor({
                 <Switch
                   checked={form.purchaseEnabled}
                   onCheckedChange={(checked) => setField('purchaseEnabled', checked)}
-                  disabled={readOnly || form.floorMode === 'buy_ready' || purchasedReady}
+                  disabled={readOnly || purchasedReady}
                   aria-label="Habilitar compra de tira pronta"
                 />
               </div>
@@ -1397,7 +1247,6 @@ export function ArtisanalStrapEditor({
                     <Label>Dias de preparo *</Label>
                     <NumberInput value={form.preparationDays} onChange={(value) => setField('preparationDays', value)} unit="dias" decimals={0} disabled={readOnly} />
                   </div>
-                  {purchasedReady && minStockFields}
                 </div>
               ) : (
                 <p className="rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
@@ -1425,24 +1274,6 @@ export function ArtisanalStrapEditor({
                 <AlertTitle>Revise o cadastro</AlertTitle>
                 <AlertDescription className="space-y-2">
                   <p>{validationError}</p>
-                  {!minStockConfirmed && (
-                    <label className="flex items-start gap-2 rounded-md border border-destructive/40 bg-background p-2 text-xs text-foreground">
-                      <Checkbox
-                        checked={minStockConfirmed}
-                        onCheckedChange={(checked) => {
-                          setMinStockConfirmed(checked === true);
-                          if (checked === true) setValidationError(null);
-                        }}
-                        disabled={readOnly}
-                        aria-label="Confirmar estoque mínimo no aviso"
-                      />
-                      <span>
-                        Revisei e confirmo o estoque mínimo de{' '}
-                        <strong>{Number(form.minStockM).toLocaleString('pt-BR')} m</strong>
-                        , inclusive se o valor for zero.
-                      </span>
-                    </label>
-                  )}
                 </AlertDescription>
               </Alert>
             )}

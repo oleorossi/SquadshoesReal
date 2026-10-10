@@ -139,7 +139,6 @@ export default function SolePurchaseTab() {
             unit_price: s.unit_price,
             unit: 'par',
             current_stock: s.available,
-            min_stock: 0,
             max_stock: 0,
             // size_breakdown já é a falta líquida por número. Se o MOQ aumentar
             // o total, rateia essa falta pro comprado e preserva soma(grade) ==

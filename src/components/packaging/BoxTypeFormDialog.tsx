@@ -51,7 +51,6 @@ export interface BoxRow {
   empty_weight_kg: number | null;
   empilhamento_maximo: number | null;
   quantity: number;
-  min_stock: number;
   unit_price: number;
   supplier_id: string | null;
   active?: boolean;
@@ -70,7 +69,6 @@ export interface BoxFormState {
   empty_weight_kg: number;
   empilhamento_maximo: number;
   quantity: number;
-  min_stock: number;
   unit_price: number;
   supplier_id: string;
 }
@@ -87,7 +85,6 @@ export const emptyBoxForm: BoxFormState = {
   empty_weight_kg: 0,
   empilhamento_maximo: 0,
   quantity: 0,
-  min_stock: 0,
   unit_price: 0,
   supplier_id: '',
 };
@@ -105,7 +102,6 @@ export function boxToForm(b: BoxRow): BoxFormState {
     empty_weight_kg: Number(b.empty_weight_kg || 0),
     empilhamento_maximo: Number(b.empilhamento_maximo || 0),
     quantity: Number(b.quantity || 0),
-    min_stock: Number(b.min_stock || 0),
     unit_price: Number(b.unit_price || 0),
     supplier_id: b.supplier_id || '',
   };
@@ -172,8 +168,8 @@ export function BoxTypeFormDialog({ open, onOpenChange, box, defaultTipo, onSave
       toast.error('Metros por amarrado deve ser maior que zero');
       return;
     }
-    if ([form.quantity, form.min_stock, form.unit_price].some(value => !Number.isFinite(value) || value < 0)) {
-      toast.error('Estoque, mínimo e custo devem ser números não negativos');
+    if ([form.quantity, form.unit_price].some(value => !Number.isFinite(value) || value < 0)) {
+      toast.error('Estoque e custo devem ser números não negativos');
       return;
     }
     setSaving(true);
@@ -191,7 +187,9 @@ export function BoxTypeFormDialog({ open, onOpenChange, box, defaultTipo, onSave
         p_empty_weight_kg: form.empty_weight_kg || null,
         p_empilhamento_maximo: form.empilhamento_maximo || null,
         p_quantity: form.quantity,
-        p_min_stock: form.min_stock,
+        // Estoque mínimo foi descontinuado (specs/remover-estoque-minimo.md);
+        // a RPC ainda recebe o parâmetro até a coluna ser dropada (E2).
+        p_min_stock: 0,
         p_unit_price: form.unit_price,
         p_supplier_id: form.supplier_id || null,
       } as never);
@@ -334,23 +332,13 @@ export function BoxTypeFormDialog({ open, onOpenChange, box, defaultTipo, onSave
           </div>
 
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <Label>Estoque Atual</Label>
-                <Input
-                  type="number"
-                  value={form.quantity || ''}
-                  onChange={(e) => setForm((f) => ({ ...f, quantity: Number(e.target.value) }))}
-                />
-              </div>
-              <div>
-                <Label>Estoque Mínimo</Label>
-                <Input
-                  type="number"
-                  value={form.min_stock || ''}
-                  onChange={(e) => setForm((f) => ({ ...f, min_stock: Number(e.target.value) }))}
-                />
-              </div>
+            <div>
+              <Label>Estoque Atual</Label>
+              <Input
+                type="number"
+                value={form.quantity || ''}
+                onChange={(e) => setForm((f) => ({ ...f, quantity: Number(e.target.value) }))}
+              />
             </div>
             <div>
               <Label>Custo Unitário (R$)</Label>

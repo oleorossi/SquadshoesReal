@@ -74,7 +74,7 @@ function KpiCard({ title, value, icon: Icon, trend, trendLabel, variant = 'defau
 const REPORT_TEMPLATES = [
   { id: 'sales-summary', name: 'Resumo de Vendas', icon: ShoppingCart, description: 'Vendas por período, cliente e produto', category: 'comercial' },
   { id: 'production-report', name: 'Relatório de Produção', icon: Layers, description: 'OPs por status, setor e eficiência', category: 'producao' },
-  { id: 'stock-position', name: 'Posição de Estoque', icon: Package, description: 'Estoque atual, mínimos e giro', category: 'estoque' },
+  { id: 'stock-position', name: 'Posição de Estoque', icon: Package, description: 'Estoque atual e giro', category: 'estoque' },
   { id: 'financial-summary', name: 'Resumo Financeiro', icon: DollarSign, description: 'Contas a pagar/receber e fluxo de caixa', category: 'financeiro' },
   { id: 'client-ranking', name: 'Ranking de Clientes', icon: Users, description: 'Top clientes por faturamento e volume', category: 'comercial' },
   { id: 'delayed-orders', name: 'Pedidos Atrasados', icon: AlertTriangle, description: 'Pedidos e OPs com prazo vencido', category: 'producao' },
@@ -171,7 +171,6 @@ export default function Reports() {
 
   // Alerts
   const alerts = useMemo(() => {
-    const lowStock = products.filter(p => p.active && p.min_stock && p.quantity < p.min_stock).length;
     const ACTIVE_PROD_STATUSES = new Set(['aprovado', 'em produção']);
     const delayedOrders = saleOrders.filter(s => {
       try {
@@ -182,8 +181,8 @@ export default function Reports() {
     const overduePayables = payables.filter(p => {
       try { return p.status !== 'paid' && isBefore(parseISO(p.due_date), today); } catch { return false; }
     }).length;
-    return { lowStock, delayedOrders, overduePayables };
-  }, [products, saleOrders, payables, today]);
+    return { delayedOrders, overduePayables };
+  }, [saleOrders, payables, today]);
 
   // Production status distribution
   const productionStatus = useMemo(() => {
@@ -283,19 +282,8 @@ export default function Reports() {
           </StatGrid>
 
           {/* Alerts Banner */}
-          {(alerts.lowStock > 0 || alerts.delayedOrders > 0 || alerts.overduePayables > 0) && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {alerts.lowStock > 0 && (
-                <Card className="border-warning/30 bg-warning/5">
-                  <CardContent className="p-3 flex items-center gap-3">
-                    <div className="bg-warning/15 rounded-lg p-2"><Package className="h-4 w-4 text-warning" /></div>
-                    <div>
-                      <p className="text-sm font-semibold">{alerts.lowStock} itens</p>
-                      <p className="text-xs text-muted-foreground">Estoque baixo</p>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
+          {(alerts.delayedOrders > 0 || alerts.overduePayables > 0) && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {alerts.delayedOrders > 0 && (
                 <Card className="border-destructive/30 bg-destructive/5">
                   <CardContent className="p-3 flex items-center gap-3">

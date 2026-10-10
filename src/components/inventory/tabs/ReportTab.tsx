@@ -1,6 +1,6 @@
  import { useInventoryStats } from '@/hooks/useInventoryStats';
  import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
- import { CurrencyDollar as DollarSign, Package, WarningCircle as AlertCircle, ArrowUpRight, TrendUp as TrendingUp } from '@phosphor-icons/react';
+ import { CurrencyDollar as DollarSign, Package, ArrowUpRight, TrendUp as TrendingUp } from '@phosphor-icons/react';
  import { Button } from '@/components/ui/button';
  import { useNavigate } from 'react-router-dom';
 import { StockCharts } from '@/components/inventory/StockCharts';
@@ -58,19 +58,11 @@ export function ReportTab() {
        bg: "bg-blue-500/10",
        link: "/estoque?tab=materials"
      },
-     {
-       title: "Alertas de Compra",
-       value: stats?.lowStockCount || 0,
-       icon: AlertCircle,
-       color: "text-red-600",
-       bg: "bg-red-500/10",
-       link: "/estoque?tab=alerts"
-     }
    ];
 
   return (
     <div className="space-y-6 mt-4">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {cards.map((card, i) => (
            <Card 
              key={i} 

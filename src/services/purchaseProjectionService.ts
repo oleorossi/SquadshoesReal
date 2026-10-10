@@ -31,7 +31,6 @@ export interface PurchaseProjectionRow {
   supplier_lead_time_days: number;
   abc_class: AbcClass;
   abc_cum_share: number | null;
-  suggested_min_stock: number;
   suggested_reorder_qty: number;
   recommendation: Recommendation;
 }
@@ -69,7 +68,6 @@ export async function getPurchaseProjection(days: number = 30): Promise<Purchase
     days_of_cover: r.days_of_cover != null ? Number(r.days_of_cover) : null,
     supplier_lead_time_days: Number(r.supplier_lead_time_days ?? 7),
     abc_cum_share: r.abc_cum_share != null ? Number(r.abc_cum_share) : null,
-    suggested_min_stock: Number(r.suggested_min_stock ?? 0),
     suggested_reorder_qty: Number(r.suggested_reorder_qty ?? 0),
   })) as PurchaseProjectionRow[];
 }

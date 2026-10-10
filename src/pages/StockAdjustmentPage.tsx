@@ -44,7 +44,6 @@ interface Product {
   color: string | null;
   quantity: number;
   unit: string;
-  min_stock: number;
   stock_grade: Record<string, any> | null;
   group_id: string | null;
   active: boolean;
@@ -165,6 +164,7 @@ function loadStoredFilters() {
     return JSON.parse(raw) as {
       categoryFilter?: string;
       groupFilter?: string;
+      // "low" (estoque baixo) existiu até 10/10/2026 — ver abaixo.
       statusFilter?: "all" | "ok" | "low" | "zero" | "pending";
       unitFilter?: string;
       typeFilter?: "all" | "soles" | "regular";
@@ -185,7 +185,11 @@ export default function StockAdjustmentPage() {
   const [categoryFilter, setCategoryFilter] = useState(stored?.categoryFilter ?? "all");
   // Família (grupo filho, ex.: NAPA SOFT) dentro do grupo Pai (categoria).
   const [groupFilter, setGroupFilter] = useState(stored?.groupFilter ?? "all");
-  const [statusFilter, setStatusFilter] = useState<"all" | "ok" | "low" | "zero" | "pending">(stored?.statusFilter ?? "all");
+  // Estoque mínimo foi removido (specs/remover-estoque-minimo.md): o filtro
+  // "Estoque baixo" saiu; um "low" salvo no navegador volta para "all".
+  const [statusFilter, setStatusFilter] = useState<"all" | "ok" | "zero" | "pending">(
+    stored?.statusFilter && stored.statusFilter !== "low" ? stored.statusFilter : "all",
+  );
   const [unitFilter, setUnitFilter] = useState(stored?.unitFilter ?? "all");
   const [typeFilter, setTypeFilter] = useState<"all" | "soles" | "regular">(stored?.typeFilter ?? "all");
 
@@ -242,7 +246,7 @@ export default function StockAdjustmentPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("products")
-        .select("id, name, sku, category, color, quantity, unit, min_stock, stock_grade, group_id, active, reserved_stock")
+        .select("id, name, sku, category, color, quantity, unit, stock_grade, group_id, active, reserved_stock")
         .order("category")
         .order("name")
         .order("color");
@@ -255,7 +259,6 @@ export default function StockAdjustmentPage() {
         color: p.color && p.color !== "" ? p.color : null,
         quantity: Number(p.quantity ?? 0),
         unit: p.unit ?? "un",
-        min_stock: Number(p.min_stock ?? 0),
         stock_grade: p.stock_grade ?? null,
         group_id: p.group_id ?? null,
         active: p.active !== false,
@@ -417,8 +420,7 @@ export default function StockAdjustmentPage() {
         (typeFilter === "soles" ? isSole(p) : !isSole(p));
       let matchStatus = true;
       if (statusFilter === "zero") matchStatus = p.quantity <= 0;
-      else if (statusFilter === "low") matchStatus = p.min_stock > 0 && p.quantity <= p.min_stock && p.quantity > 0;
-      else if (statusFilter === "ok") matchStatus = !(p.min_stock > 0 && p.quantity <= p.min_stock) && p.quantity > 0;
+      else if (statusFilter === "ok") matchStatus = p.quantity > 0;
       else if (statusFilter === "pending") matchStatus = !!drafts[p.id] || !!soleDrafts[p.id];
       return matchSearch && matchCategory && matchGroup && matchUnit && matchType && matchStatus;
     });
@@ -926,7 +928,6 @@ export default function StockAdjustmentPage() {
           <SelectContent>
             <SelectItem value="all">Todos status</SelectItem>
             <SelectItem value="ok">OK</SelectItem>
-            <SelectItem value="low">Estoque baixo</SelectItem>
             <SelectItem value="zero">Zerados</SelectItem>
             <SelectItem value="pending">Com alterações</SelectItem>
           </SelectContent>
@@ -1184,7 +1185,6 @@ export default function StockAdjustmentPage() {
                       hasSoleDraft = pendingSoles.some((c) => c.product.id === product.id);
                     }
                     const delta = draftTotal - product.quantity;
-                    const isLow = product.min_stock > 0 && product.quantity <= product.min_stock;
                     const hasConjugations = conjs.length > 0;
 
                     return [
@@ -1218,7 +1218,6 @@ export default function StockAdjustmentPage() {
                          </td>
                         <td className="px-3 py-1.5 border-r border-border/30">
                           <div className="flex items-center gap-1.5 min-w-0">
-                            {isLow && <AlertTriangle className="h-3 w-3 text-amber-500 shrink-0" />}
                             {conflictedIds.has(product.id) && (
                               <span
                                 className="text-xs font-bold uppercase tracking-wide bg-destructive/15 text-destructive border border-destructive/40 rounded px-1 py-0.5 shrink-0"
@@ -1236,7 +1235,7 @@ export default function StockAdjustmentPage() {
                         <td className="px-2 py-1.5 text-sm text-muted-foreground border-r border-border/30 truncate">{product.category ?? "—"}</td>
                         <td className="text-xs text-muted-foreground text-center border-r border-border/30">{product.unit}</td>
                         <td className="px-3 py-1.5 text-right font-mono text-base border-r border-border/30 tabular-nums select-none">
-                          <span className={isLow ? "text-amber-600 font-semibold" : "text-foreground"}>{product.quantity.toLocaleString("pt-BR")}</span>
+                          <span className="text-foreground">{product.quantity.toLocaleString("pt-BR")}</span>
                         </td>
                         <td className="px-3 py-1.5 text-right font-mono tabular-nums text-muted-foreground border-r border-border/30 select-none">
                           {product.reserved_stock > 0
@@ -1410,7 +1409,6 @@ export default function StockAdjustmentPage() {
                   const hasDraft = raw !== undefined && raw !== "" && !quantityIssue && !isNaN(draftNum);
                   const isDirty = hasDraft && draftNum !== product.quantity;
                   const delta = isDirty ? draftNum - product.quantity : 0;
-                  const isLow = product.min_stock > 0 && product.quantity <= product.min_stock;
 
                   return (
                     <tr key={product.id}
@@ -1441,7 +1439,6 @@ export default function StockAdjustmentPage() {
                        </td>
                       <td className="px-3 py-1.5 border-r border-border/30">
                         <div className="flex items-center gap-1.5 min-w-0">
-                          {isLow && <AlertTriangle className="h-3 w-3 text-amber-500 shrink-0" />}
                           {isDiscreteStockUnit(product.unit) && !Number.isInteger(product.quantity) && (
                             <span
                               className="text-xs font-semibold uppercase tracking-wide bg-warning/10 text-warning border border-warning/30 rounded px-1 py-0.5 shrink-0"
@@ -1459,7 +1456,7 @@ export default function StockAdjustmentPage() {
                       <td className="px-2 py-1.5 text-sm text-muted-foreground border-r border-border/30 truncate">{product.category ?? "—"}</td>
                       <td className="text-xs text-muted-foreground text-center border-r border-border/30">{product.unit}</td>
                       <td className="px-3 py-1.5 text-right font-mono text-base border-r border-border/30 tabular-nums select-none">
-                        <span className={isLow ? "text-amber-600 font-semibold" : "text-foreground"}>
+                        <span className="text-foreground">
                           {product.quantity % 1 === 0
                             ? product.quantity.toLocaleString("pt-BR")
                             : product.quantity.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}

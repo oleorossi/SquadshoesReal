@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
+import * as stockAlerts from "./stockAlerts";
 import {
   countCriticalStock,
   isCriticalStock,
-  isLowStock,
   isSoleProduct,
   isZeroStock,
   type StockAlertProduct,
 } from "./stockAlerts";
 
 function produto(over: Partial<StockAlertProduct> = {}): StockAlertProduct {
-  return { quantity: 50, min_stock: 10, category: "Componente", active: true, ...over };
+  return { quantity: 50, category: "Componente", active: true, ...over };
 }
 
 describe("isSoleProduct", () => {
@@ -24,8 +24,13 @@ describe("isSoleProduct", () => {
 });
 
 describe("isZeroStock", () => {
-  it("zerado SEM mínimo cadastrado é crítico — é o caso que a regra antiga perdia", () => {
-    expect(isZeroStock(produto({ quantity: 0, min_stock: 0 }))).toBe(true);
+  it("saldo zero em produto ativo é crítico", () => {
+    expect(isZeroStock(produto({ quantity: 0 }))).toBe(true);
+  });
+
+  it("qualquer saldo positivo não é alerta — não existe mais piso de estoque mínimo", () => {
+    expect(isZeroStock(produto({ quantity: 0.5 }))).toBe(false);
+    expect(isZeroStock(produto({ quantity: 3 }))).toBe(false);
   });
 
   it("ignora inativo e solado", () => {
@@ -34,48 +39,25 @@ describe("isZeroStock", () => {
   });
 });
 
-describe("isLowStock", () => {
-  it("no mínimo exato JÁ é alerta (limite é <=, não <)", () => {
-    expect(isLowStock(produto({ quantity: 10, min_stock: 10 }))).toBe(true);
-  });
-
-  it("acima do mínimo não é alerta", () => {
-    expect(isLowStock(produto({ quantity: 11, min_stock: 10 }))).toBe(false);
-  });
-
-  it("zerado não conta aqui — vive em isZeroStock, senão duplica", () => {
-    expect(isLowStock(produto({ quantity: 0, min_stock: 10 }))).toBe(false);
-  });
-});
-
 describe("countCriticalStock", () => {
-  // Cada item crítico tem que aparecer em exatamente UMA das duas listas que a
-  // tela /estoque?tab=alerts renderiza — é isso que faz o card do Painel bater
-  // com a soma dos dois badges da tela.
   const amostra: StockAlertProduct[] = [
-    produto({ quantity: 0, min_stock: 0 }),                    // zerado sem mínimo
-    produto({ quantity: 0, min_stock: 20 }),                   // zerado com mínimo
-    produto({ quantity: 10, min_stock: 10 }),                  // exatamente no mínimo
-    produto({ quantity: 3, min_stock: 20 }),                   // abaixo do mínimo
-    produto({ quantity: 99, min_stock: 10 }),                  // saudável
-    produto({ quantity: 0, min_stock: 5, active: false }),     // inativo
-    produto({ quantity: 0, min_stock: 5, category: "Solado" }), // solado
+    produto({ quantity: 0 }),                          // zerado
+    produto({ quantity: 3 }),                          // saldo baixo — sem mínimo, não alerta
+    produto({ quantity: 99 }),                         // saudável
+    produto({ quantity: 0, active: false }),           // inativo
+    produto({ quantity: 0, category: "Solado" }),      // solado
   ];
 
-  it("conta zerados + abaixo do mínimo, sem inativo e sem solado", () => {
-    expect(countCriticalStock(amostra)).toBe(4);
+  it("conta só zerados ativos e não-solado", () => {
+    expect(countCriticalStock(amostra)).toBe(1);
   });
 
-  it("card (contagem) == tela (soma das duas listas)", () => {
-    const zerados = amostra.filter(isZeroStock).length;
-    const baixos = amostra.filter(isLowStock).length;
-    expect(countCriticalStock(amostra)).toBe(zerados + baixos);
+  it("card (contagem) == tela (lista de zerados)", () => {
+    expect(countCriticalStock(amostra)).toBe(amostra.filter(isZeroStock).length);
+    for (const p of amostra) expect(isCriticalStock(p)).toBe(isZeroStock(p));
   });
 
-  it("nenhum item cai nas duas listas ao mesmo tempo", () => {
-    for (const p of amostra) {
-      expect(isZeroStock(p) && isLowStock(p)).toBe(false);
-      expect(isCriticalStock(p)).toBe(isZeroStock(p) || isLowStock(p));
-    }
+  it("o predicado 'abaixo do mínimo' não existe mais (estoque mínimo removido)", () => {
+    expect("isLowStock" in stockAlerts).toBe(false);
   });
 });

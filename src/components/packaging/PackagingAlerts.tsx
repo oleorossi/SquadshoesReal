@@ -44,13 +44,12 @@ export default function PackagingAlerts() {
   if (isLoading) return <Skeleton className="h-72 w-full" />;
 
   const alerts = data ?? {
-    lowStock: [],
     boxesWithoutPrice: [],
     boxesWithoutTare: [],
     incompleteSoles: [],
     sheetsWithoutSole: [],
   };
-  const total = alerts.lowStock.length + alerts.boxesWithoutPrice.length + alerts.boxesWithoutTare.length
+  const total = alerts.boxesWithoutPrice.length + alerts.boxesWithoutTare.length
     + alerts.incompleteSoles.length + alerts.sheetsWithoutSole.length;
 
   if (total === 0) {
@@ -59,7 +58,7 @@ export default function PackagingAlerts() {
         <CardContent className="py-12 text-center">
           <Package className="mx-auto mb-2 h-10 w-10 text-muted-foreground/30" />
           <p className="text-sm font-medium">Nenhuma pendência de embalagem</p>
-          <p className="text-xs text-muted-foreground">Estoque, cadastro e vínculos por solado estão completos.</p>
+          <p className="text-xs text-muted-foreground">Cadastro de caixas e vínculos por solado estão completos.</p>
         </CardContent>
       </Card>
     );
@@ -67,21 +66,6 @@ export default function PackagingAlerts() {
 
   return (
     <div className="grid gap-4 xl:grid-cols-2">
-      <AlertSection title="Estoque abaixo do mínimo" count={alerts.lowStock.length}>
-        {alerts.lowStock.map(box => (
-          <div key={box.id} className="flex items-center justify-between rounded-md border border-warning/30 bg-warning/5 p-3">
-            <div>
-              <p className="text-sm font-medium">{box.nome}</p>
-              <p className="text-xs text-muted-foreground">{box.tipo ?? (box.interno ? 'individual' : 'master')}</p>
-            </div>
-            <div className="text-right font-mono text-xs">
-              <p className="font-semibold">{Number(box.quantity || 0)} em estoque</p>
-              <p className="text-muted-foreground">mínimo {Number(box.min_stock || 0)}</p>
-            </div>
-          </div>
-        ))}
-      </AlertSection>
-
       <AlertSection
         title="Cadastro de caixa incompleto"
         count={new Set([...alerts.boxesWithoutPrice, ...alerts.boxesWithoutTare].map(box => box.id)).size}

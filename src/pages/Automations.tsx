@@ -37,7 +37,8 @@ import {
 // ─── Static config ────────────────────────────────────────────────────────────
 
 const TRIGGER_OPTIONS = [
-  { group: 'Estoque',     value: 'stock_below_minimum',        label: 'Estoque abaixo do mínimo' },
+  // 'stock_below_minimum' saiu em 10/10/2026: estoque mínimo foi removido
+  // (specs/remover-estoque-minimo.md) — o gatilho nunca mais dispararia.
   { group: 'Estoque',     value: 'stock_zeroed',               label: 'Estoque zerado' },
   { group: 'Estoque',     value: 'stock_restocked',            label: 'Estoque reposto' },
   { group: 'Pedidos',     value: 'sale_order_created',         label: 'Pedido de venda criado' },
@@ -136,7 +137,6 @@ const ACTION_CONFIG_FIELDS: Record<string, ConfigFieldDef[]> = {
 };
 
 const CONDITION_FIELDS_BY_TRIGGER: Record<string, { value: string; label: string }[]> = {
-  stock_below_minimum:        [{ value: 'quantity', label: 'Quantidade' }, { value: 'category', label: 'Categoria' }, { value: 'supplier_name', label: 'Fornecedor' }],
   stock_zeroed:               [{ value: 'category', label: 'Categoria' }, { value: 'supplier_name', label: 'Fornecedor' }],
   stock_restocked:            [{ value: 'quantity', label: 'Quantidade' }, { value: 'category', label: 'Categoria' }],
   sale_order_created:         [{ value: 'status', label: 'Status' }, { value: 'total_value', label: 'Valor Total' }, { value: 'customer_name', label: 'Cliente' }, { value: 'payment_method', label: 'Forma de Pagamento' }],

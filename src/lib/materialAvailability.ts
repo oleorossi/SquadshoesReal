@@ -8,8 +8,7 @@ export const ARTISANAL_SUPPLIER_NAME = 'Terceirizado (OS)';
 
 /**
  * Resolve o fornecedor da falta: `products.supplier_id` primeiro; senão o
- * fornecedor do grupo (`group_suppliers`), igual a `materialAutoPO` /
- * `generateAutoPurchaseOrders`. Sem esse fallback, materiais como GLOW METALIC
+ * fornecedor do grupo (`group_suppliers`), igual a `materialAutoPO`. Sem esse fallback, materiais como GLOW METALIC
  * (fornecedor Soares no grupo, SKUs sem `supplier_id`) caíam em
  * "Sem fornecedor definido" na etapa 2 do PV.
  */
@@ -94,8 +93,6 @@ export interface MaterialShortage {
    /** Quantos consumption_unit por purchase_unit. Ex: 1 rolo = 50 m → 50. Default 1. */
    conversion_rate: number;
    is_artisanal: boolean;
-  /** Minimum stock target — used to calculate artisanal forStock buffer. */
-  min_stock: number;
   /** Teto de estoque cadastrado no produto. Vai pro item da OC — antes o
    *  MaterialPurchaseConfirmDialog gravava `max_stock: 0` hardcoded, o que
    *  fazia toda OC gerada por PV nascer com política de estoque zerada. */
@@ -263,7 +260,6 @@ type ProductRow = {
   supplier_lead_time_days: number | null;
   lead_time_days: number | null;
   sole_moq: number | null;
-  min_stock: number | null;
   max_stock: number | null;
   is_artisanal: boolean | null;
   purchase_unit: string | null;
@@ -325,7 +321,7 @@ export async function enrichMaterialShortages(rawAvailability: RawMaterialAvaila
   }
   const { data: products, error: productsError } = await supabase
     .from('products')
-    .select('id, name, sku, color, unit, quantity, reserved_stock, unit_price, supplier_id, group_id, supplier_lead_time_days, lead_time_days, sole_moq, min_stock, max_stock, is_artisanal, purchase_unit, purchase_order_unit, conversion_rate, category')
+    .select('id, name, sku, color, unit, quantity, reserved_stock, unit_price, supplier_id, group_id, supplier_lead_time_days, lead_time_days, sole_moq, max_stock, is_artisanal, purchase_unit, purchase_order_unit, conversion_rate, category')
     .in('id', productIds);
   if (productsError) throw productsError;
 
@@ -369,15 +365,17 @@ export async function enrichMaterialShortages(rawAvailability: RawMaterialAvaila
     });
     const leadTime = resolvedSupplier.lead_time_days;
 
-    const moq = Number(product.sole_moq ?? product.min_stock ?? 0);
-    const minStock = Number(product.min_stock ?? 0);
+    // MOQ é o lote mínimo do FORNECEDOR (sole_moq) — não é estoque mínimo.
+    // Estoque mínimo foi removido (specs/remover-estoque-minimo.md): a sugestão
+    // é só a falta do PV, nunca reposição de piso.
+    const moq = Number(product.sole_moq ?? 0);
     const shortageQty = Math.max(0, need.required - need.available);
     if (shortageQty <= 0) continue;
 
-    // Artesanais: sugestão = shortage + buffer de estoque mínimo (forStock).
-    // Materiais comuns: max(shortage, MOQ).
+    // Artesanais: sugestão = falta do PV (sem MOQ de fornecedor).
+    // Materiais comuns: max(falta, MOQ).
     const suggested = product.is_artisanal
-      ? shortageQty + Math.max(0, minStock - need.available)
+      ? shortageQty
       : Math.max(shortageQty, moq);
 
     // O3: aplica conversion_rate quando o fornecedor vende em unidade diferente
@@ -430,7 +428,6 @@ export async function enrichMaterialShortages(rawAvailability: RawMaterialAvaila
       purchase_unit: purchaseUnit,
       conversion_rate: conversionRate,
       is_artisanal: !!product.is_artisanal,
-      min_stock: minStock,
       max_stock: Number(product.max_stock ?? 0),
       // R$/estoque × (estoque por unidade de compra) = R$/compra. Mantém
       // `quantity × unit_price` invariante entre as duas unidades.

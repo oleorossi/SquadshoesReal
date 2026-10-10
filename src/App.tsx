@@ -977,12 +977,6 @@ const router = createBrowserRouter([
         element: <LegacyRouteRedirect to="/solados?tab=consumos" />,
       },
       {
-        // L5: a aba Alertas passou a renderizar também déficits de solado por
-        // numeração a partir de useLowStockAlerts, mesma fonte da tela antiga.
-        path: "alertas-estoque",
-        element: <LegacyRouteRedirect to="/estoque?tab=alerts" />,
-      },
-      {
         path: "reservas-estoque",
         element: <StockReservations />,
       },

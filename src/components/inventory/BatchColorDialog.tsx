@@ -5,7 +5,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CurrencyInput } from '@/components/ui/currency-input';
-import { NumberInput } from '@/components/ui/number-input';
 import { Badge } from '@/components/ui/badge';
 import { X, Plus } from '@phosphor-icons/react';
 import { ProductFormData, UNITS, LOCATIONS } from '@/types/inventory';
@@ -25,7 +24,6 @@ export function BatchColorDialog({ open, onOpenChange, onSubmit }: BatchColorDia
   const [category, setCategory] = useState('');
   const [unit, setUnit] = useState('un');
   const [unitPrice, setUnitPrice] = useState(0);
-  const [minStock, setMinStock] = useState(0);
   const [maxStock, setMaxStock] = useState(0);
   const [location, setLocation] = useState('');
   const [groupId, setGroupId] = useState<string | null>(null);
@@ -39,7 +37,6 @@ export function BatchColorDialog({ open, onOpenChange, onSubmit }: BatchColorDia
       setCategory('');
       setUnit('un');
       setUnitPrice(0);
-      setMinStock(0);
       setMaxStock(0);
       setLocation('');
       setGroupId(null);
@@ -77,7 +74,6 @@ export function BatchColorDialog({ open, onOpenChange, onSubmit }: BatchColorDia
       category: sectorOfGroup(groups.find(g => g.id === groupId)),
       color,
       quantity: 0,
-      min_stock: minStock,
       max_stock: maxStock,
       unit,
       unit_price: unitPrice,
@@ -161,11 +157,6 @@ export function BatchColorDialog({ open, onOpenChange, onSubmit }: BatchColorDia
             <div>
               <Label>Custo Médio (R$)</Label>
               <CurrencyInput value={unitPrice} onChange={setUnitPrice} className="mt-1" />
-            </div>
-
-            <div>
-              <Label>Estoque Mínimo</Label>
-              <NumberInput min={0} step="0.01" value={minStock} onChange={setMinStock} className="mt-1" />
             </div>
 
             {/* Estoque Máximo removido em 2026-05 — não usado em business logic. */}

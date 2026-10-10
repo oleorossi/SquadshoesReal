@@ -36,7 +36,6 @@ export interface CreateAvulsoPurchaseOrderInput {
   /** Preço por unidade de estoque (R$/unit). total = quantity × unit_price. */
   unit_price: number;
   current_stock: number;
-  min_stock: number;
   max_stock: number;
   /** Data de pagamento escolhida (ISO yyyy-mm-dd) → vira accounts_payable.due_date. */
   payment_due_date: string;
@@ -77,7 +76,6 @@ export function useCreateAvulsoPurchaseOrder() {
             unit_price: input.unit_price,
             unit: input.unit,
             current_stock: input.current_stock,
-            min_stock: input.min_stock,
             max_stock: input.max_stock,
           }],
           payable_due_date: input.payment_due_date,

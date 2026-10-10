@@ -283,7 +283,6 @@ export default function PurchaseProjectionContent() {
                 <TableHead className="px-3 py-2 h-auto text-right">Estoque</TableHead>
                 <TableHead className="px-3 py-2 h-auto text-right">Consumo/dia</TableHead>
                 <TableHead className="px-3 py-2 h-auto text-right">Cobertura</TableHead>
-                <TableHead className="px-3 py-2 h-auto text-right">Min. sugerido</TableHead>
                 <TableHead className="px-3 py-2 h-auto text-right">Repor</TableHead>
                 <TableHead className="px-3 py-2 h-auto">Fornecedor</TableHead>
                 <TableHead className="px-3 py-2 h-auto">Recomendação</TableHead>
@@ -292,14 +291,14 @@ export default function PurchaseProjectionContent() {
             <TableBody>
               {isLoading && (
                 <TableRow>
-                  <TableCell colSpan={11}>
+                  <TableCell colSpan={10}>
                     <Skeleton className="h-32 m-3" />
                   </TableCell>
                 </TableRow>
               )}
               {!isLoading && filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={11}>
+                  <TableCell colSpan={10}>
                     {rows.length > 0 && search.trim() ? (
                       <EmptyState
                         size="sm"
@@ -393,9 +392,6 @@ function ProjectionRow({ row }: { row: ReturnType<typeof Object> & any }) {
         ) : (
           <span className="text-muted-foreground">—</span>
         )}
-      </TableCell>
-      <TableCell className="px-3 py-2 text-right text-xs tabular-nums">
-        {fmtBR(row.suggested_min_stock)} {row.unit}
       </TableCell>
       <TableCell className="px-3 py-2 text-right text-xs tabular-nums font-bold">
         {row.suggested_reorder_qty > 0 ? (

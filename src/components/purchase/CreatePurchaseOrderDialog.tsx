@@ -24,7 +24,6 @@
    dimensions_unit: string | null;
    stock_unit: string;
    current_stock: number;
-   min_stock: number;
    max_stock: number;
  };
  
@@ -79,7 +78,6 @@
        dimensions_unit: dimUnit,
        stock_unit: stockUnit,
        current_stock: product.quantity || 0,
-       min_stock: product.min_stock || 0,
        max_stock: product.max_stock || 0,
      }]);
    };
@@ -117,7 +115,6 @@
            unit_price: i.unit_price,
            unit: i.unit,
            current_stock: i.current_stock,
-           min_stock: i.min_stock,
            max_stock: i.max_stock,
          })),
        });

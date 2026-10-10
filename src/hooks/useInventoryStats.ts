@@ -4,7 +4,8 @@ import { supabase } from '@/integrations/supabase/client';
 export interface InventorySummary {
   totalValue: number;
   activeItems: number;
-  lowStockCount: number;
+  /** Sempre 0 — estoque mínimo descontinuado (specs/remover-estoque-minimo.md). */
+  lowStockCount?: number;
 }
 
 export function useInventoryStats() {

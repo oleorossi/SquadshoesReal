@@ -30,7 +30,6 @@ interface Projection {
   grupo_material: string | null;
   unidade: string;
   estoque_atual: number;
-  min_stock: number;
   supplier_lead_time_days: number;
   supplier_id: string | null;
   supplier_name: string | null;

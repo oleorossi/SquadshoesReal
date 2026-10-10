@@ -39,16 +39,16 @@ export function StockCharts({ products }: StockChartsProps) {
   }, [products]);
 
   const stockStatusData = useMemo(() => {
-    let critico = 0, baixo = 0, normal = 0;
+    // Estoque mínimo foi removido (specs/remover-estoque-minimo.md): sem piso,
+    // o único corte objetivo é saldo zerado × com saldo.
+    let zerado = 0, comSaldo = 0;
     products.forEach(p => {
-      if (p.quantity <= p.min_stock * 0.5) critico++;
-      else if (p.quantity <= p.min_stock) baixo++;
-      else normal++;
+      if (p.quantity <= 0) zerado++;
+      else comSaldo++;
     });
     return [
-      { name: 'Crítico', value: critico, fill: 'hsl(var(--destructive))' },
-      { name: 'Baixo', value: baixo, fill: 'hsl(var(--warning))' },
-      { name: 'Normal', value: normal, fill: 'hsl(var(--success))' },
+      { name: 'Zerado', value: zerado, fill: 'hsl(var(--destructive))' },
+      { name: 'Com saldo', value: comSaldo, fill: 'hsl(var(--success))' },
     ].filter(d => d.value > 0);
   }, [products]);
 

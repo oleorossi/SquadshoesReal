@@ -6,23 +6,21 @@ const recipe = {
   labor_cost_per_meter: 0.5,
 } as ArtisanalRecipe;
 
-describe('calcArtisanalRequirement', () => {
-  it('calcula max(0, demanda + mínimo - estoque)', () => {
-    const result = calcArtisanalRequirement(recipe, 100, 20, 10);
+describe('calcArtisanalRequirement — só demanda (estoque mínimo removido)', () => {
+  it('calcula max(0, demanda - estoque)', () => {
+    const result = calcArtisanalRequirement(recipe, 100, 20);
     expect(result.forOrderMeters).toBe(80);
-    expect(result.forStockMeters).toBe(10);
-    expect(result.totalToProduce).toBe(90);
-    expect(result.baseMetersSend).toBe(1.5);
+    expect(result.totalToProduce).toBe(80);
+    expect(result.baseMetersSend).toBeCloseTo(80 / 60);
+    expect(result.laborCost).toBe(40);
+    expect(result.stockOk).toBe(false);
   });
 
-  it('usa excesso após atender o pedido para preservar o piso', () => {
-    const result = calcArtisanalRequirement(recipe, 90, 100, 30);
+  it('não produz para recompor piso quando o estoque cobre o pedido', () => {
+    const result = calcArtisanalRequirement(recipe, 90, 100);
     expect(result.forOrderMeters).toBe(0);
-    expect(result.forStockMeters).toBe(20);
-    expect(result.totalToProduce).toBe(20);
-  });
-
-  it('não produz quando estoque cobre pedido e piso', () => {
-    expect(calcArtisanalRequirement(recipe, 90, 130, 30).totalToProduce).toBe(0);
+    expect(result.totalToProduce).toBe(0);
+    expect(result.stockOk).toBe(true);
+    expect(result).not.toHaveProperty('forStockMeters');
   });
 });

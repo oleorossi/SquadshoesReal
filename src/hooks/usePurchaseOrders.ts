@@ -43,7 +43,6 @@ export type PurchaseOrderItem = {
   product_id: string | null;
   box_type_id?: string | null;
   current_stock: number;
-  min_stock: number;
   max_stock: number;
   suggested_quantity: number;
   quantity: number;
@@ -68,7 +67,6 @@ export interface PurchaseOrderStockItemInput {
   unit_price: number;
   unit: string;
   current_stock?: number;
-  min_stock?: number;
   max_stock?: number;
   grade?: Record<string, number> | null;
   color?: string | null;
@@ -107,7 +105,7 @@ export function usePurchaseOrderItems(orderId: string | null) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('purchase_order_items')
-        .select('*, products(id, name, sku, category, color, stock_grade), box_types(id, nome, tipo, quantity, min_stock, unit_price, active)')
+        .select('*, products(id, name, sku, category, color, stock_grade), box_types(id, nome, tipo, quantity, unit_price, active)')
         .eq('purchase_order_id', orderId!);
       if (error) throw error;
       return (data || []).map((item: any) => ({

@@ -90,7 +90,7 @@ const normalizeCalculationMethod = (
 };
 
 const emptyForm: ProductFormData = {
-  name: '', technical_name: '', sku: '', category: '', color: '', quantity: 0, min_stock: 0, max_stock: 0, unit: 'un', unit_price: 0, location: '', group_id: null, active: true, image_url: '', min_stock_grade: {}, stock_grade: {}, dimensions_length: 0, dimensions_width: 0, dimensions_thickness: 0, dimensions_unit: 'mm',
+  name: '', technical_name: '', sku: '', category: '', color: '', quantity: 0, max_stock: 0, unit: 'un', unit_price: 0, location: '', group_id: null, active: true, image_url: '', stock_grade: {}, dimensions_length: 0, dimensions_width: 0, dimensions_thickness: 0, dimensions_unit: 'mm',
   purchase_unit: 'un', production_unit: 'un', conversion_rate: 1, purchase_order_unit: 'un', min_order_quantity: 0, purchase_multiple: 0,
   safety_stock: 0, supplier_lead_time_days: 7,
   calculation_method: 'weight',
@@ -102,7 +102,7 @@ const emptyForm: ProductFormData = {
 };
 
 // Whitelist de campos que fazem sentido propagar entre variações de cor do
-// mesmo grupo. Excluídos: name, sku, color, quantity, max_stock, min_stock_grade,
+// mesmo grupo. Excluídos: name, sku, color, quantity, max_stock,
 // stock_grade, image_url, group_id, active, linked_last_id, sole_material,
 // heel_height (próprios da variante).
 // PROPAGABLE_FIELDS / PROPAGABLE_LABELS / computePropagableDiff foram movidos para
@@ -184,7 +184,6 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
   const [form, setForm] = useState<ProductFormData>(emptyForm);
   const [soladoColor, setSoladoColor] = useState('');
   const [soladoGrade, setSoladoGrade] = useState<Record<string, number>>({});
-  const [minStockGrade, setMinStockGrade] = useState<Record<string, number>>({});
   const [shoeCategory, setShoeCategory] = useState<'adulto' | 'infantil'>('adulto');
   const [sizeFrom, setSizeFrom] = useState<number | null>(null);
   const [sizeTo, setSizeTo] = useState<number | null>(null);
@@ -362,24 +361,17 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
       unit: source.unit || prev.unit,
       group_id: source.group_id || prev.group_id,
       location: source.location || prev.location,
-      min_stock: source.min_stock ?? prev.min_stock,
       max_stock: source.max_stock ?? prev.max_stock,
       unit_price: source.unit_price ?? prev.unit_price,
       dimensions_length: source.dimensions_length || prev.dimensions_length,
       dimensions_width: source.dimensions_width || prev.dimensions_width,
       dimensions_thickness: source.dimensions_thickness || prev.dimensions_thickness,
       dimensions_unit: source.dimensions_unit || (source.dimensions_width ? '' : prev.dimensions_unit),
-      min_stock_grade: (source.min_stock_grade && typeof source.min_stock_grade === 'object' && !Array.isArray(source.min_stock_grade))
-        ? (source.min_stock_grade as Record<string, number>)
-        : prev.min_stock_grade,
     }));
     setPlateLength(source.dimensions_length || 0);
     setPlateWidth(source.dimensions_width || 0);
     setPlateThickness(source.dimensions_thickness || 0);
     setPlateUnit(source.dimensions_unit || (source.dimensions_width ? '' : 'mm'));
-    if (source.min_stock_grade && typeof source.min_stock_grade === 'object') {
-      setMinStockGrade(source.min_stock_grade as Record<string, number>);
-    }
     setCopyDismissed(true);
     toast.success(`Informações técnicas copiadas de "${source.name}"`);
   };
@@ -447,7 +439,6 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
         category: rest.category || '',
         color: rest.color || '',
         quantity: rest.quantity ?? 0,
-        min_stock: rest.min_stock ?? 0,
         max_stock: rest.max_stock ?? 0,
         unit: rest.unit || 'un',
         unit_price: rest.unit_price ?? 0,
@@ -455,8 +446,6 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
         group_id: rest.group_id || null,
         active: rest.active ?? true,
         image_url: rest.image_url || '',
-        min_stock_grade: (rest.min_stock_grade && typeof rest.min_stock_grade === 'object' && !Array.isArray(rest.min_stock_grade))
-          ? (rest.min_stock_grade as Record<string, number>) : {},
         stock_grade: (rest.stock_grade && typeof rest.stock_grade === 'object' && !Array.isArray(rest.stock_grade))
           ? (rest.stock_grade as Record<string, number>) : {},
         dimensions_length: rest.dimensions_length ?? 0,
@@ -535,17 +524,6 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
           }
         }
       }
-      if (rest.min_stock_grade && typeof rest.min_stock_grade === 'object') {
-        const grade = rest.min_stock_grade as Record<string, number>;
-        setMinStockGrade(grade);
-        if (sizeFrom == null) {
-          const keys = Object.keys(grade).map(Number).filter(n => !isNaN(n)).sort((a, b) => a - b);
-          if (keys.length > 0 && sizeFrom == null) {
-            setSizeFrom(keys[0]);
-            setSizeTo(keys[keys.length - 1]);
-          }
-        }
-      }
       if (rest.color) {
         setSoladoColor(rest.color);
       } else {
@@ -591,7 +569,6 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
             normalizeUnit(sibling.purchase_unit || sibling.unit) !== normalizeUnit(sibling.unit) ? 0 : 1
           ),
           location: sibling.location || '',
-          min_stock: sibling.min_stock ?? 0,
           max_stock: sibling.max_stock ?? 0,
           dimensions_length: sibling.dimensions_length || 0,
           dimensions_width: sibling.dimensions_width || 0,
@@ -604,7 +581,6 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
       });
       setSoladoColor('');
       setSoladoGrade({});
-      setMinStockGrade({});
       setShoeCategory('adulto');
       setSizeFrom(null);
       setSizeTo(null);
@@ -651,7 +627,6 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
         group_id: similar.group_id || prev.group_id,
         location: similar.location || prev.location,
         max_stock: similar.max_stock || prev.max_stock,
-        min_stock: similar.min_stock || prev.min_stock,
         dimensions_length: similar.dimensions_length || prev.dimensions_length,
         dimensions_width: similar.dimensions_width || prev.dimensions_width,
         dimensions_thickness: similar.dimensions_thickness || prev.dimensions_thickness,
@@ -710,7 +685,6 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
 
   useEffect(() => {
     setSoladoGrade({});
-    setMinStockGrade({});
   }, [shoeCategory]);
 
   // Embalagem migrada pra Gestão de Embalagens / aba Embalagem da ficha técnica;
@@ -822,8 +796,6 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
       baseData.consumption_unit = baseData.unit;
     }
     if (hasGrade) {
-      baseData.min_stock_grade = minStockGrade;
-      baseData.min_stock = Object.values(minStockGrade).reduce((s, v) => s + (v || 0), 0);
       const gradeWithRange = { ...soladoGrade };
       if (sizeFrom != null && sizeTo != null) {
         gradeWithRange._size_from = sizeFrom;
@@ -1850,53 +1822,24 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
             </div>
               </div>
             </FormSection>
+            {/* Estoque mínimo (escalar e por numeração) foi removido em
+                10/10/2026 — compra é só sob demanda de PV
+                (specs/remover-estoque-minimo.md). Produto com grade não tem
+                mais nada a editar aqui: o saldo por numeração vive na grade. */}
+            {!hasGrade && (
             <FormSection title="Estoque" defaultOpen>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {!hasGrade && (
               <div>
                 <Label htmlFor="quantity">Quantidade Atual</Label>
                 <NumberInput id="quantity" min={0} step="0.0001" value={form.quantity} onChange={v => update('quantity', v)} required className="mt-1" />
               </div>
-            )}
-
-            {hasGrade && sizeFrom != null && sizeTo != null && sizeTo >= sizeFrom ? (
-              <div className="sm:col-span-2">
-                <Label className="text-xs font-semibold">Estoque Mínimo por Numeração</Label>
-                <div className="grid gap-2 mt-2" style={{ gridTemplateColumns: `repeat(${gradeSizes.length}, minmax(0, 1fr))` }}>
-                  {gradeSizes.map(size => (
-                    <div key={size} className="text-center">
-                      <span className="text-xs text-muted-foreground font-medium">{size}</span>
-                      <NumberInput
-                        min={0}
-                        step="1"
-                        value={minStockGrade[size] || 0}
-                        onChange={v => setMinStockGrade(prev => ({ ...prev, [size]: v }))}
-                        className="h-8 text-xs text-center px-1"
-                        placeholder="0"
-                      />
-                    </div>
-                  ))}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Estoque mínimo total: <span className="font-semibold text-foreground">
-                    {Object.values(minStockGrade).reduce((s, v) => s + (v || 0), 0)} pares
-                  </span>
-                </p>
-              </div>
-            ) : hasGrade ? null : (
-              <div>
-                <Label htmlFor="min_stock">Estoque Mínimo</Label>
-                <NumberInput id="min_stock" min={0} step="0.0001" value={form.min_stock} onChange={v => update('min_stock', v)} required className="mt-1" />
-              </div>
-            )}
 
             {/* "Estoque Máximo" e "Estoque de Segurança" foram removidos do form
-                em 2026-05 a pedido do usuário — o campo Máximo era pouco usado
-                e Segurança duplicava conceitualmente o Mínimo no olhar do
-                operador. As colunas continuam no DB (default 0) — lógica de
-                MRP/projeção/try_reserve segue funcionando. */}
+                em 2026-05 a pedido do usuário. As colunas continuam no DB
+                (default 0) — lógica de MRP/projeção/try_reserve segue igual. */}
               </div>
             </FormSection>
+            )}
             <FormSection title="Custo" defaultOpen>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {(() => {

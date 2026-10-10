@@ -14,7 +14,6 @@ export type ProductFormData = {
   category: string;
   color: string;
   quantity: number;
-  min_stock: number;
   max_stock: number;
   unit: string;
   unit_price: number;
@@ -24,7 +23,6 @@ export type ProductFormData = {
   group_id: string | null;
   active: boolean;
   image_url: string;
-  min_stock_grade?: Record<string, number>;
   stock_grade?: Record<string, number>;
   yield_per_meter?: number | null;
   yield_unit?: string;

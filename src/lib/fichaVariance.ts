@@ -157,21 +157,20 @@ export function varianceSummary(lines: VarianceLine[]) {
 }
 
 /**
- * Quanto comprar pra não parar a OP e ainda deixar o piso.
+ * Quanto comprar pra não parar a OP: só a falta da ficha.
  * Estoque já reflete o que saiu (overage incluso). Não soma overage de novo.
- * Baixa avulsa sem linha de ficha (theoretical=0) só recompõe o mínimo.
+ * Estoque mínimo foi removido (specs/remover-estoque-minimo.md): baixa avulsa
+ * sem linha de ficha (theoretical=0) não gera compra — não há piso a recompor.
  */
 export function qtyToBuyFromVariance(params: {
   theoretical: number;
   actual: number;
   stock: number;
-  minStock: number;
 }): number {
   const theoretical = Math.max(0, Number(params.theoretical) || 0);
   const stock = Number(params.stock) || 0;
-  const minStock = Math.max(0, Number(params.minStock) || 0);
   void params.actual;
-  return Math.max(0, theoretical + minStock - stock);
+  return Math.max(0, theoretical - stock);
 }
 
 export function diagnosisLabel(d: VarianceDiagnosis): string {

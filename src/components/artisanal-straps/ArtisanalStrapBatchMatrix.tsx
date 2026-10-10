@@ -27,8 +27,6 @@ import {
 import { useSuppliers } from '@/hooks/useSuppliers';
 
 interface RowConfig {
-  minStockM: number;
-  floorMode: ArtisanalStrapSourceMode;
   purchaseEnabled: boolean;
   supplierId: string;
   purchasePrice: number;
@@ -69,8 +67,6 @@ function defaultConfig(catalog: ArtisanalStrapCatalog, combo: Combo): RowConfig 
   const siblings = catalog.variants.filter((variant) =>
     variant.measure_id === combo.measureId && variant.base_group_id === combo.baseGroupId);
   return {
-    minStockM: modal(siblings.map((variant) => Number(variant.min_stock_m)), 0),
-    floorMode: modal(siblings.map((variant) => variant.min_stock_replenishment_mode), 'internal'),
     purchaseEnabled: modal(siblings.map((variant) => Boolean(variant.purchase_enabled)), false),
     supplierId: '',
     purchasePrice: 0,
@@ -122,7 +118,6 @@ export function ArtisanalStrapBatchMatrix({ catalog }: { catalog: ArtisanalStrap
   const [configs, setConfigs] = useState<Record<string, RowConfig>>({});
   const [candidateSelections, setCandidateSelections] = useState<Record<string, string>>({});
   const [reason, setReason] = useState('Cadastro em lote base × cor × medida');
-  const [floorsConfirmed, setFloorsConfirmed] = useState(false);
   const [results, setResults] = useState<ResultLine[]>([]);
   const [saving, setSaving] = useState(false);
   const save = useSaveArtisanalStrapBundle();
@@ -179,7 +174,6 @@ export function ArtisanalStrapBatchMatrix({ catalog }: { catalog: ArtisanalStrap
   const configFor = (combo: Combo) => configs[combo.key] || defaultConfig(catalog, combo);
   const updateConfig = (combo: Combo, patch: Partial<RowConfig>) => {
     setConfigs((current) => ({ ...current, [combo.key]: { ...configFor(combo), ...patch } }));
-    setFloorsConfirmed(false);
   };
   const labelFor = (combo: Combo) => {
     const measure = catalog.measures.find((item) => item.id === combo.measureId);
@@ -206,8 +200,7 @@ export function ArtisanalStrapBatchMatrix({ catalog }: { catalog: ArtisanalStrap
     if (officialCount === 0 && candidates.length > 1) return 'Mais de um produto-base ativo corresponde à cor; escolha e designe o oficial.';
     if (officialCount > 1) return 'Mais de um produto-base oficial ativo; resolva a ambiguidade.';
     const config = configFor(combo);
-    if (config.minStockM < 0) return 'Estoque mínimo negativo.';
-    if (config.purchaseEnabled || config.floorMode === 'buy_ready') {
+    if (config.purchaseEnabled) {
       if (!catalog.capabilities.can_see_financial_values) return 'Compra pronta exige acesso financeiro.';
       if (config.purchasePrice <= 0) return 'Informe o preço de compra.';
       if (config.minOrderQuantity <= 0 || config.purchaseMultiple <= 0) return 'MOQ e múltiplo devem ser positivos.';
@@ -216,7 +209,6 @@ export function ArtisanalStrapBatchMatrix({ catalog }: { catalog: ArtisanalStrap
   };
 
   const run = async () => {
-    if (!floorsConfirmed) return toast.error('Confirme explicitamente os pisos de estoque.');
     if (!reason.trim()) return toast.error('Informe o motivo da criação em lote.');
     setSaving(true);
     const output: ResultLine[] = [];
@@ -248,16 +240,19 @@ export function ArtisanalStrapBatchMatrix({ catalog }: { catalog: ArtisanalStrap
               identity_basis: 'reference_base',
               internal_production_enabled: true,
               color_id: combo.colorId,
-              min_stock_m: config.minStockM,
-              min_stock_replenishment_mode: config.floorMode,
-              purchase_enabled: config.purchaseEnabled || config.floorMode === 'buy_ready',
+              // Estoque mínimo foi removido (specs/remover-estoque-minimo.md):
+              // o catálogo ainda exige as colunas (NOT NULL) — piso 0 e modo
+              // derivado da compra (a matriz não cria receita).
+              min_stock_m: 0,
+              min_stock_replenishment_mode: (config.purchaseEnabled ? 'buy_ready' : 'internal') as ArtisanalStrapSourceMode,
+              purchase_enabled: config.purchaseEnabled,
               status: 'review_required',
               review_reason: 'Criada pela matriz; revisar receita e identidade comercial.',
             },
             product: {
               name: label,
               sku: generatedSku(catalog, combo),
-              ...(config.purchaseEnabled || config.floorMode === 'buy_ready' ? {
+              ...(config.purchaseEnabled ? {
                 supplier_id: config.supplierId || null,
                 purchase_unit: 'm',
                 conversion_rate: 1,
@@ -320,7 +315,7 @@ export function ArtisanalStrapBatchMatrix({ catalog }: { catalog: ArtisanalStrap
               return (
                 <article key={combo.key} className="rounded-lg border p-3">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><p className="text-sm font-semibold">{labelFor(combo)}</p>{existing ? <Badge variant="secondary">Pulada · já existe</Badge> : issue ? <Badge variant="destructive">Bloqueada</Badge> : <Badge variant="outline">Disponível para adicionar</Badge>}</div>
-                  {!existing && <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><div className="space-y-1"><Label>Estoque mínimo</Label><NumberInput value={config.minStockM} onChange={(value) => updateConfig(combo, { minStockM: value })} unit="m" /></div><div className="space-y-1"><Label>Modo do piso</Label><Select value={config.floorMode} onValueChange={(value) => updateConfig(combo, { floorMode: value as ArtisanalStrapSourceMode, ...(value === 'buy_ready' ? { purchaseEnabled: true } : {}) })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="internal">Produzir internamente</SelectItem><SelectItem value="buy_ready">Comprar pronta</SelectItem></SelectContent></Select></div><label className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm"><Checkbox checked={config.purchaseEnabled || config.floorMode === 'buy_ready'} disabled={config.floorMode === 'buy_ready'} onCheckedChange={(value) => updateConfig(combo, { purchaseEnabled: value === true })} /><span>Compra pronta habilitada</span></label>{(config.purchaseEnabled || config.floorMode === 'buy_ready') && <><div className="space-y-1"><Label>Fornecedor (opcional)</Label><Select value={config.supplierId || '__none__'} onValueChange={(value) => updateConfig(combo, { supplierId: value === '__none__' ? '' : value })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="__none__">Sem fornecedor · OC provisória</SelectItem>{suppliers.filter((supplier) => supplier.active).map((supplier) => <SelectItem key={supplier.id} value={supplier.id}>{supplier.name}</SelectItem>)}</SelectContent></Select><p className="text-[10px] text-muted-foreground">Sem fornecedor, a demanda gera OC provisória e usa 15 dias de lead time.</p></div><div className="space-y-1"><Label>Preço</Label><NumberInput value={config.purchasePrice} onChange={(value) => updateConfig(combo, { purchasePrice: value })} unit="R$/m" /></div><div className="space-y-1"><Label>MOQ</Label><NumberInput value={config.minOrderQuantity} onChange={(value) => updateConfig(combo, { minOrderQuantity: value })} unit="m" /></div><div className="space-y-1"><Label>Múltiplo</Label><NumberInput value={config.purchaseMultiple} onChange={(value) => updateConfig(combo, { purchaseMultiple: value })} unit="m" /></div><div className="space-y-1"><Label>Preparo</Label><NumberInput value={config.preparationDays} onChange={(value) => updateConfig(combo, { preparationDays: value })} unit="dias" /></div></>}</div>}
+                  {!existing && <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><label className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm"><Checkbox checked={config.purchaseEnabled} onCheckedChange={(value) => updateConfig(combo, { purchaseEnabled: value === true })} /><span>Compra pronta habilitada</span></label>{config.purchaseEnabled && <><div className="space-y-1"><Label>Fornecedor (opcional)</Label><Select value={config.supplierId || '__none__'} onValueChange={(value) => updateConfig(combo, { supplierId: value === '__none__' ? '' : value })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="__none__">Sem fornecedor · OC provisória</SelectItem>{suppliers.filter((supplier) => supplier.active).map((supplier) => <SelectItem key={supplier.id} value={supplier.id}>{supplier.name}</SelectItem>)}</SelectContent></Select><p className="text-[10px] text-muted-foreground">Sem fornecedor, a demanda gera OC provisória e usa 15 dias de lead time.</p></div><div className="space-y-1"><Label>Preço</Label><NumberInput value={config.purchasePrice} onChange={(value) => updateConfig(combo, { purchasePrice: value })} unit="R$/m" /></div><div className="space-y-1"><Label>MOQ</Label><NumberInput value={config.minOrderQuantity} onChange={(value) => updateConfig(combo, { minOrderQuantity: value })} unit="m" /></div><div className="space-y-1"><Label>Múltiplo</Label><NumberInput value={config.purchaseMultiple} onChange={(value) => updateConfig(combo, { purchaseMultiple: value })} unit="m" /></div><div className="space-y-1"><Label>Preparo</Label><NumberInput value={config.preparationDays} onChange={(value) => updateConfig(combo, { preparationDays: value })} unit="dias" /></div></>}</div>}
                   {issue && !existing && <p className="mt-2 flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400"><Warning className="h-3.5 w-3.5" /> {issue}</p>}
                   {!existing && officialCount === 0 && candidates.length > 0 && (
                     <div className="mt-3 grid gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
@@ -349,11 +344,11 @@ export function ArtisanalStrapBatchMatrix({ catalog }: { catalog: ArtisanalStrap
             })}
           </div>
 
-          <div className="space-y-2 rounded-lg border p-3"><label className="flex items-start gap-2 text-sm"><Checkbox checked={floorsConfirmed} onCheckedChange={(value) => setFloorsConfirmed(value === true)} /><span>Revisei e confirmo todos os estoques mínimos e modos de piso, inclusive valores zero.</span></label><div className="space-y-1"><Label>Motivo *</Label><Textarea value={reason} onChange={(event) => setReason(event.target.value)} /></div></div>
+          <div className="space-y-2 rounded-lg border p-3"><div className="space-y-1"><Label>Motivo *</Label><Textarea value={reason} onChange={(event) => setReason(event.target.value)} /></div></div>
 
           {results.length > 0 && <div className="space-y-1 rounded-lg border p-3"><h3 className="flex items-center gap-2 text-sm font-bold"><CheckCircle className="h-4 w-4" /> Resultado</h3>{results.map((result) => <div key={result.key} className="flex flex-col justify-between gap-1 border-t py-2 text-xs sm:flex-row"><span>{result.label}</span><span className={result.status === 'blocked' ? 'text-destructive' : 'text-muted-foreground'}>{result.status === 'created' ? 'Criada' : result.status === 'skipped' ? 'Pulada' : 'Bloqueada'} · {result.detail}</span></div>)}</div>}
 
-          <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Fechar</Button><Button disabled={saving || combos.length === 0 || !floorsConfirmed || !reason.trim()} onClick={run}>{saving ? 'Criando…' : `Criar ${combos.length} combinação(ões)`}</Button></DialogFooter>
+          <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Fechar</Button><Button disabled={saving || combos.length === 0 || !reason.trim()} onClick={run}>{saving ? 'Criando…' : `Criar ${combos.length} combinação(ões)`}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </>

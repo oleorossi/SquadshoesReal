@@ -23,8 +23,12 @@ describe('v_products_list — min_stock 0 é sem piso', () => {
     expect(SQL).toContain('COALESCE(p.quantity, 0) - COALESCE(p.reserved_stock, 0)) <= 0');
   });
 
-  it('a tabela de estoque compara o disponível com min_stock || 0', () => {
-    expect(TABLE).toContain('const min = Number(product.min_stock) || 0');
-    expect(TABLE).toContain('if (min === 0) return { label: \'Normal\'');
+  // Estoque mínimo foi removido do front (specs/remover-estoque-minimo.md,
+  // E1): a tabela de estoque não lê mais min_stock — o status olha só o
+  // disponível (negativo = Crítico).
+  it('a tabela de estoque não usa mais min_stock no status', () => {
+    expect(TABLE).not.toMatch(/min_stock/);
+    expect(TABLE).toContain("if (qty < 0) return { label: 'Crítico'");
+    expect(TABLE).not.toContain("label: 'Baixo'");
   });
 });

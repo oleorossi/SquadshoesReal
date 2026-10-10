@@ -98,7 +98,7 @@ export function ArtisanalStrapMigrationResolutionDialog({
     <Dialog open={!!diagnostic && (isRecipe || isReview)} onOpenChange={(open) => { if (!open) close(); }}>
       <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{isRecipe ? 'Vincular receita legada' : 'Confirmar origem do estoque mínimo'}</DialogTitle>
+          <DialogTitle>{isRecipe ? 'Vincular receita legada' : 'Confirmar origem de abastecimento'}</DialogTitle>
           <DialogDescription>
             Nenhum nome será inferido. A decisão fica registrada com UUIDs canônicos e motivo.
           </DialogDescription>
@@ -125,7 +125,7 @@ export function ArtisanalStrapMigrationResolutionDialog({
             {(variantIdentityConflict || !variant) && (
               <Alert variant="destructive"><Warning className="h-4 w-4" /><AlertTitle>Identidade exata indisponível</AlertTitle><AlertDescription>{variantIdentityConflict ? 'O UUID legado diverge do candidato retornado. Recarregue o diagnóstico; nenhuma resolução será enviada.' : 'A variante indicada pela revisão não existe no catálogo carregado. Recarregue antes de decidir.'}</AlertDescription></Alert>
             )}
-            <div className="space-y-1.5"><Label>Origem do piso *</Label><Select value={floorMode} onValueChange={(value) => setFloorMode(value as ArtisanalStrapSourceMode)} disabled={purchasedReady}><SelectTrigger><SelectValue placeholder="Confirme explicitamente" /></SelectTrigger><SelectContent>{!purchasedReady && <SelectItem value="internal">Produzir com napa própria</SelectItem>}<SelectItem value="buy_ready">Comprada pronta</SelectItem></SelectContent></Select>{purchasedReady && <p className="text-xs text-muted-foreground">Origem fixa pela identidade do produto acabado.</p>}</div>
+            <div className="space-y-1.5"><Label>Origem de abastecimento *</Label><Select value={floorMode} onValueChange={(value) => setFloorMode(value as ArtisanalStrapSourceMode)} disabled={purchasedReady}><SelectTrigger><SelectValue placeholder="Confirme explicitamente" /></SelectTrigger><SelectContent>{!purchasedReady && <SelectItem value="internal">Produzir com napa própria</SelectItem>}<SelectItem value="buy_ready">Comprada pronta</SelectItem></SelectContent></Select>{purchasedReady && <p className="text-xs text-muted-foreground">Origem fixa pela identidade do produto acabado.</p>}</div>
             {candidateText && <pre className="max-h-36 overflow-auto rounded-md border bg-muted/30 p-2 text-[10px] text-muted-foreground">{candidateText}</pre>}
           </div>
         )}

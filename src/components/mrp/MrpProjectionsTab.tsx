@@ -29,7 +29,6 @@ interface ProjectedItem {
   supplierName: string;
   currentStock: number;
   inbound: number;
-  minStock: number;
   dailyConsumption: number;
   projectedStock: number;
   shortage: number;
@@ -102,17 +101,15 @@ export default function MrpProjectionsTab() {
 
     for (const p of products) {
       if (!p.active) continue;
-      if (p.quantity <= 0 && p.min_stock <= 0) continue;
 
       const groupInfo = p.group_id ? groupMap.get(p.group_id) : null;
       const groupName = groupInfo?.name || 'Sem Grupo';
 
-      // Consumo diário REAL (histórico de stock_movements via RPC); fallback p/ a
-      // heurística min_stock/30 só quando o produto não tem histórico de consumo.
+      // Consumo diário REAL (histórico de stock_movements via RPC). A antiga
+      // heurística min_stock/30 saiu junto com o estoque mínimo
+      // (specs/remover-estoque-minimo.md): sem histórico, sem projeção.
       const proj = projByProduct.get(p.id);
-      const dailyConsumption = (proj?.avgDaily || 0) > 0
-        ? proj!.avgDaily
-        : (p.min_stock > 0 ? Math.max(p.min_stock / 30, 0.1) : 0);
+      const dailyConsumption = proj?.avgDaily || 0;
 
       if (dailyConsumption <= 0) continue;
 
@@ -133,7 +130,9 @@ export default function MrpProjectionsTab() {
       const inbound = inboundFactor == null ? 0 : (inboundByProduct.get(p.id) || 0) * inboundFactor;
       const effectiveStock = availableStock + inbound;
       const projectedStock = Math.max(0, effectiveStock - (dailyConsumption * days));
-      const shortage = Math.max(0, p.min_stock - projectedStock);
+      // Falta = consumo do horizonte que o estoque (+ trânsito) não cobre. Não há
+      // mais piso de estoque mínimo a recompor.
+      const shortage = Math.max(0, (dailyConsumption * days) - effectiveStock);
       const daysUntilStockout = dailyConsumption > 0
         ? Math.floor(effectiveStock / dailyConsumption)
         : 999;
@@ -152,7 +151,6 @@ export default function MrpProjectionsTab() {
         supplierName: (p as any).supplier_name || groupName,
         currentStock: availableStock,
         inbound,
-        minStock: p.min_stock || 0,
         dailyConsumption,
         projectedStock,
         shortage,
@@ -274,7 +272,7 @@ export default function MrpProjectionsTab() {
           <CardContent className="py-12 text-center text-muted-foreground">
             Nenhum material com projeção de consumo encontrado.
             <br />
-            <span className="text-xs">Materiais precisam ter estoque mínimo configurado para gerar projeções.</span>
+            <span className="text-xs">A projeção usa o consumo histórico dos últimos 30 dias — materiais sem consumo registrado não aparecem.</span>
           </CardContent>
         </Card>
       ) : (

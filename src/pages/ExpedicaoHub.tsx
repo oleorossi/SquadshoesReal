@@ -41,7 +41,6 @@ export default function ExpedicaoHub() {
       kpis: [
         { label: 'Tipos de Caixa', value: stats?.totalBoxTypes ?? '-' },
         { label: 'Estoque Total', value: stats?.totalBoxStock ?? '-' },
-        { label: 'Alertas Estoque', value: stats?.lowStockAlerts ?? 0, alert: (stats?.lowStockAlerts ?? 0) > 0 },
         { label: 'Sem Fornecedor', value: stats?.boxTypesWithoutSupplier ?? 0, alert: (stats?.boxTypesWithoutSupplier ?? 0) > 0 },
       ],
       step: 2,

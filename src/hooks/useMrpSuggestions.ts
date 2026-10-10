@@ -8,7 +8,7 @@ export function useMrpSuggestions(status?: string) {
     queryFn: async () => {
       let query = supabase
         .from('mrp_suggestions')
-        .select('*, products(name, sku, unit, quantity, min_stock)')
+        .select('*, products(name, sku, unit, quantity)')
         .order('created_at', { ascending: false });
       if (status && status !== 'all') query = query.eq('status', status);
       const { data, error } = await query.limit(300);

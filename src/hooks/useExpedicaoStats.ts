@@ -19,7 +19,6 @@ export interface ExpedicaoStats {
   // Embalagens
   totalBoxTypes: number;
   totalBoxStock: number;
-  lowStockAlerts: number;
   boxTypesWithoutSupplier: number;
 
   // Transporte
@@ -57,7 +56,7 @@ export function useExpedicaoStats() {
         pendingOrdersRes,
       ] = await Promise.all([
         // Box types with stock info
-        supabase.from('box_types').select('id, nome, quantity, min_stock, supplier_id, comprimento_cm, largura_cm, altura_cm, active').eq('active', true),
+        supabase.from('box_types').select('id, nome, quantity, supplier_id, comprimento_cm, largura_cm, altura_cm, active').eq('active', true),
         // Baús (vehicles)
         supabase.from('baus').select('id, nome, comprimento_cm, largura_cm, altura_cm, capacidade_kg').eq('active', true),
         // Transportadoras (canônica = transporters; consolidação 2026-06-28)
@@ -80,7 +79,6 @@ export function useExpedicaoStats() {
 
       // Calculate box stats
       const totalBoxStock = boxTypes.reduce((sum, b) => sum + (b.quantity || 0), 0);
-      const lowStockAlerts = boxTypes.filter(b => (b.quantity || 0) <= (b.min_stock || 0)).length;
       const boxTypesWithoutSupplier = boxTypes.filter(b => !b.supplier_id).length;
 
       // Calculate total vehicle capacity
@@ -159,7 +157,6 @@ export function useExpedicaoStats() {
       return {
         totalBoxTypes: boxTypes.length,
         totalBoxStock,
-        lowStockAlerts,
         boxTypesWithoutSupplier,
         totalBaus: baus.length,
         totalTransportadoras: transportadoras.length,

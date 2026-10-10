@@ -171,7 +171,12 @@ describe('Tiras artesanais — contrato do frontend canônico', () => {
     expect(batchMatrix).toContain("alias.status === 'approved'");
     expect(batchMatrix).toContain('crypto.randomUUID().toUpperCase()');
     expect(batchMatrix).toContain('Compra pronta habilitada');
-    expect(batchMatrix).toContain('config.purchaseEnabled || config.floorMode');
+    // Estoque mínimo removido (specs/remover-estoque-minimo.md): a matriz não
+    // pede piso nem modo de piso; o modo sai derivado da compra habilitada.
+    expect(batchMatrix).toContain("config.purchaseEnabled ? 'buy_ready' : 'internal'");
+    expect(batchMatrix).not.toContain('floorMode');
+    expect(batchMatrix).not.toContain('<Label>Estoque mínimo');
+    expect(batchMatrix).not.toContain('min_stock_m: config.');
     expect(batchMatrix).not.toContain('.slice(0, 6)');
     expect(batchMatrix).not.toContain("from('products')");
   });

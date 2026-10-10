@@ -1416,7 +1416,6 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
                 <TableRow className="bg-muted/40 hover:bg-muted/40 [&_th]:text-xs [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground">
                   <TableHead>Material</TableHead>
                   <TableHead className="text-center">Estoque Atual</TableHead>
-                  <TableHead className="text-center">Mín</TableHead>
                   <TableHead className="text-center">Sugerido</TableHead>
                   <TableHead className="text-center">Quantidade</TableHead>
                   <TableHead className="text-right">Preço Un.</TableHead>
@@ -1425,7 +1424,7 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
               </TableHeader>
               <TableBody>
                 {isLoading ? (
-                  <TableRow><TableCell colSpan={7} className="text-center py-4">Carregando...</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={6} className="text-center py-4">Carregando...</TableCell></TableRow>
                 ) : items.map(item => {
                   const edited = editingItems[item.id];
                   const qty = edited?.quantity ?? item.quantity;
@@ -1460,9 +1459,8 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
                         )}
                       </TableCell>
                       <TableCell className="text-center">
-                        <span className={item.current_stock <= item.min_stock ? 'text-destructive font-semibold' : ''}>{item.current_stock}</span>
+                        <span>{item.current_stock}</span>
                       </TableCell>
-                      <TableCell className="text-center text-muted-foreground">{item.min_stock}</TableCell>
                       <TableCell className="text-center text-muted-foreground">{item.suggested_quantity}</TableCell>
                       <TableCell className="text-center">
                         {isEditable ? (
@@ -1525,7 +1523,7 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
                 })}
                 {!isLoading && items.length > 0 && (
                   <TableRow className="bg-muted/30 border-t-2 border-border font-bold hover:bg-muted/30">
-                    <TableCell colSpan={6} className="text-right text-[11px] uppercase tracking-wider text-muted-foreground">Total da Ordem</TableCell>
+                    <TableCell colSpan={5} className="text-right text-[11px] uppercase tracking-wider text-muted-foreground">Total da Ordem</TableCell>
                     <TableCell className="text-right text-base text-primary tabular-nums">{fmt(itemsTotal)}</TableCell>
                   </TableRow>
                 )}

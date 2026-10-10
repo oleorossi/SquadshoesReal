@@ -105,17 +105,13 @@ function grossQty(product: Product): number {
   return Number(product.quantity) || 0;
 }
 
-/** Status compara o DISPONÍVEL com o mínimo, não o bruto (R1.6). Sem isso o selo
- *  "Normal" apareceria ao lado de um disponível negativo — hoje 51 cores estão
- *  nessa situação (reserva viva sobre saldo zerado). */
+/** Status olha o DISPONÍVEL, não o bruto (R1.6). Sem isso o selo "Normal"
+ *  apareceria ao lado de um disponível negativo — hoje 51 cores estão nessa
+ *  situação (reserva viva sobre saldo zerado). Estoque mínimo foi removido
+ *  (specs/remover-estoque-minimo.md): não existe mais selo "Baixo". */
 function getStockStatus(product: Product) {
   const qty = availableQty(product);
-  const min = Number(product.min_stock) || 0;
   if (qty < 0) return { label: 'Crítico', variant: 'destructive' as const };
-  if (min === 0) return { label: 'Normal', variant: 'success' as const };
-  const ratio = qty / min;
-  if (ratio <= 0.5) return { label: 'Crítico', variant: 'destructive' as const };
-  if (ratio <= 1) return { label: 'Baixo', variant: 'warning' as const };
   return { label: 'Normal', variant: 'success' as const };
 }
 
@@ -135,13 +131,13 @@ type GroupStats = {
    * então o cabeçalho para de exibir total nesses casos.
    */
   unidadesMistas: boolean;
-  severidade: 'alarm' | 'warn' | 'dead' | 'ok';
+  severidade: 'alarm' | 'dead' | 'ok';
 };
 
 /** Agregados da linha colapsada. Soma bruta e líquida convivem: a conferência
  *  física conta prateleira, o pedido consome disponível. */
 function computeGroupStats(items: Product[]): GroupStats {
-  let bruto = 0, disponivel = 0, valor = 0, zeradas = 0, emFalta = 0, abaixoMin = 0;
+  let bruto = 0, disponivel = 0, valor = 0, zeradas = 0, emFalta = 0;
   const materiais = new Set<string>();
   const unidades = new Set<string>();
   for (const p of items) {
@@ -152,14 +148,12 @@ function computeGroupStats(items: Product[]): GroupStats {
     valor += qty * (Number(p.unit_price) || 0);
     if (qty <= 0) zeradas += 1;
     if (disp < 0) emFalta += 1;
-    if (qty > 0 && Number(p.min_stock) > 0 && qty <= Number(p.min_stock)) abaixoMin += 1;
     materiais.add(materialIdentity(p));
     if (p.unit) unidades.add(p.unit);
   }
   const severidade: GroupStats['severidade'] =
     emFalta > 0 ? 'alarm'
     : zeradas === items.length ? 'dead'
-    : abaixoMin > 0 ? 'warn'
     : 'ok';
   return {
     bruto, disponivel, valor, zeradas, emFalta,
@@ -172,7 +166,6 @@ function computeGroupStats(items: Product[]): GroupStats {
 
 const RAIL_CLASSES: Record<GroupStats['severidade'], string> = {
   alarm: 'bg-destructive',
-  warn: 'bg-warning',
   dead: 'bg-muted-foreground/40',
   ok: 'bg-success',
 };
@@ -257,7 +250,6 @@ function ProductHoverPreview({ product, formatCurrency, children }: {
               <span className="text-muted-foreground">Custo:</span>{' '}
               <span className="font-mono">{formatCurrency(Number(product.unit_price) || 0)}</span>
             </div>
-            <div><span className="text-muted-foreground">Mín.:</span> <span className="font-mono">{Number(product.min_stock) || 0}</span></div>
             <div><span className="text-muted-foreground">Local:</span> {product.location || '—'}</div>
             {(product as any).sole_material && (
               <div><span className="text-muted-foreground">Material:</span> {(product as any).sole_material}</div>
@@ -875,8 +867,8 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
         return va - vb;
       }
       if (sortKey === 'status') {
-        const statusOrder = { 'Crítico': 0, 'Baixo': 1, 'Normal': 2 };
-        return (statusOrder[getStockStatus(a).label] || 2) - (statusOrder[getStockStatus(b).label] || 2);
+        const statusOrder: Record<string, number> = { 'Crítico': 0, 'Normal': 1 };
+        return (statusOrder[getStockStatus(a).label] ?? 1) - (statusOrder[getStockStatus(b).label] ?? 1);
       }
       return 0;
     });

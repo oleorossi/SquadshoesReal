@@ -21,7 +21,6 @@ export const ProductSchema = z.object({
   unit_price: z.number().min(0, "Preço deve ser zero ou positivo"),
   category: z.string().optional(),
   color: z.string().optional(),
-  min_stock: z.number().optional(),
   max_stock: z.number().optional(),
   unit: z.string().optional(),
   location: z.string().optional(),
@@ -107,7 +106,6 @@ export const PRODUCT_LIST_SELECT = [
   'quantity',
   'reserved_stock',
   'stock_grade',
-  'min_stock',
   'max_stock',
   'unit',
   'unit_price',
@@ -259,7 +257,7 @@ export function getBaseName(name: string): string {
 const SYNC_FIELDS = [
   'category', 'unit', 'group_id', 'location',
   'dimensions_length', 'dimensions_width', 'dimensions_thickness', 'dimensions_unit',
-  'unit_price', 'min_stock', 'max_stock',
+  'unit_price', 'max_stock',
 ] as const;
 
 export type SyncInfo = {
@@ -316,7 +314,7 @@ export function useUpdateProduct() {
       // the audit trail; same guard applied to usePackaging (audit-37 [3]).
       const normalized = normalizeProductSupplierColor(data);
       const { metadata: safeData, physical } = stripProductPhysicalFields(normalized);
-      const { min_stock_grade: _ignoredMinStockGrade, ...metadata } = safeData;
+      const metadata = safeData;
       if (physical.quantity !== undefined || physical.stock_grade !== undefined || physical.reserved_stock !== undefined) {
         // Surface a developer warning; the stock adjustment page is the correct path.
         console.warn('[useUpdateProduct] physical stock fields stripped — use the canonical stock command.');

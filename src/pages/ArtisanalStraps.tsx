@@ -1656,8 +1656,6 @@ function VariantsTab({
             const identity = identityForVariant(catalog, variant);
             const product = maps.products.get(variant.finished_product_id);
             const stock = Number(product?.quantity) || 0;
-            const minimum = Number(variant.min_stock_m) || 0;
-            const belowFloor = stock < minimum;
             const internallyProduced = variant.identity_basis === 'reference_base'
               && variant.internal_production_enabled;
             return (
@@ -1675,29 +1673,16 @@ function VariantsTab({
                   </div>
                 </div>
                 <StrapIdentityTrail {...identity} compact className="mt-3" />
-                <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <div className="mt-4 grid grid-cols-2 gap-2">
                   <div className="rounded-md bg-muted/40 px-2.5 py-2">
                     <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Saldo</p>
                     <p className="font-mono text-sm font-bold">{formatMeters(stock)}</p>
-                  </div>
-                  <div className="rounded-md bg-muted/40 px-2.5 py-2">
-                    <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Mínimo</p>
-                    <p className="font-mono text-sm font-bold">{formatMeters(minimum)}</p>
-                  </div>
-                  <div className="rounded-md bg-muted/40 px-2.5 py-2">
-                    <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Piso</p>
-                    <p className="text-xs font-semibold">{variant.min_stock_replenishment_mode === 'internal' ? 'Interno' : 'Compra pronta'}</p>
                   </div>
                   <div className="rounded-md bg-muted/40 px-2.5 py-2">
                     <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Compra</p>
                     <p className="text-xs font-semibold">{variant.purchase_enabled ? 'Habilitada' : 'Desabilitada'}</p>
                   </div>
                 </div>
-                {belowFloor && (
-                  <div className="mt-3 flex items-center gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning-foreground">
-                    <Warning className="h-4 w-4 shrink-0" /> Saldo abaixo do estoque mínimo.
-                  </div>
-                )}
                 {variant.review_reason && (
                   <p className="mt-3 rounded-md border border-border px-3 py-2 text-xs text-muted-foreground">{variant.review_reason}</p>
                 )}

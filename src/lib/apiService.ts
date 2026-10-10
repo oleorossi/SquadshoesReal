@@ -47,17 +47,10 @@ export const apiService = {
 
     // Batch 2: heavier queries (deferred)
     const [
-      { data: lowStockProducts },
       { data: pendingAdvances },
       { data: staleOrders },
       { data: overdueSales },
     ] = await Promise.all([
-      // Only fetch products actually below min_stock using a filter
-      supabase
-        .from('products')
-        .select('id, name, color, quantity, min_stock, unit')
-        .eq('active', true)
-        .limit(200),
       supabase
         .from('employee_advances')
         .select('id, amount')
@@ -82,7 +75,6 @@ export const apiService = {
       overduePayables: overduePayables || [],
       upcomingPayables: upcomingPayables || [],
       overdueReceivables: overdueReceivables || [],
-      lowStockProducts: lowStockProducts || [],
       pendingPOs: pendingPOs || [],
       pendingAdvances: pendingAdvances || [],
       staleOrders: staleOrders || [],

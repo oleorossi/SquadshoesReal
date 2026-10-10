@@ -207,7 +207,6 @@ export async function createWaveWithMaterialOrders(params: {
       unit_price: 0,
       unit: s.unit,
       current_stock: s.stock_qty,
-      min_stock: 0,
       max_stock: 0,
     }));
 

@@ -44,7 +44,6 @@ export interface CreateProductWithStockInput {
   location?: string;
   quantity: number;
   unit_price?: number;
-  min_stock?: number;
   max_stock?: number;
   group_id?: string | null;
   supplier_id?: string | null;

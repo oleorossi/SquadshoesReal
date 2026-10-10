@@ -23,7 +23,6 @@ const packagingSchema = z.object({
   finish: z.string().optional(),
   supplier_id: z.string().optional(),
   unit_cost: z.number().min(0),
-  minimum_stock: z.number().min(0),
   current_stock: z.number().min(0),
   barcode: z.string().optional(),
   internal_code: z.string().min(1, 'Código interno é obrigatório'),
@@ -64,7 +63,6 @@ const PackagingForm = ({ initialData, onSubmit, isLoading }: PackagingFormProps)
       finish: initialData?.finish || '',
       supplier_id: initialData?.supplier_id || '',
       unit_cost: initialData?.unit_cost || 0,
-      minimum_stock: initialData?.minimum_stock || 0,
       current_stock: initialData?.current_stock || 0,
       barcode: initialData?.barcode || '',
       internal_code: initialData?.internal_code || '',
@@ -93,7 +91,6 @@ const PackagingForm = ({ initialData, onSubmit, isLoading }: PackagingFormProps)
         volume: calculatedVolume,
       },
       unit_cost: data.unit_cost,
-      minimum_stock: data.minimum_stock,
       current_stock: data.current_stock,
       supplier_name: suppliers.find(s => s.id === data.supplier_id)?.name || null,
       notes: data.notes || null,
@@ -229,10 +226,6 @@ const PackagingForm = ({ initialData, onSubmit, isLoading }: PackagingFormProps)
           <div className="space-y-2">
             <Label>Estoque Atual</Label>
             <Input type="number" {...register('current_stock', { valueAsNumber: true })} />
-          </div>
-          <div className="space-y-2">
-            <Label>Estoque Mínimo</Label>
-            <Input type="number" {...register('minimum_stock', { valueAsNumber: true })} />
           </div>
         </div>
         <div className="grid grid-cols-2 gap-4">

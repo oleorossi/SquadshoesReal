@@ -70,16 +70,14 @@ export default function Dashboard() {
         // Pra contagem, basta selecionar uma coluna única ('id').
         // Estoque é estado atual — não filtra por período
         supabase.from('products').select('id', { count: 'exact', head: true }),
-        // Estoque crítico: MESMA regra da tela que este card abre
+        // Estoque zerado: MESMA regra da tela que este card abre
         // (/estoque?tab=alerts) — o predicado canônico mora em
         // '@/lib/stockAlerts'. Antes era `.lt('quantity', 10)`: número mágico
-        // que ignorava `active`, `min_stock` e solado, e mostrava 142 no card
-        // contra 126 na tela. Não dá pra contar no servidor porque PostgREST
-        // não compara duas colunas (`quantity=lte.min_stock` → 22P02), então
-        // vem a projeção mínima dos ativos e conta-se aqui (mesmo desenho de
-        // useLowStockAlerts.ts).
+        // que ignorava `active` e solado, e mostrava 142 no card contra 126 na
+        // tela. Estoque mínimo foi removido (specs/remover-estoque-minimo.md),
+        // então o card conta só saldo zero.
         supabase.from('products')
-          .select('quantity, min_stock, category, active', { count: 'exact' })
+          .select('quantity, category, active', { count: 'exact' })
           .eq('active', true),
         // ⚠ OPs ativas e PVs pendentes são métricas de ESTADO, não de fluxo:
         // respondem "quanto está aberto AGORA". Filtrar por created_at do período
@@ -314,9 +312,9 @@ export default function Dashboard() {
           />
         )}
         <StatCard
-          label="Estoque Crítico"
+          label="Estoque Zerado"
           value={productionStats?.critical ?? "..."}
-          hint="Zerados ou no/abaixo do mín."
+          hint="Materiais ativos sem saldo"
           tone="destructive"
           icon={AlertTriangle}
           onClick={() => navigate('/estoque?tab=alerts')}

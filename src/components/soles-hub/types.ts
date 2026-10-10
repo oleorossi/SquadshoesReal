@@ -8,7 +8,6 @@ export interface SoleProduct {
   unit: string;
   /** Custo de compra por par desta variante; alimenta estoque e custeio. */
   unit_price: number;
-  min_stock: number;
   stock_grade: Record<string, unknown> | null;
   group_id: string | null;
   active: boolean;

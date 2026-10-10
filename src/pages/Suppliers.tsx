@@ -157,7 +157,6 @@ function InvoiceItemsRow({ invoice, supplierName }: { invoice: Invoice; supplier
               location: 'Almoxarifado A',
               quantity: item.quantity,
               unit_price: item.unit_price,
-              min_stock: 0,
               max_stock: 0,
               reason: `Entrada via NF (lote, novo) - ${item.product_name}`,
             });

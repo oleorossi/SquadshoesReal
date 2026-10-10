@@ -49,7 +49,6 @@ export default function SoleCreateDialog({ open, onOpenChange, onCreated }: Prop
   const [sizeTo, setSizeTo] = useState<number>(40);
   const [classification, setClassification] = useState<SoleClassification>('tradicional');
   const [isFachetado, setIsFachetado] = useState(false);
-  const [minStock, setMinStock] = useState<number>(0);
   const [unitPrice, setUnitPrice] = useState<number>(0);
   const [groupId, setGroupId] = useState<string>('');
   const [creatingGroup, setCreatingGroup] = useState(false);
@@ -116,7 +115,6 @@ export default function SoleCreateDialog({ open, onOpenChange, onCreated }: Prop
     setSizeFrom(33); setSizeTo(40);
     setClassification('tradicional');
     setIsFachetado(false);
-    setMinStock(0);
     setUnitPrice(0);
     setGroupId('');
     setCreatingGroup(false);
@@ -177,7 +175,6 @@ export default function SoleCreateDialog({ open, onOpenChange, onCreated }: Prop
         purchase_order_unit: 'par',
         conversion_rate: 1,
         quantity: 0,
-        min_stock: minStock || 0,
         active: true,
         unit_price: unitPrice,
         sole_classification: classification,
@@ -342,24 +339,14 @@ export default function SoleCreateDialog({ open, onOpenChange, onCreated }: Prop
             </div>
           </div>
 
-          {/* Custo + estoque mínimo + grupo */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {/* Custo + grupo */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="sole-unit-price">Custo (R$/par)</Label>
               <CurrencyInput
                 id="sole-unit-price"
                 value={unitPrice}
                 onChange={setUnitPrice}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="sole-min-stock">Estoque mínimo</Label>
-              <NumberInput
-                id="sole-min-stock"
-                min={0} decimals={0}
-                value={minStock}
-                onChange={n => setMinStock(n)}
-                className="font-mono"
               />
             </div>
             <div className="space-y-1.5">

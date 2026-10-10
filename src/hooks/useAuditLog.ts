@@ -52,7 +52,7 @@ export function useAuditLog(search?: string, enabled = true) {
 // Only these fields may be reverted — prevents overwriting system/audit fields via replay attack
 const REVERTIBLE_PRODUCT_FIELDS = new Set([
   'name', 'sku', 'description', 'unit_price', 'unit',
-  'min_stock', 'max_stock', 'quantity', 'color', 'category',
+  'max_stock', 'quantity', 'color', 'category',
   'location', 'notes', 'group_id', 'supplier_id',
 ]);
 

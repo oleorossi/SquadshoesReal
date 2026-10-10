@@ -69,7 +69,6 @@ export function quickVariantTemplateSignature(
     product.category || '',
     product.unit || '',
     product.location || '',
-    Number(product.min_stock) || 0,
     Number(product.max_stock) || 0,
     Number(product.safety_stock) || 0,
     Number(product.yield_per_meter) || 0,

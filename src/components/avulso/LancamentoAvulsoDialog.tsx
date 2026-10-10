@@ -121,7 +121,6 @@ export function LancamentoAvulsoDialog({ open, onOpenChange, mode }: LancamentoA
           unit: selectedProduct.unit || 'un',
           unit_price: unitPrice,
           current_stock: Number(selectedProduct.quantity) || 0,
-          min_stock: Number(selectedProduct.min_stock) || 0,
           max_stock: Number(selectedProduct.max_stock) || 0,
           payment_due_date: paymentDate,
           notes,

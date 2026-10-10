@@ -1,17 +1,22 @@
 import { autoCreateMaterialPO, type MaterialAutoPOResult } from '@/lib/materialAutoPO';
 import { qtyToBuyFromVariance, type VarianceLine } from '@/lib/fichaVariance';
 
+/**
+ * Candidato a compra a partir da variância da ficha. Só existe motivo
+ * 'shortage' (falta para a necessidade da OP): estoque mínimo foi removido
+ * (specs/remover-estoque-minimo.md), então não há mais compra para recompor piso.
+ */
 export interface ShortagePOCandidate {
   productId: string;
   name: string;
   qty: number;
   unit?: string | null;
-  reason: 'shortage' | 'min_stock' | 'both';
+  reason: 'shortage';
 }
 
 export function shortageCandidatesFromVariance(
   lines: VarianceLine[],
-  stockByProduct: Record<string, { stock: number; minStock: number; isArtisanal?: boolean }>,
+  stockByProduct: Record<string, { stock: number; isArtisanal?: boolean }>,
 ): ShortagePOCandidate[] {
   const out: ShortagePOCandidate[] = [];
   for (const line of lines) {
@@ -22,18 +27,14 @@ export function shortageCandidatesFromVariance(
       theoretical: line.theoretical,
       actual: line.actual,
       stock: stock.stock,
-      minStock: stock.minStock,
     });
     if (qty <= 0) continue;
-    const shortVsNeed = Math.max(0, line.theoretical - stock.stock);
-    const stockAfterNeed = Math.max(0, stock.stock - line.theoretical);
-    const belowMinAfter = Math.max(0, stock.minStock - stockAfterNeed);
     out.push({
       productId: line.productId,
       name: line.name,
       qty,
       unit: line.unit,
-      reason: shortVsNeed > 0 && belowMinAfter > 0 ? 'both' : shortVsNeed > 0 ? 'shortage' : 'min_stock',
+      reason: 'shortage',
     });
   }
   return out;
@@ -41,7 +42,7 @@ export function shortageCandidatesFromVariance(
 
 export async function createPOsFromVariance(params: {
   lines: VarianceLine[];
-  stockByProduct: Record<string, { stock: number; minStock: number; isArtisanal?: boolean }>;
+  stockByProduct: Record<string, { stock: number; isArtisanal?: boolean }>;
   orderRef: string;
 }): Promise<MaterialAutoPOResult[]> {
   const candidates = shortageCandidatesFromVariance(params.lines, params.stockByProduct);

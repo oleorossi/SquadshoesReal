@@ -107,7 +107,7 @@ function VariantSizeRangeEditor({ product, onChange }: {
 /* ── Sheet lateral: edição COMPLETA de uma única variante ── */
 type VariantEditableFields = Pick<Product,
   'color' | 'sku' | 'image_url' | 'active' | 'location' | 'supplier_id' |
-  'quantity' | 'min_stock' | 'max_stock' | 'safety_stock' | 'reserved_stock' |
+  'quantity' | 'max_stock' | 'safety_stock' | 'reserved_stock' |
   'unit_price' | 'price_wholesale' | 'price_retail' | 'unit' |
   'lead_time_days' | 'min_order_quantity'
 > & { supplier_color_code: string | null };
@@ -134,7 +134,6 @@ function VariantDetailSheet({ open, onOpenChange, product, otherVariants }: {
       supplier_id: product.supplier_id || null,
       supplier_color_code: product.supplier_color_code || null,
       quantity: Number(product.quantity) || 0,
-      min_stock: Number(product.min_stock) || 0,
       max_stock: Number(product.max_stock) || 0,
       safety_stock: Number(product.safety_stock) || 0,
       reserved_stock: Number(product.reserved_stock) || 0,
@@ -277,13 +276,11 @@ function VariantDetailSheet({ open, onOpenChange, product, otherVariants }: {
                   <SelectContent>{UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
-              <div>
-                <Label className="text-xs">Estoque mínimo <span className="text-muted-foreground font-mono">({form.unit ?? 'un'})</span></Label>
-                <NumberInput value={form.min_stock ?? 0} onChange={v => update('min_stock', v)} min={0} step="0.01" className="mt-1 h-9" />
-              </div>
-              {/* Removidos em 2026-05 a pedido do usuário:
-                  - "Estoque máximo": nunca usado em business logic
-                  - "Estoque de segurança": duplicava conceitualmente o mínimo */}
+              {/* Removidos a pedido do dono:
+                  - "Estoque máximo" (2026-05): nunca usado em business logic
+                  - "Estoque de segurança" (2026-05): duplicava o mínimo
+                  - "Estoque mínimo" (10/10/2026): compra só sob demanda de PV
+                    (specs/remover-estoque-minimo.md) */}
               <div>
                 <Label className="text-xs">Reservado <span className="text-muted-foreground font-mono">({form.unit ?? 'un'})</span></Label>
                 {/* SOMENTE LEITURA: `reserved_stock` é DERIVADO de material_reservations
@@ -384,7 +381,7 @@ const BULK_FIELDS = [
   'yield_per_meter', 'yield_unit',
   'unit', 'purchase_unit', 'production_unit', 'conversion_rate', 'purchase_order_unit',
   'lead_time_days', 'unit_price', 'price_wholesale', 'price_retail',
-  'min_stock', 'max_stock', 'safety_stock', 'location', 'active',
+  'max_stock', 'safety_stock', 'location', 'active',
   'min_order_quantity',
 ] as const;
 type BulkField = (typeof BULK_FIELDS)[number];
@@ -404,7 +401,6 @@ const BULK_LABELS: Record<BulkField, string> = {
   unit_price: 'Custo unitário',
   price_wholesale: 'Atacado',
   price_retail: 'Varejo',
-  min_stock: 'Estoque mínimo',
   max_stock: 'Estoque máximo',
   safety_stock: 'Segurança',
   location: 'Localização física',
@@ -417,7 +413,7 @@ const LIMPAR = '__none__';
 
 const NUMERIC_BULK_FIELDS = new Set<BulkField>([
   'yield_per_meter', 'conversion_rate', 'lead_time_days', 'unit_price',
-  'price_wholesale', 'price_retail', 'min_stock', 'max_stock', 'safety_stock',
+  'price_wholesale', 'price_retail', 'max_stock', 'safety_stock',
   'min_order_quantity',
 ]);
 
@@ -608,7 +604,6 @@ export function VariantListPanel({
       category: sectorOfGroup(groupOfVariants) || template.category || '',
       color: newColor.trim(),
       quantity: 0,
-      min_stock: template.min_stock ?? 0,
       max_stock: template.max_stock ?? 0,
       unit: template.unit || 'un',
       unit_price: template.unit_price ?? 0,
@@ -1019,7 +1014,6 @@ export function VariantBulkEditPanel({ variants, onCancel, onOpenGroupSpecs }: V
     unit_price: number | null;
     price_wholesale: number | null;
     price_retail: number | null;
-    min_stock: number | null;
     max_stock: number | null;
     safety_stock: number | null;
     location: string | null;
@@ -1112,7 +1106,6 @@ export function VariantBulkEditPanel({ variants, onCancel, onOpenGroupSpecs }: V
       unit_price: comum('unit_price', Number(t.unit_price) || 0),
       price_wholesale: comum('price_wholesale', Number(t.price_wholesale) || 0),
       price_retail: comum('price_retail', Number(t.price_retail) || 0),
-      min_stock: comum('min_stock', Number(t.min_stock) || 0),
       max_stock: comum('max_stock', Number(t.max_stock) || 0),
       safety_stock: comum('safety_stock', Number(t.safety_stock) || 0),
       location: comum('location', t.location || ''),
@@ -1370,11 +1363,7 @@ export function VariantBulkEditPanel({ variants, onCancel, onOpenGroupSpecs }: V
 
         <section className="space-y-3">
           <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide">Estoque &amp; Localização</h4>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <BulkLabel field="min_stock" divergence={divergence}>Estoque mínimo ({bulkUnitLabel})</BulkLabel>
-              <NumberInput value={groupForm.min_stock ?? undefined} onChange={v => updateGroup('min_stock', v)} className="mt-1 h-9" />
-            </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <BulkLabel field="max_stock" divergence={divergence}>Estoque máximo ({bulkUnitLabel})</BulkLabel>
               <NumberInput value={groupForm.max_stock ?? undefined} onChange={v => updateGroup('max_stock', v)} className="mt-1 h-9" />

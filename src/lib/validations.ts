@@ -7,7 +7,6 @@ export const productFormSchema = z.object({
   category: z.string().min(1, 'Categoria é obrigatória'),
   color: z.string().max(100),
   quantity: z.number().min(0, 'Quantidade não pode ser negativa'),
-  min_stock: z.number().min(0),
   max_stock: z.number().min(0),
   unit: z.string().min(1, 'Unidade é obrigatória'),
   unit_price: z.number().min(0, 'Preço não pode ser negativo'),

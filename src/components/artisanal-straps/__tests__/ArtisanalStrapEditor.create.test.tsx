@@ -196,7 +196,7 @@ const matchingProductCatalog: ArtisanalStrapCatalog = {
   }],
 };
 
-describe('ArtisanalStrapEditor — confirmação de estoque mínimo na compra pronta', () => {
+describe('ArtisanalStrapEditor — estoque mínimo removido (compra só por demanda de PV)', () => {
   const renderMatchingBuyReady = () => renderWithQueryClient(
     <ArtisanalStrapEditor
       open
@@ -214,27 +214,25 @@ describe('ArtisanalStrapEditor — confirmação de estoque mínimo na compra pr
     />,
   );
 
-  it('mostra o piso de reposição ao lado do MOQ, não só acima da dobra', () => {
+  it('não mostra campo nem confirmação de estoque mínimo — só o MOQ do fornecedor', () => {
     renderMatchingBuyReady();
     expect(screen.getByText('Quantidade mínima (MOQ) *')).toBeInTheDocument();
-    expect(screen.getByText('Estoque mínimo (piso de reposição) *')).toBeInTheDocument();
-    expect(screen.getByText(/Não é a quantidade mínima de compra \(MOQ\)/)).toBeInTheDocument();
-    expect(screen.getByText(/Sugestão das variantes irmãs/)).toBeInTheDocument();
+    expect(screen.queryByText(/Estoque mínimo/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/piso de reposição/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Sugestão das variantes irmãs/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Origem da reposição/i)).not.toBeInTheDocument();
   });
 
-  it('permite confirmar o piso no próprio aviso, sem voltar a um checkbox fora da tela', async () => {
+  it('salva direto, com piso 0 e modo derivado buy_ready para tira comprada pronta', async () => {
     const user = userEvent.setup();
     mutateAsync.mockResolvedValue({ variant_id: 'new-variant', measure_id: MEASURE_ID });
     renderMatchingBuyReady();
 
     await user.click(screen.getByRole('button', { name: /Salvar tudo/i }));
 
-    expect(await screen.findByText(/Confirme o estoque mínimo \(piso de reposição/)).toBeInTheDocument();
-    expect(mutateAsync).not.toHaveBeenCalled();
-
-    await user.click(screen.getByRole('checkbox', { name: 'Confirmar estoque mínimo no aviso' }));
-    await user.click(screen.getByRole('button', { name: /Salvar tudo/i }));
-
-    expect(mutateAsync).toHaveBeenCalled();
+    expect(mutateAsync).toHaveBeenCalledTimes(1);
+    const { payload } = mutateAsync.mock.calls[0][0];
+    expect(payload.variant.min_stock_m).toBe(0);
+    expect(payload.variant.min_stock_replenishment_mode).toBe('buy_ready');
   });
 });

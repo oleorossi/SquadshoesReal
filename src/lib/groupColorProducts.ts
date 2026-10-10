@@ -148,7 +148,6 @@ export async function createGroupColorProduct(spec: GroupColorSpec): Promise<Cre
     supplier_id: last?.supplier_id || null,
     supplier_lead_time_days: last?.supplier_lead_time_days || 0,
     location: last?.location || '', // products.location é NOT NULL — nunca null (igual ao dialog)
-    min_stock: last?.min_stock || 0,
     max_stock: last?.max_stock || 0,
     safety_stock: last?.safety_stock || 0,
     purchase_unit: purchaseUnit,

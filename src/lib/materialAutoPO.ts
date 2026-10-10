@@ -75,7 +75,7 @@ export async function autoCreateMaterialPO(params: {
   if (shortageQty <= 0) return null;
 
   const { data: product } = await (supabase.from('products') as any)
-    .select('id, name, quantity, min_stock, unit_price, unit, purchase_order_unit, conversion_rate, group_id, supplier_id, color, is_artisanal, purchase_multiple, product_groups:product_groups!products_group_id_fkey(purchase_multiple)')
+    .select('id, name, quantity, unit_price, unit, purchase_order_unit, conversion_rate, group_id, supplier_id, color, is_artisanal, purchase_multiple, product_groups:product_groups!products_group_id_fkey(purchase_multiple)')
     .eq('id', productId)
     .maybeSingle();
 
@@ -83,7 +83,6 @@ export async function autoCreateMaterialPO(params: {
   if (product.is_artisanal) throw new ArtisanalMaterialPurchaseBlockedError(product.name || productName);
 
   const currentStock = Number(product.quantity) || 0;
-  const minStock = Number(product.min_stock) || 0;
 
   const convRate = Number((product as any).conversion_rate) || 1;
   const purchaseUnit = (params.unit && params.unit === product.unit)
@@ -152,8 +151,9 @@ export async function autoCreateMaterialPO(params: {
     unit_price: unitPrice,
     unit,
     current_stock: currentStock,
-    min_stock: minStock,
-    max_stock: minStock + shortageQty,
+    // Estoque mínimo foi removido (specs/remover-estoque-minimo.md): o teto
+    // registrado no item é só a falta do PV.
+    max_stock: shortageQty,
     color: product.color || null,
   };
 

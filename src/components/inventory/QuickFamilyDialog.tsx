@@ -296,7 +296,6 @@ export function QuickFamilyDialog({ open, onOpenChange, defaultGroupId }: Props)
         calculation_method: calculationMethod,
         ...(groupMode === 'existing' && selectedGroupTemplate ? {
           technical_name: selectedGroupTemplate.technical_name || '',
-          min_stock: Number(selectedGroupTemplate.min_stock) || 0,
           max_stock: Number(selectedGroupTemplate.max_stock) || 0,
           safety_stock: Number(selectedGroupTemplate.safety_stock) || 0,
           location: selectedGroupTemplate.location || '',

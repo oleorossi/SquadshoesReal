@@ -25,7 +25,6 @@ export interface FichaTecnicaComMateriais {
       name: string;
       sku: string | null;
       quantity: number;
-      min_stock: number;
       unit: string | null;
       unit_price: number;
       color: string | null;
@@ -42,7 +41,7 @@ export const fichaTecnicaService = {
         *,
         materiais_necessarios:sheet_materials(
           *,
-          products(id, name, sku, quantity, min_stock, unit, unit_price, color)
+          products(id, name, sku, quantity, unit, unit_price, color)
         )
       `)
       .eq('id', fichaId)
@@ -62,7 +61,7 @@ export const fichaTecnicaService = {
         *,
         materiais_necessarios:sheet_materials(
           *,
-          products(id, name, sku, quantity, min_stock, unit, unit_price, color)
+          products(id, name, sku, quantity, unit, unit_price, color)
         )
       `)
       .eq('code', codigo)

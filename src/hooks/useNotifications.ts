@@ -15,14 +15,13 @@ export interface NotificationItem {
 
 type DashboardNotificationData = Pick<
   Awaited<ReturnType<typeof apiService.getDashboardNotifications>>,
-  'overduePayables' | 'overdueReceivables' | 'lowStockProducts' |
+  'overduePayables' | 'overdueReceivables' |
   'pendingPOs' | 'pendingAdvances' | 'staleOrders'
 >;
 
 const EMPTY_DASHBOARD_NOTIFICATIONS: DashboardNotificationData = {
   overduePayables: [],
   overdueReceivables: [],
-  lowStockProducts: [],
   pendingPOs: [],
   pendingAdvances: [],
   staleOrders: [],
@@ -122,7 +121,6 @@ export function useNotifications() {
       const {
         overduePayables,
         overdueReceivables,
-        lowStockProducts,
         pendingPOs,
         pendingAdvances,
         staleOrders,
@@ -154,33 +152,9 @@ export function useNotifications() {
         });
       }
 
-      // --- Estoque abaixo do mínimo ---
-      if (lowStockProducts) {
-        const lowItems = lowStockProducts.filter(p => p.quantity <= p.min_stock);
-        const zeroItems = lowItems.filter(p => p.quantity <= 0);
-        const belowMin = lowItems.filter(p => p.quantity > 0);
-
-        if (zeroItems.length > 0) {
-          notifications.push({
-            id: 'stock-zero',
-            category: 'stock',
-            severity: 'critical',
-            title: `${zeroItems.length} material(is) com estoque zerado`,
-            description: zeroItems.slice(0, 3).map(p => p.name + (p.color ? ` (${p.color})` : '')).join(', ') + (zeroItems.length > 3 ? '...' : ''),
-            link: '/estoque',
-          });
-        }
-        if (belowMin.length > 0) {
-          notifications.push({
-            id: 'stock-low',
-            category: 'stock',
-            severity: 'warning',
-            title: `${belowMin.length} material(is) abaixo do mínimo`,
-            description: belowMin.slice(0, 3).map(p => `${p.name}: ${p.quantity}/${p.min_stock}`).join(', ') + (belowMin.length > 3 ? '...' : ''),
-            link: '/estoque',
-          });
-        }
-      }
+      // Estoque mínimo foi removido (specs/remover-estoque-minimo.md): o sino
+      // não alerta mais "abaixo do mínimo" nem "zerado" — compra é só sob
+      // demanda de PV. Saldo zero continua visível em /estoque?tab=alerts.
 
       // --- OCs pendentes ---
       if (pendingPOs && pendingPOs.length > 0) {

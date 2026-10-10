@@ -44,7 +44,7 @@ function useAllSheetMaterials() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('sheet_materials')
-        .select('sheet_id, product_id, quantity_per_unit, products(id, name, sku, unit, category, quantity, min_stock, reserved_stock, safety_stock, supplier_lead_time_days, lead_time_days, unit_price, is_artisanal)');
+        .select('sheet_id, product_id, quantity_per_unit, products(id, name, sku, unit, category, quantity, reserved_stock, safety_stock, supplier_lead_time_days, lead_time_days, unit_price, is_artisanal)');
       if (error) throw error;
       return data as unknown as SheetMaterial[];
     },
@@ -173,7 +173,7 @@ export default function WeeklyPurchasingContent() {
       if (productIds.length > 0) {
         const { data, error } = await supabase
           .from('products')
-          .select('id, name, sku, unit, category, quantity, min_stock, reserved_stock, safety_stock, supplier_lead_time_days, lead_time_days, unit_price, is_artisanal')
+          .select('id, name, sku, unit, category, quantity, reserved_stock, safety_stock, supplier_lead_time_days, lead_time_days, unit_price, is_artisanal')
           .in('id', productIds);
         if (error) throw error;
         for (const p of (data || []) as NonNullable<SheetMaterial['products']>[]) productById.set(p.id, p);

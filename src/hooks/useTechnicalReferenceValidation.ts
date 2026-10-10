@@ -45,7 +45,6 @@ interface RefMaterial {
     quantity: number;
     unit_price: number;
     unit: string;
-    min_stock: number;
     dimensions_length?: number;
     dimensions_width?: number;
     dimensions_thickness?: number;
@@ -71,7 +70,7 @@ export async function runFullValidation(refId: string): Promise<ValidationResult
 
   const { data: materials, error: matErr } = await (supabase as any)
     .from('technical_reference_materials')
-    .select('*, products(name, sku, category, quantity, unit_price, unit, min_stock, dimensions_length, dimensions_width, dimensions_thickness)')
+    .select('*, products(name, sku, category, quantity, unit_price, unit, dimensions_length, dimensions_width, dimensions_thickness)')
     .eq('technical_reference_id', refId)
     .order('sequence', { ascending: true });
   if (matErr) throw matErr;
@@ -203,15 +202,8 @@ function validateMaterialAvailability(materials: RefMaterial[]) {
       });
     }
 
-    // Min stock warning
-    if (product.quantity - totalRequired < (product.min_stock || 0)) {
-      warnings.push({
-        type: 'stock_warning',
-        message: `${product.name}: uso deixará estoque abaixo do mínimo (${product.min_stock} ${product.unit})`,
-        material_id: mat.id,
-        suggested_action: 'Considere reabastecer estoque após o uso',
-      });
-    }
+    // O aviso "uso deixará estoque abaixo do mínimo" saiu com o estoque
+    // mínimo (specs/remover-estoque-minimo.md); falta real já é erro acima.
 
     // High waste warning
     if (mat.waste_factor > 15) {

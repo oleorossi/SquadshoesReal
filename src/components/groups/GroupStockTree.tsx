@@ -17,7 +17,7 @@ import { formatCurrency, formatMoney, formatNumber } from '@/lib/utils';
 export type ProductLite = {
   id: string; name: string; sku?: string | null; color?: string | null;
   group_id: string | null; quantity: number | null; reserved_stock: number | null;
-  unit: string | null; unit_price: number | null; min_stock: number | null;
+  unit: string | null; unit_price: number | null;
 };
 
 interface Props {
@@ -153,8 +153,6 @@ function DetailPanel({ group, items, onEditItem, onAddItem, canCreate, selectedP
                 const qty = Number(p.quantity) || 0;
                 const res = Number(p.reserved_stock) || 0;
                 const disp = qty - res;
-                const min = Number(p.min_stock) || 0;
-                const low = min > 0 && disp < min;
                 const price = Number(p.unit_price) || 0;
                 const isSelected = Boolean(selectedProductIds?.has(p.id));
                 return (
@@ -172,7 +170,6 @@ function DetailPanel({ group, items, onEditItem, onAddItem, canCreate, selectedP
                       {onEditItem ? (
                         <button type="button" onClick={() => onEditItem(p)} className={`flex max-w-full items-center gap-2 text-left font-medium text-foreground hover:text-primary ${FOCUS}`}>
                           <span className="truncate">{p.name}</span>
-                          {low && <span className="shrink-0 border border-destructive/30 px-1 font-mono text-[8px] uppercase text-destructive">↓ mínimo</span>}
                         </button>
                       ) : (
                         <span className="font-medium text-foreground">{p.name}</span>

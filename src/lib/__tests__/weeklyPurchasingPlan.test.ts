@@ -14,7 +14,6 @@ const makeProduct = (id: string, name: string, over: Partial<NonNullable<SheetMa
   sku: id,
   unit: 'un',
   quantity: 0,
-  min_stock: 0,
   safety_stock: 0,
   unit_price: 1,
   ...over,
@@ -43,6 +42,22 @@ describe('generateWeeklyPurchasingPlan — escalar do BOM (parity by_grade/modal
     const row = plan.find((r) => r.materialId === 'cola-1');
     expect(row).toBeDefined();
     expect(row!.totalToBuy).toBeCloseTo(2, 5);
+  });
+});
+
+describe('generateWeeklyPurchasingPlan — só demanda de PV (estoque mínimo removido)', () => {
+  it('min_stock legado no produto NÃO reserva saldo nem gera compra', () => {
+    // 100 pares × 1 un = 100 de demanda; saldo 100 cobre tudo. Antes, um
+    // min_stock 80 tirava 80 do saldo virtual e mandava comprar 80.
+    const material: SheetMaterial = {
+      sheet_id: 'sheet-1',
+      product_id: 'mat-1',
+      quantity_per_unit: 1,
+      products: Object.assign(makeProduct('mat-1', 'NAPA', { quantity: 100 }), { min_stock: 80 }),
+    };
+    const { plan } = generateWeeklyPurchasingPlan([baseOrder], [material]);
+    // nada a comprar ⇒ o material nem entra no plano
+    expect(plan.find((r) => r.materialId === 'mat-1')).toBeUndefined();
   });
 });
 

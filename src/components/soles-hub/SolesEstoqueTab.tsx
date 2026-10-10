@@ -75,8 +75,6 @@ export default function SolesEstoqueTab({ sole }: Props) {
   // stock_grade tem AMBOS individuais (33, 34) e conjugado (33/34) em
   // estado transicional. qtyByKey já resolve a soma correta por key.
   const total = useMemo(() => Object.values(qtyByKey).reduce((s, v) => s + v, 0), [qtyByKey]);
-  const minTotal = sole.min_stock || 0;
-  const isLow = total < minTotal;
   const isZero = total === 0;
 
   return (
@@ -128,9 +126,7 @@ export default function SolesEstoqueTab({ sole }: Props) {
             </CardTitle>
             <p className="text-xs text-muted-foreground mt-1">
               Total: <span className="font-mono font-bold">{total}</span> pares
-              {minTotal > 0 && <> · Mínimo: <span className="font-mono">{minTotal}</span></>}
               {isZero && <Badge variant="destructive" className="ml-2 text-xs">Zerado</Badge>}
-              {isLow && !isZero && <Badge className="ml-2 text-xs bg-amber-500/15 text-amber-700 border-amber-300">Abaixo do mínimo</Badge>}
             </p>
           </div>
           <Button size="sm" onClick={() => setEditOpen(true)} disabled={!fullProduct} className="gap-1.5">
@@ -190,16 +186,12 @@ export default function SolesEstoqueTab({ sole }: Props) {
       </Card>
 
       {/* Alertas */}
-      {(isLow || isZero) && (
+      {isZero && (
         <Card className="border-amber-300/60 bg-amber-50/30 dark:bg-amber-950/10">
           <CardContent className="py-3 flex items-start gap-2">
             <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
             <div className="text-xs">
-              {isZero ? (
-                <p className="text-rose-700 dark:text-rose-400 font-medium">Solado zerado — venda bloqueada até reposição.</p>
-              ) : (
-                <p className="text-amber-700 dark:text-amber-400 font-medium">Estoque abaixo do mínimo configurado.</p>
-              )}
+              <p className="text-rose-700 dark:text-rose-400 font-medium">Solado zerado — venda bloqueada até reposição.</p>
               <p className="text-muted-foreground mt-0.5">
                 Use o botão <strong>Editar estoque</strong> pra ajustar quantidades, ou crie uma OC pelo Planejamento de Compras.
               </p>

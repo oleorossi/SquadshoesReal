@@ -54,7 +54,6 @@ export interface SheetMaterial {
     unit: string;
     category?: string | null;
     quantity: number;
-    min_stock?: number;
     reserved_stock?: number;
     safety_stock?: number;
     supplier_lead_time_days?: number;
@@ -71,7 +70,6 @@ export interface MaterialPlanRow {
   unit: string;
   unitPrice: number;
   currentStock: number;
-  minStock: number;
   virtualStock: number;
   weeklyPurchases: Record<string, number>;
   totalToBuy: number;
@@ -262,8 +260,9 @@ export function generateWeeklyPurchasingPlan(
       unit: prod!.unit || 'un',
       unitPrice: prod!.unit_price || 0,
       currentStock: prod!.quantity || 0,
-      minStock: prod!.min_stock || 0,
-      virtualStock: Math.max(0, (prod!.quantity || 0) - (prod!.min_stock || 0) - (prod!.safety_stock || 0)),
+      // Estoque mínimo foi removido (specs/remover-estoque-minimo.md): o saldo
+      // inteiro (menos o estoque de segurança) atende a demanda dos PVs.
+      virtualStock: Math.max(0, (prod!.quantity || 0) - (prod!.safety_stock || 0)),
       weeklyPurchases: {},
       totalToBuy: 0,
       estimatedCost: 0,

@@ -1,46 +1,40 @@
 
 export interface ArtisanalCalculation {
   currentStock: number;
-  minStock: number;
   forOrderMeters: number;
-  forStockMeters: number;
   totalToProduce: number;
   baseMetersSend: number;
   laborCost: number;
   stockOk: boolean;
 }
 
+/**
+ * Produção artesanal = só a falta do pedido: max(0, demanda − estoque).
+ * Estoque mínimo foi removido (specs/remover-estoque-minimo.md) — não há mais
+ * parcela "para estoque" recompondo piso.
+ */
 export function calcArtisanalRequirement(
   recipe: ArtisanalRecipe,
   targetMeters: number,
   currentStock: number,
-  minStock: number
 ): ArtisanalCalculation {
   const yield_factor = Number(recipe.yield_per_meter) || 1;
   const labor_cost = Number(recipe.labor_cost_per_meter) || 0;
 
   const demand = Math.max(0, Number(targetMeters) || 0);
   const physicalStock = Math.max(0, Number(currentStock) || 0);
-  const stockFloor = Math.max(0, Number(minStock) || 0);
-  // O saldo atende primeiro a demanda; apenas o que falta para a demanda e para
-  // recompor o piso vira produção. Equivale a max(0, D + M - C), sem contar o
-  // mesmo estoque duas vezes.
   const forOrder = Math.max(0, demand - physicalStock);
-  const stockAfterOrder = Math.max(0, physicalStock - demand);
-  const forStock = Math.max(0, stockFloor - stockAfterOrder);
-  const totalToProduce = forOrder + forStock;
+  const totalToProduce = forOrder;
   const baseMetersSend = totalToProduce / yield_factor;
   const laborCostTotal = totalToProduce * labor_cost;
 
   return {
     currentStock: physicalStock,
-    minStock: stockFloor,
     forOrderMeters: forOrder,
-    forStockMeters: forStock,
     totalToProduce,
     baseMetersSend,
     laborCost: laborCostTotal,
-    stockOk: stockAfterOrder >= stockFloor,
+    stockOk: physicalStock >= demand,
   };
 }
 export interface ArtisanalRecipe {

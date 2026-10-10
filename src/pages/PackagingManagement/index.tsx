@@ -151,14 +151,13 @@ const PackagingManagementPage = ({ embedded = false }: { embedded?: boolean }) =
     );
   }
 
-  const alertsCount = stats?.low_stock_alerts ?? 0;
   const semPreco = stats?.boxes_without_price ?? 0;
   const semTara = stats?.boxes_without_tare ?? 0;
   const semEmbalagem = stats?.soles_without_packaging ?? 0;
   const modosIncompletos = stats?.soles_with_incomplete_modes ?? 0;
   const fichasSemSolado = stats?.sheets_without_sole ?? 0;
   // Tudo que exige ação — vira o ponto na aba Alertas.
-  const pendencias = alertsCount + semPreco + semTara + modosIncompletos + fichasSemSolado;
+  const pendencias = semPreco + semTara + modosIncompletos + fichasSemSolado;
 
   return (
     <div className="space-y-4 pb-12">
@@ -174,7 +173,6 @@ const PackagingManagementPage = ({ embedded = false }: { embedded?: boolean }) =
               {semEmbalagem > 0 && <RailStat label="Solados sem caixa" value={semEmbalagem} alert />}
               {fichasSemSolado > 0 && <RailStat label="Fichas sem solado" value={fichasSemSolado} alert />}
               {semPreco > 0 && <RailStat label="Caixa sem preço" value={semPreco} alert />}
-              {alertsCount > 0 && <RailStat label="Abaixo do mínimo" value={alertsCount} alert />}
               {semTara > 0 && <RailStat label="Caixa sem tara" value={semTara} alert />}
               <RailStat label="Caixas" value={stats?.total_boxes ?? 0} />
               <RailStat label="Em estoque" value={(stats?.total_units ?? 0).toLocaleString('pt-BR')} />

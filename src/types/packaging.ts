@@ -167,7 +167,6 @@ export interface IndividualPackaging {
   };
   unit_cost: number;
   current_stock: number;
-  minimum_stock: number;
   supplier_name: string | null;
   notes: string | null;
   is_active: boolean;

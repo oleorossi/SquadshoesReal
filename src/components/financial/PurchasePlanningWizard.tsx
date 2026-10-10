@@ -582,7 +582,6 @@ export default function PurchasePlanningWizard() {
         const poItems = lines.map(l => ({
           product_id: l.product_id,
           current_stock: l.current_stock,
-          min_stock: 0,
           max_stock: 0,
           suggested_quantity: l.qty,
           quantity: l.qty,

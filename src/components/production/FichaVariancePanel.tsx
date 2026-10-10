@@ -48,7 +48,6 @@ type ProductRow = {
   unit: string | null;
   unit_price: number | null;
   quantity: number | null;
-  min_stock: number | null;
   is_artisanal?: boolean | null;
 };
 
@@ -108,7 +107,7 @@ export default function FichaVariancePanel() {
         }),
         movementsQuery,
         reservationsQuery,
-        supabase.from('products').select('id, name, unit, unit_price, quantity, min_stock, is_artisanal').limit(4000),
+        supabase.from('products').select('id, name, unit, unit_price, quantity, is_artisanal').limit(4000),
         saleQuery,
       ]);
 
@@ -137,11 +136,10 @@ export default function FichaVariancePanel() {
       }));
 
       const lines = mergeTheoreticalAndActual({ theoretical, actual });
-      const stockByProduct: Record<string, { stock: number; minStock: number; isArtisanal?: boolean }> = {};
+      const stockByProduct: Record<string, { stock: number; isArtisanal?: boolean }> = {};
       for (const p of products.values()) {
         stockByProduct[p.id] = {
           stock: Number(p.quantity) || 0,
-          minStock: Number(p.min_stock) || 0,
           isArtisanal: Boolean(p.is_artisanal),
         };
       }
@@ -171,7 +169,7 @@ export default function FichaVariancePanel() {
         orderRef: String(auditQuery.data.pvNumber),
       });
       if (pos.length === 0) {
-        toast.message('Nada pra comprar — estoque cobre a ficha e o mínimo.');
+        toast.message('Nada pra comprar — estoque cobre a ficha.');
       } else {
         toast.success(`${pos.length} ${pos.length === 1 ? 'OC' : 'OCs'}: ${pos.map((p) => p.poNumber).join(', ')}`);
       }

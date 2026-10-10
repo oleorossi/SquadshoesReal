@@ -43,9 +43,8 @@ const PackagingTable = () => {
     )
   );
 
-  const getStockStatus = (current: number, minimum: number) => {
+  const getStockStatus = (current: number) => {
     if (current === 0) return { status: 'Sem estoque', variant: 'destructive' as const };
-    if (current <= minimum) return { status: 'Estoque baixo', variant: 'secondary' as const };
     return { status: 'Normal', variant: 'default' as const };
   };
 
@@ -153,7 +152,7 @@ const PackagingTable = () => {
           </Card>
         ) : (
           filteredPackaging.map((pack) => {
-            const stockStatus = getStockStatus(pack.current_stock, pack.minimum_stock);
+            const stockStatus = getStockStatus(pack.current_stock);
 
             return (
               <Card key={pack.id}>
@@ -202,14 +201,10 @@ const PackagingTable = () => {
                   </div>
 
                   {/* Estoque */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm mt-3 pt-3 border-t">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm mt-3 pt-3 border-t">
                     <div>
                       <p className="text-xs text-muted-foreground">Estoque Atual</p>
                       <p className="font-mono font-medium">{pack.current_stock.toLocaleString()} unidades</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">Estoque Mínimo</p>
-                      <p className="font-mono font-medium">{pack.minimum_stock.toLocaleString()} unidades</p>
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground">Fornecedor</p>

@@ -54,14 +54,14 @@ describe('fichaVariance', () => {
     expect(varianceSummary(lines).critico).toBe(3);
   });
 
-  it('compra o furo da ficha + o piso, sem dobrar overage', () => {
-    // 10 da OP + piso 5 − 2 em estoque
-    expect(qtyToBuyFromVariance({ theoretical: 10, actual: 13, stock: 2, minStock: 5 })).toBe(13);
-    // estoque cobre a OP e o piso
-    expect(qtyToBuyFromVariance({ theoretical: 10, actual: 4, stock: 20, minStock: 5 })).toBe(0);
-    // 10 + 5 − 1
-    expect(qtyToBuyFromVariance({ theoretical: 10, actual: 4, stock: 1, minStock: 5 })).toBe(14);
-    // sem linha de ficha: só recompõe mínimo
-    expect(qtyToBuyFromVariance({ theoretical: 0, actual: 8, stock: 1, minStock: 5 })).toBe(4);
+  it('compra só o furo da ficha, sem dobrar overage nem recompor piso', () => {
+    // 10 da OP − 2 em estoque
+    expect(qtyToBuyFromVariance({ theoretical: 10, actual: 13, stock: 2 })).toBe(8);
+    // estoque cobre a OP
+    expect(qtyToBuyFromVariance({ theoretical: 10, actual: 4, stock: 20 })).toBe(0);
+    // estoque exatamente igual à necessidade: nada a comprar (sem piso)
+    expect(qtyToBuyFromVariance({ theoretical: 10, actual: 4, stock: 10 })).toBe(0);
+    // sem linha de ficha: não há demanda, não há compra (estoque mínimo removido)
+    expect(qtyToBuyFromVariance({ theoretical: 0, actual: 8, stock: 1 })).toBe(0);
   });
 });

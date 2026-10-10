@@ -13,8 +13,6 @@ import type { IndividualPackaging } from '@/types/packaging';
  */
 export interface PackagingStats {
   // ── pendências (o que exige ação) ──
-  /** Caixas ativas com estoque <= mínimo (mínimo > 0). */
-  low_stock_alerts: number;
   /** Caixas ativas com unit_price 0/nulo — zeram o custo de embalagem no custeio. */
   boxes_without_price: number;
   /** Caixas sem tara (empty_weight_kg) — peso bruto da NF-e sai errado. */
@@ -36,11 +34,11 @@ export function usePackagingStats() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('box_types')
-        .select('id, quantity, min_stock, unit_price, empty_weight_kg, active')
+        .select('id, quantity, unit_price, empty_weight_kg, active')
         .eq('active', true);
       if (error) throw error;
       const boxes = (data ?? []) as Array<{
-        quantity: number | null; min_stock: number | null;
+        quantity: number | null;
         unit_price: number | null; empty_weight_kg: number | null;
       }>;
 
@@ -64,8 +62,6 @@ export function usePackagingStats() {
         .filter(s => !s.modo_tradicional_ok || !s.modo_amarrado_ok || !s.modo_colmeia_ok).length;
 
       return {
-        low_stock_alerts: boxes.filter(b =>
-          Number(b.min_stock || 0) > 0 && Number(b.quantity || 0) <= Number(b.min_stock || 0)).length,
         boxes_without_price: boxes.filter(b => !(Number(b.unit_price || 0) > 0)).length,
         boxes_without_tare: boxes.filter(b => !(Number(b.empty_weight_kg || 0) > 0)).length,
         soles_without_packaging: semNenhumModo,
@@ -93,7 +89,6 @@ function boxToIndividualPackaging(box: any): IndividualPackaging {
     dimensions: { length: l, width: w, height: h, volume: l * w * h, weight: Number(box.peso_kg) || 0 },
     unit_cost: Number(box.unit_price) || 0,
     current_stock: Number(box.quantity) || 0,
-    minimum_stock: Number(box.min_stock) || 0,
     supplier_name: box.suppliers?.name ?? null,
     notes: null,
     is_active: box.active ?? true,
@@ -132,7 +127,8 @@ export function useCreateIndividualPackaging() {
         interno: data.packaging_type === 'individual',
         unit_price: data.unit_cost || 0,
         quantity: data.current_stock || 0,
-        min_stock: data.minimum_stock || 0,
+        // Estoque mínimo foi descontinuado (specs/remover-estoque-minimo.md).
+        min_stock: 0,
       });
       if (error) throw error;
     },
@@ -163,7 +159,6 @@ export function useUpdateIndividualPackaging() {
       // writing it directly races with debit_packaging_for_order (last-write-wins
       // clobbers parallel debits) and bypasses the stock_movements audit trail.
       // Quantity adjustments must go through an atomic RPC with a stock_movements row.
-      if (updates.minimum_stock !== undefined) payload.min_stock = updates.minimum_stock;
       if (updates.is_active !== undefined) payload.active = updates.is_active;
       payload.updated_at = new Date().toISOString();
       const { error } = await supabase.from('box_types').update(payload).eq('id', id);
@@ -233,7 +228,7 @@ export function useDeleteIndividualPackaging() {
   });
 }
 
-/** Duplicate a box_type row (copies dimensions/cost/min_stock; resets quantity to 0). */
+/** Duplicate a box_type row (copies dimensions/cost; resets quantity to 0). */
 export function useDuplicateIndividualPackaging() {
   const qc = useQueryClient();
   return useMutation({
@@ -272,7 +267,6 @@ export interface PackagingBoxAlert {
   tipo: string | null;
   interno: boolean | null;
   quantity: number | null;
-  min_stock: number | null;
   unit_price: number | null;
   empty_weight_kg: number | null;
   supplier_id: string | null;
@@ -295,7 +289,6 @@ export interface SheetWithoutSoleAlert {
 }
 
 export interface PackagingAlertsData {
-  lowStock: PackagingBoxAlert[];
   boxesWithoutPrice: PackagingBoxAlert[];
   boxesWithoutTare: PackagingBoxAlert[];
   incompleteSoles: SolePackagingAlert[];
@@ -310,7 +303,7 @@ export function usePackagingAlerts() {
       const [boxesRes, solesRes, sheetsRes] = await Promise.all([
         supabase
           .from('box_types')
-          .select('id, nome, tipo, interno, quantity, min_stock, unit_price, empty_weight_kg, supplier_id')
+          .select('id, nome, tipo, interno, quantity, unit_price, empty_weight_kg, supplier_id')
           .eq('active', true)
           .order('nome'),
         supabase
@@ -328,8 +321,6 @@ export function usePackagingAlerts() {
 
       const boxes = (boxesRes.data ?? []) as PackagingBoxAlert[];
       return {
-        lowStock: boxes.filter(box =>
-          Number(box.min_stock || 0) > 0 && Number(box.quantity || 0) <= Number(box.min_stock || 0)),
         boxesWithoutPrice: boxes.filter(box => !(Number(box.unit_price || 0) > 0)),
         boxesWithoutTare: boxes.filter(box => !(Number(box.empty_weight_kg || 0) > 0)),
         incompleteSoles: ((solesRes.data ?? []) as SolePackagingAlert[]).filter(sole =>

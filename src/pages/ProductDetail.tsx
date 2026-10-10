@@ -120,9 +120,9 @@ export default function ProductDetail() {
 
   // Form state
   const [form, setForm] = useState<ProductFormData>({
-    name: '', technical_name: '', sku: '', category: '', color: '', quantity: 0, min_stock: 0, max_stock: 0,
+    name: '', technical_name: '', sku: '', category: '', color: '', quantity: 0, max_stock: 0,
     unit: 'un', unit_price: 0, location: '', group_id: null, active: true, image_url: '',
-    min_stock_grade: {}, stock_grade: {}, yield_per_meter: null, yield_unit: 'dm²',
+    stock_grade: {}, yield_per_meter: null, yield_unit: 'dm²',
     dimensions_length: 0, dimensions_width: 0, dimensions_thickness: 0, dimensions_unit: 'mm',
     purchase_unit: 'un', production_unit: 'un', conversion_rate: 1, purchase_order_unit: 'un',
     min_order_quantity: 1, safety_stock: 0, lead_time_days: 7, calculation_method: 'weight',
@@ -132,7 +132,6 @@ export default function ProductDetail() {
   });
 
   const [soladoGrade, setSoladoGrade] = useState<Record<string, number>>({});
-  const [minStockGrade, setMinStockGrade] = useState<Record<string, number>>({});
   const [shoeCategory, setShoeCategory] = useState<'adulto' | 'infantil'>('adulto');
   const [yieldPerSize, setYieldPerSize] = useState<Record<string, number>>({});
   const [plateLength, setPlateLength] = useState(0);
@@ -193,14 +192,12 @@ export default function ProductDetail() {
   const grossStock = hasGrade ? sumGrade(soladoGrade) : Number(form.quantity) || 0;
   const reservedStock = Number(product?.reserved_stock) || 0;
   const availableStock = grossStock - reservedStock;
-  const minimumStock = hasGrade ? sumGrade(minStockGrade) : Number(form.min_stock) || 0;
   const stockValue = grossStock * (Number(form.unit_price) || 0);
+  // Estoque mínimo foi removido (specs/remover-estoque-minimo.md): o status só
+  // acusa reserva maior que o saldo (disponível negativo) ou saldo zerado.
   const stockStatus = (() => {
     if (availableStock < 0) return { label: 'Crítico', variant: 'destructive' as const };
-    if (minimumStock === 0) return { label: 'Normal', variant: 'success' as const };
-    const ratio = availableStock / minimumStock;
-    if (ratio <= 0.5) return { label: 'Crítico', variant: 'destructive' as const };
-    if (ratio <= 1) return { label: 'Baixo', variant: 'warning' as const };
+    if (grossStock === 0) return { label: 'Zerado', variant: 'warning' as const };
     return { label: 'Normal', variant: 'success' as const };
   })();
 
@@ -235,11 +232,9 @@ export default function ProductDetail() {
     setForm({
       name: cleanName, technical_name: rest.technical_name || '', sku: rest.sku || '',
       category: rest.category || '', color: rest.color || '', quantity: rest.quantity ?? 0,
-      min_stock: rest.min_stock ?? 0, max_stock: rest.max_stock ?? 0, unit: rest.unit || 'un',
+      max_stock: rest.max_stock ?? 0, unit: rest.unit || 'un',
       unit_price: rest.unit_price ?? 0, location: rest.location || '', group_id: rest.group_id || null,
       active: rest.active ?? true, image_url: rest.image_url || '',
-      min_stock_grade: (rest.min_stock_grade && typeof rest.min_stock_grade === 'object' && !Array.isArray(rest.min_stock_grade))
-        ? (rest.min_stock_grade as Record<string, number>) : {},
       stock_grade: (rest.stock_grade && typeof rest.stock_grade === 'object' && !Array.isArray(rest.stock_grade))
         ? (rest.stock_grade as Record<string, number>) : {},
       yield_per_meter: rest.yield_per_meter ?? null, yield_unit: rest.yield_unit || 'dm²',
@@ -275,16 +270,12 @@ export default function ProductDetail() {
     const nextGrade = rest.stock_grade && typeof rest.stock_grade === 'object' && !Array.isArray(rest.stock_grade)
       ? rest.stock_grade as Record<string, number>
       : {};
-    const nextMinimumGrade = rest.min_stock_grade && typeof rest.min_stock_grade === 'object' && !Array.isArray(rest.min_stock_grade)
-      ? rest.min_stock_grade as Record<string, number>
-      : {};
     setSoladoGrade(nextGrade);
-    setMinStockGrade(nextMinimumGrade);
     const nextYield = sheet?.yield_per_size && typeof sheet.yield_per_size === 'object'
       ? sheet.yield_per_size as Record<string, number>
       : {};
     setYieldPerSize(nextYield);
-    const numericSizes = [...Object.keys(nextGrade), ...Object.keys(nextMinimumGrade), ...Object.keys(nextYield)]
+    const numericSizes = [...Object.keys(nextGrade), ...Object.keys(nextYield)]
       .map(Number)
       .filter(size => !Number.isNaN(size));
     setShoeCategory(numericSizes.some(size => size < 34) ? 'infantil' : 'adulto');
@@ -363,8 +354,6 @@ export default function ProductDetail() {
       const baseData = { ...form };
       baseData.category = effectiveCategory;
       if (hasGrade) {
-        baseData.min_stock_grade = minStockGrade;
-        baseData.min_stock = sumGrade(minStockGrade);
         baseData.stock_grade = soladoGrade;
       }
       baseData.dimensions_length = plateLength;
@@ -387,17 +376,6 @@ export default function ProductDetail() {
 
       const validatedData = ProductSchema.parse(baseData);
       await updateProduct.mutateAsync({ id: product.id, data: validatedData as ProductFormData });
-
-      // O limite por numeração não altera saldo e, portanto, não passa pelo RPC
-      // de ajuste. useUpdateProduct o remove junto das grades de quantidade;
-      // persisti-lo aqui evita que o mínimo editado suma ao recarregar a tela.
-      if (hasGrade) {
-        const { error: minimumGradeError } = await supabase
-          .from('products')
-          .update({ min_stock_grade: minStockGrade })
-          .eq('id', product.id);
-        if (minimumGradeError) throw minimumGradeError;
-      }
 
       // `useUpdateProduct` remove quantity/stock_grade do UPDATE plano (precisam
       // do audit trail + controle de concorrência do RPC adjust_stock). Sem este
@@ -578,7 +556,7 @@ export default function ProductDetail() {
           subtitle="Disponível = saldo bruto menos o que já está reservado para OPs abertas."
           flush
         >
-          <dl className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+          <dl className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
             <div className="border-b border-r border-border p-4 xl:border-b-0">
               <dt className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Bruto</dt>
               <dd className="mt-1 font-mono text-lg font-bold tabular-nums text-foreground">
@@ -600,13 +578,6 @@ export default function ProductDetail() {
                 availableStock < 0 ? 'text-destructive' : 'text-foreground',
               )}>
                 {formatNumber(availableStock, Number.isInteger(availableStock) ? 0 : 2)}
-                <span className="ml-1 text-xs font-normal text-muted-foreground">{form.unit}</span>
-              </dd>
-            </div>
-            <div className="border-b border-border p-4 md:border-r xl:border-b-0">
-              <dt className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Mínimo</dt>
-              <dd className="mt-1 font-mono text-lg font-bold tabular-nums text-foreground">
-                {formatNumber(minimumStock, Number.isInteger(minimumStock) ? 0 : 2)}
                 <span className="ml-1 text-xs font-normal text-muted-foreground">{form.unit}</span>
               </dd>
             </div>
@@ -799,7 +770,7 @@ export default function ProductDetail() {
             {hasGrade && (
               <Panel
                 title={<span className="flex items-center gap-2"><Footprints className="h-4 w-4 text-primary" /> Grade de numeração</span>}
-                subtitle="Saldo e mínimo são controlados por tamanho; os totais alimentam o resumo acima."
+                subtitle="O saldo é controlado por tamanho; o total alimenta o resumo acima."
                 bodyClassName="space-y-4"
               >
                 <div className="flex flex-wrap gap-2">
@@ -838,23 +809,12 @@ export default function ProductDetail() {
                             className="h-8 px-1 text-center text-xs"
                           />
                         </div>
-                        <div>
-                          <Label className="text-[9px] uppercase tracking-wide text-muted-foreground">Mínimo</Label>
-                          <NumberInput
-                            min={0}
-                            step="1"
-                            value={minStockGrade[String(size)] || 0}
-                            onChange={value => setMinStockGrade(prev => ({ ...prev, [String(size)]: value }))}
-                            className="h-8 px-1 text-center text-xs"
-                          />
-                        </div>
                       </div>
                     ))}
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-4 border-t border-border pt-3 text-xs text-muted-foreground">
                   <span>Saldo bruto: <strong className="font-mono text-foreground">{formatNumber(grossStock, 0)} pares</strong></span>
-                  <span>Mínimo: <strong className="font-mono text-foreground">{formatNumber(minimumStock, 0)} pares</strong></span>
                 </div>
               </Panel>
             )}
@@ -873,16 +833,6 @@ export default function ProductDetail() {
                         step="0.0001"
                         value={form.quantity}
                         onChange={value => update('quantity', value)}
-                        className="mt-1"
-                      />
-                    </div>
-                    <div>
-                      <Label>Estoque mínimo</Label>
-                      <NumberInput
-                        min={0}
-                        step="0.0001"
-                        value={form.min_stock}
-                        onChange={value => update('min_stock', value)}
                         className="mt-1"
                       />
                     </div>

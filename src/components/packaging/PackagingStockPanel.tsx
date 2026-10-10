@@ -71,9 +71,6 @@ export default function PackagingStockPanel() {
 
   // Summary stats always reflect ALL items, independent of search/filter
   const totalUnits = boxTypes.reduce((s, b) => s + Number(b.quantity || 0), 0);
-  const lowStock = boxTypes.filter(
-    (b) => Number(b.quantity || 0) <= Number(b.min_stock || 0) && Number(b.min_stock) > 0
-  ).length;
   const totalValue = useMemo(
     () => boxTypes.reduce((acc, box) => acc + Number(box.quantity || 0) * Number(box.unit_price || 0), 0),
     [boxTypes],
@@ -109,7 +106,7 @@ export default function PackagingStockPanel() {
   return (
     <div className="space-y-4">
       {/* Summary cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <Card>
           <CardContent className="pt-4 pb-3 text-center">
             <p className="display text-2xl tabular-nums">{boxTypes.length}</p>
@@ -120,12 +117,6 @@ export default function PackagingStockPanel() {
           <CardContent className="pt-4 pb-3 text-center">
             <p className="display text-2xl tabular-nums">{totalUnits}</p>
             <p className="text-xs text-muted-foreground">Unidades em estoque</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4 pb-3 text-center">
-            <p className="display text-2xl tabular-nums text-destructive">{lowStock}</p>
-            <p className="text-xs text-muted-foreground">Estoque baixo</p>
           </CardContent>
         </Card>
         <Card>
@@ -182,7 +173,6 @@ export default function PackagingStockPanel() {
               <TableHead className="text-center">Dimensões</TableHead>
               <TableHead className="text-center">Peso</TableHead>
               <TableHead className="text-center">Estoque</TableHead>
-              <TableHead className="text-center">Mín</TableHead>
               <TableHead className="text-right">Custo Un.</TableHead>
               <TableHead className="text-right">Subtotal</TableHead>
               <TableHead>Fornecedor</TableHead>
@@ -192,7 +182,7 @@ export default function PackagingStockPanel() {
           <TableBody>
             {filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={11}>
+                <TableCell colSpan={10}>
                   {search.trim() ? (
                     <EmptyState
                       size="sm"
@@ -211,14 +201,12 @@ export default function PackagingStockPanel() {
             ) : (
               filtered.map((b) => {
                 const qty = Number(b.quantity || 0);
-                const minStock = Number(b.min_stock || 0);
-                const isLow = minStock > 0 && qty <= minStock;
                 const supplierName = b.suppliers?.name || '—';
                 const kind = (b.tipo || (b.interno ? 'individual' : 'master')) as BoxKind;
                 const ppb = b.pairs_per_box_default;
                 const mpa = b.metros_per_amarrado_default;
                 return (
-                  <TableRow key={b.id} className={isLow ? 'bg-destructive/5' : ''}>
+                  <TableRow key={b.id}>
                     <TableCell className="font-medium text-sm">{b.nome}</TableCell>
                     <TableCell>
                       <Badge variant={kind === 'individual' ? 'secondary' : 'default'}>
@@ -250,16 +238,8 @@ export default function PackagingStockPanel() {
                       ) : null}
                     </TableCell>
                     <TableCell className="text-center">
-                      <span className={`font-semibold ${isLow ? 'text-destructive' : ''}`}>
-                        {qty}
-                        {isLow && (
-                          <Badge variant="destructive" className="ml-1 text-xs px-1">
-                            BAIXO
-                          </Badge>
-                        )}
-                      </span>
+                      <span className="font-semibold">{qty}</span>
                     </TableCell>
-                    <TableCell className="text-center text-muted-foreground">{minStock}</TableCell>
                     <TableCell className="text-right font-mono text-sm">
                       {Number(b.unit_price) > 0 ? fmtBRL4(Number(b.unit_price)) : '—'}
                     </TableCell>

@@ -34,44 +34,6 @@
            </DialogTitle>
          </DialogHeader>
          <div className="space-y-4 mt-2">
-           {stats.criticalStock.length > 0 && (
-             <div className="space-y-2">
-               <div className="flex items-center gap-2">
-                 <AlertTriangle className="h-4 w-4 text-destructive" />
-                 <span className="font-semibold text-sm text-destructive">Materiais com Estoque Baixo</span>
-                 <Badge variant="destructive" className="text-xs">{stats.criticalStock.length}</Badge>
-               </div>
-               <div className="rounded-lg border border-destructive/20 overflow-hidden">
-                 <table className="w-full text-sm">
-                   <thead>
-                     <tr className="bg-destructive/5 text-xs text-muted-foreground">
-                       <th className="text-left px-3 py-2 font-medium">Material</th>
-                       <th className="text-right px-3 py-2 font-medium">Atual</th>
-                       <th className="text-right px-3 py-2 font-medium">Mín.</th>
-                     </tr>
-                   </thead>
-                   <tbody>
-                     {stats.criticalStock.sort((a: any, b: any) => a.quantity - b.quantity).map((p: any) => (
-                       <tr key={p.id} className="border-t border-border/50 hover:bg-muted/30">
-                         <td className="px-3 py-2">
-                           <div className="font-medium text-xs">{p.name}</div>
-                           {p.color && <span className="text-xs text-muted-foreground">{p.color}</span>}
-                         </td>
-                         <td className="text-right px-3 py-2 font-mono text-xs font-bold">
-                           <span className={p.quantity === 0 ? 'text-destructive' : 'text-warning'}>
-                             {Number(p.quantity).toLocaleString('pt-BR')}
-                           </span>
-                         </td>
-                         <td className="text-right px-3 py-2 font-mono text-xs text-muted-foreground">
-                           {Number(p.min_stock).toLocaleString('pt-BR')}
-                         </td>
-                       </tr>
-                     ))}
-                   </tbody>
-                 </table>
-               </div>
-             </div>
-           )}
  
            {visibleAlerts.filter(a => !a.msg.includes('estoque mínimo')).map((a, i) => (
              <div key={i} className={cn(
@@ -99,7 +61,7 @@
              </div>
            ))}
  
-           {stats.criticalStock.length === 0 && visibleAlerts.length === 0 && (
+           {visibleAlerts.length === 0 && (
              <div className="py-8 text-center">
                <CheckCircle2 className="h-10 w-10 text-success mx-auto mb-3 opacity-60" />
                <p className="text-sm text-muted-foreground">Nenhuma notificação pendente</p>
