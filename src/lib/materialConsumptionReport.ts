@@ -1,10 +1,10 @@
-import { computeBaseMaterialTotal, normalizeBaseFamilyName } from '@/lib/baseMaterialTotal';
+import { computeBaseMaterialTotal } from '@/lib/baseMaterialTotal';
 import { buildBuyList } from '@/lib/buyList';
 import {
   aggregateItems,
   countPending,
   countShort,
-  isConvertedInternalStrap,
+  isFazerStrapRow,
   isStrassStrapRow,
   itemShortfall,
   pendingStrapMeters,
@@ -23,6 +23,13 @@ import type { ArtisanalStrapCutRow } from '@/lib/strapRollCut';
 import { aggregateStrapNapaSector } from '@/lib/strapRollCut';
 import { formatCurrency, formatMoney } from '@/lib/utils';
 import { buildOrderReferencePartitions } from '@/lib/consumptionPartitions';
+import {
+  formatNapaMeters,
+  strapNapaDisplay,
+  strapPairsText,
+  strapSizeMetersText,
+  strapStockSplitText,
+} from '@/lib/strapConsumptionDisplay';
 
 export type ConsumptionPartitionMode = 'none' | 'order_reference';
 
@@ -185,15 +192,15 @@ const reportRowAvailable = (row: ConsumptionRow): number => {
 
 /**
  * Soma o "Valor a gastar" exatamente como a seção 02 renderiza: itens
- * agregados (SKU compartilhado uma vez) + solados linha a linha. Tira
- * convertida fica de fora (custo já está na napa das aplicações).
+ * agregados (SKU compartilhado uma vez) + solados linha a linha. Tira Fazer
+ * fica de fora — não se compra tira pronta; o gasto é a napa (D8/D9).
  */
 export function computeMaterialsSpendTotal(rows: ConsumptionRow[]): number | null {
   let total = 0;
   let any = false;
 
   const nonSole = aggregateItems(
-    rows.filter((row) => row.componentType !== 'Solado' && !isConvertedInternalStrap(row)),
+    rows.filter((row) => row.componentType !== 'Solado' && !isFazerStrapRow(row)),
   );
   for (const item of nonSole) {
     const unitPrice = item.rows.map((row) => row.unitPrice).find((price) => price != null && Number.isFinite(price)) ?? null;
@@ -216,6 +223,23 @@ const costCellsHtml = (unitPrice: number | null, totalCost: number | null, unit?
       <td class="num cost-unit">${unitPrice != null ? escapeHtml(formatPricePerUnit(unitPrice, unit || 'un', formatCurrency)) : '—'}</td>
       <td class="num cost-spend">${totalCost != null ? escapeHtml(formatMoney(totalCost)) : '—'}</td>`;
 
+/**
+ * Notas da linha de tira (pares, metros por numeração, estoque × a fazer,
+ * napa ou “—” + motivo). Mesmos textos da tela (`strapConsumptionDisplay`).
+ */
+const strapDetailHtml = (rows: ConsumptionRow[]): string => rows.map((row) => {
+  const parts = [
+    strapPairsText(row),
+    strapSizeMetersText(row),
+    strapStockSplitText(row),
+  ].filter(Boolean) as string[];
+  const napa = strapNapaDisplay(row);
+  const napaHtml = napa
+    ? `<div class="qty-preview${napa.kind === 'blocked' ? ' strap-napa-blocked' : ''}">${escapeHtml(napa.text)}</div>`
+    : '';
+  return `${parts.map((part) => `<div class="qty-preview">${escapeHtml(part)}</div>`).join('')}${napaHtml}`;
+}).join('');
+
 const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): string => {
   const sectionMap = new Map<string, string[]>();
   const sectionOrder = new Map<string, number>();
@@ -227,15 +251,20 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
   };
   const colCount = totalMode ? 7 : 9;
 
-  // Tira interna CONVERTIDA: metros×rendimento só em §03 (Napa para tiras).
-  // Não entra mais no strip de napa Cabedal/Forração (dono, 24/09/2026).
-  // Tira PENDING fica nesta seção como cadastro incompleto — a demanda da ficha
-  // precisa aparecer na conferência (PV-00169), sem entrar no strip de napa.
-  // STRASS vai em seção própria ("Tira Strass"), fora do bloco genérico Tiras.
+  // Tira Fazer: UMA linha por linha da ficha × cor, com metros de TIRA (total,
+  // por numeração), pares e a napa como nota — nunca some (D8) e nunca soma
+  // com a napa. A napa a cortar mora em §03 (Napa para tiras). Bloqueada:
+  // napa “—” + motivo (D9). Tira Comprar segue o balde do SKU pronto (falta =
+  // só o que o estoque não cobre). STRASS vai em seção própria.
+  const fazerStraps = rows
+    .filter((row) => isFazerStrapRow(row) && !isStrassStrapRow(row))
+    .sort((a, b) => a.groupName.localeCompare(b.groupName, 'pt-BR')
+      || a.color.localeCompare(b.color, 'pt-BR')
+      || a.materialName.localeCompare(b.materialName, 'pt-BR'));
   const nonSole = aggregateItems(
     rows.filter((row) => (
       row.componentType !== 'Solado'
-      && !isConvertedInternalStrap(row)
+      && !isFazerStrapRow(row)
       && !isStrassStrapRow(row)
     )),
   )
@@ -259,8 +288,7 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
     const section = sharedApplications
       ? 'Aplicações compartilhadas'
       : componentTypes[0] || item.componentType;
-    const converted = item.rows.length > 0 && item.rows.every(isConvertedInternalStrap);
-    const short = totalMode || converted ? 0 : itemShortfall(item);
+    const short = totalMode ? 0 : itemShortfall(item);
     const previewQuantity = item.rows.reduce(
       (total, row) => total + Math.max(0, Number(row.previewQuantity) || 0),
       0,
@@ -269,28 +297,16 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
       ? `≈ ${formatQty(previewQuantity, item.productUnit)}<small class="qty-preview">prévia da ficha</small>`
       : formatQty(item.total, item.productUnit);
     const warnings = Array.from(new Set(item.rows.flatMap((row) => row.warning ? [row.warning] : [])));
-    const napaNote = converted
-      ? item.rows
-        .map((row) => row.artisanal
-          ? `${formatQty(row.artisanal.baseQty, 'm')} m ${normalizeBaseFamilyName(row.artisanal.baseName, row.color)}`
-          : '')
-        .filter(Boolean)
-        .join(' + ')
-      : '';
     const unitPrice = item.rows.map((row) => row.unitPrice).find((price) => price != null && Number.isFinite(price)) ?? null;
     const totalCost = unitPrice != null ? item.total * unitPrice : null;
     const coverageCells = totalMode ? '' : `
-      <td class="num">${converted || !item.known ? '—' : formatQty(item.available, item.productUnit)}</td>
-      <td class="num${short > 0 ? ' shortage' : ''}">${converted
-        ? `<span class="muted">prod. interna${napaNote ? `<small>${escapeHtml(napaNote)}</small>` : ''}</span>`
-        : item.known && short > 0
-          ? formatQty(short, item.productUnit)
-          : '—'}</td>`;
-    const convertedNote = converted
-      ? `<div class="qty-preview">prod. interna${napaNote ? ` · ${escapeHtml(napaNote)}` : ''}</div>`
-      : '';
+      <td class="num">${!item.known ? '—' : formatQty(item.available, item.productUnit)}</td>
+      <td class="num${short > 0 ? ' shortage' : ''}">${item.known && short > 0
+        ? formatQty(short, item.productUnit)
+        : '—'}</td>`;
+    const strapNotes = item.componentType === 'Tiras' ? strapDetailHtml(item.rows) : '';
     append(section, `<tr class="material-row${short > 0 ? ' is-short' : ''}${!item.known ? ' is-pending' : ''}">
-      <td><strong>${escapeHtml(item.groupName)}</strong>${warnings.length ? `<div class="row-warning">▲ ${escapeHtml(warnings.join(' · '))}</div>` : ''}${totalMode ? convertedNote : ''}</td>
+      <td><strong>${escapeHtml(item.groupName)}</strong>${warnings.length ? `<div class="row-warning">▲ ${escapeHtml(warnings.join(' · '))}</div>` : ''}${strapNotes}</td>
       <td>${escapeHtml(applications.join(' + ') || item.groupName)}${sectorApplications.length ? `<small>${escapeHtml(sectorApplications.join(' · '))}</small>` : ''}</td>
       <td>${escapeHtml(item.color || '—')}</td>
       <td class="num strong">${needHtml}</td>
@@ -298,6 +314,23 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
       <td class="unit">${escapeHtml(formatUnit(item.productUnit))}</td>
       ${costCellsHtml(unitPrice, totalCost, item.productUnit)}
     </tr>`, componentIndex(componentTypes[0] || item.componentType));
+  }
+
+  for (const row of fazerStraps) {
+    const blocked = !!row.artisanal?.pending;
+    const toMake = row.strap ? row.strap.toMakeM : row.totalQuantity;
+    const coverageCells = totalMode ? '' : `
+      <td class="num">${formatQty(rowAvailable(row), row.productUnit)}</td>
+      <td class="num"><span class="muted">${toMake > 0 ? `a fazer ${formatQty(toMake, 'm')}` : 'coberta'}</span></td>`;
+    append('Tiras', `<tr class="material-row strap-row${blocked ? ' is-pending' : ''}">
+      <td><strong>${escapeHtml(row.groupName)}</strong>${row.warning ? `<div class="row-warning">▲ ${escapeHtml(row.warning)}</div>` : ''}${strapDetailHtml([row])}</td>
+      <td>${escapeHtml(row.materialName || 'Fazer')}</td>
+      <td>${escapeHtml(row.color || '—')}</td>
+      <td class="num strong">${formatQty(row.totalQuantity, row.productUnit)}<small class="qty-preview">m de tira</small></td>
+      ${coverageCells}
+      <td class="unit">${escapeHtml(formatUnit(row.productUnit))}</td>
+      ${costCellsHtml(null, null, row.productUnit)}
+    </tr>`, componentIndex('Tiras'));
   }
 
   for (const item of strassItems) {
@@ -386,22 +419,24 @@ const renderArtisanalStraps = (rows: ArtisanalStrapCutRow[]): string => {
           <td><strong>${escapeHtml(type.typeName)}</strong>${showBase && type.baseName ? `<small>${escapeHtml(type.baseName)}</small>` : ''}</td>
           <td>${escapeHtml(type.color)}</td>
           <td class="num strong">${formatQty(type.strapM, 'm')} m</td>
-          <td class="num strong">${type.napaM > 0 ? `${formatQty(type.napaM, 'm')} m` : '—'}</td>
-          <td>${type.blocked ? '<span class="flag warning">cadastro incompleto</span>' : '<span class="flag ok">ok</span>'}</td>
+          <td class="num strong">${!type.blocked && type.napaM > 0 ? `${formatNapaMeters(type.napaM)} m` : '—'}</td>
+          <td>${type.blocked
+            ? `<span class="flag warning">cadastro incompleto</span>${type.blockedReason ? `<small class="row-warning">${escapeHtml(type.blockedReason)}</small>` : ''}`
+            : '<span class="flag ok">ok</span>'}</td>
         </tr>`;
   }).join('');
   const footer = `
         <tr class="strap-subtotal">
           <td colspan="2"><strong>Total de napa (todas as tiras)</strong></td>
           <td class="num muted">${formatQty(sector.totalStrapM, 'm')} m tira</td>
-          <td class="num strong">${sector.totalNapaM > 0 ? `${formatQty(sector.totalNapaM, 'm')} m` : '—'}</td>
+          <td class="num strong">${sector.totalNapaM > 0 ? `${formatNapaMeters(sector.totalNapaM)} m` : '—'}</td>
           <td></td>
         </tr>`;
   return `<section class="report-section strap-section">
     <div class="section-heading">
       <span class="section-number">03</span>
       <div><p class="section-kicker">Setor próprio</p><h2>Napa para tiras</h2></div>
-      <p class="section-note">Por tipo e cor: metros de tira e napa (÷ rendimento). Separado de Cabedal/Forração.</p>
+      <p class="section-note">Só tiras Fazer, por tipo e cor: metros de tira a fazer (depois do estoque de tira pronta) e napa (÷ rendimento). Sem rendimento: napa “—” e fora da compra.</p>
     </div>
     <table class="report-table">
       <thead><tr><th>Tipo de tira</th><th>Cor</th><th class="num">Tira necessária</th><th class="num">Napa</th><th>Situação</th></tr></thead>
@@ -543,6 +578,7 @@ export function buildMaterialConsumptionReportHtml({
     .cost-unit { color:var(--muted); font-weight:500; font-size:8.4pt; }
     .cost-spend { font-weight:700; font-size:9.4pt; background:var(--spend); }
     .report-table th.col-spend { background:var(--spend); color:var(--ink); }
+    .strap-napa-blocked { color:var(--warn); }
     .strap-subtotal td { background:var(--soft); border-top:1.5px solid var(--ink); border-bottom:2px solid var(--ink); font-weight:700; padding-top:6px; padding-bottom:6px; }
     .strap-subtotal .cost-unit { font-weight:500; }
     .strap-subtotal .muted { font-weight:500; }

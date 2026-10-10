@@ -5,6 +5,11 @@ import { MemoryRouter } from 'react-router-dom';
 import MaterialConsumptionView from '@/components/sale-orders/MaterialConsumptionView';
 import type { ConsumptionRow } from '@/lib/consumptionRows';
 import { openPrintTab } from '@/lib/printPdf';
+import {
+  canonicalStrapCutRows,
+  parseCanonicalStrapDemandPreview,
+  replaceWithCanonicalStrapRows,
+} from '@/lib/canonicalStrapDemandPreview';
 
 const printTab = {
   document: { write: vi.fn(), close: vi.fn() },
@@ -364,7 +369,7 @@ describe('MaterialConsumptionView — tela buy-first', () => {
     expect(screen.queryByText(/faltam 17,25/i)).not.toBeInTheDocument();
   });
 
-  it('tira artesanal conferida não entra como falta de 1.402 m — o motor compra napa', () => {
+  it('tira artesanal conferida fica visível com metros de tira, mas não entra como falta — o motor compra napa', () => {
     renderView({
       rows: [
         row({
@@ -390,9 +395,13 @@ describe('MaterialConsumptionView — tela buy-first', () => {
       ],
     });
 
-    // Metros de tira saem da tabela de aplicações (moram no bloco de transformação
-    // quando há artisanalStrapRows). A compra/falta é só napa.
-    expect(screen.queryByText('1.402,80')).not.toBeInTheDocument();
+    // D8 (spec tiras-redesenho): a linha da tira NÃO some — mostra os metros
+    // de TIRA e a napa como nota. A compra/falta continua sendo só napa.
+    const materials = screen.getByRole('table', { name: 'Materiais gerais' });
+    expect(within(materials).getByText('TIRA OVERLOCK 5 mm · NAPA SOFT · NEW WHISKY')).toBeInTheDocument();
+    expect(within(materials).getAllByText('1.402,80').length).toBeGreaterThan(0);
+    expect(within(materials).getByText(/≈ 20,04 m NAPA SOFT/)).toBeInTheDocument();
+    expect(screen.queryByText(/faltam 1\.402,80/)).not.toBeInTheDocument();
     const faltaCard = screen.getByRole('button', { name: 'Ver itens em falta' });
     expect(within(faltaCard).getByText('1')).toBeInTheDocument();
     expect(screen.getAllByText(/40,25/).length).toBeGreaterThan(0);
@@ -577,5 +586,50 @@ describe('MaterialConsumptionView — tela buy-first', () => {
     expect(screen.queryByRole('button', { name: 'Ver itens em falta' })).not.toBeInTheDocument();
     expect(within(screen.getByRole('region', { name: 'Solados por numeração' })).queryByText('Estoque útil')).not.toBeInTheDocument();
     expect(screen.getByText('OURO LIGHT')).toBeInTheDocument();
+  });
+
+  it('PV-00224: tira Fazer mostra metros de tira, pares e numeração; bloqueada mostra napa “—” com motivo (D8/D9/D10)', () => {
+    const grade = { 34: 1, 35: 1, 36: 2, 37: 3, 38: 2, 39: 2, 40: 1 };
+    const ok = parseCanonicalStrapDemandPreview({
+      scope_key: 'item-dalia', sale_order_id: 'pv-224', sale_order_item_id: 'item-dalia', line_ordinal: 1,
+      technical_strap_line_id: 'linha-tira-1', strap_variant_id: 'v-chata', source_mode: 'internal',
+      gross_required_m: 6, recipe_id: 'r-chata', base_product_id: 'napa-soft', finished_product_id: 'f-chata',
+      blocking_reasons: [],
+      resolved: { color_id: 'c-dalia', strap_color_name: 'DÁLIA', measure_name: '8 mm',
+        strap_product_name: 'TIRA CHATA 8 mm · NAPA SOFT · DÁLIA', base_group_name: 'NAPA SOFT',
+        confirmed_yield_m_per_m: 70, base_required_m: 6 / 70 },
+    });
+    const blocked = parseCanonicalStrapDemandPreview({
+      scope_key: 'item-dalia', sale_order_id: 'pv-224', sale_order_item_id: 'item-dalia', line_ordinal: 2,
+      technical_strap_line_id: 'linha-overlock', strap_variant_id: 'v-overlock', source_mode: 'internal',
+      gross_required_m: 6.88, recipe_id: null, base_product_id: 'glow', finished_product_id: 'f-overlock',
+      blocking_reasons: [{ code: 'overlay_recipe_missing', message: 'Não há receita aprovada para este tipo×napa.' }],
+      resolved: { color_id: 'c-cobre', strap_color_name: 'COBRE', measure_name: 'Overlock Redonda 6 mm',
+        strap_product_name: 'TIRA OVERLOCK 5 mm · GLOW METALIC · COBRE', base_group_name: 'GLOW METALIC',
+        confirmed_yield_m_per_m: 70, base_required_m: null },
+    });
+    const strapRows = replaceWithCanonicalStrapRows([], { allProducts: [], productGroups: [] } as unknown as Parameters<typeof replaceWithCanonicalStrapRows>[1], [ok, blocked], {
+      scopeByKey: new Map([['item-dalia', { saleOrderId: 'pv-224', referenceId: 'ref-g01', pairs: 12, grade }]]),
+      lineSpecs: new Map([['linha-tira-1', { label: 'TIRA 1', consumptionPerSize: {}, consumption: 50 }]]),
+      allocateFinishedStock: true,
+    }) as ConsumptionRow[];
+    renderView({ rows: strapRows, artisanalStrapRows: canonicalStrapCutRows([ok, blocked]) });
+
+    const materials = screen.getByRole('table', { name: 'Materiais gerais' });
+    expect(within(materials).getByText('TIRA CHATA 8 mm · NAPA SOFT · DÁLIA')).toBeInTheDocument();
+    expect(within(materials).getByText('Fazer · TIRA 1')).toBeInTheDocument();
+    expect(within(materials).getByText('6,00')).toBeInTheDocument();
+    expect(within(materials).getAllByText(/12 pares/)).toHaveLength(2);
+    expect(within(materials).getByLabelText('Metros de tira por numeração'))
+      .toHaveTextContent('34: 0,50 m · 35: 0,50 m · 36: 1,00 m · 37: 1,50 m');
+    expect(within(materials).getByText(/≈ 0,0857 m NAPA SOFT/)).toBeInTheDocument();
+
+    expect(within(materials).getByText('TIRA OVERLOCK 5 mm · GLOW METALIC · COBRE')).toBeInTheDocument();
+    expect(within(materials).getByText('6,88')).toBeInTheDocument();
+    expect(within(materials).getByText(/napa GLOW METALIC: — · Não há receita aprovada/)).toBeInTheDocument();
+    // Nada de tira vira falta: nem a convertida, nem a bloqueada (D9).
+    expect(screen.queryByText(/faltam 6,88/)).not.toBeInTheDocument();
+    expect(screen.getByText('Napa para tiras')).toBeInTheDocument();
+    expect(screen.getByText('Não há receita aprovada para este tipo×napa.')).toBeInTheDocument();
   });
 });

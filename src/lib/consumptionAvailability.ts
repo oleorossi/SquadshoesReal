@@ -35,6 +35,10 @@ export const rowAvailable = (r: ConsumptionRow): number =>
  * Tira artesanal com receita conferida: o motor reserva/baixa NAPA, nunca os
  * metros de tira. Tratar 1.402 m de overlock como "falta" faz o PDF e o
  * trilho mentirem — a compra real são ~20 m de napa.
+ *
+ * ⚠ Isto decide só a MÉTRICA DE COMPRA. A linha da tira continua visível na
+ * tabela e no PDF com seus metros de tira (D8, spec tiras-redesenho) — nunca
+ * use este predicado para esconder a linha.
  */
 export const isConvertedInternalStrap = (r: ConsumptionRow): boolean =>
   !!r.artisanal
@@ -59,6 +63,13 @@ export const isStrassStrapRow = (
 export const isPendingInternalStrap = (r: ConsumptionRow): boolean =>
   !!r.artisanal?.pending;
 
+/** Tira de origem Fazer (produção interna), convertida, bloqueada ou coberta pelo estoque. */
+export const isFazerStrapRow = (r: ConsumptionRow): boolean =>
+  r.componentType === 'Tiras' && (!!r.artisanal || r.strap?.origin === 'fazer');
+
+/** Unidade sintética dos totais: metro de TIRA nunca soma com metro de napa (D8). */
+export const STRAP_METER_TOTAL_UNIT = 'm de tira';
+
 /**
  * Tira interna (convertida OU pendente). Convertida some da tabela de compra
  * (vira napa); pending aparece como cadastro incompleto mas NÃO soma no strip
@@ -77,6 +88,9 @@ export function toPurchaseDecisionRows(rows: ConsumptionRow[]): ConsumptionRow[]
   const converted: ConsumptionRow[] = [];
   for (const row of rows) {
     if (isConvertedInternalStrap(row)) converted.push(row);
+    // D9: tira Fazer sem receita/rendimento nunca entra na compra — nem como
+    // metros de tira (não se compra), nem como napa (não há conversão).
+    else if (isPendingInternalStrap(row)) continue;
     else rest.push({ ...row, productIds: row.productIds ? [...row.productIds] : row.productIds });
   }
 
@@ -130,6 +144,19 @@ export function toPurchaseDecisionRows(rows: ConsumptionRow[]): ConsumptionRow[]
  * Tira `pending` também fica de fora: ainda não há napa equivalente confiável,
  * e somar os metros brutos de tira infla o strip (1.173 m vs 129 m no PV-00193).
  */
+const normalizedMeter = (unit: string | null | undefined): boolean =>
+  ['m', 'metro', 'metros'].includes((unit || '').toLowerCase().trim());
+
+/**
+ * Chave de unidade para SUBTOTAIS de tela/PDF: metro de tira vira
+ * `m de tira`, para nunca somar com metro de napa na mesma seção (D8).
+ */
+export const subtotalUnitKey = (
+  row: Pick<ConsumptionRow, 'componentType' | 'productUnit'>,
+): string => (row.componentType === 'Tiras' && normalizedMeter(row.productUnit)
+  ? STRAP_METER_TOTAL_UNIT
+  : row.productUnit);
+
 export function unitTotals(rows: ConsumptionRow[]): Map<string, number> {
   const map = new Map<string, number>();
   const add = (unit: string, qty: number) => {
@@ -140,7 +167,12 @@ export function unitTotals(rows: ConsumptionRow[]): Map<string, number> {
   for (const row of rows) {
     if (isPendingInternalStrap(row)) continue;
     if (isConvertedInternalStrap(row)) add('m', Number(row.artisanal?.baseQty) || 0);
-    else add(row.productUnit, row.totalQuantity);
+    // Fazer coberta pelo estoque de tira pronta: nada a cortar nem comprar.
+    else if (isFazerStrapRow(row)) continue;
+    // Comprar: metro de TIRA pronta — chave própria, nunca soma com napa (D8).
+    else if (row.componentType === 'Tiras' && normalizedMeter(row.productUnit)) {
+      add(STRAP_METER_TOTAL_UNIT, row.totalQuantity);
+    } else add(row.productUnit, row.totalQuantity);
   }
   return map;
 }
@@ -194,7 +226,9 @@ export const soleRowShort = (r: ConsumptionRow): boolean => {
 };
 
 export const rowIsShort = (r: ConsumptionRow): boolean => {
-  if (isConvertedInternalStrap(r)) return false;
+  // Tira Fazer não se compra: a falta mora na napa (convertida) ou é pendência
+  // de cadastro (D9) — nunca “falta de tira”.
+  if (isConvertedInternalStrap(r) || isFazerStrapRow(r)) return false;
   if (!rowKnown(r)) return false;
   if (r.componentType === 'Solado') return soleRowShort(r);
   return rowAvailable(r) < r.totalQuantity;
@@ -206,7 +240,7 @@ export const rowIsShort = (r: ConsumptionRow): boolean => {
  * (a falta de compra mora no balde da napa, não nos metros de tira).
  */
 export const rowShortfall = (r: ConsumptionRow): number => {
-  if (isConvertedInternalStrap(r)) return 0;
+  if (isConvertedInternalStrap(r) || isFazerStrapRow(r)) return 0;
   if (!rowKnown(r)) return 0;
   if (r.componentType === 'Solado') return soleShortfall(r);
   return Math.max(0, r.totalQuantity - rowAvailable(r));

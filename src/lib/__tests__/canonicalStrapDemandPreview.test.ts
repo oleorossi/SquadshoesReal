@@ -125,7 +125,7 @@ describe('preview canônica de tiras', () => {
     } as any;
     const [row] = replaceWithCanonicalStrapRows([], stockCtx, [strass]) as CanonicalStrapConsumptionRow[];
     expect(row.groupName).toMatch(/STRASS/i);
-    expect(row.materialName).toBe('Comprada pronta');
+    expect(row.materialName).toBe('Comprar');
     expect(row.color).toBe('PRETO');
     expect(row.totalQuantity).toBe(508);
     expect(row.artisanal).toBeUndefined();
@@ -338,16 +338,25 @@ describe('preview canônica de tiras', () => {
     expect(row.groupName).toBe('TIRA OVERLOCK 5MM · NAPA SOFT · OFF WHITE');
   });
 
-  it('soma posições do mesmo material físico, mas separa snapshots com outro SKU base', () => {
+  it('cada posição da ficha é uma linha de tira (D10); o bloco soma a napa do mesmo material', () => {
     const rows = replaceWithCanonicalStrapRows([], ctx, [preview(),
       preview({ technical_strap_line_id: 'outra-posicao' }),
       preview({ technical_strap_line_id: 'sku-historico', base_product_id: 'outro-sku-soft' }),
     ]) as CanonicalStrapConsumptionRow[];
-    expect(rows).toHaveLength(2);
-    expect(rows[0]).toMatchObject({ baseProductId: 'base-soft', totalQuantity: 1280 });
-    expect(rows[0].artisanal?.baseQty).toBe(20);
-    expect(rows[1]).toMatchObject({ baseProductId: 'outro-sku-soft', totalQuantity: 640 });
-    expect(canonicalStrapCutRows([preview(), preview({ base_product_id: 'outro-sku-soft' })])).toHaveLength(2);
+    // Antes as posições se fundiam numa linha de 1.280 m; agora cada linha da
+    // ficha mantém seus metros (spec tiras-redesenho, D10).
+    expect(rows).toHaveLength(3);
+    expect(rows.map((row) => row.totalQuantity)).toEqual([640, 640, 640]);
+    expect(rows.map((row) => row.artisanal?.baseQty)).toEqual([10, 10, 10]);
+    expect(rows[2]).toMatchObject({ baseProductId: 'outro-sku-soft' });
+    // Bloco “Napa para tiras”: mesma variante + napa somam; outro SKU base separa.
+    const cuts = canonicalStrapCutRows([preview(),
+      preview({ technical_strap_line_id: 'outra-posicao' }),
+      preview({ base_product_id: 'outro-sku-soft' })]);
+    expect(cuts).toHaveLength(2);
+    const soft = cuts.find((cut) => cut.key.includes('::base-soft::'))!;
+    expect(soft.metros_necessarios).toBe(1280);
+    expect(soft.canonical?.baseRequiredM).toBe(20);
   });
 
   it('explica transformação ainda não congelada sem inventar base nem bloquear o worker', () => {

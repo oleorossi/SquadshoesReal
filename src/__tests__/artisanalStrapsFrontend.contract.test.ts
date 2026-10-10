@@ -287,7 +287,10 @@ describe('Tiras artesanais — contrato do frontend canônico', () => {
   });
 
   it('orienta a fábrica pela napa e rendimento canônicos, sem rolo fixo legado', () => {
-    expect(canonicalPreview).toContain('baseRequiredM: baseRequired');
+    // Napa do bloco = Σ por linha (metros a fazer ÷ rendimento), decidida em
+    // `deriveStrapLineFacts` — mesma fonte da linha da tabela (R-Consumo/D9).
+    expect(canonicalPreview).toContain('baseRequiredM: napa');
+    expect(canonicalPreview).toContain('toMakeM / yieldM');
     expect(canonicalPreview).toContain('confirmedYieldMPerM: yieldPerMeter');
     expect(strapCutBlock).toContain('Napa para tiras');
     expect(strapCutBlock).toContain('aggregateStrapNapaSector');

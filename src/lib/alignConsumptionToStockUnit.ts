@@ -84,6 +84,15 @@ export function convertQtyAndUnitPrice(
   };
 }
 
+/** Preço do SKU pronto (R$/unidade de estoque) → R$/m de tira; null se incompatível. */
+function alignStrapRowPrice(row: ConsumptionRow, product: StockUnitProduct): ConsumptionRow {
+  const stockUnit = normalizeUnit(product.unit || 'm');
+  const rowUnit = normalizeUnit(row.productUnit || 'm');
+  if (stockUnit === rowUnit || row.unitPrice == null || !Number.isFinite(row.unitPrice)) return row;
+  const priced = convertQtyAndUnitPrice(1, row.unitPrice, stockUnit, rowUnit);
+  return { ...row, unitPrice: priced ? priced.unitPrice : null };
+}
+
 /**
  * Alinha cada linha (necessidade, estoque disponível e preço) à unidade de
  * consumo resolvida. Sem productIds, a linha permanece como veio do motor.
@@ -100,6 +109,14 @@ export function alignConsumptionRowsToDisplayUnit(
       .map((id) => byId.get(id))
       .find(Boolean);
     if (!product) return row;
+
+    // Tira (D10): a quantidade é METRO DE TIRA por definição do motor, e
+    // `artisanal.baseQty` é metro de NAPA (outro produto). Nada disso pode ser
+    // convertido pela unidade do SKU pronto — nem o `available` (já em metros
+    // de tira, vindo do catálogo/estoque). Só o preço é trazido para R$/m.
+    if (row.componentType === 'Tiras' && (row.strap || row.artisanal)) {
+      return alignStrapRowPrice(row, product);
+    }
 
     const target = resolveConsumptionDisplayUnit(product);
     const current = normalizeUnit(row.productUnit || product.unit || 'un');
@@ -131,12 +148,8 @@ export function alignConsumptionRowsToDisplayUnit(
       const pq = convertToProductUnit(row.previewQuantity, current, target);
       if (pq != null) next.previewQuantity = pq;
     }
-    if (row.artisanal?.baseQty != null && Number.isFinite(row.artisanal.baseQty)) {
-      const bq = convertToProductUnit(row.artisanal.baseQty, current, target);
-      if (bq != null) {
-        next.artisanal = { ...row.artisanal, baseQty: bq };
-      }
-    }
+    // `artisanal.baseQty` é napa-base (metro de OUTRO produto): nunca segue a
+    // unidade do SKU desta linha.
 
     return next;
   });

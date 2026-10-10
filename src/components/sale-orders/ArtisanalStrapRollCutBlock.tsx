@@ -66,7 +66,7 @@ function plannerDefaultsFromType(
 }
 
 function rowPlanKey(type: StrapTypeNapaAgg): string {
-  return `${type.typeKey}\0${type.color}`;
+  return `${type.typeKey}\0${type.color}\0${type.blocked ? 'blocked' : 'ok'}`;
 }
 
 function showBaseSuffix(type: StrapTypeNapaAgg): boolean {
@@ -112,8 +112,8 @@ export default function ArtisanalStrapRollCutBlock({
         </Badge>
       </div>
       <p className="px-3 text-xs text-red-600/80 dark:text-red-400/80">
-        Metros de tira (ficha × pares) e napa por tipo e cor (÷ rendimento). Não se mistura com
-        Cabedal/Forração. Total de napa no rodapé.
+        Só tiras Fazer: metros de tira a fazer (depois do estoque de tira pronta) e napa por tipo e
+        cor (÷ rendimento). Não se mistura com Cabedal/Forração. Total de napa no rodapé.
       </p>
 
       <div className="keep-together overflow-hidden rounded-lg border border-red-500/30">
@@ -144,6 +144,11 @@ export default function ArtisanalStrapRollCutBlock({
                         <span className="inline-flex items-center gap-1">
                           <Warning className="h-3 w-3" /> Cadastro incompleto
                         </span>
+                        {type.blockedReason ? (
+                          <span className="basis-full text-[11px] text-red-600/80 dark:text-red-400/80">
+                            {type.blockedReason}
+                          </span>
+                        ) : null}
                         {type.needsYield ? (
                           <Button
                             type="button"

@@ -36,6 +36,7 @@ import {
   countPending,
   countShort,
   isConvertedInternalStrap,
+  isFazerStrapRow,
   isStrassStrapRow,
   itemIsShort,
   itemKey,
@@ -46,6 +47,7 @@ import {
   rowKnown,
   rowShortfall,
   soleShortSizes,
+  subtotalUnitKey,
   toPurchaseDecisionRows,
   topShortfalls,
   unitTotals,
@@ -53,6 +55,12 @@ import {
 } from '@/lib/consumptionAvailability';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { buildOrderReferencePartitions } from '@/lib/consumptionPartitions';
+import {
+  strapNapaDisplay,
+  strapPairsText,
+  strapSizeMetersText,
+  strapStockSplitText,
+} from '@/lib/strapConsumptionDisplay';
 
 /**
  * Apresentação canônica do consumo de materiais — tela + PDF. FONTE ÚNICA
@@ -573,10 +581,10 @@ export default function MaterialConsumptionView({
   // filtrar "Coberto" desmontava o bloco inteiro e recriava o relato original
   // de que a parte de solados não aparecia.
   //
-  // Tira interna CONVERTIDA sai da tabela: napa mora no bloco próprio
-  // “Napa para tiras” (não misturar com Cabedal/Forração).
-  // Tira PENDING permanece visível como cadastro incompleto — senão a demanda
-  // da ficha some da conferência (PV-00169: 184,80 m "não aparecem").
+  // Tira (Fazer ou Comprar) SEMPRE fica na tabela com seus metros de TIRA
+  // (D8, spec tiras-redesenho): convertida mostra a napa só como nota; a napa
+  // a cortar mora no bloco próprio “Napa para tiras”. Tira com cadastro
+  // pendente fica como incompleta (PV-00169) e napa “—” (D9).
   //
   // STRASS (acabada) sai para aba própria — não mistura com overlock/chata.
   const visibleSoleRows = useMemo(
@@ -591,7 +599,6 @@ export default function MaterialConsumptionView({
   const visibleGeneralRows = useMemo(
     () => visibleRows.filter((row) => (
       row.componentType !== 'Solado'
-      && !isConvertedInternalStrap(row)
       && !isStrassStrapRow(row)
     )),
     [visibleRows],
@@ -822,6 +829,13 @@ export default function MaterialConsumptionView({
   // ── Render de uma linha da tabela mestra ────────────────────────────────
   const renderRow = (row: ConsumptionRow, index: number, neutralStock: boolean, sectionKey: string) => {
     const converted = isConvertedInternalStrap(row);
+    // Tira Fazer não se compra: estoque/falta da linha falam de tira pronta e
+    // do que falta FAZER; a compra mora na napa (D8/D15).
+    const fazer = isFazerStrapRow(row);
+    const strapPairs = strapPairsText(row);
+    const strapSizes = strapSizeMetersText(row);
+    const strapSplit = strapStockSplitText(row);
+    const strapNapa = strapNapaDisplay(row);
     const known = rowKnown(row);
     const avail = rowAvailable(row);
     const short = rowShortfall(row);
@@ -833,7 +847,7 @@ export default function MaterialConsumptionView({
 
     return (
       <TableRow key={`${sectionKey}-${row.groupName}-${row.materialName}-${row.color}-${index}`}>
-        <TableCell className={`font-medium ${!grossNeed && !neutralStock && !converted && known && !ok ? 'border-l-2 border-red-500/60' : ''}`}>
+        <TableCell className={`font-medium ${!grossNeed && !neutralStock && !converted && !fazer && known && !ok ? 'border-l-2 border-red-500/60' : ''}`}>
           <div className="flex items-center gap-1.5">
             {row.widthMissing && (
               <TooltipProvider delayDuration={150}>
@@ -888,32 +902,52 @@ export default function MaterialConsumptionView({
               ≈ {formatQty(row.plateEquivalent, 'placa')} placas
             </div>
           )}
-          {row.artisanal && (
+          {strapPairs && (
+            <div className="mt-0.5 whitespace-nowrap text-[10px] font-normal text-muted-foreground">
+              m de tira · {strapPairs}
+            </div>
+          )}
+          {strapSizes && (
+            <div className="mt-0.5 text-[10px] font-normal text-muted-foreground" aria-label="Metros de tira por numeração">
+              {strapSizes}
+            </div>
+          )}
+          {strapSplit && (
+            <div className="mt-0.5 whitespace-nowrap text-[10px] font-normal text-foreground">
+              {strapSplit}
+            </div>
+          )}
+          {strapNapa ? (
+            <div
+              className={`mt-0.5 text-[10px] font-normal ${strapNapa.kind === 'blocked' ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}
+            >
+              {strapNapa.text}
+            </div>
+          ) : row.artisanal && !row.strap ? (
             row.artisanal.pending ? (
               <div className="mt-0.5 whitespace-nowrap text-[10px] font-normal text-amber-600 dark:text-amber-400">
                 base {normalizeBaseFamilyName(row.artisanal.baseName, row.color)} · rendimento a cadastrar
               </div>
-            ) : (
-              <div className="mt-0.5 whitespace-nowrap text-[10px] font-normal text-muted-foreground">
-                ≈ {formatQty(row.artisanal.baseQty, 'm')} m {normalizeBaseFamilyName(row.artisanal.baseName, row.color)}
-                <span className="opacity-70"> · artesanal (1 m → {row.artisanal.yieldPerMeter} m)</span>
-              </div>
-            )
-          )}
+            ) : null
+          ) : null}
         </TableCell>
         {!grossNeed && (
           <>
         <TableCell
           className="text-right"
           aria-label={
-            converted ? 'produção interna — o motor consome napa'
+            fazer ? 'tira Fazer — estoque de tira pronta'
               : neutralStock ? 'total do item na faixa acima'
               : !known ? 'cadastro incompleto'
               : ok ? 'em estoque'
               : 'em falta'
           }
         >
-          {converted || neutralStock || !known ? (
+          {fazer && !neutralStock ? (
+            <span className="font-mono tabular-nums text-muted-foreground">
+              {formatQty(avail, row.productUnit)}
+            </span>
+          ) : converted || neutralStock || !known ? (
             <span className="text-muted-foreground">—</span>
           ) : (
             <span className="inline-flex items-center justify-end gap-1">
@@ -925,8 +959,12 @@ export default function MaterialConsumptionView({
           )}
         </TableCell>
         <TableCell className="text-right">
-          {converted ? (
-            <span className="text-[11px] font-medium text-muted-foreground">prod. interna</span>
+          {fazer ? (
+            <span className="text-[11px] font-medium text-muted-foreground">
+              {row.strap && row.strap.toMakeM > 0
+                ? `a fazer ${formatQty(row.strap.toMakeM, 'm')} m`
+                : row.strap ? 'coberta' : 'Fazer'}
+            </span>
           ) : neutralStock || !known || short === 0 ? (
             <span className="text-muted-foreground">—</span>
           ) : (
@@ -940,13 +978,14 @@ export default function MaterialConsumptionView({
         )}
         <TableCell className="text-center text-xs text-muted-foreground">{formatUnit(row.productUnit)}</TableCell>
         <TableCell className="text-right font-mono tabular-nums text-muted-foreground">
-          {row.unitPrice != null && Number.isFinite(row.unitPrice)
+          {!fazer && row.unitPrice != null && Number.isFinite(row.unitPrice)
             ? formatPricePerUnit(row.unitPrice, row.productUnit, formatCurrency)
             : <span className="text-muted-foreground">—</span>}
         </TableCell>
         <TableCell className="text-right font-mono font-bold tabular-nums">
           {(() => {
-            const total = rowTotalCost(row);
+            // Tira Fazer não se compra pronta: o gasto é a napa (bloco próprio).
+            const total = fazer ? null : rowTotalCost(row);
             return total != null
               ? formatMoney(total)
               : <span className="font-normal text-muted-foreground">—</span>;
@@ -957,9 +996,13 @@ export default function MaterialConsumptionView({
   };
 
   const renderBand = (item: ItemGroup) => {
-    const short = itemShortfall(item);
+    // Balde só de tira Fazer: não há falta de TIRA a comprar (D8/D15).
+    const fazerBand = item.rows.length > 0 && item.rows.every(isFazerStrapRow);
+    const short = fazerBand ? 0 : itemShortfall(item);
     const ok = item.known && short === 0;
-    const unitPrice = item.rows.map((row) => row.unitPrice).find((price) => price != null && Number.isFinite(price)) ?? null;
+    const unitPrice = fazerBand
+      ? null
+      : item.rows.map((row) => row.unitPrice).find((price) => price != null && Number.isFinite(price)) ?? null;
     const totalCost = unitPrice != null ? item.total * unitPrice : null;
     return (
       <TableRow key={`band-${item.key}`} className="border-0 hover:bg-transparent">
@@ -1219,7 +1262,6 @@ export default function MaterialConsumptionView({
                       const soleRows = model.rows.filter((r) => r.componentType === 'Solado');
                       const modelMaterialRows = model.rows.filter((r) => {
                         if (r.componentType === 'Solado') return false;
-                        if (isConvertedInternalStrap(r)) return false;
                         if (materialsTab === 'strass' ? !isStrassStrapRow(r) : isStrassStrapRow(r)) return false;
                         if (!searchMatchesAllTerms(
                           search,
@@ -1287,7 +1329,8 @@ export default function MaterialConsumptionView({
                                     const out: JSX.Element[] = [];
                                     const subt = new Map<string, number>();
                                     for (const r of sectionRows) {
-                                      subt.set(r.productUnit, (subt.get(r.productUnit) || 0) + r.totalQuantity);
+                                      const unitKey = subtotalUnitKey(r);
+                                      subt.set(unitKey, (subt.get(unitKey) || 0) + r.totalQuantity);
                                     }
                                     const subtotal = Array.from(subt.entries())
                                       .map(([u, v]) => `${formatQty(v, u)} ${formatUnit(u)}`)
@@ -1504,7 +1547,11 @@ export default function MaterialConsumptionView({
                   // alinhamento das colunas entre seções, que N tabelas separadas
                   // não davam (cada uma calculava a largura sozinha).
                   const subt = new Map<string, number>();
-                  for (const r of sectionRows) subt.set(r.productUnit, (subt.get(r.productUnit) || 0) + r.totalQuantity);
+                  for (const r of sectionRows) {
+                    // Metro de tira nunca soma com metro de napa (D8).
+                    const unitKey = subtotalUnitKey(r);
+                    subt.set(unitKey, (subt.get(unitKey) || 0) + r.totalQuantity);
+                  }
                   const subtotal = Array.from(subt.entries()).map(([u, v]) => `${formatQty(v, u)} ${formatUnit(u)}`).join(' · ');
                   const previewSubt = new Map<string, number>();
                   for (const r of sectionRows) {

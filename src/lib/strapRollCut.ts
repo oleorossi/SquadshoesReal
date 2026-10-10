@@ -280,6 +280,16 @@ export interface ArtisanalStrapCutRow {
     transformationCostPerM: number | null;
     blockingReasons: string[];
     snapshotWarning?: string | null;
+    /**
+     * Decisão D9 já tomada por linha na origem (`strapNapaBlockReason`). Quando
+     * definida, é a FONTE da situação — linha da tabela, bloco e PDF concordam.
+     * Ausente em rows legadas montadas à mão (cai na heurística abaixo).
+     */
+    napaBlocked?: boolean;
+    /** Motivo do bloqueio da napa, exibido no lugar do número. */
+    napaBlockReason?: string | null;
+    /** Metros de tira pronta consumidos do estoque antes do corte (D15). */
+    fromStockM?: number;
   };
   /**
    * Material-base do rolo (ex.: "NAPA SOFT") — `base_product_name` da receita
@@ -433,6 +443,7 @@ export function isSoftStrapPrebaselineNoise(text: string | null | undefined): bo
 export function isArtisanalStrapCutBlocked(row: ArtisanalStrapCutRow): boolean {
   const snapshot = row.canonical;
   if (!snapshot) return true;
+  if (typeof snapshot.napaBlocked === 'boolean') return snapshot.napaBlocked;
   const yieldM = Number(snapshot.confirmedYieldMPerM) || 0;
   const hardReasons = (snapshot.blockingReasons || [])
     .filter((reason) => !isSoftStrapPrebaselineNoise(reason));
@@ -456,6 +467,8 @@ export type StrapTypeNapaAgg = {
   napaM: number;
   baseName?: string;
   blocked: boolean;
+  /** Motivo do bloqueio (D9) — exibido no lugar da napa. */
+  blockedReason?: string;
   /** Sem rendimento conversível — abre modal de cadastro no consumo. */
   needsYield: boolean;
   measureId?: string;
@@ -480,23 +493,40 @@ export function aggregateStrapNapaSector(rows: ArtisanalStrapCutRow[]): StrapNap
   for (const row of rows) {
     const typeKey = artisanalStrapTypeKey(row);
     const color = strapNapaColorLabel(row);
-    const aggKey = `${typeKey}\0${color}`;
     const blocked = isArtisanalStrapCutBlocked(row);
+    // Bloqueada e convertível nunca dividem a linha: senão a napa das linhas
+    // boas aparece ao lado de “cadastro incompleto” e ninguém sabe o que vale.
+    const aggKey = `${typeKey}\0${color}\0${blocked ? 'blocked' : 'ok'}`;
     const yieldM = Number(row.canonical?.confirmedYieldMPerM) || 0;
     const needsYield = !(yieldM > 0);
     const strapM = Number(row.metros_necessarios) || 0;
     const baseFromSnap = Number(row.canonical?.baseRequiredM) || 0;
-    // Napa = metros lineares de material-base (tira ÷ rendimento). Preferir o
-    // snapshot; se só o yield veio, recalcula na hora.
-    const napaM = !blocked && row.canonical
-      ? (baseFromSnap > 0 ? baseFromSnap : (yieldM > 0 && strapM > 0 ? strapM / yieldM : 0))
-      : 0;
+    // Napa = metros de tira a fazer ÷ rendimento, já somados POR LINHA em
+    // `canonicalStrapCutRows` (napaBlocked definido). Row legada sem a decisão
+    // por linha: prefere o snapshot; se só o yield veio, recalcula.
+    const decided = typeof row.canonical?.napaBlocked === 'boolean';
+    const napaM = blocked || !row.canonical
+      ? 0
+      : decided
+        ? baseFromSnap
+        : (baseFromSnap > 0 ? baseFromSnap : (yieldM > 0 && strapM > 0 ? strapM / yieldM : 0));
+    const reason = blocked
+      ? (row.canonical?.napaBlockReason
+        || (row.canonical?.blockingReasons || []).join(' · ')
+        || row.canonical?.snapshotWarning
+        || '').trim()
+      : '';
     const existing = map.get(aggKey);
     if (existing) {
       existing.strapM += strapM;
       existing.napaM += napaM;
-      if (blocked) existing.blocked = true;
       if (needsYield) existing.needsYield = true;
+      if (reason) {
+        existing.blockedReason = Array.from(new Set([
+          ...(existing.blockedReason ? existing.blockedReason.split(' · ') : []),
+          ...reason.split(' · '),
+        ])).join(' · ');
+      }
       if (!existing.baseName && row.baseName) existing.baseName = row.baseName;
       if (!existing.measureId && row.measureId) existing.measureId = row.measureId;
       if (!existing.measureName && row.measureName) existing.measureName = row.measureName;
@@ -510,6 +540,7 @@ export function aggregateStrapNapaSector(rows: ArtisanalStrapCutRow[]): StrapNap
         napaM,
         baseName: row.baseName,
         blocked,
+        ...(reason ? { blockedReason: reason } : {}),
         needsYield,
         measureId: row.measureId,
         measureName: row.measureName,
@@ -521,7 +552,9 @@ export function aggregateStrapNapaSector(rows: ArtisanalStrapCutRow[]): StrapNap
     .sort((a, b) => {
       const byType = a.typeName.localeCompare(b.typeName, 'pt-BR');
       if (byType !== 0) return byType;
-      return a.color.localeCompare(b.color, 'pt-BR');
+      const byColor = a.color.localeCompare(b.color, 'pt-BR');
+      if (byColor !== 0) return byColor;
+      return Number(a.blocked) - Number(b.blocked);
     });
   return {
     types,

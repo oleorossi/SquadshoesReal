@@ -180,7 +180,7 @@ describe('materialConsumptionReport', () => {
     expect(html).not.toContain('<td class="num strong">59,04</td>');
   });
 
-  it('não publica metro de tira artesanal como falta — napa de tira fica no §03', () => {
+  it('tira Fazer convertida aparece com metros de TIRA (D8), nunca como falta — napa no §03', () => {
     const html = buildMaterialConsumptionReportHtml({
       title: 'Consumo de Materiais — PV-00168',
       generatedAt: new Date('2026-08-30T15:11:00-03:00'),
@@ -232,10 +232,13 @@ describe('materialConsumptionReport', () => {
     });
 
     // §01: só Cabedal/Forração. §03: napa de tira. Strip soma napa convertida.
+    // §02: a linha da tira continua visível com os metros de TIRA (D8) e a
+    // napa só como nota — não é falta de tira (não se compra tira Fazer).
     expect(html).toContain('Napa para tiras');
     expect(html).toContain('20,04 m');
     expect(html).not.toContain('class="num shortage">1.402,80');
-    expect(html).not.toContain('>1.402,80<');
+    expect(html).toContain('>1.402,80<small class="qty-preview">m de tira</small>');
+    expect(html).toContain('a fazer 1.402,80');
     const totalsStrip = html.match(/<div class="totals-strip">[\s\S]*?<\/div>/)?.[0] || '';
     expect(totalsStrip).toContain('40,25');
     expect(totalsStrip).not.toContain('1.402,80');
@@ -243,7 +246,7 @@ describe('materialConsumptionReport', () => {
     expect(html).toContain('>Forração<');
     expect(html).not.toContain('>Tira<');
     expect(html).toContain('20,21 m');
-    expect(html).not.toContain('<span>Tiras</span>');
+    expect(html).toContain('<span>Tiras</span>');
   });
 
   it('no modo consumo total ignora estoque e agrupa napa Cabedal/Forração por família', () => {
@@ -311,7 +314,8 @@ describe('materialConsumptionReport', () => {
     expect(html).not.toContain('>Estoque<');
     expect(html).not.toContain('>Falta<');
     expect(html).toContain('Necessidade');
-    expect(html).not.toContain('>1.402,80<');
+    // D8: metros de tira visíveis em §02, separados da napa (§01/§03).
+    expect(html).toContain('>1.402,80<small class="qty-preview">m de tira</small>');
   });
 
   it('PV-00193: strip de metros ignora tira pending e §02 lista só demanda pendente', () => {
@@ -598,7 +602,8 @@ describe('materialConsumptionReport', () => {
     expect(html).toContain('flag ok');
     expect(html).not.toContain('cadastro incompleto');
     expect(html).toContain('296,84 m');
-    expect(html).toContain('4,24 m');
+    // Napa de tira com 4 casas: 296,84 ÷ 70 = 4,2406 m (2 casas fecharia errado).
+    expect(html).toContain('4,2406 m');
   });
 
   it('desagrega por tipo × cor no §03 e um único total de napa no rodapé', () => {

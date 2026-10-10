@@ -9,6 +9,8 @@ import {
   parseCanonicalStrapDemandPreview,
   replaceWithCanonicalStrapRows,
   type CanonicalStrapDemandPreview,
+  type StrapLineSpec,
+  type StrapScopeInfo,
 } from '@/lib/canonicalStrapDemandPreview';
 import {
   annotateConsumptionAvailability,
@@ -513,24 +515,92 @@ export function applyCanonicalStrapsForPresentation(
   rows: MaterialConsumptionRow[],
   previews: CanonicalStrapDemandPreview[],
 ): MaterialConsumptionRow[] {
-  return replaceWithCanonicalStrapRows(rows, emptyContext(), previews);
+  // Fichas de operador / diálogo da OP: uma linha por material físico
+  // (variante × cor), sem estoque de tira pronta — a cor nunca se funde.
+  return replaceWithCanonicalStrapRows(rows, emptyContext(), previews, { groupBy: 'variant' });
+}
+
+/**
+ * scope_key → PV, modelo, pares e grade efetiva, a partir das linhas de
+ * material do próprio relatório (o motor já resolveu a grade da OP/item).
+ * As previews de tira não trazem modelo nem grade; sem isto o modo "Por PV e
+ * modelo" jogava as tiras em "PV / SEM REF".
+ */
+export function buildStrapScopeInfo(
+  lines: CanonicalConsumptionLine[],
+): Map<string, StrapScopeInfo> {
+  const out = new Map<string, StrapScopeInfo>();
+  for (const line of lines) {
+    if (out.has(line.scope_key)) continue;
+    const grade: Record<string, number> = {};
+    for (const [size, value] of Object.entries(line.effective_grade || {})) {
+      if (size.startsWith('_') || typeof value !== 'number' || !(value > 0)) continue;
+      grade[size] = value;
+    }
+    out.set(line.scope_key, {
+      saleOrderId: line.sale_order_id || null,
+      referenceId: line.reference_id || null,
+      pairs: Number.isFinite(line.quantity) && line.quantity > 0 ? line.quantity : null,
+      grade: Object.keys(grade).length > 0 ? grade : null,
+    });
+  }
+  return out;
+}
+
+/**
+ * technical_strap_line_id → cm/par por numeração + rótulo, lidos de
+ * `technical_sheets.strap_colors`. Só apresentação (metros por numeração, D10):
+ * a metragem total continua sendo a do motor SQL.
+ */
+export function parseStrapLineSpecs(
+  sheets: Array<{ strap_colors?: unknown }>,
+): Map<string, StrapLineSpec> {
+  const out = new Map<string, StrapLineSpec>();
+  for (const sheet of sheets) {
+    if (!Array.isArray(sheet?.strap_colors)) continue;
+    for (const raw of sheet.strap_colors) {
+      if (!raw || typeof raw !== 'object') continue;
+      const line = raw as Record<string, unknown>;
+      const id = String(line.technical_strap_line_id || line.id || '').trim();
+      if (!id || out.has(id)) continue;
+      const perSize: Record<string, number> = {};
+      if (line.consumption_per_size && typeof line.consumption_per_size === 'object') {
+        for (const [size, value] of Object.entries(line.consumption_per_size as Record<string, unknown>)) {
+          const cm = Number(value);
+          if (Number.isFinite(cm) && cm > 0) perSize[size] = cm;
+        }
+      }
+      const scalar = Number(line.consumption);
+      out.set(id, {
+        label: String(line.label || '').trim() || null,
+        consumptionPerSize: perSize,
+        consumption: Number.isFinite(scalar) && scalar > 0 ? scalar : null,
+      });
+    }
+  }
+  return out;
 }
 
 async function loadStockContext(
   lines: CanonicalConsumptionLine[],
   previews: ScopedCanonicalStrapPreview[],
-): Promise<ConsumptionContext> {
+): Promise<{ ctx: ConsumptionContext; strapLineSpecs: Map<string, StrapLineSpec> }> {
   const productIds = new Set<string>();
   const boxTypeIds = new Set<string>();
+  const strapReferenceIds = new Set<string>();
+  const scopeReference = new Map<string, string>();
   for (const line of lines) {
     if (line.line_kind === 'material' && line.product_id) productIds.add(line.product_id);
     if (line.line_kind === 'packaging' && line.box_type_id) boxTypeIds.add(line.box_type_id);
+    if (line.reference_id) scopeReference.set(line.scope_key, line.reference_id);
   }
-  for (const { preview } of previews) {
+  for (const { scopeKey, preview } of previews) {
     if (preview.finishedProductId) productIds.add(preview.finishedProductId);
+    const referenceId = scopeReference.get(scopeKey);
+    if (referenceId) strapReferenceIds.add(referenceId);
   }
 
-  const [productsResult, boxesResult] = await Promise.all([
+  const [productsResult, boxesResult, sheetsResult] = await Promise.all([
     productIds.size > 0
       ? supabase
         .from('products')
@@ -543,14 +613,26 @@ async function loadStockContext(
         .select('id, nome, quantity, unit_price, supplier_id, active')
         .in('id', [...boxTypeIds])
       : Promise.resolve({ data: [], error: null }),
+    strapReferenceIds.size > 0
+      ? supabase
+        .from('technical_sheets')
+        .select('id, strap_colors')
+        .in('id', [...strapReferenceIds])
+      : Promise.resolve({ data: [], error: null }),
   ]);
   if (productsResult.error) throw productsResult.error;
   if (boxesResult.error) throw boxesResult.error;
 
   return {
-    ...emptyContext(productsResult.data || []),
-    boxTypes: boxesResult.data || [],
-  } as unknown as ConsumptionContext;
+    ctx: {
+      ...emptyContext(productsResult.data || []),
+      boxTypes: boxesResult.data || [],
+    } as unknown as ConsumptionContext,
+    // Metros por numeração são enriquecimento: falha aqui não derruba o consumo.
+    strapLineSpecs: sheetsResult.error
+      ? new Map()
+      : parseStrapLineSpecs((sheetsResult.data || []) as Array<{ strap_colors?: unknown }>),
+  };
 }
 
 /** Anexa ≈ placas nas linhas de fibra/palmilha emitidas em dm². */
@@ -584,12 +666,20 @@ export async function materializeCanonicalConsumptionReport(
     : report.lines;
   const scopedPreviews = canonicalStrapPreviews(report, scopeKeys);
   const adapted = adaptCanonicalConsumptionLines(scopedLines, undefined, opts);
-  const ctx = await loadStockContext(scopedLines, scopedPreviews);
+  const { ctx, strapLineSpecs } = await loadStockContext(scopedLines, scopedPreviews);
   const rows = enrichInsolePlateEquivalent(adapted, (ctx.allProducts || []) as Array<Record<string, unknown>>);
   const annotated = await annotateConsumptionAvailability(
     rows,
     ctx,
-    scopedPreviews.map(({ preview }) => preview),
+    scopedPreviews.map(({ scopeKey, preview }) => ({ ...preview, scopeKey })),
+    {
+      partition: opts?.partition ?? 'none',
+      scopeByKey: buildStrapScopeInfo(scopedLines),
+      lineSpecs: strapLineSpecs,
+      orderNumberBySaleOrderId: opts?.orderNumberBySaleOrderId,
+      referenceLabelById: opts?.referenceLabelById,
+      allocateFinishedStock: true,
+    },
   );
   // Necessidade, estoque e R$/un na unidade de consumo do cadastro (grupo → item).
   return {

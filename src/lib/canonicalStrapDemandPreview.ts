@@ -1,5 +1,9 @@
 import type { MaterialConsumptionRow, ConsumptionContext } from '@/lib/orderConsumption';
-import type { ArtisanalStrapCutRow, StrapRollCutResult } from '@/lib/strapRollCut';
+import {
+  isSoftStrapPrebaselineNoise,
+  type ArtisanalStrapCutRow,
+  type StrapRollCutResult,
+} from '@/lib/strapRollCut';
 import { normalizeBaseFamilyName } from '@/lib/baseMaterialTotal';
 
 export type CanonicalStrapSourceMode = 'internal' | 'buy_ready' | null;
@@ -47,6 +51,21 @@ export interface CanonicalStrapDemandPreview {
   /** Códigos crus dos blocking_reasons (além das mensagens). */
   blockingCodes: string[];
   snapshotWarning?: string | null;
+  /** `scope_key` do relatório (item do PV ou OP) — liga a preview à grade/pares. */
+  scopeKey?: string | null;
+  /** PV dono da linha (`sale_order_id`) — modo "Por PV e modelo". */
+  saleOrderId?: string | null;
+  /** Ordem da linha de tira no item (`line_ordinal`). */
+  lineOrdinal?: number | null;
+  /** Cor canônica (`canonical_colors.id`) — chave de agrupamento por cor. */
+  colorId?: string | null;
+  /**
+   * Tira pronta em estoque para a variante (`resolved.catalog.finished_available_m`).
+   * Null quando a preview não trouxe o dado.
+   */
+  finishedAvailableM?: number | null;
+  /** Mensagens cujos códigos são ruído soft de pré-baseline (não bloqueiam napa). */
+  softBlockingReasons?: string[];
 }
 
 const STRAP_LABEL_FALLBACK = 'Tira sem cadastro';
@@ -95,6 +114,70 @@ export function parseCanonicalBlockingCodes(value: unknown): string[] {
       return String((entry as Record<string, unknown>).code || '');
     })
     .filter(Boolean);
+}
+
+/**
+ * Códigos soft de pré-baseline: a transformação ainda não congelou, mas o Hub
+ * já tem rendimento. Não bloqueiam a conversão em napa (PV-00194/PV-00222).
+ */
+const SOFT_STRAP_BLOCKING_CODES = new Set([
+  'variant_identity_not_persisted',
+  'frozen_source_snapshot_stale',
+  'reference_base_intent_mismatch',
+  'catalog_resolution_blocked',
+]);
+
+function parseSoftBlockingReasons(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object') return '';
+      const record = entry as Record<string, unknown>;
+      if (!SOFT_STRAP_BLOCKING_CODES.has(String(record.code || ''))) return '';
+      return String(record.message || record.reason || record.code || '');
+    })
+    .filter(Boolean);
+}
+
+/**
+ * Motivos que impedem a conversão em napa (D9). Ruído soft de pré-baseline
+ * (por código ou por texto) não conta — o rendimento do Hub já basta.
+ */
+export function hardStrapBlockingReasons(
+  preview: Pick<CanonicalStrapDemandPreview, 'blockingReasons' | 'snapshotWarning' | 'softBlockingReasons'>,
+): string[] {
+  const soft = new Set(preview.softBlockingReasons || []);
+  const hard = (preview.blockingReasons || [])
+    .filter((reason) => !soft.has(reason) && !isSoftStrapPrebaselineNoise(reason));
+  const warning = (preview.snapshotWarning || '').trim();
+  if (warning && !isSoftStrapPrebaselineNoise(warning)) hard.push(warning);
+  return Array.from(new Set(hard));
+}
+
+export const STRAP_NAPA_MISSING_YIELD_REASON =
+  'Sem receita/rendimento aprovado para esta tira × napa — cadastre no Hub de Tiras.';
+
+/**
+ * FONTE ÚNICA da regra D9 (linha, bloco “Napa para tiras”, PDF e compra):
+ * tira Fazer só vira napa com receita aprovada, rendimento > 0 e sem bloqueio
+ * duro. Devolve o motivo do bloqueio, ou null quando a napa é calculável.
+ * Comprar/origem pendente não têm napa — devolve null (não se aplica).
+ */
+export function strapNapaBlockReason(
+  preview: Pick<
+    CanonicalStrapDemandPreview,
+    'sourceMode' | 'recipeId' | 'confirmedYieldMPerM' | 'blockingReasons' | 'snapshotWarning' | 'softBlockingReasons'
+  >,
+): string | null {
+  if (preview.sourceMode !== 'internal') return null;
+  const hard = hardStrapBlockingReasons(preview);
+  if (hard.length > 0) return hard.join(' · ');
+  const yieldM = finiteOrZero(preview.confirmedYieldMPerM);
+  if (!(yieldM > 0) || !preview.recipeId) {
+    const soft = (preview.snapshotWarning || '').trim();
+    return soft || STRAP_NAPA_MISSING_YIELD_REASON;
+  }
+  return null;
 }
 
 /**
@@ -298,18 +381,71 @@ export function parseCanonicalStrapDemandPreview(
     ),
     blockingReasons: parseCanonicalBlockingReasons(value.blocking_reasons),
     blockingCodes: parseCanonicalBlockingCodes(value.blocking_reasons),
+    scopeKey: stringOrNull(value.scope_key),
+    saleOrderId: stringOrNull(value.sale_order_id),
+    lineOrdinal: numberOrNull(value.line_ordinal),
+    colorId: stringOrNull(resolved.color_id) || stringOrNull(catalog.color_id),
+    finishedAvailableM: numberOrNull(
+      catalog.finished_available_m
+        ?? (catalog.source_availability && typeof catalog.source_availability === 'object'
+          ? (catalog.source_availability as Record<string, unknown>).finished_available_m
+          : null),
+    ),
+    softBlockingReasons: parseSoftBlockingReasons(value.blocking_reasons),
     ...(resolved.snapshot_warning ? { snapshotWarning: stringOrNull(resolved.snapshot_warning) } : {}),
   };
 }
 
+/** Origem da tira no vocabulário único (spec tiras-redesenho): Fazer / Comprar. */
+export type StrapOrigin = 'fazer' | 'comprar';
+
+export const STRAP_ORIGIN_LABEL: Record<StrapOrigin, string> = {
+  fazer: 'Fazer',
+  comprar: 'Comprar',
+};
+
+/**
+ * Fatos de apresentação de uma linha de tira no Consumo (D8/D10/D15). Metros
+ * de TIRA e metros de NAPA nunca se somam: `totalQuantity` da linha é tira;
+ * `napaM` é a napa-base (só Fazer) e mora no bloco “Napa para tiras”.
+ */
+export interface StrapConsumptionFacts {
+  origin: StrapOrigin | null;
+  /** Pares do(s) item(ns) que geram a linha; null quando o escopo não trouxe. */
+  pairs: number | null;
+  /** Pares por numeração; null quando a grade não fecha com os pares. */
+  pairsBySize: Record<string, number> | null;
+  /** Metros de tira por numeração (pares × cm/par ÷ 100); null se não provável. */
+  metersBySize: Record<string, number> | null;
+  /** Tira pronta consumida do estoque primeiro (D15). */
+  fromStockM: number;
+  /** Falta depois do estoque: a fazer (Fazer) ou a comprar (Comprar). */
+  toMakeM: number;
+  /** Napa-base = a fazer ÷ rendimento. Null = não se aplica ou bloqueada (D9). */
+  napaM: number | null;
+  /** Motivo do bloqueio da napa (D9); null quando calculável ou não se aplica. */
+  napaBlockedReason: string | null;
+  /** Rótulos das linhas da ficha (ex.: "TIRA 1", "TRASEIRA"). */
+  lineLabels: string[];
+  /** Rendimento m de tira / m de napa (só Fazer, quando conhecido). */
+  yieldMPerM: number | null;
+}
+
 export type CanonicalStrapConsumptionRow = MaterialConsumptionRow & {
   available?: number;
-  artisanal?: { baseName: string; baseQty: number; yieldPerMeter: number; pending?: boolean };
+  artisanal?: {
+    baseName: string;
+    baseQty: number;
+    yieldPerMeter: number;
+    pending?: boolean;
+    blockedReason?: string;
+  };
   strapVariantId: string | null;
   strapSourceMode: CanonicalStrapSourceMode;
   recipeId: string | null;
   baseProductId: string | null;
   technicalStrapLineIds: string[];
+  strap: StrapConsumptionFacts;
 };
 
 interface StockProductLike {
@@ -324,14 +460,208 @@ const netStock = (product: StockProductLike | undefined): number => Math.max(
   finiteOrZero(product?.quantity) - finiteOrZero(product?.reserved_stock),
 );
 
+const normColorKey = (value: string | null | undefined): string => (value || '')
+  .toLowerCase()
+  .normalize('NFD')
+  .replace(/[̀-ͯ]/g, '')
+  .trim();
+
+/** Linha de tira da ficha técnica (`technical_sheets.strap_colors[]`). */
+export interface StrapLineSpec {
+  label: string | null;
+  /** cm/par por numeração. */
+  consumptionPerSize: Record<string, number>;
+  /** cm/par escalar (fallback quando a numeração não tem valor próprio). */
+  consumption: number | null;
+}
+
+/** Escopo do relatório (item do PV ou OP): PV, modelo, pares e grade efetiva. */
+export interface StrapScopeInfo {
+  saleOrderId: string | null;
+  referenceId: string | null;
+  pairs: number | null;
+  grade: Record<string, number> | null;
+}
+
+export interface CanonicalStrapPresentationOptions {
+  /** `order_reference` = linhas carregam PV + modelo (modo "Por PV e modelo"). */
+  partition?: 'none' | 'order_reference';
+  /** scope_key → PV/modelo/pares/grade (vindo das `lines` do relatório). */
+  scopeByKey?: ReadonlyMap<string, StrapScopeInfo>;
+  /** technical_strap_line_id → cm/par por numeração + rótulo da linha. */
+  lineSpecs?: ReadonlyMap<string, StrapLineSpec>;
+  orderNumberBySaleOrderId?: ReadonlyMap<string, string>;
+  referenceLabelById?: ReadonlyMap<string, { code: string; name: string | null }>;
+  /** D15: consome tira pronta em estoque antes de fazer/comprar. */
+  allocateFinishedStock?: boolean;
+  /**
+   * `line` (default, tela Consumo de Materiais): uma linha por linha da ficha
+   * × cor (D10). `variant`: funde as posições da mesma variante × cor — as
+   * fichas de operador/diálogo de OP seguem com uma linha por material físico.
+   */
+  groupBy?: 'line' | 'variant';
+}
+
+/** Fatos derivados de UMA preview (linha de tira de um item/OP). */
+export interface StrapLineFacts {
+  preview: CanonicalStrapDemandPreview;
+  grossM: number;
+  fromStockM: number;
+  toMakeM: number;
+  napaM: number | null;
+  blockReason: string | null;
+  /** Estoque inicial do SKU pronto usado na alocação (representante do balde). */
+  stockPoolM: number | null;
+}
+
+/**
+ * Deriva, por linha, quanto sai do estoque de tira pronta (D15), quanto falta
+ * fazer/comprar e a napa = a fazer ÷ rendimento (D9 quando bloqueada). O mesmo
+ * SKU pronto é um balde único: duas linhas não consomem o mesmo saldo duas vezes.
+ * Sem `allocateFinishedStock` nada sai do estoque (a fronteira da separação já
+ * recebe a falta LÍQUIDA persistida).
+ */
+export function deriveStrapLineFacts(
+  previews: CanonicalStrapDemandPreview[],
+  opts: { allocateFinishedStock?: boolean; stockOf?: (productId: string) => number | null } = {},
+): StrapLineFacts[] {
+  const initial = new Map<string, number>();
+  if (opts.allocateFinishedStock) {
+    for (const preview of previews) {
+      const id = preview.finishedProductId;
+      const fromPreview = preview.finishedAvailableM;
+      if (!id || fromPreview == null || !Number.isFinite(fromPreview)) continue;
+      initial.set(id, Math.max(initial.get(id) ?? 0, Math.max(0, fromPreview)));
+    }
+    for (const preview of previews) {
+      const id = preview.finishedProductId;
+      if (!id || initial.has(id)) continue;
+      initial.set(id, Math.max(0, finiteOrZero(opts.stockOf?.(id))));
+    }
+  }
+  const pools = new Map(initial);
+
+  return previews.map((preview) => {
+    const grossM = Math.max(0, finiteOrZero(preview.grossRequiredM));
+    const id = preview.finishedProductId;
+    let fromStockM = 0;
+    if (id && pools.has(id)) {
+      const pool = pools.get(id) || 0;
+      fromStockM = Math.min(grossM, pool);
+      pools.set(id, pool - fromStockM);
+    }
+    const toMakeM = Math.max(0, grossM - fromStockM);
+    const blockReason = strapNapaBlockReason(preview);
+    const yieldM = finiteOrZero(preview.confirmedYieldMPerM);
+    const napaM = preview.sourceMode === 'internal' && !blockReason && yieldM > 0
+      ? toMakeM / yieldM
+      : null;
+    return {
+      preview,
+      grossM,
+      fromStockM,
+      toMakeM,
+      napaM,
+      blockReason,
+      stockPoolM: id && initial.has(id) ? initial.get(id)! : null,
+    };
+  });
+}
+
+const positiveGrade = (
+  grade: Record<string, number> | null | undefined,
+): Record<string, number> | null => {
+  if (!grade) return null;
+  const out: Record<string, number> = {};
+  for (const [size, value] of Object.entries(grade)) {
+    if (size.startsWith('_')) continue;
+    const quantity = Number(value);
+    if (Number.isFinite(quantity) && quantity > 0) out[size] = quantity;
+  }
+  return Object.keys(out).length > 0 ? out : null;
+};
+
+/** Tolerância da conferência Σ(metros por numeração) × metros do motor. */
+const SIZE_PARITY_TOLERANCE_M = 0.01;
+
+/**
+ * Pares e metros de tira por numeração (D10). Só devolve metros por numeração
+ * quando a ficha tem cm/par para cada número E a soma bate com o motor SQL —
+ * nunca inventa uma distribuição que o motor não usou.
+ */
+export function strapSizeBreakdown(
+  grossM: number,
+  scope: StrapScopeInfo | undefined,
+  spec: StrapLineSpec | undefined,
+): Pick<StrapConsumptionFacts, 'pairs' | 'pairsBySize' | 'metersBySize'> {
+  const scopePairs = scope?.pairs != null && scope.pairs > 0 ? scope.pairs : null;
+  const grade = positiveGrade(scope?.grade);
+  if (!grade) return { pairs: scopePairs, pairsBySize: null, metersBySize: null };
+
+  const sum = Object.values(grade).reduce((total, value) => total + value, 0);
+  let factor = 1;
+  if (scopePairs != null && Math.abs(sum - scopePairs) > 1e-9) {
+    // Grade por ficha (Σ = pares/ficha) × fichas inteiras = pares do item.
+    const ratio = scopePairs / sum;
+    if (!(ratio >= 1) || Math.abs(ratio - Math.round(ratio)) > 1e-9) {
+      return { pairs: scopePairs, pairsBySize: null, metersBySize: null };
+    }
+    factor = Math.round(ratio);
+  }
+  const pairsBySize: Record<string, number> = {};
+  for (const [size, value] of Object.entries(grade)) pairsBySize[size] = value * factor;
+  const pairs = scopePairs ?? sum * factor;
+  if (!spec) return { pairs, pairsBySize, metersBySize: null };
+
+  const metersBySize: Record<string, number> = {};
+  let total = 0;
+  for (const [size, sizePairs] of Object.entries(pairsBySize)) {
+    const perSize = Number(spec.consumptionPerSize?.[size]);
+    const cmPerPair = Number.isFinite(perSize) && perSize > 0
+      ? perSize
+      : (spec.consumption != null && spec.consumption > 0 ? spec.consumption : null);
+    if (cmPerPair == null) return { pairs, pairsBySize, metersBySize: null };
+    const meters = (sizePairs * cmPerPair) / 100;
+    metersBySize[size] = meters;
+    total += meters;
+  }
+  if (Math.abs(total - grossM) > SIZE_PARITY_TOLERANCE_M) {
+    return { pairs, pairsBySize, metersBySize: null };
+  }
+  return { pairs, pairsBySize, metersBySize };
+}
+
+const mergeSizeMap = (
+  a: Record<string, number> | null,
+  b: Record<string, number> | null,
+): Record<string, number> | null => {
+  if (!a || !b) return null;
+  const out = { ...a };
+  for (const [size, value] of Object.entries(b)) out[size] = (out[size] || 0) + value;
+  return out;
+};
+
+const strapOriginOf = (mode: CanonicalStrapSourceMode): StrapOrigin | null =>
+  mode === 'internal' ? 'fazer' : mode === 'buy_ready' ? 'comprar' : null;
+
+const strapMaterialName = (origin: StrapOrigin | null, labels: string[]): string => {
+  const base = origin ? STRAP_ORIGIN_LABEL[origin] : 'Origem pendente';
+  return labels.length > 0 ? `${base} · ${labels.join(', ')}` : base;
+};
+
 /**
  * Substitui as linhas de tira calculadas por nome pelo resultado canônico da
  * preview RPC. Demais componentes permanecem intocados.
+ *
+ * Uma linha por **linha da ficha × cor × origem** (D8/D10): a tira nunca some
+ * — mesmo Fazer convertida em napa continua com seus metros de TIRA. A napa
+ * vive em `artisanal`/`strap.napaM` e no bloco “Napa para tiras”.
  */
 export function replaceWithCanonicalStrapRows(
   rows: MaterialConsumptionRow[],
   ctx: ConsumptionContext,
   previews: CanonicalStrapDemandPreview[],
+  opts: CanonicalStrapPresentationOptions = {},
 ): MaterialConsumptionRow[] {
   const effectivePreviews = collapseDuplicateStaleStrapPreviews(previews);
   if (effectivePreviews.length === 0) {
@@ -360,40 +690,64 @@ export function replaceWithCanonicalStrapRows(
   const productsById = new Map<string, StockProductLike>(
     (ctx.allProducts || []).map((product: StockProductLike) => [String(product.id), product]),
   );
+  const partitioned = opts.partition === 'order_reference';
+  const facts = deriveStrapLineFacts(effectivePreviews, {
+    allocateFinishedStock: opts.allocateFinishedStock,
+    stockOf: (id) => (productsById.has(id) ? netStock(productsById.get(id)) : null),
+  });
   const grouped = new Map<string, CanonicalStrapConsumptionRow>();
 
-  for (const preview of effectivePreviews) {
-    const stableIdentity = preview.strapVariantId || preview.technicalStrapLineId;
-    const key = [stableIdentity, preview.sourceMode || 'unresolved', preview.recipeId || 'no-recipe',
-      preview.baseProductId || 'no-base', preview.finishedProductId || 'no-finished'].join('::');
+  for (const fact of facts) {
+    const { preview } = fact;
+    const scopeKey = preview.scopeKey || preview.saleOrderItemId || '';
+    const scope = scopeKey ? opts.scopeByKey?.get(scopeKey) : undefined;
+    const saleOrderId = preview.saleOrderId || scope?.saleOrderId || null;
+    const referenceId = scope?.referenceId || null;
+    const spec = preview.technicalStrapLineId
+      ? opts.lineSpecs?.get(preview.technicalStrapLineId)
+      : undefined;
+    const sizes = strapSizeBreakdown(fact.grossM, scope, spec);
+    const blocked = !!fact.blockReason;
+    const colorKey = preview.colorId || normColorKey(preview.strapColorName);
+    // Cor e linha da ficha na chave: DÁLIA e PRATA da mesma referência nunca
+    // se fundem; TIRA 1 e TRASEIRA aparecem separadas (D10).
+    const identity = opts.groupBy === 'variant'
+      ? (preview.strapVariantId || preview.technicalStrapLineId)
+      : (preview.technicalStrapLineId || preview.strapVariantId);
+    const key = [
+      identity || 'no-line',
+      colorKey || 'no-color',
+      preview.sourceMode || 'unresolved',
+      preview.recipeId || 'no-recipe',
+      preview.baseProductId || 'no-base',
+      preview.finishedProductId || 'no-finished',
+      blocked ? 'napa-blocked' : 'napa-ok',
+      partitioned ? (saleOrderId || '') : '',
+      partitioned ? (referenceId || '') : '',
+    ].join('::');
     const existing = grouped.get(key);
-    const presentationWarnings = [...preview.blockingReasons,
-      ...(preview.snapshotWarning ? [preview.snapshotWarning] : [])];
-    const gross = Math.max(0, finiteOrZero(preview.grossRequiredM));
+    const presentationWarnings = Array.from(new Set([
+      ...preview.blockingReasons,
+      ...(preview.snapshotWarning ? [preview.snapshotWarning] : []),
+      ...(fact.blockReason && fact.blockReason === STRAP_NAPA_MISSING_YIELD_REASON
+        ? [fact.blockReason]
+        : []),
+    ]));
     const yieldPerMeter = Math.max(0, finiteOrZero(preview.confirmedYieldMPerM));
-    // Lista de compra: se o Hub já tem rendimento confirmado, converte mesmo
-    // com avisos soft (variante não pinada, origem stale no rascunho). Pendente
-    // só quando NÃO há m/m conversível — senão MEIA CANA com yield 55 virava
-    // "rendimento pendente" por variant_identity_not_persisted (PV-00194).
-    const baseRequiredFromPreview = Math.max(0, finiteOrZero(preview.baseRequiredM));
-    const baseRequired = baseRequiredFromPreview > 0
-      ? baseRequiredFromPreview
-      : (yieldPerMeter > 0 ? gross / yieldPerMeter : 0);
-    const sourceLabel = preview.sourceMode === 'internal'
-      ? 'Produção interna'
-      : preview.sourceMode === 'buy_ready'
-        ? 'Comprada pronta'
-        : 'Origem pendente';
+    const label = (spec?.label || '').trim();
 
     if (existing) {
-      existing.totalQuantity += gross;
+      existing.totalQuantity += fact.grossM;
       existing.technicalStrapLineIds.push(preview.technicalStrapLineId);
-      if (existing.artisanal && preview.sourceMode === 'internal') {
-        const existingPending = !(Number(existing.artisanal.yieldPerMeter) > 0);
-        existing.artisanal.baseQty += existingPending ? 0 : baseRequired;
-        if (existingPending) existing.artisanal.pending = true;
-        else delete existing.artisanal.pending;
-      }
+      const strap = existing.strap;
+      strap.fromStockM += fact.fromStockM;
+      strap.toMakeM += fact.toMakeM;
+      strap.pairs = strap.pairs != null && sizes.pairs != null ? strap.pairs + sizes.pairs : null;
+      strap.pairsBySize = mergeSizeMap(strap.pairsBySize, sizes.pairsBySize);
+      strap.metersBySize = mergeSizeMap(strap.metersBySize, sizes.metersBySize);
+      if (strap.napaM != null && fact.napaM != null) strap.napaM += fact.napaM;
+      if (label && !strap.lineLabels.includes(label)) strap.lineLabels.push(label);
+      if (existing.artisanal && fact.napaM != null) existing.artisanal.baseQty += fact.napaM;
       if (presentationWarnings.length > 0) {
         existing.warning = Array.from(new Set([
           ...(existing.warning ? existing.warning.split(' · ') : []),
@@ -416,28 +770,29 @@ export function replaceWithCanonicalStrapRows(
       strapProductName: namedPreview,
     });
     const internal = preview.sourceMode === 'internal';
-    const pendingInternal = internal && !(yieldPerMeter > 0);
     const baseFamilyName = resolveStrapBaseFamilyName(preview, ctx);
+    const origin = strapOriginOf(preview.sourceMode);
 
-    grouped.set(key, {
+    const row: CanonicalStrapConsumptionRow = {
       componentType: 'Tiras',
       groupName: displayName,
-      materialName: sourceLabel,
+      materialName: strapMaterialName(origin, label ? [label] : []),
       productUnit: 'm',
       color: preview.strapColorName || '—',
-      totalQuantity: gross,
+      totalQuantity: fact.grossM,
       productIds: preview.finishedProductId ? [preview.finishedProductId] : [],
       materialFamily: internal ? baseFamilyName : null,
-      available: netStock(product),
+      available: fact.stockPoolM != null ? fact.stockPoolM : netStock(product),
       warning: presentationWarnings.length > 0
         ? presentationWarnings.join(' · ')
         : undefined,
       artisanal: internal
         ? {
             baseName: baseFamilyName || 'Material base não resolvido',
-            baseQty: pendingInternal ? 0 : baseRequired,
+            baseQty: fact.napaM ?? 0,
             yieldPerMeter,
-            pending: pendingInternal || undefined,
+            pending: blocked || undefined,
+            ...(blocked && fact.blockReason ? { blockedReason: fact.blockReason } : {}),
           }
         : undefined,
       strapVariantId: preview.strapVariantId,
@@ -445,7 +800,32 @@ export function replaceWithCanonicalStrapRows(
       recipeId: preview.recipeId,
       baseProductId: preview.baseProductId,
       technicalStrapLineIds: [preview.technicalStrapLineId],
-    });
+      strap: {
+        origin,
+        pairs: sizes.pairs,
+        pairsBySize: sizes.pairsBySize,
+        metersBySize: sizes.metersBySize,
+        fromStockM: fact.fromStockM,
+        toMakeM: fact.toMakeM,
+        napaM: fact.napaM,
+        napaBlockedReason: fact.blockReason,
+        lineLabels: label ? [label] : [],
+        yieldMPerM: internal && yieldPerMeter > 0 ? yieldPerMeter : null,
+      },
+    };
+    if (partitioned) {
+      const refLabel = referenceId ? opts.referenceLabelById?.get(referenceId) : undefined;
+      row.saleOrderId = saleOrderId;
+      row.referenceId = referenceId;
+      row.orderNumber = (saleOrderId && opts.orderNumberBySaleOrderId?.get(saleOrderId)) || null;
+      row.referenceCode = refLabel?.code || null;
+      row.referenceName = refLabel?.name || null;
+    }
+    grouped.set(key, row);
+  }
+
+  for (const row of grouped.values()) {
+    row.materialName = strapMaterialName(row.strap.origin, row.strap.lineLabels);
   }
 
   return [
@@ -471,26 +851,32 @@ const canonicalCutPlaceholder = (
 });
 
 /**
- * Orientação fabril canônica. A quantidade física é sempre a napa-base
- * requerida pelo rendimento aprovado; largura útil e banda são snapshots de
- * conferência, nunca parâmetros para reconstruir um rolo genérico.
+ * Orientação fabril canônica (bloco “Napa para tiras”, só origem Fazer).
+ * `metros_necessarios` = tira A FAZER (depois do estoque de tira pronta, D15);
+ * napa = Σ por linha (a fazer ÷ rendimento) — linhas sem snapshot de napa mas
+ * com rendimento válido entram; linhas bloqueadas (D9) ficam em grupo próprio
+ * com napa “—” e o motivo, sem contaminar as convertíveis.
  */
 export function canonicalStrapCutRows(
   previews: CanonicalStrapDemandPreview[],
+  opts: { allocateFinishedStock?: boolean; stockOf?: (productId: string) => number | null } = {},
 ): ArtisanalStrapCutRow[] {
   const grouped = new Map<string, ArtisanalStrapCutRow>();
 
-  collapseDuplicateStaleStrapPreviews(previews)
-    .filter((preview) => preview.sourceMode === 'internal' && preview.grossRequiredM > 0)
-    .forEach((preview) => {
+  deriveStrapLineFacts(collapseDuplicateStaleStrapPreviews(previews), opts)
+    .filter((fact) => fact.preview.sourceMode === 'internal' && fact.toMakeM > 0)
+    .forEach((fact) => {
+      const { preview } = fact;
+      const blocked = !!fact.blockReason;
       const key = [
         preview.strapVariantId || preview.technicalStrapLineId,
+        preview.colorId || normColorKey(preview.strapColorName) || 'no-color',
         preview.recipeId || 'recipe-unresolved',
         preview.baseProductId || 'base-unresolved',
         preview.finishedProductId || 'finished-unresolved',
+        blocked ? 'napa-blocked' : 'napa-ok',
       ].join('::');
-      const gross = Math.max(0, finiteOrZero(preview.grossRequiredM));
-      const baseRequired = Math.max(0, finiteOrZero(preview.baseRequiredM));
+      const napa = fact.napaM ?? 0;
       const bandWidth = Math.max(0, finiteOrZero(preview.cutBandWidthMm));
       const yieldPerMeter = Math.max(0, finiteOrZero(preview.confirmedYieldMPerM));
       const usableWidth = Math.max(0, finiteOrZero(preview.usableBaseWidthMm));
@@ -499,12 +885,19 @@ export function canonicalStrapCutRows(
       const existing = grouped.get(key);
 
       if (existing?.canonical) {
-        existing.metros_necessarios += gross;
-        existing.canonical.baseRequiredM += baseRequired;
+        existing.metros_necessarios += fact.toMakeM;
+        existing.canonical.baseRequiredM += napa;
+        existing.canonical.fromStockM = (existing.canonical.fromStockM || 0) + fact.fromStockM;
         existing.canonical.blockingReasons = Array.from(new Set([
           ...existing.canonical.blockingReasons,
           ...preview.blockingReasons,
         ]));
+        if (blocked && fact.blockReason) {
+          existing.canonical.napaBlockReason = Array.from(new Set([
+            ...(existing.canonical.napaBlockReason ? existing.canonical.napaBlockReason.split(' · ') : []),
+            ...fact.blockReason.split(' · '),
+          ])).join(' · ');
+        }
         // R$/m é taxa da receita — não soma na agregação. Preenche se a 1ª
         // linha veio sem financeiro e uma posterior trouxe o custo.
         if (existing.canonical.transformationCostPerM == null && transformationCostPerM != null) {
@@ -523,7 +916,7 @@ export function canonicalStrapCutRows(
         groupName: formatCanonicalStrapProductName(preview),
         color: preview.strapColorName || '—',
         largura_mm: bandWidth,
-        metros_necessarios: gross,
+        metros_necessarios: fact.toMakeM,
         baseName: resolveStrapBaseFamilyName(preview) || undefined,
         measureId: preview.measureId || undefined,
         measureName: preview.measureName || undefined,
@@ -532,12 +925,15 @@ export function canonicalStrapCutRows(
         cut: canonicalCutPlaceholder(bandWidth, preview.blockingReasons.join(' · ') || undefined),
         canonical: {
           recipeId: preview.recipeId,
-          baseRequiredM: baseRequired,
+          baseRequiredM: napa,
           confirmedYieldMPerM: yieldPerMeter,
           usableBaseWidthMm: usableWidth,
           theoreticalYieldMPerM: theoreticalYield,
           transformationCostPerM,
           blockingReasons: [...preview.blockingReasons],
+          napaBlocked: blocked,
+          napaBlockReason: fact.blockReason,
+          fromStockM: fact.fromStockM,
           ...(preview.snapshotWarning ? { snapshotWarning: preview.snapshotWarning } : {}),
         },
       });

@@ -11,6 +11,8 @@ import {
   canonicalStrapCutRows,
   replaceWithCanonicalStrapRows,
   type CanonicalStrapDemandPreview,
+  type CanonicalStrapPresentationOptions,
+  type StrapConsumptionFacts,
 } from '@/lib/canonicalStrapDemandPreview';
 
 export type ConsumptionRow = MaterialConsumptionRow & {
@@ -29,8 +31,20 @@ export type ConsumptionRow = MaterialConsumptionRow & {
    * Null quando não há SKU/caixa confiável ou o preço não veio no contexto.
    */
   unitPrice?: number | null;
-  /** Snapshot explicativo da conversão canônica da tira interna em napa. */
-  artisanal?: { baseName: string; baseQty: number; yieldPerMeter: number; pending?: boolean };
+  /**
+   * Snapshot explicativo da conversão canônica da tira interna (Fazer) em napa.
+   * `pending` = napa bloqueada (D9): sem receita/rendimento ou bloqueio duro —
+   * a napa fica “—” e NUNCA entra na compra. `blockedReason` explica o porquê.
+   */
+  artisanal?: {
+    baseName: string;
+    baseQty: number;
+    yieldPerMeter: number;
+    pending?: boolean;
+    blockedReason?: string;
+  };
+  /** Linha de tira: metros por numeração, pares, origem, estoque × a fazer (D8/D10/D15). */
+  strap?: StrapConsumptionFacts;
   strapVariantId?: string | null;
   strapSourceMode?: 'internal' | 'buy_ready' | null;
   recipeId?: string | null;
@@ -237,9 +251,10 @@ export async function annotateConsumptionAvailability(
   rows: MaterialConsumptionRow[],
   ctx: ConsumptionContext,
   strapPreviews: CanonicalStrapDemandPreview[] = [],
+  strapOptions: CanonicalStrapPresentationOptions = {},
 ): Promise<{ rows: ConsumptionRow[]; artisanalStrapRows: ArtisanalStrapCutRow[] }> {
   const canonicalRows = attachUnresolvedStrapQuantityPreview(
-    replaceWithCanonicalStrapRows(rows, ctx, strapPreviews) as ConsumptionRow[],
+    replaceWithCanonicalStrapRows(rows, ctx, strapPreviews, strapOptions) as ConsumptionRow[],
     rows,
     strapPreviews.length > 0,
   );
@@ -314,8 +329,17 @@ export async function annotateConsumptionAvailability(
       || a.color.localeCompare(b.color, 'pt-BR');
   });
 
+  // Mesmo estoque de tira pronta (D15) na linha e no bloco: o corte é só o
+  // que falta depois do estoque, e a napa é esse “a fazer” ÷ rendimento.
+  type StockLike = { id?: unknown; quantity?: number | null; reserved_stock?: number | null };
+  const productsById = new Map<string, StockLike>(
+    ((ctx.allProducts || []) as StockLike[]).map((product) => [String(product.id), product]),
+  );
   return {
     rows: sortedRows,
-    artisanalStrapRows: canonicalStrapCutRows(strapPreviews),
+    artisanalStrapRows: canonicalStrapCutRows(strapPreviews, {
+      allocateFinishedStock: strapOptions.allocateFinishedStock,
+      stockOf: (id) => (productsById.has(id) ? netStock(productsById.get(id)) : null),
+    }),
   };
 }
