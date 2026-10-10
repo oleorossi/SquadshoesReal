@@ -84,7 +84,7 @@ export default function StrapCutPlannerPanel({
   return (
     <div className="col-span-full mt-2 space-y-2 rounded-md border border-red-500/25 bg-red-500/5 px-3 py-2.5">
       <p className="text-[10px] font-bold uppercase tracking-wider text-red-600/80 dark:text-red-400/80">
-        Planejar corte
+        Planejar napa do prestador
       </p>
       <p className="text-[11px] text-red-600/75 dark:text-red-400/75">
         Só planejamento — não altera a napa oficial da linha.

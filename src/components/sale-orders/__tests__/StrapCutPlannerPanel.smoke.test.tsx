@@ -5,7 +5,7 @@ import ArtisanalStrapRollCutBlock from '@/components/sale-orders/ArtisanalStrapR
 import type { ArtisanalStrapCutRow } from '@/lib/strapRollCut';
 
 describe('StrapCutPlanner smoke', () => {
-  it('expande Planejar corte e mostra altura 400 mm para 793,8 m', async () => {
+  it('expande Planejar napa do prestador e mostra altura 400 mm para 793,8 m', async () => {
     const row: ArtisanalStrapCutRow = {
       key: 'overlock-preto',
       groupName: 'TIRA OVERLOCK 5MM',
@@ -23,7 +23,7 @@ describe('StrapCutPlanner smoke', () => {
       },
     };
     render(<MemoryRouter><ArtisanalStrapRollCutBlock rows={[row]} /></MemoryRouter>);
-    fireEvent.click(screen.getByRole('button', { name: /Planejar corte/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Planejar napa do prestador/i }));
     expect(await screen.findByText('Altura a cortar')).toBeInTheDocument();
     expect(screen.getByText('400')).toBeInTheDocument();
     expect(screen.getByText(/Pelo rendimento cadastrado/)).toBeInTheDocument();

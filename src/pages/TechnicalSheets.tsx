@@ -99,11 +99,13 @@ import {
 import { getShoeSizeMappings } from '@/utils/shoeUtils';
 import {
   applyTechnicalStrapColorMode,
+  applyTechnicalStrapMulticolor,
   ensureTechnicalStrapLineIds,
   hasCanonicalTechnicalStrapIdentity,
   newTechnicalStrapLineFromConsumptionTemplate,
   replicateFirstTechnicalStrapType,
   strapColorMode,
+  technicalStrapMulticolorSummary,
   type StrapColorMode,
 } from '@/lib/technicalStrapLines';
 import { strapIdentityBasis } from '@/lib/strapIdentity';
@@ -3920,6 +3922,48 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                   A <strong>política de cor</strong> define se cada tira segue a cor principal ou recebe
                   uma seleção própria no Pedido de Venda; a identidade técnica fica fixa aqui por UUID.
                 </p>
+
+                {/* Tiras com cores combinadas (grill 10/10/2026, Q23). Derivado das
+                    políticas por linha — não há coluna própria: ligado = alguma
+                    tira interna escolhe cor no pedido. */}
+                {(() => {
+                  const multicolor = technicalStrapMulticolorSummary(form.strap_colors);
+                  if (multicolor.configurable === 0) return null;
+                  return (
+                    <div className="flex flex-col gap-2 rounded-lg border bg-muted/20 p-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Label htmlFor="strap-multicolor-switch" className="text-sm font-medium">
+                            Tiras com cores combinadas
+                          </Label>
+                          {multicolor.multicolor && (
+                            <Badge variant="secondary" className="text-[10px] font-semibold uppercase tracking-wider">
+                              Multicolor
+                            </Badge>
+                          )}
+                        </div>
+                        <p id="strap-multicolor-help" className="text-xs text-muted-foreground">
+                          {multicolor.mixed
+                            ? `${multicolor.selectOnOrder} de ${multicolor.configurable} tiras com cor no pedido. As demais seguem a cor principal.`
+                            : multicolor.multicolor
+                              ? 'Todas as tiras recebem a cor no pedido, vindo preenchidas com a cor principal. Ajuste uma tira abaixo para que ela siga a cor principal.'
+                              : 'Ligue quando cada tira puder ter uma cor diferente no pedido. Hoje todas seguem a cor principal.'}
+                        </p>
+                      </div>
+                      <Switch
+                        id="strap-multicolor-switch"
+                        aria-describedby="strap-multicolor-help"
+                        checked={multicolor.multicolor}
+                        onCheckedChange={(checked) => {
+                          updateField('strap_colors', applyTechnicalStrapMulticolor(form.strap_colors, checked));
+                          toast.success(checked
+                            ? 'Todas as tiras com cor no pedido. Salve a ficha para confirmar.'
+                            : 'Todas as tiras seguem a cor principal. Salve a ficha para confirmar.');
+                        }}
+                      />
+                    </div>
+                  );
+                })()}
 
                 {(form.strap_colors || []).length > 1 && (
                   <div className="flex flex-col gap-2 rounded-lg border bg-muted/20 p-3 sm:flex-row sm:items-center sm:justify-between">

@@ -83,6 +83,7 @@ import {
   type StrapColorMode,
 } from '@/lib/technicalStrapLines';
 import { strapColorsForIdentity } from '@/lib/officialStrapColors';
+import { keptStrapColorsMessage, syncMulticolorStrapColors } from '@/lib/multicolorStrapColors';
 import { canUseQuickGroupVariantForRoles } from '@/lib/quickGroupVariant';
 import SaleOrderStrapColorCreateDialog, {
   type SaleOrderStrapColorCreateContext,
@@ -235,6 +236,8 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   const isExpanded = densityControlled ? !!isExpandedProp : true;
   const [coverAlertOpen, setCoverAlertOpen] = useState(false);
   const [strapSnapAlertOpen, setStrapSnapAlertOpen] = useState(false);
+  // Q25: "N tiras mantiveram a cor escolhida" após trocar a cor principal.
+  const [keptStrapColorsNote, setKeptStrapColorsNote] = useState<string | null>(null);
   const qc = useQueryClient();
   const access = useAccessControl();
   const { canSeeFinancialValues } = access;
@@ -339,6 +342,10 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     initialized: false,
     value: '',
     pendingChange: false,
+    // Última cor principal já PROCESSADA — base da regra Q25 (tira multicolor
+    // na cor antiga acompanha a nova). Só é gravada na 1ª mudança pendente,
+    // então A→B→C antes do catálogo carregar compara contra A.
+    previousValue: '',
   });
   // Latest-ref pattern: avoids stale closures when items are reordered (sortedIndices
   // in the parent shifts `index` between renders) without triggering effect re-runs.
@@ -1485,11 +1492,14 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
         initialized: true,
         value: currentColorKey,
         pendingChange: false,
+        previousValue: currentColorKey,
       };
     } else if (!observed.initialized) {
       observed.initialized = true;
       observed.value = currentColorKey;
+      observed.previousValue = currentColorKey;
     } else if (observed.value !== currentColorKey) {
+      if (!observed.pendingChange) observed.previousValue = observed.value;
       observed.value = currentColorKey;
       observed.pendingChange = true;
     }
@@ -1536,18 +1546,70 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       return { ...strap, color: targetColor, color_id: targetColorId };
     });
 
+    // Tiras com cores combinadas (Q24/Q25): linhas internas `select_on_order`
+    // vêm preenchidas com a cor principal quando ela existe para a tira; na
+    // troca da principal, só as que ainda estavam na cor ANTIGA acompanham.
+    // Snapshot comprometido é histórico (seletor somente leitura) — fica fora.
+    const previousMainKey = colorObservation.previousValue;
+    const multicolorSync = preserveCommittedStrapSnapshot || !strapCatalog
+      ? null
+      : syncMulticolorStrapColors(updated, {
+        isEligible: (_strap, ordinal) => {
+          const presentation = strapPresentationDefinitions[ordinal];
+          return !!presentation
+            && strapIdentityBasis(presentation) === 'reference_base'
+            && strapColorMode(presentation) === 'select_on_order';
+        },
+        allowedColors: (strap, ordinal) => {
+          if (strapLinesLoading) return null;
+          const presentation = strapPresentationDefinitions[ordinal] || strap;
+          const lineId = technicalStrapLineId(presentation);
+          const resolvedLine = lineId ? strapLineByKey.get(lineId) : undefined;
+          const baseGroupId = materialBaseForStrap(presentation, resolvedLine?.baseGroupId);
+          if (!isUuid(baseGroupId)) return null;
+          return strapColorsForIdentity(strapCatalog, presentation, baseGroupId);
+        },
+        nextMainColor: item.color,
+        nextMainColorId: targetColorId,
+        ...(mainColorChanged ? {
+          previousMainColor: previousMainKey,
+          previousMainColorId: canonicalStrapColorByKey.get(previousMainKey)?.id || null,
+        } : {}),
+      });
+    const finalStraps = multicolorSync?.straps || updated;
+    if (multicolorSync && multicolorSync.changedIndexes.length > 0) {
+      colorsChanged = true;
+      multicolorSync.changedIndexes.forEach((ordinal) => {
+        const lineId = technicalStrapLineId(finalStraps[ordinal]);
+        if (!lineId || !getStrapSourcingSelection(nextSourcing, lineId)) return;
+        nextSourcing = setStrapSourcing(nextSourcing, lineId, null);
+        sourcingChanged = true;
+      });
+    }
+    const keptMessage = mainColorChanged ? keptStrapColorsMessage(multicolorSync?.kept || 0) : null;
+    if (keptMessage) {
+      setKeptStrapColorsNote(keptMessage);
+      toast.info(keptMessage);
+    } else if (mainColorChanged) {
+      setKeptStrapColorsNote(null);
+    }
+
     const { index: idx, onUpdate: update } = latestRef.current;
-    if (colorsChanged) update(idx, 'strap_colors', updated);
+    if (colorsChanged) update(idx, 'strap_colors', finalStraps);
     if (sourcingChanged) update(idx, 'strap_sourcing', nextSourcing);
     colorObservation.pendingChange = false;
+    colorObservation.previousValue = currentColorKey;
   }, [
     canonicalMainStrapColor,
+    canonicalStrapColorByKey,
     item.color,
     item.id,
     item.strap_colors,
     preserveCommittedStrapSnapshot,
     strapCatalog,
     strapCatalogLoading,
+    strapLineByKey,
+    strapLinesLoading,
     strapPresentationDefinitions,
     strapSourcingMap,
   ]);
@@ -2563,11 +2625,18 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
           return (
             <div className="rounded-md border border-border/60 overflow-hidden">
               <div className="px-2 py-1 border-b flex flex-wrap items-center justify-between gap-1.5 bg-muted/30">
-                <span
-                  className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider"
-                  title={strapToolbarHint}
-                >
-                  Tiras
+                <span className="flex items-center gap-1.5">
+                  <span
+                    className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider"
+                    title={strapToolbarHint}
+                  >
+                    {hasIndependentReferenceBase ? 'Cores das tiras' : 'Tiras'}
+                  </span>
+                  {hasIndependentReferenceBase && (
+                    <Badge variant="secondary" className="h-4 px-1.5 text-[9px] font-semibold uppercase tracking-wider">
+                      Multicolor
+                    </Badge>
+                  )}
                 </span>
                 {!productionExcluded && (
                   <StrapPvOrigemBulkActions
@@ -2671,6 +2740,14 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                   />
                 )}
               </div>
+                {hasIndependentReferenceBase && !preserveCommittedStrapSnapshot && (
+                  <div className="border-b border-border/60 px-2 py-1 text-[11px] leading-snug text-muted-foreground">
+                    Cada tira vem com a cor principal{item.color ? <> (<strong className="text-foreground">{item.color}</strong>)</> : null} quando ela existe para a tira. Troque só as que forem diferentes.
+                    {keptStrapColorsNote ? (
+                      <span className="ml-1 font-medium text-foreground">{keptStrapColorsNote}</span>
+                    ) : null}
+                  </div>
+                )}
                 {!productionExcluded && (
                   <div className="border-b border-border/60 px-2 py-1 text-[10px] leading-snug text-muted-foreground">
                     Origem: padrão do catálogo (Prestador ou Comprar pronto); troque só na exceção. A origem vale para todas as cores do pedido.

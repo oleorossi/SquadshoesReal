@@ -179,7 +179,7 @@ export default function ArtisanalStrapRollCutBlock({
                           ) : (
                             <CaretDown className="mr-1 h-3 w-3" />
                           )}
-                          Planejar corte
+                          Planejar napa do prestador
                         </Button>
                       </div>
                     ) : null}
