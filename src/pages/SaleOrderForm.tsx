@@ -91,6 +91,7 @@ import {
   SaleOrderCommandExecutionError,
 } from '@/lib/saleOrderCommand';
 import { strapColorMode } from '@/lib/technicalStrapLines';
+import { copyItemStraps, loadStrapCopyContext } from '@/lib/copySaleOrderStraps';
 import { useArtisanalStrapCatalog } from '@/hooks/useArtisanalStraps';
 import {
   coerceImpossibleBuyReadyStrapOrigem,
@@ -1370,6 +1371,31 @@ export default function SaleOrderForm() {
       }
     }
 
+    // Tiras: mesma função do "Duplicar para lojas" (specs/tiras-redesenho.md,
+    // R-Cópia). A ficha atual manda; cor/material/origem só atravessam quando
+    // é a mesma tira. O que não atravessa fica em branco pra escolher no PV novo.
+    let strapCopiedItems = seedItems;
+    try {
+      const strapContext = await loadStrapCopyContext(seedItems);
+      const strapPending: string[] = [];
+      strapCopiedItems = seedItems.map((item) => {
+        const refCode = strapContext.sheetCodeFor(item.reference_id) || '';
+        const itemLabel = [refCode, item.color].filter(Boolean).join(' / ') || 'Item';
+        const copied = copyItemStraps(item, strapContext, itemLabel);
+        strapPending.push(...copied.pending);
+        return { ...item, strap_colors: copied.lines as SaleOrderItemFormData['strap_colors'] };
+      });
+      if (strapPending.length > 0) {
+        toast.warning('Algumas tiras precisam de escolha no PV novo', {
+          description: strapPending.join(' · '),
+          duration: 15000,
+        });
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao preparar as tiras');
+      return null;
+    }
+
     // Empresa emitente: só copiamos se ainda estiver ativa (ver doc de
     // buildCopySeedPayload — desativada some do seletor e o PV nasceria com o
     // CNPJ errado na NF-e sem nada aparecer na tela).
@@ -1401,7 +1427,7 @@ export default function SaleOrderForm() {
     }
 
     return buildCopySeedPayload({
-      seedItems,
+      seedItems: strapCopiedItems,
       form: formLatestRef.current,
       selectedClientId,
       sourceOrderNumber,

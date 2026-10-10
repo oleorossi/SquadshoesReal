@@ -38,11 +38,18 @@ describe('duplicar para lojas — contrato SaleOrders', () => {
     expect(dialog).toContain('Concluir lote');
   });
 
-  it('antes do create remapeia strap_colors legado contra a ficha', () => {
-    expect(dialog).toContain("from '@/lib/remapLegacyStrapsForDuplicate'");
-    expect(dialog).toContain('remapLegacyStrapsForDuplicate');
-    expect(dialog).toContain('resolve_strap_canonical_color_id');
-    expect(dialog).toContain('technical_sheets');
+  it('tiras: usa a MESMA função de cópia do "Copiar p/ novo PV"', () => {
+    const form = readFileSync(join(process.cwd(), 'src/pages/SaleOrderForm.tsx'), 'utf8');
+    const copyLib = readFileSync(join(process.cwd(), 'src/lib/copySaleOrderStraps.ts'), 'utf8');
+    for (const source of [dialog, form]) {
+      expect(source).toContain("from '@/lib/copySaleOrderStraps'");
+      expect(source).toContain('loadStrapCopyContext');
+      expect(source).toContain('copyItemStraps');
+    }
+    expect(copyLib).toContain('resolve_strap_canonical_color_id');
+    expect(copyLib).toContain('technical_sheets');
+    // Falha mostra TODAS as lojas, não só as 3 primeiras.
+    expect(dialog).not.toContain('failures.slice(0, 3)');
   });
 
   it('lote novo começa sem itens; loja em outro lote some da lista', () => {
