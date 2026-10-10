@@ -55,10 +55,10 @@ describe('stageFlow · pulo não entrega o total da OP', () => {
 describe('stageNameAliases', () => {
   it('Corte Palmilha e Corte Fibra resolvem um para o outro', () => {
     expect(stageNameAliases('Corte Palmilha')).toEqual(
-      expect.arrayContaining(['Corte Palmilha', 'Corte Fibra']),
+      expect.arrayContaining(['Corte Palmilha', 'Corte Fibra', 'Palmilha · Fibra']),
     );
     expect(stageNameAliases('Corte Fibra')).toEqual(
-      expect.arrayContaining(['Corte Palmilha', 'Corte Fibra']),
+      expect.arrayContaining(['Corte Palmilha', 'Corte Fibra', 'Palmilha · Fibra']),
     );
   });
 });

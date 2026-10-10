@@ -10,8 +10,54 @@ import { useCostPolicies } from '@/hooks/useCostPolicies';
 import { parseBrlNumberNonNeg } from '@/lib/parseBrlNumber';
 import {
   parseDaysInput, parseDaysInstallments, formatDaysLabel, computeMarkupPrice,
-  deriveMarginFromTargetProfit, computeReverseAnalysis,
+  deriveMarginFromTargetProfit, computeReverseAnalysis, CASH_DAYS,
 } from '@/lib/markupCalc';
+
+/** Cascata do bolso — mesma ordem nos dois painéis (critério Q5/Q13). */
+function BolsoCascade(props: {
+  price: number;
+  taxValue: number;
+  commissionValue: number;
+  factoringValue: number;
+  factoringDaysLabel: string;
+  netRevenue: number;
+  materialCost: number;
+  labor: number;
+  overhead: number;
+  packaging: number;
+  freight: number;
+  realProfit: number;
+}) {
+  const {
+    price, taxValue, commissionValue, factoringValue, factoringDaysLabel,
+    netRevenue, materialCost, labor, overhead, packaging, freight, realProfit,
+  } = props;
+  return (
+    <div className="space-y-1.5 text-sm font-mono">
+      <div className="flex justify-between"><span className="text-muted-foreground">Preço de Venda</span><span className="font-semibold">R$ {fmt(price)}</span></div>
+      <div className="flex justify-between text-destructive"><span>(−) Impostos</span><span>R$ {fmt(taxValue)}</span></div>
+      <div className="flex justify-between" style={{ color: 'hsl(var(--info))' }}><span>(−) Comissão</span><span>R$ {fmt(commissionValue)}</span></div>
+      <div className="flex justify-between text-warning"><span>(−) Factoring ({factoringDaysLabel})</span><span>R$ {fmt(factoringValue)}</span></div>
+      <div className="border-t pt-1.5 flex justify-between"><span className="text-muted-foreground">(=) Líquido na conta</span><span className="font-semibold">R$ {fmt(netRevenue)}</span></div>
+      <div className="flex justify-between text-muted-foreground"><span>(−) Custo MP</span><span>R$ {fmt(materialCost)}</span></div>
+      {labor > 0 && (
+        <div className="flex justify-between text-muted-foreground"><span>(−) Mão de obra</span><span>R$ {fmt(labor)}</span></div>
+      )}
+      {overhead > 0 && (
+        <div className="flex justify-between" style={{ color: 'hsl(var(--stage-assy-fg))' }}><span>(−) Rateio Despesas</span><span>R$ {fmt(overhead)}</span></div>
+      )}
+      {packaging > 0 && (
+        <div className="flex justify-between text-muted-foreground"><span>(−) Embalagem adicional</span><span>R$ {fmt(packaging)}</span></div>
+      )}
+      {freight > 0 && (
+        <div className="flex justify-between" style={{ color: 'hsl(var(--stage-sew-fg))' }}><span>(−) Frete</span><span>R$ {fmt(freight)}</span></div>
+      )}
+      <div className={`border-t pt-1.5 flex justify-between font-bold ${realProfit >= 0 ? 'text-success' : 'text-destructive'}`}>
+        <span>(=) Lucro no bolso</span><span>R$ {fmt(realProfit)}</span>
+      </div>
+    </div>
+  );
+}
 
 function fmt(v: number) {
   return v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -202,20 +248,21 @@ export default function PricingCalculatorPanel() {
     return { ...rev, numSold, numReverseCost, numLabor, numPackaging, numFreight, numOverhead };
   }, [soldPrice, reverseCost, reverseTaxPct, reverseFactoringPct, reverseDays, reverseCommissionPct, reverseFreightValue, reverseOverheadManual, reverseLaborValue, reversePackagingValue]);
 
-  // Chart data for reverse calculator
+  // Chart data for reverse calculator — mesma ordem da cascata do bolso
   const reverseBarData = useMemo(() => {
     if (!reverseResults) return [];
     return [
       { name: 'Preço Venda', valor: reverseResults.numSold },
       { name: 'Impostos', valor: -reverseResults.taxValue },
-      { name: 'Antecipação', valor: -reverseResults.factoringValue },
       { name: 'Comissão', valor: -reverseResults.commissionValue },
+      { name: 'Factoring', valor: -reverseResults.factoringValue },
+      { name: 'Líq. conta', valor: reverseResults.netRevenue },
+      { name: 'Custo MP', valor: -reverseResults.numReverseCost },
       { name: 'Mão de obra', valor: -reverseResults.numLabor },
+      { name: 'Rateio', valor: -reverseResults.numOverhead },
       { name: 'Embalagem', valor: -reverseResults.numPackaging },
       { name: 'Frete', valor: -reverseResults.numFreight },
-      { name: 'Rateio', valor: -reverseResults.numOverhead },
-      { name: 'Custo MP', valor: -reverseResults.numReverseCost },
-      { name: 'Lucro Real', valor: reverseResults.realProfit },
+      { name: 'Lucro bolso', valor: reverseResults.realProfit },
     ].filter(d => d.valor !== 0);
   }, [reverseResults]);
 
@@ -231,7 +278,7 @@ export default function PricingCalculatorPanel() {
               </div>
               <div>
                 <CardTitle className="text-lg">Simulador de Preço</CardTitle>
-                <CardDescription>Markup Divisor com rateio de despesas, antecipação, comissão e frete</CardDescription>
+                <CardDescription>Markup Divisor · factoring linear (taxa × prazo médio/30) · cascata do bolso</CardDescription>
               </div>
             </div>
             <TooltipProvider>
@@ -482,7 +529,7 @@ export default function PricingCalculatorPanel() {
                       </div>
                       <div className="flex items-end gap-5">
                         <div>
-                          <p className="font-mono text-[9px] uppercase tracking-[0.12em] text-background/50">À vista · 7d</p>
+                          <p className="font-mono text-[9px] uppercase tracking-[0.12em] text-background/50">À vista · {CASH_DAYS}d</p>
                           <p className="font-mono text-base font-bold tabular-nums">R$ {fmt(results.cashPrice)}</p>
                         </div>
                         <div>
@@ -497,7 +544,7 @@ export default function PricingCalculatorPanel() {
                       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                         <p className="font-mono text-[9px] uppercase tracking-[0.14em] text-background/55">Composição do preço</p>
                         <p className="font-mono text-[10px] text-background/55">
-                          Custo base R$ {fmt(results.totalCost)} · Lucro R$ {fmt(results.realProfit)}/par
+                          Custo base R$ {fmt(results.totalCost)} · Lucro no bolso R$ {fmt(results.realProfit)}/par
                         </p>
                       </div>
                       <div className="mt-2 flex h-4 overflow-hidden rounded-md" style={{ border: '1px solid hsl(var(--background) / 0.25)' }}>
@@ -519,34 +566,27 @@ export default function PricingCalculatorPanel() {
                 );
               })()}
 
-              {/* DRE Simplificado do Simulador */}
+              {/* Cascata do bolso — mesma conta da Reversa */}
               {results.suggestedPrice > 0 && (
                 <Card className="border-dashed">
                   <CardContent className="p-4">
-                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Demonstrativo Simplificado</p>
-                    <div className="space-y-1.5 text-sm font-mono">
-                      <div className="flex justify-between"><span className="text-muted-foreground">Preço de Venda</span><span className="font-semibold">R$ {fmt(results.suggestedPrice)}</span></div>
-                      <div className="flex justify-between text-destructive"><span>(−) Impostos</span><span>R$ {fmt(results.taxValue)}</span></div>
-                      <div className="flex justify-between text-warning"><span>(−) Antecipação ({formatDaysLabel(days)})</span><span>R$ {fmt(results.factoringValue)}</span></div>
-                      <div className="flex justify-between" style={{ color: 'hsl(var(--info))' }}><span>(−) Comissão</span><span>R$ {fmt(results.commissionValue)}</span></div>
-                      <div className="border-t pt-1.5 flex justify-between"><span className="text-muted-foreground">(=) Receita Líquida</span><span className="font-semibold">R$ {fmt(results.suggestedPrice - results.taxValue - results.factoringValue - results.commissionValue)}</span></div>
-                      <div className="flex justify-between text-muted-foreground"><span>(−) Custo MP</span><span>R$ {fmt(results.numCost)}</span></div>
-                      {results.numLabor > 0 && (
-                        <div className="flex justify-between text-muted-foreground"><span>(−) Mão de obra</span><span>R$ {fmt(results.numLabor)}</span></div>
-                      )}
-                      {results.numOverhead > 0 && (
-                        <div className="flex justify-between" style={{ color: 'hsl(var(--stage-assy-fg))' }}><span>(−) Rateio Despesas</span><span>R$ {fmt(results.numOverhead)}</span></div>
-                      )}
-                      {results.numPackaging > 0 && (
-                        <div className="flex justify-between text-muted-foreground"><span>(−) Embalagem adicional</span><span>R$ {fmt(results.numPackaging)}</span></div>
-                      )}
-                      {results.numFreight > 0 && (
-                        <div className="flex justify-between" style={{ color: 'hsl(var(--stage-sew-fg))' }}><span>(−) Frete</span><span>R$ {fmt(results.numFreight)}</span></div>
-                      )}
-                      <div className={`border-t pt-1.5 flex justify-between font-bold ${results.realProfit >= 0 ? 'text-success' : 'text-destructive'}`}>
-                        <span>(=) Lucro Real</span><span>R$ {fmt(results.realProfit)}</span>
-                      </div>
-                    </div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+                      Cascata do bolso
+                    </p>
+                    <BolsoCascade
+                      price={results.suggestedPrice}
+                      taxValue={results.taxValue}
+                      commissionValue={results.commissionValue}
+                      factoringValue={results.factoringValue}
+                      factoringDaysLabel={formatDaysLabel(days)}
+                      netRevenue={results.suggestedPrice - results.taxValue - results.commissionValue - results.factoringValue}
+                      materialCost={results.numCost}
+                      labor={results.numLabor}
+                      overhead={results.numOverhead}
+                      packaging={results.numPackaging}
+                      freight={results.numFreight}
+                      realProfit={results.realProfit}
+                    />
                   </CardContent>
                 </Card>
               )}
@@ -723,7 +763,7 @@ export default function PricingCalculatorPanel() {
                       </div>
                       <div className="flex flex-wrap items-end gap-5">
                         <div>
-                          <p className="font-mono text-[9px] uppercase tracking-[0.12em] text-background/50">À vista · 7d</p>
+                          <p className="font-mono text-[9px] uppercase tracking-[0.12em] text-background/50">À vista · {CASH_DAYS}d</p>
                           <p className="font-mono text-base font-bold tabular-nums">R$ {fmt(rr.cashPrice)}</p>
                         </div>
                         <div>
@@ -769,30 +809,23 @@ export default function PricingCalculatorPanel() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <Card className="border-dashed">
                 <CardContent className="p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Demonstrativo Simplificado</p>
-                  <div className="space-y-1.5 text-sm font-mono">
-                    <div className="flex justify-between"><span className="text-muted-foreground">Preço de Venda</span><span className="font-semibold">R$ {fmt(reverseResults.numSold)}</span></div>
-                    <div className="flex justify-between text-destructive"><span>(−) Impostos</span><span>R$ {fmt(reverseResults.taxValue)}</span></div>
-                    <div className="flex justify-between text-warning"><span>(−) Antecipação ({formatDaysLabel(reverseDays)})</span><span>R$ {fmt(reverseResults.factoringValue)}</span></div>
-                    <div className="flex justify-between" style={{ color: 'hsl(var(--info))' }}><span>(−) Comissão</span><span>R$ {fmt(reverseResults.commissionValue)}</span></div>
-                    <div className="border-t pt-1.5 flex justify-between"><span className="text-muted-foreground">(=) Receita Líquida</span><span className="font-semibold">R$ {fmt(reverseResults.netRevenue)}</span></div>
-                    <div className="flex justify-between text-muted-foreground"><span>(−) Custo MP</span><span>R$ {fmt(reverseResults.numReverseCost)}</span></div>
-                    {reverseResults.numLabor > 0 && (
-                      <div className="flex justify-between text-muted-foreground"><span>(−) Mão de obra</span><span>R$ {fmt(reverseResults.numLabor)}</span></div>
-                    )}
-                    {reverseResults.numOverhead > 0 && (
-                      <div className="flex justify-between" style={{ color: 'hsl(var(--stage-assy-fg))' }}><span>(−) Rateio Despesas</span><span>R$ {fmt(reverseResults.numOverhead)}</span></div>
-                    )}
-                    {reverseResults.numPackaging > 0 && (
-                      <div className="flex justify-between text-muted-foreground"><span>(−) Embalagem adicional</span><span>R$ {fmt(reverseResults.numPackaging)}</span></div>
-                    )}
-                    {reverseResults.numFreight > 0 && (
-                      <div className="flex justify-between" style={{ color: 'hsl(var(--stage-sew-fg))' }}><span>(−) Frete</span><span>R$ {fmt(reverseResults.numFreight)}</span></div>
-                    )}
-                    <div className={`border-t pt-1.5 flex justify-between font-bold ${reverseResults.realProfit >= 0 ? 'text-success' : 'text-destructive'}`}>
-                      <span>(=) Lucro Real</span><span>R$ {fmt(reverseResults.realProfit)}</span>
-                    </div>
-                  </div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+                    Cascata do bolso
+                  </p>
+                  <BolsoCascade
+                    price={reverseResults.numSold}
+                    taxValue={reverseResults.taxValue}
+                    commissionValue={reverseResults.commissionValue}
+                    factoringValue={reverseResults.factoringValue}
+                    factoringDaysLabel={formatDaysLabel(reverseDays)}
+                    netRevenue={reverseResults.netRevenue}
+                    materialCost={reverseResults.numReverseCost}
+                    labor={reverseResults.numLabor}
+                    overhead={reverseResults.numOverhead}
+                    packaging={reverseResults.numPackaging}
+                    freight={reverseResults.numFreight}
+                    realProfit={reverseResults.realProfit}
+                  />
                 </CardContent>
               </Card>
 

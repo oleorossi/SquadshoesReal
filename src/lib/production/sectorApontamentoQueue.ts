@@ -6,7 +6,8 @@
  * do PV. Filtros extras da Solagem (período, linha) ficam no caller.
  */
 import { sameStage } from '@/lib/production/stageFlow';
-import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { matchesOrderSearch } from '@/lib/orderCodeSearch';
+import { matchesDeliveryWeek } from '@/lib/deliveryWeekOptions';
 
 export interface SectorQueueOrder {
   id: string;
@@ -49,6 +50,10 @@ export interface FilterSectorQueueInput {
   stageName: string;
   filterStatus: string;
   searchQuery: string;
+  /** Nome exato do cliente (presente na lista) ou 'all'/vazio. */
+  clientFilter?: string;
+  /** `yyyy-MM-dd|yyyy-MM-dd` ou 'all'. */
+  weekFilter?: string;
 }
 
 /** OP terminal ou PV faturado/cancelado não entram na fila do setor. */
@@ -76,6 +81,8 @@ export function filterSectorQueueOrders(input: FilterSectorQueueInput): SectorQu
     stageName,
     filterStatus,
     searchQuery,
+    clientFilter = 'all',
+    weekFilter = 'all',
   } = input;
 
   const filtered = orders.filter((order) => {
@@ -92,18 +99,28 @@ export function filterSectorQueueOrders(input: FilterSectorQueueInput): SectorQu
       return false;
     }
 
+    const so = saleOrders.find((s) => s.id === order.sale_order_id);
+    const ref = references.find((r) => r.id === order.reference_id);
+
+    if (clientFilter && clientFilter !== 'all') {
+      if ((so?.client_name || '').trim() !== clientFilter) return false;
+    }
+
+    if (weekFilter && weekFilter !== 'all') {
+      const delivery = so?.delivery_deadline || order.planned_delivery;
+      if (!matchesDeliveryWeek(delivery, weekFilter)) return false;
+    }
+
     if (searchQuery.trim()) {
-      const so = saleOrders.find((s) => s.id === order.sale_order_id);
-      const ref = references.find((r) => r.id === order.reference_id);
-      if (!searchMatchesAllTerms(
-        searchQuery,
-        so?.order_number,
-        so?.client_order_number,
-        order.order_number,
-        so?.client_name,
-        ref?.name,
-        ref?.code,
-      )) return false;
+      if (!matchesOrderSearch(searchQuery, {
+        orderNumber: order.order_number,
+        saleOrderNumber: so?.order_number,
+        clientName: so?.client_name,
+        clientOrderNumber: so?.client_order_number,
+        referenceName: ref?.name,
+        referenceCode: ref?.code,
+        color: order.color,
+      })) return false;
     }
 
     return true;

@@ -4,17 +4,30 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { defaultPatternForKey, OBJETIVA_DEFAULT_BRANDING } from '@/lib/clientLabelPattern';
 import {
+  OBJETIVA_ART_DOTS,
+  OBJETIVA_DPI,
+  OBJETIVA_PDF_FONT,
   buildObjetivaPdf,
+  buildObjetivaTagA4Pdf,
+  buildObjetivaZpl,
   composeObjetivaLabelCopy,
   countObjetivaLabels,
   isObjetivaOrderHeader,
-  objetivaHorizontalMioloLines,
+  objetivaBarcodeRailLines,
+  objetivaMioloColumns,
+  objetivaMioloLines,
   objetivaPdfFilename,
   objetivaRotatedRailLines,
+  objetivaZplFilename,
   parseObjetivaOrderCsv,
   stripHangtagAccents,
   wrapObjetivaDescricao,
 } from '@/lib/objetivaLabels';
+import {
+  TAG_A4_CELL_HEIGHT_MM,
+  TAG_A4_CELL_WIDTH_MM,
+  tagA4CellOrigin,
+} from '@/lib/tagA4Sheet';
 
 const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), 'fixtures/objetiva');
 
@@ -43,12 +56,29 @@ describe('objetivaLabels parser', () => {
     expect(first.sourceFile).toBe('112334.csv');
   });
 
-  it('parseia os três fixtures sem erro', () => {
-    for (const name of ['112332.csv', '112334.csv', '112336.csv']) {
+  it('parseia os fixtures de pedido (completos e sem TIPO/CATEGORIA/GRUPO)', () => {
+    for (const name of [
+      '112332.csv',
+      '112334.csv',
+      '112336.csv',
+      '34669946-95755.csv',
+      '34669946-112331.csv',
+    ]) {
       const rows = parseObjetivaOrderCsv(loadFixture(name), name);
       expect(rows.length, name).toBeGreaterThan(0);
       expect(rows.every(row => row.codigoBarra.length > 0), name).toBe(true);
     }
+  });
+
+  it('CSV Dakotton sem TIPO/CATEGORIA/GRUPO ainda parseia SKU/tamanho/preço', () => {
+    const rows = parseObjetivaOrderCsv(loadFixture('34669946-112331.csv'));
+    expect(rows[0]!.codigoBarra).toBe('112331');
+    expect(rows[0]!.referencia).toBe('SP130');
+    expect(rows[0]!.tamanho).toBe('35');
+    expect(rows[0]!.valor).toMatch(/39/);
+    expect(rows[0]!.tipo).toBe('');
+    expect(rows[0]!.categoria).toBe('');
+    expect(rows[0]!.grupo).toBe('');
   });
 });
 
@@ -111,10 +141,24 @@ describe('composeObjetivaLabelCopy · hangtag 112334 TAM 25', () => {
     expect(copy.tamanho).toBe('25');
     expect(copy.priceMain).toBe('39');
     expect(copy.priceCents).toBe('99');
-    expect(copy.semanaAno).toBe('29/26');
+    expect(copy.semanaAno).toBe('29 / 26');
     expect(copy.codigoBarra).toBe('112334');
     expect(copy.mottoLines).toEqual(['DEUS', 'É FIEL']);
     expect(copy.exchangeLines).toEqual(['TROCA MANTER', 'ESTA ETIQUETA']);
+  });
+
+  it('motto/troca/prefixo vazios no branding omitem (não caem no default)', () => {
+    const rows = parseObjetivaOrderCsv(loadFixture('112334.csv'));
+    const row = rows.find(item => item.tamanho === '25')!;
+    const copy = composeObjetivaLabelCopy(row, {
+      logoUrl: null,
+      motto: '',
+      exchangeText: '',
+      materialPrefix: '',
+    });
+    expect(copy.mottoLines).toEqual([]);
+    expect(copy.exchangeLines).toEqual([]);
+    expect(copy.material).toBe('DOURADA 420');
   });
 
   it('stripHangtagAccents só remove diacríticos', () => {
@@ -132,27 +176,57 @@ describe('composeObjetivaLabelCopy · hangtag 112334 TAM 25', () => {
     ]);
   });
 
-  it('miolo horizontal empilha tipo/categoria/material/ref', () => {
+  it('miolo empilha tipo/categoria/material/ref em colunas giradas', () => {
     const rows = parseObjetivaOrderCsv(loadFixture('112334.csv'));
     const row = rows.find(item => item.tamanho === '25');
     const copy = composeObjetivaLabelCopy(row!, OBJETIVA_DEFAULT_BRANDING);
-    expect(objetivaHorizontalMioloLines(copy)).toEqual([
+    expect(objetivaMioloLines(copy)).toEqual([
       'SANDALIA',
       'CALCADOS/INFANTIL',
       'PU/SO / DOURADA 420',
       'Ref.: I701',
     ]);
-    const rails = objetivaRotatedRailLines(copy);
-    expect(rails).toContain('SAND INFA RAST TIRAS NO');
-    expect(rails).toContain('112334');
-    expect(rails).toContain('29/26');
-    expect(rails).not.toContain('SANDALIA');
-    expect(rails).not.toContain('CALCADOS/INFANTIL');
+
+    // Faixa esquerda = só a descrição; SKU e semana/ano vão na coluna do código.
+    expect(objetivaRotatedRailLines(copy)).toEqual(['SAND INFA RAST TIRAS NO']);
+    expect(objetivaBarcodeRailLines(copy)).toEqual(['112334', '29 / 26']);
+  });
+
+  it('destaque do miolo é do TIPO, não da posição', () => {
+    const comTipo = composeObjetivaLabelCopy(
+      parseObjetivaOrderCsv(loadFixture('112334.csv')).find(r => r.tamanho === '25')!,
+      OBJETIVA_DEFAULT_BRANDING,
+    );
+    expect(objetivaMioloColumns(comTipo)[0]).toEqual({ text: 'SANDALIA', emphasis: true });
+
+    // CSV sem TIPO/CATEGORIA não pode promover o material a título.
+    const semTipo = composeObjetivaLabelCopy(
+      parseObjetivaOrderCsv(loadFixture('34669946-95755.csv'))[0]!,
+      OBJETIVA_DEFAULT_BRANDING,
+    );
+    const columns = objetivaMioloColumns(semTipo);
+    expect(columns[0]!.text).toBe('PU/SO / OFF WHITE 420');
+    expect(columns.every(column => !column.emphasis)).toBe(true);
+  });
+
+  it('grade da arte é a mídia Ponto Mix: 320×480 dots a 203 dpi (40×60 mm)', () => {
+    expect(OBJETIVA_DPI).toBe(203);
+    expect(OBJETIVA_ART_DOTS.gridW).toBe(320);
+    expect(OBJETIVA_ART_DOTS.gridH).toBe(480);
+    const pattern = defaultPatternForKey('objetiva');
+    expect(pattern.geometry.labelWidthMm).toBe(40);
+    expect(pattern.geometry.labelHeightMm).toBe(60);
+    // 40 mm / 320 dots = 0,125 mm/dot — igual à régua da Ponto Mix.
+    expect(pattern.geometry.labelWidthMm / OBJETIVA_ART_DOTS.gridW).toBeCloseTo(0.125, 6);
+    expect(pattern.geometry.labelHeightMm / OBJETIVA_ART_DOTS.gridH).toBeCloseTo(0.125, 6);
   });
 });
 
-describe('objetivaLabels PDF · miolo horizontal + preço', () => {
-  async function pdfContentForTam25(): Promise<string> {
+describe('objetivaLabels PDF · miolo girado + preço', () => {
+  type PdfTextItem = { str: string; transform: number[]; width: number };
+
+  async function pdfTextForTam25(): Promise<PdfTextItem[]> {
+    const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
     const rows = parseObjetivaOrderCsv(loadFixture('112334.csv'));
     const row = rows.find(item => item.tamanho === '25')!;
     const pattern = defaultPatternForKey('objetiva');
@@ -161,57 +235,184 @@ describe('objetivaLabels PDF · miolo horizontal + preço', () => {
       branding: pattern.branding,
       repeatByQuantity: false,
     });
-    const bytes = Buffer.from(doc.output('arraybuffer'));
-    const latin = bytes.toString('latin1');
-    const streams = [...latin.matchAll(/stream\r?\n([\s\S]*?)\nendstream/g)];
-    const { inflateSync } = await import('node:zlib');
-    return streams
-      .map(match => {
-        try {
-          return inflateSync(Buffer.from(match[1]!, 'latin1')).toString('latin1');
-        } catch {
-          return match[1] ?? '';
-        }
+    const pdf = await getDocument({
+      data: new Uint8Array(doc.output('arraybuffer')),
+      useSystemFonts: true,
+    }).promise;
+    const page = await pdf.getPage(1);
+    const text = await page.getTextContent();
+    return text.items
+      .map(item => {
+        const t = item as { str?: string; transform?: number[]; width?: number };
+        return {
+          str: String(t.str ?? ''),
+          transform: t.transform ?? [],
+          width: t.width ?? 0,
+        };
       })
-      .join('\n');
+      .filter(item => item.str.length > 0);
+  }
+
+  function itemNamed(items: PdfTextItem[], label: string): PdfTextItem {
+    const hit = items.find(item => item.str === label);
+    expect(hit, label).toBeTruthy();
+    return hit!;
+  }
+
+  /** Matriz de rotação 90°: |b| ≈ 1 e |a| ≈ 0 no transform do pdfjs. */
+  function isRotated90(item: PdfTextItem): boolean {
+    const a = Math.abs(item.transform[0] ?? 0);
+    const b = Math.abs(item.transform[1] ?? 0);
+    return b > 0.5 && a < 0.5;
   }
 
   it('grava CALCADOS/INFANTIL completo no conteúdo do PDF', async () => {
-    const content = await pdfContentForTam25();
-    expect(content).toContain('CALCADOS/INFANTIL');
-    expect(content).not.toMatch(/CALCADOS\/INFANTI[^L]/);
+    const items = await pdfTextForTam25();
+    const joined = items.map(item => item.str).join('|');
+    expect(joined).toContain('CALCADOS/INFANTIL');
+    expect(joined).not.toMatch(/CALCADOS\/INFANTI[^L]/);
   });
 
-  it('emite miolo horizontal e bloco R$+main+cents unificado no footer', async () => {
-    const content = await pdfContentForTam25();
-    expect(content).toContain('(SANDALIA)');
-    expect(content).toContain('(CALCADOS/INFANTIL)');
-    // Miolo horizontal: Td (sem matriz Tm de rotação 90°)
-    expect(content).toMatch(/\([\s\S]*SANDALIA[\s\S]*\)\s*Tj/);
-    expect(content).not.toMatch(
-      /0\.0000000000000001 1\. -1\. 0\.0000000000000001 [0-9.]+ [0-9.]+\s+Tm\s*\(SANDALIA\)/,
+  it('gira o miolo 90°, como na etiqueta física', async () => {
+    const items = await pdfTextForTam25();
+    for (const label of ['SANDALIA', 'CALCADOS/INFANTIL', 'Ref.: I701', 'SAND INFA RAST TIRAS NO']) {
+      expect(isRotated90(itemNamed(items, label)), `${label} sem rotação`).toBe(true);
+    }
+  });
+
+  it('cabeçalho, TAM e preço ficam na horizontal (sem rotação)', async () => {
+    const items = await pdfTextForTam25();
+    for (const label of ['TROCA MANTER', 'TAM.:', '25', 'R$', '39', ',99']) {
+      expect(isRotated90(itemNamed(items, label)), `${label} não deveria girar`).toBe(false);
+    }
+  });
+
+  it('R$ fica na margem esquerda e o valor grande alinhado à direita', async () => {
+    const items = await pdfTextForTam25();
+    const xOf = (label: string) => itemNamed(items, label).transform[4]!;
+    // Na foto: "R$" no canto inferior esquerdo, "39,99" grande à direita.
+    expect(xOf('R$')).toBeLessThan(xOf('39'));
+    expect(xOf('39')).toBeLessThan(xOf(',99'));
+    // TAM.: antes do número, na mesma faixa.
+    expect(xOf('TAM.:')).toBeLessThan(xOf('25'));
+  });
+
+  it('centavos sobem em relação ao valor cheio (sobrescrito)', async () => {
+    const items = await pdfTextForTam25();
+    const yOf = (label: string) => itemNamed(items, label).transform[5]!;
+    // PDF cresce para cima: baseline dos centavos é MAIOR que a do valor.
+    expect(yOf(',99')).toBeGreaterThan(yOf('39'));
+  });
+
+  it('grade do preço e do código deixa folga na faca (A4 colado)', () => {
+    const { gridW, gridH, price, barcode, size } = OBJETIVA_ART_DOTS;
+    const priceRightMm = ((gridW - price.rightX) / gridW) * 40;
+    const priceBottomMm = ((gridH - price.baseline) / gridH) * 60;
+    const barcodeRightMm = ((gridW - (barcode.x + barcode.w)) / gridW) * 40;
+    expect(priceRightMm).toBeGreaterThanOrEqual(3.5);
+    expect(priceBottomMm).toBeGreaterThanOrEqual(4);
+    expect(barcodeRightMm).toBeGreaterThanOrEqual(3.5);
+    // Código termina acima do TAM./preço — não invade o rodapé.
+    expect(barcode.bottom).toBeLessThan(size.baseline);
+    expect(price.baseline).toBeGreaterThan(size.baseline);
+  });
+
+  it('embute Roboto Condensed (face da Tag física) e formata semana com espaços', async () => {
+    const rows = parseObjetivaOrderCsv(loadFixture('112334.csv'));
+    const row = rows.find(item => item.tamanho === '25')!;
+    const doc = await buildObjetivaPdf([row], {
+      branding: OBJETIVA_DEFAULT_BRANDING,
+      repeatByQuantity: false,
+    });
+    const fonts = doc.getFontList?.() ?? {};
+    expect(fonts[OBJETIVA_PDF_FONT]).toBeTruthy();
+    expect(composeObjetivaLabelCopy(row, OBJETIVA_DEFAULT_BRANDING).semanaAno).toMatch(
+      /^\d+\s\/\s\d+$/,
     );
-
-    // Footer: bloco R$ → 39 → ,99 em sequência (não R$ isolado no canto inferior)
-    const tamIdx = content.lastIndexOf('(TAM.:)');
-    const rsIdx = content.lastIndexOf('(R$)');
-    const mainIdx = content.lastIndexOf('(39)');
-    const centsIdx = content.lastIndexOf('(,99)');
-    expect(tamIdx).toBeGreaterThan(-1);
-    expect(rsIdx).toBeGreaterThan(tamIdx);
-    expect(mainIdx).toBeGreaterThan(rsIdx);
-    expect(centsIdx).toBeGreaterThan(mainIdx);
   });
 
-  it('trava tipografia calibrada pela foto física (sem o 15.5pt inchado)', async () => {
-    const content = await pdfContentForTam25();
-    // Número do TAM e preço principal: 12.5pt (era 15.5 — desproporcional à faca).
-    expect(content).toMatch(/12\.5 Tf/);
-    expect(content).not.toMatch(/15\.5 Tf/);
-    // Miolo: SANDALIA destaca em 6.5; demais linhas ≤ 4.7.
-    expect(content).toMatch(/6\.5 Tf/);
-    expect(content).toMatch(/4\.7 Tf/);
-    // Centavos em sobrescrito compacto.
-    expect(content).toMatch(/5\.8 Tf/);
+  it('fio do miolo fica mais curto que o vão da descrição (foto Tag)', () => {
+    const { divider, rail, exchange } = OBJETIVA_ART_DOTS;
+    expect(divider.top).toBeGreaterThan(exchange.firstTop + exchange.step);
+    expect(divider.bottom).toBeLessThanOrEqual(rail.bottom + 4);
+    expect(divider.bottom - divider.top).toBeLessThan(rail.bottom - 70);
+  });
+
+  it('no A4 preço e SKU ficam dentro da célula com inset ≥ 2,5 mm', async () => {
+    const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    const rows = parseObjetivaOrderCsv(loadFixture('34669946-95755.csv'));
+    const doc = await buildObjetivaTagA4Pdf([rows[0]!], {
+      branding: OBJETIVA_DEFAULT_BRANDING,
+      repeatByQuantity: false,
+    });
+    const pdf = await getDocument({
+      data: new Uint8Array(doc.output('arraybuffer')),
+      useSystemFonts: true,
+    }).promise;
+    const page = await pdf.getPage(1);
+    const vp = page.getViewport({ scale: 1 });
+    const text = await page.getTextContent();
+    const cell = tagA4CellOrigin(0);
+    const inset = 2.5;
+    const left = cell.x + inset;
+    const right = cell.x + TAG_A4_CELL_WIDTH_MM - inset;
+    const top = cell.y + inset;
+    // Folga extra embaixo: descendente da fonte ~1 mm além da baseline.
+    const bottom = cell.y + TAG_A4_CELL_HEIGHT_MM - inset;
+
+    const watch = text.items.filter(item => {
+      const str = String((item as { str?: string }).str ?? '');
+      return str === 'R$' || str === '39' || str === ',99' || str === '95755';
+    }) as Array<{ str: string; transform: number[]; width: number; height?: number }>;
+
+    expect(watch.length).toBeGreaterThanOrEqual(3);
+    for (const item of watch) {
+      const xMm = (item.transform[4]! * 25.4) / 72;
+      const yTopMm = ((vp.height - item.transform[5]!) * 25.4) / 72;
+      const widthMm = ((item.width || 0) * 25.4) / 72;
+      const fontMm = (Math.hypot(item.transform[0] ?? 0, item.transform[1] ?? 0) * 25.4) / 72;
+      // Baseline + pequena folga de descendente não pode furar a faca de baixo.
+      expect(xMm, item.str).toBeGreaterThanOrEqual(left - 0.3);
+      expect(xMm + widthMm, item.str).toBeLessThanOrEqual(right + 0.3);
+      expect(yTopMm, item.str).toBeGreaterThanOrEqual(top);
+      expect(yTopMm + fontMm * 0.25, item.str).toBeLessThanOrEqual(bottom + 0.4);
+    }
+  });
+});
+
+describe('objetivaLabels ZPL · mídia L42PRO 40×60', () => {
+  it('emite um bloco ^XA/^XZ por etiqueta com largura e altura em dots', () => {
+    const rows = parseObjetivaOrderCsv(loadFixture('112334.csv'));
+    const row = rows.find(item => item.tamanho === '25')!;
+    const zpl = buildObjetivaZpl([row], { repeatByQuantity: false });
+    expect(zpl.startsWith('^XA')).toBe(true);
+    expect(zpl.trimEnd().endsWith('^XZ')).toBe(true);
+    // 40×60 mm a 203 dpi = 320×480 dots.
+    expect(zpl).toContain('^PW320');
+    expect(zpl).toContain('^LL480');
+  });
+
+  it('bloco central usa orientação bottom-up (B) e o resto normal (N)', () => {
+    const rows = parseObjetivaOrderCsv(loadFixture('112334.csv'));
+    const zpl = buildObjetivaZpl([rows.find(r => r.tamanho === '25')!], {
+      repeatByQuantity: false,
+    });
+    // Descrição, miolo, SKU e semana/ano girados.
+    expect(zpl).toMatch(/\^A0B,[0-9]+,[0-9]+\^FDSAND INFA RAST TIRAS NO\^FS/);
+    expect(zpl).toMatch(/\^A0B,[0-9]+,[0-9]+\^FDSANDALIA\^FS/);
+    expect(zpl).toMatch(/\^A0B,[0-9]+,[0-9]+\^FD29 \/ 26\^FS/);
+    // Código de barras girado.
+    expect(zpl).toMatch(/\^BCB,[0-9]+,N,N,N/);
+    // Cabeçalho e footer na horizontal.
+    expect(zpl).toMatch(/\^A0N,[0-9]+,[0-9]+\^FDTROCA MANTER\^FS/);
+    expect(zpl).toMatch(/\^A0N,[0-9]+,[0-9]+\^FDTAM\.:\^FS/);
+    expect(zpl).toMatch(/\^A0N,[0-9]+,[0-9]+\^FDR\$\^FS/);
+  });
+
+  it('repete por quantidade e nomeia o arquivo pela origem', () => {
+    const rows = parseObjetivaOrderCsv(loadFixture('112334.csv')).slice(0, 1);
+    const blocks = buildObjetivaZpl(rows, { repeatByQuantity: true }).match(/\^XA/g) ?? [];
+    expect(blocks.length).toBe(rows[0]!.quantidade);
+    expect(objetivaZplFilename('112334.csv')).toBe('Etiquetas_Objetiva_112334_L42PRO.zpl');
   });
 });

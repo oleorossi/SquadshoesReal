@@ -85,16 +85,20 @@ const CSS = `
 `;
 
 function openPrint(title: string, inner: string) {
-  const w = window.open('', '_blank');
-  if (!w) { alert('Permita pop-ups neste site para gerar o PDF.'); return; }
   const now = new Date();
   const stamp = `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
-  w.document.write(
+  const html =
     `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${esc(title)}</title><style>${CSS}</style></head>` +
     `<body><div class="wrap">${inner}<div class="foot">Squad Shoes · Relatório de Atrasos · gerado em ${stamp} · fonte: registro do relógio de ponto</div></div>` +
-    `<script>window.onload=function(){window.focus();window.print();};<\/script></body></html>`,
-  );
-  w.document.close();
+    `</body></html>`;
+  void import('@/lib/htmlPrintDelivery').then(({ deliverHtmlDocument }) => {
+    void deliverHtmlDocument(html, {
+      filename: 'relatorio-atrasos',
+      title: 'Atrasos',
+    }).then((ok) => {
+      if (!ok) alert('Permita pop-ups neste site para gerar o PDF.');
+    });
+  });
 }
 
 /** Calendário (um por mês) marcando os dias de atraso, com a entrada batida. */

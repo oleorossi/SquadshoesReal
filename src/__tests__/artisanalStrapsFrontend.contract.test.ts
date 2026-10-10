@@ -287,7 +287,15 @@ describe('Tiras artesanais — contrato do frontend canônico', () => {
     expect(strapCutBlock).toContain('Napa para tiras');
     expect(strapCutBlock).toContain('aggregateStrapNapaSector');
     expect(strapCutBlock).toContain('Total de napa (todas as tiras)');
-    expect(strapCutBlock).not.toContain('ROLO_COMPRIMENTO_M');
+    expect(strapCutBlock).toContain('>Cor</');
+    expect(strapCutBlock).toContain('type.color');
+    expect(strapCutBlock).not.toContain('colorCount');
+    expect(strapCutBlock).not.toContain('} cores');
+    // Planejador de corte (só tela): default de rolo na sessão; a napa oficial
+    // continua tira ÷ rendimento via aggregateStrapNapaSector — sem computeStrapRollCut.
+    expect(strapCutBlock).toContain('Planejar corte');
+    expect(strapCutBlock).toContain('StrapCutPlannerPanel');
+    expect(strapCutBlock).not.toContain('computeStrapRollCut');
     expect(pickingList).toContain('separação da napa-base');
     expect(pickingList).not.toContain('ROLO_LARGURA_MM');
     expect(calculator).toContain("type BaseRendimento = 'teorico' | 'real'");

@@ -1,42 +1,40 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 /**
- * Hook de seleção múltipla com 3 modos compatíveis com macOS Finder:
+ * Hook de seleção múltipla para listas de OP/PV (batch industrial):
  *
- *  1. **Marquee (caixa de arrasto)**: click+drag em espaço vazio do container
- *     desenha um retângulo; itens dentro são selecionados.
- *  2. **Modificadores no click em item**:
- *     - Click normal → seleciona só esse (limpa o resto)
- *     - Ctrl/Cmd+click → toggle individual (mantém demais)
+ *  1. **Marquee (caixa de arrasto)**: mousedown+drag sobre a lista (inclusive
+ *     em cima das linhas) desenha um retângulo; itens dentro entram na seleção.
+ *     Espelha `SelectionMarquee` do estoque: arrasto é **aditivo** (não apaga
+ *     o que já estava marcado) e só começa após ~8px de movimento.
+ *  2. **Click em item**:
+ *     - Click normal → toggle individual (acumula)
  *     - Shift+click → seleciona range entre último clicado e atual
  *  3. **Checkbox** (você renderiza separado): chama `toggle(id)` direto.
  *
+ * ⚠ Em tabela densa (Imprimir Fichas) NÃO se pode exigir "espaço vazio" pra
+ * iniciar o arrasto — as linhas cobrem o container. Ignorar
+ * `[data-marquee-item]` no mousedown fazia o marquee ser no-op e o dono
+ * concluir que "não dá pra selecionar vários ao mesmo tempo".
+ *
+ * Contrato de persistência (2026-09): filtrar/buscar NÃO remove ids
+ * selecionados que saíram da lista visível. Limpa só Esc / clear() /
+ * desmontar a rota. `hiddenSelectedCount` expõe quantos estão fora da vista;
+ * ações em massa devem confirmar antes de agir sobre eles.
+ *
  * Uso:
  * ```tsx
- * const items = orders;
- * const sel = useMarqueeSelection(items, (o) => o.id);
- *
+ * const sel = useMarqueeSelection(visibleItems, (o) => o.id);
  * <div ref={sel.containerRef} onMouseDown={sel.onContainerMouseDown}>
- *   {items.map(o => (
- *     <div
- *       key={o.id}
- *       data-marquee-item
- *       data-marquee-id={o.id}
- *       onClick={(e) => sel.toggle(o.id, e)}
- *       className={sel.isSelected(o.id) ? 'bg-primary/5' : ''}
- *     >
+ *   {visibleItems.map(o => (
+ *     <div key={o.id} data-marquee-item data-marquee-id={o.id}
+ *       onClick={(e) => sel.toggle(o.id, e)}>
  *       <Checkbox checked={sel.isSelected(o.id)} onCheckedChange={() => sel.toggle(o.id)} />
- *       {o.name}
  *     </div>
  *   ))}
- *   {sel.marqueeRect && (
- *     <div className="marquee-overlay" style={{...sel.marqueeRect}} />
- *   )}
+ *   {sel.marqueeRect && <MarqueeOverlay rect={sel.marqueeRect} />}
  * </div>
  * ```
- *
- * Pra desabilitar marquee em mobile (touch): o hook só ativa em mousedown
- * (não em touchstart). Touch continua usando checkbox normalmente.
  */
 export function useMarqueeSelection<T>(
   items: T[],
@@ -55,44 +53,72 @@ export function useMarqueeSelection<T>(
   const startSelection = useRef<Set<string>>(new Set());
   const lastClickedId = useRef<string | null>(null);
   const isDragging = useRef(false);
+  /** Após um arrasto real, o click sintético do browser não deve toggle-ar a linha. */
+  const suppressClickRef = useRef(false);
 
-  /**
-   * Limpa seleção quando lista de items muda materialmente (filtro,
-   * paginação). Comparamos contagem + primeiro item como heurística rápida.
-   */
-  const itemsKey = items.length > 0 ? `${items.length}:${getId(items[0])}` : '0';
-  useEffect(() => {
-    setSelectedIds((prev) => {
-      const validIds = new Set(items.map(getId));
-      let changed = false;
-      const next = new Set<string>();
-      prev.forEach((id) => {
-        if (validIds.has(id)) next.add(id);
-        else changed = true;
-      });
-      return changed ? next : prev;
+  const visibleIdSet = useMemo(
+    () => new Set(items.map(getId)),
+    // items identity + length; getId is stable in practice (inline arrow
+    // per render would thrash — callers pass (o) => o.id).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [items],
+  );
+
+  const visibleSelectedCount = useMemo(() => {
+    let n = 0;
+    selectedIds.forEach((id) => {
+      if (visibleIdSet.has(id)) n += 1;
     });
-  }, [itemsKey]); // eslint-disable-line react-hooks/exhaustive-deps
+    return n;
+  }, [selectedIds, visibleIdSet]);
+
+  const hiddenSelectedCount = selectedIds.size - visibleSelectedCount;
 
   const clear = useCallback(() => setSelectedIds(new Set()), []);
 
   const selectAll = useCallback(() => {
-    setSelectedIds(new Set(items.map(getId)));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const item of items) next.add(getId(item));
+      return next;
+    });
   }, [items, getId]);
+
+  /** Remove da seleção só os ids atualmente visíveis (mantém os ocultos). */
+  const deselectVisible = useCallback(() => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const item of items) next.delete(getId(item));
+      return next;
+    });
+  }, [items, getId]);
+
+  /** Soma ids à seleção sem limpar o que já estava marcado. */
+  const selectMatchingIds = useCallback((ids: Iterable<string>) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) next.add(id);
+      return next;
+    });
+  }, []);
 
   /**
    * Toggle de item com suporte a modificadores. Pode ser chamado tanto pelo
    * onClick da linha quanto pelo onCheckedChange do checkbox.
-   *   - Sem modificador: seleciona apenas esse item (single-select).
-   *   - Ctrl/Cmd: toggle individual.
+   *   - Sem modificador / Ctrl/Cmd / chamada sem evento: toggle individual
+   *     (acumula — nunca limpa o resto).
    *   - Shift: seleciona range entre último clicado e atual.
    */
   const toggle = useCallback(
     (id: string, e?: React.MouseEvent | React.KeyboardEvent) => {
+      // Click que fecha um arrasto de marquee — não é intenção de toggle.
+      if (suppressClickRef.current) {
+        suppressClickRef.current = false;
+        return;
+      }
       setSelectedIds((prev) => {
         const next = new Set(prev);
         const isShift = e?.shiftKey;
-        const isCtrlMeta = (e as React.MouseEvent)?.ctrlKey || (e as React.MouseEvent)?.metaKey;
 
         if (isShift && lastClickedId.current) {
           const allIds = items.map(getId);
@@ -104,16 +130,9 @@ export function useMarqueeSelection<T>(
           } else {
             next.add(id);
           }
-        } else if (isCtrlMeta) {
-          if (next.has(id)) next.delete(id);
-          else next.add(id);
-        } else if (e === undefined) {
-          // Chamada programática (ex.: checkbox controlado) → toggle simples
-          if (next.has(id)) next.delete(id);
-          else next.add(id);
+        } else if (next.has(id)) {
+          next.delete(id);
         } else {
-          // Click normal: substitui seleção
-          next.clear();
           next.add(id);
         }
         return next;
@@ -129,19 +148,19 @@ export function useMarqueeSelection<T>(
   );
 
   /**
-   * Inicia marquee em mousedown no container, desde que o click NÃO seja
-   * num item nem em um botão/input/link. Botão esquerdo apenas.
+   * Inicia potencial marquee em mousedown no container.
+   * Pode começar EM CIMA de uma linha (tabela densa) — só ignora controles
+   * interativos (checkbox, botão, select…). Não limpa a seleção no mousedown:
+   * o arrasto é aditivo (igual estoque / SelectionMarquee).
    */
   const onContainerMouseDown = useCallback(
     (e: React.MouseEvent) => {
       if (e.button !== 0) return; // só left click
       const target = e.target as HTMLElement;
-      // Ignora clicks em items, botões, inputs, links, labels (interativos)
-      // e popovers do Radix (Select trigger/content, Combobox, Dropdown).
-      // Sem esses extras, clicar no Select de status de um PV abria marquee
-      // que pegava linhas adjacentes ao mover o mouse pra dentro do dropdown.
+      // Ignora só controles interativos e popovers do Radix — NÃO ignore
+      // [data-marquee-item]: em Imprimir Fichas as linhas cobrem o container
+      // e o arrasto tem que poder nascer em cima delas.
       if (
-        target.closest('[data-marquee-item]') ||
         target.closest(
           'button, input, select, textarea, a, label, [role="button"], [role="checkbox"], [role="combobox"], [role="listbox"], [role="option"], [role="menuitem"], [data-radix-popper-content-wrapper], [data-state="open"]',
         )
@@ -162,14 +181,9 @@ export function useMarqueeSelection<T>(
         y: e.clientY - cRect.top + scrollTop,
       };
       isDragging.current = false;
-
-      // Guarda seleção inicial pra Ctrl-drag (manter prévia + adicionar)
-      if (e.ctrlKey || e.metaKey || e.shiftKey) {
-        startSelection.current = new Set(selectedIds);
-      } else {
-        startSelection.current = new Set();
-        setSelectedIds(new Set());
-      }
+      suppressClickRef.current = false;
+      // Aditivo: preserva o que já estava marcado (padrão do estoque).
+      startSelection.current = new Set(selectedIds);
     },
     [selectedIds],
   );
@@ -192,17 +206,18 @@ export function useMarqueeSelection<T>(
 
       // Só ativa "modo drag" depois de movimento mínimo (8px) — evita
       // tratar single-clicks acidentais ou jitter da mão como drag.
-      // Antes era 4px e isso disparava marquee acidental ao clicar no
-      // Select de status de PV (Radix dropdown abrindo + mouse movendo
-      // levemente pra dentro selecionava linhas adjacentes).
       if (!isDragging.current && (width > 8 || height > 8)) {
         isDragging.current = true;
+        suppressClickRef.current = true;
       }
       if (!isDragging.current) return;
 
+      // Evita selecionar texto da tabela enquanto arrasta.
+      e.preventDefault();
+
       setMarqueeRect({ left, top, width, height });
 
-      // Detecta items dentro do retângulo
+      // Detecta items dentro do retângulo (união com seleção do mousedown)
       const newSelected = new Set(startSelection.current);
       const itemEls = containerRef.current.querySelectorAll<HTMLElement>(
         '[data-marquee-item]',
@@ -229,14 +244,21 @@ export function useMarqueeSelection<T>(
     }
 
     function handleMouseUp() {
+      const wasDragging = isDragging.current;
       startPoint.current = null;
       isDragging.current = false;
       setMarqueeRect(null);
+      // O click sintético do browser chega logo após o mouseup. Mantém a
+      // trava só o suficiente pra esse click; se ele não vier (arrasto
+      // saiu da janela), libera no timeout pra não engolir o próximo clique.
+      if (wasDragging) {
+        suppressClickRef.current = true;
+        window.setTimeout(() => {
+          suppressClickRef.current = false;
+        }, 80);
+      }
     }
 
-    // Anexa só quando drag está iniciando — listeners globais durante
-    // toda a vida do componente seria desperdício. Aqui anexamos sempre
-    // mas só agem se startPoint.current existir.
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
     return () => {
@@ -260,10 +282,14 @@ export function useMarqueeSelection<T>(
     containerRef,
     selectedIds,
     count: selectedIds.size,
+    visibleSelectedCount,
+    hiddenSelectedCount,
     isSelected,
     toggle,
     clear,
     selectAll,
+    deselectVisible,
+    selectMatchingIds,
     onContainerMouseDown,
     marqueeRect,
   };

@@ -1,15 +1,13 @@
 import { describe, it, expect } from 'vitest';
+import {
+  deriveMarginFromTargetProfit,
+  computeMarkupPrice,
+  simpleFactoringPct,
+} from '@/lib/markupCalc';
 
 /**
- * Replica a lógica de cálculo do simulador Markup pra validar a fórmula
- * inversa "Quero receber líquido (R$/par)" introduzida em 24/05/2026.
- *
- * Fórmula inversa (deriva margem % a partir do target_profit_brl):
- *   sale_price = (totalCost + target_profit_brl) / (1 - (tax + factoring + commission)/100)
- *   margin_pct = (target_profit_brl / sale_price) * 100
- *
- * Validação chave: substituindo margin_pct de volta na fórmula original
- * (markup divisor) deve gerar o MESMO sale_price.
+ * Valida o modo inverso "Quero receber líquido" via a fonte única markupCalc
+ * (deságio linear: taxa × prazo/30 — alinhado ao aditivo MALUPE).
  */
 function calcInverse(opts: {
   cost: number;
@@ -22,17 +20,29 @@ function calcInverse(opts: {
   targetProfitBrl: number;
 }) {
   const totalCost = opts.cost + opts.overhead + opts.freight;
-  const factoringTotalPct = (opts.factoring / 30) * opts.days;
-  const nonMarginPct = opts.tax + factoringTotalPct + opts.commission;
-  const denom = 1 - (nonMarginPct / 100);
-  if (denom <= 0) return null;
-  const salePrice = (totalCost + opts.targetProfitBrl) / denom;
-  const marginPct = (opts.targetProfitBrl / salePrice) * 100;
-  // Re-aplica fórmula direta pra validar
-  const totalMarkupPct = opts.tax + marginPct + factoringTotalPct + opts.commission;
-  const markupDivisor = 1 - (totalMarkupPct / 100);
-  const salePriceForward = totalCost / markupDivisor;
-  return { salePrice, marginPct, salePriceForward };
+  const marginPct = deriveMarginFromTargetProfit({
+    totalCost,
+    taxPct: opts.tax,
+    factoringMonthlyPct: opts.factoring,
+    days: opts.days,
+    commissionPct: opts.commission,
+    targetProfitBrl: opts.targetProfitBrl,
+  });
+  if (marginPct == null) return null;
+  const forward = computeMarkupPrice({
+    totalCost,
+    taxPct: opts.tax,
+    profitPct: marginPct,
+    factoringMonthlyPct: opts.factoring,
+    days: opts.days,
+    commissionPct: opts.commission,
+  });
+  return {
+    salePrice: forward.suggestedPrice,
+    marginPct,
+    salePriceForward: forward.suggestedPrice,
+    factoringTotalPct: simpleFactoringPct(opts.factoring, opts.days),
+  };
 }
 
 describe('Pricing — modo inverso (target profit)', () => {

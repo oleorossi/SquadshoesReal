@@ -41,7 +41,7 @@ import { Button } from '@/components/ui/button';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { format, parseISO } from 'date-fns';
 import { parseBrlNumberNonNeg } from '@/lib/parseBrlNumber';
-import { parseDaysInput, parseDaysInstallments, computeMarkupPrice, deriveMarginFromTargetProfit } from '@/lib/markupCalc';
+import { parseDaysInput, parseDaysInstallments, computeMarkupPrice, deriveMarginFromTargetProfit, CASH_DAYS } from '@/lib/markupCalc';
 import { calculateConsumption, type ConsumptionLine } from '@/services/consumptionService';
 
 const STORAGE_KEY = 'pricing-by-sheet-state';
@@ -881,7 +881,7 @@ export default function PricingByTechnicalSheetPanel({ initialSheetId }: Props =
               <div className="rounded-lg bg-card p-3 border">
                 <p className="eyebrow">Preço à vista</p>
                 <p className="display text-2xl tabular-nums mt-1">{fmtBRL(results.cashPrice)}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">7 dias de factoring</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{CASH_DAYS} dias de factoring</p>
               </div>
               <div className="rounded-lg bg-card p-3 border border-success/40">
                 <p className="eyebrow text-success">Lucro real</p>

@@ -23,6 +23,21 @@ export default {
         editorial: ['"Fira Sans"', 'system-ui', 'sans-serif'],
         mono: ['"Fira Code"', 'ui-monospace', 'monospace'],
       },
+      // Alinha utilitários Tailwind aos tokens --text-* de src/index.css
+      // (antes text-sm=14px divergia do token 12px e inflava tabelas/listas).
+      fontSize: {
+        '2xs': ['0.625rem', { lineHeight: '1.2' }],   // 10px
+        xs: ['0.6875rem', { lineHeight: '1.3' }],     // 11px
+        sm: ['0.75rem', { lineHeight: '1.35' }],      // 12px
+        base: ['0.8125rem', { lineHeight: '1.45' }],  // 13px
+        md: ['0.875rem', { lineHeight: '1.45' }],     // 14px
+        lg: ['1rem', { lineHeight: '1.4' }],          // 16px
+        xl: ['1.125rem', { lineHeight: '1.3' }],      // 18px
+        '2xl': ['1.375rem', { lineHeight: '1.2' }],   // 22px
+        '3xl': ['1.75rem', { lineHeight: '1.15' }],   // 28px
+        '4xl': ['2.25rem', { lineHeight: '1.1' }],    // 36px
+        '5xl': ['2.75rem', { lineHeight: '1' }],      // 44px
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",

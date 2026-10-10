@@ -43,9 +43,10 @@ interface TableViewContextValue {
 const TableViewContext = createContext<TableViewContextValue | null>(null);
 
 function readDensity(): TableDensity {
-  if (typeof window === 'undefined') return 'comfortable';
+  // Densificação 2026-10: default global = compacta; "expandida" continua opt-in.
+  if (typeof window === 'undefined') return 'compact';
   const raw = window.localStorage.getItem(STORAGE_DENSITY);
-  return raw === 'compact' || raw === 'comfortable' ? raw : 'comfortable';
+  return raw === 'compact' || raw === 'comfortable' ? raw : 'compact';
 }
 
 function readColumns(): Set<TableColumnKey> {
@@ -97,7 +98,7 @@ export function useTableView(): TableViewContextValue {
   const ctx = useContext(TableViewContext);
   if (ctx) return ctx;
   return {
-    density: 'comfortable',
+    density: 'compact',
     setDensity: () => { /* noop */ },
     visibleColumns: new Set(DEFAULT_VISIBLE),
     toggleColumn: () => { /* noop */ },

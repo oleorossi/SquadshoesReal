@@ -294,6 +294,7 @@ export async function generateCostReportPdf(opts: CostReportOptions): Promise<Co
   const logo = await loadLogoDataUrl();
   const stamped: CostReportOptions = { ...opts, generatedAt: opts.generatedAt || new Date().toISOString() };
   const result = await buildCostReportDoc(stamped, logo);
-  result.doc.save(result.filename);
+  const { deliverJsPdf } = await import('@/lib/pdfDelivery');
+  deliverJsPdf(result.doc, result.filename, 'Relatório de custos');
   return result;
 }

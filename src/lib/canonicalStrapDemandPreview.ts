@@ -19,9 +19,15 @@ export interface CanonicalStrapDemandPreview {
   baseProductId: string | null;
   finishedProductId: string | null;
   strapProductName: string;
+  /** Medida canônica da ficha (`artisanal_strap_measures.id`). */
+  measureId: string | null;
   /** Medida canônica da ficha (`artisanal_strap_measures.display_name`). */
   measureName: string | null;
+  /** Família de tira (`artisanal_strap_types.id`), quando a preview já resolveu. */
+  typeId: string | null;
   strapColorName: string;
+  /** Grupo da napa-base (`product_groups.id`). */
+  baseGroupId: string | null;
   /** SKU oficial da napa (pode incluir a cor). */
   baseProductName: string | null;
   /** Família de napa (`product_groups.name`) — preferida na lista de compra. */
@@ -273,8 +279,13 @@ export function parseCanonicalStrapDemandPreview(
     baseProductId: stringOrNull(value.base_product_id),
     finishedProductId: stringOrNull(value.finished_product_id),
     strapProductName: rawName || STRAP_LABEL_FALLBACK,
+    measureId: stringOrNull(resolved.measure_id)
+      || stringOrNull(value.measure_id),
     measureName: stringOrNull(resolved.measure_name),
+    typeId: stringOrNull(resolved.strap_type_id)
+      || stringOrNull(resolved.type_id),
     strapColorName: rawColor || '—',
+    baseGroupId: stringOrNull(resolved.base_group_id),
     baseProductName: stringOrNull(resolved.base_product_name),
     baseGroupName: stringOrNull(resolved.base_group_name),
     confirmedYieldMPerM: numberOrNull(resolved.confirmed_yield_m_per_m),
@@ -500,6 +511,10 @@ export function canonicalStrapCutRows(
           existing.canonical.transformationCostPerM = transformationCostPerM;
         }
         if (preview.snapshotWarning) existing.canonical.snapshotWarning = preview.snapshotWarning;
+        if (!existing.measureId && preview.measureId) existing.measureId = preview.measureId;
+        if (!existing.measureName && preview.measureName) existing.measureName = preview.measureName;
+        if (!existing.typeId && preview.typeId) existing.typeId = preview.typeId;
+        if (!existing.baseGroupId && preview.baseGroupId) existing.baseGroupId = preview.baseGroupId;
         return;
       }
 
@@ -510,6 +525,10 @@ export function canonicalStrapCutRows(
         largura_mm: bandWidth,
         metros_necessarios: gross,
         baseName: resolveStrapBaseFamilyName(preview) || undefined,
+        measureId: preview.measureId || undefined,
+        measureName: preview.measureName || undefined,
+        typeId: preview.typeId || undefined,
+        baseGroupId: preview.baseGroupId || undefined,
         cut: canonicalCutPlaceholder(bandWidth, preview.blockingReasons.join(' · ') || undefined),
         canonical: {
           recipeId: preview.recipeId,

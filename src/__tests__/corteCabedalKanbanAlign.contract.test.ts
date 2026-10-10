@@ -118,14 +118,19 @@ describe('alinhamento Corte Cabedal · ficha × promote × kanban', () => {
     const comCabedal = CANONICAL_ROUTINGS.filter((r) => r.includes('Corte Cabedal'));
     expect(comCabedal.length).toBeGreaterThanOrEqual(4);
     for (const rota of comCabedal) {
-      expect(rota.indexOf('Corte Cabedal')).toBeGreaterThan(rota.indexOf('Corte Fibra'));
+      const fibraIdx = Math.max(
+        rota.indexOf('Palmilha · Fibra'),
+        rota.indexOf('Corte Fibra'),
+      );
+      expect(rota.indexOf('Corte Cabedal')).toBeGreaterThan(fibraIdx);
     }
   });
 
   it('kanban.norm mapeia aliases mortos pro nome vivo da coluna', () => {
-    expect(norm('Corte Palmilha')).toBe('Corte Fibra');
+    expect(norm('Corte Palmilha')).toBe('Palmilha · Fibra');
     expect(norm('Mesa')).toBe('Aviamento');
-    expect(norm('Corte Fibra')).toBe('Corte Fibra');
+    expect(norm('Corte Fibra')).toBe('Palmilha · Fibra');
+    expect(norm('Corte Forração')).toBe('Palmilha · Forração');
     expect(norm('Corte Cabedal')).toBe('Corte Cabedal');
     expect(norm('Costura Palmilha')).toBe('Acabamento Palmilha');
   });

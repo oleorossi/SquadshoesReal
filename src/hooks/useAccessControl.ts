@@ -29,6 +29,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/grupos': 'estoque',
   '/fichas-tecnicas': 'produtos',
   '/fichas-tecnicas/padroes': 'produtos', // ferramenta de padrões da Engenharia
+  '/atelie': 'produtos', // Ateliê — cabedal complexo (rua)
   '/escalonamento': 'produtos',
   '/tiras-artesanais': 'produtos',
   '/calculadora-tiras': 'produtos',
@@ -87,7 +88,10 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   // Rotas do menu de Produção (remodelagem do motor diário, 0747cea) — todas
   // governadas pelo módulo 'producao', igual às demais /producao/*.
   '/producao/planejamento': 'producao',
-  '/producao/antecipacao': 'producao',
+  // Bookmark legado → redirect /atelie; mesmo módulo do Ateliê.
+  '/producao/antecipacao': 'produtos',
+  '/producao/sequencia': 'producao',
+  '/producao/corte-lookahead': 'producao',
   '/producao/kanban': 'producao',
   '/producao/estouro': 'producao',
   '/producao/setores': 'producao',

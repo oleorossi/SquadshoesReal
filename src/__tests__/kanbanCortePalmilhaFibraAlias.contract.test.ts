@@ -17,14 +17,24 @@ const PLAN = readFileSync(
   'utf8',
 );
 
-describe('alias Corte Palmilha → Corte Fibra no kanban e na RPC', () => {
-  it('o quadro trata Corte Palmilha como a coluna Corte Fibra', () => {
-    expect(NORM).toContain("if (trimmed === 'Corte Palmilha') return 'Corte Fibra'");
+const RENAME = readFileSync(
+  resolve(process.cwd(), 'supabase/migrations/20270101029000_palmilha_setor_unificado_rename.sql'),
+  'utf8',
+);
+
+describe('alias legado Corte Palmilha/Fibra → Palmilha · Fibra no kanban', () => {
+  it('o quadro normaliza Corte Palmilha e Corte Fibra para Palmilha · Fibra', () => {
+    expect(NORM).toContain(
+      "if (trimmed === 'Corte Palmilha' || trimmed === 'Corte Fibra') return 'Palmilha · Fibra'",
+    );
+    expect(NORM).toContain(
+      "if (trimmed === 'Corte Forração' || trimmed === 'Forração') return 'Palmilha · Forração'",
+    );
     expect(PLAN).toContain('const column = norm(card.column)');
     expect(PLAN).toContain('const targetNorm = target === null ? null : norm(target)');
   });
 
-  it('a migration realinha estágios, agenda, fichas e o lookup da RPC', () => {
+  it('a migration intermediária realinhou Corte Palmilha → Corte Fibra', () => {
     expect(SQL).toContain("SET stage_name = 'Corte Fibra'");
     expect(SQL).toContain("WHERE os.stage_name = 'Corte Palmilha'");
     expect(SQL).toContain("app.order_stage_command_internal");
@@ -38,4 +48,15 @@ describe('alias Corte Palmilha → Corte Fibra no kanban e na RPC', () => {
       'SELECT public.canonical_stage_name(os.stage_name) AS sector',
     );
   });
+
+  it('a migration unificada promove Fibra/Forração para Palmilha · *', () => {
+    expect(RENAME).toContain("WHEN 'corte fibra'            THEN 'Palmilha · Fibra'");
+    expect(RENAME).toContain("WHEN 'corte forração'         THEN 'Palmilha · Forração'");
+    expect(RENAME).toContain("SET sector = 'Palmilha · Fibra'");
+    expect(RENAME).toContain("SET sector = 'Palmilha · Forração'");
+    expect(RENAME).toContain("SET stage_name = public.canonical_stage_name(os.stage_name)");
+    expect(RENAME).toContain("AND o.status IS DISTINCT FROM 'Finalizado'");
+    expect(RENAME).toContain("SET LOCAL session_replication_role = replica");
+  });
 });
+

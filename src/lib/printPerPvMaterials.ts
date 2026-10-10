@@ -4,41 +4,15 @@ import {
   type DraftPurchaseOrder,
   type PerPvDraftSummary,
 } from '@/lib/perPvPurchasing';
+import type { NapaRollup } from '@/lib/napaRollup';
 
 /**
  * Impressão A4 dos materiais necessários do canal "Compras por Pedido".
  * Monta HTML, abre window.open e dispara print (mesmo padrão do PDF de
  * "Consumo de Materiais"). Agrupa por fornecedor + bloco "Sem Fornecedor".
  *
- * ── Design (redesenho 2026-07-20) ────────────────────────────────────────────
- * É um documento OPERACIONAL: o comprador lê pra comprar. Decisões:
- *  • MEDIDA DE LEITURA: largura travada em 190mm (A4 útil). Antes o HTML herdava
- *    a largura da janela (2560px num monitor wide) e o nome do material ficava a
- *    meio metro do valor — o olho tinha que viajar.
- *  • "A COMPRAR" É A COLUNA-HERÓI: é o único número que o comprador executa.
- *    Mono 11pt bold. `Necessário` e `Estoque` viram CONTEXTO (cinza, 8.5pt).
- *  • ARREDONDAMENTO VISÍVEL: `rounding_surplus` (já calculado em perPvPurchasing,
- *    exibido em azul no modal) agora aparece na linha impressa — antes o
- *    comprador via "necessário 46,147 → comprar 50 m" sem saber de onde vinham
- *    os 4 m a mais, e isso é exatamente a linha que gera discussão com o
- *    fornecedor.
- *  • "SEM FORNECEDOR" É TAREFA, NÃO ERRO: âmbar (#8A5A00), não vermelho, com o
- *    peso do problema explícito (quantos itens, quanto R$, que % do pedido).
- *  • CAIXA DE CONFERÊNCIA por item — o comprador risca conforme pede.
- *  • MOEDA: totais/subtotais em `formatMoney` (2 casas). Preço unitário segue em
- *    `formatCurrency` (até 4 casas) porque R$ 0,031/un virando R$ 0,03 faria o
- *    documento não fechar (4.608 × 0,03 = 138,24 ≠ 142,85).
- *
- * Robustez de paginação: cada fornecedor é UMA tabela cujo <thead> usa
- * display:table-header-group → repete no topo de cada página; cada <tr> usa
- * break-inside:avoid → nunca é cortado no meio. Sem overflow:hidden (atrapalha
- * a fragmentação).
- *
- * Regra de print do projeto: sem primitive shadcn, sem token com alpha — cor
- * cravada em hex (bordas #000 puras) pra ter garantia visual no papel.
- *
- * Não dá baixa em nada — é espelho impresso do modal, pra conferência/cotação
- * antes de gerar as OCs. Retorna false se o popup foi bloqueado.
+ * Inclui o rollup de napa (cabedal / forração / tiras → total) quando passado
+ * — mesmo contrato da tela de consumo (dono, 27/09/2026).
  */
 
 export interface PerPvPrintInput {
@@ -50,6 +24,8 @@ export interface PerPvPrintInput {
   /** Se true, as quantidades já estão líquidas (descontado o estoque). */
   netOfStock: boolean;
   summary: PerPvDraftSummary;
+  /** Rollup canônico de napa (mesmo da tela de consumo). */
+  napaRollup?: NapaRollup | null;
 }
 
 /** Escape defensivo de HTML (nomes de material/cor/fornecedor vêm do banco). */
@@ -84,7 +60,7 @@ const BODY = `system-ui, -apple-system, 'Segoe UI', sans-serif`;
  * renderizável fora do browser (conferência do layout sem abrir impressão).
  */
 export function buildPerPvMaterialsHtml(input: PerPvPrintInput): string {
-  const { scopeLabel, pvNumbers, drafts, netOfStock, summary } = input;
+  const { scopeLabel, pvNumbers, drafts, netOfStock, summary, napaRollup } = input;
 
   const tables = drafts
     .map((d) => {
@@ -257,6 +233,26 @@ export function buildPerPvMaterialsHtml(input: PerPvPrintInput): string {
         </div>
       </div>
 
+      ${napaRollup && napaRollup.byFamilyColor.length > 0 ? `
+      <div class="keep" style="margin-top:12px;border:1.5px solid #000;padding:8px 10px">
+        <div style="font-family:${MONO};font-size:6.5pt;letter-spacing:.13em;text-transform:uppercase;color:#7B756B">Necessidade de napa · cabedal · forração · tiras</div>
+        <div style="font-family:${DISPLAY};font-size:18pt;line-height:1;margin-top:2px">${num(napaRollup.total)} m</div>
+        ${napaRollup.byFamilyColor.map((block) => `
+          <div style="margin-top:8px;padding-top:6px;border-top:1px solid ${HAIR}">
+            <div style="display:flex;justify-content:space-between;gap:8px;font-size:9pt">
+              <strong>${esc(block.family)} · ${esc(block.color)}</strong>
+              <span style="font-family:${MONO};font-weight:700">${num(block.total)} m</span>
+            </div>
+            <ul style="margin:3px 0 0;padding-left:14px;font-size:8pt;color:#5E5850">
+              ${block.destinations.map((d) => `
+                <li style="display:flex;justify-content:space-between;gap:8px">
+                  <span>${esc(d.label)}${d.kind === 'Tira' && d.strapMeters ? ` · ${num(d.strapMeters)} m tira` : ''}${d.pending ? ' · rendimento pendente' : ''}</span>
+                  <span style="font-family:${MONO}">${d.pending ? '—' : `${num(d.napaMeters)} m`}</span>
+                </li>`).join('')}
+            </ul>
+          </div>`).join('')}
+      </div>` : ''}
+
       ${noSupplierNote}
       ${tables}
 
@@ -282,13 +278,14 @@ export function buildPerPvMaterialsHtml(input: PerPvPrintInput): string {
   return html;
 }
 
-/** @returns true se a janela de impressão foi aberta; false se bloqueada. */
+/** @returns true se a entrega foi iniciada; false se bloqueada. */
 export function printPerPvMaterials(input: PerPvPrintInput): boolean {
-  const printWindow = window.open('', '_blank');
-  if (!printWindow) return false;
-  printWindow.document.write(buildPerPvMaterialsHtml(input));
-  printWindow.document.close();
-  printWindow.focus();
-  setTimeout(() => printWindow.print(), 400);
+  const html = buildPerPvMaterialsHtml(input);
+  void import('@/lib/htmlPrintDelivery').then(({ deliverHtmlDocument }) => {
+    void deliverHtmlDocument(html, {
+      filename: 'materiais-por-pv',
+      title: 'Materiais',
+    });
+  });
   return true;
 }

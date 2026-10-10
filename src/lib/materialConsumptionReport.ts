@@ -136,8 +136,8 @@ const renderBaseNeed = (rows: ConsumptionRow[], totalMode: boolean): string => {
         <span class="section-number">01</span>
         <div><p class="section-kicker">Material base</p><h2>Necessidade de napa</h2></div>
         <p class="section-note">${totalMode
-          ? 'Estoque ignorado. Só Cabedal e Forração (e fachete). Napa de tiras fica no setor próprio.'
-          : 'Só Cabedal e Forração — napa de tiras artesanais no setor próprio (§03).'}</p>
+          ? 'Estoque ignorado. Cabedal, Forração, Fachete e napa convertida de tiras — total por família e cor.'
+          : 'Cabedal, Forração, Fachete e napa convertida de tiras — total por família e cor. Falta já desconta estoque.'}</p>
       </div>
       ${familyBlocks}
       ${pendingBlock}
@@ -370,19 +370,29 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
     .join('');
 };
 
+const baseNameAlreadyInType = (typeName: string, baseName?: string): boolean => {
+  const base = (baseName || '').trim();
+  if (!base) return true;
+  return typeName.toLocaleLowerCase('pt-BR').includes(base.toLocaleLowerCase('pt-BR'));
+};
+
 const renderArtisanalStraps = (rows: ArtisanalStrapCutRow[]): string => {
   if (!rows.length) return '';
   const sector = aggregateStrapNapaSector(rows);
-  const body = sector.types.map((type) => `
+  const body = sector.types.map((type) => {
+    const showBase = !baseNameAlreadyInType(type.typeName, type.baseName);
+    return `
         <tr class="${type.blocked ? 'is-pending' : ''}">
-          <td><strong>${escapeHtml(type.typeName)}</strong>${type.baseName ? `<small>${escapeHtml(type.baseName)}</small>` : ''}${type.colorCount > 1 ? `<small>${type.colorCount} cores</small>` : ''}</td>
+          <td><strong>${escapeHtml(type.typeName)}</strong>${showBase && type.baseName ? `<small>${escapeHtml(type.baseName)}</small>` : ''}</td>
+          <td>${escapeHtml(type.color)}</td>
           <td class="num strong">${formatQty(type.strapM, 'm')} m</td>
           <td class="num strong">${type.napaM > 0 ? `${formatQty(type.napaM, 'm')} m` : '—'}</td>
           <td>${type.blocked ? '<span class="flag warning">cadastro incompleto</span>' : '<span class="flag ok">ok</span>'}</td>
-        </tr>`).join('');
+        </tr>`;
+  }).join('');
   const footer = `
         <tr class="strap-subtotal">
-          <td><strong>Total de napa (todas as tiras)</strong></td>
+          <td colspan="2"><strong>Total de napa (todas as tiras)</strong></td>
           <td class="num muted">${formatQty(sector.totalStrapM, 'm')} m tira</td>
           <td class="num strong">${sector.totalNapaM > 0 ? `${formatQty(sector.totalNapaM, 'm')} m` : '—'}</td>
           <td></td>
@@ -391,10 +401,10 @@ const renderArtisanalStraps = (rows: ArtisanalStrapCutRow[]): string => {
     <div class="section-heading">
       <span class="section-number">03</span>
       <div><p class="section-kicker">Setor próprio</p><h2>Napa para tiras</h2></div>
-      <p class="section-note">Por tipo: metros de tira e napa (÷ rendimento). Separado de Cabedal/Forração.</p>
+      <p class="section-note">Por tipo e cor: metros de tira e napa (÷ rendimento). Separado de Cabedal/Forração.</p>
     </div>
     <table class="report-table">
-      <thead><tr><th>Tipo de tira</th><th class="num">Tira necessária</th><th class="num">Napa</th><th>Situação</th></tr></thead>
+      <thead><tr><th>Tipo de tira</th><th>Cor</th><th class="num">Tira necessária</th><th class="num">Napa</th><th>Situação</th></tr></thead>
       <tbody>${body}${footer}</tbody>
     </table>
   </section>`;
@@ -438,17 +448,17 @@ export function buildMaterialConsumptionReportHtml({
     ? '<p class="mode-banner" style="margin-top:4px;background:transparent;color:var(--ink);border-color:var(--ink)">Visão estendida · por PV e modelo</p>'
     : '';
   const reading = totalMode
-    ? 'Este documento ignora o estoque. Os números são o consumo bruto da ficha. Napa de Cabedal/Forração em §01; napa de tiras no setor próprio (§03). Tira comprada pronta (STRASS) em §02.'
-    : '“Necessidade” é consumo bruto. “Falta” já desconta o estoque líquido. Napa de Cabedal/Forração em §01; napa de tiras no setor próprio (§03). Tira comprada pronta (STRASS) em §02.';
+    ? 'Este documento ignora o estoque. Os números são o consumo bruto da ficha. Necessidade de napa (§01) soma cabedal, forração e tiras convertidas. Tira comprada pronta (STRASS) em §02.'
+    : '“Necessidade” é consumo bruto. “Falta” já desconta o estoque líquido. Necessidade de napa (§01) soma cabedal, forração e tiras convertidas. Tira comprada pronta (STRASS) em §02.';
   const manifest = totalMode
     ? `<div class="manifest manifest-total" aria-label="Resumo do consumo total">
-    <div><dl><dt>Necessidade de material base</dt><dd>${baseTotal ? `${formatQty(baseTotal.total, 'm')} m` : '—'}</dd></dl><small>napa direta + conversões confirmadas</small></div>
+    <div><dl><dt>Necessidade de material base</dt><dd>${baseTotal ? `${formatQty(baseTotal.total, 'm')} m` : '—'}</dd></dl><small>cabedal + forração + tiras convertidas</small></div>
     <div><dl><dt>Total a gastar</dt><dd class="spend">${spendTotal != null ? escapeHtml(formatMoney(spendTotal)) : '—'}</dd></dl><small>necessidade × preço cadastrado</small></div>
     <div><dl><dt>Pendências</dt><dd>${pendingCount}</dd></dl><small>cadastro a revisar</small></div>
     <div><dl><dt>Escopo calculado</dt><dd>${rows.length} linha${rows.length === 1 ? '' : 's'}</dd></dl><small>ficha técnica + grade + variante do PV</small></div>
   </div>`
     : `<div class="manifest" aria-label="Resumo da decisão">
-    <div><dl><dt>Necessidade de material base</dt><dd>${baseTotal ? `${formatQty(baseTotal.total, 'm')} m` : '—'}</dd></dl><small>napa direta + conversões confirmadas</small></div>
+    <div><dl><dt>Necessidade de material base</dt><dd>${baseTotal ? `${formatQty(baseTotal.total, 'm')} m` : '—'}</dd></dl><small>cabedal + forração + tiras convertidas</small></div>
     <div><dl><dt>Itens em falta</dt><dd class="shortage">${shortCount}</dd></dl><small>estoque líquido</small></div>
     <div><dl><dt>Total a gastar</dt><dd class="spend">${spendTotal != null ? escapeHtml(formatMoney(spendTotal)) : '—'}</dd></dl><small>necessidade × preço</small></div>
     <div><dl><dt>Pendências</dt><dd>${pendingCount}</dd></dl><small>cadastro a revisar</small></div>

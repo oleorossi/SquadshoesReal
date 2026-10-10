@@ -22,14 +22,22 @@ import { sameStage } from '@/lib/production/stageFlow';
 import { useSaleOrders } from '@/hooks/useSaleOrders';
 import { useClients, useEconomicGroups } from '@/hooks/useClients';
 import { useProductionTransitions } from '@/hooks/useProductionTransitions';
-import { normalizeForSearch, searchMatchesAllTerms } from '@/lib/searchUtils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { printHtml, openPrintWindow, writePrintWindow } from '@/lib/printOrder';
 import { getClientLogoUrl } from '@/lib/getClientLogo';
-import OrderSearchBar from '@/components/production/OrderSearchBar';
 import { useOrderStraps } from '@/hooks/useOrderStraps';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { OrderMultiSelectToolbar } from '@/components/orders/OrderMultiSelectToolbar';
+import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
+import { MarqueeOverlay } from '@/components/ui/bulk-actions-bar';
+import {
+  findIdsMatchingOrderCodes,
+  matchesOrderSearch,
+  parseOrderCodeList,
+} from '@/lib/orderCodeSearch';
+import { matchesDeliveryWeek } from '@/lib/deliveryWeekOptions';
+import { confirmIfHiddenSelection } from '@/lib/confirmHiddenSelection';
 import { TableSkeleton } from '@/components/layout/PageSkeleton';
 import { resolveFicha } from '@/components/production/worksheet/fichaSize';
 import { safeUrlAttr } from '@/lib/htmlUtils';
@@ -55,7 +63,6 @@ export default function Aviamento() {
   const { getStrapsLabel } = useOrderStraps();
   const [filterStatus, setFilterStatus] = usePersistedState<string>('aviamento-filterStatus', 'active');
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
-  const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
   const [finalizingOrders, setFinalizingOrders] = useState(false);
   const { finalizeSectorTask } = useProductionTransitions();
 
@@ -63,6 +70,8 @@ export default function Aviamento() {
   const [collapsedSaleOrders, setCollapsedSaleOrders] = useState<Set<string>>(new Set());
   // Busca NÃO persiste: reseta ao sair e voltar pra tela (useState remonta limpo).
   const [searchQuery, setSearchQuery] = useState('');
+  const [clientFilter, setClientFilter] = useState('all');
+  const [weekFilter, setWeekFilter] = useState('all');
 
   const toggleCollapse = (key: string, setter: React.Dispatch<React.SetStateAction<Set<string>>>) => {
     setter(prev => {
@@ -73,51 +82,7 @@ export default function Aviamento() {
     });
   };
 
-  const toggleOrderSelection = (orderId: string) => {
-    setSelectedOrders(prev => {
-      const next = new Set(prev);
-      if (next.has(orderId)) next.delete(orderId);
-      else next.add(orderId);
-      return next;
-    });
-  };
-
-  const toggleAllOrders = () => {
-    if (selectedOrders.size === aviamentoOrders.length) {
-      setSelectedOrders(new Set());
-    } else {
-      setSelectedOrders(new Set(aviamentoOrders.map(o => o.id)));
-    }
-  };
-
-  const handleFinishSelectedOrders = async () => {
-    if (selectedOrders.size === 0) return;
-    setFinalizingOrders(true);
-    try {
-      const orderIds = Array.from(selectedOrders);
-      
-      const results = (await Promise.all(
-        orderIds.map(orderId => finalizeSectorTask(orderId, 'Aviamento'))
-      )) as any[];
-
-      const successCount = results.filter(r => r && r.success).length;
-
-      if (successCount > 0) {
-        toast.success(`Aviamento finalizado para ${successCount} OP(s)!`);
-        setSelectedOrders(new Set());
-        queryClient.invalidateQueries({ queryKey: ['order_stages'] });
-        queryClient.invalidateQueries({ queryKey: ['orders'] });
-      }
-    } catch (err: any) {
-      toast.error(`Erro ao finalizar: ${err.message}`);
-    } finally {
-      setFinalizingOrders(false);
-    }
-  };
-
-
-  const aviamentoOrders = useMemo(() => {
-    const q = normalizeForSearch(searchQuery);
+  const sectorBaseOrders = useMemo(() => {
     const filtered = orders.filter(order => {
       const status = (order.status || '').toLowerCase();
       if (filterStatus === 'active' && status !== 'em produção') return false;
@@ -127,20 +92,9 @@ export default function Aviamento() {
       const stage = stages.find(s => sameStage(s.stage_name, 'Aviamento'));
       if (!stage) return filterStatus === 'all';
       if (filterStatus === 'active' && stage.status !== 'pendente' && stage.status !== 'em_andamento') return false;
-
-      if (q) {
-        const so = saleOrders.find((s: any) => s.id === order.sale_order_id);
-        const ref = (references as any[])?.find((r: any) => r.id === (order as any).reference_id);
-        // "/" = refinamento AND (ex.: "stx / alcineu" = ref STX E cliente Alcineu)
-        if (!searchMatchesAllTerms(searchQuery, so?.order_number, so?.client_order_number, order.order_number, so?.client_name, ref?.name, ref?.code)) return false;
-      }
-
       return true;
     });
     return filtered.sort((a, b) => {
-      // Prioridade (2026-06-02): terminar o PEDIDO inteiro por PRAZO. Ordena pela
-      // entrega do PV (mais urgente primeiro; sem prazo por último), mantém as OPs
-      // do mesmo PV juntas, e dentro do PV pela data planejada da OP.
       const dl = (o: any) => saleOrders?.find((s: any) => s.id === o.sale_order_id)?.delivery_deadline || '';
       const da = dl(a), db = dl(b);
       if (da !== db) { if (!da) return 1; if (!db) return -1; return da.localeCompare(db); }
@@ -152,7 +106,92 @@ export default function Aviamento() {
       if (!pb) return -1;
       return pa.localeCompare(pb);
     });
-  }, [orders, allStages, filterStatus, searchQuery, saleOrders]);
+  }, [orders, allStages, filterStatus, saleOrders]);
+
+  const aviamentoOrders = useMemo(() => {
+    return sectorBaseOrders.filter(order => {
+      const so = saleOrders.find((s: any) => s.id === order.sale_order_id);
+      if (clientFilter !== 'all' && (so?.client_name || '').trim() !== clientFilter) return false;
+      if (weekFilter !== 'all' && !matchesDeliveryWeek(so?.delivery_deadline || (order as any).planned_delivery, weekFilter)) {
+        return false;
+      }
+      if (searchQuery.trim()) {
+        const ref = (references as any[])?.find((r: any) => r.id === (order as any).reference_id);
+        if (!matchesOrderSearch(searchQuery, {
+          orderNumber: order.order_number,
+          saleOrderNumber: so?.order_number,
+          clientName: so?.client_name,
+          clientOrderNumber: so?.client_order_number,
+          referenceName: ref?.name,
+          referenceCode: ref?.code,
+          color: order.color,
+        })) return false;
+      }
+      return true;
+    });
+  }, [sectorBaseOrders, searchQuery, clientFilter, weekFilter, saleOrders, references]);
+
+  const sel = useMarqueeSelection(aviamentoOrders, (o) => o.id);
+
+  const clientOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const order of sectorBaseOrders) {
+      const so = saleOrders.find((s: any) => s.id === order.sale_order_id);
+      const name = (so?.client_name || '').trim();
+      if (name) set.add(name);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [sectorBaseOrders, saleOrders]);
+
+  const pastedCodes = useMemo(() => parseOrderCodeList(searchQuery), [searchQuery]);
+  const matchedCodeIds = useMemo(
+    () => findIdsMatchingOrderCodes(sectorBaseOrders, pastedCodes, (o) => {
+      const so = saleOrders.find((s: any) => s.id === o.sale_order_id);
+      return { id: o.id, orderNumber: o.order_number, saleOrderNumber: so?.order_number };
+    }),
+    [sectorBaseOrders, pastedCodes, saleOrders],
+  );
+
+  const allVisibleSelected =
+    aviamentoOrders.length > 0 && aviamentoOrders.every((o) => sel.isSelected(o.id));
+
+  const toggleVisible = () => {
+    if (allVisibleSelected) sel.deselectVisible();
+    else sel.selectAll();
+  };
+
+  const confirmSelection = (actionLabel: string) =>
+    confirmIfHiddenSelection({
+      totalSelected: sel.count,
+      hiddenSelectedCount: sel.hiddenSelectedCount,
+      entityLabel: 'OP',
+      actionLabel,
+    });
+
+  const handleFinishSelectedOrders = async () => {
+    if (sel.count === 0) return;
+    if (!confirmSelection('Finalizar')) return;
+    setFinalizingOrders(true);
+    try {
+      const orderIds = Array.from(sel.selectedIds);
+      const results = (await Promise.all(
+        orderIds.map(orderId => finalizeSectorTask(orderId, 'Aviamento'))
+      )) as any[];
+
+      const successCount = results.filter(r => r && r.success).length;
+
+      if (successCount > 0) {
+        toast.success(`Aviamento finalizado para ${successCount} OP(s)!`);
+        sel.clear();
+        queryClient.invalidateQueries({ queryKey: ['order_stages'] });
+        queryClient.invalidateQueries({ queryKey: ['orders'] });
+      }
+    } catch (err: any) {
+      toast.error(`Erro ao finalizar: ${err.message}`);
+    } finally {
+      setFinalizingOrders(false);
+    }
+  };
 
   const getDeliveryInfo = (order: any) => {
     const so = saleOrders.find((s: any) => s.id === order.sale_order_id);
@@ -313,23 +352,12 @@ export default function Aviamento() {
             <Button
               size="sm"
               onClick={handleFinishSelectedOrders}
-              disabled={selectedOrders.size === 0 || finalizingOrders}
+              disabled={sel.count === 0 || finalizingOrders}
               className="bg-success hover:bg-success/90 text-success-foreground"
             >
               <CheckCircle2 className="h-4 w-4 mr-1" />
-              Finalizar OP's selecionadas {selectedOrders.size > 0 && `(${selectedOrders.size})`}
+              Finalizar OP's selecionadas {sel.count > 0 && `(${sel.count}${sel.hiddenSelectedCount > 0 ? ` · ${sel.hiddenSelectedCount} fora do filtro` : ''})`}
             </Button>
-            <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger className="w-[140px] h-8 text-xs">
-                <Filter className="h-3.5 w-3.5 mr-1" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="active">OPs Ativas</SelectItem>
-                <SelectItem value="all">Todas</SelectItem>
-              </SelectContent>
-            </Select>
-            <OrderSearchBar value={searchQuery} onChange={setSearchQuery} />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button size="sm" variant="outline" className="gap-1">
@@ -337,20 +365,22 @@ export default function Aviamento() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
-                {selectedOrders.size > 0 && (
+                {sel.count > 0 && (
                   <DropdownMenuItem onClick={() => {
-                    const ids = aviamentoOrders.filter(o => selectedOrders.has(o.id)).map(o => o.id).join(',');
+                    if (!confirmSelection('Agrupar')) return;
+                    const ids = Array.from(sel.selectedIds).join(',');
                     navigate(`/orders/grouped-summary?sector=aviamento&ids=${ids}`);
                   }}>
-                    <Layers className="h-3.5 w-3.5 mr-2" /> Agrupar ({selectedOrders.size})
+                    <Layers className="h-3.5 w-3.5 mr-2" /> Agrupar ({sel.count})
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuSeparator />
                 <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">Impressão</DropdownMenuLabel>
                 <DropdownMenuItem onClick={async () => {
               // Use only selected orders, or all if none selected
-              const ordersToprint = selectedOrders.size > 0
-                ? aviamentoOrders.filter(o => selectedOrders.has(o.id))
+              if (sel.count > 0 && !confirmSelection('Imprimir relatório de')) return;
+              const ordersToprint = sel.count > 0
+                ? orders.filter(o => sel.selectedIds.has(o.id))
                 : aviamentoOrders;
 
               if (ordersToprint.length === 0) {
@@ -611,6 +641,35 @@ export default function Aviamento() {
           </>}
         />
 
+        <OrderMultiSelectToolbar
+          search={searchQuery}
+          onSearchChange={setSearchQuery}
+          resultCount={aviamentoOrders.length}
+          totalCount={sectorBaseOrders.length}
+          clientOptions={clientOptions}
+          clientFilter={clientFilter}
+          onClientFilterChange={setClientFilter}
+          weekFilter={weekFilter}
+          onWeekFilterChange={setWeekFilter}
+          allVisibleSelected={allVisibleSelected}
+          visibleCount={aviamentoOrders.length}
+          onToggleVisible={toggleVisible}
+          matchedCodeCount={matchedCodeIds.length}
+          onSelectMatched={() => sel.selectMatchingIds(matchedCodeIds)}
+          extraFilters={
+            <Select value={filterStatus} onValueChange={setFilterStatus}>
+              <SelectTrigger className="h-9 w-[140px] text-xs">
+                <Filter className="h-3.5 w-3.5 mr-1" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="active">OPs Ativas</SelectItem>
+                <SelectItem value="all">Todas</SelectItem>
+              </SelectContent>
+            </Select>
+          }
+        />
+
         {/* Stats */}
         <StatGrid>
           <StatCard
@@ -632,24 +691,18 @@ export default function Aviamento() {
             description="Não há ordens de produção aguardando aviamento no momento."
           />
         ) : (
-          <div className="space-y-3">
-            {/* Select all button */}
-            <div className="flex items-center gap-2 px-1">
-              <Button
-                size="sm"
-                variant={selectedOrders.size === aviamentoOrders.length ? 'default' : 'outline'}
-                onClick={toggleAllOrders}
-                className="text-xs"
-              >
-                <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
-                {selectedOrders.size === aviamentoOrders.length ? 'Desmarcar Tudo' : 'Selecionar Tudo'}
-              </Button>
-              {selectedOrders.size > 0 && (
-                <span className="text-xs text-muted-foreground">
-                  {selectedOrders.size} de {aviamentoOrders.length} selecionadas
-                </span>
-              )}
-            </div>
+          <div
+            ref={sel.containerRef}
+            data-marquee-container
+            onMouseDown={sel.onContainerMouseDown}
+            className="relative space-y-3"
+          >
+            {sel.count > 0 && (
+              <p className="px-1 text-xs text-muted-foreground font-mono">
+                {sel.count} selecionada{sel.count === 1 ? '' : 's'}
+                {sel.hiddenSelectedCount > 0 ? ` · ${sel.hiddenSelectedCount} fora do filtro` : ''}
+              </p>
+            )}
 
             {/* Grouped by Economic Group > Sale Order > OPs */}
             {(() => {
@@ -696,13 +749,18 @@ export default function Aviamento() {
                   ? scaleGradeWithLargestRemainder(grade || {}, fichas || 1, totalPairs)
                   : {};
                 const isExpanded = expandedOrderId === order.id;
-                const isSelected = selectedOrders.has(order.id);
+                const isSelected = sel.isSelected(order.id);
 
                   const aviamentoStage = allStages.find(s => s.order_id === order.id && sameStage(s.stage_name, 'Aviamento'));
                   const stageColor = aviamentoStage?.status === 'concluido' ? 'border-l-emerald-500' : aviamentoStage?.status === 'em_andamento' ? 'border-l-amber-500' : 'border-l-red-500';
 
                   return (
-                  <Card key={order.id} className={`border-l-4 ${isSelected ? 'ring-1 ring-success/30' : ''} ${stageColor}`}>
+                  <Card
+                    key={order.id}
+                    data-marquee-item
+                    data-marquee-id={order.id}
+                    className={`border-l-4 ${isSelected ? 'ring-1 ring-success/30' : ''} ${stageColor}`}
+                  >
                     <CardHeader
                       className="py-3 px-4 cursor-pointer hover:bg-muted/50 transition-colors"
                       onClick={() => setExpandedOrderId(isExpanded ? null : order.id)}
@@ -711,7 +769,7 @@ export default function Aviamento() {
                         <div className="flex items-center gap-3">
                           <Checkbox
                             checked={isSelected}
-                            onCheckedChange={() => toggleOrderSelection(order.id)}
+                            onCheckedChange={() => sel.toggle(order.id)}
                             onClick={(e) => e.stopPropagation()}
                           />
                           <div>
@@ -847,33 +905,25 @@ export default function Aviamento() {
                 const hasEconGroup = econGroup.econGroupId !== 'no_group';
                 const allEconOPs = econGroup.saleOrderGroups.flatMap(sg => sg.orders);
                 const econTotalPairs = allEconOPs.reduce((s, o) => s + (o.quantity || 0), 0);
-                const allEconSelected = allEconOPs.every(o => selectedOrders.has(o.id));
+                const allEconSelected = allEconOPs.every(o => sel.isSelected(o.id));
                 const isEconCollapsed = collapsedGroups.has(econGroup.econGroupId);
 
                 const toggleEconSelection = () => {
-                  setSelectedOrders(prev => {
-                    const next = new Set(prev);
-                    if (allEconSelected) allEconOPs.forEach(o => next.delete(o.id));
-                    else allEconOPs.forEach(o => next.add(o.id));
-                    return next;
-                  });
+                  if (allEconSelected) allEconOPs.forEach(o => { if (sel.isSelected(o.id)) sel.toggle(o.id); });
+                  else sel.selectMatchingIds(allEconOPs.map(o => o.id));
                 };
 
                 const renderSaleOrderGroups = () => econGroup.saleOrderGroups.map(soGroup => {
                   const isSaleOrderGroup = !soGroup.saleOrderId.startsWith('solo_') && soGroup.orders.length > 0;
                   const hasMultipleOPs = soGroup.orders.length > 1;
                   const soTotalPairs = soGroup.orders.reduce((s, o) => s + (o.quantity || 0), 0);
-                  const allSOSelected = soGroup.orders.every(o => selectedOrders.has(o.id));
-                  const someSOSelected = soGroup.orders.some(o => selectedOrders.has(o.id));
+                  const allSOSelected = soGroup.orders.every(o => sel.isSelected(o.id));
+                  const someSOSelected = soGroup.orders.some(o => sel.isSelected(o.id));
                   const isSOCollapsed = collapsedSaleOrders.has(soGroup.saleOrderId);
 
                   const toggleSOSelection = () => {
-                    setSelectedOrders(prev => {
-                      const next = new Set(prev);
-                      if (allSOSelected) soGroup.orders.forEach(o => next.delete(o.id));
-                      else soGroup.orders.forEach(o => next.add(o.id));
-                      return next;
-                    });
+                    if (allSOSelected) soGroup.orders.forEach(o => { if (sel.isSelected(o.id)) sel.toggle(o.id); });
+                    else sel.selectMatchingIds(soGroup.orders.map(o => o.id));
                   };
 
                   const clientName = soGroup.saleOrder?.client_name || '';
@@ -952,6 +1002,7 @@ export default function Aviamento() {
                 );
               });
             })()}
+            <MarqueeOverlay rect={sel.marqueeRect} />
           </div>
         )}
       </div>

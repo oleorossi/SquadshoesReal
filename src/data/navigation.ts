@@ -67,6 +67,7 @@ export const navigationCatalog: NavigationResource[] = [
   // Engenharia (absorve Tiras)
   { path: '/engenharia', label: 'Engenharia', group: 'Engenharia', icon: Ruler, surfaces: ['hub', 'command'], preload: () => import('@/pages/EngenhariaHub') },
   { path: '/fichas-tecnicas', label: 'Fichas Técnicas', group: 'Engenharia', icon: Ruler, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/TechnicalSheets') },
+  { path: '/atelie', label: 'Ateliê', group: 'Engenharia', icon: Scissors, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/Atelie') },
   { path: '/escalonamento', label: 'Escalonamento', group: 'Engenharia', icon: Calculator, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/EscalonamentoCadPage') },
   { path: '/tiras-artesanais', label: 'Central de Tiras', group: 'Engenharia', icon: Scissors, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/ArtisanalStraps') },
   { path: '/solados', label: 'Solados', group: 'Engenharia', icon: Footprints, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/SolesHub') },
@@ -75,8 +76,9 @@ export const navigationCatalog: NavigationResource[] = [
 
   // Produção
   { path: '/producao', label: 'Produção', group: 'Produção', icon: Factory, surfaces: ['hub', 'command'], preload: () => import('@/pages/ProducaoHub') },
+  { path: '/producao/sequencia', label: 'Sequência / Liberação', group: 'Produção', icon: RouteIcon, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/ProducaoSequencia') },
   { path: '/producao/planejamento', label: 'Planejamento', group: 'Produção', icon: ClipboardCheck, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/ProducaoPlanejamento') },
-  { path: '/producao/antecipacao', label: 'Antecipação', group: 'Produção', icon: Clock, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/ProducaoAntecipacao') },
+  { path: '/producao/corte-lookahead', label: 'Fila de Corte', group: 'Produção', icon: Scissors, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/ProducaoCorteLookahead') },
   // Mantém o path concedível histórico para não invalidar permissões por item;
   // a rota redireciona imediatamente para a Central em Modo Gestão.
   { path: '/producao/kanban', label: 'Modo Gestão', group: 'Produção', icon: Kanban, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/ProducaoKanban') },
@@ -191,6 +193,7 @@ export const topItem = resource('/dashboard');
 export const SYSTEM_SHORTCUT_PATHS = [
   '/sales',
   '/producao/planejamento',
+  '/producao/corte-lookahead',
   '/materiais',
   '/expedicao',
   '/nfe',
@@ -235,8 +238,9 @@ const hubsDeclarados: NavigationHub[] = [
     icon: Factory,
     groups: ['Produção'],
     children: [
+      resource('/producao/sequencia'),
+      resource('/producao/corte-lookahead'),
       resource('/producao/planejamento'),
-      resource('/producao/antecipacao'),
       resource('/producao/kanban'),
       resource('/producao/estouro'),
       resource('/producao/apontamento'),
@@ -427,8 +431,8 @@ export const ROLE_MENU_PRESENTATION: Record<string, RoleMenuPresentation> = {
   gerente: { home: '/dashboard', groupOrder: ORDEM_COMPLETA },
   consulta:{ home: '/dashboard', groupOrder: ORDEM_COMPLETA },
 
-  // Quem aponta produção não começa o dia olhando KPI: começa apontando.
-  producao:     { home: '/producao/apontamento', groupOrder: ['Produção', 'Materiais', 'Expedição', 'Engenharia', 'RH'] },
+  // Quem aponta produção começa na sequência oficial; apontamento fica no hub.
+  producao:     { home: '/producao/sequencia', groupOrder: ['Produção', 'Materiais', 'Expedição', 'Engenharia', 'RH'] },
   comercial:    { home: '/comercial',            groupOrder: ['Comercial'] },
   nfe_operator: { home: '/fiscal',               groupOrder: ['Fiscal', 'Comercial'] },
   almoxarifado: { home: '/materiais',            groupOrder: ['Materiais'] },

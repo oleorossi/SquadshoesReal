@@ -12,6 +12,7 @@ import {
   BLOCK_GAP_MM,
   BLOCK_GAP_PX,
   HEADER_BAND_MM,
+  HEADER_BAND_MIN_PX,
   MM_TO_PX,
   PAGE_CAPACITY_PX,
   PAGE_CONTENT_WIDTH_PX,
@@ -20,13 +21,19 @@ import {
   PAGE_PAD_TOP_MM,
   PAGE_PAD_X_MM,
   PRINT_INFLATE,
+  pageContentCapacityPx,
 } from './pageGeometry';
+import {
+  formatPageIdentityBand,
+  type PageIdentity,
+} from './pageIdentity';
 
 // Re-export: testes e consumidores externos importam daqui.
 export {
   BLOCK_GAP_MM,
   BLOCK_GAP_PX,
   HEADER_BAND_MM,
+  HEADER_BAND_MIN_PX,
   MM_TO_PX,
   PAGE_CAPACITY_PX,
   PAGE_CONTENT_WIDTH_PX,
@@ -35,7 +42,17 @@ export {
   PAGE_PAD_TOP_MM,
   PAGE_PAD_X_MM,
   PRINT_INFLATE,
+  pageContentCapacityPx,
 };
+export type { PageIdentity, PageIdentityEntry } from './pageIdentity';
+
+/** Aplica `data-pack-boost` à altura medida (só empacotamento — sem mudar o visual). */
+export function packBoostedHeight(measuredPx: number, boostAttr: string | null | undefined): number {
+  const h = Math.ceil(measuredPx);
+  const boost = Number(boostAttr);
+  if (!Number.isFinite(boost) || boost <= 1) return h;
+  return Math.ceil(h * boost);
+}
 
 /**
  * PaginatedSheet — paginador determinístico das fichas de impressão.
@@ -346,8 +363,12 @@ const isWrappedBlock = (
   typeof b === 'object' && b !== null && !React.isValidElement(b) && !Array.isArray(b) && 'node' in b;
 
 interface PaginatedSheetProps {
-  /** Rótulo da faixa de cabeçalho (ex.: "Corte Forração · Solado 01"). */
+  /** Rótulo da faixa de cabeçalho (ex.: "Corte Forração · Solado 01").
+   *  Usado no sheetKey e como fallback quando `pageIdentity` falta. */
   sectorLabel: string;
+  /** Identidade rica da faixa (setor + pedidos/PVs/OPs/razões). Quando
+   *  presente, a faixa cresce e lista tudo; senão cai no rótulo legado. */
+  pageIdentity?: PageIdentity;
   /** Blocos atômicos na ordem de leitura (header da ficha → cards → footer). */
   blocks: SheetBlock[];
   /** Estilo extra aplicado a cada página (ex.: fontSize 10pt do relatório). */
@@ -361,12 +382,15 @@ interface PaginatedSheetProps {
   minScale?: number;
 }
 
-export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle, minScale }: PaginatedSheetProps) => {
+export const PaginatedSheet = ({ sectorLabel, pageIdentity, blocks, pageStyle, minScale }: PaginatedSheetProps) => {
   const sheetInstanceId = useId();
   const sheetKey = `${sectorLabel}::${sheetInstanceId}`;
   const continuity = usePrintContinuity(sheetKey);
   const sheetRootRef = useRef<HTMLDivElement | null>(null);
   const continuesOnPriorSheet = continuity.tailRemainderPx >= MIN_CONTINUATION_PX;
+  // Continuação entre maços: baseline PAGE_CAPACITY_PX (faixa mínima). Se o
+  // maço anterior tinha faixa mais alta, o remainder já veio menor — lado
+  // seguro (abre folha nova em vez de derramar).
   const leadingForPack = continuesOnPriorSheet
     ? PAGE_CAPACITY_PX - continuity.tailRemainderPx + SECTOR_JOIN_GAP_PX
     : 0;
@@ -378,8 +402,13 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle, minScale }: Pag
   /** Largura que cada bloco EXIGE e não sabe refluir (`data-rigid-width`).
    *  Alimenta o teto do lado que cresce — ver growCeilingFor. */
   const [rigidWidths, setRigidWidths] = useState<number[]>([]);
+  /** Altura medida da faixa do topo (inclui marginBottom). Piso = HEADER_BAND. */
+  const [headHeightPx, setHeadHeightPx] = useState(HEADER_BAND_MIN_PX);
+  const capacityPx = pageContentCapacityPx(headHeightPx);
   const wrapperEls = useRef(new Map<number, HTMLDivElement>());
   const roRef = useRef<ResizeObserver | null>(null);
+  const headRoRef = useRef<ResizeObserver | null>(null);
+  const headObservedRef = useRef<HTMLDivElement | null>(null);
   // Fator de zoom corrente do auto-fit (escolhido pelo useMemo). A medição NUNCA
   // lê o DOM com zoom: `measure` só roda quando scaleRef===1 (baseline). Medir o
   // DOM zoomado e dividir pelo zoom era INSTÁVEL (zoom reflui texto, não é linear)
@@ -398,7 +427,18 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle, minScale }: Pag
       if (!el) return; // render incompleto — espera o próximo ciclo
       // ceil do retângulo sub-pixel: offsetHeight arredonda pra BAIXO e o
       // erro acumulado de ~10 blocos chegava a vários px — derramava no print.
-      next[i] = Math.ceil(el.getBoundingClientRect().height);
+      //
+      // `data-pack-boost` (no wrapper ou num descendente) multiplica a altura
+      // EMPACOTADA sem mudar o visual — Anton/checklist do Relatório Gerencial
+      // mediam ~8% a menos que o print e o keep-together vazava 2 linhas pra
+      // folha seguinte (ACABAMENTO/EXPEDIÇÃO órfãos antes do Folha N/M).
+      const boostNode = el.matches('[data-pack-boost]')
+        ? el
+        : el.querySelector<HTMLElement>('[data-pack-boost]');
+      next[i] = packBoostedHeight(
+        el.getBoundingClientRect().height,
+        boostNode?.dataset.packBoost,
+      );
       // Largura rígida é DECLARADA pelo componente (não medida): quem tem
       // geometria de constante sabe quanto exige, e medir o DOM não distingue
       // "ocupa 660px" de "precisa de 660px".
@@ -485,6 +525,24 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle, minScale }: Pag
     };
   }, [measure]);
 
+  // Identidade da faixa mudou → re-mede altura (capacidade muda com ela).
+  const identitySig = pageIdentity
+    ? `${pageIdentity.sector}|${formatPageIdentityBand(pageIdentity.entries)}`
+    : `legacy:${sectorLabel}`;
+  const prevIdentityRef = useRef(identitySig);
+  useLayoutEffect(() => {
+    if (prevIdentityRef.current !== identitySig) {
+      prevIdentityRef.current = identitySig;
+      setHeadHeightPx(HEADER_BAND_MIN_PX);
+    }
+  });
+
+  useEffect(() => () => {
+    headRoRef.current?.disconnect();
+    headRoRef.current = null;
+    headObservedRef.current = null;
+  }, []);
+
   const ready = blocks.length > 0 && heights.length === blocks.length;
   const { pages, scale } = useMemo<{ pages: PackedPage[]; scale: number }>(() => {
     if (!ready) {
@@ -495,7 +553,7 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle, minScale }: Pag
     // A previsão de impressão (× PRINT_INFLATE), o piso vindo do conteúdo e o
     // teto vindo da largura moram todos em chooseAutoFitScale — pura e testada.
     return chooseAutoFitScale(heights, {
-      capacity: PAGE_CAPACITY_PX,
+      capacity: capacityPx,
       gap: BLOCK_GAP_PX,
       keepPrev: keepFlags,
       keepNext: keepNextFlags,
@@ -504,7 +562,7 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle, minScale }: Pag
       leadingUsed: leadingForPack,
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, heights, rigidWidths, blocks.length, leadingForPack]);
+  }, [ready, heights, rigidWidths, blocks.length, leadingForPack, capacityPx]);
   // Propaga o zoom escolhido pra medição normalizar à escala 1 (sem loop).
   scaleRef.current = scale;
   const totalPages = pages.reduce((s, p) => s + p.spanned, 0);
@@ -528,9 +586,9 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle, minScale }: Pag
       return;
     }
     continuity.reportTrailingRemainder(
-      trailingRemainderPx(last.blockIdxs, heights, scale, PAGE_CAPACITY_PX, BLOCK_GAP_PX, PRINT_INFLATE),
+      trailingRemainderPx(last.blockIdxs, heights, scale, capacityPx, BLOCK_GAP_PX, PRINT_INFLATE),
     );
-  }, [ready, pages, heights, scale, continuity.reportTrailingRemainder]);
+  }, [ready, pages, heights, scale, capacityPx, continuity.reportTrailingRemainder]);
 
   const pageOffset = pageRange ? pageRange.sheetOffset(sheetKey) : 0;
   // Durante a passada de medição (!ready) emite tudo — senão os wrappers
@@ -578,43 +636,114 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle, minScale }: Pag
     </div>
   );
 
-  const renderPageHead = (page: PackedPage) => (
-    <div
-      className="pagi-page-head"
-      style={{
-        height: `${HEADER_BAND_MM - 2}mm`,
-        marginBottom: '2mm',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: 8,
-        borderBottom: '1px solid #000',
-        fontFamily: "'Fira Code', ui-monospace, monospace",
-        fontSize: '9px',
-        letterSpacing: '0.08em',
-        textTransform: 'uppercase',
-        color: '#000',
-        whiteSpace: 'nowrap',
-        overflow: 'hidden',
-      }}
-    >
-      <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, overflow: 'hidden' }}>
-        <span
-          aria-hidden="true"
-          style={{ width: 6, height: 6, flex: '0 0 auto', background: '#000', display: 'inline-block' }}
-        />
-        <span style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          Ficha de operador · {sectorLabel}
+  const registerHeadEl = (el: HTMLDivElement | null) => {
+    if (headObservedRef.current === el) return;
+    if (headRoRef.current) {
+      headRoRef.current.disconnect();
+      headRoRef.current = null;
+    }
+    headObservedRef.current = el;
+    if (!el) return;
+    const measureHead = () => {
+      // Altura do bloco + marginBottom 2mm (respiro canônico da faixa).
+      const h = Math.ceil(el.getBoundingClientRect().height + 2 * MM_TO_PX);
+      setHeadHeightPx((prev) => {
+        const next = Math.max(HEADER_BAND_MIN_PX, h);
+        return Math.abs(prev - next) < 1.5 ? prev : next;
+      });
+    };
+    measureHead();
+    const ro = new ResizeObserver(measureHead);
+    ro.observe(el);
+    headRoRef.current = ro;
+  };
+
+  const renderPageHead = (page: PackedPage, observe: boolean) => {
+    const sectorName = pageIdentity?.sector || sectorLabel;
+    const bandText = pageIdentity ? formatPageIdentityBand(pageIdentity.entries) : '';
+    return (
+      <div
+        ref={observe ? registerHeadEl : undefined}
+        className="pagi-page-head keep-together keep-with-next"
+        style={{
+          minHeight: `${HEADER_BAND_MM - 2}mm`,
+          marginBottom: '2mm',
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'space-between',
+          gap: 8,
+          borderBottom: '1px solid #000',
+          paddingBottom: 2,
+          fontFamily: "'Fira Code', ui-monospace, monospace",
+          fontSize: '9px',
+          letterSpacing: '0.06em',
+          textTransform: 'uppercase',
+          color: '#000',
+          overflow: 'visible',
+        }}
+      >
+        <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: 1 }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+            <span
+              aria-hidden="true"
+              style={{ width: 6, height: 6, flex: '0 0 auto', background: '#000', display: 'inline-block' }}
+            />
+            <span
+              style={{
+                fontFamily: "'Anton', Impact, sans-serif",
+                fontWeight: 400,
+                fontSize: '11px',
+                letterSpacing: '0.04em',
+                lineHeight: 1.1,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {sectorName}
+            </span>
+          </span>
+          {bandText ? (
+            <span
+              style={{
+                fontWeight: 600,
+                fontSize: '8px',
+                letterSpacing: '0.03em',
+                lineHeight: 1.3,
+                paddingLeft: 12,
+                wordBreak: 'break-word',
+                whiteSpace: 'normal',
+              }}
+            >
+              {bandText}
+            </span>
+          ) : (
+            !pageIdentity && (
+              <span
+                style={{
+                  fontWeight: 600,
+                  fontSize: '8px',
+                  letterSpacing: '0.04em',
+                  paddingLeft: 12,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                Ficha de operador · {sectorLabel}
+              </span>
+            )
+          )}
         </span>
-      </span>
-      <span style={{ fontWeight: 600, flexShrink: 0 }}>
-        Folha {page.startPage} / {totalPages}
-      </span>
-    </div>
-  );
+        <span style={{ fontWeight: 600, flexShrink: 0, paddingTop: 1 }}>
+          Folha {page.startPage} / {totalPages}
+        </span>
+      </div>
+    );
+  };
 
   const packedHeightPx = (page: PackedPage) => {
-    if (!ready || page.flow) return PAGE_CAPACITY_PX;
+    if (!ready || page.flow) return capacityPx;
     return page.blockIdxs.reduce((u, bi, j) => {
       if (j > 0) u += BLOCK_GAP_PX;
       return u + heights[bi] * scale * PRINT_INFLATE;
@@ -624,7 +753,7 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle, minScale }: Pag
   const isLastLogicalPage = (page: PackedPage) => page.startPage === pages[pages.length - 1]?.startPage;
   const tailOfferPx = ready && pages.length > 0 && !pages[pages.length - 1].flow
     ? trailingRemainderPx(
-      pages[pages.length - 1].blockIdxs, heights, scale, PAGE_CAPACITY_PX, BLOCK_GAP_PX, PRINT_INFLATE,
+      pages[pages.length - 1].blockIdxs, heights, scale, capacityPx, BLOCK_GAP_PX, PRINT_INFLATE,
     )
     : 0;
 
@@ -649,14 +778,14 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle, minScale }: Pag
   return (
     <div ref={sheetRootRef} className="pagi-sheet" style={{ width: '210mm', margin: '0 auto' }}>
       {portaledBlocks}
-      {joinCutBeforeOwnPages && <SectorJoinCutLine />}
+      {joinCutBeforeOwnPages && <SectorJoinCutLine forcePageBreak />}
       {pagesInOwnSheet.map((page) => {
         const packedPx = packedHeightPx(page);
         // Última página lógica do maço NUNCA estica pra 288mm: o vazio residual
         // é onde o próximo setor sobe (printContinuity). Páginas do meio
         // continuam com altura de cartão A4 no preview.
         const isTailPage = isLastLogicalPage(page);
-        const partialPage = !page.flow && (isTailPage || packedPx < PAGE_CAPACITY_PX * 0.97);
+        const partialPage = !page.flow && (isTailPage || packedPx < capacityPx * 0.97);
         const offerTailMount = partialPage && isTailPage && tailOfferPx >= MIN_CONTINUATION_PX;
         return (
         <div
@@ -675,7 +804,7 @@ export const PaginatedSheet = ({ sectorLabel, blocks, pageStyle, minScale }: Pag
             ...pageStyle,
           }}
         >
-          {renderPageHead(page)}
+          {renderPageHead(page, page === pagesInOwnSheet[0])}
           {page.blockIdxs.map((bi, j) => renderBlock(bi, j, page.blockIdxs.length))}
           {offerTailMount && (
             <div

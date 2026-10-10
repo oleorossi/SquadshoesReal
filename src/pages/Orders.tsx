@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useDebounce } from 'use-debounce';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { useQuery } from '@tanstack/react-query';
 import { Baby, ClipboardText as ClipboardList, Trash as Trash2, CircleNotch as Loader2, Warning as AlertTriangle, CheckCircle as CheckCircle2, Printer, Factory, Funnel as Filter, MagnifyingGlass as Search, Calendar, Stack as Layers, X, CaretDown as ChevronDown, Checks as CheckCheck, PencilSimple as Pencil, FileText, Square, CheckSquare, FileXls as FileSpreadsheet, Check, CaretUpDown as ChevronsUpDown, Package, Image as ImageIcon, Plus, CaretUp as ChevronUp, DotsThree as MoreHorizontal, Download, GridFour as LayoutGrid, List, ArrowRight } from '@phosphor-icons/react';
@@ -49,6 +49,15 @@ import OrderConsumptionDialog from '@/components/orders/OrderConsumptionDialog';
 import { startOfWeek, endOfWeek, format, parseISO, isWithinInterval, addWeeks } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { normalizeForSearch, searchMatchesAny, searchMatchesAllTerms, splitSearchTerms, rankBySearchScore } from '@/lib/searchUtils';
+import {
+  classifyOrderSearch,
+  collectKnownOrderCodes,
+  findIdsMatchingOrderCodes,
+  looksLikeOrderCodeList,
+  orderCodeExactMatch,
+  parseOrderCodeList,
+} from '@/lib/orderCodeSearch';
+import { confirmIfHiddenSelection } from '@/lib/confirmHiddenSelection';
 import { HighlightMatch } from '@/components/ui/highlight-match';
 // ExcelJS is imported dynamically in handleExportExcel to avoid large bundle on page load
 
@@ -199,10 +208,12 @@ function getWeekOptions() {
 
  export default function Orders({ hideHeader = false }: { hideHeader?: boolean }) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   // Busca NÃO persiste: reseta ao sair e voltar pra tela (useState remonta
   // limpo). Antes usava usePersistedState com a chave 'searchTerm' — a MESMA
   // de SaleOrders, então o termo vazava entre OPs e PVs.
-  const [searchTerm, setSearchTerm] = useState('');
+  // Deep link: /orders?search=OP-… (ex.: dialog de reservas do estoque).
+  const [searchTerm, setSearchTerm] = useState(() => searchParams.get('search') || '');
   // Debounce alimenta o filtro local E a query server-side (R6). Input segue
   // responsivo em searchTerm; fetch/filtro rodam 300ms após parar de digitar.
   const [debouncedSearchTerm] = useDebounce(searchTerm, 300);
@@ -261,6 +272,7 @@ function getWeekOptions() {
   const [referenceFilter, setReferenceFilter] = usePersistedState<string>('referenceFilter', 'all');
   const [colorFilter, setColorFilter] = usePersistedState<string>('colorFilter', 'all');
   const [weekFilter, setWeekFilter] = usePersistedState<string>('weekFilter', 'all');
+  const [clientFilter, setClientFilter] = useState<string>('all');
   const [segmentFilter, setSegmentFilter] = usePersistedState<string>('segmentFilter', 'all');
   const [groupByRefColor, setGroupByRefColor] = usePersistedState('groupByRefColor', false);
   const [groupByEconomic, setGroupByEconomic] = usePersistedState('groupByEconomicGroup', false);
@@ -372,6 +384,33 @@ function getWeekOptions() {
     [saleOrders],
   );
 
+  /** Campos de OP usados na busca — tipados pra não introduzir `any` no gate de lint. */
+  type OrderSearchRow = {
+    sale_order_id?: string | null;
+    order_number?: string | null;
+    color?: string | null;
+    notes?: string | null;
+    production_line?: string | null;
+    responsible?: string | null;
+    packaging_type?: string | null;
+    quantity?: number | null;
+    technical_sheets?: { name?: string | null; code?: string | null } | null;
+  };
+
+  const knownOrderCodes = useMemo(
+    () =>
+      collectKnownOrderCodes(orders, (o) => {
+        const row = o as OrderSearchRow;
+        const soId = row.sale_order_id;
+        const so = soId ? saleOrderMetaById.get(soId) : null;
+        return {
+          orderNumber: row.order_number,
+          saleOrderNumber: so?.orderNumber,
+        };
+      }),
+    [orders, saleOrderMetaById],
+  );
+
   // Filter and group orders.
   // Busca ATRAVESSA as pills de status (spec melhorias-busca-sistema R5): o
   // match roda sobre TODAS as OPs; a pill ativa exibe os seus resultados e as
@@ -380,6 +419,7 @@ function getWeekOptions() {
   // continuam valendo em todas as pills.
   const { filteredOrders, pillSearchCounts } = useMemo(() => {
     const searchLower = normalizeForSearch(debouncedSearchTerm);
+    const classified = classifyOrderSearch(debouncedSearchTerm, knownOrderCodes);
 
     const statusGate = (canonicalStatus: string, gate: string): boolean => {
       if (gate === 'active') {
@@ -396,23 +436,24 @@ function getWeekOptions() {
     };
 
     const passesNonStatusFilters = (order: (typeof orders)[number]): boolean => {
-      const linkedSaleOrderId = (order as any).sale_order_id;
+      const row = order as OrderSearchRow;
+      const linkedSaleOrderId = row.sale_order_id;
       const linkedSaleOrder = linkedSaleOrderId ? saleOrderMetaById.get(linkedSaleOrderId) : null;
 
-      // Search filter — wide multi-field matching
+      // Search: lista OP/PV (heurística) | ref/cor posicional | AND livre.
       if (searchLower) {
         const cnpjDigits = (linkedSaleOrder?.clientCnpj || '').replace(/\D/g, '');
-        const ts: any = (order as any).technical_sheets || {};
+        const ts = row.technical_sheets || {};
         const candidates: (string | null | undefined)[] = [
-          (order as any).order_number,
+          row.order_number,
           ts.name,
           ts.code,
-          (order as any).color,
-          (order as any).notes,
-          (order as any).production_line,
-          (order as any).responsible,
-          (order as any).packaging_type,
-          String((order as any).quantity ?? ''),
+          row.color,
+          row.notes,
+          row.production_line,
+          row.responsible,
+          row.packaging_type,
+          String(row.quantity ?? ''),
           linkedSaleOrder?.orderNumber,
           linkedSaleOrder?.clientName,
           linkedSaleOrder?.clientOrderNumber,
@@ -422,12 +463,33 @@ function getWeekOptions() {
           linkedSaleOrder?.deliveryWeek,
           linkedSaleOrder?.deliveryMonth,
         ];
-        // Espaço e "/" = refinamento AND (ex.: "stx alcineu" = ref STX E cliente Alcineu)
         const matchTerm = (term: string) => {
           const d = term.replace(/\D/g, '');
           return searchMatchesAny(term, ...candidates) || (d.length >= 3 && cnpjDigits.includes(d));
         };
-        if (!splitSearchTerms(debouncedSearchTerm).every(matchTerm)) return false;
+
+        if (classified.mode === 'list') {
+          const hit = classified.codes.some((code) =>
+            orderCodeExactMatch(
+              code,
+              row.order_number,
+              linkedSaleOrder?.orderNumber,
+            ),
+          );
+          if (!hit) return false;
+        } else if (classified.mode === 'refColor') {
+          const refOk =
+            searchMatchesAny(classified.ref, ts.name, ts.code);
+          const colorOk = searchMatchesAny(classified.color, row.color);
+          if (!refOk || !colorOk) return false;
+          if (classified.rest.length > 0 && !classified.rest.every(matchTerm)) return false;
+        } else if (!splitSearchTerms(debouncedSearchTerm).every(matchTerm)) {
+          return false;
+        }
+      }
+
+      if (clientFilter !== 'all') {
+        if ((linkedSaleOrder?.clientName || '').trim() !== clientFilter) return false;
       }
 
       // Reference filter
@@ -469,13 +531,37 @@ function getWeekOptions() {
       if (statusGate(canonicalStatus, normalizedStatusFilter)) current.push(order);
     }
     return { filteredOrders: current, pillSearchCounts: searchLower ? counts : null };
-  }, [orders, saleOrderMetaById, debouncedSearchTerm, normalizedStatusFilter, referenceFilter, colorFilter, weekFilter, segmentFilter, segmentByRefId]);
+  }, [orders, saleOrderMetaById, debouncedSearchTerm, knownOrderCodes, normalizedStatusFilter, referenceFilter, colorFilter, weekFilter, segmentFilter, segmentByRefId, clientFilter]);
 
   // Marquee + multi-select (Cmd/Ctrl/Shift click, drag-select, Esc to clear).
   // Substitui o state local de seleção; expõe APIs `selectedOrderIds`/toggle/clear
   // compatíveis com os handlers e checkboxes existentes.
   const sel = useMarqueeSelection(filteredOrders, (o) => o.id);
   const selectedOrderIds = sel.selectedIds;
+
+  const clientOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const order of orders) {
+      const soId = (order as any).sale_order_id;
+      const name = (soId ? saleOrderMetaById.get(soId)?.clientName : '') || '';
+      if (name.trim()) set.add(name.trim());
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [orders, saleOrderMetaById]);
+
+  const matchedCodeIds = useMemo(() => {
+    const codes = parseOrderCodeList(debouncedSearchTerm, knownOrderCodes);
+    return findIdsMatchingOrderCodes(orders, codes, (order) => {
+      const row = order as OrderSearchRow;
+      const soId = row.sale_order_id;
+      const so = soId ? saleOrderMetaById.get(soId) : null;
+      return {
+        id: order.id,
+        orderNumber: row.order_number,
+        saleOrderNumber: so?.orderNumber,
+      };
+    });
+  }, [orders, saleOrderMetaById, debouncedSearchTerm, knownOrderCodes]);
 
   // Map: client cnpj -> economic_group {id, name}, and razao_social -> group
   const clientGroupByCnpj = useMemo(() => {
@@ -585,17 +671,17 @@ function getWeekOptions() {
     sel.toggle(orderId);
   };
 
+  const allVisibleSelected =
+    filteredOrders.length > 0 && filteredOrders.every((o) => selectedOrderIds.has(o.id));
+
   const toggleSelectAll = () => {
-    if (selectedOrderIds.size === filteredOrders.length) {
-      sel.clear();
-    } else {
-      sel.selectAll();
-    }
+    if (allVisibleSelected) sel.deselectVisible();
+    else sel.selectAll();
   };
 
-  // Orders to use for reports: selected if any, otherwise all filtered
+  // Selecionados de TODA a carga (inclui fora do filtro) — ação confirma se ocultos.
   const effectiveOrders = selectedOrderIds.size > 0
-    ? filteredOrders.filter(o => selectedOrderIds.has(o.id))
+    ? orders.filter(o => selectedOrderIds.has(o.id))
     : filteredOrders;
 
   const clearFilters = () => {
@@ -604,27 +690,36 @@ function getWeekOptions() {
     setReferenceFilter('all');
     setColorFilter('all');
     setWeekFilter('all');
+    setClientFilter('all');
     setSegmentFilter('all');
     setGroupByRefColor(false);
     setGroupByEconomic(false);
     sel.clear();
   };
 
+  const confirmHidden = (actionLabel: string) =>
+    confirmIfHiddenSelection({
+      totalSelected: sel.count,
+      hiddenSelectedCount: sel.hiddenSelectedCount,
+      entityLabel: 'OP',
+      actionLabel,
+    });
+
   // ── Bulk action handlers (usados pela BulkActionsBar) ──────────────────
   const handleBulkAdvance = async (ids: Set<string>) => {
-    // TODO: implementar RPC advance_op_stage (não existe ainda — só advance_wave_stage).
-    // Por ora, mostra toast informativo. Quando RPC existir, iterar:
-    // for (const id of ids) await supabase.rpc('advance_op_stage', { p_order_id: id });
+    if (!confirmHidden('Avançar setor de')) return;
     toast.info(`Avançar setor — em implementação (${ids.size} OPs selecionadas)`);
   };
 
   const handleBulkPrintWorksheets = (ids: Set<string>) => {
     if (ids.size === 0) return;
+    if (!confirmHidden('Imprimir fichas de')) return;
     navigate('/imprimir-fichas?orderIds=' + Array.from(ids).join(','));
   };
 
   const handleBulkCancel = (ids: Set<string>) => {
     if (ids.size === 0) return;
+    if (!confirmHidden('Cancelar')) return;
     setBulkCancelIds(new Set(ids));
   };
 
@@ -642,7 +737,8 @@ function getWeekOptions() {
   };
 
   const handleBulkExport = (ids: Set<string>) => {
-    const opsToExport = filteredOrders.filter(o => ids.has(o.id));
+    if (!confirmHidden('Exportar')) return;
+    const opsToExport = orders.filter(o => ids.has(o.id));
     handleExportExcel(opsToExport);
   };
 
@@ -956,16 +1052,41 @@ function getWeekOptions() {
 
         {/* ── Toolbar principal ── */}
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Busca — padrão do sistema (SearchInput + espaço/"/" = AND) */}
+          {/* Busca — ref/cor; lista colada (heurística); AND livre */}
           <SearchInput
             className="flex-1 min-w-[200px] max-w-[380px]"
-            placeholder="Buscar OP, referência, cor, cliente, NF-e…"
+            placeholder="Buscar OP, ref/cor ou ref;cor, cliente… ou cole vários OP/PV"
             value={searchTerm}
             onChange={setSearchTerm}
             resultCount={filteredOrders.length}
             totalCount={orders.length}
             inputClassName="h-9"
           />
+          {looksLikeOrderCodeList(searchTerm, knownOrderCodes) && (
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              className="h-9 gap-1.5"
+              disabled={matchedCodeIds.length === 0}
+              onClick={() => sel.selectMatchingIds(matchedCodeIds)}
+            >
+              <CheckSquare className="h-4 w-4" />
+              Selecionar os que bateram
+              {matchedCodeIds.length > 0 ? ` (${matchedCodeIds.length})` : ''}
+            </Button>
+          )}
+          <Select value={clientFilter} onValueChange={setClientFilter}>
+            <SelectTrigger className="h-9 w-[180px]">
+              <SelectValue placeholder="Cliente" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os clientes</SelectItem>
+              {clientOptions.map((name) => (
+                <SelectItem key={name} value={name}>{name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
           {/* Status pills — com busca ativa, TODAS mostram a contagem de
               resultados (spec R5): a OP achada em outra pill fica a 1 clique. */}
@@ -1659,7 +1780,11 @@ function getWeekOptions() {
       <BulkActionsBar
         selectedIds={sel.selectedIds}
         onClear={sel.clear}
-        itemLabel={sel.count === 1 ? 'OP selecionada' : 'OPs selecionadas'}
+        itemLabel={
+          sel.hiddenSelectedCount > 0
+            ? `${sel.count} OP(s) · ${sel.hiddenSelectedCount} fora do filtro`
+            : (sel.count === 1 ? 'OP selecionada' : 'OPs selecionadas')
+        }
         actions={[
           { label: 'Avançar Setor', icon: <ArrowRight className="h-3.5 w-3.5" />, onClick: handleBulkAdvance },
           { label: 'Imprimir Fichas', icon: <Printer className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkPrintWorksheets },

@@ -319,14 +319,14 @@ export default function AppLayout({ children, printMode = false }: { children: R
    * Ela é irmã, posicionada em cima; por isso o `pr-9` reserva o espaço dela.
    */
   const navItemClass = (isActive: boolean) => cn(
-    "group flex items-center justify-between rounded-sm text-[13px] font-medium transition-all duration-150 relative pr-9",
+    "group flex items-center justify-between rounded-sm text-[12px] font-medium transition-all duration-150 relative pr-8",
     isActive
-      ? "border-l-[3px] border-primary pl-[10px] pr-3 py-1.5 text-sidebar-foreground font-semibold bg-sidebar-foreground/[0.04]"
-      : "border-l-2 border-transparent px-3 py-1.5 text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-foreground/[0.04]"
+      ? "border-l-[3px] border-primary pl-[10px] pr-3 py-1 text-sidebar-foreground font-semibold bg-sidebar-foreground/[0.04]"
+      : "border-l-2 border-transparent px-3 py-1 text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-foreground/[0.04]"
   );
 
   const collapsedItemClass = (isActive: boolean) => cn(
-    "flex items-center justify-center h-9 w-9 rounded-sm mx-auto mb-0.5 transition-all duration-100",
+    "flex items-center justify-center h-8 w-8 rounded-sm mx-auto mb-0.5 transition-all duration-100",
     isActive
       ? "border-l-[3px] border-primary text-sidebar-foreground bg-sidebar-foreground/[0.04]"
       : "border-l-2 border-transparent text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-foreground/[0.04]"
@@ -342,7 +342,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
         {/* ── Brand header ── */}
         <div className={cn(
           "border-b border-sidebar-border shrink-0",
-          isCollapsed ? "px-2 py-2.5 flex flex-col items-center gap-2" : "px-4 py-3"
+          isCollapsed ? "px-1.5 py-2 flex flex-col items-center gap-1.5" : "px-3 py-2"
         )}>
           {isCollapsed ? (
             <>
@@ -362,7 +362,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
                 <div className="min-w-0 flex-1">
                   {/* Industrial Editorial Pro: nome em Anton uppercase com
                       ponto separador vermelho squad (espelha o /design-preview). */}
-                  <p className="ed-display text-xl text-sidebar-foreground leading-none">
+                  <p className="ed-display text-lg text-sidebar-foreground leading-none">
                     Squad<span className="text-primary">·</span>Shoes
                   </p>
                   <p className="ed-eyebrow text-sidebar-muted mt-1">Gestão Industrial</p>
@@ -737,10 +737,10 @@ export default function AppLayout({ children, printMode = false }: { children: R
             {sidebarContent(true)}
           </aside>
 
-          {/* Desktop sidebar — dimensões do handoff: 232px expandida / 68px colapsada */}
+          {/* Desktop sidebar — densificação 2026-10: 200px expandida / 56px colapsada */}
           <aside className={cn(
             'hidden md:flex shrink-0 border-r border-sidebar-border flex-col sticky top-0 h-screen transition-all duration-200 ease-in-out overflow-hidden',
-            sidebarCollapsed ? 'w-[68px]' : 'w-[232px]',
+            sidebarCollapsed ? 'w-[56px]' : 'w-[200px]',
             printMode && 'print:hidden'
           )}>
             {sidebarContent(false)}
@@ -786,7 +786,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
                 "shadow-[0_1px_0_0_hsl(var(--border)/0.4)]",
                 printMode && 'print:hidden'
               )}>
-                <div className="w-full h-11 flex items-center px-4 md:px-6 lg:px-8 xl:px-10 gap-3">
+                <div className="w-full h-9 flex items-center px-3 md:px-4 lg:px-6 xl:px-8 gap-2">
                   <PageHeader compact />
                 </div>
               </div>
@@ -794,11 +794,9 @@ export default function AppLayout({ children, printMode = false }: { children: R
 
             <main id="conteudo-principal" tabIndex={-1} className={cn(
               // Layout fluido: usa 100% da largura disponível, sem cap em 1600px.
-              // Antes em telas grandes (1080p+/4K/ultrawide) o sistema ficava com
-              // barras vazias gigantes nas laterais — pedido user 19/05/2026
-              // "sempre se adequar à resolução de quem está acessando".
-              // Padding cresce com a tela (mobile 4 → md 6 → lg 8 → xl 10 → 2xl 12).
-              'flex-1 w-full px-4 md:px-6 lg:px-8 xl:px-10 2xl:px-12 py-6 pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-6 overflow-auto',
+              // Densificação 2026-10: laterais −1 degrau; py-4 no desktop.
+              // Mobile mantém px-4 e pb seguro pro BottomNav (alvos de toque).
+              'flex-1 w-full px-4 md:px-4 lg:px-6 xl:px-8 2xl:px-10 py-4 pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-4 overflow-auto',
               printMode && 'print:px-0 print:py-0 print:overflow-visible'
             )}>
               <div className="md:hidden">

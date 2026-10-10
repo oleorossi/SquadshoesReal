@@ -13,9 +13,19 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent } from '@/components/ui/card';
 import { todayISO } from '@/lib/date';
 import { CalendarBlank as CalendarDays, Package, Warning as AlertTriangle, Users, CaretDown as ChevronDown, CaretRight as ChevronRight, CheckCircle, XCircle, Clock, ShoppingBag, ArrowRight, Scissors, CircleNotch as Loader2, Wrench, MagnifyingGlass, Hand, Pen, Printer, Flame, Hammer, Footprints, Sparkle as Sparkles, Truck } from '@phosphor-icons/react';
-import { SearchInput } from '@/components/ui/search-input';
 import { EmptyState } from '@/components/ui/empty-state';
-import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { OrderMultiSelectToolbar } from '@/components/orders/OrderMultiSelectToolbar';
+import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
+import { MarqueeOverlay } from '@/components/ui/bulk-actions-bar';
+import {
+  findIdsMatchingOrderCodes,
+  matchesOrderSearch,
+  normalizeOrderCode,
+  orderCodeExactMatch,
+  parseOrderCodeList,
+} from '@/lib/orderCodeSearch';
+import { matchesDeliveryWeek } from '@/lib/deliveryWeekOptions';
+import { confirmIfHiddenSelection } from '@/lib/confirmHiddenSelection';
 import { snapToMonday } from '@/lib/isoWeek';
 import { useCreateWave } from '@/hooks/useProductionWaves';
 import {
@@ -232,11 +242,12 @@ export function WaveBuilder({
 }) {
   const [weekStart, setWeekStart] = useState(getMondayISO());
   const [pendingOrders, setPendingOrders] = useState<PendingOrder[]>([]);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [conflictIds, setConflictIds] = useState<Set<string>>(new Set());
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState('');
+  const [clientFilter, setClientFilter] = useState('all');
+  const [weekFilter, setWeekFilter] = useState('all');
 
   // Step 2 state
   const [step, setStep] = useState<'select' | 'preview'>('select');
@@ -255,76 +266,140 @@ export function WaveBuilder({
 
   const createWave = useCreateWave();
 
+  const selectableOrders = useMemo(
+    () => pendingOrders.filter((o) => !conflictIds.has(o.id)),
+    [pendingOrders, conflictIds],
+  );
+
+  const clientOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const o of pendingOrders) {
+      const name = (o.client_name || '').trim();
+      if (name) set.add(name);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [pendingOrders]);
+
+  const filteredOrders = useMemo(() => {
+    return selectableOrders.filter((o) => {
+      if (clientFilter !== 'all' && (o.client_name || '').trim() !== clientFilter) return false;
+      if (weekFilter !== 'all' && !matchesDeliveryWeek(o.delivery_deadline, weekFilter)) return false;
+      if (!search.trim()) return true;
+      const codes = parseOrderCodeList(search);
+      if (codes.length >= 2) {
+        return codes.some((code) =>
+          orderCodeExactMatch(code, o.code, ...o.op_numbers),
+        );
+      }
+      return matchesOrderSearch(search, {
+        orderNumber: o.op_numbers.join(' '),
+        saleOrderNumber: o.code,
+        clientName: o.client_name,
+        clientOrderNumber: o.cnpj,
+      });
+    });
+  }, [selectableOrders, search, clientFilter, weekFilter]);
+
+  const sel = useMarqueeSelection(filteredOrders, (o) => o.id);
+
   useEffect(() => {
     if (!open) { setStep('select'); setTimeline(null); setMaterialNeeds([]); setShortageOverrideConfirmed(false); return; }
     setLoading(true);
-    setSelected(new Set());
+    sel.clear();
     setConflictIds(new Set());
     listPendingSaleOrdersForWeek(weekStart)
       .then(setPendingOrders)
       .finally(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- reset só ao abrir / trocar semana
   }, [open, weekStart]);
 
-  function orderMatchesSearch(o: PendingOrder): boolean {
-    return searchMatchesAllTerms(search, o.client_name, o.code, o.cnpj, ...o.op_numbers);
-  }
+  const pastedCodes = useMemo(() => parseOrderCodeList(search), [search]);
+  const matchedCodeIds = useMemo(() => {
+    if (pastedCodes.length === 0) return [];
+    const fromHelper = findIdsMatchingOrderCodes(selectableOrders, pastedCodes, (o) => ({
+      id: o.id,
+      orderNumber: o.op_numbers[0] || null,
+      saleOrderNumber: o.code,
+    }));
+    const fromOps = selectableOrders
+      .filter((o) =>
+        o.op_numbers.some((n) => {
+          const norm = normalizeOrderCode(n);
+          return !!norm && pastedCodes.includes(norm);
+        }),
+      )
+      .map((o) => o.id);
+    return [...new Set([...fromHelper, ...fromOps])];
+  }, [selectableOrders, pastedCodes]);
+  const matchedCodeIdsUnique = matchedCodeIds;
 
   const clientGroups = useMemo((): ClientGroup[] => {
     const map = new Map<string, PendingOrder[]>();
-    for (const o of pendingOrders) {
+    for (const o of filteredOrders) {
       const key = o.client_name ?? '—';
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(o);
     }
     return Array.from(map.entries())
       .map(([client, orders]) => {
-        const matching = orders.filter(o => orderMatchesSearch(o));
-        if (matching.length === 0) return null;
-        const sel = matching.filter(o => !conflictIds.has(o.id));
         return {
-          client, orders: matching,
-          totalPairs: matching.reduce((s, o) => s + o.total_pairs, 0),
-          hasConflict: matching.some(o => conflictIds.has(o.id)),
-          allSelected: sel.length > 0 && sel.every(o => selected.has(o.id)),
-          someSelected: sel.some(o => selected.has(o.id)),
+          client, orders,
+          totalPairs: orders.reduce((s, o) => s + o.total_pairs, 0),
+          hasConflict: orders.some(o => conflictIds.has(o.id)),
+          allSelected: orders.length > 0 && orders.every(o => sel.isSelected(o.id)),
+          someSelected: orders.some(o => sel.isSelected(o.id)),
         };
       })
-      .filter((g): g is ClientGroup => g !== null)
       .sort((a, b) => {
         if (a.hasConflict !== b.hasConflict) return a.hasConflict ? -1 : 1;
         return a.client.localeCompare(b.client, 'pt-BR');
       });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingOrders, selected, conflictIds, search]);
+  }, [filteredOrders, conflictIds, sel.selectedIds, sel.isSelected]);
 
-  function toggleOrder(id: string) {
+  function toggleOrder(id: string, e?: React.MouseEvent) {
     if (conflictIds.has(id)) { toast.error('Este pedido já está em uma onda ativa.'); return; }
-    setSelected(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+    sel.toggle(id, e);
   }
   function toggleClient(group: ClientGroup) {
     const ids = group.orders.filter(o => !conflictIds.has(o.id)).map(o => o.id);
-    setSelected(prev => {
-      const n = new Set(prev);
-      if (group.allSelected) ids.forEach(id => n.delete(id)); else ids.forEach(id => n.add(id));
-      return n;
-    });
+    if (group.allSelected) {
+      const next = new Set(sel.selectedIds);
+      ids.forEach((id) => next.delete(id));
+      sel.clear();
+      if (next.size > 0) sel.selectMatchingIds(next);
+    } else {
+      sel.selectMatchingIds(ids);
+    }
   }
   function toggleCollapse(client: string) {
     setCollapsed(prev => { const n = new Set(prev); if (n.has(client)) n.delete(client); else n.add(client); return n; });
   }
-  function selectAll() {
-    const all = pendingOrders.filter(o => !conflictIds.has(o.id));
-    setSelected(prev => prev.size === all.length ? new Set() : new Set(all.map(o => o.id)));
-  }
+
+  const allVisibleSelected =
+    filteredOrders.length > 0 && filteredOrders.every((o) => sel.isSelected(o.id));
+  const toggleVisible = () => {
+    if (allVisibleSelected) sel.deselectVisible();
+    else sel.selectAll();
+  };
 
   async function goToPreview() {
-    const ids = Array.from(selected);
+    if (sel.count === 0) return;
+    if (!confirmIfHiddenSelection({
+      totalSelected: sel.count,
+      hiddenSelectedCount: sel.hiddenSelectedCount,
+      entityLabel: 'pedido',
+      actionLabel: 'Revisar',
+    })) return;
+    const ids = Array.from(sel.selectedIds);
     // Re-check conflicts
     const conflicts = await findActiveWaveConflicts(ids);
     if (conflicts.length > 0) {
       const cSet = new Set(conflicts.map(c => c.sale_order_id));
       setConflictIds(prev => new Set([...prev, ...cSet]));
-      setSelected(prev => { const n = new Set(prev); cSet.forEach(id => n.delete(id)); return n; });
+      const next = new Set(sel.selectedIds);
+      cSet.forEach((id) => next.delete(id));
+      sel.clear();
+      if (next.size > 0) sel.selectMatchingIds(next);
       toast.error(`Pedido(s) em onda ativa removidos. Revise a seleção.`);
       return;
     }
@@ -348,7 +423,13 @@ export function WaveBuilder({
   }
 
   async function handleCreate(generatePOs: boolean) {
-    if (!selected.size || creating) return;
+    if (!sel.count || creating) return;
+    if (!confirmIfHiddenSelection({
+      totalSelected: sel.count,
+      hiddenSelectedCount: sel.hiddenSelectedCount,
+      entityLabel: 'pedido',
+      actionLabel: 'Criar onda com',
+    })) return;
     if (hasMaterialBlockers) {
       toast.error('Corrija as cores de material sem SKU antes de criar a onda.');
       return;
@@ -365,7 +446,7 @@ export function WaveBuilder({
       // antes de OPs com prazo apertado dentro da mesma onda. PVs sem
       // deadline ficam no final.
       const candidateMap = new Map(pendingOrders.map(o => [o.id, o.delivery_deadline]));
-      const ids = Array.from(selected).sort((a, b) => {
+      const ids = Array.from(sel.selectedIds).sort((a, b) => {
         const da = candidateMap.get(a);
         const db = candidateMap.get(b);
         if (!da && !db) return 0;
@@ -417,7 +498,7 @@ export function WaveBuilder({
       } else {
         onCreated?.(waveId);
         onOpenChange(false);
-        setSelected(new Set());
+        sel.clear();
         setStep('select');
       }
     } catch (err: any) {
@@ -428,9 +509,8 @@ export function WaveBuilder({
     }
   }
 
-  const selectableCount = pendingOrders.filter(o => !conflictIds.has(o.id)).length;
-  const matchCount = clientGroups.reduce((s, g) => s + g.orders.length, 0);
-  const totalPairs = pendingOrders.filter(o => selected.has(o.id)).reduce((s, o) => s + o.total_pairs, 0);
+  const matchCount = filteredOrders.length;
+  const totalPairs = pendingOrders.filter(o => sel.isSelected(o.id)).reduce((s, o) => s + o.total_pairs, 0);
   const hasShortages = materialNeeds.some(n => !n.is_artisanal && n.shortage > 0);
   const hasMaterialBlockers = materialNeeds.some(n =>
     isBlockingWaveMaterialWarning(n.conversion_warning));
@@ -461,23 +541,32 @@ export function WaveBuilder({
                   className="mt-1 h-9"
                 />
               </div>
-              <div className="flex items-end justify-between gap-2">
-                <Button type="button" variant="outline" size="sm" disabled={loading || !selectableCount} onClick={selectAll}>
-                  {selected.size === selectableCount && selectableCount > 0 ? 'Desmarcar todos' : 'Selecionar todos'}
-                </Button>
+              <div className="flex items-end justify-end gap-2">
                 <div className="text-sm text-muted-foreground text-right">
                   <Package className="inline w-4 h-4 mr-1" />
-                  <strong>{selected.size}</strong> ped. / <strong>{totalPairs}</strong> pares
+                  <strong>{sel.count}</strong> ped. / <strong>{totalPairs}</strong> pares
+                  {sel.hiddenSelectedCount > 0 ? (
+                    <span className="block text-xs text-amber-600">{sel.hiddenSelectedCount} fora do filtro</span>
+                  ) : null}
                 </div>
               </div>
             </div>
-            <SearchInput
-              value={search}
-              onChange={setSearch}
-              placeholder="Buscar por razão social, CNPJ, nº do pedido, OP…"
+            <OrderMultiSelectToolbar
+              search={search}
+              onSearchChange={setSearch}
+              searchPlaceholder="Buscar por razão social, CNPJ, nº do pedido, OP…"
               resultCount={matchCount}
               totalCount={pendingOrders.length}
-              inputClassName="h-9 text-sm"
+              clientOptions={clientOptions}
+              clientFilter={clientFilter}
+              onClientFilterChange={setClientFilter}
+              weekFilter={weekFilter}
+              onWeekFilterChange={setWeekFilter}
+              allVisibleSelected={allVisibleSelected}
+              visibleCount={filteredOrders.length}
+              onToggleVisible={toggleVisible}
+              matchedCodeCount={matchedCodeIdsUnique.length}
+              onSelectMatched={() => sel.selectMatchingIds(matchedCodeIdsUnique)}
             />
 
             {conflictIds.size > 0 && (
@@ -489,7 +578,12 @@ export function WaveBuilder({
               </div>
             )}
 
-            <div className="border rounded-lg overflow-y-auto flex-1 min-h-0">
+            <div
+              ref={sel.containerRef}
+              data-marquee-container
+              onMouseDown={sel.onContainerMouseDown}
+              className="relative border rounded-lg overflow-y-auto flex-1 min-h-0"
+            >
               {loading ? (
                 <div className="p-3 space-y-2"><Skeleton className="h-8" /><Skeleton className="h-8" /><Skeleton className="h-8" /></div>
               ) : pendingOrders.length === 0 ? (
@@ -534,12 +628,16 @@ export function WaveBuilder({
                             <tbody className="divide-y divide-border/50">
                               {group.orders.map(o => {
                                 const isConflict = conflictIds.has(o.id);
-                                const isSelected = selected.has(o.id);
+                                const isSelected = sel.isSelected(o.id);
                                 return (
-                                  <tr key={o.id}
+                                  <tr
+                                    key={o.id}
+                                    data-marquee-item
+                                    data-marquee-id={o.id}
                                     className={cn('cursor-pointer transition-colors',
-                                      isConflict ? 'bg-destructive/5 opacity-60' : isSelected ? 'bg-primary/5' : 'hover:bg-muted/30')}
-                                    onClick={() => toggleOrder(o.id)}>
+                                      isConflict ? 'bg-destructive/5 opacity-60' : isSelected ? 'bg-primary/5 ring-1 ring-inset ring-success/30' : 'hover:bg-muted/30')}
+                                    onClick={(e) => toggleOrder(o.id, e)}
+                                  >
                                     <td className="w-10 px-4 py-2"><Checkbox checked={isSelected} disabled={isConflict} onCheckedChange={() => toggleOrder(o.id)} onClick={e => e.stopPropagation()} /></td>
                                     <td className="px-2 py-2 font-mono text-xs w-32">{o.code ?? o.id.slice(0, 8)}</td>
                                     <td className="px-2 py-2 flex-1">
@@ -565,6 +663,7 @@ export function WaveBuilder({
                   })}
                 </div>
               )}
+              <MarqueeOverlay rect={sel.marqueeRect} />
             </div>
           </div>
         )}
@@ -619,7 +718,7 @@ export function WaveBuilder({
           {step === 'select' && (
             <>
               <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-              <Button onClick={goToPreview} disabled={!selected.size || loading}>
+              <Button onClick={goToPreview} disabled={!sel.count || loading}>
                 Verificar materiais <ArrowRight className="h-4 w-4 ml-1" />
               </Button>
             </>
@@ -666,7 +765,7 @@ export function WaveBuilder({
           setPendingWaveId(null);
           setOverflowOrderIds([]);
           onOpenChange(false);
-          setSelected(new Set());
+          sel.clear();
           setStep('select');
         }}
       />

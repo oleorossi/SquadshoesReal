@@ -225,6 +225,31 @@ describe('canonicalConsumptionReport', () => {
     }] as unknown[]))).toThrow(CanonicalConsumptionReportError);
   });
 
+  it('aceita strap_preview sem chave recipe_id (overlay stale omitia a chave)', () => {
+    const preview = {
+      scope_key: IDS.scope1,
+      scope_type: 'production_order' as const,
+      sale_order_id: IDS.saleOrder,
+      sale_order_item_id: IDS.saleItem,
+      line_ordinal: 0,
+      technical_strap_line_id: IDS.strapLine,
+      strap_variant_id: null,
+      source_mode: 'internal' as const,
+      gross_required_m: 4,
+      base_product_id: null,
+      finished_product_id: null,
+      blocking_reasons: [{
+        code: 'overlay_recipe_missing',
+        field: 'recipe_id',
+        message: 'Não há receita aprovada para este tipo×napa.',
+      }],
+      resolved: { recipe_yield_stale_overlay: true },
+    };
+    // Sem recipe_id — reproduz o payload que quebrava /imprimir-fichas.
+    const parsed = validateCanonicalConsumptionReport(response([], [preview]));
+    expect(parsed.strap_previews[0].recipe_id).toBeNull();
+  });
+
   it('preserva preview resolvida por UUID sem inferir identidade por texto', () => {
     const parsed = validateCanonicalConsumptionReport(response([], [{
       scope_key: IDS.scope1,

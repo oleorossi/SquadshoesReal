@@ -203,7 +203,8 @@ export function LabelTemplatesTab() {
         templateId,
       });
       const doc = await buildStandardTextLabelsPdf(samples, preset);
-      doc.save(standardTextLabelsFilename(preset));
+      const { deliverJsPdf } = await import('@/lib/pdfDelivery');
+      deliverJsPdf(doc, standardTextLabelsFilename(preset), 'Etiquetas');
       await setPrintJobStatus(jobId, 'generated');
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['print_jobs_dashboard'] }),

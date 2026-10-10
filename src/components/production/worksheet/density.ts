@@ -38,13 +38,21 @@
  *     foram AUMENTADAS a pedido do dono em 2026-07-22 (de 54 pra 92). Não
  *     reduzir — o cortador identifica o modelo por elas. Layout compacto já
  *     empacota 2 cores; A.3 **não** quebra esse arranjo.
+ *   - **Corte Cabedal (completo) multi-ref**: miniaturas saem do header e
+ *     sentam ao lado da grade quando `fitBesideGrade` aprova — evita header
+ *     alto empurrando a 2ª cor pra folha nova.
  *   - **Silk**: a logomarca a estampar (110px) é o objeto de trabalho do setor,
  *     e já renderiza com o texto AO LADO (a largura é usada). Fica como está.
- *   - **Palmilha / Solagem**: o strip de sandálias já usa 55×55 com wrap,
- *     ocupando a largura inteira. A.3 aplica grade dense + chrome + split
- *     trabalho/fechamento; não reduz as miniaturas.
- *   - **Operator** (Colagem etc.): a foto já tem os dados ao lado — a largura
- *     é usada. Já emite vários `SheetBlock`s; A.3 só aplica grade dense.
+ *   - **Palmilha**: strip 55×55; quando `fitBesideGrade` aprova, fotos
+ *     sentam ao lado da grade (mesmo padrão do Corte Forração). Muitas refs
+ *     voltam a empilhar. A.3 + chrome denso + split trabalho/fechamento.
+ *   - **Solagem**: strip continua EMPILHADO — sideBySide foi medido em
+ *     30/08/2026 e não reduziu folhas (3→3); só aperta padding/chrome.
+ *   - **PalmilhaUnified**: split A.3 + chrome denso; sem TraceStrip hero;
+ *     linha de PV/cliente do card só quando o card não cobre o conjunto
+ *     da página (evita duplicar o HeaderIdentification).
+ *   - **Operator** (Colagem etc.): foto + dados (+ grade quando cabe) ao
+ *     lado. TraceStrip do lote não repete PV/cliente do header.
  *   - **Reduced**: já nasceu no padrão da Opção A (foto ao lado da grade +
  *     tally `sm`). É o precedente que as outras fichas passam a seguir.
  */
@@ -62,6 +70,11 @@ export const TALLY_SIZE = 'sm' as const;
  *  nome em Anton 22px ≈ 29px, lado direito com "Pares" em Anton 25px ≈ 31px),
  *  então a miniatura define a altura da linha sem custar quase nada. */
 export const HEADER_THUMB_PX = 46;
+
+/** Foto grande opcional do Aviamento A4 (toggle por referência na barra de
+ *  Imprimir Fichas). Mesmo tamanho default histórico do ProductImageBlock —
+ *  bloco próprio sob o subtítulo da referência, sem legenda. */
+export const AVIAMENTO_HERO_PHOTO_PX = 140;
 
 /** Lado do checkbox por numeração (linhas Frente/Traseira do Aviamento).
  *  20 → 16 → 14px (A.2): ainda marcável à caneta; devolve ~4px por linha
@@ -108,7 +121,7 @@ export const STEP_ROW_PAD_Y = 1;
  *   3. células da tabela de consumo multi-linha apertadas no eixo vertical;
  *   4. 2 `SheetBlock`s por cor/banda (trabalho + fechamento `keepWithPrev`)
  *      nos setores de layout completo — ver `SilkMontageWorkSheet`,
- *      `PalmilhaWorkSheet`, `SolagemWorkSheet`.
+ *      `PalmilhaWorkSheet`, `PalmilhaUnifiedWorkSheet`, `SolagemWorkSheet`.
  *
  * Alvo: card típico ≤ ~45% de `PAGE_CAPACITY_PX` (após `PRINT_INFLATE`), para
  * 2 cards + gap caberem na mesma folha quando o maço permitir.

@@ -1,5 +1,6 @@
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster as Sonner } from "@/components/ui/sonner";
+import PdfDeliveryHost from "@/components/pdf/PdfDeliveryHost";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider, QueryCache, MutationCache, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -47,6 +48,7 @@ const MobileProfile = lazy(() => import("./pages/mobile/MobileProfile"));
 // Rota /imagens-cores agora redireciona pra /fichas-tecnicas.
 const InputCostsPage = lazy(() => import("./pages/InputCostsPage"));
  const TechnicalSheets = lazy(() => import("./pages/TechnicalSheets"));
+const Atelie = lazy(() => import("./pages/Atelie"));
 // Padrões do Calçado — regras GLOBAIS de componente/tira por cor
 // (component_color_defaults): grupo + cor do pedido → SKU padrão.
 const ColorStandards = lazy(() => import("./pages/ColorStandards"));
@@ -115,7 +117,8 @@ const PCPHub = lazy(() => import("./pages/PCPHub"));
 // Remodelagem Produção 2026-07-12 (specs/remodelagem-producao.md): rotas
 // diretas no lugar do hub de 14 abas. PCPHub virou só o redirect legado.
 const ProducaoPlanejamento = lazy(() => import("./pages/ProducaoPlanejamento"));
-const ProducaoAntecipacao = lazy(() => import("./pages/ProducaoAntecipacao"));
+const ProducaoSequencia = lazy(() => import("./pages/ProducaoSequencia"));
+const ProducaoCorteLookahead = lazy(() => import("./pages/ProducaoCorteLookahead"));
 const ProducaoKanban = lazy(() => import("./pages/ProducaoKanban"));
 const ProducaoKanbanGestao = lazy(() => import("./pages/ProducaoKanbanGestao"));
 const ProducaoEstouro = lazy(() => import("./pages/ProducaoEstouro"));
@@ -759,6 +762,12 @@ const DESIGN_PREVIEW_ROUTES: RouteObject[] = import.meta.env.DEV
         lazy: () => import("./pages/DesignPreview").then(m => ({ Component: m.default })),
         errorElement: <RouteErrorFallback />,
       },
+      {
+        // Auditoria DEV da densificação — fixtures, sem login. Fora do bundle de prod.
+        path: "/density-audit",
+        lazy: () => import("./pages/DensityAudit").then(m => ({ Component: m.default })),
+        errorElement: <RouteErrorFallback />,
+      },
     ]
   : [];
 
@@ -861,8 +870,17 @@ const router = createBrowserRouter([
         element: <ProducaoPlanejamento />,
       },
       {
+        // Antecipação unificada no Ateliê (agenda + fila Costura/Aviamento).
         path: "producao/antecipacao",
-        element: <ProducaoAntecipacao />,
+        element: <Navigate to="/atelie" replace />,
+      },
+      {
+        path: "producao/sequencia",
+        element: <ProducaoSequencia />,
+      },
+      {
+        path: "producao/corte-lookahead",
+        element: <ProducaoCorteLookahead />,
       },
       {
         path: "producao/kanban",
@@ -921,6 +939,11 @@ const router = createBrowserRouter([
        {
          path: "fichas-tecnicas",
          element: <TechnicalSheets />,
+       },
+       {
+         // Ateliê — cabedal complexo (rua): cadastro × setor + fila Debitar/Enviado/Recebido.
+         path: "atelie",
+         element: <Atelie />,
        },
        {
          // Hub de padrões globais do calçado (regras de componente/tira por
@@ -1287,6 +1310,7 @@ const App = () => (
           <TooltipProvider>
             <VersionChecker />
             <Sonner position="top-right" closeButton richColors />
+            <PdfDeliveryHost />
             <RouterProvider router={router} />
           </TooltipProvider>
         </AuthCacheBoundary>

@@ -1,5 +1,6 @@
 import type { SalaryDayLedger, SalaryDayLedgerStatus } from '@/lib/salaryPayroll';
 import { classifyPayrollCalendarDay, type PayrollCalendarDayKind } from '@/lib/ponto/payrollCalendarDay';
+import type { MonthHeBreakdown } from '@/lib/ponto/timeBalancePeriod';
 import { getISOWeekKey, getWeekMonday, getWeekSunday } from '@/lib/weeklyTimeCalculation';
 
 export type TimeBalanceReportKind = 'overtime' | 'deficit' | 'all';
@@ -19,6 +20,8 @@ export interface TimeBalanceEmployeeInput {
   payableDebitMinutes?: number | null;
   overtimeValue?: number | null;
   overtimeRateMissing?: boolean | null;
+  /** Soma mês a mês quando o intervalo é feito de meses civis completos. */
+  monthBreakdown?: MonthHeBreakdown[] | null;
 }
 
 export interface TimeBalanceDay {
@@ -69,8 +72,42 @@ export interface EmployeeTimeBalanceReport {
   totalPayableOvertimeMinutes: number;
   totalPayableDebitMinutes: number;
   finalPayableBalanceMinutes: number;
+  /**
+   * Minutos de HE usados só no card/coluna "Valor de HE a pagar".
+   * Zera quando o período fecha em débito ou compensado — o
+   * `totalPayableOvertimeMinutes` continua intacto pra montar o resultado final.
+   */
+  payableOvertimeForPaymentMinutes: number;
   overtimeValue: number;
   overtimeRateMissing: boolean;
+  /** Presente só com meses civis completos agregados. */
+  monthBreakdown?: MonthHeBreakdown[];
+}
+
+const MES_LABEL = [
+  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
+];
+
+/** Agrupa semanas por mês civil da startDate — usado na grade em blocos. */
+export function groupWeeksByCivilMonth(weeks: TimeBalanceWeek[]): { period: string; label: string; weeks: TimeBalanceWeek[] }[] {
+  const map = new Map<string, TimeBalanceWeek[]>();
+  for (const week of weeks) {
+    const period = week.startDate.slice(0, 7);
+    const list = map.get(period) || [];
+    list.push(week);
+    map.set(period, list);
+  }
+  return [...map.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([period, monthWeeks]) => {
+      const [y, m] = period.split('-').map(Number);
+      return {
+        period,
+        label: `${MES_LABEL[(m || 1) - 1]} de ${y}`,
+        weeks: monthWeeks,
+      };
+    });
 }
 
 function effectiveExpectedMinutes(day: SalaryDayLedger): number {
@@ -159,6 +196,24 @@ export function buildEmployeeTimeBalanceReport(input: TimeBalanceEmployeeInput):
     ?? sortedLedger.reduce((sum, day) => sum + (Number(day.payable_overtime_minutes) || 0), 0);
   const totalPayableDebitMinutes = input.payableDebitMinutes
     ?? sortedLedger.reduce((sum, day) => sum + (Number(day.payable_delay_minutes) || 0), 0);
+  const finalPayableBalanceMinutes = totalPayableOvertimeMinutes - totalPayableDebitMinutes;
+  // Período em débito/compensado: não há HE a pagar no relatório do intervalo,
+  // mesmo que algum mês civil isolado tenha fechado com HE (soma multi-mês).
+  const periodHasPayableHe = finalPayableBalanceMinutes > 0;
+  const overtimeValue = periodHasPayableHe
+    ? Math.max(0, Number(input.overtimeValue) || 0)
+    : 0;
+  const payableOvertimeForPaymentMinutes = periodHasPayableHe
+    ? totalPayableOvertimeMinutes
+    : 0;
+  const rawBreakdown = Array.isArray(input.monthBreakdown) && input.monthBreakdown.length > 0
+    ? input.monthBreakdown
+    : undefined;
+  const monthBreakdown = rawBreakdown
+    ? (periodHasPayableHe
+      ? rawBreakdown
+      : rawBreakdown.map(month => ({ ...month, overtimeValue: 0 })))
+    : undefined;
 
   return {
     id: input.id,
@@ -179,9 +234,11 @@ export function buildEmployeeTimeBalanceReport(input: TimeBalanceEmployeeInput):
     totalCompensatedMinutes,
     totalPayableOvertimeMinutes,
     totalPayableDebitMinutes,
-    finalPayableBalanceMinutes: totalPayableOvertimeMinutes - totalPayableDebitMinutes,
-    overtimeValue: Math.max(0, Number(input.overtimeValue) || 0),
+    finalPayableBalanceMinutes,
+    payableOvertimeForPaymentMinutes,
+    overtimeValue,
     overtimeRateMissing: input.overtimeRateMissing === true,
+    monthBreakdown,
   };
 }
 

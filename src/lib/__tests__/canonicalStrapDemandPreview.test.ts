@@ -519,6 +519,32 @@ describe('preview canônica de tiras', () => {
     expect(rows[0].cut.n_bandas).toBe(0);
   });
 
+  it('propaga measure_id / base_group_id da preview para a cut row', () => {
+    const withIds = preview({
+      resolved: {
+        strap_product_name: 'TIRA CHATA 8MM · NAPA SOFT',
+        measure_name: 'CHATA 8MM',
+        measure_id: 'measure-chata-8',
+        strap_type_id: 'type-chata',
+        base_group_id: 'group-soft',
+        strap_color_name: 'OFF WHITE',
+        base_product_name: 'NAPA SOFT · OFF WHITE',
+        confirmed_yield_m_per_m: 64,
+        base_required_m: 10,
+        cut_band_width_mm: 20,
+        usable_base_width_mm_snapshot: 1370,
+        theoretical_yield_m_per_m: 68,
+      },
+    });
+    expect(withIds.measureId).toBe('measure-chata-8');
+    expect(withIds.typeId).toBe('type-chata');
+    expect(withIds.baseGroupId).toBe('group-soft');
+    const [cut] = canonicalStrapCutRows([withIds]);
+    expect(cut.measureId).toBe('measure-chata-8');
+    expect(cut.typeId).toBe('type-chata');
+    expect(cut.baseGroupId).toBe('group-soft');
+  });
+
   it('extrai o custo de mão de obra do catalog e preserva R$/m na agregação', () => {
     const withCost = preview({
       resolved: {

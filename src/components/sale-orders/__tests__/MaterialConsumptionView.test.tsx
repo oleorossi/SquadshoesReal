@@ -79,7 +79,8 @@ describe('MaterialConsumptionView — tela buy-first', () => {
     renderView();
     // NAPA SOFT: 1,00 (OFF WHITE) + 1,00 (PRETO) = 2,00 m de napa. Palmilha/EVA
     // e solado não são material base e ficam fora do herói.
-    const hero = screen.getByText('Necessidade de material base').closest('div')!;
+    const heroes = screen.getAllByText('Necessidade de napa');
+    const hero = heroes[0].closest('div')!;
     expect(hero).toHaveTextContent('2,00');
     expect(hero).toHaveTextContent('NAPA SOFT');
     // 4 itens em falta: EVA, OURO LIGHT, NAPA SOFT OFF WHITE e o solado.
@@ -481,10 +482,10 @@ describe('MaterialConsumptionView — tela buy-first', () => {
   it('no diálogo não repete o título do chrome no herói', () => {
     renderView({ embedded: true });
     expect(screen.queryByRole('heading', { name: /Consumo de Materiais — PV-00151/i })).not.toBeInTheDocument();
-    expect(screen.getByText('Necessidade de material base')).toBeInTheDocument();
+    expect(screen.getAllByText('Necessidade de napa').length).toBeGreaterThan(0);
   });
 
-  it('filtra por material base e agrupa a cor só em cabedal/forração (napa de tira no setor próprio)', async () => {
+  it('filtra por material base e agrupa a cor em cabedal/forração/tira', async () => {
     const user = userEvent.setup();
     renderView({
       rows: [
@@ -553,10 +554,11 @@ describe('MaterialConsumptionView — tela buy-first', () => {
     const breakdown = screen.getByLabelText(/Consumo por aplicação em NEW WHISKY/i);
     expect(within(breakdown).getByText('Cabedal')).toBeInTheDocument();
     expect(within(breakdown).getByText('Forração')).toBeInTheDocument();
-    expect(within(breakdown).queryByText('Tira')).not.toBeInTheDocument();
+    expect(within(breakdown).getByText('Tira')).toBeInTheDocument();
     expect(within(breakdown).getByText('10,00 m')).toBeInTheDocument();
     expect(within(breakdown).getByText('20,21 m')).toBeInTheDocument();
-    expect(within(breakdown).getByText('30,21 m')).toBeInTheDocument();
+    expect(within(breakdown).getByText('20,04 m')).toBeInTheDocument();
+    expect(within(breakdown).getByText('50,25 m')).toBeInTheDocument();
     expect(screen.getByText('Napa para tiras')).toBeInTheDocument();
     expect(screen.getAllByText(/20[,.]04/).length).toBeGreaterThan(0);
     expect(screen.queryByText('EVA 3MM')).not.toBeInTheDocument();

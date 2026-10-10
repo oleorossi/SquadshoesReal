@@ -24,6 +24,8 @@ describe('setor próprio Napa para tiras — cadastro incompleto', () => {
     const pending: ArtisanalStrapCutRow = {
       key: 'pending', groupName: 'TIRA OVERLOCK 5MM', color: 'PRETO',
       largura_mm: 5, metros_necessarios: 36,
+      measureId: 'measure-overlock-5',
+      measureName: 'TIRA OVERLOCK 5 mm',
       cut: { largura_mm: 5, metros_uteis_por_banda: 0, n_bandas: 0, cm_a_cortar: 0,
         rolos: 0, n_rolos_completos: 0, cm_no_ultimo_rolo: 0, valid: false, widthMissing: false },
       canonical: { recipeId: 'recipe', baseRequiredM: 0, confirmedYieldMPerM: 0,
@@ -33,9 +35,10 @@ describe('setor próprio Napa para tiras — cadastro incompleto', () => {
     render(<MemoryRouter><ArtisanalStrapRollCutBlock rows={[pending]} /></MemoryRouter>);
     expect(screen.getByText('Napa para tiras')).toBeInTheDocument();
     expect(screen.getByText('Cadastro incompleto')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Informar rendimento/ })).toBeInTheDocument();
     expect(screen.queryByText('Separar napa')).not.toBeInTheDocument();
     expect(screen.queryByText(/Corrigir receita/)).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Abrir calculadora de tiras/ })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /calculadora de tiras/i })).toBeInTheDocument();
     const html = buildMaterialConsumptionReportHtml({ rows: [], artisanalStrapRows: [pending],
       title: 'Teste', mode: 'total', generatedAt: new Date('2026-09-05T12:00:00Z') });
     expect(html).toContain('Napa para tiras');

@@ -45,8 +45,27 @@ describe('autoResyncUnstartedOps helpers', () => {
       skippedStarted: 3,
       deltaReserved: 2,
       deltaShortfalls: 1,
+      strapsUpdated: 0,
       errors: [{ order_number: 'OP-1', message: 'estoque' }],
     });
+  });
+
+  it('parseia straps_updated do payload', async () => {
+    rpc.mockResolvedValue({
+      data: {
+        resynced: 1,
+        skipped_inactive: 0,
+        skipped_started: 0,
+        delta_reserved: 0,
+        delta_shortfalls: 0,
+        straps_updated: 4,
+        errors: [],
+      },
+      error: null,
+    });
+    const { autoResyncUnstartedOpsForSheet } = await import('../resyncOPs');
+    const summary = await autoResyncUnstartedOpsForSheet('sheet-1');
+    expect(summary.strapsUpdated).toBe(4);
   });
 
   it('toast menciona delta reservado e shortfalls; prioriza falhas', async () => {
@@ -57,6 +76,7 @@ describe('autoResyncUnstartedOps helpers', () => {
       skippedStarted: 1,
       deltaReserved: 0,
       deltaShortfalls: 0,
+      strapsUpdated: 0,
       errors: [],
     });
     expect(toastSuccess).toHaveBeenCalledWith(
@@ -71,6 +91,7 @@ describe('autoResyncUnstartedOps helpers', () => {
       skippedStarted: 2,
       deltaReserved: 2,
       deltaShortfalls: 0,
+      strapsUpdated: 0,
       errors: [],
     });
     expect(toastSuccess).toHaveBeenCalledWith(
@@ -85,10 +106,11 @@ describe('autoResyncUnstartedOps helpers', () => {
       skippedStarted: 1,
       deltaReserved: 1,
       deltaShortfalls: 3,
+      strapsUpdated: 2,
       errors: [],
     });
     expect(toastWarning).toHaveBeenCalledWith(
-      '1 OP com consumo atualizado · 1 OP com materiais faltantes reservados · 3 materiais sem estoque livre',
+      '2 itens de PV com tiras realinhadas · 1 OP com consumo atualizado · 1 OP com materiais faltantes reservados · 3 materiais sem estoque livre',
       { duration: 8000 },
     );
 
@@ -100,6 +122,7 @@ describe('autoResyncUnstartedOps helpers', () => {
         skippedStarted: 0,
         deltaReserved: 0,
         deltaShortfalls: 0,
+        strapsUpdated: 0,
         errors: [],
       },
       { emptyMessage: 'nada a fazer' },

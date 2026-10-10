@@ -34,7 +34,7 @@ import { clampPageRange, isPageInRange } from '@/lib/printPageRange';
  * compensação.
  *
  * Cartão físico: os filhos top-level do stack são wrappers de FOLHA
- * (`.cartao-page`, até 12 cartões em chunk sequencial). Inverter por folha —
+ * (`.cartao-page`, até 15 cartões em chunk sequencial). Inverter por folha —
  * não por cartão. A faixa De/Até é aplicada ANTES da inversão (ordem de
  * leitura); só as folhas restantes entram no DOM / invert.
  */

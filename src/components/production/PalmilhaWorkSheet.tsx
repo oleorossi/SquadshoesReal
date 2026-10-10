@@ -1,14 +1,17 @@
 import React from 'react';
 import { Scissors } from '@phosphor-icons/react';
 import { adaptiveLabelFontSize } from '@/lib/adaptiveFontSize';
-import { gradeTableFont, floorSafeScale } from './worksheet/adaptiveFont';
+import { A4_CONTENT_WIDTH_PX, gradeTableFont, floorSafeScale } from './worksheet/adaptiveFont';
 import { thumbUrl } from '@/lib/imageThumb';
 import { TallyBox } from './worksheet/TallyBox';
 import { TALLY_SIZE, STEP_CHECKBOX_PX, STEP_ROW_PAD_Y } from './worksheet/density';
+import { fitBesideGrade, thumbRowWidthPx } from './worksheet/sideBySide';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { HeaderIdentification } from './worksheet/HeaderIdentification';
 import { SectorAlerts, type SectorAlert } from './worksheet/SectorAlerts';
 import { PaginatedSheet, type SheetBlock } from './worksheet/PaginatedSheet';
+import { usePrintOrderIdentity } from './worksheet/PrintOrderIdentityContext';
+import { pageIdentityForOps } from './worksheet/pageIdentity';
 import { formatOpNumber } from './worksheet/stageOrder';
 import { fichaModelFor } from './worksheet/fichaModel';
 import { TraceStrip } from './worksheet/TraceStrip';
@@ -105,6 +108,13 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
   // identificação E no QR escaneável do canto).
   const pvs = Array.from(new Set(groups.flatMap(g => g.pvNumbers || []).filter(Boolean)));
   const clientNames = Array.from(new Set(groups.flatMap(g => g.clientNames || []).filter(Boolean)));
+  const allOps = Array.from(new Set(groups.flatMap(g => g.opNumbers || []).filter(Boolean)));
+  const orderIdentityByOp = usePrintOrderIdentity();
+  const pageIdentity = pageIdentityForOps(
+    sectorLabel || 'Corte de Placa de Fibra',
+    allOps,
+    orderIdentityByOp,
+  );
 
   // ── Blocos atômicos pro PaginatedSheet (2026-06-12) ──
   // Header da ficha → 1 card por solado → Total Geral → rodapé de conclusão.
@@ -149,8 +159,6 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
         trace={model === 'lote' ? (
           <TraceStrip
             ops={Array.from(new Set(groups.flatMap(g => g.opNumbers || []).filter(Boolean)))}
-            pvNumbers={pvs}
-            clientNames={clientNames}
           />
         ) : undefined}
       />
@@ -204,9 +212,149 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
             // individualmente. v6 (2026-06-11): flow-card explicita o
             // comportamento e fecha a borda em cada fragmento de página
             // (box-decoration-break: clone).
-            const groupBlock = (
+            const sandaliaThumbPx = 55;
+              const refs = group.refs || [];
+              const maxGradeDigits = groupSizes.reduce(
+                (m, s) => Math.max(m, String(group.grade[s] ?? 0).length, String(group.baseGrade?.[s] ?? 0).length),
+                1,
+              );
+              // Strip ao lado da grade quando a largura mínima da grade aguenta
+              // (regra sideBySide). Poucas refs costumam caber; 5+ volta a empilhar.
+              const stripFit = refs.length > 0
+                ? fitBesideGrade({
+                    asideWidthPx: thumbRowWidthPx(refs.length, sandaliaThumbPx),
+                    sizeKeys: groupSizes,
+                    font: ft,
+                    maxCellDigits: maxGradeDigits,
+                    availableWidthPx: A4_CONTENT_WIDTH_PX - 16,
+                  })
+                : { fits: false, rigidWidthPx: 0, slackPx: 0 };
+
+              const sandaliaThumbs = refs.map((r) => (
+                <div key={r.key} className="keep-together flex flex-col items-center gap-0.5">
+                  <div className="bg-white overflow-hidden" style={{ width: sandaliaThumbPx, height: sandaliaThumbPx, border: '1.5px solid #000' }}>
+                    <img
+                      src={thumbUrl(r.image_url, sandaliaThumbPx) || r.image_url || '/placeholder.svg'}
+                      alt={r.code}
+                      width={sandaliaThumbPx}
+                      height={sandaliaThumbPx}
+                      className="w-full h-full object-contain mix-blend-multiply"
+                      loading="eager"
+                      style={{ printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' } as React.CSSProperties}
+                    />
+                  </div>
+                  <div className="text-center leading-tight">
+                    <span
+                      className="inline-block bg-black text-white font-bold px-1 py-0.5 rounded-sm uppercase"
+                      style={{ fontSize: '7px', letterSpacing: '0.04em' }}
+                    >
+                      {r.name || r.code || '—'}
+                    </span>
+                  </div>
+                </div>
+              ));
+
+              const gradeTable = (
+                <table className="w-full text-center" style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1.5px solid #000' }}>
+                      <th className="section-label py-1" style={{ color: '#000', width: 96, borderRight: '1px solid #000' }}>Nº</th>
+                      {groupSizes.map((s) => (
+                        <th
+                          key={s}
+                          className="text-black font-bold"
+                          style={{
+                            fontSize: `${ft.headerPx}px`,
+                            fontFamily: "'Fira Code', monospace",
+                            borderRight: '1px solid #000',
+                            padding: `${ft.padY}px 1px`,
+                            lineHeight: 1.2,
+                          }}
+                        >
+                          {s}
+                        </th>
+                      ))}
+                      <th className="section-label py-1" style={{ color: '#000', width: 56, whiteSpace: 'nowrap', letterSpacing: '0.06em' }}>Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {group.baseGrade && group.baseGradeSum && !group.mixedGrades && (
+                      <tr style={{ borderBottom: '1.5px solid #000' }}>
+                        <td className="py-1 text-[9px] font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: '1px solid #000', minWidth: 76, whiteSpace: 'nowrap', padding: `${ft.padY}px 4px`, letterSpacing: '0.04em' }}>
+                          Por Ficha<br />({group.baseGradeSum}p)
+                        </td>
+                        {groupSizes.map(s => (
+                          <td key={s} className="font-mono font-bold text-black" style={{ fontSize: `${ft.cellPx}px`, borderRight: '1px solid #000', padding: `${ft.padY}px 1px`, lineHeight: 1.2 }}>
+                            {group.baseGrade?.[s] || '—'}
+                          </td>
+                        ))}
+                        <td className="font-mono font-bold text-black" style={{ fontSize: `${ft.cellPx}px`, padding: `${ft.padY}px 1px`, lineHeight: 1.2 }}>
+                          {group.baseGradeSum}
+                        </td>
+                      </tr>
+                    )}
+                    <tr>
+                      <td className="py-1 font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: '1px solid #000', minWidth: 96, whiteSpace: 'nowrap', padding: `${ft.padY + 1}px 4px`, letterSpacing: '0.04em', fontSize: adaptiveLabelFontSize(group.fichas, group.mixedGrades) }}>
+                        {group.fichasAproximadas
+                          ? <>Total<br />≈ {group.fichas || 0} fichas</>
+                          : group.mixedGrades
+                            ? <>Total<br />({group.fichas || 0} fichas*)</>
+                            : group.fichas && group.fichas > 1
+                              ? <>Total<br />× {group.fichas} fichas</>
+                              : <>Total<br />(1 ficha)</>}
+                      </td>
+                      {groupSizes.map(s => (
+                        <td
+                          key={s}
+                          className="text-black"
+                          style={{
+                            fontFamily: "'Anton', Impact, sans-serif",
+                            fontSize: `${ft.displayPx}px`,
+                            letterSpacing: '-0.02em',
+                            lineHeight: '1.1',
+                            borderRight: '1px solid #000',
+                            padding: `${ft.padY + 2}px 1px`,
+                          }}
+                        >
+                          {group.grade[s] || 0}
+                        </td>
+                      ))}
+                      <td
+                        className="text-black"
+                        style={{
+                          fontFamily: "'Anton', Impact, sans-serif",
+                          fontSize: `${ft.displayPx}px`,
+                          letterSpacing: '-0.02em',
+                          lineHeight: '1.1',
+                          padding: `${ft.padY + 2}px 1px`,
+                        }}
+                      >
+                        {group.totalPairs}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td
+                        className="text-[10px] font-mono font-bold text-black uppercase tracking-wider"
+                        style={{ borderRight: '1px solid #000', padding: `${STEP_ROW_PAD_Y}px 4px` }}
+                      >
+                        CORTADO
+                      </td>
+                      {groupSizes.map(s => (
+                        <td key={s} style={{ borderRight: '1px solid #000', padding: `${STEP_ROW_PAD_Y}px 1px` }}>
+                          <span className="inline-block" style={{ width: STEP_CHECKBOX_PX, height: STEP_CHECKBOX_PX, border: '1.5px solid #000' }} />
+                        </td>
+                      ))}
+                      <td style={{ padding: `${STEP_ROW_PAD_Y}px 1px` }}>
+                        <span className="inline-block" style={{ width: STEP_CHECKBOX_PX, height: STEP_CHECKBOX_PX, border: '1.5px solid #000' }} />
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              );
+
+              const groupBlock = (
               <div className="flow-card bg-white" style={{ border: '1.5px solid #000' }}>
-                <div className="keep-together keep-with-next px-2 py-1 flex items-center justify-between" style={{ borderBottom: '1.5px solid #000' }}>
+                <div className="keep-together keep-with-next px-2 py-0.5 flex items-center justify-between" style={{ borderBottom: '1.5px solid #000' }}>
                   <div className="min-w-0 flex-1">
                     <span className="section-label block" style={{ color: '#000' }}>Solado</span>
                     <span
@@ -289,161 +437,42 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
                   </div>
                 )}
 
-                {/* Sandálias que usam essa palmilha — strip de fotos + ref.
-                    Fix 22/05/2026: imagens reduzidas de 110×110 pra 55×55.
-                    DOM audit mostrou que esse strip estourava 206mm em
-                    grupos consolidados com 6+ sandálias — sozinho era 73%
-                    da A4 útil. Cada sandália é keep-together individual
-                    (não quebra ao meio), mas o strip COMO UM TODO pode
-                    quebrar entre sandálias. */}
-                {group.refs && group.refs.length > 0 && (
-                  <div className="px-2 py-1 flex items-start gap-2 flex-wrap" style={{ borderBottom: '1px solid #000' }}>
-                    <span className="section-label shrink-0 self-center" style={{ color: '#000' }}>Sandálias</span>
-                    {group.refs.map((r) => (
-                      <div key={r.key} className="keep-together flex flex-col items-center gap-0.5">
-                        <div className="bg-white overflow-hidden" style={{ width: 55, height: 55, border: '1.5px solid #000' }}>
-                          <img
-                            src={thumbUrl(r.image_url, 55) || r.image_url || '/placeholder.svg'}
-                            alt={r.code}
-                            width={55}
-                            height={55}
-                            className="w-full h-full object-contain mix-blend-multiply"
-                            loading="eager"
-                            style={{ printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' } as React.CSSProperties}
-                          />
-                        </div>
-                        {/* SEM a cor da sandalia: este setor agrupa SOMENTE por
-                            solado (docblock do componente) e a cor da palmilha e
-                            indiferente pro cortador. Exibi-la em vermelho fazia a
-                            faixa ler como agrupamento por cor — corrigido na
-                            rodada 1 do redesenho (20/08/2026). */}
-                        <div className="text-center leading-tight">
-                          <span
-                            className="inline-block bg-black text-white font-bold px-1 py-0.5 rounded-sm uppercase"
-                            style={{ fontSize: '7px', letterSpacing: '0.04em' }}
-                          >
-                            {r.name || r.code || '—'}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
                 {alerts.length > 0 && (
-                  <div className="px-2 pt-2">
+                  <div className="keep-with-next px-2 pt-1">
                     <SectorAlerts alerts={alerts} />
                   </div>
                 )}
 
-                {/* keep-together: grade inteira (Por Ficha + Total) na mesma página */}
-                <table className="keep-together w-full text-center" style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1.5px solid #000' }}>
-                      {/* Largura precisa caber "Total × N fichas" (≈96px). Sob
-                          table-layout:fixed quem manda é o width do TH — antes
-                          era 54 e cortava o rótulo (reportado 09/06/2026). */}
-                      <th className="section-label py-1" style={{ color: '#000', width: 96, borderRight: '1px solid #000' }}>Nº</th>
-                      {groupSizes.map((s) => (
-                        <th
-                          key={s}
-                          className="text-black font-bold"
-                          style={{
-                            fontSize: `${ft.headerPx}px`,
-                            fontFamily: "'Fira Code', monospace",
-                            borderRight: '1px solid #000',
-                            padding: `${ft.padY}px 1px`,
-                            lineHeight: 1.2,
-                          }}
-                        >
-                          {s}
-                        </th>
-                      ))}
-                      <th className="section-label py-1" style={{ color: '#000', width: 56, whiteSpace: 'nowrap', letterSpacing: '0.06em' }}>Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {/* Linha "Por Ficha" só aparece quando TODAS as OPs do
-                        grupo têm a mesma grade base. Quando há grades mistas
-                        (audit 2026-05 encontrou 74 tabelas com perCard×N ≠
-                        Total), omitimos pra não confundir o operador. */}
-                    {group.baseGrade && group.baseGradeSum && !group.mixedGrades && (
-                      <tr style={{ borderBottom: '1.5px solid #000' }}>
-                        <td className="py-1 text-[9px] font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: '1px solid #000', minWidth: 76, whiteSpace: 'nowrap', padding: '4px 6px', letterSpacing: '0.04em' }}>
-                          Por Ficha<br />({group.baseGradeSum}p)
-                        </td>
-                        {groupSizes.map(s => (
-                          <td key={s} className="font-mono font-bold text-black" style={{ fontSize: `${ft.cellPx}px`, borderRight: '1px solid #000', padding: `${ft.padY}px 1px`, lineHeight: 1.2 }}>
-                            {group.baseGrade?.[s] || '—'}
-                          </td>
-                        ))}
-                        <td className="font-mono font-bold text-black" style={{ fontSize: `${ft.cellPx}px`, padding: `${ft.padY}px 1px`, lineHeight: 1.2 }}>
-                          {group.baseGradeSum}
-                        </td>
-                      </tr>
+                {/* Sandálias + grade: lado a lado quando fitBesideGrade aprova
+                    (poucas refs). Empilha quando a grade não aguenta a estreita. */}
+                {refs.length > 0 && stripFit.fits ? (
+                  <div
+                    className="keep-together keep-with-previous flex items-start gap-2 px-2 py-0.5"
+                    data-rigid-width={Math.ceil(stripFit.rigidWidthPx)}
+                    style={{ borderTop: alerts.length > 0 ? '1px solid #000' : undefined }}
+                  >
+                    <div className="shrink-0 flex flex-col gap-0.5">
+                      <span className="section-label" style={{ color: '#000' }}>Sandálias</span>
+                      <div className="flex items-start gap-2">{sandaliaThumbs}</div>
+                    </div>
+                    <div className="min-w-0 flex-1">{gradeTable}</div>
+                  </div>
+                ) : (
+                  <>
+                    {refs.length > 0 && (
+                      <div className="keep-with-next px-2 py-0.5 flex items-start gap-2 flex-wrap" style={{ borderBottom: '1px solid #000' }}>
+                        <span className="section-label shrink-0 self-center" style={{ color: '#000' }}>Sandálias</span>
+                        {sandaliaThumbs}
+                      </div>
                     )}
-                    <tr>
-                      <td className="py-1.5 font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: '1px solid #000', minWidth: 96, whiteSpace: 'nowrap', padding: '6px 6px', letterSpacing: '0.04em', fontSize: adaptiveLabelFontSize(group.fichas, group.mixedGrades) }}>
-                        {group.fichasAproximadas
-                          ? <>Total<br />≈ {group.fichas || 0} fichas</>
-                          : group.mixedGrades
-                            ? <>Total<br />({group.fichas || 0} fichas*)</>
-                            : group.fichas && group.fichas > 1
-                              ? <>Total<br />× {group.fichas} fichas</>
-                              : <>Total<br />(1 ficha)</>}
-                      </td>
-                      {groupSizes.map(s => (
-                        <td
-                          key={s}
-                          className="text-black"
-                          style={{
-                            fontFamily: "'Anton', Impact, sans-serif",
-                            fontSize: `${ft.displayPx}px`,
-                            letterSpacing: '-0.02em',
-                            lineHeight: '1.1',
-                            borderRight: '1px solid #000',
-                            padding: `${ft.padY + 2}px 1px`,
-                          }}
-                        >
-                          {group.grade[s] || 0}
-                        </td>
-                      ))}
-                      <td
-                        className="text-black"
-                        style={{
-                          fontFamily: "'Anton', Impact, sans-serif",
-                          fontSize: `${ft.displayPx}px`,
-                          letterSpacing: '-0.02em',
-                          lineHeight: '1.1',
-                          padding: `${ft.padY + 2}px 1px`,
-                        }}
-                      >
-                        {group.totalPairs}
-                      </td>
-                    </tr>
-                    <tr>
-                      <td
-                        className="text-[10px] font-mono font-bold text-black uppercase tracking-wider"
-                        style={{ borderRight: '1px solid #000', padding: `${STEP_ROW_PAD_Y}px 4px` }}
-                      >
-                        CORTADO
-                      </td>
-                      {groupSizes.map(s => (
-                        <td key={s} style={{ borderRight: '1px solid #000', padding: `${STEP_ROW_PAD_Y}px 1px` }}>
-                          <span className="inline-block" style={{ width: STEP_CHECKBOX_PX, height: STEP_CHECKBOX_PX, border: '1.5px solid #000' }} />
-                        </td>
-                      ))}
-                      <td style={{ padding: `${STEP_ROW_PAD_Y}px 1px` }}>
-                        <span className="inline-block" style={{ width: STEP_CHECKBOX_PX, height: STEP_CHECKBOX_PX, border: '1.5px solid #000' }} />
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
+                    <div className="keep-together keep-with-previous">
+                      {gradeTable}
+                    </div>
+                  </>
+                )}
 
-                {/* Nota quando agrupa OPs com grades base diferentes — pra
-                    o operador entender por que "Por Ficha × N" sumiu. */}
                 {group.mixedGrades && (
-                  <div className="px-3 py-1 border-t border-black bg-white">
+                  <div className="px-3 py-0.5 border-t border-black bg-white">
                     <span className="font-mono text-[9px] text-black tracking-wider uppercase">
                       * Grades base diferentes entre OPs do grupo — total agregado
                     </span>
@@ -513,5 +542,12 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
   // estavam no piso. Decisão do dono 31/07/2026: legibilidade vence densidade.
   const minScale = groups.reduce((mx, g) => Math.max(mx,
     floorSafeScale(gradeTableFont(palmilhaGroupSizes(allSizes, g), true))), 0);
-  return <PaginatedSheet sectorLabel={sectorLabel || 'Corte de Placa de Fibra'} blocks={blocks} minScale={minScale} />;
+  return (
+    <PaginatedSheet
+      sectorLabel={sectorLabel || 'Corte de Placa de Fibra'}
+      pageIdentity={pageIdentity}
+      blocks={blocks}
+      minScale={minScale}
+    />
+  );
 };

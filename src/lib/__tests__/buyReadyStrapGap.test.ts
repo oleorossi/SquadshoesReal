@@ -101,7 +101,7 @@ describe('listBuyReadyStrapGaps', () => {
     expect(gaps).toEqual([]);
   });
 
-  it('aponta tira pronta escolhida no PV mesmo com identidade por napa', () => {
+  it('não trata sku_acabado do PV como lacuna de Hub (SKU no save)', () => {
     const gaps = listBuyReadyStrapGaps(
       [buyReadyLine({
         identity_basis: 'reference_base',
@@ -111,13 +111,7 @@ describe('listBuyReadyStrapGaps', () => {
       })],
       catalog(),
     );
-    expect(gaps).toHaveLength(1);
-    expect(gaps[0]).toMatchObject({
-      lineId: LINE,
-      identityGroupId: GROUP,
-      colorId: COLOR,
-      finishedProductId: PRODUCT,
-    });
+    expect(gaps).toEqual([]);
   });
 
   it.each([
@@ -257,10 +251,12 @@ describe('SaleOrderItemForm — a lacuna vira um caminho clicável', () => {
     expect(saved).toContain("queryKey: ['strap_stock_lines_preview']");
   });
 
-  it('trata sku_acabado do PV como tira pronta e abre o cadastro de fornecedor', () => {
+  it('Comprar pronto do PV congela buy_ready sem abrir cadastro Hub', () => {
     expect(form).toContain('strapLineWantsBuyReady');
     expect(form).toContain("next === 'sku_acabado'");
     expect(form).toContain('Comprar pronto');
+    expect(form).toContain("strap_variant_id: null");
+    expect(form).toContain('finished_product_id: preview?.finishedProductId');
   });
 
   it('não trava o seletor de origem quando o snapshot comprometido ainda não tem escolha', () => {

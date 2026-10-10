@@ -158,9 +158,10 @@ export function buildFichaTecnicaHtml(data: FichaCorteData, photoUrl: string | n
 export async function printFichaTecnica(data: FichaCorteData, photoSrc: string | null | undefined, sheetName: string): Promise<void> {
   const photoUrl = photoSrc ? await getSignedUrl(photoSrc) : null;
   const html = buildFichaTecnicaHtml(data, photoUrl, sheetName);
-  const w = window.open('', '_blank');
-  if (!w) { alert('Permita pop-ups para gerar a ficha imprimível.'); return; }
-  w.document.open();
-  w.document.write(html);
-  w.document.close();
+  const { deliverHtmlDocument } = await import('@/lib/htmlPrintDelivery');
+  const ok = await deliverHtmlDocument(html, {
+    filename: `ficha-${sheetName || 'tecnica'}`,
+    title: 'Ficha técnica',
+  });
+  if (!ok) alert('Permita pop-ups para gerar a ficha imprimível.');
 }

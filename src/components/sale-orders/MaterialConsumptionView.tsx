@@ -17,6 +17,8 @@ import {
 } from '@phosphor-icons/react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { computeBaseMaterialTotal, normalizeBaseFamilyName } from '@/lib/baseMaterialTotal';
+import { buildNapaRollup } from '@/lib/napaRollup';
+import NapaRollupPanel from '@/components/sale-orders/NapaRollupPanel';
 import { buildColAvailability, sizeSortKey } from '@/lib/soleMatrixHtml';
 import type { ArtisanalStrapCutRow } from '@/lib/strapRollCut';
 import ArtisanalStrapRollCutBlock from '@/components/sale-orders/ArtisanalStrapRollCutBlock';
@@ -26,7 +28,8 @@ import { buildBuyList, isBuyListRow, baseMaterialName, rowBelongsToBaseFamily, t
 import { formatQty, formatUnit, formatPricePerUnit, pluralizeItens } from '@/lib/consumptionFormat';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { buildMaterialConsumptionReportHtml } from '@/lib/materialConsumptionReport';
-import { openPrintTab } from '@/lib/printPdf';
+import { openPrintTab, printHtmlAsPdf } from '@/lib/printPdf';
+import { isIosBrowser } from '@/lib/iosDevice';
 import { cn, formatCurrency, formatMoney } from '@/lib/utils';
 import {
   aggregateItems,
@@ -718,6 +721,7 @@ export default function MaterialConsumptionView({
 
   // ── Números do trilho (sempre sobre TODAS as linhas, não sobre o filtro) ──
   const baseTotal = useMemo(() => computeBaseMaterialTotal(rows), [rows]);
+  const napaRollup = useMemo(() => buildNapaRollup(rows), [rows]);
   const emFaltaCount = useMemo(() => countShort(rows), [rows]);
   const pendingCount = useMemo(() => countPending(rows), [rows]);
   const topShort = useMemo(() => topShortfalls(rows, 5), [rows]);
@@ -733,22 +737,33 @@ export default function MaterialConsumptionView({
   }), [rows]);
 
   const handlePrintPdf = useCallback(() => {
-    // Relatório já é HTML autocontido — imprime no cliente (sem Chromium /api/render-pdf).
+    const reportTitle = grossNeed
+      ? title.replace(/consumo de materiais/i, 'Consumo total')
+      : title;
+    const html = buildMaterialConsumptionReportHtml({
+      rows,
+      artisanalStrapRows,
+      title: reportTitle,
+      orderHeaders,
+      mode: grossNeed ? 'total' : 'coverage',
+      partitionMode,
+    });
+
+    // iOS: vira arquivo real via servidor + overlay Compartilhar/Salvar.
+    if (isIosBrowser()) {
+      setPrintingPdf(true);
+      void printHtmlAsPdf(html, {
+        filename: 'consumo-materiais',
+        title: 'Consumo',
+      }).finally(() => setPrintingPdf(false));
+      return;
+    }
+
+    // Desktop: relatório HTML autocontido — imprime no cliente.
     const target = openPrintTab();
     if (!target) return;
     setPrintingPdf(true);
     try {
-      const reportTitle = grossNeed
-        ? title.replace(/consumo de materiais/i, 'Consumo total')
-        : title;
-      const html = buildMaterialConsumptionReportHtml({
-        rows,
-        artisanalStrapRows,
-        title: reportTitle,
-        orderHeaders,
-        mode: grossNeed ? 'total' : 'coverage',
-        partitionMode,
-      });
       const withPrint = html.includes('</body>')
         ? html.replace(
           '</body>',
@@ -1000,13 +1015,16 @@ export default function MaterialConsumptionView({
           {([
             { label: 'Cabedal', qty: split.cabedal },
             { label: 'Forração', qty: split.forracao },
+            { label: 'Tira', qty: split.tira },
           ] as const).map((part) => (
+            part.qty > 0 || part.label !== 'Tira' ? (
             <span key={part.label} className="inline-flex items-baseline gap-1.5">
               <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{part.label}</span>
               <span className="font-mono text-sm font-bold tabular-nums">
                 {part.qty > 0 ? `${formatQty(part.qty, 'm')} m` : '—'}
               </span>
             </span>
+            ) : null
           ))}
           <span className="ml-auto font-mono text-sm font-bold tabular-nums">
             {formatQty(split.qty, 'm')} m
@@ -1050,11 +1068,11 @@ export default function MaterialConsumptionView({
             </div>
           )}
           <dl className="border-r border-border px-3 py-2">
-            <dt className="eyebrow">Napa Cabedal/Forração</dt>
+            <dt className="eyebrow">Necessidade de napa</dt>
             <dd className="mt-1 font-mono text-lg font-bold leading-none tabular-nums">
               {baseTotal ? `${formatQty(baseTotal.total, 'm')} m` : '—'}
             </dd>
-            <dd className="mt-1 text-[10px] text-muted-foreground">sem napa de tiras</dd>
+            <dd className="mt-1 text-[10px] text-muted-foreground">cabedal + forração + tiras</dd>
           </dl>
           <dl className="border-r border-border px-3 py-2">
             <dt className="eyebrow">Em falta</dt>
@@ -1306,12 +1324,18 @@ export default function MaterialConsumptionView({
                 );
               })}
               {materialsTab !== 'strass' || !hasStrass ? (
-                <ArtisanalStrapRollCutBlock rows={artisanalStrapRows} />
+                <ArtisanalStrapRollCutBlock rows={artisanalStrapRows} onYieldSaved={onRecalcular} />
               ) : null}
               {extraSections}
             </div>
           ) : (
           <>
+          <NapaRollupPanel
+            rollup={napaRollup}
+            selectedFamily={baseFamily}
+            onSelectFamily={selectBaseFamily}
+          />
+
           <SoleCoveragePanel rows={visibleSoleRows} grossNeed={grossNeed} />
 
           <Tabs
@@ -1564,7 +1588,7 @@ export default function MaterialConsumptionView({
 
         {/* Bloco separado: tiras artesanais cortadas do rolo (vermelho) */}
         {materialsTab !== 'strass' || !hasStrass ? (
-          <ArtisanalStrapRollCutBlock rows={artisanalStrapRows} />
+          <ArtisanalStrapRollCutBlock rows={artisanalStrapRows} onYieldSaved={onRecalcular} />
         ) : null}
 
         {extraSections}
@@ -1574,7 +1598,7 @@ export default function MaterialConsumptionView({
       </div>
 
         <ConsumptionDecisionRail
-        baseTotal={baseTotal}
+        napaRollup={napaRollup}
         shortCount={emFaltaCount}
         pendingCount={pendingCount}
         pendingReasons={pendingReasons}

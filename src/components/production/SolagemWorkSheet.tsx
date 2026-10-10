@@ -8,6 +8,8 @@ import { TALLY_SIZE } from './worksheet/density';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { HeaderIdentification } from './worksheet/HeaderIdentification';
 import { PaginatedSheet, type SheetBlock } from './worksheet/PaginatedSheet';
+import { usePrintOrderIdentity } from './worksheet/PrintOrderIdentityContext';
+import { pageIdentityForOps } from './worksheet/pageIdentity';
 import { formatOpNumber } from './worksheet/stageOrder';
 import { fichaModelFor } from './worksheet/fichaModel';
 import { TraceStrip } from './worksheet/TraceStrip';
@@ -79,7 +81,7 @@ const isPretoColor = (c: string) => /preto|black|pb/i.test((c || '').trim());
 
 const SectionDivider = ({ label, total }: { label: string; total: number }) => (
   <div
-    className="keep-together keep-with-next flex items-baseline justify-between px-3 py-1.5 bg-white"
+    className="keep-together keep-with-next flex items-baseline justify-between px-3 py-1 bg-white"
     style={{ border: '2px solid #000', borderBottom: 'none' }}
   >
     <span
@@ -129,7 +131,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 1
       // grade — atômicas individualmente); borda fecha em
       // cada fragmento via box-decoration-break: clone.
       <div key={idx} className="flow-card bg-white" style={{ border: '1.5px solid #000' }}>
-        <div className="keep-together keep-with-next px-2 py-1 flex items-center justify-between" style={{ borderBottom: '1.5px solid #000' }}>
+        <div className="keep-together keep-with-next px-2 py-0.5 flex items-center justify-between" style={{ borderBottom: '1.5px solid #000' }}>
           <div className="min-w-0 flex-1">
             <span className="section-label block" style={{ color: '#000' }}>Solado · Cor</span>
             <span
@@ -183,9 +185,14 @@ export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 1
             Fix 22/05/2026: imagens reduzidas de 110×110 pra 55×55 e cada
             item vira keep-together individual. DOM audit mostrou que esse
             strip estourava 200mm em bandas com 6+ refs (sozinho era 73%
-            da A4 útil) — strip COMO UM TODO pode quebrar entre sandálias. */}
+            da A4 útil) — strip COMO UM TODO pode quebrar entre sandálias.
+            keep-with-next: o strip NÃO pode fechar a página sem a grade —
+            senão as fotos ficam no pé e a grade abre sozinha na folha
+            seguinte (órfão reportado 27/09/2026). */}
+        {/* Strip empilhado de propósito: sideBySide foi medido em 30/08/2026
+            neste setor e NÃO reduziu folhas (3→3) — só estreita a grade. */}
         {band.refs && band.refs.length > 0 && (
-          <div className="px-2 py-1 flex items-start gap-2 flex-wrap" style={{ borderBottom: '1px solid #000' }}>
+          <div className="keep-with-next px-2 py-0.5 flex items-start gap-2 flex-wrap" style={{ borderBottom: '1px solid #000' }}>
             <span className="section-label shrink-0 self-center" style={{ color: '#000' }}>Sandálias</span>
             {band.refs.map((r) => (
               <div key={r.key} className="keep-together flex flex-col items-center gap-0.5">
@@ -218,8 +225,9 @@ export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 1
           </div>
         )}
 
-        {/* keep-together: grade inteira (Por Ficha + Total) na mesma página */}
-        <table className="keep-together w-full text-center" style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+        {/* keep-together + keep-with-previous: grade inteira (Por Ficha + Total)
+            na mesma página, colada ao strip/header — nunca órfã no topo. */}
+        <table className="keep-together keep-with-previous w-full text-center" style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
           <thead>
             <tr style={{ borderBottom: '1.5px solid #000' }}>
               {/* Largura precisa caber "Total × N fichas" (≈96px); sob
@@ -263,7 +271,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 1
               </tr>
             )}
             <tr>
-              <td className="py-1.5 font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: '1px solid #000', minWidth: 96, whiteSpace: 'nowrap', padding: '6px 6px', letterSpacing: '0.04em', fontSize: adaptiveLabelFontSize(band.fichas, band.mixedGrades) }}>
+              <td className="py-1 font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: '1px solid #000', minWidth: 96, whiteSpace: 'nowrap', padding: `${ft.padY + 1}px 4px`, letterSpacing: '0.04em', fontSize: adaptiveLabelFontSize(band.fichas, band.mixedGrades) }}>
                 {band.fichasAproximadas
                   ? <>Total<br />≈ {band.fichas || 0} fichas</>
                   : band.mixedGrades
@@ -326,6 +334,9 @@ export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 1
   // Total Geral → rodapé. O paginador garante "card inteiro ou nada".
   // PVs do maço — hoisted pro escopo do header (identificação + QR escaneável).
   const pvs = Array.from(new Set(bands.flatMap(b => b.pvNumbers || []).filter(Boolean)));
+  const allOps = Array.from(new Set(bands.flatMap(b => b.opNumbers || []).filter(Boolean)));
+  const orderIdentityByOp = usePrintOrderIdentity();
+  const pageIdentity = pageIdentityForOps(sectorLabel || sector, allOps, orderIdentityByOp);
   const headerBlock = (
       <WorksheetHeader
         sector={sector}
@@ -361,8 +372,6 @@ export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 1
         trace={model === 'lote' ? (
           <TraceStrip
             ops={Array.from(new Set(bands.flatMap(b => b.opNumbers || []).filter(Boolean)))}
-            pvNumbers={pvs}
-            clientNames={clientNames}
           />
         ) : undefined}
       />
@@ -396,7 +405,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 1
   });
 
   const trailingBlock = (
-    <div className="keep-together flex items-baseline justify-between mt-3 py-1.5" style={{ borderTop: '1px solid #000', borderBottom: '1px solid #000' }}>
+    <div className="keep-together flex items-baseline justify-between mt-1 py-1" style={{ borderTop: '1px solid #000', borderBottom: '1px solid #000' }}>
       <span className="section-label" style={{ color: '#000' }}>
         Total Geral · soma de todos os solados
       </span>
@@ -427,5 +436,12 @@ export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 1
   // estavam no piso. Decisão do dono 31/07/2026: legibilidade vence densidade.
   const minScale = bands.reduce((mx, b) => Math.max(mx,
     floorSafeScale(gradeTableFont(solagemBandSizes(allSizes, b), true))), 0);
-  return <PaginatedSheet sectorLabel={sectorLabel || sector} blocks={blocks} minScale={minScale} />;
+  return (
+    <PaginatedSheet
+      sectorLabel={sectorLabel || sector}
+      pageIdentity={pageIdentity}
+      blocks={blocks}
+      minScale={minScale}
+    />
+  );
 };

@@ -9,8 +9,11 @@
 /** Grafia legada → canônica (rows antigas e caminhos de escrita antigos). */
 const STAGE_ALIASES: Record<string, string> = {
   Mesa: 'Aviamento',
-  // Nome anterior mantido só para OPs/históricos ainda não migrados.
-  'Corte Palmilha': 'Corte Fibra',
+  // Spec ficha-palmilha-unificada: Corte Fibra/Forração → Palmilha · *
+  'Corte Palmilha': 'Palmilha · Fibra',
+  'Corte Fibra': 'Palmilha · Fibra',
+  'Corte Forração': 'Palmilha · Forração',
+  Forração: 'Palmilha · Forração',
   // A 'Costura' única virou dois setores (migration 20261001120000). O legado
   // resolve pra PALMILHA — era o que a etapa única representava em toda ficha.
   // Display rename: Costura Palmilha → Acabamento Palmilha.
@@ -18,7 +21,10 @@ const STAGE_ALIASES: Record<string, string> = {
   'Costura Palmilha': 'Acabamento Palmilha',
 };
 
-const CUTTING_STAGES = new Set(['Corte Fibra', 'Corte Forração', 'Corte Cabedal', 'Corte Palmilha']);
+const CUTTING_STAGES = new Set([
+  'Palmilha · Fibra', 'Palmilha · Forração', 'Corte Cabedal',
+  'Corte Fibra', 'Corte Forração', 'Corte Palmilha',
+]);
 
 export function canonicalStageName(name: string): string {
   const trimmed = (name || '').trim();
@@ -57,18 +63,21 @@ export function sameStage(a: string, b: string): boolean {
  * As duas costuras são independentes entre si — nenhuma bloqueia a outra.
  */
 export const STAGE_DAG: Record<string, string[]> = {
+  'Palmilha · Fibra': [],
+  'Palmilha · Forração': [],
+  // Grafias legadas (ainda podem chegar antes do backfill)
   'Corte Fibra': [],
   'Corte Forração': [],
   'Corte Cabedal': [],
   // Regra operacional decidida: não existe acabamento de palmilha sem a fibra
   // já cortada. Basta haver pares entregues; não exige fechamento total.
-  'Acabamento Palmilha': ['Corte Fibra'],
+  'Acabamento Palmilha': ['Palmilha · Fibra', 'Corte Fibra'],
   // A etapa só é criada para modelo sem corte a fio. Quando existe, o corte
   // de cabedal precisa ter entregue pares antes da costura começar.
   'Costura Cabedal': ['Corte Cabedal'],
   'Aviamento': [],
   'Silk': [],
-  'Colagem': ['Corte Fibra', 'Acabamento Palmilha', 'Costura Cabedal'],
+  'Colagem': ['Palmilha · Fibra', 'Corte Fibra', 'Acabamento Palmilha', 'Costura Cabedal'],
   'Montagem': ['Colagem'],
   'Solagem': ['Montagem'],
   'Acabamento': ['Solagem'],

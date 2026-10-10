@@ -45,7 +45,7 @@ import {
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import PendenciasView from '@/components/sale-orders/PendenciasView';
-import { ArrowUp, ArrowsDownUp, Baby, Barcode, Buildings, ShoppingCart, Plus, CircleNotch as Loader2, Copy, Printer, Factory, PencilSimple as Pencil, FileText, Funnel as Filter, X, MagnifyingGlass as Search, Package, Clock, CaretDown, ChartBar as BarChart3, ClipboardText as ClipboardList, ArrowsClockwise as RefreshCw, Tag, SquaresFour as LayoutDashboard, Lightning as Zap, FileXls as FileSpreadsheet, Receipt, XCircle, CheckCircle, Check, Download, TrendUp as TrendingUp, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw, HandPalm as Hand, UploadSimple as Upload, Trash as Trash2, ListChecks, ArrowSquareOut as ExternalLink, DotsThree, Images } from '@phosphor-icons/react';
+import { ArrowUp, ArrowsDownUp, Baby, Barcode, Buildings, ShoppingCart, Plus, CircleNotch as Loader2, Copy, Printer, Factory, PencilSimple as Pencil, FileText, Funnel as Filter, X, MagnifyingGlass as Search, Package, Clock, CaretDown, ChartBar as BarChart3, ClipboardText as ClipboardList, ArrowsClockwise as RefreshCw, Tag, SquaresFour as LayoutDashboard, Lightning as Zap, FileXls as FileSpreadsheet, Receipt, XCircle, CheckCircle, Check, CheckSquare, Download, TrendUp as TrendingUp, Warning as AlertTriangle, ArrowCounterClockwise as RotateCcw, HandPalm as Hand, UploadSimple as Upload, Trash as Trash2, ListChecks, ArrowSquareOut as ExternalLink, DotsThree, Images } from '@phosphor-icons/react';
 import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
 import { BulkActionsBar, MarqueeOverlay } from '@/components/ui/bulk-actions-bar';
 import { cn } from "@/lib/utils";
@@ -58,6 +58,11 @@ const OrderPhotosDialog = lazy(() => import('@/components/sale-orders/OrderPhoto
 const OperatorFichasDialog = lazy(() => import('@/components/sale-orders/OperatorFichasDialog'));
 const GenerateServiceOrdersWizard = lazy(() => import('@/components/contractors/GenerateServiceOrdersWizard').then(m => ({ default: m.GenerateServiceOrdersWizard })));
 const GeneratePurchaseOrdersDialog = lazy(() => import('@/components/purchase/GeneratePurchaseOrdersDialog'));
+const PostApprovalCabedalDistributeScreen = lazy(() =>
+  import('@/components/sale-orders/PostApprovalCabedalDistributeScreen').then((m) => ({
+    default: m.PostApprovalCabedalDistributeScreen,
+  })),
+);
 import PurchaseOrdersForPvCard from '@/components/purchase/PurchaseOrdersForPvCard';
 import { PvOutdatedBadge } from '@/components/sale-orders/PvOutdatedBadge';
 import { RevertInvoiceButton } from '@/components/sale-orders/RevertInvoiceButton';
@@ -89,13 +94,38 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useSaleOrders, useSaleOrderAllItems, useCreateSaleOrder, useDeleteSaleOrder, useUpdateSaleOrderStatus, useResyncOPsFromSheets, useResyncOPsFromPV, useCommitPickingForSaleOrder, useRealtimeSaleOrders, SaleOrderFormData, SaleOrderItemFormData, PackagingMode, ORDER_TYPE_LABELS } from '@/hooks/useSaleOrders';
+import {
+  useSaleOrders,
+  useSaleOrderAllItems,
+  useCreateSaleOrder,
+  useDeleteSaleOrder,
+  softDeleteSaleOrderWithBusyRetry,
+  useUpdateSaleOrderStatus,
+  useRetrySaleOrderMaterialization,
+  useDiscardSaleOrderMaterialization,
+  useResyncOPsFromSheets,
+  useResyncOPsFromPV,
+  useCommitPickingForSaleOrder,
+  useRealtimeSaleOrders,
+  ORDER_TYPE_LABELS,
+  PACKAGING_MODE_LABELS,
+  PACKAGING_MODE_CANONICAL,
+  type PackagingMode,
+} from '@/hooks/useSaleOrders';
+import {
+  applyBulkPackagingModeChange,
+  filterBulkPackagingEligibleIds,
+  isCanonicalPackagingMode,
+} from '@/lib/bulkPackagingMode';
+import DuplicateToStoresDialog from '@/components/sales/DuplicateToStoresDialog';
 import {
   executeSaleOrderCommand,
+  formatSaleOrderSoftDeleteError,
   preflightSaleOrderCommand,
   SaleOrderReadinessBlockedError,
   shouldOfferAdminCompensatoryCancel,
 } from '@/lib/saleOrderCommand';
+import { invalidateSaleOrders } from '@/lib/queryKeys';
 import { useTechnicalSheetsLite } from '@/hooks/useTechnicalSheets';
 import { useClients, useEconomicGroups } from '@/hooks/useClients';
 import { supabase } from '@/integrations/supabase/client';
@@ -122,6 +152,16 @@ import { getValidNextStatuses } from '@/lib/saleOrderStateMachine';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import { normalizeForSearch, searchMatchesAllTerms, splitSearchTerms, rankBySearchScore } from '@/lib/searchUtils';
+import {
+  classifyOrderSearch,
+  collectKnownOrderCodes,
+  findIdsMatchingOrderCodes,
+  looksLikeOrderCodeList,
+  orderCodeExactMatch,
+  parseOrderCodeList,
+  type OrderSearchItemFields,
+} from '@/lib/orderCodeSearch';
+import { confirmIfHiddenSelection } from '@/lib/confirmHiddenSelection';
 import { safeUrlAttr } from '@/lib/htmlUtils';
 import SalesOperationsRail, { SalesOperationsRailSkeleton } from '@/components/sale-orders/SalesOperationsRail';
 
@@ -171,6 +211,8 @@ export default function SaleOrders() {
     total: number;
     status: string;
   } | null>(null);
+  /** PVs enfileirados pra Aprovado — abre distribuição quando materializar. */
+  const [pendingDistributeIds, setPendingDistributeIds] = useState<Set<string>>(new Set());
   const updateStatus = useUpdateSaleOrderStatus({
     onReadinessBlocked: (blocked, vars) => {
       const isCancelPath = vars.status === 'Cancelado'
@@ -206,6 +248,8 @@ export default function SaleOrders() {
   const statusPendingId = updateStatus.isPending
     ? (updateStatus.variables as { id?: string } | undefined)?.id ?? null
     : null;
+  const retryMaterialization = useRetrySaleOrderMaterialization();
+  const discardMaterialization = useDiscardSaleOrderMaterialization();
   // Subscribe Realtime: outros users veem mudanças/exclusões em ~200ms via WS.
   useRealtimeSaleOrders();
   const queryClient = useQueryClient();
@@ -353,9 +397,6 @@ export default function SaleOrders() {
 
   const [dupDialog, setDupDialog] = useState(false);
   const [dupOrderId, setDupOrderId] = useState<string | null>(null);
-  const [dupSelectedClients, setDupSelectedClients] = useState<string[]>([]);
-  const [dupGroupId, setDupGroupId] = useState<string>('');
-  const [dupClientSearch, setDupClientSearch] = useState('');
   const [generatingOPs, setGeneratingOPs] = useState(false);
   const [overviewOpen, setOverviewOpen] = useState(false);
   const [marginDialogOpen, setMarginDialogOpen] = useState(false);
@@ -365,6 +406,59 @@ export default function SaleOrders() {
   // Canal "Compras por Pedido" — alvo do modal de geração de OCs (1 ou N PVs).
   // netOfStock: true = comprar só a falta; false = necessidade bruta (Consumo total).
   const [poGenTarget, setPoGenTarget] = useState<{ ids: string[]; numbers: string[]; netOfStock: boolean } | null>(null);
+
+  // Pós-aprovação: tela full-bleed de Prep. cabedal (costura_cabedal + aviamento).
+  const [postApprovalDistribute, setPostApprovalDistribute] = useState<{
+    saleOrderIds: string[];
+    reportOrders: Array<{ id: string; order_number: string; delivery_deadline?: string | null }>;
+  } | null>(null);
+
+  const openPostApprovalDistribute = (
+    orders: Array<{ id: string; order_number: string; delivery_deadline?: string | null }>,
+  ) => {
+    const unique = new Map<string, { id: string; order_number: string; delivery_deadline?: string | null }>();
+    for (const o of orders) {
+      if (o?.id) unique.set(o.id, o);
+    }
+    const list = [...unique.values()];
+    if (list.length === 0) return;
+    setPostApprovalDistribute({
+      saleOrderIds: list.map((o) => o.id),
+      reportOrders: list,
+    });
+  };
+
+  // Distribuição pós-aprovação só depois que o worker materializou (status=Aprovado
+  // e command_phase idle). Enfileirar não abre a tela — OPs ainda não existem.
+  useEffect(() => {
+    if (pendingDistributeIds.size === 0) return;
+    const ready: Array<{ id: string; order_number: string; delivery_deadline?: string | null }> = [];
+    const drop = new Set<string>();
+    for (const id of pendingDistributeIds) {
+      const order = orders.find((o) => o.id === id);
+      if (!order) continue;
+      const phase = (order as { command_phase?: string }).command_phase || 'idle';
+      if (phase === 'failed') {
+        drop.add(id);
+        continue;
+      }
+      if (order.status === 'Aprovado' && phase === 'idle') {
+        ready.push({
+          id: order.id,
+          order_number: order.order_number,
+          delivery_deadline: order.delivery_deadline,
+        });
+        drop.add(id);
+      }
+    }
+    if (drop.size === 0) return;
+    if (ready.length > 0) openPostApprovalDistribute(ready);
+    setPendingDistributeIds((prev) => {
+      const next = new Set(prev);
+      drop.forEach((id) => next.delete(id));
+      return next;
+    });
+  }, [orders, pendingDistributeIds]);
 
   // Busca NÃO persiste: reseta ao sair e voltar pra tela (useState remonta
   // limpo). Antes usava usePersistedState com a chave 'searchTerm' — a MESMA
@@ -385,6 +479,9 @@ export default function SaleOrders() {
   const [bulkNfeMode, setBulkNfeMode] = useState<'preview' | 'emit'>('preview');
   const [bulkStatusOpen, setBulkStatusOpen] = useState(false);
   const [bulkStatusTarget, setBulkStatusTarget] = useState<string>('');
+  const [bulkPackagingOpen, setBulkPackagingOpen] = useState(false);
+  const [bulkPackagingTarget, setBulkPackagingTarget] = useState<PackagingMode>('individual_fitilho');
+  const [bulkPackagingRunning, setBulkPackagingRunning] = useState(false);
   const [mainTab, setMainTab] = usePersistedState<string>('saleOrderMainTab', 'ativos');
 
   // Derived data
@@ -421,20 +518,31 @@ export default function SaleOrders() {
     return map;
   }, [references]);
 
-  // Index: sale_order_id -> Set of searchable strings from items (ref code, ref name, color)
+  // Index: sale_order_id -> itens (ref+cor na mesma linha) + tokens flat pra AND livre
   const itemsBySaleOrder = useMemo(() => {
-    const map: Record<string, Set<string>> = {};
+    const map: Record<string, { items: OrderSearchItemFields[]; tokens: Set<string> }> = {};
     (allSaleItems || []).forEach((it: any) => {
       const id = it.sale_order_id;
       if (!id) return;
-      if (!map[id]) map[id] = new Set();
+      if (!map[id]) map[id] = { items: [], tokens: new Set() };
       const ref = refById[it.reference_id];
-      if (ref?.code) map[id].add(ref.code);
-      if (ref?.name) map[id].add(ref.name);
-      if (it.color) map[id].add(String(it.color).toLowerCase());
+      const row: OrderSearchItemFields = {
+        referenceCode: ref?.code || null,
+        referenceName: ref?.name || null,
+        color: it.color ? String(it.color) : null,
+      };
+      map[id].items.push(row);
+      if (ref?.code) map[id].tokens.add(ref.code);
+      if (ref?.name) map[id].tokens.add(ref.name);
+      if (it.color) map[id].tokens.add(String(it.color).toLowerCase());
     });
     return map;
   }, [allSaleItems, refById]);
+
+  const knownSaleOrderCodes = useMemo(
+    () => collectKnownOrderCodes(orders, (o) => ({ saleOrderNumber: o.order_number })),
+    [orders],
+  );
 
   // Index: sale_order_id -> total pairs (sum of item.quantity)
   const pairsBySaleOrder = useMemo(() => {
@@ -487,6 +595,11 @@ export default function SaleOrders() {
       const q = debouncedSearchTerm.toLowerCase().trim();
       if (!q) return true;
 
+      const classified = classifyOrderSearch(debouncedSearchTerm, knownSaleOrderCodes);
+      if (classified.mode === 'list') {
+        return classified.codes.some((code) => orderCodeExactMatch(code, order.order_number));
+      }
+
       // Atalho "/<nome>" → filtra por GRUPO ECONÔMICO do cliente (pedido
       // user 19/05/2026). Ex: "/lng" pega PVs de TODOS os clientes do grupo
       // que tenha "lng" no nome (LNG 10, LNG 30, etc). Quando só "/" foi
@@ -503,7 +616,7 @@ export default function SaleOrders() {
 
       const client = clientByName[(order.client_name || '').toLowerCase()];
       const cnpjDigits = (client?.cnpj || (order as any).client_cnpj || '').replace(/\D/g, '');
-      const itemTokens = itemsBySaleOrder[order.id];
+      const itemBag = itemsBySaleOrder[order.id];
       const normCandidates = [
         order.order_number,
         order.client_name,
@@ -520,12 +633,9 @@ export default function SaleOrders() {
         client?.client_number,
         client?.nome_fantasia,
       ].map(normalizeForSearch);
-      const tokenArr = itemTokens ? Array.from(itemTokens).map(normalizeForSearch) : [];
-      // Espaço e "/" separam termos AND (refinamento): "stx alcineu" exige um
-      // campo com "stx" E um campo com "alcineu" (referência + cliente, em
-      // qualquer ordem). Normaliza (remove espaço/hífen/acento) por termo;
-      // tDigits cobre CNPJ.
-      const terms = splitSearchTerms(q);
+      const tokenArr = itemBag
+        ? Array.from(itemBag.tokens).map(normalizeForSearch)
+        : [];
       const matchTerm = (term: string) => {
         const tNorm = normalizeForSearch(term);
         if (!tNorm) return true;
@@ -534,7 +644,24 @@ export default function SaleOrders() {
           || (tDigits.length >= 3 && cnpjDigits.includes(tDigits))
           || tokenArr.some(t => t.includes(tNorm));
       };
-      return terms.every(matchTerm);
+
+      if (classified.mode === 'refColor') {
+        const lineItems = itemBag?.items ?? [];
+        const sameItem = lineItems.some((item) => {
+          const refHay = [item.referenceCode, item.referenceName]
+            .map(normalizeForSearch)
+            .filter(Boolean);
+          const colorHay = normalizeForSearch(item.color);
+          const refQ = normalizeForSearch(classified.ref);
+          const colorQ = normalizeForSearch(classified.color);
+          return refHay.some((h) => h.includes(refQ)) && !!colorHay && colorHay.includes(colorQ);
+        });
+        if (!sameItem) return false;
+        if (classified.rest.length === 0) return true;
+        return classified.rest.every(matchTerm);
+      }
+
+      return splitSearchTerms(q).every(matchTerm);
     };
 
     const current: typeof orders = [];
@@ -556,7 +683,7 @@ export default function SaleOrders() {
       if (tab === mainTab) current.push(order);
     }
     return { filteredOrders: current, searchTabCounts: searching ? counts : null };
-  }, [orders, mainTab, filterStatus, filterRep, filterGroup, filterSegment, segmentsBySaleOrder, debouncedSearchTerm, clientGroupMap, clientByName, itemsBySaleOrder, economicGroups, filterMonth]);
+  }, [orders, mainTab, filterStatus, filterRep, filterGroup, filterSegment, segmentsBySaleOrder, debouncedSearchTerm, clientGroupMap, clientByName, itemsBySaleOrder, knownSaleOrderCodes, economicGroups, filterMonth]);
 
   // Marquee selection + range/Ctrl click + Esc-to-clear (replaces ad-hoc
   // useState<Set>). `selectedIds`/`setSelectedIds` shims abaixo mantêm
@@ -645,10 +772,29 @@ export default function SaleOrders() {
     setSearchParams(next, { replace: true });
   };
   const toggleSelect = (id: string) => sel.toggle(id);
+  const allVisibleSelected =
+    visibleOrders.length > 0 && visibleOrders.every((o) => sel.isSelected(o.id));
   const toggleSelectAll = () => {
-    if (sel.count === filteredOrders.length) sel.clear();
+    if (allVisibleSelected) sel.deselectVisible();
     else sel.selectAll();
   };
+
+  const matchedCodeIds = useMemo(() => {
+    const codes = parseOrderCodeList(debouncedSearchTerm, knownSaleOrderCodes);
+    return findIdsMatchingOrderCodes(orders, codes, (order) => ({
+      id: order.id,
+      orderNumber: order.order_number,
+      saleOrderNumber: order.order_number,
+    }));
+  }, [orders, debouncedSearchTerm, knownSaleOrderCodes]);
+
+  const confirmHidden = (actionLabel: string) =>
+    confirmIfHiddenSelection({
+      totalSelected: sel.count,
+      hiddenSelectedCount: sel.hiddenSelectedCount,
+      entityLabel: 'PV',
+      actionLabel,
+    });
 
   // Cada badge usa o MESMO predicado do tab gating em filteredOrders.
   // Ativos = não-faturados E não-cancelados (Rascunho continua em Ativos;
@@ -766,27 +912,6 @@ export default function SaleOrders() {
     return ids;
   }, [dupOrderId, orders]);
 
-  const dupGroupClients = useMemo(() => {
-    if (!dupGroupId) return [];
-    return clients.filter(c =>
-      c.economic_group_id === dupGroupId
-      && c.active
-      && c.id !== dupSourceClientId
-      && !alreadyCopiedClientIds.has(c.id)
-    );
-  }, [dupGroupId, clients, dupSourceClientId, alreadyCopiedClientIds]);
-
-  // Lojas do grupo que JÁ receberam cópia — pra mostrar como info contextual
-  // no dialog (não bloqueia, só informa).
-  const dupAlreadyCopiedStores = useMemo(() => {
-    if (!dupGroupId) return [];
-    return clients.filter(c =>
-      c.economic_group_id === dupGroupId
-      && c.active
-      && alreadyCopiedClientIds.has(c.id)
-    );
-  }, [dupGroupId, clients, alreadyCopiedClientIds]);
-
   // Excluir desceu de window.prompt ("digite EXCLUIR <N>") para o mesmo
   // AlertDialog de Aprovar/Cancelar (decisão do dono, 07/08/2026).
   //
@@ -822,14 +947,60 @@ export default function SaleOrders() {
   const doBulkDelete = async () => {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
-    const results = await Promise.allSettled(ids.map(id => deleteOrder.mutateAsync(id)));
-    const failed = results.filter(r => r.status === 'rejected').length;
-    setSelectedIds(new Set());
-    if (failed === 0) {
-      toast.success(`${ids.length} pedido(s) excluído(s) — restauráveis se preciso`);
-    } else {
-      toast.error(`${ids.length - failed} excluído(s), ${failed} falha(s). PVs com NF-e ativa não podem ser excluídos.`);
+    const labelById = new Map(
+      orders.filter((o) => ids.includes(o.id)).map((o) => [o.id, o.order_number] as const),
+    );
+    // Chama o writer direto (não mutateAsync): o onError do hook toasta por item
+    // e emburra a lista parcial. Aqui um toast resume o lote.
+    const results = await Promise.allSettled(
+      ids.map(async (id) => softDeleteSaleOrderWithBusyRetry(id)),
+    );
+    const failed: Array<{ id: string; label: string; message: string }> = [];
+    for (let i = 0; i < results.length; i += 1) {
+      const result = results[i];
+      const id = ids[i];
+      if (result.status === 'fulfilled') continue;
+      const reason = result.reason;
+      const label = (
+        reason && typeof reason === 'object' && 'orderNumber' in reason
+          ? String((reason as { orderNumber?: string | null }).orderNumber || '')
+          : ''
+      ) || labelById.get(id) || id;
+      failed.push({
+        id,
+        label,
+        message: formatSaleOrderSoftDeleteError(reason, {
+          saleOrderId: id,
+          orderNumber: label,
+        }),
+      });
     }
+    setSelectedIds(new Set());
+    invalidateSaleOrders(queryClient);
+    queryClient.invalidateQueries({ queryKey: ['sale_orders_with_nfe'] });
+    queryClient.invalidateQueries({ queryKey: ['orders'] });
+    const ok = ids.length - failed.length;
+    if (failed.length === 0) {
+      toast.success(`${ids.length} pedido(s) excluído(s) — restauráveis se preciso`);
+      return;
+    }
+    if (ok === 0) {
+      toast.error(
+        `Nenhum pedido foi excluído (${failed.length} falha${failed.length === 1 ? '' : 's'}).`,
+        {
+          duration: 14000,
+          description: failed.slice(0, 4).map((f) => f.message).join(' · '),
+        },
+      );
+      return;
+    }
+    toast.error(
+      `${ok} excluído(s), ${failed.length} falha(s): ${failed.map((f) => f.label).join(', ')}.`,
+      {
+        duration: 14000,
+        description: failed.slice(0, 3).map((f) => f.message).join(' · '),
+      },
+    );
   };
 
   const handleBulkStatusChange = async (status: string, viabilityConfirmed = false) => {
@@ -874,30 +1045,21 @@ export default function SaleOrders() {
         return;
       }
     }
-    // ⚠ EM SÉRIE, não Promise.allSettled. Promover N PVs em paralelo faz dois
-    // pedidos que compartilham o mesmo material (napa, solado) disputarem a MESMA
-    // linha de `products` ao mesmo tempo — deadlock ou débito perdido. É o mesmo
-    // motivo pelo qual o motor de promoção percorre os itens em série lá dentro.
-    // (requisito 2 de specs/pv-producao-performance-e-pendencias.md)
-    const results: PromiseSettledResult<unknown>[] = [];
-    const progressToastId = ids.length > 1
-      ? toast.loading(`Atualizando 0/${ids.length} para "${status}"…`)
-      : null;
+    // Enfileira em paralelo — o worker materializa em série (anti-deadlock).
+    // O toast 1/N sumiu: cada clique de enqueue é <1s.
     setBulkStatusProgress(ids.length > 1 ? { done: 0, total: ids.length, status } : null);
+    const progressToastId = ids.length > 1
+      ? toast.loading(`Enfileirando 0/${ids.length} para "${status}"…`)
+      : null;
+    let results: PromiseSettledResult<unknown>[] = [];
     try {
-      for (let index = 0; index < ids.length; index += 1) {
-        const id = ids[index];
-        try {
-          results.push({ status: 'fulfilled', value: await updateStatus.mutateAsync({ id, status }) });
-        } catch (e) {
-          results.push({ status: 'rejected', reason: e });
-        }
-        const done = index + 1;
-        if (progressToastId) {
-          toast.loading(`Atualizando ${done}/${ids.length} para "${status}"…`, { id: progressToastId });
-        }
-        if (ids.length > 1) setBulkStatusProgress({ done, total: ids.length, status });
+      results = await Promise.allSettled(
+        ids.map((id) => updateStatus.mutateAsync({ id, status, silent: ids.length > 1 })),
+      );
+      if (progressToastId) {
+        toast.loading(`Enfileirando ${ids.length}/${ids.length} para "${status}"…`, { id: progressToastId });
       }
+      if (ids.length > 1) setBulkStatusProgress({ done: ids.length, total: ids.length, status });
     } finally {
       if (progressToastId) toast.dismiss(progressToastId);
       setBulkStatusProgress(null);
@@ -912,14 +1074,26 @@ export default function SaleOrders() {
     const updated = ids.length - failed;
     setSelectedIds(new Set());
     if (failed === 0) {
-      toast.success(`${ids.length} pedido(s) atualizado(s) para "${status}"`);
+      toast.success(
+        status === 'Aprovado' || status === 'Em Produção' || status === 'Cancelado'
+          ? `${ids.length} pedido(s) enfileirado(s) → "${status}"`
+          : `${ids.length} pedido(s) atualizado(s) para "${status}"`,
+      );
     } else {
-      const summary = [`${updated} atualizado(s)`];
+      const summary = [`${updated} ok`];
       if (readinessBlocked > 0) summary.push(`${readinessBlocked} aguardam correção`);
       if (otherFailures > 0) summary.push(`${otherFailures} falha(s)`);
       const message = `${summary.join(' · ')}.`;
       if (otherFailures > 0) toast.error(message);
       else toast.warning(message);
+    }
+    if (status === 'Aprovado' && updated > 0) {
+      const okIds = ids.filter((_, index) => results[index]?.status === 'fulfilled');
+      setPendingDistributeIds((prev) => {
+        const next = new Set(prev);
+        okIds.forEach((id) => next.add(id));
+        return next;
+      });
     }
   };
 
@@ -1101,17 +1275,24 @@ export default function SaleOrders() {
     });
   };
 
-  const handleBulkApprove = confirmBulkStatus(
-    'Aprovado', 'Aprovar',
-    'Gera as ordens de produção, reserva/debita material e cria as contas a receber.',
-  );
-  const handleBulkCancel = confirmBulkStatus(
-    'Cancelado', 'Cancelar',
-    'Estorna OUTs reversíveis e libera reservas; bloqueia se houver fato físico (etapas/lotes/consumo). Admin pode usar cancelamento compensatório.',
-    true,
-  );
+  const handleBulkApprove = () => {
+    if (!confirmHidden('Aprovar')) return;
+    confirmBulkStatus(
+      'Aprovado', 'Aprovar',
+      'Gera as ordens de produção, reserva/debita material e cria as contas a receber.',
+    )();
+  };
+  const handleBulkCancel = () => {
+    if (!confirmHidden('Cancelar')) return;
+    confirmBulkStatus(
+      'Cancelado', 'Cancelar',
+      'Estorna OUTs reversíveis e libera reservas; bloqueia se houver fato físico (etapas/lotes/consumo). Admin pode usar cancelamento compensatório.',
+      true,
+    )();
+  };
   const handleBulkExport = () => {
-    const list = selectedIds.size > 0 ? filteredOrders.filter(o => selectedIds.has(o.id)) : filteredOrders;
+    if (selectedIds.size > 0 && !confirmHidden('Exportar')) return;
+    const list = selectedIds.size > 0 ? orders.filter(o => selectedIds.has(o.id)) : filteredOrders;
     handleExportSaleOrdersExcel(list);
   };
 
@@ -1130,12 +1311,14 @@ export default function SaleOrders() {
 
   const handleBulkConsumption = () => {
     if (selectedIds.size === 0) return;
+    if (!confirmHidden('Abrir consumo de')) return;
     openPvConsumption(Array.from(selectedIds));
   };
 
   const handleBulkPurchaseOrders = () => {
     const selected = orders.filter(o => selectedIds.has(o.id));
     if (selected.length === 0) return;
+    if (!confirmHidden('Gerar OC de')) return;
     setPoGenTarget({
       ids: selected.map(o => o.id),
       numbers: selected.map(o => o.order_number),
@@ -1143,8 +1326,51 @@ export default function SaleOrders() {
     });
   };
 
+  const handleBulkPackagingChange = async (packagingMode: PackagingMode) => {
+    if (selectedIds.size === 0) return;
+    if (!isCanonicalPackagingMode(packagingMode)) {
+      toast.error('Selecione um modo de embalagem válido.');
+      return;
+    }
+
+    const { eligibleIds, skipped } = filterBulkPackagingEligibleIds(orders, selectedIds);
+    if (skipped > 0) {
+      toast.info(`${skipped} pedido(s) ignorado(s) — Faturado/Cancelado/terminais não mudam embalagem.`);
+    }
+    if (eligibleIds.length === 0) {
+      toast.info('Nenhum pedido selecionado permite alterar embalagem.');
+      return;
+    }
+
+    setBulkPackagingRunning(true);
+    try {
+      const { updatedCount, failures } = await applyBulkPackagingModeChange({
+        orderIds: eligibleIds,
+        packagingMode,
+        labelFor: (orderId) => orders.find((o) => o.id === orderId)?.order_number || orderId.slice(0, 8),
+      });
+      if (failures.length > 0) {
+        toast.warning(`${failures.length} pedido(s) não tiveram a embalagem alterada.`, {
+          description: failures.slice(0, 3).join('\n'),
+          duration: 12000,
+        });
+      }
+      queryClient.invalidateQueries({ queryKey: ['sale_orders'] });
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      if (updatedCount > 0) {
+        toast.success(
+          `${updatedCount} pedido(s) → ${PACKAGING_MODE_LABELS[packagingMode]}`,
+        );
+        setSelectedIds(new Set());
+      }
+    } finally {
+      setBulkPackagingRunning(false);
+    }
+  };
+
   const handleBulkLabels = () => {
     if (selectedIds.size === 0) return;
+    if (!confirmHidden('Abrir etiquetas de')) return;
     // A Central é a fonte canônica: exclui OPs canceladas/rascunhos, respeita
     // embalagem Colméia e separa ativas, impressas e finalizadas. O gerador
     // legado desta página consultava TODAS as OPs dos PVs e podia reimprimir
@@ -1162,6 +1388,7 @@ export default function SaleOrders() {
       toast.info('Selecione pelo menos um pedido.');
       return;
     }
+    if (!confirmHidden(mode === 'emit' ? 'Emitir NF-e de' : 'Pré-visualizar NF-e de')) return;
     setBulkNfeMode(mode);
     setBulkNfeOpen(true);
   };
@@ -1185,92 +1412,7 @@ export default function SaleOrders() {
 
   const openDupDialog = (orderId: string) => {
     setDupOrderId(orderId);
-    setDupGroupId('');
-    setDupSelectedClients([]);
-    setDupClientSearch('');
     setDupDialog(true);
-  };
-
-  const handleDuplicate = async () => {
-    if (!dupOrderId || dupSelectedClients.length === 0) return;
-    const order = orders.find(o => o.id === dupOrderId);
-    if (!order) return;
-    const { data: orderItems, error: itemsFetchError } = await supabase.from('sale_order_items').select('*').eq('sale_order_id', dupOrderId);
-    if (itemsFetchError) {
-      toast.error(`Erro ao ler itens do pedido original: ${itemsFetchError.message}`);
-      return;
-    }
-    if (!orderItems || orderItems.length === 0) {
-      toast.error('O pedido original não possui itens — duplicação cancelada.');
-      return;
-    }
-
-    // Validate material_variant_id references before copying: variants may have been
-    // deactivated or deleted since the original order was placed. Copying a stale ID
-    // would silently block NF-e emission (emit-nfe returns 400 for inactive variants).
-    const variantIdsInOrder = [...new Set(
-      orderItems.map(i => (i as any).material_variant_id).filter(Boolean)
-    )] as string[];
-    let activeVariantIds = new Set<string>();
-    if (variantIdsInOrder.length > 0) {
-      const { data: activeVariants } = await (supabase as any)
-        .from('reference_material_variants')
-        .select('id')
-        .in('id', variantIdsInOrder)
-        .eq('active', true);
-      activeVariantIds = new Set((activeVariants || []).map((v: any) => v.id));
-      const staleCount = variantIdsInOrder.filter(id => !activeVariantIds.has(id)).length;
-      if (staleCount > 0) {
-        toast.warning(`${staleCount} variação(ões) de material inativa(s) — o campo será limpo nos itens copiados. Revise antes de faturar.`);
-      }
-    }
-
-    let successCount = 0;
-    const failures: string[] = [];
-    for (const clientId of dupSelectedClients) {
-      const client = clients.find(c => c.id === clientId);
-      if (!client) continue;
-      const newOrder: SaleOrderFormData = { client_name: client.razao_social, client_cnpj: client.cnpj || '', client_contact: client.contato || '', client_order_number: '', representative: order.representative || '', payment_condition: order.payment_condition || '', delivery_deadline: order.delivery_deadline || '', delivery_week: order.delivery_week || '', delivery_month: order.delivery_month || '', notes: order.notes || '', status: 'Rascunho', nfe: '', remessa: '', is_factoring: false, factoring_config_id: null as any, packaging_mode: (order.packaging_mode || 'individual_amarrado') as PackagingMode };
-      const newItems: SaleOrderItemFormData[] = (orderItems || []).map(i => {
-        const vid = (i as any).material_variant_id;
-        return {
-          reference_id: i.reference_id,
-          color: i.color || '',
-          grade: (i.grade as Record<string, number>) || {},
-          unit_price: Number(i.unit_price) || 0,
-          quantity: Number(i.quantity) || 0,
-          fichas: (i as any).fichas || 1,
-          strap_colors: (i.strap_colors as any[]) || [],
-          material_variant_id: (vid && activeVariantIds.has(vid)) ? vid : null,
-        };
-      });
-      // Idempotência: 1 UUID por cliente/submit, gerado ANTES do mutate —
-      // se houver retry do mesmo submit, reusa o id e o UNIQUE do banco
-      // (sale_orders.client_request_id) impede duplicar o PV copiado.
-      const dupRequestId = crypto.randomUUID();
-      try {
-        // parent_order_id liga a cópia ao PV origem — permite filtrar
-        // "lojas já copiadas" no próximo dialog de duplicação (pedido user
-        // 20/05/2026: "tudo que duplicar deve desconsiderar lojas do grupo
-        // que já foi copiado daquele pedido").
-        await createOrder.mutateAsync({ order: newOrder, items: newItems, client_id: client.id, parent_order_id: dupOrderId, client_request_id: dupRequestId });
-        successCount++;
-      } catch (err: any) {
-        const msg = err?.message || 'erro desconhecido';
-        failures.push(`${client.razao_social}: ${msg}`);
-      }
-    }
-    if (successCount > 0) toast.success(`${successCount} pedido(s) duplicado(s)!`);
-    if (failures.length > 0) {
-      toast.error(`${failures.length} duplicação(ões) falharam`, { description: failures.slice(0, 3).join(' | ') });
-    }
-    if (failures.length === 0) setDupDialog(false);
-  };
-
-  const toggleDupClient = (clientId: string) => setDupSelectedClients(prev => prev.includes(clientId) ? prev.filter(id => id !== clientId) : [...prev, clientId]);
-  const toggleAllDupClients = () => {
-    if (dupSelectedClients.length === dupGroupClients.length) setDupSelectedClients([]);
-    else setDupSelectedClients(dupGroupClients.map(c => c.id));
   };
 
   // Restaura o detalhe a partir do ?pv= (F5, link colado, aba nova).
@@ -1428,37 +1570,46 @@ export default function SaleOrders() {
 
     setGeneratingOPs(true);
     let ordersProcessed = 0;
-    let opsCreated = 0;
     let readinessBlockedCount = 0;
     const errors: string[] = [];
+    const approvedOrderIds: string[] = [];
 
-    // A aprovação em lote é apenas coordenação de chamadas seriais ao mesmo
-    // comando canônico usado na linha individual. Status, OPs, plano material,
-    // reservas, recibo e efeitos financeiros pertencem ao SaleOrderCommand.
+    // Enfileira em paralelo; worker materializa em série.
     try {
-      for (const order of pendingOrders) {
-        try {
-          const result = await updateStatus.mutateAsync({
-            id: order.id,
-            status: 'Aprovado',
-          });
-          ordersProcessed++;
-          opsCreated += Number(result?.ops_criadas) || 0;
-        } catch (error: unknown) {
-          if (error instanceof SaleOrderReadinessBlockedError) {
-            readinessBlockedCount += 1;
-            continue;
-          }
-          const message = error instanceof Error ? error.message : String(error);
-          errors.push(`${order.order_number}: ${message}`);
+      const results = await Promise.allSettled(
+        pendingOrders.map((order) => updateStatus.mutateAsync({
+          id: order.id,
+          status: 'Aprovado',
+          silent: pendingOrders.length > 1,
+        })),
+      );
+      results.forEach((result, index) => {
+        const order = pendingOrders[index];
+        if (result.status === 'fulfilled') {
+          ordersProcessed += 1;
+          approvedOrderIds.push(order.id);
+          return;
         }
-      }
+        if (result.reason instanceof SaleOrderReadinessBlockedError) {
+          readinessBlockedCount += 1;
+          return;
+        }
+        const message = result.reason instanceof Error
+          ? result.reason.message
+          : String(result.reason);
+        errors.push(`${order.order_number}: ${message}`);
+      });
     } finally {
       setGeneratingOPs(false);
     }
 
     if (ordersProcessed > 0) {
-      toast.success(`${ordersProcessed} pedido(s) aprovado(s), ${opsCreated} OP(s) gerada(s) pelo comando canônico.`);
+      toast.success(`${ordersProcessed} pedido(s) enfileirado(s) para aprovação.`);
+      setPendingDistributeIds((prev) => {
+        const next = new Set(prev);
+        approvedOrderIds.forEach((id) => next.add(id));
+        return next;
+      });
     }
     if (readinessBlockedCount > 0 || errors.length > 0) {
       const summary: string[] = [];
@@ -1873,9 +2024,23 @@ export default function SaleOrders() {
                 onChange={setSearchTerm}
                 getSuggestions={searchSuggestions}
                 fieldLabels={{ name: 'Cliente', category: 'Representante', sku: 'Referência' }}
-                placeholder="Buscar PV, cliente, ref… ou /grupo (ex: /lng)"
+                placeholder="Buscar PV, cliente, ref/cor ou ref;cor… /grupo, ou cole vários PVs"
               />
             </div>
+            {looksLikeOrderCodeList(searchTerm, knownSaleOrderCodes) && (
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                className="h-9 gap-1.5"
+                disabled={matchedCodeIds.length === 0}
+                onClick={() => sel.selectMatchingIds(matchedCodeIds)}
+              >
+                <CheckSquare className="h-4 w-4" />
+                Selecionar os que bateram
+                {matchedCodeIds.length > 0 ? ` (${matchedCodeIds.length})` : ''}
+              </Button>
+            )}
             <Button
               variant={showFilters || activeFiltersCount > 0 ? 'secondary' : 'outline'}
               size="sm"
@@ -2031,7 +2196,7 @@ export default function SaleOrders() {
                 selected={sel.isSelected(order.id)}
                 isInfantil={!!segmentsBySaleOrder[order.id]?.has('Infantil')}
                 canSeeFinancialValues={canSeeFinancialValues}
-                canEditPv={canEditPv}
+                canEditPv={canEditPv && (order as { command_phase?: string }).command_phase !== 'processing'}
                 onToggleSelect={() => sel.toggle(order.id)}
                 onOpenDetails={() => openOrderDetails(order)}
                 onPrefetchConsumption={() => prefetchPvConsumption(order.id)}
@@ -2120,40 +2285,43 @@ export default function SaleOrders() {
                         <Checkbox checked={isSelected} onCheckedChange={() => sel.toggle(order.id)} aria-label={`Selecionar pedido ${order.order_number}`} />
                       </TableCell>
                       <TableCell>
-                        <div className="flex flex-col">
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={(e) => { e.stopPropagation(); openOrderDetails(order); }}
-                              className={cn(
-                                'font-mono text-sm text-primary hover:underline font-bold text-left w-fit',
-                                isInfantil && INFANTIL_ORDER_NUMBER_CLASS,
-                              )}
-                            >
-                              <HighlightMatch text={order.order_number || '—'} term={searchTerm} />
-                            </button>
-                            {hasEmittedNfe && (
-                              <Badge variant="outline" className="h-4 px-1.5 text-xs uppercase font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40">
-                                NF
-                              </Badge>
+                        <div className="flex items-center gap-1.5 min-w-0 max-w-[220px]">
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); openOrderDetails(order); }}
+                            className={cn(
+                              'font-mono text-sm text-primary hover:underline font-bold text-left shrink-0',
+                              isInfantil && INFANTIL_ORDER_NUMBER_CLASS,
                             )}
-                            {isInformal && (
-                              <Badge variant="outline" className="h-4 px-1.5 text-xs uppercase font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40">
-                                Sem NF
-                              </Badge>
-                            )}
-                            {isInfantil && (
-                              <Badge variant="outline" className="h-4 pl-1 pr-1.5 text-xs uppercase font-bold bg-pink-500/15 text-pink-700 dark:text-pink-300 border-pink-500/40 gap-0.5">
-                                <Baby className="h-3 w-3" weight="fill" /> Infantil
-                              </Badge>
-                            )}
-                            {(order as any).order_type && (order as any).order_type !== 'carteira' && ORDER_TYPE_LABELS[(order as any).order_type] && (
-                              <Badge variant="outline" className="h-4 px-1.5 text-xs uppercase font-bold bg-primary/10 text-primary border-primary/30">
-                                {ORDER_TYPE_LABELS[(order as any).order_type]}
-                              </Badge>
-                            )}
-                          </div>
-                          <span className="text-xs text-muted-foreground uppercase font-medium">{formatDate(order.created_at)}</span>
+                          >
+                            <HighlightMatch text={order.order_number || '—'} term={searchTerm} />
+                          </button>
+                          <span
+                            className="text-[11px] text-muted-foreground uppercase font-medium truncate"
+                            title={formatDate(order.created_at)}
+                          >
+                            {formatDate(order.created_at)}
+                          </span>
+                          {hasEmittedNfe && (
+                            <Badge variant="outline" className="h-4 px-1 text-[10px] uppercase font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40 shrink-0">
+                              NF
+                            </Badge>
+                          )}
+                          {isInformal && (
+                            <Badge variant="outline" className="h-4 px-1 text-[10px] uppercase font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40 shrink-0">
+                              Sem NF
+                            </Badge>
+                          )}
+                          {isInfantil && (
+                            <Badge variant="outline" className="h-4 pl-1 pr-1 text-[10px] uppercase font-bold bg-pink-500/15 text-pink-700 dark:text-pink-300 border-pink-500/40 gap-0.5 shrink-0">
+                              <Baby className="h-3 w-3" weight="fill" /> Infantil
+                            </Badge>
+                          )}
+                          {order.order_type && order.order_type !== 'carteira' && ORDER_TYPE_LABELS[order.order_type] && (
+                            <Badge variant="outline" className="h-4 px-1 text-[10px] uppercase font-bold bg-primary/10 text-primary border-primary/30 shrink-0">
+                              {ORDER_TYPE_LABELS[order.order_type]}
+                            </Badge>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell className="font-mono text-xs text-muted-foreground tabular-nums">
@@ -2162,24 +2330,27 @@ export default function SaleOrders() {
                           : '—'}
                       </TableCell>
                       <TableCell>
-                        <div className="flex flex-col max-w-[220px]">
-                          <span className="font-semibold text-sm truncate"><HighlightMatch text={order.client_name} term={searchTerm} /></span>
-                          <span className="text-xs text-muted-foreground truncate">
+                        <div
+                          className="flex items-baseline gap-1.5 min-w-0 max-w-[240px]"
+                          title={[order.client_name, order.client_cnpj].filter(Boolean).join(' · ')}
+                        >
+                          <span className="font-semibold text-sm truncate min-w-0">
+                            <HighlightMatch text={order.client_name} term={searchTerm} />
+                          </span>
+                          <span className="text-[11px] text-muted-foreground truncate shrink min-w-0">
                             {order.client_cnpj
                               ? <HighlightMatch text={order.client_cnpj} term={searchTerm} />
-                              : '—'}
+                              : null}
                           </span>
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="flex flex-col">
-                          <span className="text-sm truncate max-w-[120px]">
-                            {(() => {
-                              const client = clientByName[(order.client_name || '').toLowerCase()];
-                              return client ? [client.cidade, client.estado].filter(Boolean).join('/') : '—';
-                            })()}
-                          </span>
-                        </div>
+                        <span className="text-sm truncate max-w-[120px] block">
+                          {(() => {
+                            const client = clientByName[(order.client_name || '').toLowerCase()];
+                            return client ? [client.cidade, client.estado].filter(Boolean).join('/') : '—';
+                          })()}
+                        </span>
                       </TableCell>
                       {canSeeFinancialValues && (
                         <TableCell className="text-right tabular-nums">
@@ -2189,14 +2360,74 @@ export default function SaleOrders() {
                         </TableCell>
                       )}
                       <TableCell onClick={(e) => e.stopPropagation()}>
-                        {/* Requisito 30: enquanto a promoção roda, o controle fica
-                            desabilitado com indicador. Antes um duplo-clique
-                            disparava DUAS orquestrações concorrentes sobre o mesmo
-                            PV. Desabilita a coluna inteira, não só a linha: duas
-                            promoções simultâneas disputam as mesmas linhas de estoque. */}
-                        <Select value={order.status} disabled={!canEditPv || updateStatus.isPending} onValueChange={async (v) => {
+                        {(() => {
+                          const phase = (order as { command_phase?: string }).command_phase || 'idle';
+                          const target = (order as { command_target_status?: string | null }).command_target_status;
+                          const cmdError = (order as { command_error?: string | null }).command_error;
+                          const isProcessing = phase === 'processing';
+                          const isFailed = phase === 'failed';
+                          if (isProcessing || isFailed) {
+                            return (
+                              <div className="flex flex-col gap-1 max-w-[160px]">
+                                <Badge
+                                  variant="outline"
+                                  className={`text-xs gap-1 ${isFailed ? 'bg-destructive/10 text-destructive border-destructive/30' : 'bg-amber-500/10 text-amber-600 border-amber-500/30'}`}
+                                >
+                                  {isProcessing
+                                    ? <Loader2 className="h-3 w-3 animate-spin" aria-label="Processando" />
+                                    : <span className="h-1.5 w-1.5 rounded-full bg-destructive" />}
+                                  {isProcessing
+                                    ? `Processando → ${target || '…'}`
+                                    : `Erro → ${target || '…'}`}
+                                </Badge>
+                                {isFailed && (
+                                  <div className="flex flex-wrap gap-1">
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-6 px-1.5 text-[10px]"
+                                      disabled={retryMaterialization.isPending}
+                                      onClick={() => retryMaterialization.mutate(order.id)}
+                                    >
+                                      Tentar de novo
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-6 px-1.5 text-[10px]"
+                                      disabled={discardMaterialization.isPending}
+                                      onClick={() => discardMaterialization.mutate(order.id)}
+                                    >
+                                      Descartar
+                                    </Button>
+                                  </div>
+                                )}
+                                {isFailed && cmdError && (
+                                  <span className="text-[10px] text-destructive line-clamp-2" title={cmdError}>
+                                    {cmdError}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          }
+                          return (
+                        <Select value={order.status} disabled={!canEditPv || updateStatus.isPending || isProcessing} onValueChange={async (v) => {
+                          const prev = order.status;
                           try {
-                            await updateStatus.mutateAsync({ id: order.id, status: v });
+                            const result = await updateStatus.mutateAsync({ id: order.id, status: v });
+                            if (v === 'Aprovado' && prev !== 'Aprovado') {
+                              if ((result as { enqueued?: boolean })?.enqueued) {
+                                setPendingDistributeIds((prevSet) => new Set(prevSet).add(order.id));
+                              } else {
+                                openPostApprovalDistribute([{
+                                  id: order.id,
+                                  order_number: order.order_number,
+                                  delivery_deadline: order.delivery_deadline,
+                                }]);
+                              }
+                            }
                           } catch {
                             // A mutation é a dona única do feedback: readiness abre
                             // a janela estruturada e os demais erros geram um toast.
@@ -2228,6 +2459,8 @@ export default function SaleOrders() {
                             ))}
                           </SelectContent>
                         </Select>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell>
                         <SaleOrderFloorProgressSummary
@@ -2251,21 +2484,23 @@ export default function SaleOrders() {
                               : undefined
                         }
                       >
-                        <div className="flex flex-col">
-                          <span>
+                        <div className="flex items-baseline gap-1.5 min-w-0">
+                          <span className="shrink-0">
                             {formatDate(order.delivery_deadline)}
                             {(isOverdue || isInfeasible) && <AlertTriangle className="ml-1 inline h-3.5 w-3.5 align-text-bottom" />}
                           </span>
-                          {isInfeasible && minBilling && (
-                            <span className="text-xs font-mono text-destructive font-bold">
-                              MÍN: {formatDate(minBilling)}
+                          {isInfeasible && minBilling ? (
+                            <span className="text-[11px] font-mono text-destructive font-bold truncate" title={`Mínima: ${formatDate(minBilling)}`}>
+                              MÍN {formatDate(minBilling)}
                             </span>
-                          )}
-                          {!isInfeasible && (order.delivery_month || order.delivery_week) && (
-                            <span className="text-xs text-muted-foreground font-mono">
+                          ) : (order.delivery_month || order.delivery_week) ? (
+                            <span
+                              className="text-[11px] text-muted-foreground font-mono truncate"
+                              title={[order.delivery_month, order.delivery_week].filter(Boolean).join(' ')}
+                            >
                               {[order.delivery_month, order.delivery_week].filter(Boolean).join(' ')}
                             </span>
-                          )}
+                          ) : null}
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
@@ -2273,10 +2508,19 @@ export default function SaleOrders() {
                           <Button variant="ghost" size="icon" className="h-7 w-7" title="Gerar pedido (PDF)" onClick={() => { void printSaleOrderPdf(order); }}>
                             <Printer className="h-3.5 w-3.5" />
                           </Button>
-                          <Button variant="ghost" size="icon" className="h-7 w-7" title="Duplicar por grupo" onClick={() => openDupDialog(order.id)}>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" title="Duplicar para lojas" onClick={() => openDupDialog(order.id)}>
                             <Copy className="h-3.5 w-3.5" />
                           </Button>
-                          <Button variant="ghost" size="icon" className="h-7 w-7" title="Editar" disabled={!canEditPv} onClick={() => navigate(`/sales/edit/${order.id}`)}>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            title={(order as { command_phase?: string }).command_phase === 'processing'
+                              ? 'Aguarde a materialização terminar'
+                              : 'Editar'}
+                            disabled={!canEditPv || (order as { command_phase?: string }).command_phase === 'processing'}
+                            onClick={() => navigate(`/sales/edit/${order.id}`)}
+                          >
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
                           <Button variant="ghost" size="icon" className="h-7 w-7" title="Consumo de materiais" onMouseEnter={() => prefetchPvConsumption(order.id)} onClick={() => openPvConsumption([order.id])}>
@@ -2381,7 +2625,9 @@ export default function SaleOrders() {
         onClear={sel.clear}
         itemLabel={bulkStatusProgress
           ? `${bulkStatusProgress.done}/${bulkStatusProgress.total} → ${bulkStatusProgress.status}`
-          : (sel.count === 1 ? 'PV selecionado' : 'PVs selecionados')}
+          : sel.hiddenSelectedCount > 0
+            ? `${sel.count} PV(s) · ${sel.hiddenSelectedCount} fora do filtro`
+            : (sel.count === 1 ? 'PV selecionado' : 'PVs selecionados')}
         className="bottom-[calc(4.5rem+env(safe-area-inset-bottom))] md:bottom-4"
         actions={[
           ...(canEditPv ? [{
@@ -2392,6 +2638,16 @@ export default function SaleOrders() {
           }] : []),
           ...(canBuy ? [{ label: 'Gerar ordem de compra', icon: <ShoppingCart className="h-3.5 w-3.5" />, variant: 'outline' as const, onClick: handleBulkPurchaseOrders }] : []),
           { label: 'Emitir NF-e', icon: <Receipt className="h-3.5 w-3.5" />, onClick: () => openBulkNfe('emit') },
+          {
+            label: 'Embalagem',
+            icon: <Package className="h-3.5 w-3.5" />,
+            variant: 'outline' as const,
+            onClick: () => {
+              setBulkPackagingTarget('individual_fitilho');
+              setBulkPackagingOpen(true);
+            },
+            disabled: Boolean(bulkPackagingRunning || bulkStatusProgress),
+          },
           { label: 'Etiqueta Individual', icon: <Barcode className="h-3.5 w-3.5" />, variant: 'outline' as const, onClick: handleBulkLabels },
           { label: 'Consumo', icon: <BarChart3 className="h-3.5 w-3.5" />, variant: 'outline' as const, onClick: handleBulkConsumption },
           ...(canEditPv ? [{
@@ -2471,6 +2727,76 @@ export default function SaleOrders() {
               }}
             >
               Aplicar para {sel.count} PV(s)
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Alterar embalagem em LOTE — corrige Colméia vs Individual+Fitilho sem abrir cada PV */}
+      <Dialog
+        open={bulkPackagingOpen}
+        onOpenChange={(open) => {
+          if (bulkPackagingRunning) return;
+          setBulkPackagingOpen(open);
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Package className="h-4 w-4" />
+              Alterar embalagem em lote
+            </DialogTitle>
+            <DialogDescription>
+              {sel.count} pedido(s) selecionado(s). Em Produção entra; Faturado,
+              Cancelado e terminais ficam de fora. Grava só a embalagem (sem
+              rematerializar OPs); o débito de caixa é reconciliado pelo gatilho.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2.5 pt-1">
+            <Label className="text-xs uppercase tracking-wider text-muted-foreground font-bold">
+              Modo de embalagem
+            </Label>
+            <Select
+              value={bulkPackagingTarget}
+              onValueChange={(v) => {
+                if (isCanonicalPackagingMode(v)) setBulkPackagingTarget(v);
+              }}
+              disabled={bulkPackagingRunning}
+            >
+              <SelectTrigger><SelectValue placeholder="Selecione a embalagem" /></SelectTrigger>
+              <SelectContent>
+                {PACKAGING_MODE_CANONICAL.map((mode) => (
+                  <SelectItem key={mode} value={mode}>
+                    {PACKAGING_MODE_LABELS[mode]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter className="pt-3">
+            <Button
+              variant="outline"
+              disabled={bulkPackagingRunning}
+              onClick={() => setBulkPackagingOpen(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              disabled={bulkPackagingRunning || !bulkPackagingTarget}
+              onClick={async () => {
+                const mode = bulkPackagingTarget;
+                setBulkPackagingOpen(false);
+                await handleBulkPackagingChange(mode);
+              }}
+            >
+              {bulkPackagingRunning ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Aplicando…
+                </>
+              ) : (
+                `Aplicar para ${sel.count} PV(s)`
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2556,7 +2882,20 @@ export default function SaleOrders() {
                 <section className="border-b border-border p-2.5 lg:border-b-0 lg:border-r" aria-labelledby="pv-actions-order">
                   <p id="pv-actions-order" className="eyebrow mb-2"><span className="mr-1 font-mono text-primary">01</span> Pedido</p>
                   <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Ações do pedido">
-                  {canEditPv && <Button variant="outline" size="sm" className="gap-2" onClick={() => { setDetailDialogOpen(false); navigate(`/sales/edit/${selectedOrder.id}`); }}><Pencil className="h-3.5 w-3.5" /> Editar</Button>}
+                  {canEditPv && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                      disabled={(selectedOrder as { command_phase?: string }).command_phase === 'processing'}
+                      title={(selectedOrder as { command_phase?: string }).command_phase === 'processing'
+                        ? 'Aguarde a materialização terminar'
+                        : undefined}
+                      onClick={() => { setDetailDialogOpen(false); navigate(`/sales/edit/${selectedOrder.id}`); }}
+                    >
+                      <Pencil className="h-3.5 w-3.5" /> Editar
+                    </Button>
+                  )}
                   <Button variant="outline" size="sm" className="gap-2" onClick={() => setMarginDialogOpen(true)}><TrendingUp className="h-3.5 w-3.5" /> Margem</Button>
                   <Button variant="outline" size="sm" className="gap-2" onClick={() => setPhotosDialogOpen(true)} disabled={loadingOrderItems || selectedOrderItems.length === 0}><Images className="h-3.5 w-3.5" /> Fotos</Button>
                   {/* Botão "Aprovar" individual — só aparece em Rascunho.
@@ -2575,16 +2914,35 @@ export default function SaleOrders() {
                         actionLabel: 'Aprovar',
                         onConfirm: async () => {
                         try {
-                          await updateStatus.mutateAsync({ id: selectedOrder.id, status: 'Aprovado' });
+                          const result = await updateStatus.mutateAsync({
+                            id: selectedOrder.id,
+                            status: 'Aprovado',
+                            silent: true,
+                          });
                           setSelectedOrder((prev: { id: string } | null) => (
-                            prev && prev.id === selectedOrder.id ? { ...prev, status: 'Aprovado' } : prev
+                            prev && prev.id === selectedOrder.id
+                              ? {
+                                ...prev,
+                                status: (result as { enqueued?: boolean })?.enqueued
+                                  ? selectedOrder.status
+                                  : 'Aprovado',
+                                command_phase: (result as { enqueued?: boolean })?.enqueued
+                                  ? 'processing'
+                                  : 'idle',
+                                command_target_status: (result as { enqueued?: boolean })?.enqueued
+                                  ? 'Aprovado'
+                                  : null,
+                              }
+                              : prev
                           ));
                         } catch {
                           // Prontidão abre o modal estruturado; os demais erros
                           // já geram toast na mutation (dono único).
                           return;
                         }
-                        toast.success(`Pedido ${selectedOrder.order_number} aprovado.`);
+                        toast.success(
+                          `Pedido ${selectedOrder.order_number} enfileirado para aprovação.`,
+                        );
                         queryClient.invalidateQueries({ queryKey: ['sale_orders'] });
                         // Fecha por setState (não passa pelo onOpenChange), então
                         // limpa o ?pv= aqui — senão o param fica preso e um F5
@@ -2597,6 +2955,7 @@ export default function SaleOrders() {
                           return next;
                         }, { replace: true });
                         setDetailDialogOpen(false);
+                        setPendingDistributeIds((prev) => new Set(prev).add(selectedOrder.id));
                         },
                       })}
                     >
@@ -3152,136 +3511,23 @@ export default function SaleOrders() {
         </Suspense>
       )}
 
-      {/* DUPLICATE DIALOG */}
-      <Dialog open={dupDialog} onOpenChange={setDupDialog}>
-        <DialogContent className="sm:max-w-2xl">
-          <DialogHeader><DialogTitle>Duplicar por Grupo Econômico</DialogTitle></DialogHeader>
-          {/* Audit visual: aviso explícito sobre impacto de estoque/reservas.
-              Usuário não esperava que duplicar PV gerasse N reservas novas. */}
-          <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 mt-2 flex items-start gap-2">
-            <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
-            <div className="text-xs text-amber-700 dark:text-amber-300">
-              <p className="font-semibold mb-1">A duplicação reservará insumos novamente</p>
-              <p>
-                Cada cliente selecionado vira um novo PV com mesmos itens — gerando reservas
-                independentes em <span className="font-mono">products.reserved_stock</span>. Verifique
-                a disponibilidade de materiais antes de confirmar pra evitar superalocação.
-              </p>
-            </div>
-          </div>
-          <div className="space-y-4 mt-2">
-            <div>
-              <Label>Grupo Econômico</Label>
-              <Select value={dupGroupId} onValueChange={v => { setDupGroupId(v); setDupSelectedClients([]); setDupClientSearch(''); }}>
-                <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione um grupo" /></SelectTrigger>
-                <SelectContent>{economicGroups.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-
-            {/* Info contextual: lojas que JÁ receberam cópia deste PV são
-                ocultadas da lista (filtradas via parent_order_id). Pedido
-                user 20/05/2026: "duplicar deve desconsiderar lojas do grupo
-                que já foi copiado daquele pedido". */}
-            {dupGroupId && dupAlreadyCopiedStores.length > 0 && (
-              <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2.5">
-                <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">
-                  ✓ {dupAlreadyCopiedStores.length} {dupAlreadyCopiedStores.length === 1 ? 'loja já recebeu cópia' : 'lojas já receberam cópia'} (não aparecem na lista abaixo)
-                </p>
-                <p className="text-[11px] text-emerald-800/80 dark:text-emerald-300/80 mt-1">
-                  {dupAlreadyCopiedStores.slice(0, 5).map(c => c.razao_social).join(' · ')}
-                  {dupAlreadyCopiedStores.length > 5 && ` · +${dupAlreadyCopiedStores.length - 5}`}
-                </p>
-              </div>
-            )}
-
-            {/* Vazio quando todas já foram copiadas */}
-            {dupGroupId && dupGroupClients.length === 0 && dupAlreadyCopiedStores.length > 0 && (
-              <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-3 text-center">
-                <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">
-                  Todas as lojas ativas do grupo já receberam cópia deste PV
-                </p>
-                <p className="text-xs text-amber-800/80 dark:text-amber-300/80 mt-1">
-                  Nada pra duplicar — feche este dialog.
-                </p>
-              </div>
-            )}
-
-            {dupGroupId && dupGroupClients.length > 0 && (() => {
-              const filteredClients = dupClientSearch.trim()
-                ? dupGroupClients.filter(c => searchMatchesAllTerms(
-                    dupClientSearch,
-                    c.razao_social,
-                    c.nome_fantasia,
-                    c.cnpj,
-                  ))
-                : dupGroupClients;
-              return (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label className="text-sm font-semibold">Lojas do Grupo</Label>
-                  <Button type="button" variant="ghost" size="sm" onClick={toggleAllDupClients} className="text-xs">{dupSelectedClients.length === dupGroupClients.length ? 'Desmarcar todos' : 'Selecionar todos'}</Button>
-                </div>
-                <SearchInput
-                  placeholder="Buscar loja por razão social, fantasia ou CNPJ…"
-                  value={dupClientSearch}
-                  onChange={setDupClientSearch}
-                  resultCount={filteredClients.length}
-                  totalCount={dupGroupClients.length}
-                  inputClassName="h-9"
-                />
-                <div className="border rounded-md divide-y max-h-72 overflow-y-auto">
-                  {filteredClients.map(c => {
-                    const isSelected = dupSelectedClients.includes(c.id);
-                    return (
-                      // Bug fix 20/05/2026: era <label> com Checkbox dentro, mas
-                      // shadcn Checkbox é <button>, não <input> — clicar na label
-                      // não togglava o estado, parecia que multi-seleção não
-                      // funcionava. Trocado por div com onClick na linha toda.
-                      <div
-                        key={c.id}
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => toggleDupClient(c.id)}
-                        onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggleDupClient(c.id); } }}
-                        className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors ${
-                          isSelected ? 'bg-primary/10 hover:bg-primary/15' : 'hover:bg-muted/50'
-                        }`}
-                      >
-                        <Checkbox
-                          checked={isSelected}
-                          onCheckedChange={() => toggleDupClient(c.id)}
-                          onClick={(e) => e.stopPropagation()}
-                          aria-label={`Selecionar ${c.razao_social}`}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className={`text-sm font-medium truncate ${isSelected ? 'text-primary' : ''}`}>
-                            {c.razao_social}
-                          </div>
-                          {c.cnpj && <div className="text-xs text-muted-foreground font-mono">{c.cnpj}</div>}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {filteredClients.length === 0 && <p className="text-xs text-muted-foreground p-3">Nenhuma loja encontrada.</p>}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  <span className="font-bold text-primary">{dupSelectedClients.length}</span> de {dupGroupClients.length} {dupGroupClients.length === 1 ? 'loja selecionada' : 'lojas selecionadas'}
-                  {dupSelectedClients.length > 0 && ' — clique em "Duplicar" pra criar N PVs de uma vez'}
-                </p>
-              </div>
-              );
-            })()}
-            {dupGroupId && dupGroupClients.length === 0 && <p className="text-sm text-muted-foreground">Nenhum cliente ativo neste grupo.</p>}
-            <div className="flex justify-end gap-3 pt-2">
-              <Button type="button" variant="outline" onClick={() => setDupDialog(false)}>Cancelar</Button>
-              <Button onClick={handleDuplicate} disabled={dupSelectedClients.length === 0 || createOrder.isPending}>
-                {createOrder.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
-                Duplicar ({dupSelectedClients.length})
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <DuplicateToStoresDialog
+        open={dupDialog}
+        onOpenChange={(open) => {
+          setDupDialog(open);
+          if (!open) setDupOrderId(null);
+        }}
+        order={dupOrderId ? orders.find(o => o.id === dupOrderId) || null : null}
+        clients={clients}
+        economicGroups={economicGroups}
+        references={(references ?? []).flatMap((row) => {
+          const r = row as unknown as { id?: string; code?: string | null; name?: string | null };
+          return r?.id ? [{ id: r.id, code: r.code, name: r.name }] : [];
+        })}
+        sourceClientId={dupSourceClientId}
+        alreadyCopiedClientIds={alreadyCopiedClientIds}
+        createOrder={createOrder}
+      />
 
       {readinessCorrectionTarget && (
         <Suspense fallback={null}>
@@ -3306,6 +3552,9 @@ export default function SaleOrders() {
                   override_id: overrideId || null,
                 });
                 setReadinessCorrectionTargets((current) => current.filter((item) => item.id !== target.id));
+                if (target.status === 'Aprovado') {
+                  setPendingDistributeIds((prev) => new Set(prev).add(target.id));
+                }
               } catch {
                 // onReadinessBlocked atualiza o mesmo alvo com o preflight novo.
               }
@@ -3422,6 +3671,18 @@ export default function SaleOrders() {
             onOpenChange={setOperatorFichasOpen}
             saleOrderId={selectedOrder?.id || null}
             orderNumber={selectedOrder?.order_number || ''}
+          />
+        </Suspense>
+      )}
+
+      {postApprovalDistribute && (
+        <Suspense fallback={null}>
+          <PostApprovalCabedalDistributeScreen
+            open
+            saleOrderIds={postApprovalDistribute.saleOrderIds}
+            reportOrders={postApprovalDistribute.reportOrders}
+            minBillingById={minBillingMap}
+            onDone={() => setPostApprovalDistribute(null)}
           />
         </Suspense>
       )}

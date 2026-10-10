@@ -969,20 +969,40 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       const current = getStrapSourcingOverride(next, lineId);
       const line = strapLineByKey.get(lineId);
       if (mode === 'buy_ready') {
-        const colorId = line?.colorId || strap.color_id || null;
-        if (!line?.strapVariantId || !colorId || !line.canBuyReady) continue;
-        const candidate = {
-          source_mode: 'buy_ready' as const,
-          color_id: colorId,
-          strap_variant_id: line.strapVariantId,
-          recipe_id: null,
-          gross_required_m: line.strapRequiredM,
-          required_at: line.requiredAt,
-          main_production_start: line.mainProductionStart,
-          schedule_revision: line.scheduleRevision,
-        };
-        if (strapSourcingFieldsEqual(getStrapSourcingSelection(next, lineId), candidate)) continue;
-        next = setStrapSourcing(next, lineId, candidate);
+        const colorId = (strap.pv_origem === 'sku_acabado'
+          ? (canonicalMainStrapColor?.id || line?.colorId || strap.color_id || null)
+          : (line?.colorId || strap.color_id || null));
+        // PV escolhe_no_pv + Comprar pronto: sem variante Hub (SKU no save).
+        if (strap.pv_origem === 'sku_acabado' && !isPurchasedReadyStrap(strap)) {
+          if (!colorId && !line?.strapRequiredM) continue;
+          const candidate = {
+            source_mode: 'buy_ready' as const,
+            color_id: colorId,
+            strap_variant_id: null,
+            finished_product_id: line?.finishedProductId || null,
+            recipe_id: null,
+            gross_required_m: line?.strapRequiredM ?? null,
+            required_at: line?.requiredAt ?? null,
+            main_production_start: line?.mainProductionStart ?? null,
+            schedule_revision: line?.scheduleRevision ?? null,
+          };
+          if (strapSourcingFieldsEqual(getStrapSourcingSelection(next, lineId), candidate)) continue;
+          next = setStrapSourcing(next, lineId, candidate);
+        } else {
+          if (!line?.strapVariantId || !colorId || !line.canBuyReady) continue;
+          const candidate = {
+            source_mode: 'buy_ready' as const,
+            color_id: colorId,
+            strap_variant_id: line.strapVariantId,
+            recipe_id: null,
+            gross_required_m: line.strapRequiredM,
+            required_at: line.requiredAt,
+            main_production_start: line.mainProductionStart,
+            schedule_revision: line.scheduleRevision,
+          };
+          if (strapSourcingFieldsEqual(getStrapSourcingSelection(next, lineId), candidate)) continue;
+          next = setStrapSourcing(next, lineId, candidate);
+        }
       } else {
         const candidate = internalStrapSourcingFromPreview(
           strapPreviewIdentityFromLine(line, strap.color_id),
@@ -1003,6 +1023,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     }
     if (changed) latestRef.current.onUpdate(latestRef.current.index, 'strap_sourcing', next);
   }, [
+    canonicalMainStrapColor?.id,
     item.strap_colors,
     preserveCommittedStrapSnapshot,
     strapCatalog?.measures,
@@ -2608,10 +2629,18 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                         );
                         return;
                       }
+                      const mainColorId = canonicalMainStrapColor?.id || null;
+                      const mainColorName = canonicalMainStrapColor?.name || item.color?.trim() || '';
                       const updated = snapshotStraps.map((strap) => {
                         const lineId = technicalStrapLineId(strap);
                         if (!lineId || !eligible.has(lineId)) return strap;
-                        return { ...strap, pv_origem: 'sku_acabado' as const };
+                        return {
+                          ...strap,
+                          pv_origem: 'sku_acabado' as const,
+                          ...(mainColorId || mainColorName
+                            ? { color_id: mainColorId, color: mainColorName }
+                            : {}),
+                        };
                       });
                       let nextSourcing = strapSourcingMap;
                       updated.forEach((strap) => {
@@ -2619,19 +2648,26 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                         if (!lineId || isPurchasedReadyStrap(strap)) return;
                         if (strap.pv_origem !== 'sku_acabado') return;
                         const preview = strapLineByKey.get(lineId);
-                        const colorId = preview?.colorId || strap.color_id || null;
-                        nextSourcing = preview?.strapVariantId && preview.canBuyReady && colorId
+                        const colorId = mainColorId || preview?.colorId || strap.color_id || null;
+                        nextSourcing = colorId
                           ? setStrapSourcing(nextSourcing, lineId, {
                             source_mode: 'buy_ready',
                             color_id: colorId,
-                            strap_variant_id: preview.strapVariantId,
+                            strap_variant_id: null,
+                            finished_product_id: preview?.finishedProductId || null,
                             recipe_id: null,
-                            gross_required_m: preview.strapRequiredM,
-                            required_at: preview.requiredAt,
-                            main_production_start: preview.mainProductionStart,
-                            schedule_revision: preview.scheduleRevision,
+                            gross_required_m: preview?.strapRequiredM ?? null,
+                            required_at: preview?.requiredAt ?? null,
+                            main_production_start: preview?.mainProductionStart ?? null,
+                            schedule_revision: preview?.scheduleRevision ?? null,
                           })
-                          : setStrapSourcing(nextSourcing, lineId, null);
+                          : setStrapSourcing(nextSourcing, lineId, {
+                            source_mode: 'buy_ready',
+                            strap_variant_id: null,
+                            finished_product_id: preview?.finishedProductId || null,
+                            recipe_id: null,
+                            gross_required_m: preview?.strapRequiredM ?? null,
+                          });
                       });
                       if (onUpdateFields) onUpdateFields(index, { strap_colors: updated, strap_sourcing: nextSourcing });
                       else {
@@ -3127,26 +3163,37 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                               })}
                               onChange={(next) => {
                                 const lineKey = technicalStrapLineId(strap);
-                                const updated = snapshotStraps.map((entry) => (
-                                  technicalStrapLineId(entry) === lineKey
-                                    ? { ...entry, pv_origem: next }
-                                    : entry
-                                ));
+                                const mainColorId = canonicalMainStrapColor?.id || null;
+                                const mainColorName = canonicalMainStrapColor?.name || item.color?.trim() || '';
+                                const updated = snapshotStraps.map((entry) => {
+                                  if (technicalStrapLineId(entry) !== lineKey) return entry;
+                                  if (next === 'sku_acabado' && !isPurchasedReadyStrap(entry)) {
+                                    return {
+                                      ...entry,
+                                      pv_origem: next,
+                                      ...(mainColorId || mainColorName
+                                        ? { color_id: mainColorId, color: mainColorName }
+                                        : {}),
+                                    };
+                                  }
+                                  return { ...entry, pv_origem: next };
+                                });
                                 if (lineKey && next === 'sku_acabado' && !isPurchasedReadyStrap(strap)) {
                                   const preview = strapLineByKey.get(lineKey);
-                                  const colorId = preview?.colorId || strap.color_id || null;
-                                  const nextSourcing = preview?.strapVariantId && preview.canBuyReady && colorId
-                                    ? setStrapSourcing(strapSourcingMap, lineKey, {
-                                      source_mode: 'buy_ready',
-                                      color_id: colorId,
-                                      strap_variant_id: preview.strapVariantId,
-                                      recipe_id: null,
-                                      gross_required_m: preview.strapRequiredM,
-                                      required_at: preview.requiredAt,
-                                      main_production_start: preview.mainProductionStart,
-                                      schedule_revision: preview.scheduleRevision,
-                                    })
-                                    : setStrapSourcing(strapSourcingMap, lineKey, null);
+                                  const colorId = mainColorId || preview?.colorId || strap.color_id || null;
+                                  // PV Comprar pronto: congela buy_ready sem variante Hub;
+                                  // o save cria/acha o SKU e grava finished_product_id.
+                                  const nextSourcing = setStrapSourcing(strapSourcingMap, lineKey, {
+                                    source_mode: 'buy_ready',
+                                    color_id: colorId,
+                                    strap_variant_id: null,
+                                    finished_product_id: preview?.finishedProductId || null,
+                                    recipe_id: null,
+                                    gross_required_m: preview?.strapRequiredM ?? null,
+                                    required_at: preview?.requiredAt ?? null,
+                                    main_production_start: preview?.mainProductionStart ?? null,
+                                    schedule_revision: preview?.scheduleRevision ?? null,
+                                  });
                                   if (onUpdateFields) {
                                     onUpdateFields(index, {
                                       strap_colors: updated,
@@ -3238,7 +3285,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                                   Napa-base ainda não resolvida para esta cor.
                                 </p>
                               )
-                            ) : effective === 'buy_ready' ? (
+                            ) : effective === 'buy_ready' || strap.pv_origem === 'sku_acabado' ? (
                               <p className="text-[10px] leading-snug text-muted-foreground">
                                 A linha usa a tira pronta; a napa não será movimentada
                                 {line ? <> — <strong className="text-foreground">{fmt(line.strapRequiredM, 1)} m</strong></> : null}.

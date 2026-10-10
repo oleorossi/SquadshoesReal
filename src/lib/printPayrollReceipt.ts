@@ -162,9 +162,10 @@ export function printPayrollReceipt(d: PayrollReceiptData) {
   <script>window.onload = function(){ setTimeout(function(){ window.print(); }, 120); };</script>
 </body></html>`;
 
-  const w = window.open('', '_blank', 'width=880,height=1000');
-  if (!w) return;
-  w.document.open();
-  w.document.write(html);
-  w.document.close();
+  void import('@/lib/htmlPrintDelivery').then(({ deliverHtmlDocument }) => {
+    void deliverHtmlDocument(html, {
+      filename: `recibo-${d.employeeName || 'pagamento'}`,
+      title: 'Recibo',
+    });
+  });
 }

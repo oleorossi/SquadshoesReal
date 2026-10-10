@@ -35,7 +35,11 @@ function soleKey(
 }
 
 /**
- * Pin soberano → depois modo (atraso | setup solado+cor) → desempate estável.
+ * Pin soberano → sequência oficial (`queue_position`) → modo
+ * (atraso | setup solado+cor) → desempate estável.
+ *
+ * `queue_position` vem de `v_production_queue_detail` com a mesma ORDER BY de
+ * `list_production_sequence` (specs/sequencia-producao.md R1 / R5).
  */
 export function sortKanbanColumnCards(
   cards: KanbanCardData[],
@@ -49,6 +53,10 @@ export function sortKanbanColumnCards(
     const bPinned = bp != null;
     if (aPinned !== bPinned) return aPinned ? -1 : 1;
     if (aPinned && bPinned && ap !== bp) return (ap as number) - (bp as number);
+
+    const aq = a.q.queue_position;
+    const bq = b.q.queue_position;
+    if (aq != null && bq != null && aq !== bq) return aq - bq;
 
     if (mode === 'setup') {
       const ka = soleKey(a, soleByRefColor);

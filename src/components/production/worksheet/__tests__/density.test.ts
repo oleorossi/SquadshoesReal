@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import {
   TALLY_SIZE,
   HEADER_THUMB_PX,
+  AVIAMENTO_HERO_PHOTO_PX,
   STEP_CHECKBOX_PX,
   STRAP_ROW_PAD_Y,
   STRAP_LABEL_PAD,
@@ -71,6 +72,11 @@ describe('density — constantes da Opção A', () => {
     expect(HEADER_THUMB_PX).toBeLessThan(140);
     // Não pode encolher a ponto de o operador não reconhecer o modelo.
     expect(HEADER_THUMB_PX).toBeGreaterThanOrEqual(40);
+  });
+
+  it('hero opcional do Aviamento A4 é o tamanho grande histórico (140px)', () => {
+    expect(AVIAMENTO_HERO_PHOTO_PX).toBe(140);
+    expect(AVIAMENTO_HERO_PHOTO_PX).toBeGreaterThan(HEADER_THUMB_PX);
   });
 
   it('checkbox por numeração continua marcável à caneta', () => {
@@ -152,10 +158,15 @@ describe('guard — toda ficha de operador segue a densidade', () => {
     const offenders: string[] = [];
     for (const { name, src } of worksheetFiles()) {
       for (const size of productImageSizes(src)) {
-        // Só dois tamanhos são legítimos: a miniatura do cabeçalho e a
-        // miniatura por referência do Corte Forração (IMG, 92px — AUMENTADA a
-        // pedido do dono em 2026-07-22, não reduzir).
-        const ok = size === 'HEADER_THUMB_PX' || size === 'IMG';
+        // Tamanhos legítimos:
+        // - HEADER_THUMB_PX: miniatura do cabeçalho da cor
+        // - IMG: miniatura por referência do Corte Forração (92px — AUMENTADA
+        //   a pedido do dono em 2026-07-22, não reduzir)
+        // - AVIAMENTO_HERO_PHOTO_PX: bloco grande opcional do Aviamento A4
+        //   (toggle por referência na barra de Imprimir Fichas; 140px)
+        const ok = size === 'HEADER_THUMB_PX'
+          || size === 'IMG'
+          || size === 'AVIAMENTO_HERO_PHOTO_PX';
         if (!ok) offenders.push(`${name}: size={${size}}`);
       }
     }
@@ -193,5 +204,22 @@ describe('guard — toda ficha de operador segue a densidade', () => {
     expect(/gradeTableFont\(\s*activeSizes\s*,\s*true\s*\)/.test(src)).toBe(true);
     // compact continua false no Aviamento (Frente/Traseira).
     expect(src).toMatch(/'Aviamento':\s*\{[^}]*compact:\s*false/s);
+  });
+
+  it('Palmilha usa fitBesideGrade pro strip+grade; Solagem NÃO força sideBySide', () => {
+    const palmilha = worksheetFiles().find((f) => f.name === 'PalmilhaWorkSheet.tsx');
+    const solagem = worksheetFiles().find((f) => f.name === 'SolagemWorkSheet.tsx');
+    expect(palmilha).toBeTruthy();
+    expect(solagem).toBeTruthy();
+    expect(palmilha!.src.includes('fitBesideGrade')).toBe(true);
+    // Solagem: medido 30/08/2026 — sideBySide não reduziu folhas.
+    expect(solagem!.src.includes('fitBesideGrade')).toBe(false);
+  });
+
+  it('Corte Cabedal completo move multi-ref ao lado da grade quando cabe', () => {
+    const silk = worksheetFiles().find((f) => f.name === 'SilkMontageWorkSheet.tsx');
+    expect(silk).toBeTruthy();
+    expect(silk!.src.includes('cabedalBesideGrade')).toBe(true);
+    expect(silk!.src.includes('thumbsFitBesideGrade')).toBe(true);
   });
 });

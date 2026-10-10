@@ -4,6 +4,7 @@ import { adaptiveFontSize } from '@/lib/adaptiveFontSize';
 import { sheetHasSector } from '@/lib/sectors';
 import { adaptiveTableFont } from './worksheet/adaptiveFont';
 import { PaginatedSheet, type SheetBlock } from './worksheet/PaginatedSheet';
+import { normalizePageIdentity } from './worksheet/pageIdentity';
 
 export interface ReportStage {
   stage_name: string;
@@ -21,6 +22,8 @@ export interface ReportStrap {
 export interface ReportOrder {
   id: string;
   op_number?: string;
+  /** Número do PV de origem — usado pra fundir linhas cross-PV e citar na linha. */
+  sale_order_number?: string | null;
   reference_code?: string;
   /** Nome da ficha técnica — é o que o gestor chama de "referência" (ex.: S-039,
    *  DS22). O `reference_code` (903925…) é o código interno. */
@@ -87,11 +90,11 @@ export interface ReportSaleOrder {
 }
 
 interface Props {
-  saleOrder: ReportSaleOrder;
+  /** PVs do maço, já ordenados por order_number (PrintWorkSheetsPage). */
+  saleOrders: ReportSaleOrder[];
   orders: ReportOrder[];
   date?: string;
-  /** Rótulo da faixa de cabeçalho de página (PaginatedSheet) —
-   *  ex.: "Relatório Gerencial · PV-00123". */
+  /** Rótulo legado da faixa — a identidade rica vem de pageIdentity. */
   sectorLabel?: string;
 }
 
@@ -139,6 +142,8 @@ type LineGroup = {
   requires_upper_cut: boolean;
   requires_upper_sewing: boolean;
   requires_lining_cut: boolean;
+  /** PVs que contribuíram pra esta linha (ordenado). Citar na UI só se >1. */
+  sourcePvs: string[];
 };
 
 /** Grupo de material do item do PV (mesma regra do form: variante /
@@ -249,6 +254,7 @@ export function buildLineGroups(orders: ReportOrder[]): LineGroup[] {
         requires_upper_cut: false,
         requires_upper_sewing: false,
         requires_lining_cut: false,
+        sourcePvs: [],
       };
       map.set(key, gr);
     }
@@ -258,6 +264,8 @@ export function buildLineGroups(orders: ReportOrder[]): LineGroup[] {
     if (!gr.liningMaterial && o.lining_material) gr.liningMaterial = o.lining_material;
     if (!gr.insoleMaterial && o.insole_material) gr.insoleMaterial = o.insole_material;
     if (!gr.soleName && o.sole_name) gr.soleName = o.sole_name;
+    const pv = (o.sale_order_number || '').trim();
+    if (pv && !gr.sourcePvs.includes(pv)) gr.sourcePvs.push(pv);
     gr.totalPairs += o.total_pairs || 0;
     gr.fichas += fichasOf(o);
     gr.requires_upper_cut = gr.requires_upper_cut || o.requires_upper_cut === true;
@@ -285,7 +293,10 @@ export function buildLineGroups(orders: ReportOrder[]): LineGroup[] {
       }
     }
   }
-  return Array.from(map.values()).sort(
+  return Array.from(map.values()).map((gr) => {
+    gr.sourcePvs.sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    return gr;
+  }).sort(
     (a, b) => a.refName.localeCompare(b.refName, 'pt-BR')
       || a.color.localeCompare(b.color, 'pt-BR')
       || (a.liningMaterial || '').localeCompare(b.liningMaterial || '', 'pt-BR'),
@@ -390,63 +401,95 @@ export function eligibleSectorsForLine(
 /**
  * Relatório gerencial — CHECKLIST por referência+cor (2026-09-24, dono).
  *
- * Ordem: 1ª ref+cor → todos os setores dela (marcar □) → próxima ref/cor.
- * Cabeçalho da ref traz foto, material, pares, fichas e grade; embaixo,
- * uma linha por setor elegível do roteiro. Sem R$/frete.
+ * 2026-10: 1 documento por seleção (vários PVs). Cabeçalho = lista
+ * `PV · RAZÃO SOCIAL` (uma linha por pedido). Linhas de checklist fundem
+ * a mesma ref+cor entre PVs; citam os PVs só quando a linha junta >1.
  */
-export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props) => {
+export const ManagementReport = ({ saleOrders, orders, date, sectorLabel }: Props) => {
   const today = date || new Date().toLocaleDateString('pt-BR');
   const totalPairs = orders.reduce((s, o) => s + (o.total_pairs || 0), 0);
   const lines = buildLineGroups(orders);
+  const pvList = [...saleOrders].sort((a, b) =>
+    (a.order_number || '').localeCompare(b.order_number || '', 'pt-BR'),
+  );
 
   const linesWithSectors = lines
     .map((line) => ({ line, sectors: eligibleSectorsForLine(line) }))
     .filter((x) => x.sectors.length > 0);
 
+  const pageIdentity = normalizePageIdentity(
+    sectorLabel || 'Relatório Gerencial',
+    pvList.map((so) => ({
+      pvNumber: so.order_number || null,
+      clientOrderNumber: so.client_order_number || null,
+      clientName: so.client_name || null,
+      opNumber: null,
+    })),
+    { includeOp: false },
+  );
+
   const headerBlock = (
-    <header className="mb-4">
-      <div className="flex items-baseline justify-between gap-4 mb-2">
+    <header className="mb-2">
+      <div className="flex items-baseline justify-between gap-2 mb-1.5">
         <span className="section-label" style={{ color: '#000' }}>Squad Shoes · Relatório Gerencial</span>
         <span className="section-label" style={{ color: '#000' }}>{today}</span>
       </div>
-      <div className="rule-line-thick mb-3" style={{ backgroundColor: '#000' }} />
-      <div className="grid grid-cols-12 gap-4 items-end">
+      <div className="rule-line-thick mb-2" style={{ backgroundColor: '#000' }} />
+      <div className="grid grid-cols-12 gap-2 items-start">
         <div className="col-span-8">
-          <p className="section-label mb-1" style={{ color: '#000' }}>Pedido de Venda</p>
-          {(() => {
-            const pvText = saleOrder.order_number || 'PV —';
-            const fontPx = adaptiveFontSize(pvText, {
-              maxWidthPx: 480, baseFontPx: 72, minFontPx: 36, charWidthRatio: 0.45,
-            });
-            return (
-              <h1
+          <p className="section-label mb-2" style={{ color: '#000' }}>
+            {pvList.length > 1 ? `Pedidos de Venda (${pvList.length})` : 'Pedido de Venda'}
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {pvList.map((so) => {
+              const pvText = so.order_number || 'PV —';
+              const clientText = (so.client_name || 'Sem cliente').toUpperCase();
+              const line = `${pvText} · ${clientText}`;
+              const fontPx = adaptiveFontSize(line, {
+                maxWidthPx: 480,
+                baseFontPx: pvList.length > 1 ? 22 : 36,
+                minFontPx: 14,
+                charWidthRatio: 0.48,
+              });
+              return (
+                <div key={so.id || pvText}>
+                  <p
+                    style={{
+                      fontFamily: "'Anton', Impact, sans-serif",
+                      fontSize: `${fontPx}px`,
+                      lineHeight: 0.95,
+                      letterSpacing: '-0.02em',
+                      color: '#000',
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    <span>{pvText}</span>
+                    <span style={{ color: '#C00000' }}> · {clientText}</span>
+                  </p>
+                  {so.client_order_number && (
+                    <p className="mt-0.5 text-[8pt] text-black">
+                      <span className="section-label" style={{ color: '#555' }}>Pedido cliente</span>{' '}
+                      <span className="font-mono font-semibold ml-1">{so.client_order_number}</span>
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+            {pvList.length === 0 && (
+              <p
                 style={{
                   fontFamily: "'Anton', Impact, sans-serif",
-                  fontSize: `${fontPx}px`,
-                  lineHeight: 0.85,
-                  letterSpacing: '-0.025em',
+                  fontSize: '28px',
+                  lineHeight: 0.9,
                   color: '#000',
-                  textTransform: 'uppercase',
                 }}
               >
-                {pvText}
-              </h1>
-            );
-          })()}
-          {saleOrder.client_order_number && (
-            <p className="mt-2 text-[9pt] text-black">
-              <span className="section-label" style={{ color: '#555' }}>Pedido cliente</span>{' '}
-              <span className="font-mono font-semibold ml-1">{saleOrder.client_order_number}</span>
-            </p>
-          )}
+                PV —
+              </p>
+            )}
+          </div>
         </div>
         <div className="col-span-4 border-l border-black pl-4 space-y-2">
-          <div>
-            <p className="section-label" style={{ color: '#555' }}>Cliente</p>
-            <p className="font-semibold text-[10pt] text-black leading-tight mt-0.5">
-              {saleOrder.client_name || 'Sem cliente'}
-            </p>
-          </div>
           <div>
             <p className="section-label" style={{ color: '#555' }}>Pares</p>
             <p
@@ -464,7 +507,7 @@ export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props
           </div>
         </div>
       </div>
-      <p className="section-label mt-3" style={{ color: '#555' }}>
+      <p className="section-label mt-1.5" style={{ color: '#555' }}>
         Checklist por referência · marque cada setor ao concluir
       </p>
     </header>
@@ -475,177 +518,198 @@ export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props
   linesWithSectors.forEach(({ line, sectors }, lineIdx) => {
     const material = materialForChecklistSector(line, sectors[0]);
 
-    // Cabeçalho da referência+cor (foto + identidade + totais + grade)
+    // Identidade + checklist = UM SheetBlock. Dois blocos (card keepWithNext +
+    // checklist keepWithPrev) ainda vazavam no print: a altura medida em tela
+    // subestimava Anton/linhas ~8%, o pagi-page "cabia" no pack e no Chrome o
+    // keep-together do maço era violado — SOLAGEM no pé, ACABAMENTO/EXPEDIÇÃO
+    // derramavam ANTES do Folha N/M seguinte (órfão 27/09/2026, ainda vivo
+    // após o wrap). data-pack-boost sobe só a altura empacotada; cada linha
+    // keep-together é cinto se o bloco precisar fluir (>1 A4).
     itemBlocks.push({
       node: (
         <div
           key={`ref-${line.key}`}
+          data-pack-boost="1.12"
           className="keep-together"
-          style={{
-            marginTop: lineIdx === 0 ? 8 : 14,
-            border: '2px solid #000',
-            padding: '8px 10px',
-            background: '#fff',
-            printColorAdjust: 'exact',
-          }}
+          style={{ marginTop: lineIdx === 0 ? 4 : 8 }}
         >
           <div
+            className="keep-together keep-with-next"
             style={{
-              display: 'grid',
-              gridTemplateColumns: `${REF_THUMB_PX}px 1fr auto`,
-              gap: 10,
-              alignItems: 'center',
+              border: '2px solid #000',
+              padding: '5px 8px',
+              background: '#fff',
+              printColorAdjust: 'exact',
             }}
           >
             <div
               style={{
-                width: REF_THUMB_PX,
-                height: REF_THUMB_PX,
-                border: '1.5px solid #000',
-                overflow: 'hidden',
-                background: '#fff',
+                display: 'grid',
+                gridTemplateColumns: `${REF_THUMB_PX}px 1fr auto`,
+                gap: 8,
+                alignItems: 'center',
               }}
             >
-              {line.imageUrl ? (
-                <SignedImage
-                  src={line.imageUrl}
-                  alt={`${line.refName} ${line.color}`}
-                  loading="eager"
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center' }}>
-                  <span className="section-label" style={{ color: '#999', fontSize: 7 }}>Sem foto</span>
-                </div>
-              )}
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', alignItems: 'baseline' }}>
-                <span
-                  style={{
-                    fontFamily: "'Anton', Impact, sans-serif",
-                    fontSize: '26px',
-                    lineHeight: 0.9,
-                    letterSpacing: '-0.02em',
-                    textTransform: 'uppercase',
-                    color: '#C00000',
-                  }}
-                >
-                  {line.refName}
-                </span>
-                <span
-                  style={{
-                    fontFamily: "'Anton', Impact, sans-serif",
-                    fontSize: '20px',
-                    lineHeight: 0.9,
-                    letterSpacing: '-0.015em',
-                    textTransform: 'uppercase',
-                    color: '#C00000',
-                  }}
-                >
-                  {line.color}
-                </span>
+              <div
+                style={{
+                  width: REF_THUMB_PX,
+                  height: REF_THUMB_PX,
+                  border: '1.5px solid #000',
+                  overflow: 'hidden',
+                  background: '#fff',
+                }}
+              >
+                {line.imageUrl ? (
+                  <SignedImage
+                    src={line.imageUrl}
+                    alt={`${line.refName} ${line.color}`}
+                    loading="eager"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center' }}>
+                    <span className="section-label" style={{ color: '#999', fontSize: 7 }}>Sem foto</span>
+                  </div>
+                )}
               </div>
-              {material && (
+              <div style={{ minWidth: 0 }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', alignItems: 'baseline' }}>
+                  <span
+                    style={{
+                      fontFamily: "'Anton', Impact, sans-serif",
+                      fontSize: '26px',
+                      lineHeight: 0.9,
+                      letterSpacing: '-0.02em',
+                      textTransform: 'uppercase',
+                      color: '#C00000',
+                    }}
+                  >
+                    {line.refName}
+                  </span>
+                  <span
+                    style={{
+                      fontFamily: "'Anton', Impact, sans-serif",
+                      fontSize: '20px',
+                      lineHeight: 0.9,
+                      letterSpacing: '-0.015em',
+                      textTransform: 'uppercase',
+                      color: '#C00000',
+                    }}
+                  >
+                    {line.color}
+                  </span>
+                </div>
+                {material && (
+                  <span
+                    style={{
+                      display: 'inline-block',
+                      marginTop: 4,
+                      fontFamily: "'Anton', Impact, sans-serif",
+                      fontSize: '13px',
+                      letterSpacing: '0.02em',
+                      textTransform: 'uppercase',
+                      color: '#000',
+                      border: '1.5px solid #000',
+                      padding: '2px 6px',
+                    }}
+                  >
+                    {material}
+                  </span>
+                )}
+                {line.sourcePvs.length > 1 && (
+                  <p
+                    style={{
+                      marginTop: 4,
+                      fontFamily: "'Fira Code', monospace",
+                      fontSize: '8px',
+                      letterSpacing: '0.04em',
+                      textTransform: 'uppercase',
+                      color: '#555',
+                    }}
+                  >
+                    {line.sourcePvs.join(' · ')}
+                  </p>
+                )}
+              </div>
+              <div style={{ textAlign: 'right', fontFamily: "'Fira Code', monospace" }}>
+                <div style={{ fontWeight: 700, fontSize: '14px', color: '#000' }}>
+                  {line.totalPairs} <span style={{ fontWeight: 500, fontSize: '9px', color: '#555' }}>PARES</span>
+                </div>
+                <div style={{ fontWeight: 700, fontSize: '14px', color: '#000', marginTop: 2 }}>
+                  {line.fichas} <span style={{ fontWeight: 500, fontSize: '9px', color: '#555' }}>FICHAS</span>
+                </div>
+              </div>
+            </div>
+            <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {line.corrugadoGrade && !line.mixedCorrugado && (
+                <GradeMiniTable
+                  grade={fillGradeSizeRange(line.corrugadoGrade)}
+                  label={`Corrugado · 1 ficha (${Object.values(line.corrugadoGrade).reduce((s, v) => s + (Number(v) || 0), 0)}p)`}
+                  allowZero
+                />
+              )}
+              <GradeMiniTable
+                grade={line.grade}
+                label={line.fichas > 1 ? `Total · × ${line.fichas} fichas` : 'Total · 1 ficha'}
+              />
+            </div>
+          </div>
+          {sectors.map((sector, si) => {
+            const isLast = si === sectors.length - 1;
+            return (
+              <div
+                key={`sec-${line.key}-${sector}`}
+                className={isLast ? 'keep-together keep-with-previous' : 'keep-together keep-with-next'}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: `1fr ${CHECK_BOX_MM}mm`,
+                  gap: 8,
+                  alignItems: 'center',
+                  borderLeft: '2px solid #000',
+                  borderRight: '2px solid #000',
+                  borderBottom: isLast ? '2px solid #000' : '1px solid #000',
+                  padding: '4px 8px',
+                  background: si % 2 === 0 ? '#fff' : '#F7F5F0',
+                  printColorAdjust: 'exact',
+                }}
+              >
                 <span
                   style={{
-                    display: 'inline-block',
-                    marginTop: 4,
                     fontFamily: "'Anton', Impact, sans-serif",
-                    fontSize: '13px',
-                    letterSpacing: '0.02em',
+                    fontSize: '15px',
+                    letterSpacing: '0.03em',
                     textTransform: 'uppercase',
                     color: '#000',
-                    border: '1.5px solid #000',
-                    padding: '2px 6px',
+                    lineHeight: 1,
                   }}
                 >
-                  {material}
+                  {sector}
                 </span>
-              )}
-            </div>
-            <div style={{ textAlign: 'right', fontFamily: "'Fira Code', monospace" }}>
-              <div style={{ fontWeight: 700, fontSize: '14px', color: '#000' }}>
-                {line.totalPairs} <span style={{ fontWeight: 500, fontSize: '9px', color: '#555' }}>PARES</span>
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      width: `${CHECK_BOX_MM}mm`,
+                      height: `${CHECK_BOX_MM}mm`,
+                      border: '1.5px solid #000',
+                      boxSizing: 'border-box',
+                      background: '#fff',
+                      display: 'inline-block',
+                    }}
+                  />
+                </div>
               </div>
-              <div style={{ fontWeight: 700, fontSize: '14px', color: '#000', marginTop: 2 }}>
-                {line.fichas} <span style={{ fontWeight: 500, fontSize: '9px', color: '#555' }}>FICHAS</span>
-              </div>
-            </div>
-          </div>
-          <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {line.corrugadoGrade && !line.mixedCorrugado && (
-              <GradeMiniTable
-                grade={fillGradeSizeRange(line.corrugadoGrade)}
-                label={`Corrugado · 1 ficha (${Object.values(line.corrugadoGrade).reduce((s, v) => s + (Number(v) || 0), 0)}p)`}
-                allowZero
-              />
-            )}
-            <GradeMiniTable
-              grade={line.grade}
-              label={line.fichas > 1 ? `Total · × ${line.fichas} fichas` : 'Total · 1 ficha'}
-            />
-          </div>
+            );
+          })}
         </div>
       ),
-      keepWithNext: true,
-    });
-
-    sectors.forEach((sector, si) => {
-      itemBlocks.push({
-        node: (
-          <div
-            key={`sec-${line.key}-${sector}`}
-            className="keep-together"
-            style={{
-              display: 'grid',
-              gridTemplateColumns: `1fr ${CHECK_BOX_MM}mm`,
-              gap: 10,
-              alignItems: 'center',
-              borderLeft: '2px solid #000',
-              borderRight: '2px solid #000',
-              borderBottom: si === sectors.length - 1 ? '2px solid #000' : '1px solid #000',
-              padding: '7px 10px',
-              background: si % 2 === 0 ? '#fff' : '#F7F5F0',
-              printColorAdjust: 'exact',
-            }}
-          >
-            <span
-              style={{
-                fontFamily: "'Anton', Impact, sans-serif",
-                fontSize: '15px',
-                letterSpacing: '0.03em',
-                textTransform: 'uppercase',
-                color: '#000',
-                lineHeight: 1,
-              }}
-            >
-              {sector}
-            </span>
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <span
-                aria-hidden="true"
-                style={{
-                  width: `${CHECK_BOX_MM}mm`,
-                  height: `${CHECK_BOX_MM}mm`,
-                  border: '1.5px solid #000',
-                  boxSizing: 'border-box',
-                  background: '#fff',
-                  display: 'inline-block',
-                }}
-              />
-            </div>
-          </div>
-        ),
-        keepWithPrev: si === 0,
-      });
     });
   });
 
   if (linesWithSectors.length === 0) {
     itemBlocks.push({
       node: (
-        <p className="section-label mt-4" style={{ color: '#555' }}>
+        <p className="section-label mt-2" style={{ color: '#555' }}>
           Nenhuma linha elegível no roteiro das fichas deste PV.
         </p>
       ),
@@ -656,7 +720,8 @@ export const ManagementReport = ({ saleOrder, orders, date, sectorLabel }: Props
 
   return (
     <PaginatedSheet
-      sectorLabel={sectorLabel || `Relatório Gerencial · ${saleOrder.order_number || 'PV —'}`}
+      sectorLabel={sectorLabel || 'Relatório Gerencial'}
+      pageIdentity={pageIdentity}
       blocks={blocks}
       pageStyle={{ fontFamily: "'Fira Sans', 'Inter', system-ui, sans-serif", fontSize: '10pt' }}
     />

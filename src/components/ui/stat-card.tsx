@@ -62,12 +62,12 @@ export function StatCard({
     >
       {/* rule editorial no topo */}
       <div className="h-[2px] bg-foreground" aria-hidden="true" />
-      <div className="p-4 flex flex-col gap-2">
+      <div className="p-2.5 flex flex-col gap-1.5">
         <div className="flex items-start justify-between gap-2">
           <span className="eyebrow leading-snug break-words min-w-0" title={label}>{label}</span>
           {Icon && (
-            <span className="shrink-0 h-8 w-8 -mt-0.5 flex items-center justify-center bg-muted text-muted-foreground rounded-lg">
-              <Icon className="h-4 w-4" />
+            <span className="shrink-0 h-7 w-7 -mt-0.5 flex items-center justify-center bg-muted text-muted-foreground rounded-md">
+              <Icon className="h-3.5 w-3.5" />
             </span>
           )}
         </div>

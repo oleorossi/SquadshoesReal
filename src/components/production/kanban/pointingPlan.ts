@@ -62,6 +62,8 @@ export interface PointingPlan {
 /** Admin no Modo Gestão pode pular irmão paralelo; operador continua barrado. */
 export interface PointingPlanOptions {
   allowParallelSkip?: boolean;
+  /** Coluna do card está `sent_to_contractor` no Ateliê — bloqueia apontamento. */
+  atelierBlocksColumn?: boolean;
 }
 
 function uniqueNames(names: string[]): string[] {
@@ -103,11 +105,12 @@ function resolveBackwardMove(
   ordered: OrderStage[],
   nivel: StageLevel,
 ): BackwardMove {
-  const columnStage = ordered.find(stage => norm(stage.stage_name) === card.column) ?? null;
+  const column = norm(card.column);
+  const columnStage = ordered.find(stage => norm(stage.stage_name) === column) ?? null;
   if (!columnStage) return { target: null, pointedStage: null };
 
   const columnIdx = ordered.indexOf(columnStage);
-  const columnLevel = nivel(card.column, columnStage.stage_order);
+  const columnLevel = nivel(column, columnStage.stage_order);
   const previousLowerStages = ordered
     .slice(0, columnIdx)
     // A fatia já garante "anterior na rota". Aqui só tiramos irmãos do mesmo
@@ -192,6 +195,15 @@ export function buildPointingPlan(
     if (inbound != null) {
       remaining = Math.min(remaining, Math.max(0, inbound - pointedStage.quantity_processed));
     }
+  }
+
+  if (options?.atelierBlocksColumn) {
+    return {
+      pointedStage, isBackward: false, skipped: [], remaining, stageRemaining,
+      available: false,
+      unavailableReason:
+        'Material deste setor está no prestador (Ateliê). Marque recebimento no Ateliê antes de apontar.',
+    };
   }
 
   // Alvo e coluna vivem no vocabulário canônico (norm). Sem isso, dropar em

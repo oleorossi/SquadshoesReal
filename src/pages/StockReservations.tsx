@@ -113,7 +113,13 @@ export default function StockReservations() {
   const [threshold, setThreshold] = useState<number>(initial.threshold);
   const [autoRefresh, setAutoRefresh] = useState<boolean>(initial.autoRefresh);
   const [refreshSeconds] = useState<number>(initial.refreshSeconds);
-  const [detailsProduct, setDetailsProduct] = useState<{ id: string; name: string; unit: string | null } | null>(null);
+  const [detailsProduct, setDetailsProduct] = useState<{
+    id: string;
+    name: string;
+    unit: string | null;
+    quantity: number;
+    reservedStock: number;
+  } | null>(null);
 
   // Sincroniza estado → URL + localStorage
   useEffect(() => {
@@ -494,9 +500,14 @@ export default function StockReservations() {
                             size="icon"
                             variant="ghost"
                             className="h-7 w-7"
-                            onClick={() => setDetailsProduct({ id: r.id, name: r.name, unit: r.unit })}
-                            disabled={reserved === 0 && inProd === 0}
-                            aria-label="Ver detalhes"
+                            onClick={() => setDetailsProduct({
+                              id: r.id,
+                              name: r.name,
+                              unit: r.unit,
+                              quantity: Number(r.quantity) || 0,
+                              reservedStock: reserved,
+                            })}
+                            aria-label="Ver reservas por pedido"
                           >
                             <Eye className="h-4 w-4" />
                           </Button>
@@ -519,6 +530,8 @@ export default function StockReservations() {
         productId={detailsProduct?.id ?? null}
         productName={detailsProduct?.name}
         unit={detailsProduct?.unit}
+        quantity={detailsProduct?.quantity}
+        reservedStock={detailsProduct?.reservedStock}
       />
     </div>
   );

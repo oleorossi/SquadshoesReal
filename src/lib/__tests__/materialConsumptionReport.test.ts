@@ -302,8 +302,8 @@ describe('materialConsumptionReport', () => {
     expect(html).toContain('napa-family-name');
     expect(html).toContain('NAPA SOFT');
     expect(html).toContain('NEW WHISKY');
-    // Família §01 = só forração; napa de tira no §03.
-    expect(html).toMatch(/napa-family-qty">20,21 m</);
+    // Família = forração 20,21 + napa de tira 20,04 (tiras entram no total).
+    expect(html).toMatch(/napa-family-qty">40,25 m</);
     expect(html).toContain('Napa para tiras');
     expect(html).toContain('20,04 m');
     expect(html).not.toContain('Itens em falta');
@@ -368,15 +368,15 @@ describe('materialConsumptionReport', () => {
     expect(totalsStrip).not.toContain('1.044,00');
     expect(html).toContain('Tira com cadastro pendente');
     expect(html).toContain('pending-strip');
-    // Família §01 = só forração (84,45); napa de tira convertida não entra aí.
-    expect(html).toMatch(/napa-family-qty">84,45 m</);
+    // Família = forração 3×28,15 + napa de tira ok 3×14,91 = 129,18 (pending fora).
+    expect(html).toMatch(/napa-family-qty">129,18 m</);
     // Pending aparece na §02 como cadastro incompleto (demanda da ficha).
     expect(html).toContain('<span>Tiras</span>');
     expect(html).toContain('Tira sem cadastro');
     expect(html).toContain('is-pending');
   });
 
-  it('napa de tira Massabox fica no §03 — família §01 só Cabedal (PV-00169)', () => {
+  it('napa de tira Massabox entra no total da família junto com Cabedal (PV-00169)', () => {
     const html = buildMaterialConsumptionReportHtml({
       title: 'Consumo total - PV-00169',
       generatedAt: new Date('2026-09-07T12:00:00-03:00'),
@@ -447,8 +447,8 @@ describe('materialConsumptionReport', () => {
     expect(html).toContain('Napa para tiras');
     expect(html).toContain('2,64 m');
     expect((html.match(/class="napa-family-name"/g) || []).length).toBe(1);
-    // Família = cabedal only (15,39 + 8,40); strip ainda soma napa convertida.
-    expect(html).toMatch(/napa-family-qty">23,79 m</);
+    // Família = cabedal 15,39+8,40 + napa de tira 2,64 = 26,43.
+    expect(html).toMatch(/napa-family-qty">26,43 m</);
     const totalsStrip = html.match(/<div class="totals-strip">[\s\S]*?<\/div>/)?.[0] || '';
     expect(totalsStrip).toContain('26,43');
     expect(html).toMatch(/<td>COBRE<\/td>[\s\S]*?8,40 m/);
@@ -515,9 +515,13 @@ describe('materialConsumptionReport', () => {
 
     expect(html).toContain('Napa para tiras');
     expect(html).toContain('Tira necessária');
+    expect(html).toContain('<th>Cor</th>');
+    expect(html).toContain('>OFF WHITE<');
     expect(html).toContain('1.044,00 m');
     expect(html).toContain('14,91 m');
     expect(html).toContain('flag ok');
+    // baseName já está no typeName — não colar de novo (NAPA MADRIDNAPA MADRID).
+    expect(html).not.toMatch(/NAPA MADRID<\/strong><small>NAPA MADRID<\/small>/);
     expect(html).not.toContain('Mão de obra/m');
     expect(html).not.toContain('Valor total');
     expect(html).not.toContain('receita conferida');
@@ -560,7 +564,44 @@ describe('materialConsumptionReport', () => {
     expect(html).not.toContain('R$');
   });
 
-  it('agrupa por tipo de tira no §03 e um único total de napa no rodapé', () => {
+  it('com rendimento confirmado, aviso soft de 1ª demanda mostra napa (não incompleto)', () => {
+    const html = buildMaterialConsumptionReportHtml({
+      title: 'Consumo total - PV-00222',
+      mode: 'total',
+      artisanalStrapRows: [{
+        key: 'overlock-glow',
+        groupName: 'TIRA OVERLOCK 5 mm · GLOW METALIC · CHAMPAGNE',
+        color: 'CHAMPAGNE',
+        baseName: 'GLOW METALIC',
+        largura_mm: 5,
+        metros_necessarios: 296.84,
+        cut: {
+          largura_mm: 5, metros_uteis_por_banda: 0, n_bandas: 0, cm_a_cortar: 0,
+          rolos: 0, n_rolos_completos: 0, cm_no_ultimo_rolo: 0, valid: false, widthMissing: false,
+        },
+        canonical: {
+          recipeId: 'recipe-overlock',
+          baseRequiredM: 4.240571428571429,
+          confirmedYieldMPerM: 70,
+          usableBaseWidthMm: 1370,
+          theoreticalYieldMPerM: 70,
+          transformationCostPerM: null,
+          blockingReasons: [],
+          snapshotWarning:
+            'A versao, o rendimento e a necessidade de base serao congelados na primeira demanda; antes disso, apenas os IDs e o consumo tecnico do item estao preservados.',
+        },
+      }],
+      rows: [],
+    });
+
+    expect(html).toContain('Napa para tiras');
+    expect(html).toContain('flag ok');
+    expect(html).not.toContain('cadastro incompleto');
+    expect(html).toContain('296,84 m');
+    expect(html).toContain('4,24 m');
+  });
+
+  it('desagrega por tipo × cor no §03 e um único total de napa no rodapé', () => {
     const cut = {
       largura_mm: 8, metros_uteis_por_banda: 0, n_bandas: 0, cm_a_cortar: 0,
       rolos: 0, n_rolos_completos: 0, cm_no_ultimo_rolo: 0, valid: false, widthMissing: false,
@@ -607,18 +648,23 @@ describe('materialConsumptionReport', () => {
       rows: [],
     });
 
-    // Um rodapé de total — não um subtotal por cor nem por segmento.
+    // Um rodapé de total — sem subtotal por tipo; uma linha por cor.
     expect(html.match(/class="strap-subtotal"/g)).toHaveLength(1);
     expect(html).toContain('Total de napa (todas as tiras)');
+    expect(html).toContain('<th>Cor</th>');
     expect(html).toContain(elastico);
     expect(html).toContain(chata);
-    expect(html).toContain('3 cores');
-    // Somas de tira: 3 × 386,88 = 1.160,64 · 3 × 1.294,56 = 3.883,68
-    expect(html).toContain('1.160,64 m');
-    expect(html).toContain('3.883,68 m');
-    // Napa por tipo: 3 × 12,90 = 38,70 · 3 × 18,49 = 55,47 · total 94,17
-    expect(html).toContain('38,70 m');
-    expect(html).toContain('55,47 m');
+    expect(html).toContain('>CAPUCCINO<');
+    expect(html).toContain('>OFF WHITE<');
+    expect(html).toContain('>ROCHA<');
+    expect(html).not.toContain('3 cores');
+    // Quantidade por cor (não agregada por tipo)
+    expect(html).toContain('386,88 m');
+    expect(html).toContain('1.294,56 m');
+    expect(html).toContain('12,90 m');
+    expect(html).toContain('18,49 m');
+    // Totais no rodapé: 6 × cores somadas
+    expect(html).toContain('5.044,32 m tira');
     expect(html).toContain('94,17 m');
     expect(html).not.toContain('Mão de obra/m');
   });

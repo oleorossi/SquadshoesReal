@@ -21,7 +21,8 @@ interface EditorialPageHeaderProps {
    */
   sectionLabel: string;
   /**
-   * Título principal — renderiza com Anton via .hero-editorial-title (clamp 36-60px).
+   * Título principal — Anton uppercase. No modo default usa escala operacional
+   * (ex-compact); `compact` desce mais um degrau.
    */
   title: string;
   /**
@@ -59,9 +60,10 @@ interface EditorialPageHeaderProps {
    */
   className?: string;
   /**
-   * `compact` reduz o clamp do título (36–60px) para um h1 operacional
-   * (text-xl/2xl). Usar nas rotas de PV: lista, ficha, edição, consumo.
-   * O hero default permanece nas hubs (Dashboard etc.).
+   * Densificação 2026-10: `default` = antigo compact operacional;
+   * `compact` = ainda um degrau abaixo (listagens densas).
+   * O hero Anton clamp (36–60px) saiu do default — identidade fica no kicker
+   * + display do título em escala de página, não de landing.
    */
   density?: 'default' | 'compact';
 }
@@ -72,13 +74,13 @@ interface EditorialPageHeaderProps {
  * Layout (responsivo):
  *   · KICKER · LABEL
  *   ┌──────────────────────────────────────────────────────────┐
- *   │  01   TÍTULO GIGANTE EM ANTON          [actions]         │
+ *   │  01   TÍTULO EM ANTON                  [actions]         │
  *   │       ATUALIZADO 14:32 · 32 FUNCIONÁRIOS                 │
  *   │       descrição opcional · 1-2 linhas                    │
  *   ╞══════════════════════════════════════════════════════════╡  ← rule-thick 3px
  *   │  [kpis grid opcional]                                    │
  *
- * Em mobile: actions empilha embaixo do título. Tipografia colapsa via clamp.
+ * Em mobile: actions empilha embaixo do título.
  */
 export function EditorialPageHeader({
   sectionNumber,
@@ -94,17 +96,17 @@ export function EditorialPageHeader({
   density = 'default',
 }: EditorialPageHeaderProps) {
   useDocumentTitle(title);
-  const compact = density === 'compact';
+  const denser = density === 'compact';
   return (
-    <header className={cn('relative', compact ? 'pb-1' : 'pb-2', className)}>
-      <div className={cn(compact ? 'space-y-1.5' : 'space-y-3')}>
+    <header className={cn('relative', denser ? 'pb-0.5' : 'pb-1', className)}>
+      <div className={cn(denser ? 'space-y-1' : 'space-y-1.5')}>
         {/* ── Eyebrow row (kicker MONO + live indicator opcional) ── */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
           {sectionNumber && (
             <span
               className={cn(
                 'ed-display text-muted-foreground leading-none shrink-0',
-                compact ? 'text-base sm:text-lg' : 'text-xl sm:text-2xl',
+                denser ? 'text-sm sm:text-base' : 'text-base sm:text-lg',
               )}
               aria-hidden="true"
             >
@@ -117,17 +119,17 @@ export function EditorialPageHeader({
           <span className="ed-eyebrow">{sectionLabel}</span>
         </div>
 
-        {/* ── Title row (anton clamp + actions inline em desktop) ── */}
+        {/* ── Title row (anton + actions inline em desktop) ── */}
         <div className={cn(
           'flex flex-col md:flex-row md:items-end md:justify-between',
-          compact ? 'gap-2 md:gap-4' : 'gap-4 md:gap-6',
+          denser ? 'gap-1.5 md:gap-3' : 'gap-2 md:gap-4',
         )}>
-          <div className={cn('min-w-0 flex-1', compact ? 'space-y-1' : 'space-y-2')}>
+          <div className={cn('min-w-0 flex-1', denser ? 'space-y-0.5' : 'space-y-1')}>
             <h1 className={cn(
-              'break-words',
-              compact
-                ? 'font-display text-xl sm:text-2xl uppercase leading-none tracking-tight text-foreground'
-                : 'hero-editorial-title',
+              'break-words font-display uppercase leading-none tracking-tight text-foreground',
+              denser
+                ? 'text-lg sm:text-xl'
+                : 'text-xl sm:text-2xl',
             )}>
               {title}
             </h1>
@@ -139,12 +141,12 @@ export function EditorialPageHeader({
             {description && (
               <p className={cn(
                 'text-muted-foreground max-w-xl',
-                compact ? 'text-xs' : 'text-sm',
+                denser ? 'text-[11px] leading-snug' : 'text-xs',
               )}>{description}</p>
             )}
           </div>
           {actions && (
-            <div className="flex items-center gap-2 flex-wrap shrink-0">
+            <div className="flex items-center gap-1.5 flex-wrap shrink-0">
               {actions}
             </div>
           )}
@@ -154,14 +156,14 @@ export function EditorialPageHeader({
       {/* ── Rule-thick separator (3px foreground) ── */}
       {!noRule && (
         <div
-          className={cn('rule-thick', compact ? 'mt-2.5' : 'mt-5')}
+          className={cn('rule-thick', denser ? 'mt-2' : 'mt-2.5')}
           aria-hidden="true"
         />
       )}
 
       {/* ── KPI slot abaixo do rule-line ── */}
       {kpis && (
-        <div className={compact ? 'mt-3' : 'mt-5'}>
+        <div className={denser ? 'mt-2' : 'mt-3'}>
           {kpis}
         </div>
       )}

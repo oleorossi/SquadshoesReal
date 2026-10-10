@@ -2,12 +2,32 @@ import { describe, it, expect } from 'vitest';
 import {
   packBlocks, PAGE_CAPACITY_PX, BLOCK_GAP_PX, PRINT_INFLATE,
   chooseAutoFitScale, growCeilingFor, rigidWidthOnPage, PAGE_CONTENT_WIDTH_PX,
+  packBoostedHeight,
 } from '../PaginatedSheet';
 import { A4_CONTENT_WIDTH_PX } from '../adaptiveFont';
 
 // Capacidade/gap redondos pra facilitar a leitura dos casos.
 const CAP = 1000;
 const GAP = 10;
+
+describe('packBoostedHeight', () => {
+  it('sem boost (ou ≤1) só arredonda pra cima', () => {
+    expect(packBoostedHeight(100.2, undefined)).toBe(101);
+    expect(packBoostedHeight(100, null)).toBe(100);
+    expect(packBoostedHeight(100, '1')).toBe(100);
+    expect(packBoostedHeight(100, '0.9')).toBe(100);
+  });
+
+  it('boost >1 multiplica a altura empacotada (Relatório Gerencial)', () => {
+    expect(packBoostedHeight(500, '1.12')).toBe(560);
+    // 450+10+500=960 cabe; 450+10+560=1020 não — o boost empurra o bloco
+    // inteiro pra próxima folha em vez de derramar 2 linhas no print.
+    expect(packBlocks([450, packBoostedHeight(500, '1.12')], 1000, 10).map((p) => p.blockIdxs))
+      .toEqual([[0], [1]]);
+    expect(packBlocks([450, 500], 1000, 10).map((p) => p.blockIdxs))
+      .toEqual([[0, 1]]);
+  });
+});
 
 describe('packBlocks — paginação explícita das fichas', () => {
   it('agrupa blocos que cabem na mesma página', () => {

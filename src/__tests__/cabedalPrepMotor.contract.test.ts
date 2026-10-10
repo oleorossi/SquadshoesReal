@@ -27,10 +27,10 @@ describe('cabedal prep motor — contratos', () => {
     expect(perPv).toBeGreaterThan(prep);
   });
 
-  it('hub expõe aba prep', () => {
+  it('hub redireciona prep legado ao Ateliê (aba removida)', () => {
     const hub = readFileSync(HUB, 'utf8');
-    expect(hub).toContain('CabedalPrepPanel');
-    expect(hub).toContain("'prep'");
+    expect(hub).not.toContain('CabedalPrepPanel');
+    expect(hub).toContain("/atelie?view=fila");
   });
 
   it('materialize usa ts.code (não ts.reference) e há backfill', () => {

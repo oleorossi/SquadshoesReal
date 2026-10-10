@@ -137,7 +137,13 @@ export async function printPerPvOcPdf({ drafts, pvNumbers }: PrintPerPvOcArgs): 
         y += 30;
       }
 
-      doc.save(`OC_${slug(pvLabel)}_${slug(d.supplier_name)}.pdf`);
+      void import('@/lib/pdfDelivery').then(({ deliverJsPdf }) => {
+        deliverJsPdf(
+          doc,
+          `OC_${slug(pvLabel)}_${slug(d.supplier_name)}.pdf`,
+          'Ordem de compra',
+        );
+      });
     }, idx * 250);
   });
 

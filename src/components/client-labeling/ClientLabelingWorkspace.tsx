@@ -1,9 +1,10 @@
 /**
  * Etiquetagem Cliente multi-cliente.
  *
- * Fluxo: escolher cliente → carregar/salvar 1..N tipos em `clients.label_pattern`
- * (Nalin e Objetiva no mesmo cadastro; sem histórico de arquivo) → importar
- * 1..N CSV/XLSX → gerar PDF do tipo ativo.
+ * Fluxo: escolher cliente → carregar/salvar família (Nalin / Objetiva / Ponto Mix).
+ * Nalin e Objetiva: Tag + Adesiva no mesmo CSV. Sem histórico de arquivo.
+ * Geração: PDF + ZPL L42PRO nas Tags; PDF + ZPL 50×30 na adesiva Objetiva;
+ * PDF A4 4×4 (tesoura) nas Tags.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -17,6 +18,9 @@ import {
   X,
   CircleNotch,
   Trash,
+  Image as ImageIcon,
+  Scissors,
+  ArrowCounterClockwise,
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import logoFornecedor from '@/assets/baby-nalin/marca-fornecedor.png';
@@ -64,19 +68,40 @@ import {
 } from '@/lib/babyNalinLabels';
 import {
   BABY_NALIN_DEFAULT_GEOMETRY,
+  CLIENT_LABEL_FAMILIES,
+  NALIN_TAG_DEFAULT_BRANDING,
+  NALIN_TAG_DEFAULT_GEOMETRY,
+  OBJETIVA_ADESIVA_DEFAULT_GEOMETRY,
   OBJETIVA_DEFAULT_BRANDING,
   OBJETIVA_DEFAULT_GEOMETRY,
+  PONTO_MIX_DEFAULT_GEOMETRY,
+  PONTO_MIX_DEFAULT_TEMPLATES,
   activatePattern,
+  activeFileMappingFromCollection,
   activePatternFromCollection,
   clientOrderLineSkuKey,
   collectionPatternKeys,
   coucheProfileFromGeometry,
   emptyLabelCollection,
+  enableFamily,
+  familyById,
+  familyIdForPatternKey,
+  familyKeysInCollection,
   geometryFromCoucheProfile,
+  isObjetivaFamilyKey,
+  patternAwaitsCalibration,
   patternLabel,
+  patternMediaLabel,
+  patternVariantLabel,
   removePattern,
   savedPatternStatusLabel,
+  setActivePattern,
+  sharesOrderFileFormat,
+  toggleFamilyVariant,
+  upsertActiveFileMapping,
   upsertActivePattern,
+  type ClientLabelFamilyId,
+  type ClientLabelFileMapping,
   type ClientLabelPattern,
   type ClientLabelPatternCollection,
   type ClientLabelPatternKey,
@@ -87,13 +112,65 @@ import {
   parseClientOrderFiles,
   summarizeImport,
 } from '@/lib/clientOrderImport';
+import { getSignedUrl } from '@/lib/getSignedUrl';
+import {
+  buildNalinTagA4Pdf,
+  buildNalinTagPdf,
+  buildNalinTagZpl,
+  countNalinTagLabels,
+  nalinTagPdfFilename,
+  nalinTagZplFilename,
+} from '@/lib/nalinTagLabels';
+import {
+  buildObjetivaAdesivaPdf,
+  buildObjetivaAdesivaZpl,
+  countObjetivaAdesivaLabels,
+  OBJETIVA_ADESIVA_LABEL_HEIGHT_MM,
+  OBJETIVA_ADESIVA_LABEL_WIDTH_MM,
+  OBJETIVA_ADESIVA_PAGE_HEIGHT_MM,
+  OBJETIVA_ADESIVA_PAGE_WIDTH_MM,
+  objetivaAdesivaPageCount,
+  objetivaAdesivaPdfFilename,
+  objetivaAdesivaZplFilename,
+} from '@/lib/objetivaAdesivaLabels';
 import {
   buildObjetivaPdf,
+  buildObjetivaTagA4Pdf,
+  buildObjetivaZpl,
   countObjetivaLabels,
   objetivaPdfFilename,
+  objetivaZplFilename,
 } from '@/lib/objetivaLabels';
+import {
+  buildPontoMixPdf,
+  buildPontoMixTagA4Pdf,
+  buildPontoMixZpl,
+  countPontoMixLabels,
+  pontoMixPdfFilename,
+  pontoMixZplFilename,
+  renderPontoMixPreviewDataUrl,
+  resolvePontoMixLogo,
+} from '@/lib/pontoMixLabels';
+import { tagA4PdfFilename } from '@/lib/tagA4Sheet';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { cn } from '@/lib/utils';
+import {
+  applyLotFace,
+  brandingFieldsForPattern,
+  faceFieldsForPattern,
+  isLotBrandingDirty,
+  isLotFaceDirty,
+  mergeLotBranding,
+  pontoMixLineOverrideFromFace,
+  reseedsLotTexts,
+  seedLotBranding,
+  seedLotFaceFromRow,
+  validateLotFace,
+  type LotBranding,
+  type LotBrandingFieldKey,
+  type LotFaceBySkuKey,
+  type LotFaceFieldKey,
+} from '@/lib/clientLabelLotTexts';
 
 const MAX_PROFILE_MEASURE_MM = 50;
 
@@ -120,6 +197,44 @@ const OBJETIVA_GEOMETRY_FIELDS: Array<{
   { key: 'bottomMarginMm', label: 'Inf. (mm)' },
 ];
 
+const PONTO_MIX_GEOMETRY_FIELDS = OBJETIVA_GEOMETRY_FIELDS.filter(
+  f => f.key !== 'columns' && f.key !== 'columnGapMm',
+);
+
+const PONTO_MIX_FILE_FIELDS: Array<{
+  key: keyof NonNullable<ClientLabelFileMapping['columns']>;
+  label: string;
+}> = [
+  { key: 'descricao', label: 'Coluna descrição' },
+  { key: 'referencia', label: 'Coluna referência' },
+  { key: 'cor', label: 'Coluna cor' },
+  { key: 'tamanho', label: 'Coluna tamanho' },
+  { key: 'codigoBarra', label: 'Coluna código de barras' },
+  { key: 'preco', label: 'Coluna preço' },
+  { key: 'quantidade', label: 'Coluna quantidade' },
+];
+
+function downloadBlob(blob: Blob, filename: string) {
+  if (/\.pdf$/i.test(filename) || /application\/pdf/i.test(blob.type)) {
+    void blob.arrayBuffer().then((buf) =>
+      import('@/lib/pdfDelivery').then(({ deliverPdfBytes }) => {
+        deliverPdfBytes(new Uint8Array(buf), { filename, title: 'Etiquetas' });
+      }),
+    );
+    return;
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function downloadText(text: string, filename: string, mime: string) {
+  downloadBlob(new Blob([text], { type: mime }), filename);
+}
+
 function initialPrintQuantities(rows: ClientOrderLine[]): Record<string, number> {
   return Object.fromEntries(rows.map(row => [clientOrderLineSkuKey(row), row.quantidade]));
 }
@@ -138,26 +253,40 @@ function toBabyRows(rows: ClientOrderLine[]): BabyNalinRow[] {
     codProduto: row.codProduto,
     codigoBarra: row.codigoBarra,
     quantidade: row.quantidade,
+    descricao: row.descricao,
+    valor: row.valor,
+    valorSecundario: row.valorSecundario,
+    tipo: row.tipo,
+    categoria: row.categoria,
+    grupo: row.grupo,
   }));
 }
 
-export function ClientLabelingWorkspace() {
+interface ClientLabelingWorkspaceProps {
+  /** Só para testes / deep-link — pré-seleciona o cliente sem o Select do Radix. */
+  initialClientId?: string;
+}
+
+export function ClientLabelingWorkspace({ initialClientId = '' }: ClientLabelingWorkspaceProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fileRequestIdRef = useRef(0);
 
   const [clientSearch, setClientSearch] = useState('');
-  const [selectedClientId, setSelectedClientId] = useState('');
+  const [selectedClientId, setSelectedClientId] = useState(initialClientId);
   const [draftCollection, setDraftCollection] = useState<ClientLabelPatternCollection | null>(null);
   const [patternDirty, setPatternDirty] = useState(false);
 
   const [rows, setRows] = useState<ClientOrderLine[]>([]);
   const [fileNames, setFileNames] = useState<string[]>([]);
   const [reading, setReading] = useState(false);
-  const [generating, setGenerating] = useState<'production' | 'graphic' | null>(null);
+  const [generating, setGenerating] = useState<'production' | 'graphic' | 'a4' | null>(null);
   const [search, setSearch] = useState('');
   const [selectedSkuKeys, setSelectedSkuKeys] = useState<Set<string>>(new Set());
   const [printQuantities, setPrintQuantities] = useState<Record<string, number>>({});
   const [coucheConfirmed, setCoucheConfirmed] = useState(true);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [lotBranding, setLotBranding] = useState<LotBranding>(() => seedLotBranding(null));
+  const [lotFaceBySkuKey, setLotFaceBySkuKey] = useState<LotFaceBySkuKey>({});
 
   const { data: clients = [], isLoading: clientsLoading } = useClientsForLabeling();
   const { data: savedCollection, isLoading: patternLoading } = useClientLabelPattern(
@@ -180,10 +309,19 @@ export function ClientLabelingWorkspace() {
   }, [selectedClientId, savedCollection, patternLoading]);
 
   const pattern = activePatternFromCollection(draftCollection);
+  const fileMapping = activeFileMappingFromCollection(draftCollection);
   const savedKeys = collectionPatternKeys(savedCollection);
   const draftKeys = collectionPatternKeys(draftCollection);
-  const isObjetiva = pattern?.key === 'objetiva';
-  const isNalin = pattern?.key === 'baby_nalin';
+  const isObjetivaAdesiva = pattern?.key === 'objetiva_adesiva';
+  const isObjetiva = isObjetivaFamilyKey(pattern?.key);
+  const isNalinAdesiva = pattern?.key === 'baby_nalin';
+  const isNalinTag = pattern?.key === 'nalin_tag';
+  const isPontoMix = pattern?.key === 'ponto_mix';
+  /** Tags 40×60 com saída A4 (tesoura) — adesivas 50×30 ficam de fora. */
+  const supportsTagA4 =
+    isNalinTag || isPontoMix || (isObjetiva && !isObjetivaAdesiva);
+  const awaitsCalibration = patternAwaitsCalibration(pattern?.key);
+  const activeFamilyId = familyIdForPatternKey(pattern?.key);
 
   const coucheProfile: CoucheRollProfile = useMemo(() => {
     if (pattern?.key === 'baby_nalin') {
@@ -237,19 +375,84 @@ export function ClientLabelingWorkspace() {
     quantidade: printQuantities[skuKey] ?? row.quantidade,
   }));
 
+  const lotFaceFields = faceFieldsForPattern(pattern?.key);
+  const lotBrandingFields = brandingFieldsForPattern(pattern?.key);
+  const lotTextsDirty =
+    Boolean(pattern)
+    && (isLotBrandingDirty(pattern?.branding, lotBranding, pattern?.key)
+      || rowEntries.some(({ row, skuKey }) =>
+        isLotFaceDirty(row, lotFaceBySkuKey[skuKey], pattern!.key, {
+          templates: pattern!.templates,
+          priceFormat: pattern!.priceFormat,
+        }),
+      ));
+
+  /** Linhas + branding efetivos do lote (não persistem). */
+  function buildLotGeneratePayload(mode: 'production' | 'graphic' | 'a4') {
+    if (!pattern) {
+      return {
+        rows: [] as ClientOrderLine[],
+        branding: mergeLotBranding(
+          { logoUrl: null, motto: '', exchangeText: '', materialPrefix: '' },
+          lotBranding,
+        ),
+        resolveLineOverride: (_row: ClientOrderLine) => undefined as
+          | ReturnType<typeof pontoMixLineOverrideFromFace>
+          | undefined,
+      };
+    }
+    const entries = selectedEntries;
+    const lineOverrideByRow = new WeakMap<
+      ClientOrderLine,
+      NonNullable<ReturnType<typeof pontoMixLineOverrideFromFace>>
+    >();
+    const effectiveRows = entries.map(({ row, skuKey }) => {
+      const override = lotFaceBySkuKey[skuKey];
+      const applied = applyLotFace(row, override, pattern.key);
+      const withQty =
+        mode === 'graphic'
+          ? applied
+          : { ...applied, quantidade: printQuantities[skuKey] ?? row.quantidade };
+      if (pattern.key === 'ponto_mix') {
+        const lines = pontoMixLineOverrideFromFace(override);
+        if (lines) lineOverrideByRow.set(withQty, lines);
+      }
+      return withQty;
+    });
+    return {
+      rows: effectiveRows,
+      branding: mergeLotBranding(pattern.branding, lotBranding),
+      resolveLineOverride: (row: ClientOrderLine) => lineOverrideByRow.get(row),
+    };
+  }
+
   const selectedBabyRows = toBabyRows(selectedRows);
   const productionBabyRows = toBabyRows(productionRows);
   const selectedSkuAnalysis = analyzeClientSkus(selectedBabyRows);
 
-  const totalEtiquetas = isObjetiva
-    ? countObjetivaLabels(productionRows, true)
-    : countExpandedRows(productionBabyRows, true);
-  const paginasGrafica = isObjetiva
-    ? countObjetivaLabels(selectedRows, false)
-    : graphicPageCount(selectedSkuAnalysis.rows.length);
+  const totalEtiquetas = isNalinTag
+    ? countNalinTagLabels(productionRows, true)
+    : isObjetivaAdesiva
+      ? countObjetivaAdesivaLabels(productionRows, true)
+      : isObjetiva
+        ? countObjetivaLabels(productionRows, true)
+        : isPontoMix
+          ? countPontoMixLabels(productionRows, true)
+          : countExpandedRows(productionBabyRows, true);
+  const paginasGrafica = isNalinTag
+    ? countNalinTagLabels(selectedRows, false)
+    : isObjetivaAdesiva
+      ? objetivaAdesivaPageCount(countObjetivaAdesivaLabels(selectedRows, false))
+      : isObjetiva
+        ? countObjetivaLabels(selectedRows, false)
+        : isPontoMix
+          ? countPontoMixLabels(selectedRows, false)
+          : graphicPageCount(selectedSkuAnalysis.rows.length);
   const skuLabel = selectedSkuKeys.size === 1 ? 'SKU' : 'SKUs';
-  const foraDoPadrao = isNalin ? rowEntries.filter(e => !e.barcodeFit.fits) : [];
-  const selecionadasFora = isNalin ? selectedEntries.filter(e => !e.barcodeFit.fits) : [];
+  const foraDoPadrao = isNalinAdesiva ? rowEntries.filter(e => !e.barcodeFit.fits) : [];
+  const selecionadasFora = isNalinAdesiva
+    ? selectedEntries.filter(e => !e.barcodeFit.fits)
+    : [];
 
   const visibleSkuKeys = [...new Set(visibleEntries.map(e => e.skuKey))];
   const allVisibleSelected =
@@ -279,7 +482,36 @@ export function ClientLabelingWorkspace() {
     setSearch('');
     setSelectedSkuKeys(new Set());
     setPrintQuantities({});
+    setPreviewUrl(null);
+    setLotBranding(seedLotBranding(null));
+    setLotFaceBySkuKey({});
     if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
+  function seedLotTextsFor(
+    nextRows: ClientOrderLine[],
+    nextPattern: ClientLabelPattern | null | undefined,
+  ) {
+    const seeded = reseedsLotTexts(nextRows, nextPattern ?? null);
+    setLotBranding(seeded.lotBranding);
+    setLotFaceBySkuKey(seeded.lotFaceBySkuKey);
+  }
+
+  function restoreLotTexts() {
+    if (!pattern) return;
+    seedLotTextsFor(rows, pattern);
+    toast.success('Textos do lote restaurados do pedido e do padrão.');
+  }
+
+  function setLotBrandingField(field: LotBrandingFieldKey, value: string) {
+    setLotBranding(current => ({ ...current, [field]: value }));
+  }
+
+  function setLotFaceField(skuKey: string, field: LotFaceFieldKey, value: string) {
+    setLotFaceBySkuKey(current => ({
+      ...current,
+      [skuKey]: { ...current[skuKey], [field]: value },
+    }));
   }
 
   function updateDraft(next: ClientLabelPattern) {
@@ -288,21 +520,67 @@ export function ClientLabelingWorkspace() {
     if (next.key === 'baby_nalin') setCoucheConfirmed(false);
   }
 
-  function handlePatternKeyChange(key: ClientLabelPatternKey) {
+  /** Troca de layout ativo: limpa pedido se o CSV muda; senão reseeda textos do lote. */
+  function applyActivePatternChange(
+    previousKey: ClientLabelPatternKey | null,
+    next: ClientLabelPatternCollection,
+  ) {
+    const nextKey = next.activeKey;
+    if (!sharesOrderFileFormat(previousKey, nextKey)) {
+      clearOrder();
+    } else if (previousKey !== nextKey) {
+      const nextPattern = nextKey ? next.patterns[nextKey] ?? null : null;
+      seedLotTextsFor(rows, nextPattern);
+    }
+    setCoucheConfirmed(nextKey !== 'baby_nalin');
+  }
+
+  /** Troca o ativo; só limpa o pedido se o formato do CSV mudar (Tag↔Adesiva mantém). */
+  function selectActivePattern(key: ClientLabelPatternKey) {
     const base = draftCollection ?? emptyLabelCollection();
-    const adding = !base.patterns[key];
-    setDraftCollection(activatePattern(base, key));
-    if (adding) setPatternDirty(true);
-    clearOrder();
-    setCoucheConfirmed(key !== 'baby_nalin');
+    const previousKey = base.activeKey;
+    const alreadyPresent = Boolean(base.patterns[key]);
+    const next = alreadyPresent ? setActivePattern(base, key) : activatePattern(base, key);
+    setDraftCollection(next);
+    if (!alreadyPresent) setPatternDirty(true);
+    applyActivePatternChange(previousKey, next);
+  }
+
+  function handleEnableFamily(familyId: ClientLabelFamilyId) {
+    const base = draftCollection ?? emptyLabelCollection();
+    const previousKey = base.activeKey;
+    const family = familyById(familyId);
+    const next = enableFamily(base, familyId);
+    setDraftCollection(next);
+    setPatternDirty(true);
+    applyActivePatternChange(previousKey, next);
+    toast.success(
+      family.keys.length > 1
+        ? `${family.label}: ${family.keys.map(patternVariantLabel).join(' + ')} habilitados.`
+        : `${family.label} habilitado.`,
+    );
+  }
+
+  function handleToggleVariant(key: ClientLabelPatternKey) {
+    const base = draftCollection ?? emptyLabelCollection();
+    const previousKey = base.activeKey;
+    const removing = Boolean(base.patterns[key]);
+    const next = toggleFamilyVariant(base, key);
+    setDraftCollection(next);
+    setPatternDirty(true);
+    applyActivePatternChange(previousKey, next);
+    if (removing && !next.activeKey) {
+      toast.info('Nenhum padrão restante neste cliente.');
+    }
   }
 
   function handleRemovePattern() {
     if (!draftCollection?.activeKey) return;
-    setDraftCollection(removePattern(draftCollection, draftCollection.activeKey));
+    const previousKey = draftCollection.activeKey;
+    const next = removePattern(draftCollection, previousKey);
+    setDraftCollection(next);
     setPatternDirty(true);
-    clearOrder();
-    setCoucheConfirmed(true);
+    applyActivePatternChange(previousKey, next);
   }
 
   function setCoucheMeasure(field: keyof CoucheRollProfile, rawValue: string) {
@@ -319,11 +597,47 @@ export function ClientLabelingWorkspace() {
   }
 
   function setObjetivaGeometry(field: keyof ClientLabelPattern['geometry'], rawValue: string) {
-    if (!pattern || pattern.key !== 'objetiva') return;
+    if (
+      !pattern
+      || (!isObjetivaFamilyKey(pattern.key)
+        && pattern.key !== 'ponto_mix'
+        && pattern.key !== 'nalin_tag')
+    ) {
+      return;
+    }
     const parsed = Number(rawValue);
     if (!Number.isFinite(parsed)) return;
     const value = field === 'columns' ? Math.max(1, Math.trunc(parsed)) : Math.max(0, parsed);
     updateDraft({ ...pattern, geometry: { ...pattern.geometry, [field]: value } });
+  }
+
+  function setPontoMixTemplate(field: 'line1' | 'line2' | 'line3', value: string) {
+    if (!pattern || pattern.key !== 'ponto_mix') return;
+    updateDraft({
+      ...pattern,
+      templates: {
+        ...(pattern.templates ?? PONTO_MIX_DEFAULT_TEMPLATES),
+        [field]: value,
+      },
+    });
+  }
+
+  function setFileMappingColumn(
+    field: keyof NonNullable<ClientLabelFileMapping['columns']>,
+    value: string,
+  ) {
+    if (!pattern || pattern.key !== 'ponto_mix') return;
+    const current = fileMapping ?? {
+      version: 1 as const,
+      columns: {},
+    };
+    setDraftCollection(base =>
+      upsertActiveFileMapping(base ?? emptyLabelCollection(), 'ponto_mix', {
+        ...current,
+        columns: { ...current.columns, [field]: value },
+      }),
+    );
+    setPatternDirty(true);
   }
 
   function setBrandingField(field: keyof ClientLabelPattern['branding'], value: string) {
@@ -373,12 +687,13 @@ export function ClientLabelingWorkspace() {
     const requestId = ++fileRequestIdRef.current;
     setReading(true);
     try {
-      const result = await parseClientOrderFiles(files, pattern.key);
+      const result = await parseClientOrderFiles(files, pattern.key, fileMapping);
       if (requestId !== fileRequestIdRef.current) return;
       setRows(result.rows);
       setFileNames(result.fileNames);
       setSelectedSkuKeys(new Set());
       setPrintQuantities(initialPrintQuantities(result.rows));
+      seedLotTextsFor(result.rows, pattern);
       const summary = summarizeImport(result);
       if (result.errors.length > 0) {
         toast.warning(`${summary}. Falhas: ${result.errors.map(e => e.fileName).join(', ')}`);
@@ -407,17 +722,33 @@ export function ClientLabelingWorkspace() {
       toast.info('Salve o padrão do cliente antes de gerar o PDF.');
       return;
     }
+    const lotIssues = validateLotFace(selectedEntries, lotFaceBySkuKey, pattern.key);
+    if (lotIssues.length > 0) {
+      const first = lotIssues[0]!;
+      toast.error(
+        lotIssues.length === 1
+          ? first.message
+          : `${first.message} (+${lotIssues.length - 1} outro(s))`,
+      );
+      return;
+    }
     if (selecionadasFora.length > 0) {
       toast.error(`${selecionadasFora.length} código(s) selecionado(s) não cabem na etiqueta.`);
       return;
     }
-    if (isNalin && mode === 'graphic' && selectedSkuAnalysis.conflicts.length > 0) {
+    if (awaitsCalibration) {
+      toast.info(
+        'A etiqueta adesiva Objetiva ainda não tem arte calibrada. Envie a foto da adesiva (como fez com a Tag) para eu montar o layout.',
+      );
+      return;
+    }
+    if (isNalinAdesiva && mode === 'graphic' && selectedSkuAnalysis.conflicts.length > 0) {
       toast.error(
         `${selectedSkuAnalysis.conflicts.length} SKU(s) selecionado(s) possuem dados de impressão conflitantes.`,
       );
       return;
     }
-    if (isNalin && !coucheConfirmed) {
+    if (isNalinAdesiva && !coucheConfirmed) {
       toast.info('Confirme as medidas do rolo de duas colunas antes de gerar.');
       return;
     }
@@ -427,49 +758,262 @@ export function ClientLabelingWorkspace() {
     }
 
     const originName = fileNames[0] ?? 'pedido';
+    const lotPayload = buildLotGeneratePayload(mode);
+    const sourceRows = lotPayload.rows;
+    const lotBrandingEffective = lotPayload.branding;
+    const effectiveBabyRows = toBabyRows(sourceRows);
+    const effectiveSkuAnalysis = analyzeClientSkus(effectiveBabyRows);
     setGenerating(mode);
     try {
-      if (pattern.key === 'objetiva') {
+      if (pattern.key === 'nalin_tag') {
         let logo: { dataUrl: string; width: number; height: number } | null = null;
-        if (pattern.branding.logoUrl) {
-          logo = await loadLogoDataUrl(pattern.branding.logoUrl);
-          if (!logo) toast.warning('Não carreguei a logomarca — o PDF sai com o wordmark.');
+        if (lotBrandingEffective.logoUrl) {
+          const signedLogoUrl = await getSignedUrl(lotBrandingEffective.logoUrl);
+          logo = await loadLogoDataUrl(signedLogoUrl || lotBrandingEffective.logoUrl);
+          if (!logo) toast.warning('Não carreguei a logomarca — o PDF sai com o wordmark Nalin.');
         }
-        const doc = await buildObjetivaPdf(mode === 'production' ? productionRows : selectedRows, {
+        const missingPrice = sourceRows.filter(row => !(row.valor ?? '').trim()).length;
+        if (missingPrice > 0) {
+          toast.warning(
+            `${missingPrice} linha(s) sem preço — a Tag imprime 0.00 nesses SKUs.`,
+          );
+        }
+        const doc = await buildNalinTagPdf(sourceRows, {
           geometry: pattern.geometry,
-          branding: pattern.branding,
+          branding: lotBrandingEffective,
           repeatByQuantity: mode === 'production',
           logo,
         });
-        doc.save(objetivaPdfFilename(originName));
+        const { deliverJsPdf } = await import('@/lib/pdfDelivery');
+        deliverJsPdf(doc, nalinTagPdfFilename(originName), 'Etiquetas');
+        if (mode === 'production') {
+          const zpl = buildNalinTagZpl(sourceRows, {
+            geometry: pattern.geometry,
+            branding: lotBrandingEffective,
+            repeatByQuantity: true,
+          });
+          downloadText(zpl, nalinTagZplFilename(originName), 'text/plain;charset=utf-8');
+        }
         toast.success(
           mode === 'graphic'
-            ? `PDF Objetiva (amostra) com ${selectedRows.length} SKU(s) gerado.`
-            : `PDF Objetiva com ${totalEtiquetas} etiqueta(s) gerado.`,
+            ? `PDF Nalin · Tag (amostra) com ${selectedRows.length} SKU(s) gerado.`
+            : `PDF + ZPL Nalin · Tag com ${totalEtiquetas} etiqueta(s) gerado.`,
+        );
+      } else if (pattern.key === 'objetiva') {
+        let logo: { dataUrl: string; width: number; height: number } | null = null;
+        if (lotBrandingEffective.logoUrl) {
+          // Bucket client-logos é privado: URL pública 404 — assina antes do fetch.
+          const signedLogoUrl = await getSignedUrl(lotBrandingEffective.logoUrl);
+          logo = await loadLogoDataUrl(signedLogoUrl || lotBrandingEffective.logoUrl);
+          if (!logo) toast.warning('Não carreguei a logomarca — o PDF sai com o wordmark.');
+        }
+        const incompleteMiolo = sourceRows.filter(
+          row => !(row.tipo ?? '').trim() || (!(row.grupo ?? '').trim() && !(row.categoria ?? '').trim()),
+        );
+        if (incompleteMiolo.length > 0) {
+          toast.warning(
+            `${incompleteMiolo.length} linha(s) sem TIPO/CATEGORIA/GRUPO — a Tag sai sem SANDALIA / CALCADOS/….`,
+          );
+        }
+        const doc = await buildObjetivaPdf(sourceRows, {
+          geometry: pattern.geometry,
+          branding: lotBrandingEffective,
+          repeatByQuantity: mode === 'production',
+          logo,
+        });
+        const { deliverJsPdf } = await import('@/lib/pdfDelivery');
+        deliverJsPdf(doc, objetivaPdfFilename(originName), 'Etiquetas');
+        if (mode === 'production') {
+          // Mesma impressora/mídia da Ponto Mix: sai o ZPL junto do PDF.
+          const zpl = buildObjetivaZpl(sourceRows, {
+            geometry: pattern.geometry,
+            branding: lotBrandingEffective,
+            repeatByQuantity: true,
+          });
+          downloadText(zpl, objetivaZplFilename(originName), 'text/plain;charset=utf-8');
+        }
+        toast.success(
+          mode === 'graphic'
+            ? `PDF Objetiva · Tag (amostra) com ${selectedRows.length} SKU(s) gerado.`
+            : `PDF + ZPL Objetiva · Tag com ${totalEtiquetas} etiqueta(s) gerado.`,
+        );
+      } else if (pattern.key === 'objetiva_adesiva') {
+        const doc = await buildObjetivaAdesivaPdf(sourceRows, {
+          geometry: pattern.geometry,
+          repeatByQuantity: mode === 'production',
+        });
+        const { deliverJsPdf } = await import('@/lib/pdfDelivery');
+        deliverJsPdf(doc, objetivaAdesivaPdfFilename(originName), 'Etiquetas');
+        // Bematech/Elgin: mande o .zpl — o PDF pelo driver corta o topo (some descrição).
+        const zpl = buildObjetivaAdesivaZpl(sourceRows, {
+          geometry: pattern.geometry,
+          repeatByQuantity: mode === 'production',
+        });
+        downloadText(zpl, objetivaAdesivaZplFilename(originName), 'text/plain;charset=utf-8');
+        toast.success(
+          mode === 'graphic'
+            ? `PDF + ZPL Objetiva · Adesiva (amostra) com ${selectedRows.length} SKU(s). Use o .zpl na Bematech.`
+            : `PDF + ZPL Objetiva · Adesiva com ${totalEtiquetas} etiqueta(s). Na Bematech, imprima o .zpl (não o PDF).`,
+        );
+      } else if (pattern.key === 'ponto_mix') {
+        // Arte fixa: sempre logo empacotada branca (upload do cliente é ignorado).
+        const logo = await resolvePontoMixLogo();
+        if (!logo) {
+          toast.warning('Não carreguei a marca Ponto Mix — o PDF sai com wordmark.');
+        }
+        const previewRow = sourceRows[0];
+        if (previewRow) {
+          try {
+            const preview = await renderPontoMixPreviewDataUrl(previewRow, {
+              geometry: pattern.geometry,
+              templates: pattern.templates,
+              priceFormat: pattern.priceFormat,
+              logo,
+              resolveLineOverride: lotPayload.resolveLineOverride,
+            });
+            setPreviewUrl(preview);
+          } catch {
+            setPreviewUrl(null);
+          }
+        }
+        const blob = await buildPontoMixPdf(sourceRows, {
+          geometry: pattern.geometry,
+          templates: pattern.templates,
+          priceFormat: pattern.priceFormat,
+          repeatByQuantity: mode === 'production',
+          logo,
+          resolveLineOverride: lotPayload.resolveLineOverride,
+        });
+        downloadBlob(blob, pontoMixPdfFilename(mode === 'graphic' ? 'grafico' : 'producao'));
+        const zpl = buildPontoMixZpl(sourceRows, {
+          geometry: pattern.geometry,
+          templates: pattern.templates,
+          priceFormat: pattern.priceFormat,
+          repeatByQuantity: mode === 'production',
+          resolveLineOverride: lotPayload.resolveLineOverride,
+        });
+        downloadText(zpl, pontoMixZplFilename(), 'application/octet-stream');
+        toast.success(
+          mode === 'graphic'
+            ? `Preview + PDF/ZPL Ponto Mix (amostra) com ${selectedRows.length} SKU(s).`
+            : `Preview + PDF/ZPL Ponto Mix com ${totalEtiquetas} etiqueta(s).`,
         );
       } else {
         const logo = await loadLogoDataUrl(logoFornecedor);
         if (!logo) toast.warning('Não carreguei a logomarca — o PDF sai sem ela.');
-        const doc = await buildBabyNalinPdf(
-          mode === 'production' ? productionBabyRows : selectedBabyRows,
-          {
-            mode,
-            repeatByQuantity: mode === 'production',
-            coucheProfile,
-            logo,
-          },
-        );
+        const doc = await buildBabyNalinPdf(effectiveBabyRows, {
+          mode,
+          repeatByQuantity: mode === 'production',
+          coucheProfile,
+          logo,
+        });
+        const { deliverJsPdf } = await import('@/lib/pdfDelivery');
         if (mode === 'graphic') {
-          doc.save(graphicPdfFilename(originName));
-          toast.success(`Arquivo para gráfica com ${selectedSkuAnalysis.rows.length} SKU(s) gerado.`);
+          deliverJsPdf(doc, graphicPdfFilename(originName), 'Etiquetas');
+          toast.success(`Arquivo para gráfica com ${effectiveSkuAnalysis.rows.length} SKU(s) gerado.`);
         } else {
-          doc.save(pdfFilename(originName));
+          deliverJsPdf(doc, pdfFilename(originName), 'Etiquetas');
           toast.success(`PDF de produção com ${totalEtiquetas} etiqueta(s) gerado.`);
         }
       }
-      clearOrder();
+      if (pattern.key !== 'ponto_mix') clearOrder();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Falha ao gerar o PDF.');
+    } finally {
+      setGenerating(null);
+    }
+  }
+
+  async function handleGenerateA4() {
+    if (isBusy || !pattern || !supportsTagA4) return;
+    if (selectedRows.length === 0) {
+      toast.info('Selecione ao menos um SKU antes de gerar.');
+      return;
+    }
+    if (patternDirty) {
+      toast.info('Salve o padrão do cliente antes de gerar o PDF.');
+      return;
+    }
+    const lotIssues = validateLotFace(selectedEntries, lotFaceBySkuKey, pattern.key);
+    if (lotIssues.length > 0) {
+      const first = lotIssues[0]!;
+      toast.error(
+        lotIssues.length === 1
+          ? first.message
+          : `${first.message} (+${lotIssues.length - 1} outro(s))`,
+      );
+      return;
+    }
+    if (selecionadasFora.length > 0) {
+      toast.error(`${selecionadasFora.length} código(s) selecionado(s) não cabem na etiqueta.`);
+      return;
+    }
+    if (productionOverLimit) {
+      toast.error(`O limite seguro é ${MAX_PDF_LABELS.toLocaleString('pt-BR')} etiquetas por PDF.`);
+      return;
+    }
+
+    const originName = fileNames[0] ?? 'pedido';
+    const lotPayload = buildLotGeneratePayload('a4');
+    const sourceRows = lotPayload.rows;
+    const lotBrandingEffective = lotPayload.branding;
+    setGenerating('a4');
+    try {
+      let doc: import('jspdf').jsPDF;
+      let clientSlug = 'Tag';
+
+      if (pattern.key === 'nalin_tag') {
+        let logo: { dataUrl: string; width: number; height: number } | null = null;
+        if (lotBrandingEffective.logoUrl) {
+          const signedLogoUrl = await getSignedUrl(lotBrandingEffective.logoUrl);
+          logo = await loadLogoDataUrl(signedLogoUrl || lotBrandingEffective.logoUrl);
+          if (!logo) toast.warning('Não carreguei a logomarca — o PDF A4 sai com o wordmark Nalin.');
+        }
+        doc = await buildNalinTagA4Pdf(sourceRows, {
+          geometry: pattern.geometry,
+          branding: lotBrandingEffective,
+          repeatByQuantity: true,
+          logo,
+        });
+        clientSlug = 'Nalin_Tag';
+      } else if (pattern.key === 'objetiva') {
+        let logo: { dataUrl: string; width: number; height: number } | null = null;
+        if (lotBrandingEffective.logoUrl) {
+          const signedLogoUrl = await getSignedUrl(lotBrandingEffective.logoUrl);
+          logo = await loadLogoDataUrl(signedLogoUrl || lotBrandingEffective.logoUrl);
+          if (!logo) toast.warning('Não carreguei a logomarca — o PDF A4 sai com o wordmark.');
+        }
+        doc = await buildObjetivaTagA4Pdf(sourceRows, {
+          geometry: pattern.geometry,
+          branding: lotBrandingEffective,
+          repeatByQuantity: true,
+          logo,
+        });
+        clientSlug = 'Objetiva';
+      } else if (pattern.key === 'ponto_mix') {
+        const logo = await resolvePontoMixLogo(lotBrandingEffective.logoUrl);
+        doc = await buildPontoMixTagA4Pdf(sourceRows, {
+          geometry: pattern.geometry,
+          templates: pattern.templates,
+          priceFormat: pattern.priceFormat,
+          repeatByQuantity: true,
+          logo,
+          resolveLineOverride: lotPayload.resolveLineOverride,
+        });
+        clientSlug = 'Ponto_Mix';
+      } else {
+        toast.info('PDF A4 (tesoura) só está disponível nas Tags 40×60.');
+        return;
+      }
+
+      const { deliverJsPdf } = await import('@/lib/pdfDelivery');
+      deliverJsPdf(doc, tagA4PdfFilename(clientSlug, originName), 'Etiquetas');
+      toast.success(
+        `PDF A4 (tesoura) com ${totalEtiquetas} etiqueta(s) · 16 por folha · sem misturar ref/cor.`,
+      );
+      if (pattern.key !== 'ponto_mix') clearOrder();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Falha ao gerar o PDF A4.');
     } finally {
       setGenerating(null);
     }
@@ -507,7 +1051,7 @@ export function ClientLabelingWorkspace() {
       <Panel
         eyebrow="ETIQUETAS · CLIENTE"
         title="Cliente e tipos de etiqueta"
-        subtitle="O mesmo cliente pode ter Nalin e Objetiva. Trocar o tipo não apaga o outro. O arquivo do pedido não é guardado."
+        subtitle="Nalin e Objetiva: Tag (maior) + Adesiva no mesmo CSV. Ponto Mix é um layout só. Trocar Tag↔Adesiva mantém o pedido carregado."
       >
         <div className="space-y-4">
           <div className="grid gap-3 md:grid-cols-[1fr_2fr]">
@@ -550,80 +1094,198 @@ export function ClientLabelingWorkspace() {
           {!selectedClientId ? (
             <EmptyState
               title="Escolha um cliente"
-              description="Cada cliente pode gravar mais de um layout (Nalin e Objetiva), com medidas e textos próprios."
+              description="Cada cliente grava a família (Nalin, Objetiva ou Ponto Mix). Em Nalin e Objetiva o mesmo arquivo do pedido gera Tag e Adesiva."
             />
           ) : patternLoading ? (
             <p className="text-sm text-muted-foreground">Carregando padrão…</p>
           ) : (
             <div className="space-y-4 rounded-lg border border-border bg-muted/20 p-4">
-              <div className="flex flex-wrap items-end gap-3">
-                <div className="space-y-2 min-w-[12rem]">
-                  <Label>Tipo de layout</Label>
-                  <Select
-                    value={pattern?.key}
-                    onValueChange={value => handlePatternKeyChange(value as ClientLabelPatternKey)}
-                    disabled={isBusy}
-                  >
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="Escolha Nalin ou Objetiva" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="baby_nalin">
-                        Nalin (couchê 50×30)
-                        {savedKeys.includes('baby_nalin') ? ' · salvo' : ''}
-                      </SelectItem>
-                      <SelectItem value="objetiva">
-                        Objetiva (hangtag)
-                        {savedKeys.includes('objetiva') ? ' · salvo' : ''}
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                {draftKeys.map(key => (
-                  <Badge key={key} variant={key === pattern?.key ? 'outline' : 'secondary'}>
-                    {patternLabel(key)}
-                    {savedKeys.includes(key) ? '' : ' · não salvo'}
-                  </Badge>
-                ))}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-medium text-muted-foreground mr-1">
+                  Ativo para imprimir
+                </span>
+                {draftKeys.length === 0 ? (
+                  <span className="text-xs text-muted-foreground">nenhum — habilite uma família abaixo</span>
+                ) : (
+                  draftKeys.map(key => (
+                    <Button
+                      key={key}
+                      type="button"
+                      size="sm"
+                      variant={key === pattern?.key ? 'default' : 'outline'}
+                      className="h-8"
+                      disabled={isBusy}
+                      onClick={() => selectActivePattern(key)}
+                    >
+                      {patternLabel(key)}
+                      {!savedKeys.includes(key) ? ' · novo' : ''}
+                    </Button>
+                  ))
+                )}
                 {patternDirty && <Badge variant="secondary">Alterações não salvas</Badge>}
-                {draftKeys.length > 0 && (
+                <div className="ml-auto flex flex-wrap gap-2">
+                  {draftKeys.length > 0 && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-9"
+                      onClick={handleRemovePattern}
+                      disabled={!pattern || isBusy}
+                    >
+                      <Trash className="h-4 w-4 mr-1.5" />
+                      Remover ativo
+                    </Button>
+                  )}
                   <Button
-                    type="button"
-                    variant="ghost"
                     size="sm"
                     className="h-9"
-                    onClick={handleRemovePattern}
-                    disabled={!pattern || isBusy}
+                    onClick={() => void handleSavePattern()}
+                    disabled={isBusy || (!pattern && !patternDirty)}
                   >
-                    <Trash className="h-4 w-4 mr-1.5" />
-                    Remover este tipo
+                    {savePatternMutation.isPending ? (
+                      <CircleNotch className="h-4 w-4 mr-1.5 animate-spin" />
+                    ) : (
+                      <FloppyDisk className="h-4 w-4 mr-1.5" />
+                    )}
+                    Salvar padrões do cliente
                   </Button>
-                )}
-                <Button
-                  size="sm"
-                  className="h-9 ml-auto"
-                  onClick={() => void handleSavePattern()}
-                  disabled={isBusy || (!pattern && !patternDirty)}
-                >
-                  {savePatternMutation.isPending ? (
-                    <CircleNotch className="h-4 w-4 mr-1.5 animate-spin" />
-                  ) : (
-                    <FloppyDisk className="h-4 w-4 mr-1.5" />
-                  )}
-                  Salvar padrões do cliente
-                </Button>
+                </div>
+              </div>
+
+              <div className="grid gap-3 lg:grid-cols-3">
+                {CLIENT_LABEL_FAMILIES.map(family => {
+                  const enabledKeys = familyKeysInCollection(draftCollection, family.id);
+                  const familyActive = activeFamilyId === family.id;
+                  const allOn = family.keys.every(key => enabledKeys.includes(key));
+                  return (
+                    <div
+                      key={family.id}
+                      className={cn(
+                        'rounded-lg border bg-background p-3 space-y-3',
+                        familyActive ? 'border-primary/40' : 'border-border',
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="font-semibold text-sm">{family.label}</div>
+                          <p className="text-xs text-muted-foreground mt-0.5">{family.mediaSummary}</p>
+                        </div>
+                        {!allOn && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            className="h-8 shrink-0"
+                            disabled={isBusy}
+                            onClick={() => handleEnableFamily(family.id)}
+                          >
+                            {family.keys.length > 1 ? 'Ativar os dois' : 'Ativar'}
+                          </Button>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {family.keys.map(key => {
+                          const on = enabledKeys.includes(key);
+                          const active = pattern?.key === key;
+                          return (
+                            <Button
+                              key={key}
+                              type="button"
+                              size="sm"
+                              variant={active ? 'default' : on ? 'outline' : 'ghost'}
+                              className={cn(
+                                'h-8',
+                                !on && 'border border-dashed border-border text-muted-foreground',
+                              )}
+                              disabled={isBusy}
+                              title={patternMediaLabel(key)}
+                              onClick={() => {
+                                if (on) selectActivePattern(key);
+                                else handleToggleVariant(key);
+                              }}
+                              onContextMenu={event => {
+                                event.preventDefault();
+                                handleToggleVariant(key);
+                              }}
+                            >
+                              {patternVariantLabel(key)}
+                              {patternAwaitsCalibration(key) ? ' · foto' : ''}
+                              {on && !savedKeys.includes(key) ? ' · novo' : ''}
+                            </Button>
+                          );
+                        })}
+                      </div>
+                      {family.keys.length > 1 && (
+                        <p className="text-[11px] text-muted-foreground leading-snug">
+                          Clique liga/ativa a variante. Botão direito remove. Mesmo CSV para Tag e
+                          Adesiva.
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
 
               {!pattern ? (
                 <p className="text-sm text-muted-foreground">
-                  Este cliente ainda não tem padrão. Escolha Nalin ou Objetiva e salve. O mesmo
-                  cadastro pode guardar os dois tipos.
+                  Este cliente ainda não tem padrão. Em Nalin ou Objetiva use &quot;Ativar os dois&quot;
+                  (Tag + Adesiva) e salve.
                 </p>
-              ) : isNalin ? (
+              ) : isNalinTag ? (
+                <div className="space-y-3">
+                  <ClientLabelLogoUpload
+                    clientId={selectedClientId}
+                    logoUrl={pattern.branding.logoUrl}
+                    disabled={isBusy}
+                    storageKey="nalin_tag"
+                    hint="Wordmark script Nalin. Sem upload, o PDF usa o texto itálico de fallback."
+                    onLogoChange={url => setBrandingField('logoUrl', url ?? '')}
+                  />
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    {OBJETIVA_GEOMETRY_FIELDS.filter(
+                      f => f.key !== 'columns' && f.key !== 'columnGapMm',
+                    ).map(field => (
+                      <div key={field.key} className="space-y-1">
+                        <Label htmlFor={`nalin-tag-${field.key}`} className="text-xs">
+                          {field.label}
+                        </Label>
+                        <Input
+                          id={`nalin-tag-${field.key}`}
+                          type="number"
+                          min={0}
+                          step={field.step ?? 0.1}
+                          value={pattern.geometry[field.key]}
+                          disabled={isBusy}
+                          onChange={event => setObjetivaGeometry(field.key, event.target.value)}
+                          className="h-8 font-mono"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="nalin-tag-exchange" className="text-xs">
+                      Texto de troca
+                    </Label>
+                    <Input
+                      id="nalin-tag-exchange"
+                      value={pattern.branding.exchangeText}
+                      disabled={isBusy}
+                      onChange={event => setBrandingField('exchangeText', event.target.value)}
+                      className="h-8"
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Defaults Tag: troca “{NALIN_TAG_DEFAULT_BRANDING.exchangeText}”,{' '}
+                    {NALIN_TAG_DEFAULT_GEOMETRY.labelWidthMm}×{NALIN_TAG_DEFAULT_GEOMETRY.labelHeightMm}{' '}
+                    mm · L42PRO · calibrada pela foto física. Mesmo CSV da adesiva.
+                  </p>
+                </div>
+              ) : isNalinAdesiva ? (
                 <div className="space-y-3">
                   <p className="text-xs text-muted-foreground">
-                    Medidas do rolo 2 × {COUCHE_LABEL_WIDTH_MM} × {COUCHE_LABEL_HEIGHT_MM} mm · módulo{' '}
-                    {MODULE_MM.toFixed(3).replace('.', ',')} mm ({BARCODE_FORMAT}).
+                    Adesiva Nalin · rolo 2 × {COUCHE_LABEL_WIDTH_MM} × {COUCHE_LABEL_HEIGHT_MM} mm ·
+                    módulo {MODULE_MM.toFixed(3).replace('.', ',')} mm ({BARCODE_FORMAT}).
                   </p>
                   <details className="rounded-md border border-border bg-background p-3 text-sm" open>
                     <summary className="cursor-pointer font-semibold">
@@ -669,12 +1331,129 @@ export function ClientLabelingWorkspace() {
                     </div>
                   </details>
                 </div>
+              ) : isPontoMix ? (
+                <div className="space-y-4">
+                  <ClientLabelLogoUpload
+                    clientId={selectedClientId}
+                    logoUrl={pattern.branding.logoUrl}
+                    disabled={isBusy}
+                    storageKey="ponto_mix"
+                    hint="A arte usa a logo padrão Ponto Mix (branca na faixa preta). Upload opcional não altera o PDF."
+                    onLogoChange={url => setBrandingField('logoUrl', url ?? '')}
+                  />
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {PONTO_MIX_GEOMETRY_FIELDS.map(field => (
+                      <div key={field.key} className="space-y-1">
+                        <Label htmlFor={`pm-${field.key}`} className="text-xs">
+                          {field.label}
+                        </Label>
+                        <Input
+                          id={`pm-${field.key}`}
+                          type="number"
+                          min={0}
+                          step={field.step ?? 0.1}
+                          value={pattern.geometry[field.key]}
+                          disabled={isBusy}
+                          onChange={event => setObjetivaGeometry(field.key, event.target.value)}
+                          className="h-8 font-mono"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {(['line1', 'line2', 'line3'] as const).map((field, index) => (
+                      <div key={field} className="space-y-1">
+                        <Label htmlFor={`pm-tpl-${field}`} className="text-xs">
+                          Template linha {index + 1}
+                        </Label>
+                        <Input
+                          id={`pm-tpl-${field}`}
+                          value={(pattern.templates ?? PONTO_MIX_DEFAULT_TEMPLATES)[field]}
+                          disabled={isBusy}
+                          onChange={event => setPontoMixTemplate(field, event.target.value)}
+                          className="h-8 font-mono text-xs"
+                          placeholder="{descricao}"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <p className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                    Arte sem preço: a faixa preta inferior com <span className="font-medium text-foreground">R$</span>{' '}
+                    não é impressa. O preço do arquivo ainda pode ser lido para conferência, mas não entra no PDF/ZPL.
+                  </p>
+                  <details className="rounded-md border border-border bg-background p-3 text-sm" open>
+                    <summary className="cursor-pointer font-semibold">
+                      Padrão de arquivo (mapeamento de colunas)
+                    </summary>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Deixe em branco para usar aliases automáticos (descrição, referência, cor,
+                      tamanho, código de barras, preço, qtd). Preencha o nome exato do cabeçalho do
+                      CSV/XLSX do cliente quando diferir.
+                    </p>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      {PONTO_MIX_FILE_FIELDS.map(field => (
+                        <div key={field.key} className="space-y-1">
+                          <Label htmlFor={`pm-map-${field.key}`} className="text-xs">
+                            {field.label}
+                          </Label>
+                          <Input
+                            id={`pm-map-${field.key}`}
+                            value={fileMapping?.columns?.[field.key] ?? ''}
+                            disabled={isBusy}
+                            onChange={event => setFileMappingColumn(field.key, event.target.value)}
+                            className="h-8 font-mono text-xs"
+                            placeholder="(auto)"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                  <p className="text-xs text-muted-foreground">
+                    Defaults: {PONTO_MIX_DEFAULT_GEOMETRY.labelWidthMm}×
+                    {PONTO_MIX_DEFAULT_GEOMETRY.labelHeightMm} mm · 1 coluna · CODE128 · PDF + ZPL
+                    L42PRO.
+                  </p>
+                </div>
+              ) : isObjetivaAdesiva ? (
+                <div className="space-y-3">
+                  <p className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                    Adesiva Objetiva: mesmo CSV da Tag · PDF + ZPL 50×30 mm (1 etiqueta) ·
+                    CODE128 do SKU · preço. Na Bematech, use o arquivo .zpl (Gerenciador /
+                    DirectPrint) — o PDF pelo driver corta a descrição. Mídia 50×30; o rolo
+                    2 colunas avança sozinho.
+                  </p>
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    {OBJETIVA_GEOMETRY_FIELDS.map(field => (
+                      <div key={field.key} className="space-y-1">
+                        <Label htmlFor={`obj-ad-${field.key}`} className="text-xs">
+                          {field.label}
+                        </Label>
+                        <Input
+                          id={`obj-ad-${field.key}`}
+                          type="number"
+                          min={0}
+                          step={field.step ?? 0.1}
+                          value={pattern.geometry[field.key]}
+                          disabled={isBusy}
+                          onChange={event => setObjetivaGeometry(field.key, event.target.value)}
+                          className="h-8 font-mono"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Defaults: página {OBJETIVA_ADESIVA_PAGE_WIDTH_MM}×{OBJETIVA_ADESIVA_PAGE_HEIGHT_MM} mm ·{' '}
+                    1 etiqueta · PDF + ZPL 203 dpi (arte {OBJETIVA_ADESIVA_LABEL_WIDTH_MM}×
+                    {OBJETIVA_ADESIVA_LABEL_HEIGHT_MM}).
+                  </p>
+                </div>
               ) : (
                 <div className="space-y-3">
                   <ClientLabelLogoUpload
                     clientId={selectedClientId}
                     logoUrl={pattern.branding.logoUrl}
                     disabled={isBusy}
+                    storageKey="objetiva"
                     onLogoChange={url => setBrandingField('logoUrl', url ?? '')}
                   />
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -735,10 +1514,10 @@ export function ClientLabelingWorkspace() {
                     </div>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Defaults: motto “{OBJETIVA_DEFAULT_BRANDING.motto}”, troca “
+                    Defaults Tag: motto “{OBJETIVA_DEFAULT_BRANDING.motto}”, troca “
                     {OBJETIVA_DEFAULT_BRANDING.exchangeText}”, material “
                     {OBJETIVA_DEFAULT_BRANDING.materialPrefix}”, {OBJETIVA_DEFAULT_GEOMETRY.labelWidthMm}×
-                    {OBJETIVA_DEFAULT_GEOMETRY.labelHeightMm} mm.
+                    {OBJETIVA_DEFAULT_GEOMETRY.labelHeightMm} mm · calibrada pela foto física.
                   </p>
                 </div>
               )}
@@ -780,10 +1559,12 @@ export function ClientLabelingWorkspace() {
             title="Nenhum pedido importado"
             description={
               !pattern
-                ? 'Defina e salve ao menos um tipo de etiqueta para importar CSV/XLSX.'
+                ? 'Defina e salve ao menos um tipo de etiqueta para importar CSV/XLSX/Padrao.txt.'
                 : patternDirty
                   ? 'Salve o padrão antes de importar.'
-                  : 'Pode enviar vários arquivos de uma vez (Objetiva: 1 SKU por arquivo).'
+                  : pattern.key === 'ponto_mix'
+                    ? 'Envie o Padrao.txt (dados). O .btw é só o modelo BarTender da arte — não serve de pedido.'
+                    : 'Pode enviar vários arquivos de uma vez (Objetiva: 1 SKU por arquivo).'
             }
             action={
               <Button
@@ -813,15 +1594,85 @@ export function ClientLabelingWorkspace() {
                 hint={`${fileNames.length} arquivo(s)`}
               />
               <StatCard
-                label={isObjetiva ? 'Hangtags' : 'Etiquetas'}
+                label={isObjetiva ? 'Tags / adesivas' : 'Etiquetas'}
                 value={totalEtiquetas}
                 hint={
-                  isNalin
+                  isNalinAdesiva
                     ? `${COUCHE_COLUMNS} colunas · vão ${coucheProfile.columnGapMm} mm`
-                    : `${pattern?.geometry.labelWidthMm}×${pattern?.geometry.labelHeightMm} mm`
+                    : isPontoMix
+                      ? '40×60 mm · 1 coluna · PDF + ZPL'
+                      : `${pattern?.geometry.labelWidthMm}×${pattern?.geometry.labelHeightMm} mm`
                 }
               />
             </StatGrid>
+
+            {previewUrl && isPontoMix && (
+              <div className="rounded-lg border border-border bg-muted/20 p-4 flex flex-col sm:flex-row gap-4 items-start">
+                <div className="rounded-md border border-border bg-background p-2">
+                  <img
+                    src={previewUrl}
+                    alt="Preview da etiqueta Ponto Mix"
+                    className="h-auto w-[160px] object-contain"
+                  />
+                </div>
+                <div className="space-y-1 text-sm">
+                  <div className="flex items-center gap-2 font-semibold">
+                    <ImageIcon className="h-4 w-4" />
+                    Preview (1ª etiqueta do lote)
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Conferência antes do rolo. PDF e ZPL já foram baixados na última geração.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <section className="rounded-lg border border-border bg-muted/20 p-4 space-y-3">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <h3 className="font-semibold">Textos deste lote</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Valem só para esta geração — não gravam no padrão do cliente. Edite branding
+                    aqui e os textos de face na tabela abaixo.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {lotTextsDirty && <Badge variant="secondary">Alterados neste lote</Badge>}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-9"
+                    disabled={isBusy || rows.length === 0 || !pattern}
+                    onClick={restoreLotTexts}
+                  >
+                    <ArrowCounterClockwise className="h-4 w-4 mr-1.5" />
+                    Restaurar textos
+                  </Button>
+                </div>
+              </div>
+              {lotBrandingFields.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  Este layout não tem motto/troca/prefixo — edite as colunas da tabela.
+                </p>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {lotBrandingFields.map(field => (
+                    <div key={field.key} className="space-y-1.5">
+                      <Label htmlFor={`lot-${field.key}`} className="text-xs">
+                        {field.label}
+                      </Label>
+                      <Input
+                        id={`lot-${field.key}`}
+                        value={lotBranding[field.key]}
+                        disabled={isBusy}
+                        onChange={event => setLotBrandingField(field.key, event.target.value)}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
 
             <div className="grid gap-3 lg:grid-cols-2">
               <section className="rounded-lg border border-border bg-muted/20 p-4 space-y-4">
@@ -831,11 +1682,30 @@ export function ClientLabelingWorkspace() {
                   </div>
                   <div>
                     <h3 className="font-semibold">
-                      {isObjetiva ? 'PDF produção Objetiva' : 'PDF produção Nalin'}
+                      {isNalinTag
+                        ? 'Produção Tag Nalin (PDF + ZPL)'
+                        : isNalinAdesiva
+                          ? 'PDF adesiva Nalin (L42PRO)'
+                          : isObjetivaAdesiva
+                            ? 'Produção adesiva Objetiva (PDF + ZPL)'
+                            : isObjetiva
+                              ? 'Produção Tag Objetiva (PDF + ZPL)'
+                              : isPontoMix
+                                ? 'Produção Ponto Mix (PDF + ZPL)'
+                                : 'PDF produção'}
                     </h3>
                     <p className="mt-1 text-xs text-muted-foreground">
                       Repete pela quantidade do pedido
-                      {isNalin ? ' · rolo 2 colunas 50×30' : ' · uma hangtag por cópia'}.
+                      {isNalinAdesiva
+                        ? ' · rolo 2 colunas 50×30'
+                        : isNalinTag
+                          ? ' · PDF + ZPL L42PRO 40×60'
+                          : isPontoMix
+                            ? ' · preview + PDF + ZPL L42PRO 40×60'
+                            : isObjetivaAdesiva
+                              ? ' · PDF + ZPL 50×30 · 1 etiqueta (use .zpl na Bematech)'
+                              : ' · PDF + ZPL L42PRO 40×60'}
+                      .
                     </p>
                   </div>
                 </div>
@@ -847,7 +1717,8 @@ export function ClientLabelingWorkspace() {
                     || selectedRows.length === 0
                     || selecionadasFora.length > 0
                     || productionOverLimit
-                    || (isNalin && !coucheConfirmed)
+                    || awaitsCalibration
+                    || (isNalinAdesiva && !coucheConfirmed)
                     || patternDirty
                   }
                 >
@@ -858,8 +1729,39 @@ export function ClientLabelingWorkspace() {
                   )}
                   {generating === 'production'
                     ? 'Gerando…'
-                    : `Gerar L42PRO (${totalEtiquetas} etiquetas)`}
+                    : isPontoMix || isNalinTag || isObjetiva || isObjetivaAdesiva
+                      ? `Gerar PDF+ZPL (${totalEtiquetas} etiquetas)`
+                      : `Gerar L42PRO (${totalEtiquetas} etiquetas)`}
                 </Button>
+                {supportsTagA4 && (
+                  <Button
+                    className="w-full"
+                    variant="outline"
+                    onClick={() => void handleGenerateA4()}
+                    disabled={
+                      isBusy
+                      || selectedRows.length === 0
+                      || selecionadasFora.length > 0
+                      || productionOverLimit
+                      || patternDirty
+                    }
+                  >
+                    {generating === 'a4' ? (
+                      <CircleNotch className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Scissors className="h-4 w-4 mr-2" />
+                    )}
+                    {generating === 'a4'
+                      ? 'Gerando A4…'
+                      : `PDF A4 (tesoura) · ${totalEtiquetas} etiquetas`}
+                  </Button>
+                )}
+                {supportsTagA4 && (
+                  <p className="text-xs text-muted-foreground">
+                    Folha A4 · 4×4 células 40×60 mm · hairline de corte · quebra de página ao
+                    mudar referência/cor. Epson / LaserJet.
+                  </p>
+                )}
               </section>
 
               <section className="rounded-lg border border-primary/25 bg-primary/5 p-4 space-y-4">
@@ -869,10 +1771,21 @@ export function ClientLabelingWorkspace() {
                   </div>
                   <div>
                     <h3 className="font-semibold">
-                      {isObjetiva ? 'Amostra Objetiva' : 'Arquivo para gráfica'}
+                      {isNalinTag
+                        ? 'Amostra Tag Nalin'
+                        : isNalinAdesiva
+                          ? 'Arquivo adesiva para gráfica'
+                          : isObjetivaAdesiva
+                            ? 'Amostra adesiva (PDF + ZPL)'
+                            : isObjetiva
+                              ? 'Amostra Tag'
+                              : isPontoMix
+                                ? 'Amostra Ponto Mix'
+                                : 'Arquivo para gráfica'}
                     </h3>
                     <p className="mt-1 text-xs text-muted-foreground">
                       Uma arte por SKU selecionado (sem repetir quantidade).
+                      {isObjetivaAdesiva ? ' Na Bematech, use o .zpl.' : ''}
                     </p>
                   </div>
                 </div>
@@ -883,8 +1796,9 @@ export function ClientLabelingWorkspace() {
                     isBusy
                     || selectedRows.length === 0
                     || selecionadasFora.length > 0
-                    || (isNalin && selectedSkuAnalysis.conflicts.length > 0)
-                    || (isNalin && !coucheConfirmed)
+                    || awaitsCalibration
+                    || (isNalinAdesiva && selectedSkuAnalysis.conflicts.length > 0)
+                    || (isNalinAdesiva && !coucheConfirmed)
                     || patternDirty
                   }
                 >
@@ -895,26 +1809,35 @@ export function ClientLabelingWorkspace() {
                   )}
                   {generating === 'graphic'
                     ? 'Gerando…'
-                    : `Gerar gráfica (${selectedSkuKeys.size} ${skuLabel})`}
+                    : isPontoMix || isObjetivaAdesiva
+                      ? `Gerar amostra PDF+ZPL (${selectedSkuKeys.size} ${skuLabel})`
+                      : `Gerar gráfica (${selectedSkuKeys.size} ${skuLabel})`}
                 </Button>
-                {isNalin && (
+                {isNalinAdesiva && (
                   <p className="text-xs text-muted-foreground">
                     {paginasGrafica} linha(s) de {COUCHE_COLUMNS} colunas ·{' '}
                     {BABY_NALIN_DEFAULT_GEOMETRY.labelWidthMm}×{BABY_NALIN_DEFAULT_GEOMETRY.labelHeightMm}{' '}
                     mm
                   </p>
                 )}
+                {isObjetivaAdesiva && (
+                  <p className="text-xs text-muted-foreground">
+                    {paginasGrafica} página(s) · {OBJETIVA_ADESIVA_LABEL_WIDTH_MM}×
+                    {OBJETIVA_ADESIVA_LABEL_HEIGHT_MM} mm (1 etiqueta cada)
+                  </p>
+                )}
               </section>
             </div>
 
-            {(foraDoPadrao.length > 0 || (isNalin && selectedSkuAnalysis.conflicts.length > 0)) && (
+            {(foraDoPadrao.length > 0
+              || (isNalinAdesiva && selectedSkuAnalysis.conflicts.length > 0)) && (
               <div className="flex gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
                 <Warning className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
                 <div>
                   {foraDoPadrao.length > 0 && (
                     <p>{foraDoPadrao.length} código(s) não cabem na etiqueta com o módulo atual.</p>
                   )}
-                  {isNalin && selectedSkuAnalysis.conflicts.length > 0 && (
+                  {isNalinAdesiva && selectedSkuAnalysis.conflicts.length > 0 && (
                     <p>
                       {selectedSkuAnalysis.conflicts.length} SKU(s) com dados conflitantes na seleção.
                     </p>
@@ -955,26 +1878,42 @@ export function ClientLabelingWorkspace() {
                     <th className="w-10 p-2">
                       <span className="sr-only">Selecionar</span>
                     </th>
-                    <th className="p-2">Ref / SKU</th>
-                    <th className="p-2">Cor</th>
-                    <th className="p-2">Tam.</th>
+                    {lotFaceFields.map(field => (
+                      <th key={field.key} className="p-2 whitespace-nowrap">
+                        {field.label}
+                      </th>
+                    ))}
                     <th className="p-2">Código</th>
                     <th className="p-2 text-right">Qtd pedido</th>
                     <th className="p-2 text-right">Imprimir</th>
                     {fileNames.length > 1 && <th className="p-2">Arquivo</th>}
-                    {isNalin && <th className="p-2">OK</th>}
+                    {isNalinAdesiva && <th className="p-2">OK</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {visibleEntries.map(({ row, skuKey, barcodeFit, sourceIndex }) => {
                     const selected = selectedSkuKeys.has(skuKey);
+                    const face = lotFaceBySkuKey[skuKey] ?? {};
+                    const seededFace = pattern
+                      ? seedLotFaceFromRow(row, pattern.key, {
+                          templates: pattern.templates,
+                          priceFormat: pattern.priceFormat,
+                        })
+                      : {};
+                    const faceDirty =
+                      Boolean(pattern)
+                      && isLotFaceDirty(row, face, pattern!.key, {
+                        templates: pattern!.templates,
+                        priceFormat: pattern!.priceFormat,
+                      });
                     return (
                       <tr
                         key={`${skuKey}-${sourceIndex}`}
                         className={cn(
                           'border-t border-border',
                           selected && 'bg-primary/5',
-                          isNalin && !barcodeFit.fits && 'bg-amber-500/5',
+                          isNalinAdesiva && !barcodeFit.fits && 'bg-amber-500/5',
+                          faceDirty && 'bg-amber-500/[0.04]',
                         )}
                       >
                         <td className="p-2">
@@ -985,17 +1924,34 @@ export function ClientLabelingWorkspace() {
                             aria-label={`Selecionar linha ${sourceIndex + 1}: SKU ${row.referencia}, ${row.cor}, tamanho ${row.tamanho},`}
                           />
                         </td>
-                        <td className="p-2 font-medium">
-                          {row.referencia || row.codProduto}
-                          {row.descricao ? (
-                            <span className="block max-w-[14rem] truncate text-xs text-muted-foreground">
-                              {row.descricao}
-                            </span>
-                          ) : null}
+                        {lotFaceFields.map(field => {
+                          const wide =
+                            field.key === 'descricao'
+                            || field.key === 'line1'
+                            || field.key === 'line2'
+                            || field.key === 'line3';
+                          const fieldDirty = (face[field.key] ?? '') !== (seededFace[field.key] ?? '');
+                          return (
+                            <td key={field.key} className="p-1.5 align-top">
+                              <Input
+                                className={cn(
+                                  'h-8 font-mono text-xs',
+                                  wide ? 'min-w-[10rem]' : 'min-w-[4.5rem] w-24',
+                                  fieldDirty && 'border-amber-500/50',
+                                )}
+                                disabled={isBusy}
+                                value={face[field.key] ?? ''}
+                                aria-label={`${field.label} do SKU ${row.referencia}, tamanho ${row.tamanho}`}
+                                onChange={event =>
+                                  setLotFaceField(skuKey, field.key, event.target.value)
+                                }
+                              />
+                            </td>
+                          );
+                        })}
+                        <td className="p-2 font-mono text-xs text-muted-foreground">
+                          {row.codigoBarra}
                         </td>
-                        <td className="p-2">{row.cor}</td>
-                        <td className="p-2 font-mono">{row.tamanho}</td>
-                        <td className="p-2 font-mono text-xs">{row.codigoBarra}</td>
                         <td className="p-2 text-right font-mono">{row.quantidade}</td>
                         <td className="p-2 text-right">
                           <Input
@@ -1016,7 +1972,7 @@ export function ClientLabelingWorkspace() {
                             {row.sourceFile}
                           </td>
                         )}
-                        {isNalin && (
+                        {isNalinAdesiva && (
                           <td className="p-2">
                             {barcodeFit.fits ? (
                               <CheckCircle className="h-4 w-4 text-emerald-600" />

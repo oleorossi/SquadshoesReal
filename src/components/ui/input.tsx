@@ -36,7 +36,7 @@ const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
           // react-hook-form/zod). Removido o `invalid:` NATIVO — ele pintava
           // QUALQUER campo `required` VAZIO de vermelho em repouso (parecia erro
           // antes de digitar). Agora campo vazio fica neutro até o form validar.
-          "flex h-9 w-full rounded-sm border-[1.5px] border-foreground/15 bg-background px-3 py-2 text-base ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:border-foreground focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm aria-[invalid=true]:border-primary",
+          "flex h-9 w-full rounded-sm border-[1.5px] border-foreground/15 bg-background px-2.5 py-1.5 text-base ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:border-foreground focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-50 md:h-9 md:text-sm aria-[invalid=true]:border-primary",
           isNumber && "font-mono tabular-nums",
           className,
         )}

@@ -1,6 +1,13 @@
 import { Badge } from '@/components/ui/badge';
 import { Panel } from '@/components/ui/panel';
-import { formatBalanceMinutes, type EmployeeTimeBalanceReport, type TimeBalanceDay, type TimeBalanceReportKind, type TimeBalanceWeek } from '@/lib/ponto/timeBalanceReports';
+import {
+  formatBalanceMinutes,
+  groupWeeksByCivilMonth,
+  type EmployeeTimeBalanceReport,
+  type TimeBalanceDay,
+  type TimeBalanceReportKind,
+  type TimeBalanceWeek,
+} from '@/lib/ponto/timeBalanceReports';
 import { cn } from '@/lib/utils';
 
 const DAY_LABELS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
@@ -127,6 +134,11 @@ export function EmployeeBalanceCalendar({ report, kind }: { report: EmployeeTime
         : outcome.className === 'text-destructive'
           ? 'border-destructive/30 bg-destructive/10 text-destructive'
           : 'border-border bg-muted/30 text-foreground';
+  // Blocos por mês só com breakdown de fechamento civil; recorte parcial fica contínuo.
+  const monthBlocks = report.monthBreakdown && report.monthBreakdown.length > 1
+    ? groupWeeksByCivilMonth(report.weeks)
+    : [{ period: 'all', label: '', weeks: report.weeks }];
+  const MES_CURTO = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
   return (
     <Panel
       eyebrow={kind === 'overtime' ? 'CRÉDITO SEMANAL' : kind === 'deficit' ? 'ABAIXO DA META SEMANAL' : 'ESPELHO SEMANAL'}
@@ -145,16 +157,25 @@ export function EmployeeBalanceCalendar({ report, kind }: { report: EmployeeTime
             <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Fechamento semanal</div>
             {DAY_LABELS.map(label => <div key={label} className="border-l border-border/60 px-2 py-2 text-center text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</div>)}
           </div>
-          {report.weeks.map(week => {
-            const slots = Array.from<TimeBalanceDay | undefined>({ length: 7 });
-            for (const day of week.days) slots[daySlot(day.dayOfWeek)] = day;
-            return (
-              <div key={week.key} className="grid grid-cols-[160px_repeat(7,minmax(104px,1fr))]">
-                <WeekSummaryCell week={week} />
-                {slots.map((day, index) => <BalanceDayCell key={day?.date || `${week.key}-${index}`} day={day} />)}
-              </div>
-            );
-          })}
+          {monthBlocks.map(block => (
+            <div key={block.period}>
+              {block.label && (
+                <div className="border-t border-border bg-muted/40 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-foreground">
+                  {block.label}
+                </div>
+              )}
+              {block.weeks.map(week => {
+                const slots = Array.from<TimeBalanceDay | undefined>({ length: 7 });
+                for (const day of week.days) slots[daySlot(day.dayOfWeek)] = day;
+                return (
+                  <div key={week.key} className="grid grid-cols-[160px_repeat(7,minmax(104px,1fr))]">
+                    <WeekSummaryCell week={week} />
+                    {slots.map((day, index) => <BalanceDayCell key={day?.date || `${week.key}-${index}`} day={day} />)}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
         </div>
       </div>
       <div className="grid border-t border-border sm:grid-cols-2 xl:grid-cols-4">
@@ -174,7 +195,20 @@ export function EmployeeBalanceCalendar({ report, kind }: { report: EmployeeTime
         <div className="px-4 py-3">
           <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Valor de HE a pagar</p>
           <p className="mt-1 font-mono text-lg font-bold tabular-nums text-foreground">{formatBRL(report.overtimeValue)}</p>
-          <p className="mt-0.5 text-[10px] text-muted-foreground">{formatBalanceMinutes(report.totalPayableOvertimeMinutes, false)} após compensação</p>
+          <p className="mt-0.5 text-[10px] text-muted-foreground">{formatBalanceMinutes(report.payableOvertimeForPaymentMinutes, false)} após compensação</p>
+          {report.overtimeValue > 0 && report.monthBreakdown && report.monthBreakdown.length > 1 && (
+            <div className="mt-2 space-y-0.5 border-t border-border/60 pt-2">
+              {report.monthBreakdown.map(month => {
+                const [, m] = month.period.split('-').map(Number);
+                return (
+                  <p key={month.period} className="flex justify-between gap-2 text-[10px] tabular-nums text-muted-foreground">
+                    <span className="capitalize">{MES_CURTO[(m || 1) - 1]}</span>
+                    <span className="text-foreground">{formatBRL(month.overtimeValue)}</span>
+                  </p>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
       <div className="flex flex-wrap gap-x-5 gap-y-1 border-t border-border px-4 py-3 text-[11px] text-muted-foreground">

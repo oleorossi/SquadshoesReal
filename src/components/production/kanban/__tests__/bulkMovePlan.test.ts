@@ -132,7 +132,7 @@ describe('prévia da distribuição em lote', () => {
 
   it('mantém pulos de setor fora do lote até haver gravação atômica', () => {
     const serialFlow = new Map<string, number>([
-      ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Corte Forração', 2], ['Costura', 3],
+      ['Palmilha · Fibra', 1], ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Palmilha · Forração', 2], ['Corte Forração', 2], ['Costura', 3],
     ]);
     const batch = buildBulkMoveBatch(
       [card('1', 'Corte Palmilha')],
@@ -146,7 +146,7 @@ describe('prévia da distribuição em lote', () => {
 
   it('sem allowParallelSkip, irmão paralelo aberto bloqueia o lote', () => {
     const levels = new Map([
-      ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Corte Forração', 1], ['Costura', 2],
+      ['Palmilha · Fibra', 1], ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Palmilha · Forração', 1], ['Corte Forração', 1], ['Costura', 2],
     ]);
     const batch = buildBulkMoveBatch(
       [card('1', 'Corte Palmilha')],
@@ -156,12 +156,12 @@ describe('prévia da distribuição em lote', () => {
     );
 
     expect(batch.steps).toHaveLength(0);
-    expect(batch.blocked[0].reason).toMatch(/conclua primeiro Corte Forração/i);
+    expect(batch.blocked[0].reason).toMatch(/conclua primeiro Palmilha · Forração/i);
   });
 
   it('com allowParallelSkip, irmão paralelo aberto entra como pulo no lote', () => {
     const levels = new Map([
-      ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Corte Forração', 1], ['Costura', 2],
+      ['Palmilha · Fibra', 1], ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Palmilha · Forração', 1], ['Corte Forração', 1], ['Costura', 2],
     ]);
     const batch = buildBulkMoveBatch(
       [card('1', 'Corte Palmilha')],
@@ -172,13 +172,13 @@ describe('prévia da distribuição em lote', () => {
     );
 
     expect(batch.steps).toHaveLength(1);
-    expect(batch.steps[0].plan.skipped).toEqual(['Corte Forração']);
+    expect(batch.steps[0].plan.skipped).toEqual(['Palmilha · Forração']);
     expect(batch.blocked).toHaveLength(0);
   });
 
   it('com allowParallelSkip, pulo sequencial também entra no lote', () => {
     const serialFlow = new Map<string, number>([
-      ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Corte Forração', 2], ['Costura', 3],
+      ['Palmilha · Fibra', 1], ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Palmilha · Forração', 2], ['Corte Forração', 2], ['Costura', 3],
     ]);
     const batch = buildBulkMoveBatch(
       [card('1', 'Corte Palmilha')],
@@ -189,6 +189,6 @@ describe('prévia da distribuição em lote', () => {
     );
 
     expect(batch.steps).toHaveLength(1);
-    expect(batch.steps[0].plan.skipped).toEqual(['Corte Forração']);
+    expect(batch.steps[0].plan.skipped).toEqual(['Palmilha · Forração']);
   });
 });

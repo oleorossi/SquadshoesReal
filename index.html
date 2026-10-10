@@ -15,6 +15,93 @@
           if (regs.length > 0) console.log("Service Workers ativos:", regs.length);
         });
       }
+
+      // Recuperação de ENTRY chunk 404 (PWA/iOS).
+      //
+      // Após deploy, o HTML antigo (ainda na memória do Safari/PWA) aponta pra
+      // /assets/index-<hash>.js que a Vercel já removeu do alias de produção.
+      // O chunkErrorHandler vive DENTRO desse JS — se o entry 404, nada monta
+      // e a tela fica branca pra sempre. Este listener roda no HTML cru e
+      // força 1 reload com cache-bust + limpa SW, compartilhando o orçamento
+      // `app-recovery-reload` com main.tsx / chunkErrorHandler / VersionChecker.
+      (function () {
+        var KEY = 'app-recovery-reload';
+        var MAX = 2;
+        var COOLDOWN = 10000;
+        var EPISODE = 60000;
+
+        function read() {
+          try {
+            var raw = sessionStorage.getItem(KEY);
+            if (!raw) return { count: 0, lastTs: 0 };
+            var p = JSON.parse(raw);
+            if (typeof p.count === 'number' && typeof p.lastTs === 'number') return p;
+          } catch (e) {}
+          return { count: 0, lastTs: 0 };
+        }
+
+        function reserve() {
+          var now = Date.now();
+          var s = read();
+          if (s.lastTs && now - s.lastTs > EPISODE) s = { count: 0, lastTs: 0 };
+          if (s.lastTs && now - s.lastTs < COOLDOWN) return false;
+          if (s.count >= MAX) return false;
+          try {
+            sessionStorage.setItem(KEY, JSON.stringify({ count: s.count + 1, lastTs: now }));
+          } catch (e) {}
+          return true;
+        }
+
+        function recover() {
+          if (!reserve()) return;
+          console.warn('[boot] Entry script falhou — recarregando HTML fresco');
+          var go = function () {
+            var url = new URL(location.href);
+            url.searchParams.set('_r', String(Date.now()));
+            location.replace(url.toString());
+          };
+          if (!('serviceWorker' in navigator)) {
+            go();
+            return;
+          }
+          navigator.serviceWorker.getRegistrations()
+            .then(function (regs) {
+              return Promise.all(regs.map(function (r) { return r.unregister(); }));
+            })
+            .catch(function () {})
+            .then(go);
+        }
+
+        // capture=true: erro de <script src> não borbulha no bubble phase
+        window.addEventListener('error', function (ev) {
+          var t = ev && ev.target;
+          if (!t || t.tagName !== 'SCRIPT') return;
+          var src = String(t.src || '');
+          if (src.indexOf('/assets/') !== -1 || src.indexOf('main.tsx') !== -1) {
+            recover();
+          }
+        }, true);
+
+        // Se nada montou em #root (entry 404 sem disparar error em alguns WebViews),
+        // não auto-reload (rede lenta no celular daria falso positivo) — só UI nativa.
+        window.setTimeout(function () {
+          var root = document.getElementById('root');
+          if (!root || root.childNodes.length > 0) return;
+          root.innerHTML =
+            '<div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px;font-family:system-ui,-apple-system,sans-serif;text-align:center">' +
+            '<p style="margin:0;font-size:18px;font-weight:600">O app não carregou</p>' +
+            '<p style="margin:0;font-size:14px;opacity:.7;max-width:28rem">Geralmente é cache antigo no celular após uma atualização. Toque para baixar a versão nova.</p>' +
+            '<button type="button" id="squad-boot-reload" style="appearance:none;border:0;border-radius:8px;background:#C00000;color:#fff;font-size:16px;font-weight:600;padding:12px 20px">Atualizar agora</button>' +
+            '</div>';
+          var btn = document.getElementById('squad-boot-reload');
+          if (btn) {
+            btn.onclick = function () {
+              try { sessionStorage.removeItem(KEY); } catch (e) {}
+              recover();
+            };
+          }
+        }, 12000);
+      })();
     </script>
     <meta name="description" content="Sistema de gestão industrial completo para fábricas de calçados — produção, estoque, financeiro e mais." />
     <meta name="author" content="Squad Shoes" />

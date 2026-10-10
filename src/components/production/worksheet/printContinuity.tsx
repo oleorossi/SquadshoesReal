@@ -112,11 +112,23 @@ export function usePrintContinuity(sheetInstanceKey: string): PrintContinuitySlo
   }), [sheetIndex, tailRemainderPx, continuationMountEl, reportTrailingRemainder, registerContinuationMountForNext]);
 }
 
+interface SectorJoinCutLineProps {
+  /**
+   * Quando o setor NÃO coube na sobra do maço anterior (emenda fora do portal),
+   * a linha de corte NÃO pode começar no resto da folha anterior — senão o
+   * browser encaixa só a faixa "Folha N/M" no pé e joga o WorksheetHeader pra
+   * folha seguinte (órfão reportado em Expedição, 27/09/2026).
+   * `forcePageBreak` abre folha nova ANTES da linha; a emenda fica no topo do
+   * maço seguinte, que é o destino canônico quando não há portal.
+   */
+  forcePageBreak?: boolean;
+}
+
 /** Linha de corte in-flow quando dois setores compartilham a mesma folha A4. */
-export function SectorJoinCutLine() {
+export function SectorJoinCutLine({ forcePageBreak = false }: SectorJoinCutLineProps = {}) {
   return (
     <div
-      className="sector-join-cut keep-together"
+      className="sector-join-cut keep-together keep-with-next"
       style={{
         borderTop: '1.5px dashed #000',
         margin: '4mm 0 3mm',
@@ -129,6 +141,9 @@ export function SectorJoinCutLine() {
         textAlign: 'center',
         breakInside: 'avoid',
         pageBreakInside: 'avoid',
+        ...(forcePageBreak
+          ? { breakBefore: 'page' as const, pageBreakBefore: 'always' as const }
+          : null),
       }}
     >
       ✂ &nbsp;— — — — — — — —&nbsp; CORTAR AQUI · MUDA DE SETOR &nbsp;— — — — — — — —

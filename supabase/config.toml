@@ -45,3 +45,9 @@ verify_jwt = false
 # X-Cron-Secret (vault nfe_sync_cron_secret) ou Bearer service-role.
 [functions.process-sale-order-outbox]
 verify_jwt = false
+
+# Worker de materialização pesada de status do PV (confirm/promote/cancel).
+# Disparado por pg_cron + wake pg_net no enqueue; autenticado por X-Cron-Secret
+# ou Bearer service-role (mesmo padrão da outbox).
+[functions.process-sale-order-materialization]
+verify_jwt = false

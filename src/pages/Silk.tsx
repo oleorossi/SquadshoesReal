@@ -22,14 +22,22 @@ import { useAllOrderStages, useRealtimeOrderStages } from '@/hooks/useOrderStage
 import { sameStage } from '@/lib/production/stageFlow';
 import { useSaleOrders } from '@/hooks/useSaleOrders';
 import { printHtml } from '@/lib/printOrder';
-import { normalizeForSearch, searchMatchesAllTerms } from '@/lib/searchUtils';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
-import OrderSearchBar from '@/components/production/OrderSearchBar';
 import { useOrderStraps } from '@/hooks/useOrderStraps';
 import { useProductionTransitions } from '@/hooks/useProductionTransitions';
 import { supabase } from '@/integrations/supabase/client';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { OrderMultiSelectToolbar } from '@/components/orders/OrderMultiSelectToolbar';
+import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
+import { MarqueeOverlay } from '@/components/ui/bulk-actions-bar';
+import {
+  findIdsMatchingOrderCodes,
+  matchesOrderSearch,
+  parseOrderCodeList,
+} from '@/lib/orderCodeSearch';
+import { matchesDeliveryWeek } from '@/lib/deliveryWeekOptions';
+import { confirmIfHiddenSelection } from '@/lib/confirmHiddenSelection';
 import { safeUrlAttr } from '@/lib/htmlUtils';
 
 
@@ -118,9 +126,10 @@ export default function Silk() {
   }, [soleRefMappings]);
 
   const [filterStatus, setFilterStatus] = usePersistedState<string>('silk-filterStatus', 'active');
-  const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
   // Busca NÃO persiste: reseta ao sair e voltar pra tela (useState remonta limpo).
   const [searchQuery, setSearchQuery] = useState('');
+  const [clientFilter, setClientFilter] = useState('all');
+  const [weekFilter, setWeekFilter] = useState('all');
   const [filterPeriod, setFilterPeriod] = usePersistedState<string>('silkFilterPeriod', 'all');
   const [filterCategoria, setFilterCategoria] = usePersistedState<string>('silkFilterCategoria', 'all');
   const [showDetail, setShowDetail] = useState(false);
@@ -130,30 +139,6 @@ export default function Silk() {
   const didAutoResetFilters = useRef(false);
   const didForceOrderSync = useRef(false);
   const queryClient = useQueryClient();
-
-  const handleFinishSelectedOrders = async () => {
-    if (selectedOrders.size === 0) return;
-    setFinalizingOrders(true);
-    try {
-      const orderIds = Array.from(selectedOrders);
-      const results = (await Promise.all(
-        orderIds.map(orderId => finalizeSectorTask(orderId, SECTOR_NAME))
-      )) as any[];
-
-      const successCount = results.filter(r => r && r.success).length;
-
-      if (successCount > 0) {
-        toast.success(`${SECTOR_NAME} finalizada para ${successCount} OP(s)!`);
-        setSelectedOrders(new Set());
-        queryClient.invalidateQueries({ queryKey: ['order_stages'] });
-        queryClient.invalidateQueries({ queryKey: ['orders'] });
-      }
-    } catch (err: any) {
-      toast.error(`Erro ao finalizar: ${err.message}`);
-    } finally {
-      setFinalizingOrders(false);
-    }
-  };
 
   const silkStagesByOrderId = useMemo(() => {
     return new Map(allStages.filter(stage => sameStage(stage.stage_name, SECTOR_NAME)).map(stage => [stage.order_id, stage]));
@@ -187,15 +172,6 @@ export default function Silk() {
     const currentIdx = DEFAULT_SOLE_COLORS.findIndex(c => c === currentColor);
     const newColor = DEFAULT_SOLE_COLORS[(currentIdx + 1) % DEFAULT_SOLE_COLORS.length];
     setSoleColorOverrides(prev => ({ ...prev, [orderId]: newColor }));
-  };
-
-  const toggleOrderSelection = (orderId: string) => {
-    setSelectedOrders(prev => {
-      const next = new Set(prev);
-      if (next.has(orderId)) next.delete(orderId);
-      else next.add(orderId);
-      return next;
-    });
   };
 
   const baseSolagemOrders = useMemo(() => {
@@ -244,12 +220,17 @@ export default function Silk() {
     return { deadline, isAdiantado: diffDays > 7, deadlineFormatted: formatDateBR(deadline) };
   };
 
-  // Orders at Solagem stage after UI filters
+  // Orders at Silk stage after UI filters
   const solagemOrders = useMemo(() => {
-    const q = normalizeForSearch(searchQuery);
     const now = new Date();
 
     return baseSolagemOrders.filter(order => {
+      const so = saleOrders.find((s: any) => s.id === order.sale_order_id);
+      if (clientFilter !== 'all' && (so?.client_name || '').trim() !== clientFilter) return false;
+      if (weekFilter !== 'all' && !matchesDeliveryWeek(so?.delivery_deadline || (order as any).planned_delivery, weekFilter)) {
+        return false;
+      }
+
       if (filterPeriod !== 'all') {
         const deliveryStr = (order as any).planned_delivery;
         if (deliveryStr) {
@@ -268,11 +249,17 @@ export default function Silk() {
         }
       }
 
-      if (q) {
-        const so = saleOrders.find((s: any) => s.id === order.sale_order_id);
+      if (searchQuery.trim()) {
         const ref = (references as any[])?.find((r: any) => r.id === (order as any).reference_id);
-        // "/" = refinamento AND (ex.: "stx / alcineu" = ref STX E cliente Alcineu)
-        if (!searchMatchesAllTerms(searchQuery, so?.order_number, so?.client_order_number, order.order_number, so?.client_name, ref?.name, ref?.code)) return false;
+        if (!matchesOrderSearch(searchQuery, {
+          orderNumber: order.order_number,
+          saleOrderNumber: so?.order_number,
+          clientName: so?.client_name,
+          clientOrderNumber: so?.client_order_number,
+          referenceName: ref?.name,
+          referenceCode: ref?.code,
+          color: order.color,
+        })) return false;
       }
 
       if (filterCategoria !== 'all') {
@@ -286,7 +273,69 @@ export default function Silk() {
 
       return true;
     });
-  }, [baseSolagemOrders, filterPeriod, filterCategoria, searchQuery, saleOrders]);
+  }, [baseSolagemOrders, filterPeriod, filterCategoria, searchQuery, clientFilter, weekFilter, saleOrders, references]);
+
+  const sel = useMarqueeSelection(solagemOrders, (o) => o.id);
+
+  const clientOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const order of baseSolagemOrders) {
+      const so = saleOrders.find((s: any) => s.id === order.sale_order_id);
+      const name = (so?.client_name || '').trim();
+      if (name) set.add(name);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [baseSolagemOrders, saleOrders]);
+
+  const pastedCodes = useMemo(() => parseOrderCodeList(searchQuery), [searchQuery]);
+  const matchedCodeIds = useMemo(
+    () => findIdsMatchingOrderCodes(baseSolagemOrders, pastedCodes, (o) => {
+      const so = saleOrders.find((s: any) => s.id === o.sale_order_id);
+      return { id: o.id, orderNumber: o.order_number, saleOrderNumber: so?.order_number };
+    }),
+    [baseSolagemOrders, pastedCodes, saleOrders],
+  );
+
+  const allVisibleSelected =
+    solagemOrders.length > 0 && solagemOrders.every((o) => sel.isSelected(o.id));
+
+  const toggleVisible = () => {
+    if (allVisibleSelected) sel.deselectVisible();
+    else sel.selectAll();
+  };
+
+  const confirmSelection = (actionLabel: string) =>
+    confirmIfHiddenSelection({
+      totalSelected: sel.count,
+      hiddenSelectedCount: sel.hiddenSelectedCount,
+      entityLabel: 'OP',
+      actionLabel,
+    });
+
+  const handleFinishSelectedOrders = async () => {
+    if (sel.count === 0) return;
+    if (!confirmSelection('Finalizar')) return;
+    setFinalizingOrders(true);
+    try {
+      const orderIds = Array.from(sel.selectedIds);
+      const results = (await Promise.all(
+        orderIds.map(orderId => finalizeSectorTask(orderId, SECTOR_NAME))
+      )) as any[];
+
+      const successCount = results.filter(r => r && r.success).length;
+
+      if (successCount > 0) {
+        toast.success(`${SECTOR_NAME} finalizada para ${successCount} OP(s)!`);
+        sel.clear();
+        queryClient.invalidateQueries({ queryKey: ['order_stages'] });
+        queryClient.invalidateQueries({ queryKey: ['orders'] });
+      }
+    } catch (err: any) {
+      toast.error(`Erro ao finalizar: ${err.message}`);
+    } finally {
+      setFinalizingOrders(false);
+    }
+  };
 
   useEffect(() => {
     const hasUserFilters = !!searchQuery.trim() || filterPeriod !== 'all' || filterCategoria !== 'all';
@@ -459,7 +508,7 @@ export default function Silk() {
           title="Setor de Silk"
           description="Demanda de silks por arte e cor de solado"
           actions={<>
-            {selectedOrders.size > 0 && (
+            {sel.count > 0 && (
               <Button 
                 size="sm" 
                 className="bg-success hover:bg-success/90 text-success-foreground gap-2 shadow-sm"
@@ -467,42 +516,10 @@ export default function Silk() {
                 disabled={finalizingOrders}
               >
                 {finalizingOrders ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                Finalizar {selectedOrders.size} OP(s)
+                Finalizar {sel.count} OP(s){sel.hiddenSelectedCount > 0 ? ` · ${sel.hiddenSelectedCount} fora do filtro` : ''}
               </Button>
             )}
-            <OrderSearchBar value={searchQuery} onChange={setSearchQuery} />
             <div className="flex items-center gap-2">
-            <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger className="w-[140px] h-8 text-xs">
-                <Filter className="h-3.5 w-3.5 mr-1" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="active">OPs Ativas</SelectItem>
-                <SelectItem value="all">Todas</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={filterPeriod} onValueChange={setFilterPeriod}>
-              <SelectTrigger className="w-[160px] h-8 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos os Prazos</SelectItem>
-                <SelectItem value="week">Esta Semana</SelectItem>
-                <SelectItem value="15days">Próximos 15 dias</SelectItem>
-                <SelectItem value="month">Este Mês</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={filterCategoria} onValueChange={setFilterCategoria}>
-              <SelectTrigger className="w-[140px] h-8 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todas Linhas</SelectItem>
-                <SelectItem value="infantil">Infantil</SelectItem>
-                <SelectItem value="adulto">Adulto</SelectItem>
-              </SelectContent>
-            </Select>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button size="sm" variant="outline" className="gap-1">
@@ -513,12 +530,13 @@ export default function Silk() {
                 <DropdownMenuItem onClick={() => setShowDetail(v => !v)}>
                   <ListChecks className="h-3.5 w-3.5 mr-2" /> {showDetail ? 'Ocultar Detalhes' : 'Resumo Detalhado'}
                 </DropdownMenuItem>
-                {selectedOrders.size > 0 && (
+                {sel.count > 0 && (
                   <DropdownMenuItem onClick={() => {
-                    const ids = solagemOrders.filter(o => selectedOrders.has(o.id)).map(o => o.id).join(',');
+                    if (!confirmSelection('Agrupar')) return;
+                    const ids = Array.from(sel.selectedIds).join(',');
                     navigate(`/orders/grouped-summary?sector=silk&ids=${ids}`);
                   }}>
-                    <Layers className="h-3.5 w-3.5 mr-2" /> Agrupar ({selectedOrders.size})
+                    <Layers className="h-3.5 w-3.5 mr-2" /> Agrupar ({sel.count})
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuSeparator />
@@ -589,20 +607,71 @@ export default function Silk() {
                 <DropdownMenuItem onClick={printSoleList} disabled={soleData.length === 0}>
                   <Printer className="h-3.5 w-3.5 mr-2" /> Imprimir
                 </DropdownMenuItem>
-                {selectedOrders.size > 0 && (
-                  <DropdownMenuItem disabled={selectedOrders.size === 0} onClick={() => {
-              // 6º passe (2026-06-12): popup legado de fichas por setor
-              // morto — deep-link pra tela central (modelo v7, com TallyBox).
-              const ids = solagemOrders.filter(o => selectedOrders.has(o.id)).map(o => o.id).join(',');
+                {sel.count > 0 && (
+                  <DropdownMenuItem disabled={sel.count === 0} onClick={() => {
+              if (!confirmSelection('Imprimir fichas de')) return;
+              const ids = Array.from(sel.selectedIds).join(',');
               navigate(`/imprimir-fichas?orderIds=${ids}&sectors=${encodeURIComponent('Silk')}`);
             }}>
-                    <Printer className="h-3.5 w-3.5 mr-2" /> Fichas Operador {selectedOrders.size > 0 ? `(${selectedOrders.size})` : ''}
+                    <Printer className="h-3.5 w-3.5 mr-2" /> Fichas Operador ({sel.count})
                   </DropdownMenuItem>
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
             </div>
           </>}
+        />
+
+        <OrderMultiSelectToolbar
+          search={searchQuery}
+          onSearchChange={setSearchQuery}
+          resultCount={solagemOrders.length}
+          totalCount={baseSolagemOrders.length}
+          clientOptions={clientOptions}
+          clientFilter={clientFilter}
+          onClientFilterChange={setClientFilter}
+          weekFilter={weekFilter}
+          onWeekFilterChange={setWeekFilter}
+          allVisibleSelected={allVisibleSelected}
+          visibleCount={solagemOrders.length}
+          onToggleVisible={toggleVisible}
+          matchedCodeCount={matchedCodeIds.length}
+          onSelectMatched={() => sel.selectMatchingIds(matchedCodeIds)}
+          extraFilters={
+            <>
+              <Select value={filterStatus} onValueChange={setFilterStatus}>
+                <SelectTrigger className="h-9 w-[140px] text-xs">
+                  <Filter className="h-3.5 w-3.5 mr-1" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">OPs Ativas</SelectItem>
+                  <SelectItem value="all">Todas</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={filterPeriod} onValueChange={setFilterPeriod}>
+                <SelectTrigger className="h-9 w-[160px] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os Prazos</SelectItem>
+                  <SelectItem value="week">Esta Semana</SelectItem>
+                  <SelectItem value="15days">Próximos 15 dias</SelectItem>
+                  <SelectItem value="month">Este Mês</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={filterCategoria} onValueChange={setFilterCategoria}>
+                <SelectTrigger className="h-9 w-[140px] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas Linhas</SelectItem>
+                  <SelectItem value="infantil">Infantil</SelectItem>
+                  <SelectItem value="adulto">Adulto</SelectItem>
+                </SelectContent>
+              </Select>
+            </>
+          }
         />
 
         {/* Stats */}
@@ -680,7 +749,18 @@ export default function Silk() {
         {/* Per-OP sole color breakdown */}
         {showDetail && solagemOrders.length > 0 && (
           <Panel eyebrow="PRODUÇÃO · SILK" title="Grade de Solado por OP">
-              <div className="space-y-4">
+              <div
+                ref={sel.containerRef}
+                data-marquee-container
+                onMouseDown={sel.onContainerMouseDown}
+                className="relative space-y-4"
+              >
+                {sel.count > 0 && (
+                  <p className="text-xs text-muted-foreground font-mono">
+                    {sel.count} selecionada{sel.count === 1 ? '' : 's'}
+                    {sel.hiddenSelectedCount > 0 ? ` · ${sel.hiddenSelectedCount} fora do filtro` : ''}
+                  </p>
+                )}
                 {solagemOrders.map(order => {
                   const ref = references.find(r => r.id === order.reference_id);
                   const baseGrade = getPositiveGrade(order.grade);
@@ -695,13 +775,18 @@ export default function Silk() {
                   const stageColor = silkStage?.status === 'concluido' ? 'border-l-success' : silkStage?.status === 'em_andamento' ? 'border-l-warning' : 'border-l-destructive';
 
                   return (
-                    <div key={order.id} className={`border rounded-lg p-3 space-y-2 border-l-4 ${stageColor} ${selectedOrders.has(order.id) ? 'ring-2 ring-success' : ''}`}>
+                    <div
+                      key={order.id}
+                      data-marquee-item
+                      data-marquee-id={order.id}
+                      className={`border rounded-lg p-3 space-y-2 border-l-4 ${stageColor} ${sel.isSelected(order.id) ? 'ring-2 ring-success' : ''}`}
+                    >
                       <div className="flex flex-col gap-1">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2 flex-wrap">
                             <Checkbox
-                              checked={selectedOrders.has(order.id)}
-                              onCheckedChange={() => toggleOrderSelection(order.id)}
+                              checked={sel.isSelected(order.id)}
+                              onCheckedChange={() => sel.toggle(order.id)}
                             />
                             <Badge variant="outline" className="text-xs shrink-0">{order.order_number}</Badge>
                             <span className="text-xs font-semibold">{ref?.code} {ref?.name}</span>
@@ -783,6 +868,7 @@ export default function Silk() {
                     </div>
                   );
                 })}
+              <MarqueeOverlay rect={sel.marqueeRect} />
               </div>
           </Panel>
         )}

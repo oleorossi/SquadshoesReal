@@ -532,6 +532,7 @@ ${cardsHtml}
                 });
                 const submitted = await printHtmlAsPdf(html, {
                   filename: `rotulos-pronta-entrega-${new Date().toISOString().slice(0, 10)}`,
+                  title: 'Estoque',
                   target,
                   jobId: jobPromise,
                 });
@@ -577,6 +578,7 @@ ${cardsHtml}
                 });
                 const submitted = await printHtmlAsPdf(html, {
                   filename: `etiquetas-pronta-entrega-${new Date().toISOString().slice(0, 10)}`,
+                  title: 'Estoque',
                   target,
                   jobId: jobPromise,
                 });

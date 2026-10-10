@@ -34,10 +34,12 @@ import {
   ChartLineUp, Users, Tag, Scissors,
 } from '@phosphor-icons/react';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
+import { Button } from '@/components/ui/button';
+import { Panel } from '@/components/ui/panel';
 import ContractorReportsPage from './ContractorReports';
 import ContractorsPage from './Contractors';
 import { TerceirizacaoCoberturaPanel } from '@/components/contractors/TerceirizacaoCoberturaPanel';
-import { CabedalPrepPanel } from '@/components/contractors/CabedalPrepPanel';
+import { Link } from 'react-router-dom';
 
 // Uma única régua, com alvos de toque de 44px e labels curtos. O nome completo
 // continua no aria-label/title de cada aba.
@@ -45,8 +47,9 @@ const TRIGGER = 'h-11 shrink-0 snap-start gap-1.5 rounded-md px-3 py-0 text-[11p
 const GROUP_LABEL = 'flex h-11 shrink-0 items-center px-2 font-mono text-[9px] font-bold uppercase tracking-[0.16em] text-muted-foreground/80';
 
 // Abas servidas pelo componente Contractors (uma única instância controlada).
+// Prep. cabedal saiu do hub → /atelie (spec atelie-cabedal-complexo).
 const CONTRACTOR_TABS = ['orders', 'planning', 'contractors'];
-const VALID_TABS = new Set([...CONTRACTOR_TABS, 'cobertura', 'relatorio', 'prep']);
+const VALID_TABS = new Set([...CONTRACTOR_TABS, 'cobertura', 'relatorio']);
 const DEFAULT_TAB = 'orders';
 
 export default function TerceirizadosHub() {
@@ -56,7 +59,7 @@ export default function TerceirizadosHub() {
   // em campo virou os chips "Na rua"/"Atrasados" + KPIs dentro da própria OS.
   // Links/bookmarks antigos (?tab=rua) redirecionam pra Ordens de Serviço.
   const requestedRaw = searchParams.get('tab') ?? '';
-  const requested = requestedRaw === 'rua' ? 'orders' : requestedRaw;
+  const requested = requestedRaw === 'rua' || requestedRaw === 'prep' ? 'orders' : requestedRaw;
   const [tab, setTab] = useState<string>(VALID_TABS.has(requested) ? requested : DEFAULT_TAB);
 
   useEffect(() => {
@@ -83,6 +86,10 @@ export default function TerceirizadosHub() {
   // hoje a criação parte da própria Ordens de Serviço.
   const [pendingCreateOS, setPendingCreateOS] = useState<{ contractorId?: string } | null>(null);
 
+  // Legado ?tab=prep → Ateliê (fila operacional).
+  if (requestedRaw === 'prep') {
+    return <Navigate to="/atelie?view=fila" replace />;
+  }
   if (requestedRaw === 'recipes') {
     const params = new URLSearchParams(searchParams);
     params.set('tab', 'receitas');
@@ -94,7 +101,15 @@ export default function TerceirizadosHub() {
       <EditorialPageHeader
         sectionLabel="PRODUÇÃO · TERCEIRIZAÇÃO"
         title="Terceirizados"
-        description="Acompanhamento na rua, preparação de cabedal, ordens de serviço, cadastro de contratadas e relatório — tudo num só lugar."
+        description="Na rua, OS, relatório e prestadores. Cabedal complexo mora no Ateliê — debitar, enviar e receber."
+        actions={
+          <Button variant="outline" size="sm" className="h-9" asChild>
+            <Link to="/atelie?view=fila">
+              <Scissors className="h-3.5 w-3.5" />
+              Ateliê
+            </Link>
+          </Button>
+        }
       />
       <Tabs value={tab} onValueChange={onTabChange} className="space-y-4">
         <TabsList
@@ -109,9 +124,6 @@ export default function TerceirizadosHub() {
           </TabsTrigger>
           <TabsTrigger value="planning" className={TRIGGER} aria-label="Planejamento de terceirização" title="Planejamento de terceirização">
             <ChartLineUp className="h-3.5 w-3.5" /> Planejar
-          </TabsTrigger>
-          <TabsTrigger value="prep" className={TRIGGER} aria-label="Preparação de cabedal" title="Preparação de cabedal">
-            <Scissors className="h-3.5 w-3.5" /> Prep. cabedal
           </TabsTrigger>
           <TabsTrigger value="relatorio" className={TRIGGER} aria-label="Relatório de terceirizados">
             <BarChart3 className="h-3.5 w-3.5" /> Relatório
@@ -129,10 +141,19 @@ export default function TerceirizadosHub() {
         <TabsContent value="cobertura">
           <TerceirizacaoCoberturaPanel />
         </TabsContent>
-        <TabsContent value="prep">
-          <CabedalPrepPanel />
-        </TabsContent>
-        <TabsContent value="relatorio">
+        <TabsContent value="relatorio" className="space-y-3">
+          <Panel className="p-3 flex flex-wrap items-center justify-between gap-2 border border-border/60 bg-muted/20 rounded-lg">
+            <p className="text-sm text-muted-foreground">
+              Cabedal complexo: fila, débito e envio no{' '}
+              <Link to="/atelie?view=fila" className="text-foreground underline-offset-2 hover:underline font-medium">
+                Ateliê
+              </Link>
+              . Use Ordens abaixo pra OS gerais na rua.
+            </p>
+            <Button size="sm" className="h-8" asChild>
+              <Link to="/atelie?view=fila">Abrir Ateliê</Link>
+            </Button>
+          </Panel>
           <ContractorReportsPage embedded />
         </TabsContent>
 

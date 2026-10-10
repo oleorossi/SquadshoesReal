@@ -1893,7 +1893,7 @@ export default function MobileNewOrder() {
       factoring_config_id: commercialHeader.factoring_config_id,
       modalidade_frete: commercialHeader.modalidade_frete,
       transport_company_id: commercialHeader.transport_company_id,
-      packaging_mode: 'colmeia',
+      packaging_mode: 'individual_fitilho',
       // F3 (24/05/2026): assinatura digital opcional
       client_signature_data_url: signatureDataUrl,
       client_signature_at: signatureDataUrl ? new Date().toISOString() : null,

@@ -109,7 +109,11 @@ describe('mudança de status com snapshot comercial de variante', () => {
   });
 
   it('Aprovar no detalhe é idempotente e não dispara a orquestração duas vezes', () => {
-    expect(saleOrderHooks).toContain('if (currentStatus === status)');
+    // Idempotência agora exige phase idle — status igual com processing
+    // ainda em voo NÃO reabre o caminho sync.
+    expect(saleOrderHooks).toContain(
+      "if (currentStatus === status && (current.command_phase === 'idle' || !current.command_phase))",
+    );
     expect(saleOrderHooks).toContain('alreadyCurrent');
     expect(saleOrdersPage).toContain('confirmLockRef');
     expect(saleOrdersPage).toMatch(

@@ -55,12 +55,15 @@ describe('pv tira pronta origem fornecedor — contrato 24000', () => {
     expect(sql).not.toMatch(/UPDATE[\s\S]*origem_padrao|origem_padrao\s*=/i);
   });
 
-  it('é a última migration que toca o ramo sku_acabado do prepare', () => {
-    // 28600 reescreve o ramo (sku sem group_id → fábrica) e preserva o
-    // carimbo 24000 no corpo — por isso ela, e não a 24000, é a última hit.
-    const latest = latestPatchMigration(MARKER);
+  it('é supersedida pela 31900 (buy_ready sem variante Hub)', () => {
+    // 24000 exigia variante; 28600 só coerção group_id; 31900 remove a
+    // exigência de variante e congela finished_product_id.
+    const latest = latestPatchMigration('strap_pv_sku_acabado_sem_variante_20270101031900');
     expect(latest.file).toBe(
-      '20270101028600_pv-tira-pronta-sku-sem-group-id-vira-fabrica.sql',
+      '20270101031900_pv-sku-acabado-buy-ready-sem-variante.sql',
     );
+    expect(latest.sql).toContain("'finished_product_id'");
+    expect(latest.sql).toContain("'strap_variant_id', NULL");
+    expect(latest.sql).toContain('Cor Principal');
   });
 });

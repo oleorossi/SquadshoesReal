@@ -26,13 +26,21 @@ import { getClientLogoUrl } from '@/lib/getClientLogo';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useProductionTransitions } from '@/hooks/useProductionTransitions';
-import OrderSearchBar from '@/components/production/OrderSearchBar';
+import { OrderMultiSelectToolbar } from '@/components/orders/OrderMultiSelectToolbar';
+import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
+import { MarqueeOverlay } from '@/components/ui/bulk-actions-bar';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { TableSkeleton } from '@/components/layout/PageSkeleton';
 import { resolveFicha } from '@/components/production/worksheet/fichaSize';
 
 import { useOrderStraps } from '@/hooks/useOrderStraps';
-import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import {
+  findIdsMatchingOrderCodes,
+  matchesOrderSearch,
+  parseOrderCodeList,
+} from '@/lib/orderCodeSearch';
+import { matchesDeliveryWeek } from '@/lib/deliveryWeekOptions';
+import { confirmIfHiddenSelection } from '@/lib/confirmHiddenSelection';
 import { safeUrlAttr } from '@/lib/htmlUtils';
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
 
@@ -52,35 +60,103 @@ export default function Acabamento() {
   const { getStrapsLabel } = useOrderStraps();
   const [filterStatus, setFilterStatus] = usePersistedState<string>('acabamento-filterStatus', 'active');
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
-  const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
   const [finalizingOrders, setFinalizingOrders] = useState(false);
   const { finalizeSectorTask } = useProductionTransitions();
   // Busca NÃO persiste: reseta ao sair e voltar pra tela (useState remonta limpo).
   const [searchQuery, setSearchQuery] = useState('');
+  const [clientFilter, setClientFilter] = useState('all');
+  const [weekFilter, setWeekFilter] = useState('all');
 
-  const toggleOrder = (id: string) => {
-    setSelectedOrders(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
+  const sectorBaseOrders = useMemo(() => {
+    const filtered = orders.filter(order => {
+      const status = (order.status || '').toLowerCase().normalize('NFC');
+      if (filterStatus === 'active' && status !== 'em produção') return false;
+      const stages = allStages.filter(s => s.order_id === order.id);
+      const stage = stages.find(s => sameStage(s.stage_name, 'Acabamento'));
+      if (!stage) return filterStatus === 'all';
+      if (filterStatus === 'active' && stage.status !== 'pendente' && stage.status !== 'em_andamento') return false;
+      return true;
     });
+    return filtered.sort((a, b) => {
+      const dl = (o: any) => saleOrders?.find((s: any) => s.id === o.sale_order_id)?.delivery_deadline || '';
+      const da = dl(a), db = dl(b);
+      if (da !== db) { if (!da) return 1; if (!db) return -1; return da.localeCompare(db); }
+      const sa = String(a.sale_order_id || ''), sb = String(b.sale_order_id || '');
+      if (sa !== sb) return sa.localeCompare(sb);
+      const pa = (a as any).planned_delivery || '', pb = (b as any).planned_delivery || '';
+      if (!pa && !pb) return 0;
+      if (!pa) return 1;
+      if (!pb) return -1;
+      return pa.localeCompare(pb);
+    });
+  }, [orders, allStages, filterStatus, saleOrders]);
+
+  const acabamentoOrders = useMemo(() => {
+    return sectorBaseOrders.filter(order => {
+      const so = saleOrders.find((s: any) => s.id === order.sale_order_id);
+      if (clientFilter !== 'all' && (so?.client_name || '').trim() !== clientFilter) return false;
+      if (weekFilter !== 'all' && !matchesDeliveryWeek(so?.delivery_deadline || (order as any).planned_delivery, weekFilter)) {
+        return false;
+      }
+      if (searchQuery.trim()) {
+        const ref = references.find(r => r.id === order.reference_id);
+        if (!matchesOrderSearch(searchQuery, {
+          orderNumber: order.order_number,
+          saleOrderNumber: so?.order_number,
+          clientName: so?.client_name,
+          clientOrderNumber: so?.client_order_number,
+          referenceName: ref?.name,
+          referenceCode: ref?.code,
+          color: order.color,
+        })) return false;
+      }
+      return true;
+    });
+  }, [sectorBaseOrders, searchQuery, clientFilter, weekFilter, saleOrders, references]);
+
+  const sel = useMarqueeSelection(acabamentoOrders, (o) => o.id);
+
+  const clientOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const order of sectorBaseOrders) {
+      const so = saleOrders.find((s: any) => s.id === order.sale_order_id);
+      const name = (so?.client_name || '').trim();
+      if (name) set.add(name);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [sectorBaseOrders, saleOrders]);
+
+  const pastedCodes = useMemo(() => parseOrderCodeList(searchQuery), [searchQuery]);
+  const matchedCodeIds = useMemo(
+    () => findIdsMatchingOrderCodes(sectorBaseOrders, pastedCodes, (o) => {
+      const so = saleOrders.find((s: any) => s.id === o.sale_order_id);
+      return { id: o.id, orderNumber: o.order_number, saleOrderNumber: so?.order_number };
+    }),
+    [sectorBaseOrders, pastedCodes, saleOrders],
+  );
+
+  const allVisibleSelected =
+    acabamentoOrders.length > 0 && acabamentoOrders.every((o) => sel.isSelected(o.id));
+
+  const toggleVisible = () => {
+    if (allVisibleSelected) sel.deselectVisible();
+    else sel.selectAll();
   };
 
-  const toggleAll = () => {
-    if (selectedOrders.size === acabamentoOrders.length) {
-      setSelectedOrders(new Set());
-    } else {
-      setSelectedOrders(new Set(acabamentoOrders.map(o => o.id)));
-    }
-  };
+  const confirmSelection = (actionLabel: string) =>
+    confirmIfHiddenSelection({
+      totalSelected: sel.count,
+      hiddenSelectedCount: sel.hiddenSelectedCount,
+      entityLabel: 'OP',
+      actionLabel,
+    });
 
   const handleFinishSelectedOrders = async () => {
-    if (selectedOrders.size === 0) return;
+    if (sel.count === 0) return;
+    if (!confirmSelection('Finalizar')) return;
     setFinalizingOrders(true);
     try {
-      const orderIds = Array.from(selectedOrders);
-      
-      // allSettled — partial successes are real outcomes; one failure shouldn't drop them.
+      const orderIds = Array.from(sel.selectedIds);
       const settled = await Promise.allSettled(
         orderIds.map(orderId => finalizeSectorTask(orderId, 'Acabamento'))
       );
@@ -96,7 +172,7 @@ export default function Acabamento() {
         } else {
           toast.warning(`Acabamento finalizado para ${successCount} ${opsLabel}; ${failedCount} ${failedCount === 1 ? 'falhou' : 'falharam'}.`);
         }
-        setSelectedOrders(new Set());
+        sel.clear();
         queryClient.invalidateQueries({ queryKey: ['order_stages'] });
         queryClient.invalidateQueries({ queryKey: ['orders'] });
       } else if (failedCount > 0) {
@@ -108,47 +184,6 @@ export default function Acabamento() {
       setFinalizingOrders(false);
     }
   };
-
-  const acabamentoOrders = useMemo(() => {
-    const filtered = orders.filter(order => {
-      const status = (order.status || '').toLowerCase().normalize('NFC');
-      // Status filter - only filter if "active" is selected
-      if (filterStatus === 'active' && status !== 'em produção') return false;
-      
-      const stages = allStages.filter(s => s.order_id === order.id);
-      const stage = stages.find(s => sameStage(s.stage_name, 'Acabamento'));
-      if (!stage) return filterStatus === 'all';
-      if (filterStatus === 'active' && stage.status !== 'pendente' && stage.status !== 'em_andamento') return false;
-
-      if (searchQuery.trim()) {
-        const so = saleOrders.find((s: any) => s.id === order.sale_order_id);
-        if (!searchMatchesAllTerms(
-          searchQuery,
-          so?.order_number,
-          so?.client_order_number,
-          order.order_number,
-          so?.client_name,
-        )) return false;
-      }
-
-      return true;
-    });
-    return filtered.sort((a, b) => {
-      // Prioridade (2026-06-02): terminar o PEDIDO inteiro por PRAZO. Ordena pela
-      // entrega do PV (mais urgente primeiro; sem prazo por último), mantém as OPs
-      // do mesmo PV juntas, e dentro do PV pela data planejada da OP.
-      const dl = (o: any) => saleOrders?.find((s: any) => s.id === o.sale_order_id)?.delivery_deadline || '';
-      const da = dl(a), db = dl(b);
-      if (da !== db) { if (!da) return 1; if (!db) return -1; return da.localeCompare(db); }
-      const sa = String(a.sale_order_id || ''), sb = String(b.sale_order_id || '');
-      if (sa !== sb) return sa.localeCompare(sb);
-      const pa = (a as any).planned_delivery || '', pb = (b as any).planned_delivery || '';
-      if (!pa && !pb) return 0;
-      if (!pa) return 1;
-      if (!pb) return -1;
-      return pa.localeCompare(pb);
-    });
-  }, [orders, allStages, filterStatus, searchQuery, saleOrders]);
 
   const getDeliveryInfo = (order: any) => {
     const so = saleOrders.find((s: any) => s.id === order.sale_order_id);
@@ -275,7 +310,8 @@ export default function Acabamento() {
   };
 
   const handlePrintByClient = () => {
-    const ordersToReport = acabamentoOrders.filter(o => selectedOrders.has(o.id));
+    if (!confirmSelection('Imprimir relatório de')) return;
+    const ordersToReport = orders.filter(o => sel.selectedIds.has(o.id));
     if (ordersToReport.length === 0) { toast.info('Selecione ao menos uma OP para gerar o relatório.'); return; }
     const printWin = openPrintWindow('Relatório por Cliente - Acabamento');
 
@@ -501,7 +537,7 @@ export default function Acabamento() {
           title="Setor de Acabamento"
           description="Fichas de controle com checklist de pares para acabamento"
           actions={<>
-            {selectedOrders.size > 0 && (
+            {sel.count > 0 && (
               <Button
                 size="sm"
                 variant="default"
@@ -510,11 +546,53 @@ export default function Acabamento() {
                 onClick={handleFinishSelectedOrders}
               >
                 <CheckSquare className="h-3.5 w-3.5 mr-1" />
-                Finalizar OP's selecionadas ({selectedOrders.size})
+                Finalizar OP's selecionadas ({sel.count}{sel.hiddenSelectedCount > 0 ? ` · ${sel.hiddenSelectedCount} fora do filtro` : ''})
               </Button>
             )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" variant="outline" className="gap-1">
+                  <DotsThreeVertical className="h-4 w-4" /> Ações
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                {sel.count > 0 && (
+                  <DropdownMenuItem onClick={() => {
+                    if (!confirmSelection('Agrupar')) return;
+                    const ids = Array.from(sel.selectedIds).join(',');
+                    navigate(`/orders/grouped-summary?sector=acabamento&ids=${ids}`);
+                  }}>
+                    <Layers className="h-3.5 w-3.5 mr-2" /> Imprimir Relatório ({sel.count})
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">Impressão</DropdownMenuLabel>
+                <DropdownMenuItem onClick={() => handlePrintByClient()} disabled={sel.count === 0}>
+                  <Printer className="h-3.5 w-3.5 mr-2" /> Relatório por Cliente ({sel.count})
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>}
+        />
+
+        <OrderMultiSelectToolbar
+          search={searchQuery}
+          onSearchChange={setSearchQuery}
+          resultCount={acabamentoOrders.length}
+          totalCount={sectorBaseOrders.length}
+          clientOptions={clientOptions}
+          clientFilter={clientFilter}
+          onClientFilterChange={setClientFilter}
+          weekFilter={weekFilter}
+          onWeekFilterChange={setWeekFilter}
+          allVisibleSelected={allVisibleSelected}
+          visibleCount={acabamentoOrders.length}
+          onToggleVisible={toggleVisible}
+          matchedCodeCount={matchedCodeIds.length}
+          onSelectMatched={() => sel.selectMatchingIds(matchedCodeIds)}
+          extraFilters={
             <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger className="w-[140px] h-8 text-xs">
+              <SelectTrigger className="h-9 w-[140px] text-xs">
                 <Filter className="h-3.5 w-3.5 mr-1" />
                 <SelectValue />
               </SelectTrigger>
@@ -523,36 +601,13 @@ export default function Acabamento() {
                 <SelectItem value="all">Todas</SelectItem>
               </SelectContent>
             </Select>
-           <OrderSearchBar value={searchQuery} onChange={setSearchQuery} />
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button size="sm" variant="outline" className="gap-1">
-                  <DotsThreeVertical className="h-4 w-4" /> Ações
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                {selectedOrders.size > 0 && (
-                  <DropdownMenuItem onClick={() => {
-                    const ids = acabamentoOrders.filter(o => selectedOrders.has(o.id)).map(o => o.id).join(',');
-                    navigate(`/orders/grouped-summary?sector=acabamento&ids=${ids}`);
-                  }}>
-                    <Layers className="h-3.5 w-3.5 mr-2" /> Imprimir Relatório ({selectedOrders.size})
-                  </DropdownMenuItem>
-                )}
-                <DropdownMenuSeparator />
-                <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">Impressão</DropdownMenuLabel>
-                <DropdownMenuItem onClick={() => handlePrintByClient()} disabled={selectedOrders.size === 0}>
-                  <Printer className="h-3.5 w-3.5 mr-2" /> Relatório por Cliente ({selectedOrders.size})
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </>}
+          }
         />
 
         {/* Stats - dynamic based on selection */}
         {(() => {
-          const hasSelection = selectedOrders.size > 0;
-          const statsOrders = hasSelection ? acabamentoOrders.filter(o => selectedOrders.has(o.id)) : acabamentoOrders;
+          const hasSelection = sel.count > 0;
+          const statsOrders = hasSelection ? orders.filter(o => sel.selectedIds.has(o.id)) : acabamentoOrders;
           const totalPares = statsOrders.reduce((s, o) => s + (o.quantity || 0), 0);
           const clientSet = new Set(statsOrders.map(o => {
             const so = saleOrders.find((s: any) => s.id === o.sale_order_id);
@@ -595,14 +650,18 @@ export default function Acabamento() {
             description="Não há ordens de produção aguardando acabamento no momento."
           />
         ) : (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 px-1">
-              <Checkbox
-                checked={selectedOrders.size === acabamentoOrders.length && acabamentoOrders.length > 0}
-                onCheckedChange={toggleAll}
-              />
-              <span className="text-xs text-muted-foreground font-medium">Selecionar todas ({acabamentoOrders.length})</span>
-            </div>
+          <div
+            ref={sel.containerRef}
+            data-marquee-container
+            onMouseDown={sel.onContainerMouseDown}
+            className="relative space-y-3"
+          >
+            {sel.count > 0 && (
+              <p className="px-1 text-xs text-muted-foreground font-mono">
+                {sel.count} selecionada{sel.count === 1 ? '' : 's'}
+                {sel.hiddenSelectedCount > 0 ? ` · ${sel.hiddenSelectedCount} fora do filtro` : ''}
+              </p>
+            )}
             {acabamentoOrders.map(order => {
               const { ref, grade, activeSizes, gradeSum, totalPairs, totalFichas, fichas, imageUrl } = buildPrintContent(order);
               const scaledTotal = gradeSum > 0
@@ -613,8 +672,14 @@ export default function Acabamento() {
               const acabamentoStage = allStages.find(s => s.order_id === order.id && sameStage(s.stage_name, 'Acabamento'));
               const stageColor = acabamentoStage?.status === 'concluido' ? 'border-l-emerald-500' : acabamentoStage?.status === 'em_andamento' ? 'border-l-amber-500' : 'border-l-red-500';
 
+              const isSelected = sel.isSelected(order.id);
               return (
-                <Card key={order.id} className={`border-l-4 transition-all ${selectedOrders.has(order.id) ? 'ring-2 ring-success' : ''} ${stageColor}`}>
+                <Card
+                  key={order.id}
+                  data-marquee-item
+                  data-marquee-id={order.id}
+                  className={`border-l-4 transition-all ${isSelected ? 'ring-2 ring-success' : ''} ${stageColor}`}
+                >
                   <CardHeader
                     className="py-3 px-4 cursor-pointer hover:bg-muted/50 transition-colors"
                     onClick={() => setExpandedOrderId(isExpanded ? null : order.id)}
@@ -622,8 +687,8 @@ export default function Acabamento() {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3" onClick={e => e.stopPropagation()}>
                         <Checkbox
-                          checked={selectedOrders.has(order.id)}
-                          onCheckedChange={() => toggleOrder(order.id)}
+                          checked={isSelected}
+                          onCheckedChange={() => sel.toggle(order.id)}
                         />
                       </div>
                        <div className="flex-1 ml-2">
@@ -757,6 +822,7 @@ export default function Acabamento() {
                 </Card>
               );
             })}
+            <MarqueeOverlay rect={sel.marqueeRect} />
           </div>
         )}
       </div>

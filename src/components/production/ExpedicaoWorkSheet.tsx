@@ -7,6 +7,8 @@ import { TALLY_SIZE } from './worksheet/density';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { HeaderIdentification } from './worksheet/HeaderIdentification';
 import { PaginatedSheet, type SheetBlock } from './worksheet/PaginatedSheet';
+import { usePrintOrderIdentity } from './worksheet/PrintOrderIdentityContext';
+import { pageIdentityForOps } from './worksheet/pageIdentity';
 import { formatOpNumber } from './worksheet/stageOrder';
 
 export interface ExpedicaoOrder {
@@ -97,6 +99,13 @@ const celNum: React.CSSProperties = {
  */
 export const ExpedicaoWorkSheet = ({ group, sizeBand, sectorLabel }: Props) => {
   const totalPairs = group.orders.reduce((s, o) => s + (o.total_pairs || 0), 0);
+  const allOps = group.orders.map((o) => o.op_number).filter(Boolean) as string[];
+  const orderIdentityByOp = usePrintOrderIdentity();
+  const pageIdentity = pageIdentityForOps(
+    sectorLabel || `Expedição · ${group.client_name}`,
+    allOps,
+    orderIdentityByOp,
+  );
 
   // Agrega por solado + pares/caixa: a ficha é por CLIENTE e pode juntar PVs
   // com packaging_mode diferente (12/caixa vs fitilho 1/volume). Agregar só
@@ -224,13 +233,13 @@ export const ExpedicaoWorkSheet = ({ group, sizeBand, sectorLabel }: Props) => {
   // Resumo embalagem — bloco atômico no paginador (se exceder 1 página
   // inteira, flui linha a linha: tr atômico, thead repete).
   const embalagemBlock = (
-      <div className="mb-1.5">
+      <div className="mb-1">
         <div className="flex items-baseline justify-between mb-1">
           <div className="flex items-center gap-2">
             <Package className="h-4 w-4 text-black" weight="bold" />
             <span className="section-label" style={{ color: '#000' }}>02 / Embalagem · Caixas Coletivas</span>
           </div>
-          <div className="flex items-stretch gap-4 shrink-0">
+          <div className="flex items-stretch gap-3 shrink-0">
             <div className="text-right">
               <span className="section-label block" style={{ color: '#000' }}>Caixas</span>
               <span
@@ -360,13 +369,13 @@ export const ExpedicaoWorkSheet = ({ group, sizeBand, sectorLabel }: Props) => {
             <tr style={{ borderTop: '1.5px solid #000' }}>
               <td
                 colSpan={5 + allSizes.length}
-                className="py-1.5 px-2 text-right section-label"
+                className="py-1 px-2 text-right section-label"
                 style={{ color: '#000', borderRight: '1px solid #000' }}
               >
                 Total da Loja
               </td>
               <td
-                className="py-1.5 px-1 text-right text-black"
+                className="py-1 px-1 text-right text-black"
                 style={{
                   fontFamily: "'Anton', Impact, sans-serif",
                   fontSize: '16px',
@@ -386,7 +395,7 @@ export const ExpedicaoWorkSheet = ({ group, sizeBand, sectorLabel }: Props) => {
     const isFirst = ci === 0;
     const isLast = ci === itemChunks.length - 1;
     return (
-      <div key={`items-${ci}`} className="mt-2">
+      <div key={`items-${ci}`} className="mt-1">
         {isFirst && (
           <div className="flex items-baseline justify-between mb-1">
             <span className="section-label" style={{ color: '#000' }}>03 / Itens · Conferência</span>
@@ -453,7 +462,7 @@ export const ExpedicaoWorkSheet = ({ group, sizeBand, sectorLabel }: Props) => {
     const capacidades = [...new Set(linhas.map((l) => l.capacidade).filter((c) => c > 0))];
 
     return (
-      <div className="mb-2">
+      <div className="mb-1">
         <div className="flex items-baseline justify-between mb-1">
           <div className="flex items-center gap-2">
             <Package className="h-4 w-4 text-black" weight="bold" />
@@ -461,7 +470,7 @@ export const ExpedicaoWorkSheet = ({ group, sizeBand, sectorLabel }: Props) => {
               Caixas por Numeração · Conferência
             </span>
           </div>
-          <div className="flex items-end gap-4 shrink-0">
+          <div className="flex items-end gap-3 shrink-0">
             <div className="text-right">
               <span className="section-label block" style={{ color: '#000' }}>Caixas</span>
               <span className="block leading-none" style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '25px', color: '#C00000' }}>
@@ -540,5 +549,12 @@ export const ExpedicaoWorkSheet = ({ group, sizeBand, sectorLabel }: Props) => {
   // Sem isto o AUTO_FIT_FLOOR global (0.80) encolhia por cima de fontes que já
   // estavam no piso. Decisão do dono 31/07/2026: legibilidade vence densidade.
   const minScale = floorSafeScale(ft);
-  return <PaginatedSheet sectorLabel={sectorLabel || `Expedição · ${group.client_name}`} blocks={blocks} minScale={minScale} />;
+  return (
+    <PaginatedSheet
+      sectorLabel={sectorLabel || `Expedição · ${group.client_name}`}
+      pageIdentity={pageIdentity}
+      blocks={blocks}
+      minScale={minScale}
+    />
+  );
 };

@@ -267,6 +267,7 @@ export async function printOrderPhotosPdf(opts: {
   const filename = `fotos-${String(opts.orderNumber || 'pedido').replace(/[^\w.-]+/g, '-')}`;
   return printHtmlAsPdf(html, {
     filename,
+    title: 'Fotos',
     landscape: true,
     target: opts.target ?? null,
   });

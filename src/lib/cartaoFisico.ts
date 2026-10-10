@@ -2,26 +2,36 @@
  * Cartão físico por corrugado — regras da spec `specs/cartao-fisico-corrugado.md`.
  *
  * 1 cartão = 1 corrugado cheio (12/15/18) de 1 OP. Sobra sem cartão.
- * Emissores allow-list; destino/QR fora da v1.
+ * Emissores: Palmilha · Corte Cabedal · Costura Cabedal · Aviamento.
+ * Sem Origem no papel; destino opcional (Costura→Aviamento, Aviamento→Colagem).
+ * Contador do maço: k/N global após `assignBatchCounters`.
  */
 import { resolveFicha } from '@/components/production/worksheet/fichaSize';
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
 
-/** Setores que emitem cartão físico (nome como em `SECTORS` / activeSectors). */
+/** Setores que emitem fardo (nome como em `SECTORS` / activeSectors). */
 export const CARTAO_FISICO_EMITTERS = [
-  'Corte Palmilha',
-  'Corte Forração',
+  'Palmilha',
   'Corte Cabedal',
   'Costura Cabedal',
   'Aviamento',
-  'Montagem',
 ] as const;
 
 export type CartaoFisicoEmitter = (typeof CARTAO_FISICO_EMITTERS)[number];
 
+/** Destino impresso no fardo (vazio = não imprime bloco Destino). */
+export const CARTAO_FISICO_DESTINO: Partial<Record<CartaoFisicoEmitter, string>> = {
+  'Costura Cabedal': 'Aviamento',
+  Aviamento: 'Colagem',
+};
+
+export function destinoForCartaoFisico(sector: string): string {
+  return CARTAO_FISICO_DESTINO[sector as CartaoFisicoEmitter] || '';
+}
+
 const EMITTER_SET = new Set<string>(CARTAO_FISICO_EMITTERS);
 
-export function isCartaoFisicoEmitter(sector: string): boolean {
+export function isCartaoFisicoEmitter(sector: string): sector is CartaoFisicoEmitter {
   return EMITTER_SET.has(sector);
 }
 
@@ -36,9 +46,11 @@ export function countFullCorrugados(totalPairs: number, corrugado: number): numb
 export interface CartaoFisicoOrderInput {
   opNumber: string;
   pvLabel?: string | null;
+  /** Razão social do cliente do PV. */
+  clientName?: string | null;
   referenceLabel?: string | null;
-  color?: string | null;
   /** Identidade extra do setor (napa, solado…). */
+  color?: string | null;
   materialLabel?: string | null;
   imageUrl?: string | null;
   totalPairs: number;
@@ -50,8 +62,11 @@ export interface CartaoFisicoOrderInput {
 export interface CartaoFisicoCard {
   sectorName: string;
   sectorDisplayLabel: string;
+  /** Destino opcional (Costura→Aviamento, Aviamento→Colagem). */
+  destinoLabel?: string;
   opNumber: string;
   pvLabel?: string;
+  clientName?: string;
   /** Destaque vermelho — cor ou material+cor. */
   title: string;
   /** Linha sob o título (ref, solado…). */
@@ -60,19 +75,22 @@ export interface CartaoFisicoCard {
   sizes: string[];
   grade: Record<string, number>;
   totalPairs: number;
-  /** k de k/N dentro da OP × setor. */
+  /** k de k/N dentro da OP × setor (antes do batch). */
   index: number;
   /** N = corrugados cheios da OP neste setor. */
   of: number;
   corrugado: number;
+  /** Contador do maço impresso — `k/N` global após `assignBatchCounters`. */
   lotCode: string;
   lotLabel: string;
 }
 
 export interface BuildCartaoFisicoCardsArgs {
   sectorName: string;
-  /** Rótulo impresso (ex.: "Corte de Placa de Fibra"). Default = sectorName. */
+  /** Rótulo interno (não impresso como Origem). Default = sectorName. */
   sectorDisplayLabel?: string;
+  /** Override do destino; default = mapa CARTAO_FISICO_DESTINO. */
+  destinoLabel?: string;
   orders: CartaoFisicoOrderInput[];
 }
 
@@ -121,11 +139,30 @@ export function gradeForOneCorrugado(
   return cleanGrade(scaleGradeWithLargestRemainder(cleaned, corrugado / sum, corrugado));
 }
 
+/**
+ * Renumera `lotCode`/`lotLabel` pelo índice global do maço (1/N … N/N).
+ * Aplica-se depois de concatenar todos os setores / OPs do print.
+ */
+export function assignBatchCounters<T extends { lotCode: string; lotLabel: string }>(
+  cards: T[],
+): T[] {
+  const n = cards.length;
+  if (n === 0) return cards;
+  return cards.map((card, i) => ({
+    ...card,
+    lotCode: `${i + 1}/${n}`,
+    lotLabel: `${i + 1} de ${n}`,
+  }));
+}
+
 /** Monta a lista de cartões físicos de um setor (só corrugados cheios, 1 OP cada). */
 export function buildCartaoFisicoCards(args: BuildCartaoFisicoCardsArgs): CartaoFisicoCard[] {
   const { sectorName, orders } = args;
   if (!isCartaoFisicoEmitter(sectorName)) return [];
   const sectorDisplayLabel = args.sectorDisplayLabel || sectorName;
+  const destinoLabel = args.destinoLabel !== undefined
+    ? args.destinoLabel
+    : destinoForCartaoFisico(sectorName);
   const cards: CartaoFisicoCard[] = [];
 
   for (const order of orders) {
@@ -143,13 +180,16 @@ export function buildCartaoFisicoCards(args: BuildCartaoFisicoCardsArgs): Cartao
     const sizes = sortSizes(grade);
     const { title, subtitle } = identityTitle(order);
     const pvLabel = String(order.pvLabel || '').trim() || undefined;
+    const clientName = String(order.clientName || '').trim() || undefined;
 
     for (let k = 1; k <= full; k++) {
       cards.push({
         sectorName,
         sectorDisplayLabel,
+        destinoLabel: destinoLabel || undefined,
         opNumber,
         pvLabel,
+        clientName,
         title,
         subtitle,
         imageUrl: order.imageUrl ?? null,
@@ -169,10 +209,10 @@ export function buildCartaoFisicoCards(args: BuildCartaoFisicoCardsArgs): Cartao
 }
 
 /**
- * Cartões por folha A4 paisagem (3 colunas × 4 linhas).
- * Envelope canônico do modo Cartão físico — chunk sequencial assume esta capacidade.
+ * Cartões por folha A4 paisagem (3 colunas × 5 linhas).
+ * Envelope canônico do modo Fardo — chunk sequencial assume esta capacidade.
  */
-export const CARTAO_FISICO_PER_PAGE = 12;
+export const CARTAO_FISICO_PER_PAGE = 15;
 
 /**
  * Fatia a lista em páginas sequenciais de até `capacity` itens.

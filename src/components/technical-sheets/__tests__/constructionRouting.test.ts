@@ -42,6 +42,7 @@ describe('roteiros canônicos da ficha técnica', () => {
     // no ELSE 99 e a etapa vai parar no fim da rota, fora de ordem — foi assim
     // que a grafia morta 'Costura' sobreviveu em `resync_op_atomic`.
     const CONHECIDOS = new Set([
+      'Palmilha · Fibra', 'Palmilha · Forração',
       'Corte Fibra', 'Corte Palmilha', 'Corte Forração', 'Corte Cabedal',
       'Acabamento Palmilha', 'Costura Cabedal', 'Aviamento', 'Silk',
       'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição',

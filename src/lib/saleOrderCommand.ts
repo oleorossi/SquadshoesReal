@@ -375,7 +375,7 @@ export async function runSaleOrderCommandWithBusyRetry<T>(
   }
 }
 
-const SALE_ORDER_BUSY_RETRY_MESSAGE =
+export const SALE_ORDER_BUSY_RETRY_MESSAGE =
   'O banco estava ocupado com estoque ou compras de outro pedido. Tente de novo em alguns segundos.';
 
 export function formatSaleOrderStatusError(error: unknown): string {
@@ -386,6 +386,42 @@ export function formatSaleOrderStatusError(error: unknown): string {
     return error.message.trim();
   }
   return 'Não foi possível atualizar o status do pedido.';
+}
+
+/**
+ * Soft-delete usa ERRCODE 40001 com MESSAGE "PV mudou simultaneamente".
+ * Busy-retry não deve repetir: a versão esperada já caducou.
+ */
+export function isSaleOrderSoftDeleteVersionConflict(error: unknown): boolean {
+  if (isStaleSaleOrderVersionError(error)) return true;
+  return /PV mudou simultaneamente/i.test(postgresErrorHaystack(error));
+}
+
+export interface SoftDeleteErrorContext {
+  saleOrderId: string;
+  orderNumber?: string | null;
+}
+
+/** Toast de exclusão: nunca joga "canceling statement due to lock timeout" cru. */
+export function formatSaleOrderSoftDeleteError(
+  error: unknown,
+  ctx: SoftDeleteErrorContext,
+): string {
+  const label = (ctx.orderNumber || '').trim() || ctx.saleOrderId;
+  if (isSaleOrderSoftDeleteVersionConflict(error)) {
+    return `O pedido ${label} mudou enquanto a exclusão rodava. Recarregue a lista e tente de novo.`;
+  }
+  if (isPostgresBusyError(error)) {
+    return `Não foi possível excluir ${label}: ${SALE_ORDER_BUSY_RETRY_MESSAGE}`;
+  }
+  const described = describePostgrestError(
+    error,
+    error instanceof Error ? error.message : '',
+  ).trim();
+  if (described) {
+    return `Não foi possível excluir ${label}: ${described}`;
+  }
+  return `Não foi possível excluir ${label}.`;
 }
 
 export function formatUnknownSaleOrderUpdateError(error: unknown): string {
@@ -719,6 +755,121 @@ export async function executeSaleOrderCommand<TResult = Record<string, unknown>>
   const receipt = normalizeSaleOrderCommandReceipt<TResult>(data);
   if (!receipt.ok) throw new SaleOrderCommandExecutionError(receipt);
   return receipt;
+}
+
+/** Comandos pesados que materializam OP/estoque — vão pra fila async. */
+export const SALE_ORDER_MATERIALIZATION_COMMANDS = [
+  'confirm',
+  'promote',
+  'cancel',
+] as const;
+
+export type SaleOrderMaterializationCommand =
+  | (typeof SALE_ORDER_MATERIALIZATION_COMMANDS)[number]
+  | 'transition';
+
+/**
+ * Confirm/promote/cancel e a compensação Aprovado→Rascunho usam a fila.
+ * Demais transitions (Rascunho↔Pendente, Faturado, etc.) continuam sync.
+ */
+export function isSaleOrderMaterializationCommand(
+  command: SaleOrderCommandAction,
+  targetStatus?: string | null,
+  currentStatus?: string | null,
+): boolean {
+  if ((SALE_ORDER_MATERIALIZATION_COMMANDS as readonly string[]).includes(command)) {
+    return true;
+  }
+  return command === 'transition'
+    && targetStatus === 'Rascunho'
+    && currentStatus === 'Aprovado';
+}
+
+export type SaleOrderCommandPhase = 'idle' | 'processing' | 'failed';
+
+export interface SaleOrderMaterializationEnqueueResult {
+  ok: boolean;
+  enqueued?: boolean;
+  already_current?: boolean;
+  replayed?: boolean;
+  sale_order_id: string;
+  job_id?: string;
+  command_phase: SaleOrderCommandPhase;
+  command_target_status?: string | null;
+  status?: string;
+  wake_request_id?: number | null;
+}
+
+export async function enqueueSaleOrderMaterialization(input: {
+  saleOrderId: string;
+  command: SaleOrderMaterializationCommand;
+  targetStatus: string;
+  expectedOrderVersion: number;
+  idempotencyKey: string;
+  payload?: Record<string, unknown>;
+  overrideId?: string | null;
+}): Promise<SaleOrderMaterializationEnqueueResult> {
+  const { data, error } = await supabase.rpc('enqueue_sale_order_materialization' as never, {
+    p_sale_order_id: input.saleOrderId,
+    p_command: input.command,
+    p_target_status: input.targetStatus,
+    p_expected_order_version: input.expectedOrderVersion,
+    p_idempotency_key: input.idempotencyKey,
+    p_payload: input.payload ?? {},
+    p_override_id: input.overrideId ?? null,
+  } as never);
+  if (error) throw error;
+  const raw = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>;
+  return {
+    ok: raw.ok === true,
+    enqueued: Boolean(raw.enqueued),
+    already_current: Boolean(raw.already_current),
+    replayed: Boolean(raw.replayed),
+    sale_order_id: String(raw.sale_order_id || input.saleOrderId),
+    job_id: raw.job_id ? String(raw.job_id) : undefined,
+    command_phase: (raw.command_phase as SaleOrderCommandPhase) || 'processing',
+    command_target_status: raw.command_target_status == null
+      ? null
+      : String(raw.command_target_status),
+    status: raw.status == null ? undefined : String(raw.status),
+    wake_request_id: raw.wake_request_id == null ? null : Number(raw.wake_request_id),
+  };
+}
+
+export async function retrySaleOrderMaterialization(
+  saleOrderId: string,
+): Promise<SaleOrderMaterializationEnqueueResult> {
+  const { data, error } = await supabase.rpc('retry_sale_order_materialization' as never, {
+    p_sale_order_id: saleOrderId,
+  } as never);
+  if (error) throw error;
+  const raw = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>;
+  return {
+    ok: raw.ok === true,
+    enqueued: Boolean(raw.enqueued),
+    sale_order_id: String(raw.sale_order_id || saleOrderId),
+    job_id: raw.job_id ? String(raw.job_id) : undefined,
+    command_phase: (raw.command_phase as SaleOrderCommandPhase) || 'processing',
+    command_target_status: raw.command_target_status == null
+      ? null
+      : String(raw.command_target_status),
+    status: raw.status == null ? undefined : String(raw.status),
+  };
+}
+
+export async function discardSaleOrderMaterialization(
+  saleOrderId: string,
+): Promise<{ ok: boolean; discarded?: boolean; status?: string }> {
+  const { data, error } = await supabase.rpc('discard_sale_order_materialization' as never, {
+    p_sale_order_id: saleOrderId,
+  } as never);
+  if (error) throw error;
+  const raw = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>;
+  return {
+    ok: raw.ok === true,
+    discarded: Boolean(raw.discarded),
+    status: raw.status == null ? undefined : String(raw.status),
+  };
 }
 
 export async function createSaleOrderCommand<TResult = Record<string, unknown>>(

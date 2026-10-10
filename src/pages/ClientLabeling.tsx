@@ -13,7 +13,7 @@ export default function ClientLabeling() {
       <EditorialPageHeader
         sectionLabel="ETIQUETAGEM · CLIENTE"
         title="ETIQUETAGEM CLIENTE"
-        description="Importe o pedido do cliente, selecione os SKUs e gere o rolo couchê dedicado sem alterar os padrões de etiqueta da fábrica."
+        description="Importe o pedido do cliente, selecione os SKUs e gere etiquetas (Nalin, Objetiva ou Ponto Mix) sem alterar os padrões da fábrica."
       />
 
       <ClientLabelingWorkspace />

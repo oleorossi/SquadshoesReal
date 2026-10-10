@@ -56,12 +56,12 @@ interface ConstructionConfigPanelProps {
 // migration 20261230120000), então estas listas são higiene de UI: sem elas o
 // painel mostraria uma rota e o banco gravaria outra. Travado por
 // `__tests__/constructionRouting.test.ts`.
-const SECTORS_CABEDAL              = ['Corte Fibra', 'Corte Cabedal', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
-const SECTORS_CABEDAL_SILK         = ['Corte Fibra', 'Corte Cabedal', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
-const SECTORS_CABEDAL_FORRADO      = ['Corte Fibra', 'Corte Forração', 'Corte Cabedal', 'Acabamento Palmilha', 'Costura Cabedal', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
-const SECTORS_CABEDAL_FORRADO_SILK = ['Corte Fibra', 'Corte Forração', 'Corte Cabedal', 'Acabamento Palmilha', 'Costura Cabedal', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
-const SECTORS_TIRAS                = ['Corte Fibra', 'Corte Forração', 'Acabamento Palmilha', 'Aviamento', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
-const SECTORS_TIRAS_SILK           = ['Corte Fibra', 'Corte Forração', 'Acabamento Palmilha', 'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
+const SECTORS_CABEDAL              = ['Palmilha · Fibra', 'Corte Cabedal', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
+const SECTORS_CABEDAL_SILK         = ['Palmilha · Fibra', 'Corte Cabedal', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
+const SECTORS_CABEDAL_FORRADO      = ['Palmilha · Fibra', 'Palmilha · Forração', 'Corte Cabedal', 'Acabamento Palmilha', 'Costura Cabedal', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
+const SECTORS_CABEDAL_FORRADO_SILK = ['Palmilha · Fibra', 'Palmilha · Forração', 'Corte Cabedal', 'Acabamento Palmilha', 'Costura Cabedal', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
+const SECTORS_TIRAS                = ['Palmilha · Fibra', 'Palmilha · Forração', 'Acabamento Palmilha', 'Aviamento', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
+const SECTORS_TIRAS_SILK           = ['Palmilha · Fibra', 'Palmilha · Forração', 'Acabamento Palmilha', 'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
 
 /** As 6 acima, pra o teste varrer a tabela em vez de valores fixos. */
 export const CANONICAL_ROUTINGS = [
@@ -109,6 +109,13 @@ function isCanonicalRouting(current: string[] | null | undefined): boolean {
     SECTORS_CABEDAL, SECTORS_CABEDAL_SILK,
     SECTORS_CABEDAL_FORRADO, SECTORS_CABEDAL_FORRADO_SILK,
     SECTORS_TIRAS, SECTORS_TIRAS_SILK,
+    // Pré rename Palmilha · * (2026-09) — Corte Fibra / Corte Forração
+    ['Corte Fibra', 'Corte Cabedal', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'],
+    ['Corte Fibra', 'Corte Cabedal', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'],
+    ['Corte Fibra', 'Corte Forração', 'Corte Cabedal', 'Acabamento Palmilha', 'Costura Cabedal', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'],
+    ['Corte Fibra', 'Corte Forração', 'Corte Cabedal', 'Acabamento Palmilha', 'Costura Cabedal', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'],
+    ['Corte Fibra', 'Corte Forração', 'Acabamento Palmilha', 'Aviamento', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'],
+    ['Corte Fibra', 'Corte Forração', 'Acabamento Palmilha', 'Aviamento', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'],
     // Pre-2026-05-12 listas Cabedal (sem 'Corte Cabedal' — englobado em 'Corte Palmilha')
     ['Corte Palmilha', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'],
     ['Corte Palmilha', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'],
@@ -229,15 +236,14 @@ function routingLabel(model: ProductionModel, hasSilk: boolean, requires_sewing:
   // Acabamento isto batia; agora toda rota vai até a Expedição.
   const fim = ' → Colagem → Montagem → Solagem → Acabamento → Expedição';
   if (model === 'cabedal') {
-    return `Corte Fibra ‖ Corte Cabedal${silk}${fim}`;
+    return `Palmilha · Fibra ‖ Corte Cabedal${silk}${fim}`;
   }
   if (model === 'cabedal_forrado') {
     const sewing = requires_sewing ? ' (costura inclusa)' : '';
-    return `Corte Fibra ‖ Corte Forração ‖ Corte Cabedal${sewing}${silk}${fim}`;
+    return `Palmilha · Fibra ‖ Palmilha · Forração ‖ Corte Cabedal${sewing}${silk}${fim}`;
   }
   // tiras — não tem Corte Cabedal porque a tira já vem cortada.
-  // Roteiro segue SECTORS_TIRAS (Mesa foi renomeado p/ Aviamento em 2026-05-20).
-  return `Corte Fibra → Corte Forração → Costura → Aviamento${silk}${fim}`;
+  return `Palmilha · Fibra → Palmilha · Forração → Acabamento Palmilha → Aviamento${silk}${fim}`;
 }
 
 export function ConstructionConfigPanel({

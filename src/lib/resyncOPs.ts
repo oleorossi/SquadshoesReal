@@ -214,6 +214,8 @@ export interface AutoResyncSummary {
   deltaReserved: number;
   /** Linhas de material que o delta não conseguiu cobrir com estoque livre. */
   deltaShortfalls: number;
+  /** Itens de PV cuja strap_colors foi realinhada à ficha vigente. */
+  strapsUpdated: number;
   errors: Array<{ order_number?: string | null; message?: string }>;
 }
 
@@ -226,6 +228,7 @@ function parseAutoResyncPayload(raw: unknown): AutoResyncSummary {
     skippedStarted: Number(data.skipped_started) || 0,
     deltaReserved: Number(data.delta_reserved) || 0,
     deltaShortfalls: Number(data.delta_shortfalls) || 0,
+    strapsUpdated: Number(data.straps_updated) || 0,
     errors: errorsRaw.map((row) => {
       const item = (row || {}) as Record<string, unknown>;
       return {
@@ -237,7 +240,7 @@ function parseAutoResyncPayload(raw: unknown): AutoResyncSummary {
 }
 
 /**
- * Propaga consumo da ficha para OPs de PVs Aprovado/Em Produção sem fato
+ * Propaga tiras do PV + consumo das OPs de PVs Aprovado/Em Produção sem fato
  * físico; em OP iniciada (PZ105) reserva só o delta faltante.
  * A ficha já deve ter sido salva — falha aqui não desfaz o UPDATE.
  */
@@ -270,6 +273,11 @@ export function toastAutoResyncSummary(
   opts?: { emptyMessage?: string },
 ): void {
   const parts: string[] = [];
+  if (summary.strapsUpdated > 0) {
+    parts.push(
+      `${summary.strapsUpdated} ite${summary.strapsUpdated === 1 ? 'm' : 'ns'} de PV com tiras realinhadas`,
+    );
+  }
   if (summary.resynced > 0) {
     parts.push(
       `${summary.resynced} OP${summary.resynced === 1 ? '' : 's'} com consumo atualizado`,
@@ -299,9 +307,11 @@ export function toastAutoResyncSummary(
   }
   if (summary.errors.length > 0) {
     const first = summary.errors[0];
-    const label = first.order_number || 'OP';
+    const msg = first.message || 'erro';
+    const label = first.order_number
+      || (msg.startsWith('Tiras PV') ? 'cadastro' : 'OP');
     toast.warning(
-      `Consumo parcial: ${summary.errors.length} falha(s). Ex.: ${label} — ${first.message || 'erro'}`,
+      `Consumo parcial: ${summary.errors.length} falha(s). Ex.: ${label} — ${msg}`,
       { duration: 10000 },
     );
     return;

@@ -139,12 +139,23 @@ function reviewIdForProduct(
   return isUuid(reviewId) ? reviewId : null;
 }
 
-/** Tira pronta por identidade da ficha (STRASS) ou escolha do PV (sku_acabado). */
+/**
+ * Lacuna de cadastro Hub (variante comercial) — só identidade acabada da ficha
+ * (STRASS). Comprar pronto escolhido no PV (`sku_acabado`) não exige Hub:
+ * o writer cria/acha o SKU e congela `finished_product_id`.
+ */
 export function strapLineWantsBuyReady(
   strap: BuyReadyStrapGapLine | null | undefined,
 ): boolean {
-  return strapIdentityBasis(strap) === 'finished_product_group'
-    || strap?.pv_origem === 'sku_acabado';
+  return strapIdentityBasis(strap) === 'finished_product_group';
+}
+
+/** Origem Comprar pronto no PV (escolhe_no_pv), sem exigir variante Hub. */
+export function strapLineIsPvBuyReadyChoice(
+  strap: BuyReadyStrapGapLine | null | undefined,
+): boolean {
+  return strap?.pv_origem === 'sku_acabado'
+    && strapIdentityBasis(strap) !== 'finished_product_group';
 }
 
 /** Grupo acabado: pin da ficha, ou group_id legado quando o PV escolheu fornecedor. */

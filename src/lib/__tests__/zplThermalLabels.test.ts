@@ -78,6 +78,17 @@ describe('buildThermalLabelsZpl — foto 1 bit gravada uma vez', () => {
     expect(L.H).toBe(240);
   });
 
+  it('desloca a arte 3 mm à direita (pad esquerda 4,5 mm, direita 0)', () => {
+    const L = computeZplLayout({ width: 100, height: 30 }, true);
+    const dpMm = 203 / 25.4;
+    expect(L.padLeft).toBe(Math.round(4.5 * dpMm));
+    expect(L.padRight).toBe(0);
+    expect(L.padX).toBe(L.padLeft);
+    expect(L.photoX).toBe(L.padLeft);
+    expect(L.barcodeX + L.barcodeW).toBe(L.W - L.padRight);
+    expect(L.infoX).toBeGreaterThan(L.padLeft);
+  });
+
   it('cada etiqueta continua um bloco ^XA…^XZ fechado', () => {
     const zpl = buildThermalLabelsZpl([label(), label()], { width: 100, height: 30 });
     expect(zpl.match(/\^XA/g)).toHaveLength(2);

@@ -3,10 +3,12 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
   CheckSquare, Square, Warning as AlertTriangle, CalendarBlank, Package, Timer,
+  CheckCircle as CheckCircle2, Circle,
 } from '@phosphor-icons/react';
 import { thumbUrl } from '@/lib/imageThumb';
 import { fmtDate, KanbanCardData } from './kanbanDerive';
 import { cardCommercialPrimary, partialRemaining } from './kanbanQueueSplit';
+import { palmilhaCheckState } from '@/lib/palmilhaKanbanColumn';
 
 interface Props {
   card: KanbanCardData;
@@ -15,7 +17,10 @@ interface Props {
   onDragStart: () => void;
   onDragEnd: () => void;
   onOpen: () => void;
-  /** Modo gestão: card mais denso pra caber todos os setores numa tela. */
+  /**
+   * Densidade do card. Default `true` desde a densificação 2026-10 —
+   * o visual do modo gestão virou o padrão do quadro.
+   */
   compact?: boolean;
   /** Busca ativa e este card NÃO casa → esmaece sem tirar do quadro. */
   dimmed?: boolean;
@@ -35,6 +40,12 @@ interface Props {
   materialGateDate?: string | null;
   materialGateReason?: string | null;
   onHoverOrder?: (orderId: string | null) => void;
+  /** Coluna visual Palmilha: até 2 checks (Fibra / Forração); N/A oculto. */
+  showPalmilhaChecks?: boolean;
+  /** Badge Ateliê (debitar / no prestador / recebido). */
+  atelierBadge?: string | null;
+  /** OP adiantada pela Fila de Corte (`orders.is_ahead_of_schedule`). */
+  earlyReleaseBadge?: boolean;
 }
 
 /**
@@ -59,9 +70,12 @@ function stageAge(stage: { started_at: string | null; created_at: string } | nul
 
 export function KanbanOpCard({
   card, draggable, dragging, onDragStart, onDragEnd, onOpen,
-  compact = false, dimmed = false, highlighted = false, siblingActive = false,
+  compact = true, dimmed = false, highlighted = false, siblingActive = false,
   selectable = false, selected = false, onToggleSelect, readOnly = false, photoUrl, landed = false,
   materialGateDate = null, materialGateReason = null, onHoverOrder,
+  showPalmilhaChecks = false,
+  atelierBadge = null,
+  earlyReleaseBadge = false,
 }: Props) {
   const { q, front, delivered, isPartial, columnStage, upstreamGap, parallelSiblings } = card;
   const total = columnStage?.quantity_total || q.quantity;
@@ -71,10 +85,11 @@ export function KanbanOpCard({
   const { pv, client } = cardCommercialPrimary(q);
   const thumbSize = 40;
   const thumb = thumbUrl(photoUrl || q.reference_photo_url, thumbSize);
+  const palmilhaChecks = showPalmilhaChecks ? palmilhaCheckState(card.stages) : null;
 
   return (
     <Card
-      className={`relative overflow-hidden ${compact ? 'p-2 md:p-1.5' : 'p-2.5'} ${isPartial ? 'pl-3' : ''} cursor-pointer select-none
+      className={`relative overflow-hidden ${compact ? 'p-1.5 md:p-1' : 'p-2'} ${isPartial ? 'pl-2.5' : ''} cursor-pointer select-none
         transition-[transform,box-shadow,border-color,opacity] duration-150 ease-out
         hover:-translate-y-0.5 hover:shadow-md active:translate-y-0
         focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground/70 focus-visible:ring-offset-1 focus-visible:ring-offset-background
@@ -136,11 +151,11 @@ export function KanbanOpCard({
           <img
             src={thumb}
             alt=""
-            className={`${compact ? 'h-10 w-10 md:h-8 md:w-8' : 'h-10 w-10'} rounded object-contain bg-muted shrink-0`}
+            className={`${compact ? 'h-8 w-8 md:h-7 md:w-7' : 'h-9 w-9'} rounded object-contain bg-muted shrink-0`}
             loading="lazy"
           />
         ) : (
-          <div className={`${compact ? 'h-10 w-10 md:h-8 md:w-8' : 'h-10 w-10'} rounded bg-muted shrink-0`} />
+          <div className={`${compact ? 'h-8 w-8 md:h-7 md:w-7' : 'h-9 w-9'} rounded bg-muted shrink-0`} />
         )}
         <div className="min-w-0 flex-1">
           {/* 1) PV + cliente — hierarquia comercial */}
@@ -164,6 +179,24 @@ export function KanbanOpCard({
               </p>
             </div>
             <span className="flex max-w-[55%] shrink-0 flex-wrap items-center justify-end gap-1">
+              {earlyReleaseBadge && (
+                <Badge
+                  variant="outline"
+                  className="text-[9px] bg-primary/10 text-primary border-primary/30 shrink-0"
+                  title="OP liberada pela Fila de Corte (adiantada)"
+                >
+                  Adiantada
+                </Badge>
+              )}
+              {atelierBadge && (
+                <Badge
+                  variant="outline"
+                  className="text-[9px] bg-primary/10 text-primary border-primary/30 shrink-0"
+                  title="Estado do cabedal no Ateliê (rua)"
+                >
+                  {atelierBadge}
+                </Badge>
+              )}
               {isPartial && (
                 <Badge
                   variant="outline"
@@ -242,6 +275,42 @@ export function KanbanOpCard({
             <p className="mt-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-400 leading-tight">
               Faltam {restante.toLocaleString('pt-BR')} pares neste setor
             </p>
+          )}
+
+          {palmilhaChecks && (palmilhaChecks.showFibra || palmilhaChecks.showForracao) && (
+            <div
+              className="mt-1 flex flex-wrap items-center gap-1.5"
+              title="Passos de Palmilha nesta OP — lado N/A não aparece"
+            >
+              {palmilhaChecks.showFibra && (
+                <span
+                  className={`inline-flex items-center gap-0.5 text-[9px] font-semibold uppercase tracking-wide ${
+                    palmilhaChecks.fibraDone
+                      ? 'text-emerald-700 dark:text-emerald-400'
+                      : 'text-muted-foreground'
+                  }`}
+                >
+                  {palmilhaChecks.fibraDone
+                    ? <CheckCircle2 className="h-3 w-3" weight="fill" />
+                    : <Circle className="h-3 w-3" />}
+                  Fibra
+                </span>
+              )}
+              {palmilhaChecks.showForracao && (
+                <span
+                  className={`inline-flex items-center gap-0.5 text-[9px] font-semibold uppercase tracking-wide ${
+                    palmilhaChecks.forracaoDone
+                      ? 'text-emerald-700 dark:text-emerald-400'
+                      : 'text-muted-foreground'
+                  }`}
+                >
+                  {palmilhaChecks.forracaoDone
+                    ? <CheckCircle2 className="h-3 w-3" weight="fill" />
+                    : <Circle className="h-3 w-3" />}
+                  Forração
+                </span>
+              )}
+            </div>
           )}
 
           <div className="mt-0.5 flex items-center justify-end gap-1.5">

@@ -142,12 +142,26 @@
      return () => clearTimeout(timer);
    }, [pendingVersion, cdnStuck, handleReloadNow]);
  
-   useEffect(() => {
-     const check = () => checkVersionLogic(false, handleMismatch);
-     check();
-     const interval = setInterval(check, POLL_INTERVAL_MS);
-     return () => clearInterval(interval);
-   }, [handleMismatch]);
+  useEffect(() => {
+    const check = () => checkVersionLogic(false, handleMismatch);
+    check();
+    const interval = setInterval(check, POLL_INTERVAL_MS);
+    // iOS PWA: ao voltar pro app (ícone / App Switcher) o timer de 5 min
+    // não basta — checa na hora pra pegar deploy novo sem matar o processo.
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') check();
+    };
+    const onPageShow = () => { check(); };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('pageshow', onPageShow);
+    window.addEventListener('focus', onVisible);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('pageshow', onPageShow);
+      window.removeEventListener('focus', onVisible);
+    };
+  }, [handleMismatch]);
  
    if (!pendingVersion) return null;
  

@@ -34,6 +34,19 @@ export const PAGE_CAPACITY_PX =
   (PAGE_HEIGHT_MM - PAGE_PAD_TOP_MM - PAGE_PAD_BOTTOM_MM - HEADER_BAND_MM) * MM_TO_PX;
 export const BLOCK_GAP_PX = BLOCK_GAP_MM * MM_TO_PX;
 
+/** Altura mínima da faixa do topo em px (HEADER_BAND_MM). */
+export const HEADER_BAND_MIN_PX = HEADER_BAND_MM * MM_TO_PX;
+
+/**
+ * Capacidade útil da página dada a altura REAL da faixa do topo.
+ * A faixa pode crescer além de HEADER_BAND_MM (identidade rica); o pack
+ * tem que subtrair a altura medida, nunca menos que o mínimo canônico.
+ */
+export function pageContentCapacityPx(headHeightPx: number = HEADER_BAND_MIN_PX): number {
+  const head = Math.max(HEADER_BAND_MIN_PX, Number.isFinite(headHeightPx) ? headHeightPx : HEADER_BAND_MIN_PX);
+  return (PAGE_HEIGHT_MM - PAGE_PAD_TOP_MM - PAGE_PAD_BOTTOM_MM) * MM_TO_PX - head;
+}
+
 /** Inflação print-vs-tela (2026-06-19). A IMPRESSÃO renderiza o conteúdo ~3-4%
  *  mais alto que a medição em TELA (métrica do line-height 8pt + arredondamento
  *  de linhas de tabela, acumulado ao longo da página). Numa página CHEIA (ex.:

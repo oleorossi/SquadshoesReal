@@ -10,13 +10,22 @@ import { Progress } from '@/components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
-import { SearchInput } from '@/components/ui/search-input';
 import { Label } from '@/components/ui/label';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { cn } from '@/lib/utils';
+import { OrderMultiSelectToolbar } from '@/components/orders/OrderMultiSelectToolbar';
+import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
+import { MarqueeOverlay } from '@/components/ui/bulk-actions-bar';
+import {
+  matchesOrderSearch,
+  normalizeOrderCode,
+  orderCodeExactMatch,
+  parseOrderCodeList,
+} from '@/lib/orderCodeSearch';
+import { matchesDeliveryWeek } from '@/lib/deliveryWeekOptions';
+import { confirmIfHiddenSelection } from '@/lib/confirmHiddenSelection';
 import {
   calculateBomForOrders,
   calculateSoleBreakdownByGrade,
@@ -55,6 +64,7 @@ interface EligibleOp {
     status: string;
     picking_individually_done_at: string | null;
     delivery_deadline: string | null;
+    client_name: string | null;
   };
 }
 
@@ -63,6 +73,7 @@ interface DateRange { from: string; to: string }
 interface PvGroup {
   soId: string;
   pvNumber: string;
+  clientName: string;
   ops: EligibleOp[];
   opCount: number;
   effStart: string | null;
@@ -105,8 +116,8 @@ export default function PickingListPage() {
     'picking_scope_mode_v1', 'semanal',
   );
   const [pvSearch, setPvSearch] = useState('');
-  // Seleção "item a item": PVs escolhidos na checklist.
-  const [selectedPvIds, setSelectedPvIds] = useState<Set<string>>(new Set());
+  const [clientFilter, setClientFilter] = useState('all');
+  const [weekFilter, setWeekFilter] = useState('all');
   const [pvInput, setPvInput] = useState('');
   const [opInput, setOpInput] = useState('');
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -155,7 +166,7 @@ export default function PickingListPage() {
         // FK explícita: orders tem 2 FKs p/ sale_orders (sale_order_id e
         // cross_dock_sale_order_id) — sem o nome da constraint o embed fica
         // ambíguo ("more than one relationship was found").
-        .select('id, order_number, status, planned_start, created_at, sale_order_id, sale_orders!orders_sale_order_id_fkey!inner(id, order_number, status, picking_individually_done_at, delivery_deadline)')
+        .select('id, order_number, status, planned_start, created_at, sale_order_id, sale_orders!orders_sale_order_id_fkey!inner(id, order_number, status, picking_individually_done_at, delivery_deadline, client_name)')
         .in('status', ACTIVE_OP_STATUSES)
         .order('planned_start', { ascending: false, nullsFirst: false })
         .limit(1000);
@@ -195,6 +206,7 @@ export default function PickingListPage() {
         map.set(so.id, {
           soId: so.id,
           pvNumber: so.order_number || so.id.slice(0, 8),
+          clientName: (so.client_name || '').trim(),
           ops: [],
           opCount: 0,
           effStart: null,
@@ -209,12 +221,58 @@ export default function PickingListPage() {
     }).sort((a, b) => (a.effStart || '9999').localeCompare(b.effStart || '9999'));
   }, [visibleOps]);
 
+  const clientOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const g of pvGroups) {
+      if (g.clientName) set.add(g.clientName);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [pvGroups]);
+
   const filteredPvGroups = useMemo(() => {
-    if (!pvSearch.trim()) return pvGroups;
-    // espaço/"/" = refinamento AND; cobre nº do PV e das OPs do grupo
-    return pvGroups.filter(g =>
-      searchMatchesAllTerms(pvSearch, g.pvNumber, ...g.ops.map(o => o.order_number)));
-  }, [pvGroups, pvSearch]);
+    return pvGroups.filter((g) => {
+      if (clientFilter !== 'all' && g.clientName !== clientFilter) return false;
+      if (weekFilter !== 'all' && !matchesDeliveryWeek(g.deadline, weekFilter)) return false;
+      if (!pvSearch.trim()) return true;
+      const codes = parseOrderCodeList(pvSearch);
+      if (codes.length >= 2) {
+        return codes.some((code) =>
+          orderCodeExactMatch(code, g.pvNumber, ...g.ops.map((o) => o.order_number)),
+        );
+      }
+      return matchesOrderSearch(pvSearch, {
+        saleOrderNumber: g.pvNumber,
+        orderNumber: g.ops.map((o) => o.order_number).filter(Boolean).join(' '),
+        clientName: g.clientName,
+      });
+    });
+  }, [pvGroups, pvSearch, clientFilter, weekFilter]);
+
+  const sel = useMarqueeSelection(filteredPvGroups, (g) => g.soId);
+
+  const pastedCodes = useMemo(() => parseOrderCodeList(pvSearch), [pvSearch]);
+  const matchedCodeIds = useMemo(() => {
+    if (pastedCodes.length === 0) return [];
+    const codeSet = new Set(pastedCodes);
+    return pvGroups
+      .filter((g) => {
+        const pv = normalizeOrderCode(g.pvNumber);
+        if (pv && codeSet.has(pv)) return true;
+        return g.ops.some((o) => {
+          const op = normalizeOrderCode(o.order_number);
+          return !!op && codeSet.has(op);
+        });
+      })
+      .map((g) => g.soId);
+  }, [pvGroups, pastedCodes]);
+
+  const allVisibleSelected =
+    filteredPvGroups.length > 0 && filteredPvGroups.every((g) => sel.isSelected(g.soId));
+
+  const toggleVisible = () => {
+    if (allVisibleSelected) sel.deselectVisible();
+    else sel.selectAll();
+  };
 
   // ── Presets de período (base = início de produção) ────────────────────────
   const presets = useMemo(() => {
@@ -290,21 +348,20 @@ export default function PickingListPage() {
   // Junta os IDs de TODAS as OPs (já elegíveis e carregadas) dos PVs marcados —
   // sem novo fetch e sem re-filtrar status (elegibilidade já resolvida na query).
   const handleGenerateSelectedPvs = useCallback(async () => {
-    const selected = pvGroups.filter(g => selectedPvIds.has(g.soId));
+    if (sel.count === 0) return;
+    if (!confirmIfHiddenSelection({
+      totalSelected: sel.count,
+      hiddenSelectedCount: sel.hiddenSelectedCount,
+      entityLabel: 'PV',
+      actionLabel: 'Gerar separação de',
+    })) return;
+    const selected = pvGroups.filter(g => sel.selectedIds.has(g.soId));
     if (selected.length === 0) return;
     const opIds = selected.flatMap(g => g.ops.map(o => o.id));
     const pvNumbers = selected.map(g => g.pvNumber);
     setReportKind('pv');
     await runCalculation(opIds, `Separação · ${pvNumbers.length} PV(s)`, pvNumbers);
-  }, [pvGroups, selectedPvIds, runCalculation]);
-
-  const togglePv = useCallback((id: string) => {
-    setSelectedPvIds(prev => {
-      const s = new Set(prev);
-      if (s.has(id)) s.delete(id); else s.add(id);
-      return s;
-    });
-  }, []);
+  }, [pvGroups, sel.count, sel.hiddenSelectedCount, sel.selectedIds, runCalculation]);
 
   // ── Busca avançada: colar números de PV ───────────────────────────────────
   // Resolve OPs ativas dos PVs colados, independente da janela/elegibilidade —
@@ -564,7 +621,6 @@ export default function PickingListPage() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   const today = todayISO();
-  const allSelected = filteredPvGroups.length > 0 && filteredPvGroups.every(g => selectedPvIds.has(g.soId));
 
   return (
     <div className="w-full space-y-4">
@@ -686,32 +742,41 @@ export default function PickingListPage() {
 
         {/* Checklist de PVs/OPs elegíveis */}
         <div className="space-y-2">
-          <div className="flex items-center gap-2 flex-wrap">
-            <SearchInput
-              className="flex-1 min-w-[180px]"
-              inputClassName="h-8 text-sm"
-              value={pvSearch}
-              onChange={setPvSearch}
-              placeholder="Buscar por número do PV ou OP…"
-              resultCount={filteredPvGroups.length}
-              totalCount={pvGroups.length}
-            />
-            <Button size="sm" variant="ghost" className="h-8 text-xs"
-              onClick={() => setSelectedPvIds(new Set(filteredPvGroups.map(g => g.soId)))}
-              disabled={filteredPvGroups.length === 0 || allSelected}>
-              Selecionar todos
-            </Button>
-            <Button size="sm" variant="ghost" className="h-8 text-xs"
-              onClick={() => setSelectedPvIds(new Set())} disabled={selectedPvIds.size === 0}>
-              Limpar
-            </Button>
-            <Button size="sm" className="h-8 gap-1.5"
-              onClick={handleGenerateSelectedPvs} disabled={selectedPvIds.size === 0 || isCalculating}>
-              <CheckCircle2 className="h-4 w-4" />
-              Gerar separação ({selectedPvIds.size})
-            </Button>
-          </div>
-          <div className="max-h-64 overflow-y-auto rounded-md border divide-y">
+          <OrderMultiSelectToolbar
+            search={pvSearch}
+            onSearchChange={setPvSearch}
+            searchPlaceholder="Buscar PV, OP, ref/cor ou ref;cor, cliente… ou cole códigos"
+            resultCount={filteredPvGroups.length}
+            totalCount={pvGroups.length}
+            clientOptions={clientOptions}
+            clientFilter={clientFilter}
+            onClientFilterChange={setClientFilter}
+            weekFilter={weekFilter}
+            onWeekFilterChange={setWeekFilter}
+            allVisibleSelected={allVisibleSelected}
+            visibleCount={filteredPvGroups.length}
+            onToggleVisible={toggleVisible}
+            matchedCodeCount={matchedCodeIds.length}
+            onSelectMatched={() => sel.selectMatchingIds(matchedCodeIds)}
+            extraFilters={
+              <Button
+                size="sm"
+                className="h-9 gap-1.5"
+                onClick={handleGenerateSelectedPvs}
+                disabled={sel.count === 0 || isCalculating}
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                Gerar separação ({sel.count}
+                {sel.hiddenSelectedCount > 0 ? ` · ${sel.hiddenSelectedCount} fora` : ''})
+              </Button>
+            }
+          />
+          <div
+            ref={sel.containerRef}
+            data-marquee-container
+            onMouseDown={sel.onContainerMouseDown}
+            className="relative max-h-64 overflow-y-auto rounded-md border divide-y"
+          >
             {opsLoading ? (
               <p className="text-xs text-muted-foreground p-3 text-center flex items-center justify-center gap-2">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" /> Carregando OPs em produção...
@@ -730,16 +795,25 @@ export default function PickingListPage() {
                 )}
               </p>
             ) : filteredPvGroups.map(g => {
-              const checked = selectedPvIds.has(g.soId);
+              const checked = sel.isSelected(g.soId);
               const days = g.effStart ? differenceInDays(safeParseISO(today)!, safeParseISO(g.effStart)!) : null;
               const stale = days != null && days > 30;
               return (
-                <button key={g.soId} type="button" onClick={() => togglePv(g.soId)}
-                  className={cn('w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left transition-colors hover:bg-muted/40', checked && 'bg-primary/5')}>
+                <button
+                  key={g.soId}
+                  type="button"
+                  data-marquee-item
+                  data-marquee-id={g.soId}
+                  onClick={(e) => sel.toggle(g.soId, e)}
+                  className={cn('w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left transition-colors hover:bg-muted/40', checked && 'bg-primary/5 ring-1 ring-inset ring-success/30')}
+                >
                   {checked
                     ? <CheckSquare className="h-4 w-4 text-primary shrink-0" weight="fill" />
                     : <Square className="h-4 w-4 text-muted-foreground shrink-0" />}
                   <span className="font-medium font-mono">{g.pvNumber}</span>
+                  {g.clientName ? (
+                    <span className="text-xs text-muted-foreground truncate max-w-[140px]">{g.clientName}</span>
+                  ) : null}
                   <Badge variant="outline" className="text-[10px] h-4 px-1.5">{g.opCount} OP{g.opCount !== 1 ? 's' : ''}</Badge>
                   <span className="text-xs text-muted-foreground ml-auto flex items-center gap-2">
                     <span title="início de produção">{safeFormatBR(g.effStart)}</span>
@@ -755,6 +829,7 @@ export default function PickingListPage() {
                 </button>
               );
             })}
+            <MarqueeOverlay rect={sel.marqueeRect} />
           </div>
 
           {/* Busca avançada: colar números (PVs já faturados / OPs avulsas) */}

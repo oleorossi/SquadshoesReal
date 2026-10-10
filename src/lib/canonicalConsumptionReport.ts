@@ -156,7 +156,9 @@ const strapPreviewSchema = z.object({
   strap_variant_id: uuid.nullable(),
   source_mode: z.enum(['internal', 'buy_ready']).nullable(),
   gross_required_m: finiteNonNegative,
-  recipe_id: uuid.nullable(),
+  // Overlay stale (mig 294/297) pode omitir a chave ao invalidar pin — nullish
+  // cobre ausência e null explícito; normaliza pra null no parse.
+  recipe_id: uuid.nullish().transform((value) => value ?? null),
   base_product_id: uuid.nullable(),
   finished_product_id: uuid.nullable(),
   blocking_reasons: z.array(z.unknown()),

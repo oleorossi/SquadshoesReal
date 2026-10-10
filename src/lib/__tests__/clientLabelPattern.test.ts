@@ -5,13 +5,23 @@ import {
   collectionPatternKeys,
   defaultPatternForKey,
   emptyLabelCollection,
+  enableFamily,
+  familiesInCollection,
+  familyIdForPatternKey,
+  familyKeysInCollection,
   isClientLabelPatternKey,
   normalizeClientLabelCollection,
   normalizeClientLabelPattern,
+  patternAwaitsCalibration,
   patternLabel,
+  patternMediaLabel,
+  patternVariantLabel,
   removePattern,
   savedPatternStatusLabel,
+  setActivePattern,
+  sharesOrderFileFormat,
   toPersistedLabelPattern,
+  toggleFamilyVariant,
   upsertActivePattern,
 } from '@/lib/clientLabelPattern';
 
@@ -24,11 +34,34 @@ describe('clientLabelPattern', () => {
     expect(pattern.geometry.columns).toBe(1);
   });
 
-  it('default Baby Nalin usa geometria 2 colunas L42PRO', () => {
+  it('default Nalin · Adesiva usa geometria 2 colunas L42PRO 50×30', () => {
     const pattern = defaultPatternForKey('baby_nalin');
     expect(pattern.key).toBe('baby_nalin');
     expect(pattern.geometry.columns).toBe(2);
     expect(pattern.geometry.labelWidthMm).toBe(50);
+    expect(pattern.geometry.labelHeightMm).toBe(30);
+  });
+
+  it('default Objetiva · Adesiva usa 50×30 · 1 página por etiqueta', () => {
+    const pattern = defaultPatternForKey('objetiva_adesiva');
+    expect(pattern.key).toBe('objetiva_adesiva');
+    expect(pattern.geometry.columns).toBe(1);
+    expect(pattern.geometry.labelWidthMm).toBe(50);
+    expect(pattern.geometry.labelHeightMm).toBe(30);
+    expect(pattern.geometry.columnGapMm).toBe(0);
+    expect(patternAwaitsCalibration('objetiva_adesiva')).toBe(false);
+    expect(patternMediaLabel('objetiva_adesiva')).toMatch(/50×30/);
+  });
+
+  it('default Nalin · Tag usa 40×60 1 coluna (mesma família da adesiva)', () => {
+    const pattern = defaultPatternForKey('nalin_tag');
+    expect(pattern.key).toBe('nalin_tag');
+    expect(pattern.geometry.columns).toBe(1);
+    expect(pattern.geometry.labelWidthMm).toBe(40);
+    expect(pattern.geometry.labelHeightMm).toBe(60);
+    expect(pattern.branding.exchangeText).toMatch(/TROCA/i);
+    expect(familyIdForPatternKey('nalin_tag')).toBe('nalin');
+    expect(sharesOrderFileFormat('nalin_tag', 'baby_nalin')).toBe(true);
   });
 
   it('normalizeClientLabelPattern sempre devolve contrato v1', () => {
@@ -53,10 +86,33 @@ describe('clientLabelPattern', () => {
 
   it('isClientLabelPatternKey e patternLabel cobrem os layouts', () => {
     expect(isClientLabelPatternKey('baby_nalin')).toBe(true);
+    expect(isClientLabelPatternKey('nalin_tag')).toBe(true);
     expect(isClientLabelPatternKey('objetiva')).toBe(true);
+    expect(isClientLabelPatternKey('objetiva_adesiva')).toBe(true);
+    expect(isClientLabelPatternKey('ponto_mix')).toBe(true);
     expect(isClientLabelPatternKey('outro')).toBe(false);
-    expect(patternLabel('baby_nalin')).toBe('Nalin');
-    expect(patternLabel('objetiva')).toBe('Objetiva');
+    expect(patternLabel('baby_nalin')).toBe('Nalin · Adesiva');
+    expect(patternLabel('nalin_tag')).toBe('Nalin · Tag');
+    expect(patternLabel('objetiva')).toBe('Objetiva · Tag');
+    expect(patternLabel('objetiva_adesiva')).toBe('Objetiva · Adesiva');
+    expect(patternLabel('ponto_mix')).toBe('Ponto Mix');
+    expect(patternVariantLabel('nalin_tag')).toBe('Tag');
+    expect(patternVariantLabel('baby_nalin')).toBe('Adesiva');
+    expect(patternVariantLabel('objetiva')).toBe('Tag');
+    expect(patternVariantLabel('objetiva_adesiva')).toBe('Adesiva');
+    expect(familyIdForPatternKey('baby_nalin')).toBe('nalin');
+    expect(familyIdForPatternKey('nalin_tag')).toBe('nalin');
+    expect(familyIdForPatternKey('objetiva_adesiva')).toBe('objetiva');
+  });
+
+  it('default Ponto Mix usa geometria 40×60 1 coluna', () => {
+    const pattern = defaultPatternForKey('ponto_mix');
+    expect(pattern.key).toBe('ponto_mix');
+    expect(pattern.geometry.labelWidthMm).toBe(40);
+    expect(pattern.geometry.labelHeightMm).toBe(60);
+    expect(pattern.geometry.columns).toBe(1);
+    expect(pattern.templates?.line3).toContain('{tamanho}');
+    expect(pattern.priceFormat?.decimalSeparator).toBe('.');
   });
 
   it('clientOrderLineSkuKey inclui ref/cor/tamanho/código', () => {
@@ -91,7 +147,52 @@ describe('clientLabelPattern', () => {
     });
     expect(collectionPatternKeys(both)).toEqual(['baby_nalin', 'objetiva']);
     expect(both.activeKey).toBe('objetiva');
-    expect(savedPatternStatusLabel(both)).toBe('Nalin + Objetiva');
+    expect(savedPatternStatusLabel(both)).toBe('Nalin · Adesiva · Objetiva · Tag');
+  });
+
+  it('enableFamily Nalin liga Tag + Adesiva no mesmo CSV', () => {
+    const both = enableFamily(emptyLabelCollection(), 'nalin');
+    expect(collectionPatternKeys(both)).toEqual(['nalin_tag', 'baby_nalin']);
+    expect(both.activeKey).toBe('nalin_tag');
+    expect(savedPatternStatusLabel(both)).toBe('Nalin (Tag + Adesiva)');
+    expect(sharesOrderFileFormat('nalin_tag', 'baby_nalin')).toBe(true);
+  });
+
+  it('coleção v2 guarda Tag e Adesiva Objetiva no mesmo cliente', () => {
+    const tag = defaultPatternForKey('objetiva');
+    const adesiva = defaultPatternForKey('objetiva_adesiva');
+    const both = normalizeClientLabelCollection({
+      version: 2,
+      activeKey: 'objetiva',
+      patterns: { objetiva: tag, objetiva_adesiva: adesiva },
+    });
+    expect(collectionPatternKeys(both)).toEqual(['objetiva', 'objetiva_adesiva']);
+    expect(savedPatternStatusLabel(both)).toBe('Objetiva (Tag + Adesiva)');
+    expect(familiesInCollection(both)).toEqual(['objetiva']);
+    expect(familyKeysInCollection(both, 'objetiva')).toEqual(['objetiva', 'objetiva_adesiva']);
+  });
+
+  it('enableFamily liga Tag e Adesiva de uma vez; setActive não cria tipo novo', () => {
+    const both = enableFamily(emptyLabelCollection(), 'objetiva');
+    expect(collectionPatternKeys(both)).toEqual(['objetiva', 'objetiva_adesiva']);
+    expect(both.activeKey).toBe('objetiva');
+
+    const onlyTag = removePattern(both, 'objetiva_adesiva');
+    expect(setActivePattern(onlyTag, 'objetiva_adesiva').activeKey).toBe('objetiva');
+    expect(setActivePattern(both, 'objetiva_adesiva').activeKey).toBe('objetiva_adesiva');
+  });
+
+  it('toggleFamilyVariant e sharesOrderFileFormat cobrem o fluxo Tag↔Adesiva', () => {
+    const withTag = activatePattern(emptyLabelCollection(), 'objetiva');
+    const both = toggleFamilyVariant(withTag, 'objetiva_adesiva');
+    expect(collectionPatternKeys(both)).toEqual(['objetiva', 'objetiva_adesiva']);
+    expect(sharesOrderFileFormat('objetiva', 'objetiva_adesiva')).toBe(true);
+    expect(sharesOrderFileFormat('objetiva', 'baby_nalin')).toBe(false);
+    expect(sharesOrderFileFormat('baby_nalin', 'ponto_mix')).toBe(false);
+
+    const onlyAdesiva = toggleFamilyVariant(both, 'objetiva');
+    expect(collectionPatternKeys(onlyAdesiva)).toEqual(['objetiva_adesiva']);
+    expect(onlyAdesiva.activeKey).toBe('objetiva_adesiva');
   });
 
   it('upsert de um tipo não apaga o outro já gravado', () => {

@@ -79,7 +79,7 @@ const DialogContent = React.forwardRef<
         // Sem zoom/slide animations excessivas — só fade.
         // max-h em dvh (não vh): no mobile o vh inclui a barra do browser e o
         // rodapé do dialog (botões de confirmação) ficaria escondido sob ela.
-        "fixed left-[50%] top-[50%] z-modal grid w-[95vw] max-w-3xl translate-x-[-50%] translate-y-[-50%] gap-3 sm:gap-4 border-[2px] border-foreground bg-background p-4 sm:p-6 duration-150 max-h-[90dvh] overflow-y-auto data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 rounded-sm",
+        "fixed left-[50%] top-[50%] z-modal grid w-[95vw] max-w-3xl translate-x-[-50%] translate-y-[-50%] gap-2.5 sm:gap-3 border-[2px] border-foreground bg-background p-3 sm:p-4 duration-150 max-h-[90dvh] overflow-y-auto data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 rounded-sm",
         className,
       )}
       onKeyDown={(e) => {

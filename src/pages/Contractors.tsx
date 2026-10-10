@@ -34,6 +34,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { BulkActionsBar } from '@/components/ui/bulk-actions-bar';
 import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
 import { confirmAndBulkDelete } from '@/lib/bulkConfirm';
+import { confirmIfHiddenSelection } from '@/lib/confirmHiddenSelection';
 import { Separator } from '@/components/ui/separator';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -612,10 +613,19 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   const sel = useMarqueeSelection(filteredContractors, (c) => c.id);
   const handleBulkDeleteContractors = async () => {
     const ids = Array.from(sel.selectedIds);
-    const sampleLines = filteredContractors
-      .filter(c => sel.selectedIds.has(c.id))
+    if (!confirmIfHiddenSelection({
+      totalSelected: ids.length,
+      hiddenSelectedCount: sel.hiddenSelectedCount,
+      entityLabel: 'prestador',
+      actionLabel: 'Excluir',
+    })) return;
+    const byId = new Map(contractors.map(c => [c.id, c]));
+    const sampleLines = ids
       .slice(0, 5)
-      .map(c => `• ${c.name}${c.cnpj_cpf ? ` (${c.cnpj_cpf})` : ''}`);
+      .map(id => {
+        const c = byId.get(id);
+        return c ? `• ${c.name}${c.cnpj_cpf ? ` (${c.cnpj_cpf})` : ''}` : `• ${id}`;
+      });
     await confirmAndBulkDelete({
       ids,
       entityLabel: 'prestador',

@@ -1,15 +1,18 @@
 /**
  * Importação multiarquivo da Etiquetagem Cliente.
- * Detecta Nalin (Codigo Barra) vs Objetiva (SKU + TAMANHOS) e concatena linhas.
+ * Detecta Nalin (Codigo Barra) vs Objetiva (SKU + TAMANHOS) vs Ponto Mix
+ * e concatena linhas.
  */
 import {
   decodeOrderBytes,
   parseClientOrderFile,
-  parseOrderCsv,
   type BabyNalinRow,
 } from './babyNalinLabels';
 import {
   clientOrderLineSkuKey,
+  isNalinFamilyKey,
+  isObjetivaFamilyKey,
+  type ClientLabelFileMapping,
   type ClientLabelPatternKey,
   type ClientOrderLine,
 } from './clientLabelPattern';
@@ -17,11 +20,18 @@ import {
   isObjetivaOrderHeader,
   parseObjetivaOrderFile,
 } from './objetivaLabels';
+import {
+  BARTENDER_TEMPLATE_UPLOAD_MESSAGE,
+  isBartenderTemplateFile,
+  isPontoMixOrderHeader,
+  parsePontoMixOrderFile,
+} from './pontoMixLabels';
 
-export type ClientOrderFormat = ClientLabelPatternKey;
+/** Formato do arquivo (CSV). Tag e adesiva Objetiva compartilham o mesmo. */
+export type ClientOrderFormat = 'baby_nalin' | 'objetiva' | 'ponto_mix';
 
-/** Extensões aceitas no `<input type="file" multiple>`. */
-export const ACCEPT_CLIENT_ORDER_FILES = '.csv,.txt,.xlsx,.xls';
+/** Extensões aceitas no `<input type="file" multiple>`. `.btw` entra só para mensagem clara. */
+export const ACCEPT_CLIENT_ORDER_FILES = '.csv,.txt,.xlsx,.xls,.btw';
 
 export interface ClientOrderFileError {
   fileName: string;
@@ -43,6 +53,12 @@ function babyToLine(row: BabyNalinRow, sourceFile?: string): ClientOrderLine {
     codProduto: row.codProduto,
     codigoBarra: row.codigoBarra,
     quantidade: row.quantidade,
+    descricao: row.descricao,
+    valor: row.valor,
+    valorSecundario: row.valorSecundario,
+    tipo: row.tipo,
+    categoria: row.categoria,
+    grupo: row.grupo,
     sourceFile,
   };
 }
@@ -76,6 +92,20 @@ function splitHeader(line: string): string[] {
   return out.map(c => c.trim());
 }
 
+function formatLabel(format: ClientOrderFormat): string {
+  if (format === 'objetiva') return 'Objetiva';
+  if (format === 'ponto_mix') return 'Ponto Mix';
+  return 'Nalin';
+}
+
+/** Padrão do cliente → formato de arquivo esperado. Tag e adesiva da mesma família compartilham. */
+export function importFormatForPattern(key: ClientLabelPatternKey): ClientOrderFormat {
+  if (isObjetivaFamilyKey(key)) return 'objetiva';
+  if (key === 'ponto_mix') return 'ponto_mix';
+  if (isNalinFamilyKey(key)) return 'baby_nalin';
+  return 'baby_nalin';
+}
+
 export function detectClientOrderFormatFromHeader(headerLine: string): ClientOrderFormat | null {
   const cells = splitHeader(headerLine);
   if (isObjetivaOrderHeader(cells)) return 'objetiva';
@@ -87,11 +117,17 @@ export function detectClientOrderFormatFromHeader(headerLine: string): ClientOrd
       .replace(/[^a-z0-9]+/g, ' ')
       .trim(),
   );
-  if (normalized.some(h => h.includes('codigo barra') || h === 'ean')) return 'baby_nalin';
+  // Nalin antes de Ponto Mix: ambos podem ter "codigo barra".
+  if (normalized.some(h => h.includes('codigo barra') || h === 'ean')) {
+    if (isPontoMixOrderHeader(cells)) return 'ponto_mix';
+    return 'baby_nalin';
+  }
+  if (isPontoMixOrderHeader(cells)) return 'ponto_mix';
   return null;
 }
 
 async function detectFileFormat(file: File): Promise<ClientOrderFormat | null> {
+  if (isBartenderTemplateFile(file)) return null;
   const nome = file.name.toLowerCase();
   if (nome.endsWith('.xlsx') || nome.endsWith('.xls')) {
     const buffer = await file.arrayBuffer();
@@ -102,22 +138,36 @@ async function detectFileFormat(file: File): Promise<ClientOrderFormat | null> {
     const matriz = XLSX.utils.sheet_to_json<string[]>(aba, { header: 1, raw: false, defval: '' });
     const header = (matriz.find(l => l.some(c => String(c ?? '').trim())) ?? []).map(String);
     if (isObjetivaOrderHeader(header)) return 'objetiva';
+    if (isPontoMixOrderHeader(header)) return 'ponto_mix';
     return detectClientOrderFormatFromHeader(header.join(';'));
   }
   const texto = decodeOrderBytes(await file.arrayBuffer());
+  // Padrao.txt do BarTender: nome forte + padrão Ponto Mix já escolhido no cliente.
+  if (nome === 'padrao.txt' || nome.endsWith('/padrao.txt')) return 'ponto_mix';
   return detectClientOrderFormatFromHeader(firstDataLine(texto));
 }
 
-async function parseOneFile(file: File, expected: ClientOrderFormat): Promise<ClientOrderLine[]> {
+async function parseOneFile(
+  file: File,
+  expected: ClientOrderFormat,
+  fileMapping?: ClientLabelFileMapping | null,
+): Promise<ClientOrderLine[]> {
+  if (isBartenderTemplateFile(file)) {
+    throw new Error(BARTENDER_TEMPLATE_UPLOAD_MESSAGE);
+  }
+
   const detected = await detectFileFormat(file);
   if (detected && detected !== expected) {
     throw new Error(
-      `Arquivo parece formato ${detected === 'objetiva' ? 'Objetiva' : 'Nalin'}, mas o padrão do cliente é ${expected === 'objetiva' ? 'Objetiva' : 'Nalin'}.`,
+      `Arquivo parece formato ${formatLabel(detected)}, mas o padrão do cliente é ${formatLabel(expected)}.`,
     );
   }
 
   if (expected === 'objetiva') {
     return parseObjetivaOrderFile(file);
+  }
+  if (expected === 'ponto_mix') {
+    return parsePontoMixOrderFile(file, fileMapping ?? undefined);
   }
 
   const rows = await parseClientOrderFile(file);
@@ -131,15 +181,18 @@ async function parseOneFile(file: File, expected: ClientOrderFormat): Promise<Cl
 export async function parseClientOrderFiles(
   files: File[],
   patternKey: ClientLabelPatternKey,
+  fileMapping?: ClientLabelFileMapping | null,
 ): Promise<ClientOrderImportResult> {
   if (files.length === 0) {
     throw new Error('Selecione ao menos um arquivo.');
   }
 
+  const expected = importFormatForPattern(patternKey);
+
   const settled = await Promise.all(
     files.map(async file => {
       try {
-        const rows = await parseOneFile(file, patternKey);
+        const rows = await parseOneFile(file, expected, fileMapping);
         return { ok: true as const, fileName: file.name, rows };
       } catch (error) {
         return {
@@ -169,7 +222,7 @@ export async function parseClientOrderFiles(
     throw new Error(detail || 'Nenhuma linha válida nos arquivos.');
   }
 
-  return { rows, fileNames, format: patternKey, errors };
+  return { rows, fileNames, format: expected, errors };
 }
 
 export function summarizeImport(result: ClientOrderImportResult): string {
@@ -178,8 +231,4 @@ export function summarizeImport(result: ClientOrderImportResult): string {
   const base = `${result.rows.length} linha(s) · ${skuCount} SKU(s) · ${files} arquivo(s)`;
   if (result.errors.length === 0) return base;
   return `${base} · ${result.errors.length} arquivo(s) com erro`;
-}
-
-export function parseBabyNalinCsvToLines(texto: string, sourceFile?: string): ClientOrderLine[] {
-  return parseOrderCsv(texto).map(row => babyToLine(row, sourceFile));
 }
