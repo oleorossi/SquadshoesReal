@@ -568,7 +568,7 @@ describe('MaterialConsumptionView — tela buy-first', () => {
     expect(within(breakdown).getByText('20,21 m')).toBeInTheDocument();
     expect(within(breakdown).getByText('20,04 m')).toBeInTheDocument();
     expect(within(breakdown).getByText('50,25 m')).toBeInTheDocument();
-    expect(screen.getByText('Napa para tiras')).toBeInTheDocument();
+    expect(screen.getByText('Setor de Tiras')).toBeInTheDocument();
     expect(screen.getAllByText(/20[,.]04/).length).toBeGreaterThan(0);
     expect(screen.queryByText('EVA 3MM')).not.toBeInTheDocument();
   });
@@ -629,7 +629,7 @@ describe('MaterialConsumptionView — tela buy-first', () => {
     expect(within(materials).getByText(/napa GLOW METALIC: — · Não há receita aprovada/)).toBeInTheDocument();
     // Nada de tira vira falta: nem a convertida, nem a bloqueada (D9).
     expect(screen.queryByText(/faltam 6,88/)).not.toBeInTheDocument();
-    expect(screen.getByText('Napa para tiras')).toBeInTheDocument();
+    expect(screen.getByText('Setor de Tiras')).toBeInTheDocument();
     expect(screen.getByText('Não há receita aprovada para este tipo×napa.')).toBeInTheDocument();
   });
 });

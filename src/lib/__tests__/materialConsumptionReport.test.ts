@@ -234,7 +234,8 @@ describe('materialConsumptionReport', () => {
     // §01: só Cabedal/Forração. §03: napa de tira. Strip soma napa convertida.
     // §02: a linha da tira continua visível com os metros de TIRA (D8) e a
     // napa só como nota — não é falta de tira (não se compra tira Fazer).
-    expect(html).toContain('Napa para tiras');
+    expect(html).toContain('<h2>Setor de Tiras</h2>');
+    expect(html).not.toContain('Napa para tiras');
     expect(html).toContain('20,04 m');
     expect(html).not.toContain('class="num shortage">1.402,80');
     expect(html).toContain('>1.402,80<small class="qty-preview">m de tira</small>');
@@ -307,7 +308,7 @@ describe('materialConsumptionReport', () => {
     expect(html).toContain('NEW WHISKY');
     // Família = forração 20,21 + napa de tira 20,04 (tiras entram no total).
     expect(html).toMatch(/napa-family-qty">40,25 m</);
-    expect(html).toContain('Napa para tiras');
+    expect(html).toContain('Setor de Tiras');
     expect(html).toContain('20,04 m');
     expect(html).not.toContain('Itens em falta');
     expect(html).not.toContain('Maiores faltas');
@@ -448,7 +449,7 @@ describe('materialConsumptionReport', () => {
     expect(html).toContain('GLOW METALIC + MASSABOX');
     // baseName da tira normaliza a cor fora da família §01.
     expect(html).not.toContain('GLOW METALIC + MASSABOX - COBRE');
-    expect(html).toContain('Napa para tiras');
+    expect(html).toContain('Setor de Tiras');
     expect(html).toContain('2,64 m');
     expect((html.match(/class="napa-family-name"/g) || []).length).toBe(1);
     // Família = cabedal 15,39+8,40 + napa de tira 2,64 = 26,43.
@@ -517,7 +518,7 @@ describe('materialConsumptionReport', () => {
       rows: [],
     });
 
-    expect(html).toContain('Napa para tiras');
+    expect(html).toContain('Setor de Tiras');
     expect(html).toContain('Tira necessária');
     expect(html).toContain('<th>Cor</th>');
     expect(html).toContain('>OFF WHITE<');
@@ -560,7 +561,7 @@ describe('materialConsumptionReport', () => {
       rows: [],
     });
 
-    expect(html).toContain('Napa para tiras');
+    expect(html).toContain('Setor de Tiras');
     expect(html).toContain('cadastro incompleto');
     expect(html).toContain('>312,00 m<');
     expect(html).toMatch(/Napa<\/th>[\s\S]*?—/);
@@ -598,7 +599,7 @@ describe('materialConsumptionReport', () => {
       rows: [],
     });
 
-    expect(html).toContain('Napa para tiras');
+    expect(html).toContain('Setor de Tiras');
     expect(html).toContain('flag ok');
     expect(html).not.toContain('cadastro incompleto');
     expect(html).toContain('296,84 m');

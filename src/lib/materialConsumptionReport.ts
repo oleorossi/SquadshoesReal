@@ -253,7 +253,7 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
 
   // Tira Fazer: UMA linha por linha da ficha × cor, com metros de TIRA (total,
   // por numeração), pares e a napa como nota — nunca some (D8) e nunca soma
-  // com a napa. A napa a cortar mora em §03 (Napa para tiras). Bloqueada:
+  // com a napa. A napa a cortar mora em §03 (Setor de Tiras). Bloqueada:
   // napa “—” + motivo (D9). Tira Comprar segue o balde do SKU pronto (falta =
   // só o que o estoque não cobre). STRASS vai em seção própria.
   const fazerStraps = rows
@@ -435,7 +435,7 @@ const renderArtisanalStraps = (rows: ArtisanalStrapCutRow[]): string => {
   return `<section class="report-section strap-section">
     <div class="section-heading">
       <span class="section-number">03</span>
-      <div><p class="section-kicker">Setor próprio</p><h2>Napa para tiras</h2></div>
+      <div><p class="section-kicker">Setor próprio</p><h2>Setor de Tiras</h2></div>
       <p class="section-note">Só tiras Fazer, por tipo e cor: metros de tira a fazer (depois do estoque de tira pronta) e napa (÷ rendimento). Sem rendimento: napa “—” e fora da compra.</p>
     </div>
     <table class="report-table">

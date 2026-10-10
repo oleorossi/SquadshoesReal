@@ -583,7 +583,7 @@ export default function MaterialConsumptionView({
   //
   // Tira (Fazer ou Comprar) SEMPRE fica na tabela com seus metros de TIRA
   // (D8, spec tiras-redesenho): convertida mostra a napa só como nota; a napa
-  // a cortar mora no bloco próprio “Napa para tiras”. Tira com cadastro
+  // a cortar mora no bloco próprio “Setor de Tiras”. Tira com cadastro
   // pendente fica como incompleta (PV-00169) e napa “—” (D9).
   //
   // STRASS (acabada) sai para aba própria — não mistura com overlock/chata.

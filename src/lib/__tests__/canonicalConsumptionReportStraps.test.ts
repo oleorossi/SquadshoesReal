@@ -2,7 +2,7 @@
  * Pipeline completo do Consumo de Materiais para tiras (R-Consumo), com o
  * supabase mockado: relatório canônico (shape do PV-00224) →
  * `materializeCanonicalConsumptionReport` → linhas de tira com pares, metros
- * por numeração (cm/par da ficha), PV/modelo e bloco “Napa para tiras”.
+ * por numeração (cm/par da ficha), PV/modelo e bloco “Setor de Tiras”.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 

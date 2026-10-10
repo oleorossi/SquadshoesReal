@@ -18,7 +18,7 @@ beforeAll(() => {
   };
 });
 
-describe('setor próprio Napa para tiras — cadastro incompleto', () => {
+describe('Setor de Tiras — cadastro incompleto', () => {
   it('mostra cadastro incompleto na tela e no PDF sem inventar napa nem pedir correção de receita', () => {
     const warning = 'A transformação física será congelada na primeira demanda.';
     const pending: ArtisanalStrapCutRow = {
@@ -33,7 +33,7 @@ describe('setor próprio Napa para tiras — cadastro incompleto', () => {
         blockingReasons: [], snapshotWarning: warning },
     };
     render(<MemoryRouter><ArtisanalStrapRollCutBlock rows={[pending]} /></MemoryRouter>);
-    expect(screen.getByText('Napa para tiras')).toBeInTheDocument();
+    expect(screen.getByText('Setor de Tiras')).toBeInTheDocument();
     expect(screen.getByText('Cadastro incompleto')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Informar rendimento/ })).toBeInTheDocument();
     expect(screen.queryByText('Separar napa')).not.toBeInTheDocument();
@@ -41,7 +41,7 @@ describe('setor próprio Napa para tiras — cadastro incompleto', () => {
     expect(screen.getByRole('link', { name: /calculadora de tiras/i })).toBeInTheDocument();
     const html = buildMaterialConsumptionReportHtml({ rows: [], artisanalStrapRows: [pending],
       title: 'Teste', mode: 'total', generatedAt: new Date('2026-09-05T12:00:00Z') });
-    expect(html).toContain('Napa para tiras');
+    expect(html).toContain('Setor de Tiras');
     expect(html).toContain('cadastro incompleto');
     expect(html).not.toContain('>receita conferida<');
   });

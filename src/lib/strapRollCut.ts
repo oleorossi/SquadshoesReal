@@ -457,7 +457,7 @@ export function isArtisanalStrapCutBlocked(row: ArtisanalStrapCutRow): boolean {
   return true;
 }
 
-/** Uma linha do bloco “Napa para tiras”: metros de tira + napa por tipo × cor. */
+/** Uma linha do bloco “Setor de Tiras”: metros de tira + napa por tipo × cor. */
 export type StrapTypeNapaAgg = {
   typeKey: string;
   typeName: string;

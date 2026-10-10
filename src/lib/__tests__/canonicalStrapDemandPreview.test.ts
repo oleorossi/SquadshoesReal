@@ -349,7 +349,7 @@ describe('preview canônica de tiras', () => {
     expect(rows.map((row) => row.totalQuantity)).toEqual([640, 640, 640]);
     expect(rows.map((row) => row.artisanal?.baseQty)).toEqual([10, 10, 10]);
     expect(rows[2]).toMatchObject({ baseProductId: 'outro-sku-soft' });
-    // Bloco “Napa para tiras”: mesma variante + napa somam; outro SKU base separa.
+    // Bloco “Setor de Tiras”: mesma variante + napa somam; outro SKU base separa.
     const cuts = canonicalStrapCutRows([preview(),
       preview({ technical_strap_line_id: 'outra-posicao' }),
       preview({ base_product_id: 'outro-sku-soft' })]);

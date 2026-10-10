@@ -105,7 +105,7 @@ export default function ArtisanalStrapRollCutBlock({
       <div className="flex items-center gap-2 rounded-md bg-red-500/10 px-3 py-1.5">
         <Scissors className="h-4 w-4 text-red-600 dark:text-red-400" weight="fill" />
         <h3 className="text-sm font-semibold text-red-600 dark:text-red-400">
-          Napa para tiras
+          Setor de Tiras
         </h3>
         <Badge className="ml-1 border border-red-500/30 bg-red-500/15 text-[10px] uppercase tracking-wide text-red-600 hover:bg-red-500/15 dark:text-red-400">
           Setor próprio

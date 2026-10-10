@@ -158,7 +158,7 @@ export const STRAP_NAPA_MISSING_YIELD_REASON =
   'Sem receita/rendimento aprovado para esta tira × napa — cadastre no Hub de Tiras.';
 
 /**
- * FONTE ÚNICA da regra D9 (linha, bloco “Napa para tiras”, PDF e compra):
+ * FONTE ÚNICA da regra D9 (linha, bloco “Setor de Tiras”, PDF e compra):
  * tira Fazer só vira napa com receita aprovada, rendimento > 0 e sem bloqueio
  * duro. Devolve o motivo do bloqueio, ou null quando a napa é calculável.
  * Comprar/origem pendente não têm napa — devolve null (não se aplica).
@@ -407,7 +407,7 @@ export const STRAP_ORIGIN_LABEL: Record<StrapOrigin, string> = {
 /**
  * Fatos de apresentação de uma linha de tira no Consumo (D8/D10/D15). Metros
  * de TIRA e metros de NAPA nunca se somam: `totalQuantity` da linha é tira;
- * `napaM` é a napa-base (só Fazer) e mora no bloco “Napa para tiras”.
+ * `napaM` é a napa-base (só Fazer) e mora no bloco “Setor de Tiras”.
  */
 export interface StrapConsumptionFacts {
   origin: StrapOrigin | null;
@@ -655,7 +655,7 @@ const strapMaterialName = (origin: StrapOrigin | null, labels: string[]): string
  *
  * Uma linha por **linha da ficha × cor × origem** (D8/D10): a tira nunca some
  * — mesmo Fazer convertida em napa continua com seus metros de TIRA. A napa
- * vive em `artisanal`/`strap.napaM` e no bloco “Napa para tiras”.
+ * vive em `artisanal`/`strap.napaM` e no bloco “Setor de Tiras”.
  */
 export function replaceWithCanonicalStrapRows(
   rows: MaterialConsumptionRow[],
@@ -851,7 +851,7 @@ const canonicalCutPlaceholder = (
 });
 
 /**
- * Orientação fabril canônica (bloco “Napa para tiras”, só origem Fazer).
+ * Orientação fabril canônica (bloco “Setor de Tiras”, só origem Fazer).
  * `metros_necessarios` = tira A FAZER (depois do estoque de tira pronta, D15);
  * napa = Σ por linha (a fazer ÷ rendimento) — linhas sem snapshot de napa mas
  * com rendimento válido entram; linhas bloqueadas (D9) ficam em grupo próprio

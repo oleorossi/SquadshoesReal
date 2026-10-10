@@ -1,5 +1,5 @@
 /**
- * Planejador de corte intermediário no bloco “Napa para tiras”.
+ * Planejador de corte intermediário no bloco “Setor de Tiras”.
  *
  * Só planejamento de bancada: metros do rolo → altura a cortar (bandas inteiras),
  * simulação “e se cortar nesta altura?”, multi-rolo e conferência pelo rendimento
