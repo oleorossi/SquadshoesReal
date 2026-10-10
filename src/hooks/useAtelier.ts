@@ -13,7 +13,120 @@ export const atelierKeys = {
   prepDebits: (saleOrderIds: string[]) =>
     [...atelierKeys.all, 'prep-debits', [...saleOrderIds].sort().join(',')] as const,
   sheetsLite: () => [...atelierKeys.all, 'sheets-lite'] as const,
+  reference: (referenceId: string) => [...atelierKeys.all, 'reference', referenceId] as const,
+  lots: () => [...atelierKeys.all, 'lots'] as const,
 };
+
+export interface AtelierReferenceSectorRow {
+  id: string;
+  reference_id: string;
+  sector: AtelierSector;
+  active: boolean;
+  value_per_pair: number | null;
+  material_components: string[] | null;
+  updated_at: string | null;
+}
+
+/** Cadastro do Ateliê de UMA referência (ativas e inativas) — aba da ficha. */
+export function useAtelierReferenceConfig(referenceId: string | null | undefined) {
+  return useQuery({
+    queryKey: atelierKeys.reference(referenceId ?? ''),
+    enabled: !!referenceId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('atelier_complex_references' as never)
+        .select('id, reference_id, sector, active, value_per_pair, material_components, updated_at')
+        .eq('reference_id', referenceId as string);
+      if (error) throw error;
+      return (data ?? []) as unknown as AtelierReferenceSectorRow[];
+    },
+  });
+}
+
+export function useSaveAtelierReferenceSector() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      referenceId: string;
+      sector: AtelierSector;
+      active: boolean;
+      valuePerPair?: number | null;
+      materialComponents?: string[] | null;
+    }) => {
+      const payload: Record<string, unknown> = {
+        reference_id: input.referenceId,
+        sector: input.sector,
+        active: input.active,
+      };
+      if (input.valuePerPair !== undefined) payload.value_per_pair = input.valuePerPair;
+      if (input.materialComponents !== undefined) payload.material_components = input.materialComponents;
+      const { error } = await supabase
+        .from('atelier_complex_references' as never)
+        .upsert(payload as never, { onConflict: 'reference_id,sector' });
+      if (error) throw error;
+      return input;
+    },
+    onSuccess: (input) => {
+      void qc.invalidateQueries({ queryKey: atelierKeys.all });
+      if (input.valuePerPair === undefined && input.materialComponents === undefined) {
+        toast.success(input.active ? 'Referência enviada ao Ateliê' : 'Referência tirada do Ateliê');
+      }
+    },
+    // A recusa do cadastro vem do gatilho no banco com o motivo em português.
+    onError: (e: Error) => toast.error(e.message || 'Não foi possível salvar o Ateliê'),
+  });
+}
+
+export interface AtelierLotJob {
+  id: string;
+  sector: AtelierSector;
+  pipeline_status: AtelierPipelineStatus;
+  pairs: number;
+  sale_order_item_id: string | null;
+  order_number: string;
+  contractor_id: string | null;
+  contractor_name: string | null;
+  atelier_service_number: string | null;
+  target_end: string | null;
+}
+
+export interface AtelierLotRow {
+  id: string;
+  lot_number: string;
+  status: 'open' | 'cut' | 'cancelled';
+  reference_id: string;
+  reference_code: string | null;
+  reference_name: string | null;
+  color: string | null;
+  cut_at: string | null;
+  pairs: number;
+  min_ready_date: string | null;
+  grade: Record<string, number>;
+  orders: { sale_order_id: string; order_number: string; client_name: string | null; billing_week: string | null }[];
+  jobs: AtelierLotJob[];
+  debits: {
+    product_id: string;
+    product_name: string;
+    unit: string | null;
+    component: string | null;
+    required_qty: number;
+    quantity: number;
+    pending_qty: number;
+  }[];
+}
+
+/** Lotes do Ateliê (fila + aba da ficha). */
+export function useAtelierLots() {
+  return useQuery({
+    queryKey: atelierKeys.lots(),
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('list_atelier_lots' as never);
+      if (error) throw error;
+      return ((data ?? []) as unknown as AtelierLotRow[]);
+    },
+    staleTime: 15_000,
+  });
+}
 
 export interface AtelierSettings {
   costura_offset_days: number;

@@ -76,3 +76,70 @@ export function atelierKanbanBadgeLabel(status: string | null | undefined): stri
 export function atelierBlocksKanbanPointing(status: string | null | undefined): boolean {
   return status === 'sent_to_contractor';
 }
+
+/** Componentes que podem ir no kit do lote (nomes do motor de consumo). */
+export const ATELIER_KIT_COMPONENTS = ['Cabedal', 'Forração', 'Componente Direto', 'BOM'] as const;
+export type AtelierKitComponent = (typeof ATELIER_KIT_COMPONENTS)[number];
+
+/** Espelho de `atelier_default_kit_components` (SQL). */
+export function atelierDefaultKit(sector: AtelierSector): AtelierKitComponent[] {
+  if (sector === 'costura_cabedal') return ['Cabedal', 'Forração'];
+  if (sector === 'aviamento') return ['Componente Direto', 'BOM'];
+  return [];
+}
+
+/** Etapa da rota (production_sectors) que cada setor de rua substitui. */
+export const ATELIER_SECTOR_STAGE: Record<AtelierSector, string> = {
+  corte_cabedal: 'Corte Cabedal',
+  costura_cabedal: 'Costura Cabedal',
+  aviamento: 'Aviamento',
+};
+
+export interface AtelierSheetFields {
+  upper_material?: string | null;
+  upper_material_group_id?: string | null;
+  upper_material_product_id?: string | null;
+  upper_consumption?: number | string | null;
+  components_accessories?: unknown;
+  upper_corte_a_fio?: boolean | null;
+  has_straps?: boolean | null;
+  aviamento_steps?: unknown;
+}
+
+const nonEmptyArray = (v: unknown) => Array.isArray(v) && v.length > 0;
+
+/**
+ * A ficha suporta o setor? Espelho de `atelier_sheet_supports_sector` (SQL),
+ * que é quem decide de verdade (gatilho no cadastro). Aqui só serve pra tela
+ * explicar ANTES do clique por que um setor está indisponível.
+ */
+export function atelierSheetSupport(
+  sheet: AtelierSheetFields,
+  sector: AtelierSector,
+): { ok: boolean; reason: string | null } {
+  const hasCut =
+    !!String(sheet.upper_material ?? '').trim() ||
+    !!sheet.upper_material_group_id ||
+    !!sheet.upper_material_product_id ||
+    Number(sheet.upper_consumption || 0) > 0 ||
+    nonEmptyArray(sheet.components_accessories);
+  const hasAviamento = !!sheet.has_straps || nonEmptyArray(sheet.aviamento_steps);
+
+  if (sector === 'costura_cabedal') {
+    if (!hasCut) {
+      return { ok: false, reason: 'A ficha não tem material de cabedal. Cadastre em Materiais & Consumo.' };
+    }
+    if (sheet.upper_corte_a_fio) {
+      return { ok: false, reason: 'O cabedal é corte a fio, então não passa por costura.' };
+    }
+    return { ok: true, reason: null };
+  }
+  if (sector === 'aviamento') {
+    return hasAviamento
+      ? { ok: true, reason: null }
+      : { ok: false, reason: 'A ficha não tem etapas de aviamento nem tiras.' };
+  }
+  return hasCut
+    ? { ok: true, reason: null }
+    : { ok: false, reason: 'A ficha não tem material de cabedal.' };
+}
