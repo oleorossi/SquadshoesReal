@@ -1060,6 +1060,11 @@ o gatilho compartilhado não mudou.
 - A aba **Cores** cria a 1ª cor de grupo vazio (pede a unidade) e converte grupo
   vazio de "Coleção de itens" em "Linha com variantes" — `convertedToVariantLine`
   volta para a janela, senão o "Salvar" da aba Geral desfaz a conversão.
+- **Estoque → Materiais** lista grupo sem item numa faixa "grupos sem itens" (a
+  lista vem de `v_products_list`, que não tem linha para grupo vazio) e **mostra
+  cor zerada por padrão** — decisão do dono ("não tem porque zeradas ocultas"),
+  que reverte o R1.10 de `estoque-cores-e-editores.md`. Não volte o
+  `hideZeradas` para `true`: cor nova nasce com saldo 0 e sumia da busca.
 - ⚠ A rota da 1ª cor foi **código morto** de 18/08 a 11/10: uma trava anterior
   ("O grupo ainda não tem item-modelo") devolvia erro antes, e o contrato só
   conferia que o TEXTO existia no arquivo. Hoje é travado por teste de
