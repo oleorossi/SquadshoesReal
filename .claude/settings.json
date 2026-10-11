@@ -116,7 +116,19 @@
       "mcp__Vercel",
       "mcp__claude-code-remote",
       "mcp__claude_ai_Supabase__*",
-      "mcp__github"
+      "mcp__github",
+      "mcp__github__*",
+      "mcp__Vercel__*",
+      "mcp__claude-code-remote__*",
+      "mcp__Claude_Docs",
+      "Workflow",
+      "Monitor",
+      "Artifact",
+      "ArtifactData",
+      "ArtifactComments",
+      "ToolSearch",
+      "SendMessage",
+      "ReadNotifications"
     ],
     "deny": [
       "Bash(rm -rf /)",
