@@ -96,6 +96,7 @@ import {
 } from '@/lib/strapIdentity';
 import {
   activeProductColorsForGroup,
+  buildSaleOrderMaterialOptions,
   findActiveMaterialVariantProduct,
   hasVariantComponentPin,
   resolveMaterialVariantColorGroup,
@@ -644,27 +645,23 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     });
   }, [item.material_variant_id, activeMaterialVariants, allProducts, sheetSpecs, productGroups]);
 
-  // Família do material da PRÓPRIA ficha, sempre — independente de haver
-  // variante selecionada. Regra do dono (21/08/2026): cadastrar variante NÃO
-  // substitui o material principal da ficha, apenas acrescenta uma opção no PV.
-  // Sem isto o material da ficha não tem como ser representado no seletor.
-  const sheetBaseGroup = useMemo(
-    () => resolveSheetCommercialColorGroup({ sheet: sheetSpecs, groups: productGroups }),
-    [sheetSpecs, productGroups],
+  // Opções do seletor "Material". Regra do dono (21/08/2026): cadastrar
+  // variante NÃO substitui o material principal da ficha, apenas acrescenta uma
+  // opção no PV. `sheetBaseGroup` é a família da PRÓPRIA ficha, sempre;
+  // `baseCoveredByVariant` diz se alguma variante já resolve para ela (por
+  // GRUPO efetivo, não por nome). ⚠ A aba Variantes da ficha mostra a prévia
+  // deste seletor com a MESMA função — não monte a lista à parte aqui.
+  const materialOptions = useMemo(
+    () => buildSaleOrderMaterialOptions({
+      sheet: sheetSpecs,
+      variants: activeMaterialVariants,
+      products: allProducts,
+      groups: productGroups,
+    }),
+    [sheetSpecs, activeMaterialVariants, allProducts, productGroups],
   );
-
-  // A família da ficha já é vendável por alguma variante? Compara o grupo
-  // EFETIVO de cada variante (mesma resolução do resolver estrutural), não o
-  // nome — variante chamada "NAPA SOFT" pode apontar outra família.
-  const baseCoveredByVariant = useMemo(() => {
-    if (!sheetBaseGroup) return false;
-    return activeMaterialVariants.some(v => {
-      const grp = resolveMaterialVariantColorGroup({
-        variant: v, sheet: sheetSpecs, products: allProducts, groups: productGroups,
-      });
-      return grp?.id === sheetBaseGroup.id;
-    });
-  }, [activeMaterialVariants, sheetBaseGroup, sheetSpecs, allProducts, productGroups]);
+  const sheetBaseGroup = materialOptions.sheetBaseGroup;
+  const baseCoveredByVariant = materialOptions.baseCoveredByVariant;
 
   // ── Cor não cadastrada (BLOQUEIA salvar o PV) ────────────────────────────
   // Materiais de área (cabedal/forração) cuja cor principal NÃO tem produto no
@@ -2097,33 +2094,25 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                         como contorno deste bug — e essas 27 carregam SKU
                         proprio (25 com NCM, 1 ja usada em PV). Oferecer as duas
                         criaria entradas identicas no seletor, uma delas sem o
-                        SKU, e escolher a errada e invisivel na tela. */}
-                    {sheetBaseGroup && !baseCoveredByVariant && (
-                      <SelectItem value={SHEET_MATERIAL_OPTION}>
-                        <span className="font-medium">{sheetBaseGroup.name}</span>
-                        <span className="ml-1.5 text-muted-foreground">
-                          {['da ficha',
-                            activeProductColorsForGroup(allProducts, sheetBaseGroup.id).length > 0
-                              ? `${activeProductColorsForGroup(allProducts, sheetBaseGroup.id).length} cores`
-                              : ''].filter(Boolean).join(' · ')}
-                        </span>
-                      </SelectItem>
-                    )}
-                    {activeMaterialVariants.map(v => {
-                      const effectiveGroup = resolveMaterialVariantColorGroup({
-                        variant: v,
-                        sheet: sheetSpecs,
-                        products: allProducts,
-                        groups: productGroups,
-                      });
-                      const colorCount = effectiveGroup
-                        ? activeProductColorsForGroup(allProducts, effectiveGroup.id).length
-                        : 0;
-                      return (
+                        SKU, e escolher a errada e invisivel na tela.
+                        A lista vem de `buildSaleOrderMaterialOptions`, a mesma
+                        que desenha a previa na aba Variantes da ficha. */}
+                    {materialOptions.options.map(option => {
+                      const v = option.variant;
+                      const colorCount = option.colors.length;
+                      return v ? (
                         <SelectItem key={v.id} value={v.id}>
                           <span className="font-medium">{v.material_name}</span>
                           <span className="ml-1.5 text-muted-foreground">
                             {[v.sku, colorCount > 0 ? `${colorCount} cores` : '', Number(v.unit_price_override) > 0 ? formatCurrency(Number(v.unit_price_override)) : '']
+                              .filter(Boolean).join(' · ')}
+                          </span>
+                        </SelectItem>
+                      ) : (
+                        <SelectItem key={SHEET_MATERIAL_OPTION} value={SHEET_MATERIAL_OPTION}>
+                          <span className="font-medium">{option.label}</span>
+                          <span className="ml-1.5 text-muted-foreground">
+                            {['da ficha', colorCount > 0 ? `${colorCount} cores` : '']
                               .filter(Boolean).join(' · ')}
                           </span>
                         </SelectItem>
