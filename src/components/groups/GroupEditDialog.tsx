@@ -1563,8 +1563,10 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                   variantes" — a recusa só aparecia no submit, depois de o
                   usuário digitar a fila de cores inteira. Aqui ela aparece antes,
                   com as duas saídas: mudar a regra do grupo ou usar o cadastro
-                  rápido da aba Itens, que copia o item-modelo e funciona sempre. */}
-              {!isColorAgnostic && !isCanonicalStrapGroup && !sharedSpecs && !isBomColorSource && (
+                  rápido da aba Itens, que copia o item-modelo e funciona sempre.
+                  Grupo VAZIO não recusa: a 1ª cor o converte (spec
+                  grupo-cor-obrigatoria.md, D6) — a aba Cores explica isso. */}
+              {!isColorAgnostic && !isCanonicalStrapGroup && !sharedSpecs && !isBomColorSource && products.length > 0 && (
                 <div className="flex flex-col gap-3 border border-warning/40 bg-warning/10 px-3 py-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="flex items-start gap-2">
                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" weight="fill" />
@@ -1593,6 +1595,11 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                   groupName={group.name}
                   products={products.filter(product => product.active !== false)}
                   groupWidth={(group as any).dimensions_width}
+                  willBecomeVariantLine={!sharedSpecs && !isBomColorSource && products.length === 0}
+                  onConvertedToVariantLine={(unit) => {
+                    setSharedSpecs(true);
+                    setConsumptionUnit(current => (current === '__none__' ? unit : current));
+                  }}
                 />
               ) : null}
             </TabsContent>}

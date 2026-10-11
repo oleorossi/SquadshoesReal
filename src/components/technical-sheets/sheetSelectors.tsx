@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import { Check, CaretUpDown as ChevronsUpDown, CircleNotch as Loader2, Warning as AlertTriangle } from '@phosphor-icons/react';
+import { Check, CaretUpDown as ChevronsUpDown, CircleNotch as Loader2, Warning as AlertTriangle, Plus } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,6 +19,7 @@ import { useProducts } from '@/hooks/useProducts';
 import { getGroupPath } from '@/lib/groupHierarchy';
 import { sectorOfGroup } from '@/lib/categoryFromGroup';
 import { resolveDirectComponentSelection } from '@/lib/directComponentSelection';
+import GroupEditDialog from '@/components/groups/GroupEditDialog';
 
 /**
  * Seletores de cadastro da Ficha Tecnica.
@@ -186,6 +187,25 @@ export function GroupMaterialSelect({
     })
     .sort((a, b) => a.pathLabel.localeCompare(b.pathLabel, 'pt-BR')), [groups, parentIds, sector, groupIndex]);
 
+  // Grupo-folha SEM item ativo continua fora da seleção (sem SKU o PV não tem o
+  // que debitar e o custo/par sai R$ 0), mas aparece com atalho para cadastrar.
+  // Antes ficava invisível e o usuário concluía que o grupo não tinha sido
+  // salvo (NAPA ROOTS, 11/10/2026 — spec grupo-cor-obrigatoria.md, D7).
+  const emptyGroups = useMemo<GroupSelectOption[]>(() => groups
+    .filter(group => !parentIds.has(group.id) && group.is_family !== true)
+    .filter(group => !sector || sectorOfGroup(group) === sector)
+    .filter(group => (groupIndex[group.id]?.count || 0) === 0)
+    .map(group => {
+      const path = getGroupPath(groups, group.id);
+      return {
+        group,
+        pathLabel: path.map(node => node.name).join(' › ') || group.name,
+        familyLabel: null,
+      };
+    })
+    .sort((a, b) => a.pathLabel.localeCompare(b.pathLabel, 'pt-BR')), [groups, parentIds, sector, groupIndex]);
+  const [groupToFill, setGroupToFill] = useState<ProductGroup | null>(null);
+
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
 
@@ -211,6 +231,9 @@ export function GroupMaterialSelect({
     () => capSearchResults(filtered, SEARCH_RENDER_CAP),
     [filtered],
   );
+  const filteredEmpty = useMemo(() => (search.trim()
+    ? emptyGroups.filter(({ group, pathLabel }) => searchMatchesAllTerms(search, pathLabel, group.description))
+    : emptyGroups), [emptyGroups, search]);
 
   const sections = useMemo(() => {
     const byFamily = new Map<string, { label: string; options: GroupSelectOption[] }>();
@@ -347,10 +370,42 @@ export function GroupMaterialSelect({
                   {searchRefineHint(totalMatched, cap)}
                 </div>
               )}
+              {filteredEmpty.length > 0 && (
+                <CommandGroup heading="Sem itens ativos · cadastre antes de usar">
+                  {filteredEmpty.map(({ group, pathLabel }) => (
+                    <CommandItem
+                      key={group.id}
+                      value={`__sem_itens__${group.id}`}
+                      onSelect={() => {
+                        setOpen(false);
+                        setSearch('');
+                        setGroupToFill(group);
+                      }}
+                      className="items-start py-2 text-muted-foreground"
+                    >
+                      <Plus className="mr-2 mt-0.5 h-4 w-4 shrink-0 opacity-60" />
+                      <div className="min-w-0 flex-1 space-y-0.5">
+                        <span className="block truncate text-sm"><HighlightMatch text={pathLabel} term={search} /></span>
+                        <span className="block text-xs text-warning">
+                          0 itens · {group.is_color_agnostic ? 'Cadastrar itens' : 'Cadastrar cores'} →
+                        </span>
+                      </div>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              )}
             </CommandList>
           </Command>
         </PopoverContent>
       </Popover>
+      {groupToFill && (
+        <GroupEditDialog
+          open
+          onOpenChange={(next) => { if (!next) setGroupToFill(null); }}
+          group={groupToFill}
+          initialTab={groupToFill.is_color_agnostic ? 'items' : 'colors'}
+        />
+      )}
       {selectedIsContainer && (
         <p className="mt-1 flex items-center gap-1 text-xs text-warning">
           <AlertTriangle className="h-3 w-3 shrink-0" weight="fill" />

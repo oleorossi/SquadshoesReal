@@ -45,12 +45,28 @@ export type CreateColorResult = {
   groupName: string;
   status: 'created' | 'skipped' | 'error';
   error?: string;
+  /** O grupo estava vazio em "Coleção de itens" e virou "Linha com variantes"
+   *  para receber esta cor. A janela do grupo precisa espelhar isso no estado
+   *  local — senão o próximo "Salvar" da aba Geral desfaz a conversão. */
+  convertedToVariantLine?: boolean;
 };
+
+/** Método de cálculo coerente com a unidade-base escolhida para a 1ª cor. */
+export function calculationMethodForUnit(unit: string): 'meter' | 'weight' | 'unit' {
+  if (unit === 'm' || unit === 'cm') return 'meter';
+  if (unit === 'kg') return 'weight';
+  return 'unit';
+}
 
 /**
  * Cria (ou reusa) UM produto do grupo numa cor. Idempotente: se já existe produto
  * ativo nessa cor no grupo, marca `skipped`. Herda unidade/preço/local/dims/yield
  * do último produto do grupo (mantém a família consistente).
+ *
+ * Primeira cor (spec `grupo-cor-obrigatoria.md`, D6): sem item-modelo, a unidade
+ * vem de `stockUnit`. Grupo em "Coleção de itens" SEM nenhum produto vira
+ * "Linha com variantes" — não existe item que possa divergir, então não há
+ * heterogeneidade a proteger. Grupo com produto continua recusando.
  */
 export async function createGroupColorProduct(spec: GroupColorSpec): Promise<CreateColorResult> {
   const color = (spec.color || '').trim();
@@ -72,12 +88,39 @@ export async function createGroupColorProduct(spec: GroupColorSpec): Promise<Cre
   if (group?.is_family === true) {
     return { ...res, status: 'error', error: 'Família técnica não recebe variantes diretamente.' };
   }
-  if (group?.is_color_agnostic === true || (!group?.shared_specs && !group?.is_bom_color_source)) {
-    return {
-      ...res,
-      status: 'error',
-      error: 'Converta o grupo explicitamente para “Linha com variantes” antes de criar cores.',
-    };
+  const refuseNonVariantLine: CreateColorResult = {
+    ...res,
+    status: 'error',
+    error: 'Converta o grupo explicitamente para “Linha com variantes” antes de criar cores.',
+  };
+  if (group?.is_color_agnostic === true) return refuseNonVariantLine;
+
+  const explicitStockUnit = String(spec.stockUnit || '').trim();
+  const isVariantLine = Boolean(group?.shared_specs || group?.is_bom_color_source);
+  let convertedToVariantLine = false;
+  if (!isVariantLine) {
+    // Ativo OU inativo: um item inativo ainda é identidade do grupo e vira
+    // item-modelo abaixo — converter por cima dele seria decidir no lugar do dono.
+    const { data: anyProduct } = await supabase.from('products')
+      .select('id').eq('group_id', spec.groupId).limit(1);
+    if ((anyProduct || []).length > 0) return refuseNonVariantLine;
+    if (!explicitStockUnit) {
+      return {
+        ...res,
+        status: 'error',
+        error: 'Informe a unidade de estoque da primeira cor ou cadastre o primeiro item pelo formulário completo.',
+      };
+    }
+    // `chk_shared_group_has_consumption_unit`: linha compartilhada exige
+    // unidade técnica. O guard `shared_specs = false` evita sobrescrever uma
+    // conversão concorrente.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error: convertError } = await (supabase as any).from('product_groups')
+      .update({ shared_specs: true, consumption_unit: group?.consumption_unit || explicitStockUnit })
+      .eq('id', spec.groupId)
+      .eq('shared_specs', false);
+    if (convertError) return { ...res, status: 'error', error: convertError.message };
+    convertedToVariantLine = true;
   }
 
   const { data: existing } = await supabase.from('products')
@@ -102,15 +145,9 @@ export async function createGroupColorProduct(spec: GroupColorSpec): Promise<Cre
       .order('created_at', { ascending: false }).limit(1).maybeSingle();
     last = inactiveModel;
   }
-  if (!last) {
-    return {
-      ...res,
-      status: 'error',
-      error: 'O grupo ainda não tem item-modelo. Crie a primeira variante no Cadastro rápido para definir unidade e conversão.',
-    };
-  }
-
-  const explicitStockUnit = String(spec.stockUnit || '').trim();
+  // A trava antiga ("O grupo ainda não tem item-modelo") ficava ANTES desta e
+  // tornava a rota da 1ª cor código morto: nenhum grupo novo ganhava cor pela
+  // aba Cores. Sem modelo, a unidade explícita é o que basta.
   if (!last && !explicitStockUnit) {
     return {
       ...res,
@@ -156,7 +193,7 @@ export async function createGroupColorProduct(spec: GroupColorSpec): Promise<Cre
     purchase_order_unit: purchaseOrderUnit,
     min_order_quantity: last?.min_order_quantity || 0,
     lead_time_days: last?.lead_time_days || 0,
-    calculation_method: last?.calculation_method || 'weight',
+    calculation_method: last?.calculation_method || calculationMethodForUnit(defaultUnit),
     price_wholesale: last?.price_wholesale || 0,
     price_retail: last?.price_retail || 0,
     group_id: spec.groupId,
@@ -174,8 +211,8 @@ export async function createGroupColorProduct(spec: GroupColorSpec): Promise<Cre
   if (error && (error as any).code === '23505') {
     ({ error } = await supabase.from('products').insert({ ...productData, sku: await uniqueSku('', spec.groupName, color) } as any));
   }
-  if (error) return { ...res, status: 'error', error: error.message };
-  return { ...res, status: 'created' };
+  if (error) return { ...res, status: 'error', error: error.message, convertedToVariantLine };
+  return { ...res, status: 'created', convertedToVariantLine };
 }
 
 /**

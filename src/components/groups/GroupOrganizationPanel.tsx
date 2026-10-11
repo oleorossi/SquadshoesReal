@@ -18,6 +18,7 @@ import { useCan } from '@/hooks/useAccessControl';
 import { sectorLabel } from '@/lib/categoryFromGroup';
 import type { Product, ProductFormData } from '@/types/inventory';
 import GroupDialog from '@/components/groups/GroupDialog';
+import type { GroupEditTab } from '@/components/groups/GroupEditDialog';
 import GroupCreateDialog from '@/components/groups/GroupCreateDialog';
 import GroupItemsManager from '@/components/groups/GroupItemsManager';
 import GroupStockTree, { type ProductLite } from '@/components/groups/GroupStockTree';
@@ -63,6 +64,8 @@ export default function GroupOrganizationPanel({ permPath, extraActions }: Props
   const canCreateQuickVariant = perm.canCreate && canUseQuickGroupVariantForRoles(perm.roles);
 
   const [editGroup, setEditGroup] = useState<ProductGroup | null>(null);
+  /** Aba de abertura — só o pós-criação escolhe (Cores/Itens); a árvore abre em Geral. */
+  const [editTab, setEditTab] = useState<GroupEditTab | undefined>(undefined);
   const [itemsGroup, setItemsGroup] = useState<ProductGroup | null>(null);
   const [createCtx, setCreateCtx] = useState<CreateCtx | null>(null);
   const [moveOpen, setMoveOpen] = useState(false);
@@ -228,7 +231,7 @@ export default function GroupOrganizationPanel({ permPath, extraActions }: Props
             selectedProductIds={selectedProductIds}
             onToggleProduct={canSelectProducts ? toggleProduct : undefined}
             onToggleProducts={canSelectProducts ? toggleProducts : undefined}
-            onEdit={setEditGroup}
+            onEdit={(group) => { setEditTab(undefined); setEditGroup(group); }}
             onManageItems={setItemsGroup}
             onDelete={(g) => deleteGroup.mutate(g.id)}
             onNewFamily={(sector) => openCreate({ sector, parentId: null, lock: true, title: `Nova família em ${sectorLabel(sector)}` })}
@@ -249,11 +252,12 @@ export default function GroupOrganizationPanel({ permPath, extraActions }: Props
           initialParentId={createCtx.parentId}
           lockHierarchy={createCtx.lock}
           titleText={createCtx.title}
+          onCreated={(group, tab) => { setEditTab(tab); setEditGroup(group); }}
         />
       )}
 
       {editGroup && (
-        <GroupDialog open={!!editGroup} onOpenChange={(o) => { if (!o) setEditGroup(null); }} group={editGroup} />
+        <GroupDialog open={!!editGroup} onOpenChange={(o) => { if (!o) setEditGroup(null); }} group={editGroup} initialTab={editTab} />
       )}
 
       <GroupItemsManager

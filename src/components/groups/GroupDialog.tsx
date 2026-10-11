@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { ProductGroup } from '@/hooks/useGroups';
 import GroupCreateDialog from './GroupCreateDialog';
 import GroupEditDialog, { type GroupEditTab } from './GroupEditDialog';
@@ -21,8 +22,28 @@ export interface GroupDialogProps {
 }
 
 export default function GroupDialog({ open, onOpenChange, group, initialTab }: GroupDialogProps) {
+  // Grupo recém-criado: a janela do grupo abre na sequência, independente do
+  // `open` do pai (que já fechou a criação). Spec grupo-cor-obrigatoria.md, D5.
+  const [created, setCreated] = useState<{ group: ProductGroup; tab: GroupEditTab } | null>(null);
+
   if (group) {
     return <GroupEditDialog open={open} onOpenChange={onOpenChange} group={group} initialTab={initialTab} />;
   }
-  return <GroupCreateDialog open={open} onOpenChange={onOpenChange} />;
+  return (
+    <>
+      <GroupCreateDialog
+        open={open}
+        onOpenChange={onOpenChange}
+        onCreated={(newGroup, tab) => setCreated({ group: newGroup, tab })}
+      />
+      {created && (
+        <GroupEditDialog
+          open
+          onOpenChange={(next) => { if (!next) setCreated(null); }}
+          group={created.group}
+          initialTab={created.tab}
+        />
+      )}
+    </>
+  );
 }

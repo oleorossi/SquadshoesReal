@@ -181,7 +181,8 @@ describe('fronteira canonica de comandos de estoque', () => {
     expect(productsHook).toContain('quarantine_qty');
     expect(productsHook).not.toMatch(/from\(['"]products['"]\)[\s\S]{0,180}\.insert\(/);
 
-    const quickFamily = read('src/components/inventory/QuickFamilyDialog.tsx');
+    // Grupo que nasce com cor (antes QuickFamilyDialog) — spec grupo-cor-obrigatoria.md.
+    const quickFamily = read('src/lib/createGroupWithColors.ts');
     expect(quickFamily).toContain('createProductsWithStock');
     expect(quickFamily).not.toMatch(/from\(['"]products['"]\)[\s\S]{0,180}\.insert\(/);
   });
