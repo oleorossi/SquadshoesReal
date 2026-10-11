@@ -107,6 +107,17 @@ Não criar query nova se o dado já está no editor.
    Sem a capacidade (ou catálogo não carregado): só consumo, sem preço, custo e total.
 9. **"Ver por numeração":** continua consumo por numeração; entra só a coluna **R$/par**
    (custo médio) no fim.
+10. **O papel vem do campo da ficha, não do setor de estoque** (achado do dono na SP301).
+    NAPA SOFT / NAPA SUDANI / GLOW METALIC são estocadas como `Forração da Palmilha` e usadas
+    como cabedal em 9 fichas ativas (CF 05, I110, LA01, SP105, SP119, SP132, SP301, ST702,
+    ST703, STX): o filtro por setor sumia com o cabedal — já na revisão 1. Para Cabedal,
+    Material extra e Tiras o setor não exclui (o nome ainda exclui); na BOM o setor manda.
+11. **Unidade do grupo = unidade da maioria das cores**, preferindo m/placa para material de
+    área — nunca o primeiro SKU da lista (vem por `updated_at`; um débito na única cor em `un`
+    trocava a unidade do cabedal).
+12. **Grupo de estoque misto** (`COMPONENTES DIVERSOS`, `Tira chata 8mm` com ELÁSTICO dentro):
+    a mediana só usa SKUs do mesmo material (`materialIdentity`) ou, em tira, com o prefixo
+    tipo+medida no nome. Grupo da tira comprada pronta vale inteiro (os nomes ali são só a cor).
 
 ## Pendências de cadastro observadas (NÃO resolvidas aqui — dado do dono)
 - `TIRA OVERLOCK 5MM` COBRE com `unit_price` R$ 20,50/m (demais 23 cores a R$ 0,85). A
