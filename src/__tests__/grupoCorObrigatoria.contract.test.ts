@@ -52,6 +52,18 @@ describe('grupo de material — porta única de criação, nasce com cor', () =>
     expect(tab).toContain('results.some((result) => result.convertedToVariantLine)');
   });
 
+  it('o Estoque mostra grupo sem item e não esconde cor zerada por padrão (dono, 11/10/2026)', () => {
+    const materials = read('src/components/inventory/tabs/MaterialsTab.tsx');
+    // Cor nova nasce com saldo 0; escondida por padrão, a busca dizia "Nenhum resultado".
+    expect(materials).toContain('const [hideZeradas, setHideZeradas] = useState(false);');
+    // Grupo vazio não tem linha em v_products_list — aparece numa faixa à parte.
+    expect(materials).toContain('const emptyGroups = useMemo(');
+    expect(materials).toContain('onClick={() => setFillGroup(g)}');
+    expect(materials).toContain("initialTab={fillGroup.is_color_agnostic ? 'items' : 'colors'}");
+    // Com só grupo vazio no recorte, nada de "Nenhum resultado" contradizendo a faixa.
+    expect(materials).toContain('listProducts.length === 0 && emptyGroups.length > 0 ? (');
+  });
+
   it('o seletor da ficha mostra grupo vazio sem deixar selecionar (D7)', () => {
     const selector = read('src/components/technical-sheets/sheetSelectors.tsx');
     // A seleção continua exigindo item ativo (débito/custo).

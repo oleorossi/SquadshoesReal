@@ -34,6 +34,7 @@
 | D4 | Se as cores falharem, **o grupo recém-criado é desfeito** (`delete_empty_material_group`, que trava e revalida o vazio na mesma transação) e o formulário continua preenchido. Nunca sobra grupo vazio. |
 | D5 | Depois de criar (grupo não-família), **abre a janela do grupo** — aba **Cores** quando o grupo tem cor, aba **Itens** quando não tem. |
 | D6 | Aba **Cores** passa a cadastrar a **1ª cor** de grupo vazio (pede a unidade). Grupo vazio em "Coleção de itens" vira **"Linha com variantes" sozinho** (com `consumption_unit` = unidade escolhida — exigido por `chk_shared_group_has_consumption_unit`). Grupo com itens continua recusando como hoje. |
+| D8 | (11/10/2026, depois do deploy) **Estoque → Materiais**: grupo sem item ativo aparece numa faixa "grupos sem itens" (mesmo recorte de setor + busca) com "Cadastrar cores"; e **cor zerada deixa de ficar oculta por padrão** — "não tem porque zeradas ocultas". Reverte o R1.10 de `estoque-cores-e-editores.md`; o chip vira o filtro opcional "Esconder zeradas". |
 | D7 | No `GroupMaterialSelect`, grupo-folha **sem item ativo aparece desabilitado**, numa seção própria, com atalho "Cadastrar cores" que abre a janela do grupo na aba Cores. O seletor da aba Variantes (`MaterialVariantsTab`) fica para depois (arquivo com trabalho não commitado de outra sessão). |
 
 ## Requisitos

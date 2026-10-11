@@ -50,6 +50,8 @@ import GroupDialog from '@/components/groups/GroupDialog';
 import { GroupListDialog } from '@/components/inventory/GroupListDialog';
 import { useProductSupplySummaryQuery } from '@/hooks/useProductSupplySummary';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { sectorOfGroup, HIDDEN_STOCK_ORGANIZATION_SECTORS } from '@/lib/categoryFromGroup';
+import type { ProductGroup } from '@/hooks/useGroups';
 import { useQuery } from '@tanstack/react-query';
 
 export function MaterialsTab(props: { defaultGroupName?: string, title?: string }) {
@@ -143,8 +145,11 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
   const [groupFilter] = usePersistedState('groupFilter', 'all');
   const [supplierFilter] = usePersistedState('supplierFilter', 'all');
   const [statusFilter, setStatusFilter] = useState('all');
-  // Cor sem saldo sai da lista por padrão (R1.10).
-  const [hideZeradas, setHideZeradas] = useState(true);
+  // Cor sem saldo APARECE por padrão (dono, 11/10/2026: "não tem porque zeradas
+  // ocultas"). O R1.10 escondia por padrão e a cor recém-cadastrada — que nasce
+  // com saldo 0 — sumia da busca com "Nenhum resultado". O chip segue como
+  // filtro opcional.
+  const [hideZeradas, setHideZeradas] = useState(false);
   const [onlyFalta, setOnlyFalta] = useState(false);
   // "Falta p/ pedidos" ≠ "Só com falta". O chip antigo é `is_falta` da view:
   // disponível < 0 (reserva mordendo o saldo). Com o empenho parcial
@@ -226,6 +231,32 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
   const { data: allProducts = [] } = useProducts({ enabled: pageFetched });
   const { data: groups = [] } = useGroups();
   const { data: suppliers = [] } = useSuppliers();
+
+  // Grupo-folha SEM item ativo não tem linha em `v_products_list`, então nunca
+  // aparecia aqui — a busca por "NAPA ROOTS" dizia "Nenhum resultado" com o
+  // grupo criado (11/10/2026, spec grupo-cor-obrigatoria.md). Lista à parte,
+  // no mesmo recorte de setor + busca, com atalho pra cadastrar a 1ª cor.
+  const [fillGroup, setFillGroup] = useState<ProductGroup | null>(null);
+  const emptyGroups = useMemo(() => {
+    // Universo ainda não chegou: sem ele todo grupo pareceria vazio.
+    if (!pageFetched || allProducts.length === 0) return [] as ProductGroup[];
+    if (onlyFalta || onlyFaltaPv || statusFilter !== 'all' || supplierFilter !== 'all' || skuExact) return [] as ProductGroup[];
+    const withActiveItem = new Set(
+      (allProducts as Product[]).filter(p => p.active !== false && p.group_id).map(p => p.group_id as string),
+    );
+    const parentIds = new Set(groups.map(g => g.parent_group_id).filter(Boolean) as string[]);
+    return groups
+      .filter(g => g.is_family !== true && !parentIds.has(g.id) && !withActiveItem.has(g.id))
+      .filter(g => {
+        const sector = sectorOfGroup(g);
+        if (sector === 'Solado') return false; // Solado vive em /solados
+        if ((HIDDEN_STOCK_ORGANIZATION_SECTORS as readonly string[]).includes(sector)) return false;
+        if (defaultCategory !== 'all' && sector.toLowerCase() !== defaultCategory.toLowerCase()) return false;
+        if (effectiveGroup !== 'all' && effectiveGroup !== g.id) return false;
+        return searchMatchesAllTerms(debouncedSearch, g.name, g.description);
+      })
+      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  }, [pageFetched, allProducts, groups, onlyFalta, onlyFaltaPv, statusFilter, supplierFilter, skuExact, defaultCategory, effectiveGroup, debouncedSearch]);
 
   const getSuggestions = useCallback(
     (term: string) => buildInventorySearchSuggestions(term, groups, allProducts),
@@ -309,8 +340,8 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
   const pvChipActive = onlyFaltaPv && supplyAvailable;
 
   // Materiais com falta de PV, filtrados no CLIENTE sobre o universo
-  // (`useProducts`). A lista do servidor é paginada (50) e esconde zeradas por
-  // padrão — e item com falta de PV quase sempre está com físico 0 —, então
+  // (`useProducts`). A lista do servidor é paginada (50) e pode esconder zeradas
+  // (chip opcional) — e item com falta de PV quase sempre está com físico 0 —, então
   // filtrar só a página mostraria uma fatia e sumiria com o que importa. Os
   // demais filtros da tela são espelhados aqui (mesma semântica de
   // `usePaginatedProducts`/`v_products_list`). Como no "Só com falta", o chip
@@ -379,8 +410,8 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
   const listProducts = pvChipActive ? faltaPvRows : paginatedProducts;
 
   // Metade da lista é cor zerada (95 de 189 em 02/08/2026). Esconder por padrão
-  // é o maior ganho isolado de densidade — mas a contagem fica sempre visível no
-  // chip, pra que nada suma em silêncio (R1.10/R1.11).
+  // (R1.10) foi revertido pelo dono em 11/10/2026 — cor nova nasce zerada e
+  // sumia. Esconder virou opção; a contagem segue visível no chip (R1.11).
   // Contagens dos chips vêm do banco (count exact, sem baixar linha) e cobrem o
   // conjunto filtrado INTEIRO — não só a página visível. A precedência
   // "falta vence esconder-zeradas" mora no hook, junto do filtro.
@@ -590,7 +621,7 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
                 : 'h-8 px-3 rounded-full text-xs font-medium border border-border bg-background text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors'
             }
           >
-            {hideZeradas ? 'Zeradas ocultas' : 'Cores zeradas'}
+            {hideZeradas ? 'Zeradas ocultas' : 'Esconder zeradas'}
             <span className="ml-1.5 font-mono tabular-nums opacity-75">{zeradasCount}</span>
           </button>
           <button
@@ -681,6 +712,37 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
         />
       </div>
 
+      {!isPaginatedLoading && emptyGroups.length > 0 && (
+        <div className="mb-3 border border-warning/40 bg-warning/10 px-3 py-2.5">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" weight="fill" />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold text-foreground">
+                {emptyGroups.length === 1 ? '1 grupo sem itens' : `${emptyGroups.length} grupos sem itens`}
+              </p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                Grupo sem item não tem saldo nem aparece na ficha técnica. Cadastre ao menos uma cor para usar.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {emptyGroups.map(g => (
+                  <Button
+                    key={g.id}
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 gap-1.5 bg-background text-xs"
+                    onClick={() => setFillGroup(g)}
+                  >
+                    <span className="font-semibold">{g.name}</span>
+                    <span className="text-muted-foreground">· {g.is_color_agnostic ? 'Cadastrar itens' : 'Cadastrar cores'}</span>
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {isPaginatedLoading ? (
         <div className="flex justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -698,6 +760,9 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
             </Button>
           }
         />
+      ) : listProducts.length === 0 && emptyGroups.length > 0 ? (
+        // Só há grupo vazio no recorte: a faixa acima já é o resultado.
+        null
       ) : listProducts.length === 0 && debouncedSearch.trim() ? (
         <EmptyState
           size="sm"
@@ -750,6 +815,14 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
       />
 
       <GroupDialog open={groupDialogOpen} onOpenChange={setGroupDialogOpen} />
+      {fillGroup && (
+        <GroupDialog
+          open
+          onOpenChange={(next) => { if (!next) setFillGroup(null); }}
+          group={fillGroup}
+          initialTab={fillGroup.is_color_agnostic ? 'items' : 'colors'}
+        />
+      )}
       <GroupListDialog open={groupListOpen} onOpenChange={setGroupListOpen} />
       {forceDeleteFlow.dialog}
     </div>
