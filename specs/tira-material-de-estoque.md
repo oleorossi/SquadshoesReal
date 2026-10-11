@@ -8,7 +8,10 @@
 > "Fora de escopo: mudar o ledger de tiras" deixam de valer).
 > Continuam valendo: `tira-base-napa-por-ficha-tecnica.md` (napa-base pela ficha, nunca o
 > dublado), `calculadora-tiras-cortes-parciais.md`, e as regras de cor multicolor (Q20–Q27
-> de `tiras-redesenho.md`).
+> de `tiras-redesenho.md`) **mais a napa por tira (N1–N10, grill 11/10/2026)**: na multicolor
+> cada tira escolhe napa + cor entre as napas da referência, e a chave do SKU (R2) usa a napa
+> **da tira**, não a do item. Ao reescrever o writer/resolvedor, preserve o ramo
+> `napas_da_referencia_por_tira_20270101035700` de `private.resolve_technical_strap_material`.
 
 ## Goal
 

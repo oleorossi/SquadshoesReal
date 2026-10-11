@@ -42,7 +42,7 @@ import { useAddComponentSheet } from '@/hooks/useComponentSheets';
 import type { ProductFormData } from '@/types/inventory';
 import { toast } from 'sonner';
 import { type ReferenceMaterialVariant, type VariantSummary } from '@/hooks/useReferenceMaterialVariants';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { normalizeForSearch, searchMatchesAllTerms } from '@/lib/searchUtils';
 import { calculateGradeBasedDm2 } from '@/lib/materialConsumption';
 import {
@@ -88,7 +88,19 @@ import { canUseQuickGroupVariantForRoles } from '@/lib/quickGroupVariant';
 import SaleOrderStrapColorCreateDialog, {
   type SaleOrderStrapColorCreateContext,
 } from '@/components/sale-orders/SaleOrderStrapColorCreateDialog';
-import { resolveStrapMaterialBaseGroupId, strapMaterialMode } from '@/lib/strapMaterialPolicy';
+import {
+  resolveStrapMaterialBaseGroupId,
+  strapChoosesReferenceNapa,
+  strapMaterialMode,
+} from '@/lib/strapMaterialPolicy';
+import { useReferenceStrapNapas } from '@/hooks/useReferenceStrapNapas';
+import {
+  itemDefaultNapaId,
+  keptStrapNapasMessage,
+  orderNapasForItem,
+  strapNapaFollowsItemMaterial,
+  type ReferenceStrapNapa,
+} from '@/lib/referenceStrapNapas';
 import {
   isPurchasedReadyStrap,
   strapIdentityBasis,
@@ -219,6 +231,9 @@ const formatCurrency = (v: number) =>
 
 const EMPTY_VARIANTS_BY_REF = new Map<string, readonly ReferenceMaterialVariant[]>();
 const EMPTY_STRAP_SOURCING_MAP = Object.freeze({}) as StrapSourcingMap;
+const EMPTY_REFERENCE_NAPAS: readonly ReferenceStrapNapa[] = Object.freeze([]);
+// Valor do seletor agrupado napa+cor (tira multicolor): "<napa>|<cor>".
+const NAPA_COLOR_SEPARATOR = '|';
 
 // Sentinela do seletor de material: Radix nao aceita SelectItem com value "",
 // e nulo no item significa "material da propria ficha", que agora e escolha
@@ -360,6 +375,20 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       ? selectedRef.strap_colors as SaleOrderStrapResolutionLine[]
       : [],
     [selectedRef?.strap_colors],
+  );
+  // Tira multicolor que segue a referência escolhe também a NAPA, entre as napas
+  // da referência — napa-base da ficha + variantes ativas (dono, 11/10/2026;
+  // OB01 = NAPA SOFT + GLOW METALIC). Só consulta quando a ficha tem essa tira.
+  const referenceHasNapaChoice = useMemo(
+    () => referenceStrapDefinitions.some((line) => strapChoosesReferenceNapa(line)),
+    [referenceStrapDefinitions],
+  );
+  const referenceNapasQuery = useReferenceStrapNapas(item.reference_id, referenceHasNapaChoice);
+  const referenceNapas = referenceNapasQuery.data || EMPTY_REFERENCE_NAPAS;
+  const itemDefaultNapa = itemDefaultNapaId(referenceNapas, item.material_variant_id);
+  const orderedReferenceNapas = useMemo(
+    () => orderNapasForItem(referenceNapas, itemDefaultNapa),
+    [referenceNapas, itemDefaultNapa],
   );
   const preserveCommittedStrapSnapshot = !!item.id
     && isCommittedSaleOrderStrapSnapshotStatus(saleOrderStatus);
@@ -1115,6 +1144,15 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     : strapPresentationDefinitions.flatMap((strap, ordinal) => {
       if (strapIdentityBasis(strap) !== 'reference_base') return [];
       const mode = strapMaterialMode(strap);
+      // Napa gravada que saiu da referência (cópia de PV antigo, variante
+      // desativada): o servidor recusaria ao salvar — avisa antes.
+      if (strapChoosesReferenceNapa(strap)
+          && referenceNapasQuery.data
+          && isUuid(strap.base_group_id)
+          && strap.base_group_id !== itemDefaultNapa
+          && !referenceNapas.some((napa) => napa.id === strap.base_group_id)) {
+        return [strap.label || `Tira ${ordinal + 1}`];
+      }
       if (mode === 'follow_reference') return [];
       if (mode && isUuid(materialBaseForStrap(strap))) return [];
       return [strap.label || `Tira ${ordinal + 1}`];
@@ -1391,9 +1429,34 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     let next = strapSourcingMap;
     let changed = false;
     let materialChanged = false;
+    // Q5 (napas por tira, 11/10/2026): a tira multicolor que ainda está na napa
+    // do material ANTIGO acompanha o novo (e perde a cor se ela não existir na
+    // napa nova); a trocada à mão para outra napa fica como está.
+    const napasLoaded = !!referenceNapasQuery.data;
+    const previousDefaultNapa = itemDefaultNapaId(referenceNapas, previous.value);
+    const nextDefaultNapa = itemDefaultNapaId(referenceNapas, current);
+    const keptLineIds = new Set<string>();
     const updatedStraps = (item.strap_colors || []).map((strap) => {
       if (strapIdentityBasis(strap) !== 'reference_base'
           || strapMaterialMode(strap) !== 'follow_reference') return strap;
+      if (napasLoaded && strapChoosesReferenceNapa(strap)) {
+        if (!strapNapaFollowsItemMaterial(strap.base_group_id, previousDefaultNapa)) {
+          const lineId = technicalStrapLineId(strap);
+          if (lineId) keptLineIds.add(lineId);
+          return strap;
+        }
+        const keepsColor = !isUuid(strap.color_id) || !strapCatalog || !nextDefaultNapa
+          || strapColorsForIdentity(strapCatalog, strap, nextDefaultNapa)
+            .some((color) => color.id === strap.color_id);
+        if (!strap.base_group_id && !strap.base_group_name && keepsColor) return strap;
+        materialChanged = true;
+        return {
+          ...strap,
+          base_group_id: null,
+          base_group_name: null,
+          ...(keepsColor ? {} : { color: '', color_id: null }),
+        };
+      }
       if (!strap.base_group_id && !strap.base_group_name) return strap;
       materialChanged = true;
       return { ...strap, base_group_id: null, base_group_name: null };
@@ -1402,13 +1465,25 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       if (strapIdentityBasis(strap) !== 'reference_base'
           || strapMaterialMode(strap) !== 'follow_reference') return;
       const lineId = technicalStrapLineId(strap);
+      if (lineId && keptLineIds.has(lineId)) return;
       if (!getStrapSourcingSelection(next, lineId)) return;
       next = setStrapSourcing(next, lineId, null);
       changed = true;
     });
+    const keptNapasMessage = keptStrapNapasMessage(keptLineIds.size);
+    setKeptStrapColorsNote(keptNapasMessage);
+    if (keptNapasMessage) toast.info(keptNapasMessage);
     if (materialChanged) latestRef.current.onUpdate(latestRef.current.index, 'strap_colors', updatedStraps);
     if (changed) latestRef.current.onUpdate(latestRef.current.index, 'strap_sourcing', next);
-  }, [item.material_variant_id, item.strap_colors, strapSourcingMap, preserveCommittedStrapSnapshot]);
+  }, [
+    item.material_variant_id,
+    item.strap_colors,
+    strapSourcingMap,
+    preserveCommittedStrapSnapshot,
+    referenceNapasQuery.data,
+    referenceNapas,
+    strapCatalog,
+  ]);
 
   // Normaliza o rótulo da cor canônica já escolhida. NÃO apaga color_id só
   // porque a cor saiu da lista "disponível" do material (SKU inativo, alias
@@ -2848,6 +2923,11 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                   const materialName = strap.base_group_name
                     || productGroups.find((group) => group.id === baseGroupId)?.name
                     || resolvedLine?.baseGroupName;
+                  // Tira multicolor que segue a referência: um seletor só, com as
+                  // cores agrupadas por napa da referência (dono, 11/10/2026).
+                  const napaChoice = !usesFinishedGroup
+                    && strapChoosesReferenceNapa(strap)
+                    && orderedReferenceNapas.length > 1;
                   const colorMode = strapColorMode(strap);
                   const selectsOnOrder = colorMode === 'select_on_order';
                   const independentReferenceBase = !usesFinishedGroup && selectsOnOrder;
@@ -2957,6 +3037,90 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                             histórico
                           </span>
                         </div>
+                      ) : napaChoice ? (
+                        <Select
+                          value={isUuid(strap.color_id) && isUuid(baseGroupId)
+                            ? `${baseGroupId}${NAPA_COLOR_SEPARATOR}${strap.color_id}`
+                            : ''}
+                          disabled={!item.reference_id || !strapCatalog || strapCatalogLoading || !measureResolved}
+                          onValueChange={(value) => {
+                            const [napaId, colorId] = value.split(NAPA_COLOR_SEPARATOR);
+                            const napa = orderedReferenceNapas.find((entry) => entry.id === napaId);
+                            const canonical = napa
+                              ? strapColorsForIdentity(strapCatalog, strap, napa.id).find((entry) => entry.id === colorId)
+                              : undefined;
+                            if (!napa || !canonical) return;
+                            const updated = [...snapshotStraps];
+                            const snapshotIndex = lineId
+                              ? updated.findIndex((entry) => technicalStrapLineId(entry) === lineId)
+                              : sIdx;
+                            const snapshot = updated[snapshotIndex];
+                            if (!snapshot) return;
+                            updated[snapshotIndex] = {
+                              ...snapshot,
+                              base_group_id: napa.id,
+                              base_group_name: napa.name,
+                              color_id: canonical.id,
+                              color: canonical.name,
+                            };
+                            onUpdate(index, 'strap_colors', updated);
+                            onUpdate(index, 'strap_sourcing', setStrapSourcing(
+                              strapSourcingMap,
+                              technicalStrapLineId(snapshot),
+                              null,
+                            ));
+                          }}
+                        >
+                          <SelectTrigger
+                            className={cn('h-8', !strap.color_id && 'border-amber-500/60')}
+                            aria-label={`Napa e cor de ${strap.label || `Tira ${sIdx + 1}`}`}
+                          >
+                            <SelectValue placeholder={strap.color
+                              ? `${strap.color} — confirme no catálogo`
+                              : 'Selecione a napa e a cor'}
+                            >
+                              {strap.color ? `${materialName ? `${materialName} · ` : ''}${strap.color}` : undefined}
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectContent searchable searchPlaceholder="Buscar napa ou cor…" searchLabel="Cores por napa"
+                            searchEmptyText={canCreateStrapColor
+                              ? 'Cor não encontrada. Use Cadastrar cor abaixo do seletor.'
+                              : 'Nenhuma cor cadastrada corresponde à busca.'}>
+                            {orderedReferenceNapas.map((napa) => {
+                              const napaColors = strapColorsForIdentity(strapCatalog, strap, napa.id);
+                              const invalidSelection = napa.id === baseGroupId
+                                && !!selectedColor
+                                && !napaColors.some((entry) => entry.id === selectedColor.id);
+                              return (
+                                <SelectGroup key={napa.id}>
+                                  <SelectLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                                    {napa.name}{napa.id === itemDefaultNapa ? ' · material do item' : ''}
+                                  </SelectLabel>
+                                  {invalidSelection && (
+                                    <SelectItem value={`${napa.id}${NAPA_COLOR_SEPARATOR}${selectedColor.id}`} disabled>
+                                      {selectedColor.name} · vínculo inválido
+                                    </SelectItem>
+                                  )}
+                                  {napaColors.map((entry) => (
+                                    <SelectItem
+                                      key={entry.id}
+                                      value={`${napa.id}${NAPA_COLOR_SEPARATOR}${entry.id}`}
+                                      textValue={entry.name}
+                                      aria-label={`${napa.name} ${entry.name}`}
+                                    >
+                                      {entry.name}
+                                    </SelectItem>
+                                  ))}
+                                  {napaColors.length === 0 && (
+                                    <SelectItem value={`${napa.id}${NAPA_COLOR_SEPARATOR}sem-cor`} disabled>
+                                      Nenhuma cor cadastrada nesta napa
+                                    </SelectItem>
+                                  )}
+                                </SelectGroup>
+                              );
+                            })}
+                          </SelectContent>
+                        </Select>
                       ) : (
                         <Select
                           value={strap.color_id || ''}
@@ -3033,6 +3197,10 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                                 measureName: canonicalMeasure?.display_name || 'Medida da ficha',
                                 baseGroupId,
                                 baseGroupName: materialName || 'Material da ficha',
+                                // Q12: a napa da cor nova é escolhida no cadastro.
+                                ...(napaChoice ? {
+                                  napaOptions: orderedReferenceNapas.map((napa) => ({ id: napa.id, name: napa.name })),
+                                } : {}),
                               },
                             })}
                           >
@@ -3434,12 +3602,16 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
               line,
               current.strapLineByKey.get(created.technicalStrapLineId)?.baseGroupId,
             ) : null;
+            // Q12: na tira multicolor a cor nova pode ter sido criada em outra
+            // napa da referência — a tira passa para essa napa junto com a cor.
+            const createdNapa = target.context.napaOptions?.find((napa) => napa.id === created.baseGroupId);
+            const napaSwitch = !!createdNapa && !!line && strapChoosesReferenceNapa(line);
             if (!mountedRef.current
                 || current.item !== target.itemSnapshot
                 || created.technicalStrapLineId !== target.context.technicalStrapLineId
                 || created.typeId !== target.context.typeId
                 || created.measureId !== target.context.measureId
-                || created.baseGroupId !== target.context.baseGroupId
+                || (created.baseGroupId !== target.context.baseGroupId && !napaSwitch)
                 || current.preserveCommittedStrapSnapshot
                 || isProductionExcludedSaleOrderItem(current.item)
                 || current.item.reference_id !== target.referenceId
@@ -3449,7 +3621,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                 || strapColorMode(line) !== 'select_on_order'
                 || line.strap_type_id !== created.typeId
                 || line.measure_id !== created.measureId
-                || currentBase !== created.baseGroupId) {
+                || (currentBase !== created.baseGroupId && !napaSwitch)) {
               throw new Error('A cor foi cadastrada, mas o contexto do item mudou. Feche o cadastro e selecione a cor na posição desejada.');
             }
             const snapshots = current.item.strap_colors || [];
@@ -3459,7 +3631,12 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
             const { index: currentIndex, onUpdate: update } = latestRef.current;
             update(currentIndex, 'strap_colors', snapshots.map(entry =>
               technicalStrapLineId(entry) === created.technicalStrapLineId
-                ? { ...entry, color_id: created.colorId, color: created.colorName }
+                ? {
+                  ...entry,
+                  ...(napaSwitch ? { base_group_id: createdNapa.id, base_group_name: createdNapa.name } : {}),
+                  color_id: created.colorId,
+                  color: created.colorName,
+                }
                 : entry));
             update(currentIndex, 'strap_sourcing', setStrapSourcing(
               current.item.strap_sourcing || EMPTY_STRAP_SOURCING_MAP,

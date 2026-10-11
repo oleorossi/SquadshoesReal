@@ -26,6 +26,12 @@ export interface SaleOrderStrapColorCreateContext {
   measureName: string;
   baseGroupId: string;
   baseGroupName: string;
+  /**
+   * Tira multicolor que escolhe a napa no PV (dono, 11/10/2026 — Q12): napas
+   * da referência em que a cor nova pode ser criada. `baseGroupId` é a napa
+   * atual da tira e vem marcada.
+   */
+  napaOptions?: Array<{ id: string; name: string }>;
 }
 
 export interface SaleOrderStrapColorCreated {
@@ -46,6 +52,23 @@ interface Props {
   onCreated: (created: SaleOrderStrapColorCreated) => void | Promise<void>;
 }
 
+interface AuthorizedProps extends Props {
+  onNapaChange?: (napaId: string) => void;
+}
+
+function NapaPicker({ context, onNapaChange }: { context: SaleOrderStrapColorCreateContext; onNapaChange?: (napaId: string) => void }) {
+  if (!onNapaChange || (context.napaOptions?.length || 0) < 2) return null;
+  return <div className="space-y-2">
+    <Label htmlFor="strap-color-napa">Napa da cor nova</Label>
+    <Select value={context.baseGroupId} onValueChange={onNapaChange}>
+      <SelectTrigger id="strap-color-napa" aria-label="Napa da cor nova"><SelectValue /></SelectTrigger>
+      <SelectContent>
+        {context.napaOptions.map(napa => <SelectItem key={napa.id} value={napa.id}>{napa.name}</SelectItem>)}
+      </SelectContent>
+    </Select>
+  </div>;
+}
+
 function ContextSummary({ context }: { context: SaleOrderStrapColorCreateContext }) {
   return <div className="space-y-1 rounded-md border bg-muted/20 p-3 text-sm">
     <p className="font-semibold">{context.label} · {context.typeName} · {context.measureName}</p>
@@ -64,7 +87,7 @@ function templateMaterialName(product: Product) {
 }
 
 /** Montado somente após os gates: não consulta preços para quem não os vê. */
-function AuthorizedColorCreate({ open, onOpenChange, context, initialColor, onCreated }: Props) {
+function AuthorizedColorCreate({ open, onOpenChange, context, initialColor, onCreated, onNapaChange }: AuthorizedProps) {
   const [templateId, setTemplateId] = useState('');
   const [confirming, setConfirming] = useState(false);
   const queryClient = useQueryClient();
@@ -177,6 +200,7 @@ function AuthorizedColorCreate({ open, onOpenChange, context, initialColor, onCr
         <DialogTitle>Cadastrar cor para {context.label}</DialogTitle>
         <DialogDescription>Escolha o item deste material que fornecerá os padrões da nova cor. Nenhum saldo será acrescentado.</DialogDescription>
       </DialogHeader>
+      <NapaPicker context={context} onNapaChange={onNapaChange} />
       <ContextSummary context={displayContext} />
       {materialQuery.isLoading || catalogQuery.isLoading ? <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Carregando itens do material…</p>
         : materialQuery.isError || catalogQuery.isError ? <div className="space-y-2">
@@ -205,9 +229,16 @@ function AuthorizedColorCreate({ open, onOpenChange, context, initialColor, onCr
   </Dialog>;
 }
 
-export default function SaleOrderStrapColorCreateDialog(props: Props) {
+export default function SaleOrderStrapColorCreateDialog(rawProps: Props) {
   const permission = useCan('/estoque');
   const { canSeeFinancialValues } = useAccessControl();
+  // Q12: trocar a napa remonta o cadastro com o material escolhido (query,
+  // item-modelo e RPC usam `context.baseGroupId`).
+  const [napaId, setNapaId] = useState(rawProps.context.baseGroupId);
+  const chosenNapa = rawProps.context.napaOptions?.find(napa => napa.id === napaId);
+  const props: Props = chosenNapa && chosenNapa.id !== rawProps.context.baseGroupId
+    ? { ...rawProps, context: { ...rawProps.context, baseGroupId: chosenNapa.id, baseGroupName: chosenNapa.name } }
+    : rawProps;
   if (!props.open) return null;
   const validContext = [props.context.referenceId, props.context.technicalStrapLineId, props.context.typeId, props.context.measureId, props.context.baseGroupId].every(isUuid)
     && (props.context.materialVariantId == null || isUuid(props.context.materialVariantId));
@@ -224,7 +255,7 @@ export default function SaleOrderStrapColorCreateDialog(props: Props) {
     </DialogContent>
   </Dialog>;
   const key = [props.context.referenceId, props.context.materialVariantId, props.context.technicalStrapLineId, props.context.typeId, props.context.measureId, props.context.baseGroupId].join(':');
-  return <AuthorizedColorCreate key={key} {...props} />;
+  return <AuthorizedColorCreate key={key} {...props} onNapaChange={props.context.napaOptions?.length ? setNapaId : undefined} />;
 }
 
 export { SaleOrderStrapColorCreateDialog };

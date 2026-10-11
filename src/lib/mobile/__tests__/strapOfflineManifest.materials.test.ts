@@ -79,9 +79,27 @@ describe('manifesto offline de material por posição', () => {
   });
 
   it('base herdada usa a variante atual do manifesto e não a base antiga do draft', () => {
-    const inherited = { ...line, material_mode: 'follow_reference', allowed_material_group_ids: [], base_group_id: GROUP_A };
+    const inherited = {
+      ...line,
+      color_mode: 'follow_main' as const,
+      material_mode: 'follow_reference',
+      allowed_material_group_ids: [],
+      base_group_id: GROUP_A,
+    };
     expect(mobileStrapSelectedMaterial(inherited, { base_group_id: GROUP_B })?.base_group_id).toBe(GROUP_A);
     expect(mobileStrapMaterialOptions(inherited)).toHaveLength(1);
+  });
+
+  // Napas por tira (dono, 11/10/2026): tira multicolor que segue a referência
+  // escolhe a napa entre as napas da referência — o manifesto traz todas em
+  // `material_options` (napa do item primeiro) e a escolha do draft vale.
+  it('tira multicolor que segue a referência escolhe a napa entre as opções do manifesto', () => {
+    const multicolor = { ...line, material_mode: 'follow_reference', allowed_material_group_ids: [], base_group_id: GROUP_A };
+    expect(mobileStrapMaterialOptions(multicolor).map((option) => option.base_group_id)).toEqual([GROUP_A, GROUP_B]);
+    expect(mobileStrapSelectedMaterial(multicolor)?.base_group_id).toBe(GROUP_A);
+    expect(mobileStrapSelectedMaterial(multicolor, { base_group_id: GROUP_B })?.base_group_id).toBe(GROUP_B);
+    // Napa fora da referência não vira default silencioso: fica sem material.
+    expect(mobileStrapSelectedMaterial(multicolor, { base_group_id: COLOR_A })).toBeNull();
   });
 
   it.each([

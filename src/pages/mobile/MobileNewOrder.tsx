@@ -31,7 +31,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { NumberInput } from '@/components/ui/number-input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SignatureCanvas } from '@/components/mobile/SignatureCanvas';
 import {
   SaleOrderStrapColorCreateDialog,
@@ -57,7 +57,8 @@ import { classifyMobileOrderError, submitMobileSaleOrderAtomic } from '@/lib/mob
 import { confirmMobileSaleOrder } from '@/lib/mobile/confirmSaleOrder';
 import { strapIdentityBasis } from '@/lib/strapIdentity';
 import { keptStrapColorsMessage, syncMulticolorStrapColors } from '@/lib/multicolorStrapColors';
-import { strapMaterialMode, validateStrapMaterialPolicy } from '@/lib/strapMaterialPolicy';
+import { strapChoosesReferenceNapa, strapMaterialMode, validateStrapMaterialPolicy } from '@/lib/strapMaterialPolicy';
+import { keptStrapNapasMessage, strapNapaFollowsItemMaterial } from '@/lib/referenceStrapNapas';
 import { reconcileEditableStrapSnapshots } from '@/lib/reconcileStrapSnapshots';
 import {
   fetchMobileStrapOfflineManifest,
@@ -223,6 +224,38 @@ export function selectMobileStrapColor(
 }
 
 /**
+ * Tira multicolor que segue a referência (dono, 11/10/2026): napa e cor saem
+ * juntas do seletor agrupado, entre as napas da referência que o manifesto traz
+ * em `material_options` (mig `20270101035700`).
+ */
+export function selectMobileStrapNapaColor(
+  item: DraftItem,
+  lineId: string,
+  baseGroupId: string,
+  colorId: string,
+  manifestEntry: MobileStrapManifestReference | null | undefined,
+): DraftItem {
+  const manifestLine = manifestEntry?.lines.find((line) => line.technical_strap_line_id === lineId);
+  if (!manifestLine || !strapChoosesReferenceNapa(manifestLine)) return item;
+  const strapIndex = (item.strap_colors || []).findIndex((strap) => technicalStrapLineId(strap) === lineId);
+  const strap = item.strap_colors?.[strapIndex];
+  if (!strap || !manifestLineMatchesSnapshot(strap, manifestLine)) return item;
+  const material = mobileStrapMaterialOptions(manifestLine).find((entry) => entry.base_group_id === baseGroupId);
+  const color = material?.allowed_colors.find((entry) => entry.id === colorId);
+  if (!material || !color) return item;
+  const straps = [...item.strap_colors];
+  straps[strapIndex] = {
+    ...strap,
+    color_mode: 'select_on_order',
+    base_group_id: material.base_group_id,
+    base_group_name: material.base_group_name,
+    color_id: color.id,
+    color: color.name,
+  };
+  return { ...item, strap_colors: straps, strap_sourcing: setStrapSourcing(item.strap_sourcing, lineId, null) };
+}
+
+/**
  * Tiras com cores combinadas (grill 10/10/2026, Q24/Q25) — mesma regra do
  * desktop (`syncMulticolorStrapColors`): tira interna `select_on_order` vazia
  * vem com a cor principal quando ela existe para a tira; na troca da
@@ -280,8 +313,14 @@ export function applyCreatedMobileStrapColor(
   const manifestLine = entry?.lines.find((line) => line.technical_strap_line_id === created.technicalStrapLineId);
   if (!strap || strapIdentityBasis(strap) !== 'reference_base'
       || strapColorMode(strap) !== 'select_on_order'
-      || strap.strap_type_id !== created.typeId || strap.measure_id !== created.measureId
-      || mobileStrapSelectedMaterial(manifestLine, strap)?.base_group_id !== created.baseGroupId) return item;
+      || strap.strap_type_id !== created.typeId || strap.measure_id !== created.measureId) return item;
+  // Q12: na tira multicolor a cor nova pode ter nascido em outra napa da
+  // referência — a tira passa para essa napa junto com a cor.
+  if (manifestLine && strapChoosesReferenceNapa(manifestLine)
+      && mobileStrapMaterialOptions(manifestLine).some((option) => option.base_group_id === created.baseGroupId)) {
+    return selectMobileStrapNapaColor(item, created.technicalStrapLineId, created.baseGroupId, created.colorId, entry);
+  }
+  if (mobileStrapSelectedMaterial(manifestLine, strap)?.base_group_id !== created.baseGroupId) return item;
   return selectMobileStrapColor(item, created.technicalStrapLineId, created.colorId, entry);
 }
 
@@ -488,15 +527,45 @@ export function reconcileMobileDraftItemsWithManifest(
 export function resetMobileStrapsForMaterialChange(
   item: DraftItem,
   mainColor = '',
-): Pick<DraftItem, 'strap_colors' | 'strap_sourcing'> {
+  manifests: {
+    previous?: MobileStrapManifestReference | null;
+    next?: MobileStrapManifestReference | null;
+  } = {},
+): Pick<DraftItem, 'strap_colors' | 'strap_sourcing'> & { keptNapas: number } {
   const aligned = alignMobileStrapsToMainColor(
     item.strap_colors || [],
     mainColor,
     {},
   );
+  // Q5 (napas por tira, 11/10/2026): tira multicolor ainda na napa do material
+  // ANTIGO acompanha o novo (perde a cor se ela não existir na napa nova); a
+  // trocada à mão para outra napa fica. A napa default de cada material é a
+  // `base_group_id` da linha no manifesto daquele material.
+  let keptNapas = 0;
+  const strapColors = aligned.strapColors.map((strap) => {
+    if (!strapChoosesReferenceNapa(strap)) return strap;
+    const lineId = technicalStrapLineId(strap);
+    const previousDefault = manifests.previous?.lines
+      .find((line) => line.technical_strap_line_id === lineId)?.base_group_id;
+    if (!strapNapaFollowsItemMaterial(strap.base_group_id, previousDefault)) {
+      keptNapas += 1;
+      return strap;
+    }
+    const nextLine = manifests.next?.lines.find((line) => line.technical_strap_line_id === lineId);
+    const nextColors = nextLine ? mobileStrapSelectedMaterial(nextLine, null)?.allowed_colors : null;
+    const keepsColor = !strap.color_id || !nextColors
+      || nextColors.some((color) => color.id === strap.color_id);
+    return {
+      ...strap,
+      base_group_id: null,
+      base_group_name: null,
+      ...(keepsColor ? {} : { color: '', color_id: null }),
+    };
+  });
   return {
-    strap_colors: aligned.strapColors,
+    strap_colors: strapColors,
     strap_sourcing: {},
+    keptNapas,
   };
 }
 
@@ -1017,6 +1086,11 @@ function MobileStrapIdentityEditor({
         const materialMode = strapMaterialMode(manifestLine || strap);
         const material = mobileStrapSelectedMaterial(manifestLine, strap);
         const materials = mobileStrapMaterialOptions(manifestLine);
+        // Tira multicolor que segue a referência: napa + cor num seletor só,
+        // agrupado pelas napas da referência (dono, 11/10/2026).
+        const napaChoice = !usesFinishedGroup
+          && strapChoosesReferenceNapa(manifestLine || strap)
+          && materials.length > 1;
         const measureResolved = !!manifestLine
           && isUuid(manifestLine.strap_type_id)
           && isUuid(manifestLine.measure_id)
@@ -1043,6 +1117,9 @@ function MobileStrapIdentityEditor({
                   measureName: strap.measure_name || 'Medida definida na ficha',
                   baseGroupId: material.base_group_id,
                   baseGroupName: material.base_group_name,
+                  ...(napaChoice ? {
+                    napaOptions: materials.map((entry) => ({ id: entry.base_group_id, name: entry.base_group_name })),
+                  } : {}),
                 }, followsMainColor ? item.color : '');
               }}
             >
@@ -1078,7 +1155,9 @@ function MobileStrapIdentityEditor({
         ) : (
           <p className="text-[11px] text-muted-foreground">
             Material: {material?.base_group_name || strap.base_group_name || (usesFinishedGroup ? strap.group_name : null) || 'não resolvido'}
-            {!usesFinishedGroup && (materialMode === 'fixed_group' ? ' · fixo na ficha' : ' · segue a referência')}
+            {!usesFinishedGroup && (materialMode === 'fixed_group'
+              ? ' · fixo na ficha'
+              : napaChoice ? ' · escolha a napa junto com a cor' : ' · segue a referência')}
           </p>
         );
         if (followsMainColor) {
@@ -1131,8 +1210,63 @@ function MobileStrapIdentityEditor({
             <p className="text-[11px] text-muted-foreground">{strap.group_name || 'Tipo e medida definidos na ficha técnica'}</p>
             {materialControl}
             <p className="text-[11px] text-muted-foreground">
-              {usesFinishedGroup ? 'Comprar pronto · produto acabado' : 'Escolha a cor do material desta posição'}
+              {usesFinishedGroup
+                ? 'Comprar pronto · produto acabado'
+                : napaChoice ? 'Escolha a napa e a cor desta posição' : 'Escolha a cor do material desta posição'}
             </p>
+            {napaChoice ? (
+              <Select
+                value={strap.color_id && material ? `${material.base_group_id}|${strap.color_id}` : ''}
+                disabled={!manifestEntry || manifestLoading || !measureResolved}
+                onValueChange={(value) => {
+                  if (!lineId) return;
+                  const [napaId, colorId] = value.split('|');
+                  const nextItem = selectMobileStrapNapaColor(item, lineId, napaId, colorId, manifestEntry);
+                  if (nextItem === item) return;
+                  setInvalidatedLineIds((current) => {
+                    if (!current.has(lineId)) return current;
+                    const next = new Set(current);
+                    next.delete(lineId);
+                    return next;
+                  });
+                  onChange(nextItem);
+                }}
+              >
+                <SelectTrigger className={!strap.color_id ? 'border-amber-500/60' : ''} aria-label={`Napa e cor de ${strap.label || `Tira ${strapIndex + 1}`}`}>
+                  <SelectValue placeholder={strap.color ? `${strap.color} — confirme` : 'Napa e cor'}>
+                    {strap.color ? `${material?.base_group_name ? `${material.base_group_name} · ` : ''}${strap.color}` : undefined}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent
+                  searchable
+                  searchPlaceholder="Buscar napa ou cor…"
+                  searchEmptyText={online && canCreateColor
+                    ? 'Cor não encontrada. Use o cadastro abaixo do seletor.'
+                    : 'Nenhuma cor cadastrada corresponde à busca.'}
+                >
+                  {materials.map((entry, materialIndex) => (
+                    <SelectGroup key={entry.base_group_id}>
+                      <SelectLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                        {entry.base_group_name}{materialIndex === 0 ? ' · material do item' : ''}
+                      </SelectLabel>
+                      {entry.allowed_colors.map((color) => (
+                        <SelectItem
+                          key={color.id}
+                          value={`${entry.base_group_id}|${color.id}`}
+                          textValue={color.name}
+                          aria-label={`${entry.base_group_name} ${color.name}`}
+                        >
+                          {color.name}
+                        </SelectItem>
+                      ))}
+                      {entry.allowed_colors.length === 0 && (
+                        <SelectItem value={`${entry.base_group_id}|sem-cor`} disabled>Nenhuma cor cadastrada nesta napa</SelectItem>
+                      )}
+                    </SelectGroup>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
             <Select
               value={strap.color_id || ''}
               disabled={!manifestEntry || manifestLoading || !identityGroupResolved || !measureResolved || identityColors.length === 0}
@@ -1166,6 +1300,7 @@ function MobileStrapIdentityEditor({
                 ))}
               </SelectContent>
             </Select>
+            )}
             {registerColorControl}
             {!manifestLoading && !!manifestEntry && !identityGroupResolved && (
               <p className="text-xs text-destructive">
@@ -1274,10 +1409,12 @@ export default function MobileNewOrder() {
         || !currentSessionRef.current.online) {
       throw new Error('Reconecte-se à mesma conta para atualizar as cores do pedido.');
     }
+    // Q12: na tira multicolor a cor pode ter sido criada em outra napa da referência.
+    const napaSwitch = !!registration.context.napaOptions?.some((napa) => napa.id === created.baseGroupId);
     if (created.technicalStrapLineId !== registration.context.technicalStrapLineId
         || created.typeId !== registration.context.typeId
         || created.measureId !== registration.context.measureId
-        || created.baseGroupId !== registration.context.baseGroupId) {
+        || (created.baseGroupId !== registration.context.baseGroupId && !napaSwitch)) {
       throw new Error('O cadastro retornou outra identidade de tira. Reabra a posição correta para selecionar a cor.');
     }
     // Não acrescentar a cor manualmente ao cache: o manifesto é a validação do
@@ -2343,11 +2480,23 @@ export default function MobileNewOrder() {
                     <Select
                       value={it.material_variant_id || (hasSheetMaterialOption ? SHEET_MATERIAL_OPTION : undefined)}
                       onValueChange={(variantId) => {
+                        // Q5 (napas por tira): manifesto do material antigo e do novo.
+                        const napaManifests = (entry: DraftItem, nextVariantId: string | null) => ({
+                          previous: findMobileStrapManifestReference(ownerScopedStrapManifest, entry.reference_id, entry.material_variant_id),
+                          next: findMobileStrapManifestReference(ownerScopedStrapManifest, entry.reference_id, nextVariantId),
+                        });
+                        const announceKeptNapas = (nextVariantId: string | null) => {
+                          const message = keptStrapNapasMessage(
+                            resetMobileStrapsForMaterialChange(it, '', napaManifests(it, nextVariantId)).keptNapas,
+                          );
+                          if (message) toast.info(message);
+                        };
                         if (variantId === SHEET_MATERIAL_OPTION && hasSheetMaterialOption) {
+                          announceKeptNapas(null);
                           setItems((current) => current.map((entry, currentIndex) => {
                             if (currentIndex !== idx) return entry;
                             const price = automaticPrice(entry.reference_id, null, undefined, entry.grade);
-                            const strapState = resetMobileStrapsForMaterialChange(entry);
+                            const strapState = resetMobileStrapsForMaterialChange(entry, '', napaManifests(entry, null));
                             return {
                               ...entry,
                               material_variant_id: null,
@@ -2365,10 +2514,11 @@ export default function MobileNewOrder() {
                         }
                         const variant = itemMaterialVariants.find((entry) => entry.id === variantId);
                         if (!variant) return;
+                        announceKeptNapas(variant.id);
                         setItems((current) => current.map((entry, currentIndex) => {
                           if (currentIndex !== idx) return entry;
                           const price = automaticPrice(entry.reference_id, null, variant, entry.grade);
-                          const strapState = resetMobileStrapsForMaterialChange(entry);
+                          const strapState = resetMobileStrapsForMaterialChange(entry, '', napaManifests(entry, variant.id));
                           return {
                             ...entry,
                             material_variant_id: variant.id,
