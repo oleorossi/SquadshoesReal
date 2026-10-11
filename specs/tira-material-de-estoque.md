@@ -190,6 +190,13 @@ Dados medidos em 11/10/2026:
     gerar falta automática (para não comprar duas vezes). Faturados e cancelados não são tocados.
 24. Antes de aplicar, um **relatório de simulação** lista, por PV aberto: empenho, falta e
     pendências que a migração vai gerar.
+    **Conferido pelo dono em 11/10/2026:** só PV-00195 e PV-00196 (DAKOTOON, Em Produção,
+    nenhuma etapa iniciada) têm tira; os 7 "Aprovado" e 18 "Rascunho" com tira estão
+    excluídos (`deleted_at`). 22 demandas antigas canceladas, 2 SKUs novos, 100 m de NEW
+    WHISKY empenhados, o resto vira falta. **Origem:** o `pv_origem` gravado nos PVs migrados
+    é o padrão automático do writer antigo (ex.: overlock "Prestador" de setembro, antes de
+    virar Fábrica em `20270101035000`) — a migração o descarta e a falta segue a origem do
+    **grupo** (decisão do dono).
 
 ### R-Limpeza
 25. A "Central de Tiras" (Hub) **sai do menu**. A rota antiga redireciona para Estoque → Grupos.
