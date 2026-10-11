@@ -1,7 +1,14 @@
 # Integração Estoque ↔ PV ↔ Compras — empenho parcial, falta e quitação na entrada
 
-> Spec fechada por grill em 11/10/2026 (dono). **Não construída.** Implementação só
-> com `/build` autorizado.
+> Spec fechada por grill em 11/10/2026 (dono). Os três conflitos com specs
+> anteriores foram **confirmados pelo dono** em 11/10/2026.
+>
+> **Status:** etapa 1 (empenho parcial + falta + quitação na entrada + defeitos
+> 1 e 2) em `20270101035100_empenho_parcial_falta_pv.sql` + contrato
+> `empenhoParcialFaltaPv.contract.test.ts`. Pendentes: compra pela necessidade
+> total (Q1) e agrupamento por grupo econômico; tela de rateio editável e aba
+> Rastreio; colunas Falta/Em compra/Projetado; avisos (gate de corte, início de
+> setor, PV completo); cancelamento ↔ OC.
 >
 > **Relação com specs anteriores** — esta spec **amplia** e, nos pontos listados em
 > [Conflitos com specs anteriores](#conflitos-com-specs-anteriores), **substitui**:

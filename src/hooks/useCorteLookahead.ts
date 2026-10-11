@@ -378,6 +378,7 @@ async function loadCorteLookahead(sector: CorteLookaheadSector): Promise<CorteLo
     quantity_reserved: number;
     quantity_consumed: number;
     status: string;
+    sale_order_id: string | null;
     orders: { sale_order_id: string | null } | { sale_order_id: string | null }[] | null;
   };
   const reservationRows = productIds.length
@@ -385,7 +386,7 @@ async function loadCorteLookahead(sector: CorteLookaheadSector): Promise<CorteLo
         // Join orders(sale_order_id) estoura a profundidade do tipagem gerada.
         const { data, error } = await supabase
           .from('material_reservations')
-          .select('product_id, quantity_reserved, quantity_consumed, status, orders(sale_order_id)' as never)
+          .select('product_id, quantity_reserved, quantity_consumed, status, sale_order_id, orders(sale_order_id)' as never)
           .in('product_id', chunk)
           .in('status', ['reserved', 'pending_reconciliation']);
         return { data: (data as unknown as ResRow[] | null), error };
@@ -396,7 +397,9 @@ async function loadCorteLookahead(sector: CorteLookaheadSector): Promise<CorteLo
     const ord = Array.isArray(r.orders) ? r.orders[0] : r.orders;
     return {
       productId: r.product_id,
-      saleOrderId: ord?.sale_order_id ?? null,
+      // Commitment do PV nasce com order_id NULL: a posse vem de
+      // material_reservations.sale_order_id (spec integracao-estoque-pv-compras).
+      saleOrderId: r.sale_order_id ?? ord?.sale_order_id ?? null,
       quantityReserved: Number(r.quantity_reserved) || 0,
       quantityConsumed: Number(r.quantity_consumed) || 0,
       status: r.status,
