@@ -3,12 +3,22 @@
 > Spec fechada por grill em 11/10/2026 (dono). Os três conflitos com specs
 > anteriores foram **confirmados pelo dono** em 11/10/2026.
 >
-> **Status:** etapa 1 (empenho parcial + falta + quitação na entrada + defeitos
-> 1 e 2) em `20270101035100_empenho_parcial_falta_pv.sql` + contrato
-> `empenhoParcialFaltaPv.contract.test.ts`. Pendentes: compra pela necessidade
-> total (Q1) e agrupamento por grupo econômico; tela de rateio editável e aba
-> Rastreio; colunas Falta/Em compra/Projetado; avisos (gate de corte, início de
-> setor, PV completo); cancelamento ↔ OC.
+> **Status:**
+> - **Etapa 1** (empenho parcial + falta + quitação na entrada + defeitos 1 e 2):
+>   `20270101035100_empenho_parcial_falta_pv.sql` + `035200` (PV excluído/cancelado
+>   fora do motor). Contrato `empenhoParcialFaltaPv.contract.test.ts`.
+> - **Etapa 2** (compra pela necessidade total + múltiplo, OC por grupo econômico,
+>   cancelamento ↔ OC, falta avisa em vez de bloquear, RPCs das telas):
+>   `20270101036500_compras_pv_grupo_economico_rateio.sql`. Contrato
+>   `comprasPvGrupoEconomicoRateio.contract.test.ts`.
+> - **Etapa 3** (telas): Falta/Em compra/Projetado no estoque e no solado
+>   (`useProductSupplySummary`), rateio da entrada editável
+>   (`InboundAllocationDialog`, aberto por `openInboundAllocationReview` em todo
+>   fluxo de entrada), aba Rastreio (`GroupStockTrackingPanel`), selo de material
+>   no PV/Kanban e confirmação ao apontar (`useSaleOrderMaterialShortages`).
+> - **Em aberto:** a confirmação de falta só existe no Kanban (Drop/BulkMove) —
+>   o `SectorStageDialog` das telas de setor ainda aponta sem perguntar; e ela
+>   pergunta em qualquer setor, não só nos que consomem o material em falta.
 >
 > **Relação com specs anteriores** — esta spec **amplia** e, nos pontos listados em
 > [Conflitos com specs anteriores](#conflitos-com-specs-anteriores), **substitui**:

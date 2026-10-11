@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 // Spec: specs/integracao-estoque-pv-compras.md — etapa 2 (compra pela necessidade
 // total, múltiplo, OC por grupo econômico, aviso em vez de bloqueio) + RPCs das telas.
 const sql = readFileSync(
-  join(process.cwd(), 'supabase/migrations/20270101035700_compras_pv_grupo_economico_rateio.sql'),
+  join(process.cwd(), 'supabase/migrations/20270101036500_compras_pv_grupo_economico_rateio.sql'),
   'utf8',
 );
 
