@@ -251,12 +251,15 @@ describe('SaleOrderItemForm — a lacuna vira um caminho clicável', () => {
     expect(saved).toContain("queryKey: ['strap_stock_lines_preview']");
   });
 
-  it('Comprar pronto do PV congela buy_ready sem abrir cadastro Hub', () => {
+  it('Comprar pronto do PV congela buy_ready sem abrir cadastro Hub (só napa · cor + metros)', () => {
     expect(form).toContain('strapLineWantsBuyReady');
     expect(form).toContain("next === 'sku_acabado'");
     expect(form).toContain('Comprar pronto');
-    expect(form).toContain("strap_variant_id: null");
-    expect(form).toContain('finished_product_id: preview?.finishedProductId');
+    expect(form).toContain('buyReadyStrapSourcing(strap, strapLineByKey.get(lineKey))');
+    const lib = readFileSync(resolve(__dirname, '../strapSourcing.ts'), 'utf8');
+    const body = lib.slice(lib.indexOf('export function buyReadyStrapSourcingFromPreview'));
+    expect(body).toContain('strap_variant_id: null');
+    expect(body).toContain('finished_product_id: null');
   });
 
   it('não trava o seletor de origem quando o snapshot comprometido ainda não tem escolha', () => {

@@ -93,22 +93,16 @@ export function catalogDefaultStrapPvOrigem(
 }
 
 /**
- * Padrão materializável da LINHA: o catálogo manda, mas
- *  - linha de identidade acabada (`finished_product_group`, ex.: Strass da
- *    ficha) só existe comprada pronta — não há napa para mandar ao prestador;
- *  - "Comprar pronto" exige o grupo acabado na ficha (`group_id`), senão o
- *    writer converte para Prestador (mig 28600). O padrão já nasce coerente.
+ * Padrão materializável da LINHA: o catálogo manda, mas linha de identidade
+ * acabada (`finished_product_group`, ex.: Strass da ficha) só existe comprada
+ * pronta — não há napa para mandar ao prestador.
  */
 export function defaultStrapPvOrigemForLine(
   line: StrapPvOrigemLineLike | null | undefined,
   measure: StrapPvOrigemMeasureLike | null | undefined,
 ): SelectableStrapPvOrigem {
   if (isPurchasedReadyStrap(line)) return 'sku_acabado';
-  const catalog = catalogDefaultStrapPvOrigem(measure);
-  if (catalog === 'sku_acabado' && !strapLineAllowsBuyReadyOrigem(line)) {
-    return DEFAULT_STRAP_PV_ORIGEM;
-  }
-  return catalog;
+  return catalogDefaultStrapPvOrigem(measure);
 }
 
 /**
@@ -209,25 +203,16 @@ export function collectStrapPvOrigemChanges(
   return changes;
 }
 
-/** UUID do grupo acabado na linha da ficha (pin finished ou group_id legado). */
-export function strapLineFinishedGroupId(
-  line: Pick<StrapPvOrigemLineLike, 'group_id' | 'identity_group_id'> | null | undefined,
-): string | null {
-  const identity = (line?.identity_group_id || '').trim();
-  if (identity) return identity;
-  const group = (line?.group_id || '').trim();
-  return group || null;
-}
-
 /**
- * "Comprar pronto" só é materializável quando a ficha aponta um grupo acabado.
- * Sem isso o writer estoura `Tira pronta exige o grupo acabado (group_id) na ficha`
- * — G03/artesanal por napa não tem group_id; a origem válida é Prestador.
+ * "Comprar pronto" vale para TODA linha de tira (spec
+ * `tira-comprar-pronto-so-registra.md`, D1): o PV só registra napa · cor +
+ * metros, então não depende de grupo acabado na ficha. Antes exigia
+ * `group_id` e 14 fichas (43 tiras) nunca conseguiam escolher.
  */
 export function strapLineAllowsBuyReadyOrigem(
   line: StrapPvOrigemLineLike | null | undefined,
 ): boolean {
-  return !!strapLineFinishedGroupId(line);
+  return !!line;
 }
 
 /**
@@ -277,47 +262,6 @@ export function applyStrapPvOrigemChangesToItems<T extends StrapPvOrigemItemLike
       ? { ...item, strap_colors: nextStraps, strap_sourcing: nextSourcing }
       : item;
   });
-}
-
-/**
- * No submit: `sku_acabado` em linha artesanal sem grupo acabado na ficha é
- * impossível de materializar. Converte para Prestador antes do RPC — cobre
- * cores colapsadas que ainda carregavam "Todas comprar pronto" enquanto a aba
- * aberta já mostrava Prestador.
- */
-export function coerceImpossibleBuyReadyStrapOrigem<T extends StrapPvOrigemItemLike>(
-  items: readonly T[],
-): { items: T[]; coerced: Array<{ color: string; label: string }> } {
-  const coerced: Array<{ color: string; label: string }> = [];
-  const next = items.map((item) => {
-    const straps = Array.isArray(item.strap_colors) ? [...item.strap_colors] : [];
-    if (straps.length === 0) return item;
-    let changed = false;
-    let nextSourcing: StrapSourcingMap = { ...(item.strap_sourcing || {}) };
-    const nextStraps = straps.map((line) => {
-      if (line.pv_origem !== 'sku_acabado') return line;
-      // Identidade finished_product_group continua no caminho buy_ready do writer.
-      if (isPurchasedReadyStrap(line)) return line;
-      if (strapLineAllowsBuyReadyOrigem(line)) return line;
-      changed = true;
-      coerced.push({
-        color: (item.color || 'sem cor').trim() || 'sem cor',
-        label: (line.label || 'Tira').trim() || 'Tira',
-      });
-      const lineId = technicalStrapLineId({
-        id: line.id,
-        technical_strap_line_id: line.technical_strap_line_id,
-      });
-      if (lineId) {
-        nextSourcing = setStrapSourcing(nextSourcing, lineId, 'internal');
-      }
-      return { ...line, pv_origem: 'fabrica' as const };
-    });
-    return changed
-      ? { ...item, strap_colors: nextStraps, strap_sourcing: nextSourcing }
-      : item;
-  });
-  return { items: next, coerced };
 }
 
 /**

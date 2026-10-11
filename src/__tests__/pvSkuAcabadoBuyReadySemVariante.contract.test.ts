@@ -63,8 +63,13 @@ describe('pv sku_acabado buy_ready sem variante — contrato 31900', () => {
     )?.[0] || '';
     expect(wantsBody).toContain('finished_product_group');
     expect(wantsBody).not.toContain('sku_acabado');
-    expect(form).toContain("finished_product_id: preview?.finishedProductId");
-    expect(form).toContain("strap_variant_id: null");
-    expect(form).toContain('A linha usa a tira pronta; a napa não será movimentada');
+    // Superado por specs/tira-comprar-pronto-so-registra.md: Comprar pronto de
+    // napa só registra napa · cor + metros — nem variante, nem SKU.
+    expect(form).toContain('buyReadyStrapSourcing(');
+    expect(form).toContain('A napa não é movimentada.');
+    const lib = readFileSync(resolve(ROOT, 'src/lib/strapSourcing.ts'), 'utf8');
+    const body = lib.slice(lib.indexOf('export function buyReadyStrapSourcingFromPreview'));
+    expect(body).toContain('strap_variant_id: null');
+    expect(body).toContain('finished_product_id: null');
   });
 });

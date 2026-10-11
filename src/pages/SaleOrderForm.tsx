@@ -94,7 +94,6 @@ import { strapColorMode } from '@/lib/technicalStrapLines';
 import { copyItemStraps, loadStrapCopyContext } from '@/lib/copySaleOrderStraps';
 import { useArtisanalStrapCatalog } from '@/hooks/useArtisanalStraps';
 import {
-  coerceImpossibleBuyReadyStrapOrigem,
   listStrapHubIncompleteForOrigem,
   type StrapHubIncompleteIssue,
 } from '@/lib/strapPvOrigem';
@@ -1967,16 +1966,8 @@ export default function SaleOrderForm() {
       validItems,
       canonicalReferences as StrapSnapshotReferenceLike[],
     );
-    // Comprar pronto sem group_id na ficha (G03 artesanal) é impossível — o
-    // prepare barra o PV inteiro. Cores colapsadas podem ainda ter sku_acabado
-    // de "Todas comprar pronto" enquanto a aba aberta já mostra Prestador.
-    const buyReadyCoerce = coerceImpossibleBuyReadyStrapOrigem(strapRecovery.items);
-    const itemsForSubmit = buyReadyCoerce.items;
-    if (
-      strapRecovery.recoveredEmpty > 0
-      || strapRecovery.hydratedOrigem > 0
-      || buyReadyCoerce.coerced.length > 0
-    ) {
+    const itemsForSubmit = strapRecovery.items;
+    if (strapRecovery.recoveredEmpty > 0 || strapRecovery.hydratedOrigem > 0) {
       draftStateRef.current = { ...draftStateRef.current, items: itemsForSubmit };
       setItems(itemsForSubmit);
     }
