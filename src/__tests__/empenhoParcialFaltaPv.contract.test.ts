@@ -104,3 +104,20 @@ describe('empenho parcial + falta do PV (contract)', () => {
     );
   });
 });
+
+describe('PV excluído/cancelado fora do motor de empenho (contract)', () => {
+  const fix = readFileSync(
+    join(process.cwd(), 'supabase/migrations/20270101035200_empenho_ignora_pv_excluido.sql'),
+    'utf8',
+  );
+
+  it('predicado exclui PV com deleted_at ou status Cancelado (direto ou pela OP)', () => {
+    expect(fix).toMatch(/so\.deleted_at IS NOT NULL OR so\.status = 'Cancelado'/);
+    expect(fix).toMatch(/SELECT o\.sale_order_id FROM public\.orders o WHERE o\.id = mr\.order_id/);
+  });
+
+  it('só zera a falta — não cancela as reservas desses PVs (decisão do dono)', () => {
+    expect(fix).toMatch(/SET quantity_short = 0/);
+    expect(fix).not.toMatch(/status = 'cancelled'/);
+  });
+});
