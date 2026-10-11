@@ -1756,6 +1756,15 @@ export default function SaleOrderForm() {
         onSuccess: (created: { id?: string; receipt?: { order_version?: number } } | undefined) => {
           handlePostSave(created?.id, Number(created?.receipt?.order_version) || 1);
         },
+        onError: (error: unknown) => {
+          // Mesma regra do UPDATE: recibo fechado como failed não criou PV, e
+          // reusar a chave com o formulário corrigido só devolvia "Replay
+          // idempotente divergente", escondendo o erro real. Erro de
+          // transporte sem recibo mantém a chave (commit ambíguo).
+          if (error instanceof SaleOrderCommandExecutionError) {
+            clientRequestIdRef.current = null;
+          }
+        },
       });
     }
   };
