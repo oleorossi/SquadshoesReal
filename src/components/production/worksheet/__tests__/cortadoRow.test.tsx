@@ -5,7 +5,7 @@ import { PalmilhaWorkSheet, type PalmilhaGroup } from '../../PalmilhaWorkSheet';
 import { ExpedicaoWorkSheet, type ExpedicaoCustomerGroup } from '../../ExpedicaoWorkSheet';
 import { STEP_CHECKBOX_PX } from '../density';
 
-vi.mock('../PaginatedSheet', () => ({
+vi.mock('@/components/production/worksheet/PaginatedSheet', () => ({
   PaginatedSheet: ({ blocks }: { blocks: { node: React.ReactNode }[] }) => (
     <div data-testid="paginated">{blocks.map((b, i) => <div key={i}>{b.node}</div>)}</div>
   ),

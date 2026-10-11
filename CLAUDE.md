@@ -319,6 +319,14 @@ encadeamento de `/producao/kanban/gestao`: `ProtectedRoute → Suspense → Rout
 - **Vitest** (`vitest/globals`). Colocar em `__tests__/` ao lado do módulo, ou `*.test.ts` direto
   ao lado do fonte. Sufixos usados: `.units.test.ts`, `.integration.test.ts`, `.edge-cases.test.ts`.
 - Rodar: `bun run test` / `bun run test:units`.
+- ⚠ **`vi.mock` sempre com alias `@/`, nunca caminho relativo** (`'../x'`). Localmente o
+  vitest roda no **Bun** (o `node` é symlink pro Bun — Regra 5), e lá o `vi.mock` relativo
+  é **ignorado em silêncio**: o vitest acha o arquivo chamador parseando o stack trace
+  (procura `" at Object.mock"`, formato do V8), não acha no JavaScriptCore e resolve o
+  caminho contra a raiz. O teste roda contra o módulo REAL. O CI usa Node de verdade e fica
+  verde — em 11/10/2026 isso deixou 8 testes vermelhos só na máquina local. Travado por
+  `src/__tests__/viMockAliasPath.contract.test.ts`. Para conferir se algo é diferença de
+  runtime: `/usr/local/bin/node node_modules/vitest/vitest.mjs run <arquivo>` roda no Node.
 
 **Estado atual (verificado 07/08/2026 rodando os dois):** `test` roda a suíte inteira e
 `test:units` é um **subconjunto** dela — não há mais exclusão.

@@ -29,7 +29,7 @@ vi.mock('@/integrations/supabase/client', () => ({
   },
 }));
 // Desktop path: estes testes travam o POST de formulário — nunca o overlay iOS.
-vi.mock('../iosDevice', () => ({
+vi.mock('@/lib/iosDevice', () => ({
   isIosBrowser: () => false,
 }));
 import { toast } from 'sonner';

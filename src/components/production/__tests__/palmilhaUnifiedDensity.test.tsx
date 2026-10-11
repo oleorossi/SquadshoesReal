@@ -20,7 +20,7 @@ beforeAll(() => {
   });
 });
 
-vi.mock('../worksheet/PaginatedSheet', () => ({
+vi.mock('@/components/production/worksheet/PaginatedSheet', () => ({
   PaginatedSheet: ({
     blocks,
   }: {
