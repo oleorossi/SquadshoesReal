@@ -20,6 +20,7 @@ import { MagnifyingGlass, Plus, Package, Palette, Info, Link as Link2, Check } f
 import { searchMatchesAllTerms, SEARCH_RENDER_CAP, capSearchResults, searchRefineHint } from '@/lib/searchUtils';
 import { getGradeQuantityForKey } from '@/lib/gradeDistribution';
 import { adjustProductsStock } from '@/lib/stockCommand';
+import { inboundEntrySince, openInboundAllocationReview } from '@/lib/inboundAllocationReviewStore';
 
 interface SoladoGradeDialogProps {
   open: boolean;
@@ -557,6 +558,20 @@ export function SoladoGradeDialog({ open, onOpenChange, product }: SoladoGradeDi
         return;
       }
 
+      // Rateio da entrada (spec integracao-estoque-pv-compras §4): ajuste de
+      // grade que SOBE alguma numeração (ou o total) é entrada e pode quitar
+      // falta de PV por numeração — a tela de revisão abre depois do save.
+      const inboundSince = inboundEntrySince();
+      const positiveProductIds = updates
+        .filter(({ id, grade, total }) => {
+          const variant = colorVariants.find(v => v.id === id);
+          const prevGrade = (variant?.stock_grade ?? {}) as Record<string, unknown>;
+          return total > Number(variant?.quantity ?? 0)
+            || Object.entries(grade).some(([k, v]) =>
+              !k.startsWith('_') && (Number(v) || 0) > (Number(prevGrade[k]) || 0));
+        })
+        .map(({ id }) => id);
+
       const stockResult = await adjustProductsStock(updates.map(({ id, grade, total }) => {
         const variant = colorVariants.find(v => v.id === id);
         const previousQty = Number(variant?.quantity ?? 0);
@@ -598,6 +613,9 @@ export function SoladoGradeDialog({ open, onOpenChange, product }: SoladoGradeDi
         : `Grade atualizada em ${updates.length} cores: ${updatedNames.join(', ')}`;
       toast.success(msg);
       onOpenChange(false);
+      if (positiveProductIds.length > 0) {
+        void openInboundAllocationReview({ productIds: positiveProductIds, since: inboundSince });
+      }
     } catch (err: any) {
       toast.error(`Erro: ${err.message}`);
     } finally {

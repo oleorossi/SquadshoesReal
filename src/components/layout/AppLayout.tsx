@@ -32,6 +32,7 @@ import { usePrefetchRoute } from '@/hooks/usePrefetchRoute';
 import { useNavOrder, reorderKeys } from '@/hooks/useNavOrder';
 import { NavigationAuditWatcher } from './NavigationAuditWatcher';
 import { DiagnosticsFab } from '@/components/DiagnosticsFab';
+import InboundAllocationHost from '@/components/inventory/InboundAllocationHost';
 import { useArtisanalStrapPurchaseOrderApprovalCount } from '@/hooks/useArtisanalStraps';
 
 const QuickActionsFAB = () => {
@@ -812,6 +813,9 @@ export default function AppLayout({ children, printMode = false }: { children: R
             <BottomNav />
             <QuickActionsFAB />
             <DiagnosticsFab />
+            {/* Rateio da entrada de estoque (spec integracao-estoque-pv-compras §4):
+                abre sozinho depois de uma entrada que quitou falta de PV. */}
+            <InboundAllocationHost />
           </div>
         </div>
       </TooltipProvider>

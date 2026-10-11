@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
@@ -11,6 +11,10 @@ import { useApontarProducao, PointingWarning } from '@/hooks/useOrderStages';
 import { useOrderPointings } from '@/hooks/useOrderPointings';
 import { useCurrentProfile } from '@/hooks/useUserManagement';
 import ConfirmPointingWarnings from '@/components/production/ConfirmPointingWarnings';
+import {
+  buildShortagePointingWarnings,
+  type SaleOrderMaterialShortageInfo,
+} from '@/hooks/useSaleOrderMaterialShortages';
 import { toast } from 'sonner';
 import { thumbUrl } from '@/lib/imageThumb';
 import { norm, fmtDate, KanbanCardData } from './kanbanDerive';
@@ -19,6 +23,9 @@ import { isStageSkipped } from '@/lib/production/stageFlow';
 
 /** Valor-sentinela do select de mover (shadcn Select não aceita value vazio). */
 const MOVE_ATUAL = '__atual';
+
+/** Nota do ledger quando o operador aponta ciente da falta de material do PV. */
+const ORIGIN_CIENTE_FALTA = 'Via Kanban (ciente: PV com falta de material)';
 
 /**
  * Diálogo de apontamento do drop (R5.4) e também o detalhe do card (click).
@@ -30,7 +37,7 @@ const MOVE_ATUAL = '__atual';
  */
 export function DropApontarDialog({
   card, target, flowOrder, levelOf, apontar, onClose, photoUrl, onApontado, readOnly = false,
-  allowParallelSkip = false,
+  allowParallelSkip = false, materialShortage,
 }: {
   card: KanbanCardData;
   target: string | null;
@@ -47,6 +54,11 @@ export function DropApontarDialog({
   readOnly?: boolean;
   /** Admin no Modo Gestão: irmão paralelo aberto vira pulo confirmável. */
   allowParallelSkip?: boolean;
+  /**
+   * Falta de material do PV desta OP. Com falta, apontar pede um OK antes
+   * (aviso do CLIENTE — não entra nos `confirmedWarnings` do servidor).
+   */
+  materialShortage?: SaleOrderMaterialShortageInfo;
 }) {
   const { q, stages, column } = card;
   const { data: profile } = useCurrentProfile();
@@ -69,6 +81,14 @@ export function DropApontarDialog({
   const [pendingWarnings, setPendingWarnings] = useState<PointingWarning[] | null>(null);
   // Aceite explícito do pulo de setor (decisão do dono 06/08/2026).
   const [skipOk, setSkipOk] = useState(false);
+  // Falta de material do PV: pergunta UMA vez por apontamento, ANTES dos
+  // avisos do servidor (que seguem pelo `pendingWarnings`, sem mudança).
+  const shortageWarnings = useMemo(
+    () => buildShortagePointingWarnings(materialShortage),
+    [materialShortage],
+  );
+  const [shortagePromptOpen, setShortagePromptOpen] = useState(false);
+  const [shortageAck, setShortageAck] = useState(false);
 
   // Entrega incompleta = o setor recebe menos do que o total da OP. É o que
   // faz o card nascer ÂMBAR no destino, mostrando "84/120" (R5.3).
@@ -118,13 +138,15 @@ export function DropApontarDialog({
     );
   }
 
-  const doApontar = async (confirmed?: string[]) => {
+  const doApontar = async (confirmed?: string[], shortageConfirmed: boolean = shortageAck) => {
     if (readOnly) return;
     if (qty === 0) { onClose(); return; }
     try {
       const res = await applyPointing({
         card, plan, target: effTarget, qty, apontar,
         confirmedWarnings: confirmed, skipAcknowledged: skipOk,
+        // O OK da falta não é aviso do servidor: fica na nota do lançamento.
+        origin: shortageConfirmed && !isBackward ? ORIGIN_CIENTE_FALTA : undefined,
       });
       if (res.status === 'needs_confirmation') {
         setPendingWarnings(res.warnings);
@@ -172,6 +194,15 @@ export function DropApontarDialog({
       // toast de erro já emitido pela mutation (estorno em setor concluído é
       // permitido desde a auditoria 2026-07-13 — reabre o estágio)
     }
+  };
+
+  // Estorno não consome material — só o avanço pergunta.
+  const requestApontar = () => {
+    if (!readOnly && !isBackward && qty > 0 && shortageWarnings.length > 0 && !shortageAck) {
+      setShortagePromptOpen(true);
+      return;
+    }
+    doApontar();
   };
 
   return (
@@ -464,7 +495,7 @@ export function DropApontarDialog({
               {!readOnly && (
                 <Button
                   className="h-11 md:h-10"
-                  onClick={() => doApontar()}
+                  onClick={requestApontar}
                   disabled={!plan.available || apontar.isPending || qty === 0 || skipBlocked || (skipped.length > 0 && !skipOk)}
                 >
                   {isBackward ? 'Estornar' : 'Apontar'}
@@ -474,6 +505,22 @@ export function DropApontarDialog({
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Falta de material do PV — pergunta antes, uma vez por apontamento */}
+      {!readOnly && shortageWarnings.length > 0 && (
+        <ConfirmPointingWarnings
+          open={shortagePromptOpen}
+          warnings={shortageWarnings}
+          contextLabel={`${pointedStage.stage_name} — ${q.order_number}, +${qty} pares · ${q.sale_order_number || 'PV'} com falta de material`}
+          onConfirm={() => {
+            setShortagePromptOpen(false);
+            setShortageAck(true);
+            doApontar(undefined, true);
+          }}
+          onCancel={() => setShortagePromptOpen(false)}
+          confirming={apontar.isPending}
+        />
+      )}
 
       {/* R6.3: avisos do servidor — confirmar grava com autoria */}
       {!readOnly && (

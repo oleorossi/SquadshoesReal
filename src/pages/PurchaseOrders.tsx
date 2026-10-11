@@ -46,6 +46,7 @@ import { ARTISANAL_PURCHASE_ORDER_GENERIC_CHANNEL_ERROR, isArtisanalStrapPurchas
 import { useCan } from '@/hooks/useAccessControl';
 import { applyPrintSandbox } from '@/lib/htmlUtils';
 import { exportPurchaseOrdersXlsx, summarizePurchaseOrders } from '@/lib/purchaseOrderReport';
+import { inboundEntrySince, openInboundAllocationReview } from '@/lib/inboundAllocationReviewStore';
 
 const STATUS_MAP: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
   pending: { label: 'Pendente', variant: 'outline' },
@@ -1159,6 +1160,8 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
   const handleFinalize = async () => {
     if (receiving) return;
     setReceiving(true);
+    // Janela do rateio da entrada (quitação automática de falta dos PVs).
+    const inboundSince = inboundEntrySince();
     try {
       await preflightReceive(items);
       const paymentDays = await resolvePaymentDays();
@@ -1184,6 +1187,7 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
       qc.invalidateQueries({ queryKey: ['stock_movements'] });
       qc.invalidateQueries({ queryKey: ['accounts_payable'] });
       toast.success(`OC finalizada — ${paymentDays.length} parcela(s) lançadas e estoque atualizado!`);
+      void openInboundAllocationReview({ productIds: items.map((it) => it.product_id), since: inboundSince });
     } catch (err: any) {
       qc.invalidateQueries({ queryKey: ['purchase_order_items'] });
       qc.invalidateQueries({ queryKey: ['products'] });
@@ -1198,6 +1202,7 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
   const handleMarkReceived = async () => {
     if (receiving) return;
     setReceiving(true);
+    const inboundSince = inboundEntrySince();
     try {
       await preflightReceive(items);
       await executePurchaseOrderCommand({
@@ -1219,6 +1224,7 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
       qc.invalidateQueries({ queryKey: ['box_types_stock'] });
       qc.invalidateQueries({ queryKey: ['stock_movements'] });
       toast.success('OC marcada como recebida — estoque atualizado!');
+      void openInboundAllocationReview({ productIds: items.map((it) => it.product_id), since: inboundSince });
     } catch (err: any) {
       qc.invalidateQueries({ queryKey: ['purchase_order_items'] });
       qc.invalidateQueries({ queryKey: ['products'] });
@@ -1245,6 +1251,7 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
     if (!Number.isFinite(qty) || qty <= 0) { toast.error('Informe uma quantidade maior que zero.'); return; }
     if (qty > remaining + 0.0001) { toast.error(`Máximo a receber agora: ${remaining} ${item.unit}.`); return; }
     setPartialBusy(true);
+    const inboundSince = inboundEntrySince();
     try {
       const newReceived = already + qty;
       const fullyReceived = newReceived >= Number(item.quantity) - 0.0001;
@@ -1281,6 +1288,7 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
         : `Recebido ${qty} ${item.unit} — faltam ${Number(restante.toFixed(3))} ${item.unit}.`);
       setPartialItem(null);
       setPartialQtyInput('');
+      void openInboundAllocationReview({ productIds: [item.product_id], since: inboundSince });
     } catch (err: any) {
       toast.error(err.message);
     } finally {

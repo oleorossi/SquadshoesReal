@@ -49,6 +49,9 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import GroupDialog from '@/components/groups/GroupDialog';
 import { GroupListDialog } from '@/components/inventory/GroupListDialog';
+import { useProductSupplySummaryQuery } from '@/hooks/useProductSupplySummary';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { useQuery } from '@tanstack/react-query';
 
 export function MaterialsTab(props: { defaultGroupName?: string, title?: string }) {
   return (
@@ -144,6 +147,13 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
   // Cor sem saldo sai da lista por padrão (R1.10).
   const [hideZeradas, setHideZeradas] = useState(true);
   const [onlyFalta, setOnlyFalta] = useState(false);
+  // "Falta p/ pedidos" ≠ "Só com falta". O chip antigo é `is_falta` da view:
+  // disponível < 0 (reserva mordendo o saldo). Com o empenho parcial
+  // (spec integracao-estoque-pv-compras) o físico nunca fica abaixo da reserva —
+  // a falta do PV mora num registro à parte, que só `product_supply_summary`
+  // enxerga. Os dois chips são exclusivos entre si pra a lista não virar a
+  // interseção de dois critérios diferentes sem ninguém perceber.
+  const [onlyFaltaPv, setOnlyFaltaPv] = useState(false);
   const [sortPreset, setSortPreset] = usePersistedState<string>('materialsSortPreset', 'none');
   // Ordenação por clique no cabeçalho da tabela. Mora aqui (e não dentro da
   // ProductTable) porque precisa chegar ao banco junto com a página.
@@ -290,6 +300,86 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
 
   const paginatedProducts = useMemo(() => paginatedData?.items || [], [paginatedData]);
 
+  // Falta de PV por produto. Mesmo conjunto de ids que a ProductTable pede
+  // (universo + página) → mesmo cache, uma chamada só. RPC ausente/erro:
+  // `supplyAvailable` fica false e o chip novo nem aparece.
+  const supplyIds = useMemo(
+    () => [...allProducts, ...paginatedProducts].map((p) => p.id as string),
+    [allProducts, paginatedProducts],
+  );
+  const { supply, available: supplyAvailable } = useProductSupplySummaryQuery(supplyIds);
+  const pvChipActive = onlyFaltaPv && supplyAvailable;
+
+  // Materiais com falta de PV, filtrados no CLIENTE sobre o universo
+  // (`useProducts`). A lista do servidor é paginada (50) e esconde zeradas por
+  // padrão — e item com falta de PV quase sempre está com físico 0 —, então
+  // filtrar só a página mostraria uma fatia e sumiria com o que importa. Os
+  // demais filtros da tela são espelhados aqui (mesma semântica de
+  // `usePaginatedProducts`/`v_products_list`). Como no "Só com falta", o chip
+  // vence o "esconder zeradas".
+  const faltaPvProducts = useMemo(() => {
+    if (supply.size === 0) return [] as Product[];
+    const catFilter = defaultCategory !== 'all' ? defaultCategory.toLowerCase() : null;
+    return (allProducts as Array<Product & { product_groups?: { name?: string | null } | null }>).filter((p) => {
+      if ((supply.get(p.id)?.falta ?? 0) <= 0) return false;
+      const cat = String(p.category || '').toLowerCase();
+      if (cat === 'solado') return false; // Solado vive em /solados
+      if (catFilter && cat !== catFilter) return false;
+      if (effectiveGroup !== 'all') {
+        if (effectiveGroup === 'none' ? p.group_id : p.group_id !== effectiveGroup) return false;
+      }
+      if (supplierFilter !== 'all') {
+        if (supplierFilter === 'none' ? p.supplier_id : p.supplier_id !== supplierFilter) return false;
+      }
+      // Status: estoque mínimo foi zerado, então crítico/baixo = disponível ≤ 0
+      // (o mesmo que a view calcula com min_stock 0).
+      const disp = (Number(p.quantity) || 0) - (Number(p.reserved_stock) || 0);
+      if ((statusFilter === 'critical' || statusFilter === 'low') && disp > 0) return false;
+      if (statusFilter === 'overstock' && !((Number(p.max_stock) || 0) > 0 && (Number(p.quantity) || 0) > Number(p.max_stock))) return false;
+      if (skuExact) return p.sku === skuExact;
+      return searchMatchesAllTerms(
+        debouncedSearch,
+        p.name, p.sku, p.color, p.technical_name, p.product_groups?.name,
+      );
+    });
+  }, [supply, allProducts, defaultCategory, effectiveGroup, supplierFilter, statusFilter, skuExact, debouncedSearch]);
+  const faltaPvCount = faltaPvProducts.length;
+
+  // As linhas do chip vêm de `useProducts` (tabela `products`), que não tem
+  // `in_production_quantity` — só `v_products_list` tem. Sem isto a ProductTable
+  // somaria "em produção" = 0 e o MESMO material mostraria outro estoque com o
+  // chip ligado. Busca só esse campo, na view, para os ids do recorte.
+  const faltaPvIds = useMemo(
+    () => (pvChipActive ? faltaPvProducts.map((p) => p.id as string).sort() : []),
+    [pvChipActive, faltaPvProducts],
+  );
+  const { data: faltaPvInProduction } = useQuery({
+    queryKey: ['products', 'falta-pv-in-production', faltaPvIds],
+    enabled: faltaPvIds.length > 0,
+    staleTime: 2 * 60 * 1000,
+    queryFn: async () => {
+      // `v_products_list` fica fora dos tipos gerados (ver usePaginatedProducts).
+      const { data, error } = await supabase
+        .from('v_products_list' as never)
+        .select('id, in_production_quantity')
+        .in('id', faltaPvIds);
+      if (error) throw error;
+      const map = new Map<string, number>();
+      for (const r of ((data ?? []) as unknown as Array<{ id: string; in_production_quantity: number | string | null }>)) {
+        map.set(r.id, Number(r.in_production_quantity) || 0);
+      }
+      return map;
+    },
+  });
+  const faltaPvRows = useMemo(
+    () => faltaPvProducts.map((p) => ({
+      ...p,
+      in_production_quantity: faltaPvInProduction?.get(p.id as string) ?? 0,
+    })),
+    [faltaPvProducts, faltaPvInProduction],
+  );
+  const listProducts = pvChipActive ? faltaPvRows : paginatedProducts;
+
   // Metade da lista é cor zerada (95 de 189 em 02/08/2026). Esconder por padrão
   // é o maior ganho isolado de densidade — mas a contagem fica sempre visível no
   // chip, pra que nada suma em silêncio (R1.10/R1.11).
@@ -311,7 +401,7 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
   // ligar "só com falta" deixava a tela vazia sem explicação.
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, effectiveGroup, supplierFilter, statusFilter, hideZeradas, onlyFalta]);
+  }, [debouncedSearch, effectiveGroup, supplierFilter, statusFilter, hideZeradas, onlyFalta, onlyFaltaPv]);
 
   const handleAdd = async (data: ProductFormData, createSheet?: boolean) => {
     const toastId = toast.loading('Adicionando material...');
@@ -509,7 +599,8 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
           <button
             type="button"
             aria-pressed={onlyFalta}
-            onClick={() => setOnlyFalta(v => !v)}
+            onClick={() => { setOnlyFalta(v => !v); setOnlyFaltaPv(false); }}
+            title="Reserva acima do saldo (disponível negativo)"
             className={
               onlyFalta
                 ? 'h-8 px-3 rounded-full text-xs font-semibold bg-destructive text-destructive-foreground transition-colors'
@@ -519,6 +610,22 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
             Só com falta
             <span className="ml-1.5 font-mono tabular-nums opacity-75">{faltaCount}</span>
           </button>
+          {supplyAvailable && (
+            <button
+              type="button"
+              aria-pressed={pvChipActive}
+              onClick={() => { setOnlyFaltaPv(v => !v); setOnlyFalta(false); }}
+              title="Materiais com falta aberta nos pedidos de venda (o que o PV pediu e não havia em estoque)"
+              className={
+                pvChipActive
+                  ? 'h-8 px-3 rounded-full text-xs font-semibold bg-destructive text-destructive-foreground transition-colors'
+                  : 'h-8 px-3 rounded-full text-xs font-medium border border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400 hover:border-red-500/60 transition-colors'
+              }
+            >
+              Falta p/ pedidos
+              <span className="ml-1.5 font-mono tabular-nums opacity-75">{faltaPvCount}</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -594,7 +701,7 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
             </Button>
           }
         />
-      ) : paginatedProducts.length === 0 && debouncedSearch.trim() ? (
+      ) : listProducts.length === 0 && debouncedSearch.trim() ? (
         <EmptyState
           size="sm"
           icon={MagnifyingGlass}
@@ -607,7 +714,9 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
         />
       ) : (
         <ProductTable
-          products={paginatedProducts as any}
+          // Chip "Falta p/ pedidos": a lista vem do universo filtrado no cliente
+          // (ver `faltaPvProducts`), sem paginação — é um recorte pequeno.
+          products={listProducts as unknown as Product[]}
           // Universo COMPLETO (useProducts), não a página: a tabela usa isto
           // pra montar as cores irmãs de cada grupo e o alvo da edição em
           // massa. Passar a página faria o grupo "perder" variantes que
@@ -622,14 +731,16 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
       )}
 
 
-      <ListPagination
-        page={paginatedData?.page ?? 1}
-        total={totalFiltered}
-        totalPages={totalPages}
-        showPager={paginatedData?.showPager ?? false}
-        onPageChange={setPage}
-        itemLabel="materiais"
-      />
+      {!pvChipActive && (
+        <ListPagination
+          page={paginatedData?.page ?? 1}
+          total={totalFiltered}
+          totalPages={totalPages}
+          showPager={paginatedData?.showPager ?? false}
+          onPageChange={setPage}
+          itemLabel="materiais"
+        />
+      )}
 
 
       <ProductFormDialog

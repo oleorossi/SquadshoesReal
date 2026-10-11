@@ -37,6 +37,7 @@ import { Product, ProductFormData, UNITS, LOCATIONS } from '@/types/inventory';
 import { useAddProduct, useProducts } from '@/hooks/useProducts';
 import { findDuplicate, type DuplicateHit } from '@/lib/duplicateDetection';
 import { adjustStockSafe } from '@/lib/stockAdjustments';
+import { inboundEntrySince, openInboundAllocationReview } from '@/lib/inboundAllocationReviewStore';
 import { configureProductGrades } from '@/lib/stockCommand';
 import { DuplicateSuggestion } from './DuplicateSuggestion';
 import { useGroups } from '@/hooks/useGroups';
@@ -187,6 +188,10 @@ function VariantDetailSheet({ open, onOpenChange, product, otherVariants }: {
       // na mesma transação), e só quando o número realmente mudou.
       const prevQty = Number(product.quantity) || 0;
       const desiredQty = Number(nextQty);
+      // Ajuste que SOBE o saldo é entrada: quita falta de PV e abre a revisão do
+      // rateio (spec integracao-estoque-pv-compras §4).
+      const isInbound = Number.isFinite(desiredQty) && desiredQty > prevQty;
+      const inboundSince = inboundEntrySince();
       if (Number.isFinite(desiredQty) && desiredQty !== prevQty) {
         const res = await adjustStockSafe({
           productId: product.id,
@@ -202,6 +207,9 @@ function VariantDetailSheet({ open, onOpenChange, product, otherVariants }: {
       queryClient.invalidateQueries({ queryKey: ['sole_standard_items'] });
       toast.success('Variante atualizada');
       onOpenChange(false);
+      if (isInbound) {
+        void openInboundAllocationReview({ productIds: [product.id], since: inboundSince });
+      }
     } catch (err: any) {
       toast.error(`Erro ao salvar: ${err.message}`);
     } finally {

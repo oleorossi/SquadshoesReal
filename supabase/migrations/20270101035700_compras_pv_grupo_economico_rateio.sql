@@ -919,6 +919,8 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
+  -- Uma linha por MATERIAL do PV: o mesmo material em várias OPs/reservas é
+  -- somado (e a falta por numeração do solado, balde a balde).
   WITH r AS (
     SELECT COALESCE(mr.sale_order_id, o.sale_order_id) AS so_id,
            mr.product_id, mr.quantity_short,
@@ -927,22 +929,43 @@ AS $$
       LEFT JOIN public.orders o ON o.id = mr.order_id
      WHERE public.material_reservation_is_pv_managed(mr)
        AND COALESCE(mr.sale_order_id, o.sale_order_id) = ANY (p_sale_order_ids)
+  ),
+  per_product AS (
+    SELECT r.so_id, r.product_id, sum(r.quantity_short) AS quantity_short
+      FROM r
+     GROUP BY r.so_id, r.product_id
+  ),
+  grade_cells AS (
+    SELECT r.so_id, r.product_id, e.key, sum(e.value::numeric) AS qty
+      FROM r
+      CROSS JOIN LATERAL jsonb_each_text(
+        CASE WHEN jsonb_typeof(r.shortage_grade) = 'object'
+             THEN r.shortage_grade ELSE '{}'::jsonb END) e
+     WHERE e.value ~ '^-?[0-9]+(\.[0-9]+)?$'
+     GROUP BY r.so_id, r.product_id, e.key
+    HAVING sum(e.value::numeric) > 0
+  ),
+  per_grade AS (
+    SELECT gc.so_id, gc.product_id, jsonb_object_agg(gc.key, gc.qty ORDER BY gc.key) AS grade
+      FROM grade_cells gc
+     GROUP BY gc.so_id, gc.product_id
   )
   SELECT so.id,
          so.order_number,
-         count(r.*)::int,
-         count(r.*) FILTER (WHERE r.quantity_short > 0)::int,
+         count(pp.product_id)::int,
+         count(pp.product_id) FILTER (WHERE pp.quantity_short > 0)::int,
          COALESCE(jsonb_agg(jsonb_build_object(
            'product_id', p.id,
            'product_name', p.name,
            'color', p.color,
            'unit', p.unit,
-           'quantity_short', r.quantity_short,
-           'shortage_grade', NULLIF(r.shortage_grade, '{}'::jsonb)
-         ) ORDER BY p.name) FILTER (WHERE r.quantity_short > 0), '[]'::jsonb)
+           'quantity_short', pp.quantity_short,
+           'shortage_grade', pg.grade
+         ) ORDER BY p.name) FILTER (WHERE pp.quantity_short > 0), '[]'::jsonb)
     FROM public.sale_orders so
-    LEFT JOIN r ON r.so_id = so.id
-    LEFT JOIN public.products p ON p.id = r.product_id
+    LEFT JOIN per_product pp ON pp.so_id = so.id
+    LEFT JOIN per_grade pg ON pg.so_id = pp.so_id AND pg.product_id = pp.product_id
+    LEFT JOIN public.products p ON p.id = pp.product_id
    WHERE so.id = ANY (p_sale_order_ids)
      AND public.is_approved_user()
    GROUP BY so.id, so.order_number;
@@ -1158,8 +1181,10 @@ END;
 $$;
 
 -- Editar o rateio das entradas recentes de UM produto (Q9: tela editável).
--- p_allocations = [{reservation_id, size_key, quantity}] — substitui o rateio
--- automático feito desde p_since. Soma ≤ (o que foi rateado + livre agora).
+-- p_allocations = [{reservation_id, size_key, quantity, stock_movement_id?}] —
+-- substitui o rateio automático feito desde p_since. Soma ≤ (o que foi rateado
+-- + livre agora). stock_movement_id diz a qual entrada a linha pertence (aba
+-- Rastreio); sem ele, vai para a entrada MAIS RECENTE da janela.
 CREATE OR REPLACE FUNCTION public.apply_inbound_allocation_edit(
   p_product_id uuid,
   p_since timestamptz,
@@ -1177,6 +1202,7 @@ DECLARE
   v_free numeric;
   v_new_total numeric := 0;
   v_movement uuid;
+  v_item_movement uuid;
   v_res public.material_reservations%ROWTYPE;
   v_is_sole boolean;
   v_stock_grade jsonb;
@@ -1198,7 +1224,8 @@ BEGIN
   SELECT a.stock_movement_id INTO v_movement
     FROM public.stock_inbound_allocations a
    WHERE a.product_id = p_product_id AND a.created_at >= p_since AND a.reason = 'entrada'
-   ORDER BY a.created_at LIMIT 1;
+     AND a.stock_movement_id IS NOT NULL
+   ORDER BY a.created_at DESC LIMIT 1;
 
   -- 1) desfaz o rateio automático dessas entradas. Rateio de reserva que já
   --    saiu do motor (consumida, PV cancelado) não volta: o registro fica no
@@ -1246,11 +1273,16 @@ BEGIN
     END IF;
     PERFORM public.move_reservation_short_to_covered(
       v_res.id, NULLIF(v_item ->> 'size_key', ''), (v_item ->> 'quantity')::numeric);
+    -- a entrada informada só vale se for deste produto
+    SELECT sm.id INTO v_item_movement
+      FROM public.stock_movements sm
+     WHERE sm.id = NULLIF(v_item ->> 'stock_movement_id', '')::uuid
+       AND sm.product_id = p_product_id;
     INSERT INTO public.stock_inbound_allocations (
       stock_movement_id, product_id, size_key, reservation_id, sale_order_id, order_id,
       quantity, reason
     ) VALUES (
-      v_movement, p_product_id, NULLIF(v_item ->> 'size_key', ''), v_res.id,
+      COALESCE(v_item_movement, v_movement), p_product_id, NULLIF(v_item ->> 'size_key', ''), v_res.id,
       COALESCE(v_res.sale_order_id, (SELECT o.sale_order_id FROM public.orders o WHERE o.id = v_res.order_id)),
       v_res.order_id, (v_item ->> 'quantity')::numeric, 'entrada'
     );

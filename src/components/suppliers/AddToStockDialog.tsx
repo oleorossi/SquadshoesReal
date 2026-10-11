@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Package as PackagePlus, Warning as AlertTriangle } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,6 +21,7 @@ import { SearchInput } from '@/components/ui/search-input';
 import { HighlightMatch } from '@/components/ui/highlight-match';
 import { NumberInput } from '@/components/ui/number-input';
 import { searchMatchesAllTerms, capSearchResults, searchRefineHint, rankBySearchScore } from '@/lib/searchUtils';
+import { inboundEntrySince, openInboundAllocationReview } from '@/lib/inboundAllocationReviewStore';
 
 type Props = {
   open: boolean;
@@ -107,6 +108,24 @@ export default function AddToStockDialog({ open, onOpenChange, items, invoiceSup
   const [productSearch, setProductSearch] = useState('');
   const [saving, setSaving] = useState(false);
   const [currentIdx, setCurrentIdx] = useState(0);
+
+  // Rateio da entrada: junta os produtos lançados nesta sessão do diálogo e
+  // abre a revisão (quitação de falta dos PVs) quando ele fecha — não empilha
+  // um diálogo por item.
+  const inboundReviewRef = useRef<{ since: string | null; productIds: Set<string> }>({ since: null, productIds: new Set() });
+  const markInboundStart = () => {
+    if (!inboundReviewRef.current.since) inboundReviewRef.current.since = inboundEntrySince();
+  };
+  const markInboundDone = (productId: string) => { inboundReviewRef.current.productIds.add(productId); };
+  const flushInboundReview = () => {
+    const { since, productIds } = inboundReviewRef.current;
+    inboundReviewRef.current = { since: null, productIds: new Set() };
+    if (since && productIds.size > 0) void openInboundAllocationReview({ productIds: [...productIds], since });
+  };
+  useEffect(() => {
+    if (!open) flushInboundReview();
+  }, [open]);
+  useEffect(() => () => flushInboundReview(), []);
 
   // New product form
   const [newName, setNewName] = useState('');
@@ -220,6 +239,7 @@ export default function AddToStockDialog({ open, onOpenChange, items, invoiceSup
     }
 
     setSaving(true);
+    markInboundStart();
     try {
       let productId: string;
 
@@ -358,6 +378,7 @@ export default function AddToStockDialog({ open, onOpenChange, items, invoiceSup
 
       // Mark invoice item as added to stock
       await updateItem.mutateAsync({ id: currentItem.id, data: { added_to_stock: true, product_id: productId } });
+      markInboundDone(productId);
 
       toast.success(`"${currentItem.product_name}" lançado no estoque!`);
 
@@ -379,6 +400,7 @@ export default function AddToStockDialog({ open, onOpenChange, items, invoiceSup
     if (!similarProduct) return;
     setShowSimilarDialog(false);
     setSaving(true);
+    markInboundStart();
 
     try {
       // F5-03: mesmo conjunto de campos do auto-import (via builder único).
@@ -414,6 +436,7 @@ export default function AddToStockDialog({ open, onOpenChange, items, invoiceSup
       await supabase.from('products').update({ unit_price: newPrice }).eq('id', similarProduct.id);
 
       await updateItem.mutateAsync({ id: currentItem.id, data: { added_to_stock: true, product_id: similarProduct.id } });
+      markInboundDone(similarProduct.id);
 
       toast.success(`Estoque de "${similarProduct.name}" atualizado!`);
 
@@ -436,6 +459,7 @@ export default function AddToStockDialog({ open, onOpenChange, items, invoiceSup
     if (!skuDuplicateProduct || !currentItem) return;
     setShowSkuDuplicateDialog(false);
     setSaving(true);
+    markInboundStart();
 
     try {
       // F5-03: mesmo conjunto de campos do auto-import (via builder único).
@@ -471,6 +495,7 @@ export default function AddToStockDialog({ open, onOpenChange, items, invoiceSup
       await supabase.from('products').update({ unit_price: newPrice }).eq('id', skuDuplicateProduct.id);
 
       await updateItem.mutateAsync({ id: currentItem.id, data: { added_to_stock: true, product_id: skuDuplicateProduct.id } });
+      markInboundDone(skuDuplicateProduct.id);
 
       toast.success(`Estoque de "${skuDuplicateProduct.name}" atualizado (SKU unificado)!`);
 

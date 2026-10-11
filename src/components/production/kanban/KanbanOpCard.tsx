@@ -46,6 +46,14 @@ interface Props {
   atelierBadge?: string | null;
   /** OP adiantada pela Fila de Corte (`orders.is_ahead_of_schedule`). */
   earlyReleaseBadge?: boolean;
+  /**
+   * Selo de material do PV da OP (`list_sale_order_material_shortages`):
+   * 'completo' verde, 'falta' âmbar, null/ausente = sem selo (RPC falhou ou
+   * PV sem linha gerenciada pelo empenho).
+   */
+  materialStatus?: 'completo' | 'falta' | null;
+  /** Detalhe do selo (tooltip): o que falta. */
+  materialStatusTitle?: string | null;
 }
 
 /**
@@ -76,6 +84,8 @@ export function KanbanOpCard({
   showPalmilhaChecks = false,
   atelierBadge = null,
   earlyReleaseBadge = false,
+  materialStatus = null,
+  materialStatusTitle = null,
 }: Props) {
   const { q, front, delivered, isPartial, columnStage, upstreamGap, parallelSiblings } = card;
   const total = columnStage?.quantity_total || q.quantity;
@@ -135,7 +145,8 @@ export function KanbanOpCard({
           : `${pv}, ${client}, ${q.order_number}, ${q.reference_name || 'sem referência'}${q.color ? `, cor ${q.color}` : ''}, ` +
             `${shown} de ${total} pares` +
             `${isPartial ? `, parcial — faltam ${restante} pares neste setor` : ''}` +
-            `${q.late_days > 0 ? `, ${q.late_days} dias de atraso` : ''}. ` +
+            `${q.late_days > 0 ? `, ${q.late_days} dias de atraso` : ''}` +
+            `${materialStatus === 'falta' ? ', PV com falta de material' : ''}. ` +
             (readOnly ? 'Abrir detalhes.' : 'Abrir apontamento.')
       }
     >
@@ -314,6 +325,23 @@ export function KanbanOpCard({
           )}
 
           <div className="mt-0.5 flex items-center justify-end gap-1.5">
+            {materialStatus && (
+              <span
+                className={`mr-auto inline-flex min-w-0 items-center gap-0.5 truncate rounded px-1 text-[9px] font-semibold uppercase tracking-wide ${
+                  materialStatus === 'falta'
+                    ? 'bg-amber-500/15 text-amber-700 dark:text-amber-400'
+                    : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+                }`}
+                title={materialStatusTitle || (materialStatus === 'falta'
+                  ? 'O PV desta OP tem material em falta.'
+                  : 'Todo o material do PV está empenhado.')}
+              >
+                {materialStatus === 'falta'
+                  ? <AlertTriangle className="h-2.5 w-2.5 shrink-0" weight="fill" />
+                  : <CheckCircle2 className="h-2.5 w-2.5 shrink-0" weight="fill" />}
+                <span className="truncate">{materialStatus === 'falta' ? 'Falta material' : 'Material completo'}</span>
+              </span>
+            )}
             {idade && (
               <span
                 className={`text-[10px] font-mono flex items-center gap-0.5 ${

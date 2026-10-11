@@ -15,13 +15,19 @@ import {
 } from '@phosphor-icons/react';
 import {
   useSectorSettings, useProductionQueueDetail, useProductionScheduleGrid,
-  useEnsureFreshSchedule,
+  useEnsureFreshSchedule, useEngineRefetchInterval,
 } from '@/hooks/useProductionEngine';
 import { useAllOrderStages, useApontarProducao, useRealtimeOrderStages } from '@/hooks/useOrderStages';
 import { useCan } from '@/hooks/useAccessControl';
 import { useIsAdmin } from '@/hooks/useUserManagement';
 import { useReferenceThumbs } from '@/hooks/useReferenceThumbs';
 import { useOrdersMaterialGate } from '@/hooks/useMaterialGate';
+import {
+  EMPTY_MATERIAL_SHORTAGES,
+  materialShortageStatus,
+  shortageSummaryText,
+  useSaleOrderMaterialShortages,
+} from '@/hooks/useSaleOrderMaterialShortages';
 import { useIsCoarsePointer } from '@/hooks/use-mobile';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { searchMatchesAllTerms, searchMatchesAny, splitSearchTerms, normalizeForSearch } from '@/lib/searchUtils';
@@ -137,6 +143,14 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
   const { data: refThumbs } = useReferenceThumbs(queue.map(q => q.reference_id));
   // Gate de material (auditoria Crítico #1): OP sem matéria-prima pra arrancar.
   const { data: gateMap, isError: gateError } = useOrdersMaterialGate(orderIds);
+  // Falta de material POR PV (empenho parcial): selo no card + confirmação ao
+  // apontar. Uma RPC para os PVs do quadro; falha → mapa vazio, sem selo.
+  const saleOrderIds = useMemo(() => queue.map(q => q.sale_order_id), [queue]);
+  // Mesmo piso de frescor da fila do quadro: uma entrada que completa o
+  // material do PV vira "Material completo" sem recarregar a página.
+  const shortageRefetchInterval = useEngineRefetchInterval();
+  const { data: shortageBySaleOrder = EMPTY_MATERIAL_SHORTAGES } =
+    useSaleOrderMaterialShortages(saleOrderIds, { refetchInterval: shortageRefetchInterval });
   const apontar = useApontarProducao();
   const canEdit = useCan('/producao/kanban').canEdit;
   const isAdmin = useIsAdmin();
@@ -1888,6 +1902,12 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                         materialGateReason={gateMap?.get(card.q.order_id)?.reason ?? null}
                         atelierBadge={atelierKanbanBadgeLabel(atelierStatusForCard(card))}
                         earlyReleaseBadge={!!card.q.is_ahead_of_schedule}
+                        materialStatus={card.q.sale_order_id
+                          ? materialShortageStatus(shortageBySaleOrder.get(card.q.sale_order_id))
+                          : null}
+                        materialStatusTitle={card.q.sale_order_id
+                          ? shortageSummaryText(shortageBySaleOrder.get(card.q.sale_order_id))
+                          : null}
                         onToggleSelect={() => toggleSelect(card)}
                         onDragStart={() => setDragCard(card)}
                         onDragEnd={() => { setDragCard(null); setDragOverSector(null); }}
@@ -1914,6 +1934,9 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
           allowParallelSkip={isAdmin}
           apontar={apontar}
           photoUrl={refThumbs?.get(dropTarget.card.q.reference_id || '') || null}
+          materialShortage={dropTarget.card.q.sale_order_id
+            ? shortageBySaleOrder.get(dropTarget.card.q.sale_order_id)
+            : undefined}
           onApontado={markLanded}
           onClose={() => setDropTarget(null)}
         />
@@ -1927,6 +1950,9 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
           allowParallelSkip={isAdmin}
           apontar={apontar}
           photoUrl={refThumbs?.get(detailStage.card.q.reference_id || '') || null}
+          materialShortage={detailStage.card.q.sale_order_id
+            ? shortageBySaleOrder.get(detailStage.card.q.sale_order_id)
+            : undefined}
           onApontado={markLanded}
           readOnly={!canEdit}
           onClose={() => setDetailStage(null)}
@@ -1940,6 +1966,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
           levelOf={levelOf}
           allowParallelSkip={isAdmin}
           apontar={apontar}
+          shortageBySaleOrder={shortageBySaleOrder}
           onBack={() => setBulkRequest(null)}
           onClose={() => { setBulkRequest(null); exitSelectMode(); }}
         />

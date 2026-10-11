@@ -35,6 +35,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { adjustProductsStock } from '@/lib/stockCommand';
+import { inboundEntrySince, openInboundAllocationReview } from '@/lib/inboundAllocationReviewStore';
 
 interface Product {
   id: string;
@@ -732,6 +733,21 @@ export default function StockAdjustmentPage() {
       })),
     ];
 
+    // Rateio da entrada: só ajuste POSITIVO pode quitar falta de PV (solado:
+    // qualquer numeração que subiu).
+    const inboundSince = inboundEntrySince();
+    const positiveProductIds = [
+      ...pendingRegular
+        .filter(({ product, newQty }) => newQty > Number(product.quantity ?? 0))
+        .map(({ product }) => product.id),
+      ...pendingSoles
+        .filter(({ product, newGrade, newTotal }) =>
+          newTotal > Number(product.quantity ?? 0)
+          || Object.entries(newGrade).some(([k, v]) =>
+            !k.startsWith('_') && Number(v) > Number(product.stock_grade?.[k] ?? 0)))
+        .map(({ product }) => product.id),
+    ];
+
     setSaving(true);
     try {
       type BatchError = {
@@ -837,6 +853,9 @@ export default function StockAdjustmentPage() {
        qc.invalidateQueries({ queryKey: ["products"] });
        qc.invalidateQueries({ queryKey: ["stock-adjustment-products"] });
        qc.invalidateQueries({ queryKey: ["stock_movements"] });
+       if (positiveProductIds.length > 0) {
+         void openInboundAllocationReview({ productIds: positiveProductIds, since: inboundSince });
+       }
      } catch (err: unknown) {
        toastError(err, 'salvar ajuste de estoque', { duration: 8000 });
      } finally {

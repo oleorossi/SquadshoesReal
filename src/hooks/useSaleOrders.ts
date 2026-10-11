@@ -6,6 +6,7 @@ import { syncFinancialRecordsCore } from '@/lib/financialSync';
 import { isValidStatusTransition } from '@/lib/saleOrderStateMachine';
 import { logAuditEvent } from '@/services/auditService';
 import { recomputeMaterialGate } from '@/hooks/useMaterialGate';
+import { invalidateProductSupply } from '@/hooks/useProductSupplySummary';
 import { canonicalStageOrder } from '@/components/production/worksheet/stageOrder';
 import { pruneStrapSourcing } from '@/lib/strapSourcing';
 import { sanitizeSaleOrderHeaderDates } from '@/lib/billingWeek';
@@ -899,6 +900,8 @@ export function useUpdateSaleOrderStatus(options?: {
         return;
       }
       invalidateSaleOrders(qc);
+      // Aprovar/cancelar mexe no empenho: selo de material do PV e falta por produto.
+      invalidateProductSupply(qc);
       qc.invalidateQueries({ queryKey: ['orders'] });
       qc.invalidateQueries({ queryKey: ['order_stages'] });
       qc.invalidateQueries({ queryKey: ['sale_orders_floor_progress'] });

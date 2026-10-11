@@ -17,6 +17,7 @@ import { toast } from 'sonner';
 import { findGroupForProduct } from '@/hooks/useProducts';
 import type { Supplier } from '@/hooks/useSuppliers';
 import type { ParsedNFeDuplicata } from '@/lib/nfeParser';
+import { inboundEntrySince, openInboundAllocationReview } from '@/lib/inboundAllocationReviewStore';
 
 type Props = {
   open: boolean;
@@ -410,6 +411,9 @@ export default function XmlImportDialog({ open, onOpenChange, suppliers, onSuppl
       const pendingItems = createdInvoiceItems.filter(i => !i.added_to_stock);
 
       const products = await loadProductsForMatching();
+      // Janela do rateio da entrada (quitação automática de falta dos PVs).
+      const inboundSince = inboundEntrySince();
+      const launchedProductIds: string[] = [];
       let stockLaunched = 0;
       const failedItems: string[] = [];
       const conversionWarnings: string[] = [];
@@ -491,6 +495,7 @@ export default function XmlImportDialog({ open, onOpenChange, suppliers, onSuppl
             match.unit_price = newPrice;
             if (supplierId) match.supplier_id = supplierId;
             stockLaunched++;
+            launchedProductIds.push(match.id);
           } else {
             failedItems.push(invItem.product_name);
           }
@@ -552,6 +557,9 @@ export default function XmlImportDialog({ open, onOpenChange, suppliers, onSuppl
       setParsed(null);
       setXmlRaw('');
       onOpenChange(false);
+      if (launchedProductIds.length > 0) {
+        void openInboundAllocationReview({ productIds: launchedProductIds, since: inboundSince });
+      }
     } catch (err: any) {
       console.error('[NFe Import] Erro inesperado:', err);
       toast.error(`Erro inesperado ao importar NF: ${err?.message || 'desconhecido'}`);

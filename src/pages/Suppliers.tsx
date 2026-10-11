@@ -37,6 +37,7 @@ import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { SearchInput } from '@/components/ui/search-input';
 import { HighlightMatch } from '@/components/ui/highlight-match';
 import { useCan } from '@/hooks/useAccessControl';
+import { inboundEntrySince, openInboundAllocationReview } from '@/lib/inboundAllocationReviewStore';
 
 
 function InvoiceItemsRow({ invoice, supplierName }: { invoice: Invoice; supplierName: string }) {
@@ -59,6 +60,10 @@ function InvoiceItemsRow({ invoice, supplierName }: { invoice: Invoice; supplier
     const successItems: string[] = [];
     const skippedItems: string[] = [];
     const erroredItems: string[] = [];
+    // Rateio da entrada (spec integracao-estoque-pv-compras §4): a entrada quita
+    // a falta dos PVs no servidor; a tela de revisão abre depois do lote.
+    const inboundSince = inboundEntrySince();
+    const launchedProductIds: string[] = [];
     try {
       for (const item of pendingItems) {
         try {
@@ -117,6 +122,7 @@ function InvoiceItemsRow({ invoice, supplierName }: { invoice: Invoice; supplier
               reason: `Entrada via NF (lote) - ${item.product_name}${convNote}`,
             });
             if (!stockResult.success) throw new Error(stockResult.errorMessage);
+            if (addQty > 0) launchedProductIds.push(match.id);
 
             // Custo médio ponderado à parte (a RPC não cobre unit_price) — erro
             // capturado: falha silenciosa deixaria o saldo certo e o WAC velho.
@@ -182,6 +188,9 @@ function InvoiceItemsRow({ invoice, supplierName }: { invoice: Invoice; supplier
 
       queryClient.invalidateQueries({ queryKey: ['invoice_items'] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
+      if (launchedProductIds.length > 0) {
+        void openInboundAllocationReview({ productIds: launchedProductIds, since: inboundSince });
+      }
 
       // ── Feedback granular ao operador (fix mai/2026) ──
       if (erroredItems.length > 0) {

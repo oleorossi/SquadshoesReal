@@ -20,6 +20,12 @@ import {
 import { SaleOrderSortHead as SortHead } from '@/components/sale-orders/SaleOrderSortHead';
 import { SaleOrderMobileCard } from '@/components/sale-orders/SaleOrderMobileCard';
 import { SaleOrderFloorProgressSummary } from '@/components/sale-orders/SaleOrderFloorProgressSummary';
+import { SaleOrderMaterialShortageBadge } from '@/components/sale-orders/SaleOrderMaterialShortageBadge';
+import {
+  EMPTY_MATERIAL_SHORTAGES,
+  saleOrderShowsMaterialShortage,
+  useSaleOrderMaterialShortages,
+} from '@/hooks/useSaleOrderMaterialShortages';
 import {
   useMinBillingMap,
   useRefreshMinBillingInBackground,
@@ -731,6 +737,17 @@ export default function SaleOrders() {
   );
   const { data: floorProgressById = EMPTY_FLOOR_PROGRESS_MAP } =
     useSaleOrdersFloorProgress(floorProgressIds);
+
+  // Selo de material (falta / completo) — uma RPC para os PVs Aprovado/Em
+  // Produção da página visível. RPC ausente ou com erro → mapa vazio, sem selo.
+  const materialShortageIds = useMemo(
+    () => visibleOrders
+      .filter((o) => saleOrderShowsMaterialShortage(o.status))
+      .map((o) => o.id),
+    [visibleOrders],
+  );
+  const { data: materialShortageById = EMPTY_MATERIAL_SHORTAGES } =
+    useSaleOrderMaterialShortages(materialShortageIds);
 
   // ⚠ A seleção é alimentada pelas linhas VISÍVEIS (página atual). Shift+clique
   // seleciona intervalo na tela; selectedIds persiste entre páginas.
@@ -2193,6 +2210,7 @@ export default function SaleOrders() {
                 pairs={pairsBySaleOrder[order.id] || 0}
                 minBilling={minBillingMap.get(order.id) || null}
                 floorProgress={floorProgressById.get(order.id)}
+                materialShortage={materialShortageById.get(order.id)}
                 selected={sel.isSelected(order.id)}
                 isInfantil={!!segmentsBySaleOrder[order.id]?.has('Infantil')}
                 canSeeFinancialValues={canSeeFinancialValues}
@@ -2360,6 +2378,7 @@ export default function SaleOrders() {
                         </TableCell>
                       )}
                       <TableCell onClick={(e) => e.stopPropagation()}>
+                        <div className="flex flex-col items-start gap-1">
                         {(() => {
                           const phase = (order as { command_phase?: string }).command_phase || 'idle';
                           const target = (order as { command_target_status?: string | null }).command_target_status;
@@ -2461,6 +2480,12 @@ export default function SaleOrders() {
                         </Select>
                           );
                         })()}
+                        {/* Falta de material do PV: aviso, não trava (decisão do dono). */}
+                        <SaleOrderMaterialShortageBadge
+                          status={order.status}
+                          info={materialShortageById.get(order.id)}
+                        />
+                        </div>
                       </TableCell>
                       <TableCell>
                         <SaleOrderFloorProgressSummary

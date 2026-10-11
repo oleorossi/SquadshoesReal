@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { inboundEntrySince, openInboundAllocationReview } from '@/lib/inboundAllocationReviewStore';
 
 /**
  * Inventário cíclico + curva ABC — paridade Tutor32 (estoque #4).
@@ -94,15 +95,42 @@ export function useApplyInventoryCount() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (countId: string) => {
+      // Janela do rateio da entrada: sobra de contagem pode quitar falta de PV.
+      const inboundSince = inboundEntrySince();
       const { data, error } = await supabase.rpc('apply_inventory_count' as any, { p_count_id: countId });
       if (error) throw error;
-      return data as { counted: number; divergences: number; divergence_value: number };
+      return { ...(data as { counted: number; divergences: number; divergence_value: number }), inboundSince };
     },
-    onSuccess: (res) => {
+    onSuccess: (res, countId) => {
       qc.invalidateQueries({ queryKey: ['inventory_counts'] });
       qc.invalidateQueries({ queryKey: ['v_product_abc'] });
       toast.success(`Contagem aplicada — ${res.divergences} divergência(s) reconciliada(s).`);
+      void openInventoryCountReview(countId, res.inboundSince);
     },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
   });
+}
+
+/**
+ * Produtos contados → revisão do rateio (silencioso em erro). Manda os que
+ * tiveram divergência — só esses `apply_inventory_count` regrava (e só a sobra
+ * vira entrada; o servidor devolve apenas o que de fato quitou falta). Item sem
+ * divergência não é tocado, e mandá-lo deixaria a âncora da janela
+ * (`products.updated_at`) cair numa gravação anterior de outra operação.
+ */
+async function openInventoryCountReview(countId: string, since: string) {
+  try {
+    const { data, error } = await supabase
+      .from('inventory_count_items')
+      .select('product_id, counted_qty, divergence')
+      .eq('count_id', countId)
+      .not('counted_qty', 'is', null);
+    if (error) return;
+    const productIds = ((data ?? []) as unknown as Array<{ product_id: string; divergence: number | null }>)
+      .filter((i) => (Number(i.divergence) || 0) !== 0)
+      .map((i) => i.product_id);
+    if (productIds.length > 0) await openInboundAllocationReview({ productIds, since });
+  } catch {
+    // Revisão do rateio é acessória — nunca atrapalha a aplicação da contagem.
+  }
 }

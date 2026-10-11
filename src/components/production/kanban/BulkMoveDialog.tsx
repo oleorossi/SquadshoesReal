@@ -12,6 +12,10 @@ import { ArrowRight, CheckCircle, SkipForward, Warning as AlertTriangle, UserCir
 import { useApontarProducao, PointingWarning } from '@/hooks/useOrderStages';
 import { useCurrentProfile } from '@/hooks/useUserManagement';
 import ConfirmPointingWarnings from '@/components/production/ConfirmPointingWarnings';
+import {
+  buildShortagePointingWarnings,
+  type SaleOrderMaterialShortageInfo,
+} from '@/hooks/useSaleOrderMaterialShortages';
 import { toast } from 'sonner';
 import { KanbanCardData } from './kanbanDerive';
 import { applyPointing, skipBlockedByPartial } from './pointingPlan';
@@ -36,7 +40,7 @@ interface StepResult {
  */
 export function BulkMoveDialog({
   cards, target, flowOrder, levelOf, apontar, onClose, onBack,
-  allowParallelSkip = false,
+  allowParallelSkip = false, shortageBySaleOrder,
 }: {
   cards: KanbanCardData[];
   target: string;
@@ -50,6 +54,8 @@ export function BulkMoveDialog({
   onClose: () => void;
   /** Admin no Modo Gestão: pulo (irmão paralelo incluso) entra no lote. */
   allowParallelSkip?: boolean;
+  /** Falta de material por PV — com falta, cada OP do lote pede um OK antes. */
+  shortageBySaleOrder?: ReadonlyMap<string, SaleOrderMaterialShortageInfo>;
 }) {
   const { data: profile } = useCurrentProfile();
   const backToBoard = onBack || onClose;
@@ -92,6 +98,13 @@ export function BulkMoveDialog({
   const [skipOk, setSkipOk] = useState(false);
   const finished = started && idx >= steps.length;
   const current = started && !finished ? steps[idx] : null;
+  /** Falta de material do PV da OP atual. O OK vale só para ESTA OP do lote. */
+  const currentShortageWarnings = useMemo(() => {
+    const soId = current?.card.q.sale_order_id;
+    return soId ? buildShortagePointingWarnings(shortageBySaleOrder?.get(soId)) : [];
+  }, [current, shortageBySaleOrder]);
+  const [shortagePromptOpen, setShortagePromptOpen] = useState(false);
+  const [shortageAck, setShortageAck] = useState(false);
 
   // Cada passo entra com o saldo do setor (frente) ou 0 (estorno — o usuário
   // digita quantos pares volta), igual ao diálogo de um card só.
@@ -99,6 +112,7 @@ export function BulkMoveDialog({
     if (!current) return;
     setStepError(null);
     setSkipOk(false);
+    setShortageAck(false);
     setQty(current.plan.isBackward ? 0 : Math.max(0, current.plan.remaining));
   }, [current]);
 
@@ -107,7 +121,7 @@ export function BulkMoveDialog({
     setIdx(i => i + 1);
   };
 
-  const confirmStep = async (confirmed?: string[]) => {
+  const confirmStep = async (confirmed?: string[], shortageConfirmed: boolean = shortageAck) => {
     if (!current) return;
     const { card, plan } = current;
     if (qty === 0) {
@@ -119,7 +133,11 @@ export function BulkMoveDialog({
       const res = await applyPointing({
         card, plan, target, qty, apontar,
         confirmedWarnings: confirmed, skipAcknowledged: skipOk,
-        origin: 'Via Kanban (lote)',
+        // O OK da falta de material é aviso do cliente: vai na nota, não
+        // nos `confirmedWarnings` do servidor.
+        origin: shortageConfirmed && !plan.isBackward
+          ? 'Via Kanban (lote, ciente: PV com falta de material)'
+          : 'Via Kanban (lote)',
       });
       if (res.status === 'needs_confirmation') {
         setPendingWarnings(res.warnings);
@@ -141,6 +159,16 @@ export function BulkMoveDialog({
       // Não avança sozinho: falha em lote precisa de decisão explícita
       setStepError((e as Error)?.message || 'Falha ao apontar. Tente de novo ou pule esta OP.');
     }
+  };
+
+  // Estorno não consome material — só o avanço pergunta pela falta.
+  const requestConfirmStep = () => {
+    if (current && !current.plan.isBackward && qty > 0
+      && currentShortageWarnings.length > 0 && !shortageAck) {
+      setShortagePromptOpen(true);
+      return;
+    }
+    confirmStep();
   };
 
   // Mesma trava do diálogo de um card só: pular exige fechar a origem.
@@ -428,7 +456,7 @@ export function BulkMoveDialog({
                     <Button variant="outline" className="h-11 md:h-10" onClick={requestClose} disabled={apontar.isPending}>
                       {totalOk > 0 ? 'Encerrar lote' : 'Cancelar lote'}
                     </Button>
-                    <Button className="h-11 md:h-10" onClick={() => confirmStep()} disabled={apontar.isPending || stepSkipBlocked || (current.plan.skipped.length > 0 && !skipOk)}>
+                    <Button className="h-11 md:h-10" onClick={requestConfirmStep} disabled={apontar.isPending || stepSkipBlocked || (current.plan.skipped.length > 0 && !skipOk)}>
                       {idx + 1 === steps.length ? 'Confirmar e finalizar' : 'Confirmar e seguir'}
                     </Button>
                   </div>
@@ -454,6 +482,22 @@ export function BulkMoveDialog({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Falta de material do PV da OP atual — pergunta antes, uma vez por OP */}
+      <ConfirmPointingWarnings
+        open={shortagePromptOpen && currentShortageWarnings.length > 0}
+        warnings={currentShortageWarnings}
+        contextLabel={current
+          ? `${current.card.q.order_number} → ${target}, +${qty} pares · ${current.card.q.sale_order_number || 'PV'} com falta de material`
+          : ''}
+        onConfirm={() => {
+          setShortagePromptOpen(false);
+          setShortageAck(true);
+          confirmStep(undefined, true);
+        }}
+        onCancel={() => setShortagePromptOpen(false)}
+        confirming={apontar.isPending}
+      />
 
       {/* R6.3: avisos do servidor no passo atual — confirmar grava com autoria */}
       <ConfirmPointingWarnings

@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Palette, FloppyDisk as Save, Package, Plus, MagnifyingGlass as Search, Ruler, CircleNotch as Loader2, Flask as FlaskConical, Stack as Layers, X, LinkSimple as Link2, ArrowRight, Check, Warning as AlertTriangle, ArrowsLeftRight, Rows, Info, Factory, SquaresFour, Scissors, Truck } from '@phosphor-icons/react';
+import { Palette, FloppyDisk as Save, Package, Plus, MagnifyingGlass as Search, Ruler, CircleNotch as Loader2, Flask as FlaskConical, Stack as Layers, X, LinkSimple as Link2, ArrowRight, Check, Warning as AlertTriangle, ArrowsLeftRight, Rows, Info, Factory, SquaresFour, Scissors, Truck, ClockCounterClockwise } from '@phosphor-icons/react';
 import { ProductGroup, useUpdateGroup, useGroups } from '@/hooks/useGroups';
 import { useProducts } from '@/hooks/useProducts';
 import GroupColorsTab from './GroupColorsTab';
 import { MaterialClassificationRail } from './MaterialClassificationRail';
 import GroupCompositionTab from './GroupCompositionTab';
 import SupplierPanel from './SupplierPanel';
+import GroupStockTrackingPanel from './GroupStockTrackingPanel';
 import { useGroupSuppliers } from '@/hooks/useGroupSuppliers';
 import { useForceDeleteProductFlow } from '@/components/inventory/ForceDeleteProductDialog';
 import { supabase } from '@/integrations/supabase/client';
@@ -45,10 +46,12 @@ import { applyUnitAndPriceToGroupItems, commonProductField } from '@/lib/applyGr
 import { UNITS, UNIT_LABELS } from '@/types/inventory';
 
 /** Abas da janela de grupo. `bulk` e `items` chegaram aqui em 22/08/2026, quando
- *  o `MasterVariantDialog` deixou de ser um segundo diálogo e virou painel. */
+ *  o `MasterVariantDialog` deixou de ser um segundo diálogo e virou painel.
+ *  `rastreio` (spec `integracao-estoque-pv-compras`, Q20): entradas do grupo e o
+ *  rateio de cada uma para os PVs em falta. */
 export type GroupEditTab =
   | 'general' | 'hierarchy' | 'specs' | 'packaging' | 'composition'
-  | 'colors' | 'suppliers' | 'items' | 'bulk';
+  | 'colors' | 'suppliers' | 'items' | 'bulk' | 'rastreio';
 
 interface GroupEditDialogProps {
   open: boolean;
@@ -678,7 +681,7 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
       if (showDimensionsTab) out.push('specs');
       if (show.packaging) out.push('packaging');
       if (isCompositeMaterial) out.push('composition');
-      out.push('colors', 'suppliers', 'items', 'bulk');
+      out.push('colors', 'suppliers', 'items', 'bulk', 'rastreio');
     }
     return out;
   }, [isContainer, showDimensionsTab, show.packaging, isCompositeMaterial]);
@@ -932,6 +935,12 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
               {!isContainer && <TabsTrigger value="bulk" className="min-w-[132px] flex-1 justify-start gap-2 rounded-sm border border-transparent px-3 py-2 text-left font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm">
                 <ArrowsLeftRight className="h-4 w-4 shrink-0" />
                 <span><span className="block text-xs font-semibold">Em massa</span><span className="block text-[9px] font-normal text-muted-foreground">aplicar a todas as cores</span></span>
+              </TabsTrigger>}
+              {/* Rastreio: entradas do grupo e o rateio de cada uma para os PVs
+                  em falta (spec integracao-estoque-pv-compras, Q20). */}
+              {!isContainer && <TabsTrigger value="rastreio" className="min-w-[132px] flex-1 justify-start gap-2 rounded-sm border border-transparent px-3 py-2 text-left font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                <ClockCounterClockwise className="h-4 w-4 shrink-0" />
+                <span><span className="block text-xs font-semibold">Rastreio</span><span className="block text-[9px] font-normal text-muted-foreground">entradas e rateio p/ PV</span></span>
               </TabsTrigger>}
             </TabsList>
 
@@ -1687,6 +1696,16 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                   onOpenGroupSpecs={() => setActiveTab(showDimensionsTab ? 'specs' : 'general')}
                 />
               )}
+            </TabsContent>}
+
+            {/* Tab: Rastreio — só lê; a RPC pode não existir ainda e o painel
+                degrada sozinho para "Rastreio indisponível". */}
+            {!isContainer && <TabsContent value="rastreio" className="space-y-4 mt-4">
+              <GroupStockTrackingPanel
+                groupId={group.id}
+                products={products}
+                onNavigate={() => onOpenChange(false)}
+              />
             </TabsContent>}
           </Tabs>
 

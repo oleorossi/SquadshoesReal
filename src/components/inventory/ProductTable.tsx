@@ -35,6 +35,9 @@ import { useTableView, densityClasses } from './TableViewContext';
 import { useArtisanalStrapCatalog } from '@/hooks/useArtisanalStraps';
 import { isNominalBuyReadyStrapIdentity } from '@/lib/strapIdentity';
 import { fiberStockDualDisplay } from '@/lib/insolePlateDualDisplay';
+// Falta de PV / em compra por produto (spec integracao-estoque-pv-compras).
+// Degrada em silêncio: sem a RPC no banco o Map vem vazio e nada novo aparece.
+import { useProductSupplySummary, type ProductSupplyMap } from '@/hooks/useProductSupplySummary';
 
 function ImageZoomDialog({ src, alt, open, onOpenChange }: { src: string; alt: string; open: boolean; onOpenChange: (o: boolean) => void }) {
   if (!src) return null;
@@ -71,6 +74,17 @@ function ProductImageThumb({ src, alt, size = 'sm', onClick }: { src?: string | 
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onClick?.(); } }}
     />
   );
+}
+
+/** Quantidade em pt-BR, até 2 casas — mesma régua do cabeçalho do grupo. */
+const fmtQty = (v: number) => v.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
+
+/** "35: 6 · 33/34: 4" — falta de solado por numeração, na ordem da grade. */
+function formatGradeShort(grade: Record<string, number>): string {
+  return Object.entries(grade)
+    .sort(([a], [b]) => (parseFloat(a) || 0) - (parseFloat(b) || 0) || a.localeCompare(b))
+    .map(([k, v]) => `${k}: ${fmtQty(v)}`)
+    .join(' · ');
 }
 
 const isMeterUnit = (u?: string | null) => ['metro', 'm', 'metros'].includes(u || '');
@@ -131,13 +145,21 @@ type GroupStats = {
    * então o cabeçalho para de exibir total nesses casos.
    */
   unidadesMistas: boolean;
+  /** Falta aberta dos PVs somada no grupo (`product_supply_summary`). */
+  faltaPv: number;
+  /** Compra em aberto somada no grupo. */
+  emCompra: number;
+  /** Quantas cores/itens do grupo têm falta de PV — usado quando as unidades
+   *  são mistas e a soma não significa nada. */
+  comFaltaPv: number;
   severidade: 'alarm' | 'dead' | 'ok';
 };
 
 /** Agregados da linha colapsada. Soma bruta e líquida convivem: a conferência
  *  física conta prateleira, o pedido consome disponível. */
-function computeGroupStats(items: Product[]): GroupStats {
+function computeGroupStats(items: Product[], supply?: ProductSupplyMap): GroupStats {
   let bruto = 0, disponivel = 0, valor = 0, zeradas = 0, emFalta = 0;
+  let faltaPv = 0, emCompra = 0, comFaltaPv = 0;
   const materiais = new Set<string>();
   const unidades = new Set<string>();
   for (const p of items) {
@@ -150,13 +172,23 @@ function computeGroupStats(items: Product[]): GroupStats {
     if (disp < 0) emFalta += 1;
     materiais.add(materialIdentity(p));
     if (p.unit) unidades.add(p.unit);
+    const s = supply?.get(p.id);
+    if (s) {
+      faltaPv += s.falta;
+      emCompra += s.emCompra;
+      if (s.falta > 0) comFaltaPv += 1;
+    }
   }
+  // Falta de PV também pinta o trilho: com o empenho parcial o físico nunca
+  // fica abaixo da reserva, então `emFalta` (disponível < 0) quase não acende
+  // mais — a falta passou a morar no registro por PV.
   const severidade: GroupStats['severidade'] =
-    emFalta > 0 ? 'alarm'
+    emFalta > 0 || comFaltaPv > 0 ? 'alarm'
     : zeradas === items.length ? 'dead'
     : 'ok';
   return {
     bruto, disponivel, valor, zeradas, emFalta,
+    faltaPv, emCompra, comFaltaPv,
     unidade: items[0]?.unit || '',
     heterogeneo: materiais.size > 1,
     unidadesMistas: unidades.size > 1,
@@ -274,7 +306,7 @@ function ProductHoverPreview({ product, formatCurrency, children }: {
   );
 }
 
-function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisanal, onOpenReservations, formatCurrency, indent = false, avgConsumptionMap, selectedIds, onToggleSelect, onDuplicate, purchasedReadyProductIds, showName = true, searchTerm = '' }: {
+function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisanal, onOpenReservations, formatCurrency, indent = false, avgConsumptionMap, selectedIds, onToggleSelect, onDuplicate, purchasedReadyProductIds, showName = true, searchTerm = '', supply }: {
   products: Product[];
   onEdit: (product: Product) => void;
   onOpenReservations: (product: Product) => void;
@@ -293,6 +325,8 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
    *  vira o rótulo da linha. true em grupo heterogêneo (R1.1a). */
   showName?: boolean;
   searchTerm?: string;
+  /** Falta de PV / em compra por produto. Vazio = RPC indisponível → nada aparece. */
+  supply: ProductSupplyMap;
 }) {
   const [zoomImg, setZoomImg] = useState<{ src: string; alt: string } | null>(null);
   const swatchOf = useColorSwatches();
@@ -548,6 +582,51 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
                          Em prod.: {inProd.toLocaleString('pt-BR')} {product.unit}
                        </div>
                      )}
+                     {(() => {
+                       // Falta de PV / em compra / projetado. Só aparece quando
+                       // há falta ou compra — sem nenhum dos dois o projetado é
+                       // o próprio disponível e a linha seria ruído.
+                       const s = supply.get(product.id);
+                       if (!s || (s.falta <= 0 && s.emCompra <= 0)) return null;
+                       const projetado = available - s.falta + s.emCompra;
+                       return (
+                         <>
+                           {s.falta > 0 && (
+                             <div
+                               className="text-xs font-semibold text-red-600 dark:text-red-400 whitespace-nowrap"
+                               title="Falta aberta dos pedidos de venda — o que os PVs pediram e não havia em estoque"
+                             >
+                               Falta: {fmtQty(s.falta)} {product.unit}
+                             </div>
+                           )}
+                           {s.falta > 0 && s.faltaGrade && (
+                             <div
+                               className="text-[11px] text-red-600 dark:text-red-400 whitespace-nowrap font-mono"
+                               title="Falta por numeração"
+                             >
+                               {formatGradeShort(s.faltaGrade)}
+                             </div>
+                           )}
+                           {s.emCompra > 0 && (
+                             <div
+                               className="text-xs text-muted-foreground font-medium whitespace-nowrap"
+                               title="Saldo ainda não recebido das ordens de compra abertas"
+                             >
+                               Em compra: {fmtQty(s.emCompra)} {product.unit}
+                             </div>
+                           )}
+                           <div
+                             className={cn(
+                               'text-xs font-semibold whitespace-nowrap',
+                               projetado < 0 ? 'text-red-600 dark:text-red-400' : 'text-foreground',
+                             )}
+                             title="Projetado = físico − reservado − falta + em compra"
+                           >
+                             Projetado: {fmtQty(projetado)} {product.unit}
+                           </div>
+                         </>
+                       );
+                     })()}
                    </div>
                  );
                })()}
@@ -708,6 +787,15 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
     return ids;
   }, [strapCatalog?.variants, products]);
   const { density, isVisible, visibleCount } = useTableView();
+  // Falta de PV / em compra: pede o UNIVERSO (allProducts), não só a página —
+  // o cabeçalho do grupo soma todas as cores (`fullByGroup`), e o mesmo conjunto
+  // de ids que a aba Materiais usa no chip "Falta p/ pedidos" cai no mesmo cache
+  // (o hook ordena e deduplica os ids), então é uma chamada só.
+  const supplyIds = useMemo(
+    () => [...(allProducts ?? []), ...products].map((p) => p.id),
+    [allProducts, products],
+  );
+  const supply = useProductSupplySummary(supplyIds);
   // Material + checkbox; +1 for the name column that isVisible não conta.
   const colCount = visibleCount + 2;
   // A linha do material nasce FECHADA (R1.2). Estado de sessão, não persistido:
@@ -900,15 +988,15 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
     groups.forEach(g => {
       const items = groupMap.get(g.id);
       if (items && items.length > 0) {
-        result.push({ groupId: g.id, groupName: g.name, products: items, stats: computeGroupStats(fullByGroup.get(g.id) ?? items) });
+        result.push({ groupId: g.id, groupName: g.name, products: items, stats: computeGroupStats(fullByGroup.get(g.id) ?? items, supply) });
       }
     });
     const ungrouped = groupMap.get(null);
     if (ungrouped && ungrouped.length > 0) {
-      result.push({ groupId: null, groupName: 'Sem Grupo', products: ungrouped, stats: computeGroupStats(fullByGroup.get(null) ?? ungrouped) });
+      result.push({ groupId: null, groupName: 'Sem Grupo', products: ungrouped, stats: computeGroupStats(fullByGroup.get(null) ?? ungrouped, supply) });
     }
     return result;
-  }, [sortedProducts, products, sortKey, groups, fullByGroup]);
+  }, [sortedProducts, products, sortKey, groups, fullByGroup, supply]);
 
   const hasGroups = grouped.some(g => g.groupId !== null);
 
@@ -1023,6 +1111,7 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
                      onDuplicate={handleDuplicateOne}
                      purchasedReadyProductIds={purchasedReadyProductIds}
                      searchTerm={searchTerm}
+                     supply={supply}
                    />
                 )}
               </TableBody>
@@ -1054,7 +1143,7 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
                     </TableCell>
                   </TableRow>
                 ) : (
-                  <ProductRows products={sortedProducts} onEdit={handleEditIntercepted} onDelete={onDelete} onStockOut={setStockOutProduct} onGrade={setGradeProduct} onArtisanal={setArtisanalProducts} onOpenReservations={setReservationsProduct} formatCurrency={formatCurrency} avgConsumptionMap={avgConsumptionMap} selectedIds={selectedIds} purchasedReadyProductIds={purchasedReadyProductIds} searchTerm={searchTerm} />
+                  <ProductRows products={sortedProducts} onEdit={handleEditIntercepted} onDelete={onDelete} onStockOut={setStockOutProduct} onGrade={setGradeProduct} onArtisanal={setArtisanalProducts} onOpenReservations={setReservationsProduct} formatCurrency={formatCurrency} avgConsumptionMap={avgConsumptionMap} selectedIds={selectedIds} purchasedReadyProductIds={purchasedReadyProductIds} searchTerm={searchTerm} supply={supply} />
                 )}
               </TableBody>
             </Table>
@@ -1129,6 +1218,30 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
                       {stats.zeradas > 0 && (
                         <Badge variant="outline" className="text-xs text-muted-foreground">
                           {stats.zeradas} zerada{stats.zeradas === 1 ? '' : 's'}
+                        </Badge>
+                      )}
+                      {/* Falta de PV / em compra do conjunto. Unidades mistas:
+                          somar kg com un não significa nada → conta as cores. */}
+                      {stats.faltaPv > 0 && (
+                        <Badge
+                          variant="outline"
+                          className="text-xs bg-red-500/10 text-red-600 border-red-500/30 dark:text-red-400 tabular-nums"
+                          title="Falta aberta dos pedidos de venda neste grupo"
+                        >
+                          {stats.unidadesMistas
+                            ? `${stats.comFaltaPv} com falta p/ pedidos`
+                            : `Falta ${fmtQty(stats.faltaPv)} ${stats.unidade}`}
+                        </Badge>
+                      )}
+                      {stats.emCompra > 0 && (
+                        <Badge
+                          variant="outline"
+                          className="text-xs text-muted-foreground tabular-nums"
+                          title="Saldo ainda não recebido das ordens de compra abertas"
+                        >
+                          {stats.unidadesMistas
+                            ? 'Em compra'
+                            : `Em compra ${fmtQty(stats.emCompra)} ${stats.unidade}`}
                         </Badge>
                       )}
                     </div>
@@ -1236,6 +1349,7 @@ export function ProductTable({ products, onEdit, onDelete, externalSort, searchT
                         purchasedReadyProductIds={purchasedReadyProductIds}
                         showName={stats.heterogeneo}
                         searchTerm={searchTerm}
+                        supply={supply}
                       />
                     </TableBody>
                   </Table>

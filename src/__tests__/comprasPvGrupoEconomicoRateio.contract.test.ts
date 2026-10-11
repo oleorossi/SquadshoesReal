@@ -81,6 +81,16 @@ describe('Q12: falta de material avisa, não bloqueia (contract)', () => {
   });
 });
 
+describe('falta por PV para os avisos (contract)', () => {
+  it('uma linha por material: várias OPs/reservas do mesmo material são somadas', () => {
+    const body = fnBody('list_sale_order_material_shortages');
+    expect(body).toMatch(/GROUP BY r\.so_id, r\.product_id\b/);
+    expect(body).toMatch(/sum\(r\.quantity_short\) AS quantity_short/);
+    // grade do solado somada balde a balde, não por reserva
+    expect(body).toMatch(/GROUP BY r\.so_id, r\.product_id, e\.key/);
+  });
+});
+
 describe('rateio da entrada editável (contract)', () => {
   const edit = () => fnBody('apply_inbound_allocation_edit');
 
@@ -103,6 +113,13 @@ describe('rateio da entrada editável (contract)', () => {
     expect(body).toMatch(
       /CONTINUE WHEN NOT FOUND OR NOT public\.material_reservation_is_pv_managed\(v_res\);\s*PERFORM public\.move_reservation_short_to_covered[^;]*;\s*DELETE FROM public\.stock_inbound_allocations/,
     );
+  });
+
+  it('linha editada fica na entrada de onde veio (senão, na mais recente da janela)', () => {
+    const body = edit();
+    expect(body).toMatch(/ORDER BY a\.created_at DESC LIMIT 1/);
+    expect(body).toMatch(/sm\.id = NULLIF\(v_item ->> 'stock_movement_id', ''\)::uuid\s*AND sm\.product_id = p_product_id/);
+    expect(body).toMatch(/COALESCE\(v_item_movement, v_movement\)/);
   });
 
   it('mover falta→empenho não deixa nenhum dos dois negativo', () => {

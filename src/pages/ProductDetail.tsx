@@ -46,6 +46,7 @@ import { toast } from 'sonner';
 import { z } from 'zod';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { adjustStockSafe } from '@/lib/stockAdjustments';
+import { inboundEntrySince, openInboundAllocationReview } from '@/lib/inboundAllocationReviewStore';
 import { PURCHASE_UNITS, PRODUCTION_UNITS, normalizePurchaseUnit, normalizeProductionUnit } from '@/lib/productUnits';
 import { SoleSilkPanel } from '@/components/technical-sheets/SoleSilkPanel';
 import StockHistory from './StockHistory';
@@ -1277,6 +1278,9 @@ function StockMovementForm({ product, type }: { product: Product, type: 'in' | '
        // meio-tempo era apagado sem erro nenhum. A RPC lê sob FOR UPDATE e
        // ainda barra saída avulsa que comeria material reservado pra OP.
        const previousQty = Number(product.quantity) || 0;
+       // Rateio da entrada (spec integracao-estoque-pv-compras §4): entrada
+       // manual também quita falta de PV — a revisão abre depois do sucesso.
+       const inboundSince = inboundEntrySince();
        const result = await adjustStockSafe({
          productId: product.id,
          expectedPrevious: previousQty,
@@ -1294,6 +1298,9 @@ function StockMovementForm({ product, type }: { product: Product, type: 'in' | '
        setDescription('');
        qc.invalidateQueries({ queryKey: ['product-detail', product.id] });
        qc.invalidateQueries({ queryKey: ['stock_movements'] });
+       if (type === 'in') {
+         void openInboundAllocationReview({ productIds: [product.id], since: inboundSince });
+       }
      } catch (error) {
        toast.error(`Erro: ${error instanceof Error ? error.message : 'Falha ao registrar movimentação'}`);
      } finally {

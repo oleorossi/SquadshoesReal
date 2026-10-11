@@ -14,12 +14,20 @@ import {
 } from '@/components/sale-orders/saleOrderListConstants';
 import { SaleOrderFloorProgressSummary } from '@/components/sale-orders/SaleOrderFloorProgressSummary';
 import type { SaleOrderFloorProgress } from '@/hooks/useSaleOrdersFloorProgress';
+import { SaleOrderMaterialShortageBadge } from '@/components/sale-orders/SaleOrderMaterialShortageBadge';
+import {
+  materialShortageStatus,
+  saleOrderShowsMaterialShortage,
+  type SaleOrderMaterialShortageInfo,
+} from '@/hooks/useSaleOrderMaterialShortages';
 
 interface SaleOrderMobileCardProps {
   order: any;
   pairs: number;
   minBilling: string | null;
   floorProgress?: SaleOrderFloorProgress;
+  /** Falta de material do PV (`list_sale_order_material_shortages`). */
+  materialShortage?: SaleOrderMaterialShortageInfo;
   selected: boolean;
   isInfantil?: boolean;
   canSeeFinancialValues: boolean;
@@ -37,6 +45,7 @@ export function SaleOrderMobileCard({
   pairs,
   minBilling,
   floorProgress,
+  materialShortage,
   selected,
   isInfantil = false,
   canSeeFinancialValues,
@@ -60,6 +69,8 @@ export function SaleOrderMobileCard({
     && !TERMINAL_BILLED_STATUSES.includes(order.status)
     && order.status !== 'Cancelado'
   );
+  const showMaterialBadge = saleOrderShowsMaterialShortage(order.status)
+    && materialShortageStatus(materialShortage) !== null;
 
   return (
     <article
@@ -119,6 +130,13 @@ export function SaleOrderMobileCard({
           )}
         </button>
       </div>
+      {/* Fora do <button> do card: o selo de falta abre um Popover próprio
+          (botão dentro de botão é HTML inválido e quebra o toque). */}
+      {showMaterialBadge && (
+        <div className="mt-2 pl-7">
+          <SaleOrderMaterialShortageBadge status={order.status} info={materialShortage} />
+        </div>
+      )}
       <div className="mt-3 flex gap-2 border-t pt-3">
         <Button
           variant="outline"
