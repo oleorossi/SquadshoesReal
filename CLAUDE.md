@@ -1042,6 +1042,29 @@ o gatilho compartilhado não mudou.
   Valores válidos = `SECTOR_OPTIONS` (`src/lib/categoryFromGroup.ts`), com `CHECK`
   constraint espelhando no banco (migration `20260901140000`).
 
+### Grupo de material NASCE com cor (CANÔNICO, 11/10/2026)
+
+> Decisão do dono (spec `specs/grupo-cor-obrigatoria.md`). Sintoma: NAPA ROOTS
+> criada sem item sumia do seletor de Cabedal da ficha — que só lista grupo com
+> item ativo **de propósito** (sem SKU o PV não debita e o custo/par sai R$ 0).
+
+- **Porta única de criação = `GroupCreateDialog`.** O `QuickFamilyDialog`
+  ("Cadastro rápido: grupo + cores") foi absorvido e apagado; o menu do Estoque
+  tem um "Novo grupo" só. Não recrie uma segunda janela de criação.
+- Quem exige cor vem de `colorRequirement()` (`src/lib/createGroupWithColors.ts`):
+  Cabedal / Forração da Palmilha / Solado **sempre**; Componente pergunta
+  "Varia por cor?" **sem resposta pré-marcada**; família, tira e setores sem cor, não.
+- Grupo com cor nasce "Linha com variantes" + `consumption_unit` (exigido por
+  `chk_shared_group_has_consumption_unit`), itens pela fronteira
+  `createProductsWithStock`. Lote falhou → `delete_empty_material_group` desfaz.
+- A aba **Cores** cria a 1ª cor de grupo vazio (pede a unidade) e converte grupo
+  vazio de "Coleção de itens" em "Linha com variantes" — `convertedToVariantLine`
+  volta para a janela, senão o "Salvar" da aba Geral desfaz a conversão.
+- ⚠ A rota da 1ª cor foi **código morto** de 18/08 a 11/10: uma trava anterior
+  ("O grupo ainda não tem item-modelo") devolvia erro antes, e o contrato só
+  conferia que o TEXTO existia no arquivo. Hoje é travado por teste de
+  comportamento (`lib/__tests__/groupColorProducts.firstColor.test.ts`).
+
 ### A janela do grupo é a PORTA ÚNICA de edição (CANÔNICO, 22/08/2026)
 
 > Decisão do dono, olhando as duas telas lado a lado: *"essa janela de edição de
