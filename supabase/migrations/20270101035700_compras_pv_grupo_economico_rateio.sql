@@ -55,38 +55,34 @@ AS $$
    LIMIT 1;
 $$;
 
--- Remonta os itens da OC somando a contribuição de TODOS os PVs ativos nela.
--- Sem contribuição ativa → cancela a OC (só chamada quando ela é editável).
-CREATE OR REPLACE FUNCTION public.rebuild_pv_purchase_order_from_effects(p_purchase_order_id uuid)
-RETURNS text
+-- Cancela a OC automática que ficou sem nenhum PV contribuinte.
+CREATE OR REPLACE FUNCTION public.close_pv_purchase_order_without_contributors(p_purchase_order_id uuid)
+RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
-DECLARE
-  v_total numeric;
-  v_pvs uuid[];
-  v_digest text;
 BEGIN
-  SELECT COALESCE(array_agg(DISTINCT e.sale_order_id), ARRAY[]::uuid[])
-    INTO v_pvs
-    FROM public.sale_order_purchase_shortage_effects e
-   WHERE e.purchase_order_id = p_purchase_order_id
-     AND e.effect_status = 'editable';
+  UPDATE public.purchase_orders
+     SET status = 'cancelled',
+         cancelled_at = now(),
+         idempotency_key = COALESCE(idempotency_key, 'auto_pv:outbox') || ':closed:' ||
+           to_char(clock_timestamp(), 'YYYYMMDDHH24MISSUS'),
+         notes = concat_ws(E'\n', NULLIF(notes, ''),
+           '[SISTEMA] Sugestão automática sem PV contribuinte (falta resolvida/PV cancelado)'),
+         updated_at = now()
+   WHERE id = p_purchase_order_id;
+END;
+$$;
 
-  IF cardinality(v_pvs) = 0 THEN
-    UPDATE public.purchase_orders
-       SET status = 'cancelled',
-           cancelled_at = now(),
-           idempotency_key = COALESCE(idempotency_key, 'auto_pv:outbox') || ':closed:' ||
-             to_char(clock_timestamp(), 'YYYYMMDDHH24MISSUS'),
-           notes = concat_ws(E'\n', NULLIF(notes, ''),
-             '[SISTEMA] Sugestão automática sem PV contribuinte (falta resolvida/PV cancelado)'),
-           updated_at = now()
-     WHERE id = p_purchase_order_id;
-    RETURN NULL;
-  END IF;
-
+-- Troca os itens da OC pela soma das contribuições ativas dos PVs.
+CREATE OR REPLACE FUNCTION public.replace_pv_purchase_order_items_from_effects(p_purchase_order_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
   DELETE FROM public.purchase_order_items WHERE purchase_order_id = p_purchase_order_id;
 
   WITH items AS (
@@ -124,6 +120,34 @@ BEGIN
     LEFT JOIN grades gr
       ON gr.product_id = it.product_id AND gr.color IS NOT DISTINCT FROM it.color
    GROUP BY it.product_id, it.color, gr.grade;
+END;
+$$;
+
+-- Remonta os itens da OC somando a contribuição de TODOS os PVs ativos nela.
+-- Sem contribuição ativa → cancela a OC (só chamada quando ela é editável).
+CREATE OR REPLACE FUNCTION public.rebuild_pv_purchase_order_from_effects(p_purchase_order_id uuid)
+RETURNS text
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_total numeric;
+  v_pvs uuid[];
+  v_digest text;
+BEGIN
+  SELECT COALESCE(array_agg(DISTINCT e.sale_order_id), ARRAY[]::uuid[])
+    INTO v_pvs
+    FROM public.sale_order_purchase_shortage_effects e
+   WHERE e.purchase_order_id = p_purchase_order_id
+     AND e.effect_status = 'editable';
+
+  IF cardinality(v_pvs) = 0 THEN
+    PERFORM public.close_pv_purchase_order_without_contributors(p_purchase_order_id);
+    RETURN NULL;
+  END IF;
+
+  PERFORM public.replace_pv_purchase_order_items_from_effects(p_purchase_order_id);
 
   SELECT COALESCE(sum(quantity * unit_price), 0) INTO v_total
     FROM public.purchase_order_items WHERE purchase_order_id = p_purchase_order_id;
@@ -920,6 +944,7 @@ AS $$
     LEFT JOIN r ON r.so_id = so.id
     LEFT JOIN public.products p ON p.id = r.product_id
    WHERE so.id = ANY (p_sale_order_ids)
+     AND public.is_approved_user()
    GROUP BY so.id, so.order_number;
 $$;
 
@@ -936,7 +961,7 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  WITH ids AS (SELECT unnest(p_product_ids) AS id),
+  WITH ids AS (SELECT unnest(p_product_ids) AS id WHERE public.is_approved_user()),
   short AS (
     SELECT mr.product_id, sum(mr.quantity_short) AS falta
       FROM public.material_reservations mr
@@ -1016,6 +1041,7 @@ AS $$
    WHERE a.product_id = ANY (p_product_ids)
      AND a.created_at >= p_since
      AND a.reason = 'entrada'
+     AND public.is_approved_user()
    ORDER BY p.name, so.order_number, a.size_key;
 $$;
 
@@ -1043,6 +1069,7 @@ AS $$
      WHERE mr.product_id = ANY (p_product_ids)
        AND mr.quantity_short > 0
        AND public.material_reservation_is_pv_managed(mr)
+       AND public.is_approved_user()
   )
   SELECT r.id, r.product_id, NULL::text, r.so_id, so.order_number, so.client_name,
          r.quantity_short, public.material_reservation_cover_priority(r.sale_order_id, r.order_id)
@@ -1114,6 +1141,22 @@ BEGIN
 END;
 $$;
 
+-- Trava a linha do produto (mesma ordem de lock do realocador) e devolve o saldo.
+CREATE OR REPLACE FUNCTION public.lock_product_for_allocation(p_product_id uuid)
+RETURNS TABLE (quantity numeric, stock_grade jsonb)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  RETURN QUERY
+    SELECT COALESCE(p.quantity, 0)::numeric, COALESCE(p.stock_grade, '{}'::jsonb)
+      FROM public.products p
+     WHERE p.id = p_product_id
+     FOR UPDATE;
+END;
+$$;
+
 -- Editar o rateio das entradas recentes de UM produto (Q9: tela editável).
 -- p_allocations = [{reservation_id, size_key, quantity}] — substitui o rateio
 -- automático feito desde p_since. Soma ≤ (o que foi rateado + livre agora).
@@ -1145,9 +1188,9 @@ BEGIN
     RAISE EXCEPTION 'Rateio inválido' USING ERRCODE = '22023';
   END IF;
 
-  SELECT COALESCE(quantity, 0), COALESCE(stock_grade, '{}'::jsonb)
+  SELECT l.quantity, l.stock_grade
     INTO v_phys, v_stock_grade
-    FROM public.products WHERE id = p_product_id FOR UPDATE;
+    FROM public.lock_product_for_allocation(p_product_id) l;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'Produto não encontrado' USING ERRCODE = '22023';
   END IF;
@@ -1157,17 +1200,17 @@ BEGIN
    WHERE a.product_id = p_product_id AND a.created_at >= p_since AND a.reason = 'entrada'
    ORDER BY a.created_at LIMIT 1;
 
-  -- 1) desfaz o rateio automático dessas entradas
+  -- 1) desfaz o rateio automático dessas entradas. Rateio de reserva que já
+  --    saiu do motor (consumida, PV cancelado) não volta: o registro fica no
+  --    rastreio e o saldo dele não entra no novo rateio.
   FOR v_a IN
     SELECT a.* FROM public.stock_inbound_allocations a
      WHERE a.product_id = p_product_id AND a.created_at >= p_since AND a.reason = 'entrada'
   LOOP
-    IF v_a.reservation_id IS NOT NULL THEN
-      SELECT * INTO v_res FROM public.material_reservations WHERE id = v_a.reservation_id;
-      IF FOUND AND public.material_reservation_is_pv_managed(v_res) THEN
-        PERFORM public.move_reservation_short_to_covered(v_a.reservation_id, v_a.size_key, -v_a.quantity);
-      END IF;
-    END IF;
+    CONTINUE WHEN v_a.reservation_id IS NULL;
+    SELECT * INTO v_res FROM public.material_reservations WHERE id = v_a.reservation_id;
+    CONTINUE WHEN NOT FOUND OR NOT public.material_reservation_is_pv_managed(v_res);
+    PERFORM public.move_reservation_short_to_covered(v_a.reservation_id, v_a.size_key, -v_a.quantity);
     DELETE FROM public.stock_inbound_allocations WHERE id = v_a.id;
   END LOOP;
 
@@ -1260,21 +1303,40 @@ AS $$
     JOIN public.products p ON p.id = sm.product_id
    WHERE p.group_id = p_group_id
      AND sm.movement_type = 'in'
+     AND public.is_approved_user()
    ORDER BY sm.created_at DESC
    LIMIT GREATEST(COALESCE(p_limit, 100), 1);
 $$;
 
+-- ---------------------------------------------------------------------------
+-- 5. Permissões
+-- Função nova nasce com EXECUTE para PUBLIC: revogar só de anon não fecha nada.
+-- RPCs das telas: só authenticated (e cada uma checa is_approved_user()).
+-- Auxiliares internos (SECURITY DEFINER que mexem em reserva/OC): só o próprio
+-- banco — quem chama são funções/gatilhos SECURITY DEFINER do dono.
+-- ---------------------------------------------------------------------------
+REVOKE ALL ON FUNCTION public.list_sale_order_material_shortages(uuid[]) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.product_supply_summary(uuid[]) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.list_inbound_allocations(uuid[], timestamptz) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.list_open_shortages_for_products(uuid[]) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.apply_inbound_allocation_edit(uuid, timestamptz, jsonb) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.list_group_stock_tracking(uuid, integer) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.list_sale_order_material_shortages(uuid[]) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.product_supply_summary(uuid[]) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.list_inbound_allocations(uuid[], timestamptz) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.list_open_shortages_for_products(uuid[]) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.apply_inbound_allocation_edit(uuid, timestamptz, jsonb) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.list_group_stock_tracking(uuid, integer) TO authenticated, service_role;
-REVOKE EXECUTE ON FUNCTION public.list_sale_order_material_shortages(uuid[]) FROM anon;
-REVOKE EXECUTE ON FUNCTION public.product_supply_summary(uuid[]) FROM anon;
-REVOKE EXECUTE ON FUNCTION public.list_inbound_allocations(uuid[], timestamptz) FROM anon;
-REVOKE EXECUTE ON FUNCTION public.list_open_shortages_for_products(uuid[]) FROM anon;
-REVOKE EXECUTE ON FUNCTION public.apply_inbound_allocation_edit(uuid, timestamptz, jsonb) FROM anon;
-REVOKE EXECUTE ON FUNCTION public.list_group_stock_tracking(uuid, integer) FROM anon;
-REVOKE EXECUTE ON FUNCTION public.move_reservation_short_to_covered(uuid, text, numeric) FROM anon, authenticated;
-REVOKE EXECUTE ON FUNCTION public.rebuild_pv_purchase_order_from_effects(uuid) FROM anon, authenticated;
+
+-- inclui os auxiliares da etapa 1 (035100), que tinham ficado abertos a PUBLIC
+REVOKE ALL ON FUNCTION public.allocate_reservation_partial(uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.allocate_sole_grade_reservation(uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.reallocate_product_commitments(uuid, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.move_reservation_short_to_covered(uuid, text, numeric) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.rebuild_pv_purchase_order_from_effects(uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.close_pv_purchase_order_without_contributors(uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.replace_pv_purchase_order_items_from_effects(uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.lock_product_for_allocation(uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.sale_order_purchase_scope_key(uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.pv_purchase_order_last_applied_digest(uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.pv_purchase_order_is_system_editable(uuid, boolean) FROM PUBLIC, anon, authenticated;
