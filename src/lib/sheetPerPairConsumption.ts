@@ -14,6 +14,12 @@
  *
  * Média = média simples entre as numerações da GRADE da ficha (não de todo
  * valor cadastrado — evita spec copiada do adulto puxar a média infantil).
+ *
+ * Revisão 2 (dono, 11/10/2026): só o que é EXCLUSIVO do modelo (saem solado,
+ * palmilha, cola, linha e embalagem) e CUSTO por par = média × preço. A ficha
+ * não tem cor: o preço é a MEDIANA do `unit_price` das cores candidatas, com a
+ * faixa por par quando divergem. Sem preço nas cores do modelo → mediana do
+ * grupo inteiro, marcada `estimated`.
  */
 import {
   areaToStockDivisor,
@@ -40,6 +46,34 @@ export type PerPairSource = {
   perSize?: Record<string, unknown> | null;
   /** Multiplicador aplicado ao valor nativo (tira: cm → m = 0.01). */
   scale?: number;
+  /** De onde sai o preço desta linha. Ausente = sem preço. */
+  price?: PerPairPriceSource | null;
+};
+
+/** Um SKU candidato (uma "cor") com o custo unitário de estoque. */
+export type PerPairPriceCandidate = { unit: string | null | undefined; unitPrice: number | null | undefined };
+
+export type PerPairPriceSource = {
+  /** SKUs que valem para ESTA ficha (cores do grupo, napa-base do modelo…). */
+  candidates: PerPairPriceCandidate[];
+  /** SKUs do grupo inteiro, usados só quando nenhum candidato tem preço → `estimated`. */
+  fallbackCandidates?: PerPairPriceCandidate[];
+  /** O que ficou sem preço, para explicar o estimado (ex.: "NAPA SOFT"). */
+  missingScope?: string | null;
+};
+
+export type PerPairCostStatus = 'ok' | 'estimated' | 'missing' | 'no_width';
+
+export type PerPairCost = {
+  status: PerPairCostStatus;
+  /** Mediana usada no cálculo (R$ por unidade da linha). */
+  unitPrice: number | null;
+  /** Custo médio por par (média × preço). */
+  perPair: number | null;
+  /** Faixa por par entre as cores — só quando os preços divergem e o status é `ok`. */
+  perPairMin: number | null;
+  perPairMax: number | null;
+  missingScope: string | null;
 };
 
 export type PerPairRow = {
@@ -50,19 +84,136 @@ export type PerPairRow = {
   average: number;
   perSize: Record<string, number>;
   widthMissing: boolean;
+  /** Preço da primeira fonte que trouxe um (mesmo material = mesmo grupo). */
+  price: PerPairPriceSource | null;
+  cost: PerPairCost;
 };
 
-/** Setores fora do resumo (decisão do dono, 10/10/2026). */
-const EXCLUDED_CATEGORIES = new Set(['forração da palmilha', 'cola / químico', 'embalagem']);
-const EXCLUDED_COMPONENTS = new Set(['forração', 'forração palmilha', 'fachete', 'químicos', 'embalagem']);
+/**
+ * Setores fora do resumo. 10/10/2026: forração, químicos, embalagem.
+ * 11/10/2026: também os básicos comuns a todo modelo — solado e palmilha.
+ */
+const EXCLUDED_CATEGORIES = new Set([
+  'forração da palmilha', 'cola / químico', 'embalagem', 'solado', 'palmilha',
+]);
+const EXCLUDED_COMPONENTS = new Set([
+  'forração', 'forração palmilha', 'fachete', 'químicos', 'embalagem', 'solado', 'palmilha',
+]);
+/**
+ * Básicos pelo NOME, por palavra inteira: COLA FORTE, COLA PVC, LINHANYL e
+ * EMBALAGEM estão cadastrados como setor `Componente` em 14–18 fichas e
+ * escapavam do filtro por setor. Palavra inteira de propósito — `CHOCOLATE`
+ * (cor) contém "COLA".
+ */
+const EXCLUDED_NAME_PATTERNS = [/\bCOLA\b/, /\bLINHA/, /\bEMBALAGE/];
+/**
+ * Componentes cujo PAPEL vem do campo da ficha, não do setor de estoque. A
+ * mesma napa é estocada como `Forração da Palmilha` e usada como cabedal
+ * (NAPA SOFT / NAPA SUDANI — 10 fichas): filtrar pelo setor sumia com o
+ * cabedal. Para estes, o setor do produto não exclui; o nome ainda exclui.
+ */
+const ROLE_FROM_SHEET_COMPONENTS = new Set(['cabedal', 'material extra', 'tiras']);
 
 const stripAccents = (value: string) => value.normalize('NFD').replace(/[̀-ͯ]/g, '');
 
-/** Forração (cabedal, palmilha, fachete), químicos, embalagem e qualquer grupo FIBRA saem. */
+/**
+ * Saem: forração (cabedal, palmilha, fachete), químicos, embalagem, solado,
+ * palmilha, cola, linha e qualquer grupo FIBRA.
+ */
 export function isExcludedFromPerPair(source: Pick<PerPairSource, 'component' | 'material' | 'category'>): boolean {
-  if (EXCLUDED_COMPONENTS.has(normalizeText(source.component))) return true;
-  if (EXCLUDED_CATEGORIES.has(normalizeText(source.category))) return true;
-  return stripAccents(source.material || '').toUpperCase().includes('FIBRA');
+  const component = normalizeText(source.component);
+  if (EXCLUDED_COMPONENTS.has(component)) return true;
+  if (!ROLE_FROM_SHEET_COMPONENTS.has(component) && EXCLUDED_CATEGORIES.has(normalizeText(source.category))) {
+    return true;
+  }
+  const name = stripAccents(source.material || '').toUpperCase();
+  if (name.includes('FIBRA')) return true;
+  return EXCLUDED_NAME_PATTERNS.some((pattern) => pattern.test(name));
+}
+
+/** Preços válidos (> 0) dos candidatos na unidade da linha. */
+const pricesInUnit = (candidates: PerPairPriceCandidate[] | null | undefined, unit: string): number[] =>
+  (candidates || [])
+    .filter((c) => canonicalPerPairUnit(c.unit) === unit)
+    .map((c) => Number(c.unitPrice))
+    .filter((v) => Number.isFinite(v) && v > 0);
+
+/** Mediana — robusta a um SKU com custo absurdo (ex.: overlock COBRE a R$ 20,50/m). */
+export function medianPrice(values: number[]): number | null {
+  const sorted = values.filter((v) => Number.isFinite(v) && v > 0).sort((a, b) => a - b);
+  if (sorted.length === 0) return null;
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+const emptyCost = (status: PerPairCostStatus, missingScope: string | null = null): PerPairCost => ({
+  status, unitPrice: null, perPair: null, perPairMin: null, perPairMax: null, missingScope,
+});
+
+/**
+ * Custo por par de uma linha já consolidada. Preço na UNIDADE da linha — dm²
+ * de material sem largura não casa com preço por metro e fica `no_width`.
+ */
+export function resolvePerPairCost(
+  row: Pick<PerPairRow, 'unit' | 'average' | 'widthMissing'>,
+  price: PerPairPriceSource | null | undefined,
+): PerPairCost {
+  if (row.widthMissing) return emptyCost('no_width');
+  if (!price) return emptyCost('missing');
+  const exact = pricesInUnit(price.candidates, row.unit);
+  const exactMedian = medianPrice(exact);
+  if (exactMedian != null) {
+    const min = Math.min(...exact);
+    const max = Math.max(...exact);
+    // Faixa só quando aparece em centavos — senão sairia "R$ 0,54–0,54".
+    const varies = Math.round(row.average * min * 100) !== Math.round(row.average * max * 100);
+    return {
+      status: 'ok',
+      unitPrice: exactMedian,
+      perPair: row.average * exactMedian,
+      perPairMin: varies ? row.average * min : null,
+      perPairMax: varies ? row.average * max : null,
+      missingScope: null,
+    };
+  }
+  const fallbackMedian = medianPrice(pricesInUnit(price.fallbackCandidates, row.unit));
+  if (fallbackMedian != null) {
+    return {
+      status: 'estimated',
+      unitPrice: fallbackMedian,
+      perPair: row.average * fallbackMedian,
+      perPairMin: null,
+      perPairMax: null,
+      missingScope: price.missingScope ?? null,
+    };
+  }
+  return emptyCost('missing', price.missingScope ?? null);
+}
+
+export type PerPairCostSummary = {
+  /** Soma do custo/par das linhas com preço (ok + estimado). */
+  total: number;
+  pricedCount: number;
+  estimatedCount: number;
+  /** Linhas sem preço ou sem largura — o total está incompleto quando > 0. */
+  missingCount: number;
+};
+
+export function summarizePerPairCost(rows: Array<Pick<PerPairRow, 'cost'>>): PerPairCostSummary {
+  let total = 0;
+  let pricedCount = 0;
+  let estimatedCount = 0;
+  let missingCount = 0;
+  for (const row of rows) {
+    if (row.cost.perPair != null && (row.cost.status === 'ok' || row.cost.status === 'estimated')) {
+      total += row.cost.perPair;
+      pricedCount += 1;
+      if (row.cost.status === 'estimated') estimatedCount += 1;
+    } else {
+      missingCount += 1;
+    }
+  }
+  return { total, pricedCount, estimatedCount, missingCount };
 }
 
 /** Rótulo canônico de unidade (metro/metros/mt → m; dm2 → dm²). */
@@ -123,10 +274,14 @@ export function computePerPairConsumption(
     const key = `${stripAccents(material).toUpperCase()}|${conv.unit}`;
     let row = rows.get(key);
     if (!row) {
-      row = { key, material, components: [], unit: conv.unit, average: 0, perSize: {}, widthMissing: false };
+      row = {
+        key, material, components: [], unit: conv.unit, average: 0, perSize: {}, widthMissing: false,
+        price: null, cost: emptyCost('missing'),
+      };
       rows.set(key, row);
     }
     if (!row.components.includes(source.component)) row.components.push(source.component);
+    if (!row.price && source.price) row.price = source.price;
     row.widthMissing = row.widthMissing || conv.widthMissing;
     if (sizeKeys.length > 0) {
       for (const size of sizeKeys) row.perSize[size] = (row.perSize[size] || 0) + perSize[size];
@@ -140,6 +295,7 @@ export function computePerPairConsumption(
       if (sizeKeys.length > 0) {
         row.average = sizeKeys.reduce((sum, size) => sum + (row.perSize[size] || 0), 0) / sizeKeys.length;
       }
+      row.cost = resolvePerPairCost(row, row.price);
       return row;
     })
     .sort((a, b) => a.material.localeCompare(b.material, 'pt-BR'));

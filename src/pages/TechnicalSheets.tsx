@@ -2243,12 +2243,28 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
 
 
         {/* TAB: Identificação — reorganizada em cards temáticos.
+            (0) Consumo e custo por par (só itens exclusivos do modelo)
             (1) Dados Principais (Referência + Código interno + Marca + Modelo)
             (2) Categoria & Grade
             (3) Comercial & Tributário
             (4) Foto
             Removido "Gênero" — campo morto sem uso em business logic. */}
         <TabsContent value="id" className="mt-4 space-y-4">
+          {/* CARD 0 — Consumo e custo por par: primeiro da aba (dono, 11/10/2026).
+              R$ só para quem vê custo de tira (mesma regra do Hub de Tiras). */}
+          <PerPairConsumptionSummary
+            form={form}
+            sizes={soleSizeKeys}
+            sheetMaterials={sheetMaterials}
+            componentSheets={componentSheets}
+            products={products}
+            groups={groups}
+            strapCatalog={strapCatalog}
+            referenceBaseGroups={possibleReferenceNapaGroups}
+            canSeeCost={strapCatalog?.capabilities?.can_see_financial_values === true}
+            onOpenMaterials={() => setAbaAtiva('engineering')}
+          />
+
           {/* CARD 1 — Dados Principais */}
           <div className="rounded-xl border bg-card shadow-sm">
             <div className="px-4 py-3 border-b flex items-center gap-2">
@@ -2275,16 +2291,6 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                 />
               </div>
               <FieldInput label="Coleção" value={form.collection || ''} onChange={v => updateField('collection', v)} placeholder="Ex: Verão 2026" />
-              <PerPairConsumptionSummary
-                form={form}
-                sizes={soleSizeKeys}
-                sheetMaterials={sheetMaterials}
-                componentSheets={componentSheets}
-                products={products}
-                groups={groups}
-                strapCatalog={strapCatalog}
-                onOpenMaterials={() => setAbaAtiva('engineering')}
-              />
             </div>
           </div>
 
