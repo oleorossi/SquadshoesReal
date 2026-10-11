@@ -24,6 +24,12 @@ interface Props {
   products: Product[];
   /** Largura canônica do grupo (mm) — o item herda e só diverge de propósito. */
   groupWidth?: number | null;
+  /** Grupo vazio em "Coleção de itens": a 1ª cor o converte em "Linha com
+   *  variantes" (spec grupo-cor-obrigatoria.md, D6). Só muda o texto da tela. */
+  willBecomeVariantLine?: boolean;
+  /** Avisa a janela do grupo que a conversão aconteceu, com a unidade usada —
+   *  o estado local dela precisa acompanhar, senão o "Salvar" da aba Geral desfaz. */
+  onConvertedToVariantLine?: (unit: string) => void;
 }
 
 const norm = (s: string) =>
@@ -42,7 +48,7 @@ type StockFilter = 'all' | 'available' | 'zero' | 'review';
  * CAPUCCINO × CAPPUCCINO convivendo no NAPA SOFT, com o débito escolhendo por
  * "maior estoque".
  */
-export default function GroupColorsTab({ groupId, groupName, products, groupWidth }: Props) {
+export default function GroupColorsTab({ groupId, groupName, products, groupWidth, willBecomeVariantLine, onConvertedToVariantLine }: Props) {
   const qc = useQueryClient();
 
   // Largura POR ITEM: a query do dialog pai busca por group_id e não distingue
@@ -172,6 +178,10 @@ export default function GroupColorsTab({ groupId, groupName, products, groupWidt
       const failed = results.filter((result) => result.status === 'error');
       if (created.length > 0) toast.success(`${created.length} ${created.length === 1 ? 'variante criada' : 'variantes criadas'} em ${groupName}`);
       if (failed.length > 0) toast.error(`${failed.length} ${failed.length === 1 ? 'cor não foi criada' : 'cores não foram criadas'}`, { description: failed.map((result) => `${result.color}: ${result.error}`).join(' · ') });
+      if (results.some((result) => result.convertedToVariantLine)) {
+        onConvertedToVariantLine?.(firstStockUnit);
+        qc.invalidateQueries({ queryKey: ['product_groups'] });
+      }
       const failedNames = new Set(failed.map((result) => norm(result.color)));
       // Suspeitas não resolvidas e falhas permanecem na fila.
       setPending(prev => prev.filter((entry) => (entry.hit && !entry.liberada) || failedNames.has(norm(entry.cor))));
@@ -240,6 +250,12 @@ export default function GroupColorsTab({ groupId, groupName, products, groupWidt
             <p className="text-[11px] text-muted-foreground">
               Para dublados em rolo, escolha metro linear (m). O consumo da ficha continua em dm²/par.
             </p>
+            {willBecomeVariantLine && (
+              <p className="text-[11px] text-muted-foreground">
+                O grupo ainda não tem item: a primeira cor o transforma em <strong>Linha com variantes</strong>,
+                com esta unidade como padrão das próximas cores.
+              </p>
+            )}
           </div>
         )}
         <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">

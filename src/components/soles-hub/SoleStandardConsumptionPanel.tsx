@@ -25,6 +25,7 @@ import {
   type SoleRole, type SoleGroupItemRow,
 } from '@/hooks/useSoleGroupStandardConsumption';
 import { isInsoleFiberColorAgnostic } from '@/lib/saleOrderReadinessCorrections';
+import FacheteReferenceMaterialsPanel from './FacheteReferenceMaterialsPanel';
 
 /**
  * Consumo padrão do MODELO de solado — cadastro único.
@@ -48,6 +49,8 @@ interface Props {
   soleGroupName?: string;
   soleClassification?: 'tradicional' | 'palmilha_pronta' | 'conjugado' | null;
   isFachetado?: boolean | null;
+  /** `products.fachete_material_group_id` do solado — fallback do fachete. */
+  facheteMaterialGroupId?: string | null;
 }
 
 type RoleDraft = {
@@ -60,7 +63,7 @@ type RoleDraft = {
 type ItemDraft = { perPair: number; perSize: Record<string, number>; open: boolean; unit: string; dirty: boolean };
 
 export default function SoleStandardConsumptionPanel({
-  soleGroupId, soleGroupName, soleClassification, isFachetado,
+  soleGroupId, soleGroupName, soleClassification, isFachetado, facheteMaterialGroupId,
 }: Props) {
   const { data: items = [], isLoading: loadingItems } = useSoleGroupItems(soleGroupId);
   const { data: rolesData, isLoading: loadingRoles } = useSoleGroupRoles(soleGroupId);
@@ -366,6 +369,12 @@ export default function SoleStandardConsumptionPanel({
                     {d.dirty ? 'Salvar' : 'Salvo'}
                   </Button>
                 </div>
+                {role === 'fachete' && soleGroupId && (
+                  <FacheteReferenceMaterialsPanel
+                    soleGroupId={soleGroupId}
+                    soleFacheteGroupId={facheteMaterialGroupId ?? null}
+                  />
+                )}
                 {pinMaterial && (() => {
                   const selected = (materials as any[]).find((m) => m.id === d.materialProductId);
                   const missingPin = !d.materialProductId;

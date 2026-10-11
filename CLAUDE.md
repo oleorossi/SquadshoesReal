@@ -319,6 +319,14 @@ encadeamento de `/producao/kanban/gestao`: `ProtectedRoute → Suspense → Rout
 - **Vitest** (`vitest/globals`). Colocar em `__tests__/` ao lado do módulo, ou `*.test.ts` direto
   ao lado do fonte. Sufixos usados: `.units.test.ts`, `.integration.test.ts`, `.edge-cases.test.ts`.
 - Rodar: `bun run test` / `bun run test:units`.
+- ⚠ **`vi.mock` sempre com alias `@/`, nunca caminho relativo** (`'../x'`). Localmente o
+  vitest roda no **Bun** (o `node` é symlink pro Bun — Regra 5), e lá o `vi.mock` relativo
+  é **ignorado em silêncio**: o vitest acha o arquivo chamador parseando o stack trace
+  (procura `" at Object.mock"`, formato do V8), não acha no JavaScriptCore e resolve o
+  caminho contra a raiz. O teste roda contra o módulo REAL. O CI usa Node de verdade e fica
+  verde — em 11/10/2026 isso deixou 8 testes vermelhos só na máquina local. Travado por
+  `src/__tests__/viMockAliasPath.contract.test.ts`. Para conferir se algo é diferença de
+  runtime: `/usr/local/bin/node node_modules/vitest/vitest.mjs run <arquivo>` roda no Node.
 
 **Estado atual (verificado 07/08/2026 rodando os dois):** `test` roda a suíte inteira e
 `test:units` é um **subconjunto** dela — não há mais exclusão.
@@ -836,6 +844,33 @@ de napa descrito na regra de consumo). É família de tira **acabada**, não nap
 nada a exclui porque **nenhum** grupo tem `is_artisanal_strap = true`. Marcar a flag resolve
 (a função já a honra), mas ela também governa compra e ajuste de estoque de 23 SKUs —
 decisão de cadastro do dono, não foi feita.
+
+### Napa por tira na multicolor — automática (CANÔNICO, 11/10/2026)
+
+Decisão do dono (grill N1–N10 em `specs/tiras-redesenho.md`): a tira `reference_base` com
+**cor no pedido** e material **"segue a referência"** escolhe no PV também a **napa**, entre
+as napas da referência — napa-base da ficha + napa de cada variante ativa (OB01 = NAPA SOFT
++ GLOW METALIC). Sem cadastro na ficha; "material fixo" e lista própria continuam vencendo.
+
+**Onde mora:** `private.resolve_technical_strap_material` (mig `20270101035700`). Todo
+chamador — writer, prévia de estoque, diagnóstico, manifesto do celular, trigger de
+alinhamento, cadastro de cor — já passava a napa gravada na tira como `p_selected_group_id`;
+antes ela era **ignorada** em follow_reference. A lista vem de
+`private.reference_strap_napa_group_ids` (mesmo `resolve_strap_base_group_id` da napa do
+item); a tela lê `list_reference_strap_napas`.
+
+⚠ **O snapshot continua `material_mode = follow_reference`** — a escolha mora em
+`base_group_id`. Não "corrija" o modo para `select_on_order`: `calculate_consumption_report_batch`
+e `merge_consumo_strap_colors_with_sheet_gaps` comparam o modo do item com o da ficha e
+acusariam divergência estrutural.
+
+⚠ **Tira que segue a cor principal (TRASEIRA) continua ignorando napa gravada** — o pin de
+produto (`resolve_strap_pinned_base_product_id`) só existe nesse ramo.
+
+⚠ Depois do save, o writer grava a napa resolvida em **toda** tira, inclusive as que não
+foram trocadas. Por isso a troca de material do item decide "acompanha" comparando a napa
+da tira com a napa do material **antigo** (`strapNapaFollowsItemMaterial`), não por
+`base_group_id` nulo.
 
 ## Regra de empacotamento em caixas (CANÔNICA, 05/08/2026)
 

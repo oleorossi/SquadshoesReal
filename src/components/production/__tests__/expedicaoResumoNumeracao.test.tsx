@@ -4,7 +4,7 @@ import { ExpedicaoWorkSheet, type ExpedicaoCustomerGroup } from '../ExpedicaoWor
 
 // PaginatedSheet mede blocos com offsetHeight, que no jsdom é sempre 0 — o
 // dublê renderiza os blocos direto pra podermos afirmar sobre o CONTEÚDO.
-vi.mock('../worksheet/PaginatedSheet', () => ({
+vi.mock('@/components/production/worksheet/PaginatedSheet', () => ({
   PaginatedSheet: ({ blocks }: { blocks: { node: React.ReactNode }[] }) => (
     <div>{blocks.map((b, i) => <div key={i}>{b.node}</div>)}</div>
   ),

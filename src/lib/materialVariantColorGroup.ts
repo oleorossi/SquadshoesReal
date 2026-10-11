@@ -146,6 +146,100 @@ export function saleOrderAvailableColors({
   return [];
 }
 
+// ── Seletor "Material" do item do PV ─────────────────────────────────────────
+// Fonte única das opções que o PV oferece. Quem consome: o seletor do item
+// (`SaleOrderItemForm`) e a prévia da aba Variantes da ficha
+// (`MaterialVariantsTab`). As duas telas montavam a lista cada uma do seu jeito
+// e discordaram: a aba avisava "nada no PV diz que vai sair NAPA SOFT" meses
+// depois de o PV passar a oferecer "NAPA SOFT · da ficha" (regra do dono,
+// 21/08/2026 — variante acrescenta opção, não substitui o material da ficha).
+
+export interface SaleOrderMaterialOptionVariant extends MaterialVariantColorIdentity {
+  id: string;
+  material_name?: string | null;
+  active?: boolean | null;
+}
+
+export interface SaleOrderMaterialOption<V extends SaleOrderMaterialOptionVariant = SaleOrderMaterialOptionVariant> {
+  /** `null` = material da própria ficha (`material_variant_id` nulo). */
+  variantId: string | null;
+  variant: V | null;
+  /** Nome no seletor: o grupo da ficha, ou o `material_name` da variante. */
+  label: string;
+  /** Grupo cujas cores o PV lista quando esta opção está escolhida. */
+  group: MaterialVariantColorGroup | null;
+  colors: string[];
+}
+
+export interface SaleOrderMaterialOptions<V extends SaleOrderMaterialOptionVariant = SaleOrderMaterialOptionVariant> {
+  sheetBaseGroup: MaterialVariantColorGroup | null;
+  /** Alguma variante ativa já resolve para o grupo da ficha (o contorno antigo). */
+  baseCoveredByVariant: boolean;
+  /**
+   * O material da ficha aparece no seletor. Nesse caso `material_variant_id`
+   * nulo é a ESCOLHA "material da ficha" — e é o que um item novo traz
+   * marcado. Falso com variante ativa = o vendedor precisa escolher.
+   */
+  sheetMaterialSelectable: boolean;
+  /** Na ordem do seletor: material da ficha primeiro, depois as variantes. */
+  options: SaleOrderMaterialOption<V>[];
+}
+
+/**
+ * Opções do campo "Material" do item do PV, na ordem em que aparecem.
+ *
+ * O material da ficha só entra quando NENHUMA variante resolve para o mesmo
+ * grupo: com a variante que repete a ficha (27 referências fizeram esse
+ * contorno), oferecer as duas criaria entradas idênticas, uma delas sem o
+ * SKU/NCM da variante. A comparação é por GRUPO efetivo, nunca por nome —
+ * variante chamada "NAPA SOFT" pode apontar outra família.
+ *
+ * Variante inativa não aparece no PV, então também não entra aqui.
+ */
+export function buildSaleOrderMaterialOptions<V extends SaleOrderMaterialOptionVariant>({
+  sheet,
+  variants,
+  products,
+  groups,
+}: {
+  sheet: (SheetCommercialColorIdentity & MaterialVariantColorDrivers) | null | undefined;
+  variants: readonly V[];
+  products: MaterialVariantColorProduct[];
+  groups: MaterialVariantColorGroup[];
+}): SaleOrderMaterialOptions<V> {
+  const sheetBaseGroup = resolveSheetCommercialColorGroup({ sheet, groups });
+  const variantOptions: SaleOrderMaterialOption<V>[] = variants
+    .filter((variant) => variant.active !== false)
+    .map((variant) => {
+      const group = resolveMaterialVariantColorGroup({ variant, sheet, products, groups });
+      return {
+        variantId: variant.id,
+        variant,
+        label: variant.material_name || '',
+        group,
+        colors: activeProductColorsForGroup(products, group?.id),
+      };
+    });
+  const baseCoveredByVariant = !!sheetBaseGroup
+    && variantOptions.some((option) => option.group?.id === sheetBaseGroup.id);
+  const sheetMaterialSelectable = !!sheetBaseGroup && !baseCoveredByVariant;
+
+  return {
+    sheetBaseGroup,
+    baseCoveredByVariant,
+    sheetMaterialSelectable,
+    options: sheetMaterialSelectable
+      ? [{
+        variantId: null,
+        variant: null,
+        label: sheetBaseGroup.name,
+        group: sheetBaseGroup,
+        colors: activeProductColorsForGroup(products, sheetBaseGroup.id),
+      }, ...variantOptions]
+      : variantOptions,
+  };
+}
+
 // ── Cascata da variante: quais componentes seguem o MATERIAL PRINCIPAL ───────
 // A variante que aponta só `main_material_group_id` NÃO troca material nenhum
 // enquanto a ficha não liberar um slot em `technical_sheets.variant_drives_*`
@@ -394,6 +488,41 @@ export function variantDrivesNoComponent({
 }): boolean {
   if (hasVariantComponentPin(variant, products)) return false;
   return !listVariantCascadeSlots(sheet, sole).some((slot) => cascade[slot.key]);
+}
+
+/**
+ * Componentes desta ficha que a variante, depois de escolhida, NÃO troca — eles
+ * continuam saindo do material da ficha. Usa a precedência dos motores
+ * (`bomConsumption.variantGroupName`): pino ativo > grupo do slot > material
+ * principal quando a trava `variant_drives_*` do slot está ligada. O fachete não
+ * tem pino nem grupo próprio na variante: só segue o principal pela trava.
+ *
+ * Lista vazia = a variante troca tudo o que a ficha consome.
+ */
+export function listVariantSlotsKeptOnSheet({
+  variant, sheet, sole, products,
+}: {
+  variant: (VariantCascadePins & { main_material_group_id?: string | null }) | null | undefined;
+  sheet: VariantCascadeSheet | null | undefined;
+  sole?: VariantCascadeSoleContext | null;
+  products: MaterialVariantColorProduct[];
+}): VariantCascadeSlot[] {
+  if (!variant) return [];
+  const main = variant.main_material_group_id || null;
+  const switches: Record<VariantCascadeSlotKey, boolean> = {
+    upper: !!(resolvePinnedMaterialGroupId({
+      productId: variant.upper_material_product_id,
+      groupId: variant.upper_material_group_id,
+      products,
+    }) || (sheet?.variant_drives_upper && main)),
+    lining: !!(resolvePinnedMaterialGroupId({
+      productId: variant.lining_material_product_id,
+      groupId: variant.lining_material_group_id,
+      products,
+    }) || (sheet?.variant_drives_lining && main)),
+    fachete: !!(sheet?.variant_drives_fachete && main),
+  };
+  return listVariantCascadeSlots(sheet, sole).filter((slot) => !switches[slot.key]);
 }
 
 export interface StrapBaseReadout {

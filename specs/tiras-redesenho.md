@@ -253,3 +253,31 @@ canônica, inclusive a principal. Mas uma linha `reference_base` com origem
 (`tg_validate_sale_order_item_strap_color_alignment`, mig `20270101031900`) —
 num modelo multicolor, trocar a cor dessa tira faz o save falhar. Decisão
 pendente.
+
+## Napa por tira na multicolor (grill 11/10/2026)
+
+Emenda a Q26: além da cor, a tira com cor no pedido escolhe também a **napa**,
+entre as napas que a referência possui. Pedido do dono olhando a OB01 (napa-base
+NAPA SOFT + variante GLOW METALIC), cujo seletor só mostrava as 4 cores do GLOW.
+
+| # | Decisão |
+|---|---|
+| N1 | **Automático**, sem cadastro na ficha: vale para toda tira `reference_base` + `color_mode = select_on_order` + material "segue a referência". "Material fixo" e "Selecionar material no pedido" (lista própria) continuam vencendo. |
+| N2 | Lista = **napas da referência**: napa-base da ficha + napa de cada variante ativa, pelo mesmo resolvedor da napa do item (`resolve_strap_base_group_id`). OB01 = NAPA SOFT + GLOW METALIC; I91 = GLOW METALIC + NAPA SOFT + NAPA SUDANI. Não é lista fixa. |
+| N3 | **Um seletor só**, cores agrupadas por napa; o campo mostra "NAPA · COR" (PRETO pode existir nas duas). Busca casa napa + cor. |
+| N4 | Começa na napa do **material do item** (variante escolhida; sem variante, a napa-base) e na cor principal, se existir nela (Q24). |
+| N5 | Trocar o material do item: tira ainda na napa do material antigo acompanha (perde a cor se ela não existir na napa nova); a trocada à mão fica, com aviso "N tiras mantiveram a napa escolhida". |
+| N6 | Tira que segue a cor principal (TRASEIRA) **não** escolhe napa: segue o material do item. |
+| N7 | Misturar napas **não** muda o preço do item. |
+| N8 | Vale em todas as portas: PV desktop, PV celular (`/m/new`), "Copiar p/ novo PV" e "Duplicar para lojas" (a cópia leva napa + cor; napa que saiu da referência vira pendência). PV aprovado/faturado segue congelado. |
+| N9 | "Cadastrar cor" pergunta a napa (vem marcada a da tira, só napas da referência). |
+| N10 | Ficha de Aviamento: **nada mudou** — ela já imprime, por tira, a cor e a napa gravada (`base_group_name`, `SilkMontageWorkSheet`). Com a napa por tira, sai "COBRE GLOW METALIC" / "PRETO NAPA SOFT" sozinho. (No grill foi decidido "mostrar só quando diferente"; a premissa de que o papel não mostrava a napa estava errada, e aplicar ao pé da letra tiraria informação que já estava no papel.) |
+
+Implementação: mig `20270101035700` — `private.resolve_technical_strap_material`
+honra a napa da tira (`p_selected_group_id`) nesse caso e recusa napa fora da
+referência com "Modelo X, TIRA n: a napa Y não é da referência";
+`private.technical_strap_material_options` lista todas (do item primeiro), o que
+alimenta o manifesto do celular; `list_reference_strap_napas` alimenta o desktop.
+TS: `strapChoosesReferenceNapa` (`strapMaterialPolicy.ts`),
+`src/lib/referenceStrapNapas.ts`, `useReferenceStrapNapas`. O snapshot continua
+`material_mode = follow_reference`; a escolha mora em `base_group_id`.

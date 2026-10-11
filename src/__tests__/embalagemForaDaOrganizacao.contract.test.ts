@@ -33,15 +33,12 @@ describe('Embalagem fora da organização do estoque', () => {
   it('criar e mover grupo não oferecem Embalagem', () => {
     const create = read('src/components/groups/GroupCreateDialog.tsx');
     const edit = read('src/components/groups/GroupEditDialog.tsx');
-    const quick = read('src/components/inventory/QuickFamilyDialog.tsx');
     const move = read('src/components/groups/MoveGroupsDialog.tsx');
 
     expect(create).toContain('organizationSectorOptions()');
     expect(create).not.toMatch(/SECTOR_OPTIONS\.map/);
     expect(edit).toContain('organizationSectorOptions()');
     expect(edit).not.toMatch(/SECTOR_OPTIONS\.map/);
-    expect(quick).toContain('organizationSectorOptions()');
-    expect(quick).not.toMatch(/SECTOR_OPTIONS\.map/);
     expect(move).toContain('organizationSectorOptions()');
   });
 });

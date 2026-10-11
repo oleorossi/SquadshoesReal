@@ -1,10 +1,12 @@
 import { strapIdentityBasis, type StrapIdentityLike } from '@/lib/strapIdentity';
+import type { StrapColorMode } from '@/lib/technicalStrapLines';
 
 export type StrapMaterialMode = 'follow_reference' | 'fixed_group' | 'select_on_order';
 export const MAX_STRAP_MATERIAL_GROUPS = 25;
 
 /** Política técnica; o grupo efetivo é congelado separadamente no item do PV. */
 export interface StrapMaterialPolicyLike extends StrapIdentityLike {
+  color_mode?: StrapColorMode | null;
   material_mode?: StrapMaterialMode | string | null;
   material_group_id?: string | null;
   allowed_material_group_ids?: readonly string[] | null;
@@ -35,6 +37,20 @@ export function strapMaterialMode(line: StrapMaterialPolicyLike | null | undefin
   return mode === 'follow_reference' || mode === 'fixed_group' || mode === 'select_on_order'
     ? mode
     : null;
+}
+
+/**
+ * Tira multicolor que segue a referência: além da cor, o PV escolhe a NAPA,
+ * entre as napas da própria referência (napa-base da ficha + napa de cada
+ * variante ativa). Decisão do dono, grill de 11/10/2026 — automática, sem
+ * cadastro na ficha. Espelha o ramo de `private.resolve_technical_strap_material`
+ * (mig `20270101035700`). "Material fixo" e lista própria continuam vencendo.
+ */
+export function strapChoosesReferenceNapa(line: StrapMaterialPolicyLike | null | undefined): boolean {
+  return !!line
+    && strapIdentityBasis(line) === 'reference_base'
+    && line.color_mode === 'select_on_order'
+    && strapMaterialMode(line) === 'follow_reference';
 }
 
 /** Hidrata defaults sem apagar corrupção nem reinterpretar snapshot histórico. */
@@ -118,6 +134,12 @@ export function resolveStrapMaterialBaseGroupId(
     referenceBaseGroupId?: string | null;
     selectedBaseGroupId?: string | null;
     eligibleGroupIds?: ReadonlySet<string>;
+    /**
+     * Napas da referência (`list_reference_strap_napas`). Só vale para
+     * `strapChoosesReferenceNapa`; ausente = lista ainda não carregada, e a napa
+     * escolhida passa sem conferência (o servidor confere ao salvar).
+     */
+    referenceNapaGroupIds?: readonly string[] | null;
   } = {},
 ): string | null {
   if (validateStrapMaterialPolicy(line, context.eligibleGroupIds).length > 0) return null;
@@ -125,14 +147,24 @@ export function resolveStrapMaterialBaseGroupId(
     return isGroupId(line.identity_group_id) ? line.identity_group_id.toLowerCase() : null;
   }
   const mode = strapMaterialMode(line);
+  // Napa escolhida no PV vence a napa do item; sem escolha, segue o item.
+  const chosenNapa = strapChoosesReferenceNapa(line)
+    ? context.selectedBaseGroupId ?? line.base_group_id
+    : null;
   const groupId = mode === 'fixed_group'
     ? line.material_group_id
     : mode === 'select_on_order'
       ? context.selectedBaseGroupId ?? line.base_group_id
-      : context.referenceBaseGroupId ?? line.base_group_id;
+      : isGroupId(chosenNapa)
+        ? chosenNapa
+        : context.referenceBaseGroupId ?? line.base_group_id;
   if (!isGroupId(groupId)) return null;
   const canonicalId = groupId.toLowerCase();
   if (mode === 'select_on_order' && !line.allowed_material_group_ids?.some(id => id.toLowerCase() === canonicalId)) return null;
+  if (isGroupId(chosenNapa)
+      && context.referenceNapaGroupIds
+      && canonicalId !== context.referenceBaseGroupId?.toLowerCase()
+      && !context.referenceNapaGroupIds.some(id => id.toLowerCase() === canonicalId)) return null;
   if (context.eligibleGroupIds && !context.eligibleGroupIds.has(canonicalId)) return null;
   return canonicalId;
 }

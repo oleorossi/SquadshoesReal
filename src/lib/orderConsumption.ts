@@ -334,7 +334,8 @@ export const TECHNICAL_SHEET_CONSUMPTION_COLUMNS = `
   strap_base_group_id,
   variant_drives_upper,
   variant_drives_lining,
-  variant_drives_fachete
+  variant_drives_fachete,
+  fachete_material
 `;
 
 /**
@@ -863,7 +864,7 @@ export async function fetchConsumptionContext(
       .select('id, name, is_color_agnostic, composite_layers:product_group_layers!product_group_layers_composite_group_id_fkey(composite_group_id), dimensions_length, dimensions_width, dimensions_unit, box_type_id, box_type_master_id, box_type_colmeia_id, box_type_fitilho_id, pairs_per_box_individual, pairs_per_box_master, pairs_per_box_colmeia, pairs_per_box_fitilho'),
     client
       .from('technical_sheets')
-      .select('id, strap_colors, sole_group_id, primary_sole_id, upper_material, upper_material_group_id, upper_material_product_id, lining_material, lining_material_product_id, insole_material, sole_material, strap_base_group_id, direct_components')
+      .select('id, strap_colors, sole_group_id, primary_sole_id, upper_material, upper_material_group_id, upper_material_product_id, lining_material, lining_material_product_id, insole_material, sole_material, fachete_material, strap_base_group_id, direct_components')
       .in('id', unique),
     client.from('technical_sheet_sole_colors').select('sheet_id, product_color, sole_product_id, sole_group_id').in('sheet_id', unique),
     client.from('technical_sheet_palmilha_colors').select('sheet_id, cabedal_color, palmilha_color, palmilha_product_id').in('sheet_id', unique),
@@ -938,6 +939,7 @@ export async function fetchConsumptionContext(
     addGroupByName(s.lining_material);
     addGroupByName(s.insole_material);
     addGroupByName(s.sole_material);
+    addGroupByName(s.fachete_material);
     for (const gid of collectStrapGroupIds(s.strap_colors)) addGroup(gid);
     for (const pid of collectDirectComponentProductIds(s.direct_components)) addProduct(pid);
   }
@@ -2255,8 +2257,10 @@ export function computeConsumptionForItems(
     // FACHETE — forração EXTRA do salto fachetado. Espelha o ramo de
     // calculate_order_consumption (SQL): só pra solado `is_fachetado`, com consumo
     // em dm²/par POR NUMERAÇÃO vindo de sole_technical_specs.fachete_lining_consumption_dm2.
-    // Material = grupo do fachete (sole.fachete_material_group_id) ou, na falta,
-    // o lining_material da ficha. Converte dm²→metro pela largura da ficha de
+    // Material (mig 20270101035400): variante (variant_drives_fachete) >
+    // ficha.fachete_material (escolha da REFERÊNCIA) > grupo do fachete do
+    // solado (sole.fachete_material_group_id) > lining_material da ficha.
+    // Converte dm²→metro pela largura da ficha de
     // componente do material de forração (mesma regra dos outros itens de área).
     // ⚠ Antes o motor de UI NÃO calculava fachete → modal/ficha subcontavam a
     // forração desses solados vs. o custeio/MRP (SQL). (Auditoria 2026-06-09.)
@@ -2274,7 +2278,8 @@ export function computeConsumptionForItems(
       const facheteVariantGroup = variant
         ? variantComponent(null, null, sheet?.variant_drives_fachete).groupName
         : '';
-      const facheteMaterialName = facheteVariantGroup || facheteGroupName || (sheet?.lining_material || '');
+      const facheteSheetGroup = String(sheet?.fachete_material || '').trim();
+      const facheteMaterialName = facheteVariantGroup || facheteSheetGroup || facheteGroupName || (sheet?.lining_material || '');
       const fachetePerSize = mergePerSizeConsumption(
         facheteSpecBySole.get(soleProductIdResolved),
         facheteConsumptionPerSizeBySole.get(soleProductIdResolved),

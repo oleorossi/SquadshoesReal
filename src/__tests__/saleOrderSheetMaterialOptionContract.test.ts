@@ -34,6 +34,13 @@ const PANEL = readFileSync(
   'utf8',
 );
 
+// Sem comentários pelo mesmo motivo do FORM: o docblock da prévia cita o aviso
+// antigo que ela substituiu.
+const TAB = readFileSync(
+  resolve(process.cwd(), 'src/components/technical-sheets/MaterialVariantsTab.tsx'),
+  'utf8',
+).replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
 const SQL_GUARD = readFileSync(
   resolve(process.cwd(), 'supabase/migrations/20270101007000_material-da-ficha-vale-como-escolha-no-pv.sql'),
   'utf8',
@@ -98,9 +105,22 @@ describe('material da ficha como opção no PV', () => {
 
   it('o seletor inclui o material da ficha quando ele não está coberto', () => {
     expect(FORM).toContain('SHEET_MATERIAL_OPTION');
-    expect(FORM).toMatch(/\{sheetBaseGroup && !baseCoveredByVariant && \(/);
+    // A regra "entra só se nenhuma variante cobre" mora em
+    // buildSaleOrderMaterialOptions (testada em saleOrderMaterialOptions.test.ts);
+    // o seletor só desenha a lista que ela devolve.
+    expect(FORM).toContain('buildSaleOrderMaterialOptions({');
+    expect(FORM).toContain('materialOptions.options.map(');
+    expect(FORM).toContain('const baseCoveredByVariant = materialOptions.baseCoveredByVariant;');
     // Sentinela porque Radix não aceita SelectItem com value vazio.
     expect(FORM).toMatch(/const SHEET_MATERIAL_OPTION = '__ficha__';/);
+  });
+
+  it('a prévia da aba Variantes usa a MESMA lista que o seletor do PV', () => {
+    // Sem isto as duas telas divergiam: a aba avisava "nada no PV diz que vai
+    // sair NAPA SOFT" depois de o PV já oferecer "NAPA SOFT · da ficha".
+    expect(TAB).toContain('buildSaleOrderMaterialOptions({');
+    expect(TAB).not.toContain('O material da ficha não tem variante');
+    expect(TAB).not.toContain('materialDaFichaSemVariante');
   });
 
   it('não há auto-seleção da variante única', () => {

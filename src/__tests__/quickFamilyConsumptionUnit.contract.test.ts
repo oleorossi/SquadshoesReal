@@ -1,7 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-const quickFamily = readFileSync('src/components/inventory/QuickFamilyDialog.tsx', 'utf8');
+// O QuickFamilyDialog foi absorvido pela porta única de criação (spec
+// grupo-cor-obrigatoria.md); a gravação do grupo com cor mora nesta lib.
+const quickFamily = readFileSync('src/lib/createGroupWithColors.ts', 'utf8');
 const migration = readFileSync(
   'supabase/migrations/20270101014750_backfill_shared_group_consumption_unit.sql',
   'utf8',
@@ -10,7 +12,7 @@ const migration = readFileSync(
 describe('unidade das linhas criadas pelo cadastro rápido', () => {
   it('cria shared_specs junto com a unidade já exigida pelo formulário', () => {
     expect(quickFamily).toMatch(
-      /shared_specs:\s*true,[\s\S]{0,300}consumption_unit:\s*unit/,
+      /shared_specs:\s*true,[\s\S]{0,400}consumption_unit:\s*unit/,
     );
   });
 

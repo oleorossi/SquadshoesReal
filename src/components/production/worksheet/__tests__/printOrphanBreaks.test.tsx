@@ -5,7 +5,7 @@ import { SectorJoinCutLine } from '../printContinuity';
 import { SolagemWorkSheet } from '@/components/production/SolagemWorkSheet';
 import type { ReportOrder, ReportSaleOrder } from '@/components/production/ManagementReport';
 
-vi.mock('../PaginatedSheet', () => ({
+vi.mock('@/components/production/worksheet/PaginatedSheet', () => ({
   PaginatedSheet: ({
     blocks,
   }: {

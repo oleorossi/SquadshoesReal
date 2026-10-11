@@ -668,3 +668,63 @@ describe('SaleOrderItemForm — tiras com cores combinadas (grill 10/10/2026)', 
     expect(view.current().strap_colors[1]).toMatchObject({ color_id: GOLD, color: 'OURO' });
   });
 });
+
+// Napas por tira (dono, grill de 11/10/2026): tira multicolor que segue a
+// referência escolhe a napa entre as napas da referência, num seletor só.
+describe('SaleOrderItemForm — napa escolhida por tira (multicolor)', () => {
+  const followReferenceLines = technicalLines.map((line) => ({
+    ...line, material_mode: 'follow_reference' as const, allowed_material_group_ids: [] as string[],
+  }));
+  const napas = [
+    { id: SOFT, name: 'NAPA SOFT', sortOrder: 1, isSheetBase: true, variantIds: [] },
+    { id: COMPOSITE, name: 'NAPA SOFT + MASSABOX', sortOrder: 2, isSheetBase: false, variantIds: ['variante-composta'] },
+  ];
+  function multicolorItem(): SaleOrderItemFormData {
+    return {
+      reference_id: REF, color: 'PRETO', grade: { '34': 10 }, fichas: 1, quantity: 10, unit_price: 10,
+      strap_colors: followReferenceLines.map((line) => ({
+        ...line, base_group_id: SOFT, base_group_name: 'NAPA SOFT', color: 'PRETO', color_id: BLACK,
+      })),
+      strap_sourcing: {},
+    };
+  }
+  function mountWithNapas() {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    qc.setQueryData(['sheet_specs_for_colors', REF], { upper_material: 'NAPA SOFT', upper_material_group_id: SOFT, has_straps: true });
+    qc.setQueryData(['products_for_colors'], PRODUCTS);
+    qc.setQueryData(['product_groups_colors'], GROUPS);
+    qc.setQueryData(['reference_strap_napas', REF], napas);
+    let latest = multicolorItem();
+    function Harness() {
+      const [item, setItem] = useState(multicolorItem());
+      latest = item;
+      return <SaleOrderItemForm
+        item={item} index={0}
+        references={references.map(reference => ({ ...reference, strap_colors: followReferenceLines }))}
+        canRemove={false} isAdmin={false} saleOrderStatus="Rascunho" onRemove={vi.fn()}
+        onUpdate={(_index, field, value) => setItem(current => ({ ...current, [field]: value }))}
+      />;
+    }
+    render(<QueryClientProvider client={qc}><MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><Harness /></MemoryRouter></QueryClientProvider>);
+    return { current: () => latest };
+  }
+
+  it('agrupa as cores por napa, a do item primeiro, e grava napa + cor juntas', async () => {
+    const user = userEvent.setup();
+    const view = mountWithNapas();
+    const trigger = screen.getByRole('combobox', { name: 'Napa e cor de TIRA 2' });
+    expect(trigger).toHaveTextContent('NAPA SOFT · PRETO');
+    // Não sobra o seletor antigo de uma napa só para a mesma tira.
+    expect(screen.queryByRole('combobox', { name: 'Cor de TIRA 2' })).not.toBeInTheDocument();
+    await user.click(trigger);
+    const labels = screen.getAllByText(/^NAPA SOFT/).map((element) => element.textContent);
+    expect(labels).toContain('NAPA SOFT · material do item');
+    expect(labels).toContain('NAPA SOFT + MASSABOX');
+    // O Radix nomeia a opção pelo texto (PRETO); o aria-label napa+cor serve à busca.
+    await user.click(screen.getByLabelText('NAPA SOFT + MASSABOX PRETO'));
+    expect(view.current().strap_colors[1]).toMatchObject({
+      id: LINE_B, base_group_id: COMPOSITE, base_group_name: 'NAPA SOFT + MASSABOX', color: 'PRETO', color_id: BLACK,
+    });
+    expect(view.current().strap_colors[0]).toMatchObject({ base_group_id: SOFT, color_id: BLACK });
+  });
+});

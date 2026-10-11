@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../iosDevice', () => ({
+vi.mock('@/lib/iosDevice', () => ({
   isIosBrowser: vi.fn(() => false),
 }));
 
-import { isIosBrowser } from '../iosDevice';
+import { isIosBrowser } from '@/lib/iosDevice';
 import { closePdfDelivery, getPdfDeliveryState } from '../pdfDeliveryStore';
 import {
   openOrDownloadThermalLabelPdf,

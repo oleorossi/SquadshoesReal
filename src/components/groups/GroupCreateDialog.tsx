@@ -7,14 +7,20 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Stack as Layers, Truck, Package } from '@phosphor-icons/react';
+import { NumberInput } from "@/components/ui/number-input";
+import { Stack as Layers, Truck, Package, Palette, CircleNotch as Loader2 } from '@phosphor-icons/react';
+import { useQueryClient } from "@tanstack/react-query";
 import { useAddGroup, useGroups, type ProductGroup } from "@/hooks/useGroups";
 import { useProducts } from "@/hooks/useProducts";
-import { useAddGroupSupplier } from "@/hooks/useGroupSuppliers";
-import { useAddSupplier, useSuppliers, type Supplier } from "@/hooks/useSuppliers";
 import { flattenGroupTree } from "@/lib/groupHierarchy";
 import { organizationSectorOptions, sectorLabel, sectorOfGroup, MATERIAL_BASE_SECTOR } from "@/lib/categoryFromGroup";
 import { getFootwearSectorGuide } from "@/lib/footwearMaterialTaxonomy";
+import { AREA_STOCK_UNITS, colorRequirement, createGroupWithColors, normalizeColorList } from "@/lib/createGroupWithColors";
+import { findDuplicate, type DuplicateHit } from "@/lib/duplicateDetection";
+import { ColorsMultiSelect } from "@/components/references/ColorsMultiSelect";
+import { DuplicateSuggestion } from "@/components/inventory/DuplicateSuggestion";
+import { UNITS, UNIT_LABELS } from "@/types/inventory";
+import type { GroupEditTab } from "./GroupEditDialog";
 import { cn } from "@/lib/utils";
 
 interface GroupCreateDialogProps {
@@ -28,14 +34,22 @@ interface GroupCreateDialogProps {
   lockHierarchy?: boolean;
   /** Título do diálogo (default "Novo Grupo de Material"). */
   titleText?: string;
+  /** Grupo (não-família) criado: o pai abre a janela do grupo nesta aba —
+   *  `colors` quando nasceu com cor, `items` quando o setor não tem cor. */
+  onCreated?: (group: ProductGroup, tab: GroupEditTab) => void;
 }
 
 /** Setores cujo material é cortado de bobina/placa e tem consumo em dm²/par: sem
  *  largura o motor não converte dm²→metro e o consumo sai ~100× inflado. */
 const AREA_SECTORS = new Set(['Cabedal', 'Forração da Palmilha', 'Palmilha']);
 
-export default function GroupCreateDialog({ open, onOpenChange, initialSector, initialParentId, lockHierarchy, titleText }: GroupCreateDialogProps) {
+/** Material de área estoca em metro linear em todo o cadastro vivo (napas). É
+ *  sugestão visível e editável — nunca deduzida em silêncio. */
+const suggestedStockUnit = (sector: string | undefined) => (AREA_SECTORS.has(sector ?? '') ? 'm' : '');
+
+export default function GroupCreateDialog({ open, onOpenChange, initialSector, initialParentId, lockHierarchy, titleText, onCreated }: GroupCreateDialogProps) {
   const isFamilyCreation = Boolean(lockHierarchy && initialSector && initialParentId == null);
+  const qc = useQueryClient();
   const [form, setForm] = useState({
     name: "",
     description: "",
@@ -101,6 +115,46 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
 
   const addGroup = useAddGroup();
 
+  // ── Cores do grupo (spec grupo-cor-obrigatoria.md) ─────────────────────────
+  // Grupo-folha sem item é invisível no seletor da ficha e não tinha como
+  // ganhar a 1ª cor pelas abas. Nos setores com cor, ele já nasce com ela.
+  const [variesByColor, setVariesByColor] = useState<boolean | null>(null);
+  const [colorsText, setColorsText] = useState('');
+  const [stockUnit, setStockUnit] = useState(suggestedStockUnit(initialSector));
+  const [unitPrice, setUnitPrice] = useState(0);
+  const [coresLiberadas, setCoresLiberadas] = useState<Set<string>>(new Set());
+  const [creatingWithColors, setCreatingWithColors] = useState(false);
+
+  const requirement = colorRequirement({
+    sector: form.sector,
+    isFamily: isFamilyCreation,
+    isArtisanalStrap: form.is_artisanal_strap,
+  });
+  const colorsActive = requirement === 'required' || (requirement === 'ask' && variesByColor === true);
+  const colors = useMemo(() => normalizeColorList(colorsText.split(',')), [colorsText]);
+  const isAreaSector = AREA_SECTORS.has(form.sector);
+  const unitOptions: readonly string[] = isAreaSector ? AREA_STOCK_UNITS : UNITS;
+  const unitOk = Boolean(stockUnit) && unitOptions.includes(stockUnit);
+
+  /** Cor da fila que bate com item já cadastrado e ainda não foi liberada. */
+  const suspeitas = useMemo(() => {
+    const nome = form.name.trim().toUpperCase();
+    if (!colorsActive || !nome) return [] as { cor: string; hit: DuplicateHit }[];
+    return colors
+      .filter(cor => !coresLiberadas.has(cor))
+      .map(cor => ({ cor, hit: findDuplicate({ name: nome, color: cor, group_id: null }, allProducts) }))
+      .filter((x): x is { cor: string; hit: DuplicateHit } => x.hit != null);
+  }, [colorsActive, form.name, colors, coresLiberadas, allProducts]);
+
+  const colorBlocker: string | null =
+    requirement === 'ask' && variesByColor === null ? 'Responda se o material varia por cor.'
+      : colorsActive && colors.length === 0 ? 'Cadastre ao menos uma cor.'
+        : colorsActive && !unitOk ? 'Selecione a unidade de estoque.'
+          : colorsActive && suspeitas.length > 0 ? 'Resolva as cores marcadas como possível duplicata.'
+            : null;
+
+  const removeColor = (cor: string) => setColorsText(colors.filter(c => c !== cor).join(', '));
+
   const reset = () => {
     setForm({
       name: "",
@@ -111,6 +165,11 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
       dimensions_width: null,
       parent_group_id: initialParentId ?? "",
     });
+    setVariesByColor(null);
+    setColorsText('');
+    setStockUnit(suggestedStockUnit(initialSector));
+    setUnitPrice(0);
+    setCoresLiberadas(new Set());
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -133,9 +192,47 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
       toast.error('Informe a largura da bobina (mm) — material de área sem largura infla o consumo ~100×.');
       return;
     }
+    if (colorBlocker) {
+      toast.error(colorBlocker);
+      return;
+    }
+
+    if (colorsActive) {
+      setCreatingWithColors(true);
+      try {
+        const created = await createGroupWithColors({
+          group: {
+            name: form.name,
+            description: form.description,
+            sector: form.sector,
+            auto_component_sheet: form.auto_component_sheet,
+            parent_group_id: form.parent_group_id || null,
+            dimensions_width: form.dimensions_width,
+            dimensions_unit: form.dimensions_width ? 'mm' : null,
+          },
+          colors,
+          unit: stockUnit,
+          unitPrice,
+          existingSkus: allProducts.map(product => product.sku),
+        });
+        qc.invalidateQueries({ queryKey: ['product_groups'] });
+        qc.invalidateQueries({ queryKey: ['products'] });
+        toast.success(`${created.name} criado com ${colors.length} ${colors.length === 1 ? 'cor' : 'cores'}`);
+        reset();
+        onOpenChange(false);
+        onCreated?.(created, 'colors');
+      } catch (error) {
+        // Falha no lote já desfez o grupo (createGroupWithColors); o formulário
+        // fica preenchido para corrigir e tentar de novo.
+        toast.error(error instanceof Error ? error.message : 'Não foi possível criar o grupo.');
+      } finally {
+        setCreatingWithColors(false);
+      }
+      return;
+    }
 
     try {
-      await addGroup.mutateAsync({
+      const created = await addGroup.mutateAsync({
         name: form.name.trim().toUpperCase(),
         description: form.description,
         sector: form.sector,
@@ -153,6 +250,8 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
       });
       reset();
       onOpenChange(false);
+      // Família não recebe item; grupo sem cor segue para a aba Itens.
+      if (!isFamilyCreation && created) onCreated?.(created as ProductGroup, 'items');
     } catch {
       // errors handled by mutations
     }
@@ -166,7 +265,7 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
         onOpenChange(v);
       }}
     >
-      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{titleText ?? 'Novo Grupo de Material'}</DialogTitle>
         <DialogDescription>
@@ -264,16 +363,21 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
               <Select
                 value={form.sector || undefined}
                 disabled={lockHierarchy}
-                onValueChange={(v) => setForm((f) => {
-                  const enteringBase = v === MATERIAL_BASE_SECTOR;
-                  const leavingBase = f.sector === MATERIAL_BASE_SECTOR && !enteringBase;
-                  return {
-                    ...f,
-                    sector: v,
-                    is_artisanal_strap: enteringBase && !isFamilyCreation ? true : leavingBase ? false : f.is_artisanal_strap,
-                    auto_component_sheet: enteringBase ? false : f.auto_component_sheet,
-                  };
-                })}
+                onValueChange={(v) => {
+                  setForm((f) => {
+                    const enteringBase = v === MATERIAL_BASE_SECTOR;
+                    const leavingBase = f.sector === MATERIAL_BASE_SECTOR && !enteringBase;
+                    return {
+                      ...f,
+                      sector: v,
+                      is_artisanal_strap: enteringBase && !isFamilyCreation ? true : leavingBase ? false : f.is_artisanal_strap,
+                      auto_component_sheet: enteringBase ? false : f.auto_component_sheet,
+                    };
+                  });
+                  // "Varia por cor?" é resposta por setor — trocar o setor pede de novo.
+                  setVariesByColor(null);
+                  if (AREA_SECTORS.has(v) && !(AREA_STOCK_UNITS as readonly string[]).includes(stockUnit)) setStockUnit('m');
+                }}
               >
                 <SelectTrigger id="group-sector" className="mt-1">
                   <SelectValue placeholder="Selecione o setor" />
@@ -320,6 +424,82 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
                     Obrigatória para material de {sectorLabel(form.sector)}.
                   </p>
                 )}
+              </div>
+            )}
+            {requirement === 'ask' && (
+              <div>
+                <Label>Varia por cor? *</Label>
+                <div className="mt-1 grid grid-cols-2 gap-2">
+                  <Button
+                    type="button"
+                    variant={variesByColor === true ? 'default' : 'outline'}
+                    onClick={() => setVariesByColor(true)}
+                  >
+                    Sim, cada cor é um item
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={variesByColor === false ? 'default' : 'outline'}
+                    onClick={() => setVariesByColor(false)}
+                  >
+                    Não varia
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Fivela, enfeite e aviamento colorido variam; agulha e ilhós genérico, não.
+                  Se variar, o grupo já nasce com as cores.
+                </p>
+              </div>
+            )}
+            {colorsActive && (
+              <div className="space-y-3 rounded-lg border p-3 bg-muted/30">
+                <div className="flex items-start gap-2">
+                  <Palette className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Cores *</p>
+                    <p className="text-xs text-muted-foreground">
+                      Grupo sem item <strong>não aparece na ficha técnica</strong>. Cada cor vira um
+                      SKU ({form.name.trim() ? `${form.name.trim().toUpperCase()} - COR` : 'GRUPO - COR'}) com saldo 0.
+                    </p>
+                  </div>
+                </div>
+                <ColorsMultiSelect
+                  value={colorsText}
+                  onChange={setColorsText}
+                  placeholder="Buscar no catálogo ou cadastrar cor…"
+                />
+                {/* Uma sugestão por vez — a primeira cor suspeita da fila. */}
+                {suspeitas[0] && (
+                  <DuplicateSuggestion
+                    hit={suspeitas[0].hit}
+                    onSameProduct={() => removeColor(suspeitas[0].cor)}
+                    onDifferent={() => setCoresLiberadas(prev => new Set(prev).add(suspeitas[0].cor))}
+                  />
+                )}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label htmlFor="group-stock-unit">Unidade de estoque *</Label>
+                    <Select value={stockUnit || undefined} onValueChange={setStockUnit}>
+                      <SelectTrigger id="group-stock-unit" className="mt-1">
+                        <SelectValue placeholder="Selecione" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {unitOptions.map((unit) => (
+                          <SelectItem key={unit} value={unit}>{UNIT_LABELS[unit] || unit}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="group-unit-price">Preço unitário (R$)</Label>
+                    <NumberInput id="group-unit-price" value={unitPrice} onChange={setUnitPrice} min={0} step="0.01" className="mt-1" />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {isAreaSector
+                    ? 'Material de bobina estoca em metro; o consumo da ficha continua em dm²/par e a largura do grupo faz a conversão.'
+                    : 'Fornecedor, estoque mínimo e demais dados ficam na aba Em massa do grupo.'}
+                </p>
               </div>
             )}
             <div>
@@ -422,15 +602,26 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
             </Button>
             <Button
               type="submit"
+              className="gap-2"
               disabled={
                 addGroup.isPending
+                || creatingWithColors
                 || !form.sector
                 || (requiresWidth && !(Number(form.dimensions_width) > 0))
+                || Boolean(colorBlocker)
               }
             >
-              {isFamilyCreation ? 'Criar Família' : 'Criar Grupo'}
+              {creatingWithColors && <Loader2 className="h-4 w-4 animate-spin" />}
+              {isFamilyCreation
+                ? 'Criar Família'
+                : colorsActive && colors.length > 0
+                  ? `Criar grupo com ${colors.length} ${colors.length === 1 ? 'cor' : 'cores'}`
+                  : 'Criar Grupo'}
             </Button>
           </DialogFooter>
+          {colorBlocker && form.sector && (
+            <p className="text-right text-xs text-muted-foreground">{colorBlocker}</p>
+          )}
         </form>
       </DialogContent>
     </Dialog>

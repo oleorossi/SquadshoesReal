@@ -23,7 +23,6 @@ import { ProductTable } from '@/components/inventory/ProductTable';
 import { TableViewProvider, useTableView, ALL_COLUMNS } from '@/components/inventory/TableViewContext';
 import { ProductFormDialog } from '@/components/inventory/ProductFormDialog';
 import { useCan } from '@/hooks/useAccessControl';
-import { QuickFamilyDialog } from '@/components/inventory/QuickFamilyDialog';
 import { InventoryStatusFilters } from '@/components/inventory/InventoryStatusFilters';
 import XmlImportDialog from '@/components/suppliers/XmlImportDialog';
 import AddToStockDialog from '@/components/suppliers/AddToStockDialog';
@@ -188,7 +187,6 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
   // ... existing code (unused variables removed)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
-  const [quickFamilyOpen, setQuickFamilyOpen] = useState(false);
   const [groupListOpen, setGroupListOpen] = useState(false);
   const [xmlDialogOpen, setXmlDialogOpen] = useState(false);
   const [stockDialogOpen, setStockDialogOpen] = useState(false);
@@ -548,11 +546,10 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
                 {perm.canCreate && <>
                   <DropdownMenuSeparator />
                   <DropdownMenuLabel>Organização</DropdownMenuLabel>
-                  <DropdownMenuItem onClick={() => setQuickFamilyOpen(true)}>
-                    <Layers className="h-4 w-4 mr-2" /> Cadastro rápido: grupo + cores
-                  </DropdownMenuItem>
+                  {/* Porta única de criação (spec grupo-cor-obrigatoria.md): o
+                      grupo de setor com cor já nasce com as cores. */}
                   <DropdownMenuItem onClick={() => setGroupDialogOpen(true)}>
-                    <Layers className="h-4 w-4 mr-2" /> Novo grupo / linha vazio
+                    <Layers className="h-4 w-4 mr-2" /> Novo grupo
                   </DropdownMenuItem>
                 </>}
               </DropdownMenuContent>
@@ -754,7 +751,6 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
 
       <GroupDialog open={groupDialogOpen} onOpenChange={setGroupDialogOpen} />
       <GroupListDialog open={groupListOpen} onOpenChange={setGroupListOpen} />
-      <QuickFamilyDialog open={quickFamilyOpen} onOpenChange={setQuickFamilyOpen} defaultGroupId={defaultGroupId} />
       {forceDeleteFlow.dialog}
     </div>
   );

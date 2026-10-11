@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../iosDevice', () => ({
+vi.mock('@/lib/iosDevice', () => ({
   isIosBrowser: vi.fn(() => true),
 }));
 
@@ -20,7 +20,7 @@ vi.mock('sonner', () => {
   return { toast };
 });
 
-import { isIosBrowser } from '../iosDevice';
+import { isIosBrowser } from '@/lib/iosDevice';
 import { printHtmlAsPdf, openPrintTab } from '../printPdf';
 import { getPdfDeliveryState, closePdfDelivery } from '../pdfDeliveryStore';
 

@@ -13,9 +13,17 @@ describe('contrato de integração da ficha técnica', () => {
     expect(pageSource).toContain('updateSheet.mutateAsync({ id: target.id, data: patch })');
   });
 
-  it('não oferece um segundo cadastro morto de material de fachete', () => {
-    expect(pageSource).not.toContain("onValueChange={v => updateField('fachete_material', v)}");
-    expect(pageSource).toContain('O grupo vem do solado principal');
+  // Até 11/10/2026 o campo era MORTO (o débito ignorava fachete_material) e
+  // este teste proibia oferecê-lo. A mig 20270101035400 fez o motor SQL lê-lo
+  // antes do grupo do solado — o campo agora é a escolha da referência e o
+  // contrato passa a ser: a ficha edita E o débito lê.
+  it('o material do fachete da ficha é editável e é lido pelo débito', () => {
+    expect(pageSource).toContain("onChange={v => updateField('fachete_material', v)}");
+    const facheteMigration = readFileSync(
+      'supabase/migrations/20270101035400_fachete-material-por-referencia.sql',
+      'utf8',
+    );
+    expect(facheteMigration).toContain('v_sheet.fachete_material');
   });
 
   it('mantém a auditoria alinhada às construções especiais e à unidade de estoque', () => {

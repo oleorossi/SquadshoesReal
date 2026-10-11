@@ -35,9 +35,11 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
  import { useGroups, type ProductGroup } from '@/hooks/useGroups';
  import { sectorLabel, sectorOfGroup } from '@/lib/categoryFromGroup';
 import {
+  buildSaleOrderMaterialOptions,
   evaluateUpperMaterialStructureCompatibility,
   hasVariantComponentPin,
   listVariantCascadeSlots,
+  listVariantSlotsKeptOnSheet,
   resolvePinnedMaterialGroupId,
   resolveStrapBaseReadout,
   seedVariantCascade,
@@ -286,10 +288,8 @@ function GroupCombobox({
    const { data: products = [] } = useProducts();
    const { data: groups = [] } = useGroups();
 
-   // Material que a ficha usa hoje. Serve pra avisar quando NENHUMA variante o
-   // representa: nesse caso quem vender sem escolher variante recebe um material
-   // diferente do que qualquer variante promete, em silêncio. Foi assim que o
-   // PV-00141 (EC23) vendeu NAPA SOFT e a produção cortou NAPA SUDANI.
+   // Material que a ficha usa hoje. Alimenta a prévia do seletor "Material" do
+   // PV (o material da ficha é uma das opções lá — regra do dono, 21/08/2026).
    //
    // As travas `variant_drives_*` vêm junto: elas moram na FICHA mas a decisão
    // ("este componente sai da napa da variante?") é tomada aqui, ao cadastrar a
@@ -299,7 +299,7 @@ function GroupCombobox({
      queryFn: async () => {
        const { data, error } = await (supabase as any)
          .from('technical_sheets')
-         .select('upper_material, upper_material_group_id, upper_material_product_id, lining_material, lining_material_product_id, primary_sole_id, has_straps, strap_colors, strap_base_group_id, variant_drives_upper, variant_drives_lining, variant_drives_fachete')
+         .select('upper_material, upper_material_group_id, upper_material_product_id, lining_material, lining_material_product_id, primary_sole_id, has_straps, strap_colors, strap_base_group_id, variant_drives_upper, variant_drives_lining, variant_drives_fachete, fachete_material')
          .eq('id', sheetId)
          .maybeSingle();
        if (error) throw error;
@@ -318,26 +318,12 @@ function GroupCombobox({
          variant_drives_upper: boolean | null;
          variant_drives_lining: boolean | null;
          variant_drives_fachete: boolean | null;
+         fachete_material: string | null;
        } | null;
      },
      enabled: !!sheetId,
      staleTime: 60_000,
    });
-
-   /** Material da ficha não coberto por nenhuma variante ativa. */
-   const materialDaFichaSemVariante = useMemo(() => {
-     const alvo = (sheetMaterials?.upper_material?.trim() || sheetMaterials?.lining_material?.trim() || '');
-     if (!alvo || variants.length === 0) return '';
-     const key = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().trim();
-     const cobertos = new Set(
-       variants.filter(v => v.active).map(v => {
-         const gid = v.main_material_group_id || v.upper_material_group_id
-           || v.lining_material_group_id || v.insole_material_group_id;
-         return key(groups.find(g => g.id === gid)?.name || v.material_name || '');
-       }),
-     );
-     return cobertos.has(key(alvo)) ? '' : alvo;
-   }, [sheetMaterials, variants, groups]);
 
    /**
     * O fachete não é campo da ficha: o grupo vem de
@@ -362,10 +348,62 @@ function GroupCombobox({
    });
    const soleContext = useMemo(() => ({
      soleIsFachetado: !!soleCascadeContext?.is_fachetado,
-     facheteGroupName: soleCascadeContext?.fachete_material_group_id
-       ? groups.find(group => group.id === soleCascadeContext.fachete_material_group_id)?.name ?? null
-       : null,
-   }), [soleCascadeContext, groups]);
+     // Material escolhido na FICHA vence o grupo do solado (mig 20270101035400).
+     facheteGroupName: sheetMaterials?.fachete_material?.trim()
+       || (soleCascadeContext?.fachete_material_group_id
+         ? groups.find(group => group.id === soleCascadeContext.fachete_material_group_id)?.name ?? null
+         : null),
+   }), [soleCascadeContext, groups, sheetMaterials?.fachete_material]);
+
+   /**
+    * Prévia do seletor "Material" do item do PV, montada pela MESMA função que o
+    * PV usa (`buildSaleOrderMaterialOptions`). Sem variante ativa o PV nem mostra
+    * o seletor, então não há prévia.
+    *
+    * ⚠ Substituiu um alerta amarelo ("o material da ficha não tem variante")
+    * escrito em 31/07/2026, quando cadastrar variante escondia o material da
+    * ficha no PV. Desde 21/08/2026 o PV oferece "NAPA SOFT · da ficha" e o traz
+    * marcado num item novo; o alerta seguia dizendo "nada no PV diz isso" e
+    * mandava cadastrar uma variante repetindo a ficha — o contorno que já tinha
+    * gerado 26 variantes duplicadas. Não recrie aquele aviso.
+    */
+   const pvMaterialPreview = useMemo(() => {
+     if (!variants.some(v => v.active)) return null;
+     const preview = buildSaleOrderMaterialOptions({
+       sheet: sheetMaterials,
+       variants,
+       products,
+       groups,
+     });
+     return {
+       ...preview,
+       coveringVariantLabel: preview.baseCoveredByVariant
+         ? preview.options.find(option => option.group?.id === preview.sheetBaseGroup?.id)?.label ?? null
+         : null,
+       rows: preview.options.map(option => {
+         const kept = option.variant
+           ? listVariantSlotsKeptOnSheet({ variant: option.variant, sheet: sheetMaterials, sole: soleContext, products })
+           : [];
+         let colorWarning: string | null = null;
+         if (option.colors.length === 0) {
+           if (option.group) {
+             colorWarning = `Nenhuma cor ativa em ${option.group.name}: no PV a lista de cores vem vazia.`;
+           } else if (option.variant && hasVariantComponentPin(option.variant, products)) {
+             colorWarning = 'Troca só a placa da palmilha, que não tem cor: no PV a lista de cores vem vazia.';
+           } else {
+             colorWarning = 'Não troca nenhum componente desta ficha: no PV a lista de cores vem vazia.';
+           }
+         }
+         return {
+           option,
+           // "Só quando algum não troca". Sem grupo efetivo a variante não troca
+           // cabedal nem forro, e o aviso de cor já diz isso — não repetir.
+           keptOnSheet: option.group ? kept : [],
+           colorWarning,
+         };
+       }),
+     };
+   }, [variants, sheetMaterials, products, groups, soleContext]);
 
    /**
     * Componentes que o MATERIAL PRINCIPAL substitui, lidos de `variant_drives_*`
@@ -1203,16 +1241,64 @@ function GroupCombobox({
          </p>
        </div>
 
-       {materialDaFichaSemVariante && (
-         <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs">
-           <p className="font-medium text-amber-700 dark:text-amber-400 mb-1">
-             O material da ficha não tem variante
+       {pvMaterialPreview && (
+         <div className="rounded-lg border border-border bg-muted/30 p-3 text-xs">
+           <p className="font-medium text-foreground mb-0.5 flex items-center gap-1.5">
+             <ShoppingCart className="h-3.5 w-3.5 text-muted-foreground" />
+             Prévia no pedido de venda
            </p>
-           <p className="text-amber-700 dark:text-amber-400">
-             A ficha usa <strong>{materialDaFichaSemVariante}</strong>, mas nenhuma variante ativa
-             representa esse material. Quem vender esta referência <strong>sem escolher variante</strong> vai
-             produzir em {materialDaFichaSemVariante} — sem que nada no PV diga isso. Cadastre uma variante
-             para {materialDaFichaSemVariante} (ou corrija o material da ficha, se ele estiver errado).
+           <p className="text-muted-foreground mb-2">
+             O campo <strong>Material</strong> do item oferece estas opções, nesta ordem:
+           </p>
+           <ul className="divide-y divide-border/60 rounded-md border border-border/60 bg-card">
+             {pvMaterialPreview.rows.map(({ option, keptOnSheet, colorWarning }) => {
+               const v = option.variant;
+               const price = v && v.unit_price_override != null && (v.unit_price_override as unknown) !== ''
+                 && Number(v.unit_price_override) > 0
+                 ? `R$ ${Number(v.unit_price_override).toFixed(2)}`
+                 : null;
+               const colorCount = option.colors.length;
+               return (
+                 <li key={option.variantId ?? '__ficha__'} className="px-3 py-2">
+                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                     <span className="font-semibold text-foreground">{option.label}</span>
+                     {v ? (
+                       v.sku && <Badge variant="outline" className="text-xs font-mono py-0">SKU {v.sku}</Badge>
+                     ) : (
+                       <>
+                         <span className="text-muted-foreground">da ficha</span>
+                         <Badge variant="secondary" className="text-xs py-0">padrão</Badge>
+                       </>
+                     )}
+                     <span className={colorWarning ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'}>
+                       {colorCount} {colorCount === 1 ? 'cor' : 'cores'}
+                     </span>
+                     {price && <span className="text-muted-foreground">{price}</span>}
+                   </div>
+                   {keptOnSheet.length > 0 && (
+                     <p className="mt-0.5 text-muted-foreground">
+                       {keptOnSheet.map(slot => `${slot.label} continua ${slot.sheetMaterial}`).join(' · ')}
+                     </p>
+                   )}
+                   {colorWarning && (
+                     <p className="mt-0.5 text-amber-700 dark:text-amber-400">{colorWarning}</p>
+                   )}
+                 </li>
+               );
+             })}
+           </ul>
+           <p className="mt-2 text-muted-foreground">
+             {pvMaterialPreview.sheetMaterialSelectable ? (
+               <>Item novo já vem com <strong>{pvMaterialPreview.sheetBaseGroup?.name}</strong> marcado; para outro material o vendedor troca no seletor.</>
+             ) : pvMaterialPreview.baseCoveredByVariant ? (
+               <>
+                 Sem padrão: o vendedor escolhe o material antes de salvar. O material da ficha
+                 ({pvMaterialPreview.sheetBaseGroup?.name}) não aparece em separado porque a variante{' '}
+                 <strong>{pvMaterialPreview.coveringVariantLabel}</strong> já o oferece.
+               </>
+             ) : (
+               <>Sem padrão: o vendedor escolhe o material antes de salvar. A ficha não tem cabedal nem forração ligados a um grupo do estoque.</>
+             )}
            </p>
          </div>
        )}

@@ -155,7 +155,8 @@ function getBaseName(name: string): string {
 }
 
 /** SKU estável pra variante de cor (fluxo "cadastrar cor" no PV). Espelha o
- *  token de QuickFamilyDialog: GRUPO-COR, com sufixo se já existir. */
+ *  token de `buildUniqueSkus` (`lib/createGroupWithColors`): GRUPO-COR, com
+ *  sufixo se já existir. */
 function suggestSkuForColor(
   groupName: string,
   color: string,
