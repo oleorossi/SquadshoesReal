@@ -55,7 +55,7 @@ export const ROLE_SOURCE: Record<SoleRole, string> = {
   forro_cabedal: 'material escolhido pela ficha e pelo PV',
   placa_palmilha: 'SKU selecionado aqui manda no débito/consumo (acima da ficha)',
   forracao_palmilha: 'material escolhido pela ficha e pelo PV',
-  fachete: 'material escolhido pelo grupo de fachete do solado',
+  fachete: 'material escolhido em cada referência (lista abaixo)',
 };
 
 /** Papéis que além da quantidade pinam o produto no próprio Consumo Padrão. */

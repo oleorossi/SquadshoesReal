@@ -299,7 +299,7 @@ function GroupCombobox({
      queryFn: async () => {
        const { data, error } = await (supabase as any)
          .from('technical_sheets')
-         .select('upper_material, upper_material_group_id, upper_material_product_id, lining_material, lining_material_product_id, primary_sole_id, has_straps, strap_colors, strap_base_group_id, variant_drives_upper, variant_drives_lining, variant_drives_fachete')
+         .select('upper_material, upper_material_group_id, upper_material_product_id, lining_material, lining_material_product_id, primary_sole_id, has_straps, strap_colors, strap_base_group_id, variant_drives_upper, variant_drives_lining, variant_drives_fachete, fachete_material')
          .eq('id', sheetId)
          .maybeSingle();
        if (error) throw error;
@@ -318,6 +318,7 @@ function GroupCombobox({
          variant_drives_upper: boolean | null;
          variant_drives_lining: boolean | null;
          variant_drives_fachete: boolean | null;
+         fachete_material: string | null;
        } | null;
      },
      enabled: !!sheetId,
@@ -362,10 +363,12 @@ function GroupCombobox({
    });
    const soleContext = useMemo(() => ({
      soleIsFachetado: !!soleCascadeContext?.is_fachetado,
-     facheteGroupName: soleCascadeContext?.fachete_material_group_id
-       ? groups.find(group => group.id === soleCascadeContext.fachete_material_group_id)?.name ?? null
-       : null,
-   }), [soleCascadeContext, groups]);
+     // Material escolhido na FICHA vence o grupo do solado (mig 20270101035400).
+     facheteGroupName: sheetMaterials?.fachete_material?.trim()
+       || (soleCascadeContext?.fachete_material_group_id
+         ? groups.find(group => group.id === soleCascadeContext.fachete_material_group_id)?.name ?? null
+         : null),
+   }), [soleCascadeContext, groups, sheetMaterials?.fachete_material]);
 
    /**
     * Componentes que o MATERIAL PRINCIPAL substitui, lidos de `variant_drives_*`

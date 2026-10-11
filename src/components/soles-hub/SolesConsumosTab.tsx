@@ -54,6 +54,7 @@ export default function SolesConsumosTab({ sole, soleLabel }: Props) {
             soleGroupName={soleLabel ?? sole.name}
             soleClassification={sole.sole_classification ?? null}
             isFachetado={sole.is_fachetado ?? false}
+            facheteMaterialGroupId={sole.fachete_material_group_id ?? null}
           />
         </TabsContent>
 

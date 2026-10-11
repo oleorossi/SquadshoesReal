@@ -370,7 +370,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
   ] = await Promise.all([
     supabase
       .from('technical_sheets')
-      .select('id, upper_material, upper_material_product_id, upper_consumption, upper_consumption_per_size, lining_material, lining_material_product_id, lining_consumption, lining_consumption_per_size, insole_material, insole_consumption, insole_consumption_per_size, insole_ready_made, insole_has_lining, insole_lining_consumption, insole_lining_consumption_per_size, sole_material, sole_consumption, sole_color, sole_group_id, primary_sole_id, lining_accessories, components_accessories, strap_colors, sole_drives_consumption, direct_components, component_colors_enabled, variant_drives_upper, variant_drives_lining, variant_drives_fachete')
+      .select('id, upper_material, upper_material_product_id, upper_consumption, upper_consumption_per_size, lining_material, lining_material_product_id, lining_consumption, lining_consumption_per_size, insole_material, insole_consumption, insole_consumption_per_size, insole_ready_made, insole_has_lining, insole_lining_consumption, insole_lining_consumption_per_size, sole_material, sole_consumption, sole_color, sole_group_id, primary_sole_id, lining_accessories, components_accessories, strap_colors, sole_drives_consumption, direct_components, component_colors_enabled, variant_drives_upper, variant_drives_lining, variant_drives_fachete, fachete_material')
       .in('id', refIds),
     supabase
       .from('sheet_materials')
@@ -453,6 +453,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     addGroupByName(s.lining_material);
     addGroupByName(s.insole_material);
     addGroupByName(s.sole_material);
+    addGroupByName(s.fachete_material);
     if (Array.isArray(s.strap_colors)) {
       for (const strap of s.strap_colors) addGroup((strap as any)?.group_id);
     }
@@ -1450,7 +1451,9 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       const facheteVariantGroup = variant
         ? variantGroupName(null, null, (sheet as any)?.variant_drives_fachete)
         : '';
-      const facheteMaterialName = facheteVariantGroup || facheteGroupName || (sheet?.lining_material || '');
+      // Ficha (escolha da referência) vence o grupo do solado — mig 20270101035400.
+      const facheteSheetGroup = String(sheet?.fachete_material || '').trim();
+      const facheteMaterialName = facheteVariantGroup || facheteSheetGroup || facheteGroupName || (sheet?.lining_material || '');
       const fachetePerSize = mergePerSizeConsumption(
         facheteSpecBySole.get(resolvedSolePid),
         facheteConsumptionPerSizeBySole.get(resolvedSolePid),

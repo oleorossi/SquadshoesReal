@@ -602,7 +602,7 @@ export default function SolesCadastroTab({ sole }: Props) {
               {/* Material do fachete */}
               <div>
                 <Label className="text-xs uppercase tracking-wider font-bold text-violet-700 dark:text-violet-300">
-                  Material do fachete
+                  Material padrão do fachete
                 </Label>
                 <Select
                   value={facheteForm.material_group_id || ''}
@@ -622,7 +622,9 @@ export default function SolesCadastroTab({ sole }: Props) {
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Quando vazio, o sistema cai no <em>lining_material</em> da ficha técnica.
+                  Padrão do modelo. Cada referência escolhe o próprio material em{' '}
+                  <strong>Consumos → Consumo Padrão → Fachete</strong> (ou na ficha técnica) — a
+                  escolha da referência vence este padrão. Sem nenhum dos dois, cai na forração da ficha.
                 </p>
               </div>
 

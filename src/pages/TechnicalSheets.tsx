@@ -2736,20 +2736,51 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                        </div>
                        <Label className="text-xs font-bold text-warning">Forração de Salto (Fachete)</Label>
                      </div>
-                     <div className="rounded-md border bg-background/70 p-3">
+                     {/* Material do fachete é escolha da REFERÊNCIA (mig 20270101035400):
+                         vence o grupo cadastrado no solado e entra no débito como
+                         a linha "Fachete". O consumo (dm²/par por numeração)
+                         continua sendo do solado. */}
+                     <div className="rounded-md border bg-background/70 p-3 space-y-2">
                        <div className="flex flex-wrap items-center justify-between gap-2">
-                         <div>
-                           <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Fonte do material</p>
-                           <p className="mt-1 text-sm font-semibold">
-                             {facheteMaterialGroup?.name || form.lining_material || 'Forração da ficha (fallback)'}
-                           </p>
-                         </div>
-                         <Button variant="outline" size="sm" asChild>
-                           <Link to="/solados?tab=cadastro">Configurar em Solados</Link>
-                         </Button>
+                         <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Material do fachete</p>
+                         {(form.fachete_material || '').trim() ? (
+                           <span className="inline-flex items-center gap-1 rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-[11px] font-medium text-success">
+                             <CheckCircle className="h-3 w-3" weight="fill" /> Preenchido
+                           </span>
+                         ) : (
+                           <span className="inline-flex items-center gap-1 rounded-full border border-warning/30 bg-warning/10 px-2 py-0.5 text-[11px] font-medium text-warning">
+                             <AlertTriangle className="h-3 w-3" weight="fill" /> Falta material
+                           </span>
+                         )}
                        </div>
-                       <p className="mt-2 text-xs text-muted-foreground">
-                         O grupo vem do solado principal; o consumo por numeração vem das especificações do solado. Este valor não é duplicado na ficha.
+                       <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 items-end">
+                         <GroupMaterialSelect
+                           label="Grupo de material do fachete"
+                           value={form.fachete_material || ''}
+                           onChange={v => updateField('fachete_material', v)}
+                         />
+                         {(form.fachete_material || '').trim() && (
+                           <Button
+                             variant="ghost"
+                             size="icon"
+                             aria-label="Limpar material do fachete"
+                             className="h-9 w-9 text-destructive hover:text-destructive"
+                             onClick={() => updateField('fachete_material', '')}
+                           >
+                             <Trash2 className="h-4 w-4" />
+                           </Button>
+                         )}
+                       </div>
+                       {!(form.fachete_material || '').trim() && (
+                         <p className="text-xs text-warning">
+                           Sem material escolhido, o débito usa{' '}
+                           <strong>{facheteMaterialGroup?.name || form.lining_material || 'nenhum material'}</strong>
+                           {facheteMaterialGroup?.name ? ' (padrão do solado)' : form.lining_material ? ' (forração da ficha)' : ' — o fachete NÃO será debitado'}.
+                         </p>
+                       )}
+                       <p className="text-xs text-muted-foreground">
+                         A cor segue a forração do PV. O consumo por numeração vem do solado{' '}
+                         (<Link to="/solados?tab=consumos" className="underline">Solados → Consumos</Link>) e é debitado na finalização da OP.
                        </p>
                      </div>
                      {/* A trava do fachete MUDOU DE LUGAR (21/08/2026): agora vive
