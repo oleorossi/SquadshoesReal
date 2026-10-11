@@ -213,6 +213,16 @@ Dados medidos em 11/10/2026:
     SKU do writer (R7). É a mesma fonte para a tela e para o save, sem regra duplicada no cliente.
 30. "Copiar p/ novo PV" continua usando a mesma função de cópia (R-Cópia de `tiras-redesenho`).
 
+### R-Interino (decisão do dono, 11/10/2026, na implementação)
+34. **A virada substitui o ajuste interino** [`tira-comprar-pronto-so-registra.md`](tira-comprar-pronto-so-registra.md)
+    (construído em paralelo por outra sessão):
+    - o writer e o gatilho do PV passam a ser os do modelo novo (Comprar pronto → SKU +
+      empenho/falta → OC automática, R7/R11/R15);
+    - a tela **"Compras → Tiras para comprar"** sai do menu;
+    - metros já marcados **"comprado"** naquela tela entram como **compra em andamento** do
+      PV × SKU: a OC automática desconta esse valor, para a mesma tira não ser comprada
+      duas vezes. Quando a mercadoria entra, a quitação genérica (R13) cobre a falta.
+
 ### R-Dados pontuais
 31. Desativar o produto `4a60b9c5-eacd-4cd8-82de-b8176ee217b2` ("TIRA STRASS 6MM", cor
     OFF WHITE). Histórico intacto.
