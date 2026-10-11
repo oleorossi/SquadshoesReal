@@ -106,8 +106,10 @@ Dados medidos em 11/10/2026:
 4. A linha de tira da ficha técnica referencia o **grupo** da tira (mais napa e política de
    cor/material, como hoje) e os cm/par por numeração. Ela deixa de depender de medida,
    variante, receita e `identity_basis` para funcionar.
-5. Setor de consumo da tira na ficha (mesmo mecanismo de `component_consumption_sectors`),
-   com padrão **Aviamento**.
+5. ~~Setor de consumo da tira na ficha, padrão Aviamento.~~ **Revisado na implementação
+   (11/10/2026):** o setor de consumo é só apresentação desde `20270101015500` — nenhum
+   resolvedor lê `component_consumption_sectors`, e `resolve_consumption_sector` já cai em
+   `Aviamento` para tira. Não há chave nova a criar. Ver R12.
 
 ### R-PV (salvar)
 6. Salvar o PV **nunca** exige variante comercial, receita, perfil de largura ou SKU
@@ -116,6 +118,15 @@ Dados medidos em 11/10/2026:
    SKU **ativo** para a chave, o PV **cria o SKU** com estoque 0, unidade `m`, no grupo da
    tira, com nome `GRUPO · NAPA · COR` (ou `GRUPO · COR` sem napa), seguindo o padrão atual
    dos nomes (mesma regra de `20270101031900`).
+7a. **SKU antigo sem napa = reserva** (decisão do dono, 11/10/2026, na implementação). Para
+   tira com napa-base, o resolvedor procura, nesta ordem:
+   (1) SKU ativo com a chave exata (grupo + napa + cor);
+   (2) SKU ativo **sem napa** do mesmo grupo e cor (os SKUs antigos, de antes do Hub —
+       ex.: "Tira Overlock 5mm" NEW WHISKY, 100 m);
+   (3) só então cria o SKU novo (R7).
+   Motivo: os antigos têm estoque (overlock 264 m, costurada 105 m, trança 61 m em 11/10)
+   e, sem isso, a cor nasceria duplicada com o estoque parado. Tira sem napa (strass) usa
+   só o passo (2) como chave exata.
 8. O consumo da tira é **metros** = Σ (cm/par da numeração × pares da numeração) ÷ 100, por
    SKU. O estoque de tira não tem numeração.
 9. A origem do item vem do grupo. O PV pode trocar na exceção (R2 e D14 de `tiras-redesenho`
@@ -127,9 +138,12 @@ Dados medidos em 11/10/2026:
 11. A tira entra no motor genérico de empenho parcial e falta (`20270101035100`): na
     aprovação, empenhado = LEAST(necessidade, disponível livre); o resto vira **falta**
     persistida por (PV, SKU), com a mesma prioridade dos outros materiais.
-12. A baixa física da tira acontece quando o setor de consumo dela (padrão Aviamento)
-    **inicia**, pelo mecanismo de baixa por setor existente. Com falta, segue o comportamento
-    da spec de integração (aviso + confirmação, baixa o empenhado, falta segue aberta).
+12. **Revisado (decisão do dono, 11/10/2026, na implementação):** a baixa física da tira
+    acontece **onde os outros materiais baixam** — na separação (picking) do PV e, o que não
+    foi separado, na finalização da OP (`settle_open_reservations_for_order`). A premissa
+    original ("mecanismo de baixa por setor existente") era falsa: a baixa no início de setor
+    foi desligada de propósito em `20270101015500`, e a autochecagem
+    `baixa_por_entrada_no_setor_desativada` trava isso. Não religar.
 13. Qualquer entrada de tira (compra, Produzido, Recebido, ajuste, inventário) quita a falta
     pelo caminho genérico de quitação.
 14. Cancelar/alterar o PV libera/recompõe o empenho e a falta da tira pelo caminho genérico.
