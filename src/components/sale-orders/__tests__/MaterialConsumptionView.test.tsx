@@ -493,8 +493,42 @@ describe('MaterialConsumptionView — tela buy-first', () => {
 
     await user.click(screen.getByRole('tab', { name: /Tira Strass/i }));
     const strass = await screen.findByRole('table', { name: 'Tira Strass' });
-    expect(within(strass).getByText('TIRA STRASS 6MM')).toBeInTheDocument();
+    // Desde 12/10/2026 a aba agrupa por TIPO de tira: o nome aparece na faixa
+    // da seção (que carrega o subtotal) e de novo na linha do material.
+    expect(within(strass).getAllByText('TIRA STRASS 6MM').length).toBe(2);
     expect(within(strass).queryByText(/OVERLOCK/i)).not.toBeInTheDocument();
+  });
+
+  it('a aba Strass agrupa por TIPO de tira, com subtotal em metros e valor', async () => {
+    const user = userEvent.setup();
+    renderView({
+      rows: [
+        row({
+          componentType: 'Tiras', groupName: 'TIRA STRASS 6MM · CRISTAL', materialName: 'Comprada pronta',
+          color: 'CRISTAL', totalQuantity: 100, available: 0, unitPrice: 2, strapSourceMode: 'buy_ready',
+        }),
+        row({
+          componentType: 'Tiras', groupName: 'TIRA STRASS 6MM · PRETO', materialName: 'Comprada pronta',
+          color: 'PRETO', totalQuantity: 50, available: 0, unitPrice: 2, strapSourceMode: 'buy_ready',
+        }),
+        row({
+          componentType: 'Tiras', groupName: 'TIRA STRASS 15MM · ROSADO', materialName: 'Comprada pronta',
+          color: 'ROSADO', totalQuantity: 20, available: 0, unitPrice: 3, strapSourceMode: 'buy_ready',
+        }),
+      ],
+    });
+    await user.click(screen.getByRole('tab', { name: /Tira Strass/i }));
+    const strass = await screen.findByRole('table', { name: 'Tira Strass' });
+    // Dois tipos ⇒ duas faixas, cada uma com o seu subtotal em metros E valor.
+    // 6MM: 100 + 50 = 150 m e R$ 300,00. 15MM: 20 m e R$ 60,00. O texto é lido
+    // da tabela inteira porque metros e valor vivem em elementos irmãos.
+    // ⚠ A unidade é "m de tira", não "m": metro de tira nunca soma com metro
+    // de napa (`subtotalUnitKey`).
+    const text = (strass.textContent || '').replace(/\s+/g, ' ');
+    expect(text).toContain('150,00 m de tira · R$ 300,00');
+    expect(text).toContain('20,00 m de tira · R$ 60,00');
+    expect(text).toContain('TIRA STRASS 6MM');
+    expect(text).toContain('TIRA STRASS 15MM');
   });
 
   it('no diálogo não repete o título do chrome no herói', () => {
@@ -604,6 +638,11 @@ describe('MaterialConsumptionView — tela buy-first', () => {
     expect(within(materials).getAllByText('TIRA OVERLOCK 5 mm · GLOW METALIC · CHAMPAGNE')).toHaveLength(4);
     expect(screen.getByText('Setor de Tiras')).toBeInTheDocument();
     expect(screen.getAllByText(/22[,.]52/).length).toBeGreaterThan(0);
+    // 12/10/2026: o Setor de Tiras agrupa por TIPO, com subtotal da família.
+    // OVERLOCK GLOW METALIC junta CHAMPAGNE (856,80) e COBRE (184,80) =
+    // 1.041,60 m de tira e 12,24 + 2,64 = 14,88 m de napa.
+    expect(screen.getAllByText(/1\.041,6/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/14,88/).length).toBeGreaterThan(0);
   });
 
   it('Consumo total esconde estoque e falta e mantém a necessidade do pedido', async () => {

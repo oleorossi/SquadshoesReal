@@ -57,6 +57,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { buildOrderReferencePartitions } from '@/lib/consumptionPartitions';
 import {
   strapNapaDisplay,
+  strapTypeName,
   strapPairsText,
   strapSizeMetersText,
   strapStockSplitText,
@@ -96,17 +97,26 @@ import {
  * aplicação, "Necessidade total", falta de napa). Ela aparece só no bloco
  * "Setor de Tiras" (`ArtisanalStrapRollCutBlock`).
  *
- * ⚠ TELA E PDF DIVERGEM NO LUGAR — de propósito, por ora (12/10/2026). O dono
- * escolheu, entre cinco layouts, repartir a tira do PDF por ORIGEM: o bloco
- * "Tiras · prestador" absorveu a seção "§03 Setor de Tiras", e lá o tipo é
- * escrito uma vez e já é o subtotal (metros e valor). Esta tela ainda mostra
- * o `ArtisanalStrapRollCutBlock` como seção à parte, sem subtotal por tipo,
- * porque ele é interativo (plano de corte expansível, "Informar rendimento")
- * e espelhar isso é trabalho próprio, ainda não feito.
+ * ── Tira agrupada por TIPO, com subtotal (12/10/2026) ─────────────────────
+ * O dono escolheu, entre cinco layouts renderizados em A4: o tipo da tira é
+ * escrito uma vez e essa linha JÁ É o subtotal do tipo; as cores ficam abaixo
+ * como detalhe. Tela e PDF fazem o mesmo agrupamento, por caminhos diferentes:
  *
- * O que NÃO diverge, e não pode divergir: a napa segue fora de todo total de
- * napa nos dois. A decisão de 11/10 é sobre o DADO; o que mudou no PDF é só
- * onde ele é impresso.
+ *  - PDF: dois blocos por ORIGEM — "Tiras · comprar pronto" (com a coluna de
+ *    dinheiro) e "Tiras · prestador" (com napa + situação), este último tendo
+ *    absorvido a seção "§03 Setor de Tiras".
+ *  - Tela: a separação por origem já existia como ABA ("Materiais gerais" ×
+ *    "Tira Strass") mais o `ArtisanalStrapRollCutBlock`. O que faltava era o
+ *    subtotal por tipo, agora nos dois: a faixa de seção da aba Strass agrupa
+ *    por tipo e mostra metros + valor; o bloco do prestador agrupa por tipo e
+ *    mostra metros de tira + napa.
+ *
+ * ⚠ O nome do tipo sai de `strapTypeName` (`lib/strapConsumptionDisplay`) nas
+ * DUAS superfícies. Derivar o tipo por outro caminho aqui faria a tela agrupar
+ * diferente do papel para o mesmo PV.
+ *
+ * O que NÃO muda: a napa segue fora de todo total de napa nos dois. A decisão
+ * de 11/10 é sobre o DADO; o agrupamento é sobre a apresentação dele.
  */
 export type OrderHeader = { order_number: string; client_order_number?: string | null };
 
@@ -691,7 +701,7 @@ export default function MaterialConsumptionView({
 
     if (groupBy === 'componentType') {
       for (const row of sortedRows) {
-        const section = materialsTab === 'strass' ? 'Tira Strass' : row.componentType;
+        const section = materialsTab === 'strass' ? strapTypeName(row) : row.componentType;
         if (!out.has(section)) out.set(section, []);
         out.get(section)!.push(row);
       }
@@ -1576,6 +1586,16 @@ export default function MaterialConsumptionView({
                     subt.set(unitKey, (subt.get(unitKey) || 0) + r.totalQuantity);
                   }
                   const subtotal = Array.from(subt.entries()).map(([u, v]) => `${formatQty(v, u)} ${formatUnit(u)}`).join(' · ');
+                  // Valor do subtotal: soma linha a linha (não por balde de
+                  // estoque — o balde só desduplica disponibilidade, e cada
+                  // linha gasta o que consome). Null em TODA linha ⇒ sem preço
+                  // cadastrado, e aí não se inventa um zero.
+                  const sectionCosts = sectionRows
+                    .map(rowTotalCost)
+                    .filter((value): value is number => value != null);
+                  const subtotalSpend = sectionCosts.length
+                    ? sectionCosts.reduce((total, value) => total + value, 0)
+                    : null;
                   const previewSubt = new Map<string, number>();
                   for (const r of sectionRows) {
                     if (Number(r.previewQuantity) > 0) {
@@ -1625,6 +1645,9 @@ export default function MaterialConsumptionView({
                           </span>
                           <span className="text-xs tabular-nums text-muted-foreground">
                             {previewSubtotal || subtotal}
+                            {subtotalSpend != null && (
+                              <span className="font-semibold text-foreground"> · {formatMoney(subtotalSpend)}</span>
+                            )}
                             {short > 0 && <span className="font-medium text-red-600 dark:text-red-400"> · {short} em falta</span>}
                           </span>
                         </div>

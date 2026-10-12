@@ -295,10 +295,20 @@ describe('Tiras artesanais — contrato do frontend canônico', () => {
     expect(strapCutBlock).toContain('Setor de Tiras');
     expect(strapCutBlock).toContain('aggregateStrapNapaSector');
     expect(strapCutBlock).toContain('Total de napa a enviar ao prestador');
-    expect(strapCutBlock).toContain('>Cor</');
+    // Desagregado por COR, nunca uma contagem ("3 cores"). Desde 12/10/2026 a
+    // coluna "Cor" separada deixou de existir: o tipo virou cabeçalho de grupo
+    // (com o subtotal da família) e a cor desceu para a primeira coluna,
+    // indentada sob ele — o mesmo arranjo do bloco "Tiras · prestador" do PDF.
+    expect(strapCutBlock).toContain('Tipo de tira / cor');
     expect(strapCutBlock).toContain('type.color');
     expect(strapCutBlock).not.toContain('colorCount');
     expect(strapCutBlock).not.toContain('} cores');
+    // Subtotal por tipo (metros de tira + napa), somando as cores da família.
+    expect(strapCutBlock).toContain('groupTypesByName');
+    expect(strapCutBlock).toContain('group.strapM');
+    expect(strapCutBlock).toContain('group.napaM');
+    // Napa bloqueada não entra no subtotal do tipo.
+    expect(strapCutBlock).toContain('type.blocked ? 0 : type.napaM');
     // Planejador de corte (só tela): default de rolo na sessão; a napa oficial
     // continua tira ÷ rendimento via aggregateStrapNapaSector — sem computeStrapRollCut.
     expect(strapCutBlock).toContain('Planejar napa do prestador');

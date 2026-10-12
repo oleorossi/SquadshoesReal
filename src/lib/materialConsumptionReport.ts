@@ -23,7 +23,7 @@ import type { ArtisanalStrapCutRow } from '@/lib/strapRollCut';
 import { aggregateStrapNapaSector } from '@/lib/strapRollCut';
 import { formatCurrency, formatMoney } from '@/lib/utils';
 import { buildOrderReferencePartitions } from '@/lib/consumptionPartitions';
-import { formatNapaMeters } from '@/lib/strapConsumptionDisplay';
+import { formatNapaMeters, strapTypeName } from '@/lib/strapConsumptionDisplay';
 
 export type ConsumptionPartitionMode = 'none' | 'order_reference';
 
@@ -276,13 +276,6 @@ const strapLineOrigin = (row: ConsumptionRow): StrapLineOrigin => {
 
 const STRAP_LINE_ORIGIN_TEXT = (origin: StrapLineOrigin): string =>
   origin ? STRAP_ORIGIN_LABEL[origin] : 'Origem pendente';
-
-/** Tipo da tira sem o sufixo de cor do SKU ("… · CHAMPAGNE", "… - CHAMPAGNE"). */
-const strapTypeName = (row: ConsumptionRow): string => {
-  const name = (row.groupName || '').trim();
-  if (!name) return 'Tira';
-  return normalizeBaseFamilyName(name, row.color) || name;
-};
 
 const strapKeyPart = (value: string): string => (value || '')
   .toLocaleLowerCase('pt-BR')

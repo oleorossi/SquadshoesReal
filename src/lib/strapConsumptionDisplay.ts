@@ -90,3 +90,20 @@ export function strapNapaDisplay(row: StrapRow): StrapNapaDisplay | null {
     : '';
   return { kind: 'napa', text: `enviar ao prestador ≈ ${formatNapaMeters(napaM)} m ${base}${yieldText}`, napaM };
 }
+
+/**
+ * Nome do TIPO da tira, sem o sufixo de cor do SKU
+ * ("TIRA OVERLOCK 5 mm · GLOW METALIC · CHAMPAGNE" → "… · GLOW METALIC").
+ *
+ * Fonte ÚNICA do agrupamento por tipo: o bloco de tiras do PDF
+ * (`materialConsumptionReport`) e a aba Strass da tela
+ * (`MaterialConsumptionView`) precisam cair no MESMO tipo, senão a tela
+ * mostra um agrupamento e o papel outro para o mesmo PV.
+ */
+export const strapTypeName = (
+  row: Pick<ConsumptionRow, 'groupName' | 'color'>,
+): string => {
+  const name = (row.groupName || '').trim();
+  if (!name) return 'Tira';
+  return normalizeBaseFamilyName(name, row.color) || name;
+};

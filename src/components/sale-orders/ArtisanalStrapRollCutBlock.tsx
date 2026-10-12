@@ -10,10 +10,59 @@ import {
   type StrapTypeNapaAgg,
 } from '@/lib/strapRollCut';
 import { ROLO_COMPRIMENTO_M } from '@/lib/strapCutPlanner';
+import { formatQty } from '@/lib/consumptionFormat';
+import { formatNapaMeters } from '@/lib/strapConsumptionDisplay';
 import StrapMeasureYieldDialog from '@/components/sale-orders/StrapMeasureYieldDialog';
 import StrapCutPlannerPanel, {
   type StrapCutPlannerDefaults,
 } from '@/components/sale-orders/StrapCutPlannerPanel';
+
+/**
+ * Grid das três colunas do bloco: Tipo/cor · Tira · Napa a enviar.
+ * A coluna "Cor" separada deixou de existir quando o tipo virou cabeçalho de
+ * grupo — a cor desceu para a primeira coluna, indentada sob ele, do mesmo
+ * jeito que no bloco "Tiras · prestador" do PDF.
+ */
+const GRID = 'grid-cols-[minmax(0,1.9fr)_auto_auto]';
+
+type StrapTypeGroup = {
+  typeKey: string;
+  typeName: string;
+  /** Soma das cores — é o subtotal que o dono pediu por tipo de tira. */
+  strapM: number;
+  napaM: number;
+  types: StrapTypeNapaAgg[];
+};
+
+/**
+ * Agrupa as linhas tipo × cor por TIPO, preservando a ordem que
+ * `aggregateStrapNapaSector` já devolveu.
+ *
+ * ⚠ Napa BLOQUEADA não entra no subtotal: `aggregateStrapNapaSector` já zera
+ * `napaM` quando a linha está bloqueada, mas somar sem checar faria o subtotal
+ * de um grupo meio bloqueado parecer completo. O total do rodapé segue vindo
+ * do próprio agregador, então os dois fecham.
+ */
+function groupTypesByName(types: StrapTypeNapaAgg[]): StrapTypeGroup[] {
+  const out: StrapTypeGroup[] = [];
+  for (const type of types) {
+    const last = out[out.length - 1];
+    if (last && last.typeKey === type.typeKey) {
+      last.types.push(type);
+      last.strapM += type.strapM;
+      last.napaM += type.blocked ? 0 : type.napaM;
+    } else {
+      out.push({
+        typeKey: type.typeKey,
+        typeName: type.typeName,
+        strapM: type.strapM,
+        napaM: type.blocked ? 0 : type.napaM,
+        types: [type],
+      });
+    }
+  }
+  return out;
+}
 
 interface YieldTarget {
   typeLabel: string;
@@ -119,22 +168,43 @@ export default function ArtisanalStrapRollCutBlock({
       </p>
 
       <div className="keep-together overflow-hidden rounded-lg border border-red-500/30">
-        <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(4.5rem,0.7fr)_auto_auto] gap-x-3 border-b border-red-500/20 bg-red-500/5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-red-600/70 dark:text-red-400/70">
-          <span>Tipo de tira</span>
-          <span>Cor</span>
+        <div className={`grid ${GRID} gap-x-3 border-b border-red-500/20 bg-red-500/5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-red-600/70 dark:text-red-400/70`}>
+          <span>Tipo de tira / cor</span>
           <span className="text-right">Tira</span>
           <span className="text-right">Napa a enviar</span>
         </div>
         <div className="divide-y divide-red-500/20">
-          {sector.types.map((type) => {
+          {groupTypesByName(sector.types).flatMap((group) => [
+            // Linha do TIPO: é o subtotal da família (soma das cores), igual ao
+            // bloco "Tiras · prestador" do PDF. Com o tipo escrito aqui, as
+            // linhas de baixo mostram só a cor.
+            <div
+              key={`g-${group.typeKey}`}
+              className={`grid ${GRID} items-baseline gap-x-3 bg-red-500/10 px-3 py-2`}
+            >
+              <span className="truncate text-sm font-bold uppercase tracking-wide text-red-700 dark:text-red-300">
+                {group.typeName}
+              </span>
+              <span className="font-mono text-sm font-bold tabular-nums text-red-700 dark:text-red-300">
+                {formatQty(group.strapM, 'm')}
+                <span className="text-[10px] font-normal text-red-600/70"> m</span>
+              </span>
+              <span className="font-mono text-sm font-bold tabular-nums text-red-600 dark:text-red-400">
+                {group.napaM > 0 ? formatNapaMeters(group.napaM) : '—'}
+                {group.napaM > 0 ? (
+                  <span className="text-[10px] font-normal text-red-600/70"> m</span>
+                ) : null}
+              </span>
+            </div>,
+            ...group.types.map((type) => {
             const planKey = rowPlanKey(type);
             const planOpen = expandedPlanKey === planKey;
             return (
               <div key={planKey} className="px-3 py-2.5 hover:bg-red-500/5">
-                <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(4.5rem,0.7fr)_auto_auto] items-baseline gap-x-3">
-                  <div className="min-w-0">
+                <div className={`grid ${GRID} items-baseline gap-x-3`}>
+                  <div className="min-w-0 pl-4">
                     <span className="text-sm font-medium text-red-700 dark:text-red-300">
-                      {type.typeName}
+                      {type.color}
                     </span>
                     {showBaseSuffix(type) ? (
                       <span className="text-xs text-red-600/70 dark:text-red-400/70">
@@ -184,17 +254,12 @@ export default function ArtisanalStrapRollCutBlock({
                       </div>
                     ) : null}
                   </div>
-                  <span className="truncate text-sm font-medium text-red-700 dark:text-red-300">
-                    {type.color}
-                  </span>
-                  <span className="font-mono text-sm font-bold tabular-nums text-red-700 dark:text-red-300">
-                    {type.strapM.toLocaleString('pt-BR', { maximumFractionDigits: 4 })}
+                  <span className="font-mono text-sm tabular-nums text-red-700 dark:text-red-300">
+                    {formatQty(type.strapM, 'm')}
                     <span className="text-[10px] font-normal text-red-600/70"> m</span>
                   </span>
-                  <span className="font-mono text-sm font-bold tabular-nums text-red-600 dark:text-red-400">
-                    {type.napaM > 0
-                      ? type.napaM.toLocaleString('pt-BR', { maximumFractionDigits: 6 })
-                      : '—'}
+                  <span className="font-mono text-sm tabular-nums text-red-600 dark:text-red-400">
+                    {type.napaM > 0 ? formatNapaMeters(type.napaM) : '—'}
                     {type.napaM > 0 ? (
                       <span className="text-[10px] font-normal text-red-600/70"> m</span>
                     ) : null}
@@ -210,20 +275,18 @@ export default function ArtisanalStrapRollCutBlock({
                 ) : null}
               </div>
             );
-          })}
+          }),
+          ])}
         </div>
-        <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(4.5rem,0.7fr)_auto_auto] items-baseline gap-x-3 border-t-2 border-red-500/40 bg-red-500/10 px-3 py-3">
+        <div className={`grid ${GRID} items-baseline gap-x-3 border-t-2 border-red-500/40 bg-red-500/10 px-3 py-3`}>
           <span className="text-xs font-bold uppercase tracking-wider text-red-700 dark:text-red-300">
             Total de napa a enviar ao prestador
           </span>
-          <span />
           <span className="font-mono text-xs tabular-nums text-red-600/70 dark:text-red-400/70">
-            {sector.totalStrapM.toLocaleString('pt-BR', { maximumFractionDigits: 4 })} m tira
+            {formatQty(sector.totalStrapM, 'm')} m tira
           </span>
           <span className="font-mono text-lg font-bold tabular-nums text-red-600 dark:text-red-400">
-            {sector.totalNapaM > 0
-              ? sector.totalNapaM.toLocaleString('pt-BR', { maximumFractionDigits: 6 })
-              : '—'}
+            {sector.totalNapaM > 0 ? formatNapaMeters(sector.totalNapaM) : '—'}
             {sector.totalNapaM > 0 ? (
               <span className="text-xs font-normal text-red-600/70"> m</span>
             ) : null}
