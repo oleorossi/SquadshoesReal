@@ -19,6 +19,7 @@
 
 import { supabase } from '@/integrations/supabase/client';
 import { isUuid, strapColorMode, technicalStrapLineId } from '@/lib/technicalStrapLines';
+import { strapIdentityBasis } from '@/lib/strapIdentity';
 import { strapMaterialMode } from '@/lib/strapMaterialPolicy';
 import {
   reconcileEditableStrapSnapshots,
@@ -34,8 +35,25 @@ export interface CopyStrapLinesInput {
   resolveColorId: (colorName: string) => string | null | undefined;
   /** Cores canônicas ativas. `null` = não validar (sem catálogo carregado). */
   activeColorIds: ReadonlySet<string> | null;
+  /**
+   * Variante comercial ATIVA de tira comprada pronta em (medida, grupo acabado,
+   * cor) — mesma regra que `prepare_sale_order_item_internal_straps` aplica no
+   * save. `null`/ausente = não validar (sem catálogo carregado).
+   */
+  buyReadyVariantKeys?: ReadonlySet<string> | null;
   /** Rótulo do item nas pendências, ex.: "NL02 / CAPUCCINO". */
   itemLabel?: string;
+}
+
+/** Chave canônica de variante comprada pronta: medida + grupo acabado + cor. */
+export function buyReadyVariantKey(
+  measureId: unknown,
+  identityGroupId: unknown,
+  colorId: unknown,
+): string {
+  return [measureId, identityGroupId, colorId]
+    .map((part) => String(part ?? '').trim().toLowerCase())
+    .join('|');
 }
 
 export interface CopyStrapLinesResult {
@@ -106,6 +124,7 @@ export function copyStrapLinesForNewOrder(input: CopyStrapLinesInput): CopyStrap
   // limpa a cor que não pode mais ser usada. O resto da reconciliação (o que
   // a ficha permite de material/cor) é a mesma do formulário de edição.
   const claimed = new Set<string>();
+  const snapshotGroupNameById = new Map<string, string>();
   const relabeled: CopyStrapLineLike[] = [];
   for (const snapshot of snapshots) {
     let targetId: string | null = null;
@@ -122,6 +141,10 @@ export function copyStrapLinesForNewOrder(input: CopyStrapLinesInput): CopyStrap
     }
     if (!targetId || claimed.has(targetId)) continue;
     claimed.add(targetId);
+    // Casada por rótulo, a estrutura vem da ficha e descarta o `group_name` do
+    // snapshot — que é o único lugar onde o PV legado nomeia o grupo acabado.
+    const snapshotGroupName = String(snapshot.group_name || '').trim();
+    if (snapshotGroupName) snapshotGroupNameById.set(targetId, snapshotGroupName);
     const color = carriedColor(snapshot, input.resolveColorId, input.activeColorIds);
     // Casada por UUID: o snapshot é da mesma linha e a reconciliação decide o
     // que ainda vale. Casada por rótulo (PV legado, sem estrutura gravada):
@@ -151,6 +174,33 @@ export function copyStrapLinesForNewOrder(input: CopyStrapLinesInput): CopyStrap
     if (strapMaterialMode(line) === 'select_on_order' && !isUuid(line.base_group_id)) missing.push('o material');
     if (missing.length > 0) {
       pending.push(`${itemLabel}, ${lineLabel(line, ordinal)}: escolha ${missing.join(' e ')}`);
+      return;
+    }
+    // Tira comprada pronta: a cor do PV de origem só atravessa se existir
+    // variante comercial ativa. PV legado gravava a cor como TEXTO (às vezes a
+    // cor do calçado, não a da tira); ela resolve para uma cor canônica válida,
+    // passa na checagem de cor ativa e só então o writer aborta o PV INTEIRO com
+    // "Tira comprada pronta nao possui variante comercial ativa exata" — sem
+    // dizer qual item nem qual tira. Aqui a lacuna vira pendência nomeada.
+    if (input.buyReadyVariantKeys
+        && strapIdentityBasis(line) === 'finished_product_group'
+        && isUuid(line.color_id)
+        && isUuid(line.measure_id)
+        && isUuid(line.identity_group_id)
+        && !input.buyReadyVariantKeys.has(
+          buyReadyVariantKey(line.measure_id, line.identity_group_id, line.color_id),
+        )) {
+      const colorName = String(line.color || '').trim() || 'a cor do pedido de origem';
+      // A ficha nem sempre carrega `group_name`; o snapshot do PV legado carrega.
+      const lineId = technicalStrapLineId(line);
+      const groupName = String(
+        line.group_name
+          || (lineId && snapshotGroupNameById.get(lineId))
+          || '',
+      ).trim() || 'o grupo acabado';
+      pending.push(
+        `${itemLabel}, ${lineLabel(line, ordinal)}: não existe tira pronta ${colorName} em ${groupName} — escolha outra cor para esta tira no pedido de origem, ou cadastre a variante no Hub de Tiras`,
+      );
     }
   });
 
@@ -168,6 +218,7 @@ export interface StrapCopyContext {
   sheetCodeFor: (referenceId: string | null | undefined) => string | null;
   resolveColorId: (colorName: string) => string | null;
   activeColorIds: ReadonlySet<string> | null;
+  buyReadyVariantKeys: ReadonlySet<string> | null;
 }
 
 function snapshotOf(item: CopyStrapSourceItem): CopyStrapLineLike[] {
@@ -224,11 +275,28 @@ export async function loadStrapCopyContext(items: CopyStrapSourceItem[]): Promis
     activeColorIds = error ? null : new Set((data || []).map((c) => String(c.id).toLowerCase()));
   }
 
+  // Mesma regra do writer: ativa, identidade acabada, comprada e não produzida
+  // internamente. Sem leitura, `null` = não validar — o writer ainda barra.
+  let buyReadyVariantKeys: Set<string> | null = null;
+  {
+    const { data, error } = await supabase
+      .from('artisanal_strap_variants')
+      .select('measure_id, base_group_id, color_id, status, identity_basis, purchase_enabled, internal_production_enabled')
+      .eq('status', 'active')
+      .eq('identity_basis', 'finished_product_group');
+    if (!error) {
+      buyReadyVariantKeys = new Set((data || [])
+        .filter((v) => v.purchase_enabled !== false && v.internal_production_enabled !== true)
+        .map((v) => buyReadyVariantKey(v.measure_id, v.base_group_id, v.color_id)));
+    }
+  }
+
   return {
     technicalLinesFor: (referenceId) => (referenceId && linesByRef.get(referenceId)) || [],
     sheetCodeFor: (referenceId) => (referenceId && codeByRef.get(referenceId)) || null,
     resolveColorId: (name) => colorIdByName.get(String(name).trim().toUpperCase()) || null,
     activeColorIds,
+    buyReadyVariantKeys,
   };
 }
 
@@ -243,6 +311,7 @@ export function copyItemStraps(
     technicalLines: context.technicalLinesFor(item.reference_id),
     resolveColorId: context.resolveColorId,
     activeColorIds: context.activeColorIds,
+    buyReadyVariantKeys: context.buyReadyVariantKeys,
     itemLabel,
   });
 }

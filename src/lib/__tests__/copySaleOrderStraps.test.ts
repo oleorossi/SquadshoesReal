@@ -152,3 +152,56 @@ describe('copyStrapLinesForNewOrder', () => {
     expect(result.pending[0]).toMatch(/sem identificador estável/);
   });
 });
+
+/**
+ * Regressão PV-00148 → "Duplicar para lojas" (11/10/2026).
+ *
+ * PV legado gravava a tira comprada pronta só como TEXTO, e às vezes com a cor
+ * do CALÇADO ("OFF WHITE") em vez da cor da tira. Esse texto resolve para uma
+ * cor canônica ATIVA, atravessava a cópia e só então
+ * `prepare_sale_order_item_internal_straps` abortava o PV INTEIRO com
+ * "Tira comprada pronta nao possui variante comercial ativa exata" — sem dizer
+ * item nem tira, e derrubando a loja toda.
+ */
+describe('tira comprada pronta sem variante comercial', () => {
+  const COLOR_OFF_WHITE = 'aaaa1111-1111-4111-8111-111111111111';
+  const keys = new Set([`${MEASURE}|${GROUP_STRASS}|${COLOR_ROSADO}`.toLowerCase()]);
+
+  const snapshot: CopyStrapLineLike[] = [
+    { id: '1', label: 'TIRA 1', color: 'OFF WHITE', group_id: GROUP_STRASS, group_name: 'TIRA STRASS 6MM' },
+  ];
+
+  const run = (buyReadyVariantKeys: ReadonlySet<string> | null) => copyStrapLinesForNewOrder({
+    snapshotLines: snapshot,
+    technicalLines: [technical[0]],
+    resolveColorId: (name) => (name.trim().toUpperCase() === 'OFF WHITE' ? COLOR_OFF_WHITE : resolveColorId(name)),
+    activeColorIds: new Set([...activeColorIds, COLOR_OFF_WHITE]),
+    buyReadyVariantKeys,
+    itemLabel: 'NL02 / OFF WHITE',
+  });
+
+  it('vira pendência nomeada em vez de erro cru do writer', () => {
+    const { pending } = run(keys);
+    expect(pending).toHaveLength(1);
+    expect(pending[0]).toContain('NL02 / OFF WHITE');
+    expect(pending[0]).toContain('TIRA 1');
+    expect(pending[0]).toContain('OFF WHITE');
+    expect(pending[0]).toContain('TIRA STRASS 6MM');
+  });
+
+  it('cor COM variante ativa continua passando', () => {
+    const { pending } = copyStrapLinesForNewOrder({
+      snapshotLines: [{ ...snapshot[0], color: 'ROSADO COM FUNDO ROSADO' }],
+      technicalLines: [technical[0]],
+      resolveColorId,
+      activeColorIds,
+      buyReadyVariantKeys: keys,
+      itemLabel: 'NL01 / OFF WHITE',
+    });
+    expect(pending).toEqual([]);
+  });
+
+  it('sem catálogo carregado não inventa pendência — o writer ainda barra', () => {
+    expect(run(null).pending).toEqual([]);
+  });
+});

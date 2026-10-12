@@ -397,11 +397,13 @@ describe('MaterialConsumptionView — tela buy-first', () => {
     });
 
     // D8 (spec tiras-redesenho): a linha da tira NÃO some — mostra os metros
-    // de TIRA e a napa como nota. A compra/falta continua sendo só napa.
+    // de TIRA. Desde 11/10/2026 o metro de NAPA não aparece aqui: ele mora só
+    // no bloco Setor de Tiras.
     const materials = screen.getByRole('table', { name: 'Materiais gerais' });
     expect(within(materials).getByText('TIRA OVERLOCK 5 mm · NAPA SOFT · NEW WHISKY')).toBeInTheDocument();
     expect(within(materials).getAllByText('1.402,80').length).toBeGreaterThan(0);
-    expect(within(materials).getByText(/≈ 20,04 m NAPA SOFT/)).toBeInTheDocument();
+    expect(within(materials).queryByText(/enviar ao prestador/)).not.toBeInTheDocument();
+    expect(within(materials).queryByText(/≈ 20,04 m NAPA SOFT/)).not.toBeInTheDocument();
     expect(screen.queryByText(/faltam 1\.402,80/)).not.toBeInTheDocument();
     const faltaCard = screen.getByRole('button', { name: 'Ver itens em falta' });
     expect(within(faltaCard).getByText('1')).toBeInTheDocument();
@@ -653,7 +655,9 @@ describe('MaterialConsumptionView — tela buy-first', () => {
     expect(within(materials).getAllByText(/12 pares/)).toHaveLength(2);
     expect(within(materials).getByLabelText('Metros de tira por numeração'))
       .toHaveTextContent('34: 0,50 m · 35: 0,50 m · 36: 1,00 m · 37: 1,50 m');
-    expect(within(materials).getByText(/≈ 0,0857 m NAPA SOFT/)).toBeInTheDocument();
+    // O metro de napa saiu da tabela (fica no Setor de Tiras); o aviso de
+    // cadastro bloqueado continua, porque não é quantidade.
+    expect(within(materials).queryByText(/≈ 0,0857 m NAPA SOFT/)).not.toBeInTheDocument();
 
     expect(within(materials).getByText('TIRA OVERLOCK 5 mm · GLOW METALIC · COBRE')).toBeInTheDocument();
     expect(within(materials).getByText('6,88')).toBeInTheDocument();

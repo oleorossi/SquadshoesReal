@@ -729,6 +729,10 @@ export function buildMaterialConsumptionReportHtml({
        fixa tem de caber na coluna). Só gasto de 6 dígitos (100 mil reais ou
        mais) numa linha de tira passaria 1 px — irreal.
        Cobertura: 7 cols — Tipo · Cor · Origem · Total · Estoque · Falta · A gastar */
+    /* O nome do tipo vem do SKU: tira de Prestador chega em caixa alta
+       ("TIRA OVERLOCK 5 mm · GLOW METALIC") e strass em caixa mista ("Tira
+       Strass 6mm"). Na mesma tabela viravam duas convenções. */
+    .straps-table td:first-child strong { text-transform:uppercase; }
     .straps-table th:nth-child(1) { width:31%; }
     .straps-table th:nth-child(2) { width:13%; }
     .straps-table th:nth-child(3) { width:11%; }
