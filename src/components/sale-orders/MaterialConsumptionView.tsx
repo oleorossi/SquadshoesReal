@@ -25,7 +25,7 @@ import ArtisanalStrapRollCutBlock from '@/components/sale-orders/ArtisanalStrapR
 import ConsumptionDecisionRail, { type ConsumptionFilter } from '@/components/sale-orders/ConsumptionDecisionRail';
 import { type ConsumptionRow, COMPONENT_ORDER, rowTotalCost } from '@/lib/consumptionRows';
 import { buildBuyList, isBuyListRow, baseMaterialName, rowBelongsToBaseFamily, type BuyListColor } from '@/lib/buyList';
-import { formatQty, formatUnit, formatPricePerUnit, pluralizeItens } from '@/lib/consumptionFormat';
+import { consumptionApplicationText, formatQty, formatUnit, formatPricePerUnit, pluralizeItens } from '@/lib/consumptionFormat';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { buildMaterialConsumptionReportHtml } from '@/lib/materialConsumptionReport';
 import { openPrintTab, printHtmlAsPdf } from '@/lib/printPdf';
@@ -892,7 +892,9 @@ export default function MaterialConsumptionView({
             <p className="mt-1 text-xs text-muted-foreground">Setor: {row.consumptionSector}</p>
           )}
         </TableCell>
-        <TableCell>{row.materialName}</TableCell>
+        {/* Vazio quando só repetiria o Grupo ("COLA PVC" ao lado de "COLA
+            PVC"). Mesmo critério do PDF — fonte única em consumptionFormat. */}
+        <TableCell>{consumptionApplicationText([row.materialName], row.groupName)}</TableCell>
         <TableCell>{row.color}</TableCell>
         <TableCell className="text-right font-mono font-bold tabular-nums">
           {hasQuantityPreview ? (

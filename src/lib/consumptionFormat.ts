@@ -48,3 +48,28 @@ export const formatPricePerUnit = (price: number, unit: string, formatCurrency: 
   `${formatCurrency(price)}/${formatUnit(unit)}`;
 
 export const pluralizeItens = (n: number) => `${n} ${n === 1 ? 'item' : 'itens'}`;
+
+/**
+ * Texto da coluna "Aplicação" do consumo. Vazio quando ele só repetiria o
+ * Grupo — as colas do item padrão do solado têm `materialName === groupName`
+ * e a célula saía "COLA PVC" ao lado de "COLA PVC" (medido 12/10/2026).
+ *
+ * Fonte ÚNICA da tela (`MaterialConsumptionView`) e do PDF
+ * (`materialConsumptionReport`): no PDF a coluna inteira some quando o bloco
+ * todo fica vazio, e essa decisão tem de usar exatamente o mesmo critério que
+ * a célula — senão o PDF esconde a coluna enquanto a tela ainda escreve nela.
+ */
+export const consumptionApplicationText = (
+  applications: Array<string | null | undefined>,
+  groupName: string,
+): string => {
+  const text = applications.filter(Boolean).join(' + ').trim();
+  if (!text) return '';
+  const norm = (value: string) => value
+    .toLocaleLowerCase('pt-BR')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return norm(text) === norm(groupName || '') ? '' : text;
+};

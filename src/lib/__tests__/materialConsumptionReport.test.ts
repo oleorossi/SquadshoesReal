@@ -273,9 +273,8 @@ describe('materialConsumptionReport', () => {
     expect(totalsStrip).toContain('20,21');
     expect(totalsStrip).not.toContain('40,25');
     expect(totalsStrip).not.toContain('1.402,80');
-    expect(html).toContain('>Cabedal<');
-    expect(html).toContain('>Forração<');
     expect(html).not.toContain('>Tira<');
+    expect(section02(html)).toContain('>Forração Palmilha<');
     expect(html).toContain('20,21 m');
     expect(html).toContain('<span>Tiras</span>');
   });
@@ -516,12 +515,22 @@ describe('materialConsumptionReport', () => {
     });
 
     expect(html).toContain('white-space:nowrap');
-    expect(html).toContain('table-layout:auto');
     expect(html).toContain('>40</th>');
     expect(html).toContain('>150<');
     expect(html).toContain('>450<');
     // Não pode partir "40" em "4"+"0" nem "150" em "1"+"5"+"0".
     expect(html).not.toMatch(/<th class="grade-num">4<\/th>\s*<th class="grade-num">0<\/th>/);
+    // Numerações com a MESMA largura. Com `table-layout:auto` (o mecanismo
+    // antigo) o Chromium repartia a sobra por conteúdo e a grade 34–40 saía
+    // com 39/40 espremidos no canto — regra de print 4, a grade manda.
+    expect(html).toMatch(/\.sole-grade table \{[^}]*table-layout:fixed;/);
+    expect(html).not.toMatch(/\.sole-grade table \{[^}]*table-layout:auto;/);
+    // Só a 1ª coluna (o rótulo) tem largura fixa; as numerações dividem o
+    // resto em partes iguais. `overflow:visible` garante que uma coluna
+    // apertada TRANSBORDE em vez de cortar o número em silêncio.
+    expect(html).toMatch(/\.sole-grade th:first-child \{[^}]*width:72px;/);
+    expect(html).toMatch(/\.sole-grade th, \.sole-grade td \{[^}]*overflow:visible;/);
+    expect(html).not.toMatch(/\.sole-grade (th|td)[^{]*\{[^}]*width:\d+%/);
   });
 
   it('mostra metros de tira e napa no setor próprio (§03), sem coluna de mão de obra', () => {
@@ -766,16 +775,20 @@ describe('materialConsumptionReport', () => {
     expect(html).toContain('class="num cost-unit"');
     expect(html).toContain('--spend:');
 
-    // Layout: no modo total a 7ª coluna é A gastar (não Un.), precisa de
-    // largura suficiente e alinhamento à direita — a regra antiga dava 8%+center.
-    expect(html).toMatch(
-      /\.materials-table\.total-mode th:nth-child\(7\)\s*\{\s*width:20%;\s*text-align:right;\s*\}/,
-    );
-    expect(html).not.toMatch(
-      /\.materials-table\.total-mode th:nth-child\(7\)\s*\{\s*width:8%/,
-    );
-    // Cobertura também reserva espaço explícito para Preço (8) e Valor (9)
-    expect(html).toMatch(/\.materials-table th:nth-child\(9\)\s*\{\s*width:18%;\s*\}/);
+    // Layout: "A gastar" precisa de largura e alinhamento à direita — a regra
+    // de 2026-08 dava 8%+center. A largura saiu do CSS e virou inline no
+    // `<th>`: Aplicação e Cor somem no bloco que as deixaria vazias, então
+    // `nth-child(7)` passou a apontar para colunas diferentes em cada bloco.
+    expect(html).toMatch(/<th class="num col-spend c-spend" style="width:\d+\.\d\d%">A gastar<\/th>/);
+    expect(html).toMatch(/\.materials-table th\.c-spend \{ text-align:right; \}/);
+    expect(html).not.toMatch(/\.materials-table[^{]*th:nth-child\(\d\)/);
+    // Cada bloco fecha 100%: `table-layout:fixed` com soma menor estica a
+    // última coluna e com soma maior corta número (regra de print 4).
+    for (const head of html.match(/<thead><tr><th class="c-group"[\s\S]*?<\/tr><\/thead>/g) || []) {
+      const widths = [...head.matchAll(/style="width:([\d.]+)%"/g)].map((m) => Number(m[1]));
+      expect(widths.length).toBeGreaterThanOrEqual(5);
+      expect(Math.abs(widths.reduce((a, b) => a + b, 0) - 100)).toBeLessThan(0.1);
+    }
   });
 });
 
@@ -807,7 +820,12 @@ describe('PV-00195 · napa de tira só no §03', () => {
 
     const s01 = between(html, '<h2>Necessidade de napa</h2>', 'Materiais por aplicação');
     expect(s01).toMatch(/napa-family-name">GLOW METALIC<\/span>[\s\S]*?napa-family-qty">28,12 m</);
-    expect(s01).toMatch(/<td>CHAMPAGNE<\/td>\s*<td class="num app-qty">14,06 m<\/td>\s*<td class="num app-qty"><span class="muted">—<\/span><\/td>\s*<td class="num strong">14,06 m<\/td>/);
+    // Família de UMA aplicação (GLOW METALIC = só cabedal): a coluna da
+    // aplicação repetiria o Total e a outra sairia "—" em toda linha, então
+    // as duas somem e fica Cor | Total.
+    expect(s01).toMatch(/<td>CHAMPAGNE<\/td>\s*<td class="num strong">14,06 m<\/td>/);
+    expect(s01).not.toContain('app-qty');
+    expect(s01).not.toMatch(/<th class="num">(Cabedal|Forração)<\/th>/);
     expect(s01).toMatch(/<td>COBRE<\/td>[\s\S]*?<td class="num strong">14,06 m<\/td>/);
     expect(s01).toMatch(/<td>OFF WHITE<\/td>[\s\S]*?<td class="num strong">14,06 m<\/td>/);
     // Nem os valores antigos, nem a tabela de tira pendente, nem a coluna Situação.
@@ -816,9 +834,19 @@ describe('PV-00195 · napa de tira só no §03', () => {
     }
     expect(s01).toContain('A napa das tiras está só no §03 Setor de Tiras.');
 
-    const reading = between(html, '<h3>Leitura correta</h3>', '</p>');
-    expect(reading).toContain('soma cabedal (+ fachete) e forração; a napa das tiras está no §03 Setor de Tiras');
-    expect(reading).not.toContain('tiras convertidas');
+    if (mode === 'coverage') {
+      const reading = between(html, '<h3>Leitura correta</h3>', '</p>');
+      expect(reading).toContain('soma cabedal (+ fachete) e forração; a napa das tiras está no §03 Setor de Tiras');
+      expect(reading).not.toContain('tiras convertidas');
+    } else {
+      // No total a caixa saiu: era repetição full-width da tarja + das notas
+      // das duas seções. A origem da napa continua escrita, ao lado do título.
+      expect(html).not.toContain('<h3>Leitura correta</h3>');
+      expect(html).toContain('Consumo total · estoque ignorado · necessidade bruta do pedido');
+      expect(s01).toContain('A napa das tiras está só no §03 Setor de Tiras.');
+      expect(section02(html)).toContain('a napa delas está no §03');
+    }
+    expect(html).not.toContain('tiras convertidas');
   });
 
   it('o §03 continua mostrando a napa das tiras (22,52 m) por tipo × cor', () => {
@@ -1083,5 +1111,127 @@ describe('bloco Tiras do §02 · pendência e origem', () => {
     const [tr] = strapBlockRows(html);
     expect(tr).toContain('is-pending');
     expect(tr).toContain('<div class="row-warning">▲ Sem receita aprovada.</div>');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Densidade do documento (12/10/2026) — "densidade vem de tirar espaço morto,
+// nunca de reduzir fonte" (Preferências de impressão, CLAUDE.md). O que estes
+// testes travam é o ESPAÇO, não o conteúdo: nenhum número saiu do documento.
+// ═══════════════════════════════════════════════════════════════════════════
+describe('§02 · coluna só existe se alguma linha do bloco a preenche', () => {
+  const blockOf = (html: string, componentType: string): string => between(
+    html,
+    `<span>${componentType}</span>`,
+    '</table>',
+  );
+
+  const html = () => buildMaterialConsumptionReportHtml({
+    title: 'Consumo de Materiais — densidade',
+    generatedAt: new Date('2026-10-12T14:01:00-03:00'),
+    mode: 'total',
+    artisanalStrapRows: [],
+    rows: [
+      // Cabedal: tem cor E aplicação própria — mantém as duas colunas.
+      row({
+        componentType: 'Cabedal', groupName: 'NAPA SOFT', materialName: 'Cabedal',
+        color: 'OFF WHITE', productUnit: 'm', totalQuantity: 6.19, unitPrice: 17.34,
+      }),
+      // Colas: `materialName === groupName` e sem cor — as duas colunas somem.
+      row({
+        componentType: 'Item padrão (solado)', groupName: 'COLA PVC', materialName: 'COLA PVC',
+        color: '', productUnit: 'kg', totalQuantity: 9.5, unitPrice: 17.9946,
+      }),
+      row({
+        componentType: 'Item padrão (solado)', groupName: 'COLA FORTE', materialName: 'COLA FORTE',
+        color: '', productUnit: 'kg', totalQuantity: 7.39, unitPrice: 18.21,
+      }),
+    ],
+  });
+
+  it('bloco sem cor nenhuma não imprime a coluna Cor', () => {
+    const colas = blockOf(html(), 'Item padrão (solado)');
+    expect(colas).not.toContain('<th class="c-color"');
+    expect(colas).toContain('COLA PVC');
+    expect(colas).toContain('R$ 170,95');
+    // E o bloco que TEM cor continua com ela.
+    expect(blockOf(html(), 'Cabedal')).toContain('>Cor</th>');
+    expect(blockOf(html(), 'Cabedal')).toContain('OFF WHITE');
+  });
+
+  it('não repete o Grupo na Aplicação — "COLA PVC" ao lado de "COLA PVC"', () => {
+    const colas = blockOf(html(), 'Item padrão (solado)');
+    expect(colas).not.toContain('<th class="c-app"');
+    expect(colas.match(/COLA PVC/g)).toHaveLength(1);
+    // Aplicação que acrescenta informação continua impressa.
+    expect(blockOf(html(), 'Cabedal')).toMatch(/<th class="c-app"[^>]*>Aplicação<\/th>/);
+  });
+
+  it('a grade do solado ocupa a largura real do bloco (colspan segue as colunas)', () => {
+    const doc = buildMaterialConsumptionReportHtml({
+      title: 'Consumo de Materiais — grade', mode: 'total', artisanalStrapRows: [],
+      rows: [row({
+        componentType: 'Solado', groupName: 'SOLADO 01', materialName: '01', color: 'CARAMELO',
+        productUnit: 'par', totalQuantity: 492, soleProductId: 's1',
+        sizeBreakdown: { 34: 41, 35: 82, 36: 82, 37: 123, 38: 82, 39: 41, 40: 41 },
+      })],
+    });
+    const block = between(doc, '<span>Solado</span>', '</table>');
+    // Só o thead do bloco — a sub-tabela da grade tem <th> próprios.
+    const colCount = (between(block, '<thead>', '</thead>').match(/<th[ >]/g) || []).length;
+    // Grupo · Aplicação ("01") · Cor (CARAMELO) · Necessidade · Un. · Preço · A gastar.
+    expect(colCount).toBe(7);
+    expect(block).toContain(`<td colspan="${colCount}">`);
+  });
+});
+
+describe('célula de tabela: <small> é segunda LINHA, nunca colado no texto', () => {
+  it('o setor que consome não cola no nome da aplicação', () => {
+    const html = buildMaterialConsumptionReportHtml({
+      title: 'Consumo de Materiais — setor', mode: 'total', artisanalStrapRows: [],
+      rows: [row({
+        componentType: 'Componente Direto', groupName: 'ELÁSTICO 7MM', materialName: 'Elástico 6MM',
+        color: 'PRETO', productUnit: 'm', totalQuantity: 62.4, unitPrice: 1,
+        consumptionSector: 'Aviamento',
+      })],
+    });
+    // Os dois textos existem, um em cada linha…
+    expect(html).toContain('Elástico 6MM<small>Aviamento: 62,40 m</small>');
+    // …e o CSS garante que o <small> da célula quebra linha. Sem esta regra o
+    // papel saía "Elástico 6MMAviamento: 62,40 m" (medido 12/10/2026).
+    expect(html).toMatch(/\.report-table td small \{[^}]*display:block;/);
+  });
+});
+
+describe('§01 · colunas de aplicação só quando a família MISTURA as duas', () => {
+  const build = (rows: ConsumptionRow[]) => buildMaterialConsumptionReportHtml({
+    title: 'Consumo de Materiais — napa', mode: 'total', artisanalStrapRows: [], rows,
+  });
+  const s01 = (html: string) => between(html, '<h2>Necessidade de napa</h2>', 'Materiais por aplicação');
+
+  const cabedal = row({
+    componentType: 'Cabedal', groupName: 'NAPA SOFT', materialName: 'Cabedal',
+    color: 'OFF WHITE', productUnit: 'm', totalQuantity: 6.19,
+  });
+  const forracao = row({
+    componentType: 'Forração', groupName: 'NAPA SOFT', materialName: 'Forração',
+    color: 'PRETO', productUnit: 'm', totalQuantity: 1.69,
+  });
+
+  it('família com as duas aplicações mantém Cabedal e Forração', () => {
+    const block = s01(build([cabedal, forracao]));
+    expect(block).toContain('<th class="num">Cabedal</th>');
+    expect(block).toContain('<th class="num">Forração</th>');
+    expect(block).toContain('app-qty');
+  });
+
+  it('família de uma aplicação só fica com Cor | Total', () => {
+    // `qty` é exatamente cabedal + forração: com uma aplicação, a coluna dela
+    // repete o Total e a outra é "—" em toda linha.
+    const block = s01(build([cabedal]));
+    expect(block).not.toContain('<th class="num">Cabedal</th>');
+    expect(block).not.toContain('<th class="num">Forração</th>');
+    expect(block).not.toContain('app-qty');
+    expect(block).toContain('6,19 m');
   });
 });

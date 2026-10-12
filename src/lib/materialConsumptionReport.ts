@@ -15,7 +15,7 @@ import {
   topShortfalls,
   unitTotals,
 } from '@/lib/consumptionAvailability';
-import { formatQty, formatUnit, formatPricePerUnit } from '@/lib/consumptionFormat';
+import { consumptionApplicationText, formatQty, formatUnit, formatPricePerUnit } from '@/lib/consumptionFormat';
 import { COMPONENT_ORDER, type ConsumptionRow, rowTotalCost } from '@/lib/consumptionRows';
 import { escapeHtml } from '@/lib/htmlUtils';
 import { buildColAvailability, sizeSortKey } from '@/lib/soleMatrixHtml';
@@ -103,7 +103,17 @@ const renderBaseNeed = (rows: ConsumptionRow[], totalMode: boolean, hasStrapSect
   const { families } = buildBuyList(rows);
   if (!families.length) return '';
 
-  const familyBlocks = families.map((family) => `
+  const familyBlocks = families.map((family) => {
+    // As duas colunas de aplicação só entram quando a família MISTURA as duas:
+    // `qty` é exatamente cabedal + forração, então com uma aplicação só a
+    // coluna dela repete o Total e a outra sai "—" em todas as linhas — era
+    // uma coluna de papel em branco mais uma coluna duplicada (medido
+    // 12/10/2026). Quem precisa da aplicação linha a linha tem o §02 logo
+    // abaixo, que nomeia a de cada item (e sem o atalho cabedal/forração:
+    // lá Fachete e Forração Palmilha aparecem com o próprio nome).
+    const split = family.colors.some((color) => color.cabedal > 0)
+      && family.colors.some((color) => color.forracao > 0);
+    return `
     <article class="napa-family">
       <header class="napa-family-head">
         <span class="napa-family-name">${escapeHtml(family.napa)}</span>
@@ -113,20 +123,20 @@ const renderBaseNeed = (rows: ConsumptionRow[], totalMode: boolean, hasStrapSect
       <table class="report-table napa-table">
         <thead><tr>
           <th>Cor</th>
-          <th class="num">Cabedal</th>
-          <th class="num">Forração</th>
+          ${split ? '<th class="num">Cabedal</th><th class="num">Forração</th>' : ''}
           <th class="num">Total</th>
         </tr></thead>
         <tbody>${family.colors.map((color) => `
           <tr>
             <td>${escapeHtml(color.color || '—')}</td>
-            <td class="num app-qty">${mCell(color.cabedal)}</td>
-            <td class="num app-qty">${mCell(color.forracao)}</td>
+            ${split ? `<td class="num app-qty">${mCell(color.cabedal)}</td>
+            <td class="num app-qty">${mCell(color.forracao)}</td>` : ''}
             <td class="num strong">${formatQty(color.qty, 'm')} m</td>
           </tr>`).join('')}
         </tbody>
       </table>
-    </article>`).join('');
+    </article>`;
+  }).join('');
 
   return `
     <section class="report-section priority-section">
@@ -389,16 +399,63 @@ const renderStrapBlock = (rows: ConsumptionRow[], totalMode: boolean): string =>
       </div>`;
 };
 
+/**
+ * Peso de cada coluna do §02. Como o bloco agora decide quais colunas existem
+ * (Aplicação/Cor somem quando o bloco inteiro as deixa vazias), uma regra
+ * `nth-child` fixa no CSS passaria a largura errada para a coluna errada. O
+ * peso é normalizado sobre as colunas PRESENTES e sai inline no `<th>`, então
+ * a soma fecha 100% em qualquer combinação e o `table-layout:fixed` não corta
+ * número (regra de print 4 do CLAUDE.md).
+ *
+ * São PESOS relativos, não porcentagens: a largura final de cada coluna é
+ * peso ÷ soma dos pesos presentes. No modo total com as 7 colunas a soma é 99,
+ * então "A gastar" (18) fica com 18,18% — acima dos 8% que a regra de 2026-08
+ * descartou por cortar o valor, e com folga para "R$ 3.420,00".
+ */
+const COLUMN_WEIGHT = {
+  // Cor pesa 14 porque ela guarda o nome COMERCIAL da cor, não um código:
+  // "CRISTAL C/ FUNDO BRANCO" e "ROSADO C/ FUNDO ROSADO" conviveram com
+  // "CHAMPAGNE", que na cobertura (9 colunas, Cor a 10%) quebrava em
+  // "CHAMPAGN"+"E" — regra de print 4: o que a tabela mostra tem de caber na
+  // coluna. O peso saiu de Preço e A gastar, que sobravam.
+  group: 18, app: 18, color: 14, need: 12, stock: 9, short: 9, unit: 6, price: 13, spend: 18,
+} as const;
+
+type ColumnKey = keyof typeof COLUMN_WEIGHT;
+
+const columnWidths = (keys: ColumnKey[]): Record<string, string> => {
+  const sum = keys.reduce((total, key) => total + COLUMN_WEIGHT[key], 0) || 1;
+  return Object.fromEntries(keys.map((key) => [
+    key,
+    `width:${(COLUMN_WEIGHT[key] * 100 / sum).toFixed(2)}%`,
+  ]));
+};
+
+/** Uma linha do §02 já desmontada em células, para o bloco decidir as colunas. */
+type MaterialCells = {
+  rowClass: string;
+  group: string;
+  application: string;
+  /** Segunda linha da célula Aplicação (setor que consome), quando houver. */
+  applicationNote: string;
+  color: string;
+  need: string;
+  coverage: string;
+  unit: string;
+  cost: string;
+  /** Sub-linha da grade do solado (ocupa a largura toda). */
+  gradeHtml: string;
+};
+
 const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): string => {
-  const sectionMap = new Map<string, string[]>();
+  const sectionMap = new Map<string, MaterialCells[]>();
   const sectionOrder = new Map<string, number>();
-  const append = (componentType: string, html: string, order: number) => {
+  const append = (componentType: string, cells: MaterialCells, order: number) => {
     const current = sectionMap.get(componentType) || [];
-    current.push(html);
+    current.push(cells);
     sectionMap.set(componentType, current);
     sectionOrder.set(componentType, Math.min(sectionOrder.get(componentType) ?? order, order));
   };
-  const colCount = totalMode ? 7 : 9;
 
   // Tira (Prestador, Comprar pronto, strass, prévia) vai inteira para o bloco
   // Tiras — tabela própria, total por tipo × cor (`renderStrapBlock`).
@@ -432,20 +489,23 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
     const warnings = Array.from(new Set(item.rows.flatMap((row) => row.warning ? [row.warning] : [])));
     const unitPrice = firstFinitePrice(item.rows);
     const totalCost = unitPrice != null ? item.total * unitPrice : null;
-    const coverageCells = totalMode ? '' : `
+    const coverage = totalMode ? '' : `
       <td class="num">${!item.known ? '—' : formatQty(item.available, item.productUnit)}</td>
       <td class="num${short > 0 ? ' shortage' : ''}">${item.known && short > 0
         ? formatQty(short, item.productUnit)
         : '—'}</td>`;
-    append(section, `<tr class="material-row${short > 0 ? ' is-short' : ''}${!item.known ? ' is-pending' : ''}">
-      <td><strong>${escapeHtml(item.groupName)}</strong>${warnings.length ? `<div class="row-warning">▲ ${escapeHtml(warnings.join(' · '))}</div>` : ''}</td>
-      <td>${escapeHtml(applications.join(' + ') || item.groupName)}${sectorApplications.length ? `<small>${escapeHtml(sectorApplications.join(' · '))}</small>` : ''}</td>
-      <td>${escapeHtml(item.color || '—')}</td>
-      <td class="num strong">${needHtml}</td>
-      ${coverageCells}
-      <td class="unit">${escapeHtml(formatUnit(item.productUnit))}</td>
-      ${costCellsHtml(unitPrice, totalCost, item.productUnit)}
-    </tr>`, componentIndex(componentTypes[0] || item.componentType));
+    append(section, {
+      rowClass: `material-row${short > 0 ? ' is-short' : ''}${!item.known ? ' is-pending' : ''}`,
+      group: `<strong>${escapeHtml(item.groupName)}</strong>${warnings.length ? `<div class="row-warning">▲ ${escapeHtml(warnings.join(' · '))}</div>` : ''}`,
+      application: escapeHtml(consumptionApplicationText(applications, item.groupName)),
+      applicationNote: sectorApplications.length ? escapeHtml(sectorApplications.join(' · ')) : '',
+      color: escapeHtml(item.color || ''),
+      need: needHtml,
+      coverage,
+      unit: escapeHtml(formatUnit(item.productUnit)),
+      cost: costCellsHtml(unitPrice, totalCost, item.productUnit),
+      gradeHtml: '',
+    }, componentIndex(componentTypes[0] || item.componentType));
   }
 
   const soles = rows.filter((row) => row.componentType === 'Solado')
@@ -457,36 +517,63 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
     const shortSizes = soleShortSizes(row);
     const unitPrice = row.unitPrice != null && Number.isFinite(row.unitPrice) ? row.unitPrice : null;
     const totalCost = rowTotalCost(row);
-    const coverageCells = totalMode ? '' : `
+    const coverage = totalMode ? '' : `
       <td class="num">${known ? formatQty(usefulStock, row.productUnit) : '—'}</td>
       <td class="num${short > 0 ? ' shortage' : ''}">${known && short > 0 ? `${formatQty(short, row.productUnit)}${shortSizes.length ? `<small>${shortSizes.length} nº</small>` : ''}` : '—'}</td>`;
-    append('Solado', `<tr class="material-row${short > 0 ? ' is-short' : ''}${!known ? ' is-pending' : ''}">
-      <td><strong>${escapeHtml(row.groupName)}</strong>${row.warning ? `<div class="row-warning">▲ ${escapeHtml(row.warning)}</div>` : ''}</td>
-      <td>${escapeHtml(row.materialName || 'Solado')}</td>
-      <td>${escapeHtml(row.color || '—')}</td>
-      <td class="num strong">${formatQty(row.totalQuantity, row.productUnit)}</td>
-      ${coverageCells}
-      <td class="unit">${escapeHtml(formatUnit(row.productUnit))}</td>
-      ${costCellsHtml(unitPrice, totalCost, row.productUnit)}
-    </tr>
-    <tr class="grade-row"><td colspan="${colCount}">${renderSoleGrade(row, totalMode)}</td></tr>`, componentIndex('Solado'));
+    append('Solado', {
+      rowClass: `material-row${short > 0 ? ' is-short' : ''}${!known ? ' is-pending' : ''}`,
+      group: `<strong>${escapeHtml(row.groupName)}</strong>${row.warning ? `<div class="row-warning">▲ ${escapeHtml(row.warning)}</div>` : ''}`,
+      application: escapeHtml(consumptionApplicationText([row.materialName || 'Solado'], row.groupName)),
+      applicationNote: '',
+      color: escapeHtml(row.color || ''),
+      need: formatQty(row.totalQuantity, row.productUnit),
+      coverage,
+      unit: escapeHtml(formatUnit(row.productUnit)),
+      cost: costCellsHtml(unitPrice, totalCost, row.productUnit),
+      gradeHtml: renderSoleGrade(row, totalMode),
+    }, componentIndex('Solado'));
   }
 
-  const head = totalMode
-    ? '<tr><th>Grupo</th><th>Aplicação</th><th>Cor</th><th class="num">Necessidade</th><th>Un.</th><th class="num col-unit">Preço/un. consumo</th><th class="num col-spend">A gastar</th></tr>'
-    : '<tr><th>Grupo</th><th>Aplicação</th><th>Cor</th><th class="num">Necessidade</th><th class="num">Estoque</th><th class="num">Falta</th><th>Un.</th><th class="num col-unit">Preço/un. consumo</th><th class="num col-spend">A gastar</th></tr>';
-
-  const blocks = Array.from(sectionMap.entries()).map(([componentType, materialRows]) => ({
-    order: sectionOrder.get(componentType) ?? componentIndex(componentType),
-    html: `
+  const blocks = Array.from(sectionMap.entries()).map(([componentType, cells]) => {
+    // Coluna só existe se ALGUMA linha do bloco a preenche. Em "Embalagem",
+    // "Item padrão (solado)" e "Componente Direto" a Cor é "—" em todas as
+    // linhas, e nas colas a Aplicação só repetia o Grupo: eram duas colunas de
+    // papel em branco por bloco (medido 12/10/2026).
+    const showApplication = cells.some((cell) => cell.application || cell.applicationNote);
+    const showColor = cells.some((cell) => cell.color);
+    const keys: ColumnKey[] = [
+      'group',
+      ...(showApplication ? ['app' as const] : []),
+      ...(showColor ? ['color' as const] : []),
+      'need',
+      ...(totalMode ? [] : ['stock' as const, 'short' as const]),
+      'unit', 'price', 'spend',
+    ];
+    const colCount = keys.length;
+    const w = columnWidths(keys);
+    const head = `<tr><th class="c-group" style="${w.group}">Grupo</th>${showApplication ? `<th class="c-app" style="${w.app}">Aplicação</th>` : ''}${showColor ? `<th class="c-color" style="${w.color}">Cor</th>` : ''}<th class="num c-need" style="${w.need}">Necessidade</th>${totalMode ? '' : `<th class="num c-stock" style="${w.stock}">Estoque</th><th class="num c-short" style="${w.short}">Falta</th>`}<th class="c-unit" style="${w.unit}">Un.</th><th class="num col-unit c-price" style="${w.price}">Preço/un. consumo</th><th class="num col-spend c-spend" style="${w.spend}">A gastar</th></tr>`;
+    const body = cells.map((cell) => `<tr class="${cell.rowClass}">
+      <td>${cell.group}</td>
+      ${showApplication ? `<td>${cell.application}${cell.applicationNote ? `<small>${cell.applicationNote}</small>` : ''}</td>` : ''}
+      ${showColor ? `<td>${cell.color || '—'}</td>` : ''}
+      <td class="num strong">${cell.need}</td>
+      ${cell.coverage}
+      <td class="unit">${cell.unit}</td>
+      ${cell.cost}
+    </tr>${cell.gradeHtml ? `
+    <tr class="grade-row"><td colspan="${colCount}">${cell.gradeHtml}</td></tr>` : ''}`).join('');
+    return {
+      order: sectionOrder.get(componentType) ?? componentIndex(componentType),
+      html: `
       <div class="component-block">
-        <div class="component-heading"><span>${escapeHtml(componentType)}</span><span>${materialRows.filter((row) => row.includes('class="material-row')).length} linha(s)</span></div>
-        <table class="report-table materials-table${totalMode ? ' total-mode' : ''}">
+        <div class="component-heading"><span>${escapeHtml(componentType)}</span><span>${cells.length} linha(s)</span></div>
+        <table class="report-table materials-table${totalMode ? ' total-mode' : ''} cols-${colCount}">
           <thead>${head}</thead>
-          <tbody>${materialRows.join('')}</tbody>
+          <tbody>${body}</tbody>
         </table>
       </div>`,
-  }));
+    };
+  });
   const strapBlock = renderStrapBlock(rows, totalMode);
   if (strapBlock) blocks.push({ order: componentIndex('Tiras'), html: strapBlock });
 
@@ -581,9 +668,19 @@ export function buildMaterialConsumptionReportHtml({
   // Decisão do dono (11/10/2026): napa das tiras fora de todo total — só §03.
   const napaOrigin = `Necessidade de napa (§01) soma cabedal (+ fachete) e forração${hasStrapSector ? '; a napa das tiras está no §03 Setor de Tiras' : ''}.`;
   const strapsIn02 = 'Tiras em §02: total em metros por tipo e cor, separando Prestador de Comprar pronto.';
-  const reading = totalMode
-    ? `Este documento ignora o estoque. Os números são o consumo bruto da ficha. ${napaOrigin} ${strapsIn02}`
-    : `“Necessidade” é consumo bruto. “Falta” já desconta o estoque líquido. ${napaOrigin} ${strapsIn02}`;
+  /**
+   * Só a COBERTURA imprime a caixa "Leitura correta", e ali ela divide a faixa
+   * com "Maiores faltas" (não custa altura) e abre com a única frase que não
+   * está em outro lugar: a diferença entre "Necessidade" e "Falta".
+   *
+   * No modo total a caixa era repetição pura, full-width: "ignora o estoque"
+   * já está na tarja do cabeçalho (CONSUMO TOTAL · ESTOQUE IGNORADO ·
+   * NECESSIDADE BRUTA DO PEDIDO), e as outras duas frases são as notas do §01
+   * e do §02 ao lado dos próprios títulos. Eram ~60px de papel dizendo pela
+   * terceira vez o que já estava escrito duas — ordem de ataque 1 das
+   * Preferências de impressão (repetição antes de espaço vazio).
+   */
+  const reading = `“Necessidade” é consumo bruto. “Falta” já desconta o estoque líquido. ${napaOrigin} ${strapsIn02}`;
   const manifest = totalMode
     ? `<div class="manifest manifest-total" aria-label="Resumo do consumo total">
     <div><dl><dt>Necessidade de material base</dt><dd>${baseTotal ? `${formatQty(baseTotal.total, 'm')} m` : '—'}</dd></dl><small>cabedal + forração${hasStrapSector ? ' · napa das tiras no §03' : ''}</small></div>
@@ -670,7 +767,11 @@ export function buildMaterialConsumptionReportHtml({
     .report-table thead { display:table-header-group; }
     .report-table th { padding:5px 4px; border-top:1px solid var(--ink); border-bottom:1px solid var(--ink); background:var(--soft); color:var(--muted); font-size:6.5pt; font-weight:700; letter-spacing:.04em; text-align:left; text-transform:uppercase; }
     .report-table th.num { letter-spacing:.02em; }
-    .report-table td { padding:5px 5px; border-bottom:1px solid var(--line); vertical-align:top; overflow-wrap:anywhere; }
+    /* 4px, não 5: a entrelinha de 9.2pt/1.32 já separa as linhas, e 1px a
+       menos em cada lado da célula devolve ~90px num documento de 45 linhas —
+       três linhas e meia de papel, sem tocar em corpo de letra (Preferências
+       de impressão: densidade vem de tirar espaço, nunca de reduzir fonte). */
+    .report-table td { padding:4px 5px; border-bottom:1px solid var(--line); vertical-align:top; overflow-wrap:anywhere; }
     .report-table .num { text-align:right; white-space:nowrap; overflow:visible; }
     .report-table .unit { width:34px; text-align:center; color:var(--muted); }
     .report-table .strong { font-weight:700; }
@@ -688,6 +789,10 @@ export function buildMaterialConsumptionReportHtml({
     .material-row.is-short td:first-child { border-left:3px solid var(--accent); }
     .shortage { color:var(--accent); font-weight:700; }
     .shortage small { display:block; color:var(--muted); font-size:6.5pt; font-weight:500; }
+    /* <small> em célula é SEMPRE segunda linha. Sem isto ele herda o inline do
+       HTML e cola no texto anterior — "Elástico 6MM" + "Aviamento: 62,40 m"
+       saía "Elástico 6MMAviamento: 62,40 m" no papel (medido 12/10/2026). */
+    .report-table td small { display:block; margin-top:1px; color:var(--muted); font-size:6.5pt; font-weight:500; line-height:1.25; }
     .row-warning { margin-top:2px; color:var(--warn); font-size:6.7pt; line-height:1.25; }
     .qty-preview { display:block; margin-top:1px; color:var(--muted); font-family:'Fira Sans',sans-serif; font-size:6.5pt; font-weight:500; }
     .component-block { margin-top:9px; border:1px solid var(--line); break-inside:auto; overflow:hidden; }
@@ -698,24 +803,13 @@ export function buildMaterialConsumptionReportHtml({
     .component-heading span:last-child { color:#ccc8c1; font-family:'Fira Code',monospace; font-size:6.8pt; }
     /* O thead é uppercase; sem isto "Total (m)" sairia "TOTAL (M)" — M é mega. */
     .report-table th .unit-suffix { text-transform:none; }
-    /* Cobertura: 9 cols — Grupo · Aplicação · Cor · Necessidade · Estoque · Falta · Un. · Preço · A gastar */
-    .materials-table th:nth-child(1) { width:14%; }
-    .materials-table th:nth-child(2) { width:14%; }
-    .materials-table th:nth-child(3) { width:10%; }
-    .materials-table th:nth-child(4),
-    .materials-table th:nth-child(5),
-    .materials-table th:nth-child(6) { width:9%; }
-    .materials-table th:nth-child(7) { width:5%; text-align:center; }
-    .materials-table th:nth-child(8) { width:12%; }
-    .materials-table th:nth-child(9) { width:18%; }
-    /* Total: 7 cols — Grupo · Aplicação · Cor · Necessidade · Un. · Preço · A gastar */
-    .materials-table.total-mode th:nth-child(1) { width:18%; }
-    .materials-table.total-mode th:nth-child(2) { width:18%; }
-    .materials-table.total-mode th:nth-child(3) { width:12%; }
-    .materials-table.total-mode th:nth-child(4) { width:12%; }
-    .materials-table.total-mode th:nth-child(5) { width:6%; text-align:center; }
-    .materials-table.total-mode th:nth-child(6) { width:14%; }
-    .materials-table.total-mode th:nth-child(7) { width:20%; text-align:right; }
+    /* Materiais · larguras: saem INLINE no th (ver COLUMN_WEIGHT). Aplicação e
+       Cor somem no bloco que as deixa vazias, então a posição nth-child de
+       "A gastar" muda de bloco para bloco — a regra antiga, presa ao índice,
+       passaria a largura de Preço para Un. no bloco sem Cor. Aqui ficam só o
+       alinhamento e o realce, que não dependem da posição. */
+    .materials-table th.c-unit { text-align:center; }
+    .materials-table th.c-spend { text-align:right; }
     .materials-table td.cost-spend { padding-right:7px; }
     /* Tiras (§02, 11/10/2026): tabela própria, total por tipo × cor — sem as
        colunas Aplicação/Un./Preço, que seriam espaço morto para tira.
@@ -733,24 +827,49 @@ export function buildMaterialConsumptionReportHtml({
        ("TIRA OVERLOCK 5 mm · GLOW METALIC") e strass em caixa mista ("Tira
        Strass 6mm"). Na mesma tabela viravam duas convenções. */
     .straps-table td:first-child strong { text-transform:uppercase; }
-    .straps-table th:nth-child(1) { width:31%; }
-    .straps-table th:nth-child(2) { width:13%; }
+    /* Os 2 pontos que o Tipo ganhou (31 -> 33, para "ELÁSTICO FORRADO 7 mm ·
+       GLOW METALIC" não quebrar em duas linhas) saíram da Cor, NÃO de Estoque
+       e Falta: aqueles 10% são valor MEDIDO para caber número de 4–5 dígitos
+       (ver o bloco de comentário acima) — a 8% o valor invadia A gastar. */
+    .straps-table th:nth-child(1) { width:33%; }
+    .straps-table th:nth-child(2) { width:11%; }
     .straps-table th:nth-child(3) { width:11%; }
     .straps-table th:nth-child(4) { width:11%; }
     .straps-table th:nth-child(5) { width:10%; }
     .straps-table th:nth-child(6) { width:10%; }
     .straps-table th:nth-child(7) { width:14%; }
     /* Total: 5 cols — Tipo · Cor · Origem · Total · A gastar */
-    .straps-table.total-mode th:nth-child(1) { width:36%; }
-    .straps-table.total-mode th:nth-child(2) { width:22%; }
-    .straps-table.total-mode th:nth-child(3) { width:14%; }
+    .straps-table.total-mode th:nth-child(1) { width:32%; }
+    .straps-table.total-mode th:nth-child(2) { width:24%; }
+    .straps-table.total-mode th:nth-child(3) { width:16%; }
     .straps-table.total-mode th:nth-child(4) { width:12%; }
     .straps-table.total-mode th:nth-child(5) { width:16%; }
+    /* Origem é vocabulário fechado (Prestador · Comprar pronto): nunca quebra
+       em duas linhas — eram 3 linhas de altura dupla nas tiras de strass. */
+    .straps-table td:nth-child(3) { white-space:nowrap; }
     .straps-table td.cost-spend { padding-right:7px; }
+    /* Setor de Tiras — 5 cols: Tipo · Cor · Tira necessária · Napa · Situação.
+       Sem largura declarada o 'table-layout:fixed' de '.report-table' dividia em
+       20% iguais: "MEIA CANA 10 mm · NAPA SOFT" não cabia em 146px e TODA linha
+       quebrava em duas, enquanto sobrava um vão morto no meio da tabela. Eram
+       12 linhas de altura dupla — uma página inteira de papel (medido
+       12/10/2026: o documento fechava em 3 páginas, a 3ª com 7 linhas). */
+    .strap-section .report-table th:nth-child(1) { width:36%; }
+    .strap-section .report-table th:nth-child(2) { width:18%; }
+    .strap-section .report-table th:nth-child(3) { width:14%; }
+    .strap-section .report-table th:nth-child(4) { width:13%; }
+    .strap-section .report-table th:nth-child(5) { width:19%; }
+    .strap-section .report-table td:first-child strong { text-transform:uppercase; }
     .grade-row td { padding:0 5px 6px 5px; border-bottom:1px solid var(--ink); background:white; }
     .sole-grade { padding:4px 0 0 12px; overflow:visible; }
-    .sole-grade table { width:100%; border-collapse:collapse; font-size:7.2pt; table-layout:auto; }
-    .sole-grade th, .sole-grade td { padding:2px 4px; border:1px solid var(--line); text-align:center; white-space:nowrap; }
+    /* table-layout:fixed = numerações com a MESMA largura. Com 'auto' o
+       Chromium distribuía a sobra por conteúdo e a última coluna ficava com
+       ~20px contra ~90px da primeira: a grade 34–40 saía com 39/40 espremidos
+       no canto (medido 12/10/2026). Regra de print 4 — a grade manda.
+       'overflow:visible' fica: se algum dia a coluna apertar, o número
+       transborda em vez de ser CORTADO em silêncio. */
+    .sole-grade table { width:100%; border-collapse:collapse; font-size:7.2pt; table-layout:fixed; }
+    .sole-grade th, .sole-grade td { padding:2px 4px; border:1px solid var(--line); text-align:center; white-space:nowrap; overflow:visible; }
     .sole-grade th:first-child { width:72px; min-width:72px; text-align:left; background:var(--soft); white-space:nowrap; }
     .grade-num { font-family:'Fira Code',monospace; font-variant-numeric:tabular-nums; white-space:nowrap; }
     .decision-grid { display:grid; grid-template-columns:1fr 1.35fr; gap:10px; margin-top:8px; }
@@ -775,7 +894,7 @@ export function buildMaterialConsumptionReportHtml({
   ${renderScope(orderHeaders)}
   <div class="totals-strip"><strong>Necessidade total</strong>${totalStrip}</div>
   ${pendingStrip}
-  ${totalMode ? `<div class="decision-box" style="margin-top:8px"><h3>Leitura correta</h3><p>${reading}</p></div>` : `<div class="decision-grid">
+  ${totalMode ? '' : `<div class="decision-grid">
     <div class="decision-box"><h3>Leitura correta</h3><p>${reading}</p></div>
     <div class="decision-box"><h3>Maiores faltas</h3>${shortfallList}</div>
   </div>`}
