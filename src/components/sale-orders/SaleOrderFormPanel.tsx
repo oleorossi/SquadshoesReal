@@ -2979,12 +2979,12 @@ export default function SaleOrderFormPanel({
         for (const [key, issue] of Object.entries(colorIssues || {})) {
           const idx = Number(key);
           if (!(idx < items.length) || !items[idx]?.reference_id) continue;
-          if ((items[idx] as any)?.production_excluded_at) continue;
+          if (isProductionExcludedSaleOrderItem(items[idx])) continue;
           issues.push({ type: 'error', msg: colorIssueBlockerMessage(issue) });
         }
         const tiraSemCor = findSaleOrderTiraSemCor(
-          productionItems as any,
-          references as any,
+          productionItems,
+          references,
           strapColorMode,
         );
         if (tiraSemCor) issues.push({ type: 'error', msg: tiraSemCor });

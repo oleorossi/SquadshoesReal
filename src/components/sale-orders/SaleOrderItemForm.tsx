@@ -144,6 +144,9 @@ interface ReferenceOption {
   retired_at?: string | null;
   has_straps?: boolean | null;
   strap_colors?: any[] | null;
+  /** Napa fixada na ficha pelo CTA "Corrigir no estoque". Carregada desde que
+   *  entrou em `TECHNICAL_SHEET_EDITOR_COLUMNS` — antes o PV nunca a lia. */
+  strap_base_group_id?: string | null;
   updated_at?: string | null;
 }
 
@@ -408,8 +411,8 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
    * grupo textual do forro) — as duas fontes acima já embutem a cascata inteira;
    * esta só vale quando nenhuma das duas respondeu.
    */
-  const sheetStrapBaseGroupId = isUuid((selectedRef as any)?.strap_base_group_id)
-    ? String((selectedRef as any).strap_base_group_id)
+  const sheetStrapBaseGroupId = isUuid(selectedRef?.strap_base_group_id)
+    ? String(selectedRef?.strap_base_group_id)
     : null;
   const itemDefaultNapa = itemDefaultNapaId(referenceNapas, item.material_variant_id);
   const orderedReferenceNapas = useMemo(
