@@ -479,3 +479,65 @@ describe('comparador estrutural', () => {
       .not.toBe(technicalStrapSequenceSignature([second, first]));
   });
 });
+
+/**
+ * Garantia pedida pelo dono (12/10/2026): depois de escolher a cor da tira
+ * comprada pronta e salvar, REABRIR o pedido tem que mostrar a cor escolhida —
+ * o sintoma histórico era a tela voltar "como se não tivesse seleção".
+ *
+ * O caso real é a NL02 / TIRA 1, cuja linha da ficha grava `color_mode: null`.
+ * Quem salva a escolha é `strapColorMode`, que força `select_on_order` para
+ * `identity_basis = 'finished_product_group'` — se algum dia ele passar a ler
+ * `color_mode` cru nesse ramo, a cor é apagada na reabertura e o PV volta a
+ * pedir a escolha a cada vez.
+ */
+describe('cor da tira pronta sobrevive à reabertura do pedido', () => {
+  const grupoStrass = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+  const cristal = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+
+  // Linha da ficha NL02: finished_product_group COM color_mode null.
+  const fichaNL02 = strap(lineA, {
+    label: 'TIRA 1',
+    identity_basis: 'finished_product_group',
+    identity_group_id: grupoStrass,
+    group_id: grupoStrass,
+    color_mode: null,
+    color: '',
+    color_id: null,
+  });
+
+  // Snapshot como o writer grava depois do save.
+  const salvo = { ...fichaNL02, color: 'CRISTAL COM FUNDO BRANCO', color_id: cristal };
+
+  it('mantém a cor escolhida ao reabrir', () => {
+    const { lines } = reconcileEditableStrapSnapshots({
+      snapshotLines: [salvo],
+      technicalLines: [fichaNL02],
+    });
+    expect(lines[0].color_id).toBe(cristal);
+    expect(lines[0].color).toBe('CRISTAL COM FUNDO BRANCO');
+  });
+
+  it('não acusa mudança estrutural nem limpeza de cor ao reabrir', () => {
+    const { changes, lines } = reconcileEditableStrapSnapshots({
+      snapshotLines: [salvo],
+      technicalLines: [fichaNL02],
+    });
+    expect(changes).toEqual([]);
+    // A única reescrita da primeira reabertura é normalizar o `color_mode` que
+    // a ficha gravou como null. A escolha de cor NÃO é tocada.
+    expect(lines[0].color_mode).toBe('select_on_order');
+    expect(lines[0].color_id).toBe(cristal);
+  });
+
+  it('reabrir duas vezes seguidas é estável (sem loop de reescrita)', () => {
+    const um = reconcileEditableStrapSnapshots({
+      snapshotLines: [salvo], technicalLines: [fichaNL02],
+    });
+    const dois = reconcileEditableStrapSnapshots({
+      snapshotLines: um.lines, technicalLines: [fichaNL02],
+    });
+    expect(dois.lines).toEqual(um.lines);
+    expect(dois.linesChanged).toBe(false);
+  });
+});
