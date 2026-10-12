@@ -116,9 +116,26 @@ export interface AtelierLotRow {
   color: string | null;
   cut_at: string | null;
   pairs: number;
+  /** Data recuada pela agenda do Ateliê — quando o lote tem que VOLTAR do prestador. */
   min_ready_date: string | null;
+  /**
+   * Prazo de entrega mais próximo entre os PVs do lote (mig `20270101039000`).
+   *
+   * É o MÍNIMO, não "o prazo do pedido": o lote é `referência × cor` e atravessa
+   * vários PVs. Não confundir com `min_ready_date`, que é outra data e governa o
+   * envio ao prestador, não a urgência comercial.
+   */
+  min_delivery_deadline: string | null;
   grade: Record<string, number>;
-  orders: { sale_order_id: string; order_number: string; client_name: string | null; billing_week: string | null }[];
+  orders: {
+    sale_order_id: string;
+    order_number: string;
+    client_name: string | null;
+    billing_week: string | null;
+    delivery_deadline: string | null;
+    /** Pares DESTE pedido no lote — `pairs` do lote é a soma de todos os PVs. */
+    pairs: number;
+  }[];
   jobs: AtelierLotJob[];
   debits: {
     product_id: string;
