@@ -16,19 +16,35 @@ const between = (html: string, start: string, end: string): string => {
   expect(to).toBeGreaterThan(from);
   return html.slice(from, to);
 };
-/** §02 — até o §03 (Setor de Tiras) quando ele existe; senão até o fim. */
+/** §02 — do título até o rodapé (o §03 foi absorvido em 12/10/2026). */
 const section02 = (html: string) => {
   const from = html.indexOf('Materiais por aplicação');
-  const to = html.indexOf('<h2>Setor de Tiras</h2>');
+  const to = html.indexOf('<p class="footer-note">');
   expect(from).toBeGreaterThanOrEqual(0);
   return html.slice(from, to > from ? to : undefined);
 };
-const section03 = (html: string) => html.slice(html.indexOf('<h2>Setor de Tiras</h2>'));
-/** Linhas `<tr>` do bloco Tiras do §02. */
-const strapBlockRows = (html: string): string[] => {
-  const block = between(section02(html), '<span>Tiras</span>', '</table>');
-  return block.match(/<tr class="material-row strap-row[\s\S]*?<\/tr>/g) || [];
+/**
+ * Um dos dois blocos de tira do §02. Desde 12/10/2026 a tira é partida por
+ * ORIGEM: "comprar pronto" leva a coluna de dinheiro, "prestador" leva a napa
+ * e a situação — e esse segundo bloco é o antigo §03 Setor de Tiras, absorvido.
+ */
+const strapBlock = (html: string, kind: 'comprar pronto' | 'prestador'): string => {
+  const s02 = section02(html);
+  const from = s02.indexOf(`<span>Tiras · ${kind}`);
+  if (from < 0) return ''; // PV sem esse destino não imprime o bloco.
+  return s02.slice(from, s02.indexOf('</table>', from));
 };
+/** Linhas de TIPO (a que carrega o subtotal) de um bloco de tira. */
+const strapTypeRows = (html: string, kind: 'comprar pronto' | 'prestador'): string[] =>
+  strapBlock(html, kind).match(/<tr class="strap-type[\s\S]*?<\/tr>/g) || [];
+/** Linhas de COR (o detalhe sob o tipo) de um bloco de tira. */
+const strapColorRows = (html: string, kind: 'comprar pronto' | 'prestador'): string[] =>
+  strapBlock(html, kind).match(/<tr class="strap-color[\s\S]*?<\/tr>/g) || [];
+/** Todas as linhas de tira dos dois blocos — tipo + cor. */
+const strapBlockRows = (html: string): string[] => [
+  ...strapTypeRows(html, 'comprar pronto'), ...strapColorRows(html, 'comprar pronto'),
+  ...strapTypeRows(html, 'prestador'), ...strapColorRows(html, 'prestador'),
+];
 
 const row = (overrides: Partial<ConsumptionRow>): ConsumptionRow => ({
   componentType: 'Químicos',
@@ -208,7 +224,7 @@ describe('materialConsumptionReport', () => {
     expect(html).not.toContain('<td class="num strong">59,04</td>');
   });
 
-  it('tira Fazer convertida aparece com metros de TIRA (D8), nunca como falta — napa no §03', () => {
+  it('tira Fazer convertida aparece com metros de TIRA (D8), nunca como falta — napa no bloco de prestador', () => {
     const html = buildMaterialConsumptionReportHtml({
       title: 'Consumo de Materiais — PV-00168',
       generatedAt: new Date('2026-08-30T15:11:00-03:00'),
@@ -259,24 +275,25 @@ describe('materialConsumptionReport', () => {
       ],
     });
 
-    // §01: só Cabedal/Forração. §03: napa de tira (e SÓ lá — 11/10/2026).
-    // Strip "Necessidade total" não soma a napa convertida.
-    // §02: a tira continua visível com os metros de TIRA (D8), sem nota de
-    // napa — não é falta de tira (não se compra tira Fazer).
-    expect(html).toContain('<h2>Setor de Tiras</h2>');
+    // §01: só Cabedal/Forração. Napa de tira: só no bloco de prestador
+    // (11/10/2026 para o dado, 12/10/2026 para o lugar). Strip "Necessidade
+    // total" não soma a napa convertida. A tira continua visível com os metros
+    // de TIRA (D8) — não é falta de tira (não se compra tira Fazer).
+    expect(html).toContain('<span>Tiras · prestador');
     expect(html).not.toContain('Napa para tiras');
     expect(html).toContain('20,04 m');
     expect(html).not.toContain('class="num shortage">1.402,80');
-    expect(html).toContain('<td class="num strong">1.402,80</td>');
-    expect(html).toContain('1.402,80<small class="qty-preview">prestador</small>');
+    expect(html).toContain('<td class="num strong">1.402,80 m</td>');
+    // A linha da cor repete o número cru, sob o subtotal do tipo.
+    expect(html).toContain('<td class="num">1.402,80</td>');
     const totalsStrip = html.match(/<div class="totals-strip">[\s\S]*?<\/div>/)?.[0] || '';
     expect(totalsStrip).toContain('20,21');
     expect(totalsStrip).not.toContain('40,25');
     expect(totalsStrip).not.toContain('1.402,80');
-    expect(html).not.toContain('>Tira<');
+    const s01 = between(html, '<h2>Necessidade de napa</h2>', 'Materiais por aplicação');
+    expect(s01).not.toContain('>Tira<');
     expect(section02(html)).toContain('>Forração Palmilha<');
     expect(html).toContain('20,21 m');
-    expect(html).toContain('<span>Tiras</span>');
   });
 
   it('no modo consumo total ignora estoque e agrupa napa Cabedal/Forração por família', () => {
@@ -346,7 +363,7 @@ describe('materialConsumptionReport', () => {
     expect(html).not.toContain('>Falta<');
     expect(html).toContain('Necessidade');
     // D8: metros de tira visíveis em §02, separados da napa (§03).
-    expect(html).toContain('<td class="num strong">1.402,80</td>');
+    expect(html).toContain('<td class="num strong">1.402,80 m</td>');
   });
 
   it('PV-00193: strip de metros ignora tira pending e §02 lista só demanda pendente', () => {
@@ -407,8 +424,8 @@ describe('materialConsumptionReport', () => {
     // Família = forração 3×28,15 = 84,45 (tira ok e pending fora do §01).
     expect(html).toMatch(/napa-family-qty">84,45 m</);
     expect(html).not.toContain('rendimento pendente');
-    // Pending aparece na §02 como cadastro incompleto (demanda da ficha).
-    expect(html).toContain('<span>Tiras</span>');
+    // Pending aparece no bloco de prestador como cadastro incompleto.
+    expect(html).toContain('<span>Tiras · prestador');
     expect(html).toContain('Tira sem cadastro');
     expect(html).toContain('is-pending');
   });
@@ -533,7 +550,7 @@ describe('materialConsumptionReport', () => {
     expect(html).not.toMatch(/\.sole-grade (th|td)[^{]*\{[^}]*width:\d+%/);
   });
 
-  it('mostra metros de tira e napa no setor próprio (§03), sem coluna de mão de obra', () => {
+  it('row de corte sem linha de tira no pedido ainda aparece, com napa e sem mão de obra', () => {
     const html = buildMaterialConsumptionReportHtml({
       title: 'Consumo total - PV-00193',
       mode: 'total',
@@ -561,10 +578,12 @@ describe('materialConsumptionReport', () => {
       rows: [],
     });
 
-    expect(html).toContain('Setor de Tiras');
-    expect(html).toContain('Tira necessária');
-    expect(html).toContain('<th>Cor</th>');
-    expect(html).toContain('>OFF WHITE<');
+    // Sem linha de tira no pedido, a row de corte entra como órfã — o antigo
+    // §03 a mostrava, e sumir em silêncio seria perder napa de vista.
+    expect(html).toContain('<span>Tiras · prestador');
+    expect(html).toContain('Napa a enviar');
+    expect(html).toContain('Tipo de tira / cor');
+    expect(html).toContain('OFF WHITE');
     expect(html).toContain('1.044,00 m');
     expect(html).toContain('14,91 m');
     expect(html).toContain('flag ok');
@@ -604,10 +623,11 @@ describe('materialConsumptionReport', () => {
       rows: [],
     });
 
-    expect(html).toContain('Setor de Tiras');
+    expect(html).toContain('<span>Tiras · prestador');
     expect(html).toContain('cadastro incompleto');
     expect(html).toContain('>312,00 m<');
-    expect(html).toMatch(/Napa<\/th>[\s\S]*?—/);
+    // Sem rendimento a napa é "—" — nunca um número inventado.
+    expect(html).toMatch(/Napa a enviar<\/th>[\s\S]*?<span class="muted">—<\/span>/);
     expect(html).not.toContain('Mão de obra/m');
     expect(html).not.toContain('R$');
   });
@@ -650,7 +670,7 @@ describe('materialConsumptionReport', () => {
     expect(html).toContain('4,2406 m');
   });
 
-  it('desagrega por tipo × cor no §03 e um único total de napa no rodapé', () => {
+  it('desagrega por tipo × cor no bloco de prestador e um único total de napa no rodapé', () => {
     const cut = {
       largura_mm: 8, metros_uteis_por_banda: 0, n_bandas: 0, cm_a_cortar: 0,
       rolos: 0, n_rolos_completos: 0, cm_no_ultimo_rolo: 0, valid: false, widthMissing: false,
@@ -697,10 +717,11 @@ describe('materialConsumptionReport', () => {
       rows: [],
     });
 
-    // Um rodapé de total — sem subtotal por tipo; uma linha por cor.
-    expect(html.match(/class="strap-subtotal"/g)).toHaveLength(1);
-    expect(html).toContain('Total de napa a enviar ao prestador');
-    expect(html).toContain('<th>Cor</th>');
+    // Um rodapé por bloco, e desde 12/10/2026 um subtotal por TIPO (2 tipos).
+    expect(html.match(/class="strap-grand"/g)).toHaveLength(1);
+    expect(html.match(/class="strap-type"/g)).toHaveLength(2);
+    expect(html).toContain('Total a mandar pro prestador');
+    expect(html).toContain('Tipo de tira / cor');
     expect(html).toContain(elastico);
     expect(html).toContain(chata);
     expect(html).toContain('>CAPUCCINO<');
@@ -708,8 +729,11 @@ describe('materialConsumptionReport', () => {
     expect(html).toContain('>ROCHA<');
     expect(html).not.toContain('3 cores');
     // Quantidade por cor (não agregada por tipo)
-    expect(html).toContain('386,88 m');
-    expect(html).toContain('1.294,56 m');
+    // Subtotal do tipo leva a unidade; a cor repete o número cru.
+    expect(html).toContain('1.160,64 m');   // 3 × 386,88 (elástico)
+    expect(html).toContain('3.883,68 m');   // 3 × 1.294,56 (chata)
+    expect(html).toContain('>386,88</td>');
+    expect(html).toContain('>1.294,56</td>');
     expect(html).toContain('12,90 m');
     expect(html).toContain('18,49 m');
     // Totais no rodapé: 6 × cores somadas
@@ -811,7 +835,7 @@ describe('PV-00195 · napa de tira só no §03', () => {
     const html = build(mode);
     const manifest = between(html, 'class="manifest', '</div>\n  </div>');
     expect(manifest).toContain('55,57 m');
-    expect(manifest).toContain('cabedal + forração · napa das tiras no §03');
+    expect(manifest).toContain('cabedal + forração · napa das tiras no bloco de prestador');
     expect(manifest).not.toContain('tiras convertidas');
     expect(html).not.toContain('78,09');
 
@@ -832,26 +856,26 @@ describe('PV-00195 · napa de tira só no §03', () => {
     for (const old of ['32,74', '16,70', '15,26', 'rendimento pendente', 'Situação']) {
       expect(s01).not.toContain(old);
     }
-    expect(s01).toContain('A napa das tiras está só no §03 Setor de Tiras.');
+    expect(s01).toContain('A napa das tiras está só no bloco Tiras · prestador.');
 
     if (mode === 'coverage') {
       const reading = between(html, '<h3>Leitura correta</h3>', '</p>');
-      expect(reading).toContain('soma cabedal (+ fachete) e forração; a napa das tiras está no §03 Setor de Tiras');
+      expect(reading).toContain('soma cabedal (+ fachete) e forração; a napa das tiras está no bloco Tiras · prestador');
       expect(reading).not.toContain('tiras convertidas');
     } else {
       // No total a caixa saiu: era repetição full-width da tarja + das notas
       // das duas seções. A origem da napa continua escrita, ao lado do título.
       expect(html).not.toContain('<h3>Leitura correta</h3>');
       expect(html).toContain('Consumo total · estoque ignorado · necessidade bruta do pedido');
-      expect(s01).toContain('A napa das tiras está só no §03 Setor de Tiras.');
-      expect(section02(html)).toContain('a napa delas está no §03');
+      expect(s01).toContain('A napa das tiras está só no bloco Tiras · prestador.');
+      expect(section02(html)).toContain('a napa delas está no bloco de prestador');
     }
     expect(html).not.toContain('tiras convertidas');
   });
 
-  it('o §03 continua mostrando a napa das tiras (22,52 m) por tipo × cor', () => {
-    const s03 = section03(build());
-    expect(s03).toContain('Total de napa a enviar ao prestador');
+  it('o bloco de prestador continua mostrando a napa (22,52 m) por tipo × cor', () => {
+    const s03 = strapBlock(build(), 'prestador');
+    expect(s03).toContain('Total a mandar pro prestador');
     expect(s03).toContain('22,52 m');
     expect(s03).toContain('12,24 m'); // overlock champagne 856,80 ÷ 70
     expect(s03).toContain('6,44 m'); // elástico champagne 193,20 ÷ 30
@@ -891,39 +915,53 @@ describe('PV-00195 · bloco Tiras do §02 = total por tipo × cor', () => {
       artisanalStrapRows: PV00195_STRAP_CUT_ROWS,
     });
     const s02 = section02(html);
-    const rows = strapBlockRows(html);
-    expect(rows).toHaveLength(6);
-    expect(s02).toContain('<div class="component-heading"><span>Tiras</span><span>6 linha(s)</span></div>');
-    expect(s02).toContain('<th>Tipo de tira</th><th>Cor</th><th>Origem</th><th class="num">Total<span class="unit-suffix"> (m)</span></th>');
-    // Bloco único: o strass não tem mais seção própria.
+    // Os 6 pares tipo × cor continuam — agora como 4 linhas de TIPO (que já
+    // são o subtotal) mais 6 linhas de COR, repartidas por origem.
+    expect(strapColorRows(html, 'comprar pronto')).toHaveLength(2);
+    expect(strapColorRows(html, 'prestador')).toHaveLength(4);
+    expect(strapTypeRows(html, 'comprar pronto')).toHaveLength(1);
+    expect(strapTypeRows(html, 'prestador')).toHaveLength(3);
+    // O strass não tem seção própria: é um tipo dentro do bloco de compra.
     expect(s02).not.toContain('<span>Tira Strass</span>');
+    expect(s02).toContain('<span>Tiras · comprar pronto</span>');
 
-    const overlock = rows.find((tr) => tr.includes('TIRA OVERLOCK 5 mm · GLOW METALIC</strong>') && tr.includes('<td>CHAMPAGNE</td>'))!;
-    expect(overlock).toContain('<td>Prestador</td>');
-    expect(overlock).toContain('<td class="num strong">856,80</td>');
-    expect(overlock).toContain('856,80<small class="qty-preview">prestador</small>');
-    expect(overlock).toContain('<td class="num cost-spend">—</td>');
+    const overlock = strapTypeRows(html, 'prestador')
+      .find((tr) => tr.includes('TIRA OVERLOCK 5 mm · GLOW METALIC</strong>'))!;
+    // CHAMPAGNE e COBRE são o MESMO tipo: o subtotal soma as duas cores.
+    expect(overlock).toContain('<td class="num strong">1.041,60 m</td>');
+    expect(strapColorRows(html, 'prestador').join('')).toContain('>856,80</td>');
+    // Sem coluna de dinheiro no prestador: `spend` é null por construção lá.
+    expect(strapBlock(html, 'prestador')).not.toContain('cost-spend');
 
-    const cristal = rows.find((tr) => tr.includes('<td>CRISTAL C/ FUNDO BRANCO</td>'))!;
-    expect(cristal).toContain('<td><strong>TIRA STRASS 6MM</strong>');
-    expect(cristal).toContain('<td>Comprar pronto</td>');
-    expect(cristal).toContain('<td class="num strong">319,20</td>');
+    // O tipo TIRA STRASS 6MM soma as duas cores no subtotal; cada cor mantém
+    // o seu número, estoque e falta na própria linha.
+    const strassType = strapTypeRows(html, 'comprar pronto')[0];
+    expect(strassType).toContain('<td><strong>TIRA STRASS 6MM</strong>');
+    expect(strassType).toContain('<td class="num strong">529,20 m</td>'); // 319,20 + 210,00
+    expect(strassType).toContain('R$\u00a01.323,00');
+    const buyColors = strapColorRows(html, 'comprar pronto');
+    const cristal = buyColors.find((tr) => tr.includes('<td>CRISTAL C/ FUNDO BRANCO</td>'))!;
+    expect(cristal).toContain('<td class="num">319,20</td>');
     // Duas linhas da ficha no MESMO SKU: estoque 100 entra uma vez → falta 219,20.
     expect(cristal).toContain('<td class="num">100,00</td>');
     expect(cristal).toContain('<td class="num shortage">219,20</td>');
     expect(cristal).toContain('R$\u00a0798,00');
-    const rosado = rows.find((tr) => tr.includes('<td>ROSADO C/ FUNDO ROSADO</td>'))!;
-    expect(rosado).toContain('<td class="num strong">210,00</td>');
+    const rosado = buyColors.find((tr) => tr.includes('<td>ROSADO C/ FUNDO ROSADO</td>'))!;
+    expect(rosado).toContain('<td class="num">210,00</td>');
     expect(rosado).toContain('R$\u00a0525,00');
 
+    // Tipos de uma cor só: o subtotal e a cor trazem o mesmo número.
+    const makeTypes = strapTypeRows(html, 'prestador').join('');
+    const makeColors = strapColorRows(html, 'prestador').join('');
     for (const [type, color, total] of [
       ['ELÁSTICO FORRADO 7 mm · GLOW METALIC', 'CHAMPAGNE', '193,20'],
-      ['TIRA OVERLOCK 5 mm · GLOW METALIC', 'COBRE', '184,80'],
       ['TIRA CHATA 8 mm · NAPA SOFT', 'OFF WHITE', '84,00'],
     ]) {
-      const tr = rows.find((row) => row.includes(`${type}</strong>`) && row.includes(`<td>${color}</td>`));
-      expect(tr, `${type} · ${color}`).toContain(`<td class="num strong">${total}</td>`);
+      expect(makeTypes, type).toContain(`${type}</strong>`);
+      expect(makeTypes, type).toContain(`<td class="num strong">${total} m</td>`);
+      expect(makeColors, color).toContain(`<td>${color}</td>`);
     }
+    expect(makeColors).toContain('>184,80</td>'); // OVERLOCK COBRE, sob o tipo
 
     // Nada do que o dono mandou tirar do §02.
     expect(s02).not.toMatch(/\b3[4-9]: [\d.,]+ m/); // metros por numeração
@@ -932,11 +970,13 @@ describe('PV-00195 · bloco Tiras do §02 = total por tipo × cor', () => {
     expect(s02).not.toContain('napa GLOW METALIC');
     expect(s02).not.toContain('Prestador · TIRA');
     expect(s02).not.toContain('m de tira');
-    // Sem espaço morto: a tabela de tiras não tem Aplicação, Un. nem Preço/un.
-    const strapTable = between(s02, '<span>Tiras</span>', '</table>');
-    expect(strapTable).not.toContain('Aplicação');
-    expect(strapTable).not.toContain('Preço/un.');
-    expect(strapTable).not.toContain('<th>Un.</th>');
+    // Sem espaço morto: nenhum dos dois blocos tem Aplicação, Un. ou Preço/un.
+    for (const kind of ['comprar pronto', 'prestador'] as const) {
+      const block = strapBlock(html, kind);
+      expect(block, kind).not.toContain('Aplicação');
+      expect(block, kind).not.toContain('Preço/un.');
+      expect(block, kind).not.toContain('<th>Un.</th>');
+    }
   });
 
   it('total a gastar soma o strass uma vez só (798,00 + 525,00)', () => {
@@ -956,12 +996,17 @@ describe('PV-00195 · bloco Tiras do §02 = total por tipo × cor', () => {
       artisanalStrapRows: PV00195_STRAP_CUT_ROWS,
       mode: 'total',
     });
-    const strapTable = between(section02(html), '<span>Tiras</span>', '</table>');
-    expect(strapTable).toContain('straps-table total-mode');
-    expect(strapTable).toContain('<tr><th>Tipo de tira</th><th>Cor</th><th>Origem</th><th class="num">Total<span class="unit-suffix"> (m)</span></th><th class="num col-spend">A gastar</th></tr>');
-    expect(strapTable).not.toContain('Estoque');
-    expect(strapTable).not.toContain('prestador');
-    expect(strapBlockRows(html)).toHaveLength(6);
+    const buy = strapBlock(html, 'comprar pronto');
+    expect(buy).toContain('straps-table total-mode');
+    expect(buy).toContain('A gastar');
+    expect(buy).not.toContain('Estoque');
+    expect(buy).not.toContain('Falta');
+    const make = strapBlock(html, 'prestador');
+    expect(make).toContain('Napa a enviar');
+    expect(make).not.toContain('Estoque');
+    expect(make).not.toContain('A gastar');
+    expect(strapColorRows(html, 'comprar pronto')).toHaveLength(2);
+    expect(strapColorRows(html, 'prestador')).toHaveLength(4);
   });
 
   it('não reduz fonte: o bloco usa as classes e corpos de texto que o documento já tinha', () => {
@@ -983,27 +1028,33 @@ describe('PV-00195 · bloco Tiras do §02 = total por tipo × cor', () => {
       rows: PV00195_ROWS,
       artisanalStrapRows: PV00195_STRAP_CUT_ROWS,
     });
-    const widthsOf = (selector: string, count: number) => Array.from({ length: count }, (_, i) => {
-      const escaped = selector.replace(/\./g, '\\.');
-      const match = html.match(new RegExp(`${escaped} th:nth-child\\(${i + 1}\\)\\s*\\{\\s*width:(\\d+)%;`));
-      expect(match, `${selector} coluna ${i + 1}`).not.toBeNull();
-      return Number(match![1]);
+    // As larguras saíram do CSS para o `<th>`: a mesma classe .straps-table
+    // serve a tabelas de 3 a 6 colunas (comprar/prestador × total/cobertura),
+    // então nth-child apontaria para a coluna errada em metade dos casos.
+    const widthsOf = (block: string): number[] =>
+      [...block.matchAll(/<th[^>]*style="width:(\d+)%"/g)].map((m) => Number(m[1]));
+    const totalHtml = buildMaterialConsumptionReportHtml({
+      title: 'Consumo total — PV-00195', mode: 'total',
+      rows: PV00195_ROWS, artisanalStrapRows: PV00195_STRAP_CUT_ROWS,
     });
-    // Cobertura: Tipo · Cor · Origem · Total · Estoque · Falta · A gastar
-    const coverage = widthsOf('.straps-table', 7);
-    expect(coverage.reduce((a, b) => a + b, 0)).toBe(100);
-    expect(coverage[0]).toBeGreaterThanOrEqual(31); // "TIRA OVERLOCK 5 mm · GLOW METALIC" numa linha
-    // Total, Estoque e Falta: "12.852,00" pede 10% da tabela. Com Falta a 8% todo
-    // valor de 4 dígitos invadia a coluna A gastar.
-    expect(coverage[3]).toBeGreaterThanOrEqual(10);
-    expect(coverage[4]).toBeGreaterThanOrEqual(10);
-    expect(coverage[5]).toBeGreaterThanOrEqual(10);
-    expect(coverage[6]).toBeGreaterThanOrEqual(14); // gasto de 5 dígitos
-    // Consumo total: Tipo · Cor · Origem · Total · A gastar
-    const total = widthsOf('.straps-table.total-mode', 5);
-    expect(total.reduce((a, b) => a + b, 0)).toBe(100);
-    expect(total[3]).toBeGreaterThanOrEqual(10);
-    expect(total[4]).toBeGreaterThanOrEqual(14);
+    for (const [label, block, floors] of [
+      // [rótulo, bloco, piso de cada coluna a partir da 2ª]
+      ['cobertura · comprar', strapBlock(html, 'comprar pronto'), [15, 12, 12, 14]],
+      ['cobertura · prestador', strapBlock(html, 'prestador'), [13, 11, 11, 11, 0]],
+      ['total · comprar', strapBlock(totalHtml, 'comprar pronto'), [20, 14]],
+      ['total · prestador', strapBlock(totalHtml, 'prestador'), [17, 11, 0]],
+    ] as [string, string, number[]][]) {
+      const widths = widthsOf(block);
+      // `table-layout:fixed` com soma ≠ 100 estica ou corta a última coluna.
+      expect(widths.reduce((a, b) => a + b, 0), `${label}: soma`).toBe(100);
+      // "TIRA OVERLOCK 5 mm · GLOW METALIC" numa linha só.
+      expect(widths[0], `${label}: tipo`).toBeGreaterThanOrEqual(31);
+      // Colunas de número: "12.852,00" pede ~10% da tabela. A 8% o valor
+      // invadia a coluna vizinha (medido em 11/10/2026).
+      floors.forEach((floor, i) => {
+        expect(widths[i + 1], `${label}: coluna ${i + 2}`).toBeGreaterThanOrEqual(floor);
+      });
+    }
   });
 
   it('tipo de tira sai em caixa alta, qualquer que seja o nome do SKU', () => {
@@ -1043,7 +1094,7 @@ describe('PV-00195 · bloco Tiras do §02 = total por tipo × cor', () => {
       rows: PV00195_ROWS,
       artisanalStrapRows: PV00195_STRAP_CUT_ROWS,
     });
-    expect(comPrestador).toContain('§03 Setor de Tiras');
+    expect(comPrestador).toContain('bloco Tiras · prestador');
   });
 
   it('o cabeçalho "Total (m)" não vira "TOTAL (M)" no uppercase do thead', () => {
@@ -1052,7 +1103,7 @@ describe('PV-00195 · bloco Tiras do §02 = total por tipo × cor', () => {
       rows: PV00195_ROWS,
       artisanalStrapRows: PV00195_STRAP_CUT_ROWS,
     });
-    expect(html).toContain('<th class="num">Total<span class="unit-suffix"> (m)</span></th>');
+    expect(html).toMatch(/<th class="num"[^>]*>Total<span class="unit-suffix"> \(m\)<\/span><\/th>/);
     expect(html).toContain('.report-table th .unit-suffix { text-transform:none; }');
   });
 
@@ -1075,8 +1126,8 @@ describe('PV-00195 · bloco Tiras do §02 = total por tipo × cor', () => {
     });
     const i704 = between(html, '>I704</h3>', '</table>');
     const i705 = html.slice(html.indexOf('>I705</h3>'));
-    expect(i704).toContain('<td class="num strong">655,20</td>'); // 3 × 218,40
-    expect(i705).toContain('<td class="num strong">201,60</td>');
+    expect(i704).toContain('<td class="num strong">655,20 m</td>'); // 3 × 218,40
+    expect(i705).toContain('<td class="num strong">201,60 m</td>');
     expect(html).not.toContain('856,80');
   });
 });

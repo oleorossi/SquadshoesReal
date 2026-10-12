@@ -95,6 +95,18 @@ import {
  * nenhum desta tela (herói, painel de napa, chips de família, faixa por
  * aplicação, "Necessidade total", falta de napa). Ela aparece só no bloco
  * "Setor de Tiras" (`ArtisanalStrapRollCutBlock`).
+ *
+ * ⚠ TELA E PDF DIVERGEM NO LUGAR — de propósito, por ora (12/10/2026). O dono
+ * escolheu, entre cinco layouts, repartir a tira do PDF por ORIGEM: o bloco
+ * "Tiras · prestador" absorveu a seção "§03 Setor de Tiras", e lá o tipo é
+ * escrito uma vez e já é o subtotal (metros e valor). Esta tela ainda mostra
+ * o `ArtisanalStrapRollCutBlock` como seção à parte, sem subtotal por tipo,
+ * porque ele é interativo (plano de corte expansível, "Informar rendimento")
+ * e espelhar isso é trabalho próprio, ainda não feito.
+ *
+ * O que NÃO diverge, e não pode divergir: a napa segue fora de todo total de
+ * napa nos dois. A decisão de 11/10 é sobre o DADO; o que mudou no PDF é só
+ * onde ele é impresso.
  */
 export type OrderHeader = { order_number: string; client_order_number?: string | null };
 
