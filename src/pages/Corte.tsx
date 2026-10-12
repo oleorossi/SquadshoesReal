@@ -1233,16 +1233,19 @@ if (totalPairsAll !== palmTotal) {
                 const prazo = isSemPedido
                   ? ''
                   : ` · entrega ${group.deliveryDeadline ? new Date(`${group.deliveryDeadline}T12:00:00`).toLocaleDateString('pt-BR') : 'sem prazo'} (${deadlineChipLabel(group.daysUntilDeadline)})`;
-                opSummaryRows += `<tr style="background:#e8e8d0;"><td colspan="${reportColSpan}" style="border:1px solid #999;padding:3px 6px;font-size:11px;font-weight:800;">`;
+                // 15px: o pedido é a IDENTIDADE do bloco e o piso de identidade do
+                // CLAUDE.md é 14px — os 11px anteriores furavam. O prazo vai no mesmo
+                // corpo porque é o número que decide a ordem da folha.
+                opSummaryRows += `<tr style="background:#e8e8d0;"><td colspan="${reportColSpan}" style="border:1px solid #999;padding:4px 6px;font-size:15px;line-height:1.2;font-weight:800;">`;
                 opSummaryRows += `${escapeHtml(pvHead)}`;
                 // Vermelho só no atraso e sempre pareado com negrito — a fábrica
                 // imprime laser P&B (regra 5 de print).
-                opSummaryRows += `<span style="font-size:10px;font-weight:800;color:${late ? '#C00000' : '#111'};">${escapeHtml(prazo)}</span>`;
+                opSummaryRows += `<span style="font-size:15px;font-weight:800;color:${late ? '#C00000' : '#111'};">${escapeHtml(prazo)}</span>`;
                 opSummaryRows += `<span style="font-size:9px;font-weight:600;color:#666;"> · ${group.pairs} pares · ${group.rowCount} ${group.rowCount === 1 ? 'OP' : 'OPs'}</span>`;
                 opSummaryRows += `</td></tr>`;
 
                 group.references.forEach(refGroup => {
-                  opSummaryRows += `<tr><td colspan="${reportColSpan}" style="border:1px solid #999;padding:2px 6px;font-size:10px;font-weight:700;background:#f5f5f0;">`;
+                  opSummaryRows += `<tr><td colspan="${reportColSpan}" style="border:1px solid #999;padding:3px 6px;font-size:12px;font-weight:700;background:#f5f5f0;">`;
                   opSummaryRows += `${escapeHtml(refGroup.label)}<span style="font-weight:600;color:#666;"> · ${refGroup.pairs} pares</span>`;
                   opSummaryRows += `</td></tr>`;
 

@@ -91,6 +91,100 @@ describe('corteLookahead', () => {
     expect(ranked[1].chips.some((c) => c.key === 'estoque' && c.tone === 'blocked')).toBe(true);
   });
 
+  it('nomeia o pedido que levou o material quando a linha fica bloqueada', () => {
+    // O relatório ordena por PRAZO e a alocação segue a sequência oficial, então
+    // o PV de entrega mais próxima pode aparecer bloqueado. Sem nomear quem
+    // consumiu, a tela parece contraditória.
+    const ranked = rankCorteLookaheadRows([
+      {
+        itemId: 'urgente',
+        createdAt: '2026-01-02',
+        liberableBase: true,
+        stock: { productId: 'napa', productName: 'NAPA PRETO', freeQty: 10, requiredQty: 8 },
+        score: 10,
+        completionPct: 10,
+        color: 'PRETO',
+        reference: 'I90',
+        dueDate: '2026-09-30',
+        orderNumber: 'PV-00151',
+      },
+      {
+        itemId: 'quase-fechado',
+        createdAt: '2026-01-01',
+        liberableBase: true,
+        stock: { productId: 'napa', productName: 'NAPA PRETO', freeQty: 10, requiredQty: 8 },
+        score: 10,
+        completionPct: 90,
+        color: 'PRETO',
+        reference: 'I90',
+        dueDate: '2026-10-20',
+        orderNumber: 'PV-00148',
+      },
+    ], { today: new Date('2026-09-29T12:00:00') });
+
+    const quase = ranked.find((r) => r.itemId === 'quase-fechado')!;
+    const urgente = ranked.find((r) => r.itemId === 'urgente')!;
+    // Quem fecha o PV levou a napa, ainda que entregue depois.
+    expect(quase.liberable).toBe(true);
+    expect(quase.blockedByOrderNumbers).toBeUndefined();
+    expect(urgente.liberable).toBe(false);
+    expect(urgente.blockedByOrderNumbers).toEqual(['PV-00148']);
+  });
+
+  it('não culpa o próprio pedido pela falta', () => {
+    // Dois itens do MESMO PV competindo pelo mesmo SKU: o 2º fica bloqueado,
+    // mas apontar "PV-00151 levou" no cabeçalho do PV-00151 não explica nada.
+    const ranked = rankCorteLookaheadRows([
+      {
+        itemId: 'i1',
+        createdAt: '2026-01-01',
+        liberableBase: true,
+        stock: { productId: 'napa', productName: 'NAPA PRETO', freeQty: 10, requiredQty: 8 },
+        score: 10,
+        completionPct: 50,
+        color: 'AZUL',
+        reference: 'I90',
+        dueDate: '2026-09-30',
+        orderNumber: 'PV-00151',
+      },
+      {
+        itemId: 'i2',
+        createdAt: '2026-01-02',
+        liberableBase: true,
+        stock: { productId: 'napa', productName: 'NAPA PRETO', freeQty: 10, requiredQty: 8 },
+        score: 10,
+        completionPct: 50,
+        color: 'PRETO',
+        reference: 'I90',
+        dueDate: '2026-09-30',
+        orderNumber: 'PV-00151',
+      },
+    ], { today: new Date('2026-09-29T12:00:00') });
+
+    const blocked = ranked.find((r) => !r.liberable)!;
+    expect(blocked.blockedByOrderNumbers).toBeUndefined();
+  });
+
+  it('bloqueio por cadastro incompleto não inventa culpado', () => {
+    const ranked = rankCorteLookaheadRows([
+      {
+        itemId: 'sem-material',
+        createdAt: '2026-01-01',
+        liberableBase: true,
+        stock: { productId: null, productName: null, freeQty: 0, requiredQty: 5 },
+        score: 10,
+        completionPct: 10,
+        color: 'PRETO',
+        reference: 'I90',
+        dueDate: '2026-09-30',
+        orderNumber: 'PV-00151',
+      },
+    ], { today: new Date('2026-09-29T12:00:00') });
+
+    expect(ranked[0].liberable).toBe(false);
+    expect(ranked[0].blockedByOrderNumbers).toBeUndefined();
+  });
+
   it('rank prioriza fechar PV sobre score legado de valor×prazo', () => {
     const ranked = rankCorteLookaheadRows([
       {
