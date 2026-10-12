@@ -17,7 +17,10 @@ describe('Ficha Técnica — identidade e consumo do Cabedal Material 1', () => 
     // readout "= X/pé" ao lado da média como guard anti-deriva. Isso continua.
     expect(materialOneBlock).toContain('POR PAR ({upperUnit.unit}/par, não por pé)');
     expect(materialOneBlock).toContain('consumo do par (2 pés)');
-    expect(materialOneBlock).toContain('true, // showPerFoot');
+    // O readout "= X/pé" continua existindo; deixou de ser literal porque não
+    // faz sentido em contagem ("0,5 un/pé"). A intenção é o que se trava.
+    expect(materialOneBlock).toContain('showPerFoot, // readout "= X/pé"');
+    expect(materialOneBlock).toContain("upperUnit.basis !== 'count'");
 
     // O que MUDOU (decisão do dono, 12/10/2026): a unidade é derivada do item,
     // nunca mais um literal. O 'dm²' fixo mentia para material linear direto —

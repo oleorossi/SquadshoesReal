@@ -466,6 +466,15 @@ dia em que alguém puser essa tira no BOM. Remoção é decisão de cadastro, n�
   grupo — **não** baixar o piso. As 26 fichas de `TIRA OVERLOCK 5MM` (cadastradas com
   1370 mm copiado de napa) seguem classificadas como bobina: o piso não as muda.
 
+  ⚠ **Largura 0 NÃO é fita — é cadastro incompleto.** Segue dm² + `widthMissing` +
+  aviso âmbar, como sempre. Só largura **positiva** abaixo do piso classifica como
+  linear direto.
+
+  ⚠ **O piso tornou o erro de ESCALA cheio em vez de proporcional.** Napa cadastrada
+  `137` em vez de `1370` saía 10× errada; agora sairia 137×, porque 137 < 400 e deixa
+  de converter. `isSuspiciousNarrowWidth` (largura < piso **com** comprimento de rolo
+  na mesma ficha) sinaliza isso na ficha — **não** muda a classificação, só avisa.
+
   ⚠ **Os dois lados são espelho.** Mudar `ROLL_WIDTH_FLOOR_MM` sem a função SQL (ou
   vice-versa) recria a divergência TS×SQL fechada na auditoria de 2026-07-21. Travado
   por `lib/__tests__/materialLinearDireto.test.ts` + `lib/__tests__/materialUnit.test.ts`.
@@ -489,6 +498,19 @@ em desacordo com o cálculo: NAPA PALHA tem grupo `0` e ficha `1370`, então a t
 ⚠ `dimensions_unit` **não** é fallback de unidade de consumo: é unidade de dimensão
 física (default `'mm'`), e devolvia `"mm"` como unidade de consumo em todo grupo sem
 item. O default honesto é `un`.
+
+⚠ **`consumption_unit` não decide nada aqui.** O SQL `get_material_conversion_info`
+não lê essa coluna — qualquer ramo baseado nela diverge do motor. E ela é `'m'` tanto
+na napa quanto no elástico: não distingue nada.
+
+⚠ **Grupo MISTO cai pro lado seguro.** O rótulo é um por GRUPO, o débito é por SKU; se
+qualquer ficha da família tem largura de bobina, o grupo inteiro é `roll_area`. Sem
+isso, uma família com ficha nova em 25 mm e legada em 1370 faria a tela afirmar "sem
+conversão" onde metade das cores divide por 137 — e `useProducts` ordena por
+`updated_at DESC`, então a escolha do item representativo MUDA sozinha.
+
+⚠ **Produto em `placa` digita `dm²`**, não "placa": o motor divide pela ÁREA da placa
+(`convertDm2ToPlates` = largura × comprimento), não pela largura.
 
 ⚠ O que continua travado é **POR PAR, não por pé** (spec `consumo-cabedal-padrao-par`) —
 era isso que os testes de contrato protegiam, nunca o "é área". O readout `= X/pé` ao

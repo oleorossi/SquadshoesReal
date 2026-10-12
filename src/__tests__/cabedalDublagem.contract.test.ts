@@ -61,7 +61,7 @@ describe('Cabedal dublado — contrato frontend e persistência', () => {
     // dm²/par segue sendo o rótulo de material cortado de BOBINA, mas vem do
     // basis do resolvedor, não de um literal (ver materialUnit.test.ts).
     expect(materialOne).toContain("upperUnit.basis === 'roll_area'");
-    expect(materialOne).toContain('largura da bobina');
+    expect(materialOne).toContain('largura cadastrada na ficha de componente');
     expect(technicalSheets).toContain('upper_material_group_id: nextGroupId');
     expect(technicalSheets).toContain('payload.upper_material_group_id = upperMaterialGroup.id;');
     expect(technicalSheets).toContain('group.parent_group_id === upperMaterialGroup.id');

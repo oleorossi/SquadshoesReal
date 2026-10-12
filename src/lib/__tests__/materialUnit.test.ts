@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { resolveConsumptionUnit, resolveGroupUnit, isAreaUnit } from '@/lib/materialUnit';
+import { isNativeLinearMaterial } from '@/lib/materialConsumption';
 
 const groups = [
   // Napa cortada de bobina: a largura (1370 mm) é a do ROLO.
@@ -55,20 +56,52 @@ describe('resolveConsumptionUnit — bobina × item linear direto', () => {
     expect(r.widthMm).toBe(1370);
   });
 
-  it('napa SEM largura em lugar nenhum continua dm² — nunca vira m', () => {
-    // O valor gravado é dm²; rotular 'm' faria o operador digitar metro num campo
-    // que o motor lê como área. O aviso âmbar de largura faltando é que resolve.
-    const semLargura = [{ id: 'g-x', name: 'NAPA NOVA', consumption_unit: null, dimensions_width: 0, dimensions_length: 2000 }];
+  it('SEM largura em lugar nenhum continua dm² — é cadastro incompleto, não fita', () => {
+    // Tem de concordar com o motor: isNativeLinearMaterial=false e
+    // isLinearWidthMissing=true pra largura 0 (ver materialLinearDireto.test.ts).
+    // Rotular 'm' faria a tela dizer "sem conversão" enquanto o motor marca
+    // widthMissing e o consumo sai ~100× inflado.
+    const semLargura = [{ id: 'g-x', name: 'NAPA NOVA', consumption_unit: null, dimensions_width: 0, dimensions_length: 0 }];
     const prods = [{ id: 'p-x', group_id: 'g-x', unit: 'm', active: true }];
     const r = resolveConsumptionUnit('NAPA NOVA', semLargura, prods, []);
     expect(r.unit).toBe('dm²');
     expect(r.basis).toBe('roll_area');
+    expect(r.widthMm).toBe(0);
   });
 
-  it('consumption_unit de área vence a largura (cadastro explícito manda)', () => {
-    const g = [{ id: 'g-a', name: 'AREA EXPLICITA', consumption_unit: 'dm2', dimensions_width: 25 }];
+  it('consumption_unit NÃO decide — o SQL não lê essa coluna, decidir por ela divergiria', () => {
+    // consumption_unit é 'm' tanto na napa quanto no elástico: não distingue nada.
+    // E get_material_conversion_info não a lê — um ramo aqui criaria a mentira
+    // rótulo↔motor ao contrário (tela pede dm², motor trata como metro).
+    const g = [{ id: 'g-a', name: 'FITA COM CONS DM2', consumption_unit: 'dm2', dimensions_width: 25 }];
     const p = [{ id: 'p-a', group_id: 'g-a', unit: 'm', active: true }];
-    expect(resolveConsumptionUnit('AREA EXPLICITA', g, p, []).unit).toBe('dm²');
+    const cs = [{ product_id: 'p-a', group_id: 'g-a', dimensions_width: 25, dimensions_unit: 'mm' }];
+    const r = resolveConsumptionUnit('FITA COM CONS DM2', g, p, cs);
+    expect(r.unit).toBe('m');
+    expect(r.basis).toBe('native_linear');
+  });
+
+  it('produto em PLACA digita dm²/par — o motor divide pela ÁREA da placa, não pela largura', () => {
+    const g = [{ id: 'g-p', name: 'PLACA EVA', dimensions_width: 1000, dimensions_length: 1500 }];
+    const p = [{ id: 'p-p', group_id: 'g-p', unit: 'placa', active: true }];
+    const r = resolveConsumptionUnit('PLACA EVA', g, p, []);
+    expect(r.unit).toBe('dm²');
+    expect(r.productUnit).toBe('placa');
+  });
+
+  it('grupo MISTO (uma ficha 25mm, outra 1370mm) cai no lado seguro: dm²', () => {
+    // O rótulo é um por GRUPO e o débito é por SKU. Afirmar "sem conversão" num
+    // grupo onde metade das cores divide por 137 seria pior que o status quo.
+    const g = [{ id: 'g-mx', name: 'FAMILIA MISTA', dimensions_width: 0 }];
+    const p = [
+      { id: 'p-1', group_id: 'g-mx', unit: 'm', active: true },
+      { id: 'p-2', group_id: 'g-mx', unit: 'm', active: true },
+    ];
+    const cs = [
+      { product_id: 'p-1', group_id: 'g-mx', dimensions_width: 25, dimensions_unit: 'mm' },
+      { product_id: 'p-2', group_id: 'g-mx', dimensions_width: 1370, dimensions_unit: 'mm' },
+    ];
+    expect(resolveConsumptionUnit('FAMILIA MISTA', g, p, cs).basis).toBe('roll_area');
   });
 
   it('item de contagem usa a unidade do PRODUTO, não o consumption_unit do grupo', () => {
@@ -129,5 +162,39 @@ describe('isAreaUnit', () => {
     expect(isAreaUnit('m')).toBe(false);
     expect(isAreaUnit('un')).toBe(false);
     expect(isAreaUnit('')).toBe(false);
+  });
+});
+
+/**
+ * O rótulo e o motor TÊM de concordar. Sem este cruzamento, `materialUnit.ts` e
+ * `materialConsumption.ts` podem afirmar semânticas opostas para a MESMA entrada
+ * e os dois arquivos de teste passam — foi exatamente o que aconteceu na
+ * primeira versão desta mudança (largura 0: o resolvedor dizia "linear direto,
+ * sem conversão" e o motor marcava `widthMissing` + dm²).
+ */
+describe('paridade rótulo × motor', () => {
+  const CASOS = [
+    { nome: 'bobina 1370', width: 1370 },
+    { nome: 'fita 25', width: 25 },
+    { nome: 'sem largura', width: 0 },
+    { nome: 'exatamente no piso', width: 400 },
+    { nome: 'um abaixo do piso', width: 399 },
+  ];
+
+  it.each(CASOS)('$nome: basis roll_area <=> o motor converte', ({ width }) => {
+    const g = [{ id: 'g', name: 'X', dimensions_width: 0 }];
+    const p = [{ id: 'p', group_id: 'g', unit: 'm', active: true }];
+    const cs = width > 0
+      ? [{ product_id: 'p', group_id: 'g', dimensions_width: width, dimensions_unit: 'mm' }]
+      : [];
+
+    const basis = resolveConsumptionUnit('X', g, p, cs).basis;
+    // O que o MOTOR faz com o mesmo cadastro:
+    const sheet: any = width > 0
+      ? { dimensions_width: width, dimensions_unit: 'mm', products: { unit: 'm' } }
+      : { dimensions_width: 0, dimensions_unit: 'mm', products: { unit: 'm' } };
+    const motorConverte = !isNativeLinearMaterial(sheet);
+
+    expect(basis === 'roll_area').toBe(motorConverte);
   });
 });

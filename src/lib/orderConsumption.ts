@@ -12,6 +12,7 @@ import {
   normalizeColorKey,
   pickConsumptionForSize,
   LINEAR_UNITS,
+  isNativeLinearMaterial,
 } from '@/lib/materialConsumption';
 import { calculateStrapConsumptionCm, resolveOrderStraps } from '@/lib/strapConsumption';
 import { strapIdentityBasis } from '@/lib/strapIdentity';
@@ -2768,7 +2769,14 @@ export function computeConsumptionForItems(
       // largura — senão aparece ~100× inflado. Tiras/itens sem ficha passam direto.
       const cs = (componentSheets || []).find((c: any) => c.product_id === material.product_id) || null;
       if (isLinearUnit && cs) {
-        if (!isLinearWidthMissing(cs as any, productUnit)) {
+        if (isNativeLinearMaterial(cs as any)) {
+          // Linear direto (fita/elástico): rawQty JÁ está na unidade de estoque do
+          // item. O ramo `unitLc === 'cm'` abaixo é inalcançável aqui (há ficha),
+          // então o /100 do centímetro precisa acontecer nesta perna — senão um
+          // produto em 'cm' sai rotulado 'metro' com o número 100× maior.
+          totalQty = unitLc === 'cm' ? rawQty / 100 : rawQty;
+          productUnit = 'metro';
+        } else if (!isLinearWidthMissing(cs as any, productUnit)) {
           totalQty = convertDm2ToLinearMeters(rawQty, cs as any);
           productUnit = 'metro';
         } else {

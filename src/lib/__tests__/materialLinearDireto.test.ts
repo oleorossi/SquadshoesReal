@@ -4,6 +4,7 @@ import {
   isNativeLinearMaterial,
   convertDm2ToLinearMeters,
   areaToStockDivisor,
+  isSuspiciousNarrowWidth,
 } from '@/lib/materialConsumption';
 
 /**
@@ -72,5 +73,29 @@ describe('areaToStockDivisor', () => {
 
   it('sem largura segue null (cadastro incompleto)', () => {
     expect(areaToStockDivisor('m', semLargura)).toBeNull();
+  });
+});
+
+describe('isSuspiciousNarrowWidth — o zero a menos', () => {
+  it('137 mm COM comprimento de bobina é suspeito (napa cadastrada 137 em vez de 1370)', () => {
+    expect(isSuspiciousNarrowWidth({
+      dimensions_width: 137, dimensions_length: 1000, dimensions_unit: 'mm',
+    } as any)).toBe(true);
+  });
+
+  it('fita de 25 mm SEM comprimento de rolo não é suspeita — é só uma fita', () => {
+    expect(isSuspiciousNarrowWidth(fitaElastico)).toBe(false);
+  });
+
+  it('bobina legítima não é suspeita', () => {
+    expect(isSuspiciousNarrowWidth({
+      dimensions_width: 1370, dimensions_length: 1000, dimensions_unit: 'mm',
+    } as any)).toBe(false);
+  });
+
+  it('não muda a classificação — só sinaliza', () => {
+    const suspeita = { dimensions_width: 137, dimensions_length: 1000, dimensions_unit: 'mm' } as any;
+    expect(isNativeLinearMaterial(suspeita)).toBe(true);
+    expect(convertDm2ToLinearMeters(137, suspeita)).toBeCloseTo(137, 6);
   });
 });

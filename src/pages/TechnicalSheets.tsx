@@ -2844,30 +2844,56 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                 // PV/custeio. Detecta: produto linear (m/cm) + sinal de bobina
                 // (consumption_unit de área OU comprimento de rolo) + largura ausente.
                 // Materiais lineares NATIVOS (elástico, tira) NÃO disparam.
-                const cabedalWidthWarning = (groupName?: string): boolean => {
-                  const name = (groupName || '').trim();
-                  if (!name) return false;
-                  const g: any = (groups || []).find((x: any) => (x.name || '').trim() === name);
-                  if (!g) return false;
-                  const prod: any = (products || []).find((p: any) => p.group_id === g.id && p.active && (p.unit || '').trim())
-                    || (products || []).find((p: any) => p.group_id === g.id && (p.unit || '').trim());
-                  const prodUnit = (prod?.unit || '').toString().trim().toLowerCase();
-                  if (!['m', 'cm', 'metro', 'metros', 'mt'].includes(prodUnit)) return false;
-                  const consUnit = (g?.consumption_unit || '').toString().trim().toLowerCase().replace(/2/g, '²');
-                  const isAreaConsumption = ['dm²', 'm²', 'cm²'].includes(consUnit);
-                  const hasRollDims = Number(g?.dimensions_length) > 0;
-                  const width = Number(g?.dimensions_width) || 0;
-                  return (isAreaConsumption || hasRollDims) && width <= 0;
+                // Dispara quando o material é tratado como ÁREA (dm²/par) mas não
+                // há largura cadastrada pra converter — aí o consumo sai ~100×
+                // inflado no PV/custeio.
+                //
+                // ⚠ Lê a largura pelo RESOLVEDOR (ficha de componente), não por
+                // `product_groups.dimensions_width`. Com a leitura antiga a NAPA
+                // PALHA (grupo 0, ficha 1370) mostrava "Sem largura cadastrada"
+                // ao lado do texto que diz que o sistema divide pela largura da
+                // ficha — dois avisos contraditórios na mesma tela.
+                const cabedalWidthWarning = (groupName?: string, groupId?: string | null): boolean => {
+                  if (!(groupName || '').trim() && !groupId) return false;
+                  const r = resolveUnitFor(groupName, undefined, groupId);
+                  return r.basis === 'roll_area' && r.widthMm <= 0;
                 };
-                const renderWidthWarn = (groupName?: string) =>
-                  cabedalWidthWarning(groupName) ? (
+                // Largura estreita COM comprimento de rolo na mesma ficha: quase
+                // sempre é um zero a menos (137 em vez de 1370). Como o material
+                // passa a ser classificado como linear direto, o consumo sai 137×
+                // — e nenhum outro aviso pega, porque a largura não está vazia.
+                const cabedalNarrowWidthWarning = (groupName?: string, groupId?: string | null): string | null => {
+                  if (!(groupName || '').trim() && !groupId) return null;
+                  const r = resolveUnitFor(groupName, undefined, groupId);
+                  if (r.basis !== 'native_linear' || r.widthMm <= 0) return null;
+                  const g: any = (groupId ? (groups || []).find((x: any) => x.id === groupId) : null)
+                    || (groups || []).find((x: any) => (x.name || '').trim() === (groupName || '').trim());
+                  const lengthMm = Number(g?.dimensions_length) || 0;
+                  return lengthMm >= 400 ? `${r.widthMm} mm` : null;
+                };
+                const renderWidthWarn = (groupName?: string, groupId?: string | null) => {
+                  if (cabedalWidthWarning(groupName, groupId)) {
+                    return (
+                      <div className="mt-1.5 flex items-start gap-1.5 rounded-md border border-warning/30 bg-warning/10 px-2 py-1.5">
+                        <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-warning mt-0.5" weight="fill" />
+                        <span className="text-[11px] leading-snug text-warning">
+                          Sem largura cadastrada — o consumo pode inflar ~100×. Cadastre a largura em <strong>Materiais → Ficha de Componente (Dimensões)</strong>.
+                        </span>
+                      </div>
+                    );
+                  }
+                  const narrow = cabedalNarrowWidthWarning(groupName, groupId);
+                  if (!narrow) return null;
+                  return (
                     <div className="mt-1.5 flex items-start gap-1.5 rounded-md border border-warning/30 bg-warning/10 px-2 py-1.5">
                       <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-warning mt-0.5" weight="fill" />
                       <span className="text-[11px] leading-snug text-warning">
-                        Sem largura cadastrada — o consumo pode inflar ~100×. Cadastre a largura em <strong>Materiais → Ficha de Componente (Dimensões)</strong>.
+                        Largura de <strong>{narrow}</strong> com comprimento de bobina cadastrado — confira se não falta um zero.
+                        Abaixo de 400 mm o material é tratado como linear direto (sem conversão de área).
                       </span>
                     </div>
-                  ) : null;
+                  );
+                };
 
                 // A trava por componente do MATERIAL PRINCIPAL da variante saiu
                 // DAQUI em 21/08/2026 e passou a viver no diálogo da variante
@@ -2907,9 +2933,10 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                   ? soleSizeKeys
                   : cabedalSizesNumeric;
 
-                // Renderiza a grade de consumo por numeração. No Cabedal
-                // principal, o valor canônico é sempre dm²/par; a unidade do
-                // produto só entra depois, na conversão para baixa de estoque.
+                // Renderiza a grade de consumo por numeração. A unidade é um
+                // RÓTULO recebido pronto (ver resolveConsumptionUnit): dm²/par
+                // pra material cortado de bobina, unidade de estoque do item pra
+                // material linear direto. Nada aqui calcula com ela.
                 // showPerFoot: readout "= X/pé" junto da média — guard anti-deriva
                 // pé×par do CABEDAL (spec consumo-cabedal-padrao-par). O canônico é
                 // POR PAR; o readout é só referência visual pra quem mede 1 peça.
@@ -3030,7 +3057,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                         )}
                       </div>
 
-                      {renderWidthWarn(form.upper_material)}
+                      {renderWidthWarn(form.upper_material, form.upper_material_group_id)}
                       {renderVariantDrivesToggle('variant_drives_upper', 'Cabedal')}
 
                       {/* Item específico (pin de SKU) do Cabedal Material 1 — opcional.
@@ -3095,7 +3122,20 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                           undefined,
                           form.upper_material_group_id,
                         );
+                        // A frase que EXPLICA a unidade só aparece quando as 3
+                        // queries que a decidem já chegaram. São useQuery
+                        // independentes (products, componentSheets, groups) e,
+                        // carregando, o resolvedor via só parte do cadastro —
+                        // a tela afirmava "sem conversão" pra napa por um instante.
+                        // O rótulo da unidade pode esperar; uma instrução errada, não.
+                        const unitReady = (groups || []).length > 0
+                          && (products || []).length > 0
+                          && Array.isArray(componentSheets);
                         const isRollArea = upperUnit.basis === 'roll_area';
+                        // "= X/pé" é guard anti-deriva pé×par e só faz sentido em
+                        // grandeza contínua: dividir contagem discreta por 2 daria
+                        // "0,5 un/pé", que não quer dizer nada.
+                        const showPerFoot = upperUnit.basis !== 'count';
                         return (
                         <div>
                           <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -3103,9 +3143,11 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                           </Label>
                           <p className="text-xs text-muted-foreground mt-0.5 mb-1.5">
                             Informe o <strong className="text-foreground">consumo do par (2 pés)</strong> número a número, sempre em {upperUnit.unit}.
-                            {isRollArea
-                              ? ' É área por par — o sistema divide pela largura da bobina cadastrada na ficha de componente para chegar na unidade de estoque.'
-                              : ' É material linear direto (SKU próprio) — entra no estoque exatamente neste valor, sem conversão.'}
+                            {unitReady && (isRollArea
+                              ? ' É área por par — o sistema divide pela largura cadastrada na ficha de componente para chegar na unidade de estoque.'
+                              : upperUnit.basis === 'native_linear'
+                                ? ' É material linear direto (SKU próprio) — entra no estoque exatamente neste valor, sem conversão.'
+                                : '')}
                             {' '}A média alimenta o custo do PV.
                           </p>
                           {renderSizeGrid(
@@ -3120,7 +3162,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                               }
                             },
                             'amber',
-                            true, // showPerFoot — readout "= X/pé" anti-deriva pé×par
+                            showPerFoot, // readout "= X/pé" anti-deriva pé×par
                           )}
                         </div>
                         );

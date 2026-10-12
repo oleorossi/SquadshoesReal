@@ -414,18 +414,41 @@ export const ROLL_WIDTH_FLOOR_MM = 400;
 
 /**
  * Item LINEAR DIRETO: tem largura cadastrada, mas ela é a largura da peça —
- * não há área a converter. Materializa a regra canônica do CLAUDE.md ("Item
- * linear DIRETO sem ficha de componente (tiras, elásticos): `quantity_per_unit`
- * já está na unidade nativa → NÃO converter"), que até aqui só valia quando a
- * ficha de componente NÃO existia. Ela passou a existir sempre: o gatilho
- * `tg_require_width_for_area_material` obriga a cadastrar largura em todo grupo
- * citado como `upper_material`, então "sem ficha" deixou de ser sinal.
+ * não há área a converter. Estende a regra canônica do CLAUDE.md ("Item linear
+ * DIRETO sem ficha de componente (tiras, elásticos): `quantity_per_unit` já está
+ * na unidade nativa → NÃO converter") para o caso em que a ficha EXISTE: o
+ * ELÁSTICO ESPECIAL G tem ficha de componente com 25 mm, e 25 mm é a largura da
+ * fita, não de um rolo.
  *
- * ESPELHA `get_material_conversion_info` no SQL (mig 20270101040000).
+ * ⚠ "Sem ficha" continua sendo um estado alcançável — `tg_require_width_for_area_material`
+ * é um gatilho `ON component_sheets` que valida a largura QUANDO a ficha é salva,
+ * ele não força ficha a existir. Esse caso NÃO entra aqui: largura 0 cai no
+ * `widthMm > 0` abaixo e segue tratado como dm² + `widthMissing`, como antes.
+ *
+ * ESPELHA `get_material_conversion_info` no SQL (mig 20270101037400).
  */
 export const isNativeLinearMaterial = (componentSheet: ComponentSheetCandidate | null): boolean => {
   const widthMm = getLinearWidthMm(componentSheet);
   return widthMm > 0 && widthMm < ROLL_WIDTH_FLOOR_MM;
+};
+
+/**
+ * Largura abaixo do piso MAS com sinal de ROLO na mesma ficha (comprimento de
+ * bobina) = erro de ESCALA no cadastro, não fita. Item linear direto de verdade
+ * não tem comprimento de rolo.
+ *
+ * Existe porque o piso tornou o erro de escala CHEIO em vez de proporcional: uma
+ * napa cadastrada `137` em vez de `1370` (um zero a menos) antes saía 10× errada
+ * — agora sai 137×, porque 137 < 400 e o material deixa de converter. Nenhum
+ * detector pegava: `isLinearWidthMissing` é false (largura > 0) e o aviso âmbar
+ * da ficha exige largura 0.
+ *
+ * NÃO muda a classificação — só permite avisar.
+ */
+export const isSuspiciousNarrowWidth = (componentSheet: ComponentSheetCandidate | null): boolean => {
+  if (!isNativeLinearMaterial(componentSheet)) return false;
+  const lengthMm = convertDimensionToMm(componentSheet?.dimensions_length, componentSheet?.dimensions_unit);
+  return lengthMm >= ROLL_WIDTH_FLOOR_MM;
 };
 
 export const convertDm2ToLinearMeters = (totalDm2: number, componentSheet: ComponentSheetCandidate | null) => {
@@ -630,6 +653,12 @@ export const calculateConsumptionWithUnit = (
         .filter(([k, v]) => k !== 'unit' && Number(v) > 0)
         .map(([, v]) => Number(v));
       linearFallback = ys.length ? ys.reduce((a, b) => a + b, 0) / ys.length : 0;
+    } else if (isNativeLinearMaterial(componentSheet)) {
+      // Linear direto: o escalar JÁ está na unidade de estoque do item (cm ou m),
+      // igual aos yields — não há metro a reescalar. O `× 100` abaixo existe porque
+      // convertFallbackToLinear SEMPRE devolvia metro; com o early-return dela esse
+      // pressuposto caiu, e multiplicar aqui trataria centímetro como metro (100×).
+      linearFallback = fallbackConsumption;
     } else {
       const linearFallbackMeters = convertFallbackToLinear(fallbackConsumption, componentSheet);
       linearFallback = sheetUnit === 'cm' ? linearFallbackMeters * 100 : linearFallbackMeters;

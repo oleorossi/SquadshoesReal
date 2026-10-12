@@ -47,8 +47,6 @@ export interface ResolvedConsumptionUnit {
   productUnit: string;
 }
 
-const AREA_LABELS = ['dm²', 'm²', 'cm²'];
-
 const norm = (value: unknown): string => (value ?? '').toString().trim().toLowerCase();
 
 /** mm a partir de (valor, unidade) — mesma tabela de `convertDimensionToMm`. */
@@ -79,24 +77,35 @@ const pickProduct = (groupId: string | undefined | null, products: any[]) => {
   return pool.find(isPhysical) || pool[0];
 };
 
-/** Largura em mm, na MESMA cascata do SQL: ficha do item → ficha do grupo → grupo. */
-const resolveWidthMm = (group: any, product: any, componentSheets: any[]): number => {
+const sheetWidthMm = (cs: any): number =>
+  toMm(cs?.dimensions_width, cs?.dimensions_unit) || toMm(cs?.dimensions_length, cs?.dimensions_unit);
+
+/**
+ * Larguras em mm, na MESMA cascata do SQL: ficha do item → fichas do grupo → grupo.
+ *
+ * Devolve a representativa E se ALGUMA ficha do grupo tem largura de bobina.
+ *
+ * ⚠ `anyRoll` existe porque o rótulo é UM POR GRUPO e o débito é POR SKU. Numa
+ * família com ficha nova em 25 mm e ficha legada em 1370 (acontece: as 26 fichas
+ * de TIRA OVERLOCK 5MM estão em 1370 mm), escolher a representativa pela ordem do
+ * array faria a tela afirmar "sem conversão" num grupo onde metade das cores
+ * divide por 137 — e `useProducts` ordena por `updated_at DESC`, então a ordem
+ * MUDA sozinha. Com `anyRoll`, a dúvida cai para o lado seguro (dm², o status quo).
+ */
+const resolveWidths = (group: any, product: any, componentSheets: any[]): { widthMm: number; anyRoll: boolean } => {
   const sheets = componentSheets || [];
-
+  const ofGroup = sheets.filter((cs: any) => cs.group_id === group?.id || cs.products?.group_id === group?.id);
   const own = product ? sheets.find((cs: any) => cs.product_id === product.id) : null;
-  const ownWidth = toMm(own?.dimensions_width, own?.dimensions_unit)
-    || toMm(own?.dimensions_length, own?.dimensions_unit);
-  if (ownWidth > 0) return ownWidth;
 
-  for (const cs of sheets) {
-    const sameGroup = cs.group_id === group?.id || cs.products?.group_id === group?.id;
-    if (!sameGroup) continue;
-    const w = toMm(cs.dimensions_width, cs.dimensions_unit)
-      || toMm(cs.dimensions_length, cs.dimensions_unit);
-    if (w > 0) return w;
+  const anyRoll = [own, ...ofGroup].some(cs => cs && sheetWidthMm(cs) >= ROLL_WIDTH_FLOOR_MM);
+
+  const ownWidth = sheetWidthMm(own);
+  if (ownWidth > 0) return { widthMm: ownWidth, anyRoll };
+  for (const cs of ofGroup) {
+    const w = sheetWidthMm(cs);
+    if (w > 0) return { widthMm: w, anyRoll };
   }
-
-  return toMm(group?.dimensions_width, group?.dimensions_unit);
+  return { widthMm: toMm(group?.dimensions_width, group?.dimensions_unit), anyRoll };
 };
 
 export function resolveConsumptionUnit(
@@ -118,42 +127,42 @@ export function resolveConsumptionUnit(
   const product: any = pickProduct(group.id, products);
   const productUnit = (product?.unit ?? '').toString().trim();
   const pu = norm(productUnit);
-  const widthMm = resolveWidthMm(group, product, componentSheets);
-  const consUnit = norm(group.consumption_unit).replace(/2/g, '²');
-  const declaredArea = AREA_LABELS.includes(consUnit);
-  const hasRollDims = Number(group.dimensions_length) > 0;
+  const { widthMm, anyRoll } = resolveWidths(group, product, componentSheets);
 
-  // Produto já vendido em placa/área: o número É área.
+  // Produto vendido em PLACA/área: o consumo é digitado em dm²/par e o motor
+  // divide pela ÁREA da placa (`convertDm2ToPlates` = largura × comprimento).
+  // O rótulo é 'dm²', NÃO 'placa' — rotular 'placa' faria o operador digitar
+  // placas num campo que o motor lê como área.
   if (PLATE_UNITS.has(pu)) {
-    return { unit: productUnit, basis: 'roll_area', widthMm, productUnit };
+    return { unit: 'dm²', basis: 'roll_area', widthMm, productUnit };
   }
 
   if (LINEAR_UNITS.has(pu)) {
-    // Cadastro que declara área explicitamente vence a heurística de largura.
-    if (declaredArea) return { unit: 'dm²', basis: 'roll_area', widthMm, productUnit };
-
-    // Largura de BOBINA → o consumo é dm²/par (napa/couro/forro). NÃO muda.
-    if (widthMm >= ROLL_WIDTH_FLOOR_MM) {
-      return { unit: 'dm²', basis: 'roll_area', widthMm, productUnit };
-    }
-
-    // Largura da PRÓPRIA peça → item linear direto, já na unidade de estoque.
-    if (widthMm > 0) {
+    // Item linear direto exige certeza: TODA largura conhecida do grupo tem de
+    // estar abaixo do piso. Qualquer outro caso cai em dm² — que é o status quo
+    // e o que o motor faz.
+    //
+    // ⚠ Sem largura em lugar nenhum (`widthMm === 0`) é CADASTRO INCOMPLETO, não
+    // fita: o motor devolve o valor cru marcado `widthMissing` e o CLAUDE.md manda
+    // manter dm² com o aviso âmbar. Rotular 'm' aqui faria a tela dizer "sem
+    // conversão" enquanto o motor grita "largura faltando, ~100× inflado".
+    //
+    // ⚠ NÃO reintroduzir um ramo por `consumption_unit`: o SQL
+    // `get_material_conversion_info` não lê essa coluna, então qualquer decisão
+    // baseada nela diverge do motor — e `consumption_unit` é 'm' tanto na napa
+    // quanto no elástico, ou seja, não distingue nada.
+    if (widthMm > 0 && widthMm < ROLL_WIDTH_FLOOR_MM && !anyRoll) {
       return { unit: productUnit, basis: 'native_linear', widthMm, productUnit };
     }
-
-    // Sem largura nenhuma: o comprimento de rolo é o que resta pra distinguir
-    // napa descadastrada (segue dm², com o aviso âmbar de largura faltando) de
-    // fita nativa. NÃO rotular napa sem largura como 'm': o valor gravado é dm².
-    if (hasRollDims) return { unit: 'dm²', basis: 'roll_area', widthMm: 0, productUnit };
-    return { unit: productUnit, basis: 'native_linear', widthMm: 0, productUnit };
+    return { unit: 'dm²', basis: 'roll_area', widthMm, productUnit };
   }
 
   // Contagem/massa/volume: a unidade vem do ITEM, não do consumption_unit do
   // grupo — que pode divergir (ELÁSTICO SARJA: grupo 'm', produto 'un', e o
   // operador digitava metro num item vendido por unidade).
   if (productUnit) return { unit: productUnit, basis: 'count', widthMm, productUnit };
-  if (consUnit) return { unit: (group.consumption_unit || '').toString().trim(), basis: 'count', widthMm, productUnit };
+  const consUnit = (group.consumption_unit || '').toString().trim();
+  if (consUnit) return { unit: consUnit, basis: 'count', widthMm, productUnit };
   if (stored) return { unit: stored, basis: 'unknown', widthMm, productUnit };
   // ⚠ `dimensions_unit` NÃO entra como fallback. Ela é unidade de DIMENSÃO FÍSICA
   // (largura de bobina, espessura, diâmetro) e o default da coluna é 'mm', então
