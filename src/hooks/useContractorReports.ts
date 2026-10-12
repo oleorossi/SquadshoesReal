@@ -72,6 +72,24 @@ export interface OsFinancialRow {
   payment_state: OsPaymentState;
   is_overdue: boolean;
   days_overdue: number;
+  /** PV de origem da OS (mig `20270101039400`). */
+  pv_sale_order_id: string | null;
+  pv_order_number: string | null;
+  pv_client_name: string | null;
+  /** Prazo de entrega do PV — eixo de ordenação do relatório. */
+  pv_delivery_deadline: string | null;
+  /**
+   * Referência, quando derivável. NULL é comum: medido em 12/10/2026, só 17 das
+   * 349 OS genéricas têm referência determinável.
+   */
+  reference_label: string | null;
+  /**
+   * Por que `reference_label` está em branco: `item` / `op` /
+   * `pv_referencia_unica` derivaram; `pv_varias_referencias` é OS que cobre o
+   * pedido inteiro; `sem_pedido` é OS avulsa. Não confundir os dois últimos —
+   * um é ambiguidade, o outro é ausência de pedido.
+   */
+  reference_source: 'item' | 'op' | 'pv_referencia_unica' | 'pv_varias_referencias' | 'sem_pedido' | null;
 }
 
 /** Eixo de data pelo qual o período é filtrado (escolhido na tela). */
@@ -104,6 +122,24 @@ export interface ContractorHistoryOrder {
   materials_sent: Array<{ material: string; color: string; meters: number }>;
   signed_photo_url: string | null;
   created_at: string;
+  /** PV de origem da OS (mig `20270101039400`). */
+  pv_sale_order_id: string | null;
+  pv_order_number: string | null;
+  pv_client_name: string | null;
+  /** Prazo de entrega do PV — eixo de ordenação do relatório. */
+  pv_delivery_deadline: string | null;
+  /**
+   * Referência, quando derivável. NULL é comum: medido em 12/10/2026, só 17 das
+   * 349 OS genéricas têm referência determinável.
+   */
+  reference_label: string | null;
+  /**
+   * Por que `reference_label` está em branco: `item` / `op` /
+   * `pv_referencia_unica` derivaram; `pv_varias_referencias` é OS que cobre o
+   * pedido inteiro; `sem_pedido` é OS avulsa. Não confundir os dois últimos —
+   * um é ambiguidade, o outro é ausência de pedido.
+   */
+  reference_source: 'item' | 'op' | 'pv_referencia_unica' | 'pv_varias_referencias' | 'sem_pedido' | null;
 }
 
 export function useContractorMetrics() {

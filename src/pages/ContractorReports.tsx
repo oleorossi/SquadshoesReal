@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import {
   Buildings, CheckCircle, Warning as AlertTriangle,
   Clock, CurrencyDollar as DollarSign, Printer, Calendar, Funnel, X,
@@ -26,6 +26,9 @@ import {
   matchesContractorServiceFocus,
   type ContractorServiceFocus,
 } from '@/lib/contractorServiceFocus';
+import { compareDeadlineAsc, deadlineChipLabel, deadlineTone } from '@/lib/reportOrderGrouping';
+import { hasResolvedReference, referenceGroupLabel } from '@/lib/contractorReportGrouping';
+import { daysUntilDeadline } from '@/lib/production/productionSequence';
 import {
   useContractorHistory, useContractorOsFinancials,
   type ContractorHistoryOrder,
@@ -37,6 +40,13 @@ import { printServiceOrderReceipt } from '@/lib/printServiceOrderReceipt';
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
+
+function deadlineBadgeClass(days: number | null): string {
+  const tone = deadlineTone(days);
+  if (tone === 'late') return 'bg-red-500/10 text-red-600 border-red-500/30';
+  if (tone === 'warn') return 'bg-amber-500/10 text-amber-600 border-amber-500/30';
+  return 'bg-muted text-muted-foreground border-border';
+}
 
 function formatDateBR(iso: string | null | undefined): string {
   if (!iso) return '—';
@@ -272,9 +282,28 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
     [summaryFinancials, serviceFocus],
   );
 
-  // Histórico do período e do serviço selecionado.
+  /**
+   * Histórico do período e do serviço selecionado, ordenado pelo PRAZO DE
+   * ENTREGA DO PV — mais próximo no topo, sem prazo no fim (dono, 12/10/2026).
+   *
+   * ⚠ Isto TROCA a ordem anterior, que era `finished_at` decrescente (a OS
+   * concluída mais recente primeiro). A query continua trazendo por
+   * `finished_at`; a reordenação é aqui, e `finished_at` desc virou o último
+   * desempate, então dentro do mesmo pedido a ordem antiga sobrevive.
+   */
   const periodHistory = useMemo(
-    () => history.filter((row) => matchesContractorServiceFocus(serviceFocus, row.sector)),
+    () =>
+      history
+        .filter((row) => matchesContractorServiceFocus(serviceFocus, row.sector))
+        .slice()
+        .sort(
+          (a, b) =>
+            compareDeadlineAsc(a.pv_delivery_deadline, b.pv_delivery_deadline)
+            || String(a.pv_order_number || '').localeCompare(
+              String(b.pv_order_number || ''), 'pt-BR', { numeric: true },
+            )
+            || String(b.finished_at || '').localeCompare(String(a.finished_at || '')),
+        ),
     [history, serviceFocus],
   );
 
@@ -404,6 +433,27 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
     () => rowsForPage(periodHistory, historyPage),
     [periodHistory, historyPage],
   );
+
+  /**
+   * Linhas da página com marca de onde abre cabeçalho de PEDIDO e de
+   * REFERÊNCIA. Derivado da página VISÍVEL, de propósito: o relatório é
+   * paginado, e um grupo que atravessa a virada precisa reabrir o cabeçalho no
+   * topo da página seguinte — senão a 1ª linha da página fica órfã, sem dizer
+   * de que pedido é.
+   */
+  const historyRows = useMemo(() => {
+    let lastPv: string | null = null;
+    let lastRef: string | null = null;
+    return visibleHistory.map((row) => {
+      const pvKey = row.pv_sale_order_id || '__sem_pedido__';
+      const refKey = `${pvKey}::${referenceGroupLabel(row)}`;
+      const openPv = pvKey !== lastPv;
+      const openRef = refKey !== lastRef;
+      lastPv = pvKey;
+      lastRef = refKey;
+      return { row, openPv, openRef };
+    });
+  }, [visibleHistory]);
 
   const handlePrintReceipt = (o: ContractorHistoryOrder) => {
     const contractor = contractors.find((c) => c.id === o.contractor_id);
@@ -1080,8 +1130,58 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {visibleHistory.map((o) => (
-                  <TableRow key={o.id} className="hover:bg-muted/30">
+                {historyRows.map(({ row: o, openPv, openRef }) => (
+                  <Fragment key={o.id}>
+                    {openPv && (
+                      <TableRow className="bg-muted/50 hover:bg-muted/50">
+                        <TableCell colSpan={9} className="py-2">
+                          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                            <span className="font-mono text-xs font-bold text-foreground">
+                              {o.pv_order_number || 'Sem pedido vinculado'}
+                            </span>
+                            {o.pv_client_name && (
+                              <span className="text-xs text-muted-foreground">{o.pv_client_name}</span>
+                            )}
+                            {o.pv_delivery_deadline && (
+                              <>
+                                <span className="text-xs text-muted-foreground">
+                                  Entrega{' '}
+                                  <span className="font-medium text-foreground">
+                                    {formatDateBR(o.pv_delivery_deadline)}
+                                  </span>
+                                </span>
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    'text-[10px] font-medium',
+                                    deadlineBadgeClass(daysUntilDeadline(o.pv_delivery_deadline)),
+                                  )}
+                                >
+                                  {deadlineChipLabel(daysUntilDeadline(o.pv_delivery_deadline))}
+                                </Badge>
+                              </>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    {openRef && (
+                      <TableRow className="hover:bg-transparent">
+                        <TableCell colSpan={9} className="py-1.5 pl-6">
+                          <span
+                            className={cn(
+                              'text-xs',
+                              hasResolvedReference(o)
+                                ? 'font-semibold text-foreground'
+                                : 'italic text-muted-foreground',
+                            )}
+                          >
+                            {referenceGroupLabel(o)}
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  <TableRow className="hover:bg-muted/30">
                     <TableCell className="font-mono text-xs whitespace-nowrap">
                       {o.receipt_number || o.order_number || '—'}
                       {o.signed_photo_url && (
@@ -1127,6 +1227,7 @@ export default function ContractorReportsPage({ embedded }: { embedded?: boolean
                       </Button>
                     </TableCell>
                   </TableRow>
+                  </Fragment>
                 ))}
               </TableBody>
             </Table>
