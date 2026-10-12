@@ -91,6 +91,11 @@ import {
   SaleOrderCommandExecutionError,
 } from '@/lib/saleOrderCommand';
 import { strapColorMode } from '@/lib/technicalStrapLines';
+import {
+  findTiraSemCor as findSaleOrderTiraSemCor,
+  colorIssueBlockerMessage,
+  type SubmitGuardReferenceLike,
+} from '@/lib/saleOrderSubmitGuards';
 import { copyItemStraps, loadStrapCopyContext } from '@/lib/copySaleOrderStraps';
 import { useArtisanalStrapCatalog } from '@/hooks/useArtisanalStraps';
 import {
@@ -702,35 +707,8 @@ export default function SaleOrderForm() {
   // sem cor). Não há fluxo legítimo de "tira sem cor até definir depois": o
   // O resolvedor canônico não aceita texto/alias como identidade: bloqueamos
   // ANTES do save e exigimos também o UUID de cor persistido no snapshot.
-  const findTiraSemCor = (its: SaleOrderItemFormData[]): string | null => {
-    for (let i = 0; i < its.length; i++) {
-      const straps = Array.isArray((its[i] as any).strap_colors)
-        ? ((its[i] as any).strap_colors as any[])
-        : [];
-      const semCor = straps.filter((s) => {
-        if (!s) return false;
-        // Somente reference_base + follow_main deriva a identidade da cor
-        // principal. Uma tira interna select_on_order precisa carregar texto e
-        // UUID canônicos da posição, assim como uma tira comprada pronta.
-        if (strapColorMode(s) === 'follow_main'
-            && String(its[i].color || '').trim()) return false;
-        return !String(s.color || '').trim() || !String(s.color_id || '').trim();
-      });
-      if (semCor.length === 0) continue;
-      const ref = canonicalReferences.find((r: any) => r.id === its[i].reference_id) as any;
-      const refLabel = ref
-        ? `${ref.code || ''} ${ref.name || ''}`.trim() || `item ${i + 1}`
-        : `item ${i + 1}`;
-      const tiras = semCor
-        .map((s) => String(s.label || s.group_name || 'TIRA').trim() || 'TIRA')
-        .join(', ');
-      return (
-        `Tira sem cor canônica no item ${i + 1} (${refLabel}): ${tiras}. ` +
-        `Selecione a cor no catálogo; texto antigo não identifica estoque nem permite confirmar o pedido.`
-      );
-    }
-    return null;
-  };
+  const findTiraSemCor = (its: SaleOrderItemFormData[]): string | null =>
+    findSaleOrderTiraSemCor(its, canonicalReferences as SubmitGuardReferenceLike[], strapColorMode);
 
   const [form, setForm] = useState<SaleOrderFormData>(emptyForm);
   const [items, setItems] = useState<SaleOrderItemFormData[]>([emptyItem()]);
@@ -1981,13 +1959,7 @@ export default function SaleOrderForm() {
       });
       if (pendentes.length > 0) {
         const [, first] = pendentes[0];
-        toast.error(
-          first.message || (
-            `Cor "${first.color}" não cadastrada em ${first.materials.join(', ')}. ` +
-            `Use o botão "Cadastrar" no item para registrar a cor antes de salvar o pedido.`
-          ),
-          { duration: 8000 },
-        );
+        toast.error(colorIssueBlockerMessage(first), { duration: 8000 });
         return;
       }
     }
@@ -2628,6 +2600,7 @@ export default function SaleOrderForm() {
           minBillingISO={liveMinBillingISO}
           computingMinBilling={computingLive}
           onColorIssueChange={handleColorIssueChange}
+          colorIssues={colorIssues}
           strapCatalog={strapCatalog}
           strapCatalogLoading={strapCatalogLoading}
         />

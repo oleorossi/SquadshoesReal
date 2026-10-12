@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   CircleNotch as Loader2,
   Database,
@@ -31,6 +32,7 @@ import {
   type StrapIdentityBasis,
 } from '@/lib/strapIdentity';
 import { isUuid } from '@/lib/technicalStrapLines';
+import { invalidateTechnicalSheets } from '@/lib/queryKeys';
 
 export interface StrapCatalogResolutionLine {
   id?: string | null;
@@ -123,6 +125,7 @@ export default function StrapCatalogResolutionDrawer({
   suggestedBaseGroupId,
   onResolved,
 }: Props) {
+  const queryClient = useQueryClient();
   const { data: catalog, isLoading, error: catalogError } = useArtisanalStrapCatalog(false);
   const resolveContext = useResolveTechnicalStrapContext();
   const lineGroups = useMemo(() => buildLineGroups(lines), [lines]);
@@ -260,6 +263,11 @@ export default function StrapCatalogResolutionDrawer({
         p_reason: reason.trim(),
         p_expected_updated_at: referenceUpdatedAt,
       });
+      // ⚠ O RPC grava a napa escolhida em `technical_sheets.strap_base_group_id`,
+      // que o editor do PV carrega via `TECHNICAL_SHEET_EDITOR_COLUMNS`. Sem
+      // invalidar, a referência em cache continua sem a coluna recém-gravada e
+      // o aviso que motivou o botão reaparece — era metade do beco sem saída.
+      await invalidateTechnicalSheets(queryClient);
       onResolved(result.strap_colors);
       onOpenChange(false);
     } catch {

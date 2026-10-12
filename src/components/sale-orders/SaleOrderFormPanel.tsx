@@ -65,6 +65,10 @@ import {
 import { applyClientCommercialDefaultsToForm } from '@/lib/saleOrderCommercialDefaults';
 import { strapColorMode, technicalStrapLineId } from '@/lib/technicalStrapLines';
 import {
+  findTiraSemCor as findSaleOrderTiraSemCor,
+  colorIssueBlockerMessage,
+} from '@/lib/saleOrderSubmitGuards';
+import {
   applyStrapPvOrigemChangesToItems,
   collectStrapPvOrigemChanges,
 } from '@/lib/strapPvOrigem';
@@ -185,6 +189,10 @@ interface Props {
   computingMinBilling?: boolean;
   /** Reporta itens com cor não cadastrada — pra o pai BLOQUEAR o salvamento. */
   onColorIssueChange?: (index: number, info: { color: string; materials: string[] } | null) => void;
+  /** Estado atual das pendências de cor, devolvido pelo pai para o RODAPÉ poder
+   *  anunciá-las. Sem isto o contador omitia o bloqueio e o usuário só o
+   *  descobria no toast, depois do clique (ver `saleOrderSubmitGuards`). */
+  colorIssues?: Record<number, { color: string; materials: string[]; message?: string }>;
   /** Catálogo de tiras já buscado pelo SaleOrderForm — evita N× fetch por item. */
   strapCatalog?: unknown;
   strapCatalogLoading?: boolean;
@@ -948,7 +956,7 @@ export default function SaleOrderFormPanel({
    packagingProductId: _packagingProductId, onPackagingProductChange: _onPackagingProductChange,
    packagingQuantity: _packagingQuantity, onPackagingQuantityChange: _onPackagingQuantityChange,
    onSaveStateAndNavigate, onCopyToNewOrder, onMoveToNewOrder, onDeleteSelectedItems,
-   minBillingISO, computingMinBilling, onColorIssueChange,
+   minBillingISO, computingMinBilling, onColorIssueChange, colorIssues,
    strapCatalog: sharedStrapCatalog, strapCatalogLoading: sharedStrapCatalogLoading,
  }: Props) {
    // Índice do item → o material da ficha está oferecido no seletor dele?
@@ -2964,6 +2972,24 @@ export default function SaleOrderFormPanel({
         const factoringInvalid = form.is_factoring && !form.factoring_config_id;
 
         const issues: { type: 'error' | 'warning'; msg: string; field?: string }[] = [];
+        // ── Guards que SÓ existiam no handleSubmit ────────────────────────────
+        // O rodapé prometia ser a lista de pendências e omitia estes, então o
+        // contador zerava e o clique em Criar Pedido devolvia um toast sobre
+        // algo que nunca fora anunciado. Fonte única em `saleOrderSubmitGuards`.
+        for (const [key, issue] of Object.entries(colorIssues || {})) {
+          const idx = Number(key);
+          if (!(idx < items.length) || !items[idx]?.reference_id) continue;
+          if (isProductionExcludedSaleOrderItem(items[idx])) continue;
+          issues.push({ type: 'error', msg: colorIssueBlockerMessage(issue) });
+        }
+        const tiraSemCor = findSaleOrderTiraSemCor(
+          productionItems,
+          references,
+          strapColorMode,
+        );
+        if (tiraSemCor) issues.push({ type: 'error', msg: tiraSemCor });
+        if (!form.delivery_month) issues.push({ type: 'error', msg: 'Selecione o mês de faturamento.', field: 'delivery_month' });
+        if (!form.delivery_week) issues.push({ type: 'error', msg: 'Selecione a semana de faturamento.', field: 'delivery_week' });
         if (!form.client_name) issues.push({ type: 'error', msg: 'Selecione um cliente antes de salvar', field: 'client_name' });
         if (validItemsCount === 0) issues.push({ type: 'error', msg: 'Adicione pelo menos um item com referência', field: 'items' });
         // Factoring passa a ser ERRO listado, não só um booleano solto: antes ele

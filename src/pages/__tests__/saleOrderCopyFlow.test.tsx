@@ -192,7 +192,13 @@ describe('identidade de duplicata com cores independentes por tira', () => {
 const FORM: SaleOrderFormData = {
   client_id: 'cli-1', client_name: 'PONTO MIX', client_cnpj: '', client_contact: '',
   client_order_number: '', representative: '', payment_condition: '30/60',
-  delivery_deadline: '', delivery_week: '', delivery_month: '', notes: '',
+  // ⚠ Mês/semana PREENCHIDOS de propósito: o rodapé passou a espelhar os guards
+  // do `handleSubmit`, que recusa o save sem eles ("Selecione o mês de
+  // faturamento."). Um fixture vazio descrevia um PV que o app real nunca
+  // salvaria, e o teste acabava afirmando que o botão ficava habilitado para um
+  // clique que ia falhar em toast — exatamente o descompasso que o rodapé
+  // honesto veio eliminar.
+  delivery_deadline: '', delivery_week: '1', delivery_month: '2026-09', notes: '',
   status: 'Aprovado', nfe: '', remessa: '', is_factoring: false,
   factoring_config_id: '', packaging_mode: 'colmeia',
 };
