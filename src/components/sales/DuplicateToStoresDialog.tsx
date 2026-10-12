@@ -37,6 +37,7 @@ import {
 import {
   copyItemStraps,
   loadStrapCopyContext,
+  type BuyReadyColorGap,
   type StrapCopyContext,
 } from '@/lib/copySaleOrderStraps';
 import { resolveReferenceImageUrl } from '@/lib/referenceImage';
@@ -132,6 +133,10 @@ export default function DuplicateToStoresDialog({
   const [view, setView] = useState<ViewMode>('sheet');
   const [sheetStep, setSheetStep] = useState<SheetStep>(1);
   const [batches, setBatches] = useState<DupBatch[]>([]);
+  // Lacunas de cor de tira comprada pronta, descobertas na passada seca do
+  // "Duplicar tudo", e a escolha do dono por linha da ficha.
+  const [buyReadyGaps, setBuyReadyGaps] = useState<BuyReadyColorGap[]>([]);
+  const [buyReadyChoices, setBuyReadyChoices] = useState<Record<string, string>>({});
   const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
   const [orderItems, setOrderItems] = useState<OrderItemRow[]>([]);
   const [itemsLoading, setItemsLoading] = useState(false);
@@ -441,6 +446,28 @@ export default function DuplicateToStoresDialog({
       return;
     }
 
+    // Passada seca ANTES de criar qualquer PV: tira comprada pronta cuja cor do
+    // pedido de origem não tem variante comercial aborta o PV inteiro no writer.
+    // O pedido de origem pode estar aprovado/expedido — e aí seu snapshot é
+    // congelado, sem como corrigir lá. Então a escolha acontece aqui, uma vez,
+    // e vale para todas as lojas: nada é criado enquanto houver lacuna aberta.
+    const choices = new Map(Object.entries(buyReadyChoices));
+    const gapsByLine = new Map<string, BuyReadyColorGap>();
+    for (const item of allPickedForPrep) {
+      const refCode = strapContext.sheetCodeFor(item.reference_id) || item.ref_code || '';
+      const label = [refCode, item.color].filter(Boolean).join(' / ') || 'Item';
+      for (const gap of copyItemStraps(item, strapContext, label, choices).gaps) {
+        if (!gapsByLine.has(gap.lineId)) gapsByLine.set(gap.lineId, gap);
+      }
+    }
+    setBuyReadyGaps([...gapsByLine.values()]);
+    if (gapsByLine.size > 0) {
+      toast.error('Escolha a cor das tiras sem cadastro', {
+        description: 'O pedido de origem tem tira comprada pronta numa cor que não existe no estoque. Escolha abaixo e confirme de novo.',
+      });
+      return;
+    }
+
     setSubmitting(true);
     let successCount = 0;
     const failures: string[] = [];
@@ -477,7 +504,7 @@ export default function DuplicateToStoresDialog({
         const vid = i.material_variant_id;
         const refCode = strapContext.sheetCodeFor(i.reference_id) || i.ref_code || '';
         const itemLabel = [refCode, i.color].filter(Boolean).join(' / ') || 'Item';
-        const copied = copyItemStraps(i, strapContext, itemLabel);
+        const copied = copyItemStraps(i, strapContext, itemLabel, choices);
         strapPending.push(...copied.pending);
         return {
           reference_id: i.reference_id,
@@ -560,7 +587,7 @@ export default function DuplicateToStoresDialog({
           <div className="space-y-4 mt-1">
             <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 flex items-start gap-2">
               <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
-              <div className="text-xs text-amber-700 dark:text-amber-300">
+              <div className="text-xs text-amber-600 dark:text-amber-300">
                 <p className="font-semibold mb-1">A duplicação reservará insumos novamente</p>
                 <p>
                   Cada loja vira um novo PV com o mix do seu lote — reservas independentes em{' '}
@@ -666,6 +693,55 @@ export default function DuplicateToStoresDialog({
               <span className="font-bold text-primary">{totalStores}</span> PV
               {totalStores === 1 ? '' : 's'}
             </p>
+
+            {buyReadyGaps.length > 0 && (
+              <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 space-y-3">
+                <div className="flex gap-2">
+                  <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" weight="fill" />
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold text-amber-600">
+                      Tira comprada pronta sem cadastro na cor do pedido
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      O pedido de origem gravou uma cor que não existe como tira pronta no
+                      estoque, e por isso nenhuma loja seria salva. Escolha a cor de cada
+                      tira — vale para todas as lojas e não altera o pedido de origem.
+                    </p>
+                  </div>
+                </div>
+                {buyReadyGaps.map((gap) => (
+                  <div key={gap.lineId} className="flex flex-wrap items-center gap-2 pl-6">
+                    <span className="text-xs font-mono uppercase text-muted-foreground">
+                      {gap.strapLabel} · {gap.groupName}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      origem: <span className="line-through">{gap.currentColorName}</span>
+                    </span>
+                    {gap.options.length === 0 ? (
+                      <span className="text-xs text-amber-600">
+                        nenhuma cor cadastrada — resolva no Hub de Tiras
+                      </span>
+                    ) : (
+                      <Select
+                        value={buyReadyChoices[gap.lineId] || ''}
+                        onValueChange={(value) => setBuyReadyChoices(
+                          (prev) => ({ ...prev, [gap.lineId]: value }),
+                        )}
+                      >
+                        <SelectTrigger className="h-8 w-[260px]">
+                          <SelectValue placeholder="Escolha a cor desta tira" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {gap.options.map((option) => (
+                            <SelectItem key={option.id} value={option.id}>{option.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
 
             <div className="flex justify-end gap-3 pt-1">
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>

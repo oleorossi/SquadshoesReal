@@ -937,9 +937,31 @@ Agora `loadStrapCopyContext` carrega as variantes ativas e a cópia devolve **pe
 nomeada** (item + tira + cor + grupo) em vez do erro cru. Travado por
 `lib/__tests__/copySaleOrderStraps.test.ts`.
 
-⚠ **A cópia NÃO escolhe a cor por você.** Sem variante, a linha vira pendência — nunca cai
-num "parecido". Inventar a tira acabada é identidade comercial, decisão do dono (ver *Tiras
-artesanais no PV*).
+**A escolha acontece no diálogo de duplicação** (12/10/2026). Avisar não bastava: o pedido
+de origem costuma estar **aprovado/expedido**, e aí o snapshot é congelado
+(`isCommittedSaleOrderStrapSnapshotStatus` só libera Rascunho/Pendente), então a cor errada
+não tem onde ser corrigida e o PV legado **nunca mais duplicaria**. O "Duplicar tudo" faz
+uma passada seca, junta as lacunas (`CopyStrapLinesResult.gaps`) e abre um seletor por
+tira com as cores que TÊM variante naquele escopo (`buyReadyColorsByScope`). A escolha vale
+para todas as lojas do lote e **não toca o pedido de origem**.
+
+⚠ **Nada é criado enquanto houver lacuna aberta.** A passada seca roda antes do primeiro
+`createOrder` — senão as primeiras lojas entrariam e as seguintes falhariam, deixando o
+lote pela metade.
+
+⚠ **A escolha só entra na linha SEM cadastro** (guarda `alreadyValid` em
+`copyStrapLinesForNewOrder`). A mesma tira da ficha aparece em vários itens do pedido, um
+por cor do calçado, e quase todos já têm a cor certa: sem a guarda, a escolha feita para o
+item com lacuna sobrescreveria em silêncio a cor correta dos outros.
+
+⚠ **A escolha é aplicada DEPOIS do reconcile**, nunca antes: ela é decisão comercial sobre
+o PV novo, não estrutura da ficha. Aplicada antes, o reconciliador a trataria como cor do
+snapshot e poderia descartá-la.
+
+⚠ **A cópia NÃO escolhe a cor por você.** Sem escolha explícita do dono, a linha vira
+pendência — nunca cai num "parecido". Escopo sem nenhuma cor cadastrada mostra o seletor
+vazio e manda ao Hub de Tiras: inventar a tira acabada é identidade comercial, decisão do
+dono (ver *Tiras artesanais no PV*).
 
 ⚠ **`buyReadyVariantKeys = null` (leitura do catálogo falhou) = NÃO validar.** O writer
 continua barrando; o que não se faz é inventar pendência por falta de leitura.
